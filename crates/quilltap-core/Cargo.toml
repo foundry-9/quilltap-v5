@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-core"
-version = "0.0.8"
+version = "0.0.9"
 edition = "2021"
 publish = false
 
@@ -28,6 +28,12 @@ publish = false
 rusqlite = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Regex engine for the ported name-matching / detail-extraction heuristics.
+# Used only where v4 uses a RegExp; JS-vs-Rust fidelity is handled per call site
+# (ASCII `\b`/`\d`/`\s` via `(?-u:...)`, Unicode `\p{L}\p{N}` boundaries checked
+# explicitly, no backtracking/lookaround needed). Already in the lock tree.
+regex = "1"
 
 # Crypto for the .dbkey FILE wrapper only, matching lib/startup/pepper-crypto.ts:
 #   AES-256-GCM cipher, PBKDF2-HMAC-<digest> key derivation.

@@ -27,10 +27,12 @@
 //!     drives pacing milestones; oracle-verified.
 //!   * `pricing` — the pure LLM cost arithmetic (`estimate_cost`) plus the
 //!     cost-aware model-selection helpers; oracle-verified.
-//!   * `about_character` / `memory_gate` / `memory_format` — the pure memory
+//!   * `about_character` / `memory_gate` / `memory_format` — the memory
 //!     name-resolution leaves: about/holder name-set builders, the
-//!     reinforced-importance formula, and name+pronoun formatting (the
-//!     regex-based about-character matchers are deferred); oracle-verified.
+//!     reinforced-importance formula, name+pronoun formatting, and the
+//!     word-boundary name matchers (`name_appears` / `count_name_occurrences` /
+//!     `resolve_about_character_id`, the lookahead reproduced without a
+//!     backtracking engine); oracle-verified.
 //!   * `message_attribution` — the per-character context shaping (history-access
 //!     gate, presence windows, whisper visibility, role/name attribution);
 //!     oracle-verified.

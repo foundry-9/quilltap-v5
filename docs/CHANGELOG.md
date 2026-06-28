@@ -26,8 +26,9 @@ test against the v4 oracle:
   predicted turn order; and the weighted-random next-speaker selection (with the
   RNG injected for determinism).
 - Memory name-resolution leaves: reinforced-importance formula, name+pronoun
-  formatting, and the about/holder name-set builders (the regex-based
-  about-character matchers are deferred to the regex-fidelity wave).
+  formatting, the about/holder name-set builders, and the word-boundary name
+  matchers (presence / occurrence-count / about-character resolution) — the
+  Unicode-boundary + lookahead regex reproduced without a backtracking engine.
 - Embedding: L2 vector normalisation, the profile storage policy (Matryoshka
   truncate + optional normalise), cosine similarity with the dimension-mismatch
   guard and message, the fallback keyword/phrase scorer, the literal-phrase

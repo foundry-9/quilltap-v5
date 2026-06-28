@@ -224,7 +224,10 @@ cadence (fold/hard gate, interchange count, title-check crossing, turn
 partition), the per-character context shaping (history-access gate, presence
 windows, whisper visibility, role/name attribution), the pure memory
 name-resolution leaves (reinforced-importance, name+pronoun formatting,
-about/holder name-set builders), the embedding vector-math hot paths (L2
+about/holder name-set builders, and the word-boundary name matchers —
+`nameAppears`/`countNameOccurrences`/`resolveAboutCharacterId`, the Unicode
+boundary + lookahead reproduced without a backtracking engine via the `regex`
+crate plus a hand-rolled boundary check), the embedding vector-math hot paths (L2
 normalisation, profile storage policy, cosine similarity + dimension-mismatch
 guard, fallback keyword/phrase scorer, literal-phrase boost, Float32↔LE-byte
 BLOB conversion), the canon/scenario text helpers (self/other canon-block
@@ -235,12 +238,12 @@ formatting / regex-fidelity / collation seams): `getModelContextLimit` and
 cheap-model classifiers, the `toFixed` display formatters, `compareVersions`'
 localeCompare fallback, the `canonicalize*` tool sorters (localeCompare), the
 chat-task artifact strippers (`stripToolArtifacts`, `getCharacterChatPreview`),
-`parseLegacyEmbeddingText` (JS object-key iteration order), and the
-name-matching regex matchers (`findMentionedCharacterIds`,
-`nameAppears`/`countNameOccurrences`/`resolveAboutCharacterId`,
-`extractNovelDetails` — JS-vs-Rust regex-engine fidelity). **Next:** the
-regex-fidelity / collation wave (the deferred name matchers + chat-task artifact
-strippers + `toFixed` display formatters + `compareVersions` / `canonicalize*`
+`parseLegacyEmbeddingText` (JS object-key iteration order), and the remaining
+name-matching regex matchers (`findMentionedCharacterIds`, `extractNovelDetails`
+— JS-vs-Rust regex-engine fidelity, in progress this wave). **Next:** finish the
+regex-fidelity wave (`findMentionedCharacterIds`, `extractNovelDetails`, the
+chat-task strippers), then the collation wave (`toFixed` display formatters +
+`compareVersions` / `canonicalize*`
 collation + `parseLegacyEmbeddingText` key ordering).
 
 **Also remaining:** fixture sanitizer (anonymized real-instance snapshots) and
