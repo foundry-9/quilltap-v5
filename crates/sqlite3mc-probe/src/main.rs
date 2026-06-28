@@ -22,12 +22,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Confirm we linked SQLite3MultipleCiphers, not stock/SQLCipher.
     let mem = Connection::open_in_memory()?;
-    let cipher_default: Option<String> =
-        mem.query_row("PRAGMA cipher;", [], |r| r.get(0)).ok();
+    let cipher_default: Option<String> = mem.query_row("PRAGMA cipher;", [], |r| r.get(0)).ok();
     let sqlite_version: String = mem.query_row("SELECT sqlite_version();", [], |r| r.get(0))?;
     println!("SQLite version       : {sqlite_version}");
-    println!("default PRAGMA cipher : {}",
-        cipher_default.as_deref().unwrap_or("<none — NOT SQLite3MC!>"));
+    println!(
+        "default PRAGMA cipher : {}",
+        cipher_default
+            .as_deref()
+            .unwrap_or("<none — NOT SQLite3MC!>")
+    );
     println!();
 
     let (data_dir, db_copy) = match (std::env::var("QT_DATA_DIR"), std::env::var("QT_DB_COPY")) {
@@ -57,20 +60,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 3) The real test: read actual schema + a real row count.
     let cipher_now: Option<String> = c.query_row("PRAGMA cipher;", [], |r| r.get(0)).ok();
     let table_count: i64 = c.query_row(
-        "SELECT count(*) FROM sqlite_master WHERE type='table';", [], |r| r.get(0))?;
-    println!("opened real instance: ✓  (cipher = {}, {table_count} tables)",
-        cipher_now.as_deref().unwrap_or("?"));
+        "SELECT count(*) FROM sqlite_master WHERE type='table';",
+        [],
+        |r| r.get(0),
+    )?;
+    println!(
+        "opened real instance: ✓  (cipher = {}, {table_count} tables)",
+        cipher_now.as_deref().unwrap_or("?")
+    );
 
     // Prove we can read genuine application data, not just open the file.
-    if let Ok(n) = c.query_row("SELECT count(*) FROM characters;", [], |r: &rusqlite::Row| r.get::<_, i64>(0)) {
+    if let Ok(n) = c.query_row(
+        "SELECT count(*) FROM characters;",
+        [],
+        |r: &rusqlite::Row| r.get::<_, i64>(0),
+    ) {
         println!("  characters table: {n} rows");
     }
-    if let Ok(n) = c.query_row("SELECT count(*) FROM memories;", [], |r: &rusqlite::Row| r.get::<_, i64>(0)) {
+    if let Ok(n) = c.query_row("SELECT count(*) FROM memories;", [], |r: &rusqlite::Row| {
+        r.get::<_, i64>(0)
+    }) {
         println!("  memories table:   {n} rows");
     }
-    let mut stmt = c.prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name LIMIT 8;")?;
-    let names: Vec<String> = stmt.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?;
+    let mut stmt =
+        c.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name LIMIT 8;")?;
+    let names: Vec<String> = stmt
+        .query_map([], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
     println!("  first tables: {names:?}");
 
     println!("\n== probe complete — correct cipher confirmed ==");

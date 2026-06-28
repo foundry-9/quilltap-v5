@@ -28,6 +28,8 @@
 //!     oracle-verified.
 //!   * `token_estimation` — character-based token counting (estimate / per-message
 //!     / per-conversation, truncation, context-usage %); oracle-verified.
+//!   * `turn_state` — the multi-character turn-rotation state machine (queue
+//!     ops, history-derived state, the spoken-this-cycle wrap); oracle-verified.
 //!   * small pure leaf utilities, each mirroring a v4 file: `chat_predicates`
 //!     (chat-type / participant-status predicates), `semver` (parse + compare),
 //!     `pronoun_gender` (image-prompt gender hint), `tag_style` (style merge),
@@ -51,4 +53,5 @@ pub mod recall_tags;
 pub mod semver;
 pub mod tag_style;
 pub mod token_estimation;
+pub mod turn_state;
 pub mod write_partition;

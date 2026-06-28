@@ -208,10 +208,24 @@ is the master key to all data — never commit it, never write it where it syncs
 
 ## Status (update as it moves)
 
-**Phase 0 (scaffolding + differential harness): substantially done.** Toolchain
-pinned; monorepo skeleton; `.dbkey` decryption ported & verified; cipher resolved
+**Phase 0 (scaffolding + differential harness): done.** Toolchain pinned;
+monorepo skeleton; `.dbkey` decryption ported & verified; cipher resolved
 (SQLite3MC/ChaCha20) and confirmed on real Friday data (37 tables, 33 chars,
-20 320 memories); differential harness proven across two cases (numeric +
-string). **Remaining:** fixture sanitizer (anonymized real-instance snapshots),
-tier-2 DB-state oracle (the on-ramp to Phase 2), more Phase-1 pure-function
-cases. Then Phase 1 → 2 → 3 → 4 per the boundary doc.
+20 320 memories); differential harness proven.
+
+**Phase 1 (pure-function ports): in progress.** Each unit ships with a tier-1
+exact-equivalence test against the v4 oracle. Ported so far: memory
+weighting/ranking, recall tags + history, write-partition + folder remap,
+context-compression sizing, enclave budget math, LLM pricing + model selection +
+model classes, context-budget arithmetic, token estimation, the turn-state
+machine, and a batch of small leaf utilities (chat predicates, semver,
+pronoun→gender, tag-style, char-count). Deferred to later phases (registry /
+formatting / regex-fidelity seams): `getModelContextLimit` and cheap-model
+classifiers, the `toFixed` display formatters, `compareVersions`' localeCompare
+fallback. **Next:** rest of the turn manager (all-LLM pause, predicted order,
+`selectNextSpeaker` with injected randomness), then context assembly and the
+embedding numeric hot paths.
+
+**Also remaining:** fixture sanitizer (anonymized real-instance snapshots) and
+the tier-2 DB-state oracle (the on-ramp to Phase 2). Then Phase 2 → 3 → 4 per the
+boundary doc.

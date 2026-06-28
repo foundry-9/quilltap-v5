@@ -28,13 +28,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ---- 1 & 2: versions / cipher defaults ----
     let info = Connection::open_in_memory()?;
     info.pragma_update(None, "key", "probe-dummy-key")?;
-    let cipher_version: Option<String> =
-        info.query_row("PRAGMA cipher_version;", [], |r| r.get(0)).ok();
+    let cipher_version: Option<String> = info
+        .query_row("PRAGMA cipher_version;", [], |r| r.get(0))
+        .ok();
     let sqlite_version: String = info.query_row("SELECT sqlite_version();", [], |r| r.get(0))?;
-    println!("SQLCipher version : {}", cipher_version.as_deref().unwrap_or("<none — NOT sqlcipher!>"));
+    println!(
+        "SQLCipher version : {}",
+        cipher_version
+            .as_deref()
+            .unwrap_or("<none — NOT sqlcipher!>")
+    );
     println!("SQLite version    : {sqlite_version}");
-    for pragma in ["cipher_page_size", "kdf_iter", "cipher_hmac_algorithm", "cipher_kdf_algorithm"] {
-        let v: Option<String> = info.query_row(&format!("PRAGMA {pragma};"), [], |r| r.get(0)).ok();
+    for pragma in [
+        "cipher_page_size",
+        "kdf_iter",
+        "cipher_hmac_algorithm",
+        "cipher_kdf_algorithm",
+    ] {
+        let v: Option<String> = info
+            .query_row(&format!("PRAGMA {pragma};"), [], |r| r.get(0))
+            .ok();
         println!("  {pragma:<22}: {}", v.unwrap_or_else(|| "<n/a>".into()));
     }
     println!();
@@ -68,7 +81,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Reading .dbkey from: {data_dir}");
             let pass = std::env::var("QT_DB_PASSPHRASE").ok();
             let pepper_b64 = dbkey::load_pepper(Path::new(&data_dir), pass.as_deref())?;
-            println!("  pepper decrypted from .dbkey  ✓  (len {} b64 chars)", pepper_b64.len());
+            println!(
+                "  pepper decrypted from .dbkey  ✓  (len {} b64 chars)",
+                pepper_b64.len()
+            );
 
             let key_hex = dbkey::pepper_b64_to_key_hex(&pepper_b64)?;
             println!("Opening DB copy:     {db_copy}");
@@ -78,10 +94,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // journal_mode / foreign_keys here — mutating journal_mode on an
             // existing encrypted file forces header writes that race the cipher
             // context and surface as NotADatabase.
-            let c = Connection::open_with_flags(
-                &db_copy,
-                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-            )?;
+            let c =
+                Connection::open_with_flags(&db_copy, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
             c.pragma_update(None, "key", format!("x'{key_hex}'"))?;
             // better-sqlite3-multiple-ciphers may default to a different cipher
             // scheme/compat than rusqlite's bundled SQLCipher. Pin SQLCipher v4
@@ -94,9 +108,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut stmt = c.prepare(
                 "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name LIMIT 12;",
             )?;
-            let names: Vec<String> = stmt.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?;
+            let names: Vec<String> = stmt
+                .query_map([], |r| r.get(0))?
+                .collect::<Result<_, _>>()?;
             let count: i64 = c.query_row(
-                "SELECT count(*) FROM sqlite_master WHERE type='table';", [], |r| r.get(0))?;
+                "SELECT count(*) FROM sqlite_master WHERE type='table';",
+                [],
+                |r| r.get(0),
+            )?;
             println!("  opened real instance: ✓  ({count} tables total)");
             println!("  first tables: {names:?}");
         }

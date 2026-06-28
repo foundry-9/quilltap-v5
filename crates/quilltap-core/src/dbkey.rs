@@ -21,10 +21,10 @@
 
 use std::path::{Path, PathBuf};
 
+use aes::Aes256;
 use aes_gcm::aead::consts::U16;
 use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{AesGcm, Key, Nonce};
-use aes::Aes256;
 use hmac::Hmac;
 
 /// AES-256-GCM with a **16-byte** nonce. The current app's pepper-crypto.ts
@@ -46,18 +46,18 @@ const KEY_LEN: usize = 32;
 /// `keyLength`) are ignored.
 #[derive(serde::Deserialize)]
 struct DbKeyFile {
-    algorithm: String,      // expected: "aes-256-gcm"
+    algorithm: String, // expected: "aes-256-gcm"
     #[serde(rename = "kdfIterations")]
     kdf_iterations: u32,
     #[serde(rename = "kdfDigest")]
-    kdf_digest: String,     // "sha256" | "sha512"
-    salt: String,           // hex
-    iv: String,             // hex (GCM nonce)
-    ciphertext: String,     // hex
+    kdf_digest: String, // "sha256" | "sha512"
+    salt: String,       // hex
+    iv: String,         // hex (GCM nonce)
+    ciphertext: String, // hex
     #[serde(rename = "authTag")]
-    auth_tag: String,       // hex (16-byte GCM tag)
+    auth_tag: String, // hex (16-byte GCM tag)
     #[serde(rename = "pepperHash")]
-    pepper_hash: String,    // hex SHA-256 of the plaintext pepper
+    pepper_hash: String, // hex SHA-256 of the plaintext pepper
 }
 
 #[derive(Debug)]
@@ -80,9 +80,15 @@ impl std::fmt::Display for DbKeyError {
             DbKeyError::Io(e) => write!(f, "io error reading .dbkey: {e}"),
             DbKeyError::Parse(e) => write!(f, "malformed .dbkey: {e}"),
             DbKeyError::PassphraseRequired => {
-                write!(f, "this .dbkey is protected by a user passphrase; supply it")
+                write!(
+                    f,
+                    "this .dbkey is protected by a user passphrase; supply it"
+                )
             }
-            DbKeyError::DecryptFailed => write!(f, "decryption/verification failed (wrong passphrase or tampered file)"),
+            DbKeyError::DecryptFailed => write!(
+                f,
+                "decryption/verification failed (wrong passphrase or tampered file)"
+            ),
             DbKeyError::Unsupported(s) => write!(f, "unsupported crypto in .dbkey: {s}"),
         }
     }
@@ -104,9 +110,10 @@ pub fn load_pepper(data_dir: &Path, passphrase: Option<&str>) -> Result<String, 
         return Err(DbKeyError::NotFound(path));
     }
     let raw = std::fs::read_to_string(&path).map_err(DbKeyError::Io)?;
-    let file: DbKeyFile = serde_json::from_str(&raw).map_err(|e| DbKeyError::Parse(e.to_string()))?;
+    let file: DbKeyFile =
+        serde_json::from_str(&raw).map_err(|e| DbKeyError::Parse(e.to_string()))?;
 
-    if file.algorithm.to_ascii_lowercase() != "aes-256-gcm" {
+    if !file.algorithm.eq_ignore_ascii_case("aes-256-gcm") {
         return Err(DbKeyError::Unsupported(file.algorithm.clone()));
     }
 
@@ -131,18 +138,28 @@ pub fn load_pepper(data_dir: &Path, passphrase: Option<&str>) -> Result<String, 
 fn try_decrypt(file: &DbKeyFile, passphrase: &str) -> Result<Option<String>, DbKeyError> {
     let salt = hex::decode(&file.salt).map_err(|e| DbKeyError::Parse(format!("salt: {e}")))?;
     let iv = hex::decode(&file.iv).map_err(|e| DbKeyError::Parse(format!("iv: {e}")))?;
-    let ct = hex::decode(&file.ciphertext).map_err(|e| DbKeyError::Parse(format!("ciphertext: {e}")))?;
-    let tag = hex::decode(&file.auth_tag).map_err(|e| DbKeyError::Parse(format!("authTag: {e}")))?;
+    let ct =
+        hex::decode(&file.ciphertext).map_err(|e| DbKeyError::Parse(format!("ciphertext: {e}")))?;
+    let tag =
+        hex::decode(&file.auth_tag).map_err(|e| DbKeyError::Parse(format!("authTag: {e}")))?;
 
     // PBKDF2 -> 32-byte key, digest selected by the file.
     let mut key = [0u8; KEY_LEN];
     match file.kdf_digest.to_ascii_lowercase().as_str() {
         "sha256" => pbkdf2::pbkdf2::<Hmac<Sha256>>(
-            passphrase.as_bytes(), &salt, file.kdf_iterations, &mut key,
-        ).map_err(|_| DbKeyError::DecryptFailed)?,
+            passphrase.as_bytes(),
+            &salt,
+            file.kdf_iterations,
+            &mut key,
+        )
+        .map_err(|_| DbKeyError::DecryptFailed)?,
         "sha512" => pbkdf2::pbkdf2::<Hmac<Sha512>>(
-            passphrase.as_bytes(), &salt, file.kdf_iterations, &mut key,
-        ).map_err(|_| DbKeyError::DecryptFailed)?,
+            passphrase.as_bytes(),
+            &salt,
+            file.kdf_iterations,
+            &mut key,
+        )
+        .map_err(|_| DbKeyError::DecryptFailed)?,
         other => return Err(DbKeyError::Unsupported(format!("kdfDigest {other}"))),
     }
 
@@ -152,7 +169,13 @@ fn try_decrypt(file: &DbKeyFile, passphrase: &str) -> Result<Option<String>, DbK
 
     let cipher = Aes256Gcm16::new(Key::<Aes256Gcm16>::from_slice(&key));
     let nonce = Nonce::<U16>::from_slice(&iv); // 16-byte IV, matching pepper-crypto.ts
-    let plaintext = match cipher.decrypt(nonce, Payload { msg: &ct_and_tag, aad: &[] }) {
+    let plaintext = match cipher.decrypt(
+        nonce,
+        Payload {
+            msg: &ct_and_tag,
+            aad: &[],
+        },
+    ) {
         Ok(pt) => pt,
         Err(_) => return Ok(None), // auth failure → wrong passphrase; caller tries next
     };
@@ -182,7 +205,9 @@ fn base64_decode(s: &str) -> Option<Vec<u8>> {
     let mut nbits = 0u8;
     let mut out = Vec::new();
     for &c in s.trim().as_bytes() {
-        if c == b'=' { break; }
+        if c == b'=' {
+            break;
+        }
         let idx = A.iter().position(|&x| x == c)? as u32;
         bits = (bits << 6) | idx;
         nbits += 6;

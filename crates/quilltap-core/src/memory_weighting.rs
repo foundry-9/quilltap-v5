@@ -122,9 +122,9 @@ pub fn calculate_protection_score(
         .min(base_importance * decay.max(cfg.content_floor));
 
     let reinforcement_count = m.reinforcement_count.unwrap_or(1);
-    let reinforcement_bonus = cfg.max_reinforcement_bonus.min(
-        ((reinforcement_count as f64) + 1.0).log2() * cfg.reinforcement_coeff,
-    );
+    let reinforcement_bonus = cfg
+        .max_reinforcement_bonus
+        .min(((reinforcement_count as f64) + 1.0).log2() * cfg.reinforcement_coeff);
 
     let graph_degree_bonus = cfg
         .max_graph_degree_bonus

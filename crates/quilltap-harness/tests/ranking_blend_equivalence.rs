@@ -49,8 +49,7 @@ fn ranking_blend_matches_oracle() {
             return;
         }
     };
-    let text = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
 
     // Index oracle rows by (kind, id).
     let mut blend = HashMap::new();
@@ -58,9 +57,15 @@ fn ranking_blend_matches_oracle() {
     let mut age = HashMap::new();
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<OracleRow>(line).unwrap() {
-            OracleRow::Blend { id, value } => { blend.insert(id, value); }
-            OracleRow::Cosine { id, value } => { cosine.insert(id, value); }
-            OracleRow::Age { id, value } => { age.insert(id, value); }
+            OracleRow::Blend { id, value } => {
+                blend.insert(id, value);
+            }
+            OracleRow::Cosine { id, value } => {
+                cosine.insert(id, value);
+            }
+            OracleRow::Age { id, value } => {
+                age.insert(id, value);
+            }
         }
     }
 
@@ -73,8 +78,13 @@ fn ranking_blend_matches_oracle() {
         ("high-both", 0.95, 0.88),
     ] {
         let got = compute_ranking_blend(c, r);
-        let want = *blend.get(id).unwrap_or_else(|| panic!("oracle missing blend '{id}'"));
-        assert!((got - want).abs() <= EPS, "blend '{id}': rust={got} oracle={want}");
+        let want = *blend
+            .get(id)
+            .unwrap_or_else(|| panic!("oracle missing blend '{id}'"));
+        assert!(
+            (got - want).abs() <= EPS,
+            "blend '{id}': rust={got} oracle={want}"
+        );
     }
 
     // --- provider cosine floor ---
@@ -86,8 +96,13 @@ fn ranking_blend_matches_oracle() {
         ("unknown", Some("WAT")),
     ] {
         let got = default_min_cosine_for_provider(prov);
-        let want = *cosine.get(id).unwrap_or_else(|| panic!("oracle missing cosine '{id}'"));
-        assert!((got - want).abs() <= EPS, "cosine '{id}': rust={got} oracle={want}");
+        let want = *cosine
+            .get(id)
+            .unwrap_or_else(|| panic!("oracle missing cosine '{id}'"));
+        assert!(
+            (got - want).abs() <= EPS,
+            "cosine '{id}': rust={got} oracle={want}"
+        );
     }
 
     // --- relative age (STRING equality, no epsilon) ---
@@ -104,12 +119,16 @@ fn ranking_blend_matches_oracle() {
         ("future-clamped", -5.0),
     ] {
         let got = format_relative_age(&age_mem(days_ago), NOW_MS);
-        let want = age.get(id).unwrap_or_else(|| panic!("oracle missing age '{id}'"));
+        let want = age
+            .get(id)
+            .unwrap_or_else(|| panic!("oracle missing age '{id}'"));
         assert_eq!(&got, want, "age '{id}': rust={got:?} oracle={want:?}");
     }
 
     eprintln!(
         "OK: ranking-blend case matched oracle ({} blend, {} cosine, {} age).",
-        blend.len(), cosine.len(), age.len()
+        blend.len(),
+        cosine.len(),
+        age.len()
     );
 }
