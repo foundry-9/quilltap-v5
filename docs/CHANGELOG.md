@@ -46,6 +46,11 @@ test against the v4 oracle:
 - Chat-task text shaping: tool-artifact stripping, visible-conversation
   extraction, and the chat-card preview, over shared JS string primitives (the
   JS `\s`/`trim` set and UTF-16 length/slice).
+- Number formatting: the JS `Number.prototype.toFixed` kernel (V8
+  half-away-from-zero rounding on the f64's exact value, via IEEE-754
+  mantissa/exponent + u128 — distinct from Rust's half-to-even formatter), and
+  the display formatters built on it (`formatBytes`, `formatCostForDisplay`, and
+  both the `K` and lowercase-`k` `formatTokenCount` variants).
 - Small leaf utilities: chat-type/participant predicates, semver parse/compare,
   pronoun→gender hint, tag-style merge, char-count colour class.
 

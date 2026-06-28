@@ -5,9 +5,9 @@
 //! The provider→chars-per-token resolution (`getProviderCharsPerToken`) reads
 //! the plugin registry, so the rate is a parameter here (`chars_per_token`); the
 //! no-provider path uses [`DEFAULT_CHARS_PER_TOKEN`] (3.5), which is what the
-//! oracle exercises. The display formatter `formatTokenCount` is deferred to the
-//! formatting unit — it uses JS `toFixed`, whose half-away-from-zero rounding
-//! differs from Rust's `{:.1}` and needs a faithful re-implementation.
+//! oracle exercises. The display formatter `formatTokenCount` is ported here via
+//! [`crate::jsnum::to_fixed`], whose half-away-from-zero rounding matches JS
+//! `toFixed` (Rust's `{:.1}` rounds half-to-even and would diverge).
 //!
 //! Lengths follow JS `String.length` (UTF-16 code units), via `encode_utf16`.
 
@@ -109,6 +109,21 @@ pub fn get_context_usage_percent(used_tokens: i64, context_limit: i64) -> i64 {
     let pct = (used_tokens as f64 / context_limit as f64) * 100.0;
     let rounded = (pct + 0.5).floor() as i64;
     rounded.min(100)
+}
+
+/// Format a token count for display ("1.5k", "125k", "2.3M"). This is the
+/// token-counter.ts variant: a lowercase `k` thousands suffix (the
+/// format-tokens.ts twin in [`crate::format_tokens`] uses uppercase `K`). Below
+/// 1000 the count is stringified directly (`tokens.toString()`); Rust's
+/// shortest-float Display matches it across the non-negative integer domain.
+pub fn format_token_count(tokens: f64) -> String {
+    if tokens >= 1_000_000.0 {
+        return format!("{}M", crate::jsnum::to_fixed(tokens / 1_000_000.0, 1));
+    }
+    if tokens >= 1_000.0 {
+        return format!("{}k", crate::jsnum::to_fixed(tokens / 1_000.0, 1));
+    }
+    format!("{tokens}")
 }
 
 /// Context-usage warning level: `critical` at ≥95%, `warning` at ≥80%, else `ok`.

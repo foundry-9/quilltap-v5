@@ -44,6 +44,11 @@
 //!     oracle-verified. `jsstr` holds the shared JS string-semantics primitives
 //!     (the JS `\s`/`trim` set, UTF-16 length/slice) these and the regex ports
 //!     build on.
+//!   * `jsnum` / `format_bytes` / `format_tokens` — JS number-formatting: the
+//!     `Number.prototype.toFixed` kernel (`to_fixed`, V8 half-away-from-zero
+//!     rounding on the exact f64 value) and the display formatters built on it
+//!     (`format_bytes`, cost / token-count strings); oracle-verified. The
+//!     lowercase-`k` token-count twin lives in `token_estimation`.
 //!   * `embedding_vector` / `literal_boost` / `embedding_blob` — the embedding
 //!     hot paths: L2 normalisation, the profile storage policy, cosine
 //!     similarity + the dimension-mismatch guard, the fallback keyword/phrase
@@ -88,6 +93,9 @@ pub mod dbkey;
 pub mod embedding_blob;
 pub mod embedding_vector;
 pub mod enclave_budget;
+pub mod format_bytes;
+pub mod format_tokens;
+pub mod jsnum;
 pub mod jsstr;
 pub mod literal_boost;
 pub mod memory_format;
