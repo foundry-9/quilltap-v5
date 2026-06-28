@@ -461,6 +461,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "quilltap-harness"
+version = "0.0.0"
+dependencies = [
+ "quilltap-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"

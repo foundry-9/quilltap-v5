@@ -6,3 +6,4 @@
 //! Request/Response/Event boundary) lands in later phases.
 
 pub mod dbkey;
+pub mod memory_weighting;

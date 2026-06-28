@@ -1,0 +1,21 @@
+[package]
+name = "quilltap-harness"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Differential test harness. Compares the Rust port in quilltap-core against
+# the TS oracle's captured output. Tier-1 (exact numeric equivalence) for the
+# pure scoring functions; later phases add tier-2 (structural DB diff) and
+# tier-3 (mocked-LLM) cases.
+#
+# The oracle's NDJSON is produced out-of-band by harness/oracle (run inside the
+# v4 server checkout) and its path passed via QT_ORACLE_WEIGHTING. The test is
+# skipped-with-warning if that file is absent, so `cargo test` stays green on a
+# machine without the server checkout, but fails loudly if the file exists and
+# disagrees.
+
+[dependencies]
+quilltap-core = { path = "../quilltap-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
