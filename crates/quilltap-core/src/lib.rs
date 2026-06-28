@@ -28,10 +28,16 @@
 //!     oracle-verified.
 //!   * `token_estimation` — character-based token counting (estimate / per-message
 //!     / per-conversation, truncation, context-usage %); oracle-verified.
+//!   * small pure leaf utilities, each mirroring a v4 file: `chat_predicates`
+//!     (chat-type / participant-status predicates), `semver` (parse + compare),
+//!     `pronoun_gender` (image-prompt gender hint), `tag_style` (style merge),
+//!     `char_count` (count-indicator colour class); all oracle-verified.
 //!
 //! Everything else (repos, services, the Request/Response/Event boundary)
 //! lands in later phases.
 
+pub mod char_count;
+pub mod chat_predicates;
 pub mod context_budget;
 pub mod context_compression;
 pub mod dbkey;
@@ -39,7 +45,10 @@ pub mod enclave_budget;
 pub mod memory_weighting;
 pub mod model_classes;
 pub mod pricing;
+pub mod pronoun_gender;
 pub mod recall_history;
 pub mod recall_tags;
+pub mod semver;
+pub mod tag_style;
 pub mod token_estimation;
 pub mod write_partition;
