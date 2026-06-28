@@ -16,6 +16,9 @@
 //!     oracle-verified.
 //!   * `context_compression` — the pure sliding-window compression sizing
 //!     (triggers, message split, history block); oracle-verified.
+//!   * `context_summary` — the rolling-window summarisation cadence (fold/hard
+//!     gate, interchange count, title-check crossing, turn partition);
+//!     oracle-verified.
 //!   * `context_budget` — the per-purpose token-allocation arithmetic over a
 //!     model's context window (summarize trigger, recent-message count,
 //!     max-available, allocation split); oracle-verified.
@@ -51,6 +54,7 @@ pub mod char_count;
 pub mod chat_predicates;
 pub mod context_budget;
 pub mod context_compression;
+pub mod context_summary;
 pub mod dbkey;
 pub mod enclave_budget;
 pub mod memory_weighting;

@@ -13,7 +13,8 @@ test against the v4 oracle:
   remap, unique-constraint detection.
 - Context: sliding-window compression sizing; per-purpose context-budget
   arithmetic (summarize trigger, recent-message count, max-available, allocation
-  split).
+  split); the summarisation cadence (fold/hard gate, interchange count,
+  title-check crossing, turn partition).
 - Enclave: autonomous-run budget verdict and progress-toward-binding-cap.
 - LLM: completion cost estimate, cost-aware model selection, model classes,
   character-based token estimation.
