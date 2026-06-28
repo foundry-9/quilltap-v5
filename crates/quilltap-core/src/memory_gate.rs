@@ -3,6 +3,7 @@
 //! `extractNovelDetails`. The stateful gate itself (embedding search + the
 //! INSERT/REINFORCE/SKIP decision) lands in a later phase.
 
+use crate::jsstr::{js_trim, utf16_len, JS_WS_CLASS};
 use regex::Regex;
 use std::collections::HashSet;
 
@@ -153,35 +154,6 @@ const STOP_WORDS: &[&str] = &[
     "tell",
 ];
 
-/// The exact set JS `\s` (and `String.prototype.trim`) treats as whitespace:
-/// ASCII control spaces + U+0020, the Unicode space separators, the line/para
-/// separators, and U+FEFF. Note this differs from Rust's `char::is_whitespace`
-/// (which excludes U+FEFF and includes U+0085), so we reproduce it explicitly to
-/// keep `\s`-splitting and trimming byte-equal with v4.
-fn is_js_ws(c: char) -> bool {
-    matches!(
-        c,
-        '\t' | '\n' | '\u{0B}' | '\u{0C}' | '\r' | ' ' | '\u{A0}' | '\u{1680}' | '\u{2000}'
-            ..='\u{200A}'
-                | '\u{2028}'
-                | '\u{2029}'
-                | '\u{202F}'
-                | '\u{205F}'
-                | '\u{3000}'
-                | '\u{FEFF}'
-    )
-}
-
-/// Trim leading/trailing JS-whitespace, matching JS `String.prototype.trim`.
-fn js_trim(s: &str) -> &str {
-    s.trim_matches(is_js_ws)
-}
-
-/// UTF-16 code-unit length, matching JS `String.length`.
-fn utf16_len(s: &str) -> usize {
-    s.encode_utf16().count()
-}
-
 /// Extract novel, deterministic details from `candidate_content` that are not
 /// already present (case-insensitively, as substrings) in `existing_content`:
 /// proper nouns (non-sentence-initial Capitalised words), dates, currency,
@@ -210,7 +182,7 @@ pub fn extract_novel_details(candidate_content: &str, existing_content: &str) ->
     // ASCII word boundary / digit class, and the JS `\s` class, as fragments.
     let b = r"(?-u:\b)";
     let d = "[0-9]";
-    let ws = "[\t\n\u{0B}\u{0C}\r \u{A0}\u{1680}\u{2000}-\u{200A}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}\u{FEFF}]";
+    let ws = JS_WS_CLASS;
     let months =
         "January|February|March|April|May|June|July|August|September|October|November|December";
 

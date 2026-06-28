@@ -39,6 +39,11 @@
 //!   * `mentioned_characters` — scanning a chat corpus for non-participant
 //!     character mentions (ASCII-`\b` alternation, longest-token-first,
 //!     lowercased token→ids map); oracle-verified.
+//!   * `chat_tasks` / `chat_utils` — cheap-LLM-task text shaping: tool-artifact
+//!     stripping, visible-conversation extraction, and the chat-card preview;
+//!     oracle-verified. `jsstr` holds the shared JS string-semantics primitives
+//!     (the JS `\s`/`trim` set, UTF-16 length/slice) these and the regex ports
+//!     build on.
 //!   * `embedding_vector` / `literal_boost` / `embedding_blob` — the embedding
 //!     hot paths: L2 normalisation, the profile storage policy, cosine
 //!     similarity + the dimension-mismatch guard, the fallback keyword/phrase
@@ -74,6 +79,8 @@ pub mod all_llm_pause;
 pub mod canon;
 pub mod char_count;
 pub mod chat_predicates;
+pub mod chat_tasks;
+pub mod chat_utils;
 pub mod context_budget;
 pub mod context_compression;
 pub mod context_summary;
@@ -81,6 +88,7 @@ pub mod dbkey;
 pub mod embedding_blob;
 pub mod embedding_vector;
 pub mod enclave_budget;
+pub mod jsstr;
 pub mod literal_boost;
 pub mod memory_format;
 pub mod memory_gate;

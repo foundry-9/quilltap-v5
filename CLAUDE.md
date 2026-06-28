@@ -231,7 +231,10 @@ crate plus a hand-rolled boundary check), the mentioned-character corpus scan
 (`findMentionedCharacterIds` — ASCII `\b` alternation, longest-token-first), the
 deterministic novel-detail extraction (`extractNovelDetails` — proper-noun /
 date / currency / number-unit / CamelCase / acronym scan with ASCII `\d`/`\b`
-and the JS `\s` set reproduced exactly), the embedding vector-math hot paths (L2
+and the JS `\s` set reproduced exactly), the chat-task artifact strippers
+(`stripToolArtifacts` / `extractVisibleConversation` / `getCharacterChatPreview`,
+over shared JS string primitives in `jsstr`), the embedding vector-math hot
+paths (L2
 normalisation, profile storage policy, cosine similarity + dimension-mismatch
 guard, fallback keyword/phrase scorer, literal-phrase boost, Float32↔LE-byte
 BLOB conversion), the canon/scenario text helpers (self/other canon-block
@@ -240,13 +243,11 @@ utilities (chat predicates, semver,
 pronoun→gender, tag-style, char-count). Deferred to later phases (registry /
 formatting / regex-fidelity / collation seams): `getModelContextLimit` and
 cheap-model classifiers, the `toFixed` display formatters, `compareVersions`'
-localeCompare fallback, the `canonicalize*` tool sorters (localeCompare), the
-chat-task artifact strippers (`stripToolArtifacts`, `getCharacterChatPreview`),
-`parseLegacyEmbeddingText` (JS object-key iteration order). **Next:** finish the
-regex-fidelity wave (the chat-task artifact strippers), then the collation wave
-(`toFixed` display formatters +
-`compareVersions` / `canonicalize*`
-collation + `parseLegacyEmbeddingText` key ordering).
+localeCompare fallback, the `canonicalize*` tool sorters (localeCompare), and
+`parseLegacyEmbeddingText` (JS object-key iteration order). **Next:** the
+collation wave — `compareVersions`' `localeCompare` fallback and the
+`canonicalize*` sorters (ICU-default collation), the `toFixed` display
+formatters, and `parseLegacyEmbeddingText`'s JS integer-key ordering.
 
 **Also remaining:** fixture sanitizer (anonymized real-instance snapshots) and
 the tier-2 DB-state oracle (the on-ramp to Phase 2). Then Phase 2 → 3 → 4 per the

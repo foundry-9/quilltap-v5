@@ -42,6 +42,9 @@ test against the v4 oracle:
 - Novel-detail extraction: the deterministic proper-noun / date / currency /
   number-with-unit / CamelCase / acronym scanner (ASCII `\d`/`\b`, the JS `\s`
   whitespace set reproduced exactly, case-insensitive dedup).
+- Chat-task text shaping: tool-artifact stripping, visible-conversation
+  extraction, and the chat-card preview, over shared JS string primitives (the
+  JS `\s`/`trim` set and UTF-16 length/slice).
 - Small leaf utilities: chat-type/participant predicates, semver parse/compare,
   pronoun→gender hint, tag-style merge, char-count colour class.
 
