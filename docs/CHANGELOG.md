@@ -39,6 +39,9 @@ test against the v4 oracle:
 - Mentioned-character scan: detecting non-participant characters named in a chat
   corpus (ASCII word-boundary alternation, longest-token-first, lowercased
   token→ids map).
+- Novel-detail extraction: the deterministic proper-noun / date / currency /
+  number-with-unit / CamelCase / acronym scanner (ASCII `\d`/`\b`, the JS `\s`
+  whitespace set reproduced exactly, case-insensitive dedup).
 - Small leaf utilities: chat-type/participant predicates, semver parse/compare,
   pronoun→gender hint, tag-style merge, char-count colour class.
 

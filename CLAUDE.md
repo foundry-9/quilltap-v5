@@ -229,7 +229,9 @@ about/holder name-set builders, and the word-boundary name matchers —
 boundary + lookahead reproduced without a backtracking engine via the `regex`
 crate plus a hand-rolled boundary check), the mentioned-character corpus scan
 (`findMentionedCharacterIds` — ASCII `\b` alternation, longest-token-first), the
-embedding vector-math hot paths (L2
+deterministic novel-detail extraction (`extractNovelDetails` — proper-noun /
+date / currency / number-unit / CamelCase / acronym scan with ASCII `\d`/`\b`
+and the JS `\s` set reproduced exactly), the embedding vector-math hot paths (L2
 normalisation, profile storage policy, cosine similarity + dimension-mismatch
 guard, fallback keyword/phrase scorer, literal-phrase boost, Float32↔LE-byte
 BLOB conversion), the canon/scenario text helpers (self/other canon-block
@@ -240,10 +242,8 @@ formatting / regex-fidelity / collation seams): `getModelContextLimit` and
 cheap-model classifiers, the `toFixed` display formatters, `compareVersions`'
 localeCompare fallback, the `canonicalize*` tool sorters (localeCompare), the
 chat-task artifact strippers (`stripToolArtifacts`, `getCharacterChatPreview`),
-`parseLegacyEmbeddingText` (JS object-key iteration order), and the remaining
-regex matcher `extractNovelDetails` (JS-vs-Rust regex-engine fidelity, in
-progress this wave). **Next:** finish the regex-fidelity wave
-(`extractNovelDetails`, the chat-task strippers), then the collation wave
+`parseLegacyEmbeddingText` (JS object-key iteration order). **Next:** finish the
+regex-fidelity wave (the chat-task artifact strippers), then the collation wave
 (`toFixed` display formatters +
 `compareVersions` / `canonicalize*`
 collation + `parseLegacyEmbeddingText` key ordering).
