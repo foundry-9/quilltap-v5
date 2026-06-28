@@ -245,14 +245,16 @@ utilities (chat predicates, semver,
 pronoun→gender, tag-style, char-count), and the JS number formatters (the
 `Number.prototype.toFixed` kernel — V8 half-away-from-zero rounding on the exact
 f64 value via IEEE-754 mantissa/exponent + u128 — and `formatBytes` /
-`formatCostForDisplay` / `formatTokenCount` built on it). **In progress — the
-collation/ordering wave:** `parseLegacyEmbeddingText` and the `toFixed`
-formatters (done, above). Still deferred (registry / ICU-collation seams):
-`getModelContextLimit` and cheap-model classifiers, the `canonicalize*` tool
-sorters and `compareVersions`' `localeCompare` fallback (true ICU collation —
-the real tool-name/version corpus coincides with code-unit order, so these port
-with a documented residual seam; the ICU-crate decision is deferred to when the
-~30 Phase-2/3 `localeCompare` sites land).
+`formatCostForDisplay` / `formatTokenCount` built on it), and the
+`canonicalize*` tool serializers (deep code-unit key-sort of
+`function.parameters` + the tool-name array sort, the latter a documented
+`localeCompare` seam). **In progress — the collation/ordering wave:**
+`parseLegacyEmbeddingText`, the `toFixed` formatters, and `canonicalize*` (done,
+above). Still deferred: `getModelContextLimit` and cheap-model classifiers
+(registry seam), and `compareVersions`' `localeCompare` fallback (true ICU
+collation — the realistic version/tool-name corpus coincides with code-unit
+order, so it ports with a documented residual seam; the ICU-crate decision is
+deferred to when the ~30 Phase-2/3 `localeCompare` sites land).
 
 **Also remaining:** fixture sanitizer (anonymized real-instance snapshots) and
 the tier-2 DB-state oracle (the on-ramp to Phase 2). Then Phase 2 → 3 → 4 per the

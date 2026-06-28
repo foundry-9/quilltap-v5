@@ -46,6 +46,11 @@ test against the v4 oracle:
 - Chat-task text shaping: tool-artifact stripping, visible-conversation
   extraction, and the chat-card preview, over shared JS string primitives (the
   JS `\s`/`trim` set and UTF-16 length/slice).
+- Tool canonicalization: byte-stable `UniversalTool` serialization for
+  cache-prefix stability — deep code-unit key-sort of `function.parameters` plus
+  the tool-name array sort. The name sort is a documented `localeCompare`
+  residual seam (the lowercase snake_case tool-name corpus collates identically
+  under code-unit order; the ICU-collation decision is deferred).
 - Number formatting: the JS `Number.prototype.toFixed` kernel (V8
   half-away-from-zero rounding on the f64's exact value, via IEEE-754
   mantissa/exponent + u128 — distinct from Rust's half-to-even formatter), and

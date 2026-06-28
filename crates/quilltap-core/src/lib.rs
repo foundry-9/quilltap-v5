@@ -54,6 +54,11 @@
 //!     similarity + the dimension-mismatch guard, the fallback keyword/phrase
 //!     scorer, the literal-phrase boost helpers, and Float32 ↔ LE-byte BLOB
 //!     conversion; oracle-verified.
+//!   * `canonicalize` — byte-stable `UniversalTool` serialization for cache-prefix
+//!     stability: deep code-unit key-sort of `function.parameters` plus the
+//!     tool-name array sort (a documented `localeCompare` seam — the lowercase
+//!     snake_case tool-name corpus collates identically under code-unit order);
+//!     oracle-verified.
 //!   * `canon` / `scenario_text` — pure text assembly: the memory-extraction
 //!     canon blocks (self / other ALREADY ESTABLISHED rendering) and the
 //!     New-Chat scenario-text combiner; oracle-verified.
@@ -82,6 +87,7 @@
 pub mod about_character;
 pub mod all_llm_pause;
 pub mod canon;
+pub mod canonicalize;
 pub mod char_count;
 pub mod chat_predicates;
 pub mod chat_tasks;
