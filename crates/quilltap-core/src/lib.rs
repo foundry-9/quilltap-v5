@@ -14,10 +14,13 @@
 //!   * `write_partition` — parent-side write-batch classification, per-database
 //!     partitioning, main-primary policy, and the folder-conflict id remap;
 //!     oracle-verified.
+//!   * `context_compression` — the pure sliding-window compression sizing
+//!     (triggers, message split, history block); oracle-verified.
 //!
 //! Everything else (repos, services, the Request/Response/Event boundary)
 //! lands in later phases.
 
+pub mod context_compression;
 pub mod dbkey;
 pub mod memory_weighting;
 pub mod recall_history;
