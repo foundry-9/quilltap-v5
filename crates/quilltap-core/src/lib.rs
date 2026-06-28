@@ -39,6 +39,9 @@
 //!     similarity + the dimension-mismatch guard, the fallback keyword/phrase
 //!     scorer, the literal-phrase boost helpers, and Float32 ↔ LE-byte BLOB
 //!     conversion; oracle-verified.
+//!   * `canon` / `scenario_text` — pure text assembly: the memory-extraction
+//!     canon blocks (self / other ALREADY ESTABLISHED rendering) and the
+//!     New-Chat scenario-text combiner; oracle-verified.
 //!   * `model_classes` — the built-in LLM capability tiers and their lookups;
 //!     oracle-verified.
 //!   * `token_estimation` — character-based token counting (estimate / per-message
@@ -63,6 +66,7 @@
 
 pub mod about_character;
 pub mod all_llm_pause;
+pub mod canon;
 pub mod char_count;
 pub mod chat_predicates;
 pub mod context_budget;
@@ -83,6 +87,7 @@ pub mod pricing;
 pub mod pronoun_gender;
 pub mod recall_history;
 pub mod recall_tags;
+pub mod scenario_text;
 pub mod select_speaker;
 pub mod semver;
 pub mod tag_style;

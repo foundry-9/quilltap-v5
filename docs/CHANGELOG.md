@@ -33,6 +33,8 @@ test against the v4 oracle:
   guard and message, the fallback keyword/phrase scorer, the literal-phrase
   boost helpers, and Float32 ↔ little-endian-byte BLOB conversion (the legacy
   JSON-text recovery is deferred for its object-key-ordering seam).
+- Canon: the memory-extraction canon blocks (self / other ALREADY ESTABLISHED
+  rendering) and the New-Chat scenario-text combiner.
 - Small leaf utilities: chat-type/participant predicates, semver parse/compare,
   pronoun→gender hint, tag-style merge, char-count colour class.
 

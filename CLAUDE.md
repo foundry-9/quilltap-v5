@@ -227,8 +227,9 @@ name-resolution leaves (reinforced-importance, name+pronoun formatting,
 about/holder name-set builders), the embedding vector-math hot paths (L2
 normalisation, profile storage policy, cosine similarity + dimension-mismatch
 guard, fallback keyword/phrase scorer, literal-phrase boost, Float32↔LE-byte
-BLOB conversion), and a batch of small leaf utilities (chat
-predicates, semver,
+BLOB conversion), the canon/scenario text helpers (self/other canon-block
+rendering, the New-Chat scenario-text combiner), and a batch of small leaf
+utilities (chat predicates, semver,
 pronoun→gender, tag-style, char-count). Deferred to later phases (registry /
 formatting / regex-fidelity / collation seams): `getModelContextLimit` and
 cheap-model classifiers, the `toFixed` display formatters, `compareVersions`'
@@ -238,9 +239,9 @@ chat-task artifact strippers (`stripToolArtifacts`, `getCharacterChatPreview`),
 name-matching regex matchers (`findMentionedCharacterIds`,
 `nameAppears`/`countNameOccurrences`/`resolveAboutCharacterId`,
 `extractNovelDetails` — JS-vs-Rust regex-engine fidelity). **Next:** the
-canon/scenario text helpers (Wave 4 / B12), then the regex-fidelity wave (the
-deferred name matchers + `toFixed` display formatters + `compareVersions` /
-`canonicalize*` collation).
+regex-fidelity / collation wave (the deferred name matchers + chat-task artifact
+strippers + `toFixed` display formatters + `compareVersions` / `canonicalize*`
+collation + `parseLegacyEmbeddingText` key ordering).
 
 **Also remaining:** fixture sanitizer (anonymized real-instance snapshots) and
 the tier-2 DB-state oracle (the on-ramp to Phase 2). Then Phase 2 → 3 → 4 per the
