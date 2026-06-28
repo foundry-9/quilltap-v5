@@ -25,6 +25,9 @@ test against the v4 oracle:
   participant-list filters (user/LLM/active resolvers); the display-only
   predicted turn order; and the weighted-random next-speaker selection (with the
   RNG injected for determinism).
+- Memory name-resolution leaves: reinforced-importance formula, name+pronoun
+  formatting, and the about/holder name-set builders (the regex-based
+  about-character matchers are deferred to the regex-fidelity wave).
 - Small leaf utilities: chat-type/participant predicates, semver parse/compare,
   pronoun→gender hint, tag-style merge, char-count colour class.
 

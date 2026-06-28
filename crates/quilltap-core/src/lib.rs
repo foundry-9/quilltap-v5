@@ -27,6 +27,10 @@
 //!     drives pacing milestones; oracle-verified.
 //!   * `pricing` — the pure LLM cost arithmetic (`estimate_cost`) plus the
 //!     cost-aware model-selection helpers; oracle-verified.
+//!   * `about_character` / `memory_gate` / `memory_format` — the pure memory
+//!     name-resolution leaves: about/holder name-set builders, the
+//!     reinforced-importance formula, and name+pronoun formatting (the
+//!     regex-based about-character matchers are deferred); oracle-verified.
 //!   * `message_attribution` — the per-character context shaping (history-access
 //!     gate, presence windows, whisper visibility, role/name attribution);
 //!     oracle-verified.
@@ -52,6 +56,7 @@
 //! Everything else (repos, services, the Request/Response/Event boundary)
 //! lands in later phases.
 
+pub mod about_character;
 pub mod all_llm_pause;
 pub mod char_count;
 pub mod chat_predicates;
@@ -60,6 +65,8 @@ pub mod context_compression;
 pub mod context_summary;
 pub mod dbkey;
 pub mod enclave_budget;
+pub mod memory_format;
+pub mod memory_gate;
 pub mod memory_weighting;
 pub mod message_attribution;
 pub mod model_classes;
