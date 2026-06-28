@@ -27,6 +27,9 @@
 //!     drives pacing milestones; oracle-verified.
 //!   * `pricing` — the pure LLM cost arithmetic (`estimate_cost`) plus the
 //!     cost-aware model-selection helpers; oracle-verified.
+//!   * `message_attribution` — the per-character context shaping (history-access
+//!     gate, presence windows, whisper visibility, role/name attribution);
+//!     oracle-verified.
 //!   * `model_classes` — the built-in LLM capability tiers and their lookups;
 //!     oracle-verified.
 //!   * `token_estimation` — character-based token counting (estimate / per-message
@@ -58,6 +61,7 @@ pub mod context_summary;
 pub mod dbkey;
 pub mod enclave_budget;
 pub mod memory_weighting;
+pub mod message_attribution;
 pub mod model_classes;
 pub mod participant_filters;
 pub mod pricing;
