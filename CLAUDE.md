@@ -217,14 +217,15 @@ monorepo skeleton; `.dbkey` decryption ported & verified; cipher resolved
 exact-equivalence test against the v4 oracle. Ported so far: memory
 weighting/ranking, recall tags + history, write-partition + folder remap,
 context-compression sizing, enclave budget math, LLM pricing + model selection +
-model classes, context-budget arithmetic, token estimation, most of the turn manager (the
-turn-state machine, all-LLM auto-pause, participant-list filters, the predicted
-turn order), and a batch of small leaf utilities (chat predicates, semver,
-pronoun→gender, tag-style, char-count). Deferred to later phases (registry /
-formatting / regex-fidelity seams): `getModelContextLimit` and cheap-model
-classifiers, the `toFixed` display formatters, `compareVersions`' localeCompare
-fallback. **Next:** `selectNextSpeaker` (weighted random, with the RNG injected),
-then context assembly and the embedding numeric hot paths.
+model classes, context-budget arithmetic, token estimation, the full turn manager (turn-state
+machine, all-LLM auto-pause, participant-list filters, predicted turn order, and
+weighted next-speaker selection with the RNG injected), and a batch of small leaf
+utilities (chat predicates, semver, pronoun→gender, tag-style, char-count).
+Deferred to later phases (registry / formatting / regex-fidelity seams):
+`getModelContextLimit` and cheap-model classifiers, the `toFixed` display
+formatters, `compareVersions`' localeCompare fallback. **Next:** context assembly
+(summary gating, message attribution/presence, memory name-resolution) and the
+embedding numeric hot paths.
 
 **Also remaining:** fixture sanitizer (anonymized real-instance snapshots) and
 the tier-2 DB-state oracle (the on-ramp to Phase 2). Then Phase 2 → 3 → 4 per the

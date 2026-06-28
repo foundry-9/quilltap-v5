@@ -36,6 +36,8 @@
 //!     (user/LLM/active resolvers); oracle-verified.
 //!   * `turn_order` — the display-only predicted turn order for the participant
 //!     sidebar; oracle-verified.
+//!   * `select_speaker` — the weighted-random next-speaker selection (RNG
+//!     injected as `random01`); oracle-verified.
 //!   * small pure leaf utilities, each mirroring a v4 file: `chat_predicates`
 //!     (chat-type / participant-status predicates), `semver` (parse + compare),
 //!     `pronoun_gender` (image-prompt gender hint), `tag_style` (style merge),
@@ -58,6 +60,7 @@ pub mod pricing;
 pub mod pronoun_gender;
 pub mod recall_history;
 pub mod recall_tags;
+pub mod select_speaker;
 pub mod semver;
 pub mod tag_style;
 pub mod token_estimation;

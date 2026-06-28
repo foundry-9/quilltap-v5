@@ -19,8 +19,9 @@ test against the v4 oracle:
   character-based token estimation.
 - Turn manager: the turn-state machine — queue ops, history-derived state, and
   the spoken-this-cycle wrap; the all-LLM auto-pause thresholds; the
-  participant-list filters (user/LLM/active resolvers); and the display-only
-  predicted turn order.
+  participant-list filters (user/LLM/active resolvers); the display-only
+  predicted turn order; and the weighted-random next-speaker selection (with the
+  RNG injected for determinism).
 - Small leaf utilities: chat-type/participant predicates, semver parse/compare,
   pronoun→gender hint, tag-style merge, char-count colour class.
 
