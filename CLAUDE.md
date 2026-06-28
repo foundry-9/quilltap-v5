@@ -248,13 +248,15 @@ f64 value via IEEE-754 mantissa/exponent + u128 — and `formatBytes` /
 `formatCostForDisplay` / `formatTokenCount` built on it), and the
 `canonicalize*` tool serializers (deep code-unit key-sort of
 `function.parameters` + the tool-name array sort, the latter a documented
-`localeCompare` seam). **In progress — the collation/ordering wave:**
-`parseLegacyEmbeddingText`, the `toFixed` formatters, and `canonicalize*` (done,
-above). Still deferred: `getModelContextLimit` and cheap-model classifiers
-(registry seam), and `compareVersions`' `localeCompare` fallback (true ICU
-collation — the realistic version/tool-name corpus coincides with code-unit
-order, so it ports with a documented residual seam; the ICU-crate decision is
-deferred to when the ~30 Phase-2/3 `localeCompare` sites land).
+`localeCompare` seam). **The collation/ordering wave is done:**
+`parseLegacyEmbeddingText`, the `toFixed` formatters, `canonicalize*`, and
+`compareVersions`' `localeCompare` fallback (documented as a residual seam — the
+numeric path is exact). Still deferred: `getModelContextLimit` and cheap-model
+classifiers (registry seam). The single ICU-collation decision (an `icu_collator`
+/ `feruca`-class crate vs. the documented code-unit seam) is deliberately
+deferred to when the ~30 Phase-2/3 `localeCompare` sites land, so it is made
+once, holistically — the realistic version/tool-name corpora coincide with
+code-unit order, so nothing shipped so far depends on it.
 
 **Also remaining:** fixture sanitizer (anonymized real-instance snapshots) and
 the tier-2 DB-state oracle (the on-ramp to Phase 2). Then Phase 2 → 3 → 4 per the

@@ -44,10 +44,15 @@ pub fn parse_version(version: &str) -> Option<ParsedVersion> {
 /// Compare two semver strings: `-1` if `a < b`, `0` if equal, `1` if `a > b`,
 /// comparing major then minor then patch.
 ///
-/// When either input fails to parse, v4 falls back to `a.localeCompare(b)`.
-/// Locale collation is deferred (Wave 5); the byte-ordering fallback below is a
-/// best-effort placeholder that does NOT match `localeCompare` and is therefore
-/// *not* exercised by the differential corpus — only parseable pairs are tested.
+/// When either input fails to parse, v4 falls back to `a.localeCompare(b)` —
+/// true ICU collation. Unlike the `canonicalize` tool-name sort (whose lowercase
+/// snake_case corpus collates identically to code-unit order), this fallback
+/// fires only on *malformed* version strings, where code-unit ordering and
+/// `localeCompare` genuinely diverge (e.g. `"a"` vs `"B"`). It is therefore a
+/// documented residual seam: the byte-ordering comparison below does NOT
+/// reproduce `localeCompare`, so the differential corpus exercises only
+/// parseable pairs. Faithful collation is deferred to the ICU-crate decision
+/// taken when the ~30 Phase-2/3 `localeCompare` sites land (see `canonicalize`).
 pub fn compare_versions(a: &str, b: &str) -> i32 {
     match (parse_version(a), parse_version(b)) {
         (Some(pa), Some(pb)) => {
