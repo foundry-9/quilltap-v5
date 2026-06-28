@@ -18,7 +18,9 @@ test against the v4 oracle:
 - LLM: completion cost estimate, cost-aware model selection, model classes,
   character-based token estimation.
 - Turn manager: the turn-state machine — queue ops, history-derived state, and
-  the spoken-this-cycle wrap.
+  the spoken-this-cycle wrap; the all-LLM auto-pause thresholds; the
+  participant-list filters (user/LLM/active resolvers); and the display-only
+  predicted turn order.
 - Small leaf utilities: chat-type/participant predicates, semver parse/compare,
   pronoun→gender hint, tag-style merge, char-count colour class.
 

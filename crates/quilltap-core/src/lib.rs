@@ -30,6 +30,12 @@
 //!     / per-conversation, truncation, context-usage %); oracle-verified.
 //!   * `turn_state` — the multi-character turn-rotation state machine (queue
 //!     ops, history-derived state, the spoken-this-cycle wrap); oracle-verified.
+//!   * `all_llm_pause` — the logarithmic auto-pause thresholds for all-LLM
+//!     chats; oracle-verified.
+//!   * `participant_filters` — presence/control filters over a participant list
+//!     (user/LLM/active resolvers); oracle-verified.
+//!   * `turn_order` — the display-only predicted turn order for the participant
+//!     sidebar; oracle-verified.
 //!   * small pure leaf utilities, each mirroring a v4 file: `chat_predicates`
 //!     (chat-type / participant-status predicates), `semver` (parse + compare),
 //!     `pronoun_gender` (image-prompt gender hint), `tag_style` (style merge),
@@ -38,6 +44,7 @@
 //! Everything else (repos, services, the Request/Response/Event boundary)
 //! lands in later phases.
 
+pub mod all_llm_pause;
 pub mod char_count;
 pub mod chat_predicates;
 pub mod context_budget;
@@ -46,6 +53,7 @@ pub mod dbkey;
 pub mod enclave_budget;
 pub mod memory_weighting;
 pub mod model_classes;
+pub mod participant_filters;
 pub mod pricing;
 pub mod pronoun_gender;
 pub mod recall_history;
@@ -53,5 +61,6 @@ pub mod recall_tags;
 pub mod semver;
 pub mod tag_style;
 pub mod token_estimation;
+pub mod turn_order;
 pub mod turn_state;
 pub mod write_partition;
