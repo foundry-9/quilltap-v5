@@ -36,6 +36,9 @@ test against the v4 oracle:
   JSON-text recovery is deferred for its object-key-ordering seam).
 - Canon: the memory-extraction canon blocks (self / other ALREADY ESTABLISHED
   rendering) and the New-Chat scenario-text combiner.
+- Mentioned-character scan: detecting non-participant characters named in a chat
+  corpus (ASCII word-boundary alternation, longest-token-first, lowercased
+  token→ids map).
 - Small leaf utilities: chat-type/participant predicates, semver parse/compare,
   pronoun→gender hint, tag-style merge, char-count colour class.
 

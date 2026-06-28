@@ -36,6 +36,9 @@
 //!   * `message_attribution` — the per-character context shaping (history-access
 //!     gate, presence windows, whisper visibility, role/name attribution);
 //!     oracle-verified.
+//!   * `mentioned_characters` — scanning a chat corpus for non-participant
+//!     character mentions (ASCII-`\b` alternation, longest-token-first,
+//!     lowercased token→ids map); oracle-verified.
 //!   * `embedding_vector` / `literal_boost` / `embedding_blob` — the embedding
 //!     hot paths: L2 normalisation, the profile storage policy, cosine
 //!     similarity + the dimension-mismatch guard, the fallback keyword/phrase
@@ -82,6 +85,7 @@ pub mod literal_boost;
 pub mod memory_format;
 pub mod memory_gate;
 pub mod memory_weighting;
+pub mod mentioned_characters;
 pub mod message_attribution;
 pub mod model_classes;
 pub mod participant_filters;
