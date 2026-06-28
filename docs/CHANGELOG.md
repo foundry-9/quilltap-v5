@@ -32,8 +32,9 @@ test against the v4 oracle:
 - Embedding: L2 vector normalisation, the profile storage policy (Matryoshka
   truncate + optional normalise), cosine similarity with the dimension-mismatch
   guard and message, the fallback keyword/phrase scorer, the literal-phrase
-  boost helpers, and Float32 ↔ little-endian-byte BLOB conversion (the legacy
-  JSON-text recovery is deferred for its object-key-ordering seam).
+  boost helpers, Float32 ↔ little-endian-byte BLOB conversion, and the legacy
+  JSON-text recovery (`parseLegacyEmbeddingText` — reproducing JS `Object.values`
+  ascending integer-key ordering for the index-keyed-object shape).
 - Canon: the memory-extraction canon blocks (self / other ALREADY ESTABLISHED
   rendering) and the New-Chat scenario-text combiner.
 - Mentioned-character scan: detecting non-participant characters named in a chat

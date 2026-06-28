@@ -237,17 +237,19 @@ over shared JS string primitives in `jsstr`), the embedding vector-math hot
 paths (L2
 normalisation, profile storage policy, cosine similarity + dimension-mismatch
 guard, fallback keyword/phrase scorer, literal-phrase boost, Float32↔LE-byte
-BLOB conversion), the canon/scenario text helpers (self/other canon-block
+BLOB conversion, and the legacy JSON-text embedding recovery
+[`parseLegacyEmbeddingText`, reproducing JS `Object.values` ascending
+integer-key ordering]), the canon/scenario text helpers (self/other canon-block
 rendering, the New-Chat scenario-text combiner), and a batch of small leaf
 utilities (chat predicates, semver,
-pronoun→gender, tag-style, char-count). Deferred to later phases (registry /
-formatting / regex-fidelity / collation seams): `getModelContextLimit` and
-cheap-model classifiers, the `toFixed` display formatters, `compareVersions`'
-localeCompare fallback, the `canonicalize*` tool sorters (localeCompare), and
-`parseLegacyEmbeddingText` (JS object-key iteration order). **Next:** the
-collation wave — `compareVersions`' `localeCompare` fallback and the
-`canonicalize*` sorters (ICU-default collation), the `toFixed` display
-formatters, and `parseLegacyEmbeddingText`'s JS integer-key ordering.
+pronoun→gender, tag-style, char-count). **In progress — the collation/ordering
+wave:** `parseLegacyEmbeddingText` (done, above). Still deferred (registry /
+formatting / ICU-collation seams): `getModelContextLimit` and cheap-model
+classifiers, the `toFixed` display formatters, the `canonicalize*` tool sorters
+and `compareVersions`' `localeCompare` fallback (true ICU collation — the real
+tool-name/version corpus coincides with code-unit order, so these port with a
+documented residual seam; the ICU-crate decision is deferred to when the ~30
+Phase-2/3 `localeCompare` sites land).
 
 **Also remaining:** fixture sanitizer (anonymized real-instance snapshots) and
 the tier-2 DB-state oracle (the on-ramp to Phase 2). Then Phase 2 → 3 → 4 per the
