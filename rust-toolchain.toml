@@ -1,0 +1,5 @@
+[toolchain]
+channel = "1.96.0"          # pin an explicit stable; bump deliberately
+components = ["rustfmt", "clippy", "rust-src"]
+profile = "default"
+

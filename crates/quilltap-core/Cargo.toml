@@ -1,0 +1,42 @@
+[package]
+name = "quilltap-core"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# The portable engine. First real module: `dbkey` — reads and decrypts the
+# `quilltap.dbkey` file exactly as lib/startup/dbkey.ts does, yielding the
+# base64 pepper that keys every database. This is permanent code, not probe
+# scratch: the production core derives the key this way at startup.
+#
+# TWO DIFFERENT CIPHERS — do not conflate them:
+#   * The `.dbkey` FILE wraps the pepper with AES-256-GCM (the aes-gcm deps
+#     below). Verified correct against Friday in Phase 0.
+#   * The DATABASES themselves are encrypted with ChaCha20-Poly1305 (sqleet),
+#     the DEFAULT cipher of better-sqlite3-multiple-ciphers — NOT SQLCipher,
+#     despite every "sqlcipher" name in the v4 codebase. Confirmed via
+#     `PRAGMA cipher` → "chacha20" on the real instance (2026-06-27).
+
+[dependencies]
+# DB cipher: SQLite3MultipleCiphers 2.3.5 (sqleet/ChaCha20 default), linked via
+# the amalgamation compiled in sqlite3mc-probe/build.rs. VERIFIED 2026-06-27:
+# opened Friday (37 tables, 33 characters, 20320 memories) with cipher=chacha20.
+# Do NOT use rusqlite's bundled-sqlcipher (AES-only → NotADatabase on real DBs).
+# The real DB layer should adopt the same amalgamation build as the probe.
+# `rusqlite` here is still the bundled probe dep; the dbkey module itself needs
+# no SQLite. See docs .../features/native-port-phase-0.md.
+rusqlite = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Crypto for the .dbkey FILE wrapper only, matching lib/startup/pepper-crypto.ts:
+#   AES-256-GCM cipher, PBKDF2-HMAC-<digest> key derivation.
+aes-gcm = "0.10"          # AES-256-GCM (AEAD)
+aes = "0.8"               # Aes256 block cipher, for the custom 16-byte-nonce GCM type
+pbkdf2 = "0.12"           # PBKDF2
+sha2 = "0.10"             # SHA-256 / SHA-512 (digest + pepper hash)
+hmac = "0.12"             # HMAC for PBKDF2
+hex = "0.4"               # hex <-> bytes for the .dbkey fields
+
+[dev-dependencies]
+tempfile = "3"

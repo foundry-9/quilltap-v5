@@ -1,0 +1,19 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/*",
+]
+
+# Phase-0 workspace root. Right now the only member is the throwaway
+# sqlcipher-probe; the real crates (quilltap-core, quilltap-cli,
+# quilltap-tauri, quilltap-harness) join here as they're scaffolded.
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+authors = ["Charles Sebold"]
+
+# Shared dependency versions live here so every crate pins the same ones.
+# (Members opt in with `foo = { workspace = true }`.) Add as the port grows.
+[workspace.dependencies]
+rusqlite = { version = "0.37", features = ["bundled-sqlcipher-vendored-openssl"] }

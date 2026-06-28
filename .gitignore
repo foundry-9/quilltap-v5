@@ -1,0 +1,21 @@
+# Rust
+/target
+**/*.rs.bk
+Cargo.lock        # keep for binaries later; fine to ignore during Phase 0 churn
+
+# Probe scratch
+qt-probe-*.db
+
+# Node (frontend / oracle, added later)
+node_modules
+dist
+.next
+
+# Real instance data — NEVER commit a database or a pepper
+fixtures/*.db
+*.pepper
+.env
+.env.*
+
+# OS / editor
+.DS_Store
