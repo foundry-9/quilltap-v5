@@ -19,6 +19,8 @@
 //!   * `enclave_budget` — the autonomous-run budget arithmetic: the pre-turn
 //!     exhaustion verdict and the progress-toward-binding-cap fraction that
 //!     drives pacing milestones; oracle-verified.
+//!   * `pricing` — the pure LLM cost arithmetic (`estimate_cost`);
+//!     oracle-verified.
 //!
 //! Everything else (repos, services, the Request/Response/Event boundary)
 //! lands in later phases.
@@ -27,6 +29,7 @@ pub mod context_compression;
 pub mod dbkey;
 pub mod enclave_budget;
 pub mod memory_weighting;
+pub mod pricing;
 pub mod recall_history;
 pub mod recall_tags;
 pub mod write_partition;
