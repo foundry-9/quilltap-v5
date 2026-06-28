@@ -1,7 +1,7 @@
 # Rust
 /target
 **/*.rs.bk
-Cargo.lock        # keep for binaries later; fine to ignore during Phase 0 churn
+# Cargo.lock IS committed — this repo produces binaries (CLI, Tauri). Do not ignore it.
 
 # Probe scratch
 qt-probe-*.db
