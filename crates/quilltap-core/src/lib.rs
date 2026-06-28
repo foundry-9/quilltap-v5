@@ -6,8 +6,13 @@
 //!     themselves are ChaCha20/sqleet, not SQLCipher — see CLAUDE.md.
 //!   * `memory_weighting` — pure scoring functions ported from v4 and verified
 //!     against the differential oracle.
+//!   * `recall_tags` — recall-side targeting-tag multipliers (scope/project
+//!     gating, temporal/context/participant/anti-repetition), likewise
+//!     oracle-verified.
+//!
 //! Everything else (repos, services, the Request/Response/Event boundary)
 //! lands in later phases.
 
 pub mod dbkey;
 pub mod memory_weighting;
+pub mod recall_tags;
