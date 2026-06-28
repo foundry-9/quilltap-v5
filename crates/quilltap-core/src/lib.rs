@@ -11,6 +11,9 @@
 //!     oracle-verified.
 //!   * `recall_history` — the per-chat anti-repetition ring buffer (producer of
 //!     the "recently whispered" set `recall_tags` consumes), oracle-verified.
+//!   * `write_partition` — parent-side write-batch classification, per-database
+//!     partitioning, main-primary policy, and the folder-conflict id remap;
+//!     oracle-verified.
 //!
 //! Everything else (repos, services, the Request/Response/Event boundary)
 //! lands in later phases.
@@ -19,3 +22,4 @@ pub mod dbkey;
 pub mod memory_weighting;
 pub mod recall_history;
 pub mod recall_tags;
+pub mod write_partition;
