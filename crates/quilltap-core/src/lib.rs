@@ -34,6 +34,11 @@
 //!   * `message_attribution` — the per-character context shaping (history-access
 //!     gate, presence windows, whisper visibility, role/name attribution);
 //!     oracle-verified.
+//!   * `embedding_vector` / `literal_boost` / `embedding_blob` — the embedding
+//!     hot paths: L2 normalisation, the profile storage policy, cosine
+//!     similarity + the dimension-mismatch guard, the fallback keyword/phrase
+//!     scorer, the literal-phrase boost helpers, and Float32 ↔ LE-byte BLOB
+//!     conversion; oracle-verified.
 //!   * `model_classes` — the built-in LLM capability tiers and their lookups;
 //!     oracle-verified.
 //!   * `token_estimation` — character-based token counting (estimate / per-message
@@ -64,7 +69,10 @@ pub mod context_budget;
 pub mod context_compression;
 pub mod context_summary;
 pub mod dbkey;
+pub mod embedding_blob;
+pub mod embedding_vector;
 pub mod enclave_budget;
+pub mod literal_boost;
 pub mod memory_format;
 pub mod memory_gate;
 pub mod memory_weighting;

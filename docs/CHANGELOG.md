@@ -28,6 +28,11 @@ test against the v4 oracle:
 - Memory name-resolution leaves: reinforced-importance formula, name+pronoun
   formatting, and the about/holder name-set builders (the regex-based
   about-character matchers are deferred to the regex-fidelity wave).
+- Embedding: L2 vector normalisation, the profile storage policy (Matryoshka
+  truncate + optional normalise), cosine similarity with the dimension-mismatch
+  guard and message, the fallback keyword/phrase scorer, the literal-phrase
+  boost helpers, and Float32 ↔ little-endian-byte BLOB conversion (the legacy
+  JSON-text recovery is deferred for its object-key-ordering seam).
 - Small leaf utilities: chat-type/participant predicates, semver parse/compare,
   pronoun→gender hint, tag-style merge, char-count colour class.
 
