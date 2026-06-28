@@ -1,15 +1,17 @@
-# Native Core: API Boundary & Enclave Seam (Design Sketch)
+# Native Core: API Boundary & Enclave Seam
 
-> Status: exploratory design sketch for the next-generation native Quilltap
-> (`foundry-9/quilltap`). Not a committed plan. Records the two decisions that
-> must be right *early* — the Rust core's transport-agnostic API boundary, and
-> the enclave engine's host-lifetime seam — because both are expensive to
-> retrofit and cheap to get right up front.
+> Status: **agreed design**, to be implemented in Phases 3–4. Companion to
+> [`phase-0.md`](./phase-0.md) and [`overview.md`](./overview.md). Records the
+> two decisions that must be right *early* — the Rust core's transport-agnostic
+> API boundary, and the enclave engine's host-lifetime seam — because both are
+> expensive to retrofit and cheap to get right up front. Lock these in before
+> the data layer hardens around them.
 
 ## Target stack (context for this doc)
 
-- **Core:** Rust. SQLCipher via `rusqlite` (`bundled-sqlcipher-vendored-openssl`),
-  statically linked. Owns the data, the memory subsystem, job orchestration,
+- **Core:** Rust. Data via **SQLite3MultipleCiphers** (sqleet/ChaCha20 — NOT
+  SQLCipher; see [`phase-0.md`](./phase-0.md) and CLAUDE.md), statically linked
+  from the amalgamation. Owns the data, the memory subsystem, job orchestration,
   and the single-writer invariant.
 - **Front end:** Angular 21+ (zoneless, signals, standalone) SPA inside a
   **Tauri 2** webview.
@@ -29,7 +31,7 @@ mobile decision becomes a packaging choice, not a rewrite.
 
 The tempting shortcut is to wire Angular straight to Tauri `#[command]`
 functions and let those functions reach into the core's internals. That couples
-your UI contract to Tauri's IPC, and the day you want a native iOS shell (which
+the UI contract to Tauri's IPC, and the day you want a native iOS shell (which
 calls Rust through `uniffi`, *not* Tauri IPC) or a thin HTTP shim for debugging,
 you re-implement every call site. Don't. Put one boundary in the middle that all
 three transports share.
@@ -66,15 +68,14 @@ the platform understands."
 
 ### Shape the contract as request/response + event-stream, not RPC-per-feature
 
-Mirror what you already have. Today's Next.js API is the action-dispatch pattern
-(`?action=favorite`) and the job IPC is a small enumerated message set
+Mirror v4's instincts. Its Next.js API is the action-dispatch pattern
+(`?action=favorite`) and its job IPC is a small enumerated message set
 (`job` / `invalidate` / `shutdown` / `shutdown-ack` / `host-rpc` /
 `host-rpc-response` one way, `job-result` / `log` / `status` / `host-rpc` back —
-see `lib/background-jobs/ipc-types.ts`). Keep that
-instinct. A *small, enumerated* message surface is far easier to expose
-identically across three transports than hundreds of individually-typed RPC
-methods — and `uniffi` in particular is happiest with a contained set of
-serializable types rather than a sprawling API.
+see v4's `lib/background-jobs/ipc-types.ts`). Keep that instinct. A *small,
+enumerated* message surface is far easier to expose identically across three
+transports than hundreds of individually-typed RPC methods — and `uniffi` in
+particular is happiest with a contained set of serializable types.
 
 ```rust
 // Two enums and two structs are the entire cross-transport contract.
@@ -97,7 +98,7 @@ pub enum Response {
 }
 
 // Server-push: streaming tokens, the Staff's announcements, enclave turns,
-// Carina answers — everything the current SSE layer carries.
+// Carina answers — everything v4's SSE layer carries.
 pub enum Event {
     ChatToken     { chat_id: Uuid, delta: String },
     StaffMessage  { chat_id: Uuid, sender: SystemSender, body: String },
@@ -115,22 +116,21 @@ Why this survives all three transports:
 - **uniffi:** `Request`/`Response`/`Event` are `#[derive(uniffi::Enum/Record)]`;
   `dispatch` is an `async` exported function; the event stream becomes a
   callback-interface (`uniffi::export(callback_interface)`) that Swift/Kotlin
-  implement. **The DTOs you defined for Tauri are reused verbatim** — that's the
+  implement. **The DTOs defined for Tauri are reused verbatim** — that's the
   payoff. No second contract.
-- **HTTP (axum):** trivially, `dispatch` behind `POST /api/dispatch`, events
-  over SSE or websocket. Invaluable for CI, scripting, and Playwright-style
-  end-to-end tests that never touch a webview.
+- **HTTP (axum):** `dispatch` behind `POST /api/dispatch`, events over SSE or
+  websocket. Invaluable for CI, scripting, and end-to-end tests that never touch
+  a webview.
 
 ### Where streaming lives
 
-Your current architecture already treats the Salon's SSE stream as a special,
-don't-touch transport. Preserve that boundary here: `dispatch` is for
-request/response; **streaming is always the `Event` channel**, never a return
-value. This keeps token streaming, Staff announcements, and Carina answers on
-one uniform push path that each transport implements once. (It also means the
-"opaque vs transparent character" filtering — which Staff events a character may
-see — is enforced *in the core* before an `Event` is emitted, not re-implemented
-per front end.)
+v4 already treats the Salon's SSE stream as a special, don't-touch transport.
+Preserve that boundary: `dispatch` is for request/response; **streaming is always
+the `Event` channel**, never a return value. This keeps token streaming, Staff
+announcements, and Carina answers on one uniform push path that each transport
+implements once. It also means the "opaque vs transparent character" filtering —
+which Staff events a character may see — is enforced *in the core* before an
+`Event` is emitted, not re-implemented per front end.
 
 ### Angular's side of the seam
 
@@ -150,10 +150,9 @@ export class CoreClient {
 }
 ```
 
-This is also exactly where Angular's DI earns its keep over React for your
-taste: `CoreClient` is one injectable seam, swappable in tests with a fake, and
-the zoneless/signals model maps cleanly onto an event stream pushing into
-signals. No `useEffect` subscription dance.
+This is exactly where Angular's DI earns its keep: `CoreClient` is one injectable
+seam, swappable in tests with a fake, and the zoneless/signals model maps cleanly
+onto an event stream pushing into signals.
 
 ### The rule, stated once
 
@@ -161,32 +160,32 @@ signals. No `useEffect` subscription dance.
 > shape, and translate errors. The moment a transport wants to *decide*
 > something, that decision belongs in the engine, behind `dispatch`.
 
-If you hold that line, adding the iOS shell later is: write a uniffi adapter,
-write a Swift UI (or reuse the Angular one through Tauri-mobile). The core and
-its contract do not move.
+Hold that line and adding the iOS shell later is: write a uniffi adapter, write a
+Swift UI (or reuse the Angular one through Tauri-mobile). The core and its
+contract do not move.
 
 ---
 
 ## Part 2 — The single-writer invariant, upgraded
 
-Today the "parent process is the only DB writer" rule is enforced by *discipline
+In v4 the "parent process is the only DB writer" rule is enforced by *discipline
 plus runtime machinery*: a forked child holds a readonly connection, buffers
-writes into `AsyncLocalStorage`, ships them over IPC as `{ method, args }[]`,
-and the parent applies them partitioned-by-database in hand-driven
-`BEGIN IMMEDIATE` transactions. That entire apparatus exists to work around
-Node's threading model.
+writes into `AsyncLocalStorage`, ships them over IPC as `{ method, args }[]`, and
+the parent applies them partitioned-by-database in hand-driven `BEGIN IMMEDIATE`
+transactions. That entire apparatus exists to work around Node's threading model.
+(See `docs/v4/developer/BACKGROUND_JOBS_CHILD.md`.)
 
-**In Rust, most of it dissolves into the type system.** You don't need a
-separate process to protect the writer; you need a type only one owner can hold.
+**In Rust, most of it dissolves into the type system.** You don't need a separate
+process to protect the writer; you need a type only one owner can hold.
 
 ```rust
-/// The sole holder of the RW SQLCipher connection. Not Clone. Lives on one
-/// dedicated writer task. Everyone else gets a read pool + a command sender.
-pub struct Writer { conn: rusqlite::Connection /* SQLCipher, RW */ }
+/// The sole holder of the RW connection. Not Clone. Lives on one dedicated
+/// writer task. Everyone else gets a read pool + a command sender.
+pub struct Writer { conn: rusqlite::Connection /* SQLite3MC, RW */ }
 
 /// Cloneable, shareable read handle. Hands out readonly connections.
 #[derive(Clone)]
-pub struct ReadPool { /* r2d2 pool of readonly SQLCipher conns */ }
+pub struct ReadPool { /* pool of readonly SQLite3MC conns */ }
 
 /// What everyone holds. Reads go direct; writes are sent to the writer task.
 #[derive(Clone)]
@@ -203,25 +202,25 @@ enforces what was previously a documented discipline. Heavy jobs
 child process) run on a `tokio` blocking-pool task and *cannot* stall chat,
 because they were never on the request path's thread to begin with.
 
-What you keep from the current design, because it was right:
+What you keep from v4, because it was right:
 
 - **Per-database partitioning.** Still three connections (main, mount-index,
-  llm-logs); still commit each partition in its own transaction so one can't
-  roll back another. This is a correctness property, not a Node workaround —
-  port it directly.
-- **Main-primary vs idempotent ordering.** The `AUTONOMOUS_ROOM_TURN`
-  "commit main first, secondaries best-effort" rule and the idempotent-handler
+  llm-logs); still commit each partition in its own transaction so one can't roll
+  back another. A correctness property, not a Node workaround — port it directly.
+- **Main-primary vs idempotent ordering.** The `AUTONOMOUS_ROOM_TURN` "commit
+  main first, secondaries best-effort" rule and the idempotent-handler
   "secondaries first" rule are domain decisions. They live in the writer task's
   apply logic unchanged.
 - **Folder-conflict remap.** The concurrent `docMountFolders.create` unique-index
-  dance still applies; serialize batch-apply on the writer task (it's naturally
-  serial — one task, one channel) and the remap logic ports as-is.
+  dance still applies; serialize batch-apply on the writer task (naturally serial
+  — one task, one channel) and the remap logic ports as-is.
 
 What you *delete*: the readonly-proxy, the `AsyncLocalStorage` write buffer, the
 `{ method, args }` reflection, the child-unsupported-method throws, the host-RPC
-round-trips for `uploadFile`/avatar/background writes (now just direct calls on
-the writer task), and the whole crash-respawn-the-child policy. That is a large
-amount of subtle machinery retired in exchange for one ownership rule.
+round-trips for `uploadFile`/avatar/background/conversation-summary/run-start
+writes (now just direct calls on the writer task), and the whole
+crash-respawn-the-child policy. A large amount of subtle machinery retired in
+exchange for one ownership rule.
 
 ---
 
@@ -233,33 +232,31 @@ grants ~30-second windows every 15+ minutes, and a force-quit kills all
 background work. "Characters converse overnight while you sleep" assumes an
 always-on host. A phone is not one.
 
-So the seam to get right now is: **the enclave engine must never assume it owns
-a long-lived host.** Make host-lifetime a capability the engine is *granted*,
-not one it presumes.
+So the seam to get right now is: **the enclave engine must never assume it owns a
+long-lived host.** Make host-lifetime a capability the engine is *granted*, not
+one it presumes.
 
 ### Model an enclave run as a resumable state machine, not a loop
 
-Your current code is already partway here, which is encouraging: the
-autonomous-room work is split across `autonomous-run-start` (flip to `running`,
-enqueue the first turn), `autonomous-room-turn` (drive exactly one turn, then
-*self-re-enqueue* the next — note: not a wall-clock loop), `autonomous-room-
-schedule-tick` (cron-driven due-room scan), and `autonomous-room-announce`
-(lifecycle banners + the halfway/near-end/grace milestones). The turn handler is
-the sole `MAIN_PRIMARY_JOB_TYPES` member precisely because each turn is a
-non-idempotent committed unit. That self-re-enqueue-per-turn shape is already
-close to `step()`; the native version makes the seam explicit rather than
-implicit-in-the-queue.
+v4 is already partway here: the autonomous-room work is split across
+`autonomous-run-start` (flip to `running`, enqueue the first turn),
+`autonomous-room-turn` (drive exactly one turn, then *self-re-enqueue* the next —
+not a wall-clock loop), `autonomous-room-schedule-tick` (cron-driven due-room
+scan), and `autonomous-room-announce` (lifecycle banners + halfway/near-end/grace
+milestones). The turn handler is the sole `MAIN_PRIMARY_JOB_TYPES` member
+precisely because each turn is a non-idempotent committed unit. That
+self-re-enqueue-per-turn shape is already close to `step()`; the native version
+makes the seam explicit rather than implicit-in-the-queue.
 
-Today an autonomous run is effectively driven by per-turn self-re-enqueue on an
-always-up host. Re-model it as a persisted state machine whose every transition
-is a single committed turn:
+Re-model an enclave run as a persisted state machine whose every transition is a
+single committed turn:
 
 ```rust
 pub enum RunState {
     Scheduled { at: Timestamp },
     Running   { turn: u32, budget_left: Budget, next_speaker: Uuid },
     Paused    { reason: PauseReason },   // budget, host-sleep, user
-    Concluding{ grace_turn_used: bool }, // your existing near-end grace turn
+    Concluding{ grace_turn_used: bool }, // the existing near-end grace turn
     Done      { outcome: Outcome },
 }
 
@@ -267,25 +264,25 @@ pub enum RunState {
 async fn step(core: &Engine, room_id: Uuid) -> StepResult { /* … */ }
 ```
 
-`step` advances exactly one turn and commits (it's the `AUTONOMOUS_ROOM_TURN`
+`step` advances exactly one turn and commits (the `AUTONOMOUS_ROOM_TURN`
 main-primary batch from Part 2). It does not loop. It does not care whether the
 next `step` comes in 50ms or 6 hours. **A "driver" decides cadence, and the
 driver is a per-host capability:**
 
 | Host | Driver | Enclave behaviour |
 |------|--------|-------------------|
-| Desktop (Tauri) | tight `tokio` loop, your current behaviour | overnight runs work as they do today |
+| Desktop (Tauri) | tight `tokio` loop | overnight runs work as they do in v4 |
 | Server companion (optional, axum) | same tight loop | the *real* answer for long overnight runs on behalf of mobile |
 | iOS/Android (Tauri-mobile or native) | `step` once per granted background window; persist; yield | run advances opportunistically; **resumes on next app open** |
 
 Because `step` is resumable and every turn is already committed, the iOS story
-becomes honest: "your enclave advanced three turns overnight in the background
-windows iOS allowed, and finished the rest when you opened the app" — or, if you
-stand up the optional companion server, "your phone handed the run to your
-desktop/server, which finished it." Either is a *driver* swap. The engine, the
-budgets (turns/tokens/wall-clock/spend/daily-cap), the Host's halfway/near-end
-pacing milestones, the grace turn, the memory provenance tagging
-(`autonomous_room` vs overheard) — all unchanged.
+becomes honest: "your enclave advanced three turns overnight in the windows iOS
+allowed, and finished the rest when you opened the app" — or, with the optional
+companion server, "your phone handed the run to your desktop/server, which
+finished it." Either is a *driver* swap. The engine, the budgets
+(turns/tokens/wall-clock/spend/daily-cap), the Host's pacing milestones, the
+grace turn, the memory provenance tagging (`autonomous_room` vs overheard) — all
+unchanged.
 
 ### The rule, stated once
 
@@ -294,8 +291,8 @@ pacing milestones, the grace turn, the memory provenance tagging
 > turn. Cadence is injected by a host-specific driver. Porting to a new host =
 > writing a new driver, nothing else.
 
-This is the single design choice that turns "enclaves don't work on iOS" from a
-feature you lose into a feature that *degrades gracefully and documents itself*.
+This turns "enclaves don't work on iOS" from a feature you lose into one that
+*degrades gracefully and documents itself*.
 
 ---
 
@@ -315,7 +312,7 @@ feature you lose into a feature that *degrades gracefully and documents itself*.
 - The uniffi adapter and any native mobile UI — until Tauri-mobile's maturity is
   proven or disproven for your needs.
 - The optional companion server — only if/when overnight-on-mobile demand is real.
-- Which Rust web/UI niceties (axum HTTP shim) you build for CI first.
+- The axum HTTP shim for CI.
 
 If the four "lock in now" items hold, every later decision — desktop-first,
 mobile-via-Tauri, mobile-via-native, server-assisted enclaves — is an additive

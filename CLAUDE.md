@@ -24,10 +24,11 @@ checked against v4 mechanically (see "The differential port discipline").
 - **CLI:** a `quilltap` binary linking `quilltap-core` (first real consumer; v4's
   `npx quilltap` is its oracle).
 
-Design docs (read before large changes):
-`docs/v4/developer/features/native-port-phase-0.md` (Phase-0 plan + the cipher
-finding), `native-core-api-boundary.md` (the transport-agnostic boundary + the
-single-writer model + the enclave `step()` seam).
+Design docs (read before large changes), all under `docs/developer/porting/`:
+`overview.md` (start here — methodology + phase roadmap + status),
+`phase-0.md` (Phase-0 plan + the cipher finding), `api-boundary.md` (the
+transport-agnostic boundary + the single-writer model + the enclave `step()`
+seam). The `docs/v4/` tree is the v4 reference mirror, not v5 planning.
 
 ## Standing rules (apply on every task)
 
