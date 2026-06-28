@@ -26,6 +26,8 @@
 //!     cost-aware model-selection helpers; oracle-verified.
 //!   * `model_classes` — the built-in LLM capability tiers and their lookups;
 //!     oracle-verified.
+//!   * `token_estimation` — character-based token counting (estimate / per-message
+//!     / per-conversation, truncation, context-usage %); oracle-verified.
 //!
 //! Everything else (repos, services, the Request/Response/Event boundary)
 //! lands in later phases.
@@ -39,4 +41,5 @@ pub mod model_classes;
 pub mod pricing;
 pub mod recall_history;
 pub mod recall_tags;
+pub mod token_estimation;
 pub mod write_partition;
