@@ -273,3 +273,44 @@ tier-2 case):
     `connection_profiles` corpora constrain `parameters` to `{}` or single-key
     objects; see "Deferred seams" in `docs/developer/porting/phase-2-onramp.md`.
 
+- A third parallel batch — five plain-base single-table repos (each `create` /
+  `update` / `delete`, its own tier-2 case round-tripping green):
+  - `plugin_config` (`quilltap-core::db::plugin_config`): the **UserOwned lineage**
+    (a `userId` scope column) plus an **open-JSON object column** (`config`,
+    `z.record`) and an **optional (nullable) boolean** (`enabled`,
+    `z.boolean().optional()` with no default → INTEGER 0/1 when present, SQL NULL
+    when the key is absent — confirmed empirically). Harness
+    `plugin_config_tier2_equivalence` (`QT_ORACLE_PLUGIN_CONFIG` +
+    `QT_FIXTURE_PLUGIN_CONFIG`).
+  - `embedding_profiles` (`quilltap-core::db::embedding_profiles`): the Taggable
+    lineage again, widened with an **enum TEXT** column (`provider`), two **nullable
+    REAL number** columns (`dimensions` bare `z.number()`, `truncateToDimensions`
+    `z.number().int().positive()` — min-only, so REAL not INTEGER), and two
+    **boolean-default** columns (`normalizeL2`, `isDefault`). Harness
+    `embedding_profiles_tier2_equivalence` (`QT_ORACLE_EMBEDDING_PROFILES` +
+    `QT_FIXTURE_EMBEDDING_PROFILES`).
+  - `terminal_sessions` (`quilltap-core::db::terminal_sessions`): a clean
+    string-heavy repo — nullable string columns (`label`, `transcriptPath`), a
+    nullable timestamp (`exitedAt`), and a **nullable REAL** column (`exitCode`,
+    `z.number().int()`, no max). v4's `create` injects no nondeterministic defaults,
+    so the pinned zero-normalization form holds. Harness
+    `terminal_sessions_tier2_equivalence` (`QT_ORACLE_TERMINAL_SESSIONS` +
+    `QT_FIXTURE_TERMINAL_SESSIONS`).
+  - `character_plugin_data` (`quilltap-core::db::character_plugin_data`): the first
+    **open-JSON _value_ column** (`data`, `z.unknown()`) — any JSON value stored as
+    compact JSON text via v4's `prepareForStorage`, modeled as `serde_json::Value`.
+    Harness `character_plugin_data_tier2_equivalence`
+    (`QT_ORACLE_CHARACTER_PLUGIN_DATA` + `QT_FIXTURE_CHARACTER_PLUGIN_DATA`).
+  - `tfidf_vocabulary` (`quilltap-core::db::tfidf_vocabulary`): the first repo that
+    **overrides the base `create`/`update`** — v4 mints `updatedAt =
+    getCurrentTimestamp()` unconditionally (a passed `updatedAt` is ignored), so the
+    port mints it via `clock::now_iso` and the harness placeholder-normalizes only
+    that one column (ids / `createdAt` / every payload column stay pinned and diff
+    exactly). Also the first **plain-string columns that hold JSON text**
+    (`vocabulary`, `idf`, bound single-encoded, not re-stringified), plus a bare
+    `z.number()` REAL (`avgDocLength`) and an int-positive REAL (`vocabularySize`).
+    Harness `tfidf_vocabulary_tier2_equivalence` (`QT_ORACLE_TFIDF_VOCABULARY` +
+    `QT_FIXTURE_TFIDF_VOCABULARY`).
+  - The `plugin_config` / `character_plugin_data` open-JSON corpora are constrained
+    to `{}` or single-key objects, same as the tracked multi-key key-order seam.
+

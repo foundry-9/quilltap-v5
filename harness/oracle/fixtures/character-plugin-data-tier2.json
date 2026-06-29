@@ -1,0 +1,101 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `character_plugin_data` repo (Phase-2).",
+    "One committed file drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-character-plugin-data-fixture.ts +",
+    "    character-plugin-data-tier2.ts) and",
+    "  - the Rust port (quilltap-harness character_plugin_data tier-2 test).",
+    "",
+    "What this repo banks: the `data` column is `z.unknown()`, i.e. an OPEN /",
+    "arbitrary-JSON VALUE column. v4's prepareForStorage stores a non-null,",
+    "non-Buffer, non-Date object value as compact JSON text (JSON.stringify). The",
+    "rest of the row is plain strings (characterId, pluginName) plus timestamps —",
+    "no booleans, no numbers, no nullable columns.",
+    "",
+    "OPEN-JSON CONSTRAINT (tracked deferred seam #5): every `data` value is either",
+    "{} or a SINGLE-KEY object, so v4's JSON.stringify (insertion order) and",
+    "Rust's serde_json::Value (sorted keys) serialize byte-identically. A",
+    "multi-key object would diverge — see the module header in",
+    "character_plugin_data.rs and docs/developer/porting/phase-2-onramp.md. The",
+    "fractional value 3.5 exercises the float pass-through inside the JSON text.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the",
+    "folders / tags / image_profiles fixtures use. It is NOT the real Friday",
+    "pepper and is safe to commit.",
+    "",
+    "DETERMINISM: every id and timestamp is pinned, so both sides produce",
+    "byte-identical post-op state and the canonical dump needs ZERO normalization."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "characterId": "aa000000-0000-4000-8000-0000000000a1",
+      "pluginName": "qtap-plugin-curl",
+      "data": { "enabled": true },
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "characterId": "aa000000-0000-4000-8000-0000000000a2",
+      "pluginName": "qtap-plugin-weather",
+      "data": {},
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "New entry with a single-key fractional data object (exercises the float pass-through inside the JSON text).",
+      "data": {
+        "characterId": "aa000000-0000-4000-8000-0000000000a3",
+        "pluginName": "qtap-plugin-stats",
+        "data": { "threshold": 3.5 }
+      },
+      "options": {
+        "id": "3c000000-0000-4000-8000-000000000003",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "New entry with an empty {} data object.",
+      "data": {
+        "characterId": "aa000000-0000-4000-8000-0000000000a4",
+        "pluginName": "qtap-plugin-notes",
+        "data": {}
+      },
+      "options": {
+        "id": "4d000000-0000-4000-8000-000000000004",
+        "createdAt": "2026-02-02T00:00:00.000Z",
+        "updatedAt": "2026-02-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update seed row 1: replace the single-key data object. createdAt preserved, updatedAt pinned.",
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "data": {
+        "data": { "enabled": false },
+        "updatedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update seed row 2: change the pluginName (string column). updatedAt pinned.",
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "data": {
+        "pluginName": "qtap-plugin-forecast",
+        "updatedAt": "2026-03-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "delete",
+      "comment": "Delete the second created entry (qtap-plugin-notes).",
+      "id": "4d000000-0000-4000-8000-000000000004"
+    }
+  ]
+}

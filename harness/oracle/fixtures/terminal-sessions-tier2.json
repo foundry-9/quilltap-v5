@@ -1,0 +1,123 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `terminal_sessions` repo (Phase-2). One",
+    "committed file drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-terminal-sessions-fixture.ts + terminal-sessions-tier2.ts)",
+    "    and",
+    "  - the Rust port (quilltap-harness terminal_sessions tier-2 test).",
+    "",
+    "What this repo banks: a clean strings-plus-nullables shape — NO boolean and NO",
+    "JSON column. Three nullable string columns (`label`, `exitedAt`,",
+    "`transcriptPath`) and one nullable REAL-affinity unbounded-int column",
+    "(`exitCode`: z.number().int().nullable().optional() — int with no .max() maps",
+    "to REAL, so it binds Option<f64>; an integer-valued cell like 137 dumps back",
+    "as the JSON integer 137 via js_number_to_json).",
+    "",
+    "v4 CREATE DEFAULTS: none. terminal-sessions' create is a thin _create wrapper",
+    "with NO default injection (no default shell/cwd, no startedAt = now). The",
+    "create-input schema marks shell/cwd/startedAt optional but the stored",
+    "TerminalSessionSchema requires them, so every corpus create pins shell, cwd,",
+    "and startedAt explicitly — no nondeterministic default is ever hit.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the",
+    "folders / tags / image_profiles fixtures use. It is NOT the real Friday",
+    "pepper and is safe to commit.",
+    "",
+    "DETERMINISM: every id and timestamp is pinned, so both sides produce",
+    "byte-identical post-op state and the canonical dump needs ZERO normalization."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "chatId": "c0000000-0000-4000-8000-0000000000c1",
+      "label": "Seed exited session",
+      "shell": "/bin/zsh",
+      "cwd": "/Users/test/project",
+      "startedAt": "2026-01-01T00:00:00.000Z",
+      "exitedAt": "2026-01-01T00:05:00.000Z",
+      "exitCode": 0,
+      "transcriptPath": "/var/logs/terminals/1a000000.log",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "chatId": "c0000000-0000-4000-8000-0000000000c1",
+      "label": null,
+      "shell": "/bin/bash",
+      "cwd": "/Users/test",
+      "startedAt": "2026-01-01T01:00:00.000Z",
+      "exitedAt": null,
+      "exitCode": null,
+      "transcriptPath": null,
+      "createdAt": "2026-01-01T01:00:00.000Z",
+      "updatedAt": "2026-01-01T01:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "New fully-populated session: label + transcriptPath set, already exited with non-zero exitCode 137 (exercises integer-valued REAL pass-through). shell/cwd/startedAt pinned explicitly.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-0000000000c2",
+        "label": "New crashed session",
+        "shell": "/usr/bin/fish",
+        "cwd": "/Users/test/other",
+        "startedAt": "2026-02-01T00:00:00.000Z",
+        "exitedAt": "2026-02-01T00:02:00.000Z",
+        "exitCode": 137,
+        "transcriptPath": "/var/logs/terminals/3c000000.log"
+      },
+      "options": {
+        "id": "3c000000-0000-4000-8000-000000000003",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "New minimal running session: all nullables NULL (label/exitedAt/exitCode/transcriptPath), still active. shell/cwd/startedAt pinned explicitly.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-0000000000c2",
+        "label": null,
+        "shell": "/bin/sh",
+        "cwd": "/tmp",
+        "startedAt": "2026-02-02T00:00:00.000Z",
+        "exitedAt": null,
+        "exitCode": null,
+        "transcriptPath": null
+      },
+      "options": {
+        "id": "4d000000-0000-4000-8000-000000000004",
+        "createdAt": "2026-02-02T00:00:00.000Z",
+        "updatedAt": "2026-02-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Session exit: seed row 2 (was running) gets exitedAt + exitCode 0 set. createdAt preserved, updatedAt pinned.",
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "data": {
+        "exitedAt": "2026-03-01T00:00:00.000Z",
+        "exitCode": 0,
+        "updatedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Metadata edit on seed row 1: update label + transcriptPath. updatedAt pinned.",
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "data": {
+        "label": "Seed exited session (relabeled)",
+        "transcriptPath": "/var/logs/terminals/archive/1a000000.log",
+        "updatedAt": "2026-03-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "delete",
+      "comment": "Delete the second created session (the minimal running one).",
+      "id": "4d000000-0000-4000-8000-000000000004"
+    }
+  ]
+}

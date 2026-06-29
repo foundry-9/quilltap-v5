@@ -1,0 +1,129 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `embedding_profiles` repo (Phase-2). One",
+    "committed file drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-embedding-profiles-fixture.ts +",
+    "    embedding-profiles-tier2.ts) and",
+    "  - the Rust port (quilltap-harness embedding_profiles tier-2 test).",
+    "",
+    "What this repo banks: the Taggable lineage (user-scoped `userId` + a JSON",
+    "`tags` array column), two nullable REAL number columns (`dimensions`,",
+    "`truncateToDimensions` -> Option<f64>, integer-valued cells dump as JSON",
+    "integers), two boolean columns (`normalizeL2`, `isDefault` -> INTEGER 0/1),",
+    "two nullable string columns (`apiKeyId`, `baseUrl`), and an enum TEXT column",
+    "(`provider` in {OPENAI, OLLAMA, OPENROUTER, BUILTIN}).",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the",
+    "folders / tags / image_profiles fixtures use. It is NOT the real Friday",
+    "pepper and is safe to commit.",
+    "",
+    "DETERMINISM: every id and timestamp is pinned, so both sides produce",
+    "byte-identical post-op state and the canonical dump needs ZERO normalization."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "name": "Seed OpenAI Large",
+      "provider": "OPENAI",
+      "apiKeyId": "ca000000-0000-4000-8000-0000000000c1",
+      "baseUrl": null,
+      "modelName": "text-embedding-3-large",
+      "dimensions": 1536,
+      "truncateToDimensions": 512,
+      "normalizeL2": true,
+      "isDefault": true,
+      "tags": ["7a000000-0000-4000-8000-0000000000d1"],
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "name": "Seed Local Ollama",
+      "provider": "OLLAMA",
+      "apiKeyId": null,
+      "baseUrl": "http://localhost:11434",
+      "modelName": "nomic-embed-text",
+      "dimensions": null,
+      "truncateToDimensions": null,
+      "normalizeL2": false,
+      "isDefault": false,
+      "tags": [],
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "Full row: both REAL number columns set to integers, apiKeyId/baseUrl set, two tags, normalizeL2 true, isDefault false, OPENROUTER provider.",
+      "data": {
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "name": "New OpenRouter Embed",
+        "provider": "OPENROUTER",
+        "apiKeyId": "ca000000-0000-4000-8000-0000000000c2",
+        "baseUrl": "https://openrouter.ai/api/v1",
+        "modelName": "openai/text-embedding-3-small",
+        "dimensions": 768,
+        "truncateToDimensions": 256,
+        "normalizeL2": true,
+        "isDefault": false,
+        "tags": ["7a000000-0000-4000-8000-0000000000d1", "7b000000-0000-4000-8000-0000000000d2"]
+      },
+      "options": {
+        "id": "3c000000-0000-4000-8000-000000000003",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "Minimal row: both REAL number columns null, apiKeyId/baseUrl both null, empty tags, normalizeL2 false, isDefault false, BUILTIN provider.",
+      "data": {
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "name": "New Built-in Embed",
+        "provider": "BUILTIN",
+        "apiKeyId": null,
+        "baseUrl": null,
+        "modelName": "builtin-minilm",
+        "dimensions": null,
+        "truncateToDimensions": null,
+        "normalizeL2": false,
+        "isDefault": false,
+        "tags": []
+      },
+      "options": {
+        "id": "4d000000-0000-4000-8000-000000000004",
+        "createdAt": "2026-02-02T00:00:00.000Z",
+        "updatedAt": "2026-02-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update seed row 1: rename, set dimensions (1536 -> 3072), flip isDefault true->false. createdAt preserved, updatedAt pinned.",
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "data": {
+        "name": "Seed OpenAI Large (renamed)",
+        "dimensions": 3072,
+        "isDefault": false,
+        "updatedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update seed row 2: replace the tags array (empty -> two ids). updatedAt pinned.",
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "data": {
+        "tags": ["7a000000-0000-4000-8000-0000000000d1", "7c000000-0000-4000-8000-0000000000d3"],
+        "updatedAt": "2026-03-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "delete",
+      "comment": "Delete the second created profile (New Built-in Embed).",
+      "id": "4d000000-0000-4000-8000-000000000004"
+    }
+  ]
+}

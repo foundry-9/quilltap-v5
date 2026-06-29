@@ -320,6 +320,32 @@ insertion-order `JSON.stringify`) — the corpora constrain `parameters` to `{}`
 single-key; close before multi-key open-JSON data (see "Deferred seams" in
 `docs/developer/porting/phase-2-onramp.md`).
 
+A **third parallel batch** (repos #11–#15, five at a time) — `plugin_config`,
+`embedding_profiles`, `terminal_sessions`, `character_plugin_data`, and
+`tfidf_vocabulary` — was ported the same way and each round-trips green
+(`plugin_config_tier2_equivalence`, `embedding_profiles_tier2_equivalence`,
+`terminal_sessions_tier2_equivalence`, `character_plugin_data_tier2_equivalence`,
+`tfidf_vocabulary_tier2_equivalence`). `plugin_config` banks the **UserOwned
+lineage** (a `userId` scope column) plus an open-JSON `config` object and an
+**optional boolean** (`enabled` — no default, so INTEGER 0/1 when present, SQL
+NULL when the key is absent, confirmed empirically). `embedding_profiles` (the
+Taggable lineage again) banks an enum TEXT column and two **nullable REAL number
+columns** (`dimensions` bare `z.number()`, `truncateToDimensions`
+`.int().positive()` — min-only → REAL) plus two boolean-default columns.
+`terminal_sessions` is a clean string-heavy repo (nullable strings + a nullable
+timestamp + a nullable REAL `exitCode`); v4's `create` injects no
+nondeterministic default, so the pinned form holds. `character_plugin_data` banks
+the first **open-JSON _value_ column** (`data`, `z.unknown()` → compact JSON text
+via `prepareForStorage`). `tfidf_vocabulary` is the **first repo that overrides
+the base `create`/`update`**: v4 mints `updatedAt` unconditionally (ignoring any
+passed value), so the port mints it via `clock::now_iso` and the harness
+placeholder-normalizes only `updatedAt` (ids / `createdAt` / payload columns stay
+pinned and diff exactly) — the minted-timestamp form narrowed to one column, no
+id remap; it also banks the first **plain-string columns holding JSON text**
+(`vocabulary` / `idf`, bound single-encoded). The `plugin_config` /
+`character_plugin_data` open-JSON corpora are constrained to `{}` / single-key,
+same tracked seam.
+
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green
 (`prompt_templates_tier2_equivalence`): `create` + `update` + `delete` from v4's

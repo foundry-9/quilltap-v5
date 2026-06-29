@@ -546,10 +546,13 @@ instances (non-ASCII user data), each must be closed or consciously waived.
    columns (`tags.visualStyle`, the roleplay `renderingPatterns`/
    `dialogueDetection`) use. The Rust port serializes them with
    `serde_json::Value`, whose object backing (`BTreeMap`) **sorts keys**, while
-   v4's `JSON.stringify` preserves **insertion** order. The `image_profiles` and
-   `connection_profiles` corpora avoid the divergence by constraining every
-   `parameters` value to `{}` or a **single-key** object (where sorted == insertion
-   order). **Action when closing:** before any op writes a multi-key open-JSON
+   v4's `JSON.stringify` preserves **insertion** order. Four sites now hit this:
+   `image_profiles.parameters`, `connection_profiles.parameters`,
+   `plugin_config.config` (`z.record`), and `character_plugin_data.data`
+   (`z.unknown()` — the open-JSON _value_ form, but same divergence when the value
+   is a multi-key object). Each corpus avoids the divergence by constraining every
+   such value to `{}` or a **single-key** object (where sorted == insertion order).
+   **Action when closing:** before any op writes a multi-key open-JSON
    object, swap the serializer for an insertion-order-preserving one (a
    `serde_json` value built on `preserve_order` / `IndexMap`, or a
    `Vec<(String, Value)>`), and add a multi-key `parameters` row to the corpora to

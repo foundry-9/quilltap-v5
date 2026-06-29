@@ -23,16 +23,21 @@ use serde_json::{Map, Value};
 
 use crate::dbkey;
 
+pub mod character_plugin_data;
 pub mod connection_profiles;
 pub mod conversation_annotations;
+pub mod embedding_profiles;
 pub mod folders;
 pub mod help_docs;
 pub mod image_profiles;
+pub mod plugin_config;
 pub mod prompt_templates;
 pub mod provider_models;
 pub mod roleplay_templates;
 pub mod tags;
+pub mod terminal_sessions;
 pub mod text_replacement_rules;
+pub mod tfidf_vocabulary;
 
 /// Errors from the DB layer.
 #[derive(Debug)]
@@ -89,6 +94,13 @@ impl Writer {
         Ok(Self { conn })
     }
 
+    /// The character-plugin-data repository over this writer's connection.
+    pub fn character_plugin_data(
+        &self,
+    ) -> character_plugin_data::CharacterPluginDataRepository<'_> {
+        character_plugin_data::CharacterPluginDataRepository::new(&self.conn)
+    }
+
     /// The connection-profiles repository over this writer's connection.
     pub fn connection_profiles(&self) -> connection_profiles::ConnectionProfilesRepository<'_> {
         connection_profiles::ConnectionProfilesRepository::new(&self.conn)
@@ -99,6 +111,11 @@ impl Writer {
         &self,
     ) -> conversation_annotations::ConversationAnnotationsRepository<'_> {
         conversation_annotations::ConversationAnnotationsRepository::new(&self.conn)
+    }
+
+    /// The embedding-profiles repository over this writer's connection.
+    pub fn embedding_profiles(&self) -> embedding_profiles::EmbeddingProfilesRepository<'_> {
+        embedding_profiles::EmbeddingProfilesRepository::new(&self.conn)
     }
 
     /// The folders repository over this writer's connection.
@@ -138,9 +155,24 @@ impl Writer {
         image_profiles::ImageProfilesRepository::new(&self.conn)
     }
 
+    /// The plugin-config repository over this writer's connection.
+    pub fn plugin_config(&self) -> plugin_config::PluginConfigRepository<'_> {
+        plugin_config::PluginConfigRepository::new(&self.conn)
+    }
+
     /// The prompt-templates repository over this writer's connection.
     pub fn prompt_templates(&self) -> prompt_templates::PromptTemplatesRepository<'_> {
         prompt_templates::PromptTemplatesRepository::new(&self.conn)
+    }
+
+    /// The terminal-sessions repository over this writer's connection.
+    pub fn terminal_sessions(&self) -> terminal_sessions::TerminalSessionsRepository<'_> {
+        terminal_sessions::TerminalSessionsRepository::new(&self.conn)
+    }
+
+    /// The tfidf-vocabulary repository over this writer's connection.
+    pub fn tfidf_vocabulary(&self) -> tfidf_vocabulary::TfidfVocabularyRepository<'_> {
+        tfidf_vocabulary::TfidfVocabularyRepository::new(&self.conn)
     }
 
     /// Canonical dump of one table, in the same shape the tier-2 oracle emits:

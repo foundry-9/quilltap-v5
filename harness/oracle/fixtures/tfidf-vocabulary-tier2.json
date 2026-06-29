@@ -1,0 +1,126 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `tfidf_vocabulary` repo (Phase-2). One",
+    "committed file drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-tfidf-vocabulary-fixture.ts + tfidf-vocabulary-tier2.ts)",
+    "    and",
+    "  - the Rust port (quilltap-harness tfidf_vocabulary tier-2 test).",
+    "",
+    "What this repo banks: PLAIN-STRING columns that hold JSON text (`vocabulary`,",
+    "`idf` are z.string() — stored as-is, NOT re-stringified; double-encoding would",
+    "diverge from v4 byte-for-byte). Plus two REAL number columns: `avgDocLength`",
+    "(bare z.number()) and `vocabularySize` (z.number().int().positive() — min only,",
+    "no max, so still REAL by v4's mapToSQLiteType). One seed row uses a FRACTIONAL",
+    "avgDocLength (12.5 -> dumps as a float); the other uses an INTEGER-valued",
+    "avgDocLength (10 -> dumps as a JSON integer via js_number_to_json).",
+    "`vocabularySize` values are integers -> dump as JSON integers. `includeBigrams`",
+    "is a boolean (-> INTEGER 0/1), set explicitly true/false on every create.",
+    "",
+    "⚠️ updatedAt IS MINTED, NOT PINNED. v4's TfidfVocabularyRepository OVERRIDES",
+    "the base create/update and sets updatedAt = getCurrentTimestamp() (live now)",
+    "UNCONDITIONALLY — options.updatedAt on create and any updatedAt in an update",
+    "patch are IGNORED. So create options carry only {id, createdAt}, update data",
+    "carries NO updatedAt, and the tier-2 harness placeholder-normalizes the",
+    "updatedAt column on BOTH sides (ids + createdAt + every other column stay",
+    "exact). createdAt IS honored on create (options.createdAt || now) and",
+    "preserved on update.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the",
+    "folders / tags / image_profiles fixtures use. It is NOT the real Friday pepper",
+    "and is safe to commit.",
+    "",
+    "DETERMINISM: ids + createdAt + payload columns are pinned; only the minted",
+    "updatedAt column needs normalization (placeholdered both sides)."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "profileId": "11000000-0000-4000-8000-0000000000f1",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "vocabulary": "[[\"hello\",0],[\"world\",1]]",
+      "idf": "[0.5,1.2]",
+      "avgDocLength": 12.5,
+      "vocabularySize": 2,
+      "includeBigrams": true,
+      "fittedAt": "2026-01-01T00:00:00.000Z",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "profileId": "22000000-0000-4000-8000-0000000000f2",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "vocabulary": "[[\"alpha\",0],[\"beta\",1],[\"gamma\",2]]",
+      "idf": "[0.1,0.2,0.3]",
+      "avgDocLength": 10,
+      "vocabularySize": 3,
+      "includeBigrams": false,
+      "fittedAt": "2026-01-01T00:00:00.000Z",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "New vocabulary with a fractional avgDocLength (7.25 -> float dump), integer vocabularySize, includeBigrams true, a plausible JSON-text vocabulary/idf.",
+      "data": {
+        "profileId": "33000000-0000-4000-8000-0000000000f3",
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "vocabulary": "[[\"foo\",0],[\"bar\",1],[\"baz\",2]]",
+        "idf": "[1.1,2.2,3.3]",
+        "avgDocLength": 7.25,
+        "vocabularySize": 3,
+        "includeBigrams": true,
+        "fittedAt": "2026-02-01T00:00:00.000Z"
+      },
+      "options": {
+        "id": "3c000000-0000-4000-8000-000000000003",
+        "createdAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "New vocabulary with an integer-valued avgDocLength (20 -> JSON integer dump), includeBigrams false, bigram-style vocabulary text.",
+      "data": {
+        "profileId": "44000000-0000-4000-8000-0000000000f4",
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "vocabulary": "[[\"new york\",0],[\"san francisco\",1]]",
+        "idf": "[0.9,1.4]",
+        "avgDocLength": 20,
+        "vocabularySize": 2,
+        "includeBigrams": false,
+        "fittedAt": "2026-02-02T00:00:00.000Z"
+      },
+      "options": {
+        "id": "4d000000-0000-4000-8000-000000000004",
+        "createdAt": "2026-02-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update seed row 1: change avgDocLength (-> 15.75 float), vocabularySize (-> 4), and fittedAt. createdAt preserved; updatedAt minted (placeholdered).",
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "data": {
+        "avgDocLength": 15.75,
+        "vocabularySize": 4,
+        "fittedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update seed row 2: flip includeBigrams false->true and replace idf with new JSON-text weights. updatedAt minted (placeholdered).",
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "data": {
+        "includeBigrams": true,
+        "idf": "[2.5,3.5,4.5]"
+      }
+    },
+    {
+      "kind": "delete",
+      "comment": "Delete the second created vocabulary.",
+      "id": "4d000000-0000-4000-8000-000000000004"
+    }
+  ]
+}

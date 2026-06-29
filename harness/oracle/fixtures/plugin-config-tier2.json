@@ -1,0 +1,105 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `plugin_config` repo (Phase-2). One",
+    "committed file drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-plugin-config-fixture.ts + plugin-config-tier2.ts)",
+    "    and",
+    "  - the Rust port (quilltap-harness plugin_config tier-2 test).",
+    "",
+    "What this repo banks: a user-scoped `userId` column, the open / arbitrary-JSON",
+    "object column (`config`, z.record(z.string(), z.unknown())), and an OPTIONAL",
+    "boolean with NO default (`enabled`, z.boolean().optional()) -> INTEGER 0/1",
+    "when present, SQL NULL when absent.",
+    "",
+    "OPEN-JSON CONSTRAINT (tracked deferred seam, #5 in phase-2-onramp.md): every",
+    "`config` value is either {} or a SINGLE-KEY object, so v4's JSON.stringify",
+    "(insertion order) and Rust's serde_json::Value (sorted keys) serialize",
+    "byte-identically. A multi-key object would diverge — see the module header in",
+    "plugin_config.rs. The fractional value 0.5 exercises js_number_to_json's float",
+    "pass-through inside the JSON text.",
+    "",
+    "ENABLED-ABSENT: a seed row and a create op OMIT the `enabled` key entirely.",
+    "v4 stores no value for the optional-no-default column -> the cell is SQL NULL.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the",
+    "folders / tags / image_profiles fixtures use. It is NOT the real Friday",
+    "pepper and is safe to commit.",
+    "",
+    "DETERMINISM: every id and timestamp is pinned, so both sides produce",
+    "byte-identical post-op state and the canonical dump needs ZERO normalization."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "pluginName": "qtap-plugin-curl",
+      "config": { "threshold": 0.5 },
+      "enabled": true,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "pluginName": "qtap-plugin-weather",
+      "config": {},
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "New config with a single-key fractional config object (exercises js_number_to_json float pass-through inside the JSON text) and enabled false.",
+      "data": {
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "pluginName": "qtap-plugin-search",
+        "config": { "maxResults": 0.25 },
+        "enabled": false
+      },
+      "options": {
+        "id": "3c000000-0000-4000-8000-000000000003",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "New config with empty {} config and enabled ABSENT (omit the key -> stored SQL NULL).",
+      "data": {
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "pluginName": "qtap-plugin-clock",
+        "config": {}
+      },
+      "options": {
+        "id": "4d000000-0000-4000-8000-000000000004",
+        "createdAt": "2026-02-02T00:00:00.000Z",
+        "updatedAt": "2026-02-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update seed row 1: replace the single-key config object. createdAt preserved, updatedAt pinned.",
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "data": {
+        "config": { "threshold": 0.75 },
+        "updatedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update seed row 2: set enabled (NULL -> true). updatedAt pinned.",
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "data": {
+        "enabled": true,
+        "updatedAt": "2026-03-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "delete",
+      "comment": "Delete the second created config (qtap-plugin-clock).",
+      "id": "4d000000-0000-4000-8000-000000000004"
+    }
+  ]
+}
