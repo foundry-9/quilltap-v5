@@ -280,7 +280,22 @@ partitioned-apply path~~ (**done** — see "the partitioned write applier" below
 and the real-snapshot fixture sanitizer. From here Phase 2 is the same mechanical
 loop, repo by repo.
 
-**Phase 2 proper: in progress.** Repo #3, `text_replacement_rules`
+**Phase 2 proper: in progress.** Repo #4, `prompt_templates`
+(`quilltap-core::db::prompt_templates`), round-trips green
+(`prompt_templates_tier2_equivalence`): `create` + `update` + `delete` from v4's
+`PromptTemplatesRepository` (built-in seeding out of scope). Banks the **first
+JSON array column** (`tags` → compact JSON text via `serde_json::to_string` of a
+`Vec<String>`; arrays are order-preserving, so no key-order subtlety like the
+`tags.visualStyle` object) and several **nullable string columns** (`userId`
+null-for-built-in, `description`, `category`, `modelHint`). Adds the **built-in
+read-only guard** — `update`/`delete` read the target's `isBuiltIn` and refuse to
+mutate a built-in row, returning a not-modified result (`Ok(false)`; v4's `null`
+/ `false`) rather than throwing. The harness exercises the guard two ways via an
+`expectNoop` flag (a built-in-targeted update and delete), proving both sides
+report not-modified on top of the byte-identical dump. Ids + timestamps pinned →
+zero normalization.
+
+Repo #3, `text_replacement_rules`
 (`quilltap-core::db::text_replacement_rules`), round-trips green
 (`text_replacement_rules_tier2_equivalence`): `create` + `update` + `delete` from
 v4's `TextReplacementRulesRepository`. It is the **first repo with conflict

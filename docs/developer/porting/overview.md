@@ -31,7 +31,7 @@ already working ([`phase-0.md`](./phase-0.md)).
 |------|------|------------------|--------|
 | **0** | Scaffolding, toolchain, cipher-correct DB open, differential harness | tier-1 proven | **substantially done** |
 | **1** | Pure functions (scoring, sizing, remaps, budget math) | tier-1 exact | **done** |
-| **2** | Data layer: repos, the writer-task model, per-DB partitioned apply | tier-2 structural DB diff | in progress — `folders` + `tags` + `text_replacement_rules` round-trip green ([`phase-2-onramp.md`](./phase-2-onramp.md)); repo-by-repo |
+| **2** | Data layer: repos, the writer-task model, per-DB partitioned apply | tier-2 structural DB diff | in progress — `folders` + `tags` + `text_replacement_rules` + `prompt_templates` round-trip green ([`phase-2-onramp.md`](./phase-2-onramp.md)); repo-by-repo |
 | **3** | Services / engine: memory gate, chat orchestration, enclave `step()` | tier-2 + tier-3 mocked-LLM | not started |
 | **4** | Transports (Tauri/uniffi/axum) + Angular UI | end-to-end | not started |
 
@@ -79,7 +79,11 @@ compact JSON in schema field order), and the `nameLower` derivation, plus the
 `TextReplacementRuleConflictError`). It adds a real INTEGER number column
 (`sortOrder`) and two boolean columns, and brought the canonical dump's
 `js_number_to_json` refinement (integer-valued REAL → JSON integer, matching JS
-`JSON.stringify`). The on-ramp's
+`JSON.stringify`). The fourth, `prompt_templates`, banks the **first JSON array
+column** (`tags` → compact JSON text) plus several nullable string columns, and
+adds the **built-in read-only guard** (a read-then-guard that *suppresses*
+`update`/`delete` on a built-in row, returning not-modified rather than
+throwing). The on-ramp's
 **generated-UUID remap + timestamp-placeholder normalization** is also built and
 green (`folders_remap_tier2_equivalence`): a parent + child created with nothing
 pinned, reconciled by a first-seen id remap in natural-key order (verifying the

@@ -1,0 +1,112 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `prompt_templates` repo (Phase-2, repo",
+    "#4 after `folders`, `tags`, `text_replacement_rules`). One committed file",
+    "drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-prompt-templates-fixture.ts +",
+    "    prompt-templates-tier2.ts) and",
+    "  - the Rust port (quilltap-harness prompt_templates tier-2 test).",
+    "",
+    "What this repo adds: the first JSON ARRAY column (`tags` -> compact JSON",
+    "text), several nullable string columns (`userId` null-for-built-in,",
+    "`description`, `category`, `modelHint`), and the BUILT-IN READ-ONLY GUARD —",
+    "`update`/`delete` refuse to mutate a row with `isBuiltIn=true`, returning a",
+    "not-modified result (v4: null / false) and leaving the row untouched.",
+    "",
+    "The guard is exercised two ways, each flagged `expectNoop: true`: an update",
+    "and a delete that both target the built-in seed row. Both sides assert the op",
+    "reported not-modified, AND the final dump must match (the built-in row stays",
+    "byte-identical; a port missing the guard would have changed/removed it).",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the other",
+    "fixtures use. It is NOT the real Friday pepper and is safe to commit.",
+    "",
+    "DETERMINISM: every id and timestamp is pinned, so both sides produce",
+    "byte-identical post-op state and the canonical dump needs ZERO normalization."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
+  "seed": [
+    {
+      "id": "1a000000-0000-4000-8000-0000000000a1",
+      "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
+      "name": "My Companion",
+      "content": "You are a warm, attentive companion.",
+      "description": "A friendly everyday companion",
+      "isBuiltIn": false,
+      "category": null,
+      "modelHint": null,
+      "tags": [
+        "aaaa1111-0000-4000-8000-00000000aaaa",
+        "bbbb2222-0000-4000-8000-00000000bbbb"
+      ],
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-0000000000b2",
+      "userId": null,
+      "name": "Sample ROMANTIC",
+      "content": "You are a romantic lead in a sweeping tale.",
+      "description": "ROMANTIC prompt optimized for CLAUDE models",
+      "isBuiltIn": true,
+      "category": "ROMANTIC",
+      "modelHint": "CLAUDE",
+      "tags": [],
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "New user template. Exercises the JSON array column (one tag), a NULL description, and non-null category/modelHint; id + timestamps pinned.",
+      "data": {
+        "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
+        "name": "Coding Helper",
+        "content": "You are a meticulous pair programmer.",
+        "description": null,
+        "isBuiltIn": false,
+        "category": "DEV",
+        "modelHint": "GPT-4O",
+        "tags": ["cccc3333-0000-4000-8000-00000000cccc"]
+      },
+      "options": {
+        "id": "3c000000-0000-4000-8000-0000000000c3",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update the user template `My Companion`: new description + REPLACE the tags array (two tags -> one different tag). updatedAt pinned, createdAt preserved.",
+      "id": "1a000000-0000-4000-8000-0000000000a1",
+      "data": {
+        "description": "A friendly companion, now with wit",
+        "tags": ["dddd4444-0000-4000-8000-00000000dddd"],
+        "updatedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "GUARD: attempt to rename the BUILT-IN seed row. Must be a no-op (v4 returns null); the row stays byte-identical.",
+      "expectNoop": true,
+      "id": "2b000000-0000-4000-8000-0000000000b2",
+      "data": {
+        "name": "Hijacked Built-in",
+        "updatedAt": "2026-03-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "delete",
+      "comment": "GUARD: attempt to delete the BUILT-IN seed row. Must be a no-op (v4 returns false); the row stays.",
+      "expectNoop": true,
+      "id": "2b000000-0000-4000-8000-0000000000b2"
+    },
+    {
+      "kind": "delete",
+      "comment": "Delete the user template `My Companion` (not built-in) — succeeds.",
+      "id": "1a000000-0000-4000-8000-0000000000a1"
+    }
+  ]
+}

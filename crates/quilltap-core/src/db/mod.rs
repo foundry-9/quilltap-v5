@@ -24,6 +24,7 @@ use serde_json::{Map, Value};
 use crate::dbkey;
 
 pub mod folders;
+pub mod prompt_templates;
 pub mod tags;
 pub mod text_replacement_rules;
 
@@ -97,6 +98,11 @@ impl Writer {
         &self,
     ) -> text_replacement_rules::TextReplacementRulesRepository<'_> {
         text_replacement_rules::TextReplacementRulesRepository::new(&self.conn)
+    }
+
+    /// The prompt-templates repository over this writer's connection.
+    pub fn prompt_templates(&self) -> prompt_templates::PromptTemplatesRepository<'_> {
+        prompt_templates::PromptTemplatesRepository::new(&self.conn)
     }
 
     /// Canonical dump of one table, in the same shape the tier-2 oracle emits:

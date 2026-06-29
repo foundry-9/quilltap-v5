@@ -324,6 +324,64 @@ QT_FIXTURE_TRR=/tmp/qt-trr-fixture.db \
   cargo test -p quilltap-harness --test text_replacement_rules_tier2_equivalence
 ```
 
+### `prompt_templates` (repo #4, 2026-06-29)
+
+The fourth repo round-trips green (`prompt_templates_tier2_equivalence`). Plain
+`AbstractBaseRepository` (its `userId` is nullable — built-in templates have
+`userId = null`). Scope is `create`/`update`/`delete`; the repo's built-in
+*seeding* is a startup concern, not a CRUD op, and is skipped. It banks two new
+things:
+
+- **The first JSON array column.** `tags: z.array(UUIDSchema)` — v4's
+  `prepareForStorage` `JSON.stringify`s an array, so it stores as compact JSON
+  text (`["id1","id2"]`, `[]` when empty). Reproduced with `serde_json::to_string`
+  of a `Vec<String>`. Unlike the `tags.visualStyle` **object** column, arrays are
+  order-preserving, so there is no key-order subtlety — the only requirement is
+  compact (no-whitespace) output, which both `JSON.stringify` and
+  `serde_json::to_string` produce. The corpus exercises it on create and on
+  update (replacing a two-element array with a different one).
+- **Several nullable string columns** (`userId`, `description`, `category`,
+  `modelHint`). `folders` had one nullable column; this is the first with
+  several, including the null-for-built-in `userId`. `None` → SQL NULL, `Some` →
+  text; the corpus covers both null and present per column.
+
+**The built-in read-only guard (new behavior).** v4's `update`/`delete` first
+`findById`, and if the row is built-in (`isBuiltIn === true`) they refuse —
+`update` returns `null`, `delete` returns `false` — leaving the row untouched.
+This is a read-then-guard pattern like `text_replacement_rules`' conflict check,
+but it **suppresses** the op (returns a not-modified result) rather than
+throwing. The port reads only `isBuiltIn` for the target (behaviorally identical
+to v4's full `findById` for the guard outcome on valid data) and returns
+`Ok(false)` for both "not found" and "built-in" — the two cases v4 collapses to
+`null` / `false`. The harness exercises it two ways via an `expectNoop` flag: an
+update and a delete that both target the built-in seed row. Both sides assert the
+op reported not-modified, AND the final dump confirms the built-in row stayed
+byte-identical (a port missing the guard would have changed/removed it). Ids +
+timestamps pinned → zero normalization.
+
+Deferred (not in the corpus): clearing a nullable column **to NULL** via
+`update` (the patch models a provided field as "set to this value"), and Zod's
+`tags` / `isBuiltIn` create defaults (the corpus supplies both explicitly).
+
+Run (Node 24, from the v4 checkout):
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin
+cd ~/source/quilltap-server
+
+QT_FIXTURE_OUT=/tmp/qt-prompt-templates-fixture.db \
+  $N/npx tsx ~/source/quilltap-v5/harness/oracle/fixtures/build-prompt-templates-fixture.ts
+
+QT_FIXTURE_PROMPT_TEMPLATES=/tmp/qt-prompt-templates-fixture.db \
+  $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/prompt-templates-tier2.ts \
+  > /tmp/oracle-prompt-templates.ndjson
+
+cd ~/source/quilltap-v5
+QT_ORACLE_PROMPT_TEMPLATES=/tmp/oracle-prompt-templates.ndjson \
+QT_FIXTURE_PROMPT_TEMPLATES=/tmp/qt-prompt-templates-fixture.db \
+  cargo test -p quilltap-harness --test prompt_templates_tier2_equivalence
+```
+
 ### The remap case — minted ids + timestamps (2026-06-29)
 
 `folders` and `tags` above pin every id and timestamp (the strongest,

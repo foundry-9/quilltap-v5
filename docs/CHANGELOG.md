@@ -189,4 +189,26 @@ tier-2 case):
   which SQLite stores as an 8-byte float) matches the oracle, where
   better-sqlite3 hands JS a `Number` and `JSON.stringify` drops the `.0`. First
   exercised by `text_replacement_rules`' `sortOrder`.
+- `prompt_templates` repo (`quilltap-core::db::prompt_templates`): `create`,
+  `update`, and `delete` ported from v4's `PromptTemplatesRepository` (built-in
+  *seeding* is a startup concern, out of scope). Widens the tier-2 marshaling
+  surface with the **first JSON array column** (`tags: z.array(UUIDSchema)` →
+  compact JSON text, `["id"]` / `[]`; reproduced via `serde_json::to_string` of a
+  `Vec<String>` — arrays are order-preserving, so no key-order subtlety) and
+  several **nullable string columns** (`userId` null-for-built-in, `description`,
+  `category`, `modelHint`). Adds the **built-in read-only guard**: `update`/
+  `delete` read the target's `isBuiltIn` and refuse to mutate a built-in row,
+  returning a not-modified result (`Ok(false)`; v4's `null` / `false`) rather
+  than throwing — a read-then-guard pattern that suppresses the op instead of
+  raising. Plain `AbstractBaseRepository` (nullable `userId`).
+- Harness: tier-2 differential `prompt_templates_tier2_equivalence` plus its
+  fixture builder + `prompt-templates-tier2` oracle case, driven by the committed
+  `harness/oracle/fixtures/prompt-templates-tier2.json`. The op sequence
+  exercises the array column on create and on update (replacing the array), the
+  nullable columns (null vs present), and the guard two ways via an `expectNoop`
+  flag — an update and a delete that both target the built-in seed row; both
+  sides assert the op reported not-modified (Rust `Ok(false)`; oracle `null` /
+  `false`) and the final-state dump confirms the built-in row stayed
+  byte-identical. Ids + timestamps pinned → zero normalization. Round-trips green
+  (`QT_ORACLE_PROMPT_TEMPLATES` + `QT_FIXTURE_PROMPT_TEMPLATES`, skip-if-unset).
 
