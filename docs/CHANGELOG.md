@@ -90,4 +90,18 @@ ops), built as a thin vertical slice over the `folders` repo:
   explicit `updatedAt` on update), so the dump needs zero normalization — the
   strongest tier-2 form. The id-remap / timestamp-placeholder fallbacks are
   reserved for later repos that cannot take injected ids/clocks.
+- Rust DB layer (`quilltap-core::db`): the writable cipher-correct open (key
+  pragma first, then `foreign_keys = ON` + `journal_mode = TRUNCATE`), the
+  single-writer `Writer` that solely holds the RW connection, the `folders`
+  repo's `create` + `update` ported from v4, and a canonical `dump_table_json`
+  matching the oracle's shape.
+- Build: the SQLite3MultipleCiphers amalgamation build (`build.rs` + `vendor/`)
+  moved from the probe into `quilltap-core`, which now links the ChaCha20/sqleet
+  library for the whole workspace; the workspace `rusqlite` dependency switched
+  off `bundled-sqlcipher` to the amalgamation (`buildtime_bindgen`). The
+  throwaway `sqlcipher-probe` / `sqlite3mc-probe` crates are retired.
+- Harness: tier-2 differential test `folders_tier2_equivalence` — copies the
+  same seed fixture, runs the Rust ops, structural-diffs the dump against the
+  oracle NDJSON (`QT_ORACLE_FOLDERS` + `QT_FIXTURE_FOLDERS`, skip-if-unset).
+  The `folders` repo round-trips green.
 

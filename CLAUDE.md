@@ -48,12 +48,14 @@ pragma, so it uses the default cipher of `better-sqlite3-multiple-ciphers`:
 `chacha20`).
 
 - **Do NOT use `rusqlite` + `bundled-sqlcipher`** — it is AES-only and returns
-  `NotADatabase` on every real Quilltap DB. (The throwaway `sqlcipher-probe`
-  crate exists only to demonstrate this; do not build the real DB layer on it.)
+  `NotADatabase` on every real Quilltap DB. (The retired `sqlcipher-probe` crate
+  demonstrated this in Phase 0; don't reintroduce a bundled-sqlcipher feature.)
 - The real DB layer links **SQLite3MultipleCiphers** (utelle), version matching
   what v4 bundles (**2.3.5**, on SQLite 3.53.2 in the matching amalgamation),
-  opened with its default sqleet cipher — no `cipher=` pragma needed. See
-  `sqlite3mc-probe/build.rs` for the working amalgamation build.
+  opened with its default sqleet cipher — no `cipher=` pragma needed. The
+  amalgamation is compiled by `crates/quilltap-core/build.rs` (vendored under
+  `crates/quilltap-core/vendor/`) and linked as `sqlite3` for the whole
+  workspace; the `db` module is the first consumer.
 - **Two different ciphers — never conflate:** the `.dbkey` *file* wraps the
   pepper with **AES-256-GCM + PBKDF2** (that part of v4's docs is right; ported
   in `quilltap-core::dbkey`). The *databases* are **ChaCha20**.
@@ -123,21 +125,20 @@ explicitly.
 Cargo.toml                 # workspace root (members = crates/*)
 rust-toolchain.toml        # pinned channel 1.96.0
 crates/
-  quilltap-core/           # the portable engine (lib). Modules: dbkey,
-                           #   memory_weighting (more land here per phase).
-  quilltap-harness/        # differential tests vs the v4 oracle.
-  sqlcipher-probe/         # THROWAWAY — proves bundled-sqlcipher is wrong.
-  sqlite3mc-probe/         # real-cipher probe; build.rs compiles the
-                           #   SQLite3MC amalgamation (vendor/*.c,*.h committed).
+  quilltap-core/           # the portable engine (lib). Modules: dbkey, db
+                           #   (cipher-correct DB layer), memory_weighting, …
+                           #   build.rs + vendor/ compile & link the SQLite3MC
+                           #   amalgamation for the whole workspace.
+  quilltap-harness/        # differential tests vs the v4 oracle (tier-1 + tier-2).
   (future) quilltap-cli, quilltap-tauri
 harness/oracle/            # Node/tsx bridge driving v4's real lib/ code.
 apps/web/                  # (future) Angular 21 SPA.
 docs/v4/                   # mirror of the v4 server docs (reference only).
 ```
 
-The two probe crates are scaffolding — once the real DB layer adopts the
-amalgamation build, fold the open-real-DB logic into `quilltap-harness` and
-delete them.
+The two Phase-0 probe crates (`sqlcipher-probe`, `sqlite3mc-probe`) have been
+retired: the real DB layer in `quilltap-core` now owns the amalgamation build,
+and their findings are recorded here and in `docs/developer/porting/phase-0.md`.
 
 ## Working environment
 
@@ -264,9 +265,16 @@ deferred to when the ~30 Phase-2/3 `localeCompare` sites land, so it is made
 once, holistically — the realistic version/tool-name corpora coincide with
 code-unit order, so nothing shipped so far depends on it.
 
-**Also remaining — the Phase-2 on-ramp** (scoped in
-`docs/developer/porting/phase-2-onramp.md`): the tier-2 DB-state oracle
-(structural diff, normalizing timestamps / generated UUIDs via remap / LLM text)
-and its fixtures (synthetic seed for the pilot; the real-snapshot sanitizer for
-breadth later). Once one repo round-trips green through it, Phase 2 → 3 → 4
-proceed per the boundary doc.
+**Phase-2 on-ramp (tier-2 DB-state oracle): the pilot round-trips green.** The
+`folders` repo now round-trips green through the tier-2 harness: both v4 and the
+Rust port run the same create + update on the same seed fixture (synthetic,
+test-pepper-keyed) and the canonical `folders` dumps match byte-for-byte (ids +
+timestamps pinned both sides → zero normalization). This established the
+machinery: `quilltap-core`'s `db` module (the writable ChaCha20 open + the
+single-writer `Writer` + `FoldersRepository` create/update + canonical dump),
+the amalgamation build relocated into core (probes retired), the TS oracle
+(`harness/oracle/{fixtures,cases}/folders-tier2*`), and the harness diff test.
+Remaining on-ramp breadth: the generated-UUID remap / timestamp-placeholder
+normalization (only needed for repos that can't take injected ids/clocks), the
+`WriteBatch` partitioned-apply path, and the real-snapshot fixture sanitizer.
+From here Phase 2 is the same mechanical loop, repo by repo.

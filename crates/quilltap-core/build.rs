@@ -1,6 +1,8 @@
 //! Compile the SQLite3MultipleCiphers amalgamation and link it as `sqlite3`,
 //! so rusqlite/libsqlite3-sys bind against a ChaCha20/sqleet-capable library
-//! instead of stock SQLite or AES-only SQLCipher.
+//! instead of stock SQLite or AES-only SQLCipher. This is the workspace's single
+//! source of the linked `sqlite3` — every crate that depends on quilltap-core
+//! (the harness, future cli/tauri) inherits the correct cipher from here.
 //!
 //! HOW TO SUPPLY THE AMALGAMATION (pick one; the build errors with guidance if
 //! neither is present):
@@ -10,7 +12,7 @@
 //!      https://github.com/utelle/SQLite3MultipleCiphers/releases
 //!      (use a 2.3.x release to match better-sqlite3-multiple-ciphers@12.11.1),
 //!      unzip, and drop `sqlite3mc_amalgamation.c` + `sqlite3mc_amalgamation.h`
-//!      into `crates/sqlite3mc-probe/vendor/`.
+//!      into `crates/quilltap-core/vendor/`.
 //!
 //!   B) Point at an existing copy:
 //!      SQLITE3MC_AMALGAMATION_DIR=/path/to/dir   (containing the two files)
@@ -32,7 +34,7 @@ fn main() {
              Fix: download sqlite3mc-2.3.x-amalgamation.zip from\n\
              https://github.com/utelle/SQLite3MultipleCiphers/releases\n\
              and unzip sqlite3mc_amalgamation.c + .h into\n\
-             crates/sqlite3mc-probe/vendor/  (or set SQLITE3MC_AMALGAMATION_DIR).\n",
+             crates/quilltap-core/vendor/  (or set SQLITE3MC_AMALGAMATION_DIR).\n",
             c_file.display()
         );
     }

@@ -173,9 +173,11 @@ Design choices that earned their place:
   import the **real** `lib/memory/...` code from the `quilltap-server` checkout
   (run via `npx tsx` from there so `@/` resolves). If the oracle drifts from the
   shipping app, the harness lies — so it must call the same code the app calls.
-- **The probe crates are scaffolding.** Once the real DB layer adopts the
-  amalgamation build, fold `sqlite3mc-probe`'s open-real-DB logic into
-  `quilltap-harness` and delete both probes.
+- **The probe crates were scaffolding — now retired (Phase 2 on-ramp).** The
+  real DB layer (`quilltap-core::db`) adopted the amalgamation build (moved into
+  `crates/quilltap-core/{build.rs,vendor/}`), so `sqlcipher-probe` and
+  `sqlite3mc-probe` were deleted. The tree above is the Phase-0 snapshot; the
+  findings they proved live in this doc and CLAUDE.md.
 
 ---
 

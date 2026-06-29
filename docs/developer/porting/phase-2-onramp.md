@@ -198,9 +198,17 @@ place.
 5. **Apply-path scope**: test repos directly first, or go straight to the
    `WriteBatch` partitioned-apply path?
 
-## Definition of done for the on-ramp
+## Definition of done for the on-ramp — met (2026-06-28)
 
-The tier-2 harness exists and one repo round-trips green through it, with a
-documented normalization spec and a reusable fixture. At that point Phase 2 is
-"port the next repo and add its tier-2 case" — the same mechanical loop Phase 1
-ran on tier-1.
+The tier-2 harness exists and the `folders` repo round-trips green through it
+(`folders_tier2_equivalence`), with the normalization spec documented (none —
+ids + timestamps pinned both sides) and a reusable synthetic fixture. The Rust
+DB layer landed in `quilltap-core::db` (writable ChaCha20 open, single-writer
+`Writer`, `FoldersRepository` create/update, canonical dump); the amalgamation
+build moved into core and the Phase-0 probes were retired.
+
+Phase 2 proper is now the same mechanical loop Phase 1 ran on tier-1: **port the
+next repo and add its tier-2 case.** The remaining on-ramp *breadth* (not
+blocking) is the generated-UUID remap + timestamp-placeholder normalization (for
+repos that can't take injected ids/clocks), the `WriteBatch` partitioned-apply
+path, and the real-snapshot fixture sanitizer.

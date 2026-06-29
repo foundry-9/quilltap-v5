@@ -104,6 +104,7 @@ pub mod cheap_model;
 pub mod context_budget;
 pub mod context_compression;
 pub mod context_summary;
+pub mod db;
 pub mod dbkey;
 pub mod embedding_blob;
 pub mod embedding_vector;

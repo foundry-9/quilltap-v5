@@ -339,8 +339,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "133c182a6a2c87864fe97778797e46c7e999672690dc9fa3ee8e241aa4a9c13f"
 dependencies = [
  "bindgen",
- "cc",
- "openssl-sys",
  "pkg-config",
  "vcpkg",
 ]
@@ -386,28 +384,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 
 [[package]]
-name = "openssl-src"
-version = "300.6.1+3.6.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46eb8fb9fb3b61ce1c0f8a026c4c1a0714d3a9e138e7fbde78753ce2babc3846"
-dependencies = [
- "cc",
-]
-
-[[package]]
-name = "openssl-sys"
-version = "0.9.117"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b47e7e6bb2c38cd930d25a23b40fa52e068c10e85f3e03a7f5ba5aaca5713695"
-dependencies = [
- "cc",
- "libc",
- "openssl-src",
- "pkg-config",
- "vcpkg",
-]
-
-[[package]]
 name = "pbkdf2"
 version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -446,10 +422,11 @@ dependencies = [
 
 [[package]]
 name = "quilltap-core"
-version = "0.0.18"
+version = "0.0.19"
 dependencies = [
  "aes",
  "aes-gcm",
+ "cc",
  "hex",
  "hmac",
  "pbkdf2",
@@ -463,7 +440,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-harness"
-version = "0.0.18"
+version = "0.0.19"
 dependencies = [
  "quilltap-core",
  "serde",
@@ -627,23 +604,6 @@ name = "smallvec"
 version = "1.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
-
-[[package]]
-name = "sqlcipher-probe"
-version = "0.0.0"
-dependencies = [
- "quilltap-core",
- "rusqlite",
-]
-
-[[package]]
-name = "sqlite3mc-probe"
-version = "0.0.0"
-dependencies = [
- "cc",
- "quilltap-core",
- "rusqlite",
-]
 
 [[package]]
 name = "subtle"

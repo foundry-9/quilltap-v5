@@ -1,8 +1,9 @@
 [package]
 name = "quilltap-core"
-version = "0.0.18"
+version = "0.0.19"
 edition = "2021"
 publish = false
+build = "build.rs"
 
 # The portable engine. First real module: `dbkey` — reads and decrypts the
 # `quilltap.dbkey` file exactly as lib/startup/dbkey.ts does, yielding the
@@ -19,12 +20,10 @@ publish = false
 
 [dependencies]
 # DB cipher: SQLite3MultipleCiphers 2.3.5 (sqleet/ChaCha20 default), linked via
-# the amalgamation compiled in sqlite3mc-probe/build.rs. VERIFIED 2026-06-27:
-# opened Friday (37 tables, 33 characters, 20320 memories) with cipher=chacha20.
+# the amalgamation compiled in THIS crate's build.rs (vendor/). VERIFIED
+# 2026-06-27: opened Friday (37 tables, 33 chars, 20320 memories) cipher=chacha20.
 # Do NOT use rusqlite's bundled-sqlcipher (AES-only → NotADatabase on real DBs).
-# The real DB layer should adopt the same amalgamation build as the probe.
-# `rusqlite` here is still the bundled probe dep; the dbkey module itself needs
-# no SQLite. See docs .../features/native-port-phase-0.md.
+# The `db` module is the first consumer; `dbkey` itself needs no SQLite.
 rusqlite = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -43,6 +42,11 @@ pbkdf2 = "0.12"           # PBKDF2
 sha2 = "0.10"             # SHA-256 / SHA-512 (digest + pepper hash)
 hmac = "0.12"             # HMAC for PBKDF2
 hex = "0.4"               # hex <-> bytes for the .dbkey fields
+
+[build-dependencies]
+# Compiles the SQLite3MC amalgamation (vendor/sqlite3mc_amalgamation.c) so
+# libsqlite3-sys links the ChaCha20/sqleet-capable library. See build.rs.
+cc = "1"
 
 [dev-dependencies]
 tempfile = "3"
