@@ -560,16 +560,41 @@ instances (non-ASCII user data), each must be closed or consciously waived.
    exact. Ordering only — same family as items 1–2 but for *object keys inside a
    JSON cell*, not row/collation order.
 
-6. **Mount-index / llm-logs sibling-DB partitions — machinery gap (NOT a
-   correctness seam).** Every repo ported through repo #20 lives in the **main**
-   database, so the tier-2 machinery (the fixture builder's `ensureCollection`, the
-   oracle case's `rawQuery`, and the Rust `Writer::open_writable`) targets exactly
-   one DB file. But several repos route to a **dedicated sibling DB** via their own
-   `getCollection` override: `doc_mount_points` / `doc_mount_folders` /
-   `project_doc_mount_links` / `group_doc_mount_links` / `group_character_members`
-   use `getRawMountIndexDatabase` (`quilltap-mount-index.db`), and `llm_logs` uses
-   the llm-logs DB. Porting any of these first needs a one-time extension: the
-   fixture builder + oracle must create/read the table in the sibling DB, and the
-   Rust side must open that file. Best done as its own focused slice (it then
-   unlocks ~5 mount-index repos in parallel), not folded into a main-DB batch. Not
-   a correctness risk for what's shipped — purely unported coverage.
+6. **Mount-index sibling-DB partitions — machinery gap (RESOLVED for the
+   mount-index DB; llm-logs still pending).** Repos through #20 all lived in the
+   **main** database. Several repos instead route to a **dedicated sibling DB** via
+   their own `getCollection` override: the five mount-index repos
+   (`group_character_members`, `project_doc_mount_links`, `group_doc_mount_links`,
+   `doc_mount_folders`, `doc_mount_points`) use `getRawMountIndexDatabase`
+   (`quilltap-mount-index.db`), and `llm_logs` uses the llm-logs DB.
+
+   **The mount-index half is now built and green** (the "mount-index sibling-DB
+   slice"). The extension turned out to be **TS-side only** — the Rust
+   `Writer::open_writable` already opens any ChaCha20 file by path, so the
+   partition is just *which file the writer was opened against*; no Rust machinery
+   change was needed. On the oracle side:
+   - the fixture builder + oracle case point `SQLITE_MOUNT_INDEX_PATH` at the
+     fixture and `SQLITE_PATH` at a throwaway main DB (initializeDatabase stands the
+     main backend up but we never read it);
+   - seeding/ops run through v4's **real** mount-index repos, whose overridden
+     `getCollection()` creates the table in — and writes to — the mount-index DB
+     (lazy `CREATE TABLE IF NOT EXISTS` on first access — no explicit
+     `ensureCollection` needed, unlike the main-DB builders);
+   - the read-back is done through `getRawMountIndexDatabase()` **directly** (a
+     better-sqlite3 handle: `pragma('table_info')` + `prepare('SELECT *').all()`),
+     **not** `rawQuery`, which targets the main backend and would read the wrong
+     (empty) DB;
+   - the mount-index handle is flushed explicitly via `closeMountIndexSQLiteClient()`
+     before exit — the backend disconnect closes the main + llm-logs clients but
+     **not** the mount-index one. Both DBs use `journal_mode = TRUNCATE` (WAL unset),
+     so each `.db` is self-contained for the Rust `Writer` (also TRUNCATE) to reopen.
+
+   `generateCreateTable` emits **no FK constraints**, so the cross-DB refs
+   (`projectId`/`groupId`/`characterId`/`mountPointId` → rows in the main DB) are
+   plain TEXT and need no seeded parents. `doc_mount_points`'s runtime ALTER-TABLE
+   "migrations" are no-ops on a fresh schema-generated table (every column they add
+   is already in the current schema).
+
+   **Still pending:** the `llm_logs` sibling DB (the llm-logs partition) — the same
+   pattern with the llm-logs raw handle / `SQLITE_LLM_LOGS_PATH` when those repos
+   are ported.

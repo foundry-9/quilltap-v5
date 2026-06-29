@@ -347,3 +347,38 @@ tier-2 case):
     timestamp + a nullable string. Harness `embedding_status_tier2_equivalence`
     (`QT_ORACLE_EMBEDDING_STATUS` + `QT_FIXTURE_EMBEDDING_STATUS`).
 
+Phase 2 — the mount-index sibling-DB slice (the first repos NOT in the main DB).
+These tables live in v4's dedicated `quilltap-mount-index.db`. The tier-2
+machinery was extended to target a sibling DB: the fixture builder + oracle point
+`SQLITE_MOUNT_INDEX_PATH` at the fixture (with a throwaway main DB at
+`SQLITE_PATH`), seed/run through v4's real repos (whose `getCollection` override
+routes there), flush via `closeMountIndexSQLiteClient`, and read back through
+`getRawMountIndexDatabase` directly (not `rawQuery`, which targets the main
+backend). The Rust `Writer` needed no change — `open_writable` already opens any
+ChaCha20 file by path, so the partition is simply which file the writer opened.
+Five repos ported in one slice (a serial pilot, then four parallel), each with its
+own tier-2 case round-tripping green (pinned ids + timestamps → zero
+normalization):
+
+  - `group_character_members` (`quilltap-core::db::group_character_members`): the
+    pilot — the plainest join table (`id` + two UUID-as-TEXT refs + timestamps).
+    Harness `group_character_members_tier2_equivalence`
+    (`QT_ORACLE_GROUP_CHARACTER_MEMBERS` + `QT_FIXTURE_GROUP_CHARACTER_MEMBERS`).
+  - `project_doc_mount_links` / `group_doc_mount_links`
+    (`quilltap-core::db::{project_doc_mount_links,group_doc_mount_links}`):
+    structurally identical join tables (cross-DB refs stored as plain TEXT — v4's
+    `generateCreateTable` emits no FK constraints). Harnesses
+    `project_doc_mount_links_tier2_equivalence` /
+    `group_doc_mount_links_tier2_equivalence`.
+  - `doc_mount_folders` (`quilltap-core::db::doc_mount_folders`): adds a **nullable
+    UUID** column (`parentId`, null = mount-point root) — banks both the null and
+    non-null paths. Harness `doc_mount_folders_tier2_equivalence`.
+  - `doc_mount_points` (`quilltap-core::db::doc_mount_points`): the widest of the
+    family (18 columns) — four enum TEXT columns, a boolean (`enabled`, banks 0 and
+    1), two **JSON string-array** columns (`includePatterns`/`excludePatterns`,
+    banks empty and non-empty), three nullable strings/timestamp, and three
+    **REAL-affinity int counters** (`fileCount`/`chunkCount`/`totalSizeBytes`,
+    `z.number().int()` with no min&max → REAL, integer-collapsed in the dump). Its
+    runtime ALTER-TABLE "migrations" are no-ops on a fresh schema-generated table.
+    Harness `doc_mount_points_tier2_equivalence`.
+

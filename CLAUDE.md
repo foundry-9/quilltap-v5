@@ -362,10 +362,34 @@ columns, and many nullable strings. `chat_documents` banks an enum + a boolean +
 nullable strings. `embedding_status` is the **second base-method-override repo**
 (after `tfidf_vocabulary`): v4 mints `updatedAt` unconditionally, so the port
 mints it via `clock::now_iso` and the harness placeholder-normalizes only that
-column (id / `createdAt` / payload pinned). Note: the `doc_mount_*` / `group_*`
-link tables route to a **dedicated mount-index sibling DB** (not main), so they
-await a one-time harness/Writer extension to target that partition before they can
-be ported.
+column (id / `createdAt` / payload pinned).
+
+The **mount-index sibling-DB slice** then ported the first five repos that do NOT
+live in the main DB (v4's `quilltap-mount-index.db`): `group_character_members`
+(the serial pilot), then `project_doc_mount_links`, `group_doc_mount_links`,
+`doc_mount_folders`, and `doc_mount_points` in parallel — each round-trips green
+(`group_character_members_tier2_equivalence`,
+`project_doc_mount_links_tier2_equivalence`,
+`group_doc_mount_links_tier2_equivalence`,
+`doc_mount_folders_tier2_equivalence`, `doc_mount_points_tier2_equivalence`). The
+machinery extension was **TS-side only**: the Rust `Writer::open_writable` already
+opens any ChaCha20 file by path, so the "mount-index" partition is just *which file
+the writer was opened against* — no Rust change. The fixture builder + oracle point
+`SQLITE_MOUNT_INDEX_PATH` at the fixture (with a throwaway main DB at `SQLITE_PATH`),
+seed/run through v4's real mount-index repos (whose `getCollection` override creates
+the table there on first access), flush via `closeMountIndexSQLiteClient`, and read
+back through `getRawMountIndexDatabase()` **directly** (not `rawQuery`, which targets
+the main backend). `generateCreateTable` emits no FK constraints, so the cross-DB
+refs are plain TEXT needing no seeded parents. The three join tables
+(`group_character_members` / `project_doc_mount_links` / `group_doc_mount_links`) are
+the plainest shape (`id` + two UUID-as-TEXT refs + timestamps); `doc_mount_folders`
+banks a **nullable-UUID** column (`parentId`, null = root); `doc_mount_points` is the
+**widest of the family** (18 columns — four enum TEXT, a boolean, two JSON
+string-arrays banking empty + non-empty, three nullable strings/timestamp, three
+**REAL-affinity int counters** integer-collapsed in the dump), and its runtime
+ALTER-TABLE migrations are no-ops on a fresh schema-generated table. The remaining
+sibling partition is **`llm_logs`** (the llm-logs DB) — same pattern, still
+unported. See "Deferred seams" item 6 in `docs/developer/porting/phase-2-onramp.md`.
 
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green

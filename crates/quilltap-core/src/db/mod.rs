@@ -28,13 +28,18 @@ pub mod chat_documents;
 pub mod connection_profiles;
 pub mod conversation_annotations;
 pub mod conversation_chunks;
+pub mod doc_mount_folders;
+pub mod doc_mount_points;
 pub mod embedding_profiles;
 pub mod embedding_status;
 pub mod files;
 pub mod folders;
+pub mod group_character_members;
+pub mod group_doc_mount_links;
 pub mod help_docs;
 pub mod image_profiles;
 pub mod plugin_config;
+pub mod project_doc_mount_links;
 pub mod prompt_templates;
 pub mod provider_models;
 pub mod roleplay_templates;
@@ -146,6 +151,42 @@ impl Writer {
     /// The folders repository over this writer's connection.
     pub fn folders(&self) -> folders::FoldersRepository<'_> {
         folders::FoldersRepository::new(&self.conn)
+    }
+
+    /// The group-character-members repository over this writer's connection.
+    ///
+    /// In v4 this table lives in the dedicated mount-index sibling DB; here that
+    /// is simply which file the writer was opened against (see the module docs).
+    pub fn group_character_members(
+        &self,
+    ) -> group_character_members::GroupCharacterMembersRepository<'_> {
+        group_character_members::GroupCharacterMembersRepository::new(&self.conn)
+    }
+
+    /// The group-doc-mount-links repository over this writer's connection.
+    /// Mount-index sibling-DB table (see [`Self::group_character_members`]).
+    pub fn group_doc_mount_links(&self) -> group_doc_mount_links::GroupDocMountLinksRepository<'_> {
+        group_doc_mount_links::GroupDocMountLinksRepository::new(&self.conn)
+    }
+
+    /// The project-doc-mount-links repository over this writer's connection.
+    /// Mount-index sibling-DB table (see [`Self::group_character_members`]).
+    pub fn project_doc_mount_links(
+        &self,
+    ) -> project_doc_mount_links::ProjectDocMountLinksRepository<'_> {
+        project_doc_mount_links::ProjectDocMountLinksRepository::new(&self.conn)
+    }
+
+    /// The doc-mount-folders repository over this writer's connection.
+    /// Mount-index sibling-DB table (see [`Self::group_character_members`]).
+    pub fn doc_mount_folders(&self) -> doc_mount_folders::DocMountFoldersRepository<'_> {
+        doc_mount_folders::DocMountFoldersRepository::new(&self.conn)
+    }
+
+    /// The doc-mount-points repository over this writer's connection.
+    /// Mount-index sibling-DB table (see [`Self::group_character_members`]).
+    pub fn doc_mount_points(&self) -> doc_mount_points::DocMountPointsRepository<'_> {
+        doc_mount_points::DocMountPointsRepository::new(&self.conn)
     }
 
     /// The provider-models repository over this writer's connection.
