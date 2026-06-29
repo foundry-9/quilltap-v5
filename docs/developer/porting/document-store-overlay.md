@@ -210,9 +210,19 @@ bottom-up:
    `ensureOfficialStore` adopt branch (step 2 of its resolution order) is the only
    piece deferred — the corpus always provisions fresh; it lands with the
    startup-backfill slice.
-4. **`projects`** — same engine + the larger 16-key bag + the roster ops +
-   in-memory `findByCharacterId`. Adds the `ensure-project-store` provisioning
-   (find/adopt/create the official mount, dedup the name).
+4. **`projects`** — **DONE** (2026-06-29, `quilltap-core::db::projects` +
+   `store_backed`). Same engine + the larger 16-key bag + the roster ops +
+   in-memory `findByCharacterId`. This step generalized the slim-row plumbing +
+   provisioning into `StoreBackedRepository<E: StoreEntity>` (v4's
+   `AbstractStoreBackedRepository`): `StoreEntity` gained `slim_table` /
+   `store_name_prefix` / `find_store_links` / `link_store`, and
+   `ensure_official_store` became generic over `E`. `groups` was refactored onto
+   the generic base (still green); `projects` is the second instance. Green via
+   `projects_tier2_equivalence` — banks the 16-key `properties.json` bag
+   byte-exact (five materialized Zod defaults in schema order + eleven
+   skip-if-absent optionals) and the roster ops (`characterRoster` array RMW,
+   `allowAnyCharacter` bool RMW). The `ensure-project-store` adopt branch rides
+   the same step-2 deferral as groups (the corpus always provisions fresh).
 5. **`stableUuidFromString`** (tier-1) — the pure leaf the character vault needs.
 6. **`characters`** vault overlay — the nine-target projection over JSON +
    hand-built strings (defer the YAML files if needed by pinning the corpus).

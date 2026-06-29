@@ -518,9 +518,33 @@ orphan-on-rewrite, and (second test) the keystone throw-vs-drop asymmetry.
 **Tracked deferrals:** the `ensureOfficialStore` **adopt branch** (startup-heal of
 a hand-linked store — corpus always provisions fresh), the property/`state`
 **null-vs-absent + multi-key insertion order** (open-JSON seam — corpus kept
-`{}`/single-key), and the `projects` generalization (a larger bag + roster ops).
-Next in the slice: `projects` (step 4), then `stableUuidFromString` + the
-character/wardrobe vault family.
+`{}`/single-key).
+
+**`projects` (build step 4) + the store-backed generalization** are ported and
+green (`projects_tier2_equivalence`). The slim-row plumbing + provisioning that
+`groups` proved is now the generic `quilltap-core::db::store_backed`
+(`StoreBackedRepository<E: StoreEntity>` = v4's `AbstractStoreBackedRepository`):
+the `StoreEntity` trait gained `slim_table` / `store_name_prefix` /
+`find_store_links` / `link_store`, and `ensure_official_store` became generic over
+`E`. `GroupsRepository` was refactored to a thin wrapper over the generic base
+(re-verified green); `quilltap-core::db::projects` is the second instance.
+`ProjectsRepository` adds the **16-key `properties.json` bag**
+(`ProjectPropertiesSchema` — five Zod-`.default` keys ALWAYS materialized in schema
+order, eleven `.nullable().optional()` → `skip_serializing_if`) and the
+**character-roster ops** (`addToRoster` / `removeFromRoster` /
+`setAllowAnyCharacter` / `canCharacterParticipate` / `findByCharacterId`), each a
+`properties.json` RMW through `update` (or an in-memory `findAll` filter). The
+differential drives v4's REAL `repos.projects.create`/`.update`/roster ops and
+diffs the same seven tables (slim `projects` row + the store tables +
+`project_doc_mount_links`) in the shared-cross-db-id-map remap form
+(`chunkCount` pinned, `doc_mount_chunks` excluded). Banks a rich create (roster +
+color + `defaultImageProfileId` + `backgroundDisplayMode`, the optional keys
+interleaved with the materialized defaults in schema order — byte-exact), a
+minimal create (the five defaults only), the `characterRoster` array RMW
+(add/remove preserving the other fifteen keys), the `allowAnyCharacter` bool RMW,
+and a DB-only `name` update. Next in the slice: `stableUuidFromString` (tier-1
+leaf) + the heavier character/wardrobe vault family (YAML + ICU/case-mapping
+decisions).
 
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green

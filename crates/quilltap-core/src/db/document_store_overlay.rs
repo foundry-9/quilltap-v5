@@ -95,6 +95,26 @@ pub trait StoreEntity {
     /// `.parse`: unknown keys stripped). `Err` carries the validation message,
     /// surfaced as the `Unavailable` detail.
     fn parse_properties(value: &Value) -> Result<Self::Properties, String>;
+
+    // ── store-backed repository / provisioning wiring ──────────────────────
+    // The slim-row table, the auto-created store's name prefix, and the
+    // entity↔store link operations are the only things that differ between the
+    // store-backed entities (groups, projects). The generic
+    // [`super::store_backed::StoreBackedRepository`] + provisioning use these.
+
+    /// The slim DB table name in the MAIN db, e.g. `"groups"` / `"projects"`.
+    fn slim_table() -> &'static str;
+
+    /// Name prefix for a freshly-minted official store, e.g. `"Group Files: "`.
+    fn store_name_prefix() -> &'static str;
+
+    /// All mount-point ids linked to this entity (the entity↔store link table in
+    /// the MOUNT-INDEX db). Provisioning's adopt branch consults it.
+    fn find_store_links(mount: &Connection, entity_id: &str) -> Result<Vec<String>, DbError>;
+
+    /// Link a freshly created store to the entity (find-or-create, idempotent).
+    fn link_store(mount: &Connection, entity_id: &str, mount_point_id: &str)
+        -> Result<(), DbError>;
 }
 
 /// The error the overlay raises. `Unavailable` is the keystone-broken signal

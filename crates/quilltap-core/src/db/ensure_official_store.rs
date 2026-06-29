@@ -1,12 +1,14 @@
 //! Official document-store provisioning — v4's `ensureOfficialStore`
-//! (`lib/mount-index/ensure-official-store.ts`) + the group wrapper
-//! `ensureGroupOfficialStore`, plus the pure naming leaf
-//! `nextUniqueMountPointName`.
+//! (`lib/mount-index/ensure-official-store.ts`) ported as a Rust generic over a
+//! [`StoreEntity`], plus the pure naming leaf `nextUniqueMountPointName`. The
+//! group/project wrappers (`ensureGroupOfficialStore` / `ensureProjectOfficialStore`)
+//! collapse into one call: the only per-entity differences (the store-name
+//! prefix and the entity↔store link table) are expressed through `StoreEntity`.
 //!
 //! Find / adopt / create a store-backed entity's canonical "official" document
 //! store and persist the FK on the slim row. Idempotent. The slim entity row
-//! lives in the **main** DB (`groups`); the mount point + link live in the
-//! **mount-index** DB — so provisioning spans both connections.
+//! lives in the **main** DB; the mount point + link live in the **mount-index**
+//! DB — so provisioning spans both connections.
 //!
 //! ## Resolution order (v4)
 //!
@@ -18,28 +20,27 @@
 //! runs BEFORE the store files exist, so the overlay-applying `update()` would
 //! throw `Unavailable` on its closing re-read.
 //!
-//! ## Scope for the groups pilot
+//! ## Scope
 //!
-//! `create()` always provisions fresh (it nulls any incoming FK), so the groups
-//! tier-2 differential exercises **step 3** end-to-end (plus step 1's existence
-//! guard via the re-ensure idempotency). **Step 2 (adopt a hand-linked store)**
-//! is the startup-heal heuristic (`pickPrimaryGroupStore`) and is NOT ported here
-//! — it needs a richer `doc_mount_points` read (name/mountType/storeType) and
-//! lands with the startup-backfill slice; the corpus never has a pre-existing
-//! link, so nothing in the verified path depends on it. This is a tracked
-//! deferral, not a stub on a reachable path.
+//! `create()` always provisions fresh (it nulls any incoming FK), so the tier-2
+//! differentials exercise **step 3** end-to-end (plus step 1's existence guard via
+//! re-ensure idempotency). **Step 2 (adopt a hand-linked store)** is the
+//! startup-heal heuristic (`pickPrimary*Store`) and is NOT ported here — it needs
+//! a richer `doc_mount_points` read (name/mountType/storeType) and lands with the
+//! startup-backfill slice; the corpora never have a pre-existing link, so nothing
+//! in the verified path depends on it. A tracked deferral, not a stub on a
+//! reachable path.
 
 use std::collections::HashSet;
 
 use rusqlite::Connection;
 
-use super::doc_mount_points::{CreateOptions as DmpCreateOptions, DmpCreate};
-use super::groups::GroupsRepository;
+use super::doc_mount_points::{
+    CreateOptions as DmpCreateOptions, DmpCreate, DocMountPointsRepository,
+};
+use super::document_store_overlay::StoreEntity;
+use super::store_backed::StoreBackedRepository;
 use super::DbError;
-
-/// The name prefix for a group's auto-created own store (v4
-/// `GROUP_OWN_STORE_NAME_PREFIX`).
-pub const GROUP_OWN_STORE_NAME_PREFIX: &str = "Group Files: ";
 
 /// Returns `desired` if absent from `taken`, else the first of `desired (2)`,
 /// `desired (3)`, … that is absent — v4 `nextUniqueMountPointName`. Numbering
@@ -59,27 +60,27 @@ pub fn next_unique_mount_point_name(taken: &HashSet<String>, desired: &str) -> S
     }
 }
 
-/// What [`ensure_group_official_store`] resolved/created.
+/// What [`ensure_official_store`] resolved/created.
 pub struct EnsureResult {
     pub mount_point_id: String,
     pub created: bool,
 }
 
-/// Find or create the group's canonical "group-official" document store and
-/// persist the FK on the group row (v4 `ensureGroupOfficialStore`). Returns
-/// `None` when the group row does not exist. See the module header for the
-/// resolution order and the step-2 deferral.
-pub fn ensure_group_official_store(
+/// Find or create the entity's canonical official document store and persist the
+/// FK on the slim row (v4 `ensureOfficialStore`). Returns `None` when the slim
+/// row does not exist. See the module header for the resolution order + the
+/// step-2 deferral.
+pub fn ensure_official_store<E: StoreEntity>(
     main: &Connection,
     mount: &Connection,
-    group_id: &str,
-    group_name: &str,
+    entity_id: &str,
+    entity_name: &str,
 ) -> Result<Option<EnsureResult>, DbError> {
-    let groups = GroupsRepository::new(main, mount);
+    let repo = StoreBackedRepository::<E>::new(main, mount);
 
     // Read the RAW slim row (never the overlay-applied read — the store files may
     // not exist yet). We need only existence + the current FK.
-    let Some(row) = groups.find_by_id_raw(group_id)? else {
+    let Some(row) = repo.find_by_id_raw(entity_id)? else {
         return Ok(None);
     };
     let current_fk = row
@@ -87,7 +88,7 @@ pub fn ensure_group_official_store(
         .and_then(|v| v.as_str())
         .map(str::to_string);
 
-    let points = mount_points_repo(mount);
+    let points = DocMountPointsRepository::new(mount);
 
     // 1. Existing FK still valid?
     if let Some(fk) = current_fk {
@@ -100,19 +101,20 @@ pub fn ensure_group_official_store(
         // A stale FK falls through to (re)provisioning.
     }
 
-    // 2. Adopt a hand-linked store — deferred (see module header). The corpus
-    //    never has a pre-existing link, so the create branch is taken.
+    // 2. Adopt a hand-linked store — deferred (see module header). The adopt
+    //    branch would consult `E::find_store_links` here; the corpora never have a
+    //    pre-existing link, so the create branch is always taken.
 
-    // 3. Mint a fresh `Group Files: <name>` store, link it, set the FK.
+    // 3. Mint a fresh `<prefix><name>` store, link it, set the FK.
     let trimmed = {
-        let n = group_name.trim();
+        let n = entity_name.trim();
         if n.is_empty() {
             "Untitled"
         } else {
             n
         }
     };
-    let desired = truncate_chars(&format!("{GROUP_OWN_STORE_NAME_PREFIX}{trimmed}"), 200);
+    let desired = truncate_chars(&format!("{}{trimmed}", E::store_name_prefix()), 200);
     let taken: HashSet<String> = points.find_all_names()?.into_iter().collect();
     let final_name = next_unique_mount_point_name(&taken, &desired);
 
@@ -148,20 +150,13 @@ pub fn ensure_group_official_store(
         },
     )?;
 
-    GroupDocMountLinksRepository::new(mount).link(group_id, &mount_point_id)?;
-    groups.set_official_mount_point_id(group_id, &mount_point_id)?;
+    E::link_store(mount, entity_id, &mount_point_id)?;
+    repo.set_official_mount_point_id(entity_id, &mount_point_id)?;
 
     Ok(Some(EnsureResult {
         mount_point_id,
         created: true,
     }))
-}
-
-use super::doc_mount_points::DocMountPointsRepository;
-use super::group_doc_mount_links::GroupDocMountLinksRepository;
-
-fn mount_points_repo(mount: &Connection) -> DocMountPointsRepository<'_> {
-    DocMountPointsRepository::new(mount)
 }
 
 /// `String.prototype.slice(0, n)` over UTF-16 code units would be the exact v4

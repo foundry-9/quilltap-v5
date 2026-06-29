@@ -1,33 +1,28 @@
-//! The `groups` repository — the **store-backed pilot** of the document-store
-//! overlay slice. Ports v4's `GroupsRepository` +
-//! `AbstractStoreBackedRepository` (`store-backed.repository.ts`) bound to the
-//! group overlay (`lib/groups/group-store/*`).
+//! The `groups` repository — the first **store-backed pilot** of the
+//! document-store overlay slice. A thin wrapper over the generic
+//! [`super::store_backed::StoreBackedRepository`] bound to [`GroupEntity`]
+//! (v4's `GroupsRepository`, which adds nothing to the shared base beyond its
+//! overlay binding — groups has no roster ops). The engine, the slim-row
+//! plumbing, and provisioning all live in the generic base; this module supplies
+//! only the typed `properties.json` bag + the entity wiring.
 //!
-//! A group's substantive content does NOT live in `groups` columns. The DB row
-//! is slim — `id` / `name` / `officialMountPointId` / timestamps — and everything
-//! else (`description` / `instructions` / `state` + the `properties.json` bag:
-//! `color` / `icon`) lives in the group's official document store as the four
-//! overlay files. The slim row lives in the **main** DB; the store (mount point,
-//! links, file/document/folder rows) lives in the **mount-index** DB — so this
-//! repo holds BOTH connections.
-//!
-//! Reads overlay the store ([`super::document_store_overlay`]); writes route
-//! store-resident fields to the store and strip them from the slim patch; create
-//! provisions + populates the store before returning so a freshly-created group
-//! is never storeless (the 5-step sequence: insert slim row → provision official
-//! store → set FK raw → write the four files → overlay re-read).
-//!
-//! Groups is the smallest store-backed surface (a 2-key property bag, no roster,
-//! no subclass methods), so it proves the whole engine with the least incidental
-//! marshaling; `projects` reuses the same engine with a larger bag + roster ops.
+//! A group's substantive content does NOT live in `groups` columns. The slim row
+//! (id/name/officialMountPointId/timestamps) lives in the MAIN db; the store
+//! (`color`/`icon` in `properties.json`, `description`/`instructions`/`state`)
+//! lives in the MOUNT-INDEX db. Groups is the smallest store-backed surface (a
+//! 2-key bag, no roster), so it proved the whole engine with the least incidental
+//! marshaling; `projects` reuses the same base with a 16-key bag + roster ops.
 
-use rusqlite::{params, Connection};
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use super::document_store_overlay::{self as overlay, ManagedFields, OverlayError, StoreEntity};
-use super::ensure_official_store::ensure_group_official_store;
+use super::document_store_overlay::{ManagedFields, OverlayError, StoreEntity};
+use super::group_doc_mount_links::GroupDocMountLinksRepository;
+use super::store_backed::StoreBackedRepository;
 use super::DbError;
+
+pub use super::store_backed::StoreCreateOptions as GroupCreateOptions;
 
 /// The `properties.json` bag (v4 `GroupPropertiesSchema`). Both keys are
 /// `.nullable().optional()`; serialized in schema-declaration order with
@@ -45,7 +40,7 @@ pub struct GroupProperties {
     pub icon: Option<String>,
 }
 
-/// The group's [`StoreEntity`] binding for the generic overlay engine.
+/// The group's [`StoreEntity`] binding for the generic engine + base repository.
 pub struct GroupEntity;
 
 impl StoreEntity for GroupEntity {
@@ -65,6 +60,26 @@ impl StoreEntity for GroupEntity {
         }
         serde_json::from_value(value.clone()).map_err(|e| e.to_string())
     }
+
+    fn slim_table() -> &'static str {
+        "groups"
+    }
+
+    fn store_name_prefix() -> &'static str {
+        "Group Files: "
+    }
+
+    fn find_store_links(mount: &Connection, entity_id: &str) -> Result<Vec<String>, DbError> {
+        GroupDocMountLinksRepository::new(mount).find_by_group_id(entity_id)
+    }
+
+    fn link_store(
+        mount: &Connection,
+        entity_id: &str,
+        mount_point_id: &str,
+    ) -> Result<(), DbError> {
+        GroupDocMountLinksRepository::new(mount).link(entity_id, mount_point_id)
+    }
 }
 
 /// Create payload for a group — the hydrated, app-facing fields. The store-bound
@@ -81,230 +96,63 @@ pub struct GroupCreateInput {
     pub icon: Option<String>,
 }
 
-/// Optional pinned id/timestamps (v4 `CreateOptions`). `None` → minted (the
-/// remap-form differential mints everything).
-#[derive(Default)]
-pub struct GroupCreateOptions {
-    pub id: Option<String>,
-    pub created_at: Option<String>,
-    pub updated_at: Option<String>,
-}
-
-/// Repository over the main DB connection (slim `groups` row) + the mount-index
-/// connection (the store). Mirrors v4's cross-backend `getRepositories()`.
+/// The groups repository — a thin wrapper over the generic store-backed base.
 pub struct GroupsRepository<'c> {
-    main: &'c Connection,
-    mount: &'c Connection,
+    inner: StoreBackedRepository<'c, GroupEntity>,
 }
 
 impl<'c> GroupsRepository<'c> {
     pub fn new(main: &'c Connection, mount: &'c Connection) -> Self {
-        Self { main, mount }
-    }
-
-    // ========================================================================
-    // Slim-row internals (the store-aware `_create`/`_update`/raw reads)
-    // ========================================================================
-
-    /// Read one slim row as a JSON map (v4 `_findById` / `findByIdRaw`), or `None`
-    /// when absent. Only the five slim columns are read; the store-resident
-    /// columns (present in the table but never written by this repo) are ignored.
-    pub fn find_by_id_raw(&self, id: &str) -> Result<Option<Map<String, Value>>, DbError> {
-        self.main
-            .query_row(
-                "SELECT id, name, officialMountPointId, createdAt, updatedAt \
-                 FROM groups WHERE id = ?1",
-                params![id],
-                |row| Ok(slim_row_to_map(row)),
-            )
-            .map(Some)
-            .or_else(|e| match e {
-                rusqlite::Error::QueryReturnedNoRows => Ok(None),
-                other => Err(other.into()),
-            })
-    }
-
-    /// All slim rows (v4 `findAllRaw`).
-    pub fn find_all_raw(&self) -> Result<Vec<Map<String, Value>>, DbError> {
-        let mut stmt = self
-            .main
-            .prepare("SELECT id, name, officialMountPointId, createdAt, updatedAt FROM groups")?;
-        let rows = stmt
-            .query_map([], |row| Ok(slim_row_to_map(row)))?
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(rows)
-    }
-
-    /// Persist ONLY the `officialMountPointId` FK + bump `updatedAt`, bypassing the
-    /// overlay (v4 `setOfficialMountPointId` → `_update({officialMountPointId})`,
-    /// which sets `updatedAt = now`). Used by provisioning before the store files
-    /// exist.
-    pub fn set_official_mount_point_id(
-        &self,
-        id: &str,
-        mount_point_id: &str,
-    ) -> Result<(), DbError> {
-        self.main.execute(
-            "UPDATE groups SET officialMountPointId = ?1, updatedAt = ?2 WHERE id = ?3",
-            params![mount_point_id, crate::clock::now_iso(), id],
-        )?;
-        Ok(())
-    }
-
-    /// Insert the slim row with a NULL FK (v4 store-aware `_create`: validate the
-    /// full entity in memory, write only the slim columns). Mints id + timestamps
-    /// unless pinned. Returns the created `(id, name)`.
-    fn create_slim(
-        &self,
-        name: &str,
-        opts: &GroupCreateOptions,
-    ) -> Result<(String, String), DbError> {
-        let now = crate::clock::now_iso();
-        let id = opts
-            .id
-            .clone()
-            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        let created_at = opts.created_at.clone().unwrap_or_else(|| now.clone());
-        let updated_at = opts.updated_at.clone().unwrap_or(now);
-        self.main.execute(
-            "INSERT INTO groups (id, name, officialMountPointId, createdAt, updatedAt) \
-             VALUES (?1, ?2, NULL, ?3, ?4)",
-            params![id, name, created_at, updated_at],
-        )?;
-        Ok((id, name.to_string()))
-    }
-
-    /// Apply the DB-only remainder of an update to the slim row (v4 store-aware
-    /// `_update`). The only slim non-id/timestamp column is `name`; `updatedAt` is
-    /// always bumped. Returns `false` when the row is absent.
-    fn update_slim(&self, id: &str, db_patch: &Map<String, Value>) -> Result<bool, DbError> {
-        if self.find_by_id_raw(id)?.is_none() {
-            return Ok(false);
+        Self {
+            inner: StoreBackedRepository::new(main, mount),
         }
-        // `name` is the lone DB-only column; ignore any other remainder key
-        // (none exists for groups).
-        if let Some(name) = db_patch.get("name").and_then(Value::as_str) {
-            self.main.execute(
-                "UPDATE groups SET name = ?1, updatedAt = ?2 WHERE id = ?3",
-                params![name, crate::clock::now_iso(), id],
-            )?;
-        } else {
-            self.main.execute(
-                "UPDATE groups SET updatedAt = ?1 WHERE id = ?2",
-                params![crate::clock::now_iso(), id],
-            )?;
-        }
-        Ok(true)
     }
 
-    // ========================================================================
-    // Public CRUD (document-store overlay applied)
-    // ========================================================================
-
-    /// Find by id, hydrated from the store; **throws** `Unavailable` if the store
-    /// is missing/unreadable (v4 `findById` → `applyOverlayOne`).
-    pub fn find_by_id(&self, id: &str) -> Result<Option<Value>, OverlayError> {
-        let raw = self.find_by_id_raw(id)?;
-        overlay::apply_overlay_one::<GroupEntity>(self.mount, raw)
-    }
-
-    /// Find all, each hydrated; a row whose store is unavailable is **dropped**
-    /// (v4 `findAll` → `applyOverlay`).
-    pub fn find_all(&self) -> Result<Vec<Value>, OverlayError> {
-        let raw = self.find_all_raw()?;
-        overlay::apply_overlay::<GroupEntity>(self.mount, raw)
-    }
-
-    /// Create a group, provision its official store, populate the four files, and
-    /// return the overlaid entity (v4 `create`). The 5-step sequence; fails hard
-    /// if the store can't be provisioned.
+    /// Create a group, provision its store, and return the overlaid entity.
     pub fn create(
         &self,
         input: &GroupCreateInput,
         opts: &GroupCreateOptions,
     ) -> Result<Value, OverlayError> {
-        // 1. Slim row (FK null).
-        let (id, name) = self.create_slim(&input.name, opts)?;
-
-        // 2. Provision the official store (sets the FK raw).
-        let ensured =
-            ensure_group_official_store(self.main, self.mount, &id, &name)?.ok_or_else(|| {
-                OverlayError::Db(DbError::Key(format!(
-                    "group {id} disappeared during store provisioning"
-                )))
-            })?;
-
-        // 3-4. Write the four overlay files from the create payload.
         let properties = serde_json::to_value(GroupProperties {
             color: input.color.clone(),
             icon: input.icon.clone(),
         })
         .map_err(|e| OverlayError::Db(DbError::Key(format!("properties build: {e}"))))?;
-        overlay::write_managed_fields::<GroupEntity>(
-            self.mount,
-            &ensured.mount_point_id,
+        self.inner.create(
+            &input.name,
             &ManagedFields {
                 properties,
                 description: input.description.clone(),
                 instructions: input.instructions.clone(),
                 state: input.state.clone(),
             },
-        )?;
-
-        // 5. Overlay re-read (reflects the freshly-set mount + store state).
-        self.find_by_id(&id)?.ok_or_else(|| {
-            OverlayError::Db(DbError::Key(format!(
-                "group {id} disappeared immediately after creation"
-            )))
-        })
+            opts,
+        )
     }
 
-    /// Update a group: store-resident fields routed to the store, the DB-only
-    /// remainder written through the slim `_update`; the result is overlaid (v4
-    /// `update`). `patch` is the partial entity as a JSON map.
+    /// Update a group (store-resident fields routed to the store; the DB-only
+    /// remainder written to the slim row). `patch` is the partial entity as a map.
     pub fn update(
         &self,
         id: &str,
         patch: &Map<String, Value>,
     ) -> Result<Option<Value>, OverlayError> {
-        let raw = self.find_by_id_raw(id)?;
-        let db_patch =
-            overlay::apply_write_overlay::<GroupEntity>(self.mount, raw.as_ref(), patch)?;
-        let has_db_work = !db_patch.is_empty();
-        let result = if has_db_work {
-            self.update_slim(id, &db_patch)?;
-            self.find_by_id_raw(id)?
-        } else {
-            self.find_by_id_raw(id)?
-        };
-        overlay::apply_overlay_one::<GroupEntity>(self.mount, result)
+        self.inner.update(id, patch)
     }
 
-    /// Delete the slim row (the official store is orphaned, per v4 `delete`).
+    /// Find by id, hydrated (throws `Unavailable` if the store is missing).
+    pub fn find_by_id(&self, id: &str) -> Result<Option<Value>, OverlayError> {
+        self.inner.find_by_id(id)
+    }
+
+    /// Find all, each hydrated (drops a row whose store is unavailable).
+    pub fn find_all(&self) -> Result<Vec<Value>, OverlayError> {
+        self.inner.find_all()
+    }
+
+    /// Delete the slim row (the official store is orphaned).
     pub fn delete(&self, id: &str) -> Result<bool, DbError> {
-        let affected = self
-            .main
-            .execute("DELETE FROM groups WHERE id = ?1", params![id])?;
-        Ok(affected > 0)
-    }
-}
-
-/// Build a slim-row JSON map from a `SELECT id,name,officialMountPointId,
-/// createdAt,updatedAt` row (the nullable FK → `Value::Null` when absent).
-fn slim_row_to_map(row: &rusqlite::Row<'_>) -> Map<String, Value> {
-    let mut m = Map::new();
-    m.insert("id".into(), text_col(row, 0));
-    m.insert("name".into(), text_col(row, 1));
-    m.insert("officialMountPointId".into(), text_col(row, 2));
-    m.insert("createdAt".into(), text_col(row, 3));
-    m.insert("updatedAt".into(), text_col(row, 4));
-    m
-}
-
-/// A TEXT-or-NULL column → `Value::String` / `Value::Null`.
-fn text_col(row: &rusqlite::Row<'_>, idx: usize) -> Value {
-    match row.get::<_, Option<String>>(idx) {
-        Ok(Some(s)) => Value::String(s),
-        _ => Value::Null,
+        self.inner.delete(id)
     }
 }

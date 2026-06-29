@@ -546,6 +546,37 @@ corpus always provisions fresh), `state`/property null-vs-absent + multi-key
 insertion order (open-JSON seam — corpus kept `{}`/single-key), and the
 `projects` generalization (a larger bag + roster ops).
 
+Phase 2 — the `projects` store-backed entity + the store-backed GENERALIZATION
+(`quilltap-core::db::{store_backed, projects}`), build step 4 of the overlay
+slice. Generalizes the slim-row plumbing + provisioning that `groups` proved into
+a reusable `StoreBackedRepository<E: StoreEntity>` (v4's
+`AbstractStoreBackedRepository`): the `StoreEntity` trait gains `slim_table` /
+`store_name_prefix` / `find_store_links` / `link_store`, and `ensure_official_store`
+becomes generic over `E` (the group/project ensure wrappers collapse into one).
+`GroupsRepository` is refactored to a thin wrapper over the generic base (still
+green); `projects` is the second instance. `ProjectsRepository` adds the **16-key
+`properties.json` bag** (`ProjectPropertiesSchema` — five Zod-`.default` keys
+ALWAYS materialized in schema order: `allowAnyCharacter` / `characterRoster` /
+`defaultDisabledTools` / `defaultDisabledToolGroups` / `backgroundDisplayMode`; the
+other eleven `.nullable().optional()` → `skip_serializing_if`) and the
+**character-roster operations** (`addToRoster` / `removeFromRoster` /
+`setAllowAnyCharacter` / `canCharacterParticipate` / `findByCharacterId`), each a
+`properties.json` read-modify-write through `update` (or an in-memory `findAll`
+filter). The tier-2 differential (`projects_tier2_equivalence`) drives v4's REAL
+`repos.projects.create`/`.update`/roster ops end-to-end and diffs the same seven
+tables across both dbs (the slim `projects` row + the store tables +
+`project_doc_mount_links`) in the shared-cross-db-id-map remap form, `chunkCount`
+pinned + `doc_mount_chunks` excluded (database-backed reindex uses no model). The
+corpus banks a rich create (roster + color + `defaultImageProfileId` +
+`backgroundDisplayMode`, the optional keys interleaved with the materialized
+defaults in schema order — byte-exact) and a minimal create (only the five
+defaults), `addToRoster`/`removeFromRoster` (the `characterRoster` array RMW
+preserving the other fifteen keys), `setAllowAnyCharacter` (a bool RMW), and a
+DB-only `name` update. The `ensureOfficialStore` step-2 adopt branch stays
+deferred (corpus always provisions fresh); the property null-vs-absent +
+multi-key insertion-order seam is unchanged (corpus kept to present/absent +
+`{}`/single-key `state`).
+
 Docs — the document-store-overlay design slice
 (`docs/developer/porting/document-store-overlay.md`): the port plan for the
 store-backed entities (`projects`, `groups`, `characters`, the `wardrobe` vault).
