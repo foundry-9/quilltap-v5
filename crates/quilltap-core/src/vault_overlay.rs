@@ -51,6 +51,118 @@ pub fn stable_uuid_from_string(source: &str) -> String {
 /// The four wardrobe item types (v4 `WardrobeItemTypeEnum`), in declaration order.
 pub const WARDROBE_ITEM_TYPES: [&str; 4] = ["top", "bottom", "footwear", "accessories"];
 
+/// Kebab-case slug from a wardrobe item title — v4 `slugifyWardrobeTitle`
+/// (`character-vault.ts:226`): `toLowerCase` → JS-`trim` → collapse every run of
+/// non-`[a-z0-9]` to a single `-` → strip a leading/trailing `-`. The
+/// `[^a-z0-9]` filter neutralizes JS-vs-Rust case-mapping divergence (a non-ASCII
+/// char never lowercases INTO `[a-z]` in one engine but not the other), so this
+/// is collation/case-safe per the locked vault decision — no ICU needed.
+pub fn slugify_wardrobe_title(title: &str) -> String {
+    let lowered = title.to_lowercase();
+    let trimmed = crate::jsstr::js_trim(&lowered);
+    let mut out = String::with_capacity(trimmed.len());
+    let mut prev_dash = false;
+    for c in trimmed.chars() {
+        if c.is_ascii_lowercase() || c.is_ascii_digit() {
+            out.push(c);
+            prev_dash = false;
+        } else if !prev_dash {
+            out.push('-');
+            prev_dash = true;
+        }
+    }
+    out.trim_matches('-').to_string()
+}
+
+/// Build the `(itemId → slug)` list a wardrobe write uses to translate
+/// `componentItemIds` UUIDs to slugs — v4 `buildSlugByItemIdMap`
+/// (`character-vault.ts:240`). First item that slugifies to a given slug claims
+/// it; empty slugs and later collisions are skipped. `items` is `(id, title)` in
+/// the caller's order; the result preserves first-seen order (the analogue of v4's
+/// insertion-ordered `Map`).
+pub fn build_slug_by_item_id_map(items: &[(String, String)]) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut claimed: HashSet<String> = HashSet::new();
+    for (id, title) in items {
+        let slug = slugify_wardrobe_title(title);
+        if slug.is_empty() || claimed.contains(&slug) {
+            continue;
+        }
+        claimed.insert(slug.clone());
+        out.push((id.clone(), slug));
+    }
+    out
+}
+
+/// Sanitize a string into a safe file name — v4 `sanitizeFileName`
+/// (`character-vault.ts:203`): replace each of `\ / : * ? " < > |` with `_`,
+/// collapse every JS-whitespace run to a single space, JS-`trim`, take the first
+/// 100 UTF-16 code units, falling back to `"untitled"` when the result is empty.
+pub fn sanitize_file_name(name: &str) -> String {
+    let replaced: String = name
+        .chars()
+        .map(|c| match c {
+            '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            other => other,
+        })
+        .collect();
+    // Collapse runs of JS-whitespace to a single ' '.
+    let mut collapsed = String::with_capacity(replaced.len());
+    let mut prev_ws = false;
+    for c in replaced.chars() {
+        if crate::jsstr::is_js_ws(c) {
+            if !prev_ws {
+                collapsed.push(' ');
+                prev_ws = true;
+            }
+        } else {
+            collapsed.push(c);
+            prev_ws = false;
+        }
+    }
+    let trimmed = crate::jsstr::js_trim(&collapsed);
+    let sliced = crate::jsstr::utf16_truncate(trimmed, 100);
+    if sliced.is_empty() {
+        "untitled".to_string()
+    } else {
+        sliced
+    }
+}
+
+/// Escape a value for hand-built YAML frontmatter — v4's private `escapeYaml`
+/// (`character-vault.ts:211`): if the value contains any of `: # " ' \n`, emit it
+/// as a `JSON.stringify`'d (double-quoted, JSON-escaped) string; otherwise emit it
+/// plain. `serde_json::to_string` of a string reproduces `JSON.stringify` exactly
+/// (same escape set, no `/` or non-ASCII escaping). Used by
+/// [`build_system_prompt_file`]; NOT the eemeli/yaml path (that is the wardrobe
+/// write slice).
+pub fn escape_yaml(value: &str) -> String {
+    if value.contains([':', '#', '"', '\'', '\n']) {
+        serde_json::to_string(value).expect("string always serializes")
+    } else {
+        value.to_string()
+    }
+}
+
+/// Build a `Prompts/*.md` system-prompt file — v4 `buildSystemPromptFile`
+/// (`character-vault.ts:192`): YAML frontmatter (`name`, plus `isDefault: true`
+/// only when set) over the prompt body. The `name` value goes through
+/// [`escape_yaml`]; this is a hand-built frontmatter string, NOT eemeli/yaml.
+pub fn build_system_prompt_file(name: &str, is_default: bool, content: &str) -> String {
+    let frontmatter = if is_default {
+        format!("---\nname: {}\nisDefault: true\n---\n\n", escape_yaml(name))
+    } else {
+        format!("---\nname: {}\n---\n\n", escape_yaml(name))
+    };
+    format!("{frontmatter}{content}")
+}
+
+/// Build a `Scenarios/*.md` file — v4 `buildScenarioFile` (`character-vault.ts:199`):
+/// a plain `# title` heading + the body, NO frontmatter at all.
+pub fn build_scenario_file(title: &str, content: &str) -> String {
+    format!("# {title}\n\n{content}")
+}
+
 /// Coerce a raw `componentItems:` value into a clean `Vec<String>` — v4
 /// `parseComponentItemsField` (`vault-overlay/parsers.ts:358`). Non-arrays (incl.
 /// `null`) yield `[]`; within an array, non-string and empty/whitespace-only

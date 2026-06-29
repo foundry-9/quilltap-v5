@@ -546,6 +546,25 @@ corpus always provisions fresh), `state`/property null-vs-absent + multi-key
 insertion order (open-JSON seam — corpus kept `{}`/single-key), and the
 `projects` generalization (a larger bag + roster ops).
 
+Phase 2 — the vault write-projection string leaves (`quilltap-core::vault_overlay`),
+the next decision-free slice of the character/wardrobe vault overlay (Family B,
+build step 6). Five pure functions from v4's `character-vault.ts`:
+`slugifyWardrobeTitle` (kebab slug — `toLowerCase` → JS-trim → collapse
+non-`[a-z0-9]` runs to `-` → strip ends; the `[^a-z0-9]→-` filter makes it
+collation/case-safe, so no ICU per the locked Decision B), `buildSlugByItemIdMap`
+(first-wins `(itemId → slug)` list), `sanitizeFileName` (replace `\ / : * ? " < >
+|` with `_`, collapse JS-whitespace runs, JS-trim, 100-UTF-16-unit slice,
+`untitled` fallback — reusing the existing `jsstr` whitespace/trim/UTF-16
+helpers), `buildSystemPromptFile` (the `Prompts/*.md` frontmatter, exercising the
+private `escapeYaml` = `if /[:#"'\n]/ then JSON.stringify(v) else v`, reproduced
+with `serde_json::to_string` which matches `JSON.stringify` for strings), and
+`buildScenarioFile` (plain `# title\n\nbody`, no frontmatter). Tier-1 exact
+differential (`vault_string_leaves_equivalence`) over 27 cases against v4's real
+functions, incl. unicode→dash slugs, punctuation, the `escapeYaml` quote triggers
+(`:`/`#`/`"`/`'`/`\n`), and the empty→`untitled` filename path. Per the locked
+decisions, this confirms the prompt/scenario write projections need NO eemeli/yaml
+(only `Wardrobe/*.md`, build step 7, does) and the slug path needs no ICU.
+
 Phase 2 — the vault wardrobe-component pure leaves (`quilltap-core::vault_overlay`),
 the first slice of the character/wardrobe vault overlay (Family B, build step 6),
 ported leaf-first ahead of the stateful overlay so the YAML-emitter and

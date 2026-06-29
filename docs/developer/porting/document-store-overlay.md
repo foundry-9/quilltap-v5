@@ -314,12 +314,27 @@ clean and reuses the mount-index machinery already built:
 - **UTF-16 `plainTextLength` vs UTF-8 `fileSizeBytes`** — reproduce the JS `.length`
   (code-unit) semantics for `plainTextLength`; a naive `str::len()` diverges on
   non-ASCII.
-- **YAML emitter fidelity** (Family B only) — budget as a dedicated sub-problem or
-  pin the corpus to YAML-safe values.
-- **ICU collation + Unicode case mapping** (Family B) — the vault folder sorts and
-  slug case-folding are the densest concentration of the long-deferred
-  `localeCompare`/`toLowerCase` sites; this slice is the natural place to finally
-  make that decision (phase-2-onramp #1–#2).
+- **YAML emitter fidelity** (Family B) — **DECIDED 2026-06-29: hand-roll a scoped
+  emitter** (Decision A, Option 1). The eemeli/yaml dependency is isolated to
+  `Wardrobe/*.md` frontmatter (`serializeFrontmatter` → `YAML.stringify`, build
+  step 7); `properties.json`/`physical-prompts.json` use `JSON.stringify`,
+  `Prompts/*.md` use the hand-rolled `escapeYaml` (`/[:#"'\n]/` → `JSON.stringify`,
+  else plain — port via `jsstr`), and `Scenarios/*.md` are plain `# title\n\nbody`
+  (no frontmatter). When step 7 lands, reproduce eemeli/yaml's output byte-for-byte
+  for the bounded wardrobe value space (free-text only in `title`/`appropriateness`/
+  `imagePrompt`). It feeds the dedup sha → a quoting mismatch is a correctness bug,
+  not just a test gap; no Rust YAML crate matches eemeli/yaml.
+- **`localeCompare` folder-sort order** (Family B) — **DECIDED 2026-06-29:
+  code-unit seam + pinned corpus** (Decision B, Option 2). The vault read overlay
+  sorts `Prompts/`/`Scenarios/`/`Wardrobe/` entries by
+  `relativePath.localeCompare`; sort by code units and pin corpus filenames so they
+  sort identically under both orders (slug filenames are constrained ASCII
+  `[a-z0-9-]`, so this is safe). Do NOT pull an ICU/UCA collator into the vault —
+  matching Node's default-locale + ICU-version collation byte-for-byte is fragile
+  and disproportionate. The `toLowerCase` half is a **non-issue**: slug generation's
+  `[^a-z0-9]→-` filter neutralizes JS-vs-Rust case-mapping divergence. A holistic
+  ICU decision for the ~30 other `localeCompare` sites stays a separate, deliberate
+  future effort (phase-2-onramp #1–#2), NOT triggered by the vault.
 - **Read-time timestamp synthesis** (character `physicalDescription`) — placeholder
   on the read path, not just write.
 

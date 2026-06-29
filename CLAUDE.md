@@ -584,12 +584,21 @@ green via `vault_component_leaves_equivalence`) — `parseComponentItemsField`
 (coerce `componentItems:` → clean `Vec<String>`), `parseWardrobeTypesField`
 (all-or-nothing enum validation + first-seen dedup, `None` on empty/invalid), and
 `detectComponentCycles` (the save-time component-graph cycle check). These touch
-no YAML and no case-mapping/collation. Still ahead in the vault: the JSON
-projection parsers (`parseVaultProperties` / `parseVaultPhysicalPrompts` /
-`parseLegacyWardrobeJson` — JSON + Zod-schema validation, tractable), then the
-frontmatter parsers + the read overlay (parse path — separable from the
-YAML-EMIT decision), and finally the write overlay (where the YAML-emit and ICU
-decisions actually bite).
+no YAML and no case-mapping/collation. Also done: the **vault write-projection string leaves**
+(`vault_string_leaves_equivalence`) — `slugifyWardrobeTitle`,
+`buildSlugByItemIdMap`, `sanitizeFileName`, `buildSystemPromptFile` (+ the private
+`escapeYaml` = `JSON.stringify` quote path, via `serde_json::to_string`), and
+`buildScenarioFile`. **The two vault decisions are now LOCKED** (2026-06-29; see
+`[[vault-yaml-icu-decisions]]` + the design doc): **(A) hand-roll the wardrobe
+YAML emitter** (the eemeli/yaml dependency is isolated to `Wardrobe/*.md`, build
+step 7 — prompts use `escapeYaml`, scenarios are frontmatter-less, the JSON files
+use `JSON.stringify`), and **(B) code-unit seam + pinned corpus for
+`localeCompare`** (no ICU crate for the vault; the slug `toLowerCase` is a
+non-issue). Still ahead in the vault: the JSON projection parsers
+(`parseVaultProperties` / `parseVaultPhysicalPrompts` / `parseLegacyWardrobeJson` —
+faithful Zod-validation reproduction, tractable), then the frontmatter parsers +
+the read overlay (parse path + the Decision-B sort), and finally the write overlay
+(wardrobe YAML per Decision A).
 
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green
