@@ -251,12 +251,12 @@ f64 value via IEEE-754 mantissa/exponent + u128 — and `formatBytes` /
 `localeCompare` seam). **The collation/ordering wave is done:**
 `parseLegacyEmbeddingText`, the `toFixed` formatters, `canonicalize*`, and
 `compareVersions`' `localeCompare` fallback (documented as a residual seam — the
-numeric path is exact). **In progress — the registry-seam wave:** the
-cheap-model classifiers (`isCheapModel` / `estimateModelCost` /
-`getCheapestModel`, registry recommended-list / default injected, string
-heuristics pure). Still deferred: `getModelContextLimit` (registry seam — the
-override/default tables port as constants, with the plugin model-info /
-`FALLBACK_PRICING` rows / registry default injected). The single ICU-collation
+numeric path is exact). **The registry-seam wave is done:** the cheap-model
+classifiers (`isCheapModel` / `estimateModelCost` / `getCheapestModel`, registry
+recommended-list / default injected, string heuristics pure) and
+`getModelContextLimit` (+ `hasExtendedContext` / `getSafeInputLimit`) — its
+override/default tables ported as constants, the plugin model-info /
+`FALLBACK_PRICING` rows / registry default injected. The single ICU-collation
 decision (an `icu_collator`
 / `feruca`-class crate vs. the documented code-unit seam) is deliberately
 deferred to when the ~30 Phase-2/3 `localeCompare` sites land, so it is made

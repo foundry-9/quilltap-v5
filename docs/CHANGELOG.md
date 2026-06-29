@@ -46,6 +46,11 @@ test against the v4 oracle:
 - Chat-task text shaping: tool-artifact stripping, visible-conversation
   extraction, and the chat-card preview, over shared JS string primitives (the
   JS `\s`/`trim` set and UTF-16 length/slice).
+- Model context limit: `getModelContextLimit` (+ `hasExtendedContext`,
+  `getSafeInputLimit`) — the override / provider-default tables ported as
+  constants, with the plugin model-info, `FALLBACK_PRICING` rows, and registry
+  default injected; reproduces v4's lookup order and substring matching, and the
+  JS-truthy fall-through on a zero/null context value.
 - Cheap-model classifiers: `isCheapModel` / `estimateModelCost` /
   `getCheapestModel` and their deprecated fallback tables — the registry-sourced
   recommended-list and default-model are injected (empty / none takes the

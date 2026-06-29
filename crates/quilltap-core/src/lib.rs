@@ -68,6 +68,10 @@
 //!     `estimate_model_cost`, `get_cheapest_model`) and their deprecated fallback
 //!     tables; the registry-sourced recommended-list / default-model are injected
 //!     (the string heuristics are pure); oracle-verified.
+//!   * `model_context` — the context-window lookup (`get_model_context_limit` +
+//!     `has_extended_context` / `get_safe_input_limit`): its override/default
+//!     tables ported as constants, with the plugin model-info / `FALLBACK_PRICING`
+//!     rows / registry default injected; oracle-verified.
 //!   * `token_estimation` — character-based token counting (estimate / per-message
 //!     / per-conversation, truncation, context-usage %); oracle-verified.
 //!   * `turn_state` — the multi-character turn-rotation state machine (queue
@@ -115,6 +119,7 @@ pub mod memory_weighting;
 pub mod mentioned_characters;
 pub mod message_attribution;
 pub mod model_classes;
+pub mod model_context;
 pub mod participant_filters;
 pub mod pricing;
 pub mod pronoun_gender;
