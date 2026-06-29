@@ -1,0 +1,76 @@
+{
+  "_comment": [
+    "Read-differential corpus for the vault read overlay's directory-listing load",
+    "(DocMountDocumentsRepository.findManyByMountPointsInFolder). The fixture builder",
+    "seeds two pinned document stores (doc_mount_points) and writes a set of files via",
+    "v4's real writeDatabaseDocument (QUILLTAP_JOB_CHILD=1 to skip reindex). Both v4 and",
+    "the Rust port then READ the SAME fixture .db, so every minted id/timestamp is",
+    "identical on both sides — the returned rows compare exactly (no normalization), only",
+    "sorted by (mountPointId, relativePath) to neutralize natural row order.",
+    "Coverage: matching Prompts/ and Scenarios/ files across two stores (the IN-clause);",
+    "decoys that must be excluded — a top-level file (no folder prefix), a nested file",
+    "(non-recursive single-level only), and a wrong-extension file; plus an empty",
+    "mount-point list (short-circuit to []).",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one every other tier-2",
+    "fixture uses; it decrypts nothing real."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "stores": [
+    {
+      "id": "5700000e-0000-4000-8000-0000000000a1",
+      "name": "Character Vault: Ada",
+      "basePath": "",
+      "mountType": "database",
+      "storeType": "documents",
+      "includePatterns": [],
+      "excludePatterns": [],
+      "enabled": true,
+      "lastScannedAt": null,
+      "scanStatus": "idle",
+      "lastScanError": null,
+      "conversionStatus": "idle",
+      "conversionError": null,
+      "fileCount": 0,
+      "chunkCount": 0,
+      "totalSizeBytes": 0,
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z"
+    },
+    {
+      "id": "5700000e-0000-4000-8000-0000000000a2",
+      "name": "Character Vault: Babbage",
+      "basePath": "",
+      "mountType": "database",
+      "storeType": "documents",
+      "includePatterns": [],
+      "excludePatterns": [],
+      "enabled": true,
+      "lastScannedAt": null,
+      "scanStatus": "idle",
+      "lastScanError": null,
+      "conversionStatus": "idle",
+      "conversionError": null,
+      "fileCount": 0,
+      "chunkCount": 0,
+      "totalSizeBytes": 0,
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z"
+    }
+  ],
+  "files": [
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000a1", "relativePath": "Prompts/alpha.md", "content": "---\nname: Alpha\n---\nAlpha body" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000a1", "relativePath": "Prompts/beta.md", "content": "---\nname: Beta\nisDefault: true\n---\nBeta body" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000a1", "relativePath": "Scenarios/quest.md", "content": "# Quest\n\nA quest scenario." },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000a1", "relativePath": "properties.json", "content": "{\"talkativeness\":0.5}" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000a1", "relativePath": "Prompts/sub/nested.md", "content": "nested decoy" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000a1", "relativePath": "Prompts/notes.txt", "content": "wrong extension decoy" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000a2", "relativePath": "Prompts/gamma.md", "content": "---\nname: Gamma\n---\nGamma body" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000a2", "relativePath": "Scenarios/tale.md", "content": "# Tale\n\nA tale." }
+  ],
+  "queries": [
+    { "label": "prompts-both", "mountPointIds": ["5700000e-0000-4000-8000-0000000000a1", "5700000e-0000-4000-8000-0000000000a2"], "folder": "Prompts", "extension": ".md" },
+    { "label": "scenarios-both", "mountPointIds": ["5700000e-0000-4000-8000-0000000000a1", "5700000e-0000-4000-8000-0000000000a2"], "folder": "Scenarios", "extension": ".md" },
+    { "label": "prompts-one", "mountPointIds": ["5700000e-0000-4000-8000-0000000000a2"], "folder": "Prompts", "extension": ".md" },
+    { "label": "empty-mounts", "mountPointIds": [], "folder": "Prompts", "extension": ".md" }
+  ]
+}

@@ -546,6 +546,25 @@ corpus always provisions fresh), `state`/property null-vs-absent + multi-key
 insertion order (open-JSON seam — corpus kept `{}`/single-key), and the
 `projects` generalization (a larger bag + roster ops).
 
+Phase 2 — the vault read overlay's directory-listing load
+(`DocMountDocumentsRepository::find_many_by_mount_points_in_folder`), the first
+stateful sub-unit of the character read overlay (Family B). Ports v4's
+`findManyByMountPointsInFolder`: the 3-table join with a SQL
+`LOWER(relativePath) LIKE '<folder>/%'` prefilter, then v4's JS post-filter
+(case-folded prefix, non-empty remainder, single-level only — no `/` in the
+remainder — and an extension match). The overlay-consumed subset of the row is
+returned (`content`/`mountPointId`/`relativePath`/`fileName` + the document
+`createdAt`/`updatedAt`); v4's unused `recursive` option is not ported. Verified
+by the first **read-differential**: a fixture builder seeds two pinned stores and
+writes a corpus via v4's real `linkDocumentContent` (driven directly — not
+`writeDatabaseDocument`, whose `QUILLTAP_JOB_CHILD=1` skip-switch reroutes repos
+through the forked-child write proxy and breaks `initializeDatabase`); both v4 and
+the Rust port then READ the SAME fixture, so minted ids/timestamps are identical
+and the returned rows compare exactly (sorted by `(mountPointId, relativePath)`,
+the read having no defined order). The corpus covers the IN-clause across two
+stores and excludes a top-level file, a nested file, and a wrong-extension file,
+plus the empty-mount-point short-circuit (`vault_folder_read_equivalence`).
+
 Phase 2 — the vault `Wardrobe/*.md` parser
 (`quilltap-core::vault_overlay::parse_wardrobe_item_file`), the third and last
 per-file frontmatter parser. Reuses the title fallback chain (frontmatter `title`

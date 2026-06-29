@@ -29,13 +29,13 @@
 //! port opens a table whose schema is fixed and inserts in schema/Zod field order.
 //!
 //! Scope: `create`, `update`, and `delete` (the three abstract methods, each
-//! delegating straight to `_create`/`_update`/`_delete`). The content-addressable
-//! / joined-view query helpers — `findByFileId`, `findManyByFileIds`,
-//! `findByMountPointAndPath`, `findManyByMountPointsAndPath`,
-//! `findManyByMountPointsInFolder`, `findByMountPointId`, `deleteByMountPointId`
-//! (all reads or joins through `doc_mount_file_links`/`doc_mount_files`) — are out
-//! of scope here; this ports only the CRUD mutations on the
-//! `doc_mount_documents` table itself.
+//! delegating straight to `_create`/`_update`/`_delete`), plus the joined-view
+//! read helpers the vault read overlay needs: `findByMountPointAndPath`,
+//! `findManyByMountPointsAndPath`, and `findManyByMountPointsInFolder` (the
+//! single-file and directory-listing loads, joining through
+//! `doc_mount_file_links`/`doc_mount_files`). The remaining query helpers
+//! (`findByFileId`, `findManyByFileIds`, `findByMountPointId`,
+//! `deleteByMountPointId`) are still out of scope.
 //!
 //! ## What this repo banks for the tier-2 marshaling surface
 //!
@@ -277,4 +277,93 @@ impl<'c> DocMountDocumentsRepository<'c> {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
+
+    /// v4 `findManyByMountPointsInFolder` (`doc-mount-documents.repository.ts:234`):
+    /// the directory listing the read overlay uses to enumerate a single folder
+    /// (`Prompts/` / `Scenarios/`) across many mount points at once. Same 3-table
+    /// join, then a SQL `LOWER(relativePath) LIKE '<folder>/%'` prefilter followed
+    /// by v4's JS post-filter: case-folded `<folder>/` prefix, a **non-empty**
+    /// remainder, **single-level only** (the remainder has no `/`), and the
+    /// remainder ends with `extension`. v4's `recursive` option is not ported — the
+    /// overlay only ever lists one level. An empty `mount_point_ids` short-circuits
+    /// to `[]`. Row order is the DB's natural order; the overlay sorts afterward
+    /// (the Decision-B code-unit sort), so callers must not rely on it.
+    ///
+    /// Returns only the fields the overlay's parsers consume (`content`,
+    /// `mountPointId`, `relativePath`, `fileName`, the document `createdAt`/
+    /// `updatedAt`) rather than the full `DocMountDocumentWithLink`.
+    ///
+    /// NB the case-folding is ASCII-effective: SQLite's `LOWER()` and `LIKE` are
+    /// ASCII-only, and Rust `to_lowercase` agrees with JS `toLowerCase` on the
+    /// constrained ASCII slug/folder names (the tracked case-mapping seam — see the
+    /// vault decisions; the corpus stays ASCII).
+    pub fn find_many_by_mount_points_in_folder(
+        &self,
+        mount_point_ids: &[String],
+        folder: &str,
+        extension: &str,
+    ) -> Result<Vec<VaultFolderDoc>, DbError> {
+        if mount_point_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let prefix_lower = format!("{folder}/").to_lowercase();
+        let ext_lower = extension.to_lowercase();
+        let like_pattern = format!("{prefix_lower}%");
+
+        let placeholders = (0..mount_point_ids.len())
+            .map(|i| format!("?{}", i + 1))
+            .collect::<Vec<_>>()
+            .join(",");
+        let like_idx = mount_point_ids.len() + 1;
+        let sql = format!(
+            "SELECT d.content, l.mountPointId, l.relativePath, l.fileName, d.createdAt, d.updatedAt \
+             FROM doc_mount_file_links l \
+             JOIN doc_mount_documents d ON d.fileId = l.fileId \
+             JOIN doc_mount_files f ON f.id = l.fileId \
+             WHERE l.mountPointId IN ({placeholders}) \
+               AND LOWER(l.relativePath) LIKE ?{like_idx}"
+        );
+
+        let mut params: Vec<&dyn ToSql> = mount_point_ids.iter().map(|s| s as &dyn ToSql).collect();
+        params.push(&like_pattern);
+
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows: Vec<VaultFolderDoc> = stmt
+            .query_map(params.as_slice(), |row| {
+                Ok(VaultFolderDoc {
+                    content: row.get(0)?,
+                    mount_point_id: row.get(1)?,
+                    relative_path: row.get(2)?,
+                    file_name: row.get(3)?,
+                    created_at: row.get(4)?,
+                    updated_at: row.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // v4's JS post-filter over the case-folded relativePath.
+        Ok(rows
+            .into_iter()
+            .filter(|doc| {
+                let path_lower = doc.relative_path.to_lowercase();
+                let Some(rest) = path_lower.strip_prefix(&prefix_lower) else {
+                    return false;
+                };
+                !rest.is_empty() && !rest.contains('/') && rest.ends_with(&ext_lower)
+            })
+            .collect())
+    }
+}
+
+/// A folder-listed document — the subset of v4's `DocMountDocumentWithLink` the
+/// read overlay's per-file parsers consume. Built by
+/// [`DocMountDocumentsRepository::find_many_by_mount_points_in_folder`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct VaultFolderDoc {
+    pub content: String,
+    pub mount_point_id: String,
+    pub relative_path: String,
+    pub file_name: String,
+    pub created_at: String,
+    pub updated_at: String,
 }

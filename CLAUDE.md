@@ -638,10 +638,25 @@ The wardrobe parser adds the id sanity check (`/^[0-9a-f-]{36}$/i` else
 `parse_component_items_field`, resolved later by the overlay), and the
 archived/flags/timestamp-precedence logic. Added `jsstr::js_trim_start` +
 `markdown::body_after` (UTF-16-offset→byte slice). **The vault is now fully
-ported up to the stateful overlay.** Still ahead in the vault: the read overlay
-(folder enumeration + the Decision-B code-unit sort + the component-resolution
-pass `resolveAndCheckComponentItems`) and finally the write overlay (wardrobe
-YAML emitter per Decision A, step 7).
+ported up to the stateful overlay.**
+
+The **stateful read overlay is now in progress**, sub-unit 1 done: the
+directory-listing load (`DocMountDocumentsRepository::find_many_by_mount_points_in_folder`,
+`vault_folder_read_equivalence`) — v4 `findManyByMountPointsInFolder`'s 3-table
+join + SQL `LIKE` prefilter + the JS non-recursive single-level + extension
+post-filter, returning the overlay-consumed row subset. It established the first
+**read-differential** harness shape: a builder seeds stores + a file corpus via
+v4's real `linkDocumentContent` (driven directly — NOT `writeDatabaseDocument`,
+whose `QUILLTAP_JOB_CHILD=1` breaks `initializeDatabase`; see
+`[[document-store-oracle-gotchas]]`), then both v4 and the Rust port READ the same
+fixture so minted ids/timestamps match and rows compare exactly. Still ahead in
+the read overlay: `hydrateOne` (the character-field overlay over the parsed vault
+files — properties/identity/.../physicalDescription/systemPrompts/scenarios — plus
+the prompt-default normalization and the Decision-B `localeCompare` sort) and the
+`applyDocumentStoreOverlay`/`…One` drop-vs-throw keystone asymmetry, verified by a
+full vault-hydration differential. Then the wardrobe read overlay
+(`resolveAndCheckComponentItems`) and finally the write overlay (wardrobe YAML
+emitter per Decision A, step 7).
 
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green
