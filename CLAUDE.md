@@ -275,9 +275,10 @@ single-writer `Writer` + `FoldersRepository` create/update + canonical dump),
 the amalgamation build relocated into core (probes retired), the TS oracle
 (`harness/oracle/{fixtures,cases}/folders-tier2*`), and the harness diff test.
 Remaining on-ramp breadth: ~~the generated-UUID remap / timestamp-placeholder
-normalization~~ (**done** — see "the remap machinery" below), the `WriteBatch`
-partitioned-apply path, and the real-snapshot fixture sanitizer. From here
-Phase 2 is the same mechanical loop, repo by repo.
+normalization~~ (**done** — see "the remap machinery" below), ~~the `WriteBatch`
+partitioned-apply path~~ (**done** — see "the partitioned write applier" below),
+and the real-snapshot fixture sanitizer. From here Phase 2 is the same mechanical
+loop, repo by repo.
 
 **Phase 2 proper: in progress.** Repo #2, `tags` (`quilltap-core::db::tags`),
 round-trips green through the tier-2 harness (`tags_tier2_equivalence`): `create`
@@ -311,3 +312,25 @@ without pinning literal ids — and placeholders timestamps after asserting the
 per-row `createdAt == updatedAt` invariant. This is the normalization form for
 the repos/ops that can't take injected ids/clocks; the pinned zero-normalization
 form (`folders` / `tags`) remains preferred where the op allows it.
+
+**The partitioned write applier: done.** `quilltap-core::write_apply` ports v4's
+`applyWritesUnsafe` quartet — the writer-task apply path that sequences the pure
+`write_partition` leaves into real orchestration: each partition (main /
+mount-index / llm-logs) in its own `BEGIN IMMEDIATE` transaction; main-primary
+(`AUTONOMOUS_ROOM_TURN`) commits main first then secondaries best-effort, while
+idempotent jobs apply secondaries first so a secondary failure blocks the main
+commit; plus the concurrent `docMountFolders.create` unique-conflict reconcile +
+folder-id remap. The engine is generic over an injected `ApplyHost` (the three
+connections + repo dispatch + reconcile lookup) — the same orchestration-vs-rows
+split v4 uses (it unit-tests the applier with fake DBs + recording repos; the row
+writes go through repos, each tier-2-verified separately). So the differential is
+**tier-1-style trace equivalence**, not tier-2: `write_apply_equivalence` runs a
+committed 9-scenario corpus through both the Rust engine and v4's REAL
+`applyWritesUnsafe`, diffing the observable trace (per-partition exec sequence,
+ordered dispatches with post-remap args, reconcile lookups, resolved/threw). That
+oracle (`harness/oracle/cases/write-apply.test.ts`) runs under **v4's jest**, not
+tsx — the applier's `getRawDatabase()`/`getRepositories()` singletons are
+`jest.mock`-injected; v4's jest picks up the v5-tree oracle file via an extra
+`--roots`. Deferred (documented in the module + phase-2-onramp): `__finalizeFile`
+(fs rename + undo-on-rollback) and the post-commit side effects
+(`cleanupStagingDirs` / `dispatchInvalidations`).

@@ -12,8 +12,13 @@
 //!   * `recall_history` — the per-chat anti-repetition ring buffer (producer of
 //!     the "recently whispered" set `recall_tags` consumes), oracle-verified.
 //!   * `write_partition` — parent-side write-batch classification, per-database
-//!     partitioning, main-primary policy, and the folder-conflict id remap;
-//!     oracle-verified.
+//!     partitioning, main-primary policy, and the folder-conflict id remap (the
+//!     pure leaves); oracle-verified.
+//!   * `write_apply` — the partitioned write *applier* orchestration over those
+//!     leaves: per-partition transactions, main-primary vs idempotent ordering,
+//!     best-effort secondaries, and the concurrent-folder-create reconcile, over
+//!     an injected `ApplyHost` seam; oracle-verified (trace differential vs v4's
+//!     real `applyWritesUnsafe`).
 //!   * `context_compression` — the pure sliding-window compression sizing
 //!     (triggers, message split, history block); oracle-verified.
 //!   * `context_summary` — the rolling-window summarisation cadence (fold/hard
@@ -137,4 +142,5 @@ pub mod tag_style;
 pub mod token_estimation;
 pub mod turn_order;
 pub mod turn_state;
+pub mod write_apply;
 pub mod write_partition;

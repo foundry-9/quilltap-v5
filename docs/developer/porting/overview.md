@@ -78,6 +78,14 @@ pinned, reconciled by a first-seen id remap in natural-key order (verifying the
 FK relationship without literal ids) plus timestamp placeholdering — the
 normalization form for repos/ops that can't take injected ids/clocks.
 
+The **partitioned write applier** (`quilltap-core::write_apply`, the writer-task
+apply path from v4's `applyWritesUnsafe`) is ported and green
+(`write_apply_equivalence`): per-partition transactions, main-primary vs
+idempotent ordering + failure policy, and the concurrent-folder-create reconcile.
+Because the apply path is orchestration (row writes delegate to repos), it's a
+tier-1-style trace differential against v4's real applier, driven through an
+injected `ApplyHost` seam.
+
 ## How to resume in a fresh session
 
 Open with: *"Continuing the quilltap-v5 native port. Read CLAUDE.md and

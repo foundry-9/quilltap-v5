@@ -1,0 +1,107 @@
+{
+  "$comment": [
+    "Differential corpus for the partitioned write APPLIER (job-dispatcher.ts",
+    "applyWritesUnsafe + applyPartition + applySecondaryBestEffort +",
+    "applyFolderCreateIdempotent), ported to quilltap-core::write_apply.",
+    "",
+    "This layer is pure ORCHESTRATION — partition by target DB, per-partition",
+    "transaction lifecycle, main-primary vs idempotent ordering + failure policy,",
+    "and the concurrent-folder-create reconcile. v4 unit-tests it with fake DBs +",
+    "recording repos (no real DB); the actual row writes are delegated to repos,",
+    "each tier-2-verified on its own. So this is a tier-1-style TRACE differential,",
+    "not a tier-2 DB-state diff.",
+    "",
+    "Both sides run this same corpus and emit the same observable trace per",
+    "scenario: per-partition exec sequence (BEGIN IMMEDIATE / COMMIT / ROLLBACK),",
+    "the ordered list of ATTEMPTED repo dispatches (method + args, args POST folder",
+    "remap), the reconcile lookups, and the resolved/threw outcome. jobId = the",
+    "scenario name on both sides (it appears in the connection-unavailable message).",
+    "",
+    "fail[].message is the error a dispatch throws; both sides use it verbatim so",
+    "the threw-outcome string matches. findFolder maps a (mountPointId, path) to the",
+    "existing folder id the reconcile resolves to (null => no row). unavailable",
+    "lists partitions whose connection is null; failCommit lists partitions whose",
+    "COMMIT throws."
+  ],
+  "scenarios": [
+    {
+      "name": "idempotent-mixed-isolates-and-orders",
+      "jobType": "EMBEDDING_GENERATE",
+      "writes": [
+        { "method": "chats.update", "args": [{ "id": "c1" }] },
+        { "method": "docMountChunks.updateEmbedding", "args": [{ "id": "ch1" }] },
+        { "method": "embeddingStatus.markAsEmbedded", "args": [{ "id": "ch1" }] }
+      ]
+    },
+    {
+      "name": "idempotent-secondary-fails-never-touches-main",
+      "jobType": "EMBEDDING_GENERATE",
+      "writes": [
+        { "method": "chats.update", "args": [{ "id": "c1" }] },
+        { "method": "docMountChunks.updateEmbedding", "args": [{ "id": "ch1" }] }
+      ],
+      "fail": [{ "method": "docMountChunks.updateEmbedding", "message": "mount boom" }]
+    },
+    {
+      "name": "autonomous-secondary-fails-keeps-chat",
+      "jobType": "AUTONOMOUS_ROOM_TURN",
+      "writes": [
+        { "method": "chats.addMessage", "args": [{ "id": "m1" }] },
+        { "method": "chats.update", "args": [{ "id": "c1", "runState": "idle" }] },
+        { "method": "docMountChunks.updateEmbedding", "args": [{ "id": "ch1" }] }
+      ],
+      "fail": [{ "method": "docMountChunks.updateEmbedding", "message": "mount degraded" }]
+    },
+    {
+      "name": "autonomous-main-fails-aborts-before-secondary",
+      "jobType": "AUTONOMOUS_ROOM_TURN",
+      "writes": [
+        { "method": "chats.addMessage", "args": [{ "id": "m1" }] },
+        { "method": "docMountFolders.create", "args": [{ "mountPointId": "MP", "path": "foo", "parentId": null, "name": "foo" }, { "id": "F1" }] }
+      ],
+      "fail": [{ "method": "chats.addMessage", "message": "main boom" }]
+    },
+    {
+      "name": "folder-create-reconcile-remaps-refs",
+      "jobType": "EMBEDDING_GENERATE",
+      "writes": [
+        { "method": "docMountFolders.create", "args": [{ "mountPointId": "MP", "path": "foo", "parentId": null, "name": "foo" }, { "id": "BUF" }] },
+        { "method": "docMountFileLinks.create", "args": [{ "mountPointId": "MP", "folderId": "BUF", "relativePath": "foo/x.md" }, { "id": "L1" }] }
+      ],
+      "fail": [{ "method": "docMountFolders.create", "message": "UNIQUE constraint failed: doc_mount_folders", "code": "SQLITE_CONSTRAINT_UNIQUE" }],
+      "findFolder": [{ "mountPointId": "MP", "path": "foo", "result": "EXIST" }]
+    },
+    {
+      "name": "folder-create-unique-no-existing-surfaces",
+      "jobType": "EMBEDDING_GENERATE",
+      "writes": [
+        { "method": "docMountFolders.create", "args": [{ "mountPointId": "MP", "path": "foo", "parentId": null, "name": "foo" }, { "id": "BUF" }] }
+      ],
+      "fail": [{ "method": "docMountFolders.create", "message": "UNIQUE constraint failed", "code": "SQLITE_CONSTRAINT_UNIQUE" }],
+      "findFolder": [{ "mountPointId": "MP", "path": "foo", "result": null }]
+    },
+    {
+      "name": "llm-logs-only-batch",
+      "jobType": "LLM_LOG_CLEANUP",
+      "writes": [
+        { "method": "llmLogs.cleanupOldLogs", "args": [30] }
+      ]
+    },
+    {
+      "name": "connection-unavailable-throws",
+      "jobType": "EMBEDDING_GENERATE",
+      "writes": [
+        { "method": "docMountChunks.updateEmbedding", "args": [{ "id": "ch1" }] }
+      ],
+      "unavailable": ["mountIndex"]
+    },
+    {
+      "name": "idempotent-main-commit-fails-rolls-back",
+      "jobType": "EMBEDDING_GENERATE",
+      "writes": [
+        { "method": "chats.update", "args": [{ "id": "c1" }] }
+      ],
+      "failCommit": [{ "partition": "main", "message": "commit boom" }]
+    }
+  ]
+}

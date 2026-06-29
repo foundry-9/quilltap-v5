@@ -210,8 +210,8 @@ build moved into core and the Phase-0 probes were retired.
 Phase 2 proper is now the same mechanical loop Phase 1 ran on tier-1: **port the
 next repo and add its tier-2 case.** The remaining on-ramp *breadth* is the
 generated-UUID remap + timestamp-placeholder normalization (**done** — see "The
-remap case" below), the `WriteBatch` partitioned-apply path, and the
-real-snapshot fixture sanitizer.
+remap case" below), the `WriteBatch` partitioned-apply path (**done** — see "The
+partitioned write applier" below), and the real-snapshot fixture sanitizer.
 
 ## Phase 2 proper — ported repos
 
@@ -314,6 +314,59 @@ QT_FIXTURE_FOLDERS_REMAP=/tmp/qt-folders-remap-fixture.db \
   cargo test -p quilltap-harness --test folders_remap_tier2_equivalence
 ```
 
+### The partitioned write applier (2026-06-29)
+
+The `WriteBatch` apply path — v4's `applyWritesUnsafe` / `applyPartition` /
+`applySecondaryBestEffort` / `applyFolderCreateIdempotent` — ported to
+`quilltap-core::write_apply` and green (`write_apply_equivalence`). Where
+`write_partition` (Phase 1) holds the pure classification/partition/remap leaves,
+this is the **orchestration** that sequences them.
+
+**Why this is a trace differential, not tier-2.** v4 unit-tests the applier with
+fake DBs and recording repos — the apply path is orchestration; the actual row
+mutations are delegated to repos, each tier-2-verified on its own. So the port is
+verified the same way: a tier-1-style differential on the observable trace, not a
+DB-state diff. The native engine is generic over an injected `ApplyHost` (the
+three partition connections + repo dispatch + the reconcile lookup); production
+wires real connections/repos, the harness wires a recorder.
+
+**What the trace captures, over a committed 9-scenario corpus**
+(`harness/oracle/fixtures/write-apply.json`):
+
+- per-partition exec sequence (`BEGIN IMMEDIATE` / `COMMIT` / `ROLLBACK`),
+- the ordered, *attempted* repo dispatches (method + args, args **post** folder
+  remap — so the reconcile rewrite is verified),
+- the reconcile lookups (`findByMountPointAndPath`),
+- the resolved/threw outcome (error message included, e.g. the
+  connection-unavailable string with its `jobId`).
+
+The scenarios cover: idempotent secondary-before-main ordering; idempotent
+secondary failure blocking main; main-primary (`AUTONOMOUS_ROOM_TURN`) committing
+main first with best-effort secondaries (chat survives a dropped doc-store
+effect); main-primary main failure aborting before secondaries; the
+concurrent-folder-create reconcile remapping a buffered folder id; a unique
+conflict with no existing row surfacing; an llm-logs-only batch; a missing
+connection; and a `COMMIT` failure rolling back.
+
+**The oracle runs under v4's jest, not tsx.** The applier is wired to module
+singletons (`getRawDatabase()`, `getRepositories()`) that `jest.mock` injects —
+the seam v4's own test uses. The oracle source lives in the v5 harness tree
+(`harness/oracle/cases/write-apply.test.ts`); v4's jest resolves it via an extra
+`--roots` with `@/` mapped to v4:
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin
+V5=~/source/quilltap-v5
+cd ~/source/quilltap-server
+
+QT_ORACLE_OUT=/tmp/oracle-write-apply.ndjson \
+  $N/npx jest --silent --roots "$PWD" --roots "$V5/harness/oracle/cases" -- write-apply
+
+cd "$V5"
+QT_ORACLE_WRITE_APPLY=/tmp/oracle-write-apply.ndjson \
+  cargo test -p quilltap-harness --test write_apply_equivalence
+```
+
 ## Deferred seams — must revisit (do NOT ship to real data without closing)
 
 Tracked, actionable deferrals. Each is currently green *only because the corpus
@@ -346,3 +399,14 @@ instances (non-ASCII user data), each must be closed or consciously waived.
    expands Zod's inner defaults (`foregroundColor` → `#1f2937`, etc.). The first
    op that writes a **partial** style must port those defaults into the Rust
    `TagVisualStyle` create path.
+
+4. **`write_apply` `__finalizeFile` + post-commit side effects.** The applier
+   port covers the partition/transaction/ordering/failure/remap orchestration but
+   *not* `__finalizeFile` (the staged-file rename inside the main transaction,
+   with undo-on-rollback) or the post-commit `cleanupStagingDirs` /
+   `dispatchInvalidations` (fs cleanup, cache invalidation). The corpus excludes
+   them. `__finalizeFile`'s rename-then-undo-on-rollback is a real correctness
+   behavior (a main-partition rollback must restore staged files); it lands with
+   the file-write path and needs a host-seam hook + its own corpus rows. The side
+   effects are best-effort and non-DB. Close `__finalizeFile` before the file
+   upload/avatar/background write paths run against real data.

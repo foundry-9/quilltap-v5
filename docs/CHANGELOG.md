@@ -137,4 +137,27 @@ tier-2 case):
   verified without pinning the literal id; timestamps placeholdered after
   asserting the `createdAt == updatedAt` create invariant per row. Round-trips
   green (`QT_ORACLE_FOLDERS_REMAP` + `QT_FIXTURE_FOLDERS_REMAP`, skip-if-unset).
+- The partitioned write APPLIER (`quilltap-core::write_apply`) — the writer-task
+  apply path ported from v4's `applyWritesUnsafe` / `applyPartition` /
+  `applySecondaryBestEffort` / `applyFolderCreateIdempotent`. Sequences the pure
+  `write_partition` leaves into the real orchestration: each partition (main /
+  mount-index / llm-logs) commits in its own `BEGIN IMMEDIATE` transaction;
+  main-primary jobs (`AUTONOMOUS_ROOM_TURN`) commit main first then apply
+  secondaries best-effort (a dropped doc-store effect can't lose the chat turn),
+  while idempotent jobs apply secondaries first so a secondary failure prevents
+  the main commit; and the concurrent `docMountFolders.create` unique-conflict
+  reconcile resolves to the existing row and remaps the discarded buffered folder
+  id for the rest of the batch. The engine is generic over an injected
+  `ApplyHost` seam (the three connections + repo dispatch + the reconcile
+  lookup), mirroring how v4 unit-tests this orchestration with fakes.
+- Harness: `write_apply_equivalence` — a tier-1-style TRACE differential over a
+  committed 9-scenario corpus (`harness/oracle/fixtures/write-apply.json`). Both
+  sides emit the same observable trace (per-partition exec sequence, ordered repo
+  dispatches with post-remap args, reconcile lookups, resolved/threw outcome).
+  The oracle (`harness/oracle/cases/write-apply.test.ts`) drives v4's REAL
+  `applyWritesUnsafe` — it runs under v4's jest (not tsx) because the applier's
+  `getRawDatabase()` / `getRepositories()` singletons are `jest.mock`-injected;
+  v4's jest resolves the v5-tree oracle file via an extra `--roots`. Deferred
+  (documented): `__finalizeFile` (fs rename + undo-on-rollback) and the
+  post-commit `cleanupStagingDirs` / `dispatchInvalidations` side effects.
 
