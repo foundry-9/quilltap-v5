@@ -46,6 +46,11 @@ test against the v4 oracle:
 - Chat-task text shaping: tool-artifact stripping, visible-conversation
   extraction, and the chat-card preview, over shared JS string primitives (the
   JS `\s`/`trim` set and UTF-16 length/slice).
+- Cheap-model classifiers: `isCheapModel` / `estimateModelCost` /
+  `getCheapestModel` and their deprecated fallback tables — the registry-sourced
+  recommended-list and default-model are injected (empty / none takes the
+  fallback path), the string heuristics (expensive/mid/cheap indicators, the
+  dashed-vs-undashed `o1`/`o3` split) are pure.
 - Version compare: documented `compareVersions`' `localeCompare` fallback (the
   malformed-input path) as a deferred ICU-collation seam — the parseable
   numeric path stays exact; faithful collation waits on the ICU-crate decision.

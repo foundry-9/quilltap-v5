@@ -64,6 +64,10 @@
 //!     New-Chat scenario-text combiner; oracle-verified.
 //!   * `model_classes` — the built-in LLM capability tiers and their lookups;
 //!     oracle-verified.
+//!   * `cheap_model` — the cheap-model classifiers (`is_cheap_model`,
+//!     `estimate_model_cost`, `get_cheapest_model`) and their deprecated fallback
+//!     tables; the registry-sourced recommended-list / default-model are injected
+//!     (the string heuristics are pure); oracle-verified.
 //!   * `token_estimation` — character-based token counting (estimate / per-message
 //!     / per-conversation, truncation, context-usage %); oracle-verified.
 //!   * `turn_state` — the multi-character turn-rotation state machine (queue
@@ -92,6 +96,7 @@ pub mod char_count;
 pub mod chat_predicates;
 pub mod chat_tasks;
 pub mod chat_utils;
+pub mod cheap_model;
 pub mod context_budget;
 pub mod context_compression;
 pub mod context_summary;
