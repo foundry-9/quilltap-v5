@@ -1,0 +1,117 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `embedding_status` repo (Phase-2). One",
+    "committed file drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-embedding-status-fixture.ts + embedding-status-tier2.ts)",
+    "    and",
+    "  - the Rust port (quilltap-harness embedding_status tier-2 test).",
+    "",
+    "What this repo banks: an all-TEXT marshaling surface — UUID columns (userId,",
+    "entityId, profileId) as TEXT, two enum columns as TEXT (entityType:",
+    "MEMORY/FILE/HELP_DOC/CONVERSATION_CHUNK/MOUNT_CHUNK; status:",
+    "PENDING/EMBEDDED/FAILED, default PENDING, set explicitly here), and two NULLABLE",
+    "TEXT columns (embeddedAt, error). No booleans, numbers, JSON, or BLOB.",
+    "",
+    "⚠️ updatedAt IS MINTED, NOT PINNED. v4's EmbeddingStatusRepository OVERRIDES",
+    "the base create/update and sets updatedAt = getCurrentTimestamp() (live now)",
+    "UNCONDITIONALLY — options.updatedAt on create and any updatedAt in an update",
+    "patch are IGNORED. So create options carry only {id, createdAt}, update data",
+    "carries NO updatedAt, and the tier-2 harness placeholder-normalizes the",
+    "updatedAt column on BOTH sides (ids + createdAt + every other column stay",
+    "exact). createdAt IS honored on create (options.createdAt || now) and",
+    "preserved on update.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the",
+    "folders / tags / tfidf_vocabulary fixtures use. It is NOT the real Friday",
+    "pepper and is safe to commit.",
+    "",
+    "DETERMINISM: ids + createdAt + payload columns are pinned; only the minted",
+    "updatedAt column needs normalization (placeholdered both sides)."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "entityType": "MEMORY",
+      "entityId": "e1000000-0000-4000-8000-0000000000e1",
+      "profileId": "11000000-0000-4000-8000-0000000000f1",
+      "status": "EMBEDDED",
+      "embeddedAt": "2026-01-01T00:00:00.000Z",
+      "error": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "entityType": "FILE",
+      "entityId": "e2000000-0000-4000-8000-0000000000e2",
+      "profileId": "11000000-0000-4000-8000-0000000000f1",
+      "status": "FAILED",
+      "embeddedAt": null,
+      "error": "dimension mismatch",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "New PENDING status for a HELP_DOC entity; embeddedAt + error both null.",
+      "data": {
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "entityType": "HELP_DOC",
+        "entityId": "e3000000-0000-4000-8000-0000000000e3",
+        "profileId": "22000000-0000-4000-8000-0000000000f2",
+        "status": "PENDING",
+        "embeddedAt": null,
+        "error": null
+      },
+      "options": {
+        "id": "3c000000-0000-4000-8000-000000000003",
+        "createdAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "New EMBEDDED status for a CONVERSATION_CHUNK entity; embeddedAt set, error null.",
+      "data": {
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "entityType": "CONVERSATION_CHUNK",
+        "entityId": "e4000000-0000-4000-8000-0000000000e4",
+        "profileId": "22000000-0000-4000-8000-0000000000f2",
+        "status": "EMBEDDED",
+        "embeddedAt": "2026-02-02T00:00:00.000Z",
+        "error": null
+      },
+      "options": {
+        "id": "4d000000-0000-4000-8000-000000000004",
+        "createdAt": "2026-02-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update seed row 1 (PENDING-like flip): set status EMBEDDED and embeddedAt. createdAt preserved; updatedAt minted (placeholdered).",
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "data": {
+        "status": "EMBEDDED",
+        "embeddedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update the first created row: set status FAILED and an error message. updatedAt minted (placeholdered).",
+      "id": "3c000000-0000-4000-8000-000000000003",
+      "data": {
+        "status": "FAILED",
+        "error": "timeout calling embedding provider"
+      }
+    },
+    {
+      "kind": "delete",
+      "comment": "Delete the second created status.",
+      "id": "4d000000-0000-4000-8000-000000000004"
+    }
+  ]
+}

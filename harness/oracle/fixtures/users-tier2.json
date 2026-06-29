@@ -1,0 +1,110 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `users` repo (Phase-2). One committed",
+    "file drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-users-fixture.ts + users-tier2.ts) and",
+    "  - the Rust port (quilltap-harness users tier-2 test).",
+    "",
+    "What this repo banks: the plainest marshaling shape so far — one required",
+    "TEXT column (`username`) plus five NULLABLE TEXT columns (`email`, `name`,",
+    "`image`, `emailVerified`, `passwordHash`). No booleans, numbers, JSON, or",
+    "BLOB. null/undefined -> SQL NULL; a string -> the string. The corpus pairs a",
+    "fully-populated row (every nullable set, a plausible passwordHash, an",
+    "emailVerified timestamp) against a minimal row (username only, all nullables",
+    "null), and exercises nullable->value sets via update.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the",
+    "folders / tags / text_replacement_rules / image_profiles fixtures use. It is",
+    "NOT the real Friday pepper and is safe to commit.",
+    "",
+    "DETERMINISM: every id and timestamp is pinned, so both sides produce",
+    "byte-identical post-op state and the canonical dump needs ZERO normalization."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "username": "seed_full_user",
+      "email": "full@example.com",
+      "name": "Seed Full User",
+      "image": "https://example.com/avatar/full.png",
+      "emailVerified": "2026-01-01T00:00:00.000Z",
+      "passwordHash": "$2b$10$abcdefghijklmnopqrstuvCSEEDhashvalue0123456789ABCDEF",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "username": "seed_min_user",
+      "email": null,
+      "name": null,
+      "image": null,
+      "emailVerified": null,
+      "passwordHash": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "New fully-populated user: every nullable column set, a plausible passwordHash, an emailVerified timestamp.",
+      "data": {
+        "username": "new_full_user",
+        "email": "new.full@example.com",
+        "name": "New Full User",
+        "image": "https://example.com/avatar/new.png",
+        "emailVerified": "2026-02-01T00:00:00.000Z",
+        "passwordHash": "$2b$10$zyxwvutsrqponmlkjihgfeNEWhashvalue0123456789ABCDEF"
+      },
+      "options": {
+        "id": "3c000000-0000-4000-8000-000000000003",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "New minimal user: username only, all nullable columns null.",
+      "data": {
+        "username": "new_min_user",
+        "email": null,
+        "name": null,
+        "image": null,
+        "emailVerified": null,
+        "passwordHash": null
+      },
+      "options": {
+        "id": "4d000000-0000-4000-8000-000000000004",
+        "createdAt": "2026-02-02T00:00:00.000Z",
+        "updatedAt": "2026-02-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update seed row 1 (fully-populated): rename and change email/image. createdAt preserved, updatedAt pinned.",
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "data": {
+        "name": "Seed Full User (renamed)",
+        "email": "full.renamed@example.com",
+        "image": "https://example.com/avatar/full-v2.png",
+        "updatedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update seed row 2 (minimal): set email + name (nullable -> value). updatedAt pinned.",
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "data": {
+        "email": "min.promoted@example.com",
+        "name": "Seed Min User (named)",
+        "updatedAt": "2026-03-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "delete",
+      "comment": "Delete the second created user (new_min_user).",
+      "id": "4d000000-0000-4000-8000-000000000004"
+    }
+  ]
+}

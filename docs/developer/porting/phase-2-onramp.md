@@ -559,3 +559,17 @@ instances (non-ASCII user data), each must be closed or consciously waived.
    prove it. This is distinct from the fixed-shape object columns, which remain
    exact. Ordering only — same family as items 1–2 but for *object keys inside a
    JSON cell*, not row/collation order.
+
+6. **Mount-index / llm-logs sibling-DB partitions — machinery gap (NOT a
+   correctness seam).** Every repo ported through repo #20 lives in the **main**
+   database, so the tier-2 machinery (the fixture builder's `ensureCollection`, the
+   oracle case's `rawQuery`, and the Rust `Writer::open_writable`) targets exactly
+   one DB file. But several repos route to a **dedicated sibling DB** via their own
+   `getCollection` override: `doc_mount_points` / `doc_mount_folders` /
+   `project_doc_mount_links` / `group_doc_mount_links` / `group_character_members`
+   use `getRawMountIndexDatabase` (`quilltap-mount-index.db`), and `llm_logs` uses
+   the llm-logs DB. Porting any of these first needs a one-time extension: the
+   fixture builder + oracle must create/read the table in the sibling DB, and the
+   Rust side must open that file. Best done as its own focused slice (it then
+   unlocks ~5 mount-index repos in parallel), not folded into a main-DB batch. Not
+   a correctness risk for what's shipped — purely unported coverage.

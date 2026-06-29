@@ -1,0 +1,210 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `files` repo (Phase-2). One committed",
+    "file drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-files-fixture.ts + files-tier2.ts) and",
+    "  - the Rust port (quilltap-harness files tier-2 test).",
+    "",
+    "files is the WIDEST repo to date (~23 columns). It carries the Taggable",
+    "lineage (user-scoped `userId` + a JSON `tags` array) and banks: a SECOND JSON",
+    "array column (`linkedTo`); a REAL number column (`size`) plus two NULLABLE",
+    "REAL columns (`width`, `height`); an OPTIONAL-NO-DEFAULT boolean (`isPlainText`",
+    "-> INTEGER 0/1 when present, SQL NULL when absent); enum TEXT columns",
+    "(`source`, `category`, `fileStatus`); a 64-char `sha256`; and a batch of",
+    "nullable string columns (generation*/description/projectId/folderPath/",
+    "storageKey).",
+    "",
+    "isPlainText MODELING: the schema is `z.boolean().optional()` with NO default,",
+    "so an omitted value persists as SQL NULL (distinct from an explicit false/0).",
+    "Every corpus row sets it explicitly EXCEPT the 4th create (New Doc No PlainText),",
+    "which OMITS it to bank the absent -> NULL case.",
+    "",
+    "fileStatus MODELING: `FileStatusEnum.default('ok').optional()`. Every corpus",
+    "row sets it explicitly ('ok'/'orphaned') so the Rust side can model it as a",
+    "required String, sidestepping the .default().optional() absent subtlety.",
+    "",
+    "REAL float pass-through: `size` integer-valued REAL cells (e.g. 204800)",
+    "render back as JSON integers via js_number_to_json; `width`/`height` likewise.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the",
+    "folders / tags / image_profiles fixtures use. It is NOT the real Friday pepper",
+    "and is safe to commit.",
+    "",
+    "DETERMINISM: every id and timestamp is pinned, so both sides produce",
+    "byte-identical post-op state and the canonical dump needs ZERO normalization."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "f1000000-0000-4000-8000-000000000001",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "originalFilename": "sunset.png",
+      "mimeType": "image/png",
+      "size": 204800,
+      "width": 1024,
+      "height": 768,
+      "isPlainText": false,
+      "linkedTo": ["11000000-0000-4000-8000-0000000000e1"],
+      "source": "GENERATED",
+      "category": "IMAGE",
+      "generationPrompt": "a sunset over the ocean",
+      "generationModel": "flux-1.1-pro",
+      "generationRevisedPrompt": "a vivid sunset over a calm ocean",
+      "description": "AI-generated sunset",
+      "tags": ["7a000000-0000-4000-8000-0000000000d1"],
+      "projectId": "99000000-0000-4000-8000-000000000091",
+      "folderPath": "/images/",
+      "storageKey": "user/aa/sunset.png",
+      "fileStatus": "ok",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "f2000000-0000-4000-8000-000000000002",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "originalFilename": "notes.txt",
+      "mimeType": "text/plain",
+      "size": 512,
+      "width": null,
+      "height": null,
+      "isPlainText": true,
+      "linkedTo": [],
+      "source": "UPLOADED",
+      "category": "DOCUMENT",
+      "generationPrompt": null,
+      "generationModel": null,
+      "generationRevisedPrompt": null,
+      "description": null,
+      "tags": [],
+      "projectId": null,
+      "folderPath": null,
+      "storageKey": null,
+      "fileStatus": "ok",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "Full new file: width/height set, isPlainText false, linkedTo + tags with ids, all generation* + description set, projectId/folderPath/storageKey set, category AVATAR, source IMPORTED, fileStatus 'ok'.",
+      "data": {
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "originalFilename": "avatar.webp",
+        "mimeType": "image/webp",
+        "size": 65536,
+        "width": 512,
+        "height": 512,
+        "isPlainText": false,
+        "linkedTo": ["33000000-0000-4000-8000-0000000000e3", "44000000-0000-4000-8000-0000000000e4"],
+        "source": "IMPORTED",
+        "category": "AVATAR",
+        "generationPrompt": "portrait of a character",
+        "generationModel": "dall-e-3",
+        "generationRevisedPrompt": "a detailed portrait of a character",
+        "description": "imported avatar",
+        "tags": ["7a000000-0000-4000-8000-0000000000d1", "7b000000-0000-4000-8000-0000000000d2"],
+        "projectId": "99000000-0000-4000-8000-000000000092",
+        "folderPath": "/avatars/",
+        "storageKey": "user/aa/avatar.webp",
+        "fileStatus": "ok"
+      },
+      "options": {
+        "id": "f3000000-0000-4000-8000-000000000003",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "Minimal new file with nulls: width/height null, generation* null, projectId/folderPath/storageKey null, empty linkedTo + tags, category DOCUMENT, source UPLOADED, fileStatus 'ok', isPlainText true.",
+      "data": {
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+        "originalFilename": "readme.md",
+        "mimeType": "text/markdown",
+        "size": 1024,
+        "width": null,
+        "height": null,
+        "isPlainText": true,
+        "linkedTo": [],
+        "source": "UPLOADED",
+        "category": "DOCUMENT",
+        "generationPrompt": null,
+        "generationModel": null,
+        "generationRevisedPrompt": null,
+        "description": null,
+        "tags": [],
+        "projectId": null,
+        "folderPath": null,
+        "storageKey": null,
+        "fileStatus": "ok"
+      },
+      "options": {
+        "id": "f4000000-0000-4000-8000-000000000004",
+        "createdAt": "2026-02-02T00:00:00.000Z",
+        "updatedAt": "2026-02-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "New file that OMITS isPlainText entirely -> banks the absent -> SQL NULL case. category EXPORT, source SYSTEM, fileStatus 'orphaned'.",
+      "data": {
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+        "originalFilename": "backup.zip",
+        "mimeType": "application/zip",
+        "size": 1048576,
+        "width": null,
+        "height": null,
+        "linkedTo": [],
+        "source": "SYSTEM",
+        "category": "EXPORT",
+        "generationPrompt": null,
+        "generationModel": null,
+        "generationRevisedPrompt": null,
+        "description": null,
+        "tags": [],
+        "projectId": null,
+        "folderPath": null,
+        "storageKey": null,
+        "fileStatus": "orphaned"
+      },
+      "options": {
+        "id": "f5000000-0000-4000-8000-000000000005",
+        "createdAt": "2026-02-03T00:00:00.000Z",
+        "updatedAt": "2026-02-03T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update seed row 1: set width/height (new dims), set description, replace the tags array. createdAt preserved, updatedAt pinned.",
+      "id": "f1000000-0000-4000-8000-000000000001",
+      "data": {
+        "width": 2048,
+        "height": 1536,
+        "description": "AI-generated sunset (upscaled)",
+        "tags": ["7a000000-0000-4000-8000-0000000000d1", "7c000000-0000-4000-8000-0000000000d3"],
+        "updatedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update seed row 2: flip isPlainText true->false, flip fileStatus 'ok'->'orphaned'. updatedAt pinned.",
+      "id": "f2000000-0000-4000-8000-000000000002",
+      "data": {
+        "isPlainText": false,
+        "fileStatus": "orphaned",
+        "updatedAt": "2026-03-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "delete",
+      "comment": "Delete the minimal created file (readme.md).",
+      "id": "f4000000-0000-4000-8000-000000000004"
+    }
+  ]
+}

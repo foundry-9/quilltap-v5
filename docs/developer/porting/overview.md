@@ -31,7 +31,7 @@ already working ([`phase-0.md`](./phase-0.md)).
 |------|------|------------------|--------|
 | **0** | Scaffolding, toolchain, cipher-correct DB open, differential harness | tier-1 proven | **substantially done** |
 | **1** | Pure functions (scoring, sizing, remaps, budget math) | tier-1 exact | **done** |
-| **2** | Data layer: repos, the writer-task model, per-DB partitioned apply | tier-2 structural DB diff | in progress — fifteen repos round-trip green (`folders`, `tags`, `text_replacement_rules`, `prompt_templates`, `conversation_annotations`, `provider_models`, `help_docs`, `roleplay_templates`, `image_profiles`, `connection_profiles`, `plugin_config`, `embedding_profiles`, `terminal_sessions`, `character_plugin_data`, `tfidf_vocabulary`) ([`phase-2-onramp.md`](./phase-2-onramp.md)); repo-by-repo |
+| **2** | Data layer: repos, the writer-task model, per-DB partitioned apply | tier-2 structural DB diff | in progress — twenty repos round-trip green (`folders`, `tags`, `text_replacement_rules`, `prompt_templates`, `conversation_annotations`, `provider_models`, `help_docs`, `roleplay_templates`, `image_profiles`, `connection_profiles`, `plugin_config`, `embedding_profiles`, `terminal_sessions`, `character_plugin_data`, `tfidf_vocabulary`, `users`, `conversation_chunks`, `files`, `chat_documents`, `embedding_status`) ([`phase-2-onramp.md`](./phase-2-onramp.md)); repo-by-repo |
 | **3** | Services / engine: memory gate, chat orchestration, enclave `step()` | tier-2 + tier-3 mocked-LLM | not started |
 | **4** | Transports (Tauri/uniffi/axum) + Angular UI | end-to-end | not started |
 
@@ -67,16 +67,24 @@ open, single-writer model, canonical dump, the TS oracle + harness diff — is i
 place, so **Phase 2 proper is now the same mechanical loop, repo by repo**:
 port the next repo, add its tier-2 case. See [`phase-2-onramp.md`](./phase-2-onramp.md).
 
-**Phase 2 proper has started.** Fourteen repos past the pilot now round-trip
+**Phase 2 proper has started.** Nineteen repos past the pilot now round-trip
 green, ported in parallel batches (agents draft each repo's own new files; the
 shared `db/mod.rs` wiring + verification are serialized afterward) — two batches
-of three, then a batch of five plain-base single-table repos (`plugin_config`
-[UserOwned + open-JSON `config` + optional bool], `embedding_profiles` [Taggable +
-nullable-REAL numbers + enum], `terminal_sessions` [nullable strings + nullable-
-REAL `exitCode`], `character_plugin_data` [first open-JSON _value_ column,
-`z.unknown()`], and `tfidf_vocabulary` [first repo overriding the base
-`create`/`update` — `updatedAt` minted unconditionally, so placeholder-normalized;
-first plain-string JSON-text columns]). The first
+of three, then two batches of five. The first batch of five (plain-base
+single-table): `plugin_config` [UserOwned + open-JSON `config` + optional bool],
+`embedding_profiles` [Taggable + nullable-REAL numbers + enum], `terminal_sessions`
+[nullable strings + nullable-REAL `exitCode`], `character_plugin_data` [first
+open-JSON _value_ column, `z.unknown()`], and `tfidf_vocabulary` [first repo
+overriding the base `create`/`update` — `updatedAt` minted unconditionally, so
+placeholder-normalized; first plain-string JSON-text columns]. The second batch of
+five (all main-DB): `users` [plainest surface — all nullable strings],
+`conversation_chunks` [second BLOB column + min-only REAL int + JSON arrays],
+`files` [widest repo to date, ~23 cols — REAL + nullable-REAL + optional bool + two
+JSON arrays + three enums], `chat_documents` [enum + bool + nullable strings], and
+`embedding_status` [second base-method-override repo — minted `updatedAt`,
+placeholder-normalized]. Note the `doc_mount_*` / `group_*` link tables route to a
+dedicated mount-index sibling DB (not main), so they await a one-time
+harness/Writer extension before porting. The first
 batch — `conversation_annotations` (a REAL-affinity unbounded-int column
 `messageIndex` + a nullable UUID column), `provider_models` (two nullable REAL
 number columns + boolean-default + enum TEXT columns), and `help_docs` (the

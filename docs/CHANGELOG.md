@@ -314,3 +314,36 @@ tier-2 case):
   - The `plugin_config` / `character_plugin_data` open-JSON corpora are constrained
     to `{}` or single-key objects, same as the tracked multi-key key-order seam.
 
+- A fourth parallel batch — five more main-DB repos (each `create` / `update` /
+  `delete`, its own tier-2 case round-tripping green):
+  - `users` (`quilltap-core::db::users`): the plainest surface yet — all strings
+    plus five **nullable TEXT** columns (`email`, `name`, `image`, `emailVerified`,
+    `passwordHash`), no booleans/numbers/JSON/BLOB. Harness
+    `users_tier2_equivalence` (`QT_ORACLE_USERS` + `QT_FIXTURE_USERS`).
+  - `conversation_chunks` (`quilltap-core::db::conversation_chunks`): the **second
+    tier-2 BLOB column** (`embedding`, Float32 LE bytes via
+    `embedding_blob::float32_to_blob`, null/empty → NULL, dumped as hex; a text-only
+    update leaves it untouched) plus a REAL int (`interchangeIndex`,
+    `z.number().int().min(0)` — min-only → REAL) and two **JSON string-array
+    columns** (`participantNames`, `messageIds`). Harness
+    `conversation_chunks_tier2_equivalence` (`QT_ORACLE_CONVERSATION_CHUNKS` +
+    `QT_FIXTURE_CONVERSATION_CHUNKS`).
+  - `files` (`quilltap-core::db::files`): the **widest repo to date** (~23 columns,
+    Taggable) — a bare-`z.number()` REAL (`size`), two **nullable REAL** columns
+    (`width`/`height`), an **optional boolean** (`isPlainText` — banks both the
+    present 0/1 and the absent → NULL case), two JSON arrays (`linkedTo`, `tags`),
+    three enum TEXT columns (`source`, `category`, `fileStatus`), and several
+    nullable strings. Harness `files_tier2_equivalence` (`QT_ORACLE_FILES` +
+    `QT_FIXTURE_FILES`).
+  - `chat_documents` (`quilltap-core::db::chat_documents`): an enum TEXT column
+    (`scope`), a boolean (`isActive`), and two nullable strings. Harness
+    `chat_documents_tier2_equivalence` (`QT_ORACLE_CHAT_DOCUMENTS` +
+    `QT_FIXTURE_CHAT_DOCUMENTS`).
+  - `embedding_status` (`quilltap-core::db::embedding_status`): the second repo that
+    **overrides the base `create`/`update`** with an unconditionally-minted
+    `updatedAt` (like `tfidf_vocabulary`) — the port mints it via `clock::now_iso`
+    and the harness placeholder-normalizes only `updatedAt` (id / `createdAt` /
+    payload pinned). Two enum TEXT columns (`entityType`, `status`) + a nullable
+    timestamp + a nullable string. Harness `embedding_status_tier2_equivalence`
+    (`QT_ORACLE_EMBEDDING_STATUS` + `QT_FIXTURE_EMBEDDING_STATUS`).
+

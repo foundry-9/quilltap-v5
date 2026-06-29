@@ -1,0 +1,124 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `conversation_chunks` repo (Phase-2).",
+    "One committed file drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-conversation-chunks-fixture.ts + ",
+    "    conversation-chunks-tier2.ts) and",
+    "  - the Rust port (quilltap-harness conversation_chunks tier-2 test).",
+    "",
+    "BLOB column, after `help_docs`: `embedding` stores a raw Float32 byte buffer",
+    "(little-endian f32 bytes). v4's `documentToRow` converts a",
+    "number[]/Float32Array to a BLOB via `embeddingToBlob`; an EMPTY array or null",
+    "is stored as NULL. The canonical dump emits BLOBs as lowercase hex on BOTH",
+    "sides, so deterministic embeddings compare bit-exact.",
+    "",
+    "EMBEDDING VALUES are chosen to be EXACTLY float32-representable so the",
+    "f64->f32 cast is lossless and identical on both sides. [0.5,-0.25,0.75,0.125]",
+    "encodes little-endian as `0000003f000080be0000403f0000003e`.",
+    "",
+    "interchangeIndex is `z.number().int().min(0)` (min only, no max) -> REAL.",
+    "Integer-valued cells dump back as JSON integers (0, 1, 2).",
+    "participantNames / messageIds are JSON array columns -> compact JSON text.",
+    "",
+    "BANKED BEHAVIOR: a text-only-ish `update` (content + interchangeIndex +",
+    "participantNames) on a row that HAS an embedding must LEAVE the embedding",
+    "BLOB untouched. v4's `_update` rewrites the whole row from the hydrated",
+    "existing entity (the BLOB round-trips losslessly); the Rust partial",
+    "`UPDATE SET` simply never names the embedding column. The post-update dump",
+    "must still show the original embedding hex — op #3 below exercises this.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the",
+    "folders / tags / help-docs fixtures use. It is NOT the real Friday pepper",
+    "and is safe to commit.",
+    "",
+    "DETERMINISM: every id and timestamp is pinned, so both sides produce",
+    "byte-identical post-op state and the canonical dump needs ZERO normalization."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "chatId": "c0000000-0000-4000-8000-00000000aaaa",
+      "interchangeIndex": 0,
+      "content": "Aurora greets the salon at dawn.",
+      "participantNames": ["Aurora", "Prospero"],
+      "messageIds": ["m1000000-0000-4000-8000-000000000001", "m1000000-0000-4000-8000-000000000002"],
+      "embedding": [0.5, -0.25, 0.75, 0.125],
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "chatId": "c0000000-0000-4000-8000-00000000aaaa",
+      "interchangeIndex": 1,
+      "content": "Prospero replies with a flourish.",
+      "participantNames": [],
+      "messageIds": [],
+      "embedding": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "New chunk WITH an embedding + populated arrays. Exercises the BLOB insert path (number[] -> little-endian Float32 bytes -> hex `0000003f000080be0000403f0000003e`) and the JSON array columns. interchangeIndex 2. id + timestamps pinned.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-00000000aaaa",
+        "interchangeIndex": 2,
+        "content": "Pascal tallies the ledger entries.",
+        "participantNames": ["Pascal", "Carina"],
+        "messageIds": ["m1000000-0000-4000-8000-000000000003"],
+        "embedding": [0.5, -0.25, 0.75, 0.125]
+      },
+      "options": {
+        "id": "3c000000-0000-4000-8000-000000000003",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "New chunk with NULL embedding + EMPTY arrays. Exercises the empty/null -> SQL NULL path and the empty JSON array `[]`. interchangeIndex 3.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-00000000bbbb",
+        "interchangeIndex": 3,
+        "content": "Carina charts the night sky.",
+        "participantNames": [],
+        "messageIds": [],
+        "embedding": null
+      },
+      "options": {
+        "id": "4d000000-0000-4000-8000-000000000004",
+        "createdAt": "2026-02-02T00:00:00.000Z",
+        "updatedAt": "2026-02-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update on the EMBEDDED seed row `Aurora`: change content + interchangeIndex + participantNames only (NO embedding field). The embedding BLOB must SURVIVE untouched — the post-update dump still shows `0000003f000080be0000403f0000003e`. createdAt preserved, updatedAt pinned.",
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "data": {
+        "content": "Aurora greets the salon at dawn, rewritten.",
+        "interchangeIndex": 5,
+        "participantNames": ["Aurora", "Prospero", "Pascal"],
+        "updatedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "TEXT-ONLY update on the NULL-embedding seed row `Prospero`: change content + messageIds. Embedding stays NULL. createdAt preserved, updatedAt pinned.",
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "data": {
+        "content": "Prospero replies with a grander flourish.",
+        "messageIds": ["m1000000-0000-4000-8000-000000000009"],
+        "updatedAt": "2026-03-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "delete",
+      "comment": "Delete the NULL-embedding `Carina` chunk created above.",
+      "id": "4d000000-0000-4000-8000-000000000004"
+    }
+  ]
+}

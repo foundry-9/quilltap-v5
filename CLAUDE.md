@@ -346,6 +346,27 @@ id remap; it also banks the first **plain-string columns holding JSON text**
 `character_plugin_data` open-JSON corpora are constrained to `{}` / single-key,
 same tracked seam.
 
+A **fourth parallel batch** (repos #16–#20, five at a time) — `users`,
+`conversation_chunks`, `files`, `chat_documents`, and `embedding_status` — was
+ported the same way and each round-trips green (`users_tier2_equivalence`,
+`conversation_chunks_tier2_equivalence`, `files_tier2_equivalence`,
+`chat_documents_tier2_equivalence`, `embedding_status_tier2_equivalence`). All
+five are **main-DB** repos. `users` is the plainest surface yet (all strings + five
+nullable TEXT columns). `conversation_chunks` banks the **second BLOB column**
+(`embedding`, like `help_docs` — a text-only update leaves it untouched) plus a
+min-only REAL int (`interchangeIndex`) and two JSON string-array columns.
+`files` is the **widest repo to date** (~23 columns, Taggable): a bare-number
+REAL (`size`), two nullable REAL columns, an optional boolean (`isPlainText` —
+banks both present 0/1 and absent → NULL), two JSON arrays, three enum TEXT
+columns, and many nullable strings. `chat_documents` banks an enum + a boolean +
+nullable strings. `embedding_status` is the **second base-method-override repo**
+(after `tfidf_vocabulary`): v4 mints `updatedAt` unconditionally, so the port
+mints it via `clock::now_iso` and the harness placeholder-normalizes only that
+column (id / `createdAt` / payload pinned). Note: the `doc_mount_*` / `group_*`
+link tables route to a **dedicated mount-index sibling DB** (not main), so they
+await a one-time harness/Writer extension to target that partition before they can
+be ported.
+
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green
 (`prompt_templates_tier2_equivalence`): `create` + `update` + `delete` from v4's

@@ -1,0 +1,108 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `chat_documents` repo (Phase-2). One",
+    "committed file drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-chat-documents-fixture.ts + chat-documents-tier2.ts)",
+    "    and",
+    "  - the Rust port (quilltap-harness chat_documents tier-2 test).",
+    "",
+    "What this repo banks: a plain (non-Taggable) AbstractBaseRepository with an",
+    "all-text-plus-one-boolean shape and no number / JSON / BLOB columns. Two",
+    "required TEXT strings (chatId, filePath), an enum TEXT column (scope:",
+    "'project' | 'document_store' | 'general'), two nullable TEXT columns",
+    "(mountPoint, displayTitle -> NULL), and one boolean (isActive -> INTEGER 0/1).",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the",
+    "folders / tags / image_profiles fixtures use. It is NOT the real Friday",
+    "pepper and is safe to commit.",
+    "",
+    "DETERMINISM: every id and timestamp is pinned, so both sides produce",
+    "byte-identical post-op state and the canonical dump needs ZERO normalization."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "chatId": "c0000000-0000-4000-8000-0000000000c1",
+      "filePath": "docs/intro.md",
+      "scope": "document_store",
+      "mountPoint": "primary",
+      "displayTitle": "Intro",
+      "isActive": true,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "chatId": "c0000000-0000-4000-8000-0000000000c1",
+      "filePath": "draft.md",
+      "scope": "project",
+      "mountPoint": null,
+      "displayTitle": null,
+      "isActive": false,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "New active document, scope 'general', mountPoint + displayTitle set.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-0000000000c2",
+        "filePath": "shared/notes.md",
+        "scope": "general",
+        "mountPoint": "secondary",
+        "displayTitle": "Notes",
+        "isActive": true
+      },
+      "options": {
+        "id": "3c000000-0000-4000-8000-000000000003",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "New inactive document, scope 'project', both nullable columns null.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-0000000000c2",
+        "filePath": "scratch.md",
+        "scope": "project",
+        "mountPoint": null,
+        "displayTitle": null,
+        "isActive": false
+      },
+      "options": {
+        "id": "4d000000-0000-4000-8000-000000000004",
+        "createdAt": "2026-02-02T00:00:00.000Z",
+        "updatedAt": "2026-02-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update seed row 2: flip isActive false->true and set displayTitle. createdAt preserved, updatedAt pinned.",
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "data": {
+        "isActive": true,
+        "displayTitle": "Draft",
+        "updatedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update seed row 1: change scope document_store->general and set a new mountPoint. updatedAt pinned.",
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "data": {
+        "scope": "general",
+        "mountPoint": "tertiary",
+        "updatedAt": "2026-03-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "delete",
+      "comment": "Delete the second created document (scratch.md).",
+      "id": "4d000000-0000-4000-8000-000000000004"
+    }
+  ]
+}

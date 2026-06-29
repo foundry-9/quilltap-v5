@@ -24,9 +24,13 @@ use serde_json::{Map, Value};
 use crate::dbkey;
 
 pub mod character_plugin_data;
+pub mod chat_documents;
 pub mod connection_profiles;
 pub mod conversation_annotations;
+pub mod conversation_chunks;
 pub mod embedding_profiles;
+pub mod embedding_status;
+pub mod files;
 pub mod folders;
 pub mod help_docs;
 pub mod image_profiles;
@@ -38,6 +42,7 @@ pub mod tags;
 pub mod terminal_sessions;
 pub mod text_replacement_rules;
 pub mod tfidf_vocabulary;
+pub mod users;
 
 /// Errors from the DB layer.
 #[derive(Debug)]
@@ -101,6 +106,11 @@ impl Writer {
         character_plugin_data::CharacterPluginDataRepository::new(&self.conn)
     }
 
+    /// The chat-documents repository over this writer's connection.
+    pub fn chat_documents(&self) -> chat_documents::ChatDocumentsRepository<'_> {
+        chat_documents::ChatDocumentsRepository::new(&self.conn)
+    }
+
     /// The connection-profiles repository over this writer's connection.
     pub fn connection_profiles(&self) -> connection_profiles::ConnectionProfilesRepository<'_> {
         connection_profiles::ConnectionProfilesRepository::new(&self.conn)
@@ -113,9 +123,24 @@ impl Writer {
         conversation_annotations::ConversationAnnotationsRepository::new(&self.conn)
     }
 
+    /// The conversation-chunks repository over this writer's connection.
+    pub fn conversation_chunks(&self) -> conversation_chunks::ConversationChunksRepository<'_> {
+        conversation_chunks::ConversationChunksRepository::new(&self.conn)
+    }
+
     /// The embedding-profiles repository over this writer's connection.
     pub fn embedding_profiles(&self) -> embedding_profiles::EmbeddingProfilesRepository<'_> {
         embedding_profiles::EmbeddingProfilesRepository::new(&self.conn)
+    }
+
+    /// The embedding-status repository over this writer's connection.
+    pub fn embedding_status(&self) -> embedding_status::EmbeddingStatusRepository<'_> {
+        embedding_status::EmbeddingStatusRepository::new(&self.conn)
+    }
+
+    /// The files repository over this writer's connection.
+    pub fn files(&self) -> files::FilesRepository<'_> {
+        files::FilesRepository::new(&self.conn)
     }
 
     /// The folders repository over this writer's connection.
@@ -173,6 +198,11 @@ impl Writer {
     /// The tfidf-vocabulary repository over this writer's connection.
     pub fn tfidf_vocabulary(&self) -> tfidf_vocabulary::TfidfVocabularyRepository<'_> {
         tfidf_vocabulary::TfidfVocabularyRepository::new(&self.conn)
+    }
+
+    /// The users repository over this writer's connection.
+    pub fn users(&self) -> users::UsersRepository<'_> {
+        users::UsersRepository::new(&self.conn)
     }
 
     /// Canonical dump of one table, in the same shape the tier-2 oracle emits:
