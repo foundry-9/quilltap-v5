@@ -75,3 +75,19 @@ test against the v4 oracle:
 - Small leaf utilities: chat-type/participant predicates, semver parse/compare,
   pronoun→gender hint, tag-style merge, char-count colour class.
 
+Phase 2 on-ramp — the tier-2 DB-state oracle (structural DB diff for repo/service
+ops), built as a thin vertical slice over the `folders` repo:
+
+- Oracle harness (TypeScript, drives v4's real `lib/`): a committed plaintext
+  fixture spec (`harness/oracle/fixtures/folders-tier2.json`) under a throwaway
+  test pepper; a fixture builder that materializes a fresh ChaCha20 DB at test
+  time via v4's own `ensureCollection` + `FoldersRepository.create`; and the
+  `folders-tier2` case that copies the fixture, runs a fixed create + update
+  through the real repo, and emits the canonical post-op `folders` dump as NDJSON.
+- Canonical dump shaping (`harness/oracle/lib/tier2.ts`): columns in on-disk
+  order, rows sorted by a stable key, BLOBs as hex, nulls explicit.
+- Determinism: ids and timestamps pinned on both sides (CreateOptions on create,
+  explicit `updatedAt` on update), so the dump needs zero normalization — the
+  strongest tier-2 form. The id-remap / timestamp-placeholder fallbacks are
+  reserved for later repos that cannot take injected ids/clocks.
+

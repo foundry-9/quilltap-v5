@@ -1,0 +1,71 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `folders` repo pilot (Phase-2 on-ramp).",
+    "This single committed file drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-folders-fixture.ts + folders-tier2.ts) and",
+    "  - the Rust port (quilltap-harness folders tier-2 test).",
+    "Keeping the seed AND the op sequence here keeps the two ports in lockstep.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key generated for this",
+    "fixture only. It is NOT the real Friday pepper and is safe to commit. Never",
+    "replace it with a real instance pepper.",
+    "",
+    "DETERMINISM: every id and every timestamp is pinned, so both sides produce",
+    "byte-identical post-op state and the canonical dump needs ZERO normalization",
+    "(no id remap, no timestamp placeholder). That is the strongest tier-2 form;",
+    "the remap/placeholder machinery is reserved for later repos that cannot take",
+    "injected ids/clocks (see phase-2-onramp.md, normalization classes)."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
+  "seed": [
+    {
+      "id": "eb7fc085-02f0-4bfc-84f3-7a50e646ee33",
+      "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
+      "path": "/",
+      "name": "Root",
+      "parentFolderId": null,
+      "projectId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "fdea34c8-ab4e-4a4a-b320-db3314de314a",
+      "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
+      "path": "/documents/",
+      "name": "documents",
+      "parentFolderId": null,
+      "projectId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "New root-level general folder; id + timestamps pinned via CreateOptions.",
+      "data": {
+        "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
+        "path": "/reports/",
+        "name": "reports",
+        "parentFolderId": null,
+        "projectId": null
+      },
+      "options": {
+        "id": "d0d6edd1-acab-4dd5-8b30-821ba86c38d6",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Rename seed folder `documents` -> `docs`; updatedAt pinned, createdAt preserved.",
+      "id": "fdea34c8-ab4e-4a4a-b320-db3314de314a",
+      "data": {
+        "name": "docs",
+        "path": "/docs/",
+        "updatedAt": "2026-03-01T00:00:00.000Z"
+      }
+    }
+  ]
+}

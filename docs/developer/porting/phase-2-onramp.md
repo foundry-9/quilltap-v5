@@ -122,6 +122,50 @@ second track once the diff machinery works, to widen coverage.
   no `cipher=` pragma; writable path adds `foreign_keys = ON` +
   `journal_mode = TRUNCATE`).
 
+## Kickoff decisions (settled 2026-06-28)
+
+1. **Pilot repo:** `folders` — a pure single-table repo (`create`/`update` just
+   wrap `_create`/`_update`), and with `projectId`/`parentFolderId` null a root
+   general folder has zero FK parents. (`projects` was rejected: post the
+   `cutover-projects-to-store-v1` cutover its `create`/`update` route through the
+   document-store overlay + mount index — not low-FK.)
+2. **Fixture strategy:** synthetic seed.
+3. **Clock / id injection:** inject on **both** sides via v4's existing public
+   API — `_create` honors `CreateOptions.{id,createdAt,updatedAt}`, `_update`
+   honors an explicit `updatedAt` in the patch. No monkeypatching of
+   `generateId`/`getCurrentTimestamp`. Result: the pilot dump needs **zero**
+   normalization.
+4. **Fixture storage:** committed plaintext seed (`folders-tier2.json`);
+   encrypted DB materialized at test time (gitignored), built by v4's own
+   `ensureCollection('folders', FolderSchema)` so the DDL matches production.
+5. **Apply-path scope:** repos directly first (`folders.create` + `update`); the
+   `WriteBatch` partitioned-apply path is the next slice.
+
+## Running the folders tier-2 oracle
+
+v4's native `better-sqlite3-multiple-ciphers` is built for the Node in v4's
+`.nvmrc` (currently **24.13.1**) — run the oracle under that Node, from the v4
+checkout (so `@/` and npm resolution land in the server tree):
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin
+cd ~/source/quilltap-server
+
+# 1. materialize the seed-only fixture under the test pepper
+QT_FIXTURE_OUT=/tmp/qt-folders-fixture.db \
+  $N/npx tsx ~/source/quilltap-v5/harness/oracle/fixtures/build-folders-fixture.ts
+
+# 2. run the create+update op sequence on a fresh copy, dump canonical state
+QT_FIXTURE_FOLDERS=/tmp/qt-folders-fixture.db \
+  $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/folders-tier2.ts \
+  > /tmp/oracle-folders.ndjson
+```
+
+The Rust harness then copies the **same** `/tmp/qt-folders-fixture.db`, runs the
+ported `folders` ops, dumps identically, and structural-diffs against
+`/tmp/oracle-folders.ndjson` (env `QT_FIXTURE_FOLDERS` + `QT_ORACLE_FOLDERS`,
+skip-with-warning if unset) — the same wiring as the tier-1 cases.
+
 ## First slice (the thin vertical)
 
 Pick **one small, low-foreign-key repo** and drive it end-to-end through both

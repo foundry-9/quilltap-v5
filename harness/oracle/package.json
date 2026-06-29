@@ -5,7 +5,9 @@
   "type": "module",
   "description": "Differential-harness oracle bridge. Drives the CURRENT TypeScript implementation (the reference oracle) so the Rust port can be diffed against it. Imports real lib/ code from the v4 server checkout — never reimplements behavior.",
   "scripts": {
-    "memory-weighting": "tsx cases/memory-weighting.ts"
+    "memory-weighting": "tsx cases/memory-weighting.ts",
+    "build-folders-fixture": "tsx fixtures/build-folders-fixture.ts",
+    "folders-tier2": "tsx cases/folders-tier2.ts"
   },
   "devDependencies": {
     "tsx": "^4.19.0"
