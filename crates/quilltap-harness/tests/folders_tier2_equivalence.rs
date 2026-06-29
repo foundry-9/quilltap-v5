@@ -128,11 +128,12 @@ fn folders_tier2_matches_oracle() {
                             project_id: data.project_id.clone(),
                         },
                         &CreateOptions {
-                            id: options.id.clone(),
-                            created_at: options.created_at.clone(),
-                            updated_at: options.updated_at.clone(),
+                            id: Some(options.id.clone()),
+                            created_at: Some(options.created_at.clone()),
+                            updated_at: Some(options.updated_at.clone()),
                         },
                     )
+                    .map(|_id| ())
                     .expect("folders.create"),
                 Op::Update { id, data } => {
                     let found = folders

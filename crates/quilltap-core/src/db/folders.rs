@@ -11,9 +11,19 @@
 //! `CreateOptions.{id,createdAt,updatedAt}` on create and an explicit
 //! `updatedAt` on update), so the persisted rows match v4's byte-for-byte with
 //! no normalization.
+//!
+//! The **unpinned** create path (the normal, non-sync app path) is also ported:
+//! when an id / timestamp is not supplied, `_create` mints them
+//! (`options?.id || generateId()`, `createdAt/updatedAt || now`). `create`
+//! returns the id actually used so a caller can wire it into a dependent op
+//! (e.g. a child folder's `parentFolderId`). That path is verified by the
+//! tier-2 *remap* case, which normalizes the legitimately-nondeterministic
+//! generated ids (first-seen remap) and timestamps (placeholder) on both sides.
 
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
+
+use crate::clock::now_iso;
 
 use super::DbError;
 
@@ -28,13 +38,16 @@ pub struct FolderCreate {
     pub project_id: Option<String>,
 }
 
-/// Pinned id + timestamps (v4's `CreateOptions`). The pilot always supplies all
-/// three so the create is fully deterministic; v4's "generate id / now" defaults
-/// are not exercised here (they land when a non-sync create op needs them).
+/// Id + timestamps (v4's `CreateOptions`). Each field is optional and mirrors
+/// `_create`'s defaults: `id = options?.id || generateId()`,
+/// `createdAt = options?.createdAt || now`, `updatedAt = options?.updatedAt ||
+/// now`. The tier-2 pilot supplies all three (fully deterministic); the remap
+/// case supplies none (the minted-values path).
+#[derive(Default)]
 pub struct CreateOptions {
-    pub id: String,
-    pub created_at: String,
-    pub updated_at: String,
+    pub id: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
 }
 
 /// A folder update patch. Mirrors v4 `_update`: provided fields overwrite, id
@@ -57,24 +70,34 @@ impl<'c> FoldersRepository<'c> {
         Self { conn }
     }
 
-    /// Insert a folder with the given pinned id + timestamps.
-    pub fn create(&self, data: &FolderCreate, opts: &CreateOptions) -> Result<(), DbError> {
+    /// Insert a folder, minting id / timestamps that `opts` leaves unset
+    /// (v4 `_create`: `id = options?.id || generateId()`, timestamps `|| now`).
+    /// Returns the id actually persisted so a caller can reference it.
+    pub fn create(&self, data: &FolderCreate, opts: &CreateOptions) -> Result<String, DbError> {
+        let id = opts
+            .id
+            .clone()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let now = now_iso();
+        let created_at = opts.created_at.clone().unwrap_or_else(|| now.clone());
+        let updated_at = opts.updated_at.clone().unwrap_or(now);
+
         self.conn.execute(
             "INSERT INTO folders \
                (id, userId, path, name, parentFolderId, projectId, createdAt, updatedAt) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
-                opts.id,
+                id,
                 data.user_id,
                 data.path,
                 data.name,
                 data.parent_folder_id,
                 data.project_id,
-                opts.created_at,
-                opts.updated_at,
+                created_at,
+                updated_at,
             ],
         )?;
-        Ok(())
+        Ok(id)
     }
 
     /// Apply an update patch to the folder `id`. Returns `false` when no row

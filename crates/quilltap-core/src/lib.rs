@@ -84,6 +84,9 @@
 //!     sidebar; oracle-verified.
 //!   * `select_speaker` — the weighted-random next-speaker selection (RNG
 //!     injected as `random01`); oracle-verified.
+//!   * `clock` — the wall-clock seam: ISO-8601 timestamps in v4's
+//!     `new Date().toISOString()` shape (`now_iso`, pure `iso_from_unix_ms`),
+//!     used by the repo create/update default path.
 //!   * small pure leaf utilities, each mirroring a v4 file: `chat_predicates`
 //!     (chat-type / participant-status predicates), `semver` (parse + compare),
 //!     `pronoun_gender` (image-prompt gender hint), `tag_style` (style merge),
@@ -101,6 +104,7 @@ pub mod chat_predicates;
 pub mod chat_tasks;
 pub mod chat_utils;
 pub mod cheap_model;
+pub mod clock;
 pub mod context_budget;
 pub mod context_compression;
 pub mod context_summary;

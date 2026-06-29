@@ -208,10 +208,10 @@ DB layer landed in `quilltap-core::db` (writable ChaCha20 open, single-writer
 build moved into core and the Phase-0 probes were retired.
 
 Phase 2 proper is now the same mechanical loop Phase 1 ran on tier-1: **port the
-next repo and add its tier-2 case.** The remaining on-ramp *breadth* (not
-blocking) is the generated-UUID remap + timestamp-placeholder normalization (for
-repos that can't take injected ids/clocks), the `WriteBatch` partitioned-apply
-path, and the real-snapshot fixture sanitizer.
+next repo and add its tier-2 case.** The remaining on-ramp *breadth* is the
+generated-UUID remap + timestamp-placeholder normalization (**done** — see "The
+remap case" below), the `WriteBatch` partitioned-apply path, and the
+real-snapshot fixture sanitizer.
 
 ## Phase 2 proper — ported repos
 
@@ -259,6 +259,59 @@ cd ~/source/quilltap-v5
 QT_ORACLE_TAGS=/tmp/oracle-tags.ndjson \
 QT_FIXTURE_TAGS=/tmp/qt-tags-fixture.db \
   cargo test -p quilltap-harness --test tags_tier2_equivalence
+```
+
+### The remap case — minted ids + timestamps (2026-06-29)
+
+`folders` and `tags` above pin every id and timestamp (the strongest,
+zero-normalization tier-2 form). But the *normal* app path mints its own values —
+only sync pins them — so this slice builds and proves the **generated-UUID remap
++ timestamp-placeholder normalization** the on-ramp scoped (normalization classes
+1 and 2). It is verified by `folders_remap_tier2_equivalence`.
+
+- **The op.** `folders.create` now ports v4 `_create`'s minted-values defaults:
+  `id = options?.id || generateId()`, `createdAt/updatedAt || now`. It returns the
+  id actually used, so a dependent op can reference it. `CreateOptions` fields
+  became optional; the pinned cases pass `Some(..)`, the remap case passes
+  `CreateOptions::default()` (all `None`).
+- **New core pieces.** `quilltap-core::clock` — `now_iso()` and the pure,
+  unit-tested `iso_from_unix_ms()` reproducing v4's `new Date().toISOString()`
+  shape (`YYYY-MM-DDTHH:MM:SS.mmmZ`); and the `uuid` crate (v4) for ids. These
+  are permanent core code (the production engine needs `now`/ids everywhere), not
+  test scaffolding.
+- **The fixture.** Empty seed (`folders-remap-tier2.json`); the only rows are the
+  two ops. `op[1]` carries `parentFromOp: 0` — "set `parentFolderId` to the id
+  the repo returned for `op[0]`" — so a *generated* id references another
+  *generated* id (the case the remap exists for). Both the oracle and the Rust
+  harness capture each minted id and resolve the reference.
+- **The normalization (one implementation, in the harness, run over both dumps).**
+  The oracle emits a RAW dump sorted by the natural key `path` (identical order
+  both sides, because paths are inputs not generated). Walking that order:
+  id columns (`id`, `parentFolderId`) collapse to first-seen tokens (`ID_0`,
+  `ID_1`, …) — so the child→parent FK *relationship* is verified without pinning
+  the literal id — and `createdAt`/`updatedAt` become a `<ts>` placeholder, after
+  asserting the per-row `createdAt == updatedAt` create invariant so that lever
+  isn't silently dropped. Running the same function over both dumps makes the
+  remap provably consistent and keeps the oracle a dumb raw emitter.
+
+This is the form for repos/ops that can't take injected ids/clocks; prefer the
+pinned zero-normalization form wherever the op allows it (it's a stronger test).
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin
+cd ~/source/quilltap-server
+
+QT_FIXTURE_OUT=/tmp/qt-folders-remap-fixture.db \
+  $N/npx tsx ~/source/quilltap-v5/harness/oracle/fixtures/build-folders-remap-fixture.ts
+
+QT_FIXTURE_FOLDERS_REMAP=/tmp/qt-folders-remap-fixture.db \
+  $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/folders-remap-tier2.ts \
+  > /tmp/oracle-folders-remap.ndjson
+
+cd ~/source/quilltap-v5
+QT_ORACLE_FOLDERS_REMAP=/tmp/oracle-folders-remap.ndjson \
+QT_FIXTURE_FOLDERS_REMAP=/tmp/qt-folders-remap-fixture.db \
+  cargo test -p quilltap-harness --test folders_remap_tier2_equivalence
 ```
 
 ## Deferred seams — must revisit (do NOT ship to real data without closing)

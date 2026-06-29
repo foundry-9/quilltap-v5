@@ -122,4 +122,19 @@ tier-2 case):
   fully-specified `visualStyle` so no Zod inner-default expansion is involved).
   Ids and timestamps pinned both sides → zero normalization. The `tags` repo
   round-trips green (`QT_ORACLE_TAGS` + `QT_FIXTURE_TAGS`, skip-if-unset).
+- Generated-UUID remap + timestamp-placeholder normalization (the tier-2
+  machinery for ops that mint their own ids/clocks, not just the pinned-id sync
+  path). `folders.create` now ports v4 `_create`'s minted-values defaults
+  (`id = options?.id || generateId()`, timestamps `|| now`) and returns the id
+  used, so a caller can wire it into a dependent op. New `quilltap-core::clock`
+  (`now_iso` / pure `iso_from_unix_ms`) reproduces v4's
+  `new Date().toISOString()` shape; `uuid` (v4) generates ids. Verified by the
+  `folders_remap_tier2_equivalence` test: a parent + child created with NOTHING
+  pinned, so both v4 and Rust mint different random UUIDs and timestamps. One
+  normalization (in the harness) runs over both dumps — rows walked in
+  natural-key (`path`) order, id columns (`id`, `parentFolderId`) collapsed to
+  first-seen tokens (`ID_0`, `ID_1`), so the child→parent FK relationship is
+  verified without pinning the literal id; timestamps placeholdered after
+  asserting the `createdAt == updatedAt` create invariant per row. Round-trips
+  green (`QT_ORACLE_FOLDERS_REMAP` + `QT_FIXTURE_FOLDERS_REMAP`, skip-if-unset).
 

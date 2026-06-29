@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-core"
-version = "0.0.20"
+version = "0.0.21"
 edition = "2021"
 publish = false
 build = "build.rs"
@@ -42,6 +42,10 @@ pbkdf2 = "0.12"           # PBKDF2
 sha2 = "0.10"             # SHA-256 / SHA-512 (digest + pepper hash)
 hmac = "0.12"             # HMAC for PBKDF2
 hex = "0.4"               # hex <-> bytes for the .dbkey fields
+
+# v4 UUIDs: repo `_create` mints ids via `crypto.randomUUID()` (RFC-4122 v4)
+# when not pinned. The non-sync create path uses this; sync/fixtures pin the id.
+uuid = { version = "1", features = ["v4"] }
 
 [build-dependencies]
 # Compiles the SQLite3MC amalgamation (vendor/sqlite3mc_amalgamation.c) so

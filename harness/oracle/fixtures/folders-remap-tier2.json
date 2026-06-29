@@ -1,0 +1,49 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `folders` repo MINTED-VALUES path —",
+    "the generated-UUID remap + timestamp-placeholder normalization slice.",
+    "Unlike folders-tier2.json / tags-tier2.json (which pin every id + timestamp,",
+    "the zero-normalization form), these ops supply NO `options`, so both v4 and",
+    "the Rust port independently mint random UUIDs (crypto.randomUUID / uuid v4)",
+    "and wall-clock timestamps. The dumps therefore CANNOT match outright — they",
+    "are compared after normalization (see the harness test + cases file):",
+    "  - id columns (`id`, `parentFolderId`) -> first-seen canonical tokens, rows",
+    "    walked in natural-key (`path`) order, so FK RELATIONSHIPS are verified",
+    "    without pinning literal ids;",
+    "  - timestamps (`createdAt`, `updatedAt`) -> a `<ts>` placeholder, with the",
+    "    per-row createdAt == updatedAt create-invariant asserted separately.",
+    "",
+    "op[1] uses `parentFromOp: 0` — set parentFolderId to the id RETURNED by op 0.",
+    "This exercises a generated id referencing another generated id (the case the",
+    "remap exists for). Seed is empty so the only rows are the two minted ones.",
+    "",
+    "SAFETY: testPepperBase64 is the same THROWAWAY key the other fixtures use."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
+  "seed": [],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "Parent folder, minted id + timestamps (no options).",
+      "data": {
+        "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
+        "path": "/a/",
+        "name": "a",
+        "parentFolderId": null,
+        "projectId": null
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "Child of op[0]; parentFolderId = the minted id returned by op[0].",
+      "data": {
+        "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
+        "path": "/a/b/",
+        "name": "b",
+        "parentFromOp": 0,
+        "projectId": null
+      }
+    }
+  ]
+}

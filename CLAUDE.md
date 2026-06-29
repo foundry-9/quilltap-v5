@@ -274,10 +274,10 @@ machinery: `quilltap-core`'s `db` module (the writable ChaCha20 open + the
 single-writer `Writer` + `FoldersRepository` create/update + canonical dump),
 the amalgamation build relocated into core (probes retired), the TS oracle
 (`harness/oracle/{fixtures,cases}/folders-tier2*`), and the harness diff test.
-Remaining on-ramp breadth: the generated-UUID remap / timestamp-placeholder
-normalization (only needed for repos that can't take injected ids/clocks), the
-`WriteBatch` partitioned-apply path, and the real-snapshot fixture sanitizer.
-From here Phase 2 is the same mechanical loop, repo by repo.
+Remaining on-ramp breadth: ~~the generated-UUID remap / timestamp-placeholder
+normalization~~ (**done** — see "the remap machinery" below), the `WriteBatch`
+partitioned-apply path, and the real-snapshot fixture sanitizer. From here
+Phase 2 is the same mechanical loop, repo by repo.
 
 **Phase 2 proper: in progress.** Repo #2, `tags` (`quilltap-core::db::tags`),
 round-trips green through the tier-2 harness (`tags_tier2_equivalence`): `create`
@@ -296,3 +296,18 @@ mapping. It's a real correctness risk on non-ASCII names (it backs `findByName`)
 masked only by the ASCII corpus. Both deferrals are listed under "Deferred seams
 — must revisit" in `docs/developer/porting/phase-2-onramp.md`; close them before
 running against real (non-ASCII) data.
+
+**The remap machinery (minted-values tier-2): done.** The on-ramp's
+generated-UUID remap + timestamp-placeholder normalization is built and green
+(`folders_remap_tier2_equivalence`). `folders.create` now ports v4 `_create`'s
+minted defaults (`id = options?.id || generateId()`, timestamps `|| now`) and
+returns the id used; `quilltap-core::clock` (`now_iso` / pure
+`iso_from_unix_ms`) reproduces `new Date().toISOString()`, and `uuid` mints v4
+ids. The test creates a parent + child with NOTHING pinned (both sides mint
+different random UUIDs + clocks), then one normalization (in the harness, over
+both dumps) walks rows in natural-key order, collapses id columns (`id`,
+`parentFolderId`) to first-seen tokens — so the child→parent FK is verified
+without pinning literal ids — and placeholders timestamps after asserting the
+per-row `createdAt == updatedAt` invariant. This is the normalization form for
+the repos/ops that can't take injected ids/clocks; the pinned zero-normalization
+form (`folders` / `tags`) remains preferred where the op allows it.

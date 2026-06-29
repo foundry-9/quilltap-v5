@@ -71,7 +71,12 @@ port the next repo, add its tier-2 case. See [`phase-2-onramp.md`](./phase-2-onr
 (`create` + `update` + `delete`), widening the tier-2 marshaling surface past
 `folders`' all-strings shape: a boolean column (`quickHide` → INTEGER 0/1), a
 nullable JSON-object column (`visualStyle` → compact JSON in schema field order),
-and the `nameLower` derivation, plus the `delete` op.
+and the `nameLower` derivation, plus the `delete` op. The on-ramp's
+**generated-UUID remap + timestamp-placeholder normalization** is also built and
+green (`folders_remap_tier2_equivalence`): a parent + child created with nothing
+pinned, reconciled by a first-seen id remap in natural-key order (verifying the
+FK relationship without literal ids) plus timestamp placeholdering — the
+normalization form for repos/ops that can't take injected ids/clocks.
 
 ## How to resume in a fresh session
 
