@@ -30,8 +30,8 @@ already working ([`phase-0.md`](./phase-0.md)).
 | Phase | What | Equivalence tier | Status |
 |------|------|------------------|--------|
 | **0** | Scaffolding, toolchain, cipher-correct DB open, differential harness | tier-1 proven | **substantially done** |
-| **1** | Pure functions (scoring, sizing, remaps, budget math) | tier-1 exact | **ready to start** |
-| **2** | Data layer: repos, the writer-task model, per-DB partitioned apply | tier-2 structural DB diff | needs tier-2 oracle first |
+| **1** | Pure functions (scoring, sizing, remaps, budget math) | tier-1 exact | **done** |
+| **2** | Data layer: repos, the writer-task model, per-DB partitioned apply | tier-2 structural DB diff | needs the tier-2 oracle first ([`phase-2-onramp.md`](./phase-2-onramp.md)) |
 | **3** | Services / engine: memory gate, chat orchestration, enclave `step()` | tier-2 + tier-3 mocked-LLM | not started |
 | **4** | Transports (Tauri/uniffi/axum) + Angular UI | end-to-end | not started |
 
@@ -44,6 +44,8 @@ Each phase leans on the one below being trusted, so failures localize.
 - [`api-boundary.md`](./api-boundary.md) — the transport-agnostic Core API, the
   single-writer-as-ownership model, and the enclave `step()` seam. Implemented in
   Phases 3–4 but **locked in now** because it's expensive to retrofit.
+- [`phase-2-onramp.md`](./phase-2-onramp.md) — the tier-2 DB-state oracle and its
+  fixtures: the build that unblocks Phase 2 once the Phase-1 leaves are done.
 - This overview.
 
 ## Current status (update as it moves)
@@ -54,15 +56,18 @@ resolved (SQLite3MC 2.3.5 / ChaCha20) and confirmed opening Friday (37 tables,
 33 characters, 20 320 memories), and the differential harness proven across two
 pure-function cases (numeric + string).
 
-**Next:** Phase 1 pure-function ports (each via the proven harness loop). Good
-first targets: the folder-conflict id remap, context-compression sizing, enclave
-budget math, and the remaining memory-service ranking helpers. The Phase-2
-on-ramp (fixture sanitizer + tier-2 DB-state oracle) is the larger remaining
-build, but it does not block Phase 1.
+**Phase 1 is now complete** — every pure-function leaf is ported and tier-1
+oracle-verified (crates at 0.0.18, 30 oracle cases). The full inventory lives in
+the CLAUDE.md Status section.
+
+**Next:** the **Phase-2 on-ramp** — the tier-2 DB-state oracle and its fixtures,
+scoped in [`phase-2-onramp.md`](./phase-2-onramp.md). That is the larger build
+that unblocks the data layer; once one repo round-trips green through it, Phase 2
+is the same mechanical loop on tier-2.
 
 ## How to resume in a fresh session
 
 Open with: *"Continuing the quilltap-v5 native port. Read CLAUDE.md and
-docs/developer/porting/overview.md. Phase 0 is done; start Phase 1 by porting
-<target> via the differential harness."* The harness run commands are in
+docs/developer/porting/overview.md. Phase 1 is done; start the Phase-2 on-ramp
+per docs/developer/porting/phase-2-onramp.md."* The harness run commands are in
 [`phase-0.md`](./phase-0.md).

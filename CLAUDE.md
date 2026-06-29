@@ -28,7 +28,8 @@ Design docs (read before large changes), all under `docs/developer/porting/`:
 `overview.md` (start here — methodology + phase roadmap + status),
 `phase-0.md` (Phase-0 plan + the cipher finding), `api-boundary.md` (the
 transport-agnostic boundary + the single-writer model + the enclave `step()`
-seam). The `docs/v4/` tree is the v4 reference mirror, not v5 planning.
+seam), `phase-2-onramp.md` (the tier-2 DB-state oracle + fixtures — the next
+build). The `docs/v4/` tree is the v4 reference mirror, not v5 planning.
 
 ## Standing rules (apply on every task)
 
@@ -263,6 +264,9 @@ deferred to when the ~30 Phase-2/3 `localeCompare` sites land, so it is made
 once, holistically — the realistic version/tool-name corpora coincide with
 code-unit order, so nothing shipped so far depends on it.
 
-**Also remaining:** fixture sanitizer (anonymized real-instance snapshots) and
-the tier-2 DB-state oracle (the on-ramp to Phase 2). Then Phase 2 → 3 → 4 per the
-boundary doc.
+**Also remaining — the Phase-2 on-ramp** (scoped in
+`docs/developer/porting/phase-2-onramp.md`): the tier-2 DB-state oracle
+(structural diff, normalizing timestamps / generated UUIDs via remap / LLM text)
+and its fixtures (synthetic seed for the pilot; the real-snapshot sanitizer for
+breadth later). Once one repo round-trips green through it, Phase 2 → 3 → 4
+proceed per the boundary doc.

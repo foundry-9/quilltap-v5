@@ -46,6 +46,9 @@ test against the v4 oracle:
 - Chat-task text shaping: tool-artifact stripping, visible-conversation
   extraction, and the chat-card preview, over shared JS string primitives (the
   JS `\s`/`trim` set and UTF-16 length/slice).
+- Docs: added `docs/developer/porting/phase-2-onramp.md` scoping the tier-2
+  DB-state oracle and its fixtures (the next build); cross-linked from the
+  porting overview and CLAUDE.md, and marked Phase 1 complete in the roadmap.
 - Model context limit: `getModelContextLimit` (+ `hasExtendedContext`,
   `getSafeInputLimit`) — the override / provider-default tables ported as
   constants, with the plugin model-info, `FALLBACK_PRICING` rows, and registry
