@@ -597,12 +597,25 @@ use `JSON.stringify`), and **(B) code-unit seam + pinned corpus for
 non-issue). Also done: the **JSON projection parsers** (`vault_json_parsers_equivalence`) —
 `parseVaultProperties` + `parseVaultPhysicalPrompts`, reproducing Zod
 `safeParse` → fall-back-to-null (unknown-key stripping, required-nullable
-presence, the `talkativeness` range, the 1–20-UTF-16 `pronouns` fields). Still
-ahead in the vault: `parseLegacyWardrobeJson` (needs the full `WardrobeItemSchema`
-— a bigger validation port) + the frontmatter parsers (`parsePromptFile` /
-`parseScenarioFile` / `parseWardrobeItemFile` — the YAML/heading READ path), then
-the read overlay (folder enumeration + the Decision-B code-unit sort), and finally
-the write overlay (wardrobe YAML emitter per Decision A, step 7).
+presence, the `talkativeness` range, the 1–20-UTF-16 `pronouns` fields). Also
+done: the **legacy `wardrobe.json` migration parser**
+(`parse_legacy_wardrobe_json`, `vault_legacy_wardrobe_equivalence`, 39 cases) —
+the first vault leaf to validate an **array of full `WardrobeItemSchema` items**,
+so it reproduces **Zod 4's `z.uuid()` and `z.iso.datetime()` string formats
+verbatim** (regex sources lifted from the live schema: `[1-8]`/`[89abAB]` UUIDs +
+the all-zero/all-`f` sentinels; leap-year-aware ISO dates with a `Z`-only zone;
+JS `\d` → ASCII `[0-9]`; the `regex` `$` confirmed to match JS's absolute-end
+anchor incl. trailing-newline rejection). Faithful to Zod — any bad item nulls
+the whole array, `.default()` keys materialized, output in schema order, unknown
+keys stripped (root `presets`, per-item, in-`outfit`), and a present `outfit`
+validated-then-discarded (only `{ items }` returned). The two regexes are the
+first `LazyLock<Regex>` statics in the vault module. Still ahead in the vault:
+the frontmatter parsers (`parsePromptFile` / `parseScenarioFile` /
+`parseWardrobeItemFile` — the YAML/heading READ path, which forces the read-side
+companion to the locked YAML decision: `parseFrontmatter` calls eemeli/yaml's
+`YAML.parse`, so the reader needs a constrained hand-rolled YAML-subset parser),
+then the read overlay (folder enumeration + the Decision-B code-unit sort), and
+finally the write overlay (wardrobe YAML emitter per Decision A, step 7).
 
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green

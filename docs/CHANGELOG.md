@@ -546,6 +546,28 @@ corpus always provisions fresh), `state`/property null-vs-absent + multi-key
 insertion order (open-JSON seam — corpus kept `{}`/single-key), and the
 `projects` generalization (a larger bag + roster ops).
 
+Phase 2 — the legacy `wardrobe.json` migration parser
+(`quilltap-core::vault_overlay::parse_legacy_wardrobe_json`), the next
+decision-free vault-overlay leaf (Family B). Unlike the two JSON projection
+parsers, this validates an array of full `WardrobeItemSchema` items, so it
+reproduces Zod 4's `z.uuid()` and `z.iso.datetime()` string formats verbatim
+(the regex sources lifted from the live schema: version-nibble `[1-8]` /
+variant `[89abAB]` UUIDs plus the all-zero/all-`f` sentinels; ISO dates with
+leap-year arithmetic and a `Z`-only zone; JS `\d` rewritten to ASCII `[0-9]`).
+Faithful to Zod's rules — any single bad item nulls the whole array; `.default()`
+keys (`componentItemIds`/`isDefault`/`replace`) are materialized; output is in
+schema order regardless of input key order; unknown keys are stripped (root
+`presets`, per-item extras, in-`outfit` extras); and a present `outfit` is
+validated (a malformed one fails the parse) then discarded — only `{ items }` is
+returned. Tier-1 exact differential (`vault_legacy_wardrobe_equivalence`) over 39
+cases against v4's real `parseLegacyWardrobeJson`, covering the valid shapes
+(full/minimal-with-defaults/all-nulls/multi/empty/presets-stripped/outfit-valid)
+and every interesting violation (bad/missing id, empty/missing title, bad-enum/
+empty/non-string types, bad-uuid/non-array/null componentItemIds, non-bool/null
+booleans, bad timestamps incl. non-leap `2023-02-29`, offset-zone, no-zone, and
+trailing-newline rejection — confirming the `regex` `$` matches JS's absolute-end
+anchor).
+
 Phase 2 — the vault JSON projection parsers (`quilltap-core::vault_overlay`), the
 next decision-free slice of the character/wardrobe vault overlay (Family B, build
 step 6). `parseVaultProperties` + `parseVaultPhysicalPrompts` reproduce v4's Zod

@@ -16,13 +16,18 @@
 //!     [`build_system_prompt_file`], [`build_scenario_file`].
 //!   - the JSON projection parsers: [`parse_vault_properties`],
 //!     [`parse_vault_physical_prompts`] (Zod `safeParse` → fall-back-to-null).
+//!   - the legacy migration parser: [`parse_legacy_wardrobe_json`] — validates an
+//!     array of full `WardrobeItemSchema` items, reproducing Zod's `z.uuid()` /
+//!     `z.iso.datetime()` string formats verbatim.
 //!
 //! Two vault decisions are locked (2026-06-29): the wardrobe YAML emitter is
 //! hand-rolled (build step 7, the only eemeli/yaml site), and `localeCompare`
 //! folder sorts use the code-unit seam + a pinned corpus (no ICU crate).
 
 use std::collections::{HashMap, HashSet};
+use std::sync::LazyLock;
 
+use regex::Regex;
 use serde::Serialize;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
@@ -200,6 +205,264 @@ pub fn parse_vault_physical_prompts(raw: &str) -> Option<CharacterVaultPhysicalP
         long: nullable_string(obj.get("long")?)?,
         complete: nullable_string(obj.get("complete")?)?,
     })
+}
+
+// ── Legacy `wardrobe.json` parser (`parseLegacyWardrobeJson`) ─────────────────
+//
+// The migration path that still reads the old single-file wardrobe payload onto
+// the folder layout. Unlike the two JSON projection parsers above (which validate
+// hand-written `z.object` shapes), this one validates an array of full
+// `WardrobeItemSchema` items, so it has to reproduce Zod's `z.uuid()` and
+// `z.iso.datetime()` string formats exactly — any single bad item fails the whole
+// array (`z.array(WardrobeItemSchema)`) and the parser returns `None` (the read
+// overlay then falls back to DB values).
+
+/// Zod 4.4 `z.uuid()` — version nibble `[1-8]`, RFC-4122 variant `[89abAB]`, plus
+/// the two well-known all-zero / all-`f` sentinels. (`stableUuidFromString`'s v8 /
+/// `0x8.` variant bytes satisfy this, so vault-minted ids round-trip.) Sourced
+/// verbatim from the live Zod schema's compiled `pattern`.
+static UUID_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+    )
+    .unwrap()
+});
+
+/// Zod 4.4 `z.iso.datetime()` (default: no offset, no `local`, unbounded
+/// fractional precision) — a real ISO date validator with leap-year arithmetic
+/// and a `Z`-only zone. Sourced verbatim from the live Zod schema's compiled
+/// `pattern`, with JS `\d` rewritten to ASCII `[0-9]` (the Rust `regex` `\d` is
+/// Unicode-aware; JS's is ASCII). The `$` anchor rejects a trailing newline in
+/// both engines.
+static ISO_DATETIME_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"^(?:(?:[0-9][0-9][2468][048]|[0-9][0-9][13579][26]|[0-9][0-9]0[48]|[02468][048]00|[13579][26]00)-02-29|[0-9]{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12][0-9]|3[01])|(?:0[469]|11)-(?:0[1-9]|[12][0-9]|30)|(?:02)-(?:0[1-9]|1[0-9]|2[0-8])))T(?:(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9](?:\.[0-9]+)?)?(?:Z))$",
+    )
+    .unwrap()
+});
+
+fn is_uuid(s: &str) -> bool {
+    UUID_RE.is_match(s)
+}
+
+fn is_iso_datetime(s: &str) -> bool {
+    ISO_DATETIME_RE.is_match(s)
+}
+
+/// A `z.string().nullable().optional()` field. Outer `None` = schema violation
+/// (a present non-string, non-null value); `Some(inner)` is the field value where
+/// `inner` is `None` (absent → omitted) / `Some(None)` (`null`) / `Some(Some(s))`
+/// (string).
+#[allow(clippy::type_complexity)]
+fn opt_nullable_string(v: Option<&Value>) -> Option<Option<Option<String>>> {
+    match v {
+        None => Some(None),                                    // absent → field omitted
+        Some(Value::Null) => Some(Some(None)),                 // null
+        Some(Value::String(s)) => Some(Some(Some(s.clone()))), // string
+        Some(_) => None,                                       // wrong type → violation
+    }
+}
+
+/// A `z.uuid().nullable().optional()` field. Like [`opt_nullable_string`] but a
+/// present non-null value must also pass the UUID format.
+#[allow(clippy::type_complexity)]
+fn opt_nullable_uuid(v: Option<&Value>) -> Option<Option<Option<String>>> {
+    match v {
+        None => Some(None),
+        Some(Value::Null) => Some(Some(None)),
+        Some(Value::String(s)) if is_uuid(s) => Some(Some(Some(s.clone()))),
+        Some(_) => None,
+    }
+}
+
+/// A validated `WardrobeItem` (v4 `WardrobeItemSchema` z.infer output). Fields in
+/// schema-declaration order — Zod emits its output object in shape order
+/// regardless of input key order — with the `.default()` keys
+/// (`componentItemIds`/`isDefault`/`replace`) always materialized and the
+/// `.nullable().optional()` keys omitted when absent (`skip_serializing_if`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct WardrobeItem {
+    pub id: String,
+    #[serde(rename = "characterId", skip_serializing_if = "Option::is_none")]
+    pub character_id: Option<Option<String>>,
+    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<Option<String>>,
+    #[serde(rename = "imagePrompt", skip_serializing_if = "Option::is_none")]
+    pub image_prompt: Option<Option<String>>,
+    pub types: Vec<String>,
+    #[serde(rename = "componentItemIds")]
+    pub component_item_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub appropriateness: Option<Option<String>>,
+    #[serde(rename = "isDefault")]
+    pub is_default: bool,
+    pub replace: bool,
+    #[serde(
+        rename = "migratedFromClothingRecordId",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub migrated_from_clothing_record_id: Option<Option<String>>,
+    #[serde(rename = "archivedAt", skip_serializing_if = "Option::is_none")]
+    pub archived_at: Option<Option<String>>,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+}
+
+/// The result of [`parse_legacy_wardrobe_json`] — `{ items }` only. v4 deliberately
+/// drops the legacy `outfit`/`presets` from the output (the DB-side migration owns
+/// presets; `outfit` was never consumed), but still *validates* a present `outfit`
+/// so a malformed one fails the whole parse.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct LegacyVaultWardrobe {
+    pub items: Vec<WardrobeItem>,
+}
+
+/// Validate one `WardrobeItemSchema` element. `None` on any violation.
+fn validate_wardrobe_item(v: &Value) -> Option<WardrobeItem> {
+    let obj = v.as_object()?; // non-object → violation
+
+    // id: required UUID string.
+    let id = obj.get("id")?.as_str()?;
+    if !is_uuid(id) {
+        return None;
+    }
+
+    // characterId: uuid | null | absent.
+    let character_id = opt_nullable_uuid(obj.get("characterId"))?;
+
+    // title: required string, `.min(1)`.
+    let title = obj.get("title")?.as_str()?;
+    if title.is_empty() {
+        return None;
+    }
+
+    let description = opt_nullable_string(obj.get("description"))?;
+    let image_prompt = opt_nullable_string(obj.get("imagePrompt"))?;
+
+    // types: required non-empty array of enum strings.
+    let types_v = obj.get("types")?.as_array()?;
+    if types_v.is_empty() {
+        return None;
+    }
+    let mut types = Vec::with_capacity(types_v.len());
+    for t in types_v {
+        let s = t.as_str()?;
+        if !WARDROBE_ITEM_TYPES.contains(&s) {
+            return None;
+        }
+        types.push(s.to_string());
+    }
+
+    // componentItemIds: `.default([])`; else array of UUID strings.
+    let component_item_ids = match obj.get("componentItemIds") {
+        None => Vec::new(),
+        Some(arr) => {
+            let arr = arr.as_array()?;
+            let mut out = Vec::with_capacity(arr.len());
+            for c in arr {
+                let s = c.as_str()?;
+                if !is_uuid(s) {
+                    return None;
+                }
+                out.push(s.to_string());
+            }
+            out
+        }
+    };
+
+    let appropriateness = opt_nullable_string(obj.get("appropriateness"))?;
+
+    // isDefault / replace: `.default(false)`; else a boolean (null/other → fail).
+    let is_default = match obj.get("isDefault") {
+        None => false,
+        Some(b) => b.as_bool()?,
+    };
+    let replace = match obj.get("replace") {
+        None => false,
+        Some(b) => b.as_bool()?,
+    };
+
+    let migrated_from_clothing_record_id =
+        opt_nullable_uuid(obj.get("migratedFromClothingRecordId"))?;
+
+    // archivedAt: ISO datetime | null | absent.
+    let archived_at = match obj.get("archivedAt") {
+        None => None,
+        Some(Value::Null) => Some(None),
+        Some(Value::String(s)) if is_iso_datetime(s) => Some(Some(s.clone())),
+        Some(_) => return None,
+    };
+
+    // createdAt / updatedAt: required ISO datetime strings (the transform passes a
+    // string through unchanged, so we store as-is).
+    let created_at = obj.get("createdAt")?.as_str()?;
+    if !is_iso_datetime(created_at) {
+        return None;
+    }
+    let updated_at = obj.get("updatedAt")?.as_str()?;
+    if !is_iso_datetime(updated_at) {
+        return None;
+    }
+
+    Some(WardrobeItem {
+        id: id.to_string(),
+        character_id,
+        title: title.to_string(),
+        description,
+        image_prompt,
+        types,
+        component_item_ids,
+        appropriateness,
+        is_default,
+        replace,
+        migrated_from_clothing_record_id,
+        archived_at,
+        created_at: created_at.to_string(),
+        updated_at: updated_at.to_string(),
+    })
+}
+
+/// Validate a present `outfit` block (each of top/bottom/footwear/accessories is
+/// `z.string().nullable().optional()`; unknown keys stripped; `outfit` itself is
+/// not nullable, so `null` fails). Returns `Some(())` if valid (the value is then
+/// discarded), `None` on any violation.
+fn validate_outfit(v: &Value) -> Option<()> {
+    let obj = v.as_object()?; // non-object (incl. null) → violation
+    for key in ["top", "bottom", "footwear", "accessories"] {
+        // Each key is optional: absent is fine; present must be string|null.
+        if let Some(field) = obj.get(key) {
+            opt_nullable_string(Some(field))?;
+        }
+    }
+    Some(())
+}
+
+/// Parse the legacy `wardrobe.json` payload — v4 `parseLegacyWardrobeJson`
+/// (`vault-overlay/parsers.ts:110`). `None` on a JSON parse error or any schema
+/// violation in `LegacyVaultWardrobeJsonSchema = { items: WardrobeItem[],
+/// outfit? }`. The legacy `presets` array (and any other unknown root key) is
+/// stripped; `outfit` is validated then dropped; only `{ items }` is returned.
+/// `characterId` is v4's logging-only arg.
+pub fn parse_legacy_wardrobe_json(raw: &str) -> Option<LegacyVaultWardrobe> {
+    let json: Value = serde_json::from_str(raw).ok()?;
+    let obj = json.as_object()?; // non-object root → violation
+
+    // items: required array; every element a valid WardrobeItem.
+    let items_v = obj.get("items")?.as_array()?;
+    let mut items = Vec::with_capacity(items_v.len());
+    for item in items_v {
+        items.push(validate_wardrobe_item(item)?);
+    }
+
+    // outfit: optional, but validated when present (a malformed one fails all).
+    if let Some(outfit) = obj.get("outfit") {
+        validate_outfit(outfit)?;
+    }
+
+    Some(LegacyVaultWardrobe { items })
 }
 
 /// Kebab-case slug from a wardrobe item title — v4 `slugifyWardrobeTitle`
