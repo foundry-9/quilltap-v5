@@ -1,0 +1,328 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `chat_settings` repo (Phase-2), a plain",
+    "main-DB AbstractBaseRepository with the WIDEST JSON-object surface yet (~33",
+    "columns, ~15 nested typed-struct JSON columns). One committed file drives BOTH",
+    "sides of the differential:",
+    "  - the v4 oracle (build-chat-settings-fixture.ts + chat-settings-tier2.ts) and",
+    "  - the Rust port (quilltap-harness chat_settings tier-2 test).",
+    "",
+    "What this repo banks: two UUID TEXT (id, userId); one enum TEXT",
+    "(avatarDisplayMode) + one plain-string TEXT (avatarDisplayStyle); a record/map",
+    "JSON column (tagStyles, kept {} — multi-key open-JSON key-order seam); ~15",
+    "nested typed-struct JSON-object columns reproduced in schema field order;",
+    "five nullable UUID/string TEXT columns (imageDescriptionProfileId,",
+    "uncensoredImageDescriptionProfileId, defaultRoleplayTemplateId, timezone, plus",
+    "nested *ProfileId); five boolean columns (autoDetectRng, compositionModeDefault,",
+    "composerSpellcheck, textReplacementsEnabled, autoScrollOnResponseComplete); and",
+    "the FIRST INTEGER-affinity number column (sidebarWidth: z.number().min(256)",
+    ".max(512) — both bounds integer, so mapToSQLiteType assigns INTEGER, unlike the",
+    "prior min-only/bare REAL number columns).",
+    "",
+    "KEY-ORDER DISCIPLINE: v4's _create runs validate() (Zod .parse), which re-emits",
+    "object keys in SCHEMA declaration order before JSON.stringify. So the stored",
+    "JSON key order is fixed by the schema regardless of the input order here. The",
+    "Rust typed structs declare fields in the same schema order, so to_string()",
+    "matches byte-for-byte. The nested .nullable().optional() (no-default) fields",
+    "the corpus OMITS (themePreference.customOverrides, timestamp customFormat/",
+    "fictionalBase*, dangerous uncensored*ProfileId/customClassificationPrompt) are",
+    "omitted by Zod too; the ones supplied as explicit null (cheapLLMSettings",
+    "*ProfileId, storyBackgrounds defaultImageProfileId) stay present as null.",
+    "",
+    "OPEN-JSON KEY-ORDER DEFERRAL: tagStyles and the nested record fields",
+    "(perCharacterCapOverrides) are kept {} so the serde_json::Value (sorts keys)",
+    "vs JSON.stringify (insertion order) divergence never triggers. Close before",
+    "data with multi-key tagStyles/overrides.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the folders/",
+    "tags/connection-profiles fixtures use. NOT the real Friday pepper; safe to commit.",
+    "",
+    "DETERMINISM: every id and timestamp is pinned, so both sides produce",
+    "byte-identical post-op state and the canonical dump needs ZERO normalization."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "$comment": "Seed row A: all nullables null, every nested object fully specified, all defaults' values supplied explicitly. sidebarWidth at its 256 default.",
+      "id": "a1000000-0000-4000-8000-000000000001",
+      "userId": "00000000-0000-4000-8000-0000000000aa",
+      "avatarDisplayMode": "ALWAYS",
+      "avatarDisplayStyle": "CIRCULAR",
+      "tagStyles": {},
+      "cheapLLMSettings": {
+        "strategy": "PROVIDER_CHEAPEST",
+        "userDefinedProfileId": null,
+        "defaultCheapProfileId": null,
+        "fallbackToLocal": true,
+        "embeddingProvider": "OPENAI",
+        "imagePromptProfileId": null
+      },
+      "imageDescriptionProfileId": null,
+      "uncensoredImageDescriptionProfileId": null,
+      "defaultRoleplayTemplateId": null,
+      "themePreference": {
+        "activeThemeId": null,
+        "colorMode": "system",
+        "showNavThemeSelector": false
+      },
+      "sidebarWidth": 256,
+      "defaultTimestampConfig": {
+        "mode": "NONE",
+        "format": "FRIENDLY",
+        "useFictionalTime": false,
+        "autoPrepend": true,
+        "intervalMinutes": 15
+      },
+      "memoryCascadePreferences": {
+        "onMessageDelete": "ASK_EVERY_TIME",
+        "onSwipeRegenerate": "DELETE_MEMORIES"
+      },
+      "autoHousekeepingSettings": {
+        "enabled": false,
+        "perCharacterCap": 2000,
+        "perCharacterCapOverrides": {},
+        "autoMergeSimilarThreshold": 0.9,
+        "mergeSimilar": false
+      },
+      "memoryExtractionLimits": {
+        "enabled": false,
+        "maxPerHour": 20,
+        "softStartFraction": 0.7,
+        "softFloor": 0.7
+      },
+      "autonomousRoomSettings": {
+        "dailyTokenBudget": null,
+        "defaultFreshnessWindowMs": 43200000,
+        "visibilityDefault": "owner_only",
+        "destructiveToolPolicy": "opt_in_per_room"
+      },
+      "tokenDisplaySettings": {
+        "showPerMessageTokens": false,
+        "showPerMessageCost": false,
+        "showChatTotals": false,
+        "showSystemEvents": false
+      },
+      "contextCompressionSettings": {
+        "enabled": true,
+        "windowSize": 5,
+        "compressionTargetTokens": 800,
+        "systemPromptTargetTokens": 1500,
+        "projectContextReinjectInterval": 5
+      },
+      "llmLoggingSettings": {
+        "enabled": true,
+        "verboseMode": false,
+        "retentionDays": 30
+      },
+      "autoDetectRng": true,
+      "compositionModeDefault": false,
+      "composerSpellcheck": true,
+      "textReplacementsEnabled": true,
+      "autoScrollOnResponseComplete": false,
+      "agentModeSettings": {
+        "maxTurns": 10,
+        "defaultEnabled": false
+      },
+      "coreWhisper": {
+        "enabled": true,
+        "interval": 12,
+        "silenceThreshold": 3,
+        "packetTokenBudget": 4096,
+        "fireOnContextTransition": true
+      },
+      "thinkingDisplay": {
+        "defaultVisible": true,
+        "defaultCollapsed": true
+      },
+      "storyBackgroundsSettings": {
+        "enabled": false,
+        "defaultImageProfileId": null
+      },
+      "dangerousContentSettings": {
+        "mode": "OFF",
+        "threshold": 0.7,
+        "scanTextChat": true,
+        "scanImagePrompts": true,
+        "scanImageGeneration": false,
+        "displayMode": "SHOW",
+        "showWarningBadges": true
+      },
+      "autoLockSettings": {
+        "enabled": false,
+        "idleMinutes": 15
+      },
+      "timezone": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "New fully-populated settings: nullable *ProfileId columns SET to UUIDs, timezone set, sidebarWidth widened to 400, many booleans flipped, nested objects given non-default values to exercise the typed-struct serialization. cheapLLMSettings *ProfileId fields carry concrete UUIDs (present, non-null).",
+      "data": {
+        "userId": "00000000-0000-4000-8000-0000000000bb",
+        "avatarDisplayMode": "GROUP_ONLY",
+        "avatarDisplayStyle": "SQUARE",
+        "tagStyles": {},
+        "cheapLLMSettings": {
+          "strategy": "USER_DEFINED",
+          "userDefinedProfileId": "11111111-0000-4000-8000-000000000001",
+          "defaultCheapProfileId": "11111111-0000-4000-8000-000000000002",
+          "fallbackToLocal": false,
+          "embeddingProvider": "LOCAL",
+          "imagePromptProfileId": "11111111-0000-4000-8000-000000000003"
+        },
+        "imageDescriptionProfileId": "22222222-0000-4000-8000-000000000001",
+        "uncensoredImageDescriptionProfileId": "22222222-0000-4000-8000-000000000002",
+        "defaultRoleplayTemplateId": "33333333-0000-4000-8000-000000000001",
+        "themePreference": {
+          "activeThemeId": "midnight-brass",
+          "colorMode": "dark",
+          "showNavThemeSelector": true
+        },
+        "sidebarWidth": 400,
+        "defaultTimestampConfig": {
+          "mode": "EVERY_N_MINUTES",
+          "format": "ISO8601",
+          "useFictionalTime": true,
+          "autoPrepend": false,
+          "intervalMinutes": 30
+        },
+        "memoryCascadePreferences": {
+          "onMessageDelete": "KEEP_MEMORIES",
+          "onSwipeRegenerate": "REGENERATE_MEMORIES"
+        },
+        "autoHousekeepingSettings": {
+          "enabled": true,
+          "perCharacterCap": 5000,
+          "perCharacterCapOverrides": {},
+          "autoMergeSimilarThreshold": 0.85,
+          "mergeSimilar": true
+        },
+        "memoryExtractionLimits": {
+          "enabled": true,
+          "maxPerHour": 50,
+          "softStartFraction": 0.5,
+          "softFloor": 0.6
+        },
+        "autonomousRoomSettings": {
+          "dailyTokenBudget": 100000,
+          "defaultFreshnessWindowMs": 21600000,
+          "visibilityDefault": "household",
+          "destructiveToolPolicy": "always_refuse"
+        },
+        "tokenDisplaySettings": {
+          "showPerMessageTokens": true,
+          "showPerMessageCost": true,
+          "showChatTotals": true,
+          "showSystemEvents": false
+        },
+        "contextCompressionSettings": {
+          "enabled": false,
+          "windowSize": 8,
+          "compressionTargetTokens": 1000,
+          "systemPromptTargetTokens": 2000,
+          "projectContextReinjectInterval": 0
+        },
+        "llmLoggingSettings": {
+          "enabled": false,
+          "verboseMode": true,
+          "retentionDays": 90
+        },
+        "autoDetectRng": false,
+        "compositionModeDefault": true,
+        "composerSpellcheck": false,
+        "textReplacementsEnabled": false,
+        "autoScrollOnResponseComplete": true,
+        "agentModeSettings": {
+          "maxTurns": 20,
+          "defaultEnabled": true
+        },
+        "coreWhisper": {
+          "enabled": false,
+          "interval": 24,
+          "silenceThreshold": 5,
+          "packetTokenBudget": 8192,
+          "fireOnContextTransition": false
+        },
+        "thinkingDisplay": {
+          "defaultVisible": false,
+          "defaultCollapsed": false
+        },
+        "storyBackgroundsSettings": {
+          "enabled": true,
+          "defaultImageProfileId": "44444444-0000-4000-8000-000000000001"
+        },
+        "dangerousContentSettings": {
+          "mode": "AUTO_ROUTE",
+          "threshold": 0.55,
+          "scanTextChat": false,
+          "scanImagePrompts": false,
+          "scanImageGeneration": true,
+          "displayMode": "BLUR",
+          "showWarningBadges": false
+        },
+        "autoLockSettings": {
+          "enabled": true,
+          "idleMinutes": 5
+        },
+        "timezone": "America/New_York"
+      },
+      "options": {
+        "id": "b2000000-0000-4000-8000-000000000002",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Edit seed row A: flip scalars/booleans, widen sidebarWidth to 320, set timezone + a nullable UUID, and whole-object replace themePreference + dangerousContentSettings + autoLockSettings + cheapLLMSettings. createdAt preserved, updatedAt pinned.",
+      "id": "a1000000-0000-4000-8000-000000000001",
+      "data": {
+        "avatarDisplayMode": "NEVER",
+        "avatarDisplayStyle": "ROUNDED",
+        "sidebarWidth": 320,
+        "autoDetectRng": false,
+        "composerSpellcheck": false,
+        "textReplacementsEnabled": false,
+        "autoScrollOnResponseComplete": true,
+        "timezone": "Europe/London",
+        "imageDescriptionProfileId": "55555555-0000-4000-8000-000000000001",
+        "defaultRoleplayTemplateId": "33333333-0000-4000-8000-000000000009",
+        "cheapLLMSettings": {
+          "strategy": "LOCAL_FIRST",
+          "userDefinedProfileId": null,
+          "defaultCheapProfileId": null,
+          "fallbackToLocal": true,
+          "embeddingProvider": "SAME_PROVIDER",
+          "imagePromptProfileId": null
+        },
+        "themePreference": {
+          "activeThemeId": "solar-flare",
+          "colorMode": "light",
+          "showNavThemeSelector": false
+        },
+        "dangerousContentSettings": {
+          "mode": "DETECT_ONLY",
+          "threshold": 0.65,
+          "scanTextChat": true,
+          "scanImagePrompts": true,
+          "scanImageGeneration": false,
+          "displayMode": "COLLAPSE",
+          "showWarningBadges": true
+        },
+        "autoLockSettings": {
+          "enabled": true,
+          "idleMinutes": 10
+        },
+        "updatedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "delete",
+      "comment": "Delete the created fully-populated settings (row B).",
+      "id": "b2000000-0000-4000-8000-000000000002"
+    }
+  ]
+}

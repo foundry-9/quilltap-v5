@@ -25,9 +25,13 @@ use crate::dbkey;
 
 pub mod character_plugin_data;
 pub mod chat_documents;
+pub mod chat_settings;
 pub mod connection_profiles;
 pub mod conversation_annotations;
 pub mod conversation_chunks;
+pub mod doc_mount_chunks;
+pub mod doc_mount_documents;
+pub mod doc_mount_files;
 pub mod doc_mount_folders;
 pub mod doc_mount_points;
 pub mod embedding_profiles;
@@ -49,6 +53,7 @@ pub mod terminal_sessions;
 pub mod text_replacement_rules;
 pub mod tfidf_vocabulary;
 pub mod users;
+pub mod wardrobe;
 
 /// Errors from the DB layer.
 #[derive(Debug)]
@@ -117,6 +122,11 @@ impl Writer {
         chat_documents::ChatDocumentsRepository::new(&self.conn)
     }
 
+    /// The chat-settings repository over this writer's connection.
+    pub fn chat_settings(&self) -> chat_settings::ChatSettingsRepository<'_> {
+        chat_settings::ChatSettingsRepository::new(&self.conn)
+    }
+
     /// The connection-profiles repository over this writer's connection.
     pub fn connection_profiles(&self) -> connection_profiles::ConnectionProfilesRepository<'_> {
         connection_profiles::ConnectionProfilesRepository::new(&self.conn)
@@ -176,6 +186,24 @@ impl Writer {
         &self,
     ) -> project_doc_mount_links::ProjectDocMountLinksRepository<'_> {
         project_doc_mount_links::ProjectDocMountLinksRepository::new(&self.conn)
+    }
+
+    /// The doc-mount-chunks repository over this writer's connection.
+    /// Mount-index sibling-DB table (see [`Self::group_character_members`]).
+    pub fn doc_mount_chunks(&self) -> doc_mount_chunks::DocMountChunksRepository<'_> {
+        doc_mount_chunks::DocMountChunksRepository::new(&self.conn)
+    }
+
+    /// The doc-mount-documents repository over this writer's connection.
+    /// Mount-index sibling-DB table (see [`Self::group_character_members`]).
+    pub fn doc_mount_documents(&self) -> doc_mount_documents::DocMountDocumentsRepository<'_> {
+        doc_mount_documents::DocMountDocumentsRepository::new(&self.conn)
+    }
+
+    /// The doc-mount-files repository over this writer's connection.
+    /// Mount-index sibling-DB table (see [`Self::group_character_members`]).
+    pub fn doc_mount_files(&self) -> doc_mount_files::DocMountFilesRepository<'_> {
+        doc_mount_files::DocMountFilesRepository::new(&self.conn)
     }
 
     /// The doc-mount-folders repository over this writer's connection.
@@ -254,6 +282,15 @@ impl Writer {
     /// The users repository over this writer's connection.
     pub fn users(&self) -> users::UsersRepository<'_> {
         users::UsersRepository::new(&self.conn)
+    }
+
+    /// The wardrobe repository over this writer's connection.
+    ///
+    /// NOTE: v4's public `WardrobeRepository` CRUD is vault-only (document store,
+    /// no SQL write mirror); this ports the base-repository SQL marshaling over
+    /// the `wardrobe_items` table (what its reads consume). See the module docs.
+    pub fn wardrobe(&self) -> wardrobe::WardrobeRepository<'_> {
+        wardrobe::WardrobeRepository::new(&self.conn)
     }
 
     /// Canonical dump of one table, in the same shape the tier-2 oracle emits:

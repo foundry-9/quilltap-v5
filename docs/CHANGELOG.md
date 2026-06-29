@@ -431,3 +431,51 @@ find-by-key SELECT and mints via `clock::now_iso` + `uuid`.
     data. Builds on the base-method-override minting (create/update mint
     `updatedAt` themselves). Harness `tfidf_vocabulary_upsert_tier2_equivalence`.
 
+Phase 2 — a fifth parallel batch of five repos (`create` / `update` / `delete`
+each, pinned ids + timestamps → zero normalization), spanning the main DB and the
+mount-index sibling DB:
+
+  - `chat_settings` (`quilltap-core::db::chat_settings`): a plain main-DB
+    `AbstractBaseRepository`, and the **widest JSON-object surface in Phase 2** —
+    ~33 columns including ~15 nested typed-struct JSON columns reproduced in schema
+    field order (serde structs, not key-sorting `serde_json::Value`), nested integer
+    fields typed `i64` so they render bare. Banks the **first INTEGER-affinity number
+    column** (`sidebarWidth`, `.min(256).max(512)` — both bounds integer → INTEGER,
+    unlike the prior min-only/bare REAL numbers). The `cheapLLMSettings` column keeps
+    its uppercase acronym (camelCase would mangle it). The `*ForUser`
+    default-injecting helpers and the multi-key open-JSON `tagStyles` key order are
+    out of scope (the corpus keeps `tagStyles` `{}`). Harness
+    `chat_settings_tier2_equivalence`.
+  - `wardrobe` (`quilltap-core::db::wardrobe`, table `wardrobe_items`): the first
+    repo whose **public CRUD is vault-only** — v4's `WardrobeRepository` writes to
+    the document store and throws without a mount, with no SQL write mirror — so the
+    differential drives v4's **real base-repository SQL CRUD** (`_create`/`_update`/
+    `_delete`) against the table via a thin subclass exposing the protected
+    internals (the marshaling the schema-translator builds from `WardrobeItemSchema`
+    and the table's reads consume). Banks the first repo with **two JSON array
+    columns** (`types` — the first enum-string array — and `componentItemIds`) and a
+    **nullable soft-delete timestamp** (`archivedAt`, exercised null and
+    set-to-non-null), alongside two booleans and several nullable string/UUID
+    columns. The vault-overlay write path itself is NOT ported/verified (tracked
+    deferral); the unarchive (`archivedAt` → NULL) nullable-setter is implemented but
+    not in the corpus. Harness `wardrobe_tier2_equivalence`.
+  - `doc_mount_files` (`quilltap-core::db::doc_mount_files`): a mount-index sibling-DB
+    repo and the **narrowest tier-2 repo to date** (all-required columns, no JSON/
+    boolean/nullable). Re-banks a REAL-affinity min-only int (`fileSizeBytes`,
+    `.int().min(0)` → REAL, integer-collapsed) and two enum TEXT columns; v4's
+    `getCollection` adds a non-UNIQUE sha256 lookup index that touches no row bytes.
+    Harness `doc_mount_files_tier2_equivalence`.
+  - `doc_mount_documents` (`quilltap-core::db::doc_mount_documents`): a mount-index
+    sibling-DB repo — the database-backed file-content store keyed by a UNIQUE
+    `fileId`. Banks a `plainTextLength` min-only REAL int, a UUID-as-TEXT UNIQUE
+    natural key, and plain TEXT content/sha columns (the content-addressable +
+    joined-view read helpers are out of scope). Harness
+    `doc_mount_documents_tier2_equivalence`.
+  - `doc_mount_chunks` (`quilltap-core::db::doc_mount_chunks`): a mount-index
+    sibling-DB repo and the **first sibling-DB repo to carry a BLOB column** — the
+    `embedding` Float32 little-endian BLOB (empty/null → NULL, dumped as hex for
+    bit-exact compare, and a text-only update proven to leave it untouched, like
+    `conversation_chunks`/`help_docs`) plus two REAL-affinity min-only int counters
+    (`chunkIndex`/`tokenCount`) and a nullable `headingContext`. The `updateEmbedding`
+    BLOB-mutating path is out of scope. Harness `doc_mount_chunks_tier2_equivalence`.
+

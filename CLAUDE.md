@@ -422,6 +422,38 @@ replicates v4's `findByProviderAndModelId`: a falsy `baseUrl` is left
 `tfidf_vocabulary.upsertByProfileId` (rides the base-method-override minting).
 Each adds a private find-by-key SELECT and mints via `clock::now_iso` + `uuid`.
 
+A **fifth parallel batch** (five repos, `create`/`update`/`delete` each, pinned
+ids + timestamps → zero normalization) spans the main DB and the mount-index
+sibling DB, each round-tripping green (`chat_settings_tier2_equivalence`,
+`wardrobe_tier2_equivalence`, `doc_mount_files_tier2_equivalence`,
+`doc_mount_documents_tier2_equivalence`, `doc_mount_chunks_tier2_equivalence`).
+`chat_settings` (main DB, plain `AbstractBaseRepository`) is the **widest
+JSON-object surface in Phase 2** (~33 columns, ~15 nested typed-struct JSON columns
+in schema field order with `i64` nested ints so they render bare) and banks the
+**first INTEGER-affinity number column** (`sidebarWidth`, `.min().max()` both
+integer → INTEGER, vs the prior min-only/bare REAL numbers); `cheapLLMSettings`
+keeps its uppercase acronym; the `*ForUser` default-injecting helpers and the
+multi-key open-JSON `tagStyles` key order are out of scope (`tagStyles` kept `{}`).
+`wardrobe` (`wardrobe_items`, main DB) is the first repo whose **public CRUD is
+vault-only** — v4's `WardrobeRepository` writes to the document store and throws
+without a mount, with no SQL write mirror — so the differential drives v4's **real
+base-repository SQL CRUD** (`_create`/`_update`/`_delete`) via a thin subclass
+exposing the protected internals (the marshaling the schema-translator builds from
+`WardrobeItemSchema` and the table reads consume); it banks the first repo with
+**two JSON array columns** (`types` — the first enum-string array — and
+`componentItemIds`) and a **nullable soft-delete timestamp** (`archivedAt`); the
+vault-overlay write path itself is **not ported/verified** (tracked deferral — see
+phase-2-onramp seam #7). The three mount-index siblings ride the same TS-only
+machinery as `doc_mount_points`: `doc_mount_files` is the **narrowest tier-2 repo
+to date** (all-required, no JSON/boolean/nullable; re-banks a `fileSizeBytes`
+min-only REAL int + two enum TEXT); `doc_mount_documents` is the file-content store
+keyed by a UNIQUE `fileId` (a `plainTextLength` min-only REAL int + plain TEXT
+content/sha); and `doc_mount_chunks` is the **first mount-index sibling repo to
+carry a BLOB column** (the `embedding` Float32 LE BLOB, empty/null → NULL, dumped
+as hex, a text-only update proven to leave it untouched — like
+`conversation_chunks`/`help_docs` — plus two REAL-affinity int counters and a
+nullable `headingContext`; `updateEmbedding` out of scope).
+
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green
 (`prompt_templates_tier2_equivalence`): `create` + `update` + `delete` from v4's

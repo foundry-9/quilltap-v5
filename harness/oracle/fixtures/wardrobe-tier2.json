@@ -1,0 +1,142 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `wardrobe` repo (Phase-2) over the",
+    "`wardrobe_items` table. One committed file drives BOTH sides of the",
+    "differential:",
+    "  - the v4 oracle (build-wardrobe-fixture.ts + wardrobe-tier2.ts) and",
+    "  - the Rust port (quilltap-harness wardrobe tier-2 test).",
+    "",
+    "WHY BASE SQL CRUD, NOT THE PUBLIC OVERRIDES: v4's WardrobeRepository overrides",
+    "create/update/delete to be VAULT-ONLY (they write to the character document",
+    "store and throw without a mount — there is no SQL write mirror). So they can't",
+    "run against a bare fixture DB. This differential instead exercises v4's REAL",
+    "base-repository SQL CRUD (`_create`/`_update`/`_delete`) against the",
+    "`wardrobe_items` table — the column set/affinity the schema-translator builds",
+    "from WardrobeItemSchema and the row marshaling that backs the table's reads",
+    "(findByCharacterIdRaw -> findByFilter). Both the fixture builder and the oracle",
+    "case drive a thin test subclass that exposes those protected base internals.",
+    "",
+    "What this repo banks: TWO JSON ARRAY columns (`types` — enum strings; and",
+    "`componentItemIds`), TWO boolean columns (`isDefault`, `replace` -> INTEGER",
+    "0/1), a nullable soft-delete TIMESTAMP column (`archivedAt`, 'date' affinity ->",
+    "TEXT, exercised null and non-null), and several nullable string/UUID columns",
+    "(`characterId` null-for-archetype, `description`, `imagePrompt`,",
+    "`appropriateness`, `migratedFromClothingRecordId`). Scope: create / update /",
+    "delete only.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the other",
+    "fixtures use. It is NOT the real Friday pepper and is safe to commit.",
+    "",
+    "DETERMINISM: every id and timestamp is pinned, so both sides produce",
+    "byte-identical post-op state and the canonical dump needs ZERO normalization."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "1a000000-0000-4000-8000-0000000000d1",
+      "characterId": "c0000000-0000-4000-8000-00000000000a",
+      "title": "Navy Peacoat",
+      "description": "A heavy double-breasted wool coat.",
+      "imagePrompt": "double-breasted navy wool peacoat with brass buttons",
+      "types": ["top"],
+      "componentItemIds": [],
+      "appropriateness": "formal",
+      "isDefault": true,
+      "replace": false,
+      "migratedFromClothingRecordId": null,
+      "archivedAt": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-0000000000d2",
+      "characterId": null,
+      "title": "Sunday Best (archetype)",
+      "description": null,
+      "imagePrompt": null,
+      "types": ["top", "bottom"],
+      "componentItemIds": [
+        "aaaa1111-0000-4000-8000-00000000aaaa",
+        "bbbb2222-0000-4000-8000-00000000bbbb"
+      ],
+      "appropriateness": null,
+      "isDefault": false,
+      "replace": true,
+      "migratedFromClothingRecordId": "9c000000-0000-4000-8000-0000000000c9",
+      "archivedAt": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "New leaf item on a character. Exercises a single-type array, an EMPTY componentItemIds array, both bools (false), and several null columns; id + timestamps pinned.",
+      "data": {
+        "characterId": "c0000000-0000-4000-8000-00000000000a",
+        "title": "Worn Boots",
+        "description": "Scuffed leather work boots.",
+        "imagePrompt": null,
+        "types": ["footwear"],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null
+      },
+      "options": {
+        "id": "3c000000-0000-4000-8000-0000000000d3",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "New composite archetype (characterId null). Multi-type array, non-empty componentItemIds, replace=true — the full-outfit-swap shape.",
+      "data": {
+        "characterId": null,
+        "title": "Naked",
+        "description": "Clears all slots.",
+        "imagePrompt": null,
+        "types": ["top", "bottom", "footwear", "accessories"],
+        "componentItemIds": [],
+        "appropriateness": "intimate",
+        "isDefault": false,
+        "replace": true,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null
+      },
+      "options": {
+        "id": "4d000000-0000-4000-8000-0000000000d4",
+        "createdAt": "2026-02-02T00:00:00.000Z",
+        "updatedAt": "2026-02-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update seed item #1: revise description + REPLACE the types array (top -> top,accessories) + flip isDefault off. updatedAt pinned, createdAt preserved.",
+      "id": "1a000000-0000-4000-8000-0000000000d1",
+      "data": {
+        "description": "A heavy double-breasted wool coat, now with a scarf.",
+        "types": ["top", "accessories"],
+        "isDefault": false,
+        "updatedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "SOFT-DELETE (archive) seed item #2: set archivedAt to a timestamp (the `archive` shape). Exercises the nullable-timestamp column being SET to non-null on update.",
+      "id": "2b000000-0000-4000-8000-0000000000d2",
+      "data": {
+        "archivedAt": "2026-03-02T00:00:00.000Z",
+        "updatedAt": "2026-03-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "delete",
+      "comment": "Hard-delete seed item #1.",
+      "id": "1a000000-0000-4000-8000-0000000000d1"
+    }
+  ]
+}

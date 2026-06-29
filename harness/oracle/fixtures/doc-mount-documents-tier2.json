@@ -1,0 +1,89 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `doc_mount_documents` repo — a",
+    "content-text mount-index sibling-DB repo of Phase 2 (a UUID-as-TEXT natural",
+    "key, two plain TEXT columns, one REAL-affinity int counter). One committed",
+    "file drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-doc-mount-documents-fixture.ts + doc-mount-documents-tier2.ts)",
+    "  - the Rust port (quilltap-harness doc_mount_documents tier-2 test).",
+    "",
+    "SIBLING DB: in v4 this table lives in quilltap-mount-index.db (NOT the main",
+    "DB). The builder/oracle point SQLITE_MOUNT_INDEX_PATH at the fixture and read",
+    "it back through getRawMountIndexDatabase(); the Rust Writer simply opens that",
+    "file by path. Mirrors the doc_mount_points / doc_mount_folders machinery.",
+    "",
+    "FRESH-FIXTURE NOTE: v4's getCollection() creates the table from the current",
+    "schema (generateDDL) plus a UNIQUE index on fileId on first access. The",
+    "fixture therefore has EXACTLY the 7 schema columns, in schema/Zod field order.",
+    "",
+    "ALL FIELDS SET EXPLICITLY on every create (the schema has no .default(...), so",
+    "nothing fires regardless) and both sides insert identical bytes.",
+    "",
+    "AFFINITY: plainTextLength is z.number().int().min(0) — MIN-ONLY (no max) → REAL",
+    "by v4's mapToSQLiteType (bound f64). The canonical dump collapses an",
+    "integer-valued REAL back to a JSON integer, so 0/137/etc. match v4.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one every other",
+    "tier-2 fixture uses. It is NOT the real Friday pepper and is safe to commit.",
+    "",
+    "DETERMINISM: every id and timestamp is pinned, so both sides produce",
+    "byte-identical post-op state and the canonical dump needs ZERO normalization.",
+    "",
+    "BANKED across the corpus: plainTextLength both 0 and >0; content + sha256 +",
+    "plainTextLength updated together (mirroring a document re-write); a delete."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "1d000000-0000-4000-8000-0000000000d1",
+      "fileId": "1f000000-0000-4000-8000-0000000000f1",
+      "content": "# Manifesto\n\nThe Salon convenes at dusk.",
+      "contentSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+      "plainTextLength": 39,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-15T08:30:00.000Z"
+    },
+    {
+      "id": "2d000000-0000-4000-8000-0000000000d2",
+      "fileId": "2f000000-0000-4000-8000-0000000000f2",
+      "content": "",
+      "contentSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2",
+      "plainTextLength": 0,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "Add a new document; all fields explicit. plainTextLength > 0, real content + sha.",
+      "data": {
+        "fileId": "3f000000-0000-4000-8000-0000000000f3",
+        "content": "## Scenario\n\nA gaslit study, late autumn, 1923.",
+        "contentSha256": "ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc3",
+        "plainTextLength": 47
+      },
+      "options": {
+        "id": "3d000000-0000-4000-8000-0000000000d3",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Re-write seed row 2 (was empty): set content + sha + plainTextLength 0->non-zero. createdAt preserved, updatedAt pinned.",
+      "id": "2d000000-0000-4000-8000-0000000000d2",
+      "data": {
+        "content": "# Desires\n\nLove, and the long quiet after.",
+        "contentSha256": "ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd4",
+        "plainTextLength": 42,
+        "updatedAt": "2026-03-01T09:00:00.000Z"
+      }
+    },
+    {
+      "kind": "delete",
+      "comment": "Remove seed row 1 (the manifesto document).",
+      "id": "1d000000-0000-4000-8000-0000000000d1"
+    }
+  ]
+}

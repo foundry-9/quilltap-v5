@@ -602,3 +602,23 @@ instances (non-ASCII user data), each must be closed or consciously waived.
    oracle reads the raw handle BEFORE `closeDatabase()` rather than flushing
    manually. Both sibling partitions are now covered; no sibling DB remains
    unported.
+
+7. **`wardrobe` vault-overlay write path — only the SQL marshaling is verified.**
+   v4's public `WardrobeRepository.create`/`update`/`delete` are **vault-only**:
+   they route every mutation into the character's document-store vault
+   (`Wardrobe/*.md`) and *throw* when no mount resolves — there is deliberately **no
+   SQL write mirror** on the public path. The tier-2 port
+   (`wardrobe_tier2_equivalence`) therefore differentials v4's **real
+   base-repository SQL CRUD** (`_create`/`_update`/`_delete`) over the
+   `wardrobe_items` table — the marshaling the schema-translator builds from
+   `WardrobeItemSchema` and the table's reads (`findByCharacterIdRaw`) consume — via
+   a thin oracle-side subclass exposing the protected internals. What is **not**
+   ported or verified is the vault-overlay write path itself (the document-store
+   round-trip, the mount resolution, the throw-without-mount behavior). This is the
+   same family as the store-backed repos still ahead (`characters`, `chats`,
+   `groups`, `projects`) and the `write_apply` `__finalizeFile` deferral (seam #4):
+   the document-store overlay is its own slice. **Action when closing:** port the
+   vault overlay as a unit (with its mount-resolution + document-store seam) and add
+   a differential that exercises the public `WardrobeRepository` path, not just the
+   base SQL layer. Until then, the SQL marshaling is proven but the public CRUD
+   semantics are not.
