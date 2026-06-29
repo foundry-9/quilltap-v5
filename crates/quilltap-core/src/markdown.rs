@@ -109,6 +109,26 @@ pub fn parse_frontmatter(content: &str) -> ParsedFrontmatter {
     }
 }
 
+/// Slice `content` from a parsed frontmatter's `body_start_offset` — the body
+/// after the closing `---`. v4 slices by the UTF-16 offset (`content.slice(off)`);
+/// this maps that UTF-16 offset to a byte index (always a char boundary, since
+/// the offset lands right after a `\n`) and returns the body slice. With no
+/// frontmatter the offset is 0 and the whole content is returned.
+pub fn body_after<'a>(content: &'a str, fm: &ParsedFrontmatter) -> &'a str {
+    let target = fm.body_start_offset;
+    if target == 0 {
+        return content;
+    }
+    let mut u16 = 0usize;
+    for (byte_idx, ch) in content.char_indices() {
+        if u16 >= target {
+            return &content[byte_idx..];
+        }
+        u16 += ch.len_utf16();
+    }
+    ""
+}
+
 /// The top-level shape a frontmatter YAML document resolves to.
 enum YamlDoc {
     /// A mapping (the only shape v4 keeps as `data`).

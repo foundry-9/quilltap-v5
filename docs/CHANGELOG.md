@@ -546,6 +546,23 @@ corpus always provisions fresh), `state`/property null-vs-absent + multi-key
 insertion order (open-JSON seam — corpus kept `{}`/single-key), and the
 `projects` generalization (a larger bag + roster ops).
 
+Phase 2 — the vault frontmatter READ parsers
+(`quilltap-core::vault_overlay::parse_prompt_file` / `parse_scenario_file`),
+built on the hand-rolled frontmatter reader. Each turns a vault markdown file
+into a `CharacterSystemPrompt` / `CharacterScenario`, or `None` (skip — the
+overlay falls back to the DB value for that one file). Faithful to v4: the
+objects are built directly (not via Zod), so the JS `.trim()` / `.slice(0, n)`
+caps are reproduced with the `jsstr` UTF-16 primitives (name ≤100, title ≤200,
+description ≤500); `isDefault` is `=== true` (a `"true"` string → false); the
+prompt body is the content after the frontmatter, `trimStart`ed; scenario title
+resolution is frontmatter `name` → first `# heading` (`/^#\s+(.+)$/` with the JS
+whitespace set) → filename-without-`.md`, and a heading used as the title is
+dropped from the body while a frontmatter-supplied title leaves the body intact.
+Added `jsstr::js_trim_start` and `markdown::body_after` (UTF-16-offset → byte
+slice). Tier-1 exact differential (`vault_frontmatter_parsers_equivalence`) over
+26 cases against v4's real `parsePromptFile`/`parseScenarioFile`, incl. multibyte
+content to cover the UTF-16 body offset and every skip condition.
+
 Phase 2 — the Markdown frontmatter parser + a hand-rolled YAML reader
 (`quilltap-core::markdown::parse_frontmatter`), the shared read-path foundation
 for the vault's per-file parsers. v4's `parseFrontmatter`

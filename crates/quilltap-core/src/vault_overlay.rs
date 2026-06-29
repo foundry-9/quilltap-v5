@@ -19,6 +19,9 @@
 //!   - the legacy migration parser: [`parse_legacy_wardrobe_json`] — validates an
 //!     array of full `WardrobeItemSchema` items, reproducing Zod's `z.uuid()` /
 //!     `z.iso.datetime()` string formats verbatim.
+//!   - the frontmatter READ parsers: [`parse_prompt_file`], [`parse_scenario_file`]
+//!     — built on [`crate::markdown::parse_frontmatter`] (the hand-rolled YAML
+//!     reader), with the `# heading` / filename title fallbacks.
 //!
 //! Two vault decisions are locked (2026-06-29): the wardrobe YAML emitter is
 //! hand-rolled (build step 7, the only eemeli/yaml site), and `localeCompare`
@@ -682,6 +685,181 @@ fn walk_cycles(
         next.push(grand.clone());
         walk_cycles(self_id, grand, &next, items_by_id, cycles);
     }
+}
+
+// ── Frontmatter READ parsers (`parsePromptFile` / `parseScenarioFile`) ────────
+//
+// The vault read overlay's per-file parsers, built on the hand-rolled frontmatter
+// reader ([`crate::markdown::parse_frontmatter`]). Each turns a vault markdown
+// file (a [`VaultDoc`]) into a `CharacterSystemPrompt` / `CharacterScenario`, or
+// `None` when the file can't yield a valid value — the overlay then falls back to
+// the DB value for that one file rather than failing the whole list. The objects
+// are built directly (not via Zod), so the JS `.trim()` / `.slice(0, n)` are
+// reproduced with the `jsstr` UTF-16 primitives.
+
+/// The subset of v4's `DocMountDocumentWithLink` the per-file parsers read.
+#[derive(Debug, Clone, Copy)]
+pub struct VaultDoc<'a> {
+    pub content: &'a str,
+    pub mount_point_id: &'a str,
+    pub relative_path: &'a str,
+    pub file_name: &'a str,
+    pub created_at: &'a str,
+    pub updated_at: &'a str,
+}
+
+/// A prompt-variant entry (v4 `CharacterSystemPrompt`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CharacterSystemPrompt {
+    pub id: String,
+    pub name: String,
+    pub content: String,
+    #[serde(rename = "isDefault")]
+    pub is_default: bool,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+}
+
+/// A scenario entry (v4 `CharacterScenario`). `description` is present only when
+/// the frontmatter supplied a non-empty one (matching v4's conditional spread).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CharacterScenario {
+    pub id: String,
+    pub title: String,
+    pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+}
+
+/// The leading-`# heading` matcher (v4 `/^#\s+(.+)$/` per line). `\s` is the JS
+/// whitespace set; `.+` requires ≥1 trailing char (captured, then JS-trimmed).
+static HEADING_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(&format!(r"^#{}+(.+)$", crate::jsstr::JS_WS_CLASS)).unwrap());
+
+/// First `# heading` in `lines` → `(line_index, trimmed_title)`.
+fn first_heading(lines: &[&str]) -> Option<(usize, String)> {
+    for (i, line) in lines.iter().enumerate() {
+        if let Some(caps) = HEADING_RE.captures(line) {
+            let title = crate::jsstr::js_trim(caps.get(1).unwrap().as_str()).to_string();
+            return Some((i, title));
+        }
+    }
+    None
+}
+
+/// Strip a trailing `.md` (case-insensitive) — v4 `fileName.replace(/\.md$/i, '')`.
+fn strip_md_ext(name: &str) -> String {
+    if name.to_ascii_lowercase().ends_with(".md") {
+        name[..name.len() - 3].to_string()
+    } else {
+        name.to_string()
+    }
+}
+
+/// Parse a `Prompts/*.md` file (v4 `parsePromptFile`). Requires frontmatter with
+/// a non-empty `name` and a non-empty body; `isDefault` is `=== true`. `None`
+/// (skip) otherwise. The body is the content after the frontmatter, `trimStart`ed.
+pub fn parse_prompt_file(doc: &VaultDoc) -> Option<CharacterSystemPrompt> {
+    let fm = crate::markdown::parse_frontmatter(doc.content);
+    let data = fm.data.as_ref()?; // no parseable frontmatter → skip
+    let name = data.get("name").and_then(Value::as_str)?; // missing / non-string → skip
+    if crate::jsstr::js_trim(name).is_empty() {
+        return None; // empty after trim → skip
+    }
+    let is_default = data.get("isDefault") == Some(&Value::Bool(true));
+    let body = crate::jsstr::js_trim_start(crate::markdown::body_after(doc.content, &fm));
+    if body.is_empty() {
+        return None; // empty body → skip
+    }
+    Some(CharacterSystemPrompt {
+        id: stable_uuid_from_string(&format!(
+            "prompt:{}:{}",
+            doc.mount_point_id, doc.relative_path
+        )),
+        name: crate::jsstr::utf16_truncate(crate::jsstr::js_trim(name), 100),
+        content: body.to_string(),
+        is_default,
+        created_at: doc.created_at.to_string(),
+        updated_at: doc.updated_at.to_string(),
+    })
+}
+
+/// Parse a `Scenarios/*.md` file (v4 `parseScenarioFile`). Title resolution:
+/// frontmatter `name` → first `# heading` → filename-without-`.md`. A non-empty
+/// frontmatter `description` (capped at 500) is carried when present. `None`
+/// (skip) when there is no usable title or the body is empty.
+pub fn parse_scenario_file(doc: &VaultDoc) -> Option<CharacterScenario> {
+    let content = doc.content;
+    let fm = crate::markdown::parse_frontmatter(content);
+
+    // Title: frontmatter `name` wins; description (if non-empty) is carried.
+    let mut title: Option<String> = None;
+    let mut frontmatter_description: Option<String> = None;
+    if let Some(data) = fm.data.as_ref() {
+        if let Some(name) = data.get("name").and_then(Value::as_str) {
+            let t = crate::jsstr::js_trim(name);
+            if !t.is_empty() {
+                title = Some(t.to_string());
+            }
+        }
+        if let Some(desc) = data.get("description").and_then(Value::as_str) {
+            let d = crate::jsstr::js_trim(desc);
+            if !d.is_empty() {
+                frontmatter_description = Some(crate::jsstr::utf16_truncate(d, 500));
+            }
+        }
+    }
+
+    let after = crate::markdown::body_after(content, &fm);
+    let lines: Vec<&str> = after.split('\n').collect();
+    let mut title_line_index: Option<usize> = None;
+
+    if title.is_none() {
+        if let Some((idx, t)) = first_heading(&lines) {
+            title_line_index = Some(idx);
+            title = Some(t);
+        }
+    }
+
+    let title = match title {
+        Some(t) => t,
+        None => {
+            // Filename without extension, trimmed, capped at 200.
+            let fname = strip_md_ext(doc.file_name);
+            let t = crate::jsstr::utf16_truncate(crate::jsstr::js_trim(&fname), 200);
+            if t.is_empty() {
+                return None; // no usable title → skip
+            }
+            t
+        }
+    };
+
+    // Body: drop the heading line when one was used as the title.
+    let body = match title_line_index {
+        Some(idx) => crate::jsstr::js_trim(&lines[idx + 1..].join("\n")).to_string(),
+        None => crate::jsstr::js_trim(after).to_string(),
+    };
+    if body.is_empty() {
+        return None; // empty body → skip
+    }
+
+    Some(CharacterScenario {
+        id: stable_uuid_from_string(&format!(
+            "scenario:{}:{}",
+            doc.mount_point_id, doc.relative_path
+        )),
+        title: crate::jsstr::utf16_truncate(&title, 200),
+        content: body,
+        description: frontmatter_description,
+        created_at: doc.created_at.to_string(),
+        updated_at: doc.updated_at.to_string(),
+    })
 }
 
 #[cfg(test)]
