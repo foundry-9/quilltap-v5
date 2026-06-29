@@ -31,7 +31,7 @@ already working ([`phase-0.md`](./phase-0.md)).
 |------|------|------------------|--------|
 | **0** | Scaffolding, toolchain, cipher-correct DB open, differential harness | tier-1 proven | **substantially done** |
 | **1** | Pure functions (scoring, sizing, remaps, budget math) | tier-1 exact | **done** |
-| **2** | Data layer: repos, the writer-task model, per-DB partitioned apply | tier-2 structural DB diff | in progress — `folders` + `tags` + `text_replacement_rules` + `prompt_templates` round-trip green ([`phase-2-onramp.md`](./phase-2-onramp.md)); repo-by-repo |
+| **2** | Data layer: repos, the writer-task model, per-DB partitioned apply | tier-2 structural DB diff | in progress — `folders` + `tags` + `text_replacement_rules` + `prompt_templates` + `conversation_annotations` + `provider_models` + `help_docs` round-trip green ([`phase-2-onramp.md`](./phase-2-onramp.md)); repo-by-repo |
 | **3** | Services / engine: memory gate, chat orchestration, enclave `step()` | tier-2 + tier-3 mocked-LLM | not started |
 | **4** | Transports (Tauri/uniffi/axum) + Angular UI | end-to-end | not started |
 
@@ -67,8 +67,16 @@ open, single-writer model, canonical dump, the TS oracle + harness diff — is i
 place, so **Phase 2 proper is now the same mechanical loop, repo by repo**:
 port the next repo, add its tier-2 case. See [`phase-2-onramp.md`](./phase-2-onramp.md).
 
-**Phase 2 proper has started.** Three repos past the pilot now round-trip green.
-The second, `tags` (`create` + `update` + `delete`), widened the tier-2
+**Phase 2 proper has started.** Six repos past the pilot now round-trip green.
+The latest three — `conversation_annotations` (a REAL-affinity unbounded-int
+column `messageIndex` + a nullable UUID column), `provider_models` (two nullable
+REAL number columns + boolean-default + enum TEXT columns), and `help_docs` (the
+**first tier-2 BLOB column**, a Float32 embedding compared bit-exact as hex, with
+a text-only update proven to leave the BLOB untouched) — were ported in parallel
+by three agents, each on its own new files, with the shared `db/mod.rs` wiring
+serialized afterward.
+
+Of the earlier repos, the second, `tags` (`create` + `update` + `delete`), widened the tier-2
 marshaling surface past `folders`' all-strings shape: a boolean column
 (`quickHide` → INTEGER 0/1), a nullable JSON-object column (`visualStyle` →
 compact JSON in schema field order), and the `nameLower` derivation, plus the

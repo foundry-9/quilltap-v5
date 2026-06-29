@@ -1,0 +1,103 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `conversation_annotations` repo",
+    "(Phase-2, after `folders`, `tags`, `text_replacement_rules`, and",
+    "`prompt_templates`). One committed file drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-conversation-annotations-fixture.ts +",
+    "    conversation-annotations-tier2.ts) and",
+    "  - the Rust port (quilltap-harness conversation_annotations tier-2 test).",
+    "",
+    "What this repo banks: a REAL-affinity unbounded-int column (`messageIndex` —",
+    "`z.number().int().min(0)` with NO `.max()`, so v4's mapToSQLiteType assigns",
+    "REAL, not INTEGER; bound as f64, the integer-valued cell collapses back to an",
+    "integer in the canonical dump) and a nullable UUID column (`sourceMessageId`,",
+    "exercised both null and non-null). Scope: create / update / delete only.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the folders,",
+    "tags, text-replacement-rules, and prompt-templates fixtures use. It is NOT the",
+    "real Friday pepper and is safe to commit.",
+    "",
+    "DETERMINISM: every id and timestamp is pinned, so both sides produce",
+    "byte-identical post-op state and the canonical dump needs ZERO normalization."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "chatId": "c0000000-0000-4000-8000-00000000000a",
+      "messageIndex": 0,
+      "sourceMessageId": null,
+      "characterName": "Prospero",
+      "content": "An opening flourish, unattributed to any source message.",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "chatId": "c0000000-0000-4000-8000-00000000000a",
+      "messageIndex": 12,
+      "sourceMessageId": "5a000000-0000-4000-8000-0000000000aa",
+      "characterName": "Carina",
+      "content": "A later remark, tied to a specific source message.",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "New annotation with NO source message (sourceMessageId null). messageIndex 0 exercises the REAL-affinity integer-collapse. id + timestamps pinned.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-00000000000b",
+        "messageIndex": 0,
+        "sourceMessageId": null,
+        "characterName": "Aurora",
+        "content": "A fresh aside on a different chat."
+      },
+      "options": {
+        "id": "3c000000-0000-4000-8000-000000000003",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "New annotation WITH a source message (sourceMessageId set) and a larger messageIndex.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-00000000000b",
+        "messageIndex": 7,
+        "sourceMessageId": "5b000000-0000-4000-8000-0000000000bb",
+        "characterName": "Pascal",
+        "content": "An annotation anchored to message seven."
+      },
+      "options": {
+        "id": "4d000000-0000-4000-8000-000000000004",
+        "createdAt": "2026-02-02T00:00:00.000Z",
+        "updatedAt": "2026-02-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update seed annotation #1: revise the content. createdAt preserved, updatedAt pinned.",
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "data": {
+        "content": "An opening flourish, now revised on a later pass.",
+        "updatedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update seed annotation #2: re-anchor it to a different messageIndex (still an integer -> REAL-affinity collapse).",
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "data": {
+        "messageIndex": 15,
+        "updatedAt": "2026-03-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "delete",
+      "comment": "Delete seed annotation #1.",
+      "id": "1a000000-0000-4000-8000-000000000001"
+    }
+  ]
+}

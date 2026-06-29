@@ -1,0 +1,128 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `provider_models` repo (Phase-2, repo",
+    "#5 after `folders`, `tags`, `text_replacement_rules`, and `prompt_templates`).",
+    "One committed file drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-provider-models-fixture.ts + provider-models-tier2.ts)",
+    "  - the Rust port (quilltap-harness provider_models tier-2 test).",
+    "",
+    "What this repo adds: two NULLABLE REAL number columns (`contextWindow`,",
+    "`maxOutputTokens` — both bare z.number().nullable().optional(), so REAL",
+    "affinity, bound as Option<f64>), two boolean-default columns (`deprecated`,",
+    "`experimental` -> INTEGER 0/1), one nullable string column (`baseUrl`), and",
+    "enum TEXT columns (`provider`, `modelType`). System-wide: no `userId`.",
+    "",
+    "Scope is `create` / `update` / `delete` only (not the upsert/find helpers).",
+    "To avoid Zod-default logic, every op supplies all columns explicitly",
+    "(modelType, deprecated, experimental included).",
+    "",
+    "An integer-valued contextWindow (e.g. 128000) must render as `128000` (not",
+    "`128000.0`) in the canonical dump — js_number_to_json collapses an",
+    "integer-valued REAL, matching v4's better-sqlite3 -> JSON.stringify path.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the folders,",
+    "tags, and text-replacement-rules fixtures use. It is NOT the real Friday pepper",
+    "and is safe to commit.",
+    "",
+    "DETERMINISM: every id and timestamp is pinned, so both sides produce",
+    "byte-identical post-op state and the canonical dump needs ZERO normalization."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "provider": "openai",
+      "modelId": "gpt-4o",
+      "modelType": "chat",
+      "displayName": "GPT-4o",
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 128000,
+      "maxOutputTokens": 16384,
+      "deprecated": false,
+      "experimental": false,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "provider": "openai",
+      "modelId": "text-embedding-3-small",
+      "modelType": "embedding",
+      "displayName": "Text Embedding 3 Small",
+      "baseUrl": null,
+      "contextWindow": null,
+      "maxOutputTokens": null,
+      "deprecated": true,
+      "experimental": false,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "New chat model with NULL baseUrl and an integer-valued contextWindow (128000) plus maxOutputTokens. Exercises Option<f64> REAL binding + both boolean columns; id + timestamps pinned. The dump must show 128000, not 128000.0.",
+      "data": {
+        "provider": "anthropic",
+        "modelId": "claude-opus-4",
+        "modelType": "chat",
+        "displayName": "Claude Opus 4",
+        "baseUrl": null,
+        "contextWindow": 128000,
+        "maxOutputTokens": 8192,
+        "deprecated": false,
+        "experimental": true
+      },
+      "options": {
+        "id": "3c000000-0000-4000-8000-000000000003",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "New chat model with a NON-NULL baseUrl (custom endpoint). deprecated=false, experimental=false.",
+      "data": {
+        "provider": "openai",
+        "modelId": "local-llama",
+        "modelType": "chat",
+        "displayName": "Local Llama",
+        "baseUrl": "http://localhost:11434/v1",
+        "contextWindow": 8192,
+        "maxOutputTokens": 2048,
+        "deprecated": false,
+        "experimental": false
+      },
+      "options": {
+        "id": "4d000000-0000-4000-8000-000000000004",
+        "createdAt": "2026-02-02T00:00:00.000Z",
+        "updatedAt": "2026-02-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update seed `gpt-4o`: change displayName, bump contextWindow (200000), and deprecate it. createdAt preserved, updatedAt pinned.",
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "data": {
+        "displayName": "GPT-4o (legacy)",
+        "contextWindow": 200000,
+        "deprecated": true,
+        "updatedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Flip the newly-created `claude-opus-4` from experimental=true to experimental=false. updatedAt pinned.",
+      "id": "3c000000-0000-4000-8000-000000000003",
+      "data": {
+        "experimental": false,
+        "updatedAt": "2026-03-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "delete",
+      "comment": "Delete the seed `text-embedding-3-small` model.",
+      "id": "2b000000-0000-4000-8000-000000000002"
+    }
+  ]
+}

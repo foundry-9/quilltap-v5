@@ -211,4 +211,32 @@ tier-2 case):
   `false`) and the final-state dump confirms the built-in row stayed
   byte-identical. Ids + timestamps pinned → zero normalization. Round-trips green
   (`QT_ORACLE_PROMPT_TEMPLATES` + `QT_FIXTURE_PROMPT_TEMPLATES`, skip-if-unset).
+- Three more plain-base repos ported in parallel (each `create` / `update` /
+  `delete`, pinned form, its own tier-2 case round-tripping green):
+  - `conversation_annotations` (`quilltap-core::db::conversation_annotations`):
+    banks a **REAL-affinity unbounded-int column** — `messageIndex` is
+    `z.number().int().min(0)` with no `.max()`, and v4's schema translator
+    (`mapToSQLiteType`) only assigns INTEGER affinity when a numeric field has
+    both an integer min and max, so it maps to REAL; bound as `f64`, the dump's
+    `js_number_to_json` collapses the integer-valued cell back to a bare integer.
+    Also a **nullable UUID column** (`sourceMessageId`). Harness
+    `conversation_annotations_tier2_equivalence` (`QT_ORACLE_CONV_ANNOTATIONS` +
+    `QT_FIXTURE_CONV_ANNOTATIONS`).
+  - `provider_models` (`quilltap-core::db::provider_models`): banks **two
+    nullable REAL number columns** (`contextWindow`, `maxOutputTokens` — both
+    bare `z.number()`, no min/max → REAL), **two boolean-default columns**
+    (`deprecated`, `experimental` → INTEGER 0/1), and **enum TEXT columns**
+    (`provider`, `modelType`). The corpus supplies every column explicitly so no
+    Zod create-time default is relied on. Harness
+    `provider_models_tier2_equivalence` (`QT_ORACLE_PROVIDER_MODELS` +
+    `QT_FIXTURE_PROVIDER_MODELS`).
+  - `help_docs` (`quilltap-core::db::help_docs`): the **first tier-2 BLOB
+    column** — `embedding` is a Float32 buffer (little-endian `f32` bytes via
+    `embedding_blob::float32_to_blob`), with empty/null → SQL NULL and the dump
+    emitting BLOBs as lowercase hex on both sides for bit-exact comparison
+    (fixture uses only exactly-float32-representable values so the f64→f32 cast
+    is lossless). Banks that a **text-only update preserves the BLOB**: the
+    partial `UPDATE SET` never names the embedding column, mirroring v4's
+    whole-row rewrite that re-persists the existing embedding unchanged. Harness
+    `help_docs_tier2_equivalence` (`QT_ORACLE_HELP_DOCS` + `QT_FIXTURE_HELP_DOCS`).
 

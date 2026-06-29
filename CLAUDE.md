@@ -280,7 +280,26 @@ partitioned-apply path~~ (**done** — see "the partitioned write applier" below
 and the real-snapshot fixture sanitizer. From here Phase 2 is the same mechanical
 loop, repo by repo.
 
-**Phase 2 proper: in progress.** Repo #4, `prompt_templates`
+**Phase 2 proper: in progress.** Repos #5–#7 — `conversation_annotations`,
+`provider_models`, and `help_docs` — were ported **in parallel** (three agents,
+each on its own new files; the shared `db/mod.rs` wiring + version/doc edits
+serialized afterward), and each round-trips green in the pinned
+zero-normalization form (`conversation_annotations_tier2_equivalence`,
+`provider_models_tier2_equivalence`, `help_docs_tier2_equivalence`). They bank
+three still-unverified marshaling shapes: `conversation_annotations` a
+**REAL-affinity unbounded-int column** (`messageIndex` is
+`z.number().int().min(0)` with no `.max()` → REAL by v4's `mapToSQLiteType`,
+bound `f64`, the integer-valued cell collapsed back by `js_number_to_json`) plus
+a nullable UUID column; `provider_models` two **nullable REAL number columns**
+(`contextWindow` / `maxOutputTokens`, bare `z.number()` → REAL), two
+boolean-default columns, and enum TEXT columns; and `help_docs` the **first
+tier-2 BLOB column** (`embedding`, Float32 little-endian bytes via
+`embedding_blob::float32_to_blob`, empty/null → NULL, dumped as hex for bit-exact
+compare — and proving a text-only `update` leaves the BLOB untouched). The
+distinctive `upsert*` methods on these three are deferred (their internal
+`now`/`generateId()` needs the remap-normalization form, not the pinned form).
+
+Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green
 (`prompt_templates_tier2_equivalence`): `create` + `update` + `delete` from v4's
 `PromptTemplatesRepository` (built-in seeding out of scope). Banks the **first

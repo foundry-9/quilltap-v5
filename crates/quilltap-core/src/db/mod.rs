@@ -23,8 +23,11 @@ use serde_json::{Map, Value};
 
 use crate::dbkey;
 
+pub mod conversation_annotations;
 pub mod folders;
+pub mod help_docs;
 pub mod prompt_templates;
+pub mod provider_models;
 pub mod tags;
 pub mod text_replacement_rules;
 
@@ -83,9 +86,21 @@ impl Writer {
         Ok(Self { conn })
     }
 
+    /// The conversation-annotations repository over this writer's connection.
+    pub fn conversation_annotations(
+        &self,
+    ) -> conversation_annotations::ConversationAnnotationsRepository<'_> {
+        conversation_annotations::ConversationAnnotationsRepository::new(&self.conn)
+    }
+
     /// The folders repository over this writer's connection.
     pub fn folders(&self) -> folders::FoldersRepository<'_> {
         folders::FoldersRepository::new(&self.conn)
+    }
+
+    /// The provider-models repository over this writer's connection.
+    pub fn provider_models(&self) -> provider_models::ProviderModelsRepository<'_> {
+        provider_models::ProviderModelsRepository::new(&self.conn)
     }
 
     /// The tags repository over this writer's connection.
@@ -98,6 +113,11 @@ impl Writer {
         &self,
     ) -> text_replacement_rules::TextReplacementRulesRepository<'_> {
         text_replacement_rules::TextReplacementRulesRepository::new(&self.conn)
+    }
+
+    /// The help-docs repository over this writer's connection.
+    pub fn help_docs(&self) -> help_docs::HelpDocsRepository<'_> {
+        help_docs::HelpDocsRepository::new(&self.conn)
     }
 
     /// The prompt-templates repository over this writer's connection.
