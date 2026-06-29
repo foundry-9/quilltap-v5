@@ -508,6 +508,44 @@ only — lands with the character-vault YAML decision), the UTF-16 `plainTextLen
 vs UTF-8 `fileSizeBytes` split is reproduced but only exercised on ASCII content,
 and `linkBlobContent` / the read/GC/conversion helpers.
 
+Phase 2 — the document-store OVERLAY ENGINE + the `groups` store-backed pilot
+(`quilltap-core::db::{document_store_overlay, ensure_official_store, groups}`),
+build steps 2-3 of the overlay slice. Ports v4's generic
+`createDocumentStoreOverlay` + `AbstractStoreBackedRepository` as a Rust generic
+over a `StoreEntity` trait, plus `ensureOfficialStore` provisioning, bound to
+`groups`. A group's substantive content lives not in `groups` columns but in its
+official document store as four overlay files (`properties.json` — the typed
+`color`/`icon` bag in schema order, 2-space pretty-print; `description.md` /
+`instructions.md` — raw markdown, empty → `null` on read; `state.json`). The slim
+row (id/name/officialMountPointId/timestamps) lives in the MAIN db, the store in
+the MOUNT-INDEX db, so `GroupsRepository` spans both connections (new
+`Writer::connection()` seam). Reads overlay the store (the `doc_mount_documents`
+3-table path→content join, new `find_[many_by]_mount_point[s]_and_path`); writes
+route store-resident fields to the store and strip them from the slim patch
+(properties via read-modify-write so a partial patch preserves untouched keys);
+create runs the 5-step sequence (slim row → provision a `Group Files: <name>`
+mount point + link + raw FK → write the four files → overlay re-read). Failure is
+asymmetric (v4): `find_by_id` THROWS `OverlayError::Unavailable`, `find_all` DROPS
+the bad row. Also ports the pure `nextUniqueMountPointName` (tier-1 unit test).
+The tier-2 differential (`groups_tier2_equivalence`) drives v4's REAL
+`repos.groups.create`/`.update` end-to-end (no mocked storage boundary, no
+`QUILLTAP_JOB_CHILD`) and diffs SEVEN tables across BOTH dbs — the slim `groups`
+row + `doc_mount_points` / `_files` / `_documents` / `_file_links` / `_folders` +
+`group_doc_mount_links` — in the minted-values remap form with ONE shared
+cross-db id-map (so `groups.officialMountPointId` → the store, `link.fileId` →
+`file.id`, etc. verify by relationship). v4's post-write `reindexSingleFile` runs
+(database-backed stores chunk with no model — deterministic); its only divergence,
+the link `chunkCount` + the derived `doc_mount_chunks` rows, is pinned/excluded.
+The corpus banks the 5-step create, `properties.json` byte-exact (both keys + the
+empty bag), a store-only update (slim `updatedAt` NOT bumped) with a properties
+RMW that preserves the untouched `icon`, a DB-only `name` update (store
+untouched), dedup-by-sha (`"{}"` shared by three links across two stores; `""` by
+two), and orphan-on-rewrite. A second test banks the keystone throw-vs-drop
+asymmetry. Deferred: step-2 store adoption (the startup-heal heuristic — the
+corpus always provisions fresh), `state`/property null-vs-absent + multi-key
+insertion order (open-JSON seam — corpus kept `{}`/single-key), and the
+`projects` generalization (a larger bag + roster ops).
+
 Docs — the document-store-overlay design slice
 (`docs/developer/porting/document-store-overlay.md`): the port plan for the
 store-backed entities (`projects`, `groups`, `characters`, the `wardrobe` vault).

@@ -318,4 +318,25 @@ impl<'c> DocMountPointsRepository<'c> {
             })?;
         Ok(found.is_some())
     }
+
+    /// v4 `findById` — true iff a mount point with this id still exists. The
+    /// provisioning flow ([`super::ensure_official_store`]) uses it to validate a
+    /// stale `officialMountPointId` FK and to confirm a linked store before
+    /// adopting it. (The pilot only needs existence; the full row is not yet read
+    /// because the adopt branch's name/type checks are not exercised by the
+    /// groups corpus, which always provisions fresh.)
+    pub fn exists(&self, id: &str) -> Result<bool, DbError> {
+        self.row_exists(id)
+    }
+
+    /// All mount-point `name`s currently in use — v4 reads `findAll()` then
+    /// `new Set(mp.name)` to feed `nextUniqueMountPointName` when minting a fresh
+    /// store name. Returns the raw names (uniquification is the caller's job).
+    pub fn find_all_names(&self) -> Result<Vec<String>, DbError> {
+        let mut stmt = self.conn.prepare("SELECT name FROM doc_mount_points")?;
+        let names = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(names)
+    }
 }

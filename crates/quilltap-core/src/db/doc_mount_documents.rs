@@ -202,4 +202,79 @@ impl<'c> DocMountDocumentsRepository<'c> {
             .execute("DELETE FROM doc_mount_documents WHERE id = ?1", params![id])?;
         Ok(affected > 0)
     }
+
+    /// v4 `findByMountPointAndPath` (`doc-mount-documents.repository.ts:158`): the
+    /// path→content lookup. Documents are content-addressed by `fileId`, not
+    /// path-indexed, so the location is resolved through `doc_mount_file_links`
+    /// (joined to `doc_mount_files` only to mirror v4's exact query shape). The
+    /// path compare is **case-insensitive** (`LOWER(...) = LOWER(...)`) — the
+    /// load-bearing detail that lets `Manifesto.md` resolve a `manifesto.md`
+    /// write. Returns the document `content`, or `None` when no link matches.
+    ///
+    /// Used by the overlay's `read_properties` (the read-modify-write seed for a
+    /// partial property patch).
+    pub fn find_by_mount_point_and_path(
+        &self,
+        mount_point_id: &str,
+        relative_path: &str,
+    ) -> Result<Option<String>, DbError> {
+        self.conn
+            .query_row(
+                "SELECT d.content \
+                 FROM doc_mount_file_links l \
+                 JOIN doc_mount_documents d ON d.fileId = l.fileId \
+                 JOIN doc_mount_files f ON f.id = l.fileId \
+                 WHERE l.mountPointId = ?1 AND LOWER(l.relativePath) = LOWER(?2) \
+                 LIMIT 1",
+                params![mount_point_id, relative_path],
+                |row| row.get::<_, String>(0),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
+    }
+
+    /// v4 `findManyByMountPointsAndPath` (`doc-mount-documents.repository.ts:193`):
+    /// batch-resolve the document at the same `relativePath` across many mount
+    /// points, the N+1-avoiding query the overlay read uses to hydrate every
+    /// store's file at once. Same 3-table join + case-insensitive path compare as
+    /// [`Self::find_by_mount_point_and_path`]. Returns `(mountPointId, content)`
+    /// pairs (the overlay keys content by the link's mount point). An empty
+    /// `mount_point_ids` short-circuits to `[]` (v4 guards the IN-clause the same
+    /// way).
+    pub fn find_many_by_mount_points_and_path(
+        &self,
+        mount_point_ids: &[String],
+        relative_path: &str,
+    ) -> Result<Vec<(String, String)>, DbError> {
+        if mount_point_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let placeholders = (0..mount_point_ids.len())
+            .map(|i| format!("?{}", i + 1))
+            .collect::<Vec<_>>()
+            .join(",");
+        let path_idx = mount_point_ids.len() + 1;
+        let sql = format!(
+            "SELECT l.mountPointId, d.content \
+             FROM doc_mount_file_links l \
+             JOIN doc_mount_documents d ON d.fileId = l.fileId \
+             JOIN doc_mount_files f ON f.id = l.fileId \
+             WHERE l.mountPointId IN ({placeholders}) \
+               AND LOWER(l.relativePath) = LOWER(?{path_idx})"
+        );
+
+        let mut params: Vec<&dyn ToSql> = mount_point_ids.iter().map(|s| s as &dyn ToSql).collect();
+        params.push(&relative_path);
+
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(params.as_slice(), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
 }

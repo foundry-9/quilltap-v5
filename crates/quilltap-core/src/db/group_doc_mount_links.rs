@@ -152,4 +152,51 @@ impl<'c> GroupDocMountLinksRepository<'c> {
         )?;
         Ok(affected > 0)
     }
+
+    /// v4 `findByGroupId` — every mount-point id linked to this group. Used by the
+    /// provisioning flow's adopt branch ([`super::ensure_official_store`]).
+    pub fn find_by_group_id(&self, group_id: &str) -> Result<Vec<String>, DbError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT mountPointId FROM group_doc_mount_links WHERE groupId = ?1")?;
+        let ids = stmt
+            .query_map(params![group_id], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(ids)
+    }
+
+    /// v4 `link` (`group-doc-mount-links.repository.ts:154`): find-or-create the
+    /// `(groupId, mountPointId)` link, idempotently. Returns without touching the
+    /// DB when the pair already exists; otherwise mints id + timestamps and
+    /// inserts (the `_create` path). Used by provisioning to attach a freshly
+    /// created store to the group.
+    pub fn link(&self, group_id: &str, mount_point_id: &str) -> Result<(), DbError> {
+        let existing: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT 1 FROM group_doc_mount_links WHERE groupId = ?1 AND mountPointId = ?2",
+                params![group_id, mount_point_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+        if existing.is_some() {
+            return Ok(());
+        }
+        let now = crate::clock::now_iso();
+        self.create(
+            &GdmlCreate {
+                group_id: group_id.to_string(),
+                mount_point_id: mount_point_id.to_string(),
+            },
+            &CreateOptions {
+                id: uuid::Uuid::new_v4().to_string(),
+                created_at: now.clone(),
+                updated_at: now,
+            },
+        )
+    }
 }

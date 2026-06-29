@@ -35,12 +35,15 @@ pub mod doc_mount_file_links;
 pub mod doc_mount_files;
 pub mod doc_mount_folders;
 pub mod doc_mount_points;
+pub mod document_store_overlay;
 pub mod embedding_profiles;
 pub mod embedding_status;
+pub mod ensure_official_store;
 pub mod files;
 pub mod folders;
 pub mod group_character_members;
 pub mod group_doc_mount_links;
+pub mod groups;
 pub mod help_docs;
 pub mod image_profiles;
 pub mod llm_logs;
@@ -109,6 +112,16 @@ impl Writer {
             conn.query_row("PRAGMA journal_mode = TRUNCATE", [], |row| row.get(0))?;
 
         Ok(Self { conn })
+    }
+
+    /// Borrow this writer's connection. Used to coordinate a **store-backed**
+    /// operation that spans two databases — e.g. [`groups::GroupsRepository`]
+    /// holds the main-DB writer's connection (the slim `groups` row) plus the
+    /// mount-index writer's connection (the document store). This is the
+    /// ownership-preserving seam Phase 3's `write_apply` partitions formalize;
+    /// until then the store-backed repos take the two connections directly.
+    pub fn connection(&self) -> &Connection {
+        &self.conn
     }
 
     /// The character-plugin-data repository over this writer's connection.

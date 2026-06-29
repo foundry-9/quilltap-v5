@@ -483,8 +483,44 @@ directly (not `writeDatabaseDocument`) to avoid the post-write `reindexSingleFil
 chunk/embed pass — its only skip-switch `QUILLTAP_JOB_CHILD=1` reroutes repos
 through the forked-child write proxy. Deferred: arbitrary-YAML frontmatter (scalar
 subset only, lands with the character-vault YAML decision), `linkBlobContent`, and
-the read/GC/conversion helpers. Next in the slice: the generic overlay engine, then
-`groups` as the pilot.
+the read/GC/conversion helpers.
+
+The **document-store overlay engine + the `groups` store-backed pilot** (build
+steps 2-3 of the slice) are ported and green (`groups_tier2_equivalence`).
+`quilltap-core::db::document_store_overlay` ports v4's generic
+`createDocumentStoreOverlay` + `AbstractStoreBackedRepository` as a Rust generic
+over a `StoreEntity` trait (typed `Properties` bag, `entity_label`,
+`property_keys`, `parse_properties`); the four overlay paths
+(`properties.json`/`description.md`/`instructions.md`/`state.json`) + the
+failure-asymmetric read/write logic are shared (`load_store_files` batched join,
+`apply_overlay[_one]` **drop-vs-throw**, `read_properties`, `write_managed_fields`,
+`apply_write_overlay` route+strip+**properties RMW**). `quilltap-core::db::groups`
+binds it for `groups`: the slim row (id/name/officialMountPointId/timestamps)
+lives in the **main** db, the store in the **mount-index** db, so
+`GroupsRepository` spans both connections (new `Writer::connection()` seam), and
+`ensure_official_store` ports `ensureOfficialStore`'s find/create provisioning
+(mint a `Group Files: <name>` mount point + link + raw FK) + the pure
+`nextUniqueMountPointName` (tier-1 unit test). `create` runs v4's 5-step sequence
+(slim row → provision → write four files → overlay re-read). The differential
+drives v4's REAL `repos.groups.create`/`.update` end-to-end — **no mocked storage
+boundary, no `QUILLTAP_JOB_CHILD`** (database-backed `reindexSingleFile` chunks
+with no model, deterministically; its only divergence, the link `chunkCount` +
+the derived `doc_mount_chunks` rows, is pinned/excluded) — and diffs **seven
+tables across both dbs** (the slim `groups` row + `doc_mount_points` / `_files` /
+`_documents` / `_file_links` / `_folders` + `group_doc_mount_links`) in the
+minted-values remap form with **one shared cross-db id-map** (so
+`groups.officialMountPointId` → the store, `link.fileId` → `file.id`, etc. verify
+by relationship). Banks the 5-step create, `properties.json` byte-exact (both
+keys + the empty bag), a store-only update (slim `updatedAt` NOT bumped) with a
+properties RMW that preserves the untouched `icon`, a DB-only `name` update,
+dedup-by-sha (`"{}"` shared by three links across two stores; `""` by two),
+orphan-on-rewrite, and (second test) the keystone throw-vs-drop asymmetry.
+**Tracked deferrals:** the `ensureOfficialStore` **adopt branch** (startup-heal of
+a hand-linked store — corpus always provisions fresh), the property/`state`
+**null-vs-absent + multi-key insertion order** (open-JSON seam — corpus kept
+`{}`/single-key), and the `projects` generalization (a larger bag + roster ops).
+Next in the slice: `projects` (step 4), then `stableUuidFromString` + the
+character/wardrobe vault family.
 
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green

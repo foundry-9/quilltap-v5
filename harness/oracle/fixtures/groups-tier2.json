@@ -1,0 +1,40 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "ops": [
+    {
+      "kind": "create",
+      "label": "alpha",
+      "input": {
+        "name": "Alpha",
+        "description": "Desc A",
+        "instructions": "Instr A",
+        "state": {},
+        "color": "#112233",
+        "icon": "star"
+      }
+    },
+    {
+      "kind": "create",
+      "label": "beta",
+      "input": {
+        "name": "Beta",
+        "state": {}
+      }
+    },
+    {
+      "kind": "update",
+      "label": "alpha",
+      "patch": {
+        "description": "Desc A2",
+        "color": "#445566"
+      }
+    },
+    {
+      "kind": "update",
+      "label": "beta",
+      "patch": {
+        "name": "Beta Renamed"
+      }
+    }
+  ]
+}

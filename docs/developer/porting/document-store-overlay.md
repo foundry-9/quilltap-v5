@@ -189,13 +189,27 @@ bottom-up:
    `writeDatabaseDocument` input derivation replicated. `readDatabaseDocument` and
    `linkBlobContent` (binary, step 8) remain deferred.
 2. **The generic overlay engine** (`createDocumentStoreOverlay` +
-   `AbstractStoreBackedRepository`) as a Rust generic over an entity config
-   (paths, `parse_properties`, managed-field set, unavailable-error ctor,
-   `find_raw_by_id`, `ensure_official_store`).
-3. **`groups` — the pilot.** Smallest store-backed surface: a 2-key properties bag,
-   zero subclass methods, no roster. It exercises the *entire* engine (four files,
-   both JSON + both markdown, the keystone-error, the throw-vs-drop asymmetry, the
-   5-step create) with the least incidental marshaling. Prove the engine here.
+   `AbstractStoreBackedRepository`) — **DONE** (2026-06-29,
+   `quilltap-core::db::document_store_overlay`). A Rust generic over a
+   `StoreEntity` trait (typed `Properties` bag, `entity_label`, `property_keys`,
+   `parse_properties`); the four overlay paths + the failure-asymmetric
+   read/write logic are shared. `load_store_files` (the batched join read),
+   `apply_overlay[_one]` (drop vs throw), `read_properties`, `write_managed_fields`,
+   `apply_write_overlay` (route + strip + properties RMW). The `runOnChain`
+   per-mount write serialization is dropped (a Node-concurrency workaround; the
+   single-writer Rust model is inherently serialized).
+3. **`groups` — the pilot.** **DONE** (2026-06-29, `quilltap-core::db::groups` +
+   `ensure_official_store`). Smallest store-backed surface (a 2-key bag, no
+   roster, no subclass methods); exercises the *entire* engine (four files, both
+   JSON + both markdown, the keystone throw-vs-drop, the 5-step create) with the
+   least incidental marshaling. Green via `groups_tier2_equivalence` — drives v4's
+   REAL `repos.groups.create`/`.update` end-to-end and diffs seven tables across
+   the main + mount-index dbs in the shared-id-map remap form;
+   `reindexSingleFile`'s `chunkCount`/`doc_mount_chunks` artifact is pinned/excluded
+   (no `QUILLTAP_JOB_CHILD` needed — database-backed reindex uses no model). The
+   `ensureOfficialStore` adopt branch (step 2 of its resolution order) is the only
+   piece deferred — the corpus always provisions fresh; it lands with the
+   startup-backfill slice.
 4. **`projects`** — same engine + the larger 16-key bag + the roster ops +
    in-memory `findByCharacterId`. Adds the `ensure-project-store` provisioning
    (find/adopt/create the official mount, dedup the name).
