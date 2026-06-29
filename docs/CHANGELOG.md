@@ -546,6 +546,21 @@ corpus always provisions fresh), `state`/property null-vs-absent + multi-key
 insertion order (open-JSON seam — corpus kept `{}`/single-key), and the
 `projects` generalization (a larger bag + roster ops).
 
+Phase 2 — the vault wardrobe-component pure leaves (`quilltap-core::vault_overlay`),
+the first slice of the character/wardrobe vault overlay (Family B, build step 6),
+ported leaf-first ahead of the stateful overlay so the YAML-emitter and
+ICU-collation decisions the *write* path forces are not yet on the critical path.
+Three decision-free pure functions: `parseComponentItemsField` (coerce a raw
+`componentItems:` value → clean `Vec<String>`: non-arrays → `[]`, trim, drop
+empty/non-string), `parseWardrobeTypesField` (validate a `types:` value against
+`WardrobeItemTypeEnum` — all-or-nothing, de-dup first-seen, `None` on
+empty/invalid), and `detectComponentCycles` (the save-time component-graph cycle
+check: direct self-ref, indirect, sub-cycle, diamond-safe, deep-chain). Tier-1
+exact differential (`vault_component_leaves_equivalence`) over 22 cases against
+v4's real `parsers.ts` / `expand-composites.ts`. No YAML, no
+case-mapping/collation — the JSON/array/graph leaves the vault needs, verified
+before the projection that consumes them.
+
 Phase 2 — `doc_mount_blobs` (`quilltap-core::db::doc_mount_blobs`), build step 8
 of the document-store overlay slice: the document store's **binary** byte-store,
 the sibling of the (ported) text store `doc_mount_documents`. Bytes (avatars,

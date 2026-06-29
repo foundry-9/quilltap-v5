@@ -576,6 +576,21 @@ the nine-target projection + the wardrobe YAML round-trip), gated on the
 long-deferred ICU-collation / Unicode-case-mapping and YAML-emitter-fidelity
 decisions.
 
+That vault overlay is being ported **leaf-first** (the discipline of pure-to-
+stateful), so the decision-free pure helpers land before the stateful read/write
+overlay that forces the YAML/ICU calls. Done so far: `stableUuidFromString`
+(above) and the **wardrobe-component leaves** (`quilltap-core::vault_overlay`,
+green via `vault_component_leaves_equivalence`) — `parseComponentItemsField`
+(coerce `componentItems:` → clean `Vec<String>`), `parseWardrobeTypesField`
+(all-or-nothing enum validation + first-seen dedup, `None` on empty/invalid), and
+`detectComponentCycles` (the save-time component-graph cycle check). These touch
+no YAML and no case-mapping/collation. Still ahead in the vault: the JSON
+projection parsers (`parseVaultProperties` / `parseVaultPhysicalPrompts` /
+`parseLegacyWardrobeJson` — JSON + Zod-schema validation, tractable), then the
+frontmatter parsers + the read overlay (parse path — separable from the
+YAML-EMIT decision), and finally the write overlay (where the YAML-emit and ICU
+decisions actually bite).
+
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green
 (`prompt_templates_tier2_equivalence`): `create` + `update` + `delete` from v4's

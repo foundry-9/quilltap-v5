@@ -11,6 +11,9 @@
 //! derives from `(kind, mountPointId, relativePath)`, the id chat references
 //! depend on.
 
+use std::collections::{HashMap, HashSet};
+
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 /// Build a stable, RFC-4122 **v8**-style UUID from a SHA-256 digest of `source`
@@ -43,6 +46,116 @@ pub fn stable_uuid_from_string(source: &str) -> String {
         &hex[16..20],
         &hex[20..32]
     )
+}
+
+/// The four wardrobe item types (v4 `WardrobeItemTypeEnum`), in declaration order.
+pub const WARDROBE_ITEM_TYPES: [&str; 4] = ["top", "bottom", "footwear", "accessories"];
+
+/// Coerce a raw `componentItems:` value into a clean `Vec<String>` — v4
+/// `parseComponentItemsField` (`vault-overlay/parsers.ts:358`). Non-arrays (incl.
+/// `null`) yield `[]`; within an array, non-string and empty/whitespace-only
+/// entries are dropped and the survivors are trimmed. Order is preserved; there
+/// is no dedup here (that happens later, during id resolution). `raw` is the
+/// parsed frontmatter value (`serde_json::Value`, the analogue of v4's `unknown`).
+pub fn parse_component_items_field(raw: &Value) -> Vec<String> {
+    let Some(arr) = raw.as_array() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for v in arr {
+        let Some(s) = v.as_str() else { continue };
+        let trimmed = s.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        out.push(trimmed.to_string());
+    }
+    out
+}
+
+/// Validate a raw `types:` value into the wardrobe-type list — v4
+/// `parseWardrobeTypesField` (`vault-overlay/parsers.ts:371`). Returns `None`
+/// (the "fall back to default" signal) for a non-array, an empty array, or ANY
+/// element that is not a string or not one of [`WARDROBE_ITEM_TYPES`] — the
+/// validation is all-or-nothing. Valid input is de-duplicated preserving
+/// first-seen order. Returns the type strings (the enum members).
+pub fn parse_wardrobe_types_field(raw: &Value) -> Option<Vec<String>> {
+    let arr = raw.as_array()?;
+    if arr.is_empty() {
+        return None;
+    }
+    let allowed: HashSet<&str> = WARDROBE_ITEM_TYPES.into_iter().collect();
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+    for v in arr {
+        let s = v.as_str()?; // non-string → whole field invalid
+        if !allowed.contains(s) {
+            return None; // unknown type → whole field invalid
+        }
+        if seen.insert(s.to_string()) {
+            out.push(s.to_string());
+        }
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
+/// Save-time component-cycle check — v4 `detectComponentCycles`
+/// (`wardrobe/expand-composites.ts:110`). Returns the cycle paths that would
+/// result if `component_item_ids` were saved as the components of `self_id`; an
+/// empty result means safe. `items_by_id` maps each known item id to its declared
+/// `componentItemIds` (the only field the walk reads). A direct self-reference
+/// yields `[self_id, self_id]`; an indirect cycle yields the path back to a
+/// repeated node (the offending id appended).
+pub fn detect_component_cycles(
+    self_id: &str,
+    component_item_ids: &[String],
+    items_by_id: &HashMap<String, Vec<String>>,
+) -> Vec<Vec<String>> {
+    let mut cycles: Vec<Vec<String>> = Vec::new();
+    for child_id in component_item_ids {
+        if child_id == self_id {
+            cycles.push(vec![self_id.to_string(), self_id.to_string()]);
+            continue;
+        }
+        walk_cycles(
+            self_id,
+            child_id,
+            &[self_id.to_string(), child_id.clone()],
+            items_by_id,
+            &mut cycles,
+        );
+    }
+    cycles
+}
+
+/// The recursive half of [`detect_component_cycles`], mirroring v4's `walk`: for
+/// each grandchild, a back-edge to `self_id` or to a node already on `path` is a
+/// cycle (recorded as `path + grand`); otherwise descend.
+fn walk_cycles(
+    self_id: &str,
+    id: &str,
+    path: &[String],
+    items_by_id: &HashMap<String, Vec<String>>,
+    cycles: &mut Vec<Vec<String>>,
+) {
+    let Some(children) = items_by_id.get(id) else {
+        return;
+    };
+    for grand in children {
+        if grand == self_id || path.iter().any(|p| p == grand) {
+            let mut cycle = path.to_vec();
+            cycle.push(grand.clone());
+            cycles.push(cycle);
+            continue;
+        }
+        let mut next = path.to_vec();
+        next.push(grand.clone());
+        walk_cycles(self_id, grand, &next, items_by_id, cycles);
+    }
 }
 
 #[cfg(test)]
