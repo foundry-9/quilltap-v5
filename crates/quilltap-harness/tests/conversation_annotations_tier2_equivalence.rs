@@ -164,6 +164,7 @@ fn conversation_annotations_tier2_matches_oracle() {
                                 character_name: data.character_name.clone(),
                                 message_index: data.message_index,
                                 updated_at: data.updated_at.clone(),
+                                ..Default::default()
                             },
                         )
                         .expect("conversation_annotations.update");

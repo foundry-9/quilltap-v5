@@ -4,10 +4,11 @@
 //! `roleplay_templates`, `image_profiles`, and `connection_profiles`. Ports v4's
 //! `lib/database/repositories/tfidf-vocabulary.repository.ts`.
 //!
-//! Scope: `create`, `update`, and `delete`. The custom helpers —
-//! `findByProfileId`/`findByUserId`/`upsertByProfileId`/`deleteByProfileId` — are
-//! out of scope. `tfidf_vocabulary` stores the fitted TF-IDF vocabulary, IDF
-//! weights, and statistics for each BUILTIN embedding profile.
+//! Scope: `create`, `update`, `delete`, and `upsertByProfileId` (find-by-profile
+//! then update-or-create, the minted-values path). The remaining custom helpers —
+//! `findByUserId`/`deleteByProfileId` — are out of scope. `tfidf_vocabulary`
+//! stores the fitted TF-IDF vocabulary, IDF weights, and statistics for each
+//! BUILTIN embedding profile.
 //!
 //! ## ⚠️ This repo OVERRIDES the base `create`/`update` — `updatedAt` is minted,
 //! not pinnable
@@ -207,6 +208,68 @@ impl<'c> TfidfVocabularyRepository<'c> {
         let params_refs: Vec<&dyn ToSql> = values.iter().map(|b| b.as_ref()).collect();
         let affected = self.conn.execute(&sql, params_refs.as_slice())?;
         Ok(affected > 0)
+    }
+
+    /// Upsert a vocabulary record keyed by `profileId` (v4's
+    /// `upsertByProfileId(profileId, data)`). Finds the existing row by
+    /// `data.profile_id`; if present, applies a FULL `update(existing.id, data)`
+    /// (which mints `updatedAt` itself and preserves `createdAt`); otherwise mints
+    /// a fresh `id` + `now` and `create`s (which also mints `updatedAt`). Returns
+    /// the id of the row created or updated.
+    ///
+    /// v4 reads `profileId` from the `data` payload (the `data: Omit<…,
+    /// 'id'|'createdAt'|'updatedAt'>` shape includes `profileId`), so this takes a
+    /// single [`TvCreate`] and uses its `profile_id` as the lookup key. The
+    /// update path passes EVERY field through (v4 forwards the full `data`).
+    pub fn upsert_by_profile_id(&self, data: &TvCreate) -> Result<String, DbError> {
+        if let Some(existing_id) = self.find_id_by_profile_id(&data.profile_id)? {
+            // Existing row -> full update. v4 forwards the whole `data` payload;
+            // `update` mints `updatedAt` and leaves `id` / `createdAt` untouched.
+            self.update(
+                &existing_id,
+                &TvUpdate {
+                    profile_id: Some(data.profile_id.clone()),
+                    user_id: Some(data.user_id.clone()),
+                    vocabulary: Some(data.vocabulary.clone()),
+                    idf: Some(data.idf.clone()),
+                    avg_doc_length: Some(data.avg_doc_length),
+                    vocabulary_size: Some(data.vocabulary_size),
+                    include_bigrams: Some(data.include_bigrams),
+                    fitted_at: Some(data.fitted_at.clone()),
+                },
+            )?;
+            Ok(existing_id)
+        } else {
+            // No existing row -> create. v4 mints id + timestamps (no options);
+            // `create` mints `updatedAt`, and here we mint `id` + `createdAt`
+            // (v4's `options?.id || generateId()`, `options?.createdAt || now`).
+            let id = uuid::Uuid::new_v4().to_string();
+            let now = clock::now_iso();
+            self.create(
+                data,
+                &CreateOptions {
+                    id: id.clone(),
+                    created_at: now,
+                },
+            )?;
+            Ok(id)
+        }
+    }
+
+    /// Find the id of the row whose `profileId` matches, if any — the lookup that
+    /// drives [`Self::upsert_by_profile_id`] (v4's `findByProfileId`).
+    fn find_id_by_profile_id(&self, profile_id: &str) -> Result<Option<String>, DbError> {
+        self.conn
+            .query_row(
+                "SELECT id FROM tfidf_vocabularies WHERE profileId = ?1",
+                params![profile_id],
+                |row| row.get::<_, String>(0),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
     }
 
     /// Delete the vocabulary `id`. Returns `Ok(false)` when no row matched (v4's

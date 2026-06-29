@@ -1,0 +1,107 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `plugin_config` repo's",
+    "`upsertForUserPlugin` method (Phase-2), in the MINTED-VALUES (remap) form.",
+    "One committed file drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-plugin-config-upsert-fixture.ts +",
+    "    plugin-config-upsert-tier2.ts) and",
+    "  - the Rust port (quilltap-harness plugin_config_upsert tier-2 test).",
+    "",
+    "WHAT THIS BANKS: v4's `upsertForUserPlugin(userId, pluginName, config)`:",
+    "  - find existing by (userId, pluginName);",
+    "  - if found -> MERGE `{ ...existing.config, ...config }` then",
+    "    `update(existing.id, {config: merged})` (id + createdAt preserved,",
+    "    updatedAt minted);",
+    "  - else -> `create({userId, pluginName, config})` (mints id + both",
+    "    timestamps; `enabled` is never set -> SQL NULL throughout).",
+    "",
+    "MINTED-VALUES / REMAP FORM: the upsert ops pin NOTHING. v4 and the Rust port",
+    "independently mint random UUIDs (on the create path) and wall-clock",
+    "timestamps (createdAt on create, updatedAt on every op). The harness",
+    "reconciles the two dumps by normalizing only the nondeterministic fields:",
+    "first-seen `id` remap (rows sorted by the natural key `pluginName`, an input)",
+    "+ createdAt/updatedAt placeholder. Everything else (userId, pluginName,",
+    "config, enabled) is diffed exactly. The createdAt==updatedAt invariant is NOT",
+    "asserted here: the UPDATE path re-mints updatedAt while preserving createdAt,",
+    "so the two diverge by design.",
+    "",
+    "OPEN-JSON MERGE CONSTRAINT (tracked deferred seam #5 in phase-2-onramp.md):",
+    "every stored config -- INCLUDING every MERGE result -- is {} or a SINGLE-KEY",
+    "object, so v4's JSON.stringify (insertion order) and Rust's serde_json::Value",
+    "(sorted keys) serialize byte-identically. The merge ops are designed so the",
+    "existing and new config share the SAME single key (the merge overwrites the",
+    "value -> still single-key), or an empty existing merges with a single-key",
+    "new. A 2+-key merge result would diverge -- see the module header in",
+    "plugin_config.rs.",
+    "",
+    "CORPUS (>=4 upsert ops, both paths exercised, each final row's pluginName",
+    "distinct):",
+    "  op[0] upsert (AA, qtap-plugin-curl, {\"threshold\":0.9}) -> UPDATE of seed",
+    "        row 1: merge {threshold:0.5} with {threshold:0.9} -> {threshold:0.9}",
+    "        (same single key, value overwritten). enabled stays true (untouched).",
+    "  op[1] upsert (AA, qtap-plugin-search, {\"maxResults\":0.25}) -> CREATE of a",
+    "        minted-id row. enabled never set -> SQL NULL.",
+    "  op[2] upsert (AA, qtap-plugin-search, {\"maxResults\":0.75}) -> UPDATE of the",
+    "        minted-id row from op[1]: merge {maxResults:0.25} with",
+    "        {maxResults:0.75} -> {maxResults:0.75} (same single key, overwritten).",
+    "  op[3] upsert (AA, qtap-plugin-fresh, {}) -> CREATE of a minted-id row with",
+    "        an empty {} config. enabled -> SQL NULL.",
+    "Final rows (4, distinct pluginNames): curl, fresh, search, weather (seed 2,",
+    "untouched). enabled is SQL NULL on the three created/upserted rows; true on",
+    "curl (seed); NULL on weather (seed omitted it).",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the",
+    "folders / tags / plugin_config fixtures use. It is NOT the real Friday pepper",
+    "and is safe to commit."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "pluginName": "qtap-plugin-curl",
+      "config": { "threshold": 0.5 },
+      "enabled": true,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "pluginName": "qtap-plugin-weather",
+      "config": {},
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "upsert",
+      "comment": "UPDATE seed row 1 via merge: {threshold:0.5} <- {threshold:0.9} -> {threshold:0.9}. Same single key, value overwritten -> still single-key. enabled (true) untouched. updatedAt re-minted, createdAt preserved.",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "pluginName": "qtap-plugin-curl",
+      "config": { "threshold": 0.9 }
+    },
+    {
+      "kind": "upsert",
+      "comment": "CREATE a minted-id row (no existing (userId, pluginName)). Single-key config. enabled never set -> SQL NULL.",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "pluginName": "qtap-plugin-search",
+      "config": { "maxResults": 0.25 }
+    },
+    {
+      "kind": "upsert",
+      "comment": "UPDATE the minted-id row from op[1] via merge: {maxResults:0.25} <- {maxResults:0.75} -> {maxResults:0.75}. Same single key, overwritten -> still single-key.",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "pluginName": "qtap-plugin-search",
+      "config": { "maxResults": 0.75 }
+    },
+    {
+      "kind": "upsert",
+      "comment": "CREATE a minted-id row with an empty {} config. enabled -> SQL NULL.",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "pluginName": "qtap-plugin-fresh",
+      "config": {}
+    }
+  ]
+}

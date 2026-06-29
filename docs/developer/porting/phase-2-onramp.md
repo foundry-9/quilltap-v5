@@ -560,13 +560,13 @@ instances (non-ASCII user data), each must be closed or consciously waived.
    exact. Ordering only — same family as items 1–2 but for *object keys inside a
    JSON cell*, not row/collation order.
 
-6. **Mount-index sibling-DB partitions — machinery gap (RESOLVED for the
-   mount-index DB; llm-logs still pending).** Repos through #20 all lived in the
-   **main** database. Several repos instead route to a **dedicated sibling DB** via
-   their own `getCollection` override: the five mount-index repos
-   (`group_character_members`, `project_doc_mount_links`, `group_doc_mount_links`,
-   `doc_mount_folders`, `doc_mount_points`) use `getRawMountIndexDatabase`
-   (`quilltap-mount-index.db`), and `llm_logs` uses the llm-logs DB.
+6. **Sibling-DB partitions — machinery gap (RESOLVED; both partitions done).**
+   Repos through #20 all lived in the **main** database. Several repos instead
+   route to a **dedicated sibling DB** via their own `getCollection` override: the
+   five mount-index repos (`group_character_members`, `project_doc_mount_links`,
+   `group_doc_mount_links`, `doc_mount_folders`, `doc_mount_points`) use
+   `getRawMountIndexDatabase` (`quilltap-mount-index.db`), and `llm_logs` uses the
+   llm-logs DB (`getRawLLMLogsDatabase` / `quilltap-llm-logs.db`).
 
    **The mount-index half is now built and green** (the "mount-index sibling-DB
    slice"). The extension turned out to be **TS-side only** — the Rust
@@ -595,6 +595,10 @@ instances (non-ASCII user data), each must be closed or consciously waived.
    "migrations" are no-ops on a fresh schema-generated table (every column they add
    is already in the current schema).
 
-   **Still pending:** the `llm_logs` sibling DB (the llm-logs partition) — the same
-   pattern with the llm-logs raw handle / `SQLITE_LLM_LOGS_PATH` when those repos
-   are ported.
+   **The llm-logs half is now built and green too** — `llm_logs` rides the same
+   TS-only extension, pointed at `SQLITE_LLM_LOGS_PATH` and read back through
+   `getRawLLMLogsDatabase()`. One difference from mount-index: the backend
+   disconnect DOES close the llm-logs client (`closeLLMLogsSQLiteClient`), so the
+   oracle reads the raw handle BEFORE `closeDatabase()` rather than flushing
+   manually. Both sibling partitions are now covered; no sibling DB remains
+   unported.

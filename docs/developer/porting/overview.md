@@ -31,7 +31,7 @@ already working ([`phase-0.md`](./phase-0.md)).
 |------|------|------------------|--------|
 | **0** | Scaffolding, toolchain, cipher-correct DB open, differential harness | tier-1 proven | **substantially done** |
 | **1** | Pure functions (scoring, sizing, remaps, budget math) | tier-1 exact | **done** |
-| **2** | Data layer: repos, the writer-task model, per-DB partitioned apply | tier-2 structural DB diff | in progress — twenty-five repos round-trip green (`folders`, `tags`, `text_replacement_rules`, `prompt_templates`, `conversation_annotations`, `provider_models`, `help_docs`, `roleplay_templates`, `image_profiles`, `connection_profiles`, `plugin_config`, `embedding_profiles`, `terminal_sessions`, `character_plugin_data`, `tfidf_vocabulary`, `users`, `conversation_chunks`, `files`, `chat_documents`, `embedding_status`, plus the first **mount-index sibling-DB** repos: `group_character_members`, `project_doc_mount_links`, `group_doc_mount_links`, `doc_mount_folders`, `doc_mount_points`) ([`phase-2-onramp.md`](./phase-2-onramp.md)); repo-by-repo |
+| **2** | Data layer: repos, the writer-task model, per-DB partitioned apply | tier-2 structural DB diff | in progress — twenty-six repos round-trip green (`folders`, `tags`, `text_replacement_rules`, `prompt_templates`, `conversation_annotations`, `provider_models`, `help_docs`, `roleplay_templates`, `image_profiles`, `connection_profiles`, `plugin_config`, `embedding_profiles`, `terminal_sessions`, `character_plugin_data`, `tfidf_vocabulary`, `users`, `conversation_chunks`, `files`, `chat_documents`, `embedding_status`, the **mount-index sibling-DB** repos `group_character_members`/`project_doc_mount_links`/`group_doc_mount_links`/`doc_mount_folders`/`doc_mount_points`, and the **llm-logs sibling-DB** repo `llm_logs`; six repos also have their deferred `upsert*` methods ported in the minted-values remap form) ([`phase-2-onramp.md`](./phase-2-onramp.md)); repo-by-repo |
 | **3** | Services / engine: memory gate, chat orchestration, enclave `step()` | tier-2 + tier-3 mocked-LLM | not started |
 | **4** | Transports (Tauri/uniffi/axum) + Angular UI | end-to-end | not started |
 
@@ -46,6 +46,14 @@ Each phase leans on the one below being trusted, so failures localize.
   Phases 3–4 but **locked in now** because it's expensive to retrofit.
 - [`phase-2-onramp.md`](./phase-2-onramp.md) — the tier-2 DB-state oracle and its
   fixtures: the build that unblocks Phase 2 once the Phase-1 leaves are done.
+- [`provider-manifest.md`](./provider-manifest.md) — how v5 replaces v4's npm
+  provider plugins: a JSON manifest + five fixed Rust stream decoders. Phase-3
+  work, but the decoder inventory and the manifest boundary are settled now.
+- [`lantern-image-moderation-contract.md`](./lantern-image-moderation-contract.md)
+  — the Lantern's two refusal-handling invariants: the post-hoc image-moderation
+  reroute (provider rejection → uncensored *image* profile) and the pre-hoc
+  LLM-refusal retry (safe cheap-LLM refuses → uncensored *LLM* profile). Both
+  Phase-3, separate units.
 - This overview.
 
 ## Current status (update as it moves)
@@ -90,8 +98,14 @@ columns — enums, a boolean, two JSON arrays, three REAL-int counters]. The
 extension was TS-side only: the Rust `Writer::open_writable` already opens any
 ChaCha20 file by path, so the fixture builder + oracle just target
 `SQLITE_MOUNT_INDEX_PATH` and read back through `getRawMountIndexDatabase()` (see
-[`phase-2-onramp.md`](./phase-2-onramp.md) item 6). The `llm_logs` sibling DB
-remains the one unported partition. The first
+[`phase-2-onramp.md`](./phase-2-onramp.md) item 6). The **llm-logs sibling DB**
+(`llm_logs`) then followed on the same TS-only machinery (`SQLITE_LLM_LOGS_PATH` /
+`getRawLLMLogsDatabase()`) — the widest repo to date (18 columns, five nested
+typed-struct JSON columns), so both sibling partitions are now covered. Separately,
+the deferred `upsert*` methods on six already-ported repos
+(`conversation_annotations`, `help_docs`, `provider_models`, `plugin_config`,
+`character_plugin_data`, `tfidf_vocabulary`) were ported with tier-2 cases in the
+minted-values remap form (the upsert mints ids/timestamps internally). The first
 batch — `conversation_annotations` (a REAL-affinity unbounded-int column
 `messageIndex` + a nullable UUID column), `provider_models` (two nullable REAL
 number columns + boolean-default + enum TEXT columns), and `help_docs` (the

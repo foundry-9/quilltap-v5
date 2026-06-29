@@ -1,0 +1,97 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `character_plugin_data` repo's `upsert`",
+    "method (Phase-2, MINTED-VALUES / remap form).",
+    "",
+    "One committed file drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-character-plugin-data-upsert-fixture.ts +",
+    "    character-plugin-data-upsert-tier2.ts) and",
+    "  - the Rust port (quilltap-harness character_plugin_data upsert tier-2 test).",
+    "",
+    "Why a SEPARATE case from character-plugin-data-tier2.json: v4's `upsert`",
+    "mints its own id (on the create branch) and `now` (both branches) internally,",
+    "so nothing can be pinned for the upsert ops. The dumps are reconciled by the",
+    "harness's remap normalization (first-seen id remap in pluginName order +",
+    "timestamp placeholder), the same machinery folders-remap-tier2 established.",
+    "",
+    "Semantics ported (character-plugin-data.repository.ts `upsert`): find the row",
+    "for the (characterId, pluginName) pair; if found -> update ONLY `data`",
+    "(id + createdAt preserved, updatedAt minted); else -> create (mints id +",
+    "createdAt + updatedAt). Returns the affected row's id.",
+    "",
+    "Corpus coverage:",
+    "  - seed: 2 rows, distinct pluginNames, single-key / empty `data`, pinned.",
+    "  - op[0]: upsert matching SEED row 1's (characterId, pluginName)",
+    "           -> UPDATE branch (replaces `data`).",
+    "  - op[1]: upsert a NEW (characterId, pluginName) -> CREATE branch",
+    "           (mints a fresh id).",
+    "  - op[2]: upsert matching the pair created in op[1] -> UPDATE branch over a",
+    "           MINTED-id row (the create-then-update-the-minted-row path).",
+    "  - op[3]: upsert another new pair -> CREATE branch.",
+    "Each FINAL row has a distinct pluginName (curl / weather / stats / notes), so",
+    "the harness can sort rows by pluginName (an input, not minted) and line them",
+    "up before remapping ids.",
+    "",
+    "OPEN-JSON CONSTRAINT (tracked deferred seam #5): every `data` value is either",
+    "{} or a SINGLE-KEY object, so v4's JSON.stringify (insertion order) and",
+    "Rust's serde_json::Value (sorted keys) serialize byte-identically. The",
+    "fractional value 3.5 exercises the float pass-through inside the JSON text.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the folders",
+    "/ tags / image_profiles / character_plugin_data fixtures use. NOT the real",
+    "Friday pepper; safe to commit.",
+    "",
+    "DETERMINISM: SEED rows are fully pinned. The upsert ops pin NOTHING — both",
+    "sides mint different random UUIDs + wall-clock timestamps, reconciled by the",
+    "harness remap normalization."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "characterId": "aa000000-0000-4000-8000-0000000000a1",
+      "pluginName": "qtap-plugin-curl",
+      "data": { "enabled": true },
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "characterId": "aa000000-0000-4000-8000-0000000000a2",
+      "pluginName": "qtap-plugin-weather",
+      "data": {},
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "upsert",
+      "comment": "Matches seed row 1's (characterId, pluginName) -> UPDATE branch: replaces `data` with a single-key object.",
+      "characterId": "aa000000-0000-4000-8000-0000000000a1",
+      "pluginName": "qtap-plugin-curl",
+      "data": { "enabled": false }
+    },
+    {
+      "kind": "upsert",
+      "comment": "New (characterId, pluginName) -> CREATE branch: mints id + timestamps. Single-key fractional data exercises the float pass-through.",
+      "characterId": "aa000000-0000-4000-8000-0000000000a3",
+      "pluginName": "qtap-plugin-stats",
+      "data": { "threshold": 3.5 }
+    },
+    {
+      "kind": "upsert",
+      "comment": "Matches the pair created in op[1] -> UPDATE branch over a MINTED-id row. Replaces `data` with {}.",
+      "characterId": "aa000000-0000-4000-8000-0000000000a3",
+      "pluginName": "qtap-plugin-stats",
+      "data": {}
+    },
+    {
+      "kind": "upsert",
+      "comment": "Another new pair -> CREATE branch.",
+      "characterId": "aa000000-0000-4000-8000-0000000000a4",
+      "pluginName": "qtap-plugin-notes",
+      "data": { "verbose": true }
+    }
+  ]
+}

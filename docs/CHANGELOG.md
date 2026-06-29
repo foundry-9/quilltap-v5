@@ -382,3 +382,52 @@ normalization):
     runtime ALTER-TABLE "migrations" are no-ops on a fresh schema-generated table.
     Harness `doc_mount_points_tier2_equivalence`.
 
+Phase 2 — the llm-logs sibling DB + the deferred `upsert*` methods (two
+independent slices).
+
+`llm_logs` (`quilltap-core::db::llm_logs`): the SECOND sibling-DB partition (v4's
+`quilltap-llm-logs.db`) and the widest repo in Phase 2 — 18 columns including FIVE
+nested typed-struct JSON columns (`request`, `response`, `usage`, `cacheUsage`,
+`requestHashes`), an open-JSON `rawProviderUsage`, a nullable REAL (`durationMs`),
+an 18-variant enum, and four nullable UUIDs. Same TS-only sibling-DB machinery as
+the mount-index slice but pointed at `SQLITE_LLM_LOGS_PATH` / read back through
+`getRawLLMLogsDatabase()` (the backend disconnect closes this client, so the
+oracle reads before `closeDatabase()`). The nested JSON is reproduced byte-for-byte
+with serde structs in schema field order: integer-valued nested numbers as `i64`
+(so they render `3`, not `3.0`, matching `JSON.stringify`), `temperature` the lone
+`f64` (kept fractional), optional nested fields `skip_serializing_if` (omitted, not
+null). Pinned zero-normalization form; `rawProviderUsage` constrained to
+null/`{}`/single-key (the open-JSON seam). Harness `llm_logs_tier2_equivalence`.
+
+The deferred `upsert*` methods on six already-ported repos are now implemented,
+each with its own tier-2 case in the REMAP (minted-values) form: the upsert mints
+`id`/`createdAt`/`updatedAt` on the create branch and `updatedAt` (preserving
+`id`/`createdAt`) on the update branch, so the test pins nothing for the upsert
+ops — it remaps `id` to first-seen tokens in natural-key order and placeholders
+both timestamps (the folders-remap `createdAt == updatedAt` invariant is dropped,
+since an upsert-update legitimately differs). Each `upsert*` adds a private
+find-by-key SELECT and mints via `clock::now_iso` + `uuid`.
+
+  - `conversation_annotations.upsert` — find by (chatId, messageIndex,
+    characterName); update sets only {content, sourceMessageId}. Added a nullable
+    setter (`Option<Option<_>>`) for `sourceMessageId`. Harness
+    `conversation_annotations_upsert_tier2_equivalence`.
+  - `help_docs.upsertByPath` — find by `path`; update sets {title, url, content,
+    contentHash}, leaving the `embedding` BLOB untouched; create stores a NULL
+    embedding. The test proves an upsert-update preserves a non-null embedding.
+    Harness `help_docs_upsert_tier2_equivalence`.
+  - `provider_models.upsertModel` (+ a thin `upsertModelForProvider` loop) — find
+    replicates v4's `findByProviderAndModelId`: `baseUrl` joins the predicate only
+    when truthy (a falsy baseUrl leaves the column unconstrained — NOT "match
+    NULL"). Update writes the full data. Harness
+    `provider_models_upsert_tier2_equivalence`.
+  - `plugin_config.upsertForUserPlugin` — find by (userId, pluginName); update
+    MERGEs `{...existing, ...new}` config (corpus keeps the merge {}/single-key).
+    Harness `plugin_config_upsert_tier2_equivalence`.
+  - `character_plugin_data.upsert` — find by (characterId, pluginName); update sets
+    {data} (open-JSON, {}/single-key). Harness
+    `character_plugin_data_upsert_tier2_equivalence`.
+  - `tfidf_vocabulary.upsertByProfileId` — find by `profileId`; update writes full
+    data. Builds on the base-method-override minting (create/update mint
+    `updatedAt` themselves). Harness `tfidf_vocabulary_upsert_tier2_equivalence`.
+

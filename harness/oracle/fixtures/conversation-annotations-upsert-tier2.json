@@ -1,0 +1,99 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `conversation_annotations` repo's",
+    "`upsert` method (the deferred custom method, after the create/update/delete",
+    "round-trip in conversation-annotations-tier2.json). One committed file drives",
+    "BOTH sides of the differential:",
+    "  - the v4 oracle (build-conversation-annotations-upsert-fixture.ts +",
+    "    conversation-annotations-upsert-tier2.ts) and",
+    "  - the Rust port (quilltap-harness conversation_annotations upsert tier-2 test).",
+    "",
+    "What this banks: v4's `upsert(input)` — find ONE existing row by the unique key",
+    "(chatId, messageIndex, characterName); if found -> `_update(id, {content,",
+    "sourceMessageId})` (ONLY those two fields, base `_update` re-mints updatedAt,",
+    "preserves id+createdAt); else -> `_create(input)` (mints id + createdAt +",
+    "updatedAt = the same now). Because upsert MINTS its own id + timestamps, this",
+    "is the minted-values (REMAP) tier-2 form: nothing is pinned on the upsert ops,",
+    "and the harness normalizes only the `id` column (first-seen tokens) and the",
+    "timestamps before diffing. SEED rows pin ids + timestamps (deterministic",
+    "pre-existing state).",
+    "",
+    "Both upsert paths are exercised: op[0] matches seed row 1 -> UPDATE; op[1] is a",
+    "new key -> CREATE; op[2] matches the row op[1] created -> UPDATE of a minted",
+    "row (its minted id is preserved); op[3] is another fresh CREATE. Every row's",
+    "`content` is DISTINCT (the natural-key sort column) and the nullable",
+    "`sourceMessageId` is banked both null and non-null.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the other",
+    "Phase-2 fixtures use. It is NOT the real Friday pepper and is safe to commit."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "chatId": "c0000000-0000-4000-8000-00000000000a",
+      "messageIndex": 0,
+      "sourceMessageId": null,
+      "characterName": "Prospero",
+      "content": "AAA seed opening flourish, soon to be revised by upsert.",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "chatId": "c0000000-0000-4000-8000-00000000000a",
+      "messageIndex": 12,
+      "sourceMessageId": "5a000000-0000-4000-8000-0000000000aa",
+      "characterName": "Carina",
+      "content": "BBB seed later remark, left untouched by the upsert ops.",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "upsert",
+      "comment": "MATCHES seed row 1's unique key (chatId, messageIndex 0, Prospero) -> UPDATE path. Revises content and sets a non-null sourceMessageId (seed had null). id + createdAt preserved; updatedAt re-minted.",
+      "input": {
+        "chatId": "c0000000-0000-4000-8000-00000000000a",
+        "messageIndex": 0,
+        "sourceMessageId": "5c000000-0000-4000-8000-0000000000cc",
+        "characterName": "Prospero",
+        "content": "CCC upsert update of the seed row, now anchored to a source."
+      }
+    },
+    {
+      "kind": "upsert",
+      "comment": "NEW unique key (different chat) -> CREATE path. sourceMessageId null. Mints id + createdAt + updatedAt to the same now.",
+      "input": {
+        "chatId": "c0000000-0000-4000-8000-00000000000b",
+        "messageIndex": 3,
+        "sourceMessageId": null,
+        "characterName": "Aurora",
+        "content": "DDD upsert create on a fresh key, no source message yet."
+      }
+    },
+    {
+      "kind": "upsert",
+      "comment": "MATCHES the row op[1] just created (same chat, messageIndex 3, Aurora) -> UPDATE path on a MINTED row: its minted id is preserved, content + sourceMessageId change, updatedAt re-minted. Banks update-of-created idempotency.",
+      "input": {
+        "chatId": "c0000000-0000-4000-8000-00000000000b",
+        "messageIndex": 3,
+        "sourceMessageId": "5d000000-0000-4000-8000-0000000000dd",
+        "characterName": "Aurora",
+        "content": "EEE upsert update of the just-created row, now sourced."
+      }
+    },
+    {
+      "kind": "upsert",
+      "comment": "Another NEW unique key -> CREATE path with a non-null sourceMessageId.",
+      "input": {
+        "chatId": "c0000000-0000-4000-8000-00000000000b",
+        "messageIndex": 8,
+        "sourceMessageId": "5e000000-0000-4000-8000-0000000000ee",
+        "characterName": "Pascal",
+        "content": "FFF upsert create anchored to message eight."
+      }
+    }
+  ]
+}

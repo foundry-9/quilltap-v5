@@ -38,6 +38,7 @@ pub mod group_character_members;
 pub mod group_doc_mount_links;
 pub mod help_docs;
 pub mod image_profiles;
+pub mod llm_logs;
 pub mod plugin_config;
 pub mod project_doc_mount_links;
 pub mod prompt_templates;
@@ -219,6 +220,15 @@ impl Writer {
     /// The image-profiles repository over this writer's connection.
     pub fn image_profiles(&self) -> image_profiles::ImageProfilesRepository<'_> {
         image_profiles::ImageProfilesRepository::new(&self.conn)
+    }
+
+    /// The llm-logs repository over this writer's connection.
+    ///
+    /// In v4 this table lives in the dedicated llm-logs sibling DB; here that is
+    /// simply which file the writer was opened against (see the module docs and
+    /// `group_character_members`, the first sibling-DB repo).
+    pub fn llm_logs(&self) -> llm_logs::LLMLogsRepository<'_> {
+        llm_logs::LLMLogsRepository::new(&self.conn)
     }
 
     /// The plugin-config repository over this writer's connection.

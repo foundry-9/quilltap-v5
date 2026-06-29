@@ -5,8 +5,11 @@
 //! `_create`/`_update`/`_delete` internals of `base.repository.ts`).
 //!
 //! Scope: `create`, `update`, and `delete` (the abstract methods over the base
-//! repo). The custom helpers — `upsertModel`/`upsertModelsForProvider`/
-//! `findBy*`/`deleteByProvider` — are out of scope. `provider_models` is a
+//! repo), plus `upsertModel` / `upsertModelsForProvider` and the private
+//! `findByProviderAndModelId` lookup they ride on (the minted-values / remap
+//! path — see [`ProviderModelsRepository::upsert_model`]). The remaining custom
+//! helpers — `findBy*`/`deleteByProvider` — are out of scope. `provider_models`
+//! is a
 //! system-wide collection (no `userId` scoping) cataloguing the models available
 //! per provider. It widens the tier-2 marshaling surface past
 //! `text_replacement_rules`/`prompt_templates` with:
@@ -45,6 +48,7 @@ use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
 
 use super::DbError;
+use crate::clock::now_iso;
 
 /// Fields for creating a provider model (the `Omit<ProviderModel,'id'|
 /// timestamps>` shape). `base_url` is the one nullable string column;
@@ -179,6 +183,130 @@ impl<'c> ProviderModelsRepository<'c> {
             .conn
             .execute("DELETE FROM provider_models WHERE id = ?1", params![id])?;
         Ok(affected > 0)
+    }
+
+    /// Upsert a provider model — v4 `upsertModel`: find an existing row by
+    /// `(provider, modelId, modelType ?? 'chat', baseUrl ?? undefined)` via
+    /// [`Self::find_by_provider_and_model_id`]; if found, overwrite it with the
+    /// FULL `data` (id + createdAt preserved, updatedAt minted to `now`); else
+    /// create a fresh row (minting id + createdAt + updatedAt all = `now`).
+    /// Returns the id of the affected row.
+    ///
+    /// The minted-values path: nothing is pinned, so the caller normalizes the
+    /// id + timestamps in the differential (the remap form). v4 derives the
+    /// match `modelType` from `data.model_type ?? 'chat'` — but `model_type` is a
+    /// required `String` on [`PmCreate`] here (the corpus always supplies it), so
+    /// the `?? 'chat'` default never engages; we pass it through verbatim.
+    pub fn upsert_model(&self, data: &PmCreate) -> Result<String, DbError> {
+        let now = now_iso();
+
+        // v4: `data.baseUrl ?? undefined` — only a TRUTHY baseUrl constrains the
+        // find (matching v4's `if (baseUrl) query.baseUrl = baseUrl`). An empty
+        // string is falsy in v4, so it would NOT constrain; mirror that.
+        let base_url_filter = match &data.base_url {
+            Some(s) if !s.is_empty() => Some(s.clone()),
+            _ => None,
+        };
+
+        let existing = self.find_by_provider_and_model_id(
+            &data.provider,
+            &data.model_id,
+            &data.model_type,
+            base_url_filter.as_deref(),
+        )?;
+
+        match existing {
+            Some(id) => {
+                // v4 `update(existing.id, data)` -> `_update`: the FULL `data`
+                // overwrites every column, id + createdAt are preserved, and
+                // updatedAt is minted (`data` carries no `updatedAt`).
+                self.conn.execute(
+                    "UPDATE provider_models SET \
+                       provider = ?1, modelId = ?2, modelType = ?3, displayName = ?4, \
+                       baseUrl = ?5, contextWindow = ?6, maxOutputTokens = ?7, \
+                       deprecated = ?8, experimental = ?9, updatedAt = ?10 \
+                     WHERE id = ?11",
+                    params![
+                        data.provider,
+                        data.model_id,
+                        data.model_type,
+                        data.display_name,
+                        data.base_url,
+                        data.context_window,
+                        data.max_output_tokens,
+                        i64::from(data.deprecated),
+                        i64::from(data.experimental),
+                        now,
+                        id,
+                    ],
+                )?;
+                Ok(id)
+            }
+            None => {
+                // v4 `create(data)` (no options) -> mint id + createdAt + updatedAt.
+                let id = uuid::Uuid::new_v4().to_string();
+                self.create(
+                    data,
+                    &CreateOptions {
+                        id: id.clone(),
+                        created_at: now.clone(),
+                        updated_at: now,
+                    },
+                )?;
+                Ok(id)
+            }
+        }
+    }
+
+    /// Bulk upsert — v4 `upsertModelsForProvider`: a thin loop over
+    /// [`Self::upsert_model`], one row per element. Returns the ids of the
+    /// affected rows in input order. (v4 returns `{created, updated}` counts and
+    /// swallows per-row errors; the port keeps the loop thin and propagates
+    /// errors — the differential drives it through `upsert_model`, so the count
+    /// bookkeeping is out of scope.)
+    pub fn upsert_model_for_provider(&self, models: &[PmCreate]) -> Result<Vec<String>, DbError> {
+        let mut ids = Vec::with_capacity(models.len());
+        for data in models {
+            ids.push(self.upsert_model(data)?);
+        }
+        Ok(ids)
+    }
+
+    /// v4 `findByProviderAndModelId`: the existing-row lookup behind `upsertModel`.
+    /// Always constrains `provider = ? AND modelId = ? AND modelType = ?`; adds
+    /// `AND baseUrl = ?` ONLY when `base_url` is `Some` (v4: `if (baseUrl)
+    /// query.baseUrl = baseUrl`, so a null/undefined/empty baseUrl leaves the
+    /// column UNCONSTRAINED — it does NOT mean "match a NULL baseUrl"). No ORDER
+    /// BY (v4's `findOne` issues none), so a `LIMIT 1` over an unconstrained
+    /// baseUrl returns the first row in rowid order. Returns the matched id.
+    fn find_by_provider_and_model_id(
+        &self,
+        provider: &str,
+        model_id: &str,
+        model_type: &str,
+        base_url: Option<&str>,
+    ) -> Result<Option<String>, DbError> {
+        let found: Result<String, rusqlite::Error> = match base_url {
+            Some(url) => self.conn.query_row(
+                "SELECT id FROM provider_models \
+                 WHERE provider = ?1 AND modelId = ?2 AND modelType = ?3 AND baseUrl = ?4 \
+                 LIMIT 1",
+                params![provider, model_id, model_type, url],
+                |row| row.get::<_, String>(0),
+            ),
+            None => self.conn.query_row(
+                "SELECT id FROM provider_models \
+                 WHERE provider = ?1 AND modelId = ?2 AND modelType = ?3 \
+                 LIMIT 1",
+                params![provider, model_id, model_type],
+                |row| row.get::<_, String>(0),
+            ),
+        };
+        match found {
+            Ok(id) => Ok(Some(id)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(other) => Err(other.into()),
+        }
     }
 
     /// True iff a row with this id exists — v4's `_update` `findById` precondition

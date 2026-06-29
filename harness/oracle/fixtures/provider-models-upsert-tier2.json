@@ -1,0 +1,131 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `provider_models` repo UPSERT (minted-",
+    "values / remap) path — the deferred `upsertModel` method. One committed file",
+    "drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-provider-models-upsert-fixture.ts + provider-models-upsert-tier2.ts)",
+    "  - the Rust port (quilltap-harness provider_models upsert tier-2 test).",
+    "",
+    "`upsertModel(data)` finds an existing row by (provider, modelId, modelType ??",
+    "'chat', baseUrl ?? undefined) via `findByProviderAndModelId`; if found it",
+    "UPDATES with the FULL data (id + createdAt preserved, updatedAt minted to",
+    "now); else it CREATEs (minting id + createdAt + updatedAt all = now).",
+    "",
+    "CRITICAL baseUrl predicate: v4 only constrains baseUrl when it is TRUTHY",
+    "(`if (baseUrl) query.baseUrl = baseUrl`). A null/undefined baseUrl leaves the",
+    "column UNCONSTRAINED (it does NOT mean 'match a NULL baseUrl'). Op 1 below",
+    "upserts a null-baseUrl payload against a null-baseUrl seed row and MUST update",
+    "it, not create a duplicate — this is the predicate under test.",
+    "",
+    "This is the MINTED-VALUES form: the upsert ops pin NOTHING (no id, no",
+    "timestamps). Both sides mint their own random UUIDs + wall-clock timestamps;",
+    "the harness reconciles them with ONE normalization (first-seen id remap +",
+    "createdAt/updatedAt placeholder), sorted by the natural key `modelId` (an",
+    "input — each final row's modelId is distinct). The createdAt==updatedAt",
+    "invariant is DROPPED (an upsert-update mints a fresh updatedAt while keeping",
+    "the original createdAt).",
+    "",
+    "Banks: contextWindow/maxOutputTokens both null and integer-valued REAL (the",
+    "integer-collapse in the dump), deprecated/experimental both 0/1, baseUrl both",
+    "null and non-null, an upsert that UPDATES a seed row (op 1) and an upsert that",
+    "UPDATES a freshly-minted-id row (op 3).",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key (the same one the other",
+    "provider_models / folders fixtures use). It is NOT the real Friday pepper and",
+    "is safe to commit. SEED rows pin id + timestamps so the starting state is",
+    "deterministic."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "provider": "openai",
+      "modelId": "gpt-4o",
+      "modelType": "chat",
+      "displayName": "GPT-4o",
+      "baseUrl": null,
+      "contextWindow": 128000,
+      "maxOutputTokens": 16384,
+      "deprecated": false,
+      "experimental": false,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "provider": "openai",
+      "modelId": "local-llama",
+      "modelType": "chat",
+      "displayName": "Local Llama",
+      "baseUrl": "http://localhost:11434/v1",
+      "contextWindow": 8192,
+      "maxOutputTokens": 2048,
+      "deprecated": false,
+      "experimental": false,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "upsert",
+      "comment": "UPDATE seed gpt-4o via a null-baseUrl upsert: the find constrains only (provider, modelId, modelType) and matches the seed row despite its null baseUrl. Full-data overwrite: new displayName, contextWindow 200000, maxOutputTokens 32768, deprecated=true, experimental=true. updatedAt minted (createdAt preserved -> createdAt != updatedAt).",
+      "data": {
+        "provider": "openai",
+        "modelId": "gpt-4o",
+        "modelType": "chat",
+        "displayName": "GPT-4o (legacy)",
+        "baseUrl": null,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32768,
+        "deprecated": true,
+        "experimental": true
+      }
+    },
+    {
+      "kind": "upsert",
+      "comment": "CREATE: no existing (anthropic, claude-opus-4, chat) row -> mint id + createdAt + updatedAt. Null baseUrl, integer-valued contextWindow/maxOutputTokens, experimental=true.",
+      "data": {
+        "provider": "anthropic",
+        "modelId": "claude-opus-4",
+        "modelType": "chat",
+        "displayName": "Claude Opus 4",
+        "baseUrl": null,
+        "contextWindow": 128000,
+        "maxOutputTokens": 8192,
+        "deprecated": false,
+        "experimental": true
+      }
+    },
+    {
+      "kind": "upsert",
+      "comment": "UPDATE the minted-id row from op 2 (same provider/modelId/modelType, null baseUrl). Full-data overwrite clears contextWindow/maxOutputTokens to NULL and flips both booleans to false. updatedAt minted; createdAt (the op-2 mint) preserved.",
+      "data": {
+        "provider": "anthropic",
+        "modelId": "claude-opus-4",
+        "modelType": "chat",
+        "displayName": "Claude Opus 4.1",
+        "baseUrl": null,
+        "contextWindow": null,
+        "maxOutputTokens": null,
+        "deprecated": false,
+        "experimental": false
+      }
+    },
+    {
+      "kind": "upsert",
+      "comment": "CREATE: fresh (openai, text-embedding-3-small, embedding) row with a NON-NULL baseUrl. Integer contextWindow, null maxOutputTokens, deprecated=true.",
+      "data": {
+        "provider": "openai",
+        "modelId": "text-embedding-3-small",
+        "modelType": "embedding",
+        "displayName": "Text Embedding 3 Small",
+        "baseUrl": "https://api.openai.com/v1",
+        "contextWindow": 8191,
+        "maxOutputTokens": null,
+        "deprecated": true,
+        "experimental": false
+      }
+    }
+  ]
+}

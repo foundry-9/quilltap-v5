@@ -4,10 +4,10 @@
 //! `lib/database/repositories/help-docs.repository.ts` (+ the
 //! `_create`/`_update`/`_delete` internals of `base.repository.ts`).
 //!
-//! Scope: `create`, `update`, and `delete`. (The repo's path-keyed upsert,
-//! embedding-only updates, and the `clearAll*` / `findAll*` reads are out of
-//! scope — the same `create`/`update`/`delete` triad the other Phase-2 repos
-//! port.)
+//! Scope: `create`, `update`, `delete`, and `upsert_by_path` (v4's
+//! `upsertByPath` — find-by-path then text-only update / minted create, verified
+//! in the minted-values remap form). The embedding-only updates and the
+//! `clearAll*` / `findAll*` reads remain out of scope.
 //!
 //! ## The first tier-2 BLOB column (the headline)
 //!
@@ -51,6 +51,7 @@ use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
 
 use super::DbError;
+use crate::clock::now_iso;
 use crate::embedding_blob::float32_to_blob;
 
 /// Fields for creating a help doc (the `Omit<HelpDoc,'id'|timestamps>` shape).
@@ -85,6 +86,19 @@ pub struct HdUpdate {
     pub content: Option<String>,
     pub content_hash: Option<String>,
     pub updated_at: String,
+}
+
+/// Input to [`HelpDocsRepository::upsert_by_path`] — v4's
+/// `Omit<HelpDoc,'id'|'createdAt'|'updatedAt'|'embedding'>`. There is
+/// deliberately **no `embedding` field**: an upsert that hits the create branch
+/// stores a NULL embedding, and one that hits the update branch patches only the
+/// four text columns, leaving any existing embedding BLOB untouched.
+pub struct HdUpsert {
+    pub title: String,
+    pub path: String,
+    pub url: String,
+    pub content: String,
+    pub content_hash: String,
 }
 
 /// Repository over a borrowed connection (held by the [`super::Writer`]).
@@ -172,6 +186,77 @@ impl<'c> HelpDocsRepository<'c> {
         let params_refs: Vec<&dyn ToSql> = values.iter().map(|b| b.as_ref()).collect();
         let affected = self.conn.execute(&sql, params_refs.as_slice())?;
         Ok(affected > 0)
+    }
+
+    /// Insert or update a help doc keyed by its `path` (v4's `upsertByPath`).
+    ///
+    /// If a row with `path` already exists, patches ONLY the four text columns
+    /// (`title`, `url`, `content`, `contentHash`) plus `updatedAt` — the
+    /// `embedding` BLOB is never named, so it survives untouched, matching v4's
+    /// whole-row rewrite that re-persists the existing embedding. Otherwise it
+    /// creates a fresh row with a minted id + timestamps and a NULL embedding
+    /// (v4's `_create` over the embedding-less `data`).
+    ///
+    /// Mints `id` (`uuid::Uuid::new_v4`) and `now` ([`crate::clock::now_iso`])
+    /// just like the create/remap path, so the resulting row carries
+    /// nondeterministic id + timestamps (verified by the harness via remap +
+    /// timestamp-placeholder normalization). Returns the id of the affected row.
+    pub fn upsert_by_path(&self, data: &HdUpsert) -> Result<String, DbError> {
+        let now = now_iso();
+
+        if let Some(existing_id) = self.find_id_by_path(&data.path)? {
+            // Existing row -> text-only update. The embedding column is NOT in
+            // the patch, so the stored BLOB is left intact.
+            self.update(
+                &existing_id,
+                &HdUpdate {
+                    title: Some(data.title.clone()),
+                    url: Some(data.url.clone()),
+                    content: Some(data.content.clone()),
+                    content_hash: Some(data.content_hash.clone()),
+                    updated_at: now,
+                },
+            )?;
+            return Ok(existing_id);
+        }
+
+        // No existing row -> create with a minted id + timestamps and (since
+        // `HdUpsert` carries no embedding) a NULL embedding.
+        let id = uuid::Uuid::new_v4().to_string();
+        self.create(
+            &HdCreate {
+                title: data.title.clone(),
+                path: data.path.clone(),
+                url: data.url.clone(),
+                content: data.content.clone(),
+                content_hash: data.content_hash.clone(),
+                embedding: None,
+            },
+            &CreateOptions {
+                id: id.clone(),
+                created_at: now.clone(),
+                updated_at: now,
+            },
+        )?;
+        Ok(id)
+    }
+
+    /// The id of the row whose `path` matches, or `None` (v4's `findByPath`
+    /// non-null check; reads only the key column).
+    fn find_id_by_path(&self, path: &str) -> Result<Option<String>, DbError> {
+        let id: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT id FROM help_docs WHERE path = ?1",
+                params![path],
+                |row| row.get::<_, String>(0),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+        Ok(id)
     }
 
     /// Delete the help doc `id`. Returns `Ok(false)` when no row matched (v4's

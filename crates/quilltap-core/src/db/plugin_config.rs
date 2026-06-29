@@ -4,11 +4,11 @@
 //! Ports v4's `lib/database/repositories/plugin-config.repository.ts` (+ the
 //! `_create`/`_update`/`_delete` internals of `base.repository.ts`).
 //!
-//! Scope: `create`, `update`, and `delete` (the three abstract methods over the
-//! base repo). The custom query helpers — `findByUserAndPlugin`, `findByUserId`,
-//! `getOrCreate`, `upsertForUserPlugin`, `deleteByPlugin` — are out of scope
-//! here (the `upsert*`/`getOrCreate` paths mint their own `now`/ids and would
-//! need the remap-normalization form, not the pinned form). v4's `update` is a
+//! Scope: `create`, `update`, `delete` (the three abstract methods over the base
+//! repo) and `upsertForUserPlugin` (the find-by-pair → MERGE-or-create helper,
+//! tested in the remap / minted-values form — see `upsert_for_user_plugin`). The
+//! remaining custom query helpers — `findByUserAndPlugin`, `findByUserId`,
+//! `getOrCreate`, `deleteByPlugin` — are out of scope here. v4's `update` is a
 //! plain `_update` (Partial spread): provided fields overwrite, id/createdAt are
 //! preserved, `updatedAt` is set explicitly. There is **no built-in guard**
 //! (unlike `prompt_templates`).
@@ -55,6 +55,7 @@ use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
 
 use super::DbError;
+use crate::clock::now_iso;
 
 /// Fields for creating a plugin config (the `Omit<PluginConfig,'id'|
 /// timestamps>` shape). `config` is the open-JSON object column (bound as
@@ -189,5 +190,99 @@ impl<'c> PluginConfigRepository<'c> {
             .conn
             .execute("DELETE FROM plugin_configs WHERE id = ?1", params![id])?;
         Ok(affected > 0)
+    }
+
+    /// Set the config for a `(user_id, plugin_name)` pair, creating the row if it
+    /// doesn't exist (v4's `upsertForUserPlugin`). MINTED-VALUES path: this op
+    /// reads no pinned id/timestamps — it mints its own (the remap-normalization
+    /// form), so it is differential-tested via the first-seen id remap +
+    /// timestamp placeholder, not the pinned zero-normalization form.
+    ///
+    /// Semantics (v4):
+    ///   - find existing by `(userId, pluginName)`;
+    ///   - if found → **MERGE** `{ ...existing.config, ...config }` (existing
+    ///     keys first, each overwritten by the new value when the key overlaps,
+    ///     then any new keys appended — a JS object spread), then `update(id,
+    ///     {config: merged})` (id + createdAt preserved, `updatedAt` minted);
+    ///   - else → `create({userId, pluginName, config})` (mints id + both
+    ///     timestamps; `enabled` is never set → SQL NULL).
+    ///
+    /// Returns the id of the affected row (the existing id on the update path,
+    /// the freshly minted id on the create path).
+    ///
+    /// OPEN-JSON MERGE + SEAM (tracked seam #5): the MERGE is performed on
+    /// `serde_json::Value` objects, which sort keys; v4 merges via spread and
+    /// re-stringifies in INSERTION order. To keep the two byte-identical, the
+    /// corpus is constrained so every stored config (including every MERGE
+    /// result) is `{}` or a SINGLE key — either the existing and new config share
+    /// the same single key (the merge overwrites the value, staying single-key)
+    /// or an empty existing merges with a single-key new. A 2+-key merge result
+    /// would expose the key-order divergence; close the seam
+    /// (preserve-insertion-order serializer) before such an op lands.
+    pub fn upsert_for_user_plugin(
+        &self,
+        user_id: &str,
+        plugin_name: &str,
+        config: &serde_json::Value,
+    ) -> Result<String, DbError> {
+        // Private find-by-(userId, pluginName): the existing row's id + config.
+        let existing: Option<(String, String)> = self
+            .conn
+            .query_row(
+                "SELECT id, config FROM plugin_configs WHERE userId = ?1 AND pluginName = ?2",
+                params![user_id, plugin_name],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+
+        let now = now_iso();
+
+        if let Some((id, existing_config_json)) = existing {
+            // MERGE `{ ...existing.config, ...config }`: start from the existing
+            // object, then insert/overwrite each key from the new config. The
+            // corpus keeps the result `{}`/single-key (see header), so the
+            // serde_json key-sorting and v4's insertion order coincide.
+            let existing_config: serde_json::Value = serde_json::from_str(&existing_config_json)
+                .map_err(|e| DbError::Key(format!("existing config parse: {e}")))?;
+            let mut merged: serde_json::Map<String, serde_json::Value> =
+                existing_config.as_object().cloned().unwrap_or_default();
+            if let Some(new_obj) = config.as_object() {
+                for (k, v) in new_obj {
+                    merged.insert(k.clone(), v.clone());
+                }
+            }
+            let merged_value = serde_json::Value::Object(merged);
+
+            self.update(
+                &id,
+                &PcUpdate {
+                    plugin_name: None,
+                    config: Some(merged_value),
+                    enabled: None,
+                    updated_at: now,
+                },
+            )?;
+            Ok(id)
+        } else {
+            let id = uuid::Uuid::new_v4().to_string();
+            self.create(
+                &PcCreate {
+                    user_id: user_id.to_string(),
+                    plugin_name: plugin_name.to_string(),
+                    config: config.clone(),
+                    enabled: None,
+                },
+                &CreateOptions {
+                    id: id.clone(),
+                    created_at: now.clone(),
+                    updated_at: now,
+                },
+            )?;
+            Ok(id)
+        }
     }
 }

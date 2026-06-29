@@ -5,14 +5,18 @@
 //! Ports v4's `lib/database/repositories/character-plugin-data.repository.ts`
 //! (+ the `_create`/`_update`/`_delete` internals of `base.repository.ts`).
 //!
-//! Scope: `create`, `update`, and `delete` (the three abstract methods over the
-//! base repo). The custom query helpers (`findByCharacterId`,
-//! `findByCharacterAndPlugin`, `findByPluginName`, `getPluginDataMap`, …) and the
-//! `deleteBy*` bulk deletes are out of scope. The `upsert` method is **also out
-//! of scope** — it mints ids / `now` internally (its `create`/`update` calls go
-//! through the same two methods ported here, but the orchestration belongs to the
-//! remap-normalization form, not this pinned zero-normalization form).
-//! There is **no built-in guard** (unlike `prompt_templates`).
+//! Scope: `create`, `update`, `delete` (the three abstract methods over the base
+//! repo) plus `upsert`. The remaining custom query helpers (`findByCharacterId`,
+//! `findByPluginName`, `getPluginDataMap`, …) and the `deleteBy*` bulk deletes
+//! are out of scope; the private `find_id_by_character_and_plugin` here is the
+//! narrowed `findByCharacterAndPlugin` `upsert` needs. There is **no built-in
+//! guard** (unlike `prompt_templates`).
+//!
+//! `upsert(characterId, pluginName, data)` mints its own id / `now` internally
+//! (its `create`/`update` calls go through the two pinned methods here, but the
+//! orchestration is the remap-normalization form, not the pinned
+//! zero-normalization form), so it has a SEPARATE minted-values tier-2 case
+//! (`character_plugin_data_upsert_tier2_equivalence`).
 //!
 //! ## What this repo banks for the tier-2 marshaling surface
 //!
@@ -174,5 +178,81 @@ impl<'c> CharacterPluginDataRepository<'c> {
             params![id],
         )?;
         Ok(affected > 0)
+    }
+
+    /// Find the id of the row for a `(characterId, pluginName)` pair, if any.
+    /// Mirrors v4's `findByCharacterAndPlugin` (`findOneByFilter`), narrowed to
+    /// just the id — all `upsert` needs to decide create-vs-update.
+    fn find_id_by_character_and_plugin(
+        &self,
+        character_id: &str,
+        plugin_name: &str,
+    ) -> Result<Option<String>, DbError> {
+        self.conn
+            .query_row(
+                "SELECT id FROM character_plugin_data \
+                 WHERE characterId = ?1 AND pluginName = ?2",
+                params![character_id, plugin_name],
+                |r| r.get::<_, String>(0),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
+    }
+
+    /// Create-or-update plugin data for a `(characterId, pluginName)` pair —
+    /// v4's `upsert(characterId, pluginName, data)`.
+    ///
+    /// Semantics ported from v4: find the existing row for the pair; if found,
+    /// `update` ONLY the `data` field (id + createdAt preserved, updatedAt minted
+    /// to `now`); else `create` a fresh row (mints id + createdAt + updatedAt, all
+    /// to the same `now`). Returns the id of the affected row.
+    ///
+    /// This mints its own id + timestamps (the remap-normalization form), so it
+    /// belongs to the minted-values tier-2 case, not the pinned one. The `data`
+    /// open-JSON key-order seam (#5) still applies — keep `data` to `{}` /
+    /// single-key.
+    pub fn upsert(
+        &self,
+        character_id: &str,
+        plugin_name: &str,
+        data: serde_json::Value,
+    ) -> Result<String, DbError> {
+        let now = crate::clock::now_iso();
+
+        if let Some(existing_id) =
+            self.find_id_by_character_and_plugin(character_id, plugin_name)?
+        {
+            // v4: this.update(existing.id, { data }) — only `data` changes;
+            // updatedAt is minted, id + createdAt are preserved.
+            self.update(
+                &existing_id,
+                &CpdUpdate {
+                    data: Some(data),
+                    updated_at: now,
+                    ..Default::default()
+                },
+            )?;
+            Ok(existing_id)
+        } else {
+            // v4: this.create({ characterId, pluginName, data }) — mints id +
+            // both timestamps (all the same `now`).
+            let id = uuid::Uuid::new_v4().to_string();
+            self.create(
+                &CpdCreate {
+                    character_id: character_id.to_string(),
+                    plugin_name: plugin_name.to_string(),
+                    data,
+                },
+                &CreateOptions {
+                    id: id.clone(),
+                    created_at: now.clone(),
+                    updated_at: now,
+                },
+            )?;
+            Ok(id)
+        }
     }
 }

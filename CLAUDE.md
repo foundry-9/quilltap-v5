@@ -387,9 +387,40 @@ banks a **nullable-UUID** column (`parentId`, null = root); `doc_mount_points` i
 **widest of the family** (18 columns — four enum TEXT, a boolean, two JSON
 string-arrays banking empty + non-empty, three nullable strings/timestamp, three
 **REAL-affinity int counters** integer-collapsed in the dump), and its runtime
-ALTER-TABLE migrations are no-ops on a fresh schema-generated table. The remaining
-sibling partition is **`llm_logs`** (the llm-logs DB) — same pattern, still
-unported. See "Deferred seams" item 6 in `docs/developer/porting/phase-2-onramp.md`.
+ALTER-TABLE migrations are no-ops on a fresh schema-generated table.
+
+The **llm-logs sibling DB** then followed on the same TS-only machinery
+(`llm_logs` → `SQLITE_LLM_LOGS_PATH` / `getRawLLMLogsDatabase()`;
+`llm_logs_tier2_equivalence`, pinned form). It is the **widest repo in Phase 2**
+(18 columns): an 18-variant enum, four nullable UUIDs, a nullable REAL
+(`durationMs`), an open-JSON `rawProviderUsage` (constrained null/`{}`/single-key),
+and **five nested typed-struct JSON columns** (`request`, `response`, `usage`,
+`cacheUsage`, `requestHashes`) reproduced byte-for-byte with serde structs in
+schema field order — integer-valued nested numbers as `i64` (so they render `3`,
+not `3.0`, matching `JSON.stringify`), the lone fractional `temperature` an `f64`,
+optional nested fields `skip_serializing_if` (omitted, not null). One difference
+from mount-index: the backend disconnect *does* close the llm-logs client, so the
+oracle reads the raw handle before `closeDatabase()`. **Both sibling partitions are
+now covered; no sibling DB remains unported.** See "Deferred seams" item 6 in
+`docs/developer/porting/phase-2-onramp.md`.
+
+Separately, the deferred **`upsert*` methods** on six already-ported repos are now
+ported, each with a tier-2 case in the **minted-values remap form** (the upsert
+mints `id`/`createdAt`/`updatedAt` on create and `updatedAt` on update, so the test
+pins nothing for the upsert ops — it remaps `id` to first-seen tokens in
+natural-key order and placeholders both timestamps; the folders-remap
+`createdAt == updatedAt` invariant is dropped since an upsert-update legitimately
+differs): `conversation_annotations.upsert` (find by chatId+messageIndex+
+characterName; update subset {content, sourceMessageId} — added an
+`Option<Option<_>>` nullable setter for `sourceMessageId`),
+`help_docs.upsertByPath` (leaves the `embedding` BLOB untouched on update; create
+stores NULL — proven by the test), `provider_models.upsertModel` (the find
+replicates v4's `findByProviderAndModelId`: a falsy `baseUrl` is left
+**unconstrained**, NOT matched as NULL), `plugin_config.upsertForUserPlugin`
+(merges `{...existing, ...new}` config, kept `{}`/single-key),
+`character_plugin_data.upsert` (open-JSON `data`, `{}`/single-key), and
+`tfidf_vocabulary.upsertByProfileId` (rides the base-method-override minting).
+Each adds a private find-by-key SELECT and mints via `clock::now_iso` + `uuid`.
 
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green

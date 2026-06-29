@@ -3,10 +3,12 @@
 //! v4's `lib/database/repositories/conversation-annotations.repository.ts` (+ the
 //! `_create`/`_update`/`_delete` internals of `base.repository.ts`).
 //!
-//! Scope: `create`, `update`, and `delete` (the three abstract methods over the
-//! base repo). The custom query/upsert helpers — `upsert`, `findByChatId`,
-//! `findByMessageIndex`, `deleteAnnotation`, `deleteAllForChat` — are out of
-//! scope here. Single source: `ConversationAnnotationSchema` from
+//! Scope: `create`, `update`, `delete` (the three abstract methods over the base
+//! repo), and `upsert` (the custom method that find-by-unique-key then routes to
+//! the update or create path — ported in the minted-values/remap tier-2 form,
+//! since it mints its own id + timestamps). The remaining custom query helpers —
+//! `findByChatId`, `findByMessageIndex`, `deleteAnnotation`, `deleteAllForChat` —
+//! are out of scope here. Single source: `ConversationAnnotationSchema` from
 //! `scriptorium.types`, used by Project Scriptorium's conversation rendering.
 //!
 //! ## What this repo banks for the tier-2 marshaling surface
@@ -39,6 +41,7 @@ use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
 
 use super::DbError;
+use crate::clock;
 
 /// Fields for creating an annotation (the `Omit<ConversationAnnotation,'id'|
 /// timestamps>` shape). `message_index` is the REAL-affinity column (bound as
@@ -60,14 +63,31 @@ pub struct CreateOptions {
 
 /// An annotation update patch. Mirrors v4 `update` over `_update`: provided
 /// fields overwrite, id and createdAt are preserved, `updatedAt` is set
-/// explicitly. Carries only `content`/`characterName`/`messageIndex` — clearing
-/// the nullable `sourceMessageId` to NULL is deferred (see the module header).
+/// explicitly. `source_message_id` is the nullable-setter case the `upsert`
+/// update path needs (v4's `_update({content, sourceMessageId})` sets the column
+/// to whatever the input carries, including `null`): `None` → leave the column
+/// untouched, `Some(inner)` → set it to `inner` (`Some(None)` writes SQL NULL).
 #[derive(Default)]
 pub struct CaUpdate {
     pub content: Option<String>,
     pub character_name: Option<String>,
     pub message_index: Option<f64>,
+    /// Outer `Option`: present in the patch or not. Inner `Option`: the column
+    /// value (`None` → SQL NULL). See the struct doc.
+    pub source_message_id: Option<Option<String>>,
     pub updated_at: String,
+}
+
+/// Input for [`ConversationAnnotationsRepository::upsert`] — mirrors v4's
+/// `ConversationAnnotationInput` (the four unique-key/payload fields, no id or
+/// timestamps; the upsert mints those). `source_message_id` is the nullable UUID
+/// (`None` → SQL NULL on both the create and the update path).
+pub struct CaUpsertInput {
+    pub chat_id: String,
+    pub message_index: f64,
+    pub source_message_id: Option<String>,
+    pub character_name: String,
+    pub content: String,
 }
 
 /// Repository over a borrowed connection (held by the [`super::Writer`]).
@@ -139,6 +159,11 @@ impl<'c> ConversationAnnotationsRepository<'c> {
             assignments.push(format!("messageIndex = ?{}", values.len() + 1));
             values.push(Box::new(message_index));
         }
+        if let Some(source_message_id) = &patch.source_message_id {
+            assignments.push(format!("sourceMessageId = ?{}", values.len() + 1));
+            // Inner `Option<String>` binds the value (or SQL NULL).
+            values.push(Box::new(source_message_id.clone()));
+        }
         assignments.push(format!("updatedAt = ?{}", values.len() + 1));
         values.push(Box::new(patch.updated_at.clone()));
 
@@ -164,5 +189,69 @@ impl<'c> ConversationAnnotationsRepository<'c> {
             params![id],
         )?;
         Ok(affected > 0)
+    }
+
+    /// Insert or update an annotation (v4's `upsert`). Uses the unique key
+    /// `(chatId, messageIndex, characterName)`: if one existing row matches it is
+    /// updated (ONLY `content` + `sourceMessageId`, with `updatedAt` re-minted and
+    /// id/createdAt preserved — v4's `_update({content, sourceMessageId})`);
+    /// otherwise a new row is created (id + createdAt + updatedAt all minted to the
+    /// SAME `now` — v4's `_create(input)`). The id used (existing or minted) is
+    /// returned. Mints exactly as v4: `id` a v4-shape UUID, timestamps from the
+    /// wall clock via [`crate::clock::now_iso`].
+    pub fn upsert(&self, input: &CaUpsertInput) -> Result<String, DbError> {
+        // Find ONE existing row by the unique key. `messageIndex` is bound as the
+        // same REAL/f64 the column holds, so an integer-valued index matches.
+        let existing: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT id FROM conversation_annotations \
+                 WHERE chatId = ?1 AND messageIndex = ?2 AND characterName = ?3",
+                params![input.chat_id, input.message_index, input.character_name],
+                |row| row.get::<_, String>(0),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+
+        if let Some(id) = existing {
+            // UPDATE path: v4 `_update(existing.id, {content, sourceMessageId})`.
+            // Only these two columns change; `updatedAt` is re-minted (not in the
+            // patch), id + createdAt preserved. `sourceMessageId` is set to the
+            // input value, including NULL when the input carries none.
+            let now = clock::now_iso();
+            self.update(
+                &id,
+                &CaUpdate {
+                    content: Some(input.content.clone()),
+                    source_message_id: Some(input.source_message_id.clone()),
+                    updated_at: now,
+                    ..Default::default()
+                },
+            )?;
+            Ok(id)
+        } else {
+            // CREATE path: v4 `_create(input)` — id + createdAt + updatedAt all
+            // minted to the same `now`.
+            let id = uuid::Uuid::new_v4().to_string();
+            let now = clock::now_iso();
+            self.create(
+                &CaCreate {
+                    chat_id: input.chat_id.clone(),
+                    message_index: input.message_index,
+                    source_message_id: input.source_message_id.clone(),
+                    character_name: input.character_name.clone(),
+                    content: input.content.clone(),
+                },
+                &CreateOptions {
+                    id: id.clone(),
+                    created_at: now.clone(),
+                    updated_at: now,
+                },
+            )?;
+            Ok(id)
+        }
     }
 }

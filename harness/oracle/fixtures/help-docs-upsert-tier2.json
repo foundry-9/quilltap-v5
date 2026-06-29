@@ -1,0 +1,112 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for `help_docs.upsertByPath` (the deferred",
+    "path-keyed upsert on the help-docs repo). One committed file drives BOTH",
+    "sides of the differential:",
+    "  - the v4 oracle (build-help-docs-upsert-fixture.ts + help-docs-upsert-tier2.ts) and",
+    "  - the Rust port (quilltap-harness help_docs upsert tier-2 test).",
+    "",
+    "MINTED-VALUES (REMAP) FORM. Unlike the pinned help-docs tier-2 case, the",
+    "upsert ops pin NOTHING: v4's `upsertByPath` mints its own id + timestamps on",
+    "the create branch and mints `updatedAt` on the update branch, and the Rust",
+    "port mints its own (different) values. The harness reconciles the two dumps by",
+    "remapping `id` to first-seen tokens (rows sorted by the natural key `path`)",
+    "and placeholdering `createdAt`/`updatedAt`. Every OTHER column (including the",
+    "`embedding` hex/null) is compared exactly.",
+    "",
+    "SEED rows ARE pinned (id + timestamps) so the starting state is deterministic.",
+    "Seed row 1 (`help/aurora.md`) carries a NON-NULL embedding so the test proves",
+    "a text-only upsert-update leaves the BLOB intact; the dump compares it as hex.",
+    "Seed row 2 (`help/prospero.md`) has a NULL embedding and is never touched by",
+    "any op (its presence proves untouched seed rows survive).",
+    "",
+    "EMBEDDING VALUES are chosen to be EXACTLY float32-representable so the",
+    "f64->f32 cast is lossless and identical on both sides. [0.5,-0.25,0.75,0.125]",
+    "encodes little-endian as `0000003f000080be0000403f0000003e`.",
+    "",
+    "OPS (all upsertByPath):",
+    "  1. path help/aurora.md -> matches seed row 1 -> UPDATE (new title/url/content/",
+    "     contentHash). The embedding BLOB MUST stay -> dump still shows the hex.",
+    "  2. path help/pascal.md  -> no match -> CREATE (minted id+ts, embedding NULL).",
+    "  3. path help/pascal.md  -> matches the row created in op 2 -> UPDATE of a",
+    "     minted-id row (the create-then-update-same-path case).",
+    "  4. path help/carina.md  -> no match -> CREATE (minted id+ts, embedding NULL).",
+    "",
+    "FINAL state (4 rows): aurora (updated, embedding intact), carina (created, NULL),",
+    "pascal (created then updated, NULL), prospero (seed, untouched).",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the other",
+    "Phase-2 fixtures use. It is NOT the real Friday pepper and is safe to commit."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "title": "Aurora overview",
+      "path": "help/aurora.md",
+      "url": "/help/aurora",
+      "content": "Aurora is the dawn engine.",
+      "contentHash": "hash-aurora-1",
+      "embedding": [0.5, -0.25, 0.75, 0.125],
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "title": "Prospero overview",
+      "path": "help/prospero.md",
+      "url": "/help/prospero",
+      "content": "Prospero conducts the salon.",
+      "contentHash": "hash-prospero-1",
+      "embedding": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "upsert",
+      "comment": "Matches seed row 1 (help/aurora.md) -> UPDATE. Changes title/url/content/contentHash. The non-null embedding BLOB must survive untouched (dump still shows 0000003f000080be0000403f0000003e). updatedAt minted by upsertByPath.",
+      "data": {
+        "title": "Aurora overview, revised",
+        "path": "help/aurora.md",
+        "url": "/help/aurora-v2",
+        "content": "Aurora is the dawn engine, rewritten.",
+        "contentHash": "hash-aurora-2"
+      }
+    },
+    {
+      "kind": "upsert",
+      "comment": "No existing row for help/pascal.md -> CREATE with minted id + timestamps. embedding is NULL (upsertByPath's create branch never sets it).",
+      "data": {
+        "title": "Pascal overview",
+        "path": "help/pascal.md",
+        "url": "/help/pascal",
+        "content": "Pascal keeps the ledger.",
+        "contentHash": "hash-pascal-1"
+      }
+    },
+    {
+      "kind": "upsert",
+      "comment": "Matches the row created in op 2 (help/pascal.md) -> UPDATE of a MINTED-id row. embedding stays NULL. updatedAt minted.",
+      "data": {
+        "title": "Pascal overview, revised",
+        "path": "help/pascal.md",
+        "url": "/help/pascal-v2",
+        "content": "Pascal keeps the ledger, now balanced.",
+        "contentHash": "hash-pascal-2"
+      }
+    },
+    {
+      "kind": "upsert",
+      "comment": "No existing row for help/carina.md -> CREATE with minted id + timestamps. embedding is NULL.",
+      "data": {
+        "title": "Carina overview",
+        "path": "help/carina.md",
+        "url": "/help/carina",
+        "content": "Carina charts the night.",
+        "contentHash": "hash-carina-1"
+      }
+    }
+  ]
+}

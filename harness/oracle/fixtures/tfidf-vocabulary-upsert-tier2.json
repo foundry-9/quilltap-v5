@@ -1,0 +1,123 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `tfidf_vocabulary` repo's",
+    "`upsertByProfileId` method (Phase-2), in the MINTED-VALUES (remap) form. One",
+    "committed file drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-tfidf-vocabulary-upsert-fixture.ts + the",
+    "    tfidf-vocabulary-upsert-tier2.ts case), and",
+    "  - the Rust port (quilltap-harness tfidf_vocabulary_upsert tier-2 test).",
+    "",
+    "WHAT THIS BANKS: v4's `upsertByProfileId(profileId, data)` — find existing by",
+    "profileId (findByProfileId); if found -> this.update(existing.id, FULL data);",
+    "else -> this.create(data). Both the UPDATE and CREATE branches are exercised,",
+    "and a CREATE-then-UPDATE of a MINTED-id row (op 2 creates profileId P3, op 3",
+    "upserts P3 -> update of the row whose id v4/Rust minted), which is exactly why",
+    "the id remap exists.",
+    "",
+    "MINTED VALUES: the upsert ops pin NOTHING — the CREATE branch mints id +",
+    "createdAt + updatedAt; the UPDATE branch mints updatedAt and preserves",
+    "createdAt. So the tier-2 harness uses the REMAP normalization (first-seen id",
+    "remap in profileId order + createdAt/updatedAt placeholdered). The",
+    "createdAt == updatedAt invariant is NOT asserted (an update leaves createdAt",
+    "older than the freshly minted updatedAt).",
+    "",
+    "MARSHALING coverage: includeBigrams set both true and false; avgDocLength /",
+    "vocabularySize set as both integer-valued (-> JSON integer dump via",
+    "js_number_to_json) and fractional (avgDocLength -> float dump), exercising the",
+    "REAL-affinity path / integer-collapse. vocabulary/idf are plain-string columns",
+    "holding JSON text (z.string(), stored single-encoded, never re-stringified).",
+    "",
+    "SEED rows pin id + createdAt (so the starting state is deterministic); the",
+    "seed's updatedAt is minted by v4's overriding create and is irrelevant (the",
+    "upsert ops overwrite / placeholder it). Seed rows have distinct profileIds.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key (the folders / tags /",
+    "tfidf-vocabulary fixtures use the same one). It is NOT the real Friday pepper",
+    "and is safe to commit."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "profileId": "11000000-0000-4000-8000-0000000000f1",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "vocabulary": "[[\"hello\",0],[\"world\",1]]",
+      "idf": "[0.5,1.2]",
+      "avgDocLength": 12.5,
+      "vocabularySize": 2,
+      "includeBigrams": true,
+      "fittedAt": "2026-01-01T00:00:00.000Z",
+      "createdAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "profileId": "22000000-0000-4000-8000-0000000000f2",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "vocabulary": "[[\"alpha\",0],[\"beta\",1],[\"gamma\",2]]",
+      "idf": "[0.1,0.2,0.3]",
+      "avgDocLength": 10,
+      "vocabularySize": 3,
+      "includeBigrams": false,
+      "fittedAt": "2026-01-01T00:00:00.000Z",
+      "createdAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "upsert",
+      "comment": "Op 1: upsert matching seed row 1's profileId (P1) -> UPDATE. Full data changes: fractional avgDocLength (8.75 -> float), integer vocabularySize, includeBigrams flips true->false, new vocabulary/idf text. createdAt preserved (2026-01-01); updatedAt minted (placeholdered).",
+      "data": {
+        "profileId": "11000000-0000-4000-8000-0000000000f1",
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "vocabulary": "[[\"foo\",0],[\"bar\",1]]",
+        "idf": "[1.1,2.2]",
+        "avgDocLength": 8.75,
+        "vocabularySize": 4,
+        "includeBigrams": false,
+        "fittedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "upsert",
+      "comment": "Op 2: upsert a NEW profileId (P3) -> CREATE. id + createdAt + updatedAt all minted. Integer-valued avgDocLength (15 -> JSON integer dump), includeBigrams true.",
+      "data": {
+        "profileId": "33000000-0000-4000-8000-0000000000f3",
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "vocabulary": "[[\"new york\",0],[\"san francisco\",1]]",
+        "idf": "[0.9,1.4]",
+        "avgDocLength": 15,
+        "vocabularySize": 2,
+        "includeBigrams": true,
+        "fittedAt": "2026-02-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "upsert",
+      "comment": "Op 3: upsert matching the profileId created in op 2 (P3) -> UPDATE of a MINTED-id row (the remap case). Fractional avgDocLength (3.5 -> float), includeBigrams flips true->false, new payload. createdAt preserved (the op-2 mint); updatedAt re-minted (placeholdered).",
+      "data": {
+        "profileId": "33000000-0000-4000-8000-0000000000f3",
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "vocabulary": "[[\"alpha\",0],[\"beta\",1],[\"gamma\",2]]",
+        "idf": "[2.5,3.5,4.5]",
+        "avgDocLength": 3.5,
+        "vocabularySize": 3,
+        "includeBigrams": false,
+        "fittedAt": "2026-02-03T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "upsert",
+      "comment": "Op 4: fresh upsert of NEW profileId (P4) -> CREATE. id + createdAt + updatedAt minted. Integer avgDocLength (12 -> JSON integer dump), includeBigrams true.",
+      "data": {
+        "profileId": "44000000-0000-4000-8000-0000000000f4",
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "vocabulary": "[[\"qux\",0]]",
+        "idf": "[0.7]",
+        "avgDocLength": 12,
+        "vocabularySize": 1,
+        "includeBigrams": true,
+        "fittedAt": "2026-02-04T00:00:00.000Z"
+      }
+    }
+  ]
+}
