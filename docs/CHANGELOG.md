@@ -479,6 +479,35 @@ mount-index sibling DB:
     (`chunkIndex`/`tokenCount`) and a nullable `headingContext`. The `updateEmbedding`
     BLOB-mutating path is out of scope. Harness `doc_mount_chunks_tier2_equivalence`.
 
+Phase 2 — the document-store STORAGE PRIMITIVE
+(`quilltap-core::db::doc_mount_file_links`), build step 1 of the document-store
+overlay slice. Ports v4's `writeDatabaseDocument` + `linkDocumentContent` +
+`ensureLinkFolderId` — the byte-landing path every store-backed entity
+(project/group store, character vault) ultimately calls. A
+`(mountPointId, relativePath, content)` write is content-addressed by SHA-256 and
+split across three tables in one transaction (find-or-create `doc_mount_files` by
+sha → upsert `doc_mount_documents` by `fileId` → upsert `doc_mount_file_links` by
+`(mountPointId, relativePath)`), with `doc_mount_folders` rows auto-created for any
+parent path. Also ports the pure leaves it needs: `sha256OfString`,
+`detectDatabaseFileType`, `normaliseRelativePath`, and the per-document policy
+(`coercePolicyBool` / `policyFromFrontmatterData` / `policyFromContent`, scalar
+frontmatter subset). The tier-2 differential (`doc_mount_file_links_tier2_equivalence`)
+drives v4's REAL `linkDocumentContent` against a mount-index fixture and diffs all
+FOUR resulting tables in the minted-values remap form, extended with a SHARED
+cross-table id-map (so `document.fileId` / `link.fileId` / `link.folderId` /
+`folder.parentId` FKs verify by relationship); `mountPointId` is the pinned seeded
+store id. The corpus covers a fresh JSON + markdown write, subfolder creation,
+dedup-by-sha (a second path with identical content reuses one file + one document
+row), link upsert-in-place (rewriting a path), and the markdown frontmatter policy
+cascade (`character_read: false` → all `allow*` = 0). The oracle drives
+`linkDocumentContent` directly rather than `writeDatabaseDocument` to avoid the
+post-write `reindexSingleFile` chunk/embed pass (which would mutate the link rows;
+its only skip-switch, `QUILLTAP_JOB_CHILD=1`, reroutes repos through the
+forked-child write proxy). Deferred: arbitrary-YAML frontmatter (scalar subset
+only — lands with the character-vault YAML decision), the UTF-16 `plainTextLength`
+vs UTF-8 `fileSizeBytes` split is reproduced but only exercised on ASCII content,
+and `linkBlobContent` / the read/GC/conversion helpers.
+
 Docs — the document-store-overlay design slice
 (`docs/developer/porting/document-store-overlay.md`): the port plan for the
 store-backed entities (`projects`, `groups`, `characters`, the `wardrobe` vault).

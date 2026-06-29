@@ -1,0 +1,51 @@
+{
+  "_comment": [
+    "Tier-2 corpus for the document-store STORAGE PRIMITIVE (writeDatabaseDocument /",
+    "linkDocumentContent / ensureLinkFolderId). Both v4 and the Rust port run the same",
+    "write sequence against the same mount-index fixture and the resulting four tables",
+    "(doc_mount_files, doc_mount_documents, doc_mount_file_links, doc_mount_folders) are",
+    "structural-diffed in the minted-values REMAP form (ids minted internally, timestamps",
+    "minted internally → first-seen id-token remap across all four tables + timestamp",
+    "placeholders). The store row (doc_mount_points) is seeded with a pinned id so every",
+    "write's mountPointId is identical on both sides (NOT remapped).",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one every other",
+    "tier-2 fixture uses; it decrypts nothing real.",
+    "Scenarios: (1) a top-level JSON file → permissive policy; (2) a top-level markdown",
+    "file with no frontmatter → permissive; (3) a markdown file in a subfolder → exercises",
+    "ensureLinkFolderId creating the Knowledge folder; (4) a second path with content",
+    "byte-identical to (2) → dedup-by-sha (reuses one file + one document row, new link);",
+    "(5) rewriting path (2) with new content → link upsert-in-place + a new file/document",
+    "row (the old ones survive, still referenced by (4)); (6) a markdown file whose",
+    "frontmatter sets character_read:false → the policy cascade forces all three allow*",
+    "flags to 0, verified against v4's real yaml-based policyFromContent."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "store": {
+    "id": "5700000e-0000-4000-8000-0000000000d5",
+    "name": "Group Files: Crew",
+    "basePath": "",
+    "mountType": "database",
+    "storeType": "documents",
+    "includePatterns": [],
+    "excludePatterns": [],
+    "enabled": true,
+    "lastScannedAt": null,
+    "scanStatus": "idle",
+    "lastScanError": null,
+    "conversionStatus": "idle",
+    "conversionError": null,
+    "fileCount": 0,
+    "chunkCount": 0,
+    "totalSizeBytes": 0,
+    "createdAt": "2026-02-01T00:00:00.000Z",
+    "updatedAt": "2026-02-01T00:00:00.000Z"
+  },
+  "ops": [
+    { "kind": "write", "relativePath": "properties.json", "content": "{\n  \"color\": \"oxblood\",\n  \"icon\": \"gear\"\n}" },
+    { "kind": "write", "relativePath": "description.md", "content": "# Crew\n\nThe quick brown fox jumps over the lazy dog." },
+    { "kind": "write", "relativePath": "Knowledge/notes.md", "content": "alpha beta gamma" },
+    { "kind": "write", "relativePath": "alias.md", "content": "# Crew\n\nThe quick brown fox jumps over the lazy dog." },
+    { "kind": "write", "relativePath": "description.md", "content": "# Crew\n\nA wholly rewritten body." },
+    { "kind": "write", "relativePath": "secret.md", "content": "---\ncharacter_read: false\n---\n\nFor the operator's eyes only." }
+  ]
+}

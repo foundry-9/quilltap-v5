@@ -171,13 +171,23 @@ The overlay sits on top of a storage primitive that is **not yet ported**. Build
 bottom-up:
 
 1. **`doc_mount_file_links` + `linkDocumentContent`** (the byte-landing transaction)
-   and the `writeDatabaseDocument` / `readDatabaseDocument` primitives
-   (`database-store.ts`). This is the real first build — flat tier-2, but the widest
-   repo yet (1074 L) and the one everything else calls. Cover: dedup-by-sha (two
-   paths, identical content → shared file/document rows), link upsert-in-place
-   (rewrite a path → no duplicate), folder auto-creation (`ensureFolderPath` →
-   `doc_mount_folders`), and the UTF-8-bytes vs UTF-16-length split. Suppress
-   chunk/embed with `QUILLTAP_JOB_CHILD=1`.
+   and the `writeDatabaseDocument` derivation — **DONE** (2026-06-29,
+   `quilltap-core::db::doc_mount_file_links`, green via
+   `doc_mount_file_links_tier2_equivalence`). Ports `writeDatabaseDocument` +
+   `linkDocumentContent` + `ensureLinkFolderId` + the pure leaves
+   (`sha256OfString`, `detectDatabaseFileType`, `normaliseRelativePath`, the
+   per-document policy). The corpus covers dedup-by-sha (two paths, identical
+   content → shared file/document rows), link upsert-in-place (rewrite a path → no
+   duplicate), folder auto-creation, the policy cascade, and the UTF-16
+   `plainTextLength` vs UTF-8 `fileSizeBytes` split (ASCII-only so far). The
+   first **multi-table-dump differential**: all four resulting tables are diffed in
+   the minted-values remap form with a **shared cross-table id-map**. NB the oracle
+   could not use `writeDatabaseDocument` directly — its post-write
+   `reindexSingleFile` would mutate the link rows and its only skip-switch
+   (`QUILLTAP_JOB_CHILD=1`) reroutes `getRepositories()` through the forked-child
+   write proxy — so it drives v4's real `linkDocumentContent` with the trivial
+   `writeDatabaseDocument` input derivation replicated. `readDatabaseDocument` and
+   `linkBlobContent` (binary, step 8) remain deferred.
 2. **The generic overlay engine** (`createDocumentStoreOverlay` +
    `AbstractStoreBackedRepository`) as a Rust generic over an entity config
    (paths, `parse_properties`, managed-field set, unavailable-error ctor,

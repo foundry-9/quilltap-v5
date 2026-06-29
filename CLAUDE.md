@@ -457,6 +457,35 @@ as hex, a text-only update proven to leave it untouched — like
 `conversation_chunks`/`help_docs` — plus two REAL-affinity int counters and a
 nullable `headingContext`; `updateEmbedding` out of scope).
 
+The **document-store storage primitive** (`doc_mount_file_links`) — build step 1 of
+the document-store overlay slice (`docs/developer/porting/document-store-overlay.md`)
+— is ported and green (`doc_mount_file_links_tier2_equivalence`). It ports v4's
+`writeDatabaseDocument` + `linkDocumentContent` + `ensureLinkFolderId`, the
+byte-landing path every store-backed entity (project/group store, character vault)
+calls: a `(mountPointId, relativePath, content)` write is content-addressed by
+SHA-256 and split in one transaction across `doc_mount_files` (find-or-create by
+sha → dedup), `doc_mount_documents` (the bytes, upsert by `fileId`), and
+`doc_mount_file_links` (the location, upsert by `(mountPointId, relativePath)` —
+rewrite-in-place), with `doc_mount_folders` rows auto-created for parent segments.
+The Rust INSERTs list **exactly v4's column subset** so SQLite fills the same DDL
+defaults on the unset columns. It also ports the pure leaves it needs
+(`sha256OfString`, `detectDatabaseFileType`, `normaliseRelativePath`, and the
+per-document policy `coercePolicyBool`/`policyFromFrontmatterData`/
+`policyFromContent`). This is the **first multi-table-dump differential**: the
+tier-2 case drives v4's real `linkDocumentContent` and diffs all four resulting
+tables in the minted-values remap form, extended with a **shared cross-table id-map**
+(so `document.fileId`/`link.fileId`/`link.folderId`/`folder.parentId` FKs verify by
+relationship; `mountPointId` is the pinned seeded store id). The corpus banks a
+fresh JSON + markdown write, subfolder creation, dedup-by-sha, link
+upsert-in-place, and the markdown frontmatter policy cascade
+(`character_read: false` → all `allow*` = 0). The oracle drives `linkDocumentContent`
+directly (not `writeDatabaseDocument`) to avoid the post-write `reindexSingleFile`
+chunk/embed pass — its only skip-switch `QUILLTAP_JOB_CHILD=1` reroutes repos
+through the forked-child write proxy. Deferred: arbitrary-YAML frontmatter (scalar
+subset only, lands with the character-vault YAML decision), `linkBlobContent`, and
+the read/GC/conversion helpers. Next in the slice: the generic overlay engine, then
+`groups` as the pilot.
+
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green
 (`prompt_templates_tier2_equivalence`): `create` + `update` + `delete` from v4's

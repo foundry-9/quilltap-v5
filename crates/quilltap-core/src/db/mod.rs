@@ -31,6 +31,7 @@ pub mod conversation_annotations;
 pub mod conversation_chunks;
 pub mod doc_mount_chunks;
 pub mod doc_mount_documents;
+pub mod doc_mount_file_links;
 pub mod doc_mount_files;
 pub mod doc_mount_folders;
 pub mod doc_mount_points;
@@ -198,6 +199,14 @@ impl Writer {
     /// Mount-index sibling-DB table (see [`Self::group_character_members`]).
     pub fn doc_mount_documents(&self) -> doc_mount_documents::DocMountDocumentsRepository<'_> {
         doc_mount_documents::DocMountDocumentsRepository::new(&self.conn)
+    }
+
+    /// The doc-mount-file-links repository over this writer's connection — the
+    /// document-store **storage primitive** (`writeDatabaseDocument` /
+    /// `linkDocumentContent`). Mount-index sibling-DB table (see
+    /// [`Self::group_character_members`]).
+    pub fn doc_mount_file_links(&self) -> doc_mount_file_links::DocMountFileLinksRepository<'_> {
+        doc_mount_file_links::DocMountFileLinksRepository::new(&self.conn)
     }
 
     /// The doc-mount-files repository over this writer's connection.
