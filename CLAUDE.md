@@ -594,11 +594,15 @@ YAML emitter** (the eemeli/yaml dependency is isolated to `Wardrobe/*.md`, build
 step 7 — prompts use `escapeYaml`, scenarios are frontmatter-less, the JSON files
 use `JSON.stringify`), and **(B) code-unit seam + pinned corpus for
 `localeCompare`** (no ICU crate for the vault; the slug `toLowerCase` is a
-non-issue). Still ahead in the vault: the JSON projection parsers
-(`parseVaultProperties` / `parseVaultPhysicalPrompts` / `parseLegacyWardrobeJson` —
-faithful Zod-validation reproduction, tractable), then the frontmatter parsers +
-the read overlay (parse path + the Decision-B sort), and finally the write overlay
-(wardrobe YAML per Decision A).
+non-issue). Also done: the **JSON projection parsers** (`vault_json_parsers_equivalence`) —
+`parseVaultProperties` + `parseVaultPhysicalPrompts`, reproducing Zod
+`safeParse` → fall-back-to-null (unknown-key stripping, required-nullable
+presence, the `talkativeness` range, the 1–20-UTF-16 `pronouns` fields). Still
+ahead in the vault: `parseLegacyWardrobeJson` (needs the full `WardrobeItemSchema`
+— a bigger validation port) + the frontmatter parsers (`parsePromptFile` /
+`parseScenarioFile` / `parseWardrobeItemFile` — the YAML/heading READ path), then
+the read overlay (folder enumeration + the Decision-B code-unit sort), and finally
+the write overlay (wardrobe YAML emitter per Decision A, step 7).
 
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green

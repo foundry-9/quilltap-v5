@@ -6,14 +6,25 @@
 //! the *pure* helpers that family needs, ported leaf-first so the stateful
 //! overlay (a later slice) can build on verified primitives.
 //!
-//! So far: [`stable_uuid_from_string`] — the deterministic id every
-//! folder-enumerated vault entity (system prompts, scenarios, wardrobe items)
-//! derives from `(kind, mountPointId, relativePath)`, the id chat references
-//! depend on.
+//! So far (leaf-first, all tier-1 differentially verified):
+//!   - [`stable_uuid_from_string`] — the deterministic id every folder-enumerated
+//!     vault entity derives from `(kind, mountPointId, relativePath)`.
+//!   - the wardrobe-component leaves: [`parse_component_items_field`],
+//!     [`parse_wardrobe_types_field`], [`detect_component_cycles`].
+//!   - the write-projection string leaves: [`slugify_wardrobe_title`],
+//!     [`build_slug_by_item_id_map`], [`sanitize_file_name`], [`escape_yaml`],
+//!     [`build_system_prompt_file`], [`build_scenario_file`].
+//!   - the JSON projection parsers: [`parse_vault_properties`],
+//!     [`parse_vault_physical_prompts`] (Zod `safeParse` → fall-back-to-null).
+//!
+//! Two vault decisions are locked (2026-06-29): the wardrobe YAML emitter is
+//! hand-rolled (build step 7, the only eemeli/yaml site), and `localeCompare`
+//! folder sorts use the code-unit seam + a pinned corpus (no ICU crate).
 
 use std::collections::{HashMap, HashSet};
 
-use serde_json::Value;
+use serde::Serialize;
+use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
 /// Build a stable, RFC-4122 **v8**-style UUID from a SHA-256 digest of `source`
@@ -50,6 +61,146 @@ pub fn stable_uuid_from_string(source: &str) -> String {
 
 /// The four wardrobe item types (v4 `WardrobeItemTypeEnum`), in declaration order.
 pub const WARDROBE_ITEM_TYPES: [&str; 4] = ["top", "bottom", "footwear", "accessories"];
+
+// ── JSON projection parsers (`properties.json` / `physical-prompts.json`) ─────
+//
+// These reproduce v4's `safeParse`-then-fall-back-to-null semantics
+// (`vault-overlay/parsers.ts`): parse the file's JSON, validate against the
+// vault schema, and return the typed value — or `None` on a JSON parse error OR
+// any schema violation (the read overlay then falls back to the DB values). Zod
+// `z.object` STRIPS unknown keys (default, not strict), so extras are dropped,
+// not rejected. A `.nullable()` field is REQUIRED present (its key must exist;
+// the value may be `null`); a `.nullable().optional()` field may be absent.
+
+/// The `pronouns` sub-object (v4 `PronounsSchema`): three required strings, each
+/// 1–20 UTF-16 code units.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Pronouns {
+    pub subject: String,
+    pub object: String,
+    pub possessive: String,
+}
+
+/// `properties.json`'s validated shape (v4 `CharacterVaultPropertiesSchema`). All
+/// five keys are required; `pronouns`/`title`/`firstMessage` are nullable
+/// (serialized as `null` when unset, matching Zod's required-nullable output).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CharacterVaultProperties {
+    pub pronouns: Option<Pronouns>,
+    pub aliases: Vec<String>,
+    pub title: Option<String>,
+    #[serde(rename = "firstMessage")]
+    pub first_message: Option<String>,
+    pub talkativeness: f64,
+}
+
+/// `physical-prompts.json`'s validated shape (v4 `CharacterVaultPhysicalPromptsSchema`).
+/// `headAndShoulders` is optional (absent → omitted); the four tiers are required
+/// and nullable (serialized as `null` when unset).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CharacterVaultPhysicalPrompts {
+    #[serde(rename = "headAndShoulders", skip_serializing_if = "Option::is_none")]
+    pub head_and_shoulders: Option<String>,
+    pub short: Option<String>,
+    pub medium: Option<String>,
+    pub long: Option<String>,
+    pub complete: Option<String>,
+}
+
+/// A required key whose value must be a string or `null` (`z.string().nullable()`).
+/// `Some(inner)` = valid (`inner` is the `null`/string value); `None` = the value
+/// was neither a string nor `null` (schema violation).
+fn nullable_string(v: &Value) -> Option<Option<String>> {
+    match v {
+        Value::Null => Some(None),
+        Value::String(s) => Some(Some(s.clone())),
+        _ => None,
+    }
+}
+
+/// Validate the `pronouns` object (all three fields required strings, 1–20 UTF-16
+/// code units; unknown keys stripped). `None` on any violation.
+fn parse_pronouns(p: &Map<String, Value>) -> Option<Pronouns> {
+    let field = |key: &str| -> Option<String> {
+        let s = p.get(key)?.as_str()?;
+        let len = crate::jsstr::utf16_len(s);
+        if (1..=20).contains(&len) {
+            Some(s.to_string())
+        } else {
+            None
+        }
+    };
+    Some(Pronouns {
+        subject: field("subject")?,
+        object: field("object")?,
+        possessive: field("possessive")?,
+    })
+}
+
+/// Parse + validate `properties.json` (v4 `parseVaultProperties`). `None` on a
+/// JSON parse error or any schema violation (the read overlay falls back to DB
+/// values). `characterId` is v4's logging-only arg — not needed here.
+pub fn parse_vault_properties(raw: &str) -> Option<CharacterVaultProperties> {
+    let json: Value = serde_json::from_str(raw).ok()?;
+    let obj = json.as_object()?;
+
+    // pronouns: required key, null or a valid Pronouns object.
+    let pronouns = match obj.get("pronouns")? {
+        Value::Null => None,
+        Value::Object(p) => Some(parse_pronouns(p)?),
+        _ => return None,
+    };
+
+    // aliases: required array of strings.
+    let mut aliases = Vec::new();
+    for a in obj.get("aliases")?.as_array()? {
+        aliases.push(a.as_str()?.to_string());
+    }
+
+    let title = nullable_string(obj.get("title")?)?;
+    let first_message = nullable_string(obj.get("firstMessage")?)?;
+
+    // talkativeness: required number, 0.1 ≤ t ≤ 1.0 (inclusive).
+    let talkativeness = obj.get("talkativeness")?.as_f64()?;
+    if !(0.1..=1.0).contains(&talkativeness) {
+        return None;
+    }
+
+    Some(CharacterVaultProperties {
+        pronouns,
+        aliases,
+        title,
+        first_message,
+        talkativeness,
+    })
+}
+
+/// Parse + validate `physical-prompts.json` (v4 `parseVaultPhysicalPrompts`).
+/// `None` on a JSON parse error or any schema violation.
+///
+/// NB `headAndShoulders` present-as-`null` (vs absent) is the null-vs-absent
+/// open-JSON seam — the corpus keeps it absent or a string, and present-`null`
+/// is mapped to omitted here (the one unexercised divergence). The four required
+/// tiers serialize `null` when unset, matching Zod.
+pub fn parse_vault_physical_prompts(raw: &str) -> Option<CharacterVaultPhysicalPrompts> {
+    let json: Value = serde_json::from_str(raw).ok()?;
+    let obj = json.as_object()?;
+
+    let head_and_shoulders = match obj.get("headAndShoulders") {
+        None => None,              // optional → absent is fine
+        Some(Value::Null) => None, // present-null → omitted (tracked seam)
+        Some(Value::String(s)) => Some(s.clone()),
+        Some(_) => return None, // wrong type → violation
+    };
+
+    Some(CharacterVaultPhysicalPrompts {
+        head_and_shoulders,
+        short: nullable_string(obj.get("short")?)?,
+        medium: nullable_string(obj.get("medium")?)?,
+        long: nullable_string(obj.get("long")?)?,
+        complete: nullable_string(obj.get("complete")?)?,
+    })
+}
 
 /// Kebab-case slug from a wardrobe item title — v4 `slugifyWardrobeTitle`
 /// (`character-vault.ts:226`): `toLowerCase` → JS-`trim` → collapse every run of

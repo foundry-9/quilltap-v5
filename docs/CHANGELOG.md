@@ -546,6 +546,25 @@ corpus always provisions fresh), `state`/property null-vs-absent + multi-key
 insertion order (open-JSON seam — corpus kept `{}`/single-key), and the
 `projects` generalization (a larger bag + roster ops).
 
+Phase 2 — the vault JSON projection parsers (`quilltap-core::vault_overlay`), the
+next decision-free slice of the character/wardrobe vault overlay (Family B, build
+step 6). `parseVaultProperties` + `parseVaultPhysicalPrompts` reproduce v4's Zod
+`safeParse`-then-fall-back-to-`null` semantics (`vault-overlay/parsers.ts`): parse
+the file JSON, validate against the vault schema, return the typed value or `None`
+on a JSON-parse error OR any schema violation. Faithful to Zod's rules — unknown
+keys stripped (default `z.object`, top-level and inside `pronouns`); a
+`.nullable()` field is required-present (key must exist, value may be `null`) and
+serializes `null` when unset; a `.nullable().optional()` field may be absent;
+`talkativeness` is range-checked `0.1 ≤ t ≤ 1.0`; the nested `pronouns` fields are
+required strings of 1–20 UTF-16 code units. Tier-1 exact differential
+(`vault_json_parsers_equivalence`) over 24 cases against v4's real functions
+(valid/all-nulls/extra-stripped/invalid-JSON/non-object/missing-key/range-bounds/
+non-array-aliases/non-string-element/pronoun-missing-field/too-long/empty/
+wrong-type), with integer-valued floats canonicalized on both sides so
+`talkativeness: 1.0` (which v4 emits as `1`) compares equal. (`headAndShoulders`
+present-`null` is the one tracked null-vs-absent divergence, kept out of the
+corpus.)
+
 Phase 2 — the vault write-projection string leaves (`quilltap-core::vault_overlay`),
 the next decision-free slice of the character/wardrobe vault overlay (Family B,
 build step 6). Five pure functions from v4's `character-vault.ts`:
