@@ -123,6 +123,7 @@ pub mod format_tokens;
 pub mod jsnum;
 pub mod jsstr;
 pub mod literal_boost;
+pub mod markdown;
 pub mod memory_format;
 pub mod memory_gate;
 pub mod memory_weighting;

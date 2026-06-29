@@ -609,13 +609,26 @@ anchor incl. trailing-newline rejection). Faithful to Zod — any bad item nulls
 the whole array, `.default()` keys materialized, output in schema order, unknown
 keys stripped (root `presets`, per-item, in-`outfit`), and a present `outfit`
 validated-then-discarded (only `{ items }` returned). The two regexes are the
-first `LazyLock<Regex>` statics in the vault module. Still ahead in the vault:
-the frontmatter parsers (`parsePromptFile` / `parseScenarioFile` /
-`parseWardrobeItemFile` — the YAML/heading READ path, which forces the read-side
-companion to the locked YAML decision: `parseFrontmatter` calls eemeli/yaml's
-`YAML.parse`, so the reader needs a constrained hand-rolled YAML-subset parser),
-then the read overlay (folder enumeration + the Decision-B code-unit sort), and
-finally the write overlay (wardrobe YAML emitter per Decision A, step 7).
+first `LazyLock<Regex>` statics in the vault module. **The read-side YAML
+decision is now resolved and built: a hand-rolled constrained reader, no YAML
+crate in the vault** (the read-side companion to locked Decision A). The
+**Markdown frontmatter parser** (`quilltap-core::markdown::parse_frontmatter`,
+`markdown_frontmatter_equivalence`, 52 cases) is the shared read-path foundation:
+it reproduces v4 `parseFrontmatter`'s structural logic (the `---\n`-only opener,
+exactly-`---` close, UTF-16 `bodyStartOffset` computed even on a non-object body,
+empty/comments-only → `{}`, array/scalar → null, dup-key → null) and a
+hand-rolled **YAML 1.2 core-schema** subset reader (scalar resolution with
+`yes`/`no` as strings, double/single quotes + JSON-style escapes, the
+whitespace-gated `#` comment rule, flow `[a,b]` and block `- item` sequences).
+Out-of-subset constructs (nested/flow maps, block scalars, anchors/tags, exotic
+numbers) are a documented seam — kept out of the corpus, resolving conservatively
+(null/string or parse error), never silently wrong. Still ahead in the vault:
+the three per-file parsers now built ON this reader — `parsePromptFile` /
+`parseScenarioFile` (simple `CharacterSystemPrompt`/`CharacterScenario` shapes +
+the `# heading` title fallback) and `parseWardrobeItemFile` (the heaviest:
+types/id/archived/component logic + title heading/filename fallback) — then the
+read overlay (folder enumeration + the Decision-B code-unit sort), and finally
+the write overlay (wardrobe YAML emitter per Decision A, step 7).
 
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green

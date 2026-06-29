@@ -546,6 +546,28 @@ corpus always provisions fresh), `state`/property null-vs-absent + multi-key
 insertion order (open-JSON seam — corpus kept `{}`/single-key), and the
 `projects` generalization (a larger bag + roster ops).
 
+Phase 2 — the Markdown frontmatter parser + a hand-rolled YAML reader
+(`quilltap-core::markdown::parse_frontmatter`), the shared read-path foundation
+for the vault's per-file parsers. v4's `parseFrontmatter`
+(`lib/doc-edit/markdown-parser.ts`) calls eemeli/yaml's `YAML.parse`; the read
+side is the companion to locked Decision A, so this hand-rolls a parser for the
+constrained subset our own emitters produce plus simple hand-edits — no YAML
+crate in the vault — matching eemeli/yaml's **YAML 1.2 core-schema** output on
+that subset. Reproduces the structural logic exactly (the `---\n`-only opener so
+CRLF frontmatter isn't recognized; the exactly-`---` closing line; UTF-16
+`bodyStartOffset` computed even when the YAML fails to yield an object;
+empty/whitespace/comments-only → `{}`; array/scalar root → null; duplicate keys
+→ null, since eemeli throws) and the scalar resolution (`~`/`null`/empty → null;
+`true`/`false` case-variants → bool while `yes`/`no` stay strings; decimal
+int/float → number; ISO timestamps and URLs stay strings; double-quoted
+JSON-style escapes incl. `\uXXXX`; single-quoted `''`; the whitespace-gated `#`
+comment rule; flow `[a, b]` and block `- item` sequences). Tier-1 exact
+differential (`markdown_frontmatter_equivalence`) over 52 cases against v4's real
+`parseFrontmatter`. Nested maps, flow maps, block scalars, anchors/tags, and
+exotic numbers (hex/octal/exponent/`.inf`/`.nan`) are the documented
+out-of-subset seam — kept out of the corpus; they resolve conservatively (a
+null/string or a parse error), never to a silently-wrong typed value.
+
 Phase 2 — the legacy `wardrobe.json` migration parser
 (`quilltap-core::vault_overlay::parse_legacy_wardrobe_json`), the next
 decision-free vault-overlay leaf (Family B). Unlike the two JSON projection
