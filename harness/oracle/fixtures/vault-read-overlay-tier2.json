@@ -1,0 +1,154 @@
+{
+  "_comment": [
+    "Read-differential corpus for the character vault read overlay (hydrateOne +",
+    "applyDocumentStoreOverlay). The builder seeds six pinned document stores and a file",
+    "corpus via v4's real linkDocumentContent; both v4 and the Rust port READ the same",
+    "fixture and run applyDocumentStoreOverlay over the same input characters, so every",
+    "minted id/timestamp is identical and the hydrated characters compare exactly — EXCEPT",
+    "the physicalDescription mint branch, whose createdAt/updatedAt are minted at",
+    "hydration time (new Date / clock::now) and are placeholdered for the ids in",
+    "mintCharacterIds.",
+    "Coverage: pass-through (no linked vault); full overlay (all single files + physical",
+    "base-reuse + multi-default prompts + scenario); DROP on missing properties.json;",
+    "partial (properties only -> identity kept, systemPrompts/scenarios REPLACED with []);",
+    "physical MINT (no existing physicalDescription); empty identity.md -> null + prompt",
+    "promote-first (no default); prompt keep-non-first-default.",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one every tier-2",
+    "fixture uses; it decrypts nothing real."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "mintCharacterIds": ["c0000001-0000-4000-8000-000000000004"],
+  "stores": [
+    { "id": "5700000e-0000-4000-8000-0000000000b1", "name": "Vault A" },
+    { "id": "5700000e-0000-4000-8000-0000000000b2", "name": "Vault B" },
+    { "id": "5700000e-0000-4000-8000-0000000000b3", "name": "Vault C" },
+    { "id": "5700000e-0000-4000-8000-0000000000b4", "name": "Vault D" },
+    { "id": "5700000e-0000-4000-8000-0000000000b5", "name": "Vault E" },
+    { "id": "5700000e-0000-4000-8000-0000000000b6", "name": "Vault F" }
+  ],
+  "files": [
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b1", "relativePath": "properties.json", "content": "{\"pronouns\":{\"subject\":\"she\",\"object\":\"her\",\"possessive\":\"hers\"},\"aliases\":[\"Al\",\"Ada\"],\"title\":\"The Hero\",\"firstMessage\":\"Hello there\",\"talkativeness\":0.7}" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b1", "relativePath": "identity.md", "content": "Vault identity text" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b1", "relativePath": "description.md", "content": "Vault description" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b1", "relativePath": "manifesto.md", "content": "Vault manifesto" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b1", "relativePath": "personality.md", "content": "Vault personality" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b1", "relativePath": "example-dialogues.md", "content": "Vault dialogues" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b1", "relativePath": "physical-description.md", "content": "A tall figure in a long coat" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b1", "relativePath": "physical-prompts.json", "content": "{\"headAndShoulders\":\"hs prompt\",\"short\":\"short prompt\",\"medium\":\"medium prompt\",\"long\":\"long prompt\",\"complete\":\"complete prompt\"}" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b1", "relativePath": "Prompts/a-first.md", "content": "---\nname: First Prompt\nisDefault: true\n---\nFirst prompt body" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b1", "relativePath": "Prompts/b-second.md", "content": "---\nname: Second Prompt\nisDefault: true\n---\nSecond prompt body" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b1", "relativePath": "Scenarios/quest.md", "content": "# The Quest\n\nGo on a quest." },
+
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b2", "relativePath": "identity.md", "content": "orphan identity, no keystone" },
+
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b3", "relativePath": "properties.json", "content": "{\"pronouns\":null,\"aliases\":[],\"title\":null,\"firstMessage\":null,\"talkativeness\":0.5}" },
+
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b4", "relativePath": "properties.json", "content": "{\"pronouns\":null,\"aliases\":[],\"title\":null,\"firstMessage\":null,\"talkativeness\":0.5}" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b4", "relativePath": "physical-description.md", "content": "Minted physical desc" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b4", "relativePath": "physical-prompts.json", "content": "{\"short\":\"s\",\"medium\":\"m\",\"long\":\"l\",\"complete\":\"c\"}" },
+
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b5", "relativePath": "properties.json", "content": "{\"pronouns\":null,\"aliases\":[],\"title\":null,\"firstMessage\":null,\"talkativeness\":0.5}" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b5", "relativePath": "identity.md", "content": "" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b5", "relativePath": "Prompts/x-one.md", "content": "---\nname: X One\n---\nX body" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b5", "relativePath": "Prompts/y-two.md", "content": "---\nname: Y Two\n---\nY body" },
+
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b6", "relativePath": "properties.json", "content": "{\"pronouns\":null,\"aliases\":[],\"title\":null,\"firstMessage\":null,\"talkativeness\":0.5}" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b6", "relativePath": "Prompts/m-alpha.md", "content": "---\nname: M Alpha\n---\nAlpha body" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b6", "relativePath": "Prompts/m-beta.md", "content": "---\nname: M Beta\nisDefault: true\n---\nBeta body" }
+  ],
+  "characters": [
+    {
+      "id": "c0000001-0000-4000-8000-000000000000",
+      "name": "Plain",
+      "characterDocumentMountPointId": null,
+      "identity": "untouched identity",
+      "systemPrompts": [],
+      "scenarios": []
+    },
+    {
+      "id": "c0000001-0000-4000-8000-000000000001",
+      "name": "Ada",
+      "systemTransparency": "visible",
+      "characterDocumentMountPointId": "5700000e-0000-4000-8000-0000000000b1",
+      "pronouns": { "subject": "they", "object": "them", "possessive": "theirs" },
+      "aliases": ["OldAlias"],
+      "title": "Old Title",
+      "firstMessage": "old first",
+      "talkativeness": 0.5,
+      "identity": "db identity",
+      "description": "db description",
+      "manifesto": "db manifesto",
+      "personality": "db personality",
+      "exampleDialogues": "db dialogues",
+      "physicalDescription": {
+        "id": "pd000001-0000-4000-8000-0000000000aa",
+        "name": "custom",
+        "usageContext": "ctx",
+        "headAndShouldersPrompt": "old hs",
+        "shortPrompt": "old s",
+        "mediumPrompt": "old m",
+        "longPrompt": "old l",
+        "completePrompt": "old c",
+        "fullDescription": "old full",
+        "createdAt": "2024-03-03T00:00:00.000Z",
+        "updatedAt": "2024-03-04T00:00:00.000Z"
+      },
+      "systemPrompts": [],
+      "scenarios": []
+    },
+    {
+      "id": "c0000001-0000-4000-8000-000000000002",
+      "name": "Dropped",
+      "characterDocumentMountPointId": "5700000e-0000-4000-8000-0000000000b2",
+      "identity": "db identity"
+    },
+    {
+      "id": "c0000001-0000-4000-8000-000000000003",
+      "name": "Partial",
+      "characterDocumentMountPointId": "5700000e-0000-4000-8000-0000000000b3",
+      "identity": "keep identity",
+      "physicalDescription": {
+        "id": "pd000003-0000-4000-8000-0000000000cc",
+        "name": "keep",
+        "usageContext": null,
+        "headAndShouldersPrompt": null,
+        "shortPrompt": null,
+        "mediumPrompt": null,
+        "longPrompt": null,
+        "completePrompt": null,
+        "fullDescription": "keep full",
+        "createdAt": "2024-05-05T00:00:00.000Z",
+        "updatedAt": "2024-05-05T00:00:00.000Z"
+      },
+      "systemPrompts": [
+        { "id": "sp000003-0000-4000-8000-0000000000dd", "name": "old prompt", "content": "old", "isDefault": true, "createdAt": "2024-05-05T00:00:00.000Z", "updatedAt": "2024-05-05T00:00:00.000Z" }
+      ],
+      "scenarios": [
+        { "id": "sc000003-0000-4000-8000-0000000000ee", "title": "old scenario", "content": "old", "createdAt": "2024-05-05T00:00:00.000Z", "updatedAt": "2024-05-05T00:00:00.000Z" }
+      ]
+    },
+    {
+      "id": "c0000001-0000-4000-8000-000000000004",
+      "name": "Mint",
+      "characterDocumentMountPointId": "5700000e-0000-4000-8000-0000000000b4",
+      "physicalDescription": null,
+      "systemPrompts": [],
+      "scenarios": []
+    },
+    {
+      "id": "c0000001-0000-4000-8000-000000000005",
+      "name": "Promote",
+      "characterDocumentMountPointId": "5700000e-0000-4000-8000-0000000000b5",
+      "identity": "db identity",
+      "systemPrompts": [],
+      "scenarios": []
+    },
+    {
+      "id": "c0000001-0000-4000-8000-000000000006",
+      "name": "KeepDefault",
+      "characterDocumentMountPointId": "5700000e-0000-4000-8000-0000000000b6",
+      "systemPrompts": [],
+      "scenarios": []
+    }
+  ]
+}

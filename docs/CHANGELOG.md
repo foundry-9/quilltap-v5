@@ -546,6 +546,31 @@ corpus always provisions fresh), `state`/property null-vs-absent + multi-key
 insertion order (open-JSON seam — corpus kept `{}`/single-key), and the
 `projects` generalization (a larger bag + roster ops).
 
+Phase 2 — the character vault **read overlay** (`quilltap-core::db::vault_read_overlay`),
+the heart of the Family-B read path: v4's `hydrateOne` + `applyDocumentStoreOverlay`
++ `applyDocumentStoreOverlayOne`. Folds a character's vault files onto the
+character so every read sees vault values transparently. Because the overlay is a
+plain JSON merge, the port operates on the character as a `serde_json::Value`
+object (not a fully-typed `Character`), patching the managed keys with values from
+the already-ported pure parsers: `properties.json` →
+pronouns/aliases/title/firstMessage/talkativeness; the five markdown fields
+(identity/description/manifesto/personality/exampleDialogues) via
+`markdownToNullable` (empty → null); `physical-description.md` +
+`physical-prompts.json` → `physicalDescription` (base-reuse when the character
+already has one, else a minted base with `stableUuidFromString('physical:<mp>')` +
+clock-minted timestamps); `Prompts/*.md` → `systemPrompts` (the Decision-B
+code-unit sort + parse + the exactly-one-`isDefault` normalization: keep the first
+declared default and demote the rest, or promote the first when none is marked);
+`Scenarios/*.md` → `scenarios`. The keystone is `properties.json`: a linked vault
+that lacks it is broken — the batched apply DROPS the character (one corrupt vault
+can't take down the roster) while the single apply returns an Unavailable error
+(v4 throws → 503). Verified by a read-differential
+(`vault_read_overlay_equivalence`) driving v4's REAL `applyDocumentStoreOverlay`
+over seven input characters against a six-store seeded fixture — pass-through, full
+overlay, drop, partial (arrays replaced with `[]`), physical mint, and all three
+prompt-default cases — comparing the hydrated characters exactly (only the minted
+physical timestamps placeholdered), plus the `…One` throw on the broken vault.
+
 Phase 2 — the vault read overlay's directory-listing load
 (`DocMountDocumentsRepository::find_many_by_mount_points_in_folder`), the first
 stateful sub-unit of the character read overlay (Family B). Ports v4's

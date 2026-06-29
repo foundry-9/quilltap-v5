@@ -649,14 +649,22 @@ post-filter, returning the overlay-consumed row subset. It established the first
 v4's real `linkDocumentContent` (driven directly — NOT `writeDatabaseDocument`,
 whose `QUILLTAP_JOB_CHILD=1` breaks `initializeDatabase`; see
 `[[document-store-oracle-gotchas]]`), then both v4 and the Rust port READ the same
-fixture so minted ids/timestamps match and rows compare exactly. Still ahead in
-the read overlay: `hydrateOne` (the character-field overlay over the parsed vault
-files — properties/identity/.../physicalDescription/systemPrompts/scenarios — plus
-the prompt-default normalization and the Decision-B `localeCompare` sort) and the
-`applyDocumentStoreOverlay`/`…One` drop-vs-throw keystone asymmetry, verified by a
-full vault-hydration differential. Then the wardrobe read overlay
-(`resolveAndCheckComponentItems`) and finally the write overlay (wardrobe YAML
-emitter per Decision A, step 7).
+fixture so minted ids/timestamps match and rows compare exactly. Sub-unit 2 — the
+**`hydrateOne` heart** — is also done (`quilltap-core::db::vault_read_overlay`,
+`vault_read_overlay_equivalence`): v4's `hydrateOne` + `applyDocumentStoreOverlay`
++ `…One`, operating on the character as a `serde_json::Value` (the overlay is a
+JSON merge). Folds `properties.json` (pronouns/aliases/title/firstMessage/
+talkativeness), the five markdown fields (via `markdownToNullable`, empty → null),
+`physicalDescription` (base-reuse or a clock-minted base), `systemPrompts` (the
+Decision-B code-unit sort + the exactly-one-`isDefault` normalization), and
+`scenarios`. Banks the keystone drop-vs-throw asymmetry (batched DROP on a missing
+`properties.json`, single Unavailable error) — verified end-to-end against v4's
+real `applyDocumentStoreOverlay` over a 7-character / 6-store seeded fixture (only
+the minted physical timestamps placeholdered). Still ahead in the vault: the
+wardrobe read overlay (`parseWardrobeItemFile` is ported; the remaining piece is
+the folder-enumeration assembly + `resolveAndCheckComponentItems` slug/UUID
+resolution + cycle check) and finally the write overlay (wardrobe YAML emitter per
+Decision A, step 7).
 
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green

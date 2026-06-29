@@ -60,6 +60,7 @@ pub mod terminal_sessions;
 pub mod text_replacement_rules;
 pub mod tfidf_vocabulary;
 pub mod users;
+pub mod vault_read_overlay;
 pub mod wardrobe;
 
 /// Errors from the DB layer.

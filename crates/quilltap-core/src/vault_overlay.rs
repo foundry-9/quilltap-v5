@@ -203,6 +203,7 @@ pub fn parse_vault_physical_prompts(raw: &str) -> Option<CharacterVaultPhysicalP
         Some(_) => return None, // wrong type → violation
     };
 
+    // (markdownToNullable is defined just below the physical-prompts parser.)
     Some(CharacterVaultPhysicalPrompts {
         head_and_shoulders,
         short: nullable_string(obj.get("short")?)?,
@@ -210,6 +211,17 @@ pub fn parse_vault_physical_prompts(raw: &str) -> Option<CharacterVaultPhysicalP
         long: nullable_string(obj.get("long")?)?,
         complete: nullable_string(obj.get("complete")?)?,
     })
+}
+
+/// Convert markdown file content into an overlay value (v4 `markdownToNullable`):
+/// an empty string collapses to `null` (the "unset" state nullable schema fields
+/// expect); any other content passes through as a string.
+pub fn markdown_to_nullable(content: &str) -> Value {
+    if content.is_empty() {
+        Value::Null
+    } else {
+        Value::String(content.to_string())
+    }
 }
 
 // ── Legacy `wardrobe.json` parser (`parseLegacyWardrobeJson`) ─────────────────
