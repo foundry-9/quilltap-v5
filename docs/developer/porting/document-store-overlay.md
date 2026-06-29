@@ -223,7 +223,12 @@ bottom-up:
    skip-if-absent optionals) and the roster ops (`characterRoster` array RMW,
    `allowAnyCharacter` bool RMW). The `ensure-project-store` adopt branch rides
    the same step-2 deferral as groups (the corpus always provisions fresh).
-5. **`stableUuidFromString`** (tier-1) — the pure leaf the character vault needs.
+5. **`stableUuidFromString`** (tier-1) — **DONE** (2026-06-29,
+   `quilltap-core::vault_overlay::stable_uuid_from_string`, green via
+   `stable_uuid_equivalence`). SHA-256 over the source's UTF-8 bytes → first 16
+   bytes → v8 version nibble + RFC-4122 variant → hyphenated hex. Exact match to
+   v4 incl. a non-ASCII source (no case mapping in this leaf). The first vault
+   (Family B) leaf, ported ahead of the stateful overlay.
 6. **`characters`** vault overlay — the nine-target projection over JSON +
    hand-built strings (defer the YAML files if needed by pinning the corpus).
 7. **`wardrobe`** vault CRUD — the YAML round-trip + folder reprojection + cycle

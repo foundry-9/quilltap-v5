@@ -546,6 +546,19 @@ corpus always provisions fresh), `state`/property null-vs-absent + multi-key
 insertion order (open-JSON seam — corpus kept `{}`/single-key), and the
 `projects` generalization (a larger bag + roster ops).
 
+Phase 2 — `stableUuidFromString` (`quilltap-core::vault_overlay`), build step 5
+of the document-store overlay slice: the first **character/wardrobe vault** leaf,
+ported leaf-first ahead of the stateful vault overlay (Family B). It derives the
+deterministic id every folder-enumerated vault entity (system prompts, scenarios,
+wardrobe items) carries — `stableUuidFromString('<kind>:<mountPointId>:<relativePath>')`
+— which chat references depend on. SHA-256 over the source's UTF-8 bytes → first
+16 bytes → version nibble 8 (custom) + RFC-4122 variant → hyphenated lowercase
+hex. Tier-1 exact differential (`stable_uuid_equivalence`) against v4's real
+function over the `prompt:`/`scenario:`/`wardrobe-item:` prefixed forms, an empty
+string, and a non-ASCII path (SHA-256 runs over UTF-8 both sides — the accented
+source agrees byte-for-byte; there is no case mapping here, unlike the
+`toLowerCase`/`localeCompare` seams).
+
 Phase 2 — the `projects` store-backed entity + the store-backed GENERALIZATION
 (`quilltap-core::db::{store_backed, projects}`), build step 4 of the overlay
 slice. Generalizes the slim-row plumbing + provisioning that `groups` proved into

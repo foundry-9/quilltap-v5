@@ -142,5 +142,6 @@ pub mod tag_style;
 pub mod token_estimation;
 pub mod turn_order;
 pub mod turn_state;
+pub mod vault_overlay;
 pub mod write_apply;
 pub mod write_partition;

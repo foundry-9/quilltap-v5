@@ -542,9 +542,21 @@ color + `defaultImageProfileId` + `backgroundDisplayMode`, the optional keys
 interleaved with the materialized defaults in schema order — byte-exact), a
 minimal create (the five defaults only), the `characterRoster` array RMW
 (add/remove preserving the other fifteen keys), the `allowAnyCharacter` bool RMW,
-and a DB-only `name` update. Next in the slice: `stableUuidFromString` (tier-1
-leaf) + the heavier character/wardrobe vault family (YAML + ICU/case-mapping
-decisions).
+and a DB-only `name` update.
+
+**`stableUuidFromString` (build step 5)** is ported and green
+(`stable_uuid_equivalence`) — the first character/wardrobe **vault** (Family B)
+leaf, in the new `quilltap-core::vault_overlay` module. It derives the
+deterministic id every folder-enumerated vault entity carries
+(`stableUuidFromString('<kind>:<mountPointId>:<relativePath>')`, backing
+prompt/scenario/wardrobe ids chat references depend on): SHA-256 over UTF-8 bytes
+→ first 16 bytes → v8 version nibble + RFC-4122 variant → hyphenated hex. Tier-1
+exact, incl. a non-ASCII source (no case mapping in this leaf). With Family A (the
+generic store-backed engine: storage primitive, overlay, `groups`, `projects`)
+complete, the remaining slice work is the heavier vault family: the character
+nine-target projection (step 6), the wardrobe YAML round-trip (step 7), and
+`doc_mount_blobs` (step 8) — gated on the long-deferred ICU-collation /
+Unicode-case-mapping and YAML-emitter-fidelity decisions.
 
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green
