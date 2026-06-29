@@ -546,6 +546,30 @@ corpus always provisions fresh), `state`/property null-vs-absent + multi-key
 insertion order (open-JSON seam — corpus kept `{}`/single-key), and the
 `projects` generalization (a larger bag + roster ops).
 
+Phase 2 — `doc_mount_blobs` (`quilltap-core::db::doc_mount_blobs`), build step 8
+of the document-store overlay slice: the document store's **binary** byte-store,
+the sibling of the (ported) text store `doc_mount_documents`. Bytes (avatars,
+PDF/DOCX content, any non-text) live in a `data BLOB NOT NULL` column keyed UNIQUE
+by `fileId`. Unlike the Zod-schema repos, v4 hand-writes this repo and its DDL —
+the `data` column is deliberately ABSENT from `DocMountBlobMetadataSchema`
+(metadata reads never hydrate the bytes) — so the port reproduces the hand-written
+`CREATE TABLE` verbatim (incl. the `FOREIGN KEY (fileId) REFERENCES
+doc_mount_files(id)`). Ports `upsertByFileId` (insert-or-replace by `fileId`,
+**recomputing `sha256` from the actual bytes** — the caller's sha is advisory —
+with `sizeBytes = data.len()`; an existing row overwritten in place) plus the
+metadata/`readData`/`delete` accessors. The tier-2 differential
+(`doc_mount_blobs_tier2_equivalence`) drives v4's REAL `upsertByFileId` against a
+mount-index fixture that seeds the parent `doc_mount_files` rows the FK requires
+(enforced under the writable open's `foreign_keys = ON`), and diffs the table with
+the `data` BLOB dumped as lowercase hex (bit-exact, mirrors `help_docs` /
+`doc_mount_chunks`) in the minted-values remap form (`id` remapped, timestamps
+placeholdered; `fileId` pinned, content compared directly). Banks a fresh insert,
+an overwrite-in-place on a repeat `fileId`, the sha-recompute rule (every op
+passes an all-zero advisory sha), and a non-UTF-8 binary payload (a PNG header +
+`deadbeef`) round-tripping through the BLOB. `linkBlobContent` (the
+`(mountPointId, relativePath)` content/link split, the binary analogue of
+`linkDocumentContent`) remains deferred.
+
 Phase 2 — `stableUuidFromString` (`quilltap-core::vault_overlay`), build step 5
 of the document-store overlay slice: the first **character/wardrobe vault** leaf,
 ported leaf-first ahead of the stateful vault overlay (Family B). It derives the

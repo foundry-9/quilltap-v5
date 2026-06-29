@@ -551,12 +551,30 @@ deterministic id every folder-enumerated vault entity carries
 (`stableUuidFromString('<kind>:<mountPointId>:<relativePath>')`, backing
 prompt/scenario/wardrobe ids chat references depend on): SHA-256 over UTF-8 bytes
 → first 16 bytes → v8 version nibble + RFC-4122 variant → hyphenated hex. Tier-1
-exact, incl. a non-ASCII source (no case mapping in this leaf). With Family A (the
-generic store-backed engine: storage primitive, overlay, `groups`, `projects`)
-complete, the remaining slice work is the heavier vault family: the character
-nine-target projection (step 6), the wardrobe YAML round-trip (step 7), and
-`doc_mount_blobs` (step 8) — gated on the long-deferred ICU-collation /
-Unicode-case-mapping and YAML-emitter-fidelity decisions.
+exact, incl. a non-ASCII source (no case mapping in this leaf).
+
+**`doc_mount_blobs` (build step 8)** is ported and green
+(`doc_mount_blobs_tier2_equivalence`) — the document store's **binary** byte-store
+(`quilltap-core::db::doc_mount_blobs`), sibling of the text store
+`doc_mount_documents`. v4 hand-writes this repo + its DDL (the `data BLOB` column
+is deliberately omitted from `DocMountBlobMetadataSchema`), so the port reproduces
+the `CREATE TABLE` verbatim (incl. the `FOREIGN KEY (fileId) REFERENCES
+doc_mount_files(id)`) and ports `upsertByFileId` (sha **recomputed from the
+bytes**, `sizeBytes = data.len()`, overwrite-in-place by `fileId`) + the
+metadata/read/delete accessors. Tier-2 dumps the `data` BLOB as hex (mirrors
+`help_docs`/`doc_mount_chunks`); the fixture seeds the parent `doc_mount_files`
+rows the FK needs (the writable open enforces `foreign_keys = ON`). Banks insert /
+overwrite-in-place / the sha-recompute rule (all-zero advisory shas) / a non-UTF-8
+binary round-trip. `linkBlobContent` (the binary analogue of `linkDocumentContent`)
+remains deferred.
+
+With Family A (the generic store-backed engine: storage primitive, overlay,
+`groups`, `projects`) complete, the first vault leaf (`stableUuidFromString`)
+done, and the binary store (`doc_mount_blobs`) done, the remaining document-store
+work is the heaviest piece: the character/wardrobe **vault overlay** (steps 6–7 —
+the nine-target projection + the wardrobe YAML round-trip), gated on the
+long-deferred ICU-collation / Unicode-case-mapping and YAML-emitter-fidelity
+decisions.
 
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green

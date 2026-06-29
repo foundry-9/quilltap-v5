@@ -1,0 +1,35 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "parents": [
+    {
+      "id": "f11e0000-0000-4000-8000-00000000000a",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fileType": "blob"
+    },
+    {
+      "id": "f11e0000-0000-4000-8000-00000000000b",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "fileType": "blob"
+    }
+  ],
+  "ops": [
+    {
+      "fileId": "f11e0000-0000-4000-8000-00000000000a",
+      "dataHex": "68656c6c6f20626c6f622041",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "storedMimeType": "image/webp"
+    },
+    {
+      "fileId": "f11e0000-0000-4000-8000-00000000000b",
+      "dataHex": "89504e470d0a1a0a0000000d49484452deadbeef",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "storedMimeType": "application/pdf"
+    },
+    {
+      "fileId": "f11e0000-0000-4000-8000-00000000000a",
+      "dataHex": "68656c6c6f20626c6f6220412076322121",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "storedMimeType": "image/png"
+    }
+  ]
+}

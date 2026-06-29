@@ -234,8 +234,15 @@ bottom-up:
 7. **`wardrobe`** vault CRUD — the YAML round-trip + folder reprojection + cycle
    detection + per-mount serialization; depends on the YAML-emitter fidelity
    decision.
-8. **`doc_mount_blobs`** — the binary store (avatars/PDFs via `linkBlobContent`);
-   its own tier-2 case with the BLOB dumped as hex (mirrors `help_docs`).
+8. **`doc_mount_blobs`** — **DONE** (2026-06-29, `quilltap-core::db::doc_mount_blobs`,
+   green via `doc_mount_blobs_tier2_equivalence`). The binary byte-store: ports
+   the hand-written repo's `upsertByFileId` (sha recomputed from the bytes,
+   overwrite-in-place by `fileId`) + the metadata/read/delete accessors, with the
+   hand-written DDL (the `data BLOB` column the Zod schema omits + the FK)
+   reproduced verbatim. Tier-2 BLOB-as-hex, fixture seeds the parent
+   `doc_mount_files` rows the FK needs; banks insert / overwrite / sha-recompute /
+   a non-UTF-8 binary round-trip. `linkBlobContent` (the binary `linkDocumentContent`
+   analogue — the `(mountPointId, relativePath)` split) is the remaining deferral.
 
 Steps 1–4 are the "design slice" payoff: they unblock `projects` and `groups`
 entirely and lay the storage primitive every vault op needs. Steps 5–8 are the

@@ -29,6 +29,7 @@ pub mod chat_settings;
 pub mod connection_profiles;
 pub mod conversation_annotations;
 pub mod conversation_chunks;
+pub mod doc_mount_blobs;
 pub mod doc_mount_chunks;
 pub mod doc_mount_documents;
 pub mod doc_mount_file_links;
@@ -202,6 +203,12 @@ impl Writer {
         &self,
     ) -> project_doc_mount_links::ProjectDocMountLinksRepository<'_> {
         project_doc_mount_links::ProjectDocMountLinksRepository::new(&self.conn)
+    }
+
+    /// The doc-mount-blobs repository (the binary byte-store) over this writer's
+    /// connection. Mount-index sibling-DB table (see [`Self::group_character_members`]).
+    pub fn doc_mount_blobs(&self) -> doc_mount_blobs::DocMountBlobsRepository<'_> {
+        doc_mount_blobs::DocMountBlobsRepository::new(&self.conn)
     }
 
     /// The doc-mount-chunks repository over this writer's connection.
