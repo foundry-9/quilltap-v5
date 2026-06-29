@@ -622,21 +622,26 @@ hand-rolled **YAML 1.2 core-schema** subset reader (scalar resolution with
 whitespace-gated `#` comment rule, flow `[a,b]` and block `- item` sequences).
 Out-of-subset constructs (nested/flow maps, block scalars, anchors/tags, exotic
 numbers) are a documented seam — kept out of the corpus, resolving conservatively
-(null/string or parse error), never silently wrong. Also done: two of the three
-**per-file frontmatter parsers** built on that reader — `parse_prompt_file` +
-`parse_scenario_file` (`vault_frontmatter_parsers_equivalence`, 26 cases) —
-producing `CharacterSystemPrompt`/`CharacterScenario` directly (not via Zod), so
-the JS `.trim()`/`.slice(0,n)` caps use the `jsstr` UTF-16 primitives (name ≤100,
-title ≤200, description ≤500); `isDefault` is `=== true`; the prompt body is the
-post-frontmatter content `trimStart`ed; scenario title resolves frontmatter
-`name` → first `# heading` → filename-without-`.md` (a heading-as-title is dropped
-from the body, a frontmatter title is not). Added `jsstr::js_trim_start` +
-`markdown::body_after` (UTF-16-offset→byte slice). Still ahead in the vault:
-the third per-file parser `parse_wardrobe_item_file` (the heaviest: types/id/
-archived/component logic + title heading/filename fallback, reusing the
-already-ported `parse_wardrobe_types_field`/`parse_component_items_field`), then
-the read overlay (folder enumeration + the Decision-B code-unit sort), and finally
-the write overlay (wardrobe YAML emitter per Decision A, step 7).
+(null/string or parse error), never silently wrong. Also done: **all three
+per-file frontmatter parsers** built on that reader — `parse_prompt_file` +
+`parse_scenario_file` (`vault_frontmatter_parsers_equivalence`, 26 cases) and
+`parse_wardrobe_item_file` (`vault_wardrobe_item_file_equivalence`, 20 cases) —
+producing `CharacterSystemPrompt`/`CharacterScenario`/`WardrobeItemFromFile`
+directly (not via Zod), so the JS `.trim()`/`.slice(0,n)` caps use the `jsstr`
+UTF-16 primitives (name ≤100, title ≤200, description ≤500); `isDefault` is
+`=== true`; the prompt body is the post-frontmatter content `trimStart`ed; title
+resolution is frontmatter `name`/`title` → first `# heading` → filename-without-
+`.md` (a heading-as-title is dropped from the body, a frontmatter title is not).
+The wardrobe parser adds the id sanity check (`/^[0-9a-f-]{36}$/i` else
+`stableUuidFromString`), the required `types` (reusing
+`parse_wardrobe_types_field`), the raw `componentItemIds` (reusing
+`parse_component_items_field`, resolved later by the overlay), and the
+archived/flags/timestamp-precedence logic. Added `jsstr::js_trim_start` +
+`markdown::body_after` (UTF-16-offset→byte slice). **The vault is now fully
+ported up to the stateful overlay.** Still ahead in the vault: the read overlay
+(folder enumeration + the Decision-B code-unit sort + the component-resolution
+pass `resolveAndCheckComponentItems`) and finally the write overlay (wardrobe
+YAML emitter per Decision A, step 7).
 
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green

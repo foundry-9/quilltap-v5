@@ -546,6 +546,24 @@ corpus always provisions fresh), `state`/property null-vs-absent + multi-key
 insertion order (open-JSON seam — corpus kept `{}`/single-key), and the
 `projects` generalization (a larger bag + roster ops).
 
+Phase 2 — the vault `Wardrobe/*.md` parser
+(`quilltap-core::vault_overlay::parse_wardrobe_item_file`), the third and last
+per-file frontmatter parser. Reuses the title fallback chain (frontmatter `title`
+→ first `# heading` → filename-without-`.md`) and the already-ported
+`parse_wardrobe_types_field` (a valid `types` list is required, else skip) /
+`parse_component_items_field` (raw author refs kept for the overlay's later
+resolution pass). Reproduces the id sanity check (`/^[0-9a-f-]{36}$/i` — 36 chars,
+hex-or-`-`; otherwise `stableUuidFromString`, incl. a 36-char non-hex id that must
+fall back), the non-empty-string fields (`appropriateness`/`imagePrompt`), the
+boolean flags (`default || isDefault`, `replace`), the `archivedAt` precedence
+(non-empty string wins, else `archived: true` → `doc.updatedAt`), the
+`typeof === 'string'` keep of `migratedFromClothingRecordId` (incl. empty), and
+the frontmatter-vs-doc timestamp precedence. Output is built directly (not via
+Zod), so its nullable fields are ALWAYS present (`null` or value) and a heading
+used as the title is dropped from the body (an empty body → `null` description,
+NOT a skip). Tier-1 exact differential (`vault_wardrobe_item_file_equivalence`)
+over 20 cases against v4's real `parseWardrobeItemFile`.
+
 Phase 2 — the vault frontmatter READ parsers
 (`quilltap-core::vault_overlay::parse_prompt_file` / `parse_scenario_file`),
 built on the hand-rolled frontmatter reader. Each turns a vault markdown file

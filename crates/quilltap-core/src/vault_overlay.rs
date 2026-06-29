@@ -19,9 +19,11 @@
 //!   - the legacy migration parser: [`parse_legacy_wardrobe_json`] — validates an
 //!     array of full `WardrobeItemSchema` items, reproducing Zod's `z.uuid()` /
 //!     `z.iso.datetime()` string formats verbatim.
-//!   - the frontmatter READ parsers: [`parse_prompt_file`], [`parse_scenario_file`]
-//!     — built on [`crate::markdown::parse_frontmatter`] (the hand-rolled YAML
-//!     reader), with the `# heading` / filename title fallbacks.
+//!   - the frontmatter READ parsers: [`parse_prompt_file`], [`parse_scenario_file`],
+//!     [`parse_wardrobe_item_file`] — built on [`crate::markdown::parse_frontmatter`]
+//!     (the hand-rolled YAML reader), with the `# heading` / filename title
+//!     fallbacks. The wardrobe parser keeps raw `componentItemIds` for the
+//!     overlay's later resolution pass.
 //!
 //! Two vault decisions are locked (2026-06-29): the wardrobe YAML emitter is
 //! hand-rolled (build step 7, the only eemeli/yaml site), and `localeCompare`
@@ -859,6 +861,163 @@ pub fn parse_scenario_file(doc: &VaultDoc) -> Option<CharacterScenario> {
         description: frontmatter_description,
         created_at: doc.created_at.to_string(),
         updated_at: doc.updated_at.to_string(),
+    })
+}
+
+/// A wardrobe item parsed from a `Wardrobe/*.md` file (v4 `parseWardrobeItemFile`
+/// output). Built directly — distinct from the Zod-validated [`WardrobeItem`]: the
+/// nullable fields are ALWAYS present (`null` or value), `characterId` is the
+/// passed id (never null), and `componentItemIds` holds the **raw** refs
+/// (slug/UUID strings) the overlay resolves in a later pass. Fields are in v4's
+/// object-literal order.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct WardrobeItemFromFile {
+    pub id: String,
+    #[serde(rename = "characterId")]
+    pub character_id: String,
+    pub title: String,
+    pub description: Option<String>,
+    #[serde(rename = "imagePrompt")]
+    pub image_prompt: Option<String>,
+    pub types: Vec<String>,
+    pub appropriateness: Option<String>,
+    #[serde(rename = "isDefault")]
+    pub is_default: bool,
+    pub replace: bool,
+    #[serde(rename = "componentItemIds")]
+    pub component_item_ids: Vec<String>,
+    #[serde(rename = "migratedFromClothingRecordId")]
+    pub migrated_from_clothing_record_id: Option<String>,
+    #[serde(rename = "archivedAt")]
+    pub archived_at: Option<String>,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+}
+
+/// A frontmatter field accessor — `None` when there's no object data or the key
+/// is absent.
+fn fm_get<'a>(fm: &'a crate::markdown::ParsedFrontmatter, key: &str) -> Option<&'a Value> {
+    fm.data.as_ref().and_then(|o| o.get(key))
+}
+
+/// v4's id sanity check `/^[0-9a-f-]{36}$/i` — exactly 36 chars, each a hex digit
+/// (either case) or `-`.
+fn is_wardrobe_id_shaped(s: &str) -> bool {
+    s.chars().count() == 36 && s.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
+}
+
+/// Parse a `Wardrobe/<title>.md` file (v4 `parseWardrobeItemFile`). Title
+/// resolution mirrors the scenario parser (frontmatter `title` → first
+/// `# heading` → filename-without-`.md`); a valid `types` list is required (else
+/// skip). `id` is taken from frontmatter when it is 36-char id-shaped, else
+/// derived via `stableUuidFromString`. `componentItemIds` keeps the raw author
+/// refs for the overlay's later resolution pass. `None` (skip) when there is no
+/// usable title or no valid `types`.
+pub fn parse_wardrobe_item_file(
+    doc: &VaultDoc,
+    character_id: &str,
+) -> Option<WardrobeItemFromFile> {
+    let content = doc.content;
+    let fm = crate::markdown::parse_frontmatter(content);
+
+    // Title: frontmatter `title` → first `# heading` → filename-without-`.md`.
+    let mut title: Option<String> = None;
+    if let Some(t) = fm_get(&fm, "title").and_then(Value::as_str) {
+        let tt = crate::jsstr::js_trim(t);
+        if !tt.is_empty() {
+            title = Some(tt.to_string());
+        }
+    }
+    let after = crate::markdown::body_after(content, &fm);
+    let lines: Vec<&str> = after.split('\n').collect();
+    let mut title_line_index: Option<usize> = None;
+    if title.is_none() {
+        if let Some((idx, t)) = first_heading(&lines) {
+            title_line_index = Some(idx);
+            title = Some(t);
+        }
+    }
+    let title =
+        title.unwrap_or_else(|| crate::jsstr::js_trim(&strip_md_ext(doc.file_name)).to_string());
+    if title.is_empty() {
+        return None; // no usable title → skip
+    }
+
+    // types: required valid enum list (parsed from frontmatter; absent → null → skip).
+    let types = parse_wardrobe_types_field(fm_get(&fm, "types").unwrap_or(&Value::Null))?;
+
+    let id = match fm_get(&fm, "id").and_then(Value::as_str) {
+        Some(s) if is_wardrobe_id_shaped(s) => s.to_string(),
+        _ => stable_uuid_from_string(&format!(
+            "wardrobe-item:{}:{}",
+            doc.mount_point_id, doc.relative_path
+        )),
+    };
+
+    let appropriateness = fm_get(&fm, "appropriateness")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    let image_prompt = fm_get(&fm, "imagePrompt")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+
+    let is_default = fm_get(&fm, "default") == Some(&Value::Bool(true))
+        || fm_get(&fm, "isDefault") == Some(&Value::Bool(true));
+    let replace = fm_get(&fm, "replace") == Some(&Value::Bool(true));
+
+    // archivedAt: a non-empty string wins; else `archived: true` → doc.updatedAt.
+    let archived_at = match fm_get(&fm, "archivedAt").and_then(Value::as_str) {
+        Some(s) if !s.is_empty() => Some(s.to_string()),
+        _ if fm_get(&fm, "archived") == Some(&Value::Bool(true)) => {
+            Some(doc.updated_at.to_string())
+        }
+        _ => None,
+    };
+
+    // `typeof === 'string'` — any string (incl. empty) is kept.
+    let migrated_from_clothing_record_id = fm_get(&fm, "migratedFromClothingRecordId")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+
+    let component_item_ids =
+        parse_component_items_field(fm_get(&fm, "componentItems").unwrap_or(&Value::Null));
+
+    // createdAt / updatedAt: a frontmatter string (incl. empty) wins, else the doc's.
+    let created_at = fm_get(&fm, "createdAt")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| doc.created_at.to_string());
+    let updated_at = fm_get(&fm, "updatedAt")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| doc.updated_at.to_string());
+
+    // Body: drop the heading line when one was used as the title.
+    let body = match title_line_index {
+        Some(idx) => crate::jsstr::js_trim(&lines[idx + 1..].join("\n")).to_string(),
+        None => crate::jsstr::js_trim(after).to_string(),
+    };
+    let description = if body.is_empty() { None } else { Some(body) };
+
+    Some(WardrobeItemFromFile {
+        id,
+        character_id: character_id.to_string(),
+        title: crate::jsstr::utf16_truncate(&title, 200),
+        description,
+        image_prompt,
+        types,
+        appropriateness,
+        is_default,
+        replace,
+        component_item_ids,
+        migrated_from_clothing_record_id,
+        archived_at,
+        created_at,
+        updated_at,
     })
 }
 
