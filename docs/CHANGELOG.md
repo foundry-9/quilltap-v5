@@ -479,3 +479,18 @@ mount-index sibling DB:
     (`chunkIndex`/`tokenCount`) and a nullable `headingContext`. The `updateEmbedding`
     BLOB-mutating path is out of scope. Harness `doc_mount_chunks_tier2_equivalence`.
 
+Docs — the document-store-overlay design slice
+(`docs/developer/porting/document-store-overlay.md`): the port plan for the
+store-backed entities (`projects`, `groups`, `characters`, the `wardrobe` vault).
+Establishes that the "document store" is DB rows in the mount-index DB (text in
+`doc_mount_documents`, binary in `doc_mount_blobs`), not filesystem files, so no
+filesystem fixture is needed; maps the generic overlay engine
+(`createDocumentStoreOverlay` + `AbstractStoreBackedRepository`) shared by projects
+and groups vs the heavier character/wardrobe markdown-vault family; sets a
+dependency-first build order (port `doc_mount_file_links` + `linkDocumentContent` +
+`writeDatabaseDocument` first, then the engine, then `groups` as pilot, then
+`projects`); and specifies the tier-2 oracle strategy (drive v4's real storage code
+against the existing mount-index fixtures with `QUILLTAP_JOB_CHILD=1`, dump the four
+storage tables + the slim row, minted-values remap form). Linked from `overview.md`
+and `CLAUDE.md`.
+

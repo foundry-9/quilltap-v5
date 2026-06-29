@@ -46,6 +46,12 @@ Each phase leans on the one below being trusted, so failures localize.
   Phases 3–4 but **locked in now** because it's expensive to retrofit.
 - [`phase-2-onramp.md`](./phase-2-onramp.md) — the tier-2 DB-state oracle and its
   fixtures: the build that unblocks Phase 2 once the Phase-1 leaves are done.
+- [`document-store-overlay.md`](./document-store-overlay.md) — the design slice for
+  the store-backed entities (`projects`, `groups`, `characters`, the `wardrobe`
+  vault): where the "document store" really lives (DB rows in the mount-index DB,
+  not files), the generic overlay engine, the dependency-first build order
+  (`doc_mount_file_links`/`linkDocumentContent` first, then the engine, then
+  `groups` as pilot), and the tier-2 oracle strategy for a content-write subsystem.
 - [`provider-manifest.md`](./provider-manifest.md) — how v5 replaces v4's npm
   provider plugins: a JSON manifest + five fixed Rust stream decoders. Phase-3
   work, but the decoder inventory and the manifest boundary are settled now.

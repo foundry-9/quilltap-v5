@@ -29,7 +29,10 @@ Design docs (read before large changes), all under `docs/developer/porting/`:
 `phase-0.md` (Phase-0 plan + the cipher finding), `api-boundary.md` (the
 transport-agnostic boundary + the single-writer model + the enclave `step()`
 seam), `phase-2-onramp.md` (the tier-2 DB-state oracle + fixtures — the next
-build). The `docs/v4/` tree is the v4 reference mirror, not v5 planning.
+build), `document-store-overlay.md` (the store-backed-entity slice:
+`projects`/`groups`/`characters`/`wardrobe` vault — where the document store lives,
+the overlay engine, and the build order). The `docs/v4/` tree is the v4 reference
+mirror, not v5 planning.
 
 ## Standing rules (apply on every task)
 
