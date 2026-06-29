@@ -160,4 +160,33 @@ tier-2 case):
   v4's jest resolves the v5-tree oracle file via an extra `--roots`. Deferred
   (documented): `__finalizeFile` (fs rename + undo-on-rollback) and the
   post-commit `cleanupStagingDirs` / `dispatchInvalidations` side effects.
+- `text_replacement_rules` repo (`quilltap-core::db::text_replacement_rules`):
+  `create`, `update`, and `delete` ported from v4's
+  `TextReplacementRulesRepository`. The first repo with **conflict detection** —
+  and so the first to need a repo-level *read*: `create`/`update` scan the
+  existing rows and reject a duplicate `(fromText, caseSensitive)` pair
+  (case-sensitive rules compare `fromText` exactly, case-insensitive ones
+  compare lowercased; the `caseSensitive` flag is part of the key, and `update`
+  only re-checks when that pair changes). A conflict surfaces as
+  `TrrError::Conflict`, the analogue of v4's `TextReplacementRuleConflictError`.
+  Single-user (no `userId`). Widens the tier-2 marshaling surface past `tags`
+  with a real INTEGER number column (`sortOrder`) and two boolean columns
+  (`caseSensitive`, `enabled`).
+- Harness: tier-2 differential `text_replacement_rules_tier2_equivalence` plus
+  its fixture builder + `text-replacement-rules-tier2` oracle case, driven by the
+  committed `harness/oracle/fixtures/text-replacement-rules-tier2.json`. The op
+  sequence includes two conflicting ops flagged `expectThrow`: both the oracle
+  (asserting v4 threw `TextReplacementRuleConflictError`) and the Rust port
+  (asserting `TrrError::Conflict`) prove the rejection independently, and the
+  final-state dump confirms the rejected writes left no trace (a port lacking the
+  check would have diverged). Ids + timestamps pinned → zero normalization.
+  Round-trips green (`QT_ORACLE_TRR` + `QT_FIXTURE_TRR`, skip-if-unset). The
+  toLowerCase case-mapping seam (shared with `tags.nameLower`) gains a second
+  site here — tracked in the deferred-seams list.
+- Canonical dump: `js_number_to_json` — the dump's REAL-cell rendering now
+  mirrors JS `JSON.stringify(number)`, collapsing an integer-valued double
+  (`9.0` → `9`) so a REAL-affinity numeric column (e.g. `z.number().int()`,
+  which SQLite stores as an 8-byte float) matches the oracle, where
+  better-sqlite3 hands JS a `Number` and `JSON.stringify` drops the `.0`. First
+  exercised by `text_replacement_rules`' `sortOrder`.
 

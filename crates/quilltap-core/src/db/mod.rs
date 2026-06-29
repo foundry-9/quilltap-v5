@@ -25,6 +25,7 @@ use crate::dbkey;
 
 pub mod folders;
 pub mod tags;
+pub mod text_replacement_rules;
 
 /// Errors from the DB layer.
 #[derive(Debug)]
@@ -91,6 +92,13 @@ impl Writer {
         tags::TagsRepository::new(&self.conn)
     }
 
+    /// The text-replacement-rules repository over this writer's connection.
+    pub fn text_replacement_rules(
+        &self,
+    ) -> text_replacement_rules::TextReplacementRulesRepository<'_> {
+        text_replacement_rules::TextReplacementRulesRepository::new(&self.conn)
+    }
+
     /// Canonical dump of one table, in the same shape the tier-2 oracle emits:
     /// `{ table, columns, rows }` with columns in on-disk order, rows sorted by
     /// `order_by`, BLOBs as lowercase hex, nulls explicit. This is the
@@ -134,14 +142,37 @@ impl Writer {
 }
 
 /// Convert a SQLite cell to its canonical JSON form (mirrors the TS
-/// `canonValue`): null explicit, BLOBs as lowercase hex, text/numbers as-is.
+/// `canonValue`): null explicit, BLOBs as lowercase hex, text as-is, numbers
+/// rendered the way the v4 oracle renders them.
+///
+/// REAL cells go through [`js_number_to_json`]: the oracle reads cells via
+/// better-sqlite3, which hands JS a `Number`, and `JSON.stringify` collapses an
+/// integer-valued double (`9.0`) to `"9"`. A column with REAL affinity (e.g. a
+/// `z.number().int()` column whose values SQLite stores as 8-byte floats) would
+/// otherwise serialize as `9.0` on the Rust side and `9` on the oracle side —
+/// a spurious diff. Matching JS's number serialization keeps the dumps aligned.
 fn cell_to_json(v: ValueRef<'_>) -> Value {
     match v {
         ValueRef::Null => Value::Null,
         ValueRef::Integer(i) => Value::from(i),
-        ValueRef::Real(f) => Value::from(f),
+        ValueRef::Real(f) => js_number_to_json(f),
         ValueRef::Text(b) => Value::from(String::from_utf8_lossy(b).into_owned()),
         ValueRef::Blob(b) => Value::from(hex::encode(b)),
+    }
+}
+
+/// Render an `f64` the way JS `JSON.stringify(number)` does for the cases that
+/// occur in a DB cell: an integer-valued finite double serializes without a
+/// fractional part (`9.0` -> `9`). We collapse such a value to a JSON integer so
+/// a REAL-affinity numeric column matches the oracle byte-for-byte; genuinely
+/// fractional values (`9.5`) pass through unchanged, as they do in JS. The i64
+/// range guard keeps the cast exact (DB integer columns are small; values beyond
+/// it are not integer-collapsed, mirroring nothing we store).
+fn js_number_to_json(f: f64) -> Value {
+    if f.is_finite() && f.fract() == 0.0 && f >= i64::MIN as f64 && f <= i64::MAX as f64 {
+        Value::from(f as i64)
+    } else {
+        Value::from(f)
     }
 }
 

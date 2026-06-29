@@ -261,6 +261,69 @@ QT_FIXTURE_TAGS=/tmp/qt-tags-fixture.db \
   cargo test -p quilltap-harness --test tags_tier2_equivalence
 ```
 
+### `text_replacement_rules` (repo #3, 2026-06-29)
+
+The third repo round-trips green (`text_replacement_rules_tier2_equivalence`).
+Single-user (no `userId`). It is the **first repo with conflict detection**, and
+so the first to need a repo-level *read*: `create`/`update` scan the existing
+rows before writing and reject a duplicate `(fromText, caseSensitive)` pair. It
+also widens the marshaling surface again:
+
+- **`sortOrder` number → INTEGER.** The first real numeric column. v4's
+  `prepareForStorage` passes a JS number straight through; the Rust port binds an
+  `i64`. (SQLite stores it under the column's REAL affinity as an 8-byte float,
+  which surfaced the dump-rendering refinement below.)
+- **Two boolean columns** (`caseSensitive`, `enabled`) → INTEGER 0/1 — the same
+  mapping `tags.quickHide` used, but now also **read back** for the conflict
+  check.
+- **Conflict detection.** v4's `assertNoConflict(fromText, caseSensitive,
+  excludeId)`: a case-sensitive rule duplicates iff `fromText` matches exactly; a
+  case-insensitive rule duplicates iff the lowercased forms match. The
+  `caseSensitive` flag is part of the key (same text under different
+  sensitivities does **not** conflict). `create` checks with `excludeId = None`;
+  `update` re-checks only when the next pair differs, with `excludeId =
+  Some(id)`. A conflict surfaces as `TrrError::Conflict` (v4 throws
+  `TextReplacementRuleConflictError` → HTTP 409). The Rust read fetches only the
+  three columns the check needs, behaviorally identical to v4's `_findAll` +
+  Zod-validate for the conflict *outcome* on valid data.
+
+The harness corpus exercises the conflict path two ways, each flagged
+`expectThrow`: a create that duplicates a seed rule case-insensitively, and an
+update that would collide with a different rule. Both sides independently assert
+the op was rejected (oracle: v4 threw `TextReplacementRuleConflictError`; Rust:
+`TrrError::Conflict`), AND the final-state dump must match — a port lacking the
+check would have written a row and diverged. Ids + timestamps pinned → zero
+normalization. The `toLowerCase` case-mapping seam gains a **second site** here
+(the case-insensitive conflict branch) — see deferred seam #1.
+
+**Dump refinement (`js_number_to_json`).** This repo's `sortOrder` is the first
+REAL-affinity numeric cell in the tier-2 suite. The oracle reads cells via
+better-sqlite3 (a JS `Number`) and `JSON.stringify` collapses an integer-valued
+double (`9.0` → `"9"`); the Rust dump previously emitted `9.0`. The canonical
+dump now mirrors JS number serialization — an integer-valued finite REAL renders
+as a JSON integer, fractional values pass through — so numeric columns align
+byte-for-byte. BLOB-stored Float32 embedding columns are unaffected (they dump as
+hex, not REAL cells).
+
+Run (Node 24, from the v4 checkout):
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin
+cd ~/source/quilltap-server
+
+QT_FIXTURE_OUT=/tmp/qt-trr-fixture.db \
+  $N/npx tsx ~/source/quilltap-v5/harness/oracle/fixtures/build-text-replacement-rules-fixture.ts
+
+QT_FIXTURE_TRR=/tmp/qt-trr-fixture.db \
+  $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/text-replacement-rules-tier2.ts \
+  > /tmp/oracle-trr.ndjson
+
+cd ~/source/quilltap-v5
+QT_ORACLE_TRR=/tmp/oracle-trr.ndjson \
+QT_FIXTURE_TRR=/tmp/qt-trr-fixture.db \
+  cargo test -p quilltap-harness --test text_replacement_rules_tier2_equivalence
+```
+
 ### The remap case — minted ids + timestamps (2026-06-29)
 
 `folders` and `tags` above pin every id and timestamp (the strongest,
@@ -373,21 +436,28 @@ Tracked, actionable deferrals. Each is currently green *only because the corpus
 avoids the input that would expose it.* Before the port runs against real
 instances (non-ASCII user data), each must be closed or consciously waived.
 
-1. **Case mapping for `nameLower` (and any future `*Lower` / case-fold field).**
-   v4 derives `nameLower` with JS `String.prototype.toLowerCase`; the Rust port
-   uses `str::to_lowercase`. Both apply Unicode **default** case mapping and agree
-   on ASCII, but they are **not guaranteed identical** on locale-sensitive or
-   special-cased code points (final sigma, İ/i, ß, etc.). This is a **separate
-   decision from the ICU-collation/`localeCompare` deferral below** — resolving
-   collation does **not** resolve case mapping. It is a real correctness risk:
-   `nameLower` backs case-insensitive lookup (`TagsRepository.findByName`), so a
-   divergence means a Rust open of a v4-written DB could fail to find, or
-   duplicate, a tag whose name has non-ASCII case-variant characters.
-   - **Action when closing:** add a non-ASCII tag-name row to the `tags` tier-2
-     corpus (e.g. a name with ß / İ / a trailing Σ), confirm v4 vs Rust diverge or
-     agree, and pick the strategy (match JS's algorithm exactly, or document the
-     bounded divergence as acceptable). Re-audit every `.toLowerCase()` /
-     `.toUpperCase()` site ported so far.
+1. **Case mapping for `toLowerCase` fields (now two sites).** v4 lowercases with
+   JS `String.prototype.toLowerCase`; the Rust port uses `str::to_lowercase`.
+   Both apply Unicode **default** case mapping and agree on ASCII, but they are
+   **not guaranteed identical** on locale-sensitive or special-cased code points
+   (final sigma, İ/i, ß, etc.). This is a **separate decision from the
+   ICU-collation/`localeCompare` deferral below** — resolving collation does
+   **not** resolve case mapping. The ported sites:
+   - `tags.nameLower` — `(nameLower || name).toLowerCase()`, backing
+     case-insensitive lookup (`TagsRepository.findByName`). A divergence means a
+     Rust open of a v4-written DB could fail to find, or duplicate, a tag whose
+     name has non-ASCII case-variant characters.
+   - `text_replacement_rules` conflict detection — the case-insensitive branch
+     compares `row.fromText.toLowerCase() === fromText.toLowerCase()`. A
+     divergence means the Rust port could **accept a duplicate** rule v4 rejects
+     (or vice versa) when `fromText` has non-ASCII case variants — gating the
+     409-conflict behavior.
+   - **Action when closing:** add a non-ASCII row to the `tags` and
+     `text_replacement_rules` tier-2 corpora (e.g. a name/text with ß / İ / a
+     trailing Σ), confirm whether v4 vs Rust diverge or agree, and pick the
+     strategy (match JS's algorithm exactly, or document the bounded divergence
+     as acceptable). Re-audit every `.toLowerCase()` / `.toUpperCase()` site
+     ported so far.
 
 2. **ICU collation / `localeCompare` ordering.** The standing Phase-1 deferral
    (see "Where we are"): the single ICU-collation decision is punted to when the

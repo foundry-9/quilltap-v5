@@ -1,0 +1,129 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `text_replacement_rules` repo (Phase-2,",
+    "repo #3 after `folders` and `tags`). One committed file drives BOTH sides of",
+    "the differential:",
+    "  - the v4 oracle (build-text-replacement-rules-fixture.ts +",
+    "    text-replacement-rules-tier2.ts) and",
+    "  - the Rust port (quilltap-harness text_replacement_rules tier-2 test).",
+    "",
+    "What this repo adds over `tags`: a real INTEGER number column (`sortOrder`),",
+    "two boolean columns (`caseSensitive`, `enabled` -> INTEGER 0/1, the second",
+    "read back for the conflict check), and — the headline — CONFLICT DETECTION on",
+    "a duplicate `(fromText, caseSensitive)` pair. Single-user: no `userId`.",
+    "",
+    "The conflict path is exercised two ways, each with `expectThrow: true`: a",
+    "create that duplicates a seed rule case-insensitively, and an update that",
+    "would collide with a different rule. Both sides independently assert the op",
+    "threw, AND the final dump must match (a port lacking the check would have",
+    "inserted/changed a row, diverging the state). The `caseSensitive` flag is part",
+    "of the key, so op `create-TEH-cs` (same text as seed `teh`, but",
+    "case-sensitive) does NOT conflict and IS inserted.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the folders",
+    "and tags fixtures use. It is NOT the real Friday pepper and is safe to commit.",
+    "",
+    "DETERMINISM: every id and timestamp is pinned, so both sides produce",
+    "byte-identical post-op state and the canonical dump needs ZERO normalization."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "fromText": "teh",
+      "toText": "the",
+      "caseSensitive": false,
+      "enabled": true,
+      "sortOrder": 0,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "fromText": "adn",
+      "toText": "and",
+      "caseSensitive": true,
+      "enabled": true,
+      "sortOrder": 1,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "New non-conflicting rule. Exercises INTEGER sortOrder + both boolean columns on insert; id + timestamps pinned.",
+      "data": {
+        "fromText": "recieve",
+        "toText": "receive",
+        "caseSensitive": false,
+        "enabled": true,
+        "sortOrder": 2
+      },
+      "options": {
+        "id": "3c000000-0000-4000-8000-000000000003",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "CONFLICT: `TEH` duplicates seed `teh` case-insensitively (same caseSensitive=false). Must throw; no row added.",
+      "expectThrow": true,
+      "data": {
+        "fromText": "TEH",
+        "toText": "the",
+        "caseSensitive": false,
+        "enabled": true,
+        "sortOrder": 8
+      },
+      "options": {
+        "id": "5e000000-0000-4000-8000-000000000005",
+        "createdAt": "2026-02-05T00:00:00.000Z",
+        "updatedAt": "2026-02-05T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "NO conflict: same text `TEH` as seed `teh` but caseSensitive=true, so the key differs. Inserted.",
+      "data": {
+        "fromText": "TEH",
+        "toText": "the",
+        "caseSensitive": true,
+        "enabled": true,
+        "sortOrder": 3
+      },
+      "options": {
+        "id": "4d000000-0000-4000-8000-000000000004",
+        "createdAt": "2026-02-02T00:00:00.000Z",
+        "updatedAt": "2026-02-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update seed `adn` rule: disable it (enabled true->false) and bump sortOrder. fromText/caseSensitive unchanged, so NO conflict check runs. createdAt preserved, updatedAt pinned.",
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "data": {
+        "enabled": false,
+        "sortOrder": 9,
+        "updatedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "CONFLICT: change the `recieve` rule to (fromText=`adn`, caseSensitive=true), which collides with seed rule `adn` (case-sensitive exact). Must throw; the row stays as `recieve`.",
+      "expectThrow": true,
+      "id": "3c000000-0000-4000-8000-000000000003",
+      "data": {
+        "fromText": "adn",
+        "caseSensitive": true,
+        "updatedAt": "2026-03-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "delete",
+      "comment": "Delete the seed `teh` rule.",
+      "id": "1a000000-0000-4000-8000-000000000001"
+    }
+  ]
+}

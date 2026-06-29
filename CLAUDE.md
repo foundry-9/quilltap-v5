@@ -280,7 +280,28 @@ partitioned-apply path~~ (**done** — see "the partitioned write applier" below
 and the real-snapshot fixture sanitizer. From here Phase 2 is the same mechanical
 loop, repo by repo.
 
-**Phase 2 proper: in progress.** Repo #2, `tags` (`quilltap-core::db::tags`),
+**Phase 2 proper: in progress.** Repo #3, `text_replacement_rules`
+(`quilltap-core::db::text_replacement_rules`), round-trips green
+(`text_replacement_rules_tier2_equivalence`): `create` + `update` + `delete` from
+v4's `TextReplacementRulesRepository`. It is the **first repo with conflict
+detection**, and so the first to need a repo-level *read*: `create`/`update` scan
+existing rows and reject a duplicate `(fromText, caseSensitive)` pair
+(`TrrError::Conflict`, the analogue of v4's `TextReplacementRuleConflictError` →
+HTTP 409; case-sensitive compares exactly, case-insensitive lowercased, the flag
+is part of the key, `update` re-checks only when the pair changes). It widens
+marshaling again — a real INTEGER number column (`sortOrder`) and two boolean
+columns (`caseSensitive`/`enabled`, the latter read back for the check). The
+harness corpus exercises the conflict path two ways (a conflicting create and a
+conflicting update), each flagged `expectThrow` so both sides independently prove
+the rejection (oracle: v4 threw; Rust: `TrrError::Conflict`) on top of the
+final-state dump diff. Ids + timestamps pinned → zero normalization. This added
+the canonical-dump `js_number_to_json` refinement (an integer-valued REAL cell
+renders as a JSON integer, mirroring JS `JSON.stringify`, so REAL-affinity numeric
+columns align byte-for-byte). It gives the `toLowerCase` case-mapping deferral a
+**second site** (the case-insensitive conflict branch) — see "Deferred seams —
+must revisit" in `docs/developer/porting/phase-2-onramp.md`.
+
+Repo #2, `tags` (`quilltap-core::db::tags`),
 round-trips green through the tier-2 harness (`tags_tier2_equivalence`): `create`
 + `update` + `delete` ported from v4's `TagsRepository`. It widens the marshaling
 surface past `folders`' all-strings shape — the `quickHide` boolean stored as
