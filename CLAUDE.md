@@ -299,6 +299,27 @@ compare — and proving a text-only `update` leaves the BLOB untouched). The
 distinctive `upsert*` methods on these three are deferred (their internal
 `now`/`generateId()` needs the remap-normalization form, not the pinned form).
 
+A **second parallel batch** (repos #8–#10) — `roleplay_templates`,
+`image_profiles`, and `connection_profiles` — was ported the same way and each
+round-trips green (`roleplay_templates_tier2_equivalence`,
+`image_profiles_tier2_equivalence`, `connection_profiles_tier2_equivalence`).
+`roleplay_templates` banks the **first array-of-objects JSON column**
+(`renderingPatterns`, each element a typed serde struct in schema field order
+with `skip_serializing_if` optionals — the `tags.visualStyle` typed-struct rule
+extended over an array) plus a nullable JSON-object column (`dialogueDetection`);
+`delimiters` is held empty and `narrationDelimiters` kept to its plain-string
+form (no built-in guard ported — the corpus never mutates a built-in row).
+`image_profiles` banks the **Taggable lineage** (`userId` + JSON `tags` array)
+and the first **open/arbitrary-JSON object column** (`parameters`, `z.record` →
+`serde_json::Value`). `connection_profiles` is the **widest surface to date**
+(~29 columns: three enum TEXT, eight booleans, two nullable REAL int-overrides,
+five REAL token counters, three nullable strings, the `tags` array, the open
+`parameters` object). New **tracked deferred seam**: open-JSON object columns
+with **two or more keys** diverge (`serde_json::Value` sorts keys vs v4's
+insertion-order `JSON.stringify`) — the corpora constrain `parameters` to `{}` /
+single-key; close before multi-key open-JSON data (see "Deferred seams" in
+`docs/developer/porting/phase-2-onramp.md`).
+
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green
 (`prompt_templates_tier2_equivalence`): `create` + `update` + `delete` from v4's

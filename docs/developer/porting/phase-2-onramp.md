@@ -538,3 +538,21 @@ instances (non-ASCII user data), each must be closed or consciously waived.
    the file-write path and needs a host-seam hook + its own corpus rows. The side
    effects are best-effort and non-DB. Close `__finalizeFile` before the file
    upload/avatar/background write paths run against real data.
+
+5. **Open-JSON object columns — multi-key key order.** Columns typed as an
+   *open* JSON object (v4's `JsonSchema` / `z.record`, e.g. `parameters` on
+   `image_profiles` and `connection_profiles`) have no fixed shape, so they
+   cannot use the typed-struct-in-schema-order trick that fixed-shape object
+   columns (`tags.visualStyle`, the roleplay `renderingPatterns`/
+   `dialogueDetection`) use. The Rust port serializes them with
+   `serde_json::Value`, whose object backing (`BTreeMap`) **sorts keys**, while
+   v4's `JSON.stringify` preserves **insertion** order. The `image_profiles` and
+   `connection_profiles` corpora avoid the divergence by constraining every
+   `parameters` value to `{}` or a **single-key** object (where sorted == insertion
+   order). **Action when closing:** before any op writes a multi-key open-JSON
+   object, swap the serializer for an insertion-order-preserving one (a
+   `serde_json` value built on `preserve_order` / `IndexMap`, or a
+   `Vec<(String, Value)>`), and add a multi-key `parameters` row to the corpora to
+   prove it. This is distinct from the fixed-shape object columns, which remain
+   exact. Ordering only — same family as items 1–2 but for *object keys inside a
+   JSON cell*, not row/collation order.

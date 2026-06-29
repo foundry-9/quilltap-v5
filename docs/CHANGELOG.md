@@ -239,4 +239,37 @@ tier-2 case):
     partial `UPDATE SET` never names the embedding column, mirroring v4's
     whole-row rewrite that re-persists the existing embedding unchanged. Harness
     `help_docs_tier2_equivalence` (`QT_ORACLE_HELP_DOCS` + `QT_FIXTURE_HELP_DOCS`).
+- A second parallel batch of three repos (each `create` / `update` / `delete`,
+  pinned form, its own tier-2 case round-tripping green):
+  - `roleplay_templates` (`quilltap-core::db::roleplay_templates`): the **first
+    array-of-objects JSON column** — `renderingPatterns: z.array(...)` stored as a
+    compact JSON array of objects, each element modeled by a typed serde struct in
+    schema field order (`#[serde(rename_all = "camelCase")]` + `skip_serializing_if`
+    on the optionals) so the key order and omitted-optional behavior match v4's
+    `JSON.stringify(zodParsed)` byte-for-byte — plus a **nullable JSON-object
+    column** (`dialogueDetection`). `delimiters` is held empty and
+    `narrationDelimiters` kept to its plain-string form (the discriminated-union /
+    tuple forms buy no new marshaling coverage). No built-in guard ported (the
+    corpus never mutates a built-in row). Harness
+    `roleplay_templates_tier2_equivalence` (`QT_ORACLE_ROLEPLAY_TEMPLATES` +
+    `QT_FIXTURE_ROLEPLAY_TEMPLATES`).
+  - `image_profiles` (`quilltap-core::db::image_profiles`): banks the **Taggable
+    lineage** (`userId` + a JSON `tags` array) and the first **open / arbitrary-
+    JSON object column** (`parameters`, `z.record`), modeled as `serde_json::Value`
+    → compact JSON text, plus boolean and nullable-string columns. Harness
+    `image_profiles_tier2_equivalence` (`QT_ORACLE_IMAGE_PROFILES` +
+    `QT_FIXTURE_IMAGE_PROFILES`).
+  - `connection_profiles` (`quilltap-core::db::connection_profiles`): the
+    workhorse profile repo and the **widest marshaling surface** to date — ~29
+    columns spanning three enum TEXT columns, eight booleans, two nullable REAL
+    int-overrides (`maxContext`/`maxTokens`), five REAL token counters, three
+    nullable strings, the `tags` array, and the open `parameters` object. The
+    corpus supplies every column explicitly. Harness
+    `connection_profiles_tier2_equivalence` (`QT_ORACLE_CONNECTION_PROFILES` +
+    `QT_FIXTURE_CONNECTION_PROFILES`).
+  - New tracked deferred seam (open-JSON multi-key key order): an open-JSON object
+    column with **two or more keys** would diverge — `serde_json::Value` sorts keys
+    while v4's `JSON.stringify` preserves insertion order. The `image_profiles` /
+    `connection_profiles` corpora constrain `parameters` to `{}` or single-key
+    objects; see "Deferred seams" in `docs/developer/porting/phase-2-onramp.md`.
 

@@ -1,0 +1,131 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `image_profiles` repo (Phase-2). One",
+    "committed file drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-image-profiles-fixture.ts + image-profiles-tier2.ts)",
+    "    and",
+    "  - the Rust port (quilltap-harness image_profiles tier-2 test).",
+    "",
+    "What this repo banks: the Taggable lineage (user-scoped `userId` + a JSON",
+    "`tags` array column), the first OPEN / arbitrary-JSON object column",
+    "(`parameters`, JsonSchema.default({})), two boolean columns (`isDefault`,",
+    "`isDangerousCompatible` -> INTEGER 0/1), and two nullable string columns",
+    "(`apiKeyId`, `baseUrl`).",
+    "",
+    "OPEN-JSON CONSTRAINT (tracked deferred seam): every `parameters` value is",
+    "either {} or a SINGLE-KEY object, so v4's JSON.stringify (insertion order)",
+    "and Rust's serde_json::Value (sorted keys) serialize byte-identically. A",
+    "multi-key object would diverge — see the module header in image_profiles.rs.",
+    "The fractional value 7.5 exercises js_number_to_json's float pass-through",
+    "inside the JSON text.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the",
+    "folders / tags / text_replacement_rules fixtures use. It is NOT the real",
+    "Friday pepper and is safe to commit.",
+    "",
+    "DETERMINISM: every id and timestamp is pinned, so both sides produce",
+    "byte-identical post-op state and the canonical dump needs ZERO normalization."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "name": "Seed Local SDXL",
+      "provider": "automatic1111",
+      "apiKeyId": null,
+      "baseUrl": "http://localhost:7860",
+      "modelName": "sdxl-base-1.0",
+      "parameters": { "steps": 30 },
+      "isDefault": true,
+      "isDangerousCompatible": false,
+      "tags": ["7a000000-0000-4000-8000-0000000000d1"],
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "name": "Seed Cloud Imagen",
+      "provider": "openai",
+      "apiKeyId": "ca000000-0000-4000-8000-0000000000c1",
+      "baseUrl": null,
+      "modelName": "dall-e-3",
+      "parameters": {},
+      "isDefault": false,
+      "isDangerousCompatible": true,
+      "tags": [],
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "New profile with a single-key fractional parameters object (exercises js_number_to_json float pass-through inside the JSON text), apiKeyId/baseUrl set, one tag, isDangerousCompatible true.",
+      "data": {
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "name": "New Replicate Flux",
+        "provider": "replicate",
+        "apiKeyId": "ca000000-0000-4000-8000-0000000000c2",
+        "baseUrl": "https://api.replicate.com",
+        "modelName": "flux-1.1-pro",
+        "parameters": { "guidanceScale": 7.5 },
+        "isDefault": false,
+        "isDangerousCompatible": true,
+        "tags": ["7a000000-0000-4000-8000-0000000000d1", "7b000000-0000-4000-8000-0000000000d2"]
+      },
+      "options": {
+        "id": "3c000000-0000-4000-8000-000000000003",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "New profile with empty {} parameters, apiKeyId/baseUrl both null, empty tags, isDefault false.",
+      "data": {
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "name": "New Local Comfy",
+        "provider": "comfyui",
+        "apiKeyId": null,
+        "baseUrl": null,
+        "modelName": "sd-1.5",
+        "parameters": {},
+        "isDefault": false,
+        "isDangerousCompatible": false,
+        "tags": []
+      },
+      "options": {
+        "id": "4d000000-0000-4000-8000-000000000004",
+        "createdAt": "2026-02-02T00:00:00.000Z",
+        "updatedAt": "2026-02-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update seed row 1: rename, replace single-key parameters object, flip isDefault true->false. createdAt preserved, updatedAt pinned.",
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "data": {
+        "name": "Seed Local SDXL (renamed)",
+        "parameters": { "steps": 40 },
+        "isDefault": false,
+        "updatedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Update seed row 2: replace the tags array (empty -> two ids). updatedAt pinned.",
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "data": {
+        "tags": ["7a000000-0000-4000-8000-0000000000d1", "7c000000-0000-4000-8000-0000000000d3"],
+        "updatedAt": "2026-03-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "delete",
+      "comment": "Delete the second created profile (New Local Comfy).",
+      "id": "4d000000-0000-4000-8000-000000000004"
+    }
+  ]
+}

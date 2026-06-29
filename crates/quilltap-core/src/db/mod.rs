@@ -23,11 +23,14 @@ use serde_json::{Map, Value};
 
 use crate::dbkey;
 
+pub mod connection_profiles;
 pub mod conversation_annotations;
 pub mod folders;
 pub mod help_docs;
+pub mod image_profiles;
 pub mod prompt_templates;
 pub mod provider_models;
+pub mod roleplay_templates;
 pub mod tags;
 pub mod text_replacement_rules;
 
@@ -86,6 +89,11 @@ impl Writer {
         Ok(Self { conn })
     }
 
+    /// The connection-profiles repository over this writer's connection.
+    pub fn connection_profiles(&self) -> connection_profiles::ConnectionProfilesRepository<'_> {
+        connection_profiles::ConnectionProfilesRepository::new(&self.conn)
+    }
+
     /// The conversation-annotations repository over this writer's connection.
     pub fn conversation_annotations(
         &self,
@@ -103,6 +111,11 @@ impl Writer {
         provider_models::ProviderModelsRepository::new(&self.conn)
     }
 
+    /// The roleplay-templates repository over this writer's connection.
+    pub fn roleplay_templates(&self) -> roleplay_templates::RoleplayTemplatesRepository<'_> {
+        roleplay_templates::RoleplayTemplatesRepository::new(&self.conn)
+    }
+
     /// The tags repository over this writer's connection.
     pub fn tags(&self) -> tags::TagsRepository<'_> {
         tags::TagsRepository::new(&self.conn)
@@ -118,6 +131,11 @@ impl Writer {
     /// The help-docs repository over this writer's connection.
     pub fn help_docs(&self) -> help_docs::HelpDocsRepository<'_> {
         help_docs::HelpDocsRepository::new(&self.conn)
+    }
+
+    /// The image-profiles repository over this writer's connection.
+    pub fn image_profiles(&self) -> image_profiles::ImageProfilesRepository<'_> {
+        image_profiles::ImageProfilesRepository::new(&self.conn)
     }
 
     /// The prompt-templates repository over this writer's connection.

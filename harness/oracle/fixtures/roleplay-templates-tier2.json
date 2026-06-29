@@ -1,0 +1,144 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `roleplay_templates` repo (Phase-2).",
+    "One committed file drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-roleplay-templates-fixture.ts +",
+    "    roleplay-templates-tier2.ts) and",
+    "  - the Rust port (quilltap-harness roleplay_templates tier-2 test).",
+    "",
+    "THE HEADLINE: the first ARRAY-OF-OBJECTS JSON column (`renderingPatterns`),",
+    "plus a nullable JSON-OBJECT column (`dialogueDetection`). Both are stored as",
+    "compact JSON whose object key order is the Zod schema field order, so the",
+    "Rust port models them with typed serde structs in schema order (NOT",
+    "serde_json::Value, which would re-sort keys). The corpus varies the optional",
+    "fields on renderingPatterns elements (flags / scope / hideDelimiters present",
+    "vs absent) to exercise the omit behavior, and exercises dialogueDetection",
+    "both null and non-null.",
+    "",
+    "SCOPE DODGES (no marshaling coverage lost): `delimiters` is held EMPTY ([])",
+    "everywhere (its element schema is a preprocessed discriminated union), and",
+    "`narrationDelimiters` uses the plain STRING form (stored as TEXT, not JSON).",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the",
+    "folders / tags / text-replacement-rules fixtures use. NOT the real Friday",
+    "pepper; safe to commit.",
+    "",
+    "DETERMINISM: every id and timestamp is pinned, so both sides produce",
+    "byte-identical post-op state and the canonical dump needs ZERO normalization."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "userId": null,
+      "name": "Standard",
+      "description": "Traditional roleplay formatting.",
+      "systemPrompt": "Use *actions* in asterisks and \"dialogue\" in quotes.",
+      "isBuiltIn": true,
+      "tags": [],
+      "renderingPatterns": [
+        { "pattern": "\\(\\([^)]+\\)\\)", "className": "qt-chat-ooc" },
+        { "pattern": "(?<!\\*)\\*[^*]+\\*(?!\\*)", "className": "qt-chat-narration" }
+      ],
+      "dialogueDetection": {
+        "openingChars": ["\"", "“"],
+        "closingChars": ["\"", "”"],
+        "className": "qt-chat-dialogue"
+      },
+      "narrationDelimiters": "*",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "userId": "9f000000-0000-4000-8000-0000000000ff",
+      "name": "Brackets",
+      "description": null,
+      "systemPrompt": "Actions in [brackets], thoughts in {braces}.",
+      "isBuiltIn": false,
+      "tags": ["7a000000-0000-4000-8000-00000000aa01"],
+      "renderingPatterns": [
+        { "pattern": "^// .+$", "className": "qt-chat-ooc", "flags": "m", "scope": "line" }
+      ],
+      "dialogueDetection": null,
+      "narrationDelimiters": "*",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "User template with varied-optional renderingPatterns (one bare, one with flags+scope+hideDelimiters) and a non-null dialogueDetection.",
+      "data": {
+        "userId": "9f000000-0000-4000-8000-0000000000ff",
+        "name": "Curly",
+        "description": "Custom protocol.",
+        "systemPrompt": "Thoughts in {braces}; OOC with // prefix.",
+        "isBuiltIn": false,
+        "tags": ["7a000000-0000-4000-8000-00000000aa02"],
+        "renderingPatterns": [
+          { "pattern": "\\{[^}]+\\}", "className": "qt-chat-inner-monologue" },
+          { "pattern": "^// .+$", "className": "qt-chat-ooc", "flags": "m", "scope": "line", "hideDelimiters": true }
+        ],
+        "dialogueDetection": {
+          "openingChars": ["“"],
+          "closingChars": ["”"],
+          "className": "qt-chat-dialogue"
+        },
+        "narrationDelimiters": "*"
+      },
+      "options": {
+        "id": "3c000000-0000-4000-8000-000000000003",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "Minimal user template: EMPTY renderingPatterns and NULL dialogueDetection.",
+      "data": {
+        "userId": "9f000000-0000-4000-8000-0000000000ff",
+        "name": "Plain",
+        "description": null,
+        "systemPrompt": "No special formatting.",
+        "isBuiltIn": false,
+        "tags": [],
+        "renderingPatterns": [],
+        "dialogueDetection": null,
+        "narrationDelimiters": "*"
+      },
+      "options": {
+        "id": "4d000000-0000-4000-8000-000000000004",
+        "createdAt": "2026-02-02T00:00:00.000Z",
+        "updatedAt": "2026-02-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Replace name + the whole renderingPatterns array (now a single bare-optional pattern). createdAt preserved, updatedAt pinned.",
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "data": {
+        "name": "Brackets v2",
+        "renderingPatterns": [
+          { "pattern": "\\[[^\\]]+\\]", "className": "qt-chat-narration" }
+        ],
+        "updatedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Change only systemPrompt on the just-created `Curly` template. updatedAt pinned.",
+      "id": "3c000000-0000-4000-8000-000000000003",
+      "data": {
+        "systemPrompt": "Updated protocol body.",
+        "updatedAt": "2026-03-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "delete",
+      "comment": "Delete the minimal `Plain` template created above.",
+      "id": "4d000000-0000-4000-8000-000000000004"
+    }
+  ]
+}
