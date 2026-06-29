@@ -1,0 +1,91 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `tags` repo (Phase-2, repo #2 after",
+    "`folders`). One committed file drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-tags-fixture.ts + tags-tier2.ts) and",
+    "  - the Rust port (quilltap-harness tags tier-2 test).",
+    "",
+    "What this repo adds over `folders` (all-strings): a boolean column",
+    "(`quickHide` -> INTEGER 0/1), a nullable JSON-object column (`visualStyle`",
+    "-> compact JSON in schema field order), and the `nameLower` derivation, plus",
+    "the `delete` op. The create op carries a FULLY-specified visualStyle (all 7",
+    "fields, schema order) so no Zod inner-default expansion is involved and the",
+    "stored JSON is the input verbatim.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the folders",
+    "fixture uses. It is NOT the real Friday pepper and is safe to commit.",
+    "",
+    "DETERMINISM: every id and timestamp is pinned, so both sides produce",
+    "byte-identical post-op state and the canonical dump needs ZERO normalization."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
+  "seed": [
+    {
+      "id": "1f8c5b0e-2a3d-4c5e-8f1a-0b2c3d4e5f60",
+      "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
+      "name": "Work",
+      "quickHide": false,
+      "visualStyle": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "2a9d6c1f-3b4e-4d6f-9a2b-1c3d4e5f6071",
+      "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
+      "name": "Urgent",
+      "quickHide": true,
+      "visualStyle": {
+        "emoji": "!",
+        "foregroundColor": "#7f1d1d",
+        "backgroundColor": "#fecaca",
+        "emojiOnly": false,
+        "bold": true,
+        "italic": false,
+        "strikethrough": false
+      },
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "New tag with quickHide=true + a fully-specified visualStyle; id + timestamps pinned. Exercises boolean->1, object->JSON text, nameLower derivation.",
+      "data": {
+        "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
+        "name": "Personal",
+        "quickHide": true,
+        "visualStyle": {
+          "emoji": "★",
+          "foregroundColor": "#1f2937",
+          "backgroundColor": "#fde68a",
+          "emojiOnly": false,
+          "bold": true,
+          "italic": false,
+          "strikethrough": false
+        }
+      },
+      "options": {
+        "id": "3b0e7d2a-4c5f-4e70-ab3c-2d4e5f607182",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "Rename seed tag `Work` -> `Career` (nameLower re-derived) and flip quickHide false->true; updatedAt pinned, createdAt preserved, visualStyle stays NULL.",
+      "id": "1f8c5b0e-2a3d-4c5e-8f1a-0b2c3d4e5f60",
+      "data": {
+        "name": "Career",
+        "quickHide": true,
+        "updatedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "delete",
+      "comment": "Delete seed tag `Urgent` (the one with a visualStyle object).",
+      "id": "2a9d6c1f-3b4e-4d6f-9a2b-1c3d4e5f6071"
+    }
+  ]
+}

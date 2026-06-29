@@ -278,3 +278,21 @@ Remaining on-ramp breadth: the generated-UUID remap / timestamp-placeholder
 normalization (only needed for repos that can't take injected ids/clocks), the
 `WriteBatch` partitioned-apply path, and the real-snapshot fixture sanitizer.
 From here Phase 2 is the same mechanical loop, repo by repo.
+
+**Phase 2 proper: in progress.** Repo #2, `tags` (`quilltap-core::db::tags`),
+round-trips green through the tier-2 harness (`tags_tier2_equivalence`): `create`
++ `update` + `delete` ported from v4's `TagsRepository`. It widens the marshaling
+surface past `folders`' all-strings shape — the `quickHide` boolean stored as
+INTEGER 0/1, the nullable `visualStyle` JSON-object column stored as compact JSON
+in schema field order (reproduced with a typed struct so key order matches v4's
+`JSON.stringify`, **not** a sorted `serde_json::Value`), and the `nameLower`
+derivation (`(nameLower || name).toLowerCase()` on create, re-derived from `name`
+on update) — and adds the `delete` op to the harness. Determinism unchanged: ids
++ timestamps pinned both sides → zero normalization. It introduces a **distinct,
+tracked deferral**: JS-vs-Rust Unicode **case mapping** for `nameLower`
+(`toLowerCase` vs `to_lowercase`) — a *separate* decision from the ICU
+`localeCompare` (collation) one, since resolving collation does not resolve case
+mapping. It's a real correctness risk on non-ASCII names (it backs `findByName`),
+masked only by the ASCII corpus. Both deferrals are listed under "Deferred seams
+— must revisit" in `docs/developer/porting/phase-2-onramp.md`; close them before
+running against real (non-ASCII) data.

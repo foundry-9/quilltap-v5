@@ -31,7 +31,7 @@ already working ([`phase-0.md`](./phase-0.md)).
 |------|------|------------------|--------|
 | **0** | Scaffolding, toolchain, cipher-correct DB open, differential harness | tier-1 proven | **substantially done** |
 | **1** | Pure functions (scoring, sizing, remaps, budget math) | tier-1 exact | **done** |
-| **2** | Data layer: repos, the writer-task model, per-DB partitioned apply | tier-2 structural DB diff | on-ramp done — `folders` pilot round-trips green ([`phase-2-onramp.md`](./phase-2-onramp.md)); now repo-by-repo |
+| **2** | Data layer: repos, the writer-task model, per-DB partitioned apply | tier-2 structural DB diff | in progress — `folders` + `tags` round-trip green ([`phase-2-onramp.md`](./phase-2-onramp.md)); repo-by-repo |
 | **3** | Services / engine: memory gate, chat orchestration, enclave `step()` | tier-2 + tier-3 mocked-LLM | not started |
 | **4** | Transports (Tauri/uniffi/axum) + Angular UI | end-to-end | not started |
 
@@ -66,6 +66,12 @@ structural-diff, zero normalization). The machinery — cipher-correct writable
 open, single-writer model, canonical dump, the TS oracle + harness diff — is in
 place, so **Phase 2 proper is now the same mechanical loop, repo by repo**:
 port the next repo, add its tier-2 case. See [`phase-2-onramp.md`](./phase-2-onramp.md).
+
+**Phase 2 proper has started.** The second repo, `tags`, round-trips green
+(`create` + `update` + `delete`), widening the tier-2 marshaling surface past
+`folders`' all-strings shape: a boolean column (`quickHide` → INTEGER 0/1), a
+nullable JSON-object column (`visualStyle` → compact JSON in schema field order),
+and the `nameLower` derivation, plus the `delete` op.
 
 ## How to resume in a fresh session
 

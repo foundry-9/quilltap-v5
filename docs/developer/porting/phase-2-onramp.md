@@ -212,3 +212,84 @@ next repo and add its tier-2 case.** The remaining on-ramp *breadth* (not
 blocking) is the generated-UUID remap + timestamp-placeholder normalization (for
 repos that can't take injected ids/clocks), the `WriteBatch` partitioned-apply
 path, and the real-snapshot fixture sanitizer.
+
+## Phase 2 proper — ported repos
+
+### `tags` (repo #2, 2026-06-28)
+
+The second repo, `tags`, round-trips green (`tags_tier2_equivalence`). It is, like
+`folders`, a pure single-table user-owned repo, but it deliberately picks up the
+column shapes `folders` didn't have, so the tier-2 machinery is exercised past
+all-strings:
+
+- **`quickHide` boolean → INTEGER 0/1.** v4's `prepareForStorage` maps a JS
+  boolean to 1/0 on write; the backend reads it back via the schema's
+  boolean-column set. The Rust port binds the same 0/1.
+- **`visualStyle` object → JSON text.** Stored as `JSON.stringify` of the
+  Zod-parsed object, whose key order is the schema's field order. Reproduced with
+  a typed `TagVisualStyle` struct serialized by `serde_json::to_string` (fields
+  in schema order). **`serde_json::Value` is deliberately avoided** — its default
+  `BTreeMap` sorts keys and would diverge from v4. The create op carries a
+  fully-specified style (all 7 fields), so no Zod inner-default expansion is
+  involved and the stored JSON is the input verbatim; reproducing
+  `TagVisualStyleSchema`'s per-field defaults is deferred to the first op that
+  needs a partial style.
+- **`nameLower` derivation.** `(nameLower || name).toLowerCase()` on create;
+  re-derived from `name` whenever `name` is supplied on update.
+- **The `delete` op** is new to the harness (`folders` only did create + update).
+
+Determinism is unchanged from the pilot — ids + timestamps pinned both sides →
+zero normalization. It does, however, introduce a **distinct deferred seam** that
+the ASCII corpus does not exercise — see below.
+
+Run (Node 24, from the v4 checkout):
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin
+cd ~/source/quilltap-server
+
+QT_FIXTURE_OUT=/tmp/qt-tags-fixture.db \
+  $N/npx tsx ~/source/quilltap-v5/harness/oracle/fixtures/build-tags-fixture.ts
+
+QT_FIXTURE_TAGS=/tmp/qt-tags-fixture.db \
+  $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/tags-tier2.ts \
+  > /tmp/oracle-tags.ndjson
+
+cd ~/source/quilltap-v5
+QT_ORACLE_TAGS=/tmp/oracle-tags.ndjson \
+QT_FIXTURE_TAGS=/tmp/qt-tags-fixture.db \
+  cargo test -p quilltap-harness --test tags_tier2_equivalence
+```
+
+## Deferred seams — must revisit (do NOT ship to real data without closing)
+
+Tracked, actionable deferrals. Each is currently green *only because the corpus
+avoids the input that would expose it.* Before the port runs against real
+instances (non-ASCII user data), each must be closed or consciously waived.
+
+1. **Case mapping for `nameLower` (and any future `*Lower` / case-fold field).**
+   v4 derives `nameLower` with JS `String.prototype.toLowerCase`; the Rust port
+   uses `str::to_lowercase`. Both apply Unicode **default** case mapping and agree
+   on ASCII, but they are **not guaranteed identical** on locale-sensitive or
+   special-cased code points (final sigma, İ/i, ß, etc.). This is a **separate
+   decision from the ICU-collation/`localeCompare` deferral below** — resolving
+   collation does **not** resolve case mapping. It is a real correctness risk:
+   `nameLower` backs case-insensitive lookup (`TagsRepository.findByName`), so a
+   divergence means a Rust open of a v4-written DB could fail to find, or
+   duplicate, a tag whose name has non-ASCII case-variant characters.
+   - **Action when closing:** add a non-ASCII tag-name row to the `tags` tier-2
+     corpus (e.g. a name with ß / İ / a trailing Σ), confirm v4 vs Rust diverge or
+     agree, and pick the strategy (match JS's algorithm exactly, or document the
+     bounded divergence as acceptable). Re-audit every `.toLowerCase()` /
+     `.toUpperCase()` site ported so far.
+
+2. **ICU collation / `localeCompare` ordering.** The standing Phase-1 deferral
+   (see "Where we are"): the single ICU-collation decision is punted to when the
+   ~30 Phase-2/3 `localeCompare` sites land, so it is made once, holistically.
+   Ordering only; **does not cover case mapping** (item 1).
+
+3. **`TagVisualStyleSchema` per-field defaults.** The `tags` create op supplies a
+   fully-specified `visualStyle`, so the port serializes it verbatim and never
+   expands Zod's inner defaults (`foregroundColor` → `#1f2937`, etc.). The first
+   op that writes a **partial** style must port those defaults into the Rust
+   `TagVisualStyle` create path.

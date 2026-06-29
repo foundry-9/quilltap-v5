@@ -24,6 +24,7 @@ use serde_json::{Map, Value};
 use crate::dbkey;
 
 pub mod folders;
+pub mod tags;
 
 /// Errors from the DB layer.
 #[derive(Debug)]
@@ -83,6 +84,11 @@ impl Writer {
     /// The folders repository over this writer's connection.
     pub fn folders(&self) -> folders::FoldersRepository<'_> {
         folders::FoldersRepository::new(&self.conn)
+    }
+
+    /// The tags repository over this writer's connection.
+    pub fn tags(&self) -> tags::TagsRepository<'_> {
+        tags::TagsRepository::new(&self.conn)
     }
 
     /// Canonical dump of one table, in the same shape the tier-2 oracle emits:

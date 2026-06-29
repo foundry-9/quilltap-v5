@@ -105,3 +105,21 @@ ops), built as a thin vertical slice over the `folders` repo:
   oracle NDJSON (`QT_ORACLE_FOLDERS` + `QT_FIXTURE_FOLDERS`, skip-if-unset).
   The `folders` repo round-trips green.
 
+Phase 2 — repo-by-repo over the real DB (each ported repo arrives with its
+tier-2 case):
+
+- `tags` repo (`quilltap-core::db::tags`): `create`, `update`, and `delete`
+  ported from v4's `TagsRepository` + base-repo internals. Widens the tier-2
+  marshaling surface past `folders`' all-strings shape — a boolean column
+  (`quickHide` stored as INTEGER 0/1), a nullable JSON-object column
+  (`visualStyle` stored as compact JSON in schema field order, reproduced with a
+  typed struct so key order matches v4's `JSON.stringify` rather than a sorted
+  map), and the `nameLower` derivation (`(nameLower || name).toLowerCase()` on
+  create; re-derived from `name` on update). Adds the `delete` op to the harness.
+- Harness: tier-2 differential test `tags_tier2_equivalence` plus its fixture
+  builder + `tags-tier2` oracle case, driven by the committed
+  `harness/oracle/fixtures/tags-tier2.json` (the create op carries a
+  fully-specified `visualStyle` so no Zod inner-default expansion is involved).
+  Ids and timestamps pinned both sides → zero normalization. The `tags` repo
+  round-trips green (`QT_ORACLE_TAGS` + `QT_FIXTURE_TAGS`, skip-if-unset).
+
