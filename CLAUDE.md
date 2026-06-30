@@ -679,9 +679,25 @@ clock value); plus four tier-1 resolver unit tests. **Tracked deferral:** the
 archetype-seeding branch (`findArchetypes` over the General/project `Wardrobe`
 stores) is not ported — the corpus keeps no General store provisioned, so v4's
 `findArchetypes` returns `[]` and the seed is a verified no-op (close before
-reading vaults that reference shared archetypes). Still ahead in the vault: only
-the **write overlay** (the wardrobe YAML emitter per Decision A, step 7 — the only
-eemeli/yaml site).
+reading vaults that reference shared archetypes). Sub-unit 4 — the **wardrobe YAML
+emitter** (Decision A, the only eemeli/yaml site) — is also done
+(`build_wardrobe_item_file`, `vault_wardrobe_emit_equivalence`): v4's
+`buildWardrobeItemFile` over a hand-rolled, faithful port of eemeli/yaml 2.9.0's
+`stringifyString` + `foldFlowLines` (default options) for the bounded wardrobe
+value space (string scalars / boolean `true` / block sequences). Reproduces
+plain/single/double quote selection, the core-schema reparse-safety quoting, line
+folding past width 80, and `|`/`|-`/`>` block scalars — operating on UTF-16 code
+units (fold offsets), with the control-char force-quote matched on code points
+(eemeli's `/u` flag: a valid astral char is not a surrogate match) and
+`JSON.stringify` escaping byte-exact. Tier-1 differential over a 100-item corpus
+(every quoting edge, folding, block scalars, surrogate-pair fold offsets, the
+slug/UUID `componentItems` map, all flag branches) against v4's real
+`buildWardrobeItemFile`, plus three exact unit tests. **Both vault decisions are
+now fully discharged.** Still ahead in the wardrobe write path: only the stateful
+**folder projection** (`projectVaultWardrobe` / `projectArrayIntoVaultFolder` —
+filename dedup/rename/sweep + the multi-table content writes), composing the
+already-ported `build_wardrobe_item_file` / `sanitize_file_name` /
+`build_slug_by_item_id_map` leaves over the document-store write primitive.
 
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green

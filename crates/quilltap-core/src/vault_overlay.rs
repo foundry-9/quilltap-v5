@@ -1094,6 +1094,935 @@ pub fn resolve_and_check_component_items(
     }
 }
 
+// ── The wardrobe YAML emitter (Decision A — the ONLY eemeli/yaml site) ─────────
+//
+// `build_wardrobe_item_file` (v4 `buildWardrobeItemFile`,
+// `mount-index/character-vault.ts`) projects a `WardrobeItem` to a `Wardrobe/*.md`
+// file: a YAML frontmatter block + the description body. v4's frontmatter goes
+// through eemeli/yaml's `YAML.stringify` (via `serializeFrontmatter`). Per locked
+// Decision A we hand-roll a scoped emitter rather than depend on a YAML crate —
+// the emitted bytes feed the content-dedup SHA, so a quoting mismatch is a
+// *correctness* bug (silent mis-dedup), not just a test gap.
+//
+// This is a faithful port of eemeli/yaml 2.9.0's `stringifyString` +
+// `foldFlowLines` (with default options: lineWidth 80, minContentWidth 20,
+// doubleQuotedMinMultiLineLength 40, blockQuote true, singleQuote null,
+// indent 2) for the bounded wardrobe value space: a top-level block map whose
+// values are string scalars, the boolean `true`, or block sequences of string
+// scalars. Two simplifications hold because every wardrobe frontmatter value is
+// emitted at a NON-EMPTY indent (`  ` for a map value, `    ` for a seq element):
+// the `containsDocumentMarker`/`indent === ''` branches never fire, and the
+// indent fallbacks are always `ctx.indent`. Operates on UTF-16 code units
+// throughout (as JS does) so fold offsets, the control-char/surrogate force-quote
+// check, and `JSON.stringify` escaping match byte-for-byte.
+
+const YAML_LINE_WIDTH: i64 = 80;
+const YAML_MIN_CONTENT_WIDTH: i64 = 20;
+const YAML_DQ_MIN_MULTILINE: i64 = 40;
+
+// Frequently-used UTF-16 code units.
+const U_SP: u16 = b' ' as u16;
+const U_TAB: u16 = b'\t' as u16;
+const U_NL: u16 = b'\n' as u16;
+const U_BS: u16 = b'\\' as u16;
+const U_DQ: u16 = b'"' as u16;
+const U_SQ: u16 = b'\'' as u16;
+const U_N: u16 = b'n' as u16;
+const U_HASH: u16 = b'#' as u16;
+const U_COLON: u16 = b':' as u16;
+
+/// The core-schema implicit-type tests (all `default: true`): a plain scalar that
+/// would reparse as one of these in YAML 1.2 core must be quoted. Regex sources
+/// lifted verbatim from eemeli/yaml's `schema/core` + `schema/common/null`.
+static YAML_REPARSE_RES: LazyLock<Vec<Regex>> = LazyLock::new(|| {
+    [
+        r"^(?:~|[Nn]ull|NULL)?$",                                  // null
+        r"^(?:[Tt]rue|TRUE|[Ff]alse|FALSE)$",                      // bool
+        r"^0o[0-7]+$",                                             // int OCT
+        r"^[-+]?[0-9]+$",                                          // int
+        r"^0x[0-9a-fA-F]+$",                                       // int HEX
+        r"^(?:[-+]?\.(?:inf|Inf|INF)|\.nan|\.NaN|\.NAN)$",         // float special
+        r"^[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)[eE][-+]?[0-9]+$", // float EXP
+        r"^[-+]?(?:\.[0-9]+|[0-9]+\.[0-9]*)$",                     // float
+    ]
+    .iter()
+    .map(|p| Regex::new(p).expect("valid reparse regex"))
+    .collect()
+});
+
+/// A wardrobe frontmatter value the emitter handles.
+enum FmVal {
+    Str(String),
+    True,
+    Seq(Vec<String>),
+}
+
+fn s16(s: &str) -> Vec<u16> {
+    s.encode_utf16().collect()
+}
+fn from16(v: &[u16]) -> String {
+    String::from_utf16(v).expect("emitter output is valid UTF-16")
+}
+
+/// True iff `v` would reparse as a non-string under the core schema (so a plain
+/// scalar of this value must be quoted). Applied to single-line values only.
+fn yaml_reparse_unsafe(v: &str) -> bool {
+    YAML_REPARSE_RES.iter().any(|re| re.is_match(v))
+}
+
+/// eemeli's force-double-quote set: `[\x00-\x08\x0b-\x1f\x7f-\x9f\u{D800}-\u{DFFF}]`
+/// with the `/u` flag — so it matches CODE POINTS, not UTF-16 units. A valid astral
+/// character is a single code point above `\u{FFFF}` (NOT in `D800-DFFF`), so it is
+/// not forced to double quotes; only the control ranges and *lone* surrogates match.
+/// Rust `&str` can never hold a lone surrogate, so that clause is unreachable here
+/// and omitted — we test code points (`chars`), never the surrogate halves.
+fn yaml_force_double(s: &str) -> bool {
+    s.chars().any(|ch| {
+        let c = ch as u32;
+        c <= 0x08 || (0x0b..=0x1f).contains(&c) || (0x7f..=0x9f).contains(&c)
+    })
+}
+
+/// The `plainString` indicator test — eemeli's
+/// `/^[\n\t ,[\]{}#&*!|>'"%@`]|^[?-]$|^[?-][ \t]|[\n:][ \t]|[ \t]\n|[\n\t ]#|[\n\t :]$/`.
+fn yaml_indicator_unsafe(v: &[u16]) -> bool {
+    if v.is_empty() {
+        return false;
+    }
+    let first_indicators: &[u8] = b",[]{}#&*!|>'\"%@`";
+    let first = v[0];
+    // ^[\n\t ,[]{}#&*!|>'"%@`]
+    if first == U_NL
+        || first == U_TAB
+        || first == U_SP
+        || (first < 0x80 && first_indicators.contains(&(first as u8)))
+    {
+        return true;
+    }
+    let q = b'?' as u16;
+    let dash = b'-' as u16;
+    // ^[?-]$
+    if v.len() == 1 && (first == q || first == dash) {
+        return true;
+    }
+    // ^[?-][ \t]
+    if (first == q || first == dash) && (v[1] == U_SP || v[1] == U_TAB) {
+        return true;
+    }
+    // [\n:][ \t]  |  [ \t]\n  |  [\n\t ]#  anywhere
+    for i in 0..v.len() {
+        let c = v[i];
+        let next = v.get(i + 1).copied();
+        if (c == U_NL || c == U_COLON) && (next == Some(U_SP) || next == Some(U_TAB)) {
+            return true;
+        }
+        if (c == U_SP || c == U_TAB) && next == Some(U_NL) {
+            return true;
+        }
+        if (c == U_NL || c == U_TAB || c == U_SP) && next == Some(U_HASH) {
+            return true;
+        }
+    }
+    // [\n\t :]$
+    let last = v[v.len() - 1];
+    last == U_NL || last == U_TAB || last == U_SP || last == U_COLON
+}
+
+#[derive(PartialEq, Clone, Copy)]
+enum FoldMode {
+    Flow,
+    Block,
+    Quoted,
+}
+
+/// Port of eemeli's `consumeMoreIndentedLines`. `i+1` is presumed at a line start;
+/// returns the index of the last newline of a more-indented block.
+fn yaml_consume_more_indented(text: &[u16], mut i: i64, indent: usize) -> i64 {
+    let get = |idx: i64| -> Option<u16> {
+        if idx < 0 {
+            None
+        } else {
+            text.get(idx as usize).copied()
+        }
+    };
+    let mut end = i;
+    let mut start = i + 1;
+    let mut ch = get(start);
+    while ch == Some(U_SP) || ch == Some(U_TAB) {
+        if i < start + indent as i64 {
+            i += 1;
+            ch = get(i);
+        } else {
+            loop {
+                i += 1;
+                ch = get(i);
+                if ch.is_none() || ch == Some(U_NL) {
+                    break;
+                }
+            }
+            end = i;
+            start = i + 1;
+            ch = get(start);
+        }
+    }
+    end
+}
+
+/// Port of eemeli's `foldFlowLines` (default lineWidth 80, minContentWidth 20).
+/// Sets `*overflow` if a line overflowed without a fold point (block-folded uses
+/// this to fall back to literal).
+fn yaml_fold(
+    text: &[u16],
+    indent: &[u16],
+    mode: FoldMode,
+    indent_at_start: Option<usize>,
+    overflow: &mut bool,
+) -> Vec<u16> {
+    let line_width = YAML_LINE_WIDTH;
+    let mut min_content_width = YAML_MIN_CONTENT_WIDTH;
+    if line_width < min_content_width {
+        min_content_width = 0;
+    }
+    let end_step = std::cmp::max(1 + min_content_width, 1 + line_width - indent.len() as i64);
+    if (text.len() as i64) <= end_step {
+        return text.to_vec();
+    }
+    let mut folds: Vec<i64> = Vec::new();
+    let mut escaped_folds: HashSet<i64> = HashSet::new();
+    let mut end = line_width - indent.len() as i64;
+    if let Some(ias) = indent_at_start {
+        let ias = ias as i64;
+        if ias > line_width - std::cmp::max(2, min_content_width) {
+            folds.push(0);
+        } else {
+            end = line_width - ias;
+        }
+    }
+    let get = |idx: i64| -> Option<u16> {
+        if idx < 0 {
+            None
+        } else {
+            text.get(idx as usize).copied()
+        }
+    };
+    let mut split: Option<i64> = None;
+    let mut prev: Option<u16> = None;
+    let mut i: i64 = -1;
+    let mut esc_start: i64 = -1;
+    let mut esc_end: i64 = -1;
+    if mode == FoldMode::Block {
+        i = yaml_consume_more_indented(text, i, indent.len());
+        if i != -1 {
+            end = i + end_step;
+        }
+    }
+    loop {
+        i += 1;
+        if i as usize >= text.len() {
+            break;
+        }
+        let mut ch = text[i as usize];
+        if mode == FoldMode::Quoted && ch == U_BS {
+            esc_start = i;
+            match get(i + 1) {
+                Some(c) if c == b'x' as u16 => i += 3,
+                Some(c) if c == b'u' as u16 => i += 5,
+                Some(c) if c == b'U' as u16 => i += 9,
+                _ => i += 1,
+            }
+            esc_end = i;
+        }
+        if ch == U_NL {
+            if mode == FoldMode::Block {
+                i = yaml_consume_more_indented(text, i, indent.len());
+            }
+            end = i + indent.len() as i64 + end_step;
+            split = None;
+        } else {
+            if ch == U_SP
+                && prev.is_some()
+                && prev != Some(U_SP)
+                && prev != Some(U_NL)
+                && prev != Some(U_TAB)
+            {
+                let next = get(i + 1);
+                if let Some(n) = next {
+                    if n != U_SP && n != U_NL && n != U_TAB {
+                        split = Some(i);
+                    }
+                }
+            }
+            if i >= end {
+                if let Some(s) = split {
+                    folds.push(s);
+                    end = s + end_step;
+                    split = None;
+                } else if mode == FoldMode::Quoted {
+                    while prev == Some(U_SP) || prev == Some(U_TAB) {
+                        prev = Some(ch);
+                        i += 1;
+                        ch = match get(i) {
+                            Some(c) => c,
+                            None => break,
+                        };
+                        *overflow = true;
+                    }
+                    let j = if i > esc_end + 1 {
+                        i - 2
+                    } else {
+                        esc_start - 1
+                    };
+                    if escaped_folds.contains(&j) {
+                        return text.to_vec();
+                    }
+                    folds.push(j);
+                    escaped_folds.insert(j);
+                    end = j + end_step;
+                    split = None;
+                } else {
+                    *overflow = true;
+                }
+            }
+        }
+        prev = Some(ch);
+    }
+    if folds.is_empty() {
+        return text.to_vec();
+    }
+    let mut res: Vec<u16> = text[0..folds[0] as usize].to_vec();
+    for k in 0..folds.len() {
+        let fold = folds[k];
+        let end_idx = folds.get(k + 1).copied().unwrap_or(text.len() as i64);
+        if fold == 0 {
+            res = Vec::new();
+            res.push(U_NL);
+            res.extend_from_slice(indent);
+            res.extend_from_slice(&text[0..end_idx as usize]);
+        } else {
+            if mode == FoldMode::Quoted && escaped_folds.contains(&fold) {
+                res.push(text[fold as usize]);
+                res.push(U_BS);
+            }
+            res.push(U_NL);
+            res.extend_from_slice(indent);
+            res.extend_from_slice(&text[(fold + 1) as usize..end_idx as usize]);
+        }
+    }
+    res
+}
+
+/// Port of eemeli's `doubleQuotedString` (default options; `implicitKey` false).
+fn yaml_double_quoted(value: &[u16], indent: &[u16], indent_at_start: usize) -> Vec<u16> {
+    let json = s16(&serde_json::to_string(&from16(value)).expect("json-encode scalar"));
+    let mut out: Vec<u16> = Vec::new();
+    let mut i: usize = 0;
+    let mut start: usize = 0;
+    let len = json.len();
+    let at = |idx: usize| -> Option<u16> { json.get(idx).copied() };
+    while i < len {
+        let mut ch = json[i];
+        // space before an escaped newline must itself be escaped (else folded away)
+        if ch == U_SP && at(i + 1) == Some(U_BS) && at(i + 2) == Some(U_N) {
+            out.extend_from_slice(&json[start..i]);
+            out.push(U_BS);
+            out.push(U_SP);
+            i += 1;
+            start = i;
+            ch = U_BS;
+        }
+        if ch == U_BS {
+            match at(i + 1) {
+                Some(c) if c == b'u' as u16 => {
+                    out.extend_from_slice(&json[start..i]);
+                    let code = from16(&json[i + 2..i + 6]);
+                    match code.as_str() {
+                        "0000" => out.extend_from_slice(&s16("\\0")),
+                        "0007" => out.extend_from_slice(&s16("\\a")),
+                        "000b" => out.extend_from_slice(&s16("\\v")),
+                        "001b" => out.extend_from_slice(&s16("\\e")),
+                        "0085" => out.extend_from_slice(&s16("\\N")),
+                        "00a0" => out.extend_from_slice(&s16("\\_")),
+                        "2028" => out.extend_from_slice(&s16("\\L")),
+                        "2029" => out.extend_from_slice(&s16("\\P")),
+                        _ => {
+                            if &code[0..2] == "00" {
+                                out.extend_from_slice(&s16("\\x"));
+                                out.extend_from_slice(&s16(&code[2..4]));
+                            } else {
+                                out.extend_from_slice(&json[i..i + 6]);
+                            }
+                        }
+                    }
+                    i += 5;
+                    start = i + 1;
+                }
+                Some(c) if c == U_N => {
+                    if at(i + 2) == Some(U_DQ) || (json.len() as i64) < YAML_DQ_MIN_MULTILINE {
+                        i += 1;
+                    } else {
+                        out.extend_from_slice(&json[start..i]);
+                        out.push(U_NL);
+                        out.push(U_NL);
+                        while at(i + 2) == Some(U_BS)
+                            && at(i + 3) == Some(U_N)
+                            && at(i + 4) != Some(U_DQ)
+                        {
+                            out.push(U_NL);
+                            i += 2;
+                        }
+                        out.extend_from_slice(indent);
+                        if at(i + 2) == Some(U_SP) {
+                            out.push(U_BS);
+                        }
+                        i += 1;
+                        start = i + 1;
+                    }
+                }
+                _ => {
+                    i += 1;
+                }
+            }
+        }
+        i += 1;
+    }
+    let str16: Vec<u16> = if start != 0 {
+        let mut s = out;
+        s.extend_from_slice(&json[start..]);
+        s
+    } else {
+        json
+    };
+    let mut overflow = false;
+    yaml_fold(
+        &str16,
+        indent,
+        FoldMode::Quoted,
+        Some(indent_at_start),
+        &mut overflow,
+    )
+}
+
+/// Port of eemeli's `singleQuotedString` (default options; `implicitKey` false).
+fn yaml_single_quoted(value: &[u16], indent: &[u16], indent_at_start: usize) -> Vec<u16> {
+    // single-quoted can't carry leading/trailing whitespace around a newline
+    let mut ws_around_nl = false;
+    for i in 0..value.len() {
+        let c = value[i];
+        let next = value.get(i + 1).copied();
+        if (c == U_SP || c == U_TAB) && next == Some(U_NL) {
+            ws_around_nl = true;
+            break;
+        }
+        if c == U_NL && (next == Some(U_SP) || next == Some(U_TAB)) {
+            ws_around_nl = true;
+            break;
+        }
+    }
+    if ws_around_nl {
+        return yaml_double_quoted(value, indent, indent_at_start);
+    }
+    // '...' with ' → '' and \n+ → $&\n<indent>
+    let mut body: Vec<u16> = Vec::new();
+    let mut i = 0;
+    while i < value.len() {
+        let c = value[i];
+        if c == U_SQ {
+            body.push(U_SQ);
+            body.push(U_SQ);
+            i += 1;
+        } else if c == U_NL {
+            // emit the whole run of newlines, then one extra \n + indent
+            let run_start = i;
+            while i < value.len() && value[i] == U_NL {
+                i += 1;
+            }
+            body.extend_from_slice(&value[run_start..i]);
+            body.push(U_NL);
+            body.extend_from_slice(indent);
+        } else {
+            body.push(c);
+            i += 1;
+        }
+    }
+    let mut res: Vec<u16> = vec![U_SQ];
+    res.extend_from_slice(&body);
+    res.push(U_SQ);
+    let mut overflow = false;
+    yaml_fold(
+        &res,
+        indent,
+        FoldMode::Flow,
+        Some(indent_at_start),
+        &mut overflow,
+    )
+}
+
+/// Port of eemeli's `quotedString` single-vs-double selection (singleQuote null).
+fn yaml_quoted(value: &[u16], indent: &[u16], indent_at_start: usize) -> Vec<u16> {
+    let has_double = value.contains(&U_DQ);
+    let has_single = value.contains(&U_SQ);
+    if has_double && !has_single {
+        yaml_single_quoted(value, indent, indent_at_start)
+    } else {
+        yaml_double_quoted(value, indent, indent_at_start)
+    }
+}
+
+/// `lineLengthOverLimit` — does any line of `value` exceed `lineWidth - indent`?
+fn yaml_line_over_limit(value: &[u16], indent_len: usize) -> bool {
+    let limit = YAML_LINE_WIDTH - indent_len as i64;
+    let str_len = value.len() as i64;
+    if str_len <= limit {
+        return false;
+    }
+    let mut start: i64 = 0;
+    let mut i: i64 = 0;
+    while i < str_len {
+        if value[i as usize] == U_NL {
+            if i - start > limit {
+                return true;
+            }
+            start = i + 1;
+            if str_len - start <= limit {
+                return false;
+            }
+        }
+        i += 1;
+    }
+    true
+}
+
+/// Replace every run of `\n` with itself plus `<rep>` (eemeli's
+/// `.replace(/\n+/g, "$&" + rep)`), operating on UTF-16 units.
+fn yaml_replace_nl_runs(value: &[u16], rep: &[u16]) -> Vec<u16> {
+    let mut out: Vec<u16> = Vec::new();
+    let mut i = 0;
+    while i < value.len() {
+        if value[i] == U_NL {
+            let run_start = i;
+            while i < value.len() && value[i] == U_NL {
+                i += 1;
+            }
+            out.extend_from_slice(&value[run_start..i]);
+            out.extend_from_slice(rep);
+        } else {
+            out.push(value[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
+/// Port of eemeli's `blockString` for the literal (`|`) path; folds to `>` when a
+/// line overruns. `comment` is always absent here; node `type` is unset (so the
+/// literal-vs-folded choice is by `lineLengthOverLimit`).
+fn yaml_block_string(value: &[u16], indent: &[u16], indent_at_start: usize) -> Vec<u16> {
+    // blockQuote default true; a string that can't end a block in whitespace
+    // (a `\n` followed by trailing spaces/tabs to EOS) is quoted instead.
+    let mut trailing_ws_after_nl = false;
+    {
+        // /\n[\t ]+$/
+        let mut j = value.len();
+        let mut saw_ws = false;
+        while j > 0 {
+            let c = value[j - 1];
+            if c == U_SP || c == U_TAB {
+                saw_ws = true;
+                j -= 1;
+            } else {
+                break;
+            }
+        }
+        if saw_ws && j > 0 && value[j - 1] == U_NL {
+            trailing_ws_after_nl = true;
+        }
+    }
+    if trailing_ws_after_nl {
+        return yaml_quoted(value, indent, indent_at_start);
+    }
+    let literal = !yaml_line_over_limit(value, indent.len());
+    if value.is_empty() {
+        return s16(if literal { "|\n" } else { ">\n" });
+    }
+    let mut value = value.to_vec();
+    // chomping from trailing whitespace
+    let mut end_start = value.len();
+    while end_start > 0 {
+        let ch = value[end_start - 1];
+        if ch != U_NL && ch != U_TAB && ch != U_SP {
+            break;
+        }
+        end_start -= 1;
+    }
+    let mut end: Vec<u16> = value[end_start..].to_vec();
+    let end_nl_pos = end.iter().position(|&c| c == U_NL);
+    let chomp: &str = match end_nl_pos {
+        None => "-",
+        Some(p) => {
+            // value === end  ||  endNlPos !== end.length - 1  → keep '+'
+            if value.len() == end.len() || p != end.len() - 1 {
+                "+"
+            } else {
+                ""
+            }
+        }
+    };
+    if !end.is_empty() {
+        let cut = value.len() - end.len();
+        value = value[..cut].to_vec();
+        if *end.last().unwrap() == U_NL {
+            end.pop();
+        }
+        // end.replace(blockEndNewlines, "$&" + indent): insert indent after each
+        // run of newlines that is neither at start nor end-of-string.
+        end = yaml_block_end_newlines(&end, indent);
+    }
+    // indent indicator from leading whitespace
+    let mut start_with_space = false;
+    let mut start_nl_pos: i64 = -1;
+    let mut start_end = 0usize;
+    while start_end < value.len() {
+        let ch = value[start_end];
+        if ch == U_SP {
+            start_with_space = true;
+        } else if ch == U_NL {
+            start_nl_pos = start_end as i64;
+        } else {
+            break;
+        }
+        start_end += 1;
+    }
+    let start_slice_end = if start_nl_pos < start_end as i64 {
+        (start_nl_pos + 1) as usize
+    } else {
+        start_end
+    };
+    let mut start: Vec<u16> = value[..start_slice_end].to_vec();
+    if !start.is_empty() {
+        value = value[start.len()..].to_vec();
+        start = yaml_replace_nl_runs(&start, indent);
+    }
+    let indent_size = if indent.is_empty() { "1" } else { "2" };
+    let mut header = String::new();
+    if start_with_space {
+        header.push_str(indent_size);
+    }
+    header.push_str(chomp);
+
+    if !literal {
+        // folded body
+        let folded = yaml_block_folded_body(&value, indent);
+        let mut overflow = false;
+        let mut seq: Vec<u16> = Vec::new();
+        seq.extend_from_slice(&start);
+        seq.extend_from_slice(&folded);
+        seq.extend_from_slice(&end);
+        let body = yaml_fold(
+            &seq,
+            indent,
+            FoldMode::Block,
+            Some(indent.len()),
+            &mut overflow,
+        );
+        if !overflow {
+            // `>${header}\n${indent}${body}`
+            let mut out: Vec<u16> = Vec::new();
+            out.push(b'>' as u16);
+            out.extend_from_slice(&s16(&header));
+            out.push(U_NL);
+            out.extend_from_slice(indent);
+            out.extend_from_slice(&body);
+            return out;
+        }
+    }
+    // literal: `|${header}\n${indent}${start}${value}${end}`
+    let value = yaml_replace_nl_runs(&value, indent);
+    let mut out: Vec<u16> = Vec::new();
+    out.push(b'|' as u16);
+    out.extend_from_slice(&s16(&header));
+    out.push(U_NL);
+    out.extend_from_slice(indent);
+    out.extend_from_slice(&start);
+    out.extend_from_slice(&value);
+    out.extend_from_slice(&end);
+    out
+}
+
+/// eemeli's `blockEndNewlines` replace: `(^|(?<!\n))\n+(?!\n|$)` → `$&<indent>`.
+/// Inserts `indent` after a run of newlines that is preceded by a non-newline (or
+/// is at string start) and not at end-of-string / followed by another newline.
+fn yaml_block_end_newlines(end: &[u16], indent: &[u16]) -> Vec<u16> {
+    let mut out: Vec<u16> = Vec::new();
+    let mut i = 0;
+    while i < end.len() {
+        if end[i] == U_NL {
+            let run_start = i;
+            while i < end.len() && end[i] == U_NL {
+                i += 1;
+            }
+            out.extend_from_slice(&end[run_start..i]);
+            // Lookbehind `(^|(?<!\n))`: the char before the run is not a newline.
+            // Since a maximal run consumed all leading newlines, the preceding
+            // char is non-`\n` (or start) by construction → always satisfied.
+            // Negative lookahead `(?!\n|$)`: not end-of-string (run is maximal, so
+            // the next char, if any, is non-`\n`).
+            if i < end.len() {
+                out.extend_from_slice(indent);
+            }
+        } else {
+            out.push(end[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
+/// eemeli's folded-body transform (block `>`): the three chained `.replace` calls
+/// from `blockString`'s `!literal` branch, on UTF-16 units.
+fn yaml_block_folded_body(value: &[u16], indent: &[u16]) -> Vec<u16> {
+    // 1. /\n+/g → "\n$&"  (prefix every newline run with one extra newline)
+    let step1 = {
+        let mut out: Vec<u16> = Vec::new();
+        let mut i = 0;
+        while i < value.len() {
+            if value[i] == U_NL {
+                let s = i;
+                while i < value.len() && value[i] == U_NL {
+                    i += 1;
+                }
+                out.push(U_NL);
+                out.extend_from_slice(&value[s..i]);
+            } else {
+                out.push(value[i]);
+                i += 1;
+            }
+        }
+        out
+    };
+    // 2. /(?:^|\n)([\t ].*)(?:([\n\t ]*)\n(?![\n\t ]))?/g → "$1$2"
+    //    (more-indented lines aren't folded). Implemented as a direct scan in
+    //    `yaml_more_indented_fold` rather than a backtracking regex.
+    let step2 = yaml_more_indented_fold(&step1);
+    // 3. /\n+/g → "$&<indent>"
+    yaml_replace_nl_runs(&step2, indent)
+}
+
+/// The more-indented-lines collapse of eemeli's folded body (step 2 above),
+/// implemented as a direct scan rather than a backtracking regex.
+fn yaml_more_indented_fold(value: &[u16]) -> Vec<u16> {
+    // Match `(?:^|\n)([\t ].*)(?:([\n\t ]*)\n(?![\n\t ]))?` globally, replacing
+    // with `$1$2` — i.e. drop the leading `\n` (or BOS) and the single trailing
+    // `\n` (not followed by indent) of a more-indented line group.
+    let mut out: Vec<u16> = Vec::new();
+    let n = value.len();
+    let mut i = 0;
+    let mut at_line_start = true; // BOS counts as `^`
+    while i < n {
+        let c = value[i];
+        if c == U_NL {
+            // The regex's leading `(?:^|\n)` consumes this `\n` only when the next
+            // char begins a more-indented line; otherwise the `\n` is literal.
+            if i + 1 < n && (value[i + 1] == U_TAB || value[i + 1] == U_SP) {
+                // consumed as the group's leading `\n` (dropped)
+                i += 1;
+                at_line_start = true;
+                continue;
+            }
+            out.push(c);
+            i += 1;
+            at_line_start = true;
+            continue;
+        }
+        if at_line_start && (c == U_TAB || c == U_SP) {
+            // `([\t ].*)` — capture to end of line
+            let g1_start = i;
+            while i < n && value[i] != U_NL {
+                i += 1;
+            }
+            let g1_end = i;
+            // optional `([\n\t ]*)\n(?![\n\t ])`
+            let mut g2: Vec<u16> = Vec::new();
+            if i < n {
+                // collect [\n\t ]* then require a \n not followed by [\n\t ]
+                let save = i;
+                let mut j = i;
+                let cap_start = j;
+                while j < n && (value[j] == U_NL || value[j] == U_TAB || value[j] == U_SP) {
+                    j += 1;
+                }
+                // backtrack to a position where value[k-1]=='\n' and (k==n or value[k] not in [\n\t ])
+                let mut matched = false;
+                let mut k = j;
+                while k > cap_start {
+                    if value[k - 1] == U_NL
+                        && (k >= n || (value[k] != U_NL && value[k] != U_TAB && value[k] != U_SP))
+                    {
+                        // g2 = value[cap_start..k-1], then the \n at k-1 is consumed (dropped)
+                        g2 = value[cap_start..k - 1].to_vec();
+                        i = k;
+                        matched = true;
+                        break;
+                    }
+                    k -= 1;
+                }
+                if !matched {
+                    i = save;
+                }
+            }
+            out.extend_from_slice(&value[g1_start..g1_end]);
+            out.extend_from_slice(&g2);
+            at_line_start = false;
+            continue;
+        }
+        out.push(c);
+        i += 1;
+        at_line_start = false;
+    }
+    out
+}
+
+/// Port of eemeli's `plainString` for our context (`implicitKey`/`inFlow` false,
+/// node `type` unset). `value_str` is the original (single-line) value for the
+/// reparse test.
+fn yaml_plain_string(
+    value: &[u16],
+    value_str: &str,
+    indent: &[u16],
+    indent_at_start: usize,
+) -> Vec<u16> {
+    let has_nl = value.contains(&U_NL);
+    if yaml_indicator_unsafe(value) {
+        return if !has_nl {
+            yaml_quoted(value, indent, indent_at_start)
+        } else {
+            yaml_block_string(value, indent, indent_at_start)
+        };
+    }
+    // type !== PLAIN (unset) && value has newline → prefer block
+    if has_nl {
+        return yaml_block_string(value, indent, indent_at_start);
+    }
+    // single-line: reparse-safety, then fold
+    if yaml_reparse_unsafe(value_str) {
+        return yaml_quoted(value, indent, indent_at_start);
+    }
+    let mut overflow = false;
+    yaml_fold(
+        value,
+        indent,
+        FoldMode::Flow,
+        Some(indent_at_start),
+        &mut overflow,
+    )
+}
+
+/// Port of eemeli's `stringifyString` for a string scalar at the given indent /
+/// start column.
+fn yaml_stringify_scalar(value: &str, indent: &str, indent_at_start: usize) -> String {
+    let v16 = s16(value);
+    let ind16 = s16(indent);
+    if yaml_force_double(value) {
+        return from16(&yaml_double_quoted(&v16, &ind16, indent_at_start));
+    }
+    from16(&yaml_plain_string(&v16, value, &ind16, indent_at_start))
+}
+
+/// Port of `YAML.stringify` for the wardrobe frontmatter value model: a top-level
+/// block map of string scalars, the boolean `true`, and block sequences of string
+/// scalars (indent step 2). Always ends with a trailing newline.
+fn yaml_stringify_frontmatter(entries: &[(&str, FmVal)]) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for (key, val) in entries {
+        match val {
+            FmVal::True => parts.push(format!("{key}: true")),
+            FmVal::Str(s) => {
+                let ias = key.encode_utf16().count() + 2; // "<key>: "
+                parts.push(format!("{key}: {}", yaml_stringify_scalar(s, "  ", ias)));
+            }
+            FmVal::Seq(items) => {
+                let mut e = format!("{key}:");
+                for it in items {
+                    e.push_str("\n  - ");
+                    e.push_str(&yaml_stringify_scalar(it, "    ", 4));
+                }
+                parts.push(e);
+            }
+        }
+    }
+    let mut out = parts.join("\n");
+    out.push('\n');
+    out
+}
+
+/// v4 `serializeFrontmatter`: wrap the YAML body in `---` delimiters.
+fn yaml_serialize_frontmatter(entries: &[(&str, FmVal)]) -> String {
+    format!("---\n{}---\n", yaml_stringify_frontmatter(entries))
+}
+
+/// Project a `WardrobeItem` to its `Wardrobe/*.md` file content — v4
+/// `buildWardrobeItemFile` (`mount-index/character-vault.ts`). The frontmatter
+/// keys are emitted in v4's exact insertion order; `componentItemIds` are
+/// translated to slugs via `slug_by_item_id` (UUID fallback for collisions /
+/// unknowns). The body is the item description (or empty). Decision-A YAML emitter.
+pub fn build_wardrobe_item_file(
+    item: &WardrobeItem,
+    slug_by_item_id: &HashMap<String, String>,
+) -> String {
+    let comp: Vec<String> = item
+        .component_item_ids
+        .iter()
+        .map(|id| {
+            slug_by_item_id
+                .get(id)
+                .cloned()
+                .unwrap_or_else(|| id.clone())
+        })
+        .collect();
+
+    let mut data: Vec<(&str, FmVal)> = Vec::new();
+    data.push(("id", FmVal::Str(item.id.clone())));
+    data.push(("title", FmVal::Str(item.title.clone())));
+    data.push(("types", FmVal::Seq(item.types.clone())));
+    if !item.component_item_ids.is_empty() {
+        data.push(("componentItems", FmVal::Seq(comp)));
+    }
+    if let Some(Some(a)) = &item.appropriateness {
+        if !a.is_empty() {
+            data.push(("appropriateness", FmVal::Str(a.clone())));
+        }
+    }
+    if let Some(Some(ip)) = &item.image_prompt {
+        if !ip.is_empty() {
+            data.push(("imagePrompt", FmVal::Str(ip.clone())));
+        }
+    }
+    if item.is_default {
+        data.push(("default", FmVal::True));
+    }
+    if item.replace {
+        data.push(("replace", FmVal::True));
+    }
+    if let Some(Some(at)) = &item.archived_at {
+        if !at.is_empty() {
+            data.push(("archived", FmVal::True));
+            data.push(("archivedAt", FmVal::Str(at.clone())));
+        }
+    }
+    if let Some(Some(m)) = &item.migrated_from_clothing_record_id {
+        if !m.is_empty() {
+            data.push(("migratedFromClothingRecordId", FmVal::Str(m.clone())));
+        }
+    }
+    data.push(("createdAt", FmVal::Str(item.created_at.clone())));
+    data.push(("updatedAt", FmVal::Str(item.updated_at.clone())));
+
+    let body = match &item.description {
+        Some(Some(d)) => d.clone(),
+        _ => String::new(),
+    };
+    format!("{}\n{}", yaml_serialize_frontmatter(&data), body)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1222,5 +2151,64 @@ mod tests {
         let (by_slug, by_id) = build_maps(&items);
         resolve_and_check_component_items(&mut items, &by_slug, &by_id);
         assert_eq!(items[2].component_item_ids, vec!["id-hat-1".to_string()]);
+    }
+
+    /// A minimal item with the given overrides applied through a builder closure.
+    fn warde(id: &str, title: &str) -> WardrobeItem {
+        WardrobeItem {
+            id: id.to_string(),
+            character_id: None,
+            title: title.to_string(),
+            description: None,
+            image_prompt: None,
+            types: vec!["top".to_string()],
+            component_item_ids: vec![],
+            appropriateness: None,
+            is_default: false,
+            replace: false,
+            migrated_from_clothing_record_id: None,
+            archived_at: None,
+            created_at: "2026-01-01T00:00:00.000Z".to_string(),
+            updated_at: "2026-01-01T00:00:00.000Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn build_file_minimal() {
+        let item = warde("00000000-0000-4000-8000-000000000001", "Blue Shirt");
+        let got = build_wardrobe_item_file(&item, &HashMap::new());
+        assert_eq!(
+            got,
+            "---\nid: 00000000-0000-4000-8000-000000000001\ntitle: Blue Shirt\ntypes:\n  - top\ncreatedAt: 2026-01-01T00:00:00.000Z\nupdatedAt: 2026-01-01T00:00:00.000Z\n---\n\n"
+        );
+    }
+
+    #[test]
+    fn build_file_quotes_numeric_title_and_body() {
+        let mut item = warde("00000000-0000-4000-8000-000000000002", "123");
+        item.description = Some(Some("A short body.".to_string()));
+        let got = build_wardrobe_item_file(&item, &HashMap::new());
+        // numeric-looking title is double-quoted; body trails after the block
+        assert!(got.contains("title: \"123\"\n"), "got: {got}");
+        assert!(got.ends_with("---\n\nA short body."), "got: {got}");
+    }
+
+    #[test]
+    fn build_file_component_items_slug_then_uuid_fallback() {
+        let mut outfit = warde("00000000-0000-4000-8000-000000000003", "Outfit");
+        outfit.component_item_ids = vec![
+            "id-shirt".to_string(),
+            "00000000-0000-4000-8000-0000000000ff".to_string(),
+        ];
+        let mut slug = HashMap::new();
+        slug.insert("id-shirt".to_string(), "blue-shirt".to_string());
+        let got = build_wardrobe_item_file(&outfit, &slug);
+        // first ref maps to its slug; the unmapped UUID falls through verbatim
+        assert!(
+            got.contains(
+                "componentItems:\n  - blue-shirt\n  - 00000000-0000-4000-8000-0000000000ff\n"
+            ),
+            "got: {got}"
+        );
     }
 }

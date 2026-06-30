@@ -546,6 +546,29 @@ corpus always provisions fresh), `state`/property null-vs-absent + multi-key
 insertion order (open-JSON seam — corpus kept `{}`/single-key), and the
 `projects` generalization (a larger bag + roster ops).
 
+Phase 2 — the character vault **wardrobe YAML emitter** (Decision A — the only
+eemeli/yaml site), `quilltap-core::vault_overlay::build_wardrobe_item_file`, v4's
+`buildWardrobeItemFile`. Projects a `WardrobeItem` to its `Wardrobe/*.md` content:
+a YAML frontmatter block (keys in v4's exact insertion order; `componentItemIds`
+translated to slugs with a UUID fallback) plus the description body. Per locked
+Decision A the YAML is hand-rolled — the emitted bytes feed the content-dedup
+SHA, so a quoting mismatch is a silent mis-dedup, not just a test gap. The emitter
+is a faithful port of eemeli/yaml 2.9.0's `stringifyString` + `foldFlowLines`
+(default options) for the bounded value space (string scalars, the boolean `true`,
+block sequences of string scalars): plain/single/double quote selection, the
+core-schema reparse-safety quoting (a scalar that would reparse as
+number/bool/null is quoted), line folding past width 80, and block scalars
+(`|`/`|-`/`>`) for multiline values. It operates on UTF-16 code units throughout
+(as JS does) so fold offsets, the control-char force-quote check (matched on code
+points, per eemeli's `/u` flag — a valid astral character is not a surrogate
+match), and `JSON.stringify` escaping align byte-for-byte. Verified by a tier-1
+differential (`vault_wardrobe_emit_equivalence`) against v4's real
+`buildWardrobeItemFile` over a 100-item corpus spanning every quoting edge,
+folding, block scalars, surrogate-pair fold offsets, the slug/UUID map, and all
+flag branches; plus three exact unit tests. This was the last open vault decision;
+the only wardrobe write piece still ahead is the stateful folder projection
+(`projectVaultWardrobe` — filename dedup/rename/sweep + multi-table writes).
+
 Phase 2 — the character vault **wardrobe read overlay**
 (`quilltap-core::db::vault_read_overlay::read_character_vault_wardrobe` +
 `quilltap-core::vault_overlay::resolve_and_check_component_items`), v4's

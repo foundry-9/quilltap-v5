@@ -1,0 +1,1826 @@
+{
+  "cases": [
+    [
+      {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "Blue Shirt",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "title": "A:thing",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "title": "A: thing here",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "title": "tag #1",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000005",
+        "title": "#hashtag",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "title": "say \"hi\"",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000007",
+        "title": "it's mine",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000008",
+        "title": "it's \"ok\"",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000009",
+        "title": "  spaced",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000000a",
+        "title": "spaced  ",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000000b",
+        "title": "123",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000000c",
+        "title": "true",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000000d",
+        "title": "null",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000000e",
+        "title": "",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000000f",
+        "title": "café ☕",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000010",
+        "title": "- dash",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000011",
+        "title": "@handle",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000012",
+        "title": "[bracket]",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000013",
+        "title": "{brace}",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000014",
+        "title": "a\\b",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000015",
+        "title": "a\tb",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "title": "ends:",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000017",
+        "title": "> quote",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000018",
+        "title": "| pipe",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000019",
+        "title": "&anchor",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000001a",
+        "title": "*star",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000001b",
+        "title": "%pct",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000001c",
+        "title": "? q",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000001d",
+        "title": "a, b",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000001e",
+        "title": "http://x",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000001f",
+        "title": "a:1",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000020",
+        "title": "a #b",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000021",
+        "title": "yes",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000022",
+        "title": "no",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000023",
+        "title": "on",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000024",
+        "title": "off",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000025",
+        "title": "True",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000026",
+        "title": "~",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000027",
+        "title": ".inf",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000028",
+        "title": "-5",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000029",
+        "title": "1.5",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000002a",
+        "title": "1e3",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000002b",
+        "title": "0x1f",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000002c",
+        "title": "0o17",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000002d",
+        "title": "2026-01-01",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000002e",
+        "title": "+x",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000002f",
+        "title": "=x",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000030",
+        "title": "!x",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000031",
+        "title": "'quoted",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000032",
+        "title": "\"quoted",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000033",
+        "title": "`x",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000034",
+        "title": "☕",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000035",
+        "title": "\tx",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000036",
+        "title": "don't stop",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000037",
+        "title": "a: \"b\"",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000038",
+        "title": "  \"x",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000039",
+        "title": "word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000003a",
+        "title": "word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000003b",
+        "title": "short xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx tail",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000003c",
+        "title": "line1\nline2",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000003d",
+        "title": "para one\npara two\nthird",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000003e",
+        "title": "a\n\nb",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000003f",
+        "title": "abc\n",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000040",
+        "title": "a \nb",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000041",
+        "title": "\nabc",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000042",
+        "title": "a\n  b",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000043",
+        "title": "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ\ntail line short",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      }
+    ],
+    [
+      {
+        "id": "00000000-0000-4000-8000-000000000044",
+        "title": "Casual",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": "Casual everyday wear",
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000045",
+        "title": "Long App",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": "word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word",
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000046",
+        "title": "Img",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": "A red coat, studio lighting, 4k",
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000047",
+        "title": "Img ML",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": "Line one of the prompt\nLine two of the prompt",
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000048",
+        "title": "Img Special",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": "prompt: with a colon, and \"quotes\"",
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000049",
+        "title": "With Body",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": "This is the description body.\n\nSecond paragraph.",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000004a",
+        "title": "App Colon",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": "note: see above",
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000004b",
+        "title": "App Empty",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": "",
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000004c",
+        "title": "App Num",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": "42",
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      }
+    ],
+    [
+      {
+        "id": "00000000-0000-4000-8000-00000000004d",
+        "title": "Blue Shirt",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000004e",
+        "title": "Red Pants",
+        "types": [
+          "bottom"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000004f",
+        "title": "Hat",
+        "types": [
+          "accessories"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000050",
+        "title": "Hat",
+        "types": [
+          "accessories"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000051",
+        "title": "123",
+        "types": [
+          "accessories"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000052",
+        "title": "Full Outfit",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [
+          "00000000-0000-4000-8000-00000000004d",
+          "00000000-0000-4000-8000-00000000004e",
+          "00000000-0000-4000-8000-00000000004f",
+          "00000000-0000-4000-8000-000000000050",
+          "00000000-0000-4000-8000-000000000051",
+          "99999999-9999-4999-8999-999999999999"
+        ],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      }
+    ],
+    [
+      {
+        "id": "00000000-0000-4000-8000-000000000053",
+        "title": "Everything",
+        "types": [
+          "top",
+          "bottom",
+          "footwear",
+          "accessories"
+        ],
+        "componentItemIds": [
+          "11111111-1111-4111-8111-111111111111"
+        ],
+        "appropriateness": "Formal",
+        "imagePrompt": "A tailored suit",
+        "isDefault": true,
+        "replace": true,
+        "migratedFromClothingRecordId": "22222222-2222-4222-8222-222222222222",
+        "archivedAt": "2026-02-02T03:04:05.678Z",
+        "description": "A complete ensemble.",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000054",
+        "title": "Default Only",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": true,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000055",
+        "title": "Replace Only",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": true,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000056",
+        "title": "Archived",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": "2026-03-03T00:00:00.000Z",
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "not-a-uuid-but-passed-through-anyway--",
+        "title": "Hand Edit Id",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      }
+    ],
+    [
+      {
+        "id": "00000000-0000-4000-8000-000000000058",
+        "title": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 tail words to push past eighty cols here now",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000059",
+        "title": "😀😀😀 short emoji",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000005a",
+        "title": "  word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000005b",
+        "title": "say \"x\" word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000005c",
+        "title": "Item",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": "normal line here\n    indented more deeply\nback to normal",
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000005d",
+        "title": "Item",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": "lead\n    qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\ntail",
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000005e",
+        "title": "Item",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": "a\n\n\nb",
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-00000000005f",
+        "title": "Item",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": "abc\n\n",
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000060",
+        "title": "Item",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": "  leading then\nsecond line",
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000061",
+        "title": "AppML",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": "one\ntwo\nthree",
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000062",
+        "title": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000063",
+        "title": "word word word word word word word word word word word word word word word word",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000064",
+        "title": "word word word word word word word word word word word word word word word word word",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      }
+    ]
+  ]
+}
