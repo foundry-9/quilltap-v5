@@ -546,6 +546,30 @@ corpus always provisions fresh), `state`/property null-vs-absent + multi-key
 insertion order (open-JSON seam — corpus kept `{}`/single-key), and the
 `projects` generalization (a larger bag + roster ops).
 
+Phase 2 — the character vault **wardrobe write projection**
+(`quilltap-core::db::vault_wardrobe_write`), v4's `projectVaultWardrobe` +
+`projectArrayIntoVaultFolder` — the final wardrobe write piece, and with it the
+whole document-store slice is complete. Re-projects an authoritative
+`WardrobeItem` list into a vault store's `Wardrobe/` folder: each item is written
+as `Wardrobe/<title>.md` (filename collisions disambiguated with `-1`/`-2`/…
+suffixes), any `.md` file in the folder not produced by the current list is swept,
+and the legacy `wardrobe.json` is deleted so the folder layout is the single
+on-disk source. Composes the already-ported pure leaves
+(`build_slug_by_item_id_map`, the Decision-A `build_wardrobe_item_file` emitter,
+`sanitize_file_name`) over the document-store write primitive
+(`write_database_document`) and a new GC delete (`delete_database_document` +
+`delete_with_gc`: unlink, then drop the file row when its last link is gone —
+chunks/documents cascade via the FK). Verified by a tier-2 differential
+(`vault_wardrobe_write_equivalence`) driving v4's REAL `projectVaultWardrobe` over
+a two-op sequence (an initial 5-item projection with a `Hat.md`/`Hat-1.md`
+filename collision and a composite emitting `componentItems` slugs, then a rename
+that sweeps the old file + recomputes the composite's slug and removes two items)
+and diffing five mount-index tables (`doc_mount_points` / `_files` / `_documents`
+/ `_file_links` / `_folders`) in the shared-cross-table-id-map remap form. v4's
+post-write reindex runs (database-backed chunking, no model); its only divergence
+(link `chunkCount` + `doc_mount_chunks`) is pinned/excluded, exactly as the
+groups/projects store-backed tests do.
+
 Phase 2 — the character vault **wardrobe YAML emitter** (Decision A — the only
 eemeli/yaml site), `quilltap-core::vault_overlay::build_wardrobe_item_file`, v4's
 `buildWardrobeItemFile`. Projects a `WardrobeItem` to its `Wardrobe/*.md` content:

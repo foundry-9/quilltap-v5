@@ -453,6 +453,71 @@ impl<'c> DocMountFileLinksRepository<'c> {
             document_id,
         })
     }
+
+    /// v4 `deleteDatabaseDocument` (`database-store.ts`): unlink a document by
+    /// `(mountPointId, relativePath)` with GC. Returns `false` when no link exists
+    /// at that path (v4's `NOT_FOUND`-tolerant early return), else `true`.
+    pub fn delete_database_document(
+        &self,
+        mount_point_id: &str,
+        relative_path: &str,
+    ) -> Result<bool, DbError> {
+        let rel = normalise_relative_path(relative_path)?;
+        let link_id: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT id FROM doc_mount_file_links \
+                 WHERE mountPointId = ?1 AND LOWER(relativePath) = LOWER(?2)",
+                params![mount_point_id, rel],
+                |row| row.get::<_, String>(0),
+            )
+            .map(Some)
+            .or_else(no_rows_to_none)?;
+        let Some(link_id) = link_id else {
+            return Ok(false);
+        };
+        self.delete_with_gc(&link_id)?;
+        Ok(true)
+    }
+
+    /// v4 `DocMountFileLinksRepository.deleteWithGC`: delete the link row, then —
+    /// if it was the last link referencing its file — delete the file row too.
+    /// Chunks cascade off the link (FK `ON DELETE CASCADE`); documents/blobs
+    /// cascade off the file row. The writable open enforces `foreign_keys = ON`,
+    /// so the cascades fire. No-op when the link id is unknown.
+    pub fn delete_with_gc(&self, link_id: &str) -> Result<(), DbError> {
+        let file_id: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT fileId FROM doc_mount_file_links WHERE id = ?1",
+                params![link_id],
+                |row| row.get::<_, String>(0),
+            )
+            .map(Some)
+            .or_else(no_rows_to_none)?;
+        let Some(file_id) = file_id else {
+            return Ok(());
+        };
+
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
+            "DELETE FROM doc_mount_file_links WHERE id = ?1",
+            params![link_id],
+        )?;
+        let remaining: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM doc_mount_file_links WHERE fileId = ?1",
+            params![file_id],
+            |row| row.get(0),
+        )?;
+        if remaining == 0 {
+            tx.execute(
+                "DELETE FROM doc_mount_files WHERE id = ?1",
+                params![file_id],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
 }
 
 /// Walk every segment of `relativePath`'s directory and find-or-create a

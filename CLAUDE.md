@@ -693,11 +693,21 @@ units (fold offsets), with the control-char force-quote matched on code points
 (every quoting edge, folding, block scalars, surrogate-pair fold offsets, the
 slug/UUID `componentItems` map, all flag branches) against v4's real
 `buildWardrobeItemFile`, plus three exact unit tests. **Both vault decisions are
-now fully discharged.** Still ahead in the wardrobe write path: only the stateful
-**folder projection** (`projectVaultWardrobe` / `projectArrayIntoVaultFolder` —
-filename dedup/rename/sweep + the multi-table content writes), composing the
-already-ported `build_wardrobe_item_file` / `sanitize_file_name` /
-`build_slug_by_item_id_map` leaves over the document-store write primitive.
+now fully discharged.** Sub-unit 5 — the **wardrobe write projection** — is also
+done (`db::vault_wardrobe_write`, `vault_wardrobe_write_equivalence`): v4's
+`projectVaultWardrobe` / `projectArrayIntoVaultFolder`. Re-projects an
+authoritative `WardrobeItem` list into a store's `Wardrobe/` folder — each item to
+`Wardrobe/<title>.md` (filename collisions get `-1`/`-2`/… suffixes), files not
+produced this pass are swept, the legacy `wardrobe.json` is deleted — composing the
+ported leaves (`build_slug_by_item_id_map` / `build_wardrobe_item_file` /
+`sanitize_file_name`) over the write primitive (`write_database_document`) and a
+new GC delete (`delete_database_document` + `delete_with_gc`). Tier-2 differential
+drives v4's REAL `projectVaultWardrobe` over a two-op create-then-rename/sweep
+sequence (filename collision, composite slug recompute, legacy json cleanup) and
+diffs five mount-index tables in the shared-cross-table-id-map remap form (reindex
+`chunkCount` / `doc_mount_chunks` pinned/excluded, as for groups/projects). **With
+this the entire document-store slice — Family A (generic store-backed) and Family B
+(the character/wardrobe vault, read + write) — is complete.**
 
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green
