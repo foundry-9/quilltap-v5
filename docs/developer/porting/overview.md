@@ -60,6 +60,11 @@ Each phase leans on the one below being trusted, so failures localize.
   reroute (provider rejection → uncensored *image* profile) and the pre-hoc
   LLM-refusal retry (safe cheap-LLM refuses → uncensored *LLM* profile). Both
   Phase-3, separate units.
+- [`scriptorium-file-manager.md`](./scriptorium-file-manager.md) — the Angular
+  file-manager component for the Scriptorium UI. v4's SVAR File Manager has no
+  Angular path, so the widget must be replaced; this note records the candidate
+  evaluation and the decision (spike **ngx-explorer**, build-our-own as fallback).
+  Phase-4 work, settled now.
 - This overview.
 
 ## Current status (update as it moves)
