@@ -1,0 +1,86 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "ops": [
+    {
+      "kind": "create",
+      "options": { "id": "aaaaaaaa-0000-4000-8000-00000000000a", "createdAt": "2026-03-01T00:00:01.000Z", "updatedAt": "2026-03-01T00:00:01.000Z" },
+      "data": {
+        "userId": "11111111-1111-4111-8111-111111111111",
+        "title": "Salon with Robert",
+        "participants": [
+          {
+            "id": "e1111111-0000-4000-8000-000000000001",
+            "type": "CHARACTER",
+            "characterId": "22222222-2222-4222-8222-222222222222",
+            "controlledBy": "user",
+            "connectionProfileId": "44444444-4444-4444-8444-444444444444",
+            "displayOrder": 0,
+            "isActive": true,
+            "status": "active",
+            "hasHistoryAccess": true,
+            "talkativeness": 0.5,
+            "createdAt": "2026-03-01T00:00:01.000Z",
+            "updatedAt": "2026-03-01T00:00:01.000Z"
+          },
+          {
+            "id": "e2222222-0000-4000-8000-000000000002",
+            "type": "CHARACTER",
+            "characterId": "33333333-3333-4333-8333-333333333333",
+            "displayOrder": 1,
+            "talkativeness": 1,
+            "createdAt": "2026-03-01T00:00:01.000Z",
+            "updatedAt": "2026-03-01T00:00:01.000Z"
+          }
+        ],
+        "tags": ["70000000-0000-4000-8000-000000000007"],
+        "messageCount": 5,
+        "isPaused": true,
+        "chatType": "salon",
+        "state": { "mode": "play" },
+        "dividerPosition": 60,
+        "scenarioText": "A quiet cafe.",
+        "totalPromptTokens": 120,
+        "isDangerousChat": false
+      }
+    },
+    {
+      "kind": "create",
+      "options": { "id": "bbbbbbbb-0000-4000-8000-00000000000b", "createdAt": "2026-03-01T00:00:02.000Z", "updatedAt": "2026-03-01T00:00:02.000Z" },
+      "data": {
+        "userId": "11111111-1111-4111-8111-111111111111",
+        "title": "Minimal chat",
+        "participants": [
+          {
+            "id": "eb000000-0000-4000-8000-00000000000b",
+            "type": "CHARACTER",
+            "characterId": "22222222-2222-4222-8222-222222222222",
+            "createdAt": "2026-03-01T00:00:02.000Z",
+            "updatedAt": "2026-03-01T00:00:02.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "create",
+      "options": { "id": "cccccccc-0000-4000-8000-00000000000c", "createdAt": "2026-03-01T00:00:03.000Z", "updatedAt": "2026-03-01T00:00:03.000Z" },
+      "data": {
+        "userId": "11111111-1111-4111-8111-111111111111",
+        "title": "Doomed chat",
+        "participants": [
+          {
+            "id": "ec000000-0000-4000-8000-00000000000c",
+            "type": "CHARACTER",
+            "characterId": "33333333-3333-4333-8333-333333333333",
+            "createdAt": "2026-03-01T00:00:03.000Z",
+            "updatedAt": "2026-03-01T00:00:03.000Z"
+          }
+        ]
+      }
+    },
+
+    { "kind": "update", "id": "aaaaaaaa-0000-4000-8000-00000000000a", "data": { "title": "Salon with Robert (renamed)" } },
+    { "kind": "update", "id": "aaaaaaaa-0000-4000-8000-00000000000a", "data": { "isPaused": false, "messageCount": 8, "updatedAt": "2026-03-09T12:00:00.000Z" } },
+    { "kind": "update", "id": "bbbbbbbb-0000-4000-8000-00000000000b", "data": { "state": { "round": 2 }, "tags": ["70000000-0000-4000-8000-000000000007"], "contextSummary": "They met at the cafe.", "dangerScore": 0.25, "chatType": "help", "isManuallyRenamed": true } },
+    { "kind": "delete", "id": "cccccccc-0000-4000-8000-00000000000c" }
+  ]
+}

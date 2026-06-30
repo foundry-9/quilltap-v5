@@ -105,6 +105,30 @@ ops), built as a thin vertical slice over the `folders` repo:
   oracle NDJSON (`QT_ORACLE_FOLDERS` + `QT_FIXTURE_FOLDERS`, skip-if-unset).
   The `folders` repo round-trips green.
 
+Phase 2 — the `chats` repo, sub-unit 1: slim-row marshaling
+(`quilltap-core::db::chats`). The first cut of the last and largest repo (v4's
+`ChatsRepository`, a `TaggableBaseRepository`). Ports `create` / `update` /
+`delete` over the **~96-column** `chats` table (MAIN db) — the widest marshaling
+surface in Phase 2. Banks: the typed `participants` **array-of-objects JSON
+column** (`ChatParticipant`, 18 fields in schema order, nullable optionals
+`skip_serializing_if`, `displayOrder` an `i64`, `talkativeness` rendered the JS
+way so an integer-valued `1.0` → `1`; the schema `.refine()` requires ≥1
+participant); the simple JSON-array columns; the **plain-string** `turnQueue` /
+`spokenThisCycleParticipantIds` columns (which hold JSON text `'[]'` but are
+`z.string()`, bound raw); the number-affinity columns (all bound `f64`);
+booleans; enum TEXT; and the long tail of nullable strings/uuids/timestamps. Two
+invariants banked: `update` **never mints `updatedAt`** (it preserves the
+existing value unless the caller passes one — only a new message bumps it), so
+the whole differential is the pinned zero-normalization form; and on SQLite
+`create` writes nothing to `chat_messages`. Verified by a tier-2 differential
+(`chats_tier2_equivalence`) driving v4's REAL `ChatsRepository` over a
+create×3 / update×3 (both the preserved- and explicit-`updatedAt` branches) /
+delete sequence, diffing the `chats` dump byte-for-byte. **Tracked deferrals:**
+`delete`'s participant-vault summary sweep (external subsystem), the open-JSON
+object columns' multi-key insertion order (constrained to `{}`/single-key/null),
+and the rest of the repo (messages, participants, impersonation, tokens, search,
+outfits, read queries) — the remaining sub-units.
+
 Build — extracted the SQLite3MC (ChaCha20/sqleet) amalgamation into a dedicated
 `quilltap-sqlite3mc-sys` crate (its `build.rs` + `vendor/`, moved out of
 `quilltap-core`). Cargo's build-script fingerprint includes the package version,

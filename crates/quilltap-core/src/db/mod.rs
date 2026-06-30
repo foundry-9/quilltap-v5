@@ -30,6 +30,7 @@ pub mod characters;
 pub mod characters_read;
 pub mod chat_documents;
 pub mod chat_settings;
+pub mod chats;
 pub mod connection_profiles;
 pub mod conversation_annotations;
 pub mod conversation_chunks;
@@ -166,6 +167,11 @@ impl Writer {
     /// The chat-settings repository over this writer's connection.
     pub fn chat_settings(&self) -> chat_settings::ChatSettingsRepository<'_> {
         chat_settings::ChatSettingsRepository::new(&self.conn)
+    }
+
+    /// The chats repository (slim-row CRUD) over this writer's connection (MAIN db).
+    pub fn chats(&self) -> chats::ChatsRepository<'_> {
+        chats::ChatsRepository::new(&self.conn)
     }
 
     /// The connection-profiles repository over this writer's connection.

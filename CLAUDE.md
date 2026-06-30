@@ -865,6 +865,29 @@ are landed, and characters sub-unit 2 (slim-row marshaling) is done; the remaini
 characters sub-units (provisioning + scaffold, the `create`/`update` vault
 integration, array ops + `findBy*`) are next.
 
+**The `chats` repo is now in progress — the last and largest repo (the
+conversation capstone).** v4's `ChatsRepository` is ~2,900 lines across 6 ops
+files (~67 methods); messages live in a separate `chat_messages` table. Being
+ported leaf-first. Sub-unit 1 — the **slim-row marshaling** — is done
+(`quilltap-core::db::chats`, `chats_tier2_equivalence`): `create` / `update` /
+`delete` over the **~96-column** `chats` table (MAIN db, the widest marshaling
+surface in Phase 2). Banks the typed `participants` **array-of-objects JSON
+column** (`ChatParticipant`, 18 fields in schema order, nullable optionals
+`skip_serializing_if`, `displayOrder` `i64`, `talkativeness` via a JS-number
+`serialize_with` so `1.0` → `1`; `.refine()` requires ≥1 participant); the simple
+JSON-array columns; the **plain-string** `turnQueue` /
+`spokenThisCycleParticipantIds` (`z.string()` holding JSON text, bound raw); the
+numeric columns (all bound `f64`); booleans; enum TEXT; and the nullable
+string/uuid/timestamp tail. Two invariants banked: `update` **never mints
+`updatedAt`** (preserved unless the caller passes one — only a new message bumps
+it), so the differential is the pinned zero-normalization form; and on SQLite
+`create` writes nothing to `chat_messages`. Verified by a tier-2 differential
+driving v4's REAL `ChatsRepository` over a create×3 / update×3 (both updatedAt
+branches) / delete sequence. **Tracked deferrals:** `delete`'s participant-vault
+summary sweep (external subsystem), the open-JSON object columns' multi-key
+insertion order (corpus kept `{}`/single-key/null), and the remaining sub-units
+(messages, participants, impersonation, tokens, search, outfits, read queries).
+
 The **`memories` repo is ported whole** (`quilltap-core::db::memories` +
 `db::memories_read`, `memories_tier2_equivalence` + `memories_read_equivalence`).
 A plain MAIN-db `AbstractBaseRepository<Memory>` — **no base-method override**
