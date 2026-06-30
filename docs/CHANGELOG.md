@@ -105,6 +105,31 @@ ops), built as a thin vertical slice over the `folders` repo:
   oracle NDJSON (`QT_ORACLE_FOLDERS` + `QT_FIXTURE_FOLDERS`, skip-if-unset).
   The `folders` repo round-trips green.
 
+Phase 2 — the `CharactersRepository` array / sub-array ops
+(`quilltap-core::db::vault_character_arrays`), characters sub-unit 4b. Ports the
+`systemPrompts` / `scenarios` / `partnerLinks` mutators + the
+`setFavorite` / `setControlledBy` / `setCanBeCarina` setters. Each sub-array op is
+v4's three-beat shape: `find_by_id` (the read overlay) → mutate the array in memory
+(applying the per-op `onBeforeAdd` / `onAfterBuild` / `onAfterRemove` default
+normalization) → `update_character` (the 4a write overlay) reprojects the
+`Prompts/` / `Scenarios/` folder (or writes the slim `partnerLinks` column). The
+minted item `id` / `createdAt` / `updatedAt` never reach disk — the projection
+writes `<sanitize(name|title)>.md` from `build_system_prompt_file` /
+`build_scenario_file`, and the read side re-derives a prompt's id from its path —
+so the DB effect is deterministic. Added a scoped `find_by_id` (the slim columns
+the ops consume — `id` / `characterDocumentMountPointId` / `partnerLinks` — plus
+the overlaid `systemPrompts` / `scenarios`; full slim-row read marshaling is
+sub-unit 4c). The setters are thin `update_character(id, { … })` wrappers (no read,
+no vault). Verified by a tier-2 differential (`characters_arrays_tier2_equivalence`)
+over a fixture baked by v4's REAL create (one baked prompt / scenario / partner
+link), driving v4's REAL repository methods across SIX tables in the
+shared-cross-db-id-map remap form (`chunkCount`/`doc_mount_chunks` pinned/excluded);
+the id-taking prompt/scenario ops carry a `targetName` / `targetTitle` resolved to
+the current id via `findById` on each side. Banks addSystemPrompt (default-demote +
+non-default), updateSystemPrompt (rename → sweep + content), setDefaultSystemPrompt,
+deleteSystemPrompt (deleting the default → survivor promotion), the three scenario
+ops, the two partner ops, and the three setters.
+
 Phase 2 — `applyDocumentStoreWriteOverlay` + the `CharactersRepository.update`
 integration (`quilltap-core::db::vault_character_update`), characters sub-unit 4a.
 The managed-field write **router** — distinct from sub-unit 1's create-time writer

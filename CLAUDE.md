@@ -787,9 +787,30 @@ the unmanaged remainder, skipped when empty so a managed-only update does NOT bu
 form; banks the RMW preservation, a DB-only field update, and a prompt
 reprojection (sweep + write, orphan/GC counts matching v4 via the shared DDL).
 **Tracked deferral:** provision-on-the-fly (managed-field patch on a vault-less
-character). Remaining characters sub-units: the array ops
-(`addSystemPrompt`/`addScenario`/`addPartnerLink`/setDefault/etc., built on
-`update`) + the `findBy*` queries (read overlay). The peer repos
+character). Sub-unit 4b — the **array / sub-array ops** — is also done
+(`db::vault_character_arrays`, `characters_arrays_tier2_equivalence`): the
+`systemPrompts`/`scenarios`/`partnerLinks` mutators + the
+`setFavorite`/`setControlledBy`/`setCanBeCarina` setters. Each sub-array op is v4's
+three-beat shape — `find_by_id` (read overlay) → mutate-in-memory (the per-op
+`onBeforeAdd`/`onAfterBuild`/`onAfterRemove` default normalization) →
+`update_character` (the 4a write overlay) reprojects the `Prompts/`/`Scenarios/`
+folder (or writes the slim `partnerLinks` column). The minted item
+id/`createdAt`/`updatedAt` never reach disk (the projection writes
+`<sanitize(name|title)>.md` from the verified builders; the read side re-derives a
+prompt's id from its path), so the DB effect is deterministic. Added a **scoped**
+`find_by_id` — the slim columns the ops consume (`id`,
+`characterDocumentMountPointId`, `partnerLinks`) + the overlaid
+`systemPrompts`/`scenarios`; FULL slim-row read marshaling is sub-unit 4c, with a
+read-differential. Tier-2 differential over a fixture baked by v4's REAL create (one
+baked prompt/scenario/partner link), driving v4's REAL repository methods across SIX
+tables in the shared-cross-db-id-map remap form (`chunkCount`/`doc_mount_chunks`
+pinned/excluded); the id-taking prompt/scenario ops carry a `targetName`/`targetTitle`
+resolved to the current id via `findById` on each side. Banks addSystemPrompt
+(default-demote + non-default), updateSystemPrompt (rename → sweep + content),
+setDefaultSystemPrompt, deleteSystemPrompt (deleting the default → survivor
+promotion), the three scenario ops, the two partner ops, and the three setters.
+Remaining characters sub-unit: 4c — the `findBy*` queries (full slim-row read
+marshaling + read-differential). The peer repos
 `background_jobs` and `vector_indices` (both
 independent, no characters/store-backed coupling) were drafted in parallel.
 **`vector_indices` is now integrated and green** (`vector_indices_tier2_equivalence`):
