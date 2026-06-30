@@ -63,6 +63,7 @@ pub mod terminal_sessions;
 pub mod text_replacement_rules;
 pub mod tfidf_vocabulary;
 pub mod users;
+pub mod vault_character_update;
 pub mod vault_character_write;
 pub mod vault_read_overlay;
 pub mod vault_wardrobe_write;

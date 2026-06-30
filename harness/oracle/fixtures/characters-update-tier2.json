@@ -1,0 +1,125 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for v4's CharactersRepository.update (Phase-2,",
+    "the store-backed capstone sub-unit 4a — the update vault integration). One",
+    "committed file drives BOTH sides:",
+    "  - the v4 oracle (build-characters-update-fixture.ts + characters-update.ts)",
+    "  - the Rust port (quilltap-harness characters_update tier-2 test).",
+    "",
+    "WHAT IT PORTS: applyDocumentStoreWriteOverlay (the managed-field write router)",
+    "+ the update orchestration. Unlike the create-time writer (sub-unit 1, which",
+    "projects EVERY managed field), the update path routes only the fields present",
+    "in the patch, and properties.json is a READ-MODIFY-WRITE (a patch touching only",
+    "`title` must preserve pronouns/aliases/firstMessage/talkativeness). The unmanaged",
+    "remainder flows to the slim _update (skipped when empty — a managed-only update",
+    "does NOT bump the slim row's updatedAt).",
+    "",
+    "FIXTURE: built by running v4's REAL repos.characters.create(character) so the",
+    "fixture holds a fully-formed character + vault (slim row, mount point, 7 folders,",
+    "the managed files, one systemPrompt, one scenario). Both the oracle and the Rust",
+    "port operate on a COPY of this SAME baked fixture, so the minted ids/timestamps",
+    "match and only the update-created rows differ per side. The character id is read",
+    "back from the fixture (SELECT id FROM characters) — both sides see the same one.",
+    "",
+    "OPS:",
+    "  1. { identity, title, isFavorite } — markdown routing (identity.md), a",
+    "     properties.json RMW (title changes; pronouns/aliases/firstMessage/",
+    "     talkativeness preserved), and a DB-only field (isFavorite true->false ->",
+    "     slim _update, updatedAt minted).",
+    "  2. { systemPrompts: [replaced] } — managed-only; reproject Prompts/ (sweep the",
+    "     old Default.md, write the new prompt), slim row untouched.",
+    "",
+    "REINDEX: the oracle drives the REAL update (no QUILLTAP_JOB_CHILD), so",
+    "reindexSingleFile runs; the differential pins the link chunkCount and excludes",
+    "doc_mount_chunks (as for groups/projects/create).",
+    "",
+    "NORMALIZATION: minted-values remap with ONE shared id-map across all six tables",
+    "(characters -> points -> folders -> files -> documents -> links, natural-key",
+    "order). FKs verify by relationship; timestamps -> <ts>; chunkCount -> <cc>. The",
+    "DB-field change (isFavorite) and every vault file's content diff EXACTLY.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key (the same one folders/tags/",
+    "wardrobe use). NOT the real Friday pepper; safe to commit."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "character": {
+    "userId": "a0000000-0000-4000-8000-000000000001",
+    "name": "Evangeline",
+    "identity": "A wandering scholar of forgotten tongues.",
+    "description": "Speaks in careful, riddling cadences.",
+    "manifesto": "",
+    "personality": "Curious, dry, and patient.",
+    "exampleDialogues": "",
+    "title": "the scholar",
+    "firstMessage": "Well met, traveller.",
+    "talkativeness": 0.7,
+    "pronouns": { "subject": "she", "object": "her", "possessive": "hers" },
+    "aliases": ["Eva", "The Scholar"],
+    "physicalDescription": null,
+    "systemPrompts": [
+      {
+        "id": "11111111-0000-4000-8000-000000000001",
+        "name": "Default",
+        "content": "You are Evangeline, a scholar of forgotten tongues.",
+        "isDefault": true,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      }
+    ],
+    "scenarios": [
+      {
+        "id": "22222222-0000-4000-8000-000000000001",
+        "title": "The Dim Tavern",
+        "content": "A dim tavern at dusk; rain against the panes.",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      }
+    ],
+    "controlledBy": "llm",
+    "isFavorite": true,
+    "npc": false,
+    "defaultImageId": null,
+    "defaultConnectionProfileId": null,
+    "defaultPartnerId": null,
+    "defaultRoleplayTemplateId": null,
+    "defaultImageProfileId": null,
+    "sillyTavernData": null,
+    "defaultAgentModeEnabled": null,
+    "defaultHelpToolsEnabled": null,
+    "defaultTimestampConfig": null,
+    "defaultScenarioId": null,
+    "defaultSystemPromptId": null,
+    "characterDocumentMountPointId": null,
+    "canDressThemselves": null,
+    "canCreateOutfits": null,
+    "systemTransparency": null,
+    "coreWhisperEnabled": null,
+    "canBeCarina": null,
+    "partnerLinks": [],
+    "tags": ["7a000000-0000-4000-8000-0000000000a1"],
+    "avatarOverrides": []
+  },
+  "ops": [
+    {
+      "patch": {
+        "identity": "A reformed scholar, now a careful spy.",
+        "title": "the spy",
+        "isFavorite": false
+      }
+    },
+    {
+      "patch": {
+        "systemPrompts": [
+          {
+            "id": "11111111-0000-4000-8000-000000000002",
+            "name": "Spy Mode",
+            "content": "You are Evangeline operating under cover. Be terse.",
+            "isDefault": true,
+            "createdAt": "2026-02-01T00:00:00.000Z",
+            "updatedAt": "2026-02-01T00:00:00.000Z"
+          }
+        ]
+      }
+    }
+  ]
+}

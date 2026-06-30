@@ -105,6 +105,34 @@ ops), built as a thin vertical slice over the `folders` repo:
   oracle NDJSON (`QT_ORACLE_FOLDERS` + `QT_FIXTURE_FOLDERS`, skip-if-unset).
   The `folders` repo round-trips green.
 
+Phase 2 — `applyDocumentStoreWriteOverlay` + the `CharactersRepository.update`
+integration (`quilltap-core::db::vault_character_update`), characters sub-unit 4a.
+The managed-field write **router** — distinct from sub-unit 1's create-time writer
+(which projects every field unconditionally): the update path routes only the
+fields **present in the patch**, and `properties.json` is a **read-modify-write**
+(a patch touching only `title` preserves pronouns/aliases/firstMessage/
+talkativeness). Routes markdown (`None`→`""`), the properties RMW (seeded from the
+current `properties.json`, falling back to the empty-managed default), physical
+(non-null writes the two files; null leaves them), and `systemPrompts`/`scenarios`
+(reproject the folder — sweep + write). Returns the unmanaged remainder;
+`update_character` runs the slim `_update` for it (skipped when empty — a
+managed-only update does NOT bump the slim row's `updatedAt`). The DB-bound
+remainder is marshaled back through the slim repo's typed update. Verified by a
+tier-2 differential (`characters_update_tier2_equivalence`) over a fixture baked by
+v4's REAL create, driving v4's REAL `repos.characters.update` across SIX tables
+(slim `characters` row + the five store tables) in the shared-cross-db-id-map remap
+form (`chunkCount`/`doc_mount_chunks` pinned/excluded). Banks markdown routing, the
+properties RMW preserving untouched keys (asserted), a DB-only field update
+(`isFavorite` true→false → slim `_update`), and a `systemPrompts` reprojection
+(sweep the old `Prompts/Default.md`, write the new one) on a managed-only update —
+the orphan-on-rewrite + sweep-GC row counts matching v4 byte-for-byte via the
+shared DDL. Added the public `render_properties_json` (the RMW serializer, reusing
+the create-time `properties.json` shape + the `talkativeness` js-number rule) and
+`DocMountFileLinksRepository::ensure_folder_path`'s sibling read
+`link_exists_at_path` (used by 3a). **Tracked deferral:** provision-on-the-fly (a
+patch with managed fields on a vault-less character) — the corpus always has a
+vault; lands with the startup-backfill slice.
+
 Phase 2 — `ensureCharacterVault` + the `CharactersRepository.create` integration
 (`quilltap-core::db::character_vault`), characters sub-unit 3b — the store-backed
 capstone's keystone. `create_character` runs v4's full create end-to-end: the

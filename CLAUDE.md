@@ -775,9 +775,21 @@ no GC → 9 files = 8 live + 1 orphan), the five identity-md overwrites (the
 `physical-*` scaffold defaults survive — no physicalDescription), and a
 systemPrompt + scenario projected into `Prompts/`+`Scenarios/`. **Tracked
 deferral:** the `ensureCharacterVault` adopt branch (startup-heal of a hand-linked
-same-name store — corpus always provisions fresh). Remaining characters sub-units:
-the `update` vault integration (managed-field write routing) and the array ops
-(`systemPrompts`/`scenarios`/`partnerLinks`) + `findBy*` queries. The peer repos
+same-name store — corpus always provisions fresh). Sub-unit 4a — the **`update`
+vault integration** — is also done (`db::vault_character_update`,
+`characters_update_tier2_equivalence`): v4's `applyDocumentStoreWriteOverlay` (the
+managed-field write **router** — markdown routing, the `properties.json`
+**read-modify-write** that preserves untouched keys, physical, `systemPrompts`/
+`scenarios` reprojection) + the `update` orchestration (route → slim `_update` for
+the unmanaged remainder, skipped when empty so a managed-only update does NOT bump
+`updatedAt`). Verified over a fixture baked by v4's REAL create, driving v4's REAL
+`repos.characters.update` across SIX tables in the shared-cross-db-id-map remap
+form; banks the RMW preservation, a DB-only field update, and a prompt
+reprojection (sweep + write, orphan/GC counts matching v4 via the shared DDL).
+**Tracked deferral:** provision-on-the-fly (managed-field patch on a vault-less
+character). Remaining characters sub-units: the array ops
+(`addSystemPrompt`/`addScenario`/`addPartnerLink`/setDefault/etc., built on
+`update`) + the `findBy*` queries (read overlay). The peer repos
 `background_jobs` and `vector_indices` (both
 independent, no characters/store-backed coupling) were drafted in parallel.
 **`vector_indices` is now integrated and green** (`vector_indices_tier2_equivalence`):

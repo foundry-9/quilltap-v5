@@ -182,6 +182,28 @@ struct PhysicalPromptsJson<'a> {
     complete: Option<&'a str>,
 }
 
+/// Render `properties.json` from an owned bag (v4 `JSON.stringify(next, null, 2)`)
+/// — the read-modify-write `next` the update write-overlay produces. Reuses the
+/// `PropertiesJson` shape (literal key order) + the `talkativeness` js-number rule,
+/// so the bytes match the unconditional create-time writer's. `pub` for
+/// [`super::vault_character_update`].
+pub fn render_properties_json(
+    pronouns: Option<&Pronouns>,
+    aliases: &[String],
+    title: Option<&str>,
+    first_message: Option<&str>,
+    talkativeness: f64,
+) -> String {
+    let props = PropertiesJson {
+        pronouns,
+        aliases,
+        title,
+        first_message,
+        talkativeness,
+    };
+    serde_json::to_string_pretty(&props).expect("properties.json serialization is infallible")
+}
+
 /// Render `physical-prompts.json` from a physical description (v4
 /// `renderPhysicalPromptsJson`). A `None` description renders all-null.
 pub fn render_physical_prompts_json(physical: Option<&PhysicalDescriptionWrite>) -> String {
