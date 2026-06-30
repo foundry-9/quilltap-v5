@@ -1,0 +1,180 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "chats": [
+    {
+      "id": "c0000010-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Update-Message Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "fc000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "cccc3333-3333-4333-8333-333333333333",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "c0000020-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Delete-By-Ids Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "fc000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "cccc3333-3333-4333-8333-333333333333",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "c0000030-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Clear-Messages Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "seedMessages": [
+    {
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "messages": [
+        {
+          "type": "message",
+          "id": "e0000010-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "original reply",
+          "participantId": "fb000001-0000-4000-8000-000000000001",
+          "tokenCount": 10,
+          "reasoningSegments": [{ "anchorOffset": 0, "content": "think", "seq": 1 }],
+          "createdAt": "2026-02-02T00:00:01.000Z"
+        },
+        {
+          "type": "context-summary",
+          "id": "e0000010-0000-4000-8000-000000000002",
+          "context": "original summary",
+          "createdAt": "2026-02-02T00:00:02.000Z"
+        }
+      ]
+    },
+    {
+      "chatId": "c0000020-0000-4000-8000-000000000001",
+      "messages": [
+        {
+          "type": "message",
+          "id": "e0000020-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "first",
+          "participantId": "fb000001-0000-4000-8000-000000000001",
+          "createdAt": "2026-02-02T00:00:01.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000020-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "second",
+          "participantId": "fc000001-0000-4000-8000-000000000001",
+          "createdAt": "2026-02-02T00:00:02.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000020-0000-4000-8000-000000000003",
+          "role": "ASSISTANT",
+          "content": "third",
+          "participantId": "fb000001-0000-4000-8000-000000000001",
+          "createdAt": "2026-02-02T00:00:03.000Z"
+        }
+      ]
+    },
+    {
+      "chatId": "c0000030-0000-4000-8000-000000000001",
+      "messages": [
+        {
+          "type": "message",
+          "id": "e0000030-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "hello",
+          "createdAt": "2026-02-02T00:00:01.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000030-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "hi there",
+          "participantId": "fb000001-0000-4000-8000-000000000001",
+          "createdAt": "2026-02-02T00:00:02.000Z"
+        }
+      ]
+    }
+  ],
+  "ops": [
+    {
+      "kind": "updateMessage",
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "messageId": "e0000010-0000-4000-8000-000000000001",
+      "updates": {
+        "content": "edited reply",
+        "tokenCount": 99,
+        "dangerFlags": [{ "category": "nsfw", "score": 0.5 }]
+      }
+    },
+    {
+      "kind": "updateMessage",
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "messageId": "e0000010-0000-4000-8000-000000000002",
+      "updates": { "context": "edited summary" }
+    },
+    {
+      "kind": "updateMessage",
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "messageId": "e0000000-0000-4000-8000-0000000000ff",
+      "updates": { "content": "should not apply" }
+    },
+    {
+      "kind": "deleteMessagesByIds",
+      "chatId": "c0000020-0000-4000-8000-000000000001",
+      "messageIds": [
+        "e0000020-0000-4000-8000-000000000001",
+        "e0000020-0000-4000-8000-000000000003"
+      ]
+    },
+    {
+      "kind": "deleteMessagesByIds",
+      "chatId": "c0000020-0000-4000-8000-000000000001",
+      "messageIds": ["e0000000-0000-4000-8000-0000000000ff"]
+    },
+    {
+      "kind": "clearMessages",
+      "chatId": "c0000030-0000-4000-8000-000000000001"
+    }
+  ]
+}

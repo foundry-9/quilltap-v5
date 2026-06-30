@@ -1,8 +1,8 @@
-//! The `chat_messages` **write path** (the conversation capstone, sub-unit 4a).
-//! Ports the insert surface of v4's `ChatMessagesOps`
-//! (`lib/database/repositories/chats-messages.ops.ts`): `addMessage` and
-//! `addMessages`. (`updateMessage` / `deleteMessagesByIds` / `clearMessages` are
-//! sub-unit 4b.)
+//! The `chat_messages` **write path** (the conversation capstone, sub-units 4a +
+//! 4b). Ports the mutation surface of v4's `ChatMessagesOps`
+//! (`lib/database/repositories/chats-messages.ops.ts`): `addMessage` /
+//! `addMessages` (4a) and `updateMessage` / `deleteMessagesByIds` /
+//! `clearMessages` (4b).
 //!
 //! ## Two halves: the row insert + the chat-metadata side-effect
 //!
@@ -279,6 +279,104 @@ impl<'c> ChatMessagesRepository<'c> {
             insert_event(self.conn, chat_id, e)?;
         }
         self.update_chat_metadata(chat_id, events)
+    }
+
+    /// `updateMessage` — merge `updates` onto the existing event, re-validate, and
+    /// rewrite the row. Returns `Ok(false)` when no message with that id exists in
+    /// the chat (v4's `null`). v4 does `{...existing, ...updates}` →
+    /// `ChatEventSchema.parse` → `$set: validated`, which rewrites every member
+    /// column (nulls kept) and leaves the non-member columns untouched. Since a
+    /// validly-created row's non-member columns are already at their DDL defaults
+    /// (`NULL`, and `'[]'` for `attachments`), DELETE + re-INSERT of the merged
+    /// event produces the byte-identical row while reusing the insert marshaling.
+    /// (Updates never change `type`; the corpus and real usage hold to that.)
+    /// No chat-metadata side-effect (v4 `updateMessage` touches only the row).
+    pub fn update_message(
+        &self,
+        chat_id: &str,
+        message_id: &str,
+        updates: &Value,
+    ) -> Result<bool, DbError> {
+        let Some(existing) = self.find_event_value(chat_id, message_id)? else {
+            return Ok(false);
+        };
+
+        // `{...existing, ...updates}` — overlay each update key onto the event.
+        let mut merged = existing;
+        if let (Some(dst), Some(src)) = (merged.as_object_mut(), updates.as_object()) {
+            for (k, v) in src {
+                dst.insert(k.clone(), v.clone());
+            }
+        }
+
+        let event: ChatEventInput = serde_json::from_value(merged)
+            .map_err(|e| DbError::Key(format!("updateMessage parse: {e}")))?;
+
+        self.conn.execute(
+            "DELETE FROM chat_messages WHERE id = ?1",
+            rusqlite::params![message_id],
+        )?;
+        insert_event(self.conn, chat_id, &event)?;
+        Ok(true)
+    }
+
+    /// `deleteMessagesByIds` — delete each `(id, chatId)` row, returning the count
+    /// removed. When any were removed, recount `messageCount` on the chat (v4 sets
+    /// ONLY `messageCount`, so `update` preserves `updatedAt`). Empty input → `0`.
+    pub fn delete_messages_by_ids(
+        &self,
+        chat_id: &str,
+        message_ids: &[String],
+    ) -> Result<i64, DbError> {
+        if message_ids.is_empty() {
+            return Ok(0);
+        }
+        let mut removed: i64 = 0;
+        for id in message_ids {
+            let n = self.conn.execute(
+                "DELETE FROM chat_messages WHERE id = ?1 AND chatId = ?2",
+                rusqlite::params![id, chat_id],
+            )?;
+            removed += n as i64;
+        }
+        if removed > 0 && chats_read::find_by_id(self.conn, chat_id)?.is_some() {
+            let all = chats_messages_read::get_messages(self.conn, chat_id)?;
+            let update = ChatUpdate {
+                message_count: Some(count_visible_messages(&all) as f64),
+                ..Default::default()
+            };
+            ChatsRepository::new(self.conn).update(chat_id, &update)?;
+        }
+        Ok(removed)
+    }
+
+    /// `clearMessages` — delete all of a chat's messages and reset its metadata
+    /// (`messageCount` → 0, `lastMessageAt` → null; `updatedAt` preserved). Always
+    /// `Ok(true)` (v4).
+    pub fn clear_messages(&self, chat_id: &str) -> Result<bool, DbError> {
+        self.conn.execute(
+            "DELETE FROM chat_messages WHERE chatId = ?1",
+            rusqlite::params![chat_id],
+        )?;
+        if chats_read::find_by_id(self.conn, chat_id)?.is_some() {
+            let update = ChatUpdate {
+                message_count: Some(0.0),
+                last_message_at: Some(None),
+                ..Default::default()
+            };
+            ChatsRepository::new(self.conn).update(chat_id, &update)?;
+        }
+        Ok(true)
+    }
+
+    /// The hydrated event for `(chatId, messageId)`, or `None` if absent — v4
+    /// `findOne({ id, chatId })`, reusing the sub-unit-3 per-member marshaling
+    /// (a dropped-null vs kept-null cell both rewrite back to SQL `NULL`).
+    fn find_event_value(&self, chat_id: &str, message_id: &str) -> Result<Option<Value>, DbError> {
+        let all = chats_messages_read::get_messages(self.conn, chat_id)?;
+        Ok(all
+            .into_iter()
+            .find(|e| e.get("id").and_then(Value::as_str) == Some(message_id)))
     }
 
     /// The shared metadata side-effect: recount visible messages; for a batch that

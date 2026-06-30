@@ -950,9 +950,21 @@ context-summary (non-actual: no `lastMessageAt` bump, `updatedAt` preserved,
 count 0), and a mixed batch (whisper + system event + public message), diffing
 BOTH `chat_messages` (pinned) and `chats` (`lastMessageAt`/`updatedAt` collapsed
 to `<ts>` only when they differ from the seed sentinel — a stray mint is caught).
-The remaining sub-units are messages **write 4b**
-(updateMessage/delete/clear), participants, impersonation, tokens, search, and
-outfits.
+Sub-unit 4b — the **`chat_messages` mutation path** — is also done (same
+`db::chats_messages`, `chats_messages_ops_tier2_equivalence`): v4's
+`updateMessage` / `deleteMessagesByIds` / `clearMessages`. `updateMessage`
+reproduces v4's `{...existing, ...updates}` → `ChatEventSchema.parse` →
+`$set: validated` by reading the existing event (sub-unit-3 read), overlaying the
+update keys, re-validating into `ChatEventInput`, and DELETE + re-INSERTing the
+merged event — byte-identical to v4's `$set` because a validly-created row's
+non-member columns already sit at their DDL defaults, and it reuses the 4a insert
+marshaling. `deleteMessagesByIds` deletes each `(id, chatId)` row and recounts
+`messageCount` only when something was removed (so `update` preserves
+`updatedAt`); `clearMessages` deletes all and resets `messageCount`→0 +
+`lastMessageAt`→null (`updatedAt` preserved). Tier-2 differential over a seed of
+three chats pre-populated via `addMessages`, diffing BOTH tables with ZERO
+normalization (no 4b op mints a chat timestamp). The remaining sub-units are
+participants, impersonation, tokens, search, and outfits.
 
 The **`memories` repo is ported whole** (`quilltap-core::db::memories` +
 `db::memories_read`, `memories_tier2_equivalence` + `memories_read_equivalence`).

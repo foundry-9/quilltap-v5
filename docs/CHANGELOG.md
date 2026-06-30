@@ -206,6 +206,27 @@ stray mint would be caught). The differential caught a real bug: serde's
 `camelCase` rename produced `estimatedCostUsd`, dropping the schema's
 `estimatedCostUSD` value — fixed with an explicit rename.
 
+The `chats` repo — sub-unit 4b: the **`chat_messages` mutation path**
+(`db::chats_messages`, `chats_messages_ops_tier2_equivalence`). Ports v4's
+`updateMessage` / `deleteMessagesByIds` / `clearMessages`. `updateMessage`
+reproduces v4's `{...existing, ...updates}` → `ChatEventSchema.parse` →
+`$set: validated`: it reads the existing event (reusing the sub-unit-3 read),
+overlays the update keys, re-validates into the typed `ChatEventInput`, and
+DELETE + re-INSERTs the merged event — which yields the byte-identical row
+(a validly-created row's non-member columns already sit at their DDL defaults, so
+resetting them is a no-op) while reusing the 4a insert marshaling. A
+freshly-added `dangerFlags` bakes its defaults; an untouched `reasoningSegments`
+round-trips byte-for-byte; a context-summary's `attachments` stays at its
+`DEFAULT '[]'`; a not-found id no-ops. `deleteMessagesByIds` deletes each
+`(id, chatId)` row and, when any were removed, recounts `messageCount` (so
+`update` preserves `updatedAt`); a nonexistent id removes nothing and leaves
+metadata untouched. `clearMessages` deletes all of a chat's rows and resets
+`messageCount`→0 + `lastMessageAt`→null (`updatedAt` preserved). Verified by a
+tier-2 differential driving v4's REAL methods over a seed of three chats
+pre-populated via `addMessages`, diffing BOTH the `chat_messages` and `chats`
+tables with ZERO normalization — no 4b op mints a chat timestamp, so the seed's
+baked timestamps are read identically by both sides.
+
 Build — extracted the SQLite3MC (ChaCha20/sqleet) amalgamation into a dedicated
 `quilltap-sqlite3mc-sys` crate (its `build.rs` + `vendor/`, moved out of
 `quilltap-core`). Cargo's build-script fingerprint includes the package version,
