@@ -45,14 +45,10 @@ pub fn parse_version(version: &str) -> Option<ParsedVersion> {
 /// comparing major then minor then patch.
 ///
 /// When either input fails to parse, v4 falls back to `a.localeCompare(b)` —
-/// true ICU collation. Unlike the `canonicalize` tool-name sort (whose lowercase
-/// snake_case corpus collates identically to code-unit order), this fallback
-/// fires only on *malformed* version strings, where code-unit ordering and
-/// `localeCompare` genuinely diverge (e.g. `"a"` vs `"B"`). It is therefore a
-/// documented residual seam: the byte-ordering comparison below does NOT
-/// reproduce `localeCompare`, so the differential corpus exercises only
-/// parseable pairs. Faithful collation is deferred to the ICU-crate decision
-/// taken when the ~30 Phase-2/3 `localeCompare` sites land (see `canonicalize`).
+/// true ICU collation, reproduced here via [`crate::collation::locale_compare_i32`]
+/// (ICU4X en-US/tertiary). This fires only on *malformed* version strings, where
+/// code-unit ordering and `localeCompare` genuinely diverge (e.g. `"a"` vs `"B"`);
+/// the ICU fallback now handles them faithfully.
 pub fn compare_versions(a: &str, b: &str) -> i32 {
     match (parse_version(a), parse_version(b)) {
         (Some(pa), Some(pb)) => {
@@ -78,6 +74,6 @@ pub fn compare_versions(a: &str, b: &str) -> i32 {
                 0
             }
         }
-        _ => a.cmp(b) as i32,
+        _ => crate::collation::locale_compare_i32(a, b),
     }
 }

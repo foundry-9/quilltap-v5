@@ -11,12 +11,10 @@
 //!     every real JSON-Schema key is ASCII, so this is faithful (a
 //!     supplementary-plane key would be a residual seam).
 //!   * **The tool array** is sorted by `function.name.localeCompare(...)` — true
-//!     ICU collation. The interface documents tool names as "lowercase with
-//!     underscores", and that corpus (lowercase letters + `_`, no digits, no
-//!     mixed case) collates identically under code-unit ordering, which is used
-//!     here. Mixed-case / digit-bearing names would diverge; reproducing
-//!     `localeCompare` generally is deferred to the ICU-collation decision when
-//!     the ~30 Phase-2/3 `localeCompare` call sites land.
+//!     ICU collation, reproduced via [`crate::collation::locale_compare`] (ICU4X
+//!     en-US/tertiary, matching Node's no-arg `Intl.Collator`). Mixed-case /
+//!     accented / digit-bearing names now sort faithfully (no longer a code-unit
+//!     seam).
 //!
 //! The canonical tool object itself is rebuilt in v4's literal field order
 //! (`type`, then `function` = `name`, `description`, `parameters`) — only
@@ -75,10 +73,10 @@ pub fn canonicalize_universal_tool(tool: &UniversalTool) -> UniversalTool {
 }
 
 /// Canonicalize a tool array: each tool canonicalized, then the array sorted by
-/// tool name (stably, as JS `Array.sort` and Rust `sort_by` both are). See the
-/// module docs for the `localeCompare` residual seam.
+/// tool name via [`crate::collation::locale_compare`] (true ICU `localeCompare`,
+/// en-US/tertiary), stably as JS `Array.sort` and Rust `sort_by` both are.
 pub fn canonicalize_universal_tools(tools: &[UniversalTool]) -> Vec<UniversalTool> {
     let mut out: Vec<UniversalTool> = tools.iter().map(canonicalize_universal_tool).collect();
-    out.sort_by(|a, b| a.function.name.cmp(&b.function.name));
+    out.sort_by(|a, b| crate::collation::locale_compare(&a.function.name, &b.function.name));
     out
 }

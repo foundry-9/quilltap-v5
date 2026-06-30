@@ -255,6 +255,22 @@ nested participant timestamps are sentinel-placeholdered (a value equal to the
 seed sentinel stays pinned — proving createdAt preservation and no stray mint),
 while chat-level timestamps are diffed exactly.
 
+Phase-2 deferred-seam closure — added ICU collation (`icu` 2.2, ICU4X) as
+`quilltap-core::collation::locale_compare`, closing the `localeCompare` seam. v4
+sorts several lists with `a.localeCompare(b)` (no locale) — true ICU collation,
+not the code-unit order Rust's `str: Ord` gives. Node's no-arg `Intl.Collator`
+resolves to en-US / tertiary (probed against ICU 78); `Collator::try_new` returns
+a `CollatorBorrowed<'static>` over the baked compiled data (held in a `LazyLock`),
+and ICU4X's tables match Node's for common Latin + accents (verified the order
+`a,A,ä,b,B,e,é,z,Z` and the pairwise signs). The two ported `localeCompare` sites
+now use it — `compareVersions`' malformed-input fallback and `canonicalize`'s
+tool-name array sort — and each differential gained a divergent row (mixed
+case/accents, e.g. `apple` < `Banana`) that exercises the ICU path against the
+oracle, where code-unit order would disagree. The `canonicalize` `parameters`
+key-sort stays code-unit (v4 uses `Object.keys().sort()` there, not collation).
+Future Phase-3 name sorts reuse `locale_compare`. (The `toLowerCase` case-mapping
+seam is separate and closed next.)
+
 Phase-2 deferred-seam closure (begins) — enabled `serde_json`'s `preserve_order`
 feature workspace-wide (both crates), so every `Value::Object` is an `IndexMap`
 emitting INSERTION order, matching v4's `JSON.stringify`. This is the locked

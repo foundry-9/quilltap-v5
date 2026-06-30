@@ -270,11 +270,16 @@ recommended-list / default injected, string heuristics pure) and
 `getModelContextLimit` (+ `hasExtendedContext` / `getSafeInputLimit`) — its
 override/default tables ported as constants, the plugin model-info /
 `FALLBACK_PRICING` rows / registry default injected. The single ICU-collation
-decision (an `icu_collator`
-/ `feruca`-class crate vs. the documented code-unit seam) is deliberately
-deferred to when the ~30 Phase-2/3 `localeCompare` sites land, so it is made
-once, holistically — the realistic version/tool-name corpora coincide with
-code-unit order, so nothing shipped so far depends on it.
+decision is now **RESOLVED (2026-06-30): added ICU4X** (`icu` 2.2, compiled data)
+as `crate::collation::locale_compare` — `Collator::try_new` → a
+`CollatorBorrowed<'static>` configured to **en-US / tertiary**, matching Node's
+no-arg `Intl.Collator` (verified the order `a,A,ä,b,B,e,é,z,Z` against ICU 78).
+The two ported `localeCompare` sites use it (`compareVersions` fallback,
+`canonicalize` tool-name sort), each with a mixed-case/accent differential row
+proving the ICU path; the vault's code-unit sorts stay code-unit (faithful to v4's
+vault code, which sorts by code unit there, not `localeCompare`). The
+`toLowerCase` case-mapping seam (`tags.nameLower`, `text_replacement_rules`) is
+tracked separately and closed next.
 
 **Phase-2 on-ramp (tier-2 DB-state oracle): the pilot round-trips green.** The
 `folders` repo now round-trips green through the tier-2 harness: both v4 and the

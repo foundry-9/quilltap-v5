@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-core"
-version = "0.0.67"
+version = "0.0.68"
 edition = "2021"
 publish = false
 
@@ -53,6 +53,14 @@ hex = "0.4"               # hex <-> bytes for the .dbkey fields
 # v4 UUIDs: repo `_create` mints ids via `crypto.randomUUID()` (RFC-4122 v4)
 # when not pinned. The non-sync create path uses this; sync/fixtures pin the id.
 uuid = { version = "1", features = ["v4"] }
+
+# ICU4X collation — faithful `String.prototype.localeCompare()` (no-arg) ordering
+# for the port's `localeCompare` sites (compareVersions fallback, canonicalize
+# tool-name sort, + the Phase-3 name sorts). Node's no-arg Collator resolves to
+# en-US / tertiary (sensitivity "variant"), which we mirror. compiled_data bakes
+# the collation tables in (the locked "add ICU crate" decision). `try_new` returns
+# a `CollatorBorrowed<'static>` over the baked tables — `Sync`, held in a static.
+icu = "2.2"
 
 [dev-dependencies]
 tempfile = "3"

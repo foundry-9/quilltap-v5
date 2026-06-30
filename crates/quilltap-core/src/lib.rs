@@ -119,6 +119,7 @@ pub mod chat_tasks;
 pub mod chat_utils;
 pub mod cheap_model;
 pub mod clock;
+pub mod collation;
 pub mod context_budget;
 pub mod context_compression;
 pub mod context_summary;

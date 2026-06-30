@@ -102,6 +102,20 @@ const arrayCases: Array<[string, UniversalTool[]]> = [
       tool('rng', 'second', { type: 'object', properties: { b: { type: 'string' } }, required: [] }),
     ],
   ],
+  // Mixed case + accents — where localeCompare (ICU en-US/tertiary) and code-unit
+  // order genuinely DIVERGE: ICU puts lowercase before uppercase and interleaves
+  // accents (apple, Apple, äpple, banana, Zoo), while code-unit order would be
+  // Apple, Zoo, apple, banana, äpple. Proves the sort is true ICU collation.
+  [
+    'mixed-case-and-accents',
+    [
+      tool('Zoo_tool', 'z', { type: 'object', properties: {}, required: [] }),
+      tool('banana_tool', 'b', { type: 'object', properties: {}, required: [] }),
+      tool('Apple_tool', 'A', { type: 'object', properties: {}, required: [] }),
+      tool('apple_tool', 'a', { type: 'object', properties: {}, required: [] }),
+      tool('äpple_tool', 'ä', { type: 'object', properties: {}, required: [] }),
+    ],
+  ],
 ];
 for (const [id, ts] of arrayCases) {
   rows.push({ kind: 'many', id, input: ts, out: JSON.stringify(canonicalizeUniversalTools(ts)) });

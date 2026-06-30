@@ -517,10 +517,19 @@ instances (non-ASCII user data), each must be closed or consciously waived.
      as acceptable). Re-audit every `.toLowerCase()` / `.toUpperCase()` site
      ported so far.
 
-2. **ICU collation / `localeCompare` ordering.** The standing Phase-1 deferral
-   (see "Where we are"): the single ICU-collation decision is punted to when the
-   ~30 Phase-2/3 `localeCompare` sites land, so it is made once, holistically.
-   Ordering only; **does not cover case mapping** (item 1).
+2. **ICU collation / `localeCompare` ordering — RESOLVED (2026-06-30): added an
+   ICU crate.** `crate::collation::locale_compare` wraps ICU4X (`icu` 2.2,
+   compiled data) configured to **en-US / tertiary**, which is what Node's no-arg
+   `Intl.Collator` resolves to (probed: `en-US`, sensitivity `variant`,
+   `numeric:false`, `caseFirst:false`, ICU 78) — and ICU4X's tables agree with
+   Node's for common Latin + accents (verified: the order `a,A,ä,b,B,e,é,z,Z`
+   matches exactly). The two ported `localeCompare` sites now use it
+   ([`crate::semver::compare_versions`] fallback, [`crate::canonicalize`]
+   tool-name sort), each with a divergent-input differential row (mixed
+   case/accents) proving the ICU path against the oracle. Future Phase-3 name
+   sorts reuse `locale_compare`. Residual micro-seam: exotic scripts could differ
+   by CLDR/Unicode version between ICU4X and Node's ICU — kept out of corpora.
+   Ordering only; **does not cover case mapping** (item 1, still open).
 
 3. **`TagVisualStyleSchema` per-field defaults.** The `tags` create op supplies a
    fully-specified `visualStyle`, so the port serializes it verbatim and never

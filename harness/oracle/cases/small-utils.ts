@@ -99,7 +99,10 @@ for (const [id, version] of pvCases) {
   rows.push({ kind: 'parseVer', id, version, out: parseVersion(version) });
 }
 
-// compareVersions — parseable pairs ONLY (localeCompare fallback deferred).
+// compareVersions — parseable pairs, plus malformed pairs that hit the
+// `localeCompare` fallback (now ICU-backed, so non-ASCII / mixed-case pairs are
+// faithful, not just code-unit). ICU en-US/tertiary: "apple" < "Banana" (-1,
+// where code-unit gives +1 since 'a'=97 > 'B'=66), and accents interleave.
 const cvCases: Array<[string, string, string]> = [
   ['lt-major', '1.0.0', '2.0.0'],
   ['gt-minor', '1.3.0', '1.2.9'],
@@ -107,6 +110,12 @@ const cvCases: Array<[string, string, string]> = [
   ['lt-patch', '1.2.3', '1.2.4'],
   ['v-prefix-eq', 'v1.2.3', '1.2.3'],
   ['suffix-ignored', '1.2.3-rc1', '1.2.3+build'],
+  // localeCompare fallback (at least one side unparseable):
+  ['fallback-case', 'apple', 'Banana'],
+  ['fallback-case-rev', 'Banana', 'apple'],
+  ['fallback-accent', 'apple', 'äpple'],
+  ['fallback-equal-text', 'notaversion', 'notaversion'],
+  ['fallback-one-parses', '1.2.3', 'notaversion'],
 ];
 for (const [id, a, b] of cvCases) {
   rows.push({ kind: 'compareVer', id, a, b, out: compareVersions(a, b) });
