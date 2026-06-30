@@ -1,0 +1,105 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "store": { "id": "57c0de00-0000-4000-8000-0000000000d1" },
+  "characterId": "c4a44000-0000-4000-8000-0000000000a1",
+  "ops": [
+    {
+      "label": "full create",
+      "character": {
+        "id": "c4a44000-0000-4000-8000-0000000000a1",
+        "pronouns": { "subject": "she", "object": "her", "possessive": "hers" },
+        "aliases": ["Vi", "The Inventor"],
+        "title": "The Tinkerer",
+        "firstMessage": "Hello there, mind the gears.",
+        "talkativeness": 0.7,
+        "identity": "I build things that whirr.",
+        "description": "A wiry mechanic with oil-streaked hands.",
+        "manifesto": "Gears over gods.",
+        "personality": "Restless and inventive.",
+        "exampleDialogues": "Q: What's that?\nA: A clockwork sparrow.",
+        "physicalDescription": {
+          "id": "f8000000-0000-4000-8000-0000000000f1",
+          "name": "default",
+          "fullDescription": "Tall, lean, perpetually oil-streaked.",
+          "headAndShouldersPrompt": "freckled face, copper goggles on brow",
+          "shortPrompt": "wiry mechanic",
+          "mediumPrompt": "wiry mechanic in a leather apron",
+          "longPrompt": "wiry mechanic in a leather apron, brass tools at her belt",
+          "completePrompt": "full-length: wiry mechanic, leather apron, brass tools, soot-smudged",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        "systemPrompts": [
+          {
+            "id": "50000000-0000-4000-8000-000000000051",
+            "name": "Default Voice",
+            "content": "Speak plainly and tinker often.",
+            "isDefault": true,
+            "createdAt": "2026-02-01T00:00:00.000Z",
+            "updatedAt": "2026-02-01T00:00:00.000Z"
+          },
+          {
+            "id": "50000000-0000-4000-8000-000000000052",
+            "name": "Default Voice",
+            "content": "An alternate take that collides on filename.",
+            "isDefault": false,
+            "createdAt": "2026-02-01T00:00:00.000Z",
+            "updatedAt": "2026-02-01T00:00:00.000Z"
+          }
+        ],
+        "scenarios": [
+          {
+            "id": "5ce00000-0000-4000-8000-000000000061",
+            "title": "Workshop",
+            "content": "She is bent over a half-built automaton.",
+            "createdAt": "2026-02-01T00:00:00.000Z",
+            "updatedAt": "2026-02-01T00:00:00.000Z"
+          },
+          {
+            "id": "5ce00000-0000-4000-8000-000000000062",
+            "title": "Rooftop",
+            "content": "She watches the airships from the slate tiles.",
+            "createdAt": "2026-02-01T00:00:00.000Z",
+            "updatedAt": "2026-02-01T00:00:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "label": "reproject: sweep folders, clear physical, talkativeness 1.0",
+      "character": {
+        "id": "c4a44000-0000-4000-8000-0000000000a1",
+        "pronouns": null,
+        "aliases": [],
+        "title": null,
+        "firstMessage": null,
+        "talkativeness": 1.0,
+        "identity": "I fix things now, mostly.",
+        "description": "A wiry mechanic with oil-streaked hands.",
+        "manifesto": "Gears over gods.",
+        "personality": "Restless and inventive.",
+        "exampleDialogues": "Q: What's that?\nA: A clockwork sparrow.",
+        "physicalDescription": null,
+        "systemPrompts": [
+          {
+            "id": "50000000-0000-4000-8000-000000000051",
+            "name": "Default Voice",
+            "content": "Speak plainly and tinker often.",
+            "isDefault": true,
+            "createdAt": "2026-02-01T00:00:00.000Z",
+            "updatedAt": "2026-02-01T00:00:00.000Z"
+          }
+        ],
+        "scenarios": [
+          {
+            "id": "5ce00000-0000-4000-8000-000000000063",
+            "title": "Rooftop Redux",
+            "content": "She watches the airships again, older now.",
+            "createdAt": "2026-02-01T00:00:00.000Z",
+            "updatedAt": "2026-02-01T00:00:00.000Z"
+          }
+        ]
+      }
+    }
+  ]
+}

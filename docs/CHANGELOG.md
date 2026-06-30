@@ -546,6 +546,36 @@ corpus always provisions fresh), `state`/property null-vs-absent + multi-key
 insertion order (open-JSON seam — corpus kept `{}`/single-key), and the
 `projects` generalization (a larger bag + roster ops).
 
+Phase 2 — the character vault **managed-fields write projection**
+(`quilltap-core::db::vault_character_write::write_character_vault_managed_fields`),
+v4's `writeCharacterVaultManagedFields` — the first piece of the `characters`
+repo (a `TaggableBaseRepository` with a bespoke vault overlay, not a generic
+store-backed entity). Projects every vault-managed content field of a character
+out to its file, in v4's exact order: `properties.json` (the typed
+`pronouns`/`aliases`/`title`/`firstMessage`/`talkativeness` bag, 2-space
+pretty-print), the five markdown files (`identity` / `description` / `manifesto`
+/ `personality` / `example-dialogues`, `None` → `""`), and — only when a primary
+`physicalDescription` is present — `physical-description.md` +
+`physical-prompts.json` (`renderPhysicalPromptsJson`), then the `Prompts/` and
+`Scenarios/` folder projections. Composes the already-ported pure leaves
+(`build_system_prompt_file` / `build_scenario_file` / `sanitize_file_name`) and
+the folder projector (`project_array_into_vault_folder`) over the document-store
+write primitive. `properties.json` feeds the content-dedup SHA, so an
+integer-valued `talkativeness` (e.g. `1.0`) is serialized as the bare integer `1`
+(a `serialize_with` mirroring `js_number_to_json`) to match `JSON.stringify`
+byte-for-byte; the five `properties.json` keys are a typed struct (serde
+preserves struct field order, unlike `serde_json::Value`). Verified by a tier-2
+differential (`vault_character_write_equivalence`) driving v4's REAL
+`writeCharacterVaultManagedFields` over a two-op sequence (a full create with a
+`Prompts/` filename collision `Default Voice.md`/`Default Voice-1.md` and two
+scenarios, then a reproject that sweeps the dropped prompt + both old scenarios,
+clears `physicalDescription` — physical-* files PERSIST, v4 skips and does not
+delete — and renders `talkativeness: 1`) and diffing five mount-index tables in
+the shared-cross-table-id-map remap form; plus four exact unit tests. v4's
+post-write reindex runs (database-backed chunking, no model); its only divergence
+(link `chunkCount` + `doc_mount_chunks`) is pinned/excluded, exactly as the
+groups/projects/wardrobe store-backed tests do.
+
 Phase 2 — the character vault **wardrobe write projection**
 (`quilltap-core::db::vault_wardrobe_write`), v4's `projectVaultWardrobe` +
 `projectArrayIntoVaultFolder` — the final wardrobe write piece, and with it the

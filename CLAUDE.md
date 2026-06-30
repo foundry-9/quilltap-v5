@@ -709,6 +709,35 @@ diffs five mount-index tables in the shared-cross-table-id-map remap form (reind
 this the entire document-store slice — Family A (generic store-backed) and Family B
 (the character/wardrobe vault, read + write) — is complete.**
 
+**The `characters` repo is now in progress (the store-backed capstone).** It is
+NOT a generic store-backed entity — it's a `TaggableBaseRepository` with the
+bespoke vault overlay (read overlay + wardrobe read/write already ported), so it's
+being ported leaf-first too. Sub-unit 1 — the **managed-fields write projection** —
+is done (`db::vault_character_write::write_character_vault_managed_fields`,
+`vault_character_write_equivalence`): v4's `writeCharacterVaultManagedFields`.
+Projects every vault-managed content field out to its file in v4's exact order —
+`properties.json` (the typed pronouns/aliases/title/firstMessage/talkativeness bag,
+2-space pretty-print), the five markdown files (`None` → `""`), and (only when a
+primary `physicalDescription` exists) `physical-description.md` +
+`physical-prompts.json` (`renderPhysicalPromptsJson`), then the `Prompts/` +
+`Scenarios/` folder projections — composing the ported leaves
+(`build_system_prompt_file` / `build_scenario_file` / `sanitize_file_name` /
+`project_array_into_vault_folder`) over `write_database_document`. Banks the
+**integer-valued-float `properties.json` seam end-to-end** (`talkativeness: 1.0` →
+bare `1` via a `serialize_with` mirroring `js_number_to_json`, since the bytes feed
+the dedup SHA; the five keys are a typed struct, not `serde_json::Value`, to fix
+key order). Tier-2 differential drives v4's REAL `writeCharacterVaultManagedFields`
+over a full-create-then-reproject sequence (a `Prompts/` filename collision, a
+folder sweep, the physical-skip-on-clear behavior — physical-* files PERSIST — and
+`talkativeness: 1`) and diffs five mount-index tables in the
+shared-cross-table-id-map remap form (`chunkCount` / `doc_mount_chunks`
+pinned/excluded). Remaining characters sub-units: `ensureCharacterVault`
+provisioning, the slim-row `CharactersRepository` CRUD + `create`/`update`
+integration, and the array ops (`systemPrompts`/`scenarios`/`partnerLinks`) +
+`findBy*` queries. The peer repos `background_jobs` and `vector_indices` (both
+independent, no characters/store-backed coupling) are drafted and pending serial
+integration.
+
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green
 (`prompt_templates_tier2_equivalence`): `create` + `update` + `delete` from v4's
