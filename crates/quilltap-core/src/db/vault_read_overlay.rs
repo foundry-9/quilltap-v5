@@ -29,9 +29,10 @@ use serde_json::{Map, Value};
 use super::doc_mount_documents::{DocMountDocumentsRepository, VaultFolderDoc};
 use super::DbError;
 use crate::vault_overlay::{
-    markdown_to_nullable, parse_prompt_file, parse_scenario_file, parse_vault_physical_prompts,
-    parse_vault_properties, stable_uuid_from_string, CharacterScenario, CharacterSystemPrompt,
-    VaultDoc,
+    markdown_to_nullable, parse_legacy_wardrobe_json, parse_prompt_file, parse_scenario_file,
+    parse_vault_physical_prompts, parse_vault_properties, parse_wardrobe_item_file,
+    resolve_and_check_component_items, slugify_wardrobe_title, stable_uuid_from_string,
+    CharacterScenario, CharacterSystemPrompt, VaultDoc, WardrobeItemFromFile,
 };
 
 /// The eight single-file overlay paths (v4 `SINGLE_FILE_OVERLAY_PATHS`), in order.
@@ -48,6 +49,8 @@ pub const SINGLE_FILE_OVERLAY_PATHS: [&str; 8] = [
 
 const PROMPTS_FOLDER: &str = "Prompts";
 const SCENARIOS_FOLDER: &str = "Scenarios";
+const WARDROBE_FOLDER: &str = "Wardrobe";
+const WARDROBE_JSON_PATH: &str = "wardrobe.json";
 
 /// Returned when a character with a linked vault has no usable vault — a missing
 /// `properties.json` keystone (v4 `CharacterVaultUnavailableError`).
@@ -379,4 +382,72 @@ pub fn apply_document_store_overlay_one(
         Ok(h) => Ok(Some(h)),
         Err(u) => Err(OverlayOneError::Unavailable(u)),
     }
+}
+
+/// Read a character's vault wardrobe (v4 `readCharacterVaultWardrobe`,
+/// `vault-overlay/vault-readers.ts:234`). Returns `Some({ items })` — from the
+/// `Wardrobe/*.md` folder layout when present, else the legacy `wardrobe.json`
+/// — or `None` when neither yields a usable list.
+///
+/// The `Wardrobe/*.md` path parses each file, builds the in-vault slug/id lookup
+/// maps (first-claimer wins a slug; every item is addressable by id), and runs
+/// [`resolve_and_check_component_items`] to canonicalize and cycle-check the
+/// `componentItems:` refs. Files are sorted by `relativePath` under the
+/// Decision-B code-unit order (Rust `str::cmp`) before parsing.
+///
+/// **Tracked deferral — archetype seeding.** v4 additionally seeds the lookup
+/// maps with shared archetypes (`repos.wardrobe.findArchetypes(true)` → the
+/// General/project `Wardrobe` stores) so composites can reference shared items.
+/// That pulls in the General-Wardrobe subsystem and is not ported here; the
+/// differential keeps no General store provisioned, so v4's `findArchetypes`
+/// returns `[]` and the seed is a verified no-op (component refs resolve within
+/// the character's own vault). Close this before reading vaults that reference
+/// shared archetypes.
+pub fn read_character_vault_wardrobe(
+    repo: &DocMountDocumentsRepository,
+    mount_point_id: &str,
+    character_id: &str,
+) -> Result<Option<Value>, DbError> {
+    let mount = [mount_point_id.to_string()];
+    let mut item_docs = repo.find_many_by_mount_points_in_folder(&mount, WARDROBE_FOLDER, ".md")?;
+
+    if !item_docs.is_empty() {
+        // Decision-B code-unit sort by relativePath, then parse, then drop the
+        // files that can't yield a valid item.
+        item_docs.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+        let mut items: Vec<WardrobeItemFromFile> = item_docs
+            .iter()
+            .filter_map(|d| parse_wardrobe_item_file(&vault_doc(d), character_id))
+            .collect();
+
+        // Build the id/slug lookup maps (index-valued). Every item is addressable
+        // by id; a slug goes to its first claimer (empty/duplicate slugs skipped).
+        let mut item_by_id: HashMap<String, usize> = HashMap::new();
+        let mut item_by_slug: HashMap<String, usize> = HashMap::new();
+        let mut claimed: HashSet<String> = HashSet::new();
+        for (i, item) in items.iter().enumerate() {
+            item_by_id.insert(item.id.clone(), i);
+            let slug = slugify_wardrobe_title(&item.title);
+            if slug.is_empty() || claimed.contains(&slug) {
+                continue;
+            }
+            claimed.insert(slug.clone());
+            item_by_slug.insert(slug, i);
+        }
+
+        resolve_and_check_component_items(&mut items, &item_by_slug, &item_by_id);
+
+        return Ok(Some(serde_json::json!({
+            "items": serde_json::to_value(&items).expect("serialize wardrobe items"),
+        })));
+    }
+
+    // Folder empty/missing — fall through to legacy wardrobe.json so
+    // pre-migration vaults still surface their items.
+    let legacy = repo.find_many_by_mount_points_and_path(&mount, WARDROBE_JSON_PATH)?;
+    let Some((_, content)) = legacy.into_iter().next() else {
+        return Ok(None);
+    };
+    Ok(parse_legacy_wardrobe_json(&content)
+        .map(|lw| serde_json::to_value(&lw).expect("serialize legacy wardrobe")))
 }

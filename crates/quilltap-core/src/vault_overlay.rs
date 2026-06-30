@@ -1033,6 +1033,67 @@ pub fn parse_wardrobe_item_file(
     })
 }
 
+/// Resolve every item's raw `componentItemIds` (slug or UUID refs, as written in
+/// the file) to canonical component ids, then clear any item whose resolved
+/// components would form a cycle — v4 `resolveAndCheckComponentItems`
+/// (`vault-overlay/parsers.ts:397`). Mutates `items` in place.
+///
+/// `item_by_slug` / `item_by_id` map a slug / item-id to the **index** of its
+/// item in `items` (the caller builds them — slug is first-claimer-wins, every
+/// item is addressable by id). A ref is resolved slug-first then UUID; an unknown
+/// ref is dropped (read-tolerant). The cycle pass reads the **live** (already
+/// mutated) component lists, so clearing one item mid-pass affects later items'
+/// walks, exactly mirroring v4's mutable `itemById`.
+pub fn resolve_and_check_component_items(
+    items: &mut [WardrobeItemFromFile],
+    item_by_slug: &HashMap<String, usize>,
+    item_by_id: &HashMap<String, usize>,
+) {
+    // Pass 1 — slug/UUID → canonical id, dropping unknown refs. Compute all
+    // resolved lists first (immutable borrow), then apply.
+    let resolved: Vec<Option<Vec<String>>> = items
+        .iter()
+        .map(|item| {
+            if item.component_item_ids.is_empty() {
+                return None;
+            }
+            let mut out = Vec::new();
+            for r in &item.component_item_ids {
+                if let Some(&j) = item_by_slug.get(r) {
+                    out.push(items[j].id.clone());
+                } else if let Some(&j) = item_by_id.get(r) {
+                    out.push(items[j].id.clone());
+                }
+                // unknown ref → dropped
+            }
+            Some(out)
+        })
+        .collect();
+    for (i, r) in resolved.into_iter().enumerate() {
+        if let Some(r) = r {
+            items[i].component_item_ids = r;
+        }
+    }
+
+    // Pass 2 — cycle check over the now-resolved ids. `by_id` maps each id to its
+    // current component list and is updated as items are cleared, so the walk
+    // sees prior-this-pass clears (matching v4's live `itemById`).
+    let mut by_id: HashMap<String, Vec<String>> = items
+        .iter()
+        .map(|it| (it.id.clone(), it.component_item_ids.clone()))
+        .collect();
+    for item in items.iter_mut() {
+        if item.component_item_ids.is_empty() {
+            continue;
+        }
+        let cycles = detect_component_cycles(&item.id, &item.component_item_ids, &by_id);
+        if !cycles.is_empty() {
+            item.component_item_ids = Vec::new();
+            by_id.insert(item.id.clone(), Vec::new());
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1063,5 +1124,103 @@ mod tests {
             stable_uuid_from_string("scenario:x:y"),
             stable_uuid_from_string("scenario:x:z")
         );
+    }
+
+    /// A `WardrobeItemFromFile` with only the fields the resolver reads.
+    fn wif(id: &str, title: &str, refs: &[&str]) -> WardrobeItemFromFile {
+        WardrobeItemFromFile {
+            id: id.to_string(),
+            character_id: "c".to_string(),
+            title: title.to_string(),
+            description: None,
+            image_prompt: None,
+            types: vec!["top".to_string()],
+            appropriateness: None,
+            is_default: false,
+            replace: false,
+            component_item_ids: refs.iter().map(|s| s.to_string()).collect(),
+            migrated_from_clothing_record_id: None,
+            archived_at: None,
+            created_at: "t".to_string(),
+            updated_at: "t".to_string(),
+        }
+    }
+
+    fn build_maps(
+        items: &[WardrobeItemFromFile],
+    ) -> (HashMap<String, usize>, HashMap<String, usize>) {
+        let mut by_id = HashMap::new();
+        let mut by_slug = HashMap::new();
+        let mut claimed: HashSet<String> = HashSet::new();
+        for (i, it) in items.iter().enumerate() {
+            by_id.insert(it.id.clone(), i);
+            let slug = slugify_wardrobe_title(&it.title);
+            if slug.is_empty() || claimed.contains(&slug) {
+                continue;
+            }
+            claimed.insert(slug.clone());
+            by_slug.insert(slug, i);
+        }
+        (by_slug, by_id)
+    }
+
+    #[test]
+    fn resolves_slug_uuid_and_drops_unknown() {
+        // Outfit refs a slug ("shirt"), a UUID, and an unknown ref ("ghost").
+        let mut items = vec![
+            wif("id-shirt", "Shirt", &[]),
+            wif("id-pants", "Pants", &[]),
+            wif("id-outfit", "Outfit", &["shirt", "id-pants", "ghost"]),
+        ];
+        let (by_slug, by_id) = build_maps(&items);
+        resolve_and_check_component_items(&mut items, &by_slug, &by_id);
+        assert_eq!(
+            items[2].component_item_ids,
+            vec!["id-shirt".to_string(), "id-pants".to_string()],
+            "slug→id, uuid→id, unknown dropped"
+        );
+    }
+
+    #[test]
+    fn mutual_cycle_clears_first_then_second_survives() {
+        // a → b, b → a. Pass 2 processes `a` first, clearing it; `b`'s walk then
+        // sees a's now-empty list and survives (the live-mutation asymmetry).
+        let mut items = vec![
+            wif("id-a", "Cycle A", &["cycle-b"]),
+            wif("id-b", "Cycle B", &["cycle-a"]),
+        ];
+        let (by_slug, by_id) = build_maps(&items);
+        resolve_and_check_component_items(&mut items, &by_slug, &by_id);
+        assert_eq!(
+            items[0].component_item_ids,
+            Vec::<String>::new(),
+            "a cleared"
+        );
+        assert_eq!(
+            items[1].component_item_ids,
+            vec!["id-a".to_string()],
+            "b survives — a was already emptied when b's walk ran"
+        );
+    }
+
+    #[test]
+    fn self_cycle_clears() {
+        let mut items = vec![wif("id-self", "Self Ref", &["self-ref"])];
+        let (by_slug, by_id) = build_maps(&items);
+        resolve_and_check_component_items(&mut items, &by_slug, &by_id);
+        assert_eq!(items[0].component_item_ids, Vec::<String>::new());
+    }
+
+    #[test]
+    fn collided_slug_resolves_to_first_claimer() {
+        // Two "Hat" items share the slug; only the first claims it.
+        let mut items = vec![
+            wif("id-hat-1", "Hat", &[]),
+            wif("id-hat-2", "Hat", &[]),
+            wif("id-box", "Box", &["hat"]),
+        ];
+        let (by_slug, by_id) = build_maps(&items);
+        resolve_and_check_component_items(&mut items, &by_slug, &by_id);
+        assert_eq!(items[2].component_item_ids, vec!["id-hat-1".to_string()]);
     }
 }

@@ -660,11 +660,28 @@ Decision-B code-unit sort + the exactly-one-`isDefault` normalization), and
 `scenarios`. Banks the keystone drop-vs-throw asymmetry (batched DROP on a missing
 `properties.json`, single Unavailable error) — verified end-to-end against v4's
 real `applyDocumentStoreOverlay` over a 7-character / 6-store seeded fixture (only
-the minted physical timestamps placeholdered). Still ahead in the vault: the
-wardrobe read overlay (`parseWardrobeItemFile` is ported; the remaining piece is
-the folder-enumeration assembly + `resolveAndCheckComponentItems` slug/UUID
-resolution + cycle check) and finally the write overlay (wardrobe YAML emitter per
-Decision A, step 7).
+the minted physical timestamps placeholdered). Sub-unit 3 — the **wardrobe read
+overlay** — is also done (`read_character_vault_wardrobe` +
+`resolve_and_check_component_items`, `vault_wardrobe_read_equivalence`): v4's
+`readCharacterVaultWardrobe`. Enumerates `Wardrobe/*.md` (Decision-B code-unit
+sort → `parseWardrobeItemFile`, dropping unparseable), builds the in-vault slug/id
+maps (first-claimer wins a slug; every item is id-addressable), and resolves each
+item's raw `componentItems:` refs to canonical ids (slug-first then UUID, unknown
+dropped) then clears any item whose resolved components form a cycle. The cycle
+pass reads the **live** (already-mutated) component lists, so a mid-pass clear
+changes later items' walks, mirroring v4's mutable `itemById` (banked: a mutual
+`a → b`/`b → a` cycle clears `a`, then `b` survives because `a` was already
+emptied). Empty/missing folder falls through to legacy `wardrobe.json`
+(`parseLegacyWardrobeJson`); neither → `null`. Read-differential (three cases)
+drives v4's REAL `readCharacterVaultWardrobe` over a shared seeded fixture and
+compares each `{ items } | null` exactly (no normalization — this path mints no
+clock value); plus four tier-1 resolver unit tests. **Tracked deferral:** the
+archetype-seeding branch (`findArchetypes` over the General/project `Wardrobe`
+stores) is not ported — the corpus keeps no General store provisioned, so v4's
+`findArchetypes` returns `[]` and the seed is a verified no-op (close before
+reading vaults that reference shared archetypes). Still ahead in the vault: only
+the **write overlay** (the wardrobe YAML emitter per Decision A, step 7 — the only
+eemeli/yaml site).
 
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green

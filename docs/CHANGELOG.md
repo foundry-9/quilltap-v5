@@ -546,6 +546,31 @@ corpus always provisions fresh), `state`/property null-vs-absent + multi-key
 insertion order (open-JSON seam — corpus kept `{}`/single-key), and the
 `projects` generalization (a larger bag + roster ops).
 
+Phase 2 — the character vault **wardrobe read overlay**
+(`quilltap-core::db::vault_read_overlay::read_character_vault_wardrobe` +
+`quilltap-core::vault_overlay::resolve_and_check_component_items`), v4's
+`readCharacterVaultWardrobe`. Enumerates `Wardrobe/*.md` (the Decision-B code-unit
+sort, then `parseWardrobeItemFile`, dropping unparseable files), builds the
+in-vault slug/id lookup maps (first-claimer wins a slug; every item is addressable
+by id), and resolves each item's raw `componentItems:` refs to canonical ids —
+slug-first then UUID, unknown refs dropped — before a cycle check that clears any
+item whose resolved components form a cycle. The cycle pass reads the **live**
+(already-mutated) component lists, so clearing one item mid-pass changes later
+items' walks, exactly mirroring v4's mutable `itemById` (proven in the corpus: a
+mutual `a → b`/`b → a` cycle clears `a`, then `b` survives because `a` was already
+emptied when `b`'s walk ran). An empty/missing `Wardrobe/` folder falls through to
+the legacy `wardrobe.json` (`parseLegacyWardrobeJson`); neither present → `null`.
+Verified by a read-differential (`vault_wardrobe_read_equivalence`, three cases)
+driving v4's REAL `readCharacterVaultWardrobe` over a shared seeded fixture —
+slug/UUID/collided-slug/unknown resolution, the live-mutation cycle asymmetry, a
+self-cycle clear, an archived item, the legacy fallback, and the empty-vault
+`null` — comparing each `{ items } | null` exactly (no normalization; this read
+path mints no clock value). Plus four tier-1 unit tests on the resolver.
+**Tracked deferral:** the archetype-seeding branch (`findArchetypes` over the
+General/project `Wardrobe` stores) is not ported — the corpus keeps no General
+store provisioned, so v4's `findArchetypes` returns `[]` and the seed is a
+verified no-op.
+
 Phase 2 — the character vault **read overlay** (`quilltap-core::db::vault_read_overlay`),
 the heart of the Family-B read path: v4's `hydrateOne` + `applyDocumentStoreOverlay`
 + `applyDocumentStoreOverlayOne`. Folds a character's vault files onto the

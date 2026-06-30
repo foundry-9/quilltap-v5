@@ -1,0 +1,65 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "stores": [
+    { "id": "57a4d40b-0000-4000-8000-00000000000a", "name": "Character Files: Folder Vault" },
+    { "id": "57a4d40b-0000-4000-8000-00000000000b", "name": "Character Files: Legacy Vault" },
+    { "id": "57a4d40b-0000-4000-8000-00000000000c", "name": "Character Files: Empty Vault" }
+  ],
+  "cases": [
+    { "mountPointId": "57a4d40b-0000-4000-8000-00000000000a", "characterId": "char-folder" },
+    { "mountPointId": "57a4d40b-0000-4000-8000-00000000000b", "characterId": "char-legacy" },
+    { "mountPointId": "57a4d40b-0000-4000-8000-00000000000c", "characterId": "char-empty" }
+  ],
+  "files": [
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000a",
+      "relativePath": "Wardrobe/01-shirt.md",
+      "content": "---\nid: \"11111111-1111-4111-8111-111111111111\"\ntitle: Blue Shirt\ntypes: [top]\n---\nA comfortable blue shirt.\n"
+    },
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000a",
+      "relativePath": "Wardrobe/02-pants.md",
+      "content": "---\nid: \"22222222-2222-4222-8222-222222222222\"\ntitle: Red Pants\ntypes: [bottom]\n---\nRed pants.\n"
+    },
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000a",
+      "relativePath": "Wardrobe/03-hat-primary.md",
+      "content": "---\nid: \"dddddddd-dddd-4ddd-8ddd-dddddddddddd\"\ntitle: Hat\ntypes: [accessories]\n---\nThe primary hat (claims the `hat` slug).\n"
+    },
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000a",
+      "relativePath": "Wardrobe/04-hat-secondary.md",
+      "content": "---\nid: \"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee\"\ntitle: Hat\ntypes: [accessories]\n---\nThe secondary hat (same slug, addressable only by UUID).\n"
+    },
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000a",
+      "relativePath": "Wardrobe/05-outfit.md",
+      "content": "---\nid: \"33333333-3333-4333-8333-333333333333\"\ntitle: Full Outfit\ntypes: [top]\ncomponentItems: [\"blue-shirt\", \"22222222-2222-4222-8222-222222222222\", \"hat\", \"ghost-ref\"]\n---\nA full outfit bundling a slug ref, a UUID ref, a collided slug, and an unknown ref.\n"
+    },
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000a",
+      "relativePath": "Wardrobe/06-cycle-a.md",
+      "content": "---\nid: \"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\"\ntitle: Cycle A\ntypes: [top]\ncomponentItems: [\"cycle-b\"]\n---\nOne half of a mutual cycle.\n"
+    },
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000a",
+      "relativePath": "Wardrobe/07-cycle-b.md",
+      "content": "---\nid: \"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb\"\ntitle: Cycle B\ntypes: [top]\ncomponentItems: [\"cycle-a\"]\n---\nThe other half of the cycle.\n"
+    },
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000a",
+      "relativePath": "Wardrobe/08-self.md",
+      "content": "---\nid: \"cccccccc-cccc-4ccc-8ccc-cccccccccccc\"\ntitle: Self Ref\ntypes: [top]\ncomponentItems: [\"self-ref\"]\n---\nReferences itself.\n"
+    },
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000a",
+      "relativePath": "Wardrobe/09-archived.md",
+      "content": "---\nid: \"ffffffff-ffff-4fff-8fff-ffffffffffff\"\ntitle: Old Coat\ntypes: [top]\narchived: true\n---\nAn archived coat.\n"
+    },
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000b",
+      "relativePath": "wardrobe.json",
+      "content": "{\n  \"items\": [\n    {\n      \"id\": \"12121212-1212-4212-8212-121212121212\",\n      \"title\": \"Legacy Tee\",\n      \"types\": [\"top\"],\n      \"createdAt\": \"2026-01-01T00:00:00.000Z\",\n      \"updatedAt\": \"2026-01-01T00:00:00.000Z\"\n    }\n  ],\n  \"presets\": [\"ignored-by-read\"]\n}\n"
+    }
+  ]
+}
