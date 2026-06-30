@@ -731,10 +731,28 @@ over a full-create-then-reproject sequence (a `Prompts/` filename collision, a
 folder sweep, the physical-skip-on-clear behavior — physical-* files PERSIST — and
 `talkativeness: 1`) and diffs five mount-index tables in the
 shared-cross-table-id-map remap form (`chunkCount` / `doc_mount_chunks`
-pinned/excluded). Remaining characters sub-units: `ensureCharacterVault`
-provisioning, the slim-row `CharactersRepository` CRUD + `create`/`update`
-integration, and the array ops (`systemPrompts`/`scenarios`/`partnerLinks`) +
-`findBy*` queries. The peer repos `background_jobs` and `vector_indices` (both
+pinned/excluded). Sub-unit 2 — the **slim-row marshaling** — is also done
+(`db::characters`, `characters_slim_tier2_equivalence`): the base-repository SQL
+CRUD (`_create`/`_update`/`_delete`) over the MAIN-db `characters` table. v4's
+overridden `_create`/`_update` strip the `MANAGED_FIELDS` set before the write —
+those live in the vault now — so the persisted row is the non-managed complement;
+a fresh fixture's table still has the managed columns
+(`ensureCollection`/`CharacterSchema`), but both sides omit them from every write
+so they sit at their DDL defaults identically. Banks the **widest nullable-boolean
+surface in Phase 2** (seven `z.boolean().nullable().optional()` columns — INTEGER
+0/1 present, NULL absent) plus a typed JSON-object column (`defaultTimestampConfig`,
+a nine-field struct in schema order, NOT `serde_json::Value`), an open JSON column
+(`sillyTavernData`, kept `null`/single-key), two typed-struct array columns
+(`partnerLinks`/`avatarOverrides`), a string-array (`tags`), two boolean-default
+(`isFavorite`/`npc`), an enum TEXT (`controlledBy`), and many nullable UUIDs.
+`update` is a partial `SET` that reproduces v4's full `$set` on-disk result (the
+fixture cells are already canonical). Tier-2 differential drives v4's REAL
+protected internals via a thin subclass over a create/create/update/delete
+sequence, pinned zero-normalization form. Remaining characters sub-units:
+`ensureCharacterVault` provisioning + `scaffoldCharacterMount`, the slim-row
+`create`/`update` vault integration, and the array ops
+(`systemPrompts`/`scenarios`/`partnerLinks`) + `findBy*` queries. The peer repos
+`background_jobs` and `vector_indices` (both
 independent, no characters/store-backed coupling) were drafted in parallel.
 **`vector_indices` is now integrated and green** (`vector_indices_tier2_equivalence`):
 the first **standalone two-table** repo (`vector_indices` metadata + `vector_entries`
@@ -755,8 +773,9 @@ byte-for-byte. **Discovered v4-on-SQLite limitation:** `markCompleted`'s dotted
 is a forward v5-only capability (pure `merge_result_into_payload` + unit tests; the
 differential exercises only the no-result path). With this, all three peer repos of
 the characters capstone (`characters` sub-unit 1, `vector_indices`, `background_jobs`)
-are landed; the remaining characters sub-units (provisioning, slim-row CRUD, array
-ops) are next.
+are landed, and characters sub-unit 2 (slim-row marshaling) is done; the remaining
+characters sub-units (provisioning + scaffold, the `create`/`update` vault
+integration, array ops + `findBy*`) are next.
 
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green

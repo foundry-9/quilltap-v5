@@ -25,6 +25,7 @@ use crate::dbkey;
 
 pub mod background_jobs;
 pub mod character_plugin_data;
+pub mod characters;
 pub mod chat_documents;
 pub mod chat_settings;
 pub mod connection_profiles;
@@ -142,6 +143,13 @@ impl Writer {
         &self,
     ) -> character_plugin_data::CharacterPluginDataRepository<'_> {
         character_plugin_data::CharacterPluginDataRepository::new(&self.conn)
+    }
+
+    /// The characters slim-row repository over this writer's connection (MAIN db).
+    /// Marshals the non-managed `characters` columns; the vault overlay is applied
+    /// by the store-backed orchestration (later sub-units).
+    pub fn characters(&self) -> characters::CharactersRepository<'_> {
+        characters::CharactersRepository::new(&self.conn)
     }
 
     /// The chat-documents repository over this writer's connection.

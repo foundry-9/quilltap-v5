@@ -1,0 +1,189 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `characters` SLIM ROW (Phase-2, main DB,",
+    "the store-backed capstone sub-unit 2). One committed file drives BOTH sides:",
+    "  - the v4 oracle (build-characters-slim-fixture.ts + characters-slim.ts) and",
+    "  - the Rust port (quilltap-harness characters_slim tier-2 test).",
+    "",
+    "WHAT IT PORTS: the base-repository SQL CRUD (_create/_update/_delete) of v4's",
+    "CharactersRepository over the `characters` table. v4's public create/update",
+    "orchestrate the character vault; here we drive the protected slim-row internals",
+    "directly via a thin subclass (the wardrobe-repo precedent) so the differential",
+    "checks the actual slim-row marshaling. v4's overridden _create/_update strip the",
+    "MANAGED_FIELDS (identity/description/manifesto/personality/exampleDialogues/",
+    "pronouns/aliases/title/firstMessage/talkativeness/physicalDescription/",
+    "systemPrompts/scenarios) before the write — those live in the vault now — so the",
+    "persisted row is the non-managed complement. A fresh fixture's table still has",
+    "the managed columns (ensureCollection generates them from CharacterSchema); both",
+    "sides omit them from every write, so they sit at their DDL defaults identically.",
+    "",
+    "MARSHALING BANKED: seven nullable boolean columns (defaultAgentModeEnabled,",
+    "defaultHelpToolsEnabled, canDressThemselves, canCreateOutfits, systemTransparency,",
+    "coreWhisperEnabled, canBeCarina — present 0/1 AND absent NULL); two boolean-",
+    "default columns (isFavorite, npc); a typed JSON-object column",
+    "(defaultTimestampConfig — all nine keys present in schema order, AND null); an",
+    "open JSON column (sillyTavernData — null AND single-key, the multi-key seam kept",
+    "out); two typed-struct array columns (partnerLinks {partnerId,isDefault},",
+    "avatarOverrides {chatId,imageId} — empty AND non-empty); a string-array column",
+    "(tags); an enum TEXT column (controlledBy llm/user); many nullable UUID columns.",
+    "",
+    "HARNESS FORM: pinned zero-normalization. The slim CRUD honors pinned",
+    "id/createdAt/updatedAt (CreateOptions on create; explicit updatedAt on update),",
+    "so the persisted rows match v4 byte-for-byte with NO normalization.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key (the same one folders/tags/",
+    "wardrobe use). NOT the real Friday pepper; safe to commit."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "data": {
+        "userId": "a0000000-0000-4000-8000-000000000001",
+        "name": "Seeded Cordelia",
+        "defaultImageId": "d0000000-0000-4000-8000-000000000011",
+        "defaultConnectionProfileId": null,
+        "defaultPartnerId": "d0000000-0000-4000-8000-000000000012",
+        "defaultRoleplayTemplateId": null,
+        "defaultImageProfileId": null,
+        "sillyTavernData": null,
+        "isFavorite": false,
+        "npc": false,
+        "controlledBy": "llm",
+        "defaultAgentModeEnabled": false,
+        "defaultHelpToolsEnabled": null,
+        "defaultTimestampConfig": null,
+        "defaultScenarioId": null,
+        "defaultSystemPromptId": null,
+        "characterDocumentMountPointId": null,
+        "canDressThemselves": true,
+        "canCreateOutfits": null,
+        "systemTransparency": null,
+        "coreWhisperEnabled": null,
+        "canBeCarina": null,
+        "partnerLinks": [
+          { "partnerId": "d0000000-0000-4000-8000-000000000012", "isDefault": true }
+        ],
+        "tags": ["7a000000-0000-4000-8000-0000000000a1"],
+        "avatarOverrides": []
+      },
+      "options": {
+        "id": "50000000-0000-4000-8000-000000000051",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      }
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "data": {
+        "userId": "a0000000-0000-4000-8000-000000000001",
+        "name": "Evangeline",
+        "defaultImageId": "d0000000-0000-4000-8000-0000000000c1",
+        "defaultConnectionProfileId": "d0000000-0000-4000-8000-0000000000c2",
+        "defaultPartnerId": "d0000000-0000-4000-8000-0000000000c3",
+        "defaultRoleplayTemplateId": "d0000000-0000-4000-8000-0000000000c4",
+        "defaultImageProfileId": "d0000000-0000-4000-8000-0000000000c5",
+        "sillyTavernData": { "spec": "chara_card_v2" },
+        "isFavorite": true,
+        "npc": false,
+        "controlledBy": "user",
+        "defaultAgentModeEnabled": true,
+        "defaultHelpToolsEnabled": false,
+        "defaultTimestampConfig": {
+          "mode": "EVERY_MESSAGE",
+          "format": "ISO8601",
+          "customFormat": null,
+          "useFictionalTime": true,
+          "fictionalBaseTimestamp": "1920-01-01T00:00:00.000Z",
+          "fictionalBaseRealTime": "2026-01-01T00:00:00.000Z",
+          "autoPrepend": false,
+          "timezone": "America/New_York",
+          "intervalMinutes": 30
+        },
+        "defaultScenarioId": "d0000000-0000-4000-8000-0000000000c6",
+        "defaultSystemPromptId": "d0000000-0000-4000-8000-0000000000c7",
+        "characterDocumentMountPointId": "d0000000-0000-4000-8000-0000000000c8",
+        "canDressThemselves": true,
+        "canCreateOutfits": false,
+        "systemTransparency": true,
+        "coreWhisperEnabled": false,
+        "canBeCarina": true,
+        "partnerLinks": [
+          { "partnerId": "d0000000-0000-4000-8000-0000000000d1", "isDefault": true },
+          { "partnerId": "d0000000-0000-4000-8000-0000000000d2", "isDefault": false }
+        ],
+        "tags": [
+          "7a000000-0000-4000-8000-0000000000a1",
+          "7a000000-0000-4000-8000-0000000000a2"
+        ],
+        "avatarOverrides": [
+          {
+            "chatId": "e0000000-0000-4000-8000-0000000000e1",
+            "imageId": "e0000000-0000-4000-8000-0000000000e2"
+          }
+        ]
+      },
+      "options": {
+        "id": "c0000000-0000-4000-8000-0000000000c1",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "data": {
+        "userId": "a0000000-0000-4000-8000-000000000001",
+        "name": "Minimal Bertram",
+        "defaultImageId": null,
+        "defaultConnectionProfileId": null,
+        "defaultPartnerId": null,
+        "defaultRoleplayTemplateId": null,
+        "defaultImageProfileId": null,
+        "sillyTavernData": null,
+        "isFavorite": false,
+        "npc": true,
+        "controlledBy": "llm",
+        "defaultAgentModeEnabled": null,
+        "defaultHelpToolsEnabled": null,
+        "defaultTimestampConfig": null,
+        "defaultScenarioId": null,
+        "defaultSystemPromptId": null,
+        "characterDocumentMountPointId": null,
+        "canDressThemselves": null,
+        "canCreateOutfits": null,
+        "systemTransparency": null,
+        "coreWhisperEnabled": null,
+        "canBeCarina": null,
+        "partnerLinks": [],
+        "tags": [],
+        "avatarOverrides": []
+      },
+      "options": {
+        "id": "c0000000-0000-4000-8000-0000000000c2",
+        "createdAt": "2026-02-02T00:00:00.000Z",
+        "updatedAt": "2026-02-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "id": "50000000-0000-4000-8000-000000000051",
+      "data": {
+        "name": "Cordelia Reforged",
+        "isFavorite": true,
+        "controlledBy": "user",
+        "canBeCarina": true,
+        "coreWhisperEnabled": true,
+        "tags": [
+          "7a000000-0000-4000-8000-0000000000a1",
+          "7a000000-0000-4000-8000-0000000000a3"
+        ],
+        "updatedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "delete",
+      "id": "c0000000-0000-4000-8000-0000000000c2"
+    }
+  ]
+}

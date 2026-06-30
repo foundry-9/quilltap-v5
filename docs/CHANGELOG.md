@@ -105,6 +105,35 @@ ops), built as a thin vertical slice over the `folders` repo:
   oracle NDJSON (`QT_ORACLE_FOLDERS` + `QT_FIXTURE_FOLDERS`, skip-if-unset).
   The `folders` repo round-trips green.
 
+Phase 2 — the `characters` repo **slim-row marshaling**
+(`quilltap-core::db::characters`), the first sub-unit of v4's
+`CharactersRepository` (the store-backed capstone). Ports the base-repository SQL
+CRUD (`_create`/`_update`/`_delete`) over the MAIN-db `characters` table. v4's
+public `create`/`update` orchestrate the character vault (provision + project +
+overlay) — a later sub-unit; both strip the `MANAGED_FIELDS` set (identity,
+description, manifesto, personality, exampleDialogues, pronouns, aliases, title,
+firstMessage, talkativeness, physicalDescription, systemPrompts, scenarios) before
+the SQL write, leaving the non-managed "slim row" this differential checks. A
+fresh fixture's table still has the managed columns (`ensureCollection` generates
+them from `CharacterSchema`), but both sides omit them from every write, so they
+sit at their DDL defaults identically. Banks the **widest nullable-boolean surface
+in Phase 2** — seven `z.boolean().nullable().optional()` columns
+(`defaultAgentModeEnabled`, `defaultHelpToolsEnabled`, `canDressThemselves`,
+`canCreateOutfits`, `systemTransparency`, `coreWhisperEnabled`, `canBeCarina`),
+INTEGER 0/1 when present, SQL NULL when absent — plus a typed JSON-object column
+(`defaultTimestampConfig`, a nine-field struct in schema order so the compact JSON
+matches `JSON.stringify` key order, NOT `serde_json::Value`), an open JSON column
+(`sillyTavernData`, kept `null`/single-key per the multi-key seam), two
+typed-struct array columns (`partnerLinks` `{partnerId,isDefault}`,
+`avatarOverrides` `{chatId,imageId}`), a string-array column (`tags`), two
+boolean-default columns (`isFavorite`/`npc`), an enum TEXT column (`controlledBy`),
+and many nullable UUID columns. `update` is a partial `SET` that reproduces v4's
+full `$set` on-disk result (the fixture cells are already in validated canonical
+order). Verified by a tier-2 differential (`characters_slim_tier2_equivalence`)
+driving v4's REAL protected internals via a thin subclass over a create / create /
+update / delete sequence, diffing the `characters` table in the pinned
+zero-normalization form (ids + timestamps pinned both sides).
+
 Phase 2 — the `background_jobs` repo (`quilltap-core::db::background_jobs`), v4's
 `BackgroundJobsRepository` — the durable work queue (memory extraction, context
 summaries, embedding generation, autonomous room turns, …). A
