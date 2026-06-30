@@ -1,5 +1,10 @@
 //! quilltap-core — the portable engine.
 //!
+//! Link dependency only: `quilltap-sqlite3mc-sys` compiles + links the
+//! ChaCha20/sqleet `sqlite3` the `db` module needs. It has no Rust API, so we
+//! pull it into the crate graph here (its build-script link flags then propagate
+//! to every binary that links quilltap-core).
+//!
 //! Phase-0/1 surface is small and growing:
 //!   * `dbkey` — recovers the master pepper from the on-disk `quilltap.dbkey`
 //!     file (AES-256-GCM + PBKDF2). NB: this unwraps the FILE; the DATABASES
@@ -99,6 +104,10 @@
 //!
 //! Everything else (repos, services, the Request/Response/Event boundary)
 //! lands in later phases.
+
+// Link-only: keeps `quilltap-sqlite3mc-sys` in the crate graph so its build
+// script's link directives (the ChaCha20/sqleet `sqlite3`) reach the final link.
+use quilltap_sqlite3mc_sys as _;
 
 pub mod about_character;
 pub mod all_llm_pause;

@@ -105,6 +105,18 @@ ops), built as a thin vertical slice over the `folders` repo:
   oracle NDJSON (`QT_ORACLE_FOLDERS` + `QT_FIXTURE_FOLDERS`, skip-if-unset).
   The `folders` repo round-trips green.
 
+Build — extracted the SQLite3MC (ChaCha20/sqleet) amalgamation into a dedicated
+`quilltap-sqlite3mc-sys` crate (its `build.rs` + `vendor/`, moved out of
+`quilltap-core`). Cargo's build-script fingerprint includes the package version,
+so the per-commit version bump on `quilltap-core` used to throw away the cached
+`libsqlite3.a` and recompile the 12 MB amalgamation from scratch (~4 min). The
+sys crate's version is pinned, so that C compile now caches across our version
+bumps: a `quilltap-core` version bump rebuilds in ~2 s instead of ~4 min. No
+`links` key (libsqlite3-sys already claims `sqlite3`); `quilltap-core` depends on
+the sys crate and references it as `use quilltap_sqlite3mc_sys as _;` so its
+link-search flags reach the final binary. Cipher behavior unchanged, verified by
+the tier-2 differentials still opening real ChaCha20 databases.
+
 Phase 2 — the `memories` repo, ported whole
 (`quilltap-core::db::memories` + `db::memories_read`). A plain main-DB
 `AbstractBaseRepository<Memory>` (no overrides except the `embedding` BLOB

@@ -1,0 +1,25 @@
+[package]
+name = "quilltap-sqlite3mc-sys"
+# PINNED — do NOT bump on ordinary commits. Cargo's build-script fingerprint
+# includes the package version, so bumping this would throw away the cached
+# `libsqlite3.a` and recompile the 12 MB SQLite3MC amalgamation from scratch
+# (~3–4 min). Keeping it fixed is the whole point of this crate: the per-commit
+# version bumps live on quilltap-core / quilltap-harness, not here. Only bump
+# when the vendored amalgamation source or the build flags actually change.
+version = "0.1.0"
+edition = "2021"
+publish = false
+build = "build.rs"
+
+# Link-only crate: it has no Rust API. `build.rs` compiles the
+# SQLite3MultipleCiphers amalgamation (sqleet/ChaCha20 default, version 2.3.5,
+# vendored under `vendor/`) and emits the link directives so libsqlite3-sys binds
+# the cipher-correct `sqlite3`. Deliberately NO `links` key: libsqlite3-sys
+# already claims `links = "sqlite3"`, and we only need the raw link-search /
+# link-lib flags propagated to dependents (which happens for any build script in
+# the graph), not Cargo's DEP_ metadata channel.
+
+[build-dependencies]
+# Compiles the SQLite3MC amalgamation via the `cc` crate (needs Xcode CLT clang +
+# cmake on macOS). See build.rs.
+cc = "1"

@@ -46,7 +46,10 @@ struct Spec {
 #[serde(tag = "kind")]
 enum Op {
     #[serde(rename = "create")]
-    Create { options: Opts, data: Box<CreateData> },
+    Create {
+        options: Opts,
+        data: Box<CreateData>,
+    },
     #[serde(rename = "update")]
     Update { id: String, data: PatchData },
     #[serde(rename = "updateForCharacter")]

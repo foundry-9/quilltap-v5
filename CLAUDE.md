@@ -56,9 +56,12 @@ pragma, so it uses the default cipher of `better-sqlite3-multiple-ciphers`:
 - The real DB layer links **SQLite3MultipleCiphers** (utelle), version matching
   what v4 bundles (**2.3.5**, on SQLite 3.53.2 in the matching amalgamation),
   opened with its default sqleet cipher — no `cipher=` pragma needed. The
-  amalgamation is compiled by `crates/quilltap-core/build.rs` (vendored under
-  `crates/quilltap-core/vendor/`) and linked as `sqlite3` for the whole
-  workspace; the `db` module is the first consumer.
+  amalgamation is compiled by the dedicated **`quilltap-sqlite3mc-sys`** crate
+  (`crates/quilltap-sqlite3mc-sys/build.rs`, vendored under its `vendor/`) and
+  linked as `sqlite3` for the whole workspace; `quilltap-core` depends on it (the
+  `db` module is the first consumer). That sys crate's version is **pinned and
+  never bumped** so the 12 MB C compile caches across our per-commit version
+  bumps — bumping it would force the ~4-min amalgamation recompile.
 - **Two different ciphers — never conflate:** the `.dbkey` *file* wraps the
   pepper with **AES-256-GCM + PBKDF2** (that part of v4's docs is right; ported
   in `quilltap-core::dbkey`). The *databases* are **ChaCha20**.
@@ -128,10 +131,13 @@ explicitly.
 Cargo.toml                 # workspace root (members = crates/*)
 rust-toolchain.toml        # pinned channel 1.96.0
 crates/
+  quilltap-sqlite3mc-sys/  # link-only: build.rs + vendor/ compile & link the
+                           #   SQLite3MC (ChaCha20/sqleet) amalgamation for the
+                           #   whole workspace. Version PINNED (keeps the 12 MB C
+                           #   compile cached across our version bumps).
   quilltap-core/           # the portable engine (lib). Modules: dbkey, db
                            #   (cipher-correct DB layer), memory_weighting, …
-                           #   build.rs + vendor/ compile & link the SQLite3MC
-                           #   amalgamation for the whole workspace.
+                           #   depends on quilltap-sqlite3mc-sys for the cipher.
   quilltap-harness/        # differential tests vs the v4 oracle (tier-1 + tier-2).
   (future) quilltap-cli, quilltap-tauri
 harness/oracle/            # Node/tsx bridge driving v4's real lib/ code.
@@ -140,8 +146,10 @@ docs/v4/                   # mirror of the v4 server docs (reference only).
 ```
 
 The two Phase-0 probe crates (`sqlcipher-probe`, `sqlite3mc-probe`) have been
-retired: the real DB layer in `quilltap-core` now owns the amalgamation build,
-and their findings are recorded here and in `docs/developer/porting/phase-0.md`.
+retired: the amalgamation build lives in the `quilltap-sqlite3mc-sys` crate (it
+moved out of `quilltap-core` so the expensive C compile stays cached across
+version bumps), and their findings are recorded here and in
+`docs/developer/porting/phase-0.md`.
 
 ## Working environment
 

@@ -469,14 +469,14 @@ dependencies = [
 
 [[package]]
 name = "quilltap-core"
-version = "0.0.58"
+version = "0.0.59"
 dependencies = [
  "aes",
  "aes-gcm",
- "cc",
  "hex",
  "hmac",
  "pbkdf2",
+ "quilltap-sqlite3mc-sys",
  "regex",
  "rusqlite",
  "serde",
@@ -493,6 +493,13 @@ dependencies = [
  "quilltap-core",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "quilltap-sqlite3mc-sys"
+version = "0.1.0"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

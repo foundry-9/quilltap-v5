@@ -1,8 +1,17 @@
 //! Compile the SQLite3MultipleCiphers amalgamation and link it as `sqlite3`,
 //! so rusqlite/libsqlite3-sys bind against a ChaCha20/sqleet-capable library
 //! instead of stock SQLite or AES-only SQLCipher. This is the workspace's single
-//! source of the linked `sqlite3` — every crate that depends on quilltap-core
-//! (the harness, future cli/tauri) inherits the correct cipher from here.
+//! source of the linked `sqlite3` — quilltap-core depends on this crate, so every
+//! crate that depends on quilltap-core (the harness, future cli/tauri) inherits
+//! the correct cipher from here.
+//!
+//! WHY ITS OWN CRATE: Cargo's build-script fingerprint includes the package
+//! version, so a version bump throws away the cached `libsqlite3.a` and
+//! recompiles the 12 MB amalgamation from scratch (~3–4 min, one translation
+//! unit). This crate's version is **pinned and never bumped** — the per-commit
+//! version bumps live on quilltap-core/quilltap-harness, not here — so the
+//! expensive C compile caches permanently across commits. Do not bump this
+//! crate's version unless the amalgamation source or build flags actually change.
 //!
 //! HOW TO SUPPLY THE AMALGAMATION (pick one; the build errors with guidance if
 //! neither is present):
@@ -12,7 +21,7 @@
 //!      https://github.com/utelle/SQLite3MultipleCiphers/releases
 //!      (use a 2.3.x release to match better-sqlite3-multiple-ciphers@12.11.1),
 //!      unzip, and drop `sqlite3mc_amalgamation.c` + `sqlite3mc_amalgamation.h`
-//!      into `crates/quilltap-core/vendor/`.
+//!      into `crates/quilltap-sqlite3mc-sys/vendor/`.
 //!
 //!   B) Point at an existing copy:
 //!      SQLITE3MC_AMALGAMATION_DIR=/path/to/dir   (containing the two files)

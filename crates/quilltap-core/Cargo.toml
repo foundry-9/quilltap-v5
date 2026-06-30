@@ -1,9 +1,8 @@
 [package]
 name = "quilltap-core"
-version = "0.0.58"
+version = "0.0.59"
 edition = "2021"
 publish = false
-build = "build.rs"
 
 # The portable engine. First real module: `dbkey` — reads and decrypts the
 # `quilltap.dbkey` file exactly as lib/startup/dbkey.ts does, yielding the
@@ -20,11 +19,15 @@ build = "build.rs"
 
 [dependencies]
 # DB cipher: SQLite3MultipleCiphers 2.3.5 (sqleet/ChaCha20 default), linked via
-# the amalgamation compiled in THIS crate's build.rs (vendor/). VERIFIED
+# the amalgamation compiled by the `quilltap-sqlite3mc-sys` crate (its pinned
+# version keeps that 12 MB C compile cached across our version bumps). VERIFIED
 # 2026-06-27: opened Friday (37 tables, 33 chars, 20320 memories) cipher=chacha20.
 # Do NOT use rusqlite's bundled-sqlcipher (AES-only → NotADatabase on real DBs).
 # The `db` module is the first consumer; `dbkey` itself needs no SQLite.
 rusqlite = { workspace = true }
+# Link-only: pulls the cipher-correct sqlite3 into the link (see the crate). Kept
+# in the graph by `use quilltap_sqlite3mc_sys as _;` in lib.rs.
+quilltap-sqlite3mc-sys = { path = "../quilltap-sqlite3mc-sys" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
@@ -46,11 +49,6 @@ hex = "0.4"               # hex <-> bytes for the .dbkey fields
 # v4 UUIDs: repo `_create` mints ids via `crypto.randomUUID()` (RFC-4122 v4)
 # when not pinned. The non-sync create path uses this; sync/fixtures pin the id.
 uuid = { version = "1", features = ["v4"] }
-
-[build-dependencies]
-# Compiles the SQLite3MC amalgamation (vendor/sqlite3mc_amalgamation.c) so
-# libsqlite3-sys links the ChaCha20/sqleet-capable library. See build.rs.
-cc = "1"
 
 [dev-dependencies]
 tempfile = "3"
