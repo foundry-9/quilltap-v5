@@ -900,8 +900,33 @@ materialize (`controlledBy:'llm'`, `displayOrder:0`, `isActive:true`,
 `ORDER BY "lastMessageAt" DESC`+`LIMIT`. Read-differential: both sides READ a copy
 of one v4-baked fixture (seven chats — a rich chat hitting every marshaling
 branch, a minimal chat, salon/help/brahma types, summarized chats with distinct
-`lastMessageAt`), 16 queries compared exactly (no normalization). The remaining
-sub-units are messages, participants, impersonation, tokens, search, and outfits.
+`lastMessageAt`), 16 queries compared exactly (no normalization). Sub-unit 3 —
+the **`chat_messages` read path** — is also done (`db::chats_messages_read`,
+`chats_messages_read_equivalence`): v4's `ChatMessagesOps` read surface
+(`getMessages`/`getMessageCount`/`findChatIdForMessage`). Messages live in their
+own MAIN-db `chat_messages` table (one row per event); `getMessages` reads every
+row for a chat ordered by `createdAt` and validates each through
+`ChatEventSchema`, a three-member union (`MessageEvent`/`ContextSummaryEvent`/
+`SystemEvent`). The read dispatches on the `type` discriminator and reconstructs
+each member — required columns read directly, nullable-optionals OMITTED on
+`NULL`, the array/object JSON columns (`rawResponse` [`z.record`], `attachments`,
+`reasoningSegments`, `dangerFlags`, `hostEvent`, `customAnnouncer`, `carinaMeta`,
+`pendingExternalAttachments`, `summaryAnchor`, …) parsed straight to JSON. **No
+read-side default materialization is needed**: v4 runs `ChatEventSchema.parse`
+*before* every insert, so each `.default(...)` (`attachments`→`[]`, a
+`DangerFlag`'s `userOverridden`/`wasRerouted`→`false`) and the exact
+int-vs-float number representation are already baked into the stored bytes — so
+the read parses the JSON columns straight to `serde_json::Value` (no struct
+re-serialization that would turn `1`→`1.0`). Read-differential: both sides READ a
+copy of one fixture baked by v4's REAL `repos.chats.addMessages` (one chat +
+twelve messages covering every event member + JSON column), 7 queries compared
+exactly (no normalization). **Tracked seam:** `isSilentMessage` —
+`z.union([boolean, number.transform])` → TEXT affinity, so a stored boolean
+round-trips as the string `"1"` and v4 drops the whole message on read; the
+corpus keeps it absent and the column is not read here (close before reading real
+data that sets it). The remaining sub-units are messages **write**
+(add/update/delete + metadata side-effects), participants, impersonation, tokens,
+search, and outfits.
 
 The **`memories` repo is ported whole** (`quilltap-core::db::memories` +
 `db::memories_read`, `memories_tier2_equivalence` + `memories_read_equivalence`).

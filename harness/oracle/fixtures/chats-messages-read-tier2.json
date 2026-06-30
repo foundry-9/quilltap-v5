@@ -1,0 +1,182 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "chat": {
+    "id": "c0000002-0000-4000-8000-000000000001",
+    "userId": "11111111-1111-4111-8111-111111111111",
+    "title": "Messages Read Chat",
+    "createdAt": "2026-02-01T00:00:00.000Z",
+    "updatedAt": "2026-02-01T00:00:00.000Z",
+    "participants": [
+      {
+        "id": "fb000001-0000-4000-8000-000000000001",
+        "type": "CHARACTER",
+        "characterId": "bbbb2222-2222-4222-8222-222222222222",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      },
+      {
+        "id": "fc000001-0000-4000-8000-000000000001",
+        "type": "CHARACTER",
+        "characterId": "cccc3333-3333-4333-8333-333333333333",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    ]
+  },
+  "messages": [
+    {
+      "type": "message",
+      "id": "e1000001-0000-4000-8000-000000000001",
+      "role": "USER",
+      "content": "Hello there.",
+      "createdAt": "2026-02-01T00:00:01.000Z"
+    },
+    {
+      "type": "message",
+      "id": "e1000001-0000-4000-8000-000000000002",
+      "role": "ASSISTANT",
+      "content": "General Kenobi!",
+      "participantId": "fb000001-0000-4000-8000-000000000001",
+      "tokenCount": 150,
+      "promptTokens": 120,
+      "completionTokens": 30,
+      "provider": "anthropic",
+      "modelName": "claude-opus-4-8",
+      "rawResponse": { "stop_reason": "end_turn", "index": 0 },
+      "attachments": ["aaaa0001-0000-4000-8000-000000000001"],
+      "swipeGroupId": "sg-1",
+      "swipeIndex": 0,
+      "renderedHtml": "<p>General Kenobi!</p>",
+      "createdAt": "2026-02-01T00:00:02.000Z"
+    },
+    {
+      "type": "message",
+      "id": "e1000001-0000-4000-8000-000000000003",
+      "role": "ASSISTANT",
+      "content": "Thinking done.",
+      "reasoningContent": "Let me think about this carefully.",
+      "reasoningSegments": [
+        { "anchorOffset": 0, "content": "step one", "seq": 1 },
+        { "anchorOffset": 12, "content": "step two", "seq": 2 }
+      ],
+      "thoughtSignature": "sig-abc",
+      "createdAt": "2026-02-01T00:00:03.000Z"
+    },
+    {
+      "type": "message",
+      "id": "e1000001-0000-4000-8000-000000000004",
+      "role": "ASSISTANT",
+      "content": "psst, between us.",
+      "participantId": "fc000001-0000-4000-8000-000000000001",
+      "targetParticipantIds": ["fb000001-0000-4000-8000-000000000001"],
+      "dangerFlags": [
+        { "category": "nsfw", "score": 0.9 },
+        {
+          "category": "violence",
+          "score": 1,
+          "userOverridden": true,
+          "wasRerouted": true,
+          "reroutedProvider": "openrouter",
+          "reroutedModel": "uncensored-x"
+        }
+      ],
+      "createdAt": "2026-02-01T00:00:04.000Z"
+    },
+    {
+      "type": "message",
+      "id": "e1000001-0000-4000-8000-000000000005",
+      "role": "SYSTEM",
+      "content": "The Host welcomes a new arrival.",
+      "systemSender": "host",
+      "systemKind": "add",
+      "opaqueContent": "A participant joined the scene.",
+      "hostEvent": {
+        "participantId": "fb000001-0000-4000-8000-000000000001",
+        "toStatus": "active"
+      },
+      "createdAt": "2026-02-01T00:00:05.000Z"
+    },
+    {
+      "type": "message",
+      "id": "e1000001-0000-4000-8000-000000000006",
+      "role": "ASSISTANT",
+      "content": "Forty-two.",
+      "systemSender": "carina",
+      "carinaMeta": {
+        "answererId": "bbbb2222-2222-4222-8222-222222222222",
+        "question": "What is the answer to everything?"
+      },
+      "createdAt": "2026-02-01T00:00:06.000Z"
+    },
+    {
+      "type": "message",
+      "id": "e1000001-0000-4000-8000-000000000007",
+      "role": "USER",
+      "content": "Hear ye, hear ye.",
+      "customAnnouncer": { "kind": "custom", "displayName": "The Narrator" },
+      "summaryAnchor": { "compactionGeneration": 2 },
+      "createdAt": "2026-02-01T00:00:07.000Z"
+    },
+    {
+      "type": "message",
+      "id": "e1000001-0000-4000-8000-000000000008",
+      "role": "ASSISTANT",
+      "content": "",
+      "pendingExternalPrompt": "Copy this delta bundle to your LLM.",
+      "pendingExternalPromptFull": "Copy this full-context bundle to your LLM.",
+      "pendingExternalAttachments": [
+        {
+          "fileId": "ffff0001-0000-4000-8000-000000000001",
+          "filename": "dossier.pdf",
+          "mimeType": "application/pdf",
+          "sizeBytes": 2048,
+          "downloadUrl": "https://example.test/dossier.pdf"
+        }
+      ],
+      "createdAt": "2026-02-01T00:00:08.000Z"
+    },
+    {
+      "type": "message",
+      "id": "e1000001-0000-4000-8000-000000000009",
+      "role": "ASSISTANT",
+      "content": "Let me try that again.",
+      "recoveryType": "token_limit",
+      "createdAt": "2026-02-01T00:00:09.000Z"
+    },
+    {
+      "type": "context-summary",
+      "id": "e1000001-0000-4000-8000-00000000000a",
+      "context": "A summary of the conversation so far.",
+      "createdAt": "2026-02-01T00:00:10.000Z"
+    },
+    {
+      "type": "system",
+      "id": "e1000001-0000-4000-8000-00000000000b",
+      "systemEventType": "SUMMARIZATION",
+      "description": "Summarized the chat history.",
+      "promptTokens": 500,
+      "completionTokens": 100,
+      "totalTokens": 600,
+      "provider": "anthropic",
+      "modelName": "claude-haiku-4-5",
+      "estimatedCostUSD": 0.0012,
+      "createdAt": "2026-02-01T00:00:11.000Z"
+    },
+    {
+      "type": "system",
+      "id": "e1000001-0000-4000-8000-00000000000c",
+      "systemEventType": "TITLE_GENERATION",
+      "description": "Generated a fresh title.",
+      "createdAt": "2026-02-01T00:00:12.000Z"
+    }
+  ],
+  "queries": [
+    { "kind": "getMessages", "chatId": "c0000002-0000-4000-8000-000000000001" },
+    { "kind": "getMessages", "chatId": "c0000002-0000-4000-8000-deadbeef0000" },
+    { "kind": "getMessageCount", "chatId": "c0000002-0000-4000-8000-000000000001" },
+    { "kind": "getMessageCount", "chatId": "c0000002-0000-4000-8000-deadbeef0000" },
+    { "kind": "findChatIdForMessage", "messageId": "e1000001-0000-4000-8000-000000000002" },
+    { "kind": "findChatIdForMessage", "messageId": "e1000001-0000-4000-8000-00000000000a" },
+    { "kind": "findChatIdForMessage", "messageId": "e1000001-0000-4000-8000-ffffffffffff" }
+  ]
+}

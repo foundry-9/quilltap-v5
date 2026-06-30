@@ -31,6 +31,7 @@ pub mod characters_read;
 pub mod chat_documents;
 pub mod chat_settings;
 pub mod chats;
+pub mod chats_messages_read;
 pub mod chats_read;
 pub mod connection_profiles;
 pub mod conversation_annotations;

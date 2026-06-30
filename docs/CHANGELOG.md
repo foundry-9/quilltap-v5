@@ -149,6 +149,31 @@ chats — a rich chat exercising every marshaling branch, a minimal chat, salon 
 help / brahma types, summarized chats with distinct `lastMessageAt`), running 16
 queries compared exactly (no normalization — nothing mutated).
 
+The `chats` repo — sub-unit 3: the **`chat_messages` read path**
+(`db::chats_messages_read`, `chats_messages_read_equivalence`). Ports v4's
+`ChatMessagesOps` read surface — `getMessages` / `getMessageCount` /
+`findChatIdForMessage`. Messages live in their own MAIN-db `chat_messages` table
+(one row per event); `getMessages` reads every row for a chat ordered by
+`createdAt` and validates each through `ChatEventSchema`, a three-member union
+(`MessageEvent` / `ContextSummaryEvent` / `SystemEvent`). The marshaling
+dispatches on the `type` discriminator and reconstructs each member: required
+columns read directly, nullable-optional columns OMITTED when `NULL`, and the
+array/object JSON columns (`rawResponse` [`z.record`], `attachments`,
+`reasoningSegments`, `dangerFlags`, `hostEvent`, `customAnnouncer`, `carinaMeta`,
+`pendingExternalAttachments`, `summaryAnchor`, …) parsed straight to JSON. No
+read-side default materialization is needed: v4 runs `ChatEventSchema.parse`
+*before* every insert, so each `.default(...)` (e.g. `attachments` → `[]`, a
+`DangerFlag`'s `userOverridden` / `wasRerouted` → `false`) and the exact
+int-vs-float number representation are already baked into the stored bytes.
+Verified by a read-differential: both sides READ a copy of one fixture baked by
+v4's REAL `repos.chats.addMessages` (one chat + twelve messages covering every
+event member and JSON column), running 7 queries compared exactly (no
+normalization). **Tracked seam:** `isSilentMessage` — its
+`z.union([boolean, number.transform])` maps to TEXT affinity, so a stored boolean
+round-trips as the string `"1"` and v4 drops the whole message on read; the
+corpus keeps it absent and the column is not read here (close before reading real
+data that sets it).
+
 Build — extracted the SQLite3MC (ChaCha20/sqleet) amalgamation into a dedicated
 `quilltap-sqlite3mc-sys` crate (its `build.rs` + `vendor/`, moved out of
 `quilltap-core`). Cargo's build-script fingerprint includes the package version,
