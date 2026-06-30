@@ -63,6 +63,7 @@ pub mod users;
 pub mod vault_character_write;
 pub mod vault_read_overlay;
 pub mod vault_wardrobe_write;
+pub mod vector_indices;
 pub mod wardrobe;
 
 /// Errors from the DB layer.
@@ -291,6 +292,12 @@ impl Writer {
     /// `group_character_members`, the first sibling-DB repo).
     pub fn llm_logs(&self) -> llm_logs::LLMLogsRepository<'_> {
         llm_logs::LLMLogsRepository::new(&self.conn)
+    }
+
+    /// The vector-indices repository over this writer's connection (MAIN db; a
+    /// standalone two-table repo — `vector_indices` + `vector_entries`).
+    pub fn vector_indices(&self) -> vector_indices::VectorIndicesRepository<'_> {
+        vector_indices::VectorIndicesRepository::new(&self.conn)
     }
 
     /// The plugin-config repository over this writer's connection.

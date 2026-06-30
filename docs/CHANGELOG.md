@@ -105,6 +105,26 @@ ops), built as a thin vertical slice over the `folders` repo:
   oracle NDJSON (`QT_ORACLE_FOLDERS` + `QT_FIXTURE_FOLDERS`, skip-if-unset).
   The `folders` repo round-trips green.
 
+Phase 2 — the `vector_indices` repo (`quilltap-core::db::vector_indices`), v4's
+`VectorIndicesRepository`. The first **standalone two-table** repo — it does NOT
+extend the base repository; it manages `vector_indices` (per-character metadata)
++ `vector_entries` (per-embedding rows) in the MAIN db directly. Banks the third
+Float32-BLOB embedding column (little-endian via `embedding_blob::float32_to_blob`,
+`None`/empty → SQL NULL, never a zero-length blob; dumped as hex for a bit-exact
+compare), two REAL-affinity number columns (`version`/`dimensions`, bare
+`z.number()` → REAL, integer-collapsed in the dump), and a `saveMeta` upsert keyed
+by `characterId` (`id == characterId`, so the meta `id` is pinned, not minted).
+Reproduces v4's exact op semantics: `addEntries` mints one shared `createdAt`
+across the batch; `removeEntries` is a per-id delete loop (not a single `IN (…)`);
+`updateEntryEmbedding` touches only the embedding column (no timestamp);
+`deleteByCharacterId` is two independent ops (entries then meta), not one SQL
+transaction. Verified by a tier-2 differential (`vector_indices_tier2_equivalence`)
+driving v4's REAL repo over a full op sequence (saveMeta create/update, addEntry,
+addEntries, updateEntryEmbedding, removeEntries, and a `deleteByCharacterId` that
+wipes a second character entirely) and diffing both tables in the minted-values
+remap form (entry `id` remapped, timestamps placeholdered, `characterId`/embedding
+pinned).
+
 Phase 2 — repo-by-repo over the real DB (each ported repo arrives with its
 tier-2 case):
 

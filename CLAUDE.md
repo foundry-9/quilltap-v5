@@ -735,8 +735,15 @@ pinned/excluded). Remaining characters sub-units: `ensureCharacterVault`
 provisioning, the slim-row `CharactersRepository` CRUD + `create`/`update`
 integration, and the array ops (`systemPrompts`/`scenarios`/`partnerLinks`) +
 `findBy*` queries. The peer repos `background_jobs` and `vector_indices` (both
-independent, no characters/store-backed coupling) are drafted and pending serial
-integration.
+independent, no characters/store-backed coupling) were drafted in parallel.
+**`vector_indices` is now integrated and green** (`vector_indices_tier2_equivalence`):
+the first **standalone two-table** repo (`vector_indices` metadata + `vector_entries`
+embeddings, MAIN db, no base-repository) — a third Float32-BLOB column, two
+REAL-affinity number columns, a `saveMeta` upsert (`id == characterId`, pinned),
+and v4's exact op semantics (batch-shared `createdAt`, per-id `removeEntries` loop,
+embedding-only update, two-op `deleteByCharacterId`); minted-values remap form.
+`background_jobs` is drafted and pending serial integration (its draft corrected
+`priority`/`attempts`/`maxAttempts` to REAL, not INTEGER; minted-timestamp form).
 
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green

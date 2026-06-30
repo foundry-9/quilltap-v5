@@ -1,0 +1,104 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the standalone two-table `vector_indices`",
+    "repository (vector_indices metadata + vector_entries Float32-BLOB rows).",
+    "",
+    "Build-from-empty: the fixture seeds NO rows (only the two table DDLs, via v4's",
+    "real ensureCollection + registerBlobColumns); every row under test is produced",
+    "by the op sequence below, run identically through v4's real repo and the Rust",
+    "port. characterId is PINNED (it is an input, and vector_indices.id == the",
+    "character id); entry ids are inputs too but treated as MINTED by the harness",
+    "(remapped to first-seen tokens) so the row identity is verified by relationship,",
+    "not by literal value; all timestamps are minted (placeholdered).",
+    "",
+    "MINTED-VALUES REMAP FORM. Both tables are dumped:",
+    "  - vector_indices ordered by `id` (== characterId, pinned).",
+    "  - vector_entries ordered by `characterId` then... the harness remaps ids in",
+    "    a deterministic natural order. To make that natural order stable we order",
+    "    entry rows by `embedding` hex (deterministic content) as the dump key.",
+    "",
+    "Op coverage: saveMeta create (CHAR_A), addEntry, addEntries (batch — one shared",
+    "createdAt across the batch), updateEntryEmbedding (only the embedding column),",
+    "saveMeta update (dimensions + updatedAt bump, version/createdAt preserved),",
+    "removeEntries (per-id loop, summed), and deleteByCharacterId on CHAR_B (which",
+    "was given its own meta + entries) to prove the combined meta+entries wipe.",
+    "",
+    "Known float vectors give predictable little-endian hex:",
+    "  [0.5,-0.25,0.75,0.125]   -> 0000003f000080be0000403f0000003e",
+    "  [1.0,2.0]                -> 0000803f00000040",
+    "  [-1.0,0.0,1.0]           -> 000080bf000000000000803f",
+    "  [0.25,0.25,0.25,0.25]    -> 0000803e0000803e0000803e0000803e (update target)",
+    "  [3.5]                    -> 00006040",
+    "",
+    "SAFETY: testPepperBase64 is the same THROWAWAY key the other fixtures use."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "characterA": "a0000000-0000-4000-8000-00000000000a",
+  "characterB": "b0000000-0000-4000-8000-00000000000b",
+  "ops": [
+    {
+      "kind": "saveMeta",
+      "comment": "Create CHAR_A meta: id=characterId, version=1, dimensions=4.",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "dimensions": 4
+    },
+    {
+      "kind": "addEntry",
+      "comment": "Single entry for CHAR_A; createdAt minted.",
+      "id": "e0000000-0000-4000-8000-000000000001",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "embedding": [0.5, -0.25, 0.75, 0.125]
+    },
+    {
+      "kind": "addEntries",
+      "comment": "Batch of two for CHAR_A; a single shared createdAt across both.",
+      "entries": [
+        {
+          "id": "e0000000-0000-4000-8000-000000000002",
+          "characterId": "a0000000-0000-4000-8000-00000000000a",
+          "embedding": [1.0, 2.0]
+        },
+        {
+          "id": "e0000000-0000-4000-8000-000000000003",
+          "characterId": "a0000000-0000-4000-8000-00000000000a",
+          "embedding": [-1.0, 0.0, 1.0]
+        }
+      ]
+    },
+    {
+      "kind": "updateEntryEmbedding",
+      "comment": "Replace entry e...0002's embedding (only the embedding column).",
+      "id": "e0000000-0000-4000-8000-000000000002",
+      "embedding": [0.25, 0.25, 0.25, 0.25]
+    },
+    {
+      "kind": "saveMeta",
+      "comment": "Update CHAR_A meta: dimensions->8, updatedAt bumped; version stays 1.",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "dimensions": 8
+    },
+    {
+      "kind": "removeEntries",
+      "comment": "Remove e...0003 via the per-id loop (e...0001/0002 survive).",
+      "ids": ["e0000000-0000-4000-8000-000000000003"]
+    },
+    {
+      "kind": "saveMeta",
+      "comment": "Create CHAR_B meta (to be wiped by deleteByCharacterId below).",
+      "characterId": "b0000000-0000-4000-8000-00000000000b",
+      "dimensions": 1
+    },
+    {
+      "kind": "addEntry",
+      "comment": "Entry for CHAR_B (to be wiped with its meta).",
+      "id": "e0000000-0000-4000-8000-00000000000b",
+      "characterId": "b0000000-0000-4000-8000-00000000000b",
+      "embedding": [3.5]
+    },
+    {
+      "kind": "deleteByCharacterId",
+      "comment": "Wipe CHAR_B entirely: remove its entries, then its meta row.",
+      "characterId": "b0000000-0000-4000-8000-00000000000b"
+    }
+  ]
+}
