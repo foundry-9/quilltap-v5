@@ -105,6 +105,35 @@ ops), built as a thin vertical slice over the `folders` repo:
   oracle NDJSON (`QT_ORACLE_FOLDERS` + `QT_FIXTURE_FOLDERS`, skip-if-unset).
   The `folders` repo round-trips green.
 
+Phase 2 — the `background_jobs` repo (`quilltap-core::db::background_jobs`), v4's
+`BackgroundJobsRepository` — the durable work queue (memory extraction, context
+summaries, embedding generation, autonomous room turns, …). A
+`UserOwnedBaseRepository` (a `userId` column) with NO base-method override, so
+`create`/`update`/`delete` honor pinned id/createdAt/updatedAt; on top of CRUD it
+ports the full queue API. Banks three **REAL-affinity** number columns
+(`priority`/`attempts`/`maxAttempts` — all bare `z.number().default(N)` → REAL,
+NOT INTEGER; integer-collapsed in the dump) and the open-JSON `payload` column
+(kept `{}`/single-key per the multi-key key-order seam). Ports and verifies the
+queue ops: `claimNextJob` (atomic `SELECT … ORDER BY priority DESC, createdAt ASC
+LIMIT 1` then UPDATE in a transaction, `attempts += 1`), `markFailed` (exponential
+backoff `min(30·2^attempts, 300)`s, DEAD-vs-FAILED on `attempts >= maxAttempts`),
+`markCompleted`, `pause`/`resume`, `cancel`, `cancelByType`, `resetAllProcessingJobs`,
+`resetStuckJobs`, and `deleteByTypesAndStatuses` — with the exact `lastError`
+strings byte-for-byte (`"Cancelled by user"`, `"Superseded by new reindex"`, the
+em-dash `"Orphaned on startup — killed"`, `"Timed out after N minutes"`). The
+nested-JSON path finders (`findPendingForChat`/`ForEntity`) reproduce v4's
+`json_extract(payload, '$.chatId')` translation. Verified by a tier-2 differential
+(`background_jobs_tier2_equivalence`) driving v4's REAL repo over a 13-op sequence
+and diffing the table in the minted-timestamp placeholder form (ids + createdAt +
+every deterministic column — status/attempts/lastError/payload/priority/maxAttempts
+— diffed EXACTLY; only the four mintable timestamp columns placeholdered).
+**Discovered v4-on-SQLite limitation:** `markCompleted`'s dotted `payload.result`
+merge throws `no such column: payload.result` on v4's SQLite backend (no dotted
+JSON sub-key translator), so that path is unreachable there; the port keeps the
+merge as a forward v5 capability (via the pure `merge_result_into_payload`, three
+unit tests) and the differential exercises only the no-result path (v4's working
+behavior).
+
 Phase 2 — the `vector_indices` repo (`quilltap-core::db::vector_indices`), v4's
 `VectorIndicesRepository`. The first **standalone two-table** repo — it does NOT
 extend the base repository; it manages `vector_indices` (per-character metadata)

@@ -742,8 +742,21 @@ embeddings, MAIN db, no base-repository) — a third Float32-BLOB column, two
 REAL-affinity number columns, a `saveMeta` upsert (`id == characterId`, pinned),
 and v4's exact op semantics (batch-shared `createdAt`, per-id `removeEntries` loop,
 embedding-only update, two-op `deleteByCharacterId`); minted-values remap form.
-`background_jobs` is drafted and pending serial integration (its draft corrected
-`priority`/`attempts`/`maxAttempts` to REAL, not INTEGER; minted-timestamp form).
+**`background_jobs` is now integrated and green** (`background_jobs_tier2_equivalence`):
+v4's `BackgroundJobsRepository`, the durable work queue (UserOwned, no base-method
+override). Three REAL-affinity number columns (`priority`/`attempts`/`maxAttempts`
+— bare `z.number()` → REAL, not INTEGER) + open-JSON `payload`; the full queue API
+(`claimNextJob` atomic claim, `markFailed` exp-backoff DEAD-vs-FAILED, `markCompleted`,
+`pause`/`resume`, `cancel`/`cancelByType`, `resetAllProcessingJobs`/`resetStuckJobs`,
+`deleteByTypesAndStatuses`) verified over a 13-op differential in the minted-timestamp
+placeholder form, with the exact `lastError` strings (em-dash included) diffed
+byte-for-byte. **Discovered v4-on-SQLite limitation:** `markCompleted`'s dotted
+`payload.result` merge throws `no such column` on v4's SQLite backend, so that path
+is a forward v5-only capability (pure `merge_result_into_payload` + unit tests; the
+differential exercises only the no-result path). With this, all three peer repos of
+the characters capstone (`characters` sub-unit 1, `vector_indices`, `background_jobs`)
+are landed; the remaining characters sub-units (provisioning, slim-row CRUD, array
+ops) are next.
 
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green

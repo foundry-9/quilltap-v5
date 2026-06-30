@@ -23,6 +23,7 @@ use serde_json::{Map, Value};
 
 use crate::dbkey;
 
+pub mod background_jobs;
 pub mod character_plugin_data;
 pub mod chat_documents;
 pub mod chat_settings;
@@ -129,6 +130,11 @@ impl Writer {
     /// until then the store-backed repos take the two connections directly.
     pub fn connection(&self) -> &Connection {
         &self.conn
+    }
+
+    /// The background-jobs repository over this writer's connection (MAIN db).
+    pub fn background_jobs(&self) -> background_jobs::BackgroundJobsRepository<'_> {
+        background_jobs::BackgroundJobsRepository::new(&self.conn)
     }
 
     /// The character-plugin-data repository over this writer's connection.

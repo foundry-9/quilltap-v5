@@ -1,0 +1,285 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `background_jobs` repo (Phase-2, main",
+    "DB). One committed file drives BOTH sides of the differential:",
+    "  - the v4 oracle (build-background-jobs-fixture.ts + background-jobs.ts) and",
+    "  - the Rust port (quilltap-harness background_jobs tier-2 test).",
+    "",
+    "`background_jobs` is the durable work queue. It extends v4's",
+    "UserOwnedBaseRepository (a `userId` column) and has NO base-method override:",
+    "create/update/delete honor pinned id/createdAt/updatedAt. On top of CRUD it",
+    "adds the queue API exercised here: claimNextJob (atomic pick), markFailed",
+    "(exponential-backoff retry scheduling, DEAD-vs-FAILED branch), pause/resume,",
+    "and resetAllProcessingJobs (bulk PROCESSING -> DEAD).",
+    "",
+    "COLUMNS / AFFINITIES: priority / attempts / maxAttempts are bare",
+    "z.number().default(N) -> REAL affinity (NOT INTEGER); the canonical dump's",
+    "js_number_to_json collapses the integer-valued REAL cell back to a JSON int.",
+    "payload is the open-JSON object column (z.record(string,unknown)) stored as",
+    "compact JSON; kept {}/single-key to avoid the multi-key key-order seam.",
+    "",
+    "HARNESS FORM (minted-timestamp placeholder, like embedding_status): several",
+    "queue ops mint `now` (and markFailed mints `now + backoff`) UNCONDITIONALLY",
+    "from the system clock, so a pure zero-normalization form is impossible. ids",
+    "and createdAt are pinned and diffed EXACTLY; every deterministic column",
+    "(status, attempts, lastError, payload, priority, maxAttempts) is diffed",
+    "EXACTLY; only the four mintable timestamp columns (scheduledAt, startedAt,",
+    "completedAt, updatedAt) are collapsed to a `<ts>` placeholder on both sides.",
+    "createdAt is honored on create and preserved on update, so it stays exact.",
+    "",
+    "DETERMINISM OF SELECTION: claimNextJob / resetStuckJobs depend on `now` vs",
+    "scheduledAt / startedAt. The seed pins those far in the past (2020) so the",
+    "claimable / stuck SET is the same no matter when the test runs.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key (the same one folders /",
+    "tags / text_replacement_rules use). NOT the real Friday pepper; safe to commit."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seed": [
+    {
+      "id": "10000000-0000-4000-8000-000000000001",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "type": "MEMORY_EXTRACTION",
+      "status": "PENDING",
+      "payload": { "chatId": "chat-A" },
+      "priority": 5,
+      "attempts": 0,
+      "maxAttempts": 3,
+      "scheduledAt": "2020-01-01T00:00:00.000Z",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000002",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "type": "EMBEDDING_GENERATE",
+      "status": "PENDING",
+      "payload": { "entityId": "ent-B" },
+      "priority": 1,
+      "attempts": 0,
+      "maxAttempts": 3,
+      "scheduledAt": "2020-01-01T00:00:00.000Z",
+      "createdAt": "2026-01-02T00:00:00.000Z",
+      "updatedAt": "2026-01-02T00:00:00.000Z"
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000003",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "type": "CONTEXT_SUMMARY",
+      "status": "FAILED",
+      "payload": {},
+      "priority": 0,
+      "attempts": 3,
+      "maxAttempts": 3,
+      "lastError": "boom",
+      "scheduledAt": "2020-01-01T00:00:00.000Z",
+      "createdAt": "2026-01-03T00:00:00.000Z",
+      "updatedAt": "2026-01-03T00:00:00.000Z"
+    },
+    {
+      "id": "40000000-0000-4000-8000-000000000004",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "type": "TITLE_UPDATE",
+      "status": "FAILED",
+      "payload": {},
+      "priority": 0,
+      "attempts": 1,
+      "maxAttempts": 3,
+      "lastError": "transient",
+      "scheduledAt": "2020-01-01T00:00:00.000Z",
+      "createdAt": "2026-01-04T00:00:00.000Z",
+      "updatedAt": "2026-01-04T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "kind": "create",
+      "comment": "New PENDING job. Exercises the REAL number columns + open-JSON payload (single-key) on insert; id + timestamps pinned (createdAt diffed exact, scheduledAt/updatedAt placeholdered).",
+      "data": {
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "type": "EMBEDDING_GENERATE",
+        "status": "PENDING",
+        "payload": { "entityId": "ent-D" },
+        "priority": 2,
+        "attempts": 0,
+        "maxAttempts": 3,
+        "scheduledAt": "2020-01-01T00:00:00.000Z"
+      },
+      "options": {
+        "id": "50000000-0000-4000-8000-000000000005",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "claimNextJob",
+      "comment": "Atomic claim. Among the four PENDING/FAILED-and-eligible rows, seed A (priority 5) wins. Becomes PROCESSING, attempts 0->1 (exact), startedAt/updatedAt minted (placeholdered).",
+      "expectClaimId": "10000000-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "markFailed",
+      "comment": "DEAD branch: seed C has attempts(3) >= maxAttempts(3), so status -> DEAD, lastError set (exact), scheduledAt = now+backoff (placeholdered). Status decision is deterministic and diffed exactly.",
+      "id": "30000000-0000-4000-8000-000000000003",
+      "error": "fatal"
+    },
+    {
+      "kind": "markFailed",
+      "comment": "FAILED-retry branch: seed D has attempts(1) < maxAttempts(3), so status stays FAILED, lastError updated (exact), scheduledAt = now + min(30*2^1,300)=60s (placeholdered).",
+      "id": "40000000-0000-4000-8000-000000000004",
+      "error": "retry me"
+    },
+    {
+      "kind": "pause",
+      "comment": "Pause seed B (PENDING -> PAUSED). updatedAt minted (placeholdered); status exact.",
+      "id": "20000000-0000-4000-8000-000000000002"
+    },
+    {
+      "kind": "resume",
+      "comment": "Resume seed B (PAUSED -> PENDING). scheduledAt = updatedAt = now (both placeholdered); status exact.",
+      "id": "20000000-0000-4000-8000-000000000002"
+    },
+    {
+      "kind": "resetAllProcessingJobs",
+      "comment": "Bulk reset: the one PROCESSING row (seed A, claimed above) -> DEAD with the 'Orphaned on startup — killed' lastError (em-dash, exact). Count modified = 1.",
+      "expectCount": 1
+    },
+    {
+      "kind": "update",
+      "comment": "Plain _update on the created job D: bump priority 2->7 (exact REAL) and set lastError (exact). updatedAt pinned in patch (still placeholdered by the harness form); createdAt preserved exact.",
+      "id": "50000000-0000-4000-8000-000000000005",
+      "data": {
+        "priority": 7,
+        "lastError": "noted",
+        "updatedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "Fresh PROCESSING row K (created AFTER resetAllProcessingJobs so it doesn't change that op's count=1). markCompleted target next.",
+      "data": {
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "type": "MEMORY_HOUSEKEEPING",
+        "status": "PROCESSING",
+        "payload": {},
+        "priority": 0,
+        "attempts": 0,
+        "maxAttempts": 3,
+        "scheduledAt": "2020-01-01T00:00:00.000Z"
+      },
+      "options": {
+        "id": "b0000000-0000-4000-8000-00000000000b",
+        "createdAt": "2026-02-10T00:00:00.000Z",
+        "updatedAt": "2026-02-10T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "markCompleted",
+      "comment": "markCompleted WITHOUT a result: K -> COMPLETED, completedAt + updatedAt minted (placeholdered), payload {} untouched. NOTE: v4's SQLite backend throws 'no such column: payload.result' on the dotted-key result merge, so that path is unreachable on v4-on-SQLite and is NOT exercised here (the port's merge is a v5-only capability, covered by a unit test).",
+      "id": "b0000000-0000-4000-8000-00000000000b"
+    },
+    {
+      "kind": "create",
+      "comment": "Fresh PROCESSING row J with a far-past startedAt — the resetStuckJobs target.",
+      "data": {
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "type": "SCENE_STATE_TRACKING",
+        "status": "PROCESSING",
+        "payload": {},
+        "priority": 0,
+        "attempts": 0,
+        "maxAttempts": 3,
+        "scheduledAt": "2020-01-01T00:00:00.000Z",
+        "startedAt": "2020-01-01T00:00:00.000Z"
+      },
+      "options": {
+        "id": "a0000000-0000-4000-8000-00000000000a",
+        "createdAt": "2026-02-11T00:00:00.000Z",
+        "updatedAt": "2026-02-11T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "resetStuckJobs",
+      "comment": "Stuck reset: J is the only PROCESSING row (K was completed), startedAt(2020) < now-60min, so J -> FAILED with lastError 'Timed out after 60 minutes' (exact). Count = 1.",
+      "timeoutMinutes": 60,
+      "expectCount": 1
+    },
+    {
+      "kind": "create",
+      "comment": "Fresh PENDING row L — the cancel target.",
+      "data": {
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "type": "STORY_BACKGROUND_GENERATION",
+        "status": "PENDING",
+        "payload": {},
+        "priority": 0,
+        "attempts": 0,
+        "maxAttempts": 3,
+        "scheduledAt": "2020-01-01T00:00:00.000Z"
+      },
+      "options": {
+        "id": "c0000000-0000-4000-8000-00000000000c",
+        "createdAt": "2026-02-12T00:00:00.000Z",
+        "updatedAt": "2026-02-12T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "cancel",
+      "comment": "Cancel L (PENDING -> DEAD) with lastError 'Cancelled by user' (exact). Returns true.",
+      "id": "c0000000-0000-4000-8000-00000000000c",
+      "expectModified": true
+    },
+    {
+      "kind": "create",
+      "comment": "Fresh FAILED row M — the cancelByType target.",
+      "data": {
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "type": "EMBEDDING_REFIT",
+        "status": "FAILED",
+        "payload": {},
+        "priority": 0,
+        "attempts": 1,
+        "maxAttempts": 3,
+        "lastError": "earlier",
+        "scheduledAt": "2020-01-01T00:00:00.000Z"
+      },
+      "options": {
+        "id": "d0000000-0000-4000-8000-00000000000d",
+        "createdAt": "2026-02-13T00:00:00.000Z",
+        "updatedAt": "2026-02-13T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "cancelByType",
+      "comment": "Cancel all non-completed EMBEDDING_REFIT jobs: M (FAILED) -> DEAD with lastError 'Superseded by new reindex' (exact). Count = 1.",
+      "type": "EMBEDDING_REFIT",
+      "expectCount": 1
+    },
+    {
+      "kind": "create",
+      "comment": "Fresh COMPLETED row N — the deleteByTypesAndStatuses target (hard-deleted, so it must be absent from the final dump).",
+      "data": {
+        "userId": "aa000000-0000-4000-8000-0000000000aa",
+        "type": "LLM_LOG_CLEANUP",
+        "status": "COMPLETED",
+        "payload": {},
+        "priority": 0,
+        "attempts": 0,
+        "maxAttempts": 3,
+        "scheduledAt": "2020-01-01T00:00:00.000Z",
+        "completedAt": "2026-02-14T00:00:00.000Z"
+      },
+      "options": {
+        "id": "e0000000-0000-4000-8000-00000000000e",
+        "createdAt": "2026-02-14T00:00:00.000Z",
+        "updatedAt": "2026-02-14T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "deleteByTypesAndStatuses",
+      "comment": "Hard-delete jobs matching type IN (LLM_LOG_CLEANUP) AND status IN (COMPLETED): row N is removed (absent from the final dump). Count = 1. Exercises the IN-clause placeholder building.",
+      "types": ["LLM_LOG_CLEANUP"],
+      "statuses": ["COMPLETED"],
+      "expectCount": 1
+    }
+  ]
+}
