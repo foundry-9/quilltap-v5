@@ -52,6 +52,8 @@ pub mod groups;
 pub mod help_docs;
 pub mod image_profiles;
 pub mod llm_logs;
+pub mod memories;
+pub mod memories_read;
 pub mod plugin_config;
 pub mod project_doc_mount_links;
 pub mod projects;
@@ -191,6 +193,13 @@ impl Writer {
     /// The embedding-status repository over this writer's connection.
     pub fn embedding_status(&self) -> embedding_status::EmbeddingStatusRepository<'_> {
         embedding_status::EmbeddingStatusRepository::new(&self.conn)
+    }
+
+    /// The memories repository (write/mutation surface) over this writer's
+    /// connection (MAIN db). The read path is the free functions in
+    /// [`memories_read`].
+    pub fn memories(&self) -> memories::MemoriesRepository<'_> {
+        memories::MemoriesRepository::new(&self.conn)
     }
 
     /// The files repository over this writer's connection.
@@ -421,7 +430,7 @@ fn cell_to_json(v: ValueRef<'_>) -> Value {
 /// fractional values (`9.5`) pass through unchanged, as they do in JS. The i64
 /// range guard keeps the cast exact (DB integer columns are small; values beyond
 /// it are not integer-collapsed, mirroring nothing we store).
-fn js_number_to_json(f: f64) -> Value {
+pub(crate) fn js_number_to_json(f: f64) -> Value {
     if f.is_finite() && f.fract() == 0.0 && f >= i64::MIN as f64 && f <= i64::MAX as f64 {
         Value::from(f as i64)
     } else {

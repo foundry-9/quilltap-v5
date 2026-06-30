@@ -105,6 +105,29 @@ ops), built as a thin vertical slice over the `folders` repo:
   oracle NDJSON (`QT_ORACLE_FOLDERS` + `QT_FIXTURE_FOLDERS`, skip-if-unset).
   The `folders` repo round-trips green.
 
+Phase 2 — the `memories` repo, ported whole
+(`quilltap-core::db::memories` + `db::memories_read`). A plain main-DB
+`AbstractBaseRepository<Memory>` (no overrides except the `embedding` BLOB
+registration, no vault overlay), so every read is a single-connection SELECT +
+marshal. Ports the full surface: the write/mutation side (`create` with embedding
+BLOB + JSON-array columns + the three numeric columns — `importance` /
+`reinforcedImportance` are INTEGER-affinity, `reinforcementCount` REAL, all bound
+`f64`; `update` leaving the BLOB untouched; `delete`; `updateForCharacter` /
+`deleteForCharacter` ownership gates; `bulkDelete`; `updateAccessTime{,Bulk}`;
+`replaceInMemories`; `deleteByChatId` / `deleteBySourceMessageId{,s}`) and the
+read side (all ~30 `findBy*` / `count*` queries, incl. the `$regex` → SQL `LIKE`
+mangling reproduced byte-for-byte, the `findByCharacterAboutCharacters` window
+function, `findByCharacterIdPaginated`'s in-memory search, and the importance
+tiers). Banks a marshaling seam: the normal `findByFilter` path omits NULL
+nullable-optional columns (v4's `undefined` dropped by `JSON.stringify`), but the
+raw-SQL `findByCharacterAboutCharacters` path keeps them as `null` (its rawQuery
+rows carry explicit NULLs that `MemorySchema.safeParse` retains) — the port
+mirrors both. Verified two ways: a tier-2 differential (`memories_tier2_equivalence`,
+the write/mutation sequence, minted-timestamp placeholder form) and a
+read-differential (`memories_read_equivalence`, 39 queries over a v4-baked fixture,
+zero normalization — nothing mutated, so no minted timestamp; a returned
+embedding is the `Float32Array` `{"0":…}` object rebuilt from the BLOB).
+
 Phase 2 — the `CharactersRepository` read path
 (`quilltap-core::db::characters_read`), characters sub-unit 4c — the capstone's
 last piece. Ports the slim-row read marshaling (row → `Character`, the inverse of

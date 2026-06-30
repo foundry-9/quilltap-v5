@@ -857,6 +857,42 @@ are landed, and characters sub-unit 2 (slim-row marshaling) is done; the remaini
 characters sub-units (provisioning + scaffold, the `create`/`update` vault
 integration, array ops + `findBy*`) are next.
 
+The **`memories` repo is ported whole** (`quilltap-core::db::memories` +
+`db::memories_read`, `memories_tier2_equivalence` + `memories_read_equivalence`).
+A plain MAIN-db `AbstractBaseRepository<Memory>` — **no base-method override**
+(only the `embedding` BLOB registration) and **no vault overlay**, so every read
+is a single-connection SELECT + marshal (simpler than the store-backed
+`characters`). The whole surface landed in one unit: the write/mutation side
+(`create` — the **fourth Float32-BLOB** column, three JSON-array columns
+`keywords`/`tags`/`relatedMemoryIds`, and the three numeric columns where
+`importance`/`reinforcedImportance` are **INTEGER-affinity** by `mapToSQLiteType`
+[min `0`/max `1` are integers] while `reinforcementCount` is min-only **REAL** —
+all bound `f64`, NUMERIC affinity + `js_number_to_json` keeping them byte-exact;
+`update` a partial SET that **never names `embedding`** so the BLOB survives a
+text-only patch [the `conversation_chunks`/`help_docs` rule]; `delete`;
+`updateForCharacter`/`deleteForCharacter` ownership gates; `bulkDelete`;
+`updateAccessTime{,Bulk}`; `replaceInMemories` literal substring replace;
+`deleteByChatId`/`deleteBySourceMessageId{,s}`) and the read side (all ~30
+`findBy*`/`count*`). Banks the **`$regex` → SQL `LIKE` seam**: v4 builds a
+`RegExp` from `escapeRegex(query)` and the translator mangles its **source**
+(`source.replace(/\.\*/g,'%').replace(/\./g,'_')`, wrapped `%…%`) — reproduced
+byte-for-byte so SQLite (same engine) matches identically; the JSON-array
+`keywords` `$in`/`$regex` go through `json_each`. Also banks the
+`findByCharacterAboutCharacters` **window function** (verbatim CTE
+`ROW_NUMBER() … PARTITION BY aboutCharacterId`), `findByCharacterIdPaginated`'s
+SQL-filter-then-in-memory-search, and the importance tiers. **New tracked
+marshaling seam:** the normal `findByFilter` path OMITS NULL nullable-optional
+columns (v4 `undefined` dropped by `JSON.stringify`), but the **raw-SQL**
+`findByCharacterAboutCharacters` path KEEPS them as `null` — its `rawQuery` rows
+carry explicit NULLs that `MemorySchema.safeParse` retains for a `.nullable()`
+field — so the port marshals that one method with `keep_nulls = true`. Verified
+two ways: a tier-2 differential (the write/mutation op sequence — rich + minimal
+create, the owned/not-owned no-op branches, the bulk/delete-by family — minted
+`updatedAt`/`lastAccessedAt` placeholdered), and a read-differential (39 queries
+over a v4-baked 6-memory fixture, **zero normalization** since nothing is
+mutated; a returned `embedding` is the `Float32Array` `{"0":…}` object rebuilt
+from the BLOB).
+
 Repo #4, `prompt_templates`
 (`quilltap-core::db::prompt_templates`), round-trips green
 (`prompt_templates_tier2_equivalence`): `create` + `update` + `delete` from v4's
