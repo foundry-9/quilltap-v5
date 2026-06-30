@@ -129,6 +129,26 @@ object columns' multi-key insertion order (constrained to `{}`/single-key/null),
 and the rest of the repo (messages, participants, impersonation, tokens, search,
 outfits, read queries) — the remaining sub-units.
 
+The `chats` repo — sub-unit 2: the **slim-row read path** (`db::chats_read`,
+`chats_read_equivalence`). Ports the read marshaling (the inverse of sub-unit 1's
+~96-column write = v4 `_findById` = hydrateRow + Zod parse) + the `findBy*`
+queries (`findById` / `findAll` / `findByUserId` / `findByCharacterId` /
+`findByType` / `findRecentSummarizedByCharacter`). The marshaling reproduces v4's
+net read shape: nullable-optional columns OMITTED when `NULL` (v4 `undefined`
+dropped by `JSON.stringify`), `.default(...)` numbers/bools/enums/arrays + `state`
+(`{}`) materialized, numbers rendered the JS way, and `participants` re-parsed
+per-element so each participant's own defaults materialize (`controlledBy: 'llm'`,
+`displayOrder: 0`, `isActive: true`, `status: 'active'`, `hasHistoryAccess:
+false`) and its nullable-optionals drop. `findByCharacterId` /
+`findRecentSummarizedByCharacter` use the nested `participants.characterId`
+`json_each` + `json_extract` match v4's query translator emits; the latter
+reproduces the `$exists`/`$nin`/`$ne` → `IS NOT NULL` / `NOT IN` / `!=` filter +
+`ORDER BY "lastMessageAt" DESC` + `LIMIT`. Verified by a read-differential: both
+sides READ a copy of one fixture baked by v4's REAL `repos.chats.create` (seven
+chats — a rich chat exercising every marshaling branch, a minimal chat, salon /
+help / brahma types, summarized chats with distinct `lastMessageAt`), running 16
+queries compared exactly (no normalization — nothing mutated).
+
 Build — extracted the SQLite3MC (ChaCha20/sqleet) amalgamation into a dedicated
 `quilltap-sqlite3mc-sys` crate (its `build.rs` + `vendor/`, moved out of
 `quilltap-core`). Cargo's build-script fingerprint includes the package version,

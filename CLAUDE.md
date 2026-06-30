@@ -885,8 +885,23 @@ it), so the differential is the pinned zero-normalization form; and on SQLite
 driving v4's REAL `ChatsRepository` over a create×3 / update×3 (both updatedAt
 branches) / delete sequence. **Tracked deferrals:** `delete`'s participant-vault
 summary sweep (external subsystem), the open-JSON object columns' multi-key
-insertion order (corpus kept `{}`/single-key/null), and the remaining sub-units
-(messages, participants, impersonation, tokens, search, outfits, read queries).
+insertion order (corpus kept `{}`/single-key/null). Sub-unit 2 — the **slim-row
+read path** — is also done (`db::chats_read`, `chats_read_equivalence`): the read
+marshaling (inverse of sub-unit 1 = v4 `_findById` = hydrateRow + Zod parse) + the
+`findBy*` queries (`findById`/`findAll`/`findByUserId`/`findByCharacterId`/
+`findByType`/`findRecentSummarizedByCharacter`). Reproduces v4's net read shape:
+nullable-optional columns OMITTED when `NULL`, `.default(...)`
+numbers/bools/enums/arrays + `state` (`{}`) materialized, numbers JS-rendered, and
+`participants` re-parsed per-element so each participant's own defaults
+materialize (`controlledBy:'llm'`, `displayOrder:0`, `isActive:true`,
+`status:'active'`, `hasHistoryAccess:false`) and its nullable-optionals drop. The
+`participants.characterId` filters use `json_each`+`json_extract`;
+`findRecentSummarizedByCharacter` reproduces the `$exists`/`$nin`/`$ne` filter +
+`ORDER BY "lastMessageAt" DESC`+`LIMIT`. Read-differential: both sides READ a copy
+of one v4-baked fixture (seven chats — a rich chat hitting every marshaling
+branch, a minimal chat, salon/help/brahma types, summarized chats with distinct
+`lastMessageAt`), 16 queries compared exactly (no normalization). The remaining
+sub-units are messages, participants, impersonation, tokens, search, and outfits.
 
 The **`memories` repo is ported whole** (`quilltap-core::db::memories` +
 `db::memories_read`, `memories_tier2_equivalence` + `memories_read_equivalence`).
