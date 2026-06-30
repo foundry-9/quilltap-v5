@@ -423,6 +423,21 @@ pub struct ChatUpdate {
     /// The plain-string `spokenThisCycleParticipantIds` column (holds JSON text);
     /// set by the message-write metadata path when the turn cycle advances.
     pub spoken_this_cycle_participant_ids: Option<String>,
+    /// `allLLMPauseTurnCount` (REAL) — set by the impersonation ops
+    /// ([`super::chats_impersonation`]).
+    pub all_llm_pause_turn_count: Option<f64>,
+    /// `totalPromptTokens` (REAL) — set by the token-tracking ops
+    /// ([`super::chats_tokens`]) on reset.
+    pub total_prompt_tokens: Option<f64>,
+    /// `totalCompletionTokens` (REAL) — set by the token-tracking ops on reset.
+    pub total_completion_tokens: Option<f64>,
+    /// Nullable `estimatedCostUSD` (REAL). `Some(Some(v))` sets it; `Some(None)`
+    /// clears it to SQL NULL (token reset); `None` leaves it unset.
+    pub estimated_cost_usd: Option<Option<f64>>,
+    /// Nullable `equippedOutfit` (JSON object) — set by the outfit ops
+    /// ([`super::chats_outfits`]). `Some(Some(v))` sets it; `Some(None)` clears to
+    /// SQL NULL; `None` leaves it unset.
+    pub equipped_outfit: Option<Option<Value>>,
     pub updated_at: Option<String>,
 }
 
@@ -666,6 +681,21 @@ impl<'c> ChatsRepository<'c> {
         }
         if let Some(v) = &patch.spoken_this_cycle_participant_ids {
             set_col!("spokenThisCycleParticipantIds", Box::new(v.clone()));
+        }
+        if let Some(v) = patch.all_llm_pause_turn_count {
+            set_col!("allLLMPauseTurnCount", Box::new(v));
+        }
+        if let Some(v) = patch.total_prompt_tokens {
+            set_col!("totalPromptTokens", Box::new(v));
+        }
+        if let Some(v) = patch.total_completion_tokens {
+            set_col!("totalCompletionTokens", Box::new(v));
+        }
+        if let Some(v) = &patch.estimated_cost_usd {
+            set_col!("estimatedCostUSD", Box::new(*v));
+        }
+        if let Some(v) = &patch.equipped_outfit {
+            set_col!("equippedOutfit", Box::new(opt_json_text(v)?));
         }
         set_col!("updatedAt", Box::new(resolved_updated_at));
 

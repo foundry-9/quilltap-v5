@@ -1,0 +1,237 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "chats": [
+    {
+      "id": "c0000010-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Search Chat A",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "c0000020-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Search Chat B",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fc000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "cccc3333-3333-4333-8333-333333333333",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "c0000030-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Replace Chat C",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "seedMessages": [
+    {
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "messages": [
+        {
+          "type": "message",
+          "id": "e0000010-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "the quick brown fox jumps",
+          "createdAt": "2026-02-02T00:00:01.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000010-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "a lazy quick dog naps near the fox",
+          "participantId": "fb000001-0000-4000-8000-000000000001",
+          "createdAt": "2026-02-02T00:00:02.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000010-0000-4000-8000-000000000003",
+          "role": "ASSISTANT",
+          "content": "nothing here matches the term",
+          "participantId": "fb000001-0000-4000-8000-000000000001",
+          "createdAt": "2026-02-02T00:00:03.000Z"
+        },
+        {
+          "type": "context-summary",
+          "id": "e0000010-0000-4000-8000-000000000004",
+          "context": "quick summary of quick events",
+          "createdAt": "2026-02-02T00:00:04.000Z"
+        },
+        {
+          "type": "system",
+          "id": "e0000010-0000-4000-8000-000000000005",
+          "systemEventType": "SUMMARIZATION",
+          "description": "quick system note",
+          "createdAt": "2026-02-02T00:00:05.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000010-0000-4000-8000-000000000006",
+          "role": "USER",
+          "content": "ends with version 1.5 and a call f(x)",
+          "createdAt": "2026-02-02T00:00:06.000Z"
+        }
+      ]
+    },
+    {
+      "chatId": "c0000020-0000-4000-8000-000000000001",
+      "messages": [
+        {
+          "type": "message",
+          "id": "e0000020-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "another quick remark over here",
+          "participantId": "fc000001-0000-4000-8000-000000000001",
+          "createdAt": "2026-02-02T00:01:01.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000020-0000-4000-8000-000000000002",
+          "role": "USER",
+          "content": "quick follow up question",
+          "createdAt": "2026-02-02T00:01:02.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000020-0000-4000-8000-000000000003",
+          "role": "ASSISTANT",
+          "content": "a third quick reply to close it out",
+          "participantId": "fc000001-0000-4000-8000-000000000001",
+          "createdAt": "2026-02-02T00:01:03.000Z"
+        }
+      ]
+    },
+    {
+      "chatId": "c0000030-0000-4000-8000-000000000001",
+      "messages": [
+        {
+          "type": "message",
+          "id": "e0000030-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "color is the American spelling, color color",
+          "createdAt": "2026-02-02T00:02:01.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000030-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "no occurrence of that word here",
+          "participantId": "fb000001-0000-4000-8000-000000000001",
+          "createdAt": "2026-02-02T00:02:02.000Z"
+        },
+        {
+          "type": "context-summary",
+          "id": "e0000030-0000-4000-8000-000000000003",
+          "context": "color appears in a summary too",
+          "createdAt": "2026-02-02T00:02:03.000Z"
+        }
+      ]
+    }
+  ],
+  "reads": [
+    {
+      "kind": "countMessagesWithText",
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "searchText": "quick"
+    },
+    {
+      "kind": "findMessagesWithText",
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "searchText": "quick"
+    },
+    {
+      "kind": "countMessagesWithText",
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "searchText": "TOOLONGSEARCHTEXT_REPLACE_AT_RUNTIME"
+    },
+    {
+      "kind": "findMessagesWithText",
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "searchText": "TOOLONGSEARCHTEXT_REPLACE_AT_RUNTIME"
+    },
+    {
+      "kind": "countMessagesWithText",
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "searchText": "1.5"
+    },
+    {
+      "kind": "findMessagesWithText",
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "searchText": "f(x)"
+    },
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000010-0000-4000-8000-000000000001",
+        "c0000020-0000-4000-8000-000000000001"
+      ],
+      "searchText": "quick",
+      "limit": 100
+    },
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000010-0000-4000-8000-000000000001",
+        "c0000020-0000-4000-8000-000000000001"
+      ],
+      "searchText": "quick",
+      "limit": 3
+    },
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [],
+      "searchText": "quick",
+      "limit": 100
+    },
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000010-0000-4000-8000-000000000001"
+      ],
+      "searchText": "1.5",
+      "limit": 100
+    },
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000010-0000-4000-8000-000000000001"
+      ],
+      "searchText": "f(x)",
+      "limit": 100
+    }
+  ],
+  "replace": [
+    {
+      "kind": "replaceInMessages",
+      "chatId": "c0000030-0000-4000-8000-000000000001",
+      "searchText": "color",
+      "replaceText": "colour"
+    }
+  ]
+}

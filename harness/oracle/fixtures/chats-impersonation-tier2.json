@@ -1,0 +1,209 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2026-02-01T00:00:00.000Z",
+  "chats": [
+    {
+      "id": "c0000010-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Add-Impersonation Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fa000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "aaaa1111-1111-4111-8111-111111111111",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "fa000002-0000-4000-8000-000000000002",
+          "type": "CHARACTER",
+          "characterId": "aaaa2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "c0000020-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Remove-Impersonation Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb1111-1111-4111-8111-111111111111",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "fb000002-0000-4000-8000-000000000002",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "c0000030-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Remove-Last-Impersonation Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fc000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "cccc1111-1111-4111-8111-111111111111",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "c0000040-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Set-Active-Typing Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fd000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "dddd1111-1111-4111-8111-111111111111",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "fd000002-0000-4000-8000-000000000002",
+          "type": "CHARACTER",
+          "characterId": "dddd2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "c0000050-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Pause-Count Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fe000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "eeee1111-1111-4111-8111-111111111111",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "ops": [
+    {
+      "kind": "addImpersonation",
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "participantId": "fa000001-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "addImpersonation",
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "participantId": "fa000002-0000-4000-8000-000000000002"
+    },
+    {
+      "kind": "addImpersonation",
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "participantId": "fa000001-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "addImpersonation",
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "participantId": "fa009999-9999-4999-8999-999999999999"
+    },
+
+    {
+      "kind": "addImpersonation",
+      "chatId": "c0000020-0000-4000-8000-000000000001",
+      "participantId": "fb000001-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "addImpersonation",
+      "chatId": "c0000020-0000-4000-8000-000000000001",
+      "participantId": "fb000002-0000-4000-8000-000000000002"
+    },
+    {
+      "kind": "removeImpersonation",
+      "chatId": "c0000020-0000-4000-8000-000000000001",
+      "participantId": "fb000001-0000-4000-8000-000000000001"
+    },
+
+    {
+      "kind": "addImpersonation",
+      "chatId": "c0000030-0000-4000-8000-000000000001",
+      "participantId": "fc000001-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "removeImpersonation",
+      "chatId": "c0000030-0000-4000-8000-000000000001",
+      "participantId": "fc000001-0000-4000-8000-000000000001"
+    },
+
+    {
+      "kind": "addImpersonation",
+      "chatId": "c0000040-0000-4000-8000-000000000001",
+      "participantId": "fd000001-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "addImpersonation",
+      "chatId": "c0000040-0000-4000-8000-000000000001",
+      "participantId": "fd000002-0000-4000-8000-000000000002"
+    },
+    {
+      "kind": "setActiveTypingParticipant",
+      "chatId": "c0000040-0000-4000-8000-000000000001",
+      "participantId": "fd000002-0000-4000-8000-000000000002"
+    },
+    {
+      "kind": "setActiveTypingParticipant",
+      "chatId": "c0000040-0000-4000-8000-000000000001",
+      "participantId": "fd009999-9999-4999-8999-999999999999"
+    },
+    {
+      "kind": "setActiveTypingParticipant",
+      "chatId": "c0000040-0000-4000-8000-000000000001",
+      "participantId": null
+    },
+
+    {
+      "kind": "updateAllLLMPauseTurnCount",
+      "chatId": "c0000050-0000-4000-8000-000000000001",
+      "count": 7
+    },
+
+    {
+      "kind": "addImpersonation",
+      "chatId": "c0000099-0000-4000-8000-000000000099",
+      "participantId": "fa000001-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "removeImpersonation",
+      "chatId": "c0000099-0000-4000-8000-000000000099",
+      "participantId": "fa000001-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "setActiveTypingParticipant",
+      "chatId": "c0000099-0000-4000-8000-000000000099",
+      "participantId": null
+    },
+    {
+      "kind": "updateAllLLMPauseTurnCount",
+      "chatId": "c0000099-0000-4000-8000-000000000099",
+      "count": 3
+    }
+  ]
+}

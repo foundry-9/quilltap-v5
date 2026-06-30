@@ -31,10 +31,14 @@ pub mod characters_read;
 pub mod chat_documents;
 pub mod chat_settings;
 pub mod chats;
+pub mod chats_impersonation;
 pub mod chats_messages;
 pub mod chats_messages_read;
+pub mod chats_outfits;
 pub mod chats_participants;
 pub mod chats_read;
+pub mod chats_search;
+pub mod chats_tokens;
 pub mod connection_profiles;
 pub mod conversation_annotations;
 pub mod conversation_chunks;
@@ -188,6 +192,26 @@ impl Writer {
     /// `removeParticipant`/`setParticipantStatus`) over this writer's connection.
     pub fn chat_participants(&self) -> chats_participants::ChatParticipantsRepository<'_> {
         chats_participants::ChatParticipantsRepository::new(&self.conn)
+    }
+
+    /// The chat-impersonation RMW repository over this writer's connection.
+    pub fn chat_impersonation(&self) -> chats_impersonation::ChatImpersonationRepository<'_> {
+        chats_impersonation::ChatImpersonationRepository::new(&self.conn)
+    }
+
+    /// The chat token-tracking repository over this writer's connection.
+    pub fn chat_tokens(&self) -> chats_tokens::ChatTokensRepository<'_> {
+        chats_tokens::ChatTokensRepository::new(&self.conn)
+    }
+
+    /// The chat search & replace repository over this writer's connection.
+    pub fn chat_search(&self) -> chats_search::ChatSearchRepository<'_> {
+        chats_search::ChatSearchRepository::new(&self.conn)
+    }
+
+    /// The chat equipped-outfit repository over this writer's connection.
+    pub fn chat_outfits(&self) -> chats_outfits::ChatOutfitsRepository<'_> {
+        chats_outfits::ChatOutfitsRepository::new(&self.conn)
     }
 
     /// The connection-profiles repository over this writer's connection.

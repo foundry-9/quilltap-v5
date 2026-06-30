@@ -991,8 +991,34 @@ chats, diffing the `chats` table; participant ids (pinned seed + minted) are
 remapped to first-appearance tokens across the three referencing cells and nested
 participant timestamps are sentinel-placeholdered (a value equal to the seed
 sentinel stays pinned — proving createdAt preservation + no stray mint), while
-chat-level timestamps are diffed exactly (proving "updatedAt not bumped"). The
-remaining sub-units are impersonation, tokens, search, and outfits.
+chat-level timestamps are diffed exactly (proving "updatedAt not bumped").
+Sub-unit 6 — the **remaining four ops files** — is also done, ported **in
+parallel** (four agents, each on its own new module + differential; the shared
+`ChatUpdate` setters + `mod.rs` wiring pre-staged serially), **completing the
+`chats` capstone** (the entire `ChatsRepository` public surface is now ported):
+**impersonation** (`db::chats_impersonation`, `chats_impersonation_tier2_equivalence`
+— RMW on `impersonatingParticipantIds`/`activeTypingParticipantId`/
+`allLLMPauseTurnCount`, the activeTyping reassign-or-clear, mints nothing → zero
+normalization); **tokens** (`db::chats_tokens`, `chats_tokens_tier2_equivalence` —
+`incrementTokenAggregates` lowering v4's `$inc`/`$set` to one self-referential
+`UPDATE … SET col = col + ?` with a minted `updatedAt` + conditional cost
+accumulation, and `resetTokenAggregates`; sentinel-aware `updatedAt`
+normalization); **search** (`db::chats_search`, `chats_search_equivalence` —
+`count`/`find`/`searchMessagesGlobal`/`replaceInMessages`, the `$regex`→SQL `LIKE`
+mangling reused verbatim from `memories` [including v4's broken-but-exact
+behavior on regex-special inputs], the role/`createdAt DESC`/`limit` filter, and
+the split/join replace-all which mints nothing); and **outfits**
+(`db::chats_outfits`, `chats_outfits_tier2_equivalence` — RMW on the
+`equippedOutfit` JSON column, stored as **raw `Value`** so partial/extra-key
+slots are preserved verbatim [v4 never re-validates it], the remove path
+mutating each character's slots in place with v4's `before.includes` guard so
+absent slots stay absent; the corpus banks a partial-slot character to prove
+shape preservation). **New tracked seam:** the `equippedOutfit` open-JSON
+key-order divergence (`serde_json::Value` sorts vs v4's insertion order) — corpus
+constrained to sorted key order, same family as `parameters`/`sillyTavernData`.
+**Tracked deferrals across the whole chats repo:** `delete`'s participant-vault
+summary sweep (external subsystem), the open-JSON multi-key insertion-order seams,
+the `isSilentMessage` TEXT-affinity seam, and the `equippedOutfit` key-order seam.
 
 The **`memories` repo is ported whole** (`quilltap-core::db::memories` +
 `db::memories_read`, `memories_tier2_equivalence` + `memories_read_equivalence`).

@@ -1,0 +1,79 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2026-02-01T00:00:00.000Z",
+  "chats": [
+    {
+      "id": "c0000010-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Increment Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fa000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "aaaa1111-1111-4111-8111-111111111111",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "c0000020-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Reset Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "totalPromptTokens": 500,
+      "totalCompletionTokens": 250,
+      "estimatedCostUSD": 0.0125,
+      "priceSource": "registry",
+      "participants": [
+        {
+          "id": "fb000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "ops": [
+    {
+      "kind": "increment",
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "promptTokens": 100,
+      "completionTokens": 40,
+      "estimatedCost": 0.002,
+      "priceSource": "openrouter"
+    },
+    {
+      "kind": "increment",
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "promptTokens": 60,
+      "completionTokens": 30,
+      "estimatedCost": 0.0005,
+      "priceSource": "registry"
+    },
+    {
+      "kind": "increment",
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "promptTokens": 25,
+      "completionTokens": 10,
+      "estimatedCost": null
+    },
+    {
+      "kind": "reset",
+      "chatId": "c0000020-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "increment",
+      "chatId": "c0000099-0000-4000-8000-000000000099",
+      "promptTokens": 999,
+      "completionTokens": 999,
+      "estimatedCost": 0.5,
+      "priceSource": "fallback"
+    }
+  ]
+}

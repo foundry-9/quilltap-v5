@@ -255,6 +255,44 @@ nested participant timestamps are sentinel-placeholdered (a value equal to the
 seed sentinel stays pinned — proving createdAt preservation and no stray mint),
 while chat-level timestamps are diffed exactly.
 
+The `chats` repo — sub-unit 6: the **remaining four ops files**, ported in
+parallel (four agents, each on its own new module + differential; the shared
+`ChatUpdate` setters + `mod.rs` wiring pre-staged serially). This **completes the
+`chats` capstone** — the entire `ChatsRepository` public surface is now ported.
+- **impersonation** (`db::chats_impersonation`, `chats_impersonation_tier2_equivalence`):
+  v4 `ChatImpersonationOps` — `addImpersonation`/`removeImpersonation`/
+  `getImpersonatedParticipantIds`/`setActiveTypingParticipant`/
+  `updateAllLLMPauseTurnCount`. RMW on `impersonatingParticipantIds` +
+  `activeTypingParticipantId` (the activeTyping reassign-or-clear on remove) +
+  `allLLMPauseTurnCount`; mints nothing, so the differential is zero-normalization.
+- **tokens** (`db::chats_tokens`, `chats_tokens_tier2_equivalence`):
+  v4 `ChatTokenTrackingOps`. `incrementTokenAggregates` lowers v4's `$inc`/`$set`
+  to one self-referential `UPDATE … SET col = col + ?` with an unconditionally
+  minted `updatedAt` and a conditional `estimatedCostUSD = current + cost` (+
+  `priceSource`); `resetTokenAggregates` zeroes the counters + nulls the cost via
+  `update` (preserving `updatedAt`). Sentinel-aware `updatedAt` normalization
+  (increment mints → `<ts>`; reset preserves → pinned, diffed exactly).
+- **search** (`db::chats_search`, `chats_search_equivalence`):
+  v4 `ChatSearchReplaceOps` — `countMessagesWithText`/`findMessagesWithText`/
+  `searchMessagesGlobal`/`replaceInMessages`. The `searchMessagesGlobal`
+  `$regex`→SQL `LIKE` translation reuses `memories`' exact mangling
+  (`escapeRegex` → `source.replace(/\.\*/g,'%').replace(/\./g,'_')`, bare `LIKE`,
+  no `ESCAPE`), reproducing v4's broken-but-exact behavior on regex-special
+  inputs; the role filter + `createdAt DESC` + `limit`; and the split/join
+  replace-all (which mints nothing). Read-differential over the method results +
+  the post-replace `chat_messages` dump.
+- **outfits** (`db::chats_outfits`, `chats_outfits_tier2_equivalence`): v4's
+  `getEquippedOutfit`/`getEquippedOutfitForCharacter`/`setEquippedOutfit`/
+  `removeEquippedItemFromAllChats` (in `chats.repository.ts`). RMW on the
+  `equippedOutfit` JSON column, stored as **raw `Value`** (v4 never re-validates
+  it through Zod), so partial / extra-key slots objects are preserved verbatim —
+  the remove path mutates each character's slots in place, dropping the item only
+  from slots it was actually in (v4's `before.includes` guard), never
+  materializing absent slots. Corpus banks a partial-slot character to prove the
+  shape-preservation. **Tracked seam:** the open-JSON key-order divergence
+  (`serde_json::Value` sorts; v4 emits insertion order) — corpus constrained to
+  sorted key order, same as `parameters`/`sillyTavernData`.
+
 Build — extracted the SQLite3MC (ChaCha20/sqleet) amalgamation into a dedicated
 `quilltap-sqlite3mc-sys` crate (its `build.rs` + `vendor/`, moved out of
 `quilltap-core`). Cargo's build-script fingerprint includes the package version,

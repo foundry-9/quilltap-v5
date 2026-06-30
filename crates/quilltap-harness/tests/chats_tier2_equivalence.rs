@@ -104,6 +104,11 @@ impl PatchData {
             active_typing_participant_id: None,
             last_message_at: None,
             spoken_this_cycle_participant_ids: None,
+            all_llm_pause_turn_count: None,
+            total_prompt_tokens: None,
+            total_completion_tokens: None,
+            estimated_cost_usd: None,
+            equipped_outfit: None,
             updated_at: self.updated_at.clone(),
         }
     }

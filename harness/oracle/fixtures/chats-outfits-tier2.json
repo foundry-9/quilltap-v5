@@ -1,0 +1,262 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2026-02-01T00:00:00.000Z",
+  "chats": [
+    {
+      "id": "c0000010-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Outfit Create Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fa000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "aaaa1111-1111-4111-8111-111111111111",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "c0000020-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Outfit Append Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "b0000001-0000-4000-8000-000000000001",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ],
+      "equippedOutfit": {
+        "b0000001-0000-4000-8000-000000000001": {
+          "accessories": [],
+          "bottom": [],
+          "footwear": [],
+          "top": ["item-top-b"]
+        }
+      }
+    },
+    {
+      "id": "c0000030-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Outfit Overwrite Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fc000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "c0000001-0000-4000-8000-000000000001",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ],
+      "equippedOutfit": {
+        "c0000001-0000-4000-8000-000000000001": {
+          "accessories": [],
+          "bottom": ["old-bottom"],
+          "footwear": [],
+          "top": ["old-top"]
+        }
+      }
+    },
+    {
+      "id": "c0000040-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Remove-Item Chat 1",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fd000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "d0000001-0000-4000-8000-000000000001",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ],
+      "equippedOutfit": {
+        "d0000001-0000-4000-8000-000000000001": {
+          "accessories": [],
+          "bottom": [],
+          "footwear": ["shared-item"],
+          "top": ["shared-item", "keep-item"]
+        }
+      }
+    },
+    {
+      "id": "c0000050-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Remove-Item Chat 2 (two characters)",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fe000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "e0000001-0000-4000-8000-000000000001",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "fe000002-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "e0000002-0000-4000-8000-000000000001",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ],
+      "equippedOutfit": {
+        "e0000001-0000-4000-8000-000000000001": {
+          "accessories": [],
+          "bottom": ["shared-item"],
+          "footwear": [],
+          "top": []
+        },
+        "e0000002-0000-4000-8000-000000000001": {
+          "accessories": ["unrelated-item"],
+          "bottom": [],
+          "footwear": [],
+          "top": []
+        }
+      }
+    },
+    {
+      "id": "c0000060-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Remove-Item Untouched Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "ff000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "f0000001-0000-4000-8000-000000000001",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ],
+      "equippedOutfit": {
+        "f0000001-0000-4000-8000-000000000001": {
+          "accessories": [],
+          "bottom": [],
+          "footwear": [],
+          "top": ["other-item"]
+        }
+      }
+    },
+    {
+      "id": "c0000070-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Partial-Slots Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "f7000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "a7000001-0000-4000-8000-000000000001",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "ops": [
+    {
+      "kind": "setEquippedOutfit",
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "characterId": "a0000001-0000-4000-8000-000000000001",
+      "slots": {
+        "accessories": ["new-acc"],
+        "bottom": ["new-bottom"],
+        "footwear": [],
+        "top": ["new-top"]
+      }
+    },
+    {
+      "kind": "setEquippedOutfit",
+      "chatId": "c0000020-0000-4000-8000-000000000001",
+      "characterId": "b0000002-0000-4000-8000-000000000001",
+      "slots": {
+        "accessories": [],
+        "bottom": [],
+        "footwear": ["second-shoe"],
+        "top": ["second-top"]
+      }
+    },
+    {
+      "kind": "setEquippedOutfit",
+      "chatId": "c0000030-0000-4000-8000-000000000001",
+      "characterId": "c0000001-0000-4000-8000-000000000001",
+      "slots": {
+        "accessories": ["replaced-acc"],
+        "bottom": [],
+        "footwear": [],
+        "top": ["replaced-top"]
+      }
+    },
+    {
+      "kind": "setEquippedOutfit",
+      "chatId": "c0000070-0000-4000-8000-000000000001",
+      "characterId": "a7000001-0000-4000-8000-000000000001",
+      "slots": {
+        "top": ["shared-item", "solo-keep"]
+      }
+    },
+    {
+      "kind": "removeEquippedItemFromAllChats",
+      "itemId": "shared-item"
+    },
+    {
+      "kind": "setEquippedOutfit",
+      "chatId": "c0000099-0000-4000-8000-000000000099",
+      "characterId": "a0000001-0000-4000-8000-000000000001",
+      "slots": {
+        "accessories": [],
+        "bottom": [],
+        "footwear": [],
+        "top": []
+      }
+    }
+  ],
+  "reads": [
+    {
+      "kind": "getEquippedOutfit",
+      "chatId": "c0000010-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "getEquippedOutfit",
+      "chatId": "c0000020-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "getEquippedOutfit",
+      "chatId": "c0000099-0000-4000-8000-000000000099"
+    },
+    {
+      "kind": "getEquippedOutfitForCharacter",
+      "chatId": "c0000020-0000-4000-8000-000000000001",
+      "characterId": "b0000002-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "getEquippedOutfitForCharacter",
+      "chatId": "c0000020-0000-4000-8000-000000000001",
+      "characterId": "z0000099-0000-4000-8000-000000000099"
+    },
+    {
+      "kind": "getEquippedOutfitForCharacter",
+      "chatId": "c0000099-0000-4000-8000-000000000099",
+      "characterId": "a0000001-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "getEquippedOutfit",
+      "chatId": "c0000070-0000-4000-8000-000000000001"
+    }
+  ]
+}
