@@ -105,6 +105,30 @@ ops), built as a thin vertical slice over the `folders` repo:
   oracle NDJSON (`QT_ORACLE_FOLDERS` + `QT_FIXTURE_FOLDERS`, skip-if-unset).
   The `folders` repo round-trips green.
 
+Phase 2 — `scaffoldCharacterMount` (`quilltap-core::db::character_vault`),
+characters sub-unit 3a (the store-backed capstone's stateful provisioning glue,
+mount-index DB). Populates a freshly-created database-backed character store with
+the preset structure: seven empty top-level folders (Prompts/Scenarios/Wardrobe/
+Outfits/lore/images/files), six blank Markdown files
+(identity/description/manifesto/personality/physical-description/example-dialogues,
+content `""`), and two seeded JSON files (`properties.json` +
+`physical-prompts.json`, FIXED default content). The six blank files share the
+empty-string content sha, so they dedup to ONE `doc_mount_files` /
+`doc_mount_documents` row with six distinct links; result: 7 folders, 3 files, 3
+documents, 8 links. All writes go through the verified storage primitive — folders
+via the new `DocMountFileLinksRepository::ensure_folder_path` (v4 `ensureFolderPath`,
+walks the path directly so a single segment makes one root folder; a sibling of
+`ensure_link_folder_id` which walks a file's dirname), files via
+`write_database_document` (idempotent, skip-if-link-exists). Verified standalone
+(the create flow's `writeCharacterVaultManagedFields` overwrites the five identity
+markdown files + `properties.json`, so the create differential would mask the
+scaffold defaults — verifying here pins the default bytes). Tier-2 differential
+(`characters_scaffold_tier2_equivalence`) drives v4's REAL `scaffoldCharacterMount`
+and diffs five mount-index tables (points / folders / files / documents / links) in
+the shared-cross-table-id-map remap form; the seeded `mountPointId` is pinned, the
+link `chunkCount` (a `reindexSingleFile` artifact) pinned and `doc_mount_chunks`
+excluded (as for groups/projects).
+
 Phase 2 — the `characters` repo **slim-row marshaling**
 (`quilltap-core::db::characters`), the first sub-unit of v4's
 `CharactersRepository` (the store-backed capstone). Ports the base-repository SQL

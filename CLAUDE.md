@@ -748,9 +748,21 @@ a nine-field struct in schema order, NOT `serde_json::Value`), an open JSON colu
 `update` is a partial `SET` that reproduces v4's full `$set` on-disk result (the
 fixture cells are already canonical). Tier-2 differential drives v4's REAL
 protected internals via a thin subclass over a create/create/update/delete
-sequence, pinned zero-normalization form. Remaining characters sub-units:
-`ensureCharacterVault` provisioning + `scaffoldCharacterMount`, the slim-row
-`create`/`update` vault integration, and the array ops
+sequence, pinned zero-normalization form. Sub-unit 3a — `scaffoldCharacterMount`
+— is also done (`db::character_vault`, `characters_scaffold_tier2_equivalence`):
+populates a fresh database-backed character store with the preset structure —
+seven empty top-level folders, six blank markdown files (deduped by the
+empty-string sha to ONE file/document row, six links), and two seeded JSON files
+(`properties.json` + the four-key `physical-prompts.json`, FIXED default content)
+— via the verified storage primitive (folders through the new
+`DocMountFileLinksRepository::ensure_folder_path`, files through
+`write_database_document`, skip-if-link-exists). Verified standalone (the create
+flow's `writeCharacterVaultManagedFields` overwrites the identity files +
+`properties.json`, masking the scaffold defaults) by a tier-2 differential driving
+v4's REAL `scaffoldCharacterMount`, diffing five mount-index tables in the
+shared-cross-table-id-map remap form (`chunkCount`/`doc_mount_chunks`
+pinned/excluded). Remaining characters sub-units: `ensureCharacterVault`
+provisioning + the slim-row `create`/`update` vault integration, and the array ops
 (`systemPrompts`/`scenarios`/`partnerLinks`) + `findBy*` queries. The peer repos
 `background_jobs` and `vector_indices` (both
 independent, no characters/store-backed coupling) were drafted in parallel.

@@ -518,6 +518,100 @@ impl<'c> DocMountFileLinksRepository<'c> {
         tx.commit()?;
         Ok(())
     }
+
+    /// Idempotently create every missing `doc_mount_folders` segment along
+    /// `folderPath`, returning the leaf folder id — v4 `ensureFolderPath`
+    /// (`folder-paths.ts:103`). Unlike [`ensure_link_folder_id`] (which walks a
+    /// file's *dirname*) this walks the path directly, so a single-segment path
+    /// like `"Prompts"` creates one root-level folder. `None` for the empty/root
+    /// path. Mints `now` + ids internally. Used by [`super::character_vault`]'s
+    /// scaffold for the seven explicit top-level folders.
+    pub fn ensure_folder_path(
+        &self,
+        mount_point_id: &str,
+        folder_path: &str,
+    ) -> Result<Option<String>, DbError> {
+        let normalized = collapse_slashes(&folder_path.replace('\\', "/"));
+        if normalized.is_empty() {
+            return Ok(None);
+        }
+        let segments: Vec<&str> = normalized.split('/').filter(|s| !s.is_empty()).collect();
+        if segments.is_empty() {
+            return Ok(None);
+        }
+
+        let now = now_iso();
+        let mut current_parent: Option<String> = None;
+        let mut current_path = String::new();
+
+        for segment in segments {
+            current_path = if current_path.is_empty() {
+                segment.to_string()
+            } else {
+                format!("{current_path}/{segment}")
+            };
+
+            let found: Option<String> = self
+                .conn
+                .query_row(
+                    "SELECT id FROM doc_mount_folders WHERE mountPointId = ?1 AND path = ?2",
+                    params![mount_point_id, current_path],
+                    |row| row.get::<_, String>(0),
+                )
+                .map(Some)
+                .or_else(no_rows_to_none)?;
+
+            current_parent = match found {
+                Some(id) => Some(id),
+                None => {
+                    let id = new_id();
+                    self.conn.execute(
+                        "INSERT INTO doc_mount_folders \
+                           (id, mountPointId, parentId, name, path, createdAt, updatedAt) \
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                        params![
+                            id,
+                            mount_point_id,
+                            current_parent,
+                            segment,
+                            current_path,
+                            now,
+                            now
+                        ],
+                    )?;
+                    Some(id)
+                }
+            };
+        }
+
+        Ok(current_parent)
+    }
+
+    /// True iff a link already exists at `(mountPointId, relativePath)` — v4's
+    /// scaffold skip-if-present check (it consults `docMountDocuments`, but a
+    /// document exists at a path iff its link does). Case-insensitive on the path,
+    /// matching the link upsert / delete lookups.
+    pub fn link_exists_at_path(
+        &self,
+        mount_point_id: &str,
+        relative_path: &str,
+    ) -> Result<bool, DbError> {
+        let rel = normalise_relative_path(relative_path)?;
+        let found: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT 1 FROM doc_mount_file_links \
+                 WHERE mountPointId = ?1 AND LOWER(relativePath) = LOWER(?2)",
+                params![mount_point_id, rel],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+        Ok(found.is_some())
+    }
 }
 
 /// Walk every segment of `relativePath`'s directory and find-or-create a
