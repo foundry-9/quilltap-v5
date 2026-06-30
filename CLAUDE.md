@@ -963,8 +963,36 @@ marshaling. `deleteMessagesByIds` deletes each `(id, chatId)` row and recounts
 `updatedAt`); `clearMessages` deletes all and resets `messageCount`→0 +
 `lastMessageAt`→null (`updatedAt` preserved). Tier-2 differential over a seed of
 three chats pre-populated via `addMessages`, diffing BOTH tables with ZERO
-normalization (no 4b op mints a chat timestamp). The remaining sub-units are
-participants, impersonation, tokens, search, and outfits.
+normalization (no 4b op mints a chat timestamp). Sub-unit 5 — the **participant
+ops** — is also done (`db::chats_participants`,
+`chats_participants_tier2_equivalence`): v4's `ChatParticipantsOps`
+(`addParticipant` / `updateParticipant` / `removeParticipant` /
+`setParticipantStatus` + the four pure `get*Participants` filters). Each mutator
+is a read-modify-write of the `participants` JSON column — `find_by_id`
+(sub-unit-2 read; `chats` has no vault overlay) → mutate the array in memory
+(minting the participant's own id/`createdAt`/`updatedAt`, re-validated through
+the participant schema so the Zod defaults materialize + unknown keys strip) →
+`update` the chat — and the chat's OWN `updatedAt` is never bumped (v4 `_update`
+preserves it; the minted clock values live INSIDE the participants JSON).
+`addParticipant` carries the **user-control side-effect** (a `controlledBy:'user'`
+participant is appended to `impersonatingParticipantIds` and, when nobody is
+typing, set as `activeTypingParticipantId`); `removeParticipant` carries the
+**last-participant guard** (`ParticipantOpError::LastParticipant`, v4's thrown
+`Error`, leaving the chat unmutated). Banks the **`removedAt` three-shape seam**:
+key absent (never removed), the minted string (removed), and an explicit JSON
+`null` (a `setParticipantStatus` to a non-removed status clears it) — which
+forced widening `ChatParticipant.removedAt` to a double-`Option` with a
+**present-keeps-null deserializer** (plain serde maps a stored `null` to the
+outer `None`, dropping it; v4's Zod `.nullable().optional()` keeps it through a
+re-read + re-write — the differential earned this fix). Tier-2 differential
+drives v4's REAL ops (`setParticipantStatus` reached via the private
+`participantsOps` field — it is not on the repository surface) over four seeded
+chats, diffing the `chats` table; participant ids (pinned seed + minted) are
+remapped to first-appearance tokens across the three referencing cells and nested
+participant timestamps are sentinel-placeholdered (a value equal to the seed
+sentinel stays pinned — proving createdAt preservation + no stray mint), while
+chat-level timestamps are diffed exactly (proving "updatedAt not bumped"). The
+remaining sub-units are impersonation, tokens, search, and outfits.
 
 The **`memories` repo is ported whole** (`quilltap-core::db::memories` +
 `db::memories_read`, `memories_tier2_equivalence` + `memories_read_equivalence`).

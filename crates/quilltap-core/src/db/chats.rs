@@ -96,8 +96,25 @@ pub struct ChatParticipant {
     pub is_active: bool,
     #[serde(default = "default_active")]
     pub status: String,
-    #[serde(rename = "removedAt", default, skip_serializing_if = "Option::is_none")]
-    pub removed_at: Option<String>,
+    /// Soft-delete timestamp. A double-`Option` so the participant ops can write
+    /// the three distinct on-disk shapes v4 produces: `None` → key **absent**
+    /// (create / a never-removed participant — v4 `undefined`, dropped by
+    /// `JSON.stringify`); `Some(None)` → explicit JSON **`null`** (v4
+    /// `setParticipantStatus` to a non-removed status writes `removedAt: null`);
+    /// `Some(Some(ts))` → the string (v4 `removeParticipant`). The double-option
+    /// **deserializer** is required: plain serde maps a JSON `null` to the OUTER
+    /// `None` (dropping it), but v4's Zod `.nullable().optional()` KEEPS a stored
+    /// `null` (a cleared `removedAt` survives a re-read + re-write), so
+    /// [`de_double_opt_string`] forces present→`Some(_)`. Serialization is
+    /// serde-default (`Some(None)` → `null`, `Some(Some)` → string, `None`
+    /// skipped).
+    #[serde(
+        rename = "removedAt",
+        default,
+        deserialize_with = "de_double_opt_string",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub removed_at: Option<Option<String>>,
     #[serde(rename = "hasHistoryAccess", default)]
     pub has_history_access: bool,
     #[serde(
@@ -117,6 +134,17 @@ pub struct ChatParticipant {
     pub created_at: String,
     #[serde(rename = "updatedAt")]
     pub updated_at: String,
+}
+
+/// Double-option deserializer: a PRESENT field (even JSON `null`) becomes
+/// `Some(_)`; an ABSENT field falls to the `#[serde(default)]` `None`. Lets a
+/// stored `removedAt: null` round-trip as `Some(None)` instead of collapsing to
+/// the outer `None` (matching v4's `.nullable().optional()` keep-null).
+fn de_double_opt_string<'de, D>(de: D) -> Result<Option<Option<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Some(Option::<String>::deserialize(de)?))
 }
 
 fn default_llm() -> String {
@@ -378,6 +406,16 @@ pub struct ChatUpdate {
     pub chat_type: Option<String>,
     pub state: Option<Value>,
     pub tags: Option<Vec<String>>,
+    /// The `participants` JSON-array column — set by the participant RMW ops
+    /// ([`super::chats_participants`]). Re-serialized in [`ChatParticipant`]
+    /// schema-field order, matching v4's `JSON.stringify` of the spread array.
+    pub participants: Option<Vec<ChatParticipant>>,
+    /// `impersonatingParticipantIds` (JSON string-array) — set when a
+    /// user-controlled participant is added.
+    pub impersonating_participant_ids: Option<Vec<String>>,
+    /// Nullable `activeTypingParticipantId`. `Some(Some(id))` sets it;
+    /// `Some(None)` clears to SQL NULL; `None` leaves it unset.
+    pub active_typing_participant_id: Option<Option<String>>,
     /// Nullable timestamp column. `Some(Some(ts))` sets it; `Some(None)` clears it
     /// to SQL NULL; `None` leaves it unset. Set by the message-write metadata path
     /// ([`super::chats_messages`]) — an actual message bumps it to `now`.
@@ -613,6 +651,15 @@ impl<'c> ChatsRepository<'c> {
         }
         if let Some(v) = &patch.tags {
             set_col!("tags", Box::new(json_text(v)?));
+        }
+        if let Some(v) = &patch.participants {
+            set_col!("participants", Box::new(json_text(v)?));
+        }
+        if let Some(v) = &patch.impersonating_participant_ids {
+            set_col!("impersonatingParticipantIds", Box::new(json_text(v)?));
+        }
+        if let Some(v) = &patch.active_typing_participant_id {
+            set_col!("activeTypingParticipantId", Box::new(v.clone()));
         }
         if let Some(v) = &patch.last_message_at {
             set_col!("lastMessageAt", Box::new(v.clone()));

@@ -33,6 +33,7 @@ pub mod chat_settings;
 pub mod chats;
 pub mod chats_messages;
 pub mod chats_messages_read;
+pub mod chats_participants;
 pub mod chats_read;
 pub mod connection_profiles;
 pub mod conversation_annotations;
@@ -181,6 +182,12 @@ impl Writer {
     /// writer's connection (MAIN db); the read path is [`chats_messages_read`].
     pub fn chat_messages(&self) -> chats_messages::ChatMessagesRepository<'_> {
         chats_messages::ChatMessagesRepository::new(&self.conn)
+    }
+
+    /// The chat-participants RMW repository (`addParticipant`/`updateParticipant`/
+    /// `removeParticipant`/`setParticipantStatus`) over this writer's connection.
+    pub fn chat_participants(&self) -> chats_participants::ChatParticipantsRepository<'_> {
+        chats_participants::ChatParticipantsRepository::new(&self.conn)
     }
 
     /// The connection-profiles repository over this writer's connection.

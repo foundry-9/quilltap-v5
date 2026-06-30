@@ -227,6 +227,34 @@ pre-populated via `addMessages`, diffing BOTH the `chat_messages` and `chats`
 tables with ZERO normalization — no 4b op mints a chat timestamp, so the seed's
 baked timestamps are read identically by both sides.
 
+The `chats` repo — sub-unit 5: the **participant ops** (`db::chats_participants`,
+`chats_participants_tier2_equivalence`). Ports v4's `ChatParticipantsOps`:
+`addParticipant` / `updateParticipant` / `removeParticipant` /
+`setParticipantStatus` plus the four pure in-memory filters
+(`getCharacter`/`getActive`/`getLLMControlled`/`getUserControlled`Participants).
+Each mutator is a read-modify-write of the `participants` JSON column —
+`findById` → mutate the array in memory (minting the participant's own
+id/createdAt/updatedAt) → `update` the chat — and the chat's OWN `updatedAt` is
+never bumped (v4 `_update` preserves it; the minted clock values live inside the
+participants JSON). `addParticipant` validates through the participant schema
+(materializing the Zod defaults, stripping unknown keys) and carries the
+user-control side-effect (a `controlledBy: 'user'` participant is appended to
+`impersonatingParticipantIds` and, when nobody is typing, set as
+`activeTypingParticipantId`); `removeParticipant` carries the last-participant
+guard (throws, leaving the chat unmutated). Banks the `removedAt` three-shape
+seam: absent (never removed), the minted string (removed), and an explicit JSON
+`null` (a `setParticipantStatus` to a non-removed status clears it) — which
+forced widening `ChatParticipant.removedAt` to a double-`Option` with a
+present-keeps-null deserializer (plain serde maps a stored `null` to the outer
+`None`, dropping it; v4's Zod `.nullable().optional()` keeps it through a re-read
++ re-write). Tier-2 differential drives v4's REAL ops (with `setParticipantStatus`
+reached via the private ops field — not on the repository surface) over four
+seeded chats, diffing the `chats` table; participant ids (pinned seed + minted)
+are remapped to first-appearance tokens across the three referencing cells, and
+nested participant timestamps are sentinel-placeholdered (a value equal to the
+seed sentinel stays pinned — proving createdAt preservation and no stray mint),
+while chat-level timestamps are diffed exactly.
+
 Build — extracted the SQLite3MC (ChaCha20/sqleet) amalgamation into a dedicated
 `quilltap-sqlite3mc-sys` crate (its `build.rs` + `vendor/`, moved out of
 `quilltap-core`). Cargo's build-script fingerprint includes the package version,

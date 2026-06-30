@@ -1,0 +1,154 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2026-02-01T00:00:00.000Z",
+  "chats": [
+    {
+      "id": "c0000010-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Add-Participant Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fa000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "aaaa1111-1111-4111-8111-111111111111",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "c0000020-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Update-and-Remove Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "fc000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "cccc3333-3333-4333-8333-333333333333",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "c0000030-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Set-Status Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "fc000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "cccc3333-3333-4333-8333-333333333333",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "c0000040-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Last-Participant-Guard Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "ops": [
+    {
+      "kind": "addParticipant",
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "participant": {
+        "type": "CHARACTER",
+        "characterId": "dddd4444-4444-4444-8444-444444444444",
+        "controlledBy": "llm",
+        "hasHistoryAccess": true
+      }
+    },
+    {
+      "kind": "addParticipant",
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "participant": {
+        "type": "CHARACTER",
+        "characterId": "eeee5555-5555-4555-8555-555555555555",
+        "controlledBy": "user",
+        "displayOrder": 2
+      }
+    },
+    {
+      "kind": "updateParticipant",
+      "chatId": "c0000020-0000-4000-8000-000000000001",
+      "participantId": "fc000001-0000-4000-8000-000000000001",
+      "data": {
+        "displayOrder": 5,
+        "talkativeness": 0.8,
+        "hasHistoryAccess": true,
+        "joinScenario": "arrived late"
+      }
+    },
+    {
+      "kind": "removeParticipant",
+      "chatId": "c0000020-0000-4000-8000-000000000001",
+      "participantId": "fb000001-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "setParticipantStatus",
+      "chatId": "c0000030-0000-4000-8000-000000000001",
+      "participantId": "fb000001-0000-4000-8000-000000000001",
+      "status": "silent"
+    },
+    {
+      "kind": "setParticipantStatus",
+      "chatId": "c0000030-0000-4000-8000-000000000001",
+      "participantId": "fc000001-0000-4000-8000-000000000001",
+      "status": "removed"
+    },
+    {
+      "kind": "removeParticipant",
+      "chatId": "c0000040-0000-4000-8000-000000000001",
+      "participantId": "fb000001-0000-4000-8000-000000000001",
+      "expectThrow": true
+    },
+    {
+      "kind": "addParticipant",
+      "chatId": "c0000099-0000-4000-8000-000000000099",
+      "participant": {
+        "type": "CHARACTER",
+        "characterId": "dddd4444-4444-4444-8444-444444444444"
+      }
+    },
+    {
+      "kind": "updateParticipant",
+      "chatId": "c0000020-0000-4000-8000-000000000001",
+      "participantId": "f0000099-0000-4000-8000-000000000099",
+      "data": { "displayOrder": 9 }
+    }
+  ]
+}
