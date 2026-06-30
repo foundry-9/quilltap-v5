@@ -277,9 +277,11 @@ no-arg `Intl.Collator` (verified the order `a,A,ä,b,B,e,é,z,Z` against ICU 78)
 The two ported `localeCompare` sites use it (`compareVersions` fallback,
 `canonicalize` tool-name sort), each with a mixed-case/accent differential row
 proving the ICU path; the vault's code-unit sorts stay code-unit (faithful to v4's
-vault code, which sorts by code unit there, not `localeCompare`). The
+vault code, which sorts by code unit there, not `localeCompare`). The companion
 `toLowerCase` case-mapping seam (`tags.nameLower`, `text_replacement_rules`) is
-tracked separately and closed next.
+also **RESOLVED**: `str::to_lowercase` is byte-identical to JS `toLowerCase`
+(verified on İ/final-sigma/ß/digraphs), so no ICU case-mapping crate is needed —
+non-ASCII corpus rows prove it. The whole Unicode-fidelity cluster is now closed.
 
 **Phase-2 on-ramp (tier-2 DB-state oracle): the pilot round-trips green.** The
 `folders` repo now round-trips green through the tier-2 harness: both v4 and the
@@ -1093,9 +1095,9 @@ the rejection (oracle: v4 threw; Rust: `TrrError::Conflict`) on top of the
 final-state dump diff. Ids + timestamps pinned → zero normalization. This added
 the canonical-dump `js_number_to_json` refinement (an integer-valued REAL cell
 renders as a JSON integer, mirroring JS `JSON.stringify`, so REAL-affinity numeric
-columns align byte-for-byte). It gives the `toLowerCase` case-mapping deferral a
-**second site** (the case-insensitive conflict branch) — see "Deferred seams —
-must revisit" in `docs/developer/porting/phase-2-onramp.md`.
+columns align byte-for-byte). Its case-insensitive conflict branch was the second
+`toLowerCase` case-mapping site — **now CLOSED** (a non-ASCII `Café`/`CAFÉ` corpus
+pair proves `str::to_lowercase` matches JS in the conflict check).
 
 Repo #2, `tags` (`quilltap-core::db::tags`),
 round-trips green through the tier-2 harness (`tags_tier2_equivalence`): `create`
@@ -1106,14 +1108,13 @@ in schema field order (reproduced with a typed struct so key order matches v4's
 `JSON.stringify`, **not** a sorted `serde_json::Value`), and the `nameLower`
 derivation (`(nameLower || name).toLowerCase()` on create, re-derived from `name`
 on update) — and adds the `delete` op to the harness. Determinism unchanged: ids
-+ timestamps pinned both sides → zero normalization. It introduces a **distinct,
-tracked deferral**: JS-vs-Rust Unicode **case mapping** for `nameLower`
-(`toLowerCase` vs `to_lowercase`) — a *separate* decision from the ICU
-`localeCompare` (collation) one, since resolving collation does not resolve case
-mapping. It's a real correctness risk on non-ASCII names (it backs `findByName`),
-masked only by the ASCII corpus. Both deferrals are listed under "Deferred seams
-— must revisit" in `docs/developer/porting/phase-2-onramp.md`; close them before
-running against real (non-ASCII) data.
++ timestamps pinned both sides → zero normalization. The Unicode **case-mapping**
+question for `nameLower` (`toLowerCase` vs `to_lowercase`) is now **RESOLVED**:
+`str::to_lowercase` is byte-identical to JS `toLowerCase` (locale-independent
+Unicode default mapping — verified on İ → `i`+combining-dot, final Σ → ς, ß,
+digraphs), so no ICU case-mapping is needed; a non-ASCII corpus row
+(`İSTANBUL ÉCOLE ΣΟΦΟΣ Straße`) proves it against the oracle, keeping `findByName`
+correct on real data.
 
 **The remap machinery (minted-values tier-2): done.** The on-ramp's
 generated-UUID remap + timestamp-placeholder normalization is built and green

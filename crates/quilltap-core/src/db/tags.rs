@@ -23,15 +23,13 @@
 //! create; an explicit `updatedAt` in the update patch), so the persisted rows
 //! match v4's byte-for-byte with no normalization — the same form `folders` uses.
 //!
-//! Unicode seam (TRACKED DEFERRAL — must close before real, non-ASCII data):
-//! `nameLower` uses Rust's `str::to_lowercase` (Unicode default case mapping);
-//! v4 uses JS `String.prototype.toLowerCase` (also Unicode default). They agree
-//! on ASCII and most code points but are NOT guaranteed identical on
-//! locale/special-cased ones (final sigma, İ/i, ß). This is a *separate*
-//! decision from the ICU `localeCompare` (collation) deferral — collation does
-//! not cover case mapping — and a real correctness risk because `nameLower`
-//! backs case-insensitive lookup (`findByName`). The ASCII corpus masks it. See
-//! "Deferred seams — must revisit" in docs/developer/porting/phase-2-onramp.md.
+//! Unicode case mapping (seam CLOSED 2026-06-30): `nameLower` uses Rust's
+//! `str::to_lowercase`, which is **byte-identical** to v4's JS
+//! `String.prototype.toLowerCase` — both implement locale-independent Unicode
+//! default case mapping, verified to agree even on the gnarly cases (İ → `i` +
+//! combining dot, final Σ → ς, ß, titlecase digraphs). The tier-2 corpus carries
+//! a non-ASCII tag (`İSTANBUL ÉCOLE ΣΟΦΟΣ Straße`) that proves it against the
+//! oracle, so `findByName`'s case-insensitive lookup stays correct on real data.
 
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};

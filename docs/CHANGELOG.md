@@ -255,6 +255,20 @@ nested participant timestamps are sentinel-placeholdered (a value equal to the
 seed sentinel stays pinned — proving createdAt preservation and no stray mint),
 while chat-level timestamps are diffed exactly.
 
+Phase-2 deferred-seam closure — closed the `toLowerCase` case-mapping seam
+(`tags.nameLower`, `text_replacement_rules` conflict detection) by proving
+`str::to_lowercase` is byte-identical to JS `String.prototype.toLowerCase`. Both
+implement locale-independent Unicode default case mapping; verified empirically on
+every gnarly case — `İ` → `i` + combining dot (`0069 0307`), a FINAL `Σ` → `ς`
+(the context-sensitive Final_Sigma rule), `ß` (unchanged), `É`→`é`, and titlecase
+digraphs (`ǅ`→`ǆ`). The evaluated `icu_casemap` option is therefore unnecessary —
+no code change, just differential proof: the `tags` tier-2 corpus gained a tag
+named `İSTANBUL ÉCOLE ΣΟΦΟΣ Straße` (whose stored `nameLower` matches the oracle
+byte-for-byte), and `text_replacement_rules` a non-ASCII case-insensitive conflict
+pair (`Café` then `CAFÉ`, both lowercasing to `café`) that fires duplicate
+rejection identically on both sides. With the collation seam (above) this closes
+the whole Unicode-fidelity cluster.
+
 Phase-2 deferred-seam closure — added ICU collation (`icu` 2.2, ICU4X) as
 `quilltap-core::collation::locale_compare`, closing the `localeCompare` seam. v4
 sorts several lists with `a.localeCompare(b)` (no locale) — true ICU collation,

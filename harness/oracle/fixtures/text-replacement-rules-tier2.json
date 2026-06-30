@@ -100,6 +100,39 @@
       }
     },
     {
+      "kind": "create",
+      "comment": "Non-ASCII case-insensitive rule `Café` (no existing match). Inserted. Sets up the next op's lowercase-compare conflict.",
+      "data": {
+        "fromText": "Café",
+        "toText": "coffee",
+        "caseSensitive": false,
+        "enabled": true,
+        "sortOrder": 4
+      },
+      "options": {
+        "id": "6f000000-0000-4000-8000-000000000006",
+        "createdAt": "2026-02-06T00:00:00.000Z",
+        "updatedAt": "2026-02-06T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "CONFLICT (non-ASCII case-insensitive): `CAFÉ` lowercases to `café`, matching the rule above (both caseSensitive=false). Proves str::to_lowercase matches JS toLowerCase in the conflict check. Must throw; no row added.",
+      "expectThrow": true,
+      "data": {
+        "fromText": "CAFÉ",
+        "toText": "coffee",
+        "caseSensitive": false,
+        "enabled": true,
+        "sortOrder": 8
+      },
+      "options": {
+        "id": "7a000000-0000-4000-8000-000000000007",
+        "createdAt": "2026-02-07T00:00:00.000Z",
+        "updatedAt": "2026-02-07T00:00:00.000Z"
+      }
+    },
+    {
       "kind": "update",
       "comment": "Update seed `adn` rule: disable it (enabled true->false) and bump sortOrder. fromText/caseSensitive unchanged, so NO conflict check runs. createdAt preserved, updatedAt pinned.",
       "id": "2b000000-0000-4000-8000-000000000002",

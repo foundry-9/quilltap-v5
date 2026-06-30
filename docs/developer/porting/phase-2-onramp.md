@@ -494,28 +494,24 @@ Tracked, actionable deferrals. Each is currently green *only because the corpus
 avoids the input that would expose it.* Before the port runs against real
 instances (non-ASCII user data), each must be closed or consciously waived.
 
-1. **Case mapping for `toLowerCase` fields (now two sites).** v4 lowercases with
-   JS `String.prototype.toLowerCase`; the Rust port uses `str::to_lowercase`.
-   Both apply Unicode **default** case mapping and agree on ASCII, but they are
-   **not guaranteed identical** on locale-sensitive or special-cased code points
-   (final sigma, İ/i, ß, etc.). This is a **separate decision from the
-   ICU-collation/`localeCompare` deferral below** — resolving collation does
-   **not** resolve case mapping. The ported sites:
-   - `tags.nameLower` — `(nameLower || name).toLowerCase()`, backing
-     case-insensitive lookup (`TagsRepository.findByName`). A divergence means a
-     Rust open of a v4-written DB could fail to find, or duplicate, a tag whose
-     name has non-ASCII case-variant characters.
-   - `text_replacement_rules` conflict detection — the case-insensitive branch
-     compares `row.fromText.toLowerCase() === fromText.toLowerCase()`. A
-     divergence means the Rust port could **accept a duplicate** rule v4 rejects
-     (or vice versa) when `fromText` has non-ASCII case variants — gating the
-     409-conflict behavior.
-   - **Action when closing:** add a non-ASCII row to the `tags` and
-     `text_replacement_rules` tier-2 corpora (e.g. a name/text with ß / İ / a
-     trailing Σ), confirm whether v4 vs Rust diverge or agree, and pick the
-     strategy (match JS's algorithm exactly, or document the bounded divergence
-     as acceptable). Re-audit every `.toLowerCase()` / `.toUpperCase()` site
-     ported so far.
+1. **Case mapping for `toLowerCase` fields — RESOLVED (2026-06-30): `str::to_lowercase`
+   is byte-identical to JS `toLowerCase`, no ICU needed.** v4 lowercases with JS
+   `String.prototype.toLowerCase` (locale-INDEPENDENT Unicode default case
+   mapping); Rust `str::to_lowercase` implements the same algorithm. Verified
+   empirically — both produce identical bytes on every gnarly case: `İ` → `i` +
+   combining dot (`0069 0307`), a FINAL `Σ` → `ς` (the context-sensitive
+   Final_Sigma rule), `ß` (unchanged), `É`→`é`, titlecase digraphs (`ǅ`→`ǆ`,
+   `Ǆ`→`ǆ`). So the evaluated `icu_casemap` option is **unnecessary**. Closed with
+   differential proof at both ported sites:
+   - `tags.nameLower` — a corpus row named `İSTANBUL ÉCOLE ΣΟΦΟΣ Straße` stores
+     `nameLower = i̇stanbul école σοφος straße`, byte-identical on both sides.
+   - `text_replacement_rules` conflict detection — a non-ASCII case-insensitive
+     pair (`Café` then `CAFÉ`, both lowercasing to `café`) fires the conflict
+     identically on both sides (both throw; the dump matches).
+   Residual: a future Unicode-version skew between Rust's std tables and Node's
+   ICU could in principle differ on a newly-cased code point, but the default
+   case-mapping algorithm is stable; no action unless a differential later shows
+   it.
 
 2. **ICU collation / `localeCompare` ordering — RESOLVED (2026-06-30): added an
    ICU crate.** `crate::collation::locale_compare` wraps ICU4X (`icu` 2.2,

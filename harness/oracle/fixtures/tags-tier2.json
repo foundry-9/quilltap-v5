@@ -83,6 +83,21 @@
       }
     },
     {
+      "kind": "create",
+      "comment": "Non-ASCII name proves the nameLower derivation (str::to_lowercase) matches JS toLowerCase on the gnarly cases: dotted-I -> i + combining dot (0069 0307), E-acute -> e-acute, a FINAL sigma -> final-sigma form (context-sensitive), and eszett (unchanged). visualStyle null. id + timestamps pinned.",
+      "data": {
+        "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
+        "name": "İSTANBUL ÉCOLE ΣΟΦΟΣ Straße",
+        "quickHide": false,
+        "visualStyle": null
+      },
+      "options": {
+        "id": "4c1f8e3b-5d60-4f81-bc4d-3e5f60718293",
+        "createdAt": "2026-02-10T00:00:00.000Z",
+        "updatedAt": "2026-02-10T00:00:00.000Z"
+      }
+    },
+    {
       "kind": "delete",
       "comment": "Delete seed tag `Urgent` (the one with a visualStyle object).",
       "id": "2a9d6c1f-3b4e-4d6f-9a2b-1c3d4e5f6071"

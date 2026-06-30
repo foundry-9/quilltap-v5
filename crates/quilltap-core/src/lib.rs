@@ -66,9 +66,10 @@
 //!     conversion; oracle-verified.
 //!   * `canonicalize` — byte-stable `UniversalTool` serialization for cache-prefix
 //!     stability: deep code-unit key-sort of `function.parameters` plus the
-//!     tool-name array sort (a documented `localeCompare` seam — the lowercase
-//!     snake_case tool-name corpus collates identically under code-unit order);
-//!     oracle-verified.
+//!     tool-name array sort via `collation::locale_compare` (true ICU
+//!     `localeCompare`); oracle-verified.
+//!   * `collation` — ICU4X `localeCompare` (en-US/tertiary, matching Node's
+//!     no-arg `Intl.Collator`) for the port's `localeCompare` sort sites.
 //!   * `canon` / `scenario_text` — pure text assembly: the memory-extraction
 //!     canon blocks (self / other ALREADY ESTABLISHED rendering) and the
 //!     New-Chat scenario-text combiner; oracle-verified.

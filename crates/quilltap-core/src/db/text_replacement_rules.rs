@@ -39,13 +39,12 @@
 //! the dump (raw `SELECT *`) is what the differential compares, and a rejected
 //! write leaves the table unchanged on both sides.
 //!
-//! Unicode seam (TRACKED DEFERRAL — must close before real, non-ASCII data): the
-//! case-insensitive branch lowercases with Rust's `str::to_lowercase`; v4 uses JS
-//! `String.prototype.toLowerCase`. They agree on ASCII but are not guaranteed
-//! identical on locale/special-cased code points — the SAME `toLowerCase`
-//! case-mapping seam `tags.nameLower` flagged, and a real correctness risk
-//! because it gates duplicate rejection here. The ASCII corpus masks it. See
-//! "Deferred seams — must revisit" in docs/developer/porting/phase-2-onramp.md.
+//! Unicode case mapping (seam CLOSED 2026-06-30): the case-insensitive branch
+//! lowercases with Rust's `str::to_lowercase`, which is byte-identical to v4's JS
+//! `String.prototype.toLowerCase` (verified on İ / final-sigma / ß / digraphs).
+//! The tier-2 corpus proves it: a non-ASCII case-insensitive pair (`Café` then
+//! `CAFÉ`, both lowercasing to `café`) fires the duplicate-rejection identically
+//! on both sides, so the 409-conflict gate stays correct on real data.
 
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
