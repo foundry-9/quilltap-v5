@@ -761,8 +761,22 @@ flow's `writeCharacterVaultManagedFields` overwrites the identity files +
 `properties.json`, masking the scaffold defaults) by a tier-2 differential driving
 v4's REAL `scaffoldCharacterMount`, diffing five mount-index tables in the
 shared-cross-table-id-map remap form (`chunkCount`/`doc_mount_chunks`
-pinned/excluded). Remaining characters sub-units: `ensureCharacterVault`
-provisioning + the slim-row `create`/`update` vault integration, and the array ops
+pinned/excluded). Sub-unit 3b — `ensureCharacterVault` + the **`create`
+integration** — is also done (`db::character_vault::create_character` /
+`ensure_character_vault`, `characters_create_tier2_equivalence`): v4's full create
+end-to-end — slim `_create` (FK nulled) → `ensure_character_vault` (mint a `<name>
+Character Vault` mount point, scaffold, project managed fields, link the FK +
+confirm it stuck) — verified against v4's REAL `repos.characters.create` over SIX
+tables across both DBs (slim `characters` row + the five store tables) in the
+shared-cross-db-id-map remap form (everything minted, FKs verify by relationship;
+`chunkCount`/`doc_mount_chunks` pinned/excluded). Banks the **orphan-on-rewrite**
+default-`properties.json` row (scaffold writes it, the managed bag overwrites it,
+no GC → 9 files = 8 live + 1 orphan), the five identity-md overwrites (the
+`physical-*` scaffold defaults survive — no physicalDescription), and a
+systemPrompt + scenario projected into `Prompts/`+`Scenarios/`. **Tracked
+deferral:** the `ensureCharacterVault` adopt branch (startup-heal of a hand-linked
+same-name store — corpus always provisions fresh). Remaining characters sub-units:
+the `update` vault integration (managed-field write routing) and the array ops
 (`systemPrompts`/`scenarios`/`partnerLinks`) + `findBy*` queries. The peer repos
 `background_jobs` and `vector_indices` (both
 independent, no characters/store-backed coupling) were drafted in parallel.

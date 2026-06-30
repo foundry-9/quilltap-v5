@@ -33,7 +33,16 @@
 
 use rusqlite::{params, Connection};
 
+use super::characters::CreateOptions as SlimCreateOptions;
+use super::characters::{CharacterCreate, CharacterUpdate, CharactersRepository};
+use super::doc_mount_documents::DocMountDocumentsRepository;
 use super::doc_mount_file_links::DocMountFileLinksRepository;
+use super::doc_mount_points::{
+    CreateOptions as DmpCreateOptions, DmpCreate, DocMountPointsRepository,
+};
+use super::vault_character_write::{
+    write_character_vault_managed_fields, CharacterVaultWriteInput,
+};
 use super::DbError;
 
 /// The six blank Markdown files the scaffold seeds (content `""`), in v4's order.
@@ -119,6 +128,161 @@ pub fn scaffold_character_mount(conn: &Connection, mount_point_id: &str) -> Resu
     }
 
     Ok(())
+}
+
+/// What [`ensure_character_vault`] resolved/created.
+pub struct EnsureResult {
+    pub mount_point_id: String,
+    /// True if this call created the vault; false if the character already had one.
+    pub created: bool,
+}
+
+/// Ensure the given character has a linked database-backed character vault — v4
+/// `ensureCharacterVault` (the create branch). Idempotent: when `current_fk` is
+/// already set, returns it unchanged. Otherwise mints a `<name> Character Vault`
+/// mount point (MOUNT-INDEX db), scaffolds it, projects the managed fields, and
+/// links it by setting `characterDocumentMountPointId` on the slim row (MAIN db),
+/// confirming the write stuck.
+///
+/// Spans both databases: the mount point + store live in `mount`, the slim row +
+/// FK in `main`.
+///
+/// **Tracked deferral — the adopt branch.** v4 first looks for an existing
+/// populated same-name `'character'` store and ADOPTS it (the startup-heal path
+/// for a vault whose link write was lost mid cloud-materialization). The corpus
+/// always provisions fresh, so only the create branch is exercised; adoption needs
+/// a richer `doc_mount_points` read and lands with the startup-backfill slice. A
+/// tracked deferral, not a stub on a reachable path.
+pub fn ensure_character_vault(
+    main: &Connection,
+    mount: &Connection,
+    character_id: &str,
+    character_name: &str,
+    vault: &CharacterVaultWriteInput,
+    current_fk: Option<&str>,
+) -> Result<EnsureResult, DbError> {
+    if let Some(fk) = current_fk {
+        return Ok(EnsureResult {
+            mount_point_id: fk.to_string(),
+            created: false,
+        });
+    }
+
+    // 1. Provision a fresh character-vault mount point (minted id + now).
+    let now = crate::clock::now_iso();
+    let mount_point_id = uuid::Uuid::new_v4().to_string();
+    DocMountPointsRepository::new(mount).create(
+        &DmpCreate {
+            name: format!("{character_name} Character Vault"),
+            base_path: String::new(),
+            mount_type: "database".into(),
+            store_type: "character".into(),
+            include_patterns: vec![
+                "*.md".into(),
+                "*.txt".into(),
+                "*.pdf".into(),
+                "*.docx".into(),
+            ],
+            exclude_patterns: vec![
+                ".git".into(),
+                "node_modules".into(),
+                ".obsidian".into(),
+                ".trash".into(),
+            ],
+            enabled: true,
+            last_scanned_at: None,
+            scan_status: "idle".into(),
+            last_scan_error: None,
+            conversion_status: "idle".into(),
+            conversion_error: None,
+            file_count: 0.0,
+            chunk_count: 0.0,
+            total_size_bytes: 0.0,
+        },
+        &DmpCreateOptions {
+            id: mount_point_id.clone(),
+            created_at: now.clone(),
+            updated_at: now,
+        },
+    )?;
+
+    // 2. Scaffold the preset structure, then project the managed fields onto it.
+    scaffold_character_mount(mount, &mount_point_id)?;
+    let links = DocMountFileLinksRepository::new(mount);
+    let docs = DocMountDocumentsRepository::new(mount);
+    write_character_vault_managed_fields(&links, &docs, &mount_point_id, vault)?;
+
+    // 3. Link: set the FK on the slim row, then CONFIRM it stuck (v4
+    //    `linkCharacterToVault` turns a silent "linked but not linked" — a lost
+    //    write mid cloud-materialization — into a loud throw).
+    let chars = CharactersRepository::new(main);
+    chars.update(
+        character_id,
+        &CharacterUpdate {
+            character_document_mount_point_id: Some(mount_point_id.clone()),
+            updated_at: crate::clock::now_iso(),
+            ..Default::default()
+        },
+    )?;
+    let stuck: Option<String> = main
+        .query_row(
+            "SELECT characterDocumentMountPointId FROM characters WHERE id = ?1",
+            params![character_id],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other),
+        })?;
+    if stuck.as_deref() != Some(mount_point_id.as_str()) {
+        return Err(DbError::Key(format!(
+            "Failed to persist characterDocumentMountPointId for {character_id}: wrote \
+             {mount_point_id} but re-read {}. The character row write did not stick.",
+            stuck.as_deref().unwrap_or("null")
+        )));
+    }
+
+    Ok(EnsureResult {
+        mount_point_id,
+        created: true,
+    })
+}
+
+/// Create a character end-to-end — v4 `CharactersRepository.create`. Inserts the
+/// slim row (FK nulled — a fresh character always provisions a fresh vault), then
+/// [`ensure_character_vault`] scaffolds + projects + links. Returns the minted
+/// character id. The closing overlay re-read (`findById`) is a READ concern (it
+/// mutates no DB state) and is left to the read overlay; this returns the id so
+/// callers can re-read.
+///
+/// Mints id + timestamps internally (v4's `_create` with no `CreateOptions`).
+pub fn create_character(
+    main: &Connection,
+    mount: &Connection,
+    slim: &CharacterCreate,
+    vault: &CharacterVaultWriteInput,
+) -> Result<String, DbError> {
+    let now = crate::clock::now_iso();
+    let id = uuid::Uuid::new_v4().to_string();
+
+    // The slim row always lands with a NULL vault FK (create provisions fresh and
+    // sets the FK in step 3); drop any incoming pointer.
+    let mut slim_row = slim.clone();
+    slim_row.character_document_mount_point_id = None;
+    let name = slim_row.name.clone();
+
+    CharactersRepository::new(main).create(
+        &slim_row,
+        &SlimCreateOptions {
+            id: id.clone(),
+            created_at: now.clone(),
+            updated_at: now,
+        },
+    )?;
+
+    ensure_character_vault(main, mount, &id, &name, vault, None)?;
+
+    Ok(id)
 }
 
 #[cfg(test)]

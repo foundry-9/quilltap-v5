@@ -166,6 +166,7 @@ pub struct TimestampConfig {
 /// Fields for creating a character slim row (the non-managed `Omit<Character,
 /// 'id'|timestamps>` complement). All slim columns are present so the corpus can
 /// set them explicitly (mirrors `doc_mount_points`/`connection_profiles`).
+#[derive(Clone)]
 pub struct CharacterCreate {
     pub user_id: String,
     pub name: String,

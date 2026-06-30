@@ -105,6 +105,32 @@ ops), built as a thin vertical slice over the `folders` repo:
   oracle NDJSON (`QT_ORACLE_FOLDERS` + `QT_FIXTURE_FOLDERS`, skip-if-unset).
   The `folders` repo round-trips green.
 
+Phase 2 — `ensureCharacterVault` + the `CharactersRepository.create` integration
+(`quilltap-core::db::character_vault`), characters sub-unit 3b — the store-backed
+capstone's keystone. `create_character` runs v4's full create end-to-end: the
+slim-row `_create` (FK nulled — a fresh character always provisions a fresh vault),
+then `ensure_character_vault` mints a `<name> Character Vault` mount point
+(mount-index DB), scaffolds its preset structure, projects the managed fields
+(`write_character_vault_managed_fields`, sub-unit 1), and links it by setting
+`characterDocumentMountPointId` on the slim row (main DB) — confirming the write
+stuck (v4's `linkCharacterToVault` turns a silent "linked but not linked" into a
+loud error). A character spans two databases, so the differential
+(`characters_create_tier2_equivalence`) drives v4's REAL `repos.characters.create`
+and diffs SIX tables — the main slim `characters` row + the mount-index store
+tables (`doc_mount_points` / `_folders` / `_files` / `_documents` / `_file_links`)
+— in the shared-cross-db-id-map remap form (nothing pinned; every id minted, FKs
+verify by relationship; timestamps placeholdered; the link `chunkCount`
+pinned and `doc_mount_chunks` excluded, as for groups/projects). Banks the 6-step
+create, the **orphan-on-rewrite** default-`properties.json` file/document row (the
+scaffold writes it, then the managed bag overwrites it; `writeDatabaseDocument`
+does no GC, so the old row persists — 9 files, 8 live + 1 orphan), the five
+identity markdown overwrites (the `physical-*` scaffold defaults survive — no
+physicalDescription), and one systemPrompt + one scenario projected into `Prompts/`
++ `Scenarios/` (10 links). **Tracked deferral:** the `ensureCharacterVault` adopt
+branch (startup-heal of a hand-linked same-name store) — the corpus always
+provisions fresh; it needs a richer `doc_mount_points` read and lands with the
+startup-backfill slice.
+
 Phase 2 — `scaffoldCharacterMount` (`quilltap-core::db::character_vault`),
 characters sub-unit 3a (the store-backed capstone's stateful provisioning glue,
 mount-index DB). Populates a freshly-created database-backed character store with
