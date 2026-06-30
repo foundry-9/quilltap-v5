@@ -31,6 +31,7 @@ pub mod characters_read;
 pub mod chat_documents;
 pub mod chat_settings;
 pub mod chats;
+pub mod chats_messages;
 pub mod chats_messages_read;
 pub mod chats_read;
 pub mod connection_profiles;
@@ -174,6 +175,12 @@ impl Writer {
     /// The chats repository (slim-row CRUD) over this writer's connection (MAIN db).
     pub fn chats(&self) -> chats::ChatsRepository<'_> {
         chats::ChatsRepository::new(&self.conn)
+    }
+
+    /// The chat-messages write repository (`addMessage`/`addMessages`) over this
+    /// writer's connection (MAIN db); the read path is [`chats_messages_read`].
+    pub fn chat_messages(&self) -> chats_messages::ChatMessagesRepository<'_> {
+        chats_messages::ChatMessagesRepository::new(&self.conn)
     }
 
     /// The connection-profiles repository over this writer's connection.

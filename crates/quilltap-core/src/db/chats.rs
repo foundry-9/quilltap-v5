@@ -378,6 +378,13 @@ pub struct ChatUpdate {
     pub chat_type: Option<String>,
     pub state: Option<Value>,
     pub tags: Option<Vec<String>>,
+    /// Nullable timestamp column. `Some(Some(ts))` sets it; `Some(None)` clears it
+    /// to SQL NULL; `None` leaves it unset. Set by the message-write metadata path
+    /// ([`super::chats_messages`]) — an actual message bumps it to `now`.
+    pub last_message_at: Option<Option<String>>,
+    /// The plain-string `spokenThisCycleParticipantIds` column (holds JSON text);
+    /// set by the message-write metadata path when the turn cycle advances.
+    pub spoken_this_cycle_participant_ids: Option<String>,
     pub updated_at: Option<String>,
 }
 
@@ -606,6 +613,12 @@ impl<'c> ChatsRepository<'c> {
         }
         if let Some(v) = &patch.tags {
             set_col!("tags", Box::new(json_text(v)?));
+        }
+        if let Some(v) = &patch.last_message_at {
+            set_col!("lastMessageAt", Box::new(v.clone()));
+        }
+        if let Some(v) = &patch.spoken_this_cycle_participant_ids {
+            set_col!("spokenThisCycleParticipantIds", Box::new(v.clone()));
         }
         set_col!("updatedAt", Box::new(resolved_updated_at));
 

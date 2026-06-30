@@ -1,0 +1,188 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "sentinel": "2026-02-01T00:00:00.000Z",
+  "chats": [
+    {
+      "id": "ca000001-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Add-Message Chat A",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "fc000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "cccc3333-3333-4333-8333-333333333333",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "cb000001-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Add-Message Chat B",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "fc000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "cccc3333-3333-4333-8333-333333333333",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "cc000001-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Add-Message Chat C",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "fc000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "cccc3333-3333-4333-8333-333333333333",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "ops": [
+    {
+      "kind": "addMessage",
+      "chatId": "ca000001-0000-4000-8000-000000000001",
+      "message": {
+        "type": "message",
+        "id": "ea000001-0000-4000-8000-000000000001",
+        "role": "ASSISTANT",
+        "content": "A kitchen-sink reply.",
+        "participantId": "fb000001-0000-4000-8000-000000000001",
+        "rawResponse": { "finishReason": "stop" },
+        "tokenCount": 150,
+        "promptTokens": 120,
+        "completionTokens": 30,
+        "swipeGroupId": "sg-1",
+        "swipeIndex": 0,
+        "attachments": ["aaaa0001-0000-4000-8000-000000000001"],
+        "renderedHtml": "<p>A kitchen-sink reply.</p>",
+        "reasoningContent": "Considering the options.",
+        "reasoningSegments": [
+          { "anchorOffset": 0, "content": "step one", "seq": 1 },
+          { "anchorOffset": 12, "content": "step two", "seq": 2 }
+        ],
+        "thoughtSignature": "sig-abc",
+        "debugMemoryLogs": ["extracted 1 memory"],
+        "recoveryType": "token_limit",
+        "dangerFlags": [
+          { "category": "nsfw", "score": 0.9 },
+          {
+            "category": "violence",
+            "score": 1,
+            "userOverridden": true,
+            "wasRerouted": true,
+            "reroutedProvider": "openrouter",
+            "reroutedModel": "uncensored-x"
+          }
+        ],
+        "provider": "anthropic",
+        "modelName": "claude-opus-4-8",
+        "systemSender": "host",
+        "systemKind": "add",
+        "opaqueContent": "A neutral rewrite.",
+        "hostEvent": {
+          "participantId": "fb000001-0000-4000-8000-000000000001",
+          "toStatus": "active"
+        },
+        "carinaMeta": {
+          "answererId": "bbbb2222-2222-4222-8222-222222222222",
+          "question": "What is the answer?"
+        },
+        "customAnnouncer": { "kind": "custom", "displayName": "The Narrator" },
+        "summaryAnchor": { "compactionGeneration": 2 },
+        "pendingExternalPrompt": "Copy this delta.",
+        "pendingExternalPromptFull": "Copy this full context.",
+        "pendingExternalAttachments": [
+          {
+            "fileId": "ffff0001-0000-4000-8000-000000000001",
+            "filename": "dossier.pdf",
+            "mimeType": "application/pdf",
+            "sizeBytes": 2048,
+            "downloadUrl": "https://example.test/dossier.pdf"
+          }
+        ],
+        "createdAt": "2026-02-02T00:00:01.000Z"
+      }
+    },
+    {
+      "kind": "addMessage",
+      "chatId": "cb000001-0000-4000-8000-000000000001",
+      "message": {
+        "type": "context-summary",
+        "id": "eb000001-0000-4000-8000-000000000001",
+        "context": "A summary of the conversation so far.",
+        "createdAt": "2026-02-02T00:00:02.000Z"
+      }
+    },
+    {
+      "kind": "addMessages",
+      "chatId": "cc000001-0000-4000-8000-000000000001",
+      "messages": [
+        {
+          "type": "message",
+          "id": "ec000001-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "psst, between us.",
+          "participantId": "fb000001-0000-4000-8000-000000000001",
+          "targetParticipantIds": ["fc000001-0000-4000-8000-000000000001"],
+          "createdAt": "2026-02-02T00:00:03.000Z"
+        },
+        {
+          "type": "system",
+          "id": "ec000001-0000-4000-8000-000000000002",
+          "systemEventType": "SUMMARIZATION",
+          "description": "Summarized the chat history.",
+          "promptTokens": 500,
+          "completionTokens": 100,
+          "totalTokens": 600,
+          "provider": "anthropic",
+          "modelName": "claude-haiku-4-5",
+          "estimatedCostUSD": 0.0012,
+          "createdAt": "2026-02-02T00:00:04.000Z"
+        },
+        {
+          "type": "message",
+          "id": "ec000001-0000-4000-8000-000000000003",
+          "role": "ASSISTANT",
+          "content": "A public reply.",
+          "participantId": "fc000001-0000-4000-8000-000000000001",
+          "createdAt": "2026-02-02T00:00:05.000Z"
+        }
+      ]
+    }
+  ]
+}

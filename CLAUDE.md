@@ -924,9 +924,35 @@ exactly (no normalization). **Tracked seam:** `isSilentMessage` —
 `z.union([boolean, number.transform])` → TEXT affinity, so a stored boolean
 round-trips as the string `"1"` and v4 drops the whole message on read; the
 corpus keeps it absent and the column is not read here (close before reading real
-data that sets it). The remaining sub-units are messages **write**
-(add/update/delete + metadata side-effects), participants, impersonation, tokens,
-search, and outfits.
+data that sets it). Sub-unit 4a — the **`chat_messages` write path** — is also
+done (`db::chats_messages`, `chats_messages_tier2_equivalence`): v4's
+`addMessage`/`addMessages` (the row insert + the chat metadata side-effect).
+**`updateMessage`/`deleteMessagesByIds`/`clearMessages` are sub-unit 4b.** The
+write marshaling is the inverse of sub-unit 3 but harder — the port reproduces
+`ChatEventSchema.parse`'s output bytes itself: materialize each `.default(...)`
+and emit every JSON-column object in **schema field order** (matching v4's
+`JSON.stringify` of the Zod-parsed object) with integer-valued nested numbers
+rendered bare (the stored bytes are compared directly), so each fixed-shape nested
+object is a typed struct in schema order (`dangerFlags`/`reasoningSegments`/
+`hostEvent`/`customAnnouncer`/`carinaMeta`/`summaryAnchor`/
+`pendingExternalAttachments`); the open-JSON `rawResponse` is corpus-constrained
+to `{}`/single-key (seam #5). A `message` insert names the `MessageEvent` columns
+(always writing `attachments`); a `context-summary`/`system` insert omits
+`attachments` so SQLite fills its `DEFAULT '[]'` — mirroring v4's
+insert-only-validated-keys. The metadata side-effect recounts
+`countVisibleMessages`, bumps `lastMessageAt`/`updatedAt` to a minted `now` only
+for an actual `type:'message'` event, and folds `spokenThisCycleParticipantIds`
+over the batch via the ported `computeSpokenThisCycleAfterMessage`, routing
+through the sub-unit-1 `chats.update` (extended with `lastMessageAt` +
+`spokenThisCycle` setters). Tier-2 differential drives v4's REAL
+`addMessage`/`addMessages` over a kitchen-sink message (every JSON column), a
+context-summary (non-actual: no `lastMessageAt` bump, `updatedAt` preserved,
+count 0), and a mixed batch (whisper + system event + public message), diffing
+BOTH `chat_messages` (pinned) and `chats` (`lastMessageAt`/`updatedAt` collapsed
+to `<ts>` only when they differ from the seed sentinel — a stray mint is caught).
+The remaining sub-units are messages **write 4b**
+(updateMessage/delete/clear), participants, impersonation, tokens, search, and
+outfits.
 
 The **`memories` repo is ported whole** (`quilltap-core::db::memories` +
 `db::memories_read`, `memories_tier2_equivalence` + `memories_read_equivalence`).

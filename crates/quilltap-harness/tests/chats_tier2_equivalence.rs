@@ -99,6 +99,8 @@ impl PatchData {
             chat_type: self.chat_type.clone(),
             state: self.state.clone(),
             tags: self.tags.clone(),
+            last_message_at: None,
+            spoken_this_cycle_participant_ids: None,
             updated_at: self.updated_at.clone(),
         }
     }

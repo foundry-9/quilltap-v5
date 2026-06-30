@@ -174,6 +174,38 @@ round-trips as the string `"1"` and v4 drops the whole message on read; the
 corpus keeps it absent and the column is not read here (close before reading real
 data that sets it).
 
+The `chats` repo — sub-unit 4a: the **`chat_messages` write path**
+(`db::chats_messages`, `chats_messages_tier2_equivalence`). Ports v4's
+`ChatMessagesOps.addMessage` / `addMessages` — the row insert plus the chat
+metadata side-effect. The write marshaling is the inverse of sub-unit 3 but
+harder: the port must reproduce `ChatEventSchema.parse`'s output bytes itself —
+materialize each Zod `.default(...)` (`attachments` → `[]`, a `DangerFlag`'s
+`userOverridden`/`wasRerouted` → `false`) and emit every JSON-column object in
+schema field order (matching v4's `JSON.stringify` of a Zod-parsed object) with
+integer-valued nested numbers rendered bare (`1`, not `1.0`), since the stored
+bytes are compared directly. Each fixed-shape nested object (`dangerFlags`,
+`reasoningSegments`, `hostEvent`, `customAnnouncer`, `carinaMeta`,
+`summaryAnchor`, `pendingExternalAttachments`) is a typed struct in schema order;
+the open-JSON `rawResponse` is corpus-constrained to `{}`/single-key (seam #5). A
+`message` insert names the `MessageEvent` columns (always writing `attachments`);
+a `context-summary`/`system` insert omits `attachments` so SQLite fills its
+`DEFAULT '[]'` — matching v4's insert-only-validated-keys behavior. The metadata
+side-effect recounts visible messages (`countVisibleMessages`), bumps
+`lastMessageAt`/`updatedAt` to a minted `now` only for an actual `type:'message'`
+event, and folds `spokenThisCycleParticipantIds` over the batch via the
+already-ported `computeSpokenThisCycleAfterMessage`; it routes through the
+sub-unit-1 `chats.update` (extended with `lastMessageAt` +
+`spokenThisCycleParticipantIds` setters). Verified by a tier-2 differential
+driving v4's REAL `addMessage`/`addMessages` over a kitchen-sink message (every
+JSON column), a context-summary (non-actual: no `lastMessageAt` bump, `updatedAt`
+preserved, count 0), and a mixed batch (whisper + system event + public message),
+diffing BOTH the `chat_messages` and `chats` tables. `chat_messages` is pinned;
+the `chats` `lastMessageAt`/`updatedAt` collapse to `<ts>` only when they differ
+from the seed sentinel (so a preserved-sentinel `updatedAt` stays pinned and a
+stray mint would be caught). The differential caught a real bug: serde's
+`camelCase` rename produced `estimatedCostUsd`, dropping the schema's
+`estimatedCostUSD` value — fixed with an explicit rename.
+
 Build — extracted the SQLite3MC (ChaCha20/sqleet) amalgamation into a dedicated
 `quilltap-sqlite3mc-sys` crate (its `build.rs` + `vendor/`, moved out of
 `quilltap-core`). Cargo's build-script fingerprint includes the package version,
