@@ -105,6 +105,31 @@ ops), built as a thin vertical slice over the `folders` repo:
   oracle NDJSON (`QT_ORACLE_FOLDERS` + `QT_FIXTURE_FOLDERS`, skip-if-unset).
   The `folders` repo round-trips green.
 
+Phase 2 — the `CharactersRepository` read path
+(`quilltap-core::db::characters_read`), characters sub-unit 4c — the capstone's
+last piece. Ports the slim-row read marshaling (row → `Character`, the inverse of
+sub-unit 2's write marshaling = v4 `hydrateRow` + Zod parse) + the `findBy*`
+queries, each overlaying the character vault. The marshaling reproduces v4's net
+read shape over the slim columns: required strings present; `.nullable().optional()`
+TEXT/UUID/JSON cells **omitted** when `NULL` (v4 emits `undefined`, dropped by
+`JSON.stringify`) and parsed when present; `.default(false)` booleans coerced from
+INTEGER; `.nullable().optional()` booleans omitted/coerced; `.default([])` arrays
+parsed (`NULL`/empty → `[]`); `controlledBy` defaulting to `'llm'`. The managed
+columns sit at their DDL defaults, so it reproduces their Zod defaults directly
+(`scenarios`/`systemPrompts`/`aliases` → `[]`, `talkativeness` → `0.5`, the nullable
+managed fields omitted); for a vault-linked character the read overlay then
+overwrites every managed field. Queries: `find_by_id` / `find_by_id_raw` /
+`find_all` / `find_by_user_id` / `find_user_controlled` / `find_llm_controlled` /
+`find_by_ids` / `find_by_default_image_id` / `find_by_avatar_override_image_id` /
+`find_by_tag` (the last two via SQLite `json_each`, matching v4's query translator).
+Verified by a read-differential (`characters_read_equivalence`): both sides READ a
+copy of one fixture baked by v4's REAL create (four characters + vaults), run the
+same 11 queries, and compare the hydrated lists exactly (ids/timestamps identical —
+no remap — only `physicalDescription`'s read-minted createdAt/updatedAt
+placeholdered, lists sorted by id). `findByIdRaw` isolates the slim marshaling (no
+overlay). Also refactored sub-unit 4b's array ops to ride this full `find_by_id`
+(re-verified green), closing the scoped-reader deferral.
+
 Phase 2 — the `CharactersRepository` array / sub-array ops
 (`quilltap-core::db::vault_character_arrays`), characters sub-unit 4b. Ports the
 `systemPrompts` / `scenarios` / `partnerLinks` mutators + the

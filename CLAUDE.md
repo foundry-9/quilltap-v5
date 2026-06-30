@@ -809,8 +809,29 @@ resolved to the current id via `findById` on each side. Banks addSystemPrompt
 (default-demote + non-default), updateSystemPrompt (rename → sweep + content),
 setDefaultSystemPrompt, deleteSystemPrompt (deleting the default → survivor
 promotion), the three scenario ops, the two partner ops, and the three setters.
-Remaining characters sub-unit: 4c — the `findBy*` queries (full slim-row read
-marshaling + read-differential). The peer repos
+Sub-unit 4c — the **`findBy*` read path** — is also done (`db::characters_read`,
+`characters_read_equivalence`), **completing the characters capstone**: the
+slim-row read marshaling (row → `Character`, the inverse of sub-unit 2 = v4
+`hydrateRow` + Zod parse) + the ten `findBy*` queries
+(`find_by_id`/`find_by_id_raw`/`find_all`/`find_by_user_id`/`find_user_controlled`/
+`find_llm_controlled`/`find_by_ids`/`find_by_default_image_id`/
+`find_by_avatar_override_image_id`/`find_by_tag`), each overlaying the vault. The
+marshaling reproduces v4's net read shape (nullable cells OMITTED when NULL — v4
+`undefined` dropped by `JSON.stringify` — JSON columns parsed, booleans coerced,
+`.default([])`/`.default(false)`/`controlledBy='llm'` materialized; the managed
+columns hold their DDL=Zod defaults so `scenarios`/`systemPrompts`/`aliases`→`[]`,
+`talkativeness`→`0.5`, the nullable managed fields omitted — then the overlay
+overwrites them for a vaulted char). The two JSON-array filters (`tags`,
+`avatarOverrides.imageId`) use SQLite `json_each`, matching v4's query translator.
+Verified by a read-differential: both sides READ a copy of one fixture baked by
+v4's REAL create (four characters + vaults) and run the same 11 queries, comparing
+the hydrated lists exactly (ids/timestamps identical, no remap; only
+`physicalDescription`'s read-minted createdAt/updatedAt placeholdered, lists sorted
+by id) — `findByIdRaw` isolating the slim marshaling. Sub-unit 4b's array ops were
+refactored to ride this full `find_by_id` (re-verified green), closing the
+scoped-reader deferral. **Tracked deferrals remaining for characters** (all the
+startup-backfill family): the `ensureCharacterVault` adopt branch, provision-on-the-
+fly, and physicalDescription-via-update. The peer repos
 `background_jobs` and `vector_indices` (both
 independent, no characters/store-backed coupling) were drafted in parallel.
 **`vector_indices` is now integrated and green** (`vector_indices_tier2_equivalence`):

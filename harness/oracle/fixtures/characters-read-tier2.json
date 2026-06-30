@@ -1,0 +1,142 @@
+{
+  "$comment": [
+    "Read-differential spec for v4's CharactersRepository findBy* queries (Phase-2,",
+    "the store-backed capstone sub-unit 4c — the read path). One committed file",
+    "drives BOTH sides:",
+    "  - the v4 oracle (build-characters-read-fixture.ts + characters-read.ts)",
+    "  - the Rust port (quilltap-harness characters_read equivalence test).",
+    "",
+    "WHAT IT PORTS: the slim-row read marshaling (row -> Character, the inverse of",
+    "sub-unit 2's write marshaling = v4 hydrateRow + Zod parse) + the findBy*",
+    "queries, each overlaying the character vault. findByIdRaw isolates the slim",
+    "marshaling (no overlay: managed fields at their Zod defaults). The other queries",
+    "exercise the WHERE filters (userId / controlledBy / defaultImageId / the",
+    "avatarOverrides.imageId + tags json_each array matches / id IN) AND the batched",
+    "read overlay.",
+    "",
+    "FIXTURE: built by running v4's REAL repos.characters.create(...) for each of the",
+    "four characters, baking the slim rows + their vaults into the two output DBs.",
+    "Both the oracle and the Rust port READ a COPY of this SAME baked fixture, so the",
+    "minted ids/timestamps are IDENTICAL on both sides (no remap) — the read",
+    "differential compares the hydrated lists EXACTLY, except physicalDescription's",
+    "createdAt/updatedAt (minted at hydration time on each side) which are",
+    "placeholdered. Id-taking queries (findById / findByIdRaw / findByIds) carry a",
+    "targetName resolved to the minted id by a name->id lookup on each side.",
+    "",
+    "CHARACTERS:",
+    "  Aurelia  (U1, llm)  defaultImageId IMG1, avatarOverrides [{C1, IMG2}], tags",
+    "                      [T1], one systemPrompt + scenario + pronouns/title/identity.",
+    "  Bertrand (U1, user) tags [T1, T2], defaultTimestampConfig set (banks the",
+    "                      JSON-object read marshaling), canBeCarina true (banks a",
+    "                      nullable-bool present cell).",
+    "  Celeste  (U2, llm via unset controlledBy default), tags [T2].",
+    "  Dorian   (U2, user) defaultImageId IMG1, npc true, isFavorite true.",
+    "",
+    "QUERIES: findByIdRaw(Aurelia), findById(Aurelia), findAll, findByUserId(U1),",
+    "  findUserControlled(U1), findLLMControlled(U1), findByIds([Aurelia,Celeste]),",
+    "  findByDefaultImageId(IMG1), findByAvatarOverrideImageId(IMG2), findByTag(T1),",
+    "  findByTag(T2).",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key (the same one folders/tags/",
+    "wardrobe use). NOT the real Friday pepper; safe to commit."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "ids": {
+    "U1": "a0000000-0000-4000-8000-000000000001",
+    "U2": "a0000000-0000-4000-8000-000000000002",
+    "IMG1": "c0000000-0000-4000-8000-0000000000f1",
+    "IMG2": "c0000000-0000-4000-8000-0000000000f2",
+    "C1": "d0000000-0000-4000-8000-0000000000c1",
+    "T1": "7a000000-0000-4000-8000-0000000000a1",
+    "T2": "7a000000-0000-4000-8000-0000000000a2"
+  },
+  "characters": [
+    {
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "name": "Aurelia",
+      "identity": "A clockwork diviner of the upper wards.",
+      "description": "Speaks in measured, brass-bright cadences.",
+      "personality": "Precise, wry, unhurried.",
+      "title": "the diviner",
+      "firstMessage": "Mind the gears, traveller.",
+      "talkativeness": 0.7,
+      "pronouns": { "subject": "she", "object": "her", "possessive": "hers" },
+      "aliases": ["Reli"],
+      "controlledBy": "llm",
+      "defaultImageId": "c0000000-0000-4000-8000-0000000000f1",
+      "avatarOverrides": [
+        { "chatId": "d0000000-0000-4000-8000-0000000000c1", "imageId": "c0000000-0000-4000-8000-0000000000f2" }
+      ],
+      "tags": ["7a000000-0000-4000-8000-0000000000a1"],
+      "systemPrompts": [
+        {
+          "id": "11111111-0000-4000-8000-0000000000a1",
+          "name": "Default",
+          "content": "You are Aurelia, a clockwork diviner.",
+          "isDefault": true,
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "22222222-0000-4000-8000-0000000000a1",
+          "title": "The Brass Atrium",
+          "content": "Steam hisses through the lattice overhead.",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "name": "Bertrand",
+      "identity": "A retired aeronaut turned archivist.",
+      "controlledBy": "user",
+      "canBeCarina": true,
+      "defaultTimestampConfig": {
+        "mode": "EVERY_N_MINUTES",
+        "format": "FRIENDLY",
+        "customFormat": null,
+        "useFictionalTime": false,
+        "fictionalBaseTimestamp": null,
+        "fictionalBaseRealTime": null,
+        "autoPrepend": true,
+        "timezone": null,
+        "intervalMinutes": 15
+      },
+      "tags": [
+        "7a000000-0000-4000-8000-0000000000a1",
+        "7a000000-0000-4000-8000-0000000000a2"
+      ]
+    },
+    {
+      "userId": "a0000000-0000-4000-8000-000000000002",
+      "name": "Celeste",
+      "identity": "A cartographer of imagined coastlines.",
+      "tags": ["7a000000-0000-4000-8000-0000000000a2"]
+    },
+    {
+      "userId": "a0000000-0000-4000-8000-000000000002",
+      "name": "Dorian",
+      "identity": "A duelist with a borrowed name.",
+      "controlledBy": "user",
+      "npc": true,
+      "isFavorite": true,
+      "defaultImageId": "c0000000-0000-4000-8000-0000000000f1"
+    }
+  ],
+  "queries": [
+    { "kind": "findByIdRaw", "targetName": "Aurelia" },
+    { "kind": "findById", "targetName": "Aurelia" },
+    { "kind": "findAll" },
+    { "kind": "findByUserId", "userId": "a0000000-0000-4000-8000-000000000001" },
+    { "kind": "findUserControlled", "userId": "a0000000-0000-4000-8000-000000000001" },
+    { "kind": "findLLMControlled", "userId": "a0000000-0000-4000-8000-000000000001" },
+    { "kind": "findByIds", "targetNames": ["Aurelia", "Celeste"] },
+    { "kind": "findByDefaultImageId", "imageId": "c0000000-0000-4000-8000-0000000000f1" },
+    { "kind": "findByAvatarOverrideImageId", "imageId": "c0000000-0000-4000-8000-0000000000f2" },
+    { "kind": "findByTag", "tagId": "7a000000-0000-4000-8000-0000000000a1" },
+    { "kind": "findByTag", "tagId": "7a000000-0000-4000-8000-0000000000a2" }
+  ]
+}

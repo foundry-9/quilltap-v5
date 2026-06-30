@@ -29,83 +29,25 @@
 //! The setters (`setFavorite` / `setControlledBy` / `setCanBeCarina`) are thin
 //! `update(id, { … })` wrappers — no read, no vault, just a slim column.
 //!
-//! ## `find_by_id` is scoped to what these ops consume
+//! ## `find_by_id` is the shared read path
 //!
-//! [`find_by_id`] marshals only the slim columns the array ops read (`id`,
-//! `characterDocumentMountPointId`, `partnerLinks`) and then applies the read
-//! overlay for `systemPrompts` / `scenarios`. The FULL slim-row read marshaling
-//! (every non-managed column, for the `findBy*` queries that RETURN characters) is
-//! sub-unit 4c, where a read-differential verifies each column. Everything
-//! [`find_by_id`] marshals here is exercised by the 4b write-effect differential
-//! (the partner ops read `partnerLinks`; the prompt/scenario ops read the overlaid
-//! arrays and target items by the ids it produces).
+//! These ops read the character through [`super::characters_read::find_by_id`]
+//! (re-exported here) — the same full read path the `findBy*` queries use (sub-unit
+//! 4c). So the items they mutate (`systemPrompts` / `scenarios` / `partnerLinks`)
+//! carry exactly the vault-overlaid values v4's `findById` returns; the 4b
+//! write-effect differential and the 4c read-differential together verify it.
 
-use rusqlite::{params, Connection};
+use rusqlite::Connection;
 use serde_json::{json, Map, Value};
 
-use super::doc_mount_documents::DocMountDocumentsRepository;
 use super::vault_character_update::update_character;
-use super::vault_read_overlay::{apply_document_store_overlay_one, OverlayOneError};
 use super::DbError;
 
-/// Read a character by id and apply the vault read overlay (v4 `findById`). Scoped
-/// to the slim columns the array ops consume (see the module header). Returns
-/// `None` when no row matches; errors if the linked vault is unavailable (a missing
-/// `properties.json` keystone — v4 throws `CharacterVaultUnavailableError`).
-pub fn find_by_id(
-    main: &Connection,
-    mount: &Connection,
-    character_id: &str,
-) -> Result<Option<Value>, DbError> {
-    let raw = main
-        .query_row(
-            "SELECT id, characterDocumentMountPointId, partnerLinks \
-             FROM characters WHERE id = ?1",
-            params![character_id],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, Option<String>>(1)?,
-                    row.get::<_, Option<String>>(2)?,
-                ))
-            },
-        )
-        .map(Some)
-        .or_else(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => Ok(None),
-            other => Err(other),
-        })?;
-
-    let Some((id, fk, partner_links_json)) = raw else {
-        return Ok(None);
-    };
-
-    let mut obj = Map::new();
-    obj.insert("id".to_string(), Value::String(id));
-    obj.insert(
-        "characterDocumentMountPointId".to_string(),
-        fk.map(Value::String).unwrap_or(Value::Null),
-    );
-    // partnerLinks: parse the slim JSON column (the post-validate value is `[]`
-    // when absent/empty/unparseable — v4 `fromJsonSafe` → null → Zod `.default([])`).
-    let partner_links = partner_links_json
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .and_then(|s| serde_json::from_str::<Value>(s).ok())
-        .filter(Value::is_array)
-        .unwrap_or_else(|| Value::Array(Vec::new()));
-    obj.insert("partnerLinks".to_string(), partner_links);
-
-    let docs = DocMountDocumentsRepository::new(mount);
-    match apply_document_store_overlay_one(&docs, Some(Value::Object(obj))) {
-        Ok(v) => Ok(v),
-        Err(OverlayOneError::Db(e)) => Err(e),
-        Err(OverlayOneError::Unavailable(u)) => Err(DbError::Key(format!(
-            "applyDocumentStoreOverlayOne: vault unavailable for character {} (mount {})",
-            u.character_id, u.mount_id
-        ))),
-    }
-}
+// The array ops read the character through the FULL read path (sub-unit 4c) — the
+// same `find_by_id` the `findBy*` queries use — so the items they mutate
+// (`systemPrompts` / `scenarios` / `partnerLinks`) carry exactly the vault-overlaid
+// values v4's `findById` returns.
+pub use super::characters_read::find_by_id;
 
 /// Extract a managed/slim array off a hydrated character (`None`/non-array → `[]`).
 fn array_of(character: &Value, key: &str) -> Vec<Value> {

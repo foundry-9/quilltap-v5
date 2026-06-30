@@ -27,6 +27,7 @@ pub mod background_jobs;
 pub mod character_plugin_data;
 pub mod character_vault;
 pub mod characters;
+pub mod characters_read;
 pub mod chat_documents;
 pub mod chat_settings;
 pub mod connection_profiles;
