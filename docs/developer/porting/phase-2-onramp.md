@@ -552,13 +552,18 @@ instances (non-ASCII user data), each must be closed or consciously waived.
    (`z.unknown()` — the open-JSON _value_ form, but same divergence when the value
    is a multi-key object). Each corpus avoids the divergence by constraining every
    such value to `{}` or a **single-key** object (where sorted == insertion order).
-   **Action when closing:** before any op writes a multi-key open-JSON
-   object, swap the serializer for an insertion-order-preserving one (a
-   `serde_json` value built on `preserve_order` / `IndexMap`, or a
-   `Vec<(String, Value)>`), and add a multi-key `parameters` row to the corpora to
-   prove it. This is distinct from the fixed-shape object columns, which remain
-   exact. Ordering only — same family as items 1–2 but for *object keys inside a
-   JSON cell*, not row/collation order.
+   **DECISION (2026-06-30): `serde_json` `preserve_order` enabled workspace-wide**
+   (the locked open-JSON decision) — `Value::Object` is now an `IndexMap` emitting
+   insertion order, matching v4's `JSON.stringify` globally. The enabling change
+   landed with the full suite green (single-key corpora are order-invariant).
+   **Remaining to fully close:** add a multi-key row to each affected corpus
+   (`image_profiles.parameters`, `connection_profiles.parameters`,
+   `plugin_config.config`, `character_plugin_data.data`, `chats.state` /
+   `sillyTavernMetadata`, `chat_settings.tagStyles`, the `equippedOutfit`
+   multi-character/multi-slot case) to PROVE insertion-order fidelity end-to-end —
+   until then each is enabled-but-unproven. Distinct from the fixed-shape object
+   columns, which remain exact. Ordering only — same family as items 1–2 but for
+   *object keys inside a JSON cell*, not row/collation order.
 
 6. **Sibling-DB partitions — machinery gap (RESOLVED; both partitions done).**
    Repos through #20 all lived in the **main** database. Several repos instead

@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-core"
-version = "0.0.66"
+version = "0.0.67"
 edition = "2021"
 publish = false
 
@@ -29,7 +29,11 @@ rusqlite = { workspace = true }
 # in the graph by `use quilltap_sqlite3mc_sys as _;` in lib.rs.
 quilltap-sqlite3mc-sys = { path = "../quilltap-sqlite3mc-sys" }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# preserve_order: `Value::Object` is an `IndexMap` emitting INSERTION order,
+# matching v4's `JSON.stringify` for open-JSON columns (parameters / config /
+# equippedOutfit / sillyTavernData / state / tagStyles / …) — the locked decision
+# closing the open-JSON multi-key key-order seam.
+serde_json = { version = "1", features = ["preserve_order"] }
 
 # Regex engine for the ported name-matching / detail-extraction heuristics.
 # Used only where v4 uses a RegExp; JS-vs-Rust fidelity is handled per call site

@@ -255,6 +255,17 @@ nested participant timestamps are sentinel-placeholdered (a value equal to the
 seed sentinel stays pinned — proving createdAt preservation and no stray mint),
 while chat-level timestamps are diffed exactly.
 
+Phase-2 deferred-seam closure (begins) — enabled `serde_json`'s `preserve_order`
+feature workspace-wide (both crates), so every `Value::Object` is an `IndexMap`
+emitting INSERTION order, matching v4's `JSON.stringify`. This is the locked
+decision for the open-JSON multi-key key-order seam (`parameters` / `config` /
+`equippedOutfit` / `sillyTavernData` / `state` / `tagStyles` / `data` / …), which
+the typed-struct trick could not cover. Foundational + no-regression: the full
+suite stays green (the existing single-key corpora are order-invariant), and it
+makes the harness stricter — a re-serialized `Value` now preserves on-disk key
+order instead of sorting, so a masked key-order difference would surface (none
+did). Per-column multi-key corpus proofs follow as each affected repo is swept.
+
 The `chats` repo — sub-unit 6: the **remaining four ops files**, ported in
 parallel (four agents, each on its own new module + differential; the shared
 `ChatUpdate` setters + `mod.rs` wiring pre-staged serially). This **completes the
