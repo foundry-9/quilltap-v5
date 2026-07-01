@@ -561,16 +561,18 @@ instances (non-ASCII user data), each must be closed or consciously waived.
    (emoji dropped, 6 defaults expand) and `{ emoji: null, italic: true }` (emoji
    null kept) — both byte-identical to the oracle.
 
-4. **`write_apply` `__finalizeFile` + post-commit side effects.** The applier
-   port covers the partition/transaction/ordering/failure/remap orchestration but
-   *not* `__finalizeFile` (the staged-file rename inside the main transaction,
-   with undo-on-rollback) or the post-commit `cleanupStagingDirs` /
-   `dispatchInvalidations` (fs cleanup, cache invalidation). The corpus excludes
-   them. `__finalizeFile`'s rename-then-undo-on-rollback is a real correctness
-   behavior (a main-partition rollback must restore staged files); it lands with
-   the file-write path and needs a host-seam hook + its own corpus rows. The side
-   effects are best-effort and non-DB. Close `__finalizeFile` before the file
-   upload/avatar/background write paths run against real data.
+4. **`write_apply` `__finalizeFile` + post-commit side effects — RESOLVED
+   (2026-06-29).** Now ported. The staging→final rename runs inside the main
+   transaction loop with undo-on-rollback (renames reversed before rethrow),
+   `cleanupStagingDirs` drops the per-job `.staging/<jobId>` shell, and
+   `dispatchInvalidations` fires the deduped/ordered vector-store + mount-cache
+   targets — both post-commit, both skipped on a throw. The pure path/target
+   computation (`path_dirname`, `find_staging_root`, `collect_invalidations`)
+   lives in the engine; the fs/cache ops route through four `ApplyHost` methods
+   the harness records. The `write_apply` trace grew four fields (renames,
+   mkdirs, staging cleanup, invalidation notifications) + three scenarios; the
+   oracle records the fs mutators via a jest `fs` mock and the `notifyChild`
+   mock. **No `write_apply` deferrals remain.**
 
 5. **Open-JSON object columns — multi-key key order.** Columns typed as an
    *open* JSON object (v4's `JsonSchema` / `z.record`, e.g. `parameters` on

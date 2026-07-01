@@ -28,11 +28,13 @@ Design docs (read before large changes), all under `docs/developer/porting/`:
 `overview.md` (start here — methodology + phase roadmap + status),
 `phase-0.md` (Phase-0 plan + the cipher finding), `api-boundary.md` (the
 transport-agnostic boundary + the single-writer model + the enclave `step()`
-seam), `phase-2-onramp.md` (the tier-2 DB-state oracle + fixtures — the next
-build), `document-store-overlay.md` (the store-backed-entity slice:
-`projects`/`groups`/`characters`/`wardrobe` vault — where the document store lives,
-the overlay engine, and the build order). The `docs/v4/` tree is the v4 reference
-mirror, not v5 planning.
+seam), `phase-2-onramp.md` (the tier-2 DB-state oracle + fixtures — the Phase-2
+machinery, now complete), `document-store-overlay.md` (the store-backed-entity
+slice: `projects`/`groups`/`characters`/`wardrobe` vault — where the document
+store lives, the overlay engine, and the build order), `phase-3.md` (the Phase-3
+kickoff — the tier-3 mocked-LLM tier, the writer-task runtime, the tier-3 harness
+scaffold, and the memory gate as first service). The `docs/v4/` tree is the v4
+reference mirror, not v5 planning.
 
 ## Standing rules (apply on every task)
 

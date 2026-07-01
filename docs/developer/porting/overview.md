@@ -31,8 +31,8 @@ already working ([`phase-0.md`](./phase-0.md)).
 |------|------|------------------|--------|
 | **0** | Scaffolding, toolchain, cipher-correct DB open, differential harness | tier-1 proven | **substantially done** |
 | **1** | Pure functions (scoring, sizing, remaps, budget math) | tier-1 exact | **done** |
-| **2** | Data layer: repos, the writer-task model, per-DB partitioned apply | tier-2 structural DB diff | in progress — twenty-six repos round-trip green (`folders`, `tags`, `text_replacement_rules`, `prompt_templates`, `conversation_annotations`, `provider_models`, `help_docs`, `roleplay_templates`, `image_profiles`, `connection_profiles`, `plugin_config`, `embedding_profiles`, `terminal_sessions`, `character_plugin_data`, `tfidf_vocabulary`, `users`, `conversation_chunks`, `files`, `chat_documents`, `embedding_status`, the **mount-index sibling-DB** repos `group_character_members`/`project_doc_mount_links`/`group_doc_mount_links`/`doc_mount_folders`/`doc_mount_points`, and the **llm-logs sibling-DB** repo `llm_logs`; six repos also have their deferred `upsert*` methods ported in the minted-values remap form) ([`phase-2-onramp.md`](./phase-2-onramp.md)); repo-by-repo |
-| **3** | Services / engine: memory gate, chat orchestration, enclave `step()` | tier-2 + tier-3 mocked-LLM | not started |
+| **2** | Data layer: repos, the writer-task model, per-DB partitioned apply | tier-2 structural DB diff | **repo inventory complete** — every v4 repository round-trips green through the tier-2 harness (main DB + the mount-index and llm-logs sibling DBs, incl. the `characters` and `chats` capstones and `memories`); the deferred `upsert*` back-fill, the partitioned write applier + `__finalizeFile`, and the fixture sanitizer are done too. Full per-repo inventory in the CLAUDE.md Status section ([`phase-2-onramp.md`](./phase-2-onramp.md)). Residual: a few Phase-3-coupled deferrals (chats `delete` vault sweep, the General/project wardrobe archetype tiers) |
+| **3** | Services / engine: memory gate, chat orchestration, enclave `step()` | tier-2 + tier-3 mocked-LLM | kickoff drafted — [`phase-3.md`](./phase-3.md); Unit 0 (writer-task runtime) next |
 | **4** | Transports (Tauri/uniffi/axum) + Angular UI | end-to-end | not started |
 
 Each phase leans on the one below being trusted, so failures localize.
@@ -46,6 +46,10 @@ Each phase leans on the one below being trusted, so failures localize.
   Phases 3–4 but **locked in now** because it's expensive to retrofit.
 - [`phase-2-onramp.md`](./phase-2-onramp.md) — the tier-2 DB-state oracle and its
   fixtures: the build that unblocks Phase 2 once the Phase-1 leaves are done.
+- [`phase-3.md`](./phase-3.md) — the Phase-3 kickoff: the tier-3 mocked-LLM tier,
+  the writer-task runtime (Unit 0), the tier-3 harness scaffold (Unit 0.5), and
+  the memory gate as first service (Unit 1), with the unit order and the
+  Phase-2-carried deferrals.
 - [`document-store-overlay.md`](./document-store-overlay.md) — the design slice for
   the store-backed entities (`projects`, `groups`, `characters`, the `wardrobe`
   vault): where the "document store" really lives (DB rows in the mount-index DB,
@@ -86,10 +90,17 @@ open, single-writer model, canonical dump, the TS oracle + harness diff — is i
 place, so **Phase 2 proper is now the same mechanical loop, repo by repo**:
 port the next repo, add its tier-2 case. See [`phase-2-onramp.md`](./phase-2-onramp.md).
 
-**Phase 2 proper has started.** Nineteen repos past the pilot now round-trip
-green, ported in parallel batches (agents draft each repo's own new files; the
-shared `db/mod.rs` wiring + verification are serialized afterward) — two batches
-of three, then two batches of five. The first batch of five (plain-base
+**Phase 2 proper is essentially complete** — every v4 repository now round-trips
+green through the tier-2 harness (see the CLAUDE.md Status section for the full
+per-repo inventory, including the `characters` and `chats` capstones, `memories`,
+both sibling DBs, the `upsert*` back-fill, and the fixture sanitizer). What
+remains is a few Phase-3-coupled deferrals (chats `delete`'s participant-vault
+summary sweep; the General/project wardrobe archetype tiers;
+`background_jobs.markCompleted`'s dotted-payload merge, a forward v5-only
+capability since v4-on-SQLite throws there). The record below traces how the
+inventory was built, repo-by-repo in parallel batches (agents draft each repo's
+own new files; the shared `db/mod.rs` wiring + verification are serialized
+afterward) — two batches of three, then two batches of five. The first batch of five (plain-base
 single-table): `plugin_config` [UserOwned + open-JSON `config` + optional bool],
 `embedding_profiles` [Taggable + nullable-REAL numbers + enum], `terminal_sessions`
 [nullable strings + nullable-REAL `exitCode`], `character_plugin_data` [first

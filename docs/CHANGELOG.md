@@ -75,6 +75,23 @@ test against the v4 oracle:
 - Small leaf utilities: chat-type/participant predicates, semver parse/compare,
   pronoun→gender hint, tag-style merge, char-count colour class.
 
+Docs — Phase 2 marked complete; Phase 3 kickoff drafted. Docs only, no crate
+source changed.
+
+- `overview.md`: the Phase-2 roadmap row now reads repo-inventory-complete (every
+  v4 repository round-trips green through the tier-2 harness), with the residual
+  Phase-3-coupled deferrals named; the stale "nineteen repos" status prose was
+  corrected the same way, and the document list + Phase-3 row now point at the new
+  kickoff doc.
+- `phase-2-onramp.md`: deferred seam #4 (`write_apply`'s `__finalizeFile` +
+  post-commit effects) flipped from open to resolved, matching the
+  ported-and-verified state.
+- Added `docs/developer/porting/phase-3.md` — the Phase-3 kickoff: the tier-3
+  mocked-LLM tier; the writer-task runtime (Unit 0); the tier-3 harness scaffold
+  (Unit 0.5); the memory gate as first service (Unit 1), with a caution to port
+  its similarity-band constants (0.90 / 0.85 / 0.70), not the file's stale
+  0.80/0.70 doc comment; and the three Phase-2-carried deferrals.
+
 Phase 2 on-ramp — the tier-2 DB-state oracle (structural DB diff for repo/service
 ops), built as a thin vertical slice over the `folders` repo:
 
