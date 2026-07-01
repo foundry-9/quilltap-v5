@@ -38,6 +38,7 @@
 
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
+use serde_json::Value;
 
 use super::memories_read;
 use super::DbError;
@@ -470,6 +471,148 @@ impl<'c> MemoriesRepository<'c> {
             .map_err(DbError::from)
     }
 
+    // -----------------------------------------------------------------------
+    // The deletion chokepoint (v4 `lib/memory/memory-gate.ts`).
+    //
+    // v4 places `deleteMemoryWithUnlink` / `deleteMemoriesWithUnlinkBatch` in
+    // memory-gate.ts (parallel to `createMemoryWithGate` on the write side), but
+    // they are pure `memories`-table operations — a neighbour-unlink scan wrapped
+    // around the repo's own `updateForCharacter` / `delete` / `bulkDelete` — so
+    // they live on the repository here. Every cascade path (housekeeping retention
+    // sweeps, chat-wipe, swipe-group cleanup, single-memory delete) funnels
+    // through one of these two so a deleted id never lingers in another memory's
+    // `relatedMemoryIds`.
+    // -----------------------------------------------------------------------
+
+    /// v4's `deleteMemoryWithUnlink` — the single-memory chokepoint. Delete one
+    /// memory and scrub the deleted id from every neighbour's `relatedMemoryIds`.
+    /// Idempotent: if the row is already gone, returns `Ok(false)` without touching
+    /// neighbours.
+    ///
+    /// The `LIKE '%"<id>"%'` pre-filter narrows the scan; the quoted id inside the
+    /// pattern prevents partial-UUID collisions across the JSON column (v4's
+    /// `likeParam`). Each neighbour that actually lists the id is rewritten through
+    /// `updateForCharacter` (character-scoped, bumps `updatedAt`); then the target
+    /// row is deleted.
+    pub fn delete_with_unlink(&self, memory_id: &str) -> Result<bool, DbError> {
+        // v4: `findById` → if missing, false without touching neighbours.
+        if !self.row_exists(memory_id)? {
+            return Ok(false);
+        }
+        let like_param = format!("%\"{memory_id}\"%");
+        let neighbours = self.scan_neighbours(
+            "SELECT id, characterId, relatedMemoryIds FROM memories \
+             WHERE relatedMemoryIds LIKE ?1 AND id != ?2",
+            params![like_param, memory_id],
+        )?;
+        for (id, character_id, related_raw) in neighbours {
+            let current = parse_related_ids(related_raw.as_deref());
+            if !current.iter().any(|x| x == memory_id) {
+                continue;
+            }
+            let filtered: Vec<String> = current.into_iter().filter(|x| x != memory_id).collect();
+            let patch = MemUpdate {
+                related_memory_ids: Some(filtered),
+                ..Default::default()
+            };
+            self.update_for_character(&character_id, &id, &patch)?;
+        }
+        self.delete(memory_id)
+    }
+
+    /// v4's `deleteMemoriesWithUnlinkBatch` — the cascade chokepoint. Scans every
+    /// row with a non-empty links array ONCE, scrubs every doomed id from each
+    /// neighbour's `relatedMemoryIds` in one update per neighbour, then deletes the
+    /// doomed set grouped by character (the repo's `bulkDelete` is
+    /// characterId-scoped). Returns the number of rows actually deleted. Empty
+    /// input → 0.
+    pub fn delete_many_with_unlink(&self, memory_ids: &[String]) -> Result<i64, DbError> {
+        if memory_ids.is_empty() {
+            return Ok(0);
+        }
+        let doomed: std::collections::HashSet<&str> =
+            memory_ids.iter().map(String::as_str).collect();
+
+        // One-pass scan of every row with a non-empty links array (v4's stable
+        // query shape, filtered in-JS regardless of batch size).
+        let candidates = self.scan_neighbours(
+            "SELECT id, characterId, relatedMemoryIds FROM memories \
+             WHERE relatedMemoryIds IS NOT NULL AND relatedMemoryIds != '[]'",
+            params![],
+        )?;
+        for (id, character_id, related_raw) in candidates {
+            if doomed.contains(id.as_str()) {
+                continue;
+            }
+            let current = parse_related_ids(related_raw.as_deref());
+            if current.is_empty() {
+                continue;
+            }
+            let filtered: Vec<String> = current
+                .iter()
+                .filter(|x| !doomed.contains(x.as_str()))
+                .cloned()
+                .collect();
+            if filtered.len() == current.len() {
+                continue;
+            }
+            let patch = MemUpdate {
+                related_memory_ids: Some(filtered),
+                ..Default::default()
+            };
+            self.update_for_character(&character_id, &id, &patch)?;
+        }
+
+        // Resolve id → characterId for the doomed set, group, `bulkDelete` per
+        // character (final DB state is independent of group iteration order).
+        let placeholders = (0..memory_ids.len())
+            .map(|_| "?")
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!("SELECT id, characterId FROM memories WHERE id IN ({placeholders})");
+        let mut by_character: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        {
+            let mut stmt = self.conn.prepare(&sql)?;
+            let p: Vec<&dyn ToSql> = memory_ids.iter().map(|s| s as &dyn ToSql).collect();
+            let rows = stmt.query_map(p.as_slice(), |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })?;
+            for row in rows {
+                let (id, character_id) = row?;
+                by_character.entry(character_id).or_default().push(id);
+            }
+        }
+
+        let mut deleted = 0i64;
+        for (character_id, ids) in by_character {
+            deleted += self.bulk_delete(&character_id, &ids)?;
+        }
+        Ok(deleted)
+    }
+
+    /// Run a `SELECT id, characterId, relatedMemoryIds` scan, collecting the raw
+    /// `(id, characterId, relatedMemoryIds-text)` triples the unlink passes read.
+    fn scan_neighbours(
+        &self,
+        sql: &str,
+        p: &[&dyn ToSql],
+    ) -> Result<Vec<(String, String, Option<String>)>, DbError> {
+        let mut stmt = self.conn.prepare(sql)?;
+        let rows = stmt.query_map(p, |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, Option<String>>(2)?,
+            ))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
     /// True iff a row with this id exists (v4's `_update` `findById` precondition).
     fn row_exists(&self, id: &str) -> Result<bool, DbError> {
         let found: Option<i64> = self
@@ -489,4 +632,177 @@ impl<'c> MemoriesRepository<'c> {
 /// Serialize a string list to compact JSON array text (`["a","b"]`, `[]`).
 fn json_array(items: &[String]) -> Result<String, DbError> {
     serde_json::to_string(items).map_err(|e| DbError::Key(format!("json array serialize: {e}")))
+}
+
+/// v4's `parseRelatedIds` (`memory-gate.ts`) — parse a `relatedMemoryIds` cell to
+/// its string elements. A null/empty cell, a non-array, or a parse failure → `[]`,
+/// and non-string array elements are dropped (v4's `filter(x => typeof x ===
+/// 'string')`).
+fn parse_related_ids(raw: Option<&str>) -> Vec<String> {
+    let raw = match raw {
+        Some(s) if !s.is_empty() => s,
+        _ => return Vec::new(),
+    };
+    match serde_json::from_str::<Value>(raw) {
+        Ok(Value::Array(items)) => items
+            .into_iter()
+            .filter_map(|x| match x {
+                Value::String(s) => Some(s),
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Writer;
+    use tempfile::{tempdir, TempDir};
+
+    /// Throwaway pepper for a fresh encrypted DB (never a real one).
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const DDL: &str = "CREATE TABLE memories (
+        id TEXT PRIMARY KEY, characterId TEXT, aboutCharacterId TEXT, chatId TEXT,
+        projectId TEXT, content TEXT, summary TEXT, keywords TEXT, tags TEXT,
+        importance REAL, embedding BLOB, source TEXT, witnessedContext TEXT,
+        sourceMessageId TEXT, lastAccessedAt TEXT, reinforcementCount REAL,
+        lastReinforcedAt TEXT, relatedMemoryIds TEXT, reinforcedImportance REAL,
+        createdAt TEXT, updatedAt TEXT);";
+
+    /// Build a fresh encrypted DB, create the memories table, and seed the given
+    /// `(id, characterId, relatedMemoryIds)` rows (all pinned timestamps).
+    fn seed(rows: &[(&str, &str, &[&str])]) -> (TempDir, Writer) {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("main.db");
+        let w = Writer::open_writable(&path, PEPPER).unwrap();
+        w.connection().execute_batch(DDL).unwrap();
+        let repo = w.memories();
+        for (id, character_id, related) in rows {
+            repo.create(
+                &MemCreate {
+                    character_id: (*character_id).to_string(),
+                    about_character_id: None,
+                    chat_id: None,
+                    project_id: None,
+                    content: format!("content {id}"),
+                    summary: format!("summary {id}"),
+                    keywords: vec![],
+                    tags: vec![],
+                    importance: 0.5,
+                    embedding: None,
+                    source: "AUTO".to_string(),
+                    witnessed_context: None,
+                    source_message_id: None,
+                    last_accessed_at: None,
+                    reinforcement_count: 1.0,
+                    last_reinforced_at: None,
+                    related_memory_ids: related.iter().map(|s| s.to_string()).collect(),
+                    reinforced_importance: 0.5,
+                },
+                &CreateOptions {
+                    id: (*id).to_string(),
+                    created_at: "2020-01-01T00:00:00.000Z".to_string(),
+                    updated_at: "2020-01-01T00:00:00.000Z".to_string(),
+                },
+            )
+            .unwrap();
+        }
+        (dir, w)
+    }
+
+    /// The `relatedMemoryIds` of `id`, or `None` if the row is gone.
+    fn related_of(w: &Writer, id: &str) -> Option<Vec<String>> {
+        let raw: Option<Option<String>> = w
+            .connection()
+            .query_row(
+                "SELECT relatedMemoryIds FROM memories WHERE id = ?1",
+                params![id],
+                |r| r.get::<_, Option<String>>(0),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })
+            .unwrap();
+        raw.map(|cell| parse_related_ids(cell.as_deref()))
+    }
+
+    #[test]
+    fn delete_with_unlink_scrubs_neighbours_and_deletes() {
+        // mA1 is referenced by mA2 (same char) and mB1 (other char); mA3 never
+        // references it.
+        let (_dir, w) = seed(&[
+            ("mA1", "charA", &["mA2", "mB1"]),
+            ("mA2", "charA", &["mA1", "mA3"]),
+            ("mA3", "charA", &["mA2"]),
+            ("mB1", "charB", &["mA1"]),
+        ]);
+        let repo = w.memories();
+        assert!(repo.delete_with_unlink("mA1").unwrap());
+        assert_eq!(related_of(&w, "mA1"), None, "target deleted");
+        assert_eq!(
+            related_of(&w, "mA2"),
+            Some(vec!["mA3".to_string()]),
+            "scrubbed"
+        );
+        assert_eq!(
+            related_of(&w, "mB1"),
+            Some(vec![]),
+            "cross-character neighbour scrubbed"
+        );
+        assert_eq!(
+            related_of(&w, "mA3"),
+            Some(vec!["mA2".to_string()]),
+            "non-referencing row untouched"
+        );
+    }
+
+    #[test]
+    fn delete_with_unlink_missing_is_noop() {
+        let (_dir, w) = seed(&[("mA2", "charA", &["mA1"])]);
+        let repo = w.memories();
+        assert!(!repo.delete_with_unlink("nope").unwrap());
+        // Neighbour with a stale ref is left exactly as-is (no scan on a miss).
+        assert_eq!(related_of(&w, "mA2"), Some(vec!["mA1".to_string()]));
+    }
+
+    #[test]
+    fn delete_many_with_unlink_batch_scrubs_and_deletes_across_chars() {
+        let (_dir, w) = seed(&[
+            ("mA4", "charA", &["mA5"]),
+            ("mA5", "charA", &["mA4", "mB2", "mA6"]),
+            ("mA6", "charA", &[]),
+            ("mB2", "charB", &["mA4"]),
+            ("mB3", "charB", &["mB2"]),
+        ]);
+        let repo = w.memories();
+        let deleted = repo
+            .delete_many_with_unlink(&["mA4".to_string(), "mB2".to_string()])
+            .unwrap();
+        assert_eq!(deleted, 2, "two rows deleted across two characters");
+        assert_eq!(related_of(&w, "mA4"), None);
+        assert_eq!(related_of(&w, "mB2"), None);
+        assert_eq!(
+            related_of(&w, "mA5"),
+            Some(vec!["mA6".to_string()]),
+            "both doomed ids scrubbed in one update, survivor kept"
+        );
+        assert_eq!(related_of(&w, "mB3"), Some(vec![]));
+        assert_eq!(
+            related_of(&w, "mA6"),
+            Some(vec![]),
+            "empty-links row untouched"
+        );
+    }
+
+    #[test]
+    fn delete_many_with_unlink_empty_is_zero() {
+        let (_dir, w) = seed(&[("mA1", "charA", &["mA2"])]);
+        let repo = w.memories();
+        assert_eq!(repo.delete_many_with_unlink(&[]).unwrap(), 0);
+        assert_eq!(related_of(&w, "mA1"), Some(vec!["mA2".to_string()]));
+    }
 }

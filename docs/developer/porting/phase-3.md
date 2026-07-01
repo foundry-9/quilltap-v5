@@ -261,7 +261,12 @@ Track them to closure as their subsystem lands:
    exercised by Unit 1's differential.
 1. **Memory gate** — first real service; validates 0 + 0.5 + tier-2 together.
    **✅ done + green** (`services::memory_gate`).
-2. Memory family follow-ons (`memory-processor`, `memory-service`, `housekeeping`). ← **next**
+2. Memory family follow-ons (`memory-processor`, `memory-service`, `housekeeping`). ← **in progress**
+   - Deletion chokepoint (`deleteMemoryWithUnlink` / `deleteMemoriesWithUnlinkBatch`)
+     — **✅ done + green** (`db::memories::delete_with_unlink` / `delete_many_with_unlink`,
+     tsx real-DB differential). The leaf every cascade path deletes through.
+   - Next: `memory-service`'s cascade-delete family + `housekeeping` (both
+     tier-2, no model call), then the model-dependent `memory-processor` extraction.
 3. Chat orchestration (turn manager + streaming on the `Event` channel).
 4. Enclave engine (`step()` + `RunState` + driver seam).
 

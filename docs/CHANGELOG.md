@@ -139,6 +139,24 @@ canned embedding injected identically on both sides, then a structural DB diff).
   id-map remap form. Four core self-tests exercise the outcomes over an in-memory
   `Db` + canned provider.
 
+Phase 3 — the memory deletion chokepoint (the first memory-family follow-on).
+Ported v4's `deleteMemoryWithUnlink` / `deleteMemoriesWithUnlinkBatch` (memory-gate.ts)
+as `MemoriesRepository::delete_with_unlink` / `delete_many_with_unlink` — the single
+point every cascade (housekeeping sweeps, chat-wipe, swipe-group cleanup) deletes
+through, so a removed id never lingers in another memory's `relatedMemoryIds`.
+
+- `delete_with_unlink`: `LIKE '%"<id>"%'` neighbour pre-filter, per-neighbour
+  character-scoped `relatedMemoryIds` rewrite, then the row delete. Idempotent — a
+  missing row returns false without touching neighbours.
+- `delete_many_with_unlink`: one-pass scan of every row with a non-empty links
+  array, scrubs every doomed id from each neighbour in one update, then deletes the
+  doomed set grouped by character (`bulkDelete` is characterId-scoped). Empty → 0.
+- Differential: a tsx real-DB oracle drives v4's REAL chokepoint over a pre-seeded
+  nine-memory graph (cross-linked across two characters), and the `memories` dump
+  is diffed in the sentinel-aware minted-`updatedAt` form (an untouched row stays at
+  the seed sentinel — proving no stray bump). Four repo self-tests cover the
+  single/batch scrub, the missing-row no-op, and the empty batch.
+
 Docs — Phase 2 marked complete; Phase 3 kickoff drafted. Docs only, no crate
 source changed.
 

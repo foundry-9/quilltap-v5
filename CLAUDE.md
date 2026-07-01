@@ -1286,5 +1286,29 @@ remapped through the shared map). **Tracked deferrals:** `maybeEnqueueHousekeepi
 `applyNamePresenceCheck`'s cross-character resolution (needs the characters
 vault-overlay read; corpus keeps `aboutCharacterId` null → verified no-op), and the
 500 ms inter-retry delay (host-timing, no DB effect, omitted to keep the core
-scheduler-free). Next: the memory-family follow-ons (`memory-processor`,
-`memory-service`, `housekeeping`) per `docs/developer/porting/phase-3.md`.
+scheduler-free).
+
+The **memory deletion chokepoint** — the first memory-family follow-on — is now
+ported and green (`db::memories::delete_with_unlink` / `delete_many_with_unlink`,
+`memory_delete_tier2_equivalence`). v4 places `deleteMemoryWithUnlink` /
+`deleteMemoriesWithUnlinkBatch` in `memory-gate.ts` (parallel to
+`createMemoryWithGate` on the write side), but they are pure `memories`-table
+operations — a neighbour-unlink scan wrapped around the repo's own
+`updateForCharacter` / `delete` / `bulkDelete` — so they live on the repository.
+Every cascade path (housekeeping retention sweeps, chat-wipe, swipe-group cleanup,
+single-memory delete) funnels through one of these two so a deleted id never lingers
+in another memory's `relatedMemoryIds`. `delete_with_unlink` does v4's
+`LIKE '%"<id>"%'` neighbour pre-filter (the quoted id prevents partial-UUID
+collisions), the per-neighbour character-scoped rewrite, then the row delete —
+idempotent (a missing row returns false without touching neighbours);
+`delete_many_with_unlink` does the one-pass scan of every row with a non-empty
+links array, scrubs every doomed id from each neighbour in one update, then deletes
+the doomed set grouped by character. Verified by a **tsx real-DB** differential (no
+model call — deletion touches no LLM; the module functions run directly under
+`getRepositories()` + `rawQuery` after `initializeDatabase()`) driving v4's REAL
+chokepoint over a pre-seeded nine-memory graph (cross-linked across two
+characters), diffing the `memories` dump in the sentinel-aware minted-`updatedAt`
+form (an untouched neighbour stays at the seed sentinel — proving no stray bump);
+plus four repo self-tests. Next: the remaining memory-family follow-ons
+(`memory-service`'s cascade-delete family + housekeeping, then the model-dependent
+`memory-processor` per-turn extraction) per `docs/developer/porting/phase-3.md`.
