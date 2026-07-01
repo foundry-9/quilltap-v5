@@ -255,6 +255,28 @@ nested participant timestamps are sentinel-placeholdered (a value equal to the
 seed sentinel stays pinned — proving createdAt preservation and no stray mint),
 while chat-level timestamps are diffed exactly.
 
+Phase-2 deferred-seam closure — ported the `characters` startup-backfill family,
+closing the last three characters deferrals: the `ensureCharacterVault` adopt
+branch, provision-on-the-fly, and physicalDescription-via-update. On a
+managed-field `update` to a vault-less character, `apply_document_store_write_overlay`
+now provisions a vault on the fly (build the post-cutover write input →
+`ensure_character_vault` → re-read + confirm FK → continue routing) instead of
+erroring. `ensure_character_vault` now first searches for a populated same-name
+`'character'` store (`doc_mount_points::find_by_name` — `enabled=1`, trimmed
+case-insensitive match) that passes the new `vault_has_required_files` check (all
+six required files present in `doc_mount_file_links`) and adopts it when exactly
+one qualifies (ambiguous or zero → fresh provision); the FK-write-and-confirm is
+factored into the shared `link_character_to_vault`. The two seams compose — a live
+`update` is how a character reaches the adopt branch. physicalDescription-via-update
+(writing `physical-description.md` + `physical-prompts.json` on a non-null patch and
+stripping it from the DB patch) was already coded; it is now proven. Each seam
+ships a green six-table cross-DB shared-id-map remap differential
+(`characters_adopt` / `characters_provision` / `characters_physical`
+`_tier2_equivalence`) driving v4's REAL `repos.characters.update`/`.create`; the
+adopt case asserts a single surviving mount point (the orphan store reused and its
+FK relinked, no duplicate). Added `doc_mount_points::find_by_name` and
+`doc_mount_file_links::relative_paths_lower`.
+
 Phase-2 deferred-seam closure — closed the WRITE side of the
 `chat_messages.isSilentMessage` seam (#8), completing it. The read side was
 already resolved; this closes the write. A `message`-type insert now emits the

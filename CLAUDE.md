@@ -806,9 +806,9 @@ shared-cross-db-id-map remap form (everything minted, FKs verify by relationship
 default-`properties.json` row (scaffold writes it, the managed bag overwrites it,
 no GC → 9 files = 8 live + 1 orphan), the five identity-md overwrites (the
 `physical-*` scaffold defaults survive — no physicalDescription), and a
-systemPrompt + scenario projected into `Prompts/`+`Scenarios/`. **Tracked
-deferral:** the `ensureCharacterVault` adopt branch (startup-heal of a hand-linked
-same-name store — corpus always provisions fresh). Sub-unit 4a — the **`update`
+systemPrompt + scenario projected into `Prompts/`+`Scenarios/`. (The
+`ensureCharacterVault` adopt branch — startup-heal of a hand-linked same-name
+store — is now ported too; see the startup-backfill note below.) Sub-unit 4a — the **`update`
 vault integration** — is also done (`db::vault_character_update`,
 `characters_update_tier2_equivalence`): v4's `applyDocumentStoreWriteOverlay` (the
 managed-field write **router** — markdown routing, the `properties.json`
@@ -819,8 +819,8 @@ the unmanaged remainder, skipped when empty so a managed-only update does NOT bu
 `repos.characters.update` across SIX tables in the shared-cross-db-id-map remap
 form; banks the RMW preservation, a DB-only field update, and a prompt
 reprojection (sweep + write, orphan/GC counts matching v4 via the shared DDL).
-**Tracked deferral:** provision-on-the-fly (managed-field patch on a vault-less
-character). Sub-unit 4b — the **array / sub-array ops** — is also done
+(provision-on-the-fly — a managed-field patch on a vault-less character — is now
+ported too; see the startup-backfill note below.) Sub-unit 4b — the **array / sub-array ops** — is also done
 (`db::vault_character_arrays`, `characters_arrays_tier2_equivalence`): the
 `systemPrompts`/`scenarios`/`partnerLinks` mutators + the
 `setFavorite`/`setControlledBy`/`setCanBeCarina` setters. Each sub-array op is v4's
@@ -862,9 +862,26 @@ the hydrated lists exactly (ids/timestamps identical, no remap; only
 `physicalDescription`'s read-minted createdAt/updatedAt placeholdered, lists sorted
 by id) — `findByIdRaw` isolating the slim marshaling. Sub-unit 4b's array ops were
 refactored to ride this full `find_by_id` (re-verified green), closing the
-scoped-reader deferral. **Tracked deferrals remaining for characters** (all the
-startup-backfill family): the `ensureCharacterVault` adopt branch, provision-on-the-
-fly, and physicalDescription-via-update. The peer repos
+scoped-reader deferral. **The characters startup-backfill family is now ported**
+(2026-07-01), closing the last three characters deferrals — the
+`ensureCharacterVault` **adopt branch**, **provision-on-the-fly**, and
+**physicalDescription-via-update**. v4 first searches for a populated same-name
+`'character'` store (`doc_mount_points::find_by_name`: `enabled=1`, trimmed
+case-insensitive match) that passes `vault_has_required_files` (all six required
+files present in `doc_mount_file_links`) and **adopts** it iff exactly one
+qualifies (ambiguous / zero → fresh provision); the FK-write-and-confirm is now
+the shared `link_character_to_vault`. When a managed-field `update` lands on a
+vault-less character, `apply_document_store_write_overlay` now **provisions on the
+fly** (build the post-cutover `CharacterVaultWriteInput` → `ensure_character_vault`
+→ re-read + confirm FK → continue routing) instead of erroring — and that update
+path is exactly how a live character reaches the adopt branch, so the two seams
+compose. physicalDescription-via-update (the write of `physical-description.md` +
+`physical-prompts.json` on a non-null patch, strip-from-DB) was already coded and
+is now **proven**. Each ships a green six-table cross-DB remap differential
+(`characters_adopt`/`characters_provision`/`characters_physical`
+`_tier2_equivalence`) driving v4's REAL `repos.characters.update`/`.create` — the
+adopt case's keystone assertion is a **single** surviving mount point (the orphan
+store reused, FK relinked, no duplicate). The peer repos
 `background_jobs` and `vector_indices` (both
 independent, no characters/store-backed coupling) were drafted in parallel.
 **`vector_indices` is now integrated and green** (`vector_indices_tier2_equivalence`):

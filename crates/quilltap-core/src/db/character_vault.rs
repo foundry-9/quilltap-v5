@@ -1,8 +1,8 @@
 //! Character vault provisioning — the store-backed capstone's stateful glue
 //! (characters sub-unit 3). Ports v4's `scaffoldCharacterMount`
-//! (`lib/mount-index/character-scaffold.ts`) now; `ensureCharacterVault`
-//! (`lib/mount-index/character-vault.ts`) + the `CharactersRepository.create`
-//! integration land next (sub-unit 3b).
+//! (`lib/mount-index/character-scaffold.ts`), `ensureCharacterVault`
+//! (`lib/mount-index/character-vault.ts` — including the ADOPT branch), and the
+//! `CharactersRepository.create` integration.
 //!
 //! ## `scaffold_character_mount`
 //!
@@ -44,6 +44,21 @@ use super::vault_character_write::{
     write_character_vault_managed_fields, CharacterVaultWriteInput,
 };
 use super::DbError;
+
+/// The six files a successfully-populated vault always carries — v4
+/// `REQUIRED_VAULT_FILES`. `writeCharacterVaultManagedFields` writes each
+/// unconditionally (empty string when blank), so their presence is the "safe to
+/// adopt" test. The physical-* pair is intentionally ABSENT (the writer skips it
+/// when there is no physical description, so requiring it would wrongly reject
+/// sparse characters). Compared lowercased.
+const REQUIRED_VAULT_FILES: &[&str] = &[
+    "properties.json",
+    "identity.md",
+    "description.md",
+    "manifesto.md",
+    "personality.md",
+    "example-dialogues.md",
+];
 
 /// The six blank Markdown files the scaffold seeds (content `""`), in v4's order.
 /// All share the empty-string content sha, so they dedup to ONE
@@ -138,21 +153,24 @@ pub struct EnsureResult {
 }
 
 /// Ensure the given character has a linked database-backed character vault — v4
-/// `ensureCharacterVault` (the create branch). Idempotent: when `current_fk` is
-/// already set, returns it unchanged. Otherwise mints a `<name> Character Vault`
-/// mount point (MOUNT-INDEX db), scaffolds it, projects the managed fields, and
-/// links it by setting `characterDocumentMountPointId` on the slim row (MAIN db),
-/// confirming the write stuck.
+/// `ensureCharacterVault`. Idempotent: when `current_fk` is already set, returns
+/// it unchanged.
+///
+/// When there is no link, v4 first looks for an existing populated same-name
+/// `'character'` store and ADOPTS it (the startup-heal path for a vault whose
+/// link write was lost mid cloud-materialization) — critical post-cutover, where
+/// the legacy content columns are gone, so creating a fresh vault here would
+/// populate it with empty files and orphan the good one. Exactly one populated
+/// candidate → adopt; multiple → ambiguous, don't guess, fall through to create
+/// fresh (v4 logs loudly); zero → create fresh.
+///
+/// The create path mints a `<name> Character Vault` mount point (MOUNT-INDEX db),
+/// scaffolds it, projects the managed fields, then links it by setting
+/// `characterDocumentMountPointId` on the slim row (MAIN db), confirming the write
+/// stuck.
 ///
 /// Spans both databases: the mount point + store live in `mount`, the slim row +
 /// FK in `main`.
-///
-/// **Tracked deferral — the adopt branch.** v4 first looks for an existing
-/// populated same-name `'character'` store and ADOPTS it (the startup-heal path
-/// for a vault whose link write was lost mid cloud-materialization). The corpus
-/// always provisions fresh, so only the create branch is exercised; adoption needs
-/// a richer `doc_mount_points` read and lands with the startup-backfill slice. A
-/// tracked deferral, not a stub on a reachable path.
 pub fn ensure_character_vault(
     main: &Connection,
     mount: &Connection,
@@ -167,6 +185,31 @@ pub fn ensure_character_vault(
             created: false,
         });
     }
+
+    let vault_name = format!("{character_name} Character Vault");
+
+    // Adopt an existing populated same-name character vault before creating one.
+    // v4 filters `findByName` matches to `storeType === 'character'`, keeps those
+    // that hold every REQUIRED_VAULT_FILES entry, and adopts iff exactly one
+    // qualifies.
+    let same_name = DocMountPointsRepository::new(mount).find_by_name(&vault_name)?;
+    let mut populated: Vec<String> = Vec::new();
+    for (id, store_type) in same_name {
+        if store_type == "character" && vault_has_required_files(mount, &id)? {
+            populated.push(id);
+        }
+    }
+    if populated.len() == 1 {
+        let adopted = populated.into_iter().next().unwrap();
+        link_character_to_vault(main, character_id, &adopted)?;
+        return Ok(EnsureResult {
+            mount_point_id: adopted,
+            created: false,
+        });
+    }
+    // populated.len() > 1: ambiguous — don't guess which holds the real content.
+    // Fall through to create a fresh vault (v4 logs an error and leaves the
+    // existing ones for an operator to reconcile).
 
     // 1. Provision a fresh character-vault mount point (minted id + now).
     let now = crate::clock::now_iso();
@@ -212,14 +255,41 @@ pub fn ensure_character_vault(
     let docs = DocMountDocumentsRepository::new(mount);
     write_character_vault_managed_fields(&links, &docs, &mount_point_id, vault)?;
 
-    // 3. Link: set the FK on the slim row, then CONFIRM it stuck (v4
-    //    `linkCharacterToVault` turns a silent "linked but not linked" — a lost
-    //    write mid cloud-materialization — into a loud throw).
-    let chars = CharactersRepository::new(main);
-    chars.update(
+    // 3. Link: set the FK on the slim row, then CONFIRM it stuck.
+    link_character_to_vault(main, character_id, &mount_point_id)?;
+
+    Ok(EnsureResult {
+        mount_point_id,
+        created: true,
+    })
+}
+
+/// True iff `mount_point_id` holds every [`REQUIRED_VAULT_FILES`] entry — v4
+/// `vaultHasRequiredFiles`. The check reads the links' lowercased `relativePath`
+/// set and asserts all six required files are present (deciding whether an
+/// existing same-name vault is safe to adopt).
+fn vault_has_required_files(mount: &Connection, mount_point_id: &str) -> Result<bool, DbError> {
+    let present = DocMountFileLinksRepository::new(mount).relative_paths_lower(mount_point_id)?;
+    Ok(REQUIRED_VAULT_FILES
+        .iter()
+        .all(|f| present.iter().any(|p| p == f)))
+}
+
+/// Set `characterDocumentMountPointId` on the slim row and CONFIRM it stuck by
+/// re-reading — v4 `linkCharacterToVault`. The `characters.update` write can
+/// return without persisting when the main DB is unwritable at that instant (most
+/// notably while a cloud-synced file is still materializing). Verifying here turns
+/// a silent "linked but not linked" state into a loud throw the caller can block
+/// on, rather than destroying columns out from under good vault content.
+fn link_character_to_vault(
+    main: &Connection,
+    character_id: &str,
+    mount_point_id: &str,
+) -> Result<(), DbError> {
+    CharactersRepository::new(main).update(
         character_id,
         &CharacterUpdate {
-            character_document_mount_point_id: Some(mount_point_id.clone()),
+            character_document_mount_point_id: Some(mount_point_id.to_string()),
             updated_at: crate::clock::now_iso(),
             ..Default::default()
         },
@@ -234,18 +304,14 @@ pub fn ensure_character_vault(
             rusqlite::Error::QueryReturnedNoRows => Ok(None),
             other => Err(other),
         })?;
-    if stuck.as_deref() != Some(mount_point_id.as_str()) {
+    if stuck.as_deref() != Some(mount_point_id) {
         return Err(DbError::Key(format!(
             "Failed to persist characterDocumentMountPointId for {character_id}: wrote \
              {mount_point_id} but re-read {}. The character row write did not stick.",
             stuck.as_deref().unwrap_or("null")
         )));
     }
-
-    Ok(EnsureResult {
-        mount_point_id,
-        created: true,
-    })
+    Ok(())
 }
 
 /// Create a character end-to-end — v4 `CharactersRepository.create`. Inserts the

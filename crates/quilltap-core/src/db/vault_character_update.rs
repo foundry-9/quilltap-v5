@@ -34,11 +34,13 @@
 //! then runs the slim `_update` for that remainder (skipped when empty — so a
 //! managed-only update does NOT bump the slim row's `updatedAt`), mirroring v4.
 //!
-//! **Tracked deferral — provision-on-the-fly.** When a character has no vault FK
-//! but the patch carries managed fields, v4 provisions a vault mid-write (a
-//! loud-logged bug path — every character is supposed to have one). The corpus
-//! always has a vault, so this port errors there instead; it lands with the
-//! startup-backfill slice (same family as the `ensureCharacterVault` adopt branch).
+//! **Provision-on-the-fly.** When a character has no vault FK but the patch
+//! carries managed fields, v4 provisions a vault mid-write (a loud-logged bug path
+//! — every character is supposed to have one), re-reads to pick up the new FK,
+//! verifies it linked, then continues normal routing. This port does the same via
+//! [`super::character_vault::ensure_character_vault`] over the raw slim character
+//! (the pre-patch managed values, all at their post-cutover empty defaults — the
+//! patch's managed fields are then routed on top).
 
 use rusqlite::{params, Connection};
 use serde_json::{Map, Value};
@@ -54,7 +56,7 @@ use crate::vault_overlay::{
 };
 
 use super::vault_character_write::{
-    PhysicalDescriptionWrite, Pronouns, ScenarioWrite, SystemPromptWrite,
+    CharacterVaultWriteInput, PhysicalDescriptionWrite, Pronouns, ScenarioWrite, SystemPromptWrite,
 };
 use super::vault_wardrobe_write::project_array_into_vault_folder;
 
@@ -96,18 +98,22 @@ pub fn apply_document_store_write_overlay(
     character_id: &str,
     patch: &Map<String, Value>,
 ) -> Result<Map<String, Value>, DbError> {
-    let fk = read_vault_fk(main, character_id)?;
-    let Some(mount_point_id) = fk else {
-        // No linked vault. With no managed fields there's nothing to route — let the
-        // unmanaged remainder flow to the DB. With managed fields, v4 provisions on
-        // the fly (tracked deferral — see the module header).
-        if MANAGED_FIELDS.iter().any(|f| patch.contains_key(*f)) {
-            return Err(DbError::Key(format!(
-                "applyDocumentStoreWriteOverlay: character {character_id} has no vault but the \
-                 patch carries managed fields (provision-on-the-fly is deferred)"
-            )));
+    let mount_point_id = match read_vault_fk(main, character_id)? {
+        Some(id) => id,
+        None => {
+            // No linked vault. With no managed fields there's nothing to route —
+            // let the unmanaged remainder flow to the DB.
+            if !MANAGED_FIELDS.iter().any(|f| patch.contains_key(*f)) {
+                return Ok(patch.clone());
+            }
+            // The post-4.6 cutover dropped the DB columns for managed fields, so a
+            // character without a vault would silently lose them on the way through
+            // `_update`. Every character is supposed to have a vault — the startup
+            // backfill provisions one for any that don't — so reaching this branch
+            // is a bug elsewhere. Provision a vault now (v4 logs loudly) so the
+            // write doesn't get dropped, re-read the FK it set, and continue.
+            provision_vault_on_the_fly(main, mount, character_id)?
         }
-        return Ok(patch.clone());
     };
 
     let links = DocMountFileLinksRepository::new(mount);
@@ -271,6 +277,49 @@ fn read_vault_fk(main: &Connection, character_id: &str) -> Result<Option<String>
         other => Err(other),
     })
     .map_err(DbError::from)
+}
+
+/// Provision a vault mid-write for a character that has none (v4's
+/// `ensureCharacterVault(character)` + reload branch). Reads the raw slim
+/// character (its managed values sit at their post-cutover empty defaults), then
+/// mints/scaffolds/projects/links the vault via
+/// [`super::character_vault::ensure_character_vault`], re-reads the FK it set, and
+/// confirms it linked. Returns the new mount-point id so the caller can route the
+/// patch's managed fields onto the freshly-provisioned vault.
+fn provision_vault_on_the_fly(
+    main: &Connection,
+    mount: &Connection,
+    character_id: &str,
+) -> Result<String, DbError> {
+    let raw = super::characters_read::find_by_id_raw(main, character_id)?.ok_or_else(|| {
+        DbError::Key(format!(
+            "applyDocumentStoreWriteOverlay: character {character_id} not found while \
+             provisioning a vault on the fly"
+        ))
+    })?;
+    let name = raw
+        .get("name")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            DbError::Key(format!(
+                "applyDocumentStoreWriteOverlay: character {character_id} row has no name"
+            ))
+        })?
+        .to_string();
+    // The raw slim row's managed keys are absent post-cutover, so every managed
+    // field deserializes to its default (`None` markdown → `""`, talkativeness →
+    // 0.5, …), matching v4's `?? <default>` coalescing off `findByIdRaw`.
+    let vault: CharacterVaultWriteInput = serde_json::from_value(raw.clone())
+        .map_err(|e| DbError::Key(format!("raw character → vault input: {e}")))?;
+
+    super::character_vault::ensure_character_vault(main, mount, character_id, &name, &vault, None)?;
+
+    // Reload — ensureCharacterVault set characterDocumentMountPointId. Confirm.
+    read_vault_fk(main, character_id)?.ok_or_else(|| {
+        DbError::Key(format!(
+            "applyDocumentStoreWriteOverlay: failed to provision vault for {character_id}"
+        ))
+    })
 }
 
 /// Read + parse the current `properties.json` for the RMW seed.

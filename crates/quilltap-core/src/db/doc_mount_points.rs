@@ -339,4 +339,31 @@ impl<'c> DocMountPointsRepository<'c> {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(names)
     }
+
+    /// v4 `findByName` — the ENABLED mount points whose `name.trim().toLowerCase()`
+    /// matches `name.trim().toLowerCase()`. Names are NOT unique (user-renameable),
+    /// so this can return more than one row. Returns each match's `(id, storeType)`
+    /// so the caller can further filter (the character-vault adopt path keeps only
+    /// `storeType == 'character'`). The `enabled` filter + the trimmed
+    /// case-insensitive compare mirror v4's `findEnabled().filter(...)` exactly.
+    pub fn find_by_name(&self, name: &str) -> Result<Vec<(String, String)>, DbError> {
+        let needle = name.trim().to_lowercase();
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, name, storeType FROM doc_mount_points WHERE enabled = 1")?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows
+            .into_iter()
+            .filter(|(_, n, _)| n.trim().to_lowercase() == needle)
+            .map(|(id, _, store_type)| (id, store_type))
+            .collect())
+    }
 }

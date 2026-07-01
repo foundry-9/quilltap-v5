@@ -587,6 +587,24 @@ impl<'c> DocMountFileLinksRepository<'c> {
         Ok(current_parent)
     }
 
+    /// The lowercased `relativePath` of every link at `mountPointId` — v4's
+    /// `vaultHasRequiredFiles` reads `findByMountPointId(...).map(l =>
+    /// l.relativePath.toLowerCase())` into a `Set`. Returned as a `Vec` so the
+    /// caller builds its own membership test (the character-vault adopt path checks
+    /// the six `REQUIRED_VAULT_FILES` against it).
+    pub fn relative_paths_lower(&self, mount_point_id: &str) -> Result<Vec<String>, DbError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT relativePath FROM doc_mount_file_links WHERE mountPointId = ?1")?;
+        let paths = stmt
+            .query_map(params![mount_point_id], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<String>, _>>()?
+            .into_iter()
+            .map(|p| p.to_lowercase())
+            .collect();
+        Ok(paths)
+    }
+
     /// True iff a link already exists at `(mountPointId, relativePath)` — v4's
     /// scaffold skip-if-present check (it consults `docMountDocuments`, but a
     /// document exists at a path iff its link does). Case-insensitive on the path,
