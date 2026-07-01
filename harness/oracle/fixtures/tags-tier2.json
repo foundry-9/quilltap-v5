@@ -98,6 +98,36 @@
       }
     },
     {
+      "kind": "create",
+      "comment": "PARTIAL visualStyle (only `bold`) proves TagVisualStyleSchema's per-field defaults expand: emoji ABSENT -> dropped (undefined), foregroundColor -> #1f2937, backgroundColor -> #e5e7eb, emojiOnly/italic/strikethrough -> false, bold -> true. Both sides must materialize identically.",
+      "data": {
+        "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
+        "name": "PartialBold",
+        "quickHide": false,
+        "visualStyle": { "bold": true }
+      },
+      "options": {
+        "id": "5d2f9e4c-6e71-4f92-bc5e-4f6071829304",
+        "createdAt": "2026-02-11T00:00:00.000Z",
+        "updatedAt": "2026-02-11T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "PARTIAL visualStyle with an EXPLICIT `emoji: null` (kept, not dropped) + `italic` set. Proves the emoji absent-vs-null trichotomy AND the other defaults expand around it.",
+      "data": {
+        "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
+        "name": "PartialNullEmoji",
+        "quickHide": false,
+        "visualStyle": { "emoji": null, "italic": true }
+      },
+      "options": {
+        "id": "6e3f0a5d-7f82-4fa3-bc6f-506172839415",
+        "createdAt": "2026-02-12T00:00:00.000Z",
+        "updatedAt": "2026-02-12T00:00:00.000Z"
+      }
+    },
+    {
       "kind": "delete",
       "comment": "Delete seed tag `Urgent` (the one with a visualStyle object).",
       "id": "2a9d6c1f-3b4e-4d6f-9a2b-1c3d4e5f6071"

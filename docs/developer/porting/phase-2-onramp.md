@@ -527,11 +527,16 @@ instances (non-ASCII user data), each must be closed or consciously waived.
    by CLDR/Unicode version between ICU4X and Node's ICU — kept out of corpora.
    Ordering only; **does not cover case mapping** (item 1, still open).
 
-3. **`TagVisualStyleSchema` per-field defaults.** The `tags` create op supplies a
-   fully-specified `visualStyle`, so the port serializes it verbatim and never
-   expands Zod's inner defaults (`foregroundColor` → `#1f2937`, etc.). The first
-   op that writes a **partial** style must port those defaults into the Rust
-   `TagVisualStyle` create path.
+3. **`TagVisualStyleSchema` per-field defaults — RESOLVED (2026-06-30).** The Rust
+   `TagVisualStyle` now carries serde defaults matching each Zod `.default(...)`
+   (`foregroundColor` → `#1f2937`, `backgroundColor` → `#e5e7eb`, the four bools →
+   `false`), so a PARTIAL input style materializes the same full object v4's
+   `TagSchema.parse` produces. `emoji` (`.optional().nullable()`, no default) uses
+   a double-`Option` + present-keeps-null deserializer for the absent-vs-null
+   trichotomy (absent → dropped as v4 `undefined`; explicit `null` → kept). The
+   tags tier-2 corpus proves it with two partial-style creates — `{ bold: true }`
+   (emoji dropped, 6 defaults expand) and `{ emoji: null, italic: true }` (emoji
+   null kept) — both byte-identical to the oracle.
 
 4. **`write_apply` `__finalizeFile` + post-commit side effects.** The applier
    port covers the partition/transaction/ordering/failure/remap orchestration but

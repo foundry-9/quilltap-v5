@@ -42,21 +42,56 @@ use super::DbError;
 /// (`common.types.ts`); `serde_json` serializes struct fields in declaration
 /// order, so `to_string` reproduces v4's `JSON.stringify(zodParsed)` exactly.
 ///
-/// The pilot supplies fully-specified styles (every field present), so no Zod
-/// inner-default expansion is involved — the stored JSON is the input verbatim.
-/// Reproducing `TagVisualStyleSchema`'s own per-field defaults (e.g.
-/// `foregroundColor` → `#1f2937`) is deferred until an op needs a partial style.
+/// v4's base `_create` runs the doc through `TagSchema.parse`, so
+/// `TagVisualStyleSchema`'s **per-field defaults** are materialized when an input
+/// style is PARTIAL — the serde defaults below reproduce each Zod `.default(...)`
+/// (`foregroundColor` → `#1f2937`, `backgroundColor` → `#e5e7eb`, the four bools →
+/// `false`). `emoji` is `.optional().nullable()` with NO default, so it keeps the
+/// absent-vs-null trichotomy (see the field).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TagVisualStyle {
-    /// `null` is emitted explicitly (matches `JSON.stringify`'s `"emoji":null`).
-    pub emoji: Option<String>,
+    /// `emoji` = Zod `.string().max(8).optional().nullable()` — no default. An
+    /// ABSENT key stays absent (v4 `undefined`, dropped by `JSON.stringify`); an
+    /// explicit `null` is KEPT. A double-`Option` + present-keeps-null deserializer
+    /// reproduces that trichotomy (plain serde maps a stored `null` to the outer
+    /// `None` and would drop it). `Some(None)` → `null`; `Some(Some)` → the string.
+    #[serde(
+        default,
+        deserialize_with = "de_double_opt_string",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub emoji: Option<Option<String>>,
+    #[serde(default = "default_fg_color")]
     pub foreground_color: String,
+    #[serde(default = "default_bg_color")]
     pub background_color: String,
+    #[serde(default)]
     pub emoji_only: bool,
+    #[serde(default)]
     pub bold: bool,
+    #[serde(default)]
     pub italic: bool,
+    #[serde(default)]
     pub strikethrough: bool,
+}
+
+fn default_fg_color() -> String {
+    "#1f2937".to_string()
+}
+fn default_bg_color() -> String {
+    "#e5e7eb".to_string()
+}
+
+/// Double-option deserializer: a PRESENT field (even JSON `null`) becomes
+/// `Some(_)`; an ABSENT field falls to `#[serde(default)]` `None`. Lets a stored
+/// `emoji: null` round-trip as `Some(None)` (kept null) rather than the dropped
+/// outer `None` — matching v4's `.optional().nullable()`.
+fn de_double_opt_string<'de, D>(de: D) -> Result<Option<Option<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Some(Option::<String>::deserialize(de)?))
 }
 
 /// Fields for creating a tag (the `Omit<Tag,'id'|timestamps>` shape).

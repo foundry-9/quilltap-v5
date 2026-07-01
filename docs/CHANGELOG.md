@@ -255,6 +255,17 @@ nested participant timestamps are sentinel-placeholdered (a value equal to the
 seed sentinel stays pinned — proving createdAt preservation and no stray mint),
 while chat-level timestamps are diffed exactly.
 
+Phase-2 deferred-seam closure — ported `TagVisualStyleSchema`'s per-field defaults
+(seam #3). v4's base `_create` runs the doc through `TagSchema.parse`, so a PARTIAL
+`visualStyle` gets its missing fields materialized; the Rust `TagVisualStyle` now
+carries serde defaults matching each Zod `.default(...)` (`foregroundColor` →
+`#1f2937`, `backgroundColor` → `#e5e7eb`, the four bools → `false`). `emoji`
+(`.optional().nullable()`, no default) gained a double-`Option` + present-keeps-null
+deserializer for the absent-vs-null trichotomy (absent → dropped as v4 `undefined`;
+explicit `null` → kept). Proven by two partial-style tags corpus creates —
+`{ bold: true }` (emoji dropped, all six defaults expand) and `{ emoji: null,
+italic: true }` (emoji null kept) — each byte-identical to the oracle.
+
 Phase-2 deferred-seam closure — closed the `toLowerCase` case-mapping seam
 (`tags.nameLower`, `text_replacement_rules` conflict detection) by proving
 `str::to_lowercase` is byte-identical to JS `String.prototype.toLowerCase`. Both
