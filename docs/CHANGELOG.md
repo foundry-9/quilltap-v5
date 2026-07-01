@@ -309,6 +309,18 @@ key-sort stays code-unit (v4 uses `Object.keys().sort()` there, not collation).
 Future Phase-3 name sorts reuse `locale_compare`. (The `toLowerCase` case-mapping
 seam is separate and closed next.)
 
+Phase-2 deferred-seam closure — proved the open-JSON multi-key key-order fix (#5)
+end-to-end. With `preserve_order` enabled (below), a MULTI-KEY value in
+deliberately NON-SORTED key order was added to each affected corpus and its
+differential re-run green, confirming the port emits v4's `JSON.stringify`
+insertion order rather than sorted keys: `plugin_config.config`,
+`character_plugin_data.data`, `image_profiles.parameters`,
+`connection_profiles.parameters`, `chat_settings.tagStyles`, `chats.state` +
+`chats.sillyTavernMetadata`, and `chats_outfits.equippedOutfit` (a key-order chat
+that appends a higher-sorting characterId before a lower one). Refreshed the
+now-stale `chats_outfits` doc comment (it described the pre-`preserve_order`
+sorted-key seam). Corpus-only; no Rust logic change.
+
 Phase-2 deferred-seam closure (begins) — enabled `serde_json`'s `preserve_order`
 feature workspace-wide (both crates), so every `Value::Object` is an `IndexMap`
 emitting INSERTION order, matching v4's `JSON.stringify`. This is the locked

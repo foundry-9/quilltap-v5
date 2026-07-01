@@ -29,23 +29,16 @@
 //!   code `.filter`s); an absent slot stays absent (partial shape preserved). The
 //!   chat is written back only when something changed (the `modified?` guard).
 //!
-//! ## Key-order seam (the one residual divergence)
+//! ## Key order (seam CLOSED — `preserve_order` on)
 //!
 //! `equippedOutfit` is `EquippedOutfitState = Record<characterId, EquippedSlots>`,
 //! persisted through `ChatUpdate.equipped_outfit: Value` →
-//! `serde_json::to_string(Value)`. This workspace has **no** `serde_json`
-//! `preserve_order` feature, so EVERY `Value::Object` (inner slots AND the outer
-//! characterId map) serializes with **alphabetically sorted** keys, while v4 emits
-//! both in JS **insertion** order. They coincide only when insertion order is
-//! already sorted. The differential is kept byte-exact AND honest by constraining
-//! the corpus to sorted key order (inner slot keys `accessories,bottom,footwear,top`
-//! when more than one is present; outer characterId keys seeded/appended sorted) —
-//! the SAME `Value`-sorts-keys / open-JSON-insertion-order seam the project already
-//! tracks for `parameters` / `sillyTavernData` / etc. Close it (a `preserve_order`
-//! `serde_json` or an order-preserving column writer) before writing real multi-key
-//! equipped-outfit data out of sorted order through these ops. Single-key slot
-//! objects (the partial-shape cases) are order-unambiguous, so they verify the
-//! partial-preserving behavior with no seam exposure.
+//! `serde_json::to_string(Value)`. With `serde_json`'s **`preserve_order`** feature
+//! enabled workspace-wide, `Value::Object` is an `IndexMap` that serializes in
+//! INSERTION order — matching v4's `JSON.stringify` for both the inner slots and
+//! the outer characterId map. The corpus proves it: a key-order chat appends a
+//! higher-sorting characterId before a lower one, so the stored outer map is in
+//! insertion (not sorted) order, byte-identical to the oracle.
 
 use rusqlite::Connection;
 use serde_json::Value;

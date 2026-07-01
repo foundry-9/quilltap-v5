@@ -12,12 +12,16 @@
     "rest of the row is plain strings (characterId, pluginName) plus timestamps —",
     "no booleans, no numbers, no nullable columns.",
     "",
-    "OPEN-JSON CONSTRAINT (tracked deferred seam #5): every `data` value is either",
-    "{} or a SINGLE-KEY object, so v4's JSON.stringify (insertion order) and",
-    "Rust's serde_json::Value (sorted keys) serialize byte-identically. A",
-    "multi-key object would diverge — see the module header in",
-    "character_plugin_data.rs and docs/developer/porting/phase-2-onramp.md. The",
-    "fractional value 3.5 exercises the float pass-through inside the JSON text.",
+    "OPEN-JSON KEY-ORDER (seam #5 — now CLOSED): the `data` value is arbitrary",
+    "JSON. v4 serializes via JSON.stringify (INSERTION order); the Rust port uses",
+    "serde_json with the `preserve_order` feature (enabled workspace-wide), which",
+    "ALSO preserves insertion order. The first create below uses a MULTI-KEY object",
+    "with keys in DELIBERATELY NON-SORTED order (zeta, alpha, threshold) so sorted",
+    "order (alpha, threshold, zeta) differs from insertion order — the green diff",
+    "PROVES the port emits insertion order, not sorted. (Before preserve_order this",
+    "would have diverged; the old single-key corpus could not tell.) See the module",
+    "header in character_plugin_data.rs and docs/developer/porting/phase-2-onramp.md.",
+    "The fractional value 3.5 exercises the float pass-through inside the JSON text.",
     "",
     "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the",
     "folders / tags / image_profiles fixtures use. It is NOT the real Friday",
@@ -48,11 +52,11 @@
   "ops": [
     {
       "kind": "create",
-      "comment": "New entry with a single-key fractional data object (exercises the float pass-through inside the JSON text).",
+      "comment": "New entry with a MULTI-KEY data object whose keys are in NON-SORTED order (zeta, alpha, threshold). Proves the open-JSON value column preserves v4's JSON.stringify INSERTION order (serde_json preserve_order) rather than sorting keys -- sorted order would be alpha, threshold, zeta. The fractional value 3.5 exercises the float pass-through inside the JSON text.",
       "data": {
         "characterId": "aa000000-0000-4000-8000-0000000000a3",
         "pluginName": "qtap-plugin-stats",
-        "data": { "threshold": 3.5 }
+        "data": { "zeta": true, "alpha": "x", "threshold": 3.5 }
       },
       "options": {
         "id": "3c000000-0000-4000-8000-000000000003",

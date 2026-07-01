@@ -51,11 +51,11 @@
   "ops": [
     {
       "kind": "create",
-      "comment": "New config with a single-key fractional config object (exercises js_number_to_json float pass-through inside the JSON text) and enabled false.",
+      "comment": "New config with a MULTI-KEY config object whose keys are in NON-SORTED order (zeta, alpha, maxResults). Proves the open-JSON column preserves v4's JSON.stringify INSERTION order (serde_json preserve_order) rather than sorting keys -- sorted order would be alpha, maxResults, zeta. Also exercises js_number_to_json float pass-through.",
       "data": {
         "userId": "aa000000-0000-4000-8000-0000000000aa",
         "pluginName": "qtap-plugin-search",
-        "config": { "maxResults": 0.25 },
+        "config": { "zeta": true, "alpha": "x", "maxResults": 0.25 },
         "enabled": false
       },
       "options": {

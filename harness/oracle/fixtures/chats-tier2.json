@@ -1,4 +1,22 @@
 {
+  "$comment": [
+    "Tier-2 DB-state fixture spec for the `chats` repo (Phase-2). Both the v4",
+    "oracle (chats-tier2.ts) and the Rust port read this file.",
+    "",
+    "OPEN-JSON KEY-ORDER (seam #5 — now CLOSED): `state` and `sillyTavernMetadata`",
+    "are both JsonSchema = z.record(z.string(), z.unknown()) — arbitrary JSON whose",
+    "keys pass through verbatim. v4 serializes via JSON.stringify (INSERTION order);",
+    "the Rust port stores them as raw serde_json::Value serialized under the",
+    "`preserve_order` feature (enabled workspace-wide), which ALSO preserves",
+    "insertion order. The FIRST create op supplies both columns MULTI-KEY in",
+    "DELIBERATELY NON-SORTED order:",
+    "  - state:              { zeta, alpha, mode }   (sorted: alpha, mode, zeta)",
+    "  - sillyTavernMetadata: { yankee, bravo, charlie } (sorted: bravo, charlie, yankee)",
+    "so sorted order differs from insertion order — the green diff PROVES the port",
+    "emits insertion order, not sorted keys. (Before preserve_order these would have",
+    "diverged; the old single-key `state` and absent sillyTavernMetadata could not",
+    "tell.)"
+  ],
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "ops": [
     {
@@ -36,7 +54,8 @@
         "messageCount": 5,
         "isPaused": true,
         "chatType": "salon",
-        "state": { "mode": "play" },
+        "state": { "zeta": true, "alpha": "x", "mode": "play" },
+        "sillyTavernMetadata": { "yankee": 1, "bravo": "b", "charlie": false },
         "dividerPosition": 60,
         "scenarioText": "A quiet cafe.",
         "totalPromptTokens": 120,

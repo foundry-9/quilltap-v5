@@ -9,7 +9,8 @@
     "",
     "What this repo banks: two UUID TEXT (id, userId); one enum TEXT",
     "(avatarDisplayMode) + one plain-string TEXT (avatarDisplayStyle); a record/map",
-    "JSON column (tagStyles, kept {} — multi-key open-JSON key-order seam); ~15",
+    "JSON column (tagStyles — the create op exercises a MULTI-KEY non-sorted outer",
+    "map, proving the open-JSON key-order seam is CLOSED); ~15",
     "nested typed-struct JSON-object columns reproduced in schema field order;",
     "five nullable UUID/string TEXT columns (imageDescriptionProfileId,",
     "uncensoredImageDescriptionProfileId, defaultRoleplayTemplateId, timezone, plus",
@@ -29,10 +30,17 @@
     "omitted by Zod too; the ones supplied as explicit null (cheapLLMSettings",
     "*ProfileId, storyBackgrounds defaultImageProfileId) stay present as null.",
     "",
-    "OPEN-JSON KEY-ORDER DEFERRAL: tagStyles and the nested record fields",
-    "(perCharacterCapOverrides) are kept {} so the serde_json::Value (sorts keys)",
-    "vs JSON.stringify (insertion order) divergence never triggers. Close before",
-    "data with multi-key tagStyles/overrides.",
+    "OPEN-JSON KEY-ORDER (seam — now CLOSED for tagStyles): v4's z.record keeps the",
+    "outer tagId keys in JSON.stringify INSERTION order; the Rust port stores",
+    "tagStyles as a raw serde_json::Value serialized under the `preserve_order`",
+    "feature (enabled workspace-wide), which ALSO preserves insertion order. The",
+    "create op below supplies TWO tagId entries in DELIBERATELY NON-SORTED order",
+    "(zz111111... before aa111111...) so sorted order (aa before zz) differs from",
+    "insertion order — the green diff PROVES the port emits insertion order. Each",
+    "inner TagVisualStyle value is supplied FULLY in schema field order (emoji,",
+    "foregroundColor, backgroundColor, emojiOnly, bold, italic, strikethrough) with",
+    "all defaults materialized, matching v4's post-Zod-parse bytes exactly. The",
+    "nested record field perCharacterCapOverrides is kept {} (single/empty).",
     "",
     "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the folders/",
     "tags/connection-profiles fixtures use. NOT the real Friday pepper; safe to commit.",
@@ -159,7 +167,7 @@
   "ops": [
     {
       "kind": "create",
-      "comment": "New fully-populated settings: nullable *ProfileId columns SET to UUIDs, timezone set, sidebarWidth widened to 400, many booleans flipped, nested objects given non-default values to exercise the typed-struct serialization. cheapLLMSettings *ProfileId fields carry concrete UUIDs (present, non-null).",
+      "comment": "New fully-populated settings: nullable *ProfileId columns SET to UUIDs, timezone set, sidebarWidth widened to 400, many booleans flipped, nested objects given non-default values to exercise the typed-struct serialization. cheapLLMSettings *ProfileId fields carry concrete UUIDs (present, non-null). (This row is deleted below; the MULTI-KEY tagStyles insertion-order proof lands on the SURVIVING update of seed row A.)",
       "data": {
         "userId": "00000000-0000-4000-8000-0000000000bb",
         "avatarDisplayMode": "GROUP_ONLY",
@@ -277,11 +285,31 @@
     },
     {
       "kind": "update",
-      "comment": "Edit seed row A: flip scalars/booleans, widen sidebarWidth to 320, set timezone + a nullable UUID, and whole-object replace themePreference + dangerousContentSettings + autoLockSettings + cheapLLMSettings. createdAt preserved, updatedAt pinned.",
+      "comment": "Edit seed row A: flip scalars/booleans, widen sidebarWidth to 320, set timezone + a nullable UUID, whole-object replace themePreference + dangerousContentSettings + autoLockSettings + cheapLLMSettings, and set a MULTI-KEY tagStyles whose outer tagId keys are in DELIBERATELY NON-SORTED order (zz111111... before aa111111...) so sorted order (aa before zz) differs from insertion order -- the green diff PROVES the open-JSON column preserves v4's JSON.stringify INSERTION order (serde_json preserve_order). This row SURVIVES to the dump. Each inner TagVisualStyle is supplied in schema field order with all defaults materialized, matching v4's post-Zod-parse bytes. createdAt preserved, updatedAt pinned.",
       "id": "a1000000-0000-4000-8000-000000000001",
       "data": {
         "avatarDisplayMode": "NEVER",
         "avatarDisplayStyle": "ROUNDED",
+        "tagStyles": {
+          "zz111111-0000-4000-8000-000000000001": {
+            "emoji": "🎩",
+            "foregroundColor": "#1f2937",
+            "backgroundColor": "#e5e7eb",
+            "emojiOnly": false,
+            "bold": true,
+            "italic": false,
+            "strikethrough": false
+          },
+          "aa111111-0000-4000-8000-000000000002": {
+            "emoji": null,
+            "foregroundColor": "#ffffff",
+            "backgroundColor": "#000000",
+            "emojiOnly": false,
+            "bold": false,
+            "italic": true,
+            "strikethrough": false
+          }
+        },
         "sidebarWidth": 320,
         "autoDetectRng": false,
         "composerSpellcheck": false,
