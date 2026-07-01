@@ -1,0 +1,109 @@
+{
+  "_comment": "Tier-3 (mocked-embedding) corpus for the memory gate (v4 createMemoryWithGate / runMemoryGate). Each scenario runs on its OWN character so the per-character vector stores never cross. The same canned embedding is injected on both differential sides (jest mocks generateEmbeddingForUser to cannedEmbeddings; the Rust test builds a CannedEmbeddingProvider from the same map). Vectors are unit-length so cosineSimilarity (a plain dot product on unit vectors) equals the intended similarity: each scenario's query is a distinct standard basis vector e_k and each seed is s*e_k + sqrt(1-s^2)*e_spare, so dot(query, seed) == s exactly — landing the candidate in a chosen band with a wide margin (f32 rounding ~1e-7 << the band gaps). Every stored (seed or inserted) vector is globally distinct so the vector_entries/memories dumps order unambiguously by a single column.",
+  "_safety": "testPepperBase64 is the same THROWAWAY key the other fixtures use — never a real pepper.",
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "00000000-0000-4000-8000-0000000000ee",
+  "seedTimestamp": "2020-01-01T00:00:00.000Z",
+  "scenarios": [
+    {
+      "name": "insert_empty",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "expectedAction": "INSERT",
+      "seedMemories": [],
+      "candidate": { "content": "insert empty fact alpha", "summary": "sumA", "source": "AUTO" }
+    },
+    {
+      "name": "insert_low",
+      "characterId": "b0000000-0000-4000-8000-00000000000b",
+      "expectedAction": "INSERT",
+      "seedMemories": [
+        {
+          "id": "b1000000-0000-4000-8000-0000000000b1",
+          "content": "seed low neighbour beta",
+          "summary": "seedSumB",
+          "vector": [0, 0.4, 0, 0, 0, 0, 0, 0.9165151, 0, 0, 0, 0, 0]
+        }
+      ],
+      "candidate": { "content": "insert low fact beta", "summary": "sumB", "source": "AUTO" }
+    },
+    {
+      "name": "insert_related",
+      "characterId": "c0000000-0000-4000-8000-00000000000c",
+      "expectedAction": "INSERT_RELATED",
+      "seedMemories": [
+        {
+          "id": "c1000000-0000-4000-8000-0000000000c1",
+          "content": "seed related one gamma",
+          "summary": "seedSumC1",
+          "vector": [0, 0, 0.77, 0, 0, 0, 0, 0, 0.6380439, 0, 0, 0, 0]
+        },
+        {
+          "id": "c2000000-0000-4000-8000-0000000000c2",
+          "content": "seed related two gamma",
+          "summary": "seedSumC2",
+          "vector": [0, 0, 0.75, 0, 0, 0, 0, 0, 0, 0.6614378, 0, 0, 0]
+        }
+      ],
+      "candidate": { "content": "insert related fact gamma", "summary": "sumC", "source": "AUTO" }
+    },
+    {
+      "name": "reinforce",
+      "characterId": "d0000000-0000-4000-8000-00000000000d",
+      "expectedAction": "REINFORCE",
+      "seedMemories": [
+        {
+          "id": "d1000000-0000-4000-8000-0000000000d1",
+          "content": "Mara trusts the crew wholly.",
+          "summary": "seedSumD",
+          "vector": [0, 0, 0, 0.87, 0, 0, 0, 0, 0, 0, 0.4930518, 0, 0]
+        }
+      ],
+      "candidate": { "content": "Mara wholly trusts the crew.", "summary": "sumD", "source": "AUTO" }
+    },
+    {
+      "name": "reinforce_reembed",
+      "characterId": "e0000000-0000-4000-8000-00000000000e",
+      "expectedAction": "REINFORCE",
+      "seedMemories": [
+        {
+          "id": "e1000000-0000-4000-8000-0000000000e1",
+          "content": "The captain guarded the ledger.",
+          "summary": "Captain ledger note.",
+          "vector": [0, 0, 0, 0, 0.86, 0, 0, 0, 0, 0, 0, 0, 0.5103920]
+        }
+      ],
+      "candidate": { "content": "The captain also guarded Rotterdam.", "summary": "Captain ledger note.", "source": "AUTO" }
+    },
+    {
+      "name": "skip_near_duplicate",
+      "characterId": "f0000000-0000-4000-8000-00000000000f",
+      "expectedAction": "SKIP_NEAR_DUPLICATE",
+      "seedMemories": [
+        {
+          "id": "f1000000-0000-4000-8000-0000000000f1",
+          "content": "seed dup neighbour zeta",
+          "summary": "seedSumF",
+          "vector": [0, 0, 0, 0, 0, 0.95, 0, 0, 0, 0, 0, 0.3122499, 0]
+        }
+      ],
+      "candidate": { "content": "skip dup fact zeta", "summary": "sumF", "source": "AUTO" }
+    },
+    {
+      "name": "skip_embedding_failed",
+      "characterId": "10000000-0000-4000-8000-000000000010",
+      "expectedAction": "SKIP_EMBEDDING_FAILED",
+      "seedMemories": [],
+      "candidate": { "content": "g content", "summary": "sumG", "source": "AUTO" }
+    }
+  ],
+  "cannedEmbeddings": {
+    "sumA\n\ninsert empty fact alpha": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    "sumB\n\ninsert low fact beta": [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    "sumC\n\ninsert related fact gamma": [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    "sumD\n\nMara wholly trusts the crew.": [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    "Captain ledger note.\n\nThe captain also guarded Rotterdam.": [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+    "Captain ledger note.\n\nThe captain guarded the ledger.\n[+] Rotterdam": [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+    "sumF\n\nskip dup fact zeta": [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]
+  },
+  "cannedFailures": ["sumG\n\ng content"]
+}

@@ -1248,6 +1248,43 @@ answer). The boundary is async (`-> impl Future + Send`) and consumers take a
 return needs no boxing and the future stays `Send`. Three self-tests. The
 completion half joins as `model::completion` when chat orchestration lands. The
 v4-oracle-side canned injection (stubbing `generateEmbeddingForUser` to the same
-vector) lands with **Unit 1's** memory-gate differential — that is where the seam
-is exercised end-to-end. Next: Unit 1 (the memory gate) per
-`docs/developer/porting/phase-3.md`.
+vector) is exercised end-to-end by **Unit 1's** memory-gate differential (below).
+
+Unit 1 — the **memory gate** — is also ported and green
+(`quilltap-core::services::memory_gate` + `db::vector_store`), the **first
+tier-3 → tier-2 differential** and the first service to drive the whole Unit-0
+write path end to end. It ports v4's `createMemoryWithGate` / `runMemoryGate`
+(`lib/memory/memory-service.ts` + `lib/memory/memory-gate.ts`): embed the
+candidate (one retry), search the character's `CharacterVectorStore` (the ported
+`db::vector_store` shim — load off the read pool, linear cosine top-K, incremental
+flush on the writer), then decide by cosine band — `SKIP_NEAR_DUPLICATE` (≥ 0.90),
+`REINFORCE` (≥ 0.85), `INSERT_RELATED` (≥ 0.70, link the related memories),
+`INSERT` (below), `SKIP_EMBEDDING_FAILED` (embedding unavailable after retry). The
+thresholds are the authoritative exported constants
+(`NEAR_DUPLICATE_THRESHOLD`/`MERGE_THRESHOLD`/`RELATED_THRESHOLD` = 0.90/0.85/0.70;
+the v4 file's `0.80` header comment is stale — ported the constants, let the
+differential prove the bands). `reinforce_memory` re-extracts novel details
+(reusing the ported `extract_novel_details`), appends footnotes, bumps
+count/`reinforcedImportance`/`lastReinforcedAt`, and **re-embeds + rewrites the
+vector on a content change**; `link_related_memories` writes both sides. The
+service is `async` + generic over `EmbeddingProvider`; reads go through
+`Db::read_main`, every mutation through `Db::write` (a closure on the `WriterSet`).
+`MemUpdate` gained the `Some`-gated `embedding` BLOB setter (the gate's
+`updateForCharacter({ embedding })`) and a `related_memory_ids` setter; a
+`dump_table_json_conn` free function snapshots a table off a read-only pooled
+connection after a service commits. **Verified two ways:** four core self-tests
+(all outcomes over an in-memory `Db` + canned provider), and the tier-3 → tier-2
+differential — a jest oracle drives v4's REAL `createMemoryWithGate` (mocking ONLY
+`generateEmbeddingForUser` to the corpus's canned vectors, wiring the REAL
+`better-sqlite3-multiple-ciphers` cipher binding back in past `jest.setup`'s global
+DB mocks — see `[[jest-real-db-oracle]]`) over a seven-scenario corpus (one per
+outcome, each on its own character), and the Rust gate is diffed across `memories`
++ `vector_indices` + `vector_entries` in the shared-cross-table-id-map remap form
+(minted ids/timestamps remapped/placeholdered; `relatedMemoryIds` array elements
+remapped through the shared map). **Tracked deferrals:** `maybeEnqueueHousekeeping`
+(fire-and-forget), the `skipGate`/`createMemoryDirect` direct path,
+`applyNamePresenceCheck`'s cross-character resolution (needs the characters
+vault-overlay read; corpus keeps `aboutCharacterId` null → verified no-op), and the
+500 ms inter-retry delay (host-timing, no DB effect, omitted to keep the core
+scheduler-free). Next: the memory-family follow-ons (`memory-processor`,
+`memory-service`, `housekeeping`) per `docs/developer/porting/phase-3.md`.

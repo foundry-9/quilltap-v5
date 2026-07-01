@@ -108,6 +108,37 @@ verified by self-tests rather than a v4 oracle diff.
   for crypto/cipher. Status sections (CLAUDE.md, `overview.md`, `phase-3.md`)
   updated for Units 0 and 0.5.
 
+Phase 3 — the **memory gate** (Unit 1), the first decision service. Ported v4's
+`createMemoryWithGate` / `runMemoryGate`, verified the new tier-3 → tier-2 way (a
+canned embedding injected identically on both sides, then a structural DB diff).
+
+- `services::memory_gate`: the pre-write similarity gate — `INSERT` /
+  `INSERT_RELATED` / `REINFORCE` / `SKIP_NEAR_DUPLICATE` / `SKIP_EMBEDDING_FAILED`
+  by cosine band (`NEAR_DUPLICATE_THRESHOLD` 0.90 / `MERGE_THRESHOLD` 0.85 /
+  `RELATED_THRESHOLD` 0.70; the stale v4 header comment ignored). Async, generic
+  over an `EmbeddingProvider`, reading off the read pool and funnelling every
+  mutation through the writer thread — the first service to drive the whole Unit-0
+  write path end to end. Reinforcement re-extracts novel details, appends
+  footnotes, bumps count/importance, and re-embeds on a content change; related
+  inserts bidirectionally link. Deferred (tracked): `maybeEnqueueHousekeeping`,
+  the `skipGate` direct path, `applyNamePresenceCheck`'s cross-character lookup,
+  and the 500 ms inter-retry delay.
+- `db::vector_store`: the in-memory `CharacterVectorStore` shim (v4
+  `vector-store.ts`) — load off a read connection, linear cosine top-K (stable
+  descending, dimension guard), and an incremental flush (add/update/saveMeta)
+  through the writer.
+- `db::memories::MemUpdate` gained `embedding` (the `Some`-gated BLOB setter the
+  gate writes through) and `related_memory_ids` setters; `dump_table_json_conn`
+  lets the harness snapshot a table off a read-only pooled connection after a
+  service commits.
+- Differential: a tier-3 oracle drives v4's REAL `createMemoryWithGate` under jest
+  (mocking only `generateEmbeddingForUser`, with the real cipher binding wired in
+  via `better-sqlite3-multiple-ciphers`) over a seven-scenario corpus — one per
+  outcome, each on its own character — and the Rust gate is diffed across
+  `memories` + `vector_indices` + `vector_entries` in the shared-cross-table
+  id-map remap form. Four core self-tests exercise the outcomes over an in-memory
+  `Db` + canned provider.
+
 Docs — Phase 2 marked complete; Phase 3 kickoff drafted. Docs only, no crate
 source changed.
 

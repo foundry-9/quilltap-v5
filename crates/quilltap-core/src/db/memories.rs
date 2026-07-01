@@ -23,10 +23,12 @@
 //!   - `embedding` is the BLOB column (little-endian Float32 via
 //!     [`crate::embedding_blob::float32_to_blob`]); `None` / empty → SQL NULL
 //!     (never a zero-length blob), exactly like `conversation_chunks` /
-//!     `help_docs`. Following them, **`update` never touches the BLOB**: the
-//!     partial `UPDATE SET` never names `embedding`, so a text-only patch leaves
-//!     the stored vector intact (matching v4's whole-row `$set` re-persisting the
-//!     unchanged embedding).
+//!     `help_docs`. A **text-only** patch (`MemUpdate::embedding == None`) never
+//!     names the column, so the stored vector is left intact (the
+//!     `conversation_chunks` / `help_docs` rule). The memory gate does write the
+//!     BLOB through `update` (v4's `updateForCharacter(id, { embedding })`), so
+//!     `MemUpdate::embedding` is a `Some`-gated setter: only a `Some(_)` patch
+//!     names `embedding`, matching v4's partial `$set`.
 //!   - `keywords` / `tags` / `relatedMemoryIds` are JSON-array columns (compact
 //!     JSON text); the eight nullable-optional columns bind SQL NULL when absent.
 //!
@@ -76,16 +78,24 @@ pub struct CreateOptions {
 
 /// An update patch (v4 `update(id, Partial<Memory>)`). Each `Some` sets that
 /// column; nullable columns use `Option<Option<_>>` so `Some(None)` writes SQL
-/// NULL while `None` leaves the column untouched. `embedding` is deliberately
-/// absent — the BLOB is never written through `update` (see module docs).
-/// `updated_at` overrides the minted timestamp when `Some` (v4's
-/// `'updatedAt' in data` branch); otherwise it is minted.
+/// NULL while `None` leaves the column untouched. `updated_at` overrides the
+/// minted timestamp when `Some` (v4's `'updatedAt' in data` branch); otherwise
+/// it is minted.
+///
+/// `embedding` is the one BLOB-writing setter: `None` leaves the stored vector
+/// untouched (the common text-only patch — the `conversation_chunks` / `help_docs`
+/// rule the Phase-2 corpus proved), while `Some(inner)` names the column, exactly
+/// mirroring v4's `updateForCharacter(id, { embedding })` — `Some(Some(vec))`
+/// writes the Float32 LE bytes (empty → NULL), `Some(None)` writes SQL NULL. The
+/// memory gate's `createMemoryDirectWithEmbedding` and its reinforce re-embed both
+/// take this path.
 #[derive(Default)]
 pub struct MemUpdate {
     pub content: Option<String>,
     pub summary: Option<String>,
     pub keywords: Option<Vec<String>>,
     pub tags: Option<Vec<String>>,
+    pub related_memory_ids: Option<Vec<String>>,
     pub importance: Option<f64>,
     pub source: Option<String>,
     pub reinforcement_count: Option<f64>,
@@ -97,6 +107,9 @@ pub struct MemUpdate {
     pub source_message_id: Option<Option<String>>,
     pub last_accessed_at: Option<Option<String>>,
     pub last_reinforced_at: Option<Option<String>>,
+    /// `None` → leave the BLOB untouched; `Some(Some(v))` → Float32 LE bytes
+    /// (empty → NULL); `Some(None)` → SQL NULL.
+    pub embedding: Option<Option<Vec<f32>>>,
     pub updated_at: Option<String>,
 }
 
@@ -187,6 +200,9 @@ impl<'c> MemoriesRepository<'c> {
         if let Some(v) = &patch.tags {
             set_col!("tags", Box::new(json_array(v)?));
         }
+        if let Some(v) = &patch.related_memory_ids {
+            set_col!("relatedMemoryIds", Box::new(json_array(v)?));
+        }
         if let Some(v) = patch.importance {
             set_col!("importance", Box::new(v));
         }
@@ -219,6 +235,13 @@ impl<'c> MemoriesRepository<'c> {
         }
         if let Some(v) = &patch.last_reinforced_at {
             set_col!("lastReinforcedAt", Box::new(v.clone()));
+        }
+        if let Some(emb) = &patch.embedding {
+            let blob: Option<Vec<u8>> = match emb {
+                Some(v) if !v.is_empty() => Some(float32_to_blob(v)),
+                _ => None,
+            };
+            set_col!("embedding", Box::new(blob));
         }
         let updated_at = patch.updated_at.clone().unwrap_or_else(now_iso);
         set_col!("updatedAt", Box::new(updated_at));

@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-harness"
-version = "0.0.70"
+version = "0.0.71"
 edition = "2021"
 publish = false
 
@@ -21,3 +21,8 @@ serde = { version = "1", features = ["derive"] }
 # preserve_order so the harness's own `Value` re-serialization (canonical dumps,
 # normalization) matches the core's insertion-order JSON — see quilltap-core.
 serde_json = { version = "1", features = ["preserve_order"] }
+
+[dev-dependencies]
+# The Phase-3 tier-3 differential (the memory gate) drives an async service, so
+# its test is `#[tokio::test]`. Only the test tree needs a runtime.
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }

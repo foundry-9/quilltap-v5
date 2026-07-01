@@ -110,6 +110,13 @@
 //!     pool + write channel every service holds), the writer thread owning the
 //!     `WriterSet`, and the read-only connection pool. The single-writer ownership
 //!     rule made a live invariant.
+//!   * `db::vector_store` — the per-character in-memory `CharacterVectorStore` the
+//!     memory gate searches (load off the read pool, cosine top-K, flush on the
+//!     writer); a port of v4's `lib/embedding/vector-store.ts`.
+//!   * `services` — the Phase-3 decision services. `services::memory_gate` is the
+//!     pre-write similarity gate (v4 `createMemoryWithGate` / `runMemoryGate`):
+//!     INSERT / INSERT_RELATED / REINFORCE / SKIP_NEAR_DUPLICATE /
+//!     SKIP_EMBEDDING_FAILED, verified tier-3 → tier-2.
 //!
 //! Everything else (the remaining services, the Request/Response/Event boundary)
 //! lands in later phases.
@@ -159,6 +166,7 @@ pub mod recall_tags;
 pub mod scenario_text;
 pub mod select_speaker;
 pub mod semver;
+pub mod services;
 pub mod tag_style;
 pub mod token_estimation;
 pub mod turn_order;

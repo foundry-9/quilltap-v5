@@ -95,9 +95,14 @@ the memory gate (Unit 1) exercises the full path — a service issues a `WriteBa
 Verified by the memory-gate tier-2 diff, plus a focused test that concurrent
 writers serialize (no interleaved partitions) and reads see committed state.
 
-### Unit 0.5 — the tier-3 mocked-LLM harness scaffold — ◑ core built
+### Unit 0.5 — the tier-3 mocked-LLM harness scaffold — ✅ DONE
 
-**Status: the model-boundary core is ported and green** (`quilltap-core::model`).
+**Status: complete.** The model-boundary core is ported and green
+(`quilltap-core::model`), and the v4-oracle-side canned injection was exercised
+end-to-end by Unit 1's memory-gate differential (see below): the oracle mocks
+`generateEmbeddingForUser` to the same canned vectors the Rust
+`CannedEmbeddingProvider` injects, then a tier-2 structural diff over the writes.
+The mechanism note is below (the model-boundary core detail is preserved).
 `model::embedding` defines `EmbeddingProvider` (the tier-3 seam — an async
 `generate_embedding_for_user` mirroring v4's `generateEmbeddingForUser`, with
 `EmbeddingResult` / `EmbeddingError` / `EmbeddingPriority`) plus
@@ -129,7 +134,14 @@ Net-new harness capability; gates every model-dependent unit after it. Design:
 Acceptance: one model-dependent service (the memory gate) round-trips green with a
 canned embedding injected identically on both sides.
 
-### Unit 1 — first service: the memory gate
+### Unit 1 — first service: the memory gate — ✅ DONE
+
+**Status: ported and green** (`quilltap-core::services::memory_gate`), the first
+tier-3 → tier-2 differential. See the detail section below; the port + its
+verification are summarized in the CLAUDE.md Status section. The reusable oracle
+mechanism (running v4's REAL data layer under jest with only the model call
+pinned) is recorded in `[[document-store-oracle-gotchas]]`'s sibling memory
+`[[jest-real-db-oracle]]`.
 
 The recommended first real service (self-contained, high-leverage, reuses ported
 leaves). See its own section below.
@@ -245,10 +257,11 @@ Track them to closure as their subsystem lands:
 
 0. Writer-task runtime (`Db`/`Writer` actor + `ReadPool`) — the last Phase-2 item. **✅ done** (`db::runtime`).
 0.5. Tier-3 mocked-LLM harness scaffold (model boundary trait + canned responder,
-   both sides). **◑ core done** (`model::embedding`); the v4-oracle-side injection
-   lands with Unit 1's differential.
+   both sides). **✅ done** (`model::embedding`); the v4-oracle-side injection was
+   exercised by Unit 1's differential.
 1. **Memory gate** — first real service; validates 0 + 0.5 + tier-2 together.
-2. Memory family follow-ons (`memory-processor`, `memory-service`, `housekeeping`).
+   **✅ done + green** (`services::memory_gate`).
+2. Memory family follow-ons (`memory-processor`, `memory-service`, `housekeeping`). ← **next**
 3. Chat orchestration (turn manager + streaming on the `Event` channel).
 4. Enclave engine (`step()` + `RunState` + driver seam).
 

@@ -83,6 +83,7 @@ pub mod vault_read_overlay;
 pub mod vault_wardrobe_public;
 pub mod vault_wardrobe_write;
 pub mod vector_indices;
+pub mod vector_store;
 pub mod wardrobe;
 
 /// Errors from the DB layer.
@@ -427,41 +428,54 @@ impl Writer {
     /// `order_by`, BLOBs as lowercase hex, nulls explicit. This is the
     /// structural snapshot the differential harness diffs.
     pub fn dump_table_json(&self, table: &str, order_by: &str) -> Result<Value, DbError> {
-        let mut stmt = self.conn.prepare(&format!("SELECT * FROM {table}"))?;
-        let columns: Vec<String> = stmt.column_names().iter().map(|s| s.to_string()).collect();
-
-        let cols_for_rows = columns.clone();
-        let mut rows: Vec<Map<String, Value>> = stmt
-            .query_map([], |row| {
-                let mut obj = Map::new();
-                for (i, col) in cols_for_rows.iter().enumerate() {
-                    obj.insert(col.clone(), cell_to_json(row.get_ref(i)?));
-                }
-                Ok(obj)
-            })?
-            .collect::<Result<_, _>>()?;
-
-        rows.sort_by_key(|row| order_key(row, order_by));
-
-        Ok(Value::Object({
-            let mut m = Map::new();
-            m.insert("table".into(), Value::from(table));
-            m.insert(
-                "columns".into(),
-                Value::from(
-                    columns
-                        .iter()
-                        .map(|c| Value::from(c.as_str()))
-                        .collect::<Vec<_>>(),
-                ),
-            );
-            m.insert(
-                "rows".into(),
-                Value::from(rows.into_iter().map(Value::Object).collect::<Vec<_>>()),
-            );
-            m
-        }))
+        dump_table_json_conn(&self.conn, table, order_by)
     }
+}
+
+/// [`Writer::dump_table_json`] over an arbitrary connection — so the differential
+/// harness can snapshot a table off a **read-only** pooled connection
+/// ([`runtime::Db::read_main`]) after a service has committed through the writer
+/// thread, without needing a second writable open (which the single-writer file
+/// lock would refuse).
+pub fn dump_table_json_conn(
+    conn: &Connection,
+    table: &str,
+    order_by: &str,
+) -> Result<Value, DbError> {
+    let mut stmt = conn.prepare(&format!("SELECT * FROM {table}"))?;
+    let columns: Vec<String> = stmt.column_names().iter().map(|s| s.to_string()).collect();
+
+    let cols_for_rows = columns.clone();
+    let mut rows: Vec<Map<String, Value>> = stmt
+        .query_map([], |row| {
+            let mut obj = Map::new();
+            for (i, col) in cols_for_rows.iter().enumerate() {
+                obj.insert(col.clone(), cell_to_json(row.get_ref(i)?));
+            }
+            Ok(obj)
+        })?
+        .collect::<Result<_, _>>()?;
+
+    rows.sort_by_key(|row| order_key(row, order_by));
+
+    Ok(Value::Object({
+        let mut m = Map::new();
+        m.insert("table".into(), Value::from(table));
+        m.insert(
+            "columns".into(),
+            Value::from(
+                columns
+                    .iter()
+                    .map(|c| Value::from(c.as_str()))
+                    .collect::<Vec<_>>(),
+            ),
+        );
+        m.insert(
+            "rows".into(),
+            Value::from(rows.into_iter().map(Value::Object).collect::<Vec<_>>()),
+        );
+        m
+    }))
 }
 
 /// Convert a SQLite cell to its canonical JSON form (mirrors the TS
