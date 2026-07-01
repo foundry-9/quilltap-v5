@@ -139,6 +139,9 @@ crates/
                            #   (cipher-correct DB layer), memory_weighting, …
                            #   depends on quilltap-sqlite3mc-sys for the cipher.
   quilltap-harness/        # differential tests vs the v4 oracle (tier-1 + tier-2).
+  quilltap-fixture-sanitizer/ # tool: sanitize a COPY of a real instance into a
+                           #   test-pepper-keyed fixture (scrub free text/BLOBs,
+                           #   preserve structure; real pepper never persisted).
   (future) quilltap-cli, quilltap-tauri
 harness/oracle/            # Node/tsx bridge driving v4's real lib/ code.
 apps/web/                  # (future) Angular 21 SPA.

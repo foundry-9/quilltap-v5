@@ -255,6 +255,35 @@ nested participant timestamps are sentinel-placeholdered (a value equal to the
 seed sentinel stays pinned — proving createdAt preservation and no stray mint),
 while chat-level timestamps are diffed exactly.
 
+Phase-2 on-ramp — the real-snapshot fixture sanitizer (Deliverable B), a new
+`quilltap-fixture-sanitizer` crate (library + `--source/--dest/--verify` CLI). It
+takes a COPY of a real instance, recovers the pepper from the copy's `.dbkey` (in
+memory only — never printed, logged, or written), sanitizes each database, and
+re-keys the output under the committed throwaway test pepper. It is schema-frozen
+by construction: the destination schema is replayed verbatim from the source's own
+`sqlite_master`, every row is copied (row counts + the FK-id graph preserved), and
+numbers / 0-1 booleans / enum tokens (by name + the `*Type`/`*Status`/`*Kind`/
+`*Mode`/`*Role` suffixes) / timestamps / ids + UUID-valued TEXT are kept, while all
+other TEXT is scrubbed to deterministic same-length pseudo-text, JSON columns are
+deep-scrubbed to stay valid (keys / numbers / bools / uuid-and-enum leaves kept),
+BLOBs become deterministic same-length bytes, and the document store's content↔sha
+invariant is recomputed so a scrubbed file's `sha256` still matches its bytes.
+Document-store PATH strings keep their structural skeleton (folder names + the
+managed vault filenames like `properties.json`) so a sanitized vault still resolves,
+scrubbing only the title stems. The scrub is one-way (`SHA-256(column ‖ original)`,
+the original never appears in the output) and equality-preserving (identical
+originals map identically, keeping content-dedup relationships). The binary refuses
+a source path that looks like a live instance and never writes the `.dbkey`. Per the
+project decision (2026-07-01) NO Friday-derived data is committed — the committed
+test is synthetic (a re-key A→B round-trip proving the policy: structure preserved,
+free text / JSON / BLOB scrubbed, content↔sha recomputed); real snapshots are
+regenerated locally on demand. Verified locally against a copy of Friday: 188,031
+main-db rows + 20,772 mount-index rows sanitized and re-keyed, 3,400 document-store
+files re-hashed, and the sanitized output read back through the ported repos —
+20,868 memories, 609 chats, and 33 characters (through the full vault overlay,
+which resolves because the structural path segments are preserved) — marshaling
+cleanly against real-shaped rows.
+
 Phase-2 deferred-seam closure — ported the `characters` startup-backfill family,
 closing the last three characters deferrals: the `ensureCharacterVault` adopt
 branch, provision-on-the-fly, and physicalDescription-via-update. On a

@@ -5,8 +5,9 @@ members = [
 ]
 
 # Workspace root. Members: quilltap-core (the portable engine — pure-function
-# ports plus the cipher-correct DB layer) and quilltap-harness (the differential
-# tests). quilltap-cli / quilltap-tauri join as they're scaffolded.
+# ports plus the cipher-correct DB layer), quilltap-harness (the differential
+# tests), and quilltap-fixture-sanitizer (the real-snapshot sanitizer tool).
+# quilltap-cli / quilltap-tauri join as they're scaffolded.
 
 [workspace.package]
 edition = "2021"

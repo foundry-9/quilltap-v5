@@ -1024,6 +1024,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "quilltap-fixture-sanitizer"
+version = "0.0.1"
+dependencies = [
+ "quilltap-core",
+ "quilltap-sqlite3mc-sys",
+ "rusqlite",
+ "serde_json",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "quilltap-harness"
 version = "0.0.70"
 dependencies = [

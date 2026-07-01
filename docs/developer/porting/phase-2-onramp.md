@@ -105,8 +105,31 @@ The oracle needs a database both sides open *identically*. Two ways to get one:
   distributions), and re-encrypts under the **test pepper**. Output is a
   committed fixture.
 
-**Recommendation.** Build the pilot on a synthetic seed; add the sanitizer as a
-second track once the diff machinery works, to widen coverage.
+  **BUILT (2026-07-01) — the `quilltap-fixture-sanitizer` crate** (library +
+  `--source/--dest/--verify` CLI). It recovers the pepper from the copy's
+  `.dbkey` (in memory only — never printed, logged, or written), replays the
+  destination schema verbatim from the source's own `sqlite_master` (frozen
+  schema by construction), copies every row preserving numbers / 0-1 booleans /
+  enum tokens (name allowlist + `*Type`/`*Status`/`*Kind`/`*Mode`/`*Role`
+  suffixes) / timestamps / ids + UUID-valued TEXT, scrubs all other TEXT to
+  deterministic same-length pseudo-text, deep-scrubs JSON columns to keep them
+  valid, replaces BLOBs with deterministic same-length bytes, keeps the
+  structural skeleton of document-store paths (folder names + managed vault
+  filenames like `properties.json`) while scrubbing title stems, and recomputes
+  the document-store content↔sha invariant. The scrub is one-way
+  (`SHA-256(column ‖ original)`) and equality-preserving. The binary refuses a
+  live-looking source and re-keys the output under the committed test pepper.
+  **Per the project decision (2026-07-01) no Friday-derived data is committed:**
+  the committed test is synthetic (a re-key A→B round-trip proving the policy);
+  real snapshots are regenerated locally on demand (`--verify` reads the output
+  back through the ported repos). Verified against a copy of Friday (188,031
+  main-db rows + 20,772 mount-index rows, 3,400 document-store files re-hashed;
+  the sanitized output read back as 20,868 memories, 609 chats, and 33 characters
+  through the full vault overlay). **With this, Deliverable B is complete.**
+
+**Recommendation (settled).** The pilot was built on a synthetic seed; the
+sanitizer landed as the second track once the diff machinery was proven, to
+widen coverage.
 
 **Non-negotiable safety** (these are why the sanitizer is delicate):
 
