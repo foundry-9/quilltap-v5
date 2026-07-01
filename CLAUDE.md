@@ -240,7 +240,10 @@ monorepo skeleton; `.dbkey` decryption ported & verified; cipher resolved
 **Phase 1 (pure-function ports): in progress.** Each unit ships with a tier-1
 exact-equivalence test against the v4 oracle. Ported so far: memory
 weighting/ranking, recall tags + history, write-partition + folder remap,
-context-compression sizing, enclave budget math, LLM pricing + model selection +
+context-compression sizing, enclave budget math (incl. the autonomous-room
+per-turn context cap `computeAutonomousContextCap` + its `DEFAULT_AUTONOMOUS_TARGET_TURNS`/
+`MIN_AUTONOMOUS_CONTEXT_TOKENS` constants — v4's token-budget pacing, ported
+2026-07-01 when it landed upstream), LLM pricing + model selection +
 model classes, context-budget arithmetic, token estimation, the full turn manager (turn-state
 machine, all-LLM auto-pause, participant-list filters, predicted turn order, and
 weighted next-speaker selection with the RNG injected), the context-summary

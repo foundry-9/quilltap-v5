@@ -17,7 +17,9 @@ test against the v4 oracle:
   title-check crossing, turn partition); per-character context shaping
   (history-access gate, presence windows, whisper visibility, role/name
   attribution).
-- Enclave: autonomous-run budget verdict and progress-toward-binding-cap.
+- Enclave: autonomous-run budget verdict and progress-toward-binding-cap, plus
+  the per-turn context cap that paces a token-budgeted room across turns
+  (`computeAutonomousContextCap` = remaining-budget / turns-left, floored).
 - LLM: completion cost estimate, cost-aware model selection, model classes,
   character-based token estimation.
 - Turn manager: the turn-state machine — queue ops, history-derived state, and

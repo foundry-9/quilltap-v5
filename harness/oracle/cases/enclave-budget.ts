@@ -31,6 +31,7 @@
 import {
   checkBudget,
   computeBudgetProgress,
+  computeAutonomousContextCap,
 } from '@/lib/background-jobs/handlers/autonomous-room-turn';
 import type { ChatMetadataBase } from '@/lib/schemas/types';
 
@@ -83,7 +84,15 @@ type ProgressRow = {
   dailySpent: number;
   out: { fraction: number; binding: string } | null;
 };
-type Row = CheckRow | ProgressRow;
+type CapRow = {
+  kind: 'cap';
+  id: string;
+  caps: Caps;
+  // computeAutonomousContextCap returns number | undefined; undefined → null so
+  // the field survives JSON.stringify (which drops undefined object values).
+  out: number | null;
+};
+type Row = CheckRow | ProgressRow | CapRow;
 
 const rows: Row[] = [];
 
@@ -175,6 +184,39 @@ for (const [id, overlay, turnsConsumed, tokensConsumed, dailyBudget, dailySpent]
     spent: dailySpent,
   });
   rows.push({ kind: 'progress', id, caps, turnsConsumed, tokensConsumed, now: NOW, dailyBudget, dailySpent, out });
+}
+
+// ---------------------------------------------------------------------------
+// computeAutonomousContextCap — this turn's context-budget slice (tokens), or
+// undefined when the room has no token budget. cap = max(16_000,
+// floor(max(0, budgetMaxTokens - runTokensConsumed) / turnsLeft)), where
+// turnsLeft = max(1, budgetMaxTurns - runTurnsConsumed) if a turn budget is set,
+// else 6 (DEFAULT_AUTONOMOUS_TARGET_TURNS). Only budgetMaxTokens/budgetMaxTurns
+// and the run-consumed counters are read (no `now`, no daily cap).
+// ---------------------------------------------------------------------------
+const capCases: Array<[string, Partial<Caps>]> = [
+  // [id, caps overlay]
+  ['no-token-budget', {}], // budgetMaxTokens null → undefined
+  // Default target turns (6), no turn budget.
+  ['floor-at-min-default-turns', { budgetMaxTokens: 60_000 }], // 60k/6=10k → clamp 16k
+  ['above-min-default-turns', { budgetMaxTokens: 600_000 }], // 600k/6=100k
+  ['exact-at-min-default-turns', { budgetMaxTokens: 96_000 }], // 96k/6=16k exactly
+  ['floor-division-default-turns', { budgetMaxTokens: 100_003 }], // 100003/6=16667.16→16667
+  // remaining reduced by consumed tokens.
+  ['remaining-reduced', { budgetMaxTokens: 600_000, runTokensConsumed: 300_000 }], // 300k/6=50k
+  ['remaining-floored-zero', { budgetMaxTokens: 1_000, runTokensConsumed: 5_000 }], // max(0,-4000)=0 → clamp 16k
+  // With a turn budget: turnsLeft = max(1, budgetMaxTurns - runTurnsConsumed).
+  ['with-turns-cap', { budgetMaxTokens: 600_000, budgetMaxTurns: 10, runTurnsConsumed: 2 }], // 600k/8=75k
+  ['turns-left-floored-at-1', { budgetMaxTokens: 600_000, budgetMaxTurns: 5, runTurnsConsumed: 5 }], // max(1,0)=1 → 600k
+  ['turns-left-floored-over', { budgetMaxTokens: 600_000, budgetMaxTurns: 5, runTurnsConsumed: 9 }], // max(1,-4)=1 → 600k
+  // Null consumed counters → treated as 0.
+  ['null-consumed-default-turns', { budgetMaxTokens: 600_000, runTokensConsumed: null }], // 600k/6=100k
+  ['null-consumed-with-turns', { budgetMaxTokens: 600_000, budgetMaxTurns: 10, runTokensConsumed: null, runTurnsConsumed: null }], // 600k/10=60k
+];
+for (const [id, overlay] of capCases) {
+  const caps: Caps = { ...NO_CAPS, ...overlay };
+  const result = computeAutonomousContextCap(asChat(caps));
+  rows.push({ kind: 'cap', id, caps, out: result === undefined ? null : result });
 }
 
 for (const r of rows) process.stdout.write(JSON.stringify(r) + '\n');

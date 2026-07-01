@@ -146,6 +146,49 @@ pub fn check_budget(
     BudgetCheck::Ok
 }
 
+/// Default number of turns a token-budgeted autonomous run should aim to span
+/// when the room sets no explicit `budget_max_turns`. Slices the per-run token
+/// budget into a per-turn context cap so a run paces itself across several turns
+/// instead of spending most of the budget on one oversized turn. (v4's
+/// `DEFAULT_AUTONOMOUS_TARGET_TURNS`.)
+pub const DEFAULT_AUTONOMOUS_TARGET_TURNS: i64 = 6;
+
+/// Floor for the per-turn context cap (tokens). Below this a turn can't carry a
+/// functioning context (system prompt + character cards + scene state + a little
+/// history), so the cap never clamps below it — the run's own budget check ends
+/// the run rather than ship a starved turn. (v4's `MIN_AUTONOMOUS_CONTEXT_TOKENS`.)
+pub const MIN_AUTONOMOUS_CONTEXT_TOKENS: i64 = 16_000;
+
+/// Derive this turn's context-budget cap (tokens) from the room's per-run token
+/// budget, sliced across the turns the run should still span. The context
+/// manager clamps its model-derived `maxAvailable` down to this value, so a room
+/// running on a big-context model still paces its per-run token budget across
+/// turns. Ports v4's `computeAutonomousContextCap`.
+///
+/// Returns `None` when the room has no token budget (`budget_max_tokens` is
+/// `None`) — leaving the model-derived context budget untouched.
+///
+/// The slice is `remaining / turns_left`:
+///   * `remaining` = `budget_max_tokens − run_tokens_consumed`, floored at 0.
+///   * `turns_left` = `budget_max_turns − run_turns_consumed` (floored at 1) when
+///     a turn budget is also set, else [`DEFAULT_AUTONOMOUS_TARGET_TURNS`].
+///
+/// Floored at [`MIN_AUTONOMOUS_CONTEXT_TOKENS`]. A `None` consumed count is `0`.
+///
+/// The division reproduces v4's `Math.floor(remaining / turns_left)` on f64 (both
+/// operands are exact as f64 in the budget range), matching V8 rather than i64
+/// truncation — identical for these non-negative operands, faithful by construction.
+pub fn compute_autonomous_context_cap(caps: &BudgetState) -> Option<i64> {
+    let max_tokens = caps.budget_max_tokens?;
+    let remaining = (max_tokens - caps.run_tokens_consumed.unwrap_or(0)).max(0);
+    let turns_left = match caps.budget_max_turns {
+        Some(max_turns) => (max_turns - caps.run_turns_consumed.unwrap_or(0)).max(1),
+        None => DEFAULT_AUTONOMOUS_TARGET_TURNS,
+    };
+    let sliced = (remaining as f64 / turns_left as f64).floor() as i64;
+    Some(sliced.max(MIN_AUTONOMOUS_CONTEXT_TOKENS))
+}
+
 /// Which cap is binding (closest to exhaustion). The string forms match v4's
 /// `MilestoneBinding` literals.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

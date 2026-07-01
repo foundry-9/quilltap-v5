@@ -15,7 +15,7 @@
 //!   QT_ORACLE_ENCLAVE_BUDGET=/tmp/oracle-enclave-budget.ndjson cargo test -p quilltap-harness
 
 use quilltap_core::enclave_budget::{
-    check_budget, compute_budget_progress, BudgetCheck, BudgetState,
+    check_budget, compute_autonomous_context_cap, compute_budget_progress, BudgetCheck, BudgetState,
 };
 use quilltap_harness::iso_to_ms;
 use serde::Deserialize;
@@ -96,6 +96,13 @@ enum OracleRow {
         daily_spent: i64,
         out: Option<ProgressOut>,
     },
+    #[serde(rename = "cap")]
+    Cap {
+        id: String,
+        caps: CapsRaw,
+        // undefined (no token budget) is emitted as null by the oracle.
+        out: Option<i64>,
+    },
 }
 
 #[test]
@@ -109,7 +116,7 @@ fn enclave_budget_matches_oracle() {
     };
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
 
-    let mut counts = [0usize; 2];
+    let mut counts = [0usize; 3];
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<OracleRow>(line).unwrap() {
             OracleRow::Check {
@@ -183,6 +190,11 @@ fn enclave_budget_matches_oracle() {
                 }
                 counts[1] += 1;
             }
+            OracleRow::Cap { id, caps, out } => {
+                let got = compute_autonomous_context_cap(&caps.to_state());
+                assert_eq!(got, out, "cap '{id}'");
+                counts[2] += 1;
+            }
         }
     }
 
@@ -191,7 +203,7 @@ fn enclave_budget_matches_oracle() {
         "oracle file looks empty/partial: {counts:?}"
     );
     eprintln!(
-        "OK: enclave-budget matched oracle ({} check, {} progress).",
-        counts[0], counts[1]
+        "OK: enclave-budget matched oracle ({} check, {} progress, {} cap).",
+        counts[0], counts[1], counts[2]
     );
 }
