@@ -6,7 +6,9 @@
 //! committed corpus (harness/oracle/fixtures/write-apply.json) and emit the same
 //! observable trace per scenario: per-partition exec sequence (BEGIN IMMEDIATE /
 //! COMMIT / ROLLBACK), the ordered ATTEMPTED repo dispatches (method + args, args
-//! post folder-remap), the reconcile lookups, and the resolved/threw outcome.
+//! post folder-remap), the reconcile lookups, the `__finalizeFile` + post-commit
+//! effects (fs renames incl. undo-on-rollback, mkdirs, staging-dir cleanup, and
+//! the deduped cache-invalidation notifications), and the resolved/threw outcome.
 //!
 //! The oracle runs under v4's jest (the applier's `getRawDatabase()` /
 //! `getRepositories()` singletons are `jest.mock`-injected). Generate it:
@@ -81,6 +83,11 @@ struct RecHost {
     exec_llm: Vec<String>,
     dispatched: Vec<Value>,
     lookups: Vec<Value>,
+    // Post-commit / filesystem effects (matched against v4's fs spies + notifyChild).
+    renames: Vec<Value>, // {from, to} across finalize (forward) + undo (reverse)
+    mkdirs: Vec<String>, // ensureDir(dirname(finalPath))
+    rms: Vec<String>,    // cleanupStagingDirs -> rmSync(root)
+    notifications: Vec<Value>, // {kind, key} from dispatchInvalidations
 }
 
 impl RecHost {
@@ -107,6 +114,10 @@ impl RecHost {
             exec_llm: Vec::new(),
             dispatched: Vec::new(),
             lookups: Vec::new(),
+            renames: Vec::new(),
+            mkdirs: Vec::new(),
+            rms: Vec::new(),
+            notifications: Vec::new(),
         }
     }
 
@@ -164,6 +175,45 @@ impl ApplyHost for RecHost {
             .cloned()
             .flatten())
     }
+
+    fn finalize_file(
+        &mut self,
+        final_dir: &str,
+        staging_path: &str,
+        final_path: &str,
+    ) -> Result<(), ApplyError> {
+        // v4: ensureDirSync(dirname(final)) then renameSync(staging -> final).
+        self.mkdirs.push(final_dir.to_string());
+        self.renames
+            .push(json!({ "from": staging_path, "to": final_path }));
+        Ok(())
+    }
+
+    fn undo_finalize(&mut self, final_path: &str, staging_path: &str) {
+        // v4's reverse rename on rollback: renameSync(final -> staging).
+        self.renames
+            .push(json!({ "from": final_path, "to": staging_path }));
+    }
+
+    fn cleanup_staging_dir(&mut self, staging_root: &str) {
+        self.rms.push(staging_root.to_string());
+    }
+
+    fn dispatch_invalidations(
+        &mut self,
+        vector_store_keys: &[String],
+        mount_point_keys: &[String],
+    ) {
+        // v4 notifies all vectorStore keys, then all mountPoint keys, in order.
+        for k in vector_store_keys {
+            self.notifications
+                .push(json!({ "kind": "vectorStore", "key": k }));
+        }
+        for k in mount_point_keys {
+            self.notifications
+                .push(json!({ "kind": "mountPoint", "key": k }));
+        }
+    }
 }
 
 fn corpus_path() -> PathBuf {
@@ -218,6 +268,10 @@ fn write_apply_matches_oracle() {
             },
             "dispatched": host.dispatched,
             "lookups": host.lookups,
+            "renames": host.renames,
+            "mkdirs": host.mkdirs,
+            "rms": host.rms,
+            "notifications": host.notifications,
             "outcome": outcome,
         });
 

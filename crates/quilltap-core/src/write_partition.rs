@@ -61,6 +61,10 @@ pub const LLM_LOGS_REPO_KEYS: &[&str] = &["llmLogs"];
 /// The dotted method that creates a `doc_mount_folders` row.
 pub const DOC_MOUNT_FOLDER_CREATE: &str = "docMountFolders.create";
 
+/// The built-in (`__`-prefixed) write that stages a file rename into place inside
+/// the main-DB transaction. Not a repo dispatch — the applier intercepts it.
+pub const FINALIZE_FILE: &str = "__finalizeFile";
+
 /// Fields on a mount-index write's data object (`args[0]`) that hold a folder id
 /// and therefore may need rewriting when an earlier same-batch folder create was
 /// reconciled to an already-existing folder row. `parentId` lives on folder
@@ -90,7 +94,7 @@ pub struct ChildWritePayload {
 /// isn't explicitly mount-index or llm-logs defaults to `Main` — the safe
 /// default, since main is the all-or-nothing primary partition.
 pub fn classify_write_target(method: &str) -> WriteDbTarget {
-    if method == "__finalizeFile" {
+    if method == FINALIZE_FILE {
         return WriteDbTarget::Main;
     }
     // `method.split('.', 1)[0]` in TS — the segment before the first dot (the

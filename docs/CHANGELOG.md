@@ -255,6 +255,24 @@ nested participant timestamps are sentinel-placeholdered (a value equal to the
 seed sentinel stays pinned — proving createdAt preservation and no stray mint),
 while chat-level timestamps are diffed exactly.
 
+Phase-2 deferred-seam closure — ported the write applier's `__finalizeFile` +
+post-commit side effects (seam #4), the last deferred pieces of
+`quilltap-core::write_apply`. `__finalizeFile` now runs inside the main-DB
+transaction loop (ensure-dir + staging→final rename), tracked so a later failure
+in that partition undoes the renames in reverse before rethrowing; `cleanupStagingDirs`
+drops the per-job `.staging/<jobId>` shell post-commit; and `dispatchInvalidations`
+fires the deduped, ordered vector-store / mount-cache targets post-commit (both
+skipped when the batch throws). The engine keeps v4's orchestration-vs-effect
+split — the pure path/target computation (`path_dirname` = Node posix `dirname`,
+`find_staging_root`, `collect_invalidations`) lives in the engine; the fs/cache
+ops route through four new `ApplyHost` methods (production wires real fs/IPC; the
+harness records them). The `write_apply_equivalence` trace differential grew four
+observable fields (renames incl. undo-on-rollback, mkdirs, staging cleanup,
+invalidation notifications) and three scenarios, verified against v4's REAL
+`applyWritesUnsafe` — the oracle now records the fs mutators via jest `fs` mock +
+the `notifyChild` mock (12 scenarios green). Also added four `write_apply` unit
+tests.
+
 Phase-2 deferred-seam closure — closed the `chat_messages.isSilentMessage` seam
 (#8), and corrected its premise. The deferral claimed the TEXT-affinity round-trip
 (`z.union([boolean, number.transform])` → TEXT) made v4's `getMessages` DROP a

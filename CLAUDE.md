@@ -1143,12 +1143,20 @@ connections + repo dispatch + reconcile lookup) — the same orchestration-vs-ro
 split v4 uses (it unit-tests the applier with fake DBs + recording repos; the row
 writes go through repos, each tier-2-verified separately). So the differential is
 **tier-1-style trace equivalence**, not tier-2: `write_apply_equivalence` runs a
-committed 9-scenario corpus through both the Rust engine and v4's REAL
+committed 12-scenario corpus through both the Rust engine and v4's REAL
 `applyWritesUnsafe`, diffing the observable trace (per-partition exec sequence,
 ordered dispatches with post-remap args, reconcile lookups, resolved/threw). That
 oracle (`harness/oracle/cases/write-apply.test.ts`) runs under **v4's jest**, not
 tsx — the applier's `getRawDatabase()`/`getRepositories()` singletons are
 `jest.mock`-injected; v4's jest picks up the v5-tree oracle file via an extra
-`--roots`. Deferred (documented in the module + phase-2-onramp): `__finalizeFile`
-(fs rename + undo-on-rollback) and the post-commit side effects
-(`cleanupStagingDirs` / `dispatchInvalidations`).
+`--roots`. **The `__finalizeFile` + post-commit side effects are now ported**
+(deferred-seam #4): the staging→final rename runs inside the main transaction
+loop with undo-on-rollback (renames reversed before rethrow), `cleanupStagingDirs`
+drops the per-job `.staging/<jobId>` shell, and `dispatchInvalidations` fires the
+deduped/ordered vector-store + mount-cache targets — both post-commit, both
+skipped on a throw. The pure path/target computation (`path_dirname`,
+`find_staging_root`, `collect_invalidations`) lives in the engine; the fs/cache
+ops route through four `ApplyHost` methods (harness records them). The trace grew
+four fields (renames, mkdirs, staging cleanup, invalidation notifications) + three
+scenarios; the oracle records the fs mutators via a jest `fs` mock and the
+`notifyChild` mock. **No write_apply deferrals remain.**

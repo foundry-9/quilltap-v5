@@ -17,11 +17,19 @@
     "remap), the reconcile lookups, and the resolved/threw outcome. jobId = the",
     "scenario name on both sides (it appears in the connection-unavailable message).",
     "",
+    "The trace also captures the __finalizeFile + post-commit effects: renames",
+    "(ordered {from,to} across the in-transaction staging rename AND the reverse",
+    "undo on rollback), mkdirs (ensureDir(dirname(finalPath))), rms (the post-commit",
+    "cleanupStagingDirs root), and notifications (the deduped dispatchInvalidations",
+    "targets, {kind: vectorStore|mountPoint, key}). On the oracle side these come",
+    "from fs mutator spies (rename/mkdir/rm) + the notifyChild mock.",
+    "",
     "fail[].message is the error a dispatch throws; both sides use it verbatim so",
     "the threw-outcome string matches. findFolder maps a (mountPointId, path) to the",
     "existing folder id the reconcile resolves to (null => no row). unavailable",
     "lists partitions whose connection is null; failCommit lists partitions whose",
-    "COMMIT throws."
+    "COMMIT throws. A __finalizeFile write carries {stagingPath, finalPath} in",
+    "args[0]; it is intercepted (never dispatched to a repo)."
   ],
   "scenarios": [
     {
@@ -102,6 +110,35 @@
         { "method": "chats.update", "args": [{ "id": "c1" }] }
       ],
       "failCommit": [{ "partition": "main", "message": "commit boom" }]
+    },
+    {
+      "name": "finalize-success-then-cleanup",
+      "jobType": "EMBEDDING_GENERATE",
+      "writes": [
+        { "method": "__finalizeFile", "args": [{ "stagingPath": "/data/files/.staging/finalize-success-then-cleanup/aa/note.md", "finalPath": "/data/files/store/aa/note.md" }] },
+        { "method": "chats.update", "args": [{ "id": "c1" }] }
+      ]
+    },
+    {
+      "name": "finalize-rollback-undoes-renames",
+      "jobType": "EMBEDDING_GENERATE",
+      "writes": [
+        { "method": "__finalizeFile", "args": [{ "stagingPath": "/d/.staging/finalize-rollback-undoes-renames/s1", "finalPath": "/d/store/f1" }] },
+        { "method": "__finalizeFile", "args": [{ "stagingPath": "/d/.staging/finalize-rollback-undoes-renames/s2", "finalPath": "/d/store/f2" }] },
+        { "method": "chats.update", "args": [{ "id": "c1" }] }
+      ],
+      "fail": [{ "method": "chats.update", "message": "rollback boom" }]
+    },
+    {
+      "name": "invalidations-dedup-across-batch",
+      "jobType": "EMBEDDING_GENERATE",
+      "writes": [
+        { "method": "memories.create", "args": [{ "characterId": "charX" }] },
+        { "method": "memories.delete", "args": [{ "characterId": "charX" }] },
+        { "method": "vectorIndices.saveMeta", "args": [{ "characterId": "charY" }] },
+        { "method": "docMountChunks.upsert", "args": [{ "mountPointId": "MP" }] },
+        { "method": "chats.update", "args": [{ "characterId": "charZ" }] }
+      ]
     }
   ]
 }
