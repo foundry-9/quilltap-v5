@@ -79,6 +79,7 @@ pub mod vault_character_arrays;
 pub mod vault_character_update;
 pub mod vault_character_write;
 pub mod vault_read_overlay;
+pub mod vault_wardrobe_public;
 pub mod vault_wardrobe_write;
 pub mod vector_indices;
 pub mod wardrobe;

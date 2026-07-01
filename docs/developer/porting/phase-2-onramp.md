@@ -618,25 +618,34 @@ instances (non-ASCII user data), each must be closed or consciously waived.
    manually. Both sibling partitions are now covered; no sibling DB remains
    unported.
 
-7. **`wardrobe` vault-overlay write path — only the SQL marshaling is verified.**
-   v4's public `WardrobeRepository.create`/`update`/`delete` are **vault-only**:
-   they route every mutation into the character's document-store vault
-   (`Wardrobe/*.md`) and *throw* when no mount resolves — there is deliberately **no
-   SQL write mirror** on the public path. The tier-2 port
-   (`wardrobe_tier2_equivalence`) therefore differentials v4's **real
-   base-repository SQL CRUD** (`_create`/`_update`/`_delete`) over the
-   `wardrobe_items` table — the marshaling the schema-translator builds from
-   `WardrobeItemSchema` and the table's reads (`findByCharacterIdRaw`) consume — via
-   a thin oracle-side subclass exposing the protected internals. What is **not**
-   ported or verified is the vault-overlay write path itself (the document-store
-   round-trip, the mount resolution, the throw-without-mount behavior). This is the
-   same family as the store-backed repos still ahead (`characters`, `chats`,
-   `groups`, `projects`) and the `write_apply` `__finalizeFile` deferral (seam #4):
-   the document-store overlay is its own slice. **Action when closing:** port the
-   vault overlay as a unit (with its mount-resolution + document-store seam) and add
-   a differential that exercises the public `WardrobeRepository` path, not just the
-   base SQL layer. Until then, the SQL marshaling is proven but the public CRUD
-   semantics are not.
+7. **`wardrobe` vault-overlay write path — RESOLVED (2026-07-01).** The public
+   `WardrobeRepository.create`/`update`/`delete` are now ported
+   (`quilltap-core::db::vault_wardrobe_public`) and verified end-to-end against v4's
+   REAL public repo. Background: they are **vault-only** — route every mutation into
+   the character's document-store vault (`Wardrobe/*.md`) and *throw* when no mount
+   resolves, with **no SQL write mirror**. The earlier `wardrobe_tier2_equivalence`
+   differentials only the **base-repository SQL CRUD** (`_create`/`_update`/`_delete`)
+   over the legacy `wardrobe_items` table (marshaling the schema-translator builds
+   from `WardrobeItemSchema`, consumed by `findByCharacterIdRaw`), via a thin
+   oracle-side subclass. The **composition** is what seam #7 closes: `vault_wardrobe_public`
+   resolves the character's mount (`find_by_id_raw` → `characterDocumentMountPointId`),
+   reads the current items (`read_character_vault_wardrobe`), applies the change +
+   `assertNoCycles` (`detect_component_cycles`, v4's exact `… → …; …` message), and
+   re-projects (`project_vault_wardrobe`), minting `updatedAt` on update. The
+   differential (`vault_wardrobe_public_equivalence`) is a **read-back** tier —
+   drive v4's REAL public repo over a baked character+vault fixture (spanning both
+   DBs), then after each op read the folder back through the verified-equivalent
+   read and compare item lists (minted `updatedAt` normalized). Read-back, not a
+   byte-level table dump, because `build_wardrobe_item_file` writes the item's minted
+   `updatedAt` INTO the content-addressed `.md`, so an update's fresh timestamp sits
+   inside a content SHA a dump can't normalize (the read parses it back out, where it
+   does). The projection primitive is separately byte-verified
+   (`vault_wardrobe_write_equivalence`). **Scope / still deferred:** only the
+   **character** tier — the **General** archetype tier (`characterId == null` →
+   `getGeneralMountPointId`) and the **project** tier route through the
+   General-Wardrobe subsystem (unported; same boundary as
+   `read_character_vault_wardrobe`'s archetype-seed deferral). A `null` characterId
+   resolves to `NoMount` here.
 
 8. **`chat_messages.isSilentMessage` — RESOLVED (2026-07-01): the "drop" premise
    was WRONG; the message is KEPT.** `ChatMessageRowSchema.isSilentMessage` is

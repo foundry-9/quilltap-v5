@@ -255,6 +255,31 @@ nested participant timestamps are sentinel-placeholdered (a value equal to the
 seed sentinel stays pinned — proving createdAt preservation and no stray mint),
 while chat-level timestamps are diffed exactly.
 
+Phase-2 deferred-seam closure — ported the PUBLIC wardrobe write path (seam #7):
+v4's `WardrobeRepository.create`/`update`/`delete`, in the new
+`quilltap-core::db::vault_wardrobe_public`. These are v4's vault-only overrides —
+resolve the owning character's document-store mount, read the current
+`Wardrobe/*.md` items, apply the change, cycle-check, and re-project the folder,
+throwing when no mount resolves (there is no SQL mirror). The prior
+`wardrobe_tier2` port verified only the legacy base-SQL marshaling; this ports the
+composition itself, over the already-verified leaves (`read_character_vault_wardrobe`
++ `project_vault_wardrobe` + `detect_component_cycles` + characters
+`find_by_id_raw`), including the read-modify-project round-trip, the minted-`updatedAt`
+on update, and the `assertNoCycles` guard (v4's exact `… → …; …` message). Verified
+by a **read-back differential** (`vault_wardrobe_public_equivalence`) driving v4's
+REAL public repo over a baked character+vault fixture: create, a composite create
+referencing the first by id, a rename update, a cycle-forming update that throws, a
+real delete (with the surviving composite's now-dangling ref DROPPING on read), a
+delete of the already-gone id returning false, and a create against a non-existent
+character that throws no-mount — comparing each op's read-back item list (minted
+`updatedAt` normalized). A read-back tier rather than a table dump because
+`build_wardrobe_item_file` writes the item's minted `updatedAt` into the
+content-addressed `.md`, which a byte-level dump can't normalize; the projection
+primitive is separately byte-verified (`vault_wardrobe_write_equivalence`). Scope:
+the character tier only — the General/project archetype tiers stay deferred (same
+boundary as `read_character_vault_wardrobe`). Four unit tests cover the patch merge,
+cycle rejection, and the read→item conversion.
+
 Phase-2 deferred-seam closure — ported the write applier's `__finalizeFile` +
 post-commit side effects (seam #4), the last deferred pieces of
 `quilltap-core::write_apply`. `__finalizeFile` now runs inside the main-DB

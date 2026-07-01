@@ -460,8 +460,8 @@ exposing the protected internals (the marshaling the schema-translator builds fr
 `WardrobeItemSchema` and the table reads consume); it banks the first repo with
 **two JSON array columns** (`types` — the first enum-string array — and
 `componentItemIds`) and a **nullable soft-delete timestamp** (`archivedAt`); the
-vault-overlay write path itself is **not ported/verified** (tracked deferral — see
-phase-2-onramp seam #7). The three mount-index siblings ride the same TS-only
+vault-overlay public write path is now **ported/verified** (seam #7 closed — see
+"the public wardrobe write path" below). The three mount-index siblings ride the same TS-only
 machinery as `doc_mount_points`: `doc_mount_files` is the **narrowest tier-2 repo
 to date** (all-required, no JSON/boolean/nullable; re-banks a `fileSizeBytes`
 min-only REAL int + two enum TEXT); `doc_mount_documents` is the file-content store
@@ -723,6 +723,24 @@ diffs five mount-index tables in the shared-cross-table-id-map remap form (reind
 `chunkCount` / `doc_mount_chunks` pinned/excluded, as for groups/projects). **With
 this the entire document-store slice — Family A (generic store-backed) and Family B
 (the character/wardrobe vault, read + write) — is complete.**
+
+**The public wardrobe write path (seam #7) is now ported and green**
+(`quilltap-core::db::vault_wardrobe_public`, `vault_wardrobe_public_equivalence`):
+v4's vault-only `WardrobeRepository.create`/`update`/`delete`, composed over the
+verified leaves — resolve the character's mount (`find_by_id_raw` →
+`characterDocumentMountPointId`), read current items (`read_character_vault_wardrobe`),
+apply + `assertNoCycles` (`detect_component_cycles`, v4's exact `… → …; …` message),
+re-project (`project_vault_wardrobe`), minting `updatedAt` on update; a missing
+mount throws (`NoMount`). Verified by a **read-back differential** driving v4's REAL
+public repo over a baked character+vault fixture (both DBs): create, composite
+create (ref by id), rename update, cycle-forming update (throws, folder unchanged),
+real delete (surviving composite's dangling ref DROPS on read), delete-missing →
+false, and a create for a non-existent character (throws no-mount) — comparing each
+op's read-back item list (minted `updatedAt` normalized). Read-back rather than a
+byte dump because `build_wardrobe_item_file` writes the minted `updatedAt` into the
+content-addressed `.md`; the projection primitive is separately byte-verified
+(`vault_wardrobe_write_equivalence`). **Deferred:** the General/project archetype
+tiers (same boundary as `read_character_vault_wardrobe`).
 
 **The `characters` repo is now in progress (the store-backed capstone).** It is
 NOT a generic store-backed entity — it's a `TaggableBaseRepository` with the
