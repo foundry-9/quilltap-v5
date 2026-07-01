@@ -144,6 +144,15 @@
       "createdAt": "2026-02-01T00:00:09.000Z"
     },
     {
+      "type": "message",
+      "id": "e1000001-0000-4000-8000-00000000000d",
+      "role": "ASSISTANT",
+      "content": "Spoken while silent.",
+      "participantId": "fb000001-0000-4000-8000-000000000001",
+      "isSilentMessage": true,
+      "createdAt": "2026-02-01T00:00:09.500Z"
+    },
+    {
       "type": "context-summary",
       "id": "e1000001-0000-4000-8000-00000000000a",
       "context": "A summary of the conversation so far.",

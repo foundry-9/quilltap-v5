@@ -638,20 +638,20 @@ instances (non-ASCII user data), each must be closed or consciously waived.
    base SQL layer. Until then, the SQL marshaling is proven but the public CRUD
    semantics are not.
 
-8. **`chat_messages.isSilentMessage` — TEXT-affinity boolean round-trip drops
-   messages.** `ChatMessageRowSchema.isSilentMessage` is
-   `z.union([z.boolean(), z.number().transform(v => v === 1)])`, which the schema
-   translator's `getBaseType` resolves to `unknown` (the union's two options map to
-   different base types) → **TEXT** affinity column. On write, a boolean `true` is
-   coerced to `1` by `prepareForStorage`, then SQLite's TEXT affinity stores it as
-   the string `"1"`. On read, `hydrateRow` only bool-coerces *number* cells (the
-   `is*`-prefix rule), so the value comes back as the string `"1"`, and
-   `MessageEventSchema`'s `isSilentMessage: z.boolean()` rejects it — so v4's
-   `getMessages` **drops the entire message** as corrupted (`safeParse` failure).
-   The sub-unit-3 read corpus keeps `isSilentMessage` absent on every message (so no
-   row is affected) and `db::chats_messages_read` does not read the column. **Action
-   when closing:** decide the faithful behavior against real data that sets
-   `isSilentMessage` — either reproduce v4's drop (detect the non-bool stored value
-   and skip the message), or (if v4 is to be fixed) coordinate a schema/translator
-   change. This is a genuine v4 quirk, not a Rust-side choice; confirm empirically
-   against a real instance before reading message data with silent-mode messages.
+8. **`chat_messages.isSilentMessage` — RESOLVED (2026-07-01): the "drop" premise
+   was WRONG; the message is KEPT.** `ChatMessageRowSchema.isSilentMessage` is
+   `z.union([z.boolean(), z.number().transform(v => v === 1)]).nullable().optional()`
+   → **TEXT** affinity, so a written boolean `true` is persisted as numeric TEXT
+   (verified: `"1.0"`, not `"1"`). The deferral assumed `hydrateRow` leaves that a
+   string and `MessageEventSchema.z.boolean()` rejects it, dropping the message.
+   **Probed empirically against v4: it does NOT drop** — the read applies the
+   ROW-schema union (coerce to a number, `=== 1`) → a real `boolean`, so
+   `getMessages` returns the message with `isSilentMessage: true`. The real gap was
+   that `db::chats_messages_read` never read the column, so it *omitted* the field
+   where v4 includes it. Closed by reading `isSilentMessage` and reproducing the
+   coercion (`put_is_silent`: numeric-TEXT `=== 1.0` → bool; `NULL` → omitted). The
+   read corpus gained a silent-message row (`isSilentMessage: true`, stored `"1.0"`)
+   whose read output is byte-identical to the oracle. NOTE: the *write* side does
+   not yet emit the `"1.0"` float-TEXT representation (the write corpus never sets
+   `isSilentMessage`); a Rust-authored silent message would need that — a bounded
+   follow-up, not a read-path gap.

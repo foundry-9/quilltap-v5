@@ -255,6 +255,19 @@ nested participant timestamps are sentinel-placeholdered (a value equal to the
 seed sentinel stays pinned — proving createdAt preservation and no stray mint),
 while chat-level timestamps are diffed exactly.
 
+Phase-2 deferred-seam closure — closed the `chat_messages.isSilentMessage` seam
+(#8), and corrected its premise. The deferral claimed the TEXT-affinity round-trip
+(`z.union([boolean, number.transform])` → TEXT) made v4's `getMessages` DROP a
+silent message. Probed empirically against v4: it does NOT — a written `true` is
+stored as numeric TEXT (`"1.0"`), and the read applies the row-schema union
+(coerce to number, `=== 1`) → a real boolean, so the message is KEPT with
+`isSilentMessage: true`. The real gap was that `db::chats_messages_read` never read
+the column and so omitted the field. Fixed by reading `isSilentMessage` and
+reproducing the coercion (numeric-TEXT `=== 1.0` → bool; `NULL` → omitted); the
+read corpus gained a silent-message row proving the output matches the oracle. (The
+write side does not yet emit the `"1.0"` representation — a bounded follow-up, since
+the write corpus never sets it.)
+
 Phase-2 deferred-seam closure — ported `TagVisualStyleSchema`'s per-field defaults
 (seam #3). v4's base `_create` runs the doc through `TagSchema.parse`, so a PARTIAL
 `visualStyle` gets its missing fields materialized; the Rust `TagVisualStyle` now

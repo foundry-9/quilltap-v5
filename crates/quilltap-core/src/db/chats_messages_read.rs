@@ -36,18 +36,20 @@
 //! `array|object → jsonColumns` detection). Top-level number columns are REAL
 //! affinity, read as `f64` and rendered the JS way via [`js_number_to_json`].
 //!
-//! ## Tracked seam — `isSilentMessage`
+//! ## `isSilentMessage` (seam CLOSED — the "drop" premise was wrong)
 //!
 //! `ChatMessageRowSchema`'s `isSilentMessage` is
-//! `z.union([z.boolean(), z.number().transform(...)])`, which the schema
-//! translator maps to type `unknown` → **TEXT affinity**. A written boolean
-//! `true` is coerced to `1` by `prepareForStorage`, then SQLite's TEXT affinity
-//! stores it as the string `"1"`; on read `hydrateRow` only bool-coerces *number*
-//! cells, so the value comes back as `"1"` and `MessageEventSchema`'s
-//! `z.boolean()` rejects it — v4 then **drops the whole message** as corrupted.
-//! This sub-unit's corpus keeps `isSilentMessage` absent everywhere (so no row is
-//! affected) and the column is not read here; close this before reading real data
-//! that sets it. (See "Deferred seams" in `docs/developer/porting/phase-2-onramp.md`.)
+//! `z.union([z.boolean(), z.number().transform(v => v === 1)]).nullable().optional()`
+//! → **TEXT affinity**, so a written boolean `true` is persisted as numeric TEXT
+//! (`"1.0"`). The earlier deferral assumed `hydrateRow` leaves that as a string and
+//! `MessageEventSchema.z.boolean()` then rejects it, dropping the message.
+//! **Verified empirically against v4 that this is NOT what happens**: the read
+//! applies the ROW-schema union (coerce to a number, `=== 1`) → a real `boolean`,
+//! so `getMessages` KEEPS the message with `isSilentMessage: true`. So the port
+//! reads the column and reproduces that coercion in [`put_is_silent`] (numeric-TEXT
+//! `=== 1.0` → bool; `NULL` → the key is omitted as v4 `undefined`). Proven by a
+//! silent-message row in the read corpus. (See "Deferred seams #8" in
+//! `docs/developer/porting/phase-2-onramp.md`.)
 
 use rusqlite::{Connection, Row};
 use serde_json::{Map, Value};
@@ -64,7 +66,7 @@ const COLUMNS: &str = "id, type, role, content, rawResponse, tokenCount, promptT
      targetParticipantIds, systemSender, systemKind, opaqueContent, hostEvent, customAnnouncer, \
      carinaMeta, pendingExternalPrompt, pendingExternalPromptFull, pendingExternalAttachments, \
      summaryAnchor, context, systemEventType, description, totalTokens, provider, modelName, \
-     estimatedCostUSD, createdAt";
+     estimatedCostUSD, createdAt, isSilentMessage";
 
 /// Nullable-optional TEXT/UUID/enum column: `Some` → string, `None` → omit.
 fn put_opt_string(obj: &mut Map<String, Value>, key: &str, v: Option<String>) {
@@ -92,6 +94,22 @@ fn put_opt_json(obj: &mut Map<String, Value>, key: &str, v: Option<String>) {
         if !parsed.is_null() {
             obj.insert(key.to_string(), parsed);
         }
+    }
+}
+
+/// `isSilentMessage` — its ROW schema (`ChatMessageRowSchema`) is
+/// `z.union([z.boolean(), z.number().transform(v => v === 1)]).nullable().optional()`
+/// → TEXT affinity, so a stored boolean `true` is persisted as numeric TEXT
+/// (`"1.0"`). v4's read applies that union (coerce to a number, compare `=== 1`) →
+/// a `boolean`, which passes `MessageEventSchema`'s `z.boolean()` (so the message
+/// is KEPT, not dropped — verified empirically against v4). A `NULL` cell → the
+/// key is omitted (v4 `undefined`, dropped by `JSON.stringify`). A non-numeric
+/// stored value coerces to `NaN`, and `NaN === 1` is `false` (matching JS
+/// `Number()`).
+fn put_is_silent(obj: &mut Map<String, Value>, v: Option<String>) {
+    if let Some(s) = v {
+        let is_one = s.trim().parse::<f64>().map(|n| n == 1.0).unwrap_or(false);
+        obj.insert("isSilentMessage".to_string(), Value::Bool(is_one));
     }
 }
 
@@ -141,6 +159,7 @@ fn marshal_message(row: &Row) -> Result<Value, rusqlite::Error> {
     put_opt_string(&mut o, "pendingExternalPromptFull", row.get(27)?);
     put_opt_json(&mut o, "pendingExternalAttachments", row.get(28)?);
     o.insert("createdAt".into(), Value::String(row.get::<_, String>(37)?));
+    put_is_silent(&mut o, row.get(38)?);
     Ok(Value::Object(o))
 }
 
