@@ -32,7 +32,7 @@ already working ([`phase-0.md`](./phase-0.md)).
 | **0** | Scaffolding, toolchain, cipher-correct DB open, differential harness | tier-1 proven | **substantially done** |
 | **1** | Pure functions (scoring, sizing, remaps, budget math) | tier-1 exact | **done** |
 | **2** | Data layer: repos, the writer-task model, per-DB partitioned apply | tier-2 structural DB diff | **repo inventory complete** — every v4 repository round-trips green through the tier-2 harness (main DB + the mount-index and llm-logs sibling DBs, incl. the `characters` and `chats` capstones and `memories`); the deferred `upsert*` back-fill, the partitioned write applier + `__finalizeFile`, and the fixture sanitizer are done too. Full per-repo inventory in the CLAUDE.md Status section ([`phase-2-onramp.md`](./phase-2-onramp.md)). Residual: a few Phase-3-coupled deferrals (chats `delete` vault sweep, the General/project wardrobe archetype tiers) |
-| **3** | Services / engine: memory gate, chat orchestration, enclave `step()` | tier-2 + tier-3 mocked-LLM | kickoff drafted — [`phase-3.md`](./phase-3.md); Unit 0 (writer-task runtime) next |
+| **3** | Services / engine: memory gate, chat orchestration, enclave `step()` | tier-2 + tier-3 mocked-LLM | **in progress** — [`phase-3.md`](./phase-3.md); Unit 0 (writer-task runtime, `db::runtime`) done + green; Unit 0.5 (tier-3 harness scaffold) next |
 | **4** | Transports (Tauri/uniffi/axum) + Angular UI | end-to-end | not started |
 
 Each phase leans on the one below being trusted, so failures localize.

@@ -75,6 +75,39 @@ test against the v4 oracle:
 - Small leaf utilities: chat-type/participant predicates, semver parse/compare,
   pronoun→gender hint, tag-style merge, char-count colour class.
 
+Phase 3 — the writer-task runtime (Unit 0) and the model-boundary core (Unit
+0.5). Native infrastructure that replaces v4's child-process write machinery, so
+verified by self-tests rather than a v4 oracle diff.
+
+- `db::runtime`: `Db`, the `Clone + Send + Sync` handle every service holds — a
+  per-partition read pool plus a `tokio::mpsc` write channel that is the only
+  mutator. A dedicated OS thread owns the `WriterSet` (main + optional
+  mount-index/llm-logs RW writers) and drains the channel serially, so batch
+  apply stays serial (the property the folder-conflict remap and main-primary
+  ordering assume). A write is a type-erased `FnOnce(&mut WriterSet)` closure
+  carrying its own `oneshot` reply; `write_apply` remains available for the
+  multi-DB job path, invoked inside a closure. Reads go direct to a pooled
+  read-only connection (`PRAGMA key` first-and-only, per the read-path rule).
+  API: `write` (async) / `write_blocking` / `read_main` / `read_mount_index` /
+  `read_llm_logs`, plus `DbError::{WriterGone, WriterSpawn, PartitionUnavailable}`.
+  Four self-tests: 100 concurrent writers serialize with no lost updates,
+  read-after-write sees committed state, `write_blocking` commits, and a
+  missing-partition read is a clean typed error.
+- `model::embedding`: `EmbeddingProvider` (the tier-3 seam mirroring v4's
+  `generateEmbeddingForUser`) with `EmbeddingResult` / `EmbeddingError` /
+  `EmbeddingPriority`, plus `CannedEmbeddingProvider` — a deterministic responder
+  keyed by exact input text (fixed vector; explicit failures for
+  `SKIP_EMBEDDING_FAILED`; an unregistered input errors rather than answering).
+  Async and generic (no trait object), three self-tests. The v4-oracle-side
+  canned injection lands with Unit 1's memory-gate differential.
+- Added `tokio` (`sync` only in the library — the writer is a plain OS thread, so
+  no scheduler is pulled into the core; `macros`/`rt-multi-thread` dev-only).
+- Docs: CLAUDE.md's "Never accept unverified Rust" corrected — `cargo
+  build`/`test`/`clippy` do run in this environment and should be run before
+  presenting Rust as done; the real-instance open + oracle diff remain the proof
+  for crypto/cipher. Status sections (CLAUDE.md, `overview.md`, `phase-3.md`)
+  updated for Units 0 and 0.5.
+
 Docs — Phase 2 marked complete; Phase 3 kickoff drafted. Docs only, no crate
 source changed.
 

@@ -69,6 +69,7 @@ pub mod projects;
 pub mod prompt_templates;
 pub mod provider_models;
 pub mod roleplay_templates;
+pub mod runtime;
 pub mod store_backed;
 pub mod tags;
 pub mod terminal_sessions;
@@ -91,6 +92,14 @@ pub enum DbError {
     Key(String),
     /// A SQLite operation failed.
     Sqlite(rusqlite::Error),
+    /// Spawning the dedicated writer thread failed (see [`runtime`]).
+    WriterSpawn(String),
+    /// The writer thread is gone — its channel closed before the job's reply
+    /// arrived (see [`runtime::Db::write`]). In practice only during shutdown.
+    WriterGone,
+    /// A read/write targeted a sibling partition this instance was not opened
+    /// with (see [`runtime::Db::read_mount_index`]).
+    PartitionUnavailable(crate::write_partition::WriteDbTarget),
 }
 
 impl std::fmt::Display for DbError {
@@ -98,6 +107,11 @@ impl std::fmt::Display for DbError {
         match self {
             DbError::Key(msg) => write!(f, "key derivation failed: {msg}"),
             DbError::Sqlite(e) => write!(f, "sqlite error: {e}"),
+            DbError::WriterSpawn(msg) => write!(f, "failed to spawn writer thread: {msg}"),
+            DbError::WriterGone => write!(f, "writer thread is gone"),
+            DbError::PartitionUnavailable(p) => {
+                write!(f, "partition not available: {}", p.as_str())
+            }
         }
     }
 }

@@ -105,11 +105,17 @@ accept a port without one.
 
 ### Never accept unverified Rust
 
-The sandbox has no Rust; Claude cannot compile here. **Do not present Rust as
-done until the user has run `cargo build`/`cargo test` and confirmed.** Crypto
-and cipher code especially: "looks right" is not good enough — the real-instance
-open and the oracle diff are the proof. Flag version-specific crate API risks
-explicitly.
+Rust **does** build and test in this environment (`cargo build`/`cargo test`/
+`cargo clippy` all run — rustup toolchain 1.96.0, plus the native DB build deps;
+the amalgamation C compile caches after the first build). So compile + run the
+tests before presenting Rust as done — a green `cargo test` is the baseline, not
+a thing to defer to the user. But a passing local test is **not** the full proof
+for crypto/cipher paths: those are proven by the **real-instance open** (opening
+the actual encrypted Friday data — needs the real pepper, never in-sandbox) and
+the **differential oracle diff** (which imports v4's real `lib/` from the
+`quilltap-server` checkout). "Looks right" — and even "compiles and the unit test
+passes" — is not enough there; flag when a change still awaits the real-data /
+oracle proof, and flag version-specific crate API risks explicitly.
 
 ### Architectural invariants to preserve from v4
 
@@ -1206,3 +1212,42 @@ ops route through four `ApplyHost` methods (harness records them). The trace gre
 four fields (renames, mkdirs, staging cleanup, invalidation notifications) + three
 scenarios; the oracle records the fs mutators via a jest `fs` mock and the
 `notifyChild` mock. **No write_apply deferrals remain.**
+
+**Phase 3 (services / engine): in progress.** Unit 0 — the **writer-task
+runtime** — is ported and green (`quilltap-core::db::runtime`), making the
+single-writer *ownership* rule a live, compiler-enforced invariant (the shell from
+`api-boundary.md` Part 2). `Db` is the `Clone + Send + Sync` handle every service
+holds: a per-partition `ReadPool` (pooled read-only opens — `PRAGMA key` first and
+only, per the read-path rule) plus a `tokio::mpsc::Sender` that is the **only**
+mutator. A dedicated OS thread owns the `WriterSet` (main + optional
+mount-index/llm-logs RW `Writer`s) and drains the channel serially via
+`blocking_recv`, so batch-apply is naturally serial (the property v4's
+folder-conflict remap + main-primary ordering assume). A write is a type-erased
+`FnOnce(&mut WriterSet)` closure carrying its own `oneshot` reply — services call
+the same typed repositories, but only ever on the writer thread (the `{method,
+args}` reflection dissolves into the type system; `write_apply` stays available for
+the multi-DB job path, invoked *inside* a closure). `Db::write` (async) /
+`write_blocking` (for the plain-`#[test]` harness) / `read_main` /
+`read_mount_index` / `read_llm_logs`. Verified by four self-tests: **100 concurrent
+writers serialize with no lost updates** (a read-modify-write increment reaching
+the writer count), read-after-awaited-write sees committed state, `write_blocking`
+commits, and a sibling-partition read on a main-only instance is a clean typed
+error (`DbError::PartitionUnavailable`). `tokio` added — `sync` only in the lib
+(the writer is a plain OS thread; no scheduler pulled into the core),
+`macros`/`rt-multi-thread` dev-only.
+
+Unit 0.5 — the **model-boundary core** — is also ported and green
+(`quilltap-core::model`). `model::embedding` defines `EmbeddingProvider` (the
+tier-3 seam: an async `generate_embedding_for_user` mirroring v4's
+`generateEmbeddingForUser`, with `EmbeddingResult` / `EmbeddingError` /
+`EmbeddingPriority`) plus `CannedEmbeddingProvider` — a deterministic responder
+keyed by exact input text (fixed vector; explicit failures drive
+`SKIP_EMBEDDING_FAILED`; an unregistered input is a surfaced error, never a silent
+answer). The boundary is async (`-> impl Future + Send`) and consumers take a
+**generic** `P: EmbeddingProvider` (not a trait object), so the async-fn-in-trait
+return needs no boxing and the future stays `Send`. Three self-tests. The
+completion half joins as `model::completion` when chat orchestration lands. The
+v4-oracle-side canned injection (stubbing `generateEmbeddingForUser` to the same
+vector) lands with **Unit 1's** memory-gate differential — that is where the seam
+is exercised end-to-end. Next: Unit 1 (the memory gate) per
+`docs/developer/porting/phase-3.md`.

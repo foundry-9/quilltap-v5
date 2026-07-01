@@ -102,8 +102,16 @@
 //!     (chat-type / participant-status predicates), `semver` (parse + compare),
 //!     `pronoun_gender` (image-prompt gender hint), `tag_style` (style merge),
 //!     `char_count` (count-indicator colour class); all oracle-verified.
+//!   * `model` — the Phase-3 model boundary (the tier-3 seam every model call goes
+//!     through). `model::embedding` holds `EmbeddingProvider` (mirroring v4's
+//!     `generateEmbeddingForUser`) + a deterministic `CannedEmbeddingProvider` for
+//!     the differential; the completion half joins as services need it.
+//!   * `db::runtime` — the Phase-3 writer-task runtime: `Db` (the cloneable read
+//!     pool + write channel every service holds), the writer thread owning the
+//!     `WriterSet`, and the read-only connection pool. The single-writer ownership
+//!     rule made a live invariant.
 //!
-//! Everything else (repos, services, the Request/Response/Event boundary)
+//! Everything else (the remaining services, the Request/Response/Event boundary)
 //! lands in later phases.
 
 // Link-only: keeps `quilltap-sqlite3mc-sys` in the crate graph so its build
@@ -140,6 +148,7 @@ pub mod memory_gate;
 pub mod memory_weighting;
 pub mod mentioned_characters;
 pub mod message_attribution;
+pub mod model;
 pub mod model_classes;
 pub mod model_context;
 pub mod participant_filters;

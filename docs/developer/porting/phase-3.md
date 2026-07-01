@@ -44,7 +44,25 @@ a deterministic function whose DB effect we already know how to diff.
 Phase 2 left three foundations unbuilt because nothing consumed them. They are the
 first Phase-3 work, in this order — each is a prerequisite for the one after.
 
-### Unit 0 — the writer-task runtime (`Db` / `Writer` actor + `ReadPool`)
+### Unit 0 — the writer-task runtime (`Db` / `Writer` actor + `ReadPool`) — ✅ DONE
+
+**Status: ported and green** (`quilltap-core::db::runtime`). `Db` is the
+`Clone + Send + Sync` handle every service holds: a per-partition read pool plus a
+`tokio::mpsc::Sender` that is the only mutator. A dedicated OS thread owns the
+`WriterSet` (main + optional mount-index / llm-logs RW `Writer`s) and drains the
+channel serially via `blocking_recv`, so batch-apply is naturally serial. A write
+is a type-erased `FnOnce(&mut WriterSet)` closure carrying its own `oneshot` reply
+— services call the same typed repositories, but only ever on the writer thread
+(no `{method, args}` reflection; `write_apply` stays available for the multi-DB
+job path, invoked *inside* a closure). Reads go direct to a pooled read-only
+connection (`PRAGMA key` first-and-only pragma per the CLAUDE.md read-path rule).
+`Db::write` (async) / `write_blocking` (for the plain-`#[test]` harness) /
+`read_main` / `read_mount_index` / `read_llm_logs`. Verified by four self-tests:
+100 concurrent writers serialize with **no lost updates** (a read-modify-write
+increment reaching the writer count), read-after-awaited-write sees committed
+state, `write_blocking` commits, and a sibling-partition read on a main-only
+instance is a clean typed error. `tokio` was added (`sync` in the lib — the writer
+is a plain OS thread, no scheduler pulled in; `macros`/`rt-multi-thread` dev-only).
 
 The one **Phase-2-scoped** item still open. Phase 2 built `Writer` (the
 type-ownership shape) and `write_apply` (the apply logic, trace-verified). What is
@@ -77,7 +95,23 @@ the memory gate (Unit 1) exercises the full path — a service issues a `WriteBa
 Verified by the memory-gate tier-2 diff, plus a focused test that concurrent
 writers serialize (no interleaved partitions) and reads see committed state.
 
-### Unit 0.5 — the tier-3 mocked-LLM harness scaffold
+### Unit 0.5 — the tier-3 mocked-LLM harness scaffold — ◑ core built
+
+**Status: the model-boundary core is ported and green** (`quilltap-core::model`).
+`model::embedding` defines `EmbeddingProvider` (the tier-3 seam — an async
+`generate_embedding_for_user` mirroring v4's `generateEmbeddingForUser`, with
+`EmbeddingResult` / `EmbeddingError` / `EmbeddingPriority`) plus
+`CannedEmbeddingProvider`, a deterministic responder keyed by exact input text
+(fixed vector, explicit failures for `SKIP_EMBEDDING_FAILED`, unregistered input
+is a surfaced error — never a silent answer). The boundary is async
+(`-> impl Future + Send`) and consumers take a **generic** `P: EmbeddingProvider`
+(not a trait object), so no boxing and the future stays `Send`. The completion
+half joins as `model::completion` when chat orchestration lands. Verified by three
+self-tests. **Remaining (lands with Unit 1's differential):** the v4-oracle-side
+canned injection — stubbing `generateEmbeddingForUser` to return the *same* vector
+the Rust test injects — is exercised by the memory-gate tier-3 case, not in
+isolation (per this unit's own acceptance: "one model-dependent service round-trips
+green with a canned embedding injected identically on both sides").
 
 Net-new harness capability; gates every model-dependent unit after it. Design:
 
@@ -209,9 +243,10 @@ Track them to closure as their subsystem lands:
 
 ## Unit order (summary)
 
-0. Writer-task runtime (`Db`/`Writer` actor + `ReadPool`) — the last Phase-2 item.
+0. Writer-task runtime (`Db`/`Writer` actor + `ReadPool`) — the last Phase-2 item. **✅ done** (`db::runtime`).
 0.5. Tier-3 mocked-LLM harness scaffold (model boundary trait + canned responder,
-   both sides).
+   both sides). **◑ core done** (`model::embedding`); the v4-oracle-side injection
+   lands with Unit 1's differential.
 1. **Memory gate** — first real service; validates 0 + 0.5 + tier-2 together.
 2. Memory family follow-ons (`memory-processor`, `memory-service`, `housekeeping`).
 3. Chat orchestration (turn manager + streaming on the `Event` channel).

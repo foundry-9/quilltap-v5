@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-core"
-version = "0.0.76"
+version = "0.0.77"
 edition = "2021"
 publish = false
 
@@ -62,5 +62,15 @@ uuid = { version = "1", features = ["v4"] }
 # a `CollatorBorrowed<'static>` over the baked tables — `Sync`, held in a static.
 icu = "2.2"
 
+# Async runtime for the Phase-3 writer-task runtime (db::runtime): mpsc/oneshot
+# channels are the "channel is the only mutator" seam. Only `sync` is needed in
+# the library itself — the writer runs on a plain OS thread (not a tokio worker),
+# so no scheduler is pulled into the core. The `macros` + `rt-multi-thread`
+# features (for `#[tokio::test]`) live in dev-dependencies below.
+tokio = { version = "1", default-features = false, features = ["sync"] }
+
 [dev-dependencies]
 tempfile = "3"
+# Test-only: the runtime self-tests use `#[tokio::test]` and a multi-thread
+# runtime to exercise concurrent writers. Feature-unioned with the dep above.
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
