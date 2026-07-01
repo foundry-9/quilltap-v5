@@ -12,7 +12,10 @@
 //! defaults, the integer-valued nested numbers rendered bare); a context-summary
 //! event (non-actual: no lastMessageAt bump, updatedAt preserved, messageCount 0);
 //! a mixed `addMessages` batch (whisper + system event + public message: the
-//! folded spokenThisCycle, the visible-message count, the actual-message bump).
+//! folded spokenThisCycle, the visible-message count, the actual-message bump); and
+//! an `addMessages` batch carrying `isSilentMessage: true` + `false` (the
+//! TEXT-affinity write seam #8 — the stored cell must be the literal `"1.0"` /
+//! `"0.0"`, absent → NULL, byte-compared in the pinned `chat_messages` dump).
 //!
 //! NORMALIZATION: `chat_messages` — none (ids + createdAt pinned). `chats` —
 //! `lastMessageAt`/`updatedAt` collapsed to `<ts>` ONLY when they differ from the

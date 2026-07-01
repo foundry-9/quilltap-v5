@@ -35,8 +35,16 @@
 //! `MessageEvent` columns (with `attachments` always written); a
 //! `context-summary` / `system` insert names only that member's columns and
 //! **omits `attachments`** so SQLite fills the same `'[]'` default. The final cell
-//! state is therefore byte-identical to v4's. `isSilentMessage` is never written
-//! (the read seam — see sub-unit 3 / seam #8).
+//! state is therefore byte-identical to v4's.
+//!
+//! ## `isSilentMessage` — the TEXT-affinity seam (WRITE side, now closed)
+//!
+//! A `message` insert also carries `isSilentMessage` (a `MessageEvent` member,
+//! `z.boolean().nullable().optional()`), routed through [`is_silent_stored`] which
+//! reproduces v4's exact stored bytes: `true` → TEXT `"1.0"`, `false` → TEXT
+//! `"0.0"`, absent → SQL NULL (see that fn for the why). `context-summary` /
+//! `system` inserts omit the column (SQLite fills its DDL default `NULL`). The
+//! read companion is [`crate::db::chats_messages_read::put_is_silent`] (seam #8).
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -113,6 +121,11 @@ pub struct MessageEventInput {
     pub model_name: Option<String>,
     #[serde(default)]
     pub target_participant_ids: Option<Vec<String>>,
+    // `isSilentMessage` (`z.boolean().nullable().optional()`). Its ROW column
+    // (`ChatMessageRowSchema`) is the `z.union([boolean, number.transform])` →
+    // TEXT-affinity seam (see `insert_message` + `chats_messages_read`).
+    #[serde(default)]
+    pub is_silent_message: Option<bool>,
     #[serde(default)]
     pub system_sender: Option<String>,
     #[serde(default)]
@@ -535,19 +548,21 @@ fn insert_message(conn: &Connection, chat_id: &str, m: &MessageEventInput) -> Re
     let carina_meta = opt_json(&m.carina_meta)?;
     let pending_external_attachments = opt_json(&m.pending_external_attachments)?;
     let summary_anchor = opt_json(&m.summary_anchor)?;
+    let is_silent_message = is_silent_stored(m.is_silent_message);
 
     conn.execute(
         "INSERT INTO chat_messages (\
            id, chatId, type, role, content, rawResponse, tokenCount, promptTokens, \
            completionTokens, swipeGroupId, swipeIndex, attachments, debugMemoryLogs, \
            thoughtSignature, reasoningContent, reasoningSegments, participantId, recoveryType, \
-           renderedHtml, dangerFlags, targetParticipantIds, systemSender, systemKind, \
-           opaqueContent, hostEvent, customAnnouncer, carinaMeta, pendingExternalPrompt, \
-           pendingExternalPromptFull, pendingExternalAttachments, summaryAnchor, provider, \
-           modelName, createdAt) \
+           renderedHtml, dangerFlags, targetParticipantIds, isSilentMessage, systemSender, \
+           systemKind, opaqueContent, hostEvent, customAnnouncer, carinaMeta, \
+           pendingExternalPrompt, pendingExternalPromptFull, pendingExternalAttachments, \
+           summaryAnchor, provider, modelName, createdAt) \
          VALUES (\
            ?1, ?2, 'message', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, \
-           ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33)",
+           ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, \
+           ?34)",
         rusqlite::params![
             m.id,
             chat_id,
@@ -569,6 +584,7 @@ fn insert_message(conn: &Connection, chat_id: &str, m: &MessageEventInput) -> Re
             m.rendered_html,
             danger_flags,
             target_participant_ids,
+            is_silent_message,
             m.system_sender,
             m.system_kind,
             m.opaque_content,
@@ -623,6 +639,20 @@ fn insert_system(conn: &Connection, chat_id: &str, s: &SystemEventInput) -> Resu
         ],
     )?;
     Ok(())
+}
+
+/// The stored `isSilentMessage` cell (the TEXT-affinity seam, verified against v4).
+///
+/// v4's write path runs `prepareForStorage(bool)` → the JS **number** `1`/`0`,
+/// which better-sqlite3 binds as a REAL (every JS number is an IEEE-754 double).
+/// The column is TEXT-affinity (`ChatMessageRowSchema`'s `isSilentMessage` is
+/// `z.union([boolean, number.transform])` → `'unknown'` → TEXT), so SQLite
+/// converts the bound REAL to text — landing `"1.0"` / `"0.0"` (NOT `"1"`/`"0"`),
+/// and `NULL` when the field is absent. We reproduce that byte-for-byte by binding
+/// `Some(1.0_f64)` / `Some(0.0_f64)` (a REAL, TEXT-converted the same way) / `None`.
+/// The read side (`chats_messages_read::put_is_silent`) coerces this back.
+fn is_silent_stored(v: Option<bool>) -> Option<f64> {
+    v.map(|b| if b { 1.0 } else { 0.0 })
 }
 
 /// Compact JSON text for a JSON column.

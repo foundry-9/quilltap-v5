@@ -660,7 +660,13 @@ instances (non-ASCII user data), each must be closed or consciously waived.
    where v4 includes it. Closed by reading `isSilentMessage` and reproducing the
    coercion (`put_is_silent`: numeric-TEXT `=== 1.0` → bool; `NULL` → omitted). The
    read corpus gained a silent-message row (`isSilentMessage: true`, stored `"1.0"`)
-   whose read output is byte-identical to the oracle. NOTE: the *write* side does
-   not yet emit the `"1.0"` float-TEXT representation (the write corpus never sets
-   `isSilentMessage`); a Rust-authored silent message would need that — a bounded
-   follow-up, not a read-path gap.
+   whose read output is byte-identical to the oracle. **The write side is now
+   closed too (2026-07-01):** a `message`-type insert emits the same TEXT-affinity
+   bytes v4 does — `true` → `"1.0"`, `false` → `"0.0"`, absent → `NULL` — which
+   arises because v4's `prepareForStorage(bool)` yields the JS number `1`/`0`,
+   better-sqlite3 binds it as a REAL, and SQLite converts that REAL to text on
+   store (`"1.0"`); the Rust binding reproduces it by binding `Some(1.0_f64)` /
+   `Some(0.0_f64)` / `None` (verified by a raw better-sqlite3 probe and a new
+   `chats_messages_tier2` `addMessages` op carrying both `true` and `false`,
+   byte-compared in the pinned `chat_messages` dump). context-summary / system
+   inserts still omit the column (DDL default `NULL`). Seam #8 is fully resolved.

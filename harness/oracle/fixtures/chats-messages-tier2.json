@@ -70,6 +70,29 @@
           "updatedAt": "2026-02-01T00:00:00.000Z"
         }
       ]
+    },
+    {
+      "id": "cd000001-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Add-Message Chat D",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "fc000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "cccc3333-3333-4333-8333-333333333333",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
     }
   ],
   "ops": [
@@ -181,6 +204,30 @@
           "content": "A public reply.",
           "participantId": "fc000001-0000-4000-8000-000000000001",
           "createdAt": "2026-02-02T00:00:05.000Z"
+        }
+      ]
+    },
+    {
+      "kind": "addMessages",
+      "chatId": "cd000001-0000-4000-8000-000000000001",
+      "messages": [
+        {
+          "type": "message",
+          "id": "ed000001-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "Spoken while silent.",
+          "participantId": "fb000001-0000-4000-8000-000000000001",
+          "isSilentMessage": true,
+          "createdAt": "2026-02-02T00:00:06.000Z"
+        },
+        {
+          "type": "message",
+          "id": "ed000001-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "Spoken out loud.",
+          "participantId": "fc000001-0000-4000-8000-000000000001",
+          "isSilentMessage": false,
+          "createdAt": "2026-02-02T00:00:07.000Z"
         }
       ]
     }

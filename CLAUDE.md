@@ -945,11 +945,11 @@ the read parses the JSON columns straight to `serde_json::Value` (no struct
 re-serialization that would turn `1`→`1.0`). Read-differential: both sides READ a
 copy of one fixture baked by v4's REAL `repos.chats.addMessages` (one chat +
 twelve messages covering every event member + JSON column), 7 queries compared
-exactly (no normalization). **Tracked seam:** `isSilentMessage` —
-`z.union([boolean, number.transform])` → TEXT affinity, so a stored boolean
-round-trips as the string `"1"` and v4 drops the whole message on read; the
-corpus keeps it absent and the column is not read here (close before reading real
-data that sets it). Sub-unit 4a — the **`chat_messages` write path** — is also
+exactly (no normalization). (The `isSilentMessage` seam that this sub-unit
+originally deferred is now **fully RESOLVED** — see the write-side note under
+sub-unit 4a below and phase-2-onramp seam #8: the "drop" premise was wrong, the
+read coerces the TEXT-affinity `"1.0"` back to a bool, and the write emits it.)
+Sub-unit 4a — the **`chat_messages` write path** — is also
 done (`db::chats_messages`, `chats_messages_tier2_equivalence`): v4's
 `addMessage`/`addMessages` (the row insert + the chat metadata side-effect).
 **`updateMessage`/`deleteMessagesByIds`/`clearMessages` are sub-unit 4b.** The
@@ -975,7 +975,12 @@ context-summary (non-actual: no `lastMessageAt` bump, `updatedAt` preserved,
 count 0), and a mixed batch (whisper + system event + public message), diffing
 BOTH `chat_messages` (pinned) and `chats` (`lastMessageAt`/`updatedAt` collapsed
 to `<ts>` only when they differ from the seed sentinel — a stray mint is caught).
-Sub-unit 4b — the **`chat_messages` mutation path** — is also done (same
+A `message` insert also carries **`isSilentMessage`** (seam #8, write side — now
+closed): `Some(true)` → `"1.0"`, `Some(false)` → `"0.0"`, `None` → `NULL`, the
+TEXT-affinity bytes v4 produces by binding the JS number `1`/`0` as a REAL that
+SQLite converts to text on store (empirically probed; a new `addMessages` op
+carries both a true and a false silent message). context-summary/system inserts
+omit the column. Sub-unit 4b — the **`chat_messages` mutation path** — is also done (same
 `db::chats_messages`, `chats_messages_ops_tier2_equivalence`): v4's
 `updateMessage` / `deleteMessagesByIds` / `clearMessages`. `updateMessage`
 reproduces v4's `{...existing, ...updates}` → `ChatEventSchema.parse` →
@@ -1043,7 +1048,8 @@ key-order divergence (`serde_json::Value` sorts vs v4's insertion order) — cor
 constrained to sorted key order, same family as `parameters`/`sillyTavernData`.
 **Tracked deferrals across the whole chats repo:** `delete`'s participant-vault
 summary sweep (external subsystem), the open-JSON multi-key insertion-order seams,
-the `isSilentMessage` TEXT-affinity seam, and the `equippedOutfit` key-order seam.
+and the `equippedOutfit` key-order seam. (The `isSilentMessage` TEXT-affinity seam
+is now CLOSED — read and write both — see sub-units 3 and 4a above.)
 
 The **`memories` repo is ported whole** (`quilltap-core::db::memories` +
 `db::memories_read`, `memories_tier2_equivalence` + `memories_read_equivalence`).

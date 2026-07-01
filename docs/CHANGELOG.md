@@ -255,6 +255,19 @@ nested participant timestamps are sentinel-placeholdered (a value equal to the
 seed sentinel stays pinned — proving createdAt preservation and no stray mint),
 while chat-level timestamps are diffed exactly.
 
+Phase-2 deferred-seam closure — closed the WRITE side of the
+`chat_messages.isSilentMessage` seam (#8), completing it. The read side was
+already resolved; this closes the write. A `message`-type insert now emits the
+same TEXT-affinity bytes v4 stores: `true` → `"1.0"`, `false` → `"0.0"`, absent →
+`NULL`. That representation arises because v4's `prepareForStorage(bool)` returns
+the JS number `1`/`0`, better-sqlite3 binds it as a REAL, and SQLite converts the
+REAL to text on store (`"1.0"`) — confirmed by a raw better-sqlite3 probe. The
+Rust binding reproduces it by binding `Some(1.0_f64)` / `Some(0.0_f64)` / `None`;
+context-summary / system inserts still omit the column so SQLite fills its DDL
+default. Verified by a new `chats_messages_tier2` `addMessages` op carrying both a
+`true` and a `false` silent message, byte-compared in the pinned `chat_messages`
+dump against v4's REAL `addMessages`.
+
 Phase-2 deferred-seam closure — ported the PUBLIC wardrobe write path (seam #7):
 v4's `WardrobeRepository.create`/`update`/`delete`, in the new
 `quilltap-core::db::vault_wardrobe_public`. These are v4's vault-only overrides —
