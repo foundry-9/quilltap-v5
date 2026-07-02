@@ -215,6 +215,35 @@ swipe-group cascade, chat wipe) goes through.
   minted-`updatedAt` form — the untouched stores' metadata provably keeps the
   seed sentinel.
 
+Phase 3 — memory housekeeping (the third memory-family follow-on). Ported v4's
+`runHousekeeping` / `getHousekeepingPreview` / `needsHousekeeping`
+(housekeeping.ts) as `services::housekeeping` — the retention sweep the
+`MEMORY_HOUSEKEEPING` job runs. No model call: the merge pass searches the
+already-stored vector index against itself.
+
+- `services::housekeeping`: three passes then a gated apply. (1) Retention —
+  MANUAL is a hard protection override, otherwise the blended
+  `calculate_protection_score` >= 0.5 protects; an unprotected memory goes only
+  when below the importance floor AND old AND inactive. (2) Opt-in similarity
+  merge over stored vectors (>= threshold folds into the more-important/newer
+  survivor; the merge pass does not consult protection — faithful to v4).
+  (3) Cap enforcement deletes the lowest-effective-weight unprotected memories
+  from the tail, with v4's all-protected pre-check. Apply deletes through the
+  chokepoint then cleans the vector store non-fatally; `dry_run` reports without
+  writing. Detail reasons formatted with the ported JS `toFixed` so they match
+  v4 byte-for-byte at equal wall clock. Three self-tests.
+- `clock` gained `now_unix_ms` and `iso_to_ms` (the strict inverse of
+  `iso_from_unix_ms`, matching JS `Date.parse` on the repo-minted shape);
+  `CharacterVectorStore` gained `all_entries` (v4 `getAllEntries`, load order).
+- Differential (`memory_housekeeping_tier2_equivalence`): a tsx real-DB oracle
+  drives v4's REAL housekeeping over a 6-op sequence (dry-run, retention sweep,
+  merge sweep, cap sweep, both `needsHousekeeping` branches) on a 15-memory /
+  3-character fixture, then BOTH the per-op result objects (counts, id lists,
+  details — age/inactive month numbers placeholdered, being wall-clock-derived)
+  and the three table dumps (sentinel-aware minted-`updatedAt`) are diffed.
+  Corpus-freshness note recorded: the "recent" seed dates age past the 6-month
+  windows ~2026-12; refresh them when regenerating after that.
+
 Docs — Phase 2 marked complete; Phase 3 kickoff drafted. Docs only, no crate
 source changed.
 

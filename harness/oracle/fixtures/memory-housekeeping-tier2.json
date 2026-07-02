@@ -1,0 +1,40 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "seedTimestamp": "2020-01-01T00:00:00.000Z",
+  "dimensions": 3,
+  "characters": {
+    "charH1": "77777777-7777-4777-8777-777777777777",
+    "charH2": "88888888-8888-4888-8888-888888888888",
+    "charH3": "99999999-9999-4999-8999-999999999999"
+  },
+  "seedMemories": [
+    { "id": "a1000001-0000-4000-8000-000000000001", "characterId": "77777777-7777-4777-8777-777777777777", "importance": 0.1, "reinforcedImportance": 0.1, "source": "AUTO", "createdAt": "2020-01-01T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": ["a1000006-0000-4000-8000-000000000006"], "vector": [1, 0, 0] },
+    { "id": "a1000002-0000-4000-8000-000000000002", "characterId": "77777777-7777-4777-8777-777777777777", "importance": 0.05, "reinforcedImportance": 0.05, "source": "AUTO", "createdAt": "2019-06-01T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": null },
+    { "id": "a1000003-0000-4000-8000-000000000003", "characterId": "77777777-7777-4777-8777-777777777777", "importance": 0.1, "reinforcedImportance": 0.1, "source": "AUTO", "createdAt": "2020-01-01T00:00:00.000Z", "lastAccessedAt": "2026-06-20T00:00:00.000Z", "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": null },
+    { "id": "a1000004-0000-4000-8000-000000000004", "characterId": "77777777-7777-4777-8777-777777777777", "importance": 0.1, "reinforcedImportance": 0.1, "source": "MANUAL", "createdAt": "2020-01-01T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": null },
+    { "id": "a1000005-0000-4000-8000-000000000005", "characterId": "77777777-7777-4777-8777-777777777777", "importance": 0.1, "reinforcedImportance": 0.1, "source": "AUTO", "createdAt": "2026-06-25T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": null },
+    { "id": "a1000006-0000-4000-8000-000000000006", "characterId": "77777777-7777-4777-8777-777777777777", "importance": 0.9, "reinforcedImportance": 0.9, "source": "AUTO", "createdAt": "2020-01-01T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": ["a1000001-0000-4000-8000-000000000001"], "vector": [0, 1, 0] },
+    { "id": "a1000007-0000-4000-8000-000000000007", "characterId": "77777777-7777-4777-8777-777777777777", "importance": 0.25, "reinforcedImportance": 0.28, "source": "AUTO", "createdAt": "2020-01-01T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": "2026-06-30T00:00:00.000Z", "reinforcementCount": 7, "relatedMemoryIds": ["a1000003-0000-4000-8000-000000000003", "a1000004-0000-4000-8000-000000000004", "a1000005-0000-4000-8000-000000000005", "a1000006-0000-4000-8000-000000000006"], "vector": null },
+    { "id": "a2000001-0000-4000-8000-000000000001", "characterId": "88888888-8888-4888-8888-888888888888", "importance": 0.8, "reinforcedImportance": 0.8, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": [1, 0, 0] },
+    { "id": "a2000002-0000-4000-8000-000000000002", "characterId": "88888888-8888-4888-8888-888888888888", "importance": 0.6, "reinforcedImportance": 0.6, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": [0.95, 0.31225, 0] },
+    { "id": "a2000003-0000-4000-8000-000000000003", "characterId": "88888888-8888-4888-8888-888888888888", "importance": 0.7, "reinforcedImportance": 0.7, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": [0, 1, 0] },
+    { "id": "a3000001-0000-4000-8000-000000000001", "characterId": "99999999-9999-4999-8999-999999999999", "importance": 0.9, "reinforcedImportance": 0.9, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": [0.6, 0, 0.8] },
+    { "id": "a3000002-0000-4000-8000-000000000002", "characterId": "99999999-9999-4999-8999-999999999999", "importance": 0.8, "reinforcedImportance": 0.8, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": null },
+    { "id": "a3000003-0000-4000-8000-000000000003", "characterId": "99999999-9999-4999-8999-999999999999", "importance": 0.7, "reinforcedImportance": 0.7, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": null },
+    { "id": "a3000004-0000-4000-8000-000000000004", "characterId": "99999999-9999-4999-8999-999999999999", "importance": 0.6, "reinforcedImportance": 0.6, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": null },
+    { "id": "a3000005-0000-4000-8000-000000000005", "characterId": "99999999-9999-4999-8999-999999999999", "importance": 0.5, "reinforcedImportance": 0.5, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": [0.6, 0.8, 0] }
+  ],
+  "seedMetaCharacterIds": [
+    "77777777-7777-4777-8777-777777777777",
+    "88888888-8888-4888-8888-888888888888",
+    "99999999-9999-4999-8999-999999999999"
+  ],
+  "ops": [
+    { "kind": "runHousekeeping", "characterId": "99999999-9999-4999-8999-999999999999", "options": { "maxMemories": 3, "dryRun": true } },
+    { "kind": "runHousekeeping", "characterId": "77777777-7777-4777-8777-777777777777", "options": {} },
+    { "kind": "runHousekeeping", "characterId": "88888888-8888-4888-8888-888888888888", "options": { "mergeSimilar": true } },
+    { "kind": "runHousekeeping", "characterId": "99999999-9999-4999-8999-999999999999", "options": { "maxMemories": 3 } },
+    { "kind": "needsHousekeeping", "characterId": "77777777-7777-4777-8777-777777777777", "options": {} },
+    { "kind": "needsHousekeeping", "characterId": "99999999-9999-4999-8999-999999999999", "options": { "maxMemories": 3 } }
+  ]
+}

@@ -119,6 +119,15 @@ impl CharacterVectorStore {
         self.index.contains_key(id)
     }
 
+    /// Every loaded entry as `(id, embedding)`, in load (DB row) order — v4
+    /// `getAllEntries()` (a `Map` iterates in insertion order). Housekeeping's
+    /// merge pass uses this to look up each memory's stored embedding.
+    pub fn all_entries(&self) -> impl Iterator<Item = (&str, &[f32])> {
+        self.entries
+            .iter()
+            .map(|e| (e.id.as_str(), e.embedding.as_slice()))
+    }
+
     /// Cosine-similarity search returning the top `limit` matches, descending by
     /// score (v4 `search` → `searchLinear`). Empty store → `[]`; a query whose
     /// length disagrees with the store's known `dimensions` → `[]` (v4 logs a warn

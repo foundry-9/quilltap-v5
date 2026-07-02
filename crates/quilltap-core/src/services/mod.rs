@@ -14,6 +14,11 @@
 //!   the three `deleteMemoriesBy*WithVectors` cascades): the vector-store-aware
 //!   wrappers around the deletion chokepoint. No model call; verified by a plain
 //!   tier-2 differential.
+//! * [`housekeeping`] — the retention sweep (v4 `runHousekeeping` /
+//!   `needsHousekeeping`): protection-gated policy deletions, the opt-in
+//!   stored-vector similarity merge, and cap enforcement, applied through the
+//!   chokepoint. No model call; verified by a plain tier-2 differential.
 
+pub mod housekeeping;
 pub mod memory_gate;
 pub mod memory_service;

@@ -1334,8 +1334,33 @@ driving v4's REAL memory-service over an 8-op sequence on an 11-memory /
 entry-less store), asserting each op's return against the spec on both sides and
 diffing `memories` + `vector_indices` + `vector_entries` in the sentinel-aware
 minted-`updatedAt` form; plus three service self-tests and three store unit
-tests. Next: `housekeeping` (tier-2, no model call), then the model-dependent
-`memory-processor` per-turn extraction, per `docs/developer/porting/phase-3.md`.
+tests.
+
+**Memory housekeeping** — the third memory-family follow-on — is also ported and
+green (`services::housekeeping`, `memory_housekeeping_tier2_equivalence`): v4's
+`runHousekeeping` / `getHousekeepingPreview` / `needsHousekeeping`, the retention
+sweep the `MEMORY_HOUSEKEEPING` job runs. Three passes then a gated apply:
+retention (MANUAL a hard protection override, else the blended
+`calculate_protection_score` ≥ 0.5 protects; an unprotected memory goes only when
+below the importance floor AND old AND inactive), the opt-in similarity merge
+over the **stored** vector index (no model call; ≥ threshold folds into the
+more-important/newer survivor — and the merge pass does NOT consult protection,
+faithful to v4), and cap enforcement (lowest-effective-weight unprotected from
+the tail, with v4's all-protected pre-check). The apply deletes through the
+chokepoint then cleans the vector store non-fatally; `dry_run` reports without
+writing; detail reasons use the ported JS `toFixed` byte-exactly. Added
+`clock::{now_unix_ms, iso_to_ms}` (the strict `Date.parse` inverse of
+`iso_from_unix_ms`) and `CharacterVectorStore::all_entries`. Verified by a tsx
+real-DB differential over a 6-op / 15-memory / 3-character corpus diffing BOTH
+the per-op result objects (counts, id lists, details — the wall-clock-derived
+month numbers in reasons placeholdered) and the three table dumps
+(sentinel-aware); plus three self-tests. **Corpus freshness:** the spec's
+"recent" seed dates age past the 6-month windows ~2026-12 — refresh them when
+regenerating after that (both sides stay in agreement regardless; only the
+banked outcome descriptions/sanity counts assume fresh dates). Next: the
+model-dependent `memory-processor` per-turn extraction (tier-3), and the gate's
+deferred `maybeEnqueueHousekeeping` watermark check, per
+`docs/developer/porting/phase-3.md`.
 
 **Drift catch-up (2026-07-01): the answer-confirmation columns.** v4 commit
 `29f3ae63` (a Salon consistency-check + re-affirmation feature) added DDL/schema

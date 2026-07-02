@@ -45,11 +45,62 @@ pub fn iso_from_unix_ms(ms: i64) -> String {
 /// The current wall-clock instant as an ISO-8601 string (v4's
 /// `getCurrentTimestamp()`). The single impure call; everything else is pure.
 pub fn now_iso() -> String {
-    let ms = SystemTime::now()
+    iso_from_unix_ms(now_unix_ms())
+}
+
+/// The current wall-clock instant as Unix milliseconds (v4's `Date.now()` /
+/// `new Date().getTime()`), for services that compare stored timestamps against
+/// "now" (housekeeping ages, throttle windows).
+pub fn now_unix_ms() -> i64 {
+    SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("system clock before Unix epoch")
-        .as_millis() as i64;
-    iso_from_unix_ms(ms)
+        .as_millis() as i64
+}
+
+/// Days since the Unix epoch for a civil (y, m, d) — Howard Hinnant's
+/// `days_from_civil`, the exact inverse of [`civil_from_days`].
+fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = (if y >= 0 { y } else { y - 399 }) / 400;
+    let yoe = y - era * 400; // [0, 399]
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1; // [0, 365]
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy; // [0, 146096]
+    era * 146_097 + doe - 719_468
+}
+
+/// Parse a stored ISO-8601 UTC timestamp (`YYYY-MM-DDTHH:MM:SS[.mmm]Z` — the only
+/// shape the repos ever mint) to Unix milliseconds, matching JS
+/// `new Date(s).getTime()` on that shape. Returns `None` for anything else (the
+/// analogue of JS's `NaN` date, which callers treat as "no usable time").
+pub fn iso_to_ms(s: &str) -> Option<i64> {
+    let (date, rest) = s.split_once('T')?;
+    let time = rest.strip_suffix('Z')?;
+    let mut dparts = date.split('-');
+    let y: i64 = dparts.next()?.parse().ok()?;
+    let mo: i64 = dparts.next()?.parse().ok()?;
+    let d: i64 = dparts.next()?.parse().ok()?;
+    if dparts.next().is_some() {
+        return None;
+    }
+    let (hms, millis) = match time.split_once('.') {
+        Some((a, b)) => {
+            if b.len() != 3 {
+                return None;
+            }
+            (a, b.parse::<i64>().ok()?)
+        }
+        None => (time, 0),
+    };
+    let mut tparts = hms.split(':');
+    let h: i64 = tparts.next()?.parse().ok()?;
+    let mi: i64 = tparts.next()?.parse().ok()?;
+    let se: i64 = tparts.next()?.parse().ok()?;
+    if tparts.next().is_some() {
+        return None;
+    }
+    let days = days_from_civil(y, mo, d);
+    Some((days * 86_400 + h * 3_600 + mi * 60 + se) * 1000 + millis)
 }
 
 #[cfg(test)]
@@ -72,6 +123,17 @@ mod tests {
             iso_from_unix_ms(1_709_251_199_999),
             "2024-02-29T23:59:59.999Z"
         );
+    }
+
+    #[test]
+    fn iso_to_ms_round_trips_and_rejects_junk() {
+        for ms in [0i64, 1, 1_000, 1_782_995_696_789, 1_709_251_199_999] {
+            assert_eq!(iso_to_ms(&iso_from_unix_ms(ms)), Some(ms));
+        }
+        // Seconds-precision (no millis) parses too, as `Date.parse` does.
+        assert_eq!(iso_to_ms("2020-01-01T00:00:00Z"), Some(1_577_836_800_000));
+        assert_eq!(iso_to_ms("not a date"), None);
+        assert_eq!(iso_to_ms("2020-01-01"), None);
     }
 
     #[test]

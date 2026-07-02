@@ -270,9 +270,15 @@ Track them to closure as their subsystem lands:
      (`services::memory_service`, tsx real-DB differential
      `memory_cascade_tier2_equivalence` over `memories` + `vector_indices` +
      `vector_entries`; `CharacterVectorStore::remove_vector` added).
-   - Next: `housekeeping` (tier-2, no model call — the retention sweep the
-     `MEMORY_HOUSEKEEPING` job runs), then the model-dependent `memory-processor`
-     extraction.
+   - Housekeeping (`runHousekeeping` / `getHousekeepingPreview` /
+     `needsHousekeeping`) — **✅ done + green** (`services::housekeeping`, tsx
+     real-DB differential `memory_housekeeping_tier2_equivalence`: per-op
+     results + three table dumps; retention / stored-vector merge / cap
+     passes, protection gate, dry run).
+   - Next: the model-dependent `memory-processor` extraction (tier-3 — canned
+     completion injected both sides), and the gate's deferred
+     `maybeEnqueueHousekeeping` watermark check (needs `background_jobs`
+     integration, already ported at the repo level).
 3. Chat orchestration (turn manager + streaming on the `Event` channel).
 4. Enclave engine (`step()` + `RunState` + driver seam).
 
