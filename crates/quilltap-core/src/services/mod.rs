@@ -18,6 +18,13 @@
 //!   `needsHousekeeping`): protection-gated policy deletions, the opt-in
 //!   stored-vector similarity merge, and cap enforcement, applied through the
 //!   chokepoint. No model call; verified by a plain tier-2 differential.
+//! * [`turn_orchestrator`] — the turn-orchestration decision core (v4
+//!   `shouldChainNext` / `persistTurnParticipantId` + the `handleTurnAction`
+//!   mutation core): the per-step chain decision (guards + all-LLM auto-pause +
+//!   queue pop + weighted selection) and the nudge/queue/dequeue/skip/query turn
+//!   actions, over the ported pure turn manager. No model call (the model-calling
+//!   chain *driver* `executeTurnChain` is a later wave); RNG + wall clock
+//!   injected; verified by a plain tier-2 differential.
 
 pub mod cheap_llm_exec;
 pub mod housekeeping;
@@ -26,3 +33,4 @@ pub mod memory_gate;
 pub mod memory_processor;
 pub mod memory_service;
 pub mod queue_service;
+pub mod turn_orchestrator;

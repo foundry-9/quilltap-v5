@@ -1,0 +1,435 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2026-03-01T00:00:00.000Z",
+  "userId": "11111111-1111-4111-8111-111111111111",
+  "characters": [
+    {
+      "id": "aaaa0000-0000-4000-8000-a00000000000",
+      "name": "Aria",
+      "controlledBy": "llm"
+    },
+    {
+      "id": "bbbb0000-0000-4000-8000-b00000000000",
+      "name": "Beau",
+      "controlledBy": "llm"
+    },
+    {
+      "id": "cccc0007-0000-4000-8000-c00000000007",
+      "name": "Cleo",
+      "controlledBy": "llm"
+    },
+    {
+      "id": "dddd0000-0000-4000-8000-d00000000000",
+      "name": "Uma",
+      "controlledBy": "user"
+    }
+  ],
+  "chats": [
+    {
+      "id": "cccc0000-0000-4000-8000-c00000000000",
+      "title": "Chain Yes",
+      "isPaused": false,
+      "turnQueue": "[]",
+      "spokenThisCycleParticipantIds": "[]",
+      "participants": [
+        {
+          "id": "eeee0000-0000-4000-8000-e00000000000",
+          "type": "CHARACTER",
+          "characterId": "aaaa0000-0000-4000-8000-a00000000000",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.9,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "id": "eeee0001-0000-4000-8000-e00000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb0000-0000-4000-8000-b00000000000",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
+      ],
+      "messages": [
+        {
+          "id": "ffff0000-0000-4000-8000-f00000000000",
+          "role": "ASSISTANT",
+          "content": "Aria speaks.",
+          "participantId": "eeee0000-0000-4000-8000-e00000000000"
+        }
+      ]
+    },
+    {
+      "id": "cccc0001-0000-4000-8000-c00000000001",
+      "title": "User Turn",
+      "isPaused": false,
+      "turnQueue": "[]",
+      "spokenThisCycleParticipantIds": "[]",
+      "participants": [
+        {
+          "id": "eeee0002-0000-4000-8000-e00000000002",
+          "type": "CHARACTER",
+          "characterId": "aaaa0000-0000-4000-8000-a00000000000",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "id": "eeee0003-0000-4000-8000-e00000000003",
+          "type": "CHARACTER",
+          "characterId": "dddd0000-0000-4000-8000-d00000000000",
+          "controlledBy": "user",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
+      ],
+      "messages": [
+        {
+          "id": "ffff0001-0000-4000-8000-f00000000001",
+          "role": "ASSISTANT",
+          "content": "Aria speaks.",
+          "participantId": "eeee0002-0000-4000-8000-e00000000002"
+        }
+      ]
+    },
+    {
+      "id": "cccc0002-0000-4000-8000-c00000000002",
+      "title": "Paused",
+      "isPaused": true,
+      "turnQueue": "[]",
+      "spokenThisCycleParticipantIds": "[]",
+      "participants": [
+        {
+          "id": "eeee0004-0000-4000-8000-e00000000004",
+          "type": "CHARACTER",
+          "characterId": "aaaa0000-0000-4000-8000-a00000000000",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "id": "eeee0005-0000-4000-8000-e00000000005",
+          "type": "CHARACTER",
+          "characterId": "bbbb0000-0000-4000-8000-b00000000000",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
+      ],
+      "messages": []
+    },
+    {
+      "id": "cccc0003-0000-4000-8000-c00000000003",
+      "title": "All-LLM Pause",
+      "isPaused": false,
+      "turnQueue": "[]",
+      "spokenThisCycleParticipantIds": "[]",
+      "participants": [
+        {
+          "id": "eeee0006-0000-4000-8000-e00000000006",
+          "type": "CHARACTER",
+          "characterId": "aaaa0000-0000-4000-8000-a00000000000",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "id": "eeee0007-0000-4000-8000-e00000000007",
+          "type": "CHARACTER",
+          "characterId": "bbbb0000-0000-4000-8000-b00000000000",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
+      ],
+      "messages": [
+        {
+          "id": "ffff0002-0000-4000-8000-f00000000002",
+          "role": "ASSISTANT",
+          "content": "turn 1",
+          "participantId": "eeee0006-0000-4000-8000-e00000000006"
+        },
+        {
+          "id": "ffff0003-0000-4000-8000-f00000000003",
+          "role": "ASSISTANT",
+          "content": "turn 2",
+          "participantId": "eeee0007-0000-4000-8000-e00000000007"
+        },
+        {
+          "id": "ffff0004-0000-4000-8000-f00000000004",
+          "role": "ASSISTANT",
+          "content": "turn 3",
+          "participantId": "eeee0006-0000-4000-8000-e00000000006"
+        }
+      ]
+    },
+    {
+      "id": "cccc0004-0000-4000-8000-c00000000004",
+      "title": "Queue Pop",
+      "isPaused": false,
+      "turnQueue": "[\"eeee0009-0000-4000-8000-e00000000009\"]",
+      "spokenThisCycleParticipantIds": "[]",
+      "participants": [
+        {
+          "id": "eeee0008-0000-4000-8000-e00000000008",
+          "type": "CHARACTER",
+          "characterId": "aaaa0000-0000-4000-8000-a00000000000",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "id": "eeee0009-0000-4000-8000-e00000000009",
+          "type": "CHARACTER",
+          "characterId": "bbbb0000-0000-4000-8000-b00000000000",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
+      ],
+      "messages": [
+        {
+          "id": "ffff0005-0000-4000-8000-f00000000005",
+          "role": "ASSISTANT",
+          "content": "Aria speaks.",
+          "participantId": "eeee0008-0000-4000-8000-e00000000008"
+        }
+      ]
+    },
+    {
+      "id": "cccc0005-0000-4000-8000-c00000000005",
+      "title": "Queue Pop Skip-Last",
+      "isPaused": false,
+      "turnQueue": "[\"eeee000a-0000-4000-8000-e0000000000a\",\"eeee000b-0000-4000-8000-e0000000000b\"]",
+      "spokenThisCycleParticipantIds": "[]",
+      "participants": [
+        {
+          "id": "eeee000a-0000-4000-8000-e0000000000a",
+          "type": "CHARACTER",
+          "characterId": "aaaa0000-0000-4000-8000-a00000000000",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "id": "eeee000b-0000-4000-8000-e0000000000b",
+          "type": "CHARACTER",
+          "characterId": "bbbb0000-0000-4000-8000-b00000000000",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
+      ],
+      "messages": [
+        {
+          "id": "ffff0006-0000-4000-8000-f00000000006",
+          "role": "ASSISTANT",
+          "content": "Aria (last speaker).",
+          "participantId": "eeee000a-0000-4000-8000-e0000000000a"
+        }
+      ]
+    },
+    {
+      "id": "cccc0006-0000-4000-8000-c00000000006",
+      "title": "Turn Actions",
+      "isPaused": false,
+      "turnQueue": "[]",
+      "spokenThisCycleParticipantIds": "[]",
+      "participants": [
+        {
+          "id": "eeee000c-0000-4000-8000-e0000000000c",
+          "type": "CHARACTER",
+          "characterId": "aaaa0000-0000-4000-8000-a00000000000",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.9,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "id": "eeee000d-0000-4000-8000-e0000000000d",
+          "type": "CHARACTER",
+          "characterId": "bbbb0000-0000-4000-8000-b00000000000",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "id": "eeee000e-0000-4000-8000-e0000000000e",
+          "type": "CHARACTER",
+          "characterId": "cccc0007-0000-4000-8000-c00000000007",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "id": "eeee000f-0000-4000-8000-e0000000000f",
+          "type": "CHARACTER",
+          "characterId": "dddd0000-0000-4000-8000-d00000000000",
+          "controlledBy": "user",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
+      ],
+      "messages": [
+        {
+          "id": "ffff0007-0000-4000-8000-f00000000007",
+          "role": "USER",
+          "content": "Human speaks.",
+          "participantId": "eeee000f-0000-4000-8000-e0000000000f"
+        }
+      ]
+    }
+  ],
+  "ops": [
+    {
+      "kind": "shouldChainNext",
+      "chatId": "cccc0000-0000-4000-8000-c00000000000",
+      "userParticipantId": null,
+      "chainDepth": 0,
+      "nowMs": 1000,
+      "chainStartTimeMs": 0,
+      "random01": 0.1,
+      "note": "chain-yes: next LLM speaker selected"
+    },
+    {
+      "kind": "shouldChainNext",
+      "chatId": "cccc0001-0000-4000-8000-c00000000001",
+      "userParticipantId": "p2u00000-0000-4000-8000-000000000002",
+      "chainDepth": 0,
+      "nowMs": 1000,
+      "chainStartTimeMs": 0,
+      "random01": 0.99,
+      "note": "user-turn stop (user-controlled next)"
+    },
+    {
+      "kind": "shouldChainNext",
+      "chatId": "cccc0002-0000-4000-8000-c00000000002",
+      "userParticipantId": null,
+      "chainDepth": 0,
+      "nowMs": 1000,
+      "chainStartTimeMs": 0,
+      "random01": 0.5,
+      "note": "paused stop"
+    },
+    {
+      "kind": "shouldChainNext",
+      "chatId": "cccc0000-0000-4000-8000-c00000000000",
+      "userParticipantId": null,
+      "chainDepth": 20,
+      "nowMs": 1000,
+      "chainStartTimeMs": 0,
+      "random01": 0.5,
+      "note": "depth-guard stop"
+    },
+    {
+      "kind": "shouldChainNext",
+      "chatId": "cccc0000-0000-4000-8000-c00000000000",
+      "userParticipantId": null,
+      "chainDepth": 0,
+      "nowMs": 400000,
+      "chainStartTimeMs": 0,
+      "random01": 0.5,
+      "note": "time-guard stop"
+    },
+    {
+      "kind": "shouldChainNext",
+      "chatId": "cccc0003-0000-4000-8000-c00000000003",
+      "userParticipantId": null,
+      "chainDepth": 0,
+      "nowMs": 1000,
+      "chainStartTimeMs": 0,
+      "random01": 0.5,
+      "note": "all-LLM pause-write at turnCount 3"
+    },
+    {
+      "kind": "shouldChainNext",
+      "chatId": "cccc0004-0000-4000-8000-c00000000004",
+      "userParticipantId": null,
+      "chainDepth": 0,
+      "nowMs": 1000,
+      "chainStartTimeMs": 0,
+      "random01": 0.5,
+      "note": "queue-pop: popped Beau, queue written back"
+    },
+    {
+      "kind": "shouldChainNext",
+      "chatId": "cccc0005-0000-4000-8000-c00000000005",
+      "userParticipantId": null,
+      "chainDepth": 0,
+      "nowMs": 1000,
+      "chainStartTimeMs": 0,
+      "random01": 0.5,
+      "note": "queue-pop skips last speaker Aria, picks Beau"
+    },
+    {
+      "kind": "turnAction",
+      "chatId": "cccc0006-0000-4000-8000-c00000000006",
+      "action": "nudge",
+      "participantId": "eeee000e-0000-4000-8000-e0000000000e",
+      "random01": 0.5,
+      "note": "nudge Cleo to front"
+    },
+    {
+      "kind": "turnAction",
+      "chatId": "cccc0006-0000-4000-8000-c00000000006",
+      "action": "queue",
+      "participantId": "eeee000d-0000-4000-8000-e0000000000d",
+      "random01": 0.5,
+      "note": "queue Beau"
+    },
+    {
+      "kind": "turnAction",
+      "chatId": "cccc0006-0000-4000-8000-c00000000006",
+      "action": "dequeue",
+      "participantId": "eeee000e-0000-4000-8000-e0000000000e",
+      "random01": 0.5,
+      "note": "dequeue Cleo"
+    },
+    {
+      "kind": "turnAction",
+      "chatId": "cccc0006-0000-4000-8000-c00000000006",
+      "action": "skipUserTurn",
+      "participantId": "eeee000f-0000-4000-8000-e0000000000f",
+      "random01": 0.05,
+      "note": "skip Uma's user turn"
+    },
+    {
+      "kind": "turnAction",
+      "chatId": "cccc0006-0000-4000-8000-c00000000006",
+      "action": "query",
+      "participantId": null,
+      "random01": 0.5,
+      "note": "query: read-only, no write"
+    }
+  ]
+}

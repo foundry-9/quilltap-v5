@@ -117,6 +117,21 @@
 //!     pre-write similarity gate (v4 `createMemoryWithGate` / `runMemoryGate`):
 //!     INSERT / INSERT_RELATED / REINFORCE / SKIP_NEAR_DUPLICATE /
 //!     SKIP_EMBEDDING_FAILED, verified tier-3 → tier-2.
+//!   * the chat-orchestration leaves (Phase-3 Unit 3, waves 1–2 — see
+//!     `docs/developer/porting/chat-orchestration.md`): `templates` (the
+//!     `{{char}}`/`{{user}}` template processor), `chat_timestamp` (timezone
+//!     resolution + real/fictional timestamp calc, clock injected; `jiff` for the
+//!     IANA offset lookup), `template_prompt_hint`, `memory_injector` (the
+//!     context memory/scene/summary formatters), `message_selector` (the greedy
+//!     recent-window tail fit), `core_whisper` (the Core-whisper cadence gate),
+//!     `carina_parser` (the `@Name:` inline-markup parser), `message_formatter`
+//!     (the anti-hijack response cleanups) + `finish_reason`, and
+//!     `system_prompt` (the identity-stack / system-prompt builder over
+//!     `templates` + `chat_timestamp`); all oracle-verified.
+//!     `services::turn_orchestrator` is the stateful turn-chain decision core
+//!     (should-chain guards, all-LLM pause write, queue pop, turn actions; RNG +
+//!     clock injected), tier-2-verified; `model::stream` is the streaming
+//!     completion seam (`StreamChunk` / `CannedStreamingProvider`).
 //!
 //! Everything else (the remaining services, the Request/Response/Event boundary)
 //! lands in later phases.
@@ -129,9 +144,11 @@ pub mod about_character;
 pub mod all_llm_pause;
 pub mod canon;
 pub mod canonicalize;
+pub mod carina_parser;
 pub mod char_count;
 pub mod chat_predicates;
 pub mod chat_tasks;
+pub mod chat_timestamp;
 pub mod chat_utils;
 pub mod cheap_llm;
 pub mod cheap_model;
@@ -140,11 +157,13 @@ pub mod collation;
 pub mod context_budget;
 pub mod context_compression;
 pub mod context_summary;
+pub mod core_whisper;
 pub mod db;
 pub mod dbkey;
 pub mod embedding_blob;
 pub mod embedding_vector;
 pub mod enclave_budget;
+pub mod finish_reason;
 pub mod format_bytes;
 pub mod format_tokens;
 pub mod jsnum;
@@ -153,10 +172,13 @@ pub mod literal_boost;
 pub mod markdown;
 pub mod memory_format;
 pub mod memory_gate;
+pub mod memory_injector;
 pub mod memory_tasks;
 pub mod memory_weighting;
 pub mod mentioned_characters;
 pub mod message_attribution;
+pub mod message_formatter;
+pub mod message_selector;
 pub mod model;
 pub mod model_classes;
 pub mod model_context;
@@ -169,7 +191,10 @@ pub mod scenario_text;
 pub mod select_speaker;
 pub mod semver;
 pub mod services;
+pub mod system_prompt;
 pub mod tag_style;
+pub mod template_prompt_hint;
+pub mod templates;
 pub mod token_estimation;
 pub mod turn_order;
 pub mod turn_state;

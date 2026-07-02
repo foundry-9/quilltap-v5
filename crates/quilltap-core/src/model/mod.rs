@@ -9,17 +9,21 @@
 //! canonical-dump machinery diffs the resulting writes — any divergence is in
 //! *our* orchestration, not the model.
 //!
-//! The boundary has two halves: **embeddings** ([`embedding`] — the memory
-//! gate's model call) and **completions** ([`completion`] — the cheap-LLM task
-//! pipeline's model call, first consumed by the memory-processor extraction).
-//! Both follow the same canned-responder shape.
+//! The boundary has three halves: **embeddings** ([`embedding`] — the memory
+//! gate's model call), **completions** ([`completion`] — the cheap-LLM task
+//! pipeline's model call, first consumed by the memory-processor extraction), and
+//! **streaming completions** ([`stream`] — the primary chat stream, consumed by
+//! the wave-3 primary-stream service). All three follow the same canned-responder
+//! shape.
 //!
-//! Consumers take generic `P: EmbeddingProvider` / `C: CompletionProvider`
-//! parameters (not trait objects), so the async boundary methods need no boxing
-//! — see [`embedding::EmbeddingProvider`] / [`completion::CompletionProvider`].
+//! Consumers take generic `P: EmbeddingProvider` / `C: CompletionProvider` /
+//! `S: StreamingCompletionProvider` parameters (not trait objects), so the async
+//! boundary methods need no boxing — see [`embedding::EmbeddingProvider`] /
+//! [`completion::CompletionProvider`] / [`stream::StreamingCompletionProvider`].
 
 pub mod completion;
 pub mod embedding;
+pub mod stream;
 
 pub use completion::{
     CannedCompletionProvider, CompletionError, CompletionMessage, CompletionParams,
@@ -27,4 +31,9 @@ pub use completion::{
 };
 pub use embedding::{
     CannedEmbeddingProvider, EmbeddingError, EmbeddingPriority, EmbeddingProvider, EmbeddingResult,
+};
+pub use stream::{
+    CannedStreamingProvider, StreamAttachmentFailure, StreamAttachmentResults, StreamCacheUsage,
+    StreamChunk, StreamChunkResult, StreamError, StreamParams, StreamUsage,
+    StreamingCompletionProvider,
 };

@@ -120,6 +120,45 @@ fn build_result(
     }
 }
 
+/// Checks if it's a specific participant's turn (v4 `isParticipantsTurn`,
+/// utils.ts). True iff the selection's `next_speaker_id` equals this
+/// participant's id.
+pub fn is_participants_turn(result: &SelectionResult, participant_id: &str) -> bool {
+    result.next_speaker_id.as_deref() == Some(participant_id)
+}
+
+/// Checks if it's the user's turn — no AI character should speak (v4
+/// `isUsersTurn`, utils.ts).
+///
+/// Two shapes mean "the turn has closed":
+///   - `next_speaker_id === None` — classic case, no character was picked at all
+///     (e.g. only-LLM chats where the cycle completed).
+///   - `reason === "user_turn"` — the rotation landed on a user-controlled
+///     CHARACTER participant, whose `next_speaker_id` is the participant's own
+///     id (not `None`). This is the path introduced when user characters joined
+///     the talkativeness rotation.
+///
+/// Both branches must be recognized; downstream code (memory extraction,
+/// orchestrator chain control, UI banners) keys off this to decide whether the
+/// human now has the floor.
+pub fn is_users_turn(result: &SelectionResult) -> bool {
+    result.next_speaker_id.is_none() || result.reason == "user_turn"
+}
+
+/// Human-readable explanation of why a participant was selected (v4
+/// `getSelectionExplanation`, utils.ts). Unknown reasons fall through to the
+/// `default` branch, matching v4's `switch`.
+pub fn get_selection_explanation(result: &SelectionResult) -> &'static str {
+    match result.reason {
+        "queue" => "Selected from queue (manually nudged/queued)",
+        "weighted_selection" => "Selected by weighted random based on talkativeness",
+        "only_character" => "Only character in chat",
+        "user_turn" => "User's turn - waiting for user input",
+        "cycle_complete" => "All characters have spoken this cycle - waiting for user",
+        _ => "Unknown selection reason",
+    }
+}
+
 /// Select the next speaker. See module docs for the algorithm; `random01` is the
 /// injected `Math.random()` value used by the weighted picks.
 pub fn select_next_speaker(

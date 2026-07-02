@@ -428,6 +428,14 @@ pub struct ChatUpdate {
     /// The plain-string `spokenThisCycleParticipantIds` column (holds JSON text);
     /// set by the message-write metadata path when the turn cycle advances.
     pub spoken_this_cycle_participant_ids: Option<String>,
+    /// The plain-string `turnQueue` column (holds JSON text) — set by the
+    /// turn-orchestration decision core ([`crate::services::turn_orchestrator`]):
+    /// the queue-pop write-back and the turn-action mutators.
+    pub turn_queue: Option<String>,
+    /// Nullable `lastTurnParticipantId`. `Some(Some(id))` sets it; `Some(None)`
+    /// clears it to SQL NULL (v4 writes `participantId ?? null`); `None` leaves it
+    /// unset. Set by the turn-orchestration decision core.
+    pub last_turn_participant_id: Option<Option<String>>,
     /// `allLLMPauseTurnCount` (REAL) — set by the impersonation ops
     /// ([`super::chats_impersonation`]).
     pub all_llm_pause_turn_count: Option<f64>,
@@ -687,6 +695,12 @@ impl<'c> ChatsRepository<'c> {
         }
         if let Some(v) = &patch.spoken_this_cycle_participant_ids {
             set_col!("spokenThisCycleParticipantIds", Box::new(v.clone()));
+        }
+        if let Some(v) = &patch.turn_queue {
+            set_col!("turnQueue", Box::new(v.clone()));
+        }
+        if let Some(v) = &patch.last_turn_participant_id {
+            set_col!("lastTurnParticipantId", Box::new(v.clone()));
         }
         if let Some(v) = patch.all_llm_pause_turn_count {
             set_col!("allLLMPauseTurnCount", Box::new(v));

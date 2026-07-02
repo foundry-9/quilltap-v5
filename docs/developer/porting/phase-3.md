@@ -309,7 +309,17 @@ Track them to closure as their subsystem lands:
      gate wiring after INSERT / INSERT_RELATED. The memory family is now fully
      ported.
    - Next: chat orchestration (Unit 3 below).
-3. Chat orchestration (turn manager + streaming on the `Event` channel).
+3. Chat orchestration (turn manager + streaming on the `Event` channel). ← **in progress**
+   — decomposed and scoped in
+   [`chat-orchestration.md`](./chat-orchestration.md) (2026-07-02). Waves 1–2
+   are ported and green: the six pure-leaf tier-1 units (template processor +
+   turn predicates, chat timestamps + formatting hint, memory-injector
+   formatters, message selector + core-whisper trigger, carina parser, message
+   formatter + finish reason), the system-prompt builder, the stateful
+   turn-orchestration decision core (`services::turn_orchestrator`, tsx real-DB
+   tier-2), and the streaming model boundary (`model::stream`). Waves 3–4
+   (the model-calling services, `buildContext`, the `processMessage` spine +
+   `executeTurnChain`, and the adjacent subsystems) are scoped in that doc.
 4. Enclave engine (`step()` + `RunState` + driver seam).
 
 Each unit ships with its differential (tier-2, or tier-3 → tier-2 for

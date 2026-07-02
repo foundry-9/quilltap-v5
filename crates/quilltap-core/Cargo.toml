@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-core"
-version = "0.0.87"
+version = "0.0.88"
 edition = "2021"
 publish = false
 
@@ -61,6 +61,22 @@ uuid = { version = "1", features = ["v4"] }
 # the collation tables in (the locked "add ICU crate" decision). `try_new` returns
 # a `CollatorBorrowed<'static>` over the baked tables — `Sync`, held in a static.
 icu = "2.2"
+
+# IANA-timezone offset lookup for chat_timestamp (v4's Intl-based timestamp
+# formatting). The ONLY thing chat_timestamp needs a TZDB for is the DST-correct
+# UTC offset of an IANA zone at a precise instant — every other part of v4's
+# `Intl.DateTimeFormat('en-US', …)` output (month/day names, AM/PM, the `" at "`
+# separator, the `±HH:MM` offset string) is a fixed en-US literal computed here
+# from the offset-adjusted date-parts. ICU4X's `icu_time` offset API is
+# name-timestamp-granular (returns a zone's standard AND daylight offsets, not
+# the one in effect at an instant) so it can't resolve the exact offset across a
+# DST transition; `jiff` bundles its own TZDB and IS instant-exact — its
+# `to_offset` matches Intl/Date byte-for-byte on every corpus instant (both US
+# DST boundaries, US/European/half-hour/quarter-hour zones) and errors on an
+# unknown zone exactly as `Intl.DateTimeFormat` throws. Version pinned like the
+# neighbors. Default features (bundled tzdb) suffice; no jiff formatting/parsing
+# of ours reaches the wire — only `Timestamp::from_millisecond` + `to_offset`.
+jiff = "0.2.31"
 
 # Async runtime for the Phase-3 writer-task runtime (db::runtime): mpsc/oneshot
 # channels are the "channel is the only mutator" seam. Only `sync` is needed in

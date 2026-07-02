@@ -1437,8 +1437,63 @@ durable 15-minute throttle (future-`updatedAt` seed = always in-window), the
 in-flight dedupe, and the in-memory back-off (both sides record the same
 outcome through their real cache first); four tables diffed
 (`background_jobs` + the three memory tables); the gate and processor
-differentials re-verified green with the watermark path live. Next: chat
-orchestration / the enclave engine, per `docs/developer/porting/phase-3.md`.
+differentials re-verified green with the watermark path live.
+
+**Chat orchestration (Phase-3 Unit 3) is now in progress — waves 1–2 ported and
+green** (2026-07-02; decomposition + wave roadmap in
+`docs/developer/porting/chat-orchestration.md` — v4's engine is
+`lib/services/chat-message/` (~11.7k lines) + `buildContext` + the stateful turn
+chain, being ported leaf-first in four waves). **Wave 1** (six parallel tier-1
+units, fresh-oracle exact differentials): the **template processor**
+(`templates` — `processTemplate`/`buildTemplateContext`/
+`processCharacterTemplates`, JS ASCII-`\w` token rule, the two-pass `{{trim}}`
+quirk ported faithfully) + the **turn-predicate gap** (`is_users_turn` /
+`is_participants_turn` / `get_selection_explanation` added to `select_speaker`);
+the **chat timestamps** (`chat_timestamp` — resolve/calculate/should-inject/
+format + fictional time, clock injected as `now_ms`; **`jiff` added** (pinned
+0.2.31) for the IANA UTC-offset lookup after ICU4X's offset API proved
+instant-blind across DST — proven byte-exact against `Intl` on both US DST
+boundaries, Kolkata/Chatham fractional offsets, and the invalid-zone throw; v4's
+CUSTOM-token sequential-replace bug reproduced and banked) + the **formatting
+prompt hint** (`template_prompt_hint`); the **memory-injector formatters**
+(`memory_injector` — metadata tag, scene state + sceneHash/`_unchanged_`
+compaction, memories, inter-character interleave, frozen archive, dynamic head,
+summary; one note: full-precision *debug floats* compared at the tier-1 1e-12
+tolerance — a 1-ULP `Math.pow` libm divergence that never survives the
+`toFixed(2)` rendering); the **message selector** (`message_selector`, the
+greedy tail fit incl. the force-include-last-truncated rule) + the
+**core-whisper trigger** (`core_whisper`, first/periodic/silence/
+context-transition precedence); the **carina parser** (`carina_parser` — JS
+ASCII-`\w` name rule, JS-dot-excludes-line-terminators, smart-quote pairing);
+and the **message formatter** (`message_formatter` — the anti-hijack
+`stripCharacterNamePrefix`/`truncateAtForeignSpeaker`/
+`normalizeContentBlockFormat` + name-field/provider helpers, the
+`LEGACY_PROVIDER_NAME_SUPPORT` hyphen quirk) + **finish-reason extraction**
+(`finish_reason`). **Wave 2:** the **system-prompt builder** (`system_prompt` —
+identity stack / public identity card / other-participants / reinforcement /
+`buildSystemPrompt`, composing `templates` + `chat_timestamp` with the clock
+injected; banked: `{{timestamp}}` in a *character field* is emptied by the
+identity-stack context, only per-turn additions resolve it); the **stateful
+turn-orchestration decision core** (`services::turn_orchestrator` —
+`should_chain_next` guard chain [not-found → paused → depth → time], the
+all-LLM auto-pause WRITE even on a don't-chain return, the turnQueue pop
+skipping only the immediate last speaker + write-back,
+`persist_turn_participant_id`, and the nudge/queue/dequeue/skipUserTurn/query
+action core; RNG + wall-clock injected; `ChatUpdate` gained `turn_queue` +
+nullable `last_turn_participant_id` setters; verified by a 13-op tsx real-DB
+tier-2 differential over a two-DB seeded fixture, **zero normalization** — no
+op mints a chat timestamp); and the **streaming model boundary**
+(`model::stream` — `StreamChunk` faithful to v4's chunk vocabulary,
+`StreamingCompletionProvider` over a tokio `mpsc::Receiver` of
+`Result<StreamChunk, StreamError>` so mid-stream failure is first-class,
+`CannedStreamingProvider` sharing `canned_completion_key`; oracle-side
+injection lands with the wave-3 primary-stream differential, as
+`model::completion` did with the memory processor). `executeTurnChain` (the
+model-calling chain driver), the wave-3 services (compression/summary halves,
+knowledge injector, resolvers, primary stream + recovery/failover, finalizer,
+`buildContext`, the `processMessage` spine), and the adjacent subsystems
+(tools, providers, danger/agent/courier/confirmation, enclave) are scoped in
+the decomposition doc. Next: wave 3, per that doc.
 
 **Drift catch-up (2026-07-01): the answer-confirmation columns.** v4 commit
 `29f3ae63` (a Salon consistency-check + re-affirmation feature) added DDL/schema

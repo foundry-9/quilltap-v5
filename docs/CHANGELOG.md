@@ -393,6 +393,55 @@ enqueues a `MEMORY_HOUSEKEEPING` background job — unless backed off.
   real cache first). Four tables diffed; the memory-gate and memory-processor
   differentials re-verified green with the watermark path live.
 
+Phase 3 — chat orchestration (Unit 3) started: the decomposition doc plus
+waves 1–2, ported in parallel (six pure-leaf agents, then three composed
+units), each with its own fresh-oracle differential.
+
+- Added `docs/developer/porting/chat-orchestration.md`: the survey of v4's
+  send-message engine (`lib/services/chat-message/`, `buildContext`, the
+  stateful turn chain), the SSE event vocabulary → `Event`-channel mapping, and
+  the four-wave leaf-first decomposition with per-unit verification plans.
+- Template processor (`templates`): `processTemplate` / `buildTemplateContext`
+  / `processCharacterTemplates` — ASCII-`\w` token rule, single-pass
+  non-recursive replacement, and the two-pass `{{trim}}` quirk (the paired
+  macro can never fire) ported faithfully. Turn-predicate gap closed
+  (`is_users_turn` / `is_participants_turn` / `get_selection_explanation`).
+- Chat timestamps (`chat_timestamp`): timezone resolution, real/fictional
+  timestamp calculation (clock injected), injection cadence, system-prompt
+  formatting. Added `jiff` (pinned) for the IANA UTC-offset lookup — proven
+  byte-exact against `Intl.DateTimeFormat` across both US DST boundaries,
+  fractional-offset zones, and the invalid-zone throw; v4's CUSTOM-token
+  sequential-replace bug reproduced. Plus the formatting prompt hint
+  (`template_prompt_hint`).
+- Memory-injector formatters (`memory_injector`): metadata tag, scene state
+  (sceneHash + `_unchanged_` compaction), memory/inter-character/frozen-archive
+  /dynamic-head/summary blocks — sort stability, insertion-order maps, and
+  UTF-16 slicing all byte-exact.
+- Message selector (`message_selector`, the greedy tail fit) and the
+  core-whisper cadence gate (`core_whisper`).
+- Carina markup parser (`carina_parser`): JS-dot / ASCII-`\w` / smart-quote
+  pairing semantics.
+- Message formatter (`message_formatter`): the anti-hijack cleanups
+  (name-prefix strip, foreign-speaker truncation, content-block normalization)
+  and provider name-field helpers; finish-reason extraction (`finish_reason`).
+- System-prompt builder (`system_prompt`): identity stack, public identity
+  card, other-participants info, identity reinforcement, `buildSystemPrompt` —
+  composed over `templates` + `chat_timestamp`.
+- Stateful turn-orchestration decision core (`services::turn_orchestrator`):
+  `should_chain_next` (guard chain, all-LLM auto-pause write, turn-queue pop +
+  write-back, weighted selection with injected RNG), `persist_turn_participant_id`,
+  and the turn-action mutation core (nudge/queue/dequeue/skipUserTurn/query).
+  `ChatUpdate` gained `turn_queue` + nullable `last_turn_participant_id`
+  setters. Verified by a 13-op tsx real-DB tier-2 differential (two-DB seeded
+  fixture, zero normalization).
+- Streaming model boundary (`model::stream`): `StreamChunk` (v4's normalized
+  chunk vocabulary — the target for the future manifest stream decoders),
+  `StreamingCompletionProvider`, and `CannedStreamingProvider` with
+  first-class mid-stream failures; oracle-side injection lands with the
+  wave-3 primary-stream differential.
+- Eleven new tier-1 oracle cases + the turn-orchestrator tier-2 case/fixture;
+  the `chats` tier-2 differential re-verified green with the new setters.
+
 Docs — Phase 2 marked complete; Phase 3 kickoff drafted. Docs only, no crate
 source changed.
 
