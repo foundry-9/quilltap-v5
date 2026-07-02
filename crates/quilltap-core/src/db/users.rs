@@ -183,3 +183,33 @@ impl<'c> UsersRepository<'c> {
         Ok(affected > 0)
     }
 }
+
+/// **Scoped read** for the user-identity resolver
+/// ([`crate::services::user_identity_resolver`]): the profile `name` of a user,
+/// v4 `users.findById(userId)?.name`. Follows the scoped-read precedent
+/// [`super::chat_settings::find_auto_housekeeping_settings_by_user_id`] — it
+/// marshals ONLY the one column the consumer reads, not the full `User` row (the
+/// complete `findById` read marshaling is a later users read sub-unit).
+///
+/// The two levels of `Option` are load-bearing and mirror v4's `?.name` guard:
+///   * outer `None` — no `users` row for this id (v4 `findById` → `null`).
+///   * inner `None` — the row exists but `name` is SQL NULL (`z.string()
+///     .nullable().optional()`); v4's `userProfile?.name` is then falsy, so the
+///     resolver falls through to the `'User'` default. The two absent shapes
+///     collapse identically downstream, but are kept distinct for fidelity.
+pub fn find_name_by_id(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Option<Option<String>>, DbError> {
+    conn.query_row(
+        "SELECT name FROM users WHERE id = ?1",
+        params![user_id],
+        |row| row.get::<_, Option<String>>(0),
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other),
+    })
+    .map_err(DbError::from)
+}

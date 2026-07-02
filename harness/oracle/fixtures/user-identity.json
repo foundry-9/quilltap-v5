@@ -1,0 +1,66 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2026-03-01T00:00:00.000Z",
+  "users": [
+    { "id": "10000000-0000-4000-8000-000000000001", "username": "alice", "name": "Alice" },
+    { "id": "10000000-0000-4000-8000-000000000002", "username": "bob", "name": "Bob" },
+    { "id": "10000000-0000-4000-8000-000000000003", "username": "carol", "name": null }
+  ],
+  "characters": [
+    { "id": "20000000-0000-4000-8000-0000000000a1", "userId": "10000000-0000-4000-8000-000000000001", "name": "Ada", "controlledBy": "user" },
+    { "id": "20000000-0000-4000-8000-0000000000b1", "userId": "10000000-0000-4000-8000-000000000002", "name": "Bo", "controlledBy": "user" },
+    { "id": "20000000-0000-4000-8000-0000000000b2", "userId": "10000000-0000-4000-8000-000000000002", "name": "Bea", "controlledBy": "user" },
+    { "id": "20000000-0000-4000-8000-0000000000c1", "userId": "10000000-0000-4000-8000-000000000001", "name": "Cy", "controlledBy": "llm" }
+  ],
+  "chats": [
+    {
+      "id": "30000000-0000-4000-8000-000000000001",
+      "userId": "10000000-0000-4000-8000-000000000001",
+      "title": "Chat-participant single user char",
+      "participants": [
+        { "id": "40000000-0000-4000-8000-000000000001", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000c1", "controlledBy": "llm", "status": "active", "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" },
+        { "id": "40000000-0000-4000-8000-000000000002", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000a1", "controlledBy": "user", "status": "active", "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000002",
+      "userId": "10000000-0000-4000-8000-000000000002",
+      "title": "Chat-participant prefers active-typing",
+      "participants": [
+        { "id": "40000000-0000-4000-8000-000000000010", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000b1", "controlledBy": "user", "status": "active", "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" },
+        { "id": "40000000-0000-4000-8000-000000000011", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000b2", "controlledBy": "user", "status": "active", "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000003",
+      "userId": "10000000-0000-4000-8000-000000000001",
+      "title": "No user participant (single-user-character fallback)",
+      "participants": [
+        { "id": "40000000-0000-4000-8000-000000000020", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000c1", "controlledBy": "llm", "status": "active", "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000004",
+      "userId": "10000000-0000-4000-8000-000000000002",
+      "title": "No user participant, two user chars (user-profile fallback)",
+      "participants": [
+        { "id": "40000000-0000-4000-8000-000000000030", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000c1", "controlledBy": "llm", "status": "active", "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000005",
+      "userId": "10000000-0000-4000-8000-000000000003",
+      "title": "No user participant, no user chars, no name (default fallback)",
+      "participants": [
+        { "id": "40000000-0000-4000-8000-000000000040", "type": "CHARACTER", "characterId": "20000000-0000-4000-8000-0000000000c1", "controlledBy": "llm", "status": "active", "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-03-01T00:00:00.000Z" }
+      ]
+    }
+  ],
+  "ops": [
+    { "chatId": "30000000-0000-4000-8000-000000000001", "userId": "10000000-0000-4000-8000-000000000001", "activeTypingParticipantId": null, "note": "chat-participant: user-controlled Ada present" },
+    { "chatId": "30000000-0000-4000-8000-000000000002", "userId": "10000000-0000-4000-8000-000000000002", "activeTypingParticipantId": "40000000-0000-4000-8000-000000000011", "note": "chat-participant: prefers active-typing Bea over first Bo" },
+    { "chatId": "30000000-0000-4000-8000-000000000003", "userId": "10000000-0000-4000-8000-000000000001", "activeTypingParticipantId": null, "note": "single-user-character: Ada auto-selected system-wide" },
+    { "chatId": "30000000-0000-4000-8000-000000000004", "userId": "10000000-0000-4000-8000-000000000002", "activeTypingParticipantId": null, "note": "user-profile: Bob's name" },
+    { "chatId": "30000000-0000-4000-8000-000000000005", "userId": "10000000-0000-4000-8000-000000000003", "activeTypingParticipantId": null, "note": "default: no name -> 'User'" }
+  ]
+}

@@ -193,4 +193,36 @@ Ordered by dependency; several are mutually independent once wave 2 lands:
   `CannedStreamingProvider` over a tokio `mpsc::Receiver`, mid-stream failures
   first-class; oracle-side injection lands with the wave-3 primary-stream
   differential, mirroring `model::completion`'s path).
-- Waves 3–4: scoped above, not started.
+- **Wave 3 batch 1: ported and green** (2026-07-02) — the seven
+  mutually-independent sub-units, six parallel agents on disjoint files (the
+  shared `ChatUpdate` setters + `services/mod.rs` module set pre-staged
+  serially): the **compression service half** (`services::compression`,
+  `compression_tier3_equivalence` — result-object tier-3, no DB writes,
+  completions pinned by recorded canned keys); the **context-summary service
+  half** (`services::context_summary`,
+  `context_summary_service_tier3_equivalence` — 11 ops diffing `chats` /
+  `chat_messages` / `background_jobs`; `queue_service` gained
+  `enqueue_title_update`; the Librarian re-post / vault mirror /
+  relevant-conversations refresh / cost events are a default-no-op
+  `ContextSummarySeams` trait matching the oracle mocks — tracked deferrals;
+  the prior-generation Librarian-whisper sweep IS ported); the **knowledge
+  injector + first-message context** (`knowledge_injector_equivalence` +
+  `first_message_context_equivalence` — read-only, zero normalization;
+  `search_document_chunks` + `search_memories_semantic` ported as the read
+  legs; `recallContext` re-rank deferred); the **participant + user-identity
+  resolvers** (`participant_resolver_tier2_equivalence` +
+  `user_identity_resolver_equivalence` — tsx real-DB; the inherited roleplay
+  template persisted via the new `ChatUpdate.roleplay_template_id` setter;
+  API-key acquisition host-side); the **primary stream + recovery + failover**
+  (`primary_stream_tier3_equivalence` — the first typed `Event` vocabulary
+  `services::chat_events` + `EventSink`; `save_assistant_message` as the
+  persistence primitive the finalizer will reuse; the `streamMessage` seam
+  mocked rule-match+record → `CannedStreamingProvider` replay; event trace +
+  two table dumps + results diffed over 12 calls); and the **carina markup
+  runner** (`carina_runner_tier3_equivalence` — `runCarinaQuery` established
+  as an injected seam per the STOP rule: it drags in the wave-4 tool loop /
+  character resolver / commonplace writer / Brahma console; the
+  `postCarinaResponse` message writer ported byte-exact).
+- Wave 3 remainder: the **finalizer**, the **`buildContext` capstone**, and
+  **`processMessage` + `executeTurnChain`** — next.
+- Wave 4: scoped above, not started.

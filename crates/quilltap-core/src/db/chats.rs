@@ -451,6 +451,30 @@ pub struct ChatUpdate {
     /// ([`super::chats_outfits`]). `Some(Some(v))` sets it; `Some(None)` clears to
     /// SQL NULL; `None` leaves it unset.
     pub equipped_outfit: Option<Option<Value>>,
+    /// `compactionGeneration` (REAL) — bumped by the context-summary fold write
+    /// and the summary invalidation ([`crate::services::context_summary`]).
+    pub compaction_generation: Option<f64>,
+    /// `lastSummaryTurn` (REAL) — the fold-cadence watermark, set by the
+    /// context-summary fold write (reset to 0 on invalidation).
+    pub last_summary_turn: Option<f64>,
+    /// `lastSummaryTokens` (REAL) — set by the context-summary fold write.
+    pub last_summary_tokens: Option<f64>,
+    /// `lastFullRebuildTurn` (REAL) — set on a hard rebuild (reset to 0 on
+    /// invalidation).
+    pub last_full_rebuild_turn: Option<f64>,
+    /// `summaryAnchorMessageIds` (JSON string-array) — the fold-input message ids
+    /// the edit/delete invalidation hook intersects against.
+    pub summary_anchor_message_ids: Option<Vec<String>>,
+    /// `lastRenameCheckInterchange` (REAL) — the title-check watermark, set when
+    /// the interchange-count checkpoint fires.
+    pub last_rename_check_interchange: Option<f64>,
+    /// Nullable `roleplayTemplateId` — the chat's own active template. Persisted
+    /// by the roleplay-template fallback chain
+    /// ([`crate::services::participant_resolver`]) when an older / imported chat
+    /// inherits a default (v4 `repos.chats.update(chat.id, { roleplayTemplateId })`).
+    /// `Some(Some(id))` sets it; `Some(None)` clears to SQL NULL; `None` leaves it
+    /// unset.
+    pub roleplay_template_id: Option<Option<String>>,
     pub updated_at: Option<String>,
 }
 
@@ -716,6 +740,27 @@ impl<'c> ChatsRepository<'c> {
         }
         if let Some(v) = &patch.equipped_outfit {
             set_col!("equippedOutfit", Box::new(opt_json_text(v)?));
+        }
+        if let Some(v) = patch.compaction_generation {
+            set_col!("compactionGeneration", Box::new(v));
+        }
+        if let Some(v) = patch.last_summary_turn {
+            set_col!("lastSummaryTurn", Box::new(v));
+        }
+        if let Some(v) = patch.last_summary_tokens {
+            set_col!("lastSummaryTokens", Box::new(v));
+        }
+        if let Some(v) = patch.last_full_rebuild_turn {
+            set_col!("lastFullRebuildTurn", Box::new(v));
+        }
+        if let Some(v) = &patch.summary_anchor_message_ids {
+            set_col!("summaryAnchorMessageIds", Box::new(json_text(v)?));
+        }
+        if let Some(v) = patch.last_rename_check_interchange {
+            set_col!("lastRenameCheckInterchange", Box::new(v));
+        }
+        if let Some(v) = &patch.roleplay_template_id {
+            set_col!("roleplayTemplateId", Box::new(v.clone()));
         }
         set_col!("updatedAt", Box::new(resolved_updated_at));
 

@@ -1,0 +1,330 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH9WgY4Q0nqLT0lVbF3mFjO5vE=",
+  "sentinel": "2026-02-01T00:00:00.000Z",
+  "profile": {
+    "id": "aa000001-0000-4000-8000-000000000001",
+    "userId": "bb000001-0000-4000-8000-000000000001",
+    "name": "Primary",
+    "provider": "ANTHROPIC",
+    "modelName": "claude-sonnet-4-5",
+    "baseUrl": null
+  },
+  "uncensoredProfile": {
+    "id": "aa000002-0000-4000-8000-000000000002",
+    "userId": "bb000001-0000-4000-8000-000000000001",
+    "name": "Uncensored",
+    "provider": "OPENROUTER",
+    "modelName": "dolphin",
+    "baseUrl": null
+  },
+  "userId": "bb000001-0000-4000-8000-000000000001",
+  "chats": [
+    {
+      "id": "dd000001-0000-4000-8000-000000000001",
+      "userId": "bb000001-0000-4000-8000-000000000001",
+      "title": "clean stream",
+      "participants": [
+        {
+          "id": "ee000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "id": "dd000002-0000-4000-8000-000000000002",
+      "userId": "bb000001-0000-4000-8000-000000000001",
+      "title": "mid-stream error",
+      "participants": [
+        {
+          "id": "ee000002-0000-4000-8000-000000000002",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "id": "dd000003-0000-4000-8000-000000000003",
+      "userId": "bb000001-0000-4000-8000-000000000001",
+      "title": "tool-unsupported retry",
+      "participants": [
+        {
+          "id": "ee000003-0000-4000-8000-000000000003",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "id": "dd000004-0000-4000-8000-000000000004",
+      "userId": "bb000001-0000-4000-8000-000000000001",
+      "title": "tool-unsupported retry failure",
+      "participants": [
+        {
+          "id": "ee000004-0000-4000-8000-000000000004",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "id": "dd000005-0000-4000-8000-000000000005",
+      "userId": "bb000001-0000-4000-8000-000000000001",
+      "title": "token-limit recovery",
+      "participants": [
+        {
+          "id": "ee000005-0000-4000-8000-000000000005",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "id": "dd000006-0000-4000-8000-000000000006",
+      "userId": "bb000001-0000-4000-8000-000000000001",
+      "title": "recovery static fallback",
+      "participants": [
+        {
+          "id": "ee000006-0000-4000-8000-000000000006",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "id": "dd000007-0000-4000-8000-000000000007",
+      "userId": "bb000001-0000-4000-8000-000000000001",
+      "title": "empty same-provider retry",
+      "participants": [
+        {
+          "id": "ee000007-0000-4000-8000-000000000007",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "id": "dd000008-0000-4000-8000-000000000008",
+      "userId": "bb000001-0000-4000-8000-000000000001",
+      "title": "empty uncensored failover",
+      "participants": [
+        {
+          "id": "ee000008-0000-4000-8000-000000000008",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "id": "dd000009-0000-4000-8000-000000000009",
+      "userId": "bb000001-0000-4000-8000-000000000001",
+      "title": "both empty",
+      "participants": [
+        {
+          "id": "ee000009-0000-4000-8000-000000000009",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        }
+      ]
+    }
+  ],
+  "character": {
+    "id": "cc000001-0000-4000-8000-000000000001",
+    "name": "Friday",
+    "aliases": ["Fri"]
+  },
+  "_comment_streams": "Keyed by streamLabel, an ORDERED list of stream attempts. The v4 streamMessage mock finds the call's `originalMessage` MARKER inside any user message (the oracle puts it in the primary/failover messages; the recovery service embeds it in its recovery user message too), resolves the label, then pops the next attempt in order — so a tool-unsupported retry / empty retry / the primary-then-recovery pair, all re-issuing streams, get DIFFERENT sequences. Each chunk: {content}, {reasoning} (cumulative), {done, usage?}, or {error}.",
+  "streams": {
+    "clean": [
+      [
+        { "reasoning": "Let me think" },
+        { "content": "Once " },
+        { "content": "upon a time." },
+        { "done": true, "usage": { "promptTokens": 40, "completionTokens": 5, "totalTokens": 45 } }
+      ]
+    ],
+    "mid_error": [
+      [
+        { "content": "The story begins" },
+        { "error": "upstream connection reset" }
+      ]
+    ],
+    "tool_unsupported_then_ok": [
+      [
+        { "error": "Tool use with function calling is unsupported for this model" }
+      ],
+      [
+        { "content": "No tools needed: hello." },
+        { "done": true, "usage": { "promptTokens": 30, "completionTokens": 4, "totalTokens": 34 } }
+      ]
+    ],
+    "tool_unsupported_then_fail": [
+      [
+        { "error": "Tool use with function calling is unsupported for this model" }
+      ],
+      [
+        { "content": "partial before failure" },
+        { "error": "retry also died" }
+      ]
+    ],
+    "token_limit": [
+      [
+        { "error": "prompt is too long: 210311 tokens > 200000 maximum" }
+      ],
+      [
+        { "content": "I'm sorry — that was too long. Try a shorter excerpt." },
+        { "done": true, "usage": { "promptTokens": 12, "completionTokens": 8, "totalTokens": 20 } }
+      ]
+    ],
+    "recovery_fails": [
+      [
+        { "error": "recovery model also failed" }
+      ]
+    ],
+    "retry_ok": [
+      [
+        { "content": "recovered on retry." },
+        { "done": true, "usage": { "promptTokens": 20, "completionTokens": 3, "totalTokens": 23 } }
+      ]
+    ],
+    "uncensored_ok": [
+      [
+        { "content": "forbidden but answered." },
+        { "done": true, "usage": { "promptTokens": 25, "completionTokens": 3, "totalTokens": 28 } }
+      ]
+    ],
+    "retry_empty_uncensored_empty": [
+      [
+        { "done": true, "usage": null }
+      ],
+      [
+        { "done": true, "usage": null }
+      ]
+    ]
+  },
+  "calls": [
+    {
+      "name": "clean_stream",
+      "kind": "primary",
+      "chatId": "dd000001-0000-4000-8000-000000000001",
+      "participantId": "ee000001-0000-4000-8000-000000000001",
+      "preGeneratedMessageId": "ff000001-0000-4000-8000-000000000001",
+      "hasTools": false,
+      "streamLabel": "clean",
+      "attachedFiles": [],
+      "originalMessage": "tell me a story"
+    },
+    {
+      "name": "mid_stream_error_preserve",
+      "kind": "primary",
+      "chatId": "dd000002-0000-4000-8000-000000000002",
+      "participantId": "ee000002-0000-4000-8000-000000000002",
+      "preGeneratedMessageId": "ff000002-0000-4000-8000-000000000002",
+      "hasTools": false,
+      "streamLabel": "mid_error",
+      "attachedFiles": [],
+      "originalMessage": "keep going",
+      "expectThrow": true
+    },
+    {
+      "name": "tool_unsupported_retry_success",
+      "kind": "primary",
+      "chatId": "dd000003-0000-4000-8000-000000000003",
+      "participantId": "ee000003-0000-4000-8000-000000000003",
+      "preGeneratedMessageId": "ff000003-0000-4000-8000-000000000003",
+      "hasTools": true,
+      "streamLabel": "tool_unsupported_then_ok",
+      "attachedFiles": [],
+      "originalMessage": "please invoke a helper"
+    },
+    {
+      "name": "tool_unsupported_retry_failure",
+      "kind": "primary",
+      "chatId": "dd000004-0000-4000-8000-000000000004",
+      "participantId": "ee000004-0000-4000-8000-000000000004",
+      "preGeneratedMessageId": "ff000004-0000-4000-8000-000000000004",
+      "hasTools": true,
+      "streamLabel": "tool_unsupported_then_fail",
+      "attachedFiles": [],
+      "originalMessage": "run a gadget and expire",
+      "expectThrow": true
+    },
+    {
+      "name": "token_limit_recovery",
+      "kind": "primary",
+      "chatId": "dd000005-0000-4000-8000-000000000005",
+      "participantId": "ee000005-0000-4000-8000-000000000005",
+      "preGeneratedMessageId": "ff000005-0000-4000-8000-000000000005",
+      "hasTools": false,
+      "streamLabel": "token_limit",
+      "attachedFiles": [],
+      "originalMessage": "summarize this enormous book"
+    },
+    {
+      "name": "recovery_static_fallback",
+      "kind": "recovery",
+      "chatId": "dd000006-0000-4000-8000-000000000006",
+      "participantId": "ee000006-0000-4000-8000-000000000006",
+      "errorMessage": "prompt is too long: 210311 tokens > 200000 maximum",
+      "attachedFiles": [],
+      "originalMessage": "shrink my giant pdf",
+      "streamLabel": "recovery_fails"
+    },
+    {
+      "name": "empty_same_provider_retry",
+      "kind": "failover",
+      "chatId": "dd000007-0000-4000-8000-000000000007",
+      "participantId": "ee000007-0000-4000-8000-000000000007",
+      "contentWasFlaggedDangerous": false,
+      "dangerMode": "OFF",
+      "streamLabel": "retry_ok",
+      "originalMessage": "say something"
+    },
+    {
+      "name": "empty_uncensored_failover",
+      "kind": "failover",
+      "chatId": "dd000008-0000-4000-8000-000000000008",
+      "participantId": "ee000008-0000-4000-8000-000000000008",
+      "contentWasFlaggedDangerous": true,
+      "dangerMode": "AUTO_ROUTE",
+      "streamLabel": "uncensored_ok",
+      "originalMessage": "forbidden request"
+    },
+    {
+      "name": "both_empty",
+      "kind": "failover",
+      "chatId": "dd000009-0000-4000-8000-000000000009",
+      "participantId": "ee000009-0000-4000-8000-000000000009",
+      "contentWasFlaggedDangerous": false,
+      "dangerMode": "AUTO_ROUTE",
+      "streamLabel": "retry_empty_uncensored_empty",
+      "originalMessage": "always filtered"
+    },
+    {
+      "name": "find_prev_response_openai_hit",
+      "kind": "findPrevResponseId",
+      "provider": "OPENAI",
+      "existingMessages": [
+        { "type": "message", "role": "USER", "content": "hi" },
+        { "type": "message", "role": "ASSISTANT", "rawResponse": { "id": "resp_abc123" } },
+        { "type": "message", "role": "USER", "content": "more" }
+      ]
+    },
+    {
+      "name": "find_prev_response_non_openai",
+      "kind": "findPrevResponseId",
+      "provider": "ANTHROPIC",
+      "existingMessages": [
+        { "type": "message", "role": "ASSISTANT", "rawResponse": { "id": "resp_abc123" } }
+      ]
+    },
+    {
+      "name": "find_prev_response_no_match",
+      "kind": "findPrevResponseId",
+      "provider": "OPENAI",
+      "existingMessages": [
+        { "type": "message", "role": "ASSISTANT", "rawResponse": { "id": "chatcmpl_x" } }
+      ]
+    }
+  ]
+}

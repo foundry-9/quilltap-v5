@@ -367,3 +367,158 @@ impl<'c> ConnectionProfilesRepository<'c> {
         Ok(found.is_some())
     }
 }
+
+/// **Scoped read** for the participant resolver
+/// ([`crate::services::participant_resolver`]): a connection profile by id
+/// (v4 `repos.connections.findById(id)`), marshaled as a `serde_json::Value` in
+/// v4's net read shape. `None` when no row exists (the resolver then throws
+/// `"Connection profile not found"`). This is the READ half of a Phase-2 repo
+/// that already ships the `create`/`update`/`delete` write half; the participant
+/// resolver is the first consumer of a full profile row, so the read marshaling
+/// lands here alongside it (scoped read precedent:
+/// [`super::chat_settings::find_auto_housekeeping_settings_by_user_id`]).
+///
+/// Net read shape (matching [`super::chats_read`]/[`super::characters_read`]):
+///   * nullable-optional columns (`apiKeyId`, `baseUrl`, `modelClass`,
+///     `maxContext`, `maxTokens`) are **OMITTED** when SQL NULL (v4's
+///     `undefined` dropped by `JSON.stringify`), and the two REAL int-overrides
+///     JS-render (integer-valued → bare) when present;
+///   * `.default(...)` columns (the booleans, the numbers, the enums,
+///     `transport`/`pseudoToolMode`, `parameters`→`{}`, `tags`→`[]`) are
+///     materialized — but since every v4-written row already carries the
+///     Zod-parsed value on disk, the stored cell is simply rendered;
+///   * booleans coerce INTEGER 0/1 → bool; numbers JS-render; `parameters` /
+///     `tags` parse straight to JSON. `parameters` multi-key key order is the
+///     same tracked open-JSON seam as the write half (corpus keeps it `{}` /
+///     single-key).
+///
+/// The decrypted API key stays a **host-side deferred seam** (mirroring
+/// [`crate::services::cheap_llm_exec`]): the resolver returns this profile row
+/// (which carries `apiKeyId` when set); actually fetching + decrypting the key
+/// from the `api_keys` table is the host's job.
+pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<serde_json::Value>, DbError> {
+    use serde_json::{Map, Value};
+
+    // Insert a nullable-optional TEXT value: `Some` → string, `None` → omit.
+    fn put_opt_string(obj: &mut Map<String, Value>, key: &str, v: Option<String>) {
+        if let Some(s) = v {
+            obj.insert(key.to_string(), Value::String(s));
+        }
+    }
+    // Insert a nullable-optional number column (`NULL` → omit, else JS render).
+    fn put_opt_number(obj: &mut Map<String, Value>, key: &str, v: Option<f64>) {
+        if let Some(n) = v {
+            obj.insert(key.to_string(), super::js_number_to_json(n));
+        }
+    }
+    // A `.default(default)` array column: parsed array, or `[]` on NULL/empty/bad.
+    fn array_or_empty(v: Option<String>) -> Value {
+        match v {
+            Some(raw) if !raw.is_empty() => {
+                serde_json::from_str(&raw).unwrap_or_else(|_| Value::Array(Vec::new()))
+            }
+            _ => Value::Array(Vec::new()),
+        }
+    }
+    // A `.default({})` open-JSON object column: parsed, or `{}` on NULL/empty/bad.
+    fn object_or_empty(v: Option<String>) -> Value {
+        match v {
+            Some(raw) if !raw.is_empty() => {
+                serde_json::from_str(&raw).unwrap_or_else(|_| Value::Object(Map::new()))
+            }
+            _ => Value::Object(Map::new()),
+        }
+    }
+
+    let row = conn
+        .query_row(
+            "SELECT id, userId, name, provider, transport, courierDeltaMode, apiKeyId, baseUrl, \
+                    modelName, parameters, isDefault, isCheap, allowWebSearch, useNativeWebSearch, \
+                    allowToolUse, pseudoToolMode, modelClass, maxContext, maxTokens, \
+                    isDangerousCompatible, supportsImageUpload, tags, sortIndex, totalTokens, \
+                    totalPromptTokens, totalCompletionTokens, messageCount, createdAt, updatedAt \
+             FROM connection_profiles WHERE id = ?1",
+            params![id],
+            |r| {
+                let mut obj = Map::new();
+                obj.insert("id".into(), Value::String(r.get::<_, String>(0)?));
+                obj.insert("userId".into(), Value::String(r.get::<_, String>(1)?));
+                obj.insert("name".into(), Value::String(r.get::<_, String>(2)?));
+                obj.insert("provider".into(), Value::String(r.get::<_, String>(3)?));
+                obj.insert("transport".into(), Value::String(r.get::<_, String>(4)?));
+                obj.insert(
+                    "courierDeltaMode".into(),
+                    Value::Bool(r.get::<_, i64>(5)? == 1),
+                );
+                put_opt_string(&mut obj, "apiKeyId", r.get::<_, Option<String>>(6)?);
+                put_opt_string(&mut obj, "baseUrl", r.get::<_, Option<String>>(7)?);
+                obj.insert("modelName".into(), Value::String(r.get::<_, String>(8)?));
+                obj.insert(
+                    "parameters".into(),
+                    object_or_empty(r.get::<_, Option<String>>(9)?),
+                );
+                obj.insert("isDefault".into(), Value::Bool(r.get::<_, i64>(10)? == 1));
+                obj.insert("isCheap".into(), Value::Bool(r.get::<_, i64>(11)? == 1));
+                obj.insert(
+                    "allowWebSearch".into(),
+                    Value::Bool(r.get::<_, i64>(12)? == 1),
+                );
+                obj.insert(
+                    "useNativeWebSearch".into(),
+                    Value::Bool(r.get::<_, i64>(13)? == 1),
+                );
+                obj.insert(
+                    "allowToolUse".into(),
+                    Value::Bool(r.get::<_, i64>(14)? == 1),
+                );
+                obj.insert(
+                    "pseudoToolMode".into(),
+                    Value::String(r.get::<_, String>(15)?),
+                );
+                put_opt_string(&mut obj, "modelClass", r.get::<_, Option<String>>(16)?);
+                put_opt_number(&mut obj, "maxContext", r.get::<_, Option<f64>>(17)?);
+                put_opt_number(&mut obj, "maxTokens", r.get::<_, Option<f64>>(18)?);
+                obj.insert(
+                    "isDangerousCompatible".into(),
+                    Value::Bool(r.get::<_, i64>(19)? == 1),
+                );
+                obj.insert(
+                    "supportsImageUpload".into(),
+                    Value::Bool(r.get::<_, i64>(20)? == 1),
+                );
+                obj.insert(
+                    "tags".into(),
+                    array_or_empty(r.get::<_, Option<String>>(21)?),
+                );
+                obj.insert(
+                    "sortIndex".into(),
+                    super::js_number_to_json(r.get::<_, f64>(22)?),
+                );
+                obj.insert(
+                    "totalTokens".into(),
+                    super::js_number_to_json(r.get::<_, f64>(23)?),
+                );
+                obj.insert(
+                    "totalPromptTokens".into(),
+                    super::js_number_to_json(r.get::<_, f64>(24)?),
+                );
+                obj.insert(
+                    "totalCompletionTokens".into(),
+                    super::js_number_to_json(r.get::<_, f64>(25)?),
+                );
+                obj.insert(
+                    "messageCount".into(),
+                    super::js_number_to_json(r.get::<_, f64>(26)?),
+                );
+                obj.insert("createdAt".into(), Value::String(r.get::<_, String>(27)?));
+                obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(28)?));
+                Ok(Value::Object(obj))
+            },
+        )
+        .map(Some)
+        .or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other),
+        })?;
+    Ok(row)
+}

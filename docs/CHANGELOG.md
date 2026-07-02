@@ -442,6 +442,49 @@ units), each with its own fresh-oracle differential.
 - Eleven new tier-1 oracle cases + the turn-orchestrator tier-2 case/fixture;
   the `chats` tier-2 differential re-verified green with the new setters.
 
+Phase 3 — chat orchestration wave 3, batch 1: the seven mutually-independent
+model-calling/DB-reading services, ported in parallel (six agents on disjoint
+files; shared `ChatUpdate` setters + `services/mod.rs` pre-staged serially),
+each with its own fresh-oracle differential.
+
+- Compression service half (`services::compression`): `applyContextCompression`
+  + `compressConversationHistory` over the ported sizing leaves and the
+  cheap-LLM executor; system-prompt compression stays disabled (result shape
+  matched, dead path not ported). Result-object tier-3 differential, 6 cases.
+- Context-summary service half (`services::context_summary`):
+  `generateContextSummary` / `invalidateContextSummaryIfMessageCovered` /
+  `checkAndGenerateSummaryIfNeeded` + `foldChatSummary` and both title
+  generators; the prior-generation Librarian-whisper sweep ported;
+  `queue_service` gained `enqueue_title_update`. Librarian re-post, vault
+  mirror, relevant-conversations refresh, and cost events deferred behind a
+  no-op `ContextSummarySeams` trait (oracle mocks match). 11-op tier-3
+  differential over `chats` + `chat_messages` + `background_jobs`.
+- Knowledge injector (`services::knowledge_injector`) with
+  `search_document_chunks` and the qtap-uri/tier-dedupe leaves; first-message
+  context (`services::first_message_context`) with
+  `memory_service::search_memories_semantic` (recallContext re-rank deferred).
+  Two read-differentials, zero normalization, embeddings canned both sides.
+- Participant resolver (`services::participant_resolver`, incl.
+  `resolveConnectionProfile`) and user-identity resolver
+  (`services::user_identity_resolver`); scoped reads added to
+  `connection_profiles` / `roleplay_templates` / `users`; the inherited
+  roleplay template persists via the new `ChatUpdate.roleplay_template_id`
+  setter. API-key acquisition stays host-side. Two tsx real-DB differentials.
+- Primary stream / recovery / provider failover (`services::primary_stream`,
+  `services::recovery`, `services::provider_failover`) over `model::stream`,
+  with the first typed event vocabulary (`services::chat_events`: `ChatEvent`
+  + `EventSink`, byte-identical to v4's SSE frames) and
+  `save_assistant_message` as the shared persistence primitive; the
+  `lib/llm/errors.ts` classifiers ported. 12-call tier-3 differential diffing
+  the ordered event trace, both table dumps, and result objects.
+- Carina markup runner (`services::carina_runner` + the `postCarinaResponse`
+  writer). `runCarinaQuery` established as an injected seam (it requires the
+  wave-4 tool subsystem and other unported services); Prospero error-posting
+  behind a recorded seam. 7-case tier-3 differential.
+- `ChatUpdate` gained the summary-counter/anchor/title-watermark and
+  `roleplay_template_id` setters; `chats_tier2` and `turn_orchestrator`
+  differentials re-verified green against regenerated oracles.
+
 Docs — Phase 2 marked complete; Phase 3 kickoff drafted. Docs only, no crate
 source changed.
 

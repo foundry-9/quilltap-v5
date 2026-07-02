@@ -29,12 +29,34 @@
 //!
 //! [`MemoriesRepository::delete_with_unlink`]: crate::db::memories::MemoriesRepository::delete_with_unlink
 //! [`delete_many_with_unlink`]: crate::db::memories::MemoriesRepository::delete_many_with_unlink
+//!
+//! ## `searchMemoriesSemantic` (Phase-3 Unit-3 wave 3)
+//!
+//! This module also carries [`search_memories_semantic`] — v4's semantic memory
+//! recall (embed the query, search the character's [`CharacterVectorStore`], hydrate
+//! the matches, blend cosine (40%) with the decaying effective weight (60%), sort,
+//! and slice). It is the read half the first-message-context builder composes. The
+//! full v4 surface's two opt-in extensions — the `recallContext` targeting-tag
+//! re-ranking + one-hop related-memory expansion — are a **tracked deferral**: no
+//! consumer in this wave (the knowledge injector doesn't use it; first-message
+//! context leaves both off), and the expansion needs `RELATED_EXPANSION` /
+//! `expandRelatedMemories`, which `recall_tags` deliberately does not yet carry.
+//! Everything else is faithful: the one-retry-free embed, the dimension-mismatch →
+//! text fallback, the optional literal-phrase boost, the min-score / min-importance /
+//! source / aboutCharacterId filters, and the `bumpAccessTimes` side-effect.
 
 use serde_json::Value;
 
 use crate::db::runtime::Db;
 use crate::db::vector_store::CharacterVectorStore;
 use crate::db::{memories_read, DbError};
+use crate::embedding_vector::cosine_similarity;
+use crate::literal_boost::{apply_literal_boost, contains_literal_phrase, get_literal_phrase};
+use crate::memory_weighting::{
+    calculate_effective_weight, compute_ranking_blend, default_min_cosine_for_provider,
+    MemoryInputs, DEFAULT_WEIGHTING_CONFIG,
+};
+use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
 
 /// Result of a source-message / swipe-group cascade (v4's
 /// `{ deleted, vectorsRemoved }`).
@@ -223,6 +245,489 @@ async fn remove_vectors_grouped(db: &Db, groups: Vec<(String, Vec<String>)>) -> 
 
 fn id_of(memory: &Value) -> Option<String> {
     memory.get("id").and_then(Value::as_str).map(str::to_string)
+}
+
+// ---------------------------------------------------------------------------
+// searchMemoriesSemantic (v4 lib/memory/memory-service.ts)
+// ---------------------------------------------------------------------------
+
+/// Result of a semantic memory search (v4 `SemanticSearchResult`, restricted to the
+/// fields the consumers read — `recallAdjustment` is part of the deferred
+/// recallContext path).
+#[derive(Debug, Clone)]
+pub struct SemanticSearchResult {
+    /// The matching memory (net JSON, the shape [`memories_read::find_by_ids`] /
+    /// [`memories_read::search_by_content`] return).
+    pub memory: Value,
+    /// Similarity score (0–1) — cosine (post literal-boost) for the embedding path,
+    /// the text-match score for the fallback path.
+    pub score: f64,
+    /// Whether the embedding path produced this result.
+    pub used_embedding: bool,
+    /// Floored effective weight (diagnostics, NOT ranking).
+    pub effective_weight: f64,
+    /// No-floor ranking weight (base importance × time decay) — the retrieval blend
+    /// input.
+    pub raw_weight: f64,
+}
+
+/// Options for [`search_memories_semantic`] (v4 `MemoryServiceOptions & {...}`),
+/// restricted to the fields the consumers pass plus the injected clock.
+#[derive(Debug, Clone, Default)]
+pub struct SemanticSearchOptions {
+    pub user_id: String,
+    pub embedding_profile_id: Option<String>,
+    /// v4 default 20.
+    pub limit: Option<usize>,
+    /// Explicit cosine floor; `None` → the provider default (`??` semantics: an
+    /// explicit `Some(0.0)` disables the floor).
+    pub min_score: Option<f64>,
+    pub min_importance: Option<f64>,
+    /// `'AUTO' | 'MANUAL'` filter.
+    pub source: Option<String>,
+    /// Restrict to memories held *about* this other character.
+    pub about_character_id: Option<String>,
+    /// Union verbatim query hits into the candidate pool + boost their cosine.
+    pub apply_literal_phrase_boost: bool,
+    /// The `Date.now()` seam used by `calculateEffectiveWeight` (epoch millis). The
+    /// blend's time-decay reads it; injected so the differential is deterministic.
+    pub now_ms: f64,
+}
+
+/// v4 `searchMemoriesSemantic`. Tries the vector path first (embed → search →
+/// hydrate → blend → sort → slice), falling back to text search on any failure or a
+/// dimension mismatch. The `recallContext` re-ranking + related-expansion path is a
+/// tracked deferral (see the module doc).
+pub async fn search_memories_semantic<P: EmbeddingProvider>(
+    db: &Db,
+    provider: &P,
+    character_id: &str,
+    query: &str,
+    options: &SemanticSearchOptions,
+) -> Result<Vec<SemanticSearchResult>, DbError> {
+    let limit = options.limit.unwrap_or(20);
+    let explicit_min_score = options.min_score;
+
+    // Try semantic search first. Any error inside this block → text fallback (v4
+    // wraps the whole body in try/catch).
+    let semantic = try_semantic(
+        db,
+        provider,
+        character_id,
+        query,
+        options,
+        limit,
+        explicit_min_score,
+    )
+    .await;
+
+    match semantic {
+        Ok(Some(mut results)) => {
+            let ids: Vec<String> = results.iter().filter_map(|r| id_of(&r.memory)).collect();
+            bump_access_times(db, character_id, &ids).await;
+            results.truncate(limit);
+            Ok(results)
+        }
+        // `Ok(None)` = the vector pool was empty (v4 falls through past the
+        // `if (augmentedVectorResults.length > 0)` block to the text fallback).
+        Ok(None) | Err(_) => {
+            let mut text = search_memories_text(db, character_id, query, options).await?;
+            let ids: Vec<String> = text.iter().filter_map(|r| id_of(&r.memory)).collect();
+            bump_access_times(db, character_id, &ids).await;
+            text.truncate(limit);
+            Ok(text)
+        }
+    }
+}
+
+/// The vector path. `Ok(Some(sorted))` on a non-empty pool, `Ok(None)` when the pool
+/// is empty (→ text fallback), `Err` on embed failure / dimension mismatch (→ text
+/// fallback). The `Err` carries no diagnostic — the caller only branches on it.
+#[allow(clippy::too_many_arguments)]
+async fn try_semantic<P: EmbeddingProvider>(
+    db: &Db,
+    provider: &P,
+    character_id: &str,
+    query: &str,
+    options: &SemanticSearchOptions,
+    limit: usize,
+    explicit_min_score: Option<f64>,
+) -> Result<Option<Vec<SemanticSearchResult>>, ()> {
+    let embed = provider
+        .generate_embedding_for_user(
+            query,
+            &options.user_id,
+            options.embedding_profile_id.as_deref(),
+            EmbeddingPriority::Interactive,
+        )
+        .await
+        .map_err(|_| ())?;
+
+    let min_score = explicit_min_score
+        .unwrap_or_else(|| default_min_cosine_for_provider(Some(&embed.provider)));
+
+    // Load the store + dimension check off the read pool.
+    let query_embedding = embed.embedding.clone();
+    let (stored_dimensions, vector_results) = {
+        let query_embedding = query_embedding.clone();
+        let cid = character_id.to_string();
+        db.read_main(move |conn| {
+            let store = CharacterVectorStore::load(conn, &cid)?;
+            // The store's known dimension: the length of any stored entry (all
+            // entries share it; v4 resolves it from the index metadata / first
+            // entry the same way). `None` on an empty store → no mismatch guard.
+            let dims = store.all_entries().next().map(|(_, v)| v.len());
+            // v4 searches limit*3 candidates.
+            let results = store.search(&query_embedding, limit.saturating_mul(3));
+            Ok((dims, results))
+        })
+        .map_err(|_| ())?
+    };
+
+    // Dimension mismatch → text fallback (v4 returns searchMemoriesText immediately).
+    if let Some(dims) = stored_dimensions {
+        if query_embedding.len() != dims {
+            return Err(());
+        }
+    }
+
+    // Hybrid literal-boost union (off for our consumers, but ported faithfully).
+    let literal_phrase = if options.apply_literal_phrase_boost {
+        get_literal_phrase(Some(query))
+    } else {
+        None
+    };
+    let mut literal_hit_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // (id, score) candidate pool; the vector store's search order is preserved.
+    let mut augmented: Vec<(String, f64)> = vector_results
+        .iter()
+        .map(|r| (r.id.clone(), r.score))
+        .collect();
+
+    if let Some(phrase) = &literal_phrase {
+        let q = query.trim().to_string();
+        let cid = character_id.to_string();
+        let direct = db
+            .read_main(move |conn| memories_read::search_by_content(conn, &cid, &q))
+            .map_err(|_| ())?;
+        for m in &direct {
+            if let Some(id) = id_of(m) {
+                literal_hit_ids.insert(id);
+            }
+        }
+        let in_pool: std::collections::HashSet<String> =
+            vector_results.iter().map(|r| r.id.clone()).collect();
+        for m in &direct {
+            let Some(id) = id_of(m) else { continue };
+            if in_pool.contains(&id) {
+                continue;
+            }
+            if let Some(emb) = memory_embedding(m) {
+                if emb.len() == query_embedding.len() {
+                    if let Ok(score) = cosine_similarity(&query_embedding, &emb) {
+                        augmented.push((id, score));
+                    }
+                }
+            }
+            let _ = phrase; // phrase only gates the union; boost is applied below
+        }
+    }
+
+    if augmented.is_empty() {
+        return Ok(None);
+    }
+
+    // Hydrate the matched ids (only the top-K).
+    let matched_ids: Vec<String> = augmented.iter().map(|(id, _)| id.clone()).collect();
+    let memories = db
+        .read_main(move |conn| memories_read::find_by_ids(conn, &matched_ids))
+        .map_err(|_| ())?;
+    let mut memory_map: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
+    for m in memories {
+        if let Some(id) = id_of(&m) {
+            memory_map.insert(id, m);
+        }
+    }
+
+    let mut results: Vec<SemanticSearchResult> = Vec::new();
+    for (id, raw_score) in &augmented {
+        let Some(memory) = memory_map.get(id) else {
+            continue;
+        };
+        let literal_hit = match &literal_phrase {
+            Some(phrase) => {
+                literal_hit_ids.contains(id)
+                    || contains_literal_phrase(
+                        memory.get("content").and_then(Value::as_str),
+                        phrase,
+                    )
+                    || contains_literal_phrase(
+                        memory.get("summary").and_then(Value::as_str),
+                        phrase,
+                    )
+            }
+            None => false,
+        };
+        // v4: literalHit ? applyLiteralBoost(vr.score) : vr.score  (default 0.5).
+        let cosine_score = if literal_hit {
+            apply_literal_boost(*raw_score, 0.5)
+        } else {
+            *raw_score
+        };
+        let ew = calculate_effective_weight(
+            &memory_inputs(memory),
+            &DEFAULT_WEIGHTING_CONFIG,
+            options.now_ms,
+        );
+        results.push(SemanticSearchResult {
+            memory: memory.clone(),
+            score: cosine_score,
+            used_embedding: true,
+            effective_weight: ew.effective_weight,
+            raw_weight: ew.raw_weight,
+        });
+    }
+
+    // Filter: score >= minScore, then the optional filters.
+    results.retain(|r| r.score >= min_score);
+    if let Some(min_imp) = options.min_importance {
+        results.retain(|r| {
+            r.memory
+                .get("importance")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0)
+                >= min_imp
+        });
+    }
+    if let Some(src) = &options.source {
+        results.retain(|r| r.memory.get("source").and_then(Value::as_str) == Some(src.as_str()));
+    }
+    if let Some(about) = &options.about_character_id {
+        results.retain(|r| {
+            r.memory.get("aboutCharacterId").and_then(Value::as_str) == Some(about.as_str())
+        });
+    }
+
+    // Sort by the blended ranking key (cosine 40% + effective weight 60%). Stable —
+    // preserves the pool order among ties (JS Array.sort is stable).
+    results.sort_by(|a, b| {
+        let sa = compute_ranking_blend(a.score, a.raw_weight);
+        let sb = compute_ranking_blend(b.score, b.raw_weight);
+        sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    Ok(Some(results))
+}
+
+/// v4 `searchMemoriesText` (the fallback when embeddings are unavailable): full-phrase
+/// `searchByContent`, broadened to per-significant-word searches when short, then a
+/// weighted text score + the decaying-weight blend sort.
+async fn search_memories_text(
+    db: &Db,
+    character_id: &str,
+    query: &str,
+    options: &SemanticSearchOptions,
+) -> Result<Vec<SemanticSearchResult>, DbError> {
+    let limit = options.limit.unwrap_or(20);
+
+    // Full-phrase search first.
+    let mut memories = {
+        let cid = character_id.to_string();
+        let q = query.to_string();
+        db.read_main(move |conn| memories_read::search_by_content(conn, &cid, &q))?
+    };
+
+    // Broaden to per-word search when short (stop-words filtered).
+    let query_words: Vec<String> = query
+        .to_lowercase()
+        .split_whitespace()
+        .filter(|w| w.chars().count() > 2 && !STOP_WORDS.contains(w))
+        .map(str::to_string)
+        .collect();
+    if memories.len() < limit && !query_words.is_empty() {
+        let mut existing: std::collections::HashSet<String> =
+            memories.iter().filter_map(id_of).collect();
+        for word in &query_words {
+            let cid = character_id.to_string();
+            let w = word.clone();
+            let word_results =
+                db.read_main(move |conn| memories_read::search_by_content(conn, &cid, &w))?;
+            for mem in word_results {
+                if let Some(id) = id_of(&mem) {
+                    if existing.insert(id) {
+                        memories.push(mem);
+                    }
+                }
+            }
+        }
+    }
+
+    // Filters.
+    if let Some(min_imp) = options.min_importance {
+        memories.retain(|m| m.get("importance").and_then(Value::as_f64).unwrap_or(0.0) >= min_imp);
+    }
+    if let Some(src) = &options.source {
+        memories.retain(|m| m.get("source").and_then(Value::as_str) == Some(src.as_str()));
+    }
+    if let Some(about) = &options.about_character_id {
+        memories
+            .retain(|m| m.get("aboutCharacterId").and_then(Value::as_str) == Some(about.as_str()));
+    }
+
+    // Score.
+    let query_lower = query.to_lowercase();
+    let mut results: Vec<SemanticSearchResult> = memories
+        .into_iter()
+        .map(|memory| {
+            let mut score = 0.0_f64;
+            let content_lower = memory
+                .get("content")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_lowercase();
+            let summary_lower = memory
+                .get("summary")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_lowercase();
+
+            if summary_lower.contains(&query_lower) {
+                score += 0.4;
+            }
+            if content_lower.contains(&query_lower) {
+                score += 0.3;
+            }
+            if !query_words.is_empty() {
+                let cwm = query_words
+                    .iter()
+                    .filter(|w| content_lower.contains(w.as_str()))
+                    .count();
+                let swm = query_words
+                    .iter()
+                    .filter(|w| summary_lower.contains(w.as_str()))
+                    .count();
+                score += 0.2 * (cwm as f64 / query_words.len() as f64);
+                score += 0.1 * (swm as f64 / query_words.len() as f64);
+            }
+            // Keyword matches.
+            let keywords: Vec<String> = memory
+                .get("keywords")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str())
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default();
+            let matching = keywords
+                .iter()
+                .filter(|kw| {
+                    let kwl = kw.to_lowercase();
+                    query_words.iter().any(|qw| kwl.contains(qw.as_str()))
+                })
+                .count();
+            score += 0.1 * (matching as f64 / (keywords.len().max(1) as f64));
+
+            let ew = calculate_effective_weight(
+                &memory_inputs(&memory),
+                &DEFAULT_WEIGHTING_CONFIG,
+                options.now_ms,
+            );
+            SemanticSearchResult {
+                memory,
+                score: score.min(1.0),
+                used_embedding: false,
+                effective_weight: ew.effective_weight,
+                raw_weight: ew.raw_weight,
+            }
+        })
+        .collect();
+
+    // Drop zero-score results, blend-sort.
+    results.retain(|r| r.score > 0.0);
+    results.sort_by(|a, b| {
+        let sa = compute_ranking_blend(a.score, a.raw_weight);
+        let sb = compute_ranking_blend(b.score, b.raw_weight);
+        sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    results.truncate(limit);
+    Ok(results)
+}
+
+/// The stop-word set v4 uses in `searchMemoriesText`.
+static STOP_WORDS: std::sync::LazyLock<std::collections::HashSet<&'static str>> =
+    std::sync::LazyLock::new(|| {
+        [
+            "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with",
+            "by", "is", "was", "are", "were", "be", "been", "being", "have", "has", "had", "do",
+            "does", "did", "will", "would", "could", "should", "may", "might", "can", "shall",
+            "that", "this", "these", "those", "it", "its", "my", "your", "his", "her", "our",
+            "their", "what", "which", "who", "whom", "how", "when", "where", "why", "not", "no",
+            "nor", "if", "then", "than", "so", "as", "about", "from", "into", "up", "out", "off",
+            "over", "under", "again", "before", "after", "between", "through",
+        ]
+        .into_iter()
+        .collect()
+    });
+
+/// Build [`MemoryInputs`] from a memory `Value` (the ISO→ms + graph-degree mapping,
+/// same as the housekeeping service's `parse_mem`).
+fn memory_inputs(v: &Value) -> MemoryInputs {
+    let num = |k: &str| v.get(k).and_then(Value::as_f64);
+    let ms = |k: &str| {
+        v.get(k)
+            .and_then(Value::as_str)
+            .and_then(crate::clock::iso_to_ms)
+            .map(|m| m as f64)
+    };
+    MemoryInputs {
+        importance: num("importance").unwrap_or(0.0),
+        reinforced_importance: num("reinforcedImportance"),
+        created_at_ms: ms("createdAt").unwrap_or(f64::NAN),
+        last_reinforced_at_ms: ms("lastReinforcedAt"),
+        last_accessed_at_ms: ms("lastAccessedAt"),
+        reinforcement_count: num("reinforcementCount").map(|c| c as u64),
+        graph_degree: v
+            .get("relatedMemoryIds")
+            .and_then(Value::as_array)
+            .map(|a| a.len())
+            .unwrap_or(0),
+    }
+}
+
+/// Decode the `{"0":v0,…}` Float32Array-shaped embedding a memory `Value` carries
+/// into a `Vec<f32>` (v4's `memory.embedding`). Ascending integer-key order.
+fn memory_embedding(v: &Value) -> Option<Vec<f32>> {
+    let obj = v.get("embedding").and_then(Value::as_object)?;
+    if obj.is_empty() {
+        return None;
+    }
+    let mut pairs: Vec<(usize, f32)> = obj
+        .iter()
+        .filter_map(|(k, val)| Some((k.parse::<usize>().ok()?, val.as_f64()? as f32)))
+        .collect();
+    pairs.sort_by_key(|(i, _)| *i);
+    Some(pairs.into_iter().map(|(_, f)| f).collect())
+}
+
+/// Fire-and-forget `updateAccessTimeBulk` (v4 `bumpAccessTimes`). Non-fatal: a
+/// failure is swallowed. Awaited here (v4 `void`s the promise) — same committed
+/// effect once settled.
+async fn bump_access_times(db: &Db, character_id: &str, memory_ids: &[String]) {
+    if memory_ids.is_empty() {
+        return;
+    }
+    let cid = character_id.to_string();
+    let ids = memory_ids.to_vec();
+    let _ = db
+        .write(move |writers| {
+            writers
+                .main()
+                .memories()
+                .update_access_time_bulk(&cid, &ids)
+        })
+        .await;
 }
 
 #[cfg(test)]

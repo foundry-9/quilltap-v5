@@ -1,0 +1,99 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "user-fmc-1",
+  "stores": [
+    { "id": "6b000000-0000-4000-8000-0000000000c1", "name": "Ada Character Vault", "basePath": "", "mountType": "database", "storeType": "documents", "includePatterns": [], "excludePatterns": [], "enabled": true, "createdAt": "2024-01-01T00:00:00.000Z", "updatedAt": "2024-01-01T00:00:00.000Z" },
+    { "id": "6b000000-0000-4000-8000-0000000000c2", "name": "Ada Group Files", "basePath": "", "mountType": "database", "storeType": "documents", "includePatterns": [], "excludePatterns": [], "enabled": true, "createdAt": "2024-01-01T00:00:00.000Z", "updatedAt": "2024-01-01T00:00:00.000Z" },
+    { "id": "6b000000-0000-4000-8000-0000000000c3", "name": "Project Scriptorium", "basePath": "", "mountType": "database", "storeType": "documents", "includePatterns": [], "excludePatterns": [], "enabled": true, "createdAt": "2024-01-01T00:00:00.000Z", "updatedAt": "2024-01-01T00:00:00.000Z" },
+    { "id": "6b000000-0000-4000-8000-0000000000c4", "name": "Quilltap General", "basePath": "", "mountType": "database", "storeType": "documents", "includePatterns": [], "excludePatterns": [], "enabled": true, "createdAt": "2024-01-01T00:00:00.000Z", "updatedAt": "2024-01-01T00:00:00.000Z" }
+  ],
+  "files": [
+    { "mountPointId": "6b000000-0000-4000-8000-0000000000c1", "relativePath": "Knowledge/analytical-engine.md", "fileType": "markdown", "content": "---\ntags:\n  - engines\n  - computation\ntopics: history\n---\n\nThe analytical engine is a proposed mechanical general-purpose computer.\n" },
+    { "mountPointId": "6b000000-0000-4000-8000-0000000000c1", "relativePath": "Knowledge/long-treatise.md", "fileType": "markdown", "content": "# Treatise\n\nLONG_BODY_PLACEHOLDER\n" },
+    { "mountPointId": "6b000000-0000-4000-8000-0000000000c1", "relativePath": "Wardrobe/not-knowledge.md", "fileType": "markdown", "content": "This file is NOT under Knowledge/ and must be excluded by the prefix filter.\n" },
+    { "mountPointId": "6b000000-0000-4000-8000-0000000000c2", "relativePath": "Knowledge/group-notes.md", "fileType": "markdown", "content": "Shared group notes about the analytical engine collaboration.\n" },
+    { "mountPointId": "6b000000-0000-4000-8000-0000000000c3", "relativePath": "Knowledge/blocked.md", "fileType": "markdown", "content": "---\ncharacter_read: false\n---\n\nThis project file is flagged character_read false and must be dropped.\n" },
+    { "mountPointId": "6b000000-0000-4000-8000-0000000000c4", "relativePath": "Knowledge/reference.pdf", "fileType": "pdf", "content": "Extracted PDF text about the analytical engine reference.\n" }
+  ],
+  "chunks": [
+    { "id": "6c000000-0000-4000-8000-000000000001", "mountPointId": "6b000000-0000-4000-8000-0000000000c1", "relativePath": "Knowledge/analytical-engine.md", "chunkIndex": 0, "headingContext": "Overview", "content": "The analytical engine is a proposed mechanical general-purpose computer.", "vector": [1.0, 0.0, 0.0] },
+    { "id": "6c000000-0000-4000-8000-000000000002", "mountPointId": "6b000000-0000-4000-8000-0000000000c1", "relativePath": "Knowledge/analytical-engine.md", "chunkIndex": 1, "headingContext": null, "content": "A second chunk of the same analytical-engine file that must be deduped at the file level (lower score).", "vector": [0.8, 0.6, 0.0] },
+    { "id": "6c000000-0000-4000-8000-000000000003", "mountPointId": "6b000000-0000-4000-8000-0000000000c1", "relativePath": "Knowledge/long-treatise.md", "chunkIndex": 0, "headingContext": "Treatise", "content": "A very long treatise chunk whose body exceeds the inline token threshold and must be demoted to a pointer.", "vector": [0.6, 0.8, 0.0] },
+    { "id": "6c000000-0000-4000-8000-000000000004", "mountPointId": "6b000000-0000-4000-8000-0000000000c2", "relativePath": "Knowledge/group-notes.md", "chunkIndex": 0, "headingContext": null, "content": "Shared group notes about the analytical engine collaboration and its context.", "vector": [0.6, 0.8, 0.0] },
+    { "id": "6c000000-0000-4000-8000-000000000005", "mountPointId": "6b000000-0000-4000-8000-0000000000c3", "relativePath": "Knowledge/blocked.md", "chunkIndex": 0, "headingContext": null, "content": "This project file is flagged character_read false and must be dropped before scoring.", "vector": [1.0, 0.0, 0.0] },
+    { "id": "6c000000-0000-4000-8000-000000000006", "mountPointId": "6b000000-0000-4000-8000-0000000000c4", "relativePath": "Knowledge/reference.pdf", "chunkIndex": 0, "headingContext": "Reference", "content": "Extracted PDF text about the analytical engine reference material.", "vector": [0.8, 0.6, 0.0] }
+  ],
+  "cannedEmbeddings": {
+    "analytical engine": [1.0, 0.0, 0.0]
+  },
+  "cannedFailures": ["embedding failure trigger"],
+  "queries": [
+    {
+      "label": "multi_tier_inline_pointer_blob",
+      "query": "analytical engine",
+      "characterMountPointId": "6b000000-0000-4000-8000-0000000000c1",
+      "groupMountPointIds": ["6b000000-0000-4000-8000-0000000000c2"],
+      "projectMountPointIds": ["6b000000-0000-4000-8000-0000000000c3"],
+      "globalMountPointId": "6b000000-0000-4000-8000-0000000000c4",
+      "budgetTokens": 2000,
+      "provider": "ANTHROPIC",
+      "charsPerToken": 3.5
+    },
+    {
+      "label": "tight_budget_demotes_to_pointer",
+      "query": "analytical engine",
+      "characterMountPointId": "6b000000-0000-4000-8000-0000000000c1",
+      "groupMountPointIds": [],
+      "projectMountPointIds": [],
+      "globalMountPointId": null,
+      "budgetTokens": 70,
+      "provider": "ANTHROPIC",
+      "charsPerToken": 3.5
+    },
+    {
+      "label": "empty_query_early_exit",
+      "query": "   ",
+      "characterMountPointId": "6b000000-0000-4000-8000-0000000000c1",
+      "groupMountPointIds": [],
+      "projectMountPointIds": [],
+      "globalMountPointId": null,
+      "budgetTokens": 2000,
+      "provider": "ANTHROPIC",
+      "charsPerToken": 3.5
+    },
+    {
+      "label": "zero_budget_early_exit",
+      "query": "analytical engine",
+      "characterMountPointId": "6b000000-0000-4000-8000-0000000000c1",
+      "groupMountPointIds": [],
+      "projectMountPointIds": [],
+      "globalMountPointId": null,
+      "budgetTokens": 0,
+      "provider": "ANTHROPIC",
+      "charsPerToken": 3.5
+    },
+    {
+      "label": "embedding_failure_early_exit",
+      "query": "embedding failure trigger",
+      "characterMountPointId": "6b000000-0000-4000-8000-0000000000c1",
+      "groupMountPointIds": [],
+      "projectMountPointIds": [],
+      "globalMountPointId": null,
+      "budgetTokens": 2000,
+      "provider": "ANTHROPIC",
+      "charsPerToken": 3.5
+    },
+    {
+      "label": "high_minscore_filters_all",
+      "query": "analytical engine",
+      "characterMountPointId": "6b000000-0000-4000-8000-0000000000c1",
+      "groupMountPointIds": [],
+      "projectMountPointIds": [],
+      "globalMountPointId": null,
+      "budgetTokens": 2000,
+      "provider": "ANTHROPIC",
+      "charsPerToken": 3.5,
+      "minScore": 0.999
+    }
+  ]
+}

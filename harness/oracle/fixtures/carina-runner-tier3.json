@@ -1,0 +1,110 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2026-02-01T00:00:00.000Z",
+  "userId": "11111111-1111-4111-8111-111111111111",
+  "chat": {
+    "id": "ca000001-0000-4000-8000-0000000000c1",
+    "userId": "11111111-1111-4111-8111-111111111111",
+    "title": "Carina Runner Chat",
+    "participants": [
+      {
+        "id": "fa000001-0000-4000-8000-0000000000a1",
+        "type": "CHARACTER",
+        "characterId": "aaaa1111-1111-4111-8111-111111111111",
+        "controlledBy": "llm"
+      },
+      {
+        "id": "fb000001-0000-4000-8000-0000000000b2",
+        "type": "CHARACTER",
+        "characterId": "bbbb2222-2222-4222-8222-222222222222",
+        "controlledBy": "user"
+      }
+    ]
+  },
+  "answererId": "aaaa1111-1111-4111-8111-111111111111",
+  "answererParticipantId": "fa000001-0000-4000-8000-0000000000a1",
+  "askerParticipantId": "fb000001-0000-4000-8000-0000000000b2",
+  "calls": [
+    {
+      "name": "no_markup",
+      "text": "just an ordinary message with no carina markup",
+      "askerParticipantId": "fb000001-0000-4000-8000-0000000000b2",
+      "operatorInitiated": true,
+      "logLabels": { "detected": "user message", "failed": "user-message" },
+      "outcome": { "kind": "ok", "answer": "unused", "post": false }
+    },
+    {
+      "name": "public_answer_operator",
+      "text": "@Alice: what is the capital of France?",
+      "askerParticipantId": "fb000001-0000-4000-8000-0000000000b2",
+      "operatorInitiated": true,
+      "logLabels": { "detected": "user message", "failed": "user-message" },
+      "outcome": {
+        "kind": "ok",
+        "answer": "Paris is the capital of France.",
+        "post": true,
+        "whisper": false
+      }
+    },
+    {
+      "name": "whisper_answer_operator",
+      "text": "@Alice? tell me a secret only I should hear",
+      "askerParticipantId": "fb000001-0000-4000-8000-0000000000b2",
+      "operatorInitiated": true,
+      "logLabels": { "detected": "user message", "failed": "user-message" },
+      "outcome": {
+        "kind": "ok",
+        "answer": "Between us: the vault code is 1920.",
+        "post": true,
+        "whisper": true
+      }
+    },
+    {
+      "name": "unknown_character",
+      "text": "@Ghost: are you on duty?",
+      "askerParticipantId": "fb000001-0000-4000-8000-0000000000b2",
+      "operatorInitiated": true,
+      "logLabels": { "detected": "user message", "failed": "user-message" },
+      "outcome": {
+        "kind": "err",
+        "error": { "kind": "not-found", "characterName": "Ghost" }
+      }
+    },
+    {
+      "name": "model_failure_whisper",
+      "text": "@Alice? does the model still work",
+      "askerParticipantId": "fb000001-0000-4000-8000-0000000000b2",
+      "operatorInitiated": true,
+      "logLabels": { "detected": "user message", "failed": "user-message" },
+      "outcome": {
+        "kind": "err",
+        "error": {
+          "kind": "llm-failed",
+          "characterName": "Alice",
+          "detail": "rate limit exceeded"
+        }
+      }
+    },
+    {
+      "name": "assistant_markup_public",
+      "text": "In-character prose about the weather.\n@Alice: what colour is the sky?",
+      "askerParticipantId": "fa000001-0000-4000-8000-0000000000a1",
+      "operatorInitiated": false,
+      "logLabels": { "detected": "assistant response", "failed": "assistant-markup" },
+      "outcome": {
+        "kind": "ok",
+        "answer": "The sky is blue by day.",
+        "post": true,
+        "whisper": false
+      }
+    },
+    {
+      "name": "query_throws",
+      "text": "@Alice: this one blows up mid-query",
+      "askerParticipantId": "fb000001-0000-4000-8000-0000000000b2",
+      "operatorInitiated": true,
+      "logLabels": { "detected": "user message", "failed": "user-message" },
+      "outcome": { "kind": "throw", "message": "simulated carina engine failure" }
+    }
+  ]
+}

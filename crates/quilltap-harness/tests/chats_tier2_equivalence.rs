@@ -111,6 +111,13 @@ impl PatchData {
             total_completion_tokens: None,
             estimated_cost_usd: None,
             equipped_outfit: None,
+            compaction_generation: None,
+            last_summary_turn: None,
+            last_summary_tokens: None,
+            last_full_rebuild_turn: None,
+            summary_anchor_message_ids: None,
+            last_rename_check_interchange: None,
+            roleplay_template_id: None,
             updated_at: self.updated_at.clone(),
         }
     }

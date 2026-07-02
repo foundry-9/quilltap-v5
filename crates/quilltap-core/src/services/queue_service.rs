@@ -89,3 +89,42 @@ pub async fn enqueue_memory_housekeeping(
 
     enqueue_job(db, user_id, "MEMORY_HOUSEKEEPING", payload, 1.0).await
 }
+
+/// v4 `enqueueTitleUpdate` (`lib/background-jobs/queue-service.ts`): enqueue a
+/// `TITLE_UPDATE` job, de-duping on `chatId`. If a PENDING or PROCESSING
+/// `TITLE_UPDATE` job already exists for the same `chatId`, this is a no-op that
+/// returns the existing job id (multiple finalizer firings at the same
+/// interchange checkpoint fold into one pending job). `maxAttempts` defaults to 3
+/// (v4 `options?.maxAttempts ?? 3`; the differential passes no options). The
+/// `skipDedupCheck` option is not modeled — the context-summary caller never sets
+/// it. A dedupe-lookup failure falls through and enqueues anyway (v4 warns).
+pub async fn enqueue_title_update(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    payload: Value,
+) -> Result<String, DbError> {
+    let uid = user_id.to_string();
+    let in_flight = db.read_main(|conn| {
+        let repo = crate::db::background_jobs::BackgroundJobsRepository::new(conn);
+        let mut jobs = repo.find_by_user_id(&uid, Some("PENDING"))?;
+        jobs.extend(repo.find_by_user_id(&uid, Some("PROCESSING"))?);
+        Ok(jobs)
+    });
+    if let Ok(jobs) = in_flight {
+        let existing = jobs.iter().find(|j| {
+            if j.job_type != "TITLE_UPDATE" {
+                return false;
+            }
+            let job_chat: Option<Value> = serde_json::from_str::<Value>(&j.payload)
+                .ok()
+                .and_then(|p| p.get("chatId").cloned());
+            job_chat.as_ref().and_then(Value::as_str) == Some(chat_id)
+        });
+        if let Some(existing) = existing {
+            return Ok(existing.id.clone());
+        }
+    }
+
+    enqueue_job(db, user_id, "TITLE_UPDATE", payload, 3.0).await
+}

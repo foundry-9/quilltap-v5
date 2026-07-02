@@ -274,3 +274,26 @@ impl<'c> RoleplayTemplatesRepository<'c> {
         Ok(affected > 0)
     }
 }
+
+/// **Scoped read** for the roleplay-template fallback chain
+/// ([`crate::services::participant_resolver`]): the `systemPrompt` of a template,
+/// v4 `roleplayTemplates.findById(id)?.systemPrompt`. Follows the scoped-read
+/// precedent [`super::chat_settings::find_auto_housekeeping_settings_by_user_id`]
+/// — the resolver consumes ONLY `systemPrompt` (it returns `{ systemPrompt }`),
+/// so the full `RoleplayTemplate` read marshaling is out of scope here. `None`
+/// when no row exists (v4 `findById` → `null` → `getRoleplayTemplate` returns
+/// `null`). `systemPrompt` is a required non-null TEXT column
+/// (`z.string().min(1)`), so a present row always yields the string.
+pub fn find_system_prompt_by_id(conn: &Connection, id: &str) -> Result<Option<String>, DbError> {
+    conn.query_row(
+        "SELECT systemPrompt FROM roleplay_templates WHERE id = ?1",
+        params![id],
+        |row| row.get::<_, String>(0),
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other),
+    })
+    .map_err(DbError::from)
+}

@@ -1488,12 +1488,113 @@ op mints a chat timestamp); and the **streaming model boundary**
 `Result<StreamChunk, StreamError>` so mid-stream failure is first-class,
 `CannedStreamingProvider` sharing `canned_completion_key`; oracle-side
 injection lands with the wave-3 primary-stream differential, as
-`model::completion` did with the memory processor). `executeTurnChain` (the
-model-calling chain driver), the wave-3 services (compression/summary halves,
-knowledge injector, resolvers, primary stream + recovery/failover, finalizer,
-`buildContext`, the `processMessage` spine), and the adjacent subsystems
-(tools, providers, danger/agent/courier/confirmation, enclave) are scoped in
-the decomposition doc. Next: wave 3, per that doc.
+`model::completion` did with the memory processor). **Wave 3 batch 1 — the
+seven mutually-independent model-calling/DB-reading services — is ported and
+green** (2026-07-02; six parallel agents on disjoint files, the shared
+`ChatUpdate` setters + `services/mod.rs` module set pre-staged serially):
+
+- **Compression service half** (`services::compression`,
+  `compression_tier3_equivalence`): v4 `applyContextCompression` +
+  `compressConversationHistory` (the `MESSAGE_COMPRESSION_PROMPT` verbatim,
+  `estimateTokens` = `ceil(utf16/4)`, max-tokens 4000, the trim+re-estimate
+  parser) over the ported sizing leaves + `CheapLlmTaskExecutor`.
+  System-prompt compression stays permanently disabled (fresh per-character
+  identity prompt) — the result shape matched exactly, the dead
+  `compressSystemPrompt` path not ported. No DB writes → the tier-3
+  differential is result-object equivalence over a 6-case corpus (happy path,
+  empty window, LLM-failure warning byte-exact, uncensored fallback,
+  empty-from-both throw, Unicode/UTF-16 estimate), completions pinned by
+  oracle-recorded canned keys.
+- **Context-summary service half** (`services::context_summary`,
+  `context_summary_service_tier3_equivalence`): `generateContextSummary` /
+  `invalidateContextSummaryIfMessageCovered` / `checkAndGenerateSummaryIfNeeded`
+  + the three cheap-LLM tasks (`foldChatSummary`, the two title generators;
+  prompt bodies in a generated `prompt_text` submodule) over the ported cadence
+  leaves. The fold bumps `compactionGeneration`/`lastSummaryTurn`/
+  `summaryAnchorMessageIds` (new pre-staged `ChatUpdate` setters), appends the
+  `context-summary` event, **sweeps prior-generation Librarian summary
+  whispers** (in scope; the re-post is not), and writes the title;
+  `queue_service` gained `enqueue_title_update`. The four cross-subsystem side
+  effects (Librarian re-post, vault mirror, relevant-conversations refresh,
+  cost events) are a default-no-op `ContextSummarySeams` trait matching the
+  oracle's jest mocks (tracked deferrals); `generateContextSummaryAsync` is not
+  separately ported (no forked-child write-drop hazard in v5 — callers await or
+  spawn). 11-op differential diffing result objects + `chats`/`chat_messages`/
+  `background_jobs`.
+- **Knowledge injector + first-message context**
+  (`services::knowledge_injector` + `services::first_message_context`,
+  `knowledge_injector_equivalence` + `first_message_context_equivalence`):
+  `retrieveKnowledgeForTurn` (embed-once, per-tier chunk search via the new
+  `document_search` child reproducing v4's candidate SQL + cosine/literal-boost
+  blend over the ported vector/BLOB leaves, dedupe best-score-wins, greedy
+  inline-vs-pointer budget pack, exact rendering strings incl. the 120-char
+  word-boundary teaser; pure leaves `dedupe_tier_triple` +
+  `format_self_uri`/`format_doc_store_uri`), `memory_service` gained
+  `search_memories_semantic` (text fallback ported; the `recallContext`
+  re-rank/expansion deferred — no wave-3 consumer), and
+  `loadParticipantMemories`/`loadProjectContext`/`buildFirstMessageContext`
+  (Recent + Semantic [limit 8, minScore 0.4] + text-fallback, importance sort,
+  per-participant error-swallow). Read-only → two read-differentials
+  (real-DB-under-jest, only `generateEmbeddingForUser` canned), zero
+  normalization.
+- **Participant + user-identity resolvers** (`services::participant_resolver` +
+  `services::user_identity_resolver`, `participant_resolver_tier2_equivalence`
+  + `user_identity_resolver_equivalence`): `resolveRespondingParticipant`
+  (continue-mode throw vs normal-mode fallback, zero/one/multiple LLM-candidate
+  paths, the multiple path over the ported turn state + weighted selection with
+  RNG injected), `loadAllParticipantData`, `getRoleplayTemplate` (chat →
+  project → user/global fallback, the inherited default PERSISTED via the new
+  `ChatUpdate.roleplay_template_id` setter — the chat's own
+  `roleplayTemplateId` column, `updatedAt` preserved), `resolveUserIdentity`
+  (four-source chain preferring the active-typing "Speaking As" participant),
+  and `resolveConnectionProfile`; scoped reads added
+  (`connection_profiles::find_by_id` full net-read marshaling,
+  `roleplay_templates::find_system_prompt_by_id`, `users::find_name_by_id`).
+  Two tsx real-DB differentials (14 + 5 ops), the one write diffed
+  zero-normalization. **Deferred:** host-side API-key acquisition (the
+  `cheap_llm_exec` pattern); `connection_profiles.parameters` multi-key
+  open-JSON order (corpus `{}`).
+- **Primary stream + recovery + provider failover** (the largest;
+  `services::primary_stream`/`recovery`/`provider_failover` + the **first
+  typed `Event` vocabulary** `services::chat_events`,
+  `primary_stream_tier3_equivalence`): `ChatEvent` is `#[serde(untagged)]`
+  with exactly the `Status`/`Content`/`Reasoning`/`Done` variants these
+  services emit, each serializing byte-identical to v4's single-key SSE frame,
+  plus the fire-and-forget `EventSink` seam + `RecordingSink`.
+  `run_primary_stream` ports the sending→streaming status flip, cumulative
+  reasoning capture/flush, the tool-unsupported retry-without-tools, the
+  request-limit recovery early-return, and the idempotent OOC-marker
+  `preservePartialOnError`; `save_assistant_message` is the persistence
+  primitive the finalizer wave reuses; the `lib/llm/errors.ts` classifiers +
+  an en-US `toLocaleString` grouper are ported (recovery text reaches the DB);
+  recovery ports the byte-exact message builders + 50-UTF-16-unit static
+  fallback chunking (`recoveryType` columns already wired); failover ports the
+  same-provider retry + uncensored reroute (`DangerousContentRouter` injected
+  so the connections read + key decryption stay host-side) + the five exact
+  reason strings. 12-call differential mocking ONLY `streamMessage`
+  (rule-match + record → stateful per-key `CannedStreamingProvider` queues) +
+  a recording SSE controller; diffs the ordered event trace + both table dumps
+  + result objects. **Deferred:** `save_assistant_message`'s tool/image
+  branches + confirmation keys (finalizer wave), the real dangerous-content
+  resolution, swallowed-persist logging.
+- **Carina markup runner** (`services::carina_runner`,
+  `carina_runner_tier3_equivalence`): `runCarinaMarkupQuery` (parse →
+  consulting → query → public-answer splice [never for whispers] → Prospero on
+  error, never-throws catch-all) + the ported `postCarinaResponse`
+  (`carina_runner::writer` — the byte-exact `systemSender:'carina'` message).
+  A direct read established `runCarinaQuery` drags in the wave-4 tool loop,
+  `findCharactersByName`, the commonplace writer, and the Brahma console, so
+  per the pre-agreed STOP rule the query engine is the injected `RunCarinaQuery`
+  seam and `postProsperoCarinaError` a recorded seam (both jest-mocked
+  identically; tracked deferrals). 7-case differential diffing the ordered
+  runner trace + `chat_messages`.
+
+All ten differentials (the eight new + `chats_tier2` / `turn_orchestrator`
+re-verified, proving the new `ChatUpdate` setters inert on existing paths) run
+green against freshly regenerated oracles. Remaining wave-3 sub-units: the **finalizer**, the **`buildContext`
+capstone**, and **`processMessage` + `executeTurnChain`** — then wave 4
+(tools, providers, danger/agent/courier/confirmation, enclave) per the
+decomposition doc.
 
 **Drift catch-up (2026-07-01): the answer-confirmation columns.** v4 commit
 `29f3ae63` (a Salon consistency-check + re-affirmation feature) added DDL/schema

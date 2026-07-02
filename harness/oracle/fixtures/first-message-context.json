@@ -1,0 +1,90 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "00000000-0000-4000-8000-0000000000ee",
+  "seedTimestamp": "2024-06-01T00:00:00.000Z",
+  "nowMs": 1717200000000,
+  "characters": [
+    { "id": "10000000-0000-4000-8000-000000000001", "name": "Speaker", "controlledBy": "user", "description": "the narrating host" },
+    { "id": "10000000-0000-4000-8000-000000000002", "name": "Alice", "controlledBy": "llm", "description": "a curious inventor" },
+    { "id": "10000000-0000-4000-8000-000000000003", "name": "Bob", "controlledBy": "llm", "description": null },
+    { "id": "10000000-0000-4000-8000-000000000004", "name": "Carol", "controlledBy": "llm", "description": "a quiet archivist" },
+    { "id": "10000000-0000-4000-8000-000000000005", "name": "Speaker Two", "controlledBy": "user", "description": "a second narrator" }
+  ],
+  "project": {
+    "id": "20000000-0000-4000-8000-000000000001",
+    "name": "The Grand Exhibition",
+    "description": "A steampunk salon project.",
+    "instructions": "Keep the register lofty."
+  },
+  "seedMemories": [
+    { "id": "30000000-0000-4000-8000-000000000001", "characterId": "10000000-0000-4000-8000-000000000001", "aboutCharacterId": "10000000-0000-4000-8000-000000000002", "content": "Alice unveiled her new analytical engine at the salon.", "summary": "Alice showed the analytical engine.", "importance": 0.9, "vector": [1.0, 0.0] },
+    { "id": "30000000-0000-4000-8000-000000000002", "characterId": "10000000-0000-4000-8000-000000000001", "aboutCharacterId": "10000000-0000-4000-8000-000000000002", "content": "Alice argued passionately about clockwork ethics.", "summary": "Alice debated clockwork ethics.", "importance": 0.7, "vector": [0.9, 0.4358898943540674] },
+    { "id": "30000000-0000-4000-8000-000000000003", "characterId": "10000000-0000-4000-8000-000000000001", "aboutCharacterId": null, "content": "Everyone admired Alice's brass goggles that evening.", "summary": "A general note mentioning Alice's goggles.", "importance": 0.5, "vector": [0.8, 0.6] },
+    { "id": "30000000-0000-4000-8000-000000000004", "characterId": "10000000-0000-4000-8000-000000000001", "aboutCharacterId": "10000000-0000-4000-8000-000000000002", "content": "Alice repaired the orrery in the west wing.", "summary": "Alice fixed the orrery.", "importance": 0.95, "vector": [0.95, 0.31224989991991995] },
+    { "id": "30000000-0000-4000-8000-000000000005", "characterId": "10000000-0000-4000-8000-000000000001", "aboutCharacterId": null, "content": "Bob mentioned the archive catalog needed reshelving.", "summary": "Bob talked about the archive.", "importance": 0.6, "vector": null },
+    { "id": "30000000-0000-4000-8000-000000000006", "characterId": "10000000-0000-4000-8000-000000000005", "aboutCharacterId": null, "content": "Bob wandered the halls describing the exhibition.", "summary": "A vector-less general note mentioning Bob by name.", "importance": 0.8, "vector": null }
+  ],
+  "cannedEmbeddings": {
+    "Alice - a curious inventor": [1.0, 0.0],
+    "Carol - a quiet archivist": [-1.0, 0.0],
+    "Bob": [1.0, 0.0]
+  },
+  "cannedFailures": [],
+  "cases": [
+    {
+      "label": "load_alice_recent_semantic_dedupe",
+      "kind": "loadParticipantMemories",
+      "speakingCharacterId": "10000000-0000-4000-8000-000000000001",
+      "otherParticipants": [
+        { "characterId": "10000000-0000-4000-8000-000000000002", "name": "Alice", "description": "a curious inventor", "controlledBy": "llm" }
+      ]
+    },
+    {
+      "label": "load_bob_text_fallback",
+      "kind": "loadParticipantMemories",
+      "speakingCharacterId": "10000000-0000-4000-8000-000000000005",
+      "otherParticipants": [
+        { "characterId": "10000000-0000-4000-8000-000000000003", "name": "Bob", "description": null, "controlledBy": "llm" }
+      ]
+    },
+    {
+      "label": "load_carol_no_memories",
+      "kind": "loadParticipantMemories",
+      "speakingCharacterId": "10000000-0000-4000-8000-000000000001",
+      "otherParticipants": [
+        { "characterId": "10000000-0000-4000-8000-000000000004", "name": "Carol", "description": "a quiet archivist", "controlledBy": "llm" }
+      ]
+    },
+    {
+      "label": "project_found",
+      "kind": "loadProjectContext",
+      "projectId": "20000000-0000-4000-8000-000000000001"
+    },
+    {
+      "label": "project_missing",
+      "kind": "loadProjectContext",
+      "projectId": "20000000-0000-4000-8000-0000000000ff"
+    },
+    {
+      "label": "build_end_to_end_with_project",
+      "kind": "buildFirstMessageContext",
+      "speakingCharacterId": "10000000-0000-4000-8000-000000000001",
+      "projectId": "20000000-0000-4000-8000-000000000001",
+      "participants": [
+        { "type": "CHARACTER", "characterId": "10000000-0000-4000-8000-000000000001", "controlledBy": "user" },
+        { "type": "CHARACTER", "characterId": "10000000-0000-4000-8000-000000000002", "controlledBy": "llm" },
+        { "type": "CHARACTER", "characterId": "10000000-0000-4000-8000-000000000003", "controlledBy": "llm" }
+      ]
+    },
+    {
+      "label": "build_end_to_end_no_project",
+      "kind": "buildFirstMessageContext",
+      "speakingCharacterId": "10000000-0000-4000-8000-000000000001",
+      "projectId": null,
+      "participants": [
+        { "type": "CHARACTER", "characterId": "10000000-0000-4000-8000-000000000001", "controlledBy": "user" },
+        { "type": "CHARACTER", "characterId": "10000000-0000-4000-8000-000000000002", "controlledBy": "llm" }
+      ]
+    }
+  ]
+}

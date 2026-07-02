@@ -1,0 +1,149 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "11111111-1111-4111-8111-111111111111",
+  "profiles": [
+    {
+      "id": "prof-current",
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini",
+      "baseUrl": null,
+      "isCheap": false,
+      "isDangerousCompatible": false,
+      "parameters": null,
+      "maxTokens": null,
+      "modelClass": null
+    }
+  ],
+  "currentProfileId": "prof-current",
+  "dangerSettings": null,
+  "completionRules": [
+    {
+      "op": "fold_regular",
+      "kind": "fold",
+      "response": "Active threads: heist continues. Resolved decisions: split the take. Emotional state: wary. Open questions: escape route."
+    },
+    {
+      "op": "fold_regular",
+      "kind": "title",
+      "response": "\"A Wary Split of the Take\""
+    },
+    {
+      "op": "hard_rebuild",
+      "kind": "fold",
+      "response": "Active threads: rebuilt fresh. Resolved decisions: none. Emotional state: calm. Open questions: many."
+    },
+    {
+      "op": "hard_rebuild",
+      "kind": "title",
+      "response": "The Ledger Rebuilt"
+    },
+    {
+      "op": "fold_with_librarian_sweep",
+      "kind": "fold",
+      "response": "Active threads: swept clean. Resolved decisions: file the pr\u00e9cis. Emotional state: orderly. Open questions: none."
+    },
+    {
+      "op": "fold_with_librarian_sweep",
+      "kind": "title",
+      "response": "Files Set in Order"
+    },
+    {
+      "op": "help_like_fold",
+      "kind": "fold",
+      "response": "Active threads: user setting up API. Resolved decisions: use Anthropic. Emotional state: neutral. Open questions: which model."
+    },
+    {
+      "op": "help_like_fold",
+      "kind": "help-title",
+      "response": "Setting up Anthropic API connection"
+    },
+    {
+      "op": "title_failure",
+      "kind": "fold",
+      "response": "Active threads: folded ok. Resolved decisions: none. Emotional state: fine. Open questions: none."
+    },
+    {
+      "op": "title_failure",
+      "kind": "title",
+      "fail": "model provider outage: title unavailable"
+    },
+    {
+      "op": "check_gate_fires_fold",
+      "kind": "fold",
+      "response": "Active threads: long chat folded. Resolved decisions: keep going. Emotional state: engaged. Open questions: the ending."
+    },
+    {
+      "op": "check_gate_fires_fold",
+      "kind": "title",
+      "response": "The Long Road Onward"
+    }
+  ],
+  "ops": [
+    {
+      "name": "fold_regular",
+      "kind": "generate",
+      "chatId": "c0000001-0000-4000-8000-000000000001",
+      "forceRegenerate": false
+    },
+    {
+      "name": "hard_rebuild",
+      "kind": "generate",
+      "chatId": "c0000002-0000-4000-8000-000000000002",
+      "forceRegenerate": true
+    },
+    {
+      "name": "fold_with_librarian_sweep",
+      "kind": "generate",
+      "chatId": "c0000003-0000-4000-8000-000000000003",
+      "forceRegenerate": false
+    },
+    {
+      "name": "help_like_fold",
+      "kind": "generate",
+      "chatId": "c0000004-0000-4000-8000-000000000004",
+      "forceRegenerate": true
+    },
+    {
+      "name": "title_failure",
+      "kind": "generate",
+      "chatId": "c0000005-0000-4000-8000-000000000005",
+      "forceRegenerate": false
+    },
+    {
+      "name": "check_gate_skip_no_title",
+      "kind": "check",
+      "chatId": "c0000006-0000-4000-8000-000000000006"
+    },
+    {
+      "name": "check_title_checkpoint_fires",
+      "kind": "check",
+      "chatId": "c0000007-0000-4000-8000-000000000007"
+    },
+    {
+      "name": "check_title_not_firing",
+      "kind": "check",
+      "chatId": "c0000008-0000-4000-8000-000000000008"
+    },
+    {
+      "name": "check_gate_fires_fold",
+      "kind": "check",
+      "chatId": "c0000009-0000-4000-8000-000000000009"
+    },
+    {
+      "name": "invalidate_hit",
+      "kind": "invalidate",
+      "chatId": "c000000a-0000-4000-8000-00000000000a",
+      "messageIds": [
+        "dd00000a-0000-4000-8000-000000000004"
+      ]
+    },
+    {
+      "name": "invalidate_miss",
+      "kind": "invalidate",
+      "chatId": "c000000b-0000-4000-8000-00000000000b",
+      "messageIds": [
+        "ffffffff-0000-4000-8000-0000000003e7"
+      ]
+    }
+  ]
+}
