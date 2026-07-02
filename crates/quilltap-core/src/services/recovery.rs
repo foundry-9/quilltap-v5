@@ -350,6 +350,7 @@ where
                 cache_usage: None,
                 attachment_results: None,
                 tools_executed: false,
+                ..Default::default()
             }));
 
             RecoveryResult {
@@ -433,6 +434,7 @@ async fn stream_static_fallback<S: EventSink>(
         cache_usage: None,
         attachment_results: None,
         tools_executed: false,
+        ..Default::default()
     }));
 
     RecoveryResult {

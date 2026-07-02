@@ -485,6 +485,34 @@ each with its own fresh-oracle differential.
   `roleplay_template_id` setters; `chats_tier2` and `turn_orchestrator`
   differentials re-verified green against regenerated oracles.
 
+Phase 3 — chat orchestration wave 3, batch 2: the message finalizer and the
+`buildContext` capstone, ported in parallel, each with a tier-3 differential.
+
+- Message finalizer (`services::message_finalizer`): `finalizeMessageResponse`
+  + `calculateNextSpeaker` — the core clean → re-base → persist → carina →
+  next-speaker → done-event → background-triggers path. The tool /
+  answer-confirmation / async-compression / RNG / cost-estimation subsystems
+  are injected seams with their gate conditions reproduced and banked;
+  `save_assistant_message` extended (confirmation bag, isSilentMessage, image
+  links via the new `db::files::add_link`); `chat_events` gained the full done
+  payload plus `CarinaAnswer`/`ConfirmationResult` variants (recovery frames
+  unchanged — primary-stream differential re-verified); `queue_service` gained
+  `enqueue_memory_extraction` + `enqueue_chat_danger_classification`. Ten-call
+  tier-3 differential diffing results, ordered event traces, seam records, and
+  `chats`/`chat_messages`/`background_jobs`/`files`.
+- `buildContext` capstone (`services::build_context`): the full context
+  assembler composed from the ported subsystem (system prompt, budgets,
+  phase-1 compression, two-pool memory retrieval, scene state, inter-character
+  memories, knowledge retrieval, summary anchor + Librarian cache breakpoint,
+  attribution/whisper shaping, timestamps, the Commonplace recall fold).
+  Unported feeders and whisper-posting side effects behind a
+  `BuildContextSeams` trait mirrored by the oracle mocks. Seven-op tier-3
+  differential diffing the full `BuiltContext` byte-for-byte (frozen wall
+  clock both sides).
+- Remaining wave-3 unit: `processMessage` + `executeTurnChain` (also picks up
+  the finalizer's deferred summary-check invocation and buildContext's
+  autonomous-cap plumbing).
+
 Docs — Phase 2 marked complete; Phase 3 kickoff drafted. Docs only, no crate
 source changed.
 

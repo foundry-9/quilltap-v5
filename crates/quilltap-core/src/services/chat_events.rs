@@ -94,35 +94,132 @@ pub struct DoneCacheUsage {
     pub cache_read_input_tokens: Option<i64>,
 }
 
+/// The next-speaker `turn` info on a finalizer done event (v4's
+/// `NextSpeakerInfo`). Present on the finalizer callsite; absent on the recovery
+/// paths. Field order matches v4's `NextSpeakerInfo` literal.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DoneTurn {
+    pub next_speaker_id: Option<String>,
+    pub reason: String,
+    pub cycle_complete: bool,
+    pub is_users_turn: bool,
+}
+
+/// A three-state field for a JSON key that is either **absent** (omitted from the
+/// object), present as `null`, or present as a value — the exact distinction v4's
+/// object-spread makes between an omitted key (`x || undefined`) and an explicit
+/// `null` (`x || null`). Plain `Option<T>` can only model omit-vs-value; the
+/// finalizer's `reasoningContent: x || null` / `reasoningSegments: x` are ALWAYS
+/// present (`null` or value) while the recovery paths omit them entirely.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub enum Omittable<T> {
+    /// The key is not written at all (v4 `undefined` dropped by `JSON.stringify`).
+    #[default]
+    Absent,
+    /// The key is written as JSON `null`.
+    Null,
+    /// The key is written with this value.
+    Value(T),
+}
+
+impl<T: Serialize> Serialize for Omittable<T> {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            // `Absent` is only ever reached through `skip_serializing_if`; if it
+            // is serialized directly it must still be a null (defensive).
+            Omittable::Absent | Omittable::Null => s.serialize_none(),
+            Omittable::Value(v) => v.serialize(s),
+        }
+    }
+}
+
+impl<T> Omittable<T> {
+    fn is_absent(&self) -> bool {
+        matches!(self, Omittable::Absent)
+    }
+}
+
 /// The `done` event payload (v4 `encodeDoneEvent`'s `data`). The recovery paths
 /// emit it with `usage` / `cache_usage` / `attachment_results` all `null` and
-/// `tools_executed: false`; the fields that v4 leaves off entirely on these
-/// callsites (`turn`, `provider`, `reasoningContent`, …) are absent here — they
-/// arrive with the finalizer service that sets them.
+/// `tools_executed: false`, and leave the rest absent; the finalizer callsite
+/// fills the full set (`participant_id`, `turn`, `provider`, `model_name`,
+/// `is_silent_message`, `reasoning_content`, `reasoning_segments`).
+///
+/// Field order matches v4's finalizer done literal (`{ done: true, messageId,
+/// participantId, usage, cacheUsage, attachmentResults, toolsExecuted, turn,
+/// provider, modelName, isSilentMessage, reasoningContent, reasoningSegments }`);
+/// the recovery paths omit every `skip_serializing_if` field, producing exactly
+/// v4's shorter recovery frame. Construct the recovery form with
+/// `DonePayload { message_id, usage, cache_usage, attachment_results,
+/// tools_executed, ..Default::default() }`.
 ///
 /// Serializes flat next to `done: true` (see [`ChatEvent`]), so a serialized
 /// [`ChatEvent::Done`] is byte-identical to v4's `{ done: true, ...data }`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct DonePayload {
-    /// The persisted message id (v4 always sets it on the recovery done events).
+    /// The persisted message id (v4 always sets it on the recovery + finalizer
+    /// done events).
     pub message_id: Option<String>,
-    /// `null` on the recovery paths.
+    /// The responding participant (v4 finalizer `participantId`). Absent on the
+    /// recovery paths (v4 leaves it off there).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub participant_id: Option<String>,
+    /// `null` on the recovery paths; the real usage on the finalizer path.
     pub usage: Option<DoneUsage>,
     /// `null` on the recovery paths.
     pub cache_usage: Option<DoneCacheUsage>,
     /// `null` on the recovery paths (kept `Value` so a future attachment shape
-    /// slots in without a new type; the recovery paths only ever emit `null`).
+    /// slots in without a new type).
     pub attachment_results: Option<serde_json::Value>,
-    /// `false` on the recovery paths (no tool loop ran).
+    /// `false` on the recovery paths (no tool loop ran); on the finalizer path,
+    /// `toolMessages.length > 0`.
     pub tools_executed: bool,
+    /// The next-speaker info (finalizer only). Absent on recovery.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turn: Option<DoneTurn>,
+    /// The effective provider (finalizer only). Absent on recovery.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    /// The effective model name (finalizer only). Absent on recovery.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_name: Option<String>,
+    /// `true` when the responding participant is silent, else ABSENT — v4's
+    /// `isSilentMessage: … === 'silent' || undefined` (never `false`). Absent on
+    /// recovery.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_silent_message: Option<bool>,
+    /// The full reasoning text (finalizer only) — ALWAYS present there as `null`
+    /// or a string (`reasoningContent || null`); ABSENT on recovery.
+    #[serde(skip_serializing_if = "Omittable::is_absent")]
+    pub reasoning_content: Omittable<String>,
+    /// The positioned reasoning blocks (finalizer only) — ALWAYS present there as
+    /// `null` or an array (`rebasedReasoning`); ABSENT on recovery.
+    #[serde(skip_serializing_if = "Omittable::is_absent")]
+    pub reasoning_segments: Omittable<Vec<DoneReasoningSegment>>,
+}
+
+/// A reasoning segment as it appears in the done event (v4 `ReasoningSegment` —
+/// `anchorOffset` / `content` / `seq`). Separate from
+/// [`crate::services::primary_stream::ReasoningSegment`] so the event layer owns
+/// its serialization shape (camelCase keys in schema order).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DoneReasoningSegment {
+    pub anchor_offset: usize,
+    pub content: String,
+    pub seq: u64,
 }
 
 /// One streamed chat event — a typed `Event` variant on the push channel. Each
 /// variant serializes to v4's matching single-key SSE JSON frame (see the module
 /// docs): the enum is `untagged` so `Content("hi")` → `{"content":"hi"}` (not a
 /// `{"Content":…}` wrapper), and `Done` flattens its payload beside `done: true`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+// `Eq` is intentionally NOT derived: the `CarinaAnswer` variant carries a
+// `serde_json::Value` (which is not `Eq`). `PartialEq` is enough for the tests /
+// differential (they compare via `events_json()` anyway).
+#[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum ChatEvent {
     /// `{status:{…}}`
@@ -132,13 +229,33 @@ pub enum ChatEvent {
     /// `{reasoning:"…"}` — cumulative thinking text (client replaces, not
     /// appends).
     Reasoning { reasoning: String },
-    /// `{done:true, …}` — the payload spreads flat next to `done: true`.
+    /// `{carinaAnswer: <message>}` — a Carina reference-answer message posted
+    /// mid-turn (v4 `encodeCarinaAnswerEvent`). The value is the full posted
+    /// `MessageEvent` object (kept as a raw `Value` — the message shape is owned
+    /// by the carina writer, which produces it).
+    CarinaAnswer {
+        #[serde(rename = "carinaAnswer")]
+        carina_answer: serde_json::Value,
+    },
+    /// `{confirmationResult: {…}}` — the answer-confirmation state for a
+    /// just-streamed message (v4 `encodeConfirmationResultEvent`). The finalizer
+    /// emits it whenever a verdict (incl. `null`) was resolved — the user-driven
+    /// skip path emits `confirmed: null`; the active path (wave 4) emits the real
+    /// verdict (and the replacement `content` on a revision).
+    ConfirmationResult {
+        #[serde(rename = "confirmationResult")]
+        confirmation_result: ConfirmationResultPayload,
+    },
+    /// `{done:true, …}` — the payload spreads flat next to `done: true`. Boxed:
+    /// the full finalizer payload is by far the largest variant
+    /// (clippy::large_enum_variant), and every event is heap-bound for the
+    /// channel anyway.
     Done {
         /// Always `true` — present so the serialized object carries the `done`
         /// key (`#[serde(flatten)]` on the payload puts the rest beside it).
         done: DoneBool,
         #[serde(flatten)]
-        payload: DonePayload,
+        payload: Box<DonePayload>,
     },
 }
 
@@ -177,9 +294,42 @@ impl ChatEvent {
     pub fn done(payload: DonePayload) -> Self {
         ChatEvent::Done {
             done: DoneBool,
-            payload,
+            payload: Box::new(payload),
         }
     }
+
+    /// A Carina reference-answer event carrying the full posted message object.
+    pub fn carina_answer(message: serde_json::Value) -> Self {
+        ChatEvent::CarinaAnswer {
+            carina_answer: message,
+        }
+    }
+
+    /// An answer-confirmation result event.
+    pub fn confirmation_result(confirmation_result: ConfirmationResultPayload) -> Self {
+        ChatEvent::ConfirmationResult {
+            confirmation_result,
+        }
+    }
+}
+
+/// The `confirmationResult` payload (v4 `encodeConfirmationResultEvent`'s
+/// `result`): `{ messageId, confirmed, revised, notes, ...(revised ? {content} :
+/// {}) }`. `confirmed` is `null` on the could-not-verify / user-driven paths;
+/// `content` is present only when the re-affirmation rewrote the reply.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfirmationResultPayload {
+    pub message_id: String,
+    /// `null` = could not verify / user-driven (unverifiable).
+    pub confirmed: Option<bool>,
+    pub revised: bool,
+    /// `null` when no discrepancies were recorded.
+    pub notes: Option<String>,
+    /// The replacement reply text — present ONLY when `revised` (v4 spreads the
+    /// key conditionally).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
 }
 
 /// The event-sink seam (v4's `controller` + `encoder`). A service pushes typed
@@ -279,6 +429,7 @@ mod tests {
             cache_usage: None,
             attachment_results: None,
             tools_executed: false,
+            ..Default::default()
         });
         assert_eq!(
             serde_json::to_value(&ev).unwrap(),
@@ -290,6 +441,68 @@ mod tests {
                 "attachmentResults": null,
                 "toolsExecuted": false
             })
+        );
+    }
+
+    #[test]
+    fn finalizer_done_carries_the_full_payload_in_v4_field_order() {
+        // The finalizer callsite: participantId, real usage, turn, provider,
+        // modelName, isSilentMessage (present), reasoningContent (null),
+        // reasoningSegments (a block). Field order matches v4's finalizer literal.
+        let ev = ChatEvent::done(DonePayload {
+            message_id: Some("m1".into()),
+            participant_id: Some("p1".into()),
+            usage: Some(DoneUsage {
+                prompt_tokens: Some(10),
+                completion_tokens: Some(20),
+                total_tokens: Some(30),
+            }),
+            cache_usage: None,
+            attachment_results: None,
+            tools_executed: false,
+            turn: Some(DoneTurn {
+                next_speaker_id: None,
+                reason: "user_turn".into(),
+                cycle_complete: true,
+                is_users_turn: true,
+            }),
+            provider: Some("ANTHROPIC".into()),
+            model_name: Some("claude".into()),
+            is_silent_message: Some(true),
+            reasoning_content: Omittable::Null,
+            reasoning_segments: Omittable::Value(vec![DoneReasoningSegment {
+                anchor_offset: 5,
+                content: "thinking".into(),
+                seq: 0,
+            }]),
+        });
+        assert_eq!(
+            serde_json::to_value(&ev).unwrap(),
+            json!({
+                "done": true,
+                "messageId": "m1",
+                "participantId": "p1",
+                "usage": { "promptTokens": 10, "completionTokens": 20, "totalTokens": 30 },
+                "cacheUsage": null,
+                "attachmentResults": null,
+                "toolsExecuted": false,
+                "turn": { "nextSpeakerId": null, "reason": "user_turn", "cycleComplete": true, "isUsersTurn": true },
+                "provider": "ANTHROPIC",
+                "modelName": "claude",
+                "isSilentMessage": true,
+                "reasoningContent": null,
+                "reasoningSegments": [ { "anchorOffset": 5, "content": "thinking", "seq": 0 } ]
+            })
+        );
+    }
+
+    #[test]
+    fn carina_answer_is_a_single_key_frame() {
+        let msg = json!({ "type": "message", "id": "carina-1", "role": "ASSISTANT" });
+        let ev = ChatEvent::carina_answer(msg.clone());
+        assert_eq!(
+            serde_json::to_value(&ev).unwrap(),
+            json!({ "carinaAnswer": msg })
         );
     }
 

@@ -321,6 +321,56 @@ impl<'c> FilesRepository<'c> {
         Ok(affected > 0)
     }
 
+    /// v4 `addLink(fileId, entityId)` — append `entity_id` to the file's
+    /// `linkedTo` array (idempotent: absent-only), persisting through `update`
+    /// (which mints a fresh `updatedAt`). A missing file is a no-op (v4 warns +
+    /// returns `null`); an already-present link leaves the row untouched (v4
+    /// returns the file without an `update`, so no `updatedAt` bump). Returns
+    /// whether a row was written.
+    ///
+    /// The port reads the stored `linkedTo` JSON, checks membership, and — only on
+    /// a change — issues the same partial `UPDATE` v4's `update({ linkedTo })`
+    /// does (minting `updatedAt` via [`crate::clock::now_iso`], matching v4's
+    /// `new Date().toISOString()`).
+    pub fn add_link(&self, file_id: &str, entity_id: &str) -> Result<bool, DbError> {
+        let Some(mut linked_to) = self.read_linked_to(file_id)? else {
+            // File not found — v4 logs a warn and returns null (no write).
+            return Ok(false);
+        };
+        if linked_to.iter().any(|e| e == entity_id) {
+            // Already linked — v4 returns the file without an update (no
+            // `updatedAt` bump). No-op.
+            return Ok(false);
+        }
+        linked_to.push(entity_id.to_string());
+        let patch = FileUpdate {
+            linked_to: Some(linked_to),
+            updated_at: crate::clock::now_iso(),
+            ..Default::default()
+        };
+        self.update(file_id, &patch)
+    }
+
+    /// Read the stored `linkedTo` JSON array for a file. `None` when the row is
+    /// missing (v4's `findById` → null); `Some(vec)` otherwise (`[]` when the
+    /// column is empty/unparseable, matching the Zod `.default([])`).
+    fn read_linked_to(&self, file_id: &str) -> Result<Option<Vec<String>>, DbError> {
+        let row: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT linkedTo FROM files WHERE id = ?1",
+                params![file_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .map(|opt| opt.unwrap_or_default())
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+        Ok(row.map(|s| serde_json::from_str::<Vec<String>>(&s).unwrap_or_default()))
+    }
+
     /// True iff a row with this id exists — v4's `_update` `findById` precondition
     /// (a missing target makes the update a no-op returning `null`).
     fn row_exists(&self, id: &str) -> Result<bool, DbError> {

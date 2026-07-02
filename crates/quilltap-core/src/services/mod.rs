@@ -26,6 +26,7 @@
 //!   chain *driver* `executeTurnChain` is a later wave); RNG + wall clock
 //!   injected; verified by a plain tier-2 differential.
 
+pub mod build_context;
 pub mod carina_runner;
 pub mod chat_events;
 pub mod cheap_llm_exec;
@@ -38,6 +39,7 @@ pub mod knowledge_injector;
 pub mod memory_gate;
 pub mod memory_processor;
 pub mod memory_service;
+pub mod message_finalizer;
 pub mod participant_resolver;
 pub mod primary_stream;
 pub mod provider_failover;

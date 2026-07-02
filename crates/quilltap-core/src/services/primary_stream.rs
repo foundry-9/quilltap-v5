@@ -388,11 +388,71 @@ pub struct AssistantMessageContext<'a> {
     pub participant_status: Option<&'a str>,
 }
 
+/// The answer-confirmation result keys v4's `saveAssistantMessage` writes onto the
+/// message (v4's `confirmation` object). Each field is a **three-state**
+/// [`ConfirmationField`]: absent (no key written), or a value. v4 only writes a
+/// key when the corresponding field is `!== undefined`; `confirmationChecked` is
+/// derived (`confirmed !== undefined ? true : undefined`). The finalizer's
+/// SKIPPED paths (user-driven / silent / inactive) all leave `confirmed`
+/// undefined, so the whole bag is absent — the shape the corpus exercises. The
+/// active-confirmation call (which sets these) is an injected seam (wave 4).
+#[derive(Clone, Debug, Default)]
+pub struct ConfirmationFields {
+    /// `confirmed` — `Absent` → no key; `Null`/`Value(bool)` → written. A
+    /// resolved value (incl. `null`) also materializes `confirmationChecked: 1`.
+    pub confirmed: ConfirmationField<bool>,
+    pub revised: ConfirmationField<bool>,
+    pub notes: ConfirmationField<String>,
+    pub original_content: ConfirmationField<String>,
+}
+
+/// A three-state confirmation field mirroring v4's `x !== undefined` gate on a
+/// `boolean | null` / `string | null` value: `Absent` = no key written, `Null` =
+/// written as JSON `null`, `Value` = written as the value.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum ConfirmationField<T> {
+    /// v4 `undefined` — no message key written.
+    #[default]
+    Absent,
+    /// Written as JSON `null` (v4's explicit `null`).
+    Null,
+    /// Written as this value.
+    Value(T),
+}
+
+impl ConfirmationField<bool> {
+    fn to_json(&self) -> Option<Value> {
+        match self {
+            ConfirmationField::Absent => None,
+            ConfirmationField::Null => Some(Value::Null),
+            ConfirmationField::Value(b) => Some(json!(b)),
+        }
+    }
+}
+
+impl ConfirmationField<String> {
+    fn to_json(&self) -> Option<Value> {
+        match self {
+            ConfirmationField::Absent => None,
+            ConfirmationField::Null => Some(Value::Null),
+            ConfirmationField::Value(s) => Some(json!(s)),
+        }
+    }
+}
+
 /// v4 `saveAssistantMessage` (message-finalizer.service.ts:572) — the persistence
-/// primitive that writes the assistant `MessageEvent` row and returns its id.
-/// This port carries the fields the primary-stream preserve path sets; the
-/// tool/image artifact linking and answer-confirmation keys (also part of v4's
-/// signature) land with the finalizer wave that exercises them.
+/// primitive that writes the assistant `MessageEvent` row (with the metadata
+/// side-effect), links generated-image attachments, and returns the message id.
+///
+/// This port covers: the message row (all display + token + reasoning fields),
+/// the `isSilentMessage` TEXT-affinity flag (from participant status), the
+/// answer-confirmation key bag (exercised only in its absent shape — see
+/// [`ConfirmationFields`]), and the image-link loop
+/// (`repos.files.addLink(imageId, messageId)` per generated image, each failure
+/// swallowed as v4 does). `saveToolMessages` (v4 calls it only when
+/// `toolMessages.length > 0`) stays a wave-4 concern — the finalizer corpus only
+/// exercises the empty path, so no tool-message write fires here (byte-faithful:
+/// v4 skips the call entirely for an empty list).
 ///
 /// Writes through the `chats` `addMessage` metadata side-effect (a `type:message`
 /// event bumps `lastMessageAt`/`updatedAt`), on a borrowed writer connection.
@@ -410,6 +470,8 @@ pub fn save_assistant_message(
     model_name: Option<&str>,
     reasoning_content: Option<&str>,
     reasoning_segments: &[ReasoningSegment],
+    generated_image_ids: &[String],
+    confirmation: &ConfirmationFields,
 ) -> Result<String, DbError> {
     let assistant_message_id = pre_generated_message_id
         .map(str::to_string)
@@ -455,7 +517,9 @@ pub fn save_assistant_message(
             msg.insert("rawResponse".into(), raw.clone());
         }
     }
-    msg.insert("attachments".into(), json!([]));
+    // v4: `attachments: generatedImagePaths.map(img => img.id)` — the generated
+    // image ids (empty on the preserve/recovery path).
+    msg.insert("attachments".into(), json!(generated_image_ids));
     if let Some(ts) = thought_signature.filter(|s| !s.is_empty()) {
         msg.insert("thoughtSignature".into(), json!(ts));
     }
@@ -485,13 +549,36 @@ pub fn save_assistant_message(
     if let Some(silent) = is_silent {
         msg.insert("isSilentMessage".into(), json!(silent));
     }
+    // Answer-confirmation keys (v4 spreads only the keys that are `!== undefined`).
+    // `confirmationChecked` is derived: `confirmed !== undefined ? true : undefined`.
+    if let Some(v) = confirmation.confirmed.to_json() {
+        msg.insert("confirmed".into(), v);
+        msg.insert("confirmationChecked".into(), json!(true));
+    }
+    if let Some(v) = confirmation.revised.to_json() {
+        msg.insert("confirmationRevised".into(), v);
+    }
+    if let Some(v) = confirmation.notes.to_json() {
+        msg.insert("confirmationNotes".into(), v);
+    }
+    if let Some(v) = confirmation.original_content.to_json() {
+        msg.insert("confirmationOriginalContent".into(), v);
+    }
 
     let event: crate::db::chats_messages::ChatEventInput =
         serde_json::from_value(Value::Object(msg))
             .map_err(|e| DbError::Key(format!("saveAssistantMessage marshal: {e}")))?;
     writer.chat_messages().add_message(chat_id, &event)?;
-    // (image-attachment `files.addLink` + tool-message writes are out of scope
-    // for this unit — see the module docs.)
+
+    // Link each generated-image attachment to the assistant message (v4's
+    // `for (const imageId of assistantAttachments) repos.files.addLink(imageId,
+    // assistantMessageId)`). A missing file / failed link is swallowed (v4
+    // catches + logs a warn) so the message still stands. `saveToolMessages`
+    // (v4-guarded on a non-empty list) is a wave-4 concern; the empty path fires
+    // no write, matching v4.
+    for image_id in generated_image_ids {
+        let _ = writer.files().add_link(image_id, &assistant_message_id);
+    }
     let _ = ctx.character_id;
     Ok(assistant_message_id)
 }
@@ -602,6 +689,10 @@ impl PreservePartialOnError {
                     model_name.as_deref(),
                     reasoning_content.as_deref(),
                     &reasoning_segments,
+                    // The preserve path carries no generated images and no
+                    // confirmation keys (v4's preserve write sets neither).
+                    &[],
+                    &ConfirmationFields::default(),
                 )
                 .map(|_| ())
             })

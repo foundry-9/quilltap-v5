@@ -1591,10 +1591,77 @@ green** (2026-07-02; six parallel agents on disjoint files, the shared
 
 All ten differentials (the eight new + `chats_tier2` / `turn_orchestrator`
 re-verified, proving the new `ChatUpdate` setters inert on existing paths) run
-green against freshly regenerated oracles. Remaining wave-3 sub-units: the **finalizer**, the **`buildContext`
-capstone**, and **`processMessage` + `executeTurnChain`** — then wave 4
-(tools, providers, danger/agent/courier/confirmation, enclave) per the
-decomposition doc.
+green against freshly regenerated oracles.
+
+**Wave 3 batch 2 — the finalizer + the `buildContext` capstone — is also
+ported and green** (2026-07-02, two parallel agents):
+
+- **The message finalizer** (`services::message_finalizer`,
+  `message_finalizer_tier3_equivalence`): v4's `finalizeMessageResponse` +
+  `calculateNextSpeaker` — clean (the anti-hijack truncation incl. the
+  keep-leading-first-line branch) → reasoning/tool-anchor re-basing
+  (shift+clamp, the rewrite-collapse) → the answer-confirmation SKIP gates
+  (user-driven → `confirmed: null` + the `confirmationResult` event, which v4
+  DOES emit on that path; silent skip; the three-level active gate) →
+  persistence (the batch-1 `save_assistant_message` extended with the
+  confirmation key bag, `isSilentMessage`, and the `files.addLink` image loop
+  — `db::files::add_link` added) → carina markup over the ported runner (the
+  query seam owns the post + the new `ChatEvent::CarinaAnswer` emit) → the
+  `updatedAt` bump → next speaker over the ported turn manager → the full done
+  payload (`DonePayload` extended additively; recovery frames unchanged,
+  regression re-verified) → cost tracking (estimation seamed with evidence —
+  pricing-fetcher/connections unported — but `trackMessageTokenUsage`'s
+  chat-aggregate half ported, awaited per the watermark precedent, the
+  null-cost token-counter increment banked) → the background triggers
+  (`enqueue_memory_extraction` + `enqueue_chat_danger_classification` added to
+  `queue_service`, the turn-closed/autonomous and sticky/classified/no-summary
+  gates banked firing, not-firing, and deduping). Verified by a ten-call
+  tier-3 differential over a two-DB v4-baked fixture diffing per-op results +
+  the ordered event traces (all ids pinned) + the compression/cost seam
+  records + four table dumps in a pre-run-snapshot sentinel-aware form.
+  **Tracked deferrals:** the active confirmation call + project-override read
+  (wave 4), `saveToolMessages` non-empty (wave 4), the async-compression / RNG
+  seams (gates banked), the summary-check invocation (gate reproduced; the
+  corpus banks the skip path — the real call lands with the `processMessage`
+  spine), and the danger-resolver OFF short-circuit (corpus keeps mode
+  non-OFF).
+- **The `buildContext` capstone** (`services::build_context`,
+  `build_context_tier3_equivalence`): v4's ~1,600-line context assembler
+  composed from the ported subsystem — system-prompt blocks 1–3, the budget
+  math (the `CONTEXT_HISTORY_BUDGET_RATIO`/`MEMORY_BUDGET_RATIO` consts now
+  mirrored), phase-1 budget compression over `services::compression`, the
+  two-pool memory retrieval (`search_memories_semantic` + the archive/head
+  formatters), scene state, inter-character memories (the window-function read
+  + per-character relevance), knowledge retrieval, summary-anchor drop + the
+  Librarian `SUMMARY_CONTENT_PREFIX` cache breakpoint, multi-character
+  attribution/whisper shaping, timestamp injection, and the trailing
+  Commonplace recall fold into the user message (the
+  `buildCommonplaceLLMContext`/persona/timestamp content builders ported
+  verbatim). The unported feeders and every whisper-posting side effect are a
+  `BuildContextSeams` trait (default no-ops) mirrored by the oracle's jest
+  mocks — recap, keyword distillation, mount-pool resolution, frozen archive,
+  live wardrobe, off-scene introductions, and the core/commonplace/mail/host
+  posts — per the `ContextSummarySeams` precedent. Verified by a tier-3
+  differential driving v4's REAL `buildContext` over a two-DB fixture (real
+  vault + `Knowledge/` chunks + memories/vectors, frozen wall clock both
+  sides), diffing the full `BuiltContext` byte-for-byte across seven ops
+  (plain, recall+knowledge, skip-memories, timestamp on, compression applied
+  with recorded canned keys, summary-anchor/breakpoint, multi-character) — the
+  only normalizations the recall-adjustment debug fields the search's own
+  deferral omits, plus a serde_json float-parse canonicalization (no
+  `float_roundtrip` feature) discovered via a 1-ULP text-fallback score.
+  **Tracked deferrals:** phase-2 `compressMemories`, the off-scene scan
+  composition, the core-whisper branch (config read + packet), the scene-cache
+  prior-emission read, `EVERY_N_MINUTES` resolution, and
+  `autonomousContextCap`/cached-compression plumbing (the `processMessage`
+  spine).
+
+The one remaining wave-3 unit is **`processMessage` + `executeTurnChain`**
+(the orchestrator spine, the first end-to-end tier-3 differential over a full
+canned turn; it also picks up the finalizer's deferred summary-check
+invocation and buildContext's `autonomousContextCap`/cached-compression
+plumbing) — then wave 4 (tools, providers,
+danger/agent/courier/confirmation, enclave) per the decomposition doc.
 
 **Drift catch-up (2026-07-01): the answer-confirmation columns.** v4 commit
 `29f3ae63` (a Salon consistency-check + re-affirmation feature) added DDL/schema

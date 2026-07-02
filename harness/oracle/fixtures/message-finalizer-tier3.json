@@ -1,0 +1,541 @@
+{
+  "testPepperBase64": "3q2+796tvu/erb7v3q2+796tvu/erb7v3q2+796tvu8=",
+  "userId": "814ddefe-7908-46aa-ad4c-a1e2907df171",
+  "seedTimestamp": "2026-01-01T00:00:00.000Z",
+  "characters": [
+    {
+      "id": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+      "name": "Ada",
+      "description": "The first responder character.",
+      "aliases": [
+        "Adie"
+      ],
+      "controlledBy": "llm",
+      "talkativeness": 0.5
+    },
+    {
+      "id": "d104202f-1e4e-4cfa-a201-360c0f0d820f",
+      "name": "Bram",
+      "description": "The second character (foreign speaker roster).",
+      "aliases": [
+        "Brammy"
+      ],
+      "controlledBy": "llm",
+      "talkativeness": 0.5
+    },
+    {
+      "id": "d7917e8b-83ce-48ae-9b91-fbfd93fa7df7",
+      "name": "Cleo",
+      "description": "A user-controlled character.",
+      "aliases": [],
+      "controlledBy": "user",
+      "talkativeness": 0.5
+    },
+    {
+      "id": "9799010f-ae5d-41a3-8ad0-d4aca7df73c0",
+      "name": "Deputy",
+      "description": "The carina answerer.",
+      "aliases": [],
+      "controlledBy": "llm",
+      "talkativeness": 0.5
+    }
+  ],
+  "generatedImages": [
+    {
+      "id": "23fb5932-e692-4329-bbc5-beef0790d294",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "chatSettings": {
+    "id": "012e20dd-3ee3-4c39-b0da-8d631d3b6a55",
+    "cheapLLMSettings": {
+      "strategy": "PROVIDER_CHEAPEST",
+      "fallbackToLocal": false
+    },
+    "autoDetectRng": false,
+    "answerConfirmationEnabled": false,
+    "dangerMode": "DETECT_ONLY"
+  },
+  "chats": [
+    {
+      "id": "92d23640-a9dc-4369-86b4-6df30f66ce9c",
+      "chatType": "salon",
+      "participants": [
+        {
+          "userParticipant": true,
+          "id": "6acf282f-8117-4f40-80e5-df4fb1094cd6"
+        },
+        {
+          "character": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+          "id": "417f7e33-91a2-418e-8011-28cf4d268ab8",
+          "controlledBy": "llm",
+          "status": "active"
+        }
+      ],
+      "contextSummary": "A prior summary so danger classification can fire.",
+      "messages": [
+        {
+          "id": "be395e06-9a70-4c83-917d-9cfcae7d0a44",
+          "role": "USER",
+          "content": "Hello Ada.",
+          "participantId": "6acf282f-8117-4f40-80e5-df4fb1094cd6"
+        }
+      ]
+    },
+    {
+      "id": "b4f71a50-6cda-4ce8-90fb-8fa9fcd66b42",
+      "chatType": "salon",
+      "participants": [
+        {
+          "userParticipant": true,
+          "id": "ef0091d0-8d65-49c3-aa13-198cbca5f4ab"
+        },
+        {
+          "character": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+          "id": "5d12aae8-752e-46cd-a4e2-9d3094e31a7c",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "character": "d104202f-1e4e-4cfa-a201-360c0f0d820f",
+          "id": "a0a557b6-076e-49d1-9a27-0da6c35166eb",
+          "controlledBy": "llm",
+          "status": "active"
+        }
+      ],
+      "contextSummary": null,
+      "messages": [
+        {
+          "id": "04ce9d93-fcc1-493a-890b-a1e8cf509d13",
+          "role": "USER",
+          "content": "Both of you, speak.",
+          "participantId": "ef0091d0-8d65-49c3-aa13-198cbca5f4ab"
+        }
+      ]
+    },
+    {
+      "id": "9f24b966-4a81-44a7-9b2c-a90f94039932",
+      "chatType": "salon",
+      "participants": [
+        {
+          "userParticipant": true,
+          "id": "0801cdf4-0a9f-4a15-815a-e3dd893d1a06"
+        },
+        {
+          "character": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+          "id": "00b7974c-afbd-461d-ba20-ffb41a625635",
+          "controlledBy": "llm",
+          "status": "silent"
+        }
+      ],
+      "contextSummary": null,
+      "messages": [
+        {
+          "id": "4c5552ad-e760-43fa-a1fa-cb31b2796833",
+          "role": "USER",
+          "content": "Quietly now.",
+          "participantId": "0801cdf4-0a9f-4a15-815a-e3dd893d1a06"
+        }
+      ]
+    },
+    {
+      "id": "d7b913aa-565f-407c-bbce-ef8c05ff83f0",
+      "chatType": "salon",
+      "impersonatingParticipantIds": [
+        "e6909526-2681-434d-965d-33c58ed8ea8d"
+      ],
+      "participants": [
+        {
+          "userParticipant": true,
+          "id": "a85ec20e-afbf-4cb1-accf-3ae6dbb46596"
+        },
+        {
+          "character": "d7917e8b-83ce-48ae-9b91-fbfd93fa7df7",
+          "id": "e6909526-2681-434d-965d-33c58ed8ea8d",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "contextSummary": null,
+      "messages": [
+        {
+          "id": "45f720a3-7dee-4327-9ab3-7ed1b3a1925a",
+          "role": "USER",
+          "content": "Cleo speaks.",
+          "participantId": "a85ec20e-afbf-4cb1-accf-3ae6dbb46596"
+        }
+      ]
+    },
+    {
+      "id": "058762ea-f883-458f-9fbb-2d5e49c0279c",
+      "chatType": "autonomous",
+      "participants": [
+        {
+          "character": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+          "id": "0990b5c9-33f0-4181-b429-e51992375f88",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "character": "d104202f-1e4e-4cfa-a201-360c0f0d820f",
+          "id": "cf352d33-443e-4cfc-8a67-cf8e0958c5f5",
+          "controlledBy": "llm",
+          "status": "active"
+        }
+      ],
+      "contextSummary": "Autonomous summary.",
+      "messages": [
+        {
+          "id": "593daf80-cce5-4800-9452-728da18e4b09",
+          "role": "ASSISTANT",
+          "content": "Prior autonomous line.",
+          "participantId": "0990b5c9-33f0-4181-b429-e51992375f88"
+        }
+      ]
+    },
+    {
+      "id": "976a8015-b82b-40a8-8dde-43dfb4f1cd5b",
+      "chatType": "salon",
+      "participants": [
+        {
+          "userParticipant": true,
+          "id": "74173d67-8d32-4d82-8be3-b6565e9ebd3b"
+        },
+        {
+          "character": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+          "id": "a124f7db-0318-4764-9346-a3f81b1d2020",
+          "controlledBy": "llm",
+          "status": "active"
+        }
+      ],
+      "contextSummary": null,
+      "messages": [
+        {
+          "id": "be7b0fda-0be8-4d00-98f1-aed2bf09a58f",
+          "role": "USER",
+          "content": "Ask the deputy.",
+          "participantId": "74173d67-8d32-4d82-8be3-b6565e9ebd3b"
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "name": "clean-happy",
+      "chatId": "92d23640-a9dc-4369-86b4-6df30f66ce9c",
+      "responderCharacter": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+      "responderParticipant": "417f7e33-91a2-418e-8011-28cf4d268ab8",
+      "userParticipantId": "6acf282f-8117-4f40-80e5-df4fb1094cd6",
+      "isMultiCharacter": false,
+      "preGeneratedAssistantMessageId": "caff90b9-64b4-442f-a1c0-d2707d590f53",
+      "fullResponse": "[Ada] Hello there, friend.",
+      "usage": {
+        "promptTokens": 40,
+        "completionTokens": 12,
+        "totalTokens": 52
+      },
+      "reasoningContent": null,
+      "reasoningSegments": [],
+      "normalizeRewroteBody": false,
+      "generatedImageIds": [
+        "23fb5932-e692-4329-bbc5-beef0790d294"
+      ],
+      "compression": {
+        "enabled": false,
+        "selection": false,
+        "systemPrompt": false
+      },
+      "chatSettings": true,
+      "participantCharacters": [
+        "ee695fae-b7e4-4fad-a992-343214b5b4d5"
+      ]
+    },
+    {
+      "name": "multi-hijack",
+      "chatId": "b4f71a50-6cda-4ce8-90fb-8fa9fcd66b42",
+      "responderCharacter": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+      "responderParticipant": "5d12aae8-752e-46cd-a4e2-9d3094e31a7c",
+      "userParticipantId": "ef0091d0-8d65-49c3-aa13-198cbca5f4ab",
+      "isMultiCharacter": true,
+      "preGeneratedAssistantMessageId": "748960fb-ddfa-41a2-baf4-6fd4fa833f69",
+      "fullResponse": "I greet you warmly.\n[Bram] And I cut in here.",
+      "usage": {
+        "promptTokens": 30,
+        "completionTokens": 20,
+        "totalTokens": 50
+      },
+      "reasoningContent": null,
+      "reasoningSegments": [],
+      "normalizeRewroteBody": false,
+      "generatedImageIds": [],
+      "compression": {
+        "enabled": true,
+        "selection": true,
+        "systemPrompt": true
+      },
+      "chatSettings": true,
+      "participantCharacters": [
+        "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+        "d104202f-1e4e-4cfa-a201-360c0f0d820f"
+      ]
+    },
+    {
+      "name": "multi-hijack-firstline",
+      "chatId": "b4f71a50-6cda-4ce8-90fb-8fa9fcd66b42",
+      "responderCharacter": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+      "responderParticipant": "5d12aae8-752e-46cd-a4e2-9d3094e31a7c",
+      "userParticipantId": "ef0091d0-8d65-49c3-aa13-198cbca5f4ab",
+      "isMultiCharacter": true,
+      "preGeneratedAssistantMessageId": "72a45b22-e4bb-48d3-8fc6-5c6e80213389",
+      "fullResponse": "[Bram] I opened with a foreign tag on the first line.",
+      "usage": {
+        "promptTokens": 22,
+        "completionTokens": 15,
+        "totalTokens": 37
+      },
+      "reasoningContent": null,
+      "reasoningSegments": [],
+      "normalizeRewroteBody": false,
+      "generatedImageIds": [],
+      "compression": {
+        "enabled": false,
+        "selection": false,
+        "systemPrompt": false
+      },
+      "chatSettings": true,
+      "participantCharacters": [
+        "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+        "d104202f-1e4e-4cfa-a201-360c0f0d820f"
+      ]
+    },
+    {
+      "name": "reasoning-rebase",
+      "chatId": "92d23640-a9dc-4369-86b4-6df30f66ce9c",
+      "responderCharacter": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+      "responderParticipant": "417f7e33-91a2-418e-8011-28cf4d268ab8",
+      "userParticipantId": "6acf282f-8117-4f40-80e5-df4fb1094cd6",
+      "isMultiCharacter": false,
+      "preGeneratedAssistantMessageId": "62d3f0b4-55ff-406e-b3cf-e91922cbf664",
+      "fullResponse": "[Ada] The answer follows my thinking.",
+      "usage": {
+        "promptTokens": 18,
+        "completionTokens": 10,
+        "totalTokens": 28
+      },
+      "reasoningContent": "Let me consider this carefully.",
+      "reasoningSegments": [
+        {
+          "anchorOffset": 6,
+          "content": "first thought ",
+          "seq": 0
+        },
+        {
+          "anchorOffset": 20,
+          "content": "second thought",
+          "seq": 1
+        }
+      ],
+      "normalizeRewroteBody": false,
+      "generatedImageIds": [],
+      "compression": {
+        "enabled": false,
+        "selection": false,
+        "systemPrompt": false
+      },
+      "chatSettings": true,
+      "participantCharacters": [
+        "ee695fae-b7e4-4fad-a992-343214b5b4d5"
+      ]
+    },
+    {
+      "name": "reasoning-collapse",
+      "chatId": "92d23640-a9dc-4369-86b4-6df30f66ce9c",
+      "responderCharacter": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+      "responderParticipant": "417f7e33-91a2-418e-8011-28cf4d268ab8",
+      "userParticipantId": "6acf282f-8117-4f40-80e5-df4fb1094cd6",
+      "isMultiCharacter": false,
+      "preGeneratedAssistantMessageId": "9d89bf45-74ec-40a3-bd22-1edb72b0789b",
+      "fullResponse": "[{\"type\": \"text\", \"text\": \"Extracted body.\"}]",
+      "usage": {
+        "promptTokens": 25,
+        "completionTokens": 8,
+        "totalTokens": 33
+      },
+      "reasoningContent": "reasoning while extracting",
+      "reasoningSegments": [
+        {
+          "anchorOffset": 3,
+          "content": "block a ",
+          "seq": 0
+        },
+        {
+          "anchorOffset": 9,
+          "content": "block b",
+          "seq": 1
+        }
+      ],
+      "normalizeRewroteBody": true,
+      "generatedImageIds": [],
+      "compression": {
+        "enabled": false,
+        "selection": false,
+        "systemPrompt": false
+      },
+      "chatSettings": true,
+      "participantCharacters": [
+        "ee695fae-b7e4-4fad-a992-343214b5b4d5"
+      ]
+    },
+    {
+      "name": "silent",
+      "chatId": "9f24b966-4a81-44a7-9b2c-a90f94039932",
+      "responderCharacter": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+      "responderParticipant": "00b7974c-afbd-461d-ba20-ffb41a625635",
+      "userParticipantId": "0801cdf4-0a9f-4a15-815a-e3dd893d1a06",
+      "isMultiCharacter": false,
+      "preGeneratedAssistantMessageId": "f563055e-8782-4d7b-9913-8b35113fbc89",
+      "fullResponse": "[Ada] A silent aside.",
+      "usage": {
+        "promptTokens": 12,
+        "completionTokens": 6,
+        "totalTokens": 18
+      },
+      "reasoningContent": null,
+      "reasoningSegments": [],
+      "normalizeRewroteBody": false,
+      "generatedImageIds": [],
+      "compression": {
+        "enabled": false,
+        "selection": false,
+        "systemPrompt": false
+      },
+      "chatSettings": true,
+      "participantCharacters": [
+        "ee695fae-b7e4-4fad-a992-343214b5b4d5"
+      ]
+    },
+    {
+      "name": "user-driven",
+      "chatId": "d7b913aa-565f-407c-bbce-ef8c05ff83f0",
+      "responderCharacter": "d7917e8b-83ce-48ae-9b91-fbfd93fa7df7",
+      "responderParticipant": "e6909526-2681-434d-965d-33c58ed8ea8d",
+      "userParticipantId": "a85ec20e-afbf-4cb1-accf-3ae6dbb46596",
+      "isMultiCharacter": false,
+      "preGeneratedAssistantMessageId": "b517853d-15ec-4481-b684-86a892f88704",
+      "fullResponse": "[Cleo] I speak as the human plays me.",
+      "usage": {
+        "promptTokens": 15,
+        "completionTokens": 9,
+        "totalTokens": 24
+      },
+      "reasoningContent": null,
+      "reasoningSegments": [],
+      "normalizeRewroteBody": false,
+      "generatedImageIds": [],
+      "compression": {
+        "enabled": false,
+        "selection": false,
+        "systemPrompt": false
+      },
+      "chatSettings": true,
+      "participantCharacters": [
+        "d7917e8b-83ce-48ae-9b91-fbfd93fa7df7"
+      ]
+    },
+    {
+      "name": "autonomous",
+      "chatId": "058762ea-f883-458f-9fbb-2d5e49c0279c",
+      "responderCharacter": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+      "responderParticipant": "0990b5c9-33f0-4181-b429-e51992375f88",
+      "userParticipantId": null,
+      "isMultiCharacter": true,
+      "preGeneratedAssistantMessageId": "05c2bc85-0786-4794-a943-80012a54d2b5",
+      "fullResponse": "[Ada] An autonomous line.",
+      "usage": {
+        "promptTokens": 20,
+        "completionTokens": 10,
+        "totalTokens": 30
+      },
+      "reasoningContent": null,
+      "reasoningSegments": [],
+      "normalizeRewroteBody": false,
+      "generatedImageIds": [],
+      "compression": {
+        "enabled": true,
+        "selection": true,
+        "systemPrompt": true
+      },
+      "chatSettings": true,
+      "participantCharacters": [
+        "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+        "d104202f-1e4e-4cfa-a201-360c0f0d820f"
+      ]
+    },
+    {
+      "name": "carina-public",
+      "chatId": "976a8015-b82b-40a8-8dde-43dfb4f1cd5b",
+      "responderCharacter": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+      "responderParticipant": "a124f7db-0318-4764-9346-a3f81b1d2020",
+      "userParticipantId": "74173d67-8d32-4d82-8be3-b6565e9ebd3b",
+      "isMultiCharacter": false,
+      "preGeneratedAssistantMessageId": "4d7189a9-25b1-41fe-bc6a-c2230dff8bed",
+      "fullResponse": "[Ada] Let me check.\n@Deputy: what is the time?",
+      "usage": {
+        "promptTokens": 20,
+        "completionTokens": 14,
+        "totalTokens": 34
+      },
+      "reasoningContent": null,
+      "reasoningSegments": [],
+      "normalizeRewroteBody": false,
+      "generatedImageIds": [],
+      "compression": {
+        "enabled": false,
+        "selection": false,
+        "systemPrompt": false
+      },
+      "chatSettings": true,
+      "participantCharacters": [
+        "ee695fae-b7e4-4fad-a992-343214b5b4d5"
+      ],
+      "carina": {
+        "characterName": "Deputy",
+        "whisper": false,
+        "answererParticipantId": "92624159-9d03-4f3c-9ac2-fb49c62d8c76",
+        "answererCharacterId": "9799010f-ae5d-41a3-8ad0-d4aca7df73c0",
+        "answererName": "Deputy",
+        "messageId": "9c74c19f-a9e8-4c11-9fc9-fb7cfb721879",
+        "answer": "It is high noon.",
+        "askerParticipantId": "a124f7db-0318-4764-9346-a3f81b1d2020"
+      }
+    },
+    {
+      "name": "no-chat-settings",
+      "chatId": "92d23640-a9dc-4369-86b4-6df30f66ce9c",
+      "responderCharacter": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+      "responderParticipant": "417f7e33-91a2-418e-8011-28cf4d268ab8",
+      "userParticipantId": "6acf282f-8117-4f40-80e5-df4fb1094cd6",
+      "isMultiCharacter": false,
+      "preGeneratedAssistantMessageId": "b13ab091-3125-4a1b-ab8d-b28fef58e0c0",
+      "fullResponse": "[Ada] No chat settings this time.",
+      "usage": {
+        "promptTokens": 10,
+        "completionTokens": 5,
+        "totalTokens": 15
+      },
+      "reasoningContent": null,
+      "reasoningSegments": [],
+      "normalizeRewroteBody": false,
+      "generatedImageIds": [],
+      "compression": {
+        "enabled": false,
+        "selection": false,
+        "systemPrompt": false
+      },
+      "chatSettings": false,
+      "participantCharacters": [
+        "ee695fae-b7e4-4fad-a992-343214b5b4d5"
+      ]
+    }
+  ]
+}

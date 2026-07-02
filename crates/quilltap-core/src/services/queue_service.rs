@@ -90,6 +90,150 @@ pub async fn enqueue_memory_housekeeping(
     enqueue_job(db, user_id, "MEMORY_HOUSEKEEPING", payload, 1.0).await
 }
 
+/// v4 `enqueueJob` variant carrying an explicit `priority` (v4's
+/// `options.priority`). Mints and persists a PENDING background job. The
+/// zero-priority [`enqueue_job`] above is the common case; the danger /
+/// scene-state / render enqueues run at priority `-1` (below interactive tasks).
+pub async fn enqueue_job_with_priority(
+    db: &Db,
+    user_id: &str,
+    job_type: &str,
+    payload: Value,
+    priority: f64,
+    max_attempts: f64,
+) -> Result<String, DbError> {
+    let now = now_iso();
+    let id = uuid::Uuid::new_v4().to_string();
+    let create = BjCreate {
+        user_id: user_id.to_string(),
+        job_type: job_type.to_string(),
+        status: Some("PENDING".to_string()),
+        payload,
+        priority,
+        attempts: 0.0,
+        max_attempts,
+        last_error: None,
+        scheduled_at: now.clone(),
+        started_at: None,
+        completed_at: None,
+    };
+    let opts = CreateOptions {
+        id: id.clone(),
+        created_at: now.clone(),
+        updated_at: now,
+    };
+    db.write(move |writers| writers.main().background_jobs().create(&create, &opts))
+        .await?;
+    Ok(id)
+}
+
+/// v4 `enqueueMemoryExtraction` (`lib/background-jobs/queue-service.ts`): enqueue
+/// a `MEMORY_EXTRACTION` job for a closed turn, deduping on the
+/// `(chatId, turnOpenerMessageId, extractionAnchorMessageId)` triple. If a
+/// PENDING or PROCESSING `MEMORY_EXTRACTION` job with a matching triple already
+/// exists (across the user's jobs), this is a no-op returning the existing id —
+/// so the first character to finalize in a multi-character turn creates the job
+/// and later finalizes fold into it. A `null` opener/anchor dedupe on
+/// `(chatId, null, null)`. A dedupe-lookup failure falls through and enqueues
+/// anyway (v4 warns). `max_attempts` is v4's default 3 (the trigger passes no
+/// options). The `skipDedupCheck` option is not modeled (the finalizer never
+/// sets it).
+///
+/// `turn_opener_message_id` / `extraction_anchor_message_id` are v4's payload
+/// fields; both `null` when the turn has no user opener and no anchor is set. The
+/// payload written is `{ chatId, turnOpenerMessageId, extractionAnchorMessageId,
+/// connectionProfileId }` (nulls materialized, matching v4's object literal so
+/// the stored payload bytes match).
+pub async fn enqueue_memory_extraction(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    turn_opener_message_id: Option<&str>,
+    extraction_anchor_message_id: Option<&str>,
+    connection_profile_id: &str,
+) -> Result<String, DbError> {
+    let uid = user_id.to_string();
+    let in_flight = db.read_main(|conn| {
+        let repo = crate::db::background_jobs::BackgroundJobsRepository::new(conn);
+        let mut jobs = repo.find_by_user_id(&uid, Some("PENDING"))?;
+        jobs.extend(repo.find_by_user_id(&uid, Some("PROCESSING"))?);
+        Ok(jobs)
+    });
+    if let Ok(jobs) = in_flight {
+        // v4 treats a missing/undefined anchor as `null` before comparing.
+        let incoming_anchor = extraction_anchor_message_id;
+        let existing = jobs.iter().find(|j| {
+            if j.job_type != "MEMORY_EXTRACTION" {
+                return false;
+            }
+            let payload: Option<Value> = serde_json::from_str::<Value>(&j.payload).ok();
+            let Some(p) = payload else {
+                return false;
+            };
+            // `p.get(k)` returns None for an absent key; a stored JSON `null`
+            // reads as `Some(Value::Null)`. Both collapse to Rust `None` via
+            // `and_then(as_str)`, matching v4's `?? null` normalization.
+            let job_chat = p.get("chatId").and_then(Value::as_str);
+            let job_opener = p.get("turnOpenerMessageId").and_then(Value::as_str);
+            let job_anchor = p.get("extractionAnchorMessageId").and_then(Value::as_str);
+            job_chat == Some(chat_id)
+                && job_opener == turn_opener_message_id
+                && job_anchor == incoming_anchor
+        });
+        if let Some(existing) = existing {
+            return Ok(existing.id.clone());
+        }
+    }
+
+    // v4's payload object literal materializes every key (nulls included).
+    let payload = serde_json::json!({
+        "chatId": chat_id,
+        "turnOpenerMessageId": turn_opener_message_id,
+        "extractionAnchorMessageId": extraction_anchor_message_id,
+        "connectionProfileId": connection_profile_id,
+    });
+    enqueue_job(db, user_id, "MEMORY_EXTRACTION", payload, 3.0).await
+}
+
+/// v4 `enqueueChatDangerClassification` (`lib/background-jobs/queue-service.ts`):
+/// enqueue a `CHAT_DANGER_CLASSIFICATION` job at priority `-1`, deduping via
+/// `findPendingForChat` (any PENDING/PROCESSING classification job for the same
+/// chat → no-op returning the existing id). `max_attempts` is v4's default 3.
+///
+/// The payload is `{ chatId, connectionProfileId }` (v4's object literal).
+pub async fn enqueue_chat_danger_classification(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    connection_profile_id: &str,
+) -> Result<String, DbError> {
+    let cid = chat_id.to_string();
+    let pending = db.read_main(|conn| {
+        let repo = crate::db::background_jobs::BackgroundJobsRepository::new(conn);
+        repo.find_pending_for_chat(&cid)
+    })?;
+    let existing = pending
+        .iter()
+        .find(|j| j.job_type == "CHAT_DANGER_CLASSIFICATION");
+    if let Some(existing) = existing {
+        return Ok(existing.id.clone());
+    }
+
+    let payload = serde_json::json!({
+        "chatId": chat_id,
+        "connectionProfileId": connection_profile_id,
+    });
+    enqueue_job_with_priority(
+        db,
+        user_id,
+        "CHAT_DANGER_CLASSIFICATION",
+        payload,
+        -1.0,
+        3.0,
+    )
+    .await
+}
+
 /// v4 `enqueueTitleUpdate` (`lib/background-jobs/queue-service.ts`): enqueue a
 /// `TITLE_UPDATE` job, de-duping on `chatId`. If a PENDING or PROCESSING
 /// `TITLE_UPDATE` job already exists for the same `chatId`, this is a no-op that

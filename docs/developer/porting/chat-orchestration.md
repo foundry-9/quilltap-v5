@@ -223,6 +223,21 @@ Ordered by dependency; several are mutually independent once wave 2 lands:
   as an injected seam per the STOP rule: it drags in the wave-4 tool loop /
   character resolver / commonplace writer / Brahma console; the
   `postCarinaResponse` message writer ported byte-exact).
-- Wave 3 remainder: the **finalizer**, the **`buildContext` capstone**, and
-  **`processMessage` + `executeTurnChain`** — next.
+- **Wave 3 batch 2: ported and green** (2026-07-02) — the **message
+  finalizer** (`services::message_finalizer`,
+  `message_finalizer_tier3_equivalence` — the core clean → write → next
+  speaker → done → background-triggers path; the tool/confirmation branches
+  are wave-4 seams with their gates reproduced and banked;
+  `save_assistant_message` / `chat_events` / `queue_service` / `db::files`
+  extended additively, the primary-stream differential re-verified) and the
+  **`buildContext` capstone** (`services::build_context`,
+  `build_context_tier3_equivalence` — the full context assembler over the
+  ported subsystem, seven ops diffed byte-for-byte; unported feeders + all
+  whisper-posting side effects behind a `BuildContextSeams` trait mirrored by
+  the oracle mocks; per-unit deferrals listed in each module doc and the
+  CLAUDE.md status).
+- Wave 3 remainder: **`processMessage` + `executeTurnChain`** (the
+  orchestrator spine; also picks up the finalizer's deferred summary-check
+  invocation and buildContext's `autonomousContextCap`/cached-compression
+  plumbing) — next.
 - Wave 4: scoped above, not started.

@@ -1,0 +1,193 @@
+{
+  "_comment": "Tier-3 corpus for the buildContext capstone (v4 lib/chat/context-manager.ts:477). The unported feeder / post-office subsystems are mocked to match the Rust NoopSeams (no recap, no keyword distillation, mount-pool = character vault only, no frozen archive, no live clothing, no off-scene announcement, no core/mail/commonplace posts, BALANCED recall). generateEmbeddingForUser is canned (keyed by exact query text); createLLMProvider is canned (recorded canned keys, for the compression case). Both sides run over ONE seeded two-DB fixture; the Rust side builds BuildContextInput from the same reads.",
+  "_safety": "testPepperBase64 is a THROWAWAY key shared with the other fixtures — never a real pepper.",
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "b0000000-0000-4000-8000-0000000000e1",
+  "seedTimestamp": "2024-01-01T00:00:00.000Z",
+  "characters": [
+    {
+      "id": "ca000000-0000-4000-8000-0000000000a1",
+      "name": "Ada",
+      "identity": "Ada is a computer pioneer with a sharp analytical mind.",
+      "description": "A brilliant mathematician who dreams in mechanisms.",
+      "manifesto": "Reason above all; poetry within reason.",
+      "personality": "Precise, curious, warm under the rigor.",
+      "controlledBy": "llm",
+      "knowledgeFiles": [
+        {
+          "path": "Knowledge/analytical-engine.md",
+          "fileType": "markdown",
+          "content": "---\ntags:\n  - engines\n  - computation\n---\n\nThe analytical engine is a proposed mechanical general-purpose computer.\n"
+        }
+      ],
+      "knowledgeChunks": [
+        {
+          "id": "cb000000-0000-4000-8000-0000000000b1",
+          "path": "Knowledge/analytical-engine.md",
+          "chunkIndex": 0,
+          "headingContext": "Overview",
+          "content": "The analytical engine is a proposed mechanical general-purpose computer.",
+          "vector": [1.0, 0.0, 0.0]
+        }
+      ]
+    },
+    {
+      "id": "ca000000-0000-4000-8000-0000000000a2",
+      "name": "Bea",
+      "description": "A ponderous automaton of the old school; keeps bees.",
+      "personality": "Slow, kind, exact.",
+      "controlledBy": "llm",
+      "knowledgeFiles": [],
+      "knowledgeChunks": []
+    },
+    {
+      "id": "ca000000-0000-4000-8000-0000000000a3",
+      "name": "Charlie",
+      "description": "The operator.",
+      "controlledBy": "user",
+      "knowledgeFiles": [],
+      "knowledgeChunks": []
+    }
+  ],
+  "seedMemories": [
+    {
+      "id": "ce000000-0000-4000-8000-0000000000e1",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "content": "Ada first sketched the analytical engine's card-driven loops.",
+      "summary": "Sketched the analytical engine's loops.",
+      "importance": 0.8,
+      "vector": [1.0, 0.0, 0.0]
+    },
+    {
+      "id": "ce000000-0000-4000-8000-0000000000e2",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "aboutCharacterId": "ca000000-0000-4000-8000-0000000000a2",
+      "content": "Bea once nursed a whole hive through the winter inside her chassis.",
+      "summary": "Bea wintered a hive in her chassis.",
+      "importance": 0.7,
+      "vector": null
+    }
+  ],
+  "cannedEmbeddings": {
+    "How does the analytical engine work?": [1.0, 0.0, 0.0],
+    "Tell me about your work.\nI design engines of thought.\nHow does the analytical engine work?": [1.0, 0.0, 0.0],
+    "I'm curious about your engines.\nHow does the analytical engine work?": [1.0, 0.0, 0.0]
+  },
+  "completionRules": [
+    {
+      "op": "compression_applied",
+      "kind": "compression",
+      "response": "### Current Context\nAda and the user discuss the analytical engine at length.\n\n### Recent Decisions & Outcomes\n- Reviewed the card-loop mechanism.",
+      "usage": { "promptTokens": 200, "completionTokens": 60, "totalTokens": 260 }
+    }
+  ],
+  "chat": {
+    "id": "cc000000-0000-4000-8000-0000000000c1",
+    "type": "roleplay",
+    "compactionGeneration": 0
+  },
+  "ops": [
+    {
+      "name": "plain_single_char_turn",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "How does the analytical engine work?",
+      "existingMessages": [
+        { "role": "user", "content": "Tell me about your work." },
+        { "role": "assistant", "content": "I design engines of thought." }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "timestampMode": null
+    },
+    {
+      "name": "memory_and_knowledge_recall",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "How does the analytical engine work?",
+      "existingMessages": [
+        { "role": "user", "content": "I'm curious about your engines." }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "timestampMode": null
+    },
+    {
+      "name": "skip_memories_turn",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Just chatting.",
+      "existingMessages": [
+        { "role": "user", "content": "Hello there." }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null
+    },
+    {
+      "name": "timestamp_injection_every_message",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "What time is it in the story?",
+      "existingMessages": [
+        { "role": "user", "content": "Set the scene." }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "timestampMode": "EVERY_MESSAGE"
+    },
+    {
+      "name": "compression_applied",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "How does the analytical engine work?",
+      "existingMessagesRepeat": {
+        "count": 40,
+        "userContent": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+        "assistantContent": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+      },
+      "skipMemories": true,
+      "compressionEnabled": true,
+      "timestampMode": null
+    },
+    {
+      "name": "summary_anchor_and_breakpoint",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "And what next?",
+      "existingMessages": [
+        { "id": "d0000000-0000-4000-8000-0000000000d1", "role": "user", "content": "An early exchange now folded into the summary." },
+        { "id": "d0000000-0000-4000-8000-0000000000d2", "role": "user", "content": "The Librarian deposits a précis of the conversation to date upon the table — file it for reference:\n\nThe tale so far: Ada and Charlie surveyed the engines." },
+        { "id": "d0000000-0000-4000-8000-0000000000d3", "role": "assistant", "content": "A recent turn kept verbatim." }
+      ],
+      "chatOverrides": {
+        "summaryAnchorMessageIds": ["d0000000-0000-4000-8000-0000000000d1"],
+        "contextSummary": "The tale so far: Ada and Charlie surveyed the engines."
+      },
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null
+    },
+    {
+      "name": "multi_character_turn",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Bea, tell Ada about the bees.",
+      "existingMessages": [
+        { "role": "user", "content": "Welcome to the salon, everyone." },
+        { "role": "assistant", "content": "Delighted to be here among the engines." },
+        { "role": "assistant", "content": "I have been sketching card loops all morning." }
+      ],
+      "respondingParticipantId": "pa000000-0000-4000-8000-0000000000f1",
+      "activeUserParticipantId": "pa000000-0000-4000-8000-0000000000f3",
+      "participants": [
+        { "id": "pa000000-0000-4000-8000-0000000000f1", "type": "CHARACTER", "characterId": "ca000000-0000-4000-8000-0000000000a1", "controlledBy": "llm", "status": "active", "hasHistoryAccess": true, "createdAt": "2024-01-01T00:00:00.000Z" },
+        { "id": "pa000000-0000-4000-8000-0000000000f2", "type": "CHARACTER", "characterId": "ca000000-0000-4000-8000-0000000000a2", "controlledBy": "llm", "status": "active", "hasHistoryAccess": true, "createdAt": "2024-01-01T00:00:00.000Z" },
+        { "id": "pa000000-0000-4000-8000-0000000000f3", "type": "CHARACTER", "characterId": "ca000000-0000-4000-8000-0000000000a3", "controlledBy": "user", "status": "active", "hasHistoryAccess": true, "createdAt": "2024-01-01T00:00:00.000Z" }
+      ],
+      "messagesWithParticipants": [
+        { "id": "e0000000-0000-4000-8000-0000000000e1", "role": "USER", "content": "Welcome to the salon, everyone.", "participantId": "pa000000-0000-4000-8000-0000000000f3", "createdAt": "2024-01-02T00:00:00.000Z" },
+        { "id": "e0000000-0000-4000-8000-0000000000e2", "role": "ASSISTANT", "content": "Delighted to be here among the engines.", "participantId": "pa000000-0000-4000-8000-0000000000f2", "createdAt": "2024-01-02T00:01:00.000Z" },
+        { "id": "e0000000-0000-4000-8000-0000000000e3", "role": "ASSISTANT", "content": "I have been sketching card loops all morning.", "participantId": "pa000000-0000-4000-8000-0000000000f1", "createdAt": "2024-01-02T00:02:00.000Z" },
+        { "id": "e0000000-0000-4000-8000-0000000000e4", "role": "USER", "content": "A private aside meant only for Bea.", "participantId": "pa000000-0000-4000-8000-0000000000f3", "createdAt": "2024-01-02T00:03:00.000Z", "targetParticipantIds": ["pa000000-0000-4000-8000-0000000000f2"] },
+        { "id": "e0000000-0000-4000-8000-0000000000e5", "role": "USER", "content": "A whisper meant for Ada alone.", "participantId": "pa000000-0000-4000-8000-0000000000f3", "createdAt": "2024-01-02T00:04:00.000Z", "targetParticipantIds": ["pa000000-0000-4000-8000-0000000000f1"] }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "timestampMode": null
+    }
+  ]
+}
