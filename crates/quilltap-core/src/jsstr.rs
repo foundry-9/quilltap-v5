@@ -37,6 +37,11 @@ pub fn js_trim_start(s: &str) -> &str {
     s.trim_start_matches(is_js_ws)
 }
 
+/// Trim trailing JS-whitespace only, matching JS `String.prototype.trimEnd`.
+pub fn js_trim_end(s: &str) -> &str {
+    s.trim_end_matches(is_js_ws)
+}
+
 /// UTF-16 code-unit length, matching JS `String.length`.
 pub fn utf16_len(s: &str) -> usize {
     s.encode_utf16().count()

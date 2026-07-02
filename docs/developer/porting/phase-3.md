@@ -280,10 +280,16 @@ Track them to closure as their subsystem lands:
      `provider.sendMessage` seam + `CannedCompletionProvider` keyed by the exact
      call input (provider | model | temperature | messages JSON). The
      oracle-side canned injection lands with the memory-processor differential.
-   - Next: the model-dependent `memory-processor` extraction (tier-3 — canned
-     completion injected both sides), and the gate's deferred
-     `maybeEnqueueHousekeeping` watermark check (needs `background_jobs`
-     integration, already ported at the repo level).
+   - The **memory-extraction pure leaves** (`memory_tasks`) — **✅ done + green**
+     (`memory_tasks_equivalence`, tier-1): the SELF/OTHER prompt builders
+     (generated `prompt_text` bodies, preambles, orienting footer), the shared
+     turn-context renderer, the message builders, and the response parsers
+     (fence stripping, targeting-tag validation, caps, JS coercion semantics).
+     Jest oracle: v4's REAL extractors with only `executeCheapLLMTask` mocked.
+   - Next: the `processTurnForMemory` orchestration (tier-3 — canned completion
+     injected both sides), and the gate's deferred `maybeEnqueueHousekeeping`
+     watermark check (needs `background_jobs` integration, already ported at
+     the repo level).
 3. Chat orchestration (turn manager + streaming on the `Event` channel).
 4. Enclave engine (`step()` + `RunState` + driver seam).
 

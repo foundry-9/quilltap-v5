@@ -52,7 +52,7 @@ pub enum ContextTag {
 impl TemporalTag {
     /// Parse a normalized (trimmed + lowercased) bare word, or None if not in
     /// the closed vocabulary.
-    fn from_kw(kw: &str) -> Option<Self> {
+    pub fn from_kw(kw: &str) -> Option<Self> {
         match kw {
             "past" => Some(Self::Past),
             "moment" => Some(Self::Moment),
@@ -73,7 +73,7 @@ impl TemporalTag {
 }
 
 impl ScopeTag {
-    fn from_kw(kw: &str) -> Option<Self> {
+    pub fn from_kw(kw: &str) -> Option<Self> {
         match kw {
             "narrow" => Some(Self::Narrow),
             "wide" => Some(Self::Wide),
@@ -89,7 +89,7 @@ impl ScopeTag {
 }
 
 impl ContextTag {
-    fn from_kw(kw: &str) -> Option<Self> {
+    pub fn from_kw(kw: &str) -> Option<Self> {
         match kw {
             "philosophy" => Some(Self::Philosophy),
             "relationships" => Some(Self::Relationships),

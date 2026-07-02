@@ -152,6 +152,7 @@ pub mod literal_boost;
 pub mod markdown;
 pub mod memory_format;
 pub mod memory_gate;
+pub mod memory_tasks;
 pub mod memory_weighting;
 pub mod mentioned_characters;
 pub mod message_attribution;

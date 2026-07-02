@@ -264,6 +264,39 @@ the memory-processor differential.
   self-tests (incl. temperature-presence and provider/model key separation, the
   two fallback paths' key shapes).
 
+Phase 3 — the memory-extraction pure leaves (`memory_tasks`), the tier-1 half
+of the memory-processor unit. Ported from v4
+`lib/memory/cheap-llm-tasks/memory-tasks.ts`.
+
+- `memory_tasks`: the SELF/OTHER extraction prompt builders
+  (`get_self_memory_extraction_prompt` / `get_other_memory_extraction_prompt` —
+  the byte-stable bodies, the first-person-user and autonomous-room preambles,
+  the ORIENTING CONTEXT footer with its 1500-UTF-16-unit truncation, the
+  numbered multi-subject CONTEXT footer), the shared turn-context renderer
+  (`render_turn_context` — roster branches, the user-controlled-slice
+  single-rendering rule, the standalone-opener fallback), the message builders
+  (`build_self_extraction_messages` / `build_other_extraction_messages`, `None`
+  = v4's no-slice/no-subjects early return), and the response parsers
+  (`parse_memory_candidate_array` / `parse_other_candidates_by_subject` /
+  `coerce_memory_candidate` / `apply_targeting_tags` — fence stripping, closed-
+  vocabulary tag validation with present/wide/information defaults, JS-truthy
+  content/summary coercion via `JSON.stringify`, `HARD_CANDIDATE_CAP` = 2, the
+  per-subject and total caps, JS `Number.isInteger` subjectIndex semantics, and
+  the null-item TypeError that empties the whole SELF array). `importance` is
+  kept as the raw JSON number so integer emissions re-serialize bare.
+- The big prompt bodies live in a **generated** submodule
+  (`memory_tasks/prompt_text.rs`), extracted mechanically from the v4 source —
+  no hand transcription. Also hosts `strip_code_fences` (v4 keeps it in
+  `ai-import.service.ts`); `jsstr` gained `js_trim_end`; the `recall_tags`
+  closed-vocabulary parsers (`from_kw`) went public for the extraction side.
+- Differential (`memory_tasks_equivalence`): a jest oracle (the seam is a
+  module export only `jest.mock` can replace — the same seam v4's own
+  extraction tests use) drives v4's REAL `extractSelfMemoriesFromTurn` /
+  `extractOtherMemoriesFromTurn` over a committed 14-case corpus with ONLY
+  `executeCheapLLMTask` mocked, capturing the built messages byte-for-byte and
+  feeding each case's canned response text into the real parser. Four
+  self-tests on top.
+
 Docs — Phase 2 marked complete; Phase 3 kickoff drafted. Docs only, no crate
 source changed.
 

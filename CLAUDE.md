@@ -1366,9 +1366,31 @@ month numbers in reasons placeholdered) and the three table dumps
 (sentinel-aware); plus three self-tests. **Corpus freshness:** the spec's
 "recent" seed dates age past the 6-month windows ~2026-12 — refresh them when
 regenerating after that (both sides stay in agreement regardless; only the
-banked outcome descriptions/sanity counts assume fresh dates). Next: the
-model-dependent `memory-processor` per-turn extraction (tier-3), and the gate's
-deferred `maybeEnqueueHousekeeping` watermark check, per
+banked outcome descriptions/sanity counts assume fresh dates).
+
+**The memory-processor unit is in progress** (the model-dependent per-turn
+extraction, v4 `memory-processor.ts`). Its tier-1 half — the **memory-extraction
+pure leaves** (`quilltap-core::memory_tasks`) — is ported and green
+(`memory_tasks_equivalence`): the SELF/OTHER extraction prompt builders (the
+byte-stable bodies in a **generated** `prompt_text` submodule extracted
+mechanically from the v4 source; the first-person-user + autonomous-room
+preambles; the ORIENTING CONTEXT footer with its 1500-UTF-16-unit truncation),
+the shared `render_turn_context` (roster branches, the user-controlled-slice
+single-rendering rule), the message builders (`None` = v4's no-slice early
+return), and the response parsers (`parse_memory_candidate_array` /
+`parse_other_candidates_by_subject` — fence stripping via `strip_code_fences`
+[v4 hosts it in `ai-import.service.ts`], closed-vocabulary targeting-tag
+validation with present/wide/information defaults, JS-truthy `JSON.stringify`
+coercion, `HARD_CANDIDATE_CAP` = 2 + per-subject/total caps, JS
+`Number.isInteger` subjectIndex semantics, and the null-item TypeError that
+empties the whole SELF array; `importance` kept as the raw JSON number so
+integer emissions re-serialize bare). The jest oracle drives v4's REAL
+extractors over a committed 14-case corpus with ONLY `executeCheapLLMTask`
+mocked (the seam v4's own extraction tests use), capturing the built messages
+byte-for-byte and feeding each case's canned response into the real parser.
+Next: the `processTurnForMemory` orchestration as the tier-3 unit (canned
+completion injected both sides), then the gate's deferred
+`maybeEnqueueHousekeeping` watermark check, per
 `docs/developer/porting/phase-3.md`.
 
 **Drift catch-up (2026-07-01): the answer-confirmation columns.** v4 commit

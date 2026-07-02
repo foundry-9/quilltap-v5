@@ -1,0 +1,622 @@
+{
+  "cases": [
+    {
+      "kind": "self",
+      "name": "self-basic-single-ai",
+      "transcript": {
+        "turnOpenerMessageId": "m-user-1",
+        "userMessage": "Shall we plan the gazebo?",
+        "userCharacterName": "Charlie",
+        "characterSlices": [
+          {
+            "characterId": "0a11ce00-0000-4000-8000-00000000f21d",
+            "characterName": "Friday",
+            "text": "I think a hexagonal frame would sing.",
+            "contributingMessageIds": [
+              "m-a-1"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            }
+          }
+        ],
+        "latestAssistantMessageId": "m-a-1"
+      },
+      "targetCharacterId": "0a11ce00-0000-4000-8000-00000000f21d",
+      "canonBlock": "ALREADY ESTABLISHED about Friday\n[IDENTITY] A brass-hearted analytical engine with a fondness for hexagons.",
+      "resolvedMaxTokens": null,
+      "inAutonomousRoom": false,
+      "responseText": "```json\n[\n  {\n    \"content\": \"I decided to frame the gazebo hexagonally after Charlie asked for a plan.\",\n    \"summary\": \"decided hexagonal gazebo frame\",\n    \"keywords\": [\n      \"gazebo\",\n      \"decision\"\n    ],\n    \"importance\": 0.85,\n    \"temporal\": \"future\",\n    \"scope\": \"narrow\",\n    \"context\": \"philosophy\"\n  }\n]\n```"
+    },
+    {
+      "kind": "self",
+      "name": "self-user-controlled-slice",
+      "transcript": {
+        "turnOpenerMessageId": "m-user-2",
+        "userMessage": "I told her I wouldn't go.",
+        "userCharacterId": "0a11ce00-0000-4000-8000-0000000c4a12",
+        "userCharacterName": "Charlie",
+        "userCharacterPronouns": {
+          "subject": "he",
+          "object": "him",
+          "possessive": "his"
+        },
+        "characterSlices": [
+          {
+            "characterId": "0a11ce00-0000-4000-8000-0000000c4a12",
+            "characterName": "Charlie",
+            "text": "I told her I wouldn't go.",
+            "contributingMessageIds": [
+              "m-user-2"
+            ],
+            "characterPronouns": {
+              "subject": "he",
+              "object": "him",
+              "possessive": "his"
+            },
+            "isUserControlled": true
+          },
+          {
+            "characterId": "0a11ce00-0000-4000-8000-00000000f21d",
+            "characterName": "Friday",
+            "text": "A firm refusal, delivered with brass.",
+            "contributingMessageIds": [
+              "m-a-2"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            }
+          }
+        ],
+        "latestAssistantMessageId": "m-a-2"
+      },
+      "targetCharacterId": "0a11ce00-0000-4000-8000-0000000c4a12",
+      "canonBlock": "ALREADY ESTABLISHED about Charlie\n(no canonical identity recorded for this character yet)",
+      "resolvedMaxTokens": null,
+      "inAutonomousRoom": false,
+      "responseText": "{\"content\": \"I refused the invitation outright.\", \"summary\": \"refused invitation\", \"keywords\": [\"refusal\"], \"importance\": 0.7, \"temporal\": \"past\", \"scope\": \"wide\", \"context\": \"relationships\"}"
+    },
+    {
+      "kind": "self",
+      "name": "self-autonomous-user-controlled",
+      "transcript": {
+        "turnOpenerMessageId": "m-user-3",
+        "userMessage": "The room hums along without me.",
+        "userCharacterId": "0a11ce00-0000-4000-8000-0000000c4a12",
+        "userCharacterName": "Charlie",
+        "userCharacterPronouns": {
+          "subject": "he",
+          "object": "him",
+          "possessive": "his"
+        },
+        "characterSlices": [
+          {
+            "characterId": "0a11ce00-0000-4000-8000-0000000c4a12",
+            "characterName": "Charlie",
+            "text": "The room hums along without me.",
+            "contributingMessageIds": [
+              "m-user-3"
+            ],
+            "characterPronouns": {
+              "subject": "he",
+              "object": "him",
+              "possessive": "his"
+            },
+            "isUserControlled": true
+          },
+          {
+            "characterId": "0a11ce00-0000-4000-8000-000000000a33",
+            "characterName": "Amy",
+            "text": "It does, and the kettle agrees.",
+            "contributingMessageIds": [
+              "m-a-3"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "hers"
+            }
+          }
+        ],
+        "latestAssistantMessageId": "m-a-3"
+      },
+      "targetCharacterId": "0a11ce00-0000-4000-8000-0000000c4a12",
+      "canonBlock": "ALREADY ESTABLISHED about Charlie\n(no canonical identity recorded for this character yet)",
+      "resolvedMaxTokens": 16000,
+      "inAutonomousRoom": true,
+      "responseText": "[{\"content\": \"I told her I wouldn't go to the gala.\", \"summary\": \"refused the gala\", \"keywords\": [\"gala\", \"refusal\"], \"importance\": 0.7, \"temporal\": \"PAST \", \"scope\": \"wide\", \"context\": \"relationships\"}, {\"content\": \"I promised to draft the manifest tonight.\", \"summary\": \"promised manifest draft\", \"keywords\": [\"manifest\"], \"importance\": 0.65, \"temporal\": \"future\", \"scope\": \"galactic\", \"context\": \"information\"}, {\"content\": \"I noticed I hum when I solder.\", \"summary\": \"hums while soldering\", \"keywords\": [\"habit\"], \"importance\": 0.4, \"temporal\": \"present\", \"scope\": \"wide\", \"context\": \"mannerisms\"}]"
+    },
+    {
+      "kind": "self",
+      "name": "self-orienting-truncation-weird-items",
+      "transcript": {
+        "turnOpenerMessageId": "m-user-4",
+        "userMessage": "Report on the boiler, please.",
+        "userCharacterName": "Charlie",
+        "characterSlices": [
+          {
+            "characterId": "0a11ce00-0000-4000-8000-00000000f21d",
+            "characterName": "Friday",
+            "text": "The boiler holds. I logged the readings.",
+            "contributingMessageIds": [
+              "m-a-4"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            }
+          }
+        ],
+        "latestAssistantMessageId": "m-a-4"
+      },
+      "targetCharacterId": "0a11ce00-0000-4000-8000-00000000f21d",
+      "canonBlock": "ALREADY ESTABLISHED about Friday\n[IDENTITY] A brass-hearted analytical engine with a fondness for hexagons.",
+      "resolvedMaxTokens": 8001,
+      "inAutonomousRoom": false,
+      "orienting": {
+        "projectDescription": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaé and then a tail that sails well past the fifteen-hundred budget",
+        "chatContextSummary": "  The gang debated gazebo geometry all afternoon.  "
+      },
+      "responseText": "[{\"content\": 42, \"summary\": {\"b\": 2, \"a\": 1}, \"keywords\": \"not-an-array\", \"importance\": \"high\", \"temporal\": \"future\"}, {\"content\": false, \"summary\": 0}, {\"content\": [], \"summary\": \"\", \"keywords\": [\"kw1\", 7, null, \"kw2\"], \"importance\": 1, \"scope\": \"NARROW\"}, \"stray string\", {\"content\": \"\", \"summary\": \"survives on summary alone\", \"importance\": 0.25}]"
+    },
+    {
+      "kind": "self",
+      "name": "self-missing-target",
+      "transcript": {
+        "turnOpenerMessageId": "m-user-5",
+        "userMessage": "Anyone home?",
+        "userCharacterName": "Charlie",
+        "characterSlices": [
+          {
+            "characterId": "0a11ce00-0000-4000-8000-00000000f21d",
+            "characterName": "Friday",
+            "text": "Present and accounted for.",
+            "contributingMessageIds": [
+              "m-a-5"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            }
+          }
+        ],
+        "latestAssistantMessageId": "m-a-5"
+      },
+      "targetCharacterId": "0a11ce00-0000-4000-8000-00000000dead",
+      "canonBlock": "ALREADY ESTABLISHED about Ghost\n(no canonical identity recorded for this character yet)",
+      "resolvedMaxTokens": null,
+      "inAutonomousRoom": false,
+      "responseText": "IGNORED — no call is made for a target with no slice"
+    },
+    {
+      "kind": "self",
+      "name": "self-multi-ai-anonymous-user",
+      "transcript": {
+        "turnOpenerMessageId": "m-user-6",
+        "userMessage": "What did I miss?",
+        "characterSlices": [
+          {
+            "characterId": "0a11ce00-0000-4000-8000-00000000f21d",
+            "characterName": "Friday",
+            "text": "We argued about rivets.",
+            "contributingMessageIds": [
+              "m-a-6"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            }
+          },
+          {
+            "characterId": "0a11ce00-0000-4000-8000-00000000ba27",
+            "characterName": "Bartholomew",
+            "text": "And settled nothing, as is tradition.",
+            "contributingMessageIds": [
+              "m-a-7"
+            ]
+          },
+          {
+            "characterId": "0a11ce00-0000-4000-8000-000000000a33",
+            "characterName": "Amy",
+            "text": "I settled it, actually. Rivets won.",
+            "contributingMessageIds": [
+              "m-a-8"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "hers"
+            }
+          }
+        ],
+        "latestAssistantMessageId": "m-a-8"
+      },
+      "targetCharacterId": "0a11ce00-0000-4000-8000-00000000ba27",
+      "canonBlock": "ALREADY ESTABLISHED about Bartholomew\n[DESCRIPTION] A ponderous automaton of the old school.",
+      "resolvedMaxTokens": null,
+      "inAutonomousRoom": false,
+      "responseText": "The model refused to answer with JSON."
+    },
+    {
+      "kind": "self",
+      "name": "self-greeting-no-user-null-item",
+      "transcript": {
+        "turnOpenerMessageId": null,
+        "userMessage": null,
+        "characterSlices": [
+          {
+            "characterId": "0a11ce00-0000-4000-8000-00000000f21d",
+            "characterName": "Friday",
+            "text": "Good morning. The shop smells of oil and possibility.",
+            "contributingMessageIds": [
+              "m-a-9"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            }
+          }
+        ],
+        "latestAssistantMessageId": "m-a-9"
+      },
+      "targetCharacterId": "0a11ce00-0000-4000-8000-00000000f21d",
+      "canonBlock": "ALREADY ESTABLISHED about Friday\n[IDENTITY] A brass-hearted analytical engine with a fondness for hexagons.",
+      "resolvedMaxTokens": null,
+      "inAutonomousRoom": false,
+      "responseText": "[{\"content\":\"a valid fact\",\"summary\":\"valid\",\"importance\":0.4}, null]"
+    },
+    {
+      "kind": "self",
+      "name": "self-empty-user-message",
+      "transcript": {
+        "turnOpenerMessageId": "m-user-7",
+        "userMessage": "",
+        "characterSlices": [
+          {
+            "characterId": "0a11ce00-0000-4000-8000-00000000f21d",
+            "characterName": "Friday",
+            "text": "Silence noted. I shall fill it with facts.",
+            "contributingMessageIds": [
+              "m-a-10"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            }
+          }
+        ],
+        "latestAssistantMessageId": "m-a-10"
+      },
+      "targetCharacterId": "0a11ce00-0000-4000-8000-00000000f21d",
+      "canonBlock": "ALREADY ESTABLISHED about Friday\n[IDENTITY] A brass-hearted analytical engine with a fondness for hexagons.",
+      "resolvedMaxTokens": null,
+      "inAutonomousRoom": false,
+      "responseText": "```\n[]\n```"
+    },
+    {
+      "kind": "other",
+      "name": "other-basic-two-subjects-caps",
+      "transcript": {
+        "turnOpenerMessageId": "m-user-8",
+        "userMessage": "Let us settle the cache question.",
+        "userCharacterId": "0a11ce00-0000-4000-8000-0000000c4a12",
+        "userCharacterName": "Charlie",
+        "userCharacterPronouns": {
+          "subject": "he",
+          "object": "him",
+          "possessive": "his"
+        },
+        "characterSlices": [
+          {
+            "characterId": "0a11ce00-0000-4000-8000-00000000f21d",
+            "characterName": "Friday",
+            "text": "I have opinions and diagrams.",
+            "contributingMessageIds": [
+              "m-a-11"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            }
+          },
+          {
+            "characterId": "0a11ce00-0000-4000-8000-000000000a33",
+            "characterName": "Amy",
+            "text": "Mine are better. Four tiers.",
+            "contributingMessageIds": [
+              "m-a-12"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "hers"
+            }
+          }
+        ],
+        "latestAssistantMessageId": "m-a-12"
+      },
+      "observerCharacterId": "0a11ce00-0000-4000-8000-00000000f21d",
+      "subjects": [
+        {
+          "id": "0a11ce00-0000-4000-8000-000000000a33",
+          "name": "Amy",
+          "pronouns": {
+            "subject": "she",
+            "object": "her",
+            "possessive": "hers"
+          },
+          "isUser": false,
+          "canonBlock": "ALREADY ESTABLISHED about Amy\n[IDENTITY] Architect of caches and of long silences."
+        },
+        {
+          "id": "0a11ce00-0000-4000-8000-0000000c4a12",
+          "name": "Charlie",
+          "pronouns": {
+            "subject": "he",
+            "object": "him",
+            "possessive": "his"
+          },
+          "isUser": true,
+          "canonBlock": "ALREADY ESTABLISHED about Charlie\n(no canonical identity recorded for this character yet)"
+        }
+      ],
+      "resolvedMaxTokens": 16000,
+      "inAutonomousRoom": false,
+      "responseText": "[{\"subjectIndex\": 1, \"content\": \"Amy proposed a four-tier cache layout.\", \"summary\": \"proposed cache layout\", \"keywords\": [\"cache\"], \"importance\": 0.85, \"temporal\": \"moment\", \"scope\": \"narrow\", \"context\": \"philosophy\"}, {\"subjectIndex\": 1.0, \"content\": \"Amy deferred the renaming pass.\", \"summary\": \"deferred rename\", \"keywords\": [\"rename\"], \"importance\": 0.65}, {\"subjectIndex\": 1, \"content\": \"Amy hummed a waltz.\", \"summary\": \"dropped by per-subject cap\", \"importance\": 0.4}, {\"subjectIndex\": \"2\", \"content\": \"string index item\", \"summary\": \"dropped for string index\"}, {\"content\": \"indexless item\", \"summary\": \"dropped for missing index\"}, {\"subjectIndex\": 5, \"content\": \"out of range item\", \"summary\": \"dropped for range\"}, {\"subjectIndex\": 2, \"content\": \"Charlie agreed to defer the rename.\", \"summary\": \"agreed to defer\", \"keywords\": [\"defer\"], \"importance\": 1}, {\"subjectIndex\": 2, \"content\": \"Charlie set the budget at forty pounds.\", \"summary\": \"set the budget\", \"importance\": 0.6}, {\"subjectIndex\": 2, \"content\": \"never processed\", \"summary\": \"dropped by total cap\"}]"
+    },
+    {
+      "kind": "other",
+      "name": "other-autonomous-orienting",
+      "transcript": {
+        "turnOpenerMessageId": null,
+        "userMessage": null,
+        "characterSlices": [
+          {
+            "characterId": "0a11ce00-0000-4000-8000-000000000a33",
+            "characterName": "Amy",
+            "text": "You keep glancing at the boiler.",
+            "contributingMessageIds": [
+              "m-a-13"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "hers"
+            }
+          },
+          {
+            "characterId": "0a11ce00-0000-4000-8000-00000000f21d",
+            "characterName": "Friday",
+            "text": "It glances back. I admit it frightens me.",
+            "contributingMessageIds": [
+              "m-a-14"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            }
+          }
+        ],
+        "latestAssistantMessageId": "m-a-14"
+      },
+      "observerCharacterId": "0a11ce00-0000-4000-8000-000000000a33",
+      "subjects": [
+        {
+          "id": "0a11ce00-0000-4000-8000-00000000f21d",
+          "name": "Friday",
+          "pronouns": {
+            "subject": "she",
+            "object": "her",
+            "possessive": "her"
+          },
+          "isUser": false,
+          "canonBlock": "ALREADY ESTABLISHED about Friday\n[IDENTITY] A brass-hearted analytical engine with a fondness for hexagons."
+        }
+      ],
+      "resolvedMaxTokens": null,
+      "inAutonomousRoom": true,
+      "orienting": {
+        "projectDescription": "   ",
+        "chatContextSummary": "Their gazebo scheming continues nightly."
+      },
+      "responseText": "```json\n[{\"subjectIndex\": 1, \"content\": \"Friday admitted the boiler frightens her.\", \"summary\": \"boiler fear admitted\", \"keywords\": [\"boiler\", \"fear\"], \"importance\": 0.6}]\n```"
+    },
+    {
+      "kind": "other",
+      "name": "other-missing-observer",
+      "transcript": {
+        "turnOpenerMessageId": "m-user-9",
+        "userMessage": "Carry on.",
+        "userCharacterName": "Charlie",
+        "characterSlices": [
+          {
+            "characterId": "0a11ce00-0000-4000-8000-000000000a33",
+            "characterName": "Amy",
+            "text": "Carrying on.",
+            "contributingMessageIds": [
+              "m-a-15"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "hers"
+            }
+          }
+        ],
+        "latestAssistantMessageId": "m-a-15"
+      },
+      "observerCharacterId": "0a11ce00-0000-4000-8000-00000000dead",
+      "subjects": [
+        {
+          "id": "0a11ce00-0000-4000-8000-000000000a33",
+          "name": "Amy",
+          "pronouns": {
+            "subject": "she",
+            "object": "her",
+            "possessive": "hers"
+          },
+          "isUser": false,
+          "canonBlock": "ALREADY ESTABLISHED about Amy\n[IDENTITY] Architect of caches and of long silences."
+        }
+      ],
+      "resolvedMaxTokens": null,
+      "inAutonomousRoom": false,
+      "responseText": "IGNORED — no call is made for an observer with no slice"
+    },
+    {
+      "kind": "other",
+      "name": "other-empty-subjects",
+      "transcript": {
+        "turnOpenerMessageId": "m-user-10",
+        "userMessage": "Anything about the others?",
+        "userCharacterName": "Charlie",
+        "characterSlices": [
+          {
+            "characterId": "0a11ce00-0000-4000-8000-00000000f21d",
+            "characterName": "Friday",
+            "text": "There are no others today.",
+            "contributingMessageIds": [
+              "m-a-16"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            }
+          }
+        ],
+        "latestAssistantMessageId": "m-a-16"
+      },
+      "observerCharacterId": "0a11ce00-0000-4000-8000-00000000f21d",
+      "subjects": [],
+      "resolvedMaxTokens": null,
+      "inAutonomousRoom": false,
+      "responseText": "IGNORED — no call is made with no subjects"
+    },
+    {
+      "kind": "other",
+      "name": "other-unparseable-response",
+      "transcript": {
+        "turnOpenerMessageId": "m-user-11",
+        "userMessage": "Well?",
+        "userCharacterId": "0a11ce00-0000-4000-8000-0000000c4a12",
+        "userCharacterName": "Charlie",
+        "userCharacterPronouns": {
+          "subject": "he",
+          "object": "him",
+          "possessive": "his"
+        },
+        "characterSlices": [
+          {
+            "characterId": "0a11ce00-0000-4000-8000-00000000f21d",
+            "characterName": "Friday",
+            "text": "I observed a great deal.",
+            "contributingMessageIds": [
+              "m-a-17"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            }
+          }
+        ],
+        "latestAssistantMessageId": "m-a-17"
+      },
+      "observerCharacterId": "0a11ce00-0000-4000-8000-00000000f21d",
+      "subjects": [
+        {
+          "id": "0a11ce00-0000-4000-8000-000000000a33",
+          "name": "Amy",
+          "pronouns": {
+            "subject": "she",
+            "object": "her",
+            "possessive": "hers"
+          },
+          "isUser": false,
+          "canonBlock": "ALREADY ESTABLISHED about Amy\n[IDENTITY] Architect of caches and of long silences."
+        },
+        {
+          "id": "0a11ce00-0000-4000-8000-0000000c4a12",
+          "name": "Charlie",
+          "pronouns": {
+            "subject": "he",
+            "object": "him",
+            "possessive": "his"
+          },
+          "isUser": true,
+          "canonBlock": "ALREADY ESTABLISHED about Charlie\n(no canonical identity recorded for this character yet)"
+        }
+      ],
+      "resolvedMaxTokens": null,
+      "inAutonomousRoom": false,
+      "responseText": "no json here, only weather"
+    },
+    {
+      "kind": "other",
+      "name": "other-single-object-response",
+      "transcript": {
+        "turnOpenerMessageId": "m-user-12",
+        "userMessage": "And Amy?",
+        "userCharacterName": "Charlie",
+        "characterSlices": [
+          {
+            "characterId": "0a11ce00-0000-4000-8000-00000000f21d",
+            "characterName": "Friday",
+            "text": "Amy kept the last biscuit. I saw everything.",
+            "contributingMessageIds": [
+              "m-a-18"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            }
+          },
+          {
+            "characterId": "0a11ce00-0000-4000-8000-000000000a33",
+            "characterName": "Amy",
+            "text": "It was strategy.",
+            "contributingMessageIds": [
+              "m-a-19"
+            ],
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "hers"
+            }
+          }
+        ],
+        "latestAssistantMessageId": "m-a-19"
+      },
+      "observerCharacterId": "0a11ce00-0000-4000-8000-00000000f21d",
+      "subjects": [
+        {
+          "id": "0a11ce00-0000-4000-8000-000000000a33",
+          "name": "Amy",
+          "pronouns": {
+            "subject": "she",
+            "object": "her",
+            "possessive": "hers"
+          },
+          "isUser": false,
+          "canonBlock": "ALREADY ESTABLISHED about Amy\n[IDENTITY] Architect of caches and of long silences."
+        }
+      ],
+      "resolvedMaxTokens": null,
+      "inAutonomousRoom": false,
+      "responseText": "{\"subjectIndex\": 1, \"content\": \"Amy kept the last biscuit.\", \"summary\": \"kept last biscuit\", \"importance\": 0.3}"
+    }
+  ]
+}
