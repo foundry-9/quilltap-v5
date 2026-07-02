@@ -10,5 +10,10 @@
 //!   `runMemoryGate`): the append-or-reinforce decision. The first model-dependent
 //!   service, verified tier-3 → tier-2 (a canned embedding injected identically on
 //!   both differential sides, then a structural DB diff).
+//! * [`memory_service`] — the cascade-delete family (v4 `deleteMemoryWithVector` +
+//!   the three `deleteMemoriesBy*WithVectors` cascades): the vector-store-aware
+//!   wrappers around the deletion chokepoint. No model call; verified by a plain
+//!   tier-2 differential.
 
 pub mod memory_gate;
+pub mod memory_service;

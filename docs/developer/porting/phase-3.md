@@ -265,8 +265,14 @@ Track them to closure as their subsystem lands:
    - Deletion chokepoint (`deleteMemoryWithUnlink` / `deleteMemoriesWithUnlinkBatch`)
      — **✅ done + green** (`db::memories::delete_with_unlink` / `delete_many_with_unlink`,
      tsx real-DB differential). The leaf every cascade path deletes through.
-   - Next: `memory-service`'s cascade-delete family + `housekeeping` (both
-     tier-2, no model call), then the model-dependent `memory-processor` extraction.
+   - Cascade-delete family (`deleteMemoryWithVector` + the three
+     `deleteMemoriesBy*WithVectors`) — **✅ done + green**
+     (`services::memory_service`, tsx real-DB differential
+     `memory_cascade_tier2_equivalence` over `memories` + `vector_indices` +
+     `vector_entries`; `CharacterVectorStore::remove_vector` added).
+   - Next: `housekeeping` (tier-2, no model call — the retention sweep the
+     `MEMORY_HOUSEKEEPING` job runs), then the model-dependent `memory-processor`
+     extraction.
 3. Chat orchestration (turn manager + streaming on the `Event` channel).
 4. Enclave engine (`step()` + `RunState` + driver seam).
 

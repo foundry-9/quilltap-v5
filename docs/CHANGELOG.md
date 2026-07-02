@@ -187,6 +187,34 @@ through, so a removed id never lingers in another memory's `relatedMemoryIds`.
   the seed sentinel — proving no stray bump). Four repo self-tests cover the
   single/batch scrub, the missing-row no-op, and the empty batch.
 
+Phase 3 — the memory-service cascade-delete family (the second memory-family
+follow-on). Ported v4's `deleteMemoryWithVector` and the three
+`deleteMemoriesBy*WithVectors` cascades (memory-service.ts) as
+`services::memory_service` — the vector-store-aware wrappers around the deletion
+chokepoint that every bulk delete path (single UI delete, source-message cascade,
+swipe-group cascade, chat wipe) goes through.
+
+- `services::memory_service`: `delete_memory_with_vector` (ownership check before
+  the characterId-agnostic chokepoint; non-fatal vector cleanup after a
+  successful delete), `delete_memories_by_source_message_with_vectors`,
+  `delete_memories_by_source_messages_with_vectors` (gathers the whole swipe
+  group up front so the neighbour scan sweeps once), and
+  `delete_memories_by_chat_id_with_vectors` (adds `characterCount`). Cascades
+  group the doomed set by character in first-appearance order, count only vectors
+  the store actually held (`hasVector` first), guard each character's cleanup
+  non-fatally, then batch-delete through the chokepoint. Three self-tests.
+- `db::vector_store::CharacterVectorStore::remove_vector` (v4 `removeVector`):
+  un-adds a same-flush add, otherwise tracks the id for deletion and drops any
+  pending update; a store whose sweep removed nothing flushes as a no-op, so its
+  `vector_indices.updatedAt` is not bumped. Three unit tests.
+- Differential (`memory_cascade_tier2_equivalence`): a tsx real-DB oracle drives
+  v4's REAL memory-service over an 8-op sequence on an 11-memory / 6-character
+  fixture (cross-character links, two vector-less memories, one entry-less
+  store), asserting each op's return against the spec on both sides, then diffing
+  `memories` + `vector_indices` + `vector_entries` in the sentinel-aware
+  minted-`updatedAt` form — the untouched stores' metadata provably keeps the
+  seed sentinel.
+
 Docs — Phase 2 marked complete; Phase 3 kickoff drafted. Docs only, no crate
 source changed.
 

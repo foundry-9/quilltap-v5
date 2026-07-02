@@ -1312,9 +1312,30 @@ model call — deletion touches no LLM; the module functions run directly under
 chokepoint over a pre-seeded nine-memory graph (cross-linked across two
 characters), diffing the `memories` dump in the sentinel-aware minted-`updatedAt`
 form (an untouched neighbour stays at the seed sentinel — proving no stray bump);
-plus four repo self-tests. Next: the remaining memory-family follow-ons
-(`memory-service`'s cascade-delete family + housekeeping, then the model-dependent
-`memory-processor` per-turn extraction) per `docs/developer/porting/phase-3.md`.
+plus four repo self-tests.
+
+The **memory-service cascade-delete family** — the second memory-family follow-on
+— is also ported and green (`services::memory_service`,
+`memory_cascade_tier2_equivalence`): v4's `deleteMemoryWithVector` + the three
+`deleteMemoriesBy*WithVectors` cascades (source-message, swipe-group, chat-wipe)
+from `memory-service.ts`, the vector-store-aware wrappers over the chokepoint.
+`delete_memory_with_vector` confirms ownership first (the chokepoint is
+characterId-agnostic), deletes through the chokepoint, then removes the vector
+non-fatally; the cascades group the doomed set by character in first-appearance
+order, count only vectors the store actually held (`hasVector` first, each
+character's cleanup non-fatal), then batch-delete through the chokepoint — the
+swipe-group variant gathers the whole group up front so the neighbour scan sweeps
+once. Added `CharacterVectorStore::remove_vector` (v4 `removeVector`: un-add a
+same-flush add, else track for deletion, drop any pending update) — so a store
+whose sweep removed nothing flushes as a no-op and its metadata `updatedAt` is
+provably NOT bumped. Verified by a tsx real-DB differential (no model call)
+driving v4's REAL memory-service over an 8-op sequence on an 11-memory /
+6-character fixture (cross-character links, two vector-less memories, one
+entry-less store), asserting each op's return against the spec on both sides and
+diffing `memories` + `vector_indices` + `vector_entries` in the sentinel-aware
+minted-`updatedAt` form; plus three service self-tests and three store unit
+tests. Next: `housekeeping` (tier-2, no model call), then the model-dependent
+`memory-processor` per-turn extraction, per `docs/developer/porting/phase-3.md`.
 
 **Drift catch-up (2026-07-01): the answer-confirmation columns.** v4 commit
 `29f3ae63` (a Salon consistency-check + re-affirmation feature) added DDL/schema

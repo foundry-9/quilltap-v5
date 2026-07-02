@@ -189,6 +189,28 @@ impl CharacterVectorStore {
         Ok(())
     }
 
+    /// Remove a vector from the store (v4 `removeVector`). Returns `false` when the
+    /// id is not loaded. A same-flush add is simply un-added (never persisted);
+    /// otherwise the id is tracked for deletion — and any pending update for it is
+    /// dropped (v4's `updatedIds.delete(id)`).
+    pub fn remove_vector(&mut self, id: &str) -> bool {
+        let Some(i) = self.index.remove(id) else {
+            return false;
+        };
+        self.entries.remove(i);
+        // Re-point the shifted tail entries' indices.
+        for (j, entry) in self.entries.iter().enumerate().skip(i) {
+            self.index.insert(entry.id.clone(), j);
+        }
+        if self.added.iter().any(|a| a == id) {
+            self.added.retain(|a| a != id);
+        } else {
+            push_unique(&mut self.removed, id);
+        }
+        self.updated.retain(|u| u != id);
+        true
+    }
+
     /// Update an existing vector's embedding (v4 `updateVector`). Returns `false`
     /// when the id is not loaded; errors on a dimension mismatch. Only tracks the id
     /// as `updated` when it was already persisted (not a same-flush add) — v4's
@@ -329,5 +351,34 @@ mod tests {
     fn dimension_mismatch_query_returns_empty() {
         let s = store_with(&[("a", vec![1.0, 0.0, 0.0])]);
         assert!(s.search(&[1.0, 0.0], 5).is_empty());
+    }
+
+    #[test]
+    fn remove_vector_tracks_persisted_entry_for_deletion() {
+        let mut s = store_with(&[("a", vec![1.0, 0.0]), ("b", vec![0.0, 1.0])]);
+        assert!(s.remove_vector("a"));
+        assert!(!s.has_vector("a"));
+        assert_eq!(s.size(), 1);
+        assert_eq!(s.removed, vec!["a".to_string()]);
+        // The shifted tail entry stays addressable.
+        assert!(s.has_vector("b"));
+        assert!(s.update_vector("b", vec![0.5, 0.5]).unwrap());
+    }
+
+    #[test]
+    fn remove_vector_missing_id_is_false_and_untracked() {
+        let mut s = store_with(&[("a", vec![1.0, 0.0])]);
+        assert!(!s.remove_vector("nope"));
+        assert!(s.removed.is_empty());
+    }
+
+    #[test]
+    fn remove_vector_cancels_same_flush_add() {
+        let mut s = store_with(&[]);
+        s.add_vector("fresh", vec![1.0, 0.0]).unwrap();
+        assert!(s.remove_vector("fresh"));
+        // Never persisted, so nothing to delete on flush (v4 un-adds it).
+        assert!(s.added.is_empty());
+        assert!(s.removed.is_empty());
     }
 }
