@@ -9,7 +9,7 @@
     "",
     "What this repo banks: two UUID TEXT (id, userId); one enum TEXT",
     "(avatarDisplayMode) + one plain-string TEXT (avatarDisplayStyle); a record/map",
-    "JSON column (tagStyles — the create op exercises a MULTI-KEY non-sorted outer",
+    "JSON column (tagStyles \u2014 the create op exercises a MULTI-KEY non-sorted outer",
     "map, proving the open-JSON key-order seam is CLOSED); ~15",
     "nested typed-struct JSON-object columns reproduced in schema field order;",
     "five nullable UUID/string TEXT columns (imageDescriptionProfileId,",
@@ -17,7 +17,7 @@
     "nested *ProfileId); five boolean columns (autoDetectRng, compositionModeDefault,",
     "composerSpellcheck, textReplacementsEnabled, autoScrollOnResponseComplete); and",
     "the FIRST INTEGER-affinity number column (sidebarWidth: z.number().min(256)",
-    ".max(512) — both bounds integer, so mapToSQLiteType assigns INTEGER, unlike the",
+    ".max(512) \u2014 both bounds integer, so mapToSQLiteType assigns INTEGER, unlike the",
     "prior min-only/bare REAL number columns).",
     "",
     "KEY-ORDER DISCIPLINE: v4's _create runs validate() (Zod .parse), which re-emits",
@@ -30,13 +30,13 @@
     "omitted by Zod too; the ones supplied as explicit null (cheapLLMSettings",
     "*ProfileId, storyBackgrounds defaultImageProfileId) stay present as null.",
     "",
-    "OPEN-JSON KEY-ORDER (seam — now CLOSED for tagStyles): v4's z.record keeps the",
+    "OPEN-JSON KEY-ORDER (seam \u2014 now CLOSED for tagStyles): v4's z.record keeps the",
     "outer tagId keys in JSON.stringify INSERTION order; the Rust port stores",
     "tagStyles as a raw serde_json::Value serialized under the `preserve_order`",
     "feature (enabled workspace-wide), which ALSO preserves insertion order. The",
     "create op below supplies TWO tagId entries in DELIBERATELY NON-SORTED order",
     "(zz111111... before aa111111...) so sorted order (aa before zz) differs from",
-    "insertion order — the green diff PROVES the port emits insertion order. Each",
+    "insertion order \u2014 the green diff PROVES the port emits insertion order. Each",
     "inner TagVisualStyle value is supplied FULLY in schema field order (emoji,",
     "foregroundColor, backgroundColor, emojiOnly, bold, italic, strikethrough) with",
     "all defaults materialized, matching v4's post-Zod-parse bytes exactly. The",
@@ -275,7 +275,10 @@
           "enabled": true,
           "idleMinutes": 5
         },
-        "timezone": "America/New_York"
+        "timezone": "America/New_York",
+        "answerConfirmationSettings": {
+          "enabled": true
+        }
       },
       "options": {
         "id": "b2000000-0000-4000-8000-000000000002",
@@ -292,7 +295,7 @@
         "avatarDisplayStyle": "ROUNDED",
         "tagStyles": {
           "zz111111-0000-4000-8000-000000000001": {
-            "emoji": "🎩",
+            "emoji": "\ud83c\udfa9",
             "foregroundColor": "#1f2937",
             "backgroundColor": "#e5e7eb",
             "emojiOnly": false,
@@ -344,7 +347,10 @@
           "enabled": true,
           "idleMinutes": 10
         },
-        "updatedAt": "2026-03-01T00:00:00.000Z"
+        "updatedAt": "2026-03-01T00:00:00.000Z",
+        "answerConfirmationSettings": {
+          "enabled": true
+        }
       }
     },
     {

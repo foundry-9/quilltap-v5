@@ -66,7 +66,8 @@ const COLUMNS: &str = "id, type, role, content, rawResponse, tokenCount, promptT
      targetParticipantIds, systemSender, systemKind, opaqueContent, hostEvent, customAnnouncer, \
      carinaMeta, pendingExternalPrompt, pendingExternalPromptFull, pendingExternalAttachments, \
      summaryAnchor, context, systemEventType, description, totalTokens, provider, modelName, \
-     estimatedCostUSD, createdAt, isSilentMessage";
+     estimatedCostUSD, createdAt, isSilentMessage, confirmed, confirmationChecked, \
+     confirmationRevised, confirmationNotes, confirmationOriginalContent";
 
 /// Nullable-optional TEXT/UUID/enum column: `Some` → string, `None` → omit.
 fn put_opt_string(obj: &mut Map<String, Value>, key: &str, v: Option<String>) {
@@ -79,6 +80,15 @@ fn put_opt_string(obj: &mut Map<String, Value>, key: &str, v: Option<String>) {
 fn put_opt_number(obj: &mut Map<String, Value>, key: &str, v: Option<f64>) {
     if let Some(n) = v {
         obj.insert(key.to_string(), js_number_to_json(n));
+    }
+}
+
+/// Nullable-optional boolean column (`NULL` → omit, `0`/`1` → bool). The backend
+/// `find` hydration coerces the INTEGER cell to a JS boolean; the nullable-optional
+/// field drops on NULL. Used for the answer-confirmation flags.
+fn put_opt_bool(obj: &mut Map<String, Value>, key: &str, v: Option<i64>) {
+    if let Some(n) = v {
+        obj.insert(key.to_string(), Value::Bool(n == 1));
     }
 }
 
@@ -160,6 +170,11 @@ fn marshal_message(row: &Row) -> Result<Value, rusqlite::Error> {
     put_opt_json(&mut o, "pendingExternalAttachments", row.get(28)?);
     o.insert("createdAt".into(), Value::String(row.get::<_, String>(37)?));
     put_is_silent(&mut o, row.get(38)?);
+    put_opt_bool(&mut o, "confirmed", row.get(39)?);
+    put_opt_bool(&mut o, "confirmationChecked", row.get(40)?);
+    put_opt_bool(&mut o, "confirmationRevised", row.get(41)?);
+    put_opt_string(&mut o, "confirmationNotes", row.get(42)?);
+    put_opt_string(&mut o, "confirmationOriginalContent", row.get(43)?);
     Ok(Value::Object(o))
 }
 

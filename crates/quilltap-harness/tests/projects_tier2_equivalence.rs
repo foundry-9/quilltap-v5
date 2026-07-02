@@ -370,10 +370,11 @@ fn projects_tier2_matches_oracle() {
         "Beta materialized-defaults properties.json not found; documents: {docs:?}"
     );
     // Alpha's final roster after add char-2 then remove char-1 = [char-2], with
-    // the optional keys (color / defaultImageProfileId / backgroundDisplayMode)
-    // preserved through the RMWs and interleaved with the defaults in schema order.
+    // the optional keys (color / defaultImageProfileId / answerConfirmationOverride /
+    // backgroundDisplayMode) preserved through the RMWs and interleaved with the
+    // defaults in schema order.
     let alpha_props =
-        "{\n  \"allowAnyCharacter\": false,\n  \"characterRoster\": [\n    \"aaaaaaaa-0000-4000-8000-000000000002\"\n  ],\n  \"color\": \"#778899\",\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"defaultImageProfileId\": \"11111111-1111-4111-8111-111111111111\",\n  \"backgroundDisplayMode\": \"project\"\n}";
+        "{\n  \"allowAnyCharacter\": false,\n  \"characterRoster\": [\n    \"aaaaaaaa-0000-4000-8000-000000000002\"\n  ],\n  \"color\": \"#778899\",\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"defaultImageProfileId\": \"11111111-1111-4111-8111-111111111111\",\n  \"answerConfirmationOverride\": \"ON\",\n  \"backgroundDisplayMode\": \"project\"\n}";
     assert!(
         docs.iter()
             .any(|d| d["content"] == Value::String(alpha_props.into())),

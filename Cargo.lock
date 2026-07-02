@@ -1005,7 +1005,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-core"
-version = "0.0.80"
+version = "0.0.81"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1038,7 +1038,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-harness"
-version = "0.0.73"
+version = "0.0.74"
 dependencies = [
  "quilltap-core",
  "serde",

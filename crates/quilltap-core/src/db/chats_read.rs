@@ -69,7 +69,8 @@ const ALL_COLUMNS: &str = "id, userId, participants, title, contextSummary, sill
      scheduleNextRunAt, scheduleLastRunAt, runState, currentRunId, runStateMessage, runStartedAt, \
      runEndedAt, runPausedAt, runPausedAccumMs, runTurnsConsumed, runTokensConsumed, \
      runMilestonesAnnounced, runDestructiveToolsAllowed, budgetExcludeCacheHits, runVisibility, \
-     coreWhisperEnabled, coreWhisperInterval, showThinking, createdAt, updatedAt";
+     coreWhisperEnabled, coreWhisperInterval, showThinking, createdAt, updatedAt, \
+     answerConfirmationOverride";
 
 /// Insert a nullable-optional TEXT/UUID/enum value: `Some` → string, `None` → omit.
 fn put_opt_string(obj: &mut Map<String, Value>, key: &str, v: Option<String>) {
@@ -304,6 +305,7 @@ fn marshal_row(row: &Row) -> Result<Value, rusqlite::Error> {
     put_opt_bool(&mut obj, "showThinking", row.get(93)?);
     obj.insert("createdAt".into(), Value::String(row.get::<_, String>(94)?));
     obj.insert("updatedAt".into(), Value::String(row.get::<_, String>(95)?));
+    put_opt_string(&mut obj, "answerConfirmationOverride", row.get(96)?);
 
     Ok(Value::Object(obj))
 }

@@ -119,6 +119,20 @@ pub struct MessageEventInput {
     pub provider: Option<String>,
     #[serde(default)]
     pub model_name: Option<String>,
+    // Answer-confirmation results (v4 `add-answer-confirmation-columns-v2`). Plain
+    // `z.boolean().nullable().optional()` in `ChatMessageRowSchema` → NORMAL boolean
+    // columns (INTEGER 0/1, SQL NULL when absent) — NOT the `isSilentMessage`
+    // TEXT-affinity union seam.
+    #[serde(default)]
+    pub confirmed: Option<bool>,
+    #[serde(default)]
+    pub confirmation_checked: Option<bool>,
+    #[serde(default)]
+    pub confirmation_revised: Option<bool>,
+    #[serde(default)]
+    pub confirmation_notes: Option<String>,
+    #[serde(default)]
+    pub confirmation_original_content: Option<String>,
     #[serde(default)]
     pub target_participant_ids: Option<Vec<String>>,
     // `isSilentMessage` (`z.boolean().nullable().optional()`). Its ROW column
@@ -549,6 +563,10 @@ fn insert_message(conn: &Connection, chat_id: &str, m: &MessageEventInput) -> Re
     let pending_external_attachments = opt_json(&m.pending_external_attachments)?;
     let summary_anchor = opt_json(&m.summary_anchor)?;
     let is_silent_message = is_silent_stored(m.is_silent_message);
+    // Normal boolean columns → INTEGER 0/1 or SQL NULL (see the struct comment).
+    let confirmed = m.confirmed.map(i64::from);
+    let confirmation_checked = m.confirmation_checked.map(i64::from);
+    let confirmation_revised = m.confirmation_revised.map(i64::from);
 
     conn.execute(
         "INSERT INTO chat_messages (\
@@ -558,11 +576,12 @@ fn insert_message(conn: &Connection, chat_id: &str, m: &MessageEventInput) -> Re
            renderedHtml, dangerFlags, targetParticipantIds, isSilentMessage, systemSender, \
            systemKind, opaqueContent, hostEvent, customAnnouncer, carinaMeta, \
            pendingExternalPrompt, pendingExternalPromptFull, pendingExternalAttachments, \
-           summaryAnchor, provider, modelName, createdAt) \
+           summaryAnchor, provider, modelName, createdAt, confirmed, confirmationChecked, \
+           confirmationRevised, confirmationNotes, confirmationOriginalContent) \
          VALUES (\
            ?1, ?2, 'message', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, \
            ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, \
-           ?34)",
+           ?34, ?35, ?36, ?37, ?38, ?39)",
         rusqlite::params![
             m.id,
             chat_id,
@@ -598,6 +617,11 @@ fn insert_message(conn: &Connection, chat_id: &str, m: &MessageEventInput) -> Re
             m.provider,
             m.model_name,
             m.created_at,
+            confirmed,
+            confirmation_checked,
+            confirmation_revised,
+            m.confirmation_notes,
+            m.confirmation_original_content,
         ],
     )?;
     Ok(())

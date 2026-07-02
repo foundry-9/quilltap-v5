@@ -1,7 +1,7 @@
 //! The `projects` repository — the second **store-backed** entity, reusing the
 //! generic [`super::store_backed::StoreBackedRepository`] bound to
 //! [`ProjectEntity`] (v4's `ProjectsRepository`). Structurally identical to
-//! `groups`; the deltas are the **16-key `properties.json` bag** (vs 2 for
+//! `groups`; the deltas are the **17-key `properties.json` bag** (vs 2 for
 //! groups) and the **character-roster operations** layered on top.
 //!
 //! Like groups, a project's substantive content does NOT live in `projects`
@@ -80,6 +80,15 @@ pub struct ProjectProperties {
         skip_serializing_if = "Option::is_none"
     )]
     pub default_alert_characters_of_lantern_images: Option<bool>,
+    /// Per-project answer-confirmation override, `z.enum(['ON','OFF']).nullable()
+    /// .optional()` (v4 `add-answer-confirmation-columns-v2`). Schema-order: between
+    /// `defaultAlertCharactersOfLanternImages` and `storyBackgroundsEnabled`.
+    #[serde(
+        default,
+        rename = "answerConfirmationOverride",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub answer_confirmation_override: Option<String>,
     #[serde(
         default,
         rename = "storyBackgroundsEnabled",
@@ -128,6 +137,7 @@ impl StoreEntity for ProjectEntity {
             "defaultImageProfileId",
             "defaultRoleplayTemplateId",
             "defaultAlertCharactersOfLanternImages",
+            "answerConfirmationOverride",
             "storyBackgroundsEnabled",
             "staticBackgroundImageId",
             "storyBackgroundImageId",

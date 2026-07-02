@@ -35,11 +35,11 @@
 use std::path::{Path, PathBuf};
 
 use quilltap_core::db::chat_settings::{
-    AgentModeSettings, AutoHousekeepingSettings, AutoLockSettings, AutonomousRoomSettings,
-    ChatSettingsCreate, ChatSettingsUpdate, CheapLlmSettings, ContextCompressionSettings,
-    CoreWhisperSettings, CreateOptions, DangerousContentSettings, LlmLoggingSettings,
-    MemoryCascadePreferences, MemoryExtractionLimits, StoryBackgroundsSettings, ThemePreference,
-    ThinkingDisplaySettings, TimestampConfig, TokenDisplaySettings,
+    AgentModeSettings, AnswerConfirmationSettings, AutoHousekeepingSettings, AutoLockSettings,
+    AutonomousRoomSettings, ChatSettingsCreate, ChatSettingsUpdate, CheapLlmSettings,
+    ContextCompressionSettings, CoreWhisperSettings, CreateOptions, DangerousContentSettings,
+    LlmLoggingSettings, MemoryCascadePreferences, MemoryExtractionLimits, StoryBackgroundsSettings,
+    ThemePreference, ThinkingDisplaySettings, TimestampConfig, TokenDisplaySettings,
 };
 use quilltap_core::db::Writer;
 use serde::Deserialize;
@@ -108,6 +108,7 @@ struct CreateData {
     agent_mode_settings: AgentModeSettings,
     core_whisper: CoreWhisperSettings,
     thinking_display: ThinkingDisplaySettings,
+    answer_confirmation_settings: AnswerConfirmationSettings,
     story_backgrounds_settings: StoryBackgroundsSettings,
     dangerous_content_settings: DangerousContentSettings,
     auto_lock_settings: AutoLockSettings,
@@ -158,6 +159,8 @@ struct UpdateData {
     text_replacements_enabled: Option<bool>,
     #[serde(default)]
     auto_scroll_on_response_complete: Option<bool>,
+    #[serde(default)]
+    answer_confirmation_settings: Option<AnswerConfirmationSettings>,
     #[serde(default)]
     timezone: Option<String>,
     #[serde(rename = "updatedAt")]
@@ -241,6 +244,7 @@ fn chat_settings_tier2_matches_oracle() {
                             agent_mode_settings: data.agent_mode_settings,
                             core_whisper: data.core_whisper,
                             thinking_display: data.thinking_display,
+                            answer_confirmation_settings: data.answer_confirmation_settings,
                             story_backgrounds_settings: data.story_backgrounds_settings,
                             dangerous_content_settings: data.dangerous_content_settings,
                             auto_lock_settings: data.auto_lock_settings,
@@ -275,6 +279,7 @@ fn chat_settings_tier2_matches_oracle() {
                                 text_replacements_enabled: data.text_replacements_enabled,
                                 auto_scroll_on_response_complete: data
                                     .auto_scroll_on_response_complete,
+                                answer_confirmation_settings: data.answer_confirmation_settings,
                                 timezone: data.timezone,
                                 updated_at: data.updated_at,
                             },

@@ -286,6 +286,11 @@ pub struct ChatCreate {
     pub danger_classified_at_message_count: Option<f64>,
     #[serde(default)]
     pub concierge_override: Option<String>,
+    /// Per-chat answer-confirmation override: `z.enum(['ON','OFF']).nullable()
+    /// .optional()`; `None` => SQL NULL. Added by v4
+    /// `add-answer-confirmation-columns-v2`.
+    #[serde(default)]
+    pub answer_confirmation_override: Option<String>,
     #[serde(default)]
     pub scene_state: Option<Value>,
     #[serde(default)]
@@ -501,14 +506,14 @@ impl<'c> ChatsRepository<'c> {
                currentRunId, runStateMessage, runStartedAt, runEndedAt, runPausedAt, \
                runPausedAccumMs, runTurnsConsumed, runTokensConsumed, runMilestonesAnnounced, \
                runDestructiveToolsAllowed, budgetExcludeCacheHits, runVisibility, coreWhisperEnabled, \
-               coreWhisperInterval, showThinking, createdAt, updatedAt) \
+               coreWhisperInterval, showThinking, createdAt, updatedAt, answerConfirmationOverride) \
              VALUES (\
                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, \
                ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, \
                ?35, ?36, ?37, ?38, ?39, ?40, ?41, ?42, ?43, ?44, ?45, ?46, ?47, ?48, ?49, ?50, \
                ?51, ?52, ?53, ?54, ?55, ?56, ?57, ?58, ?59, ?60, ?61, ?62, ?63, ?64, ?65, ?66, \
                ?67, ?68, ?69, ?70, ?71, ?72, ?73, ?74, ?75, ?76, ?77, ?78, ?79, ?80, ?81, ?82, \
-               ?83, ?84, ?85, ?86, ?87, ?88, ?89, ?90, ?91, ?92, ?93, ?94, ?95, ?96)",
+               ?83, ?84, ?85, ?86, ?87, ?88, ?89, ?90, ?91, ?92, ?93, ?94, ?95, ?96, ?97)",
             params![
                 opts.id,
                 data.user_id,
@@ -606,6 +611,7 @@ impl<'c> ChatsRepository<'c> {
                 data.show_thinking,
                 opts.created_at,
                 opts.updated_at,
+                data.answer_confirmation_override,
             ],
         )?;
         Ok(())

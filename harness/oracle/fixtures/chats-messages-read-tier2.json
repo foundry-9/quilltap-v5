@@ -42,12 +42,19 @@
       "completionTokens": 30,
       "provider": "anthropic",
       "modelName": "claude-opus-4-8",
-      "rawResponse": { "stop_reason": "end_turn", "index": 0 },
-      "attachments": ["aaaa0001-0000-4000-8000-000000000001"],
+      "rawResponse": {
+        "stop_reason": "end_turn",
+        "index": 0
+      },
+      "attachments": [
+        "aaaa0001-0000-4000-8000-000000000001"
+      ],
       "swipeGroupId": "sg-1",
       "swipeIndex": 0,
       "renderedHtml": "<p>General Kenobi!</p>",
-      "createdAt": "2026-02-01T00:00:02.000Z"
+      "createdAt": "2026-02-01T00:00:02.000Z",
+      "confirmed": true,
+      "confirmationChecked": true
     },
     {
       "type": "message",
@@ -56,11 +63,22 @@
       "content": "Thinking done.",
       "reasoningContent": "Let me think about this carefully.",
       "reasoningSegments": [
-        { "anchorOffset": 0, "content": "step one", "seq": 1 },
-        { "anchorOffset": 12, "content": "step two", "seq": 2 }
+        {
+          "anchorOffset": 0,
+          "content": "step one",
+          "seq": 1
+        },
+        {
+          "anchorOffset": 12,
+          "content": "step two",
+          "seq": 2
+        }
       ],
       "thoughtSignature": "sig-abc",
-      "createdAt": "2026-02-01T00:00:03.000Z"
+      "createdAt": "2026-02-01T00:00:03.000Z",
+      "confirmed": false,
+      "confirmationChecked": true,
+      "confirmationNotes": "Timeline looked off vs. the conversation read."
     },
     {
       "type": "message",
@@ -68,9 +86,14 @@
       "role": "ASSISTANT",
       "content": "psst, between us.",
       "participantId": "fc000001-0000-4000-8000-000000000001",
-      "targetParticipantIds": ["fb000001-0000-4000-8000-000000000001"],
+      "targetParticipantIds": [
+        "fb000001-0000-4000-8000-000000000001"
+      ],
       "dangerFlags": [
-        { "category": "nsfw", "score": 0.9 },
+        {
+          "category": "nsfw",
+          "score": 0.9
+        },
         {
           "category": "violence",
           "score": 1,
@@ -80,7 +103,12 @@
           "reroutedModel": "uncensored-x"
         }
       ],
-      "createdAt": "2026-02-01T00:00:04.000Z"
+      "createdAt": "2026-02-01T00:00:04.000Z",
+      "confirmed": true,
+      "confirmationChecked": true,
+      "confirmationRevised": true,
+      "confirmationNotes": "Corrected the character name after the search result.",
+      "confirmationOriginalContent": "It was Reginald who opened the vault."
     },
     {
       "type": "message",
@@ -113,8 +141,13 @@
       "id": "e1000001-0000-4000-8000-000000000007",
       "role": "USER",
       "content": "Hear ye, hear ye.",
-      "customAnnouncer": { "kind": "custom", "displayName": "The Narrator" },
-      "summaryAnchor": { "compactionGeneration": 2 },
+      "customAnnouncer": {
+        "kind": "custom",
+        "displayName": "The Narrator"
+      },
+      "summaryAnchor": {
+        "compactionGeneration": 2
+      },
       "createdAt": "2026-02-01T00:00:07.000Z"
     },
     {
@@ -180,12 +213,33 @@
     }
   ],
   "queries": [
-    { "kind": "getMessages", "chatId": "c0000002-0000-4000-8000-000000000001" },
-    { "kind": "getMessages", "chatId": "c0000002-0000-4000-8000-deadbeef0000" },
-    { "kind": "getMessageCount", "chatId": "c0000002-0000-4000-8000-000000000001" },
-    { "kind": "getMessageCount", "chatId": "c0000002-0000-4000-8000-deadbeef0000" },
-    { "kind": "findChatIdForMessage", "messageId": "e1000001-0000-4000-8000-000000000002" },
-    { "kind": "findChatIdForMessage", "messageId": "e1000001-0000-4000-8000-00000000000a" },
-    { "kind": "findChatIdForMessage", "messageId": "e1000001-0000-4000-8000-ffffffffffff" }
+    {
+      "kind": "getMessages",
+      "chatId": "c0000002-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "getMessages",
+      "chatId": "c0000002-0000-4000-8000-deadbeef0000"
+    },
+    {
+      "kind": "getMessageCount",
+      "chatId": "c0000002-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "getMessageCount",
+      "chatId": "c0000002-0000-4000-8000-deadbeef0000"
+    },
+    {
+      "kind": "findChatIdForMessage",
+      "messageId": "e1000001-0000-4000-8000-000000000002"
+    },
+    {
+      "kind": "findChatIdForMessage",
+      "messageId": "e1000001-0000-4000-8000-00000000000a"
+    },
+    {
+      "kind": "findChatIdForMessage",
+      "messageId": "e1000001-0000-4000-8000-ffffffffffff"
+    }
   ]
 }

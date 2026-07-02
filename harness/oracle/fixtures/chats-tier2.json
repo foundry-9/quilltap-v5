@@ -3,8 +3,8 @@
     "Tier-2 DB-state fixture spec for the `chats` repo (Phase-2). Both the v4",
     "oracle (chats-tier2.ts) and the Rust port read this file.",
     "",
-    "OPEN-JSON KEY-ORDER (seam #5 — now CLOSED): `state` and `sillyTavernMetadata`",
-    "are both JsonSchema = z.record(z.string(), z.unknown()) — arbitrary JSON whose",
+    "OPEN-JSON KEY-ORDER (seam #5 \u2014 now CLOSED): `state` and `sillyTavernMetadata`",
+    "are both JsonSchema = z.record(z.string(), z.unknown()) \u2014 arbitrary JSON whose",
     "keys pass through verbatim. v4 serializes via JSON.stringify (INSERTION order);",
     "the Rust port stores them as raw serde_json::Value serialized under the",
     "`preserve_order` feature (enabled workspace-wide), which ALSO preserves",
@@ -12,7 +12,7 @@
     "DELIBERATELY NON-SORTED order:",
     "  - state:              { zeta, alpha, mode }   (sorted: alpha, mode, zeta)",
     "  - sillyTavernMetadata: { yankee, bravo, charlie } (sorted: bravo, charlie, yankee)",
-    "so sorted order differs from insertion order — the green diff PROVES the port",
+    "so sorted order differs from insertion order \u2014 the green diff PROVES the port",
     "emits insertion order, not sorted keys. (Before preserve_order these would have",
     "diverged; the old single-key `state` and absent sillyTavernMetadata could not",
     "tell.)"
@@ -21,7 +21,11 @@
   "ops": [
     {
       "kind": "create",
-      "options": { "id": "aaaaaaaa-0000-4000-8000-00000000000a", "createdAt": "2026-03-01T00:00:01.000Z", "updatedAt": "2026-03-01T00:00:01.000Z" },
+      "options": {
+        "id": "aaaaaaaa-0000-4000-8000-00000000000a",
+        "createdAt": "2026-03-01T00:00:01.000Z",
+        "updatedAt": "2026-03-01T00:00:01.000Z"
+      },
       "data": {
         "userId": "11111111-1111-4111-8111-111111111111",
         "title": "Salon with Robert",
@@ -50,21 +54,36 @@
             "updatedAt": "2026-03-01T00:00:01.000Z"
           }
         ],
-        "tags": ["70000000-0000-4000-8000-000000000007"],
+        "tags": [
+          "70000000-0000-4000-8000-000000000007"
+        ],
         "messageCount": 5,
         "isPaused": true,
         "chatType": "salon",
-        "state": { "zeta": true, "alpha": "x", "mode": "play" },
-        "sillyTavernMetadata": { "yankee": 1, "bravo": "b", "charlie": false },
+        "state": {
+          "zeta": true,
+          "alpha": "x",
+          "mode": "play"
+        },
+        "sillyTavernMetadata": {
+          "yankee": 1,
+          "bravo": "b",
+          "charlie": false
+        },
         "dividerPosition": 60,
         "scenarioText": "A quiet cafe.",
         "totalPromptTokens": 120,
-        "isDangerousChat": false
+        "isDangerousChat": false,
+        "answerConfirmationOverride": "ON"
       }
     },
     {
       "kind": "create",
-      "options": { "id": "bbbbbbbb-0000-4000-8000-00000000000b", "createdAt": "2026-03-01T00:00:02.000Z", "updatedAt": "2026-03-01T00:00:02.000Z" },
+      "options": {
+        "id": "bbbbbbbb-0000-4000-8000-00000000000b",
+        "createdAt": "2026-03-01T00:00:02.000Z",
+        "updatedAt": "2026-03-01T00:00:02.000Z"
+      },
       "data": {
         "userId": "11111111-1111-4111-8111-111111111111",
         "title": "Minimal chat",
@@ -76,12 +95,17 @@
             "createdAt": "2026-03-01T00:00:02.000Z",
             "updatedAt": "2026-03-01T00:00:02.000Z"
           }
-        ]
+        ],
+        "answerConfirmationOverride": "OFF"
       }
     },
     {
       "kind": "create",
-      "options": { "id": "cccccccc-0000-4000-8000-00000000000c", "createdAt": "2026-03-01T00:00:03.000Z", "updatedAt": "2026-03-01T00:00:03.000Z" },
+      "options": {
+        "id": "cccccccc-0000-4000-8000-00000000000c",
+        "createdAt": "2026-03-01T00:00:03.000Z",
+        "updatedAt": "2026-03-01T00:00:03.000Z"
+      },
       "data": {
         "userId": "11111111-1111-4111-8111-111111111111",
         "title": "Doomed chat",
@@ -96,10 +120,41 @@
         ]
       }
     },
-
-    { "kind": "update", "id": "aaaaaaaa-0000-4000-8000-00000000000a", "data": { "title": "Salon with Robert (renamed)" } },
-    { "kind": "update", "id": "aaaaaaaa-0000-4000-8000-00000000000a", "data": { "isPaused": false, "messageCount": 8, "updatedAt": "2026-03-09T12:00:00.000Z" } },
-    { "kind": "update", "id": "bbbbbbbb-0000-4000-8000-00000000000b", "data": { "state": { "round": 2 }, "tags": ["70000000-0000-4000-8000-000000000007"], "contextSummary": "They met at the cafe.", "dangerScore": 0.25, "chatType": "help", "isManuallyRenamed": true } },
-    { "kind": "delete", "id": "cccccccc-0000-4000-8000-00000000000c" }
+    {
+      "kind": "update",
+      "id": "aaaaaaaa-0000-4000-8000-00000000000a",
+      "data": {
+        "title": "Salon with Robert (renamed)"
+      }
+    },
+    {
+      "kind": "update",
+      "id": "aaaaaaaa-0000-4000-8000-00000000000a",
+      "data": {
+        "isPaused": false,
+        "messageCount": 8,
+        "updatedAt": "2026-03-09T12:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "id": "bbbbbbbb-0000-4000-8000-00000000000b",
+      "data": {
+        "state": {
+          "round": 2
+        },
+        "tags": [
+          "70000000-0000-4000-8000-000000000007"
+        ],
+        "contextSummary": "They met at the cafe.",
+        "dangerScore": 0.25,
+        "chatType": "help",
+        "isManuallyRenamed": true
+      }
+    },
+    {
+      "kind": "delete",
+      "id": "cccccccc-0000-4000-8000-00000000000c"
+    }
   ]
 }

@@ -1315,3 +1315,24 @@ form (an untouched neighbour stays at the seed sentinel — proving no stray bum
 plus four repo self-tests. Next: the remaining memory-family follow-ons
 (`memory-service`'s cascade-delete family + housekeeping, then the model-dependent
 `memory-processor` per-turn extraction) per `docs/developer/porting/phase-3.md`.
+
+**Drift catch-up (2026-07-01): the answer-confirmation columns.** v4 commit
+`29f3ae63` (a Salon consistency-check + re-affirmation feature) added DDL/schema
+fields to six already-ported marshaling surfaces. A drift check (regenerating
+every affected oracle from current v4 and re-running the existing differentials
+unchanged) confirmed no regression — the new columns are additive/nullable-default,
+so every pre-existing corpus still passed. The marshaling was then extended to
+match and re-verified byte-exact against v4's current oracle output:
+`chat_settings.answerConfirmationSettings` (new nested JSON-object column, schema
+position between `thinkingDisplay`/`storyBackgroundsSettings`), `chats.
+answerConfirmationOverride` (nullable enum TEXT, parallel to `conciergeOverride`,
+wired in both write and read), `chat_messages`' five new `MessageEvent` fields
+(`confirmed`/`confirmationChecked`/`confirmationRevised`/`confirmationNotes`/
+`confirmationOriginalContent` — ordinary nullable boolean/string columns, NOT the
+`isSilentMessage` TEXT-affinity seam), `projects` properties.json's
+`answerConfirmationOverride` (now a 17-key bag, added to
+`PROJECT_STORE_MANAGED_FIELDS` too), and `llm_logs`' new `ANSWER_CONFIRMATION`
+enum member (a corpus-only change — the column is plain TEXT on the port side).
+The answer-confirmation *service* itself and the cheap-LLM `profileParameters`
+forwarding fix (same v4 commit) remain unported Phase-3/Phase-4 work — this
+catch-up only closes the marshaling gap on surfaces already ported.

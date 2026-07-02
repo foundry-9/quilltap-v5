@@ -1,6 +1,6 @@
 {
   "$comment": [
-    "Tier-2 DB-state fixture spec for the `llm_logs` repo — the SECOND sibling-DB",
+    "Tier-2 DB-state fixture spec for the `llm_logs` repo \u2014 the SECOND sibling-DB",
     "partition of Phase 2 (after the mount-index family) and the WIDEST repo to",
     "date (18 columns, FIVE nested JSON-object columns). One committed file drives",
     "BOTH sides of the differential:",
@@ -12,12 +12,12 @@
     "through getRawLLMLogsDatabase(); the Rust Writer simply opens that file by",
     "path. v4's LLMLogsRepository.getCollection() lazily creates the table on first",
     "access (CREATE TABLE IF NOT EXISTS), so calling repo.create in the builder",
-    "stands the table up — no explicit ensureCollection.",
+    "stands the table up \u2014 no explicit ensureCollection.",
     "",
     "MARSHALING SURFACE banked here: the five nested JSON-object columns (request,",
-    "response, usage, cacheUsage, requestHashes — typed-struct, schema field order,",
+    "response, usage, cacheUsage, requestHashes \u2014 typed-struct, schema field order,",
     "compact JSON.stringify), the open-JSON rawProviderUsage column (CONSTRAINED to",
-    "null / {} / single-key only — serde_json sorts keys, seam #5), a nullable REAL",
+    "null / {} / single-key only \u2014 serde_json sorts keys, seam #5), a nullable REAL",
     "durationMs column (integer-valued collapses to a JSON int in the dump), the",
     "type enum TEXT column, and four nullable UUID-as-TEXT columns. Nested numbers:",
     "integer-valued fields render as integers (i64; messageCount/contentLength/",
@@ -162,10 +162,10 @@
   "ops": [
     {
       "kind": "create",
-      "comment": "New SURVIVING log: rawProviderUsage as EMPTY object {}, chatId set but the rest of the linkage null, cacheUsage with one of the two optional fields omitted, durationMs integer. Banks {} in the final state.",
+      "comment": "New SURVIVING log: rawProviderUsage as EMPTY object {}, chatId set but the rest of the linkage null, cacheUsage with one of the two optional fields omitted, durationMs integer. Banks {} in the final state. Type changed to ANSWER_CONFIRMATION to bank v4's new LLMLogType enum member (a plain TEXT column on the port side, no marshaling change).",
       "data": {
         "userId": "7d000000-0000-4000-8000-0000000000d1",
-        "type": "MEMORY_EXTRACTION",
+        "type": "ANSWER_CONFIRMATION",
         "messageId": null,
         "chatId": "6f000000-0000-4000-8000-0000000000f1",
         "characterId": null,

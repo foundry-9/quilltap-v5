@@ -36,8 +36,9 @@
 //!     `autoHousekeepingSettings`, `memoryExtractionLimits`,
 //!     `autonomousRoomSettings`, `tokenDisplaySettings`,
 //!     `contextCompressionSettings`, `llmLoggingSettings`, `agentModeSettings`,
-//!     `coreWhisper`, `thinkingDisplay`, `storyBackgroundsSettings`,
-//!     `dangerousContentSettings`, `autoLockSettings`). Each is reproduced
+//!     `coreWhisper`, `thinkingDisplay`, `answerConfirmationSettings`,
+//!     `storyBackgroundsSettings`, `dangerousContentSettings`, `autoLockSettings`).
+//!     Each is reproduced
 //!     byte-for-byte with a serde struct in **schema field order** (NOT
 //!     `serde_json::Value`, which would sort keys and diverge from v4's
 //!     `JSON.stringify(zodParsed)`, whose key order is the Zod schema's field
@@ -273,6 +274,16 @@ pub struct ThinkingDisplaySettings {
     pub default_collapsed: bool,
 }
 
+/// `AnswerConfirmationSettingsSchema` (settings.types.ts). Global default for the
+/// Salon answer-confirmation check. Single-key object; `enabled` carries a Zod
+/// `.default(false)` but is always materialized on parse, so it is a plain bool.
+/// Added by v4 `add-answer-confirmation-columns-v2` (DEFAULT `{"enabled":false}`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnswerConfirmationSettings {
+    pub enabled: bool,
+}
+
 /// `StoryBackgroundsSettingsSchema` (settings.types.ts L375).
 /// `defaultImageProfileId` is `UUIDSchema.nullable().optional()` — the corpus
 /// supplies it as explicit `null`/UUID, so it is always present (no skip).
@@ -357,6 +368,9 @@ pub struct ChatSettingsCreate {
     pub agent_mode_settings: AgentModeSettings,
     pub core_whisper: CoreWhisperSettings,
     pub thinking_display: ThinkingDisplaySettings,
+    /// Answer-confirmation global default JSON object (schema-order: between
+    /// `thinkingDisplay` and `storyBackgroundsSettings`).
+    pub answer_confirmation_settings: AnswerConfirmationSettings,
     pub story_backgrounds_settings: StoryBackgroundsSettings,
     pub dangerous_content_settings: DangerousContentSettings,
     pub auto_lock_settings: AutoLockSettings,
@@ -396,6 +410,7 @@ pub struct ChatSettingsUpdate {
     pub composer_spellcheck: Option<bool>,
     pub text_replacements_enabled: Option<bool>,
     pub auto_scroll_on_response_complete: Option<bool>,
+    pub answer_confirmation_settings: Option<AnswerConfirmationSettings>,
     pub timezone: Option<String>,
     pub updated_at: String,
 }
@@ -444,6 +459,10 @@ impl<'c> ChatSettingsRepository<'c> {
         let agent_mode_settings = to_json("agentModeSettings", &data.agent_mode_settings)?;
         let core_whisper = to_json("coreWhisper", &data.core_whisper)?;
         let thinking_display = to_json("thinkingDisplay", &data.thinking_display)?;
+        let answer_confirmation_settings = to_json(
+            "answerConfirmationSettings",
+            &data.answer_confirmation_settings,
+        )?;
         let story_backgrounds_settings =
             to_json("storyBackgroundsSettings", &data.story_backgrounds_settings)?;
         let dangerous_content_settings =
@@ -460,9 +479,9 @@ impl<'c> ChatSettingsRepository<'c> {
                 llmLoggingSettings, autoDetectRng, compositionModeDefault, composerSpellcheck, \
                 textReplacementsEnabled, autoScrollOnResponseComplete, agentModeSettings, \
                 coreWhisper, thinkingDisplay, storyBackgroundsSettings, dangerousContentSettings, \
-                autoLockSettings, timezone, createdAt, updatedAt) \
+                autoLockSettings, timezone, createdAt, updatedAt, answerConfirmationSettings) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, \
-                     ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33)",
+                     ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34)",
             params![
                 opts.id,
                 data.user_id,
@@ -497,6 +516,7 @@ impl<'c> ChatSettingsRepository<'c> {
                 data.timezone,
                 opts.created_at,
                 opts.updated_at,
+                answer_confirmation_settings,
             ],
         )?;
         Ok(())
@@ -556,6 +576,16 @@ impl<'c> ChatSettingsRepository<'c> {
         if let Some(auto_lock_settings) = &patch.auto_lock_settings {
             assignments.push(format!("autoLockSettings = ?{}", values.len() + 1));
             values.push(Box::new(to_json("autoLockSettings", auto_lock_settings)?));
+        }
+        if let Some(answer_confirmation_settings) = &patch.answer_confirmation_settings {
+            assignments.push(format!(
+                "answerConfirmationSettings = ?{}",
+                values.len() + 1
+            ));
+            values.push(Box::new(to_json(
+                "answerConfirmationSettings",
+                answer_confirmation_settings,
+            )?));
         }
         if let Some(auto_detect_rng) = patch.auto_detect_rng {
             assignments.push(format!("autoDetectRng = ?{}", values.len() + 1));

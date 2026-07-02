@@ -105,24 +105,41 @@
         "role": "ASSISTANT",
         "content": "A kitchen-sink reply.",
         "participantId": "fb000001-0000-4000-8000-000000000001",
-        "rawResponse": { "finishReason": "stop" },
+        "rawResponse": {
+          "finishReason": "stop"
+        },
         "tokenCount": 150,
         "promptTokens": 120,
         "completionTokens": 30,
         "swipeGroupId": "sg-1",
         "swipeIndex": 0,
-        "attachments": ["aaaa0001-0000-4000-8000-000000000001"],
+        "attachments": [
+          "aaaa0001-0000-4000-8000-000000000001"
+        ],
         "renderedHtml": "<p>A kitchen-sink reply.</p>",
         "reasoningContent": "Considering the options.",
         "reasoningSegments": [
-          { "anchorOffset": 0, "content": "step one", "seq": 1 },
-          { "anchorOffset": 12, "content": "step two", "seq": 2 }
+          {
+            "anchorOffset": 0,
+            "content": "step one",
+            "seq": 1
+          },
+          {
+            "anchorOffset": 12,
+            "content": "step two",
+            "seq": 2
+          }
         ],
         "thoughtSignature": "sig-abc",
-        "debugMemoryLogs": ["extracted 1 memory"],
+        "debugMemoryLogs": [
+          "extracted 1 memory"
+        ],
         "recoveryType": "token_limit",
         "dangerFlags": [
-          { "category": "nsfw", "score": 0.9 },
+          {
+            "category": "nsfw",
+            "score": 0.9
+          },
           {
             "category": "violence",
             "score": 1,
@@ -145,8 +162,13 @@
           "answererId": "bbbb2222-2222-4222-8222-222222222222",
           "question": "What is the answer?"
         },
-        "customAnnouncer": { "kind": "custom", "displayName": "The Narrator" },
-        "summaryAnchor": { "compactionGeneration": 2 },
+        "customAnnouncer": {
+          "kind": "custom",
+          "displayName": "The Narrator"
+        },
+        "summaryAnchor": {
+          "compactionGeneration": 2
+        },
         "pendingExternalPrompt": "Copy this delta.",
         "pendingExternalPromptFull": "Copy this full context.",
         "pendingExternalAttachments": [
@@ -158,7 +180,12 @@
             "downloadUrl": "https://example.test/dossier.pdf"
           }
         ],
-        "createdAt": "2026-02-02T00:00:01.000Z"
+        "createdAt": "2026-02-02T00:00:01.000Z",
+        "confirmed": true,
+        "confirmationChecked": true,
+        "confirmationRevised": true,
+        "confirmationNotes": "Discrepancy: claimed the door was locked; the read tool showed it open.",
+        "confirmationOriginalContent": "The door was locked when I checked."
       }
     },
     {
@@ -181,7 +208,9 @@
           "role": "ASSISTANT",
           "content": "psst, between us.",
           "participantId": "fb000001-0000-4000-8000-000000000001",
-          "targetParticipantIds": ["fc000001-0000-4000-8000-000000000001"],
+          "targetParticipantIds": [
+            "fc000001-0000-4000-8000-000000000001"
+          ],
           "createdAt": "2026-02-02T00:00:03.000Z"
         },
         {

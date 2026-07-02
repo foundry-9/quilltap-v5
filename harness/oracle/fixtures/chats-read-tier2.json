@@ -37,8 +37,12 @@
         }
       ],
       "contextSummary": "A grand summary.",
-      "sillyTavernMetadata": { "source": "st" },
-      "tags": ["1a000001-0000-4000-8000-000000000001"],
+      "sillyTavernMetadata": {
+        "source": "st"
+      },
+      "tags": [
+        "1a000001-0000-4000-8000-000000000001"
+      ],
       "timestampConfig": null,
       "lastTurnParticipantId": "fb000001-0000-4000-8000-000000000001",
       "messageCount": 7,
@@ -48,10 +52,14 @@
       "lastSummaryTurn": 4,
       "lastSummaryTokens": 1200,
       "lastFullRebuildTurn": 1,
-      "summaryAnchorMessageIds": ["fb000001-0000-4000-8000-000000000001"],
+      "summaryAnchorMessageIds": [
+        "fb000001-0000-4000-8000-000000000001"
+      ],
       "isPaused": true,
       "isManuallyRenamed": true,
-      "impersonatingParticipantIds": ["fb000001-0000-4000-8000-000000000001"],
+      "impersonatingParticipantIds": [
+        "fb000001-0000-4000-8000-000000000001"
+      ],
       "activeTypingParticipantId": "fb000001-0000-4000-8000-000000000001",
       "allLLMPauseTurnCount": 2,
       "turnQueue": "[\"x\",\"y\"]",
@@ -70,13 +78,23 @@
       "priceSource": "registry",
       "showSystemEventsOverride": false,
       "requestFullContextOnNextMessage": true,
-      "disabledTools": ["tool_a"],
-      "disabledToolGroups": ["plugin:mcp"],
+      "disabledTools": [
+        "tool_a"
+      ],
+      "disabledToolGroups": [
+        "plugin:mcp"
+      ],
       "forceToolsOnNextMessage": true,
       "allowCrossCharacterVaultReads": true,
-      "pendingOutfitNotifications": { "cid": "x" },
-      "state": { "game": "on" },
-      "compressionCache": { "c": 1 },
+      "pendingOutfitNotifications": {
+        "cid": "x"
+      },
+      "state": {
+        "game": "on"
+      },
+      "compressionCache": {
+        "c": 1
+      },
       "agentModeEnabled": true,
       "agentTurnCount": 4,
       "storyBackgroundImageId": "b0000001-0000-4000-8000-000000000001",
@@ -85,20 +103,36 @@
       "alertCharactersOfLanternImages": true,
       "isDangerousChat": true,
       "dangerScore": 0.5,
-      "dangerCategories": ["violence"],
+      "dangerCategories": [
+        "violence"
+      ],
       "dangerClassifiedAt": "2026-01-10T00:00:00.000Z",
       "dangerClassifiedAtMessageCount": 6,
       "conciergeOverride": "OFF",
-      "sceneState": { "loc": "forest" },
+      "sceneState": {
+        "loc": "forest"
+      },
       "renderedMarkdown": "# Title",
-      "equippedOutfit": { "cid": "outfit" },
-      "characterAvatars": { "cid": "img" },
+      "equippedOutfit": {
+        "cid": "outfit"
+      },
+      "characterAvatars": {
+        "cid": "img"
+      },
       "avatarGenerationEnabled": true,
       "chatType": "salon",
-      "compiledIdentityStacks": { "p": "x" },
-      "courierCheckpoints": { "k": 1 },
-      "commonplaceSceneCache": { "s": 1 },
-      "commonplaceRecallHistory": { "cid": "ring" },
+      "compiledIdentityStacks": {
+        "p": "x"
+      },
+      "courierCheckpoints": {
+        "k": 1
+      },
+      "commonplaceSceneCache": {
+        "s": 1
+      },
+      "commonplaceRecallHistory": {
+        "cid": "ring"
+      },
       "budgetMaxTurns": 100,
       "budgetMaxTokens": 200000,
       "budgetMaxWallClockMs": 3600000,
@@ -121,7 +155,8 @@
       "runVisibility": "household",
       "coreWhisperEnabled": true,
       "coreWhisperInterval": 3,
-      "showThinking": false
+      "showThinking": false,
+      "answerConfirmationOverride": "ON"
     },
     {
       "id": "c0000002-0000-4000-8000-000000000002",
@@ -236,20 +271,71 @@
     }
   ],
   "queries": [
-    { "kind": "findById", "id": "c0000001-0000-4000-8000-000000000001" },
-    { "kind": "findById", "id": "c0000002-0000-4000-8000-000000000002" },
-    { "kind": "findById", "id": "deadbeef-0000-4000-8000-000000000000" },
-    { "kind": "findAll" },
-    { "kind": "findByUserId", "userId": "11111111-1111-4111-8111-111111111111" },
-    { "kind": "findByUserId", "userId": "22222222-2222-4222-8222-222222222222" },
-    { "kind": "findByCharacterId", "characterId": "aaaa1111-1111-4111-8111-111111111111" },
-    { "kind": "findByCharacterId", "characterId": "bbbb2222-2222-4222-8222-222222222222" },
-    { "kind": "findByCharacterId", "characterId": "cccc3333-3333-4333-8333-333333333333" },
-    { "kind": "findByType", "userId": "11111111-1111-4111-8111-111111111111", "chatType": "salon" },
-    { "kind": "findByType", "userId": "11111111-1111-4111-8111-111111111111", "chatType": "help" },
-    { "kind": "findByType", "userId": "11111111-1111-4111-8111-111111111111", "chatType": "brahma" },
-    { "kind": "findRecentSummarizedByCharacter", "characterId": "aaaa1111-1111-4111-8111-111111111111", "limit": 10 },
-    { "kind": "findRecentSummarizedByCharacter", "characterId": "aaaa1111-1111-4111-8111-111111111111", "limit": 1 },
-    { "kind": "findRecentSummarizedByCharacter", "characterId": "aaaa1111-1111-4111-8111-111111111111", "limit": 10, "excludeChatId": "c0000004-0000-4000-8000-000000000004" }
+    {
+      "kind": "findById",
+      "id": "c0000001-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "findById",
+      "id": "c0000002-0000-4000-8000-000000000002"
+    },
+    {
+      "kind": "findById",
+      "id": "deadbeef-0000-4000-8000-000000000000"
+    },
+    {
+      "kind": "findAll"
+    },
+    {
+      "kind": "findByUserId",
+      "userId": "11111111-1111-4111-8111-111111111111"
+    },
+    {
+      "kind": "findByUserId",
+      "userId": "22222222-2222-4222-8222-222222222222"
+    },
+    {
+      "kind": "findByCharacterId",
+      "characterId": "aaaa1111-1111-4111-8111-111111111111"
+    },
+    {
+      "kind": "findByCharacterId",
+      "characterId": "bbbb2222-2222-4222-8222-222222222222"
+    },
+    {
+      "kind": "findByCharacterId",
+      "characterId": "cccc3333-3333-4333-8333-333333333333"
+    },
+    {
+      "kind": "findByType",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "chatType": "salon"
+    },
+    {
+      "kind": "findByType",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "chatType": "help"
+    },
+    {
+      "kind": "findByType",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "chatType": "brahma"
+    },
+    {
+      "kind": "findRecentSummarizedByCharacter",
+      "characterId": "aaaa1111-1111-4111-8111-111111111111",
+      "limit": 10
+    },
+    {
+      "kind": "findRecentSummarizedByCharacter",
+      "characterId": "aaaa1111-1111-4111-8111-111111111111",
+      "limit": 1
+    },
+    {
+      "kind": "findRecentSummarizedByCharacter",
+      "characterId": "aaaa1111-1111-4111-8111-111111111111",
+      "limit": 10,
+      "excludeChatId": "c0000004-0000-4000-8000-000000000004"
+    }
   ]
 }

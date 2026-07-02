@@ -77,6 +77,34 @@ test against the v4 oracle:
 - Small leaf utilities: chat-type/participant predicates, semver parse/compare,
   pronoun→gender hint, tag-style merge, char-count colour class.
 
+Drift catch-up — v4's answer-confirmation feature (a Salon consistency check +
+re-affirmation) added columns/keys to six already-ported marshaling surfaces; this
+extends each to match, re-verified byte-exact against v4's current oracle output
+(no existing test regressed — the new columns are additive/nullable-default, so
+the pre-catch-up corpora still passed unchanged before these edits).
+
+- `chat_settings.answerConfirmationSettings` (global default JSON object,
+  `{"enabled":false}`) — a new typed struct in schema position between
+  `thinkingDisplay` and `storyBackgroundsSettings`; corpus create/update now set
+  it.
+- `chats.answerConfirmationOverride` (nullable `'ON'|'OFF'` TEXT, parallel to the
+  existing `conciergeOverride`) — wired in both the writer and the read path;
+  corpus banks both enum values plus the NULL case.
+- `chat_messages`' five new `MessageEvent` fields (`confirmed`,
+  `confirmationChecked`, `confirmationRevised`, `confirmationNotes`,
+  `confirmationOriginalContent`) — ordinary nullable boolean/string columns
+  (INTEGER 0/1, NOT the `isSilentMessage` TEXT-affinity union seam); wired in the
+  message insert and the read marshaling, so `updateMessage`'s read-modify-write
+  carries them through unchanged. Corpus banks all three badge states (Vouched /
+  Stood-by / Amended-with-original-content) across the write and read fixtures.
+- `projects` properties.json's `answerConfirmationOverride` (now a 17-key bag) —
+  added to `ProjectPropertiesSchema`'s field order and to
+  `PROJECT_STORE_MANAGED_FIELDS`; corpus create sets it and the roster
+  read-modify-write ops prove it survives untouched.
+- `llm_logs`' `ANSWER_CONFIRMATION` enum member — the column is plain TEXT on the
+  port side (no code change), so this is corpus-only: one surviving row now
+  banks the new value.
+
 Phase 3 — the writer-task runtime (Unit 0) and the model-boundary core (Unit
 0.5). Native infrastructure that replaces v4's child-process write machinery, so
 verified by self-tests rather than a v4 oracle diff.
