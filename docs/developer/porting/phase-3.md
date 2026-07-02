@@ -299,8 +299,16 @@ Track them to closure as their subsystem lands:
      Tracked host-side deferrals: API-key acquisition, the fire-and-forget
      `logLLMCall` llm-logs write, and the temperature-fallback path is
      self-test-covered only (the corpus stays on the 0.3 path).
-   - Next: the gate's deferred `maybeEnqueueHousekeeping` watermark check
-     (needs `background_jobs` integration, already ported at the repo level).
+   - The gate's **watermark auto-housekeeping check**
+     (`maybeEnqueueHousekeeping`) — **✅ done + green**
+     (`memory_watermark_tier3_equivalence`): `services::queue_service` (the
+     enqueue + dedupe slice; `ensureProcessorRunning` deferred to the
+     job-runner unit), `services::housekeeping_outcome_cache` (process-global
+     like v4's module-global Map), a scoped
+     `chat_settings::find_auto_housekeeping_settings_by_user_id` read, and the
+     gate wiring after INSERT / INSERT_RELATED. The memory family is now fully
+     ported.
+   - Next: chat orchestration (Unit 3 below).
 3. Chat orchestration (turn manager + streaming on the `Event` channel).
 4. Enclave engine (`step()` + `RunState` + driver seam).
 

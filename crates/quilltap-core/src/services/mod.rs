@@ -21,6 +21,8 @@
 
 pub mod cheap_llm_exec;
 pub mod housekeeping;
+pub mod housekeeping_outcome_cache;
 pub mod memory_gate;
 pub mod memory_processor;
 pub mod memory_service;
+pub mod queue_service;

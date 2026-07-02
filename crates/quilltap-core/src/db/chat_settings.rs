@@ -658,3 +658,34 @@ impl<'c> ChatSettingsRepository<'c> {
         Ok(found.is_some())
     }
 }
+
+/// Scoped read for the memory gate's watermark check: the
+/// `autoHousekeepingSettings` JSON of the user's settings row (v4
+/// `chatSettings.findByUserId(userId)?.autoHousekeepingSettings`). `None` when
+/// the user has no row or the cell is NULL — both collapse to the consumer's
+/// "auto-housekeeping not configured" early return. The full `findByUserId`
+/// read marshaling (~33 columns) is a later chat-settings read sub-unit; this
+/// parses the one consumed column raw (a v4-written row's JSON already carries
+/// the Zod-materialized defaults — parse-before-insert — and the consumer
+/// `??`-defaults every key it reads, so the shapes agree).
+pub fn find_auto_housekeeping_settings_by_user_id(
+    conn: &rusqlite::Connection,
+    user_id: &str,
+) -> Result<Option<serde_json::Value>, DbError> {
+    let cell: Option<Option<String>> = conn
+        .query_row(
+            "SELECT autoHousekeepingSettings FROM chat_settings WHERE userId = ?1 LIMIT 1",
+            rusqlite::params![user_id],
+            |row| row.get(0),
+        )
+        .map(Some)
+        .or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other),
+        })?;
+    // A v4-written cell always parses; a malformed one degrades to "not
+    // configured" (the lenient precedent of the other JSON-cell readers).
+    Ok(cell
+        .flatten()
+        .and_then(|text| serde_json::from_str(&text).ok()))
+}

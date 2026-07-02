@@ -358,6 +358,41 @@ embedding). Also closes the memory gate's `applyNamePresenceCheck` deferral.
   byte-for-byte) AND the three tables (shared-id-map remap form) are diffed;
   the memory-gate differential re-verified green after the gate change.
 
+Phase 3 — the memory gate's **watermark auto-housekeeping check** (v4
+`maybeEnqueueHousekeeping`), closing the gate's last write-side deferral.
+After an INSERT / INSERT_RELATED the gate now checks whether the character has
+reached the watermark fraction (0.9) of its auto-housekeeping cap and, if so,
+enqueues a `MEMORY_HOUSEKEEPING` background job — unless backed off.
+
+- `services::queue_service`: the `enqueueJob` + `enqueueMemoryHousekeeping`
+  slice of v4's queue service — mint a PENDING `background_jobs` row; the
+  housekeeping variant de-dupes against in-flight (PENDING/PROCESSING) jobs
+  for the same (userId, characterId) and caps attempts at 1 (retry-hostile).
+  **Deferred:** `ensureProcessorRunning` (the job runner is a later unit; the
+  oracle pins v4's auto-start to a no-op to match).
+- `services::housekeeping_outcome_cache`: v4's in-memory ineffective-sweep
+  back-off. **Rust home decision:** v4 holds it as a module-global Map; the
+  port keeps the same process-global shape (`OnceLock<Mutex<HashMap>>`),
+  keyed by characterId. One self-test.
+- The gate's `maybe_enqueue_housekeeping`: enabled-settings gate (via a new
+  scoped `chat_settings::find_auto_housekeeping_settings_by_user_id` read —
+  the full `findByUserId` marshaling remains a later chat-settings read
+  sub-unit), the `perCharacterCapOverrides ?? perCharacterCap ?? 2000` cap
+  resolution, the post-write count vs `floor(cap × 0.9)`, the in-memory
+  back-off, and the durable 15-minute throttle over
+  `findRecentByType('MEMORY_HOUSEKEEPING', 50)`. Never propagates an error
+  (v4's catch); the port awaits the call v4 `void`s — same DB effect once
+  settled, no detached-task machinery in the core.
+- Differential (`memory_watermark_tier3_equivalence`): seven
+  `createMemoryWithGate` INSERTs over a seeded fixture (settings rows,
+  watermark-exact memory ballast, a future-`updatedAt` COMPLETED sweep and a
+  PENDING dedupe target — future timestamps make the wall-clock windows
+  deterministic) banking: a real enqueue, below-watermark, the override
+  raise, disabled settings, the durable throttle, the in-flight dedupe, and
+  the in-memory back-off (both sides record the same outcome through their
+  real cache first). Four tables diffed; the memory-gate and memory-processor
+  differentials re-verified green with the watermark path live.
+
 Docs — Phase 2 marked complete; Phase 3 kickoff drafted. Docs only, no crate
 source changed.
 

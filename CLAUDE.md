@@ -1293,11 +1293,12 @@ DB mocks — see `[[jest-real-db-oracle]]`) over a seven-scenario corpus (one pe
 outcome, each on its own character), and the Rust gate is diffed across `memories`
 + `vector_indices` + `vector_entries` in the shared-cross-table-id-map remap form
 (minted ids/timestamps remapped/placeholdered; `relatedMemoryIds` array elements
-remapped through the shared map). **Tracked deferrals:** `maybeEnqueueHousekeeping`
-(fire-and-forget), the `skipGate`/`createMemoryDirect` direct path, and the
-500 ms inter-retry delay (host-timing, no DB effect, omitted to keep the core
-scheduler-free). (`applyNamePresenceCheck`'s cross-character resolution is now
-**CLOSED** — ported with the memory processor, see below.)
+remapped through the shared map). **Tracked deferrals:** the
+`skipGate`/`createMemoryDirect` direct path, and the 500 ms inter-retry delay
+(host-timing, no DB effect, omitted to keep the core scheduler-free).
+(`applyNamePresenceCheck`'s cross-character resolution and the
+`maybeEnqueueHousekeeping` watermark check are now **CLOSED** — ported with
+the memory processor and the watermark unit, see below.)
 
 The **memory deletion chokepoint** — the first memory-family follow-on — is now
 ported and green (`db::memories::delete_with_unlink` / `delete_many_with_unlink`,
@@ -1415,8 +1416,29 @@ as a canned-miss — plus canned embeddings, a constant API key, no-op
 gate-band vectors); three calls bank throttle/skip/dup-user logs, all five
 gate outcomes, all four canon sources, the uncensored fallback, and usage
 aggregation; result objects AND the three tables are diffed (gate differential
-re-verified green). Next: the gate's deferred `maybeEnqueueHousekeeping`
-watermark check, per `docs/developer/porting/phase-3.md`.
+re-verified green).
+
+**The gate's `maybeEnqueueHousekeeping` watermark check is now also ported and
+green** (`memory_watermark_tier3_equivalence`), closing the gate's last
+write-side deferral. New: `services::queue_service` (the `enqueueJob` +
+`enqueueMemoryHousekeeping` slice — mint a PENDING `background_jobs` row,
+de-dupe against in-flight jobs for the same (userId, characterId), maxAttempts
+1; `ensureProcessorRunning` deferred to the job-runner unit, the oracle pins
+v4's auto-start to a no-op to match), `services::housekeeping_outcome_cache`
+(v4's in-memory ineffective-sweep back-off — kept process-global as in v4, a
+`OnceLock<Mutex<HashMap>>` keyed by characterId), and a scoped
+`chat_settings::find_auto_housekeeping_settings_by_user_id` read (the full
+`findByUserId` marshaling is a later chat-settings read sub-unit). The gate
+now runs the check after INSERT / INSERT_RELATED — awaited rather than v4's
+`void` (same DB effect once settled; the oracle sleeps for v4's promises).
+Differential: seven gate INSERTs over a seeded fixture banking a real enqueue,
+below-watermark, the `perCharacterCapOverrides` raise, disabled settings, the
+durable 15-minute throttle (future-`updatedAt` seed = always in-window), the
+in-flight dedupe, and the in-memory back-off (both sides record the same
+outcome through their real cache first); four tables diffed
+(`background_jobs` + the three memory tables); the gate and processor
+differentials re-verified green with the watermark path live. Next: chat
+orchestration / the enclave engine, per `docs/developer/porting/phase-3.md`.
 
 **Drift catch-up (2026-07-01): the answer-confirmation columns.** v4 commit
 `29f3ae63` (a Salon consistency-check + re-affirmation feature) added DDL/schema

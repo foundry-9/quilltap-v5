@@ -1,0 +1,327 @@
+{
+ "_comment": "Tier-3 corpus for the memory gate's watermark auto-housekeeping check (v4 maybeEnqueueHousekeeping + enqueueMemoryHousekeeping). Each scenario drives ONE createMemoryWithGate INSERT (canned embedding, empty vector store) and asserts the background_jobs effect: below-watermark no-op, a real enqueue, the durable 15-minute throttle (a COMPLETED sweep seeded with a FUTURE updatedAt is always inside the window), the in-flight dedupe (a seeded PENDING job), the in-memory ineffective-sweep cache (both sides record the same outcome first), a perCharacterCapOverrides raise, and disabled settings. Counts are watermark-exact AFTER the insert (the gate counts post-write). Seed timestamps are pinned; 2099 rows are always 'recent'.",
+ "_safety": "testPepperBase64 is the same THROWAWAY key the other fixtures use — never a real pepper.",
+ "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+ "seedTimestamp": "2020-01-01T00:00:00.000Z",
+ "futureTimestamp": "2099-01-01T00:00:00.000Z",
+ "chatSettings": [
+  {
+   "id": "11000000-0000-4000-8000-00000000c511",
+   "userId": "00000000-0000-4000-8000-0000000000e1",
+   "autoHousekeepingSettings": {
+    "enabled": true,
+    "perCharacterCap": 4,
+    "perCharacterCapOverrides": {
+     "a0000000-0000-4000-8000-000000000e44": 20
+    },
+    "autoMergeSimilarThreshold": 0.9,
+    "mergeSimilar": false
+   }
+  },
+  {
+   "id": "12000000-0000-4000-8000-00000000c512",
+   "userId": "00000000-0000-4000-8000-0000000000e2",
+   "autoHousekeepingSettings": {
+    "enabled": false,
+    "perCharacterCap": 4,
+    "perCharacterCapOverrides": {},
+    "autoMergeSimilarThreshold": 0.9,
+    "mergeSimilar": false
+   }
+  }
+ ],
+ "seedMemories": [
+  {
+   "id": "1b000000-0000-4000-8000-00000001b001",
+   "characterId": "b0000000-0000-4000-8000-00000000be10",
+   "content": "seed memory 1b number 1",
+   "summary": "seed 1b 1"
+  },
+  {
+   "id": "2c000000-0000-4000-8000-00000002c001",
+   "characterId": "c0000000-0000-4000-8000-00000000e099",
+   "content": "seed memory 2c number 1",
+   "summary": "seed 2c 1"
+  },
+  {
+   "id": "2c000000-0000-4000-8000-00000002c002",
+   "characterId": "c0000000-0000-4000-8000-00000000e099",
+   "content": "seed memory 2c number 2",
+   "summary": "seed 2c 2"
+  },
+  {
+   "id": "3d000000-0000-4000-8000-00000003d001",
+   "characterId": "d0000000-0000-4000-8000-0000000f0771",
+   "content": "seed memory 3d number 1",
+   "summary": "seed 3d 1"
+  },
+  {
+   "id": "3d000000-0000-4000-8000-00000003d002",
+   "characterId": "d0000000-0000-4000-8000-0000000f0771",
+   "content": "seed memory 3d number 2",
+   "summary": "seed 3d 2"
+  },
+  {
+   "id": "4e000000-0000-4000-8000-00000004e001",
+   "characterId": "e0000000-0000-4000-8000-00000000d0be",
+   "content": "seed memory 4e number 1",
+   "summary": "seed 4e 1"
+  },
+  {
+   "id": "4e000000-0000-4000-8000-00000004e002",
+   "characterId": "e0000000-0000-4000-8000-00000000d0be",
+   "content": "seed memory 4e number 2",
+   "summary": "seed 4e 2"
+  },
+  {
+   "id": "5f000000-0000-4000-8000-00000005f001",
+   "characterId": "f0000000-0000-4000-8000-00000000cac4",
+   "content": "seed memory 5f number 1",
+   "summary": "seed 5f 1"
+  },
+  {
+   "id": "5f000000-0000-4000-8000-00000005f002",
+   "characterId": "f0000000-0000-4000-8000-00000000cac4",
+   "content": "seed memory 5f number 2",
+   "summary": "seed 5f 2"
+  },
+  {
+   "id": "6a000000-0000-4000-8000-00000006a001",
+   "characterId": "a0000000-0000-4000-8000-000000000e44",
+   "content": "seed memory 6a number 1",
+   "summary": "seed 6a 1"
+  },
+  {
+   "id": "6a000000-0000-4000-8000-00000006a002",
+   "characterId": "a0000000-0000-4000-8000-000000000e44",
+   "content": "seed memory 6a number 2",
+   "summary": "seed 6a 2"
+  },
+  {
+   "id": "6a000000-0000-4000-8000-00000006a003",
+   "characterId": "a0000000-0000-4000-8000-000000000e44",
+   "content": "seed memory 6a number 3",
+   "summary": "seed 6a 3"
+  },
+  {
+   "id": "7b000000-0000-4000-8000-00000007b001",
+   "characterId": "ab000000-0000-4000-8000-00000000d15a",
+   "content": "seed memory 7b number 1",
+   "summary": "seed 7b 1"
+  },
+  {
+   "id": "7b000000-0000-4000-8000-00000007b002",
+   "characterId": "ab000000-0000-4000-8000-00000000d15a",
+   "content": "seed memory 7b number 2",
+   "summary": "seed 7b 2"
+  }
+ ],
+ "seedJobs": [
+  {
+   "id": "21000000-0000-4000-8000-0000000000b1",
+   "userId": "00000000-0000-4000-8000-0000000000e1",
+   "type": "MEMORY_HOUSEKEEPING",
+   "status": "COMPLETED",
+   "payload": {
+    "characterId": "d0000000-0000-4000-8000-0000000f0771"
+   },
+   "createdAt": "2020-01-01T00:00:00.000Z",
+   "updatedAt": "2099-01-01T00:00:00.000Z"
+  },
+  {
+   "id": "22000000-0000-4000-8000-0000000000b2",
+   "userId": "00000000-0000-4000-8000-0000000000e1",
+   "type": "MEMORY_HOUSEKEEPING",
+   "status": "PENDING",
+   "payload": {
+    "characterId": "e0000000-0000-4000-8000-00000000d0be"
+   },
+   "createdAt": "2020-01-01T00:00:00.000Z",
+   "updatedAt": "2020-01-01T00:00:00.000Z"
+  }
+ ],
+ "cannedEmbeddings": {
+  "below fresh\n\nfresh fact for the below-cap character": [
+   1.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "enqueue fresh\n\nfresh fact that tips the enqueue character": [
+   0.0,
+   1.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "throttled fresh\n\nfresh fact for the throttled character": [
+   0.0,
+   0.0,
+   1.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "deduped fresh\n\nfresh fact for the deduped character": [
+   0.0,
+   0.0,
+   0.0,
+   1.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "cached fresh\n\nfresh fact for the cache-skipped character": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   1.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "override fresh\n\nfresh fact for the override character": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   1.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "disabled fresh\n\nfresh fact for the disabled-settings character": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   1.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ]
+ },
+ "scenarios": [
+  {
+   "name": "below_watermark",
+   "userId": "00000000-0000-4000-8000-0000000000e1",
+   "characterId": "b0000000-0000-4000-8000-00000000be10",
+   "candidate": {
+    "content": "fresh fact for the below-cap character",
+    "summary": "below fresh"
+   },
+   "expectJob": false
+  },
+  {
+   "name": "enqueues",
+   "userId": "00000000-0000-4000-8000-0000000000e1",
+   "characterId": "c0000000-0000-4000-8000-00000000e099",
+   "candidate": {
+    "content": "fresh fact that tips the enqueue character",
+    "summary": "enqueue fresh"
+   },
+   "expectJob": true
+  },
+  {
+   "name": "throttled_by_recent_sweep",
+   "userId": "00000000-0000-4000-8000-0000000000e1",
+   "characterId": "d0000000-0000-4000-8000-0000000f0771",
+   "candidate": {
+    "content": "fresh fact for the throttled character",
+    "summary": "throttled fresh"
+   },
+   "expectJob": false
+  },
+  {
+   "name": "deduped_against_pending",
+   "userId": "00000000-0000-4000-8000-0000000000e1",
+   "characterId": "e0000000-0000-4000-8000-00000000d0be",
+   "candidate": {
+    "content": "fresh fact for the deduped character",
+    "summary": "deduped fresh"
+   },
+   "expectJob": false
+  },
+  {
+   "name": "cached_ineffective_sweep",
+   "userId": "00000000-0000-4000-8000-0000000000e1",
+   "characterId": "f0000000-0000-4000-8000-00000000cac4",
+   "recordOutcome": {
+    "deleted": 2,
+    "totalBefore": 100,
+    "cap": 4
+   },
+   "candidate": {
+    "content": "fresh fact for the cache-skipped character",
+    "summary": "cached fresh"
+   },
+   "expectJob": false
+  },
+  {
+   "name": "override_raises_cap",
+   "userId": "00000000-0000-4000-8000-0000000000e1",
+   "characterId": "a0000000-0000-4000-8000-000000000e44",
+   "candidate": {
+    "content": "fresh fact for the override character",
+    "summary": "override fresh"
+   },
+   "expectJob": false
+  },
+  {
+   "name": "auto_housekeeping_disabled",
+   "userId": "00000000-0000-4000-8000-0000000000e2",
+   "characterId": "ab000000-0000-4000-8000-00000000d15a",
+   "candidate": {
+    "content": "fresh fact for the disabled-settings character",
+    "summary": "disabled fresh"
+   },
+   "expectJob": false
+  }
+ ]
+}

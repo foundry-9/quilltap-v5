@@ -33,9 +33,6 @@
 //!
 //! ## Deferred (tracked, out of scope for this unit)
 //!
-//!   - `maybeEnqueueHousekeeping` — the fire-and-forget watermark check v4 `void`s
-//!     after an INSERT / INSERT_RELATED. Never awaited, no bearing on the gate's own
-//!     DB effect; lands with the housekeeping job unit.
 //!   - the `skipGate` / `skipEmbedding` → `createMemoryDirect` path — the
 //!     force-insert-without-gate flow (no similarity check). This port always runs
 //!     the gate; the direct path lands with the extraction driver.
@@ -228,7 +225,7 @@ pub async fn create_memory_with_gate<P: EmbeddingProvider>(
         GateDecision::InsertRelated { related } => {
             let new_id = create_memory_direct_with_embedding(db, &data, embedding).await?;
             let linked = link_related_memories(db, &new_id, &data.character_id, &related).await?;
-            // Deferred: `void maybeEnqueueHousekeeping(...)` — fire-and-forget.
+            maybe_enqueue_housekeeping(db, &data.character_id, &opts.user_id).await;
             Ok(MemoryGateOutcome {
                 memory_id: Some(new_id),
                 action: GateAction::InsertRelated,
@@ -242,7 +239,7 @@ pub async fn create_memory_with_gate<P: EmbeddingProvider>(
 
         GateDecision::Insert => {
             let new_id = create_memory_direct_with_embedding(db, &data, embedding).await?;
-            // Deferred: `void maybeEnqueueHousekeeping(...)`.
+            maybe_enqueue_housekeeping(db, &data.character_id, &opts.user_id).await;
             Ok(MemoryGateOutcome {
                 memory_id: Some(new_id),
                 action: GateAction::Insert,
@@ -707,6 +704,105 @@ async fn apply_name_presence_check(db: &Db, data: &CreateMemoryOptions) -> Creat
     } else {
         data.clone()
     }
+}
+
+/// Fraction of the per-character cap at which auto-housekeeping engages
+/// (v4 `HOUSEKEEPING_WATERMARK`).
+const HOUSEKEEPING_WATERMARK: f64 = 0.9;
+
+/// Minimum gap between watermark-triggered sweeps for one character, enforced
+/// durably via the background-jobs table (v4 `WATERMARK_SWEEP_THROTTLE_MS`).
+const WATERMARK_SWEEP_THROTTLE_MS: i64 = 15 * 60 * 1000;
+
+/// v4 `maybeEnqueueHousekeeping` (`memory-service.ts`): if auto-housekeeping is
+/// enabled for this user and the character has reached the watermark fraction
+/// of its cap, enqueue a housekeeping job — unless the in-memory outcome cache
+/// says the last sweep was ineffective, or a sweep completed/started within
+/// the durable throttle window. Never propagates an error (v4's catch: a
+/// failure here must not block the memory write that just succeeded).
+///
+/// v4 `void`s the call (fire-and-forget); the port awaits it — the DB effect
+/// is identical once the write settles (the oracle sleeps for v4's promises),
+/// and awaiting keeps the core free of detached-task machinery.
+async fn maybe_enqueue_housekeeping(db: &Db, character_id: &str, user_id: &str) {
+    let _ = maybe_enqueue_housekeeping_inner(db, character_id, user_id).await;
+}
+
+async fn maybe_enqueue_housekeeping_inner(
+    db: &Db,
+    character_id: &str,
+    user_id: &str,
+) -> Result<(), DbError> {
+    let uid = user_id.to_string();
+    let auto = db.read_main(|conn| {
+        crate::db::chat_settings::find_auto_housekeeping_settings_by_user_id(conn, &uid)
+    })?;
+    let Some(auto) = auto else {
+        return Ok(());
+    };
+    if auto.get("enabled").and_then(Value::as_bool) != Some(true) {
+        return Ok(());
+    }
+
+    // `perCharacterCapOverrides?.[id] ?? perCharacterCap ?? 2000`.
+    let cap = auto
+        .get("perCharacterCapOverrides")
+        .and_then(|o| o.get(character_id))
+        .and_then(Value::as_f64)
+        .or_else(|| auto.get("perCharacterCap").and_then(Value::as_f64))
+        .unwrap_or(2000.0);
+
+    let cid = character_id.to_string();
+    let count = db.read_main(|conn| memories_read::count_by_character_id(conn, &cid))?;
+    if (count as f64) < (cap * HOUSEKEEPING_WATERMARK).floor() {
+        return Ok(());
+    }
+
+    // In-memory back-off: when the previous sweep deleted (nearly) nothing,
+    // the next one will too — skip for an hour.
+    if crate::services::housekeeping_outcome_cache::should_skip_watermark_sweep(character_id) {
+        return Ok(());
+    }
+
+    // Durable cross-process throttle: a sweep for this character COMPLETED or
+    // PROCESSING within the window means don't pile on another.
+    let recent = db.read_main(|conn| {
+        crate::db::background_jobs::BackgroundJobsRepository::new(conn)
+            .find_recent_by_type("MEMORY_HOUSEKEEPING", 50)
+    })?;
+    let now_ms = crate::clock::now_unix_ms();
+    let throttled = recent.iter().any(|j| {
+        let job_char = serde_json::from_str::<Value>(&j.payload)
+            .ok()
+            .and_then(|p| {
+                p.get("characterId")
+                    .and_then(Value::as_str)
+                    .map(String::from)
+            });
+        if job_char.as_deref() != Some(character_id) {
+            return false;
+        }
+        if j.status != "COMPLETED" && j.status != "PROCESSING" {
+            return false;
+        }
+        // v4: `new Date(updatedAt).getTime()` (0 when absent; NaN comparisons
+        // are false, so an unparseable timestamp never throttles).
+        match crate::clock::iso_to_ms(&j.updated_at) {
+            Some(ts) => now_ms - ts < WATERMARK_SWEEP_THROTTLE_MS,
+            None => false,
+        }
+    });
+    if throttled {
+        return Ok(());
+    }
+
+    crate::services::queue_service::enqueue_memory_housekeeping(
+        db,
+        user_id,
+        serde_json::json!({ "characterId": character_id, "reason": "watermark" }),
+    )
+    .await?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
