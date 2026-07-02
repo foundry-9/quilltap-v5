@@ -133,6 +133,7 @@ pub mod char_count;
 pub mod chat_predicates;
 pub mod chat_tasks;
 pub mod chat_utils;
+pub mod cheap_llm;
 pub mod cheap_model;
 pub mod clock;
 pub mod collation;

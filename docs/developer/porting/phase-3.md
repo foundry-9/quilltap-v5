@@ -286,10 +286,21 @@ Track them to closure as their subsystem lands:
      turn-context renderer, the message builders, and the response parsers
      (fence stripping, targeting-tag validation, caps, JS coercion semantics).
      Jest oracle: v4's REAL extractors with only `executeCheapLLMTask` mocked.
-   - Next: the `processTurnForMemory` orchestration (tier-3 — canned completion
-     injected both sides), and the gate's deferred `maybeEnqueueHousekeeping`
-     watermark check (needs `background_jobs` integration, already ported at
-     the repo level).
+   - The **memory processor** (`processTurnForMemory`) — **✅ done + green**
+     (`services::memory_processor` + `cheap_llm` + `services::cheap_llm_exec`,
+     `memory_processor_tier3_equivalence`): the first tier-3 differential to
+     pin BOTH model boundaries — the completion by recorded exact call key
+     (oracle-recorded `provider|model|temperature|messages` entries replayed
+     through `CannedCompletionProvider`, so prompt/selection divergence is a
+     canned-miss), the embedding by exact text. Result objects (debug logs
+     byte-for-byte) + the three memory tables diffed. Also **closed the gate's
+     `applyNamePresenceCheck` deferral** (the cross-character lookup now rides
+     `characters_read::find_by_id` + the Phase-1 `resolve_about_character_id`).
+     Tracked host-side deferrals: API-key acquisition, the fire-and-forget
+     `logLLMCall` llm-logs write, and the temperature-fallback path is
+     self-test-covered only (the corpus stays on the 0.3 path).
+   - Next: the gate's deferred `maybeEnqueueHousekeeping` watermark check
+     (needs `background_jobs` integration, already ported at the repo level).
 3. Chat orchestration (turn manager + streaming on the `Event` channel).
 4. Enclave engine (`step()` + `RunState` + driver seam).
 

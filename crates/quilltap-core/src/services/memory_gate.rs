@@ -39,12 +39,6 @@
 //!   - the `skipGate` / `skipEmbedding` → `createMemoryDirect` path — the
 //!     force-insert-without-gate flow (no similarity check). This port always runs
 //!     the gate; the direct path lands with the extraction driver.
-//!   - `applyNamePresenceCheck`'s cross-character resolution — the AUTO
-//!     mis-attribution safety net looks up the about/holder characters through the
-//!     `characters` **vault overlay** (aliases live in `properties.json`). The
-//!     no-lookup branches (null proposal / self-reference / non-AUTO source) are
-//!     ported; the lookup-and-resolve branch is deferred and the corpus keeps
-//!     `aboutCharacterId == null`, so it is a verified no-op here.
 //!   - the 500 ms inter-retry delay (`EMBEDDING_RETRY_DELAY_MS`) — a host-timing
 //!     concern with no DB-state effect; reproducing it would pull a timer into the
 //!     scheduler-free core, so the retry is issued without the sleep.
@@ -53,6 +47,8 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
+use crate::about_character::resolve_about_character_id;
+use crate::db::characters_read;
 use crate::db::memories::{CreateOptions, MemCreate, MemUpdate};
 use crate::db::vector_store::CharacterVectorStore;
 use crate::db::{memories_read, DbError};
@@ -99,6 +95,11 @@ pub struct MemoryGateOutcome {
     pub similarity: Option<f64>,
     /// Human-readable reason (`SkipEmbeddingFailed`).
     pub reason: Option<String>,
+    /// The post-reinforcement `reinforcementCount` (`Reinforce` only) — v4's
+    /// `outcome.memory.reinforcementCount`, which the extraction driver's debug
+    /// log reads. On a failed reinforcement update this is the existing row's
+    /// count (v4 returns the unchanged memory), defaulted `?? 1`.
+    pub reinforcement_count: Option<f64>,
 }
 
 /// Options for memory creation (v4 `CreateMemoryOptions`), minus the deferred
@@ -161,7 +162,7 @@ pub async fn create_memory_with_gate<P: EmbeddingProvider>(
     data: &CreateMemoryOptions,
     opts: &MemoryServiceOptions,
 ) -> Result<MemoryGateOutcome, DbError> {
-    let data = apply_name_presence_check(data);
+    let data = apply_name_presence_check(db, data).await;
 
     let gate = run_memory_gate(
         db,
@@ -190,6 +191,7 @@ pub async fn create_memory_with_gate<P: EmbeddingProvider>(
             related_memory_ids: Vec::new(),
             similarity: Some(similarity),
             reason: None,
+            reinforcement_count: None,
         }),
 
         GateDecision::SkipEmbeddingFailed { reason } => Ok(MemoryGateOutcome {
@@ -199,10 +201,11 @@ pub async fn create_memory_with_gate<P: EmbeddingProvider>(
             related_memory_ids: Vec::new(),
             similarity: None,
             reason: Some(reason),
+            reinforcement_count: None,
         }),
 
         GateDecision::Reinforce { existing } => {
-            let (memory_id, novel_details) = reinforce_memory(
+            let (memory_id, novel_details, reinforcement_count) = reinforce_memory(
                 db,
                 provider,
                 &existing,
@@ -218,6 +221,7 @@ pub async fn create_memory_with_gate<P: EmbeddingProvider>(
                 related_memory_ids: Vec::new(),
                 similarity: None,
                 reason: None,
+                reinforcement_count: Some(reinforcement_count),
             })
         }
 
@@ -232,6 +236,7 @@ pub async fn create_memory_with_gate<P: EmbeddingProvider>(
                 related_memory_ids: linked,
                 similarity: None,
                 reason: None,
+                reinforcement_count: None,
             })
         }
 
@@ -245,6 +250,7 @@ pub async fn create_memory_with_gate<P: EmbeddingProvider>(
                 related_memory_ids: Vec::new(),
                 similarity: None,
                 reason: None,
+                reinforcement_count: None,
             })
         }
     }
@@ -459,7 +465,10 @@ async fn create_memory_direct_with_embedding(
 /// Reinforce an existing memory (v4 `reinforceMemory`): extract novel details,
 /// append them as footnotes when any, bump `reinforcementCount` /
 /// `lastReinforcedAt` / `reinforcedImportance`, and re-embed if the content
-/// changed. Returns `(memory_id, novel_details)`.
+/// changed. Returns `(memory_id, novel_details, count_for_log)` — the count the
+/// extraction driver's debug line reports (the new count, or the existing
+/// `reinforcementCount ?? 1` when the update failed and v4 returns the
+/// unchanged memory).
 async fn reinforce_memory<P: EmbeddingProvider>(
     db: &Db,
     provider: &P,
@@ -467,7 +476,7 @@ async fn reinforce_memory<P: EmbeddingProvider>(
     candidate_content: &str,
     user_id: &str,
     embedding_profile_id: Option<&str>,
-) -> Result<(String, Vec<String>), DbError> {
+) -> Result<(String, Vec<String>, f64), DbError> {
     let existing_id = id_of(existing).unwrap_or_default();
     let existing_char = str_field(existing, "characterId");
     let existing_content = str_field(existing, "content");
@@ -519,7 +528,7 @@ async fn reinforce_memory<P: EmbeddingProvider>(
             .await?;
         // v4: if the update failed, return the existing memory unchanged.
         if !updated {
-            return Ok((existing_id, novel_details));
+            return Ok((existing_id, novel_details, existing_count));
         }
     }
 
@@ -553,7 +562,7 @@ async fn reinforce_memory<P: EmbeddingProvider>(
         }
     }
 
-    Ok((existing_id, novel_details))
+    Ok((existing_id, novel_details, new_count))
 }
 
 /// Bidirectionally link a new memory with related existing memories (v4
@@ -614,23 +623,90 @@ async fn link_related_memories(
 /// The AUTO mis-attribution safety net (v4 `applyNamePresenceCheck`), ported for
 /// the no-lookup branches only (see the module deferrals): a null / self /
 /// non-AUTO proposal passes through unchanged. A cross-character AUTO proposal
-/// would need the `characters` vault-overlay read; that branch is deferred, and
-/// the corpus keeps `aboutCharacterId == null`, so this is a verified no-op.
-fn apply_name_presence_check(data: &CreateMemoryOptions) -> CreateMemoryOptions {
+/// reads both characters through the vault overlay and resolves via the ported
+/// `resolve_about_character_id`, collapsing a mis-attributed about-target to a
+/// self-reference on the holder (v4's LLM-mis-attribution safety net).
+async fn apply_name_presence_check(db: &Db, data: &CreateMemoryOptions) -> CreateMemoryOptions {
     // Steps 1-3 (no DB read): null proposal / self-reference / non-AUTO source.
-    match &data.about_character_id {
+    let proposed = match &data.about_character_id {
         None => return data.clone(),
         Some(proposed) if proposed == &data.character_id => return data.clone(),
-        Some(_) => {}
-    }
+        Some(proposed) => proposed.clone(),
+    };
     if let Some(src) = &data.source {
         if src != "AUTO" {
             return data.clone();
         }
     }
-    // The cross-character AUTO resolution branch is deferred; pass through
-    // unchanged (the corpus never reaches here — aboutCharacterId is null).
-    data.clone()
+
+    // The cross-character AUTO resolution: read both characters through the
+    // vault-overlaid `characters_read::find_by_id` (v4 `repos.characters
+    // .findById`), then run the ported pure `resolve_about_character_id`. v4
+    // wraps the lookup in a try/catch — the safety net never blocks a write —
+    // so any read failure (including a missing mount-index partition) passes
+    // the proposal through unchanged.
+    let holder_id = data.character_id.clone();
+    let lookup = db.read_main(|main| {
+        db.read_mount_index(|mount| {
+            let about = characters_read::find_by_id(main, mount, &proposed)?;
+            let holder = characters_read::find_by_id(main, mount, &holder_id)?;
+            Ok((about, holder))
+        })
+    });
+    let (about, holder) = match lookup {
+        Ok(pair) => pair,
+        Err(_) => return data.clone(),
+    };
+
+    fn name_and_aliases(character: &Value) -> (String, Vec<String>) {
+        let name = character
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let aliases = character
+            .get("aliases")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        (name, aliases)
+    }
+
+    let holder_parts = holder.as_ref().map(name_and_aliases);
+    let about_parts = about.as_ref().map(|c| {
+        let (name, aliases) = name_and_aliases(c);
+        let controlled_by = c
+            .get("controlledBy")
+            .and_then(Value::as_str)
+            .unwrap_or("llm")
+            .to_string();
+        (name, aliases, controlled_by)
+    });
+
+    let text = format!("{}\n{}", data.summary, data.content);
+    let resolution = resolve_about_character_id(
+        &data.character_id,
+        holder_parts
+            .as_ref()
+            .map(|(name, aliases)| (name.as_str(), aliases.as_slice())),
+        Some(&proposed),
+        about_parts.as_ref().map(|(name, aliases, controlled_by)| {
+            (name.as_str(), aliases.as_slice(), controlled_by.as_str())
+        }),
+        &text,
+    );
+    if resolution.flipped {
+        let mut flipped = data.clone();
+        flipped.about_character_id = Some(data.character_id.clone());
+        flipped
+    } else {
+        data.clone()
+    }
 }
 
 // ---------------------------------------------------------------------------

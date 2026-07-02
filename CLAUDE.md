@@ -1294,11 +1294,10 @@ outcome, each on its own character), and the Rust gate is diffed across `memorie
 + `vector_indices` + `vector_entries` in the shared-cross-table-id-map remap form
 (minted ids/timestamps remapped/placeholdered; `relatedMemoryIds` array elements
 remapped through the shared map). **Tracked deferrals:** `maybeEnqueueHousekeeping`
-(fire-and-forget), the `skipGate`/`createMemoryDirect` direct path,
-`applyNamePresenceCheck`'s cross-character resolution (needs the characters
-vault-overlay read; corpus keeps `aboutCharacterId` null → verified no-op), and the
+(fire-and-forget), the `skipGate`/`createMemoryDirect` direct path, and the
 500 ms inter-retry delay (host-timing, no DB effect, omitted to keep the core
-scheduler-free).
+scheduler-free). (`applyNamePresenceCheck`'s cross-character resolution is now
+**CLOSED** — ported with the memory processor, see below.)
 
 The **memory deletion chokepoint** — the first memory-family follow-on — is now
 ported and green (`db::memories::delete_with_unlink` / `delete_many_with_unlink`,
@@ -1388,10 +1387,36 @@ integer emissions re-serialize bare). The jest oracle drives v4's REAL
 extractors over a committed 14-case corpus with ONLY `executeCheapLLMTask`
 mocked (the seam v4's own extraction tests use), capturing the built messages
 byte-for-byte and feeding each case's canned response into the real parser.
-Next: the `processTurnForMemory` orchestration as the tier-3 unit (canned
-completion injected both sides), then the gate's deferred
-`maybeEnqueueHousekeeping` watermark check, per
-`docs/developer/porting/phase-3.md`.
+**The memory-processor unit is now COMPLETE** — the `processTurnForMemory`
+orchestration is ported and green (`services::memory_processor`,
+`memory_processor_tier3_equivalence`), the first tier-3 differential to pin
+BOTH model boundaries. New modules: `cheap_llm` (v4 `lib/llm/cheap-llm.ts`'s
+pure five-priority provider selection + the uncensored-for-dangerous-chats
+resolution + `build_character_cache_key`, registry seam injected) and
+`services::cheap_llm_exec` (v4 `core-execution.ts`: the executor holding the
+session no-custom-temperature cache, the 0.3-temp try + message-inspecting
+retry, the 2048 max-tokens floor, the uncensored retry on empty responses —
+API-key acquisition and the fire-and-forget `logLLMCall` llm-logs write are
+tracked host-side deferrals). The processor ports the per-character rate
+limiter (future-dated fixture rows make `countCreatedSince` wall-clock-proof),
+the SELF/OTHER passes (OTHER canon from the observer's vault
+`Others/<subject>.md` via `read_vault_text_file`, falling back identity →
+description → none), dry-run collection, and the per-outcome debug lines
+byte-for-byte. **The gate's `applyNamePresenceCheck` deferral is CLOSED**: the
+cross-character AUTO lookup now reads both characters through the
+vault-overlaid `characters_read::find_by_id` and resolves via the Phase-1
+`resolve_about_character_id` (`MemoryGateOutcome` gained
+`reinforcement_count`); the differential banks a real flip. The oracle mocks
+only the model/infra seams (`createLLMProvider` — recording each exact
+`provider|model|temperature|messages` canned key for the Rust
+`CannedCompletionProvider` to replay, so prompt/selection divergence surfaces
+as a canned-miss — plus canned embeddings, a constant API key, no-op
+`logLLMCall`) over a two-database fixture (real vaults + canon file +
+gate-band vectors); three calls bank throttle/skip/dup-user logs, all five
+gate outcomes, all four canon sources, the uncensored fallback, and usage
+aggregation; result objects AND the three tables are diffed (gate differential
+re-verified green). Next: the gate's deferred `maybeEnqueueHousekeeping`
+watermark check, per `docs/developer/porting/phase-3.md`.
 
 **Drift catch-up (2026-07-01): the answer-confirmation columns.** v4 commit
 `29f3ae63` (a Salon consistency-check + re-affirmation feature) added DDL/schema

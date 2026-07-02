@@ -39,6 +39,19 @@ pub enum CanonSourceKind {
     None,
 }
 
+impl CanonSourceKind {
+    /// The v4 string value (`'vault' | 'identity' | 'description' | 'none'`) —
+    /// the extraction driver's `canon=<source>` debug attribution.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CanonSourceKind::Vault => "vault",
+            CanonSourceKind::Identity => "identity",
+            CanonSourceKind::Description => "description",
+            CanonSourceKind::None => "none",
+        }
+    }
+}
+
 /// OTHER-pass canon source. `body` carries the vault contents, the subject's
 /// identity text, the subject's description text, or `None`.
 #[derive(Clone, Debug, PartialEq, Eq)]

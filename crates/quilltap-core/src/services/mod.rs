@@ -19,6 +19,8 @@
 //!   stored-vector similarity merge, and cap enforcement, applied through the
 //!   chokepoint. No model call; verified by a plain tier-2 differential.
 
+pub mod cheap_llm_exec;
 pub mod housekeeping;
 pub mod memory_gate;
+pub mod memory_processor;
 pub mod memory_service;

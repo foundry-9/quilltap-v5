@@ -297,6 +297,67 @@ of the memory-processor unit. Ported from v4
   feeding each case's canned response text into the real parser. Four
   self-tests on top.
 
+Phase 3 — the **memory processor** (`services::memory_processor`, v4
+`processTurnForMemory`), the model-dependent per-turn extraction service — the
+first tier-3 differential to pin BOTH model boundaries (completion +
+embedding). Also closes the memory gate's `applyNamePresenceCheck` deferral.
+
+- `cheap_llm`: v4 `lib/llm/cheap-llm.ts`'s pure selection logic —
+  `get_cheap_llm_provider` (the five-priority order: global default cheap
+  profile, USER_DEFINED, any `isCheap` profile local-preferred, local-first
+  Ollama, current-provider-cheapest fallback, with the registry seam injected
+  as in `cheap_model`) and `resolve_uncensored_cheap_llm_selection` (dangerous
+  chats swap to the configured uncensored profile, then any
+  dangerous-compatible one, else fail open). Plus `build_character_cache_key`
+  (v4 `lib/llm/cache-key.ts`) and the `CheapLlmProfile` / `CheapLlmSelection` /
+  `DangerousContentSettings` / `UncensoredFallbackOptions` types. Three
+  self-tests.
+- `services::cheap_llm_exec`: v4 `core-execution.ts`'s pipeline —
+  `CheapLlmTaskExecutor` holds the session-level no-custom-temperature cache
+  (v4's module-global `profilesWithoutCustomTemp`, instance state here); the
+  0.3-temperature first try with the message-inspecting retry-without-
+  temperature; the strict 2048 max-tokens floor; the uncensored-provider retry
+  on empty responses (`should_attempt_uncensored_fallback`, incl. the exact
+  both-providers-empty error string); parse-and-wrap into
+  `CheapLlmTaskResult`. **Deferred (tracked):** API-key acquisition (host-side;
+  the boundary starts at the provider call) and the fire-and-forget
+  `logLLMCall` llm-logs write. Two self-tests.
+- `services::memory_processor`: the orchestration — per-character rate limits
+  (`countCreatedSince` over the last wall-clock hour; skip at the cap,
+  throttle past the soft-start fraction with the importance floor), the
+  once-per-turn selection resolve, the SELF pass (own-fields canon) and the
+  multi-subject OTHER pass (canon from the observer's vault
+  `Others/<subject>.md` via the new `read_vault_text_file` +
+  `load_canon_for_observer_about_subject`, falling back identity →
+  description → none), dry-run collection, and every candidate written through
+  the ported memory gate with the per-outcome debug lines reproduced
+  byte-for-byte (JS number interpolation, `toFixed(3)` similarity,
+  `${undefined}` semantics).
+- Memory gate: the `applyNamePresenceCheck` **lookup branch is now ported**
+  (deferral closed) — a cross-character AUTO proposal reads both characters
+  through the vault-overlaid `characters_read::find_by_id` and resolves via the
+  Phase-1 `resolve_about_character_id`, collapsing a mis-attributed
+  about-target to a self-reference; any lookup failure passes through
+  unchanged (v4's never-block-a-write catch). `MemoryGateOutcome` gained
+  `reinforcement_count` (the extraction driver's debug line reads it).
+- Differential (`memory_processor_tier3_equivalence`): a jest oracle drives
+  v4's REAL `processTurnForMemory` over a two-database fixture (characters
+  with real vaults + a seeded `Others/Charlie.md`, gate-band vector seeds, and
+  future-dated rate-limit ballast — a 2099 `createdAt` is always "in the last
+  hour", so counts are wall-clock-proof) with only the model/infra seams
+  stubbed. The completion mock resolves calls by (pass, CONTEXT-footer label,
+  model, autonomous-clause) rules and RECORDS each exact
+  `provider|model|temperature|messages` canned key; the Rust side replays
+  those entries through `CannedCompletionProvider`, so any prompt/selection
+  divergence surfaces as a canned-miss. Three calls (a full mixed turn, an
+  autonomous dangerous dry run, an empty turn) banking: throttle drops +
+  skip/duplicate-user logs, all five gate outcomes (incl. the uncensored
+  fallback feeding SKIP_EMBEDDING_FAILED), all four canon sources, the
+  name-presence flip, sourceMessageTimestamp pinning, and usage aggregation
+  (the discarded empty-response usage included). Result objects (debug logs
+  byte-for-byte) AND the three tables (shared-id-map remap form) are diffed;
+  the memory-gate differential re-verified green after the gate change.
+
 Docs — Phase 2 marked complete; Phase 3 kickoff drafted. Docs only, no crate
 source changed.
 

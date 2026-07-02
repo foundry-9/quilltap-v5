@@ -1,0 +1,616 @@
+{
+ "_comment": "Tier-3 (mocked-completion + mocked-embedding) corpus for the memory processor (v4 processTurnForMemory). The COMPLETION call is pinned by rules keyed on (pass, CONTEXT-footer label, model, autonomous-clause presence): the jest oracle's createLLMProvider mock resolves each real call to a rule, RECORDS the exact (provider|model|temperature|messages) canned key it answered, and the Rust side replays those recorded entries through CannedCompletionProvider — so a prompt/selection/temperature divergence surfaces as a canned-miss, byte-exact. The EMBEDDING call is pinned by exact `summary\\n\\ncontent` text, as in the memory-gate corpus. Vector geometry: 13-dim unit basis vectors; each seed is s*e_k + sqrt(1-s^2)*e_spare so dot(candidate e_k, seed) == s exactly.",
+ "_safety": "testPepperBase64 is the same THROWAWAY key the other fixtures use — never a real pepper.",
+ "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+ "userId": "00000000-0000-4000-8000-0000000000ee",
+ "seedTimestamp": "2020-01-01T00:00:00.000Z",
+ "futureTimestamp": "2099-01-01T00:00:00.000Z",
+ "characters": [
+  {
+   "id": "aa000000-0000-4000-8000-00000000a21a",
+   "name": "Aria",
+   "identity": "Aria is a clockwork soprano with a copper larynx.",
+   "description": "A brass songbird of the old opera.",
+   "manifesto": "Sing true, wind daily.",
+   "personality": "Precise, warm, faintly theatrical.",
+   "controlledBy": "llm",
+   "othersFiles": [
+    {
+     "path": "Others/Charlie.md",
+     "content": "Charlie keeps the workshop ledger and hates loud noises."
+    }
+   ]
+  },
+  {
+   "id": "bb000000-0000-4000-8000-00000000b4a3",
+   "name": "Bram",
+   "description": "A ponderous automaton of the old school; keeps bees.",
+   "controlledBy": "llm",
+   "othersFiles": []
+  },
+  {
+   "id": "cc000000-0000-4000-8000-00000000ca55",
+   "name": "Cass",
+   "identity": "Cass maps the underrails.",
+   "controlledBy": "llm",
+   "othersFiles": []
+  },
+  {
+   "id": "dd000000-0000-4000-8000-00000000c4a5",
+   "name": "Charlie",
+   "controlledBy": "user",
+   "othersFiles": []
+  }
+ ],
+ "seedMemories": [
+  {
+   "id": "a1000000-0000-4000-8000-0000000000a1",
+   "characterId": "aa000000-0000-4000-8000-00000000a21a",
+   "content": "Aria fears the third balcony draft.",
+   "summary": "seed balcony draft",
+   "vector": [
+    0.95,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.3122499,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "createdAt": "seed"
+  },
+  {
+   "id": "a2000000-0000-4000-8000-0000000000a2",
+   "characterId": "aa000000-0000-4000-8000-00000000a21a",
+   "content": "Aria oils her hinges before every performance.",
+   "summary": "seed hinge oiling",
+   "vector": [
+    0.0,
+    0.75,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.6614378,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "createdAt": "seed"
+  },
+  {
+   "id": "b1000000-0000-4000-8000-0000000000b1",
+   "characterId": "bb000000-0000-4000-8000-00000000b4a3",
+   "content": "Bram tends the rooftop hives at dawn.",
+   "summary": "seed rooftop hives",
+   "vector": [
+    0.0,
+    0.0,
+    0.87,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.4930517,
+    0.0,
+    0.0
+   ],
+   "createdAt": "seed"
+  },
+  {
+   "id": "b2000000-0000-4000-8000-0000000000b2",
+   "characterId": "bb000000-0000-4000-8000-00000000b4a3",
+   "content": "bram rate ballast one",
+   "summary": "ballast",
+   "vector": null,
+   "createdAt": "future"
+  },
+  {
+   "id": "b3000000-0000-4000-8000-0000000000b3",
+   "characterId": "bb000000-0000-4000-8000-00000000b4a3",
+   "content": "bram rate ballast two",
+   "summary": "ballast",
+   "vector": null,
+   "createdAt": "future"
+  },
+  {
+   "id": "c1000000-0000-4000-8000-0000000000c1",
+   "characterId": "cc000000-0000-4000-8000-00000000ca55",
+   "content": "cass rate ballast one",
+   "summary": "ballast",
+   "vector": null,
+   "createdAt": "future"
+  },
+  {
+   "id": "c2000000-0000-4000-8000-0000000000c2",
+   "characterId": "cc000000-0000-4000-8000-00000000ca55",
+   "content": "cass rate ballast two",
+   "summary": "ballast",
+   "vector": null,
+   "createdAt": "future"
+  },
+  {
+   "id": "c3000000-0000-4000-8000-0000000000c3",
+   "characterId": "cc000000-0000-4000-8000-00000000ca55",
+   "content": "cass rate ballast three",
+   "summary": "ballast",
+   "vector": null,
+   "createdAt": "future"
+  },
+  {
+   "id": "c4000000-0000-4000-8000-0000000000c4",
+   "characterId": "cc000000-0000-4000-8000-00000000ca55",
+   "content": "cass rate ballast four",
+   "summary": "ballast",
+   "vector": null,
+   "createdAt": "future"
+  }
+ ],
+ "profiles": [
+  {
+   "id": "p-cur",
+   "provider": "ANTHROPIC",
+   "modelName": "claude-benchmark-large",
+   "baseUrl": null,
+   "isCheap": false,
+   "isDangerousCompatible": false,
+   "parameters": null,
+   "maxTokens": 16000,
+   "modelClass": null
+  },
+  {
+   "id": "p-cheap",
+   "provider": "OPENAI",
+   "modelName": "gpt-4o-mini",
+   "baseUrl": null,
+   "isCheap": true,
+   "isDangerousCompatible": false,
+   "parameters": {
+    "reasoning_effort": "low"
+   },
+   "maxTokens": null,
+   "modelClass": null
+  },
+  {
+   "id": "p-unc",
+   "provider": "OLLAMA",
+   "modelName": "dolphin-mixtral",
+   "baseUrl": null,
+   "isCheap": false,
+   "isDangerousCompatible": true,
+   "parameters": null,
+   "maxTokens": null,
+   "modelClass": null
+  }
+ ],
+ "currentProfileId": "p-cur",
+ "cannedEmbeddings": {
+  "reorganize ledger by wing\n\nI decided to reorganize the workshop ledger by wing.": [
+   0.0,
+   0.0,
+   0.0,
+   1.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "fears third balcony draft\n\nI fear the draft on the third balcony.": [
+   1.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "tuned hinge ritual\n\nI tuned my hinge oiling ritual to the evening bell.": [
+   0.0,
+   1.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "trusts the hives\n\nBram trusts the rooftop hives at dawn.": [
+   0.0,
+   0.0,
+   1.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "retuned overture\n\nAria retuned the overture to mask the balcony draft.": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   1.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "wired a new bell\n\nBram wired a new bell to the workshop door.": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   1.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "reorganized ledger despite noise\n\nCharlie reorganized the ledger despite the workshop noise.": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   1.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "hives left unguarded\n\nThe hives were left unguarded at dusk.": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   1.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ]
+ },
+ "cannedFailures": [
+  "sang to the bees\n\nAria sang to the bees to calm them."
+ ],
+ "completionRules": [
+  {
+   "pass": "self",
+   "label": "Charlie (he/him/his)",
+   "model": "gpt-4o-mini",
+   "response": "[{\"content\": \"I decided to reorganize the workshop ledger by wing.\", \"summary\": \"reorganize ledger by wing\", \"keywords\": [\"ledger\", \"organization\"], \"importance\": 0.6, \"temporal\": \"future\", \"scope\": \"narrow\", \"context\": \"information\"}]",
+   "usage": {
+    "promptTokens": 120,
+    "completionTokens": 30,
+    "totalTokens": 150
+   }
+  },
+  {
+   "pass": "self",
+   "label": "Aria (she/her/her)",
+   "model": "gpt-4o-mini",
+   "response": "[{\"content\": \"I fear the draft on the third balcony.\", \"summary\": \"fears third balcony draft\", \"keywords\": [\"draft\", \"fear\"], \"importance\": 0.4, \"temporal\": \"present\", \"scope\": \"wide\", \"context\": \"trivia\"}, {\"content\": \"I tuned my hinge oiling ritual to the evening bell.\", \"summary\": \"tuned hinge ritual\", \"keywords\": [\"hinges\", \"ritual\"], \"importance\": 0.7, \"temporal\": \"present\", \"scope\": \"wide\", \"context\": \"mannerisms\"}]",
+   "usage": {
+    "promptTokens": 200,
+    "completionTokens": 50,
+    "totalTokens": 250
+   }
+  },
+  {
+   "pass": "self",
+   "label": "Bram",
+   "model": "gpt-4o-mini",
+   "response": "[{\"content\": \"bram noted the weather was mild.\", \"summary\": \"noted mild weather\", \"keywords\": [\"weather\"], \"importance\": 0.3, \"temporal\": \"moment\", \"scope\": \"narrow\", \"context\": \"trivia\"}, {\"content\": \"Bram trusts the rooftop hives at dawn.\", \"summary\": \"trusts the hives\", \"keywords\": [\"hives\", \"trust\"], \"importance\": 0.9, \"temporal\": \"present\", \"scope\": \"wide\", \"context\": \"philosophy\"}]",
+   "usage": {
+    "promptTokens": 180,
+    "completionTokens": 40,
+    "totalTokens": 220
+   }
+  },
+  {
+   "pass": "other",
+   "label": "Charlie (he/him/his)",
+   "model": "gpt-4o-mini",
+   "response": "[{\"subjectIndex\": 1, \"content\": \"Aria retuned the overture to mask the balcony draft.\", \"summary\": \"retuned overture\", \"keywords\": [\"overture\", \"retuned\"], \"importance\": 0.65, \"temporal\": \"moment\", \"scope\": \"narrow\", \"context\": \"information\"}, {\"subjectIndex\": 2, \"content\": \"Bram wired a new bell to the workshop door.\", \"summary\": \"wired a new bell\", \"keywords\": [\"bell\", \"workshop\"], \"importance\": 0.6, \"temporal\": \"present\", \"scope\": \"narrow\", \"context\": \"information\"}]",
+   "usage": {
+    "promptTokens": 300,
+    "completionTokens": 60,
+    "totalTokens": 360
+   }
+  },
+  {
+   "pass": "other",
+   "label": "Aria (she/her/her)",
+   "model": "gpt-4o-mini",
+   "response": "[{\"subjectIndex\": 1, \"content\": \"Charlie reorganized the ledger despite the workshop noise.\", \"summary\": \"reorganized ledger despite noise\", \"keywords\": [\"ledger\", \"noise\"], \"importance\": 0.8, \"temporal\": \"moment\", \"scope\": \"narrow\", \"context\": \"information\"}, {\"subjectIndex\": 2, \"content\": \"The hives were left unguarded at dusk.\", \"summary\": \"hives left unguarded\", \"keywords\": [\"hives\", \"unguarded\"], \"importance\": 0.5, \"temporal\": \"moment\", \"scope\": \"narrow\", \"context\": \"information\"}]",
+   "usage": {
+    "promptTokens": 310,
+    "completionTokens": 62,
+    "totalTokens": 372
+   }
+  },
+  {
+   "pass": "other",
+   "label": "Bram",
+   "model": "gpt-4o-mini",
+   "response": "",
+   "usage": {
+    "promptTokens": 90,
+    "completionTokens": 0,
+    "totalTokens": 90
+   }
+  },
+  {
+   "pass": "other",
+   "label": "Bram",
+   "model": "dolphin-mixtral",
+   "autonomous": false,
+   "response": "[{\"subjectIndex\": 2, \"content\": \"Aria sang to the bees to calm them.\", \"summary\": \"sang to the bees\", \"keywords\": [\"bees\", \"song\"], \"importance\": 0.6, \"temporal\": \"moment\", \"scope\": \"wide\", \"context\": \"banter\"}]",
+   "usage": {
+    "promptTokens": 150,
+    "completionTokens": 20,
+    "totalTokens": 170
+   }
+  },
+  {
+   "pass": "self",
+   "label": "Aria (she/her/her)",
+   "model": "dolphin-mixtral",
+   "response": "[{\"content\": \"I confessed the boiler frightens me.\", \"summary\": \"confessed boiler fear\", \"keywords\": [\"boiler\", \"fear\"], \"importance\": 0.7, \"temporal\": \"present\", \"scope\": \"wide\", \"context\": \"relationships\"}]",
+   "usage": {
+    "promptTokens": 140,
+    "completionTokens": 25,
+    "totalTokens": 165
+   }
+  },
+  {
+   "pass": "self",
+   "label": "Bram",
+   "model": "dolphin-mixtral",
+   "response": "[{\"content\": \"Bram resolved to move the hives indoors.\", \"summary\": \"resolved to move hives\", \"keywords\": [\"hives\"], \"importance\": 0.8, \"temporal\": \"future\", \"scope\": \"narrow\", \"context\": \"information\"}]",
+   "usage": {
+    "promptTokens": 130,
+    "completionTokens": 22,
+    "totalTokens": 152
+   }
+  },
+  {
+   "pass": "other",
+   "label": "Aria (she/her/her)",
+   "model": "dolphin-mixtral",
+   "response": "[{\"subjectIndex\": 1, \"content\": \"Bram promised Aria the first honey of the season.\", \"summary\": \"promised first honey\", \"keywords\": [\"honey\", \"promise\"], \"importance\": 0.6, \"temporal\": \"future\", \"scope\": \"wide\", \"context\": \"relationships\"}]",
+   "usage": {
+    "promptTokens": 160,
+    "completionTokens": 28,
+    "totalTokens": 188
+   }
+  },
+  {
+   "pass": "other",
+   "label": "Bram",
+   "model": "dolphin-mixtral",
+   "autonomous": true,
+   "response": "[]",
+   "usage": {
+    "promptTokens": 110,
+    "completionTokens": 2,
+    "totalTokens": 112
+   }
+  }
+ ],
+ "calls": [
+  {
+   "name": "main_turn",
+   "chatId": "1c000000-0000-4000-8000-00000000c4a7",
+   "projectId": "1d000000-0000-4000-8000-00000000d123",
+   "projectDescription": "The Clockwork Opera restoration.",
+   "chatContextSummary": null,
+   "cheapLLMSettings": {
+    "strategy": "PROVIDER_CHEAPEST",
+    "fallbackToLocal": false
+   },
+   "dangerSettings": {
+    "mode": "AUTO_ROUTE",
+    "uncensoredTextProfileId": "p-unc"
+   },
+   "isDangerousChat": false,
+   "memoryExtractionLimits": {
+    "enabled": true,
+    "maxPerHour": 4,
+    "softStartFraction": 0.5,
+    "softFloor": 0.55
+   },
+   "sourceMessageTimestamp": "2023-05-05T12:00:00.000Z",
+   "dryRun": false,
+   "inAutonomousRoom": false,
+   "participantIds": [
+    "dd000000-0000-4000-8000-00000000c4a5",
+    "aa000000-0000-4000-8000-00000000a21a",
+    "bb000000-0000-4000-8000-00000000b4a3",
+    "cc000000-0000-4000-8000-00000000ca55"
+   ],
+   "transcript": {
+    "turnOpenerMessageId": "1a000000-0000-4000-8000-00000000aaa1",
+    "userMessage": "Report, everyone. What changed today?",
+    "userCharacterId": "dd000000-0000-4000-8000-00000000c4a5",
+    "userCharacterName": "Charlie",
+    "userCharacterPronouns": {
+     "subject": "he",
+     "object": "him",
+     "possessive": "his"
+    },
+    "characterSlices": [
+     {
+      "characterId": "dd000000-0000-4000-8000-00000000c4a5",
+      "characterName": "Charlie",
+      "characterPronouns": {
+       "subject": "he",
+       "object": "him",
+       "possessive": "his"
+      },
+      "text": "Report, everyone. What changed today?",
+      "contributingMessageIds": [
+       "1a000000-0000-4000-8000-00000000aaa1"
+      ],
+      "isUserControlled": true
+     },
+     {
+      "characterId": "aa000000-0000-4000-8000-00000000a21a",
+      "characterName": "Aria",
+      "characterPronouns": {
+       "subject": "she",
+       "object": "her",
+       "possessive": "her"
+      },
+      "text": "I retuned the overture and fought the balcony draft.",
+      "contributingMessageIds": [
+       "1a000000-0000-4000-8000-00000000aaa2"
+      ]
+     },
+     {
+      "characterId": "bb000000-0000-4000-8000-00000000b4a3",
+      "characterName": "Bram",
+      "text": "The hives held. I wired a bell to the door.",
+      "contributingMessageIds": [
+       "1a000000-0000-4000-8000-00000000aaa3",
+       "1a000000-0000-4000-8000-00000000aaa4"
+      ]
+     },
+     {
+      "characterId": "cc000000-0000-4000-8000-00000000ca55",
+      "characterName": "Cass",
+      "text": "The underrails are quiet.",
+      "contributingMessageIds": [
+       "1a000000-0000-4000-8000-00000000aaa5"
+      ]
+     }
+    ],
+    "latestAssistantMessageId": "1a000000-0000-4000-8000-00000000aaa5"
+   }
+  },
+  {
+   "name": "autonomous_dry_run",
+   "chatId": "1c000000-0000-4000-8000-00000000c4a8",
+   "projectId": null,
+   "projectDescription": "   ",
+   "chatContextSummary": "Aria and Bram plot in the night salon.",
+   "cheapLLMSettings": {
+    "strategy": "PROVIDER_CHEAPEST",
+    "fallbackToLocal": false
+   },
+   "dangerSettings": {
+    "mode": "AUTO_ROUTE",
+    "uncensoredTextProfileId": "p-unc"
+   },
+   "isDangerousChat": true,
+   "memoryExtractionLimits": null,
+   "sourceMessageTimestamp": null,
+   "dryRun": true,
+   "inAutonomousRoom": true,
+   "participantIds": [
+    "aa000000-0000-4000-8000-00000000a21a",
+    "bb000000-0000-4000-8000-00000000b4a3"
+   ],
+   "transcript": {
+    "turnOpenerMessageId": null,
+    "userMessage": null,
+    "characterSlices": [
+     {
+      "characterId": "aa000000-0000-4000-8000-00000000a21a",
+      "characterName": "Aria",
+      "characterPronouns": {
+       "subject": "she",
+       "object": "her",
+       "possessive": "her"
+      },
+      "text": "The boiler again. I hate that I fear it.",
+      "contributingMessageIds": [
+       "1a000000-0000-4000-8000-00000000aaa6"
+      ]
+     },
+     {
+      "characterId": "bb000000-0000-4000-8000-00000000b4a3",
+      "characterName": "Bram",
+      "text": "Then the hives come indoors, and you get first honey.",
+      "contributingMessageIds": [
+       "1a000000-0000-4000-8000-00000000aaa7"
+      ]
+     }
+    ],
+    "latestAssistantMessageId": "1a000000-0000-4000-8000-00000000aaa7"
+   }
+  },
+  {
+   "name": "empty_turn",
+   "chatId": "1c000000-0000-4000-8000-00000000c4a8",
+   "projectId": null,
+   "projectDescription": null,
+   "chatContextSummary": null,
+   "cheapLLMSettings": {
+    "strategy": "PROVIDER_CHEAPEST",
+    "fallbackToLocal": false
+   },
+   "dangerSettings": null,
+   "isDangerousChat": false,
+   "memoryExtractionLimits": null,
+   "sourceMessageTimestamp": null,
+   "dryRun": false,
+   "inAutonomousRoom": false,
+   "participantIds": [],
+   "transcript": {
+    "turnOpenerMessageId": null,
+    "userMessage": "hello?",
+    "characterSlices": [],
+    "latestAssistantMessageId": null
+   }
+  }
+ ]
+}
