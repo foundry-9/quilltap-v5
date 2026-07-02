@@ -275,6 +275,11 @@ Track them to closure as their subsystem lands:
      real-DB differential `memory_housekeeping_tier2_equivalence`: per-op
      results + three table dumps; retention / stored-vector merge / cap
      passes, protection gate, dry run).
+   - The **completion half of the model boundary** (`model::completion`) —
+     **✅ done** (self-tests, like Unit 0.5): `CompletionProvider` at v4's
+     `provider.sendMessage` seam + `CannedCompletionProvider` keyed by the exact
+     call input (provider | model | temperature | messages JSON). The
+     oracle-side canned injection lands with the memory-processor differential.
    - Next: the model-dependent `memory-processor` extraction (tier-3 — canned
      completion injected both sides), and the gate's deferred
      `maybeEnqueueHousekeeping` watermark check (needs `background_jobs`

@@ -1249,9 +1249,18 @@ keyed by exact input text (fixed vector; explicit failures drive
 answer). The boundary is async (`-> impl Future + Send`) and consumers take a
 **generic** `P: EmbeddingProvider` (not a trait object), so the async-fn-in-trait
 return needs no boxing and the future stays `Send`. Three self-tests. The
-completion half joins as `model::completion` when chat orchestration lands. The
 v4-oracle-side canned injection (stubbing `generateEmbeddingForUser` to the same
 vector) is exercised end-to-end by **Unit 1's** memory-gate differential (below).
+The **completion half** is now also ported and green (`model::completion`,
+2026-07-02): `CompletionProvider` — the seam at v4's
+`provider.sendMessage(params, apiKey)` (the `LLMParams`/`LLMResponse` subset the
+cheap-LLM path consumes; API-key acquisition stays host-side, the
+temperature/uncensored fallbacks stay ported orchestration *inside* the
+differential) — plus `CannedCompletionProvider`, keyed by the exact call input
+(`canned_completion_key` = provider | model | temperature-or-`-` | the
+`[{role, content}]` JSON; failure entries carry their exact message so
+message-inspecting fallbacks can be driven). Five self-tests; the oracle-side
+injection lands with the memory-processor differential.
 
 Unit 1 — the **memory gate** — is also ported and green
 (`quilltap-core::services::memory_gate` + `db::vector_store`), the **first

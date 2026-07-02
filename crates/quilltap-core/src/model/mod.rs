@@ -9,16 +9,22 @@
 //! canonical-dump machinery diffs the resulting writes — any divergence is in
 //! *our* orchestration, not the model.
 //!
-//! Today the boundary covers **embeddings** (the memory gate's only model call —
-//! [`embedding`]). The **completion** half joins here as `model::completion` when
-//! the first completion-consuming service (chat orchestration) lands; the same
-//! canned-responder shape applies.
+//! The boundary has two halves: **embeddings** ([`embedding`] — the memory
+//! gate's model call) and **completions** ([`completion`] — the cheap-LLM task
+//! pipeline's model call, first consumed by the memory-processor extraction).
+//! Both follow the same canned-responder shape.
 //!
-//! Consumers take a generic `P: EmbeddingProvider` (not a trait object), so the
-//! async boundary method needs no boxing — see [`embedding::EmbeddingProvider`].
+//! Consumers take generic `P: EmbeddingProvider` / `C: CompletionProvider`
+//! parameters (not trait objects), so the async boundary methods need no boxing
+//! — see [`embedding::EmbeddingProvider`] / [`completion::CompletionProvider`].
 
+pub mod completion;
 pub mod embedding;
 
+pub use completion::{
+    CannedCompletionProvider, CompletionError, CompletionMessage, CompletionParams,
+    CompletionProvider, CompletionResponse, CompletionRole, CompletionUsage,
+};
 pub use embedding::{
     CannedEmbeddingProvider, EmbeddingError, EmbeddingPriority, EmbeddingProvider, EmbeddingResult,
 };

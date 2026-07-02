@@ -244,6 +244,26 @@ already-stored vector index against itself.
   Corpus-freshness note recorded: the "recent" seed dates age past the 6-month
   windows ~2026-12; refresh them when regenerating after that.
 
+Phase 3 — the completion half of the model boundary (`model::completion`),
+mirroring `model::embedding`'s shape. Native tier-3 infrastructure (like Unit
+0.5), so verified by self-tests; the v4-oracle-side canned injection lands with
+the memory-processor differential.
+
+- `model::completion`: `CompletionProvider` — the seam every completion call
+  goes through, sitting at v4's `provider.sendMessage(params, apiKey)` (the
+  `LLMParams`/`LLMResponse` subset the cheap-LLM path consumes: role+content
+  messages, model, optional temperature, maxTokens, strictMaxTokens, cacheKey,
+  profileParameters). Everything above the seam (the temperature fallback, the
+  uncensored-provider retry, response parsing) is ported orchestration that must
+  sit inside the differential; API-key acquisition stays host-side.
+- `CannedCompletionProvider`: a deterministic responder keyed by the exact call
+  input (`canned_completion_key` = provider | model | temperature-or-`-` | the
+  `[{role, content}]` JSON) → fixed response text + token usage. Unregistered
+  input errors rather than answering; failure entries carry their exact error
+  message so message-inspecting fallbacks can be driven deterministically. Five
+  self-tests (incl. temperature-presence and provider/model key separation, the
+  two fallback paths' key shapes).
+
 Docs — Phase 2 marked complete; Phase 3 kickoff drafted. Docs only, no crate
 source changed.
 
