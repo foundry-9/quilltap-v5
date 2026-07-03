@@ -40,6 +40,7 @@ pub mod memory_gate;
 pub mod memory_processor;
 pub mod memory_service;
 pub mod message_finalizer;
+pub mod orchestrator;
 pub mod participant_resolver;
 pub mod primary_stream;
 pub mod provider_failover;

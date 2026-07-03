@@ -689,6 +689,10 @@ where
         provider: Some(profile.provider.clone()),
         model_name: Some(profile.model_name.clone()),
         is_silent_message,
+        // Additive fields on the shared DonePayload (owned by chat_events); the
+        // finalizer's done frame never sets an empty-response marker.
+        empty_response: None,
+        empty_response_reason: None,
         reasoning_content: reasoning_content_omittable,
         reasoning_segments: done_reasoning_segments,
     }));

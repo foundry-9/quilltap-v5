@@ -236,8 +236,18 @@ Ordered by dependency; several are mutually independent once wave 2 lands:
   whisper-posting side effects behind a `BuildContextSeams` trait mirrored by
   the oracle mocks; per-unit deferrals listed in each module doc and the
   CLAUDE.md status).
-- Wave 3 remainder: **`processMessage` + `executeTurnChain`** (the
-  orchestrator spine; also picks up the finalizer's deferred summary-check
-  invocation and buildContext's `autonomousContextCap`/cached-compression
-  plumbing) — next.
+- **Wave 3 capstone: ported and green** (2026-07-02) — the **`processMessage`
+  spine + `executeTurnChain`** (`services::orchestrator`,
+  `orchestrator_tier3_equivalence`): the composition of every landed wave-1..3
+  service into the full send cycle, verified by the first end-to-end tier-3
+  differential (six cases; ordered event trace + three table dumps; the
+  finalizer's summary-check deferral closed here; unported subsystems as
+  `OrchestratorSeams` with gates banked). Two open items it discovered:
+  v4's **`buildMessageContext` wrapper** (`context-builder.service.ts` —
+  multi-char scene block, user-name prefix, whisper normalization; reduced to
+  a passthrough on both differential sides) is the remaining
+  orchestrator-family unit, and a **flagged chain-depth divergence** (v4
+  max-depths a non-continue single-LLM-char chain where the Rust spine stops
+  at `user_turn`) needs a dedicated chain-depth corpus to pin before
+  multi-turn chains are trusted.
 - Wave 4: scoped above, not started.

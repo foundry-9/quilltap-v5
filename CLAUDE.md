@@ -1656,11 +1656,43 @@ ported and green** (2026-07-02, two parallel agents):
   `autonomousContextCap`/cached-compression plumbing (the `processMessage`
   spine).
 
-The one remaining wave-3 unit is **`processMessage` + `executeTurnChain`**
-(the orchestrator spine, the first end-to-end tier-3 differential over a full
-canned turn; it also picks up the finalizer's deferred summary-check
-invocation and buildContext's `autonomousContextCap`/cached-compression
-plumbing) — then wave 4 (tools, providers,
+**The `processMessage` spine + `executeTurnChain` is now also ported and
+green** (`services::orchestrator`, `orchestrator_tier3_equivalence`) —
+completing the planned wave-3 roadmap. It composes the landed wave-1..3
+services into one full user-message → assistant-response cycle: participant +
+user-identity resolution → `build_context` → `run_primary_stream`
+(+ recovery/failover) → empty-response recovery →
+`finalize_message_response` → the finalizer-**deferred**
+`check_and_generate_summary_if_needed` invocation (CLOSED here, wired where
+v4 wires it) → `execute_turn_chain` re-entering `process_message` per turn
+(depth-20 / 300 s guards, clock injected; the
+`turnStart`/`turnComplete`/`chainComplete` frames + the empty-response done
+fields added to `chat_events`). The many unported subsystems it touches
+(attachment / tool / agent-mode / danger / courier / RNG / prospero-cadence /
+chat-settings read) are `OrchestratorSeams` with their v4 gates reproduced
+and banked inactive. The **first end-to-end tier-3 differential** drives v4's
+REAL send path over a six-case corpus (full single turn, continue-mode,
+empty-response retry, mid-stream preserve-partial, a summary-check firing a
+real fold, and a multi-character chain), mocking ONLY the model boundaries +
+out-of-scope subsystems (matching the Rust seams) and freezing
+`Date`/`Math.random`; the ordered event trace + `chats`/`chat_messages`/
+`background_jobs` dumps diff green (`message_finalizer` + `primary_stream`
+differentials re-verified). **Two open items discovered by this unit:**
+(1) v4's `buildMessageContext` wrapper (`context-builder.service.ts` — the
+multi-character scene block, the user-name message prefix, whisper
+filtering/normalization, final message formatting) sits between
+`processMessage` and `buildContext` and is NOT yet ported — both differential
+sides reduce it to a `build_context` passthrough; it is the remaining
+orchestrator-family unit. (2) A **flagged divergence to investigate**: in a
+non-continue single-LLM-character chat with a user participant, v4's chain
+max-depths (re-picks the sole LLM character for 20 turns) where the composed
+Rust spine stops at `user_turn` — identical ported `should_chain_next` /
+`select_next_speaker`, so it points at a turn-state input difference
+(possibly `spokenThisCycleParticipantIds` folding across chained turns, the
+`userParticipantId` plumbing, or an oracle-harness artifact); the corpus
+sidesteps it (continue-mode / deterministic chain stops), so it must be
+pinned by a dedicated chain-depth corpus before the send path is trusted on
+multi-turn chains. Then wave 4 (tools, providers,
 danger/agent/courier/confirmation, enclave) per the decomposition doc.
 
 **Drift catch-up (2026-07-01): the answer-confirmation columns.** v4 commit

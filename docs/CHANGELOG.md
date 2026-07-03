@@ -513,6 +513,28 @@ Phase 3 — chat orchestration wave 3, batch 2: the message finalizer and the
   the finalizer's deferred summary-check invocation and buildContext's
   autonomous-cap plumbing).
 
+Phase 3 — chat orchestration wave 3 capstone: the `processMessage` spine +
+`executeTurnChain` (`services::orchestrator`), completing the planned wave-3
+roadmap.
+
+- Composes every landed wave-1..3 service into the full user-message →
+  assistant-response cycle; the finalizer's deferred summary-check invocation
+  is closed here (wired where v4 wires it). `chat_events` gained the
+  `turnStart`/`turnComplete`/`chainComplete` frames and the empty-response
+  done fields. Unported subsystems (attachments, tools, agent mode, danger
+  reroute, courier, RNG, prospero cadence) are `OrchestratorSeams` with their
+  v4 gates reproduced and banked inactive.
+- First end-to-end tier-3 differential: six cases (full single turn,
+  continue-mode, empty-response retry, mid-stream preserve-partial, a real
+  summary fold, a multi-character chain) driving v4's real send path with
+  frozen clock/RNG; ordered event trace + chats/chat_messages/background_jobs
+  diffed; message-finalizer and primary-stream differentials re-verified.
+- Discovered and documented: v4's `buildMessageContext` wrapper
+  (context-builder.service.ts) is not yet ported (reduced to a passthrough on
+  both differential sides) — the remaining orchestrator-family unit; and a
+  chain-depth divergence on non-continue single-LLM-character chats is
+  flagged for a dedicated follow-up corpus.
+
 Docs — Phase 2 marked complete; Phase 3 kickoff drafted. Docs only, no crate
 source changed.
 

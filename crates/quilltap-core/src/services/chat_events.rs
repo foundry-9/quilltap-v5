@@ -190,6 +190,15 @@ pub struct DonePayload {
     /// recovery.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_silent_message: Option<bool>,
+    /// `true` on the orchestrator's **empty-response** done frame (v4
+    /// `emptyResponse: true`), else ABSENT. Only the empty-response terminal branch
+    /// of `processMessage` sets it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub empty_response: Option<bool>,
+    /// The empty-response reason string (v4 `emptyResponseReason`) — present only
+    /// alongside `empty_response`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub empty_response_reason: Option<String>,
     /// The full reasoning text (finalizer only) — ALWAYS present there as `null`
     /// or a string (`reasoningContent || null`); ABSENT on recovery.
     #[serde(skip_serializing_if = "Omittable::is_absent")]
@@ -246,6 +255,31 @@ pub enum ChatEvent {
         #[serde(rename = "confirmationResult")]
         confirmation_result: ConfirmationResultPayload,
     },
+    /// `{turnStart: true, participantId, characterName, chainDepth}` (v4
+    /// `encodeTurnStartEvent`). Emitted by `processMessage` (chainDepth 0, the
+    /// first-turn analog) and by the chain driver before each chained turn.
+    TurnStart {
+        #[serde(rename = "turnStart")]
+        turn_start: TrueBool,
+        #[serde(flatten)]
+        payload: TurnStartPayload,
+    },
+    /// `{turnComplete: true, participantId, messageId, chainDepth}` (v4
+    /// `encodeTurnCompleteEvent`). Emitted by the chain driver after a chained turn.
+    TurnComplete {
+        #[serde(rename = "turnComplete")]
+        turn_complete: TrueBool,
+        #[serde(flatten)]
+        payload: TurnCompletePayload,
+    },
+    /// `{chainComplete: true, reason, nextSpeakerId, chainDepth}` (v4
+    /// `encodeChainCompleteEvent`). Emitted by the chain driver when the chain ends.
+    ChainComplete {
+        #[serde(rename = "chainComplete")]
+        chain_complete: TrueBool,
+        #[serde(flatten)]
+        payload: ChainCompletePayload,
+    },
     /// `{done:true, …}` — the payload spreads flat next to `done: true`. Boxed:
     /// the full finalizer payload is by far the largest variant
     /// (clippy::large_enum_variant), and every event is heap-bound for the
@@ -257,6 +291,47 @@ pub enum ChatEvent {
         #[serde(flatten)]
         payload: Box<DonePayload>,
     },
+}
+
+/// A unit type that always serializes to the JSON literal `true` — the `turnStart`
+/// / `turnComplete` / `chainComplete` discriminator key (v4's `{ <key>: true, … }`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TrueBool;
+
+impl Serialize for TrueBool {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_bool(true)
+    }
+}
+
+/// The `turnStart` frame payload (v4 `encodeTurnStartEvent`'s `data`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TurnStartPayload {
+    pub participant_id: String,
+    pub character_name: String,
+    pub chain_depth: i64,
+}
+
+/// The `turnComplete` frame payload (v4 `encodeTurnCompleteEvent`'s `data`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TurnCompletePayload {
+    pub participant_id: String,
+    /// v4 passes `chainResult.messageId || ''` — the empty string on a null id.
+    pub message_id: String,
+    pub chain_depth: i64,
+}
+
+/// The `chainComplete` frame payload (v4 `encodeChainCompleteEvent`'s `data`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChainCompletePayload {
+    /// The v4 chain-stop reason string (`user_turn` / `paused` / `max_depth` /
+    /// `max_time` / `error` / `no_next_speaker` / `cycle_complete`).
+    pub reason: String,
+    pub next_speaker_id: Option<String>,
+    pub chain_depth: i64,
 }
 
 /// A unit type that always serializes to the JSON literal `true`, so
@@ -309,6 +384,30 @@ impl ChatEvent {
     pub fn confirmation_result(confirmation_result: ConfirmationResultPayload) -> Self {
         ChatEvent::ConfirmationResult {
             confirmation_result,
+        }
+    }
+
+    /// A `turnStart` event.
+    pub fn turn_start(payload: TurnStartPayload) -> Self {
+        ChatEvent::TurnStart {
+            turn_start: TrueBool,
+            payload,
+        }
+    }
+
+    /// A `turnComplete` event.
+    pub fn turn_complete(payload: TurnCompletePayload) -> Self {
+        ChatEvent::TurnComplete {
+            turn_complete: TrueBool,
+            payload,
+        }
+    }
+
+    /// A `chainComplete` event.
+    pub fn chain_complete(payload: ChainCompletePayload) -> Self {
+        ChatEvent::ChainComplete {
+            chain_complete: TrueBool,
+            payload,
         }
     }
 }
@@ -469,6 +568,8 @@ mod tests {
             provider: Some("ANTHROPIC".into()),
             model_name: Some("claude".into()),
             is_silent_message: Some(true),
+            empty_response: None,
+            empty_response_reason: None,
             reasoning_content: Omittable::Null,
             reasoning_segments: Omittable::Value(vec![DoneReasoningSegment {
                 anchor_offset: 5,
@@ -503,6 +604,70 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&ev).unwrap(),
             json!({ "carinaAnswer": msg })
+        );
+    }
+
+    #[test]
+    fn turn_frames_serialize_as_v4_single_key_frames() {
+        assert_eq!(
+            serde_json::to_value(ChatEvent::turn_start(TurnStartPayload {
+                participant_id: "p1".into(),
+                character_name: "Friday".into(),
+                chain_depth: 0,
+            }))
+            .unwrap(),
+            json!({ "turnStart": true, "participantId": "p1", "characterName": "Friday", "chainDepth": 0 })
+        );
+        assert_eq!(
+            serde_json::to_value(ChatEvent::turn_complete(TurnCompletePayload {
+                participant_id: "p1".into(),
+                message_id: "m1".into(),
+                chain_depth: 1,
+            }))
+            .unwrap(),
+            json!({ "turnComplete": true, "participantId": "p1", "messageId": "m1", "chainDepth": 1 })
+        );
+        assert_eq!(
+            serde_json::to_value(ChatEvent::chain_complete(ChainCompletePayload {
+                reason: "cycle_complete".into(),
+                next_speaker_id: None,
+                chain_depth: 2,
+            }))
+            .unwrap(),
+            json!({ "chainComplete": true, "reason": "cycle_complete", "nextSpeakerId": null, "chainDepth": 2 })
+        );
+    }
+
+    #[test]
+    fn empty_response_done_carries_the_reason() {
+        let ev = ChatEvent::done(DonePayload {
+            message_id: None,
+            participant_id: Some("p1".into()),
+            usage: None,
+            cache_usage: None,
+            attachment_results: None,
+            tools_executed: false,
+            empty_response: Some(true),
+            empty_response_reason: Some("empty".into()),
+            provider: Some("ANTHROPIC".into()),
+            model_name: Some("claude".into()),
+            ..Default::default()
+        });
+        assert_eq!(
+            serde_json::to_value(&ev).unwrap(),
+            json!({
+                "done": true,
+                "messageId": null,
+                "participantId": "p1",
+                "usage": null,
+                "cacheUsage": null,
+                "attachmentResults": null,
+                "toolsExecuted": false,
+                "emptyResponse": true,
+                "emptyResponseReason": "empty",
+                "provider": "ANTHROPIC",
+                "modelName": "claude"
+            })
         );
     }
 
