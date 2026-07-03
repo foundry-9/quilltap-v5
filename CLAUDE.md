@@ -1859,6 +1859,53 @@ new `instance_settings` reader. Landed:
   pinned BEFORE the sort, else it perturbs same-store file ordering. See
   `[[wardrobe-transfers-remap-gotcha]]`.
 
-The rest of wave 4 (tool subsystem, danger, answer-confirmation,
+**Wave 4 (W4.1a): the RNG subsystem is DONE** (2026-07-03), the first sub-unit of
+the tool subsystem. v4's pre-message RNG auto-detect path — scan the user message
+for dice/coin/bottle patterns, execute them, and write TOOL messages into the
+chat *before* the model turn — is ported end to end, closing the orchestrator's
+`user_message_rng` seam. Three sub-units:
+
+- The **pure detector** (`quilltap-core::rng_patterns`, `rng_patterns_equivalence`,
+  54 cases) — v4's `rng-pattern-detector.service`
+  (`detect_rng_patterns`/`convert_patterns_to_tool_calls`/
+  `detect_and_convert_rng_patterns`). The three regexes reproduce JS fidelity:
+  ASCII `\b`/`\d` via `(?-u:\b)`/`[0-9]`, the JS-`.` line-terminator exclusion
+  (`[^\n\r\u{2028}\u{2029}]`), the coin `flip.{1,3}coin` 1–3-char quirk ("flip a
+  coin" matches, "flip the coin" does NOT), and the spin-bottle `{0,50}` bound.
+  Tier-1 differential over both the detected patterns and the converted tool
+  calls, banking bounds rejections (`d1`/`d1001`/`101d6`/overflow), non-ASCII
+  adjacency, and a ReDoS adversarial string. `RngType` serializes back to v4's
+  number-or-string union (a bare number for dice).
+- The **executor** (`quilltap-core::tools::rng`, `rng_executor_equivalence`, 14
+  cases) — v4's `rng-handler` (`execute_rng_tool` / `secure_random_int` /
+  `roll_dice` / `flip_coin` / `spin_the_bottle` / `format_rng_results` + the Zod
+  input validation). The randomness source is an **injected byte stream**
+  (`RandomBytes` trait — production `OsRandomBytes` over `getrandom`; the
+  differential replays a committed sequence), so `secureRandomInt`'s
+  rejection-sampling *variable-length* byte consumption is itself part of what the
+  diff proves (the `random01`-injection precedent extended to a byte stream). The
+  differential drives v4's REAL `executeRngTool` against a real fixture DB (spin
+  resolves participant names through the ported repos, filtering `isActive`) under
+  a jest-real-DB oracle with **only `crypto.randomBytes` pinned**, diffing the
+  `RngToolOutput` + the formatted string + asserting byte-exact stream consumption
+  (a rejection-sampling-rejects case included both for dice and spin).
+- The **orchestrator seam closure**: the ported detector + executor now run inline
+  in `process_message` (the seam removed), writing a TOOL message per detected
+  pattern — the content JSON a typed struct in v4's field order
+  (`{tool, initiatedBy:'auto-detect', success, result, prompt, arguments:{type,
+  rolls}}`), byte-identical — and appending it to `existing_messages` so the model
+  turn sees the results. The byte source is injected via
+  `OrchestratorDeps::rng_bytes`. The tier-3 corpus gained three cases (`rng_dice`
+  → one dice TOOL row, `rng_two_patterns` → dice-then-coin ordering, `rng_no_fire`
+  → a rejected-pattern content writing nothing) and `autoDetectRng` was flipped ON
+  globally (a per-user setting; existing corpus content carries no RNG patterns,
+  so they no-op); `orchestrator_tier3_equivalence` re-verified green whole. **New
+  gotcha:** a jest `crypto` mock must NOT set `__esModule: true` / an explicit
+  `default` — that nulls the default import `import crypto from 'crypto'` the vault
+  overlay uses (→ `createHash` undefined); spread the real module and override only
+  `randomBytes` (see `[[jest-crypto-randombytes-mock]]`).
+
+The rest of wave 4 (the remaining tool subsystem — tool loops / `buildTools` /
+registry, the finalizer's response-RNG — danger, answer-confirmation,
 courier/agent-mode/compression-cache/regenerate-swipe, carina query, buildContext
 seam-closers, provider manifest) follows per the chat-orchestration decomposition.

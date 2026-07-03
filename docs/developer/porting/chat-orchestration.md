@@ -335,7 +335,15 @@ Ordered by dependency; several are mutually independent once wave 2 lands:
   General/project tiers, and `services::wardrobe_transfers` (move/copy across
   tiers), each with a differential (`wardrobe_public_read_equivalence`,
   re-verified `vault_wardrobe_read`/`vault_wardrobe_public`,
-  `wardrobe_transfers_tier2_equivalence`). The rest of wave 4 (tool subsystem,
-  danger, answer-confirmation, courier/agent-mode/compression-cache/
-  regenerate-swipe, carina query, buildContext seam-closers, provider manifest)
-  is scoped above, not started.
+  `wardrobe_transfers_tier2_equivalence`).
+- Wave 4: **W4.1a (the RNG subsystem) is done** — the first sub-unit of the tool
+  subsystem. The pure detector (`rng_patterns`), the executor with an injected
+  byte-stream RNG (`tools::rng`), and the orchestrator `user_message_rng` seam
+  closure, each with a differential (`rng_patterns_equivalence`,
+  `rng_executor_equivalence`, and three new cases in
+  `orchestrator_tier3_equivalence`). Explicitly out of scope (later W4.1
+  sub-units): the finalizer's response-RNG, the tool loops, `buildTools`, and the
+  `rng` tool's appearance in any tool slate. The rest of wave 4 (the remaining
+  tool subsystem, danger, answer-confirmation, courier/agent-mode/
+  compression-cache/regenerate-swipe, carina query, buildContext seam-closers,
+  provider manifest) is scoped above, not started.

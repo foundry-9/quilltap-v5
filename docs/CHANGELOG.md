@@ -599,6 +599,41 @@ items the wave-3 capstone flagged.
   `commonplace_strip`, `opaque_swap` vs `transparent_no_swap`, and
   `tool_whisper_filter`. `orchestrator_tier3_equivalence` re-verified green.
 
+Phase 3 — wave 4 (W4.1a): the RNG subsystem. v4's pre-message RNG auto-detect
+path — scan the user message for dice/coin/bottle patterns, execute them, write
+TOOL messages into the chat before the model turn — is ported and verified end
+to end, closing the orchestrator's `user_message_rng` seam.
+
+- `rng_patterns` (pure): v4's `rng-pattern-detector.service` —
+  `detect_rng_patterns` / `convert_patterns_to_tool_calls` /
+  `detect_and_convert_rng_patterns`. The three regexes reproduce JS fidelity:
+  ASCII `\b`/`\d` via `(?-u:\b)`/`[0-9]`, the JS-`.` line-terminator exclusion,
+  the "flip a coin" 1–3-char quirk (so "flip the coin" does NOT match), and the
+  spin-bottle `{0,50}` bound. Tier-1 differential (`rng_patterns_equivalence`, 54
+  cases) driving v4's real exports over both the detected patterns and the
+  converted tool calls, incl. bounds rejections, non-ASCII adjacency, and a ReDoS
+  adversarial string.
+- `tools::rng` (executor): v4's `rng-handler` — `execute_rng_tool` /
+  `secure_random_int` (rejection sampling) / `roll_dice` / `flip_coin` /
+  `spin_the_bottle` / `format_rng_results` + the Zod input validation. The
+  randomness source is an injected `RandomBytes` byte stream (production
+  `OsRandomBytes`; the differential replays a committed sequence), so
+  `secureRandomInt`'s variable-length byte consumption is itself part of what the
+  diff proves. `RngType` serializes back to v4's number-or-string union.
+  Differential (`rng_executor_equivalence`, 14 cases) drives v4's real
+  `executeRngTool` against a real fixture DB (spin resolves participant names
+  through the repos) with `crypto.randomBytes` pinned, diffing the output + the
+  formatted string + asserting byte-exact stream consumption.
+- Orchestrator seam closed: the ported detector + executor run inline in
+  `process_message`, writing a TOOL message per detected pattern (byte-identical
+  content JSON in v4's field order) and appending it to the context so the model
+  turn sees the results. The byte source is injected via
+  `OrchestratorDeps::rng_bytes`. The `user_message_rng` seam method was removed.
+  The tier-3 corpus gained three cases (`rng_dice`, `rng_two_patterns`,
+  `rng_no_fire`) and `autoDetectRng` was flipped on globally (a per-user setting;
+  existing content carries no patterns, so they no-op); the whole
+  `orchestrator_tier3_equivalence` corpus re-verified green.
+
 Phase 3 — wave 4 (W4.0): the wardrobe drift batch. The public wardrobe READ
 trio, the General/project shared-archetype tier, and the wardrobe transfers
 service are all ported and verified — closing the 2026-07-03 drift-check's

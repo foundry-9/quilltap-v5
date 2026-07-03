@@ -25,7 +25,7 @@
       "fallbackToLocal": false
     },
     "compressionEnabled": false,
-    "autoDetectRng": false,
+    "autoDetectRng": true,
     "answerConfirmationEnabled": false,
     "dangerMode": "DETECT_ONLY"
   },
@@ -558,6 +558,66 @@
           "participantId": "d50a0005-0000-4000-8000-0000000000a5"
         }
       ]
+    },
+    {
+      "id": "e1000001-0000-4000-8000-000000000001",
+      "chatType": "salon",
+      "contextSummary": null,
+      "participants": [
+        {
+          "id": "e10a0001-0000-4000-8000-0000000000a1",
+          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "e10b0001-0000-4000-8000-0000000000b1",
+          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": []
+    },
+    {
+      "id": "e2000002-0000-4000-8000-000000000002",
+      "chatType": "salon",
+      "contextSummary": null,
+      "participants": [
+        {
+          "id": "e20a0002-0000-4000-8000-0000000000a2",
+          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "e20b0002-0000-4000-8000-0000000000b2",
+          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": []
+    },
+    {
+      "id": "e3000003-0000-4000-8000-000000000003",
+      "chatType": "salon",
+      "contextSummary": null,
+      "participants": [
+        {
+          "id": "e30a0003-0000-4000-8000-0000000000a3",
+          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "e30b0003-0000-4000-8000-0000000000b3",
+          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": []
     }
   ],
   "calls": [
@@ -700,6 +760,39 @@
       "cheapLLMSettings": false,
       "summaryCheck": false,
       "respondingParticipant": "d50a0005-0000-4000-8000-0000000000a5"
+    },
+    {
+      "name": "rng_dice",
+      "kind": "chain",
+      "chatId": "e1000001-0000-4000-8000-000000000001",
+      "content": "Roll 2d6 for initiative.",
+      "continueMode": false,
+      "streamLabel": "rng_dice",
+      "cheapLLMSettings": false,
+      "summaryCheck": false,
+      "rngBytes": [3, 4]
+    },
+    {
+      "name": "rng_two_patterns",
+      "kind": "chain",
+      "chatId": "e2000002-0000-4000-8000-000000000002",
+      "content": "Flip a coin then roll d20.",
+      "continueMode": false,
+      "streamLabel": "rng_two",
+      "cheapLLMSettings": false,
+      "summaryCheck": false,
+      "rngBytes": [9, 0]
+    },
+    {
+      "name": "rng_no_fire",
+      "kind": "chain",
+      "chatId": "e3000003-0000-4000-8000-000000000003",
+      "content": "Let's flip the coin, not d1.",
+      "continueMode": false,
+      "streamLabel": "rng_no_fire",
+      "cheapLLMSettings": false,
+      "summaryCheck": false,
+      "rngBytes": []
     }
   ],
   "streams": {
@@ -1201,6 +1294,51 @@
             "promptTokens": 13,
             "completionTokens": 4,
             "totalTokens": 17
+          }
+        }
+      ]
+    ],
+    "rng_dice": [
+      [
+        {
+          "content": "Friday reads the dice and nods."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 22,
+            "completionTokens": 6,
+            "totalTokens": 28
+          }
+        }
+      ]
+    ],
+    "rng_two": [
+      [
+        {
+          "content": "Friday marks the coin and the die."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 24,
+            "completionTokens": 6,
+            "totalTokens": 30
+          }
+        }
+      ]
+    ],
+    "rng_no_fire": [
+      [
+        {
+          "content": "Friday considers the request plainly."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 15,
+            "completionTokens": 5,
+            "totalTokens": 20
           }
         }
       ]

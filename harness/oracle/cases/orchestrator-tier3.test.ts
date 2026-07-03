@@ -99,6 +99,8 @@ interface CallSpec {
   summaryCheck: boolean;
   respondingParticipant?: string;
   expectThrow?: boolean;
+  /** The committed byte stream for RNG auto-detect (mirrors the Rust FixedBytes). */
+  rngBytes?: number[];
 }
 interface Spec {
   testPepperBase64: string;
@@ -158,6 +160,10 @@ async function main(): Promise<void> {
   // The current call's stream label (steered per-call so the streamMessage mock
   // pops the right attempt sequence).
   let currentLabel: string | undefined;
+  // The current call's RNG byte stream (steered per-call for the crypto.randomBytes
+  // mock; the RNG auto-detect executor draws from here).
+  let currentRngBytes: number[] = [];
+  let rngCursor = 0;
 
   jest.resetModules();
   const cipherDriverPath = require('node:path').join(
@@ -456,9 +462,27 @@ async function main(): Promise<void> {
       },
     };
   });
-  jest.doMock('@/lib/services/chat-message/rng-pattern-detector.service', () => {
-    const actual = jest.requireActual('@/lib/services/chat-message/rng-pattern-detector.service');
-    return { __esModule: true, ...actual, detectAndConvertRngPatterns: () => [] };
+  // RNG auto-detect (W4.1a) now runs v4's REAL detector + executor (no mock). Pin
+  // ONLY `crypto.randomBytes` to each call's committed byte stream (mirrored by the
+  // Rust FixedBytes). No `__esModule: true` / explicit `default`, so esModuleInterop
+  // keeps `import crypto from 'crypto'` (default import) intact — and randomUUID /
+  // createHash stay real (id minting, the vault overlay's SHA). On exhaustion it
+  // delegates to the real randomBytes, so any non-RNG consumer is unaffected; RNG
+  // cases size their committed bytes exactly (no rejections) so they never exhaust.
+  jest.doMock('crypto', () => {
+    const actual = jest.requireActual('crypto');
+    return {
+      ...actual,
+      randomBytes: (n: number) => {
+        const end = rngCursor + n;
+        if (end > currentRngBytes.length) {
+          return actual.randomBytes(n);
+        }
+        const slice = currentRngBytes.slice(rngCursor, end);
+        rngCursor = end;
+        return Buffer.from(slice);
+      },
+    };
   });
   jest.doMock('@/lib/services/cost-estimation.service', () => {
     const actual = jest.requireActual('@/lib/services/cost-estimation.service');
@@ -566,6 +590,8 @@ async function main(): Promise<void> {
 
   for (const call of spec.calls) {
     currentLabel = call.streamLabel;
+    currentRngBytes = call.rngBytes ?? [];
+    rngCursor = 0;
 
     const events: unknown[] = [];
     let threw = false;

@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-core"
-version = "0.0.93"
+version = "0.0.94"
 edition = "2021"
 publish = false
 
@@ -53,6 +53,11 @@ hex = "0.4"               # hex <-> bytes for the .dbkey fields
 # v4 UUIDs: repo `_create` mints ids via `crypto.randomUUID()` (RFC-4122 v4)
 # when not pinned. The non-sync create path uses this; sync/fixtures pin the id.
 uuid = { version = "1", features = ["v4"] }
+
+# OS CSPRNG for the RNG tool's production byte source (`tools::rng::OsRandomBytes`
+# — the same source `crypto.randomBytes` draws from). Differential runs inject a
+# fixed byte stream instead, so this is exercised only on the production path.
+getrandom = "0.2"
 
 # ICU4X collation — faithful `String.prototype.localeCompare()` (no-arg) ordering
 # for the port's `localeCompare` sites (compareVersions fallback, canonicalize

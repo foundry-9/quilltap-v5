@@ -36,11 +36,16 @@
 //!   non-empty. The corpus keeps `fileIds` empty → no-op (no processing status,
 //!   no attachment prefix, no file links). A `fileIds`-carrying turn is a
 //!   documented deferral (the attachment subsystem is wave-4).
-//! * **Pending tool results / RNG auto-detect / carina markup on the user
-//!   message**: gated on `!continueMode && content`. The corpus keeps the user
-//!   content free of RNG patterns / carina markup and passes no pending tool
-//!   results, so each detector returns "none" and writes nothing (the
-//!   [`OrchestratorSeams`] `user_message_rng` / `user_message_carina` methods).
+//! * **RNG auto-detect on the user message** (W4.1a): gated on
+//!   `autoDetectRng ?? true`, `!continueMode`, and content. This seam is now
+//!   CLOSED — the ported [`crate::rng_patterns`] detector +
+//!   [`crate::tools::rng`] executor run inline, writing a TOOL message per
+//!   detected pattern and appending it to the context (the byte source injected
+//!   via [`OrchestratorDeps::rng_bytes`]).
+//! * **Pending tool results / carina markup on the user message**: gated on
+//!   `!continueMode && content`. The corpus keeps the user content free of carina
+//!   markup and passes no pending tool results, so each detector returns "none"
+//!   and writes nothing (the [`OrchestratorSeams`] `user_message_carina` method).
 //! * **Agent mode / danger / courier**: the corpus keeps agent mode off, danger
 //!   mode `DETECT_ONLY` (no reroute), and the transport non-courier — so the
 //!   agent-turn-count reset, the danger reroute, and the courier short-circuit
@@ -87,6 +92,7 @@ use crate::db::{chats_messages_read, chats_read, DbError};
 use crate::model::completion::{CompletionMessage, CompletionProvider, CompletionRole};
 use crate::model::embedding::EmbeddingProvider;
 use crate::model::stream::{StreamParams, StreamingCompletionProvider};
+use crate::rng_patterns::detect_and_convert_rng_patterns;
 use crate::services::build_context::{self, BuildContextInput, BuildContextSeams, BuiltContext};
 use crate::services::carina_runner::{PostProsperoCarinaError, RunCarinaQuery};
 use crate::services::chat_events::{
@@ -111,6 +117,31 @@ use crate::services::provider_failover::{
 use crate::services::turn_orchestrator::{
     self, ChainConfig, ChainDecision, ChainGuards, ChainReason,
 };
+use crate::tools::rng::{
+    execute_rng_tool, format_rng_results, RandomBytes, RngToolContext, RngType,
+};
+
+/// The TOOL-message `content` JSON for an auto-detected RNG execution (v4's
+/// `JSON.stringify({ tool, initiatedBy, success, result, prompt, arguments })`).
+/// A typed struct in v4's field order so the stored bytes are byte-identical.
+#[derive(serde::Serialize)]
+struct RngToolMessageContent<'a> {
+    tool: &'static str,
+    #[serde(rename = "initiatedBy")]
+    initiated_by: &'static str,
+    success: bool,
+    result: &'a str,
+    prompt: &'a str,
+    arguments: RngArguments,
+}
+
+/// The `arguments` object of an RNG TOOL message (v4 `{ type, rolls }`).
+#[derive(serde::Serialize)]
+struct RngArguments {
+    #[serde(rename = "type")]
+    type_: RngType,
+    rolls: u32,
+}
 
 // ===========================================================================
 // The injected seams (unported subsystems `processMessage` touches).
@@ -134,13 +165,6 @@ pub trait OrchestratorSeams {
     /// corpus keeps `fileIds` empty.
     fn process_files(&self, file_ids: &[String]) -> FileProcessingResult {
         FileProcessingResult::default()
-    }
-
-    /// v4's per-message RNG auto-detect on the USER message
-    /// (`detectAndConvertRngPatterns`). Default: no patterns. Fired only when
-    /// `autoDetectRng && content`.
-    fn user_message_rng(&self, content: &str) -> bool {
-        false
     }
 
     /// v4's Prospero cadence context re-injection whisper post. Fired only on a
@@ -321,6 +345,10 @@ pub struct OrchestratorDeps<
     pub carina_query: &'a mut CARQ,
     /// The finalizer's Prospero-carina-error post seam.
     pub prospero: &'a mut PROS,
+    /// The RNG auto-detect byte source (v4's `crypto.randomBytes`). Production
+    /// draws from the OS CSPRNG ([`crate::tools::rng::OsRandomBytes`]); the
+    /// differential injects a fixed committed stream.
+    pub rng_bytes: &'a mut dyn RandomBytes,
 }
 
 /// v4 `processMessage`. The main send-path spine. Composes the ported services,
@@ -578,16 +606,59 @@ where
         .process_files(&input.options.file_ids);
 
     // --- RNG auto-detect on the user message (orchestrator.service.ts:587–625) ---
-    // Gated on autoDetectRng && !continueMode && content. The corpus keeps the
-    // content pattern-free → no tool messages written.
+    // Gated on `autoDetectRng ?? true`, `!continueMode`, and non-empty content.
+    // Each detected pattern is executed and written as a TOOL message, then
+    // appended to `existing_messages` so the model turn sees the results in
+    // context (v4 appends to `existingMessages`, which was loaded above).
     let auto_detect_rng = chat_settings
         .as_ref()
         .map(|s| s.auto_detect_rng)
         .unwrap_or(true);
     if auto_detect_rng && !is_continue_mode && !input.options.content.is_empty() {
-        let _ = deps
-            .orchestrator_seams
-            .user_message_rng(&input.options.content);
+        let rng_calls = detect_and_convert_rng_patterns(&input.options.content);
+        for call in &rng_calls {
+            let rng_ctx = RngToolContext {
+                user_id: user_id.clone(),
+                chat_id: chat_id.clone(),
+            };
+            let rng_input = json!({ "type": call.type_, "rolls": call.rolls });
+            let output = execute_rng_tool(db, &rng_input, &rng_ctx, deps.rng_bytes)?;
+            let formatted = format_rng_results(&output);
+
+            // The TOOL message content — byte-exact JSON in v4's field order.
+            let content_str = serde_json::to_string(&RngToolMessageContent {
+                tool: "rng",
+                initiated_by: "auto-detect",
+                success: output.success,
+                result: &formatted,
+                prompt: &call.match_text,
+                arguments: RngArguments {
+                    type_: call.type_,
+                    rolls: call.rolls,
+                },
+            })
+            .map_err(|e| DbError::Key(format!("rng tool content marshal: {e}")))?;
+
+            let tool_id = uuid::Uuid::new_v4().to_string();
+            let now = crate::clock::iso_from_unix_ms(input.clock.now_ms);
+            let mut msg = serde_json::Map::new();
+            msg.insert("id".into(), json!(tool_id));
+            msg.insert("type".into(), json!("message"));
+            msg.insert("role".into(), json!("TOOL"));
+            msg.insert("content".into(), json!(content_str));
+            msg.insert("createdAt".into(), json!(now));
+            msg.insert("attachments".into(), json!([]));
+            let msg_value = Value::Object(msg);
+
+            let write_chat_id = chat_id.clone();
+            let event: crate::db::chats_messages::ChatEventInput =
+                serde_json::from_value(msg_value.clone())
+                    .map_err(|e| DbError::Key(format!("rng tool message marshal: {e}")))?;
+            db.write(move |w| w.main().chat_messages().add_message(&write_chat_id, &event))
+                .await?;
+            // Include in context building (existing_messages was loaded above).
+            existing_messages.push(msg_value);
+        }
     }
 
     // --- Save the user message (orchestrator.service.ts:627–685) ---
@@ -1776,6 +1847,7 @@ mod tests {
             let mut cost = message_finalizer::NoCostTracking;
             let mut carina = NoChainCarina;
             let mut prospero = crate::services::carina_runner::ClosureProspero(prospero_fn);
+            let mut rng_bytes = crate::tools::rng::FixedBytes::new(vec![]);
             let mut deps = OrchestratorDeps {
                 db: &db,
                 embedding: &embedding,
@@ -1792,6 +1864,7 @@ mod tests {
                 cost: &mut cost,
                 carina_query: &mut carina,
                 prospero: &mut prospero,
+                rng_bytes: &mut rng_bytes,
             };
             execute_turn_chain(
                 &mut deps,

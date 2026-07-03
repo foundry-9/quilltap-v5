@@ -90,6 +90,10 @@ struct CallW {
     #[serde(rename = "summaryCheck")]
     #[allow(dead_code)]
     summary_check: bool,
+    /// The committed RNG byte stream (auto-detect); mirrors the oracle's
+    /// crypto.randomBytes mock. Absent → empty.
+    #[serde(default)]
+    rng_bytes: Vec<u8>,
 }
 
 #[derive(Deserialize)]
@@ -473,6 +477,7 @@ fn orchestrator_tier3_matches_oracle() {
         let mut cost = quilltap_core::services::message_finalizer::NoCostTracking;
         let mut carina_query = orchestrator_carina::NoCarina;
         let mut prospero = ClosureProspero(|_a| Ok(()));
+        let mut rng_bytes = quilltap_core::tools::rng::FixedBytes::new(call.rng_bytes.clone());
         let orchestrator_seams = HarnessOrchestratorSeams {
             cheap_llm_settings: call.cheap_llm_settings,
         };
@@ -493,6 +498,7 @@ fn orchestrator_tier3_matches_oracle() {
             cost: &mut cost,
             carina_query: &mut carina_query,
             prospero: &mut prospero,
+            rng_bytes: &mut rng_bytes,
         };
 
         let make_input = |chat_id: &str, content: &str, continue_mode: bool, resp: Option<&str>| {
@@ -830,8 +836,8 @@ struct HarnessOrchestratorSeams {
 impl orchestrator::OrchestratorSeams for HarnessOrchestratorSeams {
     fn chat_settings(&self, _user_id: &str) -> Option<OrchestratorChatSettings> {
         // The fixture's SINGLE chat_settings row is shared by every chat — it has
-        // `cheapLLMSettings` present, compression off, autoDetectRng off, and
-        // answer-confirmation off (interval 5). `cheap_llm_settings_present` is
+        // `cheapLLMSettings` present, compression off, autoDetectRng ON (W4.1a),
+        // and answer-confirmation off (interval 5). `cheap_llm_settings_present` is
         // therefore true for EVERY call (it gates memory extraction — which v4
         // fires for every turn — and the summary check, which additionally needs
         // interchange > 10, reached only by `summary_fold`). The per-call
@@ -842,7 +848,10 @@ impl orchestrator::OrchestratorSeams for HarnessOrchestratorSeams {
             cheap_llm_settings_present: true,
             compression_enabled: false,
             project_context_reinject_interval: 5,
-            auto_detect_rng: false,
+            // autoDetectRng is a per-USER setting (the fixture's single row); flipped
+            // true in W4.1a. Existing corpus content carries no RNG patterns, so it
+            // fires only for the three rng_* cases.
+            auto_detect_rng: true,
             answer_confirmation_global_enabled: false,
         })
     }

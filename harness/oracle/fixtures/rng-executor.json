@@ -1,0 +1,125 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+  "seedTimestamp": "2026-01-02T03:04:05.000Z",
+  "missingChatId": "de1e7ed0-0000-4000-8000-000000000000",
+  "characters": [
+    { "id": "969a21df-73ad-465f-8f6c-2bc52d90ddc6", "name": "Friday", "controlledBy": "llm" },
+    { "id": "a990117b-2f44-466f-a853-6b4d4c2db52d", "name": "Jeeves", "controlledBy": "llm" },
+    { "id": "c1000001-0000-4000-8000-000000000011", "name": "Clara", "controlledBy": "llm" },
+    { "id": "d2000002-0000-4000-8000-000000000022", "name": "Silent", "controlledBy": "llm" }
+  ],
+  "chats": [
+    {
+      "id": "9fe3f87b-3833-46a9-bc1e-a88fc43dee6b",
+      "chatType": "salon",
+      "participants": [
+        { "id": "e3e3e97c-5216-40b1-b2b9-a8f139bf22ab", "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6" },
+        { "id": "a3a3a97c-5216-40b1-b2b9-a8f139bf2200", "character": "a990117b-2f44-466f-a853-6b4d4c2db52d" },
+        { "id": "c3c3c97c-5216-40b1-b2b9-a8f139bf2211", "character": "c1000001-0000-4000-8000-000000000011" },
+        { "id": "d3d3d97c-5216-40b1-b2b9-a8f139bf2222", "character": "d2000002-0000-4000-8000-000000000022", "isActive": false }
+      ]
+    },
+    {
+      "id": "0103c571-ea48-44d0-bbff-98402eb270a9",
+      "chatType": "salon",
+      "participants": [
+        { "id": "e4a43155-b1ed-4cc2-8ef6-44e5d9ffb430", "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6" }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "name": "dice_single",
+      "input": { "type": 6 },
+      "chatId": "9fe3f87b-3833-46a9-bc1e-a88fc43dee6b",
+      "bytes": [3]
+    },
+    {
+      "name": "dice_multi",
+      "input": { "type": 6, "rolls": 3 },
+      "chatId": "9fe3f87b-3833-46a9-bc1e-a88fc43dee6b",
+      "bytes": [0, 1, 2]
+    },
+    {
+      "name": "dice_rejection_sample",
+      "note": "d6 limit=252: 0xFF rejects (>=252), 0x05 accepts -> two bytes consumed",
+      "input": { "type": 6 },
+      "chatId": "9fe3f87b-3833-46a9-bc1e-a88fc43dee6b",
+      "bytes": [255, 5]
+    },
+    {
+      "name": "dice_two_byte_width",
+      "note": "d1000 needs 2 bytes (little-endian): [16,0]->16->17, [232,3]->1000->1",
+      "input": { "type": 1000, "rolls": 2 },
+      "chatId": "9fe3f87b-3833-46a9-bc1e-a88fc43dee6b",
+      "bytes": [16, 0, 232, 3]
+    },
+    {
+      "name": "coin_single",
+      "input": { "type": "flip_coin" },
+      "chatId": "9fe3f87b-3833-46a9-bc1e-a88fc43dee6b",
+      "bytes": [0]
+    },
+    {
+      "name": "coin_multi",
+      "input": { "type": "flip_coin", "rolls": 4 },
+      "chatId": "9fe3f87b-3833-46a9-bc1e-a88fc43dee6b",
+      "bytes": [0, 1, 2, 3]
+    },
+    {
+      "name": "bottle_single",
+      "note": "3 active participants (Friday,Jeeves,Clara); byte 0 -> index 0 -> Friday. Silent is isActive=false, filtered.",
+      "input": { "type": "spin_the_bottle" },
+      "chatId": "9fe3f87b-3833-46a9-bc1e-a88fc43dee6b",
+      "bytes": [0]
+    },
+    {
+      "name": "bottle_multi",
+      "input": { "type": "spin_the_bottle", "rolls": 3 },
+      "chatId": "9fe3f87b-3833-46a9-bc1e-a88fc43dee6b",
+      "bytes": [0, 1, 2]
+    },
+    {
+      "name": "bottle_rejection_sample",
+      "note": "spin over 3: limit=255. 0xFF rejects, 0xFE(254)%3+1=3 -> index 2 -> Clara",
+      "input": { "type": "spin_the_bottle" },
+      "chatId": "9fe3f87b-3833-46a9-bc1e-a88fc43dee6b",
+      "bytes": [255, 254]
+    },
+    {
+      "name": "bottle_single_participant",
+      "note": "one active participant -> fills each spin with that name, consuming NO bytes",
+      "input": { "type": "spin_the_bottle", "rolls": 2 },
+      "chatId": "0103c571-ea48-44d0-bbff-98402eb270a9",
+      "bytes": []
+    },
+    {
+      "name": "bottle_no_participants",
+      "note": "a chat id that does not exist -> [] -> error output",
+      "input": { "type": "spin_the_bottle" },
+      "chatId": "de1e7ed0-0000-4000-8000-000000000000",
+      "bytes": []
+    },
+    {
+      "name": "invalid_type_low",
+      "input": { "type": 1 },
+      "chatId": "9fe3f87b-3833-46a9-bc1e-a88fc43dee6b",
+      "bytes": []
+    },
+    {
+      "name": "invalid_type_echo",
+      "note": "an object with a bad 'type' echoes it in the failure output",
+      "input": { "type": "bogus" },
+      "chatId": "9fe3f87b-3833-46a9-bc1e-a88fc43dee6b",
+      "bytes": []
+    },
+    {
+      "name": "invalid_no_type",
+      "note": "no 'type' key -> failure output type defaults to 6",
+      "input": {},
+      "chatId": "9fe3f87b-3833-46a9-bc1e-a88fc43dee6b",
+      "bytes": []
+    }
+  ]
+}
