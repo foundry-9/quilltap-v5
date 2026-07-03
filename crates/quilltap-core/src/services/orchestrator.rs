@@ -94,6 +94,7 @@ use crate::services::chat_events::{
     TurnStartPayload,
 };
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use crate::services::message_context;
 use crate::services::message_finalizer::{
     self, AnswerConfirmationRunner, AsyncCompressionTrigger, CostTracker, FinalizeOptions,
     FinalizerCharacter, FinalizerChat, FinalizerChatSettings, FinalizerCompression,
@@ -193,6 +194,10 @@ pub struct FileProcessingResult {
     pub attached_file_ids: Vec<String>,
     /// v4 `messageContentPrefix` — prepended to the user message content.
     pub message_content_prefix: Option<String>,
+    /// v4 `attachmentsToSend` — the provider-supported attachments passed into
+    /// `buildMessageContext` (merged onto the last user message). The corpus keeps
+    /// this empty (the file subsystem is wave-4).
+    pub attachments_to_send: Vec<Value>,
 }
 
 // ===========================================================================
@@ -673,16 +678,78 @@ where
         bypass_compression,
     });
 
-    let built_context: BuiltContext = build_context::build_context(
+    // v4 `buildMessageContext` (context-builder.service.ts): the wrapper that runs
+    // the whisper pre-filters + `buildConversationMessages` above the buildContext
+    // call, then post-processes the result (provider name attribution, the Lantern
+    // image merge, the trailing-prefix injection, and the multi-character scene
+    // block). The per-character opaque-anywhere test reads each present character's
+    // `systemTransparency` (the responder from `character`, the rest from
+    // `participant_characters`).
+    let mut participant_transparency: HashMap<String, Option<bool>> = HashMap::new();
+    if is_multi_character {
+        if let Some(parts) = chat.get("participants").and_then(Value::as_array) {
+            for p in parts {
+                if p.get("type").and_then(Value::as_str) != Some("CHARACTER") {
+                    continue;
+                }
+                let Some(cid) = p
+                    .get("characterId")
+                    .and_then(Value::as_str)
+                    .filter(|c| !c.is_empty())
+                else {
+                    continue;
+                };
+                let status = p.get("status").and_then(Value::as_str).unwrap_or("active");
+                if status != "active" && status != "silent" {
+                    continue;
+                }
+                let transp = if cid == character_id {
+                    character.get("systemTransparency").and_then(Value::as_bool)
+                } else {
+                    participant_characters
+                        .get(cid)
+                        .and_then(|c| c.get("systemTransparency").and_then(Value::as_bool))
+                };
+                participant_transparency.insert(cid.to_string(), transp);
+            }
+        }
+    }
+    let empty_participants: Vec<Value> = Vec::new();
+    let cp_created_at = json_str(&character_participant, "createdAt");
+    let mc_params = message_context::MessageContextParams {
+        is_multi_character,
+        provider: &effective_profile.provider,
+        responding_character_name: &character_name,
+        responding_participant_id: &character_participant_id,
+        has_history_access: character_participant
+            .get("hasHistoryAccess")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        character_participant_created_at: cp_created_at.as_deref(),
+        character_system_transparency: character.get("systemTransparency").and_then(Value::as_bool),
+        participants: chat
+            .get("participants")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or(&empty_participants),
+        participant_transparency: &participant_transparency,
+    };
+
+    let mc_result = message_context::build_message_context(
         db,
         deps.embedding,
         deps.completion,
         deps.executor,
         deps.build_context_seams,
-        &build_input,
+        &message_context::NoopMessageContextSeams,
+        &mc_params,
+        build_input,
+        &existing_messages,
+        &file_processing.attachments_to_send,
     )
     .await
     .map_err(build_context_err_to_db)?;
+    let built_context: BuiltContext = mc_result.built_context;
 
     sink.emit(ChatEvent::status(StatusPayload {
         stage: "preparing".into(),
@@ -710,9 +777,20 @@ where
     let previous_response_id =
         primary_stream::find_previous_response_id(&effective_profile.provider, &existing_messages);
 
-    // Build the stream params from the built-context messages (v4 forwards the
-    // formatted messages, the model params, no tools [corpus], no web search).
-    let stream_messages = built_context_to_completion_messages(&built_context);
+    // Build the stream params from the wrapper's formatted messages (v4 forwards
+    // `formattedMessages`, the model params, no tools [corpus], no web search).
+    let stream_messages: Vec<CompletionMessage> = mc_result
+        .formatted_messages
+        .iter()
+        .map(|m| CompletionMessage {
+            role: match m.role.as_str() {
+                "system" => CompletionRole::System,
+                "assistant" => CompletionRole::Assistant,
+                _ => CompletionRole::User,
+            },
+            content: m.content.clone(),
+        })
+        .collect();
     let params = StreamParams {
         messages: stream_messages,
         model: effective_profile.model_name.clone(),
@@ -1252,12 +1330,6 @@ struct BuildContextArgs<'a> {
 /// `min_memory_importance` 0.
 fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInput {
     let character = to_context_character(args.character);
-    let existing: Vec<build_context::ExistingMessage> = args
-        .existing_messages
-        .iter()
-        .filter(|m| m.get("type").and_then(Value::as_str) == Some("message"))
-        .map(to_existing_message)
-        .collect();
 
     let chat = build_context::ContextChat {
         id: json_str(args.chat, "id").unwrap_or_default(),
@@ -1283,7 +1355,13 @@ fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInput {
         id: json_str(args.character_participant, "id").unwrap_or_default(),
         selected_system_prompt_id: json_str(args.character_participant, "selectedSystemPromptId"),
     });
-    let (_rp_unused, all_participants, participant_characters, messages_with) =
+    // The all-participants list + per-character map are message-independent (they
+    // feed buildContext's attribution/system-prompt). The `existing_messages` /
+    // `messages_with_participants` / `is_initial_message` / `generate_memory_recap`
+    // fields are placeholders here: `message_context::build_message_context` fills
+    // them from the whisper-filtered conversation (v4 runs the pre-filters +
+    // `buildConversationMessages` inside the wrapper, above the buildContext call).
+    let (_rp_unused, all_participants, participant_characters, _mwp_unused) =
         if args.is_multi_character {
             multi_character_fields(
                 args.chat,
@@ -1295,7 +1373,7 @@ fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInput {
         } else {
             (None, None, None, None)
         };
-    let _ = _rp_unused;
+    let _ = (_rp_unused, _mwp_unused);
 
     BuildContextInput {
         model_context_limit: args.input.model_context_limit,
@@ -1303,7 +1381,7 @@ fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInput {
         character,
         user_character: args.user_character,
         chat,
-        existing_messages: existing,
+        existing_messages: Vec::new(),
         new_user_message: args.final_user_message,
         active_user_participant_id: args.speaking_as,
         roleplay_template: args.roleplay_template.clone(),
@@ -1314,7 +1392,7 @@ fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInput {
         responding_participant,
         all_participants,
         participant_characters,
-        messages_with_participants: messages_with,
+        messages_with_participants: None,
         tool_instructions: args.tool_instructions,
         timestamp_config: args.input.timestamp_config.clone(),
         is_initial_message: false,
@@ -1492,16 +1570,6 @@ fn to_sys_char(c: &Value) -> crate::system_prompt::Character {
     }
 }
 
-fn to_existing_message(m: &Value) -> build_context::ExistingMessage {
-    build_context::ExistingMessage {
-        role: json_str(m, "role").unwrap_or_default(),
-        content: json_str(m, "content").unwrap_or_default(),
-        id: json_str(m, "id"),
-        thought_signature: json_str(m, "thoughtSignature"),
-        message_type: json_str(m, "type"),
-    }
-}
-
 fn to_finalizer_chat(chat: &Value) -> FinalizerChat {
     FinalizerChat {
         id: json_str(chat, "id").unwrap_or_default(),
@@ -1528,23 +1596,6 @@ fn to_participant_character(c: &Value) -> ParticipantCharacter {
         name: json_str(c, "name").unwrap_or_default(),
         aliases: json_str_array(c, "aliases"),
     }
-}
-
-/// Convert the built-context messages into the streaming `CompletionMessage` list
-/// (v4 forwards `formattedMessages` with role+content into `streamMessage`). The
-/// role maps `system`/`user`/`assistant` (v4 uses those exact strings).
-fn built_context_to_completion_messages(bc: &BuiltContext) -> Vec<CompletionMessage> {
-    bc.messages
-        .iter()
-        .map(|m| CompletionMessage {
-            role: match m.role {
-                "system" => CompletionRole::System,
-                "assistant" => CompletionRole::Assistant,
-                _ => CompletionRole::User,
-            },
-            content: m.content.clone(),
-        })
-        .collect()
 }
 
 /// Read the participant characters map (v4 `loadAllParticipantData`) — every

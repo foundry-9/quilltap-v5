@@ -10,6 +10,12 @@
       "name": "Primary",
       "provider": "ANTHROPIC",
       "modelName": "claude-sonnet"
+    },
+    {
+      "id": "b0000001-0000-4000-8000-000000000001",
+      "name": "Router",
+      "provider": "OPENROUTER",
+      "modelName": "router-model"
     }
   ],
   "chatSettings": {
@@ -50,6 +56,25 @@
       "controlledBy": "user",
       "talkativeness": 0.5,
       "connectionProfileId": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221"
+    },
+    {
+      "id": "c1000001-0000-4000-8000-000000000011",
+      "name": "Clara",
+      "description": "A transparent companion.",
+      "aliases": [],
+      "controlledBy": "llm",
+      "talkativeness": 0.5,
+      "connectionProfileId": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221",
+      "systemTransparency": true
+    },
+    {
+      "id": "c2000002-0000-4000-8000-000000000022",
+      "name": "Bertie",
+      "description": "A router-backed gentleman.",
+      "aliases": [],
+      "controlledBy": "llm",
+      "talkativeness": 0.5,
+      "connectionProfileId": "b0000001-0000-4000-8000-000000000001"
     }
   ],
   "chats": [
@@ -306,6 +331,233 @@
         }
       ],
       "messages": []
+    },
+    {
+      "id": "ca000001-0000-4000-8000-000000000001",
+      "chatType": "salon",
+      "contextSummary": null,
+      "participants": [
+        {
+          "id": "ca0a0001-0000-4000-8000-0000000000a1",
+          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "ca0b0002-0000-4000-8000-0000000000b2",
+          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": []
+    },
+    {
+      "id": "cb000002-0000-4000-8000-000000000002",
+      "chatType": "salon",
+      "contextSummary": null,
+      "participants": [
+        {
+          "id": "cb0a0001-0000-4000-8000-0000000000a1",
+          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "cb0b0002-0000-4000-8000-0000000000b2",
+          "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+          "controlledBy": "llm",
+          "status": "active"
+        }
+      ],
+      "messages": []
+    },
+    {
+      "id": "d1000001-0000-4000-8000-000000000001",
+      "chatType": "salon",
+      "contextSummary": null,
+      "participants": [
+        {
+          "id": "d10a0001-0000-4000-8000-0000000000a1",
+          "character": "c2000002-0000-4000-8000-000000000022",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "d10b0001-0000-4000-8000-0000000000b1",
+          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": []
+    },
+    {
+      "id": "d2000002-0000-4000-8000-000000000002",
+      "chatType": "salon",
+      "contextSummary": null,
+      "participants": [
+        {
+          "id": "d20a0002-0000-4000-8000-0000000000a2",
+          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "d20b0002-0000-4000-8000-0000000000b2",
+          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": [
+        {
+          "id": "d2010001-0000-4000-8000-000000000101",
+          "role": "USER",
+          "content": "hello there",
+          "participantId": null
+        },
+        {
+          "id": "d2010002-0000-4000-8000-000000000102",
+          "role": "ASSISTANT",
+          "content": "greetings",
+          "participantId": "d20a0002-0000-4000-8000-0000000000a2"
+        },
+        {
+          "id": "d2010003-0000-4000-8000-000000000103",
+          "role": "ASSISTANT",
+          "content": "A stale recall whisper.",
+          "participantId": null,
+          "systemSender": "commonplaceBook",
+          "systemKind": null
+        },
+        {
+          "id": "d2010004-0000-4000-8000-000000000104",
+          "role": "ASSISTANT",
+          "content": "A persistent relevant-conversations note.",
+          "participantId": null,
+          "systemSender": "commonplaceBook",
+          "systemKind": "relevant-conversations"
+        }
+      ]
+    },
+    {
+      "id": "d3000003-0000-4000-8000-000000000003",
+      "chatType": "salon",
+      "contextSummary": null,
+      "participants": [
+        {
+          "id": "d30a0003-0000-4000-8000-0000000000a3",
+          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "d30b0003-0000-4000-8000-0000000000b3",
+          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": [
+        {
+          "id": "d3010001-0000-4000-8000-000000000201",
+          "role": "USER",
+          "content": "what time is it",
+          "participantId": null
+        },
+        {
+          "id": "d3010002-0000-4000-8000-000000000202",
+          "role": "ASSISTANT",
+          "content": "The Host announces it is 3pm sharp.",
+          "participantId": null,
+          "systemSender": "host",
+          "opaqueContent": "It is now afternoon."
+        },
+        {
+          "id": "d3010003-0000-4000-8000-000000000203",
+          "role": "ASSISTANT",
+          "content": "A lantern image has appeared.",
+          "participantId": null,
+          "systemSender": "lantern",
+          "attachments": ["d3ff0001-0000-4000-8000-0000000000f1"]
+        }
+      ]
+    },
+    {
+      "id": "d4000004-0000-4000-8000-000000000004",
+      "chatType": "salon",
+      "contextSummary": null,
+      "participants": [
+        {
+          "id": "d40a0004-0000-4000-8000-0000000000a4",
+          "character": "c1000001-0000-4000-8000-000000000011",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "d40b0004-0000-4000-8000-0000000000b4",
+          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": [
+        {
+          "id": "d4010001-0000-4000-8000-000000000301",
+          "role": "USER",
+          "content": "what time is it",
+          "participantId": null
+        },
+        {
+          "id": "d4010002-0000-4000-8000-000000000302",
+          "role": "ASSISTANT",
+          "content": "The Host announces it is 3pm sharp.",
+          "participantId": null,
+          "systemSender": "host",
+          "opaqueContent": "It is now afternoon."
+        }
+      ]
+    },
+    {
+      "id": "d5000005-0000-4000-8000-000000000005",
+      "chatType": "salon",
+      "contextSummary": null,
+      "participants": [
+        {
+          "id": "d50a0005-0000-4000-8000-0000000000a5",
+          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "d50b0005-0000-4000-8000-0000000000b5",
+          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": [
+        {
+          "id": "d5010001-0000-4000-8000-000000000401",
+          "role": "USER",
+          "content": "proceed",
+          "participantId": null
+        },
+        {
+          "id": "d5010002-0000-4000-8000-000000000402",
+          "role": "TOOL",
+          "content": "{\"toolName\":\"secret\",\"result\":\"operator-only payload\"}",
+          "participantId": null,
+          "targetParticipantIds": ["d50b0005-0000-4000-8000-0000000000b5"]
+        },
+        {
+          "id": "d5010003-0000-4000-8000-000000000403",
+          "role": "ASSISTANT",
+          "content": "acknowledged",
+          "participantId": "d50a0005-0000-4000-8000-0000000000a5"
+        }
+      ]
     }
   ],
   "calls": [
@@ -373,6 +625,81 @@
       "cheapLLMSettings": false,
       "summaryCheck": false,
       "respondingParticipant": "f7428408-f9c7-4787-9c26-1aa7493e6f3e"
+    },
+    {
+      "name": "noncontinue_single_user_chain",
+      "kind": "chain",
+      "chatId": "ca000001-0000-4000-8000-000000000001",
+      "content": "Begin the scene.",
+      "continueMode": false,
+      "streamLabel": "cd_single",
+      "cheapLLMSettings": false,
+      "summaryCheck": false
+    },
+    {
+      "name": "noncontinue_two_llm_maxdepth",
+      "kind": "chain",
+      "chatId": "cb000002-0000-4000-8000-000000000002",
+      "content": "Converse.",
+      "continueMode": false,
+      "streamLabel": "cd_two",
+      "cheapLLMSettings": false,
+      "summaryCheck": false
+    },
+    {
+      "name": "nonanthropic_scene",
+      "kind": "single",
+      "chatId": "d1000001-0000-4000-8000-000000000001",
+      "content": "",
+      "continueMode": true,
+      "streamLabel": "nonanthropic_scene",
+      "cheapLLMSettings": false,
+      "summaryCheck": false,
+      "respondingParticipant": "d10a0001-0000-4000-8000-0000000000a1"
+    },
+    {
+      "name": "commonplace_strip",
+      "kind": "single",
+      "chatId": "d2000002-0000-4000-8000-000000000002",
+      "content": "",
+      "continueMode": true,
+      "streamLabel": "commonplace_strip",
+      "cheapLLMSettings": false,
+      "summaryCheck": false,
+      "respondingParticipant": "d20a0002-0000-4000-8000-0000000000a2"
+    },
+    {
+      "name": "opaque_swap",
+      "kind": "single",
+      "chatId": "d3000003-0000-4000-8000-000000000003",
+      "content": "",
+      "continueMode": true,
+      "streamLabel": "opaque_swap",
+      "cheapLLMSettings": false,
+      "summaryCheck": false,
+      "respondingParticipant": "d30a0003-0000-4000-8000-0000000000a3"
+    },
+    {
+      "name": "transparent_no_swap",
+      "kind": "single",
+      "chatId": "d4000004-0000-4000-8000-000000000004",
+      "content": "",
+      "continueMode": true,
+      "streamLabel": "transparent_no_swap",
+      "cheapLLMSettings": false,
+      "summaryCheck": false,
+      "respondingParticipant": "d40a0004-0000-4000-8000-0000000000a4"
+    },
+    {
+      "name": "tool_whisper_filter",
+      "kind": "single",
+      "chatId": "d5000005-0000-4000-8000-000000000005",
+      "content": "",
+      "continueMode": true,
+      "streamLabel": "tool_whisper_filter",
+      "cheapLLMSettings": false,
+      "summaryCheck": false,
+      "respondingParticipant": "d50a0005-0000-4000-8000-0000000000a5"
     }
   ],
   "streams": {
@@ -483,6 +810,397 @@
             "promptTokens": 42,
             "completionTokens": 0,
             "totalTokens": 42
+          }
+        }
+      ]
+    ],
+    "cd_single": [
+      [
+        {
+          "content": "Friday replies."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 12,
+            "completionTokens": 2,
+            "totalTokens": 14
+          }
+        }
+      ]
+    ],
+    "cd_two": [
+      [
+        {
+          "content": "turn 1"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ],
+      [
+        {
+          "content": "turn 2"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ],
+      [
+        {
+          "content": "turn 3"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ],
+      [
+        {
+          "content": "turn 4"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ],
+      [
+        {
+          "content": "turn 5"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ],
+      [
+        {
+          "content": "turn 6"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ],
+      [
+        {
+          "content": "turn 7"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ],
+      [
+        {
+          "content": "turn 8"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ],
+      [
+        {
+          "content": "turn 9"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ],
+      [
+        {
+          "content": "turn 10"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ],
+      [
+        {
+          "content": "turn 11"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ],
+      [
+        {
+          "content": "turn 12"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ],
+      [
+        {
+          "content": "turn 13"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ],
+      [
+        {
+          "content": "turn 14"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ],
+      [
+        {
+          "content": "turn 15"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ],
+      [
+        {
+          "content": "turn 16"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ],
+      [
+        {
+          "content": "turn 17"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ],
+      [
+        {
+          "content": "turn 18"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ],
+      [
+        {
+          "content": "turn 19"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ],
+      [
+        {
+          "content": "turn 20"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ],
+      [
+        {
+          "content": "turn 21"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ],
+      [
+        {
+          "content": "turn 22"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ],
+      [
+        {
+          "content": "turn 23"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 2,
+            "totalTokens": 12
+          }
+        }
+      ]
+    ],
+    "nonanthropic_scene": [
+      [
+        {
+          "content": "Bertie tips his hat."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 14,
+            "completionTokens": 4,
+            "totalTokens": 18
+          }
+        }
+      ]
+    ],
+    "commonplace_strip": [
+      [
+        {
+          "content": "Friday recalls the note."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 16,
+            "completionTokens": 4,
+            "totalTokens": 20
+          }
+        }
+      ]
+    ],
+    "opaque_swap": [
+      [
+        {
+          "content": "Friday marks the afternoon."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 18,
+            "completionTokens": 4,
+            "totalTokens": 22
+          }
+        }
+      ]
+    ],
+    "transparent_no_swap": [
+      [
+        {
+          "content": "Clara greets the Host."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 15,
+            "completionTokens": 4,
+            "totalTokens": 19
+          }
+        }
+      ]
+    ],
+    "tool_whisper_filter": [
+      [
+        {
+          "content": "Friday proceeds without the secret."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 13,
+            "completionTokens": 4,
+            "totalTokens": 17
           }
         }
       ]

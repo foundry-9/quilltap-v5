@@ -259,11 +259,73 @@ Ordered by dependency; several are mutually independent once wave 2 lands:
   differential (six cases; ordered event trace + three table dumps; the
   finalizer's summary-check deferral closed here; unported subsystems as
   `OrchestratorSeams` with gates banked). Two open items it discovered:
-  v4's **`buildMessageContext` wrapper** (`context-builder.service.ts` —
-  multi-char scene block, user-name prefix, whisper normalization; reduced to
-  a passthrough on both differential sides) is the remaining
-  orchestrator-family unit, and a **flagged chain-depth divergence** (v4
-  max-depths a non-continue single-LLM-char chain where the Rust spine stops
-  at `user_turn`) needs a dedicated chain-depth corpus to pin before
-  multi-turn chains are trusted.
+  v4's **`buildMessageContext` wrapper** (`context-builder.service.ts`) — now
+  **PORTED (2026-07-03; see below)** — and a **flagged chain-depth divergence**
+  — now **INVESTIGATED and RESOLVED (2026-07-03)**.
+- **`buildMessageContext` wrapper: ported and green** (2026-07-03) —
+  `services::message_context` (v4 `context-builder.service.ts`), the wrapper
+  between `processMessage` and `buildContext`. Ported leaf-first: the three
+  pure leaves (`build_conversation_messages` — type/role filter +
+  `assistantAfter` reverse pass + TOOL-result render/`>3`-turn elision;
+  `normalize_whisper_roles` — Staff re-role, opaque-body swap, attachment
+  exemption; `collect_lantern_image_file_ids_for_character` — the own-turn-stop
+  walk + history cutoff + dedup) carry a dedicated tier-1 differential
+  (`message_context_leaves_equivalence`, 12 cases driving v4's REAL exported
+  leaves). The composition (`build_message_context`) runs the A–D whisper
+  pre-filters (commonplace strip + `relevant-conversations` exception,
+  TOOL-whisper target filtering, opaque-anywhere over the LLM participants'
+  `systemTransparency`, whisper re-role), `buildConversationMessages`, the
+  `buildContext` call, then `formatMessagesForProvider` (multi-character),
+  the Lantern image merge, the trailing-prefix injection, and the
+  multi-character scene block (Anthropic system-instruction route vs the
+  non-Anthropic `[Name]` prefill). The K file-loading half
+  (`loadChatFilesForLLM` + fallback) is the injected `MessageContextSeams`
+  (default no-op) — the corpus keeps attachments empty; the pure
+  id-collection leaf IS exercised. Wired into the orchestrator spine where the
+  direct `build_context` call sat (the wrapper's `formattedMessages` feed the
+  stream). Verified by REBUILDING the orchestrator oracle to drive v4's REAL
+  `buildMessageContext` (dropping the passthrough mock; mocking ONLY the K
+  file-loader, mirroring the Rust seam) and extending the corpus with five
+  cases banking: the non-Anthropic scene-block prefill route
+  (`nonanthropic_scene`, an OPENROUTER profile), commonplace stripping + the
+  `relevant-conversations` survival exception (`commonplace_strip`), the opaque
+  body swap (`opaque_swap` — the persona-free `opaqueContent` reaches the LLM)
+  vs the transparent no-swap (`transparent_no_swap`), and the operator-only
+  TOOL-whisper filter (`tool_whisper_filter`). All eight pre-existing cases now
+  run the REAL wrapper (every corpus chat is multi-character —
+  `isMultiCharacterChat` is true for ≥1 LLM participant — so the scene block +
+  `formatMessagesForProvider` apply throughout). **Tracked deferral:** the K
+  file subsystem (`loadAndProcessFiles` / `loadChatFilesForLLM` /
+  `processFileAttachmentFallback`) is wave-4; the Lantern prefix injection (L,
+  with a non-empty prefix) lands when that seam is closed.
+- **Chain-depth divergence: resolved — an oracle-harness artifact, not a v5
+  bug** (2026-07-03). The flag: a non-continue single-LLM-char + user chat
+  where v4 chained the sole LLM character to `max_depth` (20 turns) while the
+  Rust spine stopped at `user_turn`. Root cause: the differential's oracle
+  **froze `Date.now()`**, so every minted message got an identical `createdAt`;
+  v4's `getMessages` sorts `ORDER BY createdAt ASC`, and under the all-equal tie
+  the non-continue USER row (which carries the user participant id) could sort
+  *after* the assistant replies, flipping
+  `calculateTurnStateFromHistory`'s `lastSpeakerId` to the user → the turn
+  manager's cycle-wrap (step 3, which ignores `spokenThisCycle`) re-picks the
+  sole LLM character every turn → `max_depth`. The Rust side stamps `createdAt`
+  from a **real monotonic clock** (distinct, increasing), so the latest
+  ASSISTANT always sorts last → `lastSpeakerId` is the LLM char → correctly
+  stops at `user_turn`. Proven decisively: making the v4 oracle clock **tick
+  (+1ms/read)** so `createdAt` is distinct makes v4 *also* stop at `user_turn`.
+  The ported `should_chain_next` / `select_next_speaker` /
+  `calculate_turn_state_from_history` are byte-faithful; **v5 is correct**. Fix
+  + pinning: the orchestrator oracle clock now **advances 1ms per read** (real
+  timestamps are distinct; the +Nms drift is invisible — no case injects a
+  prompt timestamp and every minted DB timestamp is normalized), the
+  differential now diffs `spokenThisCycleParticipantIds` / `turnQueue` /
+  `lastTurnParticipantId` **exactly** (previously placeholdered), and two
+  dedicated chain-depth cases were added: `noncontinue_single_user_chain`
+  (single LLM + user, non-continue → `user_turn`, `lastTurnParticipantId` =
+  the user participant) and `noncontinue_two_llm_maxdepth` (two LLM, no user,
+  non-continue → genuine ping-pong to `max_depth`, since the `__user__`
+  sentinel disables the all-LLM pause). The job-payload `turnOpenerMessageId` /
+  `extractionAnchorMessageId` are now remapped through the shared message idmap
+  (a non-continue send mints a fresh turn-opener). See
+  `[[chain-depth-frozen-clock-artifact]]`.
 - Wave 4: scoped above, not started.

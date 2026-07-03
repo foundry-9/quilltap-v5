@@ -39,6 +39,7 @@ pub mod knowledge_injector;
 pub mod memory_gate;
 pub mod memory_processor;
 pub mod memory_service;
+pub mod message_context;
 pub mod message_finalizer;
 pub mod orchestrator;
 pub mod participant_resolver;

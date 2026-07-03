@@ -293,93 +293,29 @@ async function main(): Promise<void> {
     return { __esModule: true, ...actual, logLLMCall: async () => undefined };
   });
 
-  // ---- buildMessageContext → a thin buildContext passthrough (deferred seam) ----
-  // v4's `buildMessageContext` (context-builder.service.ts) is an UNPORTED wrapper
-  // that post-processes `buildContext`'s output (whisper filtering / normalization,
-  // the multi-character scene block, the user-name message prefix, the final
-  // message formatting). The Rust orchestrator composes the ported `build_context`
-  // directly, so this mock reduces v4's wrapper to a passthrough: call the REAL
-  // `buildContext` with the same mapping the wrapper uses, and return
-  // `builtContext.messages` verbatim as `formattedMessages` — matching the Rust
-  // `build_context` output. `buildMessageContext`'s post-processing is a documented
-  // deferred seam (its own wave-3 unit).
-  jest.doMock('@/lib/services/chat-message/context-builder.service', () => {
-    const actual = jest.requireActual('@/lib/services/chat-message/context-builder.service');
-    const { buildContext } = jest.requireActual('@/lib/chat/context-manager');
+  // ---- buildMessageContext → the REAL wrapper; mock ONLY the K file-loader ----
+  // v4's `buildMessageContext` (context-builder.service.ts) is now ported as
+  // `quilltap_core::services::message_context`, so the oracle drives the REAL
+  // wrapper (whisper pre-filters / opaque-anywhere / normalization, the ported
+  // `buildContext`, `formatMessagesForProvider`, and the multi-character scene
+  // block). The ONLY thing mocked inside it is section K, the unported wave-4 file
+  // subsystem (`loadChatFilesForLLM` + `processFileAttachmentFallback` +
+  // `formatFallbackAsMessagePrefix`) — mirrored by the Rust
+  // `NoopMessageContextSeams` (empty prefix / no attachments). The corpus keeps
+  // message attachments empty, so `collectLanternImageFileIdsForCharacter` returns
+  // `[]` and these are never reached; they are mocked defensively so the real file
+  // subsystem is never touched.
+  jest.doMock('@/lib/chat-files-v2', () => {
+    const actual = jest.requireActual('@/lib/chat-files-v2');
+    return { __esModule: true, ...actual, loadChatFilesForLLM: async () => [] };
+  });
+  jest.doMock('@/lib/chat/file-attachment-fallback', () => {
+    const actual = jest.requireActual('@/lib/chat/file-attachment-fallback');
     return {
       __esModule: true,
       ...actual,
-      buildMessageContext: async (
-        opts: Record<string, unknown>,
-        existingMessages: Array<Record<string, unknown>>,
-        _attachmentsToSend: unknown[]
-      ) => {
-        // Reproduce the wrapper's buildContext call mapping (the subset in scope:
-        // no whisper filtering / opaque swap — the corpus has no whispers).
-        const conversationMessages = existingMessages
-          .filter((m) => m.type === 'message')
-          .map((m) => ({
-            role: m.role,
-            content: m.content,
-            id: m.id,
-            thoughtSignature: m.thoughtSignature ?? undefined,
-            participantId: m.participantId ?? undefined,
-            targetParticipantIds: m.targetParticipantIds ?? undefined,
-            createdAt: m.createdAt,
-          }));
-        const isInitialMessage =
-          conversationMessages.filter((m) => m.role === 'user' || m.role === 'USER').length === 0;
-        const cp = opts.connectionProfile as { provider: string; modelName: string };
-        const isMulti = opts.isMultiCharacter === true;
-        const builtContext = await buildContext({
-          provider: cp.provider,
-          modelName: cp.modelName,
-          userId: opts.userId,
-          character: opts.character,
-          userCharacter: opts.userCharacter,
-          chat: opts.chat,
-          existingMessages: conversationMessages,
-          newUserMessage: opts.newUserMessage,
-          activeUserParticipantId: opts.activeUserParticipantId,
-          roleplayTemplate: opts.roleplayTemplate,
-          embeddingProfileId: undefined,
-          skipMemories: false,
-          minMemoryImportance: 0.5,
-          respondingParticipant: opts.characterParticipant,
-          allParticipants: isMulti ? (opts.chat as { participants: unknown[] }).participants : undefined,
-          participantCharacters: isMulti ? opts.participantCharacters : undefined,
-          messagesWithParticipants: isMulti
-            ? conversationMessages.map((m) => ({
-                id: m.id,
-                role: m.role,
-                content: m.content,
-                participantId: m.participantId,
-                thoughtSignature: m.thoughtSignature,
-                createdAt: m.createdAt,
-                targetParticipantIds: m.targetParticipantIds,
-              }))
-            : undefined,
-          toolInstructions: opts.toolInstructions,
-          timestampConfig: (opts.chatSettings as { defaultTimestampConfig?: unknown } | null)
-            ?.defaultTimestampConfig,
-          isInitialMessage,
-          timezone: undefined,
-          connectionProfile: opts.connectionProfile,
-          contextCompressionSettings: opts.contextCompressionSettings,
-          cheapLLMSelection: opts.cheapLLMSelection,
-          bypassCompression: opts.bypassCompression,
-          preSearchedMemories: opts.preSearchedMemories,
-          generateMemoryRecap: false,
-          isContinueMode: opts.isContinueMode,
-        });
-        // Passthrough: the raw buildContext messages ARE the formattedMessages
-        // (no multi-char block / user-prefix / formatting — the Rust build_context
-        // output).
-        const formattedMessages = (builtContext.messages as Array<Record<string, unknown>>).map(
-          (m) => ({ role: m.role, content: m.content })
-        );
-        return { builtContext, formattedMessages, isInitialMessage };
-      },
+      processFileAttachmentFallback: async () => ({ type: 'unsupported' }),
+      formatFallbackAsMessagePrefix: () => '',
     };
   });
 
@@ -577,15 +513,33 @@ async function main(): Promise<void> {
   // Freeze the wall clock so buildContext's timestamp-in-prompt matches the Rust
   // injected now_ms (→ the canned stream key matches). Minted DB timestamps are
   // normalized to <ts> in the harness.
+  // The wall clock is frozen to `frozenNowMs` so buildContext's timestamp-in-prompt
+  // matches the Rust injected `now_ms` (→ the canned stream key matches). BUT it
+  // must ADVANCE by 1ms per read, not stand still: v4 stamps every message's
+  // `createdAt` from `Date.now()` and `getMessages` sorts `ORDER BY createdAt ASC`,
+  // so a truly-frozen clock collapses every minted message to one `createdAt`,
+  // making the sort a tie whose order decides `calculateTurnStateFromHistory`'s
+  // `lastSpeakerId`. The Rust side stamps `createdAt` from a REAL (monotonic) clock,
+  // so its history always orders the latest ASSISTANT last; a frozen v4 clock can
+  // instead resolve a non-continue chat's USER row (which carries the user
+  // participant id) as most-recent, flipping `lastSpeakerId` to the user and
+  // driving the turn manager's cycle-wrap to re-pick the sole LLM character to
+  // max depth — a pure harness artifact (real timestamps are distinct). Advancing
+  // 1ms per read reproduces the monotonic real-clock ordering on the v4 side, so
+  // both sides agree; the +Nms drift is invisible (no case injects a prompt
+  // timestamp, and every minted DB timestamp is normalized to `<ts>`). See the
+  // chain-depth cases + `[[chain-depth-frozen-clock-artifact]]`.
   const RealDate = Date;
+  let tick = 0;
+  const nowMs = () => spec.frozenNowMs + tick++;
   const FakeDate = class extends RealDate {
     constructor(...args: unknown[]) {
-      if (args.length === 0) super(spec.frozenNowMs);
+      if (args.length === 0) super(nowMs());
       // @ts-expect-error variadic forwarding
       else super(...args);
     }
     static now(): number {
-      return spec.frozenNowMs;
+      return nowMs();
     }
   } as DateConstructor;
   (global as { Date: DateConstructor }).Date = FakeDate;

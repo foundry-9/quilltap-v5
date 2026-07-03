@@ -556,6 +556,49 @@ surface; no ported unit is stale. Docs only, no crate source changed.
 - Refreshed the `docs/v4/` mirror (CHANGELOG, DDL.md, the answer-confirmation
   feature doc).
 
+Phase 3 — chat orchestration: the chain-depth divergence resolved and the
+`buildMessageContext` wrapper ported, closing the two orchestrator-family open
+items the wave-3 capstone flagged.
+
+- Chain-depth divergence investigated and resolved as an oracle-harness
+  artifact, not a v5 bug: the differential's oracle froze `Date.now()`, so
+  identical `createdAt` values let `getMessages`' `ORDER BY createdAt ASC`
+  tie-break the non-continue user row after the assistant replies, flipping
+  `calculateTurnStateFromHistory`'s `lastSpeakerId` to the user and re-picking
+  the sole LLM character to max depth. The Rust spine stamps `createdAt` from a
+  real monotonic clock, so it correctly stops at `user_turn`; proven by ticking
+  the oracle clock +1ms/read (v4 then also stops at `user_turn`). Fix: the
+  orchestrator oracle clock advances 1ms per read, the differential now diffs
+  `spokenThisCycleParticipantIds`/`turnQueue`/`lastTurnParticipantId` exactly
+  (previously placeholdered) with the job-payload anchor ids remapped through
+  the shared message idmap, and two chain-depth cases were added
+  (`noncontinue_single_user_chain` → `user_turn`; `noncontinue_two_llm_maxdepth`
+  → genuine `max_depth`).
+- `buildMessageContext` wrapper ported (`services::message_context`, v4
+  `context-builder.service.ts`), leaf-first. Three pure leaves ride a tier-1
+  differential (`message_context_leaves_equivalence`): `buildConversationMessages`
+  (type/role filter, `assistantAfter` reverse pass, TOOL-result render with the
+  `>3`-turn elision), `normalizeWhisperRoles` (Staff→USER re-role, opaque-body
+  swap, attachment-bearing exemption), and `collectLanternImageFileIdsForCharacter`
+  (own-turn-stop walk, history cutoff, dedup, lookback cap). The composition runs
+  the A–D whisper pre-filters (commonplace strip + relevant-conversations
+  exception; TOOL-whisper target filtering; opaque-anywhere over LLM participants'
+  `systemTransparency`; whisper re-role), `buildConversationMessages`, the ported
+  `buildContext`, `formatMessagesForProvider`, the Lantern merge, trailing-prefix
+  injection, and the multi-character scene block (Anthropic system-instruction
+  route vs non-Anthropic `[Name]` prefill). Wired into the orchestrator spine
+  where the direct `build_context` call sat, so `formatMessagesForProvider` + the
+  scene block now reach the wire. The K file-loading half is the injected
+  `MessageContextSeams` (wave-4 file subsystem); the id-collection leaf is
+  exercised.
+- Orchestrator oracle rebuilt to drive v4's REAL `buildMessageContext` (the
+  passthrough mock dropped; only the K file-loader mocked, mirroring the Rust
+  seam). Every corpus chat is multi-character, so the scene block + name
+  prefixing apply throughout (changing the canned stream keys, re-recorded and
+  reproduced byte-for-byte). Five cases added: `nonanthropic_scene`,
+  `commonplace_strip`, `opaque_swap` vs `transparent_no_swap`, and
+  `tool_whisper_filter`. `orchestrator_tier3_equivalence` re-verified green.
+
 Docs — Phase 2 marked complete; Phase 3 kickoff drafted. Docs only, no crate
 source changed.
 

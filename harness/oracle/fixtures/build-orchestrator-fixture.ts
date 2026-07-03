@@ -41,6 +41,8 @@ interface CharacterSpec {
   controlledBy: string;
   talkativeness: number;
   connectionProfileId: string;
+  /** Application-state slim column (not vault-managed) — drives opaque-anywhere. */
+  systemTransparency?: boolean;
 }
 interface ParticipantSpec {
   id: string;
@@ -53,6 +55,12 @@ interface MessageSpec {
   role: string;
   content: string;
   participantId: string | null;
+  /** Staff-whisper sender (systemSender != null → a whisper). */
+  systemSender?: string | null;
+  systemKind?: string | null;
+  opaqueContent?: string | null;
+  targetParticipantIds?: string[] | null;
+  attachments?: string[];
 }
 interface ChatSpec {
   id: string;
@@ -153,6 +161,7 @@ async function main(): Promise<void> {
         controlledBy: c.controlledBy,
         talkativeness: c.talkativeness,
         defaultConnectionProfileId: c.connectionProfileId,
+        ...(c.systemTransparency !== undefined ? { systemTransparency: c.systemTransparency } : {}),
       } as never,
       { id: c.id }
     );
@@ -203,7 +212,13 @@ async function main(): Promise<void> {
           content: m.content,
           participantId: m.participantId ?? undefined,
           createdAt: spec.seedTimestamp,
-          attachments: [],
+          attachments: m.attachments ?? [],
+          ...(m.systemSender !== undefined ? { systemSender: m.systemSender } : {}),
+          ...(m.systemKind !== undefined ? { systemKind: m.systemKind } : {}),
+          ...(m.opaqueContent !== undefined ? { opaqueContent: m.opaqueContent } : {}),
+          ...(m.targetParticipantIds !== undefined
+            ? { targetParticipantIds: m.targetParticipantIds }
+            : {}),
         })) as never
       );
     } else {

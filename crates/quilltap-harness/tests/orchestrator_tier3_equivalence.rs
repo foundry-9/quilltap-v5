@@ -616,8 +616,13 @@ fn orchestrator_tier3_matches_oracle() {
     ctx.normalize_messages(&mut got_msgs, &mut idmap);
     let mut idmap2: HashMap<String, String> = HashMap::new();
     ctx.normalize_messages(&mut want_msgs, &mut idmap2);
-    ctx.normalize_jobs(&mut got_jobs);
-    ctx.normalize_jobs(&mut want_jobs);
+    // Jobs are normalized AFTER messages so the shared message idmap is populated:
+    // a job payload's `turnOpenerMessageId` / `extractionAnchorMessageId` are message
+    // ids (minted fresh for a non-continue send, seeded otherwise), remapped through
+    // the same per-side map so they verify by relationship (a seeded id → the same
+    // token both sides; a minted id → matching tokens).
+    ctx.normalize_jobs(&mut got_jobs, &idmap);
+    ctx.normalize_jobs(&mut want_jobs, &idmap2);
 
     assert_table_eq("chats", &got_chats, &want_chats);
     assert_table_eq("chat_messages", &got_msgs, &want_msgs);
@@ -652,9 +657,6 @@ impl Normalizer {
                         "compactionGeneration",
                         "lastSummaryTurn",
                         "lastRenameCheckInterchange",
-                        "spokenThisCycleParticipantIds",
-                        "turnQueue",
-                        "lastTurnParticipantId",
                         "messageCount",
                         "totalPromptTokens",
                         "totalCompletionTokens",
@@ -731,11 +733,47 @@ impl Normalizer {
         }
     }
 
-    /// background_jobs: all minted — re-sort by (type, payload) then placeholder
-    /// `id` + the timestamp/attempt columns. The payload holds pinned chat/message
-    /// ids so it is a stable sort key.
-    fn normalize_jobs(&self, dump: &mut Value) {
+    /// background_jobs: all minted — remap the payload's message-id fields through
+    /// the shared message idmap, re-sort by (type, payload) then placeholder `id` +
+    /// the timestamp/attempt columns. The `type` + payload chatId are pinned so the
+    /// sort is stable across sides.
+    fn normalize_jobs(&self, dump: &mut Value, idmap: &HashMap<String, String>) {
+        // Remap a message-id-valued payload field through the shared idmap: a seeded
+        // id → the same token both sides; a minted id (non-continue turn opener /
+        // extraction anchor) → matching tokens; an unknown id → a stable placeholder
+        // (never leaks a raw minted UUID into the diff).
+        let remap = |v: &Value| -> Option<Value> {
+            let s = v.as_str()?;
+            Some(Value::String(
+                idmap.get(s).cloned().unwrap_or_else(|| "<msgref>".into()),
+            ))
+        };
         if let Some(rows) = dump.get_mut("rows").and_then(Value::as_array_mut) {
+            // Remap payload message-id fields FIRST so the (type, payload) sort key
+            // is deterministic across sides (minted ids would otherwise differ).
+            for row in rows.iter_mut() {
+                if let Some(obj) = row.as_object_mut() {
+                    if let Some(payload_str) = obj.get("payload").and_then(Value::as_str) {
+                        if let Ok(mut payload) = serde_json::from_str::<Value>(payload_str) {
+                            if let Some(pobj) = payload.as_object_mut() {
+                                for f in ["turnOpenerMessageId", "extractionAnchorMessageId"] {
+                                    if let Some(v) = pobj.get(f) {
+                                        if !v.is_null() {
+                                            if let Some(mapped) = remap(v) {
+                                                pobj.insert(f.to_string(), mapped);
+                                            }
+                                        }
+                                    }
+                                }
+                                obj.insert(
+                                    "payload".into(),
+                                    Value::String(serde_json::to_string(&payload).unwrap()),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
             rows.sort_by_key(|r| {
                 (
                     r.get("type")
@@ -755,31 +793,6 @@ impl Normalizer {
                         if let Some(v) = obj.get(c) {
                             if !v.is_null() {
                                 obj.insert(c.to_string(), Value::String(format!("<{c}>")));
-                            }
-                        }
-                    }
-                    // The MEMORY_EXTRACTION payload carries a minted
-                    // `extractionAnchorMessageId` (the latest assistant message id,
-                    // minted per side). Re-parse the payload JSON and placeholder
-                    // that one field (the chatId / connectionProfileId / the null
-                    // turnOpenerMessageId stay pinned).
-                    if let Some(payload_str) = obj.get("payload").and_then(Value::as_str) {
-                        if let Ok(mut payload) = serde_json::from_str::<Value>(payload_str) {
-                            if let Some(pobj) = payload.as_object_mut() {
-                                if pobj
-                                    .get("extractionAnchorMessageId")
-                                    .map(|v| !v.is_null())
-                                    .unwrap_or(false)
-                                {
-                                    pobj.insert(
-                                        "extractionAnchorMessageId".into(),
-                                        Value::String("<anchor>".into()),
-                                    );
-                                }
-                                obj.insert(
-                                    "payload".into(),
-                                    Value::String(serde_json::to_string(&payload).unwrap()),
-                                );
                             }
                         }
                     }
