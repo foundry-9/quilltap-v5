@@ -599,6 +599,47 @@ items the wave-3 capstone flagged.
   `commonplace_strip`, `opaque_swap` vs `transparent_no_swap`, and
   `tool_whisper_filter`. `orchestrator_tier3_equivalence` re-verified green.
 
+Phase 3 — wave 4 (W4.0): the wardrobe drift batch. The public wardrobe READ
+trio, the General/project shared-archetype tier, and the wardrobe transfers
+service are all ported and verified — closing the 2026-07-03 drift-check's
+wardrobe surfaces and the long-deferred archetype tier.
+
+- `db::instance_settings`: the per-instance key/value store (main db);
+  `get_general_mount_point_id` resolves the provisioned "Quilltap General" store
+  id, tolerating a missing table like v4's `readSetting`. Unit tests.
+- Archetype seeding generalized into the read overlay:
+  `read_character_vault_wardrobe` gained `seed_archetypes` + an injected archetype
+  fetch, and `resolve_and_check_component_items` moved from index-valued to
+  `SeedArchetype`-seeded maps (v4's local-wins gap-fill) so a composite can
+  reference a shared archetype it doesn't hold. Backward-compat: the existing
+  `vault_wardrobe_read` / `vault_wardrobe_public` differentials stay green (empty
+  seed = no-op), plus two new resolver unit tests bank real seeding + an
+  archetype-routed cycle.
+- `db::archetype_wardrobe`: `read_general_wardrobe` / `read_project_wardrobe`,
+  the `find_archetypes` insertion-ordered General-under-project merge, and
+  `find_archetype_by_id`.
+- Public READ trio (`db::wardrobe_read::find_by_character_id` /
+  `find_by_id_for_character`) — vault-aware reads over the seeded overlay.
+  `findByCharacterIdRaw` is a tracked deferral (deprecated; reads the pre-cutover
+  `wardrobe_items` table the vault era drops; no W4.0 consumer). Verified by a
+  read-differential (`wardrobe_public_read_equivalence`) against v4's REAL repo:
+  five cases where a character composite references a General archetype by slug
+  AND UUID (both resolve only via seeding) plus the archetype fallback.
+- Public WRITE generalized to a `WardrobeLocation` (character/General/project)
+  with `create/update/delete_project_wardrobe_item` and General archetypes seeded
+  into the cycle-peer check; a `null` characterId now resolves to Quilltap
+  General instead of erroring. Re-verified green.
+- `services::wardrobe_transfers`: v4's `/api/v1/wardrobe/transfers` POST
+  (move/copy across the four tiers) + GET destination enumeration, composed over
+  the ported repo ops + `ensure_official_store`. Verified by a tier-2 differential
+  (`wardrobe_transfers_tier2_equivalence`) driving v4's REAL POST handler under a
+  jest-real-DB oracle (session mocked, real encrypted DB) over five scenarios
+  (copy→general, move→project, copy→character, same-location reject, id-collision
+  reject), diffing the outcome + seven mount-index tables in the
+  shared-cross-db-id-map remap form. The normalizer assigns `fileId` tokens by the
+  `file_links` walk (store+path stable — a copy's minted-timestamp `.md` perturbs
+  the content-addressed sha) and pins `chunkCount` before sorting.
+
 Docs — Phase 2 marked complete; Phase 3 kickoff drafted. Docs only, no crate
 source changed.
 

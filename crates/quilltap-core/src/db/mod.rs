@@ -23,6 +23,7 @@ use serde_json::{Map, Value};
 
 use crate::dbkey;
 
+pub mod archetype_wardrobe;
 pub mod background_jobs;
 pub mod character_plugin_data;
 pub mod character_vault;
@@ -60,6 +61,7 @@ pub mod group_doc_mount_links;
 pub mod groups;
 pub mod help_docs;
 pub mod image_profiles;
+pub mod instance_settings;
 pub mod llm_logs;
 pub mod memories;
 pub mod memories_read;
@@ -85,6 +87,7 @@ pub mod vault_wardrobe_write;
 pub mod vector_indices;
 pub mod vector_store;
 pub mod wardrobe;
+pub mod wardrobe_read;
 
 /// Errors from the DB layer.
 #[derive(Debug)]

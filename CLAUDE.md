@@ -1800,3 +1800,65 @@ Phase-4 rendering; NOTE its regex uses lookbehind, unsupported by the Rust
 `regex` crate), and the workspace/tab lib (`b8368c5a`/`c74bde4a` — Phase-4
 Angular state). The `docs/v4/` mirror was refreshed (CHANGELOG, DDL.md, the
 answer-confirmation feature doc).
+
+**Wave 4 (W4.0): the wardrobe drift batch is DONE** (2026-07-03). The whole
+General/project **shared-archetype tier** that the drift check flagged is now
+ported and closed — substantially larger than the plan's one-line bullet
+implied, because it pulls in the entire General/project-wardrobe subsystem and a
+new `instance_settings` reader. Landed:
+
+- **`db::instance_settings`** — the per-instance key/value store (main db); only
+  `get_general_mount_point_id` is needed (the "Quilltap General" store id), and it
+  tolerates a missing table like v4's `readSetting` try/catch. Unit tests.
+- **The archetype-seeding generalization of the read overlay.** v4's
+  `readCharacterVaultWardrobe` seeds shared archetypes (`findArchetypes(true)`)
+  into the component-resolution maps so a composite can reference a household item
+  it doesn't hold. The v5 `resolve_and_check_component_items` used index-valued
+  maps (no room for items outside the local vec), so it was generalized to accept
+  a `SeedArchetype` list (id/title/components) with v4's local-wins gap-fill;
+  `read_character_vault_wardrobe` gained `seed_archetypes` + an injected
+  `fetch_archetypes` closure (character/public reads pass `true`; the
+  General/project readers pass `false`). Backward-compat proven: the existing
+  `vault_wardrobe_read`/`vault_wardrobe_public` differentials stay green (their
+  corpora provision no General store → empty seed → no-op), plus two new resolver
+  unit tests bank real seeding + a cycle routed through an archetype node.
+- **`db::archetype_wardrobe`** — `read_general_wardrobe` / `read_project_wardrobe`
+  (via the overlay with `seed=false`, `characterId` coerced to null, archived
+  filter), the `find_archetypes` insertion-ordered General-under-project merge
+  (project shadows on id collision), `find_archetype_by_id`, and the
+  `ensure_*_wardrobe_folder` helpers.
+- **The public READ trio** (`db::wardrobe_read`) — `find_by_character_id`
+  (v4 `getOverlaidWardrobeItems`: resolve the mount, seeded read, coerce
+  characterId, archived filter, graceful `[]`) + `find_by_id_for_character`
+  (owned-then-archetype-fallback). `findByCharacterIdRaw` is a **tracked
+  deferral** (deprecated, reads the pre-cutover `wardrobe_items` table the vault
+  era drops, no W4.0 consumer). Verified by a read-differential
+  (`wardrobe_public_read_equivalence`) against v4's REAL repo — five cases where a
+  character composite references a General archetype by **slug AND UUID** and both
+  resolve only because the read seeds the shared tier, plus the archetype
+  fallback.
+- **The public WRITE generalization** (`db::vault_wardrobe_public`) — the
+  character-only path became a `WardrobeLocation` (character/General/project)
+  routing `create/update/delete` through shared at-location primitives, with
+  `buildCyclePeers` seeding General archetypes for character/project scopes and
+  the new `create/update/delete_project_wardrobe_item` entry points; a `null`
+  characterId now resolves to Quilltap General instead of `NoMount`. Re-verified
+  green.
+- **`services::wardrobe_transfers`** — v4's `transfers/route.ts` POST (move/copy
+  across the four tiers) + the GET destination enumeration, composed over the
+  ported repo ops/readers/writers + `ensure_official_store`. Verified by a tier-2
+  differential (`wardrobe_transfers_tier2_equivalence`) driving v4's **REAL POST
+  handler** (jest-real-DB oracle: `getServerSession` mocked, the real encrypted DB
+  wired past jest.setup) over five scenarios (copy→general, move→project,
+  copy→character, same-source/dest reject, id-collision reject), diffing the
+  outcome + seven mount-index tables in the shared-cross-db-id-map remap form. One
+  **harness-normalization gotcha** surfaced and was fixed (not a port bug): a
+  copy's minted id/timestamps live in the content-addressed `.md`, so `fileId`
+  tokens must be assigned by the `file_links` walk (store+path stable) — walked
+  before `files`/`documents` — and `chunkCount` (a v4-reindex-only value) must be
+  pinned BEFORE the sort, else it perturbs same-store file ordering. See
+  `[[wardrobe-transfers-remap-gotcha]]`.
+
+The rest of wave 4 (tool subsystem, danger, answer-confirmation,
+courier/agent-mode/compression-cache/regenerate-swipe, carina query, buildContext
+seam-closers, provider manifest) follows per the chat-orchestration decomposition.

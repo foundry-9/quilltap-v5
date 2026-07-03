@@ -281,7 +281,7 @@ fn vault_wardrobe_public_matches_oracle() {
                     &docs,
                     op.id.as_deref().expect("update id"),
                     &patch,
-                    op.character_id.as_deref().expect("update characterId"),
+                    op.character_id.as_deref(),
                 ) {
                     Ok(Some(_)) => json!({ "kind": "ok" }),
                     Ok(None) => json!({ "kind": "none" }),
@@ -293,7 +293,7 @@ fn vault_wardrobe_public_matches_oracle() {
                 &links,
                 &docs,
                 op.id.as_deref().expect("delete id"),
-                op.character_id.as_deref().expect("delete characterId"),
+                op.character_id.as_deref(),
             ) {
                 Ok(b) => json!({ "kind": "deleted", "value": b }),
                 Err(e) => json!({ "kind": "threw", "reason": threw_reason(&e) }),
@@ -306,6 +306,8 @@ fn vault_wardrobe_public_matches_oracle() {
             &mount.doc_mount_documents(),
             &mount_point_id,
             &op.read_back,
+            true,
+            &|| Ok(Vec::new()),
         )
         .unwrap_or_else(|e| panic!("read-back: {e:?}"));
         let items = vault

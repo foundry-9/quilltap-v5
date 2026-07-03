@@ -328,6 +328,53 @@ pub struct WardrobeItem {
     pub updated_at: String,
 }
 
+impl WardrobeItem {
+    /// Build a [`WardrobeItem`] from a read-path wardrobe-item JSON object (the
+    /// shape [`read_character_vault_wardrobe`](crate::db::vault_read_overlay::read_character_vault_wardrobe)
+    /// and the archetype readers emit). Preserves every field verbatim
+    /// (`characterId`: a string → `Some(Some)`, `null`/absent → `Some(None)`); the
+    /// transfers path then overrides `id`/`characterId`/timestamps for a move/copy.
+    pub fn from_read_value(v: &Value) -> WardrobeItem {
+        fn s(v: &Value, k: &str) -> String {
+            v.get(k)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        }
+        fn arr(v: &Value, k: &str) -> Vec<String> {
+            v.get(k)
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|e| e.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default()
+        }
+        // `Some(Some)` for a string cell, `Some(None)` for null/absent — a read
+        // item always carries the key (null when unset).
+        fn opt(v: &Value, k: &str) -> Option<Option<String>> {
+            Some(v.get(k).and_then(Value::as_str).map(str::to_string))
+        }
+        WardrobeItem {
+            id: s(v, "id"),
+            character_id: opt(v, "characterId"),
+            title: s(v, "title"),
+            description: opt(v, "description"),
+            image_prompt: opt(v, "imagePrompt"),
+            types: arr(v, "types"),
+            component_item_ids: arr(v, "componentItemIds"),
+            appropriateness: opt(v, "appropriateness"),
+            is_default: v.get("isDefault").and_then(Value::as_bool).unwrap_or(false),
+            replace: v.get("replace").and_then(Value::as_bool).unwrap_or(false),
+            migrated_from_clothing_record_id: opt(v, "migratedFromClothingRecordId"),
+            archived_at: opt(v, "archivedAt"),
+            created_at: s(v, "createdAt"),
+            updated_at: s(v, "updatedAt"),
+        }
+    }
+}
+
 /// The result of [`parse_legacy_wardrobe_json`] — `{ items }` only. v4 deliberately
 /// drops the legacy `outfit`/`presets` from the output (the DB-side migration owns
 /// presets; `outfit` was never consumed), but still *validates* a present `outfit`
@@ -1033,6 +1080,45 @@ pub fn parse_wardrobe_item_file(
     })
 }
 
+/// A shared archetype seeded into component resolution (v4's
+/// `findArchetypes(true)` merge). Carries only what resolution + the cycle walk
+/// consume, so the resolver stays decoupled from the read-path `Value` shape.
+#[derive(Debug, Clone)]
+pub struct SeedArchetype {
+    pub id: String,
+    pub title: String,
+    pub component_item_ids: Vec<String>,
+}
+
+impl SeedArchetype {
+    /// Build a seed from a read-path wardrobe-item JSON object (`id` / `title` /
+    /// `componentItemIds`). Missing/oddly-typed fields degrade to empties — a
+    /// well-formed archetype always carries all three.
+    pub fn from_value(v: &Value) -> Self {
+        SeedArchetype {
+            id: v
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            title: v
+                .get("title")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            component_item_ids: v
+                .get("componentItemIds")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default(),
+        }
+    }
+}
+
 /// Resolve every item's raw `componentItemIds` (slug or UUID refs, as written in
 /// the file) to canonical component ids, then clear any item whose resolved
 /// components would form a cycle — v4 `resolveAndCheckComponentItems`
@@ -1044,13 +1130,42 @@ pub fn parse_wardrobe_item_file(
 /// ref is dropped (read-tolerant). The cycle pass reads the **live** (already
 /// mutated) component lists, so clearing one item mid-pass affects later items'
 /// walks, exactly mirroring v4's mutable `itemById`.
+///
+/// `archetypes` are shared items (Quilltap General / project `Wardrobe` stores)
+/// seeded so a composite in this vault can reference a household archetype it
+/// doesn't itself hold — v4's `hasComponentRefs && seedArchetypes` branch, which
+/// merges `findArchetypes(true)` into the lookup maps AFTER the local items (so a
+/// local item wins any slug/id collision). Archetypes participate in resolution
+/// and in the cycle walk but are never themselves cleared (v4 loops the cycle
+/// pass over `items` only). Pass `&[]` to disable seeding (the General/project
+/// folders, and any read where no General store is provisioned).
 pub fn resolve_and_check_component_items(
     items: &mut [WardrobeItemFromFile],
     item_by_slug: &HashMap<String, usize>,
     item_by_id: &HashMap<String, usize>,
+    archetypes: &[SeedArchetype],
 ) {
+    // Build the archetype gap-fill lookups. v4 seeds each archetype into
+    // `itemById` only when the id is unclaimed by a local item, and into
+    // `itemBySlug` only when its slug is unclaimed (by a local item OR an
+    // earlier archetype) — first-claimer-wins, local-priority. Values are
+    // indices into `archetypes`.
+    let mut arche_by_slug: HashMap<String, usize> = HashMap::new();
+    let mut arche_by_id: HashMap<String, usize> = HashMap::new();
+    for (i, a) in archetypes.iter().enumerate() {
+        if !item_by_id.contains_key(&a.id) {
+            arche_by_id.entry(a.id.clone()).or_insert(i);
+        }
+        let slug = slugify_wardrobe_title(&a.title);
+        if !slug.is_empty() && !item_by_slug.contains_key(&slug) {
+            arche_by_slug.entry(slug).or_insert(i);
+        }
+    }
+
     // Pass 1 — slug/UUID → canonical id, dropping unknown refs. Compute all
-    // resolved lists first (immutable borrow), then apply.
+    // resolved lists first (immutable borrow), then apply. The lookup order
+    // mirrors v4's merged `itemBySlug` (local-then-archetype) checked before
+    // `itemById`: slug-any wins over id-any, local wins within each.
     let resolved: Vec<Option<Vec<String>>> = items
         .iter()
         .map(|item| {
@@ -1061,8 +1176,12 @@ pub fn resolve_and_check_component_items(
             for r in &item.component_item_ids {
                 if let Some(&j) = item_by_slug.get(r) {
                     out.push(items[j].id.clone());
+                } else if let Some(&j) = arche_by_slug.get(r) {
+                    out.push(archetypes[j].id.clone());
                 } else if let Some(&j) = item_by_id.get(r) {
                     out.push(items[j].id.clone());
+                } else if let Some(&j) = arche_by_id.get(r) {
+                    out.push(archetypes[j].id.clone());
                 }
                 // unknown ref → dropped
             }
@@ -1076,12 +1195,20 @@ pub fn resolve_and_check_component_items(
     }
 
     // Pass 2 — cycle check over the now-resolved ids. `by_id` maps each id to its
-    // current component list and is updated as items are cleared, so the walk
-    // sees prior-this-pass clears (matching v4's live `itemById`).
+    // current component list and is updated as local items are cleared, so the
+    // walk sees prior-this-pass clears (matching v4's live `itemById`). Local
+    // items are seeded first; archetypes gap-fill (their fixed, already-resolved
+    // lists) so a walk can traverse into a shared component. Only local items are
+    // ever cleared.
     let mut by_id: HashMap<String, Vec<String>> = items
         .iter()
         .map(|it| (it.id.clone(), it.component_item_ids.clone()))
         .collect();
+    for a in archetypes {
+        by_id
+            .entry(a.id.clone())
+            .or_insert_with(|| a.component_item_ids.clone());
+    }
     for item in items.iter_mut() {
         if item.component_item_ids.is_empty() {
             continue;
@@ -2075,6 +2202,14 @@ mod tests {
         }
     }
 
+    fn seed(id: &str, title: &str, refs: &[&str]) -> SeedArchetype {
+        SeedArchetype {
+            id: id.to_string(),
+            title: title.to_string(),
+            component_item_ids: refs.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
     fn build_maps(
         items: &[WardrobeItemFromFile],
     ) -> (HashMap<String, usize>, HashMap<String, usize>) {
@@ -2102,7 +2237,7 @@ mod tests {
             wif("id-outfit", "Outfit", &["shirt", "id-pants", "ghost"]),
         ];
         let (by_slug, by_id) = build_maps(&items);
-        resolve_and_check_component_items(&mut items, &by_slug, &by_id);
+        resolve_and_check_component_items(&mut items, &by_slug, &by_id, &[]);
         assert_eq!(
             items[2].component_item_ids,
             vec!["id-shirt".to_string(), "id-pants".to_string()],
@@ -2119,7 +2254,7 @@ mod tests {
             wif("id-b", "Cycle B", &["cycle-a"]),
         ];
         let (by_slug, by_id) = build_maps(&items);
-        resolve_and_check_component_items(&mut items, &by_slug, &by_id);
+        resolve_and_check_component_items(&mut items, &by_slug, &by_id, &[]);
         assert_eq!(
             items[0].component_item_ids,
             Vec::<String>::new(),
@@ -2136,7 +2271,7 @@ mod tests {
     fn self_cycle_clears() {
         let mut items = vec![wif("id-self", "Self Ref", &["self-ref"])];
         let (by_slug, by_id) = build_maps(&items);
-        resolve_and_check_component_items(&mut items, &by_slug, &by_id);
+        resolve_and_check_component_items(&mut items, &by_slug, &by_id, &[]);
         assert_eq!(items[0].component_item_ids, Vec::<String>::new());
     }
 
@@ -2149,8 +2284,52 @@ mod tests {
             wif("id-box", "Box", &["hat"]),
         ];
         let (by_slug, by_id) = build_maps(&items);
-        resolve_and_check_component_items(&mut items, &by_slug, &by_id);
+        resolve_and_check_component_items(&mut items, &by_slug, &by_id, &[]);
         assert_eq!(items[2].component_item_ids, vec!["id-hat-1".to_string()]);
+    }
+
+    #[test]
+    fn seeds_archetypes_local_wins_collision() {
+        // A local outfit references a shared archetype by slug ("apple-watch")
+        // and another by UUID; a local "Belt" shadows an archetype "Belt" slug.
+        let mut items = vec![
+            wif("id-belt-local", "Belt", &[]),
+            wif(
+                "id-outfit",
+                "Outfit",
+                &["apple-watch", "id-fitbit-arche", "belt"],
+            ),
+        ];
+        let (by_slug, by_id) = build_maps(&items);
+        let archetypes = vec![
+            seed("id-applewatch-arche", "Apple Watch", &[]),
+            seed("id-fitbit-arche", "Fitbit", &[]),
+            seed("id-belt-arche", "Belt", &[]), // slug "belt" already claimed by local
+        ];
+        resolve_and_check_component_items(&mut items, &by_slug, &by_id, &archetypes);
+        assert_eq!(
+            items[1].component_item_ids,
+            vec![
+                "id-applewatch-arche".to_string(), // slug → archetype
+                "id-fitbit-arche".to_string(),     // uuid → archetype
+                "id-belt-local".to_string(),       // slug "belt" → LOCAL wins
+            ],
+        );
+    }
+
+    #[test]
+    fn archetype_component_walk_detects_cycle_through_shared_item() {
+        // Local outfit → archetype bundle → back to the local outfit: a cycle
+        // routed through a seeded archetype clears the local item.
+        let mut items = vec![wif("id-outfit", "Outfit", &["shared-bundle"])];
+        let (by_slug, by_id) = build_maps(&items);
+        let archetypes = vec![seed("id-bundle-arche", "Shared Bundle", &["id-outfit"])];
+        resolve_and_check_component_items(&mut items, &by_slug, &by_id, &archetypes);
+        assert_eq!(
+            items[0].component_item_ids,
+            Vec::<String>::new(),
+            "the local item is cleared — the cycle runs through the archetype node"
+        );
     }
 
     /// A minimal item with the given overrides applied through a builder closure.

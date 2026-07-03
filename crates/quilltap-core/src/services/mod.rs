@@ -49,3 +49,4 @@ pub mod queue_service;
 pub mod recovery;
 pub mod turn_orchestrator;
 pub mod user_identity_resolver;
+pub mod wardrobe_transfers;

@@ -27,16 +27,15 @@
 //! where it normalizes cleanly). The projection primitive itself is already
 //! byte-verified (`vault_wardrobe_write_equivalence`).
 //!
-//! ## Scope / deferrals (mirroring `read_character_vault_wardrobe`)
+//! ## Tiers
 //!
-//! Only the **character** tier is ported. The **General** archetype tier
-//! (`characterId == null` → `getGeneralMountPointId`) and the **project** tier
-//! (`projectWardrobeLocation`) route through the General-Wardrobe subsystem, which
-//! is not ported; the corpus provisions no General store, so v4's
-//! `readGeneralWardrobe` / `findArchetypes` yield nothing and the archetype-seed
-//! into the cycle peers is a verified no-op. A `null` `characterId` on the public
-//! path therefore resolves to `NoMount` here (the unprovisioned-General case v4
-//! also surfaces as a throw). v4's per-mount write serialization (`runSerialized`)
+//! All three tiers are ported (W4.0): the **character** vault, **Quilltap
+//! General** (`characterId == null` → `getGeneralMountPointId`), and **project**
+//! stores (`create_project_wardrobe_item` &c.). The character read seeds shared
+//! archetypes into component resolution, and the cycle-peer map is extended with
+//! the General archetypes for character/project scopes (v4 `buildCyclePeers`).
+//! A `null` `characterId` with no provisioned General mount still resolves to
+//! `NoMount` (v4's throw). v4's per-mount write serialization (`runSerialized`)
 //! is a Node-concurrency guard, not on-disk state — the single-writer model
 //! already serializes applies.
 
@@ -46,10 +45,12 @@ use rusqlite::Connection;
 use serde_json::Value;
 
 use crate::clock;
-use crate::vault_overlay::{detect_component_cycles, WardrobeItem};
+use crate::vault_overlay::{detect_component_cycles, SeedArchetype, WardrobeItem};
 
+use super::archetype_wardrobe::{find_archetypes, read_general_wardrobe};
 use super::doc_mount_documents::DocMountDocumentsRepository;
 use super::doc_mount_file_links::DocMountFileLinksRepository;
+use super::instance_settings;
 use super::vault_read_overlay::read_character_vault_wardrobe;
 use super::vault_wardrobe_write::project_vault_wardrobe;
 use super::{characters_read, DbError};
@@ -148,15 +149,94 @@ fn resolve_character_mount(
         .map(str::to_string))
 }
 
-/// Read the character vault's current `Wardrobe/` items (v4 `readMountItems`):
-/// [`read_character_vault_wardrobe`], each item's `characterId` set to `loc`'s
-/// (`{...item, characterId: loc.characterId}`). Empty/missing folder → `[]`.
+/// Which tier a wardrobe write targets — governs archetype seeding & cycle peers
+/// (v4 `WardrobeLocation.scope`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum WardrobeScope {
+    Character,
+    General,
+    Project,
+}
+
+/// Where a wardrobe item's files live (v4 `WardrobeLocation`): a character vault,
+/// Quilltap General, or a project store.
+struct WardrobeLocation {
+    mount_point_id: String,
+    /// Parse/log scope passed to the reader/projector: the character id for a
+    /// character vault, else the mount-point id (v4 `characterId ?? mountPointId`).
+    scope_id: String,
+    /// `None` = a shared item (Quilltap General archetype or a project-store item).
+    character_id: Option<String>,
+    scope: WardrobeScope,
+}
+
+/// v4 `resolveWardrobeMount(characterId)`. `None` characterId → Quilltap General
+/// (shared archetypes); a characterId → its vault. Returns `None` when no vault
+/// is available (unlinked character, or General not yet provisioned) — callers
+/// surface that as `NoMount`.
+fn resolve_wardrobe_mount(
+    main: &Connection,
+    character_id: Option<&str>,
+) -> Result<Option<WardrobeLocation>, DbError> {
+    match character_id {
+        None => {
+            let Some(mount_point_id) = instance_settings::get_general_mount_point_id(main)? else {
+                return Ok(None);
+            };
+            Ok(Some(WardrobeLocation {
+                scope_id: mount_point_id.clone(),
+                mount_point_id,
+                character_id: None,
+                scope: WardrobeScope::General,
+            }))
+        }
+        Some(cid) => {
+            let Some(mount_point_id) = resolve_character_mount(main, cid)? else {
+                return Ok(None);
+            };
+            Ok(Some(WardrobeLocation {
+                mount_point_id,
+                scope_id: cid.to_string(),
+                character_id: Some(cid.to_string()),
+                scope: WardrobeScope::Character,
+            }))
+        }
+    }
+}
+
+/// v4 `projectWardrobeLocation` — a project-store wardrobe location for an
+/// explicit project mount.
+fn project_wardrobe_location(mount_point_id: &str) -> WardrobeLocation {
+    WardrobeLocation {
+        mount_point_id: mount_point_id.to_string(),
+        scope_id: mount_point_id.to_string(),
+        character_id: None,
+        scope: WardrobeScope::Project,
+    }
+}
+
+/// Read the location's current `Wardrobe/` items (v4 `readMountItems`):
+/// [`read_character_vault_wardrobe`] with archetype seeding on **only** for the
+/// character scope (the General/project folders ARE the shared set), each item's
+/// `characterId` overridden with `loc`'s. Empty/missing folder → `[]`.
 fn read_mount_items(
+    main: &Connection,
     docs: &DocMountDocumentsRepository,
-    mount_point_id: &str,
-    character_id: &str,
+    loc: &WardrobeLocation,
 ) -> Result<Vec<WardrobeItem>, DbError> {
-    let Some(vault) = read_character_vault_wardrobe(docs, mount_point_id, character_id)? else {
+    let seed_archetypes = loc.scope == WardrobeScope::Character;
+    let fetch = || -> Result<Vec<SeedArchetype>, DbError> {
+        let archetypes = find_archetypes(main, docs, true, &[])?;
+        Ok(archetypes.iter().map(SeedArchetype::from_value).collect())
+    };
+    let Some(vault) = read_character_vault_wardrobe(
+        docs,
+        &loc.mount_point_id,
+        &loc.scope_id,
+        seed_archetypes,
+        &fetch,
+    )?
+    else {
         return Ok(Vec::new());
     };
     let items = vault
@@ -166,17 +246,18 @@ fn read_mount_items(
         .unwrap_or_default();
     Ok(items
         .iter()
-        .map(|it| item_from_read(it, character_id))
+        .map(|it| item_from_read(it, loc.character_id.as_deref()))
         .collect())
 }
 
 /// Convert one read item (a `WardrobeItemFromFile`-shaped JSON value) into a
 /// [`WardrobeItem`] for re-projection, overriding `characterId` with the
-/// location's (v4's `readMountItems` map).
-fn item_from_read(v: &Value, character_id: &str) -> WardrobeItem {
+/// location's (v4's `readMountItems` map). `None` = a shared (General/project)
+/// item, serialized as `characterId: null`.
+fn item_from_read(v: &Value, character_id: Option<&str>) -> WardrobeItem {
     WardrobeItem {
         id: str_field(v, "id"),
-        character_id: Some(Some(character_id.to_string())),
+        character_id: Some(character_id.map(str::to_string)),
         title: str_field(v, "title"),
         description: opt_opt(v.get("description")),
         image_prompt: opt_opt(v.get("imagePrompt")),
@@ -217,14 +298,53 @@ fn opt_opt(v: Option<&Value>) -> Option<Option<String>> {
     }
 }
 
-/// Build the id→componentItemIds map used for cycle detection (v4
-/// `buildCyclePeers`, character scope): the location's current items. The shared
-/// General-archetype seeding is the deferred tier (empty in the corpus).
-fn build_cycle_peers(current: &[WardrobeItem]) -> HashMap<String, Vec<String>> {
+/// The local half of the cycle-peer map: each current item's
+/// id→componentItemIds. [`build_cycle_peers`] extends this with shared archetypes.
+fn local_cycle_peers(current: &[WardrobeItem]) -> HashMap<String, Vec<String>> {
     current
         .iter()
         .map(|i| (i.id.clone(), i.component_item_ids.clone()))
         .collect()
+}
+
+/// Build the id→componentItemIds map used for cycle detection (v4
+/// `buildCyclePeers`): the location's current items plus, for character and
+/// project mounts, the shared Quilltap General archetypes (a composite may bundle
+/// a household archetype). The General mount itself adds none — its folder IS that
+/// set. A local item wins any id collision; a failed General read is skipped
+/// (v4's try/catch), so the cycle check proceeds with local items only.
+fn build_cycle_peers(
+    main: &Connection,
+    docs: &DocMountDocumentsRepository,
+    loc: &WardrobeLocation,
+    current: &[WardrobeItem],
+) -> HashMap<String, Vec<String>> {
+    let mut map = local_cycle_peers(current);
+    if loc.scope != WardrobeScope::General {
+        if let Ok(archetypes) = read_general_wardrobe(main, docs, true) {
+            for a in archetypes {
+                let id = a
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                if id.is_empty() {
+                    continue;
+                }
+                map.entry(id).or_insert_with(|| {
+                    a.get("componentItemIds")
+                        .and_then(Value::as_array)
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|x| x.as_str().map(str::to_string))
+                                .collect()
+                        })
+                        .unwrap_or_default()
+                });
+            }
+        }
+    }
+    map
 }
 
 /// v4's `assertNoCycles`: ensure the item's own components are in the peer map,
@@ -261,51 +381,41 @@ fn item_character_id(item: &WardrobeItem) -> Option<String> {
     }
 }
 
-/// v4 `WardrobeRepository.create` → `createVaultWardrobeItem` → `createAtLocation`
-/// (character scope). `item` already carries its id/createdAt/updatedAt (the
-/// public repo materializes them before this point). Returns the stored item;
-/// `NoMount` when the character has no vault (v4 throws).
-pub fn create_vault_wardrobe_item(
+// ── At-location primitives (v4 `createAtLocation` / `updateAtLocation` /
+//    `deleteAtLocation`) ─────────────────────────────────────────────────────
+// Each reads the location's current `Wardrobe/` items, applies the change in
+// memory (with a cycle check against the current items + shared archetypes), and
+// re-projects the whole folder. The per-mount serialization v4 uses is a Node
+// concurrency guard; the Rust writer-task runtime serializes writes already.
+
+fn create_at_location(
     main: &Connection,
     links: &DocMountFileLinksRepository,
     docs: &DocMountDocumentsRepository,
+    loc: &WardrobeLocation,
     item: &WardrobeItem,
 ) -> Result<WardrobeItem, WardrobePublicError> {
-    let Some(character_id) = item_character_id(item) else {
-        return Err(WardrobePublicError::NoMount); // null → General (deferred)
-    };
-    let Some(mount_point_id) = resolve_character_mount(main, &character_id)? else {
-        return Err(WardrobePublicError::NoMount);
-    };
-
-    let current = read_mount_items(docs, &mount_point_id, &character_id)?;
-    // stored = {...item, characterId: loc.characterId} (already `character_id`).
-    let stored = item.clone();
-    assert_no_cycles(&stored, build_cycle_peers(&current))?;
+    let current = read_mount_items(main, docs, loc)?;
+    // stored = {...item, characterId: loc.characterId}
+    let mut stored = item.clone();
+    stored.character_id = Some(loc.character_id.clone());
+    assert_no_cycles(&stored, build_cycle_peers(main, docs, loc, &current))?;
 
     let mut next = current;
     next.push(stored.clone());
-    project_vault_wardrobe(links, docs, &mount_point_id, &next)?;
+    project_vault_wardrobe(links, docs, &loc.mount_point_id, &next)?;
     Ok(stored)
 }
 
-/// v4 `WardrobeRepository.update` → `updateVaultWardrobeItem` → `updateAtLocation`
-/// (character scope). Merges the patch onto the found item, preserving
-/// id/createdAt/characterId and minting a fresh `updatedAt`. `Ok(None)` when the
-/// id isn't in the folder; `NoMount` when the character has no vault (v4 throws).
-pub fn update_vault_wardrobe_item(
+fn update_at_location(
     main: &Connection,
     links: &DocMountFileLinksRepository,
     docs: &DocMountDocumentsRepository,
+    loc: &WardrobeLocation,
     id: &str,
     patch: &WardrobePatch,
-    character_id_hint: &str,
 ) -> Result<Option<WardrobeItem>, WardrobePublicError> {
-    let Some(mount_point_id) = resolve_character_mount(main, character_id_hint)? else {
-        return Err(WardrobePublicError::NoMount);
-    };
-
-    let current = read_mount_items(docs, &mount_point_id, character_id_hint)?;
+    let current = read_mount_items(main, docs, loc)?;
     let Some(idx) = current.iter().position(|i| i.id == id) else {
         return Ok(None);
     };
@@ -314,39 +424,140 @@ pub fn update_vault_wardrobe_item(
     let mut merged = current[idx].clone();
     patch.apply(&mut merged);
     merged.id = current[idx].id.clone();
-    merged.character_id = Some(Some(character_id_hint.to_string()));
+    merged.character_id = Some(loc.character_id.clone());
     merged.created_at = current[idx].created_at.clone();
     merged.updated_at = clock::now_iso();
 
-    assert_no_cycles(&merged, build_cycle_peers(&current))?;
+    assert_no_cycles(&merged, build_cycle_peers(main, docs, loc, &current))?;
 
     let mut next = current;
     next[idx] = merged.clone();
-    project_vault_wardrobe(links, docs, &mount_point_id, &next)?;
+    project_vault_wardrobe(links, docs, &loc.mount_point_id, &next)?;
     Ok(Some(merged))
 }
 
-/// v4 `WardrobeRepository.delete` → `deleteVaultWardrobeItem` → `deleteAtLocation`
-/// (character scope). `Ok(false)` when the id isn't present (no re-projection);
-/// `NoMount` when the character has no vault (v4 throws).
+fn delete_at_location(
+    links: &DocMountFileLinksRepository,
+    docs: &DocMountDocumentsRepository,
+    main: &Connection,
+    loc: &WardrobeLocation,
+    id: &str,
+) -> Result<bool, WardrobePublicError> {
+    let current = read_mount_items(main, docs, loc)?;
+    let next: Vec<WardrobeItem> = current.iter().filter(|i| i.id != id).cloned().collect();
+    if next.len() == current.len() {
+        return Ok(false);
+    }
+    project_vault_wardrobe(links, docs, &loc.mount_point_id, &next)?;
+    Ok(true)
+}
+
+/// v4 `WardrobeRepository.create` → `createVaultWardrobeItem` → `createAtLocation`.
+/// `item` already carries its id/createdAt/updatedAt (the public repo
+/// materializes them before this point); its `characterId` selects the tier —
+/// `Some` → that character's vault, `None` → Quilltap General. Returns the stored
+/// item; `NoMount` when no vault resolves (v4 throws).
+pub fn create_vault_wardrobe_item(
+    main: &Connection,
+    links: &DocMountFileLinksRepository,
+    docs: &DocMountDocumentsRepository,
+    item: &WardrobeItem,
+) -> Result<WardrobeItem, WardrobePublicError> {
+    let character_id = item_character_id(item);
+    let Some(loc) = resolve_wardrobe_mount(main, character_id.as_deref())? else {
+        return Err(WardrobePublicError::NoMount);
+    };
+    create_at_location(main, links, docs, &loc, item)
+}
+
+/// v4 `createProjectWardrobeItem` — create an item directly in a project store's
+/// `Wardrobe/` folder (the transfers destination path).
+pub fn create_project_wardrobe_item(
+    main: &Connection,
+    links: &DocMountFileLinksRepository,
+    docs: &DocMountDocumentsRepository,
+    mount_point_id: &str,
+    item: &WardrobeItem,
+) -> Result<WardrobeItem, WardrobePublicError> {
+    create_at_location(
+        main,
+        links,
+        docs,
+        &project_wardrobe_location(mount_point_id),
+        item,
+    )
+}
+
+/// v4 `WardrobeRepository.update` → `updateVaultWardrobeItem` → `updateAtLocation`.
+/// Merges the patch onto the found item, preserving id/createdAt/characterId and
+/// minting a fresh `updatedAt`. `character_id_hint` locates the mount (`None` →
+/// Quilltap General). `Ok(None)` when the id isn't in the folder; `NoMount` when
+/// no vault resolves (v4 throws).
+pub fn update_vault_wardrobe_item(
+    main: &Connection,
+    links: &DocMountFileLinksRepository,
+    docs: &DocMountDocumentsRepository,
+    id: &str,
+    patch: &WardrobePatch,
+    character_id_hint: Option<&str>,
+) -> Result<Option<WardrobeItem>, WardrobePublicError> {
+    let Some(loc) = resolve_wardrobe_mount(main, character_id_hint)? else {
+        return Err(WardrobePublicError::NoMount);
+    };
+    update_at_location(main, links, docs, &loc, id, patch)
+}
+
+/// v4 `updateProjectWardrobeItem` — update an item directly in a project store.
+pub fn update_project_wardrobe_item(
+    main: &Connection,
+    links: &DocMountFileLinksRepository,
+    docs: &DocMountDocumentsRepository,
+    mount_point_id: &str,
+    id: &str,
+    patch: &WardrobePatch,
+) -> Result<Option<WardrobeItem>, WardrobePublicError> {
+    update_at_location(
+        main,
+        links,
+        docs,
+        &project_wardrobe_location(mount_point_id),
+        id,
+        patch,
+    )
+}
+
+/// v4 `WardrobeRepository.delete` → `deleteVaultWardrobeItem` → `deleteAtLocation`.
+/// `character_id_hint` locates the mount (`None` → Quilltap General). `Ok(false)`
+/// when the id isn't present (no re-projection); `NoMount` when no vault resolves
+/// (v4 throws).
 pub fn delete_vault_wardrobe_item(
     main: &Connection,
     links: &DocMountFileLinksRepository,
     docs: &DocMountDocumentsRepository,
     id: &str,
-    character_id_hint: &str,
+    character_id_hint: Option<&str>,
 ) -> Result<bool, WardrobePublicError> {
-    let Some(mount_point_id) = resolve_character_mount(main, character_id_hint)? else {
+    let Some(loc) = resolve_wardrobe_mount(main, character_id_hint)? else {
         return Err(WardrobePublicError::NoMount);
     };
+    delete_at_location(links, docs, main, &loc, id)
+}
 
-    let current = read_mount_items(docs, &mount_point_id, character_id_hint)?;
-    let next: Vec<WardrobeItem> = current.iter().filter(|i| i.id != id).cloned().collect();
-    if next.len() == current.len() {
-        return Ok(false);
-    }
-    project_vault_wardrobe(links, docs, &mount_point_id, &next)?;
-    Ok(true)
+/// v4 `deleteProjectWardrobeItem` — delete an item directly from a project store.
+pub fn delete_project_wardrobe_item(
+    main: &Connection,
+    links: &DocMountFileLinksRepository,
+    docs: &DocMountDocumentsRepository,
+    mount_point_id: &str,
+    id: &str,
+) -> Result<bool, WardrobePublicError> {
+    delete_at_location(
+        links,
+        docs,
+        main,
+        &project_wardrobe_location(mount_point_id),
+        id,
+    )
 }
 
 #[cfg(test)]
@@ -394,16 +605,16 @@ mod tests {
     #[test]
     fn no_cycle_when_components_empty_or_acyclic() {
         // Empty components → always OK.
-        assert!(assert_no_cycles(&item("a", &[]), build_cycle_peers(&[])).is_ok());
+        assert!(assert_no_cycles(&item("a", &[]), local_cycle_peers(&[])).is_ok());
         // a → b, b has no components → acyclic.
         let current = vec![item("b", &[])];
-        assert!(assert_no_cycles(&item("a", &["b"]), build_cycle_peers(&current)).is_ok());
+        assert!(assert_no_cycles(&item("a", &["b"]), local_cycle_peers(&current)).is_ok());
     }
 
     #[test]
     fn direct_and_mutual_cycles_are_rejected_with_v4_message() {
         // Self-reference: a → a.
-        let err = assert_no_cycles(&item("a", &["a"]), build_cycle_peers(&[])).unwrap_err();
+        let err = assert_no_cycles(&item("a", &["a"]), local_cycle_peers(&[])).unwrap_err();
         match err {
             WardrobePublicError::Cycle(msg) => {
                 assert!(msg.starts_with("Wardrobe item a would create a component cycle: "));
@@ -413,7 +624,7 @@ mod tests {
         }
         // Mutual: b → a already present, adding a → b closes the loop.
         let current = vec![item("b", &["a"])];
-        let err = assert_no_cycles(&item("a", &["b"]), build_cycle_peers(&current)).unwrap_err();
+        let err = assert_no_cycles(&item("a", &["b"]), local_cycle_peers(&current)).unwrap_err();
         assert!(matches!(err, WardrobePublicError::Cycle(_)));
     }
 
@@ -426,7 +637,7 @@ mod tests {
             "replace": false, "migratedFromClothingRecordId": null, "archivedAt": null,
             "createdAt": "2026-02-01T00:00:00.000Z", "updatedAt": "2026-02-01T00:00:00.000Z"
         });
-        let it = item_from_read(&v, "owner");
+        let it = item_from_read(&v, Some("owner"));
         assert_eq!(it.character_id, Some(Some("owner".to_string())));
         assert_eq!(it.title, "Hat");
         assert_eq!(it.image_prompt, Some(Some("a hat".to_string())));

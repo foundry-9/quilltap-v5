@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-harness"
-version = "0.0.84"
+version = "0.0.85"
 edition = "2021"
 publish = false
 
@@ -26,3 +26,9 @@ serde_json = { version = "1", features = ["preserve_order"] }
 # The Phase-3 tier-3 differential (the memory gate) drives an async service, so
 # its test is `#[tokio::test]`. Only the test tree needs a runtime.
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
+# The wardrobe-transfers tier-2 differential normalizes minted uuids / ISO
+# timestamps embedded INSIDE content-addressed .md bytes (a copy writes them into
+# the frontmatter), then recomputes the content-addressed shas from the
+# normalized bytes so both sides align. Only that test tree needs these.
+sha2 = "0.10"
+regex = "1"

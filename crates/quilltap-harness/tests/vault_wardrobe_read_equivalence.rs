@@ -106,7 +106,13 @@ fn vault_wardrobe_read_matches_oracle() {
     let repo = writer.doc_mount_documents();
 
     for (c, want) in spec.cases.iter().zip(oracle.results.iter()) {
-        let got = read_character_vault_wardrobe(&repo, &c.mount_point_id, &c.character_id)
+        // v4's readCharacterVaultWardrobe defaults seedArchetypes=true, but this
+        // corpus provisions no General store, so v4's findArchetypes yields [] —
+        // an empty fetch here reproduces that exactly.
+        let got =
+            read_character_vault_wardrobe(&repo, &c.mount_point_id, &c.character_id, true, &|| {
+                Ok(Vec::new())
+            })
             .unwrap_or_else(|e| {
                 panic!("read_character_vault_wardrobe({}): {e:?}", c.mount_point_id)
             })

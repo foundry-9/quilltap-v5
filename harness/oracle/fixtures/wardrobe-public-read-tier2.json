@@ -1,0 +1,116 @@
+{
+  "$comment": [
+    "Read-differential for the PUBLIC wardrobe READ trio + the shared-archetype",
+    "tier: v4's WardrobeRepository.findByCharacterId (-> getOverlaidWardrobeItems)",
+    "and findByIdForCharacter (-> findArchetypeById), ported to",
+    "quilltap-core::db::wardrobe_read + archetype_wardrobe.",
+    "",
+    "ONE committed file drives BOTH sides. build-wardrobe-public-read-fixture.ts bakes",
+    "the SHARED state into two DBs (main + mount-index):",
+    "  1. A character baked via the REAL repos.characters.create (pinned id + ts), which",
+    "     mints a linked vault mount + scaffolds an empty Wardrobe/. The builder then reads",
+    "     the character's minted characterDocumentMountPointId and seeds its Wardrobe/*.md",
+    "     files there via the REAL linkDocumentContent (NOT writeDatabaseDocument).",
+    "  2. A provisioned Quilltap General store (doc_mount_points row, pinned id; storeType",
+    "     'documents', mountType 'database' -- the schema has no 'general' storeType, the",
+    "     General store is an ordinary documents store whose id lives in",
+    "     instance_settings.generalMountPointId). Two archetype items seeded into",
+    "     General/Wardrobe/*.md.",
+    "  3. Into the character's vault: a plain item, a COMPOSITE whose componentItems refs",
+    "     one archetype by SLUG and one by UUID (only resolvable via archetype SEEDING), and",
+    "     an ARCHIVED item (exercises the include-archived filter).",
+    "",
+    "The oracle drives v4's REAL repos.wardrobe over five cases; the Rust test calls the",
+    "matching db::wardrobe_read / archetype_wardrobe fns. Both READ the same baked rows so",
+    "everything (ids, timestamps, resolved component ids) compares EXACTLY -- ZERO",
+    "normalization (no clock mint on a read path).",
+    "",
+    "CASES:",
+    "  0. findByCharacterId(char, false) -- active items only (archived filtered out).",
+    "  1. findByCharacterId(char, true)  -- includes the archived item.",
+    "  2. findByIdForCharacter(char, composite-id) -- owned composite; its componentItemIds",
+    "     resolved to the two archetype ids (proves seeding: slug + UUID refs land).",
+    "  3. findByIdForCharacter(char, archetype-A-id) -- NOT owned -> archetype fallback",
+    "     returns the archetype (characterId null).",
+    "  4. findByIdForCharacter(char, 'no-such-id') -- null.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key (the same one folders/tags/",
+    "characters use). NOT the real Friday pepper; safe to commit."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "characterId": "c8000000-0000-4000-8000-000000000001",
+  "generalMountPointId": "e8000000-0000-4000-8000-0000000000a1",
+  "compositeId": "d8000000-0000-4000-8000-000000000002",
+  "archetypeAId": "a8000000-0000-4000-8000-0000000000b1",
+  "archetypeBId": "a8000000-0000-4000-8000-0000000000b2",
+  "noSuchId": "00000000-0000-4000-8000-000000000000",
+  "character": {
+    "id": "c8000000-0000-4000-8000-000000000001",
+    "userId": "a0000000-0000-4000-8000-000000000001",
+    "name": "Wardrobe Reader",
+    "identity": "The keeper of a modest closet.",
+    "description": "",
+    "manifesto": "",
+    "personality": "",
+    "exampleDialogues": "",
+    "title": "",
+    "firstMessage": "",
+    "talkativeness": 0.5,
+    "pronouns": { "subject": "they", "object": "them", "possessive": "theirs" },
+    "aliases": [],
+    "physicalDescription": null,
+    "systemPrompts": [],
+    "scenarios": [],
+    "controlledBy": "llm",
+    "isFavorite": false,
+    "npc": false,
+    "defaultImageId": null,
+    "defaultConnectionProfileId": null,
+    "defaultPartnerId": null,
+    "defaultRoleplayTemplateId": null,
+    "defaultImageProfileId": null,
+    "sillyTavernData": null,
+    "defaultAgentModeEnabled": null,
+    "defaultHelpToolsEnabled": null,
+    "defaultTimestampConfig": null,
+    "defaultScenarioId": null,
+    "defaultSystemPromptId": null,
+    "characterDocumentMountPointId": null,
+    "canDressThemselves": null,
+    "canCreateOutfits": null,
+    "systemTransparency": null,
+    "coreWhisperEnabled": null,
+    "canBeCarina": null,
+    "partnerLinks": [],
+    "tags": [],
+    "avatarOverrides": []
+  },
+  "generalStore": {
+    "id": "e8000000-0000-4000-8000-0000000000a1",
+    "name": "Quilltap General"
+  },
+  "archetypeFiles": [
+    {
+      "relativePath": "Wardrobe/apple-watch.md",
+      "content": "---\nid: \"a8000000-0000-4000-8000-0000000000b1\"\ntitle: Apple Watch\ntypes: [accessories]\n---\nA shared household smartwatch archetype.\n"
+    },
+    {
+      "relativePath": "Wardrobe/rain-boots.md",
+      "content": "---\nid: \"a8000000-0000-4000-8000-0000000000b2\"\ntitle: Rain Boots\ntypes: [footwear]\n---\nShared household rain boots.\n"
+    }
+  ],
+  "characterFiles": [
+    {
+      "relativePath": "Wardrobe/01-jacket.md",
+      "content": "---\nid: \"d8000000-0000-4000-8000-000000000001\"\ntitle: Blue Jacket\ntypes: [top]\n---\nA plain owned jacket.\n"
+    },
+    {
+      "relativePath": "Wardrobe/02-commuter-outfit.md",
+      "content": "---\nid: \"d8000000-0000-4000-8000-000000000002\"\ntitle: Commuter Outfit\ntypes: [top]\ncomponentItems: [\"apple-watch\", \"a8000000-0000-4000-8000-0000000000b2\"]\n---\nA composite referencing a shared archetype by slug (apple-watch) and another by UUID (rain boots) -- only resolvable through archetype seeding.\n"
+    },
+    {
+      "relativePath": "Wardrobe/03-old-coat.md",
+      "content": "---\nid: \"d8000000-0000-4000-8000-000000000003\"\ntitle: Old Coat\ntypes: [top]\narchived: true\n---\nAn archived owned coat.\n"
+    }
+  ]
+}

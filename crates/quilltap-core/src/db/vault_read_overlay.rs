@@ -32,7 +32,7 @@ use crate::vault_overlay::{
     markdown_to_nullable, parse_legacy_wardrobe_json, parse_prompt_file, parse_scenario_file,
     parse_vault_physical_prompts, parse_vault_properties, parse_wardrobe_item_file,
     resolve_and_check_component_items, slugify_wardrobe_title, stable_uuid_from_string,
-    CharacterScenario, CharacterSystemPrompt, VaultDoc, WardrobeItemFromFile,
+    CharacterScenario, CharacterSystemPrompt, SeedArchetype, VaultDoc, WardrobeItemFromFile,
 };
 
 /// The eight single-file overlay paths (v4 `SINGLE_FILE_OVERLAY_PATHS`), in order.
@@ -395,18 +395,22 @@ pub fn apply_document_store_overlay_one(
 /// `componentItems:` refs. Files are sorted by `relativePath` under the
 /// Decision-B code-unit order (Rust `str::cmp`) before parsing.
 ///
-/// **Tracked deferral — archetype seeding.** v4 additionally seeds the lookup
-/// maps with shared archetypes (`repos.wardrobe.findArchetypes(true)` → the
-/// General/project `Wardrobe` stores) so composites can reference shared items.
-/// That pulls in the General-Wardrobe subsystem and is not ported here; the
-/// differential keeps no General store provisioned, so v4's `findArchetypes`
-/// returns `[]` and the seed is a verified no-op (component refs resolve within
-/// the character's own vault). Close this before reading vaults that reference
-/// shared archetypes.
+/// **Archetype seeding.** v4 additionally seeds the lookup maps with shared
+/// archetypes (`repos.wardrobe.findArchetypes(true)` → the General/project
+/// `Wardrobe` stores) so composites can reference shared items they don't
+/// themselves hold — but only when `seed_archetypes` is set AND some item carries
+/// component refs (v4's `hasComponentRefs && seedArchetypes` guard). The
+/// archetypes are supplied by `fetch_archetypes`, a closure the caller wires to
+/// [`super::general_wardrobe::find_archetypes`] (character/public reads pass
+/// `true`; the General/project readers pass `false` with an empty fetch, since
+/// those folders ARE the shared set and re-seeding would recurse). A local item
+/// wins any slug/id collision with an archetype.
 pub fn read_character_vault_wardrobe(
     repo: &DocMountDocumentsRepository,
     mount_point_id: &str,
     character_id: &str,
+    seed_archetypes: bool,
+    fetch_archetypes: &dyn Fn() -> Result<Vec<SeedArchetype>, DbError>,
 ) -> Result<Option<Value>, DbError> {
     let mount = [mount_point_id.to_string()];
     let mut item_docs = repo.find_many_by_mount_points_in_folder(&mount, WARDROBE_FOLDER, ".md")?;
@@ -435,7 +439,16 @@ pub fn read_character_vault_wardrobe(
             item_by_slug.insert(slug, i);
         }
 
-        resolve_and_check_component_items(&mut items, &item_by_slug, &item_by_id);
+        // v4 fetches archetypes lazily — only when some item has component refs
+        // (the shared set is pure fallback for composites) and seeding is enabled.
+        let has_component_refs = items.iter().any(|it| !it.component_item_ids.is_empty());
+        let archetypes = if has_component_refs && seed_archetypes {
+            fetch_archetypes()?
+        } else {
+            Vec::new()
+        };
+
+        resolve_and_check_component_items(&mut items, &item_by_slug, &item_by_id, &archetypes);
 
         return Ok(Some(serde_json::json!({
             "items": serde_json::to_value(&items).expect("serialize wardrobe items"),

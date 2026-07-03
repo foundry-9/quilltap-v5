@@ -328,4 +328,14 @@ Ordered by dependency; several are mutually independent once wave 2 lands:
   `extractionAnchorMessageId` are now remapped through the shared message idmap
   (a non-continue send mints a fresh turn-opener). See
   `[[chain-depth-frozen-clock-artifact]]`.
-- Wave 4: scoped above, not started.
+- Wave 4: **W4.0 (the wardrobe drift batch) is done** — the public READ trio
+  (`db::wardrobe_read`), the General/project shared-archetype tier
+  (`db::archetype_wardrobe` + `db::instance_settings` + the read-overlay
+  archetype-seeding generalization), the public WRITE generalization to
+  General/project tiers, and `services::wardrobe_transfers` (move/copy across
+  tiers), each with a differential (`wardrobe_public_read_equivalence`,
+  re-verified `vault_wardrobe_read`/`vault_wardrobe_public`,
+  `wardrobe_transfers_tier2_equivalence`). The rest of wave 4 (tool subsystem,
+  danger, answer-confirmation, courier/agent-mode/compression-cache/
+  regenerate-swipe, carina query, buildContext seam-closers, provider manifest)
+  is scoped above, not started.
