@@ -134,6 +134,17 @@ appears. The manifest absorbs *data* drift for free; *protocol* drift is a
 small, well-bounded Rust addition. We are not trying to make the manifest
 Turing-complete to chase a target that will keep moving regardless.
 
+A live example landed after this doc was written: v4 `733fa12c`/`36d04ab0`
+(2026-06-30) — Sonnet 5 / Opus 4.7+ / Fable / Mythos reject
+`temperature`/`top_p`/`top_k` outright, and fixed-budget thinking
+(`{type:'enabled', budget_tokens}`) 400s on them; they need adaptive thinking
+with `display: 'summarized'` requested explicitly (their default omits the
+thinking text Quilltap's `reasoningContent` capture reads). v4 encodes this as
+a model-prefix regex list inside the anthropic plugin's `requestTransform`
+paths. When porting the anthropic transform, port it from **current** v4
+source and consider lifting the affected-model list into manifest *data* (a
+per-model capability flag) so the next such change is a data edit.
+
 ## Embedding providers — inventoried, and they are easy
 
 Four embedding providers, all **request/response, no streaming** — the whole

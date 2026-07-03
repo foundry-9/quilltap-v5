@@ -535,6 +535,27 @@ roadmap.
   chain-depth divergence on non-continue single-LLM-character chats is
   flagged for a dedicated follow-up corpus.
 
+Drift check — v4 `8efe1ba9..f69200bb` (17 commits) audited against the ported
+surface; no ported unit is stale. Docs only, no crate source changed.
+
+- Confirmed in the port already: the `profileParameters` forwarding fix
+  (`8cf7272e`) and the answer-confirmation service halves (`29f3ae63` — the
+  finalizer gates + the `confirmationResult` event) landed inside the wave-3
+  ports; corrected the stale CLAUDE.md note that called the forwarding fix
+  unported.
+- v4's jest-config change (`69fa611e` — `.integration.test` files excluded from
+  unit runs; `better-sqlite3-multiple-ciphers` now mapped to the DB mock)
+  verified harmless to the oracle machinery by regenerating the memory-gate
+  oracle under the new config and re-running its differential green.
+- New unported v4 surfaces recorded in the plans: the anthropic
+  adaptive-thinking / sampling-param-rejection rules (`provider-manifest.md`),
+  the wardrobe transfers endpoint + public READ trio as archetype-tier
+  consumers (`overview.md`), and server-side markdown rendering +
+  `qtap-linkify` (with its lookbehind-regex porting note) plus the expanded
+  answer-confirmation unit in `chat-orchestration.md`'s wave-4 list.
+- Refreshed the `docs/v4/` mirror (CHANGELOG, DDL.md, the answer-confirmation
+  feature doc).
+
 Docs — Phase 2 marked complete; Phase 3 kickoff drafted. Docs only, no crate
 source changed.
 

@@ -95,7 +95,16 @@ green through the tier-2 harness (see the CLAUDE.md Status section for the full
 per-repo inventory, including the `characters` and `chats` capstones, `memories`,
 both sibling DBs, the `upsert*` back-fill, and the fixture sanitizer). What
 remains is a few Phase-3-coupled deferrals (chats `delete`'s participant-vault
-summary sweep; the General/project wardrobe archetype tiers;
+summary sweep; the General/project wardrobe archetype tiers — which gained a
+**second consumer** in v4 `77650571` (2026-07-02), the wardrobe move/copy
+transfers endpoint, an API route composing already-ported
+wardrobe/characters/projects/groups repo ops over
+`readGeneralWardrobe`/`readProjectWardrobe`/`ensureProjectWardrobeFolder`, so
+closing that tier unblocks both archetype-referencing vault reads *and*
+transfers; the wardrobe public READ trio
+`findByCharacterId`/`findByCharacterIdRaw`/`findByIdForCharacter` — thin
+vault-aware wrappers the routes consume, and v4 `fafd5449` made
+`findByIdForCharacter` the DELETE route's pre-check too;
 `background_jobs.markCompleted`'s dotted-payload merge, a forward v5-only
 capability since v4-on-SQLite throws there). The record below traces how the
 inventory was built, repo-by-repo in parallel batches (agents draft each repo's

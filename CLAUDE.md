@@ -1712,6 +1712,37 @@ wired in both write and read), `chat_messages`' five new `MessageEvent` fields
 `answerConfirmationOverride` (now a 17-key bag, added to
 `PROJECT_STORE_MANAGED_FIELDS` too), and `llm_logs`' new `ANSWER_CONFIRMATION`
 enum member (a corpus-only change — the column is plain TEXT on the port side).
-The answer-confirmation *service* itself and the cheap-LLM `profileParameters`
-forwarding fix (same v4 commit) remain unported Phase-3/Phase-4 work — this
-catch-up only closes the marshaling gap on surfaces already ported.
+The answer-confirmation *service* itself remains unported wave-4 work — this
+catch-up only closed the marshaling gap on surfaces already ported. (The
+cheap-LLM `profileParameters` forwarding fix, flagged unported here at the
+time, landed the next day inside the wave-3 ports: `cheap_llm` /
+`cheap_llm_exec` carry `profile_parameters` end-to-end, and `LLMParams` /
+`StreamParams` forward it through the completion/stream seams.)
+
+**Drift check (2026-07-03): v4 `8efe1ba9..f69200bb` (17 commits) audited.**
+Every commit was classified against the ported surface; no ported unit is
+stale. Findings: (1) `8cf7272e` (profileParameters forwarding) and `29f3ae63`'s
+service-layer halves are IN the wave-3 ports (ported 2026-07-02 from post-fix
+source — the finalizer's confirmation gates + the `confirmationResult` event
+frame included); the remaining forwarding sites live only in unported wave-4
+callers (ai-import, wizards, greeting, gatekeeper, announcer), and the
+`ANSWER_CONFIRMATION` log-type mapping sits inside the deferred host-side
+`logLLMCall`. (2) `69fa611e` changed v4's jest config (unit runs now exclude
+`*.integration.test.*`; `^better-sqlite3-multiple-ciphers$` now maps to the
+mock) — the oracle machinery is unaffected (no oracle file uses that suffix or
+requires that bare name; the abs-path `requireActual` bypasses the mapper),
+proven by regenerating the memory-gate oracle under the new config and
+re-running its differential green. (3) New unported v4 surfaces, all wave-4 /
+Phase-4, tracked in the decomposition docs: the anthropic plugin's
+adaptive-thinking + sampling-param-rejection rules for Sonnet 5 / Opus 4.7+ /
+Fable / Mythos (`733fa12c`/`36d04ab0` — lands with the provider manifest), the
+wardrobe move/copy transfers endpoint (`77650571` — an API route over ported
+repo ops plus the deferred General/project archetype tier, which now has a
+second consumer), the wardrobe public READ trio
+(`findByCharacterId`/`findByCharacterIdRaw`/`findByIdForCharacter` — the
+delete route now pre-checks via `findByIdForCharacter`, `fafd5449`),
+`lib/chat/qtap-linkify.ts` + the markdown-renderer step 3.5 (`52eb0eb8` —
+Phase-4 rendering; NOTE its regex uses lookbehind, unsupported by the Rust
+`regex` crate), and the workspace/tab lib (`b8368c5a`/`c74bde4a` — Phase-4
+Angular state). The `docs/v4/` mirror was refreshed (CHANGELOG, DDL.md, the
+answer-confirmation feature doc).

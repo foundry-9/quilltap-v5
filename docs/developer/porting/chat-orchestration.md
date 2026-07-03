@@ -154,6 +154,22 @@ Ordered by dependency; several are mutually independent once wave 2 lands:
   drives the same turn machinery with `userParticipantId = null`.
 - **Prospero / Librarian / post-office whisper writers** — cross-subsystem
   side-effect posts reached from `processMessage` and `buildContext`.
+- **Server-side markdown rendering** — `markdown-renderer.service.ts` (the
+  pre-rendered-HTML path for Librarian/Lantern/Aurora announcement bodies) +
+  its pure helpers (`roleplay-rendering`, and the new
+  `lib/chat/qtap-linkify.ts` from v4 `52eb0eb8`, 2026-07-02 — bare `qtap://`
+  URI → markdown-link upgrade, shared by client and server renderers so they
+  stay in lockstep). Porting note: `qtap-linkify`'s `BARE_QTAP_URI_RE` uses
+  **lookbehind** (`(?<!\]\()(?<!<)`), which the Rust `regex` crate does not
+  support — reproduce it the way the Phase-1 name matchers did (hand-rolled
+  boundary check or `fancy-regex`-free rewrite), with a differential corpus.
+- **Answer-confirmation service** (expanded from the line above; v4
+  `29f3ae63`): `answer-confirmation.service.ts` — `isUserDrivenTurn` /
+  `hasCheckableInputs` / `findLatestCommonplaceWhisper` + the active
+  consistency-check/re-affirmation cheap-LLM calls. The finalizer already
+  ports its gates, `confirmed`-state persistence, and the
+  `confirmationResult` event; this unit fills the seam. Depends on the tool
+  subsystem (it vets tool-using replies) and the Commonplace whisper shape.
 
 ## Sequencing rationale
 
