@@ -107,6 +107,7 @@ use crate::services::message_finalizer::{
     FinalizerParticipant, FinalizerProfile, FinalizerStreaming, ParticipantCharacter,
     ProcessMessageResult,
 };
+use crate::services::native_tool_loop;
 use crate::services::primary_stream::{
     self, EffectiveProfile, PreservePartialOnError, ReasoningSegment, RunPrimaryStreamOptions,
     StreamingState,
@@ -114,8 +115,10 @@ use crate::services::primary_stream::{
 use crate::services::provider_failover::{
     self, AttemptEmptyResponseRecoveryOptions, DangerSettings, DangerousContentRouter,
 };
+use crate::services::tool_call_threading::ThreadedMessage;
 use crate::services::tool_execution::{
-    save_tool_messages, GeneratedImage, SaveToolMessagesResult, ToolMessage, ToolWhisperContext,
+    create_tool_context, save_tool_messages, GeneratedImage, SaveToolMessagesResult, ToolMessage,
+    ToolWhisperContext,
 };
 use crate::services::turn_orchestrator::{
     self, ChainConfig, ChainDecision, ChainGuards, ChainReason,
@@ -297,22 +300,8 @@ pub struct ProcessMessageInput {
 
 /// The bundle of injected model boundaries + sinks + seams threaded through the
 /// whole spine (grouped so the re-entrant chain driver can pass one reference).
-pub struct OrchestratorDeps<
-    'a,
-    EMB,
-    CMP,
-    STR,
-    SNK,
-    BCS,
-    ORC,
-    RTR,
-    CONF,
-    ACOMP,
-    RNG,
-    COST,
-    CARQ,
-    PROS,
-> where
+pub struct OrchestratorDeps<'a, EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST, CARQ, PROS>
+where
     EMB: EmbeddingProvider,
     CMP: CompletionProvider,
     STR: StreamingCompletionProvider,
@@ -322,7 +311,6 @@ pub struct OrchestratorDeps<
     RTR: DangerousContentRouter,
     CONF: AnswerConfirmationRunner,
     ACOMP: AsyncCompressionTrigger,
-    RNG: message_finalizer::RngDetector,
     COST: CostTracker,
     CARQ: RunCarinaQuery,
     PROS: PostProsperoCarinaError,
@@ -340,17 +328,17 @@ pub struct OrchestratorDeps<
     pub confirmation: &'a mut CONF,
     /// The finalizer's async-compression trigger seam.
     pub compression: &'a mut ACOMP,
-    /// The finalizer's assistant-response RNG detector seam.
-    pub finalizer_rng: &'a mut RNG,
     /// The finalizer's cost-estimation seam.
     pub cost: &'a mut COST,
     /// The finalizer's + orchestrator's carina query seam.
     pub carina_query: &'a mut CARQ,
     /// The finalizer's Prospero-carina-error post seam.
     pub prospero: &'a mut PROS,
-    /// The RNG auto-detect byte source (v4's `crypto.randomBytes`). Production
-    /// draws from the OS CSPRNG ([`crate::tools::rng::OsRandomBytes`]); the
-    /// differential injects a fixed committed stream.
+    /// The RNG byte source (v4's `crypto.randomBytes`) — shared by the orchestrator's
+    /// user-message auto-detect AND the finalizer's assistant-response auto-detect
+    /// (both draw the same committed stream sequentially). Production draws from the
+    /// OS CSPRNG ([`crate::tools::rng::OsRandomBytes`]); the differential injects a
+    /// fixed committed stream.
     pub rng_bytes: &'a mut dyn RandomBytes,
 }
 
@@ -359,21 +347,7 @@ pub struct OrchestratorDeps<
 /// through an [`OrchestratorSeams`] method. Returns the [`ProcessMessageResult`]
 /// the chain driver reads.
 #[allow(clippy::too_many_lines, clippy::type_complexity)]
-pub async fn process_message<
-    EMB,
-    CMP,
-    STR,
-    SNK,
-    BCS,
-    ORC,
-    RTR,
-    CONF,
-    ACOMP,
-    RNG,
-    COST,
-    CARQ,
-    PROS,
->(
+pub async fn process_message<EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST, CARQ, PROS>(
     deps: &mut OrchestratorDeps<
         '_,
         EMB,
@@ -385,7 +359,6 @@ pub async fn process_message<
         RTR,
         CONF,
         ACOMP,
-        RNG,
         COST,
         CARQ,
         PROS,
@@ -402,7 +375,6 @@ where
     RTR: DangerousContentRouter,
     CONF: AnswerConfirmationRunner,
     ACOMP: AsyncCompressionTrigger,
-    RNG: message_finalizer::RngDetector,
     COST: CostTracker,
     CARQ: RunCarinaQuery,
     PROS: PostProsperoCarinaError,
@@ -921,13 +893,75 @@ where
         });
     }
 
-    // --- Tool loops (orchestrator.service.ts:1259–1378) ---
-    // No tools this turn (corpus) → the native + text tool loops no-op. A
-    // non-empty tool slate is the wave-4 tool subsystem (W4.1e/f). These stay
-    // empty until then, so the tool-only terminal branch below is corpus-dormant
-    // (its constituents are differential-proven — see that branch's comment).
-    let tool_messages: Vec<ToolMessage> = Vec::new();
-    let generated_image_paths: Vec<GeneratedImage> = Vec::new();
+    // --- Native tool loop (orchestrator.service.ts:1259–1280) ---
+    // v4 runs `runNativeToolLoop` unconditionally after the primary stream; the
+    // loop breaks immediately when the last raw response carries no native tool
+    // calls. The tool slate is empty (`buildTools` is W4.1g) AND detection is the
+    // W4.7 provider parse (here the no-op [`NoToolCallDetector`]) AND the primary
+    // stream leaves `raw_response` null in the corpus — so the loop is a guaranteed
+    // no-op, wired at the composition point v4 uses (proven by the port's own
+    // `native_tool_loop_tier3` differential driving v4's REAL loop). Agent-mode
+    // resolution (the Global→Character→Project→Chat cascade) is W4.4 — the corpus
+    // keeps it disabled. The runner is a placeholder [`LoudFallbackRunner`] (never
+    // reached; the real `BuiltInToolRunner` + tool slate wire with W4.1g). The text
+    // tool passes (W4.1f) follow here.
+    let mut tool_messages: Vec<ToolMessage> = Vec::new();
+    let mut generated_image_paths: Vec<GeneratedImage> = Vec::new();
+
+    let loop_messages: Vec<ThreadedMessage> = mc_result
+        .formatted_messages
+        .iter()
+        .map(|m| ThreadedMessage {
+            role: m.role.clone(),
+            content: m.content.clone(),
+            name: m.name.clone(),
+            thought_signature: m.thought_signature.clone(),
+            reasoning_content: None,
+            tool_call_id: None,
+            tool_calls: None,
+        })
+        .collect();
+    let loop_tool_context = create_tool_context(
+        chat_id.clone(),
+        user_id.clone(),
+        character_id.clone(),
+        character_participant_id.clone(),
+        None,
+        None,
+        None,
+        None,
+        None,
+    );
+    let loop_runner = crate::tools::executor::LoudFallbackRunner;
+    let loop_detector = native_tool_loop::NoToolCallDetector;
+    native_tool_loop::run_native_tool_loop(
+        db,
+        deps.streaming,
+        sink,
+        &loop_runner,
+        &loop_detector,
+        &mut preserve,
+        native_tool_loop::RunNativeToolLoopOptions {
+            chat_id: chat_id.clone(),
+            character_id: character_id.clone(),
+            character_name: character_name.clone(),
+            agent_mode: crate::services::agent_mode::ResolvedAgentMode {
+                enabled: false,
+                max_turns: 10,
+            },
+            provider: effective_profile.provider.clone(),
+            base_url: effective_profile.base_url.clone(),
+            formatted_messages: loop_messages,
+            base_params: params.clone(),
+            tool_context: loop_tool_context,
+            state: &mut streaming_state,
+            tool_messages: &mut tool_messages,
+            generated_image_paths: &mut generated_image_paths,
+        },
+    )
+    .await
+    .map_err(|e| DbError::Key(format!("native tool loop failed: {}", e.message)))?;
+
     let tool_messages_len = tool_messages.len();
 
     // --- Empty-response recovery (orchestrator.service.ts:1380–1397) ---
@@ -1028,7 +1062,7 @@ where
             },
             deps.confirmation,
             deps.compression,
-            deps.finalizer_rng,
+            deps.rng_bytes,
             deps.cost,
             deps.carina_query,
             deps.prospero,
@@ -1191,23 +1225,8 @@ async fn persist_tools_only(
 /// fires a fold, `check_and_generate_summary_if_needed` writes the summary + the
 /// title enqueue through the `Db` — the effect the differential banks.
 #[allow(clippy::type_complexity)]
-async fn run_summary_check<EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, RNG, COST, CARQ, PROS>(
-    deps: &OrchestratorDeps<
-        '_,
-        EMB,
-        CMP,
-        STR,
-        SNK,
-        BCS,
-        ORC,
-        RTR,
-        CONF,
-        ACOMP,
-        RNG,
-        COST,
-        CARQ,
-        PROS,
-    >,
+async fn run_summary_check<EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST, CARQ, PROS>(
+    deps: &OrchestratorDeps<'_, EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST, CARQ, PROS>,
     chat_id: &str,
     user_id: &str,
     profile: &EffectiveProfile,
@@ -1222,7 +1241,6 @@ where
     RTR: DangerousContentRouter,
     CONF: AnswerConfirmationRunner,
     ACOMP: AsyncCompressionTrigger,
-    RNG: message_finalizer::RngDetector,
     COST: CostTracker,
     CARQ: RunCarinaQuery,
     PROS: PostProsperoCarinaError,
@@ -1312,7 +1330,6 @@ pub async fn execute_turn_chain<
     RTR,
     CONF,
     ACOMP,
-    RNG,
     COST,
     CARQ,
     PROS,
@@ -1329,7 +1346,6 @@ pub async fn execute_turn_chain<
         RTR,
         CONF,
         ACOMP,
-        RNG,
         COST,
         CARQ,
         PROS,
@@ -1349,7 +1365,6 @@ where
     RTR: DangerousContentRouter,
     CONF: AnswerConfirmationRunner,
     ACOMP: AsyncCompressionTrigger,
-    RNG: message_finalizer::RngDetector,
     COST: CostTracker,
     CARQ: RunCarinaQuery,
     PROS: PostProsperoCarinaError,
@@ -1954,7 +1969,6 @@ mod tests {
         for (is_multi, has_content, is_paused, single_turn) in cases {
             let mut confirmation = message_finalizer::NoAnswerConfirmation;
             let mut compression = message_finalizer::NoAsyncCompression;
-            let mut rng = message_finalizer::NoRng;
             let mut cost = message_finalizer::NoCostTracking;
             let mut carina = NoChainCarina;
             let mut prospero = crate::services::carina_runner::ClosureProspero(prospero_fn);
@@ -1971,7 +1985,6 @@ mod tests {
                 danger_router: &router,
                 confirmation: &mut confirmation,
                 compression: &mut compression,
-                finalizer_rng: &mut rng,
                 cost: &mut cost,
                 carina_query: &mut carina,
                 prospero: &mut prospero,

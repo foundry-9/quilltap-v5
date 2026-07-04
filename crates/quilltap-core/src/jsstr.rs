@@ -55,3 +55,22 @@ pub fn utf16_truncate(s: &str, n: usize) -> String {
     let units: Vec<u16> = s.encode_utf16().take(n).collect();
     String::from_utf16_lossy(&units)
 }
+
+/// The UTF-16 code-unit index of the first occurrence of `needle` in `haystack`
+/// at or after the UTF-16 offset `from`, matching JS
+/// `haystack.indexOf(needle, from)`. Returns `None` for no match (JS `-1`). An
+/// empty needle returns `min(from, len)` (JS's empty-string search). All indices
+/// are UTF-16 code units, so surrogate offsets align with JS `String.prototype`.
+pub fn js_index_of(haystack: &str, needle: &str, from: usize) -> Option<usize> {
+    let hay: Vec<u16> = haystack.encode_utf16().collect();
+    let nee: Vec<u16> = needle.encode_utf16().collect();
+    if nee.is_empty() {
+        return Some(from.min(hay.len()));
+    }
+    if nee.len() > hay.len() {
+        return None;
+    }
+    let start = from.min(hay.len());
+    let last = hay.len() - nee.len();
+    (start..=last).find(|&i| hay[i..i + nee.len()] == nee[..])
+}

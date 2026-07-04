@@ -55,7 +55,7 @@ use quilltap_core::services::build_context::NoopSeams as BcNoopSeams;
 use quilltap_core::services::carina_runner::ClosureProspero;
 use quilltap_core::services::chat_events::RecordingSink;
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
-use quilltap_core::services::message_finalizer::{NoAnswerConfirmation, NoAsyncCompression, NoRng};
+use quilltap_core::services::message_finalizer::{NoAnswerConfirmation, NoAsyncCompression};
 use quilltap_core::services::orchestrator::{
     self, ExecuteTurnChainOptions, OrchestratorChatSettings, OrchestratorDeps, ProcessClock,
     ProcessMessageInput, SendMessageOptions,
@@ -473,7 +473,6 @@ fn orchestrator_tier3_matches_oracle() {
         // Fresh finalizer seams per call.
         let mut confirmation = NoAnswerConfirmation;
         let mut compression = NoAsyncCompression;
-        let mut finalizer_rng = NoRng;
         let mut cost = quilltap_core::services::message_finalizer::NoCostTracking;
         let mut carina_query = orchestrator_carina::NoCarina;
         let mut prospero = ClosureProspero(|_a| Ok(()));
@@ -494,7 +493,6 @@ fn orchestrator_tier3_matches_oracle() {
             danger_router: &router,
             confirmation: &mut confirmation,
             compression: &mut compression,
-            finalizer_rng: &mut finalizer_rng,
             cost: &mut cost,
             carina_query: &mut carina_query,
             prospero: &mut prospero,

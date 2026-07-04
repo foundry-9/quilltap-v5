@@ -56,10 +56,11 @@ use quilltap_core::services::message_finalizer::{
     finalize_message_response, AsyncCompressionTrigger, CostTrackArgs, CostTracker,
     FinalizeOptions, FinalizerCharacter, FinalizerChat, FinalizerChatSettings,
     FinalizerCompression, FinalizerParticipant, FinalizerProfile, FinalizerStreaming,
-    NoAnswerConfirmation, NoRng, ParticipantCharacter,
+    NoAnswerConfirmation, ParticipantCharacter,
 };
 use quilltap_core::services::primary_stream::ReasoningSegment;
 use quilltap_core::services::tool_execution::{GeneratedImage, ToolMessage};
+use quilltap_core::tools::rng::FixedBytes;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -153,6 +154,11 @@ struct Spec {
     test_pepper_base64: String,
     user_id: String,
     chat_settings: ChatSettingsW,
+    /// The committed `crypto.randomBytes` sequence the assistant-response RNG
+    /// auto-detect draws from (both sides). Empty for the no-RNG cases; the fire
+    /// case supplies exactly the bytes its dice/coin draws consume.
+    #[serde(default)]
+    random_bytes: Vec<u8>,
     calls: Vec<CallW>,
 }
 
@@ -580,6 +586,9 @@ fn message_finalizer_tier3_matches_oracle() {
 
     let mut compression_rec = RecordingCompression::default();
     let mut cost_rec = RecordingCost::default();
+    // The RNG byte source is shared across the whole run (v4 mocks
+    // `crypto.randomBytes` once; it consumes across calls in order).
+    let mut rng_bytes = FixedBytes::new(spec.random_bytes.clone());
 
     let mut got_results: Vec<(String, Value)> = Vec::new();
     let mut got_events: Vec<(String, Value)> = Vec::new();
@@ -675,7 +684,6 @@ fn message_finalizer_tier3_matches_oracle() {
         };
         let mut prospero = ClosureProspero(|_a| Ok(()));
         let mut confirmation = NoAnswerConfirmation;
-        let mut rng = NoRng;
 
         let opts = FinalizeOptions {
             chat_id: call.chat_id.clone(),
@@ -732,7 +740,7 @@ fn message_finalizer_tier3_matches_oracle() {
                 opts,
                 &mut confirmation,
                 &mut compression_rec,
-                &mut rng,
+                &mut rng_bytes,
                 &mut cost_rec,
                 &mut carina_seam,
                 &mut prospero,

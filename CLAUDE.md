@@ -2078,9 +2078,63 @@ reads (the env seam supports them; the corpus requests only `quilltap.version`);
 the `terminal_read` scrollback source; `read_conversation`'s deprecated
 `findByCharacterIdRaw`.
 
-The rest of wave 4 (the remaining tool subsystem — tool loops / `buildTools` /
-registry, the remaining handler-catalog batches [2 wardrobe, 3 doc-edit, 4
-embedding/search, 5 host-seamed], the finalizer's response-RNG — danger,
-answer-confirmation, courier/agent-mode/compression-cache/regenerate-swipe, carina
-query, buildContext seam-closers, provider manifest) follows per the
-chat-orchestration decomposition.
+**Wave 4 (W4.1e): the native tool loop + the finalizer response-RNG are DONE**
+(2026-07-04). Two sub-units. **e.1** — `services::native_tool_loop`
+(`native_tool_loop_tier3_equivalence`): v4's `runNativeToolLoop`, the bounded
+stream → detect → execute → thread → re-stream loop the orchestrator runs after
+the primary stream. Composes the landed pieces — `process_tool_calls` +
+`ToolRunner` (c), `build_assistant_tool_call_message`/`build_tool_result_messages`
+(b.2), the streaming provider + canned-key machinery, `apply_reasoning_chunk`/
+`flush_reasoning_segment`/`next_turn_seq` (primary-stream) — with two new seams: a
+`ToolCallDetector` (v4 `detectToolCallsInResponse`, provider wire parse deferred to
+W4.7) and the frozen `ToolRunner` (W4.1d), both injected. Reproduces the iteration
+control (max `agentMode.enabled ? maxTurns : 5`), the batch anchor/seq stamping
+(UTF-16 `fullResponse.length` + the shared `nextTurnSeq`), the agent-mode
+`submit_final_response` accept (siblings-first, `args.response`-replace-vs-preserve
+on `realWorkIterations`, the reasoning/anchor drop on replace), the iteration-0
+ghost-wrap guardrail, the output-token truncation guard (real `extractFinishReason`
+→ per-call recoverable-failure results), the threaded-slate re-stream, and the
+max-turns force-final pass (the forced `[assistant, user-nudge]` + the
+submit-in-response promotion). The partial agent-mode module
+(`services::agent_mode`) ports the pure helpers the loop consumes
+(`buildForceFinalMessage` / `generateIterationSummary` /
+`extractSubmitFinalResponseFromText` + `ResolvedAgentMode` as an input struct — the
+resolver cascade is W4.4). The loop's ONLY DB write is the agent-mode
+`repos.chats.update({agentTurnCount})` bump (new `ChatUpdate.agent_turn_count`
+setter; no `updatedAt` mint). Wired into the orchestrator spine at v4's
+composition point (corpus-dormant: `buildTools` is W4.1g so the tool slate is
+empty AND the primary stream leaves `raw_response` null → the loop breaks
+immediately; `orchestrator_tier3` re-verified green). The tier-3 differential
+drives v4's REAL `runNativeToolLoop` with a three-boundary mock split (canned
+streams via recorded keys / canned detection by raw-response marker / canned tool
+results — mirroring the Rust seams) over seven case families (callId
+single-iteration → continuation [native threading], no-callId text fallback,
+truncation-guard reject, agent submit real-work-replace + no-work-preserve +
+ghost-wrap reject, multi-iteration → force-final with the submit promotion),
+diffing the ordered event trace + result state (`fullResponse`/`toolMessages`
+[name/success/content/callId/anchor/seq]) + the `chats` `agentTurnCount` dump.
+**e.2** — the finalizer's assistant-response RNG is now REAL (a.3's inline-code
+precedent): the ported `rng_patterns` detector + `tools::rng` executor run against
+the cleaned response, write a `TOOL` row per pattern (the `auto-detect-response`
+content shape — `initiatedBy:'auto-detect-response'` + a UTF-16-`indexOf`
+`anchorOffset` placing the result after the notation, DISTINCT from the
+user-message `auto-detect` shape), and push onto `toolMessages` so the done event's
+`toolsExecuted` reflects it. The `RngDetector` seam is CLOSED — only the CSPRNG byte
+source is injected (`RandomBytes`, extending the finalizer's inputs the way
+`OrchestratorDeps::rng_bytes` did; the orchestrator now shares ONE `rng_bytes`
+across the user-message + assistant-response auto-detect, dropping the
+`finalizer_rng` generic). Added `jsstr::js_index_of` (UTF-16 `indexOf`). The
+message-finalizer differential gained a fire case (`2d6` → committed bytes → the
+byte-exact `Rolled 2d6: [3, 5] = **8** total` TOOL row + `toolsExecuted:true`) and
+a no-fire case, its oracle un-stubbing `detectAndConvertRngPatterns` and mocking
+`crypto.randomBytes` to the committed sequence (the crypto-mock gotcha:
+spread-real-override-only). **Tracked deferrals:** the agent-mode resolver cascade
+(W4.4), `detectToolCallsInResponse`'s provider wire parse (W4.7), the text tool
+loop (W4.1f), `buildTools` + the spine's real tool slate + runner wiring (W4.1g).
+
+The rest of wave 4 (the remaining tool subsystem — the text tool loop (W4.1f) /
+`buildTools` / registry (W4.1g), the remaining handler-catalog batches [2 wardrobe,
+3 doc-edit, 4 embedding/search, 5 host-seamed], the agent-mode resolver — danger,
+answer-confirmation, courier/compression-cache/regenerate-swipe, carina query,
+buildContext seam-closers, provider manifest) follows per the chat-orchestration
+decomposition.

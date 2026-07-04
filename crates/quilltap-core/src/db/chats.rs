@@ -475,6 +475,10 @@ pub struct ChatUpdate {
     /// `Some(Some(id))` sets it; `Some(None)` clears to SQL NULL; `None` leaves it
     /// unset.
     pub roleplay_template_id: Option<Option<String>>,
+    /// `agentTurnCount` (REAL) — set by the native tool loop in agent mode
+    /// ([`crate::services::native_tool_loop`]) once per iteration
+    /// (`repos.chats.update(chatId, { agentTurnCount })`, no `updatedAt` bump).
+    pub agent_turn_count: Option<f64>,
     pub updated_at: Option<String>,
 }
 
@@ -761,6 +765,9 @@ impl<'c> ChatsRepository<'c> {
         }
         if let Some(v) = &patch.roleplay_template_id {
             set_col!("roleplayTemplateId", Box::new(v.clone()));
+        }
+        if let Some(v) = patch.agent_turn_count {
+            set_col!("agentTurnCount", Box::new(v));
         }
         set_col!("updatedAt", Box::new(resolved_updated_at));
 

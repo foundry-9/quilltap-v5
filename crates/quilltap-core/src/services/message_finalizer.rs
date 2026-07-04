@@ -6,12 +6,20 @@
 //!
 //! Scope (per `docs/developer/porting/chat-orchestration.md`): the **core path**,
 //! *minus the tool / confirmation branches* (wave 4). The answer-confirmation
-//! *service*, the async-compression *trigger*, the RNG detector/executor, the
-//! carina *query* engine, and cost *estimation* are all unported subsystems
-//! reached from here; each is an injected seam whose gate conditions are
-//! reproduced faithfully so the corpus banks the on/off paths, while the seam call
-//! itself is recorded (never fired by the corpus except carina, whose posting seam
-//! DOES run against the writer).
+//! *service*, the async-compression *trigger*, the carina *query* engine, and
+//! cost *estimation* are all unported subsystems reached from here; each is an
+//! injected seam whose gate conditions are reproduced faithfully so the corpus
+//! banks the on/off paths, while the seam call itself is recorded (never fired by
+//! the corpus except carina, whose posting seam DOES run against the writer).
+//!
+//! The **assistant-response RNG auto-detect** (v4 `detectAndConvertRngPatterns` +
+//! `executeRngTool`) is now ported INLINE (W4.1e, a.3's precedent): the ported
+//! [`crate::rng_patterns`] detector + [`crate::tools::rng`] executor run against
+//! the cleaned response, write a `TOOL` row per detected pattern, and push the
+//! result onto `toolMessages` (so the done event's `toolsExecuted` reflects it).
+//! Only the CSPRNG byte source is injected ([`crate::tools::rng::RandomBytes`],
+//! the finalizer's `rng_bytes` input) — the differential feeds a committed
+//! sequence, byte-exact fidelity being part of what it proves.
 //!
 //! ## What is reproduced (in scope)
 //!
@@ -48,7 +56,6 @@
 //! |---|---|---|
 //! | `runAnswerConfirmation` | [`AnswerConfirmationRunner`] | the skip gates only (never fired) |
 //! | `triggerAsyncCompression` | [`AsyncCompressionTrigger`] | gate on (recorded) / off / autonomous-skip |
-//! | `detectAndConvertRngPatterns` + `executeRngTool` | [`RngDetector`] | disabled + no-patterns |
 //! | `runCarinaQuery` | [`super::carina_runner::RunCarinaQuery`] | a public markup answer |
 //! | `estimateMessageCost` → `trackMessageTokenUsage` | [`CostTracker`] | the fire (args diffed) |
 //!
@@ -62,7 +69,7 @@
 //! the finalizer forwards, so the corpus banks the behavior without the unported
 //! subsystems.
 
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::db::runtime::Db;
 use crate::db::{chats_messages_read, chats_read, DbError};
@@ -89,9 +96,42 @@ use super::primary_stream::{
     ReasoningSegment,
 };
 use super::tool_execution::{GeneratedImage, ToolMessage, ToolWhisperContext};
+use crate::tools::rng::{
+    execute_rng_tool, format_rng_results, RandomBytes, RngToolContext, RngType,
+};
 
 // Re-export the runner closure-seam helpers for the harness convenience.
 pub use super::carina_runner::{ClosureProspero, ClosureRunQuery};
+
+/// The TOOL-message `content` JSON for an auto-detected RNG execution in the
+/// ASSISTANT response (v4 `JSON.stringify({ tool, initiatedBy, success, result,
+/// prompt, arguments, ...(anchorOffset) })`). A typed struct in v4's field order so
+/// the stored bytes are byte-identical. NOTE the two differences from the
+/// user-message path ([`crate::services::orchestrator`]'s `RngToolMessageContent`):
+/// `initiatedBy` is `"auto-detect-response"` (not `"auto-detect"`), and it carries
+/// an optional trailing `anchorOffset` placing the result after the notation.
+#[derive(serde::Serialize)]
+struct ResponseRngToolMessageContent<'a> {
+    tool: &'static str,
+    #[serde(rename = "initiatedBy")]
+    initiated_by: &'static str,
+    success: bool,
+    result: &'a str,
+    prompt: &'a str,
+    arguments: ResponseRngArguments,
+    /// v4 spreads `...(typeof rngAnchor === 'number' ? { anchorOffset } : {})` — a
+    /// UTF-16 index (bare integer), present only when the notation was located.
+    #[serde(rename = "anchorOffset", skip_serializing_if = "Option::is_none")]
+    anchor_offset: Option<u64>,
+}
+
+/// The `arguments` object of a response-RNG TOOL message (v4 `{ type, rolls }`).
+#[derive(serde::Serialize)]
+struct ResponseRngArguments {
+    #[serde(rename = "type")]
+    type_: RngType,
+    rolls: u32,
+}
 
 // ===========================================================================
 // Injected seams
@@ -134,22 +174,6 @@ pub struct NoAsyncCompression;
 impl AsyncCompressionTrigger for NoAsyncCompression {
     fn trigger(&mut self, _chat_id: &str, _participant_id: Option<&str>) {}
 }
-
-/// The assistant-response RNG detector/executor seam — v4
-/// `detectAndConvertRngPatterns` + `executeRngTool`. The corpus banks only the
-/// disabled + no-patterns cases (the detector returns none); the pattern
-/// execution + tool-message writes land with the wave-4 tool/RNG subsystem.
-pub trait RngDetector {
-    /// Detect RNG patterns in the cleaned response. `false` = none (the only case
-    /// the corpus exercises).
-    fn has_patterns(&mut self, _cleaned_response: &str) -> bool {
-        false
-    }
-}
-
-/// A no-op RNG detector (returns "no patterns").
-pub struct NoRng;
-impl RngDetector for NoRng {}
 
 /// The cost-**estimation** seam — v4's `estimateMessageCost` (seamed with
 /// evidence: it drags `lib/llm/pricing-fetcher`, an OpenRouter HTTP + per-user
@@ -358,7 +382,7 @@ pub async fn finalize_message_response<S, Q, P>(
     opts: FinalizeOptions,
     confirmation_runner: &mut dyn AnswerConfirmationRunner,
     compression_trigger: &mut dyn AsyncCompressionTrigger,
-    rng: &mut dyn RngDetector,
+    rng_bytes: &mut dyn RandomBytes,
     cost: &mut dyn CostTracker,
     carina_query: &mut Q,
     prospero: &mut P,
@@ -377,7 +401,7 @@ where
         user_participant_id,
         is_multi_character,
         generated_image_paths,
-        tool_messages,
+        mut tool_messages,
         pre_generated_assistant_message_id,
         profile,
         streaming,
@@ -618,15 +642,81 @@ where
     }
 
     // --- Assistant-response RNG auto-detect (message-finalizer.service.ts:369–423) ---
+    // Detect dice/coin/bottle notation in the CLEANED response, execute each, write
+    // one TOOL row (the `auto-detect-response` content shape, with an `anchorOffset`
+    // placing the result right after the notation that triggered it), and push onto
+    // `toolMessages` so the done event's `toolsExecuted` reflects the fire.
     let auto_detect_rng = chat_settings
         .as_ref()
         .and_then(|s| s.auto_detect_rng)
         .unwrap_or(true);
     if auto_detect_rng && !cleaned_response.is_empty() {
-        // The detector returns "no patterns" for the corpus (disabled +
-        // no-patterns banked); the pattern-execution + tool-message writes land
-        // with wave 4.
-        let _ = rng.has_patterns(&cleaned_response);
+        let rng_calls = crate::rng_patterns::detect_and_convert_rng_patterns(&cleaned_response);
+        // Walk the response left-to-right so repeated notations anchor to successive
+        // occurrences (v4 `rngAnchorSearchFrom`, a UTF-16 cursor).
+        let mut rng_anchor_search_from: usize = 0;
+        for call in &rng_calls {
+            let rng_ctx = RngToolContext {
+                user_id: user_id.clone(),
+                chat_id: chat_id.clone(),
+            };
+            let rng_input = json!({ "type": call.type_, "rolls": call.rolls });
+            let output = execute_rng_tool(db, &rng_input, &rng_ctx, rng_bytes)?;
+            let formatted = format_rng_results(&output);
+
+            // Place the result block right after the notation (UTF-16 indexOf from
+            // the running cursor; absent when not found — v4 `matchIdx >= 0`).
+            let rng_anchor = crate::jsstr::js_index_of(
+                &cleaned_response,
+                &call.match_text,
+                rng_anchor_search_from,
+            )
+            .map(|idx| {
+                let anchor = idx + crate::jsstr::utf16_len(&call.match_text);
+                rng_anchor_search_from = anchor;
+                anchor as u64
+            });
+
+            let content_str = serde_json::to_string(&ResponseRngToolMessageContent {
+                tool: "rng",
+                initiated_by: "auto-detect-response",
+                success: output.success,
+                result: &formatted,
+                prompt: &call.match_text,
+                arguments: ResponseRngArguments {
+                    type_: call.type_,
+                    rolls: call.rolls,
+                },
+                anchor_offset: rng_anchor,
+            })
+            .map_err(|e| DbError::Key(format!("response rng tool content marshal: {e}")))?;
+
+            let tool_id = uuid::Uuid::new_v4().to_string();
+            let now = crate::clock::now_iso();
+            let mut msg = serde_json::Map::new();
+            msg.insert("id".into(), json!(tool_id));
+            msg.insert("type".into(), json!("message"));
+            msg.insert("role".into(), json!("TOOL"));
+            msg.insert("content".into(), json!(content_str));
+            msg.insert("createdAt".into(), json!(now));
+            msg.insert("attachments".into(), json!([]));
+            let write_chat_id = chat_id.clone();
+            let event: crate::db::chats_messages::ChatEventInput =
+                serde_json::from_value(Value::Object(msg))
+                    .map_err(|e| DbError::Key(format!("response rng tool message marshal: {e}")))?;
+            db.write(move |w| w.main().chat_messages().add_message(&write_chat_id, &event))
+                .await?;
+
+            // v4 pushes a generic tool-message entry (so `toolsExecuted` is true);
+            // these are NOT re-persisted (the TOOL row above is the write).
+            tool_messages.push(ToolMessage {
+                tool_name: "rng".to_string(),
+                success: output.success,
+                content: formatted,
+                arguments: Some(rng_input),
+                ..Default::default()
+            });
+        }
     }
 
     // --- Carina markup in the assistant response (message-finalizer.service.ts:434–445) ---

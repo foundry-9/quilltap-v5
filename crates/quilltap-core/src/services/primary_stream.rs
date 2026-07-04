@@ -310,6 +310,13 @@ impl StreamingState {
         self.next_turn_seq = seq + 1;
         seq
     }
+
+    /// Hand out the next turn-monotonic sequence (v4 `nextTurnSeq`) — the public
+    /// form the native tool loop ([`crate::services::native_tool_loop`]) uses to
+    /// stamp each tool batch's `seq`, shared with reasoning segments.
+    pub fn next_turn_seq(&mut self) -> u64 {
+        self.next_seq()
+    }
 }
 
 /// Capture reasoning from a chunk and live-forward it (v4 `applyReasoningChunk`).

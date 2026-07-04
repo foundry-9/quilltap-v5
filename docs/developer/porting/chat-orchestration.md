@@ -451,5 +451,23 @@ Ordered by dependency; several are mutually independent once wave 2 lands:
     `terminal_read` scrollback source; `read_conversation`'s deprecated
     `findByCharacterIdRaw`.
   - Remaining handler-catalog batches: 2 (wardrobe, 7 tools), 3 (doc-edit, ~20),
-    4 (embedding/search), 5 (host-seamed). Then the loops (W4.1e/f) +
+    4 (embedding/search), 5 (host-seamed). Then the text loop (W4.1f) +
     `buildTools`/spine wiring (W4.1g).
+
+- **W4.1e: the native tool loop + the finalizer response-RNG — ported and green**
+  (2026-07-04). `services::native_tool_loop` ports v4's `runNativeToolLoop`
+  (iterate → detect → execute → thread → re-stream, the agent-mode
+  submit/ghost-wrap/truncation/force-final branches) over two injected seams — a
+  `ToolCallDetector` (v4 `detectToolCallsInResponse`; the provider wire parse is
+  **W4.7**) and the frozen `ToolRunner` (W4.1d) — plus the partial
+  `services::agent_mode` (the pure helpers the loop consumes; the resolver cascade
+  `resolveAgentModeSetting` + `buildAgentModeInstructions` is **W4.4**). Wired into
+  the orchestrator spine at v4's composition point (corpus-dormant: the tool slate
+  is empty until `buildTools` [**W4.1g**]). e.2 closed the finalizer's `RngDetector`
+  seam — the ported detector + executor run inline on the assistant response
+  (`auto-detect-response` TOOL content with a UTF-16 `anchorOffset`), only the
+  CSPRNG byte source injected. Differentials: `native_tool_loop_tier3_equivalence`
+  (7 case families, three-boundary mock split) + the extended
+  `message_finalizer_tier3_equivalence` (RNG fire + no-fire); `orchestrator_tier3`
+  re-verified. **Deferrals:** the text loop (W4.1f), `buildTools`/real-slate wiring
+  (W4.1g), the agent-mode resolver (W4.4), detection wire-parse (W4.7).

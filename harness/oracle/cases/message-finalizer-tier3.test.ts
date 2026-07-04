@@ -11,7 +11,9 @@
  * the Rust injected seams:
  *
  *   - `triggerAsyncCompression` (compression-cache subsystem) → records the call;
- *   - `detectAndConvertRngPatterns` → returns `[]` (no patterns);
+ *   - `crypto.randomBytes` → the committed sequence (spec.randomBytes) the Rust
+ *     `FixedBytes` replays (the assistant-response RNG auto-detect is now REAL:
+ *     detectAndConvertRngPatterns + executeRngTool run inline, W4.1e e.2);
  *   - `runCarinaMarkupQuery` → for a corpus `carina` case, emits the fixed
  *     `carinaAnswer` event over the controller (mirroring v4's real runner's
  *     `onPosted`), and writes NOTHING to the DB (the carina posting path is
@@ -107,6 +109,10 @@ interface Spec {
   testPepperBase64: string;
   userId: string;
   chatSettings: { id: string };
+  /** The committed `crypto.randomBytes` sequence the assistant-response RNG
+   * auto-detect draws from (W4.1e e.2). Matched byte-for-byte by the Rust
+   * `FixedBytes`. */
+  randomBytes?: number[];
   calls: CallSpec[];
 }
 
@@ -157,7 +163,30 @@ async function main(): Promise<void> {
   // The carina message for the current call (steered per-call for the mock).
   let currentCarina: CarinaSpec | undefined;
 
+  // W4.1e e.2: the finalizer's assistant-response RNG auto-detect is now REAL
+  // (detectAndConvertRngPatterns + executeRngTool run inline). Pin ONLY the
+  // CSPRNG byte source: mock `crypto.randomBytes` to the committed sequence the
+  // Rust `FixedBytes` replays. Per the crypto-mock gotcha, spread the real module
+  // and override ONLY randomBytes (no __esModule / default) so the vault
+  // overlay's default `import crypto from 'crypto'` (createHash) still resolves.
+  const rngByteSource: number[] = spec.randomBytes ?? [];
+  let rngCursor = 0;
+
   jest.resetModules();
+  jest.doMock('crypto', () => {
+    const actual = jest.requireActual('crypto');
+    return {
+      ...actual,
+      randomBytes: (n: number) => {
+        const slice = rngByteSource.slice(rngCursor, rngCursor + n);
+        if (slice.length < n) {
+          throw new Error(`rng byte source exhausted: needed ${n} at ${rngCursor}`);
+        }
+        rngCursor += n;
+        return Buffer.from(slice);
+      },
+    };
+  });
   const cipherDriverPath = require('node:path').join(
     process.cwd(),
     'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers'
@@ -178,14 +207,6 @@ async function main(): Promise<void> {
       triggerAsyncCompression: (opts: { chatId: string; participantId?: string }) => {
         compressionTriggers.push({ chatId: opts.chatId, participantId: opts.participantId });
       },
-    };
-  });
-  jest.doMock('@/lib/services/chat-message/rng-pattern-detector.service', () => {
-    const actual = jest.requireActual('@/lib/services/chat-message/rng-pattern-detector.service');
-    return {
-      __esModule: true,
-      ...actual,
-      detectAndConvertRngPatterns: () => [],
     };
   });
   jest.doMock('@/lib/services/cost-estimation.service', () => {

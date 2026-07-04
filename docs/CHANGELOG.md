@@ -599,6 +599,27 @@ items the wave-3 capstone flagged.
   `commonplace_strip`, `opaque_swap` vs `transparent_no_swap`, and
   `tool_whisper_filter`. `orchestrator_tier3_equivalence` re-verified green.
 
+Phase 3 — wave 4 (W4.1e): the native tool loop + the finalizer response-RNG.
+Ported `runNativeToolLoop` (`services::native_tool_loop`): the bounded
+stream → detect → execute → thread → re-stream loop after the primary stream,
+including the agent-mode `submit_final_response` accept (siblings-first,
+replace-vs-preserve, ghost-wrap reject), the output-token truncation guard, and
+the max-turns force-final pass. Two injected seams: a `ToolCallDetector` (the
+provider wire parse is W4.7) and the frozen `ToolRunner` (W4.1d). Added the
+partial `services::agent_mode` (the pure helpers the loop consumes; the resolver
+cascade is W4.4), the `ChatUpdate.agentTurnCount` setter (the loop's only DB
+write), a public `StreamingState::next_turn_seq`, and `jsstr::js_index_of`
+(UTF-16). Wired into the orchestrator spine at v4's composition point
+(corpus-dormant until `buildTools`, W4.1g). Closed the finalizer's assistant-
+response RNG seam: the ported detector + executor now run inline (the
+`auto-detect-response` TOOL-row shape with a UTF-16 `anchorOffset`), only the
+CSPRNG byte source injected; the orchestrator shares one `rng_bytes` across the
+user-message and assistant-response auto-detect (dropping the `finalizer_rng`
+generic). Differentials: `native_tool_loop_tier3_equivalence` (seven case
+families, a three-boundary mock split) and the extended
+`message_finalizer_tier3_equivalence` (RNG fire + no-fire; its oracle un-stubs
+detection and mocks `crypto.randomBytes`); `orchestrator_tier3` re-verified green.
+
 Phase 3 — wave 4 (W4.1d batch 1): the first tool-handler batch. Ported the nine
 immediately-portable tools (every underlying repo already ported, no model
 calls) plus the real dispatching `ToolRunner` that batches 2–5 will extend. Each
