@@ -9,10 +9,17 @@
 //! [`crate::db::tiered_mount_pool`] (v4's `lib/mount-index/tiered-mount-pool.ts`,
 //! its canonical home).
 
+pub mod diacritics;
+pub mod markdown_parser;
+pub mod mime_registry;
 pub mod qtap_uri;
-// The remaining foundation modules land as they are ported in this batch:
-//   diacritics, mime_registry, unified_diff, markdown_parser, document_policy,
-//   path_resolver, uri_producers.
+pub mod unified_diff;
+// The DB-backed path resolver + URI producers land next in this batch.
+//
+// v4's per-document policy leaves (`coercePolicyBool` / `policyFromFrontmatterData`
+// / `policyFromContent`) are already ported in
+// [`crate::db::doc_mount_file_links`]; there is nothing left of
+// `document-policy.ts` to port here.
 
 /// The three doc-edit scopes (v4 `DocEditScope`). `document_store` files live in
 /// mounted document stores; `project` / `general` are the (host-filesystem)

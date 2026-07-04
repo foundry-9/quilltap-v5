@@ -2044,8 +2044,10 @@ fn yaml_plain_string(
 }
 
 /// Port of eemeli's `stringifyString` for a string scalar at the given indent /
-/// start column.
-fn yaml_stringify_scalar(value: &str, indent: &str, indent_at_start: usize) -> String {
+/// start column. Exposed `pub(crate)` so `doc_edit::markdown_parser`'s
+/// `serialize_frontmatter` (v4 `YAML.stringify` over the frontmatter value space)
+/// reuses the exact eemeli scalar quoting/folding — the single YAML-emitter site.
+pub(crate) fn yaml_stringify_scalar(value: &str, indent: &str, indent_at_start: usize) -> String {
     let v16 = s16(value);
     let ind16 = s16(indent);
     if yaml_force_double(value) {

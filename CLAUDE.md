@@ -2217,10 +2217,29 @@ mount-point reads the resolver + URI producers need
 count_by_name}`, `groups::find_official_mount_point_id_raw`). **Documented seam:**
 `parseFragment`'s `parseInt` renders astronomically-long digit levels via JS float
 (corpus keeps levels small); the query multi-key order is insertion-ordered but the
-corpus stays single-key on that axis. **Remaining batch-3a foundation** (the pure
-leaves — diacritics/NFD, the MIME registry, unified diff, markdown
-heading/frontmatter ops incl. `serializeFrontmatter`, plus the DB-backed path
-resolver + URI producers) follows.
+corpus stays single-key on that axis. **The batch-3a pure leaves are now also DONE**
+(`doc_edit::{diacritics, mime_registry, unified_diff, markdown_parser}`, v4
+`lib/doc-edit/{diacritics, mime-registry, unified-diff, markdown-parser}.ts`),
+verified by one grouped tier-1 differential (`doc_edit_leaves_equivalence`, 81
+rows): the NFD diacritics matcher (`unicode-normalization` added; NFD +
+strip-combining + the `findAllMatches`/`findUniqueMatch` UTF-16 index/length remap —
+proven byte-exact on precomposed/decomposed Latin + Hangul), the MIME registry
+(`detectMimeFromExtension` / the `isJson*` predicates /
+`parseContent`/`serializeContent`/`validateJson` — happy-path bytes byte-exact,
+`serde_json` pretty == `JSON.stringify(x,null,2)`, with the V8 `JSON.parse` message
+TEXT a **documented normalized seam**), the hand-rolled unified diff (the greedy
+look-ahead algorithm reproduced exactly), and the markdown heading ops
+(`slugifyHeading` [ASCII `\w` + JS `\s`], `parseHeadingTree` [ATX + code-fence
+exclusion + duplicate-slug suffixes + UTF-16 offsets], `findHeadingSection`
+[byte-exact thrown messages], `readHeadingContent`/`replaceHeadingContent`) plus
+`serializeFrontmatter`/`updateFrontmatterInContent` — the latter reusing the ported
+eemeli scalar emitter (now `pub(crate)`) so `YAML.stringify` is byte-exact over the
+frontmatter value space (string/bool/number/null scalars + flat sequences; nested
+maps / exotic numbers / non-identifier keys a documented seam). The v4
+`document-policy.ts` needed no new port (its leaves already live in
+`db::doc_mount_file_links`). **Remaining batch-3a foundation:** the DB-backed path
+resolver (document_store + project-alias; the legacy FS scopes + `general` are a
+host-filesystem seam) and the async URI producers.
 
 The rest of wave 4 (the remaining tool subsystem — the text tool loop (W4.1f) /
 `buildTools` / registry (W4.1g), the remaining handler-catalog batches [3 doc-edit,

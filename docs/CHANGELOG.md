@@ -599,6 +599,30 @@ items the wave-3 capstone flagged.
   `commonplace_strip`, `opaque_swap` vs `transparent_no_swap`, and
   `tool_whisper_filter`. `orchestrator_tier3_equivalence` re-verified green.
 
+Phase 3 — wave 4 (W4.1d batch 3a): the doc-edit foundation, part 2 — the pure
+leaves. Ported `lib/doc-edit/{diacritics, mime-registry, unified-diff,
+markdown-parser}.ts` into `doc_edit::{diacritics, mime_registry, unified_diff,
+markdown_parser}`, each verified by one grouped tier-1 differential
+(`doc_edit_leaves_equivalence`, 81 rows) against v4's REAL exports. Diacritics:
+NFD normalize + strip-combining (via `unicode-normalization`, proven byte-exact on
+precomposed/decomposed Latin + Hangul) and the `findAllMatches`/`findUniqueMatch`
+UTF-16 index/length remap. MIME registry: `detectMimeFromExtension`, the `isJson*`
+predicates, and `parseContent`/`serializeContent`/`validateJson` (JSON +
+JSONL) — the happy-path bytes byte-exact (`serde_json` pretty ==
+`JSON.stringify(x, null, 2)`), with the V8 `JSON.parse` error TEXT a documented
+normalized seam (structure/values/line-numbers compared exactly, failure messages
+normalized). Unified diff: the hand-rolled greedy look-ahead algorithm reproduced
+exactly (git-style `@@` hunks), not "a" diff. Markdown: `slugifyHeading` (ASCII
+`\w` + JS `\s`), `parseHeadingTree` (ATX headings, code-fence exclusion, duplicate-
+slug counter suffixes, UTF-16 offsets), `findHeadingSection` (byte-exact thrown
+messages), `readHeadingContent`/`replaceHeadingContent`, and
+`serializeFrontmatter`/`updateFrontmatterInContent` — the latter reusing the
+already-ported eemeli scalar emitter so `YAML.stringify` is byte-exact over the
+frontmatter value space (string/bool/number/null scalars + flat sequences; nested
+maps/exotic numbers a documented seam). `document-policy.ts` needed no new port
+(its leaves already live in `db::doc_mount_file_links`). The DB-backed path
+resolver + URI producers follow.
+
 Phase 3 — wave 4 (W4.1d batch 3a): the doc-edit foundation, part 1 — the tiered
 mount pool + the `qtap://` URI codec. Ported `resolveTieredMountPool` /
 `classifyMountTier` / `flattenTierPool` and hoisted the canonical

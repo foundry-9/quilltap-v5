@@ -510,8 +510,18 @@ Ordered by dependency; several are mutually independent once wave 2 lands:
   bounds, encoded-slash segments, insertion-ordered query. Verified by
   `qtap_uri_equivalence` (54-row tier-1). Added scoped mount-point reads
   (`doc_mount_points::{find_by_id_for_docedit, find_enabled_for_docedit,
-  count_by_name}`, `groups::find_official_mount_point_id_raw`). **Remaining batch-3a
-  foundation (part 2):** the pure leaves (diacritics/NFD, MIME registry, unified
-  diff, markdown heading/frontmatter ops incl. `serializeFrontmatter`), the DB-backed
-  path resolver (document_store + project-alias; the legacy FS scopes + `general` are
-  a host-filesystem seam), and the URI producers.
+  count_by_name}`, `groups::find_official_mount_point_id_raw`).
+
+- **W4.1d batch 3a (part 2): the doc-edit pure leaves — ported and green.**
+  `doc_edit::{diacritics, mime_registry, unified_diff, markdown_parser}` (v4
+  `lib/doc-edit/{diacritics, mime-registry, unified-diff, markdown-parser}.ts`),
+  verified by one grouped tier-1 differential (`doc_edit_leaves_equivalence`, 81
+  rows): NFD diacritics matching (`unicode-normalization`; UTF-16 index/length
+  remap), the MIME registry (detect/predicates/parse/serialize/validate — the V8
+  `JSON.parse` message a documented normalized seam), the hand-rolled unified diff,
+  and the markdown heading ops + `serializeFrontmatter`/`updateFrontmatterInContent`
+  (reusing the ported eemeli scalar emitter for byte-exact `YAML.stringify` over the
+  frontmatter value space). `document-policy.ts` needed no new port. **Remaining
+  batch-3a foundation:** the DB-backed path resolver (document_store + project-alias;
+  the legacy FS scopes + `general` are a host-filesystem seam) and the async URI
+  producers.
