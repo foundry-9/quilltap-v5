@@ -263,6 +263,31 @@ impl<'c> DocMountDocumentsRepository<'c> {
             })
     }
 
+    /// v4 `findByMountPointId` (`doc-mount-documents.repository.ts`): every
+    /// document in a mount point as `(relativePath, content)` pairs, joined
+    /// through `doc_mount_file_links` (documents are content-addressed, so the
+    /// path lives on the link). Used by `doc_grep` to scan a database-backed
+    /// store's text bytes. Row order is the DB's natural order (grep sorts /
+    /// caps afterward).
+    pub fn find_all_by_mount_point_id(
+        &self,
+        mount_point_id: &str,
+    ) -> Result<Vec<(String, String)>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT l.relativePath, d.content \
+             FROM doc_mount_file_links l \
+             JOIN doc_mount_documents d ON d.fileId = l.fileId \
+             JOIN doc_mount_files f ON f.id = l.fileId \
+             WHERE l.mountPointId = ?1",
+        )?;
+        let rows = stmt
+            .query_map(params![mount_point_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// v4 `findManyByMountPointsAndPath` (`doc-mount-documents.repository.ts:193`):
     /// batch-resolve the document at the same `relativePath` across many mount
     /// points, the N+1-avoiding query the overlay read uses to hydrate every

@@ -54,9 +54,11 @@
 //! minted-values remap form (first-seen id tokens in natural-key order across all
 //! four tables, timestamps placeholdered).
 //!
-//! Scope: the write/storage path only. The repo's many read/join/GC/conversion
-//! helpers (`findByMountPointId`, `deleteWithGC`, `linkBlobContent`,
-//! `linkFilesystemFile`, `sweepOrphanedFiles`, …) are out of scope here.
+//! Scope: the write/storage path only. The repo's remaining read/join/GC/
+//! conversion helpers (`linkFilesystemFile`, `sweepOrphanedFiles`, …) are out of
+//! scope here. ([`link_blob_content`](DocMountFileLinksRepository::link_blob_content)
+//! — the BINARY analogue of `link_document_content` — is ported here for the
+//! blob doc-edit handlers, W4.1d batch 3b.)
 
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
@@ -287,6 +289,43 @@ pub struct LinkDocumentResult {
     pub document_id: String,
 }
 
+/// Input to [`DocMountFileLinksRepository::link_blob_content`], mirroring v4's
+/// `LinkBlobInput` (`doc-mount-file-links.repository.ts:128`) — the BINARY
+/// analogue of [`LinkDocumentInput`]. `sha256` is advisory: `link_blob_content`
+/// recomputes it from `data` and uses the computed value for dedup + both
+/// inserts (see v4 lines 577-598).
+pub struct LinkBlobInput {
+    pub mount_point_id: String,
+    pub relative_path: String,
+    pub file_name: String,
+    /// File-row `fileType`. `None` → `'blob'` (no chunkable text). pdf/docx
+    /// declare their type so the conversion pipeline picks them up.
+    pub file_type: Option<String>,
+    pub original_file_name: String,
+    pub original_mime_type: String,
+    pub stored_mime_type: String,
+    /// Advisory only — recomputed from `data`.
+    pub sha256: String,
+    /// Already-transcoded bytes destined for `doc_mount_blobs`.
+    pub data: Vec<u8>,
+    /// `None` → `''` (link `description` default).
+    pub description: Option<String>,
+    /// `None` → derived from `file_type` (`'blob'` → `'skipped'`, else `'pending'`).
+    pub conversion_status: Option<String>,
+    pub extracted_text: Option<String>,
+    pub extracted_text_sha256: Option<String>,
+    /// `None` → `'none'`.
+    pub extraction_status: Option<String>,
+}
+
+/// What [`DocMountFileLinksRepository::link_blob_content`] minted/resolved (the
+/// `blobId` + `fileId` + `linkId`, mirroring v4's `{ link, file, blobId }`).
+pub struct LinkBlobResult {
+    pub link_id: String,
+    pub file_id: String,
+    pub blob_id: String,
+}
+
 /// Repository over a borrowed connection (held by the [`super::Writer`]).
 pub struct DocMountFileLinksRepository<'c> {
     conn: &'c Connection,
@@ -501,6 +540,200 @@ impl<'c> DocMountFileLinksRepository<'c> {
             link_id,
             file_id,
             document_id,
+        })
+    }
+
+    /// v4 `linkBlobContent` (`doc-mount-file-links.repository.ts:562`) — the
+    /// BINARY analogue of [`Self::link_document_content`]. Writes a binary asset
+    /// into a database-backed mount as a hard-linkable resource in a single
+    /// transaction:
+    ///   1. **find-or-create `doc_mount_files` by the sha RECOMPUTED from `data`**
+    ///      (the store owns its own hashes — the caller's `sha256` is advisory,
+    ///      warned-on-mismatch in v4; here we simply use the computed value);
+    ///   2. **upsert `doc_mount_blobs` by `fileId`** — the bytes land here, only
+    ///      when the file row is new (a reused content row keeps its identical
+    ///      bytes);
+    ///   3. derive `folderId` from `relativePath` via [`ensure_link_folder_id`];
+    ///   4. **upsert `doc_mount_file_links` by `(mountPointId, relativePath)`** —
+    ///      rewriting a path updates the link in place.
+    ///
+    /// The Rust INSERTs list **exactly v4's column subset**, so SQLite fills the
+    /// same column DEFAULTs on the unset columns (the `link_document_content`
+    /// precedent). Mints `now` + any new ids internally.
+    pub fn link_blob_content(&self, input: &LinkBlobInput) -> Result<LinkBlobResult, DbError> {
+        let now = now_iso();
+        let size_bytes = input.data.len() as i64;
+        // The content-addressed store is authoritative about its own hashes:
+        // recompute sha256 from the actual bytes rather than trusting the caller
+        // (v4 lines 577-598 — warns on disagreement, uses the computed value).
+        let computed = hex::encode(Sha256::digest(&input.data));
+
+        let file_type = input.file_type.as_deref().unwrap_or("blob");
+        // Default per-link conversion lifecycle: a `blob` fileType has no
+        // chunkable text (skipped); pdf/docx start `pending` (v4 line 611).
+        let conversion_status = input.conversion_status.clone().unwrap_or_else(|| {
+            if file_type == "blob" {
+                "skipped".to_string()
+            } else {
+                "pending".to_string()
+            }
+        });
+
+        let tx = self.conn.unchecked_transaction()?;
+
+        // 1. find-or-create doc_mount_files by the computed sha (dedup).
+        let file_id: String = match tx
+            .query_row(
+                "SELECT id FROM doc_mount_files WHERE sha256 = ?1",
+                params![computed],
+                |row| row.get::<_, String>(0),
+            )
+            .map(Some)
+            .or_else(no_rows_to_none)?
+        {
+            Some(id) => id,
+            None => {
+                let id = new_id();
+                tx.execute(
+                    "INSERT INTO doc_mount_files \
+                       (id, sha256, fileSizeBytes, fileType, source, createdAt, updatedAt) \
+                     VALUES (?1, ?2, ?3, ?4, 'database', ?5, ?6)",
+                    params![id, computed, size_bytes, file_type, now, now],
+                )?;
+                id
+            }
+        };
+
+        // 3. derive folderId from relativePath (find-or-create folder segments).
+        //    (v4 derives folderId before the blob upsert; order is immaterial to
+        //    the DB result — both run inside the one transaction.)
+        let folder_id =
+            ensure_link_folder_id(&tx, &input.mount_point_id, &input.relative_path, &now)?;
+
+        // 2. upsert doc_mount_blobs by fileId (the bytes land here, once). A
+        //    reused content row keeps its identical bytes (insert only if missing).
+        let blob_id: String = match tx
+            .query_row(
+                "SELECT id FROM doc_mount_blobs WHERE fileId = ?1",
+                params![file_id],
+                |row| row.get::<_, String>(0),
+            )
+            .map(Some)
+            .or_else(no_rows_to_none)?
+        {
+            Some(id) => id,
+            None => {
+                let id = new_id();
+                tx.execute(
+                    "INSERT INTO doc_mount_blobs \
+                       (id, fileId, sha256, sizeBytes, storedMimeType, data, createdAt, updatedAt) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    params![
+                        id,
+                        file_id,
+                        computed,
+                        size_bytes,
+                        input.stored_mime_type,
+                        input.data,
+                        now,
+                        now
+                    ],
+                )?;
+                id
+            }
+        };
+
+        // 4. upsert doc_mount_file_links by (mountPointId, relativePath).
+        let description = input.description.clone().unwrap_or_default();
+        let description_updated_at: Option<String> = if description.is_empty() {
+            None
+        } else {
+            Some(now.clone())
+        };
+        let extraction_status = input.extraction_status.as_deref().unwrap_or("none");
+
+        let existing_link: Option<String> = tx
+            .query_row(
+                "SELECT id FROM doc_mount_file_links WHERE mountPointId = ?1 AND relativePath = ?2",
+                params![input.mount_point_id, input.relative_path],
+                |row| row.get::<_, String>(0),
+            )
+            .map(Some)
+            .or_else(no_rows_to_none)?;
+
+        let link_id = if let Some(link_id) = existing_link {
+            tx.execute(
+                "UPDATE doc_mount_file_links SET \
+                   fileId = ?1, fileName = ?2, folderId = ?3, \
+                   originalFileName = ?4, originalMimeType = ?5, \
+                   description = ?6, descriptionUpdatedAt = ?7, \
+                   extractedText = ?8, extractedTextSha256 = ?9, extractionStatus = ?10, \
+                   lastModified = ?11, updatedAt = ?12 \
+                 WHERE id = ?13",
+                params![
+                    file_id,
+                    input.file_name,
+                    folder_id,
+                    input.original_file_name,
+                    input.original_mime_type,
+                    description,
+                    description_updated_at,
+                    input.extracted_text,
+                    input.extracted_text_sha256,
+                    extraction_status,
+                    now,
+                    now,
+                    link_id,
+                ],
+            )?;
+            link_id
+        } else {
+            let link_id = new_id();
+            tx.execute(
+                "INSERT INTO doc_mount_file_links ( \
+                   id, fileId, mountPointId, relativePath, fileName, folderId, \
+                   originalFileName, originalMimeType, \
+                   description, descriptionUpdatedAt, \
+                   conversionStatus, conversionError, plainTextLength, \
+                   extractedText, extractedTextSha256, extractionStatus, extractionError, \
+                   chunkCount, lastModified, createdAt, updatedAt \
+                 ) VALUES ( \
+                   ?1, ?2, ?3, ?4, ?5, ?6, \
+                   ?7, ?8, \
+                   ?9, ?10, \
+                   ?11, NULL, NULL, \
+                   ?12, ?13, ?14, NULL, \
+                   0, ?15, ?16, ?17 \
+                 )",
+                params![
+                    link_id,
+                    file_id,
+                    input.mount_point_id,
+                    input.relative_path,
+                    input.file_name,
+                    folder_id,
+                    input.original_file_name,
+                    input.original_mime_type,
+                    description,
+                    description_updated_at,
+                    conversion_status,
+                    input.extracted_text,
+                    input.extracted_text_sha256,
+                    extraction_status,
+                    now,
+                    now,
+                    now,
+                ],
+            )?;
+            link_id
+        };
+
+        tx.commit()?;
+
+        Ok(LinkBlobResult {
+            link_id,
+            file_id,
+            blob_id,
         })
     }
 

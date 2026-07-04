@@ -54,10 +54,11 @@ use std::sync::{Arc, Mutex};
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 
+use super::doc_edit::{execute_doc_edit_tool, format_doc_edit_results, DocEditToolContext};
 use super::{
-    annotations, help, read_conversation, rng, self_inventory, terminal, wardrobe_archive,
-    wardrobe_create, wardrobe_list, wardrobe_read, wardrobe_take_off, wardrobe_update,
-    wardrobe_wear, whisper,
+    annotations, doc_edit, help, read_conversation, rng, self_inventory, terminal,
+    wardrobe_archive, wardrobe_create, wardrobe_list, wardrobe_read, wardrobe_take_off,
+    wardrobe_update, wardrobe_wear, whisper,
 };
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read};
@@ -155,7 +156,45 @@ pub const PORTED_TOOLS: &[&str] = &[
     "wardrobe_archive",
     "wardrobe_wear",
     "wardrobe_take_off",
+    // W4.1d3b: doc-edit tools (the 23 non-photo `doc_*` tools, dispatched through
+    // `execute_doc_edit_tool`). The photo trio (`keep_image`/`list_images`/
+    // `attach_image`) is a tracked scoped deferral → the loud fallback.
+    "doc_read_file",
+    "doc_write_file",
+    "doc_str_replace",
+    "doc_insert_text",
+    "doc_grep",
+    "doc_list_files",
+    "doc_read_frontmatter",
+    "doc_update_frontmatter",
+    "doc_read_heading",
+    "doc_update_heading",
+    "doc_move_file",
+    "doc_copy_file",
+    "doc_delete_file",
+    "doc_create_folder",
+    "doc_delete_folder",
+    "doc_move_folder",
+    "doc_open_document",
+    "doc_close_document",
+    "doc_focus",
+    "doc_write_blob",
+    "doc_read_blob",
+    "doc_list_blobs",
+    "doc_delete_blob",
 ];
+
+/// The doc-edit tools NOT yet ported (the photo trio) — a tracked scoped deferral
+/// (they pull in the unported images-v2 store + `keep-image-markdown` sidecar
+/// builder + `chunkAndInsertExtractedText`). They stay out of [`PORTED_TOOLS`] so
+/// the [`LoudFallbackRunner`] reports them "recognized but not yet available".
+const DEFERRED_PHOTO_TOOLS: &[&str] = &["keep_image", "list_images", "attach_image"];
+
+/// Whether `name` is a doc-edit tool this runner dispatches (every `doc_*` name
+/// except the deferred photo trio).
+fn is_ported_doc_edit_tool(name: &str) -> bool {
+    doc_edit::DOC_EDIT_TOOL_NAMES.contains(&name) && !DEFERRED_PHOTO_TOOLS.contains(&name)
+}
 
 // ===========================================================================
 // The terminal-scrollback seam
@@ -298,6 +337,8 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             "wardrobe_archive" => self.run_wardrobe_archive(tc, ctx).await,
             "wardrobe_wear" => self.run_wardrobe_wear(tc, ctx).await,
             "wardrobe_take_off" => self.run_wardrobe_take_off(tc, ctx).await,
+            // W4.1d3b: every ported doc-edit tool routes through one handler.
+            n if is_ported_doc_edit_tool(n) => self.run_doc_edit(tc, ctx).await,
             // `handles` guards the set, so this is unreachable.
             other => fail(other, format!("Unknown tool: {other}")),
         })
@@ -753,6 +794,55 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             wear_take_off_result("wardrobe_take_off", out.success, result, out.error.clone())
         })
         .await
+    }
+
+    // ── doc-edit tools (W4.1d3b; tool-executor.ts:1060) ───────────────────
+    /// Dispatch any ported `doc_*` tool through [`execute_doc_edit_tool`], run
+    /// inside a single `Db::write` closure that hands it BOTH writer connections
+    /// (the handlers read `chats`/`characters` on main + the store on mount, and
+    /// write the store on mount). Builds v4's dispatch-row result shape
+    /// (`{ formattedText, ...result.result }` on success; the failure `error`).
+    /// `operatorOverride` is always false on the tool-call path (the operator
+    /// surfaces — Document Mode / Brahma Console — never route through here).
+    async fn run_doc_edit(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        let name = tc.name.clone();
+        let args = tc.arguments.clone();
+        let doc_ctx = DocEditToolContext {
+            chat_id: ctx.chat_id.clone(),
+            user_id: ctx.user_id.clone(),
+            project_id: ctx.project_id.clone(),
+            character_id: ctx.character_id.clone(),
+            operator_override: false,
+        };
+        let db = self.db.clone();
+        db.write(move |writers| {
+            let Some(mount_w) = writers.mount_index() else {
+                return Ok(fail(
+                    &name,
+                    "doc-edit tools require the mount-index database",
+                ));
+            };
+            let mount = mount_w.connection();
+            let main = writers.main().connection();
+            let result = execute_doc_edit_tool(main, mount, &name, &args, &doc_ctx);
+            Ok(if result.success {
+                let mut m = Map::new();
+                m.insert(
+                    "formattedText".into(),
+                    json!(format_doc_edit_results(&result)),
+                );
+                if let Some(Value::Object(obj)) = result.result {
+                    for (k, v) in obj {
+                        m.insert(k, v);
+                    }
+                }
+                ok(&name, Value::Object(m))
+            } else {
+                fail(&name, result.error.unwrap_or_default())
+            })
+        })
+        .await
+        .unwrap_or_else(|e| fail(&tc.name, e.to_string()))
     }
 
     /// Snapshot the ctx fields a wardrobe handler needs (owned, so they can move

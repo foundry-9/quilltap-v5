@@ -1,0 +1,41 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "seedTimestamp": "2026-02-01T00:00:00.000Z",
+  "userId": "11111111-1111-4111-8111-111111111111",
+  "characterId": "22222222-2222-4222-8222-222222222222",
+  "projectId": "88888888-8888-4888-8888-888888888888",
+  "chatId": "55555555-5555-4555-8555-555555555555",
+  "characterParticipantId": "66666666-6666-4666-8666-666666666666",
+  "character": { "name": "Rosalind" },
+  "project": { "name": "Atelier" },
+  "vaultFiles": [
+    { "relativePath": "Notes/a.md", "content": "alpha line\ntarget here\nbeta line\ndelta line\ntarget again\ngamma line" },
+    { "relativePath": "Notes/b.txt", "content": "no hits here\njust filler" },
+    { "relativePath": "Notes/accent.md", "content": "café au lait\ncafé noir" },
+    { "relativePath": "Notes/sub/c.md", "content": "target nested\nsecond line" },
+    { "relativePath": "Notes/secret.md", "content": "---\ncharacter_read: false\n---\n\ntarget in secret" },
+    { "relativePath": "root.md", "content": "root markdown file\nno special word" },
+    { "relativePath": "root.txt", "content": "root text file" },
+    { "relativePath": "story-backgrounds/scene.png", "content": "fake png bytes here" },
+    { "relativePath": "Notes/.DS_Store", "content": "cruft bytes" }
+  ],
+  "projectFiles": [
+    { "relativePath": "design.md", "content": "target in project\ndesign details" }
+  ],
+  "ops": [
+    { "name": "grep_target_default", "tool": "doc_grep", "args": { "query": "target" } },
+    { "name": "grep_target_context", "tool": "doc_grep", "args": { "query": "target", "context_lines": 1 } },
+    { "name": "grep_cafe_diacritics", "tool": "doc_grep", "args": { "query": "cafe" } },
+    { "name": "grep_self_only", "tool": "doc_grep", "args": { "query": "target", "mount_point": "self" } },
+    { "name": "grep_path_prefix", "tool": "doc_grep", "args": { "query": "target", "path": "Notes/" } },
+    { "name": "grep_nomatch", "tool": "doc_grep", "args": { "query": "nomatch" } },
+    { "name": "grep_case_sensitive", "tool": "doc_grep", "args": { "query": "TARGET", "case_sensitive": true } },
+    { "name": "grep_max_results", "tool": "doc_grep", "args": { "query": "target", "max_results": 1 } },
+    { "name": "list_all", "tool": "doc_list_files", "args": {} },
+    { "name": "list_pattern_md", "tool": "doc_list_files", "args": { "pattern": "*.md" } },
+    { "name": "list_self", "tool": "doc_list_files", "args": { "mount_point": "self" } },
+    { "name": "list_project", "tool": "doc_list_files", "args": { "scope": "project" } },
+    { "name": "list_folder_notes", "tool": "doc_list_files", "args": { "mount_point": "self", "folder": "Notes" } },
+    { "name": "list_include_auto", "tool": "doc_list_files", "args": { "mount_point": "self", "includeAutomaticImages": true } }
+  ]
+}

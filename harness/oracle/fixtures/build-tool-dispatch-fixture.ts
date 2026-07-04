@@ -126,9 +126,40 @@ async function main(): Promise<void> {
 
   for (const c of spec.characters) {
     await repos.characters.create(
-      { name: c.name, userId: spec.userId, controlledBy: c.controlledBy, aliases: c.aliases } as never,
+      {
+        name: c.name,
+        userId: spec.userId,
+        controlledBy: c.controlledBy,
+        aliases: c.aliases,
+        // Transparent characters can read their own vault via the doc-edit tools
+        // (W4.1d3b) — an opaque character hides every vault from doc_* tools.
+        systemTransparency: (c as { systemTransparency?: boolean }).systemTransparency ?? null,
+      } as never,
       { id: c.id }
     );
+  }
+
+  // W4.1d3b: seed one file in a character's vault so the dispatcher differential
+  // can drive a real doc-edit read (doc_read_file / doc_read_frontmatter) through
+  // executeToolCallWithContext / BuiltInToolRunner.
+  const docSeed = (spec as { docSeed?: { characterId: string; path: string; content: string } })
+    .docSeed;
+  if (docSeed) {
+    const { sha256OfString } = await import('@/lib/utils/sha256');
+    const character = await repos.characters.findById(docSeed.characterId);
+    const mountPointId = character?.characterDocumentMountPointId;
+    if (!mountPointId) throw new Error('docSeed character has no vault mount point');
+    await repos.docMountFileLinks.linkDocumentContent({
+      mountPointId,
+      relativePath: docSeed.path,
+      fileName: docSeed.path.split('/').pop() as string,
+      folderId: null,
+      fileType: 'markdown',
+      content: docSeed.content,
+      contentSha256: sha256OfString(docSeed.content),
+      plainTextLength: docSeed.content.length,
+      fileSizeBytes: Buffer.byteLength(docSeed.content, 'utf-8'),
+    } as never);
   }
 
   for (const chat of spec.chats) {

@@ -91,6 +91,32 @@ pub struct ChatDocumentRow {
     pub display_title: Option<String>,
 }
 
+/// The `chat_documents` fields the document-UI tools consume — v4's
+/// `findOpenForChat` / `resolveOpenDocTarget` read `id` / `filePath` / `scope` /
+/// `mountPoint` (and sort on `createdAt`). This is the row shape those handlers
+/// operate over (a `ChatDocument` subset).
+#[derive(Clone, Debug)]
+pub struct OpenChatDocument {
+    pub id: String,
+    pub file_path: String,
+    pub scope: String,
+    pub mount_point: Option<String>,
+    /// ISO-8601; the open set is sorted oldest-first on this (v4
+    /// `findOpenForChat`).
+    pub created_at: String,
+}
+
+/// Input for [`ChatDocumentsRepository::open_document`] — v4 `openDocument`'s
+/// `data` bag (`filePath` / `scope` / `mountPoint?` / `displayTitle?`).
+pub struct OpenDocumentInput {
+    pub file_path: String,
+    pub scope: String,
+    /// `None` => SQL NULL (v4 `mountPoint ?? null`).
+    pub mount_point: Option<String>,
+    /// `None` => SQL NULL on create (v4 `displayTitle ?? null`).
+    pub display_title: Option<String>,
+}
+
 /// Repository over a borrowed connection (held by the [`super::Writer`]).
 pub struct ChatDocumentsRepository<'c> {
     conn: &'c Connection,
@@ -214,6 +240,144 @@ impl<'c> ChatDocumentsRepository<'c> {
             })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
+    }
+
+    /// v4 `findOpenForChat` (`chat-documents.repository.ts:84`): every open
+    /// (`isActive == true`) document for the chat, **oldest-opened first** —
+    /// `findByFilter({ chatId, isActive: true })` then a stable sort by
+    /// `createdAt` ascending (so the last entry is the newest open, which
+    /// `resolveOpenDocTarget` picks by default). Reads `id` / `filePath` / `scope`
+    /// / `mountPoint` / `createdAt`; `scope`'s `.default('project')` materializes on
+    /// a NULL cell (never written NULL by `create`, but faithful).
+    pub fn find_open_for_chat(&self, chat_id: &str) -> Result<Vec<OpenChatDocument>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, filePath, scope, mountPoint, createdAt \
+               FROM chat_documents WHERE chatId = ?1 AND isActive = 1",
+        )?;
+        let mut rows = stmt
+            .query_map(params![chat_id], |row| {
+                let scope: Option<String> = row.get(2)?;
+                Ok(OpenChatDocument {
+                    id: row.get::<_, String>(0)?,
+                    file_path: row.get::<_, String>(1)?,
+                    scope: scope.unwrap_or_else(|| "project".to_string()),
+                    mount_point: row.get::<_, Option<String>>(3)?,
+                    created_at: row.get::<_, String>(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        // v4 sorts by `new Date(a.createdAt).getTime()` ascending. A stable sort
+        // keyed on the ISO string is byte-order-equivalent for our fixed-width
+        // `YYYY-MM-DDTHH:MM:SS.sssZ` timestamps.
+        rows.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        Ok(rows)
+    }
+
+    /// v4 `openDocument` (`chat-documents.repository.ts:162`): open a document for
+    /// a chat. Several may be open at once, so previously-open documents are left
+    /// active. If a row for the same `(filePath, scope, mountPoint||null)` already
+    /// exists (active or not) it is **reactivated** (`update({ isActive: true,
+    /// displayTitle })`, which mints a fresh `updatedAt`); otherwise a new row is
+    /// created (minting `id`/`createdAt`/`updatedAt`). Both branches mint their
+    /// timestamps → the differential placeholders them.
+    ///
+    /// Returns the row `id` (the one created or reactivated), the target
+    /// `doc_close`/`doc_focus` later resolve.
+    pub fn open_document(
+        &self,
+        chat_id: &str,
+        input: &OpenDocumentInput,
+    ) -> Result<String, DbError> {
+        // Reactivate an existing (filePath, scope, mountPoint||null) match rather
+        // than inserting a duplicate — v4 scans ALL rows (active + inactive) for
+        // the chat and matches on the normalized-null mountPoint.
+        let mut stmt = self.conn.prepare(
+            "SELECT id, mountPoint, displayTitle FROM chat_documents \
+               WHERE chatId = ?1 AND filePath = ?2 AND scope = ?3",
+        )?;
+        let existing: Vec<(String, Option<String>, Option<String>)> = stmt
+            .query_map(params![chat_id, input.file_path, input.scope], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(stmt);
+
+        let want_mount = input.mount_point.clone();
+        if let Some((id, _existing_mount, existing_title)) = existing
+            .into_iter()
+            .find(|(_, m, _)| m.clone() == want_mount || (m.is_none() && want_mount.is_none()))
+        {
+            // Reactivate: displayTitle ?? existingDoc.displayTitle.
+            let title = input.display_title.clone().or(existing_title);
+            let patch = CdUpdate {
+                is_active: Some(true),
+                display_title: title,
+                updated_at: crate::clock::now_iso(),
+                ..Default::default()
+            };
+            self.update(&id, &patch)?;
+            return Ok(id);
+        }
+
+        // Create a fresh association (mountPoint ?? null, displayTitle ?? null).
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = crate::clock::now_iso();
+        let data = CdCreate {
+            chat_id: chat_id.to_string(),
+            file_path: input.file_path.clone(),
+            scope: input.scope.clone(),
+            mount_point: input.mount_point.clone(),
+            display_title: input.display_title.clone(),
+            is_active: true,
+        };
+        self.create(
+            &data,
+            &CreateOptions {
+                id: id.clone(),
+                created_at: now.clone(),
+                updated_at: now,
+            },
+        )?;
+        Ok(id)
+    }
+
+    /// v4 `closeDocumentById` (`chat-documents.repository.ts:204`): close one open
+    /// document by row id (deactivate, not delete — the row is kept for
+    /// quick-reopen). Returns `false` when the row is missing or belongs to a
+    /// different chat. `update({ isActive: false })` mints a fresh `updatedAt`.
+    pub fn close_document_by_id(
+        &self,
+        chat_id: &str,
+        chat_document_id: &str,
+    ) -> Result<bool, DbError> {
+        // Confirm the row exists AND belongs to this chat (v4 findById + chatId
+        // guard).
+        let owning_chat: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT chatId FROM chat_documents WHERE id = ?1",
+                params![chat_document_id],
+                |row| row.get::<_, String>(0),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+        if owning_chat.as_deref() != Some(chat_id) {
+            return Ok(false);
+        }
+        let patch = CdUpdate {
+            is_active: Some(false),
+            updated_at: crate::clock::now_iso(),
+            ..Default::default()
+        };
+        self.update(chat_document_id, &patch)?;
+        Ok(true)
     }
 
     /// Delete the chat document `id`. Returns `false` when no row matched (v4's

@@ -14,18 +14,27 @@ use serde_json::{json, Map, Value};
 use super::shared::{
     apply_qtap_uri, arg_bool, arg_i64, arg_str, arg_str_ref, assert_character_may_read,
     assert_character_may_write, build_read_resolution_context, build_write_resolution_context,
-    is_text_file, read_file_with_mtime, resolve_error_message, scope_from_str,
-    write_file_with_mtime_check, DocEditToolContext,
+    collect_peer_character_ids_for_reads, get_accessible_mount_points,
+    get_character_blocked_read_paths, is_text_file, read_file_with_mtime, resolve_error_message,
+    resolve_official_project_mount, scope_from_str, write_file_with_mtime_check,
+    DocEditToolContext,
 };
 use super::DocEditToolResult;
-use crate::doc_edit::diacritics::{find_unique_match, DiacriticsMatchOptions, UniqueMatch};
+use crate::db::database_store::list_database_files;
+use crate::db::doc_mount_documents::DocMountDocumentsRepository;
+use crate::db::tiered_mount_pool::resolve_group_mount_point_ids_for_character;
+use crate::doc_edit::diacritics::{
+    find_all_matches, find_unique_match, DiacriticsMatchOptions, UniqueMatch,
+};
 use crate::doc_edit::mime_registry::{
     detect_mime_from_extension, is_json_family, is_jsonl_mime, parse_content, serialize_content,
     validate_json, JsonlLineResult, ParseResult,
 };
-use crate::doc_edit::path_resolver::resolve_doc_edit_path;
-use crate::doc_edit::uri_producers::uri_for_resolved_path;
+use crate::doc_edit::path_resolver::{resolve_doc_edit_path, resolve_mount_point_ref};
+use crate::doc_edit::qtap_uri::ScopedAuthority;
+use crate::doc_edit::uri_producers::{uri_for_resolved_path, DocStoreUriResolver};
 use crate::doc_edit::DocEditScope;
+use crate::folder_utils::{is_automatic_image_path, is_os_cruft_name};
 
 /// The 1-based line number for a UTF-16 code-unit offset in `content` — v4
 /// `getLineNumber` (`text-handlers.ts:66`), which iterates JS string indices
@@ -521,22 +530,464 @@ pub fn handle_insert_text(
     Ok(DocEditToolResult::ok(result, formatted))
 }
 
-// --- doc_grep --- (enumeration path; filled in the follow-on pass)
-pub fn handle_grep(
-    _main: &Connection,
-    _mount: &Connection,
-    _args: &Value,
-    _ctx: &DocEditToolContext,
-) -> Result<DocEditToolResult, String> {
-    Err("doc_grep not yet ported".into())
+// --- doc_grep ---
+//
+// Only database-backed stores are searched (the filesystem `walkAndSearch` and
+// the legacy-project fs fallback are the FsSeam — every corpus store is
+// database-backed, and an official project mount is already enumerated by
+// `get_accessible_mount_points`, so the fs branch never runs). `is_regex` uses
+// the Rust `regex` crate (JS-only regex features are a documented seam); the
+// default (diacritics, case-insensitive) path is byte-faithful.
+
+/// The compiled grep matcher: v4's diacritics path (`findAllMatches`) vs its
+/// per-line RegExp path.
+enum GrepMatcher {
+    Diacritics { query: String, case_sensitive: bool },
+    Regex(regex::Regex),
 }
 
-// --- doc_list_files --- (enumeration path; filled in the follow-on pass)
-pub fn handle_list_files(
-    _main: &Connection,
-    _mount: &Connection,
-    _args: &Value,
-    _ctx: &DocEditToolContext,
+pub fn handle_grep(
+    main: &Connection,
+    mount: &Connection,
+    args: &Value,
+    ctx: &DocEditToolContext,
 ) -> Result<DocEditToolResult, String> {
-    Err("doc_list_files not yet ported".into())
+    let Some(project_id) = ctx.project_id.clone() else {
+        return Ok(DocEditToolResult::fail("Grep requires a project context"));
+    };
+    let addressing = apply_qtap_uri(
+        arg_str(args, "scope"),
+        arg_str(args, "mount_point"),
+        arg_str(args, "path"),
+        arg_str_ref(args, "uri"),
+    )?;
+    let resolver = DocStoreUriResolver::build(main, mount, ctx.character_id.as_deref());
+
+    let query = arg_str(args, "query").unwrap_or_default();
+    let is_regex = arg_bool(args, "is_regex").unwrap_or(false);
+    let case_sensitive = arg_bool(args, "case_sensitive"); // None = default
+    let normalize = arg_bool(args, "normalize_diacritics") != Some(false);
+    let max_results = arg_i64(args, "max_results").unwrap_or(100).clamp(0, 500) as usize;
+    let context_lines = arg_i64(args, "context_lines").unwrap_or(0).max(0) as usize;
+    let path_filter = addressing.path.clone();
+
+    let matcher = if normalize && !is_regex {
+        // v4: `caseSensitive: input.case_sensitive ?? false` (default insensitive).
+        GrepMatcher::Diacritics {
+            query: query.clone(),
+            case_sensitive: case_sensitive.unwrap_or(false),
+        }
+    } else {
+        // v4 builds `new RegExp(query|escaped, case_sensitive ? 'g' : 'gi')`.
+        let pattern = if is_regex {
+            query.clone()
+        } else {
+            regex::escape(&query)
+        };
+        let insensitive = case_sensitive != Some(true);
+        match regex::RegexBuilder::new(&pattern)
+            .case_insensitive(insensitive)
+            .build()
+        {
+            Ok(re) => GrepMatcher::Regex(re),
+            Err(e) => {
+                return Ok(DocEditToolResult::fail(format!(
+                    "Invalid regex pattern: {e}"
+                )))
+            }
+        }
+    };
+
+    let mount_point_filter = addressing
+        .mount_point
+        .as_deref()
+        .map(|mp| resolve_mount_point_ref(main, mp, ctx.character_id.as_deref()));
+    let peer_ids = collect_peer_character_ids_for_reads(main, ctx);
+    let mount_points = get_accessible_mount_points(
+        main,
+        mount,
+        Some(&project_id),
+        ctx.character_id.as_deref(),
+        &peer_ids,
+    );
+    let docs_repo = DocMountDocumentsRepository::new(mount);
+
+    let mut matches: Vec<Value> = Vec::new();
+    for mp in &mount_points {
+        if matches.len() >= max_results {
+            break;
+        }
+        if let Some(f) = &mount_point_filter {
+            if !mp.name.eq_ignore_ascii_case(f) && mp.id != *f {
+                continue;
+            }
+        }
+        if mp.mount_type != "database" {
+            continue; // FsSeam
+        }
+        let blocked = get_character_blocked_read_paths(mount, &mp.id, ctx);
+        let docs = docs_repo
+            .find_all_by_mount_point_id(&mp.id)
+            .map_err(|e| e.to_string())?;
+        for (rel, content) in docs {
+            if matches.len() >= max_results {
+                break;
+            }
+            if let Some(p) = &path_filter {
+                if !rel.starts_with(p) {
+                    continue;
+                }
+            }
+            if !blocked.is_empty() && blocked.contains(&rel.to_lowercase()) {
+                continue;
+            }
+            let uri = resolver.uri_for_mount(&mp.name, &mp.id, &rel);
+            grep_search_content(
+                &content,
+                &rel,
+                &mp.name,
+                &uri,
+                &matcher,
+                context_lines,
+                max_results,
+                &mut matches,
+            );
+        }
+    }
+
+    let total = matches.len();
+    let result = json!({ "matches": matches, "total_matches": total });
+    if total == 0 {
+        return Ok(DocEditToolResult::ok(
+            result,
+            format!("No matches found for \"{query}\""),
+        ));
+    }
+    let formatted_matches: Vec<String> = matches
+        .iter()
+        .map(|m| {
+            let mp = m.get("mount_point").and_then(Value::as_str);
+            let prefix = mp.map(|n| format!("[{n}] ")).unwrap_or_default();
+            let path = m.get("path").and_then(Value::as_str).unwrap_or("");
+            let line = m.get("line_number").and_then(Value::as_i64).unwrap_or(0);
+            let text = m.get("match").and_then(Value::as_str).unwrap_or("");
+            let mut out = format!("{prefix}{path}:{line}: {text}");
+            if let Some(before) = m.get("context_before").and_then(Value::as_array) {
+                if !before.is_empty() {
+                    let cb: Vec<String> = before
+                        .iter()
+                        .map(|l| format!("  {}", l.as_str().unwrap_or("")))
+                        .collect();
+                    out = format!("{}\n{out}", cb.join("\n"));
+                }
+            }
+            if let Some(after) = m.get("context_after").and_then(Value::as_array) {
+                if !after.is_empty() {
+                    let ca: Vec<String> = after
+                        .iter()
+                        .map(|l| format!("  {}", l.as_str().unwrap_or("")))
+                        .collect();
+                    out = format!("{out}\n{}", ca.join("\n"));
+                }
+            }
+            out
+        })
+        .collect();
+    let formatted = format!(
+        "Found {total} matches for \"{query}\":\n\n{}",
+        formatted_matches.join("\n\n")
+    );
+    Ok(DocEditToolResult::ok(result, formatted))
+}
+
+/// Append the grep matches from one document's `content` (v4's `searchContent`).
+#[allow(clippy::too_many_arguments)]
+fn grep_search_content(
+    content: &str,
+    display_path: &str,
+    mount_point_name: &str,
+    uri: &str,
+    matcher: &GrepMatcher,
+    context_lines: usize,
+    max_results: usize,
+    matches: &mut Vec<Value>,
+) {
+    if matches.len() >= max_results {
+        return;
+    }
+    let lines: Vec<&str> = content.split('\n').collect();
+    // The 0-based line index of each match, in order (diacritics: one per match;
+    // regex: one per matching line).
+    let line_idxs: Vec<usize> = match matcher {
+        GrepMatcher::Diacritics {
+            query,
+            case_sensitive,
+        } => find_all_matches(
+            content,
+            query,
+            DiacriticsMatchOptions {
+                case_sensitive: *case_sensitive,
+                normalize_diacritics: true,
+            },
+        )
+        .iter()
+        .map(|(idx, _)| get_line_number(content, *idx) - 1)
+        .collect(),
+        GrepMatcher::Regex(re) => lines
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| re.is_match(l))
+            .map(|(i, _)| i)
+            .collect(),
+    };
+    for line_idx in line_idxs {
+        if matches.len() >= max_results {
+            break;
+        }
+        let mut m = Map::new();
+        m.insert("path".into(), json!(display_path));
+        m.insert("mount_point".into(), json!(mount_point_name));
+        m.insert("uri".into(), json!(uri));
+        m.insert("line_number".into(), json!(line_idx + 1));
+        m.insert(
+            "match".into(),
+            json!(lines.get(line_idx).copied().unwrap_or("")),
+        );
+        if context_lines > 0 {
+            let before: Vec<&str> =
+                lines[line_idx.saturating_sub(context_lines)..line_idx].to_vec();
+            let after_end = (line_idx + 1 + context_lines).min(lines.len());
+            let after: Vec<&str> = lines[(line_idx + 1).min(lines.len())..after_end].to_vec();
+            m.insert("context_before".into(), json!(before));
+            m.insert("context_after".into(), json!(after));
+        }
+        matches.push(Value::Object(m));
+    }
+}
+
+// --- doc_list_files ---
+//
+// Database-backed stores + the official project mount only (the fs `_general` /
+// legacy-project walks are the FsSeam).
+
+pub fn handle_list_files(
+    main: &Connection,
+    mount: &Connection,
+    args: &Value,
+    ctx: &DocEditToolContext,
+) -> Result<DocEditToolResult, String> {
+    let Some(project_id) = ctx.project_id.clone() else {
+        return Ok(DocEditToolResult::fail(
+            "List files requires a project context",
+        ));
+    };
+    // A qtap:// URI projects onto scope / mount_point / folder.
+    let (scope, mount_point, folder) = if let Some(uri) = arg_str_ref(args, "uri") {
+        let parts = crate::doc_edit::qtap_uri::parse_qtap_uri(uri).map_err(|e| e.message)?;
+        let f = if parts.path.is_empty() {
+            arg_str(args, "folder")
+        } else {
+            Some(parts.path)
+        };
+        (
+            Some(parts.scope.as_str().to_string()),
+            parts.mount_point.or_else(|| arg_str(args, "mount_point")),
+            f,
+        )
+    } else {
+        (
+            arg_str(args, "scope"),
+            arg_str(args, "mount_point"),
+            arg_str(args, "folder"),
+        )
+    };
+    let resolver = DocStoreUriResolver::build(main, mount, ctx.character_id.as_deref());
+    let pattern = arg_str(args, "pattern");
+    let include_auto = arg_bool(args, "includeAutomaticImages").unwrap_or(false);
+
+    let include_doc_store = scope.is_none()
+        || scope.as_deref() == Some("document_store")
+        || scope.as_deref() == Some("group");
+    let include_project = scope.is_none() || scope.as_deref() == Some("project");
+
+    let group_mount_ids: std::collections::HashSet<String> = ctx
+        .character_id
+        .as_deref()
+        .map(|cid| resolve_group_mount_point_ids_for_character(main, mount, cid))
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+
+    let mut files: Vec<Value> = Vec::new();
+
+    if include_doc_store {
+        let mount_point_filter = mount_point
+            .as_deref()
+            .map(|mp| resolve_mount_point_ref(main, mp, ctx.character_id.as_deref()));
+        let peer_ids = collect_peer_character_ids_for_reads(main, ctx);
+        let mount_points = get_accessible_mount_points(
+            main,
+            mount,
+            Some(&project_id),
+            ctx.character_id.as_deref(),
+            &peer_ids,
+        );
+        for mp in &mount_points {
+            if let Some(f) = &mount_point_filter {
+                if !mp.name.eq_ignore_ascii_case(f) && mp.id != *f {
+                    continue;
+                }
+            }
+            let is_group = group_mount_ids.contains(&mp.id);
+            if scope.as_deref() == Some("group") && !is_group {
+                continue;
+            }
+            let mp_scope = if is_group { "group" } else { "document_store" };
+            if mp.mount_type != "database" {
+                continue; // FsSeam
+            }
+            let blocked = get_character_blocked_read_paths(mount, &mp.id, ctx);
+            let entries =
+                list_database_files(mount, &mp.id, folder.as_deref()).map_err(|e| e.to_string())?;
+            for e in entries {
+                if let Some(pat) = &pattern {
+                    if !matches_glob(&e.file_name, pat) {
+                        continue;
+                    }
+                }
+                if e.kind != "folder"
+                    && !blocked.is_empty()
+                    && blocked.contains(&e.relative_path.to_lowercase())
+                {
+                    continue;
+                }
+                let uri = resolver.uri_for_mount(&mp.name, &mp.id, &e.relative_path);
+                files.push(file_info(
+                    &e.relative_path,
+                    Some(&mp.name),
+                    &uri,
+                    mp_scope,
+                    e.file_size_bytes,
+                    crate::clock::iso_to_ms(&e.last_modified).unwrap_or(0),
+                    &e.kind,
+                ));
+            }
+        }
+    }
+
+    if include_project {
+        if let Some(official) = resolve_official_project_mount(main, mount, Some(&project_id)) {
+            // The document-store branch already enumerated this mount when listing
+            // every scope; only re-emit when scope was explicitly 'project'.
+            if scope.as_deref() == Some("project") && official.mount_type == "database" {
+                let blocked = get_character_blocked_read_paths(mount, &official.id, ctx);
+                let entries = list_database_files(mount, &official.id, folder.as_deref())
+                    .map_err(|e| e.to_string())?;
+                for e in entries {
+                    if let Some(pat) = &pattern {
+                        if !matches_glob(&e.file_name, pat) {
+                            continue;
+                        }
+                    }
+                    if e.kind != "folder"
+                        && !blocked.is_empty()
+                        && blocked.contains(&e.relative_path.to_lowercase())
+                    {
+                        continue;
+                    }
+                    let uri = resolver.uri_for_scope(ScopedAuthority::Project, &e.relative_path);
+                    files.push(file_info(
+                        &e.relative_path,
+                        Some(&official.name),
+                        &uri,
+                        "project",
+                        e.file_size_bytes,
+                        crate::clock::iso_to_ms(&e.last_modified).unwrap_or(0),
+                        &e.kind,
+                    ));
+                }
+            }
+        }
+        // No official mount → the legacy fs project walk is the FsSeam (skipped).
+    }
+    // General scope → fs `_general` walk is the FsSeam (skipped).
+
+    // Post-filter: strip OS cruft; strip auto-images unless opted in.
+    files.retain(|f| {
+        let path = f.get("path").and_then(Value::as_str).unwrap_or("");
+        let base = path.rsplit('/').next().unwrap_or("");
+        if is_os_cruft_name(base) {
+            return false;
+        }
+        if !include_auto && is_automatic_image_path(path) {
+            return false;
+        }
+        true
+    });
+
+    let total = files.len();
+    let result = json!({ "files": files, "total": total });
+    if total == 0 {
+        return Ok(DocEditToolResult::ok(result, "No files found.".to_string()));
+    }
+    let formatted_lines: Vec<String> = files
+        .iter()
+        .map(|f| {
+            let mp = f.get("mount_point").and_then(Value::as_str);
+            let sc = f.get("scope").and_then(Value::as_str).unwrap_or("");
+            let prefix = mp
+                .map(|n| format!("[{n}] "))
+                .unwrap_or_else(|| format!("[{sc}] "));
+            let path = f.get("path").and_then(Value::as_str).unwrap_or("");
+            if f.get("kind").and_then(Value::as_str) == Some("folder") {
+                return format!("{prefix}[folder] {path}");
+            }
+            let size = f.get("size").and_then(Value::as_i64).unwrap_or(0);
+            let size_str = if size < 1024 {
+                format!("{size}B")
+            } else if size < 1_048_576 {
+                format!("{:.1}KB", size as f64 / 1024.0)
+            } else {
+                format!("{:.1}MB", size as f64 / 1_048_576.0)
+            };
+            format!("{prefix}{path}  ({size_str})")
+        })
+        .collect();
+    let formatted = format!("{total} files:\n\n{}", formatted_lines.join("\n"));
+    Ok(DocEditToolResult::ok(result, formatted))
+}
+
+/// v4's `matchesGlob`: `*.ext` suffix match, else exact filename match. An empty
+/// pattern matches everything.
+fn matches_glob(filename: &str, pattern: &str) -> bool {
+    if pattern.is_empty() {
+        return true;
+    }
+    if let Some(suffix) = pattern.strip_prefix('*') {
+        return filename.ends_with(suffix);
+    }
+    filename == pattern
+}
+
+/// Build a `DocFileInfo` object (v4's push shape) in schema order.
+fn file_info(
+    path: &str,
+    mount_point: Option<&str>,
+    uri: &str,
+    scope: &str,
+    size: i64,
+    modified: i64,
+    kind: &str,
+) -> Value {
+    let mut m = Map::new();
+    m.insert("path".into(), json!(path));
+    if let Some(mp) = mount_point {
+        m.insert("mount_point".into(), json!(mp));
+    }
+    m.insert("uri".into(), json!(uri));
+    m.insert("scope".into(), json!(scope));
+    m.insert("size".into(), json!(size));
+    m.insert("modified".into(), json!(modified));
+    m.insert("kind".into(), json!(kind));
+    Value::Object(m)
 }

@@ -599,6 +599,27 @@ items the wave-3 capstone flagged.
   `commonplace_strip`, `opaque_swap` vs `transparent_no_swap`, and
   `tool_whisper_filter`. `orchestrator_tier3_equivalence` re-verified green.
 
+Phase 3 — wave 4 (W4.1d batch 3b): the doc-edit tool handlers (part 2 — the
+remaining handler groups + the dispatcher wiring). Ported the file-management
+group (`doc_move_file` / `doc_copy_file` / `doc_delete_file` / `doc_create_folder`
+/ `doc_delete_folder` / `doc_move_folder`, over the `db::database_store`
+primitives; the `chat_documents` move-sync is a corpus-verified no-op seam), the
+document-UI group (`doc_open_document` / `doc_close_document` / `doc_focus`, with
+three new `chat_documents` scoped ops and the `documentMode` chat update that
+does not bump `updatedAt`), the blob group (`doc_write_blob` / `doc_read_blob` /
+`doc_list_blobs` / `doc_delete_blob`, over the newly-ported `linkBlobContent`
+binary storage primitive + blob-repo methods; the WebP transcode is a native
+passthrough seam), and the enumeration group (`doc_grep` / `doc_list_files`, over
+a new `doc_mount_documents` finder + `list_database_files`). Wired all 23
+non-photo `doc_*` tools into `BuiltInToolRunner` (one `run_doc_edit` dispatch
+through `execute_doc_edit_tool` inside a both-connections write closure) and
+extended `tool_dispatch_equivalence` with two doc-edit dispatch rows. Verified by
+four new jest-real-DB differentials (`doc_fm` 20 ops, `doc_ui` 9, `doc_blob` 11,
+`doc_enum` 14) driving v4's REAL handlers byte-exact. The photo group stays a
+tracked scoped deferral (unported images-v2 + `keep-image-markdown` +
+`chunkAndInsertExtractedText`) — it routes to the loud fallback. With this the
+entire doc-edit tool subsystem except the photo trio is ported and dispatched.
+
 Phase 3 — wave 4 (W4.1d batch 3b): the doc-edit tool handlers (part 1 — the
 foundation + the text/markdown handlers). Ported the database-backed
 document-store primitives (`db::database_store`: read/write/move/delete

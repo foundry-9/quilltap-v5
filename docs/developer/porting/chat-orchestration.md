@@ -473,6 +473,23 @@ Ordered by dependency; several are mutually independent once wave 2 lands:
   normalized) drives v4's REAL handlers; `tool_dispatch` gained a `wardrobe_list`
   call; `tool_execution_*` re-verified green.
 
+- **W4.1d batch 3b: the doc-edit tool handlers — ported, green, and dispatched
+  (except the photo trio)** (2026-07-04). The foundation
+  (`db::database_store` primitives composing the ported storage leaves +
+  `doc_mount_folders`/`doc_mount_file_links` finders + `link_blob_content`) +
+  `tools::doc_edit` (the `shared` access-control family / resolution-context
+  builders / `applyQtapUri` / `isTextFile` / DB read-write dispatch, and all 23
+  non-photo `doc_*` handlers across five groups — text/markdown, file-management,
+  document-UI, blob, enumeration — behind a v4-faithful `executeDocEditTool`
+  dispatcher). Wired into `BuiltInToolRunner` (`run_doc_edit`, both connections).
+  The Librarian-announcement + reindex layers are documented no-op seams; the fs/
+  obsidian/general mount branches the FsSeam. Verified by five jest-real-DB
+  differentials (`doc_text` 26 / `doc_fm` 20 / `doc_ui` 9 / `doc_blob` 11 /
+  `doc_enum` 14 ops) + the extended `tool_dispatch_equivalence`. **The photo group
+  (`keep_image`/`list_images`/`attach_image`) is a tracked scoped deferral** —
+  unported images-v2 + `keep-image-markdown` + `chunkAndInsertExtractedText`,
+  beyond the named byte-source seam → the loud fallback.
+
 - **W4.1e: the native tool loop + the finalizer response-RNG — ported and green**
   (2026-07-04). `services::native_tool_loop` ports v4's `runNativeToolLoop`
   (iterate → detect → execute → thread → re-stream, the agent-mode

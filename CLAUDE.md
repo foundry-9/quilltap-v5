@@ -2301,8 +2301,8 @@ stopSequences forwarding (per-continuation `stop` recorded + diffed). **Tracked
 deferrals:** the provider-text-markers strategy (→ W4.7 provider manifest); the
 spine's real tool-mode/tool-slate plumbing (→ W4.1g).
 
-**Wave 4 (W4.1d batch 3b) is in progress — the foundation + the text/markdown
-handlers are ported and green.** `db::database_store` ports v4's
+**Wave 4 (W4.1d batch 3b) is DONE — the entire doc-edit tool subsystem except
+the photo trio is ported, green, and dispatched.** `db::database_store` ports v4's
 `lib/mount-index/database-store.ts` (read/write/move/delete documents, folder
 create/delete/move, existence checks) by composing the ported storage leaves,
 adding the repo finders it needs (`doc_mount_folders` /
@@ -2325,12 +2325,39 @@ offset/JSON reads, self + project + `qtap://` addressing, blocked read +
 read-only write, str_replace unique/not-found/multiple/diacritics, insert
 start/end/before, frontmatter read/keys/none/merge/replace, heading
 read/not-found/update) plus a two-table dump; the write ops' minted `mtime` is
-placeholdered, read `mtime` diffed exactly. **The photo group
-(`keep_image`/`list_images`/`attach_image`) is a tracked scoped deferral** — it
-drags in the unported images-v2 store + `keep-image-markdown` sidecar builder +
-`chunkAndInsertExtractedText` + `linkBlobContent`, beyond the named byte-source
-seam. Remaining 3b: `doc_grep`/`doc_list_files`, the file-management / document-UI
-/ blob handler groups, and the `BuiltInToolRunner` dispatch wiring.
+placeholdered, read `mtime` diffed exactly. The remaining handler groups then
+landed the same way — **file-management** (`doc_move_file`/`doc_copy_file`/
+`doc_delete_file`/`doc_create_folder`/`doc_delete_folder`/`doc_move_folder` over
+the `database_store` primitives; the `chat_documents` move-sync a corpus-verified
+no-op seam; `doc_fm_equivalence`, 20 ops), **document-UI** (`doc_open_document`/
+`doc_close_document`/`doc_focus` + three new `chat_documents` scoped ops
+[`find_open_for_chat`/`open_document`/`close_document_by_id`] + the `documentMode`
+`ChatUpdate` setter that does NOT bump `updatedAt`; the `doc_focus`
+no-`formattedText` path builds its result map in v4 key order for the
+`JSON.stringify` fallback; the new-blank-doc `fs.writeFile` path is a tracked
+FsSeam; `doc_ui_equivalence`, 9 ops), **blob** (`doc_write_blob`/`doc_read_blob`/
+`doc_list_blobs`/`doc_delete_blob` over the newly-ported `link_blob_content`
+binary storage primitive [the binary analogue of `link_document_content`, closing
+that long-standing deferral] + the blob-repo `create`/find/list/read/delete; the
+WebP `transcodeToWebP` is a native passthrough seam identical on both sides;
+`doc_blob_equivalence`, 11 ops), and **enumeration** (`doc_grep`/`doc_list_files`
+over a new `doc_mount_documents::find_all_by_mount_point_id` + `list_database_files`
++ `get_accessible_mount_points`; `is_regex` uses the `regex` crate [JS-only regex
+features a documented seam], the default diacritics path byte-faithful; the fs/
+general branches the FsSeam; `doc_enum_equivalence`, 14 ops). All 23 non-photo
+`doc_*` tools are wired into `BuiltInToolRunner` (one `run_doc_edit` dispatch
+through `execute_doc_edit_tool` inside a both-connections `Db::write` closure,
+building v4's `{ formattedText, ...result }` row), with
+`tool_dispatch_equivalence` extended by two doc-edit rows (`doc_read_file` +
+`doc_read_frontmatter` on a transparent character's own vault) and re-verified
+green. **The photo group (`keep_image`/`list_images`/`attach_image`) is a tracked
+scoped deferral** — it drags in the unported images-v2 store +
+`keep-image-markdown` sidecar builder + `chunkAndInsertExtractedText`, beyond the
+named byte-source seam — so it stays out of `PORTED_TOOLS` and routes to the loud
+fallback. **Tracked deferrals across 3b:** the photo group, the converted-blob
+`extractedText` read branch (`doc_read_file` non-text path), the new-blank
+`doc_open_document` fs path, the fs/obsidian/general mount branches (FsSeam), and
+`is_regex` grep's JS-regex parity.
 
 The rest of wave 4 (the remaining tool subsystem — `buildTools` / registry
 (W4.1g), the remaining handler-catalog batches [3b the ~26 doc-edit handlers
