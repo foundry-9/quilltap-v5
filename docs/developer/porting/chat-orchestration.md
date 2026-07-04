@@ -521,7 +521,19 @@ Ordered by dependency; several are mutually independent once wave 2 lands:
   `JSON.parse` message a documented normalized seam), the hand-rolled unified diff,
   and the markdown heading ops + `serializeFrontmatter`/`updateFrontmatterInContent`
   (reusing the ported eemeli scalar emitter for byte-exact `YAML.stringify` over the
-  frontmatter value space). `document-policy.ts` needed no new port. **Remaining
-  batch-3a foundation:** the DB-backed path resolver (document_store + project-alias;
-  the legacy FS scopes + `general` are a host-filesystem seam) and the async URI
-  producers.
+  frontmatter value space). `document-policy.ts` needed no new port.
+
+- **W4.1d batch 3a (part 3): the path resolver + URI producers — ported and green,
+  completing batch 3a.** `doc_edit::{path_resolver, uri_producers}` (v4
+  `lib/doc-edit/{path-resolver, uri-producers}.ts`), verified by a 23-case
+  read-differential (`doc_edit_path_resolver_equivalence`) vs v4's REAL
+  `resolveDocEditPath` + `docStoreUriFor`/`uriForResolvedPath`/
+  `buildDocStoreUriResolver`. The `document_store` scope resolves over the tiered
+  mount pool (SELF token, name-vs-id matching, ambiguity/not-found/disabled errors,
+  traversal/absolute/missing-path guards); the `project` scope aliases the official
+  mount — byte-exact `PathResolutionError` codes + messages. The legacy on-disk
+  branches (FS-backed mounts, the project `<filesDir>` fallback, the `general` scope)
+  are a **host-filesystem seam** (`ResolveError::FsSeam`) deferred to Phase-4; the
+  corpus is all database-backed so it is never hit. Added
+  `projects::find_official_mount_point_id_raw`. **The doc-edit foundation (batch 3a)
+  is complete; the ~26 `doc_*` handlers (batch 3b) follow.**

@@ -2237,9 +2237,27 @@ eemeli scalar emitter (now `pub(crate)`) so `YAML.stringify` is byte-exact over 
 frontmatter value space (string/bool/number/null scalars + flat sequences; nested
 maps / exotic numbers / non-identifier keys a documented seam). The v4
 `document-policy.ts` needed no new port (its leaves already live in
-`db::doc_mount_file_links`). **Remaining batch-3a foundation:** the DB-backed path
-resolver (document_store + project-alias; the legacy FS scopes + `general` are a
-host-filesystem seam) and the async URI producers.
+`db::doc_mount_file_links`). **The batch-3a path resolver + URI producers are now
+also DONE, completing batch 3a** (`doc_edit::{path_resolver, uri_producers}`, v4
+`lib/doc-edit/{path-resolver, uri-producers}.ts`), verified by a 23-case
+read-differential (`doc_edit_path_resolver_equivalence`) driving v4's REAL
+`resolveDocEditPath` + `docStoreUriFor`/`uriForResolvedPath`/
+`buildDocStoreUriResolver`. The `document_store` scope resolves over the tiered
+mount pool (the SELF token, name-vs-id matching, ambiguity/not-found/disabled
+errors, traversal/absolute/missing-path guards) and the `project` scope aliases the
+official mount — all with byte-exact `PathResolutionError` codes + messages. The
+legacy on-disk branches (a `filesystem`/`obsidian` mount's real path, the project
+legacy `<filesDir>` fallback, the entire `general` scope) are a **host-filesystem
+seam** deferred to the Phase-4 host (`ResolveError::FsSeam`); every corpus store is
+database-backed so v4 returns `absolutePath:''` early and the seam is never hit. The
+URI producers (`docStoreUriFor` / `uriForResolvedPath` / `buildDocStoreUriResolver`)
+ride the ported qtap producers + `doc_mount_points::{count_by_name,
+find_enabled_for_docedit}`. Added `projects::find_official_mount_point_id_raw` (the
+slim pointer the project-alias reads; v4 uses the overlaid `projects.findById`,
+whose throw-on-corrupt-store edge the raw read treats as a normal resolve — a
+documented minor seam, never hit with a real provisioned store). **The doc-edit
+foundation (W4.1d batch 3a) is complete** — the ~26 `doc_*` tool handlers (batch 3b)
+sit on it.
 
 The rest of wave 4 (the remaining tool subsystem — the text tool loop (W4.1f) /
 `buildTools` / registry (W4.1g), the remaining handler-catalog batches [3 doc-edit,

@@ -326,6 +326,27 @@ impl<'c> ProjectsRepository<'c> {
     }
 }
 
+/// Read a project's `officialMountPointId` pointer WITHOUT the store overlay (v4
+/// `projects.findById(...).officialMountPointId`). The doc-edit path resolver's
+/// `project`-scope alias reads only this slim pointer. `Ok(None)` when the
+/// project is absent; `Ok(Some(None))` when it has no official store.
+pub fn find_official_mount_point_id_raw(
+    main: &Connection,
+    id: &str,
+) -> Result<Option<Option<String>>, DbError> {
+    main.query_row(
+        "SELECT officialMountPointId FROM projects WHERE id = ?1",
+        rusqlite::params![id],
+        |row| row.get::<_, Option<String>>(0),
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other),
+    })
+    .map_err(DbError::from)
+}
+
 /// Read `characterRoster` off a hydrated project (absent/non-array → empty).
 fn roster_of(project: &Value) -> Vec<String> {
     project

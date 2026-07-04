@@ -12,9 +12,10 @@
 pub mod diacritics;
 pub mod markdown_parser;
 pub mod mime_registry;
+pub mod path_resolver;
 pub mod qtap_uri;
 pub mod unified_diff;
-// The DB-backed path resolver + URI producers land next in this batch.
+pub mod uri_producers;
 //
 // v4's per-document policy leaves (`coercePolicyBool` / `policyFromFrontmatterData`
 // / `policyFromContent`) are already ported in

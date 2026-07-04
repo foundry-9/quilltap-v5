@@ -599,6 +599,26 @@ items the wave-3 capstone flagged.
   `commonplace_strip`, `opaque_swap` vs `transparent_no_swap`, and
   `tool_whisper_filter`. `orchestrator_tier3_equivalence` re-verified green.
 
+Phase 3 — wave 4 (W4.1d batch 3a): the doc-edit foundation, part 3 — the path
+resolver + URI producers (completing batch 3a). Ported `resolveDocEditPath`
+(`doc_edit::path_resolver`) — the `document_store` scope (over the tiered mount
+pool: the SELF token, name-vs-id mount matching, ambiguity/not-found/disabled
+errors, traversal/absolute/missing-path guards) and the `project` scope's
+official-mount alias — with byte-exact `PathResolutionError` codes + messages, plus
+`resolveSelfVaultMountPointId` / `resolveMountPointRef`. The legacy on-disk
+branches (`filesystem`/`obsidian` real paths, the project legacy fallback, the
+whole `general` scope) are a **host-filesystem seam** deferred to the Phase-4 host.
+Ported the async URI producers (`doc_edit::uri_producers`: `docStoreUriFor`,
+`uriForResolvedPath`, `buildDocStoreUriResolver`) over the ported qtap producers +
+`doc_mount_points::{count_by_name, find_enabled}`. Verified by a 23-case
+read-differential (`doc_edit_path_resolver_equivalence`) driving v4's REAL resolver
++ producers over a two-DB fixture (a character + vault, a real project with a
+provisioned official store, P-linked stores incl. a duplicate-named pair + a
+disabled store, the General singleton); every store database-backed so the FS seam
+is never hit. Added `projects::find_official_mount_point_id_raw`. With this the
+whole doc-edit foundation (batch 3a) is complete; the ~26 `doc_*` tool handlers
+(batch 3b) sit on it.
+
 Phase 3 — wave 4 (W4.1d batch 3a): the doc-edit foundation, part 2 — the pure
 leaves. Ported `lib/doc-edit/{diacritics, mime-registry, unified-diff,
 markdown-parser}.ts` into `doc_edit::{diacritics, mime_registry, unified_diff,
