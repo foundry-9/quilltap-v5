@@ -1905,7 +1905,74 @@ chat *before* the model turn — is ported end to end, closing the orchestrator'
   overlay uses (→ `createHash` undefined); spread the real module and override only
   `randomBytes` (see `[[jest-crypto-randombytes-mock]]`).
 
+**Wave 4 (W4.1b): the tool-subsystem pure leaves are DONE** (2026-07-03) — the
+pure foundations the tool loops (W4.1e/f), executor (W4.1c), and handler catalog
+(W4.1d) will consume, all tier-1 exact against v4's real `lib/tools/` + service
+code. Three sub-units:
+
+- **b.2** tool-call threading (`services::tool_call_threading`, v4
+  `tool-call-threading.ts`): `build_assistant_tool_call_message` /
+  `build_tool_result_messages` — the callId-present-vs-absent pairing rule
+  (toolCalls array + native `tool`-role results, else content-only + `[Tool
+  Result: <name>]` user messages), empty/whitespace-prose collapse,
+  reasoning/thoughtSignature forwarding, and the arguments `JSON.stringify`
+  (order-preserving `Value` + integer-valued-float collapse).
+  `tool_call_threading_equivalence` (22 cases).
+- **b.1** the pseudo-tool machinery (`tools::{simple_json_parser,
+  text_block_parser, simple_json_prompt, text_block_prompt, native_tool_prompt,
+  pseudo_tool_support}` + `services::pseudo_tool`): the three-tier simple-json
+  parser (strict → bounded-jsonrepair → balanced-brace), the text-block
+  parser/converter (params/content, alias/param-alias maps, number/boolean
+  coercion, wardrobe single-op wrapping), both prompt builders, the native-tool
+  prompt, mode resolution (`resolve_tool_mode`/`should_use_text_block_tools`),
+  and the service wrappers. **The two backreference regexes are hand-rolled** (the
+  `regex` crate has no backreferences): the simple-json `<alias\s*>…</\1>` tag
+  scanner (leftmost, non-greedy-to-first-close-or-`$`, UTF-16 offsets) and the
+  text-block content form (hybrid — the `regex` crate matches the intricate
+  attribute/escaped-quote open tag, a manual scan finds the backreference close).
+  **The jsonrepair tier is a bounded hand-rolled subset** (single-quoted /
+  curly-"smart"-quoted strings/keys, unquoted keys, trailing commas) — a
+  strict-JSON-plus-relaxations recursive-descent that consumes the whole input or
+  fails; out-of-subset malformations (arbitrary garbage, code fences, unquoted
+  string *values*) resolve **conservatively to a tier failure → `[]`**, matching
+  v4's failure shape, never a different non-empty parse; the corpus pins both
+  sides (a repaired case per relaxation + a "not json at all" fail case; the
+  code-fence case is the documented seam, excluded). Differentials:
+  `pseudo_tool_parsers_equivalence` (138 cases — all five tag aliases × case
+  variants, the three tiers each hit incl. balanced-brace recovery, missing-name /
+  total-failure → `[]`, second-block-dropped, strip idempotency, text-block
+  content/self-closing/multi-param/escapes/malformed-not-matched, `parseTagParams`
+  escapes, mode resolution, `formatSimpleJsonToolResult`, stop sequences) and
+  `pseudo_tool_prompts_equivalence` (40 cases — each builder over flag combos, the
+  simple-json builder rendering signatures from the real b.3 definitions, plus the
+  `determineTextBlockToolOptions`/`determineEnabledToolOptions` config mappers).
+  The `log*ToolUsage` wrappers are logging-only → not ported; `checkModelSupportsTools`
+  (async pricing lookup) is the host-side boundary, its boolean the injected
+  `supports_native_tools` input.
+- **b.3** the tool-definition catalog (`tools::definitions`): all **57**
+  definitions from the **56** `*-tool.ts` files (`search-scriptorium-tool` exports
+  both `searchScriptorium` and `searchScriptoriumBrahma`; `ALL_TOOLS` matches the
+  directory exactly — no omission or extra). Stored as **byte-exact static JSON**
+  transcribed from v4's `JSON.stringify({name, description, parameters})` output —
+  NOT by re-implementing the Zod→JSON-Schema emitter (v4's `zodToOpenAISchema` is
+  a thin wrapper over Zod 4's `z.toJSONSchema`, static-data-at-import) — in a
+  generated `data` submodule (the `prompt_text` precedent) produced by the
+  checked-in `harness/oracle/tools/gen-tool-catalog.mjs` (regen recipe in its
+  header). Accessors (`definition_by_key`/`_by_name`, `all_universal_tools`) bridge
+  into the existing `canonicalize::UniversalTool`. The byte-exact differential
+  (`tool_definitions_equivalence`) proves the serde preserve-order round-trip
+  reproduces JS `JSON.stringify` (no float/escaping divergence over the real
+  payloads), catalog completeness, and a `canonicalize_universal_tools` spot-check
+  over the full real catalog (its own differential predated real definitions). The
+  `.default()`-in-`required` quirk (rng `rolls`, askCarina `whisper`) is preserved
+  verbatim; determinism verified (dump twice, identical).
+
+Out of scope (later W4.1 sub-units): the tool loops,
+`processToolCalls`/`saveToolMessages`, `buildTools` slate construction, the
+handlers, and provider wire parsing.
+
 The rest of wave 4 (the remaining tool subsystem — tool loops / `buildTools` /
-registry, the finalizer's response-RNG — danger, answer-confirmation,
-courier/agent-mode/compression-cache/regenerate-swipe, carina query, buildContext
-seam-closers, provider manifest) follows per the chat-orchestration decomposition.
+registry, the executor + handler catalog, the finalizer's response-RNG — danger,
+answer-confirmation, courier/agent-mode/compression-cache/regenerate-swipe, carina
+query, buildContext seam-closers, provider manifest) follows per the
+chat-orchestration decomposition.
