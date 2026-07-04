@@ -2132,9 +2132,54 @@ spread-real-override-only). **Tracked deferrals:** the agent-mode resolver casca
 (W4.4), `detectToolCallsInResponse`'s provider wire parse (W4.7), the text tool
 loop (W4.1f), `buildTools` + the spine's real tool slate + runner wiring (W4.1g).
 
+**Wave 4 (W4.1d batch 2): the seven wardrobe tool handlers are DONE**
+(2026-07-04). `tools::{wardrobe_list, wardrobe_read, wardrobe_create,
+wardrobe_update, wardrobe_archive, wardrobe_wear, wardrobe_take_off}` (v4
+`lib/tools/handlers/wardrobe-*-handler.ts`), each byte-exact against v4's REAL
+handler. They compose the already-ported vault-public CRUD
+(`db::vault_wardrobe_public`, incl. the `WardrobeLocation` character/General/
+project generalization), the public READ trio + shared-archetype tier
+(`db::wardrobe_read`, `db::archetype_wardrobe`), and the equipped-outfit ops
+(`db::chats_outfits`), over new pure leaves in `crate::wardrobe` (`unionTypes`,
+`describeOutfit`, `expandComposites`, the flag-driven `wearItemIntoSlots`/
+`replaceItemIntoSlots`, `describeWardrobeEffect`, `normalizeNoItemSentinel`) and
+the DB-touching `tools::wardrobe_shared` (`resolveWardrobeItemAcrossTiers`, the
+persisted equip primitives `equipItem`/`replaceItem`/`addToSlot`/`removeFromSlot`
+over `ChatOutfitsRepository`, `resolveEquippedOutfitForCharacter`, the coverage
+summary, and `resolveProjectMountPointIdsForChat`), plus a new
+`wardrobe_read::find_by_ids_for_character`. `BuiltInToolRunner` gained the seven
+dispatch rows — each runs inside a single `Db::write` closure that hands the sync
+handler BOTH the main + mount-index writer connections (the `wardrobe_transfers`
+precedent), and `wardrobe_{archive,wear,take_off}` return a pending-announcement id
+list folded into the per-turn set inside the closure. **The
+`pendingWardrobeAnnouncements` shape (the flagged wrinkle):** the field became
+`Arc<Mutex<HashSet<String>>>` — interior mutability so the handlers record an
+announcement through the immutable `ToolRunner::run` boundary WITHOUT changing the
+trait signature (W4.1e consumes that trait); cloning the context shares the set
+(v4's shared-Set semantics). The end-of-turn DRAIN (Aurora posting) stays a
+documented deferral; the legacy "no set → enqueue immediately" fallback is not
+ported (the ported context always carries a set). Avatar generation on equip is an
+**image-subsystem seam** (out of scope): the corpus keeps `avatarGenerationEnabled`
+false so v4's `triggerAvatarGenerationIfEnabled` is a no-op, matching the port
+(which omits it). Verified by `wardrobe_tools_equivalence`: a 25-op sequence over a
+two-DB baked fixture (caller + recipient vaults, a General archetype, a chat with
+participants + a seeded equipped outfit) driving v4's REAL handlers — success /
+invalid-input / edge per handler (gift to a chat participant, composite+equip,
+unknown component, shared read-only refusal, add-to-slot mismatch, archive) — with
+per-op Output + `format*` string diffed and a final read-back of both wardrobes /
+archetypes / equipped outfit; minted ids/timestamps are positionally normalized
+(create mints an id + timestamps; update/archive mint `updatedAt` inside the
+content-addressed `.md`), the underlying table bytes inherited from
+`vault_wardrobe_public_equivalence` / `chats_outfits_tier2_equivalence`. The
+dispatcher differential (`tool_dispatch_equivalence`) gained a `wardrobe_list`
+call (real handler both sides); the existing `tool_execution_*` + `tool_dispatch`
+differentials re-verified green after the announcements field-type change.
+**Tracked deferrals:** the end-of-turn announcement drain (Aurora posting), the
+General/project archetype write tiers beyond W4.0's, and `findByCharacterIdRaw`.
+
 The rest of wave 4 (the remaining tool subsystem — the text tool loop (W4.1f) /
-`buildTools` / registry (W4.1g), the remaining handler-catalog batches [2 wardrobe,
-3 doc-edit, 4 embedding/search, 5 host-seamed], the agent-mode resolver — danger,
+`buildTools` / registry (W4.1g), the remaining handler-catalog batches [3 doc-edit,
+4 embedding/search, 5 host-seamed], the agent-mode resolver — danger,
 answer-confirmation, courier/compression-cache/regenerate-swipe, carina query,
 buildContext seam-closers, provider manifest) follows per the chat-orchestration
 decomposition.

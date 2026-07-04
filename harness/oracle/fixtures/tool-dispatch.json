@@ -82,6 +82,14 @@
       "characterId": "22222222-2222-4222-8222-222222222222",
       "callingParticipantId": "55555555-5555-4555-8555-555555555555",
       "args": { "url": "https://evil.example.com" }
+    },
+    {
+      "$comment": "wardrobe_list — W4.1d batch 2: the ported wardrobe dispatch row; empty vault → no items (real handler both sides, no minted values).",
+      "tool": "wardrobe_list",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "characterId": "22222222-2222-4222-8222-222222222222",
+      "callingParticipantId": "55555555-5555-4555-8555-555555555555",
+      "args": {}
     }
   ]
 }

@@ -106,6 +106,53 @@ pub fn find_by_character_id(
         .collect())
 }
 
+/// v4 `findByIdsForCharacter` — multiple wardrobe items wearable by a character.
+/// Honours the vault overlay (reads with archived included) and folds in shared
+/// archetypes for any ids not in the character's own wardrobe. Returns items in
+/// v4's `Map` insertion order: the character's own matches first (in read order),
+/// then the archetype fills for the still-missing ids (in archetype read order).
+/// `[]` for an empty id list, matching v4's early return.
+pub fn find_by_ids_for_character(
+    main: &Connection,
+    docs: &DocMountDocumentsRepository,
+    character_id: &str,
+    ids: &[String],
+    project_mount_point_ids: &[String],
+) -> Result<Vec<Value>, DbError> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let want: std::collections::HashSet<&str> = ids.iter().map(String::as_str).collect();
+
+    let items = find_by_character_id(main, docs, character_id, true)?;
+    let mut ordered: Vec<Value> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for it in items {
+        let Some(id) = it.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        if want.contains(id) && seen.insert(id.to_string()) {
+            ordered.push(it);
+        }
+    }
+
+    // Any ids not owned by the character: fill from the merged archetype tiers.
+    let has_missing = ids.iter().any(|id| !seen.contains(id));
+    if has_missing {
+        let archetypes = find_archetypes(main, docs, true, project_mount_point_ids)?;
+        for a in archetypes {
+            let Some(id) = a.get("id").and_then(Value::as_str) else {
+                continue;
+            };
+            if want.contains(id) && seen.insert(id.to_string()) {
+                ordered.push(a);
+            }
+        }
+    }
+
+    Ok(ordered)
+}
+
 /// v4 `findByIdForCharacter` — a single wardrobe item by id, preferring the
 /// character's own (including archived), then falling back to the shared
 /// archetype tiers. `project_mount_point_ids` scopes the archetype fallback.

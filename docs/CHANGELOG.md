@@ -661,6 +661,29 @@ handler ships a differential driving v4's real handler byte-exact.
   path depends on the unported plugin registry). Existing `tool_execution_*` +
   `message_finalizer` + `orchestrator` differentials re-verified green.
 
+Phase 3 — wave 4 (W4.1d batch 2): the seven wardrobe tool handlers. Ported
+`wardrobe_list` / `wardrobe_read` / `wardrobe_create` / `wardrobe_update` /
+`wardrobe_archive` / `wardrobe_wear` / `wardrobe_take_off` (`tools::wardrobe_*`)
+over the already-ported vault-public CRUD, the public read trio + shared-archetype
+tier, and the equipped-outfit ops, plus the pure `crate::wardrobe` leaves
+(`unionTypes`, `describeOutfit`, `expandComposites`, the flag-driven equip
+primitives, `describeWardrobeEffect`, sentinel normalization), the DB-touching
+`tools::wardrobe_shared` helpers (across-tier item resolution, the persisted equip
+primitives, `resolveEquippedOutfitForCharacter`, the coverage summary,
+`resolveProjectMountPointIdsForChat`), and `find_by_ids_for_character`. Extended
+`BuiltInToolRunner` with the seven dispatch rows (each runs inside a single writer
+closure holding both the main + mount-index connections). The
+`pendingWardrobeAnnouncements` field became `Arc<Mutex<HashSet<String>>>` so the
+handlers can record an announcement through the immutable `ToolRunner::run`
+boundary without changing the trait signature; the end-of-turn drain stays a
+documented deferral. Avatar generation on equip is an image-subsystem seam (out of
+scope; gated off in the corpus). Differentials: `wardrobe_tools_equivalence` (a
+25-op sequence — success / invalid / edge per handler, gift, composite+equip,
+shared read-only, slot mismatch, plus a read-back of both wardrobes / archetypes /
+equipped outfit, minted ids/timestamps positionally normalized) drives v4's REAL
+handlers; the dispatcher differential gained a `wardrobe_list` call; the existing
+`tool_execution_*` + `tool_dispatch` differentials re-verified green.
+
 Phase 3 — wave 4 (W4.1c): tool execution + persistence primitives
 (`services::tool_execution`, v4 `tool-execution.service.ts`) — the harness and
 the TOOL-row writer between the tool loops (W4.1e/f) and the tool handlers

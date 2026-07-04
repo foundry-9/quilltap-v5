@@ -52,6 +52,7 @@
 
 use std::collections::HashSet;
 use std::future::Future;
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -256,9 +257,18 @@ pub struct ToolExecutionContext {
     /// `self_inventory` landed) — the orchestrator fills it from the built context.
     pub loaded_memories: Option<LoadedMemoriesContext>,
     /// Character IDs whose wardrobe was modified during this turn (v4's
-    /// `pendingWardrobeAnnouncements` Set). Wardrobe tool handlers (W4.1d) add to
-    /// it; the orchestrator drains it once at end-of-turn.
-    pub pending_wardrobe_announcements: HashSet<String>,
+    /// `pendingWardrobeAnnouncements` Set). Wardrobe tool handlers (W4.1d batch 2)
+    /// add to it; the orchestrator drains it once at end-of-turn (the drain is a
+    /// documented deferral — batch 2 only populates).
+    ///
+    /// It is `Arc<Mutex<…>>` (not a plain `HashSet`) so the handlers can record an
+    /// announcement through the [`ToolRunner::run`] boundary's shared
+    /// `&ToolExecutionContext` WITHOUT changing the trait signature (W4.1e consumes
+    /// that trait concurrently). Cloning the context shares the same set, matching
+    /// v4's shared-Set-by-reference semantics. The legacy "no set present → enqueue
+    /// immediately" fallback (v4 `scheduleWardrobeAnnouncement`) is not ported: the
+    /// ported context always carries a set.
+    pub pending_wardrobe_announcements: Arc<Mutex<HashSet<String>>>,
     /// The Brahma Console operator surface (v4 `operatorSurface`). Character tool
     /// handlers never set this.
     pub operator_surface: bool,
@@ -291,7 +301,7 @@ pub fn create_tool_context(
         project_id: project_id.filter(|s| !s.is_empty()),
         browser_user_agent,
         loaded_memories,
-        pending_wardrobe_announcements: HashSet::new(),
+        pending_wardrobe_announcements: Arc::new(Mutex::new(HashSet::new())),
         operator_surface: false,
     }
 }

@@ -450,9 +450,28 @@ Ordered by dependency; several are mutually independent once wave 2 lands:
     file reads (env seam supports them, corpus requests only `.version`); the
     `terminal_read` scrollback source; `read_conversation`'s deprecated
     `findByCharacterIdRaw`.
-  - Remaining handler-catalog batches: 2 (wardrobe, 7 tools), 3 (doc-edit, ~20),
+  - Remaining handler-catalog batches: 3 (doc-edit, ~20),
     4 (embedding/search), 5 (host-seamed). Then the text loop (W4.1f) +
     `buildTools`/spine wiring (W4.1g).
+
+- **W4.1d batch 2: the seven wardrobe tool handlers — ported and green**
+  (2026-07-04). `tools::{wardrobe_list, wardrobe_read, wardrobe_create,
+  wardrobe_update, wardrobe_archive, wardrobe_wear, wardrobe_take_off}` compose the
+  already-ported vault-public CRUD, the public read trio + shared-archetype tier
+  (W4.0), and the equipped-outfit ops over new pure leaves (`crate::wardrobe`:
+  `unionTypes`/`describeOutfit`/`expandComposites`/the equip primitives/
+  `describeWardrobeEffect`) + the DB helpers (`tools::wardrobe_shared`:
+  across-tier resolution, the persisted equip primitives,
+  `resolveEquippedOutfitForCharacter`, coverage summary,
+  `resolveProjectMountPointIdsForChat`) + `find_by_ids_for_character`. The seven
+  `BuiltInToolRunner` dispatch rows each run inside one `Db::write` closure holding
+  the main + mount-index connections. `pendingWardrobeAnnouncements` became
+  `Arc<Mutex<HashSet>>` (interior mutability through the immutable `ToolRunner::run`
+  boundary — no trait-signature change); the announcement drain + avatar generation
+  (image seam) stay deferrals. Differential `wardrobe_tools_equivalence` (25 ops,
+  success/invalid/edge per handler + read-back, minted values positionally
+  normalized) drives v4's REAL handlers; `tool_dispatch` gained a `wardrobe_list`
+  call; `tool_execution_*` re-verified green.
 
 - **W4.1e: the native tool loop + the finalizer response-RNG — ported and green**
   (2026-07-04). `services::native_tool_loop` ports v4's `runNativeToolLoop`

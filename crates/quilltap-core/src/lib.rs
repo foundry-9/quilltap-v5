@@ -204,5 +204,6 @@ pub mod tools;
 pub mod turn_order;
 pub mod turn_state;
 pub mod vault_overlay;
+pub mod wardrobe;
 pub mod write_apply;
 pub mod write_partition;

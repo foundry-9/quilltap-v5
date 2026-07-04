@@ -48,11 +48,17 @@
 //!   calling participant; the annotation tools resolve the calling character's
 //!   name from the chat participants.
 
-use std::sync::Arc;
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
 
+use serde::Serialize;
 use serde_json::{json, Map, Value};
 
-use super::{annotations, help, read_conversation, rng, self_inventory, terminal, whisper};
+use super::{
+    annotations, help, read_conversation, rng, self_inventory, terminal, wardrobe_archive,
+    wardrobe_create, wardrobe_list, wardrobe_read, wardrobe_take_off, wardrobe_update,
+    wardrobe_wear, whisper,
+};
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read};
 use crate::services::tool_execution::{ToolCall, ToolExecutionContext, ToolResult, ToolRunner};
@@ -142,6 +148,13 @@ pub const PORTED_TOOLS: &[&str] = &[
     "help_navigate",
     "submit_final_response",
     "self_inventory",
+    "wardrobe_list",
+    "wardrobe_read",
+    "wardrobe_create",
+    "wardrobe_update",
+    "wardrobe_archive",
+    "wardrobe_wear",
+    "wardrobe_take_off",
 ];
 
 // ===========================================================================
@@ -278,6 +291,13 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             "help_navigate" => self.run_help_navigate(tc, ctx).await,
             "submit_final_response" => self.run_submit_final_response(tc, ctx).await,
             "self_inventory" => self.run_self_inventory(tc, ctx).await,
+            "wardrobe_list" => self.run_wardrobe_list(tc, ctx).await,
+            "wardrobe_read" => self.run_wardrobe_read(tc, ctx).await,
+            "wardrobe_create" => self.run_wardrobe_create(tc, ctx).await,
+            "wardrobe_update" => self.run_wardrobe_update(tc, ctx).await,
+            "wardrobe_archive" => self.run_wardrobe_archive(tc, ctx).await,
+            "wardrobe_wear" => self.run_wardrobe_wear(tc, ctx).await,
+            "wardrobe_take_off" => self.run_wardrobe_take_off(tc, ctx).await,
             // `handles` guards the set, so this is unreachable.
             other => fail(other, format!("Unknown tool: {other}")),
         })
@@ -583,6 +603,198 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         ok("self_inventory", Value::Object(result))
     }
 
+    // ── wardrobe tools (tool-executor.ts:667–826) ─────────────────────────
+    // Each dispatches inside a single `Db::write` closure so the sync handler
+    // holds BOTH the main + mount-index writer connections (the wardrobe reads
+    // span `characters`/`chats` + the vault store, and the mutations write both).
+    // The mutating handlers (create/wear/take_off/archive/update) run there too,
+    // serialized on the writer thread. `wardrobe_{archive,wear,take_off}` return a
+    // pending-announcement id list, folded into the per-turn set inside the closure
+    // (v4's `recordPendingWardrobeAnnouncement`).
+
+    async fn run_wardrobe_list(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        let (db, args, user_id, chat_id, character_id) = self.wardrobe_snapshot(tc, ctx);
+        self.wardrobe_write(db, move |main, mount| {
+            let out = wardrobe_list::execute(main, mount, &user_id, &chat_id, &character_id, &args);
+            let formatted = wardrobe_list::format(&out);
+            if out.success {
+                ok(
+                    "wardrobe_list",
+                    json!({
+                        "formattedText": formatted,
+                        "items": out.items,
+                        "total_count": out.total_count,
+                    }),
+                )
+            } else {
+                fail("wardrobe_list", out.error.clone().unwrap_or_default())
+            }
+        })
+        .await
+    }
+
+    async fn run_wardrobe_read(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        let (db, args, user_id, chat_id, character_id) = self.wardrobe_snapshot(tc, ctx);
+        self.wardrobe_write(db, move |main, mount| {
+            let out = wardrobe_read::execute(main, mount, &user_id, &chat_id, &character_id, &args);
+            let formatted = wardrobe_read::format(&out);
+            if out.success {
+                // v4: `{ formattedText, ...result }`.
+                ok("wardrobe_read", spread_output(&formatted, &out))
+            } else {
+                fail("wardrobe_read", out.error.clone().unwrap_or_default())
+            }
+        })
+        .await
+    }
+
+    async fn run_wardrobe_create(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        let (db, args, user_id, chat_id, character_id) = self.wardrobe_snapshot(tc, ctx);
+        self.wardrobe_write(db, move |main, mount| {
+            let out =
+                wardrobe_create::execute(main, mount, &user_id, &chat_id, &character_id, &args);
+            let formatted = wardrobe_create::format(&out);
+            if out.success {
+                // v4 selects a subset: formattedText, item_id, title, equipped,
+                // recipient_name?, current_state? (undefined ones omitted).
+                let mut result = Map::new();
+                result.insert("formattedText".into(), json!(formatted));
+                result.insert("item_id".into(), json!(out.item_id));
+                result.insert("title".into(), json!(out.title));
+                result.insert("equipped".into(), json!(out.equipped));
+                if let Some(name) = &out.recipient_name {
+                    result.insert("recipient_name".into(), json!(name));
+                }
+                if let Some(state) = &out.current_state {
+                    result.insert("current_state".into(), state.clone());
+                }
+                ok("wardrobe_create", Value::Object(result))
+            } else {
+                fail("wardrobe_create", out.error.clone().unwrap_or_default())
+            }
+        })
+        .await
+    }
+
+    async fn run_wardrobe_update(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        let (db, args, user_id, chat_id, character_id) = self.wardrobe_snapshot(tc, ctx);
+        self.wardrobe_write(db, move |main, mount| {
+            let out =
+                wardrobe_update::execute(main, mount, &user_id, &chat_id, &character_id, &args);
+            let formatted = wardrobe_update::format(&out);
+            if out.success {
+                ok("wardrobe_update", spread_output(&formatted, &out))
+            } else {
+                fail("wardrobe_update", out.error.clone().unwrap_or_default())
+            }
+        })
+        .await
+    }
+
+    async fn run_wardrobe_archive(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        let (db, args, user_id, chat_id, character_id) = self.wardrobe_snapshot(tc, ctx);
+        let announce = ctx.pending_wardrobe_announcements.clone();
+        self.wardrobe_write(db, move |main, mount| {
+            let (out, ids) =
+                wardrobe_archive::execute(main, mount, &user_id, &chat_id, &character_id, &args);
+            fold_announcements(&announce, ids);
+            let formatted = wardrobe_archive::format(&out);
+            if out.success {
+                ok(
+                    "wardrobe_archive",
+                    json!({
+                        "formattedText": formatted,
+                        "item_id": out.item_id,
+                        "title": out.title,
+                        "action": out.action,
+                    }),
+                )
+            } else {
+                fail("wardrobe_archive", out.error.clone().unwrap_or_default())
+            }
+        })
+        .await
+    }
+
+    async fn run_wardrobe_wear(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        let (db, args, user_id, chat_id, character_id) = self.wardrobe_snapshot(tc, ctx);
+        let announce = ctx.pending_wardrobe_announcements.clone();
+        self.wardrobe_write(db, move |main, mount| {
+            let (out, ids) =
+                wardrobe_wear::execute(main, mount, &user_id, &chat_id, &character_id, &args);
+            fold_announcements(&announce, ids);
+            let formatted = wardrobe_wear::format(&out);
+            // v4 returns the result object even on failure; error set when !success.
+            let result = json!({
+                "formattedText": formatted,
+                "operations": out.operations,
+                "current_state": out.current_state,
+                "coverage_summary": out.coverage_summary,
+            });
+            wear_take_off_result("wardrobe_wear", out.success, result, out.error.clone())
+        })
+        .await
+    }
+
+    async fn run_wardrobe_take_off(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        let (db, args, user_id, chat_id, character_id) = self.wardrobe_snapshot(tc, ctx);
+        let announce = ctx.pending_wardrobe_announcements.clone();
+        self.wardrobe_write(db, move |main, mount| {
+            let (out, ids) =
+                wardrobe_take_off::execute(main, mount, &user_id, &chat_id, &character_id, &args);
+            fold_announcements(&announce, ids);
+            let formatted = wardrobe_take_off::format(&out);
+            let result = json!({
+                "formattedText": formatted,
+                "operations": out.operations,
+                "current_state": out.current_state,
+                "coverage_summary": out.coverage_summary,
+            });
+            wear_take_off_result("wardrobe_take_off", out.success, result, out.error.clone())
+        })
+        .await
+    }
+
+    /// Snapshot the ctx fields a wardrobe handler needs (owned, so they can move
+    /// into the `'static` writer closure). `characterId || ''` per v4's dispatcher.
+    fn wardrobe_snapshot(
+        &self,
+        tc: &ToolCall,
+        ctx: &ToolExecutionContext,
+    ) -> (Db, Value, String, String, String) {
+        (
+            self.db.clone(),
+            tc.arguments.clone(),
+            ctx.user_id.clone(),
+            ctx.chat_id.clone(),
+            ctx.character_id.clone().unwrap_or_default(),
+        )
+    }
+
+    /// Run a wardrobe handler inside a single write closure that hands it both the
+    /// main and mount-index writer connections. A main-only instance (no
+    /// mount-index) is a clear failure (wardrobe lives in the document store).
+    async fn wardrobe_write<G>(&self, db: Db, build: G) -> ToolResult
+    where
+        G: FnOnce(&rusqlite::Connection, &rusqlite::Connection) -> ToolResult + Send + 'static,
+    {
+        let result = db
+            .write(move |writers| {
+                let Some(mount_w) = writers.mount_index() else {
+                    return Ok(fail(
+                        "wardrobe",
+                        "wardrobe tools require the mount-index database",
+                    ));
+                };
+                // Borrow both connections for the handler.
+                let mount = mount_w.connection();
+                let main = writers.main().connection();
+                Ok(build(main, mount))
+            })
+            .await;
+        result.unwrap_or_else(|e| fail("wardrobe", e.to_string()))
+    }
+
     // -- shared: resolve the calling character's name (tool-executor.ts:861) --
     /// v4's per-dispatch name resolution: from `callingParticipantId`, find the
     /// chat participant → its `characterId` → the character's `name`. Defaults to
@@ -676,6 +888,51 @@ fn fail(tool_name: &str, error: impl Into<String>) -> ToolResult {
     }
 }
 
+/// v4's `{ formattedText, ...result }` — a `result` object with `formattedText`
+/// prepended, then every field of the serialized handler output (used by
+/// `wardrobe_read` / `wardrobe_update`).
+fn spread_output<T: Serialize>(formatted: &str, out: &T) -> Value {
+    let mut result = Map::new();
+    result.insert("formattedText".into(), json!(formatted));
+    if let Ok(Value::Object(obj)) = serde_json::to_value(out) {
+        for (k, v) in obj {
+            result.insert(k, v);
+        }
+    }
+    Value::Object(result)
+}
+
+/// Fold a handler's pending-announcement character ids into the per-turn set (v4
+/// `recordPendingWardrobeAnnouncement` — add to the context's Set). A poisoned lock
+/// is ignored (the set is advisory).
+fn fold_announcements(announce: &Arc<Mutex<HashSet<String>>>, ids: Vec<String>) {
+    if ids.is_empty() {
+        return;
+    }
+    if let Ok(mut set) = announce.lock() {
+        set.extend(ids);
+    }
+}
+
+/// The `wardrobe_wear` / `wardrobe_take_off` dispatch-row result: v4 returns the
+/// `result` object EVEN on failure (unlike the other wardrobe tools), with `error`
+/// set only when `!success`.
+fn wear_take_off_result(
+    name: &str,
+    success: bool,
+    result: Value,
+    error: Option<String>,
+) -> ToolResult {
+    ToolResult {
+        tool_name: name.to_string(),
+        success,
+        result,
+        error: if success { None } else { error },
+        message: None,
+        metadata: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -694,6 +951,34 @@ mod tests {
                 BUILT_IN_TOOLS.contains(name),
                 "ported tool `{name}` must be a v4 built-in"
             );
+        }
+    }
+
+    #[test]
+    fn fold_announcements_dedupes_into_shared_set() {
+        let set = Arc::new(Mutex::new(HashSet::new()));
+        fold_announcements(&set, vec!["char-a".into()]);
+        fold_announcements(&set, vec![]); // empty is a no-op
+        fold_announcements(&set, vec!["char-a".into(), "char-b".into()]);
+        let guard = set.lock().unwrap();
+        assert_eq!(guard.len(), 2);
+        assert!(guard.contains("char-a"));
+        assert!(guard.contains("char-b"));
+    }
+
+    #[test]
+    fn wardrobe_tools_are_ported() {
+        for name in [
+            "wardrobe_list",
+            "wardrobe_read",
+            "wardrobe_create",
+            "wardrobe_update",
+            "wardrobe_archive",
+            "wardrobe_wear",
+            "wardrobe_take_off",
+        ] {
+            assert!(PORTED_TOOLS.contains(&name), "{name} must be dispatched");
+            assert!(BuiltInToolRunner::<LoudFallbackRunner>::handles(name));
         }
     }
 
