@@ -599,6 +599,34 @@ items the wave-3 capstone flagged.
   `commonplace_strip`, `opaque_swap` vs `transparent_no_swap`, and
   `tool_whisper_filter`. `orchestrator_tier3_equivalence` re-verified green.
 
+Phase 3 — wave 4 (W4.1d batch 3a): the doc-edit foundation, part 1 — the tiered
+mount pool + the `qtap://` URI codec. Ported `resolveTieredMountPool` /
+`classifyMountTier` / `flattenTierPool` and hoisted the canonical
+`dedupeTierTriple` into `db::tiered_mount_pool` (v4's
+`lib/mount-index/tiered-mount-pool.ts` — its true home), refactoring the
+knowledge injector to consume the dedup from there (its differential re-verified
+green). The five-tier character/participant/group/project/global resolution
+reproduces the ownership gate (fails closed without `userId`), the pre-resolved
+character-mount fast path, the per-RESPONDING-character group tier, graceful
+global-null, per-tier error swallowing, and the character>group>project>global
+dedup — verified by a 9-case read-differential (`tiered_mount_pool_equivalence`)
+against v4's REAL resolver over a two-DB fixture (2 characters + vaults, a group
+with an official + linked store + membership, a project with colliding links, the
+General singleton). Ported the full `qtap://` URI codec (`doc_edit::qtap_uri`,
+v4's `qtap-uri.ts`) — `parseQtapUri` / `formatQtapUri` / `isQtapUri` /
+`qtapUriToResolverInput` / `QtapUriError` + the producer helpers — unifying it
+with the producers previously hoisted into the knowledge injector (now re-exported
+from the canonical home). Reproduces JS `encodeURIComponent` /
+`decodeURIComponent` exactly (a V8-faithful `Decode` with UTF-8 run validation),
+the last-`:` fragment split, BAD_LEVEL bounds, the encoded-slash segment, and the
+insertion-ordered query map; verified by a 54-row tier-1 differential
+(`qtap_uri_equivalence`) incl. malformed-percent-encoding + non-ASCII round-trips.
+Added the scoped mount-point reads the resolver needs
+(`doc_mount_points::{find_by_id_for_docedit, find_enabled_for_docedit,
+count_by_name}`, `groups::find_official_mount_point_id_raw`). Remaining batch-3a
+foundation (diacritics, MIME registry, unified diff, markdown heading/frontmatter
+ops, path resolver, URI producers) follows.
+
 Phase 3 — wave 4 (W4.1e): the native tool loop + the finalizer response-RNG.
 Ported `runNativeToolLoop` (`services::native_tool_loop`): the bounded
 stream → detect → execute → thread → re-stream loop after the primary stream,

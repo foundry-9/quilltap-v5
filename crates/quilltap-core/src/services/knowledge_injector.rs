@@ -34,14 +34,17 @@
 //!   tool path.
 
 mod document_search;
-/// `qtap://` URI producer helpers — public so the `self_inventory` tool (W4.1d)
-/// can reach `format_self_uri` / `format_doc_store_uri` / `format_scoped_uri`.
-pub mod qtap_uri;
-mod tiered_mount_pool;
 
 pub use document_search::{DocumentSearchOptions, DocumentSearchResult};
 
+/// The `qtap://` URI codec's canonical home is [`crate::doc_edit::qtap_uri`]; this
+/// re-export keeps the historical `knowledge_injector::qtap_uri::…` path (the
+/// `self_inventory` tool + the RAG renderer below) resolving after the W4.1d
+/// batch-3a unification hoisted the producers out of this service.
+pub use crate::doc_edit::qtap_uri;
+
 use crate::db::runtime::Db;
+use crate::db::tiered_mount_pool::{dedupe_tier_triple, TierTriple};
 use crate::db::DbError;
 use crate::jsstr::{is_js_ws, js_trim, utf16_len};
 use crate::literal_boost::{
@@ -54,7 +57,6 @@ use qtap_uri::{format_doc_store_uri, format_self_uri};
 use serde_json::Value;
 
 use self::document_search::{find_link_with_file_by_mount_point_and_path, search_document_chunks};
-use self::tiered_mount_pool::{dedupe_tier_triple, TierTriple};
 
 const DEFAULT_CANDIDATE_LIMIT: usize = 5;
 const DEFAULT_INLINE_TOKEN_THRESHOLD: i64 = 500;
@@ -470,9 +472,16 @@ pub async fn retrieve_knowledge_for_turn<P: EmbeddingProvider>(
 /// tier addresses its store by name.
 fn knowledge_uri(c: &Candidate) -> String {
     if c.tier == KnowledgeTier::Character {
-        format_self_uri(&c.file_path)
+        format_self_uri(&c.file_path, None, None)
     } else {
-        format_doc_store_uri(&c.mount_point_name, &c.mount_point_id, &c.file_path, false)
+        format_doc_store_uri(
+            &c.mount_point_name,
+            &c.mount_point_id,
+            &c.file_path,
+            false,
+            None,
+            None,
+        )
     }
 }
 

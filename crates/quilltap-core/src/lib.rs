@@ -160,6 +160,7 @@ pub mod context_summary;
 pub mod core_whisper;
 pub mod db;
 pub mod dbkey;
+pub mod doc_edit;
 pub mod embedding_blob;
 pub mod embedding_vector;
 pub mod enclave_budget;

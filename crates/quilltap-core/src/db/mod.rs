@@ -77,6 +77,7 @@ pub mod tags;
 pub mod terminal_sessions;
 pub mod text_replacement_rules;
 pub mod tfidf_vocabulary;
+pub mod tiered_mount_pool;
 pub mod users;
 pub mod vault_character_arrays;
 pub mod vault_character_update;

@@ -2177,6 +2177,51 @@ differentials re-verified green after the announcements field-type change.
 **Tracked deferrals:** the end-of-turn announcement drain (Aurora posting), the
 General/project archetype write tiers beyond W4.0's, and `findByCharacterIdRaw`.
 
+**Wave 4 (W4.1d batch 3a): the doc-edit foundation, part 1 — the tiered mount
+pool + the `qtap://` URI codec — is DONE** (the first half of the batch-3
+foundation the ~26 `doc_*` handlers sit on). The canonical `dedupeTierTriple` is
+hoisted out of the knowledge injector into its true home
+`db::tiered_mount_pool` (v4 `lib/mount-index/tiered-mount-pool.ts`), joined by the
+ported `resolve_tiered_mount_pool` / `classify_mount_tier` / `flatten_tier_pool`;
+the knowledge injector now consumes the dedup from there (differential re-verified
+green). The five-tier resolution (character / participant / group / project /
+global) reproduces the ownership gate (fails closed without `userId`), the
+pre-resolved character-mount fast path (ignored under ownership), the
+per-RESPONDING-character group tier (never a co-participant's groups), graceful
+global-null, per-tier error swallowing, and the character>group>project>global
+dedup — the resolver takes BOTH a main + mount-index `&Connection` (v4's
+`getRepositories()` spans both DBs). Verified by a 9-case read-differential
+(`tiered_mount_pool_equivalence`) driving v4's REAL `resolveTieredMountPool` over
+a two-DB fixture (2 characters + minted vaults, a group G1 with an official +
+linked store + charA membership, a project P1 with two stores + colliding links to
+charA-vault/G1-official/General, the Quilltap General singleton in
+`instance_settings`); the matrix banks the ownership pass/fail (incl. the subtle
+case where a null character tier leaves its own vault in the project tier), the
+fast path, the participant tier + self-exclusion + flag-off, and the per-character
+group tier — zero normalization (every id pinned/shared). The full `qtap://` URI
+codec (`doc_edit::qtap_uri`, v4 `qtap-uri.ts`) is ported and **unified** with the
+producers previously hoisted into the knowledge injector (now re-exported from
+this canonical home; `self_inventory` + the RAG renderer stay green):
+`parse_qtap_uri` / `format_qtap_uri` / `is_qtap_uri` / `qtap_uri_to_resolver_input`
+/ `QtapUriError` + `format_self_uri` / `format_scoped_uri` / `format_doc_store_uri`.
+It reproduces JS `encodeURIComponent` / `decodeURIComponent` **exactly** (a
+V8-faithful `Decode` — `%XX` runs assembled + validated as UTF-8 sequences, so a
+malformed escape throws `MALFORMED` where V8 does), the last-`:` fragment split,
+the 1–6 `BAD_LEVEL` bounds, the encoded-slash-inside-a-segment rule, non-ASCII
+round-trips, and the **insertion-ordered** query map (`serde_json::Map` under
+`preserve_order`). Verified by a 54-row tier-1 differential
+(`qtap_uri_equivalence`) over parse (parts / thrown code + byte-exact message),
+canonical re-emit, resolver triple, and every producer. Added the scoped
+mount-point reads the resolver + URI producers need
+(`doc_mount_points::{find_by_id_for_docedit, find_enabled_for_docedit,
+count_by_name}`, `groups::find_official_mount_point_id_raw`). **Documented seam:**
+`parseFragment`'s `parseInt` renders astronomically-long digit levels via JS float
+(corpus keeps levels small); the query multi-key order is insertion-ordered but the
+corpus stays single-key on that axis. **Remaining batch-3a foundation** (the pure
+leaves — diacritics/NFD, the MIME registry, unified diff, markdown
+heading/frontmatter ops incl. `serializeFrontmatter`, plus the DB-backed path
+resolver + URI producers) follows.
+
 The rest of wave 4 (the remaining tool subsystem — the text tool loop (W4.1f) /
 `buildTools` / registry (W4.1g), the remaining handler-catalog batches [3 doc-edit,
 4 embedding/search, 5 host-seamed], the agent-mode resolver — danger,

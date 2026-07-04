@@ -938,7 +938,7 @@ fn build_vault_character_section(
     let rows = find_vault_rows(db, &mount_point_id)?;
     // The character's own vault → the stable, readable `self` form.
     let files = map_vault_files(&rows, &mp_name, include_automatic_images, true, |rel| {
-        format_self_uri(rel)
+        format_self_uri(rel, None, None)
     });
 
     Ok(VaultCharacterSection::Available {
@@ -984,7 +984,7 @@ fn build_vault_groups_section(
             let mp_name_for_uri = mp_name.clone();
             let mp_id_for_uri = mp_id.clone();
             let files = map_vault_files(&rows, &mp_name, include_automatic_images, false, |rel| {
-                format_doc_store_uri(&mp_name_for_uri, &mp_id_for_uri, rel, false)
+                format_doc_store_uri(&mp_name_for_uri, &mp_id_for_uri, rel, false, None, None)
             });
             out.push(VaultGroup {
                 group_id: group.group_id.clone(),
@@ -1887,15 +1887,15 @@ fn build_context_characters(
 /// stored triple.
 fn build_context_file_uri(scope: &str, mount_point: Option<&str>, file_path: &str) -> String {
     if scope == "project" {
-        return format_scoped_uri(ScopedAuthority::Project, file_path);
+        return format_scoped_uri(ScopedAuthority::Project, file_path, None, None);
     }
     if scope == "general" {
-        return format_scoped_uri(ScopedAuthority::General, file_path);
+        return format_scoped_uri(ScopedAuthority::General, file_path, None, None);
     }
     match mount_point {
-        None => format_self_uri(file_path),
-        Some(mp) if mp.to_lowercase() == "self" => format_self_uri(file_path),
-        Some(mp) => format_doc_store_uri(mp, "", file_path, false),
+        None => format_self_uri(file_path, None, None),
+        Some(mp) if mp.to_lowercase() == "self" => format_self_uri(file_path, None, None),
+        Some(mp) => format_doc_store_uri(mp, "", file_path, false, None, None),
     }
 }
 

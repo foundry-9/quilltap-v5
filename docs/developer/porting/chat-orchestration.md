@@ -490,3 +490,28 @@ Ordered by dependency; several are mutually independent once wave 2 lands:
   `message_finalizer_tier3_equivalence` (RNG fire + no-fire); `orchestrator_tier3`
   re-verified. **Deferrals:** the text loop (W4.1f), `buildTools`/real-slate wiring
   (W4.1g), the agent-mode resolver (W4.4), detection wire-parse (W4.7).
+
+- **W4.1d batch 3a (part 1): the tiered mount pool + the `qtap://` URI codec —
+  ported and green** (the first half of the doc-edit foundation the ~26 `doc_*`
+  handlers of batch 3b sit on). `db::tiered_mount_pool` is the canonical home of
+  `dedupeTierTriple` (hoisted out of the knowledge injector, which now consumes it
+  from there — differential re-verified) plus the ported `resolve_tiered_mount_pool`
+  / `classify_mount_tier` / `flatten_tier_pool`: the five-tier
+  character/participant/group/project/global resolution with the ownership gate,
+  the character-mount fast path, the per-RESPONDING-character group tier, graceful
+  global-null, per-tier error swallowing, and the character>group>project>global
+  dedup (the resolver takes both a main + mount-index `&Connection`). Verified by
+  `tiered_mount_pool_equivalence` (9-case read-differential vs v4's REAL
+  `resolveTieredMountPool` over a two-DB fixture; zero normalization). The full
+  `qtap://` codec `doc_edit::qtap_uri` (parse/format/producers) is ported +
+  **unified** with the previously-hoisted producers (re-exported from the canonical
+  home; `self_inventory` + RAG stay green): V8-faithful
+  `encodeURIComponent`/`decodeURIComponent`, the last-`:` fragment split, BAD_LEVEL
+  bounds, encoded-slash segments, insertion-ordered query. Verified by
+  `qtap_uri_equivalence` (54-row tier-1). Added scoped mount-point reads
+  (`doc_mount_points::{find_by_id_for_docedit, find_enabled_for_docedit,
+  count_by_name}`, `groups::find_official_mount_point_id_raw`). **Remaining batch-3a
+  foundation (part 2):** the pure leaves (diacritics/NFD, MIME registry, unified
+  diff, markdown heading/frontmatter ops incl. `serializeFrontmatter`), the DB-backed
+  path resolver (document_store + project-alias; the legacy FS scopes + `general` are
+  a host-filesystem seam), and the URI producers.

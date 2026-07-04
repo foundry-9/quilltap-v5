@@ -156,3 +156,26 @@ impl<'c> GroupsRepository<'c> {
         self.inner.delete(id)
     }
 }
+
+/// Read a group's `officialMountPointId` pointer WITHOUT the store overlay (v4
+/// `groups.findByIdRaw(...).officialMountPointId`). The tiered-mount-pool group
+/// resolver uses this on its hot path — it only needs the pointer, not the
+/// group's hydrated content. Returns `Ok(None)` when the group is absent, and
+/// `Ok(Some(None))` when the group exists but has no official store yet.
+pub fn find_official_mount_point_id_raw(
+    main: &Connection,
+    id: &str,
+) -> Result<Option<Option<String>>, DbError> {
+    let row = main
+        .query_row(
+            "SELECT officialMountPointId FROM groups WHERE id = ?1",
+            rusqlite::params![id],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .map(Some)
+        .or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other),
+        })?;
+    Ok(row)
+}

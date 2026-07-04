@@ -387,4 +387,75 @@ impl<'c> DocMountPointsRepository<'c> {
             .map(|(id, _, store_type)| (id, store_type))
             .collect())
     }
+
+    /// The mount-point columns the doc-edit path resolver + URI producers read.
+    /// (Not the full hydrated marshaling — just the fields those consumers touch.)
+    fn find_row_by_id(&self, id: &str) -> Result<Option<DmpRow>, DbError> {
+        let row = self
+            .conn
+            .query_row(
+                "SELECT id, name, enabled, mountType, basePath FROM doc_mount_points WHERE id = ?1",
+                params![id],
+                |row| {
+                    Ok(DmpRow {
+                        id: row.get::<_, String>(0)?,
+                        name: row.get::<_, String>(1)?,
+                        enabled: row.get::<_, i64>(2)? != 0,
+                        mount_type: row.get::<_, String>(3)?,
+                        base_path: row.get::<_, String>(4)?,
+                    })
+                },
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+        Ok(row)
+    }
+
+    /// v4 `findById` for the doc-edit consumers — the scoped mount-point row
+    /// (`id`/`name`/`enabled`/`mountType`/`basePath`). `None` when absent.
+    pub fn find_by_id_for_docedit(&self, id: &str) -> Result<Option<DmpRow>, DbError> {
+        self.find_row_by_id(id)
+    }
+
+    /// v4 `findEnabled` — every enabled mount point, as the scoped doc-edit row.
+    /// Used by the operator "look everywhere" override (needs each `id`) and by the
+    /// URI producers' ambiguity precompute (needs each `name`).
+    pub fn find_enabled_for_docedit(&self) -> Result<Vec<DmpRow>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, name, enabled, mountType, basePath FROM doc_mount_points WHERE enabled = 1",
+        )?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(DmpRow {
+                    id: row.get::<_, String>(0)?,
+                    name: row.get::<_, String>(1)?,
+                    enabled: row.get::<_, i64>(2)? != 0,
+                    mount_type: row.get::<_, String>(3)?,
+                    base_path: row.get::<_, String>(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// v4 `countByName` = `findByName(name).length` — the number of ENABLED mount
+    /// points whose `name.trim().toLowerCase()` matches (NOT a literal SQL count).
+    /// Used by the URI producers to decide whether a store name is ambiguous
+    /// (`> 1` → fall back to the UUID form).
+    pub fn count_by_name(&self, name: &str) -> Result<usize, DbError> {
+        Ok(self.find_by_name(name)?.len())
+    }
+}
+
+/// The scoped mount-point row the doc-edit path resolver + URI producers consume.
+#[derive(Debug, Clone)]
+pub struct DmpRow {
+    pub id: String,
+    pub name: String,
+    pub enabled: bool,
+    pub mount_type: String,
+    pub base_path: String,
 }
