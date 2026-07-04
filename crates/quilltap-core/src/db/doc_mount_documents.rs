@@ -236,6 +236,33 @@ impl<'c> DocMountDocumentsRepository<'c> {
             })
     }
 
+    /// Like [`Self::find_by_mount_point_and_path`] but also returns the joined
+    /// LINK's `lastModified` — the pair `readDatabaseDocument` needs (v4 reads
+    /// `doc.content` + `doc.lastModified`, where `doc.lastModified` IS the joined
+    /// `l.lastModified`). Returns `(content, lastModified)` or `None`.
+    pub fn find_content_and_mtime_by_mount_point_and_path(
+        &self,
+        mount_point_id: &str,
+        relative_path: &str,
+    ) -> Result<Option<(String, String)>, DbError> {
+        self.conn
+            .query_row(
+                "SELECT d.content, l.lastModified \
+                 FROM doc_mount_file_links l \
+                 JOIN doc_mount_documents d ON d.fileId = l.fileId \
+                 JOIN doc_mount_files f ON f.id = l.fileId \
+                 WHERE l.mountPointId = ?1 AND LOWER(l.relativePath) = LOWER(?2) \
+                 LIMIT 1",
+                params![mount_point_id, relative_path],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
+    }
+
     /// v4 `findManyByMountPointsAndPath` (`doc-mount-documents.repository.ts:193`):
     /// batch-resolve the document at the same `relativePath` across many mount
     /// points, the N+1-avoiding query the overlay read uses to hydrate every

@@ -2301,6 +2301,37 @@ stopSequences forwarding (per-continuation `stop` recorded + diffed). **Tracked
 deferrals:** the provider-text-markers strategy (→ W4.7 provider manifest); the
 spine's real tool-mode/tool-slate plumbing (→ W4.1g).
 
+**Wave 4 (W4.1d batch 3b) is in progress — the foundation + the text/markdown
+handlers are ported and green.** `db::database_store` ports v4's
+`lib/mount-index/database-store.ts` (read/write/move/delete documents, folder
+create/delete/move, existence checks) by composing the ported storage leaves,
+adding the repo finders it needs (`doc_mount_folders` /
+`doc_mount_file_links` find-by-path/by-mount + a `LinkRow` join + a REAL-affinity
+`chunkCount`/`fileSizeBytes` coercion fix that had been silently failing the
+access gates). `tools::doc_edit::shared` ports the access-control family
+(cross-character vault visibility, `systemTransparency` opacity, the
+`character_read`/`character_write` gates, the folder-protected-descendants guard,
+the read/write resolution-context builders, `getAccessibleMountPoints`,
+`resolveOfficialProjectMount`) and the `applyQtapUri`/`isTextFile`/DB read-write
+dispatch. The first eight handlers (`doc_read_file`/`doc_write_file`/
+`doc_str_replace`/`doc_insert_text` + `doc_read_frontmatter`/
+`doc_update_frontmatter`/`doc_read_heading`/`doc_update_heading`) run behind a
+v4-faithful `executeDocEditTool` dispatcher; the Librarian-announcement + reindex
+layers are documented **no-op seams** (mocked in the oracle, the wave-3
+whisper-posting-seam precedent). Added a `documentMode` `ChatUpdate` setter.
+Verified by `doc_text_equivalence` — a **jest-real-DB** differential driving v4's
+REAL `executeDocEditTool` + `formatDocEditResults` over a 26-op corpus (line/
+offset/JSON reads, self + project + `qtap://` addressing, blocked read +
+read-only write, str_replace unique/not-found/multiple/diacritics, insert
+start/end/before, frontmatter read/keys/none/merge/replace, heading
+read/not-found/update) plus a two-table dump; the write ops' minted `mtime` is
+placeholdered, read `mtime` diffed exactly. **The photo group
+(`keep_image`/`list_images`/`attach_image`) is a tracked scoped deferral** — it
+drags in the unported images-v2 store + `keep-image-markdown` sidecar builder +
+`chunkAndInsertExtractedText` + `linkBlobContent`, beyond the named byte-source
+seam. Remaining 3b: `doc_grep`/`doc_list_files`, the file-management / document-UI
+/ blob handler groups, and the `BuiltInToolRunner` dispatch wiring.
+
 The rest of wave 4 (the remaining tool subsystem — `buildTools` / registry
 (W4.1g), the remaining handler-catalog batches [3b the ~26 doc-edit handlers
 over the now-complete 3a foundation, 4 embedding/search, 5 host-seamed], the

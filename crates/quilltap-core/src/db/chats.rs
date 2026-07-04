@@ -479,6 +479,12 @@ pub struct ChatUpdate {
     /// ([`crate::services::native_tool_loop`]) once per iteration
     /// (`repos.chats.update(chatId, { agentTurnCount })`, no `updatedAt` bump).
     pub agent_turn_count: Option<f64>,
+    /// `documentMode` (enum TEXT: `normal` / `split` / …) — the split-panel editor
+    /// mode, set by the document-UI doc-edit tools
+    /// ([`crate::tools::doc_edit::document_ui`]) on open/close.
+    /// `repos.chats.update(chatId, { documentMode })` — no `updatedAt` bump
+    /// (the chats `_update` preserves `updatedAt` unless the caller passes one).
+    pub document_mode: Option<String>,
     pub updated_at: Option<String>,
 }
 
@@ -768,6 +774,9 @@ impl<'c> ChatsRepository<'c> {
         }
         if let Some(v) = patch.agent_turn_count {
             set_col!("agentTurnCount", Box::new(v));
+        }
+        if let Some(v) = &patch.document_mode {
+            set_col!("documentMode", Box::new(v.clone()));
         }
         set_col!("updatedAt", Box::new(resolved_updated_at));
 

@@ -119,6 +119,7 @@ impl PatchData {
             last_rename_check_interchange: None,
             roleplay_template_id: None,
             agent_turn_count: None,
+            document_mode: None,
             updated_at: self.updated_at.clone(),
         }
     }

@@ -599,6 +599,34 @@ items the wave-3 capstone flagged.
   `commonplace_strip`, `opaque_swap` vs `transparent_no_swap`, and
   `tool_whisper_filter`. `orchestrator_tier3_equivalence` re-verified green.
 
+Phase 3 — wave 4 (W4.1d batch 3b): the doc-edit tool handlers (part 1 — the
+foundation + the text/markdown handlers). Ported the database-backed
+document-store primitives (`db::database_store`: read/write/move/delete
+documents, folder create/delete/move, existence checks — composing the ported
+storage leaves) plus the repo finders they need (`doc_mount_folders` /
+`doc_mount_file_links` find-by-path/by-mount + a `LinkRow` join, and a
+REAL-affinity coercion fix on `chunkCount`/`fileSizeBytes` that was silently
+failing the access-control gates); the `tools::doc_edit::shared` access-control
+family (cross-character vault visibility, `systemTransparency` opacity, the
+`character_read`/`character_write` gates, the folder-protected-descendants
+guard, the read/write resolution-context builders, `getAccessibleMountPoints`,
+`resolveOfficialProjectMount`); and the first eight `doc_*` handlers
+(`doc_read_file` / `doc_write_file` / `doc_str_replace` / `doc_insert_text` +
+`doc_read_frontmatter` / `doc_update_frontmatter` / `doc_read_heading` /
+`doc_update_heading`) behind a v4-faithful `executeDocEditTool` dispatcher. The
+Librarian-announcement and reindex layers are documented no-op seams (mocked in
+the oracle, as with the wave-3 whisper-posting seams). Added a `documentMode`
+`ChatUpdate` setter. Verified by `doc_text_equivalence`, a jest-real-DB
+differential driving v4's REAL `executeDocEditTool` + `formatDocEditResults` over
+a 26-op corpus (read line/offset/JSON, self + project + qtap:// addressing,
+blocked read + read-only write, str_replace unique/not-found/multiple/diacritics,
+insert start/end/before, frontmatter read/keys/none/merge/replace, heading
+read/not-found/update) plus a two-table dump. The remaining handler groups
+(grep/list, file-management, document-UI, blob) follow; the photo group
+(`keep_image`/`list_images`/`attach_image`) is a tracked scoped deferral — it
+drags in the unported images-v2 store + `keep-image-markdown` sidecar builder +
+`chunkAndInsertExtractedText`, beyond the named byte-source seam.
+
 Phase 3 — wave 4 (W4.1f): the text-tool loop. Ported `runTextToolPass`
 (`services::text_tool_loop`): the strategy-driven detect-text-markers →
 execute → re-stream-continuation pass the orchestrator runs after the native

@@ -5,6 +5,7 @@
 
 pub mod annotations;
 pub mod definitions;
+pub mod doc_edit;
 pub mod executor;
 pub mod help;
 pub mod native_tool_prompt;

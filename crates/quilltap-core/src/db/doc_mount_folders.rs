@@ -83,6 +83,19 @@ pub struct DmfUpdate {
     pub updated_at: String,
 }
 
+/// A `doc_mount_folders` row, the shape the database-store folder ops read — v4's
+/// `DocMountFolder`. `parent_id` is `null` for a root-level folder; `path` is the
+/// full relative path (no leading/trailing slash), `name` its leaf segment.
+#[derive(Clone, Debug)]
+pub struct FolderRow {
+    pub id: String,
+    pub mount_point_id: String,
+    pub parent_id: Option<String>,
+    pub name: String,
+    pub path: String,
+    pub created_at: String,
+}
+
 /// Repository over a borrowed connection (held by the [`super::Writer`]).
 pub struct DocMountFoldersRepository<'c> {
     conn: &'c Connection,
@@ -91,6 +104,56 @@ pub struct DocMountFoldersRepository<'c> {
 impl<'c> DocMountFoldersRepository<'c> {
     pub fn new(conn: &'c Connection) -> Self {
         Self { conn }
+    }
+
+    /// v4 `docMountFolders.findByMountPointAndPath`: the single folder at a
+    /// `(mountPointId, path)`, or `None`. Used by the database-store folder ops
+    /// (delete/move/exists) and by `folderHasContents`'s folder-first lookup.
+    pub fn find_by_mount_point_and_path(
+        &self,
+        mount_point_id: &str,
+        path: &str,
+    ) -> Result<Option<FolderRow>, DbError> {
+        self.conn
+            .query_row(
+                "SELECT id, mountPointId, parentId, name, path, createdAt \
+                   FROM doc_mount_folders \
+                  WHERE mountPointId = ?1 AND path = ?2 \
+                  LIMIT 1",
+                params![mount_point_id, path],
+                Self::map_folder_row,
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
+    }
+
+    /// v4 `docMountFolders.findByMountPointId`: every folder row for a mount
+    /// point, in the DB's natural order (callers filter/rewrite). Drives the
+    /// listing + move-folder descendant rewrite.
+    pub fn find_by_mount_point_id(&self, mount_point_id: &str) -> Result<Vec<FolderRow>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, mountPointId, parentId, name, path, createdAt \
+               FROM doc_mount_folders \
+              WHERE mountPointId = ?1",
+        )?;
+        let rows = stmt
+            .query_map(params![mount_point_id], Self::map_folder_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    fn map_folder_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<FolderRow> {
+        Ok(FolderRow {
+            id: row.get(0)?,
+            mount_point_id: row.get(1)?,
+            parent_id: row.get(2)?,
+            name: row.get(3)?,
+            path: row.get(4)?,
+            created_at: row.get(5)?,
+        })
     }
 
     /// Insert a folder with the given pinned id + timestamps. `parent_id` binds

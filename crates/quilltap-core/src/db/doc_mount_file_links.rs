@@ -58,11 +58,61 @@
 //! helpers (`findByMountPointId`, `deleteWithGC`, `linkBlobContent`,
 //! `linkFilesystemFile`, `sweepOrphanedFiles`, …) are out of scope here.
 
+use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
 use sha2::{Digest, Sha256};
 
 use super::DbError;
 use crate::clock::now_iso;
+
+/// One row of the joined `doc_mount_file_links l JOIN doc_mount_files f` view — v4
+/// `DocMountFileLinkWithContent` (`queryJoined`, `doc-mount-file-links.repository
+/// .ts:1017`), restricted to the columns the database-store primitives + the
+/// access-control / photo consumers read. The link columns come from `l`; the
+/// content fingerprint / size / type / source from the joined `f`.
+///
+/// `allow_character_read` / `allow_character_write` are stored as SQLite 0/1;
+/// v4's `coerceAllow` maps absent/NULL → permissive `true`, else `!= 0` → bool.
+#[derive(Clone, Debug)]
+pub struct LinkRow {
+    pub id: String,
+    pub file_id: String,
+    pub mount_point_id: String,
+    pub relative_path: String,
+    pub file_name: String,
+    pub folder_id: Option<String>,
+    /// `f.sha256`.
+    pub sha256: String,
+    /// `f.fileSizeBytes` (REAL-affinity int; kept as i64 for the listing shape).
+    pub file_size_bytes: i64,
+    /// `f.fileType`.
+    pub file_type: String,
+    /// `f.source` (`'filesystem' | 'database'`).
+    pub source: String,
+    pub last_modified: String,
+    pub created_at: String,
+    /// SQLite 0/1 → bool via v4 `coerceAllow` (absent/NULL → permissive true).
+    pub allow_character_read: bool,
+    /// SQLite 0/1 → bool via v4 `coerceAllow`.
+    pub allow_character_write: bool,
+    pub extracted_text: Option<String>,
+    pub original_mime_type: Option<String>,
+    pub conversion_status: String,
+    pub chunk_count: i64,
+}
+
+/// A link update patch — v4 `docMountFileLinks.update(id, Partial<...>)`, narrowed
+/// to the columns the move ops set. Each `Some` field sets that column;
+/// `folder_id` is `Option<Option<String>>` so the caller can distinguish "leave
+/// untouched" (outer `None`) from "set to SQL NULL" (`Some(None)`), matching v4
+/// passing `folderId: null` for a root-level move. `updated_at` is always set.
+#[derive(Default)]
+pub struct LinkUpdate {
+    pub relative_path: Option<String>,
+    pub file_name: Option<String>,
+    pub folder_id: Option<Option<String>>,
+    pub updated_at: String,
+}
 
 /// The three per-document policy flags, positive sense (`true` == permissive ==
 /// the frontmatter default). Mirrors v4 `DocumentPolicy`.
@@ -629,6 +679,145 @@ impl<'c> DocMountFileLinksRepository<'c> {
                 other => Err(other),
             })?;
         Ok(found.is_some())
+    }
+
+    /// v4 `findByMountPointAndPath` (the joined view, `doc-mount-file-links
+    /// .repository.ts:352`): the single link at a `(mountPointId, relativePath)`,
+    /// **case-insensitive** on the path (`LOWER(l.relativePath) = LOWER(?)`), or
+    /// `None`. Drives the database-store move/read (the link half).
+    pub fn find_by_mount_point_and_path(
+        &self,
+        mount_point_id: &str,
+        relative_path: &str,
+    ) -> Result<Option<LinkRow>, DbError> {
+        self.conn
+            .query_row(
+                &Self::join_query(
+                    "WHERE l.mountPointId = ?1 AND LOWER(l.relativePath) = LOWER(?2)",
+                ),
+                params![mount_point_id, relative_path],
+                Self::map_link_row,
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
+    }
+
+    /// v4 `findByMountPointId` (the joined view, `doc-mount-file-links.repository
+    /// .ts:338`): every link for a mount point with the content fields joined in,
+    /// in the DB's natural order (callers filter/rewrite). Drives the listing +
+    /// move-folder descendant rewrite + `folderHasContents`'s link scan.
+    pub fn find_by_mount_point_id(&self, mount_point_id: &str) -> Result<Vec<LinkRow>, DbError> {
+        let mut stmt = self
+            .conn
+            .prepare(&Self::join_query("WHERE l.mountPointId = ?1"))?;
+        let rows = stmt
+            .query_map(params![mount_point_id], Self::map_link_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Apply a link update patch to `link_id`. Follows the dynamic-SET pattern of
+    /// `doc_mount_folders`'s `update`; `folder_id` supports set-to-NULL via the
+    /// `Option<Option<_>>` shape. Returns `Ok(false)` when no row matched.
+    pub fn update(&self, link_id: &str, patch: &LinkUpdate) -> Result<bool, DbError> {
+        let mut assignments: Vec<String> = Vec::new();
+        let mut values: Vec<Box<dyn ToSql>> = Vec::new();
+
+        if let Some(relative_path) = &patch.relative_path {
+            assignments.push(format!("relativePath = ?{}", values.len() + 1));
+            values.push(Box::new(relative_path.clone()));
+        }
+        if let Some(file_name) = &patch.file_name {
+            assignments.push(format!("fileName = ?{}", values.len() + 1));
+            values.push(Box::new(file_name.clone()));
+        }
+        if let Some(folder_id) = &patch.folder_id {
+            // Some(None) => SQL NULL; Some(Some(id)) => the id.
+            assignments.push(format!("folderId = ?{}", values.len() + 1));
+            values.push(Box::new(folder_id.clone()));
+        }
+        assignments.push(format!("updatedAt = ?{}", values.len() + 1));
+        values.push(Box::new(patch.updated_at.clone()));
+
+        let id_idx = values.len() + 1;
+        values.push(Box::new(link_id.to_string()));
+
+        let sql = format!(
+            "UPDATE doc_mount_file_links SET {} WHERE id = ?{}",
+            assignments.join(", "),
+            id_idx
+        );
+        let params_refs: Vec<&dyn ToSql> = values.iter().map(|b| b.as_ref()).collect();
+        let affected = self.conn.execute(&sql, params_refs.as_slice())?;
+        Ok(affected > 0)
+    }
+
+    /// The `l JOIN f` SELECT used by both finders, with the caller's WHERE clause
+    /// appended. Column list + sources mirror v4 `queryJoined` (restricted to the
+    /// [`LinkRow`] fields).
+    fn join_query(where_clause: &str) -> String {
+        format!(
+            "SELECT \
+               l.id, l.fileId, l.mountPointId, l.relativePath, l.fileName, l.folderId, \
+               l.lastModified, l.createdAt, \
+               l.allowCharacterRead, l.allowCharacterWrite, \
+               l.extractedText, l.originalMimeType, l.conversionStatus, l.chunkCount, \
+               f.sha256, f.fileSizeBytes, f.fileType, f.source \
+             FROM doc_mount_file_links l \
+             JOIN doc_mount_files f ON f.id = l.fileId \
+             {where_clause}"
+        )
+    }
+
+    fn map_link_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<LinkRow> {
+        Ok(LinkRow {
+            id: row.get(0)?,
+            file_id: row.get(1)?,
+            mount_point_id: row.get(2)?,
+            relative_path: row.get(3)?,
+            file_name: row.get(4)?,
+            folder_id: row.get(5)?,
+            last_modified: row.get(6)?,
+            created_at: row.get(7)?,
+            // v4 coerceAllow: absent/NULL → permissive true, else `!= 0`.
+            allow_character_read: coerce_allow(row.get::<_, Option<i64>>(8)?),
+            allow_character_write: coerce_allow(row.get::<_, Option<i64>>(9)?),
+            extracted_text: row.get(10)?,
+            original_mime_type: row.get(11)?,
+            conversion_status: row.get(12)?,
+            // `chunkCount` has REAL affinity (`z.number()` DDL, `REAL DEFAULT 0`),
+            // so a cell may be stored as Real (`0.0`) or Integer; read the raw
+            // value ref and collapse either form to i64.
+            chunk_count: real_affinity_i64(row.get_ref(13)?),
+            sha256: row.get(14)?,
+            // `fileSizeBytes` also has REAL affinity; tolerate Real/Integer.
+            file_size_bytes: real_affinity_i64(row.get_ref(15)?),
+            file_type: row.get(16)?,
+            source: row.get(17)?,
+        })
+    }
+}
+
+/// Read a REAL-affinity `chunkCount` cell as i64, tolerating both Integer and
+/// Real (`0.0`) storage forms (the column is `REAL DEFAULT 0`). NULL/other → 0.
+fn real_affinity_i64(v: rusqlite::types::ValueRef<'_>) -> i64 {
+    match v {
+        rusqlite::types::ValueRef::Integer(i) => i,
+        rusqlite::types::ValueRef::Real(f) => f as i64,
+        _ => 0,
+    }
+}
+
+/// Coerce a SQLite `allow*` policy column (stored 0/1, occasionally absent) into a
+/// boolean — v4 `coerceAllow` (`doc-mount-file-links.repository.ts:115`). Absent /
+/// NULL → permissive (`true`); else `!= 0`.
+fn coerce_allow(value: Option<i64>) -> bool {
+    match value {
+        None => true,
+        Some(v) => v != 0,
     }
 }
 

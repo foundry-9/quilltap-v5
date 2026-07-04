@@ -43,6 +43,7 @@ pub mod chats_tokens;
 pub mod connection_profiles;
 pub mod conversation_annotations;
 pub mod conversation_chunks;
+pub mod database_store;
 pub mod doc_mount_blobs;
 pub mod doc_mount_chunks;
 pub mod doc_mount_documents;
