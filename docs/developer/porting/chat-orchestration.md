@@ -384,3 +384,35 @@ Ordered by dependency; several are mutually independent once wave 2 lands:
   - **Documented seams:** the `jsonrepair` bounded subset (out-of-subset →
     conservative `[]`), and the out-of-subset text-block/YAML-style parse
     behavior — both corpus-pinned, never silently a different parse.
+- Wave 4: **W4.1c (tool execution + persistence primitives) is done**
+  (`services::tool_execution`, v4 `tool-execution.service.ts`) — the execution
+  harness + the TOOL-row writer between the loops (W4.1e/f) and the handlers
+  (W4.1d). Three sub-units:
+  - **c.1** `save_tool_messages` + `compute_tool_message_targets` +
+    `files::add_tag`: the TOOL-row persistence primitive (through
+    `chats_messages::add_message`, so a TOOL row bumps minted
+    `lastMessageAt`/`updatedAt` but is excluded from `messageCount` and never
+    touches `spokenThisCycle`), the whisper gate (ALWAYS_PRIVATE + VAULT_READ-vs-
+    `allowCrossCharacterVaultReads`, **whispered to the user participant** — not
+    the calling character, derived from `computeToolMessageTargets`), the generic
+    content JSON in v4 field order, and the generated-image link+tag loop. Tier-2
+    differential (`tool_execution_tier2_equivalence`) over the whisper matrix,
+    content omission, the batch + `firstToolMessageId`, and the image link+tag.
+  - **c.2** `process_tool_calls` + the injected `ToolRunner` boundary
+    (v4 `executeToolCallWithContext`, W4.1d) + `ToolExecutionContext`: the
+    dispatch harness (detection frame → per-tool status → dispatch → image
+    extraction → tool-result frame; failures in-band). `chat_events` gained the
+    additive `toolsDetected` + `toolResult` frames. Tier-3 differential
+    (`tool_execution_process_tier3_equivalence`) driving v4's real
+    `processToolCalls` with only the executor mocked.
+  - **c.3** spine wiring: the finalizer's `toolMessages.length > 0` gate (inside
+    `save_assistant_message`, before the assistant image-link loop) and the
+    orchestrator tool-only terminal branch. Caught + fixed the finalizer done
+    frame's `toolsExecuted` (was hardcoded `false`). Both branches corpus-dormant
+    until the loops (W4.1e/f); the finalizer branch is directly driven against v4
+    by the new `tool-save` case; the orchestrator branch's constituents are each
+    differential-proven.
+  - The canonical `ToolMessage` now lives once in `services::tool_execution`;
+    `tool_call_threading` reuses it (matching v4's single `chat-message/types.ts`).
+  - Out of scope (later W4.1 sub-units): the executor dispatch + handlers (W4.1d),
+    the tool loops (W4.1e/f), `buildTools`, provider wire parsing (W4.7).

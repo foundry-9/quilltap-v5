@@ -1,0 +1,147 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for W4.1c sub-unit c.1 — v4's saveToolMessages",
+    "(lib/services/chat-message/tool-execution.service.ts). One committed spec",
+    "drives BOTH sides: the v4 oracle (build-tool-execution-fixture.ts +",
+    "tool-execution-tier2.ts, driving v4's REAL saveToolMessages) and the Rust",
+    "port (quilltap-harness tool_execution tier-2 test, driving save_tool_messages).",
+    "",
+    "SEED: one chat (a USER participant + a CHARACTER participant, so the whisper",
+    "target userParticipantId is a real participant id) and one GENERATED image",
+    "file (for the generate_image link+tag case). chat_messages + files tables are",
+    "materialized so the Rust port (no DDL) can INSERT.",
+    "",
+    "CALLS: each is one saveToolMessages invocation. They bank the whisper matrix",
+    "(public / ALWAYS_PRIVATE / VAULT_READ x cross-reads both ways), the content",
+    "field order + omission (anchorOffset/seq/callId + metadata present vs absent),",
+    "a multi-message batch (order + firstToolMessageId), and the generated-image",
+    "link+tag+id attachment.",
+    "",
+    "NORMALIZATION (applied identically both sides): saveToolMessages mints the",
+    "TOOL row id (crypto.randomUUID) + createdAt, the chat's lastMessageAt/updatedAt",
+    "(a TOOL row is type:'message', so it bumps them), and the file's updatedAt",
+    "(addLink/addTag). Minted message ids are remapped to first-seen tokens by a",
+    "content-sorted walk (content is pinned + distinct); files.linkedTo + the",
+    "returned firstToolMessageId resolve through that shared map. Minted timestamps",
+    "are placeholdered (sentinel-aware on chats: a value equal to the seed sentinel",
+    "stays pinned). tags = [characterId] is pinned; generatedImageIds = the seeded",
+    "file id, pinned."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "sentinel": "2026-02-01T00:00:00.000Z",
+  "userId": "11111111-1111-4111-8111-111111111111",
+  "userParticipantId": "fa000000-0000-4000-8000-0000000000fa",
+  "participantId": "fb000001-0000-4000-8000-000000000001",
+  "characterId": "bbbb2222-2222-4222-8222-222222222222",
+  "chat": {
+    "id": "cccccccc-0000-4000-8000-00000000c1a1",
+    "userId": "11111111-1111-4111-8111-111111111111",
+    "title": "Tool exec chat",
+    "createdAt": "2026-02-01T00:00:00.000Z",
+    "updatedAt": "2026-02-01T00:00:00.000Z",
+    "participants": [
+      {
+        "id": "fa000000-0000-4000-8000-0000000000fa",
+        "type": "CHARACTER",
+        "characterId": "aaaa1111-1111-4111-8111-11111111aaaa",
+        "controlledBy": "user",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      },
+      {
+        "id": "fb000001-0000-4000-8000-000000000001",
+        "type": "CHARACTER",
+        "characterId": "bbbb2222-2222-4222-8222-222222222222",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    ]
+  },
+  "file": {
+    "id": "f11e0000-0000-4000-8000-00000000f11e",
+    "userId": "11111111-1111-4111-8111-111111111111",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "originalFilename": "generated.png",
+    "mimeType": "image/png",
+    "size": 4096,
+    "isPlainText": false,
+    "linkedTo": [],
+    "source": "GENERATED",
+    "category": "IMAGE",
+    "tags": [],
+    "fileStatus": "ok",
+    "createdAt": "2026-02-01T00:00:00.000Z",
+    "updatedAt": "2026-02-01T00:00:00.000Z"
+  },
+  "calls": [
+    {
+      "name": "public_state",
+      "chatId": "cccccccc-0000-4000-8000-00000000c1a1",
+      "characterId": "bbbb2222-2222-4222-8222-222222222222",
+      "participantId": "fb000001-0000-4000-8000-000000000001",
+      "whisperContext": { "userParticipantId": "fa000000-0000-4000-8000-0000000000fa", "allowCrossCharacterVaultReads": false },
+      "generatedImagePaths": [],
+      "toolMessages": [
+        { "toolName": "state", "success": true, "content": "{\n  \"mood\": \"curious\"\n}", "arguments": { "action": "get" }, "callId": "call-state-1" }
+      ]
+    },
+    {
+      "name": "always_private_search",
+      "chatId": "cccccccc-0000-4000-8000-00000000c1a1",
+      "characterId": "bbbb2222-2222-4222-8222-222222222222",
+      "participantId": "fb000001-0000-4000-8000-000000000001",
+      "whisperContext": { "userParticipantId": "fa000000-0000-4000-8000-0000000000fa", "allowCrossCharacterVaultReads": false },
+      "generatedImagePaths": [],
+      "toolMessages": [
+        { "toolName": "search", "success": true, "content": "found 2 memories", "arguments": { "query": "cats" }, "callId": "call-search-1" }
+      ]
+    },
+    {
+      "name": "vault_read_whispered",
+      "chatId": "cccccccc-0000-4000-8000-00000000c1a1",
+      "characterId": "bbbb2222-2222-4222-8222-222222222222",
+      "participantId": "fb000001-0000-4000-8000-000000000001",
+      "whisperContext": { "userParticipantId": "fa000000-0000-4000-8000-0000000000fa", "allowCrossCharacterVaultReads": false },
+      "generatedImagePaths": [],
+      "toolMessages": [
+        { "toolName": "doc_read_file", "success": true, "content": "file body", "arguments": { "path": "notes.md" }, "callId": "call-doc-1" }
+      ]
+    },
+    {
+      "name": "vault_read_public_when_cross_reads",
+      "chatId": "cccccccc-0000-4000-8000-00000000c1a1",
+      "characterId": "bbbb2222-2222-4222-8222-222222222222",
+      "participantId": "fb000001-0000-4000-8000-000000000001",
+      "whisperContext": { "userParticipantId": "fa000000-0000-4000-8000-0000000000fa", "allowCrossCharacterVaultReads": true },
+      "generatedImagePaths": [],
+      "toolMessages": [
+        { "toolName": "doc_grep", "success": true, "content": "3 matches", "arguments": { "pattern": "hello" }, "callId": "call-doc-2" }
+      ]
+    },
+    {
+      "name": "anchors_and_metadata_batch",
+      "chatId": "cccccccc-0000-4000-8000-00000000c1a1",
+      "characterId": "bbbb2222-2222-4222-8222-222222222222",
+      "participantId": "fb000001-0000-4000-8000-000000000001",
+      "whisperContext": { "userParticipantId": "fa000000-0000-4000-8000-0000000000fa", "allowCrossCharacterVaultReads": false },
+      "generatedImagePaths": [],
+      "toolMessages": [
+        { "toolName": "read_conversation", "success": true, "content": "transcript", "arguments": { "chatId": "other" }, "callId": "call-rc-1", "anchorOffset": 10, "seq": 2, "metadata": { "provider": "ANTHROPIC", "model": "claude", "expandedPrompt": "expanded" } },
+        { "toolName": "whisper", "success": false, "content": "Error: DENIED - not allowed", "arguments": { "to": "self" } }
+      ]
+    },
+    {
+      "name": "generated_image_link_and_tag",
+      "chatId": "cccccccc-0000-4000-8000-00000000c1a1",
+      "characterId": "bbbb2222-2222-4222-8222-222222222222",
+      "participantId": "fb000001-0000-4000-8000-000000000001",
+      "whisperContext": { "userParticipantId": "fa000000-0000-4000-8000-0000000000fa", "allowCrossCharacterVaultReads": false },
+      "generatedImagePaths": [
+        { "id": "f11e0000-0000-4000-8000-00000000f11e", "filename": "generated.png", "filepath": "/tmp/generated.png", "mimeType": "image/png", "size": 4096 }
+      ],
+      "toolMessages": [
+        { "toolName": "generate_image", "success": true, "content": "Generated 1 image(s)", "arguments": { "prompt": "a cat" }, "callId": "call-img-1" }
+      ]
+    }
+  ]
+}

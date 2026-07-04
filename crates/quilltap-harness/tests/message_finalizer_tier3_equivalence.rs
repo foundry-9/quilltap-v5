@@ -59,6 +59,7 @@ use quilltap_core::services::message_finalizer::{
     NoAnswerConfirmation, NoRng, ParticipantCharacter,
 };
 use quilltap_core::services::primary_stream::ReasoningSegment;
+use quilltap_core::services::tool_execution::{GeneratedImage, ToolMessage};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -121,6 +122,22 @@ struct CallW {
     participant_characters: Vec<String>,
     #[serde(default)]
     carina: Option<CarinaW>,
+    #[serde(default)]
+    tool_messages: Vec<ToolMsgW>,
+}
+
+/// The injected tool slate for the c.3 `tool-save` direct-drive case (empty for
+/// every dormant case). Maps to the canonical [`ToolMessage`].
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ToolMsgW {
+    tool_name: String,
+    success: bool,
+    content: String,
+    #[serde(default)]
+    arguments: Option<Value>,
+    #[serde(default)]
+    call_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -271,6 +288,10 @@ fn to_finalizer_chat(row: &Value) -> FinalizerChat {
             .cloned()
             .unwrap_or_default(),
         spoken_this_cycle_participant_ids: str_of(row, "spokenThisCycleParticipantIds"),
+        allow_cross_character_vault_reads: row
+            .get("allowCrossCharacterVaultReads")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
     }
 }
 
@@ -664,7 +685,35 @@ fn message_finalizer_tier3_matches_oracle() {
             character_participant,
             user_participant_id: call.user_participant_id.clone(),
             is_multi_character: call.is_multi_character,
-            generated_image_ids: call.generated_image_ids.clone(),
+            // Built exactly as the oracle maps generatedImageIds → GeneratedImage.
+            generated_image_paths: call
+                .generated_image_ids
+                .iter()
+                .map(|id| GeneratedImage {
+                    id: id.clone(),
+                    filename: "generated.png".into(),
+                    filepath: "/tmp/generated.png".into(),
+                    mime_type: "image/png".into(),
+                    size: 1024.0,
+                    width: None,
+                    height: None,
+                    sha256: None,
+                })
+                .collect(),
+            // Dormant for every case except `tool-save` (the c.3 direct-drive):
+            // v4's finalizer persists these as TOOL rows via saveToolMessages.
+            tool_messages: call
+                .tool_messages
+                .iter()
+                .map(|m| ToolMessage {
+                    tool_name: m.tool_name.clone(),
+                    success: m.success,
+                    content: m.content.clone(),
+                    arguments: m.arguments.clone(),
+                    call_id: m.call_id.clone(),
+                    ..Default::default()
+                })
+                .collect(),
             pre_generated_assistant_message_id: Some(
                 call.pre_generated_assistant_message_id.clone(),
             ),
@@ -745,6 +794,10 @@ fn message_finalizer_tier3_matches_oracle() {
         .collect();
     normalize_new_row_created_at(&mut got_msgs, &pre_msgs);
     normalize_new_row_created_at(&mut want_msgs, &pre_msgs);
+    // TOOL rows (saveToolMessages) carry MINTED ids — remap them to content-sorted
+    // tokens on both sides (the c.3 `tool-save` case; a no-op elsewhere).
+    normalize_tool_row_ids(&mut got_msgs);
+    normalize_tool_row_ids(&mut want_msgs);
     assert_table_eq("chat_messages", &got_msgs, &want_msgs);
 
     // background_jobs: all minted — re-sort + placeholder ids/timestamps.
@@ -766,6 +819,58 @@ fn message_finalizer_tier3_matches_oracle() {
     // Clean up scratch.
     drop(db);
     let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// Remap TOOL-role rows' minted ids (`saveToolMessages` uses `crypto.randomUUID`)
+/// to content-sorted tokens, then re-sort the whole rows array by id — so the two
+/// sides' TOOL rows (identical pinned content, different minted ids) line up. A
+/// no-op when there are no TOOL rows.
+fn normalize_tool_row_ids(dump: &mut Value) {
+    let Some(rows) = dump.get_mut("rows").and_then(Value::as_array_mut) else {
+        return;
+    };
+    let mut tool: Vec<(String, String)> = rows
+        .iter()
+        .filter(|r| r.get("role").and_then(Value::as_str) == Some("TOOL"))
+        .map(|r| {
+            (
+                r.get("content")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                r.get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+            )
+        })
+        .collect();
+    tool.sort_by(|a, b| a.0.cmp(&b.0));
+    let map: HashMap<String, String> = tool
+        .into_iter()
+        .enumerate()
+        .map(|(i, (_content, id))| (id, format!("tool{i}")))
+        .collect();
+    for row in rows.iter_mut() {
+        if row.get("role").and_then(Value::as_str) == Some("TOOL") {
+            if let Some(tok) = row
+                .get("id")
+                .and_then(Value::as_str)
+                .and_then(|id| map.get(id))
+            {
+                let tok = tok.clone();
+                row.as_object_mut()
+                    .unwrap()
+                    .insert("id".into(), Value::String(tok));
+            }
+        }
+    }
+    rows.sort_by(|a, b| {
+        a.get("id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .cmp(b.get("id").and_then(Value::as_str).unwrap_or_default())
+    });
 }
 
 /// Placeholder `createdAt` on rows whose id is NOT in the pre-run set (i.e. rows

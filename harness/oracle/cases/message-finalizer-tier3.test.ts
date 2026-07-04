@@ -97,6 +97,7 @@ interface CallSpec {
   reasoningSegments: Array<{ anchorOffset: number; content: string; seq: number }>;
   normalizeRewroteBody: boolean;
   generatedImageIds: string[];
+  toolMessages?: Array<Record<string, unknown>>;
   compression: { enabled: boolean; selection: boolean; systemPrompt: boolean };
   chatSettings: boolean;
   participantCharacters: string[];
@@ -382,7 +383,9 @@ async function main(): Promise<void> {
         mimeType: 'image/png',
         size: 1024,
       })) as never,
-      toolMessages: [],
+      // W4.1c c.3: inject the tool slate so v4's finalizer saves TOOL rows
+      // (dormant for every pre-existing case; `tool-save` exercises it).
+      toolMessages: (call.toolMessages ?? []) as never,
       preGeneratedAssistantMessageId: call.preGeneratedAssistantMessageId,
       connectionProfile: streaming.effectiveProfile as never,
       controller: controller as never,

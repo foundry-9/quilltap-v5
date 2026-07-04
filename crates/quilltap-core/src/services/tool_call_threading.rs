@@ -34,13 +34,12 @@ pub struct DetectedToolCall {
     pub call_id: Option<String>,
 }
 
-/// The subset of v4's `ToolMessage` the threading helpers consume.
-#[derive(Debug, Clone)]
-pub struct ToolMessage {
-    pub tool_name: String,
-    pub content: String,
-    pub call_id: Option<String>,
-}
+// v4's `ToolMessage` lives once in `chat-message/types.ts` and both this module
+// and the tool-execution service import it. The v5 canonical definition lives in
+// [`super::tool_execution`]; the threading helpers read only its
+// `tool_name`/`content`/`call_id` fields. Re-exported so
+// `tool_call_threading::ToolMessage` keeps resolving for existing consumers.
+pub use super::tool_execution::ToolMessage;
 
 /// One entry in an assistant turn's `toolCalls` array. Serializes byte-identical
 /// to v4's `{ id, type: 'function', function: { name, arguments } }`.
@@ -251,11 +250,13 @@ mod tests {
                 tool_name: "search".into(),
                 content: "result".into(),
                 call_id: Some("c1".into()),
+                ..Default::default()
             },
             ToolMessage {
                 tool_name: "roll".into(),
                 content: "6".into(),
                 call_id: None,
+                ..Default::default()
             },
         ]);
         assert_eq!(msgs[0].role, "tool");

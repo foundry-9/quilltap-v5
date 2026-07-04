@@ -54,6 +54,7 @@ use crate::model::stream::{
 };
 
 use super::chat_events::{ChatEvent, EventSink, StatusPayload};
+use super::tool_execution::{save_tool_messages, GeneratedImage, ToolMessage, ToolWhisperContext};
 
 // ===========================================================================
 // Error classification (v4 `lib/llm/errors.ts`)
@@ -470,13 +471,19 @@ pub fn save_assistant_message(
     model_name: Option<&str>,
     reasoning_content: Option<&str>,
     reasoning_segments: &[ReasoningSegment],
-    generated_image_ids: &[String],
+    generated_image_paths: &[GeneratedImage],
+    tool_messages: &[ToolMessage],
+    whisper_context: Option<&ToolWhisperContext>,
     confirmation: &ConfirmationFields,
 ) -> Result<String, DbError> {
     let assistant_message_id = pre_generated_message_id
         .map(str::to_string)
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let now = crate::clock::now_iso();
+    // `attachments: generatedImagePaths.map(img => img.id)` — the ids the assistant
+    // message carries (and forwards to the image-link loop below).
+    let generated_image_ids: Vec<String> =
+        generated_image_paths.iter().map(|g| g.id.clone()).collect();
 
     // v4: `usage?.totalTokens || null` (a 0 becomes null — the `|| null` idiom).
     let token_count = usage.map(|u| u.total_tokens).filter(|&t| t != 0);
@@ -570,16 +577,33 @@ pub fn save_assistant_message(
             .map_err(|e| DbError::Key(format!("saveAssistantMessage marshal: {e}")))?;
     writer.chat_messages().add_message(chat_id, &event)?;
 
+    // Save tool messages (v4 message-finalizer.service.ts:635, `if
+    // toolMessages.length > 0`) BEFORE the assistant image-link loop, so a
+    // generated image's `linkedTo` order is `[firstToolMessageId,
+    // assistantMessageId]` exactly as v4. v4 passes `userId: ''`; the whisper
+    // context + character/participant ids gate the TOOL-row whisper targeting.
+    // Dormant in the current corpus (the tool loops W4.1e/f supply a non-empty
+    // slate); the primitive itself is proven by `tool_execution_tier2`.
+    if !tool_messages.is_empty() {
+        save_tool_messages(
+            writer,
+            chat_id,
+            "",
+            tool_messages,
+            generated_image_paths,
+            Some(ctx.character_id),
+            Some(ctx.participant_id),
+            whisper_context,
+        )?;
+    }
+
     // Link each generated-image attachment to the assistant message (v4's
     // `for (const imageId of assistantAttachments) repos.files.addLink(imageId,
     // assistantMessageId)`). A missing file / failed link is swallowed (v4
-    // catches + logs a warn) so the message still stands. `saveToolMessages`
-    // (v4-guarded on a non-empty list) is a wave-4 concern; the empty path fires
-    // no write, matching v4.
-    for image_id in generated_image_ids {
+    // catches + logs a warn) so the message still stands.
+    for image_id in &generated_image_ids {
         let _ = writer.files().add_link(image_id, &assistant_message_id);
     }
-    let _ = ctx.character_id;
     Ok(assistant_message_id)
 }
 
@@ -689,9 +713,12 @@ impl PreservePartialOnError {
                     model_name.as_deref(),
                     reasoning_content.as_deref(),
                     &reasoning_segments,
-                    // The preserve path carries no generated images and no
-                    // confirmation keys (v4's preserve write sets neither).
+                    // The preserve path carries no generated images, no tool
+                    // messages, and no confirmation keys (v4's preserve write sets
+                    // none of them).
                     &[],
+                    &[],
+                    None,
                     &ConfirmationFields::default(),
                 )
                 .map(|_| ())

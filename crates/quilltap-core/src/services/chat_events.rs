@@ -280,6 +280,26 @@ pub enum ChatEvent {
         #[serde(flatten)]
         payload: ChainCompletePayload,
     },
+    /// `{toolsDetected, toolNames, toolArguments}` — the tool-detection frame v4
+    /// `processToolCalls` enqueues before dispatching the batch (a bare object, not
+    /// a single-key wrapper). `tool_arguments` carries each call's raw arguments
+    /// object (order-preserving `Value`).
+    ToolsDetected {
+        #[serde(rename = "toolsDetected")]
+        tools_detected: usize,
+        #[serde(rename = "toolNames")]
+        tool_names: Vec<String>,
+        #[serde(rename = "toolArguments")]
+        tool_arguments: Vec<serde_json::Value>,
+    },
+    /// `{toolResult:{index, name, success, result, error?}}` — the per-tool result
+    /// frame v4 `processToolCalls` enqueues after each dispatch. `result` is the
+    /// raw tool result (`unknown`); `error` is present ONLY on failure (v4 carries
+    /// the human-readable error text there).
+    ToolResult {
+        #[serde(rename = "toolResult")]
+        tool_result: ToolResultPayload,
+    },
     /// `{done:true, …}` — the payload spreads flat next to `done: true`. Boxed:
     /// the full finalizer payload is by far the largest variant
     /// (clippy::large_enum_variant), and every event is heap-bound for the
@@ -410,6 +430,34 @@ impl ChatEvent {
             payload,
         }
     }
+
+    /// The tool-detection frame (`processToolCalls`, before the dispatch loop).
+    pub fn tools_detected(tool_names: Vec<String>, tool_arguments: Vec<serde_json::Value>) -> Self {
+        ChatEvent::ToolsDetected {
+            tools_detected: tool_names.len(),
+            tool_names,
+            tool_arguments,
+        }
+    }
+
+    /// A per-tool result frame (`processToolCalls`, after each dispatch).
+    pub fn tool_result(tool_result: ToolResultPayload) -> Self {
+        ChatEvent::ToolResult { tool_result }
+    }
+}
+
+/// The `toolResult` frame payload (v4 `processToolCalls`'s `toolResultPayload`):
+/// `{ index, name, success, result, ...(!success ? { error } : {}) }`. `result` is
+/// the raw tool result (`unknown` → [`serde_json::Value`]); `error` carries the
+/// human-readable failure text and is present only on failure.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct ToolResultPayload {
+    pub index: usize,
+    pub name: String,
+    pub success: bool,
+    pub result: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 /// The `confirmationResult` payload (v4 `encodeConfirmationResultEvent`'s
@@ -668,6 +716,47 @@ mod tests {
                 "provider": "ANTHROPIC",
                 "modelName": "claude"
             })
+        );
+    }
+
+    #[test]
+    fn tool_frames_serialize_as_v4_bare_and_single_key_frames() {
+        // Detection frame: a bare object, not a single-key wrapper.
+        let ev = ChatEvent::tools_detected(
+            vec!["search".into(), "roll".into()],
+            vec![json!({ "query": "cats" }), json!({ "sides": 6 })],
+        );
+        assert_eq!(
+            serde_json::to_value(&ev).unwrap(),
+            json!({
+                "toolsDetected": 2,
+                "toolNames": ["search", "roll"],
+                "toolArguments": [{ "query": "cats" }, { "sides": 6 }]
+            })
+        );
+        // Success result frame: no `error` key.
+        let ok = ChatEvent::tool_result(ToolResultPayload {
+            index: 0,
+            name: "roll".into(),
+            success: true,
+            result: json!([1, 2, 3]),
+            error: None,
+        });
+        assert_eq!(
+            serde_json::to_value(&ok).unwrap(),
+            json!({ "toolResult": { "index": 0, "name": "roll", "success": true, "result": [1, 2, 3] } })
+        );
+        // Failure result frame: `error` present, `result` often null.
+        let err = ChatEvent::tool_result(ToolResultPayload {
+            index: 1,
+            name: "search".into(),
+            success: false,
+            result: json!(null),
+            error: Some("Error: boom".into()),
+        });
+        assert_eq!(
+            serde_json::to_value(&err).unwrap(),
+            json!({ "toolResult": { "index": 1, "name": "search", "success": false, "result": null, "error": "Error: boom" } })
         );
     }
 

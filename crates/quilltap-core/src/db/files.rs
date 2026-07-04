@@ -6,10 +6,14 @@
 //! `_create`/`_update`/`_delete` internals of `base.repository.ts`).
 //!
 //! Scope: `create`, `update`, and `delete` (the three abstract methods over the
-//! base repo). The many custom query helpers — `findByIds`, `findBySha256`,
-//! `findByCategory`, `findByFolder*`, `addLink`/`removeLink`, etc. — are out of
-//! scope here. v4's `update` strips `id` and `createdAt` before `_update`, which
-//! is a no-op for this port since we preserve both anyway.
+//! base repo), plus the two file-linking primitives the message-persistence path
+//! needs — `addLink` (attach an entity to a file) and `addTag` (the inherited
+//! `TaggableBaseRepository.addTag`, tagging a generated image with its character
+//! so it surfaces in the gallery). The remaining custom query helpers —
+//! `findByIds`, `findBySha256`, `findByCategory`, `findByFolder*`, `removeLink`,
+//! `removeTag`, etc. — are out of scope here. v4's `update` strips `id` and
+//! `createdAt` before `_update`, which is a no-op for this port since we preserve
+//! both anyway.
 //!
 //! ## What this repo banks for the tier-2 marshaling surface
 //!
@@ -355,13 +359,50 @@ impl<'c> FilesRepository<'c> {
     /// missing (v4's `findById` → null); `Some(vec)` otherwise (`[]` when the
     /// column is empty/unparseable, matching the Zod `.default([])`).
     fn read_linked_to(&self, file_id: &str) -> Result<Option<Vec<String>>, DbError> {
+        self.read_json_array_column("linkedTo", file_id)
+    }
+
+    /// v4 `addTag(entityId, tagId)` (inherited from `TaggableBaseRepository`) —
+    /// append `tag_id` to the file's `tags` array (idempotent: absent-only),
+    /// persisting through `update` (which mints a fresh `updatedAt`). Semantics
+    /// mirror [`Self::add_link`] exactly, only over the `tags` column: a missing
+    /// file is a no-op (v4 warns + returns `null`); an already-present tag leaves
+    /// the row untouched (v4 returns the entity without an `update`, so no
+    /// `updatedAt` bump). Returns whether a row was written.
+    pub fn add_tag(&self, file_id: &str, tag_id: &str) -> Result<bool, DbError> {
+        let Some(mut tags) = self.read_json_array_column("tags", file_id)? else {
+            // File not found — v4 logs a warn and returns null (no write).
+            return Ok(false);
+        };
+        if tags.iter().any(|t| t == tag_id) {
+            // Already tagged — v4 returns the entity without an update (no
+            // `updatedAt` bump). No-op.
+            return Ok(false);
+        }
+        tags.push(tag_id.to_string());
+        let patch = FileUpdate {
+            tags: Some(tags),
+            updated_at: crate::clock::now_iso(),
+            ..Default::default()
+        };
+        self.update(file_id, &patch)
+    }
+
+    /// Read a JSON-array column (`linkedTo` / `tags`) for a file. `None` when the
+    /// row is missing (v4's `findById` → null); `Some(vec)` otherwise (`[]` when
+    /// the column is empty/unparseable, matching the Zod `.default([])`). The
+    /// column name is a fixed literal from the caller, never user input.
+    fn read_json_array_column(
+        &self,
+        column: &str,
+        file_id: &str,
+    ) -> Result<Option<Vec<String>>, DbError> {
+        let sql = format!("SELECT {column} FROM files WHERE id = ?1");
         let row: Option<String> = self
             .conn
-            .query_row(
-                "SELECT linkedTo FROM files WHERE id = ?1",
-                params![file_id],
-                |row| row.get::<_, Option<String>>(0),
-            )
+            .query_row(&sql, params![file_id], |row| {
+                row.get::<_, Option<String>>(0)
+            })
             .map(|opt| opt.unwrap_or_default())
             .map(Some)
             .or_else(|e| match e {

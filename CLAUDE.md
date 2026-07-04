@@ -1971,6 +1971,60 @@ Out of scope (later W4.1 sub-units): the tool loops,
 `processToolCalls`/`saveToolMessages`, `buildTools` slate construction, the
 handlers, and provider wire parsing.
 
+**Wave 4 (W4.1c): tool execution + persistence primitives are DONE**
+(2026-07-03; `services::tool_execution`, v4 `tool-execution.service.ts`) — the
+execution harness + the TOOL-row writer between the tool loops (W4.1e/f) and the
+handlers (W4.1d). Three sub-units. **c.1** — `save_tool_messages` +
+`compute_tool_message_targets` + `db::files::add_tag` (the inherited
+`TaggableBaseRepository.addTag`): the TOOL-row persistence primitive through the
+ported `chats_messages::add_message` path (verified: a TOOL row is
+`type:'message'`, so it bumps minted `lastMessageAt`/`updatedAt` but is excluded
+from `messageCount` — `countVisibleMessages` drops SYSTEM/TOOL — and never
+touches `spokenThisCycle`, the cycle helper returning null for non-USER/ASSISTANT
+roles), the whisper gate (ALWAYS_PRIVATE {`search`,`read_conversation`} +
+VAULT_READ doc tools vs `allowCrossCharacterVaultReads`, **whispered to the user
+participant** `[userParticipantId]` — NOT the calling character, resolved from
+`computeToolMessageTargets`), the generic content JSON as a typed struct in v4
+field order (`toolName, success, result, arguments, callId, [anchorOffset],
+[seq], provider, model, prompt` — `js_number_to_json` for the anchors, `metadata?`
+keys dropped when absent), and the generated-image link+tag loop. Tier-2
+differential (`tool_execution_tier2_equivalence`) drives v4's REAL
+`saveToolMessages` over the whisper matrix, content omission (anchors/callId +
+metadata present vs absent), the multi-message batch + `firstToolMessageId`, and
+the image link+tag — diffing `chat_messages`/`chats`/`files` + the return values
+in the shared-content-sorted-id-remap form (minted message ids remapped, minted
+timestamps sentinel-placeholdered). **c.2** — `process_tool_calls` + the injected
+`ToolRunner` boundary (v4 `executeToolCallWithContext` + every handler, all
+W4.1d) + `ToolExecutionContext` (`create_tool_context`; the `emitCarinaAnswer`
+callback + typed `loadedMemories` are documented deferral slots): the per-call
+dispatch harness (detection frame → per-tool `tool_executing` status → dispatch →
+generated-image extraction → tool-result frame; a handler failure is the in-band
+failure `ToolMessage`, never a Rust error). `services::chat_events` gained the
+additive `toolsDetected` + `toolResult` frames (byte-matching v4's SSE JSON).
+Tier-3 differential (`tool_execution_process_tier3_equivalence`) drives v4's REAL
+`processToolCalls` with ONLY `executeToolCallWithContext` mocked (canned per-call
+results keyed by `name|JSON.stringify(args)|callId`), diffing the ordered frames +
+`toolMessages` + `generatedImagePaths`. **c.3** — spine wiring: `save_tool_messages`
+wired into the finalizer's `toolMessages.length > 0` gate **inside**
+`save_assistant_message`, before the assistant image-link loop (so a generated
+image's `linkedTo` order is `[firstToolMessageId, assistantMessageId]` as v4), and
+the orchestrator tool-only terminal branch (`persist_tools_only` = the TOOL rows +
+the explicit `updatedAt` bump, then the `toolsExecuted: true` done frame). The
+finalizer direct-drive caught a real bug — the done frame's `toolsExecuted` was
+hardcoded `false`; now `!tool_messages.is_empty()` (v4 `toolMessages.length > 0`).
+Both branches are **corpus-dormant** until the tool loops (W4.1e/f) produce a
+non-empty slate (v4's inline tool-only block cannot be end-to-end-driven without
+them); `message_finalizer_tier3_equivalence` gained a `tool-save` case driving
+v4's REAL finalizer with an injected slate (state → public, search → whispered),
+and `orchestrator_tier3_equivalence` is re-verified green (the branch inert, the
+new `allowCrossCharacterVaultReads` field on `FinalizerChat` inert). The canonical
+`ToolMessage` now lives once in `services::tool_execution`;
+`services::tool_call_threading` reuses it (its narrow 3-field subset removed),
+matching v4's single `chat-message/types.ts` definition (threading differential
+re-verified). **Tracked deferrals:** the executor dispatch + handlers (W4.1d), the
+tool loops (W4.1e/f), `buildTools`, provider wire parsing (W4.7); the `ToolRunner`
+/ `ToolExecutionContext` callback slots to their owning units.
+
 The rest of wave 4 (the remaining tool subsystem — tool loops / `buildTools` /
 registry, the executor + handler catalog, the finalizer's response-RNG — danger,
 answer-confirmation, courier/agent-mode/compression-cache/regenerate-swipe, carina

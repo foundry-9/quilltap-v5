@@ -1,0 +1,68 @@
+{
+  "$comment": [
+    "Corpus for W4.1c sub-unit c.2 — v4's processToolCalls. Drives BOTH the v4",
+    "oracle (tool-execution-process-tier3.test.ts) and the Rust port (quilltap-",
+    "harness tool_execution_process tier-3 test). ONLY executeToolCallWithContext",
+    "is mocked; both sides inject the SAME canned per-call results keyed by",
+    "name|JSON.stringify(arguments)|callId (arguments kept single-key so the key +",
+    "the emitted frames match byte-for-byte; the RESULT comparison is by parsed",
+    "JSON Value, order-insensitive).",
+    "",
+    "Banks: a success dispatch (status frame on, pretty-JSON content); a failure",
+    "(status off, the `Error: <error> - <message>` text + the failure toolResult",
+    "frame carrying it); generate_image (image-path extraction from the result",
+    "array + the count summary text + metadata); and a mixed batch (a vault-read",
+    "success WITH metadata + a failure, two status+result frame pairs)."
+  ],
+  "batches": [
+    {
+      "name": "success_with_status",
+      "statusContext": { "characterName": "Friday", "characterId": "char-1" },
+      "toolCalls": [
+        { "name": "state", "arguments": { "action": "get" }, "callId": "c-state" }
+      ],
+      "cannedResults": [
+        { "toolName": "state", "success": true, "result": { "mood": "curious" } }
+      ]
+    },
+    {
+      "name": "failure_no_status",
+      "toolCalls": [
+        { "name": "search", "arguments": { "query": "x" } }
+      ],
+      "cannedResults": [
+        { "toolName": "search", "success": false, "result": null, "error": "NOT_FOUND", "message": "no character" }
+      ]
+    },
+    {
+      "name": "generate_image_with_paths",
+      "statusContext": { "characterName": "Friday", "characterId": "char-1" },
+      "toolCalls": [
+        { "name": "generate_image", "arguments": { "prompt": "a cat" }, "callId": "c-img" }
+      ],
+      "cannedResults": [
+        {
+          "toolName": "generate_image",
+          "success": true,
+          "result": [
+            { "id": "img-1", "filepath": "/tmp/1.png", "filename": "1.png", "mimeType": "image/png", "size": 4096, "width": 512, "height": 512, "sha256": "deadbeef" },
+            { "id": "", "filepath": "/tmp/skip.png" }
+          ],
+          "metadata": { "provider": "OPENAI", "model": "dall-e-3", "expandedPrompt": "a fluffy cat, studio lighting" }
+        }
+      ]
+    },
+    {
+      "name": "mixed_batch",
+      "statusContext": { "characterName": "Friday", "characterId": "char-1" },
+      "toolCalls": [
+        { "name": "doc_read_file", "arguments": { "path": "a.md" }, "callId": "c-doc" },
+        { "name": "whisper", "arguments": { "to": "self" } }
+      ],
+      "cannedResults": [
+        { "toolName": "doc_read_file", "success": true, "result": { "body": "hello" }, "metadata": { "provider": "ANTHROPIC", "model": "claude", "expandedPrompt": "read a.md" } },
+        { "toolName": "whisper", "success": false, "result": null, "error": "DENIED" }
+      ]
+    }
+  ]
+}

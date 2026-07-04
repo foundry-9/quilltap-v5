@@ -599,6 +599,44 @@ items the wave-3 capstone flagged.
   `commonplace_strip`, `opaque_swap` vs `transparent_no_swap`, and
   `tool_whisper_filter`. `orchestrator_tier3_equivalence` re-verified green.
 
+Phase 3 — wave 4 (W4.1c): tool execution + persistence primitives
+(`services::tool_execution`, v4 `tool-execution.service.ts`) — the harness and
+the TOOL-row writer between the tool loops (W4.1e/f) and the tool handlers
+(W4.1d).
+
+- `save_tool_messages` + `compute_tool_message_targets` + `files::add_tag`:
+  the TOOL-row persistence primitive (one `type:'message'`/`role:'TOOL'` row per
+  tool message through the ported `chats_messages::add_message` path) with the
+  whisper gate (ALWAYS_PRIVATE tools + VAULT_READ tools vs
+  `allowCrossCharacterVaultReads`, whispered to the **user participant**) and the
+  generated-image link+tag loop; the generic content JSON in v4 field order.
+  Tier-2 differential (`tool_execution_tier2_equivalence`) driving v4's real
+  `saveToolMessages` over the whisper matrix, content omission (anchorOffset/seq/
+  callId + metadata), the multi-message batch + `firstToolMessageId`, and the
+  image link+tag — byte-exact across `chat_messages`/`chats`/`files`.
+- `process_tool_calls` + the injected `ToolRunner` boundary +
+  `ToolExecutionContext`: the per-call dispatch harness (detection frame,
+  per-tool `tool_executing` status, tool-result frame, generated-image
+  extraction, the failure `ToolMessage` shape). `chat_events` gains the additive
+  `toolsDetected` + `toolResult` frames. Tier-3 differential
+  (`tool_execution_process_tier3_equivalence`) driving v4's real
+  `processToolCalls` with only `executeToolCallWithContext` mocked — ordered
+  frames + `toolMessages` + `generatedImagePaths` matched.
+- Spine wiring: `save_tool_messages` wired into the finalizer's
+  `toolMessages.length > 0` gate (inside `save_assistant_message`, before the
+  assistant image-link loop, so a generated image's `linkedTo` order matches v4),
+  and the orchestrator tool-only terminal branch (`saveToolMessages` + `updatedAt`
+  bump + the `toolsExecuted: true` done frame). Fixed the finalizer done frame's
+  `toolsExecuted` (was hardcoded `false`; now `toolMessages.length > 0`) — caught
+  by the finalizer direct-drive. `message_finalizer_tier3_equivalence` gained a
+  `tool-save` case driving v4's real finalizer with an injected tool slate;
+  `orchestrator_tier3_equivalence` re-verified green (branches corpus-dormant
+  until the tool loops).
+- The canonical `ToolMessage` now lives once in `services::tool_execution`;
+  `services::tool_call_threading` reuses it (its narrow subset removed), matching
+  v4's single `chat-message/types.ts` definition. Threading differential
+  re-verified.
+
 Phase 3 — wave 4 (W4.1b): the tool-subsystem pure leaves. The pure foundations
 the tool loops, executor, and handler catalog will consume — all tier-1 exact
 against v4's real `lib/tools/` + service code.

@@ -536,6 +536,54 @@
       "participantCharacters": [
         "ee695fae-b7e4-4fad-a992-343214b5b4d5"
       ]
+    },
+    {
+      "name": "tool-save",
+      "chatId": "92d23640-a9dc-4369-86b4-6df30f66ce9c",
+      "responderCharacter": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+      "responderParticipant": "417f7e33-91a2-418e-8011-28cf4d268ab8",
+      "userParticipantId": "6acf282f-8117-4f40-80e5-df4fb1094cd6",
+      "isMultiCharacter": false,
+      "preGeneratedAssistantMessageId": "70015a1e-0000-4000-8000-000000700157",
+      "fullResponse": "Let me check on that.",
+      "usage": {
+        "promptTokens": 30,
+        "completionTokens": 8,
+        "totalTokens": 38
+      },
+      "reasoningContent": null,
+      "reasoningSegments": [],
+      "normalizeRewroteBody": false,
+      "generatedImageIds": [],
+      "compression": {
+        "enabled": false,
+        "selection": false,
+        "systemPrompt": false
+      },
+      "chatSettings": true,
+      "participantCharacters": [
+        "ee695fae-b7e4-4fad-a992-343214b5b4d5"
+      ],
+      "toolMessages": [
+        {
+          "toolName": "state",
+          "success": true,
+          "content": "{\n  \"scene\": \"tavern\"\n}",
+          "arguments": {
+            "action": "get"
+          },
+          "callId": "tool-call-a"
+        },
+        {
+          "toolName": "search",
+          "success": true,
+          "content": "2 memories found",
+          "arguments": {
+            "query": "ada"
+          },
+          "callId": "tool-call-b"
+        }
+      ]
     }
   ]
 }

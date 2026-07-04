@@ -88,6 +88,7 @@ use super::primary_stream::{
     save_assistant_message, AssistantMessageContext, ConfirmationField, ConfirmationFields,
     ReasoningSegment,
 };
+use super::tool_execution::{GeneratedImage, ToolMessage, ToolWhisperContext};
 
 // Re-export the runner closure-seam helpers for the harness convenience.
 pub use super::carina_runner::{ClosureProspero, ClosureRunQuery};
@@ -233,6 +234,9 @@ pub struct FinalizerChat {
     /// `spokenThisCycleParticipantIds` (JSON text) — the fallback when a fresh
     /// re-read yields nothing (v4 `freshChat?.spoken… ?? chat.spoken…`).
     pub spoken_this_cycle_participant_ids: Option<String>,
+    /// `allowCrossCharacterVaultReads === true` — feeds the tool-message whisper
+    /// context (a VAULT_READ tool's result is public only when this is on).
+    pub allow_cross_character_vault_reads: bool,
 }
 
 /// The responding character (v4 `character`).
@@ -319,8 +323,13 @@ pub struct FinalizeOptions {
     pub character_participant: FinalizerParticipant,
     pub user_participant_id: Option<String>,
     pub is_multi_character: bool,
-    /// v4 `generatedImagePaths` (ids).
-    pub generated_image_ids: Vec<String>,
+    /// v4 `generatedImagePaths` — the full descriptors (ids feed the assistant
+    /// attachments; the descriptors feed `save_tool_messages`' image link/tag).
+    pub generated_image_paths: Vec<GeneratedImage>,
+    /// v4 `toolMessages` — the tool-result slate to persist as TOOL rows. Empty in
+    /// the current corpus (the tool loops W4.1e/f supply it); the persistence
+    /// primitive is `tool_execution_tier2`-proven.
+    pub tool_messages: Vec<ToolMessage>,
     /// v4 `preGeneratedAssistantMessageId` — pins the message id when set.
     pub pre_generated_assistant_message_id: Option<String>,
     pub profile: FinalizerProfile,
@@ -367,7 +376,8 @@ where
         character_participant,
         user_participant_id,
         is_multi_character,
-        generated_image_ids,
+        generated_image_paths,
+        tool_messages,
         pre_generated_assistant_message_id,
         profile,
         streaming,
@@ -523,9 +533,16 @@ where
     let write_model = profile.model_name.clone();
     let write_reasoning_content = streaming.reasoning_content.clone();
     let write_reasoning_segments = rebased_reasoning.clone().unwrap_or_default();
-    let write_images = generated_image_ids.clone();
+    let write_images = generated_image_paths.clone();
+    let write_tool_messages = tool_messages.clone();
     let write_confirmation = confirmation_fields.clone();
     let write_message_id = assistant_message_id.clone();
+    // v4 `whisperContext = { userParticipantId, allowCrossCharacterVaultReads:
+    // chat.allowCrossCharacterVaultReads === true }` (message-finalizer.service.ts:288).
+    let write_whisper = ToolWhisperContext {
+        user_participant_id: user_participant_id.clone(),
+        allow_cross_character_vault_reads: chat.allow_cross_character_vault_reads,
+    };
 
     db.write(move |writers| {
         let ctx = AssistantMessageContext {
@@ -548,6 +565,8 @@ where
             write_reasoning_content.as_deref(),
             &write_reasoning_segments,
             &write_images,
+            &write_tool_messages,
+            Some(&write_whisper),
             &write_confirmation,
         )
         .map(|_| ())
@@ -679,7 +698,8 @@ where
         usage: streaming.usage.map(to_done_usage),
         cache_usage: streaming.cache_usage.map(to_done_cache_usage),
         attachment_results: Some(streaming.attachment_results.clone().unwrap_or(Value::Null)),
-        tools_executed: false,
+        // v4 `toolsExecuted: toolMessages.length > 0` (message-finalizer.service.ts:464).
+        tools_executed: !tool_messages.is_empty(),
         turn: Some(DoneTurn {
             next_speaker_id: turn_info.next_speaker_id.clone(),
             reason: turn_info.reason.clone(),
@@ -1243,6 +1263,7 @@ mod tests {
             impersonating_participant_ids: vec!["p-imp".into()],
             participants: vec![json!({ "id": "p-user", "controlledBy": "user" })],
             spoken_this_cycle_participant_ids: None,
+            allow_cross_character_vault_reads: false,
         };
         assert!(is_user_driven_turn(&chat, "p-imp"));
         assert!(is_user_driven_turn(&chat, "p-user"));

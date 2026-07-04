@@ -114,6 +114,9 @@ use crate::services::primary_stream::{
 use crate::services::provider_failover::{
     self, AttemptEmptyResponseRecoveryOptions, DangerSettings, DangerousContentRouter,
 };
+use crate::services::tool_execution::{
+    save_tool_messages, GeneratedImage, SaveToolMessagesResult, ToolMessage, ToolWhisperContext,
+};
 use crate::services::turn_orchestrator::{
     self, ChainConfig, ChainDecision, ChainGuards, ChainReason,
 };
@@ -920,8 +923,12 @@ where
 
     // --- Tool loops (orchestrator.service.ts:1259–1378) ---
     // No tools this turn (corpus) → the native + text tool loops no-op. A
-    // non-empty tool slate is the wave-4 tool subsystem.
-    let tool_messages_len = 0usize;
+    // non-empty tool slate is the wave-4 tool subsystem (W4.1e/f). These stay
+    // empty until then, so the tool-only terminal branch below is corpus-dormant
+    // (its constituents are differential-proven — see that branch's comment).
+    let tool_messages: Vec<ToolMessage> = Vec::new();
+    let generated_image_paths: Vec<GeneratedImage> = Vec::new();
+    let tool_messages_len = tool_messages.len();
 
     // --- Empty-response recovery (orchestrator.service.ts:1380–1397) ---
     let content_was_flagged_dangerous = false;
@@ -1006,7 +1013,9 @@ where
                 character_participant: finalizer_participant,
                 user_participant_id: user_participant_id.clone(),
                 is_multi_character,
-                generated_image_ids: Vec::new(),
+                // Dormant until the tool loops (W4.1e/f) produce a slate.
+                generated_image_paths: Vec::new(),
+                tool_messages: Vec::new(),
                 pre_generated_assistant_message_id: Some(
                     pre_generated_assistant_message_id.clone(),
                 ),
@@ -1042,6 +1051,60 @@ where
         // response id scan; nothing after this reads it).
         existing_messages.clear();
         Ok(result)
+    } else if !tool_messages.is_empty() {
+        // Tool-only terminal (orchestrator.service.ts:1443–1479): no assistant
+        // prose, but tools executed → persist the TOOL rows, bump the chat's
+        // `updatedAt`, and emit the done frame with `toolsExecuted: true`.
+        // Corpus-dormant until the tool loops (W4.1e/f) fill `tool_messages` (v4's
+        // inline block cannot be isolated for an end-to-end drive without them).
+        // Its constituents are each differential-proven: `save_tool_messages`
+        // byte-exact vs v4 (`tool_execution_tier2` + the finalizer direct-drive),
+        // the `chats.update(updatedAt)` (`chats_tier2`), the done frame
+        // (`chat_events` self-tests).
+        let whisper = ToolWhisperContext {
+            user_participant_id: user_participant_id.clone(),
+            allow_cross_character_vault_reads: chat
+                .get("allowCrossCharacterVaultReads")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+        };
+        let save_result = persist_tools_only(
+            db,
+            &chat_id,
+            &user_id,
+            &character_id,
+            &character_participant_id,
+            whisper,
+            tool_messages,
+            generated_image_paths,
+        )
+        .await?;
+
+        sink.emit(ChatEvent::done(DonePayload {
+            message_id: save_result.first_tool_message_id.clone(),
+            participant_id: Some(character_participant_id.clone()),
+            usage: streaming_state.usage.map(to_done_usage),
+            cache_usage: streaming_state.cache_usage.map(to_done_cache_usage),
+            attachment_results: Some(
+                streaming_state
+                    .attachment_results
+                    .clone()
+                    .unwrap_or(Value::Null),
+            ),
+            tools_executed: true,
+            provider: Some(effective_profile.provider.clone()),
+            model_name: Some(effective_profile.model_name.clone()),
+            ..Default::default()
+        }));
+
+        Ok(ProcessMessageResult {
+            is_multi_character,
+            has_content: true,
+            message_id: save_result.first_tool_message_id.unwrap_or_default(),
+            user_participant_id,
+            is_paused,
+            scene_tracking_character_ids: None,
+        })
     } else {
         // Empty response (no tool messages in the corpus). Emit the done frame.
         let empty_reason = provider_failover::get_empty_response_reason(
@@ -1076,6 +1139,50 @@ where
             scene_tracking_character_ids: None,
         })
     }
+}
+
+/// The tool-only terminal's DB effect (orchestrator.service.ts:1449–1460):
+/// `saveToolMessages` (the TOOL rows + their image link/tag) then an explicit
+/// `repos.chats.update(chatId, { updatedAt: now })` — a second `updatedAt` bump on
+/// top of the per-message metadata side-effect. Isolated for clarity; its pieces
+/// are differential-proven (see the branch comment) since `process_message` cannot
+/// reach the branch until the tool loops land.
+#[allow(clippy::too_many_arguments)]
+async fn persist_tools_only(
+    db: &Db,
+    chat_id: &str,
+    user_id: &str,
+    character_id: &str,
+    participant_id: &str,
+    whisper: ToolWhisperContext,
+    tool_messages: Vec<ToolMessage>,
+    generated_image_paths: Vec<GeneratedImage>,
+) -> Result<SaveToolMessagesResult, DbError> {
+    let chat_id = chat_id.to_string();
+    let user_id = user_id.to_string();
+    let character_id = character_id.to_string();
+    let participant_id = participant_id.to_string();
+    db.write(move |writers| {
+        let w = writers.main();
+        let result = save_tool_messages(
+            w,
+            &chat_id,
+            &user_id,
+            &tool_messages,
+            &generated_image_paths,
+            Some(&character_id),
+            Some(&participant_id),
+            Some(&whisper),
+        )?;
+        // v4: `await repos.chats.update(chatId, { updatedAt: new Date()... })`.
+        let update = crate::db::chats::ChatUpdate {
+            updated_at: Some(crate::clock::now_iso()),
+            ..Default::default()
+        };
+        w.chats().update(&chat_id, &update)?;
+        Ok(result)
+    })
+    .await
 }
 
 /// Run the context-summary check (the finalizer's deferred invocation). The
@@ -1658,6 +1765,10 @@ fn to_finalizer_chat(chat: &Value) -> FinalizerChat {
             .cloned()
             .unwrap_or_default(),
         spoken_this_cycle_participant_ids: json_str(chat, "spokenThisCycleParticipantIds"),
+        allow_cross_character_vault_reads: chat
+            .get("allowCrossCharacterVaultReads")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
     }
 }
 

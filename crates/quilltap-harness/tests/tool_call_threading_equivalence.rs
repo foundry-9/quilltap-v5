@@ -104,6 +104,7 @@ fn tool_call_threading_matches_oracle() {
                         tool_name: m.tool_name.clone(),
                         content: m.content.clone(),
                         call_id: m.call_id.clone(),
+                        ..Default::default()
                     })
                     .collect();
                 serde_json::to_value(build_tool_result_messages(&msgs)).unwrap()
