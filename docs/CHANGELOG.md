@@ -671,6 +671,51 @@ strategy (identical in TS + Rust) for multi-iteration, the duplicate nudge, the
 parse-empty no-op, a mid-continuation stream failure, the iteration cap, empty-
 stripped-segment assembly (surrogate-pair UTF-16), and stopSequences forwarding.
 
+Phase 3 — wave 4 (W4.1d batch 4): the four search/introspection tool handlers,
+each byte-exact against v4's REAL handler and wired into `BuiltInToolRunner`.
+
+- `search` (`tools::search`): the Scriptorium unified search over memories (the
+  ported `search_memories_semantic`), conversations (new `db::conversation_search`
+  = v4 `searchConversationChunks`, a sibling of `document_search` over
+  `conversation_chunks` BLOB embeddings), documents (`document_search`), and
+  knowledge (the same document search narrowed per tier to `Knowledge/`), merged
+  and ranked. Reproduces the per-source error-swallowing branches, the
+  tier-ordered knowledge dedup (character > group > project > global, knowledge
+  wins over document for a shared chunk), the `qtap://` URI tagging via
+  `DocStoreUriResolver`, the operator/Brahma surface (memory forced off,
+  operator-wide stores + conversations by userId), the 500-char content
+  truncation, and the exact result-strings/labels (`(score*100).toFixed(0)%` via
+  the ported `to_fixed`). Serves both the standard and Brahma tool definitions.
+- `project_info` (`tools::project_info`): `get_info` (overview, roster, item
+  counts, and the linked store summary via the new pure leaf
+  `db::project_store_naming::pick_primary_project_store` = v4
+  `pickPrimaryProjectStore`) and `get_instructions`, byte-exact including the
+  no-project error.
+- `help_search` (`tools::help_search` + new `db::help_search`): semantic search
+  over `help_docs` embeddings with the automatic keyword fallback when embedding
+  fails (the `extract_search_terms` keyword extractor added to `embedding_vector`).
+  The `ensureHelpDocsSynced` disk index-build is a documented host seam (no-op once
+  `help_docs` is populated); the tool path is a pure read.
+- `request_full_context` (`tools::request_full_context`): flips the chat's
+  `requestFullContextOnNextMessage` flag. Ported as a self-contained single-column
+  `UPDATE` (byte-identical to v4's `repos.chats.update`, which does not bump
+  `updatedAt`) so it needs no `db/chats.rs` change.
+- Dispatcher: the runner now carries an injectable `ErasedEmbeddingProvider`
+  (default a never-succeeds `NoEmbeddingProvider`) so `search`/`help_search` reach
+  the embedding seam without a second generic on the shared struct; a real provider
+  wires with W4.1g.
+- New read helpers (all additive): `conversation_chunks::find_all_with_embeddings`,
+  `help_docs::find_all`/`find_all_with_embeddings`, `doc_mount_blobs::count_by_mount_point`,
+  `files::count_by_project_id`, `doc_mount_points::find_store_naming_by_id`.
+- Differential `search_tools_equivalence` (24 cases across two jest real-DB oracles
+  driving v4's REAL handlers, only `generateEmbeddingForUser` mocked to canned
+  vectors, `Date.now()` frozen): each case on a fresh two-DB fixture copy (search
+  bumps `lastAccessedAt`; request_full_context writes), comparing serialized result
+  JSON + `format*` strings (float-safe) and, for request_full_context, the full
+  `chats` row. `knowledge_injector` / `first_message_context` /
+  `tool_execution_process_tier3` re-verified green (the `document_search` module was
+  made public + a read added, no behavior change).
+
 Phase 3 — wave 4 (W4.1d batch 3a): the doc-edit foundation, part 3 — the path
 resolver + URI producers (completing batch 3a). Ported `resolveDocEditPath`
 (`doc_edit::path_resolver`) — the `document_store` scope (over the tiered mount

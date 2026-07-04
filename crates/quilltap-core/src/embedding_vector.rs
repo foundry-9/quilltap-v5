@@ -121,6 +121,245 @@ pub fn assert_embedding_dimensions_match(
     Ok(())
 }
 
+/// The keyword/phrase split v4's `extractSearchTerms` returns
+/// (`FallbackSearchResult`, minus the always-false `usedEmbedding` flag). Feeds
+/// [`text_similarity`].
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ExtractedSearchTerms {
+    /// De-duplicated, stop-word-filtered keywords (lowercased, length > 2),
+    /// sorted by descending length (stable — insertion order among ties).
+    pub keywords: Vec<String>,
+    /// Verbatim quoted phrases (quotes stripped), in first-appearance order.
+    pub exact_phrases: Vec<String>,
+}
+
+/// True for a JS `\w` character: ASCII `[A-Za-z0-9_]` (JS `\w` has no Unicode flag).
+fn is_js_word_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_'
+}
+
+/// True for a JS `\s` character (no-`u`-flag set): the ASCII whitespace plus the
+/// Unicode space separators V8's `\s` recognises.
+fn is_js_whitespace(c: char) -> bool {
+    matches!(
+        c,
+        '\u{0009}'
+            | '\u{000a}'
+            | '\u{000b}'
+            | '\u{000c}'
+            | '\u{000d}'
+            | '\u{0020}'
+            | '\u{00a0}'
+            | '\u{1680}'
+            | '\u{2000}'
+            ..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
+    )
+}
+
+/// v4 stop words (`extractSearchTerms`) — words filtered out of the keyword set.
+/// Transcribed verbatim (the source has a couple of harmless duplicates).
+const STOP_WORDS: &[&str] = &[
+    "a",
+    "an",
+    "the",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "have",
+    "has",
+    "had",
+    "do",
+    "does",
+    "did",
+    "will",
+    "would",
+    "could",
+    "should",
+    "may",
+    "might",
+    "must",
+    "shall",
+    "can",
+    "need",
+    "dare",
+    "ought",
+    "used",
+    "to",
+    "of",
+    "in",
+    "for",
+    "on",
+    "with",
+    "at",
+    "by",
+    "from",
+    "as",
+    "into",
+    "through",
+    "during",
+    "before",
+    "after",
+    "above",
+    "below",
+    "between",
+    "and",
+    "but",
+    "or",
+    "nor",
+    "so",
+    "yet",
+    "both",
+    "either",
+    "neither",
+    "not",
+    "only",
+    "own",
+    "same",
+    "than",
+    "too",
+    "very",
+    "just",
+    "also",
+    "i",
+    "me",
+    "my",
+    "myself",
+    "we",
+    "our",
+    "ours",
+    "ourselves",
+    "you",
+    "your",
+    "yours",
+    "yourself",
+    "yourselves",
+    "he",
+    "him",
+    "his",
+    "himself",
+    "she",
+    "her",
+    "hers",
+    "herself",
+    "it",
+    "its",
+    "itself",
+    "they",
+    "them",
+    "their",
+    "theirs",
+    "themselves",
+    "what",
+    "which",
+    "who",
+    "whom",
+    "this",
+    "that",
+    "these",
+    "those",
+    "am",
+    "here",
+    "there",
+    "when",
+    "where",
+    "why",
+    "how",
+    "all",
+    "each",
+    "few",
+    "more",
+    "most",
+    "other",
+    "some",
+    "such",
+    "no",
+    "any",
+    "if",
+    "then",
+    "because",
+    "while",
+    "although",
+    "though",
+    "once",
+];
+
+/// v4 `extractSearchTerms` — split a query into quoted exact-phrases and keywords
+/// for the keyword-fallback scorer.
+///
+/// Faithful to v4: extract `"…"` phrases (`/"[^"]+"/g`), strip each phrase's text
+/// from the query (JS `String.replace` — first occurrence per phrase) before
+/// keyword extraction, then lowercase, blank out every non-`\w`-non-`\s` char,
+/// split on whitespace runs, keep words of UTF-16 length > 2 that aren't stop
+/// words, de-dupe (first-seen), and sort by descending UTF-16 length (stable).
+pub fn extract_search_terms(text: &str) -> ExtractedSearchTerms {
+    // `/"[^"]+"/g` — non-overlapping `"…"` with a non-empty, quote-free body.
+    static PHRASE_RE: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r#""[^"]+""#).unwrap());
+
+    let phrase_matches: Vec<String> = PHRASE_RE
+        .find_iter(text)
+        .map(|m| m.as_str().to_string())
+        .collect();
+    let exact_phrases: Vec<String> = phrase_matches.iter().map(|p| p.replace('"', "")).collect();
+
+    // Remove each quoted phrase from the text (JS `.replace(phrase, '')` — first
+    // occurrence of each).
+    let mut clean_text = text.to_string();
+    for phrase in &phrase_matches {
+        if let Some(pos) = clean_text.find(phrase.as_str()) {
+            clean_text.replace_range(pos..pos + phrase.len(), "");
+        }
+    }
+
+    // lowercase → `[^\w\s]` to space → split on whitespace runs.
+    let lowered = clean_text.to_lowercase();
+    let blanked: String = lowered
+        .chars()
+        .map(|c| {
+            if is_js_word_char(c) || is_js_whitespace(c) {
+                c
+            } else {
+                ' '
+            }
+        })
+        .collect();
+
+    let mut keywords: Vec<String> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for word in blanked.split(is_js_whitespace) {
+        if word.is_empty() {
+            continue;
+        }
+        // `word.length > 2` is UTF-16 code units.
+        if word.encode_utf16().count() <= 2 {
+            continue;
+        }
+        if STOP_WORDS.contains(&word) {
+            continue;
+        }
+        if seen.insert(word.to_string()) {
+            keywords.push(word.to_string());
+        }
+    }
+    // Stable sort by descending UTF-16 length (ties keep first-seen order).
+    keywords.sort_by_key(|w| std::cmp::Reverse(w.encode_utf16().count()));
+
+    ExtractedSearchTerms {
+        keywords,
+        exact_phrases,
+    }
+}
+
 /// Fallback keyword/phrase text-similarity score in `[0, 1]`, used when no
 /// embedding is available. Exact phrase hits are worth 3 points each; keyword
 /// hits 1 point each, capped at the keyword count. Returns 0 when there is

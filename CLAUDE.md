@@ -2359,10 +2359,64 @@ fallback. **Tracked deferrals across 3b:** the photo group, the converted-blob
 `doc_open_document` fs path, the fs/obsidian/general mount branches (FsSeam), and
 `is_regex` grep's JS-regex parity.
 
+**Wave 4 (W4.1d batch 4): the four search/introspection tool handlers are DONE**
+(2026-07-04). Ported `search` / `project_info` / `help_search` /
+`request_full_context`, each byte-exact against v4's REAL handler and wired into
+`BuiltInToolRunner`. **`search`** (`tools::search`, v4
+`search-scriptorium-handler`) is the Scriptorium unified search over four sources
+— memories (the ported `search_memories_semantic`, `now_ms` injected;
+`recallContext` is off for this tool so its deferred re-rank stays unexercised),
+conversations (the new `db::conversation_search` = v4 `searchConversationChunks`, a
+faithful sibling of `document_search` over `conversation_chunks` BLOB embeddings —
+NOT merged, v4 keeps them separate), documents (`document_search`), and knowledge
+(the same document search narrowed per tier to `Knowledge/` with the tier-specific
+literal boosts) — reproducing the per-source error-swallowing branches, the
+tier-ordered dedup (character > group > project > global; the knowledge-labeled row
+wins a chunk shared with the deferred document rows), the `qtap://` URI tagging via
+`DocStoreUriResolver`, the operator/Brahma surface (memory forced off,
+operator-wide stores + operator-wide conversations by userId), the 500-char UTF-16
+content truncation, and the exact result-strings/labels (`(score*100).toFixed(0)%`
+via the ported `to_fixed`). Serves BOTH the standard `search` and the Brahma
+definitions (the handler validates with the full schema always; operator surface is
+the switch). **NOT purely read-only** — the memory branch bumps `lastAccessedAt`
+(v4 `updateAccessTimeBulk`). **`project_info`** (`tools::project_info`) does
+`get_info` (roster + item counts + the linked store summary via the new pure leaf
+`db::project_store_naming::pick_primary_project_store` = v4 `pickPrimaryProjectStore`,
+tier-1 unit-tested) and `get_instructions`. **`help_search`** (`tools::help_search`
++ new `db::help_search`) is semantic search over `help_docs` embeddings with the
+automatic keyword fallback on an embedding failure (the `extract_search_terms`
+keyword extractor added to `embedding_vector`, JS `\w`/`\s`/stop-word faithful);
+v4's `ensureHelpDocsSynced` disk index-build is a **documented host seam** (a no-op
+once `help_docs` has rows — the tool path only reads stored embeddings, the
+knowledge-fixture precedent). **`request_full_context`** (`tools::request_full_context`)
+flips the chat's `requestFullContextOnNextMessage` flag; ported as a self-contained
+single-column `UPDATE` (byte-identical to v4's `repos.chats.update`, which does not
+mint `updatedAt`) so it needs **no `db/chats.rs` change** (that file is owned by the
+parallel doc-edit-handler unit this round). The dispatcher now carries an
+injectable `ErasedEmbeddingProvider` (default a never-succeeds `NoEmbeddingProvider`
+— faithful to "no embedding profile": the search branches degrade, `help_search`
+falls back to keyword) so `search`/`help_search` reach the embedding seam without a
+second generic on the shared `BuiltInToolRunner`; a real provider wires with W4.1g.
+New additive read helpers: `conversation_chunks::find_all_with_embeddings`,
+`help_docs::find_all`/`find_all_with_embeddings`, `doc_mount_blobs::count_by_mount_point`,
+`files::count_by_project_id`, `doc_mount_points::find_store_naming_by_id`. Verified
+by `search_tools_equivalence` — 24 cases across two jest real-DB oracles driving
+v4's REAL handlers (only `generateEmbeddingForUser` mocked to canned dim-8 vectors,
+`Date.now()` frozen to the pinned `now_ms`), each case on a fresh two-DB fixture
+copy (search bumps `lastAccessedAt`; request_full_context writes), comparing
+serialized result JSON + `format*` output byte-for-byte (float-safe: identical f64
+bits render identically under ryu + V8, js-number + preserve_order applied) and,
+for request_full_context, the full `chats` row (flag flips to 1, `updatedAt` +
+every other column preserved). `knowledge_injector` / `first_message_context` /
+`tool_execution_process_tier3` re-verified green (the `document_search` module was
+made `pub` + one read added — no behavior change). **Tracked deferrals:** the
+provider wiring (W4.1g); `search`'s operator-surface `run_sql`-adjacent Brahma
+gating stays as-is; `help_search`'s disk sync (host seam).
+
 The rest of wave 4 (the remaining tool subsystem — `buildTools` / registry
-(W4.1g), the remaining handler-catalog batches [3b the ~26 doc-edit handlers
-over the now-complete 3a foundation, 4 embedding/search, 5 host-seamed], the
-agent-mode resolver — danger, answer-confirmation,
+(W4.1g) and handler batch 5 (host-seamed: `generate_image`, `search_web`,
+`run_sql`, `state`, `ask_carina`, `send_mail`/`list_email`, plus the deferred
+photo trio) — the agent-mode resolver, danger, answer-confirmation,
 courier/compression-cache/regenerate-swipe, carina query, buildContext
 seam-closers, provider manifest) follows per the chat-orchestration
 decomposition.

@@ -56,7 +56,7 @@ use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
 
 use super::DbError;
-use crate::embedding_blob::float32_to_blob;
+use crate::embedding_blob::{blob_to_float32, float32_to_blob};
 
 /// Fields for creating a conversation chunk (the `Omit<ConversationChunk,'id'|
 /// timestamps>` shape). `embedding` is the BLOB column (`None`/empty → SQL NULL,
@@ -106,9 +106,65 @@ pub struct ConversationChunksRepository<'c> {
     conn: &'c Connection,
 }
 
+/// A conversation chunk with its decoded embedding — the read shape
+/// [`ConversationChunksRepository::find_all_with_embeddings`] returns (v4
+/// `ConversationChunk` with a non-null embedding). Consumed by the Scriptorium
+/// `search` tool's conversation source ([`super::conversation_search`]).
+#[derive(Debug, Clone)]
+pub struct EmbeddedChunk {
+    pub id: String,
+    pub chat_id: String,
+    /// `interchangeIndex` — a JS number (REAL affinity); carried as `f64`.
+    pub interchange_index: f64,
+    pub content: String,
+    pub participant_names: Vec<String>,
+    pub embedding: Vec<f32>,
+}
+
 impl<'c> ConversationChunksRepository<'c> {
     pub fn new(conn: &'c Connection) -> Self {
         Self { conn }
+    }
+
+    /// v4 `findAllWithEmbeddings` = `_findAll()` filtered to a non-null, non-empty
+    /// embedding. Reads every chunk (no scoping, rowid/insertion order) and keeps
+    /// only those carrying a decoded embedding. Read-only.
+    pub fn find_all_with_embeddings(&self) -> Result<Vec<EmbeddedChunk>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, chatId, interchangeIndex, content, participantNames, embedding \
+             FROM conversation_chunks WHERE embedding IS NOT NULL",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            let blob: Vec<u8> = r.get(5)?;
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, f64>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, String>(4)?,
+                blob,
+            ))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (id, chat_id, interchange_index, content, participant_names_json, blob) = row?;
+            let embedding = blob_to_float32(&blob);
+            // v4's `.length > 0` guard.
+            if embedding.is_empty() {
+                continue;
+            }
+            let participant_names: Vec<String> =
+                serde_json::from_str(&participant_names_json).unwrap_or_default();
+            out.push(EmbeddedChunk {
+                id,
+                chat_id,
+                interchange_index,
+                content,
+                participant_names,
+                embedding,
+            });
+        }
+        Ok(out)
     }
 
     /// Insert a conversation chunk with the given pinned id + timestamps. The

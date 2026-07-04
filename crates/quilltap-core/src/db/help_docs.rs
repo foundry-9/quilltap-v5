@@ -52,7 +52,7 @@ use rusqlite::{params, Connection};
 
 use super::DbError;
 use crate::clock::now_iso;
-use crate::embedding_blob::float32_to_blob;
+use crate::embedding_blob::{blob_to_float32, float32_to_blob};
 
 /// Fields for creating a help doc (the `Omit<HelpDoc,'id'|timestamps>` shape).
 /// `embedding` is the BLOB column: `None` or an empty vector → SQL NULL, a
@@ -106,9 +106,91 @@ pub struct HelpDocsRepository<'c> {
     conn: &'c Connection,
 }
 
+/// A help doc without its embedding (v4 `HelpDocument`) — the
+/// [`HelpDocsRepository::find_all`] read shape, consumed by the help-search
+/// keyword fallback / listing.
+#[derive(Debug, Clone)]
+pub struct HelpDocRow {
+    pub id: String,
+    pub title: String,
+    pub path: String,
+    pub url: String,
+    pub content: String,
+}
+
+/// A help doc carrying its decoded embedding (v4 `HelpDocumentWithEmbedding`) —
+/// the [`HelpDocsRepository::find_all_with_embeddings`] read shape, consumed by
+/// the help-search semantic path. A NULL/empty stored embedding yields an empty
+/// vector (the search skips those, matching v4's `length === 0` guard).
+#[derive(Debug, Clone)]
+pub struct HelpDocEmbeddedRow {
+    pub id: String,
+    pub title: String,
+    pub path: String,
+    pub url: String,
+    pub content: String,
+    pub embedding: Vec<f32>,
+}
+
 impl<'c> HelpDocsRepository<'c> {
     pub fn new(conn: &'c Connection) -> Self {
         Self { conn }
+    }
+
+    /// v4 `findAll` — every help doc (no scoping, rowid/insertion order), sans
+    /// embedding. Read-only.
+    pub fn find_all(&self) -> Result<Vec<HelpDocRow>, DbError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, title, path, url, content FROM help_docs")?;
+        let rows = stmt.query_map([], |r| {
+            Ok(HelpDocRow {
+                id: r.get(0)?,
+                title: r.get(1)?,
+                path: r.get(2)?,
+                url: r.get(3)?,
+                content: r.get(4)?,
+            })
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
+    /// v4 `findAllWithEmbeddings` — every help doc with its decoded embedding
+    /// (rowid/insertion order). A NULL embedding decodes to an empty vector.
+    /// Read-only.
+    pub fn find_all_with_embeddings(&self) -> Result<Vec<HelpDocEmbeddedRow>, DbError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, title, path, url, content, embedding FROM help_docs")?;
+        let rows = stmt.query_map([], |r| {
+            let blob: Option<Vec<u8>> = r.get(5)?;
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, String>(4)?,
+                blob,
+            ))
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            let (id, title, path, url, content, blob) = r?;
+            let embedding = blob.as_deref().map(blob_to_float32).unwrap_or_default();
+            out.push(HelpDocEmbeddedRow {
+                id,
+                title,
+                path,
+                url,
+                content,
+                embedding,
+            });
+        }
+        Ok(out)
     }
 
     /// Insert a help doc with the given pinned id + timestamps. The embedding is

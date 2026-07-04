@@ -159,6 +159,19 @@ impl<'c> FilesRepository<'c> {
         Self { conn }
     }
 
+    /// v4 `findAll().filter(f => f.projectId === projectId).length` — the number of
+    /// files bound to a project. `findAll` is unscoped, so a `COUNT WHERE
+    /// projectId = ?` yields the identical count. Used by the `project_info` tool.
+    /// Read-only.
+    pub fn count_by_project_id(&self, project_id: &str) -> Result<i64, DbError> {
+        let n: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM files WHERE projectId = ?1",
+            rusqlite::params![project_id],
+            |row| row.get(0),
+        )?;
+        Ok(n)
+    }
+
     /// Insert a file entry with the given pinned id + timestamps. `linkedTo`/`tags`
     /// → compact JSON array text; `size`/`width`/`height` bind `f64`/`Option<f64>`
     /// (REAL); `isPlainText` binds `Option<i64>` (0/1 or NULL); the enum + nullable

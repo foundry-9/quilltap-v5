@@ -450,9 +450,9 @@ Ordered by dependency; several are mutually independent once wave 2 lands:
     file reads (env seam supports them, corpus requests only `.version`); the
     `terminal_read` scrollback source; `read_conversation`'s deprecated
     `findByCharacterIdRaw`.
-  - Remaining handler-catalog batches: 3 (doc-edit, ~20),
-    4 (embedding/search), 5 (host-seamed). Then the text loop (W4.1f) +
-    `buildTools`/spine wiring (W4.1g).
+  - Remaining handler-catalog batches: 3b (doc-edit, ~26), 5 (host-seamed), and
+    `search_web` (W4.1d5, external service). **Batch 4 (embedding/search) DONE.**
+    Then `buildTools`/spine wiring (W4.1g).
 
 - **W4.1d batch 2: the seven wardrobe tool handlers — ported and green**
   (2026-07-04). `tools::{wardrobe_list, wardrobe_read, wardrobe_create,
@@ -581,3 +581,30 @@ Ordered by dependency; several are mutually independent once wave 2 lands:
   empty-segment surrogate-pair assembly, stopSequences forwarding). **Deferrals:**
   the provider-text-markers strategy (W4.7), the real tool-mode/tool-slate plumbing
   (W4.1g).
+
+- **W4.1d batch 4: the four search/introspection tool handlers — ported and green**
+  (2026-07-04). `tools::{search, project_info, help_search, request_full_context}`,
+  each byte-exact vs v4's REAL handler + wired into `BuiltInToolRunner` (contiguous
+  `// W4.1d4: search tools` block). `search` (v4 `search-scriptorium-handler`) is the
+  unified multi-source search — memories (`search_memories_semantic`), conversations
+  (new `db::conversation_search`, sibling of `document_search`, NOT merged),
+  documents (`document_search`), knowledge (the same narrowed per-tier to
+  `Knowledge/`) — reproducing the per-source error-swallowing, tier-ordered dedup
+  (character>group>project>global, knowledge wins), `qtap://` URI tagging, the
+  operator/Brahma surface, 500-char truncation, and exact result strings; serves
+  both tool definitions. `project_info` (over the new pure leaf
+  `db::project_store_naming::pick_primary_project_store`). `help_search` (new
+  `db::help_search`: semantic + keyword fallback on embedding failure via
+  `extract_search_terms`; the `ensureHelpDocsSynced` disk sync is a host seam).
+  `request_full_context` (a self-contained single-column `UPDATE` = v4's
+  no-`updatedAt`-bump `chats.update`, so **no `db/chats.rs` change**). The dispatcher
+  gained an injectable `ErasedEmbeddingProvider` (default never-succeeds) so
+  `search`/`help_search` reach the embedding seam without a second generic on the
+  shared struct; real provider wires W4.1g. `search_tools_equivalence` — 24 cases,
+  two jest real-DB oracles (only `generateEmbeddingForUser` canned, `Date.now()`
+  frozen), per-case fresh two-DB fixture copy (search bumps `lastAccessedAt`;
+  request_full_context writes), serialized-JSON-string + `format*` compare
+  (float-safe) + the full `chats` row for request_full_context.
+  `knowledge_injector`/`first_message_context`/`tool_execution_process_tier3`
+  re-verified green. **The tool-handler catalog now has only batch 3b (doc-edit) +
+  batch 5 (host-seamed) + `search_web` (W4.1d5, external service) outstanding.**

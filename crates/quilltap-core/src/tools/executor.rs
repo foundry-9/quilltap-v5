@@ -56,12 +56,13 @@ use serde_json::{json, Map, Value};
 
 use super::doc_edit::{execute_doc_edit_tool, format_doc_edit_results, DocEditToolContext};
 use super::{
-    annotations, doc_edit, help, read_conversation, rng, self_inventory, terminal,
-    wardrobe_archive, wardrobe_create, wardrobe_list, wardrobe_read, wardrobe_take_off,
-    wardrobe_update, wardrobe_wear, whisper,
+    annotations, doc_edit, help, help_search, project_info, read_conversation,
+    request_full_context, rng, search, self_inventory, terminal, wardrobe_archive, wardrobe_create,
+    wardrobe_list, wardrobe_read, wardrobe_take_off, wardrobe_update, wardrobe_wear, whisper,
 };
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read};
+use crate::model::embedding::ErasedEmbeddingProvider;
 use crate::services::tool_execution::{ToolCall, ToolExecutionContext, ToolResult, ToolRunner};
 use crate::tools::self_inventory::SelfInventoryEnv;
 
@@ -182,6 +183,11 @@ pub const PORTED_TOOLS: &[&str] = &[
     "doc_read_blob",
     "doc_list_blobs",
     "doc_delete_blob",
+    // W4.1d4: search tools
+    "search",
+    "project_info",
+    "help_search",
+    "request_full_context",
 ];
 
 /// The doc-edit tools NOT yet ported (the photo trio) — a tracked scoped deferral
@@ -273,17 +279,24 @@ pub struct BuiltInToolRunner<F: ToolRunner = LoudFallbackRunner> {
     db: Db,
     self_inventory_env: SelfInventoryEnv,
     scrollback: Arc<dyn TerminalScrollbackSource>,
+    /// The embedding provider the `search` / `help_search` tools use (v4's
+    /// `generateEmbeddingForUser`). Defaults to the always-failing
+    /// [`ErasedEmbeddingProvider::none`] until a real provider is wired (W4.1g);
+    /// with no provider the search branches degrade gracefully (v4's "no embedding
+    /// profile" behavior) and `help_search` falls back to keyword search.
+    embedding_provider: ErasedEmbeddingProvider,
     fallback: F,
 }
 
 impl BuiltInToolRunner<LoudFallbackRunner> {
     /// Build a runner with the loud production fallback + the empty scrollback
-    /// source.
+    /// source + no embedding provider.
     pub fn new(db: Db, self_inventory_env: SelfInventoryEnv) -> Self {
         BuiltInToolRunner {
             db,
             self_inventory_env,
             scrollback: Arc::new(EmptyScrollback),
+            embedding_provider: ErasedEmbeddingProvider::none(),
             fallback: LoudFallbackRunner,
         }
     }
@@ -297,8 +310,16 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             db: self.db,
             self_inventory_env: self.self_inventory_env,
             scrollback: self.scrollback,
+            embedding_provider: self.embedding_provider,
             fallback,
         }
+    }
+
+    /// Inject the embedding provider the `search` / `help_search` tools use
+    /// (production wires the real one; the core default never succeeds).
+    pub fn with_embedding_provider(mut self, provider: ErasedEmbeddingProvider) -> Self {
+        self.embedding_provider = provider;
+        self
     }
 
     /// Replace the terminal-scrollback source (production wires PTY/transcript
@@ -337,6 +358,11 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             "wardrobe_archive" => self.run_wardrobe_archive(tc, ctx).await,
             "wardrobe_wear" => self.run_wardrobe_wear(tc, ctx).await,
             "wardrobe_take_off" => self.run_wardrobe_take_off(tc, ctx).await,
+            // W4.1d4: search tools
+            "search" => self.run_search(tc, ctx).await,
+            "project_info" => self.run_project_info(tc, ctx),
+            "help_search" => self.run_help_search(tc, ctx).await,
+            "request_full_context" => self.run_request_full_context(tc, ctx).await,
             // W4.1d3b: every ported doc-edit tool routes through one handler.
             n if is_ported_doc_edit_tool(n) => self.run_doc_edit(tc, ctx).await,
             // `handles` guards the set, so this is unreachable.
@@ -642,6 +668,132 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             }
         }
         ok("self_inventory", Value::Object(result))
+    }
+
+    // ── W4.1d4: search tools ──────────────────────────────────────────────
+
+    // -- search (Scriptorium unified search; tool-executor.ts:938) ----------
+    async fn run_search(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        // v4's dispatcher guard: a character surface needs a character; the
+        // operator surface (Brahma Console) is character-less.
+        if ctx.character_id.is_none() && !ctx.operator_surface {
+            return fail("search", "Search requires a character context");
+        }
+        let context = search::SearchContext {
+            user_id: ctx.user_id.clone(),
+            character_id: ctx.character_id.clone(),
+            embedding_profile_id: ctx.embedding_profile_id.clone(),
+            project_id: ctx.project_id.clone(),
+            operator_surface: ctx.operator_surface,
+        };
+        let out = search::execute_search_scriptorium(
+            &self.db,
+            &self.embedding_provider,
+            &context,
+            &tc.arguments,
+            crate::clock::now_unix_ms() as f64,
+        )
+        .await;
+        if out.success {
+            // v4: `success && results ? format : error || 'No results found'`.
+            let formatted = out
+                .results
+                .as_ref()
+                .map(|r| search::format_search_scriptorium_results(r))
+                .unwrap_or_else(|| "No results found".to_string());
+            ok(
+                "search",
+                json!({
+                    "formattedText": formatted,
+                    "results": out.results,
+                    "totalFound": out.total_found,
+                    "query": out.query,
+                }),
+            )
+        } else {
+            fail("search", out.error.unwrap_or_default())
+        }
+    }
+
+    // -- project_info (tool-executor.ts:434) --------------------------------
+    fn run_project_info(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        // v4's dispatcher guard: project_info needs a project context.
+        let Some(project_id) = ctx.project_id.clone() else {
+            return fail("project_info", "Project info requires a project context");
+        };
+        let context = project_info::ProjectInfoContext {
+            user_id: ctx.user_id.clone(),
+            project_id,
+            embedding_profile_id: ctx.embedding_profile_id.clone(),
+        };
+        let out = project_info::execute_project_info(&self.db, &context, &tc.arguments);
+        let formatted = project_info::format_project_info(&out);
+        if out.success {
+            ok(
+                "project_info",
+                json!({
+                    "formattedText": formatted,
+                    "action": out.action,
+                    "data": out.data,
+                }),
+            )
+        } else {
+            fail("project_info", out.error.unwrap_or_default())
+        }
+    }
+
+    // -- help_search (tool-executor.ts:491) ---------------------------------
+    async fn run_help_search(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        let out = help_search::execute_help_search(
+            &self.db,
+            &self.embedding_provider,
+            &ctx.user_id,
+            &tc.arguments,
+        )
+        .await;
+        if out.success {
+            // v4: `success && results ? format : error || 'No help documentation found'`.
+            let formatted = out
+                .results
+                .as_ref()
+                .map(|r| help_search::format_help_search(r))
+                .unwrap_or_else(|| "No help documentation found".to_string());
+            ok(
+                "help_search",
+                json!({
+                    "formattedText": formatted,
+                    "results": out.results,
+                    "totalFound": out.total_found,
+                    "query": out.query,
+                }),
+            )
+        } else {
+            fail("help_search", out.error.unwrap_or_default())
+        }
+    }
+
+    // -- request_full_context (tool-executor.ts:470) ------------------------
+    async fn run_request_full_context(
+        &self,
+        tc: &ToolCall,
+        ctx: &ToolExecutionContext,
+    ) -> ToolResult {
+        let out = request_full_context::execute_request_full_context(
+            &self.db,
+            &ctx.chat_id,
+            &tc.arguments,
+        )
+        .await;
+        let formatted = request_full_context::format_request_full_context(&out);
+        if out.success {
+            ok(
+                "request_full_context",
+                json!({ "formattedText": formatted }),
+            )
+        } else {
+            // v4 maps the error from `result.message`.
+            fail("request_full_context", out.message)
+        }
     }
 
     // ── wardrobe tools (tool-executor.ts:667–826) ─────────────────────────

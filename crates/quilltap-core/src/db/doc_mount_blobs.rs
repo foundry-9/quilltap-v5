@@ -229,6 +229,21 @@ impl<'c> DocMountBlobsRepository<'c> {
             })
     }
 
+    /// v4 `listByMountPoint(mountPointId).length` — the number of blob-backed
+    /// files linked to a mount point (join `doc_mount_file_links` → blobs by
+    /// `fileId`). Used by the `project_info` tool's store summary (it only needs
+    /// the count). Read-only.
+    pub fn count_by_mount_point(&self, mount_point_id: &str) -> Result<i64, DbError> {
+        let n: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM doc_mount_file_links l \
+               JOIN doc_mount_blobs b ON b.fileId = l.fileId \
+              WHERE l.mountPointId = ?1",
+            params![mount_point_id],
+            |row| row.get(0),
+        )?;
+        Ok(n)
+    }
+
     /// Plain delete by id (v4 `delete`). Returns `false` when no row matched.
     pub fn delete(&self, id: &str) -> Result<bool, DbError> {
         let affected = self

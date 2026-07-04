@@ -4,6 +4,8 @@
 
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
 
 /// Result of an embedding operation. Mirrors v4's `EmbeddingResult`: the vector
 /// is unit-length (L2-normalised) so downstream cosine similarity reduces to a
@@ -159,6 +161,103 @@ impl EmbeddingProvider for CannedEmbeddingProvider {
             }
         };
         async move { result }
+    }
+}
+
+/// An [`EmbeddingProvider`] that always fails — the default the tool dispatcher
+/// holds until a real provider is wired (W4.1g). Faithful to v4's "no embedding
+/// profile configured" state: the `search` tool's branches swallow the failure and
+/// continue, and `help_search` falls back to keyword search.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoEmbeddingProvider;
+
+impl EmbeddingProvider for NoEmbeddingProvider {
+    fn generate_embedding_for_user(
+        &self,
+        text: &str,
+        _user_id: &str,
+        _profile_id: Option<&str>,
+        _priority: EmbeddingPriority,
+    ) -> impl Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send {
+        let len = text.len();
+        async move {
+            Err(EmbeddingError::new(format!(
+                "no embedding provider configured ({len} chars)"
+            )))
+        }
+    }
+}
+
+/// Object-safe shim over [`EmbeddingProvider`] — the async-fn-in-trait return type
+/// is not dyn-compatible, so this boxes the future to let a runner hold a provider
+/// behind an `Arc<dyn …>` without a generic parameter.
+pub trait DynEmbeddingProvider: Send + Sync {
+    fn generate_embedding_for_user_dyn<'a>(
+        &'a self,
+        text: &'a str,
+        user_id: &'a str,
+        profile_id: Option<&'a str>,
+        priority: EmbeddingPriority,
+    ) -> Pin<Box<dyn Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send + 'a>>;
+}
+
+impl<P: EmbeddingProvider + Send + Sync> DynEmbeddingProvider for P {
+    fn generate_embedding_for_user_dyn<'a>(
+        &'a self,
+        text: &'a str,
+        user_id: &'a str,
+        profile_id: Option<&'a str>,
+        priority: EmbeddingPriority,
+    ) -> Pin<Box<dyn Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send + 'a>> {
+        Box::pin(self.generate_embedding_for_user(text, user_id, profile_id, priority))
+    }
+}
+
+/// A type-erased [`EmbeddingProvider`] (an `Arc<dyn DynEmbeddingProvider>`) that is
+/// itself an [`EmbeddingProvider`]. Lets the tool dispatcher carry an injectable
+/// provider as one field (default [`NoEmbeddingProvider`]) rather than a generic
+/// parameter — the `search` / `help_search` handlers take a generic `P`, and this
+/// erased wrapper satisfies it.
+#[derive(Clone)]
+pub struct ErasedEmbeddingProvider(Arc<dyn DynEmbeddingProvider>);
+
+impl ErasedEmbeddingProvider {
+    /// Wrap a concrete provider.
+    pub fn new<P: EmbeddingProvider + Send + Sync + 'static>(provider: P) -> Self {
+        Self(Arc::new(provider))
+    }
+
+    /// The always-failing default (no provider wired).
+    pub fn none() -> Self {
+        Self(Arc::new(NoEmbeddingProvider))
+    }
+}
+
+impl Default for ErasedEmbeddingProvider {
+    fn default() -> Self {
+        Self::none()
+    }
+}
+
+impl EmbeddingProvider for ErasedEmbeddingProvider {
+    fn generate_embedding_for_user(
+        &self,
+        text: &str,
+        user_id: &str,
+        profile_id: Option<&str>,
+        priority: EmbeddingPriority,
+    ) -> impl Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send {
+        // Own the inputs + the Arc so the returned future is `'static` (no borrow of
+        // `&self`/args escapes — mirrors how the canned provider owns its result).
+        let inner = Arc::clone(&self.0);
+        let text = text.to_string();
+        let user_id = user_id.to_string();
+        let profile_id = profile_id.map(str::to_string);
+        async move {
+            inner
+                .generate_embedding_for_user_dyn(&text, &user_id, profile_id.as_deref(), priority)
+                .await
+        }
     }
 }
 

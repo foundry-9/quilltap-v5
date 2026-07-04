@@ -33,9 +33,9 @@
 //!   `mount_point_ids`, so those branches are exercised only by the (out-of-scope)
 //!   tool path.
 
-mod document_search;
+pub mod document_search;
 
-pub use document_search::{DocumentSearchOptions, DocumentSearchResult};
+pub use document_search::{search_document_chunks, DocumentSearchOptions, DocumentSearchResult};
 
 /// The `qtap://` URI codec's canonical home is [`crate::doc_edit::qtap_uri`]; this
 /// re-export keeps the historical `knowledge_injector::qtap_uri::…` path (the
@@ -56,7 +56,7 @@ use crate::token_estimation::estimate_tokens;
 use qtap_uri::{format_doc_store_uri, format_self_uri};
 use serde_json::Value;
 
-use self::document_search::{find_link_with_file_by_mount_point_and_path, search_document_chunks};
+use self::document_search::find_link_with_file_by_mount_point_and_path;
 
 const DEFAULT_CANDIDATE_LIMIT: usize = 5;
 const DEFAULT_INLINE_TOKEN_THRESHOLD: i64 = 500;

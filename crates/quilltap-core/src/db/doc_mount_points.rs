@@ -361,6 +361,37 @@ impl<'c> DocMountPointsRepository<'c> {
         Ok(row)
     }
 
+    /// Scoped `findById` for the `project_info` tool's store summary — returns the
+    /// `(id, name, mountType, storeType)` subset that `pickPrimaryProjectStore` +
+    /// the store summary read (v4 fetches the full `DocMountPoint`; the tool uses
+    /// only these four). `storeType` is read as `Option<String>` for parity with
+    /// v4's optional `storeType`. `None` when the id is absent.
+    pub fn find_store_naming_by_id(
+        &self,
+        id: &str,
+    ) -> Result<Option<super::project_store_naming::StoreLike>, DbError> {
+        let row = self
+            .conn
+            .query_row(
+                "SELECT id, name, mountType, storeType FROM doc_mount_points WHERE id = ?1",
+                params![id],
+                |row| {
+                    Ok(super::project_store_naming::StoreLike {
+                        id: row.get::<_, String>(0)?,
+                        name: row.get::<_, String>(1)?,
+                        mount_type: row.get::<_, String>(2)?,
+                        store_type: row.get::<_, Option<String>>(3)?,
+                    })
+                },
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+        Ok(row)
+    }
+
     /// v4 `findByName` — the ENABLED mount points whose `name.trim().toLowerCase()`
     /// matches `name.trim().toLowerCase()`. Names are NOT unique (user-renameable),
     /// so this can return more than one row. Returns each match's `(id, storeType)`

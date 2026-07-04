@@ -1,0 +1,171 @@
+{
+  "$comment": "Fixture + corpus spec for the W4.1d4 search/introspection tool differential (request_full_context, project_info, help_search, search). ONE two-DB fixture (main + mount-index) is baked once; each oracle/harness case runs on a fresh copy. Canned embeddings are dim-8 (query dim must equal stored dim). cosineSimilarity here is a raw dot product (vectors NOT re-normalized), so a unit basis-vector query e_k dotted with a stored vector whose k-th component is s yields exactly s — giving exact control over which items clear minScore (0.3) and their ordering. Every store/character/project/chat/memory id is pinned so request_full_context + project_info compare with ZERO normalization; the char-vault mount id is minted and read back on both sides.",
+  "$safety": "testPepperBase64 is the SAME throwaway key the tiered-mount-pool + other fixtures use — never a real pepper.",
+  "testPepperBase64": "3q2+796tvu3erb7t3q2+796tvu3erb7t3q2+796tvu0=",
+
+  "userId": "a0000000-0000-4000-8000-000000000001",
+  "wrongUserId": "a0000000-0000-4000-8000-0000000000ff",
+  "embeddingProfileId": null,
+
+  "charAId": "c8000000-0000-4000-8000-00000000000a",
+  "charBId": "c8000000-0000-4000-8000-00000000000b",
+
+  "generalMountPointId": "e8000000-0000-4000-8000-0000000000a1",
+  "generalStoreName": "Quilltap General",
+
+  "projectId": "d8000000-0000-4000-8000-000000000002",
+  "projectName": "Aurora Project",
+  "projectDescription": "A project about celestial navigation.",
+  "projectInstructions": "Always cite the star charts.",
+
+  "minimalProjectId": "d8000000-0000-4000-8000-000000000003",
+  "minimalProjectName": "Bare Project",
+
+  "bogusProjectId": "d8000000-0000-4000-8000-0000000000ee",
+
+  "chatAId": "f8000000-0000-4000-8000-000000000001",
+  "chatMinimalId": "f8000000-0000-4000-8000-000000000009",
+
+  "characterA": {
+    "id": "c8000000-0000-4000-8000-00000000000a",
+    "userId": "a0000000-0000-4000-8000-000000000001",
+    "name": "Ada Responding",
+    "identity": "The responding character.",
+    "description": "",
+    "manifesto": "",
+    "personality": "",
+    "exampleDialogues": "",
+    "title": "",
+    "firstMessage": "",
+    "talkativeness": 0.5,
+    "pronouns": { "subject": "they", "object": "them", "possessive": "theirs" },
+    "aliases": [],
+    "physicalDescription": null,
+    "systemPrompts": [],
+    "scenarios": [],
+    "controlledBy": "llm",
+    "isFavorite": false,
+    "npc": false,
+    "defaultImageId": null,
+    "defaultConnectionProfileId": null,
+    "defaultPartnerId": null,
+    "defaultRoleplayTemplateId": null,
+    "defaultImageProfileId": null,
+    "sillyTavernData": null,
+    "defaultAgentModeEnabled": null,
+    "defaultHelpToolsEnabled": null,
+    "defaultTimestampConfig": null,
+    "defaultScenarioId": null,
+    "defaultSystemPromptId": null,
+    "characterDocumentMountPointId": null,
+    "canDressThemselves": null,
+    "canCreateOutfits": null,
+    "systemTransparency": null,
+    "coreWhisperEnabled": null,
+    "canBeCarina": null,
+    "partnerLinks": [],
+    "tags": [],
+    "avatarOverrides": []
+  },
+  "characterB": {
+    "id": "c8000000-0000-4000-8000-00000000000b",
+    "userId": "a0000000-0000-4000-8000-000000000001",
+    "name": "Bram Roster",
+    "identity": "A roster-only character.",
+    "description": "",
+    "manifesto": "",
+    "personality": "",
+    "exampleDialogues": "",
+    "title": "",
+    "firstMessage": "",
+    "talkativeness": 0.5,
+    "pronouns": { "subject": "he", "object": "him", "possessive": "his" },
+    "aliases": [],
+    "physicalDescription": null,
+    "systemPrompts": [],
+    "scenarios": [],
+    "controlledBy": "llm",
+    "isFavorite": false,
+    "npc": false,
+    "defaultImageId": null,
+    "defaultConnectionProfileId": null,
+    "defaultPartnerId": null,
+    "defaultRoleplayTemplateId": null,
+    "defaultImageProfileId": null,
+    "sillyTavernData": null,
+    "defaultAgentModeEnabled": null,
+    "defaultHelpToolsEnabled": null,
+    "defaultTimestampConfig": null,
+    "defaultScenarioId": null,
+    "defaultSystemPromptId": null,
+    "characterDocumentMountPointId": null,
+    "canDressThemselves": null,
+    "canCreateOutfits": null,
+    "systemTransparency": null,
+    "coreWhisperEnabled": null,
+    "canBeCarina": null,
+    "partnerLinks": [],
+    "tags": [],
+    "avatarOverrides": []
+  },
+
+  "$nowMs": 1767225600000,
+  "$nowMsComment": "2026-01-01T00:00:00.000Z — the Date.now() seam the memory branch's effectiveWeight/decay reads. Pinned identically on both differential sides.",
+
+  "seedTimestamp": "2025-06-01T00:00:00.000Z",
+
+  "projectStoreFiles": [
+    { "relativePath": "Docs/starcharts.md", "fileType": "markdown", "content": "# Star Charts\nThe charts describe celestial mechanics for navigation." },
+    { "relativePath": "Knowledge/celestial.md", "fileType": "markdown", "content": "# Celestial Mechanics\nA project-tier guide to celestial mechanics and orbits." },
+    { "relativePath": "Docs/longbody.md", "fileType": "markdown", "content": "# Long Body\nLONG_BODY_PLACEHOLDER" }
+  ],
+  "projectStoreBlobs": [
+    { "relativePath": "assets/diagram.bin", "bytes": [1, 2, 3, 4, 5] }
+  ],
+
+  "characterKnowledgeFiles": [
+    { "relativePath": "Knowledge/navigation.md", "fileType": "markdown", "content": "# Navigation\nThe character's own vault guide to celestial mechanics." }
+  ],
+  "globalKnowledgeFiles": [
+    { "relativePath": "Knowledge/orbits.md", "fileType": "markdown", "content": "# Orbits\nGlobal reference on celestial mechanics for everyone." }
+  ],
+
+  "docChunks": [
+    { "id": "aa000000-0000-4000-8000-000000000001", "store": "project", "relativePath": "Docs/starcharts.md", "chunkIndex": 0, "headingContext": "Star Charts", "content": "The charts describe celestial mechanics for navigation.", "vector": [0, 0, 0.75, 0, 0, 0, 0, 0] },
+    { "id": "aa000000-0000-4000-8000-000000000002", "store": "project", "relativePath": "Knowledge/celestial.md", "chunkIndex": 0, "headingContext": "Celestial Mechanics", "content": "A project-tier guide to celestial mechanics and orbits.", "vector": [0, 0, 0.7, 0, 0, 0, 0, 0] },
+    { "id": "aa000000-0000-4000-8000-000000000003", "store": "character", "relativePath": "Knowledge/navigation.md", "chunkIndex": 0, "headingContext": "Navigation", "content": "The character's own vault guide to celestial mechanics.", "vector": [0, 0, 0.8, 0, 0, 0, 0, 0] },
+    { "id": "aa000000-0000-4000-8000-000000000004", "store": "global", "relativePath": "Knowledge/orbits.md", "chunkIndex": 0, "headingContext": "Orbits", "content": "Global reference on celestial mechanics for everyone.", "vector": [0, 0, 0.6, 0, 0, 0, 0, 0] },
+    { "id": "aa000000-0000-4000-8000-000000000005", "store": "project", "relativePath": "Docs/longbody.md", "chunkIndex": 0, "headingContext": "Long Body", "content": "TRUNCATION_BODY", "vector": [0, 0, 0, 0, 0, 0.72, 0, 0] }
+  ],
+
+  "memories": [
+    { "id": "b1000000-0000-4000-8000-000000000001", "content": "Ada charted a course by the pole star on the first night.", "summary": "Charted by pole star.", "importance": 0.8, "reinforcedImportance": 0.8, "source": "AUTO", "vector": [0.85, 0, 0, 0, 0, 0, 0, 0] },
+    { "id": "b1000000-0000-4000-8000-000000000002", "content": "Ada mentioned the ledger only once.", "summary": "Ledger note.", "importance": 0.3, "reinforcedImportance": 0.3, "source": "MANUAL", "vector": [0.4, 0, 0, 0, 0, 0, 0, 0] },
+    { "id": "b1000000-0000-4000-8000-000000000003", "content": "An unrelated aside about tea.", "summary": "Tea aside.", "importance": 0.5, "reinforcedImportance": 0.5, "source": "AUTO", "vector": [0.2, 0, 0, 0, 0, 0, 0, 0] }
+  ],
+
+  "conversationChunks": [
+    { "id": "cc000000-0000-4000-8000-000000000001", "interchangeIndex": 0, "content": "We spoke at length about the ledger and its missing page.", "participantNames": ["Ada Responding", "You"], "messageIds": [], "vector": [0, 0.9, 0, 0, 0, 0, 0, 0] },
+    { "id": "cc000000-0000-4000-8000-000000000002", "interchangeIndex": 1, "content": "A brief mention of the ledger came up later.", "participantNames": ["Ada Responding"], "messageIds": [], "vector": [0, 0.35, 0, 0, 0, 0, 0, 0] },
+    { "id": "cc000000-0000-4000-8000-000000000003", "interchangeIndex": 2, "content": "Small talk about the weather, unrelated.", "participantNames": ["Ada Responding"], "messageIds": [], "vector": [0, 0.1, 0, 0, 0, 0, 0, 0] }
+  ],
+
+  "helpDocs": [
+    { "id": "dd000000-0000-4000-8000-000000000001", "title": "Getting Started with Chats", "path": "getting-started", "url": "https://help.quilltap.app/getting-started", "content": "This guide explains how to begin a conversation, add characters, and send your first message in Quilltap.", "vector": [0, 0, 0, 0.85, 0, 0, 0, 0] },
+    { "id": "dd000000-0000-4000-8000-000000000002", "title": "Managing Memories", "path": "memories", "url": "https://help.quilltap.app/memories", "content": "Characters remember details across conversations. This document covers memory reinforcement and housekeeping settings.", "vector": [0, 0, 0, 0.55, 0, 0, 0, 0] },
+    { "id": "dd000000-0000-4000-8000-000000000003", "title": "Wardrobe and Outfits", "path": "wardrobe", "url": "https://help.quilltap.app/wardrobe", "content": "The wardrobe system lets characters wear and swap clothing items during a scene.", "vector": [0, 0, 0, 0.2, 0, 0, 0, 0] }
+  ],
+
+  "cannedEmbeddings": {
+    "recall the star navigation notes": [1, 0, 0, 0, 0, 0, 0, 0],
+    "what did we say about the ledger": [0, 1, 0, 0, 0, 0, 0, 0],
+    "guide to celestial mechanics": [0, 0, 1, 0, 0, 0, 0, 0],
+    "how do I get started": [0, 0, 0, 1, 0, 0, 0, 0],
+    "unrelated query that matches nothing": [0, 0, 0, 0, 0, 0, 0, 1],
+    "a passage with a very long body": [0, 0, 0, 0, 0, 1, 0, 0]
+  },
+  "cannedFailures": [
+    "wardrobe outfits clothing help",
+    "xyzzy plugh frobnitz quux"
+  ]
+}
