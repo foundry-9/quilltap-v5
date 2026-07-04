@@ -115,6 +115,9 @@ use crate::services::primary_stream::{
 use crate::services::provider_failover::{
     self, AttemptEmptyResponseRecoveryOptions, DangerSettings, DangerousContentRouter,
 };
+use crate::services::text_tool_loop::{
+    self, RunTextToolPassOptions, SimpleJsonStrategy, TextBlockStrategy, TextToolStrategy,
+};
 use crate::services::tool_call_threading::ThreadedMessage;
 use crate::services::tool_execution::{
     create_tool_context, save_tool_messages, GeneratedImage, SaveToolMessagesResult, ToolMessage,
@@ -123,6 +126,7 @@ use crate::services::tool_execution::{
 use crate::services::turn_orchestrator::{
     self, ChainConfig, ChainDecision, ChainGuards, ChainReason,
 };
+use crate::tools::pseudo_tool_support::ResolvedToolMode;
 use crate::tools::rng::{
     execute_rng_tool, format_rng_results, RandomBytes, RngToolContext, RngType,
 };
@@ -340,6 +344,20 @@ where
     /// OS CSPRNG ([`crate::tools::rng::OsRandomBytes`]); the differential injects a
     /// fixed committed stream.
     pub rng_bytes: &'a mut dyn RandomBytes,
+    /// The provider-text-markers strategy seam (W4.1f). v4's provider pass reads its
+    /// detector/parser/stripper from the active `getProvider(...)` plugin — an
+    /// unported W4.7 surface — so in v5 the orchestrator runs the provider pass only
+    /// when a host supplies a strategy here (default: `None`, so the pass is skipped;
+    /// the engine is still exercised against a synthetic provider strategy directly
+    /// in `text_tool_loop_tier3`). The provider manifest (W4.7) wires the real
+    /// per-provider strategies.
+    pub provider_text_strategy: Option<&'a dyn TextToolStrategy>,
+    /// The resolved tool mode (W4.1f) — selects the simple-json vs the text-block
+    /// fall-through text-tool pass, exactly as v4's `resolvedToolMode` gate. The real
+    /// tool-config plumbing (`buildTools` / `checkResolvedToolMode` from the model /
+    /// profile) is a W4.1g deferral; until then the orchestrator defaults this to
+    /// [`ResolvedToolMode::TextBlock`] (v4's else-branch — a no-op without markers).
+    pub resolved_tool_mode: ResolvedToolMode,
 }
 
 /// v4 `processMessage`. The main send-path spine. Composes the ported services,
@@ -961,6 +979,124 @@ where
     )
     .await
     .map_err(|e| DbError::Key(format!("native tool loop failed: {}", e.message)))?;
+
+    // --- Text-tool passes (orchestrator.service.ts:1282–1378, W4.1f) ---
+    // After the native loop, v4 runs the provider-text-markers pass (gated on the
+    // provider plugin implementing all three hooks → here the injected strategy
+    // seam being present) then EITHER the simple-json pass (when `resolvedToolMode
+    // === 'simple-json'`) OR the text-block fall-through (runs for ALL providers).
+    // Corpus-dormant: no canned stream emits markers AND the tool slate is empty
+    // (`buildTools` is W4.1g), so each pass no-ops at its entry gate — wired at the
+    // composition point v4 uses (proven by the port's own `text_tool_loop_tier3`
+    // differential driving v4's REAL `runTextToolPass`). The runner is the
+    // placeholder `LoudFallbackRunner` (never reached; the real slate + runner wire
+    // with W4.1g). Web search stays off until the W4.1g tool-config plumbing lands.
+    let text_runner = crate::tools::executor::LoudFallbackRunner;
+    let use_text_block_tools = deps.resolved_tool_mode != ResolvedToolMode::Native;
+    let use_native_web_search = false;
+    let make_text_messages = || -> Vec<ThreadedMessage> {
+        mc_result
+            .formatted_messages
+            .iter()
+            .map(|m| ThreadedMessage {
+                role: m.role.clone(),
+                content: m.content.clone(),
+                name: m.name.clone(),
+                thought_signature: m.thought_signature.clone(),
+                reasoning_content: None,
+                tool_call_id: None,
+                tool_calls: None,
+            })
+            .collect()
+    };
+    let make_text_context = || {
+        create_tool_context(
+            chat_id.clone(),
+            user_id.clone(),
+            character_id.clone(),
+            character_participant_id.clone(),
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+    };
+
+    // Phase 19: provider-native text tool markers — only when a host strategy is
+    // supplied (the provider plugin's detector/parser/stripper; W4.7).
+    if let Some(provider_strategy) = deps.provider_text_strategy {
+        text_tool_loop::run_text_tool_pass(
+            db,
+            deps.streaming,
+            sink,
+            &text_runner,
+            provider_strategy,
+            &mut preserve,
+            RunTextToolPassOptions {
+                chat_id: chat_id.clone(),
+                character_id: character_id.clone(),
+                character_name: character_name.clone(),
+                provider: effective_profile.provider.clone(),
+                base_url: effective_profile.base_url.clone(),
+                formatted_messages: make_text_messages(),
+                base_params: params.clone(),
+                // The provider pass re-offers the regular tool slate (v4
+                // `continuationTools: actualTools`) — empty until W4.1g.
+                continuation_tools: params.tools.clone(),
+                continuation_use_native_web_search: use_native_web_search,
+                tool_context: make_text_context(),
+                state: &mut streaming_state,
+                tool_messages: &mut tool_messages,
+                generated_image_paths: &mut generated_image_paths,
+            },
+        )
+        .await
+        .map_err(|e| DbError::Key(format!("provider text-tool pass failed: {}", e.message)))?;
+    }
+
+    // Phase 20: text-format tool calls — simple-json when the resolved mode calls
+    // for it, else the text-block fall-through. Under text-block mode the
+    // continuation suppresses native tools + web search so the model can't re-emit
+    // the markers it just had stripped (v4).
+    {
+        let simple = SimpleJsonStrategy;
+        let text_block = TextBlockStrategy;
+        let strategy: &dyn TextToolStrategy = match deps.resolved_tool_mode {
+            ResolvedToolMode::SimpleJson => &simple,
+            _ => &text_block,
+        };
+        let continuation_tools = if use_text_block_tools {
+            Some(Value::Array(Vec::new()))
+        } else {
+            params.tools.clone()
+        };
+        text_tool_loop::run_text_tool_pass(
+            db,
+            deps.streaming,
+            sink,
+            &text_runner,
+            strategy,
+            &mut preserve,
+            RunTextToolPassOptions {
+                chat_id: chat_id.clone(),
+                character_id: character_id.clone(),
+                character_name: character_name.clone(),
+                provider: effective_profile.provider.clone(),
+                base_url: effective_profile.base_url.clone(),
+                formatted_messages: make_text_messages(),
+                base_params: params.clone(),
+                continuation_tools,
+                continuation_use_native_web_search: use_native_web_search && !use_text_block_tools,
+                tool_context: make_text_context(),
+                state: &mut streaming_state,
+                tool_messages: &mut tool_messages,
+                generated_image_paths: &mut generated_image_paths,
+            },
+        )
+        .await
+        .map_err(|e| DbError::Key(format!("text-block tool pass failed: {}", e.message)))?;
+    }
 
     let tool_messages_len = tool_messages.len();
 
@@ -1989,6 +2125,8 @@ mod tests {
                 carina_query: &mut carina,
                 prospero: &mut prospero,
                 rng_bytes: &mut rng_bytes,
+                provider_text_strategy: None,
+                resolved_tool_mode: ResolvedToolMode::TextBlock,
             };
             execute_turn_chain(
                 &mut deps,

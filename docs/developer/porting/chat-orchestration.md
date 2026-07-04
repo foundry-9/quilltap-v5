@@ -537,3 +537,30 @@ Ordered by dependency; several are mutually independent once wave 2 lands:
   corpus is all database-backed so it is never hit. Added
   `projects::find_official_mount_point_id_raw`. **The doc-edit foundation (batch 3a)
   is complete; the ~26 `doc_*` handlers (batch 3b) follow.**
+
+- **W4.1f: the text-tool loop — ported and green** (2026-07-04).
+  `services::text_tool_loop` ports v4's `runTextToolPass` — the strategy-driven
+  detect-text-markers → execute → re-stream-continuation pass after the native
+  loop, reading text markers OUT OF the streamed prose (vs the native loop's raw
+  response object). The engine is **strategy-agnostic** behind a `TextToolStrategy`
+  trait; ships `SimpleJsonStrategy` + `TextBlockStrategy` (b.1 leaves) and takes a
+  provider-text-markers strategy as an **injected seam** (the provider plugin
+  detector/parser/stripper is **W4.7**; default `None`). Reproduces the entry gate,
+  the duplicate-cap nudge (byte-exact synthetic user message, enforced by the
+  continuation canned-key match), the iteration cap, the un-stripped-assistant-turn
+  ledger (markers kept — stripping broke simple-json continuations), the
+  DISPLAY-ONLY flat reasoning on the continuation, the
+  usage/cacheUsage/rawResponse/thoughtSignature **overwrite-on-done**, the
+  preserve-partial + rethrow on continuation failure, and
+  `assembleStrippedWithOffsets` (strip once/segment, drop whitespace-only with
+  offset carry, UTF-16 `\n\n`-join anchor math). Wired into the orchestrator spine
+  after the native loop: provider pass gated on the injected `provider_text_strategy`
+  seam, then simple-json vs the text-block fall-through per an injected
+  `resolved_tool_mode` (defaults `TextBlock` — v4's else-branch); corpus-dormant,
+  `orchestrator_tier3` re-verified. `text_tool_loop_tier3_equivalence` (9 case
+  families, **DB-free** — the pass writes nothing): real simple-json/text-block +
+  a synthetic `<<T:name:args>>` strategy identical in TS + Rust for the mechanics
+  (multi-iteration, nudge, parse-empty no-op, mid-stream failure, cap,
+  empty-segment surrogate-pair assembly, stopSequences forwarding). **Deferrals:**
+  the provider-text-markers strategy (W4.7), the real tool-mode/tool-slate plumbing
+  (W4.1g).

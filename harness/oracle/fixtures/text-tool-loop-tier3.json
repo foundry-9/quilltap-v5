@@ -1,0 +1,207 @@
+{
+  "userId": "user-text-tool",
+  "cases": [
+    {
+      "name": "c1_simple_json_single",
+      "chatId": "c1",
+      "characterId": "char-c1",
+      "characterName": "Friday",
+      "provider": "ANTHROPIC",
+      "model": "m",
+      "temperature": 0.7,
+      "strategy": "simple-json",
+      "initialFullResponse": "Let me check.\n<tool_call>{\"name\": \"state\", \"arguments\": {\"key\": \"mood\"}}</tool_call>",
+      "formattedMessages": [{ "role": "user", "content": "hi c1" }],
+      "cannedTools": [
+        { "name": "state", "arguments": { "key": "mood" }, "success": true, "result": { "mood": "curious" } }
+      ],
+      "streams": [
+        [
+          { "content": " All set." },
+          { "done": true, "rawResponse": { "marker": "fin1" }, "usage": { "promptTokens": 5, "completionTokens": 1, "totalTokens": 6 } }
+        ]
+      ]
+    },
+    {
+      "name": "c2_text_block_multi",
+      "chatId": "c2",
+      "characterId": "char-c2",
+      "characterName": "Marlowe",
+      "provider": "ANTHROPIC",
+      "model": "m",
+      "temperature": 0.7,
+      "strategy": "text-block",
+      "initialFullResponse": "Searching now. [[search]]cats[[/search]] and [[search]]dogs[[/search]]",
+      "formattedMessages": [{ "role": "user", "content": "hi c2" }],
+      "cannedTools": [
+        { "name": "search", "arguments": { "query": "cats" }, "success": true, "result": { "hits": 2 } },
+        { "name": "search", "arguments": { "query": "dogs" }, "success": true, "result": { "hits": 5 } }
+      ],
+      "streams": [
+        [
+          { "content": "Found them." },
+          { "done": true, "rawResponse": { "marker": "fin2" }, "usage": { "promptTokens": 8, "completionTokens": 2, "totalTokens": 10 } }
+        ]
+      ]
+    },
+    {
+      "name": "c3_provider_multi_iteration",
+      "chatId": "c3",
+      "characterId": "char-c3",
+      "characterName": "Petra",
+      "provider": "DEEPSEEK",
+      "model": "ds",
+      "temperature": 0.5,
+      "strategy": "provider",
+      "initialFullResponse": "Thinking. <<T:state:{\"k\":1}>>",
+      "formattedMessages": [{ "role": "user", "content": "hi c3" }],
+      "cannedTools": [
+        { "name": "state", "arguments": { "k": 1 }, "success": true, "result": { "v": "a" } },
+        { "name": "state", "arguments": { "k": 2 }, "success": true, "result": { "v": "b" } }
+      ],
+      "streams": [
+        [
+          { "content": "More. <<T:state:{\"k\":2}>>" },
+          { "done": true, "rawResponse": { "marker": "m1" } }
+        ],
+        [
+          { "content": "Final answer." },
+          { "done": true, "rawResponse": { "marker": "m2" }, "usage": { "promptTokens": 9, "completionTokens": 3, "totalTokens": 12 } }
+        ]
+      ]
+    },
+    {
+      "name": "c4_provider_duplicate_nudge",
+      "chatId": "c4",
+      "characterId": "char-c4",
+      "characterName": "Quill",
+      "provider": "DEEPSEEK",
+      "model": "ds",
+      "temperature": 0.5,
+      "strategy": "provider",
+      "initialFullResponse": "Q. <<T:search:{\"q\":\"x\"}>>",
+      "formattedMessages": [{ "role": "user", "content": "hi c4" }],
+      "cannedTools": [
+        { "name": "search", "arguments": { "q": "x" }, "success": true, "result": { "hit": true } }
+      ],
+      "streams": [
+        [
+          { "content": "R1. <<T:search:{\"q\":\"x\"}>>" },
+          { "done": true, "rawResponse": { "marker": "a" } }
+        ],
+        [
+          { "content": "R2. <<T:search:{\"q\":\"x\"}>>" },
+          { "done": true, "rawResponse": { "marker": "b" } }
+        ],
+        [
+          { "content": "OK here is my answer." },
+          { "done": true, "rawResponse": { "marker": "c" }, "usage": { "promptTokens": 7, "completionTokens": 4, "totalTokens": 11 } }
+        ]
+      ]
+    },
+    {
+      "name": "c5_provider_parse_empty_noop",
+      "chatId": "c5",
+      "characterId": "char-c5",
+      "characterName": "Rune",
+      "provider": "DEEPSEEK",
+      "model": "ds",
+      "temperature": 0.5,
+      "strategy": "provider",
+      "initialFullResponse": "Broken marker here <<T:state no close",
+      "formattedMessages": [{ "role": "user", "content": "hi c5" }],
+      "cannedTools": [],
+      "streams": []
+    },
+    {
+      "name": "c6_provider_mid_stream_failure",
+      "chatId": "c6",
+      "characterId": "char-c6",
+      "characterName": "Sable",
+      "provider": "DEEPSEEK",
+      "model": "ds",
+      "temperature": 0.5,
+      "strategy": "provider",
+      "initialFullResponse": "Start. <<T:state:{\"k\":9}>>",
+      "formattedMessages": [{ "role": "user", "content": "hi c6" }],
+      "cannedTools": [
+        { "name": "state", "arguments": { "k": 9 }, "success": true, "result": { "ok": 1 } }
+      ],
+      "streams": [
+        [
+          { "content": "Partial answer" },
+          { "error": "upstream boom" }
+        ]
+      ],
+      "expectThrow": true
+    },
+    {
+      "name": "c7_provider_iteration_cap",
+      "chatId": "c7",
+      "characterId": "char-c7",
+      "characterName": "Tallis",
+      "provider": "DEEPSEEK",
+      "model": "ds",
+      "temperature": 0.5,
+      "strategy": "provider",
+      "initialFullResponse": "I0 <<T:t:{\"n\":0}>>",
+      "formattedMessages": [{ "role": "user", "content": "hi c7" }],
+      "cannedTools": [
+        { "name": "t", "arguments": { "n": 0 }, "success": true, "result": { "r": 0 } },
+        { "name": "t", "arguments": { "n": 1 }, "success": true, "result": { "r": 1 } },
+        { "name": "t", "arguments": { "n": 2 }, "success": true, "result": { "r": 2 } },
+        { "name": "t", "arguments": { "n": 3 }, "success": true, "result": { "r": 3 } },
+        { "name": "t", "arguments": { "n": 4 }, "success": true, "result": { "r": 4 } }
+      ],
+      "streams": [
+        [{ "content": "I1 <<T:t:{\"n\":1}>>" }, { "done": true, "rawResponse": { "marker": "c1" } }],
+        [{ "content": "I2 <<T:t:{\"n\":2}>>" }, { "done": true, "rawResponse": { "marker": "c2" } }],
+        [{ "content": "I3 <<T:t:{\"n\":3}>>" }, { "done": true, "rawResponse": { "marker": "c3" } }],
+        [{ "content": "I4 <<T:t:{\"n\":4}>>" }, { "done": true, "rawResponse": { "marker": "c4" } }],
+        [{ "content": "I5 done" }, { "done": true, "rawResponse": { "marker": "c5" }, "usage": { "promptTokens": 20, "completionTokens": 5, "totalTokens": 25 } }]
+      ]
+    },
+    {
+      "name": "c8_provider_empty_segment_surrogate",
+      "chatId": "c8",
+      "characterId": "char-c8",
+      "characterName": "Umbra",
+      "provider": "DEEPSEEK",
+      "model": "ds",
+      "temperature": 0.5,
+      "strategy": "provider",
+      "initialFullResponse": "Prefix café <<T:x:{\"a\":1}>>",
+      "formattedMessages": [{ "role": "user", "content": "hi c8" }],
+      "cannedTools": [
+        { "name": "x", "arguments": { "a": 1 }, "success": true, "result": { "s": 1 } },
+        { "name": "x", "arguments": { "a": 2 }, "success": true, "result": { "s": 2 } }
+      ],
+      "streams": [
+        [{ "content": "  <<T:x:{\"a\":2}>>  " }, { "done": true, "rawResponse": { "marker": "e1" } }],
+        [{ "content": "Tail 𐐷" }, { "done": true, "rawResponse": { "marker": "e2" }, "usage": { "promptTokens": 6, "completionTokens": 2, "totalTokens": 8 } }]
+      ]
+    },
+    {
+      "name": "c9_provider_stop_sequences",
+      "chatId": "c9",
+      "characterId": "char-c9",
+      "characterName": "Vesper",
+      "provider": "DEEPSEEK",
+      "model": "ds",
+      "temperature": 0.5,
+      "strategy": "provider",
+      "stopSequences": ["<<END>>"],
+      "initialFullResponse": "Go. <<T:search:{\"q\":\"z\"}>>",
+      "formattedMessages": [{ "role": "user", "content": "hi c9" }],
+      "cannedTools": [
+        { "name": "search", "arguments": { "q": "z" }, "success": true, "result": { "n": 1 } }
+      ],
+      "streams": [
+        [
+          { "content": "Answer here." },
+          { "done": true, "rawResponse": { "marker": "pfin" }, "thoughtSignature": "sig-9", "usage": { "promptTokens": 4, "completionTokens": 1, "totalTokens": 5 } }
+        ]
+      ]
+    }
+  ]
+}

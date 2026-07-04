@@ -599,6 +599,29 @@ items the wave-3 capstone flagged.
   `commonplace_strip`, `opaque_swap` vs `transparent_no_swap`, and
   `tool_whisper_filter`. `orchestrator_tier3_equivalence` re-verified green.
 
+Phase 3 — wave 4 (W4.1f): the text-tool loop. Ported `runTextToolPass`
+(`services::text_tool_loop`): the strategy-driven detect-text-markers →
+execute → re-stream-continuation pass the orchestrator runs after the native
+loop. The engine is strategy-agnostic behind a `TextToolStrategy` trait
+(`hasMarkers`/`parse`/`strip`/`formatToolResult`/`stopSequences`); ships
+`SimpleJsonStrategy` and `TextBlockStrategy` composed from the b.1 leaves, and
+takes a provider-text-markers strategy as an injected seam (the provider plugin
+detector/parser/stripper is W4.7). Reproduces the duplicate-cap nudge (byte-exact
+synthetic user message), the iteration cap, the un-stripped-assistant-turn ledger,
+the per-continuation reasoning-display-only path, the `usage`/`cacheUsage`/
+`rawResponse`/`thoughtSignature` overwrite-on-done, and `assembleStrippedWithOffsets`
+(strip once per segment, drop whitespace-only segments with offset carry, UTF-16
+`\n\n`-join anchor math). Wired into the orchestrator spine after the native loop
+(provider pass seam-gated on an injected strategy, then simple-json vs the
+text-block fall-through per an injected `ResolvedToolMode`; the real tool-config
+plumbing + tool slate is W4.1g) — corpus-dormant, `orchestrator_tier3` re-verified
+green. Differential `text_tool_loop_tier3_equivalence` (nine case families,
+DB-free — the pass writes nothing): simple-json single-iteration + text-block
+multi-call over the REAL strategy functions, and a synthetic `<<T:name:args>>`
+strategy (identical in TS + Rust) for multi-iteration, the duplicate nudge, the
+parse-empty no-op, a mid-continuation stream failure, the iteration cap, empty-
+stripped-segment assembly (surrogate-pair UTF-16), and stopSequences forwarding.
+
 Phase 3 — wave 4 (W4.1d batch 3a): the doc-edit foundation, part 3 — the path
 resolver + URI producers (completing batch 3a). Ported `resolveDocEditPath`
 (`doc_edit::path_resolver`) — the `document_store` scope (over the tiered mount

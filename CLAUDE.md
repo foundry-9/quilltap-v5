@@ -2259,9 +2259,52 @@ documented minor seam, never hit with a real provisioned store). **The doc-edit
 foundation (W4.1d batch 3a) is complete** — the ~26 `doc_*` tool handlers (batch 3b)
 sit on it.
 
-The rest of wave 4 (the remaining tool subsystem — the text tool loop (W4.1f) /
-`buildTools` / registry (W4.1g), the remaining handler-catalog batches [3 doc-edit,
-4 embedding/search, 5 host-seamed], the agent-mode resolver — danger,
-answer-confirmation, courier/compression-cache/regenerate-swipe, carina query,
-buildContext seam-closers, provider manifest) follows per the chat-orchestration
+**Wave 4 (W4.1f): the text-tool loop is DONE** (2026-07-04). Ported
+`runTextToolPass` (`services::text_tool_loop`): the strategy-driven
+detect-text-markers → execute → re-stream-continuation pass the orchestrator runs
+after the native loop. Where the native loop reads provider-native calls off the
+raw response (W4.7 wire parse), this pass reads text markers OUT OF the streamed
+prose. The engine is **strategy-agnostic** behind a `TextToolStrategy` trait
+(`has_markers`/`parse`/`strip`/`format_tool_result`/`stop_sequences`) — ships
+`SimpleJsonStrategy` + `TextBlockStrategy` (composed from the b.1 leaves), and takes
+a **provider-text-markers strategy as an injected seam** (the provider plugin's
+detector/parser/stripper is unported W4.7; default `None`). Reproduces v4's flow
+exactly: the entry gate, the per-iteration parse + call-signature fingerprint, the
+`MAX_DUPLICATE_TOOL_CALLS` **nudge branch** (do-not-execute + the byte-exact
+synthetic user nudge, the em-dash included — its byte-exactness enforced by the
+continuation canned-key match, since the nudge rides the ledger into the slate),
+the `MAX_TEXT_TOOL_ITERATIONS` cap, the **un-stripped-assistant-turn ledger**
+(markers kept on purpose — stripping broke simple-json continuations), the
+DISPLAY-ONLY flat reasoning on the continuation (no positioned segments), the
+`usage`/`cache_usage`/`raw_response`/`thought_signature` **overwrite-on-done** (a
+done with no usage NULLs them), the caller-owned in-place mutation, the
+preserve-partial + rethrow on continuation failure, and `assembleStrippedWithOffsets`
+(strip once per raw segment, keep non-whitespace, `\n\n`-join, and stamp each
+batch's tool messages with the UTF-16 prose offset where its emitting segment ends
+— a whitespace-only segment is dropped and its end offset inherits). Wired into the
+orchestrator spine at v4's composition point (after the native loop): the provider
+pass gated on the injected `provider_text_strategy` seam, then simple-json vs the
+text-block fall-through per an injected `resolved_tool_mode` (defaulting to
+`TextBlock` — v4's else-branch; the real tool-config plumbing + `buildTools` slate
+is a W4.1g deferral). Corpus-dormant (no canned stream emits markers, empty tool
+slate); `orchestrator_tier3_equivalence` re-verified green with the two new
+`OrchestratorDeps` fields inert. Verified by `text_tool_loop_tier3_equivalence`
+(nine case families, **DB-free** — the pass writes nothing, so no fixture): the
+three-boundary mock split (streams by recorded canned key / tools by canned per-call
+/ the strategy) drives v4's REAL `runTextToolPass` — simple-json single-iteration +
+text-block multi-call over the REAL ported strategy functions, and a synthetic
+`<<T:name:argsJson>>` strategy (trivially identical in TS + Rust) for
+multi-iteration (two anchors + `\n\n` math), the duplicate nudge, the parse-empty
+no-op, a mid-continuation stream failure (partial preserved, error propagates), the
+iteration cap, empty-stripped-segment assembly (surrogate-pair UTF-16), and
+stopSequences forwarding (per-continuation `stop` recorded + diffed). **Tracked
+deferrals:** the provider-text-markers strategy (→ W4.7 provider manifest); the
+spine's real tool-mode/tool-slate plumbing (→ W4.1g).
+
+The rest of wave 4 (the remaining tool subsystem — `buildTools` / registry
+(W4.1g), the remaining handler-catalog batches [3b the ~26 doc-edit handlers
+over the now-complete 3a foundation, 4 embedding/search, 5 host-seamed], the
+agent-mode resolver — danger, answer-confirmation,
+courier/compression-cache/regenerate-swipe, carina query, buildContext
+seam-closers, provider manifest) follows per the chat-orchestration
 decomposition.

@@ -497,6 +497,11 @@ fn orchestrator_tier3_matches_oracle() {
             carina_query: &mut carina_query,
             prospero: &mut prospero,
             rng_bytes: &mut rng_bytes,
+            // The text-tool passes (W4.1f) run corpus-dormant here: no host provider
+            // strategy, and the text-block fall-through no-ops without markers.
+            provider_text_strategy: None,
+            resolved_tool_mode:
+                quilltap_core::tools::pseudo_tool_support::ResolvedToolMode::TextBlock,
         };
 
         let make_input = |chat_id: &str, content: &str, continue_mode: bool, resp: Option<&str>| {
