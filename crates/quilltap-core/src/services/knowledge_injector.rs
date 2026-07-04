@@ -34,7 +34,9 @@
 //!   tool path.
 
 mod document_search;
-mod qtap_uri;
+/// `qtap://` URI producer helpers — public so the `self_inventory` tool (W4.1d)
+/// can reach `format_self_uri` / `format_doc_store_uri` / `format_scoped_uri`.
+pub mod qtap_uri;
 mod tiered_mount_pool;
 
 pub use document_search::{DocumentSearchOptions, DocumentSearchResult};

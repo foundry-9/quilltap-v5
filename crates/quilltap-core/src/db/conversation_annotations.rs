@@ -254,4 +254,75 @@ impl<'c> ConversationAnnotationsRepository<'c> {
             Ok(id)
         }
     }
+
+    /// Find all annotations for a chat (v4 `findByChatId` → `findByFilter({chatId})`).
+    ///
+    /// Returns the merge-consumed subset (`messageIndex`/`characterName`/`content`)
+    /// as [`crate::scriptorium::Annotation`]s. v4's `findByFilter` issues no
+    /// `ORDER BY`, and `mergeAnnotations` groups by `messageIndex` then re-sorts
+    /// each group by `characterName` — so the row order the query returns does not
+    /// affect the merged output. We take rowid order for determinism.
+    pub fn find_by_chat_id(
+        &self,
+        chat_id: &str,
+    ) -> Result<Vec<crate::scriptorium::Annotation>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT messageIndex, characterName, content \
+             FROM conversation_annotations WHERE chatId = ?1",
+        )?;
+        let rows = stmt.query_map(params![chat_id], |row| {
+            // `messageIndex` is REAL-affinity (see the module header); read as f64
+            // and collapse to the integer index the merge groups on.
+            let idx: f64 = row.get(0)?;
+            Ok(crate::scriptorium::Annotation {
+                message_index: idx as i64,
+                character_name: row.get(1)?,
+                content: row.get(2)?,
+            })
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
+    /// Find a specific annotation by the unique key (v4 `findByMessageIndex` →
+    /// `findOneByFilter({chatId, messageIndex, characterName})`). Returns the row's
+    /// id when present (the upsert handler only needs existence, but returning the
+    /// id keeps the shape useful). `None` when no row matches.
+    pub fn find_by_message_index(
+        &self,
+        chat_id: &str,
+        message_index: f64,
+        character_name: &str,
+    ) -> Result<Option<String>, DbError> {
+        self.conn
+            .query_row(
+                "SELECT id FROM conversation_annotations \
+                 WHERE chatId = ?1 AND messageIndex = ?2 AND characterName = ?3",
+                params![chat_id, message_index, character_name],
+                |row| row.get::<_, String>(0),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
+    }
+
+    /// Delete a specific annotation by the unique key (v4 `deleteAnnotation`):
+    /// `findOneByFilter` then `_delete(existing.id)`. Returns `false` when no row
+    /// matched (v4's "not found → false"), `true` when a row was deleted.
+    pub fn delete_annotation(
+        &self,
+        chat_id: &str,
+        message_index: f64,
+        character_name: &str,
+    ) -> Result<bool, DbError> {
+        match self.find_by_message_index(chat_id, message_index, character_name)? {
+            Some(id) => self.delete(&id),
+            None => Ok(false),
+        }
+    }
 }

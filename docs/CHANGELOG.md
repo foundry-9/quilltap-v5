@@ -599,6 +599,47 @@ items the wave-3 capstone flagged.
   `commonplace_strip`, `opaque_swap` vs `transparent_no_swap`, and
   `tool_whisper_filter`. `orchestrator_tier3_equivalence` re-verified green.
 
+Phase 3 — wave 4 (W4.1d batch 1): the first tool-handler batch. Ported the nine
+immediately-portable tools (every underlying repo already ported, no model
+calls) plus the real dispatching `ToolRunner` that batches 2–5 will extend. Each
+handler ships a differential driving v4's real handler byte-exact.
+
+- Handlers (`tools::{read_conversation, annotations, terminal, whisper, help,
+  self_inventory}`): `read_conversation`, `upsert_annotation`/`delete_annotation`
+  (over the ported `conversation_annotations` repo, extended with the find/delete
+  readers + the ported `scriptorium::{merge,strip}_annotations` leaves),
+  `terminal_read`/`terminal_list` (over `terminal_sessions` reads + the ported
+  `terminal_clean::clean_terminal_output`; the live-PTY/transcript scrollback is
+  an injected seam), `whisper` (resolves the target by name/alias among
+  whisper-receivable participants, writes one `chat_messages` row — no post-office
+  side effect), `help_settings`/`help_navigate`/`submit_final_response` (the
+  first two + the pure agent-mode validator; `help_settings` needed the full
+  `chat_settings::find_by_user_id` read marshaling, now ported), and the big
+  `self_inventory` (the ten-section introspection report over ~a dozen repo
+  readers + `build_system_prompt`; the runtime-mode/client-shell/release-notes/
+  changelog/mount-index-degraded host bits are an injected `SelfInventoryEnv`
+  seam — `quilltap.version` covered, releaseNotes/changelog deferred).
+- `LoadedMemoriesContext` is now typed (`{ semantic, interCharacter, recap }`) —
+  its consumer `self_inventory` landed.
+- The dispatching runner (`tools::executor::BuiltInToolRunner`): routes a tool
+  call by name to the ported handlers (reproducing v4
+  `executeToolCallWithContext`'s built-in dispatch rows — the `{ formattedText,
+  … }` result shape, the failure `null`/`error` mapping, the dispatcher-side
+  guards + annotation character-name resolution), with an injected inner
+  `ToolRunner` fallback for unported names (the loud default reproduces v4's
+  `Unknown tool: <name>` for names v4 doesn't know, and a "recognized but not yet
+  available" failure naming a not-yet-ported built-in). Plugin-vs-built-in
+  routing precedence is a documented deferral (the plugin registry is unported).
+- New leaf modules: `scriptorium`, `terminal_clean`, `folder_utils`;
+  `format_scoped_uri` added to `knowledge_injector::qtap_uri`.
+- Differentials: per-handler tsx/jest-real-DB oracles (success / invalid-input /
+  edge per tool) + an end-to-end dispatcher differential driving v4's real
+  `executeToolCallWithContext` over a mixed batch (read, two writes with
+  character-name resolution, a pure tool, a handler failure, an invalid-input
+  failure). The unknown-tool loud fallback is unit-tested (v4's genuine unknown
+  path depends on the unported plugin registry). Existing `tool_execution_*` +
+  `message_finalizer` + `orchestrator` differentials re-verified green.
+
 Phase 3 — wave 4 (W4.1c): tool execution + persistence primitives
 (`services::tool_execution`, v4 `tool-execution.service.ts`) — the harness and
 the TOOL-row writer between the tool loops (W4.1e/f) and the tool handlers

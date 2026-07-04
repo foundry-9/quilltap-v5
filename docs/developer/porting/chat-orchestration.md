@@ -416,3 +416,40 @@ Ordered by dependency; several are mutually independent once wave 2 lands:
     `tool_call_threading` reuses it (matching v4's single `chat-message/types.ts`).
   - Out of scope (later W4.1 sub-units): the executor dispatch + handlers (W4.1d),
     the tool loops (W4.1e/f), `buildTools`, provider wire parsing (W4.7).
+
+- **W4.1d batch 1: ported and green** (2026-07-04) — the first tool-handler
+  batch + the real dispatching runner. Nine tools ported (`tools::` family), each
+  with a differential driving v4's REAL handler byte-exact: `read_conversation`,
+  `upsert_annotation`/`delete_annotation` (`scriptorium_tools_equivalence`);
+  `terminal_read`/`terminal_list` (`terminal_tools_equivalence`; scrollback is an
+  injected seam); `whisper` (`whisper_tool_equivalence`; STOP-rule checked — one
+  `chat_messages` row, no post-office); `help_settings`/`help_navigate`/
+  `submit_final_response` (`help_tools_equivalence`; ported the full
+  `chat_settings::find_by_user_id` read marshaling); `self_inventory`
+  (`self_inventory_equivalence`; the ten-section report over ~a dozen repo readers
+  + `build_system_prompt`, host-env bits as an injected `SelfInventoryEnv` seam).
+  New leaves: `scriptorium`, `terminal_clean`, `folder_utils`,
+  `qtap_uri::format_scoped_uri`. `LoadedMemoriesContext` typed (its consumer
+  `self_inventory` landed).
+  - **The dispatching runner** (`tools::executor::BuiltInToolRunner`): v4
+    `executeToolCallWithContext`'s built-in dispatch rows (the `{ formattedText,
+    … }` result shape + failure mapping + the dispatcher-side guards + annotation
+    character-name resolution), with an **injected inner `ToolRunner` fallback**
+    for unported names — the loud default reproduces v4's `Unknown tool: <name>`
+    for names v4 doesn't know and a "recognized but not yet available" failure for
+    a not-yet-ported built-in; batches 2–5 extend the ported set without touching
+    callers. End-to-end differential (`tool_dispatch_equivalence`) drives v4's
+    REAL `executeToolCallWithContext` over a mixed batch (read / two writes / pure
+    tool / handler failure / invalid input); the unknown-tool loud fallback is
+    unit-tested. `tool_execution_*` + `message_finalizer` + `orchestrator`
+    differentials re-verified green.
+  - **Deferrals:** plugin-vs-built-in routing precedence (the plugin registry is
+    unported — the dispatch is exact for a no-plugin instance, which is why the
+    unknown-tool oracle case is unit-tested, not driven — v4's unknown path routes
+    through the registry); `self_inventory`'s `quilltap.releaseNotes`/`.changelog`
+    file reads (env seam supports them, corpus requests only `.version`); the
+    `terminal_read` scrollback source; `read_conversation`'s deprecated
+    `findByCharacterIdRaw`.
+  - Remaining handler-catalog batches: 2 (wardrobe, 7 tools), 3 (doc-edit, ~20),
+    4 (embedding/search), 5 (host-seamed). Then the loops (W4.1e/f) +
+    `buildTools`/spine wiring (W4.1g).

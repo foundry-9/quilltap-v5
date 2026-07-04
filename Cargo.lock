@@ -1128,7 +1128,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-core"
-version = "0.0.96"
+version = "0.0.97"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1163,7 +1163,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-harness"
-version = "0.0.88"
+version = "0.0.89"
 dependencies = [
  "quilltap-core",
  "regex",

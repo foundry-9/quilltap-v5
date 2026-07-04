@@ -1,0 +1,135 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "chatId": "11111111-1111-4111-8111-111111111111",
+  "otherChatId": "22222222-2222-4222-8222-222222222222",
+  "userId": "33333333-3333-4333-8333-333333333333",
+  "sessions": [
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "label": "build shell",
+      "shell": "/bin/zsh",
+      "cwd": "/Users/csebold/project",
+      "startedAt": "2026-07-03T09:00:00.000Z",
+      "exitedAt": null,
+      "exitCode": null,
+      "transcriptFile": "terminal-tools-live.log",
+      "scrollbackContent": "Last login: Fri Jul  3 09:00:00 on ttys001\ncsebold@quill project % npm run build\n\u001b[32m> quilltap@5.0.0 build\u001b[0m\n\u001b[36mCompiling...\u001b[0m\nProgress: 10%\rProgress: 45%\rProgress: 100%\n\u001b[2J\u001b[HBuild succeeded\u001b[0m in 4.21s\ncsebold@quill project % echo done\ndonee\b\n\u001b]0;stale terminal title\u0007csebold@quill project % \u001b7\n"
+    },
+    {
+      "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "label": null,
+      "shell": "/bin/bash",
+      "cwd": "/tmp/work",
+      "startedAt": "2026-07-03T10:30:00.000Z",
+      "exitedAt": "2026-07-03T10:35:12.000Z",
+      "exitCode": 137,
+      "transcriptFile": "terminal-tools-exited.log",
+      "scrollbackContent": "$ ./run-forever.sh\nstarting worker...\n\u001b[31mERROR:\u001b[0m out of memory\nkilled by signal 9\n"
+    },
+    {
+      "id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      "chatId": "22222222-2222-4222-8222-222222222222",
+      "label": "other-chat shell",
+      "shell": "/bin/zsh",
+      "cwd": "/other",
+      "startedAt": "2026-07-03T11:00:00.000Z",
+      "exitedAt": null,
+      "exitCode": null,
+      "transcriptFile": "terminal-tools-other.log",
+      "scrollbackContent": "secret other-chat scrollback\n"
+    }
+  ],
+  "readCases": [
+    {
+      "name": "tail-default-live",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "args": {
+        "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+      }
+    },
+    {
+      "name": "tail-with-lines",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "args": {
+        "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "lines": 3
+      }
+    },
+    {
+      "name": "slice-range",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "args": {
+        "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "start": 1,
+        "end": 3
+      }
+    },
+    {
+      "name": "slice-negative",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "args": {
+        "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "start": -3,
+        "end": -1
+      }
+    },
+    {
+      "name": "raw-preserved-exited",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "args": {
+        "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "raw": true
+      }
+    },
+    {
+      "name": "exited-status-exitcode",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "args": {
+        "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+      }
+    },
+    {
+      "name": "session-not-found-throws",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "args": {
+        "sessionId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+      },
+      "expectThrow": "Terminal session not found: dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+    },
+    {
+      "name": "wrong-chat-throws",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "args": {
+        "sessionId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+      },
+      "expectThrow": "Session does not belong to this chat"
+    }
+  ],
+  "readValidateCases": [
+    {
+      "name": "invalid-missing-sessionId",
+      "args": {
+        "lines": 5
+      }
+    },
+    {
+      "name": "invalid-lines-out-of-range",
+      "args": {
+        "sessionId": "x",
+        "lines": 9000
+      }
+    }
+  ],
+  "listCases": [
+    {
+      "name": "list-main-chat",
+      "chatId": "11111111-1111-4111-8111-111111111111"
+    },
+    {
+      "name": "list-empty-chat",
+      "chatId": "44444444-4444-4444-8444-444444444444"
+    }
+  ]
+}

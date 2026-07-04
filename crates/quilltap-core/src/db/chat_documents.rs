@@ -81,6 +81,16 @@ pub struct CdUpdate {
     pub updated_at: String,
 }
 
+/// One `chat_documents` row restricted to the columns `self_inventory`'s
+/// `buildContextFiles` reads.
+#[derive(Clone, Debug)]
+pub struct ChatDocumentRow {
+    pub scope: String,
+    pub mount_point: Option<String>,
+    pub file_path: String,
+    pub display_title: Option<String>,
+}
+
 /// Repository over a borrowed connection (held by the [`super::Writer`]).
 pub struct ChatDocumentsRepository<'c> {
     conn: &'c Connection,
@@ -178,6 +188,32 @@ impl<'c> ChatDocumentsRepository<'c> {
         let params_refs: Vec<&dyn ToSql> = values.iter().map(|b| b.as_ref()).collect();
         let affected = self.conn.execute(&sql, params_refs.as_slice())?;
         Ok(affected > 0)
+    }
+
+    /// v4 `chatDocuments.findByChatId` — the documents open in a chat, in table
+    /// (rowid) order (v4 `findByFilter({ chatId })` with no explicit sort; the
+    /// `self_inventory` builder re-sorts by `filePath`). Returns only the columns
+    /// `buildContextFiles` reads: `scope` / `mountPoint` / `filePath` /
+    /// `displayTitle`. `scope`'s Zod `.default('project')` materializes on a NULL
+    /// cell (never written NULL by `create`, but faithful anyway); the two nullable
+    /// columns come back as `None` on NULL.
+    pub fn find_by_chat_id(&self, chat_id: &str) -> Result<Vec<ChatDocumentRow>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT scope, mountPoint, filePath, displayTitle \
+               FROM chat_documents WHERE chatId = ?1",
+        )?;
+        let rows = stmt
+            .query_map(params![chat_id], |row| {
+                let scope: Option<String> = row.get(0)?;
+                Ok(ChatDocumentRow {
+                    scope: scope.unwrap_or_else(|| "project".to_string()),
+                    mount_point: row.get::<_, Option<String>>(1)?,
+                    file_path: row.get::<_, String>(2)?,
+                    display_title: row.get::<_, Option<String>>(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
     }
 
     /// Delete the chat document `id`. Returns `false` when no row matched (v4's

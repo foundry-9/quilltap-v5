@@ -1,0 +1,181 @@
+{
+  "_comment": "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key (the shared test pepper used across the differential fixtures). NEVER a real pepper.",
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2026-01-02T03:04:05.000Z",
+  "userId": "11111111-1111-4111-8111-111111111111",
+  "aria": {
+    "id": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+    "name": "Aria",
+    "description": "A curious archivist who catalogs impossible libraries.",
+    "identity": "the archivist of the impossible",
+    "personality": "meticulous, warm, and quietly stubborn",
+    "canBeCarina": true
+  },
+  "beck": {
+    "id": "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb",
+    "name": "Beck",
+    "description": "A wandering cartographer of forgotten roads.",
+    "identity": "the road-mapper",
+    "canBeCarina": false
+  },
+  "cass": {
+    "id": "cccccccc-3333-4333-8333-cccccccccccc",
+    "name": "Cass",
+    "description": "The reader's own hands in this tale.",
+    "identity": null,
+    "canBeCarina": false
+  },
+  "dara": {
+    "id": "dddddddd-4444-4444-8444-dddddddddddd",
+    "name": "Dara",
+    "description": "A colleague from the archive guild.",
+    "identity": "the guild liaison",
+    "canBeCarina": true
+  },
+  "connectionProfile": {
+    "id": "c0ffee00-0000-4000-8000-000000000001",
+    "name": "Aria Anthropic",
+    "provider": "ANTHROPIC",
+    "modelName": "claude-3-opus"
+  },
+  "roleplayTemplate": {
+    "id": "d0d0d0d0-0000-4000-8000-000000000002",
+    "name": "House Style",
+    "systemPrompt": "Write in a warm, wry register. Keep replies grounded."
+  },
+  "project": {
+    "id": "9a9a9a9a-0000-4000-8000-000000000003",
+    "name": "The Impossible Library"
+  },
+  "group": {
+    "id": "6b6b6b6b-0000-4000-8000-000000000004",
+    "name": "Archive Guild"
+  },
+  "chat": {
+    "id": "7c7c7c7c-0000-4000-8000-000000000005",
+    "title": "Cataloguing Session",
+    "participants": [
+      {
+        "id": "b1b1b1b1-0000-4000-8000-00000000000a",
+        "type": "CHARACTER",
+        "characterId": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+        "controlledBy": "llm",
+        "status": "active",
+        "talkativeness": 0.5,
+        "connectionProfileId": "c0ffee00-0000-4000-8000-000000000001",
+        "createdAt": "2026-01-02T03:04:05.000Z",
+        "updatedAt": "2026-01-02T03:04:05.000Z"
+      },
+      {
+        "id": "b2b2b2b2-0000-4000-8000-00000000000b",
+        "type": "CHARACTER",
+        "characterId": "cccccccc-3333-4333-8333-cccccccccccc",
+        "controlledBy": "user",
+        "status": "active",
+        "talkativeness": 0.5,
+        "createdAt": "2026-01-02T03:04:05.000Z",
+        "updatedAt": "2026-01-02T03:04:05.000Z"
+      },
+      {
+        "id": "b3b3b3b3-0000-4000-8000-00000000000c",
+        "type": "CHARACTER",
+        "characterId": "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb",
+        "controlledBy": "llm",
+        "status": "active",
+        "talkativeness": 0.5,
+        "createdAt": "2026-01-02T03:04:05.000Z",
+        "updatedAt": "2026-01-02T03:04:05.000Z"
+      }
+    ]
+  },
+  "llmLog": {
+    "id": "10101010-0000-4000-8000-000000000006",
+    "provider": "ANTHROPIC",
+    "modelName": "claude-3-opus",
+    "promptTokens": 12000,
+    "completionTokens": 800,
+    "totalTokens": 12800,
+    "createdAt": "2026-01-02T05:00:00.000Z"
+  },
+  "memories": [
+    { "id": "e0e0e0e0-0000-4000-8000-000000000010", "importance": 0.9 },
+    { "id": "e0e0e0e0-0000-4000-8000-000000000011", "importance": 0.8 },
+    { "id": "e0e0e0e0-0000-4000-8000-000000000012", "importance": 0.7 },
+    { "id": "e0e0e0e0-0000-4000-8000-000000000013", "importance": 0.5 },
+    { "id": "e0e0e0e0-0000-4000-8000-000000000014", "importance": 0.3 }
+  ],
+  "chatDocuments": [
+    {
+      "id": "f0f0f0f0-0000-4000-8000-000000000020",
+      "filePath": "Notes/session-b.md",
+      "scope": "project",
+      "mountPoint": null,
+      "displayTitle": "Session B Notes"
+    },
+    {
+      "id": "f0f0f0f0-0000-4000-8000-000000000021",
+      "filePath": "Notes/session-a.md",
+      "scope": "document_store",
+      "mountPoint": "self",
+      "displayTitle": null
+    }
+  ],
+  "loadedMemories": {
+    "semantic": [
+      { "summary": "The reader mentioned a red door.", "importance": 0.8, "score": 0.91, "effectiveWeight": 0.73 },
+      { "summary": "A ledger went missing last winter.", "importance": 0.6, "score": 0.55, "effectiveWeight": 0.42 }
+    ],
+    "interCharacter": [
+      { "aboutCharacterName": "Beck", "summary": "Beck distrusts the western maps.", "importance": 0.7 }
+    ],
+    "recap": "You were mid-way through cataloguing the winter ledgers."
+  },
+  "cases": [
+    {
+      "name": "full_sections",
+      "characterId": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "sections": [
+        "vault",
+        "vaultAccess",
+        "memory",
+        "loadedMemories",
+        "chats",
+        "prompt",
+        "lastTurn",
+        "carina",
+        "quilltap.version",
+        "context"
+      ],
+      "withLoadedMemories": true
+    },
+    {
+      "name": "targeted_quilltap_and_context_files",
+      "characterId": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "sections": ["quilltap.version", "context.files"]
+    },
+    {
+      "name": "targeted_carina_only",
+      "characterId": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "sections": ["carina"]
+    },
+    {
+      "name": "vault_with_automatic_images",
+      "characterId": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "sections": ["vault.character"],
+      "includeAutomaticImages": true
+    },
+    {
+      "name": "loaded_memories_absent",
+      "characterId": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "sections": ["loadedMemories"]
+    },
+    {
+      "name": "no_character_error",
+      "characterId": null
+    },
+    {
+      "name": "character_not_found_error",
+      "characterId": "deadbeef-0000-4000-8000-000000000099"
+    }
+  ]
+}

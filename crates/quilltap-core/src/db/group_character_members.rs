@@ -143,6 +143,36 @@ impl<'c> GroupCharacterMembersRepository<'c> {
         Ok(affected > 0)
     }
 
+    /// v4 `findByCharacterId` — the group memberships for a character, in table
+    /// (rowid) order. Returns each row's `groupId` (the only field
+    /// `resolveMyGroups` reads). The full membership marshaling is deferred (no
+    /// self-inventory consumer needs more columns).
+    pub fn find_group_ids_by_character_id(
+        &self,
+        character_id: &str,
+    ) -> Result<Vec<String>, DbError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT groupId FROM group_character_members WHERE characterId = ?1")?;
+        let rows = stmt
+            .query_map(params![character_id], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// v4 `findByGroupId` — the memberships of a group, in table (rowid) order.
+    /// Returns each row's `characterId` (the only field `buildVaultAccessGroupsSection`
+    /// reads). The de-dup + name resolution is the caller's job.
+    pub fn find_character_ids_by_group_id(&self, group_id: &str) -> Result<Vec<String>, DbError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT characterId FROM group_character_members WHERE groupId = ?1")?;
+        let rows = stmt
+            .query_map(params![group_id], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// Delete the membership `id`. Returns `false` when no row matched (v4's
     /// `_delete` "deletedCount === 0 -> false").
     pub fn delete(&self, id: &str) -> Result<bool, DbError> {

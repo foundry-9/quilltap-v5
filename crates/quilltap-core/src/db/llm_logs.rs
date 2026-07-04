@@ -256,6 +256,17 @@ pub struct LlUpdate {
     pub updated_at: String,
 }
 
+/// The subset of an `llm_logs` row `self_inventory`'s lastTurn section reads: the
+/// provider/model plus the parsed `usage` token counts and the log timestamp.
+#[derive(Clone, Debug)]
+pub struct LastTurnLog {
+    pub provider: String,
+    pub model_name: String,
+    /// `None` when the log's `usage` column was NULL.
+    pub usage: Option<LlmLogTokenUsage>,
+    pub created_at: String,
+}
+
 /// Repository over a borrowed connection (held by the [`super::Writer`]).
 pub struct LLMLogsRepository<'c> {
     conn: &'c Connection,
@@ -307,6 +318,60 @@ impl<'c> LLMLogsRepository<'c> {
             ],
         )?;
         Ok(())
+    }
+
+    /// v4 `llmLogs.findByChatId(chatId)[0]` — the **most recent** log for a chat.
+    /// v4 sorts `createdAt DESC` and the `self_inventory` lastTurn section takes the
+    /// head; we push the same ORDER BY into SQL and `LIMIT 1`. Returns only the
+    /// fields the section reads: `provider` / `modelName` / the parsed `usage`
+    /// token counts / `createdAt`. `None` when the chat has no logs. The full
+    /// LLMLog marshaling is deferred (no consumer needs more columns).
+    ///
+    /// The ORDER BY is v4's exact translated clause (`ORDER BY "createdAt" DESC`,
+    /// no secondary key — see `query-translator.ts::translateSort`). The same
+    /// SQLite engine runs both sides, so distinct `createdAt` values (which the
+    /// fixture guarantees) make the head deterministic and byte-identical.
+    pub fn find_last_by_chat_id(&self, chat_id: &str) -> Result<Option<LastTurnLog>, DbError> {
+        let row = self
+            .conn
+            .query_row(
+                "SELECT provider, modelName, usage, createdAt \
+                   FROM llm_logs WHERE chatId = ?1 \
+                  ORDER BY \"createdAt\" DESC LIMIT 1",
+                params![chat_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                },
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+
+        let Some((provider, model_name, usage_json, created_at)) = row else {
+            return Ok(None);
+        };
+
+        // v4 `usage?.promptTokens ?? null` — parse the nested object when present.
+        let usage = match usage_json {
+            Some(s) => serde_json::from_str::<LlmLogTokenUsage>(&s)
+                .map(Some)
+                .map_err(|e| DbError::Key(format!("usage parse: {e}")))?,
+            None => None,
+        };
+
+        Ok(Some(LastTurnLog {
+            provider,
+            model_name,
+            usage,
+            created_at,
+        }))
     }
 
     /// Apply an update patch to the log `id`. Returns `Ok(false)` when no row

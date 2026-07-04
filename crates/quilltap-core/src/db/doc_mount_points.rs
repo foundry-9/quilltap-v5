@@ -340,6 +340,27 @@ impl<'c> DocMountPointsRepository<'c> {
         Ok(names)
     }
 
+    /// Scoped `findById` for `self_inventory` — returns just `(id, name)`, the
+    /// only fields every self-inventory consumer of a mount point reads
+    /// (`buildVaultCharacterSection` / `buildVaultGroupsSection` / `resolveMountNames`
+    /// use `mountPoint.id` + `mountPoint.name`). `None` when the id is absent. The
+    /// full hydrated marshaling is deferred until a consumer needs more columns.
+    pub fn find_id_and_name_by_id(&self, id: &str) -> Result<Option<(String, String)>, DbError> {
+        let row = self
+            .conn
+            .query_row(
+                "SELECT id, name FROM doc_mount_points WHERE id = ?1",
+                params![id],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+        Ok(row)
+    }
+
     /// v4 `findByName` — the ENABLED mount points whose `name.trim().toLowerCase()`
     /// matches `name.trim().toLowerCase()`. Names are NOT unique (user-renameable),
     /// so this can return more than one row. Returns each match's `(id, storeType)`

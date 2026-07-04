@@ -1,0 +1,115 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+  "seedTimestamp": "2026-01-02T03:04:05.000Z",
+  "callingParticipantId": "aa000000-0000-4000-8000-0000000000a1",
+  "characters": [
+    { "id": "c0000001-0000-4000-8000-000000000001", "name": "Alice", "controlledBy": "llm", "aliases": [] },
+    { "id": "c0000002-0000-4000-8000-000000000002", "name": "Bob", "controlledBy": "llm", "aliases": [] },
+    { "id": "c0000003-0000-4000-8000-000000000003", "name": "Clara", "controlledBy": "llm", "aliases": ["CeeCee", "Clare-Bear"] },
+    { "id": "c0000004-0000-4000-8000-000000000004", "name": "Dave", "controlledBy": "llm", "aliases": [] },
+    { "id": "c0000005-0000-4000-8000-000000000005", "name": "Eve", "controlledBy": "llm", "aliases": [] },
+    { "id": "c0000006-0000-4000-8000-000000000006", "name": "Twin", "controlledBy": "llm", "aliases": [] },
+    { "id": "c0000007-0000-4000-8000-000000000007", "name": "Twin", "controlledBy": "llm", "aliases": [] }
+  ],
+  "chats": [
+    {
+      "id": "b0000001-0000-4000-8000-000000000001",
+      "note": "chat for success-by-name (Alice -> Bob)",
+      "participants": [
+        { "id": "aa000000-0000-4000-8000-0000000000a1", "character": "c0000001-0000-4000-8000-000000000001", "status": "active" },
+        { "id": "bb000000-0000-4000-8000-0000000000b1", "character": "c0000002-0000-4000-8000-000000000002", "status": "active" },
+        { "id": "cc000000-0000-4000-8000-0000000000c1", "character": "c0000003-0000-4000-8000-000000000003", "status": "active" },
+        { "id": "dd000000-0000-4000-8000-0000000000d1", "character": "c0000004-0000-4000-8000-000000000004", "status": "silent" },
+        { "id": "ee000000-0000-4000-8000-0000000000e1", "character": "c0000005-0000-4000-8000-000000000005", "status": "absent" }
+      ]
+    },
+    {
+      "id": "b0000002-0000-4000-8000-000000000002",
+      "note": "chat for success-by-alias (Alice -> Clara via CeeCee)",
+      "participants": [
+        { "id": "aa000000-0000-4000-8000-0000000000a1", "character": "c0000001-0000-4000-8000-000000000001", "status": "active" },
+        { "id": "bb000000-0000-4000-8000-0000000000b1", "character": "c0000002-0000-4000-8000-000000000002", "status": "active" },
+        { "id": "cc000000-0000-4000-8000-0000000000c1", "character": "c0000003-0000-4000-8000-000000000003", "status": "active" },
+        { "id": "dd000000-0000-4000-8000-0000000000d1", "character": "c0000004-0000-4000-8000-000000000004", "status": "silent" },
+        { "id": "ee000000-0000-4000-8000-0000000000e1", "character": "c0000005-0000-4000-8000-000000000005", "status": "absent" }
+      ]
+    },
+    {
+      "id": "b0000003-0000-4000-8000-000000000003",
+      "note": "chat for the sanitize case (Alice -> Dave, double-encoded message)",
+      "participants": [
+        { "id": "aa000000-0000-4000-8000-0000000000a1", "character": "c0000001-0000-4000-8000-000000000001", "status": "active" },
+        { "id": "bb000000-0000-4000-8000-0000000000b1", "character": "c0000002-0000-4000-8000-000000000002", "status": "active" },
+        { "id": "cc000000-0000-4000-8000-0000000000c1", "character": "c0000003-0000-4000-8000-000000000003", "status": "active" },
+        { "id": "dd000000-0000-4000-8000-0000000000d1", "character": "c0000004-0000-4000-8000-000000000004", "status": "silent" },
+        { "id": "ee000000-0000-4000-8000-0000000000e1", "character": "c0000005-0000-4000-8000-000000000005", "status": "absent" }
+      ]
+    },
+    {
+      "id": "b0000009-0000-4000-8000-000000000009",
+      "note": "chat for the FAILURE ops (no rows written): ambiguous, not-found, self, invalid, absent-target",
+      "participants": [
+        { "id": "aa000000-0000-4000-8000-0000000000a1", "character": "c0000001-0000-4000-8000-000000000001", "status": "active" },
+        { "id": "bb000000-0000-4000-8000-0000000000b1", "character": "c0000002-0000-4000-8000-000000000002", "status": "active" },
+        { "id": "cc000000-0000-4000-8000-0000000000c1", "character": "c0000003-0000-4000-8000-000000000003", "status": "active" },
+        { "id": "ee000000-0000-4000-8000-0000000000e1", "character": "c0000005-0000-4000-8000-000000000005", "status": "absent" },
+        { "id": "f6000000-0000-4000-8000-0000000000f6", "character": "c0000006-0000-4000-8000-000000000006", "status": "active" },
+        { "id": "f7000000-0000-4000-8000-0000000000f7", "character": "c0000007-0000-4000-8000-000000000007", "status": "active" }
+      ]
+    }
+  ],
+  "ops": [
+    {
+      "name": "success_by_name",
+      "chatId": "b0000001-0000-4000-8000-000000000001",
+      "args": { "target": "Bob", "message": "meet me at dawn" },
+      "expect": { "success": true, "targetName": "Bob", "targetParticipantId": "bb000000-0000-4000-8000-0000000000b1" },
+      "formatted": "Whispered to Bob: Message sent privately."
+    },
+    {
+      "name": "success_by_alias",
+      "note": "target 'ceecee' (lowercase) matches Clara's alias 'CeeCee' case-insensitively",
+      "chatId": "b0000002-0000-4000-8000-000000000002",
+      "args": { "target": "ceecee", "message": "the vault code is 1234" },
+      "expect": { "success": true, "targetName": "Clara", "targetParticipantId": "cc000000-0000-4000-8000-0000000000c1" },
+      "formatted": "Whispered to Clara: Message sent privately."
+    },
+    {
+      "name": "sanitize_double_encoded",
+      "note": "silent participant Dave CAN receive; message is a double-encoded [[WHISPER]] marker -> sanitized",
+      "chatId": "b0000003-0000-4000-8000-000000000003",
+      "args": { "target": "Dave", "message": "[[WHISPER to=\"Dave\"]]the real secret[[/WHISPER]]" },
+      "expect": { "success": true, "targetName": "Dave", "targetParticipantId": "dd000000-0000-4000-8000-0000000000d1" },
+      "formatted": "Whispered to Dave: Message sent privately."
+    },
+    {
+      "name": "ambiguous_target",
+      "note": "two active participants named 'Twin' -> ambiguous error, no row written",
+      "chatId": "b0000009-0000-4000-8000-000000000009",
+      "args": { "target": "Twin", "message": "which one?" },
+      "expect": { "success": false, "error": "Ambiguous target \"Twin\" matches multiple characters: Twin, Twin. Please be more specific." }
+    },
+    {
+      "name": "target_not_found",
+      "note": "Eve is 'absent' (not whisper-receivable) so she is excluded from BOTH the match set AND the available list",
+      "chatId": "b0000009-0000-4000-8000-000000000009",
+      "args": { "target": "Nobody", "message": "hello?" },
+      "expect": { "success": false, "error": "No character found matching \"Nobody\". Available characters: Alice, Bob, Clara, Twin, Twin" }
+    },
+    {
+      "name": "self_whisper",
+      "note": "caller is Alice's participant; whispering to Alice resolves to self -> error",
+      "chatId": "b0000009-0000-4000-8000-000000000009",
+      "args": { "target": "Alice", "message": "talking to myself" },
+      "expect": { "success": false, "error": "You cannot whisper to yourself." }
+    },
+    {
+      "name": "invalid_input_empty_message",
+      "note": "message is empty -> validation fails",
+      "chatId": "b0000009-0000-4000-8000-000000000009",
+      "args": { "target": "Bob", "message": "" },
+      "expect": { "success": false, "error": "Invalid input: both \"target\" (character name) and \"message\" (text content) are required." }
+    }
+  ]
+}

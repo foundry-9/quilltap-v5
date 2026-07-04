@@ -659,6 +659,214 @@ impl<'c> ChatSettingsRepository<'c> {
     }
 }
 
+/// The full `chatSettings.findByUserId(userId)` net-read (v4
+/// `ChatSettingsRepository.findByUserId` → `findOneByFilter({ userId })` =
+/// `hydrateRow` + `ChatSettingsSchema.parse`). Returns the hydrated settings as
+/// a `serde_json::Value` whose key order is the **schema field order** (v4's
+/// `JSON.stringify(zodParsed)` emits keys in schema order; the `preserve_order`
+/// `serde_json` feature keeps the insertion order this builder uses, and the
+/// stored JSON-column text is itself already schema-ordered — v4 wrote it
+/// post-parse — so re-parsing each cell raw preserves the nested key order too).
+/// `None` when the user has no row (v4 `findOneByFilter` → `null`).
+///
+/// Marshaling faithful to v4's `hydrateRow` + Zod parse:
+///   - every JSON-object column is parsed raw (a v4-written cell always carries
+///     the Zod-materialized defaults);
+///   - the four `.nullable().optional()` (no-default) columns
+///     (`imageDescriptionProfileId`, `uncensoredImageDescriptionProfileId`,
+///     `defaultRoleplayTemplateId`, `timezone`) are OMITTED when SQL NULL
+///     (`hydrateRow` maps NULL → `undefined`, which Zod `.optional()` drops from
+///     the parsed object); present as a string otherwise;
+///   - the five boolean columns render as JSON booleans;
+///   - `sidebarWidth` (INTEGER affinity, `.optional()` with `.default(256)`; a
+///     v4-written row always stores a value) renders as a JSON number via
+///     `js_number_to_json`;
+///   - `id`/`userId`/`avatarDisplayMode`/`avatarDisplayStyle`/`createdAt`/
+///     `updatedAt` are required strings.
+///
+/// This is the chat-settings read sub-unit the memory-gate watermark scoped
+/// reader ([`find_auto_housekeeping_settings_by_user_id`]) deferred; the
+/// `help_settings` tool ([`crate::tools::help`]) is its first consumer, and the
+/// read-differential drives v4's REAL `findByUserId` for a full-object diff.
+pub fn find_by_user_id(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Option<serde_json::Value>, DbError> {
+    use serde_json::{Map, Value};
+
+    // A JSON-object column: parse the stored text (schema-ordered, so key order
+    // is preserved under `preserve_order`). A v4-written cell always parses; a
+    // NULL cell would be Zod-defaulted by v4, but the corpus never writes NULL
+    // JSON columns (create writes every column), so a NULL → `null` here is fine
+    // and never exercised.
+    fn parse_json(cell: Option<String>) -> Value {
+        match cell {
+            Some(text) if !text.is_empty() => serde_json::from_str(&text).unwrap_or(Value::Null),
+            _ => Value::Null,
+        }
+    }
+    // A `.nullable().optional()` string/UUID column: `Some` → present string,
+    // `None` (SQL NULL) → the key is OMITTED (v4 drops the `undefined`).
+    fn put_opt(obj: &mut Map<String, Value>, key: &str, v: Option<String>) {
+        if let Some(s) = v {
+            obj.insert(key.to_string(), Value::String(s));
+        }
+    }
+
+    let row = conn
+        .query_row(
+            "SELECT id, userId, avatarDisplayMode, avatarDisplayStyle, tagStyles, \
+                    cheapLLMSettings, imageDescriptionProfileId, \
+                    uncensoredImageDescriptionProfileId, defaultRoleplayTemplateId, \
+                    themePreference, sidebarWidth, defaultTimestampConfig, \
+                    memoryCascadePreferences, autoHousekeepingSettings, \
+                    memoryExtractionLimits, autonomousRoomSettings, tokenDisplaySettings, \
+                    contextCompressionSettings, llmLoggingSettings, autoDetectRng, \
+                    compositionModeDefault, composerSpellcheck, textReplacementsEnabled, \
+                    autoScrollOnResponseComplete, agentModeSettings, coreWhisper, \
+                    thinkingDisplay, answerConfirmationSettings, storyBackgroundsSettings, \
+                    dangerousContentSettings, autoLockSettings, timezone, createdAt, updatedAt \
+             FROM chat_settings WHERE userId = ?1 LIMIT 1",
+            params![user_id],
+            |r| {
+                // Build in schema field order (the ChatSettingsSchema declaration
+                // order), matching v4's post-parse `JSON.stringify` key order.
+                let mut obj = Map::new();
+                obj.insert("id".into(), Value::String(r.get::<_, String>(0)?));
+                obj.insert("userId".into(), Value::String(r.get::<_, String>(1)?));
+                obj.insert(
+                    "avatarDisplayMode".into(),
+                    Value::String(r.get::<_, String>(2)?),
+                );
+                obj.insert(
+                    "avatarDisplayStyle".into(),
+                    Value::String(r.get::<_, String>(3)?),
+                );
+                obj.insert(
+                    "tagStyles".into(),
+                    parse_json(r.get::<_, Option<String>>(4)?),
+                );
+                obj.insert(
+                    "cheapLLMSettings".into(),
+                    parse_json(r.get::<_, Option<String>>(5)?),
+                );
+                put_opt(
+                    &mut obj,
+                    "imageDescriptionProfileId",
+                    r.get::<_, Option<String>>(6)?,
+                );
+                put_opt(
+                    &mut obj,
+                    "uncensoredImageDescriptionProfileId",
+                    r.get::<_, Option<String>>(7)?,
+                );
+                put_opt(
+                    &mut obj,
+                    "defaultRoleplayTemplateId",
+                    r.get::<_, Option<String>>(8)?,
+                );
+                obj.insert(
+                    "themePreference".into(),
+                    parse_json(r.get::<_, Option<String>>(9)?),
+                );
+                obj.insert(
+                    "sidebarWidth".into(),
+                    super::js_number_to_json(r.get::<_, f64>(10)?),
+                );
+                obj.insert(
+                    "defaultTimestampConfig".into(),
+                    parse_json(r.get::<_, Option<String>>(11)?),
+                );
+                obj.insert(
+                    "memoryCascadePreferences".into(),
+                    parse_json(r.get::<_, Option<String>>(12)?),
+                );
+                obj.insert(
+                    "autoHousekeepingSettings".into(),
+                    parse_json(r.get::<_, Option<String>>(13)?),
+                );
+                obj.insert(
+                    "memoryExtractionLimits".into(),
+                    parse_json(r.get::<_, Option<String>>(14)?),
+                );
+                obj.insert(
+                    "autonomousRoomSettings".into(),
+                    parse_json(r.get::<_, Option<String>>(15)?),
+                );
+                obj.insert(
+                    "tokenDisplaySettings".into(),
+                    parse_json(r.get::<_, Option<String>>(16)?),
+                );
+                obj.insert(
+                    "contextCompressionSettings".into(),
+                    parse_json(r.get::<_, Option<String>>(17)?),
+                );
+                obj.insert(
+                    "llmLoggingSettings".into(),
+                    parse_json(r.get::<_, Option<String>>(18)?),
+                );
+                obj.insert(
+                    "autoDetectRng".into(),
+                    Value::Bool(r.get::<_, i64>(19)? == 1),
+                );
+                obj.insert(
+                    "compositionModeDefault".into(),
+                    Value::Bool(r.get::<_, i64>(20)? == 1),
+                );
+                obj.insert(
+                    "composerSpellcheck".into(),
+                    Value::Bool(r.get::<_, i64>(21)? == 1),
+                );
+                obj.insert(
+                    "textReplacementsEnabled".into(),
+                    Value::Bool(r.get::<_, i64>(22)? == 1),
+                );
+                obj.insert(
+                    "autoScrollOnResponseComplete".into(),
+                    Value::Bool(r.get::<_, i64>(23)? == 1),
+                );
+                obj.insert(
+                    "agentModeSettings".into(),
+                    parse_json(r.get::<_, Option<String>>(24)?),
+                );
+                obj.insert(
+                    "coreWhisper".into(),
+                    parse_json(r.get::<_, Option<String>>(25)?),
+                );
+                obj.insert(
+                    "thinkingDisplay".into(),
+                    parse_json(r.get::<_, Option<String>>(26)?),
+                );
+                obj.insert(
+                    "answerConfirmationSettings".into(),
+                    parse_json(r.get::<_, Option<String>>(27)?),
+                );
+                obj.insert(
+                    "storyBackgroundsSettings".into(),
+                    parse_json(r.get::<_, Option<String>>(28)?),
+                );
+                obj.insert(
+                    "dangerousContentSettings".into(),
+                    parse_json(r.get::<_, Option<String>>(29)?),
+                );
+                obj.insert(
+                    "autoLockSettings".into(),
+                    parse_json(r.get::<_, Option<String>>(30)?),
+                );
+                put_opt(&mut obj, "timezone", r.get::<_, Option<String>>(31)?);
+                obj.insert("createdAt".into(), Value::String(r.get::<_, String>(32)?));
+                obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(33)?));
+                Ok(Value::Object(obj))
+            },
+        )
+        .map(Some)
+        .or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other),
+        })?;
+    Ok(row)
+}
+
 /// Scoped read for the memory gate's watermark check: the
 /// `autoHousekeepingSettings` JSON of the user's settings row (v4
 /// `chatSettings.findByUserId(userId)?.autoHousekeepingSettings`). `None` when

@@ -2025,8 +2025,62 @@ re-verified). **Tracked deferrals:** the executor dispatch + handlers (W4.1d), t
 tool loops (W4.1e/f), `buildTools`, provider wire parsing (W4.7); the `ToolRunner`
 / `ToolExecutionContext` callback slots to their owning units.
 
+**Wave 4 (W4.1d batch 1): the first tool-handler batch is DONE** (2026-07-04).
+The nine immediately-portable tools + the real dispatching `ToolRunner` are
+ported, each handler with a differential driving v4's REAL handler byte-exact
+(five agents on disjoint files, the shared `loaded_memories` typing + module
+skeleton + dispatcher wired serially). Handlers live in the `tools::` family:
+`read_conversation` + `upsert_annotation`/`delete_annotation`
+(`tools::read_conversation`/`tools::annotations`, over the ported
+`conversation_annotations` repo — extended with `find_by_chat_id`/
+`find_by_message_index`/`delete_annotation` — and the ported
+`crate::scriptorium::{merge,strip}_annotations` leaves;
+`scriptorium_tools_equivalence`); `terminal_read`/`terminal_list`
+(`tools::terminal`, over new `terminal_sessions` `find_by_id`/`find_by_chat_id`
+reads + the ported `crate::terminal_clean::clean_terminal_output`, the live-PTY /
+transcript scrollback lifted to an **injected seam** — `full_content` fed
+identically both sides; `terminal_tools_equivalence`); `whisper` (`tools::whisper`,
+resolves the target by name/alias among `can_receive_whisper` participants and
+writes exactly one `chat_messages` row through `add_message` — STOP-rule checked,
+**no post-office side effect**; reuses the ported `strip_text_block_markers`;
+`whisper_tool_equivalence`); `help_settings`/`help_navigate`/`submit_final_response`
+(`tools::help` — `help_settings` needed and got the full
+`chat_settings::find_by_user_id` net-read marshaling, the other four profile reads
+being sanitizer-subset scoped SELECTs; the last two pure; `help_tools_equivalence`);
+and the capstone `self_inventory` (`tools::self_inventory`, the ten-section
+introspection report composing ~a dozen repo readers [`llm_logs` `find_last_by_chat_id`,
+`doc_mount_files` `find_vault_files_by_mount_point_id`, `group_character_members`
+reads, `chat_documents::find_by_chat_id`, `characters_read::find_all_raw`, …] +
+the ported `build_system_prompt` / `resolve_connection_profile` /
+`get_model_context_limit` + new `crate::folder_utils` leaves +
+`qtap_uri::format_scoped_uri`; the host-environment bits — runtime mode, client
+shell, release-notes/changelog file reads, `isMountIndexDegraded` — are an
+**injected `SelfInventoryEnv` seam**; `self_inventory_equivalence`). The gate's
+`LoadedMemoriesContext` is now **typed** (`{ semantic, interCharacter, recap }`)
+since its consumer landed. The **dispatching runner**
+(`tools::executor::BuiltInToolRunner`) reproduces v4 `executeToolCallWithContext`'s
+built-in dispatch rows (the `{ formattedText, … }` result shape, the failure
+`null`/`error` mapping, the dispatcher-side guards + the annotation
+character-name resolution) and holds an **injected inner `ToolRunner` fallback**
+for unported names (the loud default reproduces v4's `Unknown tool: <name>` for
+names v4 doesn't know, and a "recognized but not yet available" failure naming a
+not-yet-ported built-in — batches 2–5 extend the ported set without touching
+callers). An end-to-end dispatcher differential (`tool_dispatch_equivalence`)
+drives v4's REAL `executeToolCallWithContext` over a mixed batch (read, two writes
+with character-name resolution, a pure tool, a handler failure, an invalid-input
+failure); the unknown-tool loud fallback is unit-tested (v4's genuine unknown path
+routes through the unported plugin registry, so it stays out of the oracle batch).
+Existing `tool_execution_*` + `message_finalizer` + `orchestrator` differentials
+re-verified green. **Tracked deferrals:** the plugin-vs-built-in routing
+precedence (the plugin registry is unported — for a no-plugin instance the
+dispatch is exact); `self_inventory`'s `quilltap.releaseNotes`/`.changelog` file
+reads (the env seam supports them; the corpus requests only `quilltap.version`);
+the `terminal_read` scrollback source; `read_conversation`'s deprecated
+`findByCharacterIdRaw`.
+
 The rest of wave 4 (the remaining tool subsystem — tool loops / `buildTools` /
-registry, the executor + handler catalog, the finalizer's response-RNG — danger,
+registry, the remaining handler-catalog batches [2 wardrobe, 3 doc-edit, 4
+embedding/search, 5 host-seamed], the finalizer's response-RNG — danger,
 answer-confirmation, courier/agent-mode/compression-cache/regenerate-swipe, carina
 query, buildContext seam-closers, provider manifest) follows per the
 chat-orchestration decomposition.

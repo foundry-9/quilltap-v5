@@ -80,6 +80,30 @@ pub fn format_self_uri(path: &str) -> String {
     format_qtap_uri(SELF_VAULT_TOKEN, path)
 }
 
+/// Build a `qtap://` URI for the project/general scope (v4 `formatScopedUri`).
+/// The authority is the reserved literal `project` / `general` (never
+/// percent-encoded — matching v4's `encodeAuthority`), so the emit is just
+/// `qtap://<scope>/<encoded-path>`.
+pub fn format_scoped_uri(scope: ScopedAuthority, path: &str) -> String {
+    format_qtap_uri(scope.as_str(), path)
+}
+
+/// The two non-`document_store` reserved authorities `format_scoped_uri` accepts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScopedAuthority {
+    Project,
+    General,
+}
+
+impl ScopedAuthority {
+    fn as_str(self) -> &'static str {
+        match self {
+            ScopedAuthority::Project => "project",
+            ScopedAuthority::General => "general",
+        }
+    }
+}
+
 /// Build a human-facing `qtap://` URI for a `document_store` document (v4
 /// `formatDocStoreUri`). Prefers the store **name**; falls back to the **UUID**
 /// when `name_is_ambiguous` OR when the trimmed, lower-cased name collides with a
@@ -136,6 +160,22 @@ mod tests {
         assert_eq!(
             format_doc_store_uri("Dupe", "mp-3", "x.md", true),
             "qtap://mp-3/x.md"
+        );
+    }
+
+    #[test]
+    fn scoped_uri_emits_reserved_authority() {
+        assert_eq!(
+            format_scoped_uri(ScopedAuthority::Project, "Notes/a b.md"),
+            "qtap://project/Notes/a%20b.md"
+        );
+        assert_eq!(
+            format_scoped_uri(ScopedAuthority::General, "x.md"),
+            "qtap://general/x.md"
+        );
+        assert_eq!(
+            format_scoped_uri(ScopedAuthority::General, ""),
+            "qtap://general/"
         );
     }
 }

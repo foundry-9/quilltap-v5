@@ -54,6 +54,102 @@ use rusqlite::{params, Connection};
 
 use super::DbError;
 
+/// The subset of a `terminal_sessions` row the `terminal_read` / `terminal_list`
+/// tool handlers consume (v4 `TerminalSession`). Populated by [`find_by_id`] and
+/// [`find_by_chat_id`].
+///
+/// `exit_code` is read as `Option<i64>` (the column is REAL-affinity per
+/// `mapToSQLiteType` — an int with no `.max()` — but a stored value is always an
+/// integer-valued REAL, and the handler emits it as a JS integer via
+/// `exitCode ?? null`, so `Option<i64>` is the faithful shape here; the create
+/// side binds it as `f64`, and SQLite converts the integer-valued REAL cell to an
+/// exact `i64` on read). The nullable string columns are `Option<String>`
+/// (`None` = SQL NULL).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TerminalSessionRow {
+    pub id: String,
+    pub chat_id: String,
+    /// `None` = SQL NULL.
+    pub label: Option<String>,
+    pub shell: String,
+    pub cwd: String,
+    pub started_at: String,
+    /// `None` = SQL NULL (the session is still live).
+    pub exited_at: Option<String>,
+    /// `None` = SQL NULL.
+    pub exit_code: Option<i64>,
+    /// `None` = SQL NULL.
+    pub transcript_path: Option<String>,
+}
+
+const SELECT_COLS: &str = "id, chatId, label, shell, cwd, startedAt, exitedAt, \
+                           exitCode, transcriptPath";
+
+fn row_from(row: &rusqlite::Row<'_>) -> rusqlite::Result<TerminalSessionRow> {
+    Ok(TerminalSessionRow {
+        id: row.get(0)?,
+        chat_id: row.get(1)?,
+        label: row.get(2)?,
+        shell: row.get(3)?,
+        cwd: row.get(4)?,
+        started_at: row.get(5)?,
+        // `exitCode` is stored REAL-affinity (an int with no `.max()` → REAL by
+        // `mapToSQLiteType`), so a stored `137` is the cell `137.0`. rusqlite will
+        // not silently coerce REAL → i64, so read it as `Option<f64>` and collapse
+        // the integer-valued value to an exact `i64` (the handler emits it as a JS
+        // integer via `exitCode ?? null`; a stored value is always integer-valued).
+        exit_code: row.get::<_, Option<f64>>(7)?.map(|f| f as i64),
+        exited_at: row.get(6)?,
+        transcript_path: row.get(8)?,
+    })
+}
+
+/// v4 `TerminalSessionsRepository.findById` (inherited base `findById`). Returns
+/// `None` when no row matches. Reads over a read-only [`Connection`] (the tool
+/// handler is a read path — the sole write is the resulting TOOL message, handled
+/// by the finalizer).
+pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<TerminalSessionRow>, DbError> {
+    let sql = format!("SELECT {SELECT_COLS} FROM terminal_sessions WHERE id = ?1");
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query(params![id])?;
+    match rows.next()? {
+        Some(row) => Ok(Some(row_from(row)?)),
+        None => Ok(None),
+    }
+}
+
+/// v4 `TerminalSessionsRepository.findByChatId` — all sessions for a chat,
+/// **sorted by `startedAt` descending** (v4 sorts in JS by
+/// `new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()`).
+///
+/// v4's `findByFilter({ chatId })` returns rows in the backend's default order,
+/// then the JS `.sort(...)` re-orders by `startedAt` descending. `Array.prototype.
+/// sort` is stable (ES2019+), so ties (equal `startedAt`) preserve the pre-sort
+/// order — which for the SQLite backend's `findByFilter` is insertion (rowid)
+/// order. This port reproduces that with a single `ORDER BY` that is stable on the
+/// tie: `ORDER BY startedAt DESC` alone is NOT guaranteed stable in SQLite, so the
+/// query orders by the parsed timestamp descending and breaks ties by ascending
+/// `rowid` (the insertion order the JS stable sort preserves). Timestamps are ISO
+/// strings; lexical `DESC` matches chronological `DESC` for same-length ISO-8601
+/// with a `Z` zone, but to match `Date.getTime()` exactly the ordering key is the
+/// string itself (all fixture timestamps are canonical ISO-8601 UTC).
+pub fn find_by_chat_id(
+    conn: &Connection,
+    chat_id: &str,
+) -> Result<Vec<TerminalSessionRow>, DbError> {
+    let sql = format!(
+        "SELECT {SELECT_COLS} FROM terminal_sessions WHERE chatId = ?1 \
+         ORDER BY startedAt DESC, rowid ASC"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(params![chat_id], row_from)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
 /// Fields for creating a terminal session (the `Omit<TerminalSession,'id'|
 /// timestamps>` shape). `exit_code` is the nullable REAL-affinity column (bound
 /// as `Option<f64>`); `label`/`exited_at`/`transcript_path` are the nullable

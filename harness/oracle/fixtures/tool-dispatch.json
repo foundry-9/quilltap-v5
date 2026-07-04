@@ -1,0 +1,87 @@
+{
+  "$comment": "Spec for the dispatcher end-to-end differential (W4.1d batch 1). One character + one rendered chat + a not-rendered chat + a seed annotation, then a mixed batch of tool calls driven through v4's REAL executeToolCallWithContext (oracle) vs the Rust BuiltInToolRunner. Proves dispatch + handler + harness compose for a read, two writes (with dispatcher character-name resolution), a pure tool, a handler failure, and an invalid-input failure. All ids are valid UUIDs (the characters/chats schemas validate them).",
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "11111111-1111-4111-8111-111111111111",
+  "seedTimestamp": "2026-01-01T00:00:00.000Z",
+  "characters": [
+    { "id": "22222222-2222-4222-8222-222222222222", "name": "Friday", "controlledBy": "llm", "aliases": ["Fri"] }
+  ],
+  "chats": [
+    {
+      "id": "33333333-3333-4333-8333-333333333333",
+      "renderedMarkdown": "## Interchange 1\n### Message 0\nHello there.\n### Message 1\nGeneral Kenobi.\n### Message 2\nYou are a bold one.\n",
+      "participants": [
+        { "id": "55555555-5555-4555-8555-555555555555", "character": "22222222-2222-4222-8222-222222222222", "status": "active" }
+      ]
+    },
+    {
+      "id": "44444444-4444-4444-8444-444444444444",
+      "renderedMarkdown": null,
+      "participants": [
+        { "id": "66666666-6666-4666-8666-666666666666", "character": "22222222-2222-4222-8222-222222222222", "status": "active" }
+      ]
+    }
+  ],
+  "seedAnnotations": [
+    {
+      "id": "77777777-7777-4777-8777-777777777777",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "messageIndex": 1,
+      "sourceMessageId": null,
+      "characterName": "Friday",
+      "content": "a pre-existing annotation on message 1",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "$comment": "read — success; character participates.",
+      "tool": "read_conversation",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "characterId": "22222222-2222-4222-8222-222222222222",
+      "callingParticipantId": "55555555-5555-4555-8555-555555555555",
+      "args": {}
+    },
+    {
+      "$comment": "write — upsert on message 0 (create); the dispatcher must resolve characterName='Friday' from callingParticipantId.",
+      "tool": "upsert_annotation",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "characterId": "22222222-2222-4222-8222-222222222222",
+      "callingParticipantId": "55555555-5555-4555-8555-555555555555",
+      "args": { "message_index": 0, "content": "a fresh dispatcher-written note" }
+    },
+    {
+      "$comment": "write — upsert on message 1 (update; the seed annotation exists for Friday).",
+      "tool": "upsert_annotation",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "characterId": "22222222-2222-4222-8222-222222222222",
+      "callingParticipantId": "55555555-5555-4555-8555-555555555555",
+      "args": { "message_index": 1, "content": "an updated note replacing the seed" }
+    },
+    {
+      "$comment": "pure — help_navigate success.",
+      "tool": "help_navigate",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "characterId": "22222222-2222-4222-8222-222222222222",
+      "callingParticipantId": "55555555-5555-4555-8555-555555555555",
+      "args": { "url": "/settings/connections" }
+    },
+    {
+      "$comment": "handler failure — read_conversation on a chat with no rendered markdown → 'Conversation has not been rendered yet.'",
+      "tool": "read_conversation",
+      "chatId": "44444444-4444-4444-8444-444444444444",
+      "characterId": "22222222-2222-4222-8222-222222222222",
+      "callingParticipantId": "66666666-6666-4666-8666-666666666666",
+      "args": {}
+    },
+    {
+      "$comment": "invalid input — help_navigate with an off-allowlist url → the exact Zod failure.",
+      "tool": "help_navigate",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "characterId": "22222222-2222-4222-8222-222222222222",
+      "callingParticipantId": "55555555-5555-4555-8555-555555555555",
+      "args": { "url": "https://evil.example.com" }
+    }
+  ]
+}

@@ -228,6 +228,14 @@ pub fn find_all(main: &Connection, mount: &Connection) -> Result<Vec<Value>, DbE
     overlay_many(mount, query_raw(main, "", &[])?)
 }
 
+/// Find all characters **without** the vault overlay (v4 `findAllRaw` → `_findAll`):
+/// slim rows only, managed columns at their Zod defaults. `self_inventory`'s Carina
+/// section uses this so one broken character vault can't sink the whole answerer
+/// listing (it reads only `id` / `name` / `canBeCarina`, all slim columns).
+pub fn find_all_raw(main: &Connection) -> Result<Vec<Value>, DbError> {
+    query_raw(main, "", &[])
+}
+
 /// Find characters by user id, overlaid (v4 `findByUserId`).
 pub fn find_by_user_id(
     main: &Connection,

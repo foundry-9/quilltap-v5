@@ -34,13 +34,12 @@
 //!
 //! ## The `ToolExecutionContext` callback slots
 //!
-//! v4's `ToolExecutionContext` carries two callback/flag members that reach into
-//! subsystems not yet ported: `emitCarinaAnswer` (a live SSE callback owned by the
-//! orchestrator — the Carina query engine, wave-4) and `loadedMemories` (consumed
-//! by the `self_inventory` tool, W4.1d). They are modeled as documented deferral
-//! slots ([`ToolExecutionContext::loaded_memories`] carried opaquely; the carina
-//! callback is not modeled until its consumer lands) — `create_tool_context`
-//! reproduces v4's `createToolContext`, which leaves both absent.
+//! v4's `ToolExecutionContext` carries a callback member reaching into a subsystem
+//! not yet ported: `emitCarinaAnswer` (a live SSE callback owned by the
+//! orchestrator — the Carina query engine, wave-4). It is not modeled until its
+//! consumer lands. `loadedMemories` is now typed ([`LoadedMemoriesContext`], W4.1d)
+//! since its consumer `self_inventory` is ported. `create_tool_context` reproduces
+//! v4's `createToolContext`, which leaves the carina callback absent.
 //!
 //! ## Two content shapes — do NOT unify with the RNG one
 //!
@@ -54,7 +53,7 @@
 use std::collections::HashSet;
 use std::future::Future;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use super::chat_events::{ChatEvent, EventSink, StatusPayload, ToolResultPayload};
@@ -135,6 +134,48 @@ pub struct GeneratedImage {
     pub sha256: Option<String>,
 }
 
+/// Memories loaded into this turn's prompt, for introspection tools (v4
+/// `LoadedMemoriesContext`, `lib/chat/tool-executor.ts`). Populated by the
+/// orchestrator from the built context so `self_inventory` can report the exact
+/// memory slate the LLM saw. Every field is optional in v4 (absent ⇒ empty).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LoadedMemoriesContext {
+    /// Semantic-search memories rendered under `## Relevant Memories`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub semantic: Vec<LoadedSemanticMemory>,
+    /// Inter-character memories rendered under `## Memories About Other Characters`.
+    #[serde(
+        rename = "interCharacter",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub inter_character: Vec<LoadedInterCharacterMemory>,
+    /// Memory recap text injected on chat start or character join, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recap: Option<String>,
+}
+
+/// One semantic memory in [`LoadedMemoriesContext`] (v4 `semantic[]` shape).
+/// Numbers are JS numbers (`f64`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LoadedSemanticMemory {
+    pub summary: String,
+    pub importance: f64,
+    pub score: f64,
+    #[serde(rename = "effectiveWeight")]
+    pub effective_weight: f64,
+}
+
+/// One inter-character memory in [`LoadedMemoriesContext`] (v4 `interCharacter[]`
+/// shape).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LoadedInterCharacterMemory {
+    #[serde(rename = "aboutCharacterName")]
+    pub about_character_name: String,
+    pub summary: String,
+    pub importance: f64,
+}
+
 /// Per-chat context used to decide whether a tool result should be whispered (v4
 /// `ToolWhisperContext`).
 #[derive(Debug, Clone)]
@@ -211,9 +252,9 @@ pub struct ToolExecutionContext {
     /// Browser User-Agent from the originating request (scrubbed).
     pub browser_user_agent: Option<String>,
     /// Memories loaded into this turn's prompt, for introspection tools
-    /// (`self_inventory`, W4.1d). Carried opaquely until its consumer lands — its
-    /// typed shape (`{ semantic, interCharacter, recap }`) is a W4.1d concern.
-    pub loaded_memories: Option<Value>,
+    /// (`self_inventory`). Typed as [`LoadedMemoriesContext`] (W4.1d, its consumer
+    /// `self_inventory` landed) — the orchestrator fills it from the built context.
+    pub loaded_memories: Option<LoadedMemoriesContext>,
     /// Character IDs whose wardrobe was modified during this turn (v4's
     /// `pendingWardrobeAnnouncements` Set). Wardrobe tool handlers (W4.1d) add to
     /// it; the orchestrator drains it once at end-of-turn.
@@ -236,7 +277,7 @@ pub fn create_tool_context(
     embedding_profile_id: Option<String>,
     project_id: Option<String>,
     browser_user_agent: Option<String>,
-    loaded_memories: Option<Value>,
+    loaded_memories: Option<LoadedMemoriesContext>,
 ) -> ToolExecutionContext {
     ToolExecutionContext {
         chat_id: chat_id.into(),

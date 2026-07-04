@@ -107,9 +107,51 @@ pub struct DocMountFilesRepository<'c> {
     conn: &'c Connection,
 }
 
+/// One joined `doc_mount_file_links` + `doc_mount_files` row, restricted to the
+/// columns `self_inventory`'s vault listing consumes (v4's
+/// `DocMountFileLinkWithContent` subset used by `mapVaultFiles`):
+/// `relativePath` / `fileName` / `fileType` / `fileSizeBytes` / `lastModified`.
+#[derive(Clone, Debug)]
+pub struct VaultFileRow {
+    pub relative_path: String,
+    pub file_name: String,
+    pub file_type: String,
+    pub file_size_bytes: f64,
+    pub last_modified: String,
+}
+
 impl<'c> DocMountFilesRepository<'c> {
     pub fn new(conn: &'c Connection) -> Self {
         Self { conn }
+    }
+
+    /// v4 `docMountFiles.findByMountPointId` (the `queryLinks` join), restricted to
+    /// the columns `self_inventory` reads. Joins the link table to the content table
+    /// on `fileId` for one mount point, in table (rowid) order — matching v4's
+    /// unordered `WHERE l.mountPointId = ?` scan, which the builder then re-sorts by
+    /// `relativePath`. The full `DocMountFileLinkWithContent` shape is deferred.
+    pub fn find_vault_files_by_mount_point_id(
+        &self,
+        mount_point_id: &str,
+    ) -> Result<Vec<VaultFileRow>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT l.relativePath, l.fileName, l.lastModified, f.fileSizeBytes, f.fileType \
+               FROM doc_mount_file_links l \
+               JOIN doc_mount_files f ON f.id = l.fileId \
+              WHERE l.mountPointId = ?1",
+        )?;
+        let rows = stmt
+            .query_map(params![mount_point_id], |row| {
+                Ok(VaultFileRow {
+                    relative_path: row.get::<_, String>(0)?,
+                    file_name: row.get::<_, String>(1)?,
+                    last_modified: row.get::<_, String>(2)?,
+                    file_size_bytes: row.get::<_, f64>(3)?,
+                    file_type: row.get::<_, String>(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
     }
 
     /// Insert a content row with the given pinned id + timestamps. `fileSizeBytes`
