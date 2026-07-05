@@ -571,6 +571,19 @@ in a numbered batch.
   instruction injection + the wire slate + the seeded `5 → 0` reset) + resolver
   unit tests. The W4.1e deferral of the resolver is closed.
 
+- **W4.4a part 2: regenerate-swipe — ported and green** (2026-07-05).
+  `services::regenerate_swipe` ports v4's `regenerateMessageAsSwipe` (the sibling
+  entry point to `process_message`): responder/identity resolution +
+  `build_message_context` (continue-mode, context strictly before the target) +
+  the `CompletionProvider` seam (a single non-streaming generation) + swipe-group
+  bookkeeping + the ported `delete_memories_by_source_message_with_vectors`
+  cascade. The orchestrator's `build_context_input` / `BuildContextArgs` were made
+  reusable (scalar clock/limit fields). `regenerate_swipe_tier3_equivalence`
+  (four cases: first regen, existing group, KEEP_MEMORIES, not-assistant throw)
+  drives v4's REAL repo over a two-DB fixture, diffing five tables (the canned
+  completion key proves the rebuilt prompt). Deferral: swipe raw/reasoning/thought
+  fields null (cheap-LLM `CompletionResponse` subset; W4.7).
+
 - **W4.1d batch 3a (part 1): the tiered mount pool + the `qtap://` URI codec —
   ported and green** (the first half of the doc-edit foundation the ~26 `doc_*`
   handlers of batch 3b sit on). `db::tiered_mount_pool` is the canonical home of

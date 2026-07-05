@@ -1042,7 +1042,13 @@ where
     }));
 
     let build_input = build_context_input(BuildContextArgs {
-        input,
+        user_id: &user_id,
+        model_context_limit: input.model_context_limit,
+        timestamp_config: input.timestamp_config.clone(),
+        timezone: input.timezone.clone(),
+        is_continue_mode,
+        now_ms: input.clock.now_ms,
+        local_offset_minutes: input.clock.local_offset_minutes,
         chat: &chat,
         character: &character,
         character_participant: &character_participant,
@@ -1979,29 +1985,42 @@ fn chain_reason_str(r: ChainReason) -> &'static str {
 // buildContext input assembly
 // ===========================================================================
 
-struct BuildContextArgs<'a> {
-    input: &'a ProcessMessageInput,
-    chat: &'a Value,
-    character: &'a Value,
-    character_participant: &'a Value,
-    connection_profile: &'a build_context::ConnectionProfileInput,
-    user_character: Option<crate::system_prompt::UserCharacter>,
-    roleplay_template: Option<String>,
-    is_multi_character: bool,
-    participant_characters: &'a HashMap<String, Value>,
-    existing_messages: &'a [Value],
-    final_user_message: Option<String>,
-    speaking_as: Option<String>,
-    tool_instructions: Option<String>,
-    compression_enabled: bool,
-    bypass_compression: bool,
+pub(crate) struct BuildContextArgs<'a> {
+    /// The user id (v4 `input.user_id`).
+    pub user_id: &'a str,
+    /// The model's context-window limit (v4 `input.model_context_limit`).
+    pub model_context_limit: i64,
+    /// The optional timestamp config (v4 `input.timestamp_config`).
+    pub timestamp_config: Option<crate::chat_timestamp::TimestampConfig>,
+    /// The resolved IANA timezone (v4 `input.timezone`).
+    pub timezone: Option<String>,
+    /// `continueMode === true` (v4 `input.options.continue_mode`).
+    pub is_continue_mode: bool,
+    /// The wall-clock base (v4 `input.clock.now_ms`).
+    pub now_ms: i64,
+    /// The local UTC offset in minutes (v4 `input.clock.local_offset_minutes`).
+    pub local_offset_minutes: i64,
+    pub chat: &'a Value,
+    pub character: &'a Value,
+    pub character_participant: &'a Value,
+    pub connection_profile: &'a build_context::ConnectionProfileInput,
+    pub user_character: Option<crate::system_prompt::UserCharacter>,
+    pub roleplay_template: Option<String>,
+    pub is_multi_character: bool,
+    pub participant_characters: &'a HashMap<String, Value>,
+    pub existing_messages: &'a [Value],
+    pub final_user_message: Option<String>,
+    pub speaking_as: Option<String>,
+    pub tool_instructions: Option<String>,
+    pub compression_enabled: bool,
+    pub bypass_compression: bool,
 }
 
 /// Assemble the [`BuildContextInput`] from the resolved orchestrator state (v4's
 /// inline `buildMessageContext` argument object). Single-character corpus:
 /// participant/multi-character fields are `None`, `skip_memories` false,
 /// `min_memory_importance` 0.
-fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInput {
+pub(crate) fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInput {
     let character = to_context_character(args.character);
 
     let chat = build_context::ContextChat {
@@ -2049,8 +2068,8 @@ fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInput {
     let _ = (_rp_unused, _mwp_unused);
 
     BuildContextInput {
-        model_context_limit: args.input.model_context_limit,
-        user_id: args.input.user_id.clone(),
+        model_context_limit: args.model_context_limit,
+        user_id: args.user_id.to_string(),
         character,
         user_character: args.user_character,
         chat,
@@ -2067,9 +2086,9 @@ fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInput {
         participant_characters,
         messages_with_participants: None,
         tool_instructions: args.tool_instructions,
-        timestamp_config: args.input.timestamp_config.clone(),
+        timestamp_config: args.timestamp_config.clone(),
         is_initial_message: false,
-        timezone: args.input.timezone.clone(),
+        timezone: args.timezone.clone(),
         connection_profile: Some(args.connection_profile.clone()),
         context_compression_settings: if args.compression_enabled {
             Some(build_context::ContextCompressionSettingsInput {
@@ -2085,9 +2104,9 @@ fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInput {
         bypass_compression: args.bypass_compression,
         generate_memory_recap: false,
         uncensored_fallback: None,
-        is_continue_mode: args.input.options.continue_mode,
-        now_ms: args.input.clock.now_ms,
-        local_offset_minutes: args.input.clock.local_offset_minutes,
+        is_continue_mode: args.is_continue_mode,
+        now_ms: args.now_ms,
+        local_offset_minutes: args.local_offset_minutes,
         minutes_since_last_timestamp_announcement: None,
     }
 }
@@ -2183,13 +2202,13 @@ fn to_full_participant(p: &Value) -> build_context::FullParticipant {
 // Marshaling helpers.
 // ===========================================================================
 
-fn json_str(v: &Value, k: &str) -> Option<String> {
+pub(crate) fn json_str(v: &Value, k: &str) -> Option<String> {
     v.get(k).and_then(Value::as_str).map(String::from)
 }
-fn json_f64(v: &Value, k: &str) -> Option<f64> {
+pub(crate) fn json_f64(v: &Value, k: &str) -> Option<f64> {
     v.get(k).and_then(Value::as_f64)
 }
-fn json_str_array(v: &Value, k: &str) -> Vec<String> {
+pub(crate) fn json_str_array(v: &Value, k: &str) -> Vec<String> {
     v.get(k)
         .and_then(Value::as_array)
         .map(|a| {
@@ -2200,7 +2219,7 @@ fn json_str_array(v: &Value, k: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn to_effective_profile(profile: &Value) -> EffectiveProfile {
+pub(crate) fn to_effective_profile(profile: &Value) -> EffectiveProfile {
     EffectiveProfile {
         id: json_str(profile, "id").unwrap_or_default(),
         provider: json_str(profile, "provider").unwrap_or_default(),
@@ -2209,7 +2228,7 @@ fn to_effective_profile(profile: &Value) -> EffectiveProfile {
     }
 }
 
-fn effective_profile_profile(profile: &Value) -> build_context::ConnectionProfileInput {
+pub(crate) fn effective_profile_profile(profile: &Value) -> build_context::ConnectionProfileInput {
     build_context::ConnectionProfileInput {
         max_context: json_f64(profile, "maxContext").map(|f| f as i64),
         max_tokens: json_f64(profile, "maxTokens").map(|f| f as i64),
@@ -2277,7 +2296,7 @@ fn to_participant_character(c: &Value) -> ParticipantCharacter {
 
 /// Read the participant characters map (v4 `loadAllParticipantData`) — every
 /// active CHARACTER participant's vault-overlaid character except the responder.
-fn load_participant_characters(
+pub(crate) fn load_participant_characters(
     db: &Db,
     chat: &Value,
     responder_id: &str,
@@ -2327,7 +2346,7 @@ fn to_done_cache_usage(
     }
 }
 
-fn build_context_err_to_db(e: build_context::BuildContextError) -> DbError {
+pub(crate) fn build_context_err_to_db(e: build_context::BuildContextError) -> DbError {
     match e {
         build_context::BuildContextError::Db(d) => d,
         build_context::BuildContextError::InvalidTimezone(tz) => {

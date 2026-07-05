@@ -2568,11 +2568,32 @@ native loop. The orchestrator tier-3 corpus gained an `agent_mode_on` case
 `agentModeSettings`) banking the instruction injection (the recorded stream key
 proves byte-exactness), the `submit_final_response` slate addition at the wire,
 and the reset (seeded `agentTurnCount: 5` → 0); resolver unit tests cover the
-full cascade matrix.
+full cascade matrix. Part 2 — **regenerate-swipe** — is also ported and green
+(`services::regenerate_swipe`, `regenerate_swipe_tier3_equivalence`): v4's
+`regenerateMessageAsSwipe`, the sibling entry point to `process_message`.
+Composes the ported responder/identity resolvers + `build_message_context`
+(continue-mode, context = everything strictly before the target) + the
+`CompletionProvider` seam (a single non-streaming generation) + the swipe-group
+bookkeeping (write back the original's `swipeGroupId` on first regeneration; the
+new swipe shares the original's `createdAt` + participant, index = max group
+index + 1) + the ported `delete_memories_by_source_message_with_vectors` cascade
+(gated by the per-user `memoryCascadePreferences.onSwipeRegenerate`). The
+orchestrator's `build_context_input` / `BuildContextArgs` were made reusable
+(scalar clock/model-limit fields, not `&ProcessMessageInput`). The four-case
+differential (first regen, existing group, KEEP_MEMORIES, not-assistant throw)
+drives v4's REAL repo over a two-DB fixture and diffs `chats` / `chat_messages` /
+`memories` / `vector_indices` / `vector_entries` (the canned completion key proves
+the rebuilt continue-mode prompt). **Tracked deferral:** the swipe's
+`rawResponse` / `reasoningContent` / `thoughtSignature` are null (the cheap-LLM
+`CompletionResponse` subset carries none; the richer wire-decoded response is
+W4.7). **New oracle gotcha:** a jest-real-DB oracle that exercises the vector
+store must `doMock('@/lib/embedding/vector-store', requireActual)` — jest.setup
+mocks it globally, so without the un-mock the cascade's store `load()` is silently
+empty and no vectors are removed (see `[[jest-real-db-oracle]]`).
 
 The rest of wave 4 — the `generate_image` handler (pure leaves banked; it lands
 once the W4.2 danger classify/route path + its three cheap-LLM prompt tasks
 exist) and the deferred photo trio, danger, answer-confirmation, the remaining
-W4.4a services (courier / compression-cache / regenerate-swipe), carina query,
+W4.4a services (courier / compression-cache), carina query,
 buildContext seam-closers, and the provider manifest — follows per the
 chat-orchestration decomposition.

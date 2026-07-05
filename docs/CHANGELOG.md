@@ -4,6 +4,28 @@
 
 ### 5.0-dev
 
+Phase 3 — wave 4 (W4.4a, part 2): regenerate-swipe. Ported
+`regenerateMessageAsSwipe` (`services::regenerate_swipe`), the sibling entry
+point to `processMessage`: it generates an alternative ("swipe") for an existing
+ASSISTANT message and persists it as a properly-attributed variant, grouped in
+place. Composes the ported services — responder resolution, user identity,
+`buildMessageContext` (continue-mode, everything strictly before the target), the
+`CompletionProvider` seam for a single non-streaming generation, the swipe-group
+bookkeeping on `chat_messages` (write back the original's `swipeGroupId` on the
+first regeneration; the new swipe shares the original's `createdAt` +
+participant), and the ported `deleteMemoriesBySourceMessageWithVectors` cascade
+(gated by the per-user `memoryCascadePreferences.onSwipeRegenerate`). The
+orchestrator's `build_context_input` / `BuildContextArgs` were made reusable
+(scalar clock/model-limit fields instead of `&ProcessMessageInput`). Verified by
+`regenerate_swipe_tier3_equivalence` — a four-case corpus (first regeneration,
+existing group, KEEP_MEMORIES, and the not-assistant throw) driving v4's REAL
+`regenerateMessageAsSwipe`, diffing `chats` / `chat_messages` / `memories` /
+`vector_indices` / `vector_entries` (the canned completion key proves the
+rebuilt continue-mode prompt bytes). Tracked deferral: the swipe's
+`rawResponse` / `reasoningContent` / `thoughtSignature` are null (the cheap-LLM
+`CompletionResponse` subset carries none; the corpus canned response has none, so
+null is byte-faithful — the richer wire-decoded response lands with W4.7).
+
 Phase 3 — wave 4 (W4.4a, part 1): the agent-mode resolver. Ported
 `resolveAgentModeSetting` (the Global → Character → Project → Chat cascade),
 `DEFAULT_AGENT_MODE_SETTINGS`, and `buildAgentModeInstructions` into

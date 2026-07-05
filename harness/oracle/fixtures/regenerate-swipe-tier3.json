@@ -1,0 +1,277 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "seedTimestamp": "2026-01-02T03:04:05.000Z",
+  "frozenNowMs": 1767326645000,
+  "localOffsetMinutes": 0,
+  "dimensions": 3,
+  "connectionProfiles": [
+    {
+      "id": "cc000001-0000-4000-8000-000000000001",
+      "name": "Primary",
+      "provider": "ANTHROPIC",
+      "modelName": "claude-sonnet"
+    }
+  ],
+  "characters": [
+    {
+      "id": "bb000001-0000-4000-8000-000000000001",
+      "name": "Bertie",
+      "controlledBy": "llm",
+      "talkativeness": 0.5,
+      "connectionProfileId": "cc000001-0000-4000-8000-000000000001"
+    },
+    {
+      "id": "bb000002-0000-4000-8000-000000000002",
+      "name": "Operator",
+      "controlledBy": "user",
+      "talkativeness": 0.5,
+      "connectionProfileId": "cc000001-0000-4000-8000-000000000001"
+    }
+  ],
+  "chatSettings": [
+    {
+      "id": "dd000001-0000-4000-8000-000000000001",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "onSwipeRegenerate": "DELETE_MEMORIES"
+    },
+    {
+      "id": "dd000002-0000-4000-8000-000000000002",
+      "userId": "22222222-2222-4222-8222-222222222222",
+      "onSwipeRegenerate": "KEEP_MEMORIES"
+    }
+  ],
+  "chats": [
+    {
+      "id": "aa000001-0000-4000-8000-000000000001",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatType": "salon",
+      "participants": [
+        {
+          "id": "aa0a0001-0000-4000-8000-0000000000a1",
+          "character": "bb000001-0000-4000-8000-000000000001",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "aa0b0002-0000-4000-8000-0000000000b2",
+          "character": "bb000002-0000-4000-8000-000000000002",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": [
+        {
+          "id": "aa0f0001-0000-4000-8000-0000000000f1",
+          "role": "USER",
+          "content": "Tell me a tale.",
+          "participantId": "aa0b0002-0000-4000-8000-0000000000b2",
+          "createdAt": "2026-01-02T03:04:05.000Z"
+        },
+        {
+          "id": "aa010001-0000-4000-8000-000000000a01",
+          "role": "ASSISTANT",
+          "content": "An old, tired reply.",
+          "participantId": "aa0a0001-0000-4000-8000-0000000000a1",
+          "createdAt": "2026-01-02T03:04:06.000Z"
+        }
+      ]
+    },
+    {
+      "id": "aa000002-0000-4000-8000-000000000002",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatType": "salon",
+      "participants": [
+        {
+          "id": "aa0a0002-0000-4000-8000-0000000000a2",
+          "character": "bb000001-0000-4000-8000-000000000001",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "aa0b0003-0000-4000-8000-0000000000b3",
+          "character": "bb000002-0000-4000-8000-000000000002",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": [
+        {
+          "id": "aa0f0002-0000-4000-8000-0000000000f2",
+          "role": "USER",
+          "content": "Again please.",
+          "participantId": "aa0b0003-0000-4000-8000-0000000000b3",
+          "createdAt": "2026-01-02T03:04:05.000Z"
+        },
+        {
+          "id": "aa020001-0000-4000-8000-000000000b01",
+          "role": "ASSISTANT",
+          "content": "Original grouped reply.",
+          "participantId": "aa0a0002-0000-4000-8000-0000000000a2",
+          "createdAt": "2026-01-02T03:04:06.000Z",
+          "swipeGroupId": "swipe-aa020001-0000-4000-8000-000000000b01",
+          "swipeIndex": 0
+        },
+        {
+          "id": "aa020002-0000-4000-8000-000000000b02",
+          "role": "ASSISTANT",
+          "content": "A sibling swipe.",
+          "participantId": "aa0a0002-0000-4000-8000-0000000000a2",
+          "createdAt": "2026-01-02T03:04:06.000Z",
+          "swipeGroupId": "swipe-aa020001-0000-4000-8000-000000000b01",
+          "swipeIndex": 1
+        }
+      ]
+    },
+    {
+      "id": "aa000003-0000-4000-8000-000000000003",
+      "userId": "22222222-2222-4222-8222-222222222222",
+      "chatType": "salon",
+      "participants": [
+        {
+          "id": "aa0a0003-0000-4000-8000-0000000000a3",
+          "character": "bb000001-0000-4000-8000-000000000001",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "aa0b0004-0000-4000-8000-0000000000b4",
+          "character": "bb000002-0000-4000-8000-000000000002",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": [
+        {
+          "id": "aa0f0003-0000-4000-8000-0000000000f3",
+          "role": "USER",
+          "content": "Once more.",
+          "participantId": "aa0b0004-0000-4000-8000-0000000000b4",
+          "createdAt": "2026-01-02T03:04:05.000Z"
+        },
+        {
+          "id": "aa030001-0000-4000-8000-000000000c01",
+          "role": "ASSISTANT",
+          "content": "A reply worth keeping memories of.",
+          "participantId": "aa0a0003-0000-4000-8000-0000000000a3",
+          "createdAt": "2026-01-02T03:04:06.000Z"
+        }
+      ]
+    },
+    {
+      "id": "aa000004-0000-4000-8000-000000000004",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatType": "salon",
+      "participants": [
+        {
+          "id": "aa0a0004-0000-4000-8000-0000000000a4",
+          "character": "bb000001-0000-4000-8000-000000000001",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "aa0b0005-0000-4000-8000-0000000000b5",
+          "character": "bb000002-0000-4000-8000-000000000002",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": [
+        {
+          "id": "aa0f0004-0000-4000-8000-0000000000f4",
+          "role": "USER",
+          "content": "I am a user message.",
+          "participantId": "aa0b0005-0000-4000-8000-0000000000b5",
+          "createdAt": "2026-01-02T03:04:05.000Z"
+        }
+      ]
+    }
+  ],
+  "seedMemories": [
+    {
+      "id": "11110001-0000-4000-8000-000000000001",
+      "characterId": "99000099-0000-4000-8000-000000000099",
+      "chatId": null,
+      "sourceMessageId": "aa010001-0000-4000-8000-000000000a01",
+      "relatedMemoryIds": [],
+      "vector": [
+        0.1,
+        0.2,
+        0.3
+      ]
+    },
+    {
+      "id": "11110002-0000-4000-8000-000000000002",
+      "characterId": "99000099-0000-4000-8000-000000000099",
+      "chatId": null,
+      "sourceMessageId": "aa010001-0000-4000-8000-000000000a01",
+      "relatedMemoryIds": [],
+      "vector": [
+        0.1,
+        0.2,
+        0.3
+      ]
+    },
+    {
+      "id": "11110003-0000-4000-8000-000000000003",
+      "characterId": "99000099-0000-4000-8000-000000000099",
+      "chatId": null,
+      "sourceMessageId": "aa030001-0000-4000-8000-000000000c01",
+      "relatedMemoryIds": [],
+      "vector": [
+        0.1,
+        0.2,
+        0.3
+      ]
+    },
+    {
+      "id": "11110004-0000-4000-8000-000000000004",
+      "characterId": "99000099-0000-4000-8000-000000000099",
+      "chatId": null,
+      "sourceMessageId": "aa030001-0000-4000-8000-000000000c01",
+      "relatedMemoryIds": [],
+      "vector": [
+        0.1,
+        0.2,
+        0.3
+      ]
+    }
+  ],
+  "seedMetaCharacterIds": [
+    "99000099-0000-4000-8000-000000000099"
+  ],
+  "completion": {
+    "response": "A freshly regenerated line.",
+    "usage": {
+      "promptTokens": 40,
+      "completionTokens": 6,
+      "totalTokens": 46
+    }
+  },
+  "calls": [
+    {
+      "name": "first_regen",
+      "chatId": "aa000001-0000-4000-8000-000000000001",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "targetMessageId": "aa010001-0000-4000-8000-000000000a01"
+    },
+    {
+      "name": "existing_group",
+      "chatId": "aa000002-0000-4000-8000-000000000002",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "targetMessageId": "aa020001-0000-4000-8000-000000000b01"
+    },
+    {
+      "name": "keep_memories",
+      "chatId": "aa000003-0000-4000-8000-000000000003",
+      "userId": "22222222-2222-4222-8222-222222222222",
+      "targetMessageId": "aa030001-0000-4000-8000-000000000c01"
+    },
+    {
+      "name": "not_assistant",
+      "chatId": "aa000004-0000-4000-8000-000000000004",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "targetMessageId": "aa0f0004-0000-4000-8000-0000000000f4",
+      "expectThrow": true
+    }
+  ]
+}
