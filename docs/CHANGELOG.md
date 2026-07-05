@@ -716,6 +716,23 @@ each byte-exact against v4's REAL handler and wired into `BuiltInToolRunner`.
   `tool_execution_process_tier3` re-verified green (the `document_search` module was
   made public + a read added, no behavior change).
 
+Phase 3 — wave 4 (W4.1d batch 5, part 4): the `generate_image` pure leaves
+(`crate::image_gen`), ported leaf-first ahead of the stateful handler. Ported
+`resolveOrientation` (v4 `lib/image-gen/orientation.ts`) — the pure `(provider,
+model, orientation)` → concrete-request-mutation mapping (`matchModel` exact +
+longest-prefix, `realize` strategy-honouring + degrade-to-hint, the host fallback),
+with the plugin-registry declarations (`getImageGenerationModels` /
+`getImageProviderConstraints`) passed in as data — and `parsePlaceholders`
+(`prompt-expansion.ts`, the `{{name}}` scanner, name `.trim()`-ed). Differential
+`image_gen_leaves_equivalence` (tier-1, DB-free) drives v4's REAL functions (the
+registry jest-mocked to canned declarations) and diffs `JSON.stringify`.
+**Scoped deferral:** the full `executeImageGenerationTool` handler +
+`saveGeneratedImage` persistence — they compose the image-provider call + WebP +
+Lantern store/notification (host seams), the entire W4.2 dangerous-content
+classify/route path (with a double profile reroute), and three cheap-LLM tasks
+(`craftImagePrompt` / `resolveCharacterAppearances` / `sanitizeAppearance`),
+several themselves large unported units; the handler lands once those exist.
+
 Phase 3 — wave 4 (W4.1d batch 5, part 3): the `search_web` tool handler
 (`tools::web_search`), byte-exact against v4's REAL handler. The whole search
 boundary (the plugin `searchProviderRegistry` + API-key lookup + Serper fallback)

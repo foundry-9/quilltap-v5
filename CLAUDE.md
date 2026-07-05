@@ -2471,9 +2471,24 @@ by `web_search_tool_equivalence` (DB-free, jest-mocked registry). **Deferrals:**
 provider's own `formatResults`, host-side API-key acquisition, date-only
 `publishedDate`.
 
+**Wave 4 (W4.1d batch 5, part 4): the `generate_image` pure leaves are DONE**
+(2026-07-05), ported leaf-first ahead of the stateful handler. `crate::image_gen`
+ports `resolveOrientation` (the pure `(provider, model, orientation)` →
+request-mutation mapping — `matchModel` exact + longest-prefix, `realize`
+strategy-honouring + degrade-to-hint, host fallback; the plugin-registry
+declarations passed in as data) and `parsePlaceholders` (the `{{name}}` scanner,
+name `.trim()`-ed). Verified by `image_gen_leaves_equivalence` (tier-1, DB-free)
+driving v4's REAL functions with the registry jest-mocked. **Scoped deferral:** the
+full `executeImageGenerationTool` handler + `saveGeneratedImage` persistence — they
+compose the image-provider call + WebP + Lantern store/notification (host seams),
+the W4.2 dangerous-content classify/route path (double profile reroute), and three
+cheap-LLM tasks (`craftImagePrompt` / `resolveCharacterAppearances` /
+`sanitizeAppearance`), several themselves large unported units; the handler lands
+once those seams/subsystems exist.
+
 The rest of wave 4 (the remaining tool subsystem — `buildTools` / registry
-(W4.1g) and handler batch 5's host-seamed remainder: `generate_image`
-plus the deferred
+(W4.1g) and handler batch 5's remainder: the `generate_image` handler
+(pure leaves banked) plus the deferred
 photo trio) — the agent-mode resolver, danger, answer-confirmation,
 courier/compression-cache/regenerate-swipe, carina query, buildContext
 seam-closers, provider manifest) follows per the chat-orchestration

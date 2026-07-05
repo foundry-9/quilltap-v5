@@ -169,6 +169,7 @@ pub mod folder_utils;
 pub mod format_bytes;
 pub mod format_time;
 pub mod format_tokens;
+pub mod image_gen;
 pub mod jsnum;
 pub mod jsstr;
 pub mod literal_boost;
