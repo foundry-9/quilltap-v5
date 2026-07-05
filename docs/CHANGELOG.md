@@ -716,6 +716,34 @@ each byte-exact against v4's REAL handler and wired into `BuiltInToolRunner`.
   `tool_execution_process_tier3` re-verified green (the `document_search` module was
   made public + a read added, no behavior change).
 
+Phase 3 — wave 4 (W4.1d batch 5, part 1): the `state` + `run_sql` tool handlers,
+each byte-exact against v4's REAL handler and wired into `BuiltInToolRunner`.
+
+- `state` (`tools::state`): persistent per-chat / per-project key-value state.
+  Ported `parsePath` (dot notation + array indexing), `getAtPath` (undefined vs
+  stored-null distinguished), `setAtPath` (intermediate object/array creation),
+  `deleteAtPath` (object delete + array splice), and the `mergeState` spread
+  (chat overrides project). Chat writes go through `chats.update({state})` (no
+  `updatedAt` mint); project writes route to the store-backed `state.json`
+  overlay. The output serializes in a fixed field order that reproduces every
+  per-branch `JSON.stringify` (undefined dropped, null kept), and
+  `formatStateResults` matches byte-for-byte.
+- `run_sql` (`tools::run_sql`, Brahma Console read-only SQL): the read-only guard
+  ported faithfully (the literal/comment-stripping pre-scan + forbidden-keyword +
+  single-statement + mutating-PRAGMA checks, then rusqlite `Statement::readonly`
+  fail-closed, then the `max_rows` cap). BLOB cells sanitize to `<blob: N bytes>`;
+  REAL cells render via `js_number_to_json`. SQLite prepare/exec error strings are
+  byte-identical (same SQLite3MC engine). The `operatorSurface` gate is a
+  dispatcher guard. Zod-validation-message fidelity is limited to the non-object
+  case (documented; the pre-scan/prepare failures cover the real refusals).
+- Differential `state_sql_tools_equivalence` (34 cases, one jest real-DB oracle
+  driving v4's REAL handlers over a fresh three-DB fixture copy per case): state
+  cases diff the serialized output + `formatStateResults` + the `chats` table dump
+  (zero normalization — no `updatedAt` mint) + a project-`state` read-back (the
+  overlay bytes are already proven by `projects_tier2`); run_sql cases diff the
+  serialized envelope, covering each target DB, blob sanitize, truncation, and
+  every refusal path.
+
 Phase 3 — wave 4 (W4.1d batch 3a): the doc-edit foundation, part 3 — the path
 resolver + URI producers (completing batch 3a). Ported `resolveDocEditPath`
 (`doc_edit::path_resolver`) — the `document_store` scope (over the tiered mount

@@ -57,8 +57,9 @@ use serde_json::{json, Map, Value};
 use super::doc_edit::{execute_doc_edit_tool, format_doc_edit_results, DocEditToolContext};
 use super::{
     annotations, doc_edit, help, help_search, project_info, read_conversation,
-    request_full_context, rng, search, self_inventory, terminal, wardrobe_archive, wardrobe_create,
-    wardrobe_list, wardrobe_read, wardrobe_take_off, wardrobe_update, wardrobe_wear, whisper,
+    request_full_context, rng, run_sql, search, self_inventory, state, terminal, wardrobe_archive,
+    wardrobe_create, wardrobe_list, wardrobe_read, wardrobe_take_off, wardrobe_update,
+    wardrobe_wear, whisper,
 };
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read};
@@ -188,6 +189,9 @@ pub const PORTED_TOOLS: &[&str] = &[
     "project_info",
     "help_search",
     "request_full_context",
+    // W4.1d5: host-seamed + remaining tools (this batch: state + run_sql)
+    "state",
+    "run_sql",
 ];
 
 /// The doc-edit tools NOT yet ported (the photo trio) — a tracked scoped deferral
@@ -363,6 +367,9 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             "project_info" => self.run_project_info(tc, ctx),
             "help_search" => self.run_help_search(tc, ctx).await,
             "request_full_context" => self.run_request_full_context(tc, ctx).await,
+            // W4.1d5
+            "state" => self.run_state(tc, ctx).await,
+            "run_sql" => self.run_run_sql(tc, ctx).await,
             // W4.1d3b: every ported doc-edit tool routes through one handler.
             n if is_ported_doc_edit_tool(n) => self.run_doc_edit(tc, ctx).await,
             // `handles` guards the set, so this is unreachable.
@@ -793,6 +800,59 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         } else {
             // v4 maps the error from `result.message`.
             fail("request_full_context", out.message)
+        }
+    }
+
+    // -- state (tool-executor.ts:639) ---------------------------------------
+    async fn run_state(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        let context = state::StateToolContext {
+            user_id: ctx.user_id.clone(),
+            chat_id: ctx.chat_id.clone(),
+            project_id: ctx.project_id.clone(),
+        };
+        let out = state::execute_state_tool(&self.db, &context, &tc.arguments).await;
+        let formatted = state::format_state_results(&out);
+        if out.success {
+            // v4: `{ formattedText, operation, context, path, value, previousValue }`
+            // — undefined fields dropped by JSON.stringify.
+            let mut result = Map::new();
+            result.insert("formattedText".into(), json!(formatted));
+            result.insert("operation".into(), out.operation.clone());
+            if let Some(c) = &out.context {
+                result.insert("context".into(), json!(c));
+            }
+            if let Some(p) = &out.path {
+                result.insert("path".into(), json!(p));
+            }
+            if let Some(v) = &out.value {
+                result.insert("value".into(), v.clone());
+            }
+            if let Some(pv) = &out.previous_value {
+                result.insert("previousValue".into(), pv.clone());
+            }
+            ok("state", Value::Object(result))
+        } else {
+            fail("state", out.error.clone().unwrap_or_default())
+        }
+    }
+
+    // -- run_sql (tool-executor.ts:982; operator-gated) ---------------------
+    async fn run_run_sql(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        // v4's dispatcher gate: run_sql is only available on the Brahma Console.
+        if !ctx.operator_surface {
+            return fail(
+                "run_sql",
+                "run_sql is only available in the Brahma Console.",
+            );
+        }
+        let out = run_sql::execute_run_sql_tool(&self.db, &tc.arguments, &ctx.user_id).await;
+        // v4: `result: result.success ? result : null` — the whole `{ success, .. }`
+        // envelope is spread; the ToolResult carries it as `result`.
+        match &out {
+            run_sql::RunSqlResult::Success { .. } => {
+                ok("run_sql", serde_json::to_value(&out).unwrap_or(Value::Null))
+            }
+            run_sql::RunSqlResult::Failure { error } => fail("run_sql", error.clone()),
         }
     }
 

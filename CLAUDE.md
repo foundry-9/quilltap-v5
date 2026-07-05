@@ -2413,9 +2413,32 @@ made `pub` + one read added — no behavior change). **Tracked deferrals:** the
 provider wiring (W4.1g); `search`'s operator-surface `run_sql`-adjacent Brahma
 gating stays as-is; `help_search`'s disk sync (host seam).
 
+**Wave 4 (W4.1d batch 5, part 1): the `state` + `run_sql` handlers are DONE**
+(2026-07-04). `state` (`tools::state`) ports v4's persistent per-chat/per-project
+key-value store — the pure path helpers (`parsePath`/`getAtPath`/`setAtPath`/
+`deleteAtPath`, undefined-vs-null distinguished, intermediate object/array
+creation) + the `mergeState` spread (chat overrides project) + the fixed-field-
+order output serializer reproducing every per-branch `JSON.stringify`; chat writes
+ride `chats.update({state})` (no `updatedAt` mint), project writes the store-backed
+`state.json` overlay. `run_sql` (`tools::run_sql`, Brahma read-only SQL) ports the
+defense-in-depth read-only guard verbatim (literal/comment-stripping pre-scan +
+forbidden-keyword/single-statement/mutating-PRAGMA checks, then rusqlite
+`Statement::readonly` fail-closed, then the `max_rows` cap), the `<blob: N bytes>`
+sanitize + `js_number_to_json` REAL rendering, and byte-identical SQLite error
+strings (same SQLite3MC engine); the `operatorSurface` gate is the dispatcher
+guard. Both are wired into `BuiltInToolRunner`. Verified by
+`state_sql_tools_equivalence` (34 cases, one jest real-DB oracle over a fresh
+three-DB fixture copy per case): state cases diff the serialized output +
+`formatStateResults` + the `chats` dump (zero normalization) + a project-`state`
+read-back (overlay bytes proven by `projects_tier2`); run_sql cases diff the
+serialized envelope across each target DB, blob sanitize, truncation, and every
+refusal. **Tracked deferrals:** `run_sql` Zod-validation-message fidelity beyond
+the non-object case (the pre-scan/prepare failures cover the real refusals); the
+`state` open-JSON multi-key insertion-order seam (corpus kept single-key/sorted).
+
 The rest of wave 4 (the remaining tool subsystem — `buildTools` / registry
-(W4.1g) and handler batch 5 (host-seamed: `generate_image`, `search_web`,
-`run_sql`, `state`, `ask_carina`, `send_mail`/`list_email`, plus the deferred
+(W4.1g) and handler batch 5's host-seamed remainder: `generate_image`,
+`search_web`, `ask_carina`, `send_mail`/`list_email`, plus the deferred
 photo trio) — the agent-mode resolver, danger, answer-confirmation,
 courier/compression-cache/regenerate-swipe, carina query, buildContext
 seam-closers, provider manifest) follows per the chat-orchestration
