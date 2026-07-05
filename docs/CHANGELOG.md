@@ -716,6 +716,21 @@ each byte-exact against v4's REAL handler and wired into `BuiltInToolRunner`.
   `tool_execution_process_tier3` re-verified green (the `document_search` module was
   made public + a read added, no behavior change).
 
+Phase 3 — wave 4 (W4.1d batch 5, part 3): the `search_web` tool handler
+(`tools::web_search`), byte-exact against v4's REAL handler. The whole search
+boundary (the plugin `searchProviderRegistry` + API-key lookup + Serper fallback)
+is the injected `WebSearchProvider` seam (canned outcome both sides); the portable
+half is the input validation, the outcome → output mapping (byte-exact error
+strings for the not-configured / missing-key / provider-failure branches), and the
+built-in result formatter (a `publishedDate` renders via a UTC-pinned
+`toLocaleDateString()` added to `format_time`). Wired into `BuiltInToolRunner` with
+a default `NotConfiguredWebSearch` provider (faithful to a no-search-plugin
+instance — v4's "not configured" error; a real provider is host-wired). Differential
+`web_search_tool_equivalence` (DB-free, jest-mocked registry) diffs the serialized
+output + `format_web_search_results` over success/failure/missing-key/not-configured/
+validation cases. Deferrals: the provider's own `formatResults`, host-side API-key
+acquisition, and a date-only `publishedDate` (the corpus uses full-ISO dates).
+
 Phase 3 — wave 4 (W4.1d batch 5, part 2): the Post Office (`send_mail` /
 `list_email`) + `ask_carina` tool handlers, byte-exact against v4's REAL handlers.
 

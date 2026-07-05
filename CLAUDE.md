@@ -2459,9 +2459,21 @@ diffs output + `format*` + recorded Prospero args. **Tracked deferrals:** the
 Suparṇā mail-check helpers (`collect_unalerted_mail`/`mark_alerted`); the ask_carina
 dispatch seam wiring (W4.5).
 
+**Wave 4 (W4.1d batch 5, part 3): the `search_web` handler is DONE** (2026-07-04).
+`tools::web_search` ports v4's `search_web` with the whole search boundary (the
+plugin `searchProviderRegistry` + API-key lookup + Serper fallback) behind the
+injected `WebSearchProvider` seam; the portable half is validation + the byte-exact
+outcome→output mapping (not-configured / missing-key / provider-failure error
+strings) + the built-in formatter (`publishedDate` via a UTC-pinned
+`toLocaleDateString()` in `format_time`). Wired into `BuiltInToolRunner` with a
+default `NotConfiguredWebSearch` (faithful to a no-search-plugin instance). Verified
+by `web_search_tool_equivalence` (DB-free, jest-mocked registry). **Deferrals:** the
+provider's own `formatResults`, host-side API-key acquisition, date-only
+`publishedDate`.
+
 The rest of wave 4 (the remaining tool subsystem — `buildTools` / registry
-(W4.1g) and handler batch 5's host-seamed remainder: `generate_image`,
-`search_web`, plus the deferred
+(W4.1g) and handler batch 5's host-seamed remainder: `generate_image`
+plus the deferred
 photo trio) — the agent-mode resolver, danger, answer-confirmation,
 courier/compression-cache/regenerate-swipe, carina query, buildContext
 seam-closers, provider manifest) follows per the chat-orchestration

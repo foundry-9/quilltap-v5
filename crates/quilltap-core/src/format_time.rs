@@ -95,9 +95,38 @@ pub fn format_date_time(date_string: Option<&str>, month_style: MonthStyle) -> S
     )
 }
 
+/// v4 `new Date(iso).toLocaleDateString()` (no options) under TZ=UTC / en-US:
+/// `"M/D/YYYY"` (no leading zeros). Used by the `search_web` built-in result
+/// formatter. Returns `"Invalid Date"` for an unparseable input (matching V8's
+/// non-throwing behavior) — the corpus uses valid dates.
+pub fn format_date_short_us(iso: &str) -> String {
+    let Some(ms) = iso_to_ms(iso) else {
+        return "Invalid Date".to_string();
+    };
+    let days = ms.div_euclid(86_400_000);
+    let (year, month, day) = civil_from_days(days);
+    format!("{month}/{day}/{year}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn format_date_short_us_matches_v4() {
+        // Full-ISO inputs (the `iso_to_ms` strict form the corpus uses). A
+        // date-only `publishedDate` (`"2026-01-05"`) is a documented seam — JS
+        // `Date.parse` accepts it, the strict `iso_to_ms` does not.
+        assert_eq!(
+            format_date_short_us("2026-06-15T00:00:00.000Z"),
+            "6/15/2026"
+        );
+        assert_eq!(format_date_short_us("2026-01-05T00:00:00.000Z"), "1/5/2026");
+        assert_eq!(
+            format_date_short_us("2020-12-31T23:00:00.000Z"),
+            "12/31/2020"
+        );
+    }
 
     #[test]
     fn format_date_time_long_utc() {

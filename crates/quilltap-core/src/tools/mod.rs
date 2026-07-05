@@ -35,4 +35,5 @@ pub mod wardrobe_shared;
 pub mod wardrobe_take_off;
 pub mod wardrobe_update;
 pub mod wardrobe_wear;
+pub mod web_search;
 pub mod whisper;

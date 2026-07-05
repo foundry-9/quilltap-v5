@@ -59,7 +59,7 @@ use super::{
     annotations, doc_edit, help, help_search, list_email, project_info, read_conversation,
     request_full_context, rng, run_sql, search, self_inventory, send_mail, state, terminal,
     wardrobe_archive, wardrobe_create, wardrobe_list, wardrobe_read, wardrobe_take_off,
-    wardrobe_update, wardrobe_wear, whisper,
+    wardrobe_update, wardrobe_wear, web_search, whisper,
 };
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read};
@@ -198,6 +198,10 @@ pub const PORTED_TOOLS: &[&str] = &[
     "run_sql",
     "send_mail",
     "list_email",
+    // `search_web` dispatches through the injected `WebSearchProvider` seam
+    // (default: NotConfigured — faithful to a no-search-plugin instance; a real
+    // provider is host-wired). The handler + differential are complete.
+    "search_web",
 ];
 
 /// The doc-edit tools NOT yet ported (the photo trio) — a tracked scoped deferral
@@ -295,18 +299,24 @@ pub struct BuiltInToolRunner<F: ToolRunner = LoudFallbackRunner> {
     /// with no provider the search branches degrade gracefully (v4's "no embedding
     /// profile" behavior) and `help_search` falls back to keyword search.
     embedding_provider: ErasedEmbeddingProvider,
+    /// The web-search boundary the `search_web` tool uses (v4's
+    /// `searchProviderRegistry` + API-key lookup + Serper fallback). Defaults to
+    /// [`web_search::NotConfiguredWebSearch`] (a no-search-plugin instance returns
+    /// v4's "not configured" error); production wires a real provider host-side.
+    web_search_provider: Arc<dyn web_search::WebSearchProvider>,
     fallback: F,
 }
 
 impl BuiltInToolRunner<LoudFallbackRunner> {
     /// Build a runner with the loud production fallback + the empty scrollback
-    /// source + no embedding provider.
+    /// source + no embedding provider + the not-configured web-search boundary.
     pub fn new(db: Db, self_inventory_env: SelfInventoryEnv) -> Self {
         BuiltInToolRunner {
             db,
             self_inventory_env,
             scrollback: Arc::new(EmptyScrollback),
             embedding_provider: ErasedEmbeddingProvider::none(),
+            web_search_provider: Arc::new(web_search::NotConfiguredWebSearch),
             fallback: LoudFallbackRunner,
         }
     }
@@ -321,6 +331,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             self_inventory_env: self.self_inventory_env,
             scrollback: self.scrollback,
             embedding_provider: self.embedding_provider,
+            web_search_provider: self.web_search_provider,
             fallback,
         }
     }
@@ -329,6 +340,16 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
     /// (production wires the real one; the core default never succeeds).
     pub fn with_embedding_provider(mut self, provider: ErasedEmbeddingProvider) -> Self {
         self.embedding_provider = provider;
+        self
+    }
+
+    /// Inject the web-search boundary the `search_web` tool uses (production wires
+    /// the real plugin/Serper provider host-side).
+    pub fn with_web_search_provider(
+        mut self,
+        provider: Arc<dyn web_search::WebSearchProvider>,
+    ) -> Self {
+        self.web_search_provider = provider;
         self
     }
 
@@ -378,6 +399,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             "run_sql" => self.run_run_sql(tc, ctx).await,
             "send_mail" => self.run_send_mail(tc, ctx).await,
             "list_email" => self.run_list_email(tc, ctx).await,
+            "search_web" => self.run_web_search(tc, ctx),
             // W4.1d3b: every ported doc-edit tool routes through one handler.
             n if is_ported_doc_edit_tool(n) => self.run_doc_edit(tc, ctx).await,
             // `handles` guards the set, so this is unreachable.
@@ -861,6 +883,28 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
                 ok("run_sql", serde_json::to_value(&out).unwrap_or(Value::Null))
             }
             run_sql::RunSqlResult::Failure { error } => fail("run_sql", error.clone()),
+        }
+    }
+
+    // -- search_web (tool-executor.ts:406) ----------------------------------
+    fn run_web_search(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        let out =
+            web_search::execute_web_search(&*self.web_search_provider, &ctx.user_id, &tc.arguments);
+        if out.success {
+            // v4: `{ formattedText, results, totalFound, query }`.
+            let formatted =
+                web_search::format_web_search_results(out.results.as_deref().unwrap_or(&[]));
+            ok(
+                "search_web",
+                json!({
+                    "formattedText": formatted,
+                    "results": out.results,
+                    "totalFound": out.total_found,
+                    "query": out.query,
+                }),
+            )
+        } else {
+            fail("search_web", out.error.unwrap_or_default())
         }
     }
 
