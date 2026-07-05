@@ -70,6 +70,10 @@ interface ChatSpec {
   messages: MessageSpec[];
   /** W4.1g: per-chat disabled tool ids (the wire slate excludes them). */
   disabledTools?: string[];
+  /** W4.4: the Chat level of the agent-mode cascade (nullable — null = not set). */
+  agentModeEnabled?: boolean;
+  /** W4.4: seeded agent turn count (the reset gate zeroes it on a new user turn). */
+  agentTurnCount?: number;
 }
 interface Spec {
   testPepperBase64: string;
@@ -83,6 +87,8 @@ interface Spec {
     autoDetectRng: boolean;
     answerConfirmationEnabled: boolean;
     dangerMode: string;
+    /** W4.4: the Global level of the agent-mode cascade. */
+    agentModeSettings?: { maxTurns: number; defaultEnabled: boolean };
   };
   characters: CharacterSpec[];
   chats: ChatSpec[];
@@ -179,6 +185,9 @@ async function main(): Promise<void> {
       autoDetectRng: spec.chatSettings.autoDetectRng,
       answerConfirmationSettings: { enabled: spec.chatSettings.answerConfirmationEnabled },
       dangerousContentSettings: { mode: spec.chatSettings.dangerMode },
+      ...(spec.chatSettings.agentModeSettings !== undefined
+        ? { agentModeSettings: spec.chatSettings.agentModeSettings }
+        : {}),
     } as never,
     { id: spec.chatSettings.id }
   );
@@ -202,6 +211,8 @@ async function main(): Promise<void> {
         chatType: chat.chatType,
         contextSummary: chat.contextSummary,
         ...(chat.disabledTools !== undefined ? { disabledTools: chat.disabledTools } : {}),
+        ...(chat.agentModeEnabled !== undefined ? { agentModeEnabled: chat.agentModeEnabled } : {}),
+        ...(chat.agentTurnCount !== undefined ? { agentTurnCount: chat.agentTurnCount } : {}),
       } as never,
       { id: chat.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );

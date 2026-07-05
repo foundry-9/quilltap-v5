@@ -557,6 +557,20 @@ in a numbered batch.
   re-verified. **Deferrals:** the text loop (W4.1f), `buildTools`/real-slate wiring
   (W4.1g), the agent-mode resolver (W4.4), detection wire-parse (W4.7).
 
+- **W4.4a part 1: the agent-mode resolver — ported and green** (2026-07-05).
+  `services::agent_mode` gained `resolveAgentModeSetting` (the Global → Character →
+  Project → Chat cascade), `DEFAULT_AGENT_MODE_SETTINGS`, and
+  `buildAgentModeInstructions`, closing the orchestrator's agent-mode seam. The
+  spine reads `project.defaultAgentModeEnabled` (a store-managed field → the
+  overlaid `projects.findById`), resolves the cascade, fires the `agentTurnCount:
+  0` reset on a non-continue turn, feeds `enabled` to `buildTools`
+  (`submit_final_response`), injects the byte-exact agent-mode system-prompt block
+  into `formattedMessages`, and passes the resolved `ResolvedAgentMode` to the
+  native loop. Verified through `orchestrator_tier3_equivalence` (a new
+  `agent_mode_on` case: chat-level opt-in, custom `maxTurns: 15`, banking the
+  instruction injection + the wire slate + the seeded `5 → 0` reset) + resolver
+  unit tests. The W4.1e deferral of the resolver is closed.
+
 - **W4.1d batch 3a (part 1): the tiered mount pool + the `qtap://` URI codec —
   ported and green** (the first half of the doc-edit foundation the ~26 `doc_*`
   handlers of batch 3b sit on). `db::tiered_mount_pool` is the canonical home of

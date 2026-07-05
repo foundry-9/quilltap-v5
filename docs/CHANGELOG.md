@@ -4,6 +4,21 @@
 
 ### 5.0-dev
 
+Phase 3 — wave 4 (W4.4a, part 1): the agent-mode resolver. Ported
+`resolveAgentModeSetting` (the Global → Character → Project → Chat cascade),
+`DEFAULT_AGENT_MODE_SETTINGS`, and `buildAgentModeInstructions` into
+`services::agent_mode`, closing the orchestrator's agent-mode seam. The spine now
+computes the real resolution: reads the project's `defaultAgentModeEnabled` (a
+store-managed field, via the overlaid projects read), resolves the cascade, fires
+the `agentTurnCount: 0` reset on a new user turn, feeds `agentMode.enabled` to
+`buildTools` (adding `submit_final_response`), injects the agent-mode
+system-prompt block into `formattedMessages`, and passes the resolved
+`ResolvedAgentMode` to the native loop. The orchestrator tier-3 corpus gained an
+`agent_mode_on` case (chat-level opt-in, custom `maxTurns: 15` via settings)
+banking the byte-exact instruction injection, the `submit_final_response`
+slate addition at the wire, and the turn-count reset (seeded 5 → 0); resolver
+unit tests cover the cascade matrix.
+
 Phase 1 — pure-function ports to `quilltap-core`, each with a tier-1 differential
 test against the v4 oracle:
 

@@ -46,11 +46,16 @@
 //!   `!continueMode && content`. The corpus keeps the user content free of carina
 //!   markup and passes no pending tool results, so each detector returns "none"
 //!   and writes nothing (the [`OrchestratorSeams`] `user_message_carina` method).
-//! * **Agent mode / danger / courier**: the corpus keeps agent mode off, danger
-//!   mode `DETECT_ONLY` (no reroute), and the transport non-courier — so the
-//!   agent-turn-count reset, the danger reroute, and the courier short-circuit
-//!   never fire. Their gates are reproduced (`agent_mode_enabled`,
-//!   `is_courier`) and banked off.
+//! * **Agent mode** (W4.4, real): the cascade resolver runs on the spine
+//!   (`resolve_agent_mode_setting` over chat / project / character / global
+//!   settings). The corpus's `agent_mode_on` chat opts in at the Chat level, so
+//!   the agent-turn-count reset, the `submit_final_response` slate addition, and
+//!   the agent-mode instruction injection all fire and are banked; every other
+//!   chat resolves off.
+//! * **Danger / courier**: the corpus keeps danger mode `DETECT_ONLY` (no
+//!   reroute) and the transport non-courier — so the danger reroute and the
+//!   courier short-circuit never fire. Their gates are reproduced (`is_courier`)
+//!   and banked off.
 //! * **Prospero cadence re-injection**: gated on
 //!   `reinjectInterval > 0 && messageCount > 0 && messageCount % interval === 0`.
 //!   The corpus keeps `messageCount` off a cadence boundary, so no whisper is
@@ -250,6 +255,14 @@ pub struct OrchestratorChatSettings {
     /// when `chat.chatType === 'autonomous'` (the corpus keeps chats
     /// non-autonomous, so this default is never read there).
     pub autonomous_destructive_policy: String,
+    /// `agentModeSettings.defaultEnabled` — the GLOBAL level of the agent-mode
+    /// cascade (v4 `resolveAgentModeSetting`). Zod default `false`. When the
+    /// settings row is absent the orchestrator falls back to
+    /// [`agent_mode::DEFAULT_AGENT_MODE_SETTINGS`] instead of this field.
+    pub agent_mode_default_enabled: bool,
+    /// `agentModeSettings.maxTurns` — the agent-mode iteration cap (Zod
+    /// `.min(1).max(25).default(10)`). Not overridden by any cascade level.
+    pub agent_mode_max_turns: i64,
 }
 
 impl OrchestratorChatSettings {
@@ -263,6 +276,8 @@ impl OrchestratorChatSettings {
             auto_detect_rng: true,
             answer_confirmation_global_enabled: false,
             autonomous_destructive_policy: "opt_in_per_room".to_string(),
+            agent_mode_default_enabled: false,
+            agent_mode_max_turns: 10,
         }
     }
 }
@@ -562,13 +577,65 @@ where
     // --- Chat settings (orchestrator.service.ts:345) ---
     let chat_settings = deps.orchestrator_seams.chat_settings(&user_id);
 
-    // --- Agent mode (orchestrator.service.ts:351–365) ---
-    // Agent mode is a wave-4 seam; the corpus keeps it OFF (no per-message
-    // reset). The gate (`!continueMode && agentMode.enabled`) is reproduced but
-    // never fires.
-    let agent_mode_enabled = false;
+    // --- Agent mode (orchestrator.service.ts:351–365, W4.4) ---
+    // Resolve the effective agent-mode setting through the cascade
+    // Global → Character → Project → Chat (v4 `resolveAgentModeSetting`). The
+    // project level reads `project.defaultAgentModeEnabled` — a store-managed
+    // (properties.json) field — so it needs the OVERLAID projects read (spanning
+    // both DBs), matching v4's `repos.projects.findById(chat.projectId)`.
+    let global_agent_mode = chat_settings
+        .as_ref()
+        .map(|s| crate::services::agent_mode::AgentModeSettings {
+            max_turns: s.agent_mode_max_turns,
+            default_enabled: s.agent_mode_default_enabled,
+        })
+        .unwrap_or(crate::services::agent_mode::DEFAULT_AGENT_MODE_SETTINGS);
+    let project_agent_default: Option<bool> = match chat
+        .get("projectId")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+    {
+        Some(project_id) => {
+            let pid = project_id.to_string();
+            db.read_main(|main| {
+                db.read_mount_index(|mount| {
+                    let repo = crate::db::projects::ProjectsRepository::new(main, mount);
+                    Ok(repo
+                        .find_by_id(&pid)
+                        .map_err(|e| DbError::Key(format!("project read failed: {e:?}")))?
+                        .and_then(|p| p.get("defaultAgentModeEnabled").and_then(Value::as_bool)))
+                })
+            })?
+        }
+        None => None,
+    };
+    let agent_mode = crate::services::agent_mode::resolve_agent_mode_setting(
+        chat.get("agentModeEnabled").and_then(Value::as_bool),
+        project_agent_default,
+        character
+            .get("defaultAgentModeEnabled")
+            .and_then(Value::as_bool),
+        global_agent_mode,
+    );
+    let agent_mode_enabled = agent_mode.enabled;
+
+    // Reset agent turn count on a new user message (not continue mode). v4
+    // `repos.chats.update(chatId, { agentTurnCount: 0 })` (no `updatedAt` bump).
     if !is_continue_mode && agent_mode_enabled {
-        // (unreached in the corpus — the reset write would go here)
+        let write_chat_id = chat_id.clone();
+        db.write(move |w| {
+            w.main()
+                .chats()
+                .update(
+                    &write_chat_id,
+                    &crate::db::chats::ChatUpdate {
+                        agent_turn_count: Some(0.0),
+                        ..Default::default()
+                    },
+                )
+                .map(|_| ())
+        })
+        .await?;
     }
 
     // --- Context compression setup (orchestrator.service.ts:371–418) ---
@@ -1065,6 +1132,35 @@ where
     .map_err(build_context_err_to_db)?;
     let built_context: BuiltContext = mc_result.built_context;
 
+    // The wrapper's formatted messages feed the primary stream + the tool loops.
+    // Extract them as a mutable local so the agent-mode instruction injection below
+    // (v4 orchestrator.service.ts:1117–1142) mutates the exact array all three
+    // downstream consumers read.
+    let mut formatted_messages = mc_result.formatted_messages;
+
+    // --- Agent Mode Instructions (orchestrator.service.ts:1113–1142, W4.4) ---
+    // When agent mode is enabled, inject the agent-mode system-prompt block at the
+    // first non-system position (or unshift / push per v4's index logic). This is
+    // part of the provider request, so it changes the canned stream key — the
+    // corpus's agent-mode cases bank the byte-exact injection.
+    if agent_mode_enabled {
+        let agent_mode_message = message_context::FormattedMsg {
+            role: "system".to_string(),
+            content: crate::services::agent_mode::build_agent_mode_instructions(
+                agent_mode.max_turns,
+            ),
+            name: None,
+            thought_signature: None,
+            attachments: Some(Vec::new()),
+        };
+        let first_non_system = formatted_messages.iter().position(|m| m.role != "system");
+        match first_non_system {
+            Some(idx) if idx > 0 => formatted_messages.insert(idx, agent_mode_message),
+            Some(_) => formatted_messages.insert(0, agent_mode_message),
+            None => formatted_messages.push(agent_mode_message),
+        }
+    }
+
     sink.emit(ChatEvent::status(StatusPayload {
         stage: "preparing".into(),
         message: format!("Preparing request for {character_name}..."),
@@ -1093,8 +1189,7 @@ where
 
     // Build the stream params from the wrapper's formatted messages (v4 forwards
     // `formattedMessages`, the model params, no tools [corpus], no web search).
-    let stream_messages: Vec<CompletionMessage> = mc_result
-        .formatted_messages
+    let stream_messages: Vec<CompletionMessage> = formatted_messages
         .iter()
         .map(|m| CompletionMessage {
             role: match m.role.as_str() {
@@ -1171,9 +1266,9 @@ where
     // and the tool runner is the real [`BuiltInToolRunner`] (dispatches the ported
     // handlers). Native detection is the injected W4.7 provider-parse seam
     // (`deps.tool_detector`; production wires [`native_tool_loop::NoToolCallDetector`]
-    // → no calls until the provider manifest lands). Agent-mode resolution (the
-    // Global→Character→Project→Chat cascade) is W4.4 — the corpus keeps it
-    // disabled. The text tool passes (W4.1f) follow here.
+    // → no calls until the provider manifest lands). The resolved `agent_mode`
+    // (W4.4 cascade) sets the loop's iteration cap + `submit_final_response`
+    // acceptance. The text tool passes (W4.1f) follow here.
     //
     // The runner's `self_inventory` host env + the `search`/`help_search`
     // embedding provider are host seams (the corpus's native-call cases call
@@ -1186,8 +1281,7 @@ where
     let tool_runner = BuiltInToolRunner::new(db.clone(), host_self_inventory_env());
     let tool_detector = DetectorRef(deps.tool_detector);
 
-    let loop_messages: Vec<ThreadedMessage> = mc_result
-        .formatted_messages
+    let loop_messages: Vec<ThreadedMessage> = formatted_messages
         .iter()
         .map(|m| ThreadedMessage {
             role: m.role.clone(),
@@ -1221,10 +1315,7 @@ where
             chat_id: chat_id.clone(),
             character_id: character_id.clone(),
             character_name: character_name.clone(),
-            agent_mode: crate::services::agent_mode::ResolvedAgentMode {
-                enabled: false,
-                max_turns: 10,
-            },
+            agent_mode,
             provider: effective_profile.provider.clone(),
             base_url: effective_profile.base_url.clone(),
             formatted_messages: loop_messages,
@@ -1248,8 +1339,7 @@ where
     // is empty under any pseudo-tool surface, so `continuationTools` follows v4's
     // `useTextBlockTools ? [] : actualTools`. Runs the real [`BuiltInToolRunner`].
     let make_text_messages = || -> Vec<ThreadedMessage> {
-        mc_result
-            .formatted_messages
+        formatted_messages
             .iter()
             .map(|m| ThreadedMessage {
                 role: m.role.clone(),

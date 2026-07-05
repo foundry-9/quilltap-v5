@@ -27,7 +27,11 @@
     "compressionEnabled": false,
     "autoDetectRng": true,
     "answerConfirmationEnabled": false,
-    "dangerMode": "DETECT_ONLY"
+    "dangerMode": "DETECT_ONLY",
+    "agentModeSettings": {
+      "maxTurns": 15,
+      "defaultEnabled": false
+    }
   },
   "characters": [
     {
@@ -693,6 +697,28 @@
           "participantId": "f20a0002-0000-4000-8000-0000000000a2"
         }
       ]
+    },
+    {
+      "id": "ab000001-0000-4000-8000-000000000001",
+      "chatType": "salon",
+      "contextSummary": null,
+      "agentModeEnabled": true,
+      "agentTurnCount": 5,
+      "participants": [
+        {
+          "id": "ab0a0001-0000-4000-8000-0000000000a1",
+          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "ab0b0002-0000-4000-8000-0000000000b2",
+          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": []
     }
   ],
   "calls": [
@@ -897,6 +923,16 @@
       "summaryCheck": false,
       "respondingParticipant": "f20a0002-0000-4000-8000-0000000000a2",
       "modelSupportsNativeTools": false
+    },
+    {
+      "name": "agent_mode_on",
+      "kind": "chain",
+      "chatId": "ab000001-0000-4000-8000-000000000001",
+      "content": "Investigate the archive.",
+      "continueMode": false,
+      "streamLabel": "agent_mode_on",
+      "cheapLLMSettings": false,
+      "summaryCheck": false
     }
   ],
   "streams": {
@@ -1473,6 +1509,21 @@
             "promptTokens": 12,
             "completionTokens": 4,
             "totalTokens": 16
+          }
+        }
+      ]
+    ],
+    "agent_mode_on": [
+      [
+        {
+          "content": "Friday begins the investigation."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 30,
+            "completionTokens": 5,
+            "totalTokens": 35
           }
         }
       ]

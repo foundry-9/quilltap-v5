@@ -2551,9 +2551,28 @@ test-loader fix (its jest `moduleNameMapper` mock-vs-real-binding issue — our
 oracles' abs-path requires already bypass it). The `docs/v4/` mirror was
 refreshed (CHANGELOG, API.md).
 
+**Wave 4 (W4.4a): the chat-message service batch is in progress.** Part 1 — the
+**agent-mode resolver** — is ported and green (`services::agent_mode`, verified
+through `orchestrator_tier3_equivalence`). v4's `resolveAgentModeSetting` (the
+Global → Character → Project → Chat cascade), `DEFAULT_AGENT_MODE_SETTINGS`, and
+`buildAgentModeInstructions` are ported, closing the orchestrator's agent-mode
+seam: the spine reads the project's `defaultAgentModeEnabled` (a store-managed
+field → the overlaid `projects.findById` read), resolves the cascade, fires the
+`agentTurnCount: 0` reset on a non-continue turn (v4
+`repos.chats.update({ agentTurnCount: 0 })`, no `updatedAt` bump), feeds
+`agentMode.enabled` to `buildTools` (adding `submit_final_response`), injects the
+byte-exact agent-mode system-prompt block into `formattedMessages` at the
+first-non-system position, and passes the resolved `ResolvedAgentMode` to the
+native loop. The orchestrator tier-3 corpus gained an `agent_mode_on` case
+(chat-level opt-in via `agentModeEnabled`, custom `maxTurns: 15` via
+`agentModeSettings`) banking the instruction injection (the recorded stream key
+proves byte-exactness), the `submit_final_response` slate addition at the wire,
+and the reset (seeded `agentTurnCount: 5` → 0); resolver unit tests cover the
+full cascade matrix.
+
 The rest of wave 4 — the `generate_image` handler (pure leaves banked; it lands
 once the W4.2 danger classify/route path + its three cheap-LLM prompt tasks
-exist) and the deferred photo trio, the agent-mode resolver, danger,
-answer-confirmation, courier/compression-cache/regenerate-swipe, carina query,
+exist) and the deferred photo trio, danger, answer-confirmation, the remaining
+W4.4a services (courier / compression-cache / regenerate-swipe), carina query,
 buildContext seam-closers, and the provider manifest — follows per the
 chat-orchestration decomposition.

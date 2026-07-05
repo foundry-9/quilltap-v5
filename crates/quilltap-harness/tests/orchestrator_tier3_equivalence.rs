@@ -1011,6 +1011,14 @@ impl orchestrator::OrchestratorSeams for HarnessOrchestratorSeams {
             auto_detect_rng: true,
             answer_confirmation_global_enabled: false,
             autonomous_destructive_policy: "opt_in_per_room".to_string(),
+            // Agent mode (W4.4): the fixture's single chat_settings row sets
+            // `agentModeSettings = { maxTurns: 15, defaultEnabled: false }` (a
+            // NON-default maxTurns so the `agent_mode_on` case banks custom-maxTurns
+            // propagation into the injected instruction). `defaultEnabled` stays
+            // false, so every non-opted-in chat resolves agent mode OFF; the
+            // `agent_mode_on` chat opts in at the Chat level (`agentModeEnabled`).
+            agent_mode_default_enabled: false,
+            agent_mode_max_turns: 15,
         })
     }
 }
