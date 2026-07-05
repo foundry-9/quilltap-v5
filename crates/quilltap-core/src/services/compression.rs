@@ -111,7 +111,7 @@ pub struct ContextCompressionOptions<'a> {
 /// Details about a compression that was applied (v4
 /// `ContextCompressionResult.compressionDetails`). System-prompt fields are
 /// always `0` (system-prompt compression is disabled).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompressionDetails {
     pub original_message_count: i64,
@@ -127,7 +127,7 @@ pub struct CompressionDetails {
 /// Result of context compression (v4 `ContextCompressionResult`). Optional
 /// fields are omitted when absent, matching v4's `JSON.stringify` dropping
 /// `undefined` — `compressedSystemPrompt` is therefore never present.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ContextCompressionResult {
     /// Whether compression was applied.

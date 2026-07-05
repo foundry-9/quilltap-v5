@@ -485,6 +485,11 @@ pub struct ChatUpdate {
     /// `repos.chats.update(chatId, { documentMode })` — no `updatedAt` bump
     /// (the chats `_update` preserves `updatedAt` unless the caller passes one).
     pub document_mode: Option<String>,
+    /// `compressionCache` (nullable JSON object) — the async pre-compression cache
+    /// ([`crate::services::compression_cache`]) `persistToDatabase` /
+    /// `clearFromDatabase`. `Some(obj)` stores the cache object; `Some(Value::Null)`
+    /// clears the column to SQL NULL; `None` leaves it unset. No `updatedAt` bump.
+    pub compression_cache: Option<Value>,
     pub updated_at: Option<String>,
 }
 
@@ -777,6 +782,19 @@ impl<'c> ChatsRepository<'c> {
         }
         if let Some(v) = &patch.document_mode {
             set_col!("documentMode", Box::new(v.clone()));
+        }
+        if let Some(v) = &patch.compression_cache {
+            // The async compression cache (v4 `persistToDatabase`/`clearFromDatabase`
+            // via `repos.chats.update({ compressionCache })`). A JSON `null` clears
+            // the column (SQL NULL); an object is stored as compact JSON text. Does
+            // not bump `updatedAt` (v4's `_update` preserves it — the `resolved_updated_at`
+            // path below keeps the existing value when `updated_at` is unset).
+            let text: Option<String> = if v.is_null() {
+                None
+            } else {
+                Some(json_text(v)?)
+            };
+            set_col!("compressionCache", Box::new(text));
         }
         set_col!("updatedAt", Box::new(resolved_updated_at));
 

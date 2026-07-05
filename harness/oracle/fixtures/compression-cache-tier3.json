@@ -1,0 +1,168 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+  "seedTimestamp": "2026-01-02T03:04:05.000Z",
+  "frozenNowMs": 1767326645000,
+  "localOffsetMinutes": 0,
+  "chats": [
+    {
+      "id": "c0000001-0000-4000-8000-000000000001"
+    },
+    {
+      "id": "c0000004-0000-4000-8000-000000000004"
+    },
+    {
+      "id": "c0000005-0000-4000-8000-000000000005"
+    }
+  ],
+  "systemPrompt": "You are a careful assistant participating in a test scenario. Stay in character.",
+  "selection": {
+    "provider": "ANTHROPIC",
+    "modelName": "claude-cheap",
+    "isLocal": false
+  },
+  "windowSize": 10,
+  "compressionTargetTokens": 800,
+  "systemPromptTargetTokens": 1500,
+  "characterName": "Bertie",
+  "userName": "User",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Turn 1: a line of conversation number 1."
+    },
+    {
+      "role": "assistant",
+      "content": "Turn 2: a line of conversation number 2."
+    },
+    {
+      "role": "user",
+      "content": "Turn 3: a line of conversation number 3."
+    },
+    {
+      "role": "assistant",
+      "content": "Turn 4: a line of conversation number 4."
+    },
+    {
+      "role": "user",
+      "content": "Turn 5: a line of conversation number 5."
+    },
+    {
+      "role": "assistant",
+      "content": "Turn 6: a line of conversation number 6."
+    },
+    {
+      "role": "user",
+      "content": "Turn 7: a line of conversation number 7."
+    },
+    {
+      "role": "assistant",
+      "content": "Turn 8: a line of conversation number 8."
+    },
+    {
+      "role": "user",
+      "content": "Turn 9: a line of conversation number 9."
+    },
+    {
+      "role": "assistant",
+      "content": "Turn 10: a line of conversation number 10."
+    },
+    {
+      "role": "user",
+      "content": "Turn 11: a line of conversation number 11."
+    },
+    {
+      "role": "assistant",
+      "content": "Turn 12: a line of conversation number 12."
+    },
+    {
+      "role": "user",
+      "content": "Turn 13: a line of conversation number 13."
+    },
+    {
+      "role": "assistant",
+      "content": "Turn 14: a line of conversation number 14."
+    },
+    {
+      "role": "user",
+      "content": "Turn 15: a line of conversation number 15."
+    }
+  ],
+  "fewMessages": [
+    {
+      "role": "user",
+      "content": "Turn 1: a line of conversation number 1."
+    },
+    {
+      "role": "assistant",
+      "content": "Turn 2: a line of conversation number 2."
+    },
+    {
+      "role": "user",
+      "content": "Turn 3: a line of conversation number 3."
+    },
+    {
+      "role": "assistant",
+      "content": "Turn 4: a line of conversation number 4."
+    },
+    {
+      "role": "user",
+      "content": "Turn 5: a line of conversation number 5."
+    },
+    {
+      "role": "assistant",
+      "content": "Turn 6: a line of conversation number 6."
+    },
+    {
+      "role": "user",
+      "content": "Turn 7: a line of conversation number 7."
+    },
+    {
+      "role": "assistant",
+      "content": "Turn 8: a line of conversation number 8."
+    }
+  ],
+  "completionRules": [
+    {
+      "provider": "ANTHROPIC",
+      "model": "claude-cheap",
+      "response": "[Earlier conversation summarized: five turns of test dialogue covering the opening exchange.]",
+      "usage": {
+        "promptTokens": 120,
+        "completionTokens": 18,
+        "totalTokens": 138
+      }
+    }
+  ],
+  "ops": [
+    {
+      "kind": "trigger",
+      "chatId": "c0000001-0000-4000-8000-000000000001",
+      "participantId": null,
+      "few": false
+    },
+    {
+      "kind": "trigger",
+      "chatId": "c0000004-0000-4000-8000-000000000004",
+      "participantId": null,
+      "few": true
+    },
+    {
+      "kind": "get",
+      "chatId": "c0000001-0000-4000-8000-000000000001",
+      "participantId": null,
+      "messageCount": 15
+    },
+    {
+      "kind": "get",
+      "chatId": "c0000005-0000-4000-8000-000000000005",
+      "participantId": null,
+      "messageCount": 5
+    },
+    {
+      "kind": "invalidate",
+      "chatId": "c0000001-0000-4000-8000-000000000001",
+      "participantId": null
+    }
+  ]
+}

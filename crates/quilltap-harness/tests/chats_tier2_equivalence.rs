@@ -120,6 +120,7 @@ impl PatchData {
             roleplay_template_id: None,
             agent_turn_count: None,
             document_mode: None,
+            compression_cache: None,
             updated_at: self.updated_at.clone(),
         }
     }

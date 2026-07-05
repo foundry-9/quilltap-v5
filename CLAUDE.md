@@ -2591,9 +2591,30 @@ store must `doMock('@/lib/embedding/vector-store', requireActual)` — jest.setu
 mocks it globally, so without the un-mock the cascade's store `load()` is silently
 empty and no vectors are removed (see `[[jest-real-db-oracle]]`).
 
+Part 3 — the **compression cache service** — is also ported and green
+(`services::compression_cache`, `compression_cache_tier3_equivalence`): v4's
+`triggerAsyncCompression` / `getCachedCompression` / `invalidateCompressionCache`
+(+ `hashString` / `isCacheValid` / `cacheKey` / the persist/load/clear DB layer).
+The durable cache lives in the `chats.compressionCache` column (a JSON object,
+per-participant in multi-char chats; added the `ChatUpdate.compression_cache`
+update setter — a JSON `null` clears to SQL NULL, no `updatedAt` bump); a
+process-global in-memory map is the fast path. `withPersistLock` is not ported
+(the single-writer task already serializes the load-modify-save); there is no
+in-flight-promise state (the trigger computes synchronously within its async fn),
+so `isFallback` is always false. The five-op differential (trigger→persist,
+guard, get-DB-hit, get-miss, invalidate) drives v4's REAL functions, diffing the
+persisted column (minted `createdAt` normalized) + the `getCachedCompression`
+return. **Remaining W4.4a plumbing (tracked deferral):** the finalizer's
+`AsyncCompressionTrigger` real production impl (the trigger inputs — messages /
+systemPrompt / options — must thread through the finalizer's `CompressionContext`)
+and the `buildContext` cached-compression window (the `cachedCompressionResult` /
+`cachedCompressionMessageCount` inputs, computed by the spine via
+`getCachedCompression`) are additive spine plumbing; the finalizer / build_context
+differentials keep the recording / empty-cache seams until then.
+
 The rest of wave 4 — the `generate_image` handler (pure leaves banked; it lands
 once the W4.2 danger classify/route path + its three cheap-LLM prompt tasks
 exist) and the deferred photo trio, danger, answer-confirmation, the remaining
-W4.4a services (courier / compression-cache), carina query,
+W4.4a service (courier) + the compression-cache spine plumbing, carina query,
 buildContext seam-closers, and the provider manifest — follows per the
 chat-orchestration decomposition.

@@ -584,6 +584,20 @@ in a numbered batch.
   completion key proves the rebuilt prompt). Deferral: swipe raw/reasoning/thought
   fields null (cheap-LLM `CompletionResponse` subset; W4.7).
 
+- **W4.4a part 3: the compression cache service — ported and green** (2026-07-05).
+  `services::compression_cache` ports v4's `triggerAsyncCompression` /
+  `getCachedCompression` / `invalidateCompressionCache` (+ `hashString` /
+  `isCacheValid` / the persist/load/clear DB layer over the `chats.compressionCache`
+  column; added the `ChatUpdate.compression_cache` setter). `withPersistLock` +
+  the in-flight-promise state are not ported (the single-writer serializes; the
+  trigger computes synchronously). `compression_cache_tier3_equivalence` (five ops:
+  trigger→persist, guard, get-DB-hit, get-miss, invalidate) drives v4's REAL
+  functions. **Remaining plumbing (deferral):** the finalizer's real
+  `AsyncCompressionTrigger` impl (thread the trigger inputs through
+  `CompressionContext`) + the `buildContext` cached-compression window
+  (`cachedCompressionResult`/`cachedCompressionMessageCount` inputs, computed by
+  the spine) — additive; the differentials keep the recording/empty-cache seams.
+
 - **W4.1d batch 3a (part 1): the tiered mount pool + the `qtap://` URI codec —
   ported and green** (the first half of the doc-edit foundation the ~26 `doc_*`
   handlers of batch 3b sit on). `db::tiered_mount_pool` is the canonical home of

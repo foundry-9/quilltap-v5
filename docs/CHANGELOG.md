@@ -4,6 +4,31 @@
 
 ### 5.0-dev
 
+Phase 3 — wave 4 (W4.4a, part 3): the compression cache service. Ported v4's
+`compression-cache.service.ts` — `triggerAsyncCompression` /
+`getCachedCompression` / `invalidateCompressionCache` (+ `hashString` /
+`isCacheValid` / `cacheKey` / the `persistToDatabase` / `loadFromDatabase` /
+`clearFromDatabase` DB layer) into `services::compression_cache`. The durable
+cache lives in the `chats.compressionCache` column (a JSON object, per-participant
+in multi-char chats); a process-global in-memory map is the fast path. Added the
+`ChatUpdate.compression_cache` update setter (a JSON `null` clears the column to
+SQL NULL, no `updatedAt` bump) and `Deserialize` to `ContextCompressionResult` /
+`CompressionDetails`. v4's per-chat promise lock (`withPersistLock`) is not ported
+— the single-writer task already serializes the load-modify-save; and there is no
+in-flight-promise state (`trigger_async_compression` computes synchronously within
+its async fn), so `isFallback` is always false. Verified by
+`compression_cache_tier3_equivalence` — a five-op corpus (trigger→persist,
+trigger-guard [too few messages], get-DB-hit, get-miss, invalidate) driving v4's
+REAL functions, diffing the persisted column (minted `createdAt` normalized) + the
+`getCachedCompression` return; the canned cheap-LLM key proves the compression
+prompt. The two seam closures — the finalizer's `AsyncCompressionTrigger` real
+production impl (needs the trigger inputs — messages / systemPrompt / options —
+threaded through the finalizer) and the `buildContext` cached-compression window
+(the `cachedCompressionResult` / `cachedCompressionMessageCount` inputs, computed
+by the spine via `getCachedCompression`) — are additive spine plumbing tracked as
+the remaining part of W4.4a; the differentials keep the recording / empty-cache
+seams meanwhile.
+
 Phase 3 — wave 4 (W4.4a, part 2): regenerate-swipe. Ported
 `regenerateMessageAsSwipe` (`services::regenerate_swipe`), the sibling entry
 point to `processMessage`: it generates an alternative ("swipe") for an existing
