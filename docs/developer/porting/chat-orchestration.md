@@ -698,3 +698,31 @@ in a numbered batch.
   `knowledge_injector`/`first_message_context`/`tool_execution_process_tier3`
   re-verified green. **The tool-handler catalog now has only batch 3b (doc-edit) +
   batch 5 (host-seamed) + `search_web` (W4.1d5, external service) outstanding.**
+
+- **W4.2: the dangerous-content ("Concierge") orchestration subsystem — ported
+  and green** (2026-07-05). `services::dangerous_content` (v4
+  `lib/services/dangerous-content/` + the `CHAT_DANGER_CLASSIFICATION` job
+  runner), replacing the injected `DangerousContentRouter` stub with the real
+  resolution. Leaf-to-root: `chat_override` (the two-field danger status),
+  `resolver` (`resolveDangerousContentSettings`), `gatekeeper` (classification —
+  the `ModerationProvider` seam collapsing v4's plugin registry + key auto-detect
+  + `moderate`, the port still running `mapModerationResult`; the cheap-LLM
+  classify over the `CompletionProvider` seam with the byte-exact
+  `CLASSIFICATION_SYSTEM_PROMPT`; `parseClassificationResponse`; the LRU cache),
+  `provider_routing` (the REAL implementor of the FROZEN
+  `provider_failover::DangerousContentRouter` — the trait shape holds; the
+  `ApiKeyResolver` seam keeps key material host-side per the `cheap_llm_exec`
+  precedent), `manual_flip` (`applyConciergeFlip` via a raw chat `UPDATE`, since
+  the frozen `ChatUpdate` is W4.4a-owned), and `gatekeeper_job`
+  (`handleChatDangerClassification` — the bails, the classify input, the system
+  event + token aggregate on the LLM path, the danger-field persistence). Added
+  additive `connection_profiles`/`image_profiles` net reads. Three differentials
+  green: `danger_resolver_equivalence` (pure matrix + tier-2 manual-flip),
+  `danger_routing_equivalence` (the reroute matrix, canned api-key seam both
+  sides), `danger_gatekeeper_tier3_equivalence` (drives v4's REAL job runner,
+  both model boundaries canned). Seams: the moderation plugin registry, the
+  cheap-LLM / routing API keys, `logLLMCall`, the job runner, and the Concierge
+  personified-announcement writers (**W4.6**). **Unification handoff (W4.4a-owned
+  spine files):** construct the real router + gatekeeper at the orchestrator
+  composition point + add the OFF-short-circuit and live-uncensored-reroute
+  orchestrator-corpus cases.

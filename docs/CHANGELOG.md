@@ -661,6 +661,55 @@ items the wave-3 capstone flagged.
   `commonplace_strip`, `opaque_swap` vs `transparent_no_swap`, and
   `tool_whisper_filter`. `orchestrator_tier3_equivalence` re-verified green.
 
+Phase 3 — wave 4 (W4.2): the dangerous-content ("Concierge") orchestration
+subsystem (`services::dangerous_content`), replacing the injected
+`DangerousContentRouter` stub with the real resolution. Ported v4's
+`lib/services/dangerous-content/` + the `CHAT_DANGER_CLASSIFICATION` job runner:
+
+- `chat_override` — the two-field danger-status derivation (`isConciergeOffDuty`
+  / `getConciergeState` / `isChatActiveDangerous`; off-duty preserves the label,
+  wins over the classification).
+- `resolver` — `resolveDangerousContentSettings` (global + per-chat off-duty /
+  moderation-exempt short-circuits; the DEFAULT / OFF_DUTY constant shapes).
+- `gatekeeper` — content classification: the moderation-provider path (an
+  injected `ModerationProvider` seam collapsing v4's plugin registry +
+  `autoDetectModerationApiKey` + `provider.moderate`; the port still runs the
+  ported `mapModerationResult` over the raw result), the cheap-LLM classify path
+  (the byte-exact `CLASSIFICATION_SYSTEM_PROMPT` in a generated `prompt_text`
+  submodule, temperature 0.1 / maxTokens 500, over the `CompletionProvider`
+  seam), `parseClassificationResponse`, `CATEGORY_LABELS` /
+  `MODERATION_CATEGORY_MAP`, and the module-global classification LRU cache.
+- `provider_routing` — the REAL implementor of the frozen
+  `DangerousContentRouter` seam: `resolveProviderForDangerousContent` +
+  `resolveImageProviderForDangerousContent` +
+  `resolveUncensoredImageProfileForReroute` + `isImageModerationError` (the five
+  exact reason strings preserved). API-key material stays host-side (an injected
+  `ApiKeyResolver` seam); `DangerContentRouter` maps the resolution into the
+  failover's `RouteResult`. Added additive `connection_profiles` / `image_profiles`
+  `find_by_id` / `find_all` / `find_by_user_id` net reads.
+- `manual_flip` — `applyConciergeFlip` (the tri-state operator flip; raw
+  multi-column chat `UPDATE` that mints no `updatedAt`, byte-identical to v4's
+  `chats.update` — the frozen `ChatUpdate` is owned by the parallel W4.4a batch).
+- `gatekeeper_job` — `handleChatDangerClassification` (the job runner): the
+  sticky/exempt/off-duty/mode-OFF bails, the context-summary-else-concatenated-
+  messages classification input, the cheap-LLM selection, the classify call, the
+  `DANGER_CLASSIFICATION` system event + token aggregate (only on the LLM path,
+  which mints `updatedAt`), and the chat-level danger-field persistence.
+
+Three differentials, all green against v4 HEAD: `danger_resolver_equivalence`
+(tier-1 resolver + override matrix, plus a tier-2 manual-flip chat-row dump),
+`danger_routing_equivalence` (the reroute matrix — decision + profile identity +
+resolved key + exact reason, canned api-key seam both sides), and
+`danger_gatekeeper_tier3_equivalence` (drives v4's REAL job runner over a seeded
+fixture — safe/dangerous/borderline/parse-failure LLM classifications, the
+moderation-provider path incl. a provider failure, the system-event + chat writes
+diffed sentinel-aware). Seams (tracked deferrals): the moderation plugin registry,
+the cheap-LLM / routing API-key acquisition, `logLLMCall`, the job-runner
+infrastructure, and the Concierge personified-announcement writers (W4.6).
+Spine integration — constructing the real router/gatekeeper at the orchestrator
+composition point + the OFF-short-circuit / live-reroute orchestrator-corpus
+cases — is deferred to unification (it edits W4.4a-owned files).
+
 Phase 3 — wave 4 (W4.1g): `buildTools` + the tool-slate spine wiring (closes
 W4.1). Ported v4's `buildTools` + the built-in half of `buildToolsForProvider`
 (`services::tool_build`): the flag→tool-set construction over the b.3 definition

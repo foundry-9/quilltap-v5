@@ -1,0 +1,60 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2020-01-01T00:00:00.000Z",
+  "userA": "aaaaaaaa-1111-4111-8111-111111111111",
+  "userB": "bbbbbbbb-2222-4222-8222-222222222222",
+  "apiKeys": {
+    "a0000000-0000-4000-8000-0000000000a1": "KEY_ORIG_A",
+    "a0000000-0000-4000-8000-0000000000a2": "KEY_UNC_A",
+    "a0000000-0000-4000-8000-0000000000a3": "KEY_COMPAT_A",
+    "a0000000-0000-4000-8000-0000000000b1": "KEY_ORIG_B",
+    "a0000000-0000-4000-8000-0000000000c1": "IMGKEY_ORIG_A",
+    "a0000000-0000-4000-8000-0000000000c2": "IMGKEY_UNC_A",
+    "a0000000-0000-4000-8000-0000000000c3": "IMGKEY_COMPAT_A"
+  },
+  "connectionProfiles": [
+    { "id": "c0000000-0000-4000-8000-0000000000a1", "user": "A", "name": "Original A", "provider": "OPENAI", "modelName": "gpt-4o", "apiKeyId": "a0000000-0000-4000-8000-0000000000a1", "isDangerousCompatible": false },
+    { "id": "c0000000-0000-4000-8000-0000000000a2", "user": "A", "name": "Configured Uncensored", "provider": "OPENROUTER", "modelName": "cognitivecomputations/dolphin", "baseUrl": "https://openrouter.ai/api/v1", "apiKeyId": "a0000000-0000-4000-8000-0000000000a2", "isDangerousCompatible": false },
+    { "id": "c0000000-0000-4000-8000-0000000000a3", "user": "A", "name": "Compatible A", "provider": "OLLAMA", "modelName": "wizard-vicuna", "apiKeyId": "a0000000-0000-4000-8000-0000000000a3", "isDangerousCompatible": true },
+    { "id": "c0000000-0000-4000-8000-0000000000a4", "user": "A", "name": "NoKey Configured", "provider": "OPENAI", "modelName": "gpt-x", "apiKeyId": "a0000000-0000-4000-8000-00000000dead", "isDangerousCompatible": false },
+    { "id": "c0000000-0000-4000-8000-0000000000b1", "user": "B", "name": "Original B", "provider": "OPENAI", "modelName": "gpt-4o", "apiKeyId": "a0000000-0000-4000-8000-0000000000b1", "isDangerousCompatible": false },
+    { "id": "c0000000-0000-4000-8000-0000000000b2", "user": "B", "name": "Compat NoKey B", "provider": "OLLAMA", "modelName": "wizard", "apiKeyId": "a0000000-0000-4000-8000-00000000beef", "isDangerousCompatible": true }
+  ],
+  "imageProfiles": [
+    { "id": "e0000000-0000-4000-8000-0000000000a1", "user": "A", "name": "Img Original A", "provider": "OPENAI", "modelName": "dall-e-3", "apiKeyId": "a0000000-0000-4000-8000-0000000000c1", "isDangerousCompatible": false },
+    { "id": "e0000000-0000-4000-8000-0000000000a2", "user": "A", "name": "Img Configured Uncensored", "provider": "GROK", "modelName": "grok-image", "apiKeyId": "a0000000-0000-4000-8000-0000000000c2", "isDangerousCompatible": false },
+    { "id": "e0000000-0000-4000-8000-0000000000a3", "user": "A", "name": "Img Compatible A", "provider": "OLLAMA", "modelName": "sd-uncensored", "apiKeyId": "a0000000-0000-4000-8000-0000000000c3", "isDangerousCompatible": true },
+    { "id": "e0000000-0000-4000-8000-0000000000b1", "user": "B", "name": "Img Original B", "provider": "OPENAI", "modelName": "dall-e-3", "apiKeyId": "a0000000-0000-4000-8000-00000000b111", "isDangerousCompatible": false }
+  ],
+  "textCases": [
+    { "id": "off-mode", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "OFF", "uncensoredTextProfileId": null },
+    { "id": "detect-only", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "DETECT_ONLY", "uncensoredTextProfileId": null },
+    { "id": "configured", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": "c0000000-0000-4000-8000-0000000000a2" },
+    { "id": "scan-compatible", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": null },
+    { "id": "configured-nokey-fallthrough", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": "c0000000-0000-4000-8000-0000000000a4" },
+    { "id": "configured-not-owned", "user": "B", "originalProfileId": "c0000000-0000-4000-8000-0000000000b1", "originalApiKey": "KEY_ORIG_B", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": "c0000000-0000-4000-8000-0000000000a2" },
+    { "id": "no-uncensored-available", "user": "B", "originalProfileId": "c0000000-0000-4000-8000-0000000000b1", "originalApiKey": "KEY_ORIG_B", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": null },
+    { "id": "configured-nonexistent", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": "c0000000-0000-4000-8000-00000000ffff" }
+  ],
+  "imageCases": [
+    { "id": "img-off", "user": "A", "originalProfileId": "e0000000-0000-4000-8000-0000000000a1", "originalApiKey": "IMGKEY_ORIG_A", "mode": "OFF", "uncensoredImageProfileId": null },
+    { "id": "img-configured", "user": "A", "originalProfileId": "e0000000-0000-4000-8000-0000000000a1", "originalApiKey": "IMGKEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2" },
+    { "id": "img-scan-compatible", "user": "A", "originalProfileId": "e0000000-0000-4000-8000-0000000000a1", "originalApiKey": "IMGKEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredImageProfileId": null },
+    { "id": "img-no-uncensored", "user": "B", "originalProfileId": "e0000000-0000-4000-8000-0000000000b1", "originalApiKey": "IMGKEY_ORIG_B", "mode": "AUTO_ROUTE", "uncensoredImageProfileId": null }
+  ],
+  "rerouteCases": [
+    { "id": "reroute-off", "user": "A", "currentProfileId": "e0000000-0000-4000-8000-0000000000a1", "mode": "OFF", "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2" },
+    { "id": "reroute-configured", "user": "A", "currentProfileId": "e0000000-0000-4000-8000-0000000000a1", "mode": "AUTO_ROUTE", "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2" },
+    { "id": "reroute-same-profile-loop", "user": "A", "currentProfileId": "e0000000-0000-4000-8000-0000000000a2", "mode": "AUTO_ROUTE", "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2" },
+    { "id": "reroute-none-configured", "user": "A", "currentProfileId": "e0000000-0000-4000-8000-0000000000a1", "mode": "AUTO_ROUTE", "uncensoredImageProfileId": null }
+  ],
+  "imgErrors": [
+    "Your request was rejected as a result of our safety system.",
+    "Generated image rejected by content moderation.",
+    "content_policy violation from provider",
+    "The prompt hit our content policy",
+    "moderation_blocked by upstream",
+    "network timeout",
+    ""
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2020-01-01T00:00:00.000Z",
+  "userId": "11111111-1111-4111-8111-111111111111",
+  "characterId": "bbbb2222-2222-4222-8222-222222222222",
+  "chats": [
+    {
+      "id": "c0000010-0000-4000-8000-000000000001",
+      "title": "safe to flagged",
+      "chatType": "salon",
+      "messageCount": 5,
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "dangerScore": null,
+      "dangerCategories": [],
+      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 5
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000002",
+      "title": "flagged to safe",
+      "chatType": "salon",
+      "messageCount": 8,
+      "isDangerousChat": true,
+      "conciergeOverride": null,
+      "dangerScore": 0.9,
+      "dangerCategories": ["nsfw"],
+      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 8
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000003",
+      "title": "off to safe on-duty",
+      "chatType": "salon",
+      "messageCount": 3,
+      "isDangerousChat": true,
+      "conciergeOverride": "OFF",
+      "dangerScore": 0.8,
+      "dangerCategories": ["violence"],
+      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 3
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000004",
+      "title": "safe to off",
+      "chatType": "salon",
+      "messageCount": 2,
+      "isDangerousChat": false,
+      "conciergeOverride": null
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000005",
+      "title": "flagged to off",
+      "chatType": "salon",
+      "messageCount": 4,
+      "isDangerousChat": true,
+      "conciergeOverride": null,
+      "dangerScore": 0.95,
+      "dangerCategories": ["nsfw", "violence"],
+      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 4
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000006",
+      "title": "safe noop",
+      "chatType": "salon",
+      "messageCount": 1,
+      "isDangerousChat": false,
+      "conciergeOverride": null
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000007",
+      "title": "off to flagged",
+      "chatType": "salon",
+      "messageCount": 6,
+      "isDangerousChat": false,
+      "conciergeOverride": "OFF"
+    }
+  ],
+  "ops": [
+    { "id": "safe-to-flagged", "chatId": "c0000010-0000-4000-8000-000000000001", "requested": "flagged" },
+    { "id": "flagged-to-safe", "chatId": "c0000010-0000-4000-8000-000000000002", "requested": "safe" },
+    { "id": "off-to-safe", "chatId": "c0000010-0000-4000-8000-000000000003", "requested": "safe" },
+    { "id": "safe-to-off", "chatId": "c0000010-0000-4000-8000-000000000004", "requested": "off" },
+    { "id": "flagged-to-off", "chatId": "c0000010-0000-4000-8000-000000000005", "requested": "off" },
+    { "id": "safe-noop", "chatId": "c0000010-0000-4000-8000-000000000006", "requested": "safe" },
+    { "id": "off-to-flagged", "chatId": "c0000010-0000-4000-8000-000000000007", "requested": "flagged" }
+  ]
+}

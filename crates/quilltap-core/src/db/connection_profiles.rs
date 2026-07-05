@@ -396,124 +396,134 @@ impl<'c> ConnectionProfilesRepository<'c> {
 /// [`crate::services::cheap_llm_exec`]): the resolver returns this profile row
 /// (which carries `apiKeyId` when set); actually fetching + decrypting the key
 /// from the `api_keys` table is the host's job.
-pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<serde_json::Value>, DbError> {
+/// The shared column list every connection-profile net read selects (net-read
+/// order = [`marshal_cp_row`]'s field access order).
+const CP_COLUMNS: &str = "id, userId, name, provider, transport, courierDeltaMode, apiKeyId, \
+     baseUrl, modelName, parameters, isDefault, isCheap, allowWebSearch, useNativeWebSearch, \
+     allowToolUse, pseudoToolMode, modelClass, maxContext, maxTokens, isDangerousCompatible, \
+     supportsImageUpload, tags, sortIndex, totalTokens, totalPromptTokens, totalCompletionTokens, \
+     messageCount, createdAt, updatedAt";
+
+// Insert a nullable-optional TEXT value: `Some` → string, `None` → omit.
+fn put_opt_string(
+    obj: &mut serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    v: Option<String>,
+) {
+    if let Some(s) = v {
+        obj.insert(key.to_string(), serde_json::Value::String(s));
+    }
+}
+// Insert a nullable-optional number column (`NULL` → omit, else JS render).
+fn put_opt_number(obj: &mut serde_json::Map<String, serde_json::Value>, key: &str, v: Option<f64>) {
+    if let Some(n) = v {
+        obj.insert(key.to_string(), super::js_number_to_json(n));
+    }
+}
+// A `.default(default)` array column: parsed array, or `[]` on NULL/empty/bad.
+fn array_or_empty(v: Option<String>) -> serde_json::Value {
+    match v {
+        Some(raw) if !raw.is_empty() => {
+            serde_json::from_str(&raw).unwrap_or_else(|_| serde_json::Value::Array(Vec::new()))
+        }
+        _ => serde_json::Value::Array(Vec::new()),
+    }
+}
+// A `.default({})` open-JSON object column: parsed, or `{}` on NULL/empty/bad.
+fn object_or_empty(v: Option<String>) -> serde_json::Value {
+    match v {
+        Some(raw) if !raw.is_empty() => serde_json::from_str(&raw)
+            .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new())),
+        _ => serde_json::Value::Object(serde_json::Map::new()),
+    }
+}
+
+/// Marshal one `connection_profiles` row selected in [`CP_COLUMNS`] order into
+/// the net-read [`serde_json::Value`].
+fn marshal_cp_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<serde_json::Value> {
     use serde_json::{Map, Value};
+    let mut obj = Map::new();
+    obj.insert("id".into(), Value::String(r.get::<_, String>(0)?));
+    obj.insert("userId".into(), Value::String(r.get::<_, String>(1)?));
+    obj.insert("name".into(), Value::String(r.get::<_, String>(2)?));
+    obj.insert("provider".into(), Value::String(r.get::<_, String>(3)?));
+    obj.insert("transport".into(), Value::String(r.get::<_, String>(4)?));
+    obj.insert(
+        "courierDeltaMode".into(),
+        Value::Bool(r.get::<_, i64>(5)? == 1),
+    );
+    put_opt_string(&mut obj, "apiKeyId", r.get::<_, Option<String>>(6)?);
+    put_opt_string(&mut obj, "baseUrl", r.get::<_, Option<String>>(7)?);
+    obj.insert("modelName".into(), Value::String(r.get::<_, String>(8)?));
+    obj.insert(
+        "parameters".into(),
+        object_or_empty(r.get::<_, Option<String>>(9)?),
+    );
+    obj.insert("isDefault".into(), Value::Bool(r.get::<_, i64>(10)? == 1));
+    obj.insert("isCheap".into(), Value::Bool(r.get::<_, i64>(11)? == 1));
+    obj.insert(
+        "allowWebSearch".into(),
+        Value::Bool(r.get::<_, i64>(12)? == 1),
+    );
+    obj.insert(
+        "useNativeWebSearch".into(),
+        Value::Bool(r.get::<_, i64>(13)? == 1),
+    );
+    obj.insert(
+        "allowToolUse".into(),
+        Value::Bool(r.get::<_, i64>(14)? == 1),
+    );
+    obj.insert(
+        "pseudoToolMode".into(),
+        Value::String(r.get::<_, String>(15)?),
+    );
+    put_opt_string(&mut obj, "modelClass", r.get::<_, Option<String>>(16)?);
+    put_opt_number(&mut obj, "maxContext", r.get::<_, Option<f64>>(17)?);
+    put_opt_number(&mut obj, "maxTokens", r.get::<_, Option<f64>>(18)?);
+    obj.insert(
+        "isDangerousCompatible".into(),
+        Value::Bool(r.get::<_, i64>(19)? == 1),
+    );
+    obj.insert(
+        "supportsImageUpload".into(),
+        Value::Bool(r.get::<_, i64>(20)? == 1),
+    );
+    obj.insert(
+        "tags".into(),
+        array_or_empty(r.get::<_, Option<String>>(21)?),
+    );
+    obj.insert(
+        "sortIndex".into(),
+        super::js_number_to_json(r.get::<_, f64>(22)?),
+    );
+    obj.insert(
+        "totalTokens".into(),
+        super::js_number_to_json(r.get::<_, f64>(23)?),
+    );
+    obj.insert(
+        "totalPromptTokens".into(),
+        super::js_number_to_json(r.get::<_, f64>(24)?),
+    );
+    obj.insert(
+        "totalCompletionTokens".into(),
+        super::js_number_to_json(r.get::<_, f64>(25)?),
+    );
+    obj.insert(
+        "messageCount".into(),
+        super::js_number_to_json(r.get::<_, f64>(26)?),
+    );
+    obj.insert("createdAt".into(), Value::String(r.get::<_, String>(27)?));
+    obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(28)?));
+    Ok(Value::Object(obj))
+}
 
-    // Insert a nullable-optional TEXT value: `Some` → string, `None` → omit.
-    fn put_opt_string(obj: &mut Map<String, Value>, key: &str, v: Option<String>) {
-        if let Some(s) = v {
-            obj.insert(key.to_string(), Value::String(s));
-        }
-    }
-    // Insert a nullable-optional number column (`NULL` → omit, else JS render).
-    fn put_opt_number(obj: &mut Map<String, Value>, key: &str, v: Option<f64>) {
-        if let Some(n) = v {
-            obj.insert(key.to_string(), super::js_number_to_json(n));
-        }
-    }
-    // A `.default(default)` array column: parsed array, or `[]` on NULL/empty/bad.
-    fn array_or_empty(v: Option<String>) -> Value {
-        match v {
-            Some(raw) if !raw.is_empty() => {
-                serde_json::from_str(&raw).unwrap_or_else(|_| Value::Array(Vec::new()))
-            }
-            _ => Value::Array(Vec::new()),
-        }
-    }
-    // A `.default({})` open-JSON object column: parsed, or `{}` on NULL/empty/bad.
-    fn object_or_empty(v: Option<String>) -> Value {
-        match v {
-            Some(raw) if !raw.is_empty() => {
-                serde_json::from_str(&raw).unwrap_or_else(|_| Value::Object(Map::new()))
-            }
-            _ => Value::Object(Map::new()),
-        }
-    }
-
+/// Net read for one profile by id (see the module net-read shape doc above).
+pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<serde_json::Value>, DbError> {
     let row = conn
         .query_row(
-            "SELECT id, userId, name, provider, transport, courierDeltaMode, apiKeyId, baseUrl, \
-                    modelName, parameters, isDefault, isCheap, allowWebSearch, useNativeWebSearch, \
-                    allowToolUse, pseudoToolMode, modelClass, maxContext, maxTokens, \
-                    isDangerousCompatible, supportsImageUpload, tags, sortIndex, totalTokens, \
-                    totalPromptTokens, totalCompletionTokens, messageCount, createdAt, updatedAt \
-             FROM connection_profiles WHERE id = ?1",
+            &format!("SELECT {CP_COLUMNS} FROM connection_profiles WHERE id = ?1"),
             params![id],
-            |r| {
-                let mut obj = Map::new();
-                obj.insert("id".into(), Value::String(r.get::<_, String>(0)?));
-                obj.insert("userId".into(), Value::String(r.get::<_, String>(1)?));
-                obj.insert("name".into(), Value::String(r.get::<_, String>(2)?));
-                obj.insert("provider".into(), Value::String(r.get::<_, String>(3)?));
-                obj.insert("transport".into(), Value::String(r.get::<_, String>(4)?));
-                obj.insert(
-                    "courierDeltaMode".into(),
-                    Value::Bool(r.get::<_, i64>(5)? == 1),
-                );
-                put_opt_string(&mut obj, "apiKeyId", r.get::<_, Option<String>>(6)?);
-                put_opt_string(&mut obj, "baseUrl", r.get::<_, Option<String>>(7)?);
-                obj.insert("modelName".into(), Value::String(r.get::<_, String>(8)?));
-                obj.insert(
-                    "parameters".into(),
-                    object_or_empty(r.get::<_, Option<String>>(9)?),
-                );
-                obj.insert("isDefault".into(), Value::Bool(r.get::<_, i64>(10)? == 1));
-                obj.insert("isCheap".into(), Value::Bool(r.get::<_, i64>(11)? == 1));
-                obj.insert(
-                    "allowWebSearch".into(),
-                    Value::Bool(r.get::<_, i64>(12)? == 1),
-                );
-                obj.insert(
-                    "useNativeWebSearch".into(),
-                    Value::Bool(r.get::<_, i64>(13)? == 1),
-                );
-                obj.insert(
-                    "allowToolUse".into(),
-                    Value::Bool(r.get::<_, i64>(14)? == 1),
-                );
-                obj.insert(
-                    "pseudoToolMode".into(),
-                    Value::String(r.get::<_, String>(15)?),
-                );
-                put_opt_string(&mut obj, "modelClass", r.get::<_, Option<String>>(16)?);
-                put_opt_number(&mut obj, "maxContext", r.get::<_, Option<f64>>(17)?);
-                put_opt_number(&mut obj, "maxTokens", r.get::<_, Option<f64>>(18)?);
-                obj.insert(
-                    "isDangerousCompatible".into(),
-                    Value::Bool(r.get::<_, i64>(19)? == 1),
-                );
-                obj.insert(
-                    "supportsImageUpload".into(),
-                    Value::Bool(r.get::<_, i64>(20)? == 1),
-                );
-                obj.insert(
-                    "tags".into(),
-                    array_or_empty(r.get::<_, Option<String>>(21)?),
-                );
-                obj.insert(
-                    "sortIndex".into(),
-                    super::js_number_to_json(r.get::<_, f64>(22)?),
-                );
-                obj.insert(
-                    "totalTokens".into(),
-                    super::js_number_to_json(r.get::<_, f64>(23)?),
-                );
-                obj.insert(
-                    "totalPromptTokens".into(),
-                    super::js_number_to_json(r.get::<_, f64>(24)?),
-                );
-                obj.insert(
-                    "totalCompletionTokens".into(),
-                    super::js_number_to_json(r.get::<_, f64>(25)?),
-                );
-                obj.insert(
-                    "messageCount".into(),
-                    super::js_number_to_json(r.get::<_, f64>(26)?),
-                );
-                obj.insert("createdAt".into(), Value::String(r.get::<_, String>(27)?));
-                obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(28)?));
-                Ok(Value::Object(obj))
-            },
+            marshal_cp_row,
         )
         .map(Some)
         .or_else(|e| match e {
@@ -521,4 +531,34 @@ pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<serde_json::Valu
             other => Err(other),
         })?;
     Ok(row)
+}
+
+/// v4 `repos.connections.findAll()` — every profile, in insertion (rowid) order,
+/// matching v4's `collection.find({})` with no sort. Used by the dangerous-content
+/// provider-routing scan for `isDangerousCompatible` profiles.
+pub fn find_all(conn: &Connection) -> Result<Vec<serde_json::Value>, DbError> {
+    let mut stmt = conn.prepare(&format!("SELECT {CP_COLUMNS} FROM connection_profiles"))?;
+    let rows = stmt.query_map([], marshal_cp_row)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+/// v4 `repos.connections.findByUserId(userId)` — profiles for one user, in
+/// insertion (rowid) order (v4 `findByFilter({ userId })` with no sort).
+pub fn find_by_user_id(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Vec<serde_json::Value>, DbError> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {CP_COLUMNS} FROM connection_profiles WHERE userId = ?1"
+    ))?;
+    let rows = stmt.query_map(params![user_id], marshal_cp_row)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
 }

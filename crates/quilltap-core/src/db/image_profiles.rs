@@ -227,3 +227,80 @@ impl<'c> ImageProfilesRepository<'c> {
         Ok(affected > 0)
     }
 }
+
+/// The shared column list every image-profile net read selects.
+const IP_COLUMNS: &str = "id, userId, name, provider, apiKeyId, baseUrl, modelName, parameters, \
+     isDefault, isDangerousCompatible, tags, createdAt, updatedAt";
+
+/// Marshal one `image_profiles` row (selected in [`IP_COLUMNS`] order) into the
+/// net-read [`serde_json::Value`] — nullable `apiKeyId`/`baseUrl` omitted when
+/// SQL NULL, bools coerced, `parameters`/`tags` parsed.
+fn marshal_ip_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<serde_json::Value> {
+    use serde_json::{Map, Value};
+    let mut obj = Map::new();
+    obj.insert("id".into(), Value::String(r.get::<_, String>(0)?));
+    obj.insert("userId".into(), Value::String(r.get::<_, String>(1)?));
+    obj.insert("name".into(), Value::String(r.get::<_, String>(2)?));
+    obj.insert("provider".into(), Value::String(r.get::<_, String>(3)?));
+    if let Some(s) = r.get::<_, Option<String>>(4)? {
+        obj.insert("apiKeyId".into(), Value::String(s));
+    }
+    if let Some(s) = r.get::<_, Option<String>>(5)? {
+        obj.insert("baseUrl".into(), Value::String(s));
+    }
+    obj.insert("modelName".into(), Value::String(r.get::<_, String>(6)?));
+    obj.insert(
+        "parameters".into(),
+        match r.get::<_, Option<String>>(7)? {
+            Some(raw) if !raw.is_empty() => {
+                serde_json::from_str(&raw).unwrap_or_else(|_| Value::Object(Map::new()))
+            }
+            _ => Value::Object(Map::new()),
+        },
+    );
+    obj.insert("isDefault".into(), Value::Bool(r.get::<_, i64>(8)? == 1));
+    obj.insert(
+        "isDangerousCompatible".into(),
+        Value::Bool(r.get::<_, i64>(9)? == 1),
+    );
+    obj.insert(
+        "tags".into(),
+        match r.get::<_, Option<String>>(10)? {
+            Some(raw) if !raw.is_empty() => {
+                serde_json::from_str(&raw).unwrap_or_else(|_| Value::Array(Vec::new()))
+            }
+            _ => Value::Array(Vec::new()),
+        },
+    );
+    obj.insert("createdAt".into(), Value::String(r.get::<_, String>(11)?));
+    obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(12)?));
+    Ok(Value::Object(obj))
+}
+
+/// v4 `repos.imageProfiles.findById(id)` — one image profile by id (net read),
+/// or `None`.
+pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<serde_json::Value>, DbError> {
+    conn.query_row(
+        &format!("SELECT {IP_COLUMNS} FROM image_profiles WHERE id = ?1"),
+        params![id],
+        marshal_ip_row,
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other.into()),
+    })
+}
+
+/// v4 `repos.imageProfiles.findAll()` — every image profile, insertion (rowid)
+/// order (v4's `collection.find({})` with no sort). Used by the dangerous-content
+/// image-provider-routing scan.
+pub fn find_all(conn: &Connection) -> Result<Vec<serde_json::Value>, DbError> {
+    let mut stmt = conn.prepare(&format!("SELECT {IP_COLUMNS} FROM image_profiles"))?;
+    let rows = stmt.query_map([], marshal_ip_row)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}

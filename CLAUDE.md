@@ -2612,9 +2612,76 @@ and the `buildContext` cached-compression window (the `cachedCompressionResult` 
 `getCachedCompression`) are additive spine plumbing; the finalizer / build_context
 differentials keep the recording / empty-cache seams until then.
 
-The rest of wave 4 — the `generate_image` handler (pure leaves banked; it lands
-once the W4.2 danger classify/route path + its three cheap-LLM prompt tasks
-exist) and the deferred photo trio, danger, answer-confirmation, the remaining
-W4.4a service (courier) + the compression-cache spine plumbing, carina query,
+**Wave 4 (W4.2): the dangerous-content ("Concierge") orchestration subsystem is
+DONE** (`services::dangerous_content`), replacing the injected
+`DangerousContentRouter` stub with the real resolution. Ported v4's
+`lib/services/dangerous-content/` + the `CHAT_DANGER_CLASSIFICATION` job runner,
+leaf-to-root: `chat_override` (the two-field `isConciergeOffDuty` /
+`getConciergeState` / `isChatActiveDangerous` derivation — off-duty preserves the
+label and wins over the classification), `resolver`
+(`resolveDangerousContentSettings` — global + per-chat off-duty / moderation-exempt
+short-circuits + the DEFAULT/OFF_DUTY constants), `gatekeeper` (content
+classification: the moderation-provider path behind an injected `ModerationProvider`
+seam that collapses v4's unported plugin registry + `autoDetectModerationApiKey` +
+`provider.moderate` — the port still runs the ported `mapModerationResult` over the
+raw result so the score/category math is verified; the cheap-LLM classify path with
+the byte-exact `CLASSIFICATION_SYSTEM_PROMPT` in a generated `prompt_text` submodule
+over the `CompletionProvider` seam; `parseClassificationResponse`; `CATEGORY_LABELS`
+/ `MODERATION_CATEGORY_MAP`; the module-global classification LRU cache),
+`provider_routing` (the REAL implementor of the FROZEN
+`services::provider_failover::DangerousContentRouter` trait — the trait shape
+expresses the resolution fine: `DangerSettings` + `EffectiveProfile` + `userId` is
+sufficient, and the reason strings the failover doesn't consume are dropped;
+`resolveProviderForDangerousContent` + `resolveImageProviderForDangerousContent` +
+`resolveUncensoredImageProfileForReroute` + `isImageModerationError`, the connection
+resolution ported, the API-key material an injected `ApiKeyResolver` seam per the
+`cheap_llm_exec` precedent), `manual_flip` (`applyConciergeFlip` — the tri-state
+operator flip written via a raw multi-column chat `UPDATE` that mints no `updatedAt`,
+byte-identical to v4's `chats.update`, because the frozen `ChatUpdate` in
+`db/chats.rs` is owned by the parallel W4.4a batch — the
+`[[standalone-write-avoids-frozen-chatupdate]]` pattern generalized to the danger
+column set), and `gatekeeper_job` (`handleChatDangerClassification` — the
+sticky/exempt/off-duty/mode-OFF bails, the context-summary-else-concatenated-messages
+input, the cheap-LLM selection via the ported `get_cheap_llm_provider`, the classify
+call, the `DANGER_CLASSIFICATION` system event + token aggregate on the LLM path
+only [which mints `updatedAt`], and the chat-level danger-field persistence via a
+raw `UPDATE`). Added additive net reads: `connection_profiles::{find_all,
+find_by_user_id}` + `image_profiles::{find_by_id, find_all}`. Verified by THREE
+differentials, all green against v4 HEAD: **`danger_resolver_equivalence`** (tier-1
+pure resolver + override matrix via a tsx oracle, PLUS a tier-2 jest-real-DB
+manual-flip chat-row dump — sentinel-aware `dangerClassifiedAt`, `updatedAt` diffed
+exact to prove no bump), **`danger_routing_equivalence`** (the reroute matrix over a
+baked `connection_profiles`/`image_profiles` fixture — `rerouted` + profile identity
++ resolved key + the exact reason string, the API key a canned seam both sides [the
+oracle monkey-patches `findApiKeyByIdAndUserId`, the port injects the same
+`apiKeyId`→key map]; text + image + post-hoc reroute + `isImageModerationError`),
+and **`danger_gatekeeper_tier3_equivalence`** (drives v4's REAL
+`handleChatDangerClassification` over a seeded fixture with BOTH model boundaries
+canned — safe/dangerous/borderline/parse-failure LLM classifications [completions
+pinned by oracle-recorded canned keys], the moderation-provider path incl. a
+provider failure, all the skip branches — diffing `chats` + `chat_messages`
+sentinel-aware: `updatedAt`/`dangerClassifiedAt` stay at the `2020` seed on the
+moderation/skip paths [no bump] and placeholder to `<ts>` when the LLM path's token
+aggregate mints; the minted system-event id/createdAt placeholdered). **Tracked
+deferrals (seams):** the moderation plugin registry, the cheap-LLM / routing
+API-key acquisition, `logLLMCall`, the job-runner infrastructure
+(`ensureProcessorRunning`), and the Concierge personified-announcement writers
+(`postConcierge{Manual,Danger}Announcement` — seamed no-op, a W4.6 deferral). The
+gatekeeper's raw-message-concatenation truncation uses Unicode-scalar (not UTF-16)
+boundaries — a minor seam, corpus kept ASCII on that path; the message-fallback and
+mode-OFF (userB) branches are covered. **Unification handoff (edits W4.4a-owned
+spine files, so NOT done here — for the unifier):** construct the real
+`DangerContentRouter` + gatekeeper at the orchestrator composition point, and add
+the two orchestrator-corpus cases that need them — the danger-resolver OFF
+short-circuit case and a live uncensored-reroute case. `primary_stream_tier3` /
+`memory_processor_tier3` / `cheap_llm` self-tests are unaffected (no shared source
+touched — the frozen `DangerousContentRouter` trait in `provider_failover.rs` is
+only *implemented* in the new module, never edited).
+
+The rest of wave 4 — the `generate_image` handler (its W4.2 danger classify/route
+dependency is now met; it lands once its three cheap-LLM prompt tasks exist) and
+the deferred photo trio, the remaining W4.4a service (courier) + the
+compression-cache spine plumbing, answer-confirmation, the file/attachment
+subsystem (W4.4b), carina query,
 buildContext seam-closers, and the provider manifest — follows per the
 chat-orchestration decomposition.

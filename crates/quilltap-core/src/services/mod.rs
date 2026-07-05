@@ -34,6 +34,7 @@ pub mod cheap_llm_exec;
 pub mod compression;
 pub mod compression_cache;
 pub mod context_summary;
+pub mod dangerous_content;
 pub mod first_message_context;
 pub mod housekeeping;
 pub mod housekeeping_outcome_cache;
