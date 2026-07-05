@@ -26,6 +26,7 @@ use crate::dbkey;
 pub mod archetype_wardrobe;
 pub mod background_jobs;
 pub mod character_plugin_data;
+pub mod character_resolver;
 pub mod character_vault;
 pub mod characters;
 pub mod characters_read;

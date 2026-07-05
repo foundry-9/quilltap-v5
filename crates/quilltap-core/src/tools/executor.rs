@@ -56,10 +56,10 @@ use serde_json::{json, Map, Value};
 
 use super::doc_edit::{execute_doc_edit_tool, format_doc_edit_results, DocEditToolContext};
 use super::{
-    annotations, doc_edit, help, help_search, project_info, read_conversation,
-    request_full_context, rng, run_sql, search, self_inventory, state, terminal, wardrobe_archive,
-    wardrobe_create, wardrobe_list, wardrobe_read, wardrobe_take_off, wardrobe_update,
-    wardrobe_wear, whisper,
+    annotations, doc_edit, help, help_search, list_email, project_info, read_conversation,
+    request_full_context, rng, run_sql, search, self_inventory, send_mail, state, terminal,
+    wardrobe_archive, wardrobe_create, wardrobe_list, wardrobe_read, wardrobe_take_off,
+    wardrobe_update, wardrobe_wear, whisper,
 };
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read};
@@ -189,9 +189,15 @@ pub const PORTED_TOOLS: &[&str] = &[
     "project_info",
     "help_search",
     "request_full_context",
-    // W4.1d5: host-seamed + remaining tools (this batch: state + run_sql)
+    // W4.1d5: host-seamed + remaining tools (state + run_sql + the Post Office).
+    // `ask_carina` is ported (`tools::ask_carina`) + differential-verified, but its
+    // dispatch needs the W4.5 Carina query engine injected as the `RunCarinaQuery`
+    // seam (orchestrator-provided, frozen this round), so it stays on the loud
+    // fallback until that seam is wired — the handler + differential are complete.
     "state",
     "run_sql",
+    "send_mail",
+    "list_email",
 ];
 
 /// The doc-edit tools NOT yet ported (the photo trio) — a tracked scoped deferral
@@ -370,6 +376,8 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             // W4.1d5
             "state" => self.run_state(tc, ctx).await,
             "run_sql" => self.run_run_sql(tc, ctx).await,
+            "send_mail" => self.run_send_mail(tc, ctx).await,
+            "list_email" => self.run_list_email(tc, ctx).await,
             // W4.1d3b: every ported doc-edit tool routes through one handler.
             n if is_ported_doc_edit_tool(n) => self.run_doc_edit(tc, ctx).await,
             // `handles` guards the set, so this is unreachable.
@@ -854,6 +862,62 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             }
             run_sql::RunSqlResult::Failure { error } => fail("run_sql", error.clone()),
         }
+    }
+
+    // -- send_mail (Post Office; tool-executor.ts:1114) ----------------------
+    async fn run_send_mail(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        let args = tc.arguments.clone();
+        let user_id = ctx.user_id.clone();
+        let character_id = ctx.character_id.clone();
+        // v4 mints `sentAt = new Date().toISOString()` inside the delivery path;
+        // here it is injected so the handler stays clock-testable.
+        let now_iso = crate::clock::now_iso();
+        self.wardrobe_write(self.db.clone(), move |main, mount| {
+            let out = send_mail::execute_send_mail(
+                main,
+                mount,
+                &user_id,
+                character_id.as_deref(),
+                &args,
+                &now_iso,
+            );
+            let formatted = send_mail::format_send_mail_results(&out);
+            // v4 returns `result: { formattedText, path }` even on failure; error
+            // set only when !success. `path` (undefined on failure) is dropped.
+            let mut result = Map::new();
+            result.insert("formattedText".into(), json!(formatted));
+            result.insert("path".into(), json!(out.path));
+            ToolResult {
+                tool_name: "send_mail".into(),
+                success: out.success,
+                result: Value::Object(result),
+                error: if out.success { None } else { out.error },
+                message: None,
+                metadata: None,
+            }
+        })
+        .await
+    }
+
+    // -- list_email (Post Office; tool-executor.ts:1131) ---------------------
+    async fn run_list_email(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        let args = tc.arguments.clone();
+        let character_id = ctx.character_id.clone();
+        self.wardrobe_write(self.db.clone(), move |main, mount| {
+            let out = list_email::execute_list_email(main, mount, character_id.as_deref(), &args);
+            let formatted = list_email::format_list_email_results(&out);
+            // v4 returns `result: { formattedText, count }`; error when !success.
+            let result = json!({ "formattedText": formatted, "count": out.count });
+            ToolResult {
+                tool_name: "list_email".into(),
+                success: out.success,
+                result,
+                error: if out.success { None } else { out.error },
+                message: None,
+                metadata: None,
+            }
+        })
+        .await
     }
 
     // ── wardrobe tools (tool-executor.ts:667–826) ─────────────────────────

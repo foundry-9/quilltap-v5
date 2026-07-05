@@ -4,11 +4,13 @@
 //! the executable handlers themselves.
 
 pub mod annotations;
+pub mod ask_carina;
 pub mod definitions;
 pub mod doc_edit;
 pub mod executor;
 pub mod help;
 pub mod help_search;
+pub mod list_email;
 pub mod native_tool_prompt;
 pub mod project_info;
 pub mod pseudo_tool_support;
@@ -18,6 +20,7 @@ pub mod rng;
 pub mod run_sql;
 pub mod search;
 pub mod self_inventory;
+pub mod send_mail;
 pub mod simple_json_parser;
 pub mod simple_json_prompt;
 pub mod state;

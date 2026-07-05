@@ -2436,9 +2436,32 @@ refusal. **Tracked deferrals:** `run_sql` Zod-validation-message fidelity beyond
 the non-object case (the pre-scan/prepare failures cover the real refusals); the
 `state` open-JSON multi-key insertion-order seam (corpus kept single-key/sorted).
 
+**Wave 4 (W4.1d batch 5, part 2): the Post Office (`send_mail` / `list_email`) +
+`ask_carina` are DONE** (2026-07-04). A new `crate::post_office` module ports v4's
+`lib/post-office/` (mailbox storage: slugify/compose/parse/reply-preface +
+`deliver_letter`/`read_letter`/`list_mailbox`; the shared `compose_and_deliver_letter`
+delivery service; the agent-facing instruction snippets) over the ported vault
+primitives — the delivery `sentAt` injected so it can be pinned. Added
+`db::character_resolver` (`resolve_character_by_name_or_id`) and `crate::format_time`
+(the UTC-pinned `formatDateTime` — v4's system-TZ `toLocaleDateString`, reproduced
+in UTC; documented harness constraint). `send_mail`/`list_email` compose those over
+both writer connections and are wired into `BuiltInToolRunner`. `ask_carina`
+(`tools::ask_carina`) rides the existing `RunCarinaQuery` + `PostProsperoCarinaError`
+seams from `services::carina_runner` — handler + differential done, but its dispatch
+stays on the loud fallback until the W4.5 query engine is orchestrator-injected as
+the seam (the `onPosted`/`emitCarinaAnswer` slot is the tool-context deferral).
+Verified by `mail_carina_tools_equivalence`: the mail half (real-DB, delivery clock
+pinned) drives v4's REAL handlers over a fresh two-DB fixture copy per scenario,
+diffing serialized output + `format*` + the delivered letter content read back
+byte-for-byte (send-then-list round-trip, reply preface, validation/refusal paths,
+empty/single/plural listings); the carina half (DB-free) injects canned seams and
+diffs output + `format*` + recorded Prospero args. **Tracked deferrals:** the
+Suparṇā mail-check helpers (`collect_unalerted_mail`/`mark_alerted`); the ask_carina
+dispatch seam wiring (W4.5).
+
 The rest of wave 4 (the remaining tool subsystem — `buildTools` / registry
 (W4.1g) and handler batch 5's host-seamed remainder: `generate_image`,
-`search_web`, `ask_carina`, `send_mail`/`list_email`, plus the deferred
+`search_web`, plus the deferred
 photo trio) — the agent-mode resolver, danger, answer-confirmation,
 courier/compression-cache/regenerate-swipe, carina query, buildContext
 seam-closers, provider manifest) follows per the chat-orchestration

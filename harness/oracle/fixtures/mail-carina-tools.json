@@ -1,0 +1,53 @@
+{
+  "testPepperBase64": "bWFpbGNhcmluYXRvb2xzdGVzdHBlcHBlcjAxMjM0NTY3ODlhYg==",
+  "userId": "44444444-4444-4444-8444-444444444444",
+  "fixedSentAt": "2026-06-15T14:30:00.000Z",
+  "senderId": "5e11de00-0000-4000-8000-000000000001",
+  "recipientId": "4ec191e0-0000-4000-8000-000000000002",
+  "emptyId": "e0917000-0000-4000-8000-000000000003",
+  "senderName": "Friday",
+  "recipientName": "Aurora",
+  "emptyName": "Jeeves",
+  "seedTimestamp": "2026-02-01T00:00:00.000Z",
+  "sender": {
+    "name": "Friday",
+    "userId": "44444444-4444-4444-8444-444444444444",
+    "identity": "A steadfast first mate.",
+    "description": "Tall, with a level gaze.",
+    "personality": "Loyal and dry-witted.",
+    "title": "First Mate",
+    "controlledBy": "llm"
+  },
+  "recipient": {
+    "name": "Aurora",
+    "userId": "44444444-4444-4444-8444-444444444444",
+    "identity": "A luminous storyteller.",
+    "description": "Bright-eyed, quick to smile.",
+    "personality": "Warm and curious.",
+    "title": "The Dawn",
+    "controlledBy": "llm"
+  },
+  "empty": {
+    "name": "Jeeves",
+    "userId": "44444444-4444-4444-8444-444444444444",
+    "identity": "An unflappable valet.",
+    "description": "Impeccably composed.",
+    "personality": "Discreet and precise.",
+    "title": "The Gentleman's Gentleman",
+    "controlledBy": "llm"
+  },
+  "seedLetterInSenderMailbox": {
+    "path": "Mail/1700000000000-from-aurora.md",
+    "fromName": "Aurora",
+    "fromCharacterId": "4ec191e0-0000-4000-8000-000000000002",
+    "sentAt": "2023-11-14T22:13:20.000Z",
+    "body": "Dear Friday,\n\nMeet me at the observatory.\n\n— Aurora"
+  },
+  "seedLetterInRecipientMailbox": {
+    "path": "Mail/1600000000000-from-jeeves.md",
+    "fromName": "Jeeves",
+    "fromCharacterId": "e0917000-0000-4000-8000-000000000003",
+    "sentAt": "2020-09-13T12:26:40.000Z",
+    "body": "Madam,\n\nThe tea is served.\n\n— Jeeves"
+  }
+}

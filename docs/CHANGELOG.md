@@ -716,6 +716,35 @@ each byte-exact against v4's REAL handler and wired into `BuiltInToolRunner`.
   `tool_execution_process_tier3` re-verified green (the `document_search` module was
   made public + a read added, no behavior change).
 
+Phase 3 — wave 4 (W4.1d batch 5, part 2): the Post Office (`send_mail` /
+`list_email`) + `ask_carina` tool handlers, byte-exact against v4's REAL handlers.
+
+- New `post_office` module (v4 `lib/post-office/`): the mailbox storage layer
+  (`mailbox` — slugify/compose/parse/reply-preface + `deliver_letter` /
+  `read_letter` / `list_mailbox`), the shared delivery service (`deliver` —
+  `compose_and_deliver_letter` / `resolve_reply_in_sender_mailbox`), and the
+  agent-facing instruction snippets (`instructions`). All over the ported vault
+  primitives (`write_database_document` / `ensure_character_vault` / the
+  `Mail/` folder conventions); the delivery `sentAt` is injected so it can be
+  pinned. Plus `db::character_resolver` (`resolve_character_by_name_or_id`) and
+  `format_time` (the UTC-pinned `formatDateTime` — v4's system-timezone
+  `toLocaleDateString`, reproduced in UTC for the differential).
+- `send_mail` / `list_email` (`tools::send_mail` / `tools::list_email`) compose
+  those over both writer connections; wired into `BuiltInToolRunner`.
+- `ask_carina` (`tools::ask_carina`) over the existing `RunCarinaQuery` +
+  `PostProsperoCarinaError` seams from `services::carina_runner`. The handler +
+  differential are complete; its dispatch stays on the loud fallback until the
+  W4.5 Carina query engine is orchestrator-injected as the seam (the `onPosted`
+  / `emitCarinaAnswer` slot is the documented tool-context deferral).
+- Differential `mail_carina_tools_equivalence`: the mail half (real-DB, delivery
+  clock pinned) drives v4's REAL handlers over a fresh two-DB fixture copy per
+  scenario — diffing the serialized output + `format*` and reading the delivered
+  letter's content back byte-for-byte (send-then-list round-trip, reply preface,
+  every validation/refusal path, empty + single + plural listings); the carina
+  half (DB-free) injects canned seams and diffs output + `format*` + the recorded
+  Prospero args. Deferrals: the Suparṇā mail-check helpers
+  (`collect_unalerted_mail` / `mark_alerted`).
+
 Phase 3 — wave 4 (W4.1d batch 5, part 1): the `state` + `run_sql` tool handlers,
 each byte-exact against v4's REAL handler and wired into `BuiltInToolRunner`.
 
