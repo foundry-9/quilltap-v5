@@ -4,6 +4,36 @@
 
 ### 4.8-dev
 
+#### Fix: stale-chat image cleanup now ignores Staff announcements
+
+The daily maintenance sweep that collapses a stale chat's superseded story-background and avatar images decided "stale" from the chat's `lastMessageAt` (falling back to `updatedAt`). But personified-feature / Staff messages (Lantern, Aurora, Host, Prospero, Carina, Concierge, Commonplace Book, Ariel, Suparṇā, Librarian) persist as `type: 'message'` rows and also bump `lastMessageAt`, so a whisper into an otherwise-quiet chat (e.g. a Suparṇā mail-delivery announcement) reset the 30-day staleness clock and kept dead images around indefinitely. Staleness is now keyed off the last *played* message — one authored by a participant character or the human user — via the new `chats.getLastPlayedMessageAt(chatId)`, which excludes any message carrying a `systemSender`. It falls back to `updatedAt` only when a chat has no played messages at all. No backfill needed: the sweep recomputes staleness from live data on each run.
+
+- New repository method `getLastPlayedMessageAt` does an indexed single-row lookup (`type = 'message' AND systemSender IS NULL`, newest first) so the daily sweep doesn't load and validate every chat's full transcript.
+
+#### Fix: renaming a Document Mode file now updates the recent-documents list
+
+Renaming a file while editing it in Document Mode now keeps the recent-documents history in sync in both entry points. Previously, standalone Document Mode (opened from the left sidebar, no chat) renamed the file on disk but left its `chat_documents` tracking row pointing at the old path, so the renamed file showed the old name in the Open Document picker's recents and 404'd when reopened. The standalone rename handler now updates the tracking row. The Salon rename path, which already updated its own chat's row, additionally sweeps any other chats' (or the standalone) rows that still reference the old path, so the shared recent list stays consistent everywhere.
+
+- Both paths reuse `chatDocuments.renameFilePathInStore(scope, mountPoint, oldPath, newPath, newDisplayTitle)` — the same chokepoint the `doc_move_file` tool uses. Updates are best-effort: the rename has already succeeded on disk, so a tracking failure is logged and never fails the request.
+
+#### Fix: run_sql handler tests no longer pick up the Jest SQLite mock in CI
+
+The `run-sql-handler` unit suite (a real-binding suite) broke in CI after `better-sqlite3-multiple-ciphers` was added to the unit Jest `moduleNameMapper`: its driver loader's bare `require('better-sqlite3-multiple-ciphers')` fallback started silently returning the mock, whose statements never report `readonly: true`, so the handler's fail-closed guard rejected every query (16 failures). The loader now prefers path-based requires (which bypass `moduleNameMapper`), probes each candidate with a prepared `SELECT 1` to confirm it is a real binding, and throws a clear error instead of silently running against the mock.
+
+Documents opened from the left sidebar's Document Mode (no chat) are now tracked in the recent-documents history, so they appear in the Open Document picker's recents like chat-opened documents do. Previously these opens recorded nothing, so they never showed up as recent.
+
+- Standalone opens now write a `chat_documents` row under a reserved sentinel `chatId` (`STANDALONE_CHAT_ID`), which the cross-chat recents query already reads. Reopening the same file reactivates and bumps its existing row. Tracking failures are logged and do not block the open.
+
+#### Feature: standalone Document Mode from the left sidebar
+
+The left sidebar now has a Document Mode button (file-plus icon, above Settings) that opens the Open Document dialog without a chat. Selected documents open as standalone workspace tabs with the full Document Mode editor — no Librarian announcements and no conversation is notified of edits. (Opens are recorded in recent-documents history under a sentinel chatId; see the 4.8-dev fix above.)
+
+- The picker in chat-less mode always "looks everywhere" (every enabled store; the toggle is hidden), hides the project-library shortcut, and lists recent documents across all chats (project-scoped recents are omitted since there is no project context to resolve them).
+- New `document-standalone` workspace tab kind. Reopening the same file focuses its existing tab; tabs persist across reloads and reopen their file. Blank documents update their tab payload once the server names them so reloads don't mint duplicates.
+- Outside the workspace, the button funnels through `/workspace?open=document-standalone&…`.
+- New chat-less API route `/api/v1/documents` with actions: `accessible-stores` (GET), `recent-documents`, `open-document`, `read-document`, `write-document`, `rename-document`, `delete-document`.
+- Refactor: extracted the chat-agnostic document mechanics (operator path resolution, existence probe, untitled-name picking, mtime-checked read/write, rename/delete file moves, store listing) from the chat document actions into `lib/documents/operator-doc-actions.ts`; the chat route now delegates to it and keeps only chat-specific concerns (chat_documents rows, documentMode flag, Librarian announcements).
+
 #### Docs: new GEMINI.md for AI agent context
 
 Added `GEMINI.md` to the project root. This file provides a comprehensive overview of the project's architecture, key conventions, and terminology, tailored for use by AI developer assistants. It is generated by analyzing the codebase and incorporates key details from `README.md` and `CLAUDE.md` to provide deep, actionable context.

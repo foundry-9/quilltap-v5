@@ -2534,6 +2534,23 @@ the standalone `native_tool_loop_tier3` (drives v4's REAL loop) — the detector
 `raw_response` plumbing is wired but the corpus carries no native call (the
 multi-character tool-call re-threading is that unit's concern).
 
+**Drift check (2026-07-05): v4 `f69200bb..42242a3e` (5 commits) audited — no
+ported unit is stale.** Every round-1/round-2 (W4.1d3–g) oracle was generated
+against v4 HEAD `42242a3e` and diffed green, which is itself the strongest form
+of the check. Classification: the standalone Document Mode family
+(`d973a849`/`2416345a`/`d3e47672`) is Phase-4 surface (a new
+`lib/documents/operator-doc-actions.ts` + the workspace/tab lib + API routes)
+plus one additive constant (`STANDALONE_CHAT_ID`, a sentinel `chat_documents`
+chatId for chat-less opens) — NOTE it gives the d3b-deferred
+`chatDocuments.renameFilePathInStore` move-sync seam a second consumer;
+`42242a3e` adds an additive `chats.getLastPlayedMessageAt` read (participant/
+user-authored `type:'message'` with `systemSender IS NULL`) consumed only by the
+unported stale-chat maintenance sweep (`lib/maintenance/
+collapse-stale-chat-assets.ts`) — port together; `2a0360ac` is a v4-side
+test-loader fix (its jest `moduleNameMapper` mock-vs-real-binding issue — our
+oracles' abs-path requires already bypass it). The `docs/v4/` mirror was
+refreshed (CHANGELOG, API.md).
+
 The rest of wave 4 — the `generate_image` handler (pure leaves banked; it lands
 once the W4.2 danger classify/route path + its three cheap-LLM prompt tasks
 exist) and the deferred photo trio, the agent-mode resolver, danger,
