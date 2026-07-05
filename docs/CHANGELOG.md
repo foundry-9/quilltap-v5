@@ -599,6 +599,32 @@ items the wave-3 capstone flagged.
   `commonplace_strip`, `opaque_swap` vs `transparent_no_swap`, and
   `tool_whisper_filter`. `orchestrator_tier3_equivalence` re-verified green.
 
+Phase 3 — wave 4 (W4.1g): `buildTools` + the tool-slate spine wiring (closes
+W4.1). Ported v4's `buildTools` + the built-in half of `buildToolsForProvider`
+(`services::tool_build`): the flag→tool-set construction over the b.3 definition
+catalog, the individual disabled-tool filter, the `allowToolUse === false` and
+`disabledTools === undefined` short-circuits, and the canonical (universal/OpenAI)
+provider shape. `checkModelSupportsTools` + `provider.supportsWebSearch` are
+injected registry-seam inputs (the `getModelContextLimit` precedent); the plugin
+tool registry, the provider `formatTools` reshape, and image-provider constraint
+enrichment are documented W4.7 deferrals. Ported the orchestrator flag region
+(`canDressThemselves` / `canCreateOutfits` / `helpToolsEnabled` /
+`documentEditingEnabled`, the `characterIsTransparent` + `self_inventory` strip,
+the `askCarinaEnabled` overlay-free probe, the autonomous-room destructive-tool
+filter, `resolvedToolMode` / `useTextBlockTools` / `actualTools`, and the
+mode-switched `toolInstructions`), and closed the spine seams: the real slate now
+flows into the primary stream, the native loop (with the real `BuiltInToolRunner`
++ the injected W4.7 tool-call detector), and the text-tool passes'
+`continuationTools`; the finalizer receives the real tool messages/images. Added
+`plugin_config::find_by_user_id`. Verified by a new `tool_build_equivalence`
+differential (27 flag-matrix cases driving v4's REAL `buildTools`, byte-exact
+slate) and the rebuilt `orchestrator_tier3_equivalence` (18 cases running the REAL
+`buildTools` + flag region; a per-call tools-at-wire assertion proves the slate
+reaches the provider on every case; new cases bank the `self_inventory` strip
+[transparent vs not], the `ask_carina` transparency probe, disabled-tools
+filtering, and text-block-mode empty slate). `native_tool_loop`, `text_tool_loop`,
+`message_finalizer`, and `primary_stream` differentials re-verified green.
+
 Phase 3 — wave 4 (W4.1d batch 3b): the doc-edit tool handlers (part 2 — the
 remaining handler groups + the dispatcher wiring). Ported the file-management
 group (`doc_move_file` / `doc_copy_file` / `doc_delete_file` / `doc_create_folder`

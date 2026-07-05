@@ -51,6 +51,7 @@ pub mod pseudo_tool;
 pub mod queue_service;
 pub mod recovery;
 pub mod text_tool_loop;
+pub mod tool_build;
 pub mod tool_call_threading;
 pub mod tool_execution;
 pub mod turn_orchestrator;

@@ -94,6 +94,14 @@ struct CallW {
     /// crypto.randomBytes mock. Absent → empty.
     #[serde(default)]
     rng_bytes: Vec<u8>,
+    /// W4.1g: the injected `checkModelSupportsTools` result (default true → native
+    /// tool mode). Mirrors the oracle's per-call `currentModelSupportsTools`.
+    #[serde(default = "default_true")]
+    model_supports_native_tools: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Deserialize)]
@@ -105,6 +113,32 @@ struct Spec {
     #[serde(default)]
     local_offset_minutes: i64,
     calls: Vec<CallW>,
+    /// W4.1g native-call detection: raw-response marker → the tool calls the
+    /// (mocked, W4.7) provider parse returns. Mirrors the oracle's
+    /// `detectToolCallsInResponse` mock; empty for the non-native cases.
+    #[serde(default)]
+    detection: HashMap<String, Vec<ToolCallSpecW>>,
+}
+
+/// The native tool-call detector (the injected W4.7 provider-wire-parse seam):
+/// keys on `raw_response.marker` → the canned tool calls. Returns `[]` for the
+/// non-native cases (no marker / no raw response), so it is a no-op there.
+struct CaseDetector {
+    by_marker: HashMap<String, Vec<quilltap_core::services::tool_execution::ToolCall>>,
+}
+impl quilltap_core::services::native_tool_loop::ToolCallDetector for CaseDetector {
+    fn detect(
+        &self,
+        raw_response: &Value,
+        _provider: &str,
+    ) -> Vec<quilltap_core::services::tool_execution::ToolCall> {
+        raw_response
+            .get("marker")
+            .and_then(Value::as_str)
+            .and_then(|m| self.by_marker.get(m))
+            .cloned()
+            .unwrap_or_default()
+    }
 }
 
 fn spec_path() -> PathBuf {
@@ -133,6 +167,22 @@ struct ChunkW {
     usage: Option<UsageW>,
     #[serde(default)]
     error: Option<String>,
+    /// W4.1g native-call case: the provider raw response carried on the terminal
+    /// chunk (the canned detector keys on `raw_response.marker`).
+    #[serde(default, rename = "rawResponse")]
+    raw_response: Option<Value>,
+}
+
+/// One canned native tool call the detector returns for a raw-response marker
+/// (mirrors the oracle's `detectToolCallsInResponse` mock).
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ToolCallSpecW {
+    name: String,
+    #[serde(default)]
+    arguments: Value,
+    #[serde(default)]
+    call_id: Option<String>,
 }
 #[derive(Deserialize, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
@@ -147,6 +197,11 @@ struct CannedStreamW {
     model: String,
     temperature: Option<f64>,
     messages: Vec<CannedMsgW>,
+    /// W4.1g: the tool slate the oracle recorded reaching `streamMessage` for this
+    /// call key (`actualTools`; `[]` when the slate was empty). The Rust side must
+    /// pass the identical array — proven per call.
+    #[serde(default)]
+    tools: Value,
     sequences: Vec<Vec<ChunkW>>,
 }
 #[derive(Deserialize)]
@@ -187,7 +242,9 @@ fn chunk_to_result(c: &ChunkW) -> StreamChunkResult {
             completion_tokens: u.completion_tokens,
             total_tokens: u.total_tokens,
         });
-        return Ok(StreamChunk::done(usage));
+        let mut chunk = StreamChunk::done(usage);
+        chunk.raw_response = c.raw_response.clone();
+        return Ok(chunk);
     }
     Ok(StreamChunk::content(c.content.clone().unwrap_or_default()))
 }
@@ -198,21 +255,37 @@ fn chunk_to_result(c: &ChunkW) -> StreamChunkResult {
 
 struct QueuedStreamingProvider {
     queues: Mutex<HashMap<String, std::collections::VecDeque<Vec<StreamChunkResult>>>>,
+    /// The tool slate the ORACLE recorded reaching the wire, per call key (W4.1g).
+    expected_tools: HashMap<String, Value>,
+    /// The tool slate the RUST side actually passed, per call key — recorded here
+    /// as each stream fires, then diffed against `expected_tools` after the run.
+    recorded_tools: Mutex<HashMap<String, Value>>,
 }
 impl QueuedStreamingProvider {
     fn from_oracle(rows: &[CannedStreamW]) -> Self {
         let mut queues: HashMap<String, std::collections::VecDeque<Vec<StreamChunkResult>>> =
             HashMap::new();
+        let mut expected_tools: HashMap<String, Value> = HashMap::new();
         for row in rows {
             let messages = to_completion_messages(&row.messages);
             let key = canned_stream_key(&row.provider, &row.model, row.temperature, &messages);
-            let q = queues.entry(key).or_default();
+            let q = queues.entry(key.clone()).or_default();
             for seq in &row.sequences {
                 q.push_back(seq.iter().map(chunk_to_result).collect());
             }
+            // Normalize a missing/null recorded tools to `[]` (v4 records `[]` for
+            // an empty slate).
+            let tools = if row.tools.is_array() {
+                row.tools.clone()
+            } else {
+                Value::Array(Vec::new())
+            };
+            expected_tools.insert(key, tools);
         }
         Self {
             queues: Mutex::new(queues),
+            expected_tools,
+            recorded_tools: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -229,6 +302,16 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
             params.temperature,
             &params.messages,
         );
+        // Record the tool slate this call passed at the wire (W4.1g). v4 records
+        // `[]` for an empty slate; normalize `None` → `[]`.
+        {
+            let tools = params.tools.clone().unwrap_or(Value::Array(Vec::new()));
+            self.recorded_tools
+                .lock()
+                .unwrap()
+                .entry(key.clone())
+                .or_insert(tools);
+        }
         let sequence: Vec<StreamChunkResult> = {
             let mut queues = self.queues.lock().unwrap();
             match queues.get_mut(&key).and_then(|q| q.pop_front()) {
@@ -466,6 +549,27 @@ fn orchestrator_tier3_matches_oracle() {
     let bc_seams = BcNoopSeams;
     let router = NoReroute;
 
+    // The native tool-call detector (marker → canned tool calls; no-op elsewhere).
+    let detector = CaseDetector {
+        by_marker: spec
+            .detection
+            .iter()
+            .map(|(marker, calls)| {
+                (
+                    marker.clone(),
+                    calls
+                        .iter()
+                        .map(|c| quilltap_core::services::tool_execution::ToolCall {
+                            name: c.name.clone(),
+                            arguments: c.arguments.clone(),
+                            call_id: c.call_id.clone(),
+                        })
+                        .collect(),
+                )
+            })
+            .collect(),
+    };
+
     let mut got_events: Vec<(String, Vec<Value>)> = Vec::new();
 
     for call in &spec.calls {
@@ -500,8 +604,17 @@ fn orchestrator_tier3_matches_oracle() {
             // The text-tool passes (W4.1f) run corpus-dormant here: no host provider
             // strategy, and the text-block fall-through no-ops without markers.
             provider_text_strategy: None,
-            resolved_tool_mode:
-                quilltap_core::tools::pseudo_tool_support::ResolvedToolMode::TextBlock,
+            // W4.7 provider-wire-parse seam: a canned detector keyed on
+            // `raw_response.marker` (the plumbing mirrors `native_tool_loop_tier3`).
+            // The corpus carries no native tool calls (empty `detection` → the
+            // detector is a no-op), so the native loop no-ops after the real slate
+            // reaches the wire (proven by the tools-at-wire assertion). A native
+            // tool CALL end-to-end through the spine is proven separately by
+            // `native_tool_loop_tier3` (which drives v4's REAL `runNativeToolLoop`
+            // + threading); reproducing it here would additionally require the
+            // multi-character tool-call re-threading through `buildMessageContext`,
+            // which that unit already covers.
+            tool_detector: &detector,
         };
 
         let make_input = |chat_id: &str, content: &str, continue_mode: bool, resp: Option<&str>| {
@@ -522,6 +635,8 @@ fn orchestrator_tier3_matches_oracle() {
                 model_context_limit: 200_000,
                 timestamp_config: None,
                 timezone: Some("UTC".to_string()),
+                model_supports_native_tools: call.model_supports_native_tools,
+                provider_supports_web_search: false,
             }
         };
 
@@ -550,6 +665,7 @@ fn orchestrator_tier3_matches_oracle() {
                     let user_id = spec.user_id.clone();
                     let frozen = spec.frozen_now_ms;
                     let offset = spec.local_offset_minutes;
+                    let model_supports = call.model_supports_native_tools;
                     let make_chain_input = move |pid: String| ProcessMessageInput {
                         chat_id: chat_id.clone(),
                         user_id: user_id.clone(),
@@ -567,6 +683,8 @@ fn orchestrator_tier3_matches_oracle() {
                         model_context_limit: 200_000,
                         timestamp_config: None,
                         timezone: Some("UTC".to_string()),
+                        model_supports_native_tools: model_supports,
+                        provider_supports_web_search: false,
                     };
                     rt.block_on(orchestrator::execute_turn_chain(
                         &mut deps,
@@ -606,6 +724,26 @@ fn orchestrator_tier3_matches_oracle() {
             .get(name)
             .unwrap_or_else(|| panic!("oracle events missing for {name}"));
         assert_events_eq(name, got, want);
+    }
+
+    // --- tool slate AT THE WIRE (W4.1g) ---
+    // Every `streamMessage` call the Rust spine made must have passed the exact
+    // tool array v4 passed for the same call key. This proves the real buildTools
+    // slate reaches the provider on every case (not just that the tables match).
+    {
+        let recorded = streaming.recorded_tools.lock().unwrap();
+        for (key, got_tools) in recorded.iter() {
+            let want_tools = streaming.expected_tools.get(key).unwrap_or_else(|| {
+                panic!("Rust made a stream call with no oracle-recorded tools for key:\n{key}")
+            });
+            if got_tools != want_tools {
+                let gn = wire_tool_names(got_tools);
+                let wn = wire_tool_names(want_tools);
+                panic!(
+                    "tool slate at wire mismatch for key:\n{key}\n  got:  {gn:?}\n  want: {wn:?}"
+                );
+            }
+        }
     }
 
     // --- table dumps (minted-values remap) ---
@@ -811,6 +949,22 @@ impl Normalizer {
     }
 }
 
+fn wire_tool_names(tools: &Value) -> Vec<String> {
+    tools
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|t| {
+                    t.get("function")
+                        .and_then(|f| f.get("name"))
+                        .and_then(Value::as_str)
+                        .map(String::from)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn assert_events_eq(name: &str, got: &[Value], want: &[Value]) {
     if got != want {
         let g = serde_json::to_string_pretty(got).unwrap();
@@ -856,6 +1010,7 @@ impl orchestrator::OrchestratorSeams for HarnessOrchestratorSeams {
             // fires only for the three rng_* cases.
             auto_detect_rng: true,
             answer_confirmation_global_enabled: false,
+            autonomous_destructive_policy: "opt_in_per_room".to_string(),
         })
     }
 }

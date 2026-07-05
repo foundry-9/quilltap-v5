@@ -2486,10 +2486,57 @@ cheap-LLM tasks (`craftImagePrompt` / `resolveCharacterAppearances` /
 `sanitizeAppearance`), several themselves large unported units; the handler lands
 once those seams/subsystems exist.
 
-The rest of wave 4 (the remaining tool subsystem — `buildTools` / registry
-(W4.1g) and handler batch 5's remainder: the `generate_image` handler
-(pure leaves banked) plus the deferred
-photo trio) — the agent-mode resolver, danger, answer-confirmation,
-courier/compression-cache/regenerate-swipe, carina query, buildContext
-seam-closers, provider manifest) follows per the chat-orchestration
-decomposition.
+**Wave 4 (W4.1g): `buildTools` + the tool-slate spine wiring is DONE — W4.1 is
+CLOSED** (2026-07-04). Ported v4's `buildTools` + the built-in half of
+`buildToolsForProvider` (`services::tool_build`): the flag→tool-set construction
+over the b.3 catalog, `is_tool_disabled` (individual-id filter; plugin-group
+patterns never bite a built-in's empty source metadata), the `allowToolUse ===
+false` + `disabledTools === undefined` short-circuits (the latter returns EMPTY,
+not all), `apply_image_constraints_to_tool` (pure, unit-tested), and the
+canonical (universal/OpenAI) provider shape (v4's `getProvider===null` fallback —
+the provider `formatTools` reshape is the W4.7 deferral). `checkModelSupportsTools`
++ `provider.supportsWebSearch` are **injected registry-seam inputs**
+(`ProcessMessageInput::model_supports_native_tools` / `provider_supports_web_search`
++ the `BuildToolsInput` fields, the `getModelContextLimit` precedent). Added
+`plugin_config::find_by_user_id` — read for faithfulness (v4's DB access) but
+**unused for the built-in slate** (plugin tools deferred). Ported the orchestrator
+flag region (`orchestrator.service.ts:758–905`): `helpToolsEnabled` /
+`canDressThemselves` (`!== false`) / `canCreateOutfits` / `documentEditingEnabled`
+(mount-index read), `characterIsTransparent` + the `self_inventory` strip into
+`effectiveDisabledTools`, the overlay-free `askCarinaEnabled` probe (`findAllRaw` +
+`canBeCarina` OR transparent fallback, error-swallowed), the autonomous-room
+destructive-tool filter (`DESTRUCTIVE_TOOL_NAMES` + the `destructiveToolPolicy`
+CEILING × `runDestructiveToolsAllowed === 1` raw-int read), `checkResolvedToolMode`
+→ `useTextBlockTools` → `actualTools` (`[]` under any pseudo-tool surface), the
+mode-switched `toolInstructions`, and the simple-json `initialStopSequences`.
+**Closed the spine seams**: the real slate flows to the primary stream (`tools` +
+`useNativeWebSearch` + `stop`), the native loop (the real `BuiltInToolRunner` +
+the injected W4.7 `ToolCallDetector` — production `NoToolCallDetector`; the
+`self_inventory` host env + `search` embedding provider are the standing host
+seams), and the text-tool passes' `continuationTools` (`useTextBlockTools ? [] :
+actualTools`); the finalizer + tool-only terminal now receive the real tool
+messages/images. Verified by a new **`tool_build_equivalence`** differential (27
+flag-matrix cases driving v4's REAL `buildTools`, byte-exact slate + both
+capability flags, incl. the Brahma workspace-strip / memory-search / sqlAccess
+variants + the destructive filter) and the rebuilt **`orchestrator_tier3`** (18
+cases running the REAL `buildTools` + flag region; a per-call **tools-at-wire**
+assertion proves the exact slate reaches the provider on every case — 18/20-tool
+variants; new cases bank the `self_inventory` transparent-vs-not strip + the
+`ask_carina` transparency probe [via the existing `opaque_swap`/`transparent_no_swap`
+chats], `disabled_tools` filtering [rng/state/terminal_read removed at the wire],
+and `textblock_mode` [empty slate + simple-json instructions]).
+`native_tool_loop` / `text_tool_loop` / `message_finalizer` / `primary_stream`
+differentials re-verified green. **Tracked deferrals:** the plugin tool registry +
+the provider `formatTools` reshape + image-provider constraint enrichment (W4.7);
+a native tool CALL end-to-end THROUGH the orchestrator spine is proven in
+composition by the tools-at-wire proof (slate/runner/detector reach the loop) +
+the standalone `native_tool_loop_tier3` (drives v4's REAL loop) — the detector /
+`raw_response` plumbing is wired but the corpus carries no native call (the
+multi-character tool-call re-threading is that unit's concern).
+
+The rest of wave 4 — the `generate_image` handler (pure leaves banked; it lands
+once the W4.2 danger classify/route path + its three cheap-LLM prompt tasks
+exist) and the deferred photo trio, the agent-mode resolver, danger,
+answer-confirmation, courier/compression-cache/regenerate-swipe, carina query,
+buildContext seam-closers, and the provider manifest — follows per the
+chat-orchestration decomposition.

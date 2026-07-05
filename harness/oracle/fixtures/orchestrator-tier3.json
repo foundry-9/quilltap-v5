@@ -480,7 +480,9 @@
           "content": "A lantern image has appeared.",
           "participantId": null,
           "systemSender": "lantern",
-          "attachments": ["d3ff0001-0000-4000-8000-0000000000f1"]
+          "attachments": [
+            "d3ff0001-0000-4000-8000-0000000000f1"
+          ]
         }
       ]
     },
@@ -549,7 +551,9 @@
           "role": "TOOL",
           "content": "{\"toolName\":\"secret\",\"result\":\"operator-only payload\"}",
           "participantId": null,
-          "targetParticipantIds": ["d50b0005-0000-4000-8000-0000000000b5"]
+          "targetParticipantIds": [
+            "d50b0005-0000-4000-8000-0000000000b5"
+          ]
         },
         {
           "id": "d5010003-0000-4000-8000-000000000403",
@@ -618,6 +622,77 @@
         }
       ],
       "messages": []
+    },
+    {
+      "id": "f1000001-0000-4000-8000-000000000001",
+      "chatType": "salon",
+      "contextSummary": null,
+      "participants": [
+        {
+          "id": "f10a0001-0000-4000-8000-0000000000a1",
+          "character": "c2000002-0000-4000-8000-000000000022",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "f10b0001-0000-4000-8000-0000000000b1",
+          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": [
+        {
+          "id": "f1010001-0000-4000-8000-000000000301",
+          "role": "USER",
+          "content": "hello there",
+          "participantId": null
+        },
+        {
+          "id": "f1010002-0000-4000-8000-000000000302",
+          "role": "ASSISTANT",
+          "content": "Greetings.",
+          "participantId": "f10a0001-0000-4000-8000-0000000000a1"
+        }
+      ],
+      "disabledTools": [
+        "rng",
+        "state",
+        "terminal_read"
+      ]
+    },
+    {
+      "id": "f2000002-0000-4000-8000-000000000002",
+      "chatType": "salon",
+      "contextSummary": null,
+      "participants": [
+        {
+          "id": "f20a0002-0000-4000-8000-0000000000a2",
+          "character": "c2000002-0000-4000-8000-000000000022",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "f20b0002-0000-4000-8000-0000000000b2",
+          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": [
+        {
+          "id": "f2010001-0000-4000-8000-000000000301",
+          "role": "USER",
+          "content": "hello there",
+          "participantId": null
+        },
+        {
+          "id": "f2010002-0000-4000-8000-000000000302",
+          "role": "ASSISTANT",
+          "content": "Greetings.",
+          "participantId": "f20a0002-0000-4000-8000-0000000000a2"
+        }
+      ]
     }
   ],
   "calls": [
@@ -770,7 +845,10 @@
       "streamLabel": "rng_dice",
       "cheapLLMSettings": false,
       "summaryCheck": false,
-      "rngBytes": [3, 4]
+      "rngBytes": [
+        3,
+        4
+      ]
     },
     {
       "name": "rng_two_patterns",
@@ -781,7 +859,10 @@
       "streamLabel": "rng_two",
       "cheapLLMSettings": false,
       "summaryCheck": false,
-      "rngBytes": [9, 0]
+      "rngBytes": [
+        9,
+        0
+      ]
     },
     {
       "name": "rng_no_fire",
@@ -793,6 +874,29 @@
       "cheapLLMSettings": false,
       "summaryCheck": false,
       "rngBytes": []
+    },
+    {
+      "name": "disabled_tools",
+      "kind": "single",
+      "chatId": "f1000001-0000-4000-8000-000000000001",
+      "content": "",
+      "continueMode": true,
+      "streamLabel": "disabled_tools",
+      "cheapLLMSettings": false,
+      "summaryCheck": false,
+      "respondingParticipant": "f10a0001-0000-4000-8000-0000000000a1"
+    },
+    {
+      "name": "textblock_mode",
+      "kind": "single",
+      "chatId": "f2000002-0000-4000-8000-000000000002",
+      "content": "",
+      "continueMode": true,
+      "streamLabel": "textblock_mode",
+      "cheapLLMSettings": false,
+      "summaryCheck": false,
+      "respondingParticipant": "f20a0002-0000-4000-8000-0000000000a2",
+      "modelSupportsNativeTools": false
     }
   ],
   "streams": {
@@ -1339,6 +1443,36 @@
             "promptTokens": 15,
             "completionTokens": 5,
             "totalTokens": 20
+          }
+        }
+      ]
+    ],
+    "disabled_tools": [
+      [
+        {
+          "content": "A polite reply from Bertie."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 12,
+            "completionTokens": 4,
+            "totalTokens": 16
+          }
+        }
+      ]
+    ],
+    "textblock_mode": [
+      [
+        {
+          "content": "A simple answer from Bertie."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 12,
+            "completionTokens": 4,
+            "totalTokens": 16
           }
         }
       ]

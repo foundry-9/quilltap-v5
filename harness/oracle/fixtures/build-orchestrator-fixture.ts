@@ -68,6 +68,8 @@ interface ChatSpec {
   contextSummary: string | null;
   participants: ParticipantSpec[];
   messages: MessageSpec[];
+  /** W4.1g: per-chat disabled tool ids (the wire slate excludes them). */
+  disabledTools?: string[];
 }
 interface Spec {
   testPepperBase64: string;
@@ -199,6 +201,7 @@ async function main(): Promise<void> {
         participants,
         chatType: chat.chatType,
         contextSummary: chat.contextSummary,
+        ...(chat.disabledTools !== undefined ? { disabledTools: chat.disabledTools } : {}),
       } as never,
       { id: chat.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );

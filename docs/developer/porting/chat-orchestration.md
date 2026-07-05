@@ -188,6 +188,37 @@ Ordered by dependency; several are mutually independent once wave 2 lands:
 
 ## Status
 
+- **W4.1g: `buildTools` + the tool-slate spine wiring — DONE; W4.1 is CLOSED**
+  (2026-07-04). `services::tool_build` ports v4's `buildTools` + the built-in half
+  of `buildToolsForProvider`: the flag→tool-set construction over the b.3 catalog,
+  `is_tool_disabled` (built-in tools carry empty source metadata so group patterns
+  never bite them), the `allowToolUse === false` / `disabledTools === undefined`
+  short-circuits (the latter returns EMPTY), `apply_image_constraints_to_tool`
+  (pure), and the canonical universal shape (v4's `getProvider===null` fallback).
+  `checkModelSupportsTools` + `provider.supportsWebSearch` are injected
+  registry-seam inputs (the `getModelContextLimit` precedent); the plugin registry,
+  the provider `formatTools` reshape, and image constraint enrichment are W4.7
+  deferrals. Added `plugin_config::find_by_user_id` (read for faithfulness, unused
+  for the built-in slate). The orchestrator flag region is ported
+  (`canDress`/`canCreate`/`helpTools`/`documentEditing`, the `self_inventory`
+  transparent strip, the overlay-free `askCarina` probe, the autonomous
+  destructive-tool filter, `resolvedToolMode`/`useTextBlockTools`/`actualTools` +
+  the mode-switched `toolInstructions` + simple-json `initialStopSequences`), and
+  the spine seams are closed: the real slate flows to the primary stream, the
+  native loop (real `BuiltInToolRunner` + the injected W4.7 `ToolCallDetector`),
+  and the text passes' `continuationTools`; the finalizer + tool-only terminal get
+  the real tool messages/images. Verified by `tool_build_equivalence` (27
+  flag-matrix cases, byte-exact slate + both flags) and the rebuilt
+  `orchestrator_tier3` (18 cases running the REAL `buildTools`; a per-call
+  tools-at-wire assertion proves the slate reaches the provider — banking the
+  `self_inventory` strip [transparent vs not], the `ask_carina` transparency probe,
+  `disabled_tools` filtering, and `textblock_mode` empty slate).
+  `native_tool_loop`/`text_tool_loop`/`message_finalizer`/`primary_stream`
+  re-verified green. **Deferrals:** W4.7 (plugin registry / provider reshape /
+  image constraints); a native tool CALL end-to-end through the spine is proven in
+  composition (tools-at-wire + `native_tool_loop_tier3`), the detector/`raw_response`
+  plumbing wired but corpus-dormant.
+
 - **Wave 1: ported and green** (2026-07-02) — six tier-1 units, each with a
   fresh-oracle exact differential: `templates_equivalence` (53 rows, incl. the
   two-pass `{{trim}}` quirk) + `turn_predicates_equivalence` (35),

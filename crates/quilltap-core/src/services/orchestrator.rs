@@ -115,9 +115,15 @@ use crate::services::primary_stream::{
 use crate::services::provider_failover::{
     self, AttemptEmptyResponseRecoveryOptions, DangerSettings, DangerousContentRouter,
 };
+use crate::services::pseudo_tool::{
+    build_native_tool_system_instructions, build_simple_json_system_instructions,
+    build_text_block_system_instructions, check_resolved_tool_mode,
+    determine_text_block_tool_options, SIMPLE_JSON_STOP,
+};
 use crate::services::text_tool_loop::{
     self, RunTextToolPassOptions, SimpleJsonStrategy, TextBlockStrategy, TextToolStrategy,
 };
+use crate::services::tool_build::{self, BuildToolsInput};
 use crate::services::tool_call_threading::ThreadedMessage;
 use crate::services::tool_execution::{
     create_tool_context, save_tool_messages, GeneratedImage, SaveToolMessagesResult, ToolMessage,
@@ -126,10 +132,12 @@ use crate::services::tool_execution::{
 use crate::services::turn_orchestrator::{
     self, ChainConfig, ChainDecision, ChainGuards, ChainReason,
 };
-use crate::tools::pseudo_tool_support::ResolvedToolMode;
+use crate::tools::executor::BuiltInToolRunner;
+use crate::tools::pseudo_tool_support::{ResolvedToolMode, ToolMode};
 use crate::tools::rng::{
     execute_rng_tool, format_rng_results, RandomBytes, RngToolContext, RngType,
 };
+use crate::tools::self_inventory::{ClientShell, SelfInventoryEnv};
 
 /// The TOOL-message `content` JSON for an auto-detected RNG execution (v4's
 /// `JSON.stringify({ tool, initiatedBy, success, result, prompt, arguments })`).
@@ -151,6 +159,39 @@ struct RngArguments {
     #[serde(rename = "type")]
     type_: RngType,
     rolls: u32,
+}
+
+/// Adapter so the injected `&dyn ToolCallDetector` (the W4.7 provider-parse seam)
+/// can be passed to the generic (`D: ToolCallDetector`, Sized) native tool loop.
+struct DetectorRef<'a>(&'a (dyn native_tool_loop::ToolCallDetector + Sync));
+impl native_tool_loop::ToolCallDetector for DetectorRef<'_> {
+    fn detect(
+        &self,
+        raw_response: &Value,
+        provider: &str,
+    ) -> Vec<crate::services::tool_execution::ToolCall> {
+        self.0.detect(raw_response, provider)
+    }
+}
+
+/// The `self_inventory` host environment the tool runner carries. In production
+/// this is populated by the host (Quilltap version, runtime mode, client shell,
+/// mount-index health, the registry model-info rows). W4.1g wires the tool SLATE;
+/// the host-env wiring is the standing [`SelfInventoryEnv`] seam (a tracked
+/// deferral). The corpus's native-tool-call cases invoke handlers that need none
+/// of this (wardrobe / read_conversation / doc reads), so a placeholder suffices.
+fn host_self_inventory_env() -> SelfInventoryEnv {
+    SelfInventoryEnv {
+        version: String::new(),
+        runtime_mode: "local-dev".to_string(),
+        client_shell: ClientShell::Unknown,
+        mount_index_degraded: false,
+        release_notes: None,
+        changelog: None,
+        model_info: Vec::new(),
+        fallback_pricing: Vec::new(),
+        registry_default_context: 8192,
+    }
 }
 
 // ===========================================================================
@@ -204,6 +245,11 @@ pub struct OrchestratorChatSettings {
     pub auto_detect_rng: bool,
     /// `answerConfirmationSettings.enabled === true`.
     pub answer_confirmation_global_enabled: bool,
+    /// `autonomousRoomSettings.destructiveToolPolicy ?? 'opt_in_per_room'` — the
+    /// CEILING for the autonomous-room destructive-tool filter. Only consulted
+    /// when `chat.chatType === 'autonomous'` (the corpus keeps chats
+    /// non-autonomous, so this default is never read there).
+    pub autonomous_destructive_policy: String,
 }
 
 impl OrchestratorChatSettings {
@@ -216,6 +262,7 @@ impl OrchestratorChatSettings {
             project_context_reinject_interval: 5,
             auto_detect_rng: true,
             answer_confirmation_global_enabled: false,
+            autonomous_destructive_policy: "opt_in_per_room".to_string(),
         }
     }
 }
@@ -296,6 +343,14 @@ pub struct ProcessMessageInput {
     /// The IANA timezone buildContext resolves (v4 `resolveTimezone`); `None` =
     /// system default (`UTC` in the corpus).
     pub timezone: Option<String>,
+    /// Injected `checkModelSupportsTools(provider, model, userId)` — the async
+    /// pricing-cache lookup resolved above the seam (registry-seam pattern, like
+    /// [`ProcessMessageInput::model_context_limit`]). Feeds `buildTools` +
+    /// `resolvedToolMode`.
+    pub model_supports_native_tools: bool,
+    /// Injected `provider.supportsWebSearch` — the provider-capability flag
+    /// resolved above the seam. `useNativeWebSearch` ANDs it with the profile.
+    pub provider_supports_web_search: bool,
 }
 
 // ===========================================================================
@@ -352,12 +407,12 @@ where
     /// in `text_tool_loop_tier3`). The provider manifest (W4.7) wires the real
     /// per-provider strategies.
     pub provider_text_strategy: Option<&'a dyn TextToolStrategy>,
-    /// The resolved tool mode (W4.1f) — selects the simple-json vs the text-block
-    /// fall-through text-tool pass, exactly as v4's `resolvedToolMode` gate. The real
-    /// tool-config plumbing (`buildTools` / `checkResolvedToolMode` from the model /
-    /// profile) is a W4.1g deferral; until then the orchestrator defaults this to
-    /// [`ResolvedToolMode::TextBlock`] (v4's else-branch — a no-op without markers).
-    pub resolved_tool_mode: ResolvedToolMode,
+    /// The native tool-call detector (v4 `detectToolCallsInResponse`) — the W4.7
+    /// provider-wire-parse seam. Production wires [`native_tool_loop::NoToolCallDetector`]
+    /// (until the provider manifest lands); the differential injects a canned
+    /// detector keyed by the raw response so a native tool call can be driven
+    /// end-to-end. Object-safe (`+ Sync` to keep the spine future `Send`).
+    pub tool_detector: &'a (dyn native_tool_loop::ToolCallDetector + Sync),
 }
 
 /// v4 `processMessage`. The main send-path spine. Composes the ported services,
@@ -710,10 +765,205 @@ where
     // so the reset never fires (documented deferral for a tool-settings-changed
     // turn — that path is wave-4 anyway).
     let _force_tools = chat.get("forceToolsOnNextMessage").and_then(Value::as_bool) == Some(true);
-    // The tool build + pseudo-tool mode resolution is a wave-4 seam. The corpus
-    // keeps the tool slate EMPTY (native mode, no tools), so `actualTools` is []
-    // and `toolInstructions` is None — the tool loops downstream no-op.
-    let tool_instructions: Option<String> = None;
+
+    // Character-permission flags (v4 orchestrator.service.ts:758–762).
+    let help_tools_enabled = character
+        .get("defaultHelpToolsEnabled")
+        .and_then(Value::as_bool)
+        == Some(true);
+    // `canDressThemselves`/`canCreateOutfits` default ON (`!== false`).
+    let can_dress_themselves =
+        character.get("canDressThemselves").and_then(Value::as_bool) != Some(false);
+    let can_create_outfits =
+        character.get("canCreateOutfits").and_then(Value::as_bool) != Some(false);
+
+    // Document editing enabled when the chat's project has linked doc stores
+    // (orchestrator.service.ts:766–773). Reads the mount-index sibling DB; a read
+    // error leaves it disabled (v4's empty catch).
+    let document_editing_enabled = match chat
+        .get("projectId")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+    {
+        Some(project_id) => {
+            let pid = project_id.to_string();
+            db.read_mount_index(move |c| {
+                crate::db::project_doc_mount_links::ProjectDocMountLinksRepository::new(c)
+                    .find_by_project_id(&pid)
+            })
+            .map(|links| !links.is_empty())
+            .unwrap_or(false)
+        }
+        None => false,
+    };
+
+    // System-transparency covenant: a non-transparent character has
+    // `self_inventory` forced out of the slate (chat/project toggles can't
+    // override the character covenant). v4 orchestrator.service.ts:779–782.
+    let character_is_transparent =
+        character.get("systemTransparency").and_then(Value::as_bool) == Some(true);
+    let chat_disabled_tools: Vec<String> = json_str_array(&chat, "disabledTools");
+    let effective_disabled_tools: Vec<String> = if character_is_transparent {
+        chat_disabled_tools.clone()
+    } else {
+        let mut set: Vec<String> = chat_disabled_tools.clone();
+        if !set.iter().any(|t| t == "self_inventory") {
+            set.push("self_inventory".to_string());
+        }
+        set
+    };
+    let disabled_tool_groups: Vec<String> = json_str_array(&chat, "disabledToolGroups");
+
+    // ask_carina offered when at least one Carina answerer (a character with
+    // canBeCarina) exists, OR the acting character is transparent. Uses the
+    // overlay-free raw read — `canBeCarina` is a DB column, not a vault field —
+    // to keep this per-turn probe cheap. v4 orchestrator.service.ts:795–806;
+    // the cheap-probe comment is load-bearing (carry it). Error-swallowed.
+    let ask_carina_enabled = {
+        let raw = db
+            .read_main(crate::db::characters_read::find_all_raw)
+            .unwrap_or_default();
+        let any_can_be_carina = raw
+            .iter()
+            .any(|c| c.get("canBeCarina").and_then(Value::as_bool) == Some(true));
+        any_can_be_carina || character_is_transparent
+    };
+
+    // Build the tool slate (orchestrator.service.ts:807–834). `isEffectiveCourier`
+    // is always false here (a courier profile early-errored above), so buildTools
+    // always runs.
+    let use_native_web_search_profile = connection_profile
+        .get("useNativeWebSearch")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let allow_tool_use = connection_profile
+        .get("allowToolUse")
+        .and_then(Value::as_bool);
+    let allow_web_search = connection_profile
+        .get("allowWebSearch")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let built = tool_build::build_tools(
+        db,
+        &user_id,
+        &BuildToolsInput {
+            provider: &effective_profile.provider,
+            use_native_web_search: use_native_web_search_profile,
+            allow_tool_use,
+            allow_web_search,
+            image_profile_id: _image_profile_id.as_deref(),
+            // Image-provider constraint enrichment reads the provider registry
+            // (W4.7) — injected `None` here (the base image tool). See tool_build.
+            image_provider_constraints: None,
+            project_id: chat
+                .get("projectId")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty()),
+            request_full_context: compression_enabled,
+            disabled_tools: Some(&effective_disabled_tools),
+            disabled_tool_groups: &disabled_tool_groups,
+            agent_mode_enabled,
+            is_multi_character,
+            help_tools_enabled,
+            can_dress_themselves,
+            can_create_outfits,
+            document_editing_enabled,
+            ask_carina_enabled,
+            // The Brahma Console (unported) is the only caller that flips these.
+            include_workspace_tools: true,
+            exclude_memory_search: false,
+            sql_access: false,
+            model_supports_native_tools: input.model_supports_native_tools,
+            provider_supports_web_search: input.provider_supports_web_search,
+        },
+    )?;
+    let mut tools = built.tools;
+    let model_supports_native_tools = built.model_supports_native_tools;
+    let use_native_web_search = built.use_native_web_search;
+
+    // 4.6 Private Character Rooms — destructive-tool filter for autonomous rooms
+    // (orchestrator.service.ts:836–861). The user `destructiveToolPolicy` is a
+    // CEILING; the per-room `runDestructiveToolsAllowed === 1` (raw integer read,
+    // not coerced) must be set. The corpus keeps chats non-autonomous → the
+    // branch is reproduced but never fires.
+    if chat.get("chatType").and_then(Value::as_str) == Some("autonomous") {
+        let policy = chat_settings
+            .as_ref()
+            .map(|s| s.autonomous_destructive_policy.clone())
+            .unwrap_or_else(|| "opt_in_per_room".to_string());
+        let allowed_at_room = chat
+            .get("runDestructiveToolsAllowed")
+            .and_then(Value::as_i64)
+            == Some(1);
+        if !tool_build::destructive_allowed(&policy, allowed_at_room) {
+            tool_build::filter_destructive_tools(&mut tools);
+        }
+    }
+
+    // Resolve the pseudo-tool mode + the actual slate (orchestrator.service.ts:863–899).
+    let profile_pseudo_tool_mode = connection_profile
+        .get("pseudoToolMode")
+        .and_then(Value::as_str)
+        .and_then(ToolMode::from_str);
+    let resolved_tool_mode =
+        check_resolved_tool_mode(model_supports_native_tools, profile_pseudo_tool_mode);
+    let use_text_block_tools = resolved_tool_mode != ResolvedToolMode::Native;
+    // Under a pseudo-tool surface the native slate is suppressed (`actualTools = []`).
+    let actual_tools: Vec<Value> = if use_text_block_tools {
+        Vec::new()
+    } else {
+        tools
+    };
+
+    // Tool instructions — simple-json / text-block / native, mode-switched.
+    let tool_instructions: Option<String> = if resolved_tool_mode == ResolvedToolMode::SimpleJson {
+        let opts = determine_text_block_tool_options(
+            _image_profile_id.as_deref(),
+            allow_web_search,
+            is_multi_character,
+            chat.get("projectId")
+                .and_then(Value::as_str)
+                .is_some_and(|s| !s.is_empty()),
+            Some(help_tools_enabled),
+            Some(can_dress_themselves),
+            Some(can_create_outfits),
+        );
+        Some(build_simple_json_system_instructions(&opts))
+    } else if resolved_tool_mode == ResolvedToolMode::TextBlock {
+        let opts = determine_text_block_tool_options(
+            _image_profile_id.as_deref(),
+            allow_web_search,
+            is_multi_character,
+            chat.get("projectId")
+                .and_then(Value::as_str)
+                .is_some_and(|s| !s.is_empty()),
+            Some(help_tools_enabled),
+            Some(can_dress_themselves),
+            Some(can_create_outfits),
+        );
+        Some(build_text_block_system_instructions(&opts))
+    } else if !actual_tools.is_empty() {
+        Some(build_native_tool_system_instructions())
+    } else {
+        None
+    };
+
+    // Provider stop sequences (simple-json only) — applied to the primary stream.
+    let initial_stop_sequences: Vec<String> = if resolved_tool_mode == ResolvedToolMode::SimpleJson
+    {
+        SIMPLE_JSON_STOP.iter().map(|s| s.to_string()).collect()
+    } else {
+        Vec::new()
+    };
+
+    // The tool slate as the wire JSON array (`tools.length > 0 ? tools : undefined`
+    // is applied by the stream provider). `actual_tools_value` is `None` when the
+    // slate is empty so `params.tools` matches v4's `undefined`.
+    let actual_tools_value: Option<Value> = if actual_tools.is_empty() {
+        None
+    } else {
+        Some(Value::Array(actual_tools.clone()))
+    };
 
     // --- Build context (orchestrator.service.ts:908–1010) ---
     sink.emit(ChatEvent::status(StatusPayload {
@@ -855,18 +1105,21 @@ where
             content: m.content.clone(),
         })
         .collect();
+    // v4 forwards `actualTools` + `useNativeWebSearch` + `initialStopSequences`
+    // into the primary stream. The stream provider maps `tools.length > 0 ? tools
+    // : undefined` (here `actual_tools_value` is `None` for an empty slate).
     let params = StreamParams {
         messages: stream_messages,
         model: effective_profile.model_name.clone(),
         temperature: json_f64(&connection_profile, "temperature"),
         max_tokens: None,
         top_p: None,
-        tools: None,
-        web_search_enabled: false,
+        tools: actual_tools_value.clone(),
+        web_search_enabled: use_native_web_search,
         profile_parameters: None,
         cache_key: None,
         previous_response_id,
-        stop: Vec::new(),
+        stop: initial_stop_sequences.clone(),
     };
 
     let is_paused = chat
@@ -914,17 +1167,24 @@ where
     // --- Native tool loop (orchestrator.service.ts:1259–1280) ---
     // v4 runs `runNativeToolLoop` unconditionally after the primary stream; the
     // loop breaks immediately when the last raw response carries no native tool
-    // calls. The tool slate is empty (`buildTools` is W4.1g) AND detection is the
-    // W4.7 provider parse (here the no-op [`NoToolCallDetector`]) AND the primary
-    // stream leaves `raw_response` null in the corpus — so the loop is a guaranteed
-    // no-op, wired at the composition point v4 uses (proven by the port's own
-    // `native_tool_loop_tier3` differential driving v4's REAL loop). Agent-mode
-    // resolution (the Global→Character→Project→Chat cascade) is W4.4 — the corpus
-    // keeps it disabled. The runner is a placeholder [`LoudFallbackRunner`] (never
-    // reached; the real `BuiltInToolRunner` + tool slate wire with W4.1g). The text
-    // tool passes (W4.1f) follow here.
+    // calls. The real tool slate (`buildTools`, W4.1g) now flows into `params`,
+    // and the tool runner is the real [`BuiltInToolRunner`] (dispatches the ported
+    // handlers). Native detection is the injected W4.7 provider-parse seam
+    // (`deps.tool_detector`; production wires [`native_tool_loop::NoToolCallDetector`]
+    // → no calls until the provider manifest lands). Agent-mode resolution (the
+    // Global→Character→Project→Chat cascade) is W4.4 — the corpus keeps it
+    // disabled. The text tool passes (W4.1f) follow here.
+    //
+    // The runner's `self_inventory` host env + the `search`/`help_search`
+    // embedding provider are host seams (the corpus's native-call cases call
+    // handlers needing neither — wardrobe/read_conversation/doc reads); production
+    // wires the real host env + embedding provider into the runner (a tracked
+    // deferral, the standing SelfInventoryEnv seam).
     let mut tool_messages: Vec<ToolMessage> = Vec::new();
     let mut generated_image_paths: Vec<GeneratedImage> = Vec::new();
+
+    let tool_runner = BuiltInToolRunner::new(db.clone(), host_self_inventory_env());
+    let tool_detector = DetectorRef(deps.tool_detector);
 
     let loop_messages: Vec<ThreadedMessage> = mc_result
         .formatted_messages
@@ -950,14 +1210,12 @@ where
         None,
         None,
     );
-    let loop_runner = crate::tools::executor::LoudFallbackRunner;
-    let loop_detector = native_tool_loop::NoToolCallDetector;
     native_tool_loop::run_native_tool_loop(
         db,
         deps.streaming,
         sink,
-        &loop_runner,
-        &loop_detector,
+        &tool_runner,
+        &tool_detector,
         &mut preserve,
         native_tool_loop::RunNativeToolLoopOptions {
             chat_id: chat_id.clone(),
@@ -985,15 +1243,10 @@ where
     // provider plugin implementing all three hooks → here the injected strategy
     // seam being present) then EITHER the simple-json pass (when `resolvedToolMode
     // === 'simple-json'`) OR the text-block fall-through (runs for ALL providers).
-    // Corpus-dormant: no canned stream emits markers AND the tool slate is empty
-    // (`buildTools` is W4.1g), so each pass no-ops at its entry gate — wired at the
-    // composition point v4 uses (proven by the port's own `text_tool_loop_tier3`
-    // differential driving v4's REAL `runTextToolPass`). The runner is the
-    // placeholder `LoudFallbackRunner` (never reached; the real slate + runner wire
-    // with W4.1g). Web search stays off until the W4.1g tool-config plumbing lands.
-    let text_runner = crate::tools::executor::LoudFallbackRunner;
-    let use_text_block_tools = deps.resolved_tool_mode != ResolvedToolMode::Native;
-    let use_native_web_search = false;
+    // The pass is driven by the real `resolvedToolMode` (flag region): simple-json
+    // when resolved, else the text-block fall-through (all providers). `actualTools`
+    // is empty under any pseudo-tool surface, so `continuationTools` follows v4's
+    // `useTextBlockTools ? [] : actualTools`. Runs the real [`BuiltInToolRunner`].
     let make_text_messages = || -> Vec<ThreadedMessage> {
         mc_result
             .formatted_messages
@@ -1030,7 +1283,7 @@ where
             db,
             deps.streaming,
             sink,
-            &text_runner,
+            &tool_runner,
             provider_strategy,
             &mut preserve,
             RunTextToolPassOptions {
@@ -1042,8 +1295,8 @@ where
                 formatted_messages: make_text_messages(),
                 base_params: params.clone(),
                 // The provider pass re-offers the regular tool slate (v4
-                // `continuationTools: actualTools`) — empty until W4.1g.
-                continuation_tools: params.tools.clone(),
+                // `continuationTools: actualTools`).
+                continuation_tools: actual_tools_value.clone(),
                 continuation_use_native_web_search: use_native_web_search,
                 tool_context: make_text_context(),
                 state: &mut streaming_state,
@@ -1062,20 +1315,20 @@ where
     {
         let simple = SimpleJsonStrategy;
         let text_block = TextBlockStrategy;
-        let strategy: &dyn TextToolStrategy = match deps.resolved_tool_mode {
+        let strategy: &dyn TextToolStrategy = match resolved_tool_mode {
             ResolvedToolMode::SimpleJson => &simple,
             _ => &text_block,
         };
         let continuation_tools = if use_text_block_tools {
             Some(Value::Array(Vec::new()))
         } else {
-            params.tools.clone()
+            actual_tools_value.clone()
         };
         text_tool_loop::run_text_tool_pass(
             db,
             deps.streaming,
             sink,
-            &text_runner,
+            &tool_runner,
             strategy,
             &mut preserve,
             RunTextToolPassOptions {
@@ -1183,9 +1436,10 @@ where
                 character_participant: finalizer_participant,
                 user_participant_id: user_participant_id.clone(),
                 is_multi_character,
-                // Dormant until the tool loops (W4.1e/f) produce a slate.
-                generated_image_paths: Vec::new(),
-                tool_messages: Vec::new(),
+                // The tool loops (W4.1e/f) now produce a real slate; v4 forwards
+                // `toolMessages` + `generatedImagePaths` into the finalizer.
+                generated_image_paths,
+                tool_messages,
                 pre_generated_assistant_message_id: Some(
                     pre_generated_assistant_message_id.clone(),
                 ),
@@ -2073,6 +2327,8 @@ mod tests {
             model_context_limit: 1000,
             timestamp_config: None,
             timezone: None,
+            model_supports_native_tools: true,
+            provider_supports_web_search: false,
         }
     }
 
@@ -2126,7 +2382,7 @@ mod tests {
                 prospero: &mut prospero,
                 rng_bytes: &mut rng_bytes,
                 provider_text_strategy: None,
-                resolved_tool_mode: ResolvedToolMode::TextBlock,
+                tool_detector: &native_tool_loop::NoToolCallDetector,
             };
             execute_turn_chain(
                 &mut deps,

@@ -94,6 +94,32 @@ pub struct PcUpdate {
     pub updated_at: String,
 }
 
+/// v4 `PluginConfigsRepository.findByUserId` — the `(pluginName, config)` subset
+/// `buildTools` consumes to assemble its `toolConfigs` map. Reads off any
+/// connection (used from the read pool). A NULL/invalid `config` cell resolves to
+/// `{}` (the empty object, matching v4's schema default surface).
+pub fn find_by_user_id(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Vec<(String, serde_json::Value)>, DbError> {
+    let mut stmt =
+        conn.prepare("SELECT pluginName, config FROM plugin_configs WHERE userId = ?1")?;
+    let rows = stmt.query_map(params![user_id], |row| {
+        let name: String = row.get(0)?;
+        let config_text: Option<String> = row.get(1)?;
+        Ok((name, config_text))
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        let (name, config_text) = r?;
+        let config = config_text
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_else(|| serde_json::Value::Object(Default::default()));
+        out.push((name, config));
+    }
+    Ok(out)
+}
+
 /// Repository over a borrowed connection (held by the [`super::Writer`]).
 pub struct PluginConfigRepository<'c> {
     conn: &'c Connection,

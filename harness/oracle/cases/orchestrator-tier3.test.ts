@@ -87,6 +87,9 @@ interface ChunkSpec {
   done?: boolean;
   usage?: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
   error?: string;
+  /** W4.1g native-call case: the provider raw response on the terminal chunk
+   * (the mocked `detectToolCallsInResponse` keys on `rawResponse.marker`). */
+  rawResponse?: unknown;
 }
 interface CallSpec {
   name: string;
@@ -101,6 +104,9 @@ interface CallSpec {
   expectThrow?: boolean;
   /** The committed byte stream for RNG auto-detect (mirrors the Rust FixedBytes). */
   rngBytes?: number[];
+  /** W4.1g: the injected `checkModelSupportsTools` result (default true → native
+   * tool mode). Mirrors the Rust `ProcessMessageInput::model_supports_native_tools`. */
+  modelSupportsNativeTools?: boolean;
 }
 interface Spec {
   testPepperBase64: string;
@@ -109,6 +115,12 @@ interface Spec {
   chatSettings: { id: string };
   calls: CallSpec[];
   streams: Record<string, ChunkSpec[][]>;
+  /** W4.1g native-call detection: raw-response marker → the tool calls the
+   * (mocked) provider parse returns. Empty for the non-native cases. */
+  detection?: Record<
+    string,
+    Array<{ name: string; arguments?: unknown; callId?: string }>
+  >;
   summaryCompletion: {
     response: string;
     usage: { promptTokens: number; completionTokens: number; totalTokens: number };
@@ -148,7 +160,7 @@ async function main(): Promise<void> {
   // `canned_completion_key`).
   const cannedStreams = new Map<
     string,
-    { provider: string; model: string; temperature: number | null; messages: unknown[]; sequences: ChunkSpec[][] }
+    { provider: string; model: string; temperature: number | null; messages: unknown[]; tools: unknown[]; sequences: ChunkSpec[][] }
   >();
   const cannedCompletions = new Map<
     string,
@@ -160,6 +172,10 @@ async function main(): Promise<void> {
   // The current call's stream label (steered per-call so the streamMessage mock
   // pops the right attempt sequence).
   let currentLabel: string | undefined;
+  // W4.1g: the injected `checkModelSupportsTools` result, steered per call (native
+  // tools by default; a text-block-mode case sets it false). Mirrors the Rust
+  // `ProcessMessageInput::model_supports_native_tools`.
+  let currentModelSupportsTools = true;
   // The current call's RNG byte stream (steered per-call for the crypto.randomBytes
   // mock; the RNG auto-detect executor draws from here).
   let currentRngBytes: number[] = [];
@@ -175,21 +191,47 @@ async function main(): Promise<void> {
   jest.doMock('@/lib/database/repositories', () => jest.requireActual('@/lib/database/repositories'));
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
 
+  // ---- checkModelSupportsTools (W4.1g: the REAL buildTools now runs, and reads
+  //      this async pricing-cache lookup). Steered per-call (native by default).
+  //      The Rust side injects the same value via ProcessMessageInput. ----
+  jest.doMock('@/lib/tools/pseudo-tool-support', () => ({
+    __esModule: true,
+    ...jest.requireActual('@/lib/tools/pseudo-tool-support'),
+    checkModelSupportsTools: async () => currentModelSupportsTools,
+  }));
+
+  // ---- detectToolCallsInResponse (W4.7 provider-wire-parse seam; W4.1g mocks it
+  //      like the native-tool-loop oracle: canned by the raw-response marker so a
+  //      native tool call can be driven end-to-end through the spine. Everything
+  //      else in tool-execution.service — processToolCalls / saveToolMessages /
+  //      executeToolCallWithContext (the REAL handler) — stays REAL.) ----
+  jest.doMock('@/lib/services/chat-message/tool-execution.service', () => {
+    const actual = jest.requireActual('@/lib/services/chat-message/tool-execution.service');
+    return {
+      __esModule: true,
+      ...actual,
+      detectToolCallsInResponse: (raw: unknown) => {
+        const marker = (raw as { marker?: string } | null)?.marker;
+        return (marker && spec.detection?.[marker]) || [];
+      },
+    };
+  });
+
   // ---- streamMessage (the primary stream) ----
   jest.doMock('@/lib/services/chat-message/streaming.service', () => {
     const actual = jest.requireActual('@/lib/services/chat-message/streaming.service');
     return {
       __esModule: true,
       ...actual,
-      // The tool build is a wave-4 subsystem the Rust orchestrator seams out
-      // (empty tool slate → no tool instructions in the system prompt). Mirror
-      // that on the v4 side so `toolInstructions` stays undefined and the prompt
-      // bytes match the Rust `build_context` input.
-      buildTools: async () => ({ tools: [], modelSupportsNativeTools: true, useNativeWebSearch: false }),
+      // W4.1g: `buildTools` is now the REAL v4 function (no longer stubbed to an
+      // empty slate) — its tool instructions flow into the system prompt and its
+      // `actualTools` reach the wire. Only the model-capability inputs are mocked
+      // (checkModelSupportsTools above; provider.supportsWebSearch below).
       streamMessage: async function* streamMessage(options: {
         messages: Array<{ role: string; content: string }>;
         connectionProfile: { provider: string; modelName: string };
         modelParams: Record<string, unknown>;
+        tools?: unknown[];
       }) {
         const messages = options.messages.map((m) => ({ role: m.role, content: m.content }));
         const label = currentLabel;
@@ -205,9 +247,12 @@ async function main(): Promise<void> {
         const model = options.connectionProfile.modelName;
         const temperature = (options.modelParams.temperature as number | undefined) ?? null;
         const key = `${provider}|${model}|${temperature ?? '-'}|${JSON.stringify(messages)}`;
+        // Record the tool slate reaching the wire (W4.1g: proven per call). v4
+        // passes `tools.length > 0 ? tools : undefined`; normalize undefined → [].
+        const toolsAtWire = (options.tools ?? []) as unknown[];
         const entry = cannedStreams.get(key);
         if (entry) entry.sequences.push(chunks);
-        else cannedStreams.set(key, { provider, model, temperature, messages, sequences: [chunks] });
+        else cannedStreams.set(key, { provider, model, temperature, messages, tools: toolsAtWire, sequences: [chunks] });
 
         for (const chunk of chunks) {
           if (chunk.error) throw new Error(chunk.error);
@@ -219,7 +264,7 @@ async function main(): Promise<void> {
               usage: chunk.usage ?? undefined,
               cacheUsage: undefined,
               attachmentResults: undefined,
-              rawResponse: undefined,
+              rawResponse: chunk.rawResponse,
             };
           } else {
             yield { content: chunk.content };
@@ -236,6 +281,10 @@ async function main(): Promise<void> {
       __esModule: true,
       ...actual,
       createLLMProvider: async (provider: string) => ({
+        // W4.1g: the REAL buildTools reads `provider.supportsWebSearch`. Fixed
+        // false (the corpus needs no native web search); the Rust side injects
+        // `provider_supports_web_search: false` to match.
+        supportsWebSearch: false,
         sendMessage: async (
           params: { messages: Array<{ role: string; content: string }>; model: string; temperature?: number },
           _apiKey: string
@@ -590,6 +639,7 @@ async function main(): Promise<void> {
 
   for (const call of spec.calls) {
     currentLabel = call.streamLabel;
+    currentModelSupportsTools = call.modelSupportsNativeTools ?? true;
     currentRngBytes = call.rngBytes ?? [];
     rngCursor = 0;
 
