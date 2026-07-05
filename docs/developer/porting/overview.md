@@ -31,8 +31,8 @@ already working ([`phase-0.md`](./phase-0.md)).
 |------|------|------------------|--------|
 | **0** | Scaffolding, toolchain, cipher-correct DB open, differential harness | tier-1 proven | **substantially done** |
 | **1** | Pure functions (scoring, sizing, remaps, budget math) | tier-1 exact | **done** |
-| **2** | Data layer: repos, the writer-task model, per-DB partitioned apply | tier-2 structural DB diff | **repo inventory complete** — every v4 repository round-trips green through the tier-2 harness (main DB + the mount-index and llm-logs sibling DBs, incl. the `characters` and `chats` capstones and `memories`); the deferred `upsert*` back-fill, the partitioned write applier + `__finalizeFile`, and the fixture sanitizer are done too. Full per-repo inventory in the CLAUDE.md Status section ([`phase-2-onramp.md`](./phase-2-onramp.md)). Residual: a few Phase-3-coupled deferrals (chats `delete` vault sweep, the General/project wardrobe archetype tiers) |
-| **3** | Services / engine: memory gate, chat orchestration, enclave `step()` | tier-2 + tier-3 mocked-LLM | **in progress** — [`phase-3.md`](./phase-3.md); Unit 0 (writer-task runtime, `db::runtime`), Unit 0.5 (model boundary, `model::embedding`), and Unit 1 (the memory gate, `services::memory_gate`) all done + green — the memory gate is the first tier-3 → tier-2 differential (a canned embedding injected on both sides); chat orchestration next |
+| **2** | Data layer: repos, the writer-task model, per-DB partitioned apply | tier-2 structural DB diff | **repo inventory complete** — every v4 repository round-trips green through the tier-2 harness (main DB + the mount-index and llm-logs sibling DBs, incl. the `characters` and `chats` capstones and `memories`); the deferred `upsert*` back-fill, the partitioned write applier + `__finalizeFile`, and the fixture sanitizer are done too. Full per-repo inventory in the CLAUDE.md Status section ([`phase-2-onramp.md`](./phase-2-onramp.md)). Residual: two Phase-3-coupled deferrals (chats `delete` vault sweep; `markCompleted`'s v5-only payload merge) — the wardrobe archetype tiers closed in W4.0 |
+| **3** | Services / engine: memory gate, chat orchestration, enclave `step()` | tier-2 + tier-3 mocked-LLM | **in progress, well advanced** — [`phase-3.md`](./phase-3.md): the writer-task runtime, the model boundaries (embedding / completion / streaming), the **whole memory family** (gate, deletion chokepoint, cascades, housekeeping, per-turn processor, watermark), and the **whole chat-orchestration engine** (waves 1–3: `buildContext`, the `processMessage` spine + `executeTurnChain`, `buildMessageContext`) are done + green; of wave 4 (adjacent subsystems, [`chat-orchestration.md`](./chat-orchestration.md)) **W4.0 + the entire W4.1 tool subsystem are done** — remaining: danger, answer-confirmation, the W4.4 service batch, carina query, seam-closers, provider manifest; then the enclave engine (Unit 4) |
 | **4** | Transports (Tauri/uniffi/axum) + Angular UI | end-to-end | not started |
 
 Each phase leans on the one below being trusted, so failures localize.
@@ -50,6 +50,12 @@ Each phase leans on the one below being trusted, so failures localize.
   the writer-task runtime (Unit 0), the tier-3 harness scaffold (Unit 0.5), and
   the memory gate as first service (Unit 1), with the unit order and the
   Phase-2-carried deferrals.
+- [`chat-orchestration.md`](./chat-orchestration.md) — the Phase-3 Unit-3
+  decomposition and running ledger: v4's chat engine
+  (`lib/services/chat-message/` + `buildContext` + the turn chain) broken into
+  waves, each wave's ported units, the seam inventory, and the wave-4 batch
+  plan (W4.0–W4.7). **The most current status detail lives here and in the
+  CLAUDE.md Status section.**
 - [`document-store-overlay.md`](./document-store-overlay.md) — the design slice for
   the store-backed entities (`projects`, `groups`, `characters`, the `wardrobe`
   vault): where the "document store" really lives (DB rows in the mount-index DB,
@@ -90,23 +96,17 @@ open, single-writer model, canonical dump, the TS oracle + harness diff — is i
 place, so **Phase 2 proper is now the same mechanical loop, repo by repo**:
 port the next repo, add its tier-2 case. See [`phase-2-onramp.md`](./phase-2-onramp.md).
 
-**Phase 2 proper is essentially complete** — every v4 repository now round-trips
-green through the tier-2 harness (see the CLAUDE.md Status section for the full
-per-repo inventory, including the `characters` and `chats` capstones, `memories`,
-both sibling DBs, the `upsert*` back-fill, and the fixture sanitizer). What
-remains is a few Phase-3-coupled deferrals (chats `delete`'s participant-vault
-summary sweep; the General/project wardrobe archetype tiers — which gained a
-**second consumer** in v4 `77650571` (2026-07-02), the wardrobe move/copy
-transfers endpoint, an API route composing already-ported
-wardrobe/characters/projects/groups repo ops over
-`readGeneralWardrobe`/`readProjectWardrobe`/`ensureProjectWardrobeFolder`, so
-closing that tier unblocks both archetype-referencing vault reads *and*
-transfers; the wardrobe public READ trio
-`findByCharacterId`/`findByCharacterIdRaw`/`findByIdForCharacter` — thin
-vault-aware wrappers the routes consume, and v4 `fafd5449` made
-`findByIdForCharacter` the DELETE route's pre-check too;
-`background_jobs.markCompleted`'s dotted-payload merge, a forward v5-only
-capability since v4-on-SQLite throws there). The record below traces how the
+**Phase 2 proper is complete** — every v4 repository round-trips green through
+the tier-2 harness (see the CLAUDE.md Status section for the full per-repo
+inventory, including the `characters` and `chats` capstones, `memories`, both
+sibling DBs, the `upsert*` back-fill, and the fixture sanitizer). The
+Phase-3-coupled deferrals it carried have mostly closed since: the
+General/project wardrobe **archetype tiers**, the wardrobe **public READ trio**,
+and the **transfers** endpoint all landed in wave 4 / W4.0 (2026-07-03). Still
+open: chats `delete`'s participant-vault summary sweep (external subsystem) and
+`background_jobs.markCompleted`'s dotted-payload merge (a forward v5-only
+capability — v4-on-SQLite throws there; the pure merge + unit tests exist,
+wired in when the job runner consumes results). The record below traces how the
 inventory was built, repo-by-repo in parallel batches (agents draft each repo's
 own new files; the shared `db/mod.rs` wiring + verification are serialized
 afterward) — two batches of three, then two batches of five. The first batch of five (plain-base
@@ -181,9 +181,46 @@ Because the apply path is orchestration (row writes delegate to repos), it's a
 tier-1-style trace differential against v4's real applier, driven through an
 injected `ApplyHost` seam.
 
+**Phase 3 is well advanced** (detail: [`phase-3.md`](./phase-3.md),
+[`chat-orchestration.md`](./chat-orchestration.md), and the CLAUDE.md Status
+section — the authoritative per-unit ledger). Done and green: the writer-task
+runtime (`db::runtime` — the single-writer rule as a compiler-enforced
+ownership invariant), the three model-boundary seams (embedding, completion,
+streaming — each with a canned deterministic responder; tier-3 differentials
+pin real calls by oracle-recorded keys), the **whole memory family** (gate,
+deletion chokepoint, cascade deletes, housekeeping, the per-turn extraction
+processor, the watermark auto-housekeeping check), and the **whole
+chat-orchestration engine** — waves 1–3 culminating in `buildContext`, the
+`processMessage` spine + `executeTurnChain` (the first end-to-end tier-3
+differential, driving v4's real send path with only the model boundaries
+mocked), and the `buildMessageContext` wrapper. Of wave 4 (the adjacent
+subsystems): **W4.0 (the wardrobe drift batch) and the entire W4.1 tool
+subsystem (sub-units a–g) are done** — the RNG paths, the pure pseudo-tool
+machinery, all 57 tool definitions byte-verified, tool execution/persistence,
+~50 handlers live behind the dispatching runner, both tool loops, and
+`buildTools` + the spine wiring, so the send path now offers and executes real
+tools end-to-end. W4.1's tracked deferrals: the `generate_image` handler (pure
+leaves banked; blocked on the W4.2 danger route) + the photo trio, and the
+provider wire parse / provider capabilities / plugin registry (→ W4.7).
+Remaining wave-4 batches: W4.2 (danger), W4.3 (answer-confirmation), W4.4
+(agent-mode / courier / compression-cache / regenerate-swipe /
+file-attachment), W4.5 (carina query), W4.6 (buildContext seam-closers), W4.7
+(provider manifest — needs its own decomposition pass). After wave 4: the
+enclave engine (Unit 4), then Phase 4. Periodic **drift checks** re-audit new
+v4 commits against the ported surface (2026-07-03 `8efe1ba9..f69200bb`;
+2026-07-05 `f69200bb..42242a3e` — none stale; recorded in CLAUDE.md).
+
 ## How to resume in a fresh session
 
-Open with: *"Continuing the quilltap-v5 native port. Read CLAUDE.md and
-docs/developer/porting/overview.md. Phase 1 is done; start the Phase-2 on-ramp
-per docs/developer/porting/phase-2-onramp.md."* The harness run commands are in
-[`phase-0.md`](./phase-0.md).
+Open with: *"Continuing the quilltap-v5 native port. Read CLAUDE.md,
+docs/developer/porting/overview.md, and
+docs/developer/porting/chat-orchestration.md. Phases 0–2 are done; Phase 3 is
+mid–wave-4 — continue per the chat-orchestration decomposition (then the
+enclave engine)."* The tier-1/tier-2 harness run commands are in
+[`phase-0.md`](./phase-0.md) and [`phase-2-onramp.md`](./phase-2-onramp.md);
+each tier-3 differential's oracle recipe is in its harness test header
+(`crates/quilltap-harness/tests/*_equivalence.rs`). The execution model that
+built Phases 2–3: plan/scope in the most capable model → self-contained work
+orders (`~/.claude/plans/w4.*.md`) delegated to parallel agents on disjoint
+files → a unification pass (rebase, re-verify all affected differentials
+against freshly regenerated oracles, fast-forward main).

@@ -1,5 +1,14 @@
 # The document-store overlay — port design
 
+> **STATUS: the whole slice is COMPLETE** (Family A — the generic store-backed
+> engine, `groups`/`projects` — and Family B — the character/wardrobe vault,
+> read + write, through the `characters` capstone and its startup-backfill
+> family; the last pieces landed 2026-07-01, and the W4.0 archetype tiers
+> followed 2026-07-03). The build-order items below carry their DONE markers;
+> the per-unit ledger is in the CLAUDE.md Status section. This document remains
+> the design record: the "DB rows, not files" finding, the overlay semantics,
+> and the differential strategy the slice established.
+
 The next big Phase-2/3 slice, and the first that crosses the repo boundary into a
 *subsystem*. It is the thing standing between "the flat repos are ported" and
 porting `projects`, `groups`, `characters`, and the `wardrobe` vault — four
@@ -12,8 +21,8 @@ subsystem that *looks* like it writes files but really writes DB rows. It is
 informed by a full read of the v4 subsystem (`store-backed.repository.ts`,
 `document-store-overlay.ts`, the `project-store`/`group-store` dirs, the
 `vault-overlay` dir, `character-properties-overlay.ts`, `database-store.ts`,
-`doc-mount-file-links.repository.ts`, and the `mount-index` provisioning). No code
-is written yet; this is the plan its implementer follows.
+`doc-mount-file-links.repository.ts`, and the `mount-index` provisioning). At the
+time of writing no code existed; this was the plan its implementers followed.
 
 ## The one decisive fact: the "document store" is DB rows, not files
 

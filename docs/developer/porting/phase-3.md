@@ -243,11 +243,12 @@ Track them to closure as their subsystem lands:
 
 1. **`chats.delete`'s participant-vault summary sweep** — reaches an external
    (vault-summary) subsystem. Close when that subsystem is ported.
-2. **The General / project wardrobe archetype tiers** — `readCharacterVaultWardrobe`
-   / `WardrobeRepository` cover only the **character** tier; the General
-   (`characterId == null`) and project tiers route through the unported
-   General-Wardrobe subsystem. A `null` characterId currently resolves to
-   `NoMount`. Close when that subsystem lands.
+2. **The General / project wardrobe archetype tiers** — **✅ CLOSED (2026-07-03,
+   wave 4 / W4.0)**: `db::archetype_wardrobe` + the seeded read overlay + the
+   `WardrobeLocation` write generalization + the public READ trio + the
+   transfers service, all differential-verified (see the CLAUDE.md W4.0 entry).
+   The one residual is the deprecated `findByCharacterIdRaw` (reads the
+   pre-cutover `wardrobe_items` table; no consumer yet).
 3. **`background_jobs.markCompleted`'s dotted `payload.result` merge** — a forward
    v5-only capability (v4-on-SQLite throws `no such column`). Pure
    `merge_result_into_payload` + unit test exist; wire it in when the job runner
@@ -261,7 +262,7 @@ Track them to closure as their subsystem lands:
    exercised by Unit 1's differential.
 1. **Memory gate** — first real service; validates 0 + 0.5 + tier-2 together.
    **✅ done + green** (`services::memory_gate`).
-2. Memory family follow-ons (`memory-processor`, `memory-service`, `housekeeping`). ← **in progress**
+2. Memory family follow-ons (`memory-processor`, `memory-service`, `housekeeping`). **✅ done** (all sub-units below):
    - Deletion chokepoint (`deleteMemoryWithUnlink` / `deleteMemoriesWithUnlinkBatch`)
      — **✅ done + green** (`db::memories::delete_with_unlink` / `delete_many_with_unlink`,
      tsx real-DB differential). The leaf every cascade path deletes through.
@@ -309,18 +310,26 @@ Track them to closure as their subsystem lands:
      gate wiring after INSERT / INSERT_RELATED. The memory family is now fully
      ported.
    - Next: chat orchestration (Unit 3 below).
-3. Chat orchestration (turn manager + streaming on the `Event` channel). ← **in progress**
-   — decomposed and scoped in
-   [`chat-orchestration.md`](./chat-orchestration.md) (2026-07-02). Waves 1–2
-   are ported and green: the six pure-leaf tier-1 units (template processor +
-   turn predicates, chat timestamps + formatting hint, memory-injector
-   formatters, message selector + core-whisper trigger, carina parser, message
-   formatter + finish reason), the system-prompt builder, the stateful
-   turn-orchestration decision core (`services::turn_orchestrator`, tsx real-DB
-   tier-2), and the streaming model boundary (`model::stream`). Waves 3–4
-   (the model-calling services, `buildContext`, the `processMessage` spine +
-   `executeTurnChain`, and the adjacent subsystems) are scoped in that doc.
-4. Enclave engine (`step()` + `RunState` + driver seam).
+3. Chat orchestration (turn manager + streaming on the `Event` channel). —
+   **the core engine is DONE; wave 4 (the adjacent subsystems) is in
+   progress.** Decomposed and tracked in
+   [`chat-orchestration.md`](./chat-orchestration.md). Waves 1–3 are ported and
+   green: the pure-leaf units, the system-prompt builder, the stateful
+   turn-orchestration core, the streaming model boundary, the model-calling
+   services (compression, context summary, knowledge injector, participant /
+   user-identity resolvers, primary stream + recovery + failover, carina
+   runner), the message finalizer, the `buildContext` capstone, the
+   `processMessage` spine + `executeTurnChain` (the first end-to-end tier-3
+   differential), and the `buildMessageContext` wrapper. Of wave 4: **W4.0
+   (wardrobe drift batch) and the entire W4.1 tool subsystem (a–g) are DONE**
+   — the tool slate, both tool loops, the dispatcher, and ~50 of the ~57 tool
+   handlers are live on the spine (deferrals: the `generate_image` handler
+   [pure leaves banked; needs W4.2] + the photo trio; provider wire
+   parse/capabilities + plugin registry → W4.7). Remaining wave-4 batches per
+   that doc: W4.2 (danger), W4.3 (answer-confirmation), W4.4 (agent-mode /
+   courier / compression-cache / regenerate-swipe / file-attachment), W4.5
+   (carina query), W4.6 (buildContext seam-closers), W4.7 (provider manifest).
+4. Enclave engine (`step()` + `RunState` + driver seam) — after wave 4.
 
 Each unit ships with its differential (tier-2, or tier-3 → tier-2 for
 model-dependent ones), the same accept-nothing-unverified discipline as Phases 1–2.
@@ -328,8 +337,10 @@ model-dependent ones), the same accept-nothing-unverified discipline as Phases 1
 ## How to resume in a fresh session
 
 Open with: *"Continuing the quilltap-v5 native port. Read CLAUDE.md,
-docs/developer/porting/overview.md, and docs/developer/porting/phase-3.md.
-Phase 2 is done; start Phase 3 at Unit 0 (the writer-task runtime) per phase-3.md,
-then Unit 0.5 (tier-3 harness) and Unit 1 (the memory gate)."* The tier-1/tier-2
-harness run commands are in [`phase-0.md`](./phase-0.md) and
-[`phase-2-onramp.md`](./phase-2-onramp.md).
+docs/developer/porting/overview.md, and docs/developer/porting/chat-orchestration.md.
+The memory family, the chat-orchestration engine, and the W4.1 tool subsystem
+are done; continue wave 4 per the chat-orchestration decomposition (then the
+enclave engine, Unit 4)."* The tier-1/tier-2 harness run commands are in
+[`phase-0.md`](./phase-0.md) and [`phase-2-onramp.md`](./phase-2-onramp.md);
+each tier-3 differential's exact oracle recipe is in its harness test header
+(`crates/quilltap-harness/tests/*_equivalence.rs`).

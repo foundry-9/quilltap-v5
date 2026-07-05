@@ -143,6 +143,24 @@ Ordered by dependency; several are mutually independent once wave 2 lands:
 
 ### Wave 4+ — adjacent subsystems (scoped out of Unit 3)
 
+**The batch plan** (the numbering the Status bullets below use; each batch =
+one or more self-contained work orders, executed by parallel agents on
+disjoint files and unified afterward):
+
+| Batch | Scope | Status |
+|-------|-------|--------|
+| **W4.0** | Wardrobe drift batch: archetype tiers, public READ trio, transfers | ✅ done |
+| **W4.1** | The tool subsystem, sub-units a–g: RNG paths (a), pure leaves + all 57 definitions (b), execution/persistence (c), the handler catalog in five batches (d1–d5), the native (e) and text (f) tool loops, `buildTools` + spine wiring (g) | ✅ done — deferrals: the `generate_image` handler (needs W4.2) + the photo trio; provider parse/capabilities + plugin registry (→ W4.7) |
+| **W4.2** | Danger orchestration (`dangerous-content/`): resolver, chat-override, manual-flip, gatekeeper, provider-routing (the real `DangerousContentRouter`) | in progress |
+| **W4.3** | Answer-confirmation service (fills the finalizer's seam; details below) | pending |
+| **W4.4** | a: agent-mode resolver / courier / compression-cache / regenerate-swipe; b: the file/attachment subsystem (`chat-files-v2` + fallback — closes `process_files` + the K seam) | a: in progress; b: pending |
+| **W4.5** | Carina query engine (`runCarinaQuery` — closes the `RunCarinaQuery` seam) | pending |
+| **W4.6** | BuildContext/ContextSummary seam-closers: recap/distill tasks, frozen archive, off-scene scan, the post-office whisper writers (Aurora/Librarian/Prospero posts, the wardrobe announcement drain) | pending |
+| **W4.7** | Provider manifest + stream decoders ([`provider-manifest.md`](./provider-manifest.md)): real wire parsing (closes `ToolCallDetector`), provider capabilities, plugin registry, host API-key acquisition, `logLLMCall` | pending — needs its own decomposition pass |
+
+The markdown-renderer / `qtap-linkify` item below is Phase-4-adjacent and not
+in a numbered batch.
+
 - **Tool subsystem** — `tool-executor.ts`, `tool-execution.service.ts`, the
   native/text tool loops, pseudo-tool instruction builders, RNG tools.
 - **Provider manifest + the five stream decoders** ([`provider-manifest.md`](./provider-manifest.md))
