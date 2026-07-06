@@ -75,7 +75,7 @@ fn resolve_avatar_sha256(db: &Db, id: &str) -> Result<Option<String>, DbError> {
     // Path 1: vault link (mount-index).
     let link_sha = db.read_mount_index(|conn| {
         let repo = DocMountFileLinksRepository::new(conn);
-        Ok(repo.find_by_id_with_content(&id_owned)?.map(|l| l.sha256))
+        Ok(repo.find_link_row_by_id(&id_owned)?.map(|l| l.sha256))
     })?;
     if let Some(sha) = link_sha {
         return Ok(if sha.is_empty() { None } else { Some(sha) });

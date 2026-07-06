@@ -2930,6 +2930,78 @@ sweep's per-chat classification decision-tree (leans on the full
 `chat_settings.findAll` marshaling + connection resolution — the enqueue helpers
 themselves are ported); the maintenance sweep's storage-bytes FsSeam. See the
 memory note for the fork/IPC non-port rationale.
+**Wave 4 (W4.9b): the photo trio is DONE — the last deferred tool handlers**
+(2026-07-06). `keep_image` / `list_images` / `attach_image` (v4
+`lib/tools/handlers/doc-edit/photo-handlers.ts`) are ported and dispatched,
+closing the W4.1d3b photo-group deferral. New `crate::photos` module:
+`keep_image_markdown` (v4 `keep-image-markdown.ts` — `build_kept_image_markdown`
+over the ported `serialize_frontmatter` [= `YAML.stringify` of the tags/linkedBy/
+linkedById/linkedByRole/generationModel bag], the `## Original prompt` /
+`## Revised prompt`-only-if-different / `### Scene at {ts}` / attribution-footer
+sections; `parse_kept_image_frontmatter` + the caption regex `/ saved this image
+at [^\s]+ with this caption: (.+)$/m` reproduced with `JS_WS_CLASS`;
+`build_slug_and_filename` [`toLowerCase` + `[^a-z0-9]+`→`-` collapse + 60-cap];
+`build_attach_description_from_kept_image`; `sha256_of_string`/`sha256_of_buffer`;
+`linkedByRole` back-compat → `'character'`), `photos_paths` (the `photos/` folder
+helpers — `is_photos_relative_path` the POSIX-dirname case-insensitive test), and
+`save_image_to_album` (v4 `save-image-to-album.ts`: resolve the FileEntry via
+`files::find_by_id` with the **mount-blob fallback** [link-id →
+`find_by_id_with_content` → sister by sha256 → `doc_mount_blobs::read_data_by_file_id`
+→ ingest], IMAGE-category validation, the bytes via the injected
+**`FileBytesStore`** seam, the per-mount `photos/`-only **dedup guard** [a sha
+elsewhere does NOT collide → `ALREADY_SAVED`], sceneState parse + malformed
+placeholder, the markdown build, `resolve_unique_relative_path` +
+`ensure_folder_path`, `link_blob_content` with `extractedText` +
+`extractionStatus='converted'`, then the chunk rollup [the chunker is NOT
+re-ported — `chunkCount` pinned / `doc_mount_chunks` excluded, the groups/projects
+precedent — but `plainTextLength` set exactly], + the recorded mount-invalidation
+/ embedding-enqueue seams). The three `tools::photo` handlers
+(`handle_keep_image`/`handle_list_images`/`handle_attach_image`) compose that over
+the ported vault reads (`characters_read::find_by_id` for the overlaid
+name+FK+`systemTransparency`, `find_store_naming_by_id` for the character-store
+mount) + the semantic `document_search` (v4 `searchDocumentChunks` over `photos/`,
+minScore 0.3, literal boost, dedupe-by-fileId best-score) with the SILENT fallback
+to plain listing, the Shared-Vaults peer visibility
+(`collect_peer_character_ids_for_reads` — the chat's `allowCrossCharacterVaultReads`
+gate, transparent peers only), tag/saved_by filters, the 200-char prompt excerpt,
+pagination (limit ≤ 100), and the `attach_image` self-vault-only rule +
+`/api/v1/mount-points/{id}/blobs/{encodeURI(path)}` descriptor
+(width/height joined from sister FileEntries). Wired into `BuiltInToolRunner`
+(removed from the loud fallback) — each dispatches inside a both-connections
+`Db::write` closure (the wardrobe/doc-edit precedent); `list_images`' semantic
+embedding is computed up front (the dispatcher's `ErasedEmbeddingProvider`) and
+fed into the sync closure; `formattedText` byte-exact (v4 routes photos through
+`executeDocEditTool` → `formatDocEditResults`, so keep/list get
+`{ formattedText, ...result }` while `attach_image` passes its descriptor ARRAY
+through unchanged). Added photo-facing reads: `files::{find_by_id, find_by_sha256}`
+(the FileEntry subset — sha256/category/width/height/generation*/mimeType/storageKey),
+`doc_mount_file_links::{find_by_id_with_content, set_chunk_rollups,
+delete_chunks_by_link_id}` + the `LinkWithContent` struct. Verified by
+**`photo_tools_tier3_equivalence`** — a jest-real-DB oracle driving v4's REAL
+`executeDocEditTool` over a two-DB fixture (Aurora + Basil, both transparent, full
+vaults; a chat with `sceneState` + `allowCrossCharacterVaultReads` + a malformed-
+scene chat; three baked photos via v4's REAL `saveImageToAlbum` [Date frozen to
+pin `keptAt`] with seeded chunk embeddings; ingested FileEntries with generation
+metadata), ONE fresh copy per case, `generateEmbeddingForUser` + `readImageBuffer`
++ the two mount-index side-effect modules jest-mocked (mirrored by the Rust
+`CannedEmbeddingProvider` / `CannedBytes` / `NoSideEffects`) — over 14 ops (keep
+fresh [six-table dump: `doc_mount_points`/`_files`/`_blobs`/`_file_links`/`_folders`
++ `files`, shared-id-map remap + `<ts>` + `<cc>`], keep-duplicate → `ALREADY_SAVED`,
+keep-with-malformed-scene, plain listing + tag/saved_by/pagination filters,
+semantic ranking + the cross-vault peer photo surfacing both ways + the silent
+embedding-failure fallback, attach by link-id, attach by file-id → sha, attach
+cross-vault refusal, attach missing) — result JSON + `formatDocEditResults` diffed
+byte-for-byte (keep results positionally UUID-normalized for the minted link id).
+`tool_dispatch_equivalence` gained a `list_images` row (Friday's empty album →
+"No images saved yet.", real handler both sides) and the five `doc_*` handler
+differentials re-verified green (shared `doc_mount_file_links` surface, additive
+reads only). **Tracked deferrals (seams, all standing host boundaries):** the
+`FileBytesStore` production impl (host `fileStorageManager`), the
+mount-invalidation / embedding-enqueue side effects (the EMBEDDING_GENERATE
+enqueue via `queue_service` is a recorded seam this round), the chunker
+(`chunkCount` pinned), and `resolve_unique_relative_path`'s sha1 collision
+fallback (non-deterministic, never hit — a photo filename embeds a millisecond
+ISO timestamp).
 
 **The Phase-3 endgame is fully planned (2026-07-06).** Every remaining unit
 has an agent-ready work order checked in under

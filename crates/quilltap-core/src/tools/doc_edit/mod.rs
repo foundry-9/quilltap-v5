@@ -27,7 +27,6 @@ pub mod blob;
 pub mod document_ui;
 pub mod file_management;
 pub mod markdown;
-pub mod photo;
 pub mod text;
 
 use rusqlite::Connection;
@@ -152,9 +151,18 @@ pub fn execute_doc_edit_tool(
         "doc_read_blob" => blob::handle_read_blob(main, mount, args, ctx),
         "doc_list_blobs" => blob::handle_list_blobs(main, mount, args, ctx),
         "doc_delete_blob" => blob::handle_delete_blob(main, mount, args, ctx),
-        "keep_image" => photo::handle_keep_image(main, mount, args, ctx),
-        "list_images" => photo::handle_list_images(main, mount, args, ctx),
-        "attach_image" => photo::handle_attach_image(main, mount, args, ctx),
+        // The photo trio (`keep_image`/`list_images`/`attach_image`) is
+        // `isDocEditTool` in v4 but needs deps this sync entry point can't carry
+        // (the injected `FileBytesStore` bytes seam + the async embedding provider +
+        // the minted `keptAt` clock), so the dispatcher (`tools::executor`) routes
+        // them to the dedicated `tools::photo` handlers directly — they never reach
+        // this function. Guarded here so a stray direct call fails loudly rather than
+        // hitting the retired stub.
+        "keep_image" | "list_images" | "attach_image" => {
+            return DocEditToolResult::fail(format!(
+                "{tool_name} is dispatched via tools::photo, not execute_doc_edit_tool"
+            ));
+        }
         other => {
             return DocEditToolResult::fail(format!("Unknown doc-edit tool: {other}"));
         }

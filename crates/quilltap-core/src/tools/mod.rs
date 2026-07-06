@@ -12,6 +12,7 @@ pub mod help;
 pub mod help_search;
 pub mod list_email;
 pub mod native_tool_prompt;
+pub mod photo;
 pub mod project_info;
 pub mod pseudo_tool_support;
 pub mod read_conversation;

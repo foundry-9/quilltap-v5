@@ -467,6 +467,34 @@ impl<'c> FilesRepository<'c> {
         self.update(file_id, &patch)
     }
 
+    /// v4 `findById` — the file row hydrated into the [`FileEntry`] subset the
+    /// photo tools consume (metadata only; the bytes live behind the
+    /// [`crate::photos::save_image_to_album::FileBytesStore`] seam). `None` when
+    /// the row is absent.
+    pub fn find_by_id(&self, id: &str) -> Result<Option<FileEntry>, DbError> {
+        let row = self
+            .conn
+            .query_row(FILE_ENTRY_SELECT, params![id], map_file_entry)
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+        Ok(row)
+    }
+
+    /// v4 `findBySha256(sha256)` — every file row with this content hash, hydrated
+    /// into the [`FileEntry`] subset the photo tools consume. Ordered by
+    /// `createdAt` ASC (insertion order) so `sisters[0]` is deterministic.
+    pub fn find_by_sha256(&self, sha256: &str) -> Result<Vec<FileEntry>, DbError> {
+        let sql = format!("{FILE_ENTRY_SELECT_ALL} WHERE sha256 = ?1 ORDER BY createdAt ASC");
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(params![sha256], map_file_entry)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// Read a JSON-array column (`linkedTo` / `tags`) for a file. `None` when the
     /// row is missing (v4's `findById` → null); `Some(vec)` otherwise (`[]` when
     /// the column is empty/unparseable, matching the Zod `.default([])`). The
@@ -505,5 +533,81 @@ impl<'c> FilesRepository<'c> {
                 other => Err(other),
             })?;
         Ok(found.is_some())
+    }
+}
+
+/// The `files`-row subset the photo tools consume (v4 `FileEntry`, restricted to
+/// the columns `saveImageToAlbum` / `attach_image` read). The image bytes live
+/// behind the [`crate::photos::save_image_to_album::FileBytesStore`] seam, keyed
+/// by [`FileEntry::id`] + [`FileEntry::storage_key`].
+#[derive(Debug, Clone)]
+pub struct FileEntry {
+    pub id: String,
+    pub sha256: String,
+    pub original_filename: String,
+    pub mime_type: String,
+    pub width: Option<i64>,
+    pub height: Option<i64>,
+    pub category: String,
+    pub generation_prompt: Option<String>,
+    pub generation_model: Option<String>,
+    pub generation_revised_prompt: Option<String>,
+    pub storage_key: Option<String>,
+}
+
+/// The canonical column list, referenced by the lockstep test that guards the two
+/// hardcoded SELECTs against drift.
+#[cfg(test)]
+const FILE_ENTRY_COLUMNS: &str = "id, sha256, originalFilename, mimeType, width, height, \
+     category, generationPrompt, generationModel, generationRevisedPrompt, storageKey";
+
+const FILE_ENTRY_SELECT: &str = "SELECT id, sha256, originalFilename, mimeType, width, height, \
+     category, generationPrompt, generationModel, generationRevisedPrompt, storageKey \
+     FROM files WHERE id = ?1";
+
+/// The same column list for a filtered/ordered multi-row read (the WHERE + ORDER
+/// BY are appended by the caller). Kept in lockstep with [`FILE_ENTRY_SELECT`].
+const FILE_ENTRY_SELECT_ALL: &str =
+    "SELECT id, sha256, originalFilename, mimeType, width, height, \
+     category, generationPrompt, generationModel, generationRevisedPrompt, storageKey \
+     FROM files";
+
+/// Map a `files` row (the [`FILE_ENTRY_COLUMNS`] projection) into a [`FileEntry`].
+/// `width`/`height` have REAL affinity but store integers; read as `Option<i64>`
+/// (SQLite coerces a Real `123.0` cell on `get::<i64>`).
+fn map_file_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<FileEntry> {
+    Ok(FileEntry {
+        id: row.get(0)?,
+        sha256: row.get(1)?,
+        original_filename: row.get(2)?,
+        mime_type: row.get(3)?,
+        width: real_affinity_opt_i64(row.get_ref(4)?),
+        height: real_affinity_opt_i64(row.get_ref(5)?),
+        category: row.get(6)?,
+        generation_prompt: row.get(7)?,
+        generation_model: row.get(8)?,
+        generation_revised_prompt: row.get(9)?,
+        storage_key: row.get(10)?,
+    })
+}
+
+/// Read a nullable REAL-affinity integer cell (`width`/`height`): Integer/Real →
+/// `Some(i64)`, NULL/other → `None`.
+fn real_affinity_opt_i64(v: rusqlite::types::ValueRef<'_>) -> Option<i64> {
+    match v {
+        rusqlite::types::ValueRef::Integer(i) => Some(i),
+        rusqlite::types::ValueRef::Real(f) => Some(f as i64),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod file_entry_tests {
+    use super::*;
+
+    #[test]
+    fn select_columns_stay_in_lockstep() {
+        assert!(FILE_ENTRY_SELECT.contains(FILE_ENTRY_COLUMNS));
+        assert!(FILE_ENTRY_SELECT_ALL.contains(FILE_ENTRY_COLUMNS));
     }
 }

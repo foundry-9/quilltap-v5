@@ -103,6 +103,56 @@ pub struct LinkRow {
     pub chunk_count: i64,
 }
 
+/// A link row joined with its file-row content fields — v4
+/// `DocMountFileLinkWithContent`, restricted to the fields the photo tools read
+/// (`attach_image` + the `saveImageToAlbum` mount-blob fallback). `sha256` /
+/// `file_size_bytes` come from the joined `doc_mount_files` row.
+#[derive(Clone, Debug)]
+pub struct LinkWithContent {
+    pub id: String,
+    pub file_id: String,
+    pub mount_point_id: String,
+    pub relative_path: String,
+    pub file_name: String,
+    pub original_file_name: Option<String>,
+    pub original_mime_type: Option<String>,
+    pub extracted_text: Option<String>,
+    pub created_at: String,
+    pub sha256: String,
+    pub file_size_bytes: i64,
+}
+
+const LINK_WITH_CONTENT_SELECT: &str = "SELECT \
+       l.id, l.fileId, l.mountPointId, l.relativePath, l.fileName, \
+       l.originalFileName, l.originalMimeType, l.extractedText, l.createdAt, \
+       f.sha256, f.fileSizeBytes \
+     FROM doc_mount_file_links l \
+     JOIN doc_mount_files f ON f.id = l.fileId \
+     WHERE l.id = ?1";
+
+fn map_link_with_content(row: &rusqlite::Row<'_>) -> rusqlite::Result<LinkWithContent> {
+    Ok(LinkWithContent {
+        id: row.get(0)?,
+        file_id: row.get(1)?,
+        mount_point_id: row.get(2)?,
+        relative_path: row.get(3)?,
+        file_name: row.get(4)?,
+        original_file_name: row.get(5)?,
+        original_mime_type: row.get(6)?,
+        extracted_text: row.get(7)?,
+        created_at: row.get(8)?,
+        sha256: row.get(9)?,
+        // `fileSizeBytes` has REAL affinity; tolerate Real/Integer storage.
+        file_size_bytes: {
+            match row.get_ref(10)? {
+                rusqlite::types::ValueRef::Integer(i) => i,
+                rusqlite::types::ValueRef::Real(f) => f as i64,
+                _ => 0,
+            }
+        },
+    })
+}
+
 /// A link update patch — v4 `docMountFileLinks.update(id, Partial<...>)`, narrowed
 /// to the columns the move ops set. Each `Some` field sets that column;
 /// `folder_id` is `Option<Option<String>>` so the caller can distinguish "leave
@@ -1020,7 +1070,10 @@ impl<'c> DocMountFileLinksRepository<'c> {
     /// v4 `findByIdWithContent` (`doc-mount-file-links.repository.ts:387`): one link
     /// by its primary key, joined with content fields (`f.sha256` etc.). `None` when
     /// absent. Drives the character-avatar sha256 resolution (vault-link path).
-    pub fn find_by_id_with_content(&self, link_id: &str) -> Result<Option<LinkRow>, DbError> {
+    /// (Renamed from `find_by_id_with_content` in the W4.8+W4.9b integration so it
+    /// coexists with the photo-tools `LinkWithContent` port of the same v4 method;
+    /// this one returns the full `LinkRow` shape the stale-chat sweep consumes.)
+    pub fn find_link_row_by_id(&self, link_id: &str) -> Result<Option<LinkRow>, DbError> {
         self.conn
             .query_row(
                 &Self::join_query("WHERE l.id = ?1"),
@@ -1032,6 +1085,54 @@ impl<'c> DocMountFileLinksRepository<'c> {
                 rusqlite::Error::QueryReturnedNoRows => Ok(None),
                 other => Err(other.into()),
             })
+    }
+
+    /// v4 `findByIdWithContent(id)` (`doc-mount-file-links.repository.ts`): a single
+    /// link by its id, with the file-row content fields (`sha256` / `fileSizeBytes`)
+    /// joined in — the shape the photo tools (`attach_image` / the
+    /// `saveImageToAlbum` mount-blob fallback) consume. `None` when absent.
+    pub fn find_by_id_with_content(&self, id: &str) -> Result<Option<LinkWithContent>, DbError> {
+        self.conn
+            .query_row(LINK_WITH_CONTENT_SELECT, params![id], map_link_with_content)
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
+    }
+
+    /// Set the chunk rollups on a link (v4 `chunkAndInsertExtractedText`'s
+    /// `links.update({ chunkCount, plainTextLength })` beat). `plainTextLength` is
+    /// deterministic (UTF-16 length of the stored `extractedText`); `chunkCount` is
+    /// v4's `reindexSingleFile`-family value, pinned in the differential (see the
+    /// groups/projects `<cc>` precedent), so the Rust port — which does not carry
+    /// the chunker — writes `0` here. Bumps `updatedAt` like v4's `update`.
+    pub fn set_chunk_rollups(
+        &self,
+        link_id: &str,
+        chunk_count: i64,
+        plain_text_length: i64,
+        updated_at: &str,
+    ) -> Result<bool, DbError> {
+        let affected = self.conn.execute(
+            "UPDATE doc_mount_file_links \
+               SET chunkCount = ?1, plainTextLength = ?2, updatedAt = ?3 WHERE id = ?4",
+            params![chunk_count, plain_text_length, updated_at, link_id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    /// Delete every `doc_mount_chunks` row for a link (v4
+    /// `docMountChunks.deleteByLinkId`). Used by the chunk-rollup pass to clear
+    /// prior chunks before re-chunking; a no-op when none exist. The Rust port does
+    /// not carry the chunker, so a keep writes no new chunk rows — this only clears
+    /// any pre-existing ones for a rewrite-in-place.
+    pub fn delete_chunks_by_link_id(&self, link_id: &str) -> Result<usize, DbError> {
+        let affected = self.conn.execute(
+            "DELETE FROM doc_mount_chunks WHERE linkId = ?1",
+            params![link_id],
+        )?;
+        Ok(affected)
     }
 
     /// Apply a link update patch to `link_id`. Follows the dynamic-SET pattern of

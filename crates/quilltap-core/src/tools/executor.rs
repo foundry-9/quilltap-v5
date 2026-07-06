@@ -56,15 +56,20 @@ use serde_json::{json, Map, Value};
 
 use super::doc_edit::{execute_doc_edit_tool, format_doc_edit_results, DocEditToolContext};
 use super::{
-    annotations, doc_edit, help, help_search, list_email, project_info, read_conversation,
+    annotations, doc_edit, help, help_search, list_email, photo, project_info, read_conversation,
     request_full_context, rng, run_sql, search, self_inventory, send_mail, state, terminal,
     wardrobe_archive, wardrobe_create, wardrobe_list, wardrobe_read, wardrobe_take_off,
     wardrobe_update, wardrobe_wear, web_search, whisper,
 };
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read};
-use crate::model::embedding::ErasedEmbeddingProvider;
+use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider, ErasedEmbeddingProvider};
+use crate::photos::save_image_to_album::{
+    FileBytesStore, NoSideEffects, NotConfiguredBytes, SaveImageSideEffects,
+};
 use crate::services::tool_execution::{ToolCall, ToolExecutionContext, ToolResult, ToolRunner};
+use crate::tools::doc_edit::shared::collect_peer_character_ids_for_reads;
+use crate::tools::photo::PhotoToolContext;
 use crate::tools::self_inventory::SelfInventoryEnv;
 
 // ===========================================================================
@@ -202,18 +207,26 @@ pub const PORTED_TOOLS: &[&str] = &[
     // (default: NotConfigured — faithful to a no-search-plugin instance; a real
     // provider is host-wired). The handler + differential are complete.
     "search_web",
+    // W4.9b: the photo trio. `keep_image` composes the ported
+    // `save_image_to_album` behind the injected `FileBytesStore` bytes seam;
+    // `list_images` the vault `document_search`; `attach_image` the self-vault link
+    // read. Each dispatches inside a both-connections `Db::write` closure. The
+    // embedding-enqueue after a keep is a **recorded seam** (mount invalidation +
+    // embedding scheduler host-side).
+    "keep_image",
+    "list_images",
+    "attach_image",
 ];
 
-/// The doc-edit tools NOT yet ported (the photo trio) — a tracked scoped deferral
-/// (they pull in the unported images-v2 store + `keep-image-markdown` sidecar
-/// builder + `chunkAndInsertExtractedText`). They stay out of [`PORTED_TOOLS`] so
-/// the [`LoudFallbackRunner`] reports them "recognized but not yet available".
-const DEFERRED_PHOTO_TOOLS: &[&str] = &["keep_image", "list_images", "attach_image"];
+/// The three photo tools live in `DOC_EDIT_TOOL_NAMES` (v4 groups them under the
+/// doc-edit family) but dispatch to the [`photo`] handlers, NOT `run_doc_edit`.
+const PHOTO_TOOLS: &[&str] = &["keep_image", "list_images", "attach_image"];
 
-/// Whether `name` is a doc-edit tool this runner dispatches (every `doc_*` name
-/// except the deferred photo trio).
+/// Whether `name` is a doc-edit tool this runner dispatches through the shared
+/// `execute_doc_edit_tool` (every `doc_*` name except the photo trio, which has its
+/// own handler).
 fn is_ported_doc_edit_tool(name: &str) -> bool {
-    doc_edit::DOC_EDIT_TOOL_NAMES.contains(&name) && !DEFERRED_PHOTO_TOOLS.contains(&name)
+    doc_edit::DOC_EDIT_TOOL_NAMES.contains(&name) && !PHOTO_TOOLS.contains(&name)
 }
 
 // ===========================================================================
@@ -304,6 +317,17 @@ pub struct BuiltInToolRunner<F: ToolRunner = LoudFallbackRunner> {
     /// [`web_search::NotConfiguredWebSearch`] (a no-search-plugin instance returns
     /// v4's "not configured" error); production wires a real provider host-side.
     web_search_provider: Arc<dyn web_search::WebSearchProvider>,
+    /// The image-bytes boundary the `keep_image` tool uses (v4's
+    /// `fileStorageManager.downloadFile` + `ingestImageBuffer`). Defaults to
+    /// [`NotConfiguredBytes`] (no host byte source → `keep_image` reports
+    /// `EMPTY_BYTES`); production wires a real store host-side, the differential a
+    /// canned in-memory one.
+    file_bytes: Arc<dyn FileBytesStore>,
+    /// The recorded save side-effects (mount invalidation + embedding enqueue).
+    /// Defaults to [`NoSideEffects`]; production wires the mount-chunk cache + the
+    /// embedding scheduler host-side (the embedding-enqueue via `queue_service`
+    /// EMBEDDING_GENERATE is a **tracked deferral** — a recorded seam this round).
+    photo_side_effects: Arc<dyn SaveImageSideEffects + Send + Sync>,
     fallback: F,
 }
 
@@ -317,6 +341,8 @@ impl BuiltInToolRunner<LoudFallbackRunner> {
             scrollback: Arc::new(EmptyScrollback),
             embedding_provider: ErasedEmbeddingProvider::none(),
             web_search_provider: Arc::new(web_search::NotConfiguredWebSearch),
+            file_bytes: Arc::new(NotConfiguredBytes),
+            photo_side_effects: Arc::new(NoSideEffects),
             fallback: LoudFallbackRunner,
         }
     }
@@ -332,8 +358,27 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             scrollback: self.scrollback,
             embedding_provider: self.embedding_provider,
             web_search_provider: self.web_search_provider,
+            file_bytes: self.file_bytes,
+            photo_side_effects: self.photo_side_effects,
             fallback,
         }
+    }
+
+    /// Inject the image-bytes store the `keep_image` tool uses (production wires a
+    /// real host store; the core default reports missing bytes).
+    pub fn with_file_bytes(mut self, store: Arc<dyn FileBytesStore>) -> Self {
+        self.file_bytes = store;
+        self
+    }
+
+    /// Inject the recorded photo save side-effects (mount invalidation + embedding
+    /// enqueue). Production wires the host cache/scheduler.
+    pub fn with_photo_side_effects(
+        mut self,
+        side_effects: Arc<dyn SaveImageSideEffects + Send + Sync>,
+    ) -> Self {
+        self.photo_side_effects = side_effects;
+        self
     }
 
     /// Inject the embedding provider the `search` / `help_search` tools use
@@ -400,6 +445,10 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             "send_mail" => self.run_send_mail(tc, ctx).await,
             "list_email" => self.run_list_email(tc, ctx).await,
             "search_web" => self.run_web_search(tc, ctx),
+            // W4.9b: photo trio.
+            "keep_image" => self.run_keep_image(tc, ctx).await,
+            "list_images" => self.run_list_images(tc, ctx).await,
+            "attach_image" => self.run_attach_image(tc, ctx).await,
             // W4.1d3b: every ported doc-edit tool routes through one handler.
             n if is_ported_doc_edit_tool(n) => self.run_doc_edit(tc, ctx).await,
             // `handles` guards the set, so this is unreachable.
@@ -908,6 +957,146 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         }
     }
 
+    // ── W4.9b: photo trio (v4 groups these under isDocEditTool → executeDocEditTool)
+    // Each dispatches inside a both-connections `Db::write` closure (the wardrobe /
+    // doc-edit precedent) so the handler holds MAIN (`characters`/`chats`/`files`) +
+    // mount-index (the store). v4's dispatch row for keep_image/list_images is
+    // `{ formattedText: formatDocEditResults(...), ...result.result }`; the
+    // photo handlers ALWAYS set `formattedText` on success, so
+    // `formatDocEditResults` returns it verbatim. attach_image passes its descriptor
+    // ARRAY through unchanged (NOT spread).
+
+    // -- keep_image (photo-handlers.ts:handleKeepImage) ---------------------
+    async fn run_keep_image(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        let args = tc.arguments.clone();
+        let photo_ctx = self.photo_context(ctx);
+        // v4 mints keptAt = new Date().toISOString() inside saveImageToAlbum; here it
+        // is the injected clock so the handler stays clock-testable.
+        let kept_at = crate::clock::now_iso();
+        let bytes = self.file_bytes.clone();
+        let side_effects = self.photo_side_effects.clone();
+        self.photo_write(move |main, mount| {
+            let out = photo::handle_keep_image(
+                main,
+                mount,
+                &args,
+                &photo_ctx,
+                &*bytes,
+                &*side_effects,
+                &kept_at,
+            );
+            photo_result_row("keep_image", out, false)
+        })
+        .await
+    }
+
+    // -- list_images (photo-handlers.ts:handleListImages) -------------------
+    async fn run_list_images(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        // The semantic branch needs an embedding (async). Compute it up front (the
+        // rest of the handler is a both-connection DB read); a failure feeds the
+        // handler's SILENT fall-through to plain listing.
+        let query = tc
+            .arguments
+            .get("query")
+            .and_then(Value::as_str)
+            .map(|q| crate::jsstr::js_trim(q).to_string())
+            .unwrap_or_default();
+        let embedding: Option<Result<Vec<f32>, String>> = if query.is_empty() {
+            None
+        } else {
+            Some(
+                self.embedding_provider
+                    .generate_embedding_for_user(
+                        &query,
+                        &ctx.user_id,
+                        ctx.embedding_profile_id.as_deref(),
+                        EmbeddingPriority::Interactive,
+                    )
+                    .await
+                    .map(|r| r.embedding)
+                    .map_err(|e| e.message),
+            )
+        };
+        let args = tc.arguments.clone();
+        let photo_ctx = self.photo_context(ctx);
+        let doc_ctx = self.doc_context(ctx);
+        self.photo_write(move |main, mount| {
+            // v4 collectPeerCharacterIdsForReads (the Shared-Vaults gate lives on the
+            // chat's `allowCrossCharacterVaultReads`).
+            let peers = collect_peer_character_ids_for_reads(main, &doc_ctx);
+            // Adapt the pre-fetched embedding into the handler's sync embed closure.
+            let embed = move |_q: &str| -> Result<Vec<f32>, String> {
+                match &embedding {
+                    Some(Ok(v)) => Ok(v.clone()),
+                    Some(Err(e)) => Err(e.clone()),
+                    // Empty query never reaches the semantic branch.
+                    None => Err("no embedding (empty query)".to_string()),
+                }
+            };
+            let out = photo::handle_list_images(main, mount, &args, &photo_ctx, &peers, &embed);
+            photo_result_row("list_images", out, false)
+        })
+        .await
+    }
+
+    // -- attach_image (photo-handlers.ts:handleAttachImage) -----------------
+    async fn run_attach_image(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        let args = tc.arguments.clone();
+        let photo_ctx = self.photo_context(ctx);
+        self.photo_write(move |main, mount| {
+            let out = photo::handle_attach_image(main, mount, &args, &photo_ctx);
+            // v4: attach_image passes its descriptor ARRAY through unchanged.
+            photo_result_row("attach_image", out, true)
+        })
+        .await
+    }
+
+    /// Snapshot the [`PhotoToolContext`] the handlers need from the exec context.
+    fn photo_context(&self, ctx: &ToolExecutionContext) -> PhotoToolContext {
+        PhotoToolContext {
+            chat_id: ctx.chat_id.clone(),
+            user_id: ctx.user_id.clone(),
+            project_id: ctx.project_id.clone(),
+            character_id: ctx.character_id.clone(),
+            embedding_profile_id: ctx.embedding_profile_id.clone(),
+        }
+    }
+
+    /// The [`DocEditToolContext`] the peer-read gate needs (operator_override is
+    /// always false on the tool-call path).
+    fn doc_context(&self, ctx: &ToolExecutionContext) -> DocEditToolContext {
+        DocEditToolContext {
+            chat_id: ctx.chat_id.clone(),
+            user_id: ctx.user_id.clone(),
+            project_id: ctx.project_id.clone(),
+            character_id: ctx.character_id.clone(),
+            operator_override: false,
+        }
+    }
+
+    /// Run a photo handler inside a single write closure with both writer
+    /// connections (the wardrobe precedent). A main-only instance (no mount-index)
+    /// is a clear failure — photos live in the document store.
+    async fn photo_write<G>(&self, build: G) -> ToolResult
+    where
+        G: FnOnce(&rusqlite::Connection, &rusqlite::Connection) -> ToolResult + Send + 'static,
+    {
+        let db = self.db.clone();
+        db.write(move |writers| {
+            let Some(mount_w) = writers.mount_index() else {
+                return Ok(fail(
+                    "photo",
+                    "photo tools require the mount-index database",
+                ));
+            };
+            let mount = mount_w.connection();
+            let main = writers.main().connection();
+            Ok(build(main, mount))
+        })
+        .await
+        .unwrap_or_else(|e| fail("photo", e.to_string()))
+    }
+
     // -- send_mail (Post Office; tool-executor.ts:1114) ----------------------
     async fn run_send_mail(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
         let args = tc.arguments.clone();
@@ -1296,6 +1485,34 @@ fn fail(tool_name: &str, error: impl Into<String>) -> ToolResult {
         message: None,
         metadata: None,
     }
+}
+
+/// Build the dispatch row for a photo-tool result (v4 `executeDocEditTool` row).
+/// For `keep_image` / `list_images` (`pass_through == false`) the success row is
+/// `{ formattedText, ...result.result }` (the handler always sets `formattedText`, so
+/// `formatDocEditResults` returns it verbatim). For `attach_image`
+/// (`pass_through == true`) the success `result` is the handler's `result` VALUE
+/// (the descriptor array) passed through unchanged.
+fn photo_result_row(name: &str, out: photo::PhotoToolResult, pass_through: bool) -> ToolResult {
+    if !out.success {
+        return fail(name, out.error.unwrap_or_default());
+    }
+    if pass_through {
+        // attach_image: result is the descriptor array, unchanged (or null).
+        return ok(name, out.result.unwrap_or(Value::Null));
+    }
+    // keep_image / list_images: { formattedText, ...result.result }.
+    let mut m = Map::new();
+    m.insert(
+        "formattedText".into(),
+        json!(out.formatted_text.unwrap_or_default()),
+    );
+    if let Some(Value::Object(obj)) = out.result {
+        for (k, v) in obj {
+            m.insert(k, v);
+        }
+    }
+    ok(name, Value::Object(m))
 }
 
 /// v4's `{ formattedText, ...result }` — a `result` object with `formattedText`

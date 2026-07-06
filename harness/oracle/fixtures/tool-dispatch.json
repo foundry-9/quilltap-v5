@@ -4,7 +4,15 @@
   "userId": "11111111-1111-4111-8111-111111111111",
   "seedTimestamp": "2026-01-01T00:00:00.000Z",
   "characters": [
-    { "id": "22222222-2222-4222-8222-222222222222", "name": "Friday", "controlledBy": "llm", "aliases": ["Fri"], "systemTransparency": true }
+    {
+      "id": "22222222-2222-4222-8222-222222222222",
+      "name": "Friday",
+      "controlledBy": "llm",
+      "aliases": [
+        "Fri"
+      ],
+      "systemTransparency": true
+    }
   ],
   "docSeed": {
     "characterId": "22222222-2222-4222-8222-222222222222",
@@ -16,14 +24,22 @@
       "id": "33333333-3333-4333-8333-333333333333",
       "renderedMarkdown": "## Interchange 1\n### Message 0\nHello there.\n### Message 1\nGeneral Kenobi.\n### Message 2\nYou are a bold one.\n",
       "participants": [
-        { "id": "55555555-5555-4555-8555-555555555555", "character": "22222222-2222-4222-8222-222222222222", "status": "active" }
+        {
+          "id": "55555555-5555-4555-8555-555555555555",
+          "character": "22222222-2222-4222-8222-222222222222",
+          "status": "active"
+        }
       ]
     },
     {
       "id": "44444444-4444-4444-8444-444444444444",
       "renderedMarkdown": null,
       "participants": [
-        { "id": "66666666-6666-4666-8666-666666666666", "character": "22222222-2222-4222-8222-222222222222", "status": "active" }
+        {
+          "id": "66666666-6666-4666-8666-666666666666",
+          "character": "22222222-2222-4222-8222-222222222222",
+          "status": "active"
+        }
       ]
     }
   ],
@@ -54,7 +70,10 @@
       "chatId": "33333333-3333-4333-8333-333333333333",
       "characterId": "22222222-2222-4222-8222-222222222222",
       "callingParticipantId": "55555555-5555-4555-8555-555555555555",
-      "args": { "message_index": 0, "content": "a fresh dispatcher-written note" }
+      "args": {
+        "message_index": 0,
+        "content": "a fresh dispatcher-written note"
+      }
     },
     {
       "$comment": "write — upsert on message 1 (update; the seed annotation exists for Friday).",
@@ -62,7 +81,10 @@
       "chatId": "33333333-3333-4333-8333-333333333333",
       "characterId": "22222222-2222-4222-8222-222222222222",
       "callingParticipantId": "55555555-5555-4555-8555-555555555555",
-      "args": { "message_index": 1, "content": "an updated note replacing the seed" }
+      "args": {
+        "message_index": 1,
+        "content": "an updated note replacing the seed"
+      }
     },
     {
       "$comment": "pure — help_navigate success.",
@@ -70,7 +92,9 @@
       "chatId": "33333333-3333-4333-8333-333333333333",
       "characterId": "22222222-2222-4222-8222-222222222222",
       "callingParticipantId": "55555555-5555-4555-8555-555555555555",
-      "args": { "url": "/settings/connections" }
+      "args": {
+        "url": "/settings/connections"
+      }
     },
     {
       "$comment": "handler failure — read_conversation on a chat with no rendered markdown → 'Conversation has not been rendered yet.'",
@@ -86,7 +110,9 @@
       "chatId": "33333333-3333-4333-8333-333333333333",
       "characterId": "22222222-2222-4222-8222-222222222222",
       "callingParticipantId": "55555555-5555-4555-8555-555555555555",
-      "args": { "url": "https://evil.example.com" }
+      "args": {
+        "url": "https://evil.example.com"
+      }
     },
     {
       "$comment": "wardrobe_list — W4.1d batch 2: the ported wardrobe dispatch row; empty vault → no items (real handler both sides, no minted values).",
@@ -102,7 +128,11 @@
       "chatId": "33333333-3333-4333-8333-333333333333",
       "characterId": "22222222-2222-4222-8222-222222222222",
       "callingParticipantId": "55555555-5555-4555-8555-555555555555",
-      "args": { "scope": "document_store", "mount_point": "self", "path": "Notes/dispatch.md" }
+      "args": {
+        "scope": "document_store",
+        "mount_point": "self",
+        "path": "Notes/dispatch.md"
+      }
     },
     {
       "$comment": "doc_read_frontmatter — a second doc-edit dispatch row; reads the seeded file's YAML frontmatter.",
@@ -110,7 +140,18 @@
       "chatId": "33333333-3333-4333-8333-333333333333",
       "characterId": "22222222-2222-4222-8222-222222222222",
       "callingParticipantId": "55555555-5555-4555-8555-555555555555",
-      "args": { "mount_point": "self", "path": "Notes/dispatch.md" }
+      "args": {
+        "mount_point": "self",
+        "path": "Notes/dispatch.md"
+      }
+    },
+    {
+      "$comment": "list_images (W4.9b) — a photo-trio dispatch row on Friday's own vault; the album is empty, so the handler returns the empty listing. Proves the photo dispatch wiring end-to-end (no baked photos / no embedding needed for an empty-query listing).",
+      "tool": "list_images",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "characterId": "22222222-2222-4222-8222-222222222222",
+      "callingParticipantId": "55555555-5555-4555-8555-555555555555",
+      "args": {}
     }
   ]
 }

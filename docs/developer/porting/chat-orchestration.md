@@ -154,7 +154,7 @@ earlier sketch.
 | Batch | Scope | Status / work order |
 |-------|-------|--------|
 | **W4.0** | Wardrobe drift batch: archetype tiers, public READ trio, transfers | ✅ done |
-| **W4.1** | The tool subsystem, sub-units a–g: RNG paths (a), pure leaves + all 57 definitions (b), execution/persistence (c), the handler catalog in five batches (d1–d5), the native (e) and text (f) tool loops, `buildTools` + spine wiring (g) | ✅ done — deferrals: the `generate_image` handler (→ W4.9a) + the photo trio (→ W4.9b); provider parse/capabilities + plugin registry (→ W4.7) |
+| **W4.1** | The tool subsystem, sub-units a–g: RNG paths (a), pure leaves + all 57 definitions (b), execution/persistence (c), the handler catalog in five batches (d1–d5), the native (e) and text (f) tool loops, `buildTools` + spine wiring (g) | ✅ done — deferrals: the `generate_image` handler (→ W4.9a); the photo trio (→ W4.9b) **now DONE**; provider parse/capabilities + plugin registry (→ W4.7) |
 | **W4.2** | Danger orchestration (`dangerous-content/`): resolver, chat-override, manual-flip, gatekeeper (+ the classification job handler), provider-routing (the real `DangerousContentRouter` implementor) | ✅ done — the spine unification is **W4.2u** |
 | **W4.2u** | Wire the real danger router/resolver at the orchestrator composition point + the two deferred corpus cases (OFF short-circuit, live uncensored reroute) | ✅ done (2026-07-06) — [`w4.2u-danger-spine-unification.md`](./work-orders/w4.2u-danger-spine-unification.md) |
 | **W4.3** | Answer-confirmation service (fills the finalizer's `AnswerConfirmationRunner` seam: gate cascade, Commonplace-whisper reference gathering, the consistency check + re-affirmation cheap-LLM calls) | [`w4.3-answer-confirmation.md`](./work-orders/w4.3-answer-confirmation.md) |
@@ -165,7 +165,7 @@ earlier sketch.
 | **W4.6b** | The post-office / personified writers: Host, Prospero, Librarian, Concierge, Suparṇā, Aurora (+ the wardrobe announcement drain), Commonplace (+ relevant-conversations refresh), Lantern notification; the vault summary mirror + the `chats.delete` sweep (the last Phase-2 deferral); cost events | [`w4.6b-post-office-writers.md`](./work-orders/w4.6b-post-office-writers.md) |
 | **W4.7** | The provider layer, six units a–f — decomposed 2026-07-06 in [`provider-manifest.md`](./provider-manifest.md) ("The porting decomposition"): manifest+registry (a), **the five stream decoders (b ✅ 2026-07-06** — `model::decoders`, `stream_decoders_equivalence`), request builders/transforms/tool-wire (c — closes `ToolCallDetector` + the text-markers strategy + `formatTools`), transport/errors/`api_keys` (d — closes every `ApiKeyResolver` seam), pricing/capability/`logLLMCall`/embeddings (e), image dialects + moderation + web search (f) | [`w4.7a-manifest-registry.md`](./work-orders/w4.7a-manifest-registry.md), [`w4.7b-stream-decoders.md`](./work-orders/w4.7b-stream-decoders.md); c–f specced in the decomposition |
 | **W4.8** ✅ **DONE** (2026-07-06) | The background job runner: claim loop + dispatch registry + completion/backoff + recovery, the enqueue-helper remainder, scheduler decision leaves (host-driven cadence), the stale-chat maintenance sweep + `getLastPlayedMessageAt`; closed `ensureProcessorRunning` + the `markCompleted` result-merge deferral. The fork/IPC/buffered-proxy architecture deliberately did NOT port — in-process handlers over the single-writer `Db`. `services::job_runner` + `job_scheduler` + `maintenance`; verified by `photos_relative_path_equivalence` (tier-1) + `maintenance_sweep_tier2_equivalence` (tsx real-DB) + 11 runner self-tests; `memory_watermark_tier3`/`context_summary_service_tier3` regenerated green | [`w4.8-job-runner.md`](./work-orders/w4.8-job-runner.md) |
-| **W4.9** | a: the `generate_image` subsystem (the `model::image` seam, the three scene cheap-LLM tasks, appearance resolution + Concierge gates, `saveGeneratedImage`, the avatar trigger); b: the photo trio (`keep_image`/`list_images`/`attach_image` + save-to-album + kept-image markdown); c (follow-up): the avatar + story-background job handlers | [`w4.9a-image-generation.md`](./work-orders/w4.9a-image-generation.md), [`w4.9b-photo-trio.md`](./work-orders/w4.9b-photo-trio.md) |
+| **W4.9** | a: the `generate_image` subsystem (the `model::image` seam, the three scene cheap-LLM tasks, appearance resolution + Concierge gates, `saveGeneratedImage`, the avatar trigger); **b: ✅ DONE (2026-07-06)** — the photo trio (`keep_image`/`list_images`/`attach_image` + save-to-album + kept-image markdown, `photo_tools_tier3_equivalence`); c (follow-up): the avatar + story-background job handlers | [`w4.9a-image-generation.md`](./work-orders/w4.9a-image-generation.md), [`w4.9b-photo-trio.md`](./work-orders/w4.9b-photo-trio.md) |
 | **Unit 4** | The enclave engine — `step()`/`RunState`, budget/milestones, cron, lifecycle, schedule tick ([`enclave-engine.md`](./enclave-engine.md)) | [`u4-enclave-engine.md`](./work-orders/u4-enclave-engine.md) — after W4.8 + W4.6b |
 
 **Execution rounds (parallelism guidance).** Two contended resources: the
@@ -563,10 +563,13 @@ in a numbered batch.
   The Librarian-announcement + reindex layers are documented no-op seams; the fs/
   obsidian/general mount branches the FsSeam. Verified by five jest-real-DB
   differentials (`doc_text` 26 / `doc_fm` 20 / `doc_ui` 9 / `doc_blob` 11 /
-  `doc_enum` 14 ops) + the extended `tool_dispatch_equivalence`. **The photo group
-  (`keep_image`/`list_images`/`attach_image`) is a tracked scoped deferral** —
-  unported images-v2 + `keep-image-markdown` + `chunkAndInsertExtractedText`,
-  beyond the named byte-source seam → the loud fallback.
+  `doc_enum` 14 ops) + the extended `tool_dispatch_equivalence`. ~~**The photo
+  group (`keep_image`/`list_images`/`attach_image`) is a tracked scoped
+  deferral**~~ — **now DONE in W4.9b (2026-07-06)**: ported over the new
+  `crate::photos` module (`keep-image-markdown` + `save-image-to-album` behind an
+  injected `FileBytesStore` bytes seam; the chunker stays unported with `chunkCount`
+  pinned), dispatched, and verified by `photo_tools_tier3_equivalence` +1
+  `tool_dispatch` `list_images` row.
 
 - **W4.1e: the native tool loop + the finalizer response-RNG — ported and green**
   (2026-07-04). `services::native_tool_loop` ports v4's `runNativeToolLoop`

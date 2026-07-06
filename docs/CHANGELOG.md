@@ -143,6 +143,27 @@ reset, drain-on-shutdown, and one end-to-end memory-housekeeping dispatch
 enqueue→claim→dispatch→markCompleted-merge); the `memory_watermark_tier3` and
 `context_summary_service_tier3` differentials regenerated green with the wake
 hook (the DB effect is unchanged).
+Phase 3 — wave 4 (W4.9b): the photo trio (`keep_image` / `list_images` /
+`attach_image`), the last deferred tool handlers, is ported and dispatched.
+New `photos` module: `keep_image_markdown` (the kept-image Markdown builder +
+parser — YAML frontmatter, prompt/revised-prompt/scene/attribution sections,
+the caption regex, slug/filename, `linkedByRole` back-compat), `photos_paths`
+(the `photos/` folder helpers), and `save_image_to_album` (resolve the FileEntry
+with the mount-blob fallback, dedup by sha within the mount's `photos/` folder,
+build the markdown, hard-link the binary, roll up the link's chunk counts). The
+three `tools::photo` handlers compose that over the ported vault reads/search,
+wired into `BuiltInToolRunner` (removed from the loud fallback) each inside a
+both-connections `Db::write` closure. Image bytes stay behind an injected
+`FileBytesStore` seam; the mount invalidation + embedding enqueue are recorded
+no-op seams; the chunker is not re-ported (chunkCount pinned / doc_mount_chunks
+excluded, the groups/projects precedent). Added photo-facing reads
+(`files::find_by_id`/`find_by_sha256`, `doc_mount_file_links::find_by_id_with_content`
++ the chunk-rollup setters). Verified by `photo_tools_tier3_equivalence` (a
+jest-real-DB oracle driving v4's REAL handlers over a two-DB fixture with baked
+photos — keep fresh/duplicate/malformed-scene with six-table dumps, plain +
+semantic + peer-vault + silent-fallback listing, attach by link-id/file-id +
+cross-vault + missing) and one new `list_images` row in `tool_dispatch`; the
+five `doc_*` handler differentials re-verified green.
 
 Phase 3 — wave 4 (W4.d1): drift re-port of the unified diff. v4 commit
 `8617ce7a` replaced the greedy look-ahead line diff with a real, minimal,
