@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "id": "OPENAI",
+  "displayName": "OpenAI",
+  "description": "OpenAI GPT models including GPT-4o and DALL-E image generation",
+  "abbreviation": "OAI",
+  "colors": {
+    "bg": "bg-green-100",
+    "text": "text-green-800",
+    "icon": "text-green-600"
+  },
+  "legacyNames": [],
+  "auth": {
+    "kind": "bearer"
+  },
+  "baseUrl": "https://api.openai.com/v1",
+  "endpoints": {
+    "chat": "/responses",
+    "models": "/models"
+  },
+  "streamDecoder": "responses-api-sse",
+  "requestTransform": "openai",
+  "toolFormat": "openai",
+  "capabilities": {
+    "chat": true,
+    "imageGeneration": true,
+    "embeddings": true,
+    "webSearch": true,
+    "toolUse": true
+  },
+  "configRequirements": {
+    "requiresApiKey": true,
+    "requiresBaseUrl": false,
+    "apiKeyLabel": "OpenAI API Key",
+    "baseUrlLabel": null,
+    "baseUrlPlaceholder": null,
+    "baseUrlDefault": null
+  },
+  "messageFormat": {
+    "supportsNameField": true,
+    "supportedRoles": [
+      "user",
+      "assistant"
+    ],
+    "maxNameLength": 64
+  },
+  "cheapModels": {
+    "defaultModel": "gpt-4o-mini",
+    "recommendedModels": [
+      "gpt-4o-mini",
+      "gpt-3.5-turbo"
+    ]
+  },
+  "attachment": {
+    "supportsAttachments": true,
+    "supportedMimeTypes": [
+      "image/jpeg",
+      "image/png",
+      "image/gif",
+      "image/webp"
+    ],
+    "description": "Images only (JPEG, PNG, GIF, WebP)",
+    "notes": "Images are supported in vision-capable models like GPT-4V and GPT-4o",
+    "maxFileSize": null,
+    "maxBase64Size": 20971520,
+    "maxFiles": null
+  },
+  "charsPerToken": 3.5,
+  "defaultContextWindow": 128000,
+  "fallbackModels": [
+    "gpt-4o",
+    "gpt-4-turbo",
+    "gpt-4",
+    "gpt-3.5-turbo"
+  ],
+  "pricing": {}
+}

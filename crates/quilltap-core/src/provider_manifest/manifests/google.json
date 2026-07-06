@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "id": "GOOGLE",
+  "displayName": "Google Gemini",
+  "description": "Google Gemini models including text and image generation via Generative AI API",
+  "abbreviation": "GGL",
+  "colors": {
+    "bg": "bg-blue-100",
+    "text": "text-blue-800",
+    "icon": "text-blue-600"
+  },
+  "legacyNames": [
+    "GOOGLE_IMAGEN"
+  ],
+  "auth": {
+    "kind": "query",
+    "param": "key"
+  },
+  "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
+  "endpoints": {
+    "chat": "/models",
+    "models": "/models"
+  },
+  "streamDecoder": "google-parts",
+  "requestTransform": "google",
+  "toolFormat": "google",
+  "capabilities": {
+    "chat": true,
+    "imageGeneration": true,
+    "embeddings": false,
+    "webSearch": true,
+    "toolUse": false
+  },
+  "configRequirements": {
+    "requiresApiKey": true,
+    "requiresBaseUrl": false,
+    "apiKeyLabel": "Google Generative AI API Key",
+    "baseUrlLabel": null,
+    "baseUrlPlaceholder": null,
+    "baseUrlDefault": null
+  },
+  "messageFormat": {
+    "supportsNameField": false,
+    "supportedRoles": [],
+    "maxNameLength": null
+  },
+  "cheapModels": {
+    "defaultModel": "gemini-2.5-flash",
+    "recommendedModels": [
+      "gemini-2.5-flash",
+      "gemini-2.5-flash-lite",
+      "gemini-3-flash-preview"
+    ]
+  },
+  "attachment": {
+    "supportsAttachments": true,
+    "supportedMimeTypes": [
+      "image/jpeg",
+      "image/png",
+      "image/gif",
+      "image/webp"
+    ],
+    "description": "Images only (JPEG, PNG, GIF, WebP)",
+    "notes": "Images are supported in Gemini models for vision analysis",
+    "maxFileSize": null,
+    "maxBase64Size": 20971520,
+    "maxFiles": null
+  },
+  "charsPerToken": 3.8,
+  "defaultContextWindow": 1000000,
+  "fallbackModels": [
+    "gemini-3-flash-preview",
+    "gemini-3-pro-preview",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-pro",
+    "gemini-2.5-flash-image",
+    "gemini-3-pro-image-preview",
+    "imagen-4",
+    "imagen-4-fast"
+  ],
+  "pricing": {}
+}

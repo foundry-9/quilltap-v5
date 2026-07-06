@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "id": "Z_AI",
+  "displayName": "Z.AI (GLM)",
+  "description": "Z.AI GLM models with chat, vision, tool use, web search, and CogView image generation",
+  "abbreviation": "ZAI",
+  "colors": {
+    "bg": "bg-emerald-100",
+    "text": "text-emerald-800",
+    "icon": "text-emerald-600"
+  },
+  "legacyNames": [],
+  "auth": {
+    "kind": "bearer"
+  },
+  "baseUrl": "https://api.z.ai/api/paas/v4",
+  "endpoints": {
+    "chat": "/chat/completions",
+    "models": "/models"
+  },
+  "streamDecoder": "chat-completions-sse",
+  "requestTransform": "none",
+  "toolFormat": "openai",
+  "capabilities": {
+    "chat": true,
+    "imageGeneration": true,
+    "embeddings": false,
+    "webSearch": true,
+    "toolUse": true
+  },
+  "configRequirements": {
+    "requiresApiKey": true,
+    "requiresBaseUrl": false,
+    "apiKeyLabel": "Z.AI API Key",
+    "baseUrlLabel": null,
+    "baseUrlPlaceholder": null,
+    "baseUrlDefault": null
+  },
+  "messageFormat": {
+    "supportsNameField": true,
+    "supportedRoles": [
+      "user",
+      "assistant"
+    ],
+    "maxNameLength": 64
+  },
+  "cheapModels": {
+    "defaultModel": "glm-4.5-flash",
+    "recommendedModels": [
+      "glm-4.5-flash",
+      "glm-4.5-air"
+    ]
+  },
+  "attachment": {
+    "supportsAttachments": true,
+    "supportedMimeTypes": [
+      "image/jpeg",
+      "image/png",
+      "image/gif",
+      "image/webp"
+    ],
+    "description": "Images (JPEG, PNG, GIF, WebP) — requires a vision model (e.g. glm-4.5v, glm-4.6v)",
+    "notes": "Z.AI vision models accept image URLs or base64; limit 5MB per image, max 6000×6000 pixels.",
+    "maxFileSize": null,
+    "maxBase64Size": 5242880,
+    "maxFiles": null
+  },
+  "charsPerToken": 3.5,
+  "defaultContextWindow": 131072,
+  "fallbackModels": [
+    "glm-4.6",
+    "glm-4.5",
+    "glm-4.5-x",
+    "glm-4.5-air",
+    "glm-4.5-airx",
+    "glm-4.5-flash",
+    "glm-4-32b-0414-128k",
+    "glm-4.6v",
+    "glm-4.6v-flashx",
+    "glm-4.6v-flash",
+    "glm-5v-turbo",
+    "glm-4.5v",
+    "cogview-4-250304",
+    "glm-image"
+  ],
+  "pricing": {}
+}

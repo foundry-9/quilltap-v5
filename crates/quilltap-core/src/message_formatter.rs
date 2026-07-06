@@ -28,8 +28,14 @@ use std::sync::LazyLock;
 ///
 /// Mirrors v4's `ProviderNameSupport` / the legacy `LegacyProviderNameSupport`.
 /// In v4 this comes from a plugin's `messageFormat` (the provider-registry seam)
-/// falling back to the hardcoded `LEGACY_PROVIDER_NAME_SUPPORT` table; no bundled
-/// plugin registers a `messageFormat`, so the fallback table is authoritative.
+/// falling back to the hardcoded `LEGACY_PROVIDER_NAME_SUPPORT` table. As of
+/// W4.7a the built-in provider manifests DO carry `messageFormat`
+/// ([`crate::provider_manifest`]), so [`get_provider_name_support`] now consults
+/// the registry first — exactly like v4's `getProviderNameSupport`. This is a
+/// real behavior change from the pre-W4.7a empty-registry state: DEEPSEEK / Z_AI /
+/// OPENAI_COMPATIBLE (whose manifests advertise name-field support but which have
+/// no legacy-table row, or miss it via the hyphen-vs-underscore quirk) now report
+/// name-field support through the registry path.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProviderNameSupport {
     /// Whether the provider supports a `name` field on messages.
@@ -98,16 +104,43 @@ fn legacy_provider_name_support(upper: &str) -> Option<ProviderNameSupport> {
 /// Get name-field support info for a provider (`getProviderNameSupport`).
 ///
 /// v4 first consults the plugin registry (`getMessageFormat`) and returns it iff
-/// it advertises support; no bundled plugin does, so the registry always yields
-/// the empty `{ supportsNameField: false, supportedRoles: [] }` and we fall
-/// straight through to the legacy table. Unknown providers → no support.
+/// it advertises support (`supportsNameField || supportedRoles.length > 0`);
+/// otherwise it falls back to the uppercased-key legacy table. Unknown providers
+/// → no support. The built-in provider manifests carry `messageFormat`, so the
+/// registry path is now authoritative for the built-ins that advertise support.
 pub fn get_provider_name_support(provider: &str) -> ProviderNameSupport {
+    // 1. plugin registry (built-in manifests) — return iff it advertises support.
+    let plugin_format = crate::provider_manifest::Registry::built_in().message_format(provider);
+    if plugin_format.supports_name_field || !plugin_format.supported_roles.is_empty() {
+        return provider_name_support_from_manifest(&plugin_format);
+    }
+
+    // 2. hardcoded legacy fallback (uppercased key).
     let normalized = provider.to_uppercase();
     legacy_provider_name_support(&normalized).unwrap_or(ProviderNameSupport {
         supports_name_field: false,
         supported_roles: vec![],
         max_name_length: None,
     })
+}
+
+/// Convert a manifest `MessageFormat` to the local [`ProviderNameSupport`].
+fn provider_name_support_from_manifest(
+    mf: &crate::provider_manifest::MessageFormat,
+) -> ProviderNameSupport {
+    ProviderNameSupport {
+        supports_name_field: mf.supports_name_field,
+        supported_roles: mf
+            .supported_roles
+            .iter()
+            .map(|r| match r {
+                crate::provider_manifest::MessageRole::User => MessageRole::User,
+                crate::provider_manifest::MessageRole::Assistant => MessageRole::Assistant,
+            })
+            .collect(),
+        // v4 `maxNameLength` is `number | undefined`; the local field is `usize`.
+        max_name_length: mf.max_name_length.map(|n| n as usize),
+    }
 }
 
 /// Whether a provider supports the `name` field for a given role

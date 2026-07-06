@@ -7,8 +7,15 @@
  *   normalizeContentBlockFormat, formatParticipantName, formatDisplayName,
  *   getProviderNameSupport, supportsNameField, formatMessagesForProvider,
  *   buildMultiCharacterContextSection.
- * All are side-effect-free; no injection needed (no bundled plugin registers a
- * messageFormat, so the provider registry always yields the legacy fallbacks).
+ *
+ * As of W4.7a the built-in provider MANIFESTS carry `messageFormat`, and v4's
+ * `getProviderNameSupport` consults the registry before the legacy fallback. So
+ * this oracle now INITIALIZES the real provider registry (the runtime way — load
+ * the built plugins/dist bundles + `initializeProviderRegistry`) before driving
+ * the getters, matching the Rust port's manifest-backed
+ * `message_formatter::get_provider_name_support`. Provider list includes DEEPSEEK
+ * / Z_AI (whose manifests advertise name-field support via the registry path,
+ * where the legacy table alone would say no).
  *
  * Run from inside the server checkout:
  *   cd ~/source/quilltap-server
@@ -16,6 +23,8 @@
  *     > /path/to/oracle-message-formatter.ndjson
  */
 
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
 import {
   stripCharacterNamePrefix,
   truncateAtForeignSpeaker,
@@ -28,7 +37,24 @@ import {
   buildMultiCharacterContextSection,
   type MultiCharacterMessage,
 } from '@/lib/llm/message-formatter';
+import { initializeProviderRegistry } from '@/lib/plugins/provider-registry';
 import type { Provider } from '@/lib/schemas/types';
+
+const nodeRequire = createRequire(join(process.cwd(), 'noop.js'));
+const PLUGIN_DIRS = [
+  'anthropic', 'openai', 'google', 'grok', 'deepseek',
+  'z-ai', 'openrouter', 'ollama', 'openai-compatible',
+];
+
+// Initialize the real provider registry (top-level await; tsx runs this as ESM)
+// before any getProviderNameSupport call so the manifest messageFormat path is
+// live — matching the Rust port.
+await initializeProviderRegistry(
+  PLUGIN_DIRS.map((d) => {
+    const m = nodeRequire(join(process.cwd(), 'plugins', 'dist', `qtap-plugin-${d}`, 'index.js'));
+    return m.plugin || m.default?.plugin || m.default;
+  }),
+);
 
 type Row =
   | { kind: 'strip'; id: string; content: string; characterName?: string; aliases?: string[]; out: string }
@@ -153,7 +179,7 @@ for (const [id, name] of displays) {
 }
 
 // ---- getProviderNameSupport ----------------------------------------------
-const providers = ['OPENAI', 'openai', 'ANTHROPIC', 'GOOGLE', 'GROK', 'OLLAMA', 'OPENROUTER', 'openai-compatible', 'OPENAI_COMPATIBLE', 'unknown-provider'];
+const providers = ['OPENAI', 'openai', 'ANTHROPIC', 'GOOGLE', 'GROK', 'OLLAMA', 'OPENROUTER', 'DEEPSEEK', 'Z_AI', 'openai-compatible', 'OPENAI_COMPATIBLE', 'unknown-provider'];
 for (const p of providers) {
   const s = getProviderNameSupport(p as Provider);
   rows.push({ kind: 'nameSupport', id: p, provider: p, out: { supportsNameField: s.supportsNameField, supportedRoles: s.supportedRoles, maxNameLength: s.maxNameLength ?? null } });
@@ -165,6 +191,8 @@ const roleChecks: Array<[string, string, 'user' | 'assistant']> = [
   ['openai-assistant', 'OPENAI', 'assistant'],
   ['anthropic-user', 'ANTHROPIC', 'user'],
   ['grok-assistant', 'GROK', 'assistant'],
+  ['deepseek-user', 'DEEPSEEK', 'user'],
+  ['zai-assistant', 'Z_AI', 'assistant'],
   ['unknown-user', 'nope', 'user'],
 ];
 for (const [id, provider, role] of roleChecks) {
@@ -187,6 +215,10 @@ const fmtCases: Array<[string, string, string, MultiCharacterMessage[]]> = [
   ['thought-sig-null', 'OPENAI', 'Alice', [mkMsg({ role: 'assistant', content: 'hi', name: 'Alice', thoughtSignature: null })]],
   ['assistant-anthropic-prefix-name-with-spaces', 'ANTHROPIC', 'Alice', [mkMsg({ role: 'assistant', content: 'hi', name: 'John Smith' })]],
   ['nonascii-name-openai', 'OPENAI', 'Alice', [mkMsg({ role: 'user', content: 'hola', name: 'José' })]],
+  // DEEPSEEK now supports the name field via the registry manifest (W4.7a) — the
+  // legacy table has no DEEPSEEK row, so pre-W4.7a this would have used a prefix.
+  ['deepseek-user-named', 'DEEPSEEK', 'Alice', [mkMsg({ role: 'user', content: 'hi', name: 'Bob' })]],
+  ['deepseek-assistant-named', 'DEEPSEEK', 'Alice', [mkMsg({ role: 'assistant', content: 'hi', name: 'Alice' })]],
   ['mixed-batch', 'ANTHROPIC', 'Alice', [
     mkMsg({ role: 'system', content: 'sys' }),
     mkMsg({ role: 'user', content: 'hi', name: 'Bob' }),

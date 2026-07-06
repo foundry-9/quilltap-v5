@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "id": "ANTHROPIC",
+  "displayName": "Anthropic",
+  "description": "Anthropic Claude models with support for image and PDF analysis",
+  "abbreviation": "ANT",
+  "colors": {
+    "bg": "bg-purple-100",
+    "text": "text-purple-800",
+    "icon": "text-purple-600"
+  },
+  "legacyNames": [],
+  "auth": {
+    "kind": "header",
+    "header": "x-api-key",
+    "extra": {
+      "anthropic-version": "2023-06-01"
+    }
+  },
+  "baseUrl": "https://api.anthropic.com/v1",
+  "endpoints": {
+    "chat": "/messages",
+    "models": "/models"
+  },
+  "streamDecoder": "anthropic-sse",
+  "requestTransform": "anthropic",
+  "toolFormat": "anthropic",
+  "capabilities": {
+    "chat": true,
+    "imageGeneration": false,
+    "embeddings": false,
+    "webSearch": false,
+    "toolUse": true
+  },
+  "configRequirements": {
+    "requiresApiKey": true,
+    "requiresBaseUrl": false,
+    "apiKeyLabel": "Anthropic API Key",
+    "baseUrlLabel": null,
+    "baseUrlPlaceholder": null,
+    "baseUrlDefault": null
+  },
+  "messageFormat": {
+    "supportsNameField": false,
+    "supportedRoles": [],
+    "maxNameLength": null
+  },
+  "cheapModels": {
+    "defaultModel": "claude-haiku-4-5-20251001",
+    "recommendedModels": [
+      "claude-haiku-4-5-20251001",
+      "claude-3-haiku-20240307"
+    ]
+  },
+  "attachment": {
+    "supportsAttachments": true,
+    "supportedMimeTypes": [
+      "image/jpeg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+      "application/pdf",
+      "text/plain"
+    ],
+    "description": "Images (JPEG, PNG, GIF, WebP), PDFs, and text files",
+    "notes": "Images, PDFs, and plain text files are supported in Claude models for analysis and understanding",
+    "maxFileSize": null,
+    "maxBase64Size": 5242880,
+    "maxFiles": null
+  },
+  "charsPerToken": 3.5,
+  "defaultContextWindow": 200000,
+  "fallbackModels": [
+    "claude-opus-4-6",
+    "claude-sonnet-4-6",
+    "claude-sonnet-4-5-20250929",
+    "claude-haiku-4-5-20251001",
+    "claude-opus-4-1-20250805",
+    "claude-sonnet-4-20250514",
+    "claude-opus-4-20250514",
+    "claude-3-opus-20240229",
+    "claude-3-haiku-20240307"
+  ],
+  "pricing": {}
+}

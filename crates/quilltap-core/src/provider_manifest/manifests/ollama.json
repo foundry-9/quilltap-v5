@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "id": "OLLAMA",
+  "displayName": "Ollama",
+  "description": "Local Ollama LLM models for offline AI inference",
+  "abbreviation": "OLL",
+  "colors": {
+    "bg": "bg-gray-100",
+    "text": "text-gray-800",
+    "icon": "text-gray-600"
+  },
+  "legacyNames": [],
+  "auth": {
+    "kind": "none"
+  },
+  "baseUrl": "http://localhost:11434",
+  "endpoints": {
+    "chat": "/api/chat",
+    "models": "/api/tags"
+  },
+  "streamDecoder": "ollama-ndjson",
+  "requestTransform": "none",
+  "toolFormat": "openai",
+  "capabilities": {
+    "chat": true,
+    "imageGeneration": false,
+    "embeddings": true,
+    "webSearch": false,
+    "toolUse": false
+  },
+  "configRequirements": {
+    "requiresApiKey": false,
+    "requiresBaseUrl": true,
+    "apiKeyLabel": null,
+    "baseUrlLabel": "Ollama Base URL",
+    "baseUrlPlaceholder": null,
+    "baseUrlDefault": "http://localhost:11434"
+  },
+  "messageFormat": {
+    "supportsNameField": false,
+    "supportedRoles": [],
+    "maxNameLength": null
+  },
+  "cheapModels": {
+    "defaultModel": "llama3.2:3b",
+    "recommendedModels": [
+      "llama3.2:3b",
+      "llama3.2:1b",
+      "phi3:mini",
+      "mistral:7b",
+      "gemma2:2b"
+    ]
+  },
+  "attachment": {
+    "supportsAttachments": false,
+    "supportedMimeTypes": [],
+    "description": "File attachments not yet supported (requires multimodal model detection)",
+    "notes": "Multimodal models like llava can process images, but require model-specific implementation",
+    "maxFileSize": null,
+    "maxBase64Size": null,
+    "maxFiles": null
+  },
+  "charsPerToken": 3.5,
+  "defaultContextWindow": 8192,
+  "fallbackModels": [
+    "llama2",
+    "neural-chat",
+    "mistral",
+    "llava",
+    "dolphin-mixtral"
+  ],
+  "pricing": {}
+}

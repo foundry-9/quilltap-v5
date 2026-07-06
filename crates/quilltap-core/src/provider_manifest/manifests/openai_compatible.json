@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "id": "OPENAI_COMPATIBLE",
+  "displayName": "OpenAI-Compatible",
+  "description": "OpenAI-compatible API provider for local and remote LLM services",
+  "abbreviation": "OAC",
+  "colors": {
+    "bg": "bg-slate-100",
+    "text": "text-slate-800",
+    "icon": "text-slate-600"
+  },
+  "legacyNames": [],
+  "auth": {
+    "kind": "bearer"
+  },
+  "baseUrl": "http://localhost:8080/v1",
+  "endpoints": {
+    "chat": "/chat/completions",
+    "models": "/models"
+  },
+  "streamDecoder": "chat-completions-sse",
+  "requestTransform": "none",
+  "toolFormat": "openai",
+  "capabilities": {
+    "chat": true,
+    "imageGeneration": false,
+    "embeddings": false,
+    "webSearch": false,
+    "toolUse": false
+  },
+  "configRequirements": {
+    "requiresApiKey": false,
+    "requiresBaseUrl": true,
+    "apiKeyLabel": "API Key (optional)",
+    "baseUrlLabel": "Base URL",
+    "baseUrlPlaceholder": "http://localhost:8080/v1",
+    "baseUrlDefault": "http://localhost:8080/v1"
+  },
+  "messageFormat": {
+    "supportsNameField": true,
+    "supportedRoles": [
+      "user",
+      "assistant"
+    ],
+    "maxNameLength": 64
+  },
+  "cheapModels": {
+    "defaultModel": "gpt-4o-mini",
+    "recommendedModels": [
+      "gpt-4o-mini",
+      "gpt-3.5-turbo"
+    ]
+  },
+  "attachment": {
+    "supportsAttachments": false,
+    "supportedMimeTypes": [],
+    "description": "File attachments are not supported. Attachment support varies by implementation.",
+    "notes": "Some compatible implementations may support attachments; this is a conservative default.",
+    "maxFileSize": null,
+    "maxBase64Size": null,
+    "maxFiles": null
+  },
+  "charsPerToken": 3.5,
+  "defaultContextWindow": 8192,
+  "fallbackModels": [
+    "default"
+  ],
+  "pricing": {}
+}

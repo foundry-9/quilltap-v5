@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "id": "GROK",
+  "displayName": "Grok (xAI)",
+  "description": "Grok models by xAI with chat, vision, and image generation capabilities",
+  "abbreviation": "XAI",
+  "colors": {
+    "bg": "bg-purple-100",
+    "text": "text-purple-800",
+    "icon": "text-purple-600"
+  },
+  "legacyNames": [],
+  "auth": {
+    "kind": "bearer"
+  },
+  "baseUrl": "https://api.x.ai/v1",
+  "endpoints": {
+    "chat": "/responses",
+    "models": "/models"
+  },
+  "streamDecoder": "responses-api-sse",
+  "requestTransform": "none",
+  "toolFormat": "openai",
+  "capabilities": {
+    "chat": true,
+    "imageGeneration": true,
+    "embeddings": false,
+    "webSearch": true,
+    "toolUse": true
+  },
+  "configRequirements": {
+    "requiresApiKey": true,
+    "requiresBaseUrl": false,
+    "apiKeyLabel": "Grok API Key",
+    "baseUrlLabel": null,
+    "baseUrlPlaceholder": null,
+    "baseUrlDefault": null
+  },
+  "messageFormat": {
+    "supportsNameField": true,
+    "supportedRoles": [
+      "user",
+      "assistant"
+    ],
+    "maxNameLength": 64
+  },
+  "cheapModels": {
+    "defaultModel": "grok-3-mini",
+    "recommendedModels": [
+      "grok-3-mini",
+      "grok-4-1-fast"
+    ]
+  },
+  "attachment": {
+    "supportsAttachments": true,
+    "supportedMimeTypes": [
+      "image/jpeg",
+      "image/png",
+      "image/gif",
+      "image/webp"
+    ],
+    "description": "Images only (JPEG, PNG, GIF, WebP)",
+    "notes": "Images are supported in Grok models for vision capabilities",
+    "maxFileSize": null,
+    "maxBase64Size": 20971520,
+    "maxFiles": null
+  },
+  "charsPerToken": 3.5,
+  "defaultContextWindow": 131072,
+  "fallbackModels": [
+    "grok-4",
+    "grok-4-1-fast",
+    "grok-3",
+    "grok-3-mini",
+    "grok-2-1212",
+    "grok-code-fast-1",
+    "grok-imagine-image",
+    "grok-imagine-image-pro",
+    "grok-2-image"
+  ],
+  "pricing": {}
+}

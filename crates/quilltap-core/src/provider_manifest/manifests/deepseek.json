@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "id": "DEEPSEEK",
+  "displayName": "DeepSeek",
+  "description": "DeepSeek V4 chat and reasoning models",
+  "abbreviation": "DSK",
+  "colors": {
+    "bg": "bg-sky-100",
+    "text": "text-sky-800",
+    "icon": "text-sky-600"
+  },
+  "legacyNames": [],
+  "auth": {
+    "kind": "bearer"
+  },
+  "baseUrl": "https://api.deepseek.com",
+  "endpoints": {
+    "chat": "/chat/completions",
+    "models": "/models"
+  },
+  "streamDecoder": "chat-completions-sse",
+  "requestTransform": "deepseek",
+  "toolFormat": "openai",
+  "capabilities": {
+    "chat": true,
+    "imageGeneration": false,
+    "embeddings": false,
+    "webSearch": false,
+    "toolUse": true
+  },
+  "configRequirements": {
+    "requiresApiKey": true,
+    "requiresBaseUrl": false,
+    "apiKeyLabel": "DeepSeek API Key",
+    "baseUrlLabel": null,
+    "baseUrlPlaceholder": null,
+    "baseUrlDefault": null
+  },
+  "messageFormat": {
+    "supportsNameField": true,
+    "supportedRoles": [
+      "user",
+      "assistant"
+    ],
+    "maxNameLength": 64
+  },
+  "cheapModels": {
+    "defaultModel": "deepseek-v4-flash",
+    "recommendedModels": [
+      "deepseek-v4-flash"
+    ]
+  },
+  "attachment": {
+    "supportsAttachments": false,
+    "supportedMimeTypes": [],
+    "description": "DeepSeek models do not accept file attachments",
+    "notes": null,
+    "maxFileSize": null,
+    "maxBase64Size": null,
+    "maxFiles": null
+  },
+  "charsPerToken": 3.5,
+  "defaultContextWindow": 131072,
+  "fallbackModels": [
+    "deepseek-v4-flash",
+    "deepseek-v4-pro"
+  ],
+  "pricing": {}
+}

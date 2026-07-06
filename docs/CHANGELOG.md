@@ -4,6 +4,44 @@
 
 ### 5.0-dev
 
+Phase 3 — wave 4 (W4.7a): the provider manifest + registry core. Replaced v4's
+npm-plugin provider registry — which does not survive the port (no Node, no
+dynamic import, no shipping third-party JS into the Rust core) — with a
+declarative-manifest + compiled-discriminator design. New `provider_manifest`
+module: serde structs for the manifest schema (deserialization is the schema
+validation; a missing field, a bad enum, or a wrong `schemaVersion` each fails
+loud with a typed `ManifestError` naming the field), the `StreamDecoder` /
+`RequestTransform` closed enums (the values W4.7b/c implement against), the nine
+built-in provider manifests generated from v4's registered plugin metadata by a
+checked-in generator (`harness/oracle/providers/gen-provider-manifests.mjs`,
+transcription not re-derivation — embedded via `include_str!`, parsed once behind
+a `LazyLock`), the `Registry` accessors reproducing v4's provider-registry
+convenience getters (`get_provider` exact-case lookup — v4 does not resolve
+`legacyNames`, they are display metadata; the capability getters with their v4
+defaults `charsPerToken` 3.5 / `defaultContextWindow` 8192 / `toolFormat`
+"openai"), and `rewrite_localhost_url` (pure — the host gateway resolution
+injected). Verified by `provider_registry_equivalence` (a tsx oracle driving v4's
+real registry over every provider × getter — 253 rows, incl. absent-field
+defaults, legacy-name lookups that must not resolve, and a determinism dump) plus
+malformed-manifest fail-loud unit tests.
+
+Also closed the four registry-seam replacements in their leaf consumers. The big
+one: `message_formatter::get_provider_name_support` now consults the manifest
+registry before the legacy fallback, matching v4's `getProviderNameSupport` — a
+real behavior change from the pre-W4.7a empty-registry state (DEEPSEEK / Z_AI /
+OPENAI_COMPATIBLE now report message name-field support via the registry, where
+the legacy table alone said no); its differential regenerated with the real
+registry initialized. `model_context`'s registry-default input and `cheap_model`'s
+recommended-list / default input keep their injected parameters (the orchestrator
+spine populates them), but their oracles were regenerated with the real registry
+so the injected values reflect the real manifest data (e.g. ANTHROPIC default
+200000, DEEPSEEK/Z_AI 131072); `tool_build`'s `provider_supports_web_search` stays
+a corpus-controlled input in its differential. The pins for all four moved to
+"the registry value equals the pinned value," asserted in
+`provider_registry_equivalence` so a manifest drift is caught there. Spine-side
+seam removals (sourcing these injected inputs from the registry at the
+orchestrator composition point) are deferred to the orchestrator-spine owner.
+
 Phase 3 — wave 4 (W4.d1): drift re-port of the unified diff. v4 commit
 `8617ce7a` replaced the greedy look-ahead line diff with a real, minimal,
 git-style unified diff, so the ported `doc_edit::unified_diff` no longer

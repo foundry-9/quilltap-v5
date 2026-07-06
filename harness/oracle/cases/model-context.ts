@@ -8,9 +8,19 @@
  * Registry seam: the function reads plugin model-info, FALLBACK_PRICING, and the
  * registry default. We capture that injected context per provider ("providerctx"
  * rows) so the Rust port can be fed exactly what the real function saw, then the
- * "query" rows assert the three outputs. In a bare run no plugin exposes
- * getModelInfo (model-info is empty) and the registry default is 8192, so the
- * override tables, FALLBACK_PRICING, and the provider defaults are what decide.
+ * "query" rows assert the three outputs.
+ *
+ * As of W4.7a this oracle INITIALIZES the real provider registry (the runtime way
+ * — load the built plugins/dist bundles + `initializeProviderRegistry`), so
+ * `getDefaultContextWindow(provider)` and `getProvider(provider).getModelInfo()`
+ * return the real manifest values (e.g. ANTHROPIC default 200000, DEEPSEEK/Z_AI
+ * 131072) instead of the empty-registry sentinel 8192 / empty model-info. The
+ * Rust port's `get_model_context_limit` is fed exactly these injected values, so
+ * the differential proves the leaf math; the registry values themselves are
+ * cross-checked in `provider_registry_equivalence`. DEEPSEEK/Z_AI are included:
+ * their fall-through models now resolve to 131072 via the registry default (step
+ * 5), where an empty registry would have fallen to the hardcoded provider-default
+ * table (no DEEPSEEK/Z_AI row → 8192).
  *
  * Run from inside the server checkout:
  *   cd ~/source/quilltap-server
@@ -18,13 +28,27 @@
  *     > /tmp/oracle-model-context.ndjson
  */
 
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
 import {
   getModelContextLimit,
   hasExtendedContext,
   getSafeInputLimit,
 } from '@/lib/llm/model-context-data';
 import { FALLBACK_PRICING } from '@/lib/llm/pricing';
-import { getProvider, getDefaultContextWindow } from '@/lib/plugins/provider-registry';
+import {
+  getProvider,
+  getDefaultContextWindow,
+  initializeProviderRegistry,
+} from '@/lib/plugins/provider-registry';
+
+const nodeRequire = createRequire(join(process.cwd(), 'noop.js'));
+await initializeProviderRegistry(
+  ['anthropic', 'openai', 'google', 'grok', 'deepseek', 'z-ai', 'openrouter', 'ollama', 'openai-compatible'].map((d) => {
+    const m = nodeRequire(join(process.cwd(), 'plugins', 'dist', `qtap-plugin-${d}`, 'index.js'));
+    return m.plugin || m.default?.plugin || m.default;
+  }),
+);
 
 const rows: unknown[] = [];
 
@@ -33,6 +57,8 @@ const PROVIDERS = [
   'OPENAI',
   'GOOGLE',
   'GROK',
+  'DEEPSEEK',
+  'Z_AI',
   'OLLAMA',
   'OPENROUTER',
   'OPENAI_COMPATIBLE',
@@ -84,6 +110,11 @@ const queries: Array<[string, string, number]> = [
   ['OLLAMA', 'totally-unknown-xyz', 4096],
   ['OPENROUTER', 'totally-unknown-xyz', 4096],
   ['OPENAI_COMPATIBLE', 'totally-unknown-xyz', 4096],
+  // DEEPSEEK/Z_AI fall-through: the registry default (131072) now decides via
+  // step 5, where an empty registry would have fallen to 8192 (no provider-default
+  // table row). This is the W4.7a seam captured.
+  ['DEEPSEEK', 'totally-unknown-xyz', 4096],
+  ['Z_AI', 'totally-unknown-xyz', 4096],
   ['WEIRD_UNKNOWN', 'totally-unknown-xyz', 4096],
   // safe-input floor (huge response reserve clamps to 1000)
   ['OLLAMA', 'phi3:mini', 1000000],

@@ -184,8 +184,15 @@ round with a drift check against v4 HEAD.
   green again) ∥ W4.2u
   (owns spine + orchestrator corpus; small) ∥ W4.8 (disjoint) ∥ W4.9b
   (disjoint — but shares the `doc_edit` module tree with W4.d1's
-  re-verification; land W4.d1 before W4.9b's unification) ∥ W4.7a + W4.7b
-  (disjoint, mutually independent).
+  re-verification; land W4.d1 before W4.9b's unification) ∥ **W4.7a ✅ DONE**
+  (the provider manifest + registry core, landed 2026-07-06:
+  `quilltap-core::provider_manifest` — schema + nine generated built-in manifests
+  + `Registry` accessors + `rewrite_localhost_url`; `provider_registry_equivalence`
+  green [253 rows]; the four registry-seam replacements closed in their leaf
+  consumers [`message_formatter` now registry-backed name-field — a real behavior
+  change; `model_context`/`cheap_model`/`tool_build` oracles regenerated];
+  **spine-side seam removals deferred to the orchestrator-spine owner**) ∥ W4.7b
+  (disjoint, mutually independent — implements against W4.7a's decoder enums).
 - **Round 2:** W4.3 (owns finalizer + orchestrator corpus) ∥ W4.6a
   (build_context + its own feeder differential) ∥ W4.9a (tools + new
   services; its finalizer/orchestrator regenerations go to unification).

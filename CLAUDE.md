@@ -2706,6 +2706,77 @@ seam-side:** the ported doc-edit handlers do NOT yet emit the
 — when W4.6b ports the Librarian save-announcement writer, the handlers must
 START producing it (currently omitted).
 
+**Wave 4 (W4.7a): the provider manifest + registry core is DONE** (2026-07-06),
+the first W4.7 unit. Replaced v4's npm-plugin provider registry (which does not
+survive the port — no Node, no dynamic import, no shipping third-party JS into the
+Rust core) with the declarative-manifest + compiled-discriminator design of
+`provider-manifest.md`. New `quilltap-core::provider_manifest`: the serde manifest
+schema (deserialization IS the JSON-Schema validation — a missing field / bad enum
+/ wrong `schemaVersion` each fails loud with a typed `ManifestError` naming the
+field; `Manifest::from_json` is the third-party load/validate path but NO fs /
+network / signing in the core), the `StreamDecoder` (`chat-completions-sse` /
+`responses-api-sse` / `anthropic-sse` / `google-parts` / `ollama-ndjson`) +
+`RequestTransform` (`none`/`anthropic`/`openai`/`google`/`deepseek`) **closed
+enums** (the exact values W4.7b/c implement against — renaming forbidden, adding a
+variant fine), the nine built-in manifests GENERATED from v4's registered plugin
+metadata by the checked-in `harness/oracle/providers/gen-provider-manifests.mjs`
+(transcription not re-derivation — the tool-catalog precedent; `include_str!` +
+parsed once behind a `LazyLock`; the getter-checked fields pulled off the built
+plugin objects, the decoder/transform/endpoints/auth/baseUrl from a fixed
+augmentation table), the `Registry` accessors reproducing v4's `provider-registry`
+convenience getters (`get_provider` **EXACT-case** `Map.get` — v4 does NOT resolve
+`legacyNames` in lookup, they are display metadata only; `all_providers` in
+registration order; `supports_capability`/`attachment_support`/`message_format`/
+`chars_per_token` [default **3.5**]/`tool_format` [default **openai**]/
+`cheap_model_config`/`default_context_window` [default **8192**]/`model_pricing`
+[the STATIC fallback tier — empty on every built-in today, W4.7e brings the live
+fetcher]), and `rewrite_localhost_url` (pure — v4's `rewriteLocalhostUrl` with the
+host-side VM/gateway resolution injected as `Option<&str>`; a hand-rolled URL
+rewriter reproducing `new URL().toString()` for the localhost subset — scheme/host
+lowercase, default-port drop, empty-path `/`, userinfo/port/query/fragment
+preserved). Verified by `provider_registry_equivalence` (a tsx oracle initializes
+v4's REAL registry the runtime way — load the built `plugins/dist/*` bundles +
+`initializeProviderRegistry` — and drives every convenience getter over every
+provider: 253 NDJSON rows, tier-1 exact, incl. the absent-field defaults, the
+legacy-name lookups that must NOT resolve, and a determinism dump; the Rust side
+answers from the manifests) plus malformed-manifest fail-loud unit tests
+(missing field / bad enum / wrong `schemaVersion`). Generator determinism verified
+(dump twice, identical). **The four registry-seam replacements are closed in their
+LEAF consumers, none skipped:** (1) `message_formatter::get_provider_name_support`
+now consults the manifest registry before the legacy fallback (v4's
+`getProviderNameSupport` shape) — a **real behavior change** from the pre-W4.7a
+empty-registry state: DEEPSEEK / Z_AI / OPENAI_COMPATIBLE (manifests advertise
+name-field support; no legacy-table row / hyphen-vs-underscore miss) now report
+name-field support; its oracle regenerated to initialize the real registry
+(118 rows). (2) `model_context`'s `registry_default` + `model_info` and (3)
+`cheap_model`'s recommended-list/default inputs KEEP their injected parameters
+(the orchestrator spine populates them), but their oracles were regenerated with
+the real registry so the injected values reflect real manifest data (ANTHROPIC
+default 200000, DEEPSEEK/Z_AI 131072 — banked as fall-through queries proving the
+seam) — `model_context_equivalence` (25 queries) + `cheap_model_equivalence`
+green. (4) `tool_build`'s `provider_supports_web_search` stays a corpus-controlled
+knob in its differential (the manifest `capabilities.webSearch` equals v4's
+`provider.supportsWebSearch` for all nine — proven in the registry oracle);
+`tool_build_equivalence` (27 cases) re-verified green. **All four pins moved to
+"the registry value equals the pinned value," asserted in
+`provider_registry_equivalence`** (`messageFormat`/`defaultContextWindow`/
+`cheapModelConfig`/`webSearch`-capability rows) so a manifest drift is caught
+there, not silently in a leaf. **Tracked handoffs / deferrals:** the **spine-side
+seam removals** — sourcing `provider_supports_web_search` / the model-context
+registry default / the cheap-model recommended-list+default from the registry at
+the orchestrator composition point (i.e. dropping the `ProcessMessageInput` /
+`BuildToolsInput` fields the spine constructs) — are deferred to the
+orchestrator-spine owner (this unit kept the injections flowing + made the leaves
+able to source from `Registry`, without touching `services/orchestrator.rs` or its
+corpus); `baseUrl`/`endpoints`/`auth`/`streamDecoder`/`requestTransform` are
+carried as manifest data but only the decoder/transform enum VALUES are
+load-bearing here — the endpoints/auth/baseUrl are best-effort transcription that
+W4.7b/c refine against recorded wire fixtures (not differential-checked in W4.7a);
+third-party manifest loading (fs, signing) is a design open item (the load/validate
+path exists, only the built-ins are wired); manifest pricing is the static
+fallback tier (W4.7e = the live fetcher). W4.7b/c are next (b independent of a; c
+after b).
+
 **The Phase-3 endgame is fully planned (2026-07-06).** Every remaining unit
 has an agent-ready work order checked in under
 `docs/developer/porting/work-orders/` — W4.2u (the danger spine unification

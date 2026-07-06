@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "id": "OPENROUTER",
+  "displayName": "OpenRouter",
+  "description": "OpenRouter provides access to 100+ models including GPT-4, Claude, Gemini, Llama and more with unified pricing",
+  "abbreviation": "ORT",
+  "colors": {
+    "bg": "bg-orange-100",
+    "text": "text-orange-800",
+    "icon": "text-orange-600"
+  },
+  "legacyNames": [],
+  "auth": {
+    "kind": "bearer"
+  },
+  "baseUrl": "https://openrouter.ai/api/v1",
+  "endpoints": {
+    "chat": "/chat/completions",
+    "models": "/models"
+  },
+  "streamDecoder": "chat-completions-sse",
+  "requestTransform": "none",
+  "toolFormat": "openai",
+  "capabilities": {
+    "chat": true,
+    "imageGeneration": true,
+    "embeddings": true,
+    "webSearch": true,
+    "toolUse": false
+  },
+  "configRequirements": {
+    "requiresApiKey": true,
+    "requiresBaseUrl": false,
+    "apiKeyLabel": "OpenRouter API Key",
+    "baseUrlLabel": null,
+    "baseUrlPlaceholder": null,
+    "baseUrlDefault": null
+  },
+  "messageFormat": {
+    "supportsNameField": false,
+    "supportedRoles": [],
+    "maxNameLength": null
+  },
+  "cheapModels": {
+    "defaultModel": "openai/gpt-4o-mini",
+    "recommendedModels": [
+      "openai/gpt-4o-mini",
+      "anthropic/claude-3-haiku",
+      "google/gemini-2.0-flash",
+      "mistralai/mistral-7b-instruct"
+    ]
+  },
+  "attachment": {
+    "supportsAttachments": false,
+    "supportedMimeTypes": [],
+    "description": "File attachment support depends on the underlying model",
+    "notes": "OpenRouter proxies to 100+ models with varying capabilities. Some models may support image/file attachments.",
+    "maxFileSize": null,
+    "maxBase64Size": null,
+    "maxFiles": null
+  },
+  "charsPerToken": 3.5,
+  "defaultContextWindow": 128000,
+  "fallbackModels": [
+    "openai/gpt-4-turbo",
+    "anthropic/claude-3-opus",
+    "anthropic/claude-3-sonnet",
+    "google/gemini-pro-1.5",
+    "meta-llama/llama-2-70b-chat",
+    "mistralai/mistral-7b-instruct"
+  ],
+  "pricing": {}
+}
