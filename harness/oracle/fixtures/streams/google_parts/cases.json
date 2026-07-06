@@ -1,0 +1,31 @@
+[
+  {
+    "decoder": "google_parts",
+    "provider": "google",
+    "case": "google-basic",
+    "wire": "google-basic.wire",
+    "model": "gemini-2.5-flash",
+    "isThinkingModel": false,
+    "temperature": 0.7
+  },
+  {
+    "decoder": "google_parts",
+    "provider": "google",
+    "case": "google-thinking",
+    "wire": "google-thinking.wire",
+    "model": "gemini-3-pro-preview",
+    "isThinkingModel": true,
+    "temperature": 0.7
+  },
+  {
+    "decoder": "google_parts",
+    "provider": "google",
+    "case": "google-functioncall",
+    "wire": "google-functioncall.wire",
+    "model": "gemini-2.5-flash",
+    "isThinkingModel": false,
+    "tools": [
+      { "name": "get_weather", "description": "w", "parameters": { "type": "object", "properties": { "city": { "type": "string" } } } }
+    ]
+  }
+]

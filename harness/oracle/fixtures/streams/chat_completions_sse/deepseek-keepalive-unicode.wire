@@ -1,0 +1,14 @@
+: keep-alive
+
+data: {"id":"c4","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"café "}}]}
+
+: another keep-alive
+
+data: {"id":"c4","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"→ 日本語 "}}]}
+
+data: {"id":"c4","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"🎉"}}]}
+
+data: {"id":"c4","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+

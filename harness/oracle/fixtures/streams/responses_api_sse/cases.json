@@ -1,0 +1,44 @@
+[
+  {
+    "decoder": "responses_api_sse",
+    "provider": "openai",
+    "case": "openai-basic",
+    "wire": "openai-basic.wire",
+    "model": "gpt-5",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "responses_api_sse",
+    "provider": "openai",
+    "case": "openai-reasoning",
+    "wire": "openai-reasoning.wire",
+    "model": "gpt-5",
+    "profileParameters": { "reasoningSummary": true }
+  },
+  {
+    "decoder": "responses_api_sse",
+    "provider": "openai",
+    "case": "openai-tools",
+    "wire": "openai-tools.wire",
+    "model": "gpt-5",
+    "tools": [
+      { "type": "function", "function": { "name": "get_weather", "description": "w", "parameters": { "type": "object", "properties": { "city": { "type": "string" } } } } }
+    ]
+  },
+  {
+    "decoder": "responses_api_sse",
+    "provider": "openai",
+    "case": "openai-no-completed",
+    "wire": "openai-no-completed.wire",
+    "model": "gpt-5",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "responses_api_sse",
+    "provider": "grok",
+    "case": "grok-basic",
+    "wire": "grok-basic.wire",
+    "model": "grok-4",
+    "temperature": 0.7
+  }
+]

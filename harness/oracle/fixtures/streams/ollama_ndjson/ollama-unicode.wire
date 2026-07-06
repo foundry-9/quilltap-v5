@@ -1,0 +1,3 @@
+{"model":"qwen","message":{"role":"assistant","content":"café "},"done":false}
+{"model":"qwen","message":{"role":"assistant","content":"→ 日本語 🎉"},"done":false}
+{"model":"qwen","message":{"role":"assistant","content":""},"done":true,"prompt_eval_count":3,"eval_count":7}

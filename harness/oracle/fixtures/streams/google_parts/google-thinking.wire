@@ -1,0 +1,8 @@
+data: {"candidates":[{"content":{"parts":[{"thought":true,"text":"Let me reason. "}],"role":"model"},"index":0}]}
+
+data: {"candidates":[{"content":{"parts":[{"thought":true,"text":"Consider carefully."}],"role":"model"},"index":0}]}
+
+data: {"candidates":[{"content":{"parts":[{"text":"The answer is 7."}],"role":"model"},"index":0}]}
+
+data: {"candidates":[{"content":{"parts":[{"thoughtSignature":"SIGVAL","text":""}],"role":"model"},"index":0}],"usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":20,"totalTokenCount":70,"cachedContentTokenCount":40}}
+

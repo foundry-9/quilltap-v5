@@ -1,0 +1,9 @@
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"Grok "}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"here."}
+
+event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_g","object":"response","created_at":1730000300,"model":"grok-4","status":"completed","output_text":"Grok here.","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Grok here."}]}],"usage":{"input_tokens":8,"output_tokens":3,"total_tokens":11}}}
+

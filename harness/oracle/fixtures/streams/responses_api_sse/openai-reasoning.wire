@@ -1,0 +1,12 @@
+event: response.reasoning_summary_text.delta
+data: {"type":"response.reasoning_summary_text.delta","delta":"First, "}
+
+event: response.reasoning_summary_text.delta
+data: {"type":"response.reasoning_summary_text.delta","delta":"consider the options."}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"The answer."}
+
+event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_2","object":"response","created_at":1730000100,"model":"gpt-5","status":"completed","output_text":"The answer.","output":[{"type":"reasoning","summary":[{"type":"summary_text","text":"First, consider the options."}]},{"type":"message","role":"assistant","content":[{"type":"output_text","text":"The answer."}]}],"usage":{"input_tokens":40,"output_tokens":20,"total_tokens":60,"input_tokens_details":{"cached_tokens":32}}}}
+

@@ -1,0 +1,10 @@
+data: {"id":"or2","choices":[{"index":0,"delta":{"role":"assistant","content":"Plain "}}]}
+
+data: {"id":"or2","choices":[{"index":0,"delta":{"content":"answer."}}]}
+
+data: {"id":"or2","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"id":"or2","choices":[{"index":0,"delta":{}}],"usage":{"prompt_tokens":7,"completion_tokens":2,"total_tokens":9}}
+
+data: [DONE]
+

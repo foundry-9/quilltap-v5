@@ -1,0 +1,29 @@
+[
+  {
+    "decoder": "anthropic_sse",
+    "provider": "anthropic",
+    "case": "anthropic-basic",
+    "wire": "anthropic-basic.wire",
+    "model": "claude-sonnet-4-5",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "anthropic_sse",
+    "provider": "anthropic",
+    "case": "anthropic-thinking-tools",
+    "wire": "anthropic-thinking-tools.wire",
+    "model": "claude-opus-4-6",
+    "profileParameters": { "extendedThinking": true },
+    "tools": [
+      { "name": "get_weather", "description": "w", "input_schema": { "type": "object", "properties": { "location": { "type": "string" } } } }
+    ]
+  },
+  {
+    "decoder": "anthropic_sse",
+    "provider": "anthropic",
+    "case": "anthropic-error",
+    "wire": "anthropic-error.wire",
+    "model": "claude-sonnet-4-5",
+    "temperature": 0.7
+  }
+]

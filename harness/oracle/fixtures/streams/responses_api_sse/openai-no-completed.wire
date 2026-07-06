@@ -1,0 +1,6 @@
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"Partial"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":" output"}
+

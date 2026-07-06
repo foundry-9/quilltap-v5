@@ -22,12 +22,17 @@
 //! [`completion::CompletionProvider`] / [`stream::StreamingCompletionProvider`].
 
 pub mod completion;
+pub mod decoders;
 pub mod embedding;
 pub mod stream;
 
 pub use completion::{
     CannedCompletionProvider, CompletionError, CompletionMessage, CompletionParams,
     CompletionProvider, CompletionResponse, CompletionRole, CompletionUsage,
+};
+pub use decoders::{
+    AnthropicSseDecoder, ChatCompletionsFlavor, ChatCompletionsSseDecoder, DecodeError,
+    GooglePartsDecoder, OllamaNdjsonDecoder, ResponsesApiSseDecoder, StreamDecoder,
 };
 pub use embedding::{
     CannedEmbeddingProvider, EmbeddingError, EmbeddingPriority, EmbeddingProvider, EmbeddingResult,

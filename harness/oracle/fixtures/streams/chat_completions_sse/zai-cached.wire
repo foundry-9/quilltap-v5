@@ -1,0 +1,10 @@
+data: {"id":"z1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"pondering"}}]}
+
+data: {"id":"z1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"GLM says hi"}}]}
+
+data: {"id":"z1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"id":"z1","object":"chat.completion.chunk","choices":[],"usage":{"prompt_tokens":30,"completion_tokens":5,"total_tokens":35,"prompt_tokens_details":{"cached_tokens":24}}}
+
+data: [DONE]
+

@@ -1,0 +1,14 @@
+data: {"id":"or1","choices":[{"index":0,"delta":{"role":"assistant","content":"Let me check. "}}]}
+
+data: {"id":"or1","choices":[{"index":0,"delta":{"reasoning":"I should call the tool."}}]}
+
+data: {"id":"or1","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"tc_1","type":"function","function":{"name":"search","arguments":"{\"q\":"}}]}}]}
+
+data: {"id":"or1","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"rust\"}"}}]}}]}
+
+data: {"id":"or1","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: {"id":"or1","choices":[{"index":0,"delta":{}}],"usage":{"prompt_tokens":40,"completion_tokens":12,"total_tokens":52,"prompt_tokens_details":{"cached_tokens":8}}}
+
+data: [DONE]
+

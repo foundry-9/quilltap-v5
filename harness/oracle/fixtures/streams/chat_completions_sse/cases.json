@@ -1,0 +1,117 @@
+[
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "DeepSeek",
+    "provider": "deepseek",
+    "case": "deepseek-basic",
+    "wire": "deepseek-basic.wire",
+    "model": "deepseek-chat",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "DeepSeek",
+    "provider": "deepseek",
+    "case": "deepseek-reasoning",
+    "wire": "deepseek-reasoning.wire",
+    "model": "deepseek-v4-pro",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "DeepSeek",
+    "provider": "deepseek",
+    "case": "deepseek-tools",
+    "wire": "deepseek-tools.wire",
+    "model": "deepseek-chat",
+    "temperature": 0.7,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "description": "w",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "DeepSeek",
+    "provider": "deepseek",
+    "case": "deepseek-keepalive-unicode",
+    "wire": "deepseek-keepalive-unicode.wire",
+    "model": "deepseek-chat",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "DeepSeek",
+    "provider": "deepseek",
+    "case": "deepseek-empty",
+    "wire": "deepseek-empty.wire",
+    "model": "deepseek-chat",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "ZAi",
+    "provider": "z-ai",
+    "case": "zai-cached",
+    "wire": "zai-cached.wire",
+    "model": "glm-4.6",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenRouterRaw",
+    "provider": "openrouter",
+    "case": "openrouter-tools",
+    "wire": "openrouter-tools.wire",
+    "model": "anthropic/claude-sonnet-4",
+    "temperature": 0.7,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "search",
+          "description": "s",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "q": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenRouterRaw",
+    "provider": "openrouter",
+    "case": "openrouter-basic",
+    "wire": "openrouter-basic.wire",
+    "model": "anthropic/claude-sonnet-4",
+    "temperature": 0.7,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "noop",
+          "description": "n",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ]
+  }
+]

@@ -1,0 +1,29 @@
+[
+  {
+    "decoder": "ollama_ndjson",
+    "provider": "ollama",
+    "case": "ollama-basic",
+    "wire": "ollama-basic.wire",
+    "model": "llama3.2",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "ollama_ndjson",
+    "provider": "ollama",
+    "case": "ollama-tools",
+    "wire": "ollama-tools.wire",
+    "model": "llama3.2",
+    "temperature": 0.7,
+    "tools": [
+      { "type": "function", "function": { "name": "get_weather", "description": "w", "parameters": { "type": "object", "properties": {} } } }
+    ]
+  },
+  {
+    "decoder": "ollama_ndjson",
+    "provider": "ollama",
+    "case": "ollama-unicode",
+    "wire": "ollama-unicode.wire",
+    "model": "qwen",
+    "temperature": 0.7
+  }
+]

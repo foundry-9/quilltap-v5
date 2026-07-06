@@ -41,6 +41,39 @@ a corpus-controlled input in its differential. The pins for all four moved to
 `provider_registry_equivalence` so a manifest drift is caught there. Spine-side
 seam removals (sourcing these injected inputs from the registry at the
 orchestrator composition point) are deferred to the orchestrator-spine owner.
+Phase 3 — wave 4 (W4.7b): the five stream decoders. Ported the sans-IO
+push-state-machine wire decoders that turn a provider's streamed bytes into the
+normalized `StreamChunk` sequence, in a new `model::decoders` module: a shared
+spec-faithful SSE frame splitter (`sse`) plus `chat_completions_sse`
+(openai-compatible / deepseek / z-ai / openrouter — the tool-call accumulator
+keyed by `tool_calls[].index`, reasoning routing, usage in the trailing chunk,
+`[DONE]`), `responses_api_sse` (openai / grok — the Responses-API event
+taxonomy, cumulative reasoning re-sends, terminal `response.completed`),
+`anthropic_sse` (`content_block_start`/`delta`/`stop` state machine,
+`input_json_delta` per-index buffering, thinking/signature, usage split across
+`message_start`/`message_delta`, mid-stream `error` events),
+`google_parts` (genai `generateContentStream` — `data:`-SSE parts iteration,
+`thought===true` → reasoning, `thoughtSignature`, functionCall parts), and
+`ollama_ndjson` (newline-delimited JSON, whole-object tool_calls normalized to
+OpenAI shape, `done:true` terminal). Each also assembles the terminal
+`rawResponse` value v4 hands back for tool-call detection. `StreamChunk` was NOT
+extended. Each decoder is a `StreamDecoder` (`push` / idempotent `finish`)
+correct when fed one byte at a time. Verified by `stream_decoders_equivalence`:
+a checked-in fetch-mock recorder drives v4's REAL plugin `streamMessage` parsers
+over committed wire transcripts and records the normalized chunk NDJSON; the
+Rust decoders replay each transcript at whole-buffer / per-frame /
+byte-at-a-time and diff the chunk sequence + rawResponse. Two documented
+transport-artifact normalizations: google's SDK-injected `sdkHttpResponse` is
+stripped, and ollama's no-cross-read-buffer split-line loss (a faithfully ported
+v4 bug) is diffed at line-aligned chunkings only (byte-at-a-time bug-parity is a
+Rust-side unit test). Three STOP-rule divergences from the design-doc table,
+flagged: the four "chat-completions-sse" providers do not share one
+normalization (deepseek/z-ai via the OpenAI SDK vs openrouter's raw-fetch
+`streamViaChatCompletions`, distinct rawResponse/reasoning shapes; deepseek and
+z-ai further differ on cache source + `rawProviderUsage`), reproduced via an
+internal `Flavor` selector over one shared parser; google is `data:`-prefixed
+SSE, not JSON-array/newline as the table's caption said; and openrouter's
+no-tools OpenResponses SDK path is out of scope (a deferred distinct wire).
 
 Phase 3 — wave 4 (W4.d1): drift re-port of the unified diff. v4 commit
 `8617ce7a` replaced the greedy look-ahead line diff with a real, minimal,

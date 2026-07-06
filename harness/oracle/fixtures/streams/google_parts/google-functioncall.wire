@@ -1,0 +1,4 @@
+data: {"candidates":[{"content":{"parts":[{"text":"Let me check the weather."}],"role":"model"},"index":0}]}
+
+data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"get_weather","args":{"city":"Paris"}}}],"role":"model"},"index":0}],"usageMetadata":{"promptTokenCount":30,"candidatesTokenCount":8,"totalTokenCount":38}}
+

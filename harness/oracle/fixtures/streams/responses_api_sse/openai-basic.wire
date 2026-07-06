@@ -1,0 +1,12 @@
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_1","status":"in_progress"}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"Hello"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":" from GPT"}
+
+event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_1","object":"response","created_at":1730000000,"model":"gpt-5","status":"completed","output_text":"Hello from GPT","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hello from GPT"}]}],"usage":{"input_tokens":15,"output_tokens":4,"total_tokens":19}}}
+

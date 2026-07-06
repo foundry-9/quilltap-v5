@@ -2776,6 +2776,64 @@ third-party manifest loading (fs, signing) is a design open item (the load/valid
 path exists, only the built-ins are wired); manifest pricing is the static
 fallback tier (W4.7e = the live fetcher). W4.7b/c are next (b independent of a; c
 after b).
+**Wave 4 (W4.7b): the five stream decoders are DONE** (2026-07-06,
+`crate::model::decoders`). The sans-IO push-state-machine wire decoders that turn
+a provider's streamed bytes into the normalized `StreamChunk` sequence (the
+`model::stream` vocabulary, **NOT extended**) — each a `StreamDecoder`
+(`push(&[u8])` / idempotent `finish()`) correct fed one byte at a time. A shared
+spec-faithful SSE frame splitter (`decoders::sse` — `\n`/`\r`/`\r\n` lines,
+`data:`/`event:` fields, multi-line data, comment keep-alives, blank-line
+dispatch, `\r\n`-split-across-pushes safe) underlies three of them. The five:
+`chat_completions_sse` (openai-compatible / deepseek / z-ai / openrouter — the
+tool-call accumulator keyed by `tool_calls[].index` concatenating fragmented
+argument strings, reasoning routing, usage in the trailing frame, `[DONE]`),
+`responses_api_sse` (openai / grok — `response.output_text.delta` +
+CUMULATIVE `response.reasoning_summary_text.delta` re-sends + terminal
+`response.completed` → v4's Chat-Completions-shaped `rawResponse`),
+`anthropic_sse` (`content_block_start`/`delta`/`stop` state machine,
+`input_json_delta` per-index buffering, thinking/signature accumulation, usage
+split across `message_start`/`message_delta`, mid-stream `error` events),
+`google_parts` (genai `generateContentStream` — verified `data:`-prefixed SSE at
+the SDK's `processStreamResponse`, parts iteration with `thought===true` →
+reasoning, `thoughtSignature` from the last chunk, functionCall parts, the
+thinking-model `finalContent` fallback), and `ollama_ndjson` (newline-delimited
+JSON, whole-object tool_calls normalized to OpenAI shape, `done:true` terminal).
+Each also assembles the terminal `rawResponse` value v4 hands back for
+`detectToolCallsInResponse` (W4.7c) byte-for-byte. Verified by
+`stream_decoders_equivalence`: a **checked-in fetch-mock recorder**
+(`harness/oracle/providers/record-stream-fixtures.mjs` — overrides `global.fetch`
+to replay a committed wire transcript through the provider's real SDK/transport,
+driving v4's REAL plugin `streamMessage` generator) records the normalized chunk
+NDJSON per case; the Rust decoders replay each transcript at **whole-buffer /
+per-SSE-frame / byte-at-a-time** and diff the chunk sequence + `rawResponse`.
+Committed: the wire transcripts (`fixtures/streams/<decoder>/*.wire`), the
+recorded NDJSON (`*.recorded.ndjson`), the recorder + a `regenerate` script.
+Adversarial cases banked per decoder (keep-alives, fragmented tool-call JSON with
+escaped quotes, Unicode/multi-byte/emoji splits, mid-stream error, empty +
+usage-absent streams, interleaved thinking/text, cumulative-reasoning re-sends,
+split JSON line). **Three STOP-rule divergences from the design-doc table were
+confirmed against v4 source at HEAD `8617ce7a` and handled (flagged):** (1) the
+four "chat-completions-sse" providers do NOT share one normalization — deepseek
+and z-ai go through the OpenAI SDK (`delta.reasoning_content`, the
+`{choices:[{index,message:{...},finish_reason}],usage}` rawResponse) while
+openrouter's tool/vision path is a raw-`fetch` `streamViaChatCompletions`
+(`delta.reasoning`, the camelCase `{choices:[{finishReason,delta:{toolCalls}}]}`
+rawResponse), and deepseek vs z-ai further differ on cache source
+(`prompt_cache_hit_tokens` vs `prompt_tokens_details.cached_tokens`) and whether
+`rawProviderUsage` is emitted (z-ai yes, deepseek no) — reproduced via an internal
+`Flavor` (`DeepSeek`/`ZAi`/`OpenRouterRaw`/`OpenAiCompatible`) selector over ONE
+shared parser, the decoder enum NAME unchanged; (2) `google-parts` is
+`data:`-prefixed SSE (the table caption's "JSON array / newline" is superseded by
+the SDK source); (3) openrouter's no-tools OpenResponses SDK path is a distinct
+undocumented wire — **tracked deferral** (out of scope). **Two documented
+transport-artifact normalizations** in the differential (not decoder logic):
+google's SDK-injected `sdkHttpResponse` wrapper is stripped from `rawResponse`
+(a sans-IO decoder never sees HTTP headers), and ollama is push-boundary-sensitive
+BY DESIGN (v4 splits each network read on `\n` with NO cross-read buffer, so a
+split JSON object is silently lost — a faithfully ported v4 bug), so ollama is
+diffed at whole + line-aligned chunkings only; the byte-at-a-time lossy
+bug-parity is a Rust-side unit test. **Recorder note:** run under `npx tsx` (some
+plugins import extensionless sibling `.ts` modules — z-ai's `./models`); Node 24.
 
 **The Phase-3 endgame is fully planned (2026-07-06).** Every remaining unit
 has an agent-ready work order checked in under
