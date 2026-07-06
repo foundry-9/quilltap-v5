@@ -16,6 +16,14 @@
       "name": "Router",
       "provider": "OPENROUTER",
       "modelName": "router-model"
+    },
+    {
+      "id": "c0000003-0000-4000-8000-000000000003",
+      "name": "Uncensored",
+      "provider": "OPENROUTER",
+      "modelName": "uncensored-model",
+      "apiKeyId": "c0000004-0000-4000-8000-000000000004",
+      "isDangerousCompatible": true
     }
   ],
   "chatSettings": {
@@ -27,7 +35,7 @@
     "compressionEnabled": false,
     "autoDetectRng": true,
     "answerConfirmationEnabled": false,
-    "dangerMode": "DETECT_ONLY",
+    "dangerMode": "AUTO_ROUTE",
     "agentModeSettings": {
       "maxTurns": 15,
       "defaultEnabled": false
@@ -719,6 +727,48 @@
         }
       ],
       "messages": []
+    },
+    {
+      "id": "da000001-0000-4000-8000-000000000001",
+      "chatType": "salon",
+      "contextSummary": "A prior summary exists for this chat.",
+      "conciergeOverride": "OFF",
+      "participants": [
+        {
+          "id": "da0000a1-0000-4000-8000-0000000000a1",
+          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "da0000a2-0000-4000-8000-0000000000a2",
+          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": []
+    },
+    {
+      "id": "db000002-0000-4000-8000-000000000002",
+      "chatType": "salon",
+      "contextSummary": null,
+      "isDangerousChat": true,
+      "participants": [
+        {
+          "id": "db0000b1-0000-4000-8000-0000000000b1",
+          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "db0000b2-0000-4000-8000-0000000000b2",
+          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": []
     }
   ],
   "calls": [
@@ -932,6 +982,26 @@
       "continueMode": false,
       "streamLabel": "agent_mode_on",
       "cheapLLMSettings": false,
+      "summaryCheck": false
+    },
+    {
+      "name": "danger_off_short_circuit",
+      "kind": "single",
+      "chatId": "da000001-0000-4000-8000-000000000001",
+      "content": "Hello there.",
+      "continueMode": false,
+      "streamLabel": "danger_off",
+      "cheapLLMSettings": true,
+      "summaryCheck": false
+    },
+    {
+      "name": "danger_live_reroute",
+      "kind": "single",
+      "chatId": "db000002-0000-4000-8000-000000000002",
+      "content": "Something the Concierge flagged.",
+      "continueMode": false,
+      "streamLabel": "danger_reroute",
+      "cheapLLMSettings": true,
       "summaryCheck": false
     }
   ],
@@ -1527,6 +1597,36 @@
           }
         }
       ]
+    ],
+    "danger_off": [
+      [
+        {
+          "content": "An ordinary reply."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 20,
+            "completionTokens": 5,
+            "totalTokens": 25
+          }
+        }
+      ]
+    ],
+    "danger_reroute": [
+      [
+        {
+          "content": "A rerouted reply."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 20,
+            "completionTokens": 5,
+            "totalTokens": 25
+          }
+        }
+      ]
     ]
   },
   "summaryCompletion": {
@@ -1536,5 +1636,8 @@
       "completionTokens": 12,
       "totalTokens": 72
     }
+  },
+  "apiKeys": {
+    "c0000004-0000-4000-8000-000000000004": "unc-decrypted-key"
   }
 }

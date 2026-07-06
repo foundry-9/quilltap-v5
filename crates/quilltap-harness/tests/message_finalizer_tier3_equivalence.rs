@@ -672,6 +672,10 @@ fn message_finalizer_tier3_matches_oracle() {
                 cheap_llm_settings_present: true,
                 auto_detect_rng: Some(spec.chat_settings.auto_detect_rng),
                 answer_confirmation_global_enabled: spec.chat_settings.answer_confirmation_enabled,
+                // W4.2u: the finalizer corpus keeps danger mode non-OFF (the enqueue
+                // gate runs; the OFF short-circuit is covered by the orchestrator
+                // corpus's `danger_off_short_circuit` case).
+                danger_mode_off: false,
             })
         } else {
             None
@@ -731,6 +735,9 @@ fn message_finalizer_tier3_matches_oracle() {
             participant_characters,
             chat_settings,
             is_dangerous_chat: false,
+            // W4.2u: the finalizer corpus has no reroute → the original connection
+            // profile id equals the effective `profile.id`.
+            connection_profile_id: profile.id.clone(),
         };
 
         let result = rt

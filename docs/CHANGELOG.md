@@ -74,6 +74,38 @@ z-ai further differ on cache source + `rawProviderUsage`), reproduced via an
 internal `Flavor` selector over one shared parser; google is `data:`-prefixed
 SSE, not JSON-array/newline as the table's caption said; and openrouter's
 no-tools OpenResponses SDK path is out of scope (a deferred distinct wire).
+Phase 3 — wave 4 (W4.2u): danger spine unification. Wired the real
+dangerous-content resolver + router into the `process_message` orchestrator
+spine, replacing the injected `NoRouter` / hardcoded `DETECT_ONLY` test stub.
+The spine now resolves the effective danger settings via
+`resolve_dangerous_content_settings` (the global `dangerousContentSettings`
+sub-object + the chat's `conciergeOverride` / `chatType` off-duty /
+moderation-exempt collapse), computes `is_chat_active_dangerous`, and
+reproduces v4 `resolveMessageDangerState`'s first branch: an actively-dangerous,
+non-continue turn with content synthesizes danger flags and — under AUTO_ROUTE
+with a non-`isDangerousCompatible` profile — reroutes the primary stream through
+an uncensored provider via the real `DangerContentRouter` (constructed with its
+`ApiKeyResolver` seam), attaching the flags to the saved user message. The
+finalizer's danger-classification enqueue now honors the resolver's OFF
+short-circuit (`FinalizerChatSettings.danger_mode_off`); the memory-extraction
+and danger-classification enqueues use the original `connectionProfile.id`
+(distinct from the rerouted `effectiveProfile.id`, added as
+`FinalizeOptions.connection_profile_id`), while the persisted assistant message
+and cost tracking stay on the effective profile — matching v4. The
+classification branch (cheap-LLM / moderation of the current user message) stays
+the gatekeeper seam (behavioral no-op on the diffed trace/tables when
+not-dangerous). Added two orchestrator-corpus cases driving v4's real danger
+resolution: `danger_off_short_circuit` (off-duty chat → resolved OFF → no
+classification enqueue, router never consulted) and `danger_live_reroute`
+(permanently-dangerous chat + AUTO_ROUTE + uncensored profile → primary stream
+rerouted, proven by a distinct recorded canned stream key). The oracle now runs
+v4's real `resolveMessageDangerState` (global mode AUTO_ROUTE, no
+`uncensoredTextProfileId` so the empty-response failover stays inert) with a
+canned `findApiKeyByIdAndUserId` seam. `orchestrator_tier3_equivalence`,
+`message_finalizer_tier3_equivalence`, `primary_stream_tier3_equivalence`,
+`danger_resolver_equivalence`, `danger_routing_equivalence`, and
+`danger_gatekeeper_tier3_equivalence` all green against regenerated oracles; the
+pre-existing orchestrator cases are a behavioral no-op under the real resolver.
 
 Phase 3 — wave 4 (W4.d1): drift re-port of the unified diff. v4 commit
 `8617ce7a` replaced the greedy look-ahead line diff with a real, minimal,

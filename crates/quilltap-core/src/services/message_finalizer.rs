@@ -313,6 +313,14 @@ pub struct FinalizerChatSettings {
     /// `answerConfirmationSettings.enabled === true` — the global confirmation
     /// gate leg.
     pub answer_confirmation_global_enabled: bool,
+    /// W4.2u: the resolved danger mode is `"OFF"` (v4
+    /// `resolveDangerousContentSettings(chatSettings, chat).settings.mode ===
+    /// 'OFF'`) — collapses to OFF when the chat is off-duty OR a moderation-exempt
+    /// type. The danger-classification enqueue bails when this is true (v4
+    /// `triggerChatDangerClassification`'s first gate), so an OFF chat never
+    /// enqueues a `CHAT_DANGER_CLASSIFICATION` job. Resolved above the seam at the
+    /// orchestrator composition point.
+    pub danger_mode_off: bool,
 }
 
 /// The async-compression gate inputs (v4 `compression` subset).
@@ -366,6 +374,14 @@ pub struct FinalizeOptions {
     /// v4 `isChatActiveDangerous(chat)` — resolved above the seam (the enqueue gate
     /// is re-derived on the fresh chat by the danger-classification enqueue).
     pub is_dangerous_chat: bool,
+    /// W4.2u: the ORIGINAL connection profile id (v4 `connectionProfile.id`),
+    /// distinct from `profile.id` (the `effectiveProfile.id` after a possible
+    /// uncensored reroute). v4's finalizer passes `connectionProfile` — NOT
+    /// `effectiveProfile` — to the memory-extraction + danger-classification
+    /// enqueues, so their job payload's `connectionProfileId` is the original.
+    /// (Cost tracking + the persisted assistant message stay on `profile`, the
+    /// effective one.) Equal to `profile.id` when no reroute happened.
+    pub connection_profile_id: String,
 }
 
 // ===========================================================================
@@ -409,6 +425,7 @@ where
         participant_characters,
         chat_settings,
         is_dangerous_chat: _is_dangerous_chat,
+        connection_profile_id,
     } = opts;
 
     // --- Content cleaning (message-finalizer.service.ts:96–133) ---
@@ -848,8 +865,10 @@ where
     // --- Background triggers (message-finalizer.service.ts:496–549) ---
     if let Some(settings) = &chat_settings {
         // Per-turn memory extraction — fire when the turn closes OR autonomous.
+        // v4 enqueues with `connectionProfile.id` (the ORIGINAL profile), not the
+        // rerouted `effectiveProfile.id` (W4.2u).
         if (turn_info.is_users_turn || is_autonomous) && settings.cheap_llm_settings_present {
-            trigger_turn_memory_extraction(db, &chat_id, &user_id, &profile.id).await?;
+            trigger_turn_memory_extraction(db, &chat_id, &user_id, &connection_profile_id).await?;
         }
 
         // Context-summary check — gated on not-autonomous + cheapLLMSettings. The
@@ -861,8 +880,19 @@ where
         // if !is_autonomous && settings.cheap_llm_settings_present { … }
 
         // Chat danger classification — the gate + enqueue (its own sub-gates
-        // inside; the danger-mode-OFF/Off-duty resolver short-circuit is deferred).
-        trigger_chat_danger_classification(db, &chat_id, &user_id, &profile.id).await?;
+        // inside). W4.2u: the danger-mode-OFF / Off-duty / moderation-exempt
+        // resolver short-circuit is now wired (v4 `triggerChatDangerClassification`
+        // bails first when the resolved mode is OFF); `danger_mode_off` is resolved
+        // above the seam.
+        trigger_chat_danger_classification(
+            db,
+            &chat_id,
+            &user_id,
+            // v4 enqueues with `connectionProfile.id` (the ORIGINAL), W4.2u.
+            &connection_profile_id,
+            settings.danger_mode_off,
+        )
+        .await?;
     }
 
     // --- Return value (message-finalizer.service.ts:551–566) ---
@@ -1066,17 +1096,24 @@ fn is_truthy_silent(v: Option<&Value>) -> bool {
 }
 
 /// v4 `triggerChatDangerClassification` gate + enqueue: read the fresh chat; bail
-/// on sticky-dangerous / already-classified-at-this-count / no-summary, else
-/// enqueue. The danger-mode-OFF and Off-duty resolver short-circuit is a
-/// documented deferral (the resolver is unported); the corpus keeps danger mode
-/// ON so the enqueue path is reachable. The enqueue's own `findPendingForChat`
-/// dedupe is in [`super::queue_service`].
+/// on danger-mode-OFF (W4.2u) / sticky-dangerous / already-classified-at-this-count
+/// / no-summary, else enqueue. The `danger_mode_off` flag is the resolved
+/// `resolveDangerousContentSettings(...).settings.mode === 'OFF'` (v4 bails first
+/// on it — an off-duty / moderation-exempt / globally-OFF chat is never enqueued).
+/// The enqueue's own `findPendingForChat` dedupe is in [`super::queue_service`].
 async fn trigger_chat_danger_classification(
     db: &Db,
     chat_id: &str,
     user_id: &str,
     connection_profile_id: &str,
+    danger_mode_off: bool,
 ) -> Result<(), DbError> {
+    // Resolved danger mode OFF (or off-duty / moderation-exempt) → bail before any
+    // lookups (v4 `triggerChatDangerClassification`'s first gate).
+    if danger_mode_off {
+        return Ok(());
+    }
+
     let chat_id_owned = chat_id.to_string();
     let Some(chat) = db.read_main(move |conn| chats_read::find_by_id(conn, &chat_id_owned))? else {
         return Ok(());

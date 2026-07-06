@@ -2669,14 +2669,37 @@ API-key acquisition, `logLLMCall`, the job-runner infrastructure
 (`postConcierge{Manual,Danger}Announcement` — seamed no-op, a W4.6 deferral). The
 gatekeeper's raw-message-concatenation truncation uses Unicode-scalar (not UTF-16)
 boundaries — a minor seam, corpus kept ASCII on that path; the message-fallback and
-mode-OFF (userB) branches are covered. **Unification handoff (edits W4.4a-owned
-spine files, so NOT done here — for the unifier):** construct the real
-`DangerContentRouter` + gatekeeper at the orchestrator composition point, and add
-the two orchestrator-corpus cases that need them — the danger-resolver OFF
-short-circuit case and a live uncensored-reroute case. `primary_stream_tier3` /
-`memory_processor_tier3` / `cheap_llm` self-tests are unaffected (no shared source
-touched — the frozen `DangerousContentRouter` trait in `provider_failover.rs` is
-only *implemented* in the new module, never edited).
+mode-OFF (userB) branches are covered. **The unification is now DONE (W4.2u,
+2026-07-06):** the real `DangerContentRouter` + resolver are wired into the
+`process_message` spine, replacing the injected `NoRouter` / hardcoded
+`DETECT_ONLY` stub. The spine resolves the effective danger settings
+(`resolve_dangerous_content_settings` over the global sub-object + the chat's
+`conciergeOverride`/`chatType` — off-duty/exempt collapse to OFF), computes
+`is_chat_active_dangerous`, and reproduces v4 `resolveMessageDangerState`'s FIRST
+branch: an actively-dangerous, non-continue turn with content synthesizes danger
+flags (attached to the saved user message via `updateMessage`) and — under
+AUTO_ROUTE with a non-`isDangerousCompatible` profile — reroutes the primary
+stream through an uncensored provider via the real router (its `ApiKeyResolver`
+seam injected). The classify branch stays the gatekeeper seam (a behavioral no-op
+on the diffed trace/tables when not-dangerous — its `classifying` status is
+outside the shared status vocabulary). The finalizer now honors the resolver OFF
+short-circuit for the danger-classification enqueue
+(`FinalizerChatSettings.danger_mode_off`), and the memory-extraction +
+danger-classification enqueues use the ORIGINAL `connectionProfile.id`
+(`FinalizeOptions.connection_profile_id`), distinct from the rerouted
+`effectiveProfile.id` (which the persisted assistant message + cost tracking keep)
+— matching v4. Two orchestrator-corpus cases added, driving v4's REAL danger
+resolution (global AUTO_ROUTE, no `uncensoredTextProfileId` so the empty-response
+failover stays inert; a canned `findApiKeyByIdAndUserId` seam): `danger_off_short_circuit`
+(off-duty chat → resolved OFF → no classification enqueue, router never consulted)
+and `danger_live_reroute` (dangerous chat + AUTO_ROUTE + uncensored profile → the
+primary stream reroutes, proven by a distinct recorded canned stream key + the
+flags on the user message). `orchestrator_tier3_equivalence`,
+`message_finalizer_tier3_equivalence`, `primary_stream_tier3_equivalence`,
+`danger_resolver_equivalence`, `danger_routing_equivalence`, and
+`danger_gatekeeper_tier3_equivalence` re-verified green against regenerated
+oracles; the pre-existing orchestrator cases are a behavioral no-op under the real
+resolver.
 
 **Drift re-port (W4.d1, 2026-07-06): the Myers unified diff is now ported and
 green.** v4 commit `8617ce7a` ("tighten Document Mode change diffs") rewrote

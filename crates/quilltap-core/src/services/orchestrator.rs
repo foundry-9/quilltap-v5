@@ -105,6 +105,8 @@ use crate::services::chat_events::{
     TurnStartPayload,
 };
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use crate::services::dangerous_content::chat_override::is_chat_active_dangerous;
+use crate::services::dangerous_content::resolver::resolve_dangerous_content_settings;
 use crate::services::message_context;
 use crate::services::message_finalizer::{
     self, AnswerConfirmationRunner, AsyncCompressionTrigger, CostTracker, FinalizeOptions,
@@ -263,6 +265,13 @@ pub struct OrchestratorChatSettings {
     /// `agentModeSettings.maxTurns` — the agent-mode iteration cap (Zod
     /// `.min(1).max(25).default(10)`). Not overridden by any cascade level.
     pub agent_mode_max_turns: i64,
+    /// `dangerousContentSettings` — the GLOBAL danger settings sub-object (v4
+    /// `chatSettings?.dangerousContentSettings`). The orchestrator resolves the
+    /// EFFECTIVE settings from this + the chat's `conciergeOverride` / `chatType`
+    /// via [`resolve_dangerous_content_settings`] (W4.2u). `None` = the settings
+    /// row / sub-object is absent (the resolver then falls back to its default,
+    /// mode `OFF`).
+    pub danger_settings: Option<crate::db::chat_settings::DangerousContentSettings>,
 }
 
 impl OrchestratorChatSettings {
@@ -278,6 +287,7 @@ impl OrchestratorChatSettings {
             autonomous_destructive_policy: "opt_in_per_room".to_string(),
             agent_mode_default_enabled: false,
             agent_mode_max_turns: 10,
+            danger_settings: None,
         }
     }
 }
@@ -655,15 +665,117 @@ where
         .map(|s| s.compression_enabled && s.cheap_llm_settings_present && !bypass_compression)
         .unwrap_or(false);
 
-    // --- Danger state (orchestrator.service.ts:424–441) ---
-    // The danger-classification + reroute resolver is a wave-4 seam. The corpus
-    // keeps danger mode non-AUTO so no reroute happens; the effective profile is
-    // the resolved connection profile.
-    let effective_profile = to_effective_profile(&connection_profile);
+    // --- Danger state (orchestrator.service.ts:420–441 →
+    //     danger-orchestrator.service.ts `resolveMessageDangerState`) ---
+    // W4.2u: the real resolution replaces the wave-4 stub. Resolve the EFFECTIVE
+    // danger settings from the global `dangerousContentSettings` sub-object + the
+    // chat's `conciergeOverride`/`chatType` (off-duty / moderation-exempt collapse
+    // to OFF). Then reproduce v4's FIRST branch of `resolveMessageDangerState`: a
+    // permanently-dangerous chat (`isChatActiveDangerous`) whose mode is not OFF,
+    // on a non-continue turn with content, synthesizes danger flags and — under
+    // AUTO_ROUTE with a non-`isDangerousCompatible` profile — reroutes to an
+    // uncensored provider via the REAL [`DangerousContentRouter`] BEFORE the
+    // stream (mutating `effective_profile` / `effective_api_key`).
+    //
+    // The classify branch (`resolveMessageDangerState` L109 — the cheap-LLM /
+    // moderation classification of the current user message) stays the injected
+    // gatekeeper seam: its `classifying` status is outside the diffed status
+    // vocabulary and, on a not-dangerous result, it writes no system event and
+    // performs no reroute — so it is a behavioral no-op on the diffed tables /
+    // trace. The gatekeeper JOB (the finalizer's danger-classification enqueue)
+    // is the persistence path and stays reachable (its own OFF short-circuit is
+    // now wired via `finalizer_danger_off`, below).
+    let danger_resolved = resolve_dangerous_content_settings(
+        chat_settings
+            .as_ref()
+            .and_then(|s| s.danger_settings.clone()),
+        Some(&chat),
+    );
+    let danger_settings = danger_resolved.settings;
+    let is_dangerous_chat = is_chat_active_dangerous(Some(&chat));
+
+    let mut effective_profile = to_effective_profile(&connection_profile);
+    let mut effective_api_key = resolution.api_key.clone().unwrap_or_default();
+    let mut content_was_flagged_dangerous = false;
+    // The synthesized flags (v4 attaches them to the saved USER message below).
+    let mut danger_flags: Option<Vec<Value>> = None;
+
+    if is_dangerous_chat
+        && danger_settings.mode != "OFF"
+        && !is_continue_mode
+        && !input.options.content.is_empty()
+    {
+        content_was_flagged_dangerous = true;
+        // v4: `categories = chat.dangerCategories?.length ? chat.dangerCategories
+        //      : ['unspecified']`; each → a flag { category, score:1, ... }.
+        let categories: Vec<String> = chat
+            .get("dangerCategories")
+            .and_then(Value::as_array)
+            .filter(|a| !a.is_empty())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
+            .filter(|v: &Vec<String>| !v.is_empty())
+            .unwrap_or_else(|| vec!["unspecified".to_string()]);
+        let mut flags: Vec<Value> = categories
+            .iter()
+            .map(|cat| {
+                json!({
+                    "category": cat,
+                    "score": 1.0,
+                    "userOverridden": false,
+                    "wasRerouted": false,
+                })
+            })
+            .collect();
+
+        let profile_is_dangerous_compatible = connection_profile
+            .get("isDangerousCompatible")
+            .and_then(Value::as_bool)
+            == Some(true);
+        if danger_settings.mode == "AUTO_ROUTE" && !profile_is_dangerous_compatible {
+            let route = deps
+                .danger_router
+                .resolve(
+                    &effective_profile,
+                    &effective_api_key,
+                    &DangerSettings {
+                        mode: danger_settings.mode.clone(),
+                        uncensored_text_profile_id: danger_settings
+                            .uncensored_text_profile_id
+                            .clone(),
+                    },
+                    &user_id,
+                )
+                .await;
+            if route.rerouted {
+                // v4 `markFlagsAsRerouted`: set `wasRerouted` + the rerouted
+                // provider/model on every flag.
+                for flag in &mut flags {
+                    if let Some(obj) = flag.as_object_mut() {
+                        obj.insert("wasRerouted".into(), json!(true));
+                        obj.insert(
+                            "reroutedProvider".into(),
+                            json!(route.connection_profile.provider),
+                        );
+                        obj.insert(
+                            "reroutedModel".into(),
+                            json!(route.connection_profile.model_name),
+                        );
+                    }
+                }
+                effective_profile = route.connection_profile;
+                effective_api_key = route.api_key;
+            }
+        }
+        danger_flags = Some(flags);
+    }
 
     let mut streaming_state = StreamingState {
         effective_profile: Some(effective_profile.clone()),
-        effective_api_key: resolution.api_key.clone().unwrap_or_default(),
+        effective_api_key: effective_api_key.clone(),
         ..Default::default()
     };
 
@@ -812,6 +924,26 @@ where
                 .await?;
         }
         user_message_id = Some(id);
+    }
+
+    // --- Attach dangerFlags to the saved user message (orchestrator.service.ts:673–685) ---
+    // v4 attaches the synthesized flags to the USER message via `updateMessage`
+    // (best-effort — a failure is logged and swallowed). Reached only for an
+    // actively-dangerous, non-continue turn with content (`danger_flags` is
+    // `Some` iff the first-branch fired above).
+    if let (Some(flags), Some(mid)) = (&danger_flags, &user_message_id) {
+        if !flags.is_empty() {
+            let chat_id_owned = chat_id.clone();
+            let mid = mid.clone();
+            let updates = json!({ "dangerFlags": flags });
+            db.write(move |w| {
+                w.main()
+                    .chat_messages()
+                    .update_message(&chat_id_owned, &mid, &updates)
+                    .map(|_| ())
+            })
+            .await?;
+        }
     }
     let _ = user_message_id;
 
@@ -1450,7 +1582,7 @@ where
     let tool_messages_len = tool_messages.len();
 
     // --- Empty-response recovery (orchestrator.service.ts:1380–1397) ---
-    let content_was_flagged_dangerous = false;
+    // W4.2u: the danger flags + settings are now the real resolution (above).
     let recovery_flags = provider_failover::attempt_empty_response_recovery(
         deps.streaming,
         sink,
@@ -1460,8 +1592,8 @@ where
             tool_messages_length: tool_messages_len,
             content_was_flagged_dangerous,
             danger_settings: DangerSettings {
-                mode: "DETECT_ONLY".into(),
-                uncensored_text_profile_id: None,
+                mode: danger_settings.mode.clone(),
+                uncensored_text_profile_id: danger_settings.uncensored_text_profile_id.clone(),
             },
             connection_profile: effective_profile.clone(),
             params: params.clone(),
@@ -1519,6 +1651,9 @@ where
             cheap_llm_settings_present: s.cheap_llm_settings_present,
             auto_detect_rng: Some(s.auto_detect_rng),
             answer_confirmation_global_enabled: s.answer_confirmation_global_enabled,
+            // W4.2u: the resolved danger mode (off-duty / exempt / global-OFF all
+            // collapse to `"OFF"`) gates the danger-classification enqueue.
+            danger_mode_off: danger_settings.mode == "OFF",
         });
 
         let result = message_finalizer::finalize_message_response(
@@ -1544,7 +1679,12 @@ where
                 compression: finalizer_compression,
                 participant_characters: finalizer_participant_characters,
                 chat_settings: finalizer_chat_settings,
-                is_dangerous_chat: false,
+                // W4.2u: v4 `isChatActiveDangerous(chat)` — the real resolution.
+                is_dangerous_chat,
+                // W4.2u: the ORIGINAL connection profile id (v4 `connectionProfile.id`).
+                // v4's finalizer enqueues memory-extraction + danger-classification
+                // with this, NOT the rerouted `effectiveProfile.id`.
+                connection_profile_id: json_str(&connection_profile, "id").unwrap_or_default(),
             },
             deps.confirmation,
             deps.compression,
@@ -1563,7 +1703,10 @@ where
         let is_autonomous = chat.get("chatType").and_then(Value::as_str) == Some("autonomous");
         if let Some(settings) = &chat_settings {
             if !is_autonomous && settings.cheap_llm_settings_present {
-                run_summary_check(deps, &chat_id, &user_id, &effective_profile).await?;
+                // v4's summary check runs on `connectionProfile` (the ORIGINAL),
+                // not the rerouted `effectiveProfile` (W4.2u). Equal when no reroute.
+                let original_profile = to_effective_profile(&connection_profile);
+                run_summary_check(deps, &chat_id, &user_id, &original_profile).await?;
             }
         }
 

@@ -113,6 +113,11 @@ interface Spec {
   userId: string;
   frozenNowMs: number;
   chatSettings: { id: string };
+  /** W4.2u: the canned `apiKeyId → decrypted key` map for the uncensored-reroute
+   * router (the danger-differential-recipe pattern: no `api_keys` row is seeded;
+   * v4's `findApiKeyByIdAndUserId` is monkey-patched to this map, the Rust
+   * `ApiKeyResolver` injects the same). */
+  apiKeys?: Record<string, string>;
   calls: CallSpec[];
   streams: Record<string, ChunkSpec[][]>;
   /** W4.1g native-call detection: raw-response marker → the tool calls the
@@ -582,6 +587,17 @@ async function main(): Promise<void> {
 
   await initializeDatabase();
   const repos = getRepositories();
+
+  // W4.2u: canned API-key seam for the uncensored-reroute router. `getRepositories()`
+  // is a singleton, so monkey-patch `findApiKeyByIdAndUserId` AFTER acquiring it (the
+  // danger-differential-recipe pattern). No `api_keys` row is seeded; profiles carry
+  // pinned `apiKeyId` column values, and the Rust `ApiKeyResolver` injects the same
+  // spec `apiKeys` map. An absent/bogus apiKeyId → null both sides → the no-key
+  // fall-through.
+  const apiKeyMap = spec.apiKeys ?? {};
+  (repos.connections as { findApiKeyByIdAndUserId: unknown }).findApiKeyByIdAndUserId = async (
+    id: string
+  ) => (apiKeyMap[id] ? { id, key_value: apiKeyMap[id] } : null);
 
   // Freeze the wall clock so buildContext's timestamp-in-prompt matches the Rust
   // injected now_ms (→ the canned stream key matches). Minted DB timestamps are

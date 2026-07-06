@@ -60,8 +60,6 @@ use quilltap_core::services::orchestrator::{
     self, ExecuteTurnChainOptions, OrchestratorChatSettings, OrchestratorDeps, ProcessClock,
     ProcessMessageInput, SendMessageOptions,
 };
-use quilltap_core::services::primary_stream::EffectiveProfile;
-use quilltap_core::services::provider_failover::{DangerousContentRouter, RouteResult};
 use quilltap_core::services::turn_orchestrator::ChainConfig;
 use serde::Deserialize;
 use serde_json::Value;
@@ -118,6 +116,11 @@ struct Spec {
     /// `detectToolCallsInResponse` mock; empty for the non-native cases.
     #[serde(default)]
     detection: HashMap<String, Vec<ToolCallSpecW>>,
+    /// W4.2u: the canned `apiKeyId → decrypted key` map for the uncensored-reroute
+    /// router (mirrors the oracle's `findApiKeyByIdAndUserId` monkey-patch). The
+    /// real `DangerContentRouter`'s `ApiKeyResolver` injects it.
+    #[serde(default)]
+    api_keys: HashMap<String, String>,
 }
 
 /// The native tool-call detector (the injected W4.7 provider-wire-parse seam):
@@ -334,27 +337,23 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
 }
 
 // ---------------------------------------------------------------------------
-// A no-reroute danger router (the corpus keeps danger mode non-AUTO).
+// W4.2u: the REAL uncensored-reroute router. The differential now runs v4's REAL
+// danger resolution (global mode AUTO_ROUTE, no `uncensoredTextProfileId` — so the
+// empty-response uncensored failover stays inert, only the FIRST-branch reroute on
+// an actively-dangerous chat fires), so the Rust side wires the REAL
+// `DangerContentRouter` (scans `connection_profiles` for an `isDangerousCompatible`
+// profile off the read pool) with the canned `ApiKeyResolver` from the spec's
+// `apiKeys` map (mirroring the oracle's `findApiKeyByIdAndUserId` monkey-patch).
 // ---------------------------------------------------------------------------
 
-struct NoReroute;
-impl DangerousContentRouter for NoReroute {
-    fn resolve(
-        &self,
-        original_profile: &EffectiveProfile,
-        original_api_key: &str,
-        _settings: &quilltap_core::services::provider_failover::DangerSettings,
-        _user_id: &str,
-    ) -> impl Future<Output = RouteResult> + Send {
-        let profile = original_profile.clone();
-        let key = original_api_key.to_string();
-        async move {
-            RouteResult {
-                rerouted: false,
-                connection_profile: profile,
-                api_key: key,
-            }
-        }
+/// The canned key seam: `apiKeyId` → key, from the spec (the oracle patches
+/// `findApiKeyByIdAndUserId` to the same map).
+struct CannedApiKeys(HashMap<String, String>);
+impl quilltap_core::services::dangerous_content::provider_routing::ApiKeyResolver
+    for CannedApiKeys
+{
+    fn resolve(&self, api_key_id: &str, _user_id: &str) -> Option<String> {
+        self.0.get(api_key_id).cloned()
     }
 }
 
@@ -547,7 +546,12 @@ fn orchestrator_tier3_matches_oracle() {
     let embedding = CannedEmbeddingProvider::new();
     let executor = CheapLlmTaskExecutor::new();
     let bc_seams = BcNoopSeams;
-    let router = NoReroute;
+    // W4.2u: the REAL router + canned API-key seam (from the spec's `apiKeys` map).
+    let router =
+        quilltap_core::services::dangerous_content::provider_routing::DangerContentRouter::new(
+            db.clone(),
+            CannedApiKeys(spec.api_keys.clone()),
+        );
 
     // The native tool-call detector (marker → canned tool calls; no-op elsewhere).
     let detector = CaseDetector {
@@ -1019,6 +1023,24 @@ impl orchestrator::OrchestratorSeams for HarnessOrchestratorSeams {
             // `agent_mode_on` chat opts in at the Chat level (`agentModeEnabled`).
             agent_mode_default_enabled: false,
             agent_mode_max_turns: 15,
+            // W4.2u: the fixture's single chat_settings row sets
+            // `dangerousContentSettings = { mode: AUTO_ROUTE }` (no
+            // `uncensoredTextProfileId`, so the empty-response uncensored failover
+            // stays inert — only the FIRST-branch reroute on an actively-dangerous
+            // chat fires; every salon chat is not dangerous → no-op). The resolver
+            // reads this global + the chat's `conciergeOverride`/`chatType`.
+            danger_settings: Some(quilltap_core::db::chat_settings::DangerousContentSettings {
+                mode: "AUTO_ROUTE".to_string(),
+                threshold: 0.7,
+                scan_text_chat: true,
+                scan_image_prompts: true,
+                scan_image_generation: false,
+                uncensored_text_profile_id: None,
+                uncensored_image_profile_id: None,
+                display_mode: "SHOW".to_string(),
+                show_warning_badges: true,
+                custom_classification_prompt: None,
+            }),
         })
     }
 }

@@ -74,12 +74,24 @@ interface ChatSpec {
   agentModeEnabled?: boolean;
   /** W4.4: seeded agent turn count (the reset gate zeroes it on a new user turn). */
   agentTurnCount?: number;
+  /** W4.2u: the operator Concierge flip (`'OFF'` = off-duty → danger resolves OFF). */
+  conciergeOverride?: string | null;
+  /** W4.2u: the classification label (dangerous chat → the first-branch reroute). */
+  isDangerousChat?: boolean;
 }
 interface Spec {
   testPepperBase64: string;
   userId: string;
   seedTimestamp: string;
-  connectionProfiles: Array<{ id: string; name: string; provider: string; modelName: string }>;
+  connectionProfiles: Array<{
+    id: string;
+    name: string;
+    provider: string;
+    modelName: string;
+    /** W4.2u: the uncensored-reroute target carries these. */
+    apiKeyId?: string;
+    isDangerousCompatible?: boolean;
+  }>;
   chatSettings: {
     id: string;
     cheapLLMSettings: { strategy: string; fallbackToLocal: boolean };
@@ -150,10 +162,21 @@ async function main(): Promise<void> {
     }
   }
 
-  // Connection profiles.
+  // Connection profiles (the uncensored-reroute target carries `apiKeyId` +
+  // `isDangerousCompatible` — no `api_keys` row is seeded; the key is a canned
+  // seam on both sides, keyed by `apiKeyId`).
   for (const cp of spec.connectionProfiles) {
     await repos.connections.create(
-      { userId: spec.userId, name: cp.name, provider: cp.provider, modelName: cp.modelName } as never,
+      {
+        userId: spec.userId,
+        name: cp.name,
+        provider: cp.provider,
+        modelName: cp.modelName,
+        ...(cp.apiKeyId !== undefined ? { apiKeyId: cp.apiKeyId } : {}),
+        ...(cp.isDangerousCompatible !== undefined
+          ? { isDangerousCompatible: cp.isDangerousCompatible }
+          : {}),
+      } as never,
       { id: cp.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );
   }
@@ -213,6 +236,8 @@ async function main(): Promise<void> {
         ...(chat.disabledTools !== undefined ? { disabledTools: chat.disabledTools } : {}),
         ...(chat.agentModeEnabled !== undefined ? { agentModeEnabled: chat.agentModeEnabled } : {}),
         ...(chat.agentTurnCount !== undefined ? { agentTurnCount: chat.agentTurnCount } : {}),
+        ...(chat.conciergeOverride !== undefined ? { conciergeOverride: chat.conciergeOverride } : {}),
+        ...(chat.isDangerousChat !== undefined ? { isDangerousChat: chat.isDangerousChat } : {}),
       } as never,
       { id: chat.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );
