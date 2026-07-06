@@ -4,6 +4,29 @@
 
 ### 5.0-dev
 
+Phase 3 — wave 4 (W4.d1): drift re-port of the unified diff. v4 commit
+`8617ce7a` replaced the greedy look-ahead line diff with a real, minimal,
+git-style unified diff, so the ported `doc_edit::unified_diff` no longer
+matched. Ported the new v4 `lib/doc-edit/line-diff.ts` as a new leaf
+`doc_edit::line_diff` (`diff_lines` — a Myers O(ND) shortest-edit-script diff
+over line arrays, a byte-faithful transcription including the exact tie-break
+so the recovered op order matches under ties — plus `changed_block_indices`),
+and rewrote `doc_edit::unified_diff` on top of it: git-style hunks with three
+lines of context, maximal changed runs coalesced when their expanded ranges
+touch, correct `@@ -start,count +start,count @@` ranges (count 0 →
+`start-1,0`), empty content treated as zero lines, and a whole-file
+replacement-hunk fallback past 10,000 combined lines. Deleted the old greedy
+walker. Regenerated and extended `doc_edit_leaves_equivalence` (coalesce vs
+split hunks, context truncation at file start/end, the formatRange shapes
+incl. the delete-at-top/empty-side `0,0` range, create-from-empty and
+empty-from-content, a shifted-block case, a Unicode line, the >10,000-line
+fallback, plus `diff_lines`/`changed_block_indices` rows driven directly); the
+`doc_text` and `doc_fm` handler differentials re-verified green against
+regenerated oracles (their handlers do not build the diff payload). No handler
+change: the ported doc-edit handlers still omit the `change` payload that
+consumes this diff — that seam closes with the Librarian save-announcement
+writer in W4.6b.
+
 Phase 3 — the endgame plan. Docs only. Re-planned the remainder of the port
 from fresh surveys of every unported v4 subsystem (courier, answer-confirmation,
 carina query, file/attachment, the buildContext feeders, the post-office

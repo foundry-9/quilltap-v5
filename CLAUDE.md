@@ -2678,22 +2678,33 @@ short-circuit case and a live uncensored-reroute case. `primary_stream_tier3` /
 touched — the frozen `DangerousContentRouter` trait in `provider_failover.rs` is
 only *implemented* in the new module, never edited).
 
-**Drift check (2026-07-06): v4 `42242a3e..8617ce7a` (1 commit) audited — ONE
-ported unit is stale.** `8617ce7a` ("tighten Document Mode change diffs")
-rewrote `lib/doc-edit/unified-diff.ts` — the ported `doc_edit::unified_diff`
-(W4.1d3a, the greedy 3-line-lookahead walker) no longer matches v4: the diff
-is now a Myers shortest-edit-script (new shared `lib/doc-edit/line-diff.ts`:
-`diffLines` + `changedBlockIndices`) grouped into git-style hunks (3-line
-context, coalescing, correct `@@` ranges, empty-content = zero lines,
-whole-file fallback past 10 000 lines; signatures unchanged).
-`doc_edit_leaves_equivalence` is green only against its stale oracle; a
-regeneration will fail until the re-port lands. Blast radius is contained:
-the v5 doc-edit handlers never build the `change.diff` payload (it feeds only
-the Librarian save-announcement — the W4.6b-seamed writer), and the change
-gutter is Phase-4 UI. Re-port scoped as
-`docs/developer/porting/work-orders/w4.d1-unified-diff-drift.md` (runs FIRST
-in Round 1); the W4.6b order carries the `change`-payload coupling note; the
-`docs/v4/` CHANGELOG mirror is refreshed.
+**Drift re-port (W4.d1, 2026-07-06): the Myers unified diff is now ported and
+green.** v4 commit `8617ce7a` ("tighten Document Mode change diffs") rewrote
+`lib/doc-edit/unified-diff.ts` and added `lib/doc-edit/line-diff.ts`, staling
+the ported `doc_edit::unified_diff` (the old W4.1d3a greedy 3-line-lookahead
+walker). Now caught up: the new leaf `doc_edit::line_diff` ports `diffLines`
+(a Myers O(ND) shortest-edit-script diff over line arrays — a byte-faithful
+transcription, NOT a crate, incl. the exact `k === -d || (k !== d && v[k-1] <
+v[k+1])` tie-break in both the forward and backtrack passes so the recovered
+op order matches under ties) + `changedBlockIndices`; and
+`doc_edit::unified_diff` is rewritten on top of it — git-style hunks with
+3-line context, maximal changed runs coalesced when their expanded ranges
+touch (`start <= last.end + 1`), correct `@@ -start,count +start,count @@`
+ranges via `format_range` (count 0 → `start-1,0`), empty content = zero lines,
+and a whole-file replacement-hunk fallback past `MAX_DIFFABLE_LINES = 10000`
+combined lines. The old greedy walker is deleted (v4 deleted it). Verified by
+the regenerated + extended `doc_edit_leaves_equivalence` (106 rows: coalesce
+vs split hunks, context truncation at file start/end, the formatRange shapes
+incl. the delete-at-top/empty-side `0,0` range, create-from-empty and
+empty-from-content, a shifted-block case, a Unicode line, the >10 000-line
+whole-file fallback, plus `diffLines`/`changedBlockIndices` rows driven
+directly, mirroring v4's own new unit tests); the `doc_text` / `doc_fm`
+handler differentials re-verified green against regenerated oracles (their
+handlers do not build the diff payload — confirmed 2026-07-06). **Still
+seam-side:** the ported doc-edit handlers do NOT yet emit the
+`change: { kind: 'edited', diff }` payload that consumes `generateUnifiedDiff`
+— when W4.6b ports the Librarian save-announcement writer, the handlers must
+START producing it (currently omitted).
 
 **The Phase-3 endgame is fully planned (2026-07-06).** Every remaining unit
 has an agent-ready work order checked in under

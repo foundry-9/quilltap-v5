@@ -34,6 +34,7 @@ import {
   type DocMimeType,
 } from '@/lib/doc-edit/mime-registry';
 import { generateUnifiedDiff, formatAutosaveNotification } from '@/lib/doc-edit/unified-diff';
+import { diffLines, changedBlockIndices } from '@/lib/doc-edit/line-diff';
 import {
   slugifyHeading,
   parseHeadingTree,
@@ -160,7 +161,17 @@ for (const [id, content, mime] of [
 }
 
 // ---- unified-diff ----
-for (const [id, oldT, newT] of [
+// The literal + programmatically-generated case inputs. The generated ones
+// (`gen*` helpers below) MUST be reproduced byte-identically on the Rust side.
+const numbered = (count: number): string[] => Array.from({ length: count }, (_, i) => `line${i + 1}`);
+const withChange = (base: string[], edits: Array<[number, string]>): string[] => {
+  const out = [...base];
+  for (const [i, v] of edits) out[i] = v;
+  return out;
+};
+
+const diffCases: Array<[string, string, string]> = [
+  // Legacy corpus (re-generated under the new Myers/hunk algorithm).
   ['diff-identical', 'a\nb\nc\n', 'a\nb\nc\n'],
   ['diff-one-line', 'a\nb\nc\n', 'a\nB\nc\n'],
   ['diff-add', 'a\nc\n', 'a\nb\nc\n'],
@@ -169,12 +180,59 @@ for (const [id, oldT, newT] of [
   ['diff-multi-hunk', 'a\nb\nc\nd\ne\n', 'a\nB\nc\nd\nE\n'],
   ['diff-full-replace', 'x\ny\n', 'p\nq\n'],
   ['diff-empty-old', '', 'new\n'],
-] as Array<[string, string, string]>) {
+  // New behavior (v4 8617ce7a): Myers + git-style hunks.
+  ['diff-both-empty', '', ''],
+  ['diff-shifted-insert', 'a\nb\nc', 'a\nNEW\nb\nc'],
+  ['diff-single-line-file', 'only', 'changed'],
+  ['diff-create-from-empty', '', 'hello\nworld'],
+  ['diff-empty-from-content', 'a\nb', ''],
+  ['diff-context-start', 'A\nb\nc\nd\ne', 'X\nb\nc\nd\ne'],
+  ['diff-context-end', 'a\nb\nc\nd\nE', 'a\nb\nc\nd\nZ'],
+  ['diff-unicode', 'café\nNimuë\n世界', 'café\nNimué\n世界'],
+  // Context cap: 12 lines, change on line 7 → `@@ -4,7 +4,7 @@` (3 ctx each side).
+  ['diff-context-cap', numbered(12).join('\n'), withChange(numbered(12), [[6, 'CHANGED']]).join('\n')],
+  // Distant changes split into two hunks (20 lines, edits far apart).
+  ['diff-distant', numbered(20).join('\n'), withChange(numbered(20), [[1, 'TOP'], [18, 'BOTTOM']]).join('\n')],
+  // Nearby changes coalesce into one hunk (10 lines, one unchanged line between).
+  ['diff-coalesce', numbered(10).join('\n'), withChange(numbered(10), [[3, 'A'], [5, 'B']]).join('\n')],
+  // Oversized input (> MAX_DIFFABLE_LINES = 10000 combined): whole-file fallback.
+  ['diff-huge-fallback', Array(5001).fill('x').join('\n'), Array(5000).fill('y').join('\n')],
+];
+for (const [id, oldT, newT] of diffCases) {
   rows.push({
     kind: 'diff',
     id,
     diff: generateUnifiedDiff(oldT, newT, 'f.md'),
     notify: formatAutosaveNotification(oldT, newT, 'f.md') ?? null,
+  });
+}
+
+// ---- line-diff: diffLines (drive the exported primitive directly) ----
+for (const [id, oldL, newL] of [
+  ['dl-identical', ['a', 'b'], ['a', 'b']],
+  ['dl-insert', ['a', 'b', 'c'], ['a', 'NEW', 'b', 'c']],
+  ['dl-modify', ['a', 'b', 'c'], ['a', 'B', 'c']],
+  ['dl-replace-all', ['a', 'b'], ['x', 'y']],
+  ['dl-empty-old', [], ['a', 'b']],
+  ['dl-empty-new', ['a', 'b'], []],
+  ['dl-both-empty', [], []],
+] as Array<[string, string[], string[]]>) {
+  rows.push({ kind: 'diff-lines', id, result: diffLines(oldL, newL) });
+}
+
+// ---- line-diff: changedBlockIndices (emit as a sorted array) ----
+for (const [id, base, cur] of [
+  ['cb-unchanged', ['a', 'b', 'c'], ['a', 'b', 'c']],
+  ['cb-insert-top', ['intro', 'section one', 'body one'], ['intro', 'NEW SECTION', 'section one', 'body one']],
+  ['cb-modify', ['a', 'b', 'c'], ['a', 'B', 'c']],
+  ['cb-pure-delete', ['a', 'b', 'c'], ['a', 'c']],
+  ['cb-replace-all', ['a', 'b'], ['x', 'y']],
+  ['cb-empty-doc', [], ['a', 'b']],
+] as Array<[string, string[], string[]]>) {
+  rows.push({
+    kind: 'changed-blocks',
+    id,
+    result: [...changedBlockIndices(base, cur)].sort((a, b) => a - b),
   });
 }
 

@@ -177,9 +177,11 @@ other concurrent order that wants a spine-corpus case hands it to the
 round's unification pass instead of editing the corpus itself. Start each
 round with a drift check against v4 HEAD.
 
-- **Round 1:** **W4.d1 first** (the unified-diff drift re-port, v4
+- **Round 1:** **W4.d1 ✅ DONE** (the unified-diff drift re-port, v4
   `8617ce7a` — [`w4.d1-unified-diff-drift.md`](./work-orders/w4.d1-unified-diff-drift.md);
-  until it lands, regenerating the doc-edit-leaves oracle fails) ∥ W4.2u
+  landed 2026-07-06: `doc_edit::line_diff` + rewritten `doc_edit::unified_diff`,
+  `doc_edit_leaves_equivalence` regenerated + extended, doc-edit-leaves oracle
+  green again) ∥ W4.2u
   (owns spine + orchestrator corpus; small) ∥ W4.8 (disjoint) ∥ W4.9b
   (disjoint — but shares the `doc_edit` module tree with W4.d1's
   re-verification; land W4.d1 before W4.9b's unification) ∥ W4.7a + W4.7b

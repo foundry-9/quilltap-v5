@@ -10,6 +10,7 @@
 //! its canonical home).
 
 pub mod diacritics;
+pub mod line_diff;
 pub mod markdown_parser;
 pub mod mime_registry;
 pub mod path_resolver;
