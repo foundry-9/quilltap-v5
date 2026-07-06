@@ -4,6 +4,17 @@
 
 ### 5.0-dev
 
+Integration of the five parallel wave-4 units (W4.7a / W4.7b / W4.2u / W4.8 /
+W4.9b), each developed and verified in isolation. Two reconciliation touches:
+the two independent ports of `doc_mount_file_links.findByIdWithContent` were
+merged — the job-runner stale-chat sweep keeps the full-`LinkRow` shape as
+`find_link_row_by_id`, and the photo tools keep the content-subset
+`find_by_id_with_content` (both v4-faithful; a post-port cleanup may unify them);
+and the process-global wake-hook unit test's exact-count assertion was relaxed to
+monotonic, since the shared `OnceLock` hook is fired by concurrent enqueues from
+sibling tests in the larger integrated suite. Full workspace `cargo test` /
+`clippy -D warnings` / `fmt --check` green.
+
 Phase 3 — wave 4 (W4.7a): the provider manifest + registry core. Replaced v4's
 npm-plugin provider registry — which does not survive the port (no Node, no
 dynamic import, no shipping third-party JS into the Rust core) — with a

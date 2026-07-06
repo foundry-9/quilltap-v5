@@ -806,12 +806,17 @@ mod tests {
         super::super::queue_service::enqueue_job(&db, "u1", "T", serde_json::json!({}), 3.0)
             .await
             .unwrap();
-        // If our hook won the OnceLock race, the count advanced; either way the
-        // enqueue committed a PENDING row (the runner's first pump would claim it).
-        // We assert the row landed; the hook count is best-effort across the shared
-        // OnceLock. When our hook is the installed one, it fired exactly once.
+        // The enqueue committed a PENDING row (proven by the `.unwrap()` above — the
+        // runner's first pump would claim it); that is the durable invariant. The
+        // hook COUNT is only best-effort: `set_wake_hook` is a process-global
+        // `OnceLock`, so our counting hook fires only if it won the race, and — when
+        // it did — OTHER tests running concurrently in this same binary also enqueue
+        // and fire it, so the count can advance by more than one between these two
+        // reads. The single non-racy guarantee is monotonicity (an `AtomicUsize`
+        // fetch_add never decreases); the local wake mechanism is asserted exactly
+        // above (`wake` / `take_wake_request`).
         let after = CALLS.load(Ordering::SeqCst);
-        assert!(after == before || after == before + 1);
+        assert!(after >= before);
     }
 
     // The `memories` table columns `run_housekeeping`'s batched load reads. An
