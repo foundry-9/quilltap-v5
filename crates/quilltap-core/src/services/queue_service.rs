@@ -1,22 +1,53 @@
-//! The background-job enqueue helpers the memory gate's watermark path needs
-//! (v4 `lib/background-jobs/queue-service.ts`, the `enqueueJob` +
-//! `enqueueMemoryHousekeeping` slice). The rest of the queue service (the
-//! per-task enqueue family, stats, the processor) lands with the job-runner
-//! unit.
+//! The background-job enqueue helpers + queue admin/read surface (v4
+//! `lib/background-jobs/queue-service.ts`).
 //!
-//! ## Deferred (tracked, out of scope for this unit)
+//! ## The `ensureProcessorRunning()` closure (W4.8)
 //!
-//!   - **`ensureProcessorRunning()`** — v4 auto-starts the in-process job
-//!     processor on every enqueue. The Rust job runner is a later Phase-3
-//!     unit; enqueue-only leaves the row PENDING (the differential's oracle
-//!     mocks the v4 auto-start to a no-op to match).
+//! v4 auto-starts the in-process job processor on every `enqueueJob`. In v5 the
+//! runner is already running (the host driver owns its cadence — see
+//! [`crate::services::job_runner`]); an enqueue only needs to **wake** it so it
+//! pumps immediately rather than waiting for the poll interval. Instead of
+//! coupling `enqueue_job` to a `JobRunner` handle, the host registers a
+//! process-global wake hook once at startup ([`set_wake_hook`]); every enqueue
+//! calls it (a no-op until registered — faithful to a runner that hasn't started).
+//! This is the exact analogue of v4's `ensureProcessorRunning()` singleton call
+//! inside `enqueueJob`.
+
+use std::sync::OnceLock;
 
 use serde_json::Value;
 
 use crate::clock::now_iso;
-use crate::db::background_jobs::{BjCreate, CreateOptions};
+use crate::db::background_jobs::{BjCreate, CreateOptions, QueueStats};
 use crate::db::runtime::Db;
 use crate::db::DbError;
+
+// ============================================================================
+// The wake hook (v4 `ensureProcessorRunning`)
+// ============================================================================
+
+type WakeHook = Box<dyn Fn() + Send + Sync>;
+
+/// The process-global wake hook, registered once by the host at startup. `None`
+/// until then — an enqueue before the runner exists simply leaves the row PENDING
+/// (the runner's first pump claims it), matching v4's `QUILLTAP_JOB_CHILD` no-op.
+static WAKE_HOOK: OnceLock<WakeHook> = OnceLock::new();
+
+/// Register the runner wake hook (v4's implicit `ensureProcessorRunning` wiring).
+/// Idempotent: only the first registration wins (a `OnceLock`), so repeated host
+/// starts don't stack hooks. Typically the host passes a closure that calls
+/// [`crate::services::job_runner::JobRunner::wake`].
+pub fn set_wake_hook(hook: impl Fn() + Send + Sync + 'static) {
+    let _ = WAKE_HOOK.set(Box::new(hook));
+}
+
+/// Fire the wake hook if one is registered (v4 `ensureProcessorRunning()` inside
+/// `enqueueJob`). No-op when unset.
+fn ensure_processor_running() {
+    if let Some(hook) = WAKE_HOOK.get() {
+        hook();
+    }
+}
 
 /// v4 `enqueueJob`: mint and persist a PENDING background job. Returns the job
 /// id.
@@ -49,7 +80,9 @@ pub async fn enqueue_job(
     };
     db.write(move |writers| writers.main().background_jobs().create(&create, &opts))
         .await?;
-    // Deferred: `ensureProcessorRunning()` — the job runner is a later unit.
+    // v4 `enqueueJob` calls `ensureProcessorRunning()` after every create — wake
+    // the (already-running) runner so it pumps immediately (see [`set_wake_hook`]).
+    ensure_processor_running();
     Ok(id)
 }
 
@@ -124,6 +157,7 @@ pub async fn enqueue_job_with_priority(
     };
     db.write(move |writers| writers.main().background_jobs().create(&create, &opts))
         .await?;
+    ensure_processor_running();
     Ok(id)
 }
 
@@ -271,4 +305,193 @@ pub async fn enqueue_title_update(
     }
 
     enqueue_job(db, user_id, "TITLE_UPDATE", payload, 3.0).await
+}
+
+// ============================================================================
+// Retention windows (v4 `lib/background-jobs/maintenance/retention-constants.ts`)
+// ============================================================================
+
+/// v4 `COMPLETED_JOB_RETENTION_DAYS` — reap COMPLETED jobs this many days after
+/// `completedAt`.
+pub const COMPLETED_JOB_RETENTION_DAYS: i64 = 7;
+
+/// v4 `DEAD_JOB_RETENTION_DAYS` — reap DEAD (retry-exhausted) jobs this many days
+/// after `completedAt` (longer than COMPLETED: a DEAD row is the only forensic
+/// trail).
+pub const DEAD_JOB_RETENTION_DAYS: i64 = 30;
+
+/// v4 `STALE_CHAT_RETENTION_DAYS` — a chat is "stale" after this many days without
+/// played activity; only then are its superseded generated assets collapsed.
+pub const STALE_CHAT_RETENTION_DAYS: i64 = 30;
+
+/// v4 `CLOSED_TERMINAL_RETENTION_DAYS`.
+pub const CLOSED_TERMINAL_RETENTION_DAYS: i64 = 30;
+
+/// v4 `DAY_MS`.
+pub const DAY_MS: i64 = 24 * 60 * 60 * 1000;
+
+/// v4 `retentionCutoff(days, now)` — the absolute cutoff instant (ISO 8601) `days`
+/// before `now_ms`.
+pub fn retention_cutoff_iso(days: i64, now_ms: i64) -> String {
+    crate::clock::iso_from_unix_ms(now_ms - days * DAY_MS)
+}
+
+// ============================================================================
+// Read / admin surface (v4 queue-service read helpers)
+// ============================================================================
+
+/// v4 `getJobStatus(jobId)` — the full job row, or `None`.
+pub async fn get_job_status(
+    db: &Db,
+    job_id: &str,
+) -> Result<Option<crate::db::background_jobs::BackgroundJob>, DbError> {
+    let id = job_id.to_string();
+    db.read_main(|conn| {
+        crate::db::background_jobs::BackgroundJobsRepository::new(conn).find_by_id(&id)
+    })
+}
+
+/// v4 `getQueueStats(userId?)` — per-status counts, optionally user-scoped.
+pub async fn get_queue_stats(db: &Db, user_id: Option<&str>) -> Result<QueueStats, DbError> {
+    let uid = user_id.map(str::to_string);
+    db.read_main(|conn| {
+        crate::db::background_jobs::BackgroundJobsRepository::new(conn).get_stats(uid.as_deref())
+    })
+}
+
+/// v4 `getActiveCountsByType(userId?)` — active (PENDING+PROCESSING) counts grouped
+/// by type. Returned as a `(type, count)` list (v4 returns a `Record`; the caller
+/// builds the map).
+pub async fn get_active_counts_by_type(
+    db: &Db,
+    user_id: Option<&str>,
+) -> Result<Vec<(String, i64)>, DbError> {
+    let uid = user_id.map(str::to_string);
+    db.read_main(|conn| {
+        crate::db::background_jobs::BackgroundJobsRepository::new(conn)
+            .get_active_counts_by_type(uid.as_deref())
+    })
+}
+
+/// v4 `cancelJob(jobId)` — cancel a PENDING|FAILED job (→ DEAD). Returns whether a
+/// row was cancelled.
+pub async fn cancel_job(db: &Db, job_id: &str) -> Result<bool, DbError> {
+    let id = job_id.to_string();
+    db.write(move |writers| {
+        crate::db::background_jobs::BackgroundJobsRepository::new(writers.main().connection())
+            .cancel(&id)
+    })
+    .await
+}
+
+/// v4 `getPendingJobsForChat(chatId)` — PENDING+PROCESSING jobs whose payload
+/// `chatId` matches.
+pub async fn get_pending_jobs_for_chat(
+    db: &Db,
+    chat_id: &str,
+) -> Result<Vec<crate::db::background_jobs::BackgroundJob>, DbError> {
+    let cid = chat_id.to_string();
+    db.read_main(|conn| {
+        crate::db::background_jobs::BackgroundJobsRepository::new(conn).find_pending_for_chat(&cid)
+    })
+}
+
+/// v4 `cleanupOldJobs(daysOld)` (deprecated single-window reaper): delete
+/// COMPLETED|DEAD jobs older than `days_old` days by `completedAt`. Returns the
+/// count deleted. Prefer [`cleanup_finished_jobs`] (per-status windows).
+pub async fn cleanup_old_jobs(db: &Db, days_old: i64, now_ms: i64) -> Result<usize, DbError> {
+    let cutoff = retention_cutoff_iso(days_old, now_ms);
+    db.write(move |writers| {
+        crate::db::background_jobs::BackgroundJobsRepository::new(writers.main().connection())
+            .cleanup_old_jobs(&cutoff)
+    })
+    .await
+}
+
+/// v4 `cleanupFinishedJobs()` — the finished-job reaper: COMPLETED before the short
+/// window, DEAD before the longer one (both keyed on `completedAt`). Called by the
+/// daily maintenance tick. Returns `(completed, dead)` counts.
+pub async fn cleanup_finished_jobs(db: &Db, now_ms: i64) -> Result<(usize, usize), DbError> {
+    let completed_cutoff = retention_cutoff_iso(COMPLETED_JOB_RETENTION_DAYS, now_ms);
+    let dead_cutoff = retention_cutoff_iso(DEAD_JOB_RETENTION_DAYS, now_ms);
+    db.write(move |writers| {
+        crate::db::background_jobs::BackgroundJobsRepository::new(writers.main().connection())
+            .cleanup_old_jobs_by_status(&completed_cutoff, &dead_cutoff)
+    })
+    .await
+}
+
+// ============================================================================
+// Scheduler sweep bodies (v4 `scheduled-*.ts` — the portable enqueuer loops)
+// ============================================================================
+
+/// v4 `runScheduledHousekeeping()` — for every user whose
+/// `autoHousekeepingSettings.enabled` is true, enqueue one `MEMORY_HOUSEKEEPING`
+/// job (`{ reason: 'scheduled' }`). The enqueue helper dedupes against in-flight
+/// jobs for the same (userId, characterId). Returns `(usersProcessed,
+/// jobsEnqueued)` (equal here — one enqueue per enabled user, a per-user enqueue
+/// failure swallowed and counted for neither). The host driver calls this on the
+/// daily cadence.
+pub async fn run_scheduled_housekeeping(db: &Db) -> Result<(usize, usize), DbError> {
+    let settings = db.read_main(crate::db::chat_settings::find_all_scheduler_settings)?;
+    let mut users_processed = 0usize;
+    let mut jobs_enqueued = 0usize;
+    for s in &settings {
+        let enabled = s
+            .auto_housekeeping_settings
+            .as_ref()
+            .and_then(|v| v.get("enabled"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        if !enabled {
+            continue;
+        }
+        // v4 passes `{ reason: 'scheduled' }`; the payload otherwise defaults.
+        let payload = serde_json::json!({ "reason": "scheduled" });
+        match enqueue_memory_housekeeping(db, &s.user_id, payload).await {
+            Ok(_) => {
+                jobs_enqueued += 1;
+                users_processed += 1;
+            }
+            Err(_) => { /* v4 warns + continues */ }
+        }
+    }
+    Ok((users_processed, jobs_enqueued))
+}
+
+/// v4 `runScheduledCleanup()` — for every user whose
+/// `llmLoggingSettings.enabled` is true AND `retentionDays > 0`, enqueue one
+/// `LLM_LOG_CLEANUP` job (`{ userId, retentionDays }`). Returns `(usersProcessed,
+/// jobsEnqueued)`. The host driver calls this on the daily cadence (v4 runs it
+/// immediately on startup — no grace).
+pub async fn run_scheduled_cleanup(db: &Db) -> Result<(usize, usize), DbError> {
+    let settings = db.read_main(crate::db::chat_settings::find_all_scheduler_settings)?;
+    let mut users_processed = 0usize;
+    let mut jobs_enqueued = 0usize;
+    for s in &settings {
+        let Some(llm) = &s.llm_logging_settings else {
+            continue;
+        };
+        let enabled = llm.get("enabled").and_then(Value::as_bool).unwrap_or(false);
+        let retention_days = llm
+            .get("retentionDays")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0);
+        if !enabled || retention_days <= 0.0 {
+            continue;
+        }
+        // v4's payload: `{ userId, retentionDays }` (retentionDays materialized).
+        let payload = serde_json::json!({
+            "userId": s.user_id,
+            "retentionDays": retention_days,
+        });
+        match enqueue_job(db, &s.user_id, "LLM_LOG_CLEANUP", payload, 3.0).await {
+            Ok(_) => {
+                jobs_enqueued += 1;
+                users_processed += 1;
+            }
+            Err(_) => { /* v4 warns + continues */ }
+        }
+    }
+    Ok((users_processed, jobs_enqueued))
 }

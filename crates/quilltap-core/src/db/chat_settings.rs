@@ -897,3 +897,45 @@ pub fn find_auto_housekeeping_settings_by_user_id(
         .flatten()
         .and_then(|text| serde_json::from_str(&text).ok()))
 }
+
+/// One user's scheduler-relevant chat-settings slice — the JSON-object columns the
+/// daily maintenance sweeps consult, without the full net-read marshaling.
+#[derive(Debug, Clone)]
+pub struct SchedulerUserSettings {
+    pub user_id: String,
+    /// `autoHousekeepingSettings` (v4 JSON object) — the housekeeping enqueuer reads
+    /// `.enabled`. `None` when the cell is NULL / malformed.
+    pub auto_housekeeping_settings: Option<serde_json::Value>,
+    /// `llmLoggingSettings` (v4 JSON object) — the LLM-log cleanup enqueuer reads
+    /// `.enabled` + `.retentionDays`. `None` when the cell is NULL / malformed.
+    pub llm_logging_settings: Option<serde_json::Value>,
+}
+
+/// Every user's scheduler slice (v4's `repos.chatSettings.findAll()` reduced to
+/// the two JSON-object columns the daily housekeeping / LLM-log-cleanup enqueuers
+/// consult). One row per `chat_settings` row (v4 iterates every row — orphan rows
+/// included, matching v4 exactly). Insertion order is by rowid (v4's `findAll`
+/// order); the enqueuers dedupe downstream so order does not affect the outcome.
+pub fn find_all_scheduler_settings(
+    conn: &rusqlite::Connection,
+) -> Result<Vec<SchedulerUserSettings>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT userId, autoHousekeepingSettings, llmLoggingSettings FROM chat_settings",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            let user_id: String = row.get(0)?;
+            let ahk: Option<String> = row.get(1)?;
+            let llm: Option<String> = row.get(2)?;
+            Ok((user_id, ahk, llm))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows
+        .into_iter()
+        .map(|(user_id, ahk, llm)| SchedulerUserSettings {
+            user_id,
+            auto_housekeeping_settings: ahk.and_then(|t| serde_json::from_str(&t).ok()),
+            llm_logging_settings: llm.and_then(|t| serde_json::from_str(&t).ok()),
+        })
+        .collect())
+}

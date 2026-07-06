@@ -149,6 +149,35 @@ pub struct FileUpdate {
     pub updated_at: String,
 }
 
+/// The `files`-row columns the stale-chat maintenance sweep reads (`FileEntry`
+/// reduced). `sha256` is always present on disk (`z.string().length(64)`), but a
+/// legacy `avatarUrl`-fallback row could carry an empty string — normalized to
+/// `None` by [`crate::services::maintenance`]'s keep-set. `size` is the REAL column
+/// (bare `z.number()`), read as `f64`.
+#[derive(Debug, Clone)]
+pub struct FileSweepRow {
+    pub id: String,
+    pub sha256: String,
+    pub size: f64,
+    /// `FileSourceEnum`: `'UPLOADED' | 'GENERATED' | 'IMPORTED' | 'SYSTEM'`.
+    pub source: String,
+    /// `FileCategoryEnum`: `'IMAGE' | 'DOCUMENT' | 'AVATAR' | 'ATTACHMENT' |
+    /// 'EXPORT' | 'BACKUP'`.
+    pub category: String,
+}
+
+impl FileSweepRow {
+    fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Self> {
+        Ok(FileSweepRow {
+            id: row.get(0)?,
+            sha256: row.get(1)?,
+            size: row.get(2)?,
+            source: row.get(3)?,
+            category: row.get(4)?,
+        })
+    }
+}
+
 /// Repository over a borrowed connection (held by the [`super::Writer`]).
 pub struct FilesRepository<'c> {
     conn: &'c Connection,
@@ -336,6 +365,43 @@ impl<'c> FilesRepository<'c> {
             .conn
             .execute("DELETE FROM files WHERE id = ?1", params![id])?;
         Ok(affected > 0)
+    }
+
+    /// v4 `findById(fileId)` reduced to the columns the stale-chat maintenance
+    /// sweep consults (`id`, `sha256`, `size`, `source`, `category`). `None` when
+    /// absent. The full `FileEntry` net-read marshaling is out of scope (no consumer
+    /// yet); this scoped read serves the sweep's keep-set / delete path.
+    pub fn find_sweep_row_by_id(&self, id: &str) -> Result<Option<FileSweepRow>, DbError> {
+        self.conn
+            .query_row(
+                "SELECT id, sha256, size, source, category FROM files WHERE id = ?1",
+                params![id],
+                FileSweepRow::from_row,
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
+    }
+
+    /// v4 `findByLinkedTo(entityId)` (`files.repository.ts:87`) reduced to the
+    /// sweep columns: every file whose `linkedTo` JSON array contains `entity_id`.
+    /// v4 filters `{ linkedTo: { $in: [entityId] } }`, which the translator turns
+    /// into a `json_each` membership test — reproduced here. Rowid order (v4's
+    /// unordered scan). Drives the stale-chat sweep's candidate enumeration.
+    pub fn find_sweep_rows_by_linked_to(
+        &self,
+        entity_id: &str,
+    ) -> Result<Vec<FileSweepRow>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, sha256, size, source, category FROM files \
+             WHERE EXISTS (SELECT 1 FROM json_each(files.linkedTo) WHERE value = ?1)",
+        )?;
+        let rows = stmt
+            .query_map(params![entity_id], FileSweepRow::from_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
     }
 
     /// v4 `addLink(fileId, entityId)` — append `entity_id` to the file's

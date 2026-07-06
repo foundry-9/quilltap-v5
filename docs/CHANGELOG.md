@@ -106,6 +106,43 @@ canned `findApiKeyByIdAndUserId` seam. `orchestrator_tier3_equivalence`,
 `danger_resolver_equivalence`, `danger_routing_equivalence`, and
 `danger_gatekeeper_tier3_equivalence` all green against regenerated oracles; the
 pre-existing orchestrator cases are a behavioral no-op under the real resolver.
+Phase 3 — wave 4 (W4.8): the background job runner. Ported v4's forked-child
+job processor as an in-process runner over the single-writer runtime. The
+fork/IPC/buffered-write-proxy architecture does not port — v5's `Db` already
+enforces the single-writer invariant in the type system, so job handlers run
+in-process and write through `Db` directly. New `services::job_runner`: the
+claim-loop core (`pump_claim` with the reentrancy lock, the `maxConcurrentJobs`
+instance-settings read each pump [default 4, clamp 1–32], the claim-until-full
+loop over the ported `claim_next_job`, and the next-`scheduledAt` wake-delay
+decision returned to the host), dispatch by job type through a `HandlerRegistry`
+with a loud fallback for unported/unknown types (v4's failure shape),
+completion/failure marking (`markCompleted` now wiring the `merge_result_into_payload`
+path — closes Phase-2 deferral #3, forward-only since v4-on-SQLite throws
+there), and startup/stuck recovery (`reset_orphaned_jobs` / `tick_stuck_reset`).
+All timers are host-driver seams (no timers in the runner core), per the enclave
+`step()` philosophy. New `services::job_scheduler` with the pure decision leaves
+(`clamp_wake_delay`, `should_run_startup_tick`) + the cadence constants. Closed
+the `ensureProcessorRunning` seam: `queue_service` enqueues now fire a
+process-global wake hook (`set_wake_hook` / `JobRunner::install_wake_hook`); the
+runner's `wake()` signals an immediate pump. Extended `queue_service` with the
+read/admin surface (`get_job_status` / `get_queue_stats` /
+`get_active_counts_by_type` / `cancel_job` / `get_pending_jobs_for_chat` /
+`cleanup_old_jobs` / `cleanup_finished_jobs`), the retention windows, and the
+portable scheduler sweep bodies (`run_scheduled_housekeeping` /
+`run_scheduled_cleanup`). Ported the stale-chat asset maintenance sweep
+(`services::maintenance::collapse_stale_chat_assets`, v4
+`collapse-stale-chat-assets.ts`) with the new `chats.getLastPlayedMessageAt`
+scoped read, the keep-set avatar-sha resolution, and the four protection
+branches (current / current-sha / album-or-vault-link / character-reference);
+the storage-bytes delete is a host FsSeam. Verified by a tier-1 differential
+(`photos_relative_path_equivalence`) and a tsx real-DB tier-2 differential
+(`maintenance_sweep_tier2_equivalence`, driving v4's REAL
+`collapseStaleChatAssets` over a two-DB fixture), plus eleven runner self-tests
+(concurrency cap, wake-on-enqueue, claim-order, loud fallback, stuck/orphan
+reset, drain-on-shutdown, and one end-to-end memory-housekeeping dispatch
+enqueue→claim→dispatch→markCompleted-merge); the `memory_watermark_tier3` and
+`context_summary_service_tier3` differentials regenerated green with the wake
+hook (the DB effect is unchanged).
 
 Phase 3 — wave 4 (W4.d1): drift re-port of the unified diff. v4 commit
 `8617ce7a` replaced the greedy look-ahead line diff with a real, minimal,

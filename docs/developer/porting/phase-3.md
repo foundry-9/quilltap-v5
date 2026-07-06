@@ -252,10 +252,11 @@ Track them to closure as their subsystem lands:
    The one residual is the deprecated `findByCharacterIdRaw` (reads the
    pre-cutover `wardrobe_items` table; no consumer yet).
 3. **`background_jobs.markCompleted`'s dotted `payload.result` merge** — a forward
-   v5-only capability (v4-on-SQLite throws `no such column`). Pure
-   `merge_result_into_payload` + unit test exist. **Scheduled: W4.8**
-   ([`work-orders/w4.8-job-runner.md`](./work-orders/w4.8-job-runner.md))
-   wires it into the runner's completion path.
+   v5-only capability (v4-on-SQLite throws `no such column`). **✅ CLOSED (W4.8,
+   2026-07-06):** `services::job_runner`'s completion path now calls
+   `markCompleted(id, Some(result))`, wiring the pure `merge_result_into_payload`
+   through the runner; the end-to-end runner self-test proves the merged
+   `payload.result` lands after a real handler dispatch.
 
 ## Unit order (summary)
 
@@ -306,8 +307,8 @@ Track them to closure as their subsystem lands:
    - The gate's **watermark auto-housekeeping check**
      (`maybeEnqueueHousekeeping`) — **✅ done + green**
      (`memory_watermark_tier3_equivalence`): `services::queue_service` (the
-     enqueue + dedupe slice; `ensureProcessorRunning` deferred to the
-     job-runner unit), `services::housekeeping_outcome_cache` (process-global
+     enqueue + dedupe slice; `ensureProcessorRunning` now CLOSED in W4.8 — the
+     enqueue fires the runner's process-global wake hook), `services::housekeeping_outcome_cache` (process-global
      like v4's module-global Map), a scoped
      `chat_settings::find_auto_housekeeping_settings_by_user_id` read, and the
      gate wiring after INSERT / INSERT_RELATED. The memory family is now fully

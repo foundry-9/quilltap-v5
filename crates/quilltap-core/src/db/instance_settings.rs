@@ -19,6 +19,17 @@ use super::DbError;
 /// The `instance_settings` key that stores the Quilltap General mount-point id.
 const KEY_GENERAL_MOUNT_POINT_ID: &str = "generalMountPointId";
 
+/// v4 `KEY_MAX_CONCURRENT_JOBS` — the per-instance background-job concurrency cap.
+const KEY_MAX_CONCURRENT_JOBS: &str = "maxConcurrentJobs";
+
+/// v4 `DEFAULT_MAX_CONCURRENT_JOBS`.
+const DEFAULT_MAX_CONCURRENT_JOBS: i64 = 4;
+
+/// v4 `KEY_LAST_MAINTENANCE_SWEEP_AT` — the last daily-maintenance-pass timestamp
+/// (ISO 8601), used by the host driver to short-circuit the dev-restart startup
+/// tick.
+const KEY_LAST_MAINTENANCE_SWEEP_AT: &str = "lastMaintenanceSweepAt";
+
 /// v4 `readSetting(key)` — read one `instance_settings` value, or `None`.
 ///
 /// Faithful to v4: the whole read is fallible-tolerant — a missing table or any
@@ -32,10 +43,54 @@ fn read_setting(main: &Connection, key: &str) -> Option<String> {
     .ok()
 }
 
+/// v4 `writeSetting(key, value)` — upsert one `instance_settings` value.
+fn write_setting(main: &Connection, key: &str, value: &str) -> Result<(), DbError> {
+    main.execute(
+        "INSERT INTO \"instance_settings\" (\"key\", \"value\") VALUES (?1, ?2) \
+         ON CONFLICT(\"key\") DO UPDATE SET \"value\" = excluded.\"value\"",
+        params![key, value],
+    )?;
+    Ok(())
+}
+
 /// v4 `getGeneralMountPointId()` — the Quilltap General mount-point id, or `None`
 /// when the General store has not been provisioned (or the table is absent).
 pub fn get_general_mount_point_id(main: &Connection) -> Result<Option<String>, DbError> {
     Ok(read_setting(main, KEY_GENERAL_MOUNT_POINT_ID))
+}
+
+/// v4 `getMaxConcurrentJobs()` — the per-instance background-job concurrency cap.
+/// Returns the documented default (4) when unset OR when the stored value is not a
+/// finite integer `>= 1` (v4: `Math.floor(Number(raw))`, reject `!Number.isFinite`
+/// or `< 1`); otherwise the parsed value clamped to `[1, 32]`. A missing table
+/// reads as `None` → default, matching v4's `readSetting` try/catch.
+pub fn get_max_concurrent_jobs(main: &Connection) -> Result<i64, DbError> {
+    let Some(raw) = read_setting(main, KEY_MAX_CONCURRENT_JOBS) else {
+        return Ok(DEFAULT_MAX_CONCURRENT_JOBS);
+    };
+    // v4: `Math.floor(Number(raw))`; `Number("")`/non-numeric → NaN → default.
+    let parsed = raw.trim().parse::<f64>();
+    match parsed {
+        Ok(n) if n.is_finite() && n >= 1.0 => Ok((n.floor() as i64).clamp(1, 32)),
+        _ => Ok(DEFAULT_MAX_CONCURRENT_JOBS),
+    }
+}
+
+/// v4 `getLastMaintenanceSweepAt()` — the last daily-maintenance-pass instant as
+/// Unix milliseconds, or `None` when never recorded / unparseable (v4 returns a
+/// `Date` or null; the host driver only needs the instant for the recent-run
+/// window). Parsed via [`crate::clock::iso_to_ms`] (the `Date.parse` inverse).
+pub fn get_last_maintenance_sweep_at(main: &Connection) -> Result<Option<i64>, DbError> {
+    Ok(read_setting(main, KEY_LAST_MAINTENANCE_SWEEP_AT)
+        .as_deref()
+        .and_then(crate::clock::iso_to_ms))
+}
+
+/// v4 `setLastMaintenanceSweepAt(when)` — record the timestamp of a completed
+/// maintenance pass (ISO 8601). Defaults to now. Written at the end of a pass
+/// regardless of per-sweep failures ("last attempted pass").
+pub fn set_last_maintenance_sweep_at(main: &Connection, when_iso: &str) -> Result<(), DbError> {
+    write_setting(main, KEY_LAST_MAINTENANCE_SWEEP_AT, when_iso)
 }
 
 #[cfg(test)]
@@ -74,6 +129,50 @@ mod tests {
         assert_eq!(
             get_general_mount_point_id(&c).unwrap(),
             Some("mp-general-1".to_string())
+        );
+    }
+
+    fn table() -> Connection {
+        let c = conn();
+        c.execute_batch(
+            "CREATE TABLE \"instance_settings\" (\"key\" TEXT PRIMARY KEY, \"value\" TEXT NOT NULL);",
+        )
+        .unwrap();
+        c
+    }
+
+    #[test]
+    fn max_concurrent_jobs_default_and_clamp() {
+        // Missing table → default (v4 readSetting try/catch → null → default).
+        assert_eq!(get_max_concurrent_jobs(&conn()).unwrap(), 4);
+        // Unset key → default.
+        let c = table();
+        assert_eq!(get_max_concurrent_jobs(&c).unwrap(), 4);
+        // In-range passes through.
+        write_setting(&c, KEY_MAX_CONCURRENT_JOBS, "8").unwrap();
+        assert_eq!(get_max_concurrent_jobs(&c).unwrap(), 8);
+        // Above 32 → clamp to 32.
+        write_setting(&c, KEY_MAX_CONCURRENT_JOBS, "100").unwrap();
+        assert_eq!(get_max_concurrent_jobs(&c).unwrap(), 32);
+        // < 1 → default (v4 rejects `< 1` before the clamp).
+        write_setting(&c, KEY_MAX_CONCURRENT_JOBS, "0").unwrap();
+        assert_eq!(get_max_concurrent_jobs(&c).unwrap(), 4);
+        // Non-numeric → default.
+        write_setting(&c, KEY_MAX_CONCURRENT_JOBS, "banana").unwrap();
+        assert_eq!(get_max_concurrent_jobs(&c).unwrap(), 4);
+        // Floored (v4 Math.floor).
+        write_setting(&c, KEY_MAX_CONCURRENT_JOBS, "5.9").unwrap();
+        assert_eq!(get_max_concurrent_jobs(&c).unwrap(), 5);
+    }
+
+    #[test]
+    fn maintenance_sweep_at_roundtrip() {
+        let c = table();
+        assert_eq!(get_last_maintenance_sweep_at(&c).unwrap(), None);
+        set_last_maintenance_sweep_at(&c, "2026-07-06T12:00:00.000Z").unwrap();
+        assert_eq!(
+            get_last_maintenance_sweep_at(&c).unwrap(),
+            crate::clock::iso_to_ms("2026-07-06T12:00:00.000Z")
         );
     }
 }

@@ -248,6 +248,32 @@ pub fn get_message_count(conn: &Connection, chat_id: &str) -> Result<i64, DbErro
     Ok(get_messages(conn, chat_id)?.len() as i64)
 }
 
+/// v4 `getLastPlayedMessageAt(chatId)` (`chats-messages.ops.ts`, the SQLite
+/// branch): the `createdAt` of the newest **played** message — a `type:'message'`
+/// row authored by a participant character or the human user, i.e. with
+/// `systemSender IS NULL` (excludes Staff / personified-feature announcements that
+/// persist as `type:'message'` and would otherwise keep a quiet chat's assets
+/// alive). `None` when the chat has no played messages. Consumed only by the
+/// stale-chat maintenance sweep (v4 `42242a3e`).
+pub fn get_last_played_message_at(
+    conn: &Connection,
+    chat_id: &str,
+) -> Result<Option<String>, DbError> {
+    conn.query_row(
+        "SELECT createdAt FROM chat_messages \
+         WHERE chatId = ?1 AND type = 'message' AND systemSender IS NULL \
+         ORDER BY createdAt DESC LIMIT 1",
+        [chat_id],
+        |r| r.get::<_, String>(0),
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other),
+    })
+    .map_err(DbError::from)
+}
+
 /// `findChatIdForMessage` — the chat owning a message, via a direct indexed
 /// lookup on the message id (v4 `findOne({ id })` → `chatId`). `None` when no
 /// such message.

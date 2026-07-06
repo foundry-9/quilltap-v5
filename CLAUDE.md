@@ -2857,6 +2857,79 @@ split JSON object is silently lost — a faithfully ported v4 bug), so ollama is
 diffed at whole + line-aligned chunkings only; the byte-at-a-time lossy
 bug-parity is a Rust-side unit test. **Recorder note:** run under `npx tsx` (some
 plugins import extensionless sibling `.ts` modules — z-ai's `./models`); Node 24.
+**Wave 4 (W4.8): the background job runner is DONE** (2026-07-06). v4's
+forked-child job processor (`lib/background-jobs/host/{processor-host,
+job-dispatcher}.ts` + `child/child-entry.ts`) is re-expressed as an **in-process
+runner** over the single-writer runtime. The fork/IPC/buffered-write-proxy
+architecture does NOT port (an encoded decision) — `db::runtime::Db` already
+makes "only the writer task holds the RW connection" a compiler-enforced
+ownership rule, so v5 job handlers run in-process and write through `Db` like
+every request-path service (the job-level all-or-nothing write buffer is
+deliberately dropped for direct-writing handlers — v4 runs those same services
+unbuffered on the request path; `write_apply` remains available for a batch-mode
+handler that needs main-primary ordering, the autonomous turn/Unit 4). New
+`services::job_runner`: the claim-loop core (`pump_claim` — the `claiming`
+reentrancy lock, the `maxConcurrentJobs` instance-settings read each pump
+[`instance_settings::get_max_concurrent_jobs`, default 4 clamp 1–32], the
+claim-until-full loop over the ported `claim_next_job` [on the writer, since it
+mutates PENDING→PROCESSING], and the `PumpOutcome`'s next-wake-delay via
+`find_next_scheduled_at` + `clamp_wake_delay` returned to the host); dispatch by
+job type through a `HandlerRegistry` (a type-string → `Box<dyn JobHandler>` map
+whose handlers close over their own model seams and decode the payload) with a
+**loud fallback** for unregistered types (`KNOWN_JOB_TYPES` → "recognized but not
+yet available"; unknown → v4 `getHandler`'s `No handler registered for job type:
+<type>` — a later order adds a row without touching callers); completion/failure
+(`markCompleted` NOW wiring `merge_result_into_payload` — closes Phase-2 deferral
+#3, forward-only since v4-on-SQLite throws on the dotted `payload.result`; a
+handler `Err`/`Failed` → `markFailed` with the ported backoff); and recovery
+(`reset_orphaned_jobs` at startup, `tick_stuck_reset` on the 5-minute cadence).
+**All timers are host-driver seams** (STOP rule honored: no tokio timers in the
+runner core) — the host driver owns cadence, per the enclave `step()` philosophy.
+New `services::job_scheduler` with the pure decision leaves (`clamp_wake_delay` =
+v4 `armWakeTimer`'s `min(max(rawMs,100), 300_000)`; `should_run_startup_tick` =
+the 20 h recent-run window) + the cadence constants. The **`ensureProcessorRunning`
+seam is CLOSED**: `queue_service::enqueue_job` now fires a process-global wake hook
+(`set_wake_hook` / `JobRunner::install_wake_hook` → `JobRunner::wake`; a no-op
+until the host registers it — faithful to v4's `QUILLTAP_JOB_CHILD` no-op).
+Extended `queue_service` with the read/admin surface (`get_job_status` /
+`get_queue_stats` / `get_active_counts_by_type` / `cancel_job` /
+`get_pending_jobs_for_chat` / `cleanup_old_jobs` / `cleanup_finished_jobs`), the
+retention windows (`retention_cutoff_iso` + the per-status constants), and the
+portable scheduler sweep bodies (`run_scheduled_housekeeping` /
+`run_scheduled_cleanup`, over a new scoped `chat_settings::find_all_scheduler_settings`).
+Ported the **stale-chat asset maintenance sweep** (`services::maintenance::
+collapse_stale_chat_assets`, v4 `collapse-stale-chat-assets.ts`) with the new
+`chats_messages_read::get_last_played_message_at` scoped read (v4 `42242a3e`), the
+keep-set avatar-sha resolution (`resolveCharacterAvatar`'s vault-link →
+`files.findById` fallback, sha only), the `isPhotosRelativePath` pure leaf (ported
+into `db::doc_mount_file_links` with a faithful `path.posix.dirname`), and the four
+protection branches (current / current-sha / album-or-vault-link [via
+`doc_mount_files::find_by_sha256` + `doc_mount_file_links::find_by_file_id` +
+`doc_mount_points::find_store_type_by_id`] / character-reference [via new raw
+`characters_read::count_by_{default_image_id,avatar_override_image_id}`]); the
+`deleteFileCompletely` storage-bytes delete is a documented **host FsSeam** (the
+DB metadata-delete half ports via `files.delete`). Verified two ways: a tier-1
+differential (`photos_relative_path_equivalence`, driving v4's REAL
+`isPhotosRelativePath` — banks the `/photos/` root, `my-photos/`, `photosx/`
+guards) and a **tsx real-DB tier-2 differential** (`maintenance_sweep_tier2_equivalence`,
+driving v4's REAL `collapseStaleChatAssets` over a two-DB fixture, zero
+normalization — exercises all four skip branches + the fresh-chat guard: one
+unprotected file deleted, five survive), plus eleven runner self-tests
+(concurrency cap, wake-on-enqueue, claim-order priority/FIFO, loud fallback,
+stuck/orphan reset, drain-on-shutdown, and an end-to-end memory-housekeeping
+dispatch enqueue→claim→dispatch→markCompleted-merge). The
+`memory_watermark_tier3` / `context_summary_service_tier3` differentials were
+regenerated green with the wake hook live (the DB effect is unchanged — the wake
+is a no-op in the differential harness). **Tracked deferrals:** the autonomous-room
+job types (`AUTONOMOUS_ROOM_TURN` / `_SCHEDULE_TICK` — Unit 4 owns them; the runner
+dispatches them via the loud fallback until then); the memory-extraction handler's
+payload→`TurnMemoryExtractionContext` assembly (v4 `buildTurnTranscript`, unported
+— the runner dispatches to whatever handler the host registers, and the E2E test
+registers a real `MEMORY_HOUSEKEEPING` handler instead); the danger-scan enqueuer
+sweep's per-chat classification decision-tree (leans on the full
+`chat_settings.findAll` marshaling + connection resolution — the enqueue helpers
+themselves are ported); the maintenance sweep's storage-bytes FsSeam. See the
+memory note for the fork/IPC non-port rationale.
 
 **The Phase-3 endgame is fully planned (2026-07-06).** Every remaining unit
 has an agent-ready work order checked in under

@@ -322,6 +322,34 @@ pub fn find_by_avatar_override_image_id(
     )
 }
 
+/// Count characters whose `defaultImageId` equals `image_id` — the length of v4's
+/// `findByDefaultImageId(image_id)` result, WITHOUT the vault overlay (the sweep's
+/// `skipReason` only consults `.length > 0`, and the overlay never adds or removes
+/// rows, only enriches them, so the raw count is length-equivalent). Main-DB only.
+pub fn count_by_default_image_id(main: &Connection, image_id: &str) -> Result<i64, DbError> {
+    Ok(main.query_row(
+        "SELECT COUNT(*) FROM characters WHERE defaultImageId = ?1",
+        [image_id],
+        |r| r.get::<_, i64>(0),
+    )?)
+}
+
+/// Count characters whose `avatarOverrides` reference `image_id` — the length of
+/// v4's `findByAvatarOverrideImageId(image_id)` result (see
+/// [`count_by_default_image_id`] for the overlay-free rationale). Main-DB only.
+pub fn count_by_avatar_override_image_id(
+    main: &Connection,
+    image_id: &str,
+) -> Result<i64, DbError> {
+    Ok(main.query_row(
+        "SELECT COUNT(*) FROM characters \
+         WHERE EXISTS (SELECT 1 FROM json_each(avatarOverrides) \
+             WHERE json_extract(value, '$.imageId') = ?1)",
+        [image_id],
+        |r| r.get::<_, i64>(0),
+    )?)
+}
+
 /// Find characters carrying a tag (v4 `findByTag` — `tags` array contains, via
 /// `json_each`).
 pub fn find_by_tag(

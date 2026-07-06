@@ -154,6 +154,23 @@ impl<'c> DocMountFilesRepository<'c> {
         Ok(rows)
     }
 
+    /// v4 `docMountFiles.findBySha256` (`doc-mount-files.repository.ts:109`): the
+    /// content-row id for a sha256, or `None`. Used by the stale-chat sweep's
+    /// album/vault-link reverse index (sha256 → file → links).
+    pub fn find_by_sha256(&self, sha256: &str) -> Result<Option<String>, DbError> {
+        self.conn
+            .query_row(
+                "SELECT id FROM doc_mount_files WHERE sha256 = ?1",
+                params![sha256],
+                |row| row.get::<_, String>(0),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
+    }
+
     /// Insert a content row with the given pinned id + timestamps. `fileSizeBytes`
     /// binds `f64` (REAL); `sha256`/`fileType`/`source` pass through as TEXT.
     /// Columns are bound in schema/Zod field order (= on-disk order on a fresh

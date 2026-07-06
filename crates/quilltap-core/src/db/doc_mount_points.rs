@@ -451,6 +451,23 @@ impl<'c> DocMountPointsRepository<'c> {
         self.find_row_by_id(id)
     }
 
+    /// The `storeType` of a mount point by id, or `None` when absent — a scoped
+    /// read (v4's overlaid `findById(...).storeType`). Used by the stale-chat
+    /// sweep to detect a `'character'`-vault hard link protecting an image's bytes.
+    pub fn find_store_type_by_id(&self, id: &str) -> Result<Option<String>, DbError> {
+        self.conn
+            .query_row(
+                "SELECT storeType FROM doc_mount_points WHERE id = ?1",
+                rusqlite::params![id],
+                |row| row.get::<_, String>(0),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
+    }
+
     /// v4 `findEnabled` — every enabled mount point, as the scoped doc-edit row.
     /// Used by the operator "look everywhere" override (needs each `id`) and by the
     /// URI producers' ambiguity precompute (needs each `name`).
