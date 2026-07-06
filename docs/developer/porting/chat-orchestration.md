@@ -145,33 +145,58 @@ Ordered by dependency; several are mutually independent once wave 2 lands:
 
 **The batch plan** (the numbering the Status bullets below use; each batch =
 one or more self-contained work orders, executed by parallel agents on
-disjoint files and unified afterward):
+disjoint files and unified afterward). **The endgame was re-planned
+2026-07-06** from fresh surveys of every remaining v4 subsystem: every
+pending batch now has an agent-ready work order in
+[`work-orders/`](./work-orders/), and the sequencing below supersedes the
+earlier sketch.
 
-| Batch | Scope | Status |
+| Batch | Scope | Status / work order |
 |-------|-------|--------|
 | **W4.0** | Wardrobe drift batch: archetype tiers, public READ trio, transfers | ✅ done |
-| **W4.1** | The tool subsystem, sub-units a–g: RNG paths (a), pure leaves + all 57 definitions (b), execution/persistence (c), the handler catalog in five batches (d1–d5), the native (e) and text (f) tool loops, `buildTools` + spine wiring (g) | ✅ done — deferrals: the `generate_image` handler (needs W4.2) + the photo trio; provider parse/capabilities + plugin registry (→ W4.7) |
-| **W4.2** | Danger orchestration (`dangerous-content/`): resolver, chat-override, manual-flip, gatekeeper (+ the classification job runner), provider-routing (the real `DangerousContentRouter` implementor) | ✅ done — the spine-level orchestrator-corpus cases (danger-OFF short-circuit, live reroute) ride the follow-up below |
-| **W4.3** | Answer-confirmation service (fills the finalizer's seam; details below) | pending |
-| **W4.4** | a: agent-mode resolver / courier / compression-cache / regenerate-swipe; b: the file/attachment subsystem (`chat-files-v2` + fallback — closes `process_files` + the K seam) | a: 3 of 4 done (agent-mode ✅, regenerate-swipe ✅, compression-cache ✅ — **courier + the compression spine plumbing remain**, folded into a follow-up order); b: pending |
-| **W4.5** | Carina query engine (`runCarinaQuery` — closes the `RunCarinaQuery` seam) | pending |
-| **W4.6** | BuildContext/ContextSummary seam-closers: recap/distill tasks, frozen archive, off-scene scan, the post-office whisper writers (Aurora/Librarian/Prospero posts, the wardrobe announcement drain) | pending |
-| **W4.7** | Provider manifest + stream decoders ([`provider-manifest.md`](./provider-manifest.md)): real wire parsing (closes `ToolCallDetector`), provider capabilities, plugin registry, host API-key acquisition, `logLLMCall` | pending — needs its own decomposition pass |
+| **W4.1** | The tool subsystem, sub-units a–g: RNG paths (a), pure leaves + all 57 definitions (b), execution/persistence (c), the handler catalog in five batches (d1–d5), the native (e) and text (f) tool loops, `buildTools` + spine wiring (g) | ✅ done — deferrals: the `generate_image` handler (→ W4.9a) + the photo trio (→ W4.9b); provider parse/capabilities + plugin registry (→ W4.7) |
+| **W4.2** | Danger orchestration (`dangerous-content/`): resolver, chat-override, manual-flip, gatekeeper (+ the classification job handler), provider-routing (the real `DangerousContentRouter` implementor) | ✅ done — the spine unification is **W4.2u** |
+| **W4.2u** | Wire the real danger router/resolver at the orchestrator composition point + the two deferred corpus cases (OFF short-circuit, live uncensored reroute) | [`w4.2u-danger-spine-unification.md`](./work-orders/w4.2u-danger-spine-unification.md) |
+| **W4.3** | Answer-confirmation service (fills the finalizer's `AnswerConfirmationRunner` seam: gate cascade, Commonplace-whisper reference gathering, the consistency check + re-affirmation cheap-LLM calls) | [`w4.3-answer-confirmation.md`](./work-orders/w4.3-answer-confirmation.md) |
+| **W4.4a** | agent-mode resolver ✅ / regenerate-swipe ✅ / compression-cache ✅; **W4.4a4**: courier transport + the compression spine plumbing (the finalizer `AsyncCompressionTrigger` + `build_context` cached window) | [`w4.4a4-courier-and-compression-plumbing.md`](./work-orders/w4.4a4-courier-and-compression-plumbing.md) |
+| **W4.4b** | The file/attachment subsystem: text-detection, the fallback dispatch (text-inline + vision description), `loadChatFilesForLLM`, `loadAndProcessFiles` — closes `process_files` + the Lantern K seam; bytes + resize are host seams | [`w4.4b-file-attachment.md`](./work-orders/w4.4b-file-attachment.md) |
+| **W4.5** | Carina query engine (`runCarinaQuery` — closes the `RunCarinaQuery` seam everywhere + wires `ask_carina` dispatch; Brahma one-shot console = tracked follow-up W4.5b) | [`w4.5-carina-query.md`](./work-orders/w4.5-carina-query.md) |
+| **W4.6a** | BuildContext feeder closures: recap, keyword distillation, frozen archive, core-whisper packet, Suparṇā mail read, off-scene scan, scene-state cache + tracking task, live mount pool + recall settings (both close with already-ported code) | [`w4.6a-context-feeders.md`](./work-orders/w4.6a-context-feeders.md) |
+| **W4.6b** | The post-office / personified writers: Host, Prospero, Librarian, Concierge, Suparṇā, Aurora (+ the wardrobe announcement drain), Commonplace (+ relevant-conversations refresh), Lantern notification; the vault summary mirror + the `chats.delete` sweep (the last Phase-2 deferral); cost events | [`w4.6b-post-office-writers.md`](./work-orders/w4.6b-post-office-writers.md) |
+| **W4.7** | The provider layer, six units a–f — decomposed 2026-07-06 in [`provider-manifest.md`](./provider-manifest.md) ("The porting decomposition"): manifest+registry (a), the five stream decoders (b), request builders/transforms/tool-wire (c — closes `ToolCallDetector` + the text-markers strategy + `formatTools`), transport/errors/`api_keys` (d — closes every `ApiKeyResolver` seam), pricing/capability/`logLLMCall`/embeddings (e), image dialects + moderation + web search (f) | [`w4.7a-manifest-registry.md`](./work-orders/w4.7a-manifest-registry.md), [`w4.7b-stream-decoders.md`](./work-orders/w4.7b-stream-decoders.md); c–f specced in the decomposition |
+| **W4.8** | The background job runner: claim loop + dispatch registry + completion/backoff + recovery, the enqueue-helper remainder, scheduler decision leaves (host-driven cadence), the stale-chat maintenance sweep + `getLastPlayedMessageAt`; closes `ensureProcessorRunning` + the `markCompleted` result-merge deferral. The fork/IPC/buffered-proxy architecture deliberately does NOT port | [`w4.8-job-runner.md`](./work-orders/w4.8-job-runner.md) |
+| **W4.9** | a: the `generate_image` subsystem (the `model::image` seam, the three scene cheap-LLM tasks, appearance resolution + Concierge gates, `saveGeneratedImage`, the avatar trigger); b: the photo trio (`keep_image`/`list_images`/`attach_image` + save-to-album + kept-image markdown); c (follow-up): the avatar + story-background job handlers | [`w4.9a-image-generation.md`](./work-orders/w4.9a-image-generation.md), [`w4.9b-photo-trio.md`](./work-orders/w4.9b-photo-trio.md) |
+| **Unit 4** | The enclave engine — `step()`/`RunState`, budget/milestones, cron, lifecycle, schedule tick ([`enclave-engine.md`](./enclave-engine.md)) | [`u4-enclave-engine.md`](./work-orders/u4-enclave-engine.md) — after W4.8 + W4.6b |
+
+**Execution rounds (parallelism guidance).** Two contended resources: the
+spine source files (`orchestrator.rs` / `message_finalizer.rs` /
+`message_context.rs` / `build_context.rs`) and the **orchestrator oracle
+corpus** (`harness/oracle/{cases,fixtures}/orchestrator-tier3*`). Per round,
+exactly ONE order owns each (the W4.2∥W4.4a coordination precedent); any
+other concurrent order that wants a spine-corpus case hands it to the
+round's unification pass instead of editing the corpus itself. Start each
+round with a drift check against v4 HEAD.
+
+- **Round 1:** **W4.d1 first** (the unified-diff drift re-port, v4
+  `8617ce7a` — [`w4.d1-unified-diff-drift.md`](./work-orders/w4.d1-unified-diff-drift.md);
+  until it lands, regenerating the doc-edit-leaves oracle fails) ∥ W4.2u
+  (owns spine + orchestrator corpus; small) ∥ W4.8 (disjoint) ∥ W4.9b
+  (disjoint — but shares the `doc_edit` module tree with W4.d1's
+  re-verification; land W4.d1 before W4.9b's unification) ∥ W4.7a + W4.7b
+  (disjoint, mutually independent).
+- **Round 2:** W4.3 (owns finalizer + orchestrator corpus) ∥ W4.6a
+  (build_context + its own feeder differential) ∥ W4.9a (tools + new
+  services; its finalizer/orchestrator regenerations go to unification).
+- **Round 3:** W4.4a4 (owns spine + orchestrator corpus) ∥ W4.6b (writers;
+  its many regenerations listed in the order go to unification where they
+  collide) ∥ W4.7c.
+- **Round 4:** W4.4b (owns spine + orchestrator corpus) ∥ W4.5 (carina —
+  its finalizer/orchestrator cases go to unification) ∥ W4.7d/e/f.
+- **Round 5:** Unit 4 (enclave), then the Phase-4 kickoff.
 
 The markdown-renderer / `qtap-linkify` item below is Phase-4-adjacent and not
 in a numbered batch.
 
-- **Tool subsystem** — `tool-executor.ts`, `tool-execution.service.ts`, the
-  native/text tool loops, pseudo-tool instruction builders, RNG tools.
-- **Provider manifest + the five stream decoders** ([`provider-manifest.md`](./provider-manifest.md))
-  — replaces the canned provider with real wire decoding.
-- **Danger orchestration, agent mode, answer-confirmation service, courier
-  transport, compression-cache, regenerate/swipe** — each an independent
-  follow-on with the same tier-3 shape.
-- **Autonomous room / enclave engine** — Phase-3 Unit 4 (`step()` + `RunState`),
-  drives the same turn machinery with `userParticipantId = null`.
-- **Prospero / Librarian / post-office whisper writers** — cross-subsystem
-  side-effect posts reached from `processMessage` and `buildContext`.
 - **Server-side markdown rendering** — `markdown-renderer.service.ts` (the
   pre-rendered-HTML path for Librarian/Lantern/Aurora announcement bodies) +
   its pure helpers (`roleplay-rendering`, and the new
@@ -181,13 +206,8 @@ in a numbered batch.
   **lookbehind** (`(?<!\]\()(?<!<)`), which the Rust `regex` crate does not
   support — reproduce it the way the Phase-1 name matchers did (hand-rolled
   boundary check or `fancy-regex`-free rewrite), with a differential corpus.
-- **Answer-confirmation service** (expanded from the line above; v4
-  `29f3ae63`): `answer-confirmation.service.ts` — `isUserDrivenTurn` /
-  `hasCheckableInputs` / `findLatestCommonplaceWhisper` + the active
-  consistency-check/re-affirmation cheap-LLM calls. The finalizer already
-  ports its gates, `confirmed`-state persistence, and the
-  `confirmationResult` event; this unit fills the seam. Depends on the tool
-  subsystem (it vets tool-using replies) and the Commonplace whisper shape.
+  W4.6b writers that would embed pre-rendered HTML seam the renderer call
+  until this lands.
 
 ## Sequencing rationale
 

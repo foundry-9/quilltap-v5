@@ -4,6 +4,26 @@
 
 ### 5.0-dev
 
+Phase 3 — the endgame plan. Docs only. Re-planned the remainder of the port
+from fresh surveys of every unported v4 subsystem (courier, answer-confirmation,
+carina query, file/attachment, the buildContext feeders, the post-office
+writers, the job runner, image generation, the photo trio, the provider layer,
+the autonomous-room engine). Every remaining unit now has a self-contained work
+order under `docs/developer/porting/work-orders/` (W4.2u, W4.3, W4.4a4, W4.4b,
+W4.5, W4.6a/b, W4.7a/b, W4.8, W4.9a/b, U4), with the batch table and per-round
+parallelism/ownership rules in `chat-orchestration.md`. New docs: the W4.7
+provider-layer decomposition (six units, appended to `provider-manifest.md`)
+and the enclave (Unit 4) decomposition (`enclave-engine.md`). Key decisions
+recorded: the job runner drops v4's fork/IPC/buffered-proxy architecture
+(in-process handlers over the single-writer runtime; the autonomous turn keeps
+the `write_apply` main-primary batch path), file bytes / image transcode are
+injected host seams, the provider core stays sans-IO, and image generation gets
+a canned `model::image` seam ahead of the real wire dialects. Also a drift
+check of v4 `42242a3e..8617ce7a`: one ported unit is stale —
+`doc_edit::unified_diff` (v4 replaced the greedy walker with a Myers line
+diff + git-style hunks) — scoped as work order W4.d1, first in Round 1; the
+`docs/v4/` CHANGELOG mirror refreshed.
+
 Phase 3 — wave 4 (W4.4a, part 3): the compression cache service. Ported v4's
 `compression-cache.service.ts` — `triggerAsyncCompression` /
 `getCachedCompression` / `invalidateCompressionCache` (+ `hashString` /

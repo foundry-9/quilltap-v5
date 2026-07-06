@@ -241,8 +241,10 @@ assumption.
 These could not close in Phase 2 because each depends on a Phase-3 subsystem.
 Track them to closure as their subsystem lands:
 
-1. **`chats.delete`'s participant-vault summary sweep** — reaches an external
-   (vault-summary) subsystem. Close when that subsystem is ported.
+1. **`chats.delete`'s participant-vault summary sweep** — reaches the
+   vault-summary bridge. **Scheduled: W4.6b**
+   ([`work-orders/w4.6b-post-office-writers.md`](./work-orders/w4.6b-post-office-writers.md))
+   ports the bridge (mirror + remove + the delete sweep).
 2. **The General / project wardrobe archetype tiers** — **✅ CLOSED (2026-07-03,
    wave 4 / W4.0)**: `db::archetype_wardrobe` + the seeded read overlay + the
    `WardrobeLocation` write generalization + the public READ trio + the
@@ -251,8 +253,9 @@ Track them to closure as their subsystem lands:
    pre-cutover `wardrobe_items` table; no consumer yet).
 3. **`background_jobs.markCompleted`'s dotted `payload.result` merge** — a forward
    v5-only capability (v4-on-SQLite throws `no such column`). Pure
-   `merge_result_into_payload` + unit test exist; wire it in when the job runner
-   consumes completed-job results.
+   `merge_result_into_payload` + unit test exist. **Scheduled: W4.8**
+   ([`work-orders/w4.8-job-runner.md`](./work-orders/w4.8-job-runner.md))
+   wires it into the runner's completion path.
 
 ## Unit order (summary)
 
@@ -321,15 +324,16 @@ Track them to closure as their subsystem lands:
    runner), the message finalizer, the `buildContext` capstone, the
    `processMessage` spine + `executeTurnChain` (the first end-to-end tier-3
    differential), and the `buildMessageContext` wrapper. Of wave 4: **W4.0
-   (wardrobe drift batch) and the entire W4.1 tool subsystem (a–g) are DONE**
-   — the tool slate, both tool loops, the dispatcher, and ~50 of the ~57 tool
-   handlers are live on the spine (deferrals: the `generate_image` handler
-   [pure leaves banked; needs W4.2] + the photo trio; provider wire
-   parse/capabilities + plugin registry → W4.7). Remaining wave-4 batches per
-   that doc: W4.2 (danger), W4.3 (answer-confirmation), W4.4 (agent-mode /
-   courier / compression-cache / regenerate-swipe / file-attachment), W4.5
-   (carina query), W4.6 (buildContext seam-closers), W4.7 (provider manifest).
-4. Enclave engine (`step()` + `RunState` + driver seam) — after wave 4.
+   (wardrobe drift batch), the entire W4.1 tool subsystem (a–g), W4.2
+   (danger orchestration), and W4.4a parts 1–3 are DONE.** The endgame was
+   re-planned 2026-07-06: every remaining batch — W4.2u, W4.3, W4.4a4,
+   W4.4b, W4.5, W4.6a/b, W4.7a–f, W4.8 (the job runner, promoted to its own
+   batch), W4.9a/b (image generation + photo trio) — has an agent-ready
+   work order in [`work-orders/`](./work-orders/), with the batch table +
+   execution rounds in [`chat-orchestration.md`](./chat-orchestration.md).
+4. Enclave engine (`step()` + `RunState` + driver seam) — after W4.8 +
+   W4.6b. Decomposed in [`enclave-engine.md`](./enclave-engine.md); work
+   order [`work-orders/u4-enclave-engine.md`](./work-orders/u4-enclave-engine.md).
 
 Each unit ships with its differential (tier-2, or tier-3 → tier-2 for
 model-dependent ones), the same accept-nothing-unverified discipline as Phases 1–2.
@@ -338,8 +342,8 @@ model-dependent ones), the same accept-nothing-unverified discipline as Phases 1
 
 Open with: *"Continuing the quilltap-v5 native port. Read CLAUDE.md,
 docs/developer/porting/overview.md, and docs/developer/porting/chat-orchestration.md.
-The memory family, the chat-orchestration engine, and the W4.1 tool subsystem
-are done; continue wave 4 per the chat-orchestration decomposition (then the
+Phase 3 is in its planned endgame — pick the next work order from
+docs/developer/porting/work-orders/ per the execution-rounds table (then the
 enclave engine, Unit 4)."* The tier-1/tier-2 harness run commands are in
 [`phase-0.md`](./phase-0.md) and [`phase-2-onramp.md`](./phase-2-onramp.md);
 each tier-3 differential's exact oracle recipe is in its harness test header

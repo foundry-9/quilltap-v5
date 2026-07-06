@@ -211,6 +211,39 @@ This is more than "add a row to the manifest" — the contract is written up
 separately in
 [`lantern-image-moderation-contract.md`](./lantern-image-moderation-contract.md).
 
+## The porting decomposition (W4.7) — scoped 2026-07-06
+
+The design above is settled; this section decomposes the build into six
+units, each with its own differential strategy, sized from a survey of the
+surrounding v4 machinery (registry 583+377 lines, tool-executor parse 1282,
+plugin-tool-builder 560, pricing-fetcher 473, embedding-service 595,
+llm-logging 339, errors 411, plus the five provider plugins ~3,500). Work
+orders live in [`work-orders/`](./work-orders/); W4.7a and W4.7b have orders
+written and can start immediately (they are independent of each other and of
+every other wave-4 batch).
+
+**One architectural rule for the whole batch: the core stays sans-IO.**
+Decoders consume already-received bytes/events and emit `StreamChunk`s;
+request builders produce a request *value* (method, url, headers, body);
+the actual HTTP lives behind a small `ProviderTransport` trait wired by the
+host (Phase 4 / CLI). This is what makes every unit differentially testable
+without a network, and it is the same seam discipline as `EmbeddingProvider`
+/ `CompletionProvider` — which the real implementations here finally fill.
+
+| Unit | Scope | Verification |
+|---|---|---|
+| **W4.7a** — manifest + registry core | The manifest schema (serde + JSON-Schema validation, load-fail-loud); the static provider table transcribed from v4's registry metadata (displayName/colors/config-requirements/capabilities/attachmentSupport/toolFormat/charsPerToken/defaultContextWindow/messageFormat/cheapModels/legacyNames) via a checked-in generator (the tool-catalog precedent); `get_provider` lookup semantics incl. legacy names; `rewriteLocalhostUrl` (pure); then replace the injected registry-seam inputs consumer-by-consumer (`getModelContextLimit` tables, `cheapModels`, attachment MIME lists, `supportsWebSearch`, messageFormat) | Registry-dump parity: a tsx oracle drives v4's real `provider-registry` getters over every provider → NDJSON → tier-1 exact; each replaced seam input regenerates its consumer's differential |
+| **W4.7b** — the five stream decoders | `chat-completions-sse`, `responses-api-sse`, `anthropic-sse`, `google-parts`, `ollama-ndjson` — each a push-bytes-in / `StreamChunk`s-out state machine per the table above, incl. tool-call accumulation, reasoning routing, usage assembly | Tier-1 per decoder over **recorded wire fixtures** replayed through v4's real plugin parser and the Rust decoder; fixture recorder checked in; adversarial fixtures (split-mid-escape SSE, fragmented tool-call JSON, keep-alives) |
+| **W4.7c** — request builders + transforms + tool wire | Per-provider request-envelope builders; the four `RequestTransform` hooks (anthropic breakpoints + adaptive-thinking/sampling-rejection for Sonnet 5/Opus 4.7+/Fable/Mythos — port from **current** v4, consider lifting the model list to manifest data; openai `previous_response_id` chaining + fallback; google schema sanitizer + `thoughtSignature` round-trip; deepseek `reasoning_content` echo); `formatTools` reshape per provider (closes the W4.1g provider-reshape deferral); `parseToolCalls` per provider (closes the native loop's `ToolCallDetector` seam); the provider text-markers strategy (closes the text-tool-loop seam) | Byte-diff of built request JSON vs v4 (drive the real plugins with fetch/SDK mocked, capture the request); `formatTools`/`parseToolCalls` tier-1 over the real b.3 catalog + recorded raw responses; then regenerate `native_tool_loop`/`text_tool_loop`/`orchestrator` with the real detector |
+| **W4.7d** — transport, errors, keys | The `ProviderTransport` trait + a reqwest host impl (timeouts, abort, SSE reads); the `api_keys` **table port** (the one unported repo — read + marshaling, plaintext-within-encrypted-DB) closing every `ApiKeyResolver` seam at composition points; `validateApiKey` / `getAvailableModels` surfaces; `sendMessage` non-streaming over the same builders/decoders | api_keys tier-2 (standard repo differential); error-classifier rows extend the ported `lib/llm/errors` differential; transport itself is host-tier (integration smoke, no oracle) |
+| **W4.7e** — pricing, capability, logging, embeddings | The pricing fetcher (OpenRouter models fetch, 24 h cache + 5 min negative cache, 3 s timeout) as a host-seamed data source over the ported fallback tables; `checkModelSupportsTools` closure (replaces the injected `model_supports_native_tools`); `logLLMCall` closure (the llm_logs write shape + the autonomous-run-id context — repo already ported); the real embedding providers (openai / ollama with `num_ctx` derivation + the NaN/Inf reject guard / openrouter base64-Float32 decode; builtin already ported) + the interactive-priority throttle decision logic | Pricing/capability: tier-1 over canned fetch payloads both sides; logLLMCall: tier-2 llm_logs row diff driven through a real call site; embeddings: tier-1 request/parse over canned payloads; regenerate the differentials whose pins close (`cheap_llm_exec` API-key/log deferrals, `tool_build` capability input) |
+| **W4.7f** — image dialects + moderation + web search | The image decoder enum (`openai-images` / `google-imagen-predict` / `google-gemini-image` / `openrouter-chat-image`) with **moderation-rejection normalization** as part of the contract (the empty-200 / `raiFilteredReason` / refusal-text cases → the typed error `isImageModerationError` matches — see [`lantern-image-moderation-contract.md`](./lantern-image-moderation-contract.md)); the real `ModerationProvider` (closes W4.2's seam); the web-search providers (closes the W4.1d5 seam) | Tier-1 request/parse over canned payloads incl. every rejection shape; regenerate `danger_gatekeeper_tier3` (moderation un-mocked to canned wire payloads) and W4.9a's image differential with the real dialect behind the canned transport |
+
+Sequencing: a ∥ b first (independent); c after b (it reuses decoder types)
+and closes three live seams; d/e/f in any order after a. The enclave (Unit
+4) does not depend on any of these; W4.9a consumes f only at the wire layer
+(its differential runs with a canned transport either way).
+
 ## Open items (not yet decided)
 
 - **Third-party trust.** A JSON manifest can't run arbitrary code (good), but it

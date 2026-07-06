@@ -2678,10 +2678,49 @@ short-circuit case and a live uncensored-reroute case. `primary_stream_tier3` /
 touched — the frozen `DangerousContentRouter` trait in `provider_failover.rs` is
 only *implemented* in the new module, never edited).
 
-The rest of wave 4 — the `generate_image` handler (its W4.2 danger classify/route
-dependency is now met; it lands once its three cheap-LLM prompt tasks exist) and
-the deferred photo trio, the remaining W4.4a service (courier) + the
-compression-cache spine plumbing, answer-confirmation, the file/attachment
-subsystem (W4.4b), carina query,
-buildContext seam-closers, and the provider manifest — follows per the
-chat-orchestration decomposition.
+**Drift check (2026-07-06): v4 `42242a3e..8617ce7a` (1 commit) audited — ONE
+ported unit is stale.** `8617ce7a` ("tighten Document Mode change diffs")
+rewrote `lib/doc-edit/unified-diff.ts` — the ported `doc_edit::unified_diff`
+(W4.1d3a, the greedy 3-line-lookahead walker) no longer matches v4: the diff
+is now a Myers shortest-edit-script (new shared `lib/doc-edit/line-diff.ts`:
+`diffLines` + `changedBlockIndices`) grouped into git-style hunks (3-line
+context, coalescing, correct `@@` ranges, empty-content = zero lines,
+whole-file fallback past 10 000 lines; signatures unchanged).
+`doc_edit_leaves_equivalence` is green only against its stale oracle; a
+regeneration will fail until the re-port lands. Blast radius is contained:
+the v5 doc-edit handlers never build the `change.diff` payload (it feeds only
+the Librarian save-announcement — the W4.6b-seamed writer), and the change
+gutter is Phase-4 UI. Re-port scoped as
+`docs/developer/porting/work-orders/w4.d1-unified-diff-drift.md` (runs FIRST
+in Round 1); the W4.6b order carries the `change`-payload coupling note; the
+`docs/v4/` CHANGELOG mirror is refreshed.
+
+**The Phase-3 endgame is fully planned (2026-07-06).** Every remaining unit
+has an agent-ready work order checked in under
+`docs/developer/porting/work-orders/` — W4.2u (the danger spine unification
+above), W4.3 (answer-confirmation), W4.4a4 (courier + the compression spine
+plumbing), W4.4b (file/attachment — closes `process_files` + the Lantern K
+seam; bytes/resize are injected host seams), W4.5 (carina query — closes
+`RunCarinaQuery` + wires `ask_carina`; the Brahma one-shot console is the
+W4.5b follow-up), W4.6a (the buildContext feeder closures — recap / distill /
+frozen archive / core-whisper packet / Suparṇā mail read / off-scene scan /
+scene-state; the mount-pool + recall-settings seams close with already-ported
+code), W4.6b (the post-office personified writers + the vault summary mirror
++ the `chats.delete` sweep [the last Phase-2 deferral] + cost events [SYSTEM
+rows through the ported `add_message` — verified: no new table]), W4.7a–f
+(the provider layer, decomposed in `provider-manifest.md` §"The porting
+decomposition": manifest+registry, the five sans-IO stream decoders, request
+builders/transforms/tool-wire [closes `ToolCallDetector`, `formatTools`, the
+text-markers strategy], transport/errors/`api_keys` [the one unported table],
+pricing/capability/`logLLMCall`/embeddings, image dialects + moderation +
+web search), W4.8 (the job runner — decided: the fork/IPC/buffered-proxy
+architecture does NOT port; in-process handlers over the single-writer `Db`,
+cadence host-driven, closes `ensureProcessorRunning` + the `markCompleted`
+merge deferral), and W4.9a/b (image generation with a new `model::image`
+canned seam + the photo trio; the avatar/story-background job handlers are
+W4.9c). Then Unit 4, the enclave (`docs/developer/porting/enclave-engine.md`:
+`step()` = the ported turn handler, one transition per claimed job, the turn
+on the `write_apply` main-primary path, cadence host-side). The batch table
+and the per-round parallelism rules (the spine files and the orchestrator
+oracle corpus each have exactly ONE owner per round; start every round with a
+v4 drift check) are in `docs/developer/porting/chat-orchestration.md`.

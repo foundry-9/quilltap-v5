@@ -32,7 +32,7 @@ already working ([`phase-0.md`](./phase-0.md)).
 | **0** | Scaffolding, toolchain, cipher-correct DB open, differential harness | tier-1 proven | **substantially done** |
 | **1** | Pure functions (scoring, sizing, remaps, budget math) | tier-1 exact | **done** |
 | **2** | Data layer: repos, the writer-task model, per-DB partitioned apply | tier-2 structural DB diff | **repo inventory complete** — every v4 repository round-trips green through the tier-2 harness (main DB + the mount-index and llm-logs sibling DBs, incl. the `characters` and `chats` capstones and `memories`); the deferred `upsert*` back-fill, the partitioned write applier + `__finalizeFile`, and the fixture sanitizer are done too. Full per-repo inventory in the CLAUDE.md Status section ([`phase-2-onramp.md`](./phase-2-onramp.md)). Residual: two Phase-3-coupled deferrals (chats `delete` vault sweep; `markCompleted`'s v5-only payload merge) — the wardrobe archetype tiers closed in W4.0 |
-| **3** | Services / engine: memory gate, chat orchestration, enclave `step()` | tier-2 + tier-3 mocked-LLM | **in progress, well advanced** — [`phase-3.md`](./phase-3.md): the writer-task runtime, the model boundaries (embedding / completion / streaming), the **whole memory family** (gate, deletion chokepoint, cascades, housekeeping, per-turn processor, watermark), and the **whole chat-orchestration engine** (waves 1–3: `buildContext`, the `processMessage` spine + `executeTurnChain`, `buildMessageContext`) are done + green; of wave 4 (adjacent subsystems, [`chat-orchestration.md`](./chat-orchestration.md)) **W4.0 + the entire W4.1 tool subsystem are done** — remaining: danger, answer-confirmation, the W4.4 service batch, carina query, seam-closers, provider manifest; then the enclave engine (Unit 4) |
+| **3** | Services / engine: memory gate, chat orchestration, enclave `step()` | tier-2 + tier-3 mocked-LLM | **in progress, endgame planned** — [`phase-3.md`](./phase-3.md): the writer-task runtime, the model boundaries, the **whole memory family**, and the **whole chat-orchestration engine** (waves 1–3) are done + green; of wave 4, **W4.0, all of W4.1, W4.2, and W4.4a parts 1–3 are done**. Every remaining batch (W4.2u, W4.3, W4.4a4, W4.4b, W4.5, W4.6a/b, W4.7a–f, W4.8, W4.9a/b) has an **agent-ready work order** in [`porting/work-orders/`](./work-orders/) (endgame re-planned 2026-07-06 from fresh v4 surveys — batch table + execution rounds in [`chat-orchestration.md`](./chat-orchestration.md)); then the enclave engine (Unit 4, [`enclave-engine.md`](./enclave-engine.md)) |
 | **4** | Transports (Tauri/uniffi/axum) + Angular UI | end-to-end | not started |
 
 Each phase leans on the one below being trusted, so failures localize.
@@ -70,6 +70,17 @@ Each phase leans on the one below being trusted, so failures localize.
   reroute (provider rejection → uncensored *image* profile) and the pre-hoc
   LLM-refusal retry (safe cheap-LLM refuses → uncensored *LLM* profile). Both
   Phase-3, separate units.
+- [`enclave-engine.md`](./enclave-engine.md) — the Phase-3 Unit-4
+  decomposition: v4's autonomous-room engine mapped onto the `step()` +
+  `RunState` design (budget/milestone leaves, cron, lifecycle, the turn
+  step, the schedule tick), with its verification plan.
+- [`work-orders/`](./work-orders/) — **the agent-ready work orders** for
+  every remaining unit (wave-4 batches W4.2u–W4.9, the first W4.7 units,
+  and the enclave). Each is self-contained: scope, seam decisions already
+  made, differential plan, watch-outs, STOP rules, deliverables. The
+  execution model: hand one order to one Opus session (internal sub-agent
+  parallelization where the order allows it), unify per the rounds table in
+  [`chat-orchestration.md`](./chat-orchestration.md).
 - [`scriptorium-file-manager.md`](./scriptorium-file-manager.md) — the Angular
   file-manager component for the Scriptorium UI. v4's SVAR File Manager has no
   Angular path, so the widget must be replaced; this note records the candidate
@@ -194,33 +205,43 @@ chat-orchestration engine** — waves 1–3 culminating in `buildContext`, the
 `processMessage` spine + `executeTurnChain` (the first end-to-end tier-3
 differential, driving v4's real send path with only the model boundaries
 mocked), and the `buildMessageContext` wrapper. Of wave 4 (the adjacent
-subsystems): **W4.0 (the wardrobe drift batch) and the entire W4.1 tool
-subsystem (sub-units a–g) are done** — the RNG paths, the pure pseudo-tool
-machinery, all 57 tool definitions byte-verified, tool execution/persistence,
-~50 handlers live behind the dispatching runner, both tool loops, and
-`buildTools` + the spine wiring, so the send path now offers and executes real
-tools end-to-end. W4.1's tracked deferrals: the `generate_image` handler (pure
-leaves banked; blocked on the W4.2 danger route) + the photo trio, and the
-provider wire parse / provider capabilities / plugin registry (→ W4.7).
-Remaining wave-4 batches: W4.2 (danger), W4.3 (answer-confirmation), W4.4
-(agent-mode / courier / compression-cache / regenerate-swipe /
-file-attachment), W4.5 (carina query), W4.6 (buildContext seam-closers), W4.7
-(provider manifest — needs its own decomposition pass). After wave 4: the
-enclave engine (Unit 4), then Phase 4. Periodic **drift checks** re-audit new
-v4 commits against the ported surface (2026-07-03 `8efe1ba9..f69200bb`;
-2026-07-05 `f69200bb..42242a3e` — none stale; recorded in CLAUDE.md).
+subsystems): **W4.0 (the wardrobe drift batch), the entire W4.1 tool
+subsystem (sub-units a–g), W4.2 (danger orchestration), and W4.4a parts 1–3
+(agent-mode resolver, regenerate-swipe, compression cache) are done** — the
+send path offers and executes real tools end-to-end and the Concierge
+resolution/routing/classification is ported (its spine wiring is the small
+W4.2u order). **The endgame is fully planned (2026-07-06):** every remaining
+batch has an agent-ready work order in [`work-orders/`](./work-orders/) —
+W4.2u (danger spine unification), W4.3 (answer-confirmation), W4.4a4
+(courier + compression plumbing), W4.4b (file/attachment), W4.5 (carina
+query), W4.6a/b (context feeders + the post-office writers, incl. the last
+Phase-2 deferral), W4.7a–f (the provider layer, decomposed in
+[`provider-manifest.md`](./provider-manifest.md)), W4.8 (the job runner —
+the fork/IPC architecture deliberately dropped for the single-writer
+runtime), W4.9a/b (image generation + the photo trio) — with an
+execution-rounds table in [`chat-orchestration.md`](./chat-orchestration.md).
+After wave 4: the enclave engine (Unit 4,
+[`enclave-engine.md`](./enclave-engine.md)), then Phase 4. Periodic **drift
+checks** re-audit new v4 commits against the ported surface (2026-07-03
+`8efe1ba9..f69200bb`; 2026-07-05 `f69200bb..42242a3e` — none stale; recorded
+in CLAUDE.md). **Run a fresh drift check at the start of each endgame round**
+— the work orders pin scope, not the v4 SHA.
 
 ## How to resume in a fresh session
 
 Open with: *"Continuing the quilltap-v5 native port. Read CLAUDE.md,
 docs/developer/porting/overview.md, and
 docs/developer/porting/chat-orchestration.md. Phases 0–2 are done; Phase 3 is
-mid–wave-4 — continue per the chat-orchestration decomposition (then the
-enclave engine)."* The tier-1/tier-2 harness run commands are in
+in its planned endgame — pick the next work order from
+docs/developer/porting/work-orders/ per the execution-rounds table in
+chat-orchestration.md (then the enclave engine, then the Phase-4 kickoff)."*
+The tier-1/tier-2 harness run commands are in
 [`phase-0.md`](./phase-0.md) and [`phase-2-onramp.md`](./phase-2-onramp.md);
 each tier-3 differential's oracle recipe is in its harness test header
 (`crates/quilltap-harness/tests/*_equivalence.rs`). The execution model that
-built Phases 2–3: plan/scope in the most capable model → self-contained work
-orders (`~/.claude/plans/w4.*.md`) delegated to parallel agents on disjoint
-files → a unification pass (rebase, re-verify all affected differentials
-against freshly regenerated oracles, fast-forward main).
+built Phases 2–3 and that the endgame work orders assume: plan/scope in the
+most capable model → self-contained work orders (now checked in under
+`docs/developer/porting/work-orders/`; the earlier ones lived in
+`~/.claude/plans/w4.*.md`) delegated to parallel agents on disjoint files →
+a unification pass (rebase, re-verify all affected differentials against
+freshly regenerated oracles, fast-forward main).
