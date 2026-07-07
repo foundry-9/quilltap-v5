@@ -984,6 +984,14 @@ impl orchestrator::OrchestratorSeams for HarnessOrchestratorSeams {
                 show_warning_badges: true,
                 custom_classification_prompt: None,
             }),
+            // Round-3 Group 8: the fixture's `cheapLLMSettings =
+            // { strategy: PROVIDER_CHEAPEST, fallbackToLocal: false }`. The spine
+            // resolves the cheap-LLM selection from this + the connection profiles,
+            // and threads it into buildContext (activating the recap/distill feeders).
+            cheap_llm_strategy: "PROVIDER_CHEAPEST".to_string(),
+            cheap_llm_user_defined_profile_id: None,
+            cheap_llm_default_cheap_profile_id: None,
+            cheap_llm_fallback_to_local: false,
         })
     }
 }

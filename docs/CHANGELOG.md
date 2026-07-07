@@ -4,6 +4,22 @@
 
 ### 5.0-dev
 
+Phase 3 — Round-3 unification (Group 8, cheap-LLM-selection spine threading): the
+`processMessage` spine now resolves a real `CheapLlmSelection` at the composition
+point (v4 `getCheapLLMProvider` over the user's connection profiles + the chat
+settings' `cheapLLMSettings`, registry-cheapest seam injected `None`) and threads it
+into `buildContext` (activating the proactive memory recap + the keyword-distillation
+feeders, plus the cached-compression window) and the finalizer's async-compression
+trigger — previously hardcoded `None`, which left those feeders inert in
+`process_message`. Regenerated `orchestrator_tier3` dropping the `generateMemoryRecap`
++ `extractMemorySearchKeywords` mocks one-for-one: v4's real recap produces empty
+content (no memories/vault summaries seeded), and the distill feeder now fires 61
+live cheap-LLM calls across the 22 cases — each replayed byte-for-byte by the Rust
+distill (proving the spine-resolved selection matches v4's). The empty `memories`
+table yields no search results either way, so the stream canned keys do not cascade.
+`regenerate_swipe_tier3` re-verified green (its BuildContextArgs takes `None`,
+behavior-preserving).
+
 Phase 3 — Round-3 unification (Group 5, commonplace-builder dedup): removed the
 private `CommonplaceParts` + `build_commonplace_persona_whisper` /
 `build_commonplace_llm_context` copies from `build_context.rs` and reused the

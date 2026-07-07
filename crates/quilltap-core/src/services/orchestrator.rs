@@ -92,8 +92,11 @@ use std::collections::HashMap;
 
 use serde_json::{json, Value};
 
+use crate::cheap_llm::{
+    get_cheap_llm_provider, CheapLlmConfig, CheapLlmProfile, CheapLlmSelection,
+};
 use crate::db::runtime::Db;
-use crate::db::{chats_messages_read, chats_read, DbError};
+use crate::db::{chats_messages_read, chats_read, connection_profiles, DbError};
 use crate::model::completion::{CompletionMessage, CompletionProvider, CompletionRole};
 use crate::model::embedding::EmbeddingProvider;
 use crate::model::stream::{StreamParams, StreamingCompletionProvider};
@@ -255,6 +258,19 @@ pub struct OrchestratorChatSettings {
     /// row / sub-object is absent (the resolver then falls back to its default,
     /// mode `OFF`).
     pub danger_settings: Option<crate::db::chat_settings::DangerousContentSettings>,
+    /// The `cheapLLMSettings.strategy` (v4 `chatSettings?.cheapLLMSettings ||
+    /// DEFAULT_CHEAP_LLM_CONFIG`) — feeds the cheap-LLM selection the spine
+    /// resolves for the compression / danger / proactive-recall paths (Round-3
+    /// Group 8). Empty string → the DEFAULT config's `"PROVIDER_CHEAPEST"`.
+    pub cheap_llm_strategy: String,
+    /// `cheapLLMSettings.userDefinedProfileId` (`null` → `None`).
+    pub cheap_llm_user_defined_profile_id: Option<String>,
+    /// `cheapLLMSettings.defaultCheapProfileId` (`null` → `None`).
+    pub cheap_llm_default_cheap_profile_id: Option<String>,
+    /// `cheapLLMSettings.fallbackToLocal`. The v4 default is `true`, but the
+    /// `Default` derive gives `false`; [`defaults_present`] supplies the real
+    /// default when a settings row is synthesized.
+    pub cheap_llm_fallback_to_local: bool,
 }
 
 impl OrchestratorChatSettings {
@@ -271,6 +287,11 @@ impl OrchestratorChatSettings {
             agent_mode_default_enabled: false,
             agent_mode_max_turns: 10,
             danger_settings: None,
+            // v4 `DEFAULT_CHEAP_LLM_CONFIG` = { PROVIDER_CHEAPEST, fallbackToLocal: true }.
+            cheap_llm_strategy: "PROVIDER_CHEAPEST".to_string(),
+            cheap_llm_user_defined_profile_id: None,
+            cheap_llm_default_cheap_profile_id: None,
+            cheap_llm_fallback_to_local: true,
         }
     }
 }
@@ -658,6 +679,55 @@ where
     );
     let danger_settings = danger_resolved.settings;
     let is_dangerous_chat = is_chat_active_dangerous(Some(&chat));
+
+    // --- Cheap-LLM selection (orchestrator.service.ts:390–415; Round-3 Group 8) ---
+    // v4 resolves ONE `cheapLLMSelection` here — the provider/model the compression,
+    // danger-classification, and proactive-recall (recap/distill) paths all use.
+    // `allProfiles = repos.connections.findByUserId(userId)`; `cheapLLMConfig =
+    // chatSettings?.cheapLLMSettings || DEFAULT_CHEAP_LLM_CONFIG`. The registry
+    // cheapest-model seam is injected `None` (no plugin → the legacy cheap-model
+    // map, matching the `context_summary` / `build_context_tier3` precedent). This
+    // closes the spine-plumbing deferral: the resolved selection now flows into
+    // buildContext (the recap/distill feeders + the cached-compression window) and
+    // the finalizer's async-compression trigger — previously `None`, which left
+    // those feeders inert in `process_message`.
+    let available_cheap_profiles: Vec<CheapLlmProfile> = {
+        let uid = user_id.clone();
+        db.read_main(move |conn| connection_profiles::find_by_user_id(conn, &uid))
+            .unwrap_or_default()
+            .iter()
+            .map(cheap_llm_profile_from_value)
+            .collect()
+    };
+    let cheap_llm_selection: Option<CheapLlmSelection> = {
+        let current = cheap_llm_profile_from_value(&connection_profile);
+        let config = chat_settings
+            .as_ref()
+            .map(|s| CheapLlmConfig {
+                strategy: if s.cheap_llm_strategy.is_empty() {
+                    "PROVIDER_CHEAPEST".to_string()
+                } else {
+                    s.cheap_llm_strategy.clone()
+                },
+                user_defined_profile_id: s.cheap_llm_user_defined_profile_id.clone(),
+                default_cheap_profile_id: s.cheap_llm_default_cheap_profile_id.clone(),
+                fallback_to_local: s.cheap_llm_fallback_to_local,
+            })
+            // v4 `DEFAULT_CHEAP_LLM_CONFIG` when there is no settings row.
+            .unwrap_or_else(|| CheapLlmConfig {
+                strategy: "PROVIDER_CHEAPEST".to_string(),
+                user_defined_profile_id: None,
+                default_cheap_profile_id: None,
+                fallback_to_local: true,
+            });
+        Some(get_cheap_llm_provider(
+            &current,
+            &config,
+            &available_cheap_profiles,
+            false,
+            None,
+        ))
+    };
 
     let mut effective_profile = to_effective_profile(&connection_profile);
     let mut effective_api_key = resolution.api_key.clone().unwrap_or_default();
@@ -1199,9 +1269,9 @@ where
     // When compression is enabled and not bypassed, consult the cache the finalizer
     // pre-computed so buildContext can skip synchronous compression. Count only
     // visible USER/ASSISTANT messages (the same domain `triggerAsyncCompression`
-    // uses). The spine currently passes `cheap_llm_selection: None` into
-    // buildContext (recap/compression selection is the spine plumbing deferral), so
-    // the cache is inert until that lands — but the read is wired per v4.
+    // uses). Round-3 Group 8 threads the resolved `cheap_llm_selection` into
+    // buildContext, so the cached-compression window is now live (it is still gated
+    // on `compression_enabled`, which the corpus keeps false → the read no-ops here).
     let (cached_compression_result, cached_compression_message_count) =
         if compression_enabled && !bypass_compression {
             let raw: Vec<crate::chat_tasks::RawMessage> = existing_messages
@@ -1268,6 +1338,22 @@ where
         bypass_compression,
         cached_compression_result,
         cached_compression_message_count,
+        cheap_llm_selection: cheap_llm_selection.clone(),
+        // v4 `uncensoredFallbackOptions: (isChatActiveDangerous && dangerSettings &&
+        // cheapLLMSelection) ? { dangerSettings, availableProfiles: allProfiles,
+        // isDangerousChat: true } : undefined`. The corpus salons are not dangerous,
+        // so this is `None` there; wired faithfully for the dangerous path.
+        uncensored_fallback: if is_dangerous_chat && cheap_llm_selection.is_some() {
+            Some(build_context::OwnedUncensoredFallback {
+                danger_settings: crate::cheap_llm::DangerousContentSettings {
+                    mode: danger_settings.mode.clone(),
+                    uncensored_text_profile_id: danger_settings.uncensored_text_profile_id.clone(),
+                },
+                available_profiles: available_cheap_profiles.clone(),
+            })
+        } else {
+            None
+        },
     });
 
     // v4 `buildMessageContext` (context-builder.service.ts): the wrapper that runs
@@ -1780,24 +1866,26 @@ where
             reasoning_content: streaming_state.reasoning_content.clone(),
             reasoning_segments: streaming_state.reasoning_segments.clone(),
         };
-        // The spine passes `cheap_llm_selection: None` (the recap/compression cheap
-        // selection is the tracked spine-plumbing deferral, same boundary as the
-        // buildContext `cheap_llm_selection`), so the finalizer's async-compression
-        // gate never fires here — the trigger is proven by
-        // `message_finalizer_tier3_equivalence`, which drives the finalizer directly
-        // with a selection. The inert inputs match v4's orchestrator corpus (no
-        // `cheapLLMSelection`).
+        // Round-3 Group 8: the resolved cheap-LLM selection now flows into the
+        // finalizer's async-compression trigger (v4 `compression.cheapLLMSelection`).
+        // The gate ALSO requires `compression_enabled`, which the corpus keeps false
+        // (`contextCompressionSettings.enabled === false`), so the trigger stays a
+        // no-op here — but the plumbing matches v4 (the trigger is exercised end to
+        // end in `message_finalizer_tier3_equivalence`).
         let finalizer_compression = FinalizerCompression {
             compression_enabled,
-            cheap_llm_selection: None,
+            cheap_llm_selection: cheap_llm_selection.clone(),
             original_system_prompt: built_context.original_system_prompt.clone(),
             visible_conversation: Vec::new(),
             content: input.options.content.clone(),
             is_continue_mode,
             window_size: 10,
             compression_target_tokens: 0,
-            danger_settings: None,
-            available_profiles: Vec::new(),
+            danger_settings: Some(crate::cheap_llm::DangerousContentSettings {
+                mode: danger_settings.mode.clone(),
+                uncensored_text_profile_id: danger_settings.uncensored_text_profile_id.clone(),
+            }),
+            available_profiles: available_cheap_profiles.clone(),
             now_ms: input.clock.now_ms,
         };
         let finalizer_participant_characters: Vec<ParticipantCharacter> = participant_characters
@@ -2329,6 +2417,31 @@ pub(crate) struct BuildContextArgs<'a> {
     pub cached_compression_result: Option<crate::services::compression::ContextCompressionResult>,
     /// The cache's visible-message count (v4 `cachedCompressionResponse?.cachedMessageCount`).
     pub cached_compression_message_count: Option<i64>,
+    /// The resolved cheap-LLM selection (v4 `cheapLLMSelection`; Round-3 Group 8).
+    /// Threaded into buildContext so the recap/distill feeders + the cached-
+    /// compression window activate. `None` only when no selection could be resolved.
+    pub cheap_llm_selection: Option<CheapLlmSelection>,
+    /// The uncensored memory-recap fallback (v4 `uncensoredFallbackOptions`) — set
+    /// only for an actively-dangerous chat with a resolved selection.
+    pub uncensored_fallback: Option<build_context::OwnedUncensoredFallback>,
+}
+
+/// Convert a connection-profile net-read `Value` into a [`CheapLlmProfile`] (v4's
+/// `ConnectionProfile` → `CheapLLMProfile` shape). Used to resolve the cheap-LLM
+/// selection (Round-3 Group 8).
+fn cheap_llm_profile_from_value(v: &Value) -> CheapLlmProfile {
+    CheapLlmProfile {
+        id: json_str(v, "id").unwrap_or_default(),
+        provider: json_str(v, "provider").unwrap_or_default(),
+        model_name: json_str(v, "modelName").unwrap_or_default(),
+        base_url: json_str(v, "baseUrl"),
+        is_cheap: v.get("isCheap").and_then(Value::as_bool) == Some(true),
+        is_dangerous_compatible: v.get("isDangerousCompatible").and_then(Value::as_bool)
+            == Some(true),
+        parameters: v.get("parameters").cloned(),
+        max_tokens: json_f64(v, "maxTokens"),
+        model_class: json_str(v, "modelClass"),
+    }
 }
 
 /// Assemble the [`BuildContextInput`] from the resolved orchestrator state (v4's
@@ -2416,12 +2529,12 @@ pub(crate) fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInp
         } else {
             None
         },
-        cheap_llm_selection: None,
+        cheap_llm_selection: args.cheap_llm_selection.clone(),
         bypass_compression: args.bypass_compression,
         cached_compression_result: args.cached_compression_result,
         cached_compression_message_count: args.cached_compression_message_count,
         generate_memory_recap: false,
-        uncensored_fallback: None,
+        uncensored_fallback: args.uncensored_fallback.clone(),
         is_continue_mode: args.is_continue_mode,
         now_ms: args.now_ms,
         local_offset_minutes: args.local_offset_minutes,

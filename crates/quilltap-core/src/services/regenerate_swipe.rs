@@ -264,6 +264,11 @@ where
         // Regenerate-swipe rebuilds context fresh; no async pre-compression cache.
         cached_compression_result: None,
         cached_compression_message_count: None,
+        // Regenerate-swipe does not resolve a cheap-LLM selection (its rebuild is a
+        // single continue-mode generation; the recap/distill feeders stay inert, as
+        // in its differential).
+        cheap_llm_selection: None,
+        uncensored_fallback: None,
     });
 
     // The per-character opaque-anywhere transparency map (v4's wrapper reads each

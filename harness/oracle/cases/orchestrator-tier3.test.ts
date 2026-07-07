@@ -385,26 +385,25 @@ async function main(): Promise<void> {
   // Suparṇā-mail feeders now run REAL both sides (the orchestrator fixture seeds
   // no memories / Core / mail, so they no-op just as the mocks did).
   //
-  // The RECAP + DISTILL feeders stay MOCKED here, matching the Rust orchestrator
-  // spine: that spine still passes `cheap_llm_selection: None` into buildContext
-  // (it threads only a `cheap_llm_settings_present` bool for compression), so the
-  // Rust recap/distill are gated OFF. Un-mocking them here would make v4 fire the
-  // recap (the corpus HAS vault conversation summaries) while the Rust spine does
-  // not — a spine plumbing gap, not a feeder bug. The recap/distill feeders
-  // themselves ARE proven real in `build_context_tier3_equivalence` (which passes
-  // a real selection). Closing this in the orchestrator is deferred to the spine
-  // owner (thread a resolved `CheapLlmSelection`); tracked in the CHANGELOG.
+  // Round-3 Group 8: the RECAP + DISTILL feeders now run REAL both sides. The Rust
+  // spine resolves a real `cheapLLMSelection` (getCheapLLMProvider over the fixture's
+  // connection profiles) and threads it into buildContext, so its recap/distill are
+  // live. Un-mocking them here matches: v4's real `generateMemoryRecap` produces
+  // EMPTY content (the corpus seeds no memories → totalCount 0 → no cheap-LLM call;
+  // the provisioned vaults hold no conversation summaries → empty recall lists), and
+  // `extractMemorySearchKeywords` fires the cheap-LLM query-distillation (answered by
+  // the createLLMProvider mock, recorded as a canned key the Rust distill replays;
+  // the empty `memories` table yields no search results either way, so buildContext
+  // is unchanged and the stream canned keys do NOT cascade).
   jest.doMock('@/lib/mount-index/tiered-mount-pool', () =>
     jest.requireActual('@/lib/mount-index/tiered-mount-pool'),
   );
-  jest.doMock('@/lib/memory/memory-recap', () => {
-    const actual = jest.requireActual('@/lib/memory/memory-recap');
-    return { __esModule: true, ...actual, generateMemoryRecap: async () => ({ content: '' }) };
-  });
-  jest.doMock('@/lib/memory/cheap-llm-tasks', () => {
-    const actual = jest.requireActual('@/lib/memory/cheap-llm-tasks');
-    return { __esModule: true, ...actual, extractMemorySearchKeywords: async () => ({ success: false }) };
-  });
+  jest.doMock('@/lib/memory/memory-recap', () =>
+    jest.requireActual('@/lib/memory/memory-recap'),
+  );
+  jest.doMock('@/lib/memory/cheap-llm-tasks', () =>
+    jest.requireActual('@/lib/memory/cheap-llm-tasks'),
+  );
   jest.doMock('@/lib/services/system-prompt-compiler/compiler', () => {
     const actual = jest.requireActual('@/lib/services/system-prompt-compiler/compiler');
     return { __esModule: true, ...actual, getCompiledIdentityStack: () => null };
