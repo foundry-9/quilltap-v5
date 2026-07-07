@@ -124,6 +124,16 @@ recorded rawResponses), and by regenerating `native_tool_loop_tier3_equivalence`
 Deferred to W4.7c part 2: the per-provider request-envelope builders + the four
 `RequestTransform` hooks.
 
+Drift check: v4 `8617ce7a..6b6e39ad` audited — no ported unit is stale. The
+commit (image-description reuse off the reply hot path + the bare-topped
+avatar crop) touches only pending surfaces. Docs only: the W4.4b
+file/attachment work order is retrofitted to the reworked
+`file-attachment-fallback.ts` (the persisted-text reuse tiers before any
+vision call, the hardened/logged/timeout-bounded vision fallback, new corpus
+cases), a W4.9c drift note records the avatar-prompt bare-top branch (the
+ported `describeOutfit` leaf is unchanged), and the `docs/v4/` CHANGELOG
+mirror is refreshed. New oracle baseline for future orders: `6b6e39ad`.
+
 Phase 3 — wave 4 (W4.3): the answer-confirmation service. Ported v4's
 `answer-confirmation.service.ts` (the pre-landing Salon consistency check +
 re-affirmation): the gate/leaf functions (`isAnswerConfirmationActive`,

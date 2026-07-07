@@ -3485,3 +3485,26 @@ on the `write_apply` main-primary path, cadence host-side). The batch table
 and the per-round parallelism rules (the spine files and the orchestrator
 oracle corpus each have exactly ONE owner per round; start every round with a
 v4 drift check) are in `docs/developer/porting/chat-orchestration.md`.
+
+**Drift check (2026-07-07): v4 `8617ce7a..6b6e39ad` (1 commit) audited — no
+ported unit is stale.** `6b6e39ad` ("take generated-image description off the
+reply hot path; fix bare-topped avatars") touches only PENDING surfaces, and
+both work orders are retrofitted to the new truth: (1)
+`lib/chat/file-attachment-fallback.ts` (→ **W4.4b**) — `generateImageDescription`
+now tries persisted text FIRST (`files.findById` →
+`generationRevisedPrompt.trim()` → `generationPrompt.trim()` →
+`description.trim()`, returning `reusedPersistedDescription: true` with no
+vision call; the columns it reads are ported marshaling, and W4.9a's
+`saveGeneratedImage` already writes the `generation*` fields), and the vision
+fallback is hardened (downsize to the DESCRIPTION provider's limit, the
+`IMAGE_DESCRIPTION_INSTRUCTION` constant, a 60 s host-timing timeout, and
+best-effort `logLLMCall` type `IMAGE_DESCRIPTION` on success AND failure — a
+new call site for the W4.7e logLLMCall closure; the log type is corpus-only
+for the ported TEXT column). The W4.4b order's spec + corpus list are
+updated. (2) `lib/wardrobe/avatar-prompt.ts` (→ **W4.9c**) — the bare-top
+branch routes around the ported `describeOutfit`'s "completely naked"
+fallback (accessories-only call or `''`) and swaps in the collarbone-crop
+intro; `describeOutfit` itself is UNCHANGED (the ported leaf stays valid).
+Drift note added to the W4.9a order's W4.9c scope. Also: `help/chat-settings.md`
+is help-content data (not a ported surface). The `docs/v4/` CHANGELOG mirror
+is refreshed. **New oracle baseline for in-flight/future orders: `6b6e39ad`.**
