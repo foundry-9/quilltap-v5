@@ -88,6 +88,8 @@ interface Spec {
     name: string;
     provider: string;
     modelName: string;
+    /** W4.4a4: `'courier'` for the manual/clipboard transport. */
+    transport?: string;
     /** W4.2u: the uncensored-reroute target carries these. */
     apiKeyId?: string;
     isDangerousCompatible?: boolean;
@@ -172,6 +174,7 @@ async function main(): Promise<void> {
         name: cp.name,
         provider: cp.provider,
         modelName: cp.modelName,
+        ...(cp.transport !== undefined ? { transport: cp.transport } : {}),
         ...(cp.apiKeyId !== undefined ? { apiKeyId: cp.apiKeyId } : {}),
         ...(cp.isDangerousCompatible !== undefined
           ? { isDangerousCompatible: cp.isDangerousCompatible }

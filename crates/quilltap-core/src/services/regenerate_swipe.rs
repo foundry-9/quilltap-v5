@@ -261,6 +261,9 @@ where
         tool_instructions: None,
         compression_enabled: false,
         bypass_compression: false,
+        // Regenerate-swipe rebuilds context fresh; no async pre-compression cache.
+        cached_compression_result: None,
+        cached_compression_message_count: None,
     });
 
     // The per-character opaque-anywhere transparency map (v4's wrapper reads each

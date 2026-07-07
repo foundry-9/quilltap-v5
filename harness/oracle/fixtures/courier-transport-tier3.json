@@ -1,0 +1,140 @@
+{
+  "testPepperBase64": "3q2+796tvu/erb7v3q2+796tvu/erb7v3q2+796tvu8=",
+  "userId": "00000000-0000-4000-8000-000000000001",
+  "seedTimestamp": "2020-01-01T00:00:00.000Z",
+  "nowIso": "2021-07-07T12:00:00.000Z",
+  "resolvedIdentityName": "Charlie",
+  "characters": [
+    { "id": "00000000-0000-4000-8000-0000000000aa", "name": "Aria", "controlledBy": "llm", "talkativeness": 0.5 },
+    { "id": "00000000-0000-4000-8000-0000000000bb", "name": "Basil", "controlledBy": "llm", "talkativeness": 0.5 }
+  ],
+  "chatSettings": {
+    "id": "00000000-0000-4000-8000-0000000000c1",
+    "cheapLLMSettings": { "strategy": "PROVIDER_CHEAPEST", "fallbackToLocal": false },
+    "dangerMode": "DETECT_ONLY"
+  },
+  "files": [
+    { "id": "00000000-0000-4000-8000-0000000000f1", "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "originalFilename": "map.png", "mimeType": "image/png", "size": 2048 }
+  ],
+  "chats": [
+    {
+      "id": "00000000-0000-4000-8000-000000001001",
+      "chatType": "salon",
+      "participants": [
+        { "id": "00000000-0000-4000-8000-00000000a001", "character": "00000000-0000-4000-8000-0000000000aa", "controlledBy": "llm" },
+        { "id": "00000000-0000-4000-8000-00000000a002", "character": "00000000-0000-4000-8000-0000000000bb", "controlledBy": "user" }
+      ],
+      "messages": []
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000001002",
+      "chatType": "salon",
+      "courierCheckpoints": {
+        "00000000-0000-4000-8000-0000000000aa": {
+          "lastResolvedMessageId": "00000000-0000-4000-8000-0000000000d0",
+          "resolvedAt": "2020-01-01T00:00:00.000Z"
+        }
+      },
+      "participants": [
+        { "id": "00000000-0000-4000-8000-00000000a021", "character": "00000000-0000-4000-8000-0000000000aa", "controlledBy": "llm" },
+        { "id": "00000000-0000-4000-8000-00000000a022", "character": "00000000-0000-4000-8000-0000000000bb", "controlledBy": "llm" },
+        { "id": "00000000-0000-4000-8000-00000000a023", "character": "00000000-0000-4000-8000-0000000000bb", "controlledBy": "user" }
+      ],
+      "messages": [
+        { "id": "00000000-0000-4000-8000-00000000b001", "role": "ASSISTANT", "content": "Basil speaks in the open.", "participantId": "00000000-0000-4000-8000-00000000a022", "createdAt": "2020-06-01T00:00:01.000Z" },
+        { "id": "00000000-0000-4000-8000-00000000b011", "role": "ASSISTANT", "content": "A whisper meant only for Basil.", "participantId": "00000000-0000-4000-8000-00000000a022", "createdAt": "2020-06-01T00:00:02.000Z", "targetParticipantIds": ["00000000-0000-4000-8000-00000000a022"] },
+        { "id": "00000000-0000-4000-8000-00000000b012", "role": "ASSISTANT", "content": "The Commonplace Book recalls for Aria.", "systemSender": "commonplaceBook", "createdAt": "2020-06-01T00:00:03.000Z", "targetParticipantIds": ["00000000-0000-4000-8000-00000000a021"] },
+        { "id": "00000000-0000-4000-8000-00000000b013", "role": "USER", "content": "This one is exactly at the checkpoint and must be skipped.", "participantId": "00000000-0000-4000-8000-00000000a023", "createdAt": "2020-01-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000001003",
+      "chatType": "salon",
+      "courierCheckpoints": {
+        "00000000-0000-4000-8000-0000000000aa": {
+          "lastResolvedMessageId": "00000000-0000-4000-8000-0000000000d3",
+          "resolvedAt": "2020-01-01T00:00:00.000Z"
+        }
+      },
+      "participants": [
+        { "id": "00000000-0000-4000-8000-00000000a031", "character": "00000000-0000-4000-8000-0000000000aa", "controlledBy": "llm" },
+        { "id": "00000000-0000-4000-8000-00000000a032", "character": "00000000-0000-4000-8000-0000000000bb", "controlledBy": "user" }
+      ],
+      "messages": [
+        { "id": "00000000-0000-4000-8000-00000000d301", "role": "USER", "content": "Something after the checkpoint that a delta would show.", "participantId": "00000000-0000-4000-8000-00000000a032", "createdAt": "2020-06-01T00:00:01.000Z" }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "name": "first_send_full_bundle",
+      "chatId": "00000000-0000-4000-8000-000000001001",
+      "responderCharacter": "00000000-0000-4000-8000-0000000000aa",
+      "responderParticipant": "00000000-0000-4000-8000-00000000a001",
+      "userParticipantId": "00000000-0000-4000-8000-00000000a002",
+      "isMultiCharacter": false,
+      "participantCharacters": [],
+      "courierDeltaMode": true,
+      "provider": "OPENAI",
+      "modelName": "gpt-4o",
+      "formattedMessages": [
+        { "role": "system", "content": "You are Aria. Scene: a quiet library." },
+        { "role": "user", "content": "Hello there, Aria." }
+      ]
+    },
+    {
+      "name": "delta_send_whisper_filter_and_boundary",
+      "chatId": "00000000-0000-4000-8000-000000001002",
+      "responderCharacter": "00000000-0000-4000-8000-0000000000aa",
+      "responderParticipant": "00000000-0000-4000-8000-00000000a021",
+      "userParticipantId": "00000000-0000-4000-8000-00000000a023",
+      "isMultiCharacter": true,
+      "participantCharacters": ["00000000-0000-4000-8000-0000000000aa", "00000000-0000-4000-8000-0000000000bb"],
+      "courierDeltaMode": true,
+      "provider": "OPENAI",
+      "modelName": "gpt-4o",
+      "formattedMessages": [
+        { "role": "system", "content": "You are Aria in a multi-character scene." },
+        { "role": "user", "content": "Aria, what do you do?" }
+      ]
+    },
+    {
+      "name": "no_delta_forced_full",
+      "chatId": "00000000-0000-4000-8000-000000001003",
+      "responderCharacter": "00000000-0000-4000-8000-0000000000aa",
+      "responderParticipant": "00000000-0000-4000-8000-00000000a031",
+      "userParticipantId": "00000000-0000-4000-8000-00000000a032",
+      "isMultiCharacter": false,
+      "participantCharacters": [],
+      "courierDeltaMode": false,
+      "provider": "OPENAI",
+      "modelName": "gpt-4o",
+      "formattedMessages": [
+        { "role": "system", "content": "You are Aria." },
+        { "role": "user", "content": "Continue, please." }
+      ]
+    },
+    {
+      "name": "attachments_union",
+      "chatId": "00000000-0000-4000-8000-000000001001",
+      "responderCharacter": "00000000-0000-4000-8000-0000000000aa",
+      "responderParticipant": "00000000-0000-4000-8000-00000000a001",
+      "userParticipantId": "00000000-0000-4000-8000-00000000a002",
+      "isMultiCharacter": false,
+      "participantCharacters": [],
+      "courierDeltaMode": true,
+      "provider": "OPENAI",
+      "modelName": "gpt-4o",
+      "formattedMessages": [
+        { "role": "system", "content": "You are Aria." },
+        {
+          "role": "user",
+          "content": "Look at this map.",
+          "attachments": [
+            { "id": "00000000-0000-4000-8000-0000000000f1", "filename": "map.png", "mimeType": "image/png", "size": 2048 }
+          ]
+        }
+      ]
+    }
+  ]
+}

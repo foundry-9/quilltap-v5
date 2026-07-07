@@ -185,6 +185,12 @@ pub struct DonePayload {
     /// The effective model name (finalizer only). Absent on recovery.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_name: Option<String>,
+    /// `true` on the Courier parked-placeholder `done` frame (v4
+    /// `pendingExternalTurn: true`), else ABSENT. Serializes right after
+    /// `model_name` so the frame matches v4's `{ …, provider, modelName,
+    /// pendingExternalTurn }` order.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pending_external_turn: Option<bool>,
     /// `true` when the responding participant is silent, else ABSENT — v4's
     /// `isSilentMessage: … === 'silent' || undefined` (never `false`). Absent on
     /// recovery.
@@ -300,6 +306,15 @@ pub enum ChatEvent {
         #[serde(rename = "toolResult")]
         tool_result: ToolResultPayload,
     },
+    /// `{pendingExternalTurn:true, messageId, participantId, characterName}` — the
+    /// Courier parked-placeholder frame (v4 `encodePendingExternalTurnEvent`). Emitted
+    /// by `dispatch_courier_transport` right before its `done` frame.
+    PendingExternalTurn {
+        #[serde(rename = "pendingExternalTurn")]
+        pending_external_turn: TrueBool,
+        #[serde(flatten)]
+        payload: PendingExternalTurnPayload,
+    },
     /// `{done:true, …}` — the payload spreads flat next to `done: true`. Boxed:
     /// the full finalizer payload is by far the largest variant
     /// (clippy::large_enum_variant), and every event is heap-bound for the
@@ -354,6 +369,16 @@ pub struct ChainCompletePayload {
     pub chain_depth: i64,
 }
 
+/// The `pendingExternalTurn` frame payload (v4 `encodePendingExternalTurnEvent`'s
+/// `data`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingExternalTurnPayload {
+    pub message_id: String,
+    pub participant_id: String,
+    pub character_name: String,
+}
+
 /// A unit type that always serializes to the JSON literal `true`, so
 /// [`ChatEvent::Done`] carries `"done": true` (v4's `{ done: true, ... }`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -390,6 +415,14 @@ impl ChatEvent {
         ChatEvent::Done {
             done: DoneBool,
             payload: Box::new(payload),
+        }
+    }
+
+    /// A Courier parked-placeholder event (v4 `encodePendingExternalTurnEvent`).
+    pub fn pending_external_turn(payload: PendingExternalTurnPayload) -> Self {
+        ChatEvent::PendingExternalTurn {
+            pending_external_turn: TrueBool,
+            payload,
         }
     }
 
@@ -615,6 +648,7 @@ mod tests {
             }),
             provider: Some("ANTHROPIC".into()),
             model_name: Some("claude".into()),
+            pending_external_turn: None,
             is_silent_message: Some(true),
             empty_response: None,
             empty_response_reason: None,

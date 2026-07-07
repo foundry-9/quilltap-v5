@@ -124,6 +124,7 @@ impl PatchData {
             scene_state: None,
             commonplace_scene_cache: None,
             commonplace_recall_history: None,
+            courier_checkpoints: None,
             updated_at: self.updated_at.clone(),
         }
     }

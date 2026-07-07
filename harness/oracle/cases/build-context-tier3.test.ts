@@ -86,6 +86,11 @@ interface Op {
   skipMemories: boolean;
   compressionEnabled: boolean;
   timestampMode: string | null;
+  cachedCompression?: {
+    compressedHistory: string;
+    messageCount: number;
+    warnings?: string[];
+  };
 }
 interface CompletionRule {
   op: string;
@@ -389,6 +394,16 @@ async function main(): Promise<void> {
         contextCompressionThreshold: 0.5,
         systemPromptTargetTokens: 1000,
       };
+      // W4.4a4: a warm async pre-compression cache. buildContext uses it verbatim
+      // (no sync compression call → no canned completion consumed).
+      if (op.cachedCompression) {
+        options.cachedCompressionResult = {
+          compressionApplied: true,
+          compressedHistory: op.cachedCompression.compressedHistory,
+          warnings: op.cachedCompression.warnings ?? [],
+        };
+        options.cachedCompressionMessageCount = op.cachedCompression.messageCount;
+      }
     }
 
     const result = await buildContext(options as never);

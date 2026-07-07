@@ -4,6 +4,42 @@
 
 ### 5.0-dev
 
+Phase 3 — wave 4 (W4.4a4): the Courier transport + the compression-cache spine
+plumbing. Ported v4's `courier-transport.service.ts` (the manual / clipboard
+dispatch) as `services::courier_transport` + `courier::render_markdown`: the two
+Markdown renderers (`renderCourierRequestAsMarkdown` / `renderCourierDeltaAsMarkdown`
+— byte-exact, incl. the `\n{3,}`→`\n\n` collapse and `trimEnd()+'\n'`),
+`buildCourierDeltaEvents` (the per-character checkpoint scan with the strict
+`createdAt <= resolvedAt` skip, targeted-whisper filtering, the exact Staff speaker
+labels, and file-attachment loading), `dispatchCourierTransport` (the placeholder
+ASSISTANT message with the rendered bundle in `pendingExternalPrompt` + the delta
+fallback + the union attachments, the chat pause, and the `pendingExternalTurn` +
+`done{pendingExternalTurn:true}` SSE frames), and the paste/cancel resolvers
+(`resolve_external_turn` / `cancel_external_turn` — public service functions; the
+HTTP route is Phase-4). Closed the orchestrator courier gate (was erroring): after
+`build_message_context` + the `preparing` status, a courier-transport turn now
+dispatches (tool build skipped, no tool instructions — matching v4). Added the
+`pendingExternalTurn` frame + `DonePayload.pendingExternalTurn` to `chat_events`
+and the `ChatUpdate.courier_checkpoints` write setter. Compression-cache plumbing:
+the finalizer's real `AsyncCompressionTrigger` (now async, over
+`compression_cache::trigger_async_compression`) computing + persisting the cache
+when the gate fires, and the `build_context` cached-compression window
+(`cached_compression_result` / `cached_compression_message_count` — phase-1 uses a
+warm cache verbatim, no sync compression call; the dynamic effective-window sizing).
+The orchestrator reads `get_cached_compression` before buildContext (inert until the
+spine threads a `cheap_llm_selection`, the tracked deferral). New differential
+`courier_transport_tier3_equivalence` (drives v4's REAL `dispatchCourierTransport`
+over a four-case corpus — first send / delta with whisper-filter + boundary + staff
+label / forced-full / attachment union — diffing the result + SSE trace + the
+persisted placeholder bytes + `isPaused`). Regenerated + green:
+`orchestrator_tier3` (added a `courier_send` spine case), `message_finalizer_tier3`
+(the trigger adaptation), `build_context_tier3` (a warm-cache case proving the
+cached window), `compression_cache_tier3`. Marshaling: `courierCheckpoints` +
+`pendingExternal*` were already ported (no drift); added the
+`ChatUpdate.courier_checkpoints` setter. Tracked deferral: the paste/cancel route
+handlers aren't exported (Phase-4 HTTP transport); their constituent repo ops are
+tier-2/tier-3-proven and the ported service functions are unit-tested.
+
 Phase 3 — wave 4 (W4.3): the answer-confirmation service. Ported v4's
 `answer-confirmation.service.ts` (the pre-landing Salon consistency check +
 re-affirmation): the gate/leaf functions (`isAnswerConfirmationActive`,

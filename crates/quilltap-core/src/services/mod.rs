@@ -38,6 +38,7 @@ pub mod compression;
 pub mod compression_cache;
 pub mod context_summary;
 pub mod core_whisper;
+pub mod courier_transport;
 pub mod dangerous_content;
 pub mod first_message_context;
 pub mod frozen_archive;

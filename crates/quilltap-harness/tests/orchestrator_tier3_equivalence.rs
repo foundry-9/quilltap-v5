@@ -414,7 +414,12 @@ fn filter_events(events: &[Value]) -> Vec<Value> {
             // on both sides), so they stay literal.
             let mut e = e.clone();
             if let Some(obj) = e.as_object_mut() {
-                if obj.contains_key("done") || obj.contains_key("turnComplete") {
+                // The Courier `pendingExternalTurn` frame also carries the minted
+                // placeholder id (W4.4a4).
+                if obj.contains_key("done")
+                    || obj.contains_key("turnComplete")
+                    || obj.contains_key("pendingExternalTurn")
+                {
                     if let Some(v) = obj.get_mut("messageId") {
                         if v.is_string() {
                             *v = Value::String("<msgid>".into());

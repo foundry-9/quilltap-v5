@@ -158,7 +158,7 @@ earlier sketch.
 | **W4.2** | Danger orchestration (`dangerous-content/`): resolver, chat-override, manual-flip, gatekeeper (+ the classification job handler), provider-routing (the real `DangerousContentRouter` implementor) | ✅ done — the spine unification is **W4.2u** |
 | **W4.2u** | Wire the real danger router/resolver at the orchestrator composition point + the two deferred corpus cases (OFF short-circuit, live uncensored reroute) | ✅ done (2026-07-06) — [`w4.2u-danger-spine-unification.md`](./work-orders/w4.2u-danger-spine-unification.md) |
 | **W4.3** ✅ **DONE** (2026-07-06) | Answer-confirmation service (fills the finalizer's `AnswerConfirmationRunner` seam: gate cascade, Commonplace-whisper reference gathering + 24 K truncation, the consistency check + re-affirmation cheap-LLM calls, the uncensored escalation of the check). `services::answer_confirmation` (prompts in a generated `prompt_text` submodule); the finalizer gate leaves hoisted; the real `RealAnswerConfirmation` runner closes the seam. Verified by `answer_confirmation_tier3_equivalence` (14-case jest real-DB oracle driving v4's REAL `finalizeMessageResponse` with the feature ON, canned completions) + 15 self-tests; `message_finalizer_tier3` + `orchestrator_tier3` regenerated green | [`w4.3-answer-confirmation.md`](./work-orders/w4.3-answer-confirmation.md) |
-| **W4.4a** | agent-mode resolver ✅ / regenerate-swipe ✅ / compression-cache ✅; **W4.4a4**: courier transport + the compression spine plumbing (the finalizer `AsyncCompressionTrigger` + `build_context` cached window) | [`w4.4a4-courier-and-compression-plumbing.md`](./work-orders/w4.4a4-courier-and-compression-plumbing.md) |
+| **W4.4a** | agent-mode resolver ✅ / regenerate-swipe ✅ / compression-cache ✅ / **W4.4a4** ✅ **DONE** (2026-07-07): courier transport + the compression spine plumbing (the finalizer `AsyncCompressionTrigger` + `build_context` cached window) | [`w4.4a4-courier-and-compression-plumbing.md`](./work-orders/w4.4a4-courier-and-compression-plumbing.md) |
 | **W4.4b** | The file/attachment subsystem: text-detection, the fallback dispatch (text-inline + vision description), `loadChatFilesForLLM`, `loadAndProcessFiles` — closes `process_files` + the Lantern K seam; bytes + resize are host seams | [`w4.4b-file-attachment.md`](./work-orders/w4.4b-file-attachment.md) |
 | **W4.5** | Carina query engine (`runCarinaQuery` — closes the `RunCarinaQuery` seam everywhere + wires `ask_carina` dispatch; Brahma one-shot console = tracked follow-up W4.5b) | [`w4.5-carina-query.md`](./work-orders/w4.5-carina-query.md) |
 | **W4.6a** ✅ **DONE** (2026-07-06) | BuildContext feeder closures: recap + distill (`services::memory_recap`), frozen archive (`services::frozen_archive`), core-whisper config+packet (`services::core_whisper`), Suparṇā mail read (`services::suparna_mail`), off-scene scan (`services::off_scene`), scene-state cache persist + the `updateSceneState` task (`services::scene_state_tracking`), mount pool + recall settings + live clothing (closed with existing code). The trait is shrunk to the W4.6b posts only; verified by `build_context_tier3_equivalence` (mocks dropped one-for-one) + a new `context_feeders_leaves_equivalence` tier-1; `knowledge_injector`/`first_message_context`/`orchestrator_tier3` re-verified. **Deferrals:** the recap/distill stay mocked in the orchestrator oracle (the spine passes `cheap_llm_selection: None` — a spine-owner follow-up); the scene-state JOB WRAPPER is W4.8 | [`w4.6a-context-feeders.md`](./work-orders/w4.6a-context-feeders.md) |
@@ -234,6 +234,25 @@ in a numbered batch.
   enumeration).
 
 ## Status
+
+- **W4.4a4: the Courier transport + the compression-cache spine plumbing — DONE**
+  (2026-07-07). `services::courier_transport` + `courier::render_markdown` port v4's
+  `courier-transport.service.ts`: the two byte-exact Markdown renderers,
+  `buildCourierDeltaEvents` (checkpoint scan, `<=` boundary, whisper filter both
+  directions, Staff labels, attachment loading), `dispatchCourierTransport` (the
+  placeholder + bundle + pause + `pendingExternalTurn`/`done` frames), and the
+  paste/cancel resolvers (public service fns; the HTTP route is Phase-4). The
+  orchestrator courier gate is closed (dispatch after `build_message_context` + the
+  `preparing` status, tool build skipped). Compression: the finalizer's real async
+  `AsyncCompressionTrigger` over `compression_cache::trigger_async_compression`, and
+  the `build_context` cached-compression window (`cached_compression_result` /
+  `cached_compression_message_count` — warm cache used verbatim + the dynamic
+  window). New `courier_transport_tier3_equivalence` (green); `orchestrator_tier3`
+  (a `courier_send` case), `build_context_tier3` (a warm-cache case),
+  `message_finalizer_tier3`, `compression_cache_tier3` regenerated green. Tracked
+  deferral: the spine's `cheap_llm_selection` threading (shared with W4.6a) keeps
+  the cached-compression read inert in `process_message`; the paste/cancel route
+  handlers (Phase-4 HTTP transport).
 
 - **W4.1g: `buildTools` + the tool-slate spine wiring — DONE; W4.1 is CLOSED**
   (2026-07-04). `services::tool_build` ports v4's `buildTools` + the built-in half

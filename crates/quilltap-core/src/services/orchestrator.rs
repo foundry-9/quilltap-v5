@@ -557,19 +557,15 @@ where
         character_id: Some(character_id.clone()),
     }));
 
-    // --- Courier short-circuit gate (orchestrator.service.ts:318–330) ---
-    // The corpus keeps the transport non-courier; the gate is reproduced so a
-    // courier profile would be caught (its dispatch is a wave-4 seam — a courier
-    // turn is a documented deferral).
-    let is_courier = json_str(&connection_profile, "transport").as_deref() == Some("courier");
-    if is_courier {
-        // A courier turn is out of scope (the dispatch service is unported). The
-        // corpus never sends one; erroring keeps the deferral explicit rather
-        // than silently mis-handling.
-        return Err(DbError::Key(
-            "courier transport not ported (orchestrator deferral)".into(),
-        ));
-    }
+    // --- Courier detect (orchestrator.service.ts:318–330) ---
+    // The Courier (manual / clipboard transport) needs no API key and no plugin
+    // call. Detected here so the tool build + streaming block can short-circuit
+    // later. The actual dispatch runs AFTER `build_message_context` (v4 line 1028),
+    // since it renders the assembled `formattedMessages`. `is_effective_courier`
+    // is recomputed below the danger reroute (a reroute would swap to a non-courier
+    // uncensored profile).
+    let is_courier_transport =
+        json_str(&connection_profile, "transport").as_deref() == Some("courier");
 
     // --- Resolve user identity (orchestrator.service.ts:332–342) ---
     let identity = super::user_identity_resolver::resolve_user_identity(
@@ -696,6 +692,7 @@ where
 
     let mut effective_profile = to_effective_profile(&connection_profile);
     let mut effective_api_key = resolution.api_key.clone().unwrap_or_default();
+    let mut did_reroute = false;
     let mut content_was_flagged_dangerous = false;
     // The synthesized flags (v4 attaches them to the saved USER message below).
     let mut danger_flags: Option<Vec<Value>> = None;
@@ -768,10 +765,16 @@ where
                 }
                 effective_profile = route.connection_profile;
                 effective_api_key = route.api_key;
+                did_reroute = true;
             }
         }
         danger_flags = Some(flags);
     }
+
+    // v4 `isEffectiveCourier = streamingState.effectiveProfile.transport === 'courier'`.
+    // A danger reroute swaps the effective profile to a non-courier uncensored
+    // provider, so a rerouted turn is NOT courier.
+    let is_effective_courier = is_courier_transport && !did_reroute;
 
     let mut streaming_state = StreamingState {
         effective_profile: Some(effective_profile.clone()),
@@ -1028,9 +1031,9 @@ where
         any_can_be_carina || character_is_transparent
     };
 
-    // Build the tool slate (orchestrator.service.ts:807–834). `isEffectiveCourier`
-    // is always false here (a courier profile early-errored above), so buildTools
-    // always runs.
+    // Build the tool slate (orchestrator.service.ts:807–834). The Courier exposes
+    // NO tools and injects no tool instructions (the external LLM cannot reach
+    // them) — v4 skips the whole tool-build step in that case.
     let use_native_web_search_profile = connection_profile
         .get("useNativeWebSearch")
         .and_then(Value::as_bool)
@@ -1042,43 +1045,49 @@ where
         .get("allowWebSearch")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    let built = tool_build::build_tools(
-        db,
-        &user_id,
-        &BuildToolsInput {
-            provider: &effective_profile.provider,
-            use_native_web_search: use_native_web_search_profile,
-            allow_tool_use,
-            allow_web_search,
-            image_profile_id: _image_profile_id.as_deref(),
-            // Image-provider constraint enrichment reads the provider registry
-            // (W4.7) — injected `None` here (the base image tool). See tool_build.
-            image_provider_constraints: None,
-            project_id: chat
-                .get("projectId")
-                .and_then(Value::as_str)
-                .filter(|s| !s.is_empty()),
-            request_full_context: compression_enabled,
-            disabled_tools: Some(&effective_disabled_tools),
-            disabled_tool_groups: &disabled_tool_groups,
-            agent_mode_enabled,
-            is_multi_character,
-            help_tools_enabled,
-            can_dress_themselves,
-            can_create_outfits,
-            document_editing_enabled,
-            ask_carina_enabled,
-            // The Brahma Console (unported) is the only caller that flips these.
-            include_workspace_tools: true,
-            exclude_memory_search: false,
-            sql_access: false,
-            model_supports_native_tools: input.model_supports_native_tools,
-            provider_supports_web_search: input.provider_supports_web_search,
-        },
-    )?;
-    let mut tools = built.tools;
-    let model_supports_native_tools = built.model_supports_native_tools;
-    let use_native_web_search = built.use_native_web_search;
+    let (mut tools, model_supports_native_tools, use_native_web_search) = if is_effective_courier {
+        (Vec::new(), false, false)
+    } else {
+        let built = tool_build::build_tools(
+            db,
+            &user_id,
+            &BuildToolsInput {
+                provider: &effective_profile.provider,
+                use_native_web_search: use_native_web_search_profile,
+                allow_tool_use,
+                allow_web_search,
+                image_profile_id: _image_profile_id.as_deref(),
+                // Image-provider constraint enrichment reads the provider registry
+                // (W4.7) — injected `None` here (the base image tool). See tool_build.
+                image_provider_constraints: None,
+                project_id: chat
+                    .get("projectId")
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty()),
+                request_full_context: compression_enabled,
+                disabled_tools: Some(&effective_disabled_tools),
+                disabled_tool_groups: &disabled_tool_groups,
+                agent_mode_enabled,
+                is_multi_character,
+                help_tools_enabled,
+                can_dress_themselves,
+                can_create_outfits,
+                document_editing_enabled,
+                ask_carina_enabled,
+                // The Brahma Console (unported) is the only caller that flips these.
+                include_workspace_tools: true,
+                exclude_memory_search: false,
+                sql_access: false,
+                model_supports_native_tools: input.model_supports_native_tools,
+                provider_supports_web_search: input.provider_supports_web_search,
+            },
+        )?;
+        (
+            built.tools,
+            built.model_supports_native_tools,
+            built.use_native_web_search,
+        )
+    };
 
     // 4.6 Private Character Rooms — destructive-tool filter for autonomous rooms
     // (orchestrator.service.ts:836–861). The user `destructiveToolPolicy` is a
@@ -1104,9 +1113,14 @@ where
         .get("pseudoToolMode")
         .and_then(Value::as_str)
         .and_then(ToolMode::from_str);
-    let resolved_tool_mode =
-        check_resolved_tool_mode(model_supports_native_tools, profile_pseudo_tool_mode);
-    let use_text_block_tools = resolved_tool_mode != ResolvedToolMode::Native;
+    // Courier sends no tools anyway; the mode value is unused (v4 line 864).
+    let resolved_tool_mode = if is_effective_courier {
+        ResolvedToolMode::Native
+    } else {
+        check_resolved_tool_mode(model_supports_native_tools, profile_pseudo_tool_mode)
+    };
+    let use_text_block_tools =
+        !is_effective_courier && resolved_tool_mode != ResolvedToolMode::Native;
     // Under a pseudo-tool surface the native slate is suppressed (`actualTools = []`).
     let actual_tools: Vec<Value> = if use_text_block_tools {
         Vec::new()
@@ -1114,8 +1128,11 @@ where
         tools
     };
 
-    // Tool instructions — simple-json / text-block / native, mode-switched.
-    let tool_instructions: Option<String> = if resolved_tool_mode == ResolvedToolMode::SimpleJson {
+    // Tool instructions — simple-json / text-block / native, mode-switched. The
+    // Courier injects NO tool instructions (v4 line 872: `toolInstructions = undefined`).
+    let tool_instructions: Option<String> = if is_effective_courier {
+        None
+    } else if resolved_tool_mode == ResolvedToolMode::SimpleJson {
         let opts = determine_text_block_tool_options(
             _image_profile_id.as_deref(),
             allow_web_search,
@@ -1164,6 +1181,47 @@ where
         Some(Value::Array(actual_tools.clone()))
     };
 
+    // --- Async pre-compression cache check (pre-compute.service.ts compressionTask,
+    //     W4.4a4) ---
+    // When compression is enabled and not bypassed, consult the cache the finalizer
+    // pre-computed so buildContext can skip synchronous compression. Count only
+    // visible USER/ASSISTANT messages (the same domain `triggerAsyncCompression`
+    // uses). The spine currently passes `cheap_llm_selection: None` into
+    // buildContext (recap/compression selection is the spine plumbing deferral), so
+    // the cache is inert until that lands — but the read is wired per v4.
+    let (cached_compression_result, cached_compression_message_count) =
+        if compression_enabled && !bypass_compression {
+            let raw: Vec<crate::chat_tasks::RawMessage> = existing_messages
+                .iter()
+                .map(|m| crate::chat_tasks::RawMessage {
+                    type_: m.get("type").and_then(Value::as_str).map(str::to_string),
+                    role: m.get("role").and_then(Value::as_str).map(str::to_string),
+                    content: m.get("content").and_then(Value::as_str).map(str::to_string),
+                })
+                .collect();
+            let actual_message_count =
+                crate::chat_tasks::extract_visible_conversation(&raw).len() as i64;
+            let participant_for_cache = if is_multi_character {
+                Some(character_participant_id.clone())
+            } else {
+                None
+            };
+            let response = super::compression_cache::get_cached_compression(
+                db,
+                &chat_id,
+                actual_message_count,
+                participant_for_cache.as_deref(),
+                None,
+            )
+            .await?;
+            match response {
+                Some(r) => (Some(r.result), Some(r.cached_message_count)),
+                None => (None, None),
+            }
+        } else {
+            (None, None)
+        };
+
     // --- Build context (orchestrator.service.ts:908–1010) ---
     sink.emit(ChatEvent::status(StatusPayload {
         stage: "gathering".into(),
@@ -1195,6 +1253,8 @@ where
         tool_instructions,
         compression_enabled,
         bypass_compression,
+        cached_compression_result,
+        cached_compression_message_count,
     });
 
     // v4 `buildMessageContext` (context-builder.service.ts): the wrapper that runs
@@ -1306,6 +1366,43 @@ where
         character_name: Some(character_name.clone()),
         character_id: Some(character_id.clone()),
     }));
+
+    // --- The Courier (manual / clipboard transport) short-circuit
+    //     (orchestrator.service.ts:1022–1044) ---
+    // Rendered AFTER `build_message_context` + the `preparing` status (v4's order:
+    // the courier dispatch consumes `formatted_messages`). Render the assembled
+    // request as Markdown, persist a placeholder assistant message, pause the chat,
+    // and emit the SSE frames. Turn chaining halts on `isPaused = true` (the ported
+    // `should_chain_next` already stops on paused). The agent-mode injection above is
+    // inert for a courier chat (the corpus keeps agent mode off), matching v4 (which
+    // returns before its agent-mode block).
+    if is_effective_courier {
+        return super::courier_transport::dispatch_courier_transport(
+            db,
+            sink,
+            super::courier_transport::DispatchCourierOptions {
+                chat_id: chat_id.clone(),
+                chat: chat.clone(),
+                character: character.clone(),
+                character_participant: character_participant.clone(),
+                user_participant_id: user_participant_id.clone(),
+                is_multi_character,
+                participant_characters: participant_characters.clone(),
+                resolved_identity_name: identity.name.clone(),
+                formatted_messages: formatted_messages.clone(),
+                effective_provider: Some(effective_profile.provider.clone())
+                    .filter(|s| !s.is_empty()),
+                effective_model_name: Some(effective_profile.model_name.clone())
+                    .filter(|s| !s.is_empty()),
+                courier_delta_mode: connection_profile
+                    .get("courierDeltaMode")
+                    .and_then(Value::as_bool)
+                    != Some(false),
+                now_ms: input.clock.now_ms,
+            },
+        )
+        .await;
+    }
 
     // --- Primary stream (orchestrator.service.ts:1205–1255) ---
     let pre_generated_assistant_message_id = uuid::Uuid::new_v4().to_string();
@@ -1635,13 +1732,25 @@ where
             reasoning_content: streaming_state.reasoning_content.clone(),
             reasoning_segments: streaming_state.reasoning_segments.clone(),
         };
+        // The spine passes `cheap_llm_selection: None` (the recap/compression cheap
+        // selection is the tracked spine-plumbing deferral, same boundary as the
+        // buildContext `cheap_llm_selection`), so the finalizer's async-compression
+        // gate never fires here — the trigger is proven by
+        // `message_finalizer_tier3_equivalence`, which drives the finalizer directly
+        // with a selection. The inert inputs match v4's orchestrator corpus (no
+        // `cheapLLMSelection`).
         let finalizer_compression = FinalizerCompression {
             compression_enabled,
-            cheap_llm_selection_present: chat_settings
-                .as_ref()
-                .map(|s| s.cheap_llm_settings_present)
-                .unwrap_or(false),
-            original_system_prompt_present: !built_context.original_system_prompt.is_empty(),
+            cheap_llm_selection: None,
+            original_system_prompt: built_context.original_system_prompt.clone(),
+            visible_conversation: Vec::new(),
+            content: input.options.content.clone(),
+            is_continue_mode,
+            window_size: 10,
+            compression_target_tokens: 0,
+            danger_settings: None,
+            available_profiles: Vec::new(),
+            now_ms: input.clock.now_ms,
         };
         let finalizer_participant_characters: Vec<ParticipantCharacter> = participant_characters
             .values()
@@ -2166,6 +2275,12 @@ pub(crate) struct BuildContextArgs<'a> {
     pub tool_instructions: Option<String>,
     pub compression_enabled: bool,
     pub bypass_compression: bool,
+    /// The async pre-compression cache result (v4 `cachedCompressionResponse?.result`),
+    /// computed by [`super::compression_cache::get_cached_compression`] before
+    /// buildContext (W4.4a4).
+    pub cached_compression_result: Option<crate::services::compression::ContextCompressionResult>,
+    /// The cache's visible-message count (v4 `cachedCompressionResponse?.cachedMessageCount`).
+    pub cached_compression_message_count: Option<i64>,
 }
 
 /// Assemble the [`BuildContextInput`] from the resolved orchestrator state (v4's
@@ -2255,6 +2370,8 @@ pub(crate) fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInp
         },
         cheap_llm_selection: None,
         bypass_compression: args.bypass_compression,
+        cached_compression_result: args.cached_compression_result,
+        cached_compression_message_count: args.cached_compression_message_count,
         generate_memory_recap: false,
         uncensored_fallback: None,
         is_continue_mode: args.is_continue_mode,

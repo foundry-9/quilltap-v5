@@ -3219,6 +3219,67 @@ danger pre-classification + wardrobe baselines + the clothing-hash cache
 reconciliation + `createSystemEvent` token tracking + the persist) lands with the
 W4.8 runner-dispatch row (this unit ports the cheap-LLM task it drives).
 
+**Wave 4 (W4.4a4): the Courier transport + the compression-cache spine plumbing
+is DONE** (2026-07-07). Ported v4's `courier-transport.service.ts` (the manual /
+clipboard dispatch) as `services::courier_transport` + `courier::render_markdown`:
+the two Markdown renderers (`renderCourierRequestAsMarkdown` /
+`renderCourierDeltaAsMarkdown` — byte-exact, the `\n{3,}`→`\n\n` collapse + JS
+`trimEnd()+'\n'` via `jsstr::js_trim_end`, the `escapeFilename` bracket/paren
+escapes, `formatBytes` sizes), `buildCourierDeltaEvents` (the per-character
+checkpoint scan — the strict `createdAt <= resolvedAt` skip [equality matters],
+the checkpoint-message defensive exclusion, targeted-whisper filtering [surfaced
+only when the responder is sender OR target], the exact Staff speaker-label map,
+`repos.files.findById` attachment loading with skip-on-missing, dedup by fileId),
+and `dispatchCourierTransport` (always render the full bundle; delta primary +
+full fallback when `courierDeltaMode !== false` AND a checkpoint exists; the
+union attachments; the placeholder ASSISTANT message [`content:''`, the bundle in
+`pendingExternalPrompt`, provider/model from the effective profile] through the
+ported `chats_messages::add_message`; `chats.update({isPaused, updatedAt})`; the
+`pendingExternalTurn` frame FIRST then `done{pendingExternalTurn:true}` — both
+byte-exact). The paste/cancel resolvers (`resolve_external_turn` /
+`cancel_external_turn`) are public service functions composing `update_message` +
+`chats.update` (checkpoint advance + unpause) + the ported finalizer triggers
+(memory extraction / danger classification / summary check, awaited per the
+watermark precedent). Added to `chat_events`: the `PendingExternalTurn` variant +
+`DonePayload.pending_external_turn` (serialized after `model_name` to match v4's
+`{…, provider, modelName, pendingExternalTurn}` order). Added the
+`ChatUpdate.courier_checkpoints` write setter (the read + create-write marshaling
+already existed — no drift). The orchestrator courier gate (was erroring) is
+CLOSED: after `build_message_context` + the `preparing` status, an effective-courier
+turn dispatches — the tool build is SKIPPED (`is_effective_courier` guards
+`build_tools` / `resolved_tool_mode` / `tool_instructions`, matching v4 so the
+bundle's system prompt carries no tool instructions) and the turn halts on
+`isPaused=true` (the frozen `should_chain_next` already stops on paused). **Compression
+plumbing:** the finalizer's real `AsyncCompressionTrigger` (now an async `&self`
+seam over `compression_cache::trigger_async_compression`; `RealAsyncCompression`
+holds db+completion+executor, `NoAsyncCompression` the no-op) computes + persists
+the cache when the gate fires (the finalizer builds `updatedMessages` = visible
+history + user msg + assistant reply + the byte-exact options); and the
+`build_context` cached-compression window (`cached_compression_result` /
+`cached_compression_message_count` — phase-1 uses a warm cache verbatim [no sync
+compression call → no canned key consumed] + the dynamic effective-window sizing
+from the cache's message count). The orchestrator reads `get_cached_compression`
+before buildContext (per v4's `runPreContextPreCompute` compressionTask) but stays
+inert until the spine threads a real `cheap_llm_selection` (the same tracked
+deferral as W4.6a's recap/distill; `build_context_tier3`'s warm-cache case proves
+the code path directly). Verified: a NEW `courier_transport_tier3_equivalence`
+(drives v4's REAL `dispatchCourierTransport` over a two-DB fixture, four cases —
+first-send full bundle / delta with whisper-filter-both-directions + the `<=`
+boundary + the `[Staff: The Commonplace Book]` label / `courierDeltaMode:false`
+forced-full / attachment union — diffing the `ProcessMessageResult` + the SSE
+trace + the persisted placeholder bytes [the bundle proves the renderers] +
+`isPaused`, the minted placeholder id normalized); a `courier_send` case added to
+`orchestrator_tier3` (the spine branch end-to-end through `handleSendMessage` —
+proving the courier tool-skip's effect on the bundle + the frame order incl.
+`preparing`); a warm-cache case in `build_context_tier3`; the finalizer trigger
+adaptation in `message_finalizer_tier3` (the gate proof — the trigger no-ops at
+this message count, so persistence is proven by `compression_cache_tier3`
+separately); `compression_cache_tier3` re-verified. **Tracked deferrals:** the
+paste/cancel route handlers aren't exported (Phase-4 HTTP transport) — their
+constituent repo ops are tier-2/tier-3-proven and the ported service functions are
+unit-tested; the orchestrator spine's `cheap_llm_selection` threading (shared with
+W4.6a) keeps the cached-compression read inert in `process_message`.
+
 **The Phase-3 endgame is fully planned (2026-07-06).** Every remaining unit
 has an agent-ready work order checked in under
 `docs/developer/porting/work-orders/` — W4.2u (the danger spine unification

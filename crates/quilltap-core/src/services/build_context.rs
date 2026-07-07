@@ -466,6 +466,14 @@ pub struct BuildContextInput {
     pub context_compression_settings: Option<ContextCompressionSettingsInput>,
     pub cheap_llm_selection: Option<crate::cheap_llm::CheapLlmSelection>,
     pub bypass_compression: bool,
+    /// v4 `options.cachedCompressionResult` — the async pre-compression cache
+    /// result. When present AND `compressionApplied`, phase-1 uses it instead of
+    /// running the synchronous compression call (W4.4a4).
+    pub cached_compression_result: Option<ContextCompressionResult>,
+    /// v4 `options.cachedCompressionMessageCount` — the visible-message count the
+    /// cache was computed at. Drives the dynamic effective-window size so no
+    /// messages since the cache point are lost.
+    pub cached_compression_message_count: Option<i64>,
     // memory recap / continue
     pub generate_memory_recap: bool,
     pub uncensored_fallback: Option<OwnedUncensoredFallback>,
@@ -1346,41 +1354,57 @@ where
         let compressible_tokens = count_messages_tokens(&compressible_pairs, cpt);
 
         if compressible_tokens > context_history_budget {
-            let user_name = input
-                .user_character
+            // Check for a cached compression result first (async pre-compression).
+            // A cache hit with `compressionApplied` is used verbatim — the
+            // synchronous compression call is SKIPPED (no canned key consumed).
+            let cached_hit = input
+                .cached_compression_result
                 .as_ref()
-                .map(|u| u.name.clone())
-                .filter(|n| !n.is_empty())
-                .unwrap_or_else(|| "User".to_string());
-            let uncensored =
-                input
-                    .uncensored_fallback
+                .filter(|c| c.compression_applied)
+                .cloned();
+            if let Some(cached) = cached_hit {
+                use_compressed_context = true;
+                for w in &cached.warnings {
+                    warnings.push(format!("[Compression] {w}"));
+                }
+                compression_result = Some(cached);
+            } else {
+                let user_name = input
+                    .user_character
                     .as_ref()
-                    .map(|u| UncensoredFallbackOptions {
-                        danger_settings: &u.danger_settings,
-                        available_profiles: &u.available_profiles,
-                        is_dangerous_chat: None,
-                    });
-            let result = apply_context_compression(
-                completion,
-                executor,
-                &vis_compressible,
-                &final_system_prompt,
-                &ContextCompressionOptions {
-                    window_size: settings.window_size,
-                    compression_target_tokens: context_history_budget,
-                    selection: selection.clone(),
-                    character_name: input.character.name.clone(),
-                    user_name,
-                    uncensored_fallback: uncensored,
-                },
-            )
-            .await;
-            use_compressed_context = result.compression_applied;
-            for w in &result.warnings {
-                warnings.push(format!("[Compression] {w}"));
+                    .map(|u| u.name.clone())
+                    .filter(|n| !n.is_empty())
+                    .unwrap_or_else(|| "User".to_string());
+                let uncensored =
+                    input
+                        .uncensored_fallback
+                        .as_ref()
+                        .map(|u| UncensoredFallbackOptions {
+                            danger_settings: &u.danger_settings,
+                            available_profiles: &u.available_profiles,
+                            is_dangerous_chat: None,
+                        });
+                let result = apply_context_compression(
+                    completion,
+                    executor,
+                    &vis_compressible,
+                    &final_system_prompt,
+                    &ContextCompressionOptions {
+                        window_size: settings.window_size,
+                        compression_target_tokens: context_history_budget,
+                        selection: selection.clone(),
+                        character_name: input.character.name.clone(),
+                        user_name,
+                        uncensored_fallback: uncensored,
+                    },
+                )
+                .await;
+                use_compressed_context = result.compression_applied;
+                for w in &result.warnings {
+                    warnings.push(format!("[Compression] {w}"));
+                }
+                compression_result = Some(result);
             }
-            compression_result = Some(result);
         }
     }
 
@@ -1399,6 +1423,16 @@ where
                 .as_ref()
                 .map(|s| s.window_size)
                 .unwrap_or(5);
+            // When using a fallback cache (computed for fewer visible messages than
+            // we have now), include ALL messages since the compression point — not
+            // just the standard window — so nothing is lost (v4 dynamic window).
+            let effective_window_size = match input.cached_compression_message_count {
+                Some(cached_count) if cached_count < visible_messages.len() as i64 => {
+                    let messages_since_cache = visible_messages.len() as i64 - cached_count;
+                    standard_window_size + messages_since_cache
+                }
+                _ => standard_window_size,
+            };
             let vis_compressible: Vec<CompressibleMessage> = visible_messages
                 .iter()
                 .map(|m| CompressibleMessage {
@@ -1406,7 +1440,7 @@ where
                     content: m.content.clone(),
                 })
                 .collect();
-            let split = split_messages_for_compression(&vis_compressible, standard_window_size);
+            let split = split_messages_for_compression(&vis_compressible, effective_window_size);
             let window_count = split.window_messages.len();
 
             // Walk backwards to find the last N visible messages in existing_messages.
