@@ -50,6 +50,7 @@
 
 import * as fs from 'fs';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -566,6 +567,33 @@ async function main(): Promise<void> {
   );
   const { getRepositories } = await import('@/lib/repositories/factory');
   const { handleSendMessage } = await import('@/lib/services/chat-message/orchestrator.service');
+
+  // W4.7c: initialize the REAL provider registry (the nine built plugins/dist
+  // bundles) so v4's `buildTools` → `buildToolsForProvider` → `plugin.formatTools`
+  // reshapes the canonical slate to the provider's native shape (Anthropic
+  // `input_schema`, etc.) — matching the Rust spine, which now reshapes via the
+  // manifest registry in `tool_build::build_tools`. Without this, `getProvider`
+  // returns null and the tools reach the wire canonical (the pre-unification state).
+  {
+    const nodeRequire = createRequire(join(process.cwd(), 'noop.js'));
+    const PLUGIN_DIRS = [
+      'anthropic',
+      'openai',
+      'google',
+      'grok',
+      'deepseek',
+      'z-ai',
+      'openrouter',
+      'ollama',
+      'openai-compatible',
+    ];
+    const { initializeProviderRegistry } = await import('@/lib/plugins/provider-registry');
+    const providers = PLUGIN_DIRS.map((d) => {
+      const m = nodeRequire(join(process.cwd(), 'plugins', 'dist', `qtap-plugin-${d}`, 'index.js'));
+      return m.plugin || m.default?.plugin || m.default;
+    });
+    await initializeProviderRegistry(providers);
+  }
 
   await initializeDatabase();
   const repos = getRepositories();

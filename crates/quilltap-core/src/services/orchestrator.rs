@@ -168,19 +168,6 @@ struct RngArguments {
     rolls: u32,
 }
 
-/// Adapter so the injected `&dyn ToolCallDetector` (the W4.7 provider-parse seam)
-/// can be passed to the generic (`D: ToolCallDetector`, Sized) native tool loop.
-struct DetectorRef<'a>(&'a (dyn native_tool_loop::ToolCallDetector + Sync));
-impl native_tool_loop::ToolCallDetector for DetectorRef<'_> {
-    fn detect(
-        &self,
-        raw_response: &Value,
-        provider: &str,
-    ) -> Vec<crate::services::tool_execution::ToolCall> {
-        self.0.detect(raw_response, provider)
-    }
-}
-
 /// The `self_inventory` host environment the tool runner carries. In production
 /// this is populated by the host (Quilltap version, runtime mode, client shell,
 /// mount-index health, the registry model-info rows). W4.1g wires the tool SLATE;
@@ -424,20 +411,6 @@ where
     /// OS CSPRNG ([`crate::tools::rng::OsRandomBytes`]); the differential injects a
     /// fixed committed stream.
     pub rng_bytes: &'a mut dyn RandomBytes,
-    /// The provider-text-markers strategy seam (W4.1f). v4's provider pass reads its
-    /// detector/parser/stripper from the active `getProvider(...)` plugin — an
-    /// unported W4.7 surface — so in v5 the orchestrator runs the provider pass only
-    /// when a host supplies a strategy here (default: `None`, so the pass is skipped;
-    /// the engine is still exercised against a synthetic provider strategy directly
-    /// in `text_tool_loop_tier3`). The provider manifest (W4.7) wires the real
-    /// per-provider strategies.
-    pub provider_text_strategy: Option<&'a dyn TextToolStrategy>,
-    /// The native tool-call detector (v4 `detectToolCallsInResponse`) — the W4.7
-    /// provider-wire-parse seam. Production wires [`native_tool_loop::NoToolCallDetector`]
-    /// (until the provider manifest lands); the differential injects a canned
-    /// detector keyed by the raw response so a native tool call can be driven
-    /// end-to-end. Object-safe (`+ Sync` to keep the spine future `Send`).
-    pub tool_detector: &'a (dyn native_tool_loop::ToolCallDetector + Sync),
 }
 
 /// v4 `processMessage`. The main send-path spine. Composes the ported services,
@@ -1514,7 +1487,11 @@ where
     let mut generated_image_paths: Vec<GeneratedImage> = Vec::new();
 
     let tool_runner = BuiltInToolRunner::new(db.clone(), host_self_inventory_env());
-    let tool_detector = DetectorRef(deps.tool_detector);
+    // Native tool-call detection (v4 `detectToolCallsInResponse` → the provider
+    // plugin's `parseToolCalls`) is the real registry-backed detector (W4.7c):
+    // reshape/parse both key off the provider manifest, so a native call is parsed
+    // out of the raw response per the effective provider's wire format.
+    let tool_detector = native_tool_loop::RegistryToolCallDetector::built_in();
 
     let loop_messages: Vec<ThreadedMessage> = formatted_messages
         .iter()
@@ -1601,15 +1578,23 @@ where
         )
     };
 
-    // Phase 19: provider-native text tool markers — only when a host strategy is
-    // supplied (the provider plugin's detector/parser/stripper; W4.7).
-    if let Some(provider_strategy) = deps.provider_text_strategy {
+    // Phase 19: provider-native text tool markers — v4 runs the pass only when the
+    // active provider plugin implements the detector/parser/stripper trio
+    // (`provider_has_text_markers`; W4.7c). Every built-in provider does, so the
+    // pass runs — but no-ops when the streamed prose carries no markers.
+    if crate::model::tool_wire::provider_has_text_markers(
+        crate::provider_manifest::Registry::built_in(),
+        &effective_profile.provider,
+    ) {
+        let provider_strategy = text_tool_loop::ProviderTextMarkersStrategy::built_in(
+            effective_profile.provider.clone(),
+        );
         text_tool_loop::run_text_tool_pass(
             db,
             deps.streaming,
             sink,
             &tool_runner,
-            provider_strategy,
+            &provider_strategy,
             &mut preserve,
             RunTextToolPassOptions {
                 chat_id: chat_id.clone(),
@@ -2766,8 +2751,6 @@ mod tests {
                 carina_query: &mut carina,
                 prospero: &mut prospero,
                 rng_bytes: &mut rng_bytes,
-                provider_text_strategy: None,
-                tool_detector: &native_tool_loop::NoToolCallDetector,
             };
             execute_turn_chain(
                 &mut deps,

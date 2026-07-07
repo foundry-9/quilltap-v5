@@ -111,37 +111,11 @@ struct Spec {
     #[serde(default)]
     local_offset_minutes: i64,
     calls: Vec<CallW>,
-    /// W4.1g native-call detection: raw-response marker → the tool calls the
-    /// (mocked, W4.7) provider parse returns. Mirrors the oracle's
-    /// `detectToolCallsInResponse` mock; empty for the non-native cases.
-    #[serde(default)]
-    detection: HashMap<String, Vec<ToolCallSpecW>>,
     /// W4.2u: the canned `apiKeyId → decrypted key` map for the uncensored-reroute
     /// router (mirrors the oracle's `findApiKeyByIdAndUserId` monkey-patch). The
     /// real `DangerContentRouter`'s `ApiKeyResolver` injects it.
     #[serde(default)]
     api_keys: HashMap<String, String>,
-}
-
-/// The native tool-call detector (the injected W4.7 provider-wire-parse seam):
-/// keys on `raw_response.marker` → the canned tool calls. Returns `[]` for the
-/// non-native cases (no marker / no raw response), so it is a no-op there.
-struct CaseDetector {
-    by_marker: HashMap<String, Vec<quilltap_core::services::tool_execution::ToolCall>>,
-}
-impl quilltap_core::services::native_tool_loop::ToolCallDetector for CaseDetector {
-    fn detect(
-        &self,
-        raw_response: &Value,
-        _provider: &str,
-    ) -> Vec<quilltap_core::services::tool_execution::ToolCall> {
-        raw_response
-            .get("marker")
-            .and_then(Value::as_str)
-            .and_then(|m| self.by_marker.get(m))
-            .cloned()
-            .unwrap_or_default()
-    }
 }
 
 fn spec_path() -> PathBuf {
@@ -176,17 +150,6 @@ struct ChunkW {
     raw_response: Option<Value>,
 }
 
-/// One canned native tool call the detector returns for a raw-response marker
-/// (mirrors the oracle's `detectToolCallsInResponse` mock).
-#[derive(Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct ToolCallSpecW {
-    name: String,
-    #[serde(default)]
-    arguments: Value,
-    #[serde(default)]
-    call_id: Option<String>,
-}
 #[derive(Deserialize, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
 struct UsageW {
@@ -558,27 +521,6 @@ fn orchestrator_tier3_matches_oracle() {
             CannedApiKeys(spec.api_keys.clone()),
         );
 
-    // The native tool-call detector (marker → canned tool calls; no-op elsewhere).
-    let detector = CaseDetector {
-        by_marker: spec
-            .detection
-            .iter()
-            .map(|(marker, calls)| {
-                (
-                    marker.clone(),
-                    calls
-                        .iter()
-                        .map(|c| quilltap_core::services::tool_execution::ToolCall {
-                            name: c.name.clone(),
-                            arguments: c.arguments.clone(),
-                            call_id: c.call_id.clone(),
-                        })
-                        .collect(),
-                )
-            })
-            .collect(),
-    };
-
     let mut got_events: Vec<(String, Vec<Value>)> = Vec::new();
 
     for call in &spec.calls {
@@ -610,21 +552,14 @@ fn orchestrator_tier3_matches_oracle() {
             carina_query: &mut carina_query,
             prospero: &mut prospero,
             rng_bytes: &mut rng_bytes,
-            // The text-tool passes (W4.1f) run corpus-dormant here: no host provider
-            // strategy, and the text-block fall-through no-ops without markers.
-            provider_text_strategy: None,
-            // W4.7 provider-wire-parse seam: a canned detector keyed on
-            // `raw_response.marker` (the plumbing mirrors `native_tool_loop_tier3`).
-            // The corpus carries no native tool calls (empty `detection` → the
-            // detector is a no-op), so the native loop no-ops after the real slate
-            // reaches the wire (proven by the tools-at-wire assertion). A native
-            // tool CALL end-to-end through the spine is proven separately by
-            // `native_tool_loop_tier3` (which drives v4's REAL `runNativeToolLoop`
-            // + threading); reproducing it here would additionally require the
-            // multi-character tool-call re-threading through `buildMessageContext`,
-            // which that unit already covers.
-            tool_detector: &detector,
         };
+        // The spine now constructs the real registry-backed tool detector +
+        // provider-text strategy internally (W4.7c). The corpus carries no native
+        // tool calls (the canned streams' raw_response has no tool_use blocks) and
+        // no provider text markers, so both passes no-op after the real (now
+        // provider-reshaped) slate reaches the wire — proven by the tools-at-wire
+        // assertion. A native tool CALL end-to-end is proven separately by
+        // `native_tool_loop_tier3` (v4's REAL `runNativeToolLoop` + threading).
 
         let make_input = |chat_id: &str, content: &str, continue_mode: bool, resp: Option<&str>| {
             ProcessMessageInput {

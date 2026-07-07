@@ -4,6 +4,19 @@
 
 ### 5.0-dev
 
+Phase 3 — Round-3 unification (Group 1, W4.7c spine wiring): wired the provider
+tool reshape + native detector + provider text-markers strategy live into the
+`processMessage` spine. `tool_build::build_tools` now applies
+`format_tools_for_provider` as its final step, so the orchestrator sends
+provider-shaped tools at the wire (Anthropic `input_schema`, etc.); OPENAI passes
+through byte-identically so `tool_build_equivalence` stays green. The orchestrator
+constructs `RegistryToolCallDetector::built_in()` and gates the provider-text pass
+on `provider_has_text_markers` internally (dropped the `tool_detector` /
+`provider_text_strategy` seam fields from `OrchestratorDeps` and the
+`NoToolCallDetector` call site). Regenerated `orchestrator_tier3` with the real
+provider registry initialized on the v4 oracle side so both reshape identically;
+the tools-at-wire assertion now compares the reshaped slate.
+
 Phase 3 — wave 4 (W4.4a4): the Courier transport + the compression-cache spine
 plumbing. Ported v4's `courier-transport.service.ts` (the manual / clipboard
 dispatch) as `services::courier_transport` + `courier::render_markdown`: the two
