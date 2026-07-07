@@ -316,17 +316,20 @@ where
     )
     .await?;
 
-    // No images / no data — WARN+RETURN.
+    // No images / no data — WARN+RETURN. v4: `rawData = imageData.data ||
+    // imageData.b64Json; if (!rawData)` — a JS falsy check, so a missing AND an
+    // empty-string payload both no-op (W4.7f widened `data` to Option<String>).
     let Some(image_data) = outcome.images.into_iter().next() else {
         return Ok(());
     };
-    if image_data.data.is_empty() {
-        return Ok(());
-    }
+    let raw_data = match image_data.data.as_deref() {
+        Some(d) if !d.is_empty() => d,
+        _ => return Ok(()),
+    };
     let generation_model = outcome.active_model;
 
     // 10. Decode + transcode + persist.
-    let raw_buffer = common::decode_base64_node(&image_data.data);
+    let raw_buffer = common::decode_base64_node(raw_data);
     let provider_mime = image_data
         .mime_type
         .as_deref()

@@ -3954,3 +3954,24 @@ TF-IDF + BM25 + Porter stemming + optional bigrams, `loadState` from the ported
 `tfidf_vocabulary` rows) — is **split off as W4.7e2** (it has no dependency on
 sub-units 1–4; only the `tfidf_vocabulary` STORAGE repo is ported, NOT the
 vectorizer — the decomposition doc's "builtin already ported" claim was wrong).
+
+**Round-4 unification (2026-07-07): DONE — Round 4's provider/image/librarian
+lanes are integrated on main.** The four parallel branches (W4.7d, W4.7e
+sub-units 1–4, W4.9c, W4.6c) were cherry-picked onto main alongside the
+already-landed W4.7f, with union-resolved mod-decl/doc conflicts. **One real
+cross-branch conflict surfaced and was fixed at unification** (the reason the
+pass exists): the W4.9c handlers were written against the pre-W4.7f
+`GeneratedImageData` (`data: String`) while W4.7f widened it to
+`Option<String>` + `url` (z-ai's dual shape) — both handlers now reproduce
+v4's exact falsy no-op (`rawData = imageData.data || imageData.b64Json;
+if (!rawData)` — missing AND empty-string both warn+return). Verified on the
+integrated tree: the full workspace gate (619 core tests + harness self-tests,
+clippy `-D warnings` on default AND `native-transport`, fmt) and ALL eleven
+Round-4 differentials re-run green against freshly regenerated v4 oracles at
+`6b6e39ad`, plus `build_context_tier3` proving W4.7e's harness
+`float_roundtrip` enablement is inert on existing normalizations. **Remaining
+Round-4 lanes (not yet run): W4.4b (owns spine) and W4.5**; the standing spine
+handoffs for the next spine owner are unchanged (W4.7e's
+`model_supports_native_tools` sourcing + W4.7d's ApiKeyResolver composition
+wiring, both → W4.4b) — plus **W4.7e2** (the BUILTIN TF-IDF/BM25 vectorizer)
+and the W4.7e logLLMCall call-site closures/regens as tracked follow-ups.

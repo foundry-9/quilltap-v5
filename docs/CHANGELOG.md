@@ -4,6 +4,23 @@
 
 ### 5.0-dev
 
+Round-4 unification: integrated the four parallel Round-4 branches (W4.7d,
+W4.7e sub-units 1-4, W4.9c, W4.6c) onto main alongside the already-landed
+W4.7f. One real cross-branch conflict fixed: the W4.9c handlers were written
+against the pre-W4.7f `GeneratedImageData` (`data: String`); adapted both
+handlers to the widened `Option<String>` + `url` shape with v4's exact falsy
+semantics (`rawData = imageData.data || imageData.b64Json; if (!rawData)` —
+missing AND empty-string payloads both no-op) and updated the two canned-image
+test constructions. One clippy doc-comment fix (a doc_fm header line read as a
+markdown list). Verified on the integrated tree: full workspace tests (619
+core + harness self-tests), clippy `-D warnings` (default and
+`native-transport`), fmt, and all eleven Round-4 differentials re-run green
+against freshly regenerated v4 oracles (api_keys, llm_errors, google-wire,
+pricing_fetcher, request_prefix_hashes, embedding_wire, avatar_job,
+story_background_job, doc_fm/doc_blob/doc_ui with the Librarian announcements
+live) plus build_context_tier3 confirming the harness `float_roundtrip`
+enablement is inert on existing normalizations.
+
 Phase 3 — W4.6c (the remaining Librarian doc-edit announcements, the Round-3
 Group-6 leftover): the file-management, blob, and document-UI doc-edit handlers
 now emit their Librarian announcements — move, copy, delete, folder-created,

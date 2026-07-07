@@ -12,7 +12,7 @@
 //! folders), in order (state accumulates). Each op's Output +
 //! `formatDocEditResults` string are compared against v4's; then three content
 //! tables (`doc_mount_file_links` / `doc_mount_folders` / `doc_mount_documents`)
-//! + the MAIN-db `chat_messages` (the W4.6c Librarian move/copy/delete/folder
+//! plus the MAIN-db `chat_messages` (the W4.6c Librarian move/copy/delete/folder
 //! announcement rows) are dumped and diffed.
 //!
 //! NORMALIZATION: every UUID string is remapped to a positional `<id-N>` token

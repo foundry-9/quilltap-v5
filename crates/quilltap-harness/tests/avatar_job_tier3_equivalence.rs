@@ -413,7 +413,8 @@ fn load_oracle(path: &str) -> (CannedImageProvider, HashMap<String, ResultRow>) 
                     .images
                     .iter()
                     .map(|i| GeneratedImageData {
-                        data: i.data.clone(),
+                        data: Some(i.data.clone()),
+                        url: None,
                         mime_type: i.mime_type.clone(),
                         revised_prompt: i.revised_prompt.clone(),
                     })

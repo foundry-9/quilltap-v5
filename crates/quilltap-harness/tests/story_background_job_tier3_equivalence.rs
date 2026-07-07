@@ -510,7 +510,8 @@ fn load_oracle(
                     .images
                     .iter()
                     .map(|i| GeneratedImageData {
-                        data: i.data.clone(),
+                        data: Some(i.data.clone()),
+                        url: None,
                         mime_type: i.mime_type.clone(),
                         revised_prompt: i.revised_prompt.clone(),
                     })
