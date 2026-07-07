@@ -25,6 +25,7 @@ pub mod completion;
 pub mod decoders;
 pub mod embedding;
 pub mod image;
+pub mod request_builder;
 pub mod stream;
 pub mod tool_wire;
 

@@ -2799,10 +2799,50 @@ third-party manifest loading (fs, signing) is a design open item (the load/valid
 path exists, only the built-ins are wired); manifest pricing is the static
 fallback tier (W4.7e = the live fetcher). W4.7b/c are next (b independent of a; c
 after b).
-**Wave 4 (W4.7c, part 1 — the tool wire): DONE** (2026-07-07,
-`crate::model::tool_wire`). The provider tool-wire half of W4.7c is ported and
-byte-verified; the request builders + `RequestTransform` hooks are part 2 (see
-the handoff below). Ported v4's `packages/plugin-utils/src/tools/{converters,
+**Wave 4 (W4.7c — the provider tool wire + request builders): DONE** (2026-07-07;
+part 1 `crate::model::tool_wire`, part 2 `crate::model::request_builder`).
+
+**Part 2 — the request builders + the four `RequestTransform` hooks — is DONE**
+(`crate::model::request_builder`, `request_builder_equivalence` +
+`request_builder_google_equivalence`). The sans-IO request-side counterpart to
+the W4.7b decoders: `build_request(provider, &RequestInput) -> BuiltRequest`
+(method / url / headers / body VALUE — no HTTP; the transport is W4.7d),
+dispatched by the manifest (`baseUrl`+`endpoints.chat` → url, `auth` → headers).
+Every SDK / raw fetch sends `JSON.stringify(body)` VERBATIM (confirmed by the
+`record-request-envelopes.mjs` fetch-intercept recorder), so bodies are built as an
+ordered `serde_json::Map` (preserve_order) with keys inserted in v4's exact
+assignment order, integer-valued numbers bare (`js_number_to_json`); `Body::remove`
+uses `shift_remove` (JS `delete` preserves order — the default swap_remove would
+reorder). The four hooks: **anthropic** (`applyMidHistoryBreakpoint` + the
+tool-result batching + assistant-tool_call→content-blocks expansion + the
+cache-control hierarchy [tools→system→messages] + the adaptive-thinking /
+sampling-param-rejection rules — the `SAMPLING_PARAMS_REJECTED_MODELS` prefix list
+[Sonnet 5 / Opus 4.7·4.8 / Fable 5 / Mythos 5·preview] ported as a **compiled
+constant**, NOT lifted to the manifest — the rules are prefix-regex matching, not
+per-model data, and the W4.7a manifest has no slot; a clean lift would need a new
+`samplingRejectedModelPrefixes` field, deferred as a manifest-schema follow-up);
+**openai** (`previous_response_id` chaining — send only the last user message; the
+fallback-to-full-input on a send error is a transport concern, W4.7d); **google**
+(the recursive JSON-Schema sanitizer `sanitizeSchemaForGoogle` + the
+`thoughtSignature` round-trip in `formatMessagesForGoogle`); **deepseek**
+(`reasoning_content` echo on a tool-call turn + `stripThinkingIncompatibleParams`).
+Chat-completions family (deepseek / z-ai [+ the `web_search` tool + the glm-5.2+
+`reasoning_effort` default] / openrouter [the raw-fetch tools path] / ollama /
+openai-compatible base) and the responses-API family (openai / grok) are all
+**byte-exact against the wire**. **Google's genai-SDK `config → generationConfig`
+wire framing is DEFERRED to the transport** (the SDK owns that mechanical
+serialization + reorders keys, e.g. `{name,args}`→`{args,name}`); the google
+request LOGIC — the sanitizer + `contents`/`systemInstruction`/`shouldDisableTools`
+— is ported and verified against v4's REAL plugin (`formatMessagesForGoogle` via
+bracket access; the sanitizer via the wire `functionDeclarations`, which the SDK
+passes through faithfully). Verified by `request_builder_equivalence` (31 rows,
+7 providers, byte-exact body/url/method) + `request_builder_google_equivalence`
+(5 rows). With this, **W4.7c is fully DONE**; the remaining provider-layer units
+are W4.7d (transport + errors + `api_keys`), W4.7e (pricing/capability/logging/
+embeddings), W4.7f (image dialects + moderation + web search).
+
+**Part 1 — the tool wire — DONE** (`crate::model::tool_wire`).
+Ported v4's `packages/plugin-utils/src/tools/{converters,
 parsers,text-parsers}.ts` + the per-plugin `formatTools`/`parseToolCalls`/
 `hasTextToolMarkers`/`parseTextToolCalls`/`stripTextToolMarkers` glue, dispatched
 here by the manifest `ToolFormat` (the W4.7a registry replaces `getProvider`;
@@ -2842,18 +2882,14 @@ Anthropic `parseToolCalls` over REAL anthropic `content[]` rawResponses (Rust:
 now drives v4's REAL DeepSeek plugin text markers over real `<tool_use>` XML
 (Rust: `ProviderTextMarkersStrategy::built_in("DEEPSEEK")`) — both green (corpus
 transformed so the extracted tool calls are unchanged; non-empty stop-forwarding
-stays proven by the simple-json case). **Handoffs / part 2:** (a) wire the real
-`RegistryToolCallDetector` into the `process_message` orchestrator spine (drop the
-injected `NoToolCallDetector` at the composition point — `native_tool_loop`'s
-`detector` param), wire `ProviderTextMarkersStrategy` into the spine's Phase-19
-provider-text pass (gated by `provider_has_text_markers`), and wire
-`format_tools_for_provider` into `build_tools`, regenerating the spine-owned
-`orchestrator_tier3` oracle with the real registry; (b) **the per-provider
-request-envelope builders + the four `RequestTransform` hooks** (anthropic
-breakpoints + adaptive-thinking/sampling-rejection, openai `previous_response_id`,
-google schema sanitizer + `thoughtSignature`, deepseek `reasoning_content` echo)
-— the request-side half, no dependent seam (consumed by W4.7d transport); extend
-the `record-stream-fixtures.mjs` fetch-mock to capture the built request envelope.
+stays proven by the simple-json case). **Standing handoff to the orchestrator-spine
+owner** (the one part-1 seam-wiring left for unification; part 2 is DONE — see
+above): wire the real `RegistryToolCallDetector` into the `process_message`
+orchestrator spine (drop the injected `NoToolCallDetector` at the composition
+point — `native_tool_loop`'s `detector` param), wire `ProviderTextMarkersStrategy`
+into the spine's Phase-19 provider-text pass (gated by `provider_has_text_markers`),
+and wire `format_tools_for_provider` into `build_tools`, regenerating the
+spine-owned `orchestrator_tier3` oracle with the real registry.
 
 **Wave 4 (W4.7b): the five stream decoders are DONE** (2026-07-06,
 `crate::model::decoders`). The sans-IO push-state-machine wire decoders that turn

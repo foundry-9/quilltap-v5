@@ -4,6 +4,30 @@
 
 ### 5.0-dev
 
+Phase 3 — wave 4 (W4.7c, part 2): the request builders + the four RequestTransform
+hooks. Ported the sans-IO per-provider request-envelope builders into
+`quilltap-core::model::request_builder` (build a request VALUE — method/url/headers/
+body — no HTTP; the transport is W4.7d). Dispatched by the W4.7a manifest
+(baseUrl+endpoint → url, auth → headers). Every SDK/raw-fetch sends
+`JSON.stringify(body)` verbatim, so bodies are built key-order-exact (preserve_order,
+integer-valued numbers bare). The four hooks: anthropic (mid-history cache
+breakpoint + tool-result batching + adaptive-thinking/sampling-param-rejection for
+Sonnet 5 / Opus 4.7+ / Fable / Mythos — the rejected-model list ported as a compiled
+constant, not lifted to the manifest [noted]), openai (previous_response_id chaining
+— the fallback-to-full-input is a transport concern), google (the recursive
+JSON-Schema sanitizer + the thoughtSignature round-trip), deepseek (reasoning_content
+echo + thinking-incompatible-param strip). Chat-completions family (deepseek, z-ai
+[+ web search + reasoning-effort default], openrouter [raw-fetch tools path], ollama,
+openai-compatible base) and responses-API family (openai, grok) are byte-exact
+against the wire. Google's genai-SDK config→generationConfig wire framing is deferred
+to the transport; the google request LOGIC (sanitizer + contents/thoughtSignature)
+is verified against v4's real plugin. Verified by two new differentials:
+`request_builder_equivalence` (31 rows byte-exact vs v4's real plugin requests,
+captured by intercepting fetch in `record-request-envelopes.mjs`) and
+`request_builder_google_equivalence` (5 rows: contents/systemInstruction/
+shouldDisableTools + the sanitizer via the wire functionDeclarations). With this,
+W4.7c is fully DONE; the remaining provider-layer units are W4.7d/e/f.
+
 Phase 3 — wave 4 (W4.7c, part 1): the provider tool-wire. Ported v4's
 `packages/plugin-utils/src/tools/*` + the per-plugin tool glue into
 `quilltap-core::model::tool_wire` — the tool-format reshape (`formatTools`:
