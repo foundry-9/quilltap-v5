@@ -50,7 +50,7 @@ use quilltap_core::services::primary_stream::{
     EffectiveProfile, PreservePartialOnError, StreamingState,
 };
 use quilltap_core::services::text_tool_loop::{
-    run_text_tool_pass, ParsedTextToolCall, RunTextToolPassOptions, SimpleJsonStrategy,
+    run_text_tool_pass, ProviderTextMarkersStrategy, RunTextToolPassOptions, SimpleJsonStrategy,
     TextBlockStrategy, TextToolStrategy,
 };
 use quilltap_core::services::tool_call_threading::ThreadedMessage;
@@ -98,8 +98,6 @@ struct CaseSpec {
     model: String,
     temperature: f64,
     strategy: String,
-    #[serde(rename = "stopSequences", default)]
-    stop_sequences: Option<Vec<String>>,
     #[serde(rename = "initialFullResponse")]
     initial_full_response: String,
     #[serde(rename = "formattedMessages")]
@@ -272,80 +270,6 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
 }
 
 // ---------------------------------------------------------------------------
-// The synthetic provider-text-markers strategy (mirrors the oracle's closures).
-// ---------------------------------------------------------------------------
-
-const SYN_OPEN: &str = "<<T:";
-const SYN_CLOSE: &str = ">>";
-
-struct SyntheticStrategy {
-    stop: Vec<String>,
-}
-
-impl TextToolStrategy for SyntheticStrategy {
-    fn name(&self) -> &str {
-        "provider-text-markers"
-    }
-    fn has_markers(&self, response: &str) -> bool {
-        response.contains(SYN_OPEN)
-    }
-    fn parse(&self, response: &str) -> Vec<ParsedTextToolCall> {
-        let mut calls = Vec::new();
-        let mut rest = response;
-        while let Some(open) = rest.find(SYN_OPEN) {
-            let after_open = &rest[open + SYN_OPEN.len()..];
-            let Some(close_rel) = after_open.find(SYN_CLOSE) else {
-                break;
-            };
-            let body = &after_open[..close_rel];
-            let Some(colon) = body.find(':') else { break };
-            let name = &body[..colon];
-            let args: Value = serde_json::from_str(&body[colon + 1..])
-                .unwrap_or_else(|e| panic!("synthetic args parse: {e} in `{body}`"));
-            calls.push(ParsedTextToolCall {
-                name: name.to_string(),
-                arguments: args,
-                call_id: None,
-            });
-            rest = &after_open[close_rel + SYN_CLOSE.len()..];
-        }
-        calls
-    }
-    fn strip(&self, response: &str) -> String {
-        let mut out = String::new();
-        let mut rest = response;
-        loop {
-            match rest.find(SYN_OPEN) {
-                None => {
-                    out.push_str(rest);
-                    break;
-                }
-                Some(open) => {
-                    let after_open = &rest[open + SYN_OPEN.len()..];
-                    match after_open.find(SYN_CLOSE) {
-                        None => {
-                            out.push_str(rest);
-                            break;
-                        }
-                        Some(close_rel) => {
-                            out.push_str(&rest[..open]);
-                            let consumed = open + SYN_OPEN.len() + close_rel + SYN_CLOSE.len();
-                            rest = &rest[consumed..];
-                        }
-                    }
-                }
-            }
-        }
-        quilltap_core::jsstr::js_trim(&out).to_string()
-    }
-    fn format_tool_result(&self, tool_name: &str, content: &str) -> String {
-        format!("[Provider Result: {tool_name}]\n{content}")
-    }
-    fn stop_sequences(&self) -> Vec<String> {
-        self.stop.clone()
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Result serialization.
 // ---------------------------------------------------------------------------
@@ -512,13 +436,14 @@ async fn text_tool_loop_tier3_matches_oracle() {
 
         let simple = SimpleJsonStrategy;
         let text_block = TextBlockStrategy;
-        let synthetic = SyntheticStrategy {
-            stop: c.stop_sequences.clone().unwrap_or_default(),
-        };
+        // W4.7c: the provider-text-markers cases now use the REAL ported strategy
+        // (the DeepSeek plugin's composite XML detect/parse/strip), matching the
+        // oracle's real-plugin wiring — no longer the synthetic `<<T:…>>` scanner.
+        let provider_strategy = ProviderTextMarkersStrategy::built_in("DEEPSEEK");
         let strategy: &dyn TextToolStrategy = match c.strategy.as_str() {
             "simple-json" => &simple,
             "text-block" => &text_block,
-            "provider" => &synthetic,
+            "provider" => &provider_strategy,
             other => panic!("unknown strategy {other}"),
         };
 

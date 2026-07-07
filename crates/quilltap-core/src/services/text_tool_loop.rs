@@ -189,6 +189,84 @@ impl TextToolStrategy for TextBlockStrategy {
     }
 }
 
+/// The **provider-text-markers** strategy (W4.7c) — the real port of v4's
+/// `provider-text-markers` pass (orchestrator.service.ts): the plugin's
+/// `hasTextToolMarkers` / `parseTextToolCalls` / `stripTextToolMarkers` for the
+/// given provider, dispatched through the manifest registry
+/// ([`crate::model::tool_wire`]). Catches a model's spontaneous XML emissions
+/// (DeepSeek `<function_calls>`, Gemini `<tool_use>`). `format_tool_result` frames
+/// results as `[Tool Result: <name>]\n<content>`; no stop sequences.
+///
+/// This closes the text-tool loop's provider-markers seam. The orchestrator spine
+/// gates the pass on [`crate::model::tool_wire::provider_has_text_markers`] (a
+/// tracked handoff — the spine wires it at the composition point).
+pub struct ProviderTextMarkersStrategy<'a> {
+    registry: &'a crate::provider_manifest::Registry,
+    provider: String,
+}
+
+impl ProviderTextMarkersStrategy<'static> {
+    /// A strategy over the nine built-in provider manifests for `provider`.
+    #[must_use]
+    pub fn built_in(provider: impl Into<String>) -> ProviderTextMarkersStrategy<'static> {
+        ProviderTextMarkersStrategy {
+            registry: crate::provider_manifest::Registry::built_in(),
+            provider: provider.into(),
+        }
+    }
+}
+
+impl<'a> ProviderTextMarkersStrategy<'a> {
+    /// A strategy over an arbitrary manifest registry (third-party path).
+    #[must_use]
+    pub fn with_registry(
+        registry: &'a crate::provider_manifest::Registry,
+        provider: impl Into<String>,
+    ) -> Self {
+        ProviderTextMarkersStrategy {
+            registry,
+            provider: provider.into(),
+        }
+    }
+}
+
+impl TextToolStrategy for ProviderTextMarkersStrategy<'_> {
+    fn name(&self) -> &str {
+        "provider-text-markers"
+    }
+    fn has_markers(&self, response: &str) -> bool {
+        crate::model::tool_wire::provider_has_text_tool_markers(
+            self.registry,
+            &self.provider,
+            response,
+        )
+    }
+    fn parse(&self, response: &str) -> Vec<ParsedTextToolCall> {
+        crate::model::tool_wire::provider_parse_text_tool_calls(
+            self.registry,
+            &self.provider,
+            response,
+        )
+        .into_iter()
+        .map(|r| ParsedTextToolCall {
+            name: r.name,
+            arguments: r.arguments,
+            call_id: r.call_id,
+        })
+        .collect()
+    }
+    fn strip(&self, response: &str) -> String {
+        crate::model::tool_wire::provider_strip_text_tool_markers(
+            self.registry,
+            &self.provider,
+            response,
+        )
+    }
+    fn format_tool_result(&self, tool_name: &str, content: &str) -> String {
+        format!("[Tool Result: {tool_name}]\n{content}")
+    }
+}
+
 // ===========================================================================
 // Options / entry point
 // ===========================================================================

@@ -3,9 +3,21 @@
   "userId": "10000000-0000-4000-8000-000000000001",
   "seedTimestamp": "2026-01-01T00:00:00.000Z",
   "chats": [
-    { "id": "30000000-0000-4000-8000-000000000030", "participant": "40000000-0000-4000-8000-000000000040", "character": "20000000-0000-4000-8000-000000000002" },
-    { "id": "30000000-0000-4000-8000-000000000031", "participant": "40000000-0000-4000-8000-000000000041", "character": "20000000-0000-4000-8000-000000000002" },
-    { "id": "30000000-0000-4000-8000-000000000032", "participant": "40000000-0000-4000-8000-000000000042", "character": "20000000-0000-4000-8000-000000000002" }
+    {
+      "id": "30000000-0000-4000-8000-000000000030",
+      "participant": "40000000-0000-4000-8000-000000000040",
+      "character": "20000000-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000031",
+      "participant": "40000000-0000-4000-8000-000000000041",
+      "character": "20000000-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000032",
+      "participant": "40000000-0000-4000-8000-000000000042",
+      "character": "20000000-0000-4000-8000-000000000002"
+    }
   ],
   "cases": [
     {
@@ -16,22 +28,65 @@
       "provider": "ANTHROPIC",
       "model": "claude",
       "temperature": 0.7,
-      "agentMode": { "enabled": false, "maxTurns": 10 },
-      "initialFullResponse": "Let me look. ",
-      "initialRawResponse": { "marker": "s0", "stop_reason": "end_turn" },
-      "formattedMessages": [
-        { "role": "system", "content": "You are Ada." },
-        { "role": "user", "content": "How many messages?" }
-      ],
-      "detection": {
-        "s0": [ { "name": "read_conversation", "arguments": { "limit": 5 }, "callId": "call-1" } ],
-        "s1": []
+      "agentMode": {
+        "enabled": false,
+        "maxTurns": 10
       },
+      "initialFullResponse": "Let me look. ",
+      "initialRawResponse": {
+        "content": [
+          {
+            "type": "tool_use",
+            "id": "call-1",
+            "name": "read_conversation",
+            "input": {
+              "limit": 5
+            }
+          }
+        ],
+        "stop_reason": "end_turn"
+      },
+      "formattedMessages": [
+        {
+          "role": "system",
+          "content": "You are Ada."
+        },
+        {
+          "role": "user",
+          "content": "How many messages?"
+        }
+      ],
       "cannedTools": [
-        { "name": "read_conversation", "arguments": { "limit": 5 }, "callId": "call-1", "success": true, "result": { "formattedText": "5 messages" } }
+        {
+          "name": "read_conversation",
+          "arguments": {
+            "limit": 5
+          },
+          "callId": "call-1",
+          "success": true,
+          "result": {
+            "formattedText": "5 messages"
+          }
+        }
       ],
       "streams": [
-        [ { "content": "Done." }, { "done": true, "rawResponse": { "marker": "s1", "stop_reason": "end_turn" }, "usage": { "promptTokens": 10, "completionTokens": 2, "totalTokens": 12 } } ]
+        [
+          {
+            "content": "Done."
+          },
+          {
+            "done": true,
+            "rawResponse": {
+              "content": [],
+              "stop_reason": "end_turn"
+            },
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 2,
+              "totalTokens": 12
+            }
+          }
+        ]
       ],
       "dumpChats": false
     },
@@ -43,22 +98,63 @@
       "provider": "ANTHROPIC",
       "model": "claude",
       "temperature": 0.7,
-      "agentMode": { "enabled": false, "maxTurns": 10 },
-      "initialFullResponse": "One sec. ",
-      "initialRawResponse": { "marker": "n0", "stop_reason": "end_turn" },
-      "formattedMessages": [
-        { "role": "system", "content": "You are Ada." },
-        { "role": "user", "content": "search please" }
-      ],
-      "detection": {
-        "n0": [ { "name": "search", "arguments": { "query": "x" } } ],
-        "n1": []
+      "agentMode": {
+        "enabled": false,
+        "maxTurns": 10
       },
+      "initialFullResponse": "One sec. ",
+      "initialRawResponse": {
+        "content": [
+          {
+            "type": "tool_use",
+            "name": "search",
+            "input": {
+              "query": "x"
+            }
+          }
+        ],
+        "stop_reason": "end_turn"
+      },
+      "formattedMessages": [
+        {
+          "role": "system",
+          "content": "You are Ada."
+        },
+        {
+          "role": "user",
+          "content": "search please"
+        }
+      ],
       "cannedTools": [
-        { "name": "search", "arguments": { "query": "x" }, "success": true, "result": { "formattedText": "found" } }
+        {
+          "name": "search",
+          "arguments": {
+            "query": "x"
+          },
+          "success": true,
+          "result": {
+            "formattedText": "found"
+          }
+        }
       ],
       "streams": [
-        [ { "content": "Here." }, { "done": true, "rawResponse": { "marker": "n1", "stop_reason": "end_turn" }, "usage": { "promptTokens": 8, "completionTokens": 1, "totalTokens": 9 } } ]
+        [
+          {
+            "content": "Here."
+          },
+          {
+            "done": true,
+            "rawResponse": {
+              "content": [],
+              "stop_reason": "end_turn"
+            },
+            "usage": {
+              "promptTokens": 8,
+              "completionTokens": 1,
+              "totalTokens": 9
+            }
+          }
+        ]
       ],
       "dumpChats": false
     },
@@ -70,20 +166,53 @@
       "provider": "ANTHROPIC",
       "model": "claude",
       "temperature": 0.7,
-      "agentMode": { "enabled": false, "maxTurns": 10 },
-      "initialFullResponse": "Writing file ",
-      "initialRawResponse": { "marker": "t0", "stop_reason": "max_tokens" },
-      "formattedMessages": [
-        { "role": "system", "content": "You are Ada." },
-        { "role": "user", "content": "write the file" }
-      ],
-      "detection": {
-        "t0": [ { "name": "doc_write_file", "arguments": { "path": "/x" }, "callId": "call-t" } ],
-        "t1": []
+      "agentMode": {
+        "enabled": false,
+        "maxTurns": 10
       },
+      "initialFullResponse": "Writing file ",
+      "initialRawResponse": {
+        "content": [
+          {
+            "type": "tool_use",
+            "id": "call-t",
+            "name": "doc_write_file",
+            "input": {
+              "path": "/x"
+            }
+          }
+        ],
+        "stop_reason": "max_tokens"
+      },
+      "formattedMessages": [
+        {
+          "role": "system",
+          "content": "You are Ada."
+        },
+        {
+          "role": "user",
+          "content": "write the file"
+        }
+      ],
       "cannedTools": [],
       "streams": [
-        [ { "content": "Retrying smaller." }, { "done": true, "rawResponse": { "marker": "t1", "stop_reason": "end_turn" }, "usage": { "promptTokens": 20, "completionTokens": 3, "totalTokens": 23 } } ]
+        [
+          {
+            "content": "Retrying smaller."
+          },
+          {
+            "done": true,
+            "rawResponse": {
+              "content": [],
+              "stop_reason": "end_turn"
+            },
+            "usage": {
+              "promptTokens": 20,
+              "completionTokens": 3,
+              "totalTokens": 23
+            }
+          }
+        ]
       ],
       "dumpChats": false
     },
@@ -95,21 +224,54 @@
       "provider": "ANTHROPIC",
       "model": "claude",
       "temperature": 0.7,
-      "agentMode": { "enabled": true, "maxTurns": 10 },
-      "initialFullResponse": "Working on it. ",
-      "initialRawResponse": { "marker": "a0", "stop_reason": "end_turn" },
-      "formattedMessages": [
-        { "role": "system", "content": "You are Ada in agent mode." },
-        { "role": "user", "content": "do the task" }
-      ],
-      "detection": {
-        "a0": [
-          { "name": "search", "arguments": { "q": "x" }, "callId": "c-a" },
-          { "name": "submit_final_response", "arguments": { "response": "Here is the polished answer." }, "callId": "c-b" }
-        ]
+      "agentMode": {
+        "enabled": true,
+        "maxTurns": 10
       },
+      "initialFullResponse": "Working on it. ",
+      "initialRawResponse": {
+        "content": [
+          {
+            "type": "tool_use",
+            "id": "c-a",
+            "name": "search",
+            "input": {
+              "q": "x"
+            }
+          },
+          {
+            "type": "tool_use",
+            "id": "c-b",
+            "name": "submit_final_response",
+            "input": {
+              "response": "Here is the polished answer."
+            }
+          }
+        ],
+        "stop_reason": "end_turn"
+      },
+      "formattedMessages": [
+        {
+          "role": "system",
+          "content": "You are Ada in agent mode."
+        },
+        {
+          "role": "user",
+          "content": "do the task"
+        }
+      ],
       "cannedTools": [
-        { "name": "search", "arguments": { "q": "x" }, "callId": "c-a", "success": true, "result": { "formattedText": "2 hits" } }
+        {
+          "name": "search",
+          "arguments": {
+            "q": "x"
+          },
+          "callId": "c-a",
+          "success": true,
+          "result": {
+            "formattedText": "2 hits"
+          }
+        }
       ],
       "streams": [],
       "dumpChats": false
@@ -122,16 +284,34 @@
       "provider": "ANTHROPIC",
       "model": "claude",
       "temperature": 0.7,
-      "agentMode": { "enabled": true, "maxTurns": 10 },
-      "initialFullResponse": "Just chatting, no work. ",
-      "initialRawResponse": { "marker": "p0", "stop_reason": "end_turn" },
-      "formattedMessages": [
-        { "role": "system", "content": "You are Ada in agent mode." },
-        { "role": "user", "content": "hey there" }
-      ],
-      "detection": {
-        "p0": [ { "name": "submit_final_response", "arguments": { "response": "Suppressed structured answer." }, "callId": "c-p" } ]
+      "agentMode": {
+        "enabled": true,
+        "maxTurns": 10
       },
+      "initialFullResponse": "Just chatting, no work. ",
+      "initialRawResponse": {
+        "content": [
+          {
+            "type": "tool_use",
+            "id": "c-p",
+            "name": "submit_final_response",
+            "input": {
+              "response": "Suppressed structured answer."
+            }
+          }
+        ],
+        "stop_reason": "end_turn"
+      },
+      "formattedMessages": [
+        {
+          "role": "system",
+          "content": "You are Ada in agent mode."
+        },
+        {
+          "role": "user",
+          "content": "hey there"
+        }
+      ],
       "cannedTools": [],
       "streams": [],
       "dumpChats": false
@@ -144,20 +324,53 @@
       "provider": "ANTHROPIC",
       "model": "claude",
       "temperature": 0.7,
-      "agentMode": { "enabled": true, "maxTurns": 10 },
-      "initialFullResponse": "",
-      "initialRawResponse": { "marker": "g0", "stop_reason": "end_turn" },
-      "formattedMessages": [
-        { "role": "system", "content": "You are Ada in agent mode." },
-        { "role": "user", "content": "hello" }
-      ],
-      "detection": {
-        "g0": [ { "name": "submit_final_response", "arguments": { "response": "rewrap of old work" }, "callId": "c-g" } ],
-        "g1": []
+      "agentMode": {
+        "enabled": true,
+        "maxTurns": 10
       },
+      "initialFullResponse": "",
+      "initialRawResponse": {
+        "content": [
+          {
+            "type": "tool_use",
+            "id": "c-g",
+            "name": "submit_final_response",
+            "input": {
+              "response": "rewrap of old work"
+            }
+          }
+        ],
+        "stop_reason": "end_turn"
+      },
+      "formattedMessages": [
+        {
+          "role": "system",
+          "content": "You are Ada in agent mode."
+        },
+        {
+          "role": "user",
+          "content": "hello"
+        }
+      ],
       "cannedTools": [],
       "streams": [
-        [ { "content": "Let me actually respond." }, { "done": true, "rawResponse": { "marker": "g1", "stop_reason": "end_turn" }, "usage": { "promptTokens": 15, "completionTokens": 4, "totalTokens": 19 } } ]
+        [
+          {
+            "content": "Let me actually respond."
+          },
+          {
+            "done": true,
+            "rawResponse": {
+              "content": [],
+              "stop_reason": "end_turn"
+            },
+            "usage": {
+              "promptTokens": 15,
+              "completionTokens": 4,
+              "totalTokens": 19
+            }
+          }
+        ]
       ],
       "dumpChats": true
     },
@@ -169,27 +382,128 @@
       "provider": "ANTHROPIC",
       "model": "claude",
       "temperature": 0.7,
-      "agentMode": { "enabled": true, "maxTurns": 2 },
-      "initialFullResponse": "Step one. ",
-      "initialRawResponse": { "marker": "m0", "stop_reason": "end_turn" },
-      "formattedMessages": [
-        { "role": "system", "content": "You are Ada in agent mode." },
-        { "role": "user", "content": "multi-step task" }
-      ],
-      "detection": {
-        "m0": [ { "name": "search", "arguments": { "q": "a" }, "callId": "c1" } ],
-        "m1": [ { "name": "search", "arguments": { "q": "b" }, "callId": "c2" } ],
-        "m2": [],
-        "mf": [ { "name": "submit_final_response", "arguments": { "response": "Final forced answer." }, "callId": "cf" } ]
+      "agentMode": {
+        "enabled": true,
+        "maxTurns": 2
       },
+      "initialFullResponse": "Step one. ",
+      "initialRawResponse": {
+        "content": [
+          {
+            "type": "tool_use",
+            "id": "c1",
+            "name": "search",
+            "input": {
+              "q": "a"
+            }
+          }
+        ],
+        "stop_reason": "end_turn"
+      },
+      "formattedMessages": [
+        {
+          "role": "system",
+          "content": "You are Ada in agent mode."
+        },
+        {
+          "role": "user",
+          "content": "multi-step task"
+        }
+      ],
       "cannedTools": [
-        { "name": "search", "arguments": { "q": "a" }, "callId": "c1", "success": true, "result": { "formattedText": "hit a" } },
-        { "name": "search", "arguments": { "q": "b" }, "callId": "c2", "success": true, "result": { "formattedText": "hit b" } }
+        {
+          "name": "search",
+          "arguments": {
+            "q": "a"
+          },
+          "callId": "c1",
+          "success": true,
+          "result": {
+            "formattedText": "hit a"
+          }
+        },
+        {
+          "name": "search",
+          "arguments": {
+            "q": "b"
+          },
+          "callId": "c2",
+          "success": true,
+          "result": {
+            "formattedText": "hit b"
+          }
+        }
       ],
       "streams": [
-        [ { "content": "Step two. " }, { "done": true, "rawResponse": { "marker": "m1", "stop_reason": "end_turn" }, "usage": { "promptTokens": 12, "completionTokens": 3, "totalTokens": 15 } } ],
-        [ { "content": "Step three. " }, { "done": true, "rawResponse": { "marker": "m2", "stop_reason": "end_turn" }, "usage": { "promptTokens": 14, "completionTokens": 3, "totalTokens": 17 } } ],
-        [ { "content": "forced prose" }, { "done": true, "rawResponse": { "marker": "mf", "stop_reason": "end_turn" }, "usage": { "promptTokens": 16, "completionTokens": 4, "totalTokens": 20 } } ]
+        [
+          {
+            "content": "Step two. "
+          },
+          {
+            "done": true,
+            "rawResponse": {
+              "content": [
+                {
+                  "type": "tool_use",
+                  "id": "c2",
+                  "name": "search",
+                  "input": {
+                    "q": "b"
+                  }
+                }
+              ],
+              "stop_reason": "end_turn"
+            },
+            "usage": {
+              "promptTokens": 12,
+              "completionTokens": 3,
+              "totalTokens": 15
+            }
+          }
+        ],
+        [
+          {
+            "content": "Step three. "
+          },
+          {
+            "done": true,
+            "rawResponse": {
+              "content": [],
+              "stop_reason": "end_turn"
+            },
+            "usage": {
+              "promptTokens": 14,
+              "completionTokens": 3,
+              "totalTokens": 17
+            }
+          }
+        ],
+        [
+          {
+            "content": "forced prose"
+          },
+          {
+            "done": true,
+            "rawResponse": {
+              "content": [
+                {
+                  "type": "tool_use",
+                  "id": "cf",
+                  "name": "submit_final_response",
+                  "input": {
+                    "response": "Final forced answer."
+                  }
+                }
+              ],
+              "stop_reason": "end_turn"
+            },
+            "usage": {
+              "promptTokens": 16,
+              "completionTokens": 4,
+              "totalTokens": 20
+            }
+          }
+        ]
       ],
       "dumpChats": true
     }

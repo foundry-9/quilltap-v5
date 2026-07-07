@@ -26,6 +26,7 @@ pub mod decoders;
 pub mod embedding;
 pub mod image;
 pub mod stream;
+pub mod tool_wire;
 
 pub use completion::{
     CannedCompletionProvider, CompletionError, CompletionMessage, CompletionParams,

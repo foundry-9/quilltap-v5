@@ -4,6 +4,29 @@
 
 ### 5.0-dev
 
+Phase 3 — wave 4 (W4.7c, part 1): the provider tool-wire. Ported v4's
+`packages/plugin-utils/src/tools/*` + the per-plugin tool glue into
+`quilltap-core::model::tool_wire` — the tool-format reshape (`formatTools`:
+Anthropic `input_schema` / Google `parameters` / OpenAI passthrough), the native
+tool-call parse (`parseOpenAIToolCalls` / `parseAnthropicToolCalls` /
+`parseGoogleToolCalls` + the Google `functionCalls` fast path), and the
+spontaneous XML text-marker detect/parse/strip (the full `hasAnyXMLToolMarkers` /
+`parseAllXMLAsToolCalls` / `stripAllXMLToolMarkers` suite + Google's tool_use-only
+variant), all dispatched by the manifest `toolFormat` (the registry replaces
+`getProvider`). The one backreference regex (`<key>value</key>`) is hand-rolled;
+the other regexes reproduce JS ASCII `\w`/`\s` semantics. Closes three live seams:
+the native-tool-loop `ToolCallDetector` (new `RegistryToolCallDetector`), the
+text-tool-loop provider-text-markers strategy (new `ProviderTextMarkersStrategy`),
+and the W4.1g `formatTools` provider reshape
+(`tool_build::format_tools_for_provider`, available + tested; wiring into
+`build_tools` is a documented spine handoff). Verified by `tool_wire_equivalence`
+(231 rows byte-exact against v4's real plugin methods over the real b.3 catalog +
+recorded rawResponses), and by regenerating `native_tool_loop_tier3_equivalence`
+(real Anthropic detector over real anthropic rawResponses) and
+`text_tool_loop_tier3_equivalence` (real DeepSeek provider strategy) — both green.
+Deferred to W4.7c part 2: the per-provider request-envelope builders + the four
+`RequestTransform` hooks.
+
 Phase 3 — wave 4 (W4.3): the answer-confirmation service. Ported v4's
 `answer-confirmation.service.ts` (the pre-landing Salon consistency check +
 re-affirmation): the gate/leaf functions (`isAnswerConfirmationActive`,

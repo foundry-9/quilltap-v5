@@ -90,6 +90,46 @@ impl ToolCallDetector for NoToolCallDetector {
     }
 }
 
+/// The REAL detector (W4.7c) — v4 `detectToolCallsInResponse` = `detectToolCalls`
+/// → the provider plugin's `parseToolCalls`, dispatched by the manifest registry.
+/// This is the production wiring that replaces [`NoToolCallDetector`] once the
+/// orchestrator spine is unified (a tracked handoff — the spine keeps
+/// [`NoToolCallDetector`] until then so its differential stays green).
+pub struct RegistryToolCallDetector<'a> {
+    registry: &'a crate::provider_manifest::Registry,
+}
+
+impl RegistryToolCallDetector<'static> {
+    /// A detector over the nine built-in provider manifests.
+    #[must_use]
+    pub fn built_in() -> RegistryToolCallDetector<'static> {
+        RegistryToolCallDetector {
+            registry: crate::provider_manifest::Registry::built_in(),
+        }
+    }
+}
+
+impl<'a> RegistryToolCallDetector<'a> {
+    /// A detector over an arbitrary manifest registry (third-party path).
+    #[must_use]
+    pub fn with_registry(registry: &'a crate::provider_manifest::Registry) -> Self {
+        RegistryToolCallDetector { registry }
+    }
+}
+
+impl ToolCallDetector for RegistryToolCallDetector<'_> {
+    fn detect(&self, raw_response: &Value, provider: &str) -> Vec<ToolCall> {
+        crate::model::tool_wire::detect_native_tool_calls(self.registry, raw_response, provider)
+            .into_iter()
+            .map(|r| ToolCall {
+                name: r.name,
+                arguments: r.arguments,
+                call_id: r.call_id,
+            })
+            .collect()
+    }
+}
+
 // ===========================================================================
 // Truncation guard (native-tool-loop.service.ts:91–105)
 // ===========================================================================

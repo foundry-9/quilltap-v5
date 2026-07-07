@@ -348,6 +348,30 @@ pub fn build_tools_for_provider(options: &BuildToolsForProviderOptions) -> Vec<V
         .collect()
 }
 
+/// The provider `formatTools` reshape (W4.7c) — v4 `buildToolsForProvider`'s
+/// step 3-5: hand the canonical (OpenAI/universal) tools to the provider plugin's
+/// `formatTools`, reshaping to the provider's native tool definition (Anthropic
+/// `input_schema`, Google `parameters`, OpenAI passthrough) via the manifest
+/// registry. This CLOSES the W4.1g provider-reshape deferral in the sense that the
+/// reshape logic is now ported + differentially verified
+/// (`tool_wire_equivalence`).
+///
+/// **Not yet wired into [`build_tools`]** (a tracked handoff): the orchestrator
+/// spine calls `build_tools` and asserts the exact slate at the wire, and its
+/// oracle was generated with an EMPTY provider registry (canonical tools). Wiring
+/// the reshape into `build_tools` therefore requires regenerating the spine-owned
+/// `orchestrator_tier3` oracle WITH the real registry initialized — the
+/// unification pass's job. `build_tools` keeps returning canonical tools until
+/// then, so `build_tools` output is provider-independent (as documented on
+/// [`BuildToolsInput::provider`]).
+pub fn format_tools_for_provider(provider: &str, canonical: &[Value]) -> Vec<Value> {
+    crate::model::tool_wire::format_tools_for_provider(
+        crate::provider_manifest::Registry::built_in(),
+        provider,
+        canonical,
+    )
+}
+
 /// v4 `buildTools` input. The connection-profile fields the flag region reads,
 /// the per-turn flags computed in the orchestrator, and the two injected
 /// registry-seam capabilities.

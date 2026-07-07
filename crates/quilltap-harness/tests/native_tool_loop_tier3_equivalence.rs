@@ -12,8 +12,10 @@
 //!      (a `canned` row); this test replays those sequences through a stateful
 //!      [`QueuedStreamingProvider`] (per-key queue), so a threaded-slate divergence
 //!      surfaces as a canned-miss;
-//!   2. `detectToolCallsInResponse` — canned by the raw response's `marker`
-//!      (`CaseDetector`), mirroring the oracle;
+//!   2. `detectToolCallsInResponse` — the REAL provider parse (W4.7c): the Rust
+//!      [`RegistryToolCallDetector`] over the corpus's REAL anthropic rawResponses
+//!      (`content[]` tool_use blocks), mirroring the oracle's real Anthropic
+//!      plugin `parseToolCalls`;
 //!   3. `executeToolCallWithContext` — canned per-call results
 //!      ([`CannedToolRunner`], keyed by `name|args|callId`), mirroring the oracle.
 //!
@@ -52,7 +54,7 @@ use quilltap_core::model::stream::{
 use quilltap_core::services::agent_mode::ResolvedAgentMode;
 use quilltap_core::services::chat_events::RecordingSink;
 use quilltap_core::services::native_tool_loop::{
-    run_native_tool_loop, RunNativeToolLoopOptions, ToolCallDetector,
+    run_native_tool_loop, RegistryToolCallDetector, RunNativeToolLoopOptions,
 };
 use quilltap_core::services::primary_stream::{
     EffectiveProfile, PreservePartialOnError, StreamingState,
@@ -67,14 +69,6 @@ use serde_json::{json, Value};
 // ---------------------------------------------------------------------------
 // Spec.
 // ---------------------------------------------------------------------------
-
-#[derive(Deserialize, Clone)]
-struct ToolCallSpec {
-    name: String,
-    arguments: Value,
-    #[serde(rename = "callId", default)]
-    call_id: Option<String>,
-}
 
 #[derive(Deserialize, Clone)]
 struct CannedToolSpec {
@@ -110,7 +104,6 @@ struct CaseSpec {
     initial_raw_response: Value,
     #[serde(rename = "formattedMessages")]
     formatted_messages: Vec<WireMsg>,
-    detection: HashMap<String, Vec<ToolCallSpec>>,
     #[serde(rename = "cannedTools")]
     canned_tools: Vec<CannedToolSpec>,
 }
@@ -273,47 +266,6 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
 }
 
 // ---------------------------------------------------------------------------
-// Per-case canned detector (by raw-response marker).
-// ---------------------------------------------------------------------------
-
-struct CaseDetector {
-    by_marker: HashMap<String, Vec<ToolCall>>,
-}
-
-impl CaseDetector {
-    fn new(detection: &HashMap<String, Vec<ToolCallSpec>>) -> Self {
-        let by_marker = detection
-            .iter()
-            .map(|(marker, calls)| {
-                (
-                    marker.clone(),
-                    calls
-                        .iter()
-                        .map(|c| ToolCall {
-                            name: c.name.clone(),
-                            arguments: c.arguments.clone(),
-                            call_id: c.call_id.clone(),
-                        })
-                        .collect(),
-                )
-            })
-            .collect();
-        Self { by_marker }
-    }
-}
-
-impl ToolCallDetector for CaseDetector {
-    fn detect(&self, raw_response: &Value, _provider: &str) -> Vec<ToolCall> {
-        raw_response
-            .get("marker")
-            .and_then(Value::as_str)
-            .and_then(|m| self.by_marker.get(m))
-            .cloned()
-            .unwrap_or_default()
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Result / event serialization.
 // ---------------------------------------------------------------------------
 
@@ -407,7 +359,7 @@ async fn native_tool_loop_tier3_matches_oracle() {
     }
 
     for c in &spec.cases {
-        let detector = CaseDetector::new(&c.detection);
+        let detector = RegistryToolCallDetector::built_in();
         let sink = RecordingSink::new();
         let mut preserve = PreservePartialOnError::new(
             c.chat_id.clone(),
