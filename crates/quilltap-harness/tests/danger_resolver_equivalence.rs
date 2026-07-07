@@ -9,7 +9,12 @@
 //!      `resolveDangerousContentSettings` + the `chat-override` predicates).
 //!   2. `QT_ORACLE_DANGER_MANUAL_FLIP` + `QT_FIXTURE_MANUAL_FLIP` — the tier-2
 //!      NDJSON from `harness/oracle/cases/danger-manual-flip.test.ts` (drives
-//!      v4's REAL `applyConciergeFlip`) + the baked seed fixture.
+//!      v4's REAL `applyConciergeFlip`) + the baked seed fixture. The ported
+//!      `RealConciergeAnnouncer` posts the manual Concierge bubble (v4
+//!      `postConciergeManualAnnouncement`, un-mocked in the oracle) into
+//!      `chat_messages` on every **changed** flip, so both the `chats` row (its
+//!      `addMessage`-bumped `updatedAt`/`lastMessageAt`/`messageCount`) and the
+//!      `chat_messages` bubble are diffed.
 //!
 //! Generate (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
@@ -34,7 +39,7 @@ use quilltap_core::services::dangerous_content::chat_override::{
     get_concierge_state, is_chat_active_dangerous, is_concierge_off_duty, ConciergeState,
 };
 use quilltap_core::services::dangerous_content::manual_flip::{
-    apply_concierge_flip, NoConciergeAnnouncer,
+    apply_concierge_flip, RealConciergeAnnouncer,
 };
 use quilltap_core::services::dangerous_content::resolver::resolve_dangerous_content_settings;
 use serde::Deserialize;
@@ -171,7 +176,7 @@ enum FlipOracleRow {
         changed: bool,
     },
     #[serde(rename = "table")]
-    Table { rows: Vec<Value> },
+    Table { table: String, rows: Vec<Value> },
 }
 
 fn state_from_str(s: &str) -> ConciergeState {
@@ -183,14 +188,45 @@ fn state_from_str(s: &str) -> ConciergeState {
     }
 }
 
+const FLIP_SEED_TS: &str = "2020-01-01T00:00:00.000Z";
+
 /// Placeholder the minted `dangerClassifiedAt` (present-non-null → `<ts>`) so the
-/// flagged-path mint compares; every other danger column + `updatedAt`
-/// (preserved, proving no bump) is diffed exactly.
+/// flagged-path mint compares. `updatedAt` / `lastMessageAt` are bumped by the
+/// Concierge manual-announcement's `addMessage` (v4 `repos.chats.addMessage`) on a
+/// **changed** flip — sentinel-aware, so a value equal to the `2020` seed stays
+/// (proving the noop path posted nothing) and a mint collapses to `<ts>`.
 fn normalize_chat_rows(rows: &mut [Value]) {
     for row in rows.iter_mut() {
         if let Some(obj) = row.as_object_mut() {
             if obj.get("dangerClassifiedAt").map(|v| !v.is_null()) == Some(true) {
                 obj.insert("dangerClassifiedAt".into(), Value::String("<ts>".into()));
+            }
+            for col in ["updatedAt", "lastMessageAt"] {
+                let minted = obj
+                    .get(col)
+                    .and_then(Value::as_str)
+                    .map(|s| s != FLIP_SEED_TS)
+                    .unwrap_or(false);
+                if minted {
+                    obj.insert(col.into(), Value::String("<ts>".into()));
+                }
+            }
+        }
+    }
+}
+
+/// The Concierge manual bubble's minted `id` + `createdAt` are placeholdered; every
+/// other column (content / opaqueContent / systemSender / systemKind / role /
+/// type / participantId / attachments …) is diffed exactly against v4's REAL
+/// writer.
+fn normalize_message_rows(rows: &mut [Value]) {
+    for row in rows.iter_mut() {
+        if let Some(obj) = row.as_object_mut() {
+            if obj.contains_key("id") {
+                obj.insert("id".into(), Value::String("<id>".into()));
+            }
+            if obj.get("createdAt").map(|v| !v.is_null()) == Some(true) {
+                obj.insert("createdAt".into(), Value::String("<ts>".into()));
             }
         }
     }
@@ -216,9 +252,10 @@ async fn danger_manual_flip_matches_oracle() {
     let oracle_text =
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
 
-    // Parse oracle: op results (by id) + the chats table dump.
+    // Parse oracle: op results (by id) + the chats + chat_messages table dumps.
     let mut want_ops: std::collections::HashMap<String, (String, bool)> = Default::default();
     let mut want_rows: Vec<Value> = Vec::new();
+    let mut want_message_rows: Vec<Value> = Vec::new();
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<FlipOracleRow>(line).expect("parse flip oracle row") {
             FlipOracleRow::Op {
@@ -228,7 +265,11 @@ async fn danger_manual_flip_matches_oracle() {
             } => {
                 want_ops.insert(id, (new_state, changed));
             }
-            FlipOracleRow::Table { rows } => want_rows = rows,
+            FlipOracleRow::Table { table, rows } => match table.as_str() {
+                "chats" => want_rows = rows,
+                "chat_messages" => want_message_rows = rows,
+                other => panic!("unexpected oracle table {other}"),
+            },
         }
     }
 
@@ -249,7 +290,7 @@ async fn danger_manual_flip_matches_oracle() {
             .unwrap_or_else(|| panic!("op {}: chat {} missing", op.id, op.chat_id));
         let result = apply_concierge_flip(
             &db,
-            &NoConciergeAnnouncer,
+            &RealConciergeAnnouncer { db: &db },
             &op.chat_id,
             state_from_str(&op.requested),
             &chat,
@@ -272,6 +313,9 @@ async fn danger_manual_flip_matches_oracle() {
     let mut got_dump = db
         .read_main(|c| dump_table_json_conn(c, "chats", "id"))
         .expect("dump chats");
+    let mut got_message_dump = db
+        .read_main(|c| dump_table_json_conn(c, "chat_messages", "chatId"))
+        .expect("dump chat_messages");
     drop(db);
     let _ = std::fs::remove_file(&work);
 
@@ -288,5 +332,23 @@ async fn danger_manual_flip_matches_oracle() {
     let want_rows = want_rows.into_iter().map(canon).collect::<Vec<_>>();
 
     assert_eq!(got_rows, want_rows, "chats rows diverge after manual flips");
-    eprintln!("OK: danger manual-flip chats dump matched oracle.");
+
+    // The Concierge manual bubble (v4 `postConciergeManualAnnouncement`, now real
+    // on both sides) lands in `chat_messages` — one per changed flip, none for the
+    // no-op. Diff those rows byte-for-byte (id/createdAt placeholdered).
+    let mut got_msgs: Vec<Value> = got_message_dump
+        .get_mut("rows")
+        .and_then(Value::as_array_mut)
+        .expect("dump message rows")
+        .clone();
+    normalize_message_rows(&mut got_msgs);
+    normalize_message_rows(&mut want_message_rows);
+    let got_msgs = got_msgs.into_iter().map(canon).collect::<Vec<_>>();
+    let want_msgs = want_message_rows.into_iter().map(canon).collect::<Vec<_>>();
+    assert_eq!(
+        got_msgs, want_msgs,
+        "chat_messages rows diverge after manual flips"
+    );
+
+    eprintln!("OK: danger manual-flip chats + chat_messages dumps matched oracle.");
 }

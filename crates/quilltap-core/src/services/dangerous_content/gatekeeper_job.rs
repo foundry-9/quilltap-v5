@@ -48,17 +48,54 @@ pub struct DangerAnnouncementDetails {
 }
 
 /// The danger announcement seam (v4 `postConciergeDangerAnnouncement`). Posts a
-/// synthetic Concierge bubble when a chat newly flips dangerous. Default no-op
-/// (the personified writer is a W4.6 deferral; the differential mocks it).
+/// synthetic Concierge bubble when a chat newly flips dangerous. Now closed by
+/// [`RealDangerAnnouncer`] (W4.6b — the ported `concierge_notifications` writer);
+/// [`NoDangerAnnouncer`] is the posts-nothing wiring the resolver-only path uses.
+/// Async (the writer awaits the single-writer channel); modeled on the
+/// `EmbeddingProvider` RPITIT precedent so the future is `Send` without boxing.
 pub trait DangerAnnouncer {
-    fn post_danger(&self, chat_id: &str, details: &DangerAnnouncementDetails);
+    fn post_danger(
+        &self,
+        chat_id: &str,
+        details: &DangerAnnouncementDetails,
+    ) -> impl std::future::Future<Output = ()> + Send;
 }
 
-/// A [`DangerAnnouncer`] that posts nothing — the faithful wiring until the
-/// personified writer lands (W4.6).
+/// A [`DangerAnnouncer`] that posts nothing.
 pub struct NoDangerAnnouncer;
 impl DangerAnnouncer for NoDangerAnnouncer {
-    fn post_danger(&self, _chat_id: &str, _details: &DangerAnnouncementDetails) {}
+    async fn post_danger(&self, _chat_id: &str, _details: &DangerAnnouncementDetails) {}
+}
+
+/// The real Concierge danger announcer (v4 `postConciergeDangerAnnouncement`) —
+/// posts the personified bubble through the ported
+/// [`crate::services::concierge_notifications`] writer. Best-effort (the writer
+/// swallows its own failure and returns `None`).
+pub struct RealDangerAnnouncer<'a> {
+    pub db: &'a Db,
+}
+impl DangerAnnouncer for RealDangerAnnouncer<'_> {
+    async fn post_danger(&self, chat_id: &str, details: &DangerAnnouncementDetails) {
+        use crate::services::concierge_notifications as cn;
+        let cd = cn::ConciergeDangerDetails {
+            score: details.score,
+            threshold: details.threshold,
+            categories: details
+                .categories
+                .iter()
+                .map(|c| cn::ConciergeCategory {
+                    category: c.category.clone(),
+                    score: c.score,
+                    // v4's DangerCategory carries a resolved label; the writer's
+                    // `resolve_label` treats it as the `providedLabel`.
+                    label: Some(c.label.clone()),
+                })
+                .collect(),
+            source: details.source.clone(),
+            provider_name: details.provider_name.clone(),
+        };
+        cn::post_concierge_danger_announcement(self.db, chat_id, Some(&cd)).await;
+    }
 }
 
 /// v4 `handleChatDangerClassification`. Drives the classification and persists
@@ -284,16 +321,18 @@ where
     // Sticky-true: reaching here means a NEW transition to dangerous, so the
     // Concierge announces exactly once per chat.
     if result.is_dangerous {
-        announcer.post_danger(
-            &chat_id,
-            &DangerAnnouncementDetails {
-                score: result.score,
-                threshold: danger_settings.threshold,
-                categories: result.categories.clone(),
-                source: result.source.clone(),
-                provider_name: result.provider_name.clone(),
-            },
-        );
+        announcer
+            .post_danger(
+                &chat_id,
+                &DangerAnnouncementDetails {
+                    score: result.score,
+                    threshold: danger_settings.threshold,
+                    categories: result.categories.clone(),
+                    source: result.source.clone(),
+                    provider_name: result.provider_name.clone(),
+                },
+            )
+            .await;
     }
 
     Ok(())

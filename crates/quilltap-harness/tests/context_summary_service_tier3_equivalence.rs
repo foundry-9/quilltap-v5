@@ -19,6 +19,14 @@
 //!      to first-seen tokens; minted timestamps sentinel-placeholdered — a value
 //!      equal to the seed sentinel stays pinned, catching a stray mint).
 //!
+//! W4.6b: the `generate` ops drive `generate_context_summary_with_seams` with
+//! [`RealContextSummarySeams`], so the fold now ALSO writes the Librarian summary
+//! whisper + the CONTEXT_SUMMARY / TITLE_GENERATION cost events into
+//! `chat_messages` (and bumps the chat's token aggregates); the oracle un-mocks
+//! the matching v4 writers for those ops. The `check`-op internal fold keeps the
+//! `NoopSeams` (the spine caller is unchanged), so it posts none of those — the
+//! oracle gates its mocks the same way.
+//!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
 //!   cd ~/source/quilltap-server
@@ -43,8 +51,9 @@ use quilltap_core::model::completion::{
 };
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use quilltap_core::services::context_summary::{
-    check_and_generate_summary_if_needed, generate_context_summary,
+    check_and_generate_summary_if_needed, generate_context_summary_with_seams,
     invalidate_context_summary_if_message_covered, CheapLlmSettings, GenerateSummaryOptions,
+    RealContextSummarySeams,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -409,7 +418,19 @@ async fn context_summary_service_tier3_matches_oracle() {
                     danger_settings: None,
                     registry_cheapest_for_current: None,
                 };
-                let r = generate_context_summary(&db, &completion, &executor, &options).await;
+                // W4.6b: drive the real Librarian re-post + cost-event seams (the
+                // `check`-op internal folds still use `NoopSeams` inside
+                // `check_and_generate_summary_if_needed`, matching the oracle's
+                // per-op-gated mocks).
+                let seams = RealContextSummarySeams { db: &db };
+                let r = generate_context_summary_with_seams(
+                    &db,
+                    &completion,
+                    &executor,
+                    &options,
+                    &seams,
+                )
+                .await;
                 // Match v4's result shape: undefined keys are dropped by
                 // JSON.stringify, so `summary`/`error`/`usage` only appear when set.
                 let mut obj = serde_json::Map::new();
@@ -526,12 +547,27 @@ async fn context_summary_service_tier3_matches_oracle() {
             // `context` text (identical both sides). Other tables keep order_by.
             if let Some(rows) = dumps[i].get_mut("rows").and_then(Value::as_array_mut) {
                 if spec.table == "chat_messages" {
+                    // The minted rows now include the Librarian summary whisper
+                    // (systemSender='librarian') + the CONTEXT_SUMMARY / TITLE_GENERATION
+                    // SYSTEM cost events (distinguished by systemEventType/description),
+                    // all sharing the `<minted>` id token, so the sort key spans
+                    // every discriminating column.
                     rows.sort_by(|a, b| {
                         let key = |r: &Value| {
                             let f = |k: &str| {
                                 r.get(k).and_then(Value::as_str).unwrap_or("").to_string()
                             };
-                            (f("chatId"), f("type"), f("context"), f("content"), f("id"))
+                            (
+                                f("chatId"),
+                                f("type"),
+                                f("systemEventType"),
+                                f("systemSender"),
+                                f("systemKind"),
+                                f("description"),
+                                f("context"),
+                                f("content"),
+                                f("id"),
+                            )
                         };
                         key(a).cmp(&key(b))
                     });

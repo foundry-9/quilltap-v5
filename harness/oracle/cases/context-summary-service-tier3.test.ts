@@ -19,11 +19,15 @@
  *   - `getApiKeyForCheapLLMSelection` → a constant (host-side; the Rust boundary
  *     starts at the provider call).
  *   - `logLLMCall` → no-op (a fire-and-forget llm-logs side channel).
- *   - the four cross-subsystem side effects (`postLibrarianSummaryAnnouncement`,
- *     `writeConversationSummaryToVaults`/`computeConversationStats`,
- *     `refreshRelevantConversationsOnFold`, `estimateMessageCost`) → no-ops,
- *     matching the Rust default no-op seams. The *sweep* of prior Librarian
- *     whispers is v4's REAL code (not mocked) — it deletes the seeded rows.
+ *   - W4.6b: `postLibrarianSummaryAnnouncement` + `createContextSummaryEvent` +
+ *     `createTitleGenerationEvent` run REAL for `generate` ops (matching the
+ *     ported `RealContextSummarySeams`) and no-op for the `check`-op internal
+ *     fold (matching the `NoopSeams` the spine caller keeps). `estimateMessageCost`
+ *     returns `{ cost: null }` (host-resolved; the Rust seam passes `None`), and
+ *     `writeConversationSummaryToVaults`/`computeConversationStats` +
+ *     `refreshRelevantConversationsOnFold` stay no-ops (documented handoffs). The
+ *     *sweep* of prior Librarian whispers is v4's REAL code — it deletes the
+ *     seeded rows.
  *
  * Everything else — the cheap-LLM selection, the execution pipeline, the fold /
  * title tasks, the turn partition, the gate, the title enqueue, the sweep, the
@@ -151,6 +155,12 @@ async function main(): Promise<void> {
   // The oracle processes ops sequentially. `currentOp` steers the mock's rule
   // lookup so each fold/title call resolves to its op's canned content.
   let currentOp = '';
+  // The Librarian re-post + cost events (W4.6b) are driven by the ported
+  // `RealContextSummarySeams` ONLY at the `generate_context_summary` entry point.
+  // `check_and_generate_summary_if_needed`'s internal fold uses `NoopSeams` (the
+  // spine caller is unchanged), so the `check`-op folds must NOT post those rows.
+  // Mirror that here: run the real writers only for `generate` ops.
+  let currentOpUsesRealSeams = false;
 
   // Classify the system prompt into a rule kind by its opening line (byte-stable
   // prompt bodies from v4 chat-tasks.ts).
@@ -237,14 +247,19 @@ async function main(): Promise<void> {
     const actual = jest.requireActual('@/lib/services/llm-logging.service');
     return { __esModule: true, ...actual, logLLMCall: async () => undefined };
   });
-  // The four cross-subsystem side effects → no-ops (matching the Rust default
-  // no-op seams). The Librarian *sweep* is NOT here — it is v4's real code.
+  // W4.6b: the Librarian re-post + the CONTEXT_SUMMARY / TITLE_GENERATION cost
+  // events now run REAL for `generate` ops (matching `RealContextSummarySeams`),
+  // and stay no-ops for the `check`-op internal fold (matching the `NoopSeams`
+  // the spine caller keeps) — gated on `currentOpUsesRealSeams`. The Librarian
+  // *sweep* is always v4's real code. The vault mirror + relevant-conversations
+  // refresh remain no-ops on both sides (documented handoffs).
   jest.doMock('@/lib/services/librarian-notifications/writer', () => {
     const actual = jest.requireActual('@/lib/services/librarian-notifications/writer');
     return {
       __esModule: true,
       ...actual,
-      postLibrarianSummaryAnnouncement: async () => undefined,
+      postLibrarianSummaryAnnouncement: async (params: unknown) =>
+        currentOpUsesRealSeams ? actual.postLibrarianSummaryAnnouncement(params) : undefined,
     };
   });
   jest.doMock('@/lib/file-storage/conversation-summary-vault-bridge', () => {
@@ -262,17 +277,21 @@ async function main(): Promise<void> {
     );
     return { __esModule: true, ...actual, refreshRelevantConversationsOnFold: async () => undefined };
   });
+  // The estimated cost stays host-resolved; the Rust seam passes `None`, so the
+  // fetcher returns null on both sides (the stored `estimatedCostUSD` is null).
   jest.doMock('@/lib/services/cost-estimation.service', () => {
     const actual = jest.requireActual('@/lib/services/cost-estimation.service');
-    return { __esModule: true, ...actual, estimateMessageCost: async () => ({ cost: 0 }) };
+    return { __esModule: true, ...actual, estimateMessageCost: async () => ({ cost: null }) };
   });
   jest.doMock('@/lib/services/system-events.service', () => {
     const actual = jest.requireActual('@/lib/services/system-events.service');
     return {
       __esModule: true,
       ...actual,
-      createContextSummaryEvent: async () => undefined,
-      createTitleGenerationEvent: async () => undefined,
+      createContextSummaryEvent: async (...args: unknown[]) =>
+        currentOpUsesRealSeams ? actual.createContextSummaryEvent(...args) : undefined,
+      createTitleGenerationEvent: async (...args: unknown[]) =>
+        currentOpUsesRealSeams ? actual.createTitleGenerationEvent(...args) : undefined,
     };
   });
   // Keep the in-process job runner OFF: the enqueued PENDING row is state under
@@ -318,6 +337,10 @@ async function main(): Promise<void> {
 
   for (const op of ops.ops) {
     currentOp = op.name;
+    // Only the direct `generate` entry point wires the real seams (the Rust
+    // differential drives `generate_context_summary_with_seams(RealContextSummarySeams)`
+    // there); `check`/`invalidate` keep the no-op seams.
+    currentOpUsesRealSeams = op.kind === 'generate';
     let result: unknown;
     if (op.kind === 'generate') {
       result = await generateContextSummary({

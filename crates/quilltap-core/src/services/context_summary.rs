@@ -36,21 +36,25 @@
 //! therefore always awaits the fold (v4's `awaitFold` branch), and the flag is
 //! dropped — see its docs.
 //!
-//! ## Deferred (tracked, out of scope for this unit — the cross-subsystem seams)
+//! ## The cross-subsystem seams ([`ContextSummarySeams`])
 //!
 //! Per the decomposition doc these belong to the post-office / vault / cost
 //! subsystems; they are best-effort in v4 (a failure never fails a fold) and are
-//! modeled here as the [`ContextSummarySeams`] trait, default no-ops, exactly as
-//! the oracle jest-mocks them:
+//! modeled here as the [`ContextSummarySeams`] trait. [`NoopSeams`] is the
+//! default no-op (matching the oracle mocks the spine callers keep);
+//! [`RealContextSummarySeams`] (W4.6b) closes two of them:
 //!
-//!   - `postLibrarianSummaryAnnouncement` — the fresh whisper post (the *sweep*
-//!     of prior whispers IS ported; only the re-post is deferred).
-//!   - `writeConversationSummaryToVaults` + `computeConversationStats` — the
-//!     Commonplace-Book vault mirror.
-//!   - `refreshRelevantConversationsOnFold` — the relevant-past-conversations
-//!     re-search + whisper.
+//!   - `postLibrarianSummaryAnnouncement` — the fresh whisper post — **CLOSED**
+//!     (the *sweep* of prior whispers is ported inline; the re-post rides the
+//!     ported [`crate::services::librarian_notifications`] writer).
 //!   - `estimateMessageCost` + `createContextSummaryEvent` /
-//!     `createTitleGenerationEvent` — the cost/system-event emit.
+//!     `createTitleGenerationEvent` — the cost/system-event emit — **CLOSED**
+//!     (through the ported [`crate::services::cost_events`] writers; the estimated
+//!     cost stays host-resolved → `None`).
+//!   - `writeConversationSummaryToVaults` + `computeConversationStats` — the
+//!     Commonplace-Book vault mirror — still a no-op (needs vault fixtures).
+//!   - `refreshRelevantConversationsOnFold` — the relevant-past-conversations
+//!     re-search + whisper — still a no-op (needs embedding).
 //!
 //! Also inherited from [`crate::services::cheap_llm_exec`]: the per-call
 //! `logLLMCall` llm-logs write and host-side API-key acquisition.
@@ -157,27 +161,166 @@ impl SummaryGenerationResult {
 
 /// The cross-subsystem side effects the fold fires (post-office / vault / cost).
 /// Every method is best-effort in v4 (a failure never fails the fold), so the
-/// default no-op implementation matches the oracle's jest mocks byte-for-byte in
-/// diffed state. A host wires the real subsystems in Phase 3/4.
-#[allow(unused_variables)]
+/// [`NoopSeams`] no-op implementation matches the oracle's jest mocks
+/// byte-for-byte in diffed state. [`RealContextSummarySeams`] (W4.6b) closes the
+/// Librarian re-post + the CONTEXT_SUMMARY / TITLE_GENERATION cost events; the
+/// vault-mirror + relevant-conversations refresh remain no-ops there (documented
+/// handoffs — they need vault fixtures + embedding).
+///
+/// Async (the real writers await the single-writer channel); modeled on the
+/// `EmbeddingProvider` / `DangerAnnouncer` RPITIT precedent so the futures are
+/// `Send` without boxing. `provider`/`model` on the cost events are the resolved
+/// cheap-LLM selection's provider/model (v4 `cheapLLM.provider`/`.modelName`);
+/// the estimated cost is host-resolved (v4 `estimateMessageCost`), so it is not
+/// threaded here (`None` — the differential drives the same null).
 pub trait ContextSummarySeams {
     /// `postLibrarianSummaryAnnouncement` — re-post the fresh whisper. The
     /// *sweep* of prior whispers is NOT here (it is ported inline).
-    fn post_librarian_summary(&self, chat_id: &str, summary: &str, new_generation: f64) {}
+    fn post_librarian_summary(
+        &self,
+        chat_id: &str,
+        summary: &str,
+        new_generation: f64,
+    ) -> impl std::future::Future<Output = ()> + Send;
     /// `writeConversationSummaryToVaults` + `computeConversationStats`.
-    fn mirror_summary_to_vaults(&self, chat_id: &str, summary: &str, new_generation: f64) {}
+    fn mirror_summary_to_vaults(
+        &self,
+        chat_id: &str,
+        summary: &str,
+        new_generation: f64,
+    ) -> impl std::future::Future<Output = ()> + Send;
     /// `refreshRelevantConversationsOnFold`.
-    fn refresh_relevant_conversations(&self, chat_id: &str, summary: &str) {}
+    fn refresh_relevant_conversations(
+        &self,
+        chat_id: &str,
+        summary: &str,
+    ) -> impl std::future::Future<Output = ()> + Send;
     /// `estimateMessageCost` + `createContextSummaryEvent`.
-    fn emit_summary_cost_event(&self, chat_id: &str, usage: Usage) {}
+    fn emit_summary_cost_event(
+        &self,
+        chat_id: &str,
+        usage: Usage,
+        provider: Option<&str>,
+        model: Option<&str>,
+    ) -> impl std::future::Future<Output = ()> + Send;
     /// `estimateMessageCost` + `createTitleGenerationEvent`.
-    fn emit_title_cost_event(&self, chat_id: &str, usage: Usage) {}
+    fn emit_title_cost_event(
+        &self,
+        chat_id: &str,
+        usage: Usage,
+        provider: Option<&str>,
+        model: Option<&str>,
+    ) -> impl std::future::Future<Output = ()> + Send;
 }
 
 /// The default no-op seams (matches the oracle's mocks).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct NoopSeams;
-impl ContextSummarySeams for NoopSeams {}
+impl ContextSummarySeams for NoopSeams {
+    async fn post_librarian_summary(&self, _chat_id: &str, _summary: &str, _new_generation: f64) {}
+    async fn mirror_summary_to_vaults(&self, _chat_id: &str, _summary: &str, _new_generation: f64) {
+    }
+    async fn refresh_relevant_conversations(&self, _chat_id: &str, _summary: &str) {}
+    async fn emit_summary_cost_event(
+        &self,
+        _chat_id: &str,
+        _usage: Usage,
+        _provider: Option<&str>,
+        _model: Option<&str>,
+    ) {
+    }
+    async fn emit_title_cost_event(
+        &self,
+        _chat_id: &str,
+        _usage: Usage,
+        _provider: Option<&str>,
+        _model: Option<&str>,
+    ) {
+    }
+}
+
+/// The real context-summary side effects (v4 `generateContextSummary`'s
+/// post-office + cost blocks; W4.6b): the Librarian summary re-post (through the
+/// ported [`crate::services::librarian_notifications`] writer) and the
+/// CONTEXT_SUMMARY / TITLE_GENERATION cost events (through the ported
+/// [`crate::services::cost_events`] writers). `mirror_summary_to_vaults` /
+/// `refresh_relevant_conversations` stay no-ops — the Commonplace-Book vault
+/// mirror + the relevant-conversations refresh need vault fixtures + embedding
+/// (documented handoff). Each write is best-effort (the writers swallow their own
+/// failure).
+pub struct RealContextSummarySeams<'a> {
+    pub db: &'a Db,
+}
+
+impl ContextSummarySeams for RealContextSummarySeams<'_> {
+    async fn post_librarian_summary(&self, chat_id: &str, summary: &str, new_generation: f64) {
+        use crate::services::librarian_notifications as ln;
+        // v4 posts with `targetParticipantIds: null` and
+        // `summaryAnchor: { compactionGeneration: newGeneration }`.
+        ln::post_librarian_summary_announcement(
+            self.db,
+            &ln::LibrarianSummaryAnnouncement {
+                chat_id: chat_id.to_string(),
+                summary: summary.to_string(),
+                target_participant_ids: None,
+                summary_anchor: Some(new_generation as i64),
+            },
+        )
+        .await;
+    }
+
+    async fn mirror_summary_to_vaults(&self, _chat_id: &str, _summary: &str, _new_generation: f64) {
+    }
+
+    async fn refresh_relevant_conversations(&self, _chat_id: &str, _summary: &str) {}
+
+    async fn emit_summary_cost_event(
+        &self,
+        chat_id: &str,
+        usage: Usage,
+        provider: Option<&str>,
+        model: Option<&str>,
+    ) {
+        use crate::services::cost_events as ce;
+        ce::create_context_summary_event(
+            self.db,
+            chat_id,
+            Some(ce::TokenUsage {
+                prompt_tokens: Some(usage.prompt_tokens as f64),
+                completion_tokens: Some(usage.completion_tokens as f64),
+                total_tokens: Some(usage.total_tokens as f64),
+            }),
+            provider.map(str::to_string),
+            model.map(str::to_string),
+            // Host-resolved (`estimateMessageCost`); not threaded → NULL.
+            None,
+        )
+        .await;
+    }
+
+    async fn emit_title_cost_event(
+        &self,
+        chat_id: &str,
+        usage: Usage,
+        provider: Option<&str>,
+        model: Option<&str>,
+    ) {
+        use crate::services::cost_events as ce;
+        ce::create_title_generation_event(
+            self.db,
+            chat_id,
+            Some(ce::TokenUsage {
+                prompt_tokens: Some(usage.prompt_tokens as f64),
+                completion_tokens: Some(usage.completion_tokens as f64),
+                total_tokens: Some(usage.total_tokens as f64),
+            }),
+            provider.map(str::to_string),
+            model.map(str::to_string),
+            None,
+        )
+        .await;
+    }
+}
 
 fn to_cheap_llm_config(settings: &CheapLlmSettings) -> CheapLlmConfig {
     CheapLlmConfig {
@@ -478,14 +621,29 @@ async fn generate_inner<C: CompletionProvider, S: ContextSummarySeams>(
     if let Err(_e) = sweep_prior_summary_whispers(db, &chat_id, new_generation).await {
         // best-effort — swallowed (v4 logs and continues).
     }
-    seams.post_librarian_summary(&chat_id, &new_summary, new_generation);
+    seams
+        .post_librarian_summary(&chat_id, &new_summary, new_generation)
+        .await;
 
     // Deferred cross-subsystem seams (best-effort, no diffed state on the mock).
-    seams.mirror_summary_to_vaults(&chat_id, &new_summary, new_generation);
-    seams.refresh_relevant_conversations(&chat_id, &new_summary);
+    seams
+        .mirror_summary_to_vaults(&chat_id, &new_summary, new_generation)
+        .await;
+    seams
+        .refresh_relevant_conversations(&chat_id, &new_summary)
+        .await;
     if let Some(u) = usage {
         if u.prompt_tokens > 0 || u.completion_tokens > 0 {
-            seams.emit_summary_cost_event(&chat_id, u);
+            // v4 `createContextSummaryEvent(chatId, usage, cheapLLM.provider,
+            // cheapLLM.modelName, cost)` — provider/model = the resolved selection.
+            seams
+                .emit_summary_cost_event(
+                    &chat_id,
+                    u,
+                    Some(selection.provider.as_str()),
+                    Some(selection.model_name.as_str()),
+                )
+                .await;
         }
     }
 
@@ -518,7 +676,14 @@ async fn generate_inner<C: CompletionProvider, S: ContextSummarySeams>(
                     total_tokens: u.total_tokens,
                 };
                 if tu.prompt_tokens > 0 || tu.completion_tokens > 0 {
-                    seams.emit_title_cost_event(&chat_id, tu);
+                    seams
+                        .emit_title_cost_event(
+                            &chat_id,
+                            tu,
+                            Some(selection.provider.as_str()),
+                            Some(selection.model_name.as_str()),
+                        )
+                        .await;
                 }
             }
         }

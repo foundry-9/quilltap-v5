@@ -6,11 +6,15 @@
 //! ([`CannedCompletionProvider`], keys replayed from the oracle) and the
 //! moderation-provider path (a canned [`ModerationProvider`] mirroring the
 //! oracle's `moderationProviderRegistry` mock, incl. a provider failure) — then
-//! diffs `chats` + `chat_messages` against v4's REAL handler. Minted timestamps
-//! are sentinel-aware (`updatedAt` / `dangerClassifiedAt` stay at the seed
-//! `2020` sentinel on the moderation/skip paths — proving no bump — and
-//! placeholder to `<ts>` when the LLM path's system-event token aggregate mints
-//! a fresh value); the minted system-event id + createdAt are placeholdered.
+//! diffs `chats` + `chat_messages` against v4's REAL handler. On a NEW flip to
+//! dangerous the ported `RealDangerAnnouncer` posts the Concierge danger bubble
+//! (v4 `postConciergeDangerAnnouncement`, now un-mocked in the oracle), so that
+//! `type:'message'` row appears in `chat_messages` on both sides. Minted
+//! timestamps are sentinel-aware (`updatedAt` / `dangerClassifiedAt` /
+//! `lastMessageAt` stay at the seed `2020` sentinel on the moderation/skip paths
+//! — proving no bump — and placeholder to `<ts>` when the LLM path's token
+//! aggregate + Concierge post mint fresh values); the minted system-event /
+//! Concierge id + createdAt are placeholdered.
 //!
 //! Generate (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
@@ -39,7 +43,7 @@ use quilltap_core::services::dangerous_content::gatekeeper::{
     ModerationCategoryScore, ModerationOutcome, ModerationProvider, ModerationResult,
 };
 use quilltap_core::services::dangerous_content::gatekeeper_job::{
-    handle_chat_danger_classification, ChatDangerClassificationJob, NoDangerAnnouncer,
+    handle_chat_danger_classification, ChatDangerClassificationJob, RealDangerAnnouncer,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -215,12 +219,15 @@ fn canon_numbers(v: &mut Value) {
 }
 
 /// Sentinel-aware timestamp placeholder on the chats row: `updatedAt` /
-/// `dangerClassifiedAt` that differ from the `2020` seed sentinel are minted →
-/// `<ts>` (proving the bump); equal-to-seed values stay (proving no bump).
+/// `dangerClassifiedAt` / `lastMessageAt` that differ from the `2020` seed
+/// sentinel are minted → `<ts>` (proving the bump); equal-to-seed values stay
+/// (proving no bump). `lastMessageAt` is bumped only when the Concierge danger
+/// bubble (a `type:'message'` event) is posted — i.e. on the flip-to-dangerous
+/// path — so it stays at the seed on the safe/moderation/skip paths.
 fn normalize_chats(rows: &mut [Value]) {
     for row in rows.iter_mut() {
         if let Some(obj) = row.as_object_mut() {
-            for col in ["updatedAt", "dangerClassifiedAt"] {
+            for col in ["updatedAt", "dangerClassifiedAt", "lastMessageAt"] {
                 let minted = obj
                     .get(col)
                     .and_then(Value::as_str)
@@ -341,9 +348,17 @@ async fn danger_gatekeeper_tier3_matches_oracle() {
             chat_id: c.chat_id.clone(),
             connection_profile_id: c.connection_profile_id.clone(),
         };
-        handle_chat_danger_classification(&db, &moderation, &completion, &NoDangerAnnouncer, &job)
-            .await
-            .unwrap_or_else(|e| panic!("gatekeeper {}: {e:?}", c.name));
+        // The real Concierge announcer posts the danger bubble to `chat_messages`
+        // on a NEW flip to dangerous (W4.6b), matching v4's un-mocked writer.
+        handle_chat_danger_classification(
+            &db,
+            &moderation,
+            &completion,
+            &RealDangerAnnouncer { db: &db },
+            &job,
+        )
+        .await
+        .unwrap_or_else(|e| panic!("gatekeeper {}: {e:?}", c.name));
     }
 
     let mut got_chats = db

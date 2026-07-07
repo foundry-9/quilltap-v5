@@ -1,0 +1,174 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2026-02-01T00:00:00.000Z",
+  "userId": "a0000000-0000-4000-8000-000000000001",
+  "chat": {
+    "id": "c0000001-0000-4000-8000-0000000000c1",
+    "title": "Post Office Writers Chat"
+  },
+  "ada": {
+    "id": "aaaa1111-1111-4111-8111-111111111111",
+    "name": "Ada",
+    "identity": "A wandering scholar named {{char}}, well acquainted with {{user}}.",
+    "description": "Speaks in careful, riddling cadences."
+  },
+  "charlie": {
+    "id": "bbbb2222-2222-4222-8222-222222222222",
+    "name": "Charlie",
+    "identity": "The operator's own voice.",
+    "description": "A plain-spoken traveller."
+  },
+  "p1Id": "fa000001-0000-4000-8000-0000000000a1",
+  "p2Id": "fb000001-0000-4000-8000-0000000000b2",
+  "cases": [
+    {
+      "name": "concierge_danger",
+      "kind": "conciergeDanger",
+      "details": {
+        "score": 0.82,
+        "threshold": 0.5,
+        "categories": [
+          { "category": "violence", "score": 0.82 },
+          { "category": "self-harm", "score": 0.4, "label": "Self Harm" }
+        ],
+        "source": "moderation",
+        "providerName": "OPENAI"
+      }
+    },
+    {
+      "name": "concierge_manual_flagged",
+      "kind": "conciergeManual",
+      "manualKind": "manual-flagged"
+    },
+    {
+      "name": "concierge_manual_safe",
+      "kind": "conciergeManual",
+      "manualKind": "manual-safe"
+    },
+    {
+      "name": "concierge_manual_off_duty",
+      "kind": "conciergeManual",
+      "manualKind": "manual-off-duty"
+    },
+    {
+      "name": "concierge_manual_on_duty",
+      "kind": "conciergeManual",
+      "manualKind": "manual-on-duty"
+    },
+    {
+      "name": "prospero_conn_profile",
+      "kind": "prosperoConnProfile",
+      "characterName": "Ada",
+      "oldProfileLabel": "Old Model",
+      "newProfileLabel": "New Model"
+    },
+    {
+      "name": "host_status_change",
+      "kind": "hostStatusChange",
+      "characterName": "Ada",
+      "participantRef": "p1",
+      "oldStatus": "active",
+      "newStatus": "silent"
+    },
+    {
+      "name": "host_add",
+      "kind": "hostAdd",
+      "characterRef": "ada",
+      "participantRef": "p1",
+      "initialStatus": "active"
+    },
+    {
+      "name": "host_off_scene",
+      "kind": "hostOffScene",
+      "offSceneCharacters": [
+        {
+          "id": "cccc3333-3333-4333-8333-333333333333",
+          "name": "Zephyr",
+          "description": "A restless courier of the upper airs."
+        },
+        {
+          "id": "dddd4444-4444-4444-8444-444444444444",
+          "name": "Quill",
+          "identity": "A quiet archivist who never forgets a face."
+        }
+      ]
+    },
+    {
+      "name": "host_scenario",
+      "kind": "hostScenario",
+      "scenarioText": "A dim tavern at dusk; rain against the panes."
+    },
+    {
+      "name": "aurora_core_whisper",
+      "kind": "auroraCoreWhisper",
+      "targetRef": "p1",
+      "content": "You have a Core — Aurora offers it back to you.",
+      "opaqueContent": "Your Core, restated plainly."
+    },
+    {
+      "name": "aurora_outfit_change",
+      "kind": "auroraOutfitChange",
+      "characterName": "Ada",
+      "outfit": {
+        "top": ["a linen blouse"],
+        "bottom": ["charcoal trousers"],
+        "footwear": ["worn boots"],
+        "accessories": []
+      }
+    },
+    {
+      "name": "suparna_mail",
+      "kind": "suparnaMail",
+      "targetRef": "p2",
+      "content": "*Suparṇā glides in from the Post Office with a letter for you.*"
+    },
+    {
+      "name": "commonplace_targeted",
+      "kind": "commonplaceTargeted",
+      "targetRef": "p1",
+      "content": "You recall the entries that bear on this moment.",
+      "opaqueContent": "Recall, restated without the persona.",
+      "whisperKind": "memory-recap"
+    },
+    {
+      "name": "commonplace_public_null_opaque",
+      "kind": "commonplacePublicNullOpaque",
+      "content": "A public recall whisper with no opaque form.",
+      "whisperKind": "consolidated"
+    },
+    {
+      "name": "librarian_summary",
+      "kind": "librarianSummary",
+      "summary": "The party discussed the map and agreed to head north.",
+      "targetRefs": ["p1"],
+      "summaryAnchor": 3
+    },
+    {
+      "name": "librarian_open",
+      "kind": "librarianOpen",
+      "displayTitle": "Field Notes",
+      "filePath": "Notes/field-notes.md",
+      "scope": "document_store",
+      "mountPoint": "Notes",
+      "isNew": false,
+      "originBy": "character",
+      "originCharacterName": "Ada"
+    },
+    {
+      "name": "cost_context_summary",
+      "kind": "costContextSummary",
+      "usage": { "promptTokens": 120, "completionTokens": 45, "totalTokens": 165 },
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini",
+      "estimatedCostUSD": 0.0012
+    },
+    {
+      "name": "cost_title_generation",
+      "kind": "costTitleGeneration",
+      "usage": { "promptTokens": 30, "completionTokens": 8, "totalTokens": 38 },
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini",
+      "estimatedCostUSD": 0.0003
+    }
+  ]
+}

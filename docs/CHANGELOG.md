@@ -40,6 +40,43 @@ cached window), `compression_cache_tier3`. Marshaling: `courierCheckpoints` +
 handlers aren't exported (Phase-4 HTTP transport); their constituent repo ops are
 tier-2/tier-3-proven and the ported service functions are unit-tested.
 
+Phase 3 — wave 4 (W4.6b): the post-office / personified whisper writers. Ported
+every v4 `lib/services/<persona>-notifications/writer.ts` into new
+`services::<persona>_notifications` modules — Host, Prospero, Librarian,
+Concierge, Suparṇā, Aurora (core-whisper post + the outfit whispers + the
+`WARDROBE_OUTFIT_ANNOUNCEMENT` drain), Commonplace (persona/LLM whisper builders +
+`refreshRelevantConversationsOnFold`), and the Lantern image notification — each
+posting one `chat_messages` row through the ported `add_message` with the exact
+`systemSender` / `systemKind` / targeting / `opaqueContent` / `hostEvent` /
+`summaryAnchor` tuple, best-effort/error-swallowing. The steampunk/Wodehouse voice
+strings are byte-exact. Also ported the conversation-summary vault bridge
+(`writeConversationSummaryToVaults` + `removeConversationSummariesFromVaults`, over
+the ported document store + frontmatter emitter) and composed the `chats.delete`
+participant-vault summary sweep (`delete_conversation_with_vault_sweep`) — closing
+the LAST Phase-2 deferral — plus the cost/system-event writer (`createSystemEvent`
++ the memory/title/context-summary wrappers, posting a SYSTEM row + the ported
+token-aggregate bump). Non-spine seams closed live: the Concierge announcer seams
+in `dangerous_content` (`RealDangerAnnouncer` / `RealConciergeAnnouncer` — the W4.2
+`postConcierge{Danger,Manual}Announcement` deferrals), and the context-summary
+Librarian re-post + cost events (`RealContextSummarySeams`); the announcer/seam
+traits went async (RPITIT `-> impl Future + Send`, no boxing). Verified: six
+tier-1 pure-builder differentials (host/librarian/prospero/commonplace/aurora +
+concierge-lantern-suparna, byte-exact vs v4's real exports); a combined
+`post_office_writers_tier3_equivalence` (drives v4's real post functions over a
+two-DB fixture, diffs `chat_messages` + the cost `chats` aggregate, one case per
+row-shape/systemKind); a `vault_summary_mirror_tier2_equivalence` (mirror +
+rename-in-place + `syncVaults` skip + the delete sweep, five mount-index tables in
+the shared-cross-db id-map remap form); and the regenerated
+`context_summary_service_tier3` + `danger_gatekeeper_tier3` + the manual-flip case
+(the writers now post live on both sides). Handoffs (spine-owned, deferred): wiring
+the `BuildContextSeams` post methods (`post_core_whisper` /
+`post_commonplace_whisper` / `post_host_*` / `post_suparna_mail`), the
+`OrchestratorSeams::post_prospero_context`, and the end-of-turn wardrobe drain into
+the orchestrator/build_context spine; the context-summary vault-mirror +
+relevant-conversations-refresh seams (need vault fixtures + embedding); rewiring the
+image subsystem's Lantern sink to the full byte-exact writer; and the Librarian
+save-announcement `change:{kind:'edited',diff}` coupling in the doc-edit handlers.
+
 Phase 3 — wave 4 (W4.3): the answer-confirmation service. Ported v4's
 `answer-confirmation.service.ts` (the pre-landing Salon consistency check +
 re-affirmation): the gate/leaf functions (`isAnswerConfirmationActive`,
