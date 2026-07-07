@@ -410,44 +410,15 @@ async function main(): Promise<void> {
     return { __esModule: true, ...actual, getCompiledIdentityStack: () => null };
   });
 
-  // ---- W4.6b post-office writers → no-op (the READ feeders run real) ----
-  jest.doMock('@/lib/services/aurora-notifications/core-whisper', () => {
-    const actual = jest.requireActual('@/lib/services/aurora-notifications/core-whisper');
-    // Config + packet + builders run REAL; only the POST is the W4.6b seam.
-    return { __esModule: true, ...actual, postCoreWhisper: async () => null };
-  });
-  jest.doMock('@/lib/services/commonplace-notifications/writer', () => {
-    const actual = jest.requireActual('@/lib/services/commonplace-notifications/writer');
-    return { __esModule: true, ...actual, postCommonplaceWhisper: async () => null };
-  });
-  jest.doMock('@/lib/services/suparna-notifications/writer', () => {
-    const actual = jest.requireActual('@/lib/services/suparna-notifications/writer');
-    return { __esModule: true, ...actual, postSuparnaMailWhisper: async () => null };
-  });
+  // Round-3 unification (Group 2): the W4.6b buildContext whisper writers
+  // (core-whisper / commonplace / suparna / host timestamp+off-scene) AND the
+  // Prospero cadence context re-injection now run LIVE — the Rust spine wires
+  // RealBuildContextSeams + the direct Prospero cadence block, so both sides POST
+  // real whispers, and their chat_messages rows appear in the diffed dump. Only the
+  // operator-mail chat-load sweep stays a no-op (not a per-turn feeder).
   jest.doMock('@/lib/post-office/surface-operator-mail', () => {
     const actual = jest.requireActual('@/lib/post-office/surface-operator-mail');
     return { __esModule: true, ...actual, surfaceOperatorMailForChat: async () => undefined };
-  });
-  jest.doMock('@/lib/services/host-notifications/writer', () => {
-    const actual = jest.requireActual('@/lib/services/host-notifications/writer');
-    return {
-      __esModule: true,
-      ...actual,
-      postHostTimestampAnnouncement: async () => undefined,
-      postHostOffSceneCharactersAnnouncement: async () => null,
-    };
-  });
-  // Prospero context re-injection (cadence whisper) → no-op posts.
-  jest.doMock('@/lib/services/prospero-notifications/writer', () => {
-    const actual = jest.requireActual('@/lib/services/prospero-notifications/writer');
-    return {
-      __esModule: true,
-      ...actual,
-      loadProsperoProjectContext: async () => null,
-      loadProsperoGeneralContext: async () => null,
-      postProsperoContextAnnouncement: async () => null,
-      postProsperoGroupContextWhisper: async () => null,
-    };
   });
   jest.doMock('@/lib/services/librarian-notifications/writer', () => {
     const actual = jest.requireActual('@/lib/services/librarian-notifications/writer');

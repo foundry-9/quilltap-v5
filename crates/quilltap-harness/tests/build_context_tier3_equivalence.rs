@@ -38,7 +38,8 @@ use quilltap_core::model::completion::{
 };
 use quilltap_core::model::embedding::CannedEmbeddingProvider;
 use quilltap_core::services::build_context::{
-    build_context, BuildContextInput, ContextCharacter, ContextChat, ExistingMessage, NoopSeams,
+    build_context, BuildContextInput, ContextCharacter, ContextChat, ExistingMessage,
+    RealBuildContextSeams,
 };
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use quilltap_core::system_prompt::{Character as SysChar, UserCharacter};
@@ -348,7 +349,10 @@ async fn build_context_tier3_matches_oracle() {
     .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
 
     let executor = CheapLlmTaskExecutor::new();
-    let seams = NoopSeams;
+    // Round-3 unification (Group 2): the W4.6b whisper writers run LIVE (the oracle
+    // un-mocks the same writers). buildContext diffs only the returned BuiltContext;
+    // the POSTs are proven in orchestrator_tier3's table dump.
+    let seams = RealBuildContextSeams { db: &db };
 
     assert_eq!(
         spec.ops.len(),

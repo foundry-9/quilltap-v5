@@ -235,65 +235,17 @@ async function main(): Promise<void> {
   });
 
   // ---- W4.6b post-office writers → no-op / recorded (the POSTs stay seamed) ----
-  jest.doMock('@/lib/services/aurora-notifications/core-whisper', () => {
-    const actual = jest.requireActual('@/lib/services/aurora-notifications/core-whisper');
-    // Keep resolveCoreWhisperConfig + assembleCorePacket + the content builders
-    // REAL; only the POST (postCoreWhisper) is the W4.6b seam.
-    return {
-      __esModule: true,
-      ...actual,
-      postCoreWhisper: async () => null,
-    };
-  });
-  jest.doMock('@/lib/services/commonplace-notifications/writer', () => {
-    const actual = jest.requireActual('@/lib/services/commonplace-notifications/writer');
-    return { __esModule: true, ...actual, postCommonplaceWhisper: async () => null };
-  });
-  jest.doMock('@/lib/services/suparna-notifications/writer', () => {
-    const actual = jest.requireActual('@/lib/services/suparna-notifications/writer');
-    return { __esModule: true, ...actual, postSuparnaMailWhisper: async () => null };
-  });
-  jest.doMock('@/lib/post-office/mailbox', () => {
-    const actual = jest.requireActual('@/lib/post-office/mailbox');
-    return { __esModule: true, ...actual, collectUnalertedMail: async () => [], markAlerted: async () => undefined };
-  });
+  // Round-3 unification (Group 2): the W4.6b whisper writers are now wired LIVE
+  // into the Rust spine (`RealBuildContextSeams`), so they run REAL on both sides
+  // — no `postCore/postCommonplace/postSuparna/postHost*` overrides, and the
+  // mailbox READ (`collectUnalertedMail`/`markAlerted`) runs real too. buildContext
+  // diffs only the returned `BuiltContext`; the POSTs (chat_messages rows) are
+  // proven end-to-end in `orchestrator_tier3` (which dumps the tables). The
+  // operator-mail sweep is a chat-load path, not a buildContext feeder, so it stays
+  // mocked to a no-op.
   jest.doMock('@/lib/post-office/surface-operator-mail', () => {
     const actual = jest.requireActual('@/lib/post-office/surface-operator-mail');
     return { __esModule: true, ...actual, surfaceOperatorMailForChat: async () => undefined };
-  });
-  jest.doMock('@/lib/services/host-notifications/writer', () => {
-    const actual = jest.requireActual('@/lib/services/host-notifications/writer');
-    // W4.6a keeps the off-scene SCAN + content build REAL: the Host POST is the
-    // W4.6b seam, but buildContext surfaces `announcement.content` to THIS turn's
-    // context. So run the real content builder (no `addMessage`), matching the
-    // Rust off_scene::scan_off_scene_newcomers which computes the content itself.
-    return {
-      __esModule: true,
-      ...actual,
-      postHostTimestampAnnouncement: async () => undefined,
-      postHostOffSceneCharactersAnnouncement: async (params: {
-        characters?: Array<{ id: string }>;
-      }) => {
-        if (!params.characters || params.characters.length === 0) return null;
-        // Resolve the user-character name the same way the real POST does.
-        const repos = (await import('@/lib/repositories/factory')).getRepositories();
-        const chat = await repos.chats.findById((params as { chatId: string }).chatId);
-        let userCharacterName: string | null = null;
-        const userP = chat?.participants?.find(
-          (p: { type?: string; controlledBy?: string; characterId?: string }) =>
-            p.type === 'CHARACTER' && p.controlledBy === 'user' && p.characterId,
-        );
-        if (userP?.characterId) {
-          const uc = await repos.characters.findById(userP.characterId);
-          userCharacterName = uc?.name ?? null;
-        }
-        const content = actual.buildOffSceneCharactersContent(
-          params.characters,
-          userCharacterName,
-        );
-        return { content };
-      },
-    };
   });
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');

@@ -4,6 +4,23 @@
 
 ### 5.0-dev
 
+Phase 3 — Round-3 unification (Group 2, W4.6b post-office writers): wired the
+personified-system whisper POSTs live. `BuildContextSeams` is now async (RPITIT,
+matching `ContextSummarySeams`) with a `RealBuildContextSeams` production impl that
+delegates each POST to its W4.6b writer — core-whisper + commonplace (each with the
+v4 stale-whisper sweep), host timestamp + off-scene (the off-scene scan now returns
+the newcomer cards so the writer builds the announcement + stamps
+`introducedCharacterIds`), and Suparṇā mail (built from the unalerted letters,
+targeted at the responding participant). The commonplace `posted` still gates the
+scene-cache / recall-history persists. The Prospero cadence block (public context
+announcement + group-context whisper) is wired directly into the `processMessage`
+spine (dropped the `post_prospero_context` seam). Regenerated `build_context_tier3`
+(un-mocked writers, BuiltContext diff green) and `orchestrator_tier3` (whisper rows
+— commonplace / host / prospero group-context — now appear in the diffed
+chat_messages dump, matching v4's real writers). Residual: the Prospero public
+project/general announcement needs a provisioned General store in the fixture (the
+group-context cadence whisper is proven).
+
 Phase 3 — Round-3 unification (Group 1, W4.7c spine wiring): wired the provider
 tool reshape + native detector + provider text-markers strategy live into the
 `processMessage` spine. `tool_build::build_tools` now applies

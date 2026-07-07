@@ -538,58 +538,267 @@ impl Default for MemoryRecallSettings {
     }
 }
 
-/// The injected **whisper-POSTING** half of the context feeders (W4.6b). W4.6a
-/// closed every READ/COMPUTE feeder in-line (recap, distill, mount pool, frozen
-/// archive, live clothing, off-scene scan, recall settings, core-whisper assembly,
-/// Suparṇā mail read, scene-cache/recall-history persist); what remains is the set
-/// of personified-system message POSTs, which land with W4.6b's writers. Every
-/// method defaults to a no-op (and `post_commonplace_whisper` to "not posted"),
-/// matching the tier-3 oracle mocks. The `_seams`-prefixed / `#[allow(unused)]`
-/// params keep the signatures documentary until W4.6b consumes them.
-#[allow(unused_variables)]
+/// The injected **whisper-POSTING** half of the context feeders (W4.6b, wired live
+/// in the Round-3 unification pass). W4.6a closed every READ/COMPUTE feeder in-line
+/// (recap, distill, mount pool, frozen archive, live clothing, off-scene scan,
+/// recall settings, core-whisper assembly, Suparṇā mail read,
+/// scene-cache/recall-history persist); this trait is the set of personified-system
+/// message POSTs. [`RealBuildContextSeams`] delegates each to its W4.6b writer;
+/// [`NoopSeams`] keeps every method a no-op for read-only / off-path callers. The
+/// methods are async (RPITIT `+ Send`), matching [`crate::services::context_summary::
+/// ContextSummarySeams`].
 pub trait BuildContextSeams {
     /// v4 `postHostOffSceneCharactersAnnouncement` — the Host's public off-scene
-    /// introduction (the SCAN + content is W4.6a; only the `addMessage` POST is
-    /// deferred). Default: no-op.
-    fn post_host_off_scene_announcement(&self, chat_id: &str, content: &str) {}
+    /// introduction. Given the newcomer cards, post the intro (the writer builds the
+    /// content + stamps `hostEvent.introducedCharacterIds`) and return the posted
+    /// message's content, which THIS turn's LLM context includes (v4's
+    /// `pendingOffSceneAnnouncement = { content: announcement.content }`). Default:
+    /// no post → `None`.
+    fn post_host_off_scene_announcement(
+        &self,
+        chat_id: &str,
+        cards: &[crate::services::off_scene::OffSceneCharacterCard],
+    ) -> impl std::future::Future<Output = Option<String>> + Send {
+        let _ = (chat_id, cards);
+        async { None }
+    }
 
     /// v4 `postHostTimestampAnnouncement` — the Host's fictional-clock note.
     /// Default: no-op.
-    fn post_host_timestamp_announcement(&self, chat_id: &str, formatted: &str) {}
+    fn post_host_timestamp_announcement(
+        &self,
+        chat_id: &str,
+        formatted: &str,
+    ) -> impl std::future::Future<Output = ()> + Send {
+        let _ = (chat_id, formatted);
+        async {}
+    }
 
     /// v4 `postCoreWhisper` (+ the stale-whisper sweep) — Aurora's per-character
-    /// Core re-offering (the config + packet + LLM-context is W4.6a; only the POST
-    /// is deferred). Default: no-op.
+    /// Core re-offering. Default: no-op.
     fn post_core_whisper(
         &self,
         chat_id: &str,
         target_participant_id: &str,
         persona_content: &str,
         opaque_content: &str,
-    ) {
+    ) -> impl std::future::Future<Output = ()> + Send {
+        let _ = (
+            chat_id,
+            target_participant_id,
+            persona_content,
+            opaque_content,
+        );
+        async {}
     }
 
-    /// v4 `postCommonplaceWhisper` — the consolidated Commonplace-Book recall
-    /// whisper. Returns whether a whisper was durably posted (v4's `posted`), which
-    /// gates the two persist writes (`commonplaceSceneCache` / `commonplaceRecall-
-    /// History`). Default: `false` (nothing posted → no persist).
+    /// v4 `postCommonplaceWhisper` (+ the stale-whisper sweep) — the consolidated
+    /// Commonplace-Book recall whisper. Returns whether a whisper was durably posted
+    /// (v4's `posted`), which gates the two persist writes (`commonplaceSceneCache` /
+    /// `commonplaceRecallHistory`). Default: `false` (nothing posted → no persist).
     fn post_commonplace_whisper(
         &self,
         chat_id: &str,
         target_participant_id: Option<&str>,
         content: &str,
-    ) -> bool {
-        false
+    ) -> impl std::future::Future<Output = bool> + Send {
+        let _ = (chat_id, target_participant_id, content);
+        async { false }
     }
 
-    /// v4 `postSuparnaMailWhisper` — Suparṇā's new-mail whisper (the mail READ +
-    /// `alerted` flip is W4.6a; only the POST is deferred). Default: no-op.
-    fn post_suparna_mail(&self, chat_id: &str, content: &str) {}
+    /// v4 `postSuparnaMailWhisper` — Suparṇā's new-mail whisper. Given the unalerted
+    /// letters, build the persona whisper ([`crate::services::suparna_notifications::
+    /// build_suparna_mail_whisper`]) and post it targeted at the responding
+    /// participant (multi-character) or public (single). Default: no-op.
+    fn post_suparna_mail(
+        &self,
+        chat_id: &str,
+        letters: &[crate::post_office::mailbox::DeliveredLetterSummary],
+        target_participant_id: Option<&str>,
+    ) -> impl std::future::Future<Output = ()> + Send {
+        let _ = (chat_id, letters, target_participant_id);
+        async {}
+    }
 }
 
-/// The default no-op seam bundle.
+/// The default no-op seam bundle (read-only / off-path callers).
 pub struct NoopSeams;
 impl BuildContextSeams for NoopSeams {}
+
+/// The production seam bundle (Round-3 unification): each POST delegates to its
+/// W4.6b personified-system writer, and the core-whisper / commonplace posts run
+/// their stale-whisper sweeps (v4's `if (posted) { … sweep … }`).
+pub struct RealBuildContextSeams<'a> {
+    pub db: &'a Db,
+}
+
+impl BuildContextSeams for RealBuildContextSeams<'_> {
+    async fn post_host_off_scene_announcement(
+        &self,
+        chat_id: &str,
+        cards: &[crate::services::off_scene::OffSceneCharacterCard],
+    ) -> Option<String> {
+        let posted =
+            crate::services::host_notifications::post_host_off_scene_characters_announcement(
+                self.db,
+                crate::services::host_notifications::HostOffSceneCharactersAnnouncement {
+                    chat_id: chat_id.to_string(),
+                    characters: cards.to_vec(),
+                },
+            )
+            .await?;
+        posted
+            .message
+            .get("content")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    }
+
+    async fn post_host_timestamp_announcement(&self, chat_id: &str, formatted: &str) {
+        let _ = crate::services::host_notifications::post_host_timestamp_announcement(
+            self.db,
+            crate::services::host_notifications::HostTimestampAnnouncement {
+                chat_id: chat_id.to_string(),
+                formatted: formatted.to_string(),
+            },
+        )
+        .await;
+    }
+
+    async fn post_core_whisper(
+        &self,
+        chat_id: &str,
+        target_participant_id: &str,
+        persona_content: &str,
+        opaque_content: &str,
+    ) {
+        let posted = crate::services::aurora_notifications::post_core_whisper(
+            self.db,
+            chat_id,
+            target_participant_id,
+            persona_content,
+            opaque_content,
+        )
+        .await;
+        if let Some(msg) = posted {
+            let posted_id = msg
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let target = target_participant_id.to_string();
+            // v4: sweep prior aurora/core-whisper targeted at this participant,
+            // except the just-posted one.
+            sweep_stale_whispers(self.db, chat_id, &posted_id, move |m| {
+                m.get("systemSender").and_then(Value::as_str) == Some("aurora")
+                    && m.get("systemKind").and_then(Value::as_str) == Some("core-whisper")
+                    && target_ids_include(m, Some(&target))
+            })
+            .await;
+        }
+    }
+
+    async fn post_commonplace_whisper(
+        &self,
+        chat_id: &str,
+        target_participant_id: Option<&str>,
+        content: &str,
+    ) -> bool {
+        let params = crate::services::commonplace_notifications::PostCommonplaceParams {
+            chat_id: chat_id.to_string(),
+            target_participant_id: target_participant_id.map(str::to_string),
+            content: content.to_string(),
+            // v4 passes no `opaqueContent` (→ null) and kind `consolidated`.
+            opaque_content: None,
+            kind: crate::services::commonplace_notifications::CommonplaceWhisperKind::Consolidated,
+        };
+        match crate::services::commonplace_notifications::post_commonplace_whisper(self.db, params)
+            .await
+        {
+            Some(posted) => {
+                let target = target_participant_id.map(str::to_string);
+                // v4: sweep prior commonplaceBook whispers (NOT relevant-conversations)
+                // in the same target scope, except the just-posted one.
+                sweep_stale_whispers(self.db, chat_id, &posted.id, move |m| {
+                    m.get("systemSender").and_then(Value::as_str) == Some("commonplaceBook")
+                        && m.get("systemKind").and_then(Value::as_str)
+                            != Some("relevant-conversations")
+                        && target_ids_include(m, target.as_deref())
+                })
+                .await;
+                true
+            }
+            None => false,
+        }
+    }
+
+    async fn post_suparna_mail(
+        &self,
+        chat_id: &str,
+        letters: &[crate::post_office::mailbox::DeliveredLetterSummary],
+        target_participant_id: Option<&str>,
+    ) {
+        let content = crate::services::suparna_notifications::build_suparna_mail_whisper(letters);
+        let _ = crate::services::suparna_notifications::post_suparna_mail_whisper(
+            self.db,
+            crate::services::suparna_notifications::PostSuparnaMailWhisperParams {
+                chat_id: chat_id.to_string(),
+                target_participant_id: target_participant_id.map(str::to_string),
+                content,
+            },
+        )
+        .await;
+    }
+}
+
+/// v4's target-scope filter for the whisper sweep: when `target` is `None`, the
+/// stale whisper must be public (`targetParticipantIds` null/absent); when
+/// `Some(id)`, its `targetParticipantIds` must be an array including `id`.
+fn target_ids_include(message: &Value, target: Option<&str>) -> bool {
+    let ids = message.get("targetParticipantIds");
+    match target {
+        None => matches!(ids, None | Some(Value::Null)),
+        Some(t) => ids
+            .and_then(Value::as_array)
+            .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some(t))),
+    }
+}
+
+/// v4's stale-whisper sweep (shared by core-whisper + commonplace): re-read the
+/// chat's messages, keep the `type:'message'` rows matching `predicate` (already
+/// excluding the just-posted id), and delete them. Best-effort — a read/write
+/// failure is swallowed (v4 logs + continues).
+async fn sweep_stale_whispers<F: Fn(&Value) -> bool>(
+    db: &Db,
+    chat_id: &str,
+    posted_id: &str,
+    predicate: F,
+) {
+    let cid = chat_id.to_string();
+    let messages =
+        match db.read_main(move |c| crate::db::chats_messages_read::get_messages(c, &cid)) {
+            Ok(m) => m,
+            Err(_) => return,
+        };
+    let stale: Vec<String> = messages
+        .iter()
+        .filter(|m| m.get("type").and_then(Value::as_str) == Some("message"))
+        .filter(|m| m.get("id").and_then(Value::as_str) != Some(posted_id))
+        .filter(|m| predicate(m))
+        .filter_map(|m| m.get("id").and_then(Value::as_str).map(str::to_string))
+        .collect();
+    if stale.is_empty() {
+        return;
+    }
+    let cid = chat_id.to_string();
+    let _ = db
+        .write(move |w| {
+            w.main()
+                .chat_messages()
+                .delete_messages_by_ids(&cid, &stale)
+        })
+        .await;
+}
 
 /// Errors from [`build_context`]. v4 throws on an invalid timezone (aborting the
 /// build) and surfaces DB failures; both are modeled here.
@@ -1027,7 +1236,7 @@ fn read_prior_scene_emission(
 /// over the chat's events, and — on a fire — assembles the packet + returns its
 /// LLM-context contribution. Fires the W4.6b whisper POST via the recorded seam.
 /// Any error → `""` (v4 wraps the whole block error-only).
-fn resolve_core_whisper_llm_context<S: BuildContextSeams>(
+async fn resolve_core_whisper_llm_context<S: BuildContextSeams>(
     db: &Db,
     input: &BuildContextInput,
     responding_participant_id: &str,
@@ -1138,8 +1347,10 @@ fn resolve_core_whisper_llm_context<S: BuildContextSeams>(
     let persona = cw::build_core_whisper_content(&packet);
     let opaque = cw::build_core_whisper_opaque_content(&packet);
     let llm_context = cw::build_core_whisper_llm_context(&packet);
-    // The W4.6b Aurora POST + stale sweep fire via the recorded seam.
-    seams.post_core_whisper(&input.chat.id, responding_participant_id, &persona, &opaque);
+    // The W4.6b Aurora POST + stale sweep fire via the seam.
+    seams
+        .post_core_whisper(&input.chat.id, responding_participant_id, &persona, &opaque)
+        .await;
     llm_context
 }
 
@@ -1230,7 +1441,7 @@ where
                     .collect()
             })
             .unwrap_or_default();
-        let content = crate::services::off_scene::scan_off_scene_newcomers(
+        let newcomers = crate::services::off_scene::scan_off_scene_newcomers(
             db,
             &input.chat.id,
             &input.user_id,
@@ -1238,11 +1449,17 @@ where
             input.user_character.as_ref().map(|uc| uc.name.as_str()),
             &participants,
         );
-        // The W4.6b Host POST fires here when the writer lands (recorded seam).
-        if let Some(c) = &content {
-            seams.post_host_off_scene_announcement(&input.chat.id, c);
+        // The W4.6b Host POST builds + persists the announcement from the newcomer
+        // cards and returns its content; v4 surfaces THAT content to this turn's LLM
+        // context (`pendingOffSceneAnnouncement = { content: announcement.content }`).
+        match newcomers {
+            Some(cards) if !cards.is_empty() => {
+                seams
+                    .post_host_off_scene_announcement(&input.chat.id, &cards)
+                    .await
+            }
+            _ => None,
         }
-        content
     };
 
     // System prompt (block 1).
@@ -2123,7 +2340,9 @@ where
             input.local_offset_minutes,
         )
         .map_err(|e| BuildContextError::InvalidTimezone(e.0))?;
-        seams.post_host_timestamp_announcement(&input.chat.id, &ts.formatted);
+        seams
+            .post_host_timestamp_announcement(&input.chat.id, &ts.formatted)
+            .await;
         context_messages.push(ContextMessage {
             role: "user",
             content: build_timestamp_content(&ts.formatted),
@@ -2139,7 +2358,7 @@ where
     // whisper POST + stale sweep are W4.6b (the recorded seam).
     let core_whisper_llm_context = match &input.responding_participant {
         Some(rp) if !input.is_continue_mode => {
-            resolve_core_whisper_llm_context(db, input, &rp.id, seams)
+            resolve_core_whisper_llm_context(db, input, &rp.id, seams).await
         }
         _ => String::new(),
     };
@@ -2164,7 +2383,9 @@ where
         // The Commonplace whisper POST is W4.6b (the recorded seam). The two
         // persist writes are W4.6a — gated on `posted`, exactly as v4's
         // `if (posted)`. The seam returns whether a whisper was durably posted.
-        let posted = seams.post_commonplace_whisper(&input.chat.id, target, persona);
+        let posted = seams
+            .post_commonplace_whisper(&input.chat.id, target, persona)
+            .await;
         if posted {
             // v4 `chats.update({ commonplaceSceneCache: {...prior, [key]: slice} })`.
             if !emitted_scene_state.is_empty() {
@@ -2191,7 +2412,16 @@ where
                 let (ctx, unalerted) =
                     crate::services::suparna_mail::resolve_suparna_mail_context(db, vault).await;
                 if !unalerted.is_empty() {
-                    seams.post_suparna_mail(&input.chat.id, &ctx);
+                    // v4 targets the responding participant in multi-character chats,
+                    // public otherwise; the whisper body is built from the letters.
+                    let target = if is_multi_character {
+                        input.responding_participant.as_ref().map(|p| p.id.as_str())
+                    } else {
+                        None
+                    };
+                    seams
+                        .post_suparna_mail(&input.chat.id, &unalerted, target)
+                        .await;
                 }
                 ctx
             }

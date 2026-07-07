@@ -211,10 +211,6 @@ pub trait OrchestratorSeams {
     fn process_files(&self, file_ids: &[String]) -> FileProcessingResult {
         FileProcessingResult::default()
     }
-
-    /// v4's Prospero cadence context re-injection whisper post. Fired only on a
-    /// cadence boundary. Default: no-op (nothing posted).
-    fn post_prospero_context(&self, chat_id: &str, character_participant_id: &str) {}
 }
 
 /// A no-op seam bundle (nothing available). Used by self-tests; the differential
@@ -789,9 +785,53 @@ where
     let should_inject_context =
         reinject_interval > 0 && message_count > 0 && message_count % reinject_interval == 0;
     if should_inject_context {
-        // The whisper post is a seam (post-office subsystem); the gate is here.
-        deps.orchestrator_seams
-            .post_prospero_context(&chat_id, &character_participant_id);
+        use crate::services::prospero_notifications as prospero;
+        // v4 loads the project + general Prospero context (best-effort), posts the
+        // public context announcement (pushing it into `existing_messages` so this
+        // turn's context includes it), then posts the group-context whisper targeted
+        // at the responding character (also pushed). Both are fail-soft.
+        let project_id_opt = chat
+            .get("projectId")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        let (project_context, general_context) = db
+            .read_main(|main| {
+                db.read_mount_index(|mount| {
+                    let proj = project_id_opt
+                        .as_deref()
+                        .and_then(|pid| prospero::load_prospero_project_context(main, mount, pid));
+                    let general = prospero::load_prospero_general_context(main, mount);
+                    Ok((proj, general))
+                })
+            })
+            .unwrap_or((None, None));
+        if project_context.is_some() || general_context.is_some() {
+            let posted = prospero::post_prospero_context_announcement(
+                db,
+                prospero::ProsperoContextAnnouncement {
+                    chat_id: chat_id.clone(),
+                    project: project_context,
+                    general: general_context,
+                },
+            )
+            .await;
+            if let Some(msg) = posted {
+                existing_messages.push(msg);
+            }
+        }
+        if let Some(msg) = prospero::post_prospero_group_context_whisper(
+            db,
+            prospero::ProsperoGroupContextWhisper {
+                chat_id: chat_id.clone(),
+                target_participant_id: character_participant_id.clone(),
+                character_id: character_id.clone(),
+            },
+        )
+        .await
+        {
+            existing_messages.push(msg);
+        }
     }
 
     // --- File attachment processing (orchestrator.service.ts:537–553) ---

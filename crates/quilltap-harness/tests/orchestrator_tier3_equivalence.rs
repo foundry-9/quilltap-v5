@@ -51,7 +51,7 @@ use quilltap_core::model::stream::{
     canned_stream_key, StreamChunk, StreamChunkResult, StreamError, StreamParams, StreamUsage,
     StreamingCompletionProvider,
 };
-use quilltap_core::services::build_context::NoopSeams as BcNoopSeams;
+use quilltap_core::services::build_context::RealBuildContextSeams;
 use quilltap_core::services::carina_runner::ClosureProspero;
 use quilltap_core::services::chat_events::RecordingSink;
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
@@ -513,7 +513,10 @@ fn orchestrator_tier3_matches_oracle() {
     }
     let embedding = CannedEmbeddingProvider::new();
     let executor = CheapLlmTaskExecutor::new();
-    let bc_seams = BcNoopSeams;
+    // Round-3 unification (Group 2): the buildContext whisper writers run LIVE
+    // (RealBuildContextSeams). The oracle un-mocks the same writers; the resulting
+    // whisper rows appear in the diffed chat_messages dump.
+    let bc_seams = RealBuildContextSeams { db: &db };
     // W4.2u: the REAL router + canned API-key seam (from the spec's `apiKeys` map).
     let router =
         quilltap_core::services::dangerous_content::provider_routing::DangerContentRouter::new(

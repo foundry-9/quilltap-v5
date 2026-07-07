@@ -228,9 +228,9 @@ pub struct OffSceneParticipant {
 /// Reads all of the user's characters (overlaid), excludes the responding
 /// character + every non-`removed` CHARACTER participant + the user persona by
 /// name, scans the tool-stripped chat corpus for mentions, diffs against
-/// already-introduced ids, and — for genuine newcomers — builds the announcement
-/// content (resolving `{{user}}` via the chat's user-controlled character name).
-/// Any failure → `None` (v4 wraps the block warn-only).
+/// already-introduced ids, and returns the genuine-newcomer cards (the Host POST
+/// builds the announcement content + stamps `introducedCharacterIds` from these).
+/// Any failure / no newcomers → `None` (v4 wraps the block warn-only).
 pub fn scan_off_scene_newcomers(
     db: &Db,
     chat_id: &str,
@@ -238,7 +238,7 @@ pub fn scan_off_scene_newcomers(
     responding_character_id: &str,
     user_character_name: Option<&str>,
     all_participants: &[OffSceneParticipant],
-) -> Option<String> {
+) -> Option<Vec<OffSceneCharacterCard>> {
     // v4: the whole block is warn-only — a DB failure yields no announcement.
     scan_off_scene_newcomers_inner(
         db,
@@ -258,7 +258,7 @@ fn scan_off_scene_newcomers_inner(
     responding_character_id: &str,
     user_character_name: Option<&str>,
     all_participants: &[OffSceneParticipant],
-) -> Result<Option<String>, DbError> {
+) -> Result<Option<Vec<OffSceneCharacterCard>>, DbError> {
     // 1. All of the user's characters (overlaid — carries name/aliases/pronouns/
     //    identity/description). `find_by_user_id` spans both DBs (main slim rows +
     //    the mount-index vault overlay), read via the nested-pool pattern.
@@ -374,40 +374,15 @@ fn scan_off_scene_newcomers_inner(
         return Ok(None);
     }
 
-    // 8. Build the announcement content (the POST is W4.6b). v4's POST resolves
-    //    the user-character name from the chat's user-controlled participant — the
-    //    same value build_context passes as `user_character_name` (the user
-    //    persona). Reproduce v4's `resolveUserCharacterName` by reading that
-    //    participant's character name.
+    // 8. Return the newcomer cards. The Host POST (W4.6b) builds the announcement
+    //    content itself (resolving the user-character name from the chat) and stamps
+    //    `hostEvent.introducedCharacterIds`, so we hand it the structured cards
+    //    rather than a pre-rendered string.
     let newcomers: Vec<OffSceneCharacterCard> = candidates
         .into_iter()
         .filter(|c| newcomer_ids.contains(&c.id))
         .collect();
-    let resolved_user_name = resolve_user_character_name(db, all_participants)?;
-    let content = build_off_scene_characters_content(&newcomers, resolved_user_name.as_deref());
-    Ok(Some(content))
-}
-
-/// v4 `resolveUserCharacterName`: find the user-controlled CHARACTER participant
-/// and return their display name (via `characters.findById`), else `None`.
-fn resolve_user_character_name(
-    db: &Db,
-    participants: &[OffSceneParticipant],
-) -> Result<Option<String>, DbError> {
-    let Some(user_participant) = participants.iter().find(|p| {
-        p.participant_type == "CHARACTER" && p.controlled_by == "user" && p.character_id.is_some()
-    }) else {
-        return Ok(None);
-    };
-    let Some(cid) = user_participant.character_id.clone() else {
-        return Ok(None);
-    };
-    let name = db
-        .read_main(|main| {
-            db.read_mount_index(|mount| crate::db::characters_read::find_by_id(main, mount, &cid))
-        })?
-        .and_then(|c| c.get("name").and_then(Value::as_str).map(str::to_string));
-    Ok(name)
+    Ok(Some(newcomers))
 }
 
 #[cfg(test)]
