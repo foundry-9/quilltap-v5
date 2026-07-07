@@ -204,13 +204,25 @@ round with a drift check against v4 HEAD.
   (`RealBuildContextSeams` + the Prospero cadence block; build_context_tier3 +
   orchestrator_tier3 regenerated with writers un-mocked), G3 end-of-turn wardrobe
   drain, G4 Lantern sink → byte-exact writer (image_generation_tier3), G5
-  commonplace dedup. **Groups 6–8 DEFERRED:** G6 Librarian doc-save `change:{diff}`
-  coupling (needs porting `postLibrarianWriteAnnouncement` + posting it OUTSIDE the
-  sync doc-edit handlers' `Db::write` closure + a chat_messages dump in
-  doc_text/doc_fm), G7 context-summary vault-mirror + relevant-conversations-refresh
-  LIVE (vault fixtures + embedding; mirror BEFORE refresh), G8 `cheap_llm_selection`
-  spine threading (activates recap/distill/cached-compression → orchestrator_tier3
-  canned-key re-record cascade). See CLAUDE.md Status for the detailed hand-off.
+  commonplace dedup. **Groups 7 & 8 now DONE + green; G6 DEFERRED.** G8
+  `cheap_llm_selection` spine threading (the spine resolves the real selection →
+  buildContext recap/distill feeders + finalizer async-compression fire;
+  orchestrator_tier3 regenerated dropping the recap/distill mocks — the distill fires
+  61 live cheap-LLM calls, no stream-key cascade since the corpus keeps
+  compression off + memories empty). G7 context-summary vault-mirror +
+  relevant-conversations-refresh LIVE (two-DB fixture: provisioned vault + pre-seeded
+  prior summary with a canned unit embedding; mirror BEFORE refresh; the mirror diffed
+  by the `doc_mount_file_links` path set, the refresh by the `chat_messages` whisper;
+  `vault_summary_mirror_tier2` kept green). **G6 (Librarian doc-save `change:{diff}`
+  coupling) DEFERRED as its own follow-up work order:** the write-announcement WRITER
+  is already ported (`post_librarian_write_announcement` + `build_write_content`);
+  remaining is porting `resolveActorOrigin`, a `pending_librarian_announcement` field
+  on the shared `DocEditToolResult`, the ~8 write handlers building the
+  `change:{created,body}/{edited,diff}` payload, threading it OUT of the sync
+  `execute_doc_edit_tool` `Db::write` closure to a post-closure async post (the
+  wardrobe-drain `pending*` precedent), and regenerating `doc_text`/`doc_fm` with a
+  chat+participant fixture + un-mocked Librarian + a `chat_messages` announcement diff
+  (byte-exact persona content). See CLAUDE.md Status for the detailed hand-off.
 - **Round 4:** W4.4b (owns spine + orchestrator corpus) ∥ W4.5 (carina —
   its finalizer/orchestrator cases go to unification) ∥ W4.7d/e/f.
 - **Round 5:** Unit 4 (enclave), then the Phase-4 kickoff.

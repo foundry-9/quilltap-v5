@@ -3544,23 +3544,53 @@ placeholder dropped). **Group 5 (commonplace dedup):** removed the private
 commonplace builders from `build_context.rs`, reusing the canonical
 `commonplace_notifications` versions (byte-identical for the per-turn whisper).
 
-**Deferred to a follow-up (Round-3 Groups 6–8):** **Group 6** (Librarian doc-save
-announcement) — needs porting v4's `postLibrarianWriteAnnouncement` +
-`buildWriteContent`/`buildWriteOpaqueContent` (the `change: {created,body}` /
-`{edited,diff}` payload over the ported `generate_unified_diff`) AND a refactor to
-post it OUTSIDE the sync doc-edit handlers' `Db::write` closure (the handlers run
-synchronously with direct connections, so the async Librarian post must be threaded
-out to a post-closure call), plus a `chat_messages` dump/remap added to
-`doc_text`/`doc_fm`. **Group 7** (context-summary vault-mirror + relevant-
-conversations-refresh LIVE) — needs `RealContextSummarySeams::mirror_summary_to_vaults`
-+ `refresh_relevant_conversations` made live (mirror BEFORE refresh — the ordering
-invariant), the `context_summary_service_tier3` fixture extended with real vaults +
-canned embeddings (keep `vault_summary_mirror_tier2` green). **Group 8**
-(`cheap_llm_selection` spine threading) — resolve a `CheapLlmSelection` at the
-orchestrator composition point (v4's way) so the finalizer async-compression +
-buildContext cached-compression window + the recap/distill feeders fire; regenerate
-`orchestrator_tier3` with the recap/distill feeder mocks dropped one-for-one (the
-`build_context_tier3` precedent already proves the real recap/distill). Watch-out:
-the recap firing changes the fed context → the canned stream keys → cascade
-re-record. Groups 6–8 each left the tree fully green (Groups 1–5 committed on
-`round3-integration`).
+**Round-3 Phase B — Groups 7 & 8 now DONE; Group 6 deferred.**
+**Group 8 (`cheap_llm_selection` spine threading) — DONE + green.** The
+`processMessage` spine resolves a real `CheapLlmSelection` at the composition point
+(v4 `getCheapLLMProvider` over the user's connection profiles + the chat settings'
+`cheapLLMSettings`, registry-cheapest seam injected `None`) and threads it into
+`BuildContextArgs` (the recap/distill feeders + the cached-compression window) + the
+finalizer's `FinalizerCompression` (async-compression trigger) + the dangerous-path
+`uncensoredFallbackOptions`. `orchestrator_tier3` regenerated dropping the
+`generateMemoryRecap` + `extractMemorySearchKeywords` mocks one-for-one: v4's real
+recap yields empty content (no memories/vault summaries seeded), and the distill
+feeder now fires **61 live cheap-LLM calls** across the 22 cases — each replayed
+byte-for-byte by the Rust distill (proving the spine-resolved selection matches v4);
+the empty `memories` table + the corpus's `compression_enabled: false` keep the
+stream canned keys uncascaded. `regenerate_swipe_tier3` re-verified.
+**Group 7 (context-summary vault-mirror + relevant-conversations-refresh LIVE) —
+DONE + green.** `RealContextSummarySeams::mirror_summary_to_vaults` /
+`refresh_relevant_conversations` (no-ops) now run live: the fold mirrors the summary
+into every participant vault (`writeConversationSummaryToVaults`) then re-runs the
+relevant-past search against it (`refreshRelevantConversationsOnFold`), in that order.
+The seam methods take the built inputs (participant char ids + `compute_conversation_stats`
++ `connection_max_context`) and `RealContextSummarySeams` is generic over an embedding
+provider. `context_summary_service_tier3` extended to a two-DB fixture (main +
+mount-index with one provisioned vault + a pre-seeded prior summary whose chunk
+carries a canned unit embedding); the mirror is diffed by the `doc_mount_file_links`
+path set (`Conversation Summaries/Old Title A.md` on both sides), the refresh's
+`relevant-conversations` whisper by the `chat_messages` dump. Oracle un-mocks the
+mirror/refresh one-for-one (incl. un-mocking `character-vault-bridge` so
+`getCharacterVaultStore` resolves the real minted vault — [[jest-real-db-oracle]]).
+`vault_summary_mirror_tier2` + `orchestrator_tier3` re-verified.
+**Group 6 (Librarian doc-save `change:{kind:'edited',diff}` coupling) — DEFERRED**
+(its own follow-up work order; tree left green). The write-announcement WRITER **is
+already ported** (`services::librarian_notifications::{build_write_content,
+build_write_opaque_content, post_librarian_write_announcement, LibrarianWriteAnnouncement}`),
+and `doc_edit::unified_diff` is ready — so the prior "may not be ported" note is
+resolved. Remaining work (its own unit, not unification wiring): (1) port
+`resolveActorOrigin` (unported — resolves ByUser vs ByCharacter+name from the doc-edit
+context); (2) add a `pending_librarian_announcement` field to `DocEditToolResult` (a
+type shared by ~23 handlers) and have the ~8 write handlers
+(`doc_write_file`/`doc_str_replace`/`doc_insert_text`/`doc_update_frontmatter`/
+`doc_update_heading`, + the file-management ones) BUILD the `change:{created,body}` /
+`{edited,diff}` payload from the old/new content; (3) thread the announcement OUT of
+the sync `execute_doc_edit_tool` `Db::write` closure to a post-closure async
+`post_librarian_write_announcement` (the wardrobe-drain `pending*` precedent — NOT a
+new write model); (4) regenerate `doc_text` (26 ops) + `doc_fm` (20 ops) oracles with
+a chat+participant fixture, the Librarian writer un-mocked (the `character-vault-bridge`
+un-mock dance from Group 7), a new `chat_messages` announcement diff, and byte-exact
+persona-content matching. This is comparable to a fresh W4.6b sub-unit (a new ported
+leaf + cross-cutting result-type change + two heavy oracle regens), so it is scoped
+as its own work order rather than forced at unification altitude. Groups 7 & 8 are
+committed on `round3-integration`.
