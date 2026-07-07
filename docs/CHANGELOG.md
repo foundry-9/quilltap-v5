@@ -4,6 +4,20 @@
 
 ### 5.0-dev
 
+Docs: Round-4 work orders complete. Wrote the five remaining agent-ready work
+orders from fresh v4 surveys at `6b6e39ad`: W4.7d (transport, errors, the
+`api_keys` table — the last unported repo, a hand-rolled plaintext collection
+inside v4's ConnectionProfilesRepository), W4.7e (pricing fetcher, model
+capability, logLLMCall, embedding wire + the BUILTIN TF-IDF vectorizer — the
+decomposition's "builtin already ported" claim corrected: only the storage repo
+is), W4.7f (the FIVE image wire dialects — z-ai was omitted from the plan —
+plus moderation and web search, with the refusal-keyword gap matrix documented
+as faithful), W4.9c (the avatar + story-background job handlers, carrying the
+`6b6e39ad` bare-top drift), and W4.6c (the remaining Librarian doc-edit
+announcements — the Round-3 Group-6 leftover). Round-4 lane layout + contention
+notes added to chat-orchestration.md; provider-manifest.md decomposition
+corrected. No code changes.
+
 Phase 3 — Round-3 unification (Group 6, the Librarian doc-save `change:{diff}`
 announcement coupling — **Round 3 now fully complete**): the five mutating doc-edit
 write handlers (`doc_write_file` / `doc_str_replace` / `doc_insert_text` /

@@ -218,9 +218,21 @@ units, each with its own differential strategy, sized from a survey of the
 surrounding v4 machinery (registry 583+377 lines, tool-executor parse 1282,
 plugin-tool-builder 560, pricing-fetcher 473, embedding-service 595,
 llm-logging 339, errors 411, plus the five provider plugins ~3,500). Work
-orders live in [`work-orders/`](./work-orders/); W4.7a and W4.7b have orders
-written and can start immediately (they are independent of each other and of
-every other wave-4 batch).
+orders live in [`work-orders/`](./work-orders/); every unit now has one —
+a/b/c are DONE, and the remaining three were specced 2026-07-07 from fresh
+v4 surveys:
+[`w4.7d-transport-errors-api-keys.md`](./work-orders/w4.7d-transport-errors-api-keys.md),
+[`w4.7e-pricing-capability-logging-embeddings.md`](./work-orders/w4.7e-pricing-capability-logging-embeddings.md),
+[`w4.7f-image-dialects-moderation-search.md`](./work-orders/w4.7f-image-dialects-moderation-search.md).
+**Survey corrections to the table below (2026-07-07, authoritative in the
+orders):** W4.7e — "builtin already ported" is WRONG (only the
+`tfidf_vocabulary` storage repo is; the TF-IDF/BM25 vectorizer is W4.7e
+sub-unit 5, splittable); the `api_keys` collection is hand-rolled INSIDE
+v4's `ConnectionProfilesRepository` (plaintext `key_value`, no dedicated
+repo); v4 has NO transport-tier timeout/abort/retry anywhere (SDK defaults
+apply silently). W4.7f — there are FIVE image providers (z-ai was omitted),
+and the refusal-keyword gap covers openrouter AND google-gemini AND z-ai
+(all faithful, never "fix").
 
 **One architectural rule for the whole batch: the core stays sans-IO.**
 Decoders consume already-received bytes/events and emit `StreamChunk`s;

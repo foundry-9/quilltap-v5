@@ -3609,3 +3609,35 @@ invoke a write handler). **Tracked deferral (out of G6 scope, a separate seam th
 still omits):** the file-management / blob / open Librarian announcements (move / copy
 / delete / folder-created / folder-deleted / open / blob-write) — the writers are all
 ported, but the file_management/blob/document_ui handlers don't yet build+thread them.
+
+**Round-4 prep (2026-07-07): every remaining work order is written.** The five
+orders that lacked specs are now agent-ready under
+`docs/developer/porting/work-orders/`, each from a fresh v4 survey at
+`6b6e39ad`: **W4.7d** (transport + errors + the `api_keys` table — the LAST
+unported repo; survey facts: it is a hand-rolled PLAINTEXT collection inside
+v4's `ConnectionProfilesRepository`, `provider` is a free-form string, and v4
+has NO transport-tier timeout/abort/retry anywhere — SDK defaults apply;
+the google `config → generationConfig` wire split + the `{args,name}` reorder
+close here), **W4.7e** (pricing fetcher / `checkModelSupportsTools` /
+`logLLMCall` / embedding wire; plan correction: the BUILTIN TF-IDF vectorizer
+is NOT ported — only the `tfidf_vocabulary` storage repo is — so it's a
+splittable sub-unit; the 19-variant log-type enum's `TOOL_CONTINUATION` has no
+emitter; `stableStringify` SORTS keys, unlike every other ported serializer),
+**W4.7f** (image dialects + moderation + web search; plan corrections: FIVE
+image providers — z-ai was omitted — and the refusal-keyword gap covers
+openrouter AND google-gemini AND z-ai, all faithful; only Google Imagen
+manufactures a moderation error, the others are recorded upstream SDK
+throws), **W4.9c** (the avatar + story-background job handlers — job types
+`CHARACTER_AVATAR_GENERATION` / `STORY_BACKGROUND_GENERATION`; ports the two
+remaining scene tasks + the REAL aesthetics module [`resolveAesthetic` /
+`resolveDepictionGuidelines` — avatar is aurora-only/no-Ariel, background is
+lantern+aurora+Ariel] + `buildCharacterAvatarPrompt` with the `6b6e39ad`
+bare-top branch + the storage bridges + the story enqueue/gate), and
+**W4.6c** (small — the Round-3 Group-6 leftover: the file-management / blob /
+open Librarian announcements, threaded via a generalized
+`PendingLibrarianAnnouncement` enum on the `#[serde(skip)]` result field).
+The Round-4 lane layout + contention notes (f→d api-key dependency; the
+W4.5∥W4.6c `tools/executor.rs` overlap; e's spine handoff) are in
+`chat-orchestration.md`; the decomposition corrections are in
+`provider-manifest.md`. v4 HEAD is still `6b6e39ad` — no drift; the oracle
+baseline is unchanged.

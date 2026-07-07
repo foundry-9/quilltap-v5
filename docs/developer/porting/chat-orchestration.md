@@ -231,8 +231,25 @@ round with a drift check against v4 HEAD.
   green (the additive field is `None` for every non-write handler). The
   file-management / blob / open announcements remain separate seams (out of G6
   scope).
-- **Round 4:** W4.4b (owns spine + orchestrator corpus) ∥ W4.5 (carina —
-  its finalizer/orchestrator cases go to unification) ∥ W4.7d/e/f.
+- **Round 4** (all orders written 2026-07-07 from fresh v4 surveys at
+  `6b6e39ad`): W4.4b (owns spine + orchestrator corpus) ∥ W4.5 (carina —
+  its finalizer/orchestrator cases go to unification) ∥
+  [W4.7d](./work-orders/w4.7d-transport-errors-api-keys.md) ∥
+  [W4.7e](./work-orders/w4.7e-pricing-capability-logging-embeddings.md) ∥
+  [W4.7f](./work-orders/w4.7f-image-dialects-moderation-search.md) (d and
+  e are mutually independent; f's two api-key lookups depend on d's
+  `db::api_keys` — its round note keeps them canned and hands the closure
+  to unification when run in parallel) ∥
+  [W4.9c](./work-orders/w4.9c-avatar-story-background-handlers.md) (the
+  avatar + story-background job handlers — disjoint from the spine;
+  benefits from e's logLLMCall and f's dialects but requires neither, both
+  are seams) ∥
+  [W4.6c](./work-orders/w4.6c-librarian-file-announcements.md) (small —
+  the remaining Librarian doc-edit announcements; ⚠️ shares
+  `tools/executor.rs` with W4.5's `ask_carina` dispatch row — coordinate
+  or resolve at unification). W4.7e's `model_supports_native_tools` spine
+  removal and any W4.7d spine-adjacent seam closures go to the unification
+  pass (W4.4b owns the spine).
 - **Round 5:** Unit 4 (enclave), then the Phase-4 kickoff.
 
 The markdown-renderer / `qtap-linkify` item below is Phase-4-adjacent and not
