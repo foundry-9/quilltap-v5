@@ -26,14 +26,17 @@
 //!   chain *driver* `executeTurnChain` is a later wave); RNG + wall clock
 //!   injected; verified by a plain tier-2 differential.
 
+pub mod aesthetics;
 pub mod agent_mode;
 pub mod answer_confirmation;
 pub mod api_key_service;
 pub mod appearance_resolution;
 pub mod aurora_notifications;
 pub mod avatar_generation;
+pub mod avatar_prompt;
 pub mod build_context;
 pub mod carina_runner;
+pub mod character_avatar_job;
 pub mod chat_events;
 pub mod cheap_llm_exec;
 pub mod commonplace_notifications;
@@ -51,6 +54,9 @@ pub mod frozen_archive;
 pub mod host_notifications;
 pub mod housekeeping;
 pub mod housekeeping_outcome_cache;
+pub mod image_job_common;
+pub mod image_job_storage;
+pub mod image_profile_resolution;
 pub mod image_scene_tasks;
 pub mod job_runner;
 pub mod job_scheduler;
@@ -79,6 +85,7 @@ pub mod queue_service;
 pub mod recovery;
 pub mod regenerate_swipe;
 pub mod scene_state_tracking;
+pub mod story_background_job;
 pub mod suparna_mail;
 pub mod suparna_notifications;
 pub mod text_tool_loop;

@@ -125,6 +125,9 @@ impl PatchData {
             commonplace_scene_cache: None,
             commonplace_recall_history: None,
             courier_checkpoints: None,
+            character_avatars: None,
+            story_background_image_id: None,
+            last_background_generated_at: None,
             updated_at: self.updated_at.clone(),
         }
     }

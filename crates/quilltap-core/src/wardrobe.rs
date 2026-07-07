@@ -92,35 +92,71 @@ fn join_or_fallback(items: &[String], fallback: &str) -> String {
     }
 }
 
-/// v4 `describeOutfit(slots)` (no `omit`) — the markdown outfit description. The
-/// handlers always call it without `omit`, so all four slots are visible; the
-/// `omit`-driven branches are reproduced as the all-visible case (topless/
-/// bottomless/barefoot/no-accessories fallbacks, the top+bottom "naked" collapse,
-/// the shared-value slot grouping).
+/// A slot name for [`describe_outfit_with_omit`]'s `omit` set (v4
+/// `OutfitSlotName`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutfitSlotName {
+    Top,
+    Bottom,
+    Footwear,
+    Accessories,
+}
+
+/// v4 `describeOutfit(slots)` (no `omit`) — the markdown outfit description. Thin
+/// wrapper over [`describe_outfit_with_omit`] with an empty omit set (all four
+/// slots visible), byte-identical to v4's default-options call.
 pub fn describe_outfit(slots: &OutfitSlotValues) -> String {
-    let all_empty = slots.top.is_empty()
-        && slots.bottom.is_empty()
-        && slots.footwear.is_empty()
-        && slots.accessories.is_empty();
-    if all_empty {
+    describe_outfit_with_omit(slots, &[])
+}
+
+/// v4 `describeOutfit(slots, { omit })` — the markdown outfit description with a
+/// set of slots left out of the render entirely. Omitted slots produce no line
+/// and don't participate in the "all empty → naked" / "top+bottom empty → naked"
+/// fallbacks (the avatar/portrait crop routes through this: bottom/footwear are
+/// omitted so a cropped torso never grows shoes/pants, and the bare-top path
+/// omits top/bottom/footwear so an empty-but-visible top can't emit "topless").
+pub fn describe_outfit_with_omit(slots: &OutfitSlotValues, omit: &[OutfitSlotName]) -> String {
+    let omitted = |name: OutfitSlotName| omit.contains(&name);
+    // `null` (v4) = omitted; `Some(&slice)` = visible.
+    let top = (!omitted(OutfitSlotName::Top)).then_some(slots.top.as_slice());
+    let bottom = (!omitted(OutfitSlotName::Bottom)).then_some(slots.bottom.as_slice());
+    let footwear = (!omitted(OutfitSlotName::Footwear)).then_some(slots.footwear.as_slice());
+    let accessories =
+        (!omitted(OutfitSlotName::Accessories)).then_some(slots.accessories.as_slice());
+
+    // All VISIBLE slots empty → "completely naked and unadorned".
+    let all_visible_empty = [top, bottom, footwear, accessories]
+        .iter()
+        .all(|v| v.map(|s| s.is_empty()).unwrap_or(true));
+    if all_visible_empty {
         return "- completely naked and unadorned\n".to_string();
     }
 
     let mut lines: Vec<String> = Vec::new();
     let mut groups = OrderedGroups::new();
 
-    // The "naked" collapse only applies when both top and bottom are empty.
-    if slots.top.is_empty() && slots.bottom.is_empty() {
+    // The "naked" collapse only applies when both top and bottom are VISIBLE.
+    if top.map(<[String]>::is_empty).unwrap_or(false)
+        && bottom.map(<[String]>::is_empty).unwrap_or(false)
+    {
         lines.push("- naked".to_string());
     } else {
-        groups.add("top", join_or_fallback(&slots.top, "topless"));
-        groups.add("bottom", join_or_fallback(&slots.bottom, "bottomless"));
+        if let Some(top) = top {
+            groups.add("top", join_or_fallback(top, "topless"));
+        }
+        if let Some(bottom) = bottom {
+            groups.add("bottom", join_or_fallback(bottom, "bottomless"));
+        }
     }
-    groups.add("footwear", join_or_fallback(&slots.footwear, "barefoot"));
-    groups.add(
-        "accessories",
-        join_or_fallback(&slots.accessories, "no accessories"),
-    );
+    if let Some(footwear) = footwear {
+        groups.add("footwear", join_or_fallback(footwear, "barefoot"));
+    }
+    if let Some(accessories) = accessories {
+        groups.add(
+            "accessories",
+            join_or_fallback(accessories, "no accessories"),
+        );
+    }
 
     for (value, slots_for_value) in &groups.entries {
         lines.push(format!("- **{}:** {}", slots_for_value.join(", "), value));
@@ -531,6 +567,56 @@ mod tests {
         assert_eq!(
             describe_outfit(&s),
             "- naked\n- **footwear:** Boots\n- **accessories:** no accessories\n"
+        );
+    }
+
+    #[test]
+    fn describe_outfit_with_omit_avatar_cases() {
+        // Clothed avatar: omit bottom+footwear → only top + accessories render;
+        // a populated bottom/footwear produce NO line (distinct from empty slots,
+        // which would emit "bottomless"/"barefoot").
+        let s = OutfitSlotValues {
+            top: vec!["Shirt".into()],
+            bottom: vec!["Pants".into()],
+            footwear: vec!["Shoes".into()],
+            accessories: vec!["Hat".into()],
+        };
+        assert_eq!(
+            describe_outfit_with_omit(&s, &[OutfitSlotName::Bottom, OutfitSlotName::Footwear]),
+            "- **top:** Shirt\n- **accessories:** Hat\n"
+        );
+        // Bare-top avatar with accessories: omit top+bottom+footwear → only the
+        // accessories line, never a "topless"/"naked" fallback.
+        let bare = OutfitSlotValues {
+            top: vec![],
+            bottom: vec![],
+            footwear: vec![],
+            accessories: vec!["Necklace".into()],
+        };
+        assert_eq!(
+            describe_outfit_with_omit(
+                &bare,
+                &[
+                    OutfitSlotName::Top,
+                    OutfitSlotName::Bottom,
+                    OutfitSlotName::Footwear
+                ]
+            ),
+            "- **accessories:** Necklace\n"
+        );
+        // Bare-top with NO accessories under the same omit set → all-visible-empty
+        // → "completely naked and unadorned" (this is why the avatar builder emits
+        // '' in that branch instead of calling describeOutfit).
+        assert_eq!(
+            describe_outfit_with_omit(
+                &OutfitSlotValues::default(),
+                &[
+                    OutfitSlotName::Top,
+                    OutfitSlotName::Bottom,
+                    OutfitSlotName::Footwear
+                ]
+            ),
+            "- completely naked and unadorned\n"
         );
     }
 

@@ -8,9 +8,15 @@
 //!     (which physical description + what each character is wearing).
 //!   - [`sanitize_appearance`] — explicit → safe appearance rewrite.
 //!
-//! `deriveSceneContext` / `updateSceneState` / `describeAttachment` /
-//! `craftStoryBackgroundPrompt` belong to the story-background + attachment
-//! follow-ups (W4.9c / W4.4b), out of scope here.
+//! W4.9c adds the two story-background scene tasks:
+//!   - [`derive_scene_context`] — imagine a scene from the chat history (no
+//!     max-tokens override; the quote/code-fence strip parser).
+//!   - [`craft_story_background_prompt`] — the atmospheric landscape prompt
+//!     (provider-specific length guidance, the shared `buildAestheticSection`,
+//!     the `4000` max-tokens override).
+//!
+//! `updateSceneState` (scene-state tracking) / `describeAttachment` belong to
+//! their own follow-ups, out of scope here.
 //!
 //! All three run over the ported [`CheapLlmTaskExecutor`] with the byte-exact
 //! system prompts in the generated [`prompt_text`] submodule. The provider seam
@@ -85,22 +91,26 @@ pub struct DepictionGuideline {
 }
 
 /// v4 `buildAestheticSection`: the labelled aesthetic + Ariel-Clause block
-/// appended to the crafting call's user message. `""` when nothing is set.
-fn build_aesthetic_section(ctx: &ImagePromptExpansionContext) -> String {
+/// appended to a crafting call's user message. `""` when nothing is set. Shared
+/// by [`craft_image_prompt`] and [`craft_story_background_prompt`].
+fn build_aesthetic_section(
+    scene_aesthetic: Option<&str>,
+    character_aesthetic: Option<&str>,
+    depiction_guidelines: &[DepictionGuideline],
+) -> String {
     let mut parts: Vec<String> = Vec::new();
-    if let Some(scene) = ctx.scene_aesthetic.as_deref().filter(|s| !s.is_empty()) {
+    if let Some(scene) = scene_aesthetic.filter(|s| !s.is_empty()) {
         parts.push(format!(
             "Overall image aesthetic (apply this style to the whole image):\n{scene}"
         ));
     }
-    if let Some(character) = ctx.character_aesthetic.as_deref().filter(|s| !s.is_empty()) {
+    if let Some(character) = character_aesthetic.filter(|s| !s.is_empty()) {
         parts.push(format!(
             "Character depiction aesthetic (how people and clothing should look):\n{character}"
         ));
     }
-    if !ctx.depiction_guidelines.is_empty() {
-        let lines = ctx
-            .depiction_guidelines
+    if !depiction_guidelines.is_empty() {
+        let lines = depiction_guidelines
             .iter()
             .map(|g| format!("- {}: {}", g.character_name, g.content))
             .collect::<Vec<_>>()
@@ -146,7 +156,11 @@ pub async fn craft_image_prompt<C: CompletionProvider>(
         None => String::new(),
     };
 
-    let aesthetic_section = build_aesthetic_section(ctx);
+    let aesthetic_section = build_aesthetic_section(
+        ctx.scene_aesthetic.as_deref(),
+        ctx.character_aesthetic.as_deref(),
+        &ctx.depiction_guidelines,
+    );
 
     let user_content = format!(
         "Original prompt: {original}\n\nAvailable descriptions:\n{details}\n{style}{aesthetic}\nTarget length: {target} characters (for {provider})\n\nCreate the final image prompt (maximize detail while staying under the limit):",
@@ -237,27 +251,8 @@ fn format_placeholder(p: &ExpansionPlaceholder) -> String {
 /// v4's craft parser: trim, strip a single wrapping quote at each end, and
 /// UTF-16-truncate to the target length (append `...` on overflow).
 fn parse_craft_result(content: &str, target_length: i64) -> String {
-    let mut prompt = js_trim(content).to_string();
-
-    // `prompt.replace(/^["']|["']$/g, '')` — strip one leading + one trailing
-    // quote (a global regex with two alternatives matches the start once and the
-    // end once). Operate on characters; the quotes are ASCII.
-    let chars: Vec<char> = prompt.chars().collect();
-    let has_lead = matches!(chars.first(), Some('"' | '\''));
-    let has_trail = chars.len() > 1 && matches!(chars.last(), Some('"' | '\''));
-    if has_lead || has_trail {
-        let start = if has_lead { 1 } else { 0 };
-        let end = if has_trail {
-            chars.len() - 1
-        } else {
-            chars.len()
-        };
-        prompt = if start < end {
-            chars[start..end].iter().collect()
-        } else {
-            String::new()
-        };
-    }
+    // `prompt.replace(/^["']|["']$/g, '')` — strip one leading + one trailing quote.
+    let mut prompt = strip_one_wrapping_quote_pair(js_trim(content));
 
     // `if (prompt.length > targetLength) prompt = prompt.substring(0, targetLength - 3) + '...'`
     // — `.length`/`.substring` are UTF-16.
@@ -564,6 +559,234 @@ fn parse_sanitize_result(content: &str, originals: &[AppearanceText]) -> Vec<App
             appearance_text: js_string_or_empty(item.get("appearanceText")),
         })
         .collect()
+}
+
+// ===========================================================================
+// deriveSceneContext (W4.9c)
+// ===========================================================================
+
+/// v4 `DeriveSceneContextInput` — the input to [`derive_scene_context`].
+#[derive(Clone, Debug, Default)]
+pub struct DeriveSceneContextInput {
+    pub chat_title: String,
+    /// v4 `chat.contextSummary` (`string | null | undefined`); an empty string is
+    /// JS-falsy so it is treated as absent by the `if (input.contextSummary)` gate.
+    pub context_summary: Option<String>,
+    pub recent_messages: Vec<ChatMessage>,
+    pub character_names: Vec<String>,
+}
+
+/// v4 `deriveSceneContext`: build the context block + conversation window and
+/// derive an imaginative scene description. NO max-tokens override (unlike
+/// `craftStoryBackgroundPrompt`).
+pub async fn derive_scene_context<C: CompletionProvider>(
+    executor: &CheapLlmTaskExecutor,
+    completion: &C,
+    input: &DeriveSceneContextInput,
+    selection: &CheapLlmSelection,
+    _user_id: &str,
+    _chat_id: Option<&str>,
+) -> CheapLlmTaskResult<String> {
+    // Each message: `${speaker}: ${content}`, content truncated at 500 UTF-16.
+    let message_text = input
+        .recent_messages
+        .iter()
+        .map(|m| {
+            let speaker = speaker_label(&m.role);
+            let content = if utf16_len(&m.content) > 500 {
+                format!("{}...", utf16_truncate(&m.content, 500))
+            } else {
+                m.content.clone()
+            };
+            format!("{speaker}: {content}")
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    let mut context_info = format!("Chat Title: \"{}\"", input.chat_title);
+    if let Some(summary) = input.context_summary.as_deref().filter(|s| !s.is_empty()) {
+        context_info.push_str(&format!("\n\nExisting Summary:\n{summary}"));
+    }
+    if !input.character_names.is_empty() {
+        context_info.push_str(&format!(
+            "\n\nCharacters present: {}",
+            input.character_names.join(", ")
+        ));
+    }
+
+    let user_content = format!(
+        "{context_info}\n\nRecent Conversation:\n{message_text}\n\nBased on this conversation, describe the scene these characters might be in:"
+    );
+
+    let messages = vec![
+        CompletionMessage::system(prompt_text::SCENE_CONTEXT_DERIVATION_PROMPT),
+        CompletionMessage::user(user_content),
+    ];
+
+    executor
+        .execute(
+            completion,
+            selection,
+            messages,
+            parse_scene_result,
+            None,
+            // No max-tokens override on this path.
+            None,
+            None,
+        )
+        .await
+}
+
+// ===========================================================================
+// craftStoryBackgroundPrompt (W4.9c)
+// ===========================================================================
+
+/// One character section entry (v4 `StoryBackgroundPromptContext.characters[]`).
+#[derive(Clone, Debug, Default)]
+pub struct StoryBackgroundCharacter {
+    pub name: String,
+    pub description: String,
+}
+
+/// v4 `StoryBackgroundPromptContext` — the input to [`craft_story_background_prompt`].
+#[derive(Clone, Debug, Default)]
+pub struct StoryBackgroundPromptContext {
+    pub scene_context: String,
+    pub characters: Vec<StoryBackgroundCharacter>,
+    /// The image provider label (`GROK` gets a tighter length cap).
+    pub provider: String,
+    pub scene_aesthetic: Option<String>,
+    pub character_aesthetic: Option<String>,
+    pub depiction_guidelines: Vec<DepictionGuideline>,
+}
+
+/// v4 `craftStoryBackgroundPrompt`: build the character section + the aesthetic
+/// block + the provider length guidance, run the task (with the `4000`
+/// max-tokens override), and parse (quote + code-fence strip).
+pub async fn craft_story_background_prompt<C: CompletionProvider>(
+    executor: &CheapLlmTaskExecutor,
+    completion: &C,
+    ctx: &StoryBackgroundPromptContext,
+    selection: &CheapLlmSelection,
+    _user_id: &str,
+    _chat_id: Option<&str>,
+) -> CheapLlmTaskResult<String> {
+    let character_section = if ctx.characters.is_empty() {
+        "\nNo specific characters to include - create an atmospheric scene matching the context."
+            .to_string()
+    } else {
+        let lines = ctx
+            .characters
+            .iter()
+            .map(|c| format!("- {}: {}", c.name, c.description))
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!("\nCharacters to include as figures in the scene:\n{lines}")
+    };
+
+    // Provider-specific length guidance.
+    let length_guidance = if ctx.provider == "GROK" {
+        "Keep the prompt under 1000 characters for Grok image generation."
+    } else {
+        "Keep the prompt under 1200 characters."
+    };
+
+    let aesthetic_section = build_aesthetic_section(
+        ctx.scene_aesthetic.as_deref(),
+        ctx.character_aesthetic.as_deref(),
+        &ctx.depiction_guidelines,
+    );
+
+    let user_content = format!(
+        "Scene context: {scene}\n{characters}\n{aesthetic}\nProvider: {provider}\n{length}\n\nCreate the atmospheric background prompt:",
+        scene = ctx.scene_context,
+        characters = character_section,
+        aesthetic = aesthetic_section,
+        provider = ctx.provider,
+        length = length_guidance,
+    );
+
+    let messages = vec![
+        CompletionMessage::system(prompt_text::STORY_BACKGROUND_PROMPT),
+        CompletionMessage::user(user_content),
+    ];
+
+    executor
+        .execute(
+            completion,
+            selection,
+            messages,
+            parse_scene_result,
+            None,
+            // v4 passes 4000 as `maxTokens`.
+            Some(4000.0),
+            None,
+        )
+        .await
+}
+
+/// v4's speaker label for a chat message: `user → User`, `assistant → Character`,
+/// anything else → `System`.
+fn speaker_label(role: &str) -> &'static str {
+    match role {
+        "user" => "User",
+        "assistant" => "Character",
+        _ => "System",
+    }
+}
+
+/// The shared `deriveSceneContext` / `craftStoryBackgroundPrompt` parser: trim,
+/// strip one wrapping quote at each end, then strip a leading/trailing code
+/// fence. (Distinct from `craft_image_prompt`, which truncates instead of
+/// stripping fences, and from `strip_code_fences`, which trims first.)
+fn parse_scene_result(content: &str) -> String {
+    let trimmed = js_trim(content).to_string();
+    let dequoted = strip_one_wrapping_quote_pair(&trimmed);
+    strip_inline_code_fences(&dequoted)
+}
+
+/// v4 `.replace(/^["']|["']$/g, '')` — strip at most one leading and one trailing
+/// quote (`"` or `'`). A global regex with two alternatives matches the start
+/// once and the end once. Also used by [`parse_craft_result`].
+fn strip_one_wrapping_quote_pair(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let has_lead = matches!(chars.first(), Some('"' | '\''));
+    let has_trail = chars.len() > 1 && matches!(chars.last(), Some('"' | '\''));
+    if !has_lead && !has_trail {
+        return s.to_string();
+    }
+    let start = if has_lead { 1 } else { 0 };
+    let end = if has_trail {
+        chars.len() - 1
+    } else {
+        chars.len()
+    };
+    if start < end {
+        chars[start..end].iter().collect()
+    } else {
+        String::new()
+    }
+}
+
+/// Strip a leading and trailing Markdown code fence (v4's two anchored
+/// `.replace` calls on the triple-backtick fence — see the source for the exact
+/// regexes): a leading fence with an optional lowercase-ascii language tag + a
+/// following JS-whitespace run, then a trailing (JS-whitespace run +) fence. Both
+/// anchored, so each fires at most once.
+fn strip_inline_code_fences(s: &str) -> String {
+    use crate::jsstr::is_js_ws;
+    // Leading `^```[a-z]*\s*`.
+    let mut work: &str = s;
+    if let Some(rest) = work.strip_prefix("```") {
+        let after_lang = rest.trim_start_matches(|c: char| c.is_ascii_lowercase());
+        let after_ws = after_lang.trim_start_matches(is_js_ws);
+        work = after_ws;
+    }
+    // Trailing `\s*```$`.
+    if let Some(rest) = work.strip_suffix("```") {
+        work = rest.trim_end_matches(is_js_ws);
+    }
+    work.to_string()
 }
 
 // ===========================================================================

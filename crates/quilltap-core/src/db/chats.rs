@@ -515,6 +515,18 @@ pub struct ChatUpdate {
     /// `Some(Value::Null)` clears; `None` leaves unset. No `updatedAt` bump beyond
     /// the caller's explicit `updated_at`.
     pub courier_checkpoints: Option<Value>,
+    /// v4 `repos.chats.update({ characterAvatars })` (the avatar job's
+    /// per-character `{ imageId, generatedAt, afterMessageCount }` map). Stored as
+    /// compact JSON text. No `updatedAt` bump (v4 `_update` preserves it).
+    pub character_avatars: Option<Value>,
+    /// v4 `repos.chats.update({ storyBackgroundImageId })` (the story-background
+    /// job's newly-generated image id). No `updatedAt` bump beyond an explicit
+    /// `updated_at`.
+    pub story_background_image_id: Option<Option<String>>,
+    /// v4 `repos.chats.update({ lastBackgroundGeneratedAt })` (the story-background
+    /// job's minted generation timestamp). No `updatedAt` bump beyond an explicit
+    /// `updated_at`.
+    pub last_background_generated_at: Option<Option<String>>,
     pub updated_at: Option<String>,
 }
 
@@ -863,6 +875,25 @@ impl<'c> ChatsRepository<'c> {
                 Some(json_text(v)?)
             };
             set_col!("courierCheckpoints", Box::new(text));
+        }
+        if let Some(v) = &patch.character_avatars {
+            // v4 `repos.chats.update({ characterAvatars })` (the avatar job) — a
+            // JSON object stored as compact text; a JSON `null` clears the column.
+            // No `updatedAt` bump.
+            let text: Option<String> = if v.is_null() {
+                None
+            } else {
+                Some(json_text(v)?)
+            };
+            set_col!("characterAvatars", Box::new(text));
+        }
+        if let Some(v) = &patch.story_background_image_id {
+            // v4 `repos.chats.update({ storyBackgroundImageId })` (the story job).
+            set_col!("storyBackgroundImageId", Box::new(v.clone()));
+        }
+        if let Some(v) = &patch.last_background_generated_at {
+            // v4 `repos.chats.update({ lastBackgroundGeneratedAt })` (the story job).
+            set_col!("lastBackgroundGeneratedAt", Box::new(v.clone()));
         }
         set_col!("updatedAt", Box::new(resolved_updated_at));
 

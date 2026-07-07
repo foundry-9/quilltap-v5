@@ -4,6 +4,30 @@
 
 ### 5.0-dev
 
+W4.9c: ported the avatar + story-background background-job handlers
+(`CHARACTER_AVATAR_GENERATION` / `STORY_BACKGROUND_GENERATION`), removing both
+job types from the runner's loud fallback. New: the two scene cheap-LLM tasks
+(`deriveSceneContext`, `craftStoryBackgroundPrompt` — the GROK 1000-char length
+guidance, prompts byte-exact); the aesthetics module (`resolveAesthetic` tiered
+project-official → Quilltap General, `resolveDepictionGuidelines` — the Ariel
+Clause, `getProjectOfficialMountPointId`); the avatar prompt builder
+(`buildCharacterAvatarPrompt` with the reworked bare-top collarbone-crop branch);
+the two storage bridges (`writeCharacterAvatarToVault` → the character vault
+`images/history/`, `writeLanternBackgroundToMountStore` → the Lantern Backgrounds
+store `generated/`); the `enqueueStoryBackgroundGeneration` queue op +
+`resolveImageProfileForChat` + the `queueStoryBackgroundIfEnabled` gate (the
+TITLE_UPDATE handler wiring point is documented, not yet wired). Added a
+`describeOutfit` omit-aware variant to the wardrobe leaf, and the
+`characterAvatars` / `storyBackgroundImageId` / `lastBackgroundGeneratedAt`
+`ChatUpdate` setters (no `updatedAt` bump). Aesthetics differ by handler: avatars
+use aurora only (the Ariel Clause deliberately does not apply); story backgrounds
+use lantern + aurora + the Ariel Clause. Both handlers reuse the W4.9a image
+subsystem (image/completion/moderation/transcoder seams, the Concierge pre-scan +
+post-hoc moderation reroute, `resolveOrientation`) and the W4.8 job runner. Both
+verified by jest real-DB tier-3 differentials driving v4's REAL handlers.
+`logLLMCall` stays a documented deferral (the generate_image precedent); the
+project-store `fileStorageManager.uploadFile` branch is an injected host FsSeam.
+
 Phase 3 — Wave 4 (W4.7e, pricing / capability / logging / embeddings): ported
 four of the five W4.7e sub-units, each with a green differential against v4's
 real code.

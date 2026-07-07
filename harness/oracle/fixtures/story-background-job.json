@@ -1,0 +1,184 @@
+{
+  "$comment": [
+    "Tier-3 differential spec for the W4.9c STORY_BACKGROUND_GENERATION job handler",
+    "(v4 lib/background-jobs/handlers/story-background.ts handleStoryBackgroundGeneration;",
+    "Rust crates/quilltap-core/src/services/story_background_job.rs).",
+    "",
+    "ONE committed file drives BOTH sides. A two-database fixture (main + mount-index) is",
+    "baked once by build-story-background-job-fixture.ts via v4's REAL repos: a user, a",
+    "participant character (with a vault + physicalDescription + depiction-guidelines.md),",
+    "a NON-participant user character (Zelda, for the missing-character enumeration append),",
+    "image profiles (OPENAI + GROK), two connection profiles (a cheap OPENAI default + an",
+    "OLLAMA one used as the imagePromptProfileId uncensored retry selection), an OFF chat",
+    "settings row, a provisioned Quilltap General store carrying lantern/aurora-aesthetics.md,",
+    "a provisioned Lantern Backgrounds store, and a project P (backgroundDisplayMode",
+    "latest_chat) whose official store carries its OWN lantern/aurora-aesthetics.md",
+    "(proving the project-over-global aesthetic tier), plus one chat per case (some with",
+    "recent messages, one with a fresh scene state).",
+    "",
+    "MODEL SEAMS (pinned identically both sides):",
+    "  - the image provider (CannedImageProvider keyed by the oracle-recorded key in Rust",
+    "    to_key_value order; proves the crafted+enumerated prompt + landscape orientation)",
+    "  - the completion boundary (CannedCompletionProvider; recorded keys prove the",
+    "    derive-scene / resolve-appearance / craft task prompts byte-for-byte, incl. the",
+    "    GROK 1000-char length guidance, the aesthetic + Ariel-Clause sections, and the",
+    "    cheap-vs-uncensored retry selection)",
+    "  - the WebP transcode (PassthroughTranscoder)",
+    "  - the API key (canned apiKeyId->key map)",
+    "  - the orientation registry (OPENAI/GROK size-strategy OrientationSupport)",
+    "  - the project fileStorageManager.uploadFile (recorded FsSeam, project_latest case)",
+    "  - Date.now() frozen so the provider filename + minted timestamps are pinned",
+    "",
+    "The completion mock branches on a STORYCASE:<label> marker carried in the chat title",
+    "(→ derive/resolve prompts) and echoed by the derive result / scene-state location (→",
+    "the craft prompt), plus the provider (cheap OPENAI vs uncensored OLLAMA) for the retry",
+    "cases. It returns [] on the cheap provider for appearance_retry (llmResolved false →",
+    "uncensored retry) and '' on the cheap provider for empty_craft_retry (silent refusal →",
+    "uncensored retry).",
+    "",
+    "SCOPE: danger mode is OFF for the whole corpus, so no classify/sanitize LLM calls fire",
+    "and the appearance/craft retries are driven purely by the imagePromptProfileId",
+    "uncensored selection (which needs no danger mode). The Concierge sanitize gate + the",
+    "post-hoc image-moderation reroute are a tracked deferral proven byte-for-byte by the",
+    "W4.2 danger differentials + avatar_job_tier3 (which composes the identical",
+    "generate_with_reroute machinery in the job context).",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key. NOT the real Friday pepper."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2020-01-01T00:00:00.000Z",
+  "frozenNowMs": 1735732800000,
+
+  "userId": "5a000000-0000-4000-8000-0000000000aa",
+  "user": { "username": "story-user", "name": "Story User", "email": "s@example.com" },
+
+  "generalMountPointId": "96000000-0000-4000-8000-0000000000e1",
+  "lanternMountPointId": "1a5e0000-0000-4000-8000-00000000fee1",
+  "projectId": "40000000-0000-4000-8000-0000000000f1",
+  "projectName": "Autumn Project",
+
+  "generalLanternAesthetic": "GLOBAL SCENE STYLE: soft volumetric light, muted autumnal palette, painterly atmosphere, gentle depth of field.",
+  "generalAuroraAesthetic": "GLOBAL FIGURE STYLE: natural skin, believable fabric weight, expressive faces, intimate framing.",
+  "projectLanternAesthetic": "PROJECT SCENE STYLE: crisp cinematic contrast, teal-and-amber grade, wide establishing framing.",
+  "projectAuroraAesthetic": "PROJECT FIGURE STYLE: heroic three-quarter lighting, saturated costume colour, sharp catchlights.",
+  "depictionGuidelinesX": "ARIEL CLAUSE (Fern): always depict with wind-swept copper hair and a single freckle over the left brow; never add tattoos.",
+
+  "apiKeys": {
+    "a5000000-0000-4000-8000-0000000000c1": "IMGKEY_STORY"
+  },
+
+  "characters": [
+    {
+      "id": "c5000000-0000-4000-8000-000000000001",
+      "name": "Fern",
+      "participant": true,
+      "pronouns": { "subject": "she", "object": "her", "possessive": "her" },
+      "physicalDescription": {
+        "id": "d5000000-0000-4000-8000-000000000001",
+        "name": "Portrait",
+        "usageContext": "everyday",
+        "shortPrompt": "a woman",
+        "mediumPrompt": "a woman with copper hair"
+      },
+      "depictionGuidelines": true,
+      "wardrobe": [
+        { "id": "aw000000-0000-4000-8000-000000000001", "title": "Green Cloak", "types": ["top"], "imagePrompt": "a moss-green travelling cloak" }
+      ]
+    },
+    {
+      "id": "c5000000-0000-4000-8000-0000000000ee",
+      "name": "Zelda",
+      "participant": false,
+      "pronouns": { "subject": "she", "object": "her", "possessive": "her" },
+      "physicalDescription": {
+        "id": "d5000000-0000-4000-8000-0000000000ee",
+        "name": "Portrait",
+        "mediumPrompt": "a tall woman with dark braided hair"
+      }
+    }
+  ],
+
+  "imageProfiles": [
+    { "id": "e5000000-0000-4000-8000-000000000001", "name": "OpenAI Images", "provider": "OPENAI", "modelName": "dall-e-3", "apiKeyId": "a5000000-0000-4000-8000-0000000000c1", "baseUrl": null, "parameters": {}, "isDefault": true, "isDangerousCompatible": false, "tags": [] },
+    { "id": "e5000000-0000-4000-8000-000000000002", "name": "Grok Images", "provider": "GROK", "modelName": "grok-2-image", "apiKeyId": "a5000000-0000-4000-8000-0000000000c1", "baseUrl": null, "parameters": {}, "isDefault": false, "isDangerousCompatible": false, "tags": [] }
+  ],
+
+  "connectionProfiles": [
+    { "id": "cc000000-0000-4000-8000-000000000001", "name": "Cheap Default", "provider": "OPENAI", "modelName": "gpt-4o-mini", "isCheap": true, "isDefault": true, "apiKeyId": "a5000000-0000-4000-8000-0000000000c1" },
+    { "id": "cc000000-0000-4000-8000-000000000002", "name": "Local Uncensored", "provider": "OLLAMA", "modelName": "dolphin-mixtral", "isCheap": false, "isDefault": false, "baseUrl": "http://localhost:11434" }
+  ],
+
+  "chatSettings": {
+    "id": "55000000-0000-4000-8000-0000000000f0",
+    "dangerousContentSettings": { "mode": "OFF", "threshold": 0.7, "scanTextChat": true, "scanImagePrompts": true, "scanImageGeneration": false, "displayMode": "SHOW", "showWarningBadges": true },
+    "cheapLLMSettings": { "strategy": "PROVIDER_CHEAPEST", "fallbackToLocal": false, "imagePromptProfileId": "cc000000-0000-4000-8000-000000000002" }
+  },
+
+  "chats": {
+    "stale_derive": {
+      "id": "5c000001-0000-4000-8000-000000000001",
+      "characterIds": ["c5000000-0000-4000-8000-000000000001"],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000001",
+      "recentMessages": ["Fern lit the lantern and stepped onto the terrace.", "The night air was cold."],
+      "expectWrite": true,
+      "expectDerive": true
+    },
+    "fresh_scene": {
+      "id": "5c000002-0000-4000-8000-000000000002",
+      "characterIds": ["c5000000-0000-4000-8000-000000000001"],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000001",
+      "sceneState": { "location": "A moonlit terrace", "updatedAt": "2020-01-01T00:00:00.000Z", "updatedAtMessageCount": 0, "characters": [{ "characterId": "c5000000-0000-4000-8000-000000000001", "characterName": "Fern", "action": "gazing at the stars", "appearance": "windblown and calm", "clothing": "a green travelling cloak" }] },
+      "expectWrite": true,
+      "expectDerive": false
+    },
+    "grok_length": {
+      "id": "5c000003-0000-4000-8000-000000000003",
+      "characterIds": ["c5000000-0000-4000-8000-000000000001"],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000002",
+      "recentMessages": ["They crossed the bridge at dusk."],
+      "expectWrite": true,
+      "expectDerive": true
+    },
+    "empty_craft_retry": {
+      "id": "5c000004-0000-4000-8000-000000000004",
+      "characterIds": ["c5000000-0000-4000-8000-000000000001"],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000001",
+      "recentMessages": ["A hush fell over the hall."],
+      "expectWrite": true,
+      "expectDerive": true
+    },
+    "appearance_retry": {
+      "id": "5c000005-0000-4000-8000-000000000005",
+      "characterIds": ["c5000000-0000-4000-8000-000000000001"],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000001",
+      "recentMessages": ["She adjusted her cloak by the fire."],
+      "expectWrite": true,
+      "expectDerive": true
+    },
+    "missing_char_enum": {
+      "id": "5c000006-0000-4000-8000-000000000006",
+      "characterIds": ["c5000000-0000-4000-8000-000000000001"],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000001",
+      "recentMessages": ["A messenger arrived from the north."],
+      "expectWrite": true,
+      "expectDerive": true
+    },
+    "project_latest": {
+      "id": "5c000007-0000-4000-8000-000000000007",
+      "characterIds": ["c5000000-0000-4000-8000-000000000001"],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000001",
+      "projectId": "40000000-0000-4000-8000-0000000000f1",
+      "recentMessages": ["The council convened at midnight."],
+      "expectWrite": true,
+      "expectDerive": true
+    },
+    "no_images": {
+      "id": "5c000008-0000-4000-8000-000000000008",
+      "characterIds": ["c5000000-0000-4000-8000-000000000001"],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000001",
+      "recentMessages": ["Silence."],
+      "expectWrite": false,
+      "expectDerive": true
+    }
+  }
+}

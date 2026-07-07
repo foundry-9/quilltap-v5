@@ -371,6 +371,71 @@ pub async fn enqueue_character_avatar_generation(
     Ok((job_id, true))
 }
 
+/// v4 `enqueueStoryBackgroundGeneration` (`lib/background-jobs/queue-service.ts`):
+/// enqueue a `STORY_BACKGROUND_GENERATION` job, deduping via `findPendingForChat`
+/// **chat-level only** (any PENDING/PROCESSING story-background job for the same
+/// chat → no-op returning the existing id; NOT per-character, unlike the avatar
+/// enqueue). Priority `-1` (below interactive), `max_attempts` the default 3.
+///
+/// The payload is `{ chatId, imageProfileId, characterIds, [sceneContext],
+/// [projectId] }` (v4's `StoryBackgroundGenerationPayload`). Returns
+/// `(jobId, is_new)`.
+#[allow(clippy::too_many_arguments)]
+pub async fn enqueue_story_background_generation(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    image_profile_id: &str,
+    character_ids: &[String],
+    scene_context: Option<&str>,
+    project_id: Option<String>,
+) -> Result<(String, bool), DbError> {
+    let cid = chat_id.to_string();
+    let pending = db.read_main(|conn| {
+        crate::db::background_jobs::BackgroundJobsRepository::new(conn).find_pending_for_chat(&cid)
+    })?;
+    // Chat-level dedupe: any pending/processing story-background job for this chat.
+    if let Some(existing) = pending
+        .iter()
+        .find(|j| j.job_type == "STORY_BACKGROUND_GENERATION")
+    {
+        return Ok((existing.id.clone(), false));
+    }
+
+    let mut payload = serde_json::Map::new();
+    payload.insert("chatId".into(), Value::String(chat_id.to_string()));
+    payload.insert(
+        "imageProfileId".into(),
+        Value::String(image_profile_id.to_string()),
+    );
+    payload.insert(
+        "characterIds".into(),
+        Value::Array(
+            character_ids
+                .iter()
+                .map(|c| Value::String(c.clone()))
+                .collect(),
+        ),
+    );
+    if let Some(scene) = scene_context {
+        payload.insert("sceneContext".into(), Value::String(scene.to_string()));
+    }
+    if let Some(pid) = project_id {
+        payload.insert("projectId".into(), Value::String(pid));
+    }
+
+    let job_id = enqueue_job_with_priority(
+        db,
+        user_id,
+        "STORY_BACKGROUND_GENERATION",
+        Value::Object(payload),
+        -1.0,
+        3.0,
+    )
+    .await?;
+    Ok((job_id, true))
+}
+
 /// v4 `enqueueWardrobeOutfitAnnouncement` (`lib/background-jobs/queue-service.ts`):
 /// enqueue a debounced `WARDROBE_OUTFIT_ANNOUNCEMENT` job (`scheduledAt = now`,
 /// `priority = -1`, `maxAttempts` = the default 3). Collapses against a still-
