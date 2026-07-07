@@ -237,17 +237,97 @@ impl AnswerConfirmationRunner for NoAnswerConfirmation {
 }
 
 /// The async pre-compression trigger seam — v4 `triggerAsyncCompression`. When the
-/// finalizer's gate fires it records one call; the cheap-LLM compression
-/// (compression-cache subsystem) is wave 4.
+/// finalizer's gate fires it computes + caches the compression the NEXT message
+/// will need (W4.4a4, over [`crate::services::compression_cache`]).
 pub trait AsyncCompressionTrigger {
-    /// Fire the async compression for this chat (recorded by the harness).
-    fn trigger(&mut self, _chat_id: &str, _participant_id: Option<&str>);
+    /// Fire the async compression for this chat (computes + persists the cache).
+    fn trigger(
+        &self,
+        args: CompressionTriggerArgs,
+    ) -> impl std::future::Future<Output = Result<(), DbError>> + Send;
 }
 
-/// A no-op compression trigger.
+/// The inputs [`AsyncCompressionTrigger::trigger`] needs (v4's `triggerAsyncCompression`
+/// arg object, assembled by the finalizer from its `compression` context).
+pub struct CompressionTriggerArgs {
+    pub chat_id: String,
+    pub participant_id: Option<String>,
+    /// The updated conversation (visible history + the new user msg + the assistant
+    /// reply), v4 `updatedMessages`.
+    pub messages: Vec<crate::context_compression::CompressibleMessage>,
+    /// v4 `builtContext.originalSystemPrompt`.
+    pub system_prompt: String,
+    pub window_size: i64,
+    /// `floor(calculateMaxAvailable(...) * CONTEXT_HISTORY_BUDGET_RATIO)`.
+    pub compression_target_tokens: i64,
+    pub selection: crate::cheap_llm::CheapLlmSelection,
+    pub character_name: String,
+    /// v4 hardcodes `'User'` here (unlike buildContext, which prefers the persona name).
+    pub user_name: String,
+    /// The resolved danger settings (v4 `dangerSettings`) — feeds the uncensored fallback.
+    pub danger_settings: Option<crate::cheap_llm::DangerousContentSettings>,
+    /// Every connection profile (v4 `allProfiles`) — the uncensored fallback lookup.
+    pub available_profiles: Vec<crate::cheap_llm::CheapLlmProfile>,
+    /// The injected wall clock (v4 `Date.now()` inside `triggerAsyncCompression`).
+    pub now_ms: i64,
+}
+
+/// A no-op compression trigger (the feature-off / corpus-off path).
 pub struct NoAsyncCompression;
 impl AsyncCompressionTrigger for NoAsyncCompression {
-    fn trigger(&mut self, _chat_id: &str, _participant_id: Option<&str>) {}
+    async fn trigger(&self, _args: CompressionTriggerArgs) -> Result<(), DbError> {
+        Ok(())
+    }
+}
+
+/// The production async-compression trigger — computes + persists the compression
+/// cache via [`crate::services::compression_cache::trigger_async_compression`],
+/// over an injected [`Db`] + [`CompletionProvider`](crate::model::completion::CompletionProvider)
+/// + the shared [`CheapLlmTaskExecutor`].
+pub struct RealAsyncCompression<'e, C> {
+    pub db: &'e Db,
+    pub completion: &'e C,
+    pub executor: &'e CheapLlmTaskExecutor,
+}
+
+impl<C: crate::model::completion::CompletionProvider + Sync> AsyncCompressionTrigger
+    for RealAsyncCompression<'_, C>
+{
+    async fn trigger(&self, args: CompressionTriggerArgs) -> Result<(), DbError> {
+        // v4's finalizer always passes `dangerSettings` + `availableProfiles` into
+        // the compression options; the ported `uncensored_fallback` is present only
+        // when both are supplied (v4's `dangerSettings && availableProfiles` gate).
+        let uncensored = match &args.danger_settings {
+            Some(ds) if !args.available_profiles.is_empty() => {
+                Some(crate::cheap_llm::UncensoredFallbackOptions {
+                    danger_settings: ds,
+                    available_profiles: &args.available_profiles,
+                    is_dangerous_chat: None,
+                })
+            }
+            _ => None,
+        };
+        let options = crate::services::compression::ContextCompressionOptions {
+            window_size: args.window_size,
+            compression_target_tokens: args.compression_target_tokens,
+            selection: args.selection.clone(),
+            character_name: args.character_name.clone(),
+            user_name: args.user_name.clone(),
+            uncensored_fallback: uncensored,
+        };
+        crate::services::compression_cache::trigger_async_compression(
+            self.db,
+            self.completion,
+            self.executor,
+            &args.chat_id,
+            args.participant_id.as_deref(),
+            &args.messages,
+            &args.system_prompt,
+            &options,
+            args.now_ms,
+        )
+        .await
+    }
 }
 
 /// The cost-**estimation** seam — v4's `estimateMessageCost` (seamed with
@@ -404,12 +484,38 @@ pub struct FinalizerChatSettings {
     pub danger_mode_off: bool,
 }
 
-/// The async-compression gate inputs (v4 `compression` subset).
+/// The async-compression gate + trigger inputs (v4 `compression` context). When
+/// the gate fires (`compression_enabled` && a selection && a non-empty system
+/// prompt && not autonomous), the finalizer builds the updated message list
+/// (visible history + the new user msg + the assistant reply) and fires the async
+/// compression through [`AsyncCompressionTrigger`] (W4.4a4).
 #[derive(Clone, Debug, Default)]
 pub struct FinalizerCompression {
     pub compression_enabled: bool,
-    pub cheap_llm_selection_present: bool,
-    pub original_system_prompt_present: bool,
+    /// v4 `cheapLLMSelection` — `None` ⇒ the gate never fires (the spine currently
+    /// passes `None`; the finalizer differential sets it to exercise the trigger).
+    pub cheap_llm_selection: Option<crate::cheap_llm::CheapLlmSelection>,
+    /// v4 `builtContext.originalSystemPrompt` — empty ⇒ the gate never fires.
+    pub original_system_prompt: String,
+    /// v4 `extractVisibleConversation(existingMessages)` — the visible history the
+    /// trigger prepends before the new user msg + the assistant reply.
+    pub visible_conversation: Vec<crate::context_compression::CompressibleMessage>,
+    /// v4 `content` — the new user-message text (appended only when non-empty AND
+    /// not continue mode).
+    pub content: String,
+    /// v4 `isContinueMode`.
+    pub is_continue_mode: bool,
+    /// v4 `contextCompressionSettings.windowSize`.
+    pub window_size: i64,
+    /// `floor(calculateMaxAvailable(effectiveProfile) * CONTEXT_HISTORY_BUDGET_RATIO)`
+    /// — the async compression target, pre-computed at the composition point.
+    pub compression_target_tokens: i64,
+    /// v4 `dangerSettings` (forwarded to the compression options).
+    pub danger_settings: Option<crate::cheap_llm::DangerousContentSettings>,
+    /// v4 `allProfiles` (the uncensored-fallback lookup).
+    pub available_profiles: Vec<crate::cheap_llm::CheapLlmProfile>,
+    /// The injected wall clock for the cache `createdAt` (v4 `Date.now()`).
+    pub now_ms: i64,
 }
 
 /// The finalizer's return value (v4 `ProcessMessageResult`).
@@ -496,12 +602,12 @@ pub struct FinalizerConfirmationInputs {
 /// Drives the whole tail through the injected seams + the [`Db`] writer, emitting
 /// typed [`ChatEvent`]s at the `sink`. Returns the [`ProcessMessageResult`].
 #[allow(clippy::too_many_arguments)]
-pub async fn finalize_message_response<S, Q, P, CONF>(
+pub async fn finalize_message_response<S, Q, P, CONF, ACOMP>(
     db: &Db,
     sink: &S,
     opts: FinalizeOptions,
     confirmation_runner: &CONF,
-    compression_trigger: &mut dyn AsyncCompressionTrigger,
+    compression_trigger: &ACOMP,
     rng_bytes: &mut dyn RandomBytes,
     cost: &mut dyn CostTracker,
     carina_query: &mut Q,
@@ -515,6 +621,7 @@ where
     Q: RunCarinaQuery,
     P: PostProsperoCarinaError,
     CONF: AnswerConfirmationRunner,
+    ACOMP: AsyncCompressionTrigger,
 {
     let FinalizeOptions {
         chat_id,
@@ -853,18 +960,51 @@ where
     }
 
     // --- Async pre-compression trigger (message-finalizer.service.ts:326–367) ---
+    // Compute + cache the compression the NEXT human message will need. Autonomous
+    // rooms skip it (they never wait on a human and would re-fire the cheap call
+    // dozens of times per turn). v4 fire-and-forgets; v5 awaits (same DB effect once
+    // settled, per the watermark precedent).
     let is_autonomous = chat.chat_type.as_deref() == Some("autonomous");
     if compression.compression_enabled
-        && compression.cheap_llm_selection_present
-        && compression.original_system_prompt_present
+        && compression.cheap_llm_selection.is_some()
+        && !compression.original_system_prompt.is_empty()
         && !is_autonomous
     {
+        let selection = compression.cheap_llm_selection.clone().unwrap();
         let participant = if is_multi_character {
-            Some(character_participant.id.as_str())
+            Some(character_participant.id.clone())
         } else {
             None
         };
-        compression_trigger.trigger(&chat_id, participant);
+        // updatedMessages = visible history + (new user msg if present) + assistant reply.
+        let mut messages = compression.visible_conversation.clone();
+        if !compression.content.is_empty() && !compression.is_continue_mode {
+            messages.push(crate::context_compression::CompressibleMessage {
+                role: "user".to_string(),
+                content: compression.content.clone(),
+            });
+        }
+        messages.push(crate::context_compression::CompressibleMessage {
+            role: "assistant".to_string(),
+            content: cleaned_response.clone(),
+        });
+        compression_trigger
+            .trigger(CompressionTriggerArgs {
+                chat_id: chat_id.clone(),
+                participant_id: participant,
+                messages,
+                system_prompt: compression.original_system_prompt.clone(),
+                window_size: compression.window_size,
+                compression_target_tokens: compression.compression_target_tokens,
+                selection,
+                character_name: character.name.clone(),
+                // v4 hardcodes `userName: 'User'` in the finalizer trigger.
+                user_name: "User".to_string(),
+                danger_settings: compression.danger_settings.clone(),
+                available_profiles: compression.available_profiles.clone(),
+                now_ms: compression.now_ms,
+            })
+            .await?;
     }
 
     // --- Assistant-response RNG auto-detect (message-finalizer.service.ts:369–423) ---
@@ -1024,6 +1164,8 @@ where
         }),
         provider: Some(profile.provider.clone()),
         model_name: Some(profile.model_name.clone()),
+        // The finalizer's done frame is never a Courier placeholder.
+        pending_external_turn: None,
         is_silent_message,
         // Additive fields on the shared DonePayload (owned by chat_events); the
         // finalizer's done frame never sets an empty-response marker.
@@ -1177,7 +1319,7 @@ fn run_assistant_carina<Q, P>(
 /// v4 `triggerTurnMemoryExtraction`: resolve the turn opener (or, when none, the
 /// latest non-system non-silent ASSISTANT message id as the anchor), then enqueue
 /// a single MEMORY_EXTRACTION job.
-async fn trigger_turn_memory_extraction(
+pub(crate) async fn trigger_turn_memory_extraction(
     db: &Db,
     chat_id: &str,
     user_id: &str,
@@ -1267,7 +1409,7 @@ fn is_truthy_silent(v: Option<&Value>) -> bool {
 /// `resolveDangerousContentSettings(...).settings.mode === 'OFF'` (v4 bails first
 /// on it — an off-duty / moderation-exempt / globally-OFF chat is never enqueued).
 /// The enqueue's own `findPendingForChat` dedupe is in [`super::queue_service`].
-async fn trigger_chat_danger_classification(
+pub(crate) async fn trigger_chat_danger_classification(
     db: &Db,
     chat_id: &str,
     user_id: &str,

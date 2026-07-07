@@ -76,6 +76,20 @@ struct SpecOp {
     compression_enabled: bool,
     #[serde(default)]
     timestamp_mode: Option<String>,
+    /// W4.4a4: the async pre-compression cache the spine would pass into buildContext.
+    /// When present AND phase-1 fires, buildContext uses it verbatim (no sync
+    /// compression call — proven by the completion provider recording no compression key).
+    #[serde(default)]
+    cached_compression: Option<SpecCachedCompression>,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct SpecCachedCompression {
+    compressed_history: String,
+    message_count: i64,
+    #[serde(default)]
+    warnings: Vec<String>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -497,6 +511,23 @@ async fn build_context_tier3_matches_oracle() {
             (None, None, None)
         };
 
+        // W4.4a4 warm-cache: the pre-computed compression result the spine would pass.
+        let (cached_compression, cached_compression_count) = match &op.cached_compression {
+            Some(c) => (
+                Some(
+                    quilltap_core::services::compression::ContextCompressionResult {
+                        compression_applied: true,
+                        compressed_history: Some(c.compressed_history.clone()),
+                        compressed_system_prompt: None,
+                        compression_details: None,
+                        warnings: c.warnings.clone(),
+                    },
+                ),
+                Some(c.message_count),
+            ),
+            None => (None, None),
+        };
+
         let input = BuildContextInput {
             model_context_limit: model_limit(),
             user_id: spec.user_id.clone(),
@@ -539,6 +570,8 @@ async fn build_context_tier3_matches_oracle() {
             context_compression_settings: compression_settings,
             cheap_llm_selection: cheap_llm,
             bypass_compression: false,
+            cached_compression_result: cached_compression.clone(),
+            cached_compression_message_count: cached_compression_count,
             generate_memory_recap: false,
             uncensored_fallback: None,
             is_continue_mode: false,

@@ -508,6 +508,13 @@ pub struct ChatUpdate {
     /// `repos.chats.update(chatId, { commonplaceRecallHistory })`). `Some(arr)`
     /// stores; `Some(Value::Null)` clears; `None` leaves unset. No `updatedAt` bump.
     pub commonplace_recall_history: Option<Value>,
+    /// `courierCheckpoints` (nullable JSON object) — the per-character delta-mode
+    /// checkpoints, advanced by the Courier paste resolver
+    /// ([`crate::services::courier_transport`] `resolve_external_turn`, W4.4a4; v4
+    /// `repos.chats.update(id, { courierCheckpoints })`). `Some(obj)` stores;
+    /// `Some(Value::Null)` clears; `None` leaves unset. No `updatedAt` bump beyond
+    /// the caller's explicit `updated_at`.
+    pub courier_checkpoints: Option<Value>,
     pub updated_at: Option<String>,
 }
 
@@ -844,6 +851,18 @@ impl<'c> ChatsRepository<'c> {
                 Some(json_text(v)?)
             };
             set_col!("commonplaceRecallHistory", Box::new(text));
+        }
+        if let Some(v) = &patch.courier_checkpoints {
+            // v4 `repos.chats.update({ courierCheckpoints })` (W4.4a4 Courier paste
+            // resolver) — a JSON object stored as compact text; a JSON `null` clears
+            // the column. `updatedAt` IS bumped here (the resolver passes an explicit
+            // `updated_at`).
+            let text: Option<String> = if v.is_null() {
+                None
+            } else {
+                Some(json_text(v)?)
+            };
+            set_col!("courierCheckpoints", Box::new(text));
         }
         set_col!("updatedAt", Box::new(resolved_updated_at));
 

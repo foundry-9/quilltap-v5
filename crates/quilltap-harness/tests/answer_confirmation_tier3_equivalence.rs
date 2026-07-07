@@ -503,7 +503,7 @@ fn answer_confirmation_tier3_matches_oracle() {
         executor: &executor,
     };
 
-    let mut compression = NoAsyncCompression;
+    let compression = NoAsyncCompression;
     let mut cost = NoCostTracking;
     let mut rng_bytes = FixedBytes::new(vec![]);
 
@@ -664,7 +664,7 @@ fn answer_confirmation_tier3_matches_oracle() {
                 &sink,
                 opts,
                 &confirmation,
-                &mut compression,
+                &compression,
                 &mut rng_bytes,
                 &mut cost,
                 &mut carina,

@@ -158,6 +158,7 @@ pub mod context_budget;
 pub mod context_compression;
 pub mod context_summary;
 pub mod core_whisper;
+pub mod courier;
 pub mod db;
 pub mod dbkey;
 pub mod doc_edit;

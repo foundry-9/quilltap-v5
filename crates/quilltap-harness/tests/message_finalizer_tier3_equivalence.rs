@@ -171,20 +171,30 @@ fn spec_path() -> PathBuf {
 // Seam recorders.
 // ---------------------------------------------------------------------------
 
+/// The compression trigger records the fired call's `{chatId, participantId}` —
+/// the gate proof (the finalizer builds the full real args + fires the real-shaped
+/// trigger; the trigger's PERSISTENCE is proven separately by
+/// `compression_cache_tier3_equivalence`, where the message count exceeds the
+/// window so `trigger_async_compression` actually compresses + persists). Uses a
+/// `RefCell` since the seam is now `&self` (async trait).
 #[derive(Default)]
 struct RecordingCompression {
-    calls: Vec<Value>,
+    calls: std::sync::Mutex<Vec<Value>>,
 }
 impl AsyncCompressionTrigger for RecordingCompression {
-    fn trigger(&mut self, chat_id: &str, participant_id: Option<&str>) {
+    async fn trigger(
+        &self,
+        args: quilltap_core::services::message_finalizer::CompressionTriggerArgs,
+    ) -> Result<(), quilltap_core::db::DbError> {
         // Mirror the oracle's record: `{chatId, participantId}` where
         // `participantId` is absent when v4 passes `undefined`.
         let mut obj = serde_json::Map::new();
-        obj.insert("chatId".into(), json!(chat_id));
-        if let Some(p) = participant_id {
+        obj.insert("chatId".into(), json!(args.chat_id));
+        if let Some(p) = &args.participant_id {
             obj.insert("participantId".into(), json!(p));
         }
-        self.calls.push(Value::Object(obj));
+        self.calls.lock().unwrap().push(Value::Object(obj));
+        Ok(())
     }
 }
 
@@ -588,7 +598,7 @@ fn message_finalizer_tier3_matches_oracle() {
         model_name: "claude-sonnet".into(),
     };
 
-    let mut compression_rec = RecordingCompression::default();
+    let compression_rec = RecordingCompression::default();
     let mut cost_rec = RecordingCost::default();
     // The RNG byte source is shared across the whole run (v4 mocks
     // `crypto.randomBytes` once; it consumes across calls in order).
@@ -667,8 +677,33 @@ fn message_finalizer_tier3_matches_oracle() {
 
         let compression = FinalizerCompression {
             compression_enabled: call.compression.enabled,
-            cheap_llm_selection_present: call.compression.selection,
-            original_system_prompt_present: call.compression.system_prompt,
+            cheap_llm_selection: call.compression.selection.then(|| {
+                quilltap_core::cheap_llm::CheapLlmSelection {
+                    provider: "ANTHROPIC".into(),
+                    model_name: "claude-haiku".into(),
+                    base_url: None,
+                    connection_profile_id: Some("profile-mf-0000-0000-000000000001".into()),
+                    is_local: false,
+                    profile_parameters: None,
+                }
+            }),
+            original_system_prompt: if call.compression.system_prompt {
+                "the original system prompt".into()
+            } else {
+                String::new()
+            },
+            // The oracle's compression context uses `existingMessages: []` +
+            // `content: ''`, so the trigger's `updatedMessages` is just the assistant
+            // reply (message count ≤ window → the real trigger no-ops; the gate + the
+            // fired `{chatId, participantId}` are what this differential proves).
+            visible_conversation: Vec::new(),
+            content: String::new(),
+            is_continue_mode: false,
+            window_size: 10,
+            compression_target_tokens: 1000,
+            danger_settings: None,
+            available_profiles: Vec::new(),
+            now_ms: 0,
         };
 
         let chat_settings = if call.chat_settings {
@@ -753,7 +788,7 @@ fn message_finalizer_tier3_matches_oracle() {
                 &sink,
                 opts,
                 &confirmation,
-                &mut compression_rec,
+                &compression_rec,
                 &mut rng_bytes,
                 &mut cost_rec,
                 &mut carina_seam,
@@ -784,7 +819,8 @@ fn message_finalizer_tier3_matches_oracle() {
 
     // --- 3. seam records ---
     assert_eq!(
-        compression_rec.calls, want_compression,
+        *compression_rec.calls.lock().unwrap(),
+        want_compression,
         "compression-trigger seam records mismatch"
     );
     assert_eq!(
