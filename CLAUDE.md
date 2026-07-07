@@ -3508,3 +3508,59 @@ intro; `describeOutfit` itself is UNCHANGED (the ported leaf stays valid).
 Drift note added to the W4.9a order's W4.9c scope. Also: `help/chat-settings.md`
 is help-content data (not a ported surface). The `docs/v4/` CHANGELOG mirror
 is refreshed. **New oracle baseline for in-flight/future orders: `6b6e39ad`.**
+
+**Round-3 unification (Phase B) — Groups 1–5 done, 6–8 deferred.** The three
+Round-3 units (W4.4a4 courier, W4.6b post-office writers, W4.7c request builders)
+landed with their spine seams INERT; this pass wires them live.
+**Group 1 (W4.7c tool reshape/detector/strategy):** `tool_build::build_tools`
+now applies `format_tools_for_provider` as its final step (Anthropic `input_schema`
+etc. at the wire; OPENAI passthrough keeps `tool_build_equivalence` green), and the
+spine constructs `RegistryToolCallDetector::built_in()` + gates the provider-text
+pass on `provider_has_text_markers` internally (the `tool_detector` /
+`provider_text_strategy` fields dropped from `OrchestratorDeps`).
+`orchestrator_tier3` regenerated with the real provider registry initialized on the
+v4 side (both reshape identically; the tools-at-wire assertion compares the reshaped
+slate). **Group 2 (W4.6b whisper writers):** `BuildContextSeams` is now async
+(RPITIT) with a `RealBuildContextSeams` impl delegating to the W4.6b writers —
+core-whisper + commonplace (with v4's stale-whisper sweeps), host timestamp +
+off-scene (the off-scene scan now returns the newcomer cards so the writer builds
+the announcement + `introducedCharacterIds`), and Suparṇā mail (built from the
+unalerted letters, targeted at the responding participant); the commonplace `posted`
+still gates the scene-cache/recall-history persists. The Prospero cadence block
+(public announcement + group-context whisper) is wired directly into the spine (the
+`post_prospero_context` seam dropped). `build_context_tier3` + `orchestrator_tier3`
+regenerated with the writers un-mocked (commonplace / host / prospero group-context
+whisper rows now appear in the orchestrator's diffed `chat_messages` dump).
+**Group 3 (end-of-turn wardrobe drain):** the spine threads ONE shared
+`pendingWardrobeAnnouncements` set through every per-turn tool context and drains it
+at turn close (v4 `orchestrator.service.ts:1406`) via
+`flush_pending_wardrobe_announcements`; added `WardrobeOutfitAnnouncementHandler`
+(a `JobHandler`) for the runner registry. **Group 4 (Lantern sink):** deleted the
+truncated `lantern_character_image_notification` placeholder; `LanternNotificationSink`
+is now async with a `RealLanternNotification` delegating to the byte-exact W4.6b
+`post_lantern_image_notification`; `image_generation_tier3` regenerated with the
+persisted `character-image` content diffed byte-exact (incl. the tail the
+placeholder dropped). **Group 5 (commonplace dedup):** removed the private
+commonplace builders from `build_context.rs`, reusing the canonical
+`commonplace_notifications` versions (byte-identical for the per-turn whisper).
+
+**Deferred to a follow-up (Round-3 Groups 6–8):** **Group 6** (Librarian doc-save
+announcement) — needs porting v4's `postLibrarianWriteAnnouncement` +
+`buildWriteContent`/`buildWriteOpaqueContent` (the `change: {created,body}` /
+`{edited,diff}` payload over the ported `generate_unified_diff`) AND a refactor to
+post it OUTSIDE the sync doc-edit handlers' `Db::write` closure (the handlers run
+synchronously with direct connections, so the async Librarian post must be threaded
+out to a post-closure call), plus a `chat_messages` dump/remap added to
+`doc_text`/`doc_fm`. **Group 7** (context-summary vault-mirror + relevant-
+conversations-refresh LIVE) — needs `RealContextSummarySeams::mirror_summary_to_vaults`
++ `refresh_relevant_conversations` made live (mirror BEFORE refresh — the ordering
+invariant), the `context_summary_service_tier3` fixture extended with real vaults +
+canned embeddings (keep `vault_summary_mirror_tier2` green). **Group 8**
+(`cheap_llm_selection` spine threading) — resolve a `CheapLlmSelection` at the
+orchestrator composition point (v4's way) so the finalizer async-compression +
+buildContext cached-compression window + the recap/distill feeders fire; regenerate
+`orchestrator_tier3` with the recap/distill feeder mocks dropped one-for-one (the
+`build_context_tier3` precedent already proves the real recap/distill). Watch-out:
+the recap firing changes the fed context → the canned stream keys → cascade
+re-record. Groups 6–8 each left the tree fully green (Groups 1–5 committed on
+`round3-integration`).

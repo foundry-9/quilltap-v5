@@ -198,7 +198,19 @@ round with a drift check against v4 HEAD.
   services; its finalizer/orchestrator regenerations go to unification).
 - **Round 3:** W4.4a4 (owns spine + orchestrator corpus) ∥ W4.6b (writers;
   its many regenerations listed in the order go to unification where they
-  collide) ∥ W4.7c.
+  collide) ∥ W4.7c. **Unification Phase B (spine seam wiring): Groups 1–5 DONE**
+  — G1 W4.7c tool reshape/detector/strategy (orchestrator_tier3 regenerated with
+  the real provider registry on the v4 side), G2 W4.6b whisper writers live
+  (`RealBuildContextSeams` + the Prospero cadence block; build_context_tier3 +
+  orchestrator_tier3 regenerated with writers un-mocked), G3 end-of-turn wardrobe
+  drain, G4 Lantern sink → byte-exact writer (image_generation_tier3), G5
+  commonplace dedup. **Groups 6–8 DEFERRED:** G6 Librarian doc-save `change:{diff}`
+  coupling (needs porting `postLibrarianWriteAnnouncement` + posting it OUTSIDE the
+  sync doc-edit handlers' `Db::write` closure + a chat_messages dump in
+  doc_text/doc_fm), G7 context-summary vault-mirror + relevant-conversations-refresh
+  LIVE (vault fixtures + embedding; mirror BEFORE refresh), G8 `cheap_llm_selection`
+  spine threading (activates recap/distill/cached-compression → orchestrator_tier3
+  canned-key re-record cascade). See CLAUDE.md Status for the detailed hand-off.
 - **Round 4:** W4.4b (owns spine + orchestrator corpus) ∥ W4.5 (carina —
   its finalizer/orchestrator cases go to unification) ∥ W4.7d/e/f.
 - **Round 5:** Unit 4 (enclave), then the Phase-4 kickoff.
