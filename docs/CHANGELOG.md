@@ -34,6 +34,45 @@ failure→could-not-verify mapping is ported). Re-verified
 oracles. Full workspace `cargo test` / `clippy -D warnings` / `fmt --check`
 green.
 
+Phase 3 — wave 4 (W4.9a): the image-generation subsystem (`generate_image`).
+Ported v4's `executeImageGenerationTool` end to end and dispatched it, closing
+the long-deferred image handler. New `model::image` boundary (the tier-3 seam at
+v4's `provider.generateImage(params, apiKey)`): the `ImageProvider` trait +
+`CannedImageProvider` keyed by the exact merged request (the key proves
+`mergeParameters` + `applyOrientation`), plus a separate `ImageTranscoder` seam
+for the WebP transcode (no image-codec crate in the core — the `doc_blob`
+precedent; `PassthroughTranscoder` is the default). Three cheap-LLM tasks
+(`services::image_scene_tasks` — `craftImagePrompt` / `resolveAppearance` /
+`sanitizeAppearance`, prompts byte-exact in a generated `prompt_text` submodule)
+over the ported `CheapLlmTaskExecutor`. Appearance resolution
+(`services::appearance_resolution` — the sceneState/trivial-skip/cheap-LLM
+resolution + the five-step Concierge sanitize gate IN ORDER). The handler spine
+(`tools::generate_image`): input validation, profile load/validate (API key via
+the `ApiKeyResolver` seam), the Concierge integration composing W4.2 (prompt
+classification when `scanImagePrompts`, expanded-prompt classification when
+`scanImageGeneration`, the AUTO_ROUTE reroute, and the post-hoc reroute on a
+provider moderation error), `resolveOrientation` mutating the merged params, and
+`saveGeneratedImage` (base64 decode → WebP transcode seam → SHA-256 → the Lantern
+Backgrounds store write under `tool/` via `link_blob_content` → the `files` row
+with `source='GENERATED'` / `category='IMAGE'` / generation metadata → tag
+inheritance → the Lantern notification, a recorded seam with the byte-exact
+string handed to W4.6b). The avatar trigger (`services::avatar_generation` —
+`triggerAvatarGenerationIfEnabled`, the `avatarGenerationEnabled` gate + the
+autonomous-chat skip + profile resolution + the `CHARACTER_AVATAR_GENERATION`
+enqueue in `queue_service`), closing the W4.1d2 wardrobe deferral. `generate_image`
+is dispatched through the `BuiltInToolRunner` (removed from the loud-fallback set)
+via an erased `ImageGenerationRunner` seam, threading the generated-image paths
+into `process_tool_calls` + the finalizer link loop. Verified by the tier-3
+differential `image_generation_tier3_equivalence` (jest real-DB oracle driving
+v4's REAL `executeImageGenerationTool`, mocking only the image provider [canned
+by exact request], the completion boundary [recorded keys prove all three task
+prompts + classification], WebP transcode [deterministic pass-through both
+sides], and the Lantern notification). Tracked deferrals (host / cross-subsystem
+seams): the aesthetic subsystem (`resolveAesthetic` / `resolveDepictionGuidelines`
+— v4 error-swallows it, so the port supplies `None` and keeps the swallow shape),
+`logLLMCall`, the real WebP encoder, and the personified Lantern writer (W4.6b).
+The avatar + story-background JOB HANDLERS are the follow-up W4.9c.
+
 Integration of the five parallel wave-4 units (W4.7a / W4.7b / W4.2u / W4.8 /
 W4.9b), each developed and verified in isolation. Two reconciliation touches:
 the two independent ports of `doc_mount_file_links.findByIdWithContent` were

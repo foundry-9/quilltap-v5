@@ -3065,6 +3065,93 @@ profiles plumbing into `FinalizerConfirmationInputs` (the same seam boundary as 
 compression `cheapLLMSelection` — the feature-off orchestrator corpus keeps the
 inputs inert); `logLLMCall`'s `ANSWER_CONFIRMATION` log-type mapping (host-side).
 
+**Wave 4 (W4.9a): the image-generation subsystem is DONE** (2026-07-06). v4's
+long-deferred `executeImageGenerationTool` is ported end to end and dispatched.
+New model boundary `model::image` (the tier-3 seam at v4's
+`provider.generateImage(params, apiKey)`): the `ImageProvider` trait +
+`CannedImageProvider` keyed by the exact merged request via `image_gen_key`
+(`provider|model|<params JSON in v4 field order>` — the key proves
+`mergeParameters` + `applyOrientation`, incl. the orientation-driven
+`size`/`aspectRatio`), plus a SEPARATE `ImageTranscoder` seam for the WebP
+transcode (no image-codec crate in the core — the `doc_blob` precedent;
+`PassthroughTranscoder` the default + the differential's identical-both-sides
+transcode). The three cheap-LLM tasks (`services::image_scene_tasks` —
+`craftImagePrompt` [the placeholder detail block + style-trigger + aesthetic
+sections, the quote-strip + UTF-16 truncation parser], `resolveAppearance` [the
+per-character JSON selection parser], `sanitizeAppearance` [explicit → safe
+rewrite]) run over the ported `CheapLlmTaskExecutor` with the byte-exact system
+prompts in a GENERATED `prompt_text` submodule (mechanically extracted from v4 by
+the checked-in `harness/oracle/cases/gen-image-scene-prompts.mjs`). Appearance
+resolution (`services::appearance_resolution` — `resolveCharacterAppearances`
+[the sceneState fast path, the trivial-case skip, the cheap-LLM call with the
+dangerous-chat uncensored upgrade, the default fallbacks] + the FIVE-step
+`sanitizeAppearancesIfNeeded` gate IN ORDER [OFF → pass; dangerous+uncensored →
+pass; safe → pass; dangerous+uncensored-available → pass; dangerous+none →
+sanitize] with `wasSanitized` flagged; wardrobe context via
+`resolve_equipped_leaf_items_by_slot`, a new `leafItemsBySlot` sibling of the
+title-only `resolve_equipped_outfit_values` in `tools::wardrobe_shared`,
+imagePrompt preferred over title). The handler spine (`tools::generate_image`):
+input validation + profile load/validate (API key via the `ApiKeyResolver`
+seam), the Concierge integration composing W4.2 (prompt classification when
+`scanImagePrompts`, expanded-prompt classification when `scanImageGeneration`,
+the AUTO_ROUTE reroute via `resolve_image_provider_for_dangerous_content`, the
+POST-HOC reroute on a provider moderation error via
+`is_image_moderation_error` + `resolve_uncensored_image_profile_for_reroute` —
+`isImageModerationError` COMPOSED from W4.2, not duplicated), `resolveOrientation`
+mutating the merged params, and the tier-based prompt-expansion fallback chain
+(original → craft → complete/long/medium/short/name on LLM failure). Placeholder
+resolution (`{{me}}`/`{{I}}`/`{{char}}` = the caller, `{{user}}` = the other
+participant, by-name/alias) reads the vault-overlaid `characters_read` on both
+connections. `saveGeneratedImage` (base64 decode [Node `Buffer.from(x,'base64')`
+semantics] → WebP transcode [the injected seam, off the writer thread] → SHA-256
+→ the Lantern Backgrounds store write under `tool/` composing `link_blob_content`
++ `resolveUniqueRelativePath` + `ensureFolderPath` — the store id read from a new
+`instance_settings::get_lantern_backgrounds_mount_point_id`, refusing to write
+when the mount is unprovisioned per source → the `files` row [post-transcode
+mime/size, width/height, `linkedTo=[chatId]`, `source='GENERATED'`,
+`category='IMAGE'`, `generationPrompt`/`generationModel`/`generationRevisedPrompt`]
+→ tag inheritance [`getInheritedTags`] → the Lantern notification, a recorded
+`LanternNotificationSink` seam with the byte-exact string
+`lantern_character_image_notification` ported HERE and handed to W4.6b). The
+avatar trigger (`services::avatar_generation` —
+`triggerAvatarGenerationIfEnabled`: the `avatarGenerationEnabled` gate + the
+autonomous-chat skip + profile resolution [override → chat-level → global
+default] + the `CHARACTER_AVATAR_GENERATION` enqueue via new
+`queue_service::enqueue_character_avatar_generation` with `findPendingForChat`
+dedupe) — **closing the W4.1d2 wardrobe deferral** (the corpus kept the flag
+false; now the trigger is real and banked firing). `generate_image` is dispatched
+through `BuiltInToolRunner` (removed from the loud-fallback set) via an ERASED
+`ImageGenerationRunner` seam (an `Arc<dyn …>` boxed-future erasure over the
+handler's seven generics, the `ErasedEmbeddingProvider` precedent; default
+`NotConfiguredImageGeneration` returns v4's dispatcher `if (!imageProfileId)`
+guard error "Image generation is not enabled for this chat"), threading the
+generated-image descriptors (`{ id, filepath, … }`) into the already-ported
+`process_tool_calls` image extraction + the finalizer link loop (the image
+link-loop order `[firstToolMessageId, assistantMessageId]` banked live). Verified
+by `image_generation_tier3_equivalence` — a jest real-DB oracle driving v4's REAL
+`executeImageGenerationTool` over a two-DB fixture (characters + vaults + equipped
+outfits + image profiles incl. an uncensored one + connection profiles + chat
+settings with the Concierge scan flags + a provisioned Lantern Backgrounds store),
+mocking ONLY the image provider (canned by exact request — the recorded key proves
+the merged params incl. orientation), the completion boundary (recorded keys prove
+all three task prompts + the classification prompts), Sharp/WebP (deterministic
+pass-through both sides so the store bytes match `link_blob_content`), and the
+Lantern notification; diffing the result object + `files` + the five mount-index
+store tables (shared-cross-db id-map remap; content-addressed bytes carry the
+minted file id) + `background_jobs` (avatar enqueue). `tool_dispatch_equivalence`
+gained a `generate_image` row and the finalizer / orchestrator differentials were
+re-verified green (the executor's new field/method/dispatch additive + inert on
+the existing corpora); `wardrobe_tools` re-verified (its corpus keeps
+`avatarGenerationEnabled` false, so the now-real trigger stays a no-op). **Tracked
+deferrals (host / cross-subsystem seams):** the aesthetic subsystem
+(`resolveAesthetic` / `resolveDepictionGuidelines` / `getProjectOfficialMountPointId`
+— v4 error-swallows it [an ad-hoc image never breaks on a guidance read], so the
+port supplies `None` and keeps the swallow shape; injectable later), `logLLMCall`,
+the real WebP encoder (W4.7f-adjacent host work), and the personified Lantern
+writer (W4.6b). The avatar + story-background JOB HANDLERS are the follow-up
+**W4.9c** (they reuse the W4.9a subsystem + the scene tasks' remaining two
+functions `deriveSceneContext` / `craftStoryBackgroundPrompt`).
+
 **The Phase-3 endgame is fully planned (2026-07-06).** Every remaining unit
 has an agent-ready work order checked in under
 `docs/developer/porting/work-orders/` — W4.2u (the danger spine unification

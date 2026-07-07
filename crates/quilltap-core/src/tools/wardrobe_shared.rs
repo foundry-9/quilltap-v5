@@ -377,6 +377,137 @@ pub fn resolve_equipped_outfit_values(
     Ok(out)
 }
 
+/// One equipped leaf item routed to an output slot (v4
+/// `ResolvedEquippedOutfit.leafItemsBySlot[slot][]`). Carries the fields image
+/// appearance-resolution consumes: `title`, `description`, `imagePrompt`.
+#[derive(Clone, Debug, Default)]
+pub struct EquippedLeafItem {
+    pub slot: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub image_prompt: Option<String>,
+}
+
+/// v4 `resolveEquippedOutfitForCharacter`'s `leafItemsBySlot` half — the sibling of
+/// [`resolve_equipped_outfit_values`] that returns the per-slot leaf ITEMS (not
+/// just titles), flattened in v4's `['top','bottom','footwear','accessories']` slot
+/// order. Image generation's appearance resolution needs `title` +
+/// `description` + `imagePrompt` per leaf, which the title-only
+/// [`resolve_equipped_outfit_values`] discards.
+///
+/// Shares the exact first-two-pass logic: expand each input slot's composites
+/// (dedup by leaf id in first-seen order), then route each leaf into every output
+/// slot its own `types` declare.
+pub fn resolve_equipped_leaf_items_by_slot(
+    main: &Connection,
+    docs: &DocMountDocumentsRepository,
+    character_id: &str,
+    slots: &Slots,
+    project_mount_point_ids: &[String],
+) -> Result<Vec<EquippedLeafItem>, DbError> {
+    let mut equipped_ids: Vec<String> = Vec::new();
+    let mut seen_id: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for slot in [
+        &slots.top,
+        &slots.bottom,
+        &slots.footwear,
+        &slots.accessories,
+    ] {
+        for id in slot {
+            if seen_id.insert(id.clone()) {
+                equipped_ids.push(id.clone());
+            }
+        }
+    }
+    if equipped_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let char_items = find_by_character_id(main, docs, character_id, true).unwrap_or_default();
+    let mut items_by_id: std::collections::HashMap<String, Value> =
+        std::collections::HashMap::new();
+    for it in char_items {
+        if let Some(id) = it.get("id").and_then(Value::as_str) {
+            items_by_id.insert(id.to_string(), it);
+        }
+    }
+
+    let missing: Vec<String> = equipped_ids
+        .iter()
+        .filter(|id| !items_by_id.contains_key(*id))
+        .cloned()
+        .collect();
+    if !missing.is_empty() {
+        let fallback =
+            find_by_ids_for_character(main, docs, character_id, &missing, project_mount_point_ids)
+                .unwrap_or_default();
+        for it in fallback {
+            if let Some(id) = it.get("id").and_then(Value::as_str) {
+                items_by_id.insert(id.to_string(), it);
+            }
+        }
+    }
+
+    // First pass: expand each input slot's composites, dedup leaves in first-seen order.
+    let mut seen_leaf: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut ordered_leaves: Vec<Value> = Vec::new();
+    for slot in [
+        &slots.top,
+        &slots.bottom,
+        &slots.footwear,
+        &slots.accessories,
+    ] {
+        let expanded = expand_composites(slot, &items_by_id, None);
+        for id in expanded.leaf_ids {
+            if seen_leaf.contains(&id) {
+                continue;
+            }
+            let Some(item) = items_by_id.get(&id) else {
+                continue;
+            };
+            seen_leaf.insert(id);
+            ordered_leaves.push(item.clone());
+        }
+    }
+
+    // Second pass: route each leaf into every output slot its `types` declare.
+    let mut out: Vec<EquippedLeafItem> = Vec::new();
+    for item in &ordered_leaves {
+        let title = item
+            .get("title")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let description = item
+            .get("description")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let image_prompt = item
+            .get("imagePrompt")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let types = item
+            .get("types")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        for t in &types {
+            if let Some(slot) = t.as_str() {
+                if WARDROBE_SLOT_TYPES.contains(&slot) {
+                    out.push(EquippedLeafItem {
+                        slot: slot.to_string(),
+                        title: title.clone(),
+                        description: description.clone(),
+                        image_prompt: image_prompt.clone(),
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(out)
+}
+
 /// v4 `buildWardrobeCoverageSummaryFromState` — resolve the equipped outfit into
 /// leaf titles, then render via [`describe_outfit`].
 pub fn build_wardrobe_coverage_summary_from_state(

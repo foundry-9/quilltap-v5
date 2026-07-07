@@ -1,0 +1,357 @@
+//! The image half of the model boundary — the tier-3 seam for the
+//! `generate_image` tool. Mirrors the subset of v4's image-provider contract the
+//! handler consumes: `provider.generateImage(params, apiKey)` from
+//! `@quilltap/plugin-types` (the merged request → `{ images: [...] }` result),
+//! as driven by `lib/tools/handlers/image-generation-handler.ts`.
+//!
+//! The boundary sits at the provider call itself. The real image wire dialects
+//! (the OpenAI / Grok / Google-Imagen request builders + response decoders) are
+//! **W4.7f** — the provider stays canned here, exactly as the v4 oracle mocks
+//! `provider.generateImage`. API-key acquisition stays host-side (the
+//! `ApiKeyResolver` seam supplies the decrypted key; the canned responder needs
+//! none). The `image/webp` transcode is a separate injected seam
+//! ([`ImageTranscoder`]) — no image-codec crate in the core (the `doc_blob`
+//! precedent).
+
+use std::collections::HashMap;
+use std::future::Future;
+
+use serde_json::Value;
+
+/// The merged image-generation request (v4 `mergeParameters` output — the fields
+/// `applyOrientation` mutates plus the profile-default carry-overs). Bound
+/// verbatim into [`image_gen_key`]: the canned key proves the merged params
+/// (incl. the orientation-driven `size`/`aspectRatio` and the appended prompt
+/// hint) reach the provider.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ImageGenParams {
+    pub prompt: String,
+    pub negative_prompt: Option<String>,
+    pub model: String,
+    /// v4 `n` — image count (`input.count ?? profile.n ?? 1`).
+    pub n: Option<i64>,
+    pub size: Option<String>,
+    pub aspect_ratio: Option<String>,
+    /// `'standard' | 'hd'`.
+    pub quality: Option<String>,
+    /// `'vivid' | 'natural'`.
+    pub style: Option<String>,
+    pub seed: Option<i64>,
+    pub guidance_scale: Option<f64>,
+    pub steps: Option<i64>,
+}
+
+impl ImageGenParams {
+    /// The params as the canonical JSON object v4 would `JSON.stringify` — used
+    /// only to build the deterministic [`image_gen_key`]. Optional fields are
+    /// omitted when `None` (matching v4's `undefined`-drop), in v4 field order.
+    fn to_key_value(&self) -> Value {
+        let mut map = serde_json::Map::new();
+        map.insert("prompt".into(), Value::String(self.prompt.clone()));
+        if let Some(v) = &self.negative_prompt {
+            map.insert("negativePrompt".into(), Value::String(v.clone()));
+        }
+        map.insert("model".into(), Value::String(self.model.clone()));
+        if let Some(v) = self.n {
+            map.insert("n".into(), Value::from(v));
+        }
+        if let Some(v) = &self.size {
+            map.insert("size".into(), Value::String(v.clone()));
+        }
+        if let Some(v) = &self.aspect_ratio {
+            map.insert("aspectRatio".into(), Value::String(v.clone()));
+        }
+        if let Some(v) = &self.quality {
+            map.insert("quality".into(), Value::String(v.clone()));
+        }
+        if let Some(v) = &self.style {
+            map.insert("style".into(), Value::String(v.clone()));
+        }
+        if let Some(v) = self.seed {
+            map.insert("seed".into(), Value::from(v));
+        }
+        if let Some(v) = self.guidance_scale {
+            map.insert("guidanceScale".into(), Value::from(v));
+        }
+        if let Some(v) = self.steps {
+            map.insert("steps".into(), Value::from(v));
+        }
+        Value::Object(map)
+    }
+}
+
+/// One generated image (v4 `GeneratedImage` in the provider response's `images`
+/// array). `data` carries the base64-encoded bytes (v4's `img.data ||
+/// img.b64Json`); `revised_prompt` is the provider's revision (or `None`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct GeneratedImageData {
+    /// Base64-encoded image bytes.
+    pub data: String,
+    /// `image/png` etc. (v4 `img.mimeType || 'image/png'` — the default is
+    /// applied by the caller, not here).
+    pub mime_type: Option<String>,
+    pub revised_prompt: Option<String>,
+}
+
+/// The image-generation provider response (v4 `{ images: GeneratedImage[] }`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ImageGenResponse {
+    pub images: Vec<GeneratedImageData>,
+}
+
+/// Error from an image-generation call. The message text matters: the handler
+/// inspects it via [`is_image_moderation_error`](crate::services::dangerous_content::provider_routing::is_image_moderation_error)
+/// to decide the post-hoc Concierge reroute.
+#[derive(Clone, Debug)]
+pub struct ImageGenError {
+    pub message: String,
+}
+
+impl ImageGenError {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+impl std::fmt::Display for ImageGenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for ImageGenError {}
+
+/// The image-generation boundary — every `provider.generateImage(params, key)`
+/// call goes through this trait. `provider` mirrors v4's
+/// `createImageProvider(profile.provider)` factory argument; folding it into the
+/// call keeps the trait a single seam. Async and generic-consumed like the
+/// completion / embedding boundaries.
+pub trait ImageProvider {
+    fn generate_image(
+        &self,
+        provider: &str,
+        api_key: &str,
+        params: &ImageGenParams,
+    ) -> impl Future<Output = Result<ImageGenResponse, ImageGenError>> + Send;
+}
+
+/// The image → WebP transcode boundary (v4 `convertToWebP` /
+/// `transcodeToWebP`). No image-codec crate in the core (the `doc_blob`
+/// precedent). Given the decoded bytes + the provider mime type + the desired
+/// filename, return the post-transcode bytes + mime + filename + measured
+/// dimensions. A pass-through implementation (bytes unchanged) is used both
+/// sides of the differential.
+pub trait ImageTranscoder {
+    fn transcode(&self, input: &TranscodeInput) -> TranscodeOutput;
+}
+
+/// Input to the transcode seam.
+#[derive(Clone, Debug)]
+pub struct TranscodeInput {
+    /// Decoded (post-base64) image bytes.
+    pub bytes: Vec<u8>,
+    /// The provider's declared mime type (`image/png` etc.).
+    pub mime_type: String,
+    /// The provider filename (`generated_<ts>.<ext>`).
+    pub filename: String,
+}
+
+/// Output of the transcode seam (v4 `convertToWebP`'s
+/// `{ buffer, mimeType, filename, width?, height? }`).
+#[derive(Clone, Debug)]
+pub struct TranscodeOutput {
+    pub bytes: Vec<u8>,
+    pub mime_type: String,
+    pub filename: String,
+    pub width: Option<f64>,
+    pub height: Option<f64>,
+}
+
+/// The canonical lookup key for a canned image generation: `provider|model|<params
+/// JSON>`. The v4 oracle's mock computes the identical string (provider name +
+/// the merged params it received), so a call either matches an entry registered
+/// on both sides or surfaces as a corpus omission on both sides. Crucially the
+/// params JSON includes the orientation-mutated `size`/`aspectRatio` and the
+/// appended prompt hint, so a divergence in `mergeParameters` / `applyOrientation`
+/// surfaces as a canned miss.
+pub fn image_gen_key(provider: &str, params: &ImageGenParams) -> String {
+    let params_json =
+        serde_json::to_string(&params.to_key_value()).expect("image params serialize infallibly");
+    format!("{provider}|{}|{params_json}", params.model)
+}
+
+/// A deterministic [`ImageProvider`] for the tier-3 differential. Returns a fixed
+/// [`ImageGenResponse`] keyed by the exact call ([`image_gen_key`]), or an
+/// explicit failure for keys registered as failing. The Rust test and the v4
+/// oracle build the same key→response map, so the image call is pinned
+/// identically on both sides.
+///
+/// A failure entry fails with its registered message, so the moderation-error
+/// post-hoc reroute can be driven deterministically. An unregistered input is an
+/// error (a corpus omission — surfaced, never silently answered).
+#[derive(Clone, Default)]
+pub struct CannedImageProvider {
+    responses: HashMap<String, ImageGenResponse>,
+    failures: HashMap<String, String>,
+}
+
+impl CannedImageProvider {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Register a response for the exact call `(provider, params)`.
+    pub fn with_response(
+        mut self,
+        provider: &str,
+        params: &ImageGenParams,
+        response: ImageGenResponse,
+    ) -> Self {
+        self.responses
+            .insert(image_gen_key(provider, params), response);
+        self
+    }
+
+    /// Register a failure (with its exact error message) for the call key.
+    pub fn with_failure(
+        mut self,
+        provider: &str,
+        params: &ImageGenParams,
+        message: impl Into<String>,
+    ) -> Self {
+        self.failures
+            .insert(image_gen_key(provider, params), message.into());
+        self
+    }
+
+    /// Register a response under a RAW pre-computed key string (the differential
+    /// harness records v4's exact `provider|model|JSON.stringify(params)` key and
+    /// registers it verbatim; the lookup then computes the Rust [`image_gen_key`],
+    /// so a `mergeParameters`/`applyOrientation` divergence surfaces as a miss).
+    pub fn with_raw_key(mut self, key: impl Into<String>, response: ImageGenResponse) -> Self {
+        self.responses.insert(key.into(), response);
+        self
+    }
+
+    /// Register a failure under a RAW pre-computed key string (the post-hoc
+    /// moderation reroute — v4's original-profile call throws its exact message).
+    pub fn with_raw_failure(mut self, key: impl Into<String>, message: impl Into<String>) -> Self {
+        self.failures.insert(key.into(), message.into());
+        self
+    }
+}
+
+impl ImageProvider for CannedImageProvider {
+    async fn generate_image(
+        &self,
+        provider: &str,
+        _api_key: &str,
+        params: &ImageGenParams,
+    ) -> Result<ImageGenResponse, ImageGenError> {
+        let key = image_gen_key(provider, params);
+        if let Some(message) = self.failures.get(&key) {
+            return Err(ImageGenError::new(message.clone()));
+        }
+        match self.responses.get(&key) {
+            Some(resp) => Ok(resp.clone()),
+            None => Err(ImageGenError::new(format!(
+                "CannedImageProvider: no canned response for key `{key}`"
+            ))),
+        }
+    }
+}
+
+/// A pass-through [`ImageTranscoder`]: returns the input bytes / mime / filename
+/// unchanged, with no measured dimensions. The faithful wiring for the tier-3
+/// differential (the v4 oracle mocks `convertToWebP` to the identical
+/// pass-through), and the host default until the real WebP encoder lands.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PassthroughTranscoder;
+
+impl ImageTranscoder for PassthroughTranscoder {
+    fn transcode(&self, input: &TranscodeInput) -> TranscodeOutput {
+        TranscodeOutput {
+            bytes: input.bytes.clone(),
+            mime_type: input.mime_type.clone(),
+            filename: input.filename.clone(),
+            width: None,
+            height: None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn params(model: &str, size: Option<&str>) -> ImageGenParams {
+        ImageGenParams {
+            prompt: "a cat".into(),
+            negative_prompt: None,
+            model: model.into(),
+            n: Some(1),
+            size: size.map(str::to_string),
+            aspect_ratio: None,
+            quality: None,
+            style: None,
+            seed: None,
+            guidance_scale: None,
+            steps: None,
+        }
+    }
+
+    #[test]
+    fn key_reflects_merged_params() {
+        // Same provider/model, different size ⇒ different key (orientation proof).
+        let a = image_gen_key("OPENAI", &params("dall-e-3", Some("1024x1024")));
+        let b = image_gen_key("OPENAI", &params("dall-e-3", Some("1792x1024")));
+        assert_ne!(a, b);
+        assert!(a.starts_with("OPENAI|dall-e-3|"));
+    }
+
+    #[tokio::test]
+    async fn canned_response_and_failure() {
+        let p = params("dall-e-3", Some("1024x1024"));
+        let provider = CannedImageProvider::new()
+            .with_response(
+                "OPENAI",
+                &p,
+                ImageGenResponse {
+                    images: vec![GeneratedImageData {
+                        data: "AAAA".into(),
+                        mime_type: Some("image/png".into()),
+                        revised_prompt: Some("a fluffy cat".into()),
+                    }],
+                },
+            )
+            .with_failure("GROK", &p, "content moderation rejected");
+
+        let ok = provider.generate_image("OPENAI", "k", &p).await.unwrap();
+        assert_eq!(ok.images[0].revised_prompt.as_deref(), Some("a fluffy cat"));
+
+        let err = provider.generate_image("GROK", "k", &p).await.unwrap_err();
+        assert!(
+            crate::services::dangerous_content::provider_routing::is_image_moderation_error(
+                &err.message
+            )
+        );
+
+        // Unregistered ⇒ surfaced error.
+        let miss = params("other", None);
+        assert!(provider.generate_image("OPENAI", "k", &miss).await.is_err());
+    }
+
+    #[test]
+    fn passthrough_transcoder_preserves_bytes() {
+        let out = PassthroughTranscoder.transcode(&TranscodeInput {
+            bytes: vec![1, 2, 3],
+            mime_type: "image/png".into(),
+            filename: "generated_1.png".into(),
+        });
+        assert_eq!(out.bytes, vec![1, 2, 3]);
+        assert_eq!(out.mime_type, "image/png");
+        assert!(out.width.is_none());
+    }
+}

@@ -67,8 +67,11 @@ use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider, ErasedEmbedd
 use crate::photos::save_image_to_album::{
     FileBytesStore, NoSideEffects, NotConfiguredBytes, SaveImageSideEffects,
 };
-use crate::services::tool_execution::{ToolCall, ToolExecutionContext, ToolResult, ToolRunner};
+use crate::services::tool_execution::{
+    ToolCall, ToolExecutionContext, ToolMetadata, ToolResult, ToolRunner,
+};
 use crate::tools::doc_edit::shared::collect_peer_character_ids_for_reads;
+use crate::tools::generate_image;
 use crate::tools::photo::PhotoToolContext;
 use crate::tools::self_inventory::SelfInventoryEnv;
 
@@ -216,6 +219,11 @@ pub const PORTED_TOOLS: &[&str] = &[
     "keep_image",
     "list_images",
     "attach_image",
+    // W4.9a: image generation. `generate_image` dispatches through the injected
+    // `ErasedImageGeneration` seam (default: NotConfigured → v4's "not enabled"
+    // guard error; production + the differential wire a real image/completion/
+    // moderation/transcode/lantern bundle).
+    "generate_image",
 ];
 
 /// The three photo tools live in `DOC_EDIT_TOOL_NAMES` (v4 groups them under the
@@ -328,6 +336,13 @@ pub struct BuiltInToolRunner<F: ToolRunner = LoudFallbackRunner> {
     /// embedding scheduler host-side (the embedding-enqueue via `queue_service`
     /// EMBEDDING_GENERATE is a **tracked deferral** — a recorded seam this round).
     photo_side_effects: Arc<dyn SaveImageSideEffects + Send + Sync>,
+    /// The image-generation boundary the `generate_image` tool uses (v4's
+    /// `executeImageGenerationTool` composing the image/completion/moderation
+    /// providers + WebP transcode + Lantern store). Defaults to
+    /// [`ErasedImageGeneration::none`] (v4's dispatcher `if (!imageProfileId)` guard
+    /// → "Image generation is not enabled for this chat"); production + the
+    /// differential wire a real bundle host-side.
+    image_generation: generate_image::ErasedImageGeneration,
     fallback: F,
 }
 
@@ -343,6 +358,7 @@ impl BuiltInToolRunner<LoudFallbackRunner> {
             web_search_provider: Arc::new(web_search::NotConfiguredWebSearch),
             file_bytes: Arc::new(NotConfiguredBytes),
             photo_side_effects: Arc::new(NoSideEffects),
+            image_generation: generate_image::ErasedImageGeneration::none(),
             fallback: LoudFallbackRunner,
         }
     }
@@ -360,6 +376,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             web_search_provider: self.web_search_provider,
             file_bytes: self.file_bytes,
             photo_side_effects: self.photo_side_effects,
+            image_generation: self.image_generation,
             fallback,
         }
     }
@@ -395,6 +412,14 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         provider: Arc<dyn web_search::WebSearchProvider>,
     ) -> Self {
         self.web_search_provider = provider;
+        self
+    }
+
+    /// Inject the image-generation boundary the `generate_image` tool uses
+    /// (production + the differential wire a real bundle; the core default returns
+    /// v4's "not enabled" guard error).
+    pub fn with_image_generation(mut self, runner: generate_image::ErasedImageGeneration) -> Self {
+        self.image_generation = runner;
         self
     }
 
@@ -449,6 +474,8 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             "keep_image" => self.run_keep_image(tc, ctx).await,
             "list_images" => self.run_list_images(tc, ctx).await,
             "attach_image" => self.run_attach_image(tc, ctx).await,
+            // W4.9a: image generation.
+            "generate_image" => self.run_generate_image(tc, ctx).await,
             // W4.1d3b: every ported doc-edit tool routes through one handler.
             n if is_ported_doc_edit_tool(n) => self.run_doc_edit(tc, ctx).await,
             // `handles` guards the set, so this is unreachable.
@@ -1305,6 +1332,106 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         .await
     }
 
+    // ── generate_image (W4.9a; lib/chat/tool-executor.ts:368) ─────────────
+    /// Dispatch `generate_image` through the injected [`ErasedImageGeneration`]
+    /// seam. Reproduces v4's dispatcher (`lib/chat/tool-executor.ts:368–402`): the
+    /// `if (!imageProfileId)` guard, then `result = success ? images : null`,
+    /// `error`/`message` on failure, and the `{ provider, model, expandedPrompt }`
+    /// metadata. The `images` array becomes the tool `result` so
+    /// `process_tool_calls` threads each `{ id, filepath }` descriptor into the
+    /// finalizer link loop.
+    async fn run_generate_image(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        // v4's dispatcher guard: no chat image profile → "not enabled" error.
+        let profile_id = match ctx.image_profile_id.as_deref().filter(|s| !s.is_empty()) {
+            Some(id) => id.to_string(),
+            None => {
+                return fail(
+                    "generate_image",
+                    "Image generation is not enabled for this chat",
+                );
+            }
+        };
+
+        let input = generate_image::ImageGenerationToolInput {
+            prompt: tc
+                .arguments
+                .get("prompt")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            negative_prompt: tc
+                .arguments
+                .get("negativePrompt")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            orientation: tc
+                .arguments
+                .get("orientation")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            size: tc
+                .arguments
+                .get("size")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            style: tc
+                .arguments
+                .get("style")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            quality: tc
+                .arguments
+                .get("quality")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            aspect_ratio: tc
+                .arguments
+                .get("aspectRatio")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            count: tc.arguments.get("count").and_then(Value::as_i64),
+        };
+
+        let image_ctx = generate_image::ImageToolExecutionContext {
+            user_id: ctx.user_id.clone(),
+            profile_id,
+            chat_id: Some(ctx.chat_id.clone()).filter(|s| !s.is_empty()),
+            calling_participant_id: ctx.calling_participant_id.clone(),
+        };
+
+        let out = self
+            .image_generation
+            .run(&self.db, &input, &image_ctx)
+            .await;
+
+        let metadata = ToolMetadata {
+            provider: out.provider.clone(),
+            model: out.model.clone(),
+            expanded_prompt: out.expanded_prompt.clone(),
+        };
+        if out.success {
+            // v4: `result: result.images` (the array threads generated-image descriptors).
+            let images: Vec<Value> = out.images.iter().map(generated_image_to_value).collect();
+            ToolResult {
+                tool_name: "generate_image".to_string(),
+                success: true,
+                result: Value::Array(images),
+                error: None,
+                message: None,
+                metadata: Some(metadata),
+            }
+        } else {
+            ToolResult {
+                tool_name: "generate_image".to_string(),
+                success: false,
+                result: Value::Null,
+                error: out.error.clone(),
+                message: out.message.clone(),
+                metadata: Some(metadata),
+            }
+        }
+    }
+
     // ── doc-edit tools (W4.1d3b; tool-executor.ts:1060) ───────────────────
     /// Dispatch any ported `doc_*` tool through [`execute_doc_edit_tool`], run
     /// inside a single `Db::write` closure that hands it BOTH writer connections
@@ -1472,6 +1599,39 @@ fn ok(tool_name: &str, result: Value) -> ToolResult {
         message: None,
         metadata: None,
     }
+}
+
+/// Serialize a [`GeneratedImageResult`](generate_image::GeneratedImageResult) into
+/// v4's `GeneratedImageResult` JSON (the element shape `process_tool_calls` reads
+/// for `{ id, filepath }` — plus the fields the LLM sees). Optional fields are
+/// omitted when absent (v4 `undefined` dropped by `JSON.stringify`).
+fn generated_image_to_value(img: &generate_image::GeneratedImageResult) -> Value {
+    let mut m = Map::new();
+    m.insert("id".into(), json!(img.id));
+    m.insert("url".into(), json!(img.url));
+    m.insert("filename".into(), json!(img.filename));
+    if let Some(v) = &img.revised_prompt {
+        m.insert("revisedPrompt".into(), json!(v));
+    }
+    if let Some(v) = &img.filepath {
+        m.insert("filepath".into(), json!(v));
+    }
+    if let Some(v) = &img.mime_type {
+        m.insert("mimeType".into(), json!(v));
+    }
+    if let Some(v) = img.size {
+        m.insert("size".into(), crate::db::js_number_to_json(v));
+    }
+    if let Some(v) = img.width {
+        m.insert("width".into(), crate::db::js_number_to_json(v));
+    }
+    if let Some(v) = img.height {
+        m.insert("height".into(), crate::db::js_number_to_json(v));
+    }
+    if let Some(v) = &img.sha256 {
+        m.insert("sha256".into(), json!(v));
+    }
+    Value::Object(m)
 }
 
 /// A failure [`ToolResult`] (`result: null`, `error` set) — v4's `result:

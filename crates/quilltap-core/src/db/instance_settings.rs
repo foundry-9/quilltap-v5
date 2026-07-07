@@ -30,6 +30,12 @@ const DEFAULT_MAX_CONCURRENT_JOBS: i64 = 4;
 /// tick.
 const KEY_LAST_MAINTENANCE_SWEEP_AT: &str = "lastMaintenanceSweepAt";
 
+/// The `instance_settings` key that stores the singleton "Lantern Backgrounds"
+/// mount-point id (v4 `getLanternBackgroundsMountPointId`), provisioned by
+/// `provision-lantern-backgrounds-mount-v1`. Houses generated story backgrounds
+/// (`generated/`) + ad-hoc `generate_image` tool output (`tool/`).
+const KEY_LANTERN_BACKGROUNDS_MOUNT_POINT_ID: &str = "lanternBackgroundsMountPointId";
+
 /// v4 `readSetting(key)` — read one `instance_settings` value, or `None`.
 ///
 /// Faithful to v4: the whole read is fallible-tolerant — a missing table or any
@@ -57,6 +63,14 @@ fn write_setting(main: &Connection, key: &str, value: &str) -> Result<(), DbErro
 /// when the General store has not been provisioned (or the table is absent).
 pub fn get_general_mount_point_id(main: &Connection) -> Result<Option<String>, DbError> {
     Ok(read_setting(main, KEY_GENERAL_MOUNT_POINT_ID))
+}
+
+/// v4 `getLanternBackgroundsMountPointId()` — the Lantern Backgrounds mount-point
+/// id, or `None` when the store has not been provisioned (or the table is absent).
+pub fn get_lantern_backgrounds_mount_point_id(
+    main: &Connection,
+) -> Result<Option<String>, DbError> {
+    Ok(read_setting(main, KEY_LANTERN_BACKGROUNDS_MOUNT_POINT_ID))
 }
 
 /// v4 `getMaxConcurrentJobs()` — the per-instance background-job concurrency cap.

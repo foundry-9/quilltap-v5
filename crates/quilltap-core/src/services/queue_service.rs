@@ -307,6 +307,70 @@ pub async fn enqueue_title_update(
     enqueue_job(db, user_id, "TITLE_UPDATE", payload, 3.0).await
 }
 
+/// v4 `enqueueCharacterAvatarGeneration` (`lib/background-jobs/queue-service.ts`):
+/// enqueue a `CHARACTER_AVATAR_GENERATION` job, deduping via `findPendingForChat`
+/// (any PENDING/PROCESSING avatar job for the SAME chat + character → no-op
+/// returning the existing id). `max_attempts` is v4's default 3.
+///
+/// The payload is `{ chatId, characterId, imageProfileId, [equippedSlotsOverride] }`
+/// (v4's `CharacterAvatarGenerationPayload` object literal — the override key is
+/// present only when set, matching v4's `...(equippedSlotsOverride ? {…} : {})`).
+/// Returns `(jobId, is_new)`.
+pub async fn enqueue_character_avatar_generation(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    character_id: &str,
+    image_profile_id: &str,
+    equipped_slots_override: Option<Value>,
+) -> Result<(String, bool), DbError> {
+    let cid = chat_id.to_string();
+    let pending = db.read_main(|conn| {
+        crate::db::background_jobs::BackgroundJobsRepository::new(conn).find_pending_for_chat(&cid)
+    })?;
+    let existing = pending.iter().find(|j| {
+        if j.job_type != "CHARACTER_AVATAR_GENERATION" {
+            return false;
+        }
+        serde_json::from_str::<Value>(&j.payload)
+            .ok()
+            .and_then(|p| {
+                p.get("characterId")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .as_deref()
+            == Some(character_id)
+    });
+    if let Some(existing) = existing {
+        return Ok((existing.id.clone(), false));
+    }
+
+    let mut payload = serde_json::Map::new();
+    payload.insert("chatId".into(), Value::String(chat_id.to_string()));
+    payload.insert(
+        "characterId".into(),
+        Value::String(character_id.to_string()),
+    );
+    payload.insert(
+        "imageProfileId".into(),
+        Value::String(image_profile_id.to_string()),
+    );
+    if let Some(over) = equipped_slots_override {
+        payload.insert("equippedSlotsOverride".into(), over);
+    }
+
+    let job_id = enqueue_job(
+        db,
+        user_id,
+        "CHARACTER_AVATAR_GENERATION",
+        Value::Object(payload),
+        3.0,
+    )
+    .await?;
+    Ok((job_id, true))
+}
+
 // ============================================================================
 // Retention windows (v4 `lib/background-jobs/maintenance/retention-constants.ts`)
 // ============================================================================

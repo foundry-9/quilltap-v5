@@ -152,6 +152,16 @@
       "characterId": "22222222-2222-4222-8222-222222222222",
       "callingParticipantId": "55555555-5555-4555-8555-555555555555",
       "args": {}
+    },
+    {
+      "$comment": "generate_image (W4.9a) — the dispatch row proving generate_image is wired. No imageProfileId is set on the context, so v4's dispatcher guard (`if (!imageProfileId)`) and the Rust runner's default ErasedImageGeneration::none() both return the byte-identical 'not enabled' failure — no image subsystem needed.",
+      "tool": "generate_image",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "characterId": "22222222-2222-4222-8222-222222222222",
+      "callingParticipantId": "55555555-5555-4555-8555-555555555555",
+      "args": {
+        "prompt": "a portrait of Friday"
+      }
     }
   ]
 }

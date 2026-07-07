@@ -28,6 +28,8 @@
 
 pub mod agent_mode;
 pub mod answer_confirmation;
+pub mod appearance_resolution;
+pub mod avatar_generation;
 pub mod build_context;
 pub mod carina_runner;
 pub mod chat_events;
@@ -39,6 +41,7 @@ pub mod dangerous_content;
 pub mod first_message_context;
 pub mod housekeeping;
 pub mod housekeeping_outcome_cache;
+pub mod image_scene_tasks;
 pub mod job_runner;
 pub mod job_scheduler;
 pub mod knowledge_injector;

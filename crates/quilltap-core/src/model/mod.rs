@@ -24,6 +24,7 @@
 pub mod completion;
 pub mod decoders;
 pub mod embedding;
+pub mod image;
 pub mod stream;
 
 pub use completion::{

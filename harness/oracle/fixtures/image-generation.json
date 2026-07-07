@@ -1,0 +1,165 @@
+{
+  "$comment": [
+    "Tier-3 differential spec for the W4.9a image-generation handler",
+    "(v4 lib/tools/handlers/image-generation-handler.ts executeImageGenerationTool;",
+    "Rust crates/quilltap-core/src/tools/generate_image.rs execute_image_generation_tool)",
+    "and the avatar trigger (v4 lib/wardrobe/avatar-generation.ts).",
+    "",
+    "ONE committed file drives BOTH sides. A two-database fixture (main + mount-index)",
+    "is baked once by build-image-generation-fixture.ts via v4's REAL repos: a user +",
+    "one character (Aurora) with a full provisioned vault + a physicalDescription, image",
+    "profiles (a normal default), one default connection profile (the cheap-LLM",
+    "candidate), one OFF chat-settings row, a set of chats (one per case), and a",
+    "PROVISIONED Lantern Backgrounds `database` mount + its instance_settings id.",
+    "",
+    "MODEL SEAMS (pinned identically both sides):",
+    "  - the image provider (CannedImageProvider keyed by the oracle-recorded",
+    "    provider|model|JSON.stringify(params) key; the key proves mergeParameters +",
+    "    applyOrientation reach the wire — incl. the orientation-driven `size`)",
+    "  - the completion boundary (CannedCompletionProvider; recorded keys prove the",
+    "    craft-prompt task message byte-for-byte, and a craft FAILURE drives the",
+    "    tier-concatenation fallback)",
+    "  - the WebP transcode (PassthroughTranscoder; the oracle mocks convertToWebP +",
+    "    transcodeToWebP pass-through so the store bytes match the Rust link_blob_content)",
+    "  - the API key (canned apiKeyId->key map; the oracle monkey-patches",
+    "    findApiKeyByIdAndUserId, the Rust ApiKeyResolver injects the same map)",
+    "  - the orientation registry (canned OrientationSupport: OPENAI a size-strategy",
+    "    provider so applyOrientation sets a concrete `size`; identical both sides)",
+    "  - the Lantern notification (no-op; the byte-exact string is unit-tested in Rust)",
+    "  - Date.now() frozen so the provider filename `generated_<ts>.<ext>` is pinned",
+    "",
+    "PARITY CONSTRAINTS baked into the corpus:",
+    "  - no project + no aesthetic docs, so v4's resolveAesthetic/resolveDepictionGuidelines",
+    "    return null/[] (the Rust build_expansion_context injects None — a deferred seam),",
+    "    keeping the craft-prompt messages byte-identical",
+    "  - no styleInfo on the constraints, so styleOptions is undefined (Rust never computes it)",
+    "",
+    "SCOPE / tracked deferral: the full Concierge classify + AUTO_ROUTE reroute + the",
+    "five-step sanitize gate + the post-hoc moderation reroute are NOT exercised end-to-end",
+    "here (they need a per-user danger mode + the process-global classify LRU cache pinned",
+    "identically). Those paths are the W4.2 dangerous-content subsystem, which this handler",
+    "COMPOSES verbatim and which is proven byte-for-byte by danger_gatekeeper_tier3 /",
+    "danger_routing / danger_resolver. This differential proves the handler spine: profile",
+    "load + validate, placeholder resolution, the craft expansion + tier-concatenation",
+    "fallback, mergeParameters + applyOrientation reaching the image wire, saveGeneratedImage",
+    "(the Lantern store write + files row + tag inheritance + revisedPrompt), the unprovisioned",
+    "STORAGE_ERROR refusal, and the avatar trigger fire/autonomous-skip/disabled-skip.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key (the same one folders / tags /",
+    "image_profiles fixtures use). NOT the real Friday pepper; safe to commit."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2020-01-01T00:00:00.000Z",
+  "frozenNowMs": 1735732800000,
+  "userId": "aa000000-0000-4000-8000-0000000000aa",
+  "user": { "username": "imggen-tester", "name": "Test User", "email": "test@example.com" },
+
+  "charAId": "cccc1111-1111-4111-8111-111111111111",
+  "charA": { "name": "Aurora" },
+
+  "lanternMountPointId": "1a4e0000-0000-4000-8000-00000000fee1",
+
+  "profileId": "e0000000-0000-4000-8000-0000000000a1",
+  "callingParticipantId": "fbaa0000-0000-4000-8000-000000000001",
+
+  "apiKeys": {
+    "a0000000-0000-4000-8000-0000000000c1": "IMGKEY_ORIG",
+    "a0000000-0000-4000-8000-0000000000d1": "CHEAPKEY"
+  },
+
+  "imageProfiles": [
+    {
+      "id": "e0000000-0000-4000-8000-0000000000a1",
+      "name": "Primary Images",
+      "provider": "OPENAI",
+      "modelName": "dall-e-3",
+      "apiKeyId": "a0000000-0000-4000-8000-0000000000c1",
+      "baseUrl": null,
+      "parameters": {},
+      "isDefault": true,
+      "isDangerousCompatible": false,
+      "tags": []
+    }
+  ],
+
+  "connectionProfiles": [
+    {
+      "id": "c0000000-0000-4000-8000-0000000000d1",
+      "name": "Cheap Default",
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini",
+      "isCheap": true,
+      "isDefault": true,
+      "apiKeyId": "a0000000-0000-4000-8000-0000000000d1"
+    }
+  ],
+
+  "chatSettingsOff": {
+    "id": "5e000000-0000-4000-8000-0000000000f0",
+    "dangerousContentSettings": {
+      "mode": "OFF",
+      "threshold": 0.7,
+      "scanTextChat": true,
+      "scanImagePrompts": true,
+      "scanImageGeneration": false,
+      "displayMode": "SHOW",
+      "showWarningBadges": true
+    },
+    "cheapLLMSettings": { "strategy": "PROVIDER_CHEAPEST", "fallbackToLocal": false }
+  },
+
+  "auroraPhysicalDescription": {
+    "name": "Casual",
+    "usageContext": "everyday",
+    "shortPrompt": "a woman",
+    "mediumPrompt": "a woman with silver hair",
+    "longPrompt": "a tall woman with long silver hair and grey eyes",
+    "completePrompt": "a tall elegant woman with flowing silver hair, sharp grey eyes, and a poised bearing"
+  },
+
+  "chats": {
+    "plain": {
+      "id": "aaaa0001-0000-4000-8000-000000000001",
+      "op": "generate",
+      "prompt": "A serene mountain lake at dawn, mist over the water",
+      "orientation": "landscape"
+    },
+    "orient_portrait": {
+      "id": "aaaa0002-0000-4000-8000-000000000002",
+      "op": "generate",
+      "prompt": "A tall waterfall in a canyon",
+      "orientation": "portrait"
+    },
+    "craft_fallback": {
+      "id": "aaaa0003-0000-4000-8000-000000000003",
+      "op": "generate",
+      "prompt": "A portrait of {{Aurora}} standing in a rose garden",
+      "orientation": "square"
+    },
+    "unprovisioned": {
+      "id": "aaaa0007-0000-4000-8000-000000000007",
+      "op": "generate",
+      "prompt": "A quiet forest path",
+      "orientation": "square",
+      "clearLantern": true
+    },
+    "avatar_fire": {
+      "id": "aaaa0008-0000-4000-8000-000000000008",
+      "op": "avatar",
+      "chatType": "salon",
+      "avatarGenerationEnabled": true
+    },
+    "avatar_autonomous": {
+      "id": "aaaa0009-0000-4000-8000-000000000009",
+      "op": "avatar",
+      "chatType": "autonomous",
+      "avatarGenerationEnabled": true
+    },
+    "avatar_disabled": {
+      "id": "aaaa000a-0000-4000-8000-00000000000a",
+      "op": "avatar",
+      "chatType": "salon",
+      "avatarGenerationEnabled": false
+    }
+  }
+}
