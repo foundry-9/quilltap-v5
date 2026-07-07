@@ -17,9 +17,11 @@
 
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize, Serializer};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use crate::format_time::format_date_short_us;
+use crate::model::request_builder::BuiltRequest;
+use crate::model::wire::SyncWireTransport;
 
 /// v4 `WebSearchResult` — one search result. `publishedDate` optional.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -240,6 +242,243 @@ pub fn format_web_search_results(results: &[WebSearchResult]) -> String {
     )
 }
 
+// ===========================================================================
+// The Serper wire (W4.7f) — the real WebSearchProvider closing the W4.1d5 seam
+// ===========================================================================
+
+/// v4 Serper `SERPER_API_URL`.
+pub const SERPER_API_URL: &str = "https://google.serper.dev/search";
+
+/// Build the Serper search request (v4 `executeSearch` / the legacy fallback —
+/// identical body/url). The `X-API-KEY` header carries the key; only method / url
+/// / body are differential-checked.
+pub fn build_serper_request(query: &str, max_results: i64, api_key: &str) -> BuiltRequest {
+    let mut body = Map::new();
+    body.insert("q".to_string(), Value::String(query.to_string()));
+    body.insert("num".to_string(), Value::from(max_results));
+    BuiltRequest {
+        method: "POST".to_string(),
+        url: SERPER_API_URL.to_string(),
+        headers: vec![
+            ("X-API-KEY".to_string(), api_key.to_string()),
+            ("content-type".to_string(), "application/json".to_string()),
+        ],
+        body: Value::Object(body),
+    }
+}
+
+fn str_or_empty(v: &Value, key: &str) -> String {
+    v.get(key)
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string()
+}
+
+/// v4's Serper success mapping: `organic[]` → results, then the `knowledgeGraph`
+/// UNSHIFT when `kg.description && results.length < maxResults`.
+pub fn map_serper_results(body: &Value, max_results: i64) -> Vec<WebSearchResult> {
+    let mut results: Vec<WebSearchResult> = body
+        .get("organic")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .map(|r| WebSearchResult {
+                    title: str_or_empty(r, "title"),
+                    url: str_or_empty(r, "link"),
+                    snippet: str_or_empty(r, "snippet"),
+                    published_date: r.get("date").and_then(Value::as_str).map(str::to_string),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if let Some(kg) = body.get("knowledgeGraph") {
+        // `kg?.description &&` — a truthy (non-empty) description.
+        let description = kg
+            .get("description")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty());
+        if let Some(description) = description {
+            if (results.len() as i64) < max_results {
+                // `kg.title ?? 'Knowledge Graph'` (nullish default).
+                let title = kg
+                    .get("title")
+                    .filter(|v| !v.is_null())
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| "Knowledge Graph".to_string());
+                // `kg.source?.link ?? ''`.
+                let url = kg
+                    .get("source")
+                    .and_then(|s| s.get("link"))
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                results.insert(
+                    0,
+                    WebSearchResult {
+                        title,
+                        url,
+                        snippet: description.to_string(),
+                        published_date: None,
+                    },
+                );
+            }
+        }
+    }
+    results
+}
+
+/// The Serper PLUGIN error strings (v4 `executeSearch` on `!ok`).
+pub fn serper_plugin_error(status: u16, status_text: &str, error_text: &str) -> String {
+    match status {
+        401 | 403 => {
+            "Invalid Serper API key. Please check your API key in Settings > API Keys.".to_string()
+        }
+        429 => "Serper API rate limit exceeded. Please try again later or upgrade your plan at serper.dev."
+            .to_string(),
+        _ => format!("Serper API error: {status} {status_text} - {error_text}"),
+    }
+}
+
+/// The legacy env-var FALLBACK error strings (v4 `executeSerperFallback` on
+/// `!ok` — deliberately DIFFERENT from the plugin set for 401/403 and the generic).
+pub fn serper_fallback_error(status: u16, status_text: &str) -> String {
+    match status {
+        401 | 403 => {
+            "Invalid Serper API key. Please check your SERPER_API_KEY environment variable or configure the API key in Settings > API Keys.".to_string()
+        }
+        429 => "Serper API rate limit exceeded. Please try again later or upgrade your plan at serper.dev."
+            .to_string(),
+        _ => format!("Search API error: {status} {status_text}"),
+    }
+}
+
+/// The search API-key lookup seam (v4 `getAllApiKeys()` scan for `provider === X
+/// && isActive` → `key_value`). DISTINCT from the moderation/routing
+/// [`ApiKeyResolver`](crate::services::dangerous_content::provider_routing::ApiKeyResolver)
+/// (by `apiKeyId`) — do not unify. Host-side (W4.7d's `db::api_keys`); canned in
+/// the differential.
+pub trait SearchApiKeyLookup: Send + Sync {
+    fn find_active_key(&self, provider: &str, user_id: &str) -> Option<String>;
+}
+
+/// A lookup that finds no key (the faithful no-key wiring).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoSearchApiKeys;
+impl SearchApiKeyLookup for NoSearchApiKeys {
+    fn find_active_key(&self, _provider: &str, _user_id: &str) -> Option<String> {
+        None
+    }
+}
+
+/// The real [`WebSearchProvider`] (closes the W4.1d5 seam). Reproduces v4
+/// `executeWebSearchTool`'s provider path (the Serper plugin) + the legacy env-var
+/// Serper fallback, over the injected [`SyncWireTransport`] + [`SearchApiKeyLookup`].
+///
+/// `serper_registered` mirrors `searchProviderRegistry.getDefaultProvider()`
+/// returning the Serper plugin; `fallback_env_key` is the host `SERPER_API_KEY`
+/// env var (injected — host config).
+pub struct RealWebSearchProvider<T: SyncWireTransport, K: SearchApiKeyLookup> {
+    transport: T,
+    key_lookup: K,
+    serper_registered: bool,
+    fallback_env_key: Option<String>,
+}
+
+impl<T: SyncWireTransport, K: SearchApiKeyLookup> RealWebSearchProvider<T, K> {
+    pub fn new(
+        transport: T,
+        key_lookup: K,
+        serper_registered: bool,
+        fallback_env_key: Option<String>,
+    ) -> Self {
+        Self {
+            transport,
+            key_lookup,
+            serper_registered,
+            fallback_env_key,
+        }
+    }
+
+    /// Run the Serper request over the transport, mapping success + the error sets.
+    /// `fallback` selects the legacy error strings + default catch message.
+    fn run_serper(
+        &self,
+        query: &str,
+        max_results: i64,
+        api_key: &str,
+        fallback: bool,
+    ) -> WebSearchOutcome {
+        let req = build_serper_request(query, max_results, api_key);
+        let body = req.body_string();
+        match self
+            .transport
+            .send(&req.method, &req.url, &req.headers, &body)
+        {
+            Ok(resp) if resp.ok() => {
+                let data: Value = serde_json::from_str(&resp.body).unwrap_or(Value::Null);
+                WebSearchOutcome::ProviderResult {
+                    success: true,
+                    results: map_serper_results(&data, max_results),
+                    error: None,
+                }
+            }
+            Ok(resp) => {
+                let error = if fallback {
+                    serper_fallback_error(resp.status, &resp.status_text)
+                } else {
+                    serper_plugin_error(resp.status, &resp.status_text, &resp.body)
+                };
+                WebSearchOutcome::ProviderResult {
+                    success: false,
+                    results: Vec::new(),
+                    error: Some(error),
+                }
+            }
+            Err(msg) => {
+                // Plugin: `error.message || 'Unknown error during Serper web search'`.
+                // Fallback: the outer catch → `... || 'Unknown error during web search'`.
+                let default = if fallback {
+                    "Unknown error during web search"
+                } else {
+                    "Unknown error during Serper web search"
+                };
+                let error = if msg.is_empty() {
+                    default.to_string()
+                } else {
+                    msg
+                };
+                WebSearchOutcome::ProviderResult {
+                    success: false,
+                    results: Vec::new(),
+                    error: Some(error),
+                }
+            }
+        }
+    }
+}
+
+impl<T: SyncWireTransport, K: SearchApiKeyLookup> WebSearchProvider
+    for RealWebSearchProvider<T, K>
+{
+    fn search(&self, query: &str, max_results: i64, user_id: &str) -> WebSearchOutcome {
+        if self.serper_registered {
+            // Serper's `config.requiresApiKey` is true → look up the key.
+            let Some(api_key) = self.key_lookup.find_active_key("SERPER", user_id) else {
+                return WebSearchOutcome::MissingApiKey {
+                    display_name: "Serper Web Search".to_string(),
+                };
+            };
+            self.run_serper(query, max_results, &api_key, false)
+        } else if let Some(env_key) = self.fallback_env_key.clone() {
+            self.run_serper(query, max_results, &env_key, true)
+        } else {
+            WebSearchOutcome::NotConfigured
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -318,5 +557,101 @@ mod tests {
             out3.error.as_deref(),
             Some("Search provider returned an error")
         );
+    }
+
+    #[test]
+    fn serper_request_and_kg_unshift() {
+        let req = build_serper_request("cats", 3, "k");
+        assert_eq!(req.url, SERPER_API_URL);
+        assert_eq!(req.body_string(), r#"{"q":"cats","num":3}"#);
+
+        // kg unshifts only when results.len() < maxResults.
+        let body = json!({
+            "organic": [{ "title": "A", "link": "https://a", "snippet": "sa" }],
+            "knowledgeGraph": { "title": "KG", "description": "kd", "source": { "link": "https://kg" } }
+        });
+        let under = map_serper_results(&body, 3);
+        assert_eq!(under.len(), 2);
+        assert_eq!(under[0].title, "KG"); // unshifted to front
+        assert_eq!(under[0].url, "https://kg");
+        // At capacity → NOT unshifted.
+        let at_cap = map_serper_results(&body, 1);
+        assert_eq!(at_cap.len(), 1);
+        assert_eq!(at_cap[0].title, "A");
+    }
+
+    #[test]
+    fn serper_error_string_sets_differ() {
+        assert_eq!(
+            serper_plugin_error(401, "Unauthorized", "bad"),
+            "Invalid Serper API key. Please check your API key in Settings > API Keys."
+        );
+        assert_eq!(
+            serper_fallback_error(403, "Forbidden"),
+            "Invalid Serper API key. Please check your SERPER_API_KEY environment variable or configure the API key in Settings > API Keys."
+        );
+        assert_eq!(
+            serper_plugin_error(500, "Internal Server Error", "boom"),
+            "Serper API error: 500 Internal Server Error - boom"
+        );
+        assert_eq!(
+            serper_fallback_error(500, "Internal Server Error"),
+            "Search API error: 500 Internal Server Error"
+        );
+    }
+
+    #[test]
+    fn real_provider_over_canned_transport() {
+        use crate::model::wire::{wire_key, CannedSyncWireTransport, WireResponse};
+
+        struct OneKey(&'static str);
+        impl SearchApiKeyLookup for OneKey {
+            fn find_active_key(&self, _p: &str, _u: &str) -> Option<String> {
+                Some(self.0.to_string())
+            }
+        }
+
+        let req = build_serper_request("cats", 5, "sk");
+        let key = wire_key(&req.method, &req.url, &req.body_string());
+        let transport = CannedSyncWireTransport::new().with_raw_response(
+            key,
+            WireResponse::new(
+                200,
+                r#"{"organic":[{"title":"A","link":"https://a","snippet":"s"}]}"#,
+            ),
+        );
+        let provider = RealWebSearchProvider::new(transport, OneKey("sk"), true, None);
+        let out = provider.search("cats", 5, "u");
+        match out {
+            WebSearchOutcome::ProviderResult {
+                success, results, ..
+            } => {
+                assert!(success);
+                assert_eq!(results.len(), 1);
+            }
+            _ => panic!("expected provider result"),
+        }
+
+        // No key + registered → MissingApiKey (Serper Web Search display name).
+        let provider2 =
+            RealWebSearchProvider::new(CannedSyncWireTransport::new(), NoSearchApiKeys, true, None);
+        match provider2.search("cats", 5, "u") {
+            WebSearchOutcome::MissingApiKey { display_name } => {
+                assert_eq!(display_name, "Serper Web Search")
+            }
+            _ => panic!("expected missing key"),
+        }
+
+        // Not registered + no env key → NotConfigured.
+        let provider3 = RealWebSearchProvider::new(
+            CannedSyncWireTransport::new(),
+            NoSearchApiKeys,
+            false,
+            None,
+        );
+        assert!(matches!(
+            provider3.search("cats", 5, "u"),
+            WebSearchOutcome::NotConfigured
+        ));
     }
 }

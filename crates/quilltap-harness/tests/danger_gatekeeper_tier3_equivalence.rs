@@ -40,7 +40,7 @@ use quilltap_core::model::completion::{
     CompletionProvider, CompletionResponse, CompletionRole, CompletionUsage,
 };
 use quilltap_core::services::dangerous_content::gatekeeper::{
-    ModerationCategoryScore, ModerationOutcome, ModerationProvider, ModerationResult,
+    ModerationOutcome, ModerationProvider,
 };
 use quilltap_core::services::dangerous_content::gatekeeper_job::{
     handle_chat_danger_classification, ChatDangerClassificationJob, RealDangerAnnouncer,
@@ -59,9 +59,17 @@ struct Spec {
     user_a: String,
     #[serde(rename = "userB")]
     user_b: String,
-    #[serde(rename = "moderationResults")]
-    moderation_results: HashMap<String, Value>,
+    #[serde(rename = "moderationWire")]
+    moderation_wire: HashMap<String, WireSpec>,
     cases: Vec<CaseSpec>,
+}
+
+/// The canned moderation wire per case (W4.7f — the provider is un-mocked down to
+/// this payload; the failure case is a canned 500).
+#[derive(Deserialize, Clone)]
+struct WireSpec {
+    status: u16,
+    body: String,
 }
 
 #[derive(Deserialize)]
@@ -132,72 +140,86 @@ fn role_of(s: &str) -> CompletionRole {
     }
 }
 
-// --- canned moderation provider (mirrors the oracle's registry mock) ---
-enum ModOutcome {
-    Result(ModerationResult),
-    Fail,
+// --- W4.7f: the moderation provider un-mocked down to the canned wire ---
+//
+// The gatekeeper now consults the REAL [`RealModerationProvider`] over a canned
+// [`WireTransport`] that returns the per-case wire (keyed by the `token=<case>`
+// marker the fixture content carries — mirroring the oracle's per-case `fetch`
+// mock). `RealModerationProvider` runs the full path: `detect_api_key` (the
+// fixture's OPENAI connection profile → the injected [`CannedApiKey`]),
+// `build_moderation_request`, the transport, `parse_moderation_response`, and
+// `into_gatekeeper`. LLM/skip cases (no wire) get `NotAvailable`, mirroring v4's
+// `getDefaultProvider() === null`.
+
+use quilltap_core::model::wire::{WireResponse, WireTransport};
+use quilltap_core::services::dangerous_content::moderation_wire::RealModerationProvider;
+use quilltap_core::services::dangerous_content::provider_routing::ApiKeyResolver;
+
+/// The canned API key the fixture's OPENAI profile resolves to (the oracle mocks
+/// `findApiKeyByIdAndUserId` to the same `moderation-key`).
+struct CannedApiKey;
+impl ApiKeyResolver for CannedApiKey {
+    fn resolve(&self, _api_key_id: &str, _user_id: &str) -> Option<String> {
+        Some("moderation-key".to_string())
+    }
 }
-struct CannedModeration(HashMap<String, ModOutcome>);
-impl ModerationProvider for CannedModeration {
+
+/// Returns the canned moderation wire keyed by the `token=<case>` marker inside
+/// the request body (`{"input":"…token=<case>…"}`).
+struct TokenWireTransport(HashMap<String, WireSpec>);
+impl WireTransport for TokenWireTransport {
+    fn send(
+        &self,
+        _method: &str,
+        _url: &str,
+        _headers: &[(String, String)],
+        body: &str,
+    ) -> impl std::future::Future<Output = Result<WireResponse, String>> + Send {
+        let token = body
+            .split("token=")
+            .nth(1)
+            .and_then(|s| {
+                s.split(|c: char| c.is_whitespace() || c == '"' || c == '\\')
+                    .next()
+            })
+            .map(str::to_string);
+        let out = match token.as_deref().and_then(|t| self.0.get(t)) {
+            Some(w) => Ok(WireResponse::new(w.status, w.body.clone())),
+            None => Err(format!("no canned moderation wire for token {token:?}")),
+        };
+        async move { out }
+    }
+}
+
+/// Wraps [`RealModerationProvider`] with the per-case availability toggle: a case
+/// with no canned wire is `NotAvailable` (v4's `getDefaultProvider() === null`).
+struct WireModeration {
+    real: RealModerationProvider<TokenWireTransport, CannedApiKey>,
+    tokens: std::collections::HashSet<String>,
+}
+impl ModerationProvider for WireModeration {
     fn moderate(
         &self,
         content: &str,
-        _user_id: &str,
-        _settings: &quilltap_core::db::chat_settings::DangerousContentSettings,
-        _chat_id: Option<&str>,
+        user_id: &str,
+        settings: &quilltap_core::db::chat_settings::DangerousContentSettings,
+        chat_id: Option<&str>,
     ) -> impl std::future::Future<Output = ModerationOutcome> + Send {
-        // Key on the `token=<case>` marker in the classification content.
         let token = content
             .split("token=")
             .nth(1)
             .map(|s| s.split_whitespace().next().unwrap_or("").to_string());
-        let outcome = match token.as_deref().and_then(|t| self.0.get(t)) {
-            Some(ModOutcome::Result(r)) => ModerationOutcome::Moderated {
-                result: r.clone(),
-                provider_name: "OPENAI".to_string(),
-            },
-            Some(ModOutcome::Fail) => {
-                ModerationOutcome::Failed("moderation provider exploded".into())
+        let available = token.as_deref().is_some_and(|t| self.tokens.contains(t));
+        async move {
+            if available {
+                self.real
+                    .moderate(content, user_id, settings, chat_id)
+                    .await
+            } else {
+                ModerationOutcome::NotAvailable
             }
-            None => ModerationOutcome::NotAvailable,
-        };
-        async move { outcome }
-    }
-}
-
-fn parse_moderation(spec: &Spec) -> HashMap<String, ModOutcome> {
-    let mut map = HashMap::new();
-    for (name, v) in &spec.moderation_results {
-        if v.as_str() == Some("fail") {
-            map.insert(name.clone(), ModOutcome::Fail);
-        } else {
-            let flagged = v.get("flagged").and_then(Value::as_bool).unwrap_or(false);
-            let categories = v
-                .get("categories")
-                .and_then(Value::as_array)
-                .map(|arr| {
-                    arr.iter()
-                        .map(|c| ModerationCategoryScore {
-                            category: c
-                                .get("category")
-                                .and_then(Value::as_str)
-                                .unwrap_or("")
-                                .into(),
-                            score: c.get("score").and_then(Value::as_f64).unwrap_or(0.0),
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            map.insert(
-                name.clone(),
-                ModOutcome::Result(ModerationResult {
-                    flagged,
-                    categories,
-                }),
-            );
         }
     }
-    map
 }
 
 // --- numeric + timestamp normalization ---
@@ -323,7 +345,6 @@ async fn danger_gatekeeper_tier3_matches_oracle() {
     }
 
     let completion = CannedCompletion(completions);
-    let moderation = CannedModeration(parse_moderation(&spec));
     let uid = |u: &str| {
         if u == "A" {
             spec.user_a.clone()
@@ -340,6 +361,17 @@ async fn danger_gatekeeper_tier3_matches_oracle() {
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
     let db = Db::open_main(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
+
+    // The real moderation provider over the canned per-case wire (W4.7f).
+    let tokens: std::collections::HashSet<String> = spec.moderation_wire.keys().cloned().collect();
+    let moderation = WireModeration {
+        real: RealModerationProvider::new(
+            db.clone(),
+            CannedApiKey,
+            TokenWireTransport(spec.moderation_wire.clone()),
+        ),
+        tokens,
+    };
 
     for c in &spec.cases {
         let job = ChatDangerClassificationJob {

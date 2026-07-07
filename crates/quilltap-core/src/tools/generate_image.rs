@@ -2189,7 +2189,7 @@ where
 
         // Transcode at the async layer (the seams never cross into the writer):
         // base64-decode → WebP (the injected [`ImageTranscoder`] seam).
-        let raw_buffer = decode_base64_node(&img.data);
+        let raw_buffer = decode_base64_node(img.data.as_deref().unwrap_or_default());
         let provider_ext = mime.split('/').nth(1).unwrap_or("png");
         let converted = deps.transcoder.transcode(&TranscodeInput {
             bytes: raw_buffer,

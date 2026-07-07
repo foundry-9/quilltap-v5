@@ -68,11 +68,15 @@ interface Spec {
   userB: string;
   llmRules: Record<string, { response: string; usage: Usage }>;
   moderationResults: Record<string, { flagged: boolean; categories: Array<{ category: string; score: number }> } | 'fail'>;
+  // W4.7f: the moderation provider is UN-MOCKED down to the canned WIRE payload
+  // (the real `moderationPlugin.moderate` runs `fetch`, which we mock to this).
+  // The provider-failure case is a canned 500.
+  moderationWire: Record<string, { status: number; body: string }>;
   cases: Case[];
 }
 
 // Per-call moderation control (set before each handler invocation).
-let currentModeration: { flagged: boolean; categories: Array<{ category: string; score: number }> } | 'fail' | null = null;
+let currentModerationWire: { status: number; body: string } | null = null;
 
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -128,21 +132,18 @@ async function main(): Promise<void> {
     };
   });
 
+  // The REAL OpenAI moderation plugin (its `moderate` builds the request +
+  // `fetch`es + parses); we mock `fetch` per case to the canned wire.
+  const moderationPlugin = (
+    await import(join(process.cwd(), 'plugins/dist/qtap-plugin-openai/moderation-provider'))
+  ).moderationPlugin;
+
   jest.doMock('@/lib/plugins/moderation-provider-registry', () => ({
     __esModule: true,
     moderationProviderRegistry: {
       isInitialized: () => true,
       getAllProviders: () => [],
-      getDefaultProvider: () => {
-        if (currentModeration === null) return null;
-        return {
-          metadata: { providerName: 'OPENAI' },
-          moderate: async (_content: string, _key: string) => {
-            if (currentModeration === 'fail') throw new Error('moderation provider exploded');
-            return currentModeration;
-          },
-        };
-      },
+      getDefaultProvider: () => (currentModerationWire === null ? null : moderationPlugin),
     },
   }));
 
@@ -173,12 +174,21 @@ async function main(): Promise<void> {
     id, userId, label: 'canned', provider: 'OPENAI', key_value: 'moderation-key', isActive: true, createdAt: '2020-01-01T00:00:00.000Z', updatedAt: '2020-01-01T00:00:00.000Z',
   });
 
+  const origFetch = globalThis.fetch;
   for (const c of spec.cases) {
-    currentModeration = spec.moderationResults[c.name] ?? null;
+    currentModerationWire = spec.moderationWire[c.name] ?? null;
+    if (currentModerationWire) {
+      const w = currentModerationWire;
+      globalThis.fetch = (async () =>
+        new Response(w.body, { status: w.status, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+    } else {
+      globalThis.fetch = origFetch;
+    }
     const job = { id: `job-${c.name}`, userId: uid(c.user), type: 'CHAT_DANGER_CLASSIFICATION', status: 'PROCESSING', payload: { chatId: c.chatId, connectionProfileId: c.connectionProfileId } };
     await handleChatDangerClassification(job as never);
   }
-  currentModeration = null;
+  currentModerationWire = null;
+  globalThis.fetch = origFetch;
 
   const dumpTable = async (table: string, orderBy: string) => {
     const columns = ((await rawQuery(`PRAGMA table_info(${table})`)) as Array<{ name: string }>).map((c) => c.name);

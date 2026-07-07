@@ -81,12 +81,18 @@ impl ImageGenParams {
 }
 
 /// One generated image (v4 `GeneratedImage` in the provider response's `images`
-/// array). `data` carries the base64-encoded bytes (v4's `img.data ||
-/// img.b64Json`); `revised_prompt` is the provider's revision (or `None`).
-#[derive(Clone, Debug, PartialEq)]
+/// array). `data` carries the base64-encoded bytes; `url` carries a hosted image
+/// URL (populated by z-ai's 30-day URLs and OpenRouter's external-URL fallback —
+/// the only providers that set it). Both are optional because z-ai emits
+/// `data: img.b64_json` verbatim (JS `undefined` → `None` when the provider
+/// returned only a URL); `revised_prompt` is the provider's revision (or `None`).
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct GeneratedImageData {
-    /// Base64-encoded image bytes.
-    pub data: String,
+    /// Base64-encoded image bytes (v4 `img.data`; may be `None` for a URL-only
+    /// z-ai / OpenRouter-external result).
+    pub data: Option<String>,
+    /// A hosted image URL (v4 `img.url`).
+    pub url: Option<String>,
     /// `image/png` etc. (v4 `img.mimeType || 'image/png'` — the default is
     /// applied by the caller, not here).
     pub mime_type: Option<String>,
@@ -320,7 +326,8 @@ mod tests {
                 &p,
                 ImageGenResponse {
                     images: vec![GeneratedImageData {
-                        data: "AAAA".into(),
+                        data: Some("AAAA".into()),
+                        url: None,
                         mime_type: Some("image/png".into()),
                         revised_prompt: Some("a fluffy cat".into()),
                     }],

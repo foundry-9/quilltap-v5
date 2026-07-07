@@ -4,6 +4,29 @@
 
 ### 5.0-dev
 
+W4.7f: image wire dialects + OpenAI moderation + Serper web search. Ported the
+five sans-IO image-generation dialects (`model::image_dialects` —
+`build_image_request` + `parse_image_response` for OPENAI, GOOGLE Imagen +
+Gemini, GROK, OPENROUTER, Z-AI), with every rejection path normalized to the
+exact error strings v4 surfaces and the three refusal-keyword gaps (Gemini
+"No images returned", OpenRouter "Model declined", z-ai's absent moderation
+handling) carried faithfully. Added `RealImageProvider` composing build + a new
+injected `model::wire::WireTransport` seam + parse. Transcribed the real
+per-provider orientation/constraint declarations into `image_gen_data`
+(OPENAI/GOOGLE/OPENROUTER per-model, GROK/Z-AI provider-level). Ported the
+OpenAI moderation wire (`dangerous_content::moderation_wire` +
+`RealModerationProvider`) and the Serper web-search wire (`tools::web_search` —
+`build_serper_request` / `map_serper_results` / the plugin + fallback error sets
+/ `RealWebSearchProvider`), closing the W4.2 and W4.1d5 provider seams (the
+api-key lookups stay behind the existing seams pending W4.7d's `db::api_keys`).
+`GeneratedImageData` now carries `url` + an optional `data` (v4's
+`GeneratedImage`, for z-ai's dual b64+URL happy path). Three new tier-1
+differentials against v4's REAL plugins (`image_dialects_equivalence`,
+`moderation_wire_equivalence`, `web_search_wire_equivalence`); regenerated
+`web_search_tool` (real provider + the env-var fallback path), `danger_gatekeeper`
+(real moderation plugin over canned wire, the failure case a canned 500), and
+`image_generation` (real dialect over canned wire) tier-3 differentials green.
+
 Docs: Round-4 work orders complete. Wrote the five remaining agent-ready work
 orders from fresh v4 surveys at `6b6e39ad`: W4.7d (transport, errors, the
 `api_keys` table — the last unported repo, a hand-rolled plaintext collection

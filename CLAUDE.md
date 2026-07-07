@@ -2841,6 +2841,63 @@ passes through faithfully). Verified by `request_builder_equivalence` (31 rows,
 are W4.7d (transport + errors + `api_keys`), W4.7e (pricing/capability/logging/
 embeddings), W4.7f (image dialects + moderation + web search).
 
+**Wave 4 (W4.7f): the image wire dialects + OpenAI moderation + Serper web search
+are DONE** (2026-07-07). New sans-IO seam `crate::model::wire` (`WireTransport` /
+`SyncWireTransport` + `WireResponse` + canned transports) sits between the ported
+request builders / response parsers and the host HTTP client (W4.7d). **The five
+image dialects** (`crate::model::image_dialects` — v4
+`plugins/dist/qtap-plugin-{openai,google,grok,openrouter,z-ai}/image-provider.ts`;
+the plan's four was corrected to FIVE, z-ai was omitted): `build_image_request` +
+`parse_image_response` per provider, with the SDK families (OPENAI png / GROK jpeg
+/ Z-AI png — mimeType HARDCODED; a non-2xx is the SDK throw surfaced verbatim) and
+the raw-fetch families (GOOGLE's two dialects — Imagen `:predict` with the ONLY
+manufactured moderation error [`Google Imagen rejected prompt by content
+policy${reason}`, the prediction/data/`filteredReason` fallback chain] + Gemini
+`:generateContent`; OPENROUTER's chat-endpoint with the `negativePrompt`/`style`
+prompt-append, `quality:'hd'`→`4K`, and the `data:(image/…);base64,` regex parse)
+inspecting the status themselves. The three refusal-keyword **GAPs are carried
+faithfully** (Gemini `textResponse || 'No images…'`, OpenRouter `Model declined…`,
+z-ai's absent moderation handling never match `is_image_moderation_error` — never
+widen the keyword set). `GeneratedImageData` gained `url` + optional `data` (v4's
+`GeneratedImage`, for z-ai's dual b64+URL happy path — the only provider populating
+`url`). `RealImageProvider` composes build + the transport seam + parse (closing the
+`generate_image` provider seam). **Orientation data** (`crate::image_gen_data`):
+the real per-provider `getImageGenerationModels` (OPENAI/GOOGLE/OPENROUTER per-model)
++ `getImageProviderConstraints` (GROK/Z-AI provider-level) declarations transcribed
+as a compiled-constant module feeding `resolve_orientation` (the dall-e-2
+empty-mapping degrade-to-hint preserved). **The OpenAI moderation wire**
+(`crate::services::dangerous_content::moderation_wire`): `build_moderation_request`
++ `parse_moderation_response` (`POST {base}/v1/moderations`, `Object.entries`
+category order, `category_scores[cat] ?? 0`, empty-results → clean, HTTP error →
+`OpenAI moderation API error ({status}): {errorText}`) + `RealModerationProvider`
+closing the W4.2 gatekeeper seam (auto-detect the OPENAI connection profile →
+`apiKeyId` → the injected `ApiKeyResolver`). **The Serper web-search wire**
+(`crate::tools::web_search`): `build_serper_request` / `map_serper_results` (the
+`knowledgeGraph` unshift boundary) / the plugin error set + the DISTINCT env-var
+fallback error set / `format_web_search_results` (the built-in formatter, ported
+once, used twice — `(Published: Invalid Date)` for free-form dates) +
+`RealWebSearchProvider` closing the W4.1d5 seam (over `SyncWireTransport` + a
+`SearchApiKeyLookup`). Verified by THREE new tier-1 differentials driving v4's REAL
+plugins over `global.fetch`/SDK mocked to committed payloads
+(`image_dialects_equivalence` — every dialect's request bytes + parsed response +
+rejection strings + the `is_image_moderation_error` verdict matrix incl. the gaps,
+PLUS the orientation transcription vs v4's real declarations;
+`moderation_wire_equivalence`; `web_search_wire_equivalence` — the plugin set +
+`formatResults` rows). Regenerated three tier-3 differentials green: `web_search_tool`
+(the REAL `RealWebSearchProvider` over a canned transport + the REAL handler's
+env-var fallback path, previously untested), `danger_gatekeeper_tier3` (the
+moderation provider UN-MOCKED — v4 drives the REAL `moderationPlugin.moderate` over
+canned `fetch`, Rust drives the REAL `RealModerationProvider` over the canned wire
+keyed by the `token=<case>` marker, the failure case a canned 500), and
+`image_generation` (the REAL image dialect over a canned wire reverse-mapped from
+the oracle's recorded images). **Tracked deferrals (handed to the round
+unification / W4.7d):** the api-key lookups (moderation auto-detect's
+`db::api_keys` resolution, the search `getAllApiKeys` scan) stay behind the
+injected `ApiKeyResolver` / `SearchApiKeyLookup` seams until W4.7d's `db::api_keys`
+lands; the real HTTP transport implementing `WireTransport` is W4.7d's; the
+transcode stays the injected `ImageTranscoder` seam (no image-codec crate);
+`is_image_moderation_error` still lives ONLY in W4.2's `provider_routing`.
+
 **Part 1 — the tool wire — DONE** (`crate::model::tool_wire`).
 Ported v4's `packages/plugin-utils/src/tools/{converters,
 parsers,text-parsers}.ts` + the per-plugin `formatTools`/`parseToolCalls`/

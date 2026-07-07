@@ -31,6 +31,7 @@ pub mod chat_override;
 pub mod gatekeeper;
 pub mod gatekeeper_job;
 pub mod manual_flip;
+pub mod moderation_wire;
 mod prompt_text;
 pub mod provider_routing;
 pub mod resolver;

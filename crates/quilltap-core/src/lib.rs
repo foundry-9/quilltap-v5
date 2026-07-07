@@ -171,6 +171,7 @@ pub mod format_bytes;
 pub mod format_time;
 pub mod format_tokens;
 pub mod image_gen;
+pub mod image_gen_data;
 pub mod jsnum;
 pub mod jsstr;
 pub mod literal_boost;

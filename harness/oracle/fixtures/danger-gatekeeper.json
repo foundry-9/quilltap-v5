@@ -4,48 +4,281 @@
   "userA": "aaaaaaaa-1111-4111-8111-111111111111",
   "userB": "bbbbbbbb-2222-4222-8222-222222222222",
   "connectionProfiles": [
-    { "id": "c0000000-0000-4000-8000-0000000000a1", "user": "A", "name": "Cheap A", "provider": "OPENAI", "modelName": "gpt-4o-mini", "isCheap": true, "apiKeyId": "a0000000-0000-4000-8000-0000000000a1" },
-    { "id": "c0000000-0000-4000-8000-0000000000b1", "user": "B", "name": "Cheap B", "provider": "OPENAI", "modelName": "gpt-4o-mini", "isCheap": true, "apiKeyId": "a0000000-0000-4000-8000-0000000000b1" }
+    {
+      "id": "c0000000-0000-4000-8000-0000000000a1",
+      "user": "A",
+      "name": "Cheap A",
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini",
+      "isCheap": true,
+      "apiKeyId": "a0000000-0000-4000-8000-0000000000a1"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-0000000000b1",
+      "user": "B",
+      "name": "Cheap B",
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini",
+      "isCheap": true,
+      "apiKeyId": "a0000000-0000-4000-8000-0000000000b1"
+    }
   ],
   "chatSettings": [
-    { "id": "5e000000-0000-4000-8000-0000000000a1", "user": "A", "dangerousContentSettings": { "mode": "AUTO_ROUTE", "threshold": 0.7, "scanTextChat": true, "scanImagePrompts": true, "scanImageGeneration": false, "displayMode": "SHOW", "showWarningBadges": true }, "cheapLLMSettings": { "strategy": "PROVIDER_CHEAPEST", "fallbackToLocal": true } },
-    { "id": "5e000000-0000-4000-8000-0000000000b1", "user": "B", "dangerousContentSettings": { "mode": "OFF", "threshold": 0.7, "scanTextChat": true, "scanImagePrompts": true, "scanImageGeneration": false, "displayMode": "SHOW", "showWarningBadges": true }, "cheapLLMSettings": { "strategy": "PROVIDER_CHEAPEST", "fallbackToLocal": true } }
+    {
+      "id": "5e000000-0000-4000-8000-0000000000a1",
+      "user": "A",
+      "dangerousContentSettings": {
+        "mode": "AUTO_ROUTE",
+        "threshold": 0.7,
+        "scanTextChat": true,
+        "scanImagePrompts": true,
+        "scanImageGeneration": false,
+        "displayMode": "SHOW",
+        "showWarningBadges": true
+      },
+      "cheapLLMSettings": {
+        "strategy": "PROVIDER_CHEAPEST",
+        "fallbackToLocal": true
+      }
+    },
+    {
+      "id": "5e000000-0000-4000-8000-0000000000b1",
+      "user": "B",
+      "dangerousContentSettings": {
+        "mode": "OFF",
+        "threshold": 0.7,
+        "scanTextChat": true,
+        "scanImagePrompts": true,
+        "scanImageGeneration": false,
+        "displayMode": "SHOW",
+        "showWarningBadges": true
+      },
+      "cheapLLMSettings": {
+        "strategy": "PROVIDER_CHEAPEST",
+        "fallbackToLocal": true
+      }
+    }
   ],
   "chats": [
-    { "id": "d0000000-0000-4000-8000-000000000001", "user": "A", "chatType": "salon", "messageCount": 4, "contextSummary": "Friendly gardening tips exchange. token=safe-llm" },
-    { "id": "d0000000-0000-4000-8000-000000000002", "user": "A", "chatType": "salon", "messageCount": 6, "contextSummary": "Extremely graphic violence and gore described in detail. token=dangerous-llm" },
-    { "id": "d0000000-0000-4000-8000-000000000003", "user": "A", "chatType": "salon", "messageCount": 3, "contextSummary": "Mild tension in a mystery plot. token=borderline-llm" },
-    { "id": "d0000000-0000-4000-8000-000000000004", "user": "A", "chatType": "salon", "messageCount": 2, "contextSummary": "The model will return garbage. token=parse-failure-llm" },
-    { "id": "d0000000-0000-4000-8000-000000000005", "user": "A", "chatType": "salon", "messageCount": 5, "contextSummary": "A benign conversation. token=moderation-safe" },
-    { "id": "d0000000-0000-4000-8000-000000000006", "user": "A", "chatType": "salon", "messageCount": 7, "contextSummary": "Violent content the provider flags. token=moderation-dangerous" },
-    { "id": "d0000000-0000-4000-8000-000000000007", "user": "A", "chatType": "salon", "messageCount": 4, "contextSummary": "The moderation provider will throw. token=moderation-fail" },
-    { "id": "d0000000-0000-4000-8000-000000000008", "user": "A", "chatType": "help", "messageCount": 2, "contextSummary": "A help chat. token=skip-exempt" },
-    { "id": "d0000000-0000-4000-8000-000000000009", "user": "A", "chatType": "salon", "conciergeOverride": "OFF", "messageCount": 3, "contextSummary": "Off duty chat. token=skip-offduty" },
-    { "id": "d0000000-0000-4000-8000-00000000000a", "user": "A", "chatType": "salon", "isDangerousChat": true, "dangerScore": 0.9, "dangerCategories": ["nsfw"], "messageCount": 5, "contextSummary": "Already dangerous. token=skip-sticky" },
-    { "id": "d0000000-0000-4000-8000-00000000000b", "user": "B", "chatType": "salon", "messageCount": 2, "contextSummary": "Mode off globally. token=skip-mode-off" }
+    {
+      "id": "d0000000-0000-4000-8000-000000000001",
+      "user": "A",
+      "chatType": "salon",
+      "messageCount": 4,
+      "contextSummary": "Friendly gardening tips exchange. token=safe-llm"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000002",
+      "user": "A",
+      "chatType": "salon",
+      "messageCount": 6,
+      "contextSummary": "Extremely graphic violence and gore described in detail. token=dangerous-llm"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000003",
+      "user": "A",
+      "chatType": "salon",
+      "messageCount": 3,
+      "contextSummary": "Mild tension in a mystery plot. token=borderline-llm"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000004",
+      "user": "A",
+      "chatType": "salon",
+      "messageCount": 2,
+      "contextSummary": "The model will return garbage. token=parse-failure-llm"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000005",
+      "user": "A",
+      "chatType": "salon",
+      "messageCount": 5,
+      "contextSummary": "A benign conversation. token=moderation-safe"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000006",
+      "user": "A",
+      "chatType": "salon",
+      "messageCount": 7,
+      "contextSummary": "Violent content the provider flags. token=moderation-dangerous"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000007",
+      "user": "A",
+      "chatType": "salon",
+      "messageCount": 4,
+      "contextSummary": "The moderation provider will throw. token=moderation-fail"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000008",
+      "user": "A",
+      "chatType": "help",
+      "messageCount": 2,
+      "contextSummary": "A help chat. token=skip-exempt"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000009",
+      "user": "A",
+      "chatType": "salon",
+      "conciergeOverride": "OFF",
+      "messageCount": 3,
+      "contextSummary": "Off duty chat. token=skip-offduty"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-00000000000a",
+      "user": "A",
+      "chatType": "salon",
+      "isDangerousChat": true,
+      "dangerScore": 0.9,
+      "dangerCategories": [
+        "nsfw"
+      ],
+      "messageCount": 5,
+      "contextSummary": "Already dangerous. token=skip-sticky"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-00000000000b",
+      "user": "B",
+      "chatType": "salon",
+      "messageCount": 2,
+      "contextSummary": "Mode off globally. token=skip-mode-off"
+    }
   ],
   "llmRules": {
-    "safe-llm": { "response": "{\"isDangerous\":false,\"score\":0.0,\"categories\":[]}", "usage": { "promptTokens": 120, "completionTokens": 10, "totalTokens": 130 } },
-    "dangerous-llm": { "response": "```json\n{\"isDangerous\":true,\"score\":0.92,\"categories\":[{\"category\":\"violence\",\"score\":0.92,\"label\":\"Graphic gore\"}]}\n```", "usage": { "promptTokens": 150, "completionTokens": 20, "totalTokens": 170 } },
-    "borderline-llm": { "response": "{\"isDangerous\":false,\"score\":0.68,\"categories\":[{\"category\":\"disturbing\",\"score\":0.68,\"label\":\"Tense\"}]}", "usage": { "promptTokens": 100, "completionTokens": 12, "totalTokens": 112 } },
-    "parse-failure-llm": { "response": "not valid json {{{ oops", "usage": { "promptTokens": 90, "completionTokens": 5, "totalTokens": 95 } }
+    "safe-llm": {
+      "response": "{\"isDangerous\":false,\"score\":0.0,\"categories\":[]}",
+      "usage": {
+        "promptTokens": 120,
+        "completionTokens": 10,
+        "totalTokens": 130
+      }
+    },
+    "dangerous-llm": {
+      "response": "```json\n{\"isDangerous\":true,\"score\":0.92,\"categories\":[{\"category\":\"violence\",\"score\":0.92,\"label\":\"Graphic gore\"}]}\n```",
+      "usage": {
+        "promptTokens": 150,
+        "completionTokens": 20,
+        "totalTokens": 170
+      }
+    },
+    "borderline-llm": {
+      "response": "{\"isDangerous\":false,\"score\":0.68,\"categories\":[{\"category\":\"disturbing\",\"score\":0.68,\"label\":\"Tense\"}]}",
+      "usage": {
+        "promptTokens": 100,
+        "completionTokens": 12,
+        "totalTokens": 112
+      }
+    },
+    "parse-failure-llm": {
+      "response": "not valid json {{{ oops",
+      "usage": {
+        "promptTokens": 90,
+        "completionTokens": 5,
+        "totalTokens": 95
+      }
+    }
   },
   "moderationResults": {
-    "moderation-safe": { "flagged": false, "categories": [{ "category": "sexual", "score": 0.03 }] },
-    "moderation-dangerous": { "flagged": true, "categories": [{ "category": "violence", "score": 0.88 }] },
+    "moderation-safe": {
+      "flagged": false,
+      "categories": [
+        {
+          "category": "sexual",
+          "score": 0.03
+        }
+      ]
+    },
+    "moderation-dangerous": {
+      "flagged": true,
+      "categories": [
+        {
+          "category": "violence",
+          "score": 0.88
+        }
+      ]
+    },
     "moderation-fail": "fail"
   },
   "cases": [
-    { "name": "safe-llm", "chatId": "d0000000-0000-4000-8000-000000000001", "user": "A", "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1" },
-    { "name": "dangerous-llm", "chatId": "d0000000-0000-4000-8000-000000000002", "user": "A", "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1" },
-    { "name": "borderline-llm", "chatId": "d0000000-0000-4000-8000-000000000003", "user": "A", "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1" },
-    { "name": "parse-failure-llm", "chatId": "d0000000-0000-4000-8000-000000000004", "user": "A", "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1" },
-    { "name": "moderation-safe", "chatId": "d0000000-0000-4000-8000-000000000005", "user": "A", "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1" },
-    { "name": "moderation-dangerous", "chatId": "d0000000-0000-4000-8000-000000000006", "user": "A", "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1" },
-    { "name": "moderation-fail", "chatId": "d0000000-0000-4000-8000-000000000007", "user": "A", "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1" },
-    { "name": "skip-exempt", "chatId": "d0000000-0000-4000-8000-000000000008", "user": "A", "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1" },
-    { "name": "skip-offduty", "chatId": "d0000000-0000-4000-8000-000000000009", "user": "A", "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1" },
-    { "name": "skip-sticky", "chatId": "d0000000-0000-4000-8000-00000000000a", "user": "A", "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1" },
-    { "name": "skip-mode-off", "chatId": "d0000000-0000-4000-8000-00000000000b", "user": "B", "connectionProfileId": "c0000000-0000-4000-8000-0000000000b1" }
-  ]
+    {
+      "name": "safe-llm",
+      "chatId": "d0000000-0000-4000-8000-000000000001",
+      "user": "A",
+      "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1"
+    },
+    {
+      "name": "dangerous-llm",
+      "chatId": "d0000000-0000-4000-8000-000000000002",
+      "user": "A",
+      "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1"
+    },
+    {
+      "name": "borderline-llm",
+      "chatId": "d0000000-0000-4000-8000-000000000003",
+      "user": "A",
+      "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1"
+    },
+    {
+      "name": "parse-failure-llm",
+      "chatId": "d0000000-0000-4000-8000-000000000004",
+      "user": "A",
+      "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1"
+    },
+    {
+      "name": "moderation-safe",
+      "chatId": "d0000000-0000-4000-8000-000000000005",
+      "user": "A",
+      "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1"
+    },
+    {
+      "name": "moderation-dangerous",
+      "chatId": "d0000000-0000-4000-8000-000000000006",
+      "user": "A",
+      "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1"
+    },
+    {
+      "name": "moderation-fail",
+      "chatId": "d0000000-0000-4000-8000-000000000007",
+      "user": "A",
+      "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1"
+    },
+    {
+      "name": "skip-exempt",
+      "chatId": "d0000000-0000-4000-8000-000000000008",
+      "user": "A",
+      "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1"
+    },
+    {
+      "name": "skip-offduty",
+      "chatId": "d0000000-0000-4000-8000-000000000009",
+      "user": "A",
+      "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1"
+    },
+    {
+      "name": "skip-sticky",
+      "chatId": "d0000000-0000-4000-8000-00000000000a",
+      "user": "A",
+      "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1"
+    },
+    {
+      "name": "skip-mode-off",
+      "chatId": "d0000000-0000-4000-8000-00000000000b",
+      "user": "B",
+      "connectionProfileId": "c0000000-0000-4000-8000-0000000000b1"
+    }
+  ],
+  "moderationWire": {
+    "moderation-safe": {
+      "status": 200,
+      "body": "{\"id\": \"m\", \"model\": \"omni\", \"results\": [{\"flagged\": false, \"categories\": {\"sexual\": false}, \"category_scores\": {\"sexual\": 0.03}}]}"
+    },
+    "moderation-dangerous": {
+      "status": 200,
+      "body": "{\"id\": \"m\", \"model\": \"omni\", \"results\": [{\"flagged\": true, \"categories\": {\"violence\": true}, \"category_scores\": {\"violence\": 0.88}}]}"
+    },
+    "moderation-fail": {
+      "status": 500,
+      "body": "moderation provider exploded"
+    }
+  }
 }

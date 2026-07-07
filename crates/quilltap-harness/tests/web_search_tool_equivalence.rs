@@ -1,8 +1,8 @@
-//! Differential test (W4.1d5): the `search_web` tool handler
-//! (`quilltap_core::tools::web_search`) vs v4's REAL handler. DB-FREE: the search
-//! boundary is the injected `WebSearchProvider` seam (canned outcome per case,
-//! mirroring the oracle's jest-mocked registry). Diffs the serialized output +
-//! `format_web_search_results`.
+//! Differential (W4.1d5 → regenerated for W4.7f): the `search_web` tool handler
+//! (`quilltap_core::tools::web_search`) vs v4's REAL handler, now with the REAL
+//! `RealWebSearchProvider` (Serper wire) behind a canned [`CannedSyncWireTransport`]
+//! (canned wire per case) — the provider path AND the env-var fallback path.
+//! Diffs the serialized output + `format_web_search_results` against the oracle.
 //!
 //! Generate the oracle (Node 24, from the v4 checkout; STAGE outside `.claude/`):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; WT=<worktree> ; STAGE=/tmp/qt-oracle-stage
@@ -17,12 +17,23 @@
 
 use std::collections::HashMap;
 
+use quilltap_core::model::wire::{wire_key, CannedSyncWireTransport, WireResponse};
 use quilltap_core::tools::web_search::{
-    execute_web_search, format_web_search_results, WebSearchOutcome, WebSearchProvider,
-    WebSearchResult,
+    build_serper_request, execute_web_search, format_web_search_results, NoSearchApiKeys,
+    RealWebSearchProvider, SearchApiKeyLookup, WebSearchOutcome, WebSearchProvider,
 };
 use serde_json::{json, Value};
 
+/// A key lookup that always returns a fixed active key (the provider path).
+struct OneKey(&'static str);
+impl SearchApiKeyLookup for OneKey {
+    fn find_active_key(&self, _p: &str, _u: &str) -> Option<String> {
+        Some(self.0.to_string())
+    }
+}
+
+/// A provider that returns a fixed canned outcome (for the handler-default edge
+/// that the real Serper wire never produces — `success:false, error:null`).
 struct Canned(WebSearchOutcome);
 impl WebSearchProvider for Canned {
     fn search(&self, _q: &str, _m: i64, _u: &str) -> WebSearchOutcome {
@@ -30,14 +41,29 @@ impl WebSearchProvider for Canned {
     }
 }
 
-fn result(title: &str, date: Option<&str>) -> WebSearchResult {
+/// Build a Serper organic array entry the way the oracle's `r()` helper does.
+fn organic(title: &str, date: Option<&str>) -> Value {
     let slug = title.to_lowercase().replace(' ', "-");
-    WebSearchResult {
-        title: title.to_string(),
-        url: format!("https://example.com/{slug}"),
-        snippet: format!("A snippet about {title}."),
-        published_date: date.map(str::to_string),
+    let mut o = json!({
+        "title": title,
+        "link": format!("https://example.com/{slug}"),
+        "snippet": format!("A snippet about {title}."),
+    });
+    if let Some(d) = date {
+        o["date"] = Value::String(d.to_string());
     }
+    o
+}
+
+fn transport_for(
+    query: &str,
+    max_results: i64,
+    key: &str,
+    resp: WireResponse,
+) -> CannedSyncWireTransport {
+    let req = build_serper_request(query, max_results, key);
+    CannedSyncWireTransport::new()
+        .with_raw_response(wire_key(&req.method, &req.url, &req.body_string()), resp)
 }
 
 fn load_oracle(path: &str) -> HashMap<String, Value> {
@@ -53,6 +79,37 @@ fn load_oracle(path: &str) -> HashMap<String, Value> {
     map
 }
 
+/// Run one case and diff against the oracle row.
+fn check(
+    oracle: &HashMap<String, Value>,
+    label: &str,
+    args: Value,
+    provider: &dyn WebSearchProvider,
+) {
+    let out = execute_web_search(provider, "user-1", &args);
+    let got_json = serde_json::to_string(&out).unwrap();
+    let got_fmt = if out.success {
+        Some(format_web_search_results(
+            out.results.as_deref().unwrap_or(&[]),
+        ))
+    } else {
+        None
+    };
+    let want = oracle
+        .get(label)
+        .unwrap_or_else(|| panic!("web-search oracle missing {label}"));
+    assert_eq!(
+        got_json.as_str(),
+        want["resultJson"].as_str().unwrap(),
+        "json {label}"
+    );
+    assert_eq!(
+        got_fmt,
+        want["formatted"].as_str().map(str::to_string),
+        "formatted {label}"
+    );
+}
+
 #[test]
 fn web_search_tool_matches_oracle() {
     let Ok(oracle_path) = std::env::var("QT_ORACLE_WEB_SEARCH") else {
@@ -61,107 +118,156 @@ fn web_search_tool_matches_oracle() {
     };
     let oracle = load_oracle(&oracle_path);
 
-    struct Case {
-        label: &'static str,
-        args: Value,
-        outcome: WebSearchOutcome,
-    }
-    let cases = vec![
-        Case {
-            label: "success_with_dates",
-            args: json!({ "query": "latest AI news" }),
-            outcome: WebSearchOutcome::ProviderResult {
-                success: true,
-                results: vec![
-                    result("Quantum leap", Some("2026-06-15T00:00:00.000Z")),
-                    result("More news", None),
-                ],
-                error: None,
-            },
-        },
-        Case {
-            label: "success_maxresults",
-            args: json!({ "query": "tokyo weather", "maxResults": 3 }),
-            outcome: WebSearchOutcome::ProviderResult {
-                success: true,
-                results: vec![result("Sunny in Tokyo", Some("2020-12-31T23:00:00.000Z"))],
-                error: None,
-            },
-        },
-        Case {
-            label: "success_no_results",
-            args: json!({ "query": "obscure query" }),
-            outcome: WebSearchOutcome::ProviderResult {
-                success: true,
-                results: vec![],
-                error: None,
-            },
-        },
-        Case {
-            label: "provider_failure",
-            args: json!({ "query": "fail me" }),
-            outcome: WebSearchOutcome::ProviderResult {
-                success: false,
-                results: vec![],
-                error: Some("quota exceeded".into()),
-            },
-        },
-        Case {
-            label: "provider_failure_no_error",
-            args: json!({ "query": "fail silently" }),
-            outcome: WebSearchOutcome::ProviderResult {
-                success: false,
-                results: vec![],
-                error: None,
-            },
-        },
-        Case {
-            label: "missing_api_key",
-            args: json!({ "query": "needs a key" }),
-            outcome: WebSearchOutcome::MissingApiKey {
-                display_name: "Serper".into(),
-            },
-        },
-        Case {
-            label: "not_configured",
-            args: json!({ "query": "nothing configured" }),
-            outcome: WebSearchOutcome::NotConfigured,
-        },
-        Case {
-            label: "validation_empty",
-            args: json!({ "query": "   " }),
-            outcome: WebSearchOutcome::NotConfigured,
-        },
-        Case {
-            label: "validation_nonobject",
-            args: json!("nope"),
-            outcome: WebSearchOutcome::NotConfigured,
-        },
-    ];
+    // --- provider path (Serper registered, key present) ---
+    let ok = |body: Value| WireResponse::new(200, body.to_string());
+    let err = |status: u16, st: &str, body: &str| WireResponse {
+        status,
+        status_text: st.to_string(),
+        body: body.to_string(),
+    };
 
-    for c in &cases {
-        let provider = Canned(c.outcome.clone());
-        let out = execute_web_search(&provider, "user-1", &c.args);
-        let got_json = serde_json::to_string(&out).unwrap();
-        let got_fmt = if out.success {
-            Some(format_web_search_results(
-                out.results.as_deref().unwrap_or(&[]),
-            ))
-        } else {
-            None
-        };
-
-        let want = oracle
-            .get(c.label)
-            .unwrap_or_else(|| panic!("web-search oracle missing {}", c.label));
-        assert_eq!(
-            got_json.as_str(),
-            want["resultJson"].as_str().unwrap(),
-            "json {}",
-            c.label
+    // provider_success (default maxResults 5).
+    {
+        let body = json!({ "organic": [organic("Quantum leap", Some("2026-06-15T00:00:00.000Z")), organic("More news", None)] });
+        let p = RealWebSearchProvider::new(
+            transport_for("latest AI news", 5, "k", ok(body)),
+            OneKey("k"),
+            true,
+            None,
         );
-        let want_fmt = want["formatted"].as_str().map(str::to_string);
-        assert_eq!(got_fmt, want_fmt, "formatted {}", c.label);
+        check(
+            &oracle,
+            "provider_success",
+            json!({ "query": "latest AI news" }),
+            &p,
+        );
+    }
+    // provider_success_maxresults (maxResults 3).
+    {
+        let body =
+            json!({ "organic": [organic("Sunny in Tokyo", Some("2020-12-31T23:00:00.000Z"))] });
+        let p = RealWebSearchProvider::new(
+            transport_for("tokyo weather", 3, "k", ok(body)),
+            OneKey("k"),
+            true,
+            None,
+        );
+        check(
+            &oracle,
+            "provider_success_maxresults",
+            json!({ "query": "tokyo weather", "maxResults": 3 }),
+            &p,
+        );
+    }
+    // provider_no_results.
+    {
+        let body = json!({ "organic": [] });
+        let p = RealWebSearchProvider::new(
+            transport_for("obscure", 5, "k", ok(body)),
+            OneKey("k"),
+            true,
+            None,
+        );
+        check(
+            &oracle,
+            "provider_no_results",
+            json!({ "query": "obscure" }),
+            &p,
+        );
+    }
+    // provider errors.
+    for (label, status, st) in [
+        ("provider_error_401", 401u16, "Unauthorized"),
+        ("provider_error_429", 429, "Too Many Requests"),
+        ("provider_error_500", 500, "Internal Server Error"),
+    ] {
+        let body = if status == 500 { "boom" } else { "nope" };
+        let p = RealWebSearchProvider::new(
+            transport_for("x", 5, "k", err(status, st, body)),
+            OneKey("k"),
+            true,
+            None,
+        );
+        check(&oracle, label, json!({ "query": "x" }), &p);
+    }
+    // provider_failure_no_error → the handler default (real wire never yields this).
+    {
+        let p = Canned(WebSearchOutcome::ProviderResult {
+            success: false,
+            results: vec![],
+            error: None,
+        });
+        check(
+            &oracle,
+            "provider_failure_no_error",
+            json!({ "query": "x" }),
+            &p,
+        );
+    }
+    // missing_api_key: registered but no key.
+    {
+        let p =
+            RealWebSearchProvider::new(CannedSyncWireTransport::new(), NoSearchApiKeys, true, None);
+        check(
+            &oracle,
+            "missing_api_key",
+            json!({ "query": "needs a key" }),
+            &p,
+        );
+    }
+
+    // --- fallback path (no plugin, SERPER_API_KEY set) ---
+    {
+        let body = json!({
+            "organic": [{ "title": "F1", "link": "https://f/1", "snippet": "s1", "date": "2026-01-02T00:00:00.000Z" }],
+            "knowledgeGraph": { "title": "KG", "description": "kg desc", "source": { "link": "https://kg" } }
+        });
+        let p = RealWebSearchProvider::new(
+            transport_for("fallback query", 5, "env-key", ok(body)),
+            NoSearchApiKeys,
+            false,
+            Some("env-key".into()),
+        );
+        check(
+            &oracle,
+            "fallback_success",
+            json!({ "query": "fallback query" }),
+            &p,
+        );
+    }
+    for (label, status, st, body) in [
+        ("fallback_401", 401u16, "Unauthorized", "nope"),
+        ("fallback_429", 429, "Too Many Requests", "slow"),
+        ("fallback_500", 500, "Internal Server Error", "boom"),
+    ] {
+        let p = RealWebSearchProvider::new(
+            transport_for("x", 5, "env-key", err(status, st, body)),
+            NoSearchApiKeys,
+            false,
+            Some("env-key".into()),
+        );
+        check(&oracle, label, json!({ "query": "x" }), &p);
+    }
+    // not_configured: no plugin, no env key.
+    {
+        let p = RealWebSearchProvider::new(
+            CannedSyncWireTransport::new(),
+            NoSearchApiKeys,
+            false,
+            None,
+        );
+        check(&oracle, "not_configured", json!({ "query": "nothing" }), &p);
+    }
+    // validation (provider never consulted).
+    {
+        let p = RealWebSearchProvider::new(
+            CannedSyncWireTransport::new(),
+            NoSearchApiKeys,
+            false,
+            None,
+        );
+        check(&oracle, "validation_empty", json!({ "query": "   " }), &p);
+        check(&oracle, "validation_nonobject", json!("nope"), &p);
     }
 
     eprintln!("OK: web-search-tool differential matched the oracle.");

@@ -64,9 +64,9 @@ use quilltap_core::model::completion::{
     canned_completion_key, CannedCompletionProvider, CompletionMessage, CompletionRole,
     CompletionUsage,
 };
-use quilltap_core::model::image::{
-    CannedImageProvider, GeneratedImageData, ImageGenResponse, PassthroughTranscoder,
-};
+use quilltap_core::model::image::{ImageGenParams, PassthroughTranscoder};
+use quilltap_core::model::image_dialects::{build_image_request, RealImageProvider};
+use quilltap_core::model::wire::{wire_key, CannedWireTransport, WireResponse};
 use quilltap_core::services::avatar_generation::{
     trigger_avatar_generation_if_enabled, AvatarGenerationParams,
 };
@@ -150,9 +150,59 @@ struct CannedImageRow {
 struct CannedImageImg {
     data: String,
     #[serde(rename = "mimeType")]
+    #[allow(dead_code)]
     mime_type: Option<String>,
     #[serde(rename = "revisedPrompt")]
     revised_prompt: Option<String>,
+}
+
+/// Reconstruct [`ImageGenParams`] from an [`image_gen_key`] param JSON (v4's
+/// `to_key_value` object), so the wire is keyed by the request the dialect builds.
+fn params_from_key_json(v: &Value) -> ImageGenParams {
+    let s = |k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
+    ImageGenParams {
+        prompt: s("prompt").unwrap_or_default(),
+        negative_prompt: s("negativePrompt"),
+        model: s("model").unwrap_or_default(),
+        n: v.get("n").and_then(Value::as_i64),
+        size: s("size"),
+        aspect_ratio: s("aspectRatio"),
+        quality: s("quality"),
+        style: s("style"),
+        seed: v.get("seed").and_then(Value::as_i64),
+        guidance_scale: v.get("guidanceScale").and_then(Value::as_f64),
+        steps: v.get("steps").and_then(Value::as_i64),
+    }
+}
+
+/// Register an oracle image response as the canned WIRE the dialect will parse:
+/// reverse-map the images into the OpenAI-SDK shape and key by the built request.
+fn register_image_wire(
+    transport: CannedWireTransport,
+    row: &CannedImageRow,
+) -> CannedWireTransport {
+    let mut parts = row.key.splitn(3, '|');
+    let provider = parts.next().expect("provider in key");
+    let _model = parts.next();
+    let params_json: Value = serde_json::from_str(parts.next().expect("params json in key"))
+        .expect("params json parses");
+    let params = params_from_key_json(&params_json);
+    let req = build_image_request(provider, &params).expect("build image request");
+    let data: Vec<Value> = row
+        .images
+        .iter()
+        .map(|i| {
+            let mut o = serde_json::Map::new();
+            o.insert("b64_json".into(), Value::String(i.data.clone()));
+            if let Some(rp) = &i.revised_prompt {
+                o.insert("revised_prompt".into(), Value::String(rp.clone()));
+            }
+            Value::Object(o)
+        })
+        .collect();
+    let body = serde_json::json!({ "data": data }).to_string();
+    let key = wire_key(&req.method, &req.url, &req.body_string());
+    transport.with_raw_response(key, WireResponse::new(200, body))
 }
 
 #[derive(Deserialize)]
@@ -549,9 +599,14 @@ fn image_generation_matches_oracle() {
     )
     .expect("parse spec");
 
-    // Parse the oracle: canned completions, canned images, per-case results.
+    // Parse the oracle: canned completions, canned image WIRE, per-case results.
+    // W4.7f: the image provider is the REAL dialect (`RealImageProvider`) over a
+    // canned [`CannedWireTransport`] — each oracle image response is reverse-mapped
+    // into the OpenAI-SDK wire shape (`{data:[{b64_json, revised_prompt?}]}`) keyed
+    // by the request the dialect builds, so `build_image_request` +
+    // `parse_image_response` run in composition (the corpus is OPENAI/dall-e-3).
     let mut completion = CannedCompletionProvider::new();
-    let mut image_provider = CannedImageProvider::new();
+    let mut image_transport = CannedWireTransport::new();
     let mut results: HashMap<String, ResultRow> = HashMap::new();
 
     for line in std::fs::read_to_string(&oracle_path)
@@ -590,16 +645,7 @@ fn image_generation_matches_oracle() {
             }
             Some("cannedImage") => {
                 let row: CannedImageRow = serde_json::from_value(v).expect("parse cannedImage row");
-                let images: Vec<GeneratedImageData> = row
-                    .images
-                    .iter()
-                    .map(|i| GeneratedImageData {
-                        data: i.data.clone(),
-                        mime_type: i.mime_type.clone(),
-                        revised_prompt: i.revised_prompt.clone(),
-                    })
-                    .collect();
-                image_provider = image_provider.with_raw_key(row.key, ImageGenResponse { images });
+                image_transport = register_image_wire(image_transport, &row);
             }
             Some("result") => {
                 let row: ResultRow = serde_json::from_value(v).expect("parse result row");
@@ -609,6 +655,7 @@ fn image_generation_matches_oracle() {
         }
     }
 
+    let image_provider = RealImageProvider::new(image_transport);
     let api_keys = CannedApiKeys(spec.api_keys.clone());
     let moderation = NoModerationProvider;
     let transcoder = PassthroughTranscoder;
