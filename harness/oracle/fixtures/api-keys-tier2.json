@@ -1,0 +1,27 @@
+{
+  "_comment": "Tier-2 spec for the api_keys repo (W4.7d, the last unported repo). SAFETY: testPepperBase64 is a THROWAWAY 32-byte key (shared across tier-2 fixtures); every key_value here is a SYNTHETIC placeholder — never a real API key. createApiKey mints id + timestamps (no CreateOptions), so this is the minted-values remap form: the harness remaps ids (first-seen in label order) and placeholders the minted timestamp columns (createdAt / updatedAt / lastUsed). The seed fixture carries ONE malformed raw row (empty provider) to exercise getApiKeysByUserId's safeParse drop.",
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userA": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "userB": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  "malformed": {
+    "id": "0badbad0-0000-4000-8000-000000000bad",
+    "label": "zz-bad-invalid",
+    "provider": "",
+    "keyValue": "synthetic-bad-key",
+    "createdAt": "2020-01-01T00:00:00.000Z",
+    "updatedAt": "2020-01-01T00:00:00.000Z"
+  },
+  "ops": [
+    { "kind": "create", "data": { "userId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "label": "alpha", "provider": "ANTHROPIC", "keyValue": "synthetic-key-a" } },
+    { "kind": "create", "data": { "userId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "label": "beta", "provider": "OPENAI", "keyValue": "synthetic-key-b", "isActive": false } },
+    { "kind": "create", "data": { "userId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "label": "gamma", "provider": "OLLAMA", "keyValue": "synthetic-key-c" } },
+    { "kind": "recordUsage", "idFromOp": 0 },
+    { "kind": "update", "idFromOp": 1, "data": { "label": "beta-renamed", "keyValue": "synthetic-key-b2" } },
+    { "kind": "delete", "idFromOp": 2, "expectDeleted": true },
+    { "kind": "getByUser", "userId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "expectLabels": ["alpha", "beta-renamed"] },
+    { "kind": "getByUser", "userId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "expectLabels": [] },
+    { "kind": "findById", "idFromOp": 0, "expectFound": true },
+    { "kind": "findByIdAndUser", "idFromOp": 0, "userId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "expectFound": false },
+    { "kind": "findByIdAndUser", "idFromOp": 0, "userId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "expectFound": true }
+  ]
+}

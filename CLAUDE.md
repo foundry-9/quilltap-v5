@@ -3006,6 +3006,72 @@ split JSON object is silently lost — a faithfully ported v4 bug), so ollama is
 diffed at whole + line-aligned chunkings only; the byte-at-a-time lossy
 bug-parity is a Rust-side unit test. **Recorder note:** run under `npx tsx` (some
 plugins import extensionless sibling `.ts` modules — z-ai's `./models`); Node 24.
+
+**Wave 4 (W4.7d): transport + errors + the `api_keys` table is DONE**
+(2026-07-07), closing the LAST unported repo. Ported: (1) **`db::api_keys`** —
+v4 hosts this collection inside `ConnectionProfilesRepository` (no dedicated
+repo), so the v5 marshaling boundary is the table (its own `db::api_keys`
+module). PLAINTEXT `key_value` (the DB cipher is the only protection — every
+fixture/seam uses SYNTHETIC keys); `provider` is a FREE-FORM string
+(`ProviderEnum = z.string().min(1)`), matched by exact equality.
+`create`/`update`(RMW full-`$set`)/`delete`/`recordUsage`(rides `update`, bumps
+`updatedAt`) + `findById`(UNSCOPED)/`findByIdAndUserId`/`getApiKeysByUserId`
+(the per-row `safeParse` DROP, keyed on the exercised empty-provider invalidity
+— full Zod validation a documented seam). Tier-2 `api_keys_tier2_equivalence`
+(minted-values remap: id remap + `createdAt`/`updatedAt`/`lastUsed` placeholder;
+banks the boolean 0/1, the nullable `lastUsed` null-vs-set CONTRAST proving
+recordUsage, and the malformed-row drop). (2) **`services::api_key_service`** —
+`get_api_key_for_connection_profile` / `get_api_key_for_cheap_llm_selection`
+(local → `Some("")`) + the user-scoped wrappers (ownership pre-checks, `userId`
+strip structural) + `find_active_api_key_for_provider` (the web-search/moderation
+provider-SCAN style — NOT unified with the profile-follow style). The
+`ApiKeyResolver` seam is CLOSED with a real DB-backed `ConnApiKeys` (over
+`find_by_id_and_user_id`); the spine composition-point wiring (danger routing,
+cheap_llm_exec, image handler, embeddings, web search) is handed to W4.4b (the
+spine owner), per the order. (3) **`services::llm_errors`** — the unported half
+of `lib/llm/errors.ts`: the 8 error classes folded into one `LlmProviderError`
+tagged by `LlmErrorKind`, `handle_provider_error` (the string normalizer, MATCH
+ORDER precedence-bearing: apikey→ratelimit→network→model→token→invalid→generic),
+and `user_friendly_error` (byte-exact strings, en-US `toLocaleString` grouping,
+JS `a && b` truthiness where `0` is falsy — reproduced). Reuses the already-ported
+predicates/parsers from `primary_stream`. Tier-1 `llm_errors_equivalence` (54
+rows: handle + construct + predicate regression, incl. precedence-collision
+rows). (4) **`model::response_parse`** — the sans-IO non-streaming parsers for
+the 5 wire families (chat-completions with the W4.7b `ChatFlavor` split
+[OpenAiCompatible/DeepSeek/ZAi/OpenRouter — cache-read subtraction, reasoning,
+tool calls per flavor], responses-API [OpenAI/Grok — `output_text`, reasoning
+summaries, `buildRawResponse` reshape], anthropic [text/thinking-block concat],
+google [non-thought parts, `thoughtSignature`], ollama) → `NonStreamingResponse`.
+**`model::provider_models_api`** — validate/models endpoints + list parsers
+(openai chat-prefix filter, z-ai image-model drop, google `supportedActions` +
+`models/` strip, ollama `/api/tags`). Unit-tested against the verbatim-read v4
+source; the recorded-payload tier-1 differential (fetch-mock recorder, the
+W4.7b pattern) is a **tracked deferral**. (5) **`model::transport`** — the
+`ProviderTransport` IO boundary: the trait + `TransportPolicy` (SDK-default
+timeout/retry knobs) + the pure per-provider header builder (`User-Agent` on
+all, openrouter `HTTP-Referer`/`X-Title`) are ALWAYS compiled (IO-free); the
+concrete `reqwest` impl is behind the **non-default `native-transport`** cargo
+feature (rustls, so the default core build stays IO-free — the STOP rule; both
+`cargo test` default AND `--features native-transport` pass). No timeout/abort/retry
+exists at v4's provider tier (SDK defaults apply) — integration-smoke tier, no
+differential. **`model::completion_provider`** — the production CompletionProvider
+composition (`build_request` → `transport_headers` + auth injection → transport
+→ `parse_for_provider` → `CompletionResponse`), generic over the trait, fake-transport
+unit-tested. (6) **The W4.7c Google `config → wire` framing deferral is CLOSED**:
+`build_request` now emits the genai-SDK wire body for GOOGLE — the flat `config`'s
+sampling/output fields nest under `generationConfig` (in the SDK's FIXED field
+order, not insertion order), `systemInstruction`/`safetySettings`/`tools` stay at
+root, each content `{role,parts}`→`{parts,role}`, the `functionCall`
+`{name,args}`→`{args,name}` (id first if present), `partialArgs`/`willContinue`
+THROW, root order `contents,systemInstruction,safetySettings,tools?,generationConfig`.
+Byte-verified against the recorded wire (fetch-intercept under the real genai SDK)
+by `request_builder_google_wire_equivalence` (5 cases incl. the thought-sig
+functionCall reorder). **Tracked deferrals:** the recorded-payload non-streaming
+parse + validate/models differential; the `auto-associate.ts` settings feature +
+the 3 unscoped `findApiKeyById` call sites (unported Phase-4 surfaces); z-ai's
+static-model-list merge (config data, dynamic-path filter/sort ported); the spine
+ApiKeyResolver wiring (W4.4b).
+
 **Wave 4 (W4.8): the background job runner is DONE** (2026-07-06). v4's
 forked-child job processor (`lib/background-jobs/host/{processor-host,
 job-dispatcher}.ts` + `child/child-entry.ts`) is re-expressed as an **in-process

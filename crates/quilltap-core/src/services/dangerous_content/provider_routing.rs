@@ -73,6 +73,32 @@ impl ApiKeyResolver for NoApiKeys {
     }
 }
 
+/// The REAL [`ApiKeyResolver`] (W4.7d) — reads the plaintext key from the
+/// `api_keys` table (v4 `repos.connections.findApiKeyByIdAndUserId(id, userId)`),
+/// closing the seam wherever a read connection is in hand. `resolve` mirrors v4's
+/// `apiKey?.key_value ?? null`: a missing / non-owned key → `None`. The spine
+/// composition points swap `NoApiKeys` for this (that wiring is W4.4b, per the
+/// W4.7d order); the resolver itself lives here so the routing logic and the read
+/// stay one unit.
+pub struct ConnApiKeys<'c> {
+    conn: &'c rusqlite::Connection,
+}
+
+impl<'c> ConnApiKeys<'c> {
+    pub fn new(conn: &'c rusqlite::Connection) -> Self {
+        Self { conn }
+    }
+}
+
+impl ApiKeyResolver for ConnApiKeys<'_> {
+    fn resolve(&self, api_key_id: &str, user_id: &str) -> Option<String> {
+        crate::db::api_keys::find_by_id_and_user_id(self.conn, api_key_id, user_id)
+            .ok()
+            .flatten()
+            .map(|k| k.key_value)
+    }
+}
+
 fn route_profile_from_value(v: &Value) -> RouteProfile {
     RouteProfile {
         id: str_field(v, "id"),

@@ -341,6 +341,166 @@ pub fn build_config(
     cfg.into_value()
 }
 
+// ============================================================================
+// The genai-SDK config → wire framing (W4.7d — closes the W4.7c deferral)
+// ============================================================================
+
+/// The genai SDK's `generationConfig` field order (a FIXED schema order, NOT
+/// insertion order — verified against the recorded wire: our config inserts
+/// `temperature, maxOutputTokens, topP` but the wire emits `temperature, topP,
+/// maxOutputTokens`). Only the fields present in the config bag are emitted, in
+/// this order. (The full genai list; the chat path produces the leading subset.)
+const GENERATION_CONFIG_FIELDS: &[&str] = &[
+    "temperature",
+    "topP",
+    "topK",
+    "candidateCount",
+    "maxOutputTokens",
+    "stopSequences",
+    "responseLogprobs",
+    "logprobs",
+    "presencePenalty",
+    "frequencyPenalty",
+    "seed",
+    "responseMimeType",
+    "responseSchema",
+    "responseJsonSchema",
+    "responseModalities",
+    "mediaResolution",
+    "speechConfig",
+    "thinkingConfig",
+    "imageConfig",
+    "enableEnhancedCivicAnswers",
+];
+
+/// An error building the google wire body (a `partialArgs` / `willContinue`
+/// functionCall part, which the genai SDK rejects).
+#[derive(Debug)]
+pub struct GoogleWireError(pub String);
+
+impl std::fmt::Display for GoogleWireError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+impl std::error::Error for GoogleWireError {}
+
+/// Reframe one `functionCall` object `{ name, args }` → `{ id?, args, name }`
+/// (the SDK's field-by-field rebuild; `partialArgs`/`willContinue` THROW).
+fn reframe_function_call(fc: &Value) -> Result<Value, GoogleWireError> {
+    if fc.get("partialArgs").is_some() || fc.get("willContinue").is_some() {
+        return Err(GoogleWireError(
+            "google functionCall partialArgs/willContinue unsupported".to_string(),
+        ));
+    }
+    let mut out = Map::new();
+    if let Some(id) = fc.get("id") {
+        out.insert("id".into(), id.clone());
+    }
+    if let Some(args) = fc.get("args") {
+        out.insert("args".into(), args.clone());
+    }
+    if let Some(name) = fc.get("name") {
+        out.insert("name".into(), name.clone());
+    }
+    Ok(Value::Object(out))
+}
+
+/// Reframe one part: a `functionCall` part rebuilds its inner object; every other
+/// part shape passes through unchanged.
+fn reframe_part(part: &Value) -> Result<Value, GoogleWireError> {
+    if let Some(fc) = part.get("functionCall") {
+        let mut out = Map::new();
+        out.insert("functionCall".into(), reframe_function_call(fc)?);
+        return Ok(Value::Object(out));
+    }
+    Ok(part.clone())
+}
+
+/// Reframe one content `{ role, parts }` → `{ parts, role }` (parts-before-role,
+/// each part reframed).
+fn reframe_content(content: &Value) -> Result<Value, GoogleWireError> {
+    let parts = content
+        .get("parts")
+        .and_then(Value::as_array)
+        .map(|arr| arr.iter().map(reframe_part).collect::<Result<Vec<_>, _>>())
+        .transpose()?
+        .unwrap_or_default();
+    let mut out = Map::new();
+    out.insert("parts".into(), Value::Array(parts));
+    if let Some(role) = content.get("role") {
+        out.insert("role".into(), role.clone());
+    }
+    Ok(Value::Object(out))
+}
+
+/// Reproduce the genai SDK's `{ model, contents, config }` → wire body reframing
+/// (W4.7d, closing the W4.7c deferral). Verified byte-exact against the recorded
+/// wire (`request_builder_google_wire_equivalence`):
+///   - each content `{ role, parts }` → `{ parts, role }`; `functionCall`
+///     `{ name, args }` → `{ args, name }` (id first if present);
+///   - the string `systemInstruction` → `{ parts: [{ text }], role: "user" }`;
+///   - the flat `config`'s sampling/output fields nest under `generationConfig`
+///     (in the SDK's fixed field order), while `systemInstruction` /
+///     `safetySettings` / `tools` stay at the request root;
+///   - root key order: `contents, systemInstruction, safetySettings, tools?,
+///     generationConfig`.
+pub fn build_google_wire_body(input: &RequestInput) -> Result<Value, GoogleWireError> {
+    let (tools, has_tools) = build_tools(input);
+    let sys = format_messages_for_google(&input.messages, &input.model, has_tools);
+    let config = build_config(input, &sys, tools, has_tools);
+    let config_obj = config.as_object().cloned().unwrap_or_default();
+
+    let mut root = super::Body::new();
+
+    // contents (reframed).
+    let contents: Vec<Value> = sys
+        .contents
+        .iter()
+        .map(reframe_content)
+        .collect::<Result<Vec<_>, _>>()?;
+    root.set("contents", Value::Array(contents));
+
+    // systemInstruction → Content wrapper.
+    if let Some(instr) = &sys.system_instruction {
+        root.set(
+            "systemInstruction",
+            json!({ "parts": [{ "text": instr }], "role": "user" }),
+        );
+    }
+
+    // safetySettings (root).
+    if let Some(ss) = config_obj.get("safetySettings") {
+        root.set("safetySettings", ss.clone());
+    }
+
+    // tools (root, only when present).
+    if let Some(t) = config_obj.get("tools") {
+        root.set("tools", t.clone());
+    }
+
+    // generationConfig: the sampling/output fields, in the SDK's fixed order.
+    let mut gen = super::Body::new();
+    for field in GENERATION_CONFIG_FIELDS {
+        if let Some(v) = config_obj.get(*field) {
+            gen.set(field, v.clone());
+        }
+    }
+    root.set("generationConfig", gen.into_value());
+
+    Ok(root.into_value())
+}
+
+/// The google chat URL for a model (v4's genai endpoint):
+/// `{baseUrl}/models/{model}:{streamGenerateContent?alt=sse | generateContent}`.
+pub fn google_chat_url(base_url: &str, model: &str, stream: bool) -> String {
+    if stream {
+        format!("{base_url}/models/{model}:streamGenerateContent?alt=sse")
+    } else {
+        format!("{base_url}/models/{model}:generateContent")
+    }
+}
+
 /// Build the google function-declaration tools (v4's
 /// `tools.push({functionDeclarations})` + `{googleSearch:{}}`), applying
 /// [`sanitize_schema_for_google`] to each tool's properties.

@@ -22,13 +22,17 @@
 //! [`completion::CompletionProvider`] / [`stream::StreamingCompletionProvider`].
 
 pub mod completion;
+pub mod completion_provider;
 pub mod decoders;
 pub mod embedding;
 pub mod image;
 pub mod image_dialects;
+pub mod provider_models_api;
 pub mod request_builder;
+pub mod response_parse;
 pub mod stream;
 pub mod tool_wire;
+pub mod transport;
 pub mod wire;
 
 pub use completion::{

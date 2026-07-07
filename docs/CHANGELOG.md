@@ -4,6 +4,36 @@
 
 ### 5.0-dev
 
+Phase 3 — Wave 4 (W4.7d): transport, the LLM error taxonomy, and the `api_keys`
+table (the last unported repo). Ported:
+
+- `db::api_keys` — the plaintext `api_keys` table (hosted inside v4's
+  ConnectionProfilesRepository). `create`/`update`/`delete`/`recordUsage` +
+  `findById`(unscoped)/`findByIdAndUserId`/`getApiKeysByUserId` (the per-row
+  safeParse DROP). Tier-2 differential `api_keys_tier2_equivalence` (minted-values
+  remap; proves the recordUsage lastUsed set + the malformed-row drop).
+- `services::api_key_service` — `get_api_key_for_connection_profile` /
+  `get_api_key_for_cheap_llm_selection` + the user-scoped wrappers +
+  `find_active_api_key_for_provider` (the web-search/moderation provider scan).
+  Closed the `ApiKeyResolver` seam with a real DB-backed resolver
+  (`ConnApiKeys`); spine wiring at the composition points is handed to W4.4b.
+- `services::llm_errors` — the 8-class error taxonomy + `handleProviderError`
+  (precedence-ordered normalizer) + `getUserFriendlyError`. Tier-1
+  `llm_errors_equivalence` (54 rows, incl. precedence collisions + predicate
+  regression rows).
+- `model::response_parse` — non-streaming response parsers for all 5 wire
+  families (chat-completions flavors, responses-API, anthropic, google, ollama)
+  → LLMResponse. `model::provider_models_api` — validate/models endpoints + list
+  parsers. Unit-tested; the recorded-payload differential is a tracked follow-up.
+- `model::transport` — the `ProviderTransport` IO boundary (trait + policy +
+  per-provider header builder, all IO-free) with a feature-gated
+  (`native-transport`) reqwest impl. `model::completion_provider` — the production
+  CompletionProvider composition (build → transport → parse → CompletionResponse).
+- Closed the W4.7c Google `config → wire` framing deferral: `build_request` now
+  emits the genai-SDK wire body for GOOGLE (generationConfig split,
+  `{name,args}`→`{args,name}`, systemInstruction wrapper). Byte-verified against
+  the recorded wire (`request_builder_google_wire_equivalence`, 5 cases).
+
 W4.7f: image wire dialects + OpenAI moderation + Serper web search. Ported the
 five sans-IO image-generation dialects (`model::image_dialects` —
 `build_image_request` + `parse_image_response` for OPENAI, GOOGLE Imagen +

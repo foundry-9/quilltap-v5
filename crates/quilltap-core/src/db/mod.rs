@@ -23,6 +23,7 @@ use serde_json::{Map, Value};
 
 use crate::dbkey;
 
+pub mod api_keys;
 pub mod archetype_wardrobe;
 pub mod background_jobs;
 pub mod character_plugin_data;
@@ -171,6 +172,13 @@ impl Writer {
     /// until then the store-backed repos take the two connections directly.
     pub fn connection(&self) -> &Connection {
         &self.conn
+    }
+
+    /// The api-keys repository over this writer's connection (MAIN db). v4 hosts
+    /// this collection inside `ConnectionProfilesRepository`; the v5 marshaling
+    /// boundary is the `api_keys` table, so it lives in [`api_keys`].
+    pub fn api_keys(&self) -> api_keys::ApiKeysRepository<'_> {
+        api_keys::ApiKeysRepository::new(&self.conn)
     }
 
     /// The background-jobs repository over this writer's connection (MAIN db).

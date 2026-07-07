@@ -28,6 +28,7 @@
 
 pub mod agent_mode;
 pub mod answer_confirmation;
+pub mod api_key_service;
 pub mod appearance_resolution;
 pub mod aurora_notifications;
 pub mod avatar_generation;
@@ -56,6 +57,7 @@ pub mod job_scheduler;
 pub mod knowledge_injector;
 pub mod lantern_notifications;
 pub mod librarian_notifications;
+pub mod llm_errors;
 pub mod maintenance;
 pub mod memory_gate;
 pub mod memory_processor;

@@ -191,9 +191,24 @@ pub fn build_request_with_registry(
     let manifest = registry
         .get_provider(provider)
         .ok_or_else(|| BuildError::UnknownProvider(provider.to_string()))?;
-    let url = format!("{}{}", manifest.base_url, manifest.endpoints.chat);
     let headers = auth_headers(manifest);
 
+    // Google's genai endpoint is model-specific (`/models/{model}:…`) and its wire
+    // body is the SDK reframing (W4.7d) — handled separately from the fixed-path
+    // chat-completions / responses / anthropic builders.
+    if provider == "GOOGLE" {
+        let url = google::google_chat_url(&manifest.base_url, &input.model, input.stream);
+        let body = google::build_google_wire_body(input)
+            .map_err(|e| BuildError::Deferred(format!("GOOGLE wire framing: {e}")))?;
+        return Ok(BuiltRequest {
+            method: "POST".to_string(),
+            url,
+            headers,
+            body,
+        });
+    }
+
+    let url = format!("{}{}", manifest.base_url, manifest.endpoints.chat);
     let body = match provider {
         "ANTHROPIC" => anthropic::build_body(input),
         "OPENAI" => responses_api::build_openai_body(input),
@@ -203,12 +218,6 @@ pub fn build_request_with_registry(
         "OPENROUTER" => chat_completions::build_openrouter_body(input),
         "OLLAMA" => chat_completions::build_ollama_body(input),
         "OPENAI_COMPATIBLE" => chat_completions::build_openai_compatible_body(input),
-        "GOOGLE" => {
-            // The genai-SDK `config → generationConfig` wire framing is the
-            // transport's (W4.7d); the request LOGIC (sanitizer, contents, config)
-            // is ported + verified in [`google`].
-            return Err(BuildError::Deferred("GOOGLE".to_string()));
-        }
         other => return Err(BuildError::UnknownProvider(other.to_string())),
     };
 

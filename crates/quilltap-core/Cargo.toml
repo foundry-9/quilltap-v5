@@ -96,6 +96,17 @@ jiff = "0.2.31"
 # features (for `#[tokio::test]`) live in dev-dependencies below.
 tokio = { version = "1", default-features = false, features = ["sync"] }
 
+# W4.7d: the concrete `reqwest` provider transport, behind the NON-DEFAULT
+# `native-transport` feature so the default core build stays IO-free (the STOP
+# rule). rustls (not native-tls) to avoid an OpenSSL system dep. Only compiled
+# when the feature is on; expected to migrate to the CLI/host crate later.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2", "stream"], optional = true }
+
+[features]
+# Pulls the reqwest transport + the tokio runtime it needs. NON-DEFAULT: the
+# default core build has neither reqwest nor a tokio scheduler.
+native-transport = ["dep:reqwest", "tokio/rt", "tokio/rt-multi-thread"]
+
 [dev-dependencies]
 tempfile = "3"
 # Test-only: the runtime self-tests use `#[tokio::test]` and a multi-thread
