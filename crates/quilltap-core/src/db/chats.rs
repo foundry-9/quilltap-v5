@@ -490,6 +490,24 @@ pub struct ChatUpdate {
     /// `clearFromDatabase`. `Some(obj)` stores the cache object; `Some(Value::Null)`
     /// clears the column to SQL NULL; `None` leaves it unset. No `updatedAt` bump.
     pub compression_cache: Option<Value>,
+    /// `sceneState` (nullable JSON object) — persisted by the scene-state tracking
+    /// job ([`crate::services::scene_state_tracking`], v4
+    /// `repos.chats.update(chatId, { sceneState })`). `Some(obj)` stores the object;
+    /// `Some(Value::Null)` clears the column to SQL NULL; `None` leaves it unset.
+    /// No `updatedAt` bump (v4 `_update` preserves it).
+    pub scene_state: Option<Value>,
+    /// `commonplaceSceneCache` (nullable JSON object) — the per-recipient scene-state
+    /// emission cache, persisted by `buildContext`'s Commonplace tail
+    /// ([`crate::services::build_context`] `persist_scene_cache`, W4.6a; v4
+    /// `repos.chats.update(chatId, { commonplaceSceneCache })`). `Some(obj)` stores;
+    /// `Some(Value::Null)` clears; `None` leaves unset. No `updatedAt` bump.
+    pub commonplace_scene_cache: Option<Value>,
+    /// `commonplaceRecallHistory` (nullable JSON array) — the whispered-memory-id
+    /// recall history, persisted by `buildContext`'s Commonplace tail
+    /// ([`crate::services::build_context`] `persist_recall_history`, W4.6a; v4
+    /// `repos.chats.update(chatId, { commonplaceRecallHistory })`). `Some(arr)`
+    /// stores; `Some(Value::Null)` clears; `None` leaves unset. No `updatedAt` bump.
+    pub commonplace_recall_history: Option<Value>,
     pub updated_at: Option<String>,
 }
 
@@ -795,6 +813,37 @@ impl<'c> ChatsRepository<'c> {
                 Some(json_text(v)?)
             };
             set_col!("compressionCache", Box::new(text));
+        }
+        if let Some(v) = &patch.scene_state {
+            // v4 `repos.chats.update({ sceneState })` — a JSON object stored as
+            // compact text; a JSON `null` clears the column. No `updatedAt` bump.
+            let text: Option<String> = if v.is_null() {
+                None
+            } else {
+                Some(json_text(v)?)
+            };
+            set_col!("sceneState", Box::new(text));
+        }
+        if let Some(v) = &patch.commonplace_scene_cache {
+            // v4 `repos.chats.update({ commonplaceSceneCache })` (W4.6a scene cache
+            // persist) — JSON object as text; `null` clears. No `updatedAt` bump.
+            let text: Option<String> = if v.is_null() {
+                None
+            } else {
+                Some(json_text(v)?)
+            };
+            set_col!("commonplaceSceneCache", Box::new(text));
+        }
+        if let Some(v) = &patch.commonplace_recall_history {
+            // v4 `repos.chats.update({ commonplaceRecallHistory })` (W4.6a recall
+            // history persist) — JSON array as text; `null` clears. No `updatedAt`
+            // bump.
+            let text: Option<String> = if v.is_null() {
+                None
+            } else {
+                Some(json_text(v)?)
+            };
+            set_col!("commonplaceRecallHistory", Box::new(text));
         }
         set_col!("updatedAt", Box::new(resolved_updated_at));
 

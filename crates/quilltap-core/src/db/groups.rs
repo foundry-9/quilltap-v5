@@ -157,6 +157,29 @@ impl<'c> GroupsRepository<'c> {
     }
 }
 
+/// Read a group's `name` + `officialMountPointId` WITHOUT the store overlay (v4
+/// `groups.findByIdRaw(...)`). Used by the Core-whisper packet assembly (W4.6a)
+/// — it needs the group name (heading label) and the official mount pointer, but
+/// must survive a broken store overlay. Returns `Ok(None)` when the group row is
+/// absent. The `official_mount_point_id` is `None` when the group has no store yet.
+pub fn find_name_and_official_mount_point_id_raw(
+    main: &Connection,
+    id: &str,
+) -> Result<Option<(String, Option<String>)>, DbError> {
+    let row = main
+        .query_row(
+            "SELECT name, officialMountPointId FROM groups WHERE id = ?1",
+            rusqlite::params![id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+        )
+        .map(Some)
+        .or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other),
+        })?;
+    Ok(row)
+}
+
 /// Read a group's `officialMountPointId` pointer WITHOUT the store overlay (v4
 /// `groups.findByIdRaw(...).officialMountPointId`). The tiered-mount-pool group
 /// resolver uses this on its hot path — it only needs the pointer, not the

@@ -36,6 +36,9 @@ const KEY_LAST_MAINTENANCE_SWEEP_AT: &str = "lastMaintenanceSweepAt";
 /// (`generated/`) + ad-hoc `generate_image` tool output (`tool/`).
 const KEY_LANTERN_BACKGROUNDS_MOUNT_POINT_ID: &str = "lanternBackgroundsMountPointId";
 
+/// v4 `KEY_MEMORY_RECALL` — the per-instance Commonplace-Book recall settings.
+const KEY_MEMORY_RECALL: &str = "memoryRecall";
+
 /// v4 `readSetting(key)` — read one `instance_settings` value, or `None`.
 ///
 /// Faithful to v4: the whole read is fallible-tolerant — a missing table or any
@@ -71,6 +74,39 @@ pub fn get_lantern_backgrounds_mount_point_id(
     main: &Connection,
 ) -> Result<Option<String>, DbError> {
     Ok(read_setting(main, KEY_LANTERN_BACKGROUNDS_MOUNT_POINT_ID))
+}
+
+/// v4 `getMemoryRecallSettings()` — the per-instance Commonplace-Book recall
+/// settings, as `(scope_policy, expand_related)`. Returns the documented default
+/// (`down-weight`, `false`) when the setting is unwritten OR fails to parse (v4's
+/// Zod `safeParse` → `catch` → default). The Zod schema has `scopePolicy` enum
+/// `['down-weight','exclude']` (`.default('down-weight')`) and `expandRelated`
+/// boolean (`.default(false)`); an out-of-enum / non-bool value fails the parse
+/// (both `.default`-carrying keys mean a bad *value* still fails, not defaults —
+/// faithful to `.parse` throwing on a present-but-wrong value).
+pub fn get_memory_recall_settings(main: &Connection) -> Result<(String, bool), DbError> {
+    const DEFAULT: (&str, bool) = ("down-weight", false);
+    let Some(raw) = read_setting(main, KEY_MEMORY_RECALL) else {
+        return Ok((DEFAULT.0.to_string(), DEFAULT.1));
+    };
+    let parsed: Result<serde_json::Value, _> = serde_json::from_str(&raw);
+    let Ok(obj) = parsed else {
+        return Ok((DEFAULT.0.to_string(), DEFAULT.1));
+    };
+    // scopePolicy: enum, `.default('down-weight')` (absent → default; present but
+    // out-of-enum → parse fails → whole-object default).
+    let scope_policy = match obj.get("scopePolicy") {
+        None => DEFAULT.0.to_string(),
+        Some(serde_json::Value::String(s)) if s == "down-weight" || s == "exclude" => s.clone(),
+        Some(_) => return Ok((DEFAULT.0.to_string(), DEFAULT.1)),
+    };
+    // expandRelated: boolean, `.default(false)`.
+    let expand_related = match obj.get("expandRelated") {
+        None => false,
+        Some(serde_json::Value::Bool(b)) => *b,
+        Some(_) => return Ok((DEFAULT.0.to_string(), DEFAULT.1)),
+    };
+    Ok((scope_policy, expand_related))
 }
 
 /// v4 `getMaxConcurrentJobs()` — the per-instance background-job concurrency cap.

@@ -441,6 +441,62 @@ pub fn normalize_no_item_sentinel(value: Option<&str>) -> Option<String> {
     }
 }
 
+/// v4 `hashEquippedSlots` (`lib/wardrobe/outfit-hash.ts`): the deterministic short
+/// hash of a character's equipped wardrobe slots. Slot-key order is normalized
+/// (`{top, bottom, footwear, accessories}`); each slot's array is hashed in its
+/// stored order (layering matters). A null/empty outfit hashes to a stable
+/// sentinel. SHA-256 over `JSON.stringify(normalized)`, first 16 hex chars.
+pub fn hash_equipped_slots(slots: Option<&Slots>) -> String {
+    // `JSON.stringify({top, bottom, footwear, accessories})` in key order — a
+    // typed serde struct fixes the order (never `serde_json::Value`, which sorts).
+    #[derive(serde::Serialize)]
+    struct Normalized<'a> {
+        top: &'a [String],
+        bottom: &'a [String],
+        footwear: &'a [String],
+        accessories: &'a [String],
+    }
+    let empty: Vec<String> = Vec::new();
+    let n = Normalized {
+        top: slots.map(|s| s.top.as_slice()).unwrap_or(&empty),
+        bottom: slots.map(|s| s.bottom.as_slice()).unwrap_or(&empty),
+        footwear: slots.map(|s| s.footwear.as_slice()).unwrap_or(&empty),
+        accessories: slots.map(|s| s.accessories.as_slice()).unwrap_or(&empty),
+    };
+    let json = serde_json::to_string(&n).unwrap_or_else(|_| "{}".to_string());
+    let hex = crate::db::doc_mount_file_links::sha256_of_string(&json);
+    hex.chars().take(16).collect()
+}
+
+/// v4 `hasEquippedItems`: true when at least one slot holds an equipped item.
+pub fn has_equipped_items(slots: Option<&Slots>) -> bool {
+    match slots {
+        None => false,
+        Some(s) => s.top.len() + s.bottom.len() + s.footwear.len() + s.accessories.len() > 0,
+    }
+}
+
+/// v4 `decorateOutfitItems(items, { titleOnly: true })`: for each item, prefer its
+/// trimmed `imagePrompt` as the visual cue, else its `title`. (The non-titleOnly
+/// path — `title (description)` — is not the live-clothing shape and is not ported
+/// here.) Each item is a resolved wardrobe `Value` with `title`/`imagePrompt`.
+pub fn decorate_outfit_items_title_only(items: &[Value]) -> Vec<String> {
+    items
+        .iter()
+        .map(|i| {
+            let cue = i.get("imagePrompt").and_then(Value::as_str).map(str::trim);
+            match cue {
+                Some(c) if !c.is_empty() => c.to_string(),
+                _ => i
+                    .get("title")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

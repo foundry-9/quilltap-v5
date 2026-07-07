@@ -281,6 +281,53 @@ pub fn resolve_equipped_outfit_values(
     slots: &Slots,
     project_mount_point_ids: &[String],
 ) -> Result<OutfitSlotValues, DbError> {
+    // Second pass over the raw leaf items: route each leaf's title into every
+    // output slot its `types` declare.
+    let leaves = resolve_equipped_outfit_leaf_values(
+        main,
+        docs,
+        character_id,
+        slots,
+        project_mount_point_ids,
+    )?;
+    let title_of = |item: &Value| {
+        item.get("title")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+    Ok(OutfitSlotValues {
+        top: leaves.top.iter().map(title_of).collect(),
+        bottom: leaves.bottom.iter().map(title_of).collect(),
+        footwear: leaves.footwear.iter().map(title_of).collect(),
+        accessories: leaves.accessories.iter().map(title_of).collect(),
+    })
+}
+
+/// The raw leaf items routed per output slot (v4 `resolveEquippedOutfitForCharacter`'s
+/// `leafItemsBySlot`). Each slot holds the resolved wardrobe item `Value`s (with
+/// `title` / `imagePrompt` / `types`) so callers can decorate them variously
+/// (the coverage summary → titles; the live-clothing override → `titleOnly`).
+#[derive(Debug, Clone, Default)]
+pub struct LeafItemsBySlot {
+    pub top: Vec<Value>,
+    pub bottom: Vec<Value>,
+    pub footwear: Vec<Value>,
+    pub accessories: Vec<Value>,
+}
+
+/// v4 `resolveEquippedOutfitForCharacter` — the `leafItemsBySlot` half. Loads the
+/// character's wardrobe (so composites resolve), fills missing equipped ids from
+/// the archetype tiers, expands each slot's composites into leaves (deduped in
+/// first-seen order), and routes each leaf ITEM into every output slot its own
+/// `types` declare.
+pub fn resolve_equipped_outfit_leaf_values(
+    main: &Connection,
+    docs: &DocMountDocumentsRepository,
+    character_id: &str,
+    slots: &Slots,
+    project_mount_point_ids: &[String],
+) -> Result<LeafItemsBySlot, DbError> {
     // Unique equipped ids across all four input slots.
     let mut equipped_ids: Vec<String> = Vec::new();
     let mut seen_id: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -297,7 +344,7 @@ pub fn resolve_equipped_outfit_values(
         }
     }
     if equipped_ids.is_empty() {
-        return Ok(OutfitSlotValues::default());
+        return Ok(LeafItemsBySlot::default());
     }
 
     // Pull the character's own wardrobe (v4 try/catch → []) for composite resolution.
@@ -350,14 +397,9 @@ pub fn resolve_equipped_outfit_values(
         }
     }
 
-    // Second pass: route each leaf's title into every output slot its `types` declare.
-    let mut out = OutfitSlotValues::default();
+    // Second pass: route each leaf ITEM into every output slot its `types` declare.
+    let mut out = LeafItemsBySlot::default();
     for item in &ordered_leaves {
-        let title = item
-            .get("title")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
         let types = item
             .get("types")
             .and_then(Value::as_array)
@@ -365,10 +407,10 @@ pub fn resolve_equipped_outfit_values(
             .unwrap_or_default();
         for t in &types {
             match t.as_str() {
-                Some("top") => out.top.push(title.clone()),
-                Some("bottom") => out.bottom.push(title.clone()),
-                Some("footwear") => out.footwear.push(title.clone()),
-                Some("accessories") => out.accessories.push(title.clone()),
+                Some("top") => out.top.push(item.clone()),
+                Some("bottom") => out.bottom.push(item.clone()),
+                Some("footwear") => out.footwear.push(item.clone()),
+                Some("accessories") => out.accessories.push(item.clone()),
                 _ => {}
             }
         }

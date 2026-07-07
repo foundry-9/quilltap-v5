@@ -425,8 +425,11 @@ pub struct ContextChat {
     pub compaction_generation: i64,
     /// The raw `summaryAnchorMessageIds` array.
     pub summary_anchor_message_ids: Vec<String>,
-    /// The raw `commonplaceRecallHistory` JSON (for the recall-history seam).
+    /// The raw `commonplaceRecallHistory` JSON (for the recall-history persist).
     pub commonplace_recall_history: Value,
+    /// The raw `commonplaceSceneCache` JSON object (per-recipient scene-emission
+    /// cache) — read for the prior-emission `_unchanged_` compaction (W4.6a).
+    pub commonplace_scene_cache: Option<Value>,
     /// The raw `sceneState` (JSON string or object) — parsed to [`SceneState`].
     pub scene_state: Option<Value>,
     /// The precompiled identity stack for the responding participant (v4
@@ -519,112 +522,61 @@ pub struct MemoryRecallSettings {
 
 impl Default for MemoryRecallSettings {
     fn default() -> Self {
+        // v4 `DEFAULT_MEMORY_RECALL_SETTINGS` (`lib/instance-settings`).
         MemoryRecallSettings {
-            scope_policy: "BALANCED".to_string(),
+            scope_policy: "down-weight".to_string(),
             expand_related: false,
         }
     }
 }
 
-/// The injected feeder / post-office subsystems. Every method has a
-/// default (a no-op or "nothing available"), matching the tier-3 oracle mocks.
-/// The `_seams` prefix on unused params keeps the signatures documentary.
+/// The injected **whisper-POSTING** half of the context feeders (W4.6b). W4.6a
+/// closed every READ/COMPUTE feeder in-line (recap, distill, mount pool, frozen
+/// archive, live clothing, off-scene scan, recall settings, core-whisper assembly,
+/// Suparṇā mail read, scene-cache/recall-history persist); what remains is the set
+/// of personified-system message POSTs, which land with W4.6b's writers. Every
+/// method defaults to a no-op (and `post_commonplace_whisper` to "not posted"),
+/// matching the tier-3 oracle mocks. The `_seams`-prefixed / `#[allow(unused)]`
+/// params keep the signatures documentary until W4.6b consumes them.
 #[allow(unused_variables)]
 pub trait BuildContextSeams {
-    /// v4 `generateMemoryRecap` (unported cheap-LLM recap subsystem). Default: no
-    /// recap content.
-    fn resolve_memory_recap(&self, character_id: &str, relevance_query: &str) -> MemoryRecapResult {
-        MemoryRecapResult::default()
-    }
+    /// v4 `postHostOffSceneCharactersAnnouncement` — the Host's public off-scene
+    /// introduction (the SCAN + content is W4.6a; only the `addMessage` POST is
+    /// deferred). Default: no-op.
+    fn post_host_off_scene_announcement(&self, chat_id: &str, content: &str) {}
 
-    /// v4 `extractMemorySearchKeywords` (unported cheap-LLM task). Default: no
-    /// distillation → the raw recent-window query is used.
-    fn distill_memory_search(
-        &self,
-        character_id: &str,
-        base_query: &str,
-    ) -> Option<DistilledSearch> {
-        None
-    }
+    /// v4 `postHostTimestampAnnouncement` — the Host's fictional-clock note.
+    /// Default: no-op.
+    fn post_host_timestamp_announcement(&self, chat_id: &str, formatted: &str) {}
 
-    /// v4 `resolveTieredMountPool` (only its pure dedupe leaf is ported; the
-    /// DB-reading tier walk is out of scope). Default: the character's own vault
-    /// only.
-    fn resolve_mount_pool(
-        &self,
-        character_id: &str,
-        character_mount_point_id: Option<&str>,
-        project_id: Option<&str>,
-    ) -> MountPool {
-        MountPool {
-            character_mount_point_id: character_mount_point_id.map(str::to_string),
-            ..Default::default()
-        }
-    }
-
-    /// v4 `getOrComputeFrozenArchive` (unported archive cache). Default: no
-    /// archive (the dynamic head still fills from the search).
-    fn compute_frozen_archive(
-        &self,
-        character_id: &str,
-        compaction_generation: i64,
-    ) -> Vec<InjectorMemory> {
-        Vec::new()
-    }
-
-    /// v4's live-wardrobe outfit resolution (wardrobe subsystem, wave 4).
-    /// Default: no live-clothing override (the cached scene-state clothing wins).
-    fn resolve_live_clothing(&self, chat_id: &str, character_id: &str) -> Option<String> {
-        None
-    }
-
-    /// v4 `postHostOffSceneCharactersAnnouncement` (post-office). Default: no
-    /// newcomer announced.
-    fn resolve_off_scene_announcement(&self, chat_id: &str) -> Option<String> {
-        None
-    }
-
-    /// v4 `getMemoryRecallSettings` (instance-settings). Default: BALANCED / no
-    /// expand.
-    fn read_memory_recall_settings(&self) -> MemoryRecallSettings {
-        MemoryRecallSettings::default()
-    }
-
-    /// The core-whisper LLM-context contribution to fold into the new user
-    /// message (v4 `buildCoreWhisperLLMContext` after `postCoreWhisper`).
-    /// Default: none.
-    fn resolve_core_whisper_context(
+    /// v4 `postCoreWhisper` (+ the stale-whisper sweep) — Aurora's per-character
+    /// Core re-offering (the config + packet + LLM-context is W4.6a; only the POST
+    /// is deferred). Default: no-op.
+    fn post_core_whisper(
         &self,
         chat_id: &str,
-        responding_participant_id: &str,
-    ) -> Option<String> {
-        None
+        target_participant_id: &str,
+        persona_content: &str,
+        opaque_content: &str,
+    ) {
     }
 
-    /// The Suparṇā-mail LLM-context contribution (v4 `buildSuparnaMailLLMContext`
-    /// after `postSuparnaMailWhisper`). Default: none.
-    fn resolve_suparna_mail_context(&self, chat_id: &str, mail_vault_id: &str) -> Option<String> {
-        None
-    }
-
-    /// v4's Commonplace-Book / Host timestamp / recall-history / scene-cache
-    /// posts — all fire-and-forget side effects, recorded for the differential.
+    /// v4 `postCommonplaceWhisper` — the consolidated Commonplace-Book recall
+    /// whisper. Returns whether a whisper was durably posted (v4's `posted`), which
+    /// gates the two persist writes (`commonplaceSceneCache` / `commonplaceRecall-
+    /// History`). Default: `false` (nothing posted → no persist).
     fn post_commonplace_whisper(
         &self,
         chat_id: &str,
         target_participant_id: Option<&str>,
         content: &str,
-    ) {
+    ) -> bool {
+        false
     }
-    fn post_host_timestamp_announcement(&self, chat_id: &str, formatted: &str) {}
-    fn persist_scene_cache(
-        &self,
-        chat_id: &str,
-        target_key: &str,
-        emitted: &[(String, SceneStateEmissionEntry)],
-    ) {
-    }
-    fn persist_recall_history(&self, chat_id: &str, next_history: &Value) {}
+
+    /// v4 `postSuparnaMailWhisper` — Suparṇā's new-mail whisper (the mail READ +
+    /// `alerted` flip is W4.6a; only the POST is deferred). Default: no-op.
+    fn post_suparna_mail(&self, chat_id: &str, content: &str) {}
 }
 
 /// The default no-op seam bundle.
@@ -770,12 +722,426 @@ fn injector_result_from_search(
 }
 
 // ---------------------------------------------------------------------------
+// Ported feeder helpers (W4.6a) — the READ/COMPUTE half of the former seams.
+// ---------------------------------------------------------------------------
+
+/// v4 `resolveTieredMountPool` for buildContext's call (no ownership gate, no
+/// participant tier). Reads across both DBs; degrades gracefully.
+fn resolve_mount_pool(db: &Db, input: &BuildContextInput) -> MountPool {
+    use crate::db::tiered_mount_pool::{
+        resolve_tiered_mount_pool, TierContext, TierResolveOptions,
+    };
+    let ctx = TierContext {
+        user_id: Some(input.user_id.clone()),
+        character_id: if input.character.id.is_empty() {
+            None
+        } else {
+            Some(input.character.id.clone())
+        },
+        character_mount_point_id: input.character.character_document_mount_point_id.clone(),
+        character_ids: None,
+        project_id: input.chat.project_id.clone(),
+    };
+    let opts = TierResolveOptions {
+        require_ownership: false,
+        include_participants: false,
+    };
+    let resolved = db
+        .read_main(|main| {
+            db.read_mount_index(|mount| Ok(resolve_tiered_mount_pool(main, mount, &ctx, &opts)))
+        })
+        .unwrap_or_default();
+    MountPool {
+        character_mount_point_id: resolved.character_mount_point_id,
+        group_mount_point_ids: resolved.group_mount_point_ids,
+        project_mount_point_ids: resolved.project_mount_point_ids,
+        global_mount_point_id: resolved.global_mount_point_id,
+    }
+}
+
+/// v4 `getMemoryRecallSettings` (`lib/instance-settings`) — reads the per-instance
+/// Commonplace-Book recall settings, defaulting to `down-weight` / no-expand when
+/// the setting is unwritten. Read on the per-turn recall path; the search-leg
+/// re-rank that consumes these is a tracked memory-service deferral, so the value
+/// is not yet folded into the search — but the read is ported faithfully.
+fn read_memory_recall_settings(db: &Db) -> MemoryRecallSettings {
+    match db.read_main(crate::db::instance_settings::get_memory_recall_settings) {
+        Ok((scope_policy, expand_related)) => MemoryRecallSettings {
+            scope_policy,
+            expand_related,
+        },
+        Err(_) => MemoryRecallSettings::default(),
+    }
+}
+
+/// v4 `chats.update({ commonplaceSceneCache })` (W4.6a): persist the per-target
+/// scene-state emission cache as `{...prior, [cacheTargetKey]: slice}`, where the
+/// slice is `characterId → SceneStateEmissionEntry` (insertion order). Awaited (v4
+/// awaits); a write failure is swallowed (benign — next turn re-emits full).
+async fn persist_scene_cache(
+    db: &Db,
+    input: &BuildContextInput,
+    cache_target_key: &str,
+    emitted: &[(String, SceneStateEmissionEntry)],
+) {
+    use serde_json::{Map, Value};
+    // Build the slice object in insertion order (preserve_order keeps it).
+    let mut slice = Map::new();
+    for (cid, entry) in emitted {
+        let mut o = Map::new();
+        o.insert(
+            "actionHash".to_string(),
+            Value::String(entry.action_hash.clone()),
+        );
+        o.insert(
+            "clothingHash".to_string(),
+            Value::String(entry.clothing_hash.clone()),
+        );
+        o.insert(
+            "emittedAt".to_string(),
+            Value::String(entry.emitted_at.clone()),
+        );
+        slice.insert(cid.clone(), Value::Object(o));
+    }
+    // `{...(priorCache ?? {}), [cacheTargetKey]: slice}`.
+    let mut next = match input
+        .chat
+        .commonplace_scene_cache
+        .as_ref()
+        .and_then(Value::as_object)
+    {
+        Some(prior) => prior.clone(),
+        None => Map::new(),
+    };
+    next.insert(cache_target_key.to_string(), Value::Object(slice));
+    let next_value = Value::Object(next);
+
+    let chat_id = input.chat.id.clone();
+    let _ = db
+        .write(move |writers| {
+            let repo = crate::db::chats::ChatsRepository::new(writers.main().connection());
+            repo.update(
+                &chat_id,
+                &crate::db::chats::ChatUpdate {
+                    commonplace_scene_cache: Some(next_value),
+                    ..Default::default()
+                },
+            )
+            .map(|_| ())
+        })
+        .await;
+}
+
+/// v4 `chats.update({ commonplaceRecallHistory })` (W4.6a): persist the recall
+/// ring buffer. Awaited; a write failure is swallowed (one un-penalized turn).
+async fn persist_recall_history(db: &Db, chat_id: &str, next_history: Value) {
+    let chat_id = chat_id.to_string();
+    let _ = db
+        .write(move |writers| {
+            let repo = crate::db::chats::ChatsRepository::new(writers.main().connection());
+            repo.update(
+                &chat_id,
+                &crate::db::chats::ChatUpdate {
+                    commonplace_recall_history: Some(next_history),
+                    ..Default::default()
+                },
+            )
+            .map(|_| ())
+        })
+        .await;
+}
+
+/// v4's per-character live-clothing override (W4.6a). For each scene character
+/// with a currently-equipped wardrobe whose hash differs from the scene-cached
+/// `clothingHash`, resolve the concise title-only outfit description. Reads the
+/// raw scene JSON to recover each character's `clothingHash`. Fails soft per
+/// character (a failure leaves the cached line standing).
+fn resolve_live_clothing(
+    db: &Db,
+    input: &BuildContextInput,
+    parsed_scene: Option<&crate::memory_injector::SceneState>,
+) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    let Some(scene) = parsed_scene else {
+        return map;
+    };
+    if scene.characters.is_empty() {
+        return map;
+    }
+    // Recover each character's stored `clothingHash` from the raw scene JSON.
+    let cached_hashes = scene_clothing_hashes(input.chat.scene_state.as_ref());
+    // The project mount pool ids (v4 `getTurnMountPool().projectMountPointIds`).
+    let project_mount_point_ids: Vec<String> = {
+        let pid = input.chat.project_id.clone();
+        db.read_mount_index(move |mount| {
+            Ok(match &pid {
+                Some(p) => {
+                    crate::db::project_doc_mount_links::ProjectDocMountLinksRepository::new(mount)
+                        .find_by_project_id(p)
+                        .unwrap_or_default()
+                }
+                None => Vec::new(),
+            })
+        })
+        .unwrap_or_default()
+    };
+
+    for c in &scene.characters {
+        if c.character_id.is_empty() {
+            continue;
+        }
+        let cid = c.character_id.clone();
+        let chat_id = input.chat.id.clone();
+        // Read equipped outfit for the character.
+        let equipped: Option<Value> = db
+            .read_main(move |main| {
+                crate::db::chats_outfits::ChatOutfitsRepository::new(main)
+                    .get_equipped_outfit_for_character(&chat_id, &cid)
+            })
+            .unwrap_or(None);
+        let slots = crate::wardrobe::Slots::from_value(equipped.as_ref());
+        if !crate::wardrobe::has_equipped_items(Some(&slots)) {
+            continue;
+        }
+        let live_hash = crate::wardrobe::hash_equipped_slots(Some(&slots));
+        // Wardrobe unchanged since the cached summary was derived — keep it.
+        let cached = cached_hashes.get(&c.character_id).cloned().flatten();
+        if Some(&live_hash) == cached.as_ref() {
+            continue;
+        }
+        // Resolve + describe (title-only, imagePrompt-preferring).
+        let cid2 = c.character_id.clone();
+        let pmp = project_mount_point_ids.clone();
+        let desc = db
+            .read_main(|main| {
+                db.read_mount_index(|mount| {
+                    let docs =
+                        crate::db::doc_mount_documents::DocMountDocumentsRepository::new(mount);
+                    let values =
+                        crate::tools::wardrobe_shared::resolve_equipped_outfit_leaf_values(
+                            main, &docs, &cid2, &slots, &pmp,
+                        )?;
+                    Ok(crate::wardrobe::describe_outfit(
+                        &crate::wardrobe::OutfitSlotValues {
+                            top: crate::wardrobe::decorate_outfit_items_title_only(&values.top),
+                            bottom: crate::wardrobe::decorate_outfit_items_title_only(
+                                &values.bottom,
+                            ),
+                            footwear: crate::wardrobe::decorate_outfit_items_title_only(
+                                &values.footwear,
+                            ),
+                            accessories: crate::wardrobe::decorate_outfit_items_title_only(
+                                &values.accessories,
+                            ),
+                        },
+                    ))
+                })
+            })
+            .unwrap_or_default();
+        if !desc.is_empty() {
+            map.insert(c.character_id.clone(), desc);
+        }
+    }
+    map
+}
+
+/// Recover each scene character's stored `clothingHash` from the raw scene JSON
+/// (the parsed [`crate::memory_injector::SceneState`] drops it). Value is
+/// `Some(hash)` when present, else `None`.
+fn scene_clothing_hashes(raw: Option<&Value>) -> HashMap<String, Option<String>> {
+    let mut out = HashMap::new();
+    let Some(raw) = raw else { return out };
+    let candidate: Value = match raw {
+        Value::String(s) => match serde_json::from_str(s) {
+            Ok(v) => v,
+            Err(_) => return out,
+        },
+        other => other.clone(),
+    };
+    if let Some(chars) = candidate.get("characters").and_then(Value::as_array) {
+        for c in chars {
+            if let Some(cid) = c.get("characterId").and_then(Value::as_str) {
+                let hash = c
+                    .get("clothingHash")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+                out.insert(cid.to_string(), hash);
+            }
+        }
+    }
+    out
+}
+
+/// Read the per-recipient prior scene-emission cache (v4
+/// `chat.commonplaceSceneCache?.[cacheTargetKey]`) as a characterId → entry map.
+fn read_prior_scene_emission(
+    input: &BuildContextInput,
+    cache_target_key: &str,
+) -> HashMap<String, crate::memory_injector::SceneStateEmissionEntry> {
+    let mut out = HashMap::new();
+    let Some(cache) = input.chat.commonplace_scene_cache.as_ref() else {
+        return out;
+    };
+    let Some(target) = cache.get(cache_target_key).and_then(Value::as_object) else {
+        return out;
+    };
+    for (cid, entry) in target {
+        let Some(o) = entry.as_object() else { continue };
+        let action_hash = o
+            .get("actionHash")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let clothing_hash = o
+            .get("clothingHash")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let emitted_at = o
+            .get("emittedAt")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        out.insert(
+            cid.clone(),
+            crate::memory_injector::SceneStateEmissionEntry {
+                action_hash,
+                clothing_hash,
+                emitted_at,
+            },
+        );
+    }
+    out
+}
+
+/// v4's Core-whisper trigger + READ/ASSEMBLY (W4.6a). Resolves the config
+/// (chat → character → global), runs [`crate::core_whisper::should_fire_core_whisper`]
+/// over the chat's events, and — on a fire — assembles the packet + returns its
+/// LLM-context contribution. Fires the W4.6b whisper POST via the recorded seam.
+/// Any error → `""` (v4 wraps the whole block error-only).
+fn resolve_core_whisper_llm_context<S: BuildContextSeams>(
+    db: &Db,
+    input: &BuildContextInput,
+    responding_participant_id: &str,
+    seams: &S,
+) -> String {
+    use crate::services::core_whisper as cw;
+
+    // Global core-whisper settings (user chat settings' `coreWhisper` sub-object).
+    let uid = input.user_id.clone();
+    let global = match db.read_main(move |c| crate::db::chat_settings::find_by_user_id(c, &uid)) {
+        Ok(Some(settings)) => match settings.get("coreWhisper").and_then(Value::as_object) {
+            Some(g) => cw::GlobalCoreWhisperSettings {
+                enabled: g.get("enabled").and_then(Value::as_bool),
+                interval: g.get("interval").and_then(Value::as_i64),
+                silence_threshold: g.get("silenceThreshold").and_then(Value::as_i64),
+                packet_token_budget: g.get("packetTokenBudget").and_then(Value::as_i64),
+                fire_on_context_transition: g
+                    .get("fireOnContextTransition")
+                    .and_then(Value::as_bool),
+            },
+            None => cw::GlobalCoreWhisperSettings::default(),
+        },
+        // v4 passes `userChatSettings?.coreWhisper ?? null` → all defaults.
+        _ => cw::GlobalCoreWhisperSettings::default(),
+    };
+
+    // Per-chat + per-character overrides.
+    let chat_id = input.chat.id.clone();
+    let (chat_enabled, chat_interval) = db
+        .read_main(move |c| crate::db::chats_read::find_core_whisper_overrides(c, &chat_id))
+        .ok()
+        .flatten()
+        .unwrap_or((None, None));
+    let char_id = input.character.id.clone();
+    let character_enabled = db
+        .read_main(move |c| crate::db::characters_read::find_core_whisper_enabled(c, &char_id))
+        .ok()
+        .flatten()
+        .flatten();
+
+    let cfg =
+        cw::resolve_core_whisper_config(chat_enabled, chat_interval, character_enabled, &global);
+    if !cfg.enabled {
+        return String::new();
+    }
+
+    // Trigger over the chat's events.
+    let cid = input.chat.id.clone();
+    let events_raw =
+        match db.read_main(move |c| crate::db::chats_messages_read::get_messages(c, &cid)) {
+            Ok(e) => e,
+            Err(_) => return String::new(),
+        };
+    let events: Vec<crate::core_whisper::WhisperEvent> = events_raw
+        .iter()
+        .map(|m| crate::core_whisper::WhisperEvent {
+            event_type: m
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+            role: m.get("role").and_then(Value::as_str).map(str::to_string),
+            participant_id: m
+                .get("participantId")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            content: m.get("content").and_then(Value::as_str).map(str::to_string),
+            system_sender: m
+                .get("systemSender")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            system_kind: m
+                .get("systemKind")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            is_silent_message: m.get("isSilentMessage").and_then(Value::as_bool),
+            target_participant_ids: m.get("targetParticipantIds").and_then(Value::as_array).map(
+                |a| {
+                    a.iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect()
+                },
+            ),
+        })
+        .collect();
+
+    let decision = crate::core_whisper::should_fire_core_whisper(
+        crate::core_whisper::ShouldFireCoreWhisperOptions {
+            events: &events,
+            responding_participant_id,
+            is_continue: input.is_continue_mode,
+            is_nudge: false,
+            interval: cfg.interval,
+            silence_threshold: cfg.silence_threshold,
+            fire_on_context_transition: cfg.fire_on_context_transition,
+        },
+    );
+    if !decision.fire {
+        return String::new();
+    }
+
+    // Assemble the packet; None → no whisper.
+    let Some(packet) = cw::assemble_core_packet(db, &input.character.id, cfg.packet_token_budget)
+    else {
+        return String::new();
+    };
+    let persona = cw::build_core_whisper_content(&packet);
+    let opaque = cw::build_core_whisper_opaque_content(&packet);
+    let llm_context = cw::build_core_whisper_llm_context(&packet);
+    // The W4.6b Aurora POST + stale sweep fire via the recorded seam.
+    seams.post_core_whisper(&input.chat.id, responding_participant_id, &persona, &opaque);
+    llm_context
+}
+
+// ---------------------------------------------------------------------------
 // The capstone.
 // ---------------------------------------------------------------------------
 
 /// v4 `buildContext`. Composes the ported context subsystem into a byte-faithful
-/// [`BuiltContext`]; the unported feeders + post-office are the injected
-/// [`BuildContextSeams`]. Generic over the embedding + completion providers.
+/// [`BuiltContext`]; the remaining seam is the W4.6b whisper-POSTING half
+/// ([`BuildContextSeams`]). Generic over the embedding + completion providers.
 #[allow(clippy::too_many_lines)]
 pub async fn build_context<E, C, S>(
     db: &Db,
@@ -838,9 +1204,38 @@ where
         .as_ref()
         .and_then(|p| p.selected_system_prompt_id.clone());
 
-    // Off-scene announcement (post-office seam; the scan is ported but the post
-    // is the seam — corpus base returns None).
-    let pending_off_scene_announcement = seams.resolve_off_scene_announcement(&input.chat.id);
+    // Off-scene announcement — v4's SCAN + content build (W4.6a). The Host POST
+    // is W4.6b (the recorded `post_host_off_scene_announcement` seam); here we
+    // compute the content this turn's LLM context needs.
+    let pending_off_scene_announcement = {
+        let participants: Vec<crate::services::off_scene::OffSceneParticipant> = input
+            .all_participants
+            .as_ref()
+            .map(|all| {
+                all.iter()
+                    .map(|p| crate::services::off_scene::OffSceneParticipant {
+                        participant_type: p.participant_type.clone(),
+                        character_id: p.character_id.clone(),
+                        controlled_by: p.controlled_by.clone(),
+                        status: p.status.clone(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let content = crate::services::off_scene::scan_off_scene_newcomers(
+            db,
+            &input.chat.id,
+            &input.user_id,
+            &input.character.id,
+            input.user_character.as_ref().map(|uc| uc.name.as_str()),
+            &participants,
+        );
+        // The W4.6b Host POST fires here when the writer lands (recorded seam).
+        if let Some(c) = &content {
+            seams.post_host_off_scene_announcement(&input.chat.id, c);
+        }
+        content
+    };
 
     // System prompt (block 1).
     let system_prompt = build_system_prompt(&BuildSystemPromptOptions {
@@ -1045,10 +1440,11 @@ where
     // ---------------------------------------------------------------------
     let mut memory_recap_content = String::new();
     let mut memory_recap_tokens = 0i64;
-    if input.generate_memory_recap
-        && !input.character.id.is_empty()
-        && input.cheap_llm_selection.is_some()
-    {
+    if let (true, false, Some(selection)) = (
+        input.generate_memory_recap,
+        input.character.id.is_empty(),
+        input.cheap_llm_selection.as_ref(),
+    ) {
         let recap_relevance_query = input
             .new_user_message
             .clone()
@@ -1063,10 +1459,39 @@ where
             .or_else(|| input.chat.scenario_text.clone().filter(|s| !s.is_empty()))
             .or_else(|| input.chat.context_summary.clone().filter(|s| !s.is_empty()))
             .unwrap_or_default();
-        let recap = seams.resolve_memory_recap(&input.character.id, &recap_relevance_query);
-        if let Some(content) = recap.content.filter(|c| !c.is_empty()) {
-            memory_recap_tokens = estimate_tokens(&content, cpt);
-            memory_recap_content = content;
+        // v4 `generateMemoryRecap` (W4.6a). Borrow the owned uncensored fallback
+        // (the danger-chat fallback for the summarization call).
+        let uncensored = input
+            .uncensored_fallback
+            .as_ref()
+            .map(|u| UncensoredFallbackOptions {
+                danger_settings: &u.danger_settings,
+                available_profiles: &u.available_profiles,
+                is_dangerous_chat: None,
+            });
+        let params = crate::services::memory_recap::MemoryRecapParams {
+            character_id: &input.character.id,
+            character_name: &input.character.name,
+            character_mount_point_id: input.character.character_document_mount_point_id.as_deref(),
+            selection,
+            user_id: &input.user_id,
+            chat_id: Some(input.chat.id.as_str()),
+            uncensored_fallback: uncensored.as_ref(),
+            max_context: input
+                .connection_profile
+                .as_ref()
+                .and_then(|p| p.max_context),
+            relevance_query: &recap_relevance_query,
+            embedding_profile_id: input.embedding_profile_id.as_deref(),
+            now_ms: now_ms_f,
+        };
+        let recap = crate::services::memory_recap::generate_memory_recap(
+            db, embedding, completion, executor, &params,
+        )
+        .await;
+        if !recap.content.is_empty() {
+            memory_recap_tokens = estimate_tokens(&recap.content, cpt);
+            memory_recap_content = recap.content;
         }
     }
 
@@ -1087,18 +1512,67 @@ where
         let dynamic_head_budget = DYNAMIC_HEAD_TOKEN_BUDGET.min(budget.memory_budget);
         let archive_budget = (budget.memory_budget - dynamic_head_budget).max(0);
 
-        let frozen_archive = seams.compute_frozen_archive(&input.character.id, compaction_gen);
+        // v4 `getOrComputeFrozenArchive` (W4.6a) — the effective-weight-ranked
+        // top-25, byte-stable within a compactionGeneration (process-cached).
+        // v4 `getOrComputeFrozenArchive` (W4.6a) — the effective-weight-ranked
+        // top-25, byte-stable within a compactionGeneration (process-cached).
+        let frozen_archive: Vec<InjectorMemory> =
+            crate::services::frozen_archive::get_or_compute_frozen_archive(
+                db,
+                &input.character.id,
+                compaction_gen,
+                None,
+                now_ms_f,
+            )
+            .unwrap_or_default()
+            .iter()
+            .map(injector_memory_from_json)
+            .collect();
         let archive_formatted = format_frozen_memory_archive(&frozen_archive, archive_budget);
         let archive_ids: HashSet<String> = frozen_archive.iter().map(|m| m.id.clone()).collect();
 
         let mut dynamic_head_results: Vec<InjectorResult> = Vec::new();
 
         if !memory_search_query.is_empty() {
-            // Query distillation (seam). Falls back to the raw query.
+            // Query distillation (v4 `extractMemorySearchKeywords`, W4.6a). Falls
+            // back to the raw recent-window query.
             let mut distilled_query = memory_search_query.clone();
-            if input.cheap_llm_selection.is_some() {
-                if let Some(d) =
-                    seams.distill_memory_search(&input.character.id, &memory_search_query)
+            if let Some(selection) = &input.cheap_llm_selection {
+                // v4 `recentForDistill`: existingMessages.slice(-12), role
+                // lowercased, assistant slice tool-stripped, non-empty; then push
+                // newUserMessage.
+                let start = input.existing_messages.len().saturating_sub(12);
+                let mut recent: Vec<crate::services::memory_recap::distill::DistillMessage> = input
+                    .existing_messages[start..]
+                    .iter()
+                    .map(|m| {
+                        let role = m.role.to_lowercase();
+                        let content = if role == "assistant" {
+                            strip_tool_artifacts(&m.content).unwrap_or_default()
+                        } else {
+                            m.content.clone()
+                        };
+                        crate::services::memory_recap::distill::DistillMessage { role, content }
+                    })
+                    .filter(|m| crate::jsstr::utf16_len(&m.content) > 0)
+                    .collect();
+                // v4 `if (newUserMessage) recentForDistill.push(...)` — a truthy
+                // (non-empty) string only.
+                if let Some(num) = input.new_user_message.as_ref().filter(|s| !s.is_empty()) {
+                    recent.push(crate::services::memory_recap::distill::DistillMessage {
+                        role: "user".to_string(),
+                        content: num.clone(),
+                    });
+                }
+                if let Some(d) = crate::services::memory_recap::distill::distill_memory_search(
+                    executor,
+                    completion,
+                    &recent,
+                    &input.character.name,
+                    selection,
+                    &input.character.id,
+                )
+                .await
                 {
                     if let Some(p) = d.paraphrase.filter(|p| !p.is_empty()) {
                         distilled_query = p;
@@ -1108,7 +1582,10 @@ where
                 }
             }
 
-            let _recall_settings = seams.read_memory_recall_settings();
+            // v4 `getMemoryRecallSettings` (W4.6a, closed with existing code). The
+            // search-leg re-rank that consumes these is a tracked memory-service
+            // deferral, so the value is read faithfully but not yet folded in.
+            let _recall_settings = read_memory_recall_settings(db);
             let results = search_memories_semantic(
                 db,
                 embedding,
@@ -1178,23 +1655,17 @@ where
     let (current_state_content, current_state_tokens, emitted_scene_state) = {
         let parsed_scene = parse_scene_state(input.chat.scene_state.as_ref());
         let scene_time: Option<String> = compute_scene_time(input);
-        // Live-clothing override (seam).
-        let live_clothing_map: HashMap<String, String> = if let Some(s) = &parsed_scene {
-            let mut m = HashMap::new();
-            for c in &s.characters {
-                if let Some(desc) = seams.resolve_live_clothing(&input.chat.id, &c.character_id) {
-                    if !desc.is_empty() {
-                        m.insert(c.character_id.clone(), desc);
-                    }
-                }
-            }
-            m
-        } else {
-            HashMap::new()
-        };
-        // (prior emission cache is a persisted seam; base corpus has no prior.)
+        // Live-clothing override — v4's per-character equipped-wardrobe resolution
+        // (W4.6a, closed with existing wardrobe code + the small hash/decorate
+        // leaves). Only overrides when the character's wardrobe changed since the
+        // cached `clothingHash`.
+        let live_clothing_map: HashMap<String, String> =
+            resolve_live_clothing(db, input, parsed_scene.as_ref());
+        // Prior-emission cache: the per-recipient `commonplaceSceneCache[targetKey]`
+        // (v4 `priorEmissionByCharacter`), read from the chat's stored cache.
+        let prior_emission_map = read_prior_scene_emission(input, &cache_target_key);
         let live_lookup = |cid: &str| live_clothing_map.get(cid).cloned();
-        let prior_lookup = |_cid: &str| None;
+        let prior_lookup = |cid: &str| prior_emission_map.get(cid).cloned();
         let now_iso = crate::clock::iso_from_unix_ms(input.now_ms);
         let formatted = format_current_scene_state(
             parsed_scene.as_ref(),
@@ -1313,11 +1784,10 @@ where
         && !memory_search_query.is_empty()
         && budget.knowledge_budget > 0
     {
-        let pool = seams.resolve_mount_pool(
-            &input.character.id,
-            input.character.character_document_mount_point_id.as_deref(),
-            input.chat.project_id.as_deref(),
-        );
+        // v4 `resolveTieredMountPool` — the real DB-reading tier walk (W4.6a,
+        // closed with the ported [`crate::db::tiered_mount_pool`]). No ownership
+        // gate / participant tier here (v4's buildContext call passes neither).
+        let pool = resolve_mount_pool(db, input);
         if pool.character_mount_point_id.is_some()
             || !pool.group_mount_point_ids.is_empty()
             || !pool.project_mount_point_ids.is_empty()
@@ -1630,12 +2100,13 @@ where
         });
     }
 
-    // Core whisper (before commonplace). The trigger + post is the seam; its
-    // LLM-context contribution folds into the new user message below.
+    // Core whisper (before commonplace) — v4's trigger + READ/ASSEMBLY (W4.6a);
+    // its LLM-context contribution folds into the new user message below. The
+    // whisper POST + stale sweep are W4.6b (the recorded seam).
     let core_whisper_llm_context = match &input.responding_participant {
-        Some(rp) if !input.is_continue_mode => seams
-            .resolve_core_whisper_context(&input.chat.id, &rp.id)
-            .unwrap_or_default(),
+        Some(rp) if !input.is_continue_mode => {
+            resolve_core_whisper_llm_context(db, input, &rp.id, seams)
+        }
         _ => String::new(),
     };
 
@@ -1656,27 +2127,42 @@ where
         } else {
             None
         };
-        seams.post_commonplace_whisper(&input.chat.id, target, persona);
-        if !emitted_scene_state.is_empty() {
-            seams.persist_scene_cache(&input.chat.id, &cache_target_key, &emitted_scene_state);
-        }
-        if !whispered_memory_ids.is_empty() {
-            let next = crate::recall_history::append_recall_turn(
-                &input.chat.commonplace_recall_history,
-                &whispered_memory_ids,
-            );
-            let next_json = serde_json::to_value(next.turns).unwrap_or(Value::Null);
-            seams.persist_recall_history(&input.chat.id, &next_json);
+        // The Commonplace whisper POST is W4.6b (the recorded seam). The two
+        // persist writes are W4.6a — gated on `posted`, exactly as v4's
+        // `if (posted)`. The seam returns whether a whisper was durably posted.
+        let posted = seams.post_commonplace_whisper(&input.chat.id, target, persona);
+        if posted {
+            // v4 `chats.update({ commonplaceSceneCache: {...prior, [key]: slice} })`.
+            if !emitted_scene_state.is_empty() {
+                persist_scene_cache(db, input, &cache_target_key, &emitted_scene_state).await;
+            }
+            // v4 `chats.update({ commonplaceRecallHistory: appendRecallTurn(...) })`.
+            if !whispered_memory_ids.is_empty() {
+                let next = crate::recall_history::append_recall_turn(
+                    &input.chat.commonplace_recall_history,
+                    &whispered_memory_ids,
+                );
+                let next_json = serde_json::to_value(next.turns).unwrap_or(Value::Null);
+                persist_recall_history(db, &input.chat.id, next_json).await;
+            }
         }
     }
 
-    // Suparṇā mail (seam).
-    let suparna_mail_llm_context = input
-        .character
-        .character_document_mount_point_id
-        .as_deref()
-        .and_then(|vault| seams.resolve_suparna_mail_context(&input.chat.id, vault))
-        .unwrap_or_default();
+    // Suparṇā mail — v4's READ half (W4.6a): collect unalerted mail, build the
+    // LLM context, flip each `alerted` flag. The whisper POST is W4.6b (fired via
+    // the recorded seam when there is unalerted mail).
+    let suparna_mail_llm_context =
+        match input.character.character_document_mount_point_id.as_deref() {
+            Some(vault) => {
+                let (ctx, unalerted) =
+                    crate::services::suparna_mail::resolve_suparna_mail_context(db, vault).await;
+                if !unalerted.is_empty() {
+                    seams.post_suparna_mail(&input.chat.id, &ctx);
+                }
+                ctx
+            }
+            None => String::new(),
+        };
 
     // New user message with trailing recall / core / mail context.
     let mut messages_included = selected_messages.len();

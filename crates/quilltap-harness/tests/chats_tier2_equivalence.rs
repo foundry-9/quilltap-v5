@@ -121,6 +121,9 @@ impl PatchData {
             agent_turn_count: None,
             document_mode: None,
             compression_cache: None,
+            scene_state: None,
+            commonplace_scene_cache: None,
+            commonplace_recall_history: None,
             updated_at: self.updated_at.clone(),
         }
     }

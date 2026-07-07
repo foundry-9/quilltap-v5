@@ -396,3 +396,32 @@ pub fn find_recent_summarized_by_character(
     let tail = format!("{where_clause} ORDER BY \"lastMessageAt\" DESC LIMIT {limit}");
     run(conn, &tail, &params)
 }
+
+/// Scoped read of a chat's Core-whisper override columns (v4
+/// `(enabled, interval)` per-chat Core-whisper overrides, each `None` when the
+/// column is NULL (v4 `chat.coreWhisperEnabled` / `chat.coreWhisperInterval`).
+pub type CoreWhisperOverrides = (Option<bool>, Option<i64>);
+
+/// `chat.coreWhisperEnabled` / `chat.coreWhisperInterval`, both nullable) — the
+/// per-chat inputs to `resolveCoreWhisperConfig`. Returns
+/// `(enabled, interval)`, each `None` when the column is NULL. `Ok(None)` for a
+/// missing chat row. Used by the build_context Core-whisper feeder (W4.6a).
+pub fn find_core_whisper_overrides(
+    conn: &Connection,
+    chat_id: &str,
+) -> Result<Option<CoreWhisperOverrides>, DbError> {
+    conn.query_row(
+        "SELECT coreWhisperEnabled, coreWhisperInterval FROM chats WHERE id = ?1",
+        rusqlite::params![chat_id],
+        |row| {
+            let enabled: Option<i64> = row.get(0)?;
+            let interval: Option<i64> = row.get(1)?;
+            Ok((enabled.map(|v| v != 0), interval))
+        },
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other.into()),
+    })
+}

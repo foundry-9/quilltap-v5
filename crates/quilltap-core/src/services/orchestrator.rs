@@ -2187,6 +2187,7 @@ pub(crate) fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInp
             .get("commonplaceRecallHistory")
             .cloned()
             .unwrap_or(Value::Null),
+        commonplace_scene_cache: args.chat.get("commonplaceSceneCache").cloned(),
         scene_state: args.chat.get("sceneState").cloned(),
         precompiled_identity_stack: None,
     };

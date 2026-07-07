@@ -218,59 +218,26 @@ async function main(): Promise<void> {
     return { __esModule: true, ...actual, logLLMCall: async () => undefined };
   });
 
-  // ---- Unported feeder subsystems → match the Rust NoopSeams ----
-  jest.doMock('@/lib/mount-index/tiered-mount-pool', () => {
-    const actual = jest.requireActual('@/lib/mount-index/tiered-mount-pool');
-    return {
-      __esModule: true,
-      ...actual,
-      resolveTieredMountPool: async (opts: { characterMountPointId?: string | null }) => ({
-        characterMountPointId: opts.characterMountPointId ?? null,
-        groupMountPointIds: [],
-        projectMountPointIds: [],
-        globalMountPointId: null,
-      }),
-    };
-  });
-  jest.doMock('@/lib/memory/memory-recap', () => {
-    const actual = jest.requireActual('@/lib/memory/memory-recap');
-    return { __esModule: true, ...actual, generateMemoryRecap: async () => ({ content: '' }) };
-  });
-  jest.doMock('@/lib/memory/frozen-archive-cache', () => {
-    const actual = jest.requireActual('@/lib/memory/frozen-archive-cache');
-    return { __esModule: true, ...actual, getOrComputeFrozenArchive: async () => [] };
-  });
-  jest.doMock('@/lib/instance-settings', () => {
-    const actual = jest.requireActual('@/lib/instance-settings');
-    return {
-      __esModule: true,
-      ...actual,
-      getMemoryRecallSettings: async () => ({ scopePolicy: 'BALANCED', expandRelated: false }),
-    };
-  });
+  // ---- W4.6a: the READ/COMPUTE feeders now run for REAL both sides (the Rust
+  //      port closed each seam in-line), so their mocks are DROPPED one-for-one.
+  //      The only remaining mocks are the W4.6b whisper-POSTing writers (below).
+  //      `resolveTieredMountPool`, `generateMemoryRecap`, `getOrComputeFrozenArchive`,
+  //      `getMemoryRecallSettings`, `extractMemorySearchKeywords`,
+  //      `resolveCoreWhisperConfig`/`assembleCorePacket` all run real.
   jest.doMock('@/lib/services/system-prompt-compiler/compiler', () => {
     const actual = jest.requireActual('@/lib/services/system-prompt-compiler/compiler');
     return { __esModule: true, ...actual, getCompiledIdentityStack: () => null };
   });
-  // keyword distillation (extractMemorySearchKeywords lives in cheap-llm-tasks).
-  jest.doMock('@/lib/memory/cheap-llm-tasks', () => {
-    const actual = jest.requireActual('@/lib/memory/cheap-llm-tasks');
-    return {
-      __esModule: true,
-      ...actual,
-      extractMemorySearchKeywords: async () => ({ success: false }),
-    };
-  });
 
-  // ---- Post-office writers + off-scene + wardrobe → no-ops ----
+  // ---- W4.6b post-office writers → no-op / recorded (the POSTs stay seamed) ----
   jest.doMock('@/lib/services/aurora-notifications/core-whisper', () => {
     const actual = jest.requireActual('@/lib/services/aurora-notifications/core-whisper');
+    // Keep resolveCoreWhisperConfig + assembleCorePacket + the content builders
+    // REAL; only the POST (postCoreWhisper) is the W4.6b seam.
     return {
       __esModule: true,
       ...actual,
-      resolveCoreWhisperConfig: () => ({ enabled: false }),
       postCoreWhisper: async () => null,
-      assembleCorePacket: async () => null,
     };
   });
   jest.doMock('@/lib/services/commonplace-notifications/writer', () => {
@@ -291,11 +258,36 @@ async function main(): Promise<void> {
   });
   jest.doMock('@/lib/services/host-notifications/writer', () => {
     const actual = jest.requireActual('@/lib/services/host-notifications/writer');
+    // W4.6a keeps the off-scene SCAN + content build REAL: the Host POST is the
+    // W4.6b seam, but buildContext surfaces `announcement.content` to THIS turn's
+    // context. So run the real content builder (no `addMessage`), matching the
+    // Rust off_scene::scan_off_scene_newcomers which computes the content itself.
     return {
       __esModule: true,
       ...actual,
       postHostTimestampAnnouncement: async () => undefined,
-      postHostOffSceneCharactersAnnouncement: async () => null,
+      postHostOffSceneCharactersAnnouncement: async (params: {
+        characters?: Array<{ id: string }>;
+      }) => {
+        if (!params.characters || params.characters.length === 0) return null;
+        // Resolve the user-character name the same way the real POST does.
+        const repos = (await import('@/lib/repositories/factory')).getRepositories();
+        const chat = await repos.chats.findById((params as { chatId: string }).chatId);
+        let userCharacterName: string | null = null;
+        const userP = chat?.participants?.find(
+          (p: { type?: string; controlledBy?: string; characterId?: string }) =>
+            p.type === 'CHARACTER' && p.controlledBy === 'user' && p.characterId,
+        );
+        if (userP?.characterId) {
+          const uc = await repos.characters.findById(userP.characterId);
+          userCharacterName = uc?.name ?? null;
+        }
+        const content = actual.buildOffSceneCharactersContent(
+          params.characters,
+          userCharacterName,
+        );
+        return { content };
+      },
     };
   });
 

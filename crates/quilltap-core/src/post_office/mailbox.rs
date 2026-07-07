@@ -11,9 +11,9 @@
 //! Scope: the two mail tool handlers (`send_mail` / `list_email`) use
 //! `slugify_sender_name` / `compose_letter_content` / `parse_letter` /
 //! `build_reply_preface` / `deliver_letter` / `read_letter` / `list_mailbox`. The
-//! Suparṇā mail-check helpers (`collect_unalerted_mail` / `mark_alerted`) are a
-//! tracked deferral (they belong to the Commonplace-time mail whisper, a separate
-//! unported path).
+//! Suparṇā mail-check helpers (`collect_unalerted_mail` / `mark_alerted`) drive the
+//! Commonplace-time mail whisper — the READ half of the Suparṇā feeder (W4.6a);
+//! the whisper POST is W4.6b.
 
 use rusqlite::Connection;
 use serde_json::{json, Map, Value};
@@ -280,6 +280,35 @@ pub fn list_mailbox(
     }
     sort_newest_first(&mut summaries);
     Ok(summaries)
+}
+
+/// v4 `collectUnalertedMail`: collect the letters NOT yet announced by Suparṇā,
+/// newest-first. Missing/empty mailbox → `[]`, never an error (v4's `listMailbox`
+/// tolerates an absent folder). Read on a **mount-index** connection.
+pub fn collect_unalerted_mail(
+    mount: &Connection,
+    vault_id: &str,
+) -> Result<Vec<DeliveredLetterSummary>, DbError> {
+    let all = list_mailbox(mount, vault_id)?;
+    Ok(all.into_iter().filter(|l| !l.alerted).collect())
+}
+
+/// v4 `markAlerted`: flip a letter's `alerted` flag to true (a content update; no
+/// link/folder GC). A missing letter is a no-op (v4 warns + returns). Runs on a
+/// **mount-index writer** connection (it writes).
+pub fn mark_alerted(mount: &Connection, vault_id: &str, path: &str) -> Result<(), DbError> {
+    // v4 reads then updates; a NOT_FOUND read is a no-op.
+    let content = match read_database_document(mount, vault_id, path) {
+        Ok(doc) => doc.content,
+        Err(StoreError::Store(e)) if e.code == DbStoreErrorCode::NotFound => return Ok(()),
+        Err(e) => return Err(store_to_db(e)),
+    };
+    let mut updates = Map::new();
+    updates.insert("alerted".to_string(), Value::Bool(true));
+    let updated =
+        crate::doc_edit::markdown_parser::update_frontmatter_in_content(&content, &updates, false);
+    write_database_document(mount, vault_id, path, &updated).map_err(store_to_db)?;
+    Ok(())
 }
 
 /// v4 `sortNewestFirst`: newest `sentAt` first; ties (or unparseable dates) fall

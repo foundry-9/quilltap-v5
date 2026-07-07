@@ -366,3 +366,27 @@ pub fn find_by_tag(
         )?,
     )
 }
+
+/// Scoped read of a character's `coreWhisperEnabled` override (v4
+/// `character.coreWhisperEnabled`, nullable) — the per-character input to
+/// `resolveCoreWhisperConfig`. `Some(None)` = column NULL; `Ok(None)` = missing
+/// row. Reads the MAIN slim column directly (no vault overlay — `coreWhisperEnabled`
+/// is not a managed field). Used by the build_context Core-whisper feeder (W4.6a).
+pub fn find_core_whisper_enabled(
+    main: &rusqlite::Connection,
+    id: &str,
+) -> Result<Option<Option<bool>>, DbError> {
+    main.query_row(
+        "SELECT coreWhisperEnabled FROM characters WHERE id = ?1",
+        rusqlite::params![id],
+        |row| {
+            let v: Option<i64> = row.get(0)?;
+            Ok(v.map(|n| n != 0))
+        },
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other.into()),
+    })
+}

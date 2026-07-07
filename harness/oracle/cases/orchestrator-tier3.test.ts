@@ -379,55 +379,41 @@ async function main(): Promise<void> {
     };
   });
 
-  // ---- buildContext feeders → the Rust NoopSeams / BuildContextSeams defaults ----
-  jest.doMock('@/lib/mount-index/tiered-mount-pool', () => {
-    const actual = jest.requireActual('@/lib/mount-index/tiered-mount-pool');
-    return {
-      __esModule: true,
-      ...actual,
-      resolveTieredMountPool: async (opts: { characterMountPointId?: string | null }) => ({
-        characterMountPointId: opts.characterMountPointId ?? null,
-        groupMountPointIds: [],
-        projectMountPointIds: [],
-        globalMountPointId: null,
-      }),
-    };
-  });
+  // ---- buildContext feeders (W4.6a) ----
+  // The mount-pool / recall-settings / frozen-archive / core-whisper-config /
+  // Suparṇā-mail feeders now run REAL both sides (the orchestrator fixture seeds
+  // no memories / Core / mail, so they no-op just as the mocks did).
+  //
+  // The RECAP + DISTILL feeders stay MOCKED here, matching the Rust orchestrator
+  // spine: that spine still passes `cheap_llm_selection: None` into buildContext
+  // (it threads only a `cheap_llm_settings_present` bool for compression), so the
+  // Rust recap/distill are gated OFF. Un-mocking them here would make v4 fire the
+  // recap (the corpus HAS vault conversation summaries) while the Rust spine does
+  // not — a spine plumbing gap, not a feeder bug. The recap/distill feeders
+  // themselves ARE proven real in `build_context_tier3_equivalence` (which passes
+  // a real selection). Closing this in the orchestrator is deferred to the spine
+  // owner (thread a resolved `CheapLlmSelection`); tracked in the CHANGELOG.
+  jest.doMock('@/lib/mount-index/tiered-mount-pool', () =>
+    jest.requireActual('@/lib/mount-index/tiered-mount-pool'),
+  );
   jest.doMock('@/lib/memory/memory-recap', () => {
     const actual = jest.requireActual('@/lib/memory/memory-recap');
     return { __esModule: true, ...actual, generateMemoryRecap: async () => ({ content: '' }) };
-  });
-  jest.doMock('@/lib/memory/frozen-archive-cache', () => {
-    const actual = jest.requireActual('@/lib/memory/frozen-archive-cache');
-    return { __esModule: true, ...actual, getOrComputeFrozenArchive: async () => [] };
-  });
-  jest.doMock('@/lib/instance-settings', () => {
-    const actual = jest.requireActual('@/lib/instance-settings');
-    return {
-      __esModule: true,
-      ...actual,
-      getMemoryRecallSettings: async () => ({ scopePolicy: 'BALANCED', expandRelated: false }),
-    };
-  });
-  jest.doMock('@/lib/services/system-prompt-compiler/compiler', () => {
-    const actual = jest.requireActual('@/lib/services/system-prompt-compiler/compiler');
-    return { __esModule: true, ...actual, getCompiledIdentityStack: () => null };
   });
   jest.doMock('@/lib/memory/cheap-llm-tasks', () => {
     const actual = jest.requireActual('@/lib/memory/cheap-llm-tasks');
     return { __esModule: true, ...actual, extractMemorySearchKeywords: async () => ({ success: false }) };
   });
+  jest.doMock('@/lib/services/system-prompt-compiler/compiler', () => {
+    const actual = jest.requireActual('@/lib/services/system-prompt-compiler/compiler');
+    return { __esModule: true, ...actual, getCompiledIdentityStack: () => null };
+  });
 
-  // ---- post-office writers → no-ops ----
+  // ---- W4.6b post-office writers → no-op (the READ feeders run real) ----
   jest.doMock('@/lib/services/aurora-notifications/core-whisper', () => {
     const actual = jest.requireActual('@/lib/services/aurora-notifications/core-whisper');
-    return {
-      __esModule: true,
-      ...actual,
-      resolveCoreWhisperConfig: () => ({ enabled: false }),
-      postCoreWhisper: async () => null,
-      assembleCorePacket: async () => null,
-    };
+    // Config + packet + builders run REAL; only the POST is the W4.6b seam.
+    return { __esModule: true, ...actual, postCoreWhisper: async () => null };
   });
   jest.doMock('@/lib/services/commonplace-notifications/writer', () => {
     const actual = jest.requireActual('@/lib/services/commonplace-notifications/writer');
@@ -436,10 +422,6 @@ async function main(): Promise<void> {
   jest.doMock('@/lib/services/suparna-notifications/writer', () => {
     const actual = jest.requireActual('@/lib/services/suparna-notifications/writer');
     return { __esModule: true, ...actual, postSuparnaMailWhisper: async () => null };
-  });
-  jest.doMock('@/lib/post-office/mailbox', () => {
-    const actual = jest.requireActual('@/lib/post-office/mailbox');
-    return { __esModule: true, ...actual, collectUnalertedMail: async () => [], markAlerted: async () => undefined };
   });
   jest.doMock('@/lib/post-office/surface-operator-mail', () => {
     const actual = jest.requireActual('@/lib/post-office/surface-operator-mail');

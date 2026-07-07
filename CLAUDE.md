@@ -3152,6 +3152,73 @@ writer (W4.6b). The avatar + story-background JOB HANDLERS are the follow-up
 **W4.9c** (they reuse the W4.9a subsystem + the scene tasks' remaining two
 functions `deriveSceneContext` / `craftStoryBackgroundPrompt`).
 
+**Wave 4 (W4.6a): the buildContext feeder closures are DONE** (2026-07-06).
+Closed the READ/COMPUTE half of the `BuildContextSeams` trait
+(`services::build_context`) — the ten former seams now run real, and the trait
+is shrunk to only the W4.6b whisper-POSTing methods
+(`post_host_off_scene_announcement` / `post_host_timestamp_announcement` /
+`post_core_whisper` / `post_commonplace_whisper` [returns `posted`, gating the
+persists] / `post_suparna_mail`). New feeder modules:
+`services::frozen_archive` (`getOrComputeFrozenArchive` — effective-weight-ranked
+top-25, process-cached per compaction generation, `localeCompare` id sort),
+`services::memory_recap` (`generateMemoryRecap` = the tiered-memory narrative +
+the vault conversation-summary recall lists over `search_document_chunks` /
+`read_database_document` / `parse_frontmatter`; the two recap+distill prompt
+bodies byte-exact in a generated `prompt_text` submodule) + its `distill`
+submodule (`extractMemorySearchKeywords`, the object-or-bare-array parser with
+the closed temporal/context vocabularies), `services::off_scene` (v4's Host
+off-scene SCAN block — `characters.findByUserId` overlay read + the exclusion/
+mention-scan/introduced-diff + the pure content builders `buildOffScene-
+Characters{Content,OpaqueContent}` / `renderOffSceneCard` / `applyHostTemplates`
+/ `findIntroducedOffSceneCharacterIds`; the Host POST is W4.6b), `services::core_whisper`
+(Aurora's `resolveCoreWhisperConfig` [chat→character→global] + `assembleCorePacket`
+reading the character's own + every group's shared `Core/**.md` [the recursive
+folder read + case-fold dedup] + `stripFrontmatterBody` + the three content
+builders; the POST + stale-sweep are W4.6b), `services::suparna_mail` (the mail
+READ — `collectUnalertedMail` + `markAlerted` [the double-announce flip] +
+`buildSuparnaMailLLMContext`; the POST is W4.6b), and
+`services::scene_state_tracking` (the `updateSceneState` cheap-LLM task + the two
+scene-state prompt bodies byte-exact + `capClothingSummary`). **Closed with
+existing code:** the tiered mount pool (`resolve_tiered_mount_pool`, no
+ownership/participant tier — v4's buildContext call passes neither),
+`getMemoryRecallSettings` (`instance_settings::get_memory_recall_settings`, v4's
+`down-weight` default; read faithfully, the search-leg re-rank still deferred),
+and the live-wardrobe clothing override (adding the pure leaves
+`hash_equipped_slots` / `has_equipped_items` / `decorate_outfit_items_title_only`
+to `crate::wardrobe` + a `resolve_equipped_outfit_leaf_values` variant returning
+raw items per slot, so the `titleOnly` imagePrompt-preferring decoration matches
+v4). The **scene-cache + recall-history persist writes**
+(`chats.update({ commonplaceSceneCache })` / `{ commonplaceRecallHistory }`) are
+ported directly (three new `ChatUpdate` setters: `sceneState` /
+`commonplaceSceneCache` / `commonplaceRecallHistory`), gated on the commonplace
+POST's `posted` (matching v4's `if (posted)`); the prior-emission `_unchanged_`
+compaction reads the same `commonplaceSceneCache` column. New scoped reads:
+`chats_read::find_core_whisper_overrides`,
+`characters_read::find_core_whisper_enabled`,
+`groups::find_name_and_official_mount_point_id_raw`, and the recursive
+`doc_mount_documents::find_many_by_mount_points_in_folder_opts`. **Verified:**
+`build_context_tier3_equivalence` runs green with the feeder jest mocks DROPPED
+one-for-one against the real feeders (the base fixture's memories now feed the
+real frozen archive; the orchestrator fixture's vault conversation summaries feed
+the real recap) — plus a new **`context_feeders_leaves_equivalence`** tier-1
+differential proving the pure builders/formatters/config resolvers byte-exact
+against v4's REAL exports (off-scene content/opaque, core-whisper config + the
+three builders, `renderRelevantConversationsBlock`, `buildSuparnaMailLLMContext`
+[TZ=UTC harness seam], `capClothingSummary`); `knowledge_injector` /
+`first_message_context` / `orchestrator_tier3` re-verified green. **Tracked
+deferrals:** (1) the orchestrator spine still passes `cheap_llm_selection: None`
+into buildContext (it threads only a `cheap_llm_settings_present` bool for
+compression), so the recap/distill feeders are gated OFF there and stay mocked in
+the orchestrator oracle — v4's orchestrator DOES resolve a `cheapLLMSelection`
+(the corpus has vault summaries → recap fires), so un-mocking would surface a
+spine plumbing gap, not a feeder bug (the recap/distill feeders themselves are
+proven real in `build_context_tier3`); closing this is the spine owner's
+follow-up (thread a resolved `CheapLlmSelection` at the orchestrator composition
+point). (2) The scene-state-tracking JOB WRAPPER (`handleSceneStateTracking` —
+danger pre-classification + wardrobe baselines + the clothing-hash cache
+reconciliation + `createSystemEvent` token tracking + the persist) lands with the
+W4.8 runner-dispatch row (this unit ports the cheap-LLM task it drives).
+
 **The Phase-3 endgame is fully planned (2026-07-06).** Every remaining unit
 has an agent-ready work order checked in under
 `docs/developer/porting/work-orders/` — W4.2u (the danger spine unification

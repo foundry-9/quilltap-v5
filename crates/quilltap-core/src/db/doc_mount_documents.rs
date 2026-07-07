@@ -355,6 +355,20 @@ impl<'c> DocMountDocumentsRepository<'c> {
         folder: &str,
         extension: &str,
     ) -> Result<Vec<VaultFolderDoc>, DbError> {
+        self.find_many_by_mount_points_in_folder_opts(mount_point_ids, folder, extension, false)
+    }
+
+    /// v4 `findManyByMountPointsInFolder` with the `{ recursive }` option. The
+    /// overlay path passes `recursive = false` (single level); the Core-whisper
+    /// packet assembly (`Core/**`, W4.6a) passes `recursive = true`, which only
+    /// relaxes the single-level `rest.includes('/')` guard.
+    pub fn find_many_by_mount_points_in_folder_opts(
+        &self,
+        mount_point_ids: &[String],
+        folder: &str,
+        extension: &str,
+        recursive: bool,
+    ) -> Result<Vec<VaultFolderDoc>, DbError> {
         if mount_point_ids.is_empty() {
             return Ok(Vec::new());
         }
@@ -401,7 +415,7 @@ impl<'c> DocMountDocumentsRepository<'c> {
                 let Some(rest) = path_lower.strip_prefix(&prefix_lower) else {
                     return false;
                 };
-                !rest.is_empty() && !rest.contains('/') && rest.ends_with(&ext_lower)
+                !rest.is_empty() && (recursive || !rest.contains('/')) && rest.ends_with(&ext_lower)
             })
             .collect())
     }
