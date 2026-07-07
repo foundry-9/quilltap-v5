@@ -2799,6 +2799,98 @@ third-party manifest loading (fs, signing) is a design open item (the load/valid
 path exists, only the built-ins are wired); manifest pricing is the static
 fallback tier (W4.7e = the live fetcher). W4.7b/c are next (b independent of a; c
 after b).
+**Wave 4 (W4.7c — the provider tool wire + request builders): DONE** (2026-07-07;
+part 1 `crate::model::tool_wire`, part 2 `crate::model::request_builder`).
+
+**Part 2 — the request builders + the four `RequestTransform` hooks — is DONE**
+(`crate::model::request_builder`, `request_builder_equivalence` +
+`request_builder_google_equivalence`). The sans-IO request-side counterpart to
+the W4.7b decoders: `build_request(provider, &RequestInput) -> BuiltRequest`
+(method / url / headers / body VALUE — no HTTP; the transport is W4.7d),
+dispatched by the manifest (`baseUrl`+`endpoints.chat` → url, `auth` → headers).
+Every SDK / raw fetch sends `JSON.stringify(body)` VERBATIM (confirmed by the
+`record-request-envelopes.mjs` fetch-intercept recorder), so bodies are built as an
+ordered `serde_json::Map` (preserve_order) with keys inserted in v4's exact
+assignment order, integer-valued numbers bare (`js_number_to_json`); `Body::remove`
+uses `shift_remove` (JS `delete` preserves order — the default swap_remove would
+reorder). The four hooks: **anthropic** (`applyMidHistoryBreakpoint` + the
+tool-result batching + assistant-tool_call→content-blocks expansion + the
+cache-control hierarchy [tools→system→messages] + the adaptive-thinking /
+sampling-param-rejection rules — the `SAMPLING_PARAMS_REJECTED_MODELS` prefix list
+[Sonnet 5 / Opus 4.7·4.8 / Fable 5 / Mythos 5·preview] ported as a **compiled
+constant**, NOT lifted to the manifest — the rules are prefix-regex matching, not
+per-model data, and the W4.7a manifest has no slot; a clean lift would need a new
+`samplingRejectedModelPrefixes` field, deferred as a manifest-schema follow-up);
+**openai** (`previous_response_id` chaining — send only the last user message; the
+fallback-to-full-input on a send error is a transport concern, W4.7d); **google**
+(the recursive JSON-Schema sanitizer `sanitizeSchemaForGoogle` + the
+`thoughtSignature` round-trip in `formatMessagesForGoogle`); **deepseek**
+(`reasoning_content` echo on a tool-call turn + `stripThinkingIncompatibleParams`).
+Chat-completions family (deepseek / z-ai [+ the `web_search` tool + the glm-5.2+
+`reasoning_effort` default] / openrouter [the raw-fetch tools path] / ollama /
+openai-compatible base) and the responses-API family (openai / grok) are all
+**byte-exact against the wire**. **Google's genai-SDK `config → generationConfig`
+wire framing is DEFERRED to the transport** (the SDK owns that mechanical
+serialization + reorders keys, e.g. `{name,args}`→`{args,name}`); the google
+request LOGIC — the sanitizer + `contents`/`systemInstruction`/`shouldDisableTools`
+— is ported and verified against v4's REAL plugin (`formatMessagesForGoogle` via
+bracket access; the sanitizer via the wire `functionDeclarations`, which the SDK
+passes through faithfully). Verified by `request_builder_equivalence` (31 rows,
+7 providers, byte-exact body/url/method) + `request_builder_google_equivalence`
+(5 rows). With this, **W4.7c is fully DONE**; the remaining provider-layer units
+are W4.7d (transport + errors + `api_keys`), W4.7e (pricing/capability/logging/
+embeddings), W4.7f (image dialects + moderation + web search).
+
+**Part 1 — the tool wire — DONE** (`crate::model::tool_wire`).
+Ported v4's `packages/plugin-utils/src/tools/{converters,
+parsers,text-parsers}.ts` + the per-plugin `formatTools`/`parseToolCalls`/
+`hasTextToolMarkers`/`parseTextToolCalls`/`stripTextToolMarkers` glue, dispatched
+here by the manifest `ToolFormat` (the W4.7a registry replaces `getProvider`;
+only `GOOGLE` has `ToolFormat::Google`, so gating the two Google-specific
+behaviors on it reproduces v4's per-plugin dispatch). Three pieces:
+`format_tools_for_provider` (the reshape: Anthropic `input_schema` / Google
+`parameters` / OpenAI passthrough, each dropping non-`function` tools; unknown
+provider → canonical passthrough), `detect_native_tool_calls` (the native parse
+`parseOpenAI`/`parseAnthropic`/`parseGoogle` + the Google `functionCalls` fast
+path; unknown provider → `[]`), and the provider text-markers trio (the composite
+XML suite `parse_all_xml_*`/`has_any_xml_*`/`strip_all_xml_*` for every provider,
+Google's tool_use-only variant, gated by `provider_has_text_markers`). Number
+fidelity: parsed `arguments` are walked by `normalize_js_numbers` (integer-valued
+floats collapse, matching `JSON.stringify`). Regex fidelity: the one backreference
+(`/<(\w+)>([^<]*)<\/\1>/gi`) is hand-rolled (`parse_named_tag_pairs`, ASCII-word
+tags + case-insensitive close), and the others use `(?-u:\s)` / ASCII-`\w`
+hand-rolls + `(?i)` (the exotic-Unicode-case-fold and non-ASCII-tag-whitespace
+divergences are documented seams). Byte offsets replace v4's UTF-16 offsets in the
+XML parsers (both monotonic → identical dedup/sort). **Three live seams CLOSED:**
+(1) the native-tool-loop `ToolCallDetector` — new `RegistryToolCallDetector`
+(`native_tool_loop`); (2) the text-tool-loop provider-text-markers strategy — new
+`ProviderTextMarkersStrategy` (`text_tool_loop`); (3) the W4.1g `formatTools`
+reshape — `tool_build::format_tools_for_provider` (available + tested, NOT wired
+into `build_tools` — a spine handoff, since the orchestrator oracle was generated
+with an empty registry → canonical anthropic tools; wiring it needs the
+spine-owned orchestrator oracle regenerated with the real registry). Verified by
+`tool_wire_equivalence` (a new tier-1 differential — the `record-tool-wire.mjs`
+recorder drives each v4 plugin's REAL tool-wire methods over a single-authored
+corpus emitting `{kind,provider,case,input,result}`; the Rust side reads the input
++ diffs byte-exact; 231 rows across anthropic/openai/google/deepseek covering all
+three `toolFormat` branches + real recorded rawResponses, plus a Rust dispatch-
+uniformity test proving the other five providers key on `toolFormat`). The two
+loop differentials were **regenerated with the real detector/strategy** (swapping
+their synthetic ones): `native_tool_loop_tier3_equivalence` now drives v4's REAL
+Anthropic `parseToolCalls` over REAL anthropic `content[]` rawResponses (Rust:
+`RegistryToolCallDetector::built_in()`), and `text_tool_loop_tier3_equivalence`
+now drives v4's REAL DeepSeek plugin text markers over real `<tool_use>` XML
+(Rust: `ProviderTextMarkersStrategy::built_in("DEEPSEEK")`) — both green (corpus
+transformed so the extracted tool calls are unchanged; non-empty stop-forwarding
+stays proven by the simple-json case). **Standing handoff to the orchestrator-spine
+owner** (the one part-1 seam-wiring left for unification; part 2 is DONE — see
+above): wire the real `RegistryToolCallDetector` into the `process_message`
+orchestrator spine (drop the injected `NoToolCallDetector` at the composition
+point — `native_tool_loop`'s `detector` param), wire `ProviderTextMarkersStrategy`
+into the spine's Phase-19 provider-text pass (gated by `provider_has_text_markers`),
+and wire `format_tools_for_provider` into `build_tools`, regenerating the
+spine-owned `orchestrator_tier3` oracle with the real registry.
+
 **Wave 4 (W4.7b): the five stream decoders are DONE** (2026-07-06,
 `crate::model::decoders`). The sans-IO push-state-machine wire decoders that turn
 a provider's streamed bytes into the normalized `StreamChunk` sequence (the

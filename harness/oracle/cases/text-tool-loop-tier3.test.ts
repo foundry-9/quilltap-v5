@@ -36,6 +36,18 @@
 import * as fs from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { createRequire } from 'node:module';
+
+// The REAL DeepSeek provider plugin — its `hasTextToolMarkers` /
+// `parseTextToolCalls` / `stripTextToolMarkers` (the composite XML functions).
+// W4.7c swaps the provider-text-markers cases from the old synthetic
+// `<<T:...>>` strategy onto this real plugin (the Rust side uses
+// `ProviderTextMarkersStrategy::built_in("DEEPSEEK")`).
+const nodeRequire = createRequire(import.meta.url);
+const deepseekPlugin = (() => {
+  const m = nodeRequire(join(process.cwd(), 'plugins', 'dist', 'qtap-plugin-deepseek', 'index.js'));
+  return m.plugin || m.default?.plugin || m.default;
+})();
 
 interface ToolCallSpec {
   name: string;
@@ -81,48 +93,6 @@ interface Spec {
 
 function toolKey(tc: { name: string; arguments: Record<string, unknown>; callId?: string }): string {
   return `${tc.name}|${JSON.stringify(tc.arguments)}|${tc.callId ?? '-'}`;
-}
-
-// The synthetic provider-text-markers strategy — a `<<T:name:argsJson>>` scanner,
-// trivially identical to the Rust harness's `SyntheticStrategy`. `strip` removes
-// every marker span then trims.
-const SYN_OPEN = '<<T:';
-const SYN_CLOSE = '>>';
-function synParse(r: string): Array<{ name: string; arguments: Record<string, unknown> }> {
-  const calls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
-  let i = 0;
-  for (;;) {
-    const open = r.indexOf(SYN_OPEN, i);
-    if (open === -1) break;
-    const close = r.indexOf(SYN_CLOSE, open + SYN_OPEN.length);
-    if (close === -1) break;
-    const body = r.slice(open + SYN_OPEN.length, close);
-    const colon = body.indexOf(':');
-    const name = body.slice(0, colon);
-    const args = JSON.parse(body.slice(colon + 1)) as Record<string, unknown>;
-    calls.push({ name, arguments: args });
-    i = close + SYN_CLOSE.length;
-  }
-  return calls;
-}
-function synStrip(r: string): string {
-  let out = '';
-  let i = 0;
-  for (;;) {
-    const open = r.indexOf(SYN_OPEN, i);
-    if (open === -1) {
-      out += r.slice(i);
-      break;
-    }
-    const close = r.indexOf(SYN_CLOSE, open + SYN_OPEN.length);
-    if (close === -1) {
-      out += r.slice(i);
-      break;
-    }
-    out += r.slice(i, open);
-    i = close + SYN_CLOSE.length;
-  }
-  return out.trim();
 }
 
 async function main(): Promise<void> {
@@ -274,13 +244,14 @@ async function main(): Promise<void> {
         formatToolResult: (toolName: string, content: string) => `[Tool Result: ${toolName}]\n${content}`,
       };
     } else {
+      // provider-text-markers: the REAL DeepSeek plugin, wired exactly as the
+      // orchestrator does (formatToolResult `[Tool Result: …]`, no stop sequences).
       strategy = {
         name: 'provider-text-markers',
-        hasMarkers: (r: string) => r.includes(SYN_OPEN),
-        parse: synParse,
-        strip: synStrip,
-        formatToolResult: (toolName: string, content: string) => `[Provider Result: ${toolName}]\n${content}`,
-        stopSequences: c.stopSequences && c.stopSequences.length ? c.stopSequences : undefined,
+        hasMarkers: (r: string) => deepseekPlugin.hasTextToolMarkers(r),
+        parse: (r: string) => deepseekPlugin.parseTextToolCalls(r),
+        strip: (r: string) => deepseekPlugin.stripTextToolMarkers(r),
+        formatToolResult: (toolName: string, content: string) => `[Tool Result: ${toolName}]\n${content}`,
       };
     }
 

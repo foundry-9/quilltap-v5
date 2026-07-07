@@ -41,6 +41,18 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { createRequire } from 'node:module';
+
+// The REAL Anthropic provider plugin — its `parseToolCalls` (= the ported
+// `parseAnthropicToolCalls`), the exact method v4's `detectToolCallsInResponse`
+// dispatches to for an ANTHROPIC connection. W4.7c swaps the detection from the
+// old marker-canned mock onto this real parse over REAL anthropic rawResponses
+// (the Rust side uses `RegistryToolCallDetector::built_in()`).
+const nodeRequire = createRequire(import.meta.url);
+const anthropicPlugin = (() => {
+  const m = nodeRequire(join(process.cwd(), 'plugins', 'dist', 'qtap-plugin-anthropic', 'index.js'));
+  return m.plugin || m.default?.plugin || m.default;
+})();
 
 interface ToolCallSpec {
   name: string;
@@ -72,9 +84,9 @@ interface CaseSpec {
   temperature: number;
   agentMode: { enabled: boolean; maxTurns: number };
   initialFullResponse: string;
-  initialRawResponse: { marker: string; stop_reason?: string };
+  // Real anthropic rawResponse: `content[]` tool_use blocks + `stop_reason`.
+  initialRawResponse: unknown;
   formattedMessages: Array<{ role: string; content: string }>;
-  detection: Record<string, ToolCallSpec[]>;
   cannedTools: CannedTool[];
   streams: ChunkSpec[][];
   dumpChats: boolean;
@@ -155,16 +167,14 @@ async function main(): Promise<void> {
     detectToolCalls: () => [],
   }));
 
-  // Detection: canned by the raw response's `marker` (keep processToolCalls REAL).
+  // Detection: the REAL Anthropic plugin `parseToolCalls` over the REAL anthropic
+  // rawResponse (`content[]` tool_use blocks) — W4.7c (keep processToolCalls REAL).
   jest.doMock('@/lib/services/chat-message/tool-execution.service', () => {
     const actual = jest.requireActual('@/lib/services/chat-message/tool-execution.service');
     return {
       __esModule: true,
       ...actual,
-      detectToolCallsInResponse: (raw: unknown) => {
-        const marker = (raw as { marker?: string } | null)?.marker;
-        return (marker && currentCase.detection[marker]) || [];
-      },
+      detectToolCallsInResponse: (raw: unknown) => anthropicPlugin.parseToolCalls(raw),
     };
   });
 
