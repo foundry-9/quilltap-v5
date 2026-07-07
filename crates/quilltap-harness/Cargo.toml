@@ -20,7 +20,10 @@ quilltap-core = { path = "../quilltap-core" }
 serde = { version = "1", features = ["derive"] }
 # preserve_order so the harness's own `Value` re-serialization (canonical dumps,
 # normalization) matches the core's insertion-order JSON — see quilltap-core.
-serde_json = { version = "1", features = ["preserve_order"] }
+# float_roundtrip so parsing an oracle's exact-float text (e.g. a price like
+# `0.09999999999999999`) is correctly rounded, matching the core's own f64 —
+# the default fast parser is 1-ULP lossy (the W4.7e pricing rates surface it).
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 
 [dev-dependencies]
 # The Phase-3 tier-3 differential (the memory gate) drives an async service, so

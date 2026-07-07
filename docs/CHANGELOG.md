@@ -4,6 +4,54 @@
 
 ### 5.0-dev
 
+Phase 3 — Wave 4 (W4.7e, pricing / capability / logging / embeddings): ported
+four of the five W4.7e sub-units, each with a green differential against v4's
+real code.
+
+- The LLM logging service (`services::llm_logging`, v4 `llm-logging.service.ts`)
+  closes the standing `logLLMCall` deferral: `summarize_request`/`_response`
+  (full content, UTF-16 `contentLength`, `hasAttachments`, `toolCalls` mapped),
+  `is_logging_enabled` (logs by default — missing settings and read errors both →
+  enabled), the row writer over the ported `llm_logs.create` (usage/cacheUsage/
+  requestHashes gated, `rawProviderUsage` null-collapsed), `map_task_type_to_log_type`
+  (verbatim incl. the `SUMMARIZATION` default), the 19 `LLMLogType` constants
+  (`TOOL_CONTINUATION` has no emitter), and an explicit `LogContext`
+  autonomous-run-id (no thread-locals — v4's AsyncLocalStorage becomes a param).
+- The cache-prefix hashes (`cache_prefix_hashes`, v4 `cache-prefix-hashes.ts`):
+  per-tier SHA-256 (first 16 hex) of the cacheable request regions. Reproduces
+  the sorted-key `stableStringify` (distinct from every insertion-order serializer
+  in the port) and the history-tail `undefined`-renders-literally quirk. Tier-1
+  differential (`request_prefix_hashes_equivalence`, 17 rows).
+- The pricing fetcher + cost estimation + capability check
+  (`services::pricing_fetcher`, v4 `pricing-fetcher.ts` + `cost-estimation.service.ts`
+  + `checkModelSupportsTools`): sans-IO (the fetch is an injected `PricingFetch`
+  seam, `now_ms` injected), the two OpenRouter response casings ported as separate
+  parsers, JS `parseFloat` string-price semantics (garbage → NaN), the 24 h TTL +
+  5 min negative cache, slug exact-then-fuzzy match, `findCheapestAvailableModel`
+  filters, and the `estimateMessageCost` cascade with all source tags. Closes the
+  finalizer cost-estimation seam; the `LEGACY_FALLBACK_PRICING` rows are a
+  generated Rust static. Tier-1 differential (`pricing_fetcher_equivalence`,
+  6 scenarios driving v4's real async exports with fetch/SDK/repo mocked).
+- The embedding wire (`model::embedding_wire`, the plugin embedding providers):
+  sans-IO per-provider request builders + response parsers — OpenAI
+  (`{model, input, dimensions?}`), Ollama (empty-input guard, `/api/embed` with
+  the `/api/show`-derived `num_ctx`, the 404 legacy fallback, the finite-vector
+  guard), and OpenRouter (the SDK request body + the base64-Float32 decode). Tier-1
+  differential (`embedding_wire_equivalence`, 12 rows). `applyEmbeddingProfile`
+  was already ported (`embedding_vector`).
+
+Enabled the `float_roundtrip` serde_json feature in the harness so an oracle's
+exact-float text (e.g. a price `0.09999999999999999`) parses correctly-rounded,
+matching the core's own f64 (the default fast parser is 1-ULP lossy).
+
+Tracked follow-ups (explicit, per the W4.7e work order's degradation plan): the
+`logLLMCall` writer's through-a-real-call-site row diff (regenerate the smallest
+cheap-LLM oracle with logging un-mocked) + the call-site closures (`cheap_llm_exec`,
+`primary_stream`, gatekeeper, answer confirmation, image generation) and their
+oracle regenerations; and sub-unit 5, the BUILTIN TF-IDF/BM25 vectorizer, split
+off as W4.7e2 (it has no dependency on sub-units 1–4). The `model_supports_native_tools`
+field removal is handed to Round-4's spine owner (W4.4b) per the work order.
+
 Phase 3 — Wave 4 (W4.7d): transport, the LLM error taxonomy, and the `api_keys`
 table (the last unported repo). Ported:
 

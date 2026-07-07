@@ -25,6 +25,7 @@ pub mod completion;
 pub mod completion_provider;
 pub mod decoders;
 pub mod embedding;
+pub mod embedding_wire;
 pub mod image;
 pub mod image_dialects;
 pub mod provider_models_api;

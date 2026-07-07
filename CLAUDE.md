@@ -3764,3 +3764,102 @@ W4.5∥W4.6c `tools/executor.rs` overlap; e's spine handoff) are in
 `chat-orchestration.md`; the decomposition corrections are in
 `provider-manifest.md`. v4 HEAD is still `6b6e39ad` — no drift; the oracle
 baseline is unchanged.
+
+**Wave 4 (W4.7e): pricing / capability / logging / embeddings — sub-units 1–4
+DONE and green; sub-unit 5 split to W4.7e2** (2026-07-07). Four of the five
+W4.7e sub-units are ported, each with a differential against v4's REAL code:
+
+- **The LLM logging service** (`services::llm_logging`, v4
+  `llm-logging.service.ts`) closes the standing `logLLMCall` host-side deferral.
+  `summarize_request`/`summarize_response` (FULL content, UTF-16 `contentLength`,
+  `hasAttachments`, `toolCalls` mapped `{name, arguments}` only when present),
+  `is_logging_enabled` over the ported `chat_settings::find_by_user_id` (logs BY
+  DEFAULT — a missing settings row, a missing `llmLoggingSettings`, and a read
+  error all → enabled; skip ONLY when settings exist and `enabled` is explicitly
+  false), the row writer `log_llm_call` (mint id + timestamps → the ported
+  [`db::llm_logs`] `create` on the llm-logs writer partition; usage built only
+  when a token field is present then `?? 0`, cacheUsage passed through, request
+  hashes kept only when a tier is present, `rawProviderUsage` null-collapsed to
+  SQL NULL; never throws), `map_task_type_to_log_type` (verbatim incl. the
+  `|| 'SUMMARIZATION'` default), and the 19-variant `LLMLogType` string constants
+  (`TOOL_CONTINUATION` carried but never emitted — UI-only in v4). **The
+  autonomous-run id is an explicit `LogContext` field**, not a thread-local:
+  v4's `AsyncLocalStorage` (`autonomous-run-context.ts`) does not port to the
+  scheduler-free core — the enclave/job-runner supplies it when Unit 4 lands,
+  every request-path caller passes `LogContext::none()`.
+- **The cache-prefix hashes** (`cache_prefix_hashes`, v4
+  `cache-prefix-hashes.ts`, `request_prefix_hashes_equivalence`, 17 rows): the
+  per-tier SHA-256 (first 16 hex) of the cacheable request regions
+  (`systemBlock{1,2,3}` / `toolsArrayHash` / `historyTailHash`). Reproduces the
+  **sorted-key `stableStringify`** — the OPPOSITE of every insertion-order JSON
+  serializer in this port, named distinctly so nobody reuses the wrong one — and
+  the history-tail mapping's **`undefined`-renders-literally** quirk (a message's
+  absent `name`/`toolCallId`/`toolCalls` renders as the literal text `undefined`,
+  NOT omitted, NOT `null`, because v4's `.map` assigns the keys before
+  `stableStringify` coerces `undefined`).
+- **The pricing fetcher + cost estimation + `checkModelSupportsTools`**
+  (`services::pricing_fetcher`, v4 `pricing-fetcher.ts` +
+  `cost-estimation.service.ts` + `pseudo-tool-support.ts`,
+  `pricing_fetcher_equivalence`, 6 scenarios): **sans-IO** — the fetch is the
+  injected `PricingFetch` seam (raw response JSON handed back), `now_ms` explicit,
+  the caches per-instance (v4's module-globals — the `CheapLlmTaskExecutor`
+  precedent). Ports **JS `parseFloat`** string-price semantics (leading-prefix
+  parse, garbage → NaN propagates through `× 1e6`), the **two OpenRouter response
+  casings as separate parsers** (public snake_case vs SDK camelCase — never
+  unified), the 24 h TTL + the 5 min NEGATIVE cache
+  (`openRouterPublicFetchFailureAt` — `[]` inside the window, reset on success),
+  `PROVIDER_TO_OPENROUTER_SLUG` + exact-then-fuzzy match, `findCheapestAvailableModel`
+  filters, and the **`estimateMessageCost` cascade** with all source tags
+  (`openrouter` / `registry` / `openrouter-estimate` / `unavailable` all banked;
+  `fallback` is shadowed by the registry substring superset, faithful to v4) —
+  closing the finalizer's cost-estimation evidence seam. The
+  `LEGACY_FALLBACK_PRICING` rows (18, ANTHROPIC/OPENAI/GOOGLE/GROK; the other
+  three empty) are a **generated** Rust static
+  (`harness/oracle/pricing/gen-fallback-pricing.mjs`, the tool-catalog
+  transcription precedent). The differential drives v4's REAL async exports with
+  `global.fetch` / `@openrouter/sdk` / the repos mocked + a stepped clock; the
+  Rust side replays each scenario on a fresh `PricingFetcher` + a scripted
+  `SeqFetch`. **`model_supports_native_tools`** (the injected orchestrator field)
+  is now backed by `check_model_supports_tools`; the field removal is handed to
+  **Round-4's spine owner (W4.4b)** per the work order.
+- **The embedding wire** (`model::embedding_wire`, the plugin embedding providers,
+  `embedding_wire_equivalence`, 12 rows): sans-IO per-provider **request builders
+  + response parsers** (the W4.7c `BuiltRequest` precedent) — OpenAI
+  (`POST {base}/embeddings` `{model, input, dimensions?}`, `data.data[0].embedding`
+  + snake_case usage, the `error.error?.message || statusText` message), Ollama
+  (the up-front empty/whitespace throw, `POST /api/embed`
+  `{model, input, truncate:true, options:{num_ctx}}` with the `/api/show`-derived
+  `num_ctx` [scan `model_info` for a `.context_length` key, `min(ctx, 16384)`,
+  fail → 8192 `derived:false`, cache only `derived:true`], the 404 → legacy
+  `/api/embeddings` `{model, prompt}` fallback, the `assertFiniteEmbedding`
+  NaN/Inf guard with both exact messages), and OpenRouter (the SDK
+  `embeddings.generate` request body + the **base64-Float32 LE decode** via the
+  ported `embedding_blob` reads, array passthrough, `usage` incl. `cost`). Vectors
+  are kept `f64` (v4's `number[]`); the `f32` narrowing is the storage boundary.
+  `applyEmbeddingProfile` (truncate + L2) was already ported
+  (`embedding_vector`). `base64` added to `quilltap-core`. The differential drives
+  v4's REAL plugin providers (jest, fetch/SDK mocked) recording the built
+  request(s) + parsed result; the Rust side rebuilds + reparses.
+
+Enabled the `float_roundtrip` serde_json feature in the harness so an oracle's
+exact-float text (e.g. a pricing rate `0.09999999999999999`) parses
+correctly-rounded to match the core's own f64 (the default fast parser is 1-ULP
+lossy — surfaced by a `parseFloat × 1e6` rate).
+
+**Tracked follow-ups (explicit, per the W4.7e work order's degradation plan — the
+call-site closures + oracle regenerations serialize last):** the `logLLMCall`
+writer's **through-a-real-call-site row diff** (regenerate the smallest cheap-LLM
+oracle, `compression_tier3`, with logging un-mocked + the `llm_logs` table dumped)
+and the five **call-site logging closures** (`cheap_llm_exec` — the dynamic
+task→type map covering every cheap-LLM consumer — plus `primary_stream`
+[`CHAT_MESSAGE` + requestHashes/rawProviderUsage/finishReason at the wire], the
+gatekeeper [`DANGER_CLASSIFICATION`], answer confirmation [`ANSWER_CONFIRMATION`],
+and image generation [`IMAGE_GENERATION`]) with their oracle regenerations, each
+its own commit-able step. Not started to avoid leaving an oracle half-regenerated;
+the writer's constituent parts ARE verified (the hash tier-1 diff, the Phase-2
+`llm_logs_tier2` create diff, and the summarize/task-map self-tests). **Sub-unit
+5 — the BUILTIN TF-IDF/BM25 vectorizer** (`qtap-plugin-builtin-embeddings`:
+TF-IDF + BM25 + Porter stemming + optional bigrams, `loadState` from the ported
+`tfidf_vocabulary` rows) — is **split off as W4.7e2** (it has no dependency on
+sub-units 1–4; only the `tfidf_vocabulary` STORAGE repo is ported, NOT the
+vectorizer — the decomposition doc's "builtin already ported" claim was wrong).

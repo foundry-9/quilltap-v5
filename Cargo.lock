@@ -1400,6 +1400,7 @@ version = "0.0.129"
 dependencies = [
  "aes",
  "aes-gcm",
+ "base64",
  "getrandom 0.2.17",
  "hex",
  "hmac",

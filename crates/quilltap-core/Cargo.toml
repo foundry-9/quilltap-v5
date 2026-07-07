@@ -55,6 +55,7 @@ pbkdf2 = "0.12"           # PBKDF2
 sha2 = "0.10"             # SHA-256 / SHA-512 (digest + pepper hash)
 hmac = "0.12"             # HMAC for PBKDF2
 hex = "0.4"               # hex <-> bytes for the .dbkey fields
+base64 = "0.22"           # OpenRouter embedding base64-Float32 decode (model::embedding_wire)
 
 # v4 UUIDs: repo `_create` mints ids via `crypto.randomUUID()` (RFC-4122 v4)
 # when not pinned. The non-sync create path uses this; sync/fixtures pin the id.

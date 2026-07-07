@@ -142,6 +142,7 @@ use quilltap_sqlite3mc_sys as _;
 
 pub mod about_character;
 pub mod all_llm_pause;
+pub mod cache_prefix_hashes;
 pub mod canon;
 pub mod canonicalize;
 pub mod carina_parser;
