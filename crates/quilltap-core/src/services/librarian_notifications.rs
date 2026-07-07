@@ -17,9 +17,10 @@
 //! announcement couldn't be written; a post failure is surfaced to the caller as
 //! `None` rather than thrown (host-side logging is out of scope for the port).
 
+use rusqlite::Connection;
 use serde_json::{json, Value};
 
-use crate::db::chats_messages::ChatEventInput;
+use crate::db::chats_messages::{ChatEventInput, ChatMessagesRepository};
 use crate::db::runtime::Db;
 
 // `SUMMARY_CONTENT_PREFIX`'s canonical home is v4 `writer.ts:790`; v5 first landed
@@ -51,7 +52,7 @@ pub enum LibrarianOpenKind {
 }
 
 /// Who initiated a destructive or structural change (v4 `LibrarianActorOrigin`).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LibrarianActorOrigin {
     ByUser,
     ByCharacter { character_name: String },
@@ -711,14 +712,14 @@ pub async fn post_librarian_attach_announcement(
 // ---------------------------------------------------------------------------
 
 /// The change reported by a write announcement (v4 `change` union).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LibrarianWriteChange {
     Created { body: String },
     Edited { diff: String },
 }
 
 /// v4 `LibrarianWriteAnnouncement`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LibrarianWriteAnnouncement {
     pub chat_id: String,
     pub display_title: String,
@@ -773,10 +774,15 @@ pub fn build_write_opaque_content(params: &LibrarianWriteAnnouncement) -> String
     }
 }
 
-pub async fn post_librarian_write_announcement(
-    db: &Db,
+/// Assemble the write announcement's `MessageEvent` (applying the
+/// `hidden_from_characters` + empty-edit gates), returning the event to insert and
+/// the message JSON v4 returns — or `None` when the announcement is suppressed or
+/// validation fails. Shared by the async ([`post_librarian_write_announcement`])
+/// and synchronous ([`post_librarian_write_announcement_conn`]) posters so the
+/// content/kind assembly lives once.
+fn write_announcement_message(
     params: &LibrarianWriteAnnouncement,
-) -> Option<Value> {
+) -> Option<(ChatEventInput, Value)> {
     if params.hidden_from_characters {
         return None;
     }
@@ -796,17 +802,37 @@ pub async fn post_librarian_write_announcement(
         LibrarianActorOrigin::ByUser => format!("{verb}-by-user"),
         LibrarianActorOrigin::ByCharacter { .. } => format!("{verb}-by-character"),
     };
-    post_librarian_message(
-        db,
-        &params.chat_id,
-        &content,
-        Some(&opaque),
-        &kind_label,
-        &[],
-        None,
-        None,
-    )
-    .await
+    build_librarian_message(&content, Some(&opaque), &kind_label, &[], None, None)
+}
+
+pub async fn post_librarian_write_announcement(
+    db: &Db,
+    params: &LibrarianWriteAnnouncement,
+) -> Option<Value> {
+    let (event, message) = write_announcement_message(params)?;
+    let chat_id = params.chat_id.clone();
+    match db
+        .write(move |writers| writers.main().chat_messages().add_message(&chat_id, &event))
+        .await
+    {
+        Ok(()) => Some(message),
+        Err(_) => None,
+    }
+}
+
+/// Synchronous sibling of [`post_librarian_write_announcement`] — posts the write
+/// announcement over an already-held RW `main` connection (the differential drives
+/// the doc-edit handlers with a raw [`crate::db::Writer`], not the async writer
+/// task). Same gates + marshaling; errors never propagate (returns `None`).
+pub fn post_librarian_write_announcement_conn(
+    main: &Connection,
+    params: &LibrarianWriteAnnouncement,
+) -> Option<Value> {
+    let (event, message) = write_announcement_message(params)?;
+    match ChatMessagesRepository::new(main).add_message(&params.chat_id, &event) {
+        Ok(()) => Some(message),
+        Err(_) => None,
+    }
 }
 
 /// v4 `LibrarianMoveAnnouncement`.
@@ -1167,6 +1193,37 @@ async fn post_librarian_message(
     target_participant_ids: Option<&[String]>,
     summary_anchor: Option<Value>,
 ) -> Option<Value> {
+    let (event, message) = build_librarian_message(
+        content,
+        opaque_content,
+        kind_label,
+        attachments,
+        target_participant_ids,
+        summary_anchor,
+    )?;
+    let chat_id = chat_id.to_string();
+    match db
+        .write(move |writers| writers.main().chat_messages().add_message(&chat_id, &event))
+        .await
+    {
+        Ok(()) => Some(message),
+        Err(_) => None,
+    }
+}
+
+/// Assemble the Librarian `MessageEvent` (mint `id` + `createdAt`, build the exact
+/// v4 object literal, validate into a [`ChatEventInput`]), returning the event to
+/// insert and the message JSON v4 returns on success — or `None` if validation
+/// fails. Shared by the async post primitive and the synchronous write-announcement
+/// poster so the marshaling lives in exactly one place.
+fn build_librarian_message(
+    content: &str,
+    opaque_content: Option<&str>,
+    kind_label: &str,
+    attachments: &[String],
+    target_participant_ids: Option<&[String]>,
+    summary_anchor: Option<Value>,
+) -> Option<(ChatEventInput, Value)> {
     let message_id = uuid::Uuid::new_v4().to_string();
     let now = crate::clock::now_iso();
 
@@ -1194,12 +1251,5 @@ async fn post_librarian_message(
     });
 
     let event: ChatEventInput = serde_json::from_value(message.clone()).ok()?;
-    let chat_id = chat_id.to_string();
-    match db
-        .write(move |writers| writers.main().chat_messages().add_message(&chat_id, &event))
-        .await
-    {
-        Ok(()) => Some(message),
-        Err(_) => None,
-    }
+    Some((event, message))
 }

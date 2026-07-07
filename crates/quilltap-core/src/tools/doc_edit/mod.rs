@@ -35,6 +35,8 @@ use serde_json::Value;
 
 pub use shared::DocEditToolContext;
 
+use crate::services::librarian_notifications::LibrarianWriteAnnouncement;
+
 /// Every `doc_*` tool name (v4 `DOC_EDIT_TOOL_NAMES`, `doc-edit-handler.ts:96`).
 pub const DOC_EDIT_TOOL_NAMES: &[&str] = &[
     "doc_read_file",
@@ -81,6 +83,16 @@ pub struct DocEditToolResult {
     pub error: Option<String>,
     #[serde(rename = "formattedText", skip_serializing_if = "Option::is_none")]
     pub formatted_text: Option<String>,
+    /// The Librarian doc-save (`change:{diff}`/`{created,body}`) announcement a
+    /// mutating write handler wants posted (v4 fires it inline; here it is threaded
+    /// OUT of the synchronous `Db::write` closure so the async caller can `await`
+    /// [`crate::services::librarian_notifications::post_librarian_write_announcement`]
+    /// after the closure returns — the wardrobe-drain `pending*` precedent). `None`
+    /// for every read/no-op/failed handler and every non-write path. NEVER
+    /// serialized (v4 puts `change` only in the announcement call, not the tool
+    /// result), so it does not affect the differential's output diff.
+    #[serde(skip)]
+    pub pending_librarian_announcement: Option<LibrarianWriteAnnouncement>,
 }
 
 impl DocEditToolResult {
@@ -91,6 +103,7 @@ impl DocEditToolResult {
             result: Some(result),
             error: None,
             formatted_text: Some(formatted.into()),
+            pending_librarian_announcement: None,
         }
     }
 
@@ -102,6 +115,7 @@ impl DocEditToolResult {
             result: None,
             error: Some(error.into()),
             formatted_text: None,
+            pending_librarian_announcement: None,
         }
     }
 
@@ -113,7 +127,16 @@ impl DocEditToolResult {
             result: None,
             error: Some(error.into()),
             formatted_text: Some(formatted.into()),
+            pending_librarian_announcement: None,
         }
+    }
+
+    /// Attach a pending Librarian write announcement to a success result (chainable
+    /// after [`DocEditToolResult::ok`]). The caller posts it after the write closure
+    /// returns.
+    pub fn with_librarian_announcement(mut self, announcement: LibrarianWriteAnnouncement) -> Self {
+        self.pending_librarian_announcement = Some(announcement);
+        self
     }
 }
 
@@ -177,6 +200,7 @@ pub fn execute_doc_edit_tool(
             result: None,
             error: Some(message.clone()),
             formatted_text: Some(format!("Error: {message}")),
+            pending_librarian_announcement: None,
         },
     }
 }

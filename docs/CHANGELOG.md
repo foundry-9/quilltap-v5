@@ -4,6 +4,33 @@
 
 ### 5.0-dev
 
+Phase 3 — Round-3 unification (Group 6, the Librarian doc-save `change:{diff}`
+announcement coupling — **Round 3 now fully complete**): the five mutating doc-edit
+write handlers (`doc_write_file` / `doc_str_replace` / `doc_insert_text` /
+`doc_update_frontmatter` / `doc_update_heading`) now emit the Librarian doc-save
+announcement (v4 commit `8617ce7a`) — a `change:{created,body}` payload for a fresh
+file, a `change:{edited,diff}` unified diff for an edit (via the W4.d1
+`generate_unified_diff`). Ported `resolveActorOrigin`; added a
+`pending_librarian_announcement` field to the shared `DocEditToolResult` (never
+serialized — v4 puts `change` only in the announcement call, not the tool result)
+so a handler can build the announcement inside the synchronous `Db::write` closure
+and the async caller (the executor spine) posts it via the already-ported
+`post_librarian_write_announcement` after the closure returns (the wardrobe-drain
+`pending*` precedent). A failed announcement never fails the tool (best-effort, as
+v4). Added the synchronous `post_librarian_write_announcement_conn` (posts over an
+already-held RW `main` connection) so the direct-drive differential can post it.
+Regenerated `doc_text_equivalence` with the write announcement LIVE on the v4 side
+(un-mocked `postLibrarianWriteAnnouncement` + `contentHiddenFromCharacters`), the
+fixture's existing chat + participant now targeted, and a third dumped table — the
+MAIN-db `chat_messages` (ordered by `content`, a remap-invariant key) — diffing the
+10 Librarian rows (8 edited-by-character + 2 created-by-character) byte-for-byte
+(persona content + opaque content + `systemSender:'librarian'` + per-kind
+`systemKind` + null targeting). `doc_fm` / `doc_ui` / `doc_blob` / `doc_enum` /
+`tool_dispatch` re-verified green (the additive field is `None` for every non-write
+handler). The file-management / blob / open announcements (move / copy / delete /
+folder-created / folder-deleted / open / blob-write) remain separate seams the port
+still omits — out of Group 6 scope.
+
 Phase 3 — Round-3 unification (Group 7, context-summary vault-mirror + relevant-
 conversations-refresh LIVE): `RealContextSummarySeams::mirror_summary_to_vaults` and
 `refresh_relevant_conversations` (previously no-ops) now run live — the fold mirrors

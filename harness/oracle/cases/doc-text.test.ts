@@ -129,18 +129,22 @@ async function main(): Promise<void> {
     jest.requireActual('@/lib/embedding/embedding-service'),
   );
 
-  // Seamed side effects → no-ops (documented Rust seams; matches the port).
+  // Group 6: the Librarian doc-save (`change:{diff}`/`{created,body}`) write
+  // announcement is now LIVE — `postLibrarianWriteAnnouncement` +
+  // `contentHiddenFromCharacters` + `documentHiddenFromCharacters` come from the
+  // REAL module so a `chat_messages` announcement row lands on both sides (the Rust
+  // port posts the same row after the sync write closure). The OTHER announcements
+  // (delete/move/folder) are separate deferrals the Rust file-management handlers
+  // still omit — kept mocked to no-ops — but the doc-text corpus never triggers
+  // them, so they never fire here regardless. Reindex/embedding stay seamed.
   jest.doMock('@/lib/services/librarian-notifications/writer', () => {
     const actual = jest.requireActual('@/lib/services/librarian-notifications/writer');
     return {
       __esModule: true,
       ...actual,
-      postLibrarianWriteAnnouncement: async () => undefined,
       postLibrarianDeleteAnnouncement: async () => undefined,
       postLibrarianMoveAnnouncement: async () => undefined,
       postLibrarianFolderAnnouncement: async () => undefined,
-      contentHiddenFromCharacters: () => false,
-      documentHiddenFromCharacters: () => false,
     };
   });
   jest.doMock('@/lib/doc-edit/reindex-file', () => ({
@@ -161,7 +165,7 @@ async function main(): Promise<void> {
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
 
-  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+  const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { closeMountIndexSQLiteClient, getRawMountIndexDatabase } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
@@ -203,9 +207,26 @@ async function main(): Promise<void> {
     // Order by remap-invariant keys (a content-derived sha / the stable
     // relativePath) so the positional-UUID remap assigns identical tokens on both
     // sides — ordering by the random minted `fileId` would desync the tokens.
+    //
+    // `chat_messages` lives in the MAIN db (via rawQuery), holding the Group 6
+    // Librarian write-announcement rows. Order by `content` — a remap-invariant key
+    // (the persona body has no minted uuid/timestamp; each write op yields distinct
+    // content) so the positional-UUID/timestamp remap aligns rows across sides.
+    const chatMessageCols = (
+      (await rawQuery('PRAGMA table_info(chat_messages)')) as Array<{ name: string }>
+    ).map((c) => c.name);
+    const chatMessageRows = (await rawQuery('SELECT * FROM chat_messages')) as Array<
+      Record<string, unknown>
+    >;
     const dumps = {
       documents: dumpTable('doc_mount_documents', 'contentSha256'),
       fileLinks: dumpTable('doc_mount_file_links', 'relativePath'),
+      chatMessages: canonicalizeRows({
+        table: 'chat_messages',
+        columns: chatMessageCols,
+        rawRows: chatMessageRows,
+        orderBy: 'content',
+      }),
     };
     outLines.push(JSON.stringify({ case: 'doc-text', dumps }));
   } finally {

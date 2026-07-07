@@ -408,5 +408,6 @@ fn result_no_formatted(result: Value) -> DocEditToolResult {
         result: Some(result),
         error: None,
         formatted_text: None,
+        pending_librarian_announcement: None,
     }
 }

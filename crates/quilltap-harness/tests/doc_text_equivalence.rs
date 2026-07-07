@@ -6,10 +6,16 @@
 //!
 //! Both sides run the SAME op sequence (`doc-text.json`) on a fresh copy of the
 //! pre-seeded two-database fixture (a character with a full vault + a project with
-//! an official store + a corpus of text/json/markdown files), in order (state
-//! accumulates — the insert.md ops chain). Each op's Output + `formatDocEditResults`
-//! string are compared against v4's; then the two content tables
-//! (`doc_mount_documents` / `doc_mount_file_links`) are dumped and diffed.
+//! an official store + a corpus of text/json/markdown files + a chat with the
+//! character as a participant), in order (state accumulates — the insert.md ops
+//! chain). Each op's Output + `formatDocEditResults` string are compared against
+//! v4's; then three tables are dumped and diffed: the two mount-index content
+//! tables (`doc_mount_documents` / `doc_mount_file_links`) plus the MAIN-db
+//! `chat_messages`, which holds the Group 6 Librarian doc-save write announcements
+//! (`change:{diff}`/`{created,body}`) each mutating write handler now emits. The
+//! Rust port threads the announcement out of the sync write closure and posts it
+//! via `post_librarian_write_announcement_conn` (the executor spine posts the async
+//! sibling); the v4 oracle drives the REAL `postLibrarianWriteAnnouncement`.
 //!
 //! NORMALIZATION: every UUID string is remapped to a positional `<id-N>` token
 //! (first-appearance order, one map per compared value) and every ISO-8601
@@ -39,6 +45,7 @@
 use std::collections::HashMap;
 
 use quilltap_core::db::{dump_table_json_conn, Writer};
+use quilltap_core::services::librarian_notifications::post_librarian_write_announcement_conn;
 use quilltap_core::tools::doc_edit::{
     execute_doc_edit_tool, format_doc_edit_results, DocEditToolContext,
 };
@@ -330,6 +337,12 @@ fn doc_text_matches_oracle() {
             &op.args,
             &ctx,
         );
+        // Group 6: post the Librarian doc-save announcement over the held RW main
+        // connection — the executor spine does this async after the write closure;
+        // here (driving the sync handler directly) the sync sibling poster stands in.
+        if let Some(ann) = &result.pending_librarian_announcement {
+            post_librarian_write_announcement_conn(main.connection(), ann);
+        }
         let formatted = format_doc_edit_results(&result);
         let mut output = serde_json::to_value(&result).expect("serialize result");
         placeholder_mtime(&op.tool, &mut output);
@@ -375,8 +388,16 @@ fn doc_text_matches_oracle() {
     let file_links =
         dump_table_json_conn(mount.connection(), "doc_mount_file_links", "relativePath")
             .expect("dump file_links");
+    // The Group 6 Librarian write-announcement rows live in the MAIN db. Order by
+    // `content` (remap-invariant — no minted uuid/timestamp in the persona body).
+    let chat_messages = dump_table_json_conn(main.connection(), "chat_messages", "content")
+        .expect("dump chat_messages");
 
-    let got_dumps = normalize(&json!({ "documents": documents, "fileLinks": file_links }));
+    let got_dumps = normalize(&json!({
+        "documents": documents,
+        "fileLinks": file_links,
+        "chatMessages": chat_messages,
+    }));
     let want_dumps = normalize(&oracle_dumps);
     assert_eq!(
         got_dumps, want_dumps,
@@ -389,7 +410,7 @@ fn doc_text_matches_oracle() {
     let _ = std::fs::remove_file(&work_mount);
 
     eprintln!(
-        "OK: doc-text handlers matched oracle ({} ops + 2 table dumps).",
+        "OK: doc-text handlers matched oracle ({} ops + 3 table dumps incl. Librarian chat_messages).",
         spec.ops.len()
     );
 }

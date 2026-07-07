@@ -40,6 +40,7 @@ use crate::db::{characters_read, chats_read, projects};
 use crate::doc_edit::path_resolver::{PathResolutionContext, ResolveError, ResolvedPath};
 use crate::doc_edit::qtap_uri::parse_qtap_uri;
 use crate::doc_edit::DocEditScope;
+use crate::services::librarian_notifications::{LibrarianActorOrigin, LibrarianScope};
 
 /// Context required for doc-edit tool execution — v4 `DocEditToolContext`.
 #[derive(Clone, Debug)]
@@ -52,6 +53,40 @@ pub struct DocEditToolContext {
     /// surfaces only — never a character tool call). Passed straight to the path
     /// resolver's `operator_override`.
     pub operator_override: bool,
+}
+
+/// Map a resolved [`DocEditScope`] to the announcement's [`LibrarianScope`]. v4's
+/// write handlers pass the raw scope string cast to
+/// `'project' | 'document_store' | 'general'`; the port collapses `group` to
+/// `document_store` upstream ([`scope_from_str`]), matching the doc-save corpus
+/// (group-store writes never reach a `change:{diff}` announcement here).
+pub fn librarian_scope_from(scope: DocEditScope) -> LibrarianScope {
+    match scope {
+        DocEditScope::Project => LibrarianScope::Project,
+        DocEditScope::General => LibrarianScope::General,
+        DocEditScope::DocumentStore => LibrarianScope::DocumentStore,
+    }
+}
+
+/// v4 `resolveActorOrigin` (`shared.ts:44`): who effected a doc write, so the
+/// Librarian announcement can name them. Prefers the acting character's name; with
+/// no `characterId` (operator / Document-Mode surfaces) or a failed lookup, falls
+/// back to user attribution. `name` is a slim column (not vault-overlaid), so the
+/// raw read matches v4's overlaid `findById().name`.
+pub fn resolve_actor_origin(main: &Connection, ctx: &DocEditToolContext) -> LibrarianActorOrigin {
+    let Some(cid) = ctx.character_id.as_deref() else {
+        return LibrarianActorOrigin::ByUser;
+    };
+    if let Ok(Some(character)) = characters_read::find_by_id_raw(main, cid) {
+        if let Some(name) = character.get("name").and_then(Value::as_str) {
+            if !name.is_empty() {
+                return LibrarianActorOrigin::ByCharacter {
+                    character_name: name.to_string(),
+                };
+            }
+        }
+    }
+    LibrarianActorOrigin::ByUser
 }
 
 /// Map a raw `scope` string to [`DocEditScope`] (v4 casts the string; an

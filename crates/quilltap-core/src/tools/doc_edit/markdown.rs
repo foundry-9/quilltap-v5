@@ -10,9 +10,10 @@ use serde_json::{json, Map, Value};
 
 use super::shared::{
     apply_qtap_uri, arg_bool, arg_i64, arg_str, arg_str_ref, assert_character_may_read,
-    assert_character_may_write, build_read_resolution_context, build_write_resolution_context,
-    is_text_file, read_file_with_mtime, resolve_error_message, scope_from_str,
-    write_file_with_mtime_check, Addressing, DocEditToolContext,
+    assert_character_may_write, basename, build_read_resolution_context,
+    build_write_resolution_context, is_text_file, librarian_scope_from, read_file_with_mtime,
+    resolve_actor_origin, resolve_error_message, scope_from_str, write_file_with_mtime_check,
+    Addressing, DocEditToolContext,
 };
 use super::DocEditToolResult;
 use crate::doc_edit::markdown_parser::{
@@ -20,9 +21,13 @@ use crate::doc_edit::markdown_parser::{
     update_frontmatter_in_content,
 };
 use crate::doc_edit::path_resolver::resolve_doc_edit_path;
+use crate::doc_edit::unified_diff::generate_unified_diff;
 use crate::doc_edit::uri_producers::uri_for_resolved_path;
 use crate::doc_edit::DocEditScope;
 use crate::markdown::parse_frontmatter;
+use crate::services::librarian_notifications::{
+    content_hidden_from_characters, LibrarianWriteAnnouncement, LibrarianWriteChange,
+};
 
 // --- doc_read_frontmatter ---
 
@@ -126,7 +131,7 @@ pub fn handle_update_frontmatter(
     let replace_all = arg_bool(args, "replace_all").unwrap_or(false);
     let new_content = update_frontmatter_in_content(&content, &updates, replace_all);
     let mtime = write_file_with_mtime_check(mount, &resolved, &new_content)?;
-    // reindex + Librarian announcement: no-op seam.
+    // reindex: no-op seam.
     let edited_uri = uri_for_resolved_path(
         main,
         mount,
@@ -135,6 +140,20 @@ pub fn handle_update_frontmatter(
         None,
         None,
     );
+
+    let display_title = basename(&path).to_string();
+    let announcement = LibrarianWriteAnnouncement {
+        chat_id: ctx.chat_id.clone(),
+        uri: edited_uri.clone(),
+        scope: librarian_scope_from(scope),
+        mount_point: addressing.mount_point.clone(),
+        origin: resolve_actor_origin(main, ctx),
+        change: LibrarianWriteChange::Edited {
+            diff: generate_unified_diff(&content, &new_content, &display_title),
+        },
+        display_title,
+        hidden_from_characters: content_hidden_from_characters(&new_content),
+    };
 
     let result = json!({
         "success": true,
@@ -145,7 +164,7 @@ pub fn handle_update_frontmatter(
     let action = if replace_all { "Replaced" } else { "Updated" };
     let key_count = updates.len();
     let formatted = format!("{action} frontmatter in {path} ({key_count} keys, mtime: {mtime})");
-    Ok(DocEditToolResult::ok(result, formatted))
+    Ok(DocEditToolResult::ok(result, formatted).with_librarian_announcement(announcement))
 }
 
 // --- doc_read_heading ---
@@ -249,7 +268,7 @@ pub fn handle_update_heading(
         Ok(heading) => {
             let new_content = replace_heading_content(&content, &heading, &new_section, preserve);
             let mtime = write_file_with_mtime_check(mount, &resolved, &new_content)?;
-            // reindex + Librarian announcement: no-op seam.
+            // reindex: no-op seam.
             let edited_uri = uri_for_resolved_path(
                 main,
                 mount,
@@ -258,6 +277,19 @@ pub fn handle_update_heading(
                 None,
                 None,
             );
+            let display_title = basename(&path).to_string();
+            let announcement = LibrarianWriteAnnouncement {
+                chat_id: ctx.chat_id.clone(),
+                uri: edited_uri.clone(),
+                scope: librarian_scope_from(scope),
+                mount_point: addressing.mount_point.clone(),
+                origin: resolve_actor_origin(main, ctx),
+                change: LibrarianWriteChange::Edited {
+                    diff: generate_unified_diff(&content, &new_content, &display_title),
+                },
+                display_title,
+                hidden_from_characters: content_hidden_from_characters(&new_content),
+            };
             let result = json!({
                 "success": true,
                 "path": path,
@@ -269,7 +301,7 @@ pub fn handle_update_heading(
                 "#".repeat(heading.level),
                 heading.text
             );
-            Ok(DocEditToolResult::ok(result, formatted))
+            Ok(DocEditToolResult::ok(result, formatted).with_librarian_announcement(announcement))
         }
         Err(e) => Ok(DocEditToolResult::fail(e.0)),
     }

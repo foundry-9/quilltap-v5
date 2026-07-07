@@ -1451,34 +1451,51 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             operator_override: false,
         };
         let db = self.db.clone();
-        db.write(move |writers| {
-            let Some(mount_w) = writers.mount_index() else {
-                return Ok(fail(
-                    &name,
-                    "doc-edit tools require the mount-index database",
-                ));
-            };
-            let mount = mount_w.connection();
-            let main = writers.main().connection();
-            let result = execute_doc_edit_tool(main, mount, &name, &args, &doc_ctx);
-            Ok(if result.success {
-                let mut m = Map::new();
-                m.insert(
-                    "formattedText".into(),
-                    json!(format_doc_edit_results(&result)),
-                );
-                if let Some(Value::Object(obj)) = result.result {
-                    for (k, v) in obj {
-                        m.insert(k, v);
+        let (tool_result, pending) = db
+            .write(move |writers| {
+                let Some(mount_w) = writers.mount_index() else {
+                    return Ok((
+                        fail(&name, "doc-edit tools require the mount-index database"),
+                        None,
+                    ));
+                };
+                let mount = mount_w.connection();
+                let main = writers.main().connection();
+                let mut result = execute_doc_edit_tool(main, mount, &name, &args, &doc_ctx);
+                // Thread the Librarian doc-save announcement OUT of the sync write
+                // closure — a mutating handler cannot `await` the async post from
+                // here, so the async caller posts it below (v4 fires it inline).
+                let pending = result.pending_librarian_announcement.take();
+                let tool_result = if result.success {
+                    let mut m = Map::new();
+                    m.insert(
+                        "formattedText".into(),
+                        json!(format_doc_edit_results(&result)),
+                    );
+                    if let Some(Value::Object(obj)) = result.result {
+                        for (k, v) in obj {
+                            m.insert(k, v);
+                        }
                     }
-                }
-                ok(&name, Value::Object(m))
-            } else {
-                fail(&name, result.error.unwrap_or_default())
+                    ok(&name, Value::Object(m))
+                } else {
+                    fail(&name, result.error.unwrap_or_default())
+                };
+                Ok((tool_result, pending))
             })
-        })
-        .await
-        .unwrap_or_else(|e| fail(&tc.name, e.to_string()))
+            .await
+            .unwrap_or_else(|e| (fail(&tc.name, e.to_string()), None));
+
+        // Post the Librarian write announcement after the closure (best-effort — a
+        // failed announcement never fails the tool; v4 catches + logs).
+        if let Some(announcement) = pending {
+            crate::services::librarian_notifications::post_librarian_write_announcement(
+                &self.db,
+                &announcement,
+            )
+            .await;
+        }
+        tool_result
     }
 
     /// Snapshot the ctx fields a wardrobe handler needs (owned, so they can move

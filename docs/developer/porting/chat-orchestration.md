@@ -162,7 +162,7 @@ earlier sketch.
 | **W4.4b** | The file/attachment subsystem: text-detection, the fallback dispatch (text-inline + vision description), `loadChatFilesForLLM`, `loadAndProcessFiles` — closes `process_files` + the Lantern K seam; bytes + resize are host seams | [`w4.4b-file-attachment.md`](./work-orders/w4.4b-file-attachment.md) |
 | **W4.5** | Carina query engine (`runCarinaQuery` — closes the `RunCarinaQuery` seam everywhere + wires `ask_carina` dispatch; Brahma one-shot console = tracked follow-up W4.5b) | [`w4.5-carina-query.md`](./work-orders/w4.5-carina-query.md) |
 | **W4.6a** ✅ **DONE** (2026-07-06) | BuildContext feeder closures: recap + distill (`services::memory_recap`), frozen archive (`services::frozen_archive`), core-whisper config+packet (`services::core_whisper`), Suparṇā mail read (`services::suparna_mail`), off-scene scan (`services::off_scene`), scene-state cache persist + the `updateSceneState` task (`services::scene_state_tracking`), mount pool + recall settings + live clothing (closed with existing code). The trait is shrunk to the W4.6b posts only; verified by `build_context_tier3_equivalence` (mocks dropped one-for-one) + a new `context_feeders_leaves_equivalence` tier-1; `knowledge_injector`/`first_message_context`/`orchestrator_tier3` re-verified. **Deferrals:** the recap/distill stay mocked in the orchestrator oracle (the spine passes `cheap_llm_selection: None` — a spine-owner follow-up); the scene-state JOB WRAPPER is W4.8 | [`w4.6a-context-feeders.md`](./work-orders/w4.6a-context-feeders.md) |
-| **W4.6b** ✅ **DONE (2026-07-07)** | The post-office / personified writers: Host, Prospero, Librarian, Concierge, Suparṇā, Aurora (+ the wardrobe announcement drain), Commonplace (+ relevant-conversations refresh), Lantern notification; the vault summary mirror + the `chats.delete` sweep (**the last Phase-2 deferral — closed**); cost events. All six persona modules byte-exact (tier-1 differentials); post-rows proven by `post_office_writers_tier3_equivalence`; the mirror + sweep by `vault_summary_mirror_tier2_equivalence`. Non-spine seams live: Concierge announcers (`danger_gatekeeper_tier3` + manual-flip regenerated), context-summary Librarian re-post + cost events (`context_summary_service_tier3` regenerated). **Handoffs:** the `BuildContextSeams::post_*` + `OrchestratorSeams::post_prospero_context` + the end-of-turn wardrobe-drain wiring into the spine; the context-summary vault-mirror/refresh seams (need vault fixtures + embedding); the Lantern-sink rewire in the image subsystem; the Librarian save-announcement `change:{diff}` coupling in the doc-edit handlers | [`w4.6b-post-office-writers.md`](./work-orders/w4.6b-post-office-writers.md) |
+| **W4.6b** ✅ **DONE (2026-07-07)** | The post-office / personified writers: Host, Prospero, Librarian, Concierge, Suparṇā, Aurora (+ the wardrobe announcement drain), Commonplace (+ relevant-conversations refresh), Lantern notification; the vault summary mirror + the `chats.delete` sweep (**the last Phase-2 deferral — closed**); cost events. All six persona modules byte-exact (tier-1 differentials); post-rows proven by `post_office_writers_tier3_equivalence`; the mirror + sweep by `vault_summary_mirror_tier2_equivalence`. Non-spine seams live: Concierge announcers (`danger_gatekeeper_tier3` + manual-flip regenerated), context-summary Librarian re-post + cost events (`context_summary_service_tier3` regenerated). **Handoffs:** the `BuildContextSeams::post_*` + `OrchestratorSeams::post_prospero_context` + the end-of-turn wardrobe-drain wiring into the spine; the context-summary vault-mirror/refresh seams (need vault fixtures + embedding); the Lantern-sink rewire in the image subsystem; the Librarian save-announcement `change:{diff}` coupling in the doc-edit handlers (**all now DONE — see Round-3 unification, Groups 4/6/7**) | [`w4.6b-post-office-writers.md`](./work-orders/w4.6b-post-office-writers.md) |
 | **W4.7** | The provider layer, six units a–f — decomposed 2026-07-06 in [`provider-manifest.md`](./provider-manifest.md) ("The porting decomposition"): manifest+registry (a), **the five stream decoders (b ✅ 2026-07-06** — `model::decoders`, `stream_decoders_equivalence`), request builders/transforms/tool-wire (c — closes `ToolCallDetector` + the text-markers strategy + `formatTools`), transport/errors/`api_keys` (d — closes every `ApiKeyResolver` seam), pricing/capability/`logLLMCall`/embeddings (e), image dialects + moderation + web search (f) | [`w4.7a-manifest-registry.md`](./work-orders/w4.7a-manifest-registry.md), [`w4.7b-stream-decoders.md`](./work-orders/w4.7b-stream-decoders.md); c–f specced in the decomposition |
 | **W4.8** ✅ **DONE** (2026-07-06) | The background job runner: claim loop + dispatch registry + completion/backoff + recovery, the enqueue-helper remainder, scheduler decision leaves (host-driven cadence), the stale-chat maintenance sweep + `getLastPlayedMessageAt`; closed `ensureProcessorRunning` + the `markCompleted` result-merge deferral. The fork/IPC/buffered-proxy architecture deliberately did NOT port — in-process handlers over the single-writer `Db`. `services::job_runner` + `job_scheduler` + `maintenance`; verified by `photos_relative_path_equivalence` (tier-1) + `maintenance_sweep_tier2_equivalence` (tsx real-DB) + 11 runner self-tests; `memory_watermark_tier3`/`context_summary_service_tier3` regenerated green | [`w4.8-job-runner.md`](./work-orders/w4.8-job-runner.md) |
 | **W4.9** | **a: ✅ DONE (2026-07-06)** — the `generate_image` subsystem (the `model::image` seam, the three scene cheap-LLM tasks, appearance resolution + the five-step Concierge sanitize gate, `saveGeneratedImage`, the avatar trigger [closes the W4.1d2 deferral], dispatched via the erased `ImageGenerationRunner`; `image_generation_tier3_equivalence`); **b: ✅ DONE (2026-07-06)** — the photo trio (`keep_image`/`list_images`/`attach_image` + save-to-album + kept-image markdown, `photo_tools_tier3_equivalence`); **c (follow-up):** the avatar + story-background JOB HANDLERS (v4 `character-avatar-generation-handler.ts` [573] + the `STORY_BACKGROUND` handler [943]) — they reuse the W4.9a image subsystem + the scene tasks' remaining two functions (`deriveSceneContext` / `craftStoryBackgroundPrompt`) | [`w4.9a-image-generation.md`](./work-orders/w4.9a-image-generation.md), [`w4.9b-photo-trio.md`](./work-orders/w4.9b-photo-trio.md) |
@@ -198,13 +198,14 @@ round with a drift check against v4 HEAD.
   services; its finalizer/orchestrator regenerations go to unification).
 - **Round 3:** W4.4a4 (owns spine + orchestrator corpus) ∥ W4.6b (writers;
   its many regenerations listed in the order go to unification where they
-  collide) ∥ W4.7c. **Unification Phase B (spine seam wiring): Groups 1–5 DONE**
+  collide) ∥ W4.7c. **Unification Phase B (spine seam wiring): ALL groups DONE —
+  Round 3 complete.** Groups 1–5 done
   — G1 W4.7c tool reshape/detector/strategy (orchestrator_tier3 regenerated with
   the real provider registry on the v4 side), G2 W4.6b whisper writers live
   (`RealBuildContextSeams` + the Prospero cadence block; build_context_tier3 +
   orchestrator_tier3 regenerated with writers un-mocked), G3 end-of-turn wardrobe
   drain, G4 Lantern sink → byte-exact writer (image_generation_tier3), G5
-  commonplace dedup. **Groups 7 & 8 now DONE + green; G6 DEFERRED.** G8
+  commonplace dedup. **Groups 6, 7 & 8 now DONE + green — Round 3 complete.** G8
   `cheap_llm_selection` spine threading (the spine resolves the real selection →
   buildContext recap/distill feeders + finalizer async-compression fire;
   orchestrator_tier3 regenerated dropping the recap/distill mocks — the distill fires
@@ -214,15 +215,22 @@ round with a drift check against v4 HEAD.
   prior summary with a canned unit embedding; mirror BEFORE refresh; the mirror diffed
   by the `doc_mount_file_links` path set, the refresh by the `chat_messages` whisper;
   `vault_summary_mirror_tier2` kept green). **G6 (Librarian doc-save `change:{diff}`
-  coupling) DEFERRED as its own follow-up work order:** the write-announcement WRITER
-  is already ported (`post_librarian_write_announcement` + `build_write_content`);
-  remaining is porting `resolveActorOrigin`, a `pending_librarian_announcement` field
-  on the shared `DocEditToolResult`, the ~8 write handlers building the
-  `change:{created,body}/{edited,diff}` payload, threading it OUT of the sync
-  `execute_doc_edit_tool` `Db::write` closure to a post-closure async post (the
-  wardrobe-drain `pending*` precedent), and regenerating `doc_text`/`doc_fm` with a
-  chat+participant fixture + un-mocked Librarian + a `chat_messages` announcement diff
-  (byte-exact persona content). See CLAUDE.md Status for the detailed hand-off.
+  coupling) DONE:** the five mutating doc-edit write handlers (`doc_write_file` /
+  `doc_str_replace` / `doc_insert_text` / `doc_update_frontmatter` /
+  `doc_update_heading`) build the `change:{created,body}/{edited,diff}` payload
+  inside the synchronous `execute_doc_edit_tool` `Db::write` closure and stash it in
+  a new `#[serde(skip)]` `pending_librarian_announcement` field on
+  `DocEditToolResult` (the wardrobe-drain `pending*` precedent); the executor spine
+  posts it via the already-ported `post_librarian_write_announcement` after the
+  closure returns (best-effort). Ported `resolveActorOrigin`. `doc_text` regenerated
+  with the write announcement LIVE (un-mocked `postLibrarianWriteAnnouncement` +
+  `contentHiddenFromCharacters`, the existing fixture chat+participant targeted) and
+  a third dumped table — the MAIN-db `chat_messages` — diffing the 10 Librarian rows
+  byte-exact (`post_librarian_write_announcement_conn` posts them on the direct-drive
+  Rust side). `doc_fm`/`doc_ui`/`doc_blob`/`doc_enum`/`tool_dispatch` re-verified
+  green (the additive field is `None` for every non-write handler). The
+  file-management / blob / open announcements remain separate seams (out of G6
+  scope).
 - **Round 4:** W4.4b (owns spine + orchestrator corpus) ∥ W4.5 (carina —
   its finalizer/orchestrator cases go to unification) ∥ W4.7d/e/f.
 - **Round 5:** Unit 4 (enclave), then the Phase-4 kickoff.

@@ -3509,7 +3509,7 @@ Drift note added to the W4.9a order's W4.9c scope. Also: `help/chat-settings.md`
 is help-content data (not a ported surface). The `docs/v4/` CHANGELOG mirror
 is refreshed. **New oracle baseline for in-flight/future orders: `6b6e39ad`.**
 
-**Round-3 unification (Phase B) — Groups 1–5 done, 6–8 deferred.** The three
+**Round-3 unification (Phase B) — ALL groups (1–8) DONE; Round 3 COMPLETE.** The three
 Round-3 units (W4.4a4 courier, W4.6b post-office writers, W4.7c request builders)
 landed with their spine seams INERT; this pass wires them live.
 **Group 1 (W4.7c tool reshape/detector/strategy):** `tool_build::build_tools`
@@ -3544,7 +3544,7 @@ placeholder dropped). **Group 5 (commonplace dedup):** removed the private
 commonplace builders from `build_context.rs`, reusing the canonical
 `commonplace_notifications` versions (byte-identical for the per-turn whisper).
 
-**Round-3 Phase B — Groups 7 & 8 now DONE; Group 6 deferred.**
+**Round-3 Phase B — Groups 6, 7 & 8 now DONE — Round 3 COMPLETE.**
 **Group 8 (`cheap_llm_selection` spine threading) — DONE + green.** The
 `processMessage` spine resolves a real `CheapLlmSelection` at the composition point
 (v4 `getCheapLLMProvider` over the user's connection profiles + the chat settings'
@@ -3573,24 +3573,39 @@ path set (`Conversation Summaries/Old Title A.md` on both sides), the refresh's
 mirror/refresh one-for-one (incl. un-mocking `character-vault-bridge` so
 `getCharacterVaultStore` resolves the real minted vault — [[jest-real-db-oracle]]).
 `vault_summary_mirror_tier2` + `orchestrator_tier3` re-verified.
-**Group 6 (Librarian doc-save `change:{kind:'edited',diff}` coupling) — DEFERRED**
-(its own follow-up work order; tree left green). The write-announcement WRITER **is
-already ported** (`services::librarian_notifications::{build_write_content,
-build_write_opaque_content, post_librarian_write_announcement, LibrarianWriteAnnouncement}`),
-and `doc_edit::unified_diff` is ready — so the prior "may not be ported" note is
-resolved. Remaining work (its own unit, not unification wiring): (1) port
-`resolveActorOrigin` (unported — resolves ByUser vs ByCharacter+name from the doc-edit
-context); (2) add a `pending_librarian_announcement` field to `DocEditToolResult` (a
-type shared by ~23 handlers) and have the ~8 write handlers
+**Group 6 (Librarian doc-save `change:{created,body}`/`{edited,diff}` coupling) —
+DONE + green** (v4 commit `8617ce7a`). The five mutating doc-edit write handlers
 (`doc_write_file`/`doc_str_replace`/`doc_insert_text`/`doc_update_frontmatter`/
-`doc_update_heading`, + the file-management ones) BUILD the `change:{created,body}` /
-`{edited,diff}` payload from the old/new content; (3) thread the announcement OUT of
-the sync `execute_doc_edit_tool` `Db::write` closure to a post-closure async
-`post_librarian_write_announcement` (the wardrobe-drain `pending*` precedent — NOT a
-new write model); (4) regenerate `doc_text` (26 ops) + `doc_fm` (20 ops) oracles with
-a chat+participant fixture, the Librarian writer un-mocked (the `character-vault-bridge`
-un-mock dance from Group 7), a new `chat_messages` announcement diff, and byte-exact
-persona-content matching. This is comparable to a fresh W4.6b sub-unit (a new ported
-leaf + cross-cutting result-type change + two heavy oracle regens), so it is scoped
-as its own work order rather than forced at unification altitude. Groups 7 & 8 are
-committed on `round3-integration`.
+`doc_update_heading`) now emit the Librarian doc-save announcement: `doc_write_file`
+captures the pre-image before writing (absent → `Created{body}`, present →
+`Edited{diff}`), the four edit handlers build `Edited{diff}` via the W4.d1
+`generate_unified_diff`. Ported `resolveActorOrigin` (`doc_edit::shared::resolve_actor_origin`:
+ByUser vs ByCharacter+name via the slim `characters_read::find_by_id_raw` — `name` is
+not vault-overlaid, so it matches v4's overlaid `findById().name`) + a
+`librarian_scope_from` DocEditScope→LibrarianScope mapper. Added a
+`#[serde(skip)] pending_librarian_announcement: Option<LibrarianWriteAnnouncement>`
+field to the shared `DocEditToolResult` (never serialized — v4 puts `change` only in
+the announcement call, not the tool result, so the ~23-handler result shape is
+byte-unchanged) + a `with_librarian_announcement` chainable setter; each write
+handler builds the announcement inside the synchronous `execute_doc_edit_tool`
+`Db::write` closure and stashes it there, and the executor spine (`run_doc_edit`)
+`take`s it out of the closure return and posts it via the already-ported
+`post_librarian_write_announcement` AFTER the closure returns (the wardrobe-drain
+`pending*` precedent — NOT a new write model; best-effort, a failed post never fails
+the tool). Refactored the writer's message assembly into a shared
+`build_librarian_message` + `write_announcement_message`, and added the synchronous
+`post_librarian_write_announcement_conn` (posts over an already-held RW `main`
+connection) so the direct-drive `doc_text` differential posts the same row. `doc_text`
+regenerated with the write announcement LIVE on the v4 side (un-mocked
+`postLibrarianWriteAnnouncement` + `contentHiddenFromCharacters`/`documentHiddenFromCharacters`;
+the fixture's existing chat+participant now targeted) and a THIRD dumped table — the
+MAIN-db `chat_messages` (ordered by `content`, a remap-invariant key with no minted
+uuid/timestamp in the persona body) — diffing the 10 Librarian rows (8
+edited-by-character + 2 created-by-character) byte-for-byte (persona content + opaque
+content + `systemSender:'librarian'` + per-kind `systemKind` + null targeting).
+`doc_fm`/`doc_ui`/`doc_blob`/`doc_enum`/`tool_dispatch` re-verified green (the additive
+`#[serde(skip)]` field is `None` for every non-write handler; those corpora never
+invoke a write handler). **Tracked deferral (out of G6 scope, a separate seam the port
+still omits):** the file-management / blob / open Librarian announcements (move / copy
+/ delete / folder-created / folder-deleted / open / blob-write) — the writers are all
+ported, but the file_management/blob/document_ui handlers don't yet build+thread them.

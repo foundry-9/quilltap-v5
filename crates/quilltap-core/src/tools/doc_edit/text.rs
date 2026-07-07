@@ -13,9 +13,10 @@ use serde_json::{json, Map, Value};
 
 use super::shared::{
     apply_qtap_uri, arg_bool, arg_i64, arg_str, arg_str_ref, assert_character_may_read,
-    assert_character_may_write, build_read_resolution_context, build_write_resolution_context,
-    collect_peer_character_ids_for_reads, get_accessible_mount_points,
-    get_character_blocked_read_paths, is_text_file, read_file_with_mtime, resolve_error_message,
+    assert_character_may_write, basename, build_read_resolution_context,
+    build_write_resolution_context, collect_peer_character_ids_for_reads,
+    get_accessible_mount_points, get_character_blocked_read_paths, is_text_file,
+    librarian_scope_from, read_file_with_mtime, resolve_actor_origin, resolve_error_message,
     resolve_official_project_mount, scope_from_str, write_file_with_mtime_check,
     DocEditToolContext,
 };
@@ -32,9 +33,13 @@ use crate::doc_edit::mime_registry::{
 };
 use crate::doc_edit::path_resolver::{resolve_doc_edit_path, resolve_mount_point_ref};
 use crate::doc_edit::qtap_uri::ScopedAuthority;
+use crate::doc_edit::unified_diff::generate_unified_diff;
 use crate::doc_edit::uri_producers::{uri_for_resolved_path, DocStoreUriResolver};
 use crate::doc_edit::DocEditScope;
 use crate::folder_utils::{is_automatic_image_path, is_os_cruft_name};
+use crate::services::librarian_notifications::{
+    content_hidden_from_characters, LibrarianWriteAnnouncement, LibrarianWriteChange,
+};
 
 /// The 1-based line number for a UTF-16 code-unit offset in `content` — v4
 /// `getLineNumber` (`text-handlers.ts:66`), which iterates JS string indices
@@ -308,8 +313,15 @@ pub fn handle_write_file(
         }
     }
 
+    // Capture the pre-image before writing so the announcement shows a diff
+    // (existing file) or reports the new contents (creation). An unreadable/absent
+    // pre-image means this is a creation (v4's best-effort try/catch → null).
+    let previous_content: Option<String> = read_file_with_mtime(mount, &resolved)
+        .ok()
+        .map(|d| d.content);
+
     let mtime = write_file_with_mtime_check(mount, &resolved, &content_to_write)?;
-    // triggerReindexIfNeeded + Librarian announcement: no-op seam.
+    // triggerReindexIfNeeded: no-op seam.
     let written_uri = uri_for_resolved_path(
         main,
         mount,
@@ -318,6 +330,26 @@ pub fn handle_write_file(
         None,
         None,
     );
+
+    let display_title = basename(&path).to_string();
+    let change = match &previous_content {
+        None => LibrarianWriteChange::Created {
+            body: content_to_write.clone(),
+        },
+        Some(prev) => LibrarianWriteChange::Edited {
+            diff: generate_unified_diff(prev, &content_to_write, &display_title),
+        },
+    };
+    let announcement = LibrarianWriteAnnouncement {
+        chat_id: ctx.chat_id.clone(),
+        display_title,
+        uri: written_uri.clone(),
+        scope: librarian_scope_from(scope),
+        mount_point: addressing.mount_point.clone(),
+        origin: resolve_actor_origin(main, ctx),
+        change,
+        hidden_from_characters: content_hidden_from_characters(&content_to_write),
+    };
 
     let result = json!({
         "success": true,
@@ -329,7 +361,7 @@ pub fn handle_write_file(
         "File written: {path} ({} bytes, mtime: {mtime})",
         content_to_write.encode_utf16().count()
     );
-    Ok(DocEditToolResult::ok(result, formatted))
+    Ok(DocEditToolResult::ok(result, formatted).with_librarian_announcement(announcement))
 }
 
 /// JS `typeof value` for the non-string-content error (`object`/`number`/…).
@@ -413,6 +445,20 @@ pub fn handle_str_replace(
         None,
     );
 
+    let display_title = basename(&path).to_string();
+    let announcement = LibrarianWriteAnnouncement {
+        chat_id: ctx.chat_id.clone(),
+        uri: edited_uri.clone(),
+        scope: librarian_scope_from(scope),
+        mount_point: addressing.mount_point.clone(),
+        origin: resolve_actor_origin(main, ctx),
+        change: LibrarianWriteChange::Edited {
+            diff: generate_unified_diff(&content, &new_content, &display_title),
+        },
+        display_title,
+        hidden_from_characters: content_hidden_from_characters(&new_content),
+    };
+
     let result = json!({
         "success": true,
         "path": path,
@@ -423,7 +469,7 @@ pub fn handle_str_replace(
     let formatted = format!(
         "Replaced text at line {line_number} in {path} (mtime: {mtime}). Note: your previous read of this file is now stale — re-read before making further edits."
     );
-    Ok(DocEditToolResult::ok(result, formatted))
+    Ok(DocEditToolResult::ok(result, formatted).with_librarian_announcement(announcement))
 }
 
 // --- doc_insert_text ---
@@ -517,6 +563,20 @@ pub fn handle_insert_text(
         None,
     );
 
+    let display_title = basename(&path).to_string();
+    let announcement = LibrarianWriteAnnouncement {
+        chat_id: ctx.chat_id.clone(),
+        uri: edited_uri.clone(),
+        scope: librarian_scope_from(scope),
+        mount_point: addressing.mount_point.clone(),
+        origin: resolve_actor_origin(main, ctx),
+        change: LibrarianWriteChange::Edited {
+            diff: generate_unified_diff(&content, &new_content, &display_title),
+        },
+        display_title,
+        hidden_from_characters: content_hidden_from_characters(&new_content),
+    };
+
     let result = json!({
         "success": true,
         "path": path,
@@ -527,7 +587,7 @@ pub fn handle_insert_text(
     let formatted = format!(
         "Inserted text at {description} (line {line_number}) in {path} (mtime: {mtime}). Note: your previous read of this file is now stale."
     );
-    Ok(DocEditToolResult::ok(result, formatted))
+    Ok(DocEditToolResult::ok(result, formatted).with_librarian_announcement(announcement))
 }
 
 // --- doc_grep ---
