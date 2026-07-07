@@ -138,28 +138,51 @@ pub struct ImageToolExecutionContext {
     pub calling_participant_id: Option<String>,
 }
 
-/// The Lantern image-notification writer seam (v4 `postLanternImageNotification`;
-/// the real personified post is **W4.6b**). Given the chat + saved file + the
-/// requester name, record/post the byte-exact notification. Default: a no-op.
+/// The Lantern image-notification writer seam (v4 `postLanternImageNotification`).
+/// Given the chat + saved file + the requester name, post the byte-exact
+/// `character-image` notification. [`RealLanternNotification`] delegates to the
+/// W4.6b writer ([`crate::services::lantern_notifications`]); [`NoLanternNotification`]
+/// is the off-path no-op.
 pub trait LanternNotificationSink {
-    fn post_character_image(&self, chat_id: &str, file_id: &str, requester_name: &str);
+    fn post_character_image(
+        &self,
+        chat_id: &str,
+        file_id: &str,
+        requester_name: &str,
+    ) -> impl std::future::Future<Output = ()> + Send;
 }
 
-/// A [`LanternNotificationSink`] that does nothing (the default host wiring until
-/// W4.6b lands the personified writer).
+/// A [`LanternNotificationSink`] that does nothing (off-path / read-only callers).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct NoLanternNotification;
 impl LanternNotificationSink for NoLanternNotification {
-    fn post_character_image(&self, _chat_id: &str, _file_id: &str, _requester_name: &str) {}
+    async fn post_character_image(&self, _chat_id: &str, _file_id: &str, _requester_name: &str) {}
 }
 
-/// The byte-exact Lantern character-image notification body (v4
-/// `postLanternImageNotification`'s `character-image` kind). Ported HERE and
-/// handed to W4.6b: the personified writer composes this string.
-pub fn lantern_character_image_notification(requester_name: &str, file_id: &str) -> String {
-    format!(
-        "The Lantern, acting upon the instructions of {requester_name}, has produced the following picture, catalogued under uuid `{file_id}`."
-    )
+/// The production Lantern sink (Round-3 unification): posts the byte-exact
+/// `character-image` notification via the W4.6b writer
+/// [`crate::services::lantern_notifications::post_lantern_image_notification`]
+/// (which composes the canonical `build_content`). Best-effort — the writer
+/// swallows failures.
+pub struct RealLanternNotification<'a> {
+    pub db: &'a Db,
+}
+impl LanternNotificationSink for RealLanternNotification<'_> {
+    async fn post_character_image(&self, chat_id: &str, file_id: &str, requester_name: &str) {
+        let _ = crate::services::lantern_notifications::post_lantern_image_notification(
+            self.db,
+            crate::services::lantern_notifications::LanternPostParams {
+                chat_id: chat_id.to_string(),
+                file_id: file_id.to_string(),
+                kind: crate::services::lantern_notifications::LanternNotificationKind::CharacterImage {
+                    requester_name: requester_name.to_string(),
+                },
+                // The character-image body ignores the prompt (v4 `buildContent`).
+                prompt: None,
+            },
+        )
+        .await;
+    }
 }
 
 // ===========================================================================
@@ -2209,10 +2232,11 @@ where
             })?;
         match result {
             Ok(r) => {
-                // Fire-and-forget the Lantern notification (off the writer thread).
+                // Post the Lantern notification (off the writer thread).
                 if let Some(chat_id) = ctx.chat_id.as_deref() {
                     deps.lantern
-                        .post_character_image(chat_id, &r.id, &requester_name);
+                        .post_character_image(chat_id, &r.id, &requester_name)
+                        .await;
                 }
                 saved.push(r);
             }

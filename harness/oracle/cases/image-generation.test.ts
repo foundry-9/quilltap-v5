@@ -288,10 +288,9 @@ async function main(): Promise<void> {
         getDefaultProvider: () => null,
       },
     }));
-    jest.doMock('@/lib/services/lantern-notifications/writer', () => ({
-      __esModule: true,
-      postLanternImageNotification: async () => undefined,
-    }));
+    // Round-3 unification (Group 4): the Lantern character-image notification runs
+    // LIVE (RealLanternNotification on the Rust side) so its byte-exact persisted
+    // content is diffed via `lanternContent` below.
     // The avatar-trigger enqueue calls ensureProcessorRunning, which auto-starts
     // v4's in-process job runner and CLAIMS the PENDING job (→ PROCESSING, attempts++,
     // startedAt) before the dump. The Rust queue_service fires a no-op wake hook (no
@@ -373,6 +372,15 @@ async function main(): Promise<void> {
           doc_mount_folders: dumpMount('doc_mount_folders', 'path'),
           files: await dumpMain('files', 'sha256'),
         };
+        // Round-3 Group 4: the persisted Lantern `character-image` notification body
+        // (proves the full byte-exact content, incl. the "attached here" tail the
+        // old placeholder truncated). The inline file uuid is uuid-normalized on both
+        // sides in the harness.
+        const lanternRows = (await rawQuery(
+          `SELECT content FROM chat_messages WHERE chatId = ? AND systemSender = 'lantern' AND systemKind = 'character-image'`,
+          [chat.id],
+        )) as Array<{ content: string }>;
+        record.lanternContent = lanternRows.length > 0 ? lanternRows[0].content : null;
       } else {
         const { triggerAvatarGenerationIfEnabled } = await import('@/lib/wardrobe/avatar-generation');
         await triggerAvatarGenerationIfEnabled(repos, {

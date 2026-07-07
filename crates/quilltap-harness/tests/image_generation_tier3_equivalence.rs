@@ -75,7 +75,7 @@ use quilltap_core::services::dangerous_content::gatekeeper::NoModerationProvider
 use quilltap_core::services::dangerous_content::provider_routing::ApiKeyResolver;
 use quilltap_core::tools::generate_image::{
     execute_image_generation_tool, ImageGenDeps, ImageGenerationToolInput,
-    ImageToolExecutionContext, NoLanternNotification,
+    ImageToolExecutionContext, RealLanternNotification,
 };
 use serde::Deserialize;
 use serde_json::{Map, Value};
@@ -162,6 +162,10 @@ struct ResultRow {
     result_json: String,
     #[serde(default)]
     dumps: Option<HashMap<String, Value>>,
+    /// Round-3 Group 4: the persisted Lantern `character-image` notification body
+    /// (`None` when nothing was posted). The inline file uuid is uuid-normalized.
+    #[serde(default, rename = "lanternContent")]
+    lantern_content: Option<String>,
 }
 
 // ===========================================================================
@@ -608,7 +612,6 @@ fn image_generation_matches_oracle() {
     let api_keys = CannedApiKeys(spec.api_keys.clone());
     let moderation = NoModerationProvider;
     let transcoder = PassthroughTranscoder;
-    let lantern = NoLanternNotification;
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -645,6 +648,9 @@ fn image_generation_matches_oracle() {
 
         if case.op == "generate" {
             let executor = CheapLlmTaskExecutor::new();
+            // Round-3 Group 4: the REAL Lantern sink posts the character-image
+            // notification to this chat; its persisted content is diffed below.
+            let lantern = RealLanternNotification { db: &db };
             let deps = ImageGenDeps {
                 image_provider: &image_provider,
                 completion: &completion,
@@ -721,6 +727,27 @@ fn image_generation_matches_oracle() {
                     label, s.table, got_dumps[i]["rows"], want_dumps[i]["rows"]
                 );
             }
+
+            // Round-3 Group 4: the persisted Lantern character-image notification
+            // body (byte-exact, incl. the tail the old placeholder truncated). The
+            // inline file uuid is uuid-normalized on both sides.
+            let cid = chat_id.clone();
+            let messages = db
+                .read_main(move |c| quilltap_core::db::chats_messages_read::get_messages(c, &cid))
+                .expect("get_messages");
+            let got_lantern = messages.iter().find(|m| {
+                m.get("systemSender").and_then(Value::as_str) == Some("lantern")
+                    && m.get("systemKind").and_then(Value::as_str) == Some("character-image")
+            });
+            let got_content = got_lantern
+                .and_then(|m| m.get("content").and_then(Value::as_str))
+                .map(norm_uuids_in_string);
+            let want_content = want.lantern_content.as_deref().map(norm_uuids_in_string);
+            assert_eq!(
+                got_content, want_content,
+                "{}: lantern character-image content diverged\n  rust:   {:?}\n  oracle: {:?}",
+                label, got_content, want_content
+            );
         } else {
             // Avatar trigger.
             let params = AvatarGenerationParams {
@@ -833,15 +860,6 @@ fn num(f: f64) -> Value {
     }
 }
 
-/// The byte-exact Lantern character-image notification string is asserted here
-/// (the oracle mocks the notification to a no-op, so this pins the ported text).
-#[test]
-fn lantern_notification_string_is_byte_exact() {
-    let s = quilltap_core::tools::generate_image::lantern_character_image_notification(
-        "Aurora", "abc-123",
-    );
-    assert_eq!(
-        s,
-        "The Lantern, acting upon the instructions of Aurora, has produced the following picture, catalogued under uuid `abc-123`."
-    );
-}
+// Round-3 Group 4: the byte-exact Lantern character-image notification content is
+// now proven end-to-end via the persisted `lanternContent` diff (above) against the
+// REAL writer — the old truncated-placeholder assertion is retired.

@@ -4,6 +4,15 @@
 
 ### 5.0-dev
 
+Phase 3 — Round-3 unification (Group 4, Lantern sink rewire): deleted the truncated
+`lantern_character_image_notification` placeholder in `generate_image` and wired the
+W4.9a Lantern sink to the canonical W4.6b writer. `LanternNotificationSink` is now
+async with a `RealLanternNotification` impl delegating to
+`lantern_notifications::post_lantern_image_notification` (which composes the full
+byte-exact `build_content`, incl. the "attached here" tail the placeholder dropped).
+Regenerated `image_generation_tier3` with the Lantern writer un-mocked and the
+persisted `character-image` notification content diffed byte-exact.
+
 Phase 3 — Round-3 unification (Group 3, end-of-turn wardrobe drain): the
 `processMessage` spine now threads ONE shared `pendingWardrobeAnnouncements` set
 through every per-turn tool context (native loop + text passes) and drains it at
