@@ -1,0 +1,326 @@
+{
+  "testPepperBase64": "3q2+796tvu/erb7v3q2+796tvu/erb7v3q2+796tvu8=",
+  "userId": "814ddefe-7908-46aa-ad4c-a1e2907df171",
+  "seedTimestamp": "2020-01-01T00:00:00.000Z",
+  "chatSettingsId": "acce7000-0000-4000-8000-000000000001",
+  "projectOnId": "acc90001-0000-4000-8000-000000000001",
+  "characters": [
+    {
+      "id": "acc0c400-0000-4000-8000-000000000001",
+      "name": "Aurora",
+      "controlledBy": "llm",
+      "talkativeness": 0.5
+    }
+  ],
+  "cheapSelection": {
+    "provider": "ANTHROPIC",
+    "modelName": "claude-haiku",
+    "connectionProfileId": "acc0f001-0000-4000-8000-000000000001",
+    "isLocal": false
+  },
+  "connectionProfile": {
+    "id": "acc0f002-0000-4000-8000-000000000002",
+    "provider": "ANTHROPIC",
+    "modelName": "claude-sonnet",
+    "baseUrl": null,
+    "parameters": null
+  },
+  "uncensoredProfile": {
+    "id": "acc0f003-0000-4000-8000-000000000003",
+    "provider": "OLLAMA",
+    "modelName": "dolphin",
+    "isDangerousCompatible": true
+  },
+  "project": {
+    "id": "acc90001-0000-4000-8000-000000000001",
+    "name": "Project ON",
+    "answerConfirmationOverride": "ON"
+  },
+  "checkRules": {
+    "gate_project_on_global_false": "{\"consistent\":true,\"discrepancies\":\"\"}",
+    "gate_global_on": "{\"consistent\":true,\"discrepancies\":\"\"}",
+    "whisper_only_consistent": "{\"consistent\":true,\"discrepancies\":\"\"}",
+    "whisper_and_tool": "{\"consistent\":true,\"discrepancies\":\"\"}",
+    "truncation": "{\"consistent\":true,\"discrepancies\":\"\"}",
+    "inconsistent_standby": "{\"consistent\":false,\"discrepancies\":\"the reply says 300m but the lookup returned 324m\"}",
+    "inconsistent_revise": "{\"consistent\":false,\"discrepancies\":\"height mismatch\"}",
+    "inconsistent_revise_empty": "{\"consistent\":false,\"discrepancies\":\"height mismatch\"}",
+    "check_parse_failure": "the model rambled and produced no JSON here",
+    "dangerous_escalation": "{\"consistent\":true,\"discrepancies\":\"\"}"
+  },
+  "reaffRules": {
+    "inconsistent_standby": "{\"revise\":false}",
+    "inconsistent_revise": "{\"revise\":true,\"reply\":\"The tower is 324 meters tall.\"}",
+    "inconsistent_revise_empty": "{\"revise\":true}"
+  },
+  "calls": [
+    {
+      "name": "gate_chat_off_beats_project_on",
+      "chatId": "acc0a700-0000-4000-8000-000000000001",
+      "participantId": "acc0a710-0000-4000-8000-000000000001",
+      "assistantMessageId": "acc09000-0000-4000-8000-000000000001",
+      "whisperMessageId": "acc0b000-0000-4000-8000-000000000001",
+      "projectId": "acc90001-0000-4000-8000-000000000001",
+      "chatOverride": "OFF",
+      "globalEnabled": true,
+      "impersonated": false,
+      "silent": false,
+      "whisper": "Aurora recalled the tower height is 324 meters.",
+      "toolMessages": [],
+      "reply": "The tower stands proud. [[CASE:gate_chat_off_beats_project_on]]",
+      "expectActive": false
+    },
+    {
+      "name": "gate_project_on_global_false",
+      "chatId": "acc0a700-0000-4000-8000-000000000002",
+      "participantId": "acc0a710-0000-4000-8000-000000000002",
+      "assistantMessageId": "acc09000-0000-4000-8000-000000000002",
+      "whisperMessageId": "acc0b000-0000-4000-8000-000000000002",
+      "projectId": "acc90001-0000-4000-8000-000000000001",
+      "chatOverride": null,
+      "globalEnabled": false,
+      "impersonated": false,
+      "silent": false,
+      "whisper": "Aurora recalled the tower height is 324 meters.",
+      "toolMessages": [],
+      "reply": "The tower is grand. [[CASE:gate_project_on_global_false]]",
+      "expectActive": true
+    },
+    {
+      "name": "gate_global_on",
+      "chatId": "acc0a700-0000-4000-8000-000000000003",
+      "participantId": "acc0a710-0000-4000-8000-000000000003",
+      "assistantMessageId": "acc09000-0000-4000-8000-000000000003",
+      "whisperMessageId": "acc0b000-0000-4000-8000-000000000003",
+      "projectId": null,
+      "chatOverride": null,
+      "globalEnabled": true,
+      "impersonated": false,
+      "silent": false,
+      "whisper": null,
+      "toolMessages": [
+        {
+          "toolName": "search",
+          "success": true,
+          "content": "Result: 324m",
+          "arguments": {
+            "query": "tower height"
+          }
+        }
+      ],
+      "reply": "The tower is tall. [[CASE:gate_global_on]]",
+      "expectActive": true
+    },
+    {
+      "name": "gate_fully_off",
+      "chatId": "acc0a700-0000-4000-8000-000000000004",
+      "participantId": "acc0a710-0000-4000-8000-000000000004",
+      "assistantMessageId": "acc09000-0000-4000-8000-000000000004",
+      "whisperMessageId": "acc0b000-0000-4000-8000-000000000004",
+      "projectId": null,
+      "chatOverride": null,
+      "globalEnabled": false,
+      "impersonated": false,
+      "silent": false,
+      "whisper": "Aurora recalled the tower height is 324 meters.",
+      "toolMessages": [],
+      "reply": "The tower is old. [[CASE:gate_fully_off]]",
+      "expectActive": false
+    },
+    {
+      "name": "user_driven",
+      "chatId": "acc0a700-0000-4000-8000-000000000005",
+      "participantId": "acc0a710-0000-4000-8000-000000000005",
+      "assistantMessageId": "acc09000-0000-4000-8000-000000000005",
+      "whisperMessageId": "acc0b000-0000-4000-8000-000000000005",
+      "projectId": null,
+      "chatOverride": null,
+      "globalEnabled": true,
+      "impersonated": true,
+      "silent": false,
+      "whisper": "Aurora recalled the tower height is 324 meters.",
+      "toolMessages": [
+        {
+          "toolName": "search",
+          "success": true,
+          "content": "Result: 324m",
+          "arguments": {
+            "query": "tower height"
+          }
+        }
+      ],
+      "reply": "The tower is grey. [[CASE:user_driven]]",
+      "expectActive": false
+    },
+    {
+      "name": "no_checkable_inputs",
+      "chatId": "acc0a700-0000-4000-8000-000000000006",
+      "participantId": "acc0a710-0000-4000-8000-000000000006",
+      "assistantMessageId": "acc09000-0000-4000-8000-000000000006",
+      "whisperMessageId": "acc0b000-0000-4000-8000-000000000006",
+      "projectId": null,
+      "chatOverride": "ON",
+      "globalEnabled": false,
+      "impersonated": false,
+      "silent": false,
+      "whisper": null,
+      "toolMessages": [
+        {
+          "toolName": "doc_list_files",
+          "success": true,
+          "content": "listing",
+          "arguments": {}
+        }
+      ],
+      "reply": "The tower is silent. [[CASE:no_checkable_inputs]]",
+      "expectActive": false
+    },
+    {
+      "name": "whisper_only_consistent",
+      "chatId": "acc0a700-0000-4000-8000-000000000007",
+      "participantId": "acc0a710-0000-4000-8000-000000000007",
+      "assistantMessageId": "acc09000-0000-4000-8000-000000000007",
+      "whisperMessageId": "acc0b000-0000-4000-8000-000000000007",
+      "projectId": null,
+      "chatOverride": "ON",
+      "globalEnabled": false,
+      "impersonated": false,
+      "silent": false,
+      "whisper": "Aurora recalled the tower height is 324 meters.",
+      "toolMessages": [],
+      "reply": "The tower reaches skyward. [[CASE:whisper_only_consistent]]",
+      "expectActive": true
+    },
+    {
+      "name": "whisper_and_tool",
+      "chatId": "acc0a700-0000-4000-8000-000000000008",
+      "participantId": "acc0a710-0000-4000-8000-000000000008",
+      "assistantMessageId": "acc09000-0000-4000-8000-000000000008",
+      "whisperMessageId": "acc0b000-0000-4000-8000-000000000008",
+      "projectId": null,
+      "chatOverride": "ON",
+      "globalEnabled": false,
+      "impersonated": false,
+      "silent": false,
+      "whisper": "Aurora recalled the tower height is 324 meters.",
+      "toolMessages": [
+        {
+          "toolName": "read_conversation",
+          "success": true,
+          "content": "prior turn: the tower",
+          "arguments": {
+            "limit": 5
+          }
+        },
+        {
+          "toolName": "doc_list_files",
+          "success": true,
+          "content": "SHOULD BE EXCLUDED",
+          "arguments": {}
+        }
+      ],
+      "reply": "The tower endures. [[CASE:whisper_and_tool]]",
+      "expectActive": true
+    },
+    {
+      "name": "truncation",
+      "chatId": "acc0a700-0000-4000-8000-000000000009",
+      "participantId": "acc0a710-0000-4000-8000-000000000009",
+      "assistantMessageId": "acc09000-0000-4000-8000-000000000009",
+      "whisperMessageId": "acc0b000-0000-4000-8000-000000000009",
+      "projectId": null,
+      "chatOverride": "ON",
+      "globalEnabled": false,
+      "impersonated": false,
+      "silent": false,
+      "whisperRepeat": {
+        "unit": "Aurora recalled a very long fact about the tower (café résumé) ",
+        "times": 900
+      },
+      "toolMessages": [],
+      "reply": "The tower is vast. [[CASE:truncation]]",
+      "expectActive": true
+    },
+    {
+      "name": "inconsistent_standby",
+      "chatId": "acc0a700-0000-4000-8000-000000000010",
+      "participantId": "acc0a710-0000-4000-8000-000000000010",
+      "assistantMessageId": "acc09000-0000-4000-8000-000000000010",
+      "whisperMessageId": "acc0b000-0000-4000-8000-000000000010",
+      "projectId": null,
+      "chatOverride": "ON",
+      "globalEnabled": false,
+      "impersonated": false,
+      "silent": false,
+      "whisper": "Aurora recalled the tower height is 324 meters.",
+      "toolMessages": [],
+      "reply": "The tower is 300 meters tall. [[CASE:inconsistent_standby]]",
+      "expectActive": true
+    },
+    {
+      "name": "inconsistent_revise",
+      "chatId": "acc0a700-0000-4000-8000-000000000011",
+      "participantId": "acc0a710-0000-4000-8000-000000000011",
+      "assistantMessageId": "acc09000-0000-4000-8000-000000000011",
+      "whisperMessageId": "acc0b000-0000-4000-8000-000000000011",
+      "projectId": null,
+      "chatOverride": "ON",
+      "globalEnabled": false,
+      "impersonated": false,
+      "silent": false,
+      "whisper": "Aurora recalled the tower height is 324 meters.",
+      "toolMessages": [],
+      "reply": "The tower is 300 meters tall. [[CASE:inconsistent_revise]]",
+      "expectActive": true
+    },
+    {
+      "name": "inconsistent_revise_empty",
+      "chatId": "acc0a700-0000-4000-8000-000000000012",
+      "participantId": "acc0a710-0000-4000-8000-000000000012",
+      "assistantMessageId": "acc09000-0000-4000-8000-000000000012",
+      "whisperMessageId": "acc0b000-0000-4000-8000-000000000012",
+      "projectId": null,
+      "chatOverride": "ON",
+      "globalEnabled": false,
+      "impersonated": false,
+      "silent": false,
+      "whisper": "Aurora recalled the tower height is 324 meters.",
+      "toolMessages": [],
+      "reply": "The tower is 300 meters tall. [[CASE:inconsistent_revise_empty]]",
+      "expectActive": true
+    },
+    {
+      "name": "check_parse_failure",
+      "chatId": "acc0a700-0000-4000-8000-000000000013",
+      "participantId": "acc0a710-0000-4000-8000-000000000013",
+      "assistantMessageId": "acc09000-0000-4000-8000-000000000013",
+      "whisperMessageId": "acc0b000-0000-4000-8000-000000000013",
+      "projectId": null,
+      "chatOverride": "ON",
+      "globalEnabled": false,
+      "impersonated": false,
+      "silent": false,
+      "whisper": "Aurora recalled the tower height is 324 meters.",
+      "toolMessages": [],
+      "reply": "The tower is confusing. [[CASE:check_parse_failure]]",
+      "expectActive": true
+    },
+    {
+      "name": "dangerous_escalation",
+      "chatId": "acc0a700-0000-4000-8000-000000000014",
+      "participantId": "acc0a710-0000-4000-8000-000000000014",
+      "assistantMessageId": "acc09000-0000-4000-8000-000000000014",
+      "whisperMessageId": "acc0b000-0000-4000-8000-000000000014",
+      "projectId": null,
+      "chatOverride": "ON",
+      "globalEnabled": false,
+      "impersonated": false,
+      "silent": false,
+      "dangerous": true,
+      "whisper": "Aurora recalled the tower height is 324 meters.",
+      "toolMessages": [],
+      "reply": "The tower is fierce. [[CASE:dangerous_escalation]]",
+      "expectActive": true
+    }
+  ]
+}

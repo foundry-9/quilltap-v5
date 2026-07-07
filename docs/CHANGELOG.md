@@ -4,6 +4,36 @@
 
 ### 5.0-dev
 
+Phase 3 — wave 4 (W4.3): the answer-confirmation service. Ported v4's
+`answer-confirmation.service.ts` (the pre-landing Salon consistency check +
+re-affirmation): the gate/leaf functions (`isAnswerConfirmationActive`,
+`hasCheckableInputs`, `findLatestCommonplaceWhisper`, `isUserDrivenTurn`,
+`gatherConfirmationInputs` with the 24 K oldest-first reference truncation) and
+`runAnswerConfirmation` (the cheap-LLM consistency check, the fenced-JSON verdict
+parser, the uncensored escalation of the check's cheap selection on a dangerous
+chat, and the re-affirmation pass on the character's own model — consistent →
+confirmed; stood by → not-confirmed + notes; rewrote → confirmed + revised +
+original stashed; empty rewrite / parse failure / error → could-not-verify). The
+byte-exact prompts live in a generated `prompt_text` submodule. The finalizer
+seam (`NoAnswerConfirmation`) is closed with the real runner at the composition
+point: the finalizer now reads the prior messages, finds the Commonplace whisper,
+assembles the reference, emits the `confirming` / `affirming` status frames, and
+applies the outcome (the rewrite's tool-anchor drop + reasoning collapse). The
+finalizer's `isAnswerConfirmationActive` / `isUserDrivenTurn` gate leaves were
+hoisted into the service (single source of truth). Verified by
+`answer_confirmation_tier3_equivalence` — a jest real-DB oracle driving v4's real
+`finalizeMessageResponse` with the feature ON over a 14-case corpus (the gate
+matrix, user-driven skip, no-checkable-inputs skip, whisper-only /
+whisper-plus-tool references, the 24 K truncation, every outcome band, and the
+dangerous-chat escalation whose recorded canned key proves the cheap-profile
+switch to the uncensored profile), completions pinned by oracle-recorded canned
+keys; results + the ordered event trace + `chats` / `chat_messages` diffed. The
+timeout wrappers are host-side (no tokio timers in the core; only the
+failure→could-not-verify mapping is ported). Re-verified
+`message_finalizer_tier3` + `orchestrator_tier3` green against regenerated
+oracles. Full workspace `cargo test` / `clippy -D warnings` / `fmt --check`
+green.
+
 Integration of the five parallel wave-4 units (W4.7a / W4.7b / W4.2u / W4.8 /
 W4.9b), each developed and verified in isolation. Two reconciliation touches:
 the two independent ports of `doc_mount_file_links.findByIdWithContent` were

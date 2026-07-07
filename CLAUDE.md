@@ -3003,6 +3003,68 @@ enqueue via `queue_service` is a recorded seam this round), the chunker
 fallback (non-deterministic, never hit — a photo filename embeds a millisecond
 ISO timestamp).
 
+**Wave 4 (W4.3): the answer-confirmation service is DONE** (2026-07-06,
+`services::answer_confirmation`), closing the finalizer's `NoAnswerConfirmation`
+seam with the real runner. Ported v4's `answer-confirmation.service.ts` — the
+Salon pre-landing consistency check + re-affirmation: the gate/leaf functions
+(`is_answer_confirmation_active` three-level cascade [chat > project > global,
+`'OFF'` beats an inherited `'ON'`], `has_checkable_inputs` over the static
+`CONFIRMATION_READ_TOOLS` set, `find_latest_commonplace_whisper` [backward scan
+for the last `systemSender:'commonplaceBook'` message targeting this participant],
+`is_user_driven_turn`, and `gather_confirmation_inputs` — the reference block
+[whisper section + per-tool `=== Lookup result ===` sections] with the
+`REFERENCE_CHAR_BUDGET = 24_000` UTF-16 oldest-first truncation) and
+`run_answer_confirmation` (never-throws): the consistency check over
+`CheapLlmTaskExecutor` + `CompletionProvider` (the `CONSISTENCY_SYSTEM_PROMPT` +
+the `--- REFERENCE INFORMATION --- / --- REPLY TO CHECK ---` user message, byte
+bodies in a generated `prompt_text` submodule), the fenced-JSON verdict parser
+(v4's `extractJson` — a fence-anywhere/first-`{…}` extractor, DISTINCT from the
+leading/trailing `strip_code_fences`; throws on parse failure → could-not-verify),
+the **uncensored escalation** of the check's cheap selection on a dangerous chat
+(composing the ported `is_chat_active_dangerous` + `resolve_uncensored_cheap_llm_selection`
+— the re-affirmation stays on the character's OWN profile, NOT escalated), and the
+re-affirmation pass with its four outcome mappings (rewrite+reply →
+confirmed:true/revised + notes + `revisedContent`; rewrite+empty → confirmed:null;
+stood-by → confirmed:false; error → confirmed:null with notes). The finalizer's
+gate leaves (`isAnswerConfirmationActive` / `isUserDrivenTurn`) were HOISTED into
+the service (single source of truth); the finalizer seam is now a generic
+`RealAnswerConfirmation` runner (async, over an injected `CompletionProvider` +
+the shared executor) — the finalizer reads the prior messages, finds the whisper,
+gathers the reference, emits the `confirming` status frame, calls the runner (which
+fires the `affirming` frame via an `on_affirming` callback before the re-affirmation
+pass), and applies the rewrite's tool-anchor drop + reasoning collapse to a single
+offset-0 block. Added `jsstr::utf16_slice_from` (JS `.slice(start)`) and
+`FinalizerConfirmationInputs` (cheap selection + connection profile + danger
+settings + available profiles, threaded from the orchestrator composition point; the
+project override is resolved above the seam into
+`FinalizerChat::answer_confirmation_project_override`). **Timeouts are host-side**
+(v4's 25 s / 60 s `withTimeout` — no tokio timers in the core, only the
+failure→could-not-verify mapping is ported, the gate 500 ms-delay precedent).
+Verified by `answer_confirmation_tier3_equivalence` — a jest real-DB oracle driving
+v4's REAL `finalizeMessageResponse` with the feature ON over a 14-case corpus
+(chat-OFF-beats-project-ON / project-ON-global-false / global-on / fully-off gate
+matrix; the user-driven skip [`confirmed:null` + event, no LLM call — proven by the
+canned-miss]; the no-checkable-inputs silent skip; whisper-only + whisper-plus-tool
+references [an out-of-scope tool excluded]; the 24 K oldest-first truncation with a
+non-ASCII row; consistent→true; inconsistent→standby→false+notes;
+inconsistent→revise→true/revised+original-stashed+`content`-event;
+revise-empty→null; check-parse-failure→null; and the dangerous escalation whose
+recorded canned key proves the check's cheap-profile switch to OLLAMA/dolphin while
+the re-affirmation stays on the character's ANTHROPIC/claude-sonnet), completions
+pinned by oracle-recorded canned keys; each op's result + the ordered event trace
+(`confirming`/`affirming`/`confirmationResult`/`done`) + `chats` / `chat_messages`
+diffed (sentinel-aware minted timestamps; the `confirmation*` columns exact; the
+minted TOOL-row ids placeholdered, everything else pinned). Plus 15 module
+self-tests (all leaves + all `run_answer_confirmation` outcome bands over a canned
+provider). `message_finalizer_tier3` + `orchestrator_tier3` re-verified green
+against regenerated oracles (the orchestrator corpus keeps the feature OFF — the
+gate is never active in the spine; the answer-confirmation differential drives the
+finalizer directly with it ON). **Tracked deferrals:** the timeout timers (host);
+the orchestrator spine's real cheap-LLM-selection / danger-settings / available-
+profiles plumbing into `FinalizerConfirmationInputs` (the same seam boundary as the
+compression `cheapLLMSelection` — the feature-off orchestrator corpus keeps the
+inputs inert); `logLLMCall`'s `ANSWER_CONFIRMATION` log-type mapping (host-side).
+
 **The Phase-3 endgame is fully planned (2026-07-06).** Every remaining unit
 has an agent-ready work order checked in under
 `docs/developer/porting/work-orders/` — W4.2u (the danger spine unification

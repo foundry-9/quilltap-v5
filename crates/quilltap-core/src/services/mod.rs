@@ -27,6 +27,7 @@
 //!   injected; verified by a plain tier-2 differential.
 
 pub mod agent_mode;
+pub mod answer_confirmation;
 pub mod build_context;
 pub mod carina_runner;
 pub mod chat_events;

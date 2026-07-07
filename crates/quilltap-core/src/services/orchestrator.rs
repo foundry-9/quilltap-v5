@@ -389,7 +389,7 @@ where
     EMB: EmbeddingProvider,
     CMP: CompletionProvider,
     STR: StreamingCompletionProvider,
-    SNK: EventSink,
+    SNK: EventSink + Sync,
     BCS: BuildContextSeams,
     ORC: OrchestratorSeams,
     RTR: DangerousContentRouter,
@@ -467,7 +467,7 @@ where
     EMB: EmbeddingProvider,
     CMP: CompletionProvider,
     STR: StreamingCompletionProvider,
-    SNK: EventSink,
+    SNK: EventSink + Sync,
     BCS: BuildContextSeams,
     ORC: OrchestratorSeams,
     RTR: DangerousContentRouter,
@@ -1685,6 +1685,15 @@ where
                 // v4's finalizer enqueues memory-extraction + danger-classification
                 // with this, NOT the rerouted `effectiveProfile.id`.
                 connection_profile_id: json_str(&connection_profile, "id").unwrap_or_default(),
+                // W4.3: the answer-confirmation inputs. The orchestrator corpus keeps
+                // the feature OFF (the gate is never active in `process_message`), so
+                // the runner is never invoked here — the empty inputs are inert. The
+                // real cheap-LLM selection / connection-profile / danger-settings
+                // plumbing for the spine is a tracked deferral (the same seam boundary
+                // as the compression `cheapLLMSelection` the orchestrator seams); the
+                // active path is proven by `answer_confirmation_tier3_equivalence`,
+                // which drives the finalizer directly with the feature ON.
+                confirmation: message_finalizer::FinalizerConfirmationInputs::default(),
             },
             deps.confirmation,
             deps.compression,
@@ -1864,7 +1873,7 @@ where
     EMB: EmbeddingProvider,
     CMP: CompletionProvider,
     STR: StreamingCompletionProvider,
-    SNK: EventSink,
+    SNK: EventSink + Sync,
     BCS: BuildContextSeams,
     ORC: OrchestratorSeams,
     RTR: DangerousContentRouter,
@@ -1988,7 +1997,7 @@ where
     EMB: EmbeddingProvider,
     CMP: CompletionProvider,
     STR: StreamingCompletionProvider,
-    SNK: EventSink,
+    SNK: EventSink + Sync,
     BCS: BuildContextSeams,
     ORC: OrchestratorSeams,
     RTR: DangerousContentRouter,
@@ -2415,6 +2424,12 @@ fn to_finalizer_chat(chat: &Value) -> FinalizerChat {
         chat_type: json_str(chat, "chatType"),
         project_id: json_str(chat, "projectId"),
         answer_confirmation_override: json_str(chat, "answerConfirmationOverride"),
+        // W4.3: the project override is a host-side `repos.projects.findById` read,
+        // resolved above the seam. The orchestrator corpus keeps the feature OFF
+        // (the gate is never active), so the project override is never consulted;
+        // the answer-confirmation differential drives the finalizer directly and
+        // supplies this when a project override would flip the gate ON.
+        answer_confirmation_project_override: None,
         impersonating_participant_ids: json_str_array(chat, "impersonatingParticipantIds"),
         participants: chat
             .get("participants")

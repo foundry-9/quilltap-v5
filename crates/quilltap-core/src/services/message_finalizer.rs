@@ -71,6 +71,7 @@
 
 use serde_json::{json, Value};
 
+use crate::cheap_llm::{CheapLlmSelection, UncensoredFallbackOptions};
 use crate::db::runtime::Db;
 use crate::db::{chats_messages_read, chats_read, DbError};
 use crate::message_formatter::{
@@ -83,6 +84,7 @@ use crate::select_speaker::{
 };
 use crate::turn_state::{calculate_turn_state_from_history, MessageView};
 
+use super::answer_confirmation::{self, AnswerConfirmationOutcome, ReaffirmationProfile};
 use super::carina_runner::{
     run_carina_markup_query, CarinaMarkupLogLabels, CarinaMarkupOptions, NoCallbacks,
     PostProsperoCarinaError, RunCarinaQuery,
@@ -91,6 +93,7 @@ use super::chat_events::{
     ChatEvent, DoneCacheUsage, DonePayload, DoneReasoningSegment, DoneTurn, DoneUsage, EventSink,
     Omittable,
 };
+use super::cheap_llm_exec::CheapLlmTaskExecutor;
 use super::primary_stream::{
     save_assistant_message, AssistantMessageContext, ConfirmationField, ConfirmationFields,
     ReasoningSegment,
@@ -137,29 +140,101 @@ struct ResponseRngArguments {
 // Injected seams
 // ===========================================================================
 
-/// The answer-confirmation runner seam — v4 `runAnswerConfirmation`. The corpus
-/// only exercises the SKIP gates (user-driven / silent / inactive), so this is
-/// never invoked; it exists for signature parity with the active path (wave 4).
+/// The answer-confirmation runner seam — v4 `runAnswerConfirmation` (W4.3, now
+/// REAL). The finalizer resolves the gate + builds the reference, then calls the
+/// runner to run the consistency check + optional re-affirmation (the model
+/// boundary). Async because the pass makes cheap-LLM calls; the production impl
+/// ([`RealAnswerConfirmation`]) composes
+/// [`crate::services::answer_confirmation::run_answer_confirmation`] over an
+/// injected [`CompletionProvider`](crate::model::completion::CompletionProvider).
+/// The `on_affirming` callback is fired inside the runner just before the
+/// re-affirmation pass (v4 `onAffirming`), so the finalizer can emit the
+/// `affirming` status frame.
 pub trait AnswerConfirmationRunner {
-    /// Run the consistency check + optional re-affirmation (v4
-    /// `AnswerConfirmationOutcome`). Never fired by the corpus.
-    fn run(&mut self, _reply: &str, _reference: &str) -> AnswerConfirmationOutcome {
-        AnswerConfirmationOutcome::default()
+    fn run<'a>(
+        &'a self,
+        opts: FinalizerConfirmationRun<'a>,
+        on_affirming: &'a dyn AcOnAffirming,
+    ) -> impl std::future::Future<Output = AnswerConfirmationOutcome> + Send + 'a;
+}
+
+/// The inputs the finalizer hands the confirmation runner (v4
+/// `runAnswerConfirmation`'s options, minus the reference/whisper the finalizer
+/// itself assembles from the ported leaves).
+pub struct FinalizerConfirmationRun<'a> {
+    pub reply: &'a str,
+    pub reference: &'a str,
+    pub user_id: &'a str,
+    pub chat_id: &'a str,
+    pub message_id: &'a str,
+    pub character_id: &'a str,
+    /// The already-resolved cheap-LLM selection (v4 `compression.cheapLLMSelection`).
+    /// `None` → the runner returns `confirmed: null` (v4's `if (!cheapLLMSelection)`).
+    pub cheap_llm_selection: Option<&'a CheapLlmSelection>,
+    /// The character's OWN model, used verbatim for the re-affirmation pass.
+    pub connection_profile: &'a ReaffirmationProfile,
+    pub is_dangerous_chat: bool,
+    /// The uncensored-fallback options for the check's cheap selection.
+    pub uncensored_fallback: Option<&'a UncensoredFallbackOptions<'a>>,
+}
+
+/// The re-affirmation status-frame callback (v4 `onAffirming`).
+pub use crate::services::answer_confirmation::OnAffirming as AcOnAffirming;
+
+/// The production answer-confirmation runner — composes the real service
+/// ([`crate::services::answer_confirmation::run_answer_confirmation`]) over an
+/// injected [`CompletionProvider`](crate::model::completion::CompletionProvider) +
+/// the shared [`CheapLlmTaskExecutor`]. Holds both by reference so the same
+/// executor's no-custom-temperature cache is shared across the turn's cheap calls.
+pub struct RealAnswerConfirmation<'e, C> {
+    pub completion: &'e C,
+    pub executor: &'e CheapLlmTaskExecutor,
+}
+
+impl<C: crate::model::completion::CompletionProvider + Sync> AnswerConfirmationRunner
+    for RealAnswerConfirmation<'_, C>
+{
+    async fn run<'a>(
+        &'a self,
+        opts: FinalizerConfirmationRun<'a>,
+        on_affirming: &'a dyn AcOnAffirming,
+    ) -> AnswerConfirmationOutcome {
+        let run_opts = crate::services::answer_confirmation::RunAnswerConfirmationOptions {
+            reply: opts.reply,
+            reference: opts.reference,
+            user_id: opts.user_id,
+            chat_id: opts.chat_id,
+            message_id: Some(opts.message_id),
+            character_id: Some(opts.character_id),
+            cheap_llm_selection: opts.cheap_llm_selection,
+            connection_profile: opts.connection_profile,
+            is_dangerous_chat: opts.is_dangerous_chat,
+            uncensored_fallback: opts.uncensored_fallback,
+        };
+        crate::services::answer_confirmation::run_answer_confirmation(
+            self.completion,
+            self.executor,
+            &run_opts,
+            on_affirming,
+        )
+        .await
     }
 }
 
-/// v4 `AnswerConfirmationOutcome`.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct AnswerConfirmationOutcome {
-    pub confirmed: Option<bool>,
-    pub revised: bool,
-    pub notes: Option<String>,
-    pub revised_content: Option<String>,
-}
-
-/// A no-op confirmation runner (the corpus never fires it).
+/// A no-op confirmation runner (the feature-off / corpus-off path). Returns the
+/// default outcome (absent — the finalizer only calls the runner when the gate is
+/// active AND there are checkable inputs, so this is reached only when a host
+/// wires it deliberately for a feature-off build).
 pub struct NoAnswerConfirmation;
-impl AnswerConfirmationRunner for NoAnswerConfirmation {}
+impl AnswerConfirmationRunner for NoAnswerConfirmation {
+    async fn run<'a>(
+        &'a self,
+        _opts: FinalizerConfirmationRun<'a>,
+        _on_affirming: &'a dyn AcOnAffirming,
+    ) -> AnswerConfirmationOutcome {
+        AnswerConfirmationOutcome::default()
+    }
+}
 
 /// The async pre-compression trigger seam — v4 `triggerAsyncCompression`. When the
 /// finalizer's gate fires it records one call; the cheap-LLM compression
@@ -250,6 +325,12 @@ pub struct FinalizerChat {
     pub project_id: Option<String>,
     /// `answerConfirmationOverride` (`"ON"` / `"OFF"` / null).
     pub answer_confirmation_override: Option<String>,
+    /// W4.3: the project's `answerConfirmationOverride` (v4's
+    /// `repos.projects.findById(chat.projectId)?.answerConfirmationOverride`,
+    /// resolved above the seam). Consulted only when there is no chat override AND
+    /// the chat has a `project_id`. `None` when there is no project / no override /
+    /// the lookup failed (v4 `.catch(() => null)`).
+    pub answer_confirmation_project_override: Option<String>,
     /// `impersonatingParticipantIds` — the user-driven-turn check.
     pub impersonating_participant_ids: Vec<String>,
     /// The participants (for the user-driven-turn `controlledBy` check + the
@@ -382,6 +463,29 @@ pub struct FinalizeOptions {
     /// (Cost tracking + the persisted assistant message stay on `profile`, the
     /// effective one.) Equal to `profile.id` when no reroute happened.
     pub connection_profile_id: String,
+    /// W4.3: the answer-confirmation inputs (v4's `compression.cheapLLMSelection` +
+    /// `connectionProfile` + danger settings + available profiles). The check runs
+    /// only when the gate is active AND there are checkable inputs; `None` inputs
+    /// leave the runner returning `confirmed: null` (v4's `if (!cheapLLMSelection)`).
+    pub confirmation: FinalizerConfirmationInputs,
+}
+
+/// The answer-confirmation inputs the finalizer forwards to the runner (v4's
+/// `runAnswerConfirmation` options assembled at the orchestrator composition
+/// point). Kept together so the orchestrator can supply `Default` (feature-off).
+#[derive(Clone, Debug, Default)]
+pub struct FinalizerConfirmationInputs {
+    /// v4 `compression.cheapLLMSelection` — the resolved cheap-LLM selection.
+    pub cheap_llm_selection: Option<CheapLlmSelection>,
+    /// The character's OWN connection profile (v4 `connectionProfile`), used
+    /// verbatim for the re-affirmation pass.
+    pub connection_profile: ReaffirmationProfile,
+    /// v4 `uncensoredFallback.dangerSettings` — the resolved danger settings for
+    /// the uncensored escalation of the check's cheap selection.
+    pub danger_settings: Option<crate::cheap_llm::DangerousContentSettings>,
+    /// v4 `uncensoredFallback.availableProfiles` — every connection profile (for
+    /// the uncensored escalation lookup).
+    pub available_profiles: Vec<crate::cheap_llm::CheapLlmProfile>,
 }
 
 // ===========================================================================
@@ -392,11 +496,11 @@ pub struct FinalizeOptions {
 /// Drives the whole tail through the injected seams + the [`Db`] writer, emitting
 /// typed [`ChatEvent`]s at the `sink`. Returns the [`ProcessMessageResult`].
 #[allow(clippy::too_many_arguments)]
-pub async fn finalize_message_response<S, Q, P>(
+pub async fn finalize_message_response<S, Q, P, CONF>(
     db: &Db,
     sink: &S,
     opts: FinalizeOptions,
-    confirmation_runner: &mut dyn AnswerConfirmationRunner,
+    confirmation_runner: &CONF,
     compression_trigger: &mut dyn AsyncCompressionTrigger,
     rng_bytes: &mut dyn RandomBytes,
     cost: &mut dyn CostTracker,
@@ -404,9 +508,13 @@ pub async fn finalize_message_response<S, Q, P>(
     prospero: &mut P,
 ) -> Result<ProcessMessageResult, DbError>
 where
-    S: EventSink,
+    // `Sync` because the answer-confirmation `on_affirming` callback captures the
+    // sink by reference and is passed as a `&dyn OnAffirming` (`Sync`) into the
+    // runner's `Send` future.
+    S: EventSink + Sync,
     Q: RunCarinaQuery,
     P: PostProsperoCarinaError,
+    CONF: AnswerConfirmationRunner,
 {
     let FinalizeOptions {
         chat_id,
@@ -424,8 +532,9 @@ where
         compression,
         participant_characters,
         chat_settings,
-        is_dangerous_chat: _is_dangerous_chat,
+        is_dangerous_chat,
         connection_profile_id,
+        confirmation: confirmation_inputs,
     } = opts;
 
     // --- Content cleaning (message-finalizer.service.ts:96–133) ---
@@ -477,8 +586,9 @@ where
     // [`rebase_offset`] (the same one the reasoning re-base below uses); with no
     // tool messages there are no anchors to re-base.
 
-    // Reasoning-segment re-basing.
-    let rebased_reasoning: Option<Vec<ReasoningSegment>> =
+    // Reasoning-segment re-basing. Mutable because an answer-confirmation revision
+    // collapses it to a single offset-0 block (v4 normalizeRewroteBody).
+    let mut rebased_reasoning: Option<Vec<ReasoningSegment>> =
         if !streaming.reasoning_segments.is_empty() {
             if normalize_rewrote_body {
                 // Collapse to one leading block: positions invalid, content good.
@@ -521,7 +631,11 @@ where
     let mut confirmation_fields = ConfirmationFields::default();
 
     let is_silent_turn = character_participant.status.as_deref() == Some("silent");
-    if is_user_driven_turn(&chat, &character_participant.id) {
+    if answer_confirmation::is_user_driven_turn(
+        &chat.impersonating_participant_ids,
+        &chat.participants,
+        &character_participant.id,
+    ) {
         // A user-controlled/impersonated turn → explicit `confirmed: null`.
         confirmation_fields.confirmed = ConfirmationField::Null;
     } else if !is_silent_turn {
@@ -530,31 +644,126 @@ where
             .map(|s| s.answer_confirmation_global_enabled)
             .unwrap_or(false);
         let chat_override = chat.answer_confirmation_override.as_deref();
-        // The project override is a host-side `repos.projects.findById` lookup
-        // (read only when there is no chat override AND the chat has a project).
-        // The corpus keeps every case inactive at the chat/global level, so the
-        // active call never fires; a project override that would flip the gate ON
-        // is a documented deferral (wave-4 answer-confirmation).
-        let project_override: Option<&str> = None;
-        if is_answer_confirmation_active(chat_override, project_override, global_enabled) {
-            // The active branch (never reached by the corpus — every case is
-            // inactive). The seam supplies the outcome; the gather/run wiring lands
-            // with the wave-4 answer-confirmation unit.
-            let outcome = confirmation_runner.run(&cleaned_response, "");
-            confirmation_fields.confirmed = match outcome.confirmed {
-                Some(b) => ConfirmationField::Value(b),
-                None => ConfirmationField::Null,
-            };
-            confirmation_fields.revised = ConfirmationField::Value(outcome.revised);
-            confirmation_fields.notes = match outcome.notes {
-                Some(n) => ConfirmationField::Value(n),
-                None => ConfirmationField::Null,
-            };
-            if outcome.revised {
-                if let Some(rev) = outcome.revised_content {
-                    confirmation_fields.original_content =
-                        ConfirmationField::Value(cleaned_response.clone());
-                    cleaned_response = rev;
+        // The project override is a host-side `repos.projects.findById` lookup (read
+        // only when there is no chat override AND the chat has a project). It is
+        // resolved above the seam and threaded through
+        // `FinalizerChat::answer_confirmation_project_override`.
+        let project_override = if chat_override.is_none() && chat.project_id.is_some() {
+            chat.answer_confirmation_project_override.as_deref()
+        } else {
+            None
+        };
+        if answer_confirmation::is_answer_confirmation_active(
+            chat_override,
+            project_override,
+            global_enabled,
+        ) {
+            // Active gate: read prior messages, find the Commonplace whisper for this
+            // character, and gather the reference block (whisper + in-scope read-tool
+            // results). Only when there is something to check do we run the model
+            // pass (v4 message-finalizer.service.ts:229–284).
+            let chat_id_owned = chat_id.clone();
+            let prior_messages =
+                db.read_main(move |conn| chats_messages_read::get_messages(conn, &chat_id_owned))?;
+            let whisper = answer_confirmation::find_latest_commonplace_whisper(
+                &prior_messages,
+                &character_participant.id,
+            );
+            if answer_confirmation::has_checkable_inputs(whisper.as_deref(), &tool_messages) {
+                if let Some(reference) = answer_confirmation::gather_confirmation_inputs(
+                    whisper.as_deref(),
+                    &tool_messages,
+                ) {
+                    // v4 emits a `confirming` status frame just before the check.
+                    sink.emit(ChatEvent::status(super::chat_events::StatusPayload {
+                        stage: "confirming".to_string(),
+                        message: "Confirming…".to_string(),
+                        tool_name: None,
+                        character_name: Some(character.name.clone()),
+                        character_id: Some(character.id.clone()),
+                    }));
+
+                    // v4 `uncensoredFallback` — assembled from the resolved danger
+                    // settings + available profiles.
+                    let uncensored_fallback =
+                        confirmation_inputs.danger_settings.as_ref().map(|ds| {
+                            UncensoredFallbackOptions {
+                                danger_settings: ds,
+                                available_profiles: &confirmation_inputs.available_profiles,
+                                is_dangerous_chat: Some(is_dangerous_chat),
+                            }
+                        });
+
+                    // The re-affirmation status frame (v4 `onAffirming`), fired by the
+                    // runner just before the re-affirmation pass.
+                    let affirming_character_name = character.name.clone();
+                    let affirming_character_id = character.id.clone();
+                    let on_affirming = move || {
+                        sink.emit(ChatEvent::status(super::chat_events::StatusPayload {
+                            stage: "affirming".to_string(),
+                            message: "Requesting affirmation of questionable results…".to_string(),
+                            tool_name: None,
+                            character_name: Some(affirming_character_name.clone()),
+                            character_id: Some(affirming_character_id.clone()),
+                        }));
+                    };
+
+                    let outcome = confirmation_runner
+                        .run(
+                            FinalizerConfirmationRun {
+                                reply: &cleaned_response,
+                                reference: &reference,
+                                user_id: &user_id,
+                                chat_id: &chat_id,
+                                message_id: &assistant_message_id,
+                                character_id: &character.id,
+                                cheap_llm_selection: confirmation_inputs
+                                    .cheap_llm_selection
+                                    .as_ref(),
+                                connection_profile: &confirmation_inputs.connection_profile,
+                                is_dangerous_chat,
+                                uncensored_fallback: uncensored_fallback.as_ref(),
+                            },
+                            &on_affirming,
+                        )
+                        .await;
+
+                    confirmation_fields.confirmed = match outcome.confirmed {
+                        Some(b) => ConfirmationField::Value(b),
+                        None => ConfirmationField::Null,
+                    };
+                    confirmation_fields.revised = ConfirmationField::Value(outcome.revised);
+                    confirmation_fields.notes = match outcome.notes {
+                        Some(n) => ConfirmationField::Value(n),
+                        None => ConfirmationField::Null,
+                    };
+                    if outcome.revised {
+                        if let Some(rev) = outcome.revised_content {
+                            // Keep the original for the logs; show the revised reply. A
+                            // rewrite invalidates tool-call/reasoning anchors computed
+                            // against the old prose — mirror normalizeRewroteBody: drop
+                            // tool anchors and collapse reasoning to a single offset-0
+                            // block (display only).
+                            confirmation_fields.original_content =
+                                ConfirmationField::Value(cleaned_response.clone());
+                            cleaned_response = rev;
+                            for tm in tool_messages.iter_mut() {
+                                tm.anchor_offset = None;
+                            }
+                            if let Some(segs) = rebased_reasoning.as_mut() {
+                                if !segs.is_empty() {
+                                    let joined: String =
+                                        segs.iter().map(|s| s.content.as_str()).collect();
+                                    let seq = segs[0].seq;
+                                    *segs = vec![ReasoningSegment {
+                                        anchor_offset: 0,
+                                        content: joined,
+                                        seq,
+                                    }];
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -920,49 +1129,6 @@ where
 fn rebase_offset(offset: usize, leading_strip_delta: i64, cleaned_len: i64) -> usize {
     let shifted = offset as i64 - leading_strip_delta;
     shifted.clamp(0, cleaned_len) as usize
-}
-
-// ===========================================================================
-// Answer-confirmation gate leaves (answer-confirmation.service.ts)
-// ===========================================================================
-
-/// v4 `isUserDrivenTurn` — the turn was authored by a user-controlled participant
-/// (impersonation or a `controlledBy: 'user'` participant).
-fn is_user_driven_turn(chat: &FinalizerChat, participant_id: &str) -> bool {
-    if chat
-        .impersonating_participant_ids
-        .iter()
-        .any(|id| id == participant_id)
-    {
-        return true;
-    }
-    chat.participants.iter().any(|p| {
-        p.get("id").and_then(Value::as_str) == Some(participant_id)
-            && p.get("controlledBy").and_then(Value::as_str) == Some("user")
-    })
-}
-
-/// v4 `isAnswerConfirmationActive` — the three-level gate: chat override wins,
-/// then project override, then the global default. `'OFF'` beats an inherited
-/// `'ON'` at its own level (checked first).
-fn is_answer_confirmation_active(
-    chat_override: Option<&str>,
-    project_override: Option<&str>,
-    global_enabled: bool,
-) -> bool {
-    if chat_override == Some("ON") {
-        return true;
-    }
-    if chat_override == Some("OFF") {
-        return false;
-    }
-    if project_override == Some("ON") {
-        return true;
-    }
-    if project_override == Some("OFF") {
-        return false;
-    }
-    global_enabled
 }
 
 // ===========================================================================
@@ -1359,42 +1525,6 @@ mod tests {
         assert_eq!(rebase_offset(10, 3, 100), 7);
         assert_eq!(rebase_offset(2, 5, 100), 0); // clamps at 0
         assert_eq!(rebase_offset(50, 0, 20), 20); // clamps at len
-    }
-
-    #[test]
-    fn is_answer_confirmation_active_three_level_gate() {
-        assert!(is_answer_confirmation_active(
-            Some("ON"),
-            Some("OFF"),
-            false
-        ));
-        assert!(!is_answer_confirmation_active(
-            Some("OFF"),
-            Some("ON"),
-            true
-        ));
-        assert!(is_answer_confirmation_active(None, Some("ON"), false));
-        assert!(!is_answer_confirmation_active(None, Some("OFF"), true));
-        assert!(is_answer_confirmation_active(None, None, true));
-        assert!(!is_answer_confirmation_active(None, None, false));
-    }
-
-    #[test]
-    fn user_driven_turn_via_impersonation_and_controlled_by() {
-        let chat = FinalizerChat {
-            id: "c".into(),
-            is_paused: false,
-            chat_type: None,
-            project_id: None,
-            answer_confirmation_override: None,
-            impersonating_participant_ids: vec!["p-imp".into()],
-            participants: vec![json!({ "id": "p-user", "controlledBy": "user" })],
-            spoken_this_cycle_participant_ids: None,
-            allow_cross_character_vault_reads: false,
-        };
-        assert!(is_user_driven_turn(&chat, "p-imp"));
-        assert!(is_user_driven_turn(&chat, "p-user"));
-        assert!(!is_user_driven_turn(&chat, "p-other"));
     }
 
     #[test]

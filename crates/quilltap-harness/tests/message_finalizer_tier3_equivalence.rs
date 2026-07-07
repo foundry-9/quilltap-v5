@@ -55,8 +55,8 @@ use quilltap_core::services::chat_events::{ChatEvent, EventSink, RecordingSink};
 use quilltap_core::services::message_finalizer::{
     finalize_message_response, AsyncCompressionTrigger, CostTrackArgs, CostTracker,
     FinalizeOptions, FinalizerCharacter, FinalizerChat, FinalizerChatSettings,
-    FinalizerCompression, FinalizerParticipant, FinalizerProfile, FinalizerStreaming,
-    NoAnswerConfirmation, ParticipantCharacter,
+    FinalizerCompression, FinalizerConfirmationInputs, FinalizerParticipant, FinalizerProfile,
+    FinalizerStreaming, NoAnswerConfirmation, ParticipantCharacter,
 };
 use quilltap_core::services::primary_stream::ReasoningSegment;
 use quilltap_core::services::tool_execution::{GeneratedImage, ToolMessage};
@@ -279,6 +279,10 @@ fn to_finalizer_chat(row: &Value) -> FinalizerChat {
         chat_type: str_of(row, "chatType"),
         project_id: str_of(row, "projectId"),
         answer_confirmation_override: str_of(row, "answerConfirmationOverride"),
+        // The message-finalizer corpus keeps the answer-confirmation feature OFF
+        // (no project override); the active path is proven by
+        // answer_confirmation_tier3_equivalence.
+        answer_confirmation_project_override: None,
         impersonating_participant_ids: row
             .get("impersonatingParticipantIds")
             .and_then(Value::as_array)
@@ -687,7 +691,7 @@ fn message_finalizer_tier3_matches_oracle() {
             spec: call.carina.clone(),
         };
         let mut prospero = ClosureProspero(|_a| Ok(()));
-        let mut confirmation = NoAnswerConfirmation;
+        let confirmation = NoAnswerConfirmation;
 
         let opts = FinalizeOptions {
             chat_id: call.chat_id.clone(),
@@ -738,6 +742,9 @@ fn message_finalizer_tier3_matches_oracle() {
             // W4.2u: the finalizer corpus has no reroute → the original connection
             // profile id equals the effective `profile.id`.
             connection_profile_id: profile.id.clone(),
+            // W4.3: the answer-confirmation feature is OFF in this corpus, so the
+            // runner is never invoked; the inputs are inert.
+            confirmation: FinalizerConfirmationInputs::default(),
         };
 
         let result = rt
@@ -745,7 +752,7 @@ fn message_finalizer_tier3_matches_oracle() {
                 &db,
                 &sink,
                 opts,
-                &mut confirmation,
+                &confirmation,
                 &mut compression_rec,
                 &mut rng_bytes,
                 &mut cost_rec,

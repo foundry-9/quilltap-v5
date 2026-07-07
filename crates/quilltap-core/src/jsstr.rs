@@ -56,6 +56,16 @@ pub fn utf16_truncate(s: &str, n: usize) -> String {
     String::from_utf16_lossy(&units)
 }
 
+/// The UTF-16 code units of `s` from index `start` to the end, decoded back to a
+/// `String` — matching JS `s.slice(start)` for `0 <= start <= s.length`. BMP text
+/// round-trips exactly; a `start` that would split a surrogate pair (only possible
+/// with non-BMP text) is decoded lossily rather than producing JS's lone-surrogate
+/// string.
+pub fn utf16_slice_from(s: &str, start: usize) -> String {
+    let units: Vec<u16> = s.encode_utf16().skip(start).collect();
+    String::from_utf16_lossy(&units)
+}
+
 /// The UTF-16 code-unit index of the first occurrence of `needle` in `haystack`
 /// at or after the UTF-16 offset `from`, matching JS
 /// `haystack.indexOf(needle, from)`. Returns `None` for no match (JS `-1`). An
