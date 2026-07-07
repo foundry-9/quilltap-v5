@@ -45,7 +45,7 @@
 use std::collections::HashMap;
 
 use quilltap_core::db::{dump_table_json_conn, Writer};
-use quilltap_core::services::librarian_notifications::post_librarian_write_announcement_conn;
+use quilltap_core::tools::doc_edit::post_pending_librarian_announcement_conn;
 use quilltap_core::tools::doc_edit::{
     execute_doc_edit_tool, format_doc_edit_results, DocEditToolContext,
 };
@@ -341,7 +341,7 @@ fn doc_text_matches_oracle() {
         // connection — the executor spine does this async after the write closure;
         // here (driving the sync handler directly) the sync sibling poster stands in.
         if let Some(ann) = &result.pending_librarian_announcement {
-            post_librarian_write_announcement_conn(main.connection(), ann);
+            post_pending_librarian_announcement_conn(main.connection(), ann);
         }
         let formatted = format_doc_edit_results(&result);
         let mut output = serde_json::to_value(&result).expect("serialize result");

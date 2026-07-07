@@ -54,7 +54,10 @@ use std::sync::{Arc, Mutex};
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 
-use super::doc_edit::{execute_doc_edit_tool, format_doc_edit_results, DocEditToolContext};
+use super::doc_edit::{
+    execute_doc_edit_tool, format_doc_edit_results, DocEditToolContext,
+    PendingLibrarianAnnouncement,
+};
 use super::{
     annotations, doc_edit, help, help_search, list_email, photo, project_info, read_conversation,
     request_full_context, rng, run_sql, search, self_inventory, send_mail, state, terminal,
@@ -1486,14 +1489,37 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             .await
             .unwrap_or_else(|e| (fail(&tc.name, e.to_string()), None));
 
-        // Post the Librarian write announcement after the closure (best-effort — a
-        // failed announcement never fails the tool; v4 catches + logs).
-        if let Some(announcement) = pending {
-            crate::services::librarian_notifications::post_librarian_write_announcement(
-                &self.db,
-                &announcement,
-            )
-            .await;
+        // Post the Librarian announcement after the closure (best-effort — a failed
+        // announcement never fails the tool; v4 catches + logs). Dispatch by kind to
+        // the matching async poster (the sync `_conn` siblings serve the differential).
+        if let Some(pending) = pending {
+            use crate::services::librarian_notifications as ln;
+            match pending {
+                PendingLibrarianAnnouncement::Write(a) => {
+                    ln::post_librarian_write_announcement(&self.db, &a).await;
+                }
+                PendingLibrarianAnnouncement::Move(a) => {
+                    ln::post_librarian_move_announcement(&self.db, &a).await;
+                }
+                PendingLibrarianAnnouncement::Copy(a) => {
+                    ln::post_librarian_copy_announcement(&self.db, &a).await;
+                }
+                PendingLibrarianAnnouncement::Delete(a) => {
+                    ln::post_librarian_delete_announcement(&self.db, &a).await;
+                }
+                PendingLibrarianAnnouncement::FolderCreated(a) => {
+                    ln::post_librarian_folder_created_announcement(&self.db, &a).await;
+                }
+                PendingLibrarianAnnouncement::FolderDeleted(a) => {
+                    ln::post_librarian_folder_deleted_announcement(&self.db, &a).await;
+                }
+                PendingLibrarianAnnouncement::Open(a) => {
+                    ln::post_librarian_open_announcement(&self.db, &a).await;
+                }
+                PendingLibrarianAnnouncement::BlobWrite(a) => {
+                    ln::post_librarian_blob_write_announcement(&self.db, &a).await;
+                }
+            }
         }
         tool_result
     }

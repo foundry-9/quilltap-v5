@@ -12,15 +12,17 @@
  * binding, so store provisioning + the vault read overlay run genuinely. See
  * [[jest-real-db-oracle]].
  *
- * The handlers' fire-and-forget side effects (Librarian announcements, reindex,
- * embedding-scheduler, documentHiddenFromCharacters) are documented Rust seams —
+ * W4.6c: the Librarian open announcement + documentHiddenFromCharacters gate are now
+ * LIVE (the REAL writer module) — the chat_messages open-announcement rows land on
+ * both sides and are diffed (the open is an actual message, so it also bumps the
+ * chat's updatedAt). Reindex + embedding-scheduler stay documented Rust seams —
  * jest.mock'd to no-ops so they don't perturb the DB (matching the Rust port).
  *
  * Ops run in a SINGLE module graph on ONE fixture copy, in order (state
  * accumulates). After every op, dumps `chat_documents` + a `chats` subset (both
  * MAIN db). Emits two NDJSON lines:
  *   line 1: { case, ops: [{ name, tool, output, formatted }, ...] }
- *   line 2: { case, dumps: { chatDocuments, chats } }
+ *   line 2: { case, dumps: { chatDocuments, chats, chatMessages } }
  *
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin
@@ -126,21 +128,15 @@ async function main(): Promise<void> {
     jest.requireActual('@/lib/embedding/embedding-service'),
   );
 
-  // Seamed side effects → no-ops (documented Rust seams; matches the port).
-  jest.doMock('@/lib/services/librarian-notifications/writer', () => {
-    const actual = jest.requireActual('@/lib/services/librarian-notifications/writer');
-    return {
-      __esModule: true,
-      ...actual,
-      postLibrarianOpenAnnouncement: async () => undefined,
-      postLibrarianWriteAnnouncement: async () => undefined,
-      postLibrarianDeleteAnnouncement: async () => undefined,
-      postLibrarianMoveAnnouncement: async () => undefined,
-      postLibrarianFolderAnnouncement: async () => undefined,
-      contentHiddenFromCharacters: () => false,
-      documentHiddenFromCharacters: () => false,
-    };
-  });
+  // W4.6c: the open-document Librarian announcement + documentHiddenFromCharacters
+  // suppression gate are now LIVE — use the REAL writer module so the
+  // chat_messages open-announcement rows land on both sides (the Rust port posts
+  // the same rows after the sync write closure). The open announcement is an actual
+  // `type:'message'` event, so it also bumps the chat's `updatedAt` (both sides).
+  // Reindex/embedding stay seamed below.
+  jest.doMock('@/lib/services/librarian-notifications/writer', () =>
+    jest.requireActual('@/lib/services/librarian-notifications/writer'),
+  );
   jest.doMock('@/lib/doc-edit/reindex-file', () => ({
     __esModule: true,
     reindexSingleFile: async () => undefined,
@@ -199,6 +195,14 @@ async function main(): Promise<void> {
     const chatRows = (await rawQuery(
       'SELECT id, documentMode, updatedAt FROM chats',
     )) as Array<Record<string, unknown>>;
+    // W4.6c: the Librarian open-announcement rows live in the MAIN db. Order by
+    // `content` (remap-invariant — no minted uuid/timestamp in the persona body).
+    const cmColumns = (
+      (await rawQuery('PRAGMA table_info(chat_messages)')) as Array<{ name: string }>
+    ).map((c) => c.name);
+    const cmRows = (await rawQuery('SELECT * FROM chat_messages')) as Array<
+      Record<string, unknown>
+    >;
 
     const dumps = {
       chatDocuments: canonicalizeRows({
@@ -212,6 +216,12 @@ async function main(): Promise<void> {
         columns: ['id', 'documentMode', 'updatedAt'],
         rawRows: chatRows,
         orderBy: 'id',
+      }),
+      chatMessages: canonicalizeRows({
+        table: 'chat_messages',
+        columns: cmColumns,
+        rawRows: cmRows,
+        orderBy: 'content',
       }),
     };
     outLines.push(JSON.stringify({ case: 'doc-ui', dumps }));

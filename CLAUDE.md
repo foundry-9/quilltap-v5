@@ -3788,10 +3788,41 @@ edited-by-character + 2 created-by-character) byte-for-byte (persona content + o
 content + `systemSender:'librarian'` + per-kind `systemKind` + null targeting).
 `doc_fm`/`doc_ui`/`doc_blob`/`doc_enum`/`tool_dispatch` re-verified green (the additive
 `#[serde(skip)]` field is `None` for every non-write handler; those corpora never
-invoke a write handler). **Tracked deferral (out of G6 scope, a separate seam the port
-still omits):** the file-management / blob / open Librarian announcements (move / copy
-/ delete / folder-created / folder-deleted / open / blob-write) — the writers are all
-ported, but the file_management/blob/document_ui handlers don't yet build+thread them.
+invoke a write handler). (The G6 deferral — the remaining file-management / blob /
+open Librarian announcements — is now CLOSED by **W4.6c**, below.)
+
+**W4.6c: the remaining Librarian doc-edit announcements are DONE** (2026-07-07),
+closing the Round-3 Group-6 leftover. The file-management, blob, and document-UI
+handlers now emit their announcements — **move / copy / delete / folder-created /
+folder-deleted / open / blob-write**. The G6 field was generalized from
+`Option<LibrarianWriteAnnouncement>` to `Option<PendingLibrarianAnnouncement>` (an
+enum with one variant per announcement kind, each carrying the frozen W4.6b writer's
+argument struct; still `#[serde(skip)]`, so the ~23-handler serialized result shape
+is byte-unchanged), plus `From` impls and a chainable `with_librarian_announcement`.
+Each database-store handler branch builds its announcement inside the synchronous
+`execute_doc_edit_tool` `Db::write` closure (it needs the RW connections for
+`uri_for_resolved_path` / `resolve_actor_origin` / a new synchronous
+`document_hidden_from_characters` handler helper) and stashes it; the executor spine
+(`run_doc_edit`) `take`s it out and dispatches by kind to the matching async
+`post_librarian_*_announcement` after the closure. `doc_open_document` ports v4's
+**bespoke** open-origin resolution (`characters.find_by_id_raw` name → `opened-by-
+character` else `opened-by-user`, NOT the shared `resolve_actor_origin`); `doc_move_folder`
+passes no `hiddenFromCharacters` (→ `false`, matching v4's folder-move site, unlike
+the file-move site); `doc_delete_blob` fires the shared delete announcement with
+scope `document_store`. Added the synchronous `post_librarian_*_announcement_conn`
+siblings for the seven writers that lacked one (over a shared `post_librarian_message_conn`)
++ a `post_pending_librarian_announcement_conn` dispatcher so the direct-drive
+differentials post over the held RW `main` connection. Regenerated `doc_fm` /
+`doc_blob` / `doc_ui` with the announcement writers LIVE (un-mocked) and a MAIN-db
+`chat_messages` dump added to each (ordered by `content`), diffing the Librarian rows
+byte-for-byte (7 file-management / 3 blob / 2 open rows). The open announcement is an
+actual `type:'message'` event, so it bumps the chat's `updatedAt` on both sides — the
+doc-ui "updatedAt never bumped by open/close" pin is retired accordingly (the
+`chat_messages` dump now proves the announcement posted on both sides). `doc_text` +
+`tool_dispatch` re-verified green (the enum generalization is inert for the write kind
+and for the non-announcing read handlers). **Tracked deferrals (unchanged):** the
+filesystem-mount announcement sites stay behind the existing `FsSeam` (never execute
+for database stores); `syncChatDocuments*` stays the corpus-verified no-op seam.
 
 **Round-4 prep (2026-07-07): every remaining work order is written.** The five
 orders that lacked specs are now agent-ready under

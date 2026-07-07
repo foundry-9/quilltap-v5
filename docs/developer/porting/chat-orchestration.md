@@ -244,10 +244,14 @@ round with a drift check against v4 HEAD.
   avatar + story-background job handlers — disjoint from the spine;
   benefits from e's logLLMCall and f's dialects but requires neither, both
   are seams) ∥
-  [W4.6c](./work-orders/w4.6c-librarian-file-announcements.md) (small —
-  the remaining Librarian doc-edit announcements; ⚠️ shares
-  `tools/executor.rs` with W4.5's `ask_carina` dispatch row — coordinate
-  or resolve at unification). W4.7e's `model_supports_native_tools` spine
+  [W4.6c](./work-orders/w4.6c-librarian-file-announcements.md) (**DONE**
+  2026-07-07 — the remaining Librarian doc-edit announcements: move / copy /
+  delete / folder-created / folder-deleted / open / blob-write, threaded via
+  the generalized `PendingLibrarianAnnouncement` enum; `doc_fm` / `doc_blob` /
+  `doc_ui` regenerated green with the writers live. It touched only the
+  executor's post-dispatch block in `tools/executor.rs`, so W4.5's `ask_carina`
+  dispatch row is a clean, non-conflicting merge). W4.7e's
+  `model_supports_native_tools` spine
   removal and any W4.7d spine-adjacent seam closures go to the unification
   pass (W4.4b owns the spine).
 - **Round 5:** Unit 4 (enclave), then the Phase-4 kickoff.

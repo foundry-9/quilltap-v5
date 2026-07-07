@@ -18,11 +18,13 @@
 //! sides — for a passthrough it is a no-op, since the stored mime is not
 //! `image/webp`). Native WebP transcoding is the Phase-4 host's job.
 //!
-//! ## Seamed side effects
+//! ## Librarian announcements (W4.6c — now live)
 //!
-//! The Librarian blob write/delete announcements (`postLibrarianBlobWriteAnnouncement`
-//! / `postLibrarianDeleteAnnouncement`) are fire-and-forget no-op seams (see
-//! [`super::shared`]); the differential oracle mocks them.
+//! The blob write/delete announcements (`postLibrarianBlobWriteAnnouncement` /
+//! `postLibrarianDeleteAnnouncement`) are built inside the write closure and
+//! threaded out via [`DocEditToolResult::pending_librarian_announcement`]
+//! ([`super::PendingLibrarianAnnouncement::BlobWrite`] / `::Delete`); the executor
+//! posts them after the closure returns (the G6 write-announcement precedent).
 #![allow(clippy::too_many_arguments)]
 
 use rusqlite::Connection;
@@ -30,8 +32,9 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 use super::shared::{
-    arg_bool, arg_str, arg_str_ref, assert_write_does_not_target_peer_vault,
-    collect_peer_character_ids_for_reads, get_accessible_mount_points, DocEditToolContext,
+    arg_bool, arg_str, arg_str_ref, assert_write_does_not_target_peer_vault, basename,
+    collect_peer_character_ids_for_reads, get_accessible_mount_points, resolve_actor_origin,
+    DocEditToolContext,
 };
 use super::DocEditToolResult;
 use crate::db::doc_mount_blobs::{CreateBlobInput, DocMountBlobsRepository};
@@ -39,6 +42,9 @@ use crate::doc_edit::path_resolver::resolve_mount_point_ref;
 use crate::doc_edit::qtap_uri::parse_qtap_uri;
 use crate::doc_edit::uri_producers::{doc_store_uri_for, DocStoreUriResolver};
 use crate::doc_edit::DocEditScope;
+use crate::services::librarian_notifications::{
+    LibrarianBlobWriteAnnouncement, LibrarianDeleteAnnouncement, LibrarianScope,
+};
 
 /// A resolved `{ mountPoint, path }` pair after projecting an optional `uri`.
 struct BlobTarget {
@@ -233,8 +239,6 @@ pub fn handle_write_blob(
         })
         .map_err(|e| e.to_string())?;
 
-    // Librarian blob-write announcement + resolveActorOrigin: no-op seams.
-
     let stored_uri = doc_store_uri_for(
         main,
         mount,
@@ -245,6 +249,19 @@ pub fn handle_write_blob(
         None,
         None,
     );
+
+    // v4 passes the RAW `input.description` (undefined when absent), NOT the
+    // repo-defaulted `''` — mirror with the optional arg.
+    let announcement = LibrarianBlobWriteAnnouncement {
+        chat_id: ctx.chat_id.clone(),
+        display_title: basename(&stored.relative_path).to_string(),
+        uri: stored_uri.clone(),
+        mount_point: Some(mp.name.clone()),
+        mime_type: stored.stored_mime_type.clone(),
+        size_bytes: stored.size_bytes,
+        description: arg_str(args, "description"),
+        origin: resolve_actor_origin(main, ctx),
+    };
 
     let result = json!({
         "success": true,
@@ -259,7 +276,7 @@ pub fn handle_write_blob(
         "Uploaded blob to [{}] {} ({} bytes, {})",
         mp.name, stored.relative_path, stored.size_bytes, stored.stored_mime_type
     );
-    Ok(DocEditToolResult::ok(result, formatted))
+    Ok(DocEditToolResult::ok(result, formatted).with_librarian_announcement(announcement))
 }
 
 pub fn handle_read_blob(
@@ -466,8 +483,6 @@ pub fn handle_delete_blob(
         return Ok(DocEditToolResult::fail(format!("Blob not found: {path}")));
     }
 
-    // Librarian delete announcement + resolveActorOrigin: no-op seams.
-
     let deleted_uri = doc_store_uri_for(
         main,
         mount,
@@ -479,6 +494,18 @@ pub fn handle_delete_blob(
         None,
     );
 
+    // v4 fires the shared delete announcement with scope 'document_store' and no
+    // `hiddenFromCharacters` (→ false); its args differ from a doc_delete_file's.
+    let announcement = LibrarianDeleteAnnouncement {
+        chat_id: ctx.chat_id.clone(),
+        display_title: basename(&path).to_string(),
+        file_path: path.clone(),
+        scope: LibrarianScope::DocumentStore,
+        mount_point: Some(mp.name.clone()),
+        origin: resolve_actor_origin(main, ctx),
+        hidden_from_characters: false,
+    };
+
     let result = json!({
         "success": true,
         "mount_point": mp.name,
@@ -486,7 +513,7 @@ pub fn handle_delete_blob(
         "uri": deleted_uri,
     });
     let formatted = format!("Deleted blob [{}] {}", mp.name, path);
-    Ok(DocEditToolResult::ok(result, formatted))
+    Ok(DocEditToolResult::ok(result, formatted).with_librarian_announcement(announcement))
 }
 
 const B64_ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

@@ -9,12 +9,14 @@
 //! the chat's own `updatedAt` (v4 `chats.update` preserves it unless a caller
 //! passes `updatedAt`, which these handlers never do).
 //!
-//! ## Seamed side effects (documented no-ops, matching the oracle mocks)
+//! ## The open announcement (W4.6c — now live)
 //!
-//! `postLibrarianOpenAnnouncement` (+ the `characters.findById` name lookup that
-//! feeds it) and `documentHiddenFromCharacters` are fire-and-forget UI side
-//! effects that never reach the tool result — the [`super::shared`] Librarian /
-//! reindex seam covers them; the differential oracle mocks them to no-ops.
+//! `postLibrarianOpenAnnouncement` is built inside the open handler (with its
+//! bespoke `characters.findById` origin resolution + `documentHiddenFromCharacters`
+//! suppression gate) and threaded out via
+//! [`DocEditToolResult::pending_librarian_announcement`]
+//! ([`super::PendingLibrarianAnnouncement::Open`]); the executor posts it after the
+//! write closure returns (the G6 write-announcement precedent).
 //!
 //! ## The new-blank-document path (a tracked FsSeam deferral)
 //!
@@ -30,15 +32,18 @@ use serde_json::{Map, Value};
 
 use super::shared::{
     apply_qtap_uri, arg_bool, arg_str, arg_str_ref, assert_character_may_read, basename,
-    build_read_resolution_context, resolve_error_message, scope_from_str, DocEditToolContext,
+    build_read_resolution_context, document_hidden_from_characters, librarian_scope_from,
+    resolve_error_message, scope_from_str, DocEditToolContext,
 };
 use super::DocEditToolResult;
+use crate::db::characters_read;
 use crate::db::chat_documents::{ChatDocumentsRepository, OpenChatDocument, OpenDocumentInput};
 use crate::db::chats::{ChatUpdate, ChatsRepository};
 use crate::db::database_store::database_document_exists;
 use crate::doc_edit::path_resolver::resolve_doc_edit_path;
 use crate::doc_edit::uri_producers::uri_for_resolved_path;
 use crate::doc_edit::DocEditScope;
+use crate::services::librarian_notifications::{LibrarianOpenAnnouncement, LibrarianOpenKind};
 
 /// v4 `resolveOpenDocTarget` (`document-ui-handlers.ts:45`): pick which open
 /// document a per-document UI tool (`doc_focus` / `doc_close`) targets. With
@@ -131,7 +136,13 @@ pub fn handle_open_document(
             "File not found: {file_path}"
         )));
     }
-    // documentHiddenFromCharacters: no-op seam (feeds only the Librarian post).
+    // A character_read:false document must not be announced to characters (the read
+    // gate already blocks characters; this covers the operator-override path).
+    let hidden_from_characters = document_hidden_from_characters(
+        mount,
+        resolved.mount_point_id.as_deref(),
+        &resolved.relative_path,
+    );
     let doc_uri = uri_for_resolved_path(
         main,
         mount,
@@ -219,8 +230,40 @@ pub fn handle_open_document(
     result.insert("isNew".into(), Value::Bool(false));
     result.insert("mtime".into(), Value::Number(mtime.into()));
 
+    // v4's bespoke open-origin resolution (NOT the shared `resolveActorOrigin`):
+    // `repos.characters.findById` (name is a slim column, so the raw read matches
+    // the overlaid `.name`), swallowing errors, mapping a non-empty name to
+    // `opened-by-character` else `opened-by-user`.
+    let origin = {
+        let mut character_name: Option<String> = None;
+        if let Some(cid) = ctx.character_id.as_deref() {
+            if let Ok(Some(character)) = characters_read::find_by_id_raw(main, cid) {
+                if let Some(name) = character.get("name").and_then(Value::as_str) {
+                    if !name.is_empty() {
+                        character_name = Some(name.to_string());
+                    }
+                }
+            }
+        }
+        match character_name {
+            Some(character_name) => LibrarianOpenKind::ByCharacter { character_name },
+            None => LibrarianOpenKind::ByUser,
+        }
+    };
+    let announcement = LibrarianOpenAnnouncement {
+        chat_id: ctx.chat_id.clone(),
+        display_title: display_title.clone(),
+        file_path: file_path.clone(),
+        scope: librarian_scope_from(scope),
+        mount_point: addressing.mount_point.clone(),
+        is_new: false,
+        origin,
+        hidden_from_characters,
+    };
+
     let formatted = format!("Opened document \"{display_title}\" ({file_path}) in {mode} mode.");
-    Ok(DocEditToolResult::ok(Value::Object(result), formatted))
+    Ok(DocEditToolResult::ok(Value::Object(result), formatted)
+        .with_librarian_announcement(announcement))
 }
 
 // --- doc_close_document ---

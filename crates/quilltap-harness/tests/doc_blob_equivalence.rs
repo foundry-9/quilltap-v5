@@ -9,8 +9,9 @@
 //! an official store + a chat with the character as a participant), in order
 //! (state accumulates). Each op's Output + `formatDocEditResults` string are
 //! compared against v4's; then the three store tables (`doc_mount_blobs` /
-//! `doc_mount_file_links` / `doc_mount_files`) are dumped and diffed. The `data`
-//! BLOB is dumped as lowercase hex on both sides (bit-exact).
+//! `doc_mount_file_links` / `doc_mount_files`) + the MAIN-db `chat_messages` (the
+//! W4.6c Librarian blob-write / delete announcement rows) are dumped and diffed. The
+//! `data` BLOB is dumped as lowercase hex on both sides (bit-exact).
 //!
 //! TRANSCODE SEAM: v4's `transcodeToWebP` is jest.mock'd to a PASSTHROUGH (store
 //! the raw bytes, storedMimeType = the input mime); the Rust write handler does the
@@ -40,7 +41,8 @@ use std::collections::HashMap;
 
 use quilltap_core::db::{dump_table_json_conn, Writer};
 use quilltap_core::tools::doc_edit::{
-    execute_doc_edit_tool, format_doc_edit_results, DocEditToolContext,
+    execute_doc_edit_tool, format_doc_edit_results, post_pending_librarian_announcement_conn,
+    DocEditToolContext,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -244,6 +246,11 @@ fn doc_blob_matches_oracle() {
             &op.args,
             &ctx,
         );
+        // W4.6c: post the Librarian blob-write / delete announcement over the held RW
+        // main connection (the sync sibling of the executor's async post).
+        if let Some(ann) = &result.pending_librarian_announcement {
+            post_pending_librarian_announcement_conn(main.connection(), ann);
+        }
         let formatted = format_doc_edit_results(&result);
         let output = serde_json::to_value(&result).expect("serialize result");
 
@@ -271,11 +278,16 @@ fn doc_blob_matches_oracle() {
             .expect("dump file_links");
     let files =
         dump_table_json_conn(mount.connection(), "doc_mount_files", "sha256").expect("dump files");
+    // W4.6c: the Librarian blob-write / delete announcement rows live in the MAIN
+    // db. Order by `content` — remap-invariant (no minted uuid/timestamp in the body).
+    let chat_messages = dump_table_json_conn(main.connection(), "chat_messages", "content")
+        .expect("dump chat_messages");
 
     let got_dumps = normalize(&json!({
         "blobs": blobs,
         "fileLinks": file_links,
         "files": files,
+        "chatMessages": chat_messages,
     }));
     let want_dumps = normalize(&oracle_dumps);
     assert_eq!(
@@ -289,7 +301,7 @@ fn doc_blob_matches_oracle() {
     let _ = std::fs::remove_file(&work_mount);
 
     eprintln!(
-        "OK: doc-blob handlers matched oracle ({} ops + 3 table dumps).",
+        "OK: doc-blob handlers matched oracle ({} ops + 4 table dumps incl. Librarian chat_messages).",
         spec.ops.len()
     );
 }

@@ -4,6 +4,38 @@
 
 ### 5.0-dev
 
+Phase 3 — W4.6c (the remaining Librarian doc-edit announcements, the Round-3
+Group-6 leftover): the file-management, blob, and document-UI doc-edit handlers
+now emit their Librarian announcements — move, copy, delete, folder-created,
+folder-deleted, open, and blob-write (previously only the doc-save
+`change:{diff}` write announcement fired, from G6). Generalized the shared
+`DocEditToolResult.pending_librarian_announcement` field from
+`Option<LibrarianWriteAnnouncement>` to an `Option<PendingLibrarianAnnouncement>`
+enum (one variant per announcement kind, each carrying the frozen W4.6b writer's
+argument struct); the field stays `#[serde(skip)]` so the ~23-handler serialized
+result shape is byte-unchanged. Each database-store handler branch builds its
+announcement inside the synchronous `Db::write` closure (it needs the RW
+connections for `uriForResolvedPath` / `resolveActorOrigin` /
+`documentHiddenFromCharacters`) and the executor spine dispatches by kind to the
+matching async `postLibrarian*` poster after the closure returns (the G6 /
+wardrobe-drain `pending*` precedent; best-effort, a failed post never fails the
+tool). `doc_open_document` ports v4's bespoke open-origin resolution
+(`characters.findById` name lookup → `opened-by-character` else `opened-by-user`,
+NOT the shared `resolveActorOrigin`). Added sync `post_librarian_*_announcement_conn`
+siblings for the seven writers that lacked one + a `post_pending_librarian_announcement_conn`
+dispatcher so the direct-drive differentials post over the held RW `main`
+connection, and a synchronous `document_hidden_from_characters` handler helper.
+Regenerated `doc_fm` / `doc_blob` / `doc_ui` with the announcement writers LIVE
+(un-mocked) and a MAIN-db `chat_messages` dump added to each (ordered by
+`content`, a remap-invariant key), diffing the Librarian rows byte-for-byte
+(7 file-management rows, 3 blob rows, 2 open rows). The open announcement is an
+actual `type:'message'` event, so it bumps the chat's `updatedAt` on both sides
+(the doc-ui "updatedAt never bumped by open/close" pin is retired accordingly).
+`doc_text` + `tool_dispatch` re-verified green (the enum generalization is inert
+for the write kind and for the non-announcing read handlers). The
+filesystem-mount announcement sites stay behind the existing `FsSeam` (out of
+scope); `syncChatDocuments*` stays the corpus-verified no-op seam.
+
 W4.9c: ported the avatar + story-background background-job handlers
 (`CHARACTER_AVATAR_GENERATION` / `STORY_BACKGROUND_GENERATION`), removing both
 job types from the runner's loud fallback. New: the two scene cheap-LLM tasks

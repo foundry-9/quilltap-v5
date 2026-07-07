@@ -8,22 +8,20 @@
 //! project + a chat with `documentMode: 'normal'`), in order (state accumulates —
 //! open A, open B, focus×4, close×3). Each op's Output + `formatDocEditResults`
 //! string are compared against v4's; then `chat_documents` (all cols) + a `chats`
-//! subset (`id` / `documentMode` / `updatedAt`) are dumped and diffed. The `chats`
-//! dump PROVES the documentMode transitions (normal → split on open, back to
-//! normal on the last close) AND that open/close never bump the chat's own
-//! `updatedAt` (it stays at the seed sentinel).
+//! subset (`id` / `documentMode` / `updatedAt`) + `chat_messages` (the Librarian
+//! open-announcement rows, W4.6c) are dumped and diffed. The `chats` dump PROVES
+//! the documentMode transitions (normal → split on open, back to normal on the last
+//! close). NOTE (W4.6c): the open announcement is now LIVE — posting it is an
+//! actual `type:'message'` event, so it DOES bump the chat's `updatedAt` (on both
+//! sides identically); the earlier "updatedAt never bumped by open/close" pin is
+//! therefore gone (the announcement legitimately bumps it, and the `chat_messages`
+//! dump proves the announcement posted on both sides byte-for-byte).
 //!
 //! NORMALIZATION: every UUID string is remapped to a positional `<id-N>` token
 //! (first-appearance order, one map per compared value) and every ISO-8601
 //! timestamp collapsed to `<ts>`, applied identically to both sides. The open ops
 //! mint a fresh integer `mtime` (ms) the ISO normalizer won't catch, so the
-//! `mtime` key in the open output is replaced with `"<mtime>"` on both sides. The
-//! chat's `updatedAt` is the seed timestamp (`2026-02-01T…`), which the ISO
-//! normalizer collapses to `<ts>` on both sides — since a stray mint would produce
-//! a DIFFERENT (later) timestamp that ALSO collapses to `<ts>`, the chat-timestamp
-//! check would pass regardless; so the "updatedAt not bumped" invariant is proven
-//! by pinning: the dump compares the RAW `updatedAt` before normalization (see
-//! `assert_chat_updated_at_pinned`).
+//! `mtime` key in the open output is replaced with `"<mtime>"` on both sides.
 //!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -43,7 +41,8 @@ use std::collections::HashMap;
 
 use quilltap_core::db::{dump_table_json_conn, Writer};
 use quilltap_core::tools::doc_edit::{
-    execute_doc_edit_tool, format_doc_edit_results, DocEditToolContext,
+    execute_doc_edit_tool, format_doc_edit_results, post_pending_librarian_announcement_conn,
+    DocEditToolContext,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -69,11 +68,6 @@ struct Op {
     tool: String,
     args: Value,
 }
-
-/// The seed `updatedAt` every chat/document row starts at — the fixture pins it.
-/// A stray mint would replace it with a LATER timestamp; the pin check catches
-/// that even though both collapse to `<ts>` under [`normalize`].
-const SEED_TS: &str = "2026-02-01T00:00:00.000Z";
 
 /// Recursively remap every UUID (positional `<id-N>`) and collapse every ISO
 /// timestamp to `<ts>`, using one shared map per top-level value. Applied to both
@@ -212,26 +206,6 @@ fn placeholder_mtime(tool: &str, output: &mut Value) {
     }
 }
 
-/// Assert every `chats` dump row's RAW `updatedAt` is still the seed timestamp
-/// (open/close never bump it). Run BEFORE [`normalize`] collapses it to `<ts>`.
-fn assert_chat_updated_at_pinned(dump: &Value, side: &str) {
-    let rows = dump
-        .get("chats")
-        .and_then(|c| c.get("rows"))
-        .and_then(Value::as_array)
-        .unwrap_or_else(|| panic!("{side}: chats dump has no rows"));
-    for row in rows {
-        let updated_at = row
-            .get("updatedAt")
-            .and_then(Value::as_str)
-            .unwrap_or_else(|| panic!("{side}: chat row missing updatedAt"));
-        assert_eq!(
-            updated_at, SEED_TS,
-            "{side}: chat.updatedAt was BUMPED by open/close (got {updated_at}, want the seed {SEED_TS}) — the documentMode write must not touch updatedAt"
-        );
-    }
-}
-
 #[test]
 fn doc_ui_matches_oracle() {
     let Ok(oracle_path) = std::env::var("QT_ORACLE_DUI") else {
@@ -289,6 +263,12 @@ fn doc_ui_matches_oracle() {
             &op.args,
             &ctx,
         );
+        // W4.6c: post the Librarian open announcement over the held RW main
+        // connection (the sync sibling of the executor's async post). Only
+        // `doc_open_document` produces one.
+        if let Some(ann) = &result.pending_librarian_announcement {
+            post_pending_librarian_announcement_conn(main.connection(), ann);
+        }
         let formatted = format_doc_edit_results(&result);
         let mut output = serde_json::to_value(&result).expect("serialize result");
         placeholder_mtime(&op.tool, &mut output);
@@ -323,13 +303,16 @@ fn doc_ui_matches_oracle() {
         dump_table_json_conn(main.connection(), "chat_documents", "filePath").expect("dump cd");
     let chats_full = dump_table_json_conn(main.connection(), "chats", "id").expect("dump chats");
     let chats = project_chats_subset(&chats_full);
+    // W4.6c: the Librarian open-announcement rows live in the MAIN db. Order by
+    // `content` — remap-invariant (no minted uuid/timestamp in the persona body).
+    let chat_messages = dump_table_json_conn(main.connection(), "chat_messages", "content")
+        .expect("dump chat_messages");
 
-    let got_dumps = json!({ "chatDocuments": chat_documents, "chats": chats });
-
-    // PROVE "updatedAt not bumped" on the RAW dumps, before normalization collapses
-    // the timestamps to <ts>.
-    assert_chat_updated_at_pinned(&got_dumps, "rust");
-    assert_chat_updated_at_pinned(&oracle_dumps, "oracle");
+    let got_dumps = json!({
+        "chatDocuments": chat_documents,
+        "chats": chats,
+        "chatMessages": chat_messages,
+    });
 
     let got_dumps = normalize(&got_dumps);
     let want_dumps = normalize(&oracle_dumps);
@@ -344,7 +327,7 @@ fn doc_ui_matches_oracle() {
     let _ = std::fs::remove_file(&work_mount);
 
     eprintln!(
-        "OK: doc-ui handlers matched oracle ({} ops + chat_documents/chats dumps).",
+        "OK: doc-ui handlers matched oracle ({} ops + chat_documents/chats/chat_messages dumps).",
         spec.ops.len()
     );
 }

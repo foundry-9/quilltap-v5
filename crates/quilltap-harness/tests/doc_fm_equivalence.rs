@@ -12,7 +12,8 @@
 //! folders), in order (state accumulates). Each op's Output +
 //! `formatDocEditResults` string are compared against v4's; then three content
 //! tables (`doc_mount_file_links` / `doc_mount_folders` / `doc_mount_documents`)
-//! are dumped and diffed.
+//! + the MAIN-db `chat_messages` (the W4.6c Librarian move/copy/delete/folder
+//! announcement rows) are dumped and diffed.
 //!
 //! NORMALIZATION: every UUID string is remapped to a positional `<id-N>` token
 //! (first-appearance order, one map per compared value) and every ISO-8601
@@ -37,7 +38,8 @@ use std::collections::HashMap;
 
 use quilltap_core::db::{dump_table_json_conn, Writer};
 use quilltap_core::tools::doc_edit::{
-    execute_doc_edit_tool, format_doc_edit_results, DocEditToolContext,
+    execute_doc_edit_tool, format_doc_edit_results, post_pending_librarian_announcement_conn,
+    DocEditToolContext,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -264,6 +266,13 @@ fn doc_fm_matches_oracle() {
             &op.args,
             &ctx,
         );
+        // W4.6c: post the Librarian move/copy/delete/folder announcement over the
+        // held RW main connection — the executor spine does this async after the
+        // write closure; here (driving the sync handler directly) the sync sibling
+        // dispatcher stands in.
+        if let Some(ann) = &result.pending_librarian_announcement {
+            post_pending_librarian_announcement_conn(main.connection(), ann);
+        }
         let formatted = format_doc_edit_results(&result);
         let mut output = serde_json::to_value(&result).expect("serialize result");
         placeholder_mtime(&op.tool, &mut output);
@@ -291,7 +300,8 @@ fn doc_fm_matches_oracle() {
         );
     }
 
-    // Dump the three content tables and diff. Order by remap-invariant keys.
+    // Dump the three content tables (+ the Librarian chat_messages, below) and
+    // diff. Order by remap-invariant keys.
     let file_links =
         dump_table_json_conn(mount.connection(), "doc_mount_file_links", "relativePath")
             .expect("dump file_links");
@@ -300,11 +310,18 @@ fn doc_fm_matches_oracle() {
     let documents =
         dump_table_json_conn(mount.connection(), "doc_mount_documents", "contentSha256")
             .expect("dump documents");
+    // W4.6c: the Librarian move/copy/delete/folder announcement rows live in the
+    // MAIN db. Order by `content` — a remap-invariant key (the persona body has no
+    // minted uuid/timestamp; each op yields distinct content) so the positional
+    // UUID/timestamp remap aligns rows across sides.
+    let chat_messages = dump_table_json_conn(main.connection(), "chat_messages", "content")
+        .expect("dump chat_messages");
 
     let got_dumps = normalize(&json!({
         "fileLinks": file_links,
         "folders": folders,
         "documents": documents,
+        "chatMessages": chat_messages,
     }));
     let want_dumps = normalize(&oracle_dumps);
     assert_eq!(
@@ -318,7 +335,7 @@ fn doc_fm_matches_oracle() {
     let _ = std::fs::remove_file(&work_mount);
 
     eprintln!(
-        "OK: doc-fm handlers matched oracle ({} ops + 3 table dumps).",
+        "OK: doc-fm handlers matched oracle ({} ops + 4 table dumps incl. Librarian chat_messages).",
         spec.ops.len()
     );
 }

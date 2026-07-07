@@ -35,7 +35,122 @@ use serde_json::Value;
 
 pub use shared::DocEditToolContext;
 
-use crate::services::librarian_notifications::LibrarianWriteAnnouncement;
+use crate::services::librarian_notifications::{
+    self, LibrarianBlobWriteAnnouncement, LibrarianCopyAnnouncement, LibrarianDeleteAnnouncement,
+    LibrarianFolderCreatedAnnouncement, LibrarianFolderDeletedAnnouncement,
+    LibrarianMoveAnnouncement, LibrarianOpenAnnouncement, LibrarianWriteAnnouncement,
+};
+
+/// A Librarian announcement a mutating doc-edit handler wants posted after its
+/// synchronous write closure returns. v4 fires each `postLibrarian*` inline inside
+/// the handler; here every kind is threaded OUT of the sync [`crate::db::runtime::Db::write`]
+/// closure via [`DocEditToolResult::pending_librarian_announcement`] so the async
+/// executor can `await` the matching poster afterwards (the G6 write-announcement /
+/// wardrobe-drain `pending*` precedent, generalized to every announcement kind).
+///
+/// Each variant carries exactly the frozen writer's argument struct
+/// ([`crate::services::librarian_notifications`]) — the handler builds it inside the
+/// closure (it needs the RW connections for the URI / actor-origin /
+/// hidden-from-characters computations), and the executor / direct-drive
+/// differential post it after the write.
+#[derive(Debug, Clone)]
+pub enum PendingLibrarianAnnouncement {
+    /// The doc-save (`change:{diff}`/`{created,body}`) announcement (G6): the five
+    /// mutating text/markdown handlers.
+    Write(LibrarianWriteAnnouncement),
+    /// A file/folder move (`doc_move_file` / `doc_move_folder`).
+    Move(LibrarianMoveAnnouncement),
+    /// A cross-store file copy (`doc_copy_file`).
+    Copy(LibrarianCopyAnnouncement),
+    /// A file/blob delete (`doc_delete_file` / `doc_delete_blob`).
+    Delete(LibrarianDeleteAnnouncement),
+    /// A folder create (`doc_create_folder`).
+    FolderCreated(LibrarianFolderCreatedAnnouncement),
+    /// A folder delete (`doc_delete_folder`).
+    FolderDeleted(LibrarianFolderDeletedAnnouncement),
+    /// A Document-Mode open (`doc_open_document`).
+    Open(LibrarianOpenAnnouncement),
+    /// A binary blob write (`doc_write_blob`).
+    BlobWrite(LibrarianBlobWriteAnnouncement),
+}
+
+impl From<LibrarianWriteAnnouncement> for PendingLibrarianAnnouncement {
+    fn from(a: LibrarianWriteAnnouncement) -> Self {
+        PendingLibrarianAnnouncement::Write(a)
+    }
+}
+impl From<LibrarianMoveAnnouncement> for PendingLibrarianAnnouncement {
+    fn from(a: LibrarianMoveAnnouncement) -> Self {
+        PendingLibrarianAnnouncement::Move(a)
+    }
+}
+impl From<LibrarianCopyAnnouncement> for PendingLibrarianAnnouncement {
+    fn from(a: LibrarianCopyAnnouncement) -> Self {
+        PendingLibrarianAnnouncement::Copy(a)
+    }
+}
+impl From<LibrarianDeleteAnnouncement> for PendingLibrarianAnnouncement {
+    fn from(a: LibrarianDeleteAnnouncement) -> Self {
+        PendingLibrarianAnnouncement::Delete(a)
+    }
+}
+impl From<LibrarianFolderCreatedAnnouncement> for PendingLibrarianAnnouncement {
+    fn from(a: LibrarianFolderCreatedAnnouncement) -> Self {
+        PendingLibrarianAnnouncement::FolderCreated(a)
+    }
+}
+impl From<LibrarianFolderDeletedAnnouncement> for PendingLibrarianAnnouncement {
+    fn from(a: LibrarianFolderDeletedAnnouncement) -> Self {
+        PendingLibrarianAnnouncement::FolderDeleted(a)
+    }
+}
+impl From<LibrarianOpenAnnouncement> for PendingLibrarianAnnouncement {
+    fn from(a: LibrarianOpenAnnouncement) -> Self {
+        PendingLibrarianAnnouncement::Open(a)
+    }
+}
+impl From<LibrarianBlobWriteAnnouncement> for PendingLibrarianAnnouncement {
+    fn from(a: LibrarianBlobWriteAnnouncement) -> Self {
+        PendingLibrarianAnnouncement::BlobWrite(a)
+    }
+}
+
+/// Post a pending Librarian announcement over an already-held RW `main` connection
+/// (the synchronous path the direct-drive doc-edit differentials use — the async
+/// executor uses the `db.write`-based posters instead). Dispatches by variant to
+/// the matching `post_librarian_*_announcement_conn` (best-effort — a failed post
+/// returns `None` and never fails the tool).
+pub fn post_pending_librarian_announcement_conn(
+    main: &Connection,
+    pending: &PendingLibrarianAnnouncement,
+) -> Option<Value> {
+    match pending {
+        PendingLibrarianAnnouncement::Write(a) => {
+            librarian_notifications::post_librarian_write_announcement_conn(main, a)
+        }
+        PendingLibrarianAnnouncement::Move(a) => {
+            librarian_notifications::post_librarian_move_announcement_conn(main, a)
+        }
+        PendingLibrarianAnnouncement::Copy(a) => {
+            librarian_notifications::post_librarian_copy_announcement_conn(main, a)
+        }
+        PendingLibrarianAnnouncement::Delete(a) => {
+            librarian_notifications::post_librarian_delete_announcement_conn(main, a)
+        }
+        PendingLibrarianAnnouncement::FolderCreated(a) => {
+            librarian_notifications::post_librarian_folder_created_announcement_conn(main, a)
+        }
+        PendingLibrarianAnnouncement::FolderDeleted(a) => {
+            librarian_notifications::post_librarian_folder_deleted_announcement_conn(main, a)
+        }
+        PendingLibrarianAnnouncement::Open(a) => {
+            librarian_notifications::post_librarian_open_announcement_conn(main, a)
+        }
+        PendingLibrarianAnnouncement::BlobWrite(a) => {
+            librarian_notifications::post_librarian_blob_write_announcement_conn(main, a)
+        }
+    }
+}
 
 /// Every `doc_*` tool name (v4 `DOC_EDIT_TOOL_NAMES`, `doc-edit-handler.ts:96`).
 pub const DOC_EDIT_TOOL_NAMES: &[&str] = &[
@@ -74,7 +189,10 @@ pub const DOC_EDIT_TOOL_NAMES: &[&str] = &[
 /// literal order need not be reproduced — only the human `formattedText` string
 /// (and the `JSON.stringify`-formatted fallback for tools that set none) is
 /// order-sensitive, and each such handler builds its `result` in v4's order.
-#[derive(Debug, Clone, Serialize, PartialEq)]
+// NOTE: no `PartialEq` derive — the pending-announcement field holds writer arg
+// structs that are not `Eq`, and `DocEditToolResult` is never compared directly
+// (the differential compares the serialized `Value`, which drops the skipped field).
+#[derive(Debug, Clone, Serialize)]
 pub struct DocEditToolResult {
     pub success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -83,16 +201,15 @@ pub struct DocEditToolResult {
     pub error: Option<String>,
     #[serde(rename = "formattedText", skip_serializing_if = "Option::is_none")]
     pub formatted_text: Option<String>,
-    /// The Librarian doc-save (`change:{diff}`/`{created,body}`) announcement a
-    /// mutating write handler wants posted (v4 fires it inline; here it is threaded
-    /// OUT of the synchronous `Db::write` closure so the async caller can `await`
-    /// [`crate::services::librarian_notifications::post_librarian_write_announcement`]
-    /// after the closure returns — the wardrobe-drain `pending*` precedent). `None`
-    /// for every read/no-op/failed handler and every non-write path. NEVER
-    /// serialized (v4 puts `change` only in the announcement call, not the tool
-    /// result), so it does not affect the differential's output diff.
+    /// The Librarian announcement a mutating handler wants posted (v4 fires it
+    /// inline; here it is threaded OUT of the synchronous `Db::write` closure so the
+    /// async caller can `await` the matching poster after the closure returns — the
+    /// wardrobe-drain `pending*` precedent). `None` for every read/no-op/failed
+    /// handler and every non-announcing path. NEVER serialized (v4 puts the
+    /// announcement in the `postLibrarian*` call, not the tool result), so it does
+    /// not affect the differential's output diff.
     #[serde(skip)]
-    pub pending_librarian_announcement: Option<LibrarianWriteAnnouncement>,
+    pub pending_librarian_announcement: Option<PendingLibrarianAnnouncement>,
 }
 
 impl DocEditToolResult {
@@ -131,11 +248,15 @@ impl DocEditToolResult {
         }
     }
 
-    /// Attach a pending Librarian write announcement to a success result (chainable
-    /// after [`DocEditToolResult::ok`]). The caller posts it after the write closure
-    /// returns.
-    pub fn with_librarian_announcement(mut self, announcement: LibrarianWriteAnnouncement) -> Self {
-        self.pending_librarian_announcement = Some(announcement);
+    /// Attach a pending Librarian announcement to a success result (chainable after
+    /// [`DocEditToolResult::ok`]). Accepts any announcement kind via its `From`
+    /// conversion into [`PendingLibrarianAnnouncement`]. The caller posts it after
+    /// the write closure returns.
+    pub fn with_librarian_announcement(
+        mut self,
+        announcement: impl Into<PendingLibrarianAnnouncement>,
+    ) -> Self {
+        self.pending_librarian_announcement = Some(announcement.into());
         self
     }
 }

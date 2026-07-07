@@ -22,7 +22,7 @@
  * accumulates). After every op, dumps the three store tables. Emits two NDJSON
  * lines:
  *   line 1: { case, ops: [{ name, tool, output, formatted }, ...] }
- *   line 2: { case, dumps: { blobs, fileLinks, files } }
+ *   line 2: { case, dumps: { blobs, fileLinks, files, chatMessages } }
  *
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin
@@ -150,18 +150,13 @@ async function main(): Promise<void> {
     jest.requireActual('@/lib/embedding/embedding-service'),
   );
 
-  // Seamed side effects → no-ops (documented Rust seams; matches the port).
-  jest.doMock('@/lib/services/librarian-notifications/writer', () => {
-    const actual = jest.requireActual('@/lib/services/librarian-notifications/writer');
-    return {
-      __esModule: true,
-      ...actual,
-      postLibrarianBlobWriteAnnouncement: async () => undefined,
-      postLibrarianDeleteAnnouncement: async () => undefined,
-      contentHiddenFromCharacters: () => false,
-      documentHiddenFromCharacters: () => false,
-    };
-  });
+  // W4.6c: the blob write/delete Librarian announcements are now LIVE — use the
+  // REAL writer module so the chat_messages announcement rows land on both sides
+  // (the Rust port posts the same rows after the sync write closure).
+  // Reindex/embedding stay seamed below.
+  jest.doMock('@/lib/services/librarian-notifications/writer', () =>
+    jest.requireActual('@/lib/services/librarian-notifications/writer'),
+  );
   jest.doMock('@/lib/doc-edit/reindex-file', () => ({
     __esModule: true,
     reindexSingleFile: async () => undefined,
@@ -180,7 +175,7 @@ async function main(): Promise<void> {
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
 
-  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+  const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { closeMountIndexSQLiteClient, getRawMountIndexDatabase } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
@@ -221,10 +216,26 @@ async function main(): Promise<void> {
     };
     // Order by remap-invariant keys (content-derived sha / stable relativePath) so
     // the positional-UUID remap assigns identical tokens on both sides.
+    //
+    // W4.6c: `chat_messages` lives in the MAIN db (via rawQuery), holding the
+    // Librarian blob-write / delete announcement rows. Order by `content` (remap-
+    // invariant — no minted uuid/timestamp in the persona body).
+    const chatMessageCols = (
+      (await rawQuery('PRAGMA table_info(chat_messages)')) as Array<{ name: string }>
+    ).map((c) => c.name);
+    const chatMessageRows = (await rawQuery('SELECT * FROM chat_messages')) as Array<
+      Record<string, unknown>
+    >;
     const dumps = {
       blobs: dumpTable('doc_mount_blobs', 'sha256'),
       fileLinks: dumpTable('doc_mount_file_links', 'relativePath'),
       files: dumpTable('doc_mount_files', 'sha256'),
+      chatMessages: canonicalizeRows({
+        table: 'chat_messages',
+        columns: chatMessageCols,
+        rawRows: chatMessageRows,
+        orderBy: 'content',
+      }),
     };
     outLines.push(JSON.stringify({ case: 'doc-blob', dumps }));
   } finally {

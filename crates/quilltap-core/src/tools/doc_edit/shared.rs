@@ -89,6 +89,31 @@ pub fn resolve_actor_origin(main: &Connection, ctx: &DocEditToolContext) -> Libr
     LibrarianActorOrigin::ByUser
 }
 
+/// Synchronous sibling of
+/// [`crate::services::librarian_notifications::document_hidden_from_characters`]:
+/// true when the indexed document at `(mount_point_id, relative_path)` is
+/// `character_read:false`, so a Librarian announcement naming it must be suppressed
+/// (the operator-override path can reach a hidden doc; the read gate blocks
+/// characters). False for missing ids/paths, a missing link row, or any lookup
+/// error — an announcement is never blocked by a transient fault. Takes the `mount`
+/// connection directly (the handlers run inside the write closure).
+pub fn document_hidden_from_characters(
+    mount: &Connection,
+    mount_point_id: Option<&str>,
+    relative_path: &str,
+) -> bool {
+    let Some(mp) = mount_point_id else {
+        return false;
+    };
+    if mp.is_empty() || relative_path.is_empty() {
+        return false;
+    }
+    match DocMountFileLinksRepository::new(mount).find_by_mount_point_and_path(mp, relative_path) {
+        Ok(Some(link)) => !link.allow_character_read,
+        _ => false,
+    }
+}
+
 /// Map a raw `scope` string to [`DocEditScope`] (v4 casts the string; an
 /// unrecognized value falls back to `document_store`, matching v4's default).
 pub fn scope_from_str(scope: Option<&str>, default: DocEditScope) -> DocEditScope {

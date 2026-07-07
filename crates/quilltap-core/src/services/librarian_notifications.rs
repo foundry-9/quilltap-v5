@@ -1253,3 +1253,218 @@ fn build_librarian_message(
     let event: ChatEventInput = serde_json::from_value(message.clone()).ok()?;
     Some((event, message))
 }
+
+// ---------------------------------------------------------------------------
+// Synchronous `_conn` posters (the direct-drive doc-edit differentials).
+//
+// The async executor posts each announcement through the single-writer `Db::write`
+// path AFTER the doc-edit handler's synchronous write closure returns. The
+// differential drives those same handlers directly against a raw
+// [`crate::db::Writer`] (there is no async writer task in the harness), so it needs
+// a synchronous sibling for every announcement kind — these mirror each async
+// poster's gate + kind-label + content exactly, inserting over the held RW `main`
+// connection instead of the channel. (The write-announcement sibling
+// [`post_librarian_write_announcement_conn`] lives above, next to its shared
+// message builder.)
+// ---------------------------------------------------------------------------
+
+/// Synchronous sibling of [`post_librarian_message`] — build the Librarian
+/// `MessageEvent` (same [`build_librarian_message`] marshaling) and insert it over
+/// an already-held RW `main` connection. Errors never propagate (returns `None`).
+#[allow(clippy::too_many_arguments)]
+fn post_librarian_message_conn(
+    main: &Connection,
+    chat_id: &str,
+    content: &str,
+    opaque_content: Option<&str>,
+    kind_label: &str,
+    attachments: &[String],
+    target_participant_ids: Option<&[String]>,
+    summary_anchor: Option<Value>,
+) -> Option<Value> {
+    let (event, message) = build_librarian_message(
+        content,
+        opaque_content,
+        kind_label,
+        attachments,
+        target_participant_ids,
+        summary_anchor,
+    )?;
+    match ChatMessagesRepository::new(main).add_message(chat_id, &event) {
+        Ok(()) => Some(message),
+        Err(_) => None,
+    }
+}
+
+/// Synchronous sibling of [`post_librarian_open_announcement`].
+pub fn post_librarian_open_announcement_conn(
+    main: &Connection,
+    params: &LibrarianOpenAnnouncement,
+) -> Option<Value> {
+    if params.hidden_from_characters {
+        return None;
+    }
+    let content = build_open_content(params);
+    let opaque = build_open_opaque_content(params);
+    let kind_label = match &params.origin {
+        LibrarianOpenKind::ByUser => "opened-by-user",
+        LibrarianOpenKind::ByCharacter { .. } => "opened-by-character",
+    };
+    post_librarian_message_conn(
+        main,
+        &params.chat_id,
+        &content,
+        Some(&opaque),
+        kind_label,
+        &[],
+        None,
+        None,
+    )
+}
+
+/// Synchronous sibling of [`post_librarian_delete_announcement`].
+pub fn post_librarian_delete_announcement_conn(
+    main: &Connection,
+    params: &LibrarianDeleteAnnouncement,
+) -> Option<Value> {
+    if params.hidden_from_characters {
+        return None;
+    }
+    let content = build_delete_content(params);
+    let opaque = build_delete_opaque_content(params);
+    let kind_label = match &params.origin {
+        LibrarianActorOrigin::ByUser => "deleted-by-user",
+        LibrarianActorOrigin::ByCharacter { .. } => "deleted-by-character",
+    };
+    post_librarian_message_conn(
+        main,
+        &params.chat_id,
+        &content,
+        Some(&opaque),
+        kind_label,
+        &[],
+        None,
+        None,
+    )
+}
+
+/// Synchronous sibling of [`post_librarian_folder_created_announcement`].
+pub fn post_librarian_folder_created_announcement_conn(
+    main: &Connection,
+    params: &LibrarianFolderCreatedAnnouncement,
+) -> Option<Value> {
+    let content = build_folder_created_content(params);
+    let opaque = build_folder_created_opaque_content(params);
+    let kind_label = match &params.origin {
+        LibrarianActorOrigin::ByUser => "folder-created-by-user",
+        LibrarianActorOrigin::ByCharacter { .. } => "folder-created-by-character",
+    };
+    post_librarian_message_conn(
+        main,
+        &params.chat_id,
+        &content,
+        Some(&opaque),
+        kind_label,
+        &[],
+        None,
+        None,
+    )
+}
+
+/// Synchronous sibling of [`post_librarian_folder_deleted_announcement`].
+pub fn post_librarian_folder_deleted_announcement_conn(
+    main: &Connection,
+    params: &LibrarianFolderDeletedAnnouncement,
+) -> Option<Value> {
+    let content = build_folder_deleted_content(params);
+    let opaque = build_folder_deleted_opaque_content(params);
+    let kind_label = match &params.origin {
+        LibrarianActorOrigin::ByUser => "folder-deleted-by-user",
+        LibrarianActorOrigin::ByCharacter { .. } => "folder-deleted-by-character",
+    };
+    post_librarian_message_conn(
+        main,
+        &params.chat_id,
+        &content,
+        Some(&opaque),
+        kind_label,
+        &[],
+        None,
+        None,
+    )
+}
+
+/// Synchronous sibling of [`post_librarian_move_announcement`].
+pub fn post_librarian_move_announcement_conn(
+    main: &Connection,
+    params: &LibrarianMoveAnnouncement,
+) -> Option<Value> {
+    if params.hidden_from_characters {
+        return None;
+    }
+    let content = build_move_content(params);
+    let opaque = build_move_opaque_content(params);
+    let kind_label = match &params.origin {
+        LibrarianActorOrigin::ByUser => "moved-by-user",
+        LibrarianActorOrigin::ByCharacter { .. } => "moved-by-character",
+    };
+    post_librarian_message_conn(
+        main,
+        &params.chat_id,
+        &content,
+        Some(&opaque),
+        kind_label,
+        &[],
+        None,
+        None,
+    )
+}
+
+/// Synchronous sibling of [`post_librarian_copy_announcement`].
+pub fn post_librarian_copy_announcement_conn(
+    main: &Connection,
+    params: &LibrarianCopyAnnouncement,
+) -> Option<Value> {
+    if params.hidden_from_characters {
+        return None;
+    }
+    let content = build_copy_content(params);
+    let opaque = build_copy_opaque_content(params);
+    let kind_label = match &params.origin {
+        LibrarianActorOrigin::ByUser => "copied-by-user",
+        LibrarianActorOrigin::ByCharacter { .. } => "copied-by-character",
+    };
+    post_librarian_message_conn(
+        main,
+        &params.chat_id,
+        &content,
+        Some(&opaque),
+        kind_label,
+        &[],
+        None,
+        None,
+    )
+}
+
+/// Synchronous sibling of [`post_librarian_blob_write_announcement`].
+pub fn post_librarian_blob_write_announcement_conn(
+    main: &Connection,
+    params: &LibrarianBlobWriteAnnouncement,
+) -> Option<Value> {
+    let content = build_blob_write_content(params);
+    let opaque = build_blob_write_opaque_content(params);
+    let kind_label = match &params.origin {
+        LibrarianActorOrigin::ByUser => "blob-written-by-user",
+        LibrarianActorOrigin::ByCharacter { .. } => "blob-written-by-character",
+    };
+    post_librarian_message_conn(
+        main,
+        &params.chat_id,
+        &content,
+        Some(&opaque),
+        kind_label,
+        &[],
+        None,
+        None,
+    )
+}

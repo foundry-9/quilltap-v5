@@ -15,10 +15,14 @@
 //! handlers pre-empt them with their own (path-interpolated) strings on the paths
 //! the LLM sees, so this port reproduces the handler-level strings directly.
 //!
-//! ## Seamed side effects (documented no-ops, matching the oracle mocks)
+//! ## Side effects
 //!
-//! - Librarian announcements (`postLibrarian*`) — skipped.
-//! - `triggerReindexIfNeeded` — skipped (the `chunkCount` it would bump is
+//! - Librarian announcements (W4.6c — now live): the move/copy/delete/folder-created
+//!   /folder-deleted announcements are built inside the write closure and threaded
+//!   out via [`DocEditToolResult::pending_librarian_announcement`]
+//!   ([`super::PendingLibrarianAnnouncement`]); the executor posts them after the
+//!   closure returns (the G6 write-announcement precedent).
+//! - `triggerReindexIfNeeded` — skipped seam (the `chunkCount` it would bump is
 //!   pinned/excluded in the differential).
 //! - `syncChatDocumentsAfterFileMove` / `syncChatDocumentsAfterFolderMove` (the
 //!   `chat_documents` Document-Mode pointer sync) — skipped; the corpus seeds no
@@ -29,8 +33,9 @@ use serde_json::{json, Value};
 
 use super::shared::{
     apply_qtap_uri, arg_str, assert_character_may_read, assert_character_may_write,
-    assert_folder_has_no_write_protected_descendants, build_read_resolution_context,
-    build_write_resolution_context, is_text_file, read_file_with_mtime, resolve_error_message,
+    assert_folder_has_no_write_protected_descendants, basename, build_read_resolution_context,
+    build_write_resolution_context, document_hidden_from_characters, is_text_file,
+    librarian_scope_from, read_file_with_mtime, resolve_actor_origin, resolve_error_message,
     scope_from_str, store_error_message, write_file_with_mtime_check, Addressing,
     DocEditToolContext,
 };
@@ -40,6 +45,10 @@ use crate::doc_edit::path_resolver::{resolve_doc_edit_path, ResolvedPath};
 use crate::doc_edit::qtap_uri::parse_qtap_uri;
 use crate::doc_edit::uri_producers::uri_for_resolved_path;
 use crate::doc_edit::DocEditScope;
+use crate::services::librarian_notifications::{
+    LibrarianCopyAnnouncement, LibrarianDeleteAnnouncement, LibrarianFolderCreatedAnnouncement,
+    LibrarianFolderDeletedAnnouncement, LibrarianMoveAnnouncement,
+};
 
 /// POSIX `path.posix.basename` for a forward-slash path (copy's source basename).
 fn posix_basename(p: &str) -> &str {
@@ -113,6 +122,14 @@ pub fn handle_move_file(
     assert_character_may_write(mount, &resolved_source, ctx)?;
     assert_character_may_write(mount, &resolved_dest, ctx)?;
 
+    // Capture the source's read-policy BEFORE the move relocates its link, so a
+    // character_read:false document isn't announced to characters (operator path).
+    let hidden_from_characters = document_hidden_from_characters(
+        mount,
+        resolved_source.mount_point_id.as_deref(),
+        &resolved_source.relative_path,
+    );
+
     // Database-backed mount: route the move through the database-store module.
     if resolved_source.mount_type.as_deref() == Some("database") {
         if let Some(mp) = resolved_source.mount_point_id.as_deref() {
@@ -145,9 +162,21 @@ pub fn handle_move_file(
                 &resolved_dest.relative_path,
             )
             .map_err(store_error_message)?;
-            // syncChatDocumentsAfterFileMove + Librarian announcement: no-op seams.
+            // syncChatDocumentsAfterFileMove: no-op seam (see the module header).
             let moved_uri = uri_for(main, mount, &resolved_dest, ctx);
             let np = new_path.clone().unwrap_or_default();
+            let announcement = LibrarianMoveAnnouncement {
+                chat_id: ctx.chat_id.clone(),
+                old_display_title: basename(&path).to_string(),
+                new_display_title: basename(&np).to_string(),
+                old_uri: uri_for(main, mount, &resolved_source, ctx),
+                new_uri: moved_uri.clone(),
+                scope: librarian_scope_from(scope),
+                mount_point: addressing.mount_point.clone(),
+                origin: resolve_actor_origin(main, ctx),
+                is_folder: false,
+                hidden_from_characters,
+            };
             return Ok(DocEditToolResult::ok(
                 json!({
                     "success": true,
@@ -156,7 +185,8 @@ pub fn handle_move_file(
                     "uri": moved_uri,
                 }),
                 format!("Moved: {path} → {np}"),
-            ));
+            )
+            .with_librarian_announcement(announcement));
         }
     }
 
@@ -377,7 +407,7 @@ pub fn handle_copy_file(
     // Read the source content, write the destination.
     let content = read_file_with_mtime(mount, &resolved_source)?.content;
     let mtime = write_file_with_mtime_check(mount, &resolved_dest, &content)?;
-    // triggerReindexIfNeeded + Librarian announcement: no-op seams.
+    // triggerReindexIfNeeded: no-op seam (see the module header).
 
     let copied_uri = uri_for(main, mount, &resolved_dest, ctx);
     let src_label = resolved_source
@@ -388,6 +418,24 @@ pub fn handle_copy_file(
         .mount_point_name
         .clone()
         .unwrap_or_else(|| dest_mount_point.clone());
+
+    let announcement = LibrarianCopyAnnouncement {
+        chat_id: ctx.chat_id.clone(),
+        source_display_title: source_basename.clone(),
+        dest_display_title: posix_basename(&final_dest_rel).to_string(),
+        source_mount_point: src_label.clone(),
+        dest_mount_point: dst_label.clone(),
+        source_uri: uri_for(main, mount, &resolved_source, ctx),
+        dest_uri: copied_uri.clone(),
+        origin: resolve_actor_origin(main, ctx),
+        // Gate by the source's read-policy: a character_read:false source must not
+        // be named in an announcement to characters (operator path).
+        hidden_from_characters: document_hidden_from_characters(
+            mount,
+            resolved_source.mount_point_id.as_deref(),
+            &resolved_source.relative_path,
+        ),
+    };
 
     Ok(DocEditToolResult::ok(
         json!({
@@ -400,7 +448,8 @@ pub fn handle_copy_file(
             "mtime": mtime,
         }),
         format!("Copied: {src_label}:{source_path} → {dst_label}:{final_dest_rel}"),
-    ))
+    )
+    .with_librarian_announcement(announcement))
 }
 
 // ============================================================================
@@ -428,6 +477,14 @@ pub fn handle_delete_file(
         .map_err(resolve_error_message)?;
     assert_character_may_write(mount, &resolved, ctx)?;
 
+    // Capture the read-policy BEFORE the delete removes the link row, so a
+    // character_read:false document isn't announced to characters (operator path).
+    let hidden_from_characters = document_hidden_from_characters(
+        mount,
+        resolved.mount_point_id.as_deref(),
+        &resolved.relative_path,
+    );
+
     if resolved.mount_type.as_deref() == Some("database") {
         if let Some(mp) = resolved.mount_point_id.as_deref() {
             let deleted =
@@ -443,12 +500,21 @@ pub fn handle_delete_file(
                 }
                 return Ok(DocEditToolResult::fail(format!("File not found: {path}")));
             }
-            // Librarian announcement: no-op seam.
             let deleted_uri = uri_for(main, mount, &resolved, ctx);
+            let announcement = LibrarianDeleteAnnouncement {
+                chat_id: ctx.chat_id.clone(),
+                display_title: basename(&path).to_string(),
+                file_path: path.clone(),
+                scope: librarian_scope_from(scope),
+                mount_point: addressing.mount_point.clone(),
+                origin: resolve_actor_origin(main, ctx),
+                hidden_from_characters,
+            };
             return Ok(DocEditToolResult::ok(
                 json!({ "success": true, "path": path, "uri": deleted_uri }),
                 format!("Deleted file: {path}"),
-            ));
+            )
+            .with_librarian_announcement(announcement));
         }
     }
 
@@ -485,12 +551,19 @@ pub fn handle_create_folder(
             // error message on failure.
             match database_store::create_database_folder(mount, mp, &resolved.relative_path) {
                 Ok(_) => {
-                    // Librarian announcement: no-op seam.
                     let uri = uri_for(main, mount, &resolved, ctx);
+                    let announcement = LibrarianFolderCreatedAnnouncement {
+                        chat_id: ctx.chat_id.clone(),
+                        folder_path: path.clone(),
+                        scope: librarian_scope_from(scope),
+                        mount_point: addressing.mount_point.clone(),
+                        origin: resolve_actor_origin(main, ctx),
+                    };
                     return Ok(DocEditToolResult::ok(
                         json!({ "success": true, "path": path, "uri": uri }),
                         format!("Created folder: {path}"),
-                    ));
+                    )
+                    .with_librarian_announcement(announcement));
                 }
                 Err(e) => {
                     return Ok(DocEditToolResult::fail(e.to_string()));
@@ -532,12 +605,19 @@ pub fn handle_delete_folder(
         if let Some(mp) = resolved.mount_point_id.as_deref() {
             match database_store::delete_database_folder(mount, mp, &resolved.relative_path) {
                 Ok(()) => {
-                    // Librarian announcement: no-op seam.
                     let uri = uri_for(main, mount, &resolved, ctx);
+                    let announcement = LibrarianFolderDeletedAnnouncement {
+                        chat_id: ctx.chat_id.clone(),
+                        folder_path: path.clone(),
+                        scope: librarian_scope_from(scope),
+                        mount_point: addressing.mount_point.clone(),
+                        origin: resolve_actor_origin(main, ctx),
+                    };
                     return Ok(DocEditToolResult::ok(
                         json!({ "success": true, "path": path, "uri": uri }),
                         format!("Deleted folder: {path}"),
-                    ));
+                    )
+                    .with_librarian_announcement(announcement));
                 }
                 Err(e) => {
                     let error_msg = store_error_message(e);
@@ -610,9 +690,23 @@ pub fn handle_move_folder(
                 &resolved_dest.relative_path,
             ) {
                 Ok(()) => {
-                    // syncChatDocumentsAfterFolderMove + Librarian announcement: no-op.
+                    // syncChatDocumentsAfterFolderMove: no-op seam (see module header).
                     let moved_uri = uri_for(main, mount, &resolved_dest, ctx);
                     let np = new_path.clone().unwrap_or_default();
+                    // v4's folder-move site passes NO `hiddenFromCharacters`
+                    // (→ falsy); the file-move site does. Match: `false` here.
+                    let announcement = LibrarianMoveAnnouncement {
+                        chat_id: ctx.chat_id.clone(),
+                        old_display_title: basename(&path).to_string(),
+                        new_display_title: basename(&np).to_string(),
+                        old_uri: uri_for(main, mount, &resolved_source, ctx),
+                        new_uri: moved_uri.clone(),
+                        scope: librarian_scope_from(scope),
+                        mount_point: addressing.mount_point.clone(),
+                        origin: resolve_actor_origin(main, ctx),
+                        is_folder: true,
+                        hidden_from_characters: false,
+                    };
                     return Ok(DocEditToolResult::ok(
                         json!({
                             "success": true,
@@ -621,7 +715,8 @@ pub fn handle_move_folder(
                             "uri": moved_uri,
                         }),
                         format!("Moved folder: {path} → {np}"),
-                    ));
+                    )
+                    .with_librarian_announcement(announcement));
                 }
                 Err(e) => {
                     let error_msg = store_error_message(e);
