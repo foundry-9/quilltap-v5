@@ -27,17 +27,28 @@
 //! `NoopSeams` (the spine caller is unchanged), so it posts none of those — the
 //! oracle gates its mocks the same way.
 //!
+//! W4.6b + Round-3 Group 7: the `generate` ops drive `RealContextSummarySeams`, so
+//! the fold now ALSO writes the Librarian summary whisper + the CONTEXT_SUMMARY /
+//! TITLE_GENERATION cost events, MIRRORS the summary into the provisioned character's
+//! vault (`writeConversationSummaryToVaults`), and REFRESHES relevant conversations
+//! (`refreshRelevantConversationsOnFold`) — the latter surfacing a pre-seeded prior
+//! summary (canned unit embedding) as a `relevant-conversations` whisper in
+//! `chat_messages`. The oracle runs those seams REAL; the fixture is now two DBs
+//! (main + mount-index with a provisioned vault + seeded embedded summary). The
+//! mirror is diffed by the `doc_mount_file_links` path set; the refresh whisper by
+//! the `chat_messages` dump. The `check`-op internal fold keeps `NoopSeams`.
+//!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
 //!   cd ~/source/quilltap-server
-//!   QT_FIXTURE_OUT=/tmp/qt-ctxsum-main.db \
+//!   QT_FIXTURE_OUT=/tmp/qt-ctxsum-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-ctxsum-mount.db \
 //!     $N/npx tsx $V5/harness/oracle/fixtures/build-context-summary-service-fixture.ts
-//!   QT_FIXTURE_CTXSUM=/tmp/qt-ctxsum-main.db \
+//!   QT_FIXTURE_CTXSUM=/tmp/qt-ctxsum-main.db QT_FIXTURE_CTXSUM_MOUNT=/tmp/qt-ctxsum-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-context-summary-service.ndjson \
 //!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- context-summary-service-tier3
 //! Run:
 //!   QT_ORACLE_CTXSUM=/tmp/oracle-context-summary-service.ndjson \
-//!   QT_FIXTURE_CTXSUM=/tmp/qt-ctxsum-main.db \
+//!   QT_FIXTURE_CTXSUM=/tmp/qt-ctxsum-main.db QT_FIXTURE_CTXSUM_MOUNT=/tmp/qt-ctxsum-mount.db \
 //!     cargo test -p quilltap-harness --test context_summary_service_tier3_equivalence
 
 use std::collections::HashMap;
@@ -295,6 +306,15 @@ async fn context_summary_service_tier3_matches_oracle() {
             return;
         }
     };
+    let fixture_mount = match std::env::var("QT_FIXTURE_CTXSUM_MOUNT") {
+        Ok(p) => p,
+        Err(_) => {
+            eprintln!(
+                "SKIP: set QT_FIXTURE_CTXSUM_MOUNT to the seed mount-index .db (see header)."
+            );
+            return;
+        }
+    };
 
     let ops_spec: OpsSpec = serde_json::from_str(
         &std::fs::read_to_string(ops_path()).unwrap_or_else(|e| panic!("read ops: {e}")),
@@ -306,6 +326,7 @@ async fn context_summary_service_tier3_matches_oracle() {
     let mut oracle_results: Vec<(String, Value)> = Vec::new();
     let mut oracle_canned: Vec<CannedRowW> = Vec::new();
     let mut oracle_tables: HashMap<String, Value> = HashMap::new();
+    let mut oracle_mount_links: Vec<String> = Vec::new();
     for line in oracle_text.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -320,15 +341,38 @@ async fn context_summary_service_tier3_matches_oracle() {
             Some("table") => {
                 oracle_tables.insert(v["table"].as_str().unwrap().to_string(), v);
             }
+            Some("mountLinks") => {
+                oracle_mount_links = v["paths"]
+                    .as_array()
+                    .expect("mountLinks.paths array")
+                    .iter()
+                    .map(|p| p.as_str().unwrap().to_string())
+                    .collect();
+            }
             other => panic!("unknown oracle row kind {other:?}"),
         }
     }
 
-    // Fresh copy so the shared seed fixture stays pristine.
+    // Fresh copies so the shared seed fixtures stay pristine.
     let pid = std::process::id();
     let work_main = std::env::temp_dir().join(format!("qt-ctxsum-rust-{pid}.db"));
+    let work_mount = std::env::temp_dir().join(format!("qt-ctxsum-rust-mount-{pid}.db"));
     let _ = std::fs::remove_file(&work_main);
+    let _ = std::fs::remove_file(&work_mount);
     std::fs::copy(&fixture_main, &work_main).unwrap_or_else(|e| panic!("copy main: {e}"));
+    std::fs::copy(&fixture_mount, &work_mount).unwrap_or_else(|e| panic!("copy mount: {e}"));
+
+    // Round-3 Group 7: the fold's refresh embeds the fold summary and searches the
+    // vault. The `fold_regular` character (`aa…0001`) is the only provisioned vault,
+    // so it is the only op whose refresh reaches the embed; canned to the same unit
+    // vector the fixture seeded into the prior summary's chunk (cosine 1.0 → match).
+    // The other generate chats' characters are unprovisioned → their refresh returns
+    // early (no vault) before embedding, so no registration is needed for them.
+    const FOLD_REGULAR_SUMMARY: &str = "Active threads: heist continues. Resolved decisions: split the take. Emotional state: wary. Open questions: escape route.";
+    let embedding = quilltap_core::model::embedding::CannedEmbeddingProvider::new().with_vector(
+        FOLD_REGULAR_SUMMARY,
+        vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    );
 
     // Replay EXACTLY the recorded entries (responses + the recorded failure key).
     let mut completion = CannedCompletionProvider::new();
@@ -373,7 +417,7 @@ async fn context_summary_service_tier3_matches_oracle() {
     let db = Db::open(
         DbPaths {
             main: work_main.clone(),
-            mount_index: None,
+            mount_index: Some(work_mount.clone()),
             llm_logs: None,
         },
         &ops_spec.test_pepper_base64,
@@ -417,12 +461,19 @@ async fn context_summary_service_tier3_matches_oracle() {
                     force_regenerate: op.force_regenerate,
                     danger_settings: None,
                     registry_cheapest_for_current: None,
+                    // v4 `connectionProfile.maxContext ?? null` — the oracle's profile
+                    // carries no maxContext, so the refresh list size is the max.
+                    connection_max_context: None,
                 };
-                // W4.6b: drive the real Librarian re-post + cost-event seams (the
-                // `check`-op internal folds still use `NoopSeams` inside
-                // `check_and_generate_summary_if_needed`, matching the oracle's
-                // per-op-gated mocks).
-                let seams = RealContextSummarySeams { db: &db };
+                // W4.6b + Round-3 Group 7: drive the real Librarian re-post,
+                // cost-event, vault MIRROR, and relevant-conversations REFRESH seams
+                // (the `check`-op internal folds still use `NoopSeams` inside
+                // `check_and_generate_summary_if_needed`, matching the oracle: the
+                // real mirror/refresh no-op for its unprovisioned characters).
+                let seams = RealContextSummarySeams {
+                    db: &db,
+                    embedding: &embedding,
+                };
                 let r = generate_context_summary_with_seams(
                     &db,
                     &completion,
@@ -510,8 +561,41 @@ async fn context_summary_service_tier3_matches_oracle() {
                 .unwrap_or_else(|e| panic!("dump {}: {e:?}", t.table))
         })
         .collect();
+
+    // Mirror proof (Round-3 Group 7): the SET of `<mountPointId>|<relativePath>` in
+    // the vault after the fold. The mirror wrote `Conversation Summaries/Old Title
+    // A.md` into the `fold_regular` character's vault on both sides; the deterministic
+    // relativePath is compared (minted ids / fileIds / timestamps / chunkCount — the
+    // v4-reindex-vs-Rust-no-reindex divergence — are all ignored).
+    let mut got_mount_links: Vec<String> = db
+        .read_mount_index(|conn| {
+            let mut stmt =
+                conn.prepare("SELECT mountPointId, relativePath FROM doc_mount_file_links")?;
+            let rows = stmt.query_map([], |r| {
+                Ok(format!(
+                    "{}|{}",
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?
+                ))
+            })?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(out)
+        })
+        .expect("dump mount links");
+    got_mount_links.sort();
+    let mut want_mount_links = oracle_mount_links.clone();
+    want_mount_links.sort();
+    assert_eq!(
+        got_mount_links, want_mount_links,
+        "vault doc_mount_file_links path set diverges (the mirror write)"
+    );
+
     drop(db);
     let _ = std::fs::remove_file(&work_main);
+    let _ = std::fs::remove_file(&work_mount);
 
     let mut want: Vec<Value> = TABLES
         .iter()

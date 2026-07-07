@@ -4,6 +4,23 @@
 
 ### 5.0-dev
 
+Phase 3 — Round-3 unification (Group 7, context-summary vault-mirror + relevant-
+conversations-refresh LIVE): `RealContextSummarySeams::mirror_summary_to_vaults` and
+`refresh_relevant_conversations` (previously no-ops) now run live — the fold mirrors
+the fresh summary into every participant character's vault
+(`writeConversationSummaryToVaults`) and then re-runs the relevant-past-conversations
+search against it (`refreshRelevantConversationsOnFold`), in that order (the refresh
+must read the fresh corpus). The seam trait's two methods now take the built inputs,
+and `RealContextSummarySeams` is generic over an embedding provider (the refresh
+embeds the query). Extended `context_summary_service_tier3` to a two-DB fixture
+(main + mount-index with one provisioned vault + a pre-seeded prior summary whose
+chunk carries a canned unit embedding) and regenerated the differential un-mocking
+the mirror/refresh one-for-one: the mirror's write is proven by the
+`doc_mount_file_links` path set (`Conversation Summaries/Old Title A.md` appears on
+both sides), the refresh's `relevant-conversations` whisper by the `chat_messages`
+dump. `vault_summary_mirror_tier2` (which separately proves the mirror byte-exact)
+and `orchestrator_tier3` (whose summary check keeps `NoopSeams`) re-verified green.
+
 Phase 3 — Round-3 unification (Group 8, cheap-LLM-selection spine threading): the
 `processMessage` spine now resolves a real `CheapLlmSelection` at the composition
 point (v4 `getCheapLLMProvider` over the user's connection profiles + the chat

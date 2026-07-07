@@ -42,7 +42,7 @@
 //! subsystems; they are best-effort in v4 (a failure never fails a fold) and are
 //! modeled here as the [`ContextSummarySeams`] trait. [`NoopSeams`] is the
 //! default no-op (matching the oracle mocks the spine callers keep);
-//! [`RealContextSummarySeams`] (W4.6b) closes two of them:
+//! [`RealContextSummarySeams`] (W4.6b + Round-3 Group 7) closes ALL of them:
 //!
 //!   - `postLibrarianSummaryAnnouncement` — the fresh whisper post — **CLOSED**
 //!     (the *sweep* of prior whispers is ported inline; the re-post rides the
@@ -52,9 +52,13 @@
 //!     (through the ported [`crate::services::cost_events`] writers; the estimated
 //!     cost stays host-resolved → `None`).
 //!   - `writeConversationSummaryToVaults` + `computeConversationStats` — the
-//!     Commonplace-Book vault mirror — still a no-op (needs vault fixtures).
+//!     Commonplace-Book vault mirror — **CLOSED** (Round-3 Group 7): the fold
+//!     builds the input from `compute_conversation_stats` + the participant
+//!     character ids and calls the ported bridge writer.
 //!   - `refreshRelevantConversationsOnFold` — the relevant-past-conversations
-//!     re-search + whisper — still a no-op (needs embedding).
+//!     re-search + whisper — **CLOSED** (Round-3 Group 7): fired AFTER the mirror
+//!     (so the search reads the fresh corpus), through the ported writer, over the
+//!     seam's injected embedding provider.
 //!
 //! Also inherited from [`crate::services::cheap_llm_exec`]: the per-call
 //! `logLLMCall` llm-logs write and host-side API-key acquisition.
@@ -79,7 +83,14 @@ use crate::db::chats_read;
 use crate::db::runtime::Db;
 use crate::db::DbError;
 use crate::model::completion::CompletionProvider;
+use crate::model::embedding::EmbeddingProvider;
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use crate::services::commonplace_notifications::{
+    refresh_relevant_conversations_on_fold, RefreshRelevantConversationsInput,
+};
+use crate::services::conversation_summary_vault_bridge::{
+    compute_conversation_stats, write_conversation_summary_to_vaults, WriteConversationSummaryInput,
+};
 use crate::services::queue_service;
 
 use std::collections::HashMap;
@@ -128,6 +139,12 @@ pub struct GenerateSummaryOptions {
     /// Registry cheapest-model answer for the connection profile's provider (the
     /// injected `getCheapModelConfig` seam; `None` = no plugin → v4 legacy map).
     pub registry_cheapest_for_current: Option<String>,
+    /// The current connection profile's `maxContext` (v4
+    /// `connectionProfile.maxContext ?? null`) — scales the relevant-conversations
+    /// refresh list size on the fold's cross-subsystem seam (Round-3 Group 7). The
+    /// `CheapLlmProfile` subset carries no `maxContext`, so the caller supplies it
+    /// separately; `None` uses the refresh's minimum list size.
+    pub connection_max_context: Option<i64>,
 }
 
 /// v4 `SummaryGenerationResult`.
@@ -182,18 +199,16 @@ pub trait ContextSummarySeams {
         summary: &str,
         new_generation: f64,
     ) -> impl std::future::Future<Output = ()> + Send;
-    /// `writeConversationSummaryToVaults` + `computeConversationStats`.
+    /// `writeConversationSummaryToVaults` (the caller supplies the input built from
+    /// `computeConversationStats` + the participant character ids).
     fn mirror_summary_to_vaults(
         &self,
-        chat_id: &str,
-        summary: &str,
-        new_generation: f64,
+        input: WriteConversationSummaryInput,
     ) -> impl std::future::Future<Output = ()> + Send;
     /// `refreshRelevantConversationsOnFold`.
     fn refresh_relevant_conversations(
         &self,
-        chat_id: &str,
-        summary: &str,
+        input: RefreshRelevantConversationsInput,
     ) -> impl std::future::Future<Output = ()> + Send;
     /// `estimateMessageCost` + `createContextSummaryEvent`.
     fn emit_summary_cost_event(
@@ -218,9 +233,8 @@ pub trait ContextSummarySeams {
 pub struct NoopSeams;
 impl ContextSummarySeams for NoopSeams {
     async fn post_librarian_summary(&self, _chat_id: &str, _summary: &str, _new_generation: f64) {}
-    async fn mirror_summary_to_vaults(&self, _chat_id: &str, _summary: &str, _new_generation: f64) {
-    }
-    async fn refresh_relevant_conversations(&self, _chat_id: &str, _summary: &str) {}
+    async fn mirror_summary_to_vaults(&self, _input: WriteConversationSummaryInput) {}
+    async fn refresh_relevant_conversations(&self, _input: RefreshRelevantConversationsInput) {}
     async fn emit_summary_cost_event(
         &self,
         _chat_id: &str,
@@ -240,19 +254,22 @@ impl ContextSummarySeams for NoopSeams {
 }
 
 /// The real context-summary side effects (v4 `generateContextSummary`'s
-/// post-office + cost blocks; W4.6b): the Librarian summary re-post (through the
-/// ported [`crate::services::librarian_notifications`] writer) and the
-/// CONTEXT_SUMMARY / TITLE_GENERATION cost events (through the ported
-/// [`crate::services::cost_events`] writers). `mirror_summary_to_vaults` /
-/// `refresh_relevant_conversations` stay no-ops — the Commonplace-Book vault
-/// mirror + the relevant-conversations refresh need vault fixtures + embedding
-/// (documented handoff). Each write is best-effort (the writers swallow their own
-/// failure).
-pub struct RealContextSummarySeams<'a> {
+/// post-office + vault + cost blocks; W4.6b + Round-3 Group 7): the Librarian
+/// summary re-post (through the ported [`crate::services::librarian_notifications`]
+/// writer), the CONTEXT_SUMMARY / TITLE_GENERATION cost events (through the ported
+/// [`crate::services::cost_events`] writers), the Commonplace-Book vault mirror
+/// (`writeConversationSummaryToVaults`), and the relevant-conversations refresh
+/// (`refreshRelevantConversationsOnFold`). The ordering `mirror_summary_to_vaults`
+/// → `refresh_relevant_conversations` is deliberate: the refresh's semantic search
+/// must read the fresh corpus, not race it. The refresh needs an embedding
+/// provider, so the struct is generic over `E`. Each write is best-effort (the
+/// writers swallow their own failure).
+pub struct RealContextSummarySeams<'a, E: EmbeddingProvider> {
     pub db: &'a Db,
+    pub embedding: &'a E,
 }
 
-impl ContextSummarySeams for RealContextSummarySeams<'_> {
+impl<E: EmbeddingProvider + Sync> ContextSummarySeams for RealContextSummarySeams<'_, E> {
     async fn post_librarian_summary(&self, chat_id: &str, summary: &str, new_generation: f64) {
         use crate::services::librarian_notifications as ln;
         // v4 posts with `targetParticipantIds: null` and
@@ -269,10 +286,18 @@ impl ContextSummarySeams for RealContextSummarySeams<'_> {
         .await;
     }
 
-    async fn mirror_summary_to_vaults(&self, _chat_id: &str, _summary: &str, _new_generation: f64) {
+    async fn mirror_summary_to_vaults(&self, input: WriteConversationSummaryInput) {
+        // v4 `writeConversationSummaryToVaults`: mirror the fresh summary into every
+        // participant character's vault. Best-effort (per-character try/catch inside).
+        write_conversation_summary_to_vaults(self.db, &input).await;
     }
 
-    async fn refresh_relevant_conversations(&self, _chat_id: &str, _summary: &str) {}
+    async fn refresh_relevant_conversations(&self, input: RefreshRelevantConversationsInput) {
+        // v4 `refreshRelevantConversationsOnFold`: re-run the relevant-past-
+        // conversations search against the fresh fold summary and post a refreshed
+        // Commonplace whisper to each present character. Best-effort (never throws).
+        refresh_relevant_conversations_on_fold(self.db, self.embedding, input).await;
+    }
 
     async fn emit_summary_cost_event(
         &self,
@@ -625,12 +650,52 @@ async fn generate_inner<C: CompletionProvider, S: ContextSummarySeams>(
         .post_librarian_summary(&chat_id, &new_summary, new_generation)
         .await;
 
-    // Deferred cross-subsystem seams (best-effort, no diffed state on the mock).
+    // Cross-subsystem vault seams (best-effort; Round-3 Group 7 wired them live).
+    // v4 builds these two inputs here and calls them IN THIS ORDER — the mirror
+    // writes the fresh summary into every participant vault FIRST, so the refresh's
+    // semantic search reads the fresh corpus rather than racing it.
+    {
+        // participantCharacterIds = Array.from(new Set(chat.participants.map(p => p.characterId))).
+        let mut participant_character_ids: Vec<String> = Vec::new();
+        if let Some(parts) = chat.get("participants").and_then(Value::as_array) {
+            for p in parts {
+                if let Some(cid) = p.get("characterId").and_then(Value::as_str) {
+                    let cid = cid.to_string();
+                    if !participant_character_ids.contains(&cid) {
+                        participant_character_ids.push(cid);
+                    }
+                }
+            }
+        }
+        let stats = compute_conversation_stats(&all_messages);
+        let chat_title = chat
+            .get("title")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        seams
+            .mirror_summary_to_vaults(WriteConversationSummaryInput {
+                chat_id: chat_id.clone(),
+                chat_title,
+                summary: new_summary.clone(),
+                summary_generation: new_generation as i64,
+                participant_character_ids,
+                message_count: stats.message_count,
+                first_message_at: stats.first_message_at,
+                last_message_at: stats.last_message_at,
+                updated_at: now_iso(),
+            })
+            .await;
+    }
     seams
-        .mirror_summary_to_vaults(&chat_id, &new_summary, new_generation)
-        .await;
-    seams
-        .refresh_relevant_conversations(&chat_id, &new_summary)
+        .refresh_relevant_conversations(RefreshRelevantConversationsInput {
+            chat_id: chat_id.clone(),
+            summary: new_summary.clone(),
+            user_id: options.user_id.clone(),
+            // v4 passes `embeddingProfileId: undefined`.
+            embedding_profile_id: None,
+            max_context: options.connection_max_context,
+        })
         .await;
     if let Some(u) = usage {
         if u.prompt_tokens > 0 || u.completion_tokens > 0 {
@@ -926,6 +991,9 @@ pub async fn check_and_generate_summary_if_needed<C: CompletionProvider>(
             force_regenerate: decision == SummarizationGateDecision::Hard,
             danger_settings: danger_settings.cloned(),
             registry_cheapest_for_current: registry_cheapest_for_current.map(str::to_string),
+            // The gate path folds with `NoopSeams` (the mirror/refresh never run
+            // here), so the refresh list size is irrelevant — `None`.
+            connection_max_context: None,
         };
         // The v5 runtime always awaits the fold (see module docs).
         summary_result = Some(generate_context_summary(db, completion, executor, &options).await);

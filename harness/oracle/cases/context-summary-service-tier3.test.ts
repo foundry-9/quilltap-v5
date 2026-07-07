@@ -19,27 +19,31 @@
  *   - `getApiKeyForCheapLLMSelection` → a constant (host-side; the Rust boundary
  *     starts at the provider call).
  *   - `logLLMCall` → no-op (a fire-and-forget llm-logs side channel).
- *   - W4.6b: `postLibrarianSummaryAnnouncement` + `createContextSummaryEvent` +
- *     `createTitleGenerationEvent` run REAL for `generate` ops (matching the
- *     ported `RealContextSummarySeams`) and no-op for the `check`-op internal
- *     fold (matching the `NoopSeams` the spine caller keeps). `estimateMessageCost`
- *     returns `{ cost: null }` (host-resolved; the Rust seam passes `None`), and
- *     `writeConversationSummaryToVaults`/`computeConversationStats` +
- *     `refreshRelevantConversationsOnFold` stay no-ops (documented handoffs). The
- *     *sweep* of prior Librarian whispers is v4's REAL code — it deletes the
- *     seeded rows.
+ *   - W4.6b + Round-3 Group 7: `postLibrarianSummaryAnnouncement`,
+ *     `createContextSummaryEvent` / `createTitleGenerationEvent`, the vault MIRROR
+ *     (`writeConversationSummaryToVaults`) and the relevant-conversations REFRESH
+ *     (`refreshRelevantConversationsOnFold`) all run REAL for `generate` ops
+ *     (matching the ported `RealContextSummarySeams`) and no-op for the `check`-op
+ *     internal fold (`NoopSeams`). `computeConversationStats` is always REAL (pure).
+ *     `estimateMessageCost` returns `{ cost: null }` (host-resolved; the Rust seam
+ *     passes `None`). The *sweep* of prior Librarian whispers is v4's REAL code.
+ *   - `generateEmbeddingForUser` → a canned unit vector (dim 8, [1,0,…]) matching
+ *     the fixture's seeded chunk, so the refresh's semantic search scores cosine
+ *     1.0 and surfaces the pre-seeded prior summary (a `relevant-conversations`
+ *     whisper into `chat_messages`).
  *
  * Everything else — the cheap-LLM selection, the execution pipeline, the fold /
  * title tasks, the turn partition, the gate, the title enqueue, the sweep, the
- * repositories — is v4's REAL code against the REAL fixture DB.
+ * mirror + refresh, the repositories — is v4's REAL code against the REAL two-DB
+ * fixture.
  *
  * Run from the v4 server checkout under Node 24:
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   V5=~/source/quilltap-v5
  *   cd ~/source/quilltap-server
- *   QT_FIXTURE_OUT=/tmp/qt-ctxsum-main.db \
+ *   QT_FIXTURE_OUT=/tmp/qt-ctxsum-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-ctxsum-mount.db \
  *     $N/npx tsx $V5/harness/oracle/fixtures/build-context-summary-service-fixture.ts
- *   QT_FIXTURE_CTXSUM=/tmp/qt-ctxsum-main.db \
+ *   QT_FIXTURE_CTXSUM=/tmp/qt-ctxsum-main.db QT_FIXTURE_CTXSUM_MOUNT=/tmp/qt-ctxsum-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-context-summary-service.ndjson \
  *     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$V5/harness/oracle/cases" -- context-summary-service-tier3
  */
@@ -125,16 +129,23 @@ async function main(): Promise<void> {
   if (!fixture || !existsSync(fixture)) {
     throw new Error('QT_FIXTURE_CTXSUM must point at the seed fixture');
   }
+  const fixtureMount = process.env.QT_FIXTURE_CTXSUM_MOUNT;
+  if (!fixtureMount || !existsSync(fixtureMount)) {
+    throw new Error('QT_FIXTURE_CTXSUM_MOUNT must point at the seed mount-index fixture');
+  }
   const outPath = process.env.QT_ORACLE_OUT;
   if (!outPath) throw new Error('QT_ORACLE_OUT must point at the NDJSON file to write');
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-ctxsum-oracle-'));
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const work = join(scratch, 'ctxsum-work.db');
+  const workMount = join(scratch, 'ctxsum-work-mount.db');
   copyFileSync(fixture, work);
+  copyFileSync(fixtureMount, workMount);
 
   process.env.ENCRYPTION_MASTER_PEPPER = ops.testPepperBase64;
   process.env.SQLITE_PATH = work;
+  process.env.SQLITE_MOUNT_INDEX_PATH = workMount;
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
@@ -189,6 +200,23 @@ async function main(): Promise<void> {
     jest.requireActual('@/lib/database/repositories')
   );
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
+  // jest.setup mocks the character-vault bridge to a fixed { mountPointId:
+  // 'mock-vault-mount' }; un-mock it so `getCharacterVaultStore` (used by the vault
+  // MIRROR + the relevant-conversations search's store check) resolves the REAL
+  // minted vault via the real characters/docMountPoints repos ([[jest-real-db-oracle]]).
+  jest.doMock('@/lib/file-storage/character-vault-bridge', () =>
+    jest.requireActual('@/lib/file-storage/character-vault-bridge')
+  );
+  // Side-effect seams the mirror's reindex touches → keep the real modules (no-op
+  // enqueue): the mount-index cache invalidation + embedding scheduler.
+  jest.doMock('@/lib/mount-index/mount-chunk-cache', () => {
+    const actual = jest.requireActual('@/lib/mount-index/mount-chunk-cache');
+    return { __esModule: true, ...actual, invalidateMountPoint: () => {} };
+  });
+  jest.doMock('@/lib/mount-index/embedding-scheduler', () => {
+    const actual = jest.requireActual('@/lib/mount-index/embedding-scheduler');
+    return { __esModule: true, ...actual, enqueueEmbeddingJobsForMountPoint: async () => 0 };
+  });
 
   jest.doMock('@/lib/llm', () => {
     const actual = jest.requireActual('@/lib/llm');
@@ -247,12 +275,16 @@ async function main(): Promise<void> {
     const actual = jest.requireActual('@/lib/services/llm-logging.service');
     return { __esModule: true, ...actual, logLLMCall: async () => undefined };
   });
-  // W4.6b: the Librarian re-post + the CONTEXT_SUMMARY / TITLE_GENERATION cost
-  // events now run REAL for `generate` ops (matching `RealContextSummarySeams`),
-  // and stay no-ops for the `check`-op internal fold (matching the `NoopSeams`
-  // the spine caller keeps) — gated on `currentOpUsesRealSeams`. The Librarian
-  // *sweep* is always v4's real code. The vault mirror + relevant-conversations
-  // refresh remain no-ops on both sides (documented handoffs).
+  // W4.6b + Round-3 Group 7: the Librarian re-post, the CONTEXT_SUMMARY /
+  // TITLE_GENERATION cost events, the vault MIRROR
+  // (`writeConversationSummaryToVaults` + `computeConversationStats`), and the
+  // relevant-conversations REFRESH (`refreshRelevantConversationsOnFold`) all run
+  // REAL for `generate` ops (matching `RealContextSummarySeams`) and stay no-ops
+  // for the `check`-op internal fold (matching the `NoopSeams` the spine caller
+  // keeps) — gated on `currentOpUsesRealSeams`. The Librarian *sweep* is always
+  // v4's real code. The mirror + refresh write into the fixture's vault
+  // (mount-index); the refresh's semantic search surfaces the pre-seeded prior
+  // summary and posts a `relevant-conversations` whisper into `chat_messages`.
   jest.doMock('@/lib/services/librarian-notifications/writer', () => {
     const actual = jest.requireActual('@/lib/services/librarian-notifications/writer');
     return {
@@ -262,20 +294,30 @@ async function main(): Promise<void> {
         currentOpUsesRealSeams ? actual.postLibrarianSummaryAnnouncement(params) : undefined,
     };
   });
-  jest.doMock('@/lib/file-storage/conversation-summary-vault-bridge', () => {
-    const actual = jest.requireActual('@/lib/file-storage/conversation-summary-vault-bridge');
+  // The vault MIRROR (`writeConversationSummaryToVaults` + `computeConversationStats`)
+  // and the relevant-conversations REFRESH (`refreshRelevantConversationsOnFold`)
+  // run v4's REAL code for EVERY op — they are NOT wrapped, because a
+  // `jest.requireActual` wrapper would rebind their transitive mount-index client to
+  // a fresh, disconnected instance (the main-DB writers survive that, but the vault
+  // writes silently no-op). Their observable effect is confined to PROVISIONED
+  // characters: only `aa…0001` (the `fold_regular` participant) has a vault, and the
+  // check-op chats reference unprovisioned characters, so their internal folds mirror
+  // nothing — exactly matching the Rust side, where the direct `generate` ops run
+  // `RealContextSummarySeams` and the `check`-op internal folds keep `NoopSeams`.
+  // The embedding is canned to a fixed unit vector on BOTH sides (dim 8, [1,0,…]),
+  // matching the seeded chunk's embedding so the refresh's semantic search scores
+  // cosine 1.0 and surfaces the pre-seeded prior summary.
+  jest.doMock('@/lib/embedding/embedding-service', () => {
+    const actual = jest.requireActual('@/lib/embedding/embedding-service');
     return {
       __esModule: true,
       ...actual,
-      writeConversationSummaryToVaults: async () => undefined,
-      computeConversationStats: () => ({ messageCount: 0, firstMessageAt: null, lastMessageAt: null }),
+      generateEmbeddingForUser: async () => ({
+        embedding: new Float32Array([1, 0, 0, 0, 0, 0, 0, 0]),
+        model: 'canned',
+        dimensions: 8,
+      }),
     };
-  });
-  jest.doMock('@/lib/services/commonplace-notifications/relevant-conversations-refresh', () => {
-    const actual = jest.requireActual(
-      '@/lib/services/commonplace-notifications/relevant-conversations-refresh'
-    );
-    return { __esModule: true, ...actual, refreshRelevantConversationsOnFold: async () => undefined };
   });
   // The estimated cost stays host-resolved; the Rust seam passes `None`, so the
   // fetcher returns null on both sides (the stored `estimatedCostUSD` is null).
@@ -302,6 +344,9 @@ async function main(): Promise<void> {
   });
 
   const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
+  const { getRawMountIndexDatabase, closeMountIndexSQLiteClient } = await import(
+    '@/lib/database/backends/sqlite/mount-index-client'
+  );
   const { getRepositories } = await import('@/lib/repositories/factory');
   const {
     generateContextSummary,
@@ -401,6 +446,22 @@ async function main(): Promise<void> {
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chats', 'id')) }));
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chat_messages', 'id')) }));
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('background_jobs', 'payload')) }));
+
+  // Mirror proof (Round-3 Group 7): the SET of (mountPointId, relativePath) present
+  // in the vault after the fold. The minted link ids / fileIds / folderIds /
+  // timestamps / chunkCount are ignored (v4 reindexes → chunkCount; the Rust write
+  // primitive does not — the standard groups/projects treatment); the deterministic
+  // relativePath proves the mirror wrote `Conversation Summaries/<title>.md`.
+  const midb = getRawMountIndexDatabase();
+  if (!midb) throw new Error('mount-index DB handle unavailable at dump');
+  const linkRows = midb
+    .prepare('SELECT mountPointId, relativePath FROM doc_mount_file_links')
+    .all() as Array<{ mountPointId: string; relativePath: string }>;
+  const linkPaths = linkRows
+    .map((r) => `${r.mountPointId}|${r.relativePath}`)
+    .sort();
+  lines.push(JSON.stringify({ kind: 'mountLinks', paths: linkPaths }));
+  closeMountIndexSQLiteClient();
 
   await closeDatabase();
 
