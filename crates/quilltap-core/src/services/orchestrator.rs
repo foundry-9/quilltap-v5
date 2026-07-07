@@ -1336,39 +1336,6 @@ where
     // downstream consumers read.
     let mut formatted_messages = mc_result.formatted_messages;
 
-    // --- The Courier (manual / clipboard transport) short-circuit
-    //     (orchestrator.service.ts:1022–1044) ---
-    // Render the assembled request as Markdown, persist a placeholder assistant
-    // message, pause the chat, and emit the SSE frames. Turn chaining halts on
-    // `isPaused = true` (the ported `should_chain_next` already stops on paused).
-    if is_effective_courier {
-        return super::courier_transport::dispatch_courier_transport(
-            db,
-            sink,
-            super::courier_transport::DispatchCourierOptions {
-                chat_id: chat_id.clone(),
-                chat: chat.clone(),
-                character: character.clone(),
-                character_participant: character_participant.clone(),
-                user_participant_id: user_participant_id.clone(),
-                is_multi_character,
-                participant_characters: participant_characters.clone(),
-                resolved_identity_name: identity.name.clone(),
-                formatted_messages: formatted_messages.clone(),
-                effective_provider: Some(effective_profile.provider.clone())
-                    .filter(|s| !s.is_empty()),
-                effective_model_name: Some(effective_profile.model_name.clone())
-                    .filter(|s| !s.is_empty()),
-                courier_delta_mode: connection_profile
-                    .get("courierDeltaMode")
-                    .and_then(Value::as_bool)
-                    != Some(false),
-                now_ms: input.clock.now_ms,
-            },
-        )
-        .await;
-    }
-
     // --- Agent Mode Instructions (orchestrator.service.ts:1113–1142, W4.4) ---
     // When agent mode is enabled, inject the agent-mode system-prompt block at the
     // first non-system position (or unshift / push per v4's index logic). This is
@@ -1399,6 +1366,43 @@ where
         character_name: Some(character_name.clone()),
         character_id: Some(character_id.clone()),
     }));
+
+    // --- The Courier (manual / clipboard transport) short-circuit
+    //     (orchestrator.service.ts:1022–1044) ---
+    // Rendered AFTER `build_message_context` + the `preparing` status (v4's order:
+    // the courier dispatch consumes `formatted_messages`). Render the assembled
+    // request as Markdown, persist a placeholder assistant message, pause the chat,
+    // and emit the SSE frames. Turn chaining halts on `isPaused = true` (the ported
+    // `should_chain_next` already stops on paused). The agent-mode injection above is
+    // inert for a courier chat (the corpus keeps agent mode off), matching v4 (which
+    // returns before its agent-mode block).
+    if is_effective_courier {
+        return super::courier_transport::dispatch_courier_transport(
+            db,
+            sink,
+            super::courier_transport::DispatchCourierOptions {
+                chat_id: chat_id.clone(),
+                chat: chat.clone(),
+                character: character.clone(),
+                character_participant: character_participant.clone(),
+                user_participant_id: user_participant_id.clone(),
+                is_multi_character,
+                participant_characters: participant_characters.clone(),
+                resolved_identity_name: identity.name.clone(),
+                formatted_messages: formatted_messages.clone(),
+                effective_provider: Some(effective_profile.provider.clone())
+                    .filter(|s| !s.is_empty()),
+                effective_model_name: Some(effective_profile.model_name.clone())
+                    .filter(|s| !s.is_empty()),
+                courier_delta_mode: connection_profile
+                    .get("courierDeltaMode")
+                    .and_then(Value::as_bool)
+                    != Some(false),
+                now_ms: input.clock.now_ms,
+            },
+        )
+        .await;
+    }
 
     // --- Primary stream (orchestrator.service.ts:1205–1255) ---
     let pre_generated_assistant_message_id = uuid::Uuid::new_v4().to_string();

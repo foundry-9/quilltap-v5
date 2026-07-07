@@ -216,11 +216,17 @@ fn courier_transport_tier3_matches_oracle() {
             .get("participants")
             .and_then(Value::as_array)
             .and_then(|ps| {
-                ps.iter()
-                    .find(|p| p.get("id").and_then(Value::as_str) == Some(&call.responder_participant))
+                ps.iter().find(|p| {
+                    p.get("id").and_then(Value::as_str) == Some(&call.responder_participant)
+                })
             })
             .cloned()
-            .unwrap_or_else(|| panic!("responder participant not found: {}", call.responder_participant));
+            .unwrap_or_else(|| {
+                panic!(
+                    "responder participant not found: {}",
+                    call.responder_participant
+                )
+            });
 
         let mut participant_characters: HashMap<String, Value> = HashMap::new();
         for cid in &call.participant_characters {
@@ -234,8 +240,11 @@ fn courier_transport_tier3_matches_oracle() {
         }
 
         let sink = RecordingSink::new();
-        let formatted_messages: Vec<FormattedMsg> =
-            call.formatted_messages.iter().map(to_formatted_msg).collect();
+        let formatted_messages: Vec<FormattedMsg> = call
+            .formatted_messages
+            .iter()
+            .map(to_formatted_msg)
+            .collect();
 
         let result = rt
             .block_on(dispatch_courier_transport(
@@ -321,7 +330,11 @@ fn courier_transport_tier3_matches_oracle() {
             .and_then(|v| v.get("row"))
             .cloned()
             .unwrap_or_else(|| panic!("oracle placeholder missing for {}", call.name));
-        assert_eq!(got_row, want_row, "placeholder row mismatch for {}", call.name);
+        assert_eq!(
+            got_row, want_row,
+            "placeholder row mismatch for {}",
+            call.name
+        );
 
         // --- chat isPaused ---
         let chat_id3 = call.chat_id.clone();
@@ -336,6 +349,10 @@ fn courier_transport_tier3_matches_oracle() {
             .get(&(call.name.clone(), "chat".to_string()))
             .and_then(|v| v.get("isPaused").and_then(Value::as_bool))
             .unwrap_or_else(|| panic!("oracle chat missing for {}", call.name));
-        assert_eq!(is_paused, want_paused, "isPaused mismatch for {}", call.name);
+        assert_eq!(
+            is_paused, want_paused,
+            "isPaused mismatch for {}",
+            call.name
+        );
     }
 }

@@ -24,6 +24,13 @@
       "modelName": "uncensored-model",
       "apiKeyId": "c0000004-0000-4000-8000-000000000004",
       "isDangerousCompatible": true
+    },
+    {
+      "id": "d0000001-0000-4000-8000-0000000000d1",
+      "name": "Courier",
+      "provider": "OPENAI",
+      "modelName": "gpt-4o",
+      "transport": "courier"
     }
   ],
   "chatSettings": {
@@ -87,6 +94,13 @@
       "controlledBy": "llm",
       "talkativeness": 0.5,
       "connectionProfileId": "b0000001-0000-4000-8000-000000000001"
+    },
+    {
+      "id": "d0000002-0000-4000-8000-0000000000d2",
+      "name": "Postman",
+      "controlledBy": "llm",
+      "talkativeness": 0.5,
+      "connectionProfileId": "d0000001-0000-4000-8000-0000000000d1"
     }
   ],
   "chats": [
@@ -769,6 +783,26 @@
         }
       ],
       "messages": []
+    },
+    {
+      "id": "d0000003-0000-4000-8000-0000000000d3",
+      "chatType": "salon",
+      "contextSummary": null,
+      "participants": [
+        {
+          "id": "d0000004-0000-4000-8000-0000000000d4",
+          "character": "d0000002-0000-4000-8000-0000000000d2",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "d0000005-0000-4000-8000-0000000000d5",
+          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": []
     }
   ],
   "calls": [
@@ -1003,6 +1037,17 @@
       "streamLabel": "danger_reroute",
       "cheapLLMSettings": true,
       "summaryCheck": false
+    },
+    {
+      "name": "courier_send",
+      "kind": "single",
+      "chatId": "d0000003-0000-4000-8000-0000000000d3",
+      "content": "",
+      "continueMode": true,
+      "streamLabel": "courier_send",
+      "cheapLLMSettings": false,
+      "summaryCheck": false,
+      "respondingParticipant": "d0000004-0000-4000-8000-0000000000d4"
     }
   ],
   "streams": {

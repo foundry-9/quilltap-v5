@@ -19,8 +19,9 @@ use rusqlite::Connection;
 use serde_json::{json, Map, Value};
 
 use crate::courier::render_markdown::{
-    render_courier_delta_as_markdown, render_courier_request_as_markdown, CourierAttachmentDescriptor,
-    CourierCheckpoint, CourierDeltaEvent, CourierMessage, CourierMessageAttachment,
+    render_courier_delta_as_markdown, render_courier_request_as_markdown,
+    CourierAttachmentDescriptor, CourierCheckpoint, CourierDeltaEvent, CourierMessage,
+    CourierMessageAttachment,
 };
 use crate::db::runtime::Db;
 use crate::db::{chats, chats_messages_read, chats_read, connection_profiles, DbError};
@@ -158,8 +159,11 @@ pub async fn dispatch_courier_transport<S: EventSink>(
         .filter(|s| !s.is_empty());
 
     // Always render the full bundle.
-    let courier_messages: Vec<CourierMessage> =
-        opts.formatted_messages.iter().map(to_courier_message).collect();
+    let courier_messages: Vec<CourierMessage> = opts
+        .formatted_messages
+        .iter()
+        .map(to_courier_message)
+        .collect();
     let full = render_courier_request_as_markdown(&courier_messages, &character_name, model_label);
 
     // Delta bundle when the profile wants it AND this character already has a
@@ -262,11 +266,13 @@ pub async fn dispatch_courier_transport<S: EventSink>(
 
     // SSE frames: the `pendingExternalTurn` frame FIRST, then `done` with
     // `pendingExternalTurn: true`.
-    sink.emit(ChatEvent::pending_external_turn(PendingExternalTurnPayload {
-        message_id: placeholder_id.clone(),
-        participant_id: character_participant_id.clone(),
-        character_name: character_name.clone(),
-    }));
+    sink.emit(ChatEvent::pending_external_turn(
+        PendingExternalTurnPayload {
+            message_id: placeholder_id.clone(),
+            participant_id: character_participant_id.clone(),
+            character_name: character_name.clone(),
+        },
+    ));
     sink.emit(ChatEvent::done(DonePayload {
         message_id: Some(placeholder_id.clone()),
         participant_id: Some(character_participant_id),
@@ -409,7 +415,8 @@ fn build_courier_delta_events(
             continue;
         }
         // Skip the resolved Courier turn itself (defensive).
-        if event.get("id").and_then(Value::as_str) == Some(checkpoint.last_resolved_message_id.as_str())
+        if event.get("id").and_then(Value::as_str)
+            == Some(checkpoint.last_resolved_message_id.as_str())
         {
             continue;
         }
@@ -417,8 +424,8 @@ fn build_courier_delta_events(
         // sender OR a target.
         if let Some(targets) = event.get("targetParticipantIds").and_then(Value::as_array) {
             if !targets.is_empty() {
-                let is_sender =
-                    event.get("participantId").and_then(Value::as_str) == Some(responding_participant_id);
+                let is_sender = event.get("participantId").and_then(Value::as_str)
+                    == Some(responding_participant_id);
                 let is_target = targets
                     .iter()
                     .any(|t| t.as_str() == Some(responding_participant_id));
@@ -484,13 +491,15 @@ fn load_attachment_descriptor(
             rusqlite::Error::QueryReturnedNoRows => Ok(None),
             other => Err(other),
         })?;
-    Ok(row.map(|(id, filename, mime_type, size)| CourierAttachmentDescriptor {
-        file_id: id.clone(),
-        filename,
-        mime_type,
-        size_bytes: size,
-        download_url: format!("/api/v1/files/{id}"),
-    }))
+    Ok(row.map(
+        |(id, filename, mime_type, size)| CourierAttachmentDescriptor {
+            file_id: id.clone(),
+            filename,
+            mime_type,
+            size_bytes: size,
+            download_url: format!("/api/v1/files/{id}"),
+        },
+    ))
 }
 
 // ===========================================================================
@@ -539,7 +548,9 @@ pub async fn resolve_external_turn<C: CompletionProvider>(
     };
     let chat_id_owned = chat_id.to_string();
     let messages = db.read_main(move |c| chats_messages_read::get_messages(c, &chat_id_owned))?;
-    let Some(message) = messages.iter().find(|m| m.get("id").and_then(Value::as_str) == Some(message_id))
+    let Some(message) = messages
+        .iter()
+        .find(|m| m.get("id").and_then(Value::as_str) == Some(message_id))
     else {
         return Ok(ResolveExternalTurnOutcome::MessageNotFound);
     };
@@ -620,7 +631,8 @@ pub async fn resolve_external_turn<C: CompletionProvider>(
     .await?;
 
     // --- resolve the connection profile for the triggers ---
-    let connection_profile = resolve_trigger_connection_profile(db, &chat, participant_id.as_deref())?;
+    let connection_profile =
+        resolve_trigger_connection_profile(db, &chat, participant_id.as_deref())?;
 
     if let Some(profile) = connection_profile {
         let profile_id = profile
@@ -655,11 +667,15 @@ pub async fn resolve_external_turn<C: CompletionProvider>(
             let global = chat_settings
                 .as_ref()
                 .and_then(|s| s.get("dangerousContentSettings").cloned())
-                .and_then(|v| serde_json::from_value::<crate::db::chat_settings::DangerousContentSettings>(v).ok());
-            let resolved = crate::services::dangerous_content::resolver::resolve_dangerous_content_settings(
-                global,
-                Some(&chat),
-            );
+                .and_then(|v| {
+                    serde_json::from_value::<crate::db::chat_settings::DangerousContentSettings>(v)
+                        .ok()
+                });
+            let resolved =
+                crate::services::dangerous_content::resolver::resolve_dangerous_content_settings(
+                    global,
+                    Some(&chat),
+                );
             resolved.settings.mode == "OFF"
         };
         crate::services::message_finalizer::trigger_chat_danger_classification(
@@ -714,7 +730,8 @@ fn resolve_trigger_connection_profile(
         return Ok(None);
     };
     let character_id = character_id.to_string();
-    let character = db.read_main(move |c| crate::db::characters_read::find_by_id_raw(c, &character_id))?;
+    let character =
+        db.read_main(move |c| crate::db::characters_read::find_by_id_raw(c, &character_id))?;
     let profile_id = participant
         .get("connectionProfileId")
         .and_then(Value::as_str)
@@ -817,7 +834,9 @@ pub async fn cancel_external_turn(
     };
     let chat_id_owned = chat_id.to_string();
     let messages = db.read_main(move |c| chats_messages_read::get_messages(c, &chat_id_owned))?;
-    let Some(message) = messages.iter().find(|m| m.get("id").and_then(Value::as_str) == Some(message_id))
+    let Some(message) = messages
+        .iter()
+        .find(|m| m.get("id").and_then(Value::as_str) == Some(message_id))
     else {
         return Ok(CancelExternalTurnOutcome::MessageNotFound);
     };

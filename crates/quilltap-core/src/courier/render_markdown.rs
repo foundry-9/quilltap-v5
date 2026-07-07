@@ -137,7 +137,11 @@ fn finalize(parts: &[String]) -> String {
 /// Render an attachment bullet list into `lines` (shared by both renderers, with
 /// the caller supplying the exact intro string — the two renderers differ by one
 /// word in the parenthetical).
-fn push_attachment_lines(lines: &mut Vec<String>, intro: &str, atts: &[CourierAttachmentDescriptor]) {
+fn push_attachment_lines(
+    lines: &mut Vec<String>,
+    intro: &str,
+    atts: &[CourierAttachmentDescriptor],
+) {
     lines.push(intro.to_string());
     lines.push(String::new());
     for a in atts {
@@ -230,8 +234,11 @@ pub fn render_courier_request_as_markdown(
         parts.push(String::new());
     } else {
         for m in &non_system_messages {
-            let message_atts: Vec<CourierAttachmentDescriptor> =
-                m.attachments.iter().map(descriptor_from_attachment).collect();
+            let message_atts: Vec<CourierAttachmentDescriptor> = m
+                .attachments
+                .iter()
+                .map(descriptor_from_attachment)
+                .collect();
             for a in &message_atts {
                 if !aggregated.iter().any(|x| x.file_id == a.file_id) {
                     aggregated.push(a.clone());
