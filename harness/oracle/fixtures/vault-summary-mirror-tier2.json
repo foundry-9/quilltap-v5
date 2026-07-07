@@ -1,0 +1,115 @@
+{
+  "$comment": [
+    "Tier-2 DB-state fixture spec for W4.6b — the conversation-summary vault mirror",
+    "+ delete sweep (v4 lib/file-storage/conversation-summary-vault-bridge.ts, driven",
+    "through repos.chats.delete(id, { syncVaults }) for the sweep). One committed file",
+    "drives BOTH sides:",
+    "  - the v4 oracle (build-vault-summary-mirror-fixture.ts + vault-summary-mirror-tier2.ts)",
+    "  - the Rust port (quilltap-harness vault_summary_mirror_tier2 test).",
+    "",
+    "FIXTURE: TWO characters WITH vaults (via v4's REAL repos.characters.create, pinned",
+    "ids + full vault provisioning) and TWO chats (via repos.chats.create, pinned ids +",
+    "timestamps), each chat carrying BOTH characters as CHARACTER participants (one",
+    "llm-, one user-controlled). chat_messages is materialized (getMessageCount) so the",
+    "Rust delete's clear_messages has a table. All mount-index store tables + doc_mount_chunks",
+    "are materialized via generateDDL so v4's post-write reindexSingleFile runs cleanly.",
+    "",
+    "OPS (all fields PINNED — every timestamp / generation is caller-supplied, so the",
+    "authored file bytes are byte-identical on both sides, no minted timestamp in content):",
+    "  1. write chat1 'Title A' gen1 -> both vaults get 'Conversation Summaries/Title A.md'.",
+    "  2. write chat1 'Title B' gen2 -> rename-by-UUID: prior 'Title A.md' (same",
+    "     conversationId) deleted, 'Title B.md' written (proves idempotency + rename).",
+    "  3. write chat2 'Other' -> a distinct conversation's file in both vaults.",
+    "  4. repos.chats.delete(chat1, { syncVaults: true })  -> chat1's summary swept",
+    "     from both vaults; chat2's remains.",
+    "  5. repos.chats.delete(chat2, { syncVaults: false }) -> chat2's summary files REMAIN.",
+    "",
+    "DUMP: the five mount-index store tables (doc_mount_points / doc_mount_folders /",
+    "doc_mount_files / doc_mount_documents / doc_mount_file_links). doc_mount_documents.content",
+    "is diffed byte-for-byte (deterministic — all input timestamps pinned).",
+    "",
+    "NORMALIZATION: minted-values remap with ONE shared id-map across the five tables",
+    "(points -> folders -> files -> documents -> links, rows in natural-key order). Every",
+    "mount-index row id is minted (vault provisioning + the summary writes), so FKs verify",
+    "by relationship. Timestamps -> <ts>; the link chunkCount -> <cc> (a v4-only",
+    "reindexSingleFile artifact — the Rust storage primitive does not chunk); doc_mount_chunks",
+    "is excluded. Character/chat ids are PINNED, so they appear literally (identical both",
+    "sides) inside the frontmatter content and are NOT remapped.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key (the same one folders/tags/",
+    "characters-create use). NOT the real Friday pepper; safe to commit."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "a0000000-0000-4000-8000-000000000001",
+  "seedTimestamp": "2020-01-01T00:00:00.000Z",
+  "characters": [
+    { "id": "c1000000-0000-4000-8000-000000000001", "name": "Evangeline", "controlledBy": "llm" },
+    { "id": "c2000000-0000-4000-8000-000000000002", "name": "Thaddeus", "controlledBy": "user" }
+  ],
+  "chats": [
+    {
+      "id": "d1000000-0000-4000-8000-000000000001",
+      "title": "Fixture chat one",
+      "participants": [
+        { "id": "b1a00000-0000-4000-8000-0000000000a1", "characterId": "c1000000-0000-4000-8000-000000000001", "controlledBy": "llm" },
+        { "id": "b1b00000-0000-4000-8000-0000000000b1", "characterId": "c2000000-0000-4000-8000-000000000002", "controlledBy": "user" }
+      ]
+    },
+    {
+      "id": "d2000000-0000-4000-8000-000000000002",
+      "title": "Fixture chat two",
+      "participants": [
+        { "id": "b2a00000-0000-4000-8000-0000000000a2", "characterId": "c1000000-0000-4000-8000-000000000001", "controlledBy": "llm" },
+        { "id": "b2b00000-0000-4000-8000-0000000000b2", "characterId": "c2000000-0000-4000-8000-000000000002", "controlledBy": "user" }
+      ]
+    }
+  ],
+  "writes": [
+    {
+      "chatId": "d1000000-0000-4000-8000-000000000001",
+      "chatTitle": "Title A",
+      "summary": "Summary one.",
+      "summaryGeneration": 1,
+      "participantCharacterIds": [
+        "c1000000-0000-4000-8000-000000000001",
+        "c2000000-0000-4000-8000-000000000002"
+      ],
+      "messageCount": 4,
+      "firstMessageAt": "2020-01-01T00:00:00.000Z",
+      "lastMessageAt": "2020-01-02T00:00:00.000Z",
+      "updatedAt": "2020-01-03T00:00:00.000Z"
+    },
+    {
+      "chatId": "d1000000-0000-4000-8000-000000000001",
+      "chatTitle": "Title B",
+      "summary": "Summary one, revised.",
+      "summaryGeneration": 2,
+      "participantCharacterIds": [
+        "c1000000-0000-4000-8000-000000000001",
+        "c2000000-0000-4000-8000-000000000002"
+      ],
+      "messageCount": 6,
+      "firstMessageAt": "2020-01-01T00:00:00.000Z",
+      "lastMessageAt": "2020-01-02T12:00:00.000Z",
+      "updatedAt": "2020-01-04T00:00:00.000Z"
+    },
+    {
+      "chatId": "d2000000-0000-4000-8000-000000000002",
+      "chatTitle": "Other",
+      "summary": "A different conversation.",
+      "summaryGeneration": 1,
+      "participantCharacterIds": [
+        "c1000000-0000-4000-8000-000000000001",
+        "c2000000-0000-4000-8000-000000000002"
+      ],
+      "messageCount": 2,
+      "firstMessageAt": "2020-01-05T00:00:00.000Z",
+      "lastMessageAt": "2020-01-05T00:00:00.000Z",
+      "updatedAt": "2020-01-06T00:00:00.000Z"
+    }
+  ],
+  "deletes": [
+    { "chatId": "d1000000-0000-4000-8000-000000000001", "syncVaults": true },
+    { "chatId": "d2000000-0000-4000-8000-000000000002", "syncVaults": false }
+  ]
+}

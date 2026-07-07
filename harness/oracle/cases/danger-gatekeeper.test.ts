@@ -20,7 +20,9 @@
  *     for the LLM-path cases; `findApiKeyByIdAndUserId` is patched to a canned key
  *     so the real `autoDetectModerationApiKey` succeeds.
  *   - `getApiKeyForCheapLLMSelection` → constant (host-side seam).
- *   - `logLLMCall` / `postConciergeDangerAnnouncement` → no-ops (host / W4.6 seams).
+ *   - `logLLMCall` → no-op (host seam). The Concierge danger writer
+ *     (`postConciergeDangerAnnouncement`) runs REAL now (W4.6b) — a new flip to
+ *     dangerous posts the bubble into `chat_messages`.
  *
  * Dumps `chats` + `chat_messages`.
  *
@@ -152,11 +154,11 @@ async function main(): Promise<void> {
     const actual = jest.requireActual('@/lib/services/llm-logging.service');
     return { __esModule: true, ...actual, logLLMCall: async () => undefined };
   });
-  jest.doMock('@/lib/services/concierge-notifications/writer', () => ({
-    __esModule: true,
-    postConciergeDangerAnnouncement: async () => undefined,
-    postConciergeManualAnnouncement: async () => undefined,
-  }));
+  // Run v4's REAL Concierge writer (W4.6b): a NEW flip to dangerous posts the
+  // danger bubble into `chat_messages`, matching the ported `RealDangerAnnouncer`.
+  jest.doMock('@/lib/services/concierge-notifications/writer', () =>
+    jest.requireActual('@/lib/services/concierge-notifications/writer')
+  );
 
   const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');

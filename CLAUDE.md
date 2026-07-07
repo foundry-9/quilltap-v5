@@ -3219,6 +3219,90 @@ danger pre-classification + wardrobe baselines + the clothing-hash cache
 reconciliation + `createSystemEvent` token tracking + the persist) lands with the
 W4.8 runner-dispatch row (this unit ports the cheap-LLM task it drives).
 
+**Wave 4 (W4.6b): the post-office / personified whisper writers are DONE**
+(2026-07-07). Every v4 `lib/services/<persona>-notifications/writer.ts` is ported
+into a new `services::<persona>_notifications` module, each `post*` posting ONE
+`chat_messages` row through the ported `add_message` (the `carina_runner::writer`
+idiom — a `serde_json::json!` `MessageEvent` literal → `ChatEventInput` → the
+single-writer channel, Err→None, error-swallowing/`!content.trim()` early returns
+preserved) with the exact `systemSender`/`systemKind`/targeting tuple read
+verbatim from source. The steampunk/Wodehouse voice strings are byte-exact.
+**Host** (`host_notifications`, systemSender `host`): the full add/remove/
+status-change/scenario/user-character/multi-character-roster/silent-mode/
+join-scenario/timestamp/off-scene-characters/continuation/merge/no-user-character
+family (`hostEvent` payloads on add/remove/status/off-scene; `add` reads the
+joining character's vault `identity.md`), reusing the W4.6a `off_scene` builders +
+`message_formatter::build_multi_character_context_section`. **Prospero**
+(`prospero_notifications`, `prospero`): connection-profile-change +
+project/general/group/vault context re-injection posts + `postProsperoCarinaError`
+(closes `carina_runner::PostProsperoCarinaError`) + the DB context loaders over
+ported repos. **Librarian** (`librarian_notifications`, `librarian`): every
+open/rename/save/delete/folder/attach/write/move/copy/blob/upload/summary
+announcement + `contentHiddenFromCharacters`/`documentHiddenFromCharacters`; the
+`summary` post carries `summaryAnchor {compactionGeneration}` and re-exports the
+canonical `SUMMARY_CONTENT_PREFIX`. **Concierge** (`concierge_notifications`,
+`concierge`/`danger`): danger (with classifier details, reusing
+`gatekeeper::category_label` + `jsnum::to_fixed`) + the four manual-transition
+kinds. **Suparṇā** (`suparna_notifications`, `suparna`/`mail-delivery`): the
+persona-voiced `buildSuparnaMailWhisper` (distinct from the W4.6a LLM context) +
+targeted non-opaque post + `surfaceOperatorMailForChat` (`mark_alerted` AFTER the
+post). **Aurora** (`aurora_notifications`, `aurora`): `postCoreWhisper`
+(`core-whisper`, targeted, reusing the W4.6a `core_whisper` builders) + the
+opening/change outfit whispers + the `WARDROBE_OUTFIT_ANNOUNCEMENT` drain
+(`flush_pending_wardrobe_announcements` over the `Arc<Mutex<HashSet>>` +
+`queue_service::enqueue_wardrobe_outfit_announcement` + the
+`handle_wardrobe_outfit_announcement` job body — closes the W4.1d2 deferral).
+**Commonplace** (`commonplace_notifications`, `commonplaceBook`): the persona/LLM
+whisper builders (the canonical home; `build_context.rs` keeps a private 5-key
+copy — dedup is a handoff) + `postCommonplaceWhisper` (`opaqueContent ?? null`) +
+`refreshRelevantConversationsOnFold` (per-target prior sweep, reusing the W4.6a
+recap/relevant-conversations reads). **Lantern** (`lantern_notifications`,
+`aurora`/`lantern` by kind): the image notification + `isLanternImageAlertEnabled`.
+Plus the two non-whisper closures: the **conversation-summary vault bridge**
+(`conversation_summary_vault_bridge` — `writeConversationSummaryToVaults` /
+`removeConversationSummariesFromVaults` over the ported document store +
+`serialize_frontmatter`, spanning both DBs; per-character best-effort;
+`is_conversational_message` / `compute_conversation_stats`) and
+`delete_conversation_with_vault_sweep` (participants captured BEFORE the row
+delete + the `syncVaults` skip) — **closing the LAST Phase-2 deferral** — and
+**cost events** (`cost_events` — `createSystemEvent` + the memory/title/context
+wrappers: a SYSTEM row + the ported `increment_token_aggregates` bump). **Verified:**
+six tier-1 pure-builder differentials (`post_office_{host,librarian,prospero,
+commonplace,aurora,concierge_lantern_suparna}_equivalence`, byte-exact vs v4's real
+exports); the combined `post_office_writers_tier3_equivalence` (drives v4's real
+`post*` + `createContextSummaryEvent`/`createTitleGenerationEvent` over a two-DB
+fixture — real vaults for Host `add` — diffing `chat_messages` byte-for-byte + the
+cost `chats` aggregate, one case per row-shape/systemKind: public opaque-pair,
+targeted, `hostEvent`, `summaryAnchor`, non-opaque, null-opaque, SYSTEM); and the
+`vault_summary_mirror_tier2_equivalence` (mirror + rename-in-place-by-conversationId
++ dedup + `syncVaults:false` skip + the delete sweep, five mount-index tables in the
+shared-cross-db id-map remap form, `content` byte-diffed). **Non-spine seams closed
+LIVE:** the Concierge announcer seams in `dangerous_content`
+(`RealDangerAnnouncer`/`RealConciergeAnnouncer` — the W4.2
+`postConcierge{Danger,Manual}Announcement` deferrals; `danger_gatekeeper_tier3` +
+the manual-flip case regenerated with the bubbles posted on both sides) and the
+context-summary Librarian re-post + cost events (`RealContextSummarySeams`;
+`context_summary_service_tier3` regenerated). The announcer/`ContextSummarySeams`
+traits went async (RPITIT `-> impl Future + Send`, no boxing);
+`generate_context_summary`'s public no-seams path stays `NoopSeams`, so the spine
+callers are untouched. **Tracked handoffs (spine-owned, deferred):** wiring the
+`BuildContextSeams::post_*` (`post_core_whisper` [Aurora] /
+`post_commonplace_whisper` [Commonplace] / `post_host_off_scene_announcement` +
+`post_host_timestamp_announcement` [Host] / `post_suparna_mail` [Suparṇā, which
+must switch to `build_suparna_mail_whisper` over the letters]) + the
+`OrchestratorSeams::post_prospero_context` + the end-of-turn
+`flush_pending_wardrobe_announcements` into the orchestrator/build_context spine
+(each with its corpus case) + the `WARDROBE_OUTFIT_ANNOUNCEMENT` job-runner
+dispatch row (W4.8); the context-summary `mirror_summary_to_vaults` +
+`refresh_relevant_conversations` seams (need vault fixtures + embedding — the
+mirror is separately proven by `vault_summary_mirror_tier2`); rewiring the image
+subsystem's Lantern sink (`generate_image::lantern_character_image_notification` is
+a truncated placeholder) to the full byte-exact `lantern_notifications::build_content`
+(regenerates `image_generation_tier3`); the `build_context` private commonplace
+builder dedup; and the Librarian save-announcement `change:{kind:'edited',diff}`
+coupling in the doc-edit handlers (`doc_edit::unified_diff`/`line_diff` are ready
+per W4.d1).
+
 **The Phase-3 endgame is fully planned (2026-07-06).** Every remaining unit
 has an agent-ready work order checked in under
 `docs/developer/porting/work-orders/` — W4.2u (the danger spine unification

@@ -5,14 +5,14 @@
  * `lib/services/dangerous-content/manual-flip.ts`).
  *
  * Drives v4's REAL `applyConciergeFlip` over a baked `chats` fixture (one chat
- * per flip scenario), then dumps the `chats` table. The synthetic Concierge
- * announcement (`postConciergeManualAnnouncement`) is mocked to a no-op — it is
- * a personified-system writer seamed in the Rust port (a W4.6 deferral); mocking
- * it matches the port (neither side posts, so `chat_messages` / the chat
- * metadata are untouched by the announcement).
+ * per flip scenario), then dumps `chats` + `chat_messages`. The synthetic
+ * Concierge announcement (`postConciergeManualAnnouncement`) runs REAL now
+ * (W4.6b): every changed flip posts the manual bubble into `chat_messages`
+ * (bumping the chat's `updatedAt`/`lastMessageAt`/`messageCount` via
+ * `repos.chats.addMessage`), matching the ported `RealConciergeAnnouncer`.
  *
- * Beyond the announcement mock, the real DB stack is wired back in past
- * `jest.setup`'s global DB mocks (`[[jest-real-db-oracle]]`).
+ * The real DB stack is wired back in past `jest.setup`'s global DB mocks
+ * (`[[jest-real-db-oracle]]`).
  *
  * Run from the v4 checkout under Node 24:
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
@@ -76,12 +76,11 @@ async function main(): Promise<void> {
     jest.requireActual('@/lib/database/repositories')
   );
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
-  // Seam the personified Concierge announcement writer to no-ops (W4.6).
-  jest.doMock('@/lib/services/concierge-notifications/writer', () => ({
-    __esModule: true,
-    postConciergeManualAnnouncement: async () => undefined,
-    postConciergeDangerAnnouncement: async () => undefined,
-  }));
+  // Run v4's REAL Concierge writer (W4.6b): every changed flip posts the manual
+  // bubble into `chat_messages`, matching the ported `RealConciergeAnnouncer`.
+  jest.doMock('@/lib/services/concierge-notifications/writer', () =>
+    jest.requireActual('@/lib/services/concierge-notifications/writer')
+  );
 
   const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
@@ -102,18 +101,28 @@ async function main(): Promise<void> {
     );
   }
 
-  const columns = (
-    (await rawQuery('PRAGMA table_info(chats)')) as Array<{ name: string }>
-  ).map((c) => c.name);
-  const rawRows = (await rawQuery('SELECT * FROM chats')) as Array<Record<string, unknown>>;
-  const rows = rawRows
-    .map((r) => {
-      const out: Record<string, unknown> = {};
-      for (const col of columns) out[col] = canonValue(r[col]);
-      return out;
-    })
-    .sort((a, b) => (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0));
-  lines.push(JSON.stringify({ kind: 'table', table: 'chats', columns, rows }));
+  const dumpTable = async (table: string, orderBy: string) => {
+    const columns = (
+      (await rawQuery(`PRAGMA table_info(${table})`)) as Array<{ name: string }>
+    ).map((c) => c.name);
+    const rawRows = (await rawQuery(`SELECT * FROM ${table}`)) as Array<Record<string, unknown>>;
+    const rows = rawRows
+      .map((r) => {
+        const out: Record<string, unknown> = {};
+        for (const col of columns) out[col] = canonValue(r[col]);
+        return out;
+      })
+      .sort((a, b) => {
+        const av = String(a[orderBy] ?? '');
+        const bv = String(b[orderBy] ?? '');
+        return av < bv ? -1 : av > bv ? 1 : 0;
+      });
+    return { table, columns, rows };
+  };
+
+  lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chats', 'id')) }));
+  // The manual Concierge bubble (one per changed flip) lands here.
+  lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chat_messages', 'chatId')) }));
 
   await closeDatabase();
   fs.writeFileSync(outPath, lines.join('\n') + '\n');

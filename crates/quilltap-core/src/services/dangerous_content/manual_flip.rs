@@ -40,16 +40,39 @@ use super::chat_override::{get_concierge_state, ConciergeState};
 
 /// The manual Concierge announcement seam (v4 `postConciergeManualAnnouncement`).
 /// `kind` is one of `manual-flagged` / `manual-safe` / `manual-on-duty` /
-/// `manual-off-duty`. Default no-op (the personified writer is a W4.6 deferral).
+/// `manual-off-duty`.
+/// Now closed by [`RealConciergeAnnouncer`] (W4.6b — the ported
+/// `concierge_notifications` writer). Async (the writer awaits the single-writer
+/// channel); RPITIT so the future is `Send` without boxing.
 pub trait ConciergeAnnouncer {
-    fn post_manual(&self, chat_id: &str, kind: &str);
+    fn post_manual(
+        &self,
+        chat_id: &str,
+        kind: &str,
+    ) -> impl std::future::Future<Output = ()> + Send;
 }
 
-/// A [`ConciergeAnnouncer`] that posts nothing — the faithful wiring until the
-/// personified writer lands (W4.6).
+/// A [`ConciergeAnnouncer`] that posts nothing.
 pub struct NoConciergeAnnouncer;
 impl ConciergeAnnouncer for NoConciergeAnnouncer {
-    fn post_manual(&self, _chat_id: &str, _kind: &str) {}
+    async fn post_manual(&self, _chat_id: &str, _kind: &str) {}
+}
+
+/// The real manual Concierge announcer (v4 `postConciergeManualAnnouncement`) —
+/// posts the personified bubble through the ported
+/// [`crate::services::concierge_notifications`] writer. A `kind` that is not one
+/// of the four manual wire strings is ignored (v4's exhaustive switch never emits
+/// another).
+pub struct RealConciergeAnnouncer<'a> {
+    pub db: &'a crate::db::runtime::Db,
+}
+impl ConciergeAnnouncer for RealConciergeAnnouncer<'_> {
+    async fn post_manual(&self, chat_id: &str, kind: &str) {
+        use crate::services::concierge_notifications as cn;
+        if let Some(k) = cn::ConciergeManualKind::from_wire(kind) {
+            cn::post_concierge_manual_announcement(self.db, chat_id, k).await;
+        }
+    }
 }
 
 /// Result of [`apply_concierge_flip`] (v4 `ApplyConciergeFlipResult`).
@@ -107,7 +130,7 @@ pub async fn apply_concierge_flip<An: ConciergeAnnouncer>(
                 Ok(())
             })
             .await?;
-            announcer.post_manual(chat_id, "manual-flagged");
+            announcer.post_manual(chat_id, "manual-flagged").await;
         }
         ConciergeState::Safe => {
             db.write(move |writers| {
@@ -131,7 +154,7 @@ pub async fn apply_concierge_flip<An: ConciergeAnnouncer>(
             } else {
                 "manual-safe"
             };
-            announcer.post_manual(chat_id, kind);
+            announcer.post_manual(chat_id, kind).await;
         }
         ConciergeState::Off => {
             db.write(move |writers| {
@@ -142,7 +165,7 @@ pub async fn apply_concierge_flip<An: ConciergeAnnouncer>(
                 Ok(())
             })
             .await?;
-            announcer.post_manual(chat_id, "manual-off-duty");
+            announcer.post_manual(chat_id, "manual-off-duty").await;
         }
     }
 

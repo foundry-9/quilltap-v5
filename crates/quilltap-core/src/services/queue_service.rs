@@ -371,6 +371,60 @@ pub async fn enqueue_character_avatar_generation(
     Ok((job_id, true))
 }
 
+/// v4 `enqueueWardrobeOutfitAnnouncement` (`lib/background-jobs/queue-service.ts`):
+/// enqueue a debounced `WARDROBE_OUTFIT_ANNOUNCEMENT` job (`scheduledAt = now`,
+/// `priority = -1`, `maxAttempts` = the default 3). Collapses against a still-
+/// **PENDING** job for the same chat + character (v4 deliberately does NOT collapse
+/// against a PROCESSING job — it has already snapshotted the equipped state and
+/// can't absorb fresh changes, so those edits get a fresh debounced job). Returns
+/// `(jobId, is_new)`.
+///
+/// The payload is `{ chatId, characterId }` (v4's `WardrobeOutfitAnnouncementPayload`
+/// object literal).
+pub async fn enqueue_wardrobe_outfit_announcement(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    character_id: &str,
+) -> Result<(String, bool), DbError> {
+    let cid = chat_id.to_string();
+    let pending = db.read_main(|conn| {
+        crate::db::background_jobs::BackgroundJobsRepository::new(conn).find_pending_for_chat(&cid)
+    })?;
+    // v4: `job.type === 'WARDROBE_OUTFIT_ANNOUNCEMENT' && job.status === 'PENDING'
+    //      && payload.characterId === characterId`. `find_pending_for_chat` returns
+    // PENDING+PROCESSING, so the explicit PENDING check matters.
+    let existing = pending.iter().find(|j| {
+        if j.job_type != "WARDROBE_OUTFIT_ANNOUNCEMENT" || j.status != "PENDING" {
+            return false;
+        }
+        serde_json::from_str::<Value>(&j.payload)
+            .ok()
+            .and_then(|p| {
+                p.get("characterId")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .as_deref()
+            == Some(character_id)
+    });
+    if let Some(existing) = existing {
+        return Ok((existing.id.clone(), false));
+    }
+
+    let payload = serde_json::json!({ "chatId": chat_id, "characterId": character_id });
+    let job_id = enqueue_job_with_priority(
+        db,
+        user_id,
+        "WARDROBE_OUTFIT_ANNOUNCEMENT",
+        payload,
+        -1.0,
+        3.0,
+    )
+    .await?;
+    Ok((job_id, true))
+}
+
 // ============================================================================
 // Retention windows (v4 `lib/background-jobs/maintenance/retention-constants.ts`)
 // ============================================================================

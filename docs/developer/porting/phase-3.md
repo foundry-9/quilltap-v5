@@ -241,10 +241,14 @@ assumption.
 These could not close in Phase 2 because each depends on a Phase-3 subsystem.
 Track them to closure as their subsystem lands:
 
-1. **`chats.delete`'s participant-vault summary sweep** — reaches the
-   vault-summary bridge. **Scheduled: W4.6b**
-   ([`work-orders/w4.6b-post-office-writers.md`](./work-orders/w4.6b-post-office-writers.md))
-   ports the bridge (mirror + remove + the delete sweep).
+1. **`chats.delete`'s participant-vault summary sweep** — reached the
+   vault-summary bridge. **✅ CLOSED (2026-07-07, W4.6b)**: ported the bridge
+   (`services::conversation_summary_vault_bridge` —
+   `write_conversation_summary_to_vaults` / `remove_conversation_summaries_from_vaults`)
+   and composed `delete_conversation_with_vault_sweep` (participants captured before
+   the row delete + the `syncVaults` skip). Differential-verified by
+   `vault_summary_mirror_tier2_equivalence` (mirror + rename-in-place + skip + the
+   delete sweep, five mount-index tables). **This was the last Phase-2 deferral.**
 2. **The General / project wardrobe archetype tiers** — **✅ CLOSED (2026-07-03,
    wave 4 / W4.0)**: `db::archetype_wardrobe` + the seeded read overlay + the
    `WardrobeLocation` write generalization + the public READ trio + the

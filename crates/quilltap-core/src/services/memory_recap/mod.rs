@@ -58,7 +58,7 @@ pub struct MemoryRecapResult {
 /// v4 `rampLimit`: linear ramp from `min` (at `min_tokens` of context or less) to
 /// `max` (at `max_tokens` or more), rounded (JS `Math.round`, half-away-from-zero
 /// for the non-negative inputs here). `None` maxContext yields `max`.
-fn ramp_limit(
+pub(crate) fn ramp_limit(
     max_context: Option<i64>,
     min: i64,
     max: i64,
@@ -82,14 +82,14 @@ fn ramp_limit(
 /// A past conversation surfaced by the vault-summary search (v4
 /// `VaultConversationMatch`).
 #[derive(Clone, Debug)]
-struct VaultConversationMatch {
+pub(crate) struct VaultConversationMatch {
     conversation_id: String,
     conversation_title: String,
 }
 
 /// v4 `renderRelevantConversationsBlock` — the `### Relevant Past Conversations`
 /// block (entries only, no call note). `''` for an empty list.
-fn render_relevant_conversations_block(matches: &[VaultConversationMatch]) -> String {
+pub(crate) fn render_relevant_conversations_block(matches: &[VaultConversationMatch]) -> String {
     if matches.is_empty() {
         return String::new();
     }
@@ -102,7 +102,7 @@ fn render_relevant_conversations_block(matches: &[VaultConversationMatch]) -> St
 }
 
 /// v4 `READ_CONVERSATION_CALL_NOTE`.
-const READ_CONVERSATION_CALL_NOTE: &str = "_Pass any of the conversation IDs above (in backticks) to the `read_conversation` tool to revisit the full transcript._";
+pub(crate) const READ_CONVERSATION_CALL_NOTE: &str = "_Pass any of the conversation IDs above (in backticks) to the `read_conversation` tool to revisit the full transcript._";
 
 /// v4 `truncateGist` — cap an inlined gist so the recap block stays bounded.
 /// `text.trim()`; if ≤ `max_chars` return it, else `slice(0, max_chars-1)` +
@@ -120,7 +120,7 @@ fn truncate_gist(text: &str, max_chars: usize) -> String {
 /// conversation summaries. Degrades gracefully to `[]` on any failure (no vault,
 /// dead embedding provider, unreadable files).
 #[allow(clippy::too_many_arguments)]
-async fn search_vault_conversation_summaries<E: EmbeddingProvider>(
+pub(crate) async fn search_vault_conversation_summaries<E: EmbeddingProvider>(
     db: &Db,
     embedding: &E,
     character_id: &str,

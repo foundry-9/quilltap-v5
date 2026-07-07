@@ -75,6 +75,11 @@ async function main(): Promise<void> {
     );
   }
 
+  // Materialize the chat_messages table (v4 ensureCollections it lazily on first
+  // repo use; the Rust `add_message` — which the RealConciergeAnnouncer drives —
+  // expects it to exist in the copied fixture). A read suffices.
+  await repo.getMessages(spec.chats[0].id);
+
   await closeDatabase();
   process.stderr.write(`built danger-manual-flip fixture: ${out} (${spec.chats.length} chats)\n`);
   process.exit(0);
