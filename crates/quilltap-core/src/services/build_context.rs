@@ -2364,17 +2364,25 @@ where
     };
 
     // Commonplace whisper post + scene-cache + recall-history persistence (seams).
-    let cmpb_parts = CommonplaceParts {
+    // Reuse the canonical builders from `commonplace_notifications` (Group 5 dedup);
+    // the per-turn consolidated whisper leaves `relevant_conversations` empty (only
+    // the fold-refresh whisper sets it), so the output is identical to the removed
+    // private copies.
+    let cmpb_parts = crate::services::commonplace_notifications::CommonplaceParts {
         current_state: opt(&current_state_content),
         recap: opt(&memory_recap_content),
         relevant: opt(&memory_content),
         inter_char: opt(&inter_character_memory_content),
         knowledge: opt(&knowledge_content),
+        relevant_conversations: None,
     };
-    let persona_whisper = build_commonplace_persona_whisper(&cmpb_parts);
-    let llm_recall_text = build_commonplace_llm_context(&cmpb_parts);
+    let persona_whisper =
+        crate::services::commonplace_notifications::build_commonplace_persona_whisper(&cmpb_parts);
+    let llm_recall_text =
+        crate::services::commonplace_notifications::build_commonplace_llm_context(&cmpb_parts);
 
-    if let Some(persona) = &persona_whisper {
+    if !persona_whisper.is_empty() {
+        let persona = &persona_whisper;
         let target = if is_multi_character {
             input.responding_participant.as_ref().map(|p| p.id.as_str())
         } else {
@@ -2461,8 +2469,8 @@ where
         if !core_whisper_llm_context.is_empty() {
             trailing.push(core_whisper_llm_context.clone());
         }
-        if let Some(t) = &llm_recall_text {
-            trailing.push(t.clone());
+        if !llm_recall_text.is_empty() {
+            trailing.push(llm_recall_text.clone());
         }
         if !suparna_mail_llm_context.is_empty() {
             trailing.push(suparna_mail_llm_context.clone());
@@ -2719,97 +2727,8 @@ fn build_timestamp_content(formatted: &str) -> String {
     format!("The Host marks the time as {formatted}.")
 }
 
-// ---------------------------------------------------------------------------
-// Commonplace-Book whisper assembly (v4 commonplace-notifications/writer, the
-// pure content builders; the POST is the seam).
-// ---------------------------------------------------------------------------
-
-/// v4 `CommonplaceParts`.
-struct CommonplaceParts {
-    current_state: Option<String>,
-    recap: Option<String>,
-    relevant: Option<String>,
-    inter_char: Option<String>,
-    knowledge: Option<String>,
-}
-
-/// Trim + drop-empty view of a part (v4 `parts.x?.trim()` truthiness).
-fn trimmed(v: &Option<String>) -> Option<&str> {
-    v.as_deref()
-        .map(crate::jsstr::js_trim)
-        .filter(|s| !s.is_empty())
-}
-
-/// v4 `buildCommonplaceLLMContext` — the clean second-person recall folded into
-/// the new user message. Each present part gets its own second-person lead-in,
-/// joined by blank lines, then `.trim()`ed. Returns `None` when nothing is set
-/// (v4's caller treats an empty string as "no recall" via `if (llmRecallText)`).
-fn build_commonplace_llm_context(parts: &CommonplaceParts) -> Option<String> {
-    let mut sections: Vec<String> = Vec::new();
-    if let Some(s) = trimmed(&parts.current_state) {
-        sections.push(format!("Here is the present state of the scene:\n\n{s}"));
-    }
-    if let Some(s) = trimmed(&parts.recap) {
-        sections.push(format!(
-            "You remember the gist of what has happened so far:\n\n{s}"
-        ));
-    }
-    if let Some(s) = trimmed(&parts.relevant) {
-        sections.push(format!(
-            "You remember the following entries that bear on this moment:\n\n{s}"
-        ));
-    }
-    if let Some(s) = trimmed(&parts.inter_char) {
-        sections.push(format!("You also recall about the others present:\n\n{s}"));
-    }
-    if let Some(s) = trimmed(&parts.knowledge) {
-        sections.push(format!(
-            "You also recall the following from your knowledge base:\n\n{s}"
-        ));
-    }
-    let joined = crate::jsstr::js_trim(&sections.join("\n\n")).to_string();
-    if joined.is_empty() {
-        None
-    } else {
-        Some(joined)
-    }
-}
-
-/// v4 `buildCommonplacePersonaWhisper` — the persona-voiced transcript whisper
-/// (Commonplace-Book framing). Only its PRESENCE gates the seamed post (the exact
-/// body is verified separately; the LLM-context above is what reaches the context
-/// messages). Returns `None` when nothing is set.
-fn build_commonplace_persona_whisper(parts: &CommonplaceParts) -> Option<String> {
-    let mut sections: Vec<String> = Vec::new();
-    if let Some(s) = trimmed(&parts.current_state) {
-        sections.push(format!(
-            "*The Commonplace Book sets its memories aside for a moment to take stock of where you stand —*\n\n{s}"
-        ));
-    }
-    if let Some(s) = trimmed(&parts.recap) {
-        sections.push(format!(
-            "*The Commonplace Book lays open at your bookmark; here is the gist of what you have noted so far —*\n\n{s}"
-        ));
-    }
-    if let Some(s) = trimmed(&parts.relevant) {
-        sections.push(format!(
-            "*The Commonplace Book turns to the entries that bear on this moment.*\n\n{s}"
-        ));
-    }
-    if let Some(s) = trimmed(&parts.inter_char) {
-        sections.push(format!(
-            "*The Commonplace Book opens to the pages where you have noted those present.*\n\n{s}"
-        ));
-    }
-    if let Some(s) = trimmed(&parts.knowledge) {
-        sections.push(format!(
-            "*The Commonplace Book pulls down volumes from your own shelves — the references and reckonings you yourself have curated —*\n\n{s}"
-        ));
-    }
-    let joined = crate::jsstr::js_trim(&sections.join("\n\n")).to_string();
-    if joined.is_empty() {
-        None
-    } else {
-        Some(joined)
-    }
-}
+// Commonplace-Book whisper assembly (`CommonplaceParts` +
+// `build_commonplace_persona_whisper` / `build_commonplace_llm_context`) is reused
+// from `crate::services::commonplace_notifications` (Group 5 dedup) — the private
+// copies that used to live here were byte-identical for the per-turn consolidated
+// whisper (which never sets `relevant_conversations`).

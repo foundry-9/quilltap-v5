@@ -4,6 +4,13 @@
 
 ### 5.0-dev
 
+Phase 3 — Round-3 unification (Group 5, commonplace-builder dedup): removed the
+private `CommonplaceParts` + `build_commonplace_persona_whisper` /
+`build_commonplace_llm_context` copies from `build_context.rs` and reused the
+canonical `commonplace_notifications` versions (the per-turn consolidated whisper
+leaves `relevant_conversations` empty, so the output is byte-identical). No behavior
+change; `build_context_tier3` re-verified green.
+
 Phase 3 — Round-3 unification (Group 4, Lantern sink rewire): deleted the truncated
 `lantern_character_image_notification` placeholder in `generate_image` and wired the
 W4.9a Lantern sink to the canonical W4.6b writer. `LanternNotificationSink` is now
