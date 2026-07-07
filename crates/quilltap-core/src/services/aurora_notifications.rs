@@ -362,3 +362,25 @@ pub async fn handle_wardrobe_outfit_announcement(db: &Db, payload: &Value) -> Re
     post_outfit_change_whisper(db, &chat_id, &char_name, &outfit).await;
     Ok(())
 }
+
+/// The [`crate::services::job_runner::JobHandler`] for `WARDROBE_OUTFIT_ANNOUNCEMENT`
+/// jobs — the runner-registry wiring for [`handle_wardrobe_outfit_announcement`].
+/// The host registers it via `registry.register("WARDROBE_OUTFIT_ANNOUNCEMENT",
+/// Box::new(WardrobeOutfitAnnouncementHandler))`.
+pub struct WardrobeOutfitAnnouncementHandler;
+
+impl crate::services::job_runner::JobHandler for WardrobeOutfitAnnouncementHandler {
+    fn handle<'a>(
+        &'a self,
+        db: &'a Db,
+        job: &'a crate::db::background_jobs::BackgroundJob,
+    ) -> crate::services::job_runner::JobFuture<'a> {
+        Box::pin(async move {
+            let payload: Value = serde_json::from_str(&job.payload).unwrap_or(Value::Null);
+            match handle_wardrobe_outfit_announcement(db, &payload).await {
+                Ok(()) => crate::services::job_runner::JobOutcome::Completed(None),
+                Err(e) => crate::services::job_runner::JobOutcome::Failed(e.to_string()),
+            }
+        })
+    }
+}

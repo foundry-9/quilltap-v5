@@ -1533,6 +1533,13 @@ where
     // out of the raw response per the effective provider's wire format.
     let tool_detector = native_tool_loop::RegistryToolCallDetector::built_in();
 
+    // ONE shared pending-wardrobe-announcement set for the whole turn (v4's single
+    // `toolContext.pendingWardrobeAnnouncements`): the wardrobe handlers record
+    // affected character ids here across the native loop + text passes, and the
+    // end-of-turn drain (below) enqueues one Aurora announcement per character.
+    let pending_wardrobe: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
+
     let loop_messages: Vec<ThreadedMessage> = formatted_messages
         .iter()
         .map(|m| ThreadedMessage {
@@ -1545,7 +1552,7 @@ where
             tool_calls: None,
         })
         .collect();
-    let loop_tool_context = create_tool_context(
+    let mut loop_tool_context = create_tool_context(
         chat_id.clone(),
         user_id.clone(),
         character_id.clone(),
@@ -1556,6 +1563,7 @@ where
         None,
         None,
     );
+    loop_tool_context.pending_wardrobe_announcements = pending_wardrobe.clone();
     native_tool_loop::run_native_tool_loop(
         db,
         deps.streaming,
@@ -1605,7 +1613,7 @@ where
             .collect()
     };
     let make_text_context = || {
-        create_tool_context(
+        let mut c = create_tool_context(
             chat_id.clone(),
             user_id.clone(),
             character_id.clone(),
@@ -1615,7 +1623,9 @@ where
             None,
             None,
             None,
-        )
+        );
+        c.pending_wardrobe_announcements = pending_wardrobe.clone();
+        c
     };
 
     // Phase 19: provider-native text tool markers — v4 runs the pass only when the
@@ -1724,6 +1734,19 @@ where
             character_id: character_id.clone(),
             character_name: character_name.clone(),
         },
+    )
+    .await;
+
+    // --- End-of-turn wardrobe drain (orchestrator.service.ts:1406) ---
+    // Collapse any wardrobe edits this turn's characters made into one Aurora
+    // announcement each, regardless of which terminal branch we exit through. The
+    // handlers recorded affected character ids into the shared set; drain it before
+    // finalize (v4 fires one `WARDROBE_OUTFIT_ANNOUNCEMENT` job per character).
+    crate::services::aurora_notifications::flush_pending_wardrobe_announcements(
+        db,
+        &user_id,
+        &chat_id,
+        &pending_wardrobe,
     )
     .await;
 

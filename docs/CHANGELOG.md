@@ -4,6 +4,19 @@
 
 ### 5.0-dev
 
+Phase 3 — Round-3 unification (Group 3, end-of-turn wardrobe drain): the
+`processMessage` spine now threads ONE shared `pendingWardrobeAnnouncements` set
+through every per-turn tool context (native loop + text passes) and drains it at
+turn close (before finalize, v4 orchestrator.service.ts:1406) via
+`aurora_notifications::flush_pending_wardrobe_announcements`, which enqueues one
+`WARDROBE_OUTFIT_ANNOUNCEMENT` job per affected character. Added
+`WardrobeOutfitAnnouncementHandler` (a `JobHandler` wrapping
+`handle_wardrobe_outfit_announcement`) for the host/runner to register. The
+pending-set recording remains proven by `wardrobe_tools_equivalence`; the flush /
+enqueue / handler are individually ported (W4.1d2 / W4.8 / W4.1d2). Residual: a
+Db-based end-to-end drain differential (the wardrobe_tools harness uses raw
+writers, no Db).
+
 Phase 3 — Round-3 unification (Group 2, W4.6b post-office writers): wired the
 personified-system whisper POSTs live. `BuildContextSeams` is now async (RPITIT,
 matching `ContextSummarySeams`) with a `RealBuildContextSeams` production impl that
