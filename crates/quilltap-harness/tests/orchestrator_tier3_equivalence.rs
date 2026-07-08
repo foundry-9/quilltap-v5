@@ -45,6 +45,7 @@ use std::sync::Mutex;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::model::completion::{
     canned_completion_key, CannedCompletionProvider, CompletionMessage, CompletionRole,
+    CompletionUsage,
 };
 use quilltap_core::model::embedding::CannedEmbeddingProvider;
 use quilltap_core::model::stream::{
@@ -55,7 +56,8 @@ use quilltap_core::services::build_context::RealBuildContextSeams;
 use quilltap_core::services::carina_query::{CarinaQueryDeps, RealCarinaQuery};
 use quilltap_core::services::carina_runner::ClosureProspero;
 use quilltap_core::services::chat_events::RecordingSink;
-use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use quilltap_core::services::cheap_llm_exec::{CheapLlmLogConfig, CheapLlmTaskExecutor};
+use quilltap_core::services::llm_logging::LogContext;
 use quilltap_core::services::message_finalizer::{NoAnswerConfirmation, NoAsyncCompression};
 use quilltap_core::services::native_tool_loop::NoToolCallDetector;
 use quilltap_core::services::orchestrator::{
@@ -66,6 +68,8 @@ use quilltap_core::services::tool_execution::CannedToolRunner;
 use quilltap_core::services::turn_orchestrator::ChainConfig;
 use serde::Deserialize;
 use serde_json::Value;
+
+mod common;
 
 // ---------------------------------------------------------------------------
 // Spec.
@@ -170,6 +174,10 @@ struct CannedCompletionW {
     temperature: Option<f64>,
     messages: Vec<CannedMsgW>,
     response: String,
+    /// W4.11a: the usage v4's cheap-LLM completion returns — carried through so the
+    /// executor's `llm_logs` row records the same `usage` v4 logs.
+    #[serde(default)]
+    usage: Option<UsageW>,
 }
 
 fn to_completion_messages(m: &[CannedMsgW]) -> Vec<CompletionMessage> {
@@ -458,6 +466,7 @@ fn orchestrator_tier3_matches_oracle() {
     let mut canned_streams: Vec<CannedStreamW> = Vec::new();
     let mut canned_completions: Vec<CannedCompletionW> = Vec::new();
     let mut want_tables: HashMap<String, Value> = HashMap::new();
+    let mut want_llm_logs: Option<Vec<Value>> = None;
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
         let parsed: OracleLine = serde_json::from_str(line).expect("oracle line parses");
         match parsed.kind.as_str() {
@@ -482,6 +491,7 @@ fn orchestrator_tier3_matches_oracle() {
                     .to_string();
                 want_tables.insert(table, parsed.rest);
             }
+            "llmlogs" => want_llm_logs = Some(common::oracle_llm_logs(&parsed.rest)),
             other => panic!("unknown oracle line kind: {other}"),
         }
     }
@@ -496,11 +506,18 @@ fn orchestrator_tier3_matches_oracle() {
     std::fs::copy(&fixture_main, &work_main).expect("copy main fixture");
     std::fs::copy(&fixture_mount, &work_mount).expect("copy mount fixture");
 
+    // W4.11a: materialize the llm-logs partition so the per-call `with_logging`
+    // executor + the primary stream can write their `llm_logs` rows (the oracle
+    // does the same via `SQLITE_LLM_LOGS_PATH`).
+    let work_ll = scratch.join("orch-llm-logs.db");
+    let _ = std::fs::remove_file(&work_ll);
+    common::materialize_llm_logs(&work_ll, &spec.test_pepper_base64);
+
     let db = Db::open(
         DbPaths {
             main: work_main.clone(),
             mount_index: Some(work_mount.clone()),
-            llm_logs: None,
+            llm_logs: Some(work_ll.clone()),
         },
         &spec.test_pepper_base64,
     )
@@ -523,11 +540,14 @@ fn orchestrator_tier3_matches_oracle() {
             row.temperature,
             &messages,
             &row.response,
-            None,
+            row.usage.as_ref().map(|u| CompletionUsage {
+                prompt_tokens: u.prompt_tokens,
+                completion_tokens: u.completion_tokens,
+                total_tokens: u.total_tokens,
+            }),
         );
     }
     let embedding = CannedEmbeddingProvider::new();
-    let executor = CheapLlmTaskExecutor::new();
     // Round-3 unification (Group 2): the buildContext whisper writers run LIVE
     // (RealBuildContextSeams). The oracle un-mocks the same writers; the resulting
     // whisper rows appear in the diffed chat_messages dump.
@@ -575,6 +595,19 @@ fn orchestrator_tier3_matches_oracle() {
 
     for call in &spec.calls {
         let sink = RecordingSink::new();
+        // W4.11a: a per-call executor that logs each cheap-LLM provider call into
+        // `llm_logs` (v4's un-mocked `logLLMCall`). The distill (memory-keyword-
+        // extraction → MEMORY_EXTRACTION, per-call characterId) and the summary
+        // fold/title (SUMMARIZATION / TITLE_GENERATION, characterId null) carry
+        // chatId = this call's chat; v4's cheap-LLM log passes messageId = undefined
+        // for both, so `message_id: None`.
+        let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+            db: db.clone(),
+            user_id: spec.user_id.clone(),
+            chat_id: Some(call.chat_id.clone()),
+            message_id: None,
+            ctx: LogContext::none(),
+        });
         // Fresh finalizer seams per call.
         let mut confirmation = NoAnswerConfirmation;
         let mut compression = NoAsyncCompression;
@@ -782,6 +815,45 @@ fn orchestrator_tier3_matches_oracle() {
     assert_table_eq("chats", &got_chats, &want_chats);
     assert_table_eq("chat_messages", &got_msgs, &want_msgs);
     assert_table_eq("background_jobs", &got_jobs, &want_jobs);
+
+    // --- llm_logs (W4.11a) ---
+    // The per-call `with_logging` executor wrote the cheap-LLM rows (distill
+    // MEMORY_EXTRACTION, summary-fold SUMMARIZATION, title TITLE_GENERATION);
+    // primary_stream wrote CHAT_MESSAGE rows. TWO row families are documented
+    // seam/mock artifacts filtered from BOTH sides:
+    //   * `CHAT_MESSAGE` — the Rust primary_stream logs these, but v4's
+    //     service-level `streamMessage` mock swallows its own CHAT_MESSAGE log
+    //     (`streaming.service.ts:405` lives INSIDE the mocked wrapper), so v4
+    //     writes none. That row shape is proven byte-exact by `primary_stream_tier3`
+    //     (W4.11b); relocating the oracle's stream mock to the provider level is
+    //     out of scope (it would re-risk the 24-case corpus).
+    //   * `DANGER_CLASSIFICATION` — v4's `resolveMessageDangerState` classifies the
+    //     user message INLINE (a cheap-LLM call → one log row) for non-off / not-
+    //     already-dangerous chats; that classify is a documented seam in the Rust
+    //     spine (behaviorally inert here — the canned cheap response resolves
+    //     non-dangerous → no reroute — so the diffed tables/events already match).
+    //     The Rust side writes no such row; filtered on both sides. (The danger
+    //     logging seam proper is W4.11c.)
+    let strip_seam_rows = |rows: Vec<Value>| -> Vec<Value> {
+        rows.into_iter()
+            .filter(|r| {
+                let t = r["type"].as_str().unwrap_or("");
+                t != "CHAT_MESSAGE" && t != "DANGER_CLASSIFICATION"
+            })
+            .collect()
+    };
+    let got_logs = strip_seam_rows(common::dump_llm_logs(&db));
+    let want_logs = strip_seam_rows(want_llm_logs.expect("oracle emitted no llmlogs row"));
+    assert_eq!(
+        got_logs.len(),
+        want_logs.len(),
+        "llm_logs row count diverges (got {} vs oracle {})\n got: {:#?}\n want: {:#?}",
+        got_logs.len(),
+        want_logs.len(),
+        got_logs,
+        want_logs,
+    );
+    assert_eq!(got_logs, want_logs, "llm_logs rows diverge");
 
     drop(db);
     let _ = std::fs::remove_dir_all(&scratch);

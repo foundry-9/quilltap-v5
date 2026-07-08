@@ -153,6 +153,10 @@ async function main(): Promise<void> {
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.SQLITE_PATH = workMain;
   process.env.SQLITE_MOUNT_INDEX_PATH = workMount;
+  // W4.11a: a fresh llm-logs DB so the un-mocked `logLLMCall` (below) lands its
+  // rows in a dumpable partition (created lazily by the llm-logs repo on first
+  // write). Read back through `getRawLLMLogsDatabase()` before `closeDatabase()`.
+  process.env.SQLITE_LLM_LOGS_PATH = join(scratch, 'orch-llm-logs.db');
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
@@ -346,10 +350,16 @@ async function main(): Promise<void> {
       getApiKeyForProfile: async () => 'test-key',
     };
   });
-  jest.doMock('@/lib/services/llm-logging.service', () => {
-    const actual = jest.requireActual('@/lib/services/llm-logging.service');
-    return { __esModule: true, ...actual, logLLMCall: async () => undefined };
-  });
+  // W4.11a: `logLLMCall` runs REAL — the cheap-LLM distill (memory-keyword-extraction
+  // → MEMORY_EXTRACTION) and any summary-fold cheap calls land `llm_logs` rows the
+  // Rust harness (with a `with_logging` executor) matches. v4's CHAT_MESSAGE row
+  // lives INSIDE the service-level `streamMessage` wrapper (mocked above), so v4
+  // writes NO CHAT_MESSAGE rows here — the Rust primary_stream does, so both sides
+  // filter `type == 'CHAT_MESSAGE'` before diffing (the primary-stream row shape is
+  // proven directly by `primary_stream_tier3` / W4.11b).
+  jest.doMock('@/lib/services/llm-logging.service', () =>
+    jest.requireActual('@/lib/services/llm-logging.service')
+  );
 
   // ---- buildMessageContext → the REAL wrapper; mock ONLY the K file-loader ----
   // v4's `buildMessageContext` (context-builder.service.ts) is now ported as
@@ -401,6 +411,30 @@ async function main(): Promise<void> {
   jest.doMock('@/lib/memory/cheap-llm-tasks', () =>
     jest.requireActual('@/lib/memory/cheap-llm-tasks'),
   );
+  // W4.11a: `runPreContextPreCompute`'s `proactiveRecallTask` (pre-compute.service.ts:156)
+  // fires the memory-keyword-extraction distill a SECOND time per turn (before
+  // buildContext's own recap distill). That pre-compute recall path is a documented
+  // Rust-spine deferral — the Rust orchestrator ports only the compression half of
+  // pre-compute (`get_cached_compression`) and buildContext's recap distill, NOT the
+  // pre-compute recall — so v4 would otherwise log ~2× the MEMORY_EXTRACTION rows.
+  // Mock the whole wrapper to its inert empty result: `preSearchedMemories:
+  // undefined` (the empty-memory corpus already yields undefined) and
+  // `cachedCompressionResponse: undefined` (compression is disabled / the cache is
+  // empty — the Rust spine computes the same). Behaviorally identical to the real
+  // pre-compute here (the pre-existing tables/events stay green); it only removes the
+  // pre-compute distill's llm_logs rows so the cheap-LLM rows match the Rust spine.
+  jest.doMock('@/lib/services/chat-message/pre-compute.service', () => {
+    const actual = jest.requireActual('@/lib/services/chat-message/pre-compute.service');
+    return {
+      __esModule: true,
+      ...actual,
+      runPreContextPreCompute: async () => ({
+        cachedCompressionResponse: undefined,
+        preSearchedMemories: undefined,
+        stopKeepAlive: () => undefined,
+      }),
+    };
+  });
   jest.doMock('@/lib/services/system-prompt-compiler/compiler', () => {
     const actual = jest.requireActual('@/lib/services/system-prompt-compiler/compiler');
     return { __esModule: true, ...actual, getCompiledIdentityStack: () => null };
@@ -677,6 +711,36 @@ async function main(): Promise<void> {
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chats', 'id')) }));
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chat_messages', 'id')) }));
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('background_jobs', 'id')) }));
+
+  // W4.11a: the `llm_logs` rows the un-mocked `logLLMCall` wrote (read through the
+  // llm-logs handle BEFORE closeDatabase(); id/createdAt/updatedAt placeholdered,
+  // sorted by canonical JSON). CHAT_MESSAGE rows never appear here (the service-
+  // level stream mock swallows v4's), so no filter is needed on this side — the
+  // Rust harness filters its own primary-stream CHAT_MESSAGE rows.
+  const { getRawLLMLogsDatabase } = await import(
+    '@/lib/database/backends/sqlite/llm-logs-client'
+  );
+  const lldb = getRawLLMLogsDatabase();
+  if (!lldb) throw new Error('llm-logs DB handle unavailable (degraded open?)');
+  const llColumns = (lldb.pragma('table_info(llm_logs)') as Array<{ name: string }>).map(
+    (c) => c.name
+  );
+  const llRawRows = lldb.prepare('SELECT * FROM llm_logs').all() as Array<Record<string, unknown>>;
+  const llRows = llRawRows
+    .map((r) => {
+      const out: Record<string, unknown> = {};
+      for (const col of llColumns) out[col] = canonValue(r[col]);
+      out.id = '<id>';
+      out.createdAt = '<ts>';
+      out.updatedAt = '<ts>';
+      return out;
+    })
+    .sort((a, b) => {
+      const sa = JSON.stringify(a);
+      const sb = JSON.stringify(b);
+      return sa < sb ? -1 : sa > sb ? 1 : 0;
+    });
+  lines.push(JSON.stringify({ kind: 'llmlogs', columns: llColumns, rows: llRows }));
 
   closeMountIndexSQLiteClient();
   await closeDatabase();
