@@ -19,6 +19,25 @@ now diffs both moderation rows byte-for-byte (regenerated green). The
 moderation-provider-failure case writes no row (v4 identical — the throw skips
 the log), and a classification-cache hit never reaches the provider. Sibling
 differentials `danger_routing` + `moderation_wire` re-verified green.
+W4.11b: regenerated the `primary_stream_tier3` differential with `logLLMCall`
+live and an `llm_logs` dump/diff (the W4.7e3 step-6 regen), and fixed the real
+port gap it surfaced. The oracle's model mock moved down from the service-level
+`streamMessage` wrapper to `createLLMProvider`, so v4's REAL wrapper (and its
+terminal CHAT_MESSAGE `logLLMCall`) now runs; the recorded canned keys and every
+pre-existing event trace / `chat_messages` / `chats` dump are unchanged. Port
+fixes: the provider-failover retry legs now write CHAT_MESSAGE `llm_logs` rows
+(v4's `restreamInto` logs per `streamMessage` call — sharing `primary_stream`'s
+row construction, not forking it), with `characterId = NULL` (v4's `restreamInto`
+passes no `characterId`); and the tool-unsupported retry's row likewise carries
+`characterId = NULL` (v4's retry `streamMessage` call omits it, unlike the primary
+attempt). Closed the documented `llm_logs` `temperature` seam: an integer-valued
+temperature (e.g. `1.0`, common on the CHAT_MESSAGE path) now serializes bare
+(`1`) via `js_number_to_json`, matching v4's `JSON.stringify`. `durationMs` is
+pinned to 0 on both sides (the oracle freezes `Date.now`; the port hard-codes 0 —
+a real stream clock is a spine-injected follow-up). `requestHashes` are asserted
+as part of the row diff. The orchestrator spine's failover call keeps the
+no-logging entry point (threading its db + pre-generated message id is a
+spine-owner follow-up). Versions: core 0.0.135, harness 0.0.129.
 
 Cleanup-round prep: wrote the three work orders that close every standing
 pre-enclave follow-up — W4.11a (spine `with_logging` + the orchestrator

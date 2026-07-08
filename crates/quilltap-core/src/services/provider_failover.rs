@@ -30,11 +30,17 @@
 //! reroute-vs-same-profile guard, the state switch, the reason strings) is what
 //! is verified here; the DB-reading resolution is verified where it is ported.
 
-use crate::model::stream::{StreamError, StreamParams, StreamingCompletionProvider};
+use serde_json::Value;
+
+use crate::db::runtime::Db;
+use crate::model::stream::{
+    StreamCacheUsage, StreamError, StreamParams, StreamUsage, StreamingCompletionProvider,
+};
 
 use super::chat_events::{ChatEvent, EventSink, StatusPayload};
 use super::primary_stream::{
-    apply_reasoning_chunk, flush_reasoning_segment, EffectiveProfile, StreamingState,
+    apply_reasoning_chunk, flush_reasoning_segment, log_chat_message_call, EffectiveProfile,
+    StreamLogCtx, StreamingState,
 };
 
 /// v4 `DangerousContentSettings` subset the failover reads.
@@ -99,12 +105,54 @@ pub struct EmptyResponseRecoveryFlags {
     pub same_provider_retry_attempted: bool,
 }
 
-/// v4 `attemptEmptyResponseRecovery`. Mutates `state` in place.
+/// The pieces needed to write the v4 failover `CHAT_MESSAGE` `llm_logs` rows.
+///
+/// v4's `restreamInto` calls `streamMessage({ …, userId, messageId, chatId })`
+/// (provider-failover.service.ts:266) — so each retry leg that reaches its
+/// terminal chunk logs a `CHAT_MESSAGE` row through the SAME wrapper the primary
+/// stream uses (streaming.service.ts:407). The `restreamInto` call site passes NO
+/// `characterId`, so those rows carry `characterId = NULL`. `userId`/`chatId` come
+/// from [`AttemptEmptyResponseRecoveryOptions`]; `db` + `message_id` (v4's
+/// `preGeneratedAssistantMessageId`) are supplied here.
+///
+/// The orchestrator spine does not yet thread this (its
+/// [`AttemptEmptyResponseRecoveryOptions`] construction carries no `db` /
+/// `preGeneratedAssistantMessageId`), so its failover call uses the no-logging
+/// entry point [`attempt_empty_response_recovery`] — wiring the spine's failover
+/// log is a spine-owner follow-up. The differential drives
+/// [`attempt_empty_response_recovery_with_log`] to prove the row shape.
+pub struct FailoverLogCtx<'a> {
+    pub db: &'a Db,
+    /// v4 `preGeneratedAssistantMessageId` (the `messageId` on the log row).
+    pub message_id: &'a str,
+}
+
+/// v4 `attemptEmptyResponseRecovery` — the orchestrator entry point. Delegates to
+/// [`attempt_empty_response_recovery_with_log`] with no `llm_logs` writer (the
+/// spine does not yet thread the db + pre-generated message id into the failover).
 pub async fn attempt_empty_response_recovery<P, S, R>(
     provider: &P,
     sink: &S,
     router: &R,
     opts: AttemptEmptyResponseRecoveryOptions<'_>,
+) -> EmptyResponseRecoveryFlags
+where
+    P: StreamingCompletionProvider,
+    S: EventSink,
+    R: DangerousContentRouter,
+{
+    attempt_empty_response_recovery_with_log(provider, sink, router, opts, None).await
+}
+
+/// v4 `attemptEmptyResponseRecovery`, with the optional failover `CHAT_MESSAGE`
+/// logging (v4's `restreamInto` logs per `streamMessage` call). Mutates `state` in
+/// place.
+pub async fn attempt_empty_response_recovery_with_log<P, S, R>(
+    provider: &P,
+    sink: &S,
+    router: &R,
+    opts: AttemptEmptyResponseRecoveryOptions<'_>,
+    log: Option<FailoverLogCtx<'_>>,
 ) -> EmptyResponseRecoveryFlags
 where
     P: StreamingCompletionProvider,
@@ -119,10 +167,20 @@ where
         connection_profile,
         params,
         user_id,
-        chat_id: _chat_id,
+        chat_id,
         character_id,
         character_name,
     } = opts;
+
+    // v4 gates the wrapper's log on `if (userId)`; `restreamInto` always passes a
+    // (real) userId, and no `characterId`.
+    let stream_log = log.filter(|_| !user_id.is_empty()).map(|l| StreamLogCtx {
+        db: l.db,
+        user_id: &user_id,
+        chat_id: &chat_id,
+        message_id: l.message_id,
+        character_id: None,
+    });
 
     let mut flags = EmptyResponseRecoveryFlags::default();
 
@@ -143,20 +201,21 @@ where
             character_id: Some(character_id.clone()),
         }));
 
-        let (provider_name, base_url) = match &state.effective_profile {
-            Some(p) => (p.provider.clone(), p.base_url.clone()),
-            None => (String::new(), None),
-        };
+        // v4 logs the retry against `state.effectiveProfile` (same-provider).
+        let same_profile = state
+            .effective_profile
+            .clone()
+            .unwrap_or_else(|| connection_profile.clone());
         // Best-effort: a retry error is logged and swallowed (v4 catches it).
         let _ = restream_into(
             provider,
             state,
             sink,
-            &provider_name,
-            base_url.as_deref(),
+            &same_profile,
             &params,
             &character_name,
             &character_id,
+            stream_log.as_ref(),
         )
         .await;
     }
@@ -195,22 +254,19 @@ where
             }));
 
             // v4's `streamMessage` takes its model from `connectionProfile.modelName`
-            // (not `modelParams`), so a reroute switches the model too.
+            // (not `modelParams`), so a reroute switches the model too; v4 logs the
+            // retry against the rerouted `connectionProfile`.
             let mut re_params = params.clone();
             re_params.model = route.connection_profile.model_name.clone();
-            let (rprovider, rbase) = (
-                route.connection_profile.provider.clone(),
-                route.connection_profile.base_url.clone(),
-            );
             let _ = restream_into(
                 provider,
                 state,
                 sink,
-                &rprovider,
-                rbase.as_deref(),
+                &route.connection_profile,
                 &re_params,
                 &character_name,
                 &character_id,
+                stream_log.as_ref(),
             )
             .await;
 
@@ -263,27 +319,54 @@ pub fn get_empty_response_reason(
 /// applying reasoning / content / done exactly as the primary loop does (the
 /// `sending → streaming` flip, reasoning flush, content accumulation, terminal
 /// capture). A mid-stream error surfaces as `Err`.
+///
+/// `profile` is the connection profile this retry streams against (same-provider =
+/// `state.effectiveProfile`; uncensored = the rerouted profile); its provider +
+/// model name feed the wire AND the terminal `CHAT_MESSAGE` `llm_logs` row when
+/// `log` is set (v4's `restreamInto` passes `userId` → its wrapper logs). Like v4's
+/// wrapper, the log uses the content / usage / cache / rawProviderUsage accumulated
+/// by THIS call — not the whole `state.full_response`.
 #[allow(clippy::too_many_arguments)]
 async fn restream_into<P, S>(
     provider: &P,
     state: &mut StreamingState,
     sink: &S,
-    provider_name: &str,
-    base_url: Option<&str>,
+    profile: &EffectiveProfile,
     params: &StreamParams,
     character_name: &str,
     character_id: &str,
+    log: Option<&StreamLogCtx<'_>>,
 ) -> Result<(), StreamError>
 where
     P: StreamingCompletionProvider,
     S: EventSink,
 {
+    // v4's wrapper accumulates the content + tracks the LAST non-null usage /
+    // cacheUsage / rawProviderUsage across chunks for the terminal log row.
+    let mut accumulated = String::new();
+    let mut last_usage: Option<StreamUsage> = None;
+    let mut last_cache_usage: Option<StreamCacheUsage> = None;
+    let mut last_raw_provider_usage: Option<Value> = None;
+
     let mut rx = provider
-        .stream_message(provider_name, base_url, params)
+        .stream_message(&profile.provider, profile.base_url.as_deref(), params)
         .await;
     while let Some(item) = rx.recv().await {
         let chunk = item?;
         apply_reasoning_chunk(state, &chunk, sink);
+        if chunk.usage.is_some() {
+            last_usage = chunk.usage;
+        }
+        if chunk.cache_usage.is_some() {
+            last_cache_usage = chunk.cache_usage;
+        }
+        if chunk
+            .raw_provider_usage
+            .as_ref()
+            .is_some_and(|v| v.is_object())
+        {
+            last_raw_provider_usage = chunk.raw_provider_usage.clone();
+        }
         if !chunk.content.is_empty() {
             if !state.has_started_streaming {
                 sink.emit(ChatEvent::status(StatusPayload {
@@ -296,6 +379,7 @@ where
                 state.has_started_streaming = true;
             }
             flush_reasoning_segment(state);
+            accumulated.push_str(&chunk.content);
             state.full_response.push_str(&chunk.content);
             sink.emit(ChatEvent::content(chunk.content.clone()));
         }
@@ -309,6 +393,21 @@ where
                 }
             }
             flush_reasoning_segment(state);
+
+            // v4's wrapper logs on `chunk.done` (userId is passed by restreamInto).
+            if let Some(log) = log {
+                log_chat_message_call(
+                    log,
+                    profile,
+                    params,
+                    accumulated.clone(),
+                    last_usage,
+                    last_cache_usage,
+                    last_raw_provider_usage.clone(),
+                    chunk.raw_response.clone(),
+                )
+                .await;
+            }
         }
     }
     Ok(())
@@ -566,5 +665,134 @@ mod tests {
         .await;
         assert!(flags.same_provider_retry_attempted);
         assert!(state.full_response.is_empty());
+    }
+
+    /// The failover writes one `CHAT_MESSAGE` `llm_logs` row PER retry leg (v4's
+    /// `restreamInto` logs per `streamMessage` call), against the leg's profile,
+    /// with `characterId = NULL` (v4's `restreamInto` passes no `characterId`) and
+    /// the supplied `messageId`. Drives the both-empty scenario so both legs run.
+    #[tokio::test]
+    async fn failover_logs_one_chat_message_row_per_retry_leg() {
+        use crate::db::runtime::{Db, DbPaths};
+        use crate::db::Writer;
+
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let dir = tempfile::tempdir().unwrap();
+        let main_path = dir.path().join("main.db");
+        let ll_path = dir.path().join("llm-logs.db");
+        // `is_logging_enabled`'s chat_settings read errors on the missing table and
+        // defaults to enabled (v4's catch → DEFAULT_LOGGING_SETTINGS).
+        drop(Writer::open_writable(&main_path, PEPPER).unwrap());
+        {
+            let w = Writer::open_writable(&ll_path, PEPPER).unwrap();
+            w.connection()
+                .execute_batch(
+                    "CREATE TABLE llm_logs (\
+                       id TEXT PRIMARY KEY, userId TEXT, type TEXT, messageId TEXT, \
+                       chatId TEXT, characterId TEXT, autonomousRunId TEXT, provider TEXT, \
+                       modelName TEXT, request TEXT, response TEXT, usage TEXT, \
+                       cacheUsage TEXT, rawProviderUsage TEXT, requestHashes TEXT, \
+                       durationMs REAL, createdAt TEXT, updatedAt TEXT);",
+                )
+                .unwrap();
+        }
+        let db = Db::open(
+            DbPaths {
+                main: main_path,
+                mount_index: None,
+                llm_logs: Some(ll_path),
+            },
+            PEPPER,
+        )
+        .unwrap();
+
+        let params = base_params();
+        let uncensored = EffectiveProfile {
+            id: "p2".into(),
+            provider: "OPENROUTER".into(),
+            model_name: "dolphin".into(),
+            base_url: None,
+        };
+        // Same-provider (ANTHROPIC/m) → empty; uncensored (OPENROUTER/dolphin) →
+        // empty. Both reach `done` → both log a CHAT_MESSAGE row.
+        let provider = CannedStreamingProvider::new()
+            .with_stream(
+                "ANTHROPIC",
+                "m",
+                Some(0.7),
+                &params.messages,
+                vec![Ok(StreamChunk::done(None))],
+            )
+            .with_stream(
+                "OPENROUTER",
+                "dolphin",
+                Some(0.7),
+                &params.messages,
+                vec![Ok(StreamChunk::done(None))],
+            );
+        let sink = RecordingSink::new();
+        let mut state = StreamingState {
+            effective_profile: Some(profile("p1", "ANTHROPIC")),
+            effective_api_key: "k".into(),
+            ..Default::default()
+        };
+        let flags = attempt_empty_response_recovery_with_log(
+            &provider,
+            &sink,
+            &UncensoredRouter {
+                profile: uncensored,
+                key: "k2".into(),
+            },
+            AttemptEmptyResponseRecoveryOptions {
+                state: &mut state,
+                tool_messages_length: 0,
+                content_was_flagged_dangerous: false,
+                danger_settings: DangerSettings {
+                    mode: "AUTO_ROUTE".into(),
+                    uncensored_text_profile_id: Some("p2".into()),
+                },
+                connection_profile: profile("p1", "ANTHROPIC"),
+                params,
+                user_id: "u".into(),
+                chat_id: "c".into(),
+                character_id: "ch".into(),
+                character_name: "Friday".into(),
+            },
+            Some(FailoverLogCtx {
+                db: &db,
+                message_id: "msg-1",
+            }),
+        )
+        .await;
+        assert!(flags.same_provider_retry_attempted);
+        assert!(flags.uncensored_retry_attempted);
+
+        #[allow(clippy::type_complexity)]
+        let rows: Vec<(String, String, Option<String>, Option<String>, String)> = db
+            .read_llm_logs(|conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT type, provider, characterId, messageId, chatId \
+                     FROM llm_logs ORDER BY provider",
+                )?;
+                let out = stmt
+                    .query_map([], |r| {
+                        Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(out)
+            })
+            .unwrap();
+
+        assert_eq!(rows.len(), 2, "one CHAT_MESSAGE row per retry leg");
+        // Ordered by provider: ANTHROPIC (same-provider), OPENROUTER (uncensored).
+        assert_eq!(rows[0].0, "CHAT_MESSAGE");
+        assert_eq!(rows[0].1, "ANTHROPIC");
+        assert_eq!(rows[1].1, "OPENROUTER");
+        for r in &rows {
+            assert_eq!(r.0, "CHAT_MESSAGE");
+            assert_eq!(r.2, None, "restreamInto passes no characterId → NULL");
+            assert_eq!(r.3.as_deref(), Some("msg-1"));
+            assert_eq!(r.4, "c");
+        }
     }
 }

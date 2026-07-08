@@ -182,6 +182,9 @@ async function main(): Promise<void> {
 
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.SQLITE_PATH = workMain;
+  // W4.11b: a fresh llm-logs DB so the un-mocked CHAT_MESSAGE `logLLMCall` — which
+  // fires inside the REAL `streamMessage` wrapper — lands real rows to dump/diff.
+  process.env.SQLITE_LLM_LOGS_PATH = join(scratch, 'data', 'llm-logs.db');
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
@@ -218,68 +221,87 @@ async function main(): Promise<void> {
   );
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
 
-  // Mock ONLY streamMessage; keep the real encode* helpers + safeEnqueue.
-  jest.doMock('@/lib/services/chat-message/streaming.service', () => {
-    const actual = jest.requireActual('@/lib/services/chat-message/streaming.service');
+  // W4.11b: relocate the model mock BELOW the wrapper. The REAL service-level
+  // `streamMessage` (streaming.service.ts) now runs — and with it its terminal
+  // CHAT_MESSAGE `logLLMCall` (:407, gated `if (userId)`) — while ONLY the
+  // provider it constructs (`createLLMProvider().streamMessage`) is canned. The
+  // recorded canned key is IDENTICAL to the old service-level key (the wrapper's
+  // provider param = `connectionProfile.provider`, `params.model` =
+  // `connectionProfile.modelName`, `params.temperature` = `modelParams.temperature`,
+  // `params.messages` role/content = the formatted messages), so the Rust
+  // `QueuedStreamingProvider` replay keys are unchanged.
+  jest.doMock('@/lib/llm', () => {
+    const actual = jest.requireActual('@/lib/llm');
     return {
       __esModule: true,
       ...actual,
-      streamMessage: async function* streamMessage(options: {
-        messages: Array<{ role: string; content: string }>;
-        connectionProfile: { provider: string; modelName: string };
-        modelParams: Record<string, unknown>;
-      }) {
-        const messages = options.messages.map((m) => ({ role: m.role, content: m.content }));
-        // Resolve the label: which call's marker appears in any user message?
-        let label: string | undefined;
-        for (const call of spec.calls) {
-          if (!call.originalMessage || !call.streamLabel) continue;
-          if (messages.some((m) => m.content.includes(call.originalMessage as string))) {
-            label = call.streamLabel;
-            break;
+      createLLMProvider: async (providerName: string, _baseUrl?: string) => ({
+        streamMessage: async function* streamMessage(
+          params: {
+            messages: Array<{ role: string; content: string }>;
+            model: string;
+            temperature?: number;
+          },
+          _apiKey: string
+        ) {
+          const messages = params.messages.map((m) => ({ role: m.role, content: m.content }));
+          // Resolve the label: which call's marker appears in any user message?
+          let label: string | undefined;
+          for (const call of spec.calls) {
+            if (!call.originalMessage || !call.streamLabel) continue;
+            if (messages.some((m) => m.content.includes(call.originalMessage as string))) {
+              label = call.streamLabel;
+              break;
+            }
           }
-        }
-        if (!label) throw new Error(`streamMessage mock: no marker matched in ${JSON.stringify(messages)}`);
+          if (!label) throw new Error(`streamMessage mock: no marker matched in ${JSON.stringify(messages)}`);
 
-        const attempts = spec.streams[label];
-        if (!attempts) throw new Error(`streamMessage mock: no streams for label ${label}`);
-        const idx = attemptCursor.get(label) ?? 0;
-        attemptCursor.set(label, idx + 1);
-        const chunks = attempts[idx];
-        if (!chunks) throw new Error(`streamMessage mock: exhausted attempts for label ${label} (idx ${idx})`);
+          const attempts = spec.streams[label];
+          if (!attempts) throw new Error(`streamMessage mock: no streams for label ${label}`);
+          const idx = attemptCursor.get(label) ?? 0;
+          attemptCursor.set(label, idx + 1);
+          const chunks = attempts[idx];
+          if (!chunks) throw new Error(`streamMessage mock: exhausted attempts for label ${label} (idx ${idx})`);
 
-        // Record the canned key (dedup).
-        const provider = options.connectionProfile.provider;
-        const model = options.connectionProfile.modelName;
-        const temperature =
-          (options.modelParams.temperature as number | undefined) ?? null;
-        const key = `${provider}|${model}|${temperature ?? '-'}|${JSON.stringify(messages)}`;
-        const entry = cannedRecorded.get(key);
-        if (entry) {
-          entry.sequences.push(chunks);
-        } else {
-          cannedRecorded.set(key, { provider, model, temperature, messages, sequences: [chunks] });
-        }
-
-        for (const chunk of chunks) {
-          if (chunk.error) throw new Error(chunk.error);
-          if (chunk.reasoning) {
-            yield { reasoningContent: chunk.reasoning };
-          } else if (chunk.done) {
-            yield {
-              done: true,
-              usage: chunk.usage ?? undefined,
-              cacheUsage: undefined,
-              attachmentResults: undefined,
-              rawResponse: undefined,
-            };
+          // Record the canned key (dedup) — provider from `createLLMProvider`,
+          // model/temperature from the provider params.
+          const temperature = params.temperature ?? null;
+          const key = `${providerName}|${params.model}|${temperature ?? '-'}|${JSON.stringify(messages)}`;
+          const entry = cannedRecorded.get(key);
+          if (entry) {
+            entry.sequences.push(chunks);
           } else {
-            yield { content: chunk.content };
+            cannedRecorded.set(key, { provider: providerName, model: params.model, temperature, messages, sequences: [chunks] });
           }
-        }
-      },
+
+          for (const chunk of chunks) {
+            if (chunk.error) throw new Error(chunk.error);
+            if (chunk.reasoning) {
+              yield { reasoningContent: chunk.reasoning };
+            } else if (chunk.done) {
+              yield {
+                done: true,
+                usage: chunk.usage ?? undefined,
+                cacheUsage: undefined,
+                rawProviderUsage: undefined,
+                attachmentResults: undefined,
+                rawResponse: undefined,
+              };
+            } else {
+              yield { content: chunk.content };
+            }
+          }
+        },
+      }),
     };
   });
+
+  // W4.11b: run the REAL `logLLMCall` so the wrapper's CHAT_MESSAGE rows land in
+  // the llm-logs DB (dumped below). Recovery's `streamMessage` passes no userId, so
+  // it does not log (faithful).
+  jest.doMock('@/lib/services/llm-logging.service', () =>
+    jest.requireActual('@/lib/services/llm-logging.service')
+  );
 
   // Mock the dangerous-content routing seam (the Rust side injects it).
   jest.doMock('@/lib/services/dangerous-content/provider-routing.service', () => {
@@ -314,6 +336,13 @@ async function main(): Promise<void> {
 
   await initializeDatabase();
   const repos = getRepositories();
+
+  // W4.11b: the wrapper logs `durationMs = Date.now() - startTime`. Freeze
+  // `Date.now` so it is deterministically 0 — matching the Rust port's hard-coded
+  // `Some(0.0)` (a real stream clock is a spine-injected follow-up, per the W4.7e3
+  // note). `new Date()` (the repos' minted createdAt/updatedAt) is UNTOUCHED — and
+  // those columns are placeholdered in the dumps anyway.
+  Date.now = () => Date.parse('2020-01-01T00:00:00.000Z');
 
   const lines: string[] = [];
 
@@ -428,7 +457,9 @@ async function main(): Promise<void> {
         character: { id: spec.character.id, name: spec.character.name } as never,
         controller: controller as never,
         encoder,
-        preGeneratedAssistantMessageId: undefined,
+        // v4's `restreamInto` logs the CHAT_MESSAGE row against this id (the
+        // wrapper passes NO `characterId`, so those rows carry `characterId=NULL`).
+        preGeneratedAssistantMessageId: call.preGeneratedMessageId,
       });
       result = {
         uncensoredRetryAttempted: flags.uncensoredRetryAttempted,
@@ -456,6 +487,38 @@ async function main(): Promise<void> {
 
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chat_messages', 'id')) }));
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chats', 'id')) }));
+
+  // W4.11b: dump the CHAT_MESSAGE `llm_logs` rows the REAL wrapper wrote. The
+  // wrapper's `logLLMCall` is fire-and-forget (`.catch`, not awaited), so drain the
+  // pending synchronous writes before reading. `durationMs` is 0 on both sides
+  // (frozen `Date.now` here; hard-coded `Some(0.0)` in the port).
+  await new Promise((r) => setTimeout(r, 300));
+  const { getRawLLMLogsDatabase } = await import(
+    '@/lib/database/backends/sqlite/llm-logs-client'
+  );
+  const lldb = getRawLLMLogsDatabase();
+  if (!lldb) throw new Error('llm-logs DB handle unavailable (degraded open?)');
+  const llColumns = (
+    lldb.pragma('table_info(llm_logs)') as Array<{ name: string }>
+  ).map((c) => c.name);
+  const llRawRows = lldb.prepare('SELECT * FROM llm_logs').all() as Array<
+    Record<string, unknown>
+  >;
+  const llRows = llRawRows
+    .map((r) => {
+      const out: Record<string, unknown> = {};
+      for (const col of llColumns) out[col] = canonValue(r[col]);
+      out.id = '<id>';
+      out.createdAt = '<ts>';
+      out.updatedAt = '<ts>';
+      return out;
+    })
+    .sort((a, b) => {
+      const sa = JSON.stringify(a);
+      const sb = JSON.stringify(b);
+      return sa < sb ? -1 : sa > sb ? 1 : 0;
+    });
+  lines.push(JSON.stringify({ kind: 'llmlogs', columns: llColumns, rows: llRows }));
 
   await closeDatabase();
 

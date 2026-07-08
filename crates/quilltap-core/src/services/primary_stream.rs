@@ -808,12 +808,18 @@ pub struct RunPrimaryStreamOptions<'a> {
 /// The context [`consume_stream`] needs to write the v4 `CHAT_MESSAGE` `llm_logs`
 /// row on the terminal chunk (streaming.service.ts:405). `None` when the caller
 /// did not supply a `user_id` (v4 gates the log on `if (userId)`).
-struct StreamLogCtx<'a> {
-    db: &'a Db,
-    user_id: &'a str,
-    chat_id: &'a str,
-    message_id: &'a str,
-    character_id: &'a str,
+///
+/// `pub(crate)` + [`log_chat_message_call`] so the provider-failover retry legs
+/// reuse the SAME row construction (v4 logs per `streamMessage` call; the
+/// `restreamInto` call site passes no `characterId` → `None` here, W4.11b).
+pub(crate) struct StreamLogCtx<'a> {
+    pub(crate) db: &'a Db,
+    pub(crate) user_id: &'a str,
+    pub(crate) chat_id: &'a str,
+    pub(crate) message_id: &'a str,
+    /// v4's primary/tool-retry stream passes `characterId`; `restreamInto`
+    /// (failover) passes none → the log row's `characterId` is NULL there.
+    pub(crate) character_id: Option<&'a str>,
 }
 
 /// v4 `logLLMCall` on `chunk.done` (streaming.service.ts:405) — one `CHAT_MESSAGE`
@@ -824,7 +830,7 @@ struct StreamLogCtx<'a> {
 /// writer never throws — the watermark precedent); `LogContext::none()` on the
 /// request path.
 #[allow(clippy::too_many_arguments)]
-async fn log_chat_message_call(
+pub(crate) async fn log_chat_message_call(
     log: &StreamLogCtx<'_>,
     profile: &EffectiveProfile,
     params: &StreamParams,
@@ -863,7 +869,7 @@ async fn log_chat_message_call(
         log_type: log_type::CHAT_MESSAGE.to_string(),
         message_id: Some(log.message_id.to_string()),
         chat_id: Some(log.chat_id.to_string()),
-        character_id: Some(log.character_id.to_string()),
+        character_id: log.character_id.map(str::to_string),
         provider: profile.provider.clone(),
         model_name: profile.model_name.clone(),
         request: LogRequest {
@@ -1054,7 +1060,7 @@ where
         user_id: &user_id,
         chat_id: &chat_id,
         message_id: &pre_generated_assistant_message_id,
-        character_id: &character_id,
+        character_id: Some(&character_id),
     });
 
     sink.emit(ChatEvent::status(StatusPayload {
@@ -1103,6 +1109,17 @@ where
         // primary call keyed on (provider, model, temperature, messages).
         let _ = canned_stream_key; // documented: same key discipline as the seam.
 
+        // v4's retry `streamMessage` call (primary-stream.service.ts:246–256) passes
+        // NO `characterId` (unlike the primary attempt at :192), so the retry's
+        // CHAT_MESSAGE log row carries `characterId = NULL`.
+        let retry_stream_log = (!user_id.is_empty()).then(|| StreamLogCtx {
+            db,
+            user_id: &user_id,
+            chat_id: &chat_id,
+            message_id: &pre_generated_assistant_message_id,
+            character_id: None,
+        });
+
         let retry_err = consume_stream(
             provider,
             state,
@@ -1110,7 +1127,7 @@ where
             &character_name,
             &character_id,
             &retry_params,
-            stream_log.as_ref(),
+            retry_stream_log.as_ref(),
         )
         .await;
 

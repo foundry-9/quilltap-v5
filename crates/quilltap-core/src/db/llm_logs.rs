@@ -60,8 +60,10 @@
 //! `Option<T>` with `skip_serializing_if = "Option::is_none"` (the CORPUS omits
 //! them, so "absent" == "omitted" on both sides). Integer-valued nested numbers
 //! are `i64` (serde `3` matches `JSON.stringify(3)`); the only genuinely
-//! fractional field, `temperature`, is `f64` and the corpus keeps it fractional or
-//! omitted (`JSON.stringify(1.0)` = `"1"` ≠ serde `"1.0"`). Zod `.default(X)`
+//! fractional field, `temperature`, is `f64` and serializes via
+//! [`js_number_to_json`] (an integer-valued float bare — `JSON.stringify(1.0)` =
+//! `"1"` — a whole-number temperature is common on the CHAT_MESSAGE log path,
+//! W4.11b). Zod `.default(X)`
 //! fields (`hasAttachments` false, `toolCount` 0) are modeled plain (non-Option)
 //! and always provided by the corpus.
 //!
@@ -99,9 +101,11 @@ pub struct LlmLogMessageSummary {
 
 /// The `request` JSON object (`LLMLogRequestSummarySchema` field order:
 /// messageCount, messages, temperature, maxTokens, toolCount, fullMessages).
-/// `temperature` is the only genuinely-fractional nested number (`f64`);
-/// `maxTokens` is integer-valued (`i64`); `toolCount` is `.default(0)` (plain
-/// `i64`); `fullMessages` (deprecated) is omitted in the corpus.
+/// `temperature` is the only genuinely-fractional nested number (`f64`,
+/// serialized via [`ser_double_opt_jsnum`] so a whole number renders bare — `1`,
+/// not `1.0` — matching v4's `JSON.stringify`); `maxTokens` is integer-valued
+/// (`i64`); `toolCount` is `.default(0)` (plain `i64`); `fullMessages`
+/// (deprecated) is omitted in the corpus.
 ///
 /// `temperature`/`maxTokens` are v4 `.nullable().optional()` — the same
 /// present-null-vs-absent double-`Option` as `response`'s `error`/`finishReason`.
@@ -117,6 +121,7 @@ pub struct LlmLogRequestSummary {
     #[serde(
         default,
         deserialize_with = "de_double_opt",
+        serialize_with = "ser_double_opt_jsnum",
         skip_serializing_if = "Option::is_none"
     )]
     pub temperature: Option<Option<f64>>,
@@ -182,6 +187,22 @@ where
     T: serde::Deserialize<'de>,
 {
     Ok(Some(Option::<T>::deserialize(de)?))
+}
+
+/// Serialize a `.nullable().optional()` **fractional** field the way v4's
+/// `JSON.stringify` renders a JS number: an integer-valued float bare (`1`, not
+/// `1.0`) via [`super::js_number_to_json`], a genuine fraction as-is; `Some(None)`
+/// → `null`; `None` is skipped by `skip_serializing_if`. Closes the `temperature`
+/// seam (W4.11b — the CHAT_MESSAGE log routinely carries a whole-number
+/// temperature, e.g. `1.0`, which must store as `"1"`).
+fn ser_double_opt_jsnum<S>(v: &Option<Option<f64>>, s: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match v {
+        Some(Some(f)) => super::js_number_to_json(*f).serialize(s),
+        _ => s.serialize_none(),
+    }
 }
 
 /// One native tool call — an element of `response.toolCalls` (omitted in the

@@ -18,7 +18,19 @@
 //!      tokenized on both sides);
 //!   3. the `chat_messages` + `chats` dumps are compared in the minted-values
 //!      normalization (message ids remapped to first-appearance tokens, minted
-//!      timestamps placeholdered).
+//!      timestamps placeholdered);
+//!   4. **W4.11b:** the `llm_logs` CHAT_MESSAGE rows are compared. v4's log fires
+//!      inside the REAL `streamMessage` wrapper (streaming.service.ts:407), so the
+//!      oracle relocates its model mock DOWN to `createLLMProvider` (the wrapper
+//!      itself runs) and un-mocks `logLLMCall`. The Rust primary path already logs
+//!      via `run_primary_stream`; W4.11b adds the failover-leg logging. Both dump
+//!      via the shared `common::{materialize,dump}_llm_logs` (id/createdAt/updatedAt
+//!      placeholdered, sorted by canonical JSON; `requestHashes` diffed as a row
+//!      column). `durationMs = Date.now() - startTime` is pinned to 0 on both sides
+//!      — the oracle FREEZES `Date.now` (so v4's value is 0), the port hard-codes
+//!      `Some(0.0)` (a real stream clock is a spine-injected follow-up). Rows:
+//!      clean_stream + tool_unsupported_retry_success (characterId set), the four
+//!      failover legs (characterId NULL); NONE for recovery (v4 passes no userId).
 //!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
@@ -50,11 +62,15 @@ use quilltap_core::services::primary_stream::{
     RunPrimaryStreamOptions, StreamingState,
 };
 use quilltap_core::services::provider_failover::{
-    self, AttemptEmptyResponseRecoveryOptions, DangerSettings, DangerousContentRouter, RouteResult,
+    self, AttemptEmptyResponseRecoveryOptions, DangerSettings, DangerousContentRouter,
+    FailoverLogCtx, RouteResult,
 };
 use quilltap_core::services::recovery::{self, RecoveryContext};
 use serde::Deserialize;
 use serde_json::{json, Value};
+
+// W4.11b: shared `llm_logs` materialize/dump helpers (the W4.10b common module).
+mod common;
 
 // ---------------------------------------------------------------------------
 // Spec.
@@ -404,6 +420,7 @@ async fn primary_stream_tier3_matches_oracle() {
     let mut oracle_events: HashMap<String, Value> = HashMap::new();
     let mut oracle_canned: Vec<CannedRowW> = Vec::new();
     let mut oracle_tables: HashMap<String, Value> = HashMap::new();
+    let mut oracle_llm_logs: Option<Vec<Value>> = None;
     for line in oracle_text.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -421,9 +438,11 @@ async fn primary_stream_tier3_matches_oracle() {
             Some("table") => {
                 oracle_tables.insert(v["table"].as_str().unwrap().to_string(), v);
             }
+            Some("llmlogs") => oracle_llm_logs = Some(common::oracle_llm_logs(&v)),
             other => panic!("unknown oracle row kind {other:?}"),
         }
     }
+    let oracle_llm_logs = oracle_llm_logs.expect("oracle emitted no llmlogs row");
 
     // Fresh copy so the seed fixture stays pristine.
     let work =
@@ -437,8 +456,23 @@ async fn primary_stream_tier3_matches_oracle() {
         key: "uncensored-key".into(),
     };
 
-    let db = Db::open(DbPaths::main_only(work.clone()), &spec.test_pepper_base64)
-        .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
+    // W4.11b: attach a fresh llm-logs partition so the primary + failover
+    // CHAT_MESSAGE `logLLMCall` rows land somewhere we can dump.
+    let ll_work = std::env::temp_dir().join(format!(
+        "qt-primary-stream-rust-ll-{}.db",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&ll_work);
+    common::materialize_llm_logs(&ll_work, &spec.test_pepper_base64);
+    let db = Db::open(
+        DbPaths {
+            main: work.clone(),
+            mount_index: None,
+            llm_logs: Some(ll_work.clone()),
+        },
+        &spec.test_pepper_base64,
+    )
+    .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
 
     // The messages the oracle plants for primary/failover calls.
     let user_messages = |marker: &str| -> Vec<CompletionMessage> {
@@ -606,8 +640,19 @@ async fn primary_stream_tier3_matches_oracle() {
                     character_id: spec.character.id.clone(),
                     character_name: spec.character.name.clone(),
                 };
-                let flags = provider_failover::attempt_empty_response_recovery(
-                    &provider, &sink, &router, opts,
+                // W4.11b: drive the logging entry point so the failover CHAT_MESSAGE
+                // rows are written (messageId = the pre-generated id; characterId is
+                // NULL — v4's `restreamInto` passes none).
+                let msg_id = call.pre_generated_message_id.clone().unwrap();
+                let flags = provider_failover::attempt_empty_response_recovery_with_log(
+                    &provider,
+                    &sink,
+                    &router,
+                    opts,
+                    Some(FailoverLogCtx {
+                        db: &db,
+                        message_id: &msg_id,
+                    }),
                 )
                 .await;
                 json!({
@@ -637,8 +682,13 @@ async fn primary_stream_tier3_matches_oracle() {
     let mut got_chats = db
         .read_main(|c| quilltap_core::db::dump_table_json_conn(c, "chats", "id"))
         .expect("dump chats");
+    // W4.11b: the CHAT_MESSAGE `llm_logs` rows — the primary + tool-retry rows
+    // (characterId set) and the four failover-leg rows (characterId NULL); none for
+    // recovery (v4 passes no userId there). requestHashes are part of the row diff.
+    let got_logs = common::dump_llm_logs(&db);
     drop(db);
     let _ = std::fs::remove_file(&work);
+    let _ = std::fs::remove_file(&ll_work);
 
     let mut want_msgs = oracle_tables
         .remove("chat_messages")
@@ -691,9 +741,21 @@ async fn primary_stream_tier3_matches_oracle() {
     );
     assert_eq!(got_chats["rows"], want_chats["rows"], "chats rows diverge");
 
+    // W4.11b: the `llm_logs` CHAT_MESSAGE rows (id/createdAt/updatedAt placeholdered
+    // by the shared dump; durationMs = 0 both sides; requestHashes asserted as part
+    // of the row). Both sides sorted by canonical JSON.
+    assert_eq!(
+        got_logs,
+        oracle_llm_logs,
+        "llm_logs CHAT_MESSAGE rows diverge (got {} vs oracle {})",
+        got_logs.len(),
+        oracle_llm_logs.len()
+    );
+
     eprintln!(
-        "OK: primary-stream tier-3 matched oracle ({} calls).",
-        result_pairs.len()
+        "OK: primary-stream tier-3 matched oracle ({} calls, {} llm_logs rows).",
+        result_pairs.len(),
+        got_logs.len()
     );
 }
 

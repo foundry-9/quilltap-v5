@@ -4289,16 +4289,45 @@ deserializer), so the summarize path stores them present-null while a raw tier-2
 write with the key absent still stores them absent (`llm_logs_tier2` re-verified —
 its fixture has `error`/`temperature` absent, `finishReason`/`maxTokens` present).
 Also: several corpus userIds were non-UUIDs (`user-1`) that the llm_logs schema's
-`z.uuid()` validation silently dropped — fixed to real UUIDs. **Deferred (the one
-remaining regen):** `primary_stream_tier3` (CHAT_MESSAGE) — v4's log lives inside
-the `streamMessage` generator, which the oracle mocks out, so making v4 log
-faithfully needs the oracle's model mock relocated from the service `streamMessage`
-down to the provider level (risking the recovery/failover event traces + tool-retry
-sequences); the closure IS wired + proven by the in-process self-test, and the
-lossy-`StreamParams.messages` caveat is a non-issue for a plain-message corpus.
+`z.uuid()` validation silently dropped — fixed to real UUIDs. **The one remaining
+regen — `primary_stream_tier3` (CHAT_MESSAGE) — is now DONE (W4.11b, below).**
 `orchestrator_tier3` is explicitly NOT regenerated (it dumps no `llm_logs`; its
 corpus is spine-owned). The W4.7e3 spine-side `with_logging` wiring remains the
 standing follow-up.
+
+**W4.11b (the `primary_stream_tier3` logging regen + the failover log gap): DONE**
+(2026-07-08), closing W4.10b's last deferred regen. The oracle's model mock is
+RELOCATED from the service-level `streamMessage` wrapper down to `createLLMProvider`
+(the wrapper — and its terminal CHAT_MESSAGE `logLLMCall`, streaming.service.ts:407
+— now runs for real), `logLLMCall` un-mocked, `SQLITE_LLM_LOGS_PATH` set, `Date.now`
+frozen. The recorded canned keys are byte-identical to the old service-level keys
+(provider/model/temperature/messages), and every pre-existing event trace +
+`chat_messages`/`chats` dump is UNCHANGED (the relocation moves the mock boundary,
+not behavior — the port's event emission is untouched and matched). **The real port
+gap the survey flagged is fixed:** the provider-failover retry legs
+(`provider_failover.rs`) now write CHAT_MESSAGE rows — v4's `restreamInto` logs per
+`streamMessage` call — sharing `primary_stream::{StreamLogCtx, log_chat_message_call}`
+(the row construction, NOT forked; `StreamLogCtx.character_id` widened to
+`Option<&str>`). Two v4 `characterId` details reproduced: the failover rows carry
+`characterId = NULL` (v4's `restreamInto` passes none), and the tool-unsupported
+retry row ALSO carries `characterId = NULL` (v4's retry `streamMessage` call omits
+`characterId`, unlike the primary attempt — the differential caught this). A new
+entry point `attempt_empty_response_recovery_with_log` + a `FailoverLogCtx`
+{db, message_id} carry the logging; the orchestrator's existing
+`attempt_empty_response_recovery` keeps the no-logging path (threading the spine's
+db + `preGeneratedAssistantMessageId` into the failover is a spine-owner follow-up —
+the orchestrator diff filters CHAT_MESSAGE anyway). **Closed the documented
+`db::llm_logs` `temperature` seam** (`LlmLogRequestSummary`): an integer-valued
+temperature (e.g. `1.0`, common on the CHAT_MESSAGE path) now serializes bare (`1`)
+via `js_number_to_json`, matching v4's `JSON.stringify` — the first integer-valued
+temperature through a CHAT_MESSAGE row surfaced it; `llm_logs_tier2` (fractional
+`0.7`) re-verified inert. `durationMs` is 0 on both sides (oracle freezes `Date.now`;
+port hard-codes 0 — a real stream clock is a spine follow-up), `requestHashes`
+diffed as a row column. Verified: `primary_stream_tier3_equivalence` regenerated +
+green (12 calls, 6 CHAT_MESSAGE rows — 2 primary + 4 failover, none for recovery),
+a failover-logging unit test (one row per retry leg, characterId NULL), 665 core
+tests, `llm_logs_tier2` re-run, clippy `-D warnings` (default + `native-transport`),
+fmt.
 ~~W4.5b (the Brahma one-shot console)~~ (**DONE** — see below). Then Round 5:
 Unit 4, the enclave.
 
@@ -4390,8 +4419,10 @@ plus the `carina_query` cross-check. Versions: core 0.0.134, harness 0.0.128.
 + live-Brahma orchestrator corpus cases (both blocked on the same spine
 provider-ownership plumbing — the erased seams need owned/Arc-shared
 providers); the spine `with_logging` wiring + an orchestrator `llm_logs` dump
-(now unblocked — W4.10b landed); the W4.10b step-6 `primary_stream_tier3`
-regen (needs the oracle's model mock relocated below `streamMessage`); the
+(now unblocked — W4.10b landed); ~~the W4.10b step-6 `primary_stream_tier3`
+regen~~ (**DONE — W4.11b**, incl. the failover CHAT_MESSAGE log-gap fix + the
+`temperature` seam close; the spine's failover-log wiring — its db +
+`preGeneratedAssistantMessageId` — is a spine-owner follow-up); the
 gatekeeper moderation-path logging seam (needs the projected
 `ModerationResult` widened to carry per-category `flagged`). Then Round 5:
 Unit 4, the enclave (`enclave-engine.md`).
@@ -4423,3 +4454,5 @@ against v4 `6b6e39ad`; the oracle already ran the real `logLLMCall` since W4.10b
 With this every `logLLMCall` call site is ported; the remaining logging
 follow-up is only the W4.11b `primary_stream_tier3` regen + the spine
 `with_logging` wiring.
+`ModerationResult` widened to carry per-category `flagged` — W4.11c). Then
+Round 5: Unit 4, the enclave (`enclave-engine.md`).
