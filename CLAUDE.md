@@ -4541,3 +4541,21 @@ refreshed for the landed logging reality (the per-run token accounting's
 `llm_logs` substrate is now live and byte-verified); its one named spine gap
 (parameterize `log_chat_message_call`'s hard-coded `LogContext::none()`) is in
 the order's ground rules.
+
+**Drift check (2026-07-08): v4 `6b6e39ad..6bf88959` (1 commit) audited — no
+ported unit is stale.** `6bf88959` ("The Green Room" — a status dialog
+narrating new-conversation startup) touches only UNPORTED surfaces: the new
+`lib/chat/creation-progress.ts` (an in-memory per-progressId event bus + a
+standalone SSE route — a Phase-4 host/transport concern; in v5 these progress
+events would ride the boundary's `Event` channel, noted for the Phase-4
+transport design) and `apply-outfit-selections.ts`, which gained an optional
+`progress?: CreationProgressEmitter` narration around its `llm_choose` path —
+`applyOutfitSelections` belongs to the chat-CREATION flow (POST
+`/api/v1/chats` / participant actions / chat merge), which is not in the
+Phase-3 port scope (the port covers per-turn sends; the commit itself states
+autonomous rooms and per-turn sends are untouched). The ported surfaces it
+composes are UNCHANGED at this commit (`resolveEquippedOutfitForCharacter`'s
+4-arg signature predates the baseline; `chooseLLMOutfit` / `cheap-llm.ts` /
+`chats.setEquippedOutfit` untouched); the rest is React UI, API routes, and
+docs/help data. The `docs/v4/` mirror was refreshed (CHANGELOG, API.md).
+**New oracle baseline for in-flight/future orders: `6bf88959`.**

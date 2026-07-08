@@ -4,6 +4,17 @@
 
 ### 5.0-dev
 
+Drift check against v4 `6b6e39ad..6bf88959` (1 commit): no ported unit is
+stale. `6bf88959` ("The Green Room" new-conversation status dialog) touches
+only unported surfaces — the new `lib/chat/creation-progress.ts` in-memory
+progress bus + SSE route (a Phase-4 host/transport concern; in v5 these
+events ride the boundary's `Event` channel) and the chat-creation-flow
+`applyOutfitSelections`, which gained optional progress narration (the ported
+functions it composes — `resolveEquippedOutfitForCharacter`,
+`chooseLLMOutfit`, `chats.setEquippedOutfit` — are unchanged at this commit).
+Refreshed the `docs/v4/` mirror (CHANGELOG, API.md). New oracle baseline:
+`6bf88959`.
+
 Cleanup-round unification: integrated the three parallel lanes (W4.11a spine
 logging + owned-provider plumbing, W4.11b primary-stream logging regen,
 W4.11c moderation logging seam) onto main — zero source-level conflicts for
