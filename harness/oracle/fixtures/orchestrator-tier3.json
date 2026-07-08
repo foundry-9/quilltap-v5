@@ -107,6 +107,16 @@
       "controlledBy": "llm",
       "talkativeness": 0.5,
       "connectionProfileId": "d0000001-0000-4000-8000-0000000000d1"
+    },
+    {
+      "id": "0ac1e000-0000-4000-8000-00000000000a",
+      "name": "Oracle",
+      "description": "A knowing oracle.",
+      "aliases": [],
+      "controlledBy": "llm",
+      "talkativeness": 0.5,
+      "connectionProfileId": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221",
+      "canBeCarina": true
     }
   ],
   "chats": [
@@ -810,6 +820,26 @@
         }
       ],
       "messages": []
+    },
+    {
+      "id": "cc000001-0000-4000-8000-0000000000cc",
+      "chatType": "salon",
+      "contextSummary": null,
+      "participants": [
+        {
+          "id": "cc0a0001-0000-4000-8000-0000000000a1",
+          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "cc0b0001-0000-4000-8000-0000000000b1",
+          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": []
     }
   ],
   "calls": [
@@ -1055,6 +1085,17 @@
       "cheapLLMSettings": false,
       "summaryCheck": false,
       "respondingParticipant": "d0000004-0000-4000-8000-0000000000d4"
+    },
+    {
+      "name": "carina_markup",
+      "kind": "single",
+      "chatId": "cc000001-0000-4000-8000-0000000000cc",
+      "content": "Ask the oracle the time.",
+      "continueMode": false,
+      "streamLabel": "carina_markup",
+      "cheapLLMSettings": false,
+      "summaryCheck": false,
+      "respondingParticipant": "cc0a0001-0000-4000-8000-0000000000a1"
     }
   ],
   "streams": {
@@ -1676,6 +1717,34 @@
             "promptTokens": 20,
             "completionTokens": 5,
             "totalTokens": 25
+          }
+        }
+      ]
+    ],
+    "carina_markup": [
+      [
+        {
+          "content": "Certainly.\n@Oracle: What is the time?"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 10,
+            "completionTokens": 8,
+            "totalTokens": 18
+          }
+        }
+      ],
+      [
+        {
+          "content": "It is high noon."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 12,
+            "completionTokens": 5,
+            "totalTokens": 17
           }
         }
       ]

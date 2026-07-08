@@ -43,6 +43,8 @@ interface CharacterSpec {
   connectionProfileId: string;
   /** Application-state slim column (not vault-managed) — drives opaque-anywhere. */
   systemTransparency?: boolean;
+  /** W4.10a: a Carina answerer (reachable by anyone via `@Name:` / `ask_carina`). */
+  canBeCarina?: boolean;
 }
 interface ParticipantSpec {
   id: string;
@@ -235,6 +237,7 @@ async function main(): Promise<void> {
         talkativeness: c.talkativeness,
         defaultConnectionProfileId: c.connectionProfileId,
         ...(c.systemTransparency !== undefined ? { systemTransparency: c.systemTransparency } : {}),
+        ...(c.canBeCarina !== undefined ? { canBeCarina: c.canBeCarina } : {}),
       } as never,
       { id: c.id }
     );

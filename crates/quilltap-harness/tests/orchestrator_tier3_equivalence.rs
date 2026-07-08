@@ -52,8 +52,13 @@ use quilltap_core::model::stream::{
     StreamingCompletionProvider,
 };
 use quilltap_core::services::build_context::RealBuildContextSeams;
+use quilltap_core::services::carina_query::{
+    CarinaQueryDeps, RealCarinaQuery, UnavailableBrahmaConsole,
+};
 use quilltap_core::services::carina_runner::ClosureProspero;
 use quilltap_core::services::chat_events::RecordingSink;
+use quilltap_core::services::native_tool_loop::NoToolCallDetector;
+use quilltap_core::services::tool_execution::CannedToolRunner;
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use quilltap_core::services::message_finalizer::{NoAnswerConfirmation, NoAsyncCompression};
 use quilltap_core::services::orchestrator::{
@@ -385,6 +390,22 @@ fn filter_events(events: &[Value]) -> Vec<Value> {
                         }
                     }
                 }
+                // W4.10a: the `carinaAnswer` frame (v4's `onPosted` → the engine's
+                // live emit) carries the posted Carina message — a fresh minted
+                // `id` + `createdAt` on each side. Placeholder both; the rest
+                // (content / answererId / systemSender / carinaMeta) is deterministic.
+                if let Some(msg) = obj.get_mut("carinaAnswer").and_then(Value::as_object_mut) {
+                    if let Some(v) = msg.get_mut("id") {
+                        if v.is_string() {
+                            *v = Value::String("<msgid>".into());
+                        }
+                    }
+                    if let Some(v) = msg.get_mut("createdAt") {
+                        if v.is_string() {
+                            *v = Value::String("<ts>".into());
+                        }
+                    }
+                }
             }
             e
         })
@@ -530,6 +551,16 @@ fn orchestrator_tier3_matches_oracle() {
     // matching this.
     let pricing = quilltap_core::services::pricing_fetcher::PricingFetcher::new(NoPricingFetch);
 
+    // W4.10a: the REAL Carina query engine backing the finalizer's `@Name:` markup
+    // runner (replacing the `NoCarina` no-op). Its inner model call replays a
+    // recorded canned stream (proving the engine's system-prompt bytes), the tool
+    // loop is empty (no carina-answer tool calls in the corpus), and Brahma is
+    // never consulted (the answerer is a regular character). Constructed per call
+    // (below) so it can hold that call's live SSE sink for the `carinaAnswer` emit.
+    let carina_tool_runner = CannedToolRunner::new();
+    let carina_detector = NoToolCallDetector;
+    let carina_brahma = UnavailableBrahmaConsole;
+
     let mut got_events: Vec<(String, Vec<Value>)> = Vec::new();
 
     for call in &spec.calls {
@@ -538,7 +569,18 @@ fn orchestrator_tier3_matches_oracle() {
         let mut confirmation = NoAnswerConfirmation;
         let mut compression = NoAsyncCompression;
         let mut cost = quilltap_core::services::message_finalizer::NoCostTracking;
-        let mut carina_query = orchestrator_carina::NoCarina;
+        let mut carina_query = RealCarinaQuery::new(CarinaQueryDeps {
+            db: &db,
+            embedding: &embedding,
+            streaming: &streaming,
+            tool_runner: &carina_tool_runner,
+            tool_detector: &carina_detector,
+            sink: &sink,
+            brahma: &carina_brahma,
+            // Diff-irrelevant: carina's system prompt is fixed before its tool build.
+            model_supports_native_tools: true,
+            now_ms: spec.frozen_now_ms as f64,
+        });
         let mut prospero = ClosureProspero(|_a| Ok(()));
         let mut rng_bytes = quilltap_core::tools::rng::FixedBytes::new(call.rng_bytes.clone());
         let orchestrator_seams = HarnessOrchestratorSeams {
@@ -859,7 +901,15 @@ impl Normalizer {
                     if let Some(payload_str) = obj.get("payload").and_then(Value::as_str) {
                         if let Ok(mut payload) = serde_json::from_str::<Value>(payload_str) {
                             if let Some(pobj) = payload.as_object_mut() {
-                                for f in ["turnOpenerMessageId", "extractionAnchorMessageId"] {
+                                // `carinaMessageId` (W4.10a) is the posted Carina
+                                // message's minted id — a `chat_messages` row, so it
+                                // is in the shared idmap and remaps to the matching
+                                // token.
+                                for f in [
+                                    "turnOpenerMessageId",
+                                    "extractionAnchorMessageId",
+                                    "carinaMessageId",
+                                ] {
                                     if let Some(v) = pobj.get(f) {
                                         if !v.is_null() {
                                             if let Some(mapped) = remap(v) {
@@ -1005,27 +1055,3 @@ impl orchestrator::OrchestratorSeams for HarnessOrchestratorSeams {
     }
 }
 
-mod orchestrator_carina {
-    use quilltap_core::services::carina_runner::{
-        CarinaResult, CarinaRunError, RunCarinaQuery, RunCarinaQueryOptions,
-    };
-
-    /// The corpus content never carries carina markup, so the query seam is never
-    /// invoked; this errors if it ever is (surfacing a corpus mismatch).
-    pub struct NoCarina;
-    impl RunCarinaQuery for NoCarina {
-        #[allow(clippy::manual_async_fn)]
-        fn run(
-            &mut self,
-            opts: RunCarinaQueryOptions,
-        ) -> impl std::future::Future<Output = Result<CarinaResult, CarinaRunError>> + Send
-        {
-            async move {
-                Err(CarinaRunError(format!(
-                    "unexpected carina query for {}",
-                    opts.character_name
-                )))
-            }
-        }
-    }
-}
