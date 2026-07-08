@@ -4366,3 +4366,32 @@ identical real `BuiltInToolRunner`; a doc write threads a per-side-minted `mtime
 that a canned-stream-key replay cannot reproduce, so `run_sql` — deterministic
 result — proves the operator-surface loop + threading + continuation-key match
 instead).
+
+**Wiring-round unification (2026-07-08): DONE — W4.10a, W4.5b, and W4.10b are
+integrated on main.** The three parallel lanes cherry-picked onto main with
+ZERO source-level conflicts for the second consecutive round (docs/version
+conflicts only, union-resolved). **One integration fix:** the last pick's
+`--theirs` resolution on `crates/quilltap-harness/Cargo.toml` clobbered
+W4.10b's `tempfile` dev-dependency (a version-file resolution strategy must
+diff the whole file, not assume version-only — recorded in the reconciliation
+memory note); restored at unification and caught by the gate. **The W4.5b
+spine swap-in is done:** the orchestrator differential's carina composition now
+constructs the REAL `RealBrahmaConsole` (behaviorally inert — no corpus case
+names Brahma on either side — so it proves the generic composition typechecks;
+a live Brahma corpus case is a tracked follow-up in the same
+provider-ownership family as the live ask_carina-through-spine case). Verified
+on the integrated tree: the full workspace gate (898 tests, clippy `-D
+warnings` default + `native-transport`, fmt) and an **eighteen-differential
+sweep** against freshly regenerated v4 oracles at `6b6e39ad` — the three
+lanes' own proofs (orchestrator + tool_dispatch + the five W4.10a shared
+re-verifications; brahma_console; the six W4.10b regens + `llm_logs_tier2`)
+plus the `carina_query` cross-check. Versions: core 0.0.134, harness 0.0.128.
+**Standing follow-ups after this round:** the live `ask_carina`-through-spine
++ live-Brahma orchestrator corpus cases (both blocked on the same spine
+provider-ownership plumbing — the erased seams need owned/Arc-shared
+providers); the spine `with_logging` wiring + an orchestrator `llm_logs` dump
+(now unblocked — W4.10b landed); the W4.10b step-6 `primary_stream_tier3`
+regen (needs the oracle's model mock relocated below `streamMessage`); the
+gatekeeper moderation-path logging seam (needs the projected
+`ModerationResult` widened to carry per-category `flagged`). Then Round 5:
+Unit 4, the enclave (`enclave-engine.md`).

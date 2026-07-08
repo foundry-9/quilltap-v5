@@ -52,9 +52,7 @@ use quilltap_core::model::stream::{
     StreamingCompletionProvider,
 };
 use quilltap_core::services::build_context::RealBuildContextSeams;
-use quilltap_core::services::carina_query::{
-    CarinaQueryDeps, RealCarinaQuery, UnavailableBrahmaConsole,
-};
+use quilltap_core::services::carina_query::{CarinaQueryDeps, RealCarinaQuery};
 use quilltap_core::services::carina_runner::ClosureProspero;
 use quilltap_core::services::chat_events::RecordingSink;
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
@@ -559,7 +557,19 @@ fn orchestrator_tier3_matches_oracle() {
     // (below) so it can hold that call's live SSE sink for the `carinaAnswer` emit.
     let carina_tool_runner = CannedToolRunner::new();
     let carina_detector = NoToolCallDetector;
-    let carina_brahma = UnavailableBrahmaConsole;
+    // Wiring-round unification: the REAL Brahma console at the composition point
+    // (the W4.5b handoff). Behaviorally inert here — no corpus case names Brahma,
+    // and v4's oracle likewise never reaches `runBrahmaQuery` — so this proves the
+    // generic composition typechecks end to end; a live Brahma corpus case is a
+    // tracked follow-up (the same provider-ownership family as the live
+    // ask_carina-through-spine case).
+    let carina_brahma = quilltap_core::services::brahma_console::RealBrahmaConsole::new(
+        db.clone(),
+        quilltap_core::model::stream::CannedStreamingProvider::new(),
+        CannedToolRunner::new(),
+        NoToolCallDetector,
+        true,
+    );
 
     let mut got_events: Vec<(String, Vec<Value>)> = Vec::new();
 

@@ -298,7 +298,11 @@ round with a drift check against v4 HEAD.
   lists in the orders. **Deliberately post-round:** the spine
   `with_logging` wiring + an orchestrator `llm_logs` dump (couples
   W4.10a's corpus to W4.10b's primary-stream regen — a unification /
-  follow-up step once both land).
+  follow-up step once both land). **All three are DONE and unified on main
+  (2026-07-08) — zero source conflicts again; the gate (898 tests) + an
+  eighteen-differential sweep against fresh oracles ran green; the W4.5b
+  spine swap-in landed at unification (inert — a live Brahma corpus case is
+  a follow-up alongside the live ask_carina-through-spine case).**
 - **Round 5:** Unit 4 (enclave), then the Phase-4 kickoff.
 
 The markdown-renderer / `qtap-linkify` item below is Phase-4-adjacent and not

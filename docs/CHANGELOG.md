@@ -4,6 +4,19 @@
 
 ### 5.0-dev
 
+Wiring-round unification: integrated the three parallel lanes (W4.10a spine
+wiring, W4.5b Brahma console, W4.10b logging regens) onto main — zero
+source-level conflicts for the second consecutive round. One integration fix:
+the cherry-pick's take-theirs resolution on the harness Cargo.toml clobbered
+W4.10b's tempfile dev-dependency (restored; caught by the gate). The W4.5b
+spine swap-in landed here: the orchestrator differential's carina composition
+now constructs the real RealBrahmaConsole (inert — no Brahma corpus case — so
+it proves the generic composition typechecks). Verified on the integrated
+tree: the full workspace gate (898 tests, clippy -D warnings on default and
+native-transport, fmt) and an eighteen-differential sweep against freshly
+regenerated v4 oracles at 6b6e39ad, all green. Versions: core 0.0.134, harness
+0.0.128.
+
 W4.10a (the spine wiring pass): closed three deferred composition-point seams.
 (1) `model_supports_native_tools` is now sourced in-spine from the real
 `check_model_supports_tools` over an injected `PricingFetcher` (the fetch stays a

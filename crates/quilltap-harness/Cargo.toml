@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-harness"
-version = "0.0.122"
+version = "0.0.128"
 edition = "2021"
 publish = false
 
@@ -38,3 +38,6 @@ regex = "1"
 # The file-attachment tier-3 differential base64-encodes the fixture's per-file
 # bytes to build the (B) processFileAttachmentFallback `data` payload.
 base64 = "0.22"
+# The logLLMCall regen differentials (W4.10b) open a real single-writer `Db` with
+# the llm-logs partition and dump the written `llm_logs` rows.
+tempfile = "3"
