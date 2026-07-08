@@ -4,6 +4,19 @@
 
 ### 5.0-dev
 
+P4.1 kickoff: round drift check (v4 HEAD unchanged at the `2494a84b`
+baseline — no ported unit stale) and the four host-driver lane work orders
+written per the phase-4 decomposition (`docs/developer/porting/work-orders/
+p4.1{a,b,c,d}-*.md`): (a) provider IO — the streaming composer, reqwest
+wire transports, live pricing fetch, the API-path embedding provider; (b)
+files/images — the FSM byte layer, the image codec over the sharp operation
+inventory, help-doc sync, the ingest differential; (c) PTY/terminal — the
+portable-pty session manager, the verbatim WS protocol types, the Ariel
+announcement writer; (d) environment/cadence — the instance lock, the four
+scheduler sweeps (porting the danger-scan enqueuer body with its
+differential), the production SelfInventoryEnv. Includes a fresh v4 survey
+of the FSM/terminal/lock/scheduler surfaces baked into the orders.
+
 P4.0: the Core API boundary + the composition root (milestone M0). New
 `quilltap-core::api` module — the `Request`/`Response`/`Event` contract
 types (scope-tagged event envelope over the existing chat-frame vocabulary),
