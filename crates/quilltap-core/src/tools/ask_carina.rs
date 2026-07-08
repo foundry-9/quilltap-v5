@@ -13,14 +13,19 @@
 //! - [`PostProsperoCarinaError`] — v4's `postProsperoCarinaError` (post-office /
 //!   Prospero writer). Recorded by the harness.
 //!
-//! ## Tracked deferral: `emitCarinaAnswer` (onPosted)
+//! ## Dispatch + the `emitCarinaAnswer` (onPosted) sink
 //!
-//! v4's handler forwards `context.emitCarinaAnswer` as `runCarinaQuery`'s
-//! `onPosted` (the live SSE callback). The [`ToolExecutionContext`] carries that
-//! as a documented-deferral slot (it reaches the orchestrator's live stream, owned
-//! by a unit frozen this round), so this port does not forward it — the seam owns
-//! posting and the live emit lands when the slot is closed. The differential's
-//! canned seam does not emit, so nothing is unverified here.
+//! W4.10a wires the dispatch: [`ErasedAskCarina`] is an object-safe seam the
+//! [`BuiltInToolRunner`](crate::tools::executor::BuiltInToolRunner) holds, whose
+//! [`TypedAskCarina`] production form owns the Carina-engine seams and runs the
+//! real [`run_carina_query`](crate::services::carina_query::run_carina_query)
+//! (the [`ErasedImageGeneration`](crate::tools::generate_image::ErasedImageGeneration)
+//! precedent). v4's handler forwards `context.emitCarinaAnswer` as `runCarinaQuery`'s
+//! `onPosted`; the [`ToolExecutionContext`] does not carry the per-turn sink, so the
+//! executor's dispatch passes a no-op sink — faithful to v4's documented
+//! `onPosted`-absent path (autonomous-room / forked-child, no client stream). The
+//! answer is still POSTED to `chat_messages` by the engine (the load-bearing
+//! effect); the live `@Name:` markup path wires the real sink through the finalizer.
 //!
 //! [`ToolExecutionContext`]: crate::services::tool_execution::ToolExecutionContext
 
@@ -350,5 +355,64 @@ where
             )
             .await
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    struct NoSink;
+    impl EventSink for NoSink {
+        fn emit(&self, _e: crate::services::chat_events::ChatEvent) {}
+    }
+
+    /// A canned [`AskCarinaRunner`] returning a fixed [`AskCarinaOutput`] — proves
+    /// the erased seam without the full engine.
+    struct CannedAskCarina(AskCarinaOutput);
+    impl AskCarinaRunner for CannedAskCarina {
+        fn run<'a>(
+            &'a self,
+            _sink: &'a (dyn EventSink + Sync),
+            _user_id: &'a str,
+            _chat_id: &'a str,
+            _calling_participant_id: Option<&'a str>,
+            _args: &'a Value,
+        ) -> Pin<Box<dyn Future<Output = AskCarinaOutput> + Send + 'a>> {
+            Box::pin(async move {
+                AskCarinaOutput {
+                    success: self.0.success,
+                    answer: self.0.answer.clone(),
+                    error: self.0.error.clone(),
+                }
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn not_available_default_matches_the_loud_fallback_message() {
+        let seam = ErasedAskCarina::not_available();
+        let out = seam
+            .run(&NoSink, "u", "c", None, &json!({"character": "X", "question": "?"}))
+            .await;
+        assert!(!out.success);
+        assert_eq!(
+            out.error.as_deref(),
+            Some("Tool 'ask_carina' is recognized but not yet available in this build")
+        );
+    }
+
+    #[tokio::test]
+    async fn canned_seam_surfaces_the_answer() {
+        let seam = ErasedAskCarina::new(CannedAskCarina(AskCarinaOutput {
+            success: true,
+            answer: "It is noon.".to_string(),
+            error: None,
+        }));
+        let out = seam.run(&NoSink, "u", "c", None, &json!({})).await;
+        assert!(out.success);
+        assert_eq!(out.answer, "It is noon.");
+        assert_eq!(format_ask_carina_results(&out), "It is noon.");
     }
 }
