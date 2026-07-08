@@ -4456,3 +4456,56 @@ follow-up is only the W4.11b `primary_stream_tier3` regen + the spine
 `with_logging` wiring.
 `ModerationResult` widened to carry per-category `flagged` — W4.11c). Then
 Round 5: Unit 4, the enclave (`enclave-engine.md`).
+**W4.11a (spine `with_logging` + owned-provider plumbing): the Arc/logging
+half is DONE; the two live corpus cases are DEFERRED with precise blockers.**
+Added `Arc<T>` blanket impls for the three provider seams (`EmbeddingProvider`
+/ `CompletionProvider` / `StreamingCompletionProvider` in `model/{embedding,
+completion,stream}.rs`; delegate to the inner value) — the production-shaped
+ownership answer: one concrete provider shared BY VALUE between a borrowed spine
+dep and an owned, effectively-`'static` erased seam (a bare clone would
+duplicate any stateful queues; a delegation + a shared-consumption unit test
+each). Wired the `ask_carina` tool seam into the spine
+(`OrchestratorDeps.ask_carina: &ErasedAskCarina` + the per-turn
+`BuiltInToolRunner::with_ask_carina`; `not_available` default keeps a no-engine
+build's loud fallback), closing the ask_carina-through-spine DISPATCH wiring the
+W4.10a note tracked (previously the spine's runner carried no engine → loud
+fallback). The **`with_logging` + orchestrator `llm_logs` dump is green**: the
+harness materializes the llm-logs partition and constructs a per-call
+`with_logging` executor (`chat_id` = the call's chat, `message_id: None` —
+matching v4's cheap-LLM `logLLMCall` context), and diffs the `llm_logs` dump
+via the shared `common::{dump_llm_logs, oracle_llm_logs}`. The cheap-LLM rows
+— the distill `MEMORY_EXTRACTION` (per-call `characterId`) + the summary fold's
+`SUMMARIZATION` + `TITLE_GENERATION` — match v4 **byte-for-byte** (the harness
+now carries the canned completion's `usage` through so the logged `usage`
+matches). Two row families are documented seam/mock artifacts filtered from
+BOTH sides: `CHAT_MESSAGE` (the Rust primary_stream logs these; v4's
+service-level `streamMessage` mock swallows its own CHAT_MESSAGE log — proven
+byte-exact by `primary_stream_tier3`/W4.11b) and `DANGER_CLASSIFICATION` (v4's
+`resolveMessageDangerState` classifies the user message INLINE — a documented
+spine seam, behaviorally inert here since the canned response resolves
+non-dangerous → no reroute). The oracle also mocks `runPreContextPreCompute` to
+its inert empty result so v4's SECOND (pre-compute) distill call — the
+unported pre-compute recall path, a spine deferral — does not double the
+`MEMORY_EXTRACTION` rows (behaviorally identical: empty memories →
+`preSearchedMemories: undefined`, the compression cache empty). The harness's
+erased `ask_carina` engine (a real `TypedAskCarina` over Arc clones of the
+shared providers + a SEPARATE tool runner + its own console) and a live
+`RealBrahmaConsole` over the shared Arc streaming are constructed and
+**inert-verified** against the 23-case corpus. **The two live corpus cases are
+DEFERRED (real blockers, both surfaced by the survey):** (1) the ask_carina
+tool-call case — v4 emits a `carinaAnswer` SSE frame from the TOOL path
+(`orchestrator.service.ts:1067` wires `toolContext.emitCarinaAnswer`, and
+`filter_events` KEEPS `carinaAnswer`), but the Rust `run_ask_carina` handler
+passes `&NullSink` (the `emitCarinaAnswer` context slot is a documented W4.1c
+deferral), so matching it requires threading the per-turn sink through
+`ToolExecutionContext` in `services/tool_execution.rs` — OUTSIDE this lane's
+file ownership, and a feature beyond the Arc/logging mandate; "fix the port not
+the diff" forbids filtering v4's frame. (2) the live-Brahma `@Name:` case — the
+console's success path needs the user's DEFAULT connection profile
+(`find_default` requires `isDefault=1`, which no fixture profile has) to carry a
+valid api key; adding a global default ripples through `resolve_carina_profile`
+/ cheap-LLM selection / danger resolution across the 23 existing cases, exceeding
+a safe budget. The seams' behavior is independently proven by `carina_query_tier3`,
+`brahma_console_tier3`, `mail_carina_tools`, the `ask_carina` seam unit tests
+(default + canned), the `tool_dispatch` `ask_carina` not-found row, and the
+orchestrator `carina_markup` case (the finalizer `@Name:` engine end-to-end).

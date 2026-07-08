@@ -65,10 +65,10 @@ use quilltap_core::services::orchestrator::{
     ProcessMessageInput, SendMessageOptions,
 };
 use quilltap_core::services::tool_execution::CannedToolRunner;
+use quilltap_core::services::turn_orchestrator::ChainConfig;
 use quilltap_core::tools::ask_carina::{ErasedAskCarina, TypedAskCarina};
 use quilltap_core::tools::executor::BuiltInToolRunner;
 use quilltap_core::tools::self_inventory::{ClientShell, SelfInventoryEnv};
-use quilltap_core::services::turn_orchestrator::ChainConfig;
 use serde::Deserialize;
 use serde_json::Value;
 

@@ -38,6 +38,32 @@ a real stream clock is a spine-injected follow-up). `requestHashes` are asserted
 as part of the row diff. The orchestrator spine's failover call keeps the
 no-logging entry point (threading its db + pre-generated message id is a
 spine-owner follow-up). Versions: core 0.0.135, harness 0.0.129.
+W4.11a (spine logging + owned-provider plumbing): added `Arc<T>` blanket impls
+for the three provider seams (`EmbeddingProvider` / `CompletionProvider` /
+`StreamingCompletionProvider`) so one concrete provider can be shared by value
+between a borrowed spine dep and an owned, effectively-`'static` erased seam —
+the production-shaped ownership answer that lets a composition point hand the
+same stateful stream provider to the primary stream and an inner ask_carina /
+Brahma engine. Wired the `ask_carina` tool seam into the `process_message`
+spine (`OrchestratorDeps.ask_carina` + the per-turn `BuiltInToolRunner`'s
+`with_ask_carina`), closing the ask_carina-through-spine dispatch (previously
+the spine's runner had no engine → loud fallback). The orchestrator differential
+now attaches the `llm_logs` partition + a per-call `with_logging` executor and
+diffs the `llm_logs` dump: the cheap-LLM rows (distill MEMORY_EXTRACTION, the
+summary fold's SUMMARIZATION + TITLE_GENERATION) match v4 byte-for-byte, while
+CHAT_MESSAGE (Rust primary-stream vs v4's swallowing service-level stream mock)
+and DANGER_CLASSIFICATION (v4's inline pre-turn classify, a documented spine
+seam) rows are filtered on both sides. The oracle mocks `runPreContextPreCompute`
+to its inert empty result so v4's second (pre-compute) distill call — a spine
+deferral — does not double the MEMORY_EXTRACTION rows. The harness's erased
+ask_carina engine + a live `RealBrahmaConsole` are constructed over the shared
+Arc providers (inert-verified against the 23-case corpus). The two live corpus
+cases (ask_carina tool-call, live Brahma `@Name:`) are deferred: the ask_carina
+case needs v4's tool-path `carinaAnswer` emit matched, which requires wiring the
+per-turn sink through `ToolExecutionContext` (out of this lane's file ownership;
+"fix the port not the diff" forbids filtering v4's frame); the live-Brahma case
+needs a global default connection profile + api key that would ripple through
+the 23 existing cases' profile/cheap-LLM resolution.
 
 Cleanup-round prep: wrote the three work orders that close every standing
 pre-enclave follow-up — W4.11a (spine `with_logging` + the orchestrator

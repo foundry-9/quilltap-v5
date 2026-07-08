@@ -328,6 +328,20 @@ round with a drift check against v4 HEAD.
   This round is also the enclave's enabler: U4.4's per-run token accounting
   sums real `llm_logs` rows, which the `with_logging` spine composition
   makes live.
+  **W4.11a status (2026-07-08): the Arc/logging half is DONE (Arc blanket
+  impls + tests; the `ask_carina` seam wired into the spine; `with_logging` +
+  the orchestrator `llm_logs` dump green — cheap-LLM rows byte-exact,
+  CHAT_MESSAGE + DANGER_CLASSIFICATION seam-filtered; the harness's erased
+  ask_carina + a live `RealBrahmaConsole` over Arc-shared providers built +
+  inert-verified). The two LIVE corpus cases are DEFERRED with real blockers:
+  the ask_carina tool-call case needs v4's tool-path `carinaAnswer` emit
+  matched, which requires threading the per-turn sink through
+  `ToolExecutionContext` (`services/tool_execution.rs` — outside this lane's
+  ownership, a W4.1c-deferral feature); the live-Brahma case needs a global
+  default connection profile + api key that ripples through the 23 existing
+  cases' profile/cheap-LLM resolution. A follow-up (own `tool_execution.rs` +
+  the fixture default-profile work) closes both — the Arc/seam infrastructure
+  they need is now in place.**
 - **Round 5:** Unit 4 (enclave), then the Phase-4 kickoff.
 
 The markdown-renderer / `qtap-linkify` item below is Phase-4-adjacent and not
