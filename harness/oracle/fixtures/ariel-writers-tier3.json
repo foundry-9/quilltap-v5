@@ -1,0 +1,165 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2026-02-01T00:00:00.000Z",
+  "userId": "a0000000-0000-4000-8000-000000000001",
+  "chat": {
+    "id": "c0000001-0000-4000-8000-0000000000c1",
+    "title": "Ariel Writers Chat"
+  },
+  "otherChatId": "c0000002-0000-4000-8000-0000000000c2",
+  "missingChatId": "c0000009-0000-4000-8000-0000000000c9",
+  "charAId": "aaaa1111-1111-4111-8111-111111111111",
+  "charBId": "bbbb2222-2222-4222-8222-222222222222",
+  "p1Id": "fa000001-0000-4000-8000-0000000000a1",
+  "p2Id": "fb000001-0000-4000-8000-0000000000b2",
+  "terminalSeeds": [
+    {
+      "id": "0a000000-0000-4000-8000-00000000000a",
+      "chatRef": "main",
+      "shell": "/bin/bash",
+      "cwd": "/data/files",
+      "exited": false
+    },
+    {
+      "id": "0b000000-0000-4000-8000-00000000000b",
+      "chatRef": "main",
+      "shell": "/bin/zsh",
+      "cwd": "/data/files",
+      "exited": true,
+      "exitCode": 7
+    },
+    {
+      "id": "0c000000-0000-4000-8000-00000000000c",
+      "chatRef": "other",
+      "shell": "/bin/sh",
+      "cwd": "/tmp",
+      "exited": false
+    }
+  ],
+  "cases": [
+    {
+      "name": "opened_with_label",
+      "kind": "opened",
+      "sessionId": "50000001-0000-4000-8000-000000000001",
+      "label": "Build Watch",
+      "shell": "/bin/bash",
+      "cwd": "/data/files"
+    },
+    {
+      "name": "opened_no_label",
+      "kind": "opened",
+      "sessionId": "50000002-0000-4000-8000-000000000002",
+      "label": null,
+      "shell": "/usr/bin/zsh",
+      "cwd": "/tmp"
+    },
+    {
+      "name": "opened_empty_label",
+      "kind": "opened",
+      "sessionId": "50000003-0000-4000-8000-000000000003",
+      "label": "",
+      "shell": "/bin/sh",
+      "cwd": "/home/friday"
+    },
+    {
+      "name": "opened_missing_chat",
+      "kind": "opened",
+      "chatRef": "missing",
+      "sessionId": "50000004-0000-4000-8000-000000000004",
+      "label": "Ghost",
+      "shell": "/bin/bash",
+      "cwd": "/nowhere"
+    },
+    {
+      "name": "output_idle",
+      "kind": "output",
+      "sessionId": "50000005-0000-4000-8000-000000000005",
+      "reason": "idle",
+      "cleanedOutput": "$ ls\nfile-a.txt  file-b.txt\n$ echo done\ndone"
+    },
+    {
+      "name": "output_max_age",
+      "kind": "output",
+      "sessionId": "50000006-0000-4000-8000-000000000006",
+      "reason": "max-age",
+      "cleanedOutput": "building… step 1 of 40\nbuilding… step 2 of 40"
+    },
+    {
+      "name": "output_session_closed",
+      "kind": "output",
+      "sessionId": "50000007-0000-4000-8000-000000000007",
+      "reason": "session-closed",
+      "cleanedOutput": "logout\nSaving session... completed."
+    },
+    {
+      "name": "output_backticks",
+      "kind": "output",
+      "sessionId": "50000008-0000-4000-8000-000000000008",
+      "reason": "idle",
+      "cleanedOutput": "code sample:\n```js\nconsole.log(1)\n```\nand a longer run `````here"
+    },
+    {
+      "name": "output_elided",
+      "kind": "output",
+      "sessionId": "50000009-0000-4000-8000-000000000009",
+      "reason": "idle",
+      "repeatSegment": "éxyz-",
+      "repeatTimes": 4000
+    },
+    {
+      "name": "output_exact_cap",
+      "kind": "output",
+      "sessionId": "5000000a-0000-4000-8000-00000000000a",
+      "reason": "idle",
+      "repeatSegment": "ab",
+      "repeatTimes": 8192
+    },
+    {
+      "name": "output_empty",
+      "kind": "output",
+      "sessionId": "5000000b-0000-4000-8000-00000000000b",
+      "reason": "idle",
+      "cleanedOutput": ""
+    },
+    {
+      "name": "output_whitespace_only",
+      "kind": "output",
+      "sessionId": "5000000c-0000-4000-8000-00000000000c",
+      "reason": "max-age",
+      "cleanedOutput": "  \n\t  "
+    },
+    {
+      "name": "closed_zero",
+      "kind": "closed",
+      "sessionId": "5000000d-0000-4000-8000-00000000000d",
+      "exitCode": 0
+    },
+    {
+      "name": "closed_137",
+      "kind": "closed",
+      "sessionId": "5000000e-0000-4000-8000-00000000000e",
+      "exitCode": 137
+    },
+    {
+      "name": "closed_null",
+      "kind": "closed",
+      "sessionId": "5000000f-0000-4000-8000-00000000000f",
+      "exitCode": null
+    },
+    {
+      "name": "closed_missing_chat",
+      "kind": "closed",
+      "chatRef": "missing",
+      "sessionId": "50000010-0000-4000-8000-000000000010",
+      "exitCode": 0
+    },
+    {
+      "name": "reconcile_first",
+      "kind": "reconcile"
+    },
+    {
+      "name": "reconcile_second",
+      "kind": "reconcile"
+    }
+  ]
+}

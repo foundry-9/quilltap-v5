@@ -47,6 +47,33 @@ over a baked 9-profile fixture with a v4-fitted BUILTIN vocabulary; the
 Rust side replays a CannedWireTransport registered from the oracle-recorded
 wire, so a request-building divergence is a loud canned miss).
 
+P4.1c: the PTY / terminal host driver. New `quilltap-host::terminal` — the
+session manager over `portable-pty` (replacing node-pty): spawn with v4's
+shell/cwd/size/env defaults (`QUILLTAP_DATA_DIR` set authoritatively last;
+directories are constructor params), the 256 KB UTF-16 ring buffer, the raw
+transcript stream under `logs/terminals/`, the `terminal_sessions` row at
+spawn + the exit-stamp update, per-subscriber broadcast with the attach
+replay (ring buffer as one `output` frame, then `meta`), kill (SIGTERM) /
+write / resize / kick-for-chat, the exit sequence in v4's order, and the
+Ariel flush drivers (30 s idle / 120 s max-age tokio timers, host-side).
+The verbatim WS protocol types (`terminal::protocol`, round-tripped against
+literal v4 JSON) land here so P4.2's WebSocket route only marshals. The
+production `TerminalScrollbackSource` (`terminal::scrollback`) resolves the
+live ring buffer vs the 1 MB transcript tail exactly as v4's terminal-read
+handler. New core `services::ariel_notifications` — the three Ariel
+announcement writers (session-opened / terminal-output with the fence-length
+and 16 KB elide rules / session-closed) plus the session reconcile pass
+(live-probe injected; explicit-NULL exitCode via the appended
+`terminal_sessions::mark_session_exited`). Verified by a new tier-3
+differential (`ariel_writers_tier3_equivalence` — 18 cases driving v4's REAL
+writers + reconcile over a v4-baked fixture, diffing per-case results plus
+`chat_messages`/`chats`/`terminal_sessions` byte-for-byte), 10 real-PTY host
+integration tests, a fixture-driven end-to-end flush test (real PTY → idle
+flush → posted row + `chat-update` broadcast), and re-verified
+`terminal_sessions_tier2` / `terminal_tools` differentials. Deferred: the
+shell-init alias/completions bootstrap (targets the Node launcher; needs the
+P4.3 `quilltap` binary), the WS route (P4.2), xterm.js (P4.6).
+
 P4.1 kickoff: round drift check (v4 HEAD unchanged at the `2494a84b`
 baseline — no ported unit stale) and the four host-driver lane work orders
 written per the phase-4 decomposition (`docs/developer/porting/work-orders/

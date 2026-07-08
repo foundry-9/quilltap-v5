@@ -4832,3 +4832,67 @@ these drivers + the model-dependent job-handler registrations) → P4.2; the
 completion-call `withTimeout` family (25 s/60 s) → the spine composition;
 the OpenRouter OpenResponses no-tools wire (documented divergence); the
 real stream duration clock (`durationMs` 0, spine-owned).
+
+**Phase 4 (P4.1c): the PTY / terminal host driver is DONE** (2026-07-08; work
+order `docs/developer/porting/work-orders/p4.1c-pty-terminal.md`; oracle
+baseline `2494a84b`, no drift). New `quilltap-host::terminal` — the session
+manager over **`portable-pty`** (replacing node-pty), v4
+`lib/terminal/pty-manager.ts` faithful: spawn (shell `opts.shell ||
+SHELL ?? /bin/bash` [JS-falsy fallthrough], cwd → the injected `files_dir`,
+80×24, env = inherited + caller overrides + `QUILLTAP_DATA_DIR` set
+authoritatively LAST, `TERM=xterm-256color`; directories are constructor
+params — lane d's `paths` untouched), the **256 KB ring buffer capped in
+UTF-16 code units** (v4's JS `.slice`), the raw transcript append stream at
+`<logs>/terminals/<id>.log` (under `logs/`, never indexed; the DB row stores
+only `transcriptPath`), the `terminal_sessions` row at spawn (pinned id) +
+the exit-stamp update, per-subscriber mpsc broadcast with the attach replay
+(ring buffer as ONE `output` frame, then `meta`), kill (SIGTERM via
+`libc::kill` — portable-pty's own `kill()` is SIGKILL; note an INTERACTIVE
+shell ignores SIGTERM, exactly as under v4's node-pty) / write / resize /
+kick-for-chat (flush-then-kill-then-forget; the exit sequence still stamps
+the row from the reader thread), the exit sequence in v4's order (stamp meta
+→ final `session-closed` Ariel flush → `exit` broadcast + channel close →
+transcript end → DB update → close announcement), and the **Ariel flush
+drivers** (a per-session tokio task computing the idle [30 s since last
+chunk] / max-age [120 s since the buffer started] deadlines — v4's two
+setTimeouts as one select loop; durations are config knobs, v4 constants
+default). The **verbatim WS protocol types** (`terminal::protocol` — the v4
+Zod unions field-for-field, nullable meta fields as explicit `null`,
+round-trip tests against literal v4 JSON) land here so P4.2's WS route only
+marshals; the **production `TerminalScrollbackSource`**
+(`terminal::scrollback::PtyScrollbackSource`) reproduces v4's terminal-read
+resolution (in-map session AND DB `exitedAt == null` → ring buffer; else
+the transcript tail, last 1 MB lossy-UTF-8, errors → `''`). New core
+`services::ariel_notifications` (the W4.6b writer idiom): the three Ariel
+announcement writers — session-opened (the truthy-label ` — "…"` suffix),
+terminal-output (returns `None` on empty/whitespace; the
+`computeFenceLength` longest-backtick-run+1 rule; the 16 K-UTF-16 elide
+keeping 8 K head+tail with the en-US-grouped `[N characters elided]` marker;
+`systemKind: terminal-output-<reason>`), session-closed (the `=== 0` /
+`== null` / `with exit code N` label) — each posting one
+`systemSender: 'ariel'` ASSISTANT row with the `<!-- terminalSessionId:… -->`
+embed through the ported `add_message`, plus
+`reconcile_terminal_sessions_for_chat` (the startup-orphan sweep; the
+live-PTY probe injected; the explicit-NULL `exitCode` write via the appended
+`terminal_sessions::mark_session_exited`, which mints `updatedAt` per v4's
+base `_update`). **Verified:** the Ariel writer differential
+(`ariel_writers_tier3_equivalence` — 18 cases driving v4's REAL
+`postAriel*` + `reconcileTerminalSessionsForChat` over a v4-baked one-DB
+fixture; per-case posted/reconciled results + `chat_messages` (13 rows) /
+`chats` / `terminal_sessions` diffed byte-for-byte, sentinel-aware exit
+stamps — green on first run), 10 real-PTY host integration tests (output →
+subscriber/ring/transcript, exit → DB stamp, attach replay, the UTF-16 ring
+cap under >256 KB, kill/kick, subscribe/write guards, idle + max-age flush
+drivers, scrollback live→transcript flip, reconcile spare-the-live), a
+fixture-driven END-TO-END test (real PTY → idle flush → the REAL posted row
++ the `chat-update` broadcast), and `terminal_sessions_tier2` /
+`terminal_tools` re-verified against fresh oracles. **Tracked deferrals:**
+the shell-init alias/completions bootstrap (`lib/terminal/shell-init.ts`
+targets the Node launcher `packages/quilltap/bin/quilltap.js`; a v5 alias
+needs the P4.3 `quilltap` binary path — every session still carries
+`QUILLTAP_DATA_DIR`, degradation = v4's own plain-shell fallback), the
+session-opened announcement call site (v4's spawn REST route → P4.2, the
+writer is ported + verified), the WS route/upgrade (P4.2), xterm.js (P4.6).
+The exit frame's `signal` string is portable-pty's signal NAME (v4 sends
+node-pty's numeric signal stringified) — a documented host-tier divergence
+(the SPA consumes it loosely).

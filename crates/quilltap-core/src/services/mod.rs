@@ -31,6 +31,7 @@ pub mod agent_mode;
 pub mod answer_confirmation;
 pub mod api_key_service;
 pub mod appearance_resolution;
+pub mod ariel_notifications;
 pub mod aurora_notifications;
 pub mod avatar_generation;
 pub mod avatar_prompt;

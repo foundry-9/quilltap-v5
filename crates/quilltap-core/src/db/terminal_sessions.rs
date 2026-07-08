@@ -310,3 +310,47 @@ impl<'c> TerminalSessionsRepository<'c> {
         Ok(affected > 0)
     }
 }
+
+/// The exit-stamp update the PTY manager's `onExit` handler and the terminal
+/// reconcile pass issue — v4 `repos.terminalSessions.update(id, { exitedAt,
+/// exitCode })` where `exitCode` may be an **explicit JSON null** (reconcile
+/// passes `exitCode: null`, so the column is SET to NULL — the shape the
+/// deferred Option-means-absent [`TsUpdate::exit_code`] cannot express; this is
+/// the nullable setter the module header deferred, scoped to the one op that
+/// needs it).
+///
+/// v4's base `_update` mints `updatedAt = now` when the patch carries none
+/// (`base.repository.ts:359` — `('updatedAt' in data) ? data.updatedAt : now`),
+/// so the caller mints and passes `updated_at` (`clock::now_iso`). `exit_code`
+/// is bound as `Option<f64>` (the REAL-affinity column; `None` → SQL NULL).
+/// Returns `Ok(false)` when no row matched (v4's find-first "not found → null").
+pub fn mark_session_exited(
+    conn: &Connection,
+    id: &str,
+    exited_at: &str,
+    exit_code: Option<f64>,
+    updated_at: &str,
+) -> Result<bool, DbError> {
+    // v4 `_update` first `findById`s — a missing row is a no-op returning null.
+    let exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM terminal_sessions WHERE id = ?1",
+            params![id],
+            |_| Ok(()),
+        )
+        .map(|_| true)
+        .or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(false),
+            other => Err(other),
+        })?;
+    if !exists {
+        return Ok(false);
+    }
+
+    let affected = conn.execute(
+        "UPDATE terminal_sessions SET exitedAt = ?1, exitCode = ?2, updatedAt = ?3 \
+         WHERE id = ?4",
+        params![exited_at, exit_code, updated_at, id],
+    )?;
+    Ok(affected > 0)
+}

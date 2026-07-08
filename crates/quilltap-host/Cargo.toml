@@ -28,6 +28,16 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"
 # System IANA timezone for the enclave cron driver (v4 evaluates crons in the
 # process zone). Same pinned line as the core's.
 jiff = "0.2"
+# The PTY host driver (P4.1c, D5) — the session manager over the native PTY,
+# replacing v4's node-pty.
+portable-pty = "0.9.0"
+# Session ids (v4 randomUUID) for spawned terminals.
+uuid = { version = "1", features = ["v4"] }
+
+# SIGTERM delivery to spawned shells (v4 `pty.kill('SIGTERM')`; portable-pty's
+# own kill() is SIGKILL). Already in the tree via portable-pty.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"
