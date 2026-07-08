@@ -4,6 +4,38 @@
 
 ### 5.0-dev
 
+P4.0: the Core API boundary + the composition root (milestone M0). New
+`quilltap-core::api` module — the `Request`/`Response`/`Event` contract
+types (scope-tagged event envelope over the existing chat-frame vocabulary),
+the `QuilltapCore` trait (dispatch + subscribe), the pepper-provisioning
+state machine (the control-flow port of v4 `provisionDbKey`: env pepper /
+`.dbkey` / hash-mismatch-fatal resolution to resolved / needs-setup /
+needs-passphrase / needs-vault-storage), and the engine-backed `CoreEngine`
+with the first variants: health, unlock-state/unlock/lock, list-instances,
+list-chats. The readiness gate is enforced in dispatch (ready-gated variants
+answer a locked error until the pepper resolves); `Lock` tears the assembled
+drivers down through the new `EngineAssembler`/`EngineShutdown` seams and
+returns to needs-passphrase. `dbkey` gained the write path (`save_dbkey` /
+`generate_pepper` / `hash_pepper` / `read_pepper_hash` — PBKDF2-SHA256
+600k, AES-256-GCM, v4's exact JSON field order and 0600 mode), round-trip
+verified against the Friday-verified reader. New `quilltap-host` crate (the
+composition root): instance-registry read path (the launcher's
+`instances.json` incl. the POSIX permission refusal), base-dir/platform
+path resolution, and the cadence drivers the core deliberately does not own
+— the job-runner pump loop (enqueue wake via a fan-out over the process-
+global wake hook, next-due wake delay, 2 s poll), the 5-minute stuck-job
+reset, and the 60 s autonomous schedule tick (v4
+`scheduled-autonomous-rooms.ts`), with the seam-free handler set registered
+(schedule tick / wardrobe outfit announcement / embedding refit; everything
+else stays on the loud fallback until its P4.1 lane). Integration tests
+boot a fixture instance headless, pump enqueued jobs to completion, and
+prove the lock → unlock → drivers-restart cycle against a
+passphrase-protected `.dbkey` fixture. The `Setup` variant is deliberately
+deferred to P4.4 (fresh instances also need schema creation); the full
+unlock/pepper-vault service differential remains P4.4 per the work order
+(docs/developer/porting/work-orders/p4.0-boundary-composition-root.md).
+Drift check at round start: v4 HEAD still `2494a84b`.
+
 Phase-4 kickoff planned (docs only). New docs/developer/porting/phase-4.md
 locks 22 decisions for the transports + host-drivers + Angular-SPA phase,
 built from three fresh surveys (the v5 host-seam/deferral inventory, the v4

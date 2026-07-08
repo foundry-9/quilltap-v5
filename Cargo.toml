@@ -5,14 +5,33 @@ members = [
 ]
 
 # Workspace root. Members: quilltap-core (the portable engine — pure-function
-# ports plus the cipher-correct DB layer), quilltap-harness (the differential
-# tests), and quilltap-fixture-sanitizer (the real-snapshot sanitizer tool).
-# quilltap-cli / quilltap-tauri join as they're scaffolded.
+# ports plus the cipher-correct DB layer, and the `api` boundary), quilltap-host
+# (the composition root: cadence drivers + instance/path resolution),
+# quilltap-harness (the differential tests), and quilltap-fixture-sanitizer
+# (the real-snapshot sanitizer tool). quilltap-web / quilltap-cli /
+# quilltap-tauri join as they're scaffolded.
 
 [workspace.package]
 edition = "2021"
 license = "MIT"
 authors = ["Charles Sebold"]
+
+# The .dbkey wrapper runs PBKDF2-HMAC-SHA256 × 600 000 (v4's iteration count) on
+# every provision/unlock; unoptimized that is tens of seconds per call, which the
+# P4.0 engine/host tests pay repeatedly. Optimize just the crypto leaf crates in
+# dev — tiny compile cost, orders-of-magnitude faster key derivation in tests.
+[profile.dev.package.sha2]
+opt-level = 3
+[profile.dev.package.hmac]
+opt-level = 3
+[profile.dev.package.pbkdf2]
+opt-level = 3
+[profile.dev.package.digest]
+opt-level = 3
+[profile.dev.package.aes]
+opt-level = 3
+[profile.dev.package.aes-gcm]
+opt-level = 3
 
 # Shared dependency versions live here so every crate pins the same ones.
 # (Members opt in with `foo = { workspace = true }`.) Add as the port grows.

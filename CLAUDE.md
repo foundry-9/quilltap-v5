@@ -153,7 +153,10 @@ crates/
   quilltap-fixture-sanitizer/ # tool: sanitize a COPY of a real instance into a
                            #   test-pepper-keyed fixture (scrub free text/BLOBs,
                            #   preserve structure; real pepper never persisted).
-  (future) quilltap-cli, quilltap-tauri
+  quilltap-host/           # the composition root (P4.0): boots quilltap-core::api's
+                           #   CoreEngine, owns ALL cadence (job pump / stuck reset /
+                           #   enclave tick), instance registry + path resolution.
+  (future) quilltap-web, quilltap-cli, quilltap-tauri
 harness/oracle/            # Node/tsx bridge driving v4's real lib/ code.
 apps/web/                  # (future) Angular 21 SPA.
 docs/v4/                   # mirror of the v4 server docs (reference only).
@@ -4695,3 +4698,51 @@ StreamChunk) → P4.2/P4.3 (`quilltap-web` + Dockerfile ∥ the CLI) → P4.4
 the `qt-*`/theme port) → P4.6 (SPA verticals, Salon first) → P4.7 (Tauri);
 milestones M0–M6. Non-goals: uniffi/mobile, plugins beyond the provider
 manifests, any release/signing/publishing work, new features before parity.
+
+**Phase 4 (P4.0): the boundary + composition root is DONE — milestone M0**
+(2026-07-08; work order
+`docs/developer/porting/work-orders/p4.0-boundary-composition-root.md`; drift
+check at round start: v4 HEAD still `2494a84b`). New `quilltap-core::api`:
+the contract types (`Request` internally tagged / `Response` adjacently
+tagged / the scope-tagged `Event` envelope whose one family wraps the
+existing `services::chat_events::ChatEvent` byte-exact frames — nothing
+emits yet, the channel + envelope exist so later units add variants, not
+plumbing), the `QuilltapCore` trait (RPITIT dispatch + broadcast subscribe),
+`api::provision` (the control-flow port of v4 `provisionDbKey` — env pepper
+/ `.dbkey` / hash-mismatch-fatal → resolved / needs-setup / needs-passphrase
+/ needs-vault-storage; the minimal boot core of the P4.4 unlock-service
+backfill, unit-tested, its differential lands with P4.4), and the
+engine-backed `CoreEngine` with the first variants (health, unlock-state /
+unlock / lock, list-instances, list-chats) — the readiness gate enforced in
+dispatch (D2), `Lock` a REAL teardown through the new
+`EngineAssembler`/`EngineShutdown` seams (drivers stop, `Db` clones drop,
+the writer thread exits, state returns to needs-passphrase — faithful to v4
+`lockDbKey` incl. the env-pepper-booted-can't-re-unlock consequence).
+`dbkey` gained the WRITE path (`save_dbkey`/`generate_pepper`/`hash_pepper`/
+`read_pepper_hash` — PBKDF2-SHA256 × 600k, 32-byte salt, 16-byte-IV
+AES-256-GCM, v4's exact JSON field order + 0600 mode), round-trip verified
+against the Friday-verified reader; the `Setup` Request variant is
+deliberately NOT implemented (a fresh instance also needs schema creation —
+unported P4.4 surface; wiring Setup now would mint empty cipher-correct DBs
+with no tables). New `quilltap-host` crate (the composition root, D20 — the
+ONLY crate that owns timers): base-dir/platform path resolution (explicit →
+`QUILLTAP_DATA_DIR` → platform default), the launcher instance-registry READ
+path (`instances.json` schema v1 incl. the POSIX owner/0600 permission
+refusal; write verbs are P4.3), and the cadence drivers — the job-runner
+pump loop (v4 dispatcher semantics over the ported `PumpOutcome`:
+orphan-reset once, enqueue wake, next-due delay, 2 s poll), the 5-minute
+stuck-job reset, and the 60 s + immediate autonomous schedule tick (v4
+`scheduled-autonomous-rooms.ts`, per-chat-settings-user enqueue). The
+seam-free handler set is registered (`AUTONOMOUS_ROOM_SCHEDULE_TICK` /
+`WARDROBE_OUTFIT_ANNOUNCEMENT` / `EMBEDDING_REFIT`); every other job type
+stays on the loud fallback until its P4.1 lane. **Wake-hook gotcha solved:**
+`queue_service::set_wake_hook` is a process-global first-wins `OnceLock`,
+but assemblies come and go (lock/unlock) and tests run several hosts per
+process — the host registers ONE forwarding hook fanning out to a registry
+of weak per-assembly targets (spurious cross-instance wakes pump an empty
+queue, harmless; torn-down targets self-prune). M0 integration tests boot a
+fixture instance headless (env-pepper AND `.dbkey` paths), dispatch the
+first variants, pump enqueued jobs to COMPLETED through the real loop, and
+prove lock → unlock → drivers-restart. **Next: P4.1 host-driver lanes**
+(provider IO / files+images / PTY / environment) ∥ P4.2 (`quilltap-web`) +
+P4.3 (CLI) per the decomposition.

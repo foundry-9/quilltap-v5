@@ -133,8 +133,10 @@
 //!     clock injected), tier-2-verified; `model::stream` is the streaming
 //!     completion seam (`StreamChunk` / `CannedStreamingProvider`).
 //!
-//! Everything else (the remaining services, the Request/Response/Event boundary)
-//! lands in later phases.
+//! Phase 4 adds `api` — the Request/Response/Event boundary
+//! (`docs/developer/porting/phase-4.md`): the contract types, the
+//! `QuilltapCore` trait, and the engine-backed `CoreEngine` the transports
+//! (`quilltap-host`/`quilltap-web`/`quilltap-cli`/`quilltap-tauri`) call.
 
 // Link-only: keeps `quilltap-sqlite3mc-sys` in the crate graph so its build
 // script's link directives (the ChaCha20/sqleet `sqlite3`) reach the final link.
@@ -142,6 +144,7 @@ use quilltap_sqlite3mc_sys as _;
 
 pub mod about_character;
 pub mod all_llm_pause;
+pub mod api;
 pub mod cache_prefix_hashes;
 pub mod canon;
 pub mod canonicalize;

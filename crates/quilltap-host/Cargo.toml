@@ -1,0 +1,25 @@
+[package]
+name = "quilltap-host"
+version = "0.0.1"
+edition = "2021"
+publish = false
+
+# The composition root (Phase-4 D8/D20): the ONLY crate that turns the core's
+# injected seams into real IO — tokio timers/cadence for the job runner and
+# the enclave schedule tick, instance-registry + data-dir resolution, and (as
+# the P4.1 lanes land) provider HTTP, file bytes, image codecs, PTY, fs.
+# The core keeps its default-build purity; this crate owns the scheduler.
+
+[dependencies]
+quilltap-core = { path = "../quilltap-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+# The host owns all cadence (D20): a multi-thread runtime + timers. `sync` for
+# Notify/watch; the core itself stays scheduler-free.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+# System IANA timezone for the enclave cron driver (v4 evaluates crons in the
+# process zone). Same pinned line as the core's.
+jiff = "0.2"
+
+[dev-dependencies]
+tempfile = "3"

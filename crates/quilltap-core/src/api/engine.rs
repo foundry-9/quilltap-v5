@@ -1,0 +1,660 @@
+//! `CoreEngine` — the engine-backed [`QuilltapCore`](super::QuilltapCore)
+//! implementation: the one place `Request`s become engine calls.
+//!
+//! The engine has two macro-states mirroring v4's locked mode:
+//!
+//! - **Locked** — the pepper is not operational (`needs-setup` /
+//!   `needs-passphrase`). Only the always-available family answers
+//!   (health, unlock state, unlock, instances); everything else gets the
+//!   readiness refusal (D2).
+//! - **Ready** — the pepper resolved; the instance's databases are open (one
+//!   [`Db`] per the single-writer runtime) and the host's
+//!   [`EngineAssembler`] has wired its drivers (job pump, cadence loops).
+//!
+//! The **assembler seam** is how the composition root stays in
+//! `quilltap-host` while the state machine lives here: whenever the pepper
+//! becomes operational (at boot, or later via `Unlock`), the engine opens the
+//! `Db` and hands it to the assembler, which builds the runner/registry,
+//! spawns its cadence tasks, and returns a shutdown handle. `Lock` calls that
+//! handle, drops the `Db`, and returns to `needs-passphrase` — faithful to v4
+//! `lockDbKey` (including the consequence that an env-pepper-booted,
+//! vault-less instance cannot re-unlock; v4 behaves identically).
+
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+
+use tokio::sync::broadcast;
+
+use crate::db::runtime::{Db, DbPaths};
+use crate::db::{chat_settings, chats_read};
+use crate::dbkey::{self, DbKeyError};
+
+use super::provision::{provision, PepperHashMismatch};
+use super::types::{
+    ChatSummaryDto, ErrorKind, Event, HealthDto, PepperState, Request, Response, UnlockStateDto,
+};
+use super::{InstanceDirectory, QuilltapCore};
+
+/// v4 `SINGLE_USER_ID` (`lib/auth/single-user.ts`) — the synthetic single
+/// user every row belongs to. D2: the session layer does not port.
+pub const SINGLE_USER_ID: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+
+/// Broadcast capacity for the event channel. A slow subscriber past this
+/// lags (drops oldest) rather than blocking the engine — the SSE transport
+/// treats a lag as a resync signal.
+const EVENT_CHANNEL_CAPACITY: usize = 1024;
+
+// ============================================================================
+// Config + the host seams
+// ============================================================================
+
+/// Engine construction inputs. `base_dir` is the instance root (v4
+/// `getBaseDataDir()`); the databases and `.dbkey` live in `<base>/data`
+/// (v4 `lib/paths.ts` layout).
+#[derive(Debug, Clone)]
+pub struct CoreConfig {
+    pub base_dir: PathBuf,
+    /// Reported by `Health` (the host supplies its crate version).
+    pub version: String,
+    /// The `ENCRYPTION_MASTER_PEPPER` env pepper, if set (host reads env).
+    pub env_pepper: Option<String>,
+}
+
+impl CoreConfig {
+    /// `<base>/data` — where the databases and `quilltap.dbkey` live.
+    pub fn data_dir(&self) -> PathBuf {
+        self.base_dir.join("data")
+    }
+}
+
+/// The composition-root seam: called whenever the pepper becomes operational
+/// (boot or unlock) with the freshly opened [`Db`]. The host clones the `Db`
+/// into its drivers (job runner, cadence loops), spawns them, and returns the
+/// handle that tears them down again on `Lock`. Must be reusable — a
+/// lock/unlock cycle assembles more than once.
+pub trait EngineAssembler: Send + Sync {
+    fn assemble(&self, db: &Db) -> Result<Box<dyn EngineShutdown>, String>;
+}
+
+/// Tears down one assembly (stop loops, drop `Db` clones). Idempotent.
+pub trait EngineShutdown: Send + Sync {
+    fn shutdown(&self);
+}
+
+/// A no-driver assembler for tests and read-only embedders.
+pub struct NoopAssembler;
+
+struct NoopShutdown;
+impl EngineShutdown for NoopShutdown {
+    fn shutdown(&self) {}
+}
+
+impl EngineAssembler for NoopAssembler {
+    fn assemble(&self, _db: &Db) -> Result<Box<dyn EngineShutdown>, String> {
+        Ok(Box::new(NoopShutdown))
+    }
+}
+
+// ============================================================================
+// The engine
+// ============================================================================
+
+/// Boot failures — hard errors before the engine exists (a locked vault is
+/// NOT a failure; the engine boots into the locked state and serves the
+/// unlock family).
+#[derive(Debug)]
+pub enum BootError {
+    /// The env pepper contradicts the `.dbkey` hash (v4's FATAL exit).
+    PepperMismatch(PepperHashMismatch),
+    /// The pepper resolved but `<data>/quilltap.db` does not exist. Opening
+    /// would CREATE an empty cipher-keyed file — schema creation (migrations)
+    /// is unported P4.4 surface, so a missing main DB is refused instead.
+    MissingMainDb(PathBuf),
+    Db(crate::db::DbError),
+    Assemble(String),
+}
+
+impl std::fmt::Display for BootError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BootError::PepperMismatch(e) => write!(f, "{e}"),
+            BootError::MissingMainDb(p) => {
+                write!(
+                    f,
+                    "no main database at {} (fresh-instance creation is not yet supported)",
+                    p.display()
+                )
+            }
+            BootError::Db(e) => write!(f, "database open failed: {e}"),
+            BootError::Assemble(e) => write!(f, "engine assembly failed: {e}"),
+        }
+    }
+}
+impl std::error::Error for BootError {}
+
+enum EngineState {
+    Locked {
+        pepper_state: PepperState,
+        has_user_passphrase: bool,
+    },
+    Ready(ReadyEngine),
+}
+
+struct ReadyEngine {
+    db: Db,
+    pepper_state: PepperState,
+    has_user_passphrase: bool,
+    shutdown: Box<dyn EngineShutdown>,
+}
+
+/// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
+/// transport and driver can hold one handle.
+#[derive(Clone)]
+pub struct CoreEngine {
+    inner: Arc<EngineInner>,
+}
+
+struct EngineInner {
+    config: CoreConfig,
+    assembler: Box<dyn EngineAssembler>,
+    instances: Arc<dyn InstanceDirectory>,
+    /// std Mutex — never held across an await (all state work is sync).
+    state: Mutex<EngineState>,
+    events: broadcast::Sender<Event>,
+}
+
+impl CoreEngine {
+    /// Provision the pepper and boot. An operational pepper opens the
+    /// databases and assembles the drivers; a locked vault boots into the
+    /// locked state (serving the unlock family). Hard failures — pepper/hash
+    /// mismatch, missing main DB, open/assembly errors — refuse the boot.
+    pub fn boot(
+        config: CoreConfig,
+        assembler: Box<dyn EngineAssembler>,
+        instances: Arc<dyn InstanceDirectory>,
+    ) -> Result<CoreEngine, BootError> {
+        let provisioned = provision(&config.data_dir(), config.env_pepper.as_deref())
+            .map_err(BootError::PepperMismatch)?;
+
+        let (events, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
+        let inner = EngineInner {
+            config,
+            assembler,
+            instances,
+            state: Mutex::new(EngineState::Locked {
+                pepper_state: provisioned.state,
+                has_user_passphrase: provisioned.has_user_passphrase,
+            }),
+            events,
+        };
+
+        if provisioned.state.is_operational() {
+            let ready = open_ready(
+                &inner,
+                provisioned
+                    .pepper
+                    .as_deref()
+                    .expect("operational state carries the pepper"),
+                provisioned.state,
+                provisioned.has_user_passphrase,
+            )?;
+            *inner.state.lock().unwrap() = EngineState::Ready(ready);
+        }
+
+        Ok(CoreEngine {
+            inner: Arc::new(inner),
+        })
+    }
+
+    /// The event publisher — later units (chat send, creation progress) emit
+    /// through this; transports subscribe via [`QuilltapCore::subscribe`].
+    pub fn event_sender(&self) -> &broadcast::Sender<Event> {
+        &self.inner.events
+    }
+
+    /// The open `Db`, when ready (a clone — the runtime handle is `Clone`).
+    pub fn db(&self) -> Option<Db> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => Some(r.db.clone()),
+            EngineState::Locked { .. } => None,
+        }
+    }
+
+    async fn dispatch_impl(&self, req: Request) -> Response {
+        match req {
+            Request::Health => self.health(),
+            Request::UnlockState => self.unlock_state(),
+            Request::Unlock { passphrase } => self.unlock(&passphrase),
+            Request::Lock => self.lock(),
+            Request::ListInstances => match self.inner.instances.list() {
+                Ok(dto) => Response::Instances(dto),
+                Err(e) => Response::error(ErrorKind::Internal, e),
+            },
+            Request::ListChats => self.list_chats(),
+        }
+    }
+
+    fn health(&self) -> Response {
+        let (ready, pepper_state) = match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => (true, r.pepper_state),
+            EngineState::Locked { pepper_state, .. } => (false, *pepper_state),
+        };
+        Response::Health(HealthDto {
+            status: "ok".to_string(),
+            version: self.inner.config.version.clone(),
+            ready,
+            pepper_state,
+        })
+    }
+
+    /// v4 `GET /api/v1/system/unlock`: state + hasUserPassphrase, plus
+    /// autoLockMinutes when unlocked and the user's auto-lock is enabled
+    /// (that read is error-swallowed, as v4's is).
+    fn unlock_state(&self) -> Response {
+        let state = self.inner.state.lock().unwrap();
+        let dto = match &*state {
+            EngineState::Locked {
+                pepper_state,
+                has_user_passphrase,
+            } => UnlockStateDto {
+                state: *pepper_state,
+                has_user_passphrase: *has_user_passphrase,
+                auto_lock_minutes: None,
+            },
+            EngineState::Ready(r) => UnlockStateDto {
+                state: r.pepper_state,
+                has_user_passphrase: r.has_user_passphrase,
+                auto_lock_minutes: read_auto_lock_minutes(&r.db),
+            },
+        };
+        Response::UnlockState(dto)
+    }
+
+    /// v4 `?action=unlock`. Only meaningful from `needs-passphrase`; the
+    /// 3-attempt limit and auto-lock resume are P4.4 (the full unlock
+    /// service).
+    fn unlock(&self, passphrase: &str) -> Response {
+        let mut state = self.inner.state.lock().unwrap();
+        match &*state {
+            EngineState::Ready(_) => Response::error(ErrorKind::BadRequest, "Already unlocked"),
+            EngineState::Locked {
+                pepper_state: PepperState::NeedsSetup,
+                ..
+            } => Response::error(
+                ErrorKind::BadRequest,
+                "No database key is configured; setup is required first",
+            ),
+            EngineState::Locked {
+                pepper_state,
+                has_user_passphrase,
+            } => {
+                let pepper_state = *pepper_state;
+                let has_user_passphrase = *has_user_passphrase;
+                debug_assert_eq!(pepper_state, PepperState::NeedsPassphrase);
+                match dbkey::load_pepper(&self.inner.config.data_dir(), Some(passphrase)) {
+                    Ok(pepper) => match open_ready(
+                        &self.inner,
+                        &pepper,
+                        PepperState::Resolved,
+                        has_user_passphrase,
+                    ) {
+                        Ok(ready) => {
+                            let dto = UnlockStateDto {
+                                state: ready.pepper_state,
+                                has_user_passphrase: ready.has_user_passphrase,
+                                auto_lock_minutes: read_auto_lock_minutes(&ready.db),
+                            };
+                            *state = EngineState::Ready(ready);
+                            Response::UnlockState(dto)
+                        }
+                        Err(e) => Response::error(ErrorKind::Internal, e.to_string()),
+                    },
+                    Err(DbKeyError::DecryptFailed) => {
+                        Response::error(ErrorKind::BadRequest, "Invalid passphrase")
+                    }
+                    Err(e) => Response::error(ErrorKind::Internal, e.to_string()),
+                }
+            }
+        }
+    }
+
+    /// v4 `?action=lock` / auto-lock (`lockDbKey`): tear the drivers down,
+    /// drop the `Db`, return to `needs-passphrase`. Idempotent when already
+    /// locked (answers the current state).
+    fn lock(&self) -> Response {
+        // Scope the guard: `unlock_state` below re-acquires the (non-reentrant)
+        // state mutex, so it must be released first.
+        {
+            let mut state = self.inner.state.lock().unwrap();
+            if let EngineState::Ready(r) = &*state {
+                let has_user_passphrase = r.has_user_passphrase;
+                let old = std::mem::replace(
+                    &mut *state,
+                    EngineState::Locked {
+                        pepper_state: PepperState::NeedsPassphrase,
+                        has_user_passphrase,
+                    },
+                );
+                if let EngineState::Ready(r) = old {
+                    r.shutdown.shutdown();
+                    // r.db drops here; once the drivers' clones are gone too,
+                    // the writer thread exits.
+                }
+            }
+        }
+        self.unlock_state()
+    }
+
+    fn list_chats(&self) -> Response {
+        let state = self.inner.state.lock().unwrap();
+        let db = match &*state {
+            EngineState::Ready(r) => r.db.clone(),
+            EngineState::Locked { pepper_state, .. } => {
+                return Response::locked(*pepper_state);
+            }
+        };
+        drop(state);
+
+        match db.read_main(|conn| chats_read::find_by_user_id(conn, SINGLE_USER_ID)) {
+            Ok(chats) => Response::Chats(chats.iter().map(chat_summary).collect()),
+            Err(e) => Response::error(ErrorKind::Internal, e.to_string()),
+        }
+    }
+}
+
+impl QuilltapCore for CoreEngine {
+    fn dispatch(&self, req: Request) -> impl std::future::Future<Output = Response> + Send {
+        self.dispatch_impl(req)
+    }
+
+    fn subscribe(&self) -> broadcast::Receiver<Event> {
+        self.inner.events.subscribe()
+    }
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/// Open the instance's databases and run the host assembler. Main is
+/// required; the sibling partitions are opened when their files exist.
+fn open_ready(
+    inner: &EngineInner,
+    pepper: &str,
+    pepper_state: PepperState,
+    has_user_passphrase: bool,
+) -> Result<ReadyEngine, BootError> {
+    let data = inner.config.data_dir();
+    let main = data.join("quilltap.db");
+    if !main.exists() {
+        return Err(BootError::MissingMainDb(main));
+    }
+    let optional = |name: &str| -> Option<PathBuf> {
+        let p = data.join(name);
+        p.exists().then_some(p)
+    };
+    let paths = DbPaths {
+        main,
+        mount_index: optional("quilltap-mount-index.db"),
+        llm_logs: optional("quilltap-llm-logs.db"),
+    };
+    let db = Db::open(paths, pepper).map_err(BootError::Db)?;
+    let shutdown = inner.assembler.assemble(&db).map_err(BootError::Assemble)?;
+    Ok(ReadyEngine {
+        db,
+        pepper_state,
+        has_user_passphrase,
+        shutdown,
+    })
+}
+
+/// The auto-lock read behind the unlock-state DTO (v4: chatSettings
+/// `autoLockSettings.enabled ? idleMinutes : null`, error-swallowed).
+fn read_auto_lock_minutes(db: &Db) -> Option<f64> {
+    let settings = db
+        .read_main(|conn| chat_settings::find_by_user_id(conn, SINGLE_USER_ID))
+        .ok()??;
+    let auto = settings.get("autoLockSettings")?;
+    if auto.get("enabled").and_then(|v| v.as_bool()) == Some(true) {
+        auto.get("idleMinutes").and_then(|v| v.as_f64())
+    } else {
+        None
+    }
+}
+
+/// Project one hydrated chat (the differential-verified read shape) to the
+/// list DTO. The defaulted columns (`title`, `chatType`, `messageCount`,
+/// `createdAt`, `updatedAt`) are always present on a valid row; a malformed
+/// row degrades to empty/zero rather than failing the whole list.
+fn chat_summary(chat: &serde_json::Value) -> ChatSummaryDto {
+    let s = |k: &str| {
+        chat.get(k)
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string()
+    };
+    ChatSummaryDto {
+        id: s("id"),
+        title: s("title"),
+        chat_type: s("chatType"),
+        message_count: chat
+            .get("messageCount")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0) as i64,
+        last_message_at: chat
+            .get("lastMessageAt")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        created_at: s("createdAt"),
+        updated_at: s("updatedAt"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Writer;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tempfile::{tempdir, TempDir};
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    struct EmptyInstances;
+    impl InstanceDirectory for EmptyInstances {
+        fn list(&self) -> Result<super::super::types::InstancesDto, String> {
+            Ok(super::super::types::InstancesDto {
+                instances: vec![],
+                default_instance: None,
+            })
+        }
+    }
+
+    /// Records assemble/shutdown counts so the lock/unlock cycle is provable.
+    struct CountingAssembler {
+        assembled: Arc<AtomicUsize>,
+        shutdowns: Arc<AtomicUsize>,
+    }
+    struct CountingShutdown(Arc<AtomicUsize>);
+    impl EngineShutdown for CountingShutdown {
+        fn shutdown(&self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+    impl EngineAssembler for CountingAssembler {
+        fn assemble(&self, _db: &Db) -> Result<Box<dyn EngineShutdown>, String> {
+            self.assembled.fetch_add(1, Ordering::SeqCst);
+            Ok(Box::new(CountingShutdown(self.shutdowns.clone())))
+        }
+    }
+
+    /// An instance dir with a main DB (no tables needed for the state tests).
+    fn make_instance() -> TempDir {
+        let base = tempdir().unwrap();
+        let data = base.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        // A writable open creates the encrypted main DB file.
+        let _ = Writer::open_writable(&data.join("quilltap.db"), PEPPER).unwrap();
+        base
+    }
+
+    fn config(base: &TempDir, env_pepper: Option<&str>) -> CoreConfig {
+        CoreConfig {
+            base_dir: base.path().to_path_buf(),
+            version: "test".to_string(),
+            env_pepper: env_pepper.map(str::to_string),
+        }
+    }
+
+    #[tokio::test]
+    async fn env_pepper_boot_is_operational_and_gates_work() {
+        let base = make_instance();
+        let engine = CoreEngine::boot(
+            config(&base, Some(PEPPER)),
+            Box::new(NoopAssembler),
+            Arc::new(EmptyInstances),
+        )
+        .unwrap();
+
+        match engine.dispatch(Request::Health).await {
+            Response::Health(h) => {
+                assert!(h.ready);
+                assert_eq!(h.pepper_state, PepperState::NeedsVaultStorage);
+                assert_eq!(h.status, "ok");
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        // ListChats reaches the engine (the fixture has no chats table, so it
+        // surfaces as an internal read error — NOT the locked refusal).
+        match engine.dispatch(Request::ListChats).await {
+            Response::Error(e) => assert_eq!(e.kind, ErrorKind::Internal),
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn passphrase_vault_boots_locked_and_unlocks() {
+        let base = make_instance();
+        dbkey::save_dbkey(&base.path().join("data"), PEPPER, "open sesame").unwrap();
+
+        let assembled = Arc::new(AtomicUsize::new(0));
+        let shutdowns = Arc::new(AtomicUsize::new(0));
+        let engine = CoreEngine::boot(
+            config(&base, None),
+            Box::new(CountingAssembler {
+                assembled: assembled.clone(),
+                shutdowns: shutdowns.clone(),
+            }),
+            Arc::new(EmptyInstances),
+        )
+        .unwrap();
+
+        // Locked boot: not assembled, ready-gated variants refused.
+        assert_eq!(assembled.load(Ordering::SeqCst), 0);
+        match engine.dispatch(Request::ListChats).await {
+            Response::Error(e) => {
+                assert_eq!(e.kind, ErrorKind::Locked);
+                assert_eq!(e.pepper_state, Some(PepperState::NeedsPassphrase));
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        match engine.dispatch(Request::UnlockState).await {
+            Response::UnlockState(u) => {
+                assert_eq!(u.state, PepperState::NeedsPassphrase);
+                assert!(u.has_user_passphrase);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+
+        // Wrong passphrase → bad request; still locked.
+        match engine
+            .dispatch(Request::Unlock {
+                passphrase: "wrong".into(),
+            })
+            .await
+        {
+            Response::Error(e) => {
+                assert_eq!(e.kind, ErrorKind::BadRequest);
+                assert_eq!(e.message, "Invalid passphrase");
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+
+        // Right passphrase → assembled + resolved.
+        match engine
+            .dispatch(Request::Unlock {
+                passphrase: "open sesame".into(),
+            })
+            .await
+        {
+            Response::UnlockState(u) => {
+                assert_eq!(u.state, PepperState::Resolved);
+                assert!(u.has_user_passphrase);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        assert_eq!(assembled.load(Ordering::SeqCst), 1);
+
+        // Lock tears down; unlock re-assembles.
+        match engine.dispatch(Request::Lock).await {
+            Response::UnlockState(u) => assert_eq!(u.state, PepperState::NeedsPassphrase),
+            other => panic!("unexpected: {other:?}"),
+        }
+        assert_eq!(shutdowns.load(Ordering::SeqCst), 1);
+        assert!(engine.db().is_none());
+
+        match engine
+            .dispatch(Request::Unlock {
+                passphrase: "open sesame".into(),
+            })
+            .await
+        {
+            Response::UnlockState(u) => assert_eq!(u.state, PepperState::Resolved),
+            other => panic!("unexpected: {other:?}"),
+        }
+        assert_eq!(assembled.load(Ordering::SeqCst), 2);
+        assert!(engine.db().is_some());
+    }
+
+    #[tokio::test]
+    async fn needs_setup_boot_refuses_unlock() {
+        let base = tempdir().unwrap();
+        std::fs::create_dir_all(base.path().join("data")).unwrap();
+        let engine = CoreEngine::boot(
+            config(&base, None),
+            Box::new(NoopAssembler),
+            Arc::new(EmptyInstances),
+        )
+        .unwrap();
+        match engine.dispatch(Request::Health).await {
+            Response::Health(h) => {
+                assert!(!h.ready);
+                assert_eq!(h.pepper_state, PepperState::NeedsSetup);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        match engine
+            .dispatch(Request::Unlock {
+                passphrase: "anything".into(),
+            })
+            .await
+        {
+            Response::Error(e) => assert_eq!(e.kind, ErrorKind::BadRequest),
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn missing_main_db_refuses_boot() {
+        let base = tempdir().unwrap();
+        std::fs::create_dir_all(base.path().join("data")).unwrap();
+        match CoreEngine::boot(
+            config(&base, Some(PEPPER)),
+            Box::new(NoopAssembler),
+            Arc::new(EmptyInstances),
+        ) {
+            Err(BootError::MissingMainDb(_)) => {}
+            Err(e) => panic!("wrong error: {e}"),
+            Ok(_) => panic!("boot should have refused"),
+        }
+    }
+}

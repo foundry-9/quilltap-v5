@@ -189,6 +189,141 @@ fn try_decrypt(file: &DbKeyFile, passphrase: &str) -> Result<Option<String>, DbK
     Ok(Some(pepper))
 }
 
+// ============================================================================
+// The write path (v4 dbkey.ts saveDbKey / encryptPepper / generatePepper)
+// ============================================================================
+
+/// PBKDF2 iteration count for NEWLY WRITTEN `.dbkey` files (v4
+/// `PBKDF2_ITERATIONS` — "upgraded from 100k in pepper-vault to 600k"). The
+/// read path takes the count from the file itself, so older files keep
+/// decrypting after future upgrades.
+const PBKDF2_ITERATIONS: u32 = 600_000;
+
+/// Salt length for newly written files (v4 `SALT_LENGTH`).
+const SALT_LEN: usize = 32;
+
+/// GCM IV length (v4 `IV_LENGTH` — 16 bytes, hence the custom
+/// [`Aes256Gcm16`] type instead of the crate's 12-byte default).
+const IV_LEN: usize = 16;
+
+/// SHA-256 hex of the plaintext pepper (v4 `hashPepper`) — stored as
+/// `pepperHash` in the file and compared against an env-supplied pepper at
+/// provisioning time.
+pub fn hash_pepper(pepper: &str) -> String {
+    hex::encode(Sha256::digest(pepper.as_bytes()))
+}
+
+/// Read just the stored `pepperHash` from `<data_dir>/quilltap.dbkey`,
+/// tolerantly: `None` if the file is missing, unreadable, or malformed —
+/// v4 `readDbKeyFile`'s null-on-error contract, which provisioning treats
+/// as "no file".
+pub fn read_pepper_hash(data_dir: &Path) -> Option<String> {
+    let raw = std::fs::read_to_string(data_dir.join("quilltap.dbkey")).ok()?;
+    let file: DbKeyFile = serde_json::from_str(&raw).ok()?;
+    Some(file.pepper_hash)
+}
+
+/// Generate a new pepper (v4 `generatePepper`): 32 CSPRNG bytes encoded as
+/// base64 — a 44-character string.
+pub fn generate_pepper() -> Result<String, DbKeyError> {
+    use base64::Engine as _;
+    let mut bytes = [0u8; 32];
+    getrandom::getrandom(&mut bytes)
+        .map_err(|e| DbKeyError::Parse(format!("csprng unavailable: {e}")))?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+}
+
+/// The on-disk shape v4's `encryptPepper` writes, in its exact JSON field
+/// order (`{version, algorithm, kdf, kdfIterations, kdfDigest, ...bundle,
+/// pepperHash}` — the bundle is `salt, iv, ciphertext, authTag`).
+#[derive(serde::Serialize)]
+struct DbKeyFileOut<'a> {
+    version: u32,
+    algorithm: &'a str,
+    kdf: &'a str,
+    #[serde(rename = "kdfIterations")]
+    kdf_iterations: u32,
+    #[serde(rename = "kdfDigest")]
+    kdf_digest: &'a str,
+    salt: String,
+    iv: String,
+    ciphertext: String,
+    #[serde(rename = "authTag")]
+    auth_tag: String,
+    #[serde(rename = "pepperHash")]
+    pepper_hash: String,
+}
+
+/// Encrypt `pepper` under `passphrase` and write `<data_dir>/quilltap.dbkey`,
+/// exactly as v4's `saveDbKey` does: PBKDF2-HMAC-SHA256 × 600 000 over a
+/// 32-byte salt, AES-256-GCM with a 16-byte IV, 2-space-pretty JSON, file
+/// mode 0o600 (POSIX), parent directory created if missing.
+///
+/// An **empty** `passphrase` means "no user passphrase" and encrypts under
+/// the internal passphrase, mirroring v4 `setupDbKey`'s
+/// `hasUserPassphrase = passphrase.length > 0` convention. Round-trip
+/// verified against [`load_pepper`] (the Friday-verified reader).
+pub fn save_dbkey(data_dir: &Path, pepper: &str, passphrase: &str) -> Result<(), DbKeyError> {
+    let actual_pass = if passphrase.is_empty() {
+        INTERNAL_PASSPHRASE
+    } else {
+        passphrase
+    };
+
+    let mut salt = [0u8; SALT_LEN];
+    getrandom::getrandom(&mut salt)
+        .map_err(|e| DbKeyError::Parse(format!("csprng unavailable: {e}")))?;
+    let mut iv = [0u8; IV_LEN];
+    getrandom::getrandom(&mut iv)
+        .map_err(|e| DbKeyError::Parse(format!("csprng unavailable: {e}")))?;
+
+    let mut key = [0u8; KEY_LEN];
+    pbkdf2::pbkdf2::<Hmac<Sha256>>(actual_pass.as_bytes(), &salt, PBKDF2_ITERATIONS, &mut key)
+        .map_err(|_| DbKeyError::DecryptFailed)?;
+
+    // The `aes-gcm` crate returns ciphertext||tag; v4 stores them as separate
+    // hex fields, so split the trailing 16-byte tag back off.
+    let cipher = Aes256Gcm16::new(Key::<Aes256Gcm16>::from_slice(&key));
+    let nonce = Nonce::<U16>::from_slice(&iv);
+    let ct_and_tag = cipher
+        .encrypt(
+            nonce,
+            Payload {
+                msg: pepper.as_bytes(),
+                aad: &[],
+            },
+        )
+        .map_err(|_| DbKeyError::DecryptFailed)?;
+    let split = ct_and_tag.len() - 16;
+    let (ct, tag) = ct_and_tag.split_at(split);
+
+    let out = DbKeyFileOut {
+        version: 1,
+        algorithm: "aes-256-gcm",
+        kdf: "pbkdf2",
+        kdf_iterations: PBKDF2_ITERATIONS,
+        kdf_digest: "sha256",
+        salt: hex::encode(salt),
+        iv: hex::encode(iv),
+        ciphertext: hex::encode(ct),
+        auth_tag: hex::encode(tag),
+        pepper_hash: hash_pepper(pepper),
+    };
+    let content =
+        serde_json::to_string_pretty(&out).map_err(|e| DbKeyError::Parse(e.to_string()))?;
+
+    std::fs::create_dir_all(data_dir).map_err(DbKeyError::Io)?;
+    let path = data_dir.join("quilltap.dbkey");
+    std::fs::write(&path, content).map_err(DbKeyError::Io)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+            .map_err(DbKeyError::Io)?;
+    }
+    Ok(())
+}
+
 /// Convert the base64 pepper into the lowercase hex string used in the raw-key
 /// pragma: `PRAGMA key = "x'<hex>'"`. Mirrors
 /// `Buffer.from(pepper, 'base64').toString('hex')` in meta.ts / db-helpers.js.
@@ -197,8 +332,8 @@ pub fn pepper_b64_to_key_hex(pepper_b64: &str) -> Result<String, DbKeyError> {
     Ok(hex::encode(bytes))
 }
 
-/// Minimal standard-alphabet base64 decoder (no extra dep). Replace with a
-/// vetted crate when the core grows one.
+/// Minimal standard-alphabet base64 decoder (predates the `base64` dep; kept —
+/// it is on the verified read path).
 fn base64_decode(s: &str) -> Option<Vec<u8>> {
     const A: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut bits = 0u32;
@@ -217,4 +352,82 @@ fn base64_decode(s: &str) -> Option<Vec<u8>> {
         }
     }
     Some(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    /// A written no-passphrase `.dbkey` round-trips through the ported
+    /// (Friday-verified) reader with NO passphrase supplied — the internal
+    /// passphrase decrypts it, as v4's silent-resolve path expects.
+    #[test]
+    fn save_then_load_no_passphrase() {
+        let dir = tempdir().unwrap();
+        let pepper = generate_pepper().unwrap();
+        assert_eq!(pepper.len(), 44); // 32 bytes base64
+        save_dbkey(dir.path(), &pepper, "").unwrap();
+        let loaded = load_pepper(dir.path(), None).unwrap();
+        assert_eq!(loaded, pepper);
+    }
+
+    /// A passphrase-protected file requires the passphrase: `None` errors with
+    /// `PassphraseRequired`, a wrong passphrase with `DecryptFailed`, and the
+    /// right one recovers the pepper.
+    #[test]
+    fn save_then_load_with_passphrase() {
+        let dir = tempdir().unwrap();
+        let pepper = generate_pepper().unwrap();
+        save_dbkey(dir.path(), &pepper, "open sesame").unwrap();
+
+        assert!(matches!(
+            load_pepper(dir.path(), None),
+            Err(DbKeyError::PassphraseRequired)
+        ));
+        assert!(matches!(
+            load_pepper(dir.path(), Some("wrong")),
+            Err(DbKeyError::DecryptFailed)
+        ));
+        assert_eq!(
+            load_pepper(dir.path(), Some("open sesame")).unwrap(),
+            pepper
+        );
+    }
+
+    /// The written JSON carries v4's exact field set (and mode 0600 on POSIX).
+    #[test]
+    fn written_file_shape_matches_v4() {
+        let dir = tempdir().unwrap();
+        let pepper = generate_pepper().unwrap();
+        save_dbkey(dir.path(), &pepper, "").unwrap();
+        let path = dir.path().join("quilltap.dbkey");
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let keys: Vec<&str> = v.as_object().unwrap().keys().map(|k| k.as_str()).collect();
+        assert_eq!(
+            keys,
+            [
+                "version",
+                "algorithm",
+                "kdf",
+                "kdfIterations",
+                "kdfDigest",
+                "salt",
+                "iv",
+                "ciphertext",
+                "authTag",
+                "pepperHash"
+            ]
+        );
+        assert_eq!(v["algorithm"], "aes-256-gcm");
+        assert_eq!(v["kdfIterations"], 600000);
+        assert_eq!(v["pepperHash"], hash_pepper(&pepper));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+        }
+    }
 }
