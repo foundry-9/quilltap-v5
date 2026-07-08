@@ -38,18 +38,26 @@ use tokio::sync::{watch, Notify};
 use quilltap_core::api::{
     BootError, CoreConfig, CoreEngine, EngineAssembler, EngineShutdown, InstanceDirectory,
 };
+use quilltap_core::clock::{iso_to_ms, now_unix_ms};
+use quilltap_core::db::background_jobs::BackgroundJobsRepository;
 use quilltap_core::db::chat_settings;
 use quilltap_core::db::runtime::Db;
 use quilltap_core::enclave::step::AutonomousRoomScheduleTickHandler;
 use quilltap_core::services::aurora_notifications::WardrobeOutfitAnnouncementHandler;
+use quilltap_core::services::danger_scan;
 use quilltap_core::services::embedding_refit_job::EmbeddingRefitHandler;
 use quilltap_core::services::job_runner::{
     HandlerRegistry, JobFuture, JobHandler, JobRunner, STUCK_JOB_TIMEOUT_MINUTES,
 };
-use quilltap_core::services::job_scheduler::{POLL_INTERVAL_MS, STUCK_JOB_CHECK_INTERVAL_MS};
+use quilltap_core::services::job_scheduler::{
+    should_run_startup_tick, DAILY_INTERVAL_MS, DANGER_SCAN_INTERVAL_MS, POLL_INTERVAL_MS,
+    RECENT_RUN_WINDOW_MS, STARTUP_GRACE_MS, STUCK_JOB_CHECK_INTERVAL_MS,
+};
 use quilltap_core::services::queue_service;
+use quilltap_core::services::scheduled_maintenance::{run_scheduled_maintenance, TranscriptStore};
 
 use crate::instances::InstanceRegistry;
+use crate::lock;
 
 // ============================================================================
 // Config
@@ -75,6 +83,26 @@ pub struct HostConfig {
     pub autonomous_tick_ms: u64,
     /// The stuck-job reset cadence (v4: 5 min).
     pub stuck_check_ms: u64,
+    /// The LLM-log cleanup sweep cadence (v4: 24 h; runs immediately at start).
+    pub cleanup_interval_ms: u64,
+    /// The memory-housekeeping sweep cadence (v4: 24 h; startup tick after the
+    /// grace, skipped when a scheduled sweep COMPLETED within 20 h).
+    pub housekeeping_interval_ms: u64,
+    /// The maintenance sweep cadence (v4: 24 h; startup tick after the grace,
+    /// skipped when `lastMaintenanceSweepAt` is within 20 h).
+    pub maintenance_interval_ms: u64,
+    /// The danger-scan enqueuer cadence (v4: 10 min; runs immediately at start;
+    /// the loop does not start at all when every user's danger mode is OFF).
+    pub danger_scan_interval_ms: u64,
+    /// The daily sweeps' startup grace (v4: 5 min).
+    pub startup_grace_ms: u64,
+    /// The instance-lock heartbeat cadence (v4: 60 s).
+    pub heartbeat_ms: u64,
+    /// What to do when the instance lock is LOST mid-run (file vanished /
+    /// foreign content): the drivers are always stopped first, then this runs.
+    /// `None` = the faithful v4 default — exit the process with status 1
+    /// (v4 closes the DB and `process.exit(1)`s). Tests inject a recorder.
+    pub on_lock_lost: Option<Arc<dyn Fn() + Send + Sync>>,
     /// Additional job handlers (tests; the P4.1 lanes register the
     /// seam-needing ones here until they move into the built-in set).
     pub extra_handlers: Vec<(String, Arc<dyn JobHandler>)>,
@@ -92,6 +120,13 @@ impl HostConfig {
             instances_path: None,
             autonomous_tick_ms: 60_000,
             stuck_check_ms: STUCK_JOB_CHECK_INTERVAL_MS as u64,
+            cleanup_interval_ms: DAILY_INTERVAL_MS as u64,
+            housekeeping_interval_ms: DAILY_INTERVAL_MS as u64,
+            maintenance_interval_ms: DAILY_INTERVAL_MS as u64,
+            danger_scan_interval_ms: DANGER_SCAN_INTERVAL_MS as u64,
+            startup_grace_ms: STARTUP_GRACE_MS as u64,
+            heartbeat_ms: lock::HEARTBEAT_INTERVAL_MS,
+            on_lock_lost: None,
             extra_handlers: Vec::new(),
         }
     }
@@ -150,9 +185,17 @@ impl Host {
         });
 
         let assembler = HostAssembler {
+            base_dir: config.base_dir.clone(),
             tz: config.tz,
             autonomous_tick_ms: config.autonomous_tick_ms,
             stuck_check_ms: config.stuck_check_ms,
+            cleanup_interval_ms: config.cleanup_interval_ms,
+            housekeeping_interval_ms: config.housekeeping_interval_ms,
+            maintenance_interval_ms: config.maintenance_interval_ms,
+            danger_scan_interval_ms: config.danger_scan_interval_ms,
+            startup_grace_ms: config.startup_grace_ms,
+            heartbeat_ms: config.heartbeat_ms,
+            on_lock_lost: config.on_lock_lost,
             extra: config.extra_handlers,
             rt,
         };
@@ -225,15 +268,27 @@ impl JobHandler for SharedHandler {
 }
 
 struct HostAssembler {
+    base_dir: PathBuf,
     tz: String,
     autonomous_tick_ms: u64,
     stuck_check_ms: u64,
+    cleanup_interval_ms: u64,
+    housekeeping_interval_ms: u64,
+    maintenance_interval_ms: u64,
+    danger_scan_interval_ms: u64,
+    startup_grace_ms: u64,
+    heartbeat_ms: u64,
+    on_lock_lost: Option<Arc<dyn Fn() + Send + Sync>>,
     extra: Vec<(String, Arc<dyn JobHandler>)>,
     rt: tokio::runtime::Handle,
 }
 
 struct HostShutdown {
     stop: watch::Sender<bool>,
+    /// The instance lock this assembly holds; released on shutdown (AFTER the
+    /// stop flag flips, so the heartbeat loop never mistakes our own release
+    /// for a lock loss).
+    lock_path: PathBuf,
     /// Keeps this assembly's wake target alive; dropping it prunes the weak
     /// from the fan-out.
     _wake_target: Arc<WakeFn>,
@@ -242,11 +297,20 @@ struct HostShutdown {
 impl EngineShutdown for HostShutdown {
     fn shutdown(&self) {
         let _ = self.stop.send(true);
+        // Idempotent: a second shutdown finds no file (or not ours) and no-ops.
+        lock::release_instance_lock(&self.lock_path);
     }
 }
 
 impl EngineAssembler for HostAssembler {
     fn assemble(&self, db: &Db) -> Result<Box<dyn EngineShutdown>, String> {
+        // The single-instance lock (v4 acquires at backend init — here, when
+        // the databases open). A live conflict is a typed boot error the
+        // engine surfaces as `BootError::Assemble` (the P4.2 startup-status
+        // route carries it to the UI).
+        let lock_path = lock::instance_lock_path(&self.base_dir);
+        lock::acquire_instance_lock(&lock_path).map_err(|e| e.to_string())?;
+
         // The seam-free built-in handler set (P4.0). Every other known job
         // type stays on the runner's loud fallback until its P4.1 lane wires
         // the model/host seams its handler needs.
@@ -293,12 +357,53 @@ impl EngineAssembler for HostAssembler {
         ));
         self.rt.spawn(autonomous_tick_loop(
             db.clone(),
-            stop_rx,
+            stop_rx.clone(),
             self.autonomous_tick_ms,
+        ));
+
+        // The lock heartbeat (v4: 60 s). Losing the lock stops the drivers,
+        // then runs the configured handler (default: exit 1, the faithful v4
+        // shutdown — see `HostConfig::on_lock_lost`).
+        self.rt.spawn(heartbeat_loop(
+            lock_path.clone(),
+            stop_tx.clone(),
+            stop_rx.clone(),
+            self.heartbeat_ms,
+            self.on_lock_lost.clone(),
+        ));
+
+        // The four scheduler sweeps (v4 instrumentation.ts order: cleanup →
+        // housekeeping → maintenance → danger scan; the autonomous tick above
+        // is the fifth).
+        self.rt.spawn(cleanup_loop(
+            db.clone(),
+            stop_rx.clone(),
+            self.cleanup_interval_ms,
+        ));
+        self.rt.spawn(housekeeping_loop(
+            db.clone(),
+            stop_rx.clone(),
+            self.startup_grace_ms,
+            self.housekeeping_interval_ms,
+        ));
+        self.rt.spawn(maintenance_loop(
+            db.clone(),
+            stop_rx.clone(),
+            self.startup_grace_ms,
+            self.maintenance_interval_ms,
+            FsTranscriptStore {
+                transcripts_dir: self.base_dir.join("logs").join("terminals"),
+            },
+        ));
+        self.rt.spawn(danger_scan_loop(
+            db.clone(),
+            stop_rx,
+            self.danger_scan_interval_ms,
         ));
 
         Ok(Box::new(HostShutdown {
             stop: stop_tx,
+            lock_path,
             _wake_target: wake_target,
         }))
     }
@@ -374,6 +479,181 @@ async fn autonomous_tick_loop(db: Db, mut stop: watch::Receiver<bool>, interval_
                 }
             }
             _ = tokio::time::sleep(Duration::from_millis(interval_ms.max(1))) => {}
+        }
+    }
+}
+
+/// Sleep `ms` or wake on stop; returns `false` when the loop should exit.
+async fn sleep_or_stop(stop: &mut watch::Receiver<bool>, ms: u64) -> bool {
+    tokio::select! {
+        res = stop.changed() => {
+            if res.is_err() || *stop.borrow() {
+                return false;
+            }
+            true
+        }
+        _ = tokio::time::sleep(Duration::from_millis(ms.max(1))) => !*stop.borrow(),
+    }
+}
+
+/// The instance-lock heartbeat (v4's 60 s `setInterval` body): verify
+/// ownership + rewrite `lastHeartbeat`. On LOSS (file vanished / foreign
+/// content) the drivers stop first (the stop flag), then the configured
+/// handler runs — default `std::process::exit(1)`, the faithful v4 shutdown.
+/// Our own shutdown's release flips the stop flag BEFORE unlinking, so the
+/// post-tick stop check keeps a release from reading as a loss.
+async fn heartbeat_loop(
+    lock_path: PathBuf,
+    stop_tx: watch::Sender<bool>,
+    mut stop: watch::Receiver<bool>,
+    interval_ms: u64,
+    on_lock_lost: Option<Arc<dyn Fn() + Send + Sync>>,
+) {
+    loop {
+        if !sleep_or_stop(&mut stop, interval_ms).await {
+            break;
+        }
+        if !lock::heartbeat_tick(&lock_path) {
+            if *stop.borrow() {
+                break; // our own release, not a takeover
+            }
+            let _ = stop_tx.send(true);
+            match &on_lock_lost {
+                Some(handler) => handler(),
+                None => std::process::exit(1),
+            }
+            break;
+        }
+    }
+}
+
+/// v4 `scheduled-cleanup.ts`: run the LLM-log cleanup enqueuer immediately at
+/// startup, then every 24 h. Errors are swallowed (v4 catches + logs).
+async fn cleanup_loop(db: Db, mut stop: watch::Receiver<bool>, interval_ms: u64) {
+    loop {
+        if *stop.borrow() {
+            break;
+        }
+        let _ = queue_service::run_scheduled_cleanup(&db).await;
+        if !sleep_or_stop(&mut stop, interval_ms).await {
+            break;
+        }
+    }
+}
+
+/// v4 `runStartupHousekeepingTick`'s short-circuit: skip the startup tick when
+/// a COMPLETED `MEMORY_HOUSEKEEPING` job with `payload.reason === 'scheduled'`
+/// finished within the 20 h window (peeking the 50 most recent rows). A check
+/// failure runs anyway (v4 warns + runs).
+fn should_run_startup_housekeeping(db: &Db, now_ms: i64) -> bool {
+    let recent = db.read_main(|conn| {
+        BackgroundJobsRepository::new(conn).find_recent_by_type("MEMORY_HOUSEKEEPING", 50)
+    });
+    let Ok(jobs) = recent else {
+        return true;
+    };
+    let cutoff = now_ms - RECENT_RUN_WINDOW_MS;
+    !jobs.iter().any(|job| {
+        if job.status != "COMPLETED" {
+            return false;
+        }
+        let scheduled = serde_json::from_str::<serde_json::Value>(&job.payload)
+            .ok()
+            .and_then(|p| p.get("reason").and_then(|r| r.as_str().map(str::to_string)))
+            == Some("scheduled".to_string());
+        if !scheduled {
+            return false;
+        }
+        iso_to_ms(&job.updated_at).map(|ts| ts >= cutoff) == Some(true)
+    })
+}
+
+/// v4 `scheduled-housekeeping.ts`: a 5-minute-grace startup tick (skipped when
+/// a scheduled sweep COMPLETED within 20 h), then the 24 h cadence.
+async fn housekeeping_loop(
+    db: Db,
+    mut stop: watch::Receiver<bool>,
+    grace_ms: u64,
+    interval_ms: u64,
+) {
+    if !sleep_or_stop(&mut stop, grace_ms).await {
+        return;
+    }
+    if should_run_startup_housekeeping(&db, now_unix_ms()) {
+        let _ = queue_service::run_scheduled_housekeeping(&db).await;
+    }
+    loop {
+        if !sleep_or_stop(&mut stop, interval_ms).await {
+            break;
+        }
+        let _ = queue_service::run_scheduled_housekeeping(&db).await;
+    }
+}
+
+/// The transcript-file half of the terminal cleanup (the core's
+/// [`TranscriptStore`] seam): unlink the row's `transcriptPath`, else the
+/// default `<logsDir>/terminals/<id>.log`. ENOENT is swallowed and NOT counted
+/// (v4's "already gone is success"); other unlink errors are warned-equivalent
+/// (not counted, sweep continues).
+pub struct FsTranscriptStore {
+    /// `<base>/logs/terminals` (v4 `getLogsDir()` + `'terminals'`).
+    pub transcripts_dir: PathBuf,
+}
+
+impl TranscriptStore for FsTranscriptStore {
+    fn unlink_transcript(&self, session_id: &str, transcript_path: Option<&str>) -> bool {
+        let path = transcript_path
+            .filter(|p| !p.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| self.transcripts_dir.join(format!("{session_id}.log")));
+        std::fs::remove_file(&path).is_ok()
+    }
+}
+
+/// v4 `scheduled-maintenance.ts`: a 5-minute-grace startup tick (skipped when
+/// `lastMaintenanceSweepAt` is within the 20 h window; a read failure runs
+/// anyway), then the 24 h cadence.
+async fn maintenance_loop(
+    db: Db,
+    mut stop: watch::Receiver<bool>,
+    grace_ms: u64,
+    interval_ms: u64,
+    transcripts: FsTranscriptStore,
+) {
+    if !sleep_or_stop(&mut stop, grace_ms).await {
+        return;
+    }
+    let now = now_unix_ms();
+    let last = db
+        .read_main(quilltap_core::db::instance_settings::get_last_maintenance_sweep_at)
+        .unwrap_or(None); // read failure → run anyway (v4 warns + runs)
+    if should_run_startup_tick(now, last) {
+        let _ = run_scheduled_maintenance(&db, now, &transcripts).await;
+    }
+    loop {
+        if !sleep_or_stop(&mut stop, interval_ms).await {
+            break;
+        }
+        let _ = run_scheduled_maintenance(&db, now_unix_ms(), &transcripts).await;
+    }
+}
+
+/// v4 `scheduled-danger-scan.ts`: the all-users-OFF pre-check gates STARTING
+/// the loop at all (a check failure also skips — v4 warns and returns); when
+/// enabled, scan immediately and then every 10 min. Sweep errors are swallowed
+/// (v4 catches + logs).
+async fn danger_scan_loop(db: Db, mut stop: watch::Receiver<bool>, interval_ms: u64) {
+    match danger_scan::any_user_danger_enabled(&db).await {
+        Ok(true) => {}
+        Ok(false) | Err(_) => return,
+    }
+    loop {
+        if *stop.borrow() {
+            break;
+        }
+        let _ = danger_scan::run_scheduled_danger_scan(&db).await;
+        if !sleep_or_stop(&mut stop, interval_ms).await {
+            break;
         }
     }
 }

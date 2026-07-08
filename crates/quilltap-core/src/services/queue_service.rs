@@ -803,3 +803,68 @@ pub async fn run_scheduled_cleanup(db: &Db) -> Result<(usize, usize), DbError> {
     }
     Ok((users_processed, jobs_enqueued))
 }
+
+// ============================================================================
+// P4.1d append-only additions (the danger-scan enqueuer's helpers)
+// ============================================================================
+
+/// v4 `enqueueContextSummary` (`lib/background-jobs/queue-service.ts:778`): a
+/// plain `enqueueJob` of type `CONTEXT_SUMMARY` — NO dedupe (unlike the title /
+/// classification enqueues). The payload is v4's `ContextSummaryPayload` object
+/// literal in declaration order: `{ chatId, connectionProfileId,
+/// forceRegenerate }` (the danger-scan caller always materializes
+/// `forceRegenerate: false`). `priority` is the caller's `options.priority`
+/// (the danger scan passes `-2`); `maxAttempts` is the default 3.
+pub async fn enqueue_context_summary(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    connection_profile_id: &str,
+    force_regenerate: bool,
+    priority: f64,
+) -> Result<String, DbError> {
+    let payload = serde_json::json!({
+        "chatId": chat_id,
+        "connectionProfileId": connection_profile_id,
+        "forceRegenerate": force_regenerate,
+    });
+    enqueue_job_with_priority(db, user_id, "CONTEXT_SUMMARY", payload, priority, 3.0).await
+}
+
+/// [`enqueue_chat_danger_classification`] with an explicit priority (v4's
+/// `options.priority ?? -1` passthrough — the scheduled danger scan enqueues at
+/// `-2`, below even the finalizer's `-1` classification jobs). Same dedupe:
+/// any PENDING/PROCESSING `CHAT_DANGER_CLASSIFICATION` job for the chat → no-op
+/// returning the existing id. The payload is `{ chatId, connectionProfileId }`.
+pub async fn enqueue_chat_danger_classification_with_priority(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    connection_profile_id: &str,
+    priority: f64,
+) -> Result<String, DbError> {
+    let cid = chat_id.to_string();
+    let pending = db.read_main(|conn| {
+        crate::db::background_jobs::BackgroundJobsRepository::new(conn).find_pending_for_chat(&cid)
+    })?;
+    if let Some(existing) = pending
+        .iter()
+        .find(|j| j.job_type == "CHAT_DANGER_CLASSIFICATION")
+    {
+        return Ok(existing.id.clone());
+    }
+
+    let payload = serde_json::json!({
+        "chatId": chat_id,
+        "connectionProfileId": connection_profile_id,
+    });
+    enqueue_job_with_priority(
+        db,
+        user_id,
+        "CHAT_DANGER_CLASSIFICATION",
+        payload,
+        priority,
+        3.0,
+    )
+    .await
+}

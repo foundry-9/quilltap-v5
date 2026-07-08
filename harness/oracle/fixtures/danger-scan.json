@@ -1,0 +1,29 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "seedTimestamp": "2026-01-01T00:00:00.000Z",
+  "userOn": "aaaa1111-1111-4111-8111-111111111111",
+  "userOff": "bbbb2222-2222-4222-8222-222222222222",
+  "userNoProfiles": "cccc3333-3333-4333-8333-333333333333",
+  "characterId": "dddd4444-4444-4444-8444-444444444444",
+  "profileP1": "e0000000-0000-4000-8000-0000000000e1",
+  "profileP2": "e0000000-0000-4000-8000-0000000000e2",
+  "expected": { "usersProcessed": 2, "chatsEnqueued": 4 },
+  "dangerOn": {
+    "mode": "DETECT_ONLY",
+    "threshold": 0.7,
+    "scanTextChat": true,
+    "scanImagePrompts": false,
+    "scanImageGeneration": false,
+    "displayMode": "SHOW",
+    "showWarningBadges": true
+  },
+  "dangerOff": {
+    "mode": "OFF",
+    "threshold": 0.7,
+    "scanTextChat": true,
+    "scanImagePrompts": false,
+    "scanImageGeneration": false,
+    "displayMode": "SHOW",
+    "showWarningBadges": true
+  }
+}

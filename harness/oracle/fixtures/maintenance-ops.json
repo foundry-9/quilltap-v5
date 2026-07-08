@@ -1,0 +1,17 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "seedTimestamp": "2026-01-01T00:00:00.000Z",
+  "userId": "aaaa1111-1111-4111-8111-111111111111",
+  "explicitTranscriptPath": "/tmp/qt-maint-ops-explicit-transcript.log",
+  "jobs": {
+    "completedOldDays": 10,
+    "completedRecentDays": 1,
+    "deadMidDays": 10,
+    "deadOldDays": 40,
+    "failedOldDays": 40
+  },
+  "terminals": {
+    "closedOldDays": 40,
+    "closedRecentDays": 1
+  }
+}

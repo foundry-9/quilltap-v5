@@ -1388,3 +1388,28 @@ fn no_rows_to_none(e: rusqlite::Error) -> Result<Option<String>, rusqlite::Error
         other => Err(other),
     }
 }
+
+// ============================================================================
+// P4.1d append-only additions (the maintenance sweep's orphan reaper)
+// ============================================================================
+
+/// v4 `DocMountFileLinksRepository.sweepOrphanedFiles()` (P4.1d): the
+/// reconciliation sweep — delete every `doc_mount_files` row that has no
+/// surviving `doc_mount_file_links` row (belt-and-suspenders after the
+/// stale-chat asset collapse; a writer that bypassed `deleteWithGC` leaves these
+/// behind). Returns the count deleted.
+///
+/// Runs against the **mount-index** partition (`getRawMountIndexDatabase()` in
+/// v4 — the caller supplies that connection). v4 wraps the body in `safeQuery`
+/// with a `0` default (an absent mount-index handle → 0, an error → 0); the
+/// port surfaces the error to the caller, which maps a missing partition /
+/// failure back to v4's observable `0` + swallowed shape (see
+/// `services::scheduled_maintenance`).
+pub fn sweep_orphaned_files(conn: &Connection) -> Result<usize, DbError> {
+    let changes = conn.execute(
+        "DELETE FROM doc_mount_files \
+         WHERE id NOT IN (SELECT DISTINCT fileId FROM doc_mount_file_links)",
+        [],
+    )?;
+    Ok(changes)
+}

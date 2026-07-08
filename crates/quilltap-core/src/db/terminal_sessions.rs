@@ -354,3 +354,48 @@ pub fn mark_session_exited(
     )?;
     Ok(affected > 0)
 }
+
+// ============================================================================
+// P4.1d append-only additions (the maintenance sweep's candidate read)
+// ============================================================================
+
+/// The candidate read inside v4 `cleanupClosedSessions(olderThan)` (P4.1d): every
+/// session that has actually EXITED (`exitedAt` non-null) before the cutoff.
+///
+/// v4 runs `findByFilter({ exitedAt: { $lt: olderThan.toISOString() } })` (a SQL
+/// string `<` on the ISO text — NULL cells are excluded by SQL NULL semantics)
+/// and then re-checks in JS (`s.exitedAt != null && new Date(s.exitedAt).getTime()
+/// < cutoffMs`) so a backend that translates the filter differently can never
+/// reap a live PTY. The port reproduces both layers: the SQL `IS NOT NULL AND
+/// exitedAt < ?` prefilter plus the parsed-instant re-check via
+/// [`crate::clock::iso_to_ms`] (an unparseable `exitedAt` fails the re-check and
+/// is skipped, matching JS `NaN < cutoff` = false). Rows come back in the
+/// backend's default (insertion/rowid) order, matching v4 `findByFilter`.
+pub fn find_closed_before(
+    conn: &Connection,
+    cutoff_iso: &str,
+) -> Result<Vec<TerminalSessionRow>, DbError> {
+    let cutoff_ms = crate::clock::iso_to_ms(cutoff_iso);
+    let sql = format!(
+        "SELECT {SELECT_COLS} FROM terminal_sessions \
+         WHERE exitedAt IS NOT NULL AND exitedAt < ?1"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(params![cutoff_iso], row_from)?;
+    let mut out = Vec::new();
+    for r in rows {
+        let row = r?;
+        // The JS re-check: parse both instants; only a strictly-earlier exit
+        // qualifies (NaN — an unparseable timestamp — never does).
+        let qualifies = match (&row.exited_at, cutoff_ms) {
+            (Some(exited), Some(cutoff)) => {
+                crate::clock::iso_to_ms(exited).map(|e| e < cutoff) == Some(true)
+            }
+            _ => false,
+        };
+        if qualifies {
+            out.push(row);
+        }
+    }
+    Ok(out)
+}

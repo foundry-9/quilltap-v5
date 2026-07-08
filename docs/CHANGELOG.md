@@ -74,6 +74,49 @@ flush → posted row + `chat-update` broadcast), and re-verified
 shell-init alias/completions bootstrap (targets the Node launcher; needs the
 P4.3 `quilltap` binary), the WS route (P4.2), xterm.js (P4.6).
 
+P4.1d: the environment/cadence host-driver lane. The single-instance lock
+(`quilltap-host::lock` — v4 `instance-lock.ts`: PID-in-file with hostname
+disambiguation, atomic O_CREAT|O_EXCL create, re-entrant same-PID refresh,
+dead-PID stale claim, the different-host heartbeat-freshness rule, the
+capped history log, v4's exact file format so v4/v5 locks interoperate, and
+the launcher-compatible absent/corrupt/active/stale status classification
+for the P4.3 CLI verbs) is acquired at assembly, heartbeated every 60 s, and
+released on shutdown; a live conflict is a typed boot error, and a LOST lock
+stops the drivers then runs a configurable handler (default: exit 1, v4's
+shutdown). The four scheduler sweeps now run as stop-aware host loops (v4
+instrumentation order): LLM-log cleanup (immediate + 24 h), memory
+housekeeping (5-min grace + the 20 h recent-COMPLETED-scheduled-job
+short-circuit + 24 h), daily maintenance (grace + the `lastMaintenanceSweepAt`
+20 h window + 24 h), and the danger-scan enqueuer (the all-users-OFF start
+gate + immediate + 10 min). New core services: `scheduled_maintenance` (v4
+`runScheduledMaintenance` — the four independently-isolated sweeps + the
+end-of-pass stamp; the transcript-file unlink behind a `TranscriptStore`
+host seam) and `danger_scan` (v4 `runScheduledDangerScan` — the per-chat
+exempt/off-duty/sticky/grown gates, the controlledBy-filtered
+participant-profile-first-then-fallback resolution, the summary / >50 / <=50
+enqueue tree at priority -2). Ported the two missing repo ops the
+maintenance pass needs: `doc_mount_file_links::sweep_orphaned_files` and the
+terminal-session reaper read (`find_closed_before` + the
+`cleanup_closed_sessions` orchestration). `queue_service` gained
+`enqueue_context_summary` (plain enqueue, no dedupe) and
+`enqueue_chat_danger_classification_with_priority` (the -2 passthrough).
+`quilltap-host::env` adds the production `SelfInventoryEnv` (runtime-mode /
+docker / lima probes, the release-notes semver scan + changelog read, the
+mount-index degraded derivation, the flattened legacy fallback-pricing rows
+— the flat-env DEEPSEEK/Z_AI registry-default gap is a documented seam).
+Verified by two new differentials, both green against v4 at `2494a84b`: the
+danger scan (a 10-chat / 3-user gate-matrix fixture, minted-values
+`background_jobs` diff + the pre-check + result counts) and the whole
+maintenance pass (driving v4's REAL `runScheduledMaintenance` over a two-DB
+fixture — proving both new repo ops inside the real orchestration, the
+per-status job windows, the never-reap-FAILED/live-session rules, both
+transcript path forms + the ENOENT rule, and the stamp); the adjacent
+`terminal_sessions` / `background_jobs` / `maintenance_sweep` tier-2
+differentials re-verified green; plus lock unit tests, host cadence
+integration tests (conflict boot error, loss handler, the 20 h window across
+a re-boot, the danger gate + live enqueue), and core service self-tests.
+
+
 P4.1 kickoff: round drift check (v4 HEAD unchanged at the `2494a84b`
 baseline — no ported unit stale) and the four host-driver lane work orders
 written per the phase-4 decomposition (`docs/developer/porting/work-orders/

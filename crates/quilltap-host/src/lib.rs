@@ -15,17 +15,23 @@
 //! Transports (`quilltap-web`, `quilltap-cli`, `quilltap-tauri`) sit on top
 //! of the [`Host`]'s engine handle; they never reach past the boundary.
 //!
-//! The PTY host driver (P4.1c) lives in [`terminal`]: the session manager
-//! over `portable-pty`, the terminal WebSocket protocol types P4.2's route
-//! marshals, the Ariel flush drivers, and the production scrollback source.
-//!
-//! What is NOT here yet (the other P4.1 lanes): provider IO (the streaming
-//! composer), file bytes/image codecs, the scheduler sweeps' daily cadence,
-//! the instance lock. Job types whose handlers need those seams stay on the
-//! runner's loud fallback until their lane lands.
+//! The P4.1 host-driver lanes all live here now: **provider IO** (P4.1a —
+//! [`wire`], the reqwest `WireTransport`s, + [`providers`], the `ProviderIo`
+//! constructor bundle and the live pricing fetch); the **PTY host driver**
+//! (P4.1c — [`terminal`]: the session manager over `portable-pty`, the
+//! terminal WebSocket protocol types P4.2's route marshals, the Ariel flush
+//! drivers, and the production scrollback source); and the
+//! **environment/cadence lane** (P4.1d — the **single-instance lock**
+//! ([`lock`] — acquire on assemble, 60 s heartbeat, release on shutdown; a
+//! live conflict is a typed boot error), the **four scheduler sweeps**
+//! (LLM-log cleanup / memory housekeeping / daily maintenance / the
+//! danger-scan enqueuer, each stop-aware in `host`), and the **production
+//! `SelfInventoryEnv`** + runtime-mode probes ([`env`])).
 
+pub mod env;
 pub mod host;
 pub mod instances;
+pub mod lock;
 pub mod paths;
 pub mod providers;
 pub mod terminal;

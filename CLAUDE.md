@@ -4896,3 +4896,72 @@ writer is ported + verified), the WS route/upgrade (P4.2), xterm.js (P4.6).
 The exit frame's `signal` string is portable-pty's signal NAME (v4 sends
 node-pty's numeric signal stringified) — a documented host-tier divergence
 (the SPA consumes it loosely).
+
+**Phase 4 (P4.1d): the environment/cadence lane is DONE** (2026-07-08; work
+order `docs/developer/porting/work-orders/p4.1d-environment-cadence.md`; v4
+baseline `2494a84b`). **The single-instance lock** (`quilltap-host::lock`, v4
+`instance-lock.ts`) — PID-in-file (not `flock()` — VirtioFS/network mounts),
+hostname disambiguation across VM/container boundaries, atomic
+`O_CREAT|O_EXCL` create with the EEXIST re-read, re-entrant same-PID refresh,
+dead-PID stale claim, the different-host rule (a docker/lima/wsl2 lock with a
+heartbeat fresher than 5 min REFUSES, else stale-claims; a foreign LOCAL lock
+is always stale), the 50-entry history cap, and v4's exact pretty-JSON file
+format (a v4-Electron lock parses; the `absent|corrupt|active|stale|suspect`
+classification is shaped for P4.3's CLI verbs). Acquired in
+`HostAssembler::assemble` (a live conflict → `BootError::Assemble`, the typed
+boot error), heartbeated every 60 s by a host loop, released on shutdown
+(stop-flag-first so a release never reads as a loss); a LOST lock stops the
+drivers then runs `HostConfig::on_lock_lost` (default: exit 1 — v4's
+close-and-`process.exit(1)`). **The four scheduler sweeps** run as stop-aware
+host loops (v4 `instrumentation.ts` order): cleanup (immediate + 24 h),
+housekeeping (5-min grace, the 20 h recent-COMPLETED-`reason:'scheduled'`-job
+short-circuit via `find_recent_by_type`, 24 h), maintenance (grace + the
+`lastMaintenanceSweepAt` 20 h window + 24 h), and the danger scan (the
+all-users-OFF start gate — a check failure also skips — + immediate + 10 min).
+New core services: `services::scheduled_maintenance` (v4
+`runScheduledMaintenance` — four independently-isolated sweeps in order
+[finished jobs / stale-chat asset collapse / orphaned mount-index files /
+closed terminal sessions] + the end-of-pass stamp recorded regardless of
+per-sweep failures; the transcript unlink is the injected `TranscriptStore`
+seam, `FsTranscriptStore` in the host over `<base>/logs/terminals/<id>.log`)
+and `services::danger_scan` (v4 `runScheduledDangerScan` — the W4.8 deferral
+CLOSED: per-user resolved-mode gate, the per-chat
+exempt/off-duty/sticky-dangerous/safe-not-grown filter, the
+controlledBy-filtered participant-profile-first-then-fallback resolution, the
+summary → classification / no-summary->50 → CONTEXT_SUMMARY / ≤50 →
+classification tree at priority −2, per-chat enqueue failures swallowed).
+Ported the two missing repo ops: `doc_mount_file_links::sweep_orphaned_files`
+(the `NOT IN (SELECT fileId …)` reaper) and the terminal reaper
+(`terminal_sessions::find_closed_before` — both v4 guard layers: the SQL
+`$lt` prefilter + the parsed-instant re-check so a live PTY is never reaped —
++ `cleanup_closed_sessions`). `queue_service` gained `enqueue_context_summary`
+(plain enqueue, NO dedupe — faithful) +
+`enqueue_chat_danger_classification_with_priority` (v4's `options.priority ??
+-1` passthrough; the scan's −2). `quilltap-host::env` carries the production
+`SelfInventoryEnv` (runtime-mode over the paths.ts docker[+`/app`]/lima
+probes — kept DISTINCT from the lock's probe, which has no `/app` check —
+the release-notes semver scan + changelog read, mount-index-degraded derived
+from the `Db`, the flattened `LEGACY_FALLBACK_PRICING` rows; **documented
+seam:** the flat env's single `registry_default_context = 8192` falls through
+to the ported per-provider constant table, so DEEPSEEK/Z_AI models resolve
+8192 until the env goes provider-aware). Verified by TWO new differentials,
+green against v4 HEAD: `danger_scan_tier2_equivalence` (a 10-chat / 3-user
+gate-matrix fixture; the pre-check + result counts + the `background_jobs`
+dump in the minted-values form — the oracle neutralizes v4's job host via the
+`childCrashed` latch) and `maintenance_ops_tier2_equivalence` (drives v4's
+REAL `runScheduledMaintenance` over a two-DB fixture with BUILD-TIME-relative
+day-keyed rows [wall-clock-robust], proving both new repo ops inside the real
+orchestration: the 7-vs-30-day per-status job windows, FAILED-never-reaped,
+the live-session guard, both transcript path forms + the ENOENT
+not-counted rule, the orphan sweep, and the stamp — plus a fixture gotcha:
+`ChatSchema` carries a `.refine()`, so materialize `chats` via the repo's
+lazy `getCollection`, not `ensureCollection`). The adjacent
+`terminal_sessions` / `background_jobs` / `maintenance_sweep` tier-2
+differentials re-verified green against fresh oracles; lock unit tests +
+host-cadence integration tests (conflict boot error; loss handler with the
+drivers stopped; the maintenance 20 h window honored across a re-boot; the
+danger gate + a live enqueue) + service self-tests. **Tracked handoffs:**
+the launcher lock verbs + write-lock (P4.3, over `classify_lock_status`); the
+startup-conflict HTTP surface (P4.2); the flat-`SelfInventoryEnv`
+provider-awareness follow-up; the maintenance sweep's storage-bytes half
+stays lane b's FsSeam (called through the ported collapse).
