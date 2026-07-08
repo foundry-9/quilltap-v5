@@ -4574,8 +4574,57 @@ the startup-reconcile stamp is `lastMessageAt ?? runStartedAt ?? now` (a
 coalesce, NOT the spec's max — spec fixed); rollback-on-enqueue-failure
 leaves currentRunId + zeroed counters in place and manual start re-throws;
 resume re-enqueue has NO rollback guard; the manual-start
-`scheduleNextRunAt: null` explicit-write quirk. **Next: U4.4** (`step()` +
-the schedule tick + the runner dispatch rows + the LogContext threading).
+`scheduleNextRunAt: null` explicit-write quirk.
+
+**U4.4 (the capstone) is also DONE — Round 5 / Unit 4 / PHASE 3 IS
+COMPLETE** (2026-07-08). `enclave::step` ports `handleAutonomousRoomTurn` as
+the persisted one-transition `step()` (guards incl. the `(createdAt, id)`
+concurrent-sibling tie-break; the idle→running fallback + banner; pre-turn
+budget over the daily read + `last_local_midnight_iso` [jiff, injected tz];
+the grace/near-end branching over the U4.1 leaves; speaker selection over
+the ported turn manager with `userParticipantId=None`; `process_message`
+with the autonomous options + the run `LogContext`; the post-turn
+monotonic-max/+1 accounting pinned to the LOCAL snapshot with v4's
+buffered-read why-comments carried; milestones; the 9c fold on the
+participant-profile ?? default ?? first chain, UNtagged [outside the run
+scope, faithful]; re-enqueue) + `schedule_tick` (seed / stale-advance /
+fresh start / wedge heal) — **direct writes through `Db`** (decision #3
+REVISED: the v4 oracle side runs unforked, so the differential pins
+in-process direct-write semantics; `write_apply` keeps its own proof,
+re-verified). The LogContext gap is CLOSED (`log_chat_message_call`
+parameterized via `RunPrimaryStreamOptions`/`ProcessMessageInput.log_context`,
+default none — `primary_stream_tier3`/`orchestrator_tier3` regenerated
+green); the `autonomous_context_cap` context-manager clamp was found
+UNPLUMBED in v5 and closed (`BuildContextInput.autonomous_context_cap`, the
+shrink-only clamp on `budget_info.max_available`; `build_context_tier3`
+re-verified). The runner dispatch rows (`AUTONOMOUS_ROOM_TURN` [a
+host-composed step-runner closure; `step`'s future is non-`Send` via the
+finalizer's carina trait object, so the handler bridges on a dedicated
+thread] + `AUTONOMOUS_ROOM_SCHEDULE_TICK`) are live with v4's
+dispatcher-level post-`markFailed` reconcile hook, plus two runner E2E
+tests (tick → start → 3 turns → halfway → grace → `budget:turns` end; wedge
+heal + failure → resumable `paused`). **Three faithful-port findings** (all
+banked in the corpus, recorded in `enclave-engine.md`): (1) v4's
+`getTotalTokenUsageSince` `$ne:null` translator bug is REAL — the daily
+token sum is ALWAYS 0 on SQLite, the daily-budget gates never bind, ported
+broken-but-exact (probe committed); (2) `turn_error:` is dead code — v4's
+`handleSendMessage` stream shell swallows every error, a failed turn counts
++ re-enqueues (banked `stream_error_swallow`); (3) `suppressAutomaticImages`
+has NO consumer in v4 (declared, set, never read — nothing to plumb).
+Verified by `enclave_step_tier3_equivalence` — 19 calls / 20 chats / THREE
+DBs (main + mount-index + llm-logs), driving v4's REAL handlers with only
+the model boundaries mocked at `createLLMProvider` (zero canned misses =
+the full spine prompts match byte-for-byte); diffs `chats` + `chat_messages`
+(the Host announcements byte-exact, completing U4.1's composed-string
+proof) + `background_jobs` + `llm_logs` (12 run-tagged CHAT_MESSAGE + 11
+tagged distill rows vs the untagged fold rows — the LogContext proof,
+two-sided). Full workspace gate green (705 core tests; clippy `-D warnings`
+default + `native-transport`; fmt). **Standing follow-ups:** the
+provider-failover retry legs' LogContext (pinned none at the site, the
+pre-existing failover-log threading item); the real stream duration clock
+(`durationMs` 0). **Next: Phase 4** (transports + the Angular SPA + the
+host drivers — the fork/timer seams: the 60 s scheduler timer, the
+`FileBytesStore`/`ImageTranscoder`/fs seams, the HTTP transport).
 
 **Drift check (2026-07-08): v4 `6b6e39ad..6bf88959` (1 commit) audited — no
 ported unit is stale.** `6bf88959` ("The Green Room" — a status dialog

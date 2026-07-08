@@ -187,7 +187,7 @@ fn to_turnstate_participant(p: &Value) -> ParticipantView {
 }
 
 /// Build a [`participant_filters::ParticipantView`] from a marshaled participant.
-fn to_filter_participant(p: &Value) -> FilterParticipant {
+pub(crate) fn to_filter_participant(p: &Value) -> FilterParticipant {
     FilterParticipant {
         id: str_field(p, "id").unwrap_or_default().to_string(),
         status: parse_status(str_field(p, "status")),
@@ -197,7 +197,7 @@ fn to_filter_participant(p: &Value) -> FilterParticipant {
 }
 
 /// Build a [`select_speaker::SpeakerParticipant`] from a marshaled participant.
-fn to_speaker_participant(p: &Value) -> SpeakerParticipant {
+pub(crate) fn to_speaker_participant(p: &Value) -> SpeakerParticipant {
     SpeakerParticipant {
         id: str_field(p, "id").unwrap_or_default().to_string(),
         participant_type: str_field(p, "type").unwrap_or_default().to_string(),
@@ -211,7 +211,7 @@ fn to_speaker_participant(p: &Value) -> SpeakerParticipant {
 /// Build the [`MessageView`] list the turn machine reads from `getMessages`.
 /// Every returned row is a `type: 'message'` event (v4 filters to those before
 /// calling the turn manager).
-fn to_message_views(messages: &[Value]) -> Vec<MessageView> {
+pub(crate) fn to_message_views(messages: &[Value]) -> Vec<MessageView> {
     messages
         .iter()
         .filter(|m| str_field(m, "type") == Some("message"))
@@ -257,7 +257,7 @@ fn parse_turn_queue(chat: &Value) -> Vec<String> {
     }
 }
 
-fn participants_array(chat: &Value) -> Vec<Value> {
+pub(crate) fn participants_array(chat: &Value) -> Vec<Value> {
     chat.get("participants")
         .and_then(Value::as_array)
         .cloned()
@@ -274,7 +274,7 @@ fn json_ids(ids: &[String]) -> String {
 /// scalar directly). Only the given active-character participants' characters are
 /// fetched, one `findById` each (v4's per-participant read), dropping any that
 /// don't resolve.
-fn load_talkativeness_map(
+pub(crate) fn load_talkativeness_map(
     db: &Db,
     participants: &[&FilterParticipant],
 ) -> Result<HashMap<String, f64>, DbError> {
@@ -293,7 +293,7 @@ fn load_talkativeness_map(
 
 /// Read a character (vault-overlaid, v4 `repos.characters.findById`) — the nested
 /// main+mount read the vault overlay needs.
-fn read_character(db: &Db, id: &str) -> Result<Option<Value>, DbError> {
+pub(crate) fn read_character(db: &Db, id: &str) -> Result<Option<Value>, DbError> {
     let id = id.to_string();
     db.read_main(|main| {
         db.read_mount_index(|mount| crate::db::characters_read::find_by_id(main, mount, &id))

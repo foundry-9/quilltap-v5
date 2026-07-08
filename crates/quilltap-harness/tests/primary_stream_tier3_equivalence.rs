@@ -57,6 +57,7 @@ use quilltap_core::model::stream::{
     StreamingCompletionProvider,
 };
 use quilltap_core::services::chat_events::RecordingSink;
+use quilltap_core::services::llm_logging::LogContext;
 use quilltap_core::services::primary_stream::{
     self, find_previous_response_id, EffectiveProfile, PreservePartialOnError,
     RunPrimaryStreamOptions, StreamingState,
@@ -548,6 +549,8 @@ async fn primary_stream_tier3_matches_oracle() {
                     })
                     .collect();
                 let opts = RunPrimaryStreamOptions {
+                    // U4.4: the request-path default (none) — inert on this corpus.
+                    log_context: LogContext::none(),
                     chat_id: call.chat_id.clone().unwrap(),
                     user_id: spec.user_id.clone(),
                     chat: primary_stream::PrimaryStreamChat { is_paused: false },

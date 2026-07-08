@@ -336,9 +336,18 @@ Track them to closure as their subsystem lands:
    batch), W4.9a/b (image generation + photo trio) — has an agent-ready
    work order in [`work-orders/`](./work-orders/), with the batch table +
    execution rounds in [`chat-orchestration.md`](./chat-orchestration.md).
-4. Enclave engine (`step()` + `RunState` + driver seam) — after W4.8 +
-   W4.6b. Decomposed in [`enclave-engine.md`](./enclave-engine.md); work
-   order [`work-orders/u4-enclave-engine.md`](./work-orders/u4-enclave-engine.md).
+4. Enclave engine (`step()` + `RunState` + driver seam) — **DONE
+   (2026-07-08, Round 5, branch `u4-enclave`)**. All four sub-units ported
+   and differential-green: U4.1 milestones (+ the Phase-1 budget-port
+   currency regen, zero drift), U4.2 cron (croner 10.0.1 hand-rolled — the
+   Rust croner crate rejected; 124-row × 2-tz tier-1), U4.3
+   announce/lifecycle (38-op tier-2, the cron seam closed at integration),
+   U4.4 `step()` + schedule tick + the runner dispatch rows (the 19-call
+   tier-3 capstone driving v4's REAL `handleAutonomousRoomTurn` /
+   `…ScheduleTick`). Decomposed in [`enclave-engine.md`](./enclave-engine.md)
+   (see its revised decision #3 — the turn writes DIRECTLY through `Db`,
+   the `write_apply` routing superseded); work order
+   [`work-orders/u4-enclave-engine.md`](./work-orders/u4-enclave-engine.md).
 
 Each unit ships with its differential (tier-2, or tier-3 → tier-2 for
 model-dependent ones), the same accept-nothing-unverified discipline as Phases 1–2.

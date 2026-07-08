@@ -803,6 +803,13 @@ pub struct RunPrimaryStreamOptions<'a> {
     pub attached_files: Vec<super::recovery::AttachedFile>,
     pub original_message: Option<String>,
     pub pre_generated_assistant_message_id: String,
+    /// The [`LogContext`] stamped onto this stream's terminal `CHAT_MESSAGE`
+    /// `llm_logs` row (U4.4, spec decision #4 — the explicit replacement for
+    /// v4's ambient `runWithAutonomousRunId` AsyncLocalStorage). Defaults to
+    /// [`LogContext::none()`] (`Default`), so every pre-existing caller and
+    /// corpus is untouched; the autonomous turn passes
+    /// `LogContext { autonomous_run_id: Some(run_id) }`.
+    pub log_context: LogContext,
     /// The mutable streaming state (holds `effective_profile` / `effective_api_key`).
     pub state: &'a mut StreamingState,
 }
@@ -822,6 +829,12 @@ pub(crate) struct StreamLogCtx<'a> {
     /// v4's primary/tool-retry stream passes `characterId`; `restreamInto`
     /// (failover) passes none → the log row's `characterId` is NULL there.
     pub(crate) character_id: Option<&'a str>,
+    /// The explicit run-id context replacing v4's ambient `AsyncLocalStorage`
+    /// (U4.4, spec decision #4): the autonomous turn wraps its whole generation
+    /// in `runWithAutonomousRunId(runId, …)`, so the terminal `CHAT_MESSAGE`
+    /// row is stamped with `autonomousRunId` for per-run budget accounting.
+    /// `LogContext::none()` on every request-path caller.
+    pub(crate) log_context: &'a LogContext,
 }
 
 /// v4 `logLLMCall` on `chunk.done` (streaming.service.ts:405) — one `CHAT_MESSAGE`
@@ -829,8 +842,9 @@ pub(crate) struct StreamLogCtx<'a> {
 /// cacheUsage. `durationMs` is v4's `Date.now() - startTime`; the differential's
 /// frozen clock makes it 0 and the port has no injected stream clock (a real value
 /// needs a spine-injected clock — a tracked follow-up), so it emits 0. Awaited (the
-/// writer never throws — the watermark precedent); `LogContext::none()` on the
-/// request path.
+/// writer never throws — the watermark precedent). The [`LogContext`] rides
+/// [`StreamLogCtx::log_context`] — none on the request path, the run's id under
+/// an autonomous turn (U4.4).
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn log_chat_message_call(
     log: &StreamLogCtx<'_>,
@@ -907,7 +921,7 @@ pub(crate) async fn log_chat_message_call(
         request_hashes: Some(request_hashes),
         duration_ms: Some(0.0),
     };
-    let _ = log_llm_call(log.db, params_log, &LogContext::none()).await;
+    let _ = log_llm_call(log.db, params_log, log.log_context).await;
 }
 
 /// Drain a canned stream, applying every chunk to the state exactly as v4's
@@ -1053,6 +1067,7 @@ where
         // v4 logs the CHAT_MESSAGE `llm_logs` row against this id (the
         // pre-generated assistant message id).
         pre_generated_assistant_message_id,
+        log_context,
         state,
     } = opts;
 
@@ -1063,6 +1078,7 @@ where
         chat_id: &chat_id,
         message_id: &pre_generated_assistant_message_id,
         character_id: Some(&character_id),
+        log_context: &log_context,
     });
 
     sink.emit(ChatEvent::status(StatusPayload {
@@ -1120,6 +1136,7 @@ where
             chat_id: &chat_id,
             message_id: &pre_generated_assistant_message_id,
             character_id: None,
+            log_context: &log_context,
         });
 
         let retry_err = consume_stream(

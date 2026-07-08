@@ -4,6 +4,40 @@
 
 ### 5.0-dev
 
+U4.4 (enclave engine, the capstone) — PHASE 3 IS COMPLETE. enclave::step
+ports v4's handleAutonomousRoomTurn as the persisted one-transition step()
+(guard chain incl. the concurrent-sibling (createdAt, id) tie-break,
+idle-to-running fallback + banner, pre/post-turn budget gates with the
+grace-turn flow, speaker selection, process_message with the autonomous
+options and the run LogContext, monotonic token/turn accounting off the
+local snapshot, pacing milestones, the awaited summary fold outside the
+run scope, re-enqueue) plus schedule_tick (slot seed / stale-advance /
+fresh start / wedge heal). Writes go DIRECTLY through the single-writer Db
+(the enclave doc's write_apply routing superseded — the v4 oracle side
+runs unforked, so the differential pins in-process direct-write
+semantics; write_apply keeps its own re-verified proof). New llm_logs
+usage reads (get_total_token_usage_for_run / _since) — the latter ports
+v4's $ne:null translator bug byte-for-byte: on SQLite the daily-spend sum
+is ALWAYS 0, so the autonomous daily-token-budget gates never bind
+(empirically probed, banked in the corpus). Two more dead-code findings
+pinned: turn_error: is unreachable (v4's stream shell swallows every
+mid-turn error — a failed turn counts and re-enqueues, banked), and
+suppressAutomaticImages has no consumer in v4. The LogContext threading
+gap is closed (log_chat_message_call parameterized, default none —
+primary_stream/orchestrator tier-3s regenerated inert), and the
+autonomous_context_cap context-manager clamp — never plumbed in v5 — is
+wired (shrink-only clamp on the context budget; build_context tier-3
+re-verified). Job-runner dispatch rows for AUTONOMOUS_ROOM_TURN /
+_SCHEDULE_TICK are live (the turn handler bridges step's non-Send future
+on a dedicated thread) with the dispatcher-level failed-turn reconcile
+hook and two runner end-to-end tests. Verified by
+enclave_step_tier3_equivalence: 19 calls / 20 chats across all three DBs,
+driving v4's real handlers with only the model boundaries mocked; diffs
+chats + chat_messages (Host announcements byte-exact) + background_jobs +
+llm_logs (run-tagged turn/distill rows vs untagged fold rows). Full
+workspace gate green (705 core tests, clippy -D warnings on default and
+native-transport, fmt). Versions: core 0.0.137, harness 0.0.131.
+
 U4.1–U4.3 (enclave engine, the parallel phase): the first three sub-units of
 the autonomous-room ("enclave") engine, each with its differential green
 against v4 HEAD `6bf88959`. New module family `quilltap-core::enclave`.

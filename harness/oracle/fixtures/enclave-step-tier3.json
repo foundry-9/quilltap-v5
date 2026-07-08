@@ -1,0 +1,1112 @@
+{
+ "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+ "seedTimestamp": "2026-01-01T00:00:00.000Z",
+ "baseMs": 1767326645000,
+ "stepMs": 600000,
+ "user1": "e18e05bc-63e8-4539-8a85-719b7a508850",
+ "user2": "f2222222-2222-4222-8222-222222222222",
+ "connectionProfile": {
+  "id": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221",
+  "name": "Primary",
+  "provider": "ANTHROPIC",
+  "modelName": "claude-sonnet"
+ },
+ "chatSettings": {
+  "id": "475d8e74-4bdc-4d46-a9c1-62c382b76116",
+  "dailyTokenBudget": 500
+ },
+ "characters": [
+  {
+   "id": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+   "name": "Ada",
+   "description": "A methodical analyst.",
+   "talkativeness": 0.5,
+   "connectionProfileId": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221"
+  },
+  {
+   "id": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+   "name": "Byron",
+   "description": "A romantic conversationalist.",
+   "talkativeness": 0.5,
+   "connectionProfileId": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221"
+  }
+ ],
+ "chats": [
+  {
+   "id": "dddddddd-0000-4000-8000-000000000001",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "title": "Daily broken zero",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000001",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000001",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ccccccc0-0000-4000-8000-000001000001",
+     "role": "ASSISTANT",
+     "content": "Opening remark 1.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000001"
+    }
+   ],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "running",
+    "currentRunId": "aaaaaaa1-0000-4000-8000-000000000001",
+    "runStartedAt": "2026-01-01T00:00:00.000Z"
+   }
+  },
+  {
+   "id": "dddddddd-0000-4000-8000-000000000002",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "title": "Turns end",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000002",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000002",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ccccccc0-0000-4000-8000-000002000001",
+     "role": "ASSISTANT",
+     "content": "Opening remark 2.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000002"
+    }
+   ],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "running",
+    "currentRunId": "aaaaaaa2-0000-4000-8000-000000000002",
+    "runStartedAt": "2026-01-02T04:13:15.400Z",
+    "budgetMaxTurns": 2,
+    "runTurnsConsumed": 1,
+    "runMilestonesAnnounced": 3
+   }
+  },
+  {
+   "id": "dddddddd-0000-4000-8000-000000000003",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "title": "Tokens end",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000003",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000003",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ccccccc0-0000-4000-8000-000003000001",
+     "role": "ASSISTANT",
+     "content": "Opening remark 3.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000003"
+    }
+   ],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "running",
+    "currentRunId": "aaaaaaa3-0000-4000-8000-000000000003",
+    "runStartedAt": "2026-01-02T04:22:04.600Z",
+    "budgetMaxTokens": 100,
+    "runMilestonesAnnounced": 3
+   }
+  },
+  {
+   "id": "dddddddd-0000-4000-8000-000000000004",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "title": "Cache-hit tokens end",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000004",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000004",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ccccccc0-0000-4000-8000-000004000001",
+     "role": "ASSISTANT",
+     "content": "Opening remark 4.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000004"
+    }
+   ],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "running",
+    "currentRunId": "aaaaaaa4-0000-4000-8000-000000000004",
+    "runStartedAt": "2026-01-02T04:33:34.600Z",
+    "budgetMaxTokens": 100,
+    "budgetExcludeCacheHits": 0,
+    "runMilestonesAnnounced": 3
+   }
+  },
+  {
+   "id": "dddddddd-0000-4000-8000-000000000005",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "title": "Wall clock pre end",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000005",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000005",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ccccccc0-0000-4000-8000-000005000001",
+     "role": "ASSISTANT",
+     "content": "Opening remark 5.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000005"
+    }
+   ],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "running",
+    "currentRunId": "aaaaaaa5-0000-4000-8000-000000000005",
+    "runStartedAt": "2026-01-02T04:42:25.000Z",
+    "budgetMaxWallClockMs": 60000,
+    "scheduleCron": "0 * * * *",
+    "runMilestonesAnnounced": 2
+   }
+  },
+  {
+   "id": "dddddddd-0000-4000-8000-000000000006",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "title": "Grace pre",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000006",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000006",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ccccccc0-0000-4000-8000-000006000001",
+     "role": "ASSISTANT",
+     "content": "Opening remark 6.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000006"
+    }
+   ],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "running",
+    "currentRunId": "aaaaaaa6-0000-4000-8000-000000000006",
+    "runStartedAt": "2026-01-02T05:03:04.600Z",
+    "budgetMaxTurns": 1,
+    "runTurnsConsumed": 1
+   }
+  },
+  {
+   "id": "dddddddd-0000-4000-8000-000000000007",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "title": "Grace post vault",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000007",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000007",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ccccccc0-0000-4000-8000-000007000001",
+     "role": "ASSISTANT",
+     "content": "Opening remark 7.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000007"
+    }
+   ],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "running",
+    "currentRunId": "aaaaaaa7-0000-4000-8000-000000000007",
+    "runStartedAt": "2026-01-01T00:00:00.000Z",
+    "budgetMaxTurns": 1
+   }
+  },
+  {
+   "id": "dddddddd-0000-4000-8000-000000000008",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "title": "Halfway",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000008",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000008",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ccccccc0-0000-4000-8000-000008000001",
+     "role": "ASSISTANT",
+     "content": "Opening remark 8.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000008"
+    }
+   ],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "running",
+    "currentRunId": "aaaaaaa8-0000-4000-8000-000000000008",
+    "runStartedAt": "2026-01-01T00:00:00.000Z",
+    "budgetMaxTurns": 4,
+    "runTurnsConsumed": 1
+   }
+  },
+  {
+   "id": "dddddddd-0000-4000-8000-000000000009",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "title": "Near end vault",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000009",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000009",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ccccccc0-0000-4000-8000-000009000001",
+     "role": "ASSISTANT",
+     "content": "Opening remark 9.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000009"
+    }
+   ],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "running",
+    "currentRunId": "aaaaaaa9-0000-4000-8000-000000000009",
+    "runStartedAt": "2026-01-01T00:00:00.000Z",
+    "budgetMaxTurns": 20,
+    "runTurnsConsumed": 18
+   }
+  },
+  {
+   "id": "dddddddd-0000-4000-8000-000000000010",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "title": "Stale run",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000010",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000010",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ccccccc0-0000-4000-8000-000010000001",
+     "role": "ASSISTANT",
+     "content": "Opening remark 10.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000010"
+    }
+   ],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "running",
+    "currentRunId": "aaaaaaa0-0000-4000-8000-000000000090",
+    "runStartedAt": "2026-01-01T00:00:00.000Z"
+   }
+  },
+  {
+   "id": "dddddddd-0000-4000-8000-000000000011",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "title": "Sibling yield",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000011",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000011",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ccccccc0-0000-4000-8000-000011000001",
+     "role": "ASSISTANT",
+     "content": "Opening remark 11.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000011"
+    }
+   ],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "running",
+    "currentRunId": "aaaaaaa1-0000-4000-8000-000000000011",
+    "runStartedAt": "2026-01-01T00:00:00.000Z"
+   }
+  },
+  {
+   "id": "dddddddd-0000-4000-8000-000000000012",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "title": "Paused room",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000012",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000012",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ccccccc0-0000-4000-8000-000012000001",
+     "role": "ASSISTANT",
+     "content": "Opening remark 12.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000012"
+    }
+   ],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "paused",
+    "currentRunId": "aaaaaaa2-0000-4000-8000-000000000012",
+    "runStartedAt": "2026-01-01T00:00:00.000Z"
+   }
+  },
+  {
+   "id": "dddddddd-0000-4000-8000-000000000013",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "title": "Idle fallback",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000013",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000013",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ccccccc0-0000-4000-8000-000013000001",
+     "role": "ASSISTANT",
+     "content": "Opening remark 13.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000013"
+    }
+   ],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "idle",
+    "currentRunId": "aaaaaaa3-0000-4000-8000-000000000013",
+    "runStartedAt": "2026-01-01T00:00:00.000Z",
+    "runTurnsConsumed": 7,
+    "runTokensConsumed": 7000,
+    "runMilestonesAnnounced": 3,
+    "budgetMaxTokens": 1000000
+   }
+  },
+  {
+   "id": "dddddddd-0000-4000-8000-000000000014",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "title": "No speaker",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000014",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "removed"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000014",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "removed"
+    }
+   ],
+   "messages": [],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "running",
+    "currentRunId": "aaaaaaa4-0000-4000-8000-000000000014",
+    "runStartedAt": "2026-01-01T00:00:00.000Z"
+   }
+  },
+  {
+   "id": "dddddddd-0000-4000-8000-000000000015",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "title": "Stream error",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000015",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000015",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ccccccc0-0000-4000-8000-000015000001",
+     "role": "ASSISTANT",
+     "content": "Opening remark 15.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000015"
+    }
+   ],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "running",
+    "currentRunId": "aaaaaaa5-0000-4000-8000-000000000015",
+    "runStartedAt": "2026-01-01T00:00:00.000Z"
+   }
+  },
+  {
+   "id": "dddddddd-0000-4000-8000-000000000016",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "title": "Fold room",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000016",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000016",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ccccccc0-0000-4000-8000-000016000001",
+     "role": "ASSISTANT",
+     "content": "Fold seed line 1.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000016"
+    },
+    {
+     "id": "ccccccc0-0000-4000-8000-000016000002",
+     "role": "ASSISTANT",
+     "content": "Fold seed line 2.",
+     "participantId": "bbbbbbb2-0000-4000-8000-000000000016"
+    },
+    {
+     "id": "ccccccc0-0000-4000-8000-000016000003",
+     "role": "ASSISTANT",
+     "content": "Fold seed line 3.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000016"
+    },
+    {
+     "id": "ccccccc0-0000-4000-8000-000016000004",
+     "role": "ASSISTANT",
+     "content": "Fold seed line 4.",
+     "participantId": "bbbbbbb2-0000-4000-8000-000000000016"
+    },
+    {
+     "id": "ccccccc0-0000-4000-8000-000016000005",
+     "role": "ASSISTANT",
+     "content": "Fold seed line 5.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000016"
+    },
+    {
+     "id": "ccccccc0-0000-4000-8000-000016000006",
+     "role": "ASSISTANT",
+     "content": "Fold seed line 6.",
+     "participantId": "bbbbbbb2-0000-4000-8000-000000000016"
+    },
+    {
+     "id": "ccccccc0-0000-4000-8000-000016000007",
+     "role": "ASSISTANT",
+     "content": "Fold seed line 7.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000016"
+    },
+    {
+     "id": "ccccccc0-0000-4000-8000-000016000008",
+     "role": "ASSISTANT",
+     "content": "Fold seed line 8.",
+     "participantId": "bbbbbbb2-0000-4000-8000-000000000016"
+    },
+    {
+     "id": "ccccccc0-0000-4000-8000-000016000009",
+     "role": "ASSISTANT",
+     "content": "Fold seed line 9.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000016"
+    },
+    {
+     "id": "ccccccc0-0000-4000-8000-000016000010",
+     "role": "ASSISTANT",
+     "content": "Fold seed line 10.",
+     "participantId": "bbbbbbb2-0000-4000-8000-000000000016"
+    },
+    {
+     "id": "ccccccc0-0000-4000-8000-000016000011",
+     "role": "ASSISTANT",
+     "content": "Fold seed line 11.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000016"
+    }
+   ],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "running",
+    "currentRunId": "aaaaaaa6-0000-4000-8000-000000000016",
+    "runStartedAt": "2026-01-01T00:00:00.000Z"
+   }
+  },
+  {
+   "id": "dddddddd-0000-4000-8000-000000000021",
+   "userId": "f2222222-2222-4222-8222-222222222222",
+   "title": "Tick seed",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000021",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000021",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "active"
+    }
+   ],
+   "messages": [],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "idle",
+    "scheduleCron": "*/15 * * * *"
+   }
+  },
+  {
+   "id": "dddddddd-0000-4000-8000-000000000022",
+   "userId": "f2222222-2222-4222-8222-222222222222",
+   "title": "Tick stale",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000022",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000022",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "active"
+    }
+   ],
+   "messages": [],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "idle",
+    "scheduleCron": "0 3 * * *",
+    "scheduleNextRunAt": "2026-01-01T06:54:05.000Z"
+   }
+  },
+  {
+   "id": "dddddddd-0000-4000-8000-000000000023",
+   "userId": "f2222222-2222-4222-8222-222222222222",
+   "title": "Tick fresh",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000023",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000023",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "active"
+    }
+   ],
+   "messages": [],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "idle",
+    "scheduleCron": "*/15 * * * *",
+    "scheduleNextRunAt": "2026-01-02T06:53:05.000Z"
+   }
+  },
+  {
+   "id": "dddddddd-0000-4000-8000-000000000024",
+   "userId": "f2222222-2222-4222-8222-222222222222",
+   "title": "Tick wedged",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000024",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000024",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "active"
+    }
+   ],
+   "messages": [],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "running",
+    "currentRunId": "aaaaaaa4-0000-4000-8000-000000000024"
+   }
+  }
+ ],
+ "siblingJob": {
+  "id": "00000000-0000-4000-8000-0000000000ab",
+  "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+  "type": "AUTONOMOUS_ROOM_TURN",
+  "status": "PROCESSING",
+  "payload": {
+   "chatId": "dddddddd-0000-4000-8000-000000000011",
+   "runId": "aaaaaaa1-0000-4000-8000-000000000011"
+  },
+  "createdAt": "2026-01-02T05:54:00.000Z"
+ },
+ "llmLogRows": [
+  {
+   "id": "11111111-0000-4000-8000-000000000301",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "chatId": "dddddddd-0000-4000-8000-000000000003",
+   "autonomousRunId": "aaaaaaa3-0000-4000-8000-000000000003",
+   "usage": {
+    "promptTokens": 80,
+    "completionTokens": 20,
+    "totalTokens": 100
+   },
+   "createdAt": "2026-01-02T04:23:05.000Z"
+  },
+  {
+   "id": "11111111-0000-4000-8000-000000000401",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "chatId": "dddddddd-0000-4000-8000-000000000004",
+   "autonomousRunId": "aaaaaaa4-0000-4000-8000-000000000004",
+   "usage": {
+    "promptTokens": 40,
+    "completionTokens": 10,
+    "totalTokens": 50
+   },
+   "cacheUsage": {
+    "cacheReadInputTokens": 60
+   },
+   "createdAt": "2026-01-02T04:33:05.000Z"
+  },
+  {
+   "id": "11111111-0000-4000-8000-000000000001",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "usage": {
+    "promptTokens": 5000,
+    "completionTokens": 5000,
+    "totalTokens": 10000
+   },
+   "createdAt": "2026-01-02T02:00:00.000Z"
+  }
+ ],
+ "calls": [
+  {
+   "name": "daily_broken_zero_reenqueue",
+   "kind": "turn",
+   "chatId": "dddddddd-0000-4000-8000-000000000001",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "runId": "aaaaaaa1-0000-4000-8000-000000000001",
+   "jobId": "eeeeeeee-0000-4000-8000-000000000000",
+   "jobCreatedAt": "2026-01-02T04:04:00.000Z",
+   "streamLabel": "daily_broken_zero_reenqueue",
+   "anchorMs": 1767326645000
+  },
+  {
+   "name": "budget_turns_end",
+   "kind": "turn",
+   "chatId": "dddddddd-0000-4000-8000-000000000002",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "runId": "aaaaaaa2-0000-4000-8000-000000000002",
+   "jobId": "eeeeeeee-0000-4000-8000-000000000001",
+   "jobCreatedAt": "2026-01-02T04:14:00.000Z",
+   "streamLabel": "budget_turns_end",
+   "anchorMs": 1767327245000
+  },
+  {
+   "name": "budget_tokens_end",
+   "kind": "turn",
+   "chatId": "dddddddd-0000-4000-8000-000000000003",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "runId": "aaaaaaa3-0000-4000-8000-000000000003",
+   "jobId": "eeeeeeee-0000-4000-8000-000000000002",
+   "jobCreatedAt": "2026-01-02T04:24:00.000Z",
+   "streamLabel": "budget_tokens_end",
+   "anchorMs": 1767327845000
+  },
+  {
+   "name": "budget_tokens_cachehits",
+   "kind": "turn",
+   "chatId": "dddddddd-0000-4000-8000-000000000004",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "runId": "aaaaaaa4-0000-4000-8000-000000000004",
+   "jobId": "eeeeeeee-0000-4000-8000-000000000003",
+   "jobCreatedAt": "2026-01-02T04:34:00.000Z",
+   "streamLabel": "budget_tokens_cachehits",
+   "anchorMs": 1767328445000
+  },
+  {
+   "name": "budget_time_pre_end",
+   "kind": "turn",
+   "chatId": "dddddddd-0000-4000-8000-000000000005",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "runId": "aaaaaaa5-0000-4000-8000-000000000005",
+   "jobId": "eeeeeeee-0000-4000-8000-000000000004",
+   "jobCreatedAt": "2026-01-02T04:44:00.000Z",
+   "streamLabel": null,
+   "anchorMs": 1767329045000
+  },
+  {
+   "name": "grace_pre_grant",
+   "kind": "turn",
+   "chatId": "dddddddd-0000-4000-8000-000000000006",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "runId": "aaaaaaa6-0000-4000-8000-000000000006",
+   "jobId": "eeeeeeee-0000-4000-8000-000000000005",
+   "jobCreatedAt": "2026-01-02T04:54:00.000Z",
+   "streamLabel": null,
+   "anchorMs": 1767329645000
+  },
+  {
+   "name": "grace_completion",
+   "kind": "turn",
+   "chatId": "dddddddd-0000-4000-8000-000000000006",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "runId": "aaaaaaa6-0000-4000-8000-000000000006",
+   "jobId": "eeeeeeee-0000-4000-8000-000000000006",
+   "jobCreatedAt": "2026-01-02T05:04:00.000Z",
+   "streamLabel": "grace_completion",
+   "anchorMs": 1767330245000
+  },
+  {
+   "name": "grace_post_vault",
+   "kind": "turn",
+   "chatId": "dddddddd-0000-4000-8000-000000000007",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "runId": "aaaaaaa7-0000-4000-8000-000000000007",
+   "jobId": "eeeeeeee-0000-4000-8000-000000000007",
+   "jobCreatedAt": "2026-01-02T05:14:00.000Z",
+   "streamLabel": "grace_post_vault",
+   "anchorMs": 1767330845000
+  },
+  {
+   "name": "milestone_halfway",
+   "kind": "turn",
+   "chatId": "dddddddd-0000-4000-8000-000000000008",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "runId": "aaaaaaa8-0000-4000-8000-000000000008",
+   "jobId": "eeeeeeee-0000-4000-8000-000000000008",
+   "jobCreatedAt": "2026-01-02T05:24:00.000Z",
+   "streamLabel": "milestone_halfway",
+   "anchorMs": 1767331445000
+  },
+  {
+   "name": "milestone_nearend_vault",
+   "kind": "turn",
+   "chatId": "dddddddd-0000-4000-8000-000000000009",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "runId": "aaaaaaa9-0000-4000-8000-000000000009",
+   "jobId": "eeeeeeee-0000-4000-8000-000000000009",
+   "jobCreatedAt": "2026-01-02T05:34:00.000Z",
+   "streamLabel": "milestone_nearend_vault",
+   "anchorMs": 1767332045000
+  },
+  {
+   "name": "stale_run",
+   "kind": "turn",
+   "chatId": "dddddddd-0000-4000-8000-000000000010",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "runId": "aaaaaaa0-0000-4000-8000-000000000010",
+   "jobId": "eeeeeeee-0000-4000-8000-000000000010",
+   "jobCreatedAt": "2026-01-02T05:44:00.000Z",
+   "streamLabel": null,
+   "anchorMs": 1767332645000
+  },
+  {
+   "name": "sibling_tie_yield",
+   "kind": "turn",
+   "chatId": "dddddddd-0000-4000-8000-000000000011",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "runId": "aaaaaaa1-0000-4000-8000-000000000011",
+   "jobId": "ffffffff-0000-4000-8000-000000000011",
+   "jobCreatedAt": "2026-01-02T05:54:00.000Z",
+   "streamLabel": null,
+   "anchorMs": 1767333245000
+  },
+  {
+   "name": "paused_not_active",
+   "kind": "turn",
+   "chatId": "dddddddd-0000-4000-8000-000000000012",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "runId": "aaaaaaa2-0000-4000-8000-000000000012",
+   "jobId": "eeeeeeee-0000-4000-8000-000000000012",
+   "jobCreatedAt": "2026-01-02T06:04:00.000Z",
+   "streamLabel": null,
+   "anchorMs": 1767333845000
+  },
+  {
+   "name": "idle_fallback",
+   "kind": "turn",
+   "chatId": "dddddddd-0000-4000-8000-000000000013",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "runId": "aaaaaaa3-0000-4000-8000-000000000013",
+   "jobId": "eeeeeeee-0000-4000-8000-000000000013",
+   "jobCreatedAt": "2026-01-02T06:14:00.000Z",
+   "streamLabel": "idle_fallback",
+   "anchorMs": 1767334445000
+  },
+  {
+   "name": "no_speaker_error",
+   "kind": "turn",
+   "chatId": "dddddddd-0000-4000-8000-000000000014",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "runId": "aaaaaaa4-0000-4000-8000-000000000014",
+   "jobId": "eeeeeeee-0000-4000-8000-000000000014",
+   "jobCreatedAt": "2026-01-02T06:24:00.000Z",
+   "streamLabel": null,
+   "anchorMs": 1767335045000
+  },
+  {
+   "name": "stream_error_swallow",
+   "kind": "turn",
+   "chatId": "dddddddd-0000-4000-8000-000000000015",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "runId": "aaaaaaa5-0000-4000-8000-000000000015",
+   "jobId": "eeeeeeee-0000-4000-8000-000000000015",
+   "jobCreatedAt": "2026-01-02T06:34:00.000Z",
+   "streamLabel": "stream_error_swallow",
+   "anchorMs": 1767335645000
+  },
+  {
+   "name": "fold_fires",
+   "kind": "turn",
+   "chatId": "dddddddd-0000-4000-8000-000000000016",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "runId": "aaaaaaa6-0000-4000-8000-000000000016",
+   "jobId": "eeeeeeee-0000-4000-8000-000000000016",
+   "jobCreatedAt": "2026-01-02T06:44:00.000Z",
+   "streamLabel": "fold_fires",
+   "anchorMs": 1767336245000
+  },
+  {
+   "name": "tick_first",
+   "kind": "tick",
+   "userId": "f2222222-2222-4222-8222-222222222222",
+   "anchorMs": 1767336845000
+  },
+  {
+   "name": "tick_second",
+   "kind": "tick",
+   "userId": "f2222222-2222-4222-8222-222222222222",
+   "anchorMs": 1767337445000
+  }
+ ],
+ "streams": {
+  "daily_broken_zero_reenqueue": [
+   [
+    {
+     "content": "Quite so; the ledgers agree."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 40,
+      "completionTokens": 8,
+      "totalTokens": 48
+     }
+    }
+   ]
+  ],
+  "budget_turns_end": [
+   [
+    {
+     "content": "A final word, then."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 30,
+      "completionTokens": 6,
+      "totalTokens": 36
+     }
+    }
+   ]
+  ],
+  "budget_tokens_end": [
+   [
+    {
+     "content": "Spending the last of the allowance."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 5,
+      "totalTokens": 15
+     }
+    }
+   ]
+  ],
+  "budget_tokens_cachehits": [
+   [
+    {
+     "content": "Counting every token now."
+    },
+    {
+     "done": true
+    }
+   ]
+  ],
+  "grace_completion": [
+   [
+    {
+     "content": "One last word, and the scene closes."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 20,
+      "completionTokens": 4,
+      "totalTokens": 24
+     }
+    }
+   ]
+  ],
+  "grace_post_vault": [
+   [
+    {
+     "content": "Vaulting straight past the warning band."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 15,
+      "completionTokens": 3,
+      "totalTokens": 18
+     }
+    }
+   ]
+  ],
+  "milestone_halfway": [
+   [
+    {
+     "content": "Midway through our exchanges."
+    },
+    {
+     "done": true
+    }
+   ]
+  ],
+  "milestone_nearend_vault": [
+   [
+    {
+     "content": "The pocket-watch ticks on."
+    },
+    {
+     "done": true
+    }
+   ]
+  ],
+  "idle_fallback": [
+   [
+    {
+     "content": "Rising to the occasion."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 25,
+      "completionTokens": 5,
+      "totalTokens": 30
+     }
+    }
+   ]
+  ],
+  "stream_error_swallow": [
+   [
+    {
+     "error": "model exploded"
+    }
+   ]
+  ],
+  "fold_fires": [
+   [
+    {
+     "content": "And that makes a dozen."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 35,
+      "completionTokens": 7,
+      "totalTokens": 42
+     }
+    }
+   ]
+  ]
+ },
+ "cheapCompletion": {
+  "response": "{\"keywords\": [\"salon\"], \"paraphrase\": \"the salon conversation\"}",
+  "usage": {
+   "promptTokens": 12,
+   "completionTokens": 6,
+   "totalTokens": 18
+  }
+ },
+ "foldCompletion": {
+  "response": "The company traded a dozen observations in the salon.",
+  "usage": {
+   "promptTokens": 60,
+   "completionTokens": 12,
+   "totalTokens": 72
+  }
+ }
+}

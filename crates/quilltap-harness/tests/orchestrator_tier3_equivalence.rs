@@ -729,6 +729,8 @@ fn orchestrator_tier3_matches_oracle() {
 
         let make_input = |chat_id: &str, content: &str, continue_mode: bool, resp: Option<&str>| {
             ProcessMessageInput {
+                // U4.4: the request-path default (none) — inert on this corpus.
+                log_context: LogContext::none(),
                 chat_id: chat_id.to_string(),
                 user_id: spec.user_id.clone(),
                 options: SendMessageOptions {
@@ -775,6 +777,7 @@ fn orchestrator_tier3_matches_oracle() {
                     let frozen = spec.frozen_now_ms;
                     let offset = spec.local_offset_minutes;
                     let make_chain_input = move |pid: String| ProcessMessageInput {
+                        log_context: LogContext::none(),
                         chat_id: chat_id.clone(),
                         user_id: user_id.clone(),
                         options: SendMessageOptions {

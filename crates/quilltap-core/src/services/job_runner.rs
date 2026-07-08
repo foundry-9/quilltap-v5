@@ -408,15 +408,49 @@ impl JobRunner {
             }
             JobOutcome::Failed(message) => {
                 let id = job.id.clone();
+                let msg = message.clone();
                 let _ = self
                     .inner
                     .db
                     .write(move |writers| {
                         BackgroundJobsRepository::new(writers.main().connection())
-                            .mark_failed(&id, &message)
+                            .mark_failed(&id, &msg)
                             .map(|_| ())
                     })
                     .await;
+                // v4 job-dispatcher.ts:230/248 (`reconcileFailedAutonomousTurnIfNeeded`):
+                // on the failure of an AUTONOMOUS_ROOM_TURN job, nudge its room out
+                // of a silent `running` wedge — the single-attempt turn job going
+                // FAILED/DEAD would otherwise leave the chat `running` with no turn
+                // in flight (the schedule tick's start filter excludes `running`).
+                // Best-effort and self-contained (the reconcile swallows its own
+                // errors); ordered AFTER markFailed, as in v4. Production system
+                // clock/UUID — v4's dispatcher uses the real Date/randomUUID (the
+                // differential never drives this path; the U4.3 tier-2 pins the
+                // reconcile's own DB effect with an injected clock).
+                if job.job_type == "AUTONOMOUS_ROOM_TURN" {
+                    let payload: Value = serde_json::from_str(&job.payload).unwrap_or(Value::Null);
+                    let chat_id = payload.get("chatId").and_then(Value::as_str);
+                    let run_id = payload.get("runId").and_then(Value::as_str);
+                    let now_ms = crate::enclave::announce::system_now_ms;
+                    let mint = crate::enclave::announce::system_mint_uuid;
+                    let never_fires = |_: &str, _: i64| Ok(None);
+                    let deps = crate::enclave::lifecycle::LifecycleDeps {
+                        now_ms: &now_ms,
+                        mint_uuid: &mint,
+                        // The reconcile never evaluates cron; a dummy seam keeps
+                        // the deps construction local.
+                        next_occurrence: &never_fires,
+                    };
+                    crate::enclave::lifecycle::reconcile_failed_autonomous_turn(
+                        &self.inner.db,
+                        &deps,
+                        chat_id,
+                        run_id,
+                        &message,
+                    )
+                    .await;
+                }
             }
         }
     }

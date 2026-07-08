@@ -1,5 +1,17 @@
 # Work order: Unit 4 — the enclave engine
 
+> **COMPLETED 2026-07-08 (Round 5, branch `u4-enclave`).** Every deliverable
+> landed except two consciously superseded: the "main-primary `ApplyHost`
+> trace assertion" (decision #3 was revised at U4.4 to direct writes —
+> `write_apply_equivalence` re-verified instead; see `enclave-engine.md`)
+> and the orchestrator autonomous spine case (the capstone drives v4's REAL
+> `handleSendMessage` with the autonomous flags inside
+> `handleAutonomousRoomTurn`, so a duplicate orchestrator-corpus case adds
+> nothing — the packet's own escape hatch). `suppress_automatic_images`
+> turned out to have NO consumer in v4 (nothing to plumb); the
+> `autonomous_context_cap` context-manager clamp turned out to be UNPLUMBED
+> in v5 and was closed here.
+
 **Size: one Opus session** (internal parallelization: U4.1 + U4.2 + U4.3 are
 disjoint and can be sub-agented; U4.4 serialized after). **Prerequisites
 (ALL met as of the W4.11 cleanup round, 2026-07-08):** W4.8 (the job

@@ -174,12 +174,19 @@ where
 
     // v4 gates the wrapper's log on `if (userId)`; `restreamInto` always passes a
     // (real) userId, and no `characterId`.
+    //
+    // LogContext: none. Threading a run-id context into the failover legs rides
+    // the standing spine follow-up (W4.11b — the orchestrator does not wire
+    // failover logging at all yet, so no autonomous caller reaches this today);
+    // when that threading lands, `FailoverLogCtx` grows the context field.
+    let none_ctx = crate::services::llm_logging::LogContext::none();
     let stream_log = log.filter(|_| !user_id.is_empty()).map(|l| StreamLogCtx {
         db: l.db,
         user_id: &user_id,
         chat_id: &chat_id,
         message_id: l.message_id,
         character_id: None,
+        log_context: &none_ctx,
     });
 
     let mut flags = EmptyResponseRecoveryFlags::default();

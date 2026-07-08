@@ -269,6 +269,9 @@ where
         // in its differential).
         cheap_llm_selection: None,
         uncensored_fallback: None,
+        // Not an autonomous turn — no per-turn context cap (v4's regenerate path
+        // never carries `autonomousContextCap`).
+        autonomous_context_cap: None,
     });
 
     // The per-character opaque-anywhere transparency map (v4's wrapper reads each

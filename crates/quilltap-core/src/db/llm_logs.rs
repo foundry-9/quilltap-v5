@@ -558,6 +558,137 @@ impl<'c> LLMLogsRepository<'c> {
             .execute("DELETE FROM llm_logs WHERE id = ?1", params![id])?;
         Ok(affected > 0)
     }
+
+    /// v4 `getTotalTokenUsageForRun(autonomousRunId, { includeCacheHits })` —
+    /// the per-run token sum the autonomous-room turn handler's post-turn
+    /// accounting reads (U4.4). Sums every row tagged with this run's id: the
+    /// run's conversational turns plus their agent-mode tool sub-calls.
+    ///
+    /// The filter is `{ autonomousRunId, usage: { $exists: true } }` — v4
+    /// DELIBERATELY drops `$ne: null` here (see the long comment on v4's
+    /// `getTotalTokenUsageForChatSince`): the SQLite translator would emit
+    /// `usage != NULL`, which is unknown for every row and zeroes the sum.
+    /// `$exists: true` translates to `usage IS NOT NULL`, reproduced verbatim.
+    ///
+    /// Per-row: `usage.promptTokens || 0` etc. (JS falsy — a 0/null/absent field
+    /// contributes nothing). When `include_cache_hits` and the row's
+    /// `cacheUsage.cacheReadInputTokens` is TRUTHY (0 does not add), the cache
+    /// reads the provider plugins stripped from `usage` are added back into
+    /// prompt + total (the "count every token" budget mode, per-room
+    /// `budgetExcludeCacheHits = 0`).
+    ///
+    /// v4 wraps this in `safeQuery` with a `{0,0,0}` default — a read/parse
+    /// failure returns zeros rather than erroring; reproduced here (a malformed
+    /// `usage` cell zeroes the whole sum like v4's repo-level catch).
+    pub fn get_total_token_usage_for_run(
+        &self,
+        autonomous_run_id: &str,
+        include_cache_hits: bool,
+    ) -> TokenUsageTotals {
+        self.sum_usage_rows(
+            "SELECT usage, cacheUsage FROM llm_logs \
+              WHERE \"autonomousRunId\" = ?1 AND \"usage\" IS NOT NULL",
+            params![autonomous_run_id],
+            include_cache_hits,
+        )
+        .unwrap_or_default()
+    }
+
+    /// v4 `getTotalTokenUsageSince(userId, sinceTimestamp)` — the daily
+    /// user-token spend read the autonomous-room budget gate consults.
+    ///
+    /// ⚠️ **BROKEN-BUT-EXACT** (the `memories` `$regex` precedent). v4's filter
+    /// is `{ userId, usage: { $exists: true, $ne: null }, createdAt: { $gte } }`
+    /// and the SQLite translator lowers `$ne: null` to `"usage" != ?` with a
+    /// NULL bind — `usage != NULL` is UNKNOWN for every row under SQL NULL
+    /// semantics, so the filter matches NOTHING and the sum is **always
+    /// {0,0,0}** on v4-on-SQLite. Empirically pinned (U4.4 A-probe,
+    /// 2026-07-08): four rows carrying 1,665 total tokens summed to 0 through
+    /// v4's REAL repo, while `getTotalTokenUsageForRun` (no `$ne:null`) summed
+    /// correctly. Consequence: the autonomous daily-token-budget gates NEVER
+    /// bind through actual spend in v4-on-SQLite (`dailyTokensSpent` is always
+    /// 0, and `dailyTokenBudget` is schema-`positive()` so `0 >= budget` never
+    /// holds) — the daily-pause branches are dead code, banked as such by the
+    /// U4.4 capstone differential. The translated SQL is executed verbatim
+    /// (NULL bind included) rather than short-circuited, so the shape stays
+    /// faithful to v4's query.
+    pub fn get_total_token_usage_since(
+        &self,
+        user_id: &str,
+        since_timestamp: &str,
+    ) -> TokenUsageTotals {
+        self.sum_usage_rows(
+            "SELECT usage, cacheUsage FROM llm_logs \
+              WHERE \"userId\" = ?1 AND \"usage\" IS NOT NULL AND \"usage\" != ?2 \
+                AND \"createdAt\" >= ?3",
+            params![user_id, rusqlite::types::Null, since_timestamp],
+            false,
+        )
+        .unwrap_or_default()
+    }
+
+    /// The shared summation loop over `(usage, cacheUsage)` JSON cells —
+    /// v4's `for (const log of logs)` body in the `getTotalTokenUsage*` family.
+    fn sum_usage_rows(
+        &self,
+        sql: &str,
+        params: impl rusqlite::Params,
+        include_cache_hits: bool,
+    ) -> Result<TokenUsageTotals, DbError> {
+        let mut stmt = self.conn.prepare(sql)?;
+        let rows = stmt.query_map(params, |row| {
+            Ok((
+                row.get::<_, Option<String>>(0)?,
+                row.get::<_, Option<String>>(1)?,
+            ))
+        })?;
+
+        let mut totals = TokenUsageTotals::default();
+        for row in rows {
+            let (usage_json, cache_json) = row?;
+            // `if (log.usage)` — the SQL filter already guarantees non-NULL, but
+            // keep the guard for shape fidelity (a JSON `null` cell is falsy too).
+            if let Some(usage) = usage_json
+                .as_deref()
+                .and_then(|s| serde_json::from_str::<Value>(s).ok())
+                .filter(|v| !v.is_null())
+            {
+                // `usage.promptTokens || 0` — JS falsy (0 / null / absent) → 0.
+                totals.prompt_tokens += js_number_or_zero(usage.get("promptTokens"));
+                totals.completion_tokens += js_number_or_zero(usage.get("completionTokens"));
+                totals.total_tokens += js_number_or_zero(usage.get("totalTokens"));
+            }
+            // `includeCacheHits && log.cacheUsage?.cacheReadInputTokens` — the
+            // TRUTHY test means a 0 adds nothing (faithful).
+            if include_cache_hits {
+                let cache_reads = cache_json
+                    .as_deref()
+                    .and_then(|s| serde_json::from_str::<Value>(s).ok())
+                    .and_then(|v| v.get("cacheReadInputTokens").and_then(Value::as_f64))
+                    .unwrap_or(0.0);
+                if cache_reads != 0.0 {
+                    totals.prompt_tokens += cache_reads;
+                    totals.total_tokens += cache_reads;
+                }
+            }
+        }
+        Ok(totals)
+    }
+}
+
+/// The `{ promptTokens, completionTokens, totalTokens }` sum the
+/// `getTotalTokenUsage*` family returns. JS numbers (the stored token counts are
+/// integers; f64 keeps the arithmetic identical to v4's).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct TokenUsageTotals {
+    pub prompt_tokens: f64,
+    pub completion_tokens: f64,
+    pub total_tokens: f64,
+}
+
+/// JS `x || 0` over a JSON number field: `null` / absent / non-number / `0` → 0.
+fn js_number_or_zero(v: Option<&Value>) -> f64 {
+    v.and_then(Value::as_f64).unwrap_or(0.0)
 }
 
 /// Serialize an optional value to compact JSON text, or `None` for SQL NULL.
@@ -569,5 +700,157 @@ fn opt_json<T: Serialize>(value: &Option<T>, label: &str) -> Result<Option<Strin
             })?))
         }
         None => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The columns the usage reads touch (the tier-2 differential runs on the real
+    // generated schema; these unit tests only need the summation mechanics).
+    const DDL: &str = "CREATE TABLE llm_logs (\
+        id TEXT PRIMARY KEY, userId TEXT, type TEXT, messageId TEXT, chatId TEXT, \
+        characterId TEXT, autonomousRunId TEXT, provider TEXT, modelName TEXT, \
+        request TEXT, response TEXT, usage TEXT, cacheUsage TEXT, \
+        rawProviderUsage TEXT, requestHashes TEXT, durationMs REAL, \
+        createdAt TEXT, updatedAt TEXT);";
+
+    fn conn_with_rows() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(DDL).unwrap();
+        let insert = |id: &str,
+                      user: &str,
+                      run: Option<&str>,
+                      usage: Option<&str>,
+                      cache: Option<&str>,
+                      created: &str| {
+            conn.execute(
+                "INSERT INTO llm_logs (id, userId, type, autonomousRunId, provider, modelName, \
+                 request, response, usage, cacheUsage, createdAt, updatedAt) \
+                 VALUES (?1, ?2, 'CHAT_MESSAGE', ?3, 'ANTHROPIC', 'm', '{}', '{}', ?4, ?5, ?6, ?6)",
+                params![id, user, run, usage, cache, created],
+            )
+            .unwrap();
+        };
+        // Tagged with the run, plain usage.
+        insert(
+            "r1",
+            "u1",
+            Some("run-1"),
+            Some(r#"{"promptTokens":100,"completionTokens":50,"totalTokens":150}"#),
+            None,
+            "2026-07-08T00:00:01.000Z",
+        );
+        // Tagged, with cache reads.
+        insert(
+            "r2",
+            "u1",
+            Some("run-1"),
+            Some(r#"{"promptTokens":10,"completionTokens":5,"totalTokens":15}"#),
+            Some(r#"{"cacheReadInputTokens":7}"#),
+            "2026-07-08T00:00:02.000Z",
+        );
+        // Tagged, ZERO cache reads (JS truthy test — adds nothing).
+        insert(
+            "r3",
+            "u1",
+            Some("run-1"),
+            Some(r#"{"promptTokens":1,"completionTokens":1,"totalTokens":2}"#),
+            Some(r#"{"cacheReadInputTokens":0}"#),
+            "2026-07-08T00:00:03.000Z",
+        );
+        // Tagged but usage NULL — filtered by `usage IS NOT NULL`.
+        insert(
+            "r4",
+            "u1",
+            Some("run-1"),
+            None,
+            None,
+            "2026-07-08T00:00:04.000Z",
+        );
+        // A different run.
+        insert(
+            "r5",
+            "u1",
+            Some("run-2"),
+            Some(r#"{"promptTokens":1000,"completionTokens":500,"totalTokens":1500}"#),
+            None,
+            "2026-07-08T00:00:05.000Z",
+        );
+        // Untagged user spend (would count toward a WORKING daily sum).
+        insert(
+            "r6",
+            "u1",
+            None,
+            Some(r#"{"promptTokens":2000,"completionTokens":1000,"totalTokens":3000}"#),
+            None,
+            "2026-07-08T00:00:06.000Z",
+        );
+        conn
+    }
+
+    #[test]
+    fn run_sum_excludes_cache_hits_by_default() {
+        let conn = conn_with_rows();
+        let repo = LLMLogsRepository::new(&conn);
+        let t = repo.get_total_token_usage_for_run("run-1", false);
+        assert_eq!(t.prompt_tokens, 111.0);
+        assert_eq!(t.completion_tokens, 56.0);
+        assert_eq!(t.total_tokens, 167.0);
+    }
+
+    #[test]
+    fn run_sum_adds_truthy_cache_reads_when_included() {
+        let conn = conn_with_rows();
+        let repo = LLMLogsRepository::new(&conn);
+        let t = repo.get_total_token_usage_for_run("run-1", true);
+        // r2's 7 cache reads add to prompt+total; r3's ZERO cache reads add
+        // nothing (v4's `cacheUsage?.cacheReadInputTokens` truthy test).
+        assert_eq!(t.prompt_tokens, 118.0);
+        assert_eq!(t.completion_tokens, 56.0);
+        assert_eq!(t.total_tokens, 174.0);
+    }
+
+    #[test]
+    fn run_sum_unknown_run_is_zero() {
+        let conn = conn_with_rows();
+        let repo = LLMLogsRepository::new(&conn);
+        assert_eq!(
+            repo.get_total_token_usage_for_run("no-such-run", true),
+            TokenUsageTotals::default()
+        );
+    }
+
+    /// The BROKEN-BUT-EXACT daily read: rows with real usage exist since the
+    /// timestamp, and the sum is still zero (the `$ne: null` → `usage != NULL`
+    /// translator bug, empirically pinned against v4 — see the method docs).
+    #[test]
+    fn since_sum_is_always_zero_on_sqlite() {
+        let conn = conn_with_rows();
+        let repo = LLMLogsRepository::new(&conn);
+        let t = repo.get_total_token_usage_since("u1", "2000-01-01T00:00:00.000Z");
+        assert_eq!(t, TokenUsageTotals::default());
+        // Sanity: the same rows DO sum through the run read (the filter is the
+        // only difference).
+        assert_ne!(
+            repo.get_total_token_usage_for_run("run-1", false),
+            TokenUsageTotals::default()
+        );
+    }
+
+    /// A read against a missing table returns the safeQuery default (zeros).
+    #[test]
+    fn safe_query_default_on_error() {
+        let conn = Connection::open_in_memory().unwrap();
+        let repo = LLMLogsRepository::new(&conn);
+        assert_eq!(
+            repo.get_total_token_usage_for_run("run-1", false),
+            TokenUsageTotals::default()
+        );
+        assert_eq!(
+            repo.get_total_token_usage_since("u1", "2000-01-01T00:00:00.000Z"),
+            TokenUsageTotals::default()
+        );
     }
 }

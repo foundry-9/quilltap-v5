@@ -110,6 +110,7 @@ use crate::services::chat_events::{
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::dangerous_content::chat_override::is_chat_active_dangerous;
 use crate::services::dangerous_content::resolver::resolve_dangerous_content_settings;
+use crate::services::llm_logging::LogContext;
 use crate::services::message_context;
 use crate::services::message_finalizer::{
     self, AnswerConfirmationRunner, AsyncCompressionTrigger, CostTracker, FinalizeOptions,
@@ -358,6 +359,13 @@ pub struct ProcessMessageInput {
     /// Injected `provider.supportsWebSearch` — the provider-capability flag
     /// resolved above the seam. `useNativeWebSearch` ANDs it with the profile.
     pub provider_supports_web_search: bool,
+    /// The [`LogContext`] threaded to the primary stream's terminal
+    /// `CHAT_MESSAGE` `llm_logs` row (U4.4, spec decision #4 — the explicit
+    /// replacement for v4's ambient `runWithAutonomousRunId`). Every
+    /// request-path caller passes [`LogContext::none()`] (the `Default`); the
+    /// autonomous turn handler passes the run's id so per-run token accounting
+    /// can sum the rows by `autonomousRunId`.
+    pub log_context: LogContext,
 }
 
 // ===========================================================================
@@ -1430,6 +1438,9 @@ where
         } else {
             None
         },
+        // U4.4: the autonomous per-turn context cap (v4 orchestrator.service.ts:984
+        // passes `options.autonomousContextCap` straight through to buildContext).
+        autonomous_context_cap: input.options.autonomous_context_cap,
     });
 
     // v4 `buildMessageContext` (context-builder.service.ts): the wrapper that runs
@@ -1664,6 +1675,9 @@ where
             attached_files: Vec::new(),
             original_message: Some(input.options.content.clone()),
             pre_generated_assistant_message_id: pre_generated_assistant_message_id.clone(),
+            // U4.4: the run-id context the autonomous turn threads through (v4's
+            // `runWithAutonomousRunId` scope covers the whole generation).
+            log_context: input.log_context.clone(),
             state: &mut streaming_state,
         },
     )
@@ -2536,12 +2550,17 @@ pub(crate) struct BuildContextArgs<'a> {
     /// The uncensored memory-recap fallback (v4 `uncensoredFallbackOptions`) — set
     /// only for an actively-dangerous chat with a resolved selection.
     pub uncensored_fallback: Option<build_context::OwnedUncensoredFallback>,
+    /// The autonomous-room per-turn context cap (v4 `options.autonomousContextCap`,
+    /// U4.4): clamps the model-derived `maxAvailable` down to this turn's slice of
+    /// the per-run token budget. `None` (every non-autonomous caller) leaves the
+    /// budget untouched.
+    pub autonomous_context_cap: Option<i64>,
 }
 
 /// Convert a connection-profile net-read `Value` into a [`CheapLlmProfile`] (v4's
 /// `ConnectionProfile` → `CheapLLMProfile` shape). Used to resolve the cheap-LLM
 /// selection (Round-3 Group 8).
-fn cheap_llm_profile_from_value(v: &Value) -> CheapLlmProfile {
+pub(crate) fn cheap_llm_profile_from_value(v: &Value) -> CheapLlmProfile {
     CheapLlmProfile {
         id: json_str(v, "id").unwrap_or_default(),
         provider: json_str(v, "provider").unwrap_or_default(),
@@ -2651,6 +2670,7 @@ pub(crate) fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInp
         now_ms: args.now_ms,
         local_offset_minutes: args.local_offset_minutes,
         minutes_since_last_timestamp_announcement: None,
+        autonomous_context_cap: args.autonomous_context_cap,
     }
 }
 
@@ -2991,6 +3011,7 @@ mod tests {
             timestamp_config: None,
             timezone: None,
             provider_supports_web_search: false,
+            log_context: LogContext::none(),
         }
     }
 

@@ -5,6 +5,20 @@
 > decision this implements) and [`chat-orchestration.md`](./chat-orchestration.md)
 > (the spine it drives). Scoped 2026-07-06 from a direct survey of the v4
 > source. Work order: [`work-orders/u4-enclave-engine.md`](./work-orders/u4-enclave-engine.md).
+>
+> **STATUS: DONE (2026-07-08, Round 5).** All four sub-units ported and
+> differential-green against v4 `6bf88959`. Decision #3 was REVISED at U4.4
+> (direct writes — see below). Three faithful-port findings the port pins
+> broken-but-exact / as-dead-code: (a) v4's `getTotalTokenUsageSince`
+> carries the `$ne: null` translator bug — on SQLite the daily-spend sum is
+> ALWAYS 0, so the daily-token-budget gates never bind through actual spend
+> (the `tokens_user_daily` pause branches are dead code; empirically probed
+> and banked in the capstone corpus); (b) the turn handler's `turn_error:`
+> transition is unreachable — v4's `handleSendMessage` stream shell
+> swallows every error, so a mid-turn failure counts the turn and
+> re-enqueues (banked as `stream_error_swallow`); (c) `suppressAutomaticImages`
+> has NO consumer anywhere in v4 — declared, set, never read; nothing to
+> plumb.
 
 ## What v4 has
 
@@ -54,28 +68,44 @@ scheduleNextRunAt/scheduleLastRunAt`, `runDestructiveToolsAllowed`,
    evaluation cadence live in the host driver (W4.8's `tick_scheduler`
    family). The core exposes `enclave::schedule_tick(db, user_id, now)`
    (due-scan + freshness + wedge healing) as a plain function.
-3. **The turn uses the batch write path.** v4's AUTONOMOUS_ROOM_TURN is the
-   ONE main-primary job type (main commits authoritatively, mount-index /
-   llm-logs best-effort). The ported `write_apply` preserves this; the v5
-   turn handler routes its writes through it rather than incremental
-   `Db::write` — the one handler where the batch model is correctness, not
-   a Node workaround (a duplicated turn message on retry is user-visible).
-   `maxAttempts: 1` + the failure reconciliation keep v4's
-   no-automatic-retry semantics.
+3. **The turn writes directly through `Db` — the `write_apply` routing is
+   SUPERSEDED (revised at U4.4, 2026-07-08).** The original decision here
+   routed the turn's writes through `write_apply` (v4's one main-primary
+   job type). That could not survive contact with the ported spine: the
+   turn calls `process_message`, which writes incrementally through the
+   single-writer `Db` everywhere (the W4.8 encoded decision deliberately
+   dropped the job-level all-or-nothing buffer for direct-writing
+   handlers — see `[[job-runner-fork-ipc-non-port]]`), and batching the
+   whole turn would re-introduce the buffered-proxy model the port
+   rejected. Decisive: the v4 ORACLE side runs unforked (no
+   `QUILLTAP_JOB_CHILD`), so v4's differential-observable behavior is also
+   direct-write — the U4.4 tier-3 capstone pins exactly the in-process
+   semantics, and v4's buffered-read workarounds (the local-snapshot
+   counter pinning) are still reproduced faithfully where they change
+   observable arithmetic. `maxAttempts: 1` + the failure reconciliation
+   keep v4's no-automatic-retry semantics; a mid-turn failure is handled
+   by `reconcile_failed_turn` (v4's own recovery path), not by write
+   atomicity. `write_apply` keeps its own equivalence proof
+   (`write_apply_equivalence`, re-verified at U4.4) and remains available
+   for a future batch-mode consumer; the work-order deliverable "the
+   main-primary `ApplyHost` trace assertion" is superseded accordingly.
 4. **The run-id context** becomes an explicit parameter (no ambient
    AsyncLocalStorage). This landed with W4.7e/e3: `LogContext` carries the
    explicit autonomous-run-id field, `CheapLlmTaskExecutor::with_logging`
    takes it via `CheapLlmLogConfig.ctx`, and every request-path caller
    passes `LogContext::none()`. The enclave is the first caller to supply a
    REAL context: the turn handler constructs its executor
-   `with_logging(... ctx: <the run's LogContext>)`. **One known gap to
-   close in U4.4:** the primary stream's `log_chat_message_call`
-   (`primary_stream.rs`) passes `LogContext::none()` HARD-CODED — the
-   enclave's turn needs it parameterized (a `log_context` input threaded
-   through the spine to `run_primary_stream`, defaulting to none so every
-   existing caller/corpus is untouched). Token accounting then sums real
-   `llm_logs` rows by run-id (the W4.11 cleanup round made the spine's
-   logging composition live and byte-verified).
+   `with_logging(... ctx: <the run's LogContext>)`. **The known gap is
+   CLOSED (U4.4):** `log_chat_message_call` is parameterized — a
+   `log_context` input threaded through the spine to `run_primary_stream`
+   (via `ProcessMessageInput.log_context`), defaulting to none so every
+   pre-existing caller/corpus stayed byte-identical (`primary_stream_tier3`
+   + `orchestrator_tier3` regenerated + green). Token accounting sums real
+   `llm_logs` rows by run-id; the 9c summary fold runs OUTSIDE the run
+   scope (v4: `getAutonomousRunId()` null there) so its rows stay untagged
+   — banked two-sided in the capstone differential. (The provider-failover
+   retry legs still pin none — a pre-existing standing follow-up, noted at
+   the site.)
 5. **Announcements** ride W4.6b's Host writer (persona + opaque bodies,
    byte-exact); the run-start banner, halfway/near-end/grace nudges, and
    end/paused/error posts are enclave-owned strings in a generated

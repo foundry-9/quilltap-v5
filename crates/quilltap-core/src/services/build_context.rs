@@ -482,6 +482,14 @@ pub struct BuildContextInput {
     pub now_ms: i64,
     pub local_offset_minutes: i64,
     pub minutes_since_last_timestamp_announcement: Option<i64>,
+    /// v4 `options.autonomousContextCap` (U4.4, the enclave per-turn clamp):
+    /// clamp the model-derived `budgetInfo.maxAvailable` down to this turn's
+    /// slice of the per-run token budget (`remaining / turns_left`, computed by
+    /// the autonomous turn handler via `compute_autonomous_context_cap`). Only
+    /// ever SHRINKS (guarded by `<`); `None` leaves behavior unchanged — every
+    /// non-autonomous caller passes `None`, so pre-existing corpora are
+    /// untouched.
+    pub autonomous_context_cap: Option<i64>,
 }
 
 /// Owned form of [`UncensoredFallbackOptions`] (the borrowing lives inside the
@@ -1495,7 +1503,7 @@ where
     // ---------------------------------------------------------------------
     // Context compression (budget-driven).
     // ---------------------------------------------------------------------
-    let budget_info: Option<MaxAvailable> = input.connection_profile.as_ref().map(|p| {
+    let mut budget_info: Option<MaxAvailable> = input.connection_profile.as_ref().map(|p| {
         crate::context_budget::calculate_max_available(
             input.model_context_limit,
             p.max_context,
@@ -1504,7 +1512,19 @@ where
         )
     });
 
-    // (autonomousContextCap clamp: not in scope for this corpus — undefined.)
+    // Autonomous-room pacing (v4 context-manager.ts:760–767, U4.4): clamp the
+    // model-derived context budget down to this turn's slice of the per-run
+    // token budget. This shrinks the whole pie — the compression trigger, the
+    // history fold, and the memory budget all derive from `maxAvailable` — so
+    // the room spreads its run across multiple turns rather than letting a
+    // model with a huge context window spend most of the per-run budget on one
+    // turn. Only ever shrinks (guarded by `<`); `None` leaves behavior
+    // unchanged.
+    if let (Some(bi), Some(cap)) = (budget_info.as_mut(), input.autonomous_context_cap) {
+        if cap < bi.max_available {
+            bi.max_available = cap;
+        }
+    }
 
     // Estimate total conversation tokens.
     let existing_raw: Vec<RawMessage> = input

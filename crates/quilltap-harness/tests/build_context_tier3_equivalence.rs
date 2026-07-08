@@ -533,6 +533,8 @@ async fn build_context_tier3_matches_oracle() {
         };
 
         let input = BuildContextInput {
+            // U4.4: the enclave per-turn clamp — None on this corpus (inert).
+            autonomous_context_cap: None,
             model_context_limit: model_limit(),
             user_id: spec.user_id.clone(),
             character,
