@@ -32,8 +32,8 @@ already working ([`phase-0.md`](./phase-0.md)).
 | **0** | Scaffolding, toolchain, cipher-correct DB open, differential harness | tier-1 proven | **substantially done** |
 | **1** | Pure functions (scoring, sizing, remaps, budget math) | tier-1 exact | **done** |
 | **2** | Data layer: repos, the writer-task model, per-DB partitioned apply | tier-2 structural DB diff | **repo inventory complete** — every v4 repository round-trips green through the tier-2 harness (main DB + the mount-index and llm-logs sibling DBs, incl. the `characters` and `chats` capstones and `memories`); the deferred `upsert*` back-fill, the partitioned write applier + `__finalizeFile`, and the fixture sanitizer are done too. Full per-repo inventory in the CLAUDE.md Status section ([`phase-2-onramp.md`](./phase-2-onramp.md)). Residual: two Phase-3-coupled deferrals (chats `delete` vault sweep; `markCompleted`'s v5-only payload merge) — the wardrobe archetype tiers closed in W4.0 |
-| **3** | Services / engine: memory gate, chat orchestration, enclave `step()` | tier-2 + tier-3 mocked-LLM | **in progress, endgame planned** — [`phase-3.md`](./phase-3.md): the writer-task runtime, the model boundaries, the **whole memory family**, and the **whole chat-orchestration engine** (waves 1–3) are done + green; of wave 4, **W4.0, all of W4.1, W4.2, and W4.4a parts 1–3 are done**. Every remaining batch (W4.2u, W4.3, W4.4a4, W4.4b, W4.5, W4.6a/b, W4.7a–f, W4.8, W4.9a/b) has an **agent-ready work order** in [`porting/work-orders/`](./work-orders/) (endgame re-planned 2026-07-06 from fresh v4 surveys — batch table + execution rounds in [`chat-orchestration.md`](./chat-orchestration.md)); then the enclave engine (Unit 4, [`enclave-engine.md`](./enclave-engine.md)) |
-| **4** | Transports (Tauri/uniffi/axum) + Angular UI | end-to-end | not started |
+| **3** | Services / engine: memory gate, chat orchestration, enclave `step()` | tier-2 + tier-3 mocked-LLM | **done** (2026-07-08) — the whole engine: writer-task runtime, model boundaries, the memory family, the chat-orchestration engine (waves 1–4 + all unification rounds), and the enclave (Unit 4, the U4.4 `step()` capstone). Per-unit ledger in the CLAUDE.md Status section; decomposition record in [`phase-3.md`](./phase-3.md) / [`chat-orchestration.md`](./chat-orchestration.md) / [`enclave-engine.md`](./enclave-engine.md) |
+| **4** | Transports (Tauri/axum/CLI) + host drivers + Angular SPA | tier-1..3 for new core ports; tier-4 (transport contract tests, headless e2e, CLI diffs vs `npx quilltap`, Playwright) for the rest | **kickoff planned** (2026-07-08) — [`phase-4.md`](./phase-4.md): 22 locked decisions (HTTP transport first-class + no-auth localhost-trust + Docker web deployment; browser and Tauri co-equal SPA hosts), the host-seam closure inventory, the route-logic backfill list, the SPA screen inventory, decomposition P4.0–P4.7 + milestones M0–M6 |
 
 Each phase leans on the one below being trusted, so failures localize.
 
@@ -50,6 +50,13 @@ Each phase leans on the one below being trusted, so failures localize.
   the writer-task runtime (Unit 0), the tier-3 harness scaffold (Unit 0.5), and
   the memory gate as first service (Unit 1), with the unit order and the
   Phase-2-carried deferrals.
+- [`phase-4.md`](./phase-4.md) — **the Phase-4 kickoff**: transports, host
+  drivers, the Angular SPA, and the remaining route-logic backfill. Locks the
+  deployment decisions (the HTTP transport is a first-class Docker-Desktop-style
+  local web deployment, no authentication, browser + Tauri co-equal SPA hosts),
+  the crate layout (`quilltap-host`/`-web`/`-cli`/`-tauri` + `quilltap-core::api`),
+  the tier-4 verification strategy, and the P4.0–P4.7 decomposition with
+  milestones.
 - [`chat-orchestration.md`](./chat-orchestration.md) — the Phase-3 Unit-3
   decomposition and running ledger: v4's chat engine
   (`lib/services/chat-message/` + `buildContext` + the turn chain) broken into
@@ -227,14 +234,27 @@ checks** re-audit new v4 commits against the ported surface (2026-07-03
 in CLAUDE.md). **Run a fresh drift check at the start of each endgame round**
 — the work orders pin scope, not the v4 SHA.
 
+**Phase 3 is complete** (2026-07-08): wave 4 landed whole across its
+execution/unification rounds, and the enclave engine (Unit 4) closed with the
+U4.4 `step()` capstone — the full per-unit ledger is the CLAUDE.md Status
+section. **Phase 4 is now planned:** [`phase-4.md`](./phase-4.md) is the
+kickoff — 22 locked decisions (headlined by: the axum HTTP transport is a
+**first-class deployment** for Docker-Desktop-style local web use, with **no
+authentication** [localhost-trust; proxy for more] and the browser + Tauri
+webview as **co-equal hosts** of the one Angular SPA), the host-seam closure
+inventory, the route-logic backfill list (chat creation, wizards,
+backup/restore, help chat, the markdown renderer, …), the tier-4 verification
+strategy, and the P4.0–P4.7 decomposition with milestones M0–M6. The oracle
+baseline at kickoff is v4 `2494a84b` (the kickoff-day drift check audited
+`6bf88959..2494a84b` — UI-only, no ported unit stale).
+
 ## How to resume in a fresh session
 
 Open with: *"Continuing the quilltap-v5 native port. Read CLAUDE.md,
-docs/developer/porting/overview.md, and
-docs/developer/porting/chat-orchestration.md. Phases 0–2 are done; Phase 3 is
-in its planned endgame — pick the next work order from
-docs/developer/porting/work-orders/ per the execution-rounds table in
-chat-orchestration.md (then the enclave engine, then the Phase-4 kickoff)."*
+docs/developer/porting/overview.md, and docs/developer/porting/phase-4.md.
+Phases 0–3 are done; Phase 4 is starting — begin with P4.0 (the boundary +
+composition root) per the phase-4.md decomposition, writing the round's work
+orders first, with a fresh v4 drift check."*
 The tier-1/tier-2 harness run commands are in
 [`phase-0.md`](./phase-0.md) and [`phase-2-onramp.md`](./phase-2-onramp.md);
 each tier-3 differential's oracle recipe is in its harness test header

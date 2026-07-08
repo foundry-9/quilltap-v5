@@ -4,6 +4,33 @@
 
 ### 5.0-dev
 
+Phase-4 kickoff planned (docs only). New docs/developer/porting/phase-4.md
+locks 22 decisions for the transports + host-drivers + Angular-SPA phase,
+built from three fresh surveys (the v5 host-seam/deferral inventory, the v4
+API surface — 124 routes, ~162 action verbs, one terminal WebSocket, 9
+binary asset routes, and a confirmed-vestigial auth layer — and the v4 UI
+surface — ~24 screens, ~535 components, the 11k-line qt-* theme CSS).
+Headline decisions: the axum HTTP transport is a first-class deployment
+(Docker-Desktop-style local web use) with no authentication (localhost
+trust; bind-address policy; the pepper-unlock readiness gate survives as a
+non-auth concept); the browser and the Tauri webview are co-equal hosts of
+one Angular SPA behind a single CoreClient seam; the dispatch surface is
+POST /api/dispatch + one scope-tagged SSE event stream + enumerated binary
+GET routes + the terminal WS (not a reproduction of v4's REST tree); crate
+layout quilltap-core::api + quilltap-host + quilltap-web + quilltap-cli
+(dual-mode) + quilltap-tauri + apps/web; tier-4 verification (transport
+contract tests, headless HTTP e2e, CLI diffs vs npx quilltap, Playwright);
+decomposition P4.0-P4.7 with milestones M0-M6. Includes the route-logic
+backfill list (chat creation, wizards, help-chat orchestrator,
+backup/restore, import/export, unlock/pepper-vault, the markdown renderer +
+qtap-linkify, Document Mode ops, the Brahma streaming console) and the full
+host-seam closure inventory. overview.md roadmap/status and CLAUDE.md
+updated to match; Phase 3 marked complete in the roadmap. Kickoff-day drift
+check: v4 6bf88959..2494a84b (1 commit, copy-conversation-UUID buttons +
+Salon header link) audited — pure React UI + docs, the only lib/ touch a
+test-mock type cast; no ported unit stale; docs/v4 CHANGELOG mirror
+refreshed; new oracle baseline 2494a84b.
+
 U4.4 (enclave engine, the capstone) — PHASE 3 IS COMPLETE. enclave::step
 ports v4's handleAutonomousRoomTurn as the persisted one-transition step()
 (guard chain incl. the concurrent-sibling (createdAt, id) tie-break,

@@ -33,8 +33,11 @@ machinery, now complete), `document-store-overlay.md` (the store-backed-entity
 slice: `projects`/`groups`/`characters`/`wardrobe` vault — where the document
 store lives, the overlay engine, and the build order), `phase-3.md` (the Phase-3
 kickoff — the tier-3 mocked-LLM tier, the writer-task runtime, the tier-3 harness
-scaffold, and the memory gate as first service). The `docs/v4/` tree is the v4
-reference mirror, not v5 planning.
+scaffold, and the memory gate as first service), `phase-4.md` (**the current
+phase** — transports + host drivers + the Angular SPA: the 22 locked decisions,
+incl. the first-class no-auth HTTP/Docker deployment, the crate layout, the
+tier-4 verification strategy, and the P4.0–P4.7 decomposition). The `docs/v4/`
+tree is the v4 reference mirror, not v5 planning.
 
 ## Standing rules (apply on every task)
 
@@ -4643,3 +4646,52 @@ composes are UNCHANGED at this commit (`resolveEquippedOutfitForCharacter`'s
 `chats.setEquippedOutfit` untouched); the rest is React UI, API routes, and
 docs/help data. The `docs/v4/` mirror was refreshed (CHANGELOG, API.md).
 **New oracle baseline for in-flight/future orders: `6bf88959`.**
+
+**Drift check (2026-07-08, at the Phase-4 kickoff): v4 `6bf88959..2494a84b`
+(1 commit) audited — no ported unit is stale.** `2494a84b` ("copy conversation
+UUID from Salon header and Organize drawer") is pure React UI + docs: a new
+`components/chat/CopyChatIdButton.tsx` (two variants over the existing
+`useCopyToClipboard` hook), the Salon header title becoming a link to the
+conversation URL, help-content text, and version bumps. The ONLY `lib/` touch
+is a tsc cast fix in a **test mock**
+(`lib/wardrobe/__tests__/apply-outfit-selections.progress.test.ts` — not
+runtime code); no API route changed. Classification: Phase-4 SPA reference
+surface — the copy-UUID buttons + header link land with the Salon vertical
+(P4.6), noted in the phase-4.md screen inventory's reference set. The
+`docs/v4/` CHANGELOG mirror was refreshed. **New oracle baseline for
+in-flight/future orders: `2494a84b`.**
+
+**Phase 4 (transports + hosts + the Angular SPA): KICKOFF PLANNED**
+(2026-07-08, `docs/developer/porting/phase-4.md` — start there). Built from
+three fresh surveys (the v5 seam/deferral sweep, the v4 API surface: 124
+routes / ~162 action verbs / one terminal WS / 9 binary asset routes / a
+confirmed-vestigial auth layer, and the v4 UI surface: ~24 screens / ~535
+components / the 11k-line `qt-*` theme CSS). **22 locked decisions**, headed
+by: the axum **HTTP transport is a first-class deployment** (Docker-Desktop-
+style local web use — run the container or binary, open a browser), with **no
+authentication** (localhost-trust; bind-address is the only knob — bare binary
+defaults `127.0.0.1`; anyone wanting auth proxies) while v4's **pepper-unlock
+readiness gate survives as a non-auth concept** (503 + setup flow); the
+**browser and the Tauri webview are co-equal hosts of the one Angular SPA**
+(one `CoreClient` seam; every shell integration needs a web path); the
+dispatch surface is `POST /api/dispatch` + one scope-tagged `GET /api/events`
+SSE + the binary resource GETs + the terminal WS — NOT a reproduction of v4's
+REST tree (the `Request` enum is action-centric and grows per consumer);
+crate layout `quilltap-core::api` (pure contract) + `quilltap-host`
+(composition root + all timers/IO drivers) + `quilltap-web` + `quilltap-cli`
+(dual-mode: direct-core or HTTP client — single-writer is per-process) +
+`quilltap-tauri` (last) + `apps/web`. The differential discipline continues
+for every Phase-4 core port (the route-logic backfill: chat creation, wizards,
+help-chat orchestrator, backup/restore, import/export, unlock/pepper-vault
+service, the markdown renderer + `qtap-linkify` [lookbehind hand-rolled],
+Document Mode ops, the Brahma streaming console, …); **tier 4** covers the
+rest (transport contract tests over a shared corpus, a headless HTTP e2e
+smoke in CI, CLI diffs vs `npx quilltap`, Playwright for the SPA — v4 is the
+behavioral reference, not a byte target). Decomposition P4.0 (boundary +
+composition root) → P4.1 (host-driver lanes; the one all-new piece is the
+production streaming composer: request_builder → transport → decoders →
+StreamChunk) → P4.2/P4.3 (`quilltap-web` + Dockerfile ∥ the CLI) → P4.4
+(backfill, interleaved) → P4.5 (SPA foundation: CoreClient + SSE reducer +
+the `qt-*`/theme port) → P4.6 (SPA verticals, Salon first) → P4.7 (Tauri);
+milestones M0–M6. Non-goals: uniffi/mobile, plugins beyond the provider
+manifests, any release/signing/publishing work, new features before parity.
