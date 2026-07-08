@@ -53,12 +53,15 @@ use quilltap_core::model::completion::{
     CannedCompletionProvider, CompletionMessage, CompletionRole, CompletionUsage,
 };
 use quilltap_core::model::embedding::CannedEmbeddingProvider;
-use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use quilltap_core::services::cheap_llm_exec::{CheapLlmLogConfig, CheapLlmTaskExecutor};
+use quilltap_core::services::llm_logging::LogContext;
 use quilltap_core::services::memory_processor::{
     process_turn_for_memory, CheapLlmSettings, MemoryExtractionLimits, TurnMemoryExtractionContext,
 };
 use serde::Deserialize;
 use serde_json::Value;
+
+mod common;
 
 // ---------------------------------------------------------------------------
 // Spec structures (harness/oracle/fixtures/memory-processor-tier3.json).
@@ -410,6 +413,7 @@ async fn memory_processor_tier3_matches_oracle() {
     let mut oracle_results: Vec<(String, Value)> = Vec::new();
     let mut oracle_canned: Vec<CannedRowW> = Vec::new();
     let mut oracle_tables: HashMap<String, Value> = HashMap::new();
+    let mut oracle_llm_logs: Option<Vec<Value>> = None;
     for line in oracle_text.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -426,6 +430,7 @@ async fn memory_processor_tier3_matches_oracle() {
             Some("table") => {
                 oracle_tables.insert(v["table"].as_str().unwrap().to_string(), v);
             }
+            Some("llmlogs") => oracle_llm_logs = Some(common::oracle_llm_logs(&v)),
             other => panic!("unknown oracle row kind {other:?}"),
         }
     }
@@ -487,17 +492,22 @@ async fn memory_processor_tier3_matches_oracle() {
             ));
     }
 
+    // W4.10b: a fresh llm-logs partition for the MEMORY_EXTRACTION rows the SELF/
+    // OTHER extraction cheap calls write.
+    let work_ll = work_main.with_file_name(format!("qt-memproc-ll-{}.db", std::process::id()));
+    let _ = std::fs::remove_file(&work_ll);
+    common::materialize_llm_logs(&work_ll, &spec.test_pepper_base64);
+
     let db = Db::open(
         DbPaths {
             main: work_main.clone(),
             mount_index: Some(work_mount.clone()),
-            llm_logs: None,
+            llm_logs: Some(work_ll.clone()),
         },
         &spec.test_pepper_base64,
     )
     .unwrap_or_else(|e| panic!("open fixture copies: {e}"));
 
-    let executor = CheapLlmTaskExecutor::new();
     let profiles: Vec<CheapLlmProfile> =
         spec.profiles.into_iter().map(ProfileW::into_core).collect();
     let current_profile = profiles
@@ -530,6 +540,19 @@ async fn memory_processor_tier3_matches_oracle() {
                 participant_characters.insert(id, c);
             }
         }
+
+        // Per-call executor with logging: the SELF/OTHER extraction cheap calls
+        // write MEMORY_EXTRACTION rows carrying this call's chatId + the extracted
+        // characterId (passed per-execute-call); v4's memory extraction sends no
+        // messageId. The corpus has no temperature rejection, so a fresh executor
+        // per call is equivalent to v4's module-global no-temp cache.
+        let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+            db: db.clone(),
+            user_id: spec.user_id.clone(),
+            chat_id: Some(call.chat_id.clone()),
+            message_id: None,
+            ctx: LogContext::none(),
+        });
 
         let ctx = TurnMemoryExtractionContext {
             transcript: call.transcript.into_core(),
@@ -573,6 +596,9 @@ async fn memory_processor_tier3_matches_oracle() {
         assert_eq!(got, want, "{name}: result object diverges");
     }
 
+    // W4.10b: the MEMORY_EXTRACTION rows the extraction cheap calls wrote.
+    let got_logs = common::dump_llm_logs(&db);
+
     // Dump + diff the three tables in the shared-id-map remap form.
     let mut got: Vec<Value> = TABLES
         .iter()
@@ -584,6 +610,16 @@ async fn memory_processor_tier3_matches_oracle() {
     drop(db);
     let _ = std::fs::remove_file(&work_main);
     let _ = std::fs::remove_file(&work_mount);
+    let _ = std::fs::remove_file(&work_ll);
+
+    let want_logs = oracle_llm_logs.expect("oracle emitted no llmlogs row");
+    assert_eq!(
+        got_logs,
+        want_logs,
+        "llm_logs MEMORY_EXTRACTION rows diverge (got {} vs oracle {})",
+        got_logs.len(),
+        want_logs.len()
+    );
 
     let mut want: Vec<Value> = TABLES
         .iter()

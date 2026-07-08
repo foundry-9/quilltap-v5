@@ -18,7 +18,8 @@
  *     so any prompt/selection/temperature divergence surfaces as a canned-miss.
  *   - `getApiKeyForCheapLLMSelection` → a constant (host-side; the Rust boundary
  *     starts at the provider call).
- *   - `logLLMCall` → no-op (a fire-and-forget llm-logs side channel).
+ *   - `logLLMCall` runs REAL (W4.10b): the fold + title cheap calls land
+ *     SUMMARIZATION / TITLE_GENERATION rows, dumped + diffed by the harness.
  *   - W4.6b + Round-3 Group 7: `postLibrarianSummaryAnnouncement`,
  *     `createContextSummaryEvent` / `createTitleGenerationEvent`, the vault MIRROR
  *     (`writeConversationSummaryToVaults`) and the relevant-conversations REFRESH
@@ -146,6 +147,8 @@ async function main(): Promise<void> {
   process.env.ENCRYPTION_MASTER_PEPPER = ops.testPepperBase64;
   process.env.SQLITE_PATH = work;
   process.env.SQLITE_MOUNT_INDEX_PATH = workMount;
+  // W4.10b: a fresh llm-logs DB for the un-mocked `logLLMCall` (fold/title tasks).
+  process.env.SQLITE_LLM_LOGS_PATH = join(scratch, 'cs-llm-logs.db');
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
@@ -271,10 +274,11 @@ async function main(): Promise<void> {
       getApiKeyForCheapLLMSelection: async () => 'test-key',
     };
   });
-  jest.doMock('@/lib/services/llm-logging.service', () => {
-    const actual = jest.requireActual('@/lib/services/llm-logging.service');
-    return { __esModule: true, ...actual, logLLMCall: async () => undefined };
-  });
+  // W4.10b: run the REAL `logLLMCall` so the fold (SUMMARIZATION) + title
+  // (TITLE_GENERATION) cheap-task rows land.
+  jest.doMock('@/lib/services/llm-logging.service', () =>
+    jest.requireActual('@/lib/services/llm-logging.service')
+  );
   // W4.6b + Round-3 Group 7: the Librarian re-post, the CONTEXT_SUMMARY /
   // TITLE_GENERATION cost events, the vault MIRROR
   // (`writeConversationSummaryToVaults` + `computeConversationStats`), and the
@@ -462,6 +466,36 @@ async function main(): Promise<void> {
     .sort();
   lines.push(JSON.stringify({ kind: 'mountLinks', paths: linkPaths }));
   closeMountIndexSQLiteClient();
+
+  // W4.10b: the fold/title `llm_logs` rows. Fire-and-forget → settle first; read
+  // via the llm-logs handle BEFORE closeDatabase. id/createdAt/updatedAt placeholdered.
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const { getRawLLMLogsDatabase } = await import(
+    '@/lib/database/backends/sqlite/llm-logs-client'
+  );
+  const lldb = getRawLLMLogsDatabase();
+  if (!lldb) throw new Error('llm-logs DB handle unavailable (degraded open?)');
+  const llColumns = (
+    lldb.pragma('table_info(llm_logs)') as Array<{ name: string }>
+  ).map((c) => c.name);
+  const llRawRows = lldb.prepare('SELECT * FROM llm_logs').all() as Array<
+    Record<string, unknown>
+  >;
+  const llRows = llRawRows
+    .map((r) => {
+      const out: Record<string, unknown> = {};
+      for (const col of llColumns) out[col] = canonValue(r[col]);
+      out.id = '<id>';
+      out.createdAt = '<ts>';
+      out.updatedAt = '<ts>';
+      return out;
+    })
+    .sort((a, b) => {
+      const sa = JSON.stringify(a);
+      const sb = JSON.stringify(b);
+      return sa < sb ? -1 : sa > sb ? 1 : 0;
+    });
+  lines.push(JSON.stringify({ kind: 'llmlogs', columns: llColumns, rows: llRows }));
 
   await closeDatabase();
 

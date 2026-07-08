@@ -60,14 +60,17 @@ use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::model::completion::{
     CannedCompletionProvider, CompletionMessage, CompletionRole, CompletionUsage,
 };
-use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use quilltap_core::services::cheap_llm_exec::{CheapLlmLogConfig, CheapLlmTaskExecutor};
 use quilltap_core::services::context_summary::{
     check_and_generate_summary_if_needed, generate_context_summary_with_seams,
     invalidate_context_summary_if_message_covered, CheapLlmSettings, GenerateSummaryOptions,
     RealContextSummarySeams,
 };
+use quilltap_core::services::llm_logging::LogContext;
 use serde::Deserialize;
 use serde_json::{json, Value};
+
+mod common;
 
 const SEED_SENTINEL: &str = "2026-03-01T00:00:00.000Z";
 
@@ -327,6 +330,7 @@ async fn context_summary_service_tier3_matches_oracle() {
     let mut oracle_canned: Vec<CannedRowW> = Vec::new();
     let mut oracle_tables: HashMap<String, Value> = HashMap::new();
     let mut oracle_mount_links: Vec<String> = Vec::new();
+    let mut oracle_llm_logs: Option<Vec<Value>> = None;
     for line in oracle_text.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -341,6 +345,7 @@ async fn context_summary_service_tier3_matches_oracle() {
             Some("table") => {
                 oracle_tables.insert(v["table"].as_str().unwrap().to_string(), v);
             }
+            Some("llmlogs") => oracle_llm_logs = Some(common::oracle_llm_logs(&v)),
             Some("mountLinks") => {
                 oracle_mount_links = v["paths"]
                     .as_array()
@@ -414,17 +419,22 @@ async fn context_summary_service_tier3_matches_oracle() {
         }
     }
 
+    // W4.10b: a fresh llm-logs partition for the fold/title cheap-task rows
+    // (SUMMARIZATION [fold] + TITLE_GENERATION [title]).
+    let work_ll = work_main.with_file_name(format!("cs-ll-{}.db", std::process::id()));
+    let _ = std::fs::remove_file(&work_ll);
+    common::materialize_llm_logs(&work_ll, &ops_spec.test_pepper_base64);
+
     let db = Db::open(
         DbPaths {
             main: work_main.clone(),
             mount_index: Some(work_mount.clone()),
-            llm_logs: None,
+            llm_logs: Some(work_ll.clone()),
         },
         &ops_spec.test_pepper_base64,
     )
     .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
 
-    let executor = CheapLlmTaskExecutor::new();
     let profiles: Vec<CheapLlmProfile> = ops_spec
         .profiles
         .into_iter()
@@ -450,6 +460,18 @@ async fn context_summary_service_tier3_matches_oracle() {
 
     for (op, (oracle_op, oracle_result)) in ops_spec.ops.iter().zip(&oracle_results) {
         assert_eq!(&op.name, oracle_op, "op order mismatch");
+        // Per-op executor with logging: the fold / title cheap calls write
+        // SUMMARIZATION / TITLE_GENERATION rows carrying this op's chatId (v4's
+        // context-summary tasks send no messageId/characterId). A fresh executor
+        // per op is equivalent to v4's module-global no-temp cache (no temperature
+        // rejection in this corpus).
+        let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+            db: db.clone(),
+            user_id: ops_spec.user_id.clone(),
+            chat_id: Some(op.chat_id.clone()),
+            message_id: None,
+            ctx: LogContext::none(),
+        });
         let got: Value = match op.kind.as_str() {
             "generate" => {
                 let options = GenerateSummaryOptions {
@@ -593,9 +615,21 @@ async fn context_summary_service_tier3_matches_oracle() {
         "vault doc_mount_file_links path set diverges (the mirror write)"
     );
 
+    // W4.10b: diff the fold/title `llm_logs` rows (SUMMARIZATION + TITLE_GENERATION).
+    let got_logs = common::dump_llm_logs(&db);
+    let want_logs = oracle_llm_logs.expect("oracle emitted no llmlogs row");
+    assert_eq!(
+        got_logs,
+        want_logs,
+        "llm_logs rows diverge (got {} vs oracle {})",
+        got_logs.len(),
+        want_logs.len()
+    );
+
     drop(db);
     let _ = std::fs::remove_file(&work_main);
     let _ = std::fs::remove_file(&work_mount);
+    let _ = std::fs::remove_file(&work_ll);
 
     let mut want: Vec<Value> = TABLES
         .iter()

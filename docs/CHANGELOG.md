@@ -42,6 +42,14 @@ dump is deliberately post-round (it would couple W4.10a's corpus to W4.10b's
 primary-stream regen). Written from two fresh surveys (the v5 composition
 points; v4's brahma-console/one-shot.service.ts at 6b6e39ad — no drift). No
 code changes.
+W4.10b step 7 (logLLMCall regen — memory processor + context summary): un-mocked
+`logLLMCall` in both oracles and gave the Rust side a per-call/per-op
+`with_logging` executor over an attached llm-logs partition. memory_processor
+diffs the 11 MEMORY_EXTRACTION rows the SELF/OTHER extraction passes write (chatId
++ the extracted characterId, no messageId); context_summary diffs the 11
+SUMMARIZATION (fold) + TITLE_GENERATION (title) rows (chatId only). Both green with
+no port change. Step 6 (primary_stream) is deferred — see the follow-up note.
+
 W4.10b step 5 (logLLMCall regen — avatar + story-background jobs): un-mocked
 `logLLMCall` in both job-handler oracles (per-case fresh llm-logs DB) and attached
 the llm-logs partition on the Rust side. The avatar handler makes no cheap-LLM
