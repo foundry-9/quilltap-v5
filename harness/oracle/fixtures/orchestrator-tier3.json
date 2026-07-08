@@ -31,6 +31,12 @@
       "provider": "OPENAI",
       "modelName": "gpt-4o",
       "transport": "courier"
+    },
+    {
+      "id": "e0000005-0000-4000-8000-000000000005",
+      "name": "TextBlockModel",
+      "provider": "OPENAI",
+      "modelName": "o1-mini"
     }
   ],
   "chatSettings": {
@@ -696,7 +702,8 @@
           "id": "f20a0002-0000-4000-8000-0000000000a2",
           "character": "c2000002-0000-4000-8000-000000000022",
           "controlledBy": "llm",
-          "status": "active"
+          "status": "active",
+          "connectionProfileId": "e0000005-0000-4000-8000-000000000005"
         },
         {
           "id": "f20b0002-0000-4000-8000-0000000000b2",

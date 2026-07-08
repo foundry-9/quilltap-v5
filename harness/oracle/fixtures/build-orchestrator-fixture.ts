@@ -49,6 +49,9 @@ interface ParticipantSpec {
   character: string;
   controlledBy?: string;
   status?: string;
+  /** W4.10a: per-participant connection-profile override (wins over the
+   *  character default) — lets a case pin a distinct provider/model. */
+  connectionProfileId?: string;
 }
 interface MessageSpec {
   id: string;
@@ -106,6 +109,13 @@ interface Spec {
   };
   characters: CharacterSpec[];
   chats: ChatSpec[];
+  /**
+   * W4.10a: `apiKeyId → SYNTHETIC key value` seeded into the `api_keys` table so
+   * the danger-reroute path resolves the key off the REAL table (the Rust
+   * `DbApiKeys` resolver reads the same rows). The provider is derived from the
+   * connection profile that references each key. Never a real key.
+   */
+  apiKeys?: Record<string, string>;
 }
 
 async function main(): Promise<void> {
@@ -134,7 +144,9 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
-  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+  const { initializeDatabase, closeDatabase, ensureCollection, rawQuery } = await import(
+    '@/lib/database/manager'
+  );
   const { closeMountIndexSQLiteClient, getRawMountIndexDatabase } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
@@ -165,8 +177,7 @@ async function main(): Promise<void> {
   }
 
   // Connection profiles (the uncensored-reroute target carries `apiKeyId` +
-  // `isDangerousCompatible` — no `api_keys` row is seeded; the key is a canned
-  // seam on both sides, keyed by `apiKeyId`).
+  // `isDangerousCompatible`).
   for (const cp of spec.connectionProfiles) {
     await repos.connections.create(
       {
@@ -182,6 +193,34 @@ async function main(): Promise<void> {
       } as never,
       { id: cp.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );
+  }
+
+  // W4.10a: seed the `api_keys` table (MAIN db) with the SYNTHETIC reroute keys so
+  // `DbApiKeys` / v4's `findApiKeyByIdAndUserId` resolve the key material off the
+  // REAL table. The id IS the referencing profile's `apiKeyId` (a raw INSERT since
+  // `createApiKey` mints its own id); the provider is the referencing profile's.
+  if (spec.apiKeys && Object.keys(spec.apiKeys).length > 0) {
+    const { ApiKeySchema } = await import('@/lib/schemas/profile.types');
+    await ensureCollection('api_keys', ApiKeySchema);
+    for (const [apiKeyId, keyValue] of Object.entries(spec.apiKeys)) {
+      const owner = spec.connectionProfiles.find((cp) => cp.apiKeyId === apiKeyId);
+      const provider = owner?.provider ?? 'OPENROUTER';
+      await rawQuery(
+        'INSERT INTO api_keys (id, userId, label, provider, key_value, isActive, lastUsed, createdAt, updatedAt) ' +
+          'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          apiKeyId,
+          spec.userId,
+          'reroute-key',
+          provider,
+          keyValue,
+          1,
+          null,
+          spec.seedTimestamp,
+          spec.seedTimestamp,
+        ]
+      );
+    }
   }
 
   // Characters (full vault provisioning, pinned ids + talkativeness + default cp).
@@ -226,6 +265,9 @@ async function main(): Promise<void> {
       characterId: p.character,
       controlledBy: p.controlledBy ?? 'llm',
       status: p.status ?? 'active',
+      ...(p.connectionProfileId !== undefined
+        ? { connectionProfileId: p.connectionProfileId }
+        : {}),
       createdAt: spec.seedTimestamp,
       updatedAt: spec.seedTimestamp,
     }));

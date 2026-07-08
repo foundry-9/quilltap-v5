@@ -105,19 +105,15 @@ interface CallSpec {
   expectThrow?: boolean;
   /** The committed byte stream for RNG auto-detect (mirrors the Rust FixedBytes). */
   rngBytes?: number[];
-  /** W4.1g: the injected `checkModelSupportsTools` result (default true → native
-   * tool mode). Mirrors the Rust `ProcessMessageInput::model_supports_native_tools`. */
-  modelSupportsNativeTools?: boolean;
 }
 interface Spec {
   testPepperBase64: string;
   userId: string;
   frozenNowMs: number;
   chatSettings: { id: string };
-  /** W4.2u: the canned `apiKeyId → decrypted key` map for the uncensored-reroute
-   * router (the danger-differential-recipe pattern: no `api_keys` row is seeded;
-   * v4's `findApiKeyByIdAndUserId` is monkey-patched to this map, the Rust
-   * `ApiKeyResolver` injects the same). */
+  /** W4.10a: `apiKeyId → SYNTHETIC key` seeded into the `api_keys` table by the
+   * fixture builder; v4's REAL `findApiKeyByIdAndUserId` + the Rust `DbApiKeys`
+   * resolver both read the seeded rows. Not consulted by the oracle at runtime. */
   apiKeys?: Record<string, string>;
   calls: CallSpec[];
   streams: Record<string, ChunkSpec[][]>;
@@ -178,10 +174,6 @@ async function main(): Promise<void> {
   // The current call's stream label (steered per-call so the streamMessage mock
   // pops the right attempt sequence).
   let currentLabel: string | undefined;
-  // W4.1g: the injected `checkModelSupportsTools` result, steered per call (native
-  // tools by default; a text-block-mode case sets it false). Mirrors the Rust
-  // `ProcessMessageInput::model_supports_native_tools`.
-  let currentModelSupportsTools = true;
   // The current call's RNG byte stream (steered per-call for the crypto.randomBytes
   // mock; the RNG auto-detect executor draws from here).
   let currentRngBytes: number[] = [];
@@ -197,13 +189,18 @@ async function main(): Promise<void> {
   jest.doMock('@/lib/database/repositories', () => jest.requireActual('@/lib/database/repositories'));
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
 
-  // ---- checkModelSupportsTools (W4.1g: the REAL buildTools now runs, and reads
-  //      this async pricing-cache lookup). Steered per-call (native by default).
-  //      The Rust side injects the same value via ProcessMessageInput. ----
-  jest.doMock('@/lib/tools/pseudo-tool-support', () => ({
+  // ---- checkModelSupportsTools (W4.10a: NO LONGER mocked — the REAL function runs
+  //      in-spine, sourced from the same pricing fetcher the Rust port uses. Only
+  //      the OPENROUTER path consults the pricing cache; every other provider
+  //      answers from the static FALLBACK_PRICING table. `getPricingCache` is
+  //      mocked EMPTY (the FETCH-level seam), matching the Rust side's never-called
+  //      `PricingFetch`: an OPENROUTER model then falls through to v4's "default to
+  //      native tools", while `textblock_mode` (OPENAI `o1-mini`, `supportsTools:
+  //      false` in FALLBACK_PRICING) resolves false → text-block mode. ----
+  jest.doMock('@/lib/llm/pricing-fetcher', () => ({
     __esModule: true,
-    ...jest.requireActual('@/lib/tools/pseudo-tool-support'),
-    checkModelSupportsTools: async () => currentModelSupportsTools,
+    ...jest.requireActual('@/lib/llm/pricing-fetcher'),
+    getPricingCache: async () => ({ providers: {} }),
   }));
 
   // ---- detectToolCallsInResponse (W4.7 provider-wire-parse seam; W4.1g mocks it
@@ -568,16 +565,10 @@ async function main(): Promise<void> {
   await initializeDatabase();
   const repos = getRepositories();
 
-  // W4.2u: canned API-key seam for the uncensored-reroute router. `getRepositories()`
-  // is a singleton, so monkey-patch `findApiKeyByIdAndUserId` AFTER acquiring it (the
-  // danger-differential-recipe pattern). No `api_keys` row is seeded; profiles carry
-  // pinned `apiKeyId` column values, and the Rust `ApiKeyResolver` injects the same
-  // spec `apiKeys` map. An absent/bogus apiKeyId → null both sides → the no-key
-  // fall-through.
-  const apiKeyMap = spec.apiKeys ?? {};
-  (repos.connections as { findApiKeyByIdAndUserId: unknown }).findApiKeyByIdAndUserId = async (
-    id: string
-  ) => (apiKeyMap[id] ? { id, key_value: apiKeyMap[id] } : null);
+  // W4.10a: `findApiKeyByIdAndUserId` is NO LONGER monkey-patched — v4's REAL repo
+  // reads the fixture-seeded `api_keys` rows (the Rust `DbApiKeys` resolver reads
+  // the same table). The uncensored-reroute profile's `apiKeyId` resolves to the
+  // synthetic seeded key end to end; an absent/bogus apiKeyId → null both sides.
 
   // Freeze the wall clock so buildContext's timestamp-in-prompt matches the Rust
   // injected now_ms (→ the canned stream key matches). Minted DB timestamps are
@@ -635,7 +626,6 @@ async function main(): Promise<void> {
 
   for (const call of spec.calls) {
     currentLabel = call.streamLabel;
-    currentModelSupportsTools = call.modelSupportsNativeTools ?? true;
     currentRngBytes = call.rngBytes ?? [];
     rngCursor = 0;
 
