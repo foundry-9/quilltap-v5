@@ -342,7 +342,14 @@ round with a drift check against v4 HEAD.
   cases' profile/cheap-LLM resolution. A follow-up (own `tool_execution.rs` +
   the fixture default-profile work) closes both — the Arc/seam infrastructure
   they need is now in place.**
-- **Round 5:** Unit 4 (enclave), then the Phase-4 kickoff.
+  **All three lanes are DONE and unified on main (2026-07-08) — zero source
+  conflicts for the third consecutive round; the gate (903 tests) + a
+  thirteen-differential sweep against fresh oracles at `6b6e39ad` ran green.
+  Every pre-enclave follow-up is closed or precisely narrowed (the two live
+  corpus cases + the spine failover-log threading remain, blockers named in
+  the W4.11a status above and CLAUDE.md).**
+- **Round 5:** Unit 4 (enclave), then the Phase-4 kickoff. The enclave order
+  is refreshed and ready (`work-orders/u4-enclave-engine.md`).
 
 The markdown-renderer / `qtap-linkify` item below is Phase-4-adjacent and not
 in a numbered batch.

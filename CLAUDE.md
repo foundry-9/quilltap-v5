@@ -4415,17 +4415,23 @@ sweep** against freshly regenerated v4 oracles at `6b6e39ad` — the three
 lanes' own proofs (orchestrator + tool_dispatch + the five W4.10a shared
 re-verifications; brahma_console; the six W4.10b regens + `llm_logs_tier2`)
 plus the `carina_query` cross-check. Versions: core 0.0.134, harness 0.0.128.
-**Standing follow-ups after this round:** the live `ask_carina`-through-spine
-+ live-Brahma orchestrator corpus cases (both blocked on the same spine
-provider-ownership plumbing — the erased seams need owned/Arc-shared
-providers); the spine `with_logging` wiring + an orchestrator `llm_logs` dump
-(now unblocked — W4.10b landed); ~~the W4.10b step-6 `primary_stream_tier3`
-regen~~ (**DONE — W4.11b**, incl. the failover CHAT_MESSAGE log-gap fix + the
-`temperature` seam close; the spine's failover-log wiring — its db +
-`preGeneratedAssistantMessageId` — is a spine-owner follow-up); the
-gatekeeper moderation-path logging seam (needs the projected
-`ModerationResult` widened to carry per-category `flagged`). Then Round 5:
-Unit 4, the enclave (`enclave-engine.md`).
+**Standing follow-ups after this round — ALL FOUR CLOSED OR NARROWED by the
+W4.11 cleanup round (2026-07-08, see below):** ~~the spine `with_logging`
+wiring + an orchestrator `llm_logs` dump~~ (**DONE — W4.11a**); ~~the W4.10b
+step-6 `primary_stream_tier3` regen~~ (**DONE — W4.11b**, incl. the failover
+CHAT_MESSAGE log-gap fix + the `temperature` seam close); ~~the gatekeeper
+moderation-path logging seam~~ (**DONE — W4.11c**); the live
+`ask_carina`-through-spine + live-Brahma orchestrator corpus cases — the
+provider-ownership blocker is RESOLVED (W4.11a's Arc impls + seam wiring),
+narrowed to two precise remainders: the ask_carina case needs the per-turn
+sink threaded through `ToolExecutionContext` (the W4.1c `emitCarinaAnswer`
+slot — v4 emits a `carinaAnswer` frame from the TOOL path that the Rust
+`run_ask_carina` NullSink swallows), and the live-Brahma case needs an
+`isDefault=1` fixture connection profile (a corpus-wide ripple). Plus one
+new small item from W4.11b: the orchestrator spine's failover-log wiring
+(thread its db + `preGeneratedAssistantMessageId` into
+`attempt_empty_response_recovery_with_log`). Then Round 5: Unit 4, the
+enclave (`enclave-engine.md`).
 
 **W4.11c: the gatekeeper moderation-path `logLLMCall` seam is now CLOSED**
 (2026-07-08) — the last tracked `logLLMCall` seam. The moderation seam was
@@ -4451,11 +4457,10 @@ filter and now diffs BOTH moderation rows byte-for-byte (regenerated green
 against v4 `6b6e39ad`; the oracle already ran the real `logLLMCall` since W4.10b
 — no v4-side change beyond a fresh regen). `danger_routing_equivalence` +
 `moderation_wire_equivalence` re-verified green (the wire types are unchanged).
-With this every `logLLMCall` call site is ported; the remaining logging
-follow-up is only the W4.11b `primary_stream_tier3` regen + the spine
-`with_logging` wiring.
-`ModerationResult` widened to carry per-category `flagged` — W4.11c). Then
-Round 5: Unit 4, the enclave (`enclave-engine.md`).
+With this every `logLLMCall` call site is ported (the W4.11b
+`primary_stream_tier3` regen and the W4.11a spine `with_logging` wiring
+landed in the same round).
+
 **W4.11a (spine `with_logging` + owned-provider plumbing): the Arc/logging
 half is DONE; the two live corpus cases are DEFERRED with precise blockers.**
 Added `Arc<T>` blanket impls for the three provider seams (`EmbeddingProvider`
@@ -4509,3 +4514,30 @@ a safe budget. The seams' behavior is independently proven by `carina_query_tier
 `brahma_console_tier3`, `mail_carina_tools`, the `ask_carina` seam unit tests
 (default + canned), the `tool_dispatch` `ask_carina` not-found row, and the
 orchestrator `carina_markup` case (the finalizer `@Name:` engine end-to-end).
+
+**Cleanup-round unification (2026-07-08): DONE — W4.11a, W4.11b, and W4.11c
+are integrated on main.** The three lanes cherry-picked onto main with ZERO
+source-level conflicts for the third consecutive round (CLAUDE.md/CHANGELOG
+unions only; every branch's Cargo.toml delta was verified version-only before
+take-theirs — the prior round's tempfile lesson applied — and all three lanes
+bumped to the same numbers, so versions auto-aligned). Verified on the
+integrated tree: the full workspace gate (903 tests, clippy `-D warnings`
+default + `native-transport`, fmt) and a **thirteen-differential sweep**
+against freshly regenerated v4 oracles at `6b6e39ad` — the three lane proofs
+(`orchestrator_tier3` with the llm_logs dump, `primary_stream_tier3` with the
+CHAT_MESSAGE rows + requestHashes, `danger_gatekeeper_tier3` with the
+moderation rows) plus ten cross-checks (`danger_routing`, `llm_logs_tier2`,
+`tool_dispatch`, `message_finalizer_tier3`, `carina_query_tier3`,
+`brahma_console_tier3`, `mail_carina_tools`, `compression_tier3`,
+`memory_processor_tier3`, `context_summary_service_tier3`). Versions: core
+0.0.135, harness 0.0.129. **Every pre-enclave follow-up is now closed or
+precisely narrowed** (see the standing-follow-ups block above): the remaining
+small items are the two live orchestrator corpus cases (ask_carina blocked on
+the W4.1c `emitCarinaAnswer` sink threading; Brahma on an `isDefault` fixture
+profile), the spine failover-log threading, and — further out — the W4.7f/W4.2
+moderation plugin registry + api-key host seams. **Round 5 (Unit 4, the
+enclave) is ready to start:** `enclave-engine.md` + the u4 work order are
+refreshed for the landed logging reality (the per-run token accounting's
+`llm_logs` substrate is now live and byte-verified); its one named spine gap
+(parameterize `log_chat_message_call`'s hard-coded `LogContext::none()`) is in
+the order's ground rules.

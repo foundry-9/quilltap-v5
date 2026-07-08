@@ -4,6 +4,18 @@
 
 ### 5.0-dev
 
+Cleanup-round unification: integrated the three parallel lanes (W4.11a spine
+logging + owned-provider plumbing, W4.11b primary-stream logging regen,
+W4.11c moderation logging seam) onto main — zero source-level conflicts for
+the third consecutive round (docs unions only; every branch's Cargo.toml
+delta verified version-only before take-theirs). Verified on the integrated
+tree: the full workspace gate (903 tests, clippy -D warnings on default and
+native-transport, fmt) and a thirteen-differential sweep against freshly
+regenerated v4 oracles at 6b6e39ad (the three lane proofs plus ten
+cross-checks), all green. Versions: core 0.0.135, harness 0.0.129. Every
+pre-enclave follow-up is now closed or precisely narrowed; Round 5 (the
+enclave) is ready to start.
+
 W4.11c: closed the last `logLLMCall` seam — the gatekeeper moderation-path
 `llm_logs` row. The moderation seam was widened so the wire's raw per-category
 `flagged` survives the projection to the gatekeeper (added `flagged` to
