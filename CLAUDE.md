@@ -3975,3 +3975,59 @@ handoffs for the next spine owner are unchanged (W4.7e's
 `model_supports_native_tools` sourcing + W4.7d's ApiKeyResolver composition
 wiring, both → W4.4b) — plus **W4.7e2** (the BUILTIN TF-IDF/BM25 vectorizer)
 and the W4.7e logLLMCall call-site closures/regens as tracked follow-ups.
+
+**W4.4b: the chat file/attachment LLM-load subsystem is ported and its two spine
+seams are CLOSED** (`OrchestratorSeams::process_files` = v4 `loadAndProcessFiles`;
+`MessageContextSeams::load_lantern_images` = the `buildMessageContext` section-K
+file loader). New pure `files::` leaves: **`text_detection`** (v4
+`lib/files/text-detection.ts` — the 96-entry ext→MIME table + null-byte/non-printable
+content sniffing, its own tier-1 differential `text_detection_equivalence`, 41
+cases), **`image_processing`** (v4 `lib/files/image-processing.ts` — the
+base64-size + provider-limit resize DECISION over an injected `ImageTranscoder`
+seam; NO image codec in the core [the `doc_blob` `transcodeToWebP` precedent]; the
+geometric ×0.8 loop + the quality-fallback / exhausted-JPEG quirks reproduced
+faithfully; `get_provider_max_base64_size` reads the registry manifest), and
+**`attachment_support`** (v4 `lib/llm/attachment-support.ts`'s client-safe
+`PROVIDER_ATTACHMENT_CAPABILITIES` — the source `profileSupportsMimeType` consults
+for NON-image types; images are gated solely by the profile's `supportsImageUpload`
+flag, a DISTINCT dataset from the registry `maxBase64Size`). New services:
+**`file_fallback`** (v4 `file-attachment-fallback.ts`, from the `6b6e39ad` source —
+`generate_image_description`'s three tiers IN ORDER: the persisted-prompt reuse
+FIRST [`files.findById` → first non-empty of `generationRevisedPrompt`/
+`generationPrompt`/`description`, `reusedPersistedDescription: true`, no vision
+call], then the vision call over the `CompletionProvider` seam [profile selection,
+the pre-vision downsize to the description provider's limit, the refusal heuristics
+— empty / reasoning-token exhaustion / suspicious-keyword — byte-faithful, the
+uncensored retry], then the `IMAGE_DESCRIPTION` `logLLMCall` write on both success
+and failure via the real `llm_logging::log_llm_call`; plus `convert_text_file_to_inline`
+[the exact `[User attached text file: …]` markers], the keep-vs-drop rule
+[`unsupported`+no-error → KEEP raw, `unsupported`+error → drop], and
+`format_fallback_as_message_prefix` [the `⚠️` error marker]) and **`chat_files`**
+(the LLM-load half of `chat-files-v2` — `load_chat_files_for_llm` [NO dedup by id,
+per-file load failure skipped] + `load_mount_file_as_attachment` [the Scriptorium
+mount-blob path] + `read_file_as_base64` over the injected `FileBytesStore` byte
+seam + the resize decision; plus `load_and_process_files` [v4
+`loadAndProcessFiles`, the faithful positional-pairing bug kept] and the Lantern
+K-loader `load_lantern_images` + `RealMessageContextSeams`). **The vision call
+reuses the completion seam** via new `CompletionParams.attachments` +
+`CompletionResponse.finish_reason` + `canned_completion_key_with_attachments`
+(byte-identical to the base key when attachments empty → every pre-W4.4b oracle
+keys unchanged). The K seam went **async** (RPITIT `+ Send`, the `BuildContextSeams`
+precedent; `process_message`'s `CMP` bound gained `+ Sync`). Widened
+`db::files::FileEntry` with `size` + `description`; added
+`find_link_meta_by_linked_to` + `doc_mount_file_links::find_with_content_by_file_id`
+(v4 `findByFileId` in the with-content shape). Verified: 640 core tests + the
+`text_detection` tier-1 differential green; `orchestrator_tier3` regenerated +
+`message_context_leaves` re-run **green** (the new seams are inert on the existing
+corpus — file ids empty, no prior-image attachments). The `file_attachment_tier3`
+differential (jest real-DB, driving v4's REAL `loadAndProcessFiles` +
+`buildMessageContext` over FSM/Sharp/model/Librarian mocks) is the byte-exact
+proof. **Tracked deferrals (the two inherited spine handoffs, prose items outside
+the deliverables checklist):** sourcing `model_supports_native_tools` from
+`pricing_fetcher::check_model_supports_tools` (needs a pricing dep in the spine)
+and wiring `ConnApiKeys` into the danger/cheap/image composition points — each
+with its own orchestrator-oracle regen. Also deferred (host-side, unchanged from
+v4): the upload/ingest half of `chat-files-v2` (Phase-4 FSM storage), the real
+image codec + FSM byte layer (the `ImageTranscoder`/`FileBytesStore` production
+impls), and the 60 s image-description timeout timer (only the timeout→error
+mapping is ported).

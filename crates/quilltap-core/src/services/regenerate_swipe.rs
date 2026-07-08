@@ -377,6 +377,7 @@ where
                 strict_max_tokens: false,
                 cache_key: Some(character_id.clone()),
                 profile_parameters: Some(params_value),
+                attachments: Vec::new(),
             },
         )
         .await

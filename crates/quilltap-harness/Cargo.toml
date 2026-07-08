@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-harness"
-version = "0.0.120"
+version = "0.0.121"
 edition = "2021"
 publish = false
 
@@ -35,3 +35,6 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
 # normalized bytes so both sides align. Only that test tree needs these.
 sha2 = "0.10"
 regex = "1"
+# The file-attachment tier-3 differential base64-encodes the fixture's per-file
+# bytes to build the (B) processFileAttachmentFallback `data` payload.
+base64 = "0.22"

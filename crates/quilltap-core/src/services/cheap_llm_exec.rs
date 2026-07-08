@@ -147,6 +147,7 @@ impl CheapLlmTaskExecutor {
             strict_max_tokens: true,
             cache_key: build_character_cache_key(character_id),
             profile_parameters: selection.profile_parameters.clone(),
+            attachments: Vec::new(),
         };
 
         let known_no_temp = self

@@ -207,13 +207,6 @@ pub trait OrchestratorSeams {
     fn chat_settings(&self, user_id: &str) -> Option<OrchestratorChatSettings> {
         None
     }
-
-    /// Attachment processing (v4 `loadAndProcessFiles`). Fired only when
-    /// `fileIds` is non-empty. Default: no attachments (empty result). The
-    /// corpus keeps `fileIds` empty.
-    fn process_files(&self, file_ids: &[String]) -> FileProcessingResult {
-        FileProcessingResult::default()
-    }
 }
 
 /// A no-op seam bundle (nothing available). Used by self-tests; the differential
@@ -294,20 +287,6 @@ impl OrchestratorChatSettings {
             cheap_llm_fallback_to_local: true,
         }
     }
-}
-
-/// The result of attachment processing (v4 `loadAndProcessFiles` subset). The
-/// corpus keeps everything empty.
-#[derive(Clone, Debug, Default)]
-pub struct FileProcessingResult {
-    /// `(fileId)` links to write against the user message.
-    pub attached_file_ids: Vec<String>,
-    /// v4 `messageContentPrefix` — prepended to the user message content.
-    pub message_content_prefix: Option<String>,
-    /// v4 `attachmentsToSend` — the provider-supported attachments passed into
-    /// `buildMessageContext` (merged onto the last user message). The corpus keeps
-    /// this empty (the file subsystem is wave-4).
-    pub attachments_to_send: Vec<Value>,
 }
 
 // ===========================================================================
@@ -391,7 +370,7 @@ pub struct ProcessMessageInput {
 pub struct OrchestratorDeps<'a, EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST, CARQ, PROS>
 where
     EMB: EmbeddingProvider,
-    CMP: CompletionProvider,
+    CMP: CompletionProvider + Sync,
     STR: StreamingCompletionProvider,
     SNK: EventSink + Sync,
     BCS: BuildContextSeams,
@@ -411,6 +390,11 @@ where
     pub sink: &'a SNK,
     pub build_context_seams: &'a BCS,
     pub orchestrator_seams: &'a ORC,
+    /// The host byte store (v4 `fileStorageManager`) — the W4.4b attachment
+    /// loader's legacy-`files` byte source.
+    pub file_bytes: &'a dyn crate::services::chat_files::FileBytesStore,
+    /// The image codec (Sharp) seam — the W4.4b attachment resize decision.
+    pub image_transcoder: &'a dyn crate::files::image_processing::ImageTranscoder,
     pub danger_router: &'a RTR,
     /// The finalizer's answer-confirmation runner seam.
     pub confirmation: &'a mut CONF,
@@ -455,7 +439,7 @@ pub async fn process_message<EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COS
 ) -> Result<ProcessMessageResult, DbError>
 where
     EMB: EmbeddingProvider,
-    CMP: CompletionProvider,
+    CMP: CompletionProvider + Sync,
     STR: StreamingCompletionProvider,
     SNK: EventSink + Sync,
     BCS: BuildContextSeams,
@@ -914,9 +898,27 @@ where
             character_id: Some(character_id.clone()),
         }));
     }
-    let file_processing = deps
-        .orchestrator_seams
-        .process_files(&input.options.file_ids);
+    // v4 `loadAndProcessFiles(chatId, fileIds, connectionProfile, userId)` — now
+    // real (W4.4b). Uses the ORIGINAL responding `connection_profile` (not the
+    // rerouted `effective_profile`), matching v4. Early-returns empty when there
+    // are no file ids.
+    let file_processing = {
+        let process_files_deps = crate::services::chat_files::ProcessFilesDeps {
+            db,
+            bytes: deps.file_bytes,
+            transcoder: deps.image_transcoder,
+            completion: deps.completion,
+            user_id: &user_id,
+            now_ms: input.clock.now_ms,
+        };
+        crate::services::chat_files::load_and_process_files(
+            &process_files_deps,
+            &chat_id,
+            &connection_profile,
+            &input.options.file_ids,
+        )
+        .await
+    };
 
     // --- RNG auto-detect on the user message (orchestrator.service.ts:587–625) ---
     // Gated on `autoDetectRng ?? true`, `!continueMode`, and non-empty content.
@@ -1413,13 +1415,26 @@ where
         participant_transparency: &participant_transparency,
     };
 
+    // The real Lantern K-seam loader (W4.4b) — closes
+    // `MessageContextSeams::load_lantern_images`.
+    let mc_seams = crate::services::chat_files::RealMessageContextSeams {
+        deps: crate::services::chat_files::ProcessFilesDeps {
+            db,
+            bytes: deps.file_bytes,
+            transcoder: deps.image_transcoder,
+            completion: deps.completion,
+            user_id: &user_id,
+            now_ms: input.clock.now_ms,
+        },
+        connection_profile: &connection_profile,
+    };
     let mc_result = message_context::build_message_context(
         db,
         deps.embedding,
         deps.completion,
         deps.executor,
         deps.build_context_seams,
-        &message_context::NoopMessageContextSeams,
+        &mc_seams,
         &mc_params,
         build_input,
         &existing_messages,
@@ -2116,7 +2131,7 @@ async fn run_summary_check<EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST,
 ) -> Result<(), DbError>
 where
     EMB: EmbeddingProvider,
-    CMP: CompletionProvider,
+    CMP: CompletionProvider + Sync,
     STR: StreamingCompletionProvider,
     SNK: EventSink + Sync,
     BCS: BuildContextSeams,
@@ -2240,7 +2255,7 @@ pub async fn execute_turn_chain<
 ) -> Result<(), DbError>
 where
     EMB: EmbeddingProvider,
-    CMP: CompletionProvider,
+    CMP: CompletionProvider + Sync,
     STR: StreamingCompletionProvider,
     SNK: EventSink + Sync,
     BCS: BuildContextSeams,
@@ -2920,6 +2935,8 @@ mod tests {
                 sink: &sink,
                 build_context_seams: &bc,
                 orchestrator_seams: &orc,
+                file_bytes: &crate::services::chat_files::NotConfiguredBytes,
+                image_transcoder: &crate::files::image_processing::NotConfiguredTranscoder,
                 danger_router: &router,
                 confirmation: &mut confirmation,
                 compression: &mut compression,

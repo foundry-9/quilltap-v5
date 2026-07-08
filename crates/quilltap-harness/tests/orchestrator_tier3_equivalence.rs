@@ -548,6 +548,11 @@ fn orchestrator_tier3_matches_oracle() {
             sink: &sink,
             build_context_seams: &bc_seams,
             orchestrator_seams: &orchestrator_seams,
+            // The attachment subsystem (W4.4b): the corpus keeps `fileIds` empty
+            // and carries no prior-image message attachments, so `loadAndProcessFiles`
+            // early-returns and the Lantern K-seam is never invoked — these are inert.
+            file_bytes: &quilltap_core::services::chat_files::NotConfiguredBytes,
+            image_transcoder: &quilltap_core::files::image_processing::NotConfiguredTranscoder,
             danger_router: &router,
             confirmation: &mut confirmation,
             compression: &mut compression,

@@ -462,6 +462,7 @@ where
         strict_max_tokens: false,
         cache_key: None,
         profile_parameters: cheap_llm_selection.profile_parameters.clone(),
+        attachments: Vec::new(),
     };
 
     let response = completion

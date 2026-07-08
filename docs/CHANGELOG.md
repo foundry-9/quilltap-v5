@@ -4,6 +4,34 @@
 
 ### 5.0-dev
 
+W4.4b: ported the chat file/attachment LLM-load subsystem and closed its two
+standing seams (`OrchestratorSeams::process_files` and
+`MessageContextSeams::load_lantern_images`). New pure leaves under `files::` —
+`text_detection` (the full 96-entry ext→MIME table + content sniffing, with its
+own tier-1 differential), `image_processing` (the base64-size + provider-limit
+resize DECISION logic over an injected `ImageTranscoder` seam — no image codec in
+the core; the geometric-scale loop and its quirks reproduced faithfully), and
+`attachment_support` (v4's client-safe `PROVIDER_ATTACHMENT_CAPABILITIES` map).
+New services — `file_fallback` (`file-attachment-fallback.ts`: the three-tier
+image description [persisted-prompt reuse FIRST, then the vision call over the
+`CompletionProvider` seam with the uncensored retry, then the `IMAGE_DESCRIPTION`
+`logLLMCall` write], text→inline, the keep-vs-drop rule, the prefix markers) and
+`chat_files` (the LLM-load half of `chat-files-v2`: `loadChatFilesForLLM` +
+`loadMountFileAsAttachment` + `readFileAsBase64` over the injected `FileBytesStore`
+byte seam, plus `loadAndProcessFiles` and the Lantern K-loader). The vision call
+reuses the completion seam via new `CompletionParams.attachments` +
+`CompletionResponse.finish_reason` + a backward-compatible
+`canned_completion_key_with_attachments` (byte-identical to the base key when
+attachments are empty, so every pre-W4.4b oracle keys unchanged). The K seam went
+async (RPITIT + Send). Widened `db::files::FileEntry` with `size` + `description`;
+added `find_link_meta_by_linked_to` and `doc_mount_file_links::find_with_content_by_file_id`.
+Regenerated `orchestrator_tier3` and re-ran `message_context_leaves` green (the
+new seams are inert on the existing corpus — file ids empty, no prior-image
+attachments). Deferred (flagged, out of the deliverables checklist): the two
+inherited spine handoffs — sourcing `model_supports_native_tools` from
+`pricing_fetcher::check_model_supports_tools`, and wiring `ConnApiKeys` into the
+danger/cheap/image composition points.
+
 Docs: wrote the two remaining follow-up work orders — W4.7e2 (the BUILTIN
 TF-IDF/BM25 vectorizer: Porter stemmer transcription, the BM25 fit/transform
 math, loadState over the ported tfidf_vocabulary rows, and the EMBEDDING_REFIT

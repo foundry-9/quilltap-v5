@@ -178,6 +178,16 @@ impl FileSweepRow {
     }
 }
 
+/// The `files`-row metadata the W4.4b `loadAndProcessFiles` reads (v4
+/// `findByLinkedTo` subset: `id`/`originalFilename`/`mimeType`/`size`).
+#[derive(Debug, Clone)]
+pub struct FileLinkMeta {
+    pub id: String,
+    pub original_filename: String,
+    pub mime_type: String,
+    pub size: i64,
+}
+
 /// Repository over a borrowed connection (held by the [`super::Writer`]).
 pub struct FilesRepository<'c> {
     conn: &'c Connection,
@@ -404,6 +414,32 @@ impl<'c> FilesRepository<'c> {
         Ok(rows)
     }
 
+    /// v4 `findByLinkedTo(entityId)` reduced to the columns the W4.4b
+    /// `loadAndProcessFiles` consumes (`id`, `originalFilename`, `mimeType`,
+    /// `size`). Same `json_each` membership test as [`Self::find_sweep_rows_by_linked_to`],
+    /// rowid order (v4's unordered scan → `matched` preserves this order, NOT
+    /// `fileIds` order).
+    pub fn find_link_meta_by_linked_to(
+        &self,
+        entity_id: &str,
+    ) -> Result<Vec<FileLinkMeta>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, originalFilename, mimeType, size FROM files \
+             WHERE EXISTS (SELECT 1 FROM json_each(files.linkedTo) WHERE value = ?1)",
+        )?;
+        let rows = stmt
+            .query_map(params![entity_id], |row| {
+                Ok(FileLinkMeta {
+                    id: row.get(0)?,
+                    original_filename: row.get(1)?,
+                    mime_type: row.get(2)?,
+                    size: real_affinity_opt_i64(row.get_ref(3)?).unwrap_or(0),
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// v4 `addLink(fileId, entityId)` — append `entity_id` to the file's
     /// `linkedTo` array (idempotent: absent-only), persisting through `update`
     /// (which mints a fresh `updatedAt`). A missing file is a no-op (v4 warns +
@@ -546,30 +582,37 @@ pub struct FileEntry {
     pub sha256: String,
     pub original_filename: String,
     pub mime_type: String,
+    /// The byte size (v4 `size`, a REAL-affinity integer). Read as `i64` (the
+    /// W4.4b legacy attachment descriptor's `size` is `fileEntry.size`).
+    pub size: i64,
     pub width: Option<i64>,
     pub height: Option<i64>,
     pub category: String,
     pub generation_prompt: Option<String>,
     pub generation_model: Option<String>,
     pub generation_revised_prompt: Option<String>,
+    /// The stored image description (W4.4b `generateImageDescription`'s persisted
+    /// reuse tier falls back to this after the two generation-prompt columns).
+    pub description: Option<String>,
     pub storage_key: Option<String>,
 }
 
 /// The canonical column list, referenced by the lockstep test that guards the two
 /// hardcoded SELECTs against drift.
 #[cfg(test)]
-const FILE_ENTRY_COLUMNS: &str = "id, sha256, originalFilename, mimeType, width, height, \
-     category, generationPrompt, generationModel, generationRevisedPrompt, storageKey";
+const FILE_ENTRY_COLUMNS: &str = "id, sha256, originalFilename, mimeType, size, width, height, \
+     category, generationPrompt, generationModel, generationRevisedPrompt, description, storageKey";
 
-const FILE_ENTRY_SELECT: &str = "SELECT id, sha256, originalFilename, mimeType, width, height, \
-     category, generationPrompt, generationModel, generationRevisedPrompt, storageKey \
+const FILE_ENTRY_SELECT: &str =
+    "SELECT id, sha256, originalFilename, mimeType, size, width, height, \
+     category, generationPrompt, generationModel, generationRevisedPrompt, description, storageKey \
      FROM files WHERE id = ?1";
 
 /// The same column list for a filtered/ordered multi-row read (the WHERE + ORDER
 /// BY are appended by the caller). Kept in lockstep with [`FILE_ENTRY_SELECT`].
 const FILE_ENTRY_SELECT_ALL: &str =
-    "SELECT id, sha256, originalFilename, mimeType, width, height, \
-     category, generationPrompt, generationModel, generationRevisedPrompt, storageKey \
+    "SELECT id, sha256, originalFilename, mimeType, size, width, height, \
+     category, generationPrompt, generationModel, generationRevisedPrompt, description, storageKey \
      FROM files";
 
 /// Map a `files` row (the [`FILE_ENTRY_COLUMNS`] projection) into a [`FileEntry`].
@@ -581,13 +624,15 @@ fn map_file_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<FileEntry> {
         sha256: row.get(1)?,
         original_filename: row.get(2)?,
         mime_type: row.get(3)?,
-        width: real_affinity_opt_i64(row.get_ref(4)?),
-        height: real_affinity_opt_i64(row.get_ref(5)?),
-        category: row.get(6)?,
-        generation_prompt: row.get(7)?,
-        generation_model: row.get(8)?,
-        generation_revised_prompt: row.get(9)?,
-        storage_key: row.get(10)?,
+        size: real_affinity_opt_i64(row.get_ref(4)?).unwrap_or(0),
+        width: real_affinity_opt_i64(row.get_ref(5)?),
+        height: real_affinity_opt_i64(row.get_ref(6)?),
+        category: row.get(7)?,
+        generation_prompt: row.get(8)?,
+        generation_model: row.get(9)?,
+        generation_revised_prompt: row.get(10)?,
+        description: row.get(11)?,
+        storage_key: row.get(12)?,
     })
 }
 

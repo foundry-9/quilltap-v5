@@ -46,6 +46,23 @@ pub struct CompletionMessage {
     pub content: String,
 }
 
+/// A file attachment carried on a completion request (v4 `FileAttachment`, the
+/// subset the image-description vision call sends + the canned key needs). Only
+/// the chat file/attachment path (W4.4b `generate_image_description`) populates
+/// [`CompletionParams::attachments`]; every other completion caller leaves it
+/// empty, so the canned key is byte-identical to the pre-W4.4b key there.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct CompletionAttachment {
+    pub filename: String,
+    #[serde(rename = "mimeType")]
+    pub mime_type: String,
+    /// The base64 payload the real adapter sends (unused by the canned key — kept
+    /// off the key so the resized bytes don't have to be reproduced there;
+    /// `filename`+`mimeType` distinguish the corpus's images).
+    #[serde(skip)]
+    pub data: String,
+}
+
 impl CompletionMessage {
     pub fn system(content: impl Into<String>) -> Self {
         Self {
@@ -79,6 +96,10 @@ pub struct CompletionParams {
     pub strict_max_tokens: bool,
     pub cache_key: Option<String>,
     pub profile_parameters: Option<serde_json::Value>,
+    /// Attachments carried on the (single, last) user message — only the W4.4b
+    /// image-description vision call sets this (v4 `messages[].attachments`).
+    /// Empty for every other completion caller.
+    pub attachments: Vec<CompletionAttachment>,
 }
 
 /// Token usage of a completion (v4 `TokenUsage`).
@@ -95,6 +116,10 @@ pub struct CompletionUsage {
 pub struct CompletionResponse {
     pub content: String,
     pub usage: Option<CompletionUsage>,
+    /// v4 `response.finishReason` — consulted by the W4.4b image-description
+    /// refusal heuristic (`finishReason === 'length'` on a reasoning model) and
+    /// recorded by `logLLMCall`. `None` for callers that don't populate it.
+    pub finish_reason: Option<String>,
 }
 
 /// Error from a completion call. The message text matters: v4's execution path
@@ -169,6 +194,29 @@ pub fn canned_completion_key(
     format!("{provider}|{model}|{temp}|{messages_json}")
 }
 
+/// The canned key extended with the request's attachments (W4.4b image
+/// description). Byte-identical to [`canned_completion_key`] when `attachments` is
+/// empty (so every pre-W4.4b caller keys unchanged); otherwise appends
+/// `|atts:[{"filename":…,"mimeType":…}]` (the base64 data is deliberately off the
+/// key — the corpus's images are distinguished by filename+mimeType). The v4
+/// file-attachment oracle computes the identical string from the recorded
+/// `messageParams.messages[0].attachments`.
+pub fn canned_completion_key_with_attachments(
+    provider: &str,
+    model: &str,
+    temperature: Option<f64>,
+    messages: &[CompletionMessage],
+    attachments: &[CompletionAttachment],
+) -> String {
+    let base = canned_completion_key(provider, model, temperature, messages);
+    if attachments.is_empty() {
+        return base;
+    }
+    let atts_json =
+        serde_json::to_string(attachments).expect("completion attachments serialize infallibly");
+    format!("{base}|atts:{atts_json}")
+}
+
 /// A deterministic [`CompletionProvider`] for the tier-3 differential. Returns a
 /// fixed [`CompletionResponse`] keyed by the **exact** call input
 /// ([`canned_completion_key`]), or an explicit failure for keys registered as
@@ -192,7 +240,7 @@ impl CannedCompletionProvider {
     }
 
     /// Register a response for the exact call `(provider, model, temperature,
-    /// messages)`.
+    /// messages)` (no attachments, no finish reason — the pre-W4.4b shape).
     #[allow(clippy::too_many_arguments)]
     pub fn with_response(
         mut self,
@@ -209,8 +257,55 @@ impl CannedCompletionProvider {
             CompletionResponse {
                 content: content.into(),
                 usage,
+                finish_reason: None,
             },
         );
+        self
+    }
+
+    /// Register a full response for a call keyed WITH its attachments (the W4.4b
+    /// image-description vision call), carrying `finish_reason`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_response_full(
+        mut self,
+        provider: &str,
+        model: &str,
+        temperature: Option<f64>,
+        messages: &[CompletionMessage],
+        attachments: &[CompletionAttachment],
+        response: CompletionResponse,
+    ) -> Self {
+        let key = canned_completion_key_with_attachments(
+            provider,
+            model,
+            temperature,
+            messages,
+            attachments,
+        );
+        self.responses.insert(key, response);
+        self
+    }
+
+    /// Register a failure keyed WITH its attachments (the W4.4b vision path — a
+    /// timeout / provider error surfaced as a thrown error in v4).
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_failure_full(
+        mut self,
+        provider: &str,
+        model: &str,
+        temperature: Option<f64>,
+        messages: &[CompletionMessage],
+        attachments: &[CompletionAttachment],
+        message: impl Into<String>,
+    ) -> Self {
+        let key = canned_completion_key_with_attachments(
+            provider,
+            model,
+            temperature,
+            messages,
+            attachments,
+        );
+        self.failures.insert(key, message.into());
         self
     }
 
@@ -238,11 +333,12 @@ impl CompletionProvider for CannedCompletionProvider {
     ) -> impl Future<Output = Result<CompletionResponse, CompletionError>> + Send {
         // Resolve synchronously so the returned future owns its result and is
         // `'static` + `Send` (no borrow of `&self` escapes into the future).
-        let key = canned_completion_key(
+        let key = canned_completion_key_with_attachments(
             provider,
             &params.model,
             params.temperature,
             &params.messages,
+            &params.attachments,
         );
         let result =
             if let Some(message) = self.failures.get(&key) {
@@ -283,6 +379,7 @@ mod tests {
             strict_max_tokens: true,
             cache_key: None,
             profile_parameters: None,
+            attachments: Vec::new(),
         }
     }
 

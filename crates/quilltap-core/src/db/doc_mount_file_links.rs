@@ -1101,6 +1101,22 @@ impl<'c> DocMountFileLinksRepository<'c> {
             })
     }
 
+    /// v4 `findByFileId(fileId)` in the with-content shape — every link whose
+    /// `fileId` matches, joined with the file-row content fields. The W4.4b
+    /// `loadMountFileAsAttachment` mount-fallback path reads `[0]` (v4 treats the
+    /// arg as a file id when the link-id lookup misses). Insertion (rowid) order.
+    pub fn find_with_content_by_file_id(
+        &self,
+        file_id: &str,
+    ) -> Result<Vec<LinkWithContent>, DbError> {
+        let sql = LINK_WITH_CONTENT_SELECT.replace("WHERE l.id = ?1", "WHERE l.fileId = ?1");
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(params![file_id], map_link_with_content)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// Set the chunk rollups on a link (v4 `chunkAndInsertExtractedText`'s
     /// `links.update({ chunkCount, plainTextLength })` beat). `plainTextLength` is
     /// deterministic (UTF-16 length of the stored `extractedText`); `chunkCount` is

@@ -134,6 +134,7 @@ pub fn execute_completion<'a, T: ProviderTransport + ?Sized>(
                 completion_tokens: parsed.usage.completion_tokens,
                 total_tokens: parsed.usage.total_tokens,
             }),
+            finish_reason: parsed.finish_reason,
         })
     })
 }
@@ -184,6 +185,7 @@ mod tests {
             strict_max_tokens: true,
             cache_key: None,
             profile_parameters: None,
+            attachments: Vec::new(),
         }
     }
 

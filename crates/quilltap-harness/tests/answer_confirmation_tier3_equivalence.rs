@@ -433,6 +433,7 @@ fn answer_confirmation_tier3_matches_oracle() {
                     CompletionResponse {
                         content: row.response,
                         usage: None,
+                        finish_reason: None,
                     },
                 );
             }

@@ -1,0 +1,175 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "seedTimestamp": "2020-01-01T00:00:00.000Z",
+  "userId": "10000000-0000-4000-8000-000000000001",
+  "user": { "email": "attach@example.com", "name": "Attach User", "username": "attachuser" },
+  "chatId": "20000000-0000-4000-8000-000000000001",
+  "participantAId": "21000000-0000-4000-8000-000000000001",
+  "charId": "22000000-0000-4000-8000-000000000001",
+  "charName": "Aurora",
+  "chatSettingsId": "40000000-0000-4000-8000-000000000001",
+  "descProfileId": "30000000-0000-4000-8000-0000000000d1",
+  "uncensoredProfileId": "30000000-0000-4000-8000-0000000000d2",
+  "textContent": "Hello from the attached notes file.\nSecond line of the note.",
+  "connectionProfiles": [
+    {
+      "id": "30000000-0000-4000-8000-0000000000d1",
+      "name": "Vision Describer",
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini",
+      "supportsImageUpload": true,
+      "isCheap": true,
+      "baseUrl": null,
+      "apiKeyId": null,
+      "parameters": {}
+    },
+    {
+      "id": "30000000-0000-4000-8000-0000000000d2",
+      "name": "Uncensored Describer",
+      "provider": "OLLAMA",
+      "modelName": "llava-uncensored",
+      "supportsImageUpload": true,
+      "isCheap": false,
+      "baseUrl": "http://localhost:11434",
+      "apiKeyId": null,
+      "parameters": {}
+    }
+  ],
+  "respProfiles": {
+    "noImg": {
+      "id": "30000000-0000-4000-8000-0000000000a1",
+      "provider": "DEEPSEEK",
+      "modelName": "deepseek-chat",
+      "supportsImageUpload": false
+    },
+    "imgOK": {
+      "id": "30000000-0000-4000-8000-0000000000a2",
+      "provider": "OPENAI",
+      "modelName": "gpt-4o",
+      "supportsImageUpload": true
+    }
+  },
+  "files": [
+    {
+      "key": "text",
+      "id": "f0000000-0000-4000-8000-000000000001",
+      "originalFilename": "notes.txt",
+      "mimeType": "text/plain",
+      "category": "ATTACHMENT",
+      "fsmBytesUtf8": "Hello from the attached notes file.\nSecond line of the note."
+    },
+    {
+      "key": "keptImage",
+      "id": "f0000000-0000-4000-8000-000000000002",
+      "originalFilename": "kept-photo.png",
+      "mimeType": "image/png",
+      "category": "IMAGE",
+      "fsmBytes": [137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3, 4]
+    },
+    {
+      "key": "descImage",
+      "id": "f0000000-0000-4000-8000-000000000003",
+      "originalFilename": "plain-image.png",
+      "mimeType": "image/png",
+      "category": "IMAGE",
+      "fsmBytes": [137, 80, 78, 71, 13, 10, 26, 10, 9, 8, 7, 6]
+    },
+    {
+      "key": "refusalImage",
+      "id": "f0000000-0000-4000-8000-000000000004",
+      "originalFilename": "refusal-image.png",
+      "mimeType": "image/png",
+      "category": "IMAGE",
+      "fsmBytes": [137, 80, 78, 71, 13, 10, 26, 10, 5, 5, 5, 5]
+    },
+    {
+      "key": "zip",
+      "id": "f0000000-0000-4000-8000-000000000005",
+      "originalFilename": "archive.zip",
+      "mimeType": "application/zip",
+      "category": "ATTACHMENT",
+      "fsmBytes": [80, 75, 3, 4, 20, 0, 0, 0]
+    },
+    {
+      "key": "missing",
+      "id": "f0000000-0000-4000-8000-000000000006",
+      "originalFilename": "ghost.png",
+      "mimeType": "image/png",
+      "category": "IMAGE",
+      "fsmMissing": true
+    },
+    {
+      "key": "reuseRevised",
+      "id": "f0000000-0000-4000-8000-000000000007",
+      "originalFilename": "reuse-revised.png",
+      "mimeType": "image/png",
+      "category": "IMAGE",
+      "fsmBytes": [137, 80, 78, 71, 1, 1, 1, 1],
+      "generationRevisedPrompt": "A crimson rose in full bloom, dew still clinging to its velvet petals.",
+      "generationPrompt": "a red rose",
+      "description": "old cached description"
+    },
+    {
+      "key": "reusePrompt",
+      "id": "f0000000-0000-4000-8000-000000000008",
+      "originalFilename": "reuse-prompt.png",
+      "mimeType": "image/png",
+      "category": "IMAGE",
+      "fsmBytes": [137, 80, 78, 71, 2, 2, 2, 2],
+      "generationPrompt": "A calm blue ocean stretching to the horizon under a clear sky.",
+      "description": "old cached description"
+    },
+    {
+      "key": "reuseDesc",
+      "id": "f0000000-0000-4000-8000-000000000009",
+      "originalFilename": "reuse-desc.png",
+      "mimeType": "image/png",
+      "category": "IMAGE",
+      "fsmBytes": [137, 80, 78, 71, 3, 3, 3, 3],
+      "description": "A dense green forest with sunlight filtering through the canopy."
+    },
+    {
+      "key": "reuseWhitespace",
+      "id": "f0000000-0000-4000-8000-00000000000a",
+      "originalFilename": "reuse-ws.png",
+      "mimeType": "image/png",
+      "category": "IMAGE",
+      "fsmBytes": [137, 80, 78, 71, 4, 4, 4, 4],
+      "generationRevisedPrompt": "   ",
+      "generationPrompt": "A weathered lighthouse standing against a stormy grey sea."
+    }
+  ],
+  "mount": {
+    "mountPointId": "e0000000-0000-4000-8000-0000000000f1",
+    "relativePath": "attach/scriptorium-note.png",
+    "fileName": "scriptorium-note.png",
+    "storedMimeType": "image/png",
+    "data": [137, 80, 78, 71, 11, 22, 33, 44, 55, 66]
+  },
+  "vision": [
+    {
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini",
+      "filename": "plain-image.png",
+      "content": "A tranquil mountain lake at dawn, its glassy surface mirroring snow-dusted peaks while wisps of morning mist drift between tall evergreen pines along the shoreline.",
+      "finishReason": "stop",
+      "usage": { "promptTokens": 820, "completionTokens": 44, "totalTokens": 864 }
+    },
+    {
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini",
+      "filename": "refusal-image.png",
+      "content": "I cannot describe this particular image.",
+      "finishReason": "stop",
+      "usage": null
+    },
+    {
+      "provider": "OLLAMA",
+      "modelName": "llava-uncensored",
+      "filename": "refusal-image.png",
+      "content": "A bold abstract composition of overlapping crimson and cobalt geometric planes set against a stark, luminous white backdrop.",
+      "finishReason": "stop",
+      "usage": null
+    }
+  ]
+}

@@ -166,6 +166,7 @@ pub mod doc_edit;
 pub mod embedding_blob;
 pub mod embedding_vector;
 pub mod enclave_budget;
+pub mod files;
 pub mod finish_reason;
 pub mod folder_utils;
 pub mod format_bytes;

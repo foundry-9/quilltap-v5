@@ -812,8 +812,10 @@ fn arg_num(args: &Value, key: &str) -> Option<f64> {
 /// set that `encodeURI` leaves intact. v4 uses `encodeURI(relativePath)` on the
 /// blob URL; a vault path is ASCII-ish (`photos/<ts>-<slug>.<ext>`), but reproduce
 /// the full rule so non-ASCII slugs round-trip. `encodeURI` does NOT escape:
-/// `A-Za-z0-9` and `; , / ? : @ & = + $ - _ . ! ~ * ' ( ) #`.
-fn encode_uri(s: &str) -> String {
+/// `A-Za-z0-9` and `; , / ? : @ & = + $ - _ . ! ~ * ' ( ) #`. Shared with the
+/// W4.4b mount-file attachment loader (`services::chat_files`), which builds the
+/// same blob URL.
+pub(crate) fn encode_uri(s: &str) -> String {
     const SAFE: &[u8] = b";,/?:@&=+$-_.!~*'()#";
     let mut out = String::with_capacity(s.len());
     for &b in s.as_bytes() {

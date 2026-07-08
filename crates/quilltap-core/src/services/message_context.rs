@@ -403,14 +403,20 @@ pub struct LanternLoad {
     pub attachments: Vec<Value>,
 }
 
-/// The unported file-subsystem seam (v4 `buildMessageContext` section K). Default
-/// no-op — the corpus keeps message attachments empty, so
-/// [`collect_lantern_image_file_ids_for_character`] returns `[]` and this is never
-/// invoked.
+/// The file-subsystem seam (v4 `buildMessageContext` section K). Default no-op;
+/// [`crate::services::chat_files::RealMessageContextSeams`] (W4.4b) does the real
+/// load + fallback dispatch. Async (RPITIT `+ Send`), matching
+/// [`crate::services::build_context::BuildContextSeams`] — the real body issues a
+/// vision-description call for any unsupported prior image.
 pub trait MessageContextSeams {
     /// Load + fallback-process the collected Lantern image file ids for a provider.
-    fn load_lantern_images(&self, _file_ids: &[String], _provider: &str) -> LanternLoad {
-        LanternLoad::default()
+    fn load_lantern_images(
+        &self,
+        file_ids: &[String],
+        provider: &str,
+    ) -> impl std::future::Future<Output = LanternLoad> + Send {
+        let _ = (file_ids, provider);
+        async { LanternLoad::default() }
     }
 }
 
@@ -675,7 +681,7 @@ where
             ASSISTANT_IMAGE_LOOKBACK,
         );
         if !ids.is_empty() {
-            let load = mc_seams.load_lantern_images(&ids, params.provider);
+            let load = mc_seams.load_lantern_images(&ids, params.provider).await;
             lantern_prefix = load.prefix;
             if !load.attachments.is_empty() {
                 merged_attachments = attachments_to_send
