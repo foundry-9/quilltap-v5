@@ -4260,3 +4260,42 @@ production-shaped concern) — tracked as a follow-up. (The `with_logging` /
 orchestrator `llm_logs`-dump item stays post-round, coupled to W4.10b's
 primary-stream regen; W4.5b's real Brahma console keeps the default
 `UnavailableBrahmaConsole` seam.)
+**W4.10b (the W4.7e3 `logLLMCall` per-oracle regens): six of seven differentials
+regenerated with `logLLMCall` live + an `llm_logs` dump/diff — the writer is now
+proven byte-for-byte through real call sites, not just the in-process self-test.**
+Each regen un-mocks `logLLMCall` on the v4 oracle (a fresh `SQLITE_LLM_LOGS_PATH`,
+read via `getRawLLMLogsDatabase()` before `closeDatabase()`, rows dumped with
+id/createdAt/updatedAt placeholdered + sorted by canonical JSON) and attaches the
+llm-logs partition + (for the cheap-LLM paths) a `with_logging` executor on the
+Rust side (a shared `crates/quilltap-harness/tests/common` helper). **Done:**
+`compression_tier3` (CONTEXT_COMPRESSION, 6 rows — the DB-free jest oracle
+converted to real-DB on both sides), `danger_gatekeeper_tier3`
+(DANGER_CLASSIFICATION, 4 rows; v4's moderation-path `modelName:'moderation'`
+rows are a tracked unported-logging seam, filtered on both sides),
+`answer_confirmation_tier3` (ANSWER_CONFIRMATION, 13 rows, per-call executor with
+the assistant messageId + responder characterId), `image_generation_tier3`
+(IMAGE_GENERATION + IMAGE_PROMPT_CRAFTING, per-case), `avatar_job_tier3` +
+`story_background_job_tier3` (IMAGE_GENERATION via `generate_with_reroute` incl.
+the reroute leg; the story handler's full SUMMARIZATION/IMAGE_PROMPT_CRAFTING/
+APPEARANCE_RESOLUTION matrix via a per-case executor), and `memory_processor_tier3`
++ `context_summary_service_tier3` (MEMORY_EXTRACTION / SUMMARIZATION+
+TITLE_GENERATION via per-call/per-op executors). **Two real port bugs the row
+diffs surfaced and fixed:** v4's `summarizeResponse` ALWAYS emits `error`/
+`finishReason` and `summarizeRequest` ALWAYS emits `temperature`/`maxTokens`
+(present as `null`), but the port's `LlmLogResponseSummary`/`LlmLogRequestSummary`
+skipped them when `None` — all four are now the present-null-vs-absent
+double-`Option` (the `chats.removedAt` pattern; a generalized `de_double_opt`
+deserializer), so the summarize path stores them present-null while a raw tier-2
+write with the key absent still stores them absent (`llm_logs_tier2` re-verified —
+its fixture has `error`/`temperature` absent, `finishReason`/`maxTokens` present).
+Also: several corpus userIds were non-UUIDs (`user-1`) that the llm_logs schema's
+`z.uuid()` validation silently dropped — fixed to real UUIDs. **Deferred (the one
+remaining regen):** `primary_stream_tier3` (CHAT_MESSAGE) — v4's log lives inside
+the `streamMessage` generator, which the oracle mocks out, so making v4 log
+faithfully needs the oracle's model mock relocated from the service `streamMessage`
+down to the provider level (risking the recovery/failover event traces + tool-retry
+sequences); the closure IS wired + proven by the in-process self-test, and the
+lossy-`StreamParams.messages` caveat is a non-issue for a plain-message corpus.
+`orchestrator_tier3` is explicitly NOT regenerated (it dumps no `llm_logs`; its
+corpus is spine-owned). The W4.7e3 spine-side `with_logging` wiring remains the
+standing follow-up.
