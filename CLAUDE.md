@@ -5024,3 +5024,46 @@ it through `delete_file_completely` — a one-line unification edit);
 `refreshStats` unported (standing precedent); `uploadChatFile` → P4.4;
 thumbnail serving routes → P4.2; the legacy storage-key migration form not
 ported.
+
+**P4.1 unification (2026-07-08): DONE — all four host-driver lanes are
+integrated on main.** The four lane branches (P4.1a provider IO / P4.1b
+files+images / P4.1c PTY+Ariel / P4.1d environment+cadence) were
+cherry-picked onto main in a/c/d/b order; every conflict was a mechanical
+union (the host `lib.rs` mod decls + doc header, the host `Cargo.toml`
+dependency additions — hand-merged whole-file per the prior round's tempfile
+lesson, incl. the shared `libc` line c+d both wanted — the append-only
+`db::terminal_sessions` c+d additions [`mark_session_exited` +
+`find_closed_before`], and the CHANGELOG/CLAUDE.md doc blocks); zero
+source-level type drift between lanes for the fourth consecutive round, and
+the flagged image-seam overlap is composition, not duplication (lane b's
+`HostImageCodec` IMPLEMENTS the three core transcoder/codec seams; lane a's
+`ProviderIo` only CONSTRUCTS the W4.7f providers over the wire). Verified on
+the integrated tree: the full workspace gate (769 core + 51 host tests +
+the harness/doc tests, ~1,086 total; core re-run green under
+`native-transport`; clippy `-D warnings` on BOTH default and
+native-transport; fmt) and a **twelve-differential sweep** against freshly
+regenerated v4 oracles at `2494a84b` — the four lanes' own proofs
+(`streaming_composer` [committed fixtures], `embedding_provider_tier3`,
+`orchestrator_tier3` [regenerated], `ariel_writers_tier3`,
+`danger_scan_tier2`, `maintenance_ops_tier2`, `help_doc_sync`,
+`image_ingest_tier2`) plus the four adjacent re-verifications
+(`terminal_sessions_tier2`, `terminal_tools`, `background_jobs_tier2`,
+`maintenance_sweep_tier2`). Versions: core 0.0.139, harness 0.0.132, host
+0.0.2. **Standing follow-ups (recorded, deliberately NOT implemented this
+pass):** lane b's four handoffs — the keep_image mount-blob-fallback ingest
+needs a connection-scoped store (`ProductionFileBytes::ingest` fails LOUD
+inside a `Db::write` closure until the executor-owner wiring lands), the
+frozen `ProjectImageUpload` trait should widen to `Result` (an upload
+failure currently returns the `fs-seam:error:` sentinel), the maintenance
+sweep's byte-delete should route through `delete_file_completely` (a
+one-line edit), and the harness→host dev-dependency (the help-doc-sync
+differential walks the PRODUCTION tree walker) is a deliberate
+dependency-direction note; lane d's flat-`SelfInventoryEnv`
+`registry_default_context` seam (the provider-agnostic 8192 falls through
+to the per-provider constant table, so DEEPSEEK/Z_AI under-report until the
+env goes provider-aware). **P4.2 handoffs the lanes named:** the production
+spine composition (a `ChatSend` dispatch assembling `OrchestratorDeps` from
+the P4.1 drivers + the model-dependent job-handler registrations), the
+terminal WS route marshalling over `terminal::protocol`, the thumbnail
+serving routes, and the startup-conflict 503 surface over
+`classify_lock_status`. Next: P4.2 (`quilltap-web`) ∥ P4.3 (CLI).

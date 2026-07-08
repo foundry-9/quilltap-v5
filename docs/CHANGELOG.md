@@ -4,6 +4,22 @@
 
 ### 5.0-dev
 
+P4.1 unification: the four host-driver lane branches (P4.1a provider IO,
+P4.1b files/images, P4.1c PTY/terminal, P4.1d environment/cadence) are
+integrated on main. All conflicts were mechanical unions (host lib.rs mod
+decls, host Cargo.toml dependency additions, the append-only
+terminal_sessions.rs c+d functions, doc blocks); no cross-lane type drift
+and no duplicate image-seam port (lane b's HostImageCodec implements the
+core seams lane a's ProviderIo constructs against). Full workspace gate
+green (tests, clippy -D warnings on default and native-transport, fmt);
+twelve differentials re-verified against freshly regenerated v4 oracles at
+2494a84b. Follow-ups recorded, not implemented: lane b's four handoffs
+(keep_image connection-scoped ingest, ProjectImageUpload widened to Result,
+maintenance-sweep byte-delete via delete_file_completely, the harness→host
+dev-dep note), lane d's flat SelfInventoryEnv registry-default seam, and
+the P4.2 handoffs (spine composition + ChatSend, terminal WS route
+marshalling, thumbnail routes, startup-conflict 503).
+
 P4.1a (host drivers, provider IO): the production streaming composer + the
 reqwest wire + the live pricing fetch + the API-path embedding provider.
 New `quilltap-core::model::streaming_provider` — the production
