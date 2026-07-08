@@ -80,13 +80,32 @@ impl From<MessageJson> for LlmLogMessageSummary {
     }
 }
 
+// `temperature`/`maxTokens` are v4 `.nullable().optional()` — the present-null-
+// vs-absent double-option (see `db::llm_logs::LlmLogRequestSummary`). The fixture
+// has `temperature` ABSENT and `maxTokens` PRESENT, so deserialize them the same
+// way to round-trip faithfully.
+fn de_double_opt_f64<'de, D>(de: D) -> Result<Option<Option<f64>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Some(Option::<f64>::deserialize(de)?))
+}
+fn de_double_opt_i64<'de, D>(de: D) -> Result<Option<Option<i64>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Some(Option::<i64>::deserialize(de)?))
+}
+
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct RequestJson {
     message_count: i64,
     messages: Vec<MessageJson>,
-    temperature: Option<f64>,
-    max_tokens: Option<i64>,
+    #[serde(default, deserialize_with = "de_double_opt_f64")]
+    temperature: Option<Option<f64>>,
+    #[serde(default, deserialize_with = "de_double_opt_i64")]
+    max_tokens: Option<Option<i64>>,
     tool_count: i64,
 }
 

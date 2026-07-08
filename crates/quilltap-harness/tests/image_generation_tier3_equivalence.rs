@@ -70,15 +70,18 @@ use quilltap_core::model::wire::{wire_key, CannedWireTransport, WireResponse};
 use quilltap_core::services::avatar_generation::{
     trigger_avatar_generation_if_enabled, AvatarGenerationParams,
 };
-use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use quilltap_core::services::cheap_llm_exec::{CheapLlmLogConfig, CheapLlmTaskExecutor};
 use quilltap_core::services::dangerous_content::gatekeeper::NoModerationProvider;
 use quilltap_core::services::dangerous_content::provider_routing::ApiKeyResolver;
+use quilltap_core::services::llm_logging::LogContext;
 use quilltap_core::tools::generate_image::{
     execute_image_generation_tool, ImageGenDeps, ImageGenerationToolInput,
     ImageToolExecutionContext, RealLanternNotification,
 };
 use serde::Deserialize;
 use serde_json::{Map, Value};
+
+mod common;
 
 // ===========================================================================
 // Spec + oracle rows
@@ -216,6 +219,11 @@ struct ResultRow {
     /// (`None` when nothing was posted). The inline file uuid is uuid-normalized.
     #[serde(default, rename = "lanternContent")]
     lantern_content: Option<String>,
+    /// W4.10b: the `llm_logs` rows this case wrote (IMAGE_GENERATION + the cheap
+    /// IMAGE_PROMPT_CRAFTING / APPEARANCE_RESOLUTION tasks). `{columns, rows}`;
+    /// avatar cases carry an empty list.
+    #[serde(default, rename = "llmLogs")]
+    llm_logs: Option<Value>,
 }
 
 // ===========================================================================
@@ -677,11 +685,17 @@ fn image_generation_matches_oracle() {
             drop_lantern_pointer(&main_work, &spec.test_pepper_base64);
         }
 
+        // W4.10b: a fresh per-case llm-logs partition for the IMAGE_GENERATION +
+        // cheap-task `logLLMCall` rows.
+        let ll_work = main_work.with_file_name(format!("imggen-ll-{label}.db"));
+        let _ = std::fs::remove_file(&ll_work);
+        common::materialize_llm_logs(&ll_work, &spec.test_pepper_base64);
+
         let db = Db::open(
             DbPaths {
                 main: main_work.clone(),
                 mount_index: Some(mount_work.clone()),
-                llm_logs: None,
+                llm_logs: Some(ll_work.clone()),
             },
             &spec.test_pepper_base64,
         )
@@ -694,7 +708,16 @@ fn image_generation_matches_oracle() {
             .unwrap_or_else(|| panic!("oracle missing case {}", label));
 
         if case.op == "generate" {
-            let executor = CheapLlmTaskExecutor::new();
+            // The image cheap tasks (craftImagePrompt / resolveAppearance /
+            // sanitizeAppearance) log through the executor; the IMAGE_GENERATION
+            // rows come from the handler's own `log_image_generation` over `&db`.
+            let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+                db: db.clone(),
+                user_id: spec.user_id.clone(),
+                chat_id: Some(chat_id.clone()),
+                message_id: None,
+                ctx: LogContext::none(),
+            });
             // Round-3 Group 4: the REAL Lantern sink posts the character-image
             // notification to this chat; its persisted content is diffed below.
             let lantern = RealLanternNotification { db: &db };
@@ -826,8 +849,27 @@ fn image_generation_matches_oracle() {
             );
         }
 
+        // W4.10b: diff the `llm_logs` rows this case wrote (IMAGE_GENERATION +
+        // any cheap IMAGE_PROMPT_CRAFTING / APPEARANCE_RESOLUTION rows; empty for
+        // the avatar cases, which make no model call).
+        let got_logs = common::dump_llm_logs(&db);
+        let want_logs = want
+            .llm_logs
+            .as_ref()
+            .map(common::oracle_llm_logs)
+            .unwrap_or_default();
+        assert_eq!(
+            got_logs,
+            want_logs,
+            "{}: llm_logs rows diverge (got {} vs oracle {})",
+            label,
+            got_logs.len(),
+            want_logs.len()
+        );
+
         drop(db);
         cleanup(&main_work, &mount_work);
+        let _ = std::fs::remove_file(&ll_work);
     }
 
     eprintln!("OK: image-generation differential matched the oracle across all cases.");

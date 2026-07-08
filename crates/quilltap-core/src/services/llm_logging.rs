@@ -156,8 +156,10 @@ pub fn summarize_request(request: &LogRequest) -> LlmLogRequestSummary {
     LlmLogRequestSummary {
         message_count: request.messages.len() as i64,
         messages,
-        temperature: request.temperature,
-        max_tokens: request.max_tokens,
+        // v4 `summarizeRequest` ALWAYS sets these (`request.temperature ?? null`),
+        // so they store present-as-`null` when absent — `Some(None)`.
+        temperature: Some(request.temperature),
+        max_tokens: Some(request.max_tokens),
         tool_count: request.tools.as_ref().map_or(0, |t| t.len()) as i64,
         full_messages: None,
     }
@@ -432,7 +434,8 @@ mod tests {
         assert!(!s.messages[0].has_attachments);
         assert!(s.messages[1].has_attachments);
         assert_eq!(s.tool_count, 2);
-        assert_eq!(s.temperature, Some(0.3));
+        // Present-null-vs-absent double-option: a sent temperature is `Some(Some)`.
+        assert_eq!(s.temperature, Some(Some(0.3)));
     }
 
     #[test]

@@ -102,15 +102,30 @@ pub struct LlmLogMessageSummary {
 /// `temperature` is the only genuinely-fractional nested number (`f64`);
 /// `maxTokens` is integer-valued (`i64`); `toolCount` is `.default(0)` (plain
 /// `i64`); `fullMessages` (deprecated) is omitted in the corpus.
+///
+/// `temperature`/`maxTokens` are v4 `.nullable().optional()` — the same
+/// present-null-vs-absent double-`Option` as `response`'s `error`/`finishReason`.
+/// v4's `summarizeRequest` ALWAYS sets them (`request.temperature ?? null`), so
+/// the SUMMARIZE path stores them **present as `null`** (`Some(None)`) when
+/// absent; a raw tier-2 write with the key absent stores them **absent** (`None`,
+/// skipped).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LlmLogRequestSummary {
     pub message_count: i64,
     pub messages: Vec<LlmLogMessageSummary>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub temperature: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_tokens: Option<i64>,
+    #[serde(
+        default,
+        deserialize_with = "de_double_opt",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub temperature: Option<Option<f64>>,
+    #[serde(
+        default,
+        deserialize_with = "de_double_opt",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub max_tokens: Option<Option<i64>>,
     pub tool_count: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub full_messages: Option<Value>,
@@ -141,13 +156,13 @@ pub struct LlmLogResponseSummary {
     pub full_content: Option<String>,
     #[serde(
         default,
-        deserialize_with = "de_double_opt_string",
+        deserialize_with = "de_double_opt",
         skip_serializing_if = "Option::is_none"
     )]
     pub error: Option<Option<String>>,
     #[serde(
         default,
-        deserialize_with = "de_double_opt_string",
+        deserialize_with = "de_double_opt",
         skip_serializing_if = "Option::is_none"
     )]
     pub finish_reason: Option<Option<String>>,
@@ -155,16 +170,18 @@ pub struct LlmLogResponseSummary {
     pub tool_calls: Option<Vec<LlmLogToolCall>>,
 }
 
-/// Double-option deserializer for the `.nullable().optional()` `error`/
-/// `finishReason` fields: a PRESENT field (even JSON `null`) becomes `Some(_)`;
-/// an ABSENT field falls to `#[serde(default)]` `None`. Serialization is
-/// serde-default (`Some(None)` → `null`, `Some(Some)` → the string, `None`
-/// skipped).
-fn de_double_opt_string<'de, D>(de: D) -> Result<Option<Option<String>>, D::Error>
+/// Double-option deserializer for the `.nullable().optional()` summary fields
+/// (`error`/`finishReason`, `temperature`/`maxTokens`): a PRESENT field (even
+/// JSON `null`) becomes `Some(_)`; an ABSENT field falls to `#[serde(default)]`
+/// `None`. Serialization is serde-default (`Some(None)` → `null`, `Some(Some)` →
+/// the value, `None` skipped). Generic over the inner type so `String`/`f64`/
+/// `i64` all share it.
+fn de_double_opt<'de, D, T>(de: D) -> Result<Option<Option<T>>, D::Error>
 where
     D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
 {
-    Ok(Some(Option::<String>::deserialize(de)?))
+    Ok(Some(Option::<T>::deserialize(de)?))
 }
 
 /// One native tool call — an element of `response.toolCalls` (omitted in the

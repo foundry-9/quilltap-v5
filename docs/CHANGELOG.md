@@ -42,6 +42,19 @@ dump is deliberately post-round (it would couple W4.10a's corpus to W4.10b's
 primary-stream regen). Written from two fresh surveys (the v5 composition
 points; v4's brahma-console/one-shot.service.ts at 6b6e39ad — no drift). No
 code changes.
+W4.10b step 4 (logLLMCall regen — image generation): un-mocked `logLLMCall` in the
+`image_generation_tier3` oracle (per-case fresh llm-logs DB) and attached the
+llm-logs partition + per-case `with_logging` executor on the Rust side, diffing
+the IMAGE_GENERATION rows (`durationMs: 0`, frozen clock) plus the cheap
+IMAGE_PROMPT_CRAFTING task row on the craft-fallback case; avatar cases write
+none. Fixed a second instance of the summarize divergence: v4's `summarizeRequest`
+always emits `temperature`/`maxTokens` (present as `null`), but the port's
+`LlmLogRequestSummary` skipped them when `None` — changed both to the same
+present-null-vs-absent double-`Option` as `error`/`finishReason` (generalized the
+double-option deserializer), surfaced by the IMAGE_GENERATION row (both null).
+`llm_logs_tier2` re-verified (its fixture has temperature absent, maxTokens
+present).
+
 W4.10b step 3 (logLLMCall regen — answer confirmation): un-mocked `logLLMCall` in
 the `answer_confirmation_tier3` oracle and gave the Rust finalizer a per-call
 `with_logging` executor over an attached llm-logs partition, diffing the 13
