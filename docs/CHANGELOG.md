@@ -42,6 +42,16 @@ dump is deliberately post-round (it would couple W4.10a's corpus to W4.10b's
 primary-stream regen). Written from two fresh surveys (the v5 composition
 points; v4's brahma-console/one-shot.service.ts at 6b6e39ad — no drift). No
 code changes.
+W4.10b step 5 (logLLMCall regen — avatar + story-background jobs): un-mocked
+`logLLMCall` in both job-handler oracles (per-case fresh llm-logs DB) and attached
+the llm-logs partition on the Rust side. The avatar handler makes no cheap-LLM
+call, so it writes only IMAGE_GENERATION rows via `generate_with_reroute` (the
+`posthoc_reroute` case banks the reroute leg's second row); the story handler adds
+a per-case `with_logging` executor, diffing the full type matrix
+(SUMMARIZATION [derive-scene] + IMAGE_PROMPT_CRAFTING [craft, incl. the empty-craft
+retry] + APPEARANCE_RESOLUTION [incl. the appearance retry] + IMAGE_GENERATION).
+Both green with no port change.
+
 W4.10b step 4 (logLLMCall regen — image generation): un-mocked `logLLMCall` in the
 `image_generation_tier3` oracle (per-case fresh llm-logs DB) and attached the
 llm-logs partition + per-case `with_logging` executor on the Rust side, diffing

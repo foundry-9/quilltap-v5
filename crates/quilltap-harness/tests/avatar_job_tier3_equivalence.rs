@@ -50,6 +50,8 @@ use quilltap_core::services::job_runner::{HandlerRegistry, JobRunner};
 use serde::Deserialize;
 use serde_json::Value;
 
+mod common;
+
 // ===========================================================================
 // Spec + oracle rows
 // ===========================================================================
@@ -111,6 +113,10 @@ struct ResultRow {
     character_avatars: Option<String>,
     #[serde(default, rename = "avatarOverrides")]
     avatar_overrides: Option<String>,
+    /// W4.10b: the `llm_logs` rows this case wrote (IMAGE_GENERATION; empty for a
+    /// skipped case). `{columns, rows}`.
+    #[serde(default, rename = "llmLogs")]
+    llm_logs: Option<Value>,
 }
 
 // ===========================================================================
@@ -474,11 +480,16 @@ fn avatar_job_matches_oracle() {
         let case = &spec.chats[label];
         let (main_work, mount_work) = fresh_copy(&main_fixture, &mount_fixture, label);
 
+        // W4.10b: a fresh per-case llm-logs partition for the IMAGE_GENERATION rows.
+        let ll_work = main_work.with_file_name(format!("avatar-ll-{label}.db"));
+        let _ = std::fs::remove_file(&ll_work);
+        common::materialize_llm_logs(&ll_work, &spec.test_pepper_base64);
+
         let db = Db::open(
             DbPaths {
                 main: main_work.clone(),
                 mount_index: Some(mount_work.clone()),
-                llm_logs: None,
+                llm_logs: Some(ll_work.clone()),
             },
             &spec.test_pepper_base64,
         )
@@ -621,8 +632,25 @@ fn avatar_job_matches_oracle() {
             norm_opt(&want.avatar_overrides),
         );
 
+        // W4.10b: diff the IMAGE_GENERATION `llm_logs` rows (empty for a skipped case).
+        let got_logs = common::dump_llm_logs(&db);
+        let want_logs = want
+            .llm_logs
+            .as_ref()
+            .map(common::oracle_llm_logs)
+            .unwrap_or_default();
+        assert_eq!(
+            got_logs,
+            want_logs,
+            "{}: llm_logs rows diverge (got {} vs oracle {})",
+            label,
+            got_logs.len(),
+            want_logs.len()
+        );
+
         drop(db);
         cleanup(&main_work, &mount_work);
+        let _ = std::fs::remove_file(&ll_work);
     }
 
     eprintln!("OK: avatar-job differential matched the oracle across all cases.");

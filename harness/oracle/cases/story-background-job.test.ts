@@ -18,8 +18,7 @@
  *   - `getImageProviderConstraints` / `getImageGenerationModels` → OPENAI + GROK
  *     size-strategy OrientationSupport.
  *   - `convertToWebP` / `transcodeToWebP` → PASS-THROUGH.
- *   - `findApiKeyByIdAndUserId` → canned map; `logLLMCall` / `ensureProcessorRunning`
- *     → no-op.
+ *   - `findApiKeyByIdAndUserId` → canned map; `ensureProcessorRunning` → no-op; `logLLMCall` runs REAL (W4.10b).
  *   - `fileStorageManager.uploadFile` → a DETERMINISTIC recorded FsSeam (project case).
  *   - Un-mock the character-vault + lantern-store bridges so the REAL vault + Lantern
  *     store writes land byte-diffable rows.
@@ -154,6 +153,8 @@ async function main(): Promise<void> {
     process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
     process.env.SQLITE_PATH = mainWork;
     process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
+    // W4.10b: a fresh per-case llm-logs DB for the un-mocked `logLLMCall`.
+    process.env.SQLITE_LLM_LOGS_PATH = join(scratch, 'story-llm-logs.db');
     process.env.QUILLTAP_DATA_DIR = scratch;
     delete process.env.SQLITE_WAL_MODE;
     process.env.LOG_LEVEL = 'error';
@@ -267,10 +268,11 @@ async function main(): Promise<void> {
       };
     });
 
-    jest.doMock('@/lib/services/llm-logging.service', () => {
-      const actual = jest.requireActual('@/lib/services/llm-logging.service');
-      return { __esModule: true, ...actual, logLLMCall: async () => undefined };
-    });
+    // W4.10b: run the REAL `logLLMCall` so the cheap-task (SUMMARIZATION /
+    // IMAGE_PROMPT_CRAFTING) + IMAGE_GENERATION rows land.
+    jest.doMock('@/lib/services/llm-logging.service', () =>
+      jest.requireActual('@/lib/services/llm-logging.service')
+    );
     jest.doMock('@/lib/plugins/moderation-provider-registry', () => ({ __esModule: true, moderationProviderRegistry: { isInitialized: () => true, getAllProviders: () => [], getDefaultProvider: () => null } }));
     jest.doMock('@/lib/background-jobs/processor', () => {
       const actual = jest.requireActual('@/lib/background-jobs/processor');
@@ -279,6 +281,7 @@ async function main(): Promise<void> {
 
     const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
     const { getRawMountIndexDatabase, closeMountIndexSQLiteClient } = await import('@/lib/database/backends/sqlite/mount-index-client');
+    const { getRawLLMLogsDatabase } = await import('@/lib/database/backends/sqlite/llm-logs-client');
     const { getRepositories } = await import('@/lib/repositories/factory');
 
     await initializeDatabase();
@@ -364,6 +367,43 @@ async function main(): Promise<void> {
       )) as Array<{ content: string; opaqueContent: string }>;
       record.lanternContent = lanternRows.length > 0 ? lanternRows[0].content : null;
       record.lanternOpaque = lanternRows.length > 0 ? lanternRows[0].opaqueContent : null;
+
+      // W4.10b: the llm_logs rows this case wrote (SUMMARIZATION + IMAGE_PROMPT_CRAFTING
+      // + IMAGE_GENERATION). Fire-and-forget → settle first; a skipped case → empty.
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      record.llmLogs = ((): { columns: string[]; rows: Array<Record<string, unknown>> } => {
+        try {
+          const lldb = getRawLLMLogsDatabase();
+          if (!lldb) return { columns: [], rows: [] };
+          const exists = lldb
+            .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='llm_logs'")
+            .get();
+          if (!exists) return { columns: [], rows: [] };
+          const columns = (
+            lldb.pragma('table_info(llm_logs)') as Array<{ name: string }>
+          ).map((c) => c.name);
+          const rawRows = lldb.prepare('SELECT * FROM llm_logs').all() as Array<
+            Record<string, unknown>
+          >;
+          const rows = rawRows
+            .map((r) => {
+              const out: Record<string, unknown> = {};
+              for (const col of columns) out[col] = canonValue(r[col]);
+              out.id = '<id>';
+              out.createdAt = '<ts>';
+              out.updatedAt = '<ts>';
+              return out;
+            })
+            .sort((a, b) => {
+              const sa = JSON.stringify(a);
+              const sb = JSON.stringify(b);
+              return sa < sb ? -1 : sa > sb ? 1 : 0;
+            });
+          return { columns, rows };
+        } catch {
+          return { columns: [], rows: [] };
+        }
+      })();
 
       lines.push(JSON.stringify(record));
     } finally {
