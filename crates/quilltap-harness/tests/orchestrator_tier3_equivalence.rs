@@ -40,7 +40,7 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::model::completion::{
@@ -59,12 +59,15 @@ use quilltap_core::services::chat_events::RecordingSink;
 use quilltap_core::services::cheap_llm_exec::{CheapLlmLogConfig, CheapLlmTaskExecutor};
 use quilltap_core::services::llm_logging::LogContext;
 use quilltap_core::services::message_finalizer::{NoAnswerConfirmation, NoAsyncCompression};
-use quilltap_core::services::native_tool_loop::NoToolCallDetector;
+use quilltap_core::services::native_tool_loop::{NoToolCallDetector, RegistryToolCallDetector};
 use quilltap_core::services::orchestrator::{
     self, ExecuteTurnChainOptions, OrchestratorChatSettings, OrchestratorDeps, ProcessClock,
     ProcessMessageInput, SendMessageOptions,
 };
 use quilltap_core::services::tool_execution::CannedToolRunner;
+use quilltap_core::tools::ask_carina::{ErasedAskCarina, TypedAskCarina};
+use quilltap_core::tools::executor::BuiltInToolRunner;
+use quilltap_core::tools::self_inventory::{ClientShell, SelfInventoryEnv};
 use quilltap_core::services::turn_orchestrator::ChainConfig;
 use serde::Deserialize;
 use serde_json::Value;
@@ -327,6 +330,38 @@ impl quilltap_core::services::pricing_fetcher::PricingFetch for NoPricingFetch {
     }
 }
 
+/// A throwaway [`SelfInventoryEnv`] for the tool runners the carina / ask_carina /
+/// Brahma engines carry (the corpus's carina / ask_carina cases never call
+/// `self_inventory`).
+fn dummy_env() -> SelfInventoryEnv {
+    SelfInventoryEnv {
+        version: String::new(),
+        runtime_mode: "local-dev".to_string(),
+        client_shell: ClientShell::Browser,
+        mount_index_degraded: false,
+        release_notes: None,
+        changelog: None,
+        model_info: Vec::new(),
+        fallback_pricing: Vec::new(),
+        registry_default_context: 8192,
+    }
+}
+
+/// The Prospero-carina-error post seam for the ask_carina engine's `TypedAskCarina`
+/// (a no-op — its errors never fire in the corpus). A `Clone` unit struct because
+/// `TypedAskCarina` requires `P: PostProsperoCarinaError + Clone` (it clones the
+/// writer per call).
+#[derive(Clone)]
+struct HarnessProspero;
+impl quilltap_core::services::carina_runner::PostProsperoCarinaError for HarnessProspero {
+    fn post(
+        &mut self,
+        _args: quilltap_core::services::carina_runner::ProsperoCarinaErrorArgs,
+    ) -> Result<(), quilltap_core::services::carina_runner::CarinaRunError> {
+        Ok(())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Event trace normalization: drop the frames the seamed Rust path does not emit.
 // ---------------------------------------------------------------------------
@@ -529,7 +564,12 @@ fn orchestrator_tier3_matches_oracle() {
         .expect("tokio runtime");
 
     // The providers: canned streams (per-key queue) + canned summary completion.
-    let streaming = QueuedStreamingProvider::from_oracle(&canned_streams);
+    // W4.11a: the STATEFUL streaming provider (+ the embedding provider) are shared
+    // by value across the borrowed spine deps AND the owned, effectively-`'static`
+    // `ask_carina` / Brahma engine seams via `Arc` (the blanket impls). This lets
+    // the inner ask_carina query / Brahma console draw from the SAME per-key queues
+    // the single v4 mock served — the whole point of the Arc ownership work.
+    let streaming = Arc::new(QueuedStreamingProvider::from_oracle(&canned_streams));
     let mut completion = CannedCompletionProvider::new();
     for row in &canned_completions {
         let messages = to_completion_messages(&row.messages);
@@ -547,7 +587,7 @@ fn orchestrator_tier3_matches_oracle() {
             }),
         );
     }
-    let embedding = CannedEmbeddingProvider::new();
+    let embedding = Arc::new(CannedEmbeddingProvider::new());
     // Round-3 unification (Group 2): the buildContext whisper writers run LIVE
     // (RealBuildContextSeams). The oracle un-mocks the same writers; the resulting
     // whisper rows appear in the diffed chat_messages dump.
@@ -577,19 +617,44 @@ fn orchestrator_tier3_matches_oracle() {
     // (below) so it can hold that call's live SSE sink for the `carinaAnswer` emit.
     let carina_tool_runner = CannedToolRunner::new();
     let carina_detector = NoToolCallDetector;
-    // Wiring-round unification: the REAL Brahma console at the composition point
-    // (the W4.5b handoff). Behaviorally inert here — no corpus case names Brahma,
-    // and v4's oracle likewise never reaches `runBrahmaQuery` — so this proves the
-    // generic composition typechecks end to end; a live Brahma corpus case is a
-    // tracked follow-up (the same provider-ownership family as the live
-    // ask_carina-through-spine case).
+    // W4.11a: the REAL Brahma console over the SHARED Arc streaming provider — so a
+    // `@Name:` answerer resolving to Brahma (`brahma_maxdepth` case) drives the
+    // console's one-shot stream out of the same per-key queues v4's mock served.
+    // A real `BuiltInToolRunner` + the registry detector make the console's tool
+    // loop real (the case keeps it a plain answer). Inert for every non-Brahma case.
     let carina_brahma = quilltap_core::services::brahma_console::RealBrahmaConsole::new(
         db.clone(),
-        quilltap_core::model::stream::CannedStreamingProvider::new(),
-        CannedToolRunner::new(),
-        NoToolCallDetector,
+        Arc::clone(&streaming),
+        BuiltInToolRunner::new(db.clone(), dummy_env()),
+        RegistryToolCallDetector::built_in(),
         true,
     );
+
+    // W4.11a: the `ask_carina` TOOL engine — a `TypedAskCarina` over Arc clones of
+    // the shared providers, erased into the `ErasedAskCarina` seam the spine wires
+    // into its per-turn `BuiltInToolRunner`. Its `tool_runner` is a SEPARATE
+    // `BuiltInToolRunner` (no ask_carina seam — the type-level cycle note); its
+    // `brahma` is its own console (never reached — the ask_carina answerer is a
+    // regular character). Constructed once (sink-agnostic; the per-turn sink is a
+    // `run` argument). Inert until a native `ask_carina` call dispatches
+    // (`ask_carina_tool` case).
+    let ask_carina = ErasedAskCarina::new(TypedAskCarina {
+        db: db.clone(),
+        embedding: Arc::clone(&embedding),
+        streaming: Arc::clone(&streaming),
+        tool_runner: BuiltInToolRunner::new(db.clone(), dummy_env()),
+        tool_detector: RegistryToolCallDetector::built_in(),
+        brahma: quilltap_core::services::brahma_console::RealBrahmaConsole::new(
+            db.clone(),
+            Arc::clone(&streaming),
+            BuiltInToolRunner::new(db.clone(), dummy_env()),
+            RegistryToolCallDetector::built_in(),
+            true,
+        ),
+        prospero: HarnessProspero,
+        model_supports_native_tools: true,
+        now_ms: spec.frozen_now_ms as f64,
+    });
 
     let mut got_events: Vec<(String, Vec<Value>)> = Vec::new();
 
@@ -636,6 +701,7 @@ fn orchestrator_tier3_matches_oracle() {
             completion: &completion,
             streaming: &streaming,
             executor: &executor,
+            ask_carina: &ask_carina,
             sink: &sink,
             pricing: &pricing,
             build_context_seams: &bc_seams,

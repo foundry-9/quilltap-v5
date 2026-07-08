@@ -145,6 +145,7 @@ use crate::services::tool_execution::{
 use crate::services::turn_orchestrator::{
     self, ChainConfig, ChainDecision, ChainGuards, ChainReason,
 };
+use crate::tools::ask_carina::ErasedAskCarina;
 use crate::tools::executor::BuiltInToolRunner;
 use crate::tools::pseudo_tool_support::{ResolvedToolMode, ToolMode};
 use crate::tools::rng::{
@@ -400,6 +401,13 @@ pub struct OrchestratorDeps<
     pub completion: &'a CMP,
     pub streaming: &'a STR,
     pub executor: &'a CheapLlmTaskExecutor,
+    /// The Carina engine the `ask_carina` TOOL dispatches to (v4's
+    /// `executeToolCallWithContext` → the ask_carina handler → `runCarinaQuery`).
+    /// The spine wires it into the per-turn [`BuiltInToolRunner`]; default
+    /// [`ErasedAskCarina::not_available`] reproduces the prior loud fallback, so
+    /// existing constructions stay inert. (The finalizer's `@Name:` markup runner
+    /// is a SEPARATE seam — [`OrchestratorDeps::carina_query`].)
+    pub ask_carina: &'a ErasedAskCarina,
     pub sink: &'a SNK,
     /// The pricing-cache fetcher backing `checkModelSupportsTools` (v4
     /// `getPricingCache` → the OpenRouter path; every other provider answers from
@@ -1693,7 +1701,11 @@ where
     let mut tool_messages: Vec<ToolMessage> = Vec::new();
     let mut generated_image_paths: Vec<GeneratedImage> = Vec::new();
 
-    let tool_runner = BuiltInToolRunner::new(db.clone(), host_self_inventory_env());
+    // The per-turn built-in tool runner, with the injected Carina engine wired for
+    // the `ask_carina` dispatch (v4's real `executeToolCallWithContext` routes it
+    // there); `not_available` by default keeps a no-engine build's loud fallback.
+    let tool_runner = BuiltInToolRunner::new(db.clone(), host_self_inventory_env())
+        .with_ask_carina(deps.ask_carina.clone());
     // Native tool-call detection (v4 `detectToolCallsInResponse` → the provider
     // plugin's `parseToolCalls`) is the real registry-backed detector (W4.7c):
     // reshape/parse both key off the provider manifest, so a native call is parsed
@@ -3031,12 +3043,14 @@ mod tests {
             let mut carina = NoChainCarina;
             let mut prospero = crate::services::carina_runner::ClosureProspero(prospero_fn);
             let mut rng_bytes = crate::tools::rng::FixedBytes::new(vec![]);
+            let ask_carina = ErasedAskCarina::not_available();
             let mut deps = OrchestratorDeps {
                 db: &db,
                 embedding: &embedding,
                 completion: &completion,
                 streaming: &streaming,
                 executor: &executor,
+                ask_carina: &ask_carina,
                 sink: &sink,
                 pricing: &pricing,
                 build_context_seams: &bc,
