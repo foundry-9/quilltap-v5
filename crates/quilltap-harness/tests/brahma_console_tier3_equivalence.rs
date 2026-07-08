@@ -176,7 +176,12 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
         _base_url: Option<&str>,
         params: &StreamParams,
     ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send {
-        let key = canned_stream_key(provider, &params.model, params.temperature, &params.messages);
+        let key = canned_stream_key(
+            provider,
+            &params.model,
+            params.temperature,
+            &params.messages,
+        );
         let sequence: Vec<StreamChunkResult> = {
             let mut queues = self.queues.lock().unwrap();
             match queues.get_mut(&key).and_then(|q| q.pop_front()) {

@@ -4299,3 +4299,70 @@ lossy-`StreamParams.messages` caveat is a non-issue for a plain-message corpus.
 `orchestrator_tier3` is explicitly NOT regenerated (it dumps no `llm_logs`; its
 corpus is spine-owned). The W4.7e3 spine-side `with_logging` wiring remains the
 standing follow-up.
+~~W4.5b (the Brahma one-shot console)~~ (**DONE** — see below). Then Round 5:
+Unit 4, the enclave.
+
+**Wave 4 (W4.5b): the Brahma one-shot console is DONE** (2026-07-08,
+`services::brahma_console`, v4 `lib/services/brahma-console/one-shot.service.ts`
+`runBrahmaQuery`) — closing the `RunBrahmaConsole` seam W4.5 left injected. The
+isolated operator console the Carina engine invokes when the answerer is Brahma:
+a single `[system, question]`-only query (never the Salon transcript — Carina's
+isolation contract) that returns the final answer text, executing tools at the
+**operator surface** (`run_sql` + all-store doc access) with their side effects
+standing but nothing persisted (no assistant/TOOL rows, no tokens, no SSE). New
+module: `resolve_brahma_connection_profile` (the `null`-console-profile collapse
+to the user's default) + `normalize_tool_call_signature` (v4's two
+`orchestrator.service` helpers — the only imports from the SEPARATE Phase-4
+streaming console, which is NOT ported), the byte-exact `build_brahma_system_prompt`
+(base brief + `BRAHMA_SQL_PROMPT` in a GENERATED `prompt_text` submodule via the
+checked-in `harness/oracle/cases/gen-brahma-prompts.mjs` — the tool-catalog
+transcription precedent), `requires_api_key` (the manifest `configRequirements`,
+`?? true`), and `run_brahma_query` composing the ported units in v4's order:
+default profile → api-key gate (UNSCOPED `api_keys::find_by_id`, the two exact
+detail strings) → the console tool slate via `build_tools` (agent mode, doc
+read/write, read-only `run_sql`, search-without-memories; NO `ask_carina`
+recursion guard, NO workspace tools) → tool mode (`simple-json` COERCED to
+`text-block`, deliberate) → the native/text-block instruction builders +
+`build_agent_mode_instructions(25)` → the 25-turn agent loop (its OWN loop, NOT a
+reuse of `native_tool_loop`: force-final push at turn 25, native-`detectTool` /
+text-block detection, `submit_final_response` via tool args + the raw-text
+fallback, the `MAX_DUPLICATE_TOOL_CALLS = 2` dup-count / stale-iteration
+stuck-loop guard with the byte-exact nudge + `lastToolResultText` reminder,
+threading via `build_assistant_tool_call_message`/`build_tool_result_messages`,
+execution through the injected `ToolRunner` with `operator_surface: true` + a
+fresh `pendingWardrobeAnnouncements`, the no-op SSE sink) → the empty-answer /
+final-answer resolution; NEVER errors out (every failure is a
+`BrahmaConsoleResult { ok:false, detail }`). `RealBrahmaConsole` implements the
+frozen trait (generic-consumed over the streaming provider / tool runner /
+detector; deps on the constructor). Verified by
+`brahma_console_tier3_equivalence` — a jest real-DB oracle driving v4's REAL
+`runBrahmaQuery` over a four-user main-DB fixture (a default profile with a valid
+SYNTHETIC api key; a user with none; a no-`apiKeyId` default; a
+missing-`apiKeyId` default) across nine cases (no-profile; both api-key detail
+strings; a plain answer; submit via tool args AND via raw-text; empty → 'empty
+response'; a `run_sql` iteration — a real SELECT whose byte-exact result threads
+into the continuation; and the duplicate-call stuck-loop guard — the byte-exact
+nudge proven by the 4th continuation's canned key), mocking ONLY `streamMessage`
+(scripted per-case + RECORD the `provider|model|temperature|messages` key — so the
+system-prompt bytes incl. `BRAHMA_SQL_PROMPT` + the tool instructions are proven
+by the Rust replay) and `detectToolCallsInResponse` (by marker); tool EXECUTION
+is REAL both sides (the real `BuiltInToolRunner`; provider registry initialized so
+`buildTools` is fully real; ANTHROPIC + a fictional model makes
+`checkModelSupportsTools` return `true` deterministically, matching the Rust
+injected value); the console never persists so the diff is the
+`BrahmaConsoleResult` per case (no table dumps). Plus nine module unit tests (the
+25-turn loop bound + the dup + stale guards over a seeded in-memory `Db` driven by
+a call-order scripted stream provider, the never-throws / no-profile sentinel over
+a bare `Db`, and the pure helpers). **Oracle gotcha:** `jest.setup` globally mocks
+`@/lib/plugins/provider-validation` to a partial WITHOUT `requiresApiKey`, so the
+oracle must `doMock(..., requireActual)` it back (the [[jest-real-db-oracle]]
+un-mock pattern). **Tracked handoffs / deferrals:** the spine/Carina swap-in
+(constructing `RealBrahmaConsole` at the `answer_as_brahma` composition point —
+where W4.5 injects `UnavailableBrahmaConsole`) is a unification one-liner (needs
+the streaming/runner/detector deps the spine owns); the differential
+doc-edit-write + search cases are deferred (both handlers are proven by
+`doc_text`/`doc_fm` + `search_tools`, and the console dispatches through the
+identical real `BuiltInToolRunner`; a doc write threads a per-side-minted `mtime`
+that a canned-stream-key replay cannot reproduce, so `run_sql` — deterministic
+result — proves the operator-surface loop + threading + continuation-key match
+instead).

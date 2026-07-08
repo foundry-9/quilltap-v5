@@ -104,6 +104,33 @@ Also fixed the corpus `userId` (`user-1` -> a real UUID) since the llm_logs sche
 validates `userId` as a UUID and silently dropped the write otherwise. Added a
 shared `tests/common` helper (real-Db-with-llm-logs setup + normalized dump) for
 the remaining regen steps.
+W4.5b: ported the Brahma one-shot console (v4 `runBrahmaQuery`,
+`lib/services/brahma-console/one-shot.service.ts`), closing the `RunBrahmaConsole`
+seam W4.5 left injected. New `services::brahma_console`: the default-profile
+resolver + the tool-call stuck-loop signature (v4's two `orchestrator.service`
+helpers), the byte-exact system prompt (base brief + `BRAHMA_SQL_PROMPT` in a
+generated `prompt_text` submodule), and `run_brahma_query` — the isolated
+`[system, question]`-only slate, the api-key gate, the console tool slate
+(agent mode + doc read/write + read-only `run_sql` + search, no `ask_carina`,
+no workspace tools), the simple-json→text-block coercion, and the 25-turn agent
+tool loop (native/text-block detection, submit-via-args + raw-text fallback, the
+`MAX_DUPLICATE_TOOL_CALLS = 2` dup/stale stuck-loop guard with the byte-exact
+nudge, tool execution at operator surface with side effects standing but nothing
+persisted). `RealBrahmaConsole` implements the frozen trait. Verified by
+`brahma_console_tier3_equivalence` (drives v4's REAL `runBrahmaQuery` over nine
+cases — no-profile, both api-key detail strings, plain answer, submit via args
+and via raw text, empty response, a real `run_sql` iteration threading its
+byte-exact result through the continuation, and the duplicate-call nudge — the
+recorded canned stream keys proving the system-prompt bytes; REAL tools on both
+sides through the real `BuiltInToolRunner`), plus nine module unit tests (the
+loop bound, the dup + stale guards over a seeded Db, the never-throws / no-profile
+sentinel, and the pure helpers). The spine/Carina swap-in (constructing a
+`RealBrahmaConsole` at the `answer_as_brahma` composition point) is a unification
+one-liner. Deferred: the differential doc-edit-write + search cases (both handlers
+proven by `doc_text`/`doc_fm` + `search_tools`, and the console dispatches through
+the identical real runner; a doc write threads a per-side-minted `mtime` that a
+canned-key replay cannot reproduce, so `run_sql` proves the operator-surface loop
++ threading instead).
 
 Round-4-remainder unification: integrated the four parallel lanes (W4.4b
 file/attachment, W4.5 carina query, W4.7e2 TF-IDF vectorizer, W4.7e3 logLLMCall

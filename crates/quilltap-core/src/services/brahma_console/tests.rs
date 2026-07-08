@@ -15,9 +15,7 @@ use crate::model::stream::{
     StreamChunk, StreamChunkResult, StreamParams, StreamingCompletionProvider,
 };
 use crate::services::native_tool_loop::ToolCallDetector;
-use crate::services::tool_execution::{
-    CannedToolRunner, ToolCall, ToolResult, ToolRunner,
-};
+use crate::services::tool_execution::{CannedToolRunner, ToolCall, ToolResult, ToolRunner};
 
 use super::*;
 
@@ -68,14 +66,20 @@ fn tool_call_signature_is_stable_and_string_insensitive() {
         arguments: json!({ "database": "main", "sql": "select 1" }),
         call_id: Some("c2".into()),
     }];
-    assert_eq!(normalize_tool_call_signature(&a), normalize_tool_call_signature(&b));
+    assert_eq!(
+        normalize_tool_call_signature(&a),
+        normalize_tool_call_signature(&b)
+    );
     // A different argument value → a different signature.
     let c = vec![ToolCall {
         name: "run_sql".into(),
         arguments: json!({ "sql": "SELECT 2", "database": "main" }),
         call_id: None,
     }];
-    assert_ne!(normalize_tool_call_signature(&a), normalize_tool_call_signature(&c));
+    assert_ne!(
+        normalize_tool_call_signature(&a),
+        normalize_tool_call_signature(&c)
+    );
 }
 
 #[test]
@@ -145,10 +149,7 @@ fn tool_stream(marker: &str) -> Vec<StreamChunkResult> {
 }
 /// A plain text stream (content + a bare done).
 fn text_stream(text: &str) -> Vec<StreamChunkResult> {
-    vec![
-        Ok(StreamChunk::content(text)),
-        Ok(StreamChunk::done(None)),
-    ]
+    vec![Ok(StreamChunk::content(text)), Ok(StreamChunk::done(None))]
 }
 
 struct MarkerDetector {
@@ -251,7 +252,12 @@ async fn seeded_db() -> (tempfile::TempDir, Db) {
     (dir, db)
 }
 
-fn one_call(marker: &str, name: &str, args: Value, call_id: Option<&str>) -> (String, Vec<ToolCall>) {
+fn one_call(
+    marker: &str,
+    name: &str,
+    args: Value,
+    call_id: Option<&str>,
+) -> (String, Vec<ToolCall>) {
     (
         marker.to_string(),
         vec![ToolCall {
@@ -293,8 +299,12 @@ async fn loop_bound_forces_a_final_answer_at_the_cap() {
     for n in 1..MAX_AGENT_TURNS {
         let marker = format!("m{n}");
         seqs.push(tool_stream(&marker));
-        let (_m, calls) =
-            one_call(&marker, "run_sql", json!({ "sql": format!("q{n}") }), Some(&format!("c{n}")));
+        let (_m, calls) = one_call(
+            &marker,
+            "run_sql",
+            json!({ "sql": format!("q{n}") }),
+            Some(&format!("c{n}")),
+        );
         by_marker.insert(marker, calls);
     }
     seqs.push(text_stream("FINAL ANSWER"));

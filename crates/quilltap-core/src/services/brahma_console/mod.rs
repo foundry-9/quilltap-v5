@@ -58,7 +58,8 @@ use crate::services::pseudo_tool::{
 };
 use crate::services::tool_build::{build_tools, BuildToolsInput};
 use crate::services::tool_call_threading::{
-    build_assistant_tool_call_message, build_tool_result_messages, DetectedToolCall, ThreadedMessage,
+    build_assistant_tool_call_message, build_tool_result_messages, DetectedToolCall,
+    ThreadedMessage,
 };
 use crate::services::tool_execution::{
     process_tool_calls, StatusContext, ToolCall, ToolExecutionContext,
@@ -173,20 +174,14 @@ fn collapse_js_whitespace(v: &str) -> String {
 fn is_js_whitespace(ch: char) -> bool {
     matches!(
         ch,
-        ' ' | '\t'
-            | '\n'
-            | '\r'
-            | '\u{000b}'
-            | '\u{000c}'
-            | '\u{00a0}'
-            | '\u{1680}'
-            | '\u{2000}'..='\u{200a}'
-            | '\u{2028}'
-            | '\u{2029}'
-            | '\u{202f}'
-            | '\u{205f}'
-            | '\u{3000}'
-            | '\u{feff}'
+        ' ' | '\t' | '\n' | '\r' | '\u{000b}' | '\u{000c}' | '\u{00a0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
     )
 }
 
@@ -415,12 +410,12 @@ where
     let model_supports_native_tools = built.model_supports_native_tools;
 
     // 4. Tool mode (native vs. text-block); simple-json COERCES to text-block.
-    let effective_pseudo_tool_mode: Option<ToolMode> = match s(&profile, "pseudoToolMode").as_deref()
-    {
-        Some("simple-json") => Some(ToolMode::TextBlock),
-        Some(other) => ToolMode::from_str(other),
-        None => Some(ToolMode::Auto), // v4 `?? 'auto'`.
-    };
+    let effective_pseudo_tool_mode: Option<ToolMode> =
+        match s(&profile, "pseudoToolMode").as_deref() {
+            Some("simple-json") => Some(ToolMode::TextBlock),
+            Some(other) => ToolMode::from_str(other),
+            None => Some(ToolMode::Auto), // v4 `?? 'auto'`.
+        };
     let use_text_block_tools =
         check_should_use_text_block_tools(model_supports_native_tools, effective_pseudo_tool_mode);
 
@@ -494,15 +489,16 @@ where
             conversation_messages.push(plain_message("user", &build_force_final_message()));
         }
 
-        let (mut current_response, raw_response, turn_reasoning, turn_thought_signature) = run_stream(
-            deps.streaming,
-            &provider,
-            base_url.as_deref(),
-            &model,
-            &conversation_messages,
-            &effective_tools,
-        )
-        .await;
+        let (mut current_response, raw_response, turn_reasoning, turn_thought_signature) =
+            run_stream(
+                deps.streaming,
+                &provider,
+                base_url.as_deref(),
+                &model,
+                &conversation_messages,
+                &effective_tools,
+            )
+            .await;
 
         // Detect tool calls (native or text-block).
         let mut has_tool_calls = false;
@@ -629,12 +625,18 @@ where
                 )),
                 ..Default::default()
             };
-            let tool_result =
-                process_tool_calls(&calls, &tool_context, &NoopSink, deps.tool_runner, Some(&status))
-                    .await;
+            let tool_result = process_tool_calls(
+                &calls,
+                &tool_context,
+                &NoopSink,
+                deps.tool_runner,
+                Some(&status),
+            )
+            .await;
 
             if !tool_result.tool_messages.is_empty() {
-                conversation_messages.extend(build_tool_result_messages(&tool_result.tool_messages));
+                conversation_messages
+                    .extend(build_tool_result_messages(&tool_result.tool_messages));
 
                 let mut produced_new_info = false;
                 for tm in &tool_result.tool_messages {
