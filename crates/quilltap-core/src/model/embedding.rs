@@ -77,6 +77,24 @@ pub trait EmbeddingProvider {
     ) -> impl Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send;
 }
 
+/// `Arc<T>` is an [`EmbeddingProvider`] whenever `T` is (delegating to the inner
+/// value). This is the production-shaped ownership answer (W4.11a): it lets one
+/// concrete provider be shared — by value — between a borrowed spine dep and an
+/// owned, effectively-`'static` erased seam (e.g. `TypedAskCarina`), so their
+/// consumption is the SAME (a bare clone would duplicate any stateful queues). The
+/// returned future borrows `&self` exactly as the direct call does.
+impl<T: EmbeddingProvider> EmbeddingProvider for Arc<T> {
+    fn generate_embedding_for_user(
+        &self,
+        text: &str,
+        user_id: &str,
+        profile_id: Option<&str>,
+        priority: EmbeddingPriority,
+    ) -> impl Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send {
+        (**self).generate_embedding_for_user(text, user_id, profile_id, priority)
+    }
+}
+
 /// A deterministic [`EmbeddingProvider`] for the tier-3 differential. It returns a
 /// fixed [`EmbeddingResult`] keyed by the **exact** input text, or a failure for
 /// texts explicitly marked as failing. The Rust test and the v4 oracle build the
@@ -275,6 +293,18 @@ mod tests {
         assert_eq!(result.embedding, vec![1.0, 0.0, 0.0]);
         assert_eq!(result.dimensions, 3);
         assert_eq!(result.provider, "canned");
+    }
+
+    /// The `Arc<T>` blanket impl (W4.11a) delegates to the inner provider.
+    #[tokio::test]
+    async fn arc_delegates_to_inner() {
+        let inner = CannedEmbeddingProvider::new().with_vector("hello", vec![1.0, 0.0]);
+        let arc = Arc::new(inner);
+        let result = arc
+            .generate_embedding_for_user("hello", "u", None, EmbeddingPriority::Background)
+            .await
+            .unwrap();
+        assert_eq!(result.embedding, vec![1.0, 0.0]);
     }
 
     #[tokio::test]

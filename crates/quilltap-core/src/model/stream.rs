@@ -37,6 +37,7 @@
 
 use std::collections::HashMap;
 use std::future::Future;
+use std::sync::Arc;
 
 pub use super::completion::{CompletionMessage, CompletionRole};
 
@@ -216,6 +217,23 @@ pub trait StreamingCompletionProvider {
         base_url: Option<&str>,
         params: &StreamParams,
     ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send;
+}
+
+/// `Arc<T>` is a [`StreamingCompletionProvider`] whenever `T` is (delegating to
+/// the inner value) — the production-shaped ownership answer (W4.11a). This is
+/// what lets the differential (and, later, the Phase-4 host) share ONE stateful
+/// streaming provider between the borrowed spine dep and the owned, effectively-
+/// `'static` `TypedAskCarina` seam, so both draw from the SAME per-key queues the
+/// single v4 mock served (a bare clone would duplicate the queues).
+impl<T: StreamingCompletionProvider> StreamingCompletionProvider for Arc<T> {
+    fn stream_message(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        params: &StreamParams,
+    ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send {
+        (**self).stream_message(provider, base_url, params)
+    }
 }
 
 /// The canonical lookup key for a canned stream: provider, model, temperature
@@ -408,6 +426,55 @@ mod tests {
         let last = items.last().unwrap().as_ref().unwrap();
         assert!(last.done);
         assert_eq!(last.usage.unwrap().total_tokens, 53);
+    }
+
+    /// The `Arc<T>` blanket impl (W4.11a) delegates to the SAME inner provider, so
+    /// two `Arc` clones share consumption (the sharing the ask_carina seam relies
+    /// on). Proven here with a stateful pop-once queue.
+    #[tokio::test]
+    async fn arc_clones_share_consumption() {
+        use std::sync::Mutex;
+        // A minimal stateful provider: each key's sequence is served exactly once.
+        struct PopOnce {
+            served: Mutex<Vec<String>>,
+        }
+        impl StreamingCompletionProvider for PopOnce {
+            fn stream_message(
+                &self,
+                _provider: &str,
+                _base_url: Option<&str>,
+                params: &StreamParams,
+            ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send
+            {
+                let already = {
+                    let mut served = self.served.lock().unwrap();
+                    let seen = served.contains(&params.model);
+                    served.push(params.model.clone());
+                    seen
+                };
+                async move {
+                    let (tx, rx) = tokio::sync::mpsc::channel(1);
+                    let chunk = if already {
+                        Err(StreamError::new("exhausted"))
+                    } else {
+                        Ok(StreamChunk::content("first"))
+                    };
+                    let _ = tx.send(chunk).await;
+                    rx
+                }
+            }
+        }
+        let arc = Arc::new(PopOnce {
+            served: Mutex::new(Vec::new()),
+        });
+        let clone = Arc::clone(&arc);
+        let p = params("m", None, vec![CompletionMessage::user("x")]);
+        // First call via one clone: served.
+        let first = drain(arc.stream_message("P", None, &p).await).await;
+        assert_eq!(first[0].as_ref().unwrap().content, "first");
+        // Second call via the OTHER clone: the shared state remembers → exhausted.
+        let second = drain(clone.stream_message("P", None, &p).await).await;
+        assert!(second[0].is_err());
     }
 
     #[tokio::test]

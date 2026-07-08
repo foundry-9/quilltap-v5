@@ -15,6 +15,7 @@
 
 use std::collections::HashMap;
 use std::future::Future;
+use std::sync::Arc;
 
 /// A chat message sent to the completion provider. The cheap-LLM path only ever
 /// builds `system` / `user` messages with plain string content, but the role set
@@ -161,6 +162,20 @@ pub trait CompletionProvider {
         base_url: Option<&str>,
         params: &CompletionParams,
     ) -> impl Future<Output = Result<CompletionResponse, CompletionError>> + Send;
+}
+
+/// `Arc<T>` is a [`CompletionProvider`] whenever `T` is (delegating to the inner
+/// value) — the production-shaped ownership answer (W4.11a), letting one provider
+/// be shared by value across a borrowed dep and an owned erased seam.
+impl<T: CompletionProvider> CompletionProvider for Arc<T> {
+    fn send_message(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        params: &CompletionParams,
+    ) -> impl Future<Output = Result<CompletionResponse, CompletionError>> + Send {
+        (**self).send_message(provider, base_url, params)
+    }
 }
 
 /// The canonical lookup key for a canned completion: provider, model,
@@ -411,6 +426,26 @@ mod tests {
             .unwrap();
         assert_eq!(response.content, "[]");
         assert_eq!(response.usage.unwrap().total_tokens, 102);
+    }
+
+    /// The `Arc<T>` blanket impl (W4.11a) delegates to the inner provider.
+    #[tokio::test]
+    async fn arc_delegates_to_inner() {
+        let messages = vec![CompletionMessage::user("hi")];
+        let inner = CannedCompletionProvider::new().with_response(
+            "ANTHROPIC",
+            "m",
+            None,
+            &messages,
+            "ok",
+            None,
+        );
+        let arc = std::sync::Arc::new(inner);
+        let response = arc
+            .send_message("ANTHROPIC", None, &params("m", None, messages))
+            .await
+            .unwrap();
+        assert_eq!(response.content, "ok");
     }
 
     #[tokio::test]
