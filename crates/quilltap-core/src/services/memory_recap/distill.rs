@@ -90,6 +90,7 @@ pub async fn distill_memory_search<C: CompletionProvider>(
             None,
             None,
             Some(character_id),
+            Some("memory-keyword-extraction"),
         )
         .await;
 

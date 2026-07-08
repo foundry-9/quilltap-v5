@@ -15,6 +15,7 @@
 
 use crate::cheap_llm::CheapLlmSelection;
 use crate::db::chat_settings::DangerousContentSettings;
+use crate::db::runtime::Db;
 use crate::model::completion::CompletionProvider;
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::dangerous_content::gatekeeper::{classify_content, ModerationProvider};
@@ -332,6 +333,7 @@ pub async fn resolve_character_appearances<C: CompletionProvider>(
 /// steps below it.
 #[allow(clippy::too_many_arguments)]
 pub async fn sanitize_appearances_if_needed<M, C>(
+    db: &Db,
     executor: &CheapLlmTaskExecutor,
     moderation: &M,
     completion: &C,
@@ -365,6 +367,7 @@ where
         .join(" | ");
 
     let classification = classify_content(
+        db,
         moderation,
         completion,
         &combined_text,

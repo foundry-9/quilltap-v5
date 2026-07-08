@@ -12,10 +12,19 @@
 //!     host-side (the canned responder needs none; the real adapter arrives
 //!     with the Phase-4 transport work), so the port's boundary starts at the
 //!     provider call.
-//!   - **`logLLMCall`** — v4 fire-and-forgets a row into the llm-logs DB (error
-//!     swallowed, never awaited, so its timing is nondeterministic even in v4).
-//!     The `llm_logs` repo is ported; wire the logging service when the host
-//!     plumbing lands. The task-type → log-type mapping travels with it.
+//!
+//! ## `logLLMCall` (W4.7e3, wired)
+//!
+//! v4 fire-and-forgets a row into the llm-logs DB inside `sendToProvider` after
+//! every successful provider call (error swallowed). That is now ported: the
+//! executor carries an optional [`CheapLlmLogConfig`] (the `Db` handle + the
+//! per-service `userId`/`chatId`/`messageId` + the ambient [`LogContext`]) —
+//! `None` on the request/spine path until the spine owner wires it (the
+//! `cheap_llm_selection: None` precedent). When present, each successful
+//! provider call writes one `llm_logs` row via [`log_llm_call`], the log type
+//! resolved from the per-call `task_type` through [`map_task_type_to_log_type`].
+//! The writer never throws, so the port awaits (the watermark precedent) rather
+//! than v4's fire-and-forget `.catch`; the DB effect is identical.
 
 use std::collections::HashSet;
 use std::sync::Mutex;
@@ -23,9 +32,15 @@ use std::sync::Mutex;
 use crate::cheap_llm::{
     build_character_cache_key, profile_params, CheapLlmSelection, UncensoredFallbackOptions,
 };
+use crate::db::runtime::Db;
 use crate::jsstr::js_trim;
 use crate::model::completion::{
-    CompletionError, CompletionMessage, CompletionParams, CompletionProvider, CompletionUsage,
+    CompletionError, CompletionMessage, CompletionParams, CompletionProvider, CompletionResponse,
+    CompletionUsage,
+};
+use crate::services::llm_logging::{
+    log_llm_call, map_task_type_to_log_type, LogContext, LogLlmCallParams, LogRequest,
+    LogRequestMessage, LogResponse, LogUsage,
 };
 
 /// Result of a cheap LLM task (v4 `CheapLLMTaskResult<T>`).
@@ -107,6 +122,22 @@ struct ProviderResponse {
     usage: Option<CompletionUsage>,
 }
 
+/// The logging config attached to a [`CheapLlmTaskExecutor`] — v4's
+/// per-service `userId`/`chatId`/`messageId` (constant across a service call)
+/// plus the `Db` handle and the ambient [`LogContext`]. `task_type` varies per
+/// call and is passed to [`CheapLlmTaskExecutor::execute`] instead. `None` on
+/// the executor means no logging (the request/spine path until the spine owner
+/// wires it).
+#[derive(Clone)]
+pub struct CheapLlmLogConfig {
+    pub db: Db,
+    pub user_id: String,
+    pub chat_id: Option<String>,
+    pub message_id: Option<String>,
+    /// Autonomous-run context; [`LogContext::none`] on the request path.
+    pub ctx: LogContext,
+}
+
 /// The cheap-LLM task executor. Holds v4's session-level
 /// `profilesWithoutCustomTemp` cache — module-global process state in v4,
 /// carried here as instance state (the host keeps one executor per process;
@@ -114,11 +145,86 @@ struct ProviderResponse {
 #[derive(Default)]
 pub struct CheapLlmTaskExecutor {
     profiles_without_custom_temp: Mutex<HashSet<String>>,
+    /// When present, every successful provider call writes an `llm_logs` row.
+    log: Option<CheapLlmLogConfig>,
 }
 
 impl CheapLlmTaskExecutor {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// An executor that logs each successful provider call into `llm_logs` (v4's
+    /// `sendToProvider` `logLLMCall`). The host / job runner / a logging
+    /// differential constructs this; the request-path spine keeps [`new`].
+    pub fn with_logging(log: CheapLlmLogConfig) -> Self {
+        Self {
+            profiles_without_custom_temp: Mutex::new(HashSet::new()),
+            log: Some(log),
+        }
+    }
+
+    /// v4 `logCall` (core-execution.ts:93): summarize the just-completed
+    /// provider call and write one `llm_logs` row (no-op when logging is off).
+    /// The cheap path sets no `durationMs`/`cacheUsage`/`rawProviderUsage`/
+    /// `requestHashes`; the request carries `temperature` only when one was sent
+    /// (v4 spreads `...(temperature !== undefined ? { temperature } : {})`, which
+    /// `summarizeRequest` collapses to `temperature: null` when absent —
+    /// reproduced by `None`).
+    #[allow(clippy::too_many_arguments)]
+    async fn log_call(
+        &self,
+        task_type: Option<&str>,
+        selection: &CheapLlmSelection,
+        messages: &[CompletionMessage],
+        temperature: Option<f64>,
+        effective_max_tokens: i64,
+        character_id: Option<&str>,
+        response: &CompletionResponse,
+    ) {
+        let Some(cfg) = &self.log else {
+            return;
+        };
+        let params = LogLlmCallParams {
+            user_id: cfg.user_id.clone(),
+            log_type: map_task_type_to_log_type(task_type),
+            message_id: cfg.message_id.clone(),
+            chat_id: cfg.chat_id.clone(),
+            character_id: character_id.map(str::to_string),
+            provider: selection.provider.clone(),
+            model_name: selection.model_name.clone(),
+            request: LogRequest {
+                messages: messages
+                    .iter()
+                    .map(|m| LogRequestMessage {
+                        role: m.role.as_str().to_string(),
+                        content: m.content.clone(),
+                        attachments: None,
+                    })
+                    .collect(),
+                temperature,
+                max_tokens: Some(effective_max_tokens),
+                tools: None,
+            },
+            response: LogResponse {
+                content: response.content.clone(),
+                error: None,
+                finish_reason: None,
+                tool_calls: None,
+            },
+            usage: response.usage.map(|u| LogUsage {
+                prompt_tokens: Some(u.prompt_tokens),
+                completion_tokens: Some(u.completion_tokens),
+                total_tokens: Some(u.total_tokens),
+            }),
+            cache_usage: None,
+            raw_provider_usage: None,
+            request_hashes: None,
+            duration_ms: None,
+        };
+        // Never throws (writer swallows); awaited for determinism (watermark
+        // precedent) vs v4's fire-and-forget `.catch` — same DB effect.
+        let _ = log_llm_call(&cfg.db, params, &cfg.ctx).await;
     }
 
     /// v4 `sendToProvider` minus the host-side API-key step: build the params
@@ -133,6 +239,7 @@ impl CheapLlmTaskExecutor {
         messages: &[CompletionMessage],
         max_tokens: Option<f64>,
         character_id: Option<&str>,
+        task_type: Option<&str>,
     ) -> Result<ProviderResponse, CompletionError> {
         let profile_key = format!("{}:{}", selection.provider, selection.model_name);
         let effective_max_tokens = max_tokens.unwrap_or(2048.0).max(2048.0) as i64;
@@ -163,6 +270,18 @@ impl CheapLlmTaskExecutor {
                     &params(None),
                 )
                 .await?;
+            // v4 logs after every successful provider call (with the temperature
+            // actually sent — none here).
+            self.log_call(
+                task_type,
+                selection,
+                messages,
+                None,
+                effective_max_tokens,
+                character_id,
+                &response,
+            )
+            .await;
             return Ok(ProviderResponse {
                 content: response.content,
                 usage: response.usage,
@@ -178,10 +297,22 @@ impl CheapLlmTaskExecutor {
             )
             .await
         {
-            Ok(response) => Ok(ProviderResponse {
-                content: response.content,
-                usage: response.usage,
-            }),
+            Ok(response) => {
+                self.log_call(
+                    task_type,
+                    selection,
+                    messages,
+                    Some(0.3),
+                    effective_max_tokens,
+                    character_id,
+                    &response,
+                )
+                .await;
+                Ok(ProviderResponse {
+                    content: response.content,
+                    usage: response.usage,
+                })
+            }
             Err(error) => {
                 // If temperature is unsupported, cache that and retry without.
                 if error.message.contains("temperature")
@@ -198,6 +329,16 @@ impl CheapLlmTaskExecutor {
                             &params(None),
                         )
                         .await?;
+                    self.log_call(
+                        task_type,
+                        selection,
+                        messages,
+                        None,
+                        effective_max_tokens,
+                        character_id,
+                        &response,
+                    )
+                    .await;
                     Ok(ProviderResponse {
                         content: response.content,
                         usage: response.usage,
@@ -222,10 +363,18 @@ impl CheapLlmTaskExecutor {
         uncensored_fallback: Option<&UncensoredFallbackOptions<'_>>,
         max_tokens: Option<f64>,
         character_id: Option<&str>,
+        task_type: Option<&str>,
     ) -> CheapLlmTaskResult<T> {
         let attempt = async {
             let mut response = self
-                .send_to_provider(completion, selection, &messages, max_tokens, character_id)
+                .send_to_provider(
+                    completion,
+                    selection,
+                    &messages,
+                    max_tokens,
+                    character_id,
+                    task_type,
+                )
                 .await?;
 
             if let Some(uncensored_selection) = should_attempt_uncensored_fallback(
@@ -240,6 +389,7 @@ impl CheapLlmTaskExecutor {
                         &messages,
                         max_tokens,
                         character_id,
+                        task_type,
                     )
                     .await?;
                 if js_trim(&retry.content).is_empty() {
@@ -279,6 +429,8 @@ impl CheapLlmTaskExecutor {
 mod tests {
     use super::*;
     use crate::cheap_llm::{CheapLlmProfile, DangerousContentSettings};
+    use crate::db::runtime::DbPaths;
+    use crate::db::Writer;
     use crate::model::completion::CannedCompletionProvider;
 
     fn selection(provider: &str, model: &str) -> CheapLlmSelection {
@@ -310,6 +462,7 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
             )
             .await;
         assert!(r.success);
@@ -323,6 +476,7 @@ mod tests {
                 &sel,
                 messages,
                 |s| s.to_string(),
+                None,
                 None,
                 None,
                 None,
@@ -373,9 +527,158 @@ mod tests {
                 Some(&options),
                 None,
                 None,
+                None,
             )
             .await;
         assert!(r.success);
         assert_eq!(r.result.as_deref(), Some("answer"));
+    }
+
+    /// The writer's through-a-real-call-site proof, in process: a
+    /// `with_logging` executor drives one cheap-LLM task through the real
+    /// single-writer `Db` (main + llm-logs partitions) and lands exactly one
+    /// `llm_logs` row with the v4-shaped summary — the `task_type` mapped to the
+    /// log type, the sent temperature/maxTokens, the response content + usage,
+    /// and no `durationMs` (the cheap path sets none). The byte-exact v4 diff is
+    /// the differential-side proof (W4.7e3's per-oracle regens); this catches
+    /// wiring regressions the compile-check can't.
+    #[tokio::test]
+    async fn logging_writes_one_row_through_the_real_writer() {
+        // The differential test pepper (32 bytes of "testpepper…", base64).
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let dir = tempfile::tempdir().unwrap();
+        let main_path = dir.path().join("main.db");
+        let ll_path = dir.path().join("llm-logs.db");
+
+        // The main file only needs to exist — `is_logging_enabled`'s
+        // `chat_settings` read errors on the missing table and defaults to
+        // enabled (v4's catch → DEFAULT_LOGGING_SETTINGS).
+        drop(Writer::open_writable(&main_path, PEPPER).unwrap());
+        // Materialize the `llm_logs` table (the TS oracle's `generateCreateTable`
+        // in the tier-2 harness; here hand-rolled for the Rust-only proof).
+        {
+            let w = Writer::open_writable(&ll_path, PEPPER).unwrap();
+            w.connection()
+                .execute_batch(
+                    "CREATE TABLE llm_logs (\
+                       id TEXT PRIMARY KEY, userId TEXT, type TEXT, messageId TEXT, \
+                       chatId TEXT, characterId TEXT, autonomousRunId TEXT, provider TEXT, \
+                       modelName TEXT, request TEXT, response TEXT, usage TEXT, \
+                       cacheUsage TEXT, rawProviderUsage TEXT, requestHashes TEXT, \
+                       durationMs REAL, createdAt TEXT, updatedAt TEXT);",
+                )
+                .unwrap();
+        }
+
+        let db = Db::open(
+            DbPaths {
+                main: main_path,
+                mount_index: None,
+                llm_logs: Some(ll_path),
+            },
+            PEPPER,
+        )
+        .unwrap();
+
+        let messages = vec![
+            CompletionMessage::system("summarize this"),
+            CompletionMessage::user("the transcript"),
+        ];
+        let provider = CannedCompletionProvider::new().with_response(
+            "ANTHROPIC",
+            "claude-haiku",
+            Some(0.3),
+            &messages,
+            "a tidy summary",
+            Some(CompletionUsage {
+                prompt_tokens: 10,
+                completion_tokens: 4,
+                total_tokens: 14,
+            }),
+        );
+
+        let exec = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+            db: db.clone(),
+            user_id: "user-1".to_string(),
+            chat_id: Some("chat-1".to_string()),
+            message_id: None,
+            ctx: LogContext::none(),
+        });
+        let sel = selection("ANTHROPIC", "claude-haiku");
+
+        let r = exec
+            .execute(
+                &provider,
+                &sel,
+                messages,
+                |s| s.to_string(),
+                None,
+                None,
+                None,
+                // Maps to SUMMARIZATION via `map_task_type_to_log_type`.
+                Some("summarize-chat"),
+            )
+            .await;
+        assert!(r.success);
+
+        #[allow(clippy::type_complexity)]
+        let rows: Vec<(
+            String,
+            String,
+            String,
+            Option<String>,
+            String,
+            String,
+            String,
+            Option<String>,
+            Option<f64>,
+        )> = db
+            .read_llm_logs(|conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT type, provider, modelName, chatId, userId, request, response, \
+                     usage, durationMs FROM llm_logs",
+                )?;
+                let out = stmt
+                    .query_map([], |row| {
+                        Ok((
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get(2)?,
+                            row.get(3)?,
+                            row.get(4)?,
+                            row.get(5)?,
+                            row.get(6)?,
+                            row.get(7)?,
+                            row.get(8)?,
+                        ))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(out)
+            })
+            .unwrap();
+
+        assert_eq!(rows.len(), 1, "exactly one llm_logs row written");
+        let (typ, provider_col, model, chat, user, request, response, usage, duration) = &rows[0];
+        assert_eq!(typ, "SUMMARIZATION");
+        assert_eq!(provider_col, "ANTHROPIC");
+        assert_eq!(model, "claude-haiku");
+        assert_eq!(chat.as_deref(), Some("chat-1"));
+        assert_eq!(user, "user-1");
+        // The sent temperature (0.3) + the strict-floor maxTokens (2048).
+        assert!(
+            request.contains("\"temperature\":0.3"),
+            "request: {request}"
+        );
+        assert!(request.contains("\"maxTokens\":2048"), "request: {request}");
+        assert!(response.contains("a tidy summary"), "response: {response}");
+        assert!(
+            usage
+                .as_deref()
+                .unwrap_or("")
+                .contains("\"totalTokens\":14"),
+            "usage: {usage:?}"
+        );
+        // The cheap path sets no durationMs.
+        assert_eq!(*duration, None);
     }
 }

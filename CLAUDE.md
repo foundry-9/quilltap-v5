@@ -3937,18 +3937,50 @@ exact-float text (e.g. a pricing rate `0.09999999999999999`) parses
 correctly-rounded to match the core's own f64 (the default fast parser is 1-ULP
 lossy — surfaced by a `parseFloat × 1e6` rate).
 
-**Tracked follow-ups (explicit, per the W4.7e work order's degradation plan — the
-call-site closures + oracle regenerations serialize last):** the `logLLMCall`
-writer's **through-a-real-call-site row diff** (regenerate the smallest cheap-LLM
-oracle, `compression_tier3`, with logging un-mocked + the `llm_logs` table dumped)
-and the five **call-site logging closures** (`cheap_llm_exec` — the dynamic
-task→type map covering every cheap-LLM consumer — plus `primary_stream`
-[`CHAT_MESSAGE` + requestHashes/rawProviderUsage/finishReason at the wire], the
-gatekeeper [`DANGER_CLASSIFICATION`], answer confirmation [`ANSWER_CONFIRMATION`],
-and image generation [`IMAGE_GENERATION`]) with their oracle regenerations, each
-its own commit-able step. Not started to avoid leaving an oracle half-regenerated;
-the writer's constituent parts ARE verified (the hash tier-1 diff, the Phase-2
-`llm_logs_tier2` create diff, and the summarize/task-map self-tests). **Sub-unit
+**W4.7e3 — the `logLLMCall` call-site closures — is DONE (2026-07-07); the
+per-oracle differential regenerations are staged follow-ups.** The six in-scope
+call sites now write `llm_logs` rows through the W4.7e writer. `cheap_llm_exec`
+carries an optional `CheapLlmLogConfig` (Db + per-service userId/chatId/messageId
++ LogContext) set by `CheapLlmTaskExecutor::with_logging` and a per-call
+`task_type` on `execute` (each internal call site hard-codes its literal, so no
+spine signature changes) — so every successful cheap-LLM provider call writes one
+row (log type via `map_task_type_to_log_type`), covering compression /
+answer-confirmation / image scene tasks / memory extraction / context summary /
+scene-state / recap. The **executor-attached** design keeps the four spine files
+(`orchestrator`/`message_finalizer`/`message_context`/`build_context`) untouched:
+the request/spine path constructs `::new()` (no logging) — a spine-owner follow-up
+wires `with_logging` there (the `cheap_llm_selection: None` precedent). The
+gatekeeper's LLM-classify path writes a `DANGER_CLASSIFICATION` row
+(`classify_content` gained a `db` param; its 5 non-spine callers pass it); the
+**moderation path is NOT ported** — the projected `ModerationResult` drops the raw
+per-category `flagged` v4 serializes in `JSON.stringify({flagged, categories})`, so
+byte-exact content needs the W4.2/W4.7f moderation seam widened (a tracked seam;
+the differential banks the absence). `generate_image` (4 sites), the avatar/story
+job handlers (via the shared `image_job_common::generate_with_reroute`, 4 sites,
+avatar carrying `characterId`), and `primary_stream` (on `chunk.done`, with
+`compute_request_prefix_hashes` at the wire + `extract_finish_reason` +
+rawProviderUsage + usage/cacheUsage) each write their rows; `durationMs` emits **0**
+(the frozen-clock differential expectation — a real value needs a spine-injected
+stream clock, a follow-up; and `primary_stream`'s request messages are the lossy
+`StreamParams` shape [no attachments/name/toolCalls], to verify in its regen). All
+request-path sites pass `LogContext::none()`. **Proof:** a new in-process self-test
+(`cheap_llm_exec::tests::logging_writes_one_row_through_the_real_writer`) drives a
+cheap-LLM task through a real single-writer `Db` (main + llm-logs partitions, the
+`llm_logs` table hand-rolled) and asserts exactly one v4-shaped row (type
+SUMMARIZATION, sent temperature/maxTokens, response + usage, no durationMs).
+**Staged follow-ups (each its own commit-able step, un-mock `logLLMCall` on the v4
+oracle + dump `llm_logs`, per the degradation plan):** `compression_tier3` (the
+named writer proof — but its oracle is fully DB-mocked, so it needs the
+[[jest-real-db-oracle]] real-DB conversion on both sides), `danger_gatekeeper_tier3`
+(bank the moderation-path absence + the LLM-path row), `answer_confirmation_tier3`,
+`image_generation_tier3` (the 4-site matrix + the IMAGE_PROMPT_CRAFTING/APPEARANCE
+cheap rows), `avatar_job`/`story_background_job_tier3`, `primary_stream_tier3`
+(CHAT_MESSAGE + requestHashes assertion), `memory_processor_tier3`,
+`context_summary_service_tier3`. `orchestrator_tier3` is explicitly NOT regenerated
+(it does not dump `llm_logs`; its corpus is spine-owned). Not attempted this pass to
+avoid a half-regenerated oracle; the writer's parts are already verified (the hash
+tier-1 diff, the Phase-2 `llm_logs_tier2` create diff, the summarize/task-map
+self-tests, and now the in-process end-to-end proof). **Sub-unit
 5 — the BUILTIN TF-IDF/BM25 vectorizer** (`qtap-plugin-builtin-embeddings`:
 TF-IDF + BM25 + Porter stemming + optional bigrams, `loadState` from the ported
 `tfidf_vocabulary` rows) — is **split off as W4.7e2** (it has no dependency on

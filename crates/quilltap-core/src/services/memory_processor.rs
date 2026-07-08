@@ -184,6 +184,7 @@ pub async fn extract_self_memories_from_turn<C: CompletionProvider>(
             uncensored_fallback,
             resolved_max_tokens,
             Some(target_character_id),
+            Some("memory-extraction-self"),
         )
         .await
 }
@@ -230,6 +231,7 @@ pub async fn extract_other_memories_from_turn<C: CompletionProvider>(
             uncensored_fallback,
             resolved_max_tokens,
             Some(observer_character_id),
+            Some("memory-extraction-other"),
         )
         .await
 }

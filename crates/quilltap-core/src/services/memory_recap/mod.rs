@@ -456,6 +456,7 @@ async fn summarize_memory_recap<C: CompletionProvider>(
             uncensored_fallback,
             None,
             Some(character_id),
+            Some("memory-recap-summarization"),
         )
         .await;
 

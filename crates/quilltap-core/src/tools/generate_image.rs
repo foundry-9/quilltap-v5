@@ -77,6 +77,10 @@ use crate::services::image_scene_tasks::{
     craft_image_prompt, DepictionGuideline, ExpansionClothing, ExpansionPlaceholder,
     ExpansionTiers, ImagePromptExpansionContext,
 };
+use crate::services::llm_logging::{
+    log_llm_call, log_type, LogContext, LogLlmCallParams, LogRequest, LogRequestMessage,
+    LogResponse,
+};
 
 /// The tool output (v4 `ImageGenerationToolOutput`).
 #[derive(Clone, Debug, PartialEq)]
@@ -1543,6 +1547,7 @@ where
     if danger_settings.mode != "OFF" && danger_settings.scan_image_prompts {
         if let Some(selection) = &cheap_llm_selection {
             let classification = classify_content(
+                db,
                 deps.moderation,
                 deps.completion,
                 &input.prompt,
@@ -1628,6 +1633,7 @@ where
                 .unwrap_or(false);
 
             let sanitized = sanitize_appearances_if_needed(
+                db,
                 deps.executor,
                 deps.moderation,
                 deps.completion,
@@ -1824,6 +1830,7 @@ where
     {
         if let Some(selection) = cheap_llm_selection {
             let classification = classify_content(
+                db,
                 deps.moderation,
                 deps.completion,
                 &expanded_prompt,
@@ -2029,6 +2036,71 @@ struct GenError {
     message: String,
 }
 
+/// v4 `logLLMCall` (image-generation-handler.ts) — one `IMAGE_GENERATION` row per
+/// provider attempt (success/failure/reroute-success/reroute-failure),
+/// fire-and-forget. Awaited here (the writer never throws — the watermark
+/// precedent); `LogContext::none()` on the request path. `durationMs` is v4's
+/// `Date.now()`-delta around the provider call — the differential pins the clock,
+/// so it is 0. The request is a single `user` message carrying the tool prompt;
+/// no usage/cache/hashes on this path.
+#[allow(clippy::too_many_arguments)]
+async fn log_image_generation(
+    db: &Db,
+    ctx: &ImageToolExecutionContext,
+    provider: &str,
+    model_name: &str,
+    prompt: &str,
+    content: String,
+    error: Option<String>,
+    duration_ms: f64,
+) {
+    let params = LogLlmCallParams {
+        user_id: ctx.user_id.clone(),
+        log_type: log_type::IMAGE_GENERATION.to_string(),
+        message_id: None,
+        chat_id: ctx.chat_id.clone(),
+        character_id: None,
+        provider: provider.to_string(),
+        model_name: model_name.to_string(),
+        request: LogRequest {
+            messages: vec![LogRequestMessage {
+                role: "user".to_string(),
+                content: prompt.to_string(),
+                attachments: None,
+            }],
+            temperature: None,
+            max_tokens: None,
+            tools: None,
+        },
+        response: LogResponse {
+            content,
+            error,
+            finish_reason: None,
+            tool_calls: None,
+        },
+        usage: None,
+        cache_usage: None,
+        raw_provider_usage: None,
+        request_hashes: None,
+        duration_ms: Some(duration_ms),
+    };
+    let _ = log_llm_call(db, params, &LogContext::none()).await;
+}
+
+/// v4 `revisedPrompt || \`Generated ${n} image(s)${suffix}\`` — the success-log
+/// content (an empty first-image `revisedPrompt` falls back to the count text).
+fn image_gen_success_content(
+    response: &crate::model::image::ImageGenResponse,
+    suffix: &str,
+) -> String {
+    response
+        .images
+        .first()
+        .and_then(|i| i.revised_prompt.clone())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| format!("Generated {} image(s){suffix}", response.images.len()))
+}
+
 /// v4 `generateImagesWithProvider` — merge params + orientation, call the provider
 /// (with the post-hoc moderation reroute), then save each image.
 #[allow(clippy::too_many_arguments)]
@@ -2067,14 +2139,39 @@ where
     let mut active_provider = image_profile.provider.clone();
     let mut active_model = image_profile.model_name.clone();
 
-    // Call the provider.
+    // Call the provider. v4 stamps `Date.now()` around the call for `durationMs`.
+    let gen_start = deps.now_ms;
     let response = match deps
         .image_provider
         .generate_image(&image_profile.provider, &image_profile.api_key, &merged)
         .await
     {
-        Ok(r) => r,
+        Ok(r) => {
+            log_image_generation(
+                db,
+                ctx,
+                &image_profile.provider,
+                &image_profile.model_name,
+                &tool_input.prompt,
+                image_gen_success_content(&r, ""),
+                None,
+                (deps.now_ms - gen_start) as f64,
+            )
+            .await;
+            r
+        }
         Err(error) => {
+            log_image_generation(
+                db,
+                ctx,
+                &image_profile.provider,
+                &image_profile.model_name,
+                &tool_input.prompt,
+                String::new(),
+                Some(error.message.clone()),
+                (deps.now_ms - gen_start) as f64,
+            )
+            .await;
             // Post-hoc Concierge reroute on a moderation rejection.
             let reroute = if is_image_moderation_error(&error.message) {
                 let uid = ctx.user_id.clone();
@@ -2122,17 +2219,40 @@ where
                 &reroute_models,
                 reroute_support.as_ref(),
             );
+            let reroute_start = deps.now_ms;
             match deps
                 .image_provider
                 .generate_image(&reroute.profile.provider, &reroute.api_key, &reroute_merged)
                 .await
             {
                 Ok(r) => {
+                    log_image_generation(
+                        db,
+                        ctx,
+                        &reroute.profile.provider,
+                        &reroute.profile.model_name,
+                        &tool_input.prompt,
+                        image_gen_success_content(&r, " (Concierge reroute)"),
+                        None,
+                        (deps.now_ms - reroute_start) as f64,
+                    )
+                    .await;
                     active_provider = reroute.profile.provider.clone();
                     active_model = reroute.profile.model_name.clone();
                     r
                 }
                 Err(reroute_error) => {
+                    log_image_generation(
+                        db,
+                        ctx,
+                        &reroute.profile.provider,
+                        &reroute.profile.model_name,
+                        &tool_input.prompt,
+                        String::new(),
+                        Some(reroute_error.message.clone()),
+                        (deps.now_ms - reroute_start) as f64,
+                    )
+                    .await;
                     return Err(GenError {
                         code: "PROVIDER_ERROR".to_string(),
                         message: format!(

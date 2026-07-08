@@ -153,6 +153,7 @@ pub async fn update_scene_state<C: CompletionProvider>(
             uncensored_fallback,
             None,
             None,
+            Some("scene-state-tracking"),
         )
         .await
 }

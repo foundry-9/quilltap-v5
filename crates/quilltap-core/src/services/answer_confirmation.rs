@@ -447,6 +447,7 @@ pub async fn run_answer_confirmation<C: CompletionProvider>(
             opts.uncensored_fallback,
             Some(512.0),
             opts.character_id,
+            Some("answer-confirmation"),
         )
         .await;
 
@@ -525,6 +526,7 @@ pub async fn run_answer_confirmation<C: CompletionProvider>(
             None,
             Some(4096.0),
             opts.character_id,
+            Some("answer-reaffirmation"),
         )
         .await;
 

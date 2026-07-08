@@ -95,6 +95,7 @@ pub async fn fold_chat_summary<C: CompletionProvider>(
             None,
             None,
             None,
+            Some("fold-chat-summary"),
         )
         .await
 }
@@ -119,6 +120,7 @@ pub async fn generate_title_from_summary<C: CompletionProvider>(
             None,
             None,
             None,
+            Some("title-from-summary"),
         )
         .await
 }
@@ -144,6 +146,7 @@ pub async fn generate_help_chat_title_from_summary<C: CompletionProvider>(
             None,
             None,
             None,
+            Some("title-from-summary"),
         )
         .await
 }

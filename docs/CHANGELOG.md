@@ -4,6 +4,30 @@
 
 ### 5.0-dev
 
+W4.7e3: wired the six `logLLMCall` call-site closures so ported call sites now
+write `llm_logs` rows via the W4.7e `services::llm_logging` writer.
+`CheapLlmTaskExecutor` gained an optional `CheapLlmLogConfig` (Db + per-service
+userId/chatId/messageId + LogContext) and a per-call `task_type` on `execute`;
+each successful cheap-LLM provider call writes one row (the log type mapped from
+`task_type`), covering compression, answer-confirmation, image scene tasks,
+memory extraction, context summary, scene-state, and recap. The gatekeeper's
+LLM-classify path writes a `DANGER_CLASSIFICATION` row (`classify_content`
+gained a `db` param); the moderation path is not ported (the projected
+`ModerationResult` drops the raw per-category `flagged` v4 serializes — a
+tracked seam). `generate_image` (4 sites), the avatar/story job handlers (via
+the shared `generate_with_reroute`, 4 sites), and the primary stream (on
+`chunk.done`, with the request-prefix hashes + finishReason) each write their
+rows; `durationMs` emits 0 (the frozen-clock differential expectation; a real
+value needs a spine-injected clock — a follow-up). All request-path sites pass
+`LogContext::none()`. A new in-process self-test drives a cheap-LLM task through
+a real single-writer `Db` (main + llm-logs partitions) and asserts one
+correctly-shaped `llm_logs` row (the writer's through-a-real-call-site proof,
+in process). The byte-exact per-oracle differential regenerations (compression,
+danger_gatekeeper, answer_confirmation, image_generation, avatar/story,
+primary_stream, memory_processor, context_summary — each un-mocking
+`logLLMCall` + dumping `llm_logs`) are staged follow-ups. No spine files
+touched.
+
 W4.5: ported the Carina query engine (`services::carina_query`, v4
 `carina.service.ts` `runCarinaQuery`) — the isolated reference-answer engine that
 resolves an answerer character and produces a minimal, isolated answer. Composes

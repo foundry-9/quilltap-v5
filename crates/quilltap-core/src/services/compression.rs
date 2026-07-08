@@ -223,6 +223,7 @@ async fn compress_conversation_history<C: CompletionProvider>(
             uncensored_fallback,
             Some(4000.0),
             None,
+            Some("compress-conversation-history"),
         )
         .await;
 

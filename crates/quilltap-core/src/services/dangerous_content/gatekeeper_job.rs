@@ -217,6 +217,7 @@ where
 
     // Classify.
     let result = classify_content(
+        db,
         moderation,
         completion,
         &classification_input,

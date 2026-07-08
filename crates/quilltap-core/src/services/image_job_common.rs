@@ -15,9 +15,13 @@ use crate::cheap_llm::{
 use crate::db::runtime::Db;
 use crate::image_gen::{resolve_orientation, Orientation};
 use crate::image_gen::{ModelInfo, OrientationSupport};
-use crate::model::image::{ImageGenError, ImageGenParams, ImageProvider};
+use crate::model::image::{ImageGenError, ImageGenParams, ImageGenResponse, ImageProvider};
 use crate::services::dangerous_content::provider_routing::{
     is_image_moderation_error, resolve_uncensored_image_profile_for_reroute, ApiKeyResolver,
+};
+use crate::services::llm_logging::{
+    log_llm_call, log_type, LogContext, LogLlmCallParams, LogRequest, LogRequestMessage,
+    LogResponse,
 };
 
 /// The orientation-data provider signature (v4's plugin-registry
@@ -197,11 +201,75 @@ pub(crate) struct GenOutcome {
     pub active_model: String,
 }
 
+/// v4 `logLLMCall` (character-avatar.ts / story-background.ts) — one
+/// `IMAGE_GENERATION` row per provider attempt. The avatar handler passes a
+/// `characterId`; the story handler does not (`character_id = None`). `durationMs`
+/// is v4's `Date.now()`-delta; the handler clocks are pinned in the differentials,
+/// so it is 0. Awaited (the writer never throws); `LogContext::none()` on the job
+/// path (Unit 4 supplies the autonomous run id later).
+#[allow(clippy::too_many_arguments)]
+async fn log_image_gen_job(
+    db: &Db,
+    user_id: &str,
+    chat_id: Option<&str>,
+    character_id: Option<&str>,
+    provider: &str,
+    model_name: &str,
+    prompt: &str,
+    content: String,
+    error: Option<String>,
+) {
+    let params = LogLlmCallParams {
+        user_id: user_id.to_string(),
+        log_type: log_type::IMAGE_GENERATION.to_string(),
+        message_id: None,
+        chat_id: chat_id.map(str::to_string),
+        character_id: character_id.map(str::to_string),
+        provider: provider.to_string(),
+        model_name: model_name.to_string(),
+        request: LogRequest {
+            messages: vec![LogRequestMessage {
+                role: "user".to_string(),
+                content: prompt.to_string(),
+                attachments: None,
+            }],
+            temperature: None,
+            max_tokens: None,
+            tools: None,
+        },
+        response: LogResponse {
+            content,
+            error,
+            finish_reason: None,
+            tool_calls: None,
+        },
+        usage: None,
+        cache_usage: None,
+        raw_provider_usage: None,
+        request_hashes: None,
+        // Pinned clock in the differential → 0 (v4 `Date.now() - genStartTime`).
+        duration_ms: Some(0.0),
+    };
+    let _ = log_llm_call(db, params, &LogContext::none()).await;
+}
+
+/// v4 `revisedPrompt || \`Generated ${n} image(s)${suffix}\`` — the success-log
+/// content.
+fn job_success_content(response: &ImageGenResponse, suffix: &str) -> String {
+    response
+        .images
+        .first()
+        .and_then(|i| i.revised_prompt.clone())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| format!("Generated {} image(s){suffix}", response.images.len()))
+}
+
 /// The generate + post-hoc Concierge reroute flow shared by both handlers.
 /// `fail_prefix` is the handler's error prefix (`"Avatar image generation failed"`
 /// / `"Image generation failed"`); the after-reroute message is
 /// `"{fail_prefix} after Concierge reroute: {msg}"`. Orientation is resolved via
-/// the injected registry seam. logLLMCall is a documented deferral (not emitted).
+/// the injected registry seam. Each provider attempt writes an `IMAGE_GENERATION`
+/// `llm_logs` row (v4 `logLLMCall`) via [`log_image_gen_job`].
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn generate_with_reroute<I: ImageProvider, A: ApiKeyResolver>(
     db: &Db,
@@ -218,6 +286,8 @@ pub(crate) async fn generate_with_reroute<I: ImageProvider, A: ApiKeyResolver>(
     danger_mode: &str,
     uncensored_image_profile_id: Option<&str>,
     user_id: &str,
+    chat_id: Option<&str>,
+    character_id: Option<&str>,
     fail_prefix: &str,
 ) -> Result<GenOutcome, String> {
     // Resolve orientation + build the merged params.
@@ -245,12 +315,38 @@ pub(crate) async fn generate_with_reroute<I: ImageProvider, A: ApiKeyResolver>(
         .generate_image(provider, api_key, &params)
         .await
     {
-        Ok(response) => Ok(GenOutcome {
-            images: response.images,
-            active_provider: provider.to_string(),
-            active_model: model_name.to_string(),
-        }),
+        Ok(response) => {
+            log_image_gen_job(
+                db,
+                user_id,
+                chat_id,
+                character_id,
+                provider,
+                model_name,
+                final_prompt,
+                job_success_content(&response, ""),
+                None,
+            )
+            .await;
+            Ok(GenOutcome {
+                images: response.images,
+                active_provider: provider.to_string(),
+                active_model: model_name.to_string(),
+            })
+        }
         Err(error) => {
+            log_image_gen_job(
+                db,
+                user_id,
+                chat_id,
+                character_id,
+                provider,
+                model_name,
+                final_prompt,
+                String::new(),
+                Some(error.message.clone()),
+            )
+            .await;
             reroute_or_fail(
                 db,
                 image_provider,
@@ -263,6 +359,8 @@ pub(crate) async fn generate_with_reroute<I: ImageProvider, A: ApiKeyResolver>(
                 danger_mode,
                 uncensored_image_profile_id,
                 user_id,
+                chat_id,
+                character_id,
                 fail_prefix,
             )
             .await
@@ -284,6 +382,8 @@ async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver>(
     danger_mode: &str,
     uncensored_image_profile_id: Option<&str>,
     user_id: &str,
+    chat_id: Option<&str>,
+    character_id: Option<&str>,
     fail_prefix: &str,
 ) -> Result<GenOutcome, String> {
     let reroute = if is_image_moderation_error(&error.message) {
@@ -337,15 +437,43 @@ async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver>(
         .generate_image(&reroute.profile.provider, &reroute.api_key, &params)
         .await
     {
-        Ok(response) => Ok(GenOutcome {
-            images: response.images,
-            active_provider: reroute.profile.provider.clone(),
-            active_model: reroute.profile.model_name.clone(),
-        }),
-        Err(reroute_error) => Err(format!(
-            "{fail_prefix} after Concierge reroute: {}",
-            reroute_error.message
-        )),
+        Ok(response) => {
+            log_image_gen_job(
+                db,
+                user_id,
+                chat_id,
+                character_id,
+                &reroute.profile.provider,
+                &reroute.profile.model_name,
+                final_prompt,
+                job_success_content(&response, " (Concierge reroute)"),
+                None,
+            )
+            .await;
+            Ok(GenOutcome {
+                images: response.images,
+                active_provider: reroute.profile.provider.clone(),
+                active_model: reroute.profile.model_name.clone(),
+            })
+        }
+        Err(reroute_error) => {
+            log_image_gen_job(
+                db,
+                user_id,
+                chat_id,
+                character_id,
+                &reroute.profile.provider,
+                &reroute.profile.model_name,
+                final_prompt,
+                String::new(),
+                Some(reroute_error.message.clone()),
+            )
+            .await;
+            Err(format!(
+                "{fail_prefix} after Concierge reroute: {}",
+                reroute_error.message
+            ))
+        }
     }
 }
 

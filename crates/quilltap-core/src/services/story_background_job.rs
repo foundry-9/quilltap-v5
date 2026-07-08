@@ -447,6 +447,7 @@ where
     if let Some(appearances) = resolved_appearances.take() {
         if !appearances.is_empty() {
             let sanitized = sanitize_appearances_if_needed(
+                db,
                 deps.executor,
                 deps.moderation,
                 deps.completion,
@@ -621,6 +622,8 @@ where
         &danger_settings.mode,
         danger_settings.uncensored_image_profile_id.as_deref(),
         user_id,
+        Some(&payload.chat_id),
+        None,
         "Image generation failed",
     )
     .await?;

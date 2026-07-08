@@ -246,6 +246,7 @@ where
         if let Some(selection) = common::build_cheap_llm_selection(&all_profiles, cheap_settings) {
             // classify_content never throws (safe_fallback on error).
             let classification = classify_content(
+                db,
                 deps.moderation,
                 deps.completion,
                 &prompt,
@@ -312,6 +313,8 @@ where
         &danger_settings.mode,
         danger_settings.uncensored_image_profile_id.as_deref(),
         user_id,
+        Some(&payload.chat_id),
+        Some(&payload.character_id),
         "Avatar image generation failed",
     )
     .await?;

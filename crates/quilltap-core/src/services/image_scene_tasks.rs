@@ -189,6 +189,7 @@ pub async fn craft_image_prompt<C: CompletionProvider>(
             Some(4000.0),
             // No character-id cache key on this path.
             None,
+            Some("craft-image-prompt"),
         )
         .await
 }
@@ -445,6 +446,7 @@ pub async fn resolve_appearance<C: CompletionProvider>(
             None,
             None,
             None,
+            Some("resolve-character-appearances"),
         )
         .await
 }
@@ -538,6 +540,7 @@ pub async fn sanitize_appearance<C: CompletionProvider>(
             None,
             None,
             None,
+            Some("sanitize-appearance"),
         )
         .await
 }
@@ -633,6 +636,7 @@ pub async fn derive_scene_context<C: CompletionProvider>(
             // No max-tokens override on this path.
             None,
             None,
+            Some("derive-scene-context"),
         )
         .await
 }
@@ -721,6 +725,7 @@ pub async fn craft_story_background_prompt<C: CompletionProvider>(
             // v4 passes 4000 as `maxTokens`.
             Some(4000.0),
             None,
+            Some("craft-story-background-prompt"),
         )
         .await
 }

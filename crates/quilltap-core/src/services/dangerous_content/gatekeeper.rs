@@ -27,9 +27,14 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::clock::now_unix_ms;
 use crate::db::chat_settings::DangerousContentSettings;
+use crate::db::runtime::Db;
 use crate::memory_tasks::strip_code_fences;
 use crate::model::completion::{
     CompletionMessage, CompletionParams, CompletionProvider, CompletionUsage,
+};
+use crate::services::llm_logging::{
+    log_llm_call, log_type, LogContext, LogLlmCallParams, LogRequest, LogRequestMessage,
+    LogResponse, LogUsage,
 };
 
 use super::prompt_text;
@@ -369,7 +374,9 @@ fn cache_result(content_hash: String, result: DangerClassificationResult) {
 /// host-side seam; this port's boundary is the [`CompletionProvider`] call, so it
 /// does not model the null-key early return (which only happens when no key is
 /// available — a host concern).
+#[allow(clippy::too_many_arguments)]
 pub async fn classify_content<M, C>(
+    db: &Db,
     moderation: &M,
     completion: &C,
     content: &str,
@@ -383,6 +390,7 @@ where
     C: CompletionProvider,
 {
     match classify_inner(
+        db,
         moderation,
         completion,
         content,
@@ -399,7 +407,9 @@ where
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn classify_inner<M, C>(
+    db: &Db,
     moderation: &M,
     completion: &C,
     content: &str,
@@ -430,6 +440,16 @@ where
             mapped.source = Some("moderation".to_string());
             mapped.provider_name = Some(provider_name);
             cache_result(hash, mapped.clone());
+            // v4 logLLMCall (gatekeeper.service.ts:279) writes a
+            // `modelName:'moderation'` row here whose `response.content` is
+            // `JSON.stringify({ flagged, categories })` over the RAW wire
+            // categories (which carry a per-category `flagged`). The ported
+            // moderation seam projects to `ModerationResult` and drops that
+            // per-category `flagged` (`map_moderation_result` never reads it), so
+            // the byte-exact content is not reproducible without widening the
+            // moderation seam (W4.2/W4.7f). Not ported here — the differential
+            // banks the absence on the moderation path (W4.7e3 order). Widening
+            // the seam to carry the raw categories is the tracked follow-up.
             return Ok(mapped);
         }
         // v4: `provider.moderate` throwing propagates to the outer catch → safe.
@@ -473,6 +493,50 @@ where
         )
         .await
         .map_err(|_| ())?;
+
+    // v4 logLLMCall (gatekeeper.service.ts:396): fire-and-forget
+    // DANGER_CLASSIFICATION row on the cheap-LLM classify path (temperature 0.1,
+    // maxTokens 500, the completion response + usage). Awaited here (writer never
+    // throws — the watermark precedent); LogContext::none() on the request path.
+    let log_params = LogLlmCallParams {
+        user_id: user_id.to_string(),
+        log_type: log_type::DANGER_CLASSIFICATION.to_string(),
+        message_id: None,
+        chat_id: chat_id.map(str::to_string),
+        character_id: None,
+        provider: cheap_llm_selection.provider.clone(),
+        model_name: cheap_llm_selection.model_name.clone(),
+        request: LogRequest {
+            messages: params
+                .messages
+                .iter()
+                .map(|m| LogRequestMessage {
+                    role: m.role.as_str().to_string(),
+                    content: m.content.clone(),
+                    attachments: None,
+                })
+                .collect(),
+            temperature: Some(0.1),
+            max_tokens: Some(500),
+            tools: None,
+        },
+        response: LogResponse {
+            content: response.content.clone(),
+            error: None,
+            finish_reason: None,
+            tool_calls: None,
+        },
+        usage: response.usage.map(|u| LogUsage {
+            prompt_tokens: Some(u.prompt_tokens),
+            completion_tokens: Some(u.completion_tokens),
+            total_tokens: Some(u.total_tokens),
+        }),
+        cache_usage: None,
+        raw_provider_usage: None,
+        request_hashes: None,
+        duration_ms: None,
+    };
+    let _ = log_llm_call(db, log_params, &LogContext::none()).await;
 
     let mut result = parse_classification_response(&response.content, settings.threshold);
     result.usage = response.usage;

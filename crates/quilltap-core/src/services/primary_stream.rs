@@ -45,8 +45,10 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde_json::{json, Value};
 
+use crate::cache_prefix_hashes::{compute_request_prefix_hashes, PrefixMessage};
 use crate::db::runtime::Db;
 use crate::db::DbError;
+use crate::finish_reason::extract_finish_reason;
 use crate::message_formatter::{normalize_content_block_format, strip_character_name_prefix};
 use crate::model::stream::{
     canned_stream_key, StreamCacheUsage, StreamChunk, StreamError, StreamParams, StreamUsage,
@@ -54,6 +56,10 @@ use crate::model::stream::{
 };
 
 use super::chat_events::{ChatEvent, EventSink, StatusPayload};
+use super::llm_logging::{
+    log_llm_call, log_type, LogCacheUsage, LogContext, LogLlmCallParams, LogRequest,
+    LogRequestMessage, LogResponse, LogUsage,
+};
 use super::tool_execution::{save_tool_messages, GeneratedImage, ToolMessage, ToolWhisperContext};
 
 // ===========================================================================
@@ -799,8 +805,106 @@ pub struct RunPrimaryStreamOptions<'a> {
     pub state: &'a mut StreamingState,
 }
 
+/// The context [`consume_stream`] needs to write the v4 `CHAT_MESSAGE` `llm_logs`
+/// row on the terminal chunk (streaming.service.ts:405). `None` when the caller
+/// did not supply a `user_id` (v4 gates the log on `if (userId)`).
+struct StreamLogCtx<'a> {
+    db: &'a Db,
+    user_id: &'a str,
+    chat_id: &'a str,
+    message_id: &'a str,
+    character_id: &'a str,
+}
+
+/// v4 `logLLMCall` on `chunk.done` (streaming.service.ts:405) — one `CHAT_MESSAGE`
+/// row with the request-prefix hashes, `rawProviderUsage`, `finishReason`, usage +
+/// cacheUsage. `durationMs` is v4's `Date.now() - startTime`; the differential's
+/// frozen clock makes it 0 and the port has no injected stream clock (a real value
+/// needs a spine-injected clock — a tracked follow-up), so it emits 0. Awaited (the
+/// writer never throws — the watermark precedent); `LogContext::none()` on the
+/// request path.
+#[allow(clippy::too_many_arguments)]
+async fn log_chat_message_call(
+    log: &StreamLogCtx<'_>,
+    profile: &EffectiveProfile,
+    params: &StreamParams,
+    content: String,
+    usage: Option<StreamUsage>,
+    cache_usage: Option<StreamCacheUsage>,
+    raw_provider_usage: Option<Value>,
+    raw_response: Option<Value>,
+) {
+    // v4 passes `tools.length > 0 ? tools : undefined` to both the log request and
+    // `computeRequestPrefixHashes`.
+    let tools_nonempty: Option<Vec<Value>> = params
+        .tools
+        .as_ref()
+        .and_then(|t| t.as_array())
+        .filter(|a| !a.is_empty())
+        .cloned();
+
+    let prefix_messages: Vec<PrefixMessage> = params
+        .messages
+        .iter()
+        .map(|m| PrefixMessage {
+            role: m.role.as_str().to_string(),
+            content: Value::String(m.content.clone()),
+            name: None,
+            tool_call_id: None,
+            tool_calls: None,
+        })
+        .collect();
+    let request_hashes = compute_request_prefix_hashes(&prefix_messages, tools_nonempty.as_deref());
+
+    let finish_reason = raw_response.as_ref().and_then(extract_finish_reason);
+
+    let params_log = LogLlmCallParams {
+        user_id: log.user_id.to_string(),
+        log_type: log_type::CHAT_MESSAGE.to_string(),
+        message_id: Some(log.message_id.to_string()),
+        chat_id: Some(log.chat_id.to_string()),
+        character_id: Some(log.character_id.to_string()),
+        provider: profile.provider.clone(),
+        model_name: profile.model_name.clone(),
+        request: LogRequest {
+            messages: params
+                .messages
+                .iter()
+                .map(|m| LogRequestMessage {
+                    role: m.role.as_str().to_string(),
+                    content: m.content.clone(),
+                    attachments: None,
+                })
+                .collect(),
+            temperature: params.temperature,
+            max_tokens: params.max_tokens,
+            tools: tools_nonempty,
+        },
+        response: LogResponse {
+            content,
+            error: None,
+            finish_reason,
+            tool_calls: None,
+        },
+        usage: usage.map(|u| LogUsage {
+            prompt_tokens: Some(u.prompt_tokens),
+            completion_tokens: Some(u.completion_tokens),
+            total_tokens: Some(u.total_tokens),
+        }),
+        cache_usage: cache_usage.map(|c| LogCacheUsage {
+            cache_creation_input_tokens: c.cache_creation_input_tokens,
+            cache_read_input_tokens: c.cache_read_input_tokens,
+        }),
+        raw_provider_usage,
+        request_hashes: Some(request_hashes),
+        duration_ms: Some(0.0),
+    };
+    let _ = log_llm_call(log.db, params_log, &LogContext::none()).await;
+}
+
 /// Drain a canned stream, applying every chunk to the state exactly as v4's
-/// `for await` loop body does; return the mid-stream error if one arrived.
+/// `for await` loop body does; return the mid-stream error if one arrived. On the
+/// terminal chunk, writes the v4 `CHAT_MESSAGE` `llm_logs` row when `log` is set.
 async fn consume_stream<P, S>(
     provider: &P,
     state: &mut StreamingState,
@@ -808,6 +912,7 @@ async fn consume_stream<P, S>(
     character_name: &str,
     character_id: &str,
     params: &StreamParams,
+    log: Option<&StreamLogCtx<'_>>,
 ) -> Option<StreamError>
 where
     P: StreamingCompletionProvider,
@@ -817,6 +922,11 @@ where
         Some(p) => (p.provider.clone(), p.base_url.clone()),
         None => (String::new(), None),
     };
+    // v4 tracks the LAST non-null usage/cache/rawProviderUsage across all chunks
+    // for the terminal log.
+    let mut last_usage: Option<StreamUsage> = None;
+    let mut last_cache_usage: Option<StreamCacheUsage> = None;
+    let mut last_raw_provider_usage: Option<Value> = None;
     let mut rx = provider
         .stream_message(&provider_name, base_url.as_deref(), params)
         .await;
@@ -827,6 +937,19 @@ where
         };
         // Capture + live-forward reasoning on any chunk. DISPLAY ONLY.
         apply_reasoning_chunk(state, &chunk, sink);
+        if chunk.usage.is_some() {
+            last_usage = chunk.usage;
+        }
+        if chunk.cache_usage.is_some() {
+            last_cache_usage = chunk.cache_usage;
+        }
+        if chunk
+            .raw_provider_usage
+            .as_ref()
+            .is_some_and(|v| v.is_object())
+        {
+            last_raw_provider_usage = chunk.raw_provider_usage.clone();
+        }
         if !chunk.content.is_empty() {
             if !state.has_started_streaming {
                 sink.emit(ChatEvent::status(StatusPayload {
@@ -855,6 +978,23 @@ where
             }
             // Flush any trailing reasoning that arrived without subsequent prose.
             flush_reasoning_segment(state);
+
+            // v4 logs on `chunk.done` when a userId was provided.
+            if let Some(log) = log {
+                if let Some(profile) = state.effective_profile.clone() {
+                    log_chat_message_call(
+                        log,
+                        &profile,
+                        params,
+                        state.full_response.clone(),
+                        last_usage,
+                        last_cache_usage,
+                        last_raw_provider_usage.clone(),
+                        chunk.raw_response.clone(),
+                    )
+                    .await;
+                }
+            }
         }
     }
     None
@@ -890,7 +1030,7 @@ where
 {
     let RunPrimaryStreamOptions {
         chat_id,
-        user_id: _user_id,
+        user_id,
         chat,
         character_id,
         character_name,
@@ -902,11 +1042,20 @@ where
         params,
         attached_files,
         original_message,
-        // The preserver was built with this id by the caller; carried on the
-        // options for API parity with v4's `RunPrimaryStreamOptions`.
-        pre_generated_assistant_message_id: _pre_generated_assistant_message_id,
+        // v4 logs the CHAT_MESSAGE `llm_logs` row against this id (the
+        // pre-generated assistant message id).
+        pre_generated_assistant_message_id,
         state,
     } = opts;
+
+    // v4 gates the terminal `logLLMCall` on `if (userId)`.
+    let stream_log = (!user_id.is_empty()).then(|| StreamLogCtx {
+        db,
+        user_id: &user_id,
+        chat_id: &chat_id,
+        message_id: &pre_generated_assistant_message_id,
+        character_id: &character_id,
+    });
 
     sink.emit(ChatEvent::status(StatusPayload {
         stage: "sending".into(),
@@ -923,6 +1072,7 @@ where
         &character_name,
         &character_id,
         &params,
+        stream_log.as_ref(),
     )
     .await;
 
@@ -960,6 +1110,7 @@ where
             &character_name,
             &character_id,
             &retry_params,
+            stream_log.as_ref(),
         )
         .await;
 
