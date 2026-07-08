@@ -34,6 +34,7 @@ pub mod appearance_resolution;
 pub mod aurora_notifications;
 pub mod avatar_generation;
 pub mod avatar_prompt;
+pub mod brahma_console;
 pub mod build_context;
 pub mod builtin_embedding;
 pub mod carina_memory_extraction;
