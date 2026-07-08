@@ -51,7 +51,8 @@ use quilltap_core::model::completion::{
 };
 use quilltap_core::services::answer_confirmation::ReaffirmationProfile;
 use quilltap_core::services::chat_events::RecordingSink;
-use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use quilltap_core::services::cheap_llm_exec::{CheapLlmLogConfig, CheapLlmTaskExecutor};
+use quilltap_core::services::llm_logging::LogContext;
 use quilltap_core::services::message_finalizer::{
     finalize_message_response, ClosureProspero, FinalizeOptions, FinalizerCharacter, FinalizerChat,
     FinalizerChatSettings, FinalizerCompression, FinalizerConfirmationInputs, FinalizerParticipant,
@@ -62,6 +63,8 @@ use quilltap_core::services::tool_execution::ToolMessage;
 use quilltap_core::tools::rng::FixedBytes;
 use serde::Deserialize;
 use serde_json::{json, Value};
+
+mod common;
 
 // ---------------------------------------------------------------------------
 // Spec.
@@ -400,10 +403,12 @@ fn answer_confirmation_tier3_matches_oracle() {
     let mut want_results: HashMap<String, Value> = HashMap::new();
     let mut want_events: HashMap<String, Value> = HashMap::new();
     let mut want_tables: HashMap<String, Value> = HashMap::new();
+    let mut want_llm_logs: Option<Vec<Value>> = None;
     let mut completions: HashMap<String, CompletionResponse> = HashMap::new();
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
         let parsed: OracleLine = serde_json::from_str(line).expect("oracle line parses");
         match parsed.kind.as_str() {
+            "llmlogs" => want_llm_logs = Some(common::oracle_llm_logs(&parsed.rest)),
             "result" => {
                 want_results.insert(
                     parsed.call.clone().unwrap(),
@@ -460,11 +465,17 @@ fn answer_confirmation_tier3_matches_oracle() {
     std::fs::copy(&fixture_main, &work_main).expect("copy main fixture");
     std::fs::copy(&fixture_mount, &work_mount).expect("copy mount fixture");
 
+    // W4.10b: a fresh llm-logs partition so the check + re-affirmation calls'
+    // ANSWER_CONFIRMATION `logLLMCall` rows land where we can dump them.
+    let work_ll = scratch.join("ac-llm-logs.db");
+    let _ = std::fs::remove_file(&work_ll);
+    common::materialize_llm_logs(&work_ll, &spec.test_pepper_base64);
+
     let db = Db::open(
         DbPaths {
             main: work_main.clone(),
             mount_index: Some(work_mount.clone()),
-            llm_logs: None,
+            llm_logs: Some(work_ll.clone()),
         },
         &spec.test_pepper_base64,
     )
@@ -497,12 +508,11 @@ fn answer_confirmation_tier3_matches_oracle() {
     };
 
     // The real answer-confirmation runner over the canned completion provider.
+    // The executor + runner are built PER CALL (below) so each ANSWER_CONFIRMATION
+    // `logLLMCall` row carries that call's chatId/messageId; the session no-temp
+    // cache is empty in this corpus (no temperature rejection), so a fresh
+    // executor per call is equivalent to v4's module-global one.
     let completion = CannedCompletion(completions);
-    let executor = CheapLlmTaskExecutor::new();
-    let confirmation = RealAnswerConfirmation {
-        completion: &completion,
-        executor: &executor,
-    };
 
     let compression = NoAsyncCompression;
     let mut cost = NoCostTracking;
@@ -659,6 +669,22 @@ fn answer_confirmation_tier3_matches_oracle() {
         );
         let mut carina = NoChainCarina;
 
+        // Per-call executor with logging: the check (answer-confirmation) + the
+        // re-affirmation (answer-reaffirmation) each write one ANSWER_CONFIRMATION
+        // row carrying this call's chatId + messageId (the finalizer passes
+        // messageId = the assistant message id, characterId = the responder id).
+        let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+            db: db.clone(),
+            user_id: spec.user_id.clone(),
+            chat_id: Some(call.chat_id.clone()),
+            message_id: Some(call.assistant_message_id.clone()),
+            ctx: LogContext::none(),
+        });
+        let confirmation = RealAnswerConfirmation {
+            completion: &completion,
+            executor: &executor,
+        };
+
         let result = rt
             .block_on(finalize_message_response(
                 &db,
@@ -676,6 +702,9 @@ fn answer_confirmation_tier3_matches_oracle() {
         got_results.push((call.name.clone(), rust_result_to_value(&result)));
         got_events.push((call.name.clone(), Value::Array(sink.events_json())));
     }
+
+    // The check + re-affirmation calls each wrote one ANSWER_CONFIRMATION row.
+    let got_logs = common::dump_llm_logs(&db);
 
     drop(db);
 
@@ -767,8 +796,20 @@ fn answer_confirmation_tier3_matches_oracle() {
         "chat_messages rows diverge"
     );
 
+    // --- 5. llm_logs (ANSWER_CONFIRMATION rows: one per check + re-affirmation) ---
+    let want_logs = want_llm_logs.expect("oracle emitted no llmlogs row");
+    assert_eq!(
+        got_logs,
+        want_logs,
+        "llm_logs ANSWER_CONFIRMATION rows diverge (got {} vs oracle {})",
+        got_logs.len(),
+        want_logs.len()
+    );
+
     drop(db);
-    eprintln!("OK: answer-confirmation results + events + chats + chat_messages matched oracle.");
+    eprintln!(
+        "OK: answer-confirmation results + events + chats + chat_messages + llm_logs matched oracle."
+    );
 }
 
 // ---------------------------------------------------------------------------

@@ -19,8 +19,10 @@
  *     recorded keys prove the prompt bytes — the reference-block assembly + the
  *     24K oldest-first truncation + the danger escalation's cheap-profile switch.
  *   - `getApiKeyForCheapLLMSelection` → constant (host-side seam).
- *   - `triggerAsyncCompression` / `estimateMessageCost` / `logLLMCall` /
+ *   - `triggerAsyncCompression` / `estimateMessageCost` /
  *     `runCarinaMarkupQuery` → recorders / no-ops (matching the Rust seams).
+ *   - `logLLMCall` runs REAL (W4.10b): the check + re-affirmation each land one
+ *     ANSWER_CONFIRMATION `llm_logs` row, dumped + diffed by the Rust harness.
  *
  * Dumps per-call `result` + the ordered event trace + `chats` + `chat_messages`.
  *
@@ -147,6 +149,9 @@ async function main(): Promise<void> {
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.SQLITE_PATH = workMain;
   process.env.SQLITE_MOUNT_INDEX_PATH = workMount;
+  // W4.10b: a fresh llm-logs DB so the un-mocked `logLLMCall` lands the
+  // ANSWER_CONFIRMATION rows (check + re-affirmation).
+  process.env.SQLITE_LLM_LOGS_PATH = join(scratch, 'ac-llm-logs.db');
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
@@ -225,10 +230,11 @@ async function main(): Promise<void> {
     const actual = jest.requireActual('@/lib/services/api-key.service');
     return { __esModule: true, ...actual, getApiKeyForCheapLLMSelection: async () => 'test-key' };
   });
-  jest.doMock('@/lib/services/llm-logging.service', () => {
-    const actual = jest.requireActual('@/lib/services/llm-logging.service');
-    return { __esModule: true, ...actual, logLLMCall: async () => undefined };
-  });
+  // W4.10b: run the REAL `logLLMCall` so the check + re-affirmation land
+  // ANSWER_CONFIRMATION rows in the llm-logs DB (dumped below).
+  jest.doMock('@/lib/services/llm-logging.service', () =>
+    jest.requireActual('@/lib/services/llm-logging.service')
+  );
   jest.doMock('@/lib/services/chat-message/compression-cache.service', () => {
     const actual = jest.requireActual('@/lib/services/chat-message/compression-cache.service');
     return {
@@ -417,9 +423,38 @@ async function main(): Promise<void> {
     return canonicalizeRows(table, columns, rawRows, orderBy);
   };
 
+  // Read the ANSWER_CONFIRMATION rows through the llm-logs handle directly,
+  // BEFORE closeDatabase() (id/createdAt/updatedAt placeholdered).
+  const { getRawLLMLogsDatabase } = await import(
+    '@/lib/database/backends/sqlite/llm-logs-client'
+  );
+  const lldb = getRawLLMLogsDatabase();
+  if (!lldb) throw new Error('llm-logs DB handle unavailable (degraded open?)');
+  const llColumns = (
+    lldb.pragma('table_info(llm_logs)') as Array<{ name: string }>
+  ).map((c) => c.name);
+  const llRawRows = lldb.prepare('SELECT * FROM llm_logs').all() as Array<
+    Record<string, unknown>
+  >;
+  const llRows = llRawRows
+    .map((r) => {
+      const out: Record<string, unknown> = {};
+      for (const col of llColumns) out[col] = canonValue(r[col]);
+      out.id = '<id>';
+      out.createdAt = '<ts>';
+      out.updatedAt = '<ts>';
+      return out;
+    })
+    .sort((a, b) => {
+      const sa = JSON.stringify(a);
+      const sb = JSON.stringify(b);
+      return sa < sb ? -1 : sa > sb ? 1 : 0;
+    });
+
   for (const entry of cannedRecorded.values()) lines.push(JSON.stringify({ kind: 'canned', ...entry }));
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chats', 'id')) }));
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chat_messages', 'id')) }));
+  lines.push(JSON.stringify({ kind: 'llmlogs', columns: llColumns, rows: llRows }));
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

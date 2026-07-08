@@ -42,6 +42,14 @@ dump is deliberately post-round (it would couple W4.10a's corpus to W4.10b's
 primary-stream regen). Written from two fresh surveys (the v5 composition
 points; v4's brahma-console/one-shot.service.ts at 6b6e39ad — no drift). No
 code changes.
+W4.10b step 3 (logLLMCall regen — answer confirmation): un-mocked `logLLMCall` in
+the `answer_confirmation_tier3` oracle and gave the Rust finalizer a per-call
+`with_logging` executor over an attached llm-logs partition, diffing the 13
+ANSWER_CONFIRMATION rows the check + re-affirmation calls write (one per check,
+plus one per re-affirmation on the three inconsistent cases). Each row carries the
+call's chatId + assistant messageId + responder characterId. Green with no port
+change.
+
 W4.10b step 2 (logLLMCall regen — danger gatekeeper): un-mocked `logLLMCall` in
 the `danger_gatekeeper_tier3` oracle and attached the llm-logs partition on the
 Rust side, diffing the four `DANGER_CLASSIFICATION` rows the cheap-LLM classify
