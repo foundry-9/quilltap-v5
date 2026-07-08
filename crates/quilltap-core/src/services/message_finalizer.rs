@@ -1097,7 +1097,8 @@ where
             &character_participant.id,
             carina_query,
             prospero,
-        );
+        )
+        .await;
     }
 
     // --- Chat metadata update: bump updatedAt (message-finalizer.service.ts:447) ---
@@ -1284,7 +1285,7 @@ fn rebase_offset(offset: usize, leading_strip_delta: i64, cleaned_len: i64) -> u
 ///
 /// The finalizer's markup path passes `operatorInitiated: false` (a character
 /// wrote the markup) and the assistant-markup log labels.
-fn run_assistant_carina<Q, P>(
+async fn run_assistant_carina<Q, P>(
     user_id: &str,
     chat_id: &str,
     text: &str,
@@ -1309,7 +1310,7 @@ fn run_assistant_carina<Q, P>(
     let mut callbacks = NoCallbacks;
     // The trace is not diffed here (the carina_runner has its own differential);
     // the observable DB/event effects come from the seam impl (post + emit).
-    let _trace = run_carina_markup_query(&opts, &mut callbacks, carina_query, prospero);
+    let _trace = run_carina_markup_query(&opts, &mut callbacks, carina_query, prospero).await;
 }
 
 // ===========================================================================

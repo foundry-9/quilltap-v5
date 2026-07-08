@@ -4,6 +4,47 @@
 
 ### 5.0-dev
 
+W4.5: ported the Carina query engine (`services::carina_query`, v4
+`carina.service.ts` `runCarinaQuery`) — the isolated reference-answer engine that
+resolves an answerer character and produces a minimal, isolated answer. Composes
+the ported subsystems: answerer resolution (all name matches oldest-first, prefer
+`canBeCarina`, else the operator/user-controlled/`canBeCarina`-asker gate), the
+not-participant-scoped connection-profile chain (answerer default →
+`connections.findDefault` [new `connection_profiles::find_default`] → first
+web-search-capable via the provider registry → no-profile), the system-prompt
+build (identity stack + `## Scenario` + the surface-level asker identity card +
+the Commonplace memory-recall block), prior-Carina-exchange replay, Carina's own
+5-iteration detect→execute→re-stream tool loop + the forced-text final turn, the
+`systemSender:'carina'` post + the live `carinaAnswer` emit, and the
+`CARINA_MEMORY_EXTRACTION` enqueue. The Brahma one-shot console is an injected
+seam (`RunBrahmaConsole`, default = the `llm-failed` shape; the gate + sentinel-id
+post path ARE ported — the console engine is the W4.5b follow-up). Added
+`services::carina_memory_extraction` (the SELF-only synthetic-transcript
+extraction over the ported `process_turn_for_memory`) and
+`queue_service::enqueue_carina_memory_extraction` (deduped by `carinaMessageId`).
+
+W4.5: converted the `RunCarinaQuery` seam to async (RPITIT `-> impl Future +
+Send`). The work orders' "frozen" constraint is the seam's behavior + argument
+shape, not its sync-ness (an artifact of the canned test impl); every real caller
+(the runner, the finalizer, the `ask_carina` dispatch) is already async and simply
+awaits, matching how `BuildContextSeams` / `ContextSummarySeams` /
+`LanternNotificationSink` went async. `run_carina_markup_query` / `execute_ask_carina`
+became generic over the seam (RPITIT is not dyn-compatible); the sync `#[test]`
+harnesses that drive the runner gained a current-thread runtime. `carina_runner_tier3`
+and `mail_carina_tools` re-verified green against fresh v4 oracles (behavior
+identical — oracles NOT regenerated). Verified: `carina_query_tier3_equivalence`
+(13 cases driving v4's REAL `runCarinaQuery` — plain / name-collision /
+profile-chain / memory-recall / prior-exchange / one tool iteration+threading /
+forced-text / whisper vs public / Brahma reachable+unreachable / asker-gate→not-found
+/ empty→llm-failed / extraction-enqueue — the system-prompt + recall bytes proven
+via the canned stream key; no engine divergence) and
+`carina_memory_extraction_tier3_equivalence` (the SELF-only outcome over v4's REAL
+`handleCarinaMemoryExtraction`). Spine seam closure (the `ask_carina`
+`BuiltInToolRunner` dispatch row + constructing the real `RunCarinaQuery` at the
+orchestrator/finalizer composition point + the live `@Name:`/`ask_carina`
+spine-corpus cases) is handed to the spine owner (W4.4b/unification) per the round
+layout.
+
 W4.4b: ported the chat file/attachment LLM-load subsystem and closed its two
 standing seams (`OrchestratorSeams::process_files` and
 `MessageContextSeams::load_lantern_images`). New pure leaves under `files::` —

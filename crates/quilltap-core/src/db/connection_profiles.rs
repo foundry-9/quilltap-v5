@@ -546,6 +546,31 @@ pub fn find_all(conn: &Connection) -> Result<Vec<serde_json::Value>, DbError> {
     Ok(out)
 }
 
+/// v4 `repos.connections.findDefault(userId)` — the user's default profile
+/// (`findOneByFilter({ userId, isDefault: true })`, first match in rowid order).
+/// `None` when the user has no default. Used by the Carina profile-resolution
+/// chain (`services::carina_query`).
+pub fn find_default(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Option<serde_json::Value>, DbError> {
+    let row = conn
+        .query_row(
+            &format!(
+                "SELECT {CP_COLUMNS} FROM connection_profiles \
+                 WHERE userId = ?1 AND isDefault = 1 LIMIT 1"
+            ),
+            params![user_id],
+            marshal_cp_row,
+        )
+        .map(Some)
+        .or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other),
+        })?;
+    Ok(row)
+}
+
 /// v4 `repos.connections.findByUserId(userId)` — profiles for one user, in
 /// insertion (rowid) order (v4 `findByFilter({ userId })` with no sort).
 pub fn find_by_user_id(

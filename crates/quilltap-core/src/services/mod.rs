@@ -35,6 +35,8 @@ pub mod aurora_notifications;
 pub mod avatar_generation;
 pub mod avatar_prompt;
 pub mod build_context;
+pub mod carina_memory_extraction;
+pub mod carina_query;
 pub mod carina_runner;
 pub mod character_avatar_job;
 pub mod chat_events;

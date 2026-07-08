@@ -1,0 +1,181 @@
+{
+ "_comment": "Tier-3 (mocked-completion + mocked-embedding) corpus for the Carina memory-extraction job handler (v4 handleCarinaMemoryExtraction). The handler loads a posted `systemSender:'carina'` message, reconstructs a one-slice SELF-only TurnTranscript (question opens the turn, answer is the answerer's sole contribution, NO user-controlled char), and runs the standard per-turn extractor — so only SELF memories form. Both model boundaries are pinned: the COMPLETION by rules keyed on (pass, CONTEXT-footer label prefix) — the jest oracle's createLLMProvider mock resolves each real call to a rule, RECORDS the exact (provider|model|temperature|messages) canned key it answered, and the Rust side replays those recorded entries through CannedCompletionProvider; the EMBEDDING by exact `summary\\n\\ncontent` text (as in the memory-gate/processor corpus). Vector geometry: 13-dim unit basis vectors; the reinforce seed is 0.87*e_0 + sqrt(1-0.87^2)*e_8 so dot(candidate e_0, seed) == 0.87 exactly → lands in the REINFORCE band [0.85, 0.90).",
+ "_safety": "testPepperBase64 is the same THROWAWAY key the other fixtures use — never a real pepper.",
+ "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+ "userId": "00000000-0000-4000-8000-0000000000ee",
+ "seedTimestamp": "2020-01-01T00:00:00.000Z",
+ "carinaMessageTimestamp": "2023-05-05T12:00:00.000Z",
+ "connectionProfileId": "e0000000-0000-4000-8000-0000000000c0",
+ "estimatedCostUsd": 0.0025,
+ "memoryExtractionLimits": {
+  "enabled": true,
+  "maxPerHour": 1000,
+  "softStartFraction": 0.5,
+  "softFloor": 0.55
+ },
+ "chatSettings": {
+  "cheapLLMSettings": {
+   "strategy": "PROVIDER_CHEAPEST",
+   "fallbackToLocal": false
+  },
+  "dangerMode": "DETECT_ONLY"
+ },
+ "connectionProfiles": [
+  {
+   "id": "e0000000-0000-4000-8000-0000000000c0",
+   "name": "Answerer Anthropic",
+   "provider": "ANTHROPIC",
+   "modelName": "claude-benchmark-large",
+   "isCheap": false,
+   "isDangerousCompatible": false
+  },
+  {
+   "id": "e0000000-0000-4000-8000-0000000000c1",
+   "name": "Cheap OpenAI",
+   "provider": "OPENAI",
+   "modelName": "gpt-4o-mini",
+   "isCheap": true,
+   "isDangerousCompatible": false
+  }
+ ],
+ "characters": [
+  {
+   "id": "aa000000-0000-4000-8000-0000000000a1",
+   "name": "Vesper",
+   "controlledBy": "llm",
+   "identity": "Vesper reads the brass instruments of the observatory.",
+   "description": "A clockwork meteorologist.",
+   "pronouns": { "subject": "she", "object": "her", "possessive": "her" }
+  },
+  {
+   "id": "bb000000-0000-4000-8000-0000000000b1",
+   "name": "Wren",
+   "controlledBy": "llm",
+   "identity": "Wren tends the automaton garden.",
+   "description": "A patient gardener of gears.",
+   "pronouns": { "subject": "they", "object": "them", "possessive": "their" }
+  }
+ ],
+ "seedMemories": [
+  {
+   "id": "c1000000-0000-4000-8000-0000000000c1",
+   "characterId": "bb000000-0000-4000-8000-0000000000b1",
+   "content": "wren keeps the garden gate oiled",
+   "summary": "seed garden gate",
+   "importance": 0.5,
+   "vector": [
+    0.87, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.4930517, 0.0, 0.0, 0.0, 0.0
+   ],
+   "createdAt": "seed"
+  }
+ ],
+ "chats": [
+  {
+   "id": "1c000000-0000-4000-8000-00000000c0a1",
+   "participants": [
+    { "id": "9a000000-0000-4000-8000-0000000000a1", "characterId": "aa000000-0000-4000-8000-0000000000a1", "controlledBy": "llm" }
+   ]
+  },
+  {
+   "id": "1c000000-0000-4000-8000-00000000c0b2",
+   "participants": [
+    { "id": "9a000000-0000-4000-8000-0000000000b1", "characterId": "bb000000-0000-4000-8000-0000000000b1", "controlledBy": "llm" }
+   ]
+  },
+  {
+   "id": "1c000000-0000-4000-8000-00000000c0c3",
+   "participants": [
+    { "id": "9a000000-0000-4000-8000-0000000000c1", "characterId": "aa000000-0000-4000-8000-0000000000a1", "controlledBy": "llm" }
+   ]
+  },
+  {
+   "id": "1c000000-0000-4000-8000-00000000c0d4",
+   "participants": [
+    { "id": "9a000000-0000-4000-8000-0000000000d1", "characterId": "aa000000-0000-4000-8000-0000000000a1", "controlledBy": "llm" }
+   ]
+  },
+  {
+   "id": "1c000000-0000-4000-8000-00000000c0e5",
+   "participants": [
+    { "id": "9a000000-0000-4000-8000-0000000000e1", "characterId": "bb000000-0000-4000-8000-0000000000b1", "controlledBy": "llm" }
+   ]
+  }
+ ],
+ "carinaMessages": [
+  {
+   "id": "3a000000-0000-4000-8000-00000000aa01",
+   "chatId": "1c000000-0000-4000-8000-00000000c0a1",
+   "answererId": "aa000000-0000-4000-8000-0000000000a1",
+   "question": "What did you accomplish today?",
+   "answer": "I calibrated the brass barometer at noon and logged the reading."
+  },
+  {
+   "id": "3a000000-0000-4000-8000-00000000bb02",
+   "chatId": "1c000000-0000-4000-8000-00000000c0b2",
+   "answererId": "bb000000-0000-4000-8000-0000000000b1",
+   "question": "Any routines you keep?",
+   "answer": "I keep the garden gate oiled, same as always."
+  },
+  {
+   "id": "3a000000-0000-4000-8000-00000000cc03",
+   "chatId": "1c000000-0000-4000-8000-00000000c0c3",
+   "answererId": "aa000000-0000-4000-8000-0000000000a1",
+   "question": "Anything to report?",
+   "answer": "   "
+  }
+ ],
+ "cannedEmbeddings": {
+  "noon barometer calibration\n\nI calibrated the barometer at noon.": [
+   0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+  ],
+  "gate upkeep\n\nwren keeps the garden gate oiled": [
+   1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+  ]
+ },
+ "completionRules": [
+  {
+   "pass": "self",
+   "namePrefix": "Vesper",
+   "response": "[{\"content\": \"I calibrated the barometer at noon.\", \"summary\": \"noon barometer calibration\", \"keywords\": [\"barometer\", \"calibration\"], \"importance\": 0.6, \"temporal\": \"moment\", \"scope\": \"narrow\", \"context\": \"information\"}]",
+   "usage": { "promptTokens": 140, "completionTokens": 24, "totalTokens": 164 }
+  },
+  {
+   "pass": "self",
+   "namePrefix": "Wren",
+   "response": "[{\"content\": \"wren keeps the garden gate oiled\", \"summary\": \"gate upkeep\", \"keywords\": [\"gate\"], \"importance\": 0.5, \"temporal\": \"present\", \"scope\": \"narrow\", \"context\": \"mannerisms\"}]",
+   "usage": { "promptTokens": 130, "completionTokens": 20, "totalTokens": 150 }
+  }
+ ],
+ "cases": [
+  {
+   "name": "fresh_insert",
+   "chatId": "1c000000-0000-4000-8000-00000000c0a1",
+   "carinaMessageId": "3a000000-0000-4000-8000-00000000aa01",
+   "answererId": "aa000000-0000-4000-8000-0000000000a1"
+  },
+  {
+   "name": "reinforce",
+   "chatId": "1c000000-0000-4000-8000-00000000c0b2",
+   "carinaMessageId": "3a000000-0000-4000-8000-00000000bb02",
+   "answererId": "bb000000-0000-4000-8000-0000000000b1"
+  },
+  {
+   "name": "empty_answer_skip",
+   "chatId": "1c000000-0000-4000-8000-00000000c0c3",
+   "carinaMessageId": "3a000000-0000-4000-8000-00000000cc03",
+   "answererId": "aa000000-0000-4000-8000-0000000000a1"
+  },
+  {
+   "name": "missing_message_skip",
+   "chatId": "1c000000-0000-4000-8000-00000000c0d4",
+   "carinaMessageId": "3a000000-0000-4000-8000-00000000dd04",
+   "answererId": "aa000000-0000-4000-8000-0000000000a1"
+  },
+  {
+   "name": "missing_answerer_skip",
+   "chatId": "1c000000-0000-4000-8000-00000000c0e5",
+   "carinaMessageId": "3a000000-0000-4000-8000-00000000bb02",
+   "answererId": "ff000000-0000-4000-8000-0000000000ff"
+  }
+ ]
+}

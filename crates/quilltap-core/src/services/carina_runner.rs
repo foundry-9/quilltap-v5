@@ -170,7 +170,20 @@ pub trait RunCarinaQuery {
     /// `Err`-throws (failures are the `CarinaResult::Err` arm), but a genuine
     /// panic-like failure is surfaced through `Result::Err` so the runner's
     /// catch-all logs + swallows it, matching v4's outer `try/catch`.
-    fn run(&mut self, opts: RunCarinaQueryOptions) -> Result<CarinaResult, CarinaRunError>;
+    ///
+    /// Async (RPITIT, `-> impl Future + Send`): the real implementation
+    /// ([`super::carina_query::run_carina_query`]) composes the async tool
+    /// subsystem + streaming + memory search, and every caller (the runner, the
+    /// finalizer, the `ask_carina` dispatch) is already in an async context. The
+    /// argument SHAPE is frozen (the work order's "frozen" constraint); the
+    /// sync-ness was an artifact of the canned test impl — the codebase has taken
+    /// the same seams async before (`BuildContextSeams` / `ContextSummarySeams` /
+    /// `LanternNotificationSink`). Generic-consumed (no boxing; the future stays
+    /// `Send`).
+    fn run(
+        &mut self,
+        opts: RunCarinaQueryOptions,
+    ) -> impl std::future::Future<Output = Result<CarinaResult, CarinaRunError>> + Send;
 }
 
 /// The Prospero error-announcement seam — v4's `postProsperoCarinaError`
@@ -272,12 +285,16 @@ pub enum CarinaTrace {
 /// Returns the observable trace (ordered callback + seam calls) for the
 /// differential. The runner itself performs no reads or writes — a real seam impl
 /// reaches the writer through the [`Db`] it captures.
-pub fn run_carina_markup_query(
+pub async fn run_carina_markup_query<Q, P>(
     opts: &CarinaMarkupOptions,
     callbacks: &mut dyn CarinaMarkupCallbacks,
-    run_query: &mut dyn RunCarinaQuery,
-    prospero: &mut dyn PostProsperoCarinaError,
-) -> Vec<CarinaTrace> {
+    run_query: &mut Q,
+    prospero: &mut P,
+) -> Vec<CarinaTrace>
+where
+    Q: RunCarinaQuery,
+    P: PostProsperoCarinaError,
+{
     let mut trace = Vec::new();
 
     // v4: `const carinaQuery = parseCarinaQuery(opts.text); if (!carinaQuery) return;`
@@ -317,7 +334,7 @@ pub fn run_carina_markup_query(
         operator_initiated: query_opts.operator_initiated,
     });
 
-    match run_query.run(query_opts) {
+    match run_query.run(query_opts).await {
         Ok(CarinaResult::Ok {
             message,
             message_id,
@@ -359,17 +376,20 @@ pub fn run_carina_markup_query(
     trace
 }
 
-/// Convenience: build a [`RunCarinaQuery`]-shaped seam from an `FnMut`. Lets a
-/// caller (or the harness) supply the query as a closure without a named type.
-pub struct ClosureRunQuery<F>(pub F)
-where
-    F: FnMut(RunCarinaQueryOptions) -> Result<CarinaResult, CarinaRunError>;
+/// Convenience: build a [`RunCarinaQuery`]-shaped seam from an `FnMut` returning a
+/// future. Lets a caller (or the harness) supply the query as a closure without a
+/// named type.
+pub struct ClosureRunQuery<F>(pub F);
 
-impl<F> RunCarinaQuery for ClosureRunQuery<F>
+impl<F, Fut> RunCarinaQuery for ClosureRunQuery<F>
 where
-    F: FnMut(RunCarinaQueryOptions) -> Result<CarinaResult, CarinaRunError>,
+    F: FnMut(RunCarinaQueryOptions) -> Fut,
+    Fut: std::future::Future<Output = Result<CarinaResult, CarinaRunError>> + Send,
 {
-    fn run(&mut self, opts: RunCarinaQueryOptions) -> Result<CarinaResult, CarinaRunError> {
+    fn run(
+        &mut self,
+        opts: RunCarinaQueryOptions,
+    ) -> impl std::future::Future<Output = Result<CarinaResult, CarinaRunError>> + Send {
         (self.0)(opts)
     }
 }
@@ -440,21 +460,22 @@ mod tests {
         }
     }
 
-    #[test]
-    fn no_markup_is_a_noop() {
+    #[tokio::test]
+    async fn no_markup_is_a_noop() {
         let mut cb = RecordingCallbacks::default();
-        let mut q = ClosureRunQuery(|_o| panic!("query must not run on no-markup"));
+        let mut q = ClosureRunQuery(|_o| async { panic!("query must not run on no-markup") });
         let mut p = ClosureProspero(|_a| panic!("prospero must not run on no-markup"));
-        let trace = run_carina_markup_query(&opts("just some text", true), &mut cb, &mut q, &mut p);
+        let trace =
+            run_carina_markup_query(&opts("just some text", true), &mut cb, &mut q, &mut p).await;
         assert_eq!(trace, vec![CarinaTrace::NoMarkup]);
         assert!(cb.consulting.is_empty());
         assert!(cb.public.is_empty());
     }
 
-    #[test]
-    fn public_answer_fires_on_public_answer() {
+    #[tokio::test]
+    async fn public_answer_fires_on_public_answer() {
         let mut cb = RecordingCallbacks::default();
-        let mut q = ClosureRunQuery(|o| {
+        let mut q = ClosureRunQuery(|o: RunCarinaQueryOptions| async move {
             assert!(!o.whisper);
             Ok(CarinaResult::Ok {
                 answer: "hi".into(),
@@ -465,16 +486,17 @@ mod tests {
             })
         });
         let mut p = ClosureProspero(|_a| panic!("no error path"));
-        let trace = run_carina_markup_query(&opts("@Alice: hello", true), &mut cb, &mut q, &mut p);
+        let trace =
+            run_carina_markup_query(&opts("@Alice: hello", true), &mut cb, &mut q, &mut p).await;
         assert_eq!(cb.consulting, vec!["Alice".to_string()]);
         assert_eq!(cb.public, vec!["m1".to_string()]);
         assert!(matches!(trace[2], CarinaTrace::PublicAnswer { .. }));
     }
 
-    #[test]
-    fn whisper_answer_does_not_fire_on_public_answer() {
+    #[tokio::test]
+    async fn whisper_answer_does_not_fire_on_public_answer() {
         let mut cb = RecordingCallbacks::default();
-        let mut q = ClosureRunQuery(|o| {
+        let mut q = ClosureRunQuery(|o: RunCarinaQueryOptions| async move {
             assert!(o.whisper);
             Ok(CarinaResult::Ok {
                 answer: "psst".into(),
@@ -485,7 +507,8 @@ mod tests {
             })
         });
         let mut p = ClosureProspero(|_a| panic!("no error path"));
-        let trace = run_carina_markup_query(&opts("@Bob? secret", true), &mut cb, &mut q, &mut p);
+        let trace =
+            run_carina_markup_query(&opts("@Bob? secret", true), &mut cb, &mut q, &mut p).await;
         assert_eq!(cb.consulting, vec!["Bob".to_string()]);
         assert!(
             cb.public.is_empty(),
@@ -497,12 +520,12 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn error_routes_to_prospero_with_exact_args() {
+    #[tokio::test]
+    async fn error_routes_to_prospero_with_exact_args() {
         let recorded: Rc<RefCell<Vec<ProsperoCarinaErrorArgs>>> = Rc::new(RefCell::new(Vec::new()));
         let rec2 = recorded.clone();
         let mut cb = RecordingCallbacks::default();
-        let mut q = ClosureRunQuery(|_o| {
+        let mut q = ClosureRunQuery(|_o: RunCarinaQueryOptions| async {
             Ok(CarinaResult::Err {
                 error: CarinaError {
                     kind: CarinaErrorKind::NotFound,
@@ -515,7 +538,8 @@ mod tests {
             rec2.borrow_mut().push(a);
             Ok(())
         });
-        let trace = run_carina_markup_query(&opts("@Ghost? anyone", true), &mut cb, &mut q, &mut p);
+        let trace =
+            run_carina_markup_query(&opts("@Ghost? anyone", true), &mut cb, &mut q, &mut p).await;
         let args = &recorded.borrow()[0];
         assert_eq!(args.kind, CarinaErrorKind::NotFound);
         assert!(args.whisper);
@@ -527,12 +551,15 @@ mod tests {
         assert!(cb.public.is_empty());
     }
 
-    #[test]
-    fn query_seam_throw_is_swallowed() {
+    #[tokio::test]
+    async fn query_seam_throw_is_swallowed() {
         let mut cb = RecordingCallbacks::default();
-        let mut q = ClosureRunQuery(|_o| Err(CarinaRunError("boom".into())));
+        let mut q = ClosureRunQuery(|_o: RunCarinaQueryOptions| async {
+            Err(CarinaRunError("boom".into()))
+        });
         let mut p = ClosureProspero(|_a| panic!("error arm not reached on a throw"));
-        let trace = run_carina_markup_query(&opts("@Alice: hi", false), &mut cb, &mut q, &mut p);
+        let trace =
+            run_carina_markup_query(&opts("@Alice: hi", false), &mut cb, &mut q, &mut p).await;
         assert!(matches!(
             trace.last(),
             Some(CarinaTrace::SeamThrewAndSwallowed { .. })

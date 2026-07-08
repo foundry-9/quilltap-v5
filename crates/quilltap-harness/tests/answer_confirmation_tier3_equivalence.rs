@@ -777,15 +777,18 @@ fn answer_confirmation_tier3_matches_oracle() {
 
 struct NoChainCarina;
 impl quilltap_core::services::carina_runner::RunCarinaQuery for NoChainCarina {
+    #[allow(clippy::manual_async_fn)]
     fn run(
         &mut self,
         _opts: quilltap_core::services::carina_runner::RunCarinaQueryOptions,
-    ) -> Result<
-        quilltap_core::services::carina_runner::CarinaResult,
-        quilltap_core::services::carina_runner::CarinaRunError,
-    > {
+    ) -> impl std::future::Future<
+        Output = Result<
+            quilltap_core::services::carina_runner::CarinaResult,
+            quilltap_core::services::carina_runner::CarinaRunError,
+        >,
+    > + Send {
         // Never called: no corpus reply parses as carina markup (the finalizer's
         // `run_assistant_carina` only invokes the seam when the parse succeeds).
-        panic!("carina query seam invoked but no corpus reply carries markup");
+        async { panic!("carina query seam invoked but no corpus reply carries markup") }
     }
 }

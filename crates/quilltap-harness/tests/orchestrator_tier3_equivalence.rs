@@ -1010,11 +1010,18 @@ mod orchestrator_carina {
     /// invoked; this errors if it ever is (surfacing a corpus mismatch).
     pub struct NoCarina;
     impl RunCarinaQuery for NoCarina {
-        fn run(&mut self, opts: RunCarinaQueryOptions) -> Result<CarinaResult, CarinaRunError> {
-            Err(CarinaRunError(format!(
-                "unexpected carina query for {}",
-                opts.character_name
-            )))
+        #[allow(clippy::manual_async_fn)]
+        fn run(
+            &mut self,
+            opts: RunCarinaQueryOptions,
+        ) -> impl std::future::Future<Output = Result<CarinaResult, CarinaRunError>> + Send
+        {
+            async move {
+                Err(CarinaRunError(format!(
+                    "unexpected carina query for {}",
+                    opts.character_name
+                )))
+            }
         }
     }
 }

@@ -229,6 +229,60 @@ pub async fn enqueue_memory_extraction(
     enqueue_job(db, user_id, "MEMORY_EXTRACTION", payload, 3.0).await
 }
 
+/// v4 `enqueueCarinaMemoryExtraction` (`lib/background-jobs/queue-service.ts`):
+/// enqueue a `CARINA_MEMORY_EXTRACTION` job for a posted Carina reference answer,
+/// deduping against in-flight jobs (PENDING/PROCESSING) with a matching
+/// `carinaMessageId` (across the user's jobs → no-op returning the existing id).
+/// A dedupe-lookup failure falls through and enqueues anyway (v4 warns).
+/// `max_attempts` is v4's default 3 (the caller passes no options; `skipDedupCheck`
+/// is not modeled — `runCarinaQuery` never sets it).
+///
+/// The payload is `{ chatId, carinaMessageId, answererId, connectionProfileId }`
+/// (v4's object literal — all keys materialized so the stored bytes match).
+pub async fn enqueue_carina_memory_extraction(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    carina_message_id: &str,
+    answerer_id: &str,
+    connection_profile_id: &str,
+) -> Result<String, DbError> {
+    // Deduped by carinaMessageId across the user's in-flight jobs (the message id
+    // is globally unique, so chatId is not part of the key). A lookup failure
+    // falls through to enqueue.
+    let uid = user_id.to_string();
+    let in_flight = db.read_main(|conn| {
+        let repo = crate::db::background_jobs::BackgroundJobsRepository::new(conn);
+        let mut jobs = repo.find_by_user_id(&uid, Some("PENDING"))?;
+        jobs.extend(repo.find_by_user_id(&uid, Some("PROCESSING"))?);
+        Ok(jobs)
+    });
+    if let Ok(jobs) = in_flight {
+        let existing = jobs.iter().find(|j| {
+            if j.job_type != "CARINA_MEMORY_EXTRACTION" {
+                return false;
+            }
+            let payload: Option<Value> = serde_json::from_str::<Value>(&j.payload).ok();
+            payload
+                .as_ref()
+                .and_then(|p| p.get("carinaMessageId"))
+                .and_then(Value::as_str)
+                == Some(carina_message_id)
+        });
+        if let Some(existing) = existing {
+            return Ok(existing.id.clone());
+        }
+    }
+
+    let payload = serde_json::json!({
+        "chatId": chat_id,
+        "carinaMessageId": carina_message_id,
+        "answererId": answerer_id,
+        "connectionProfileId": connection_profile_id,
+    });
+    enqueue_job(db, user_id, "CARINA_MEMORY_EXTRACTION", payload, 3.0).await
+}
+
 /// v4 `enqueueChatDangerClassification` (`lib/background-jobs/queue-service.ts`):
 /// enqueue a `CHAT_DANGER_CLASSIFICATION` job at priority `-1`, deduping via
 /// `findPendingForChat` (any PENDING/PROCESSING classification job for the same

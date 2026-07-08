@@ -90,14 +90,18 @@ fn validate(args: &Value) -> Option<(String, String, bool)> {
 
 /// Execute the `ask_carina` tool (v4 `executeAskCarinaTool`). The two Carina seams
 /// are injected (both mocked identically on the oracle side).
-pub fn execute_ask_carina(
-    run_query: &mut dyn RunCarinaQuery,
-    prospero: &mut dyn PostProsperoCarinaError,
+pub async fn execute_ask_carina<Q, P>(
+    run_query: &mut Q,
+    prospero: &mut P,
     user_id: &str,
     chat_id: &str,
     calling_participant_id: Option<&str>,
     args: &Value,
-) -> AskCarinaOutput {
+) -> AskCarinaOutput
+where
+    Q: RunCarinaQuery,
+    P: PostProsperoCarinaError,
+{
     let Some((character, question, whisper)) = validate(args) else {
         return AskCarinaOutput {
             success: false,
@@ -117,7 +121,7 @@ pub fn execute_ask_carina(
         operator_initiated: false,
     };
 
-    match run_query.run(opts) {
+    match run_query.run(opts).await {
         Ok(CarinaResult::Ok { answer, .. }) => AskCarinaOutput {
             success: true,
             answer,

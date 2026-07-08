@@ -165,7 +165,7 @@ async fn mail_carina_tools_matches_oracle() {
         &mount_fx,
     )
     .await;
-    run_carina(&load_oracle(&carina_oracle));
+    run_carina(&load_oracle(&carina_oracle)).await;
 
     eprintln!("OK: mail-carina-tools differential matched the oracles.");
 }
@@ -367,8 +367,12 @@ async fn run_mail(
 /// A canned [`RunCarinaQuery`] returning a fixed [`CarinaResult`].
 struct CannedCarina(CarinaResult);
 impl RunCarinaQuery for CannedCarina {
-    fn run(&mut self, _opts: RunCarinaQueryOptions) -> Result<CarinaResult, CarinaRunError> {
-        Ok(self.0.clone())
+    fn run(
+        &mut self,
+        _opts: RunCarinaQueryOptions,
+    ) -> impl std::future::Future<Output = Result<CarinaResult, CarinaRunError>> + Send {
+        let r = self.0.clone();
+        async move { Ok(r) }
     }
 }
 
@@ -406,7 +410,7 @@ fn err_result(kind: CarinaErrorKind, detail: Option<&str>, name: Option<&str>) -
     }
 }
 
-fn run_carina(oracle: &HashMap<String, Value>) {
+async fn run_carina(oracle: &HashMap<String, Value>) {
     struct Case {
         label: &'static str,
         args: Value,
@@ -474,7 +478,8 @@ fn run_carina(oracle: &HashMap<String, Value>) {
             "chat-1",
             Some("pp-asker"),
             &c.args,
-        );
+        )
+        .await;
         let got_json = serde_json::to_string(&out).unwrap();
         let got_fmt = format_ask_carina_results(&out);
 

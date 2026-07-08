@@ -1,0 +1,553 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "seedTimestamp": "2026-06-01T00:00:00.000Z",
+  "nowMs": 1780272000000,
+  "userId": "00000000-0000-4000-8000-757365720000",
+  "connectionProfiles": [
+    {
+      "id": "00000000-0000-4000-8000-7066616e0000",
+      "name": "Anthropic",
+      "provider": "ANTHROPIC",
+      "modelName": "claude-sonnet-4-5"
+    },
+    {
+      "id": "00000000-0000-4000-8000-70666f610000",
+      "name": "OpenAI",
+      "provider": "OPENAI",
+      "modelName": "gpt-4o",
+      "isDefault": true
+    }
+  ],
+  "characters": [
+    {
+      "id": "00000000-0000-4000-8000-616c69636500",
+      "name": "Alice",
+      "canBeCarina": true,
+      "controlledBy": "llm",
+      "identity": "Alice is a reference-desk character who answers plainly.",
+      "description": "Alice keeps concise notes.",
+      "title": "the Archivist",
+      "aliases": [
+        "Al",
+        "Ali"
+      ],
+      "pronouns": {
+        "subject": "she",
+        "object": "her",
+        "possessive": "hers"
+      },
+      "scenarios": [
+        {
+          "id": "00000000-0000-4000-8000-73636e310000",
+          "title": "Reading Room",
+          "content": "You sit in the quiet reading room.",
+          "createdAt": "2026-06-01T00:00:00.000Z",
+          "updatedAt": "2026-06-01T00:00:00.000Z"
+        }
+      ],
+      "systemPrompts": [
+        {
+          "id": "00000000-0000-4000-8000-737072310000",
+          "name": "House Prompt",
+          "content": "Answer as the calm Archivist.",
+          "isDefault": true,
+          "createdAt": "2026-06-01T00:00:00.000Z",
+          "updatedAt": "2026-06-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-626f624f0000",
+      "name": "Bob",
+      "canBeCarina": false,
+      "controlledBy": "llm",
+      "identity": "Bob is a reference-desk character who answers plainly.",
+      "description": "Bob keeps concise notes."
+    },
+    {
+      "id": "00000000-0000-4000-8000-626f624e0000",
+      "name": "Bob",
+      "canBeCarina": true,
+      "controlledBy": "llm",
+      "identity": "Bob is a reference-desk character who answers plainly.",
+      "description": "Bob keeps concise notes."
+    },
+    {
+      "id": "00000000-0000-4000-8000-70726f660000",
+      "name": "Prof",
+      "canBeCarina": true,
+      "controlledBy": "llm",
+      "identity": "Prof is a reference-desk character who answers plainly.",
+      "description": "Prof keeps concise notes.",
+      "defaultConnectionProfileId": "00000000-0000-4000-8000-7066616e0000"
+    },
+    {
+      "id": "00000000-0000-4000-8000-736167650000",
+      "name": "Sage",
+      "canBeCarina": true,
+      "controlledBy": "llm",
+      "identity": "Sage is a reference-desk character who answers plainly.",
+      "description": "Sage keeps concise notes."
+    },
+    {
+      "id": "00000000-0000-4000-8000-6563686f0000",
+      "name": "Echo",
+      "canBeCarina": true,
+      "controlledBy": "llm",
+      "identity": "Echo is a reference-desk character who answers plainly.",
+      "description": "Echo keeps concise notes."
+    },
+    {
+      "id": "00000000-0000-4000-8000-746573730000",
+      "name": "Tess",
+      "canBeCarina": true,
+      "controlledBy": "llm",
+      "identity": "Tess is a reference-desk character who answers plainly.",
+      "description": "Tess keeps concise notes."
+    },
+    {
+      "id": "00000000-0000-4000-8000-666f72676500",
+      "name": "Forge",
+      "canBeCarina": true,
+      "controlledBy": "llm",
+      "identity": "Forge is a reference-desk character who answers plainly.",
+      "description": "Forge keeps concise notes."
+    },
+    {
+      "id": "00000000-0000-4000-8000-7772656e0000",
+      "name": "Wren",
+      "canBeCarina": true,
+      "controlledBy": "llm",
+      "identity": "Wren is a reference-desk character who answers plainly.",
+      "description": "Wren keeps concise notes."
+    },
+    {
+      "id": "00000000-0000-4000-8000-766f78000000",
+      "name": "Vox",
+      "canBeCarina": true,
+      "controlledBy": "llm",
+      "identity": "Vox is a reference-desk character who answers plainly.",
+      "description": "Vox keeps concise notes."
+    },
+    {
+      "id": "00000000-0000-4000-8000-6361726f6c00",
+      "name": "Carol",
+      "canBeCarina": false,
+      "controlledBy": "llm",
+      "identity": "Carol is a reference-desk character who answers plainly.",
+      "description": "Carol keeps concise notes."
+    },
+    {
+      "id": "00000000-0000-4000-8000-6e696c000000",
+      "name": "Nil",
+      "canBeCarina": true,
+      "controlledBy": "llm",
+      "identity": "Nil is a reference-desk character who answers plainly.",
+      "description": "Nil keeps concise notes."
+    },
+    {
+      "id": "00000000-0000-4000-8000-616b75000000",
+      "name": "Operator",
+      "canBeCarina": true,
+      "controlledBy": "user",
+      "identity": "Operator is a reference-desk character who answers plainly.",
+      "description": "Operator keeps concise notes.",
+      "title": "the Proprietor"
+    },
+    {
+      "id": "00000000-0000-4000-8000-616c6b000000",
+      "name": "Bystander",
+      "canBeCarina": false,
+      "controlledBy": "llm",
+      "identity": "Bystander is a reference-desk character who answers plainly.",
+      "description": "Bystander keeps concise notes."
+    }
+  ],
+  "chat": {
+    "id": "00000000-0000-4000-8000-636861740000",
+    "title": "Carina Salon",
+    "participants": [
+      {
+        "id": "00000000-0000-4000-8000-7070616c0000",
+        "characterId": "00000000-0000-4000-8000-616c69636500",
+        "controlledBy": "llm"
+      },
+      {
+        "id": "00000000-0000-4000-8000-707061750000",
+        "characterId": "00000000-0000-4000-8000-616b75000000",
+        "controlledBy": "user"
+      },
+      {
+        "id": "00000000-0000-4000-8000-7070616c3200",
+        "characterId": "00000000-0000-4000-8000-616c6b000000",
+        "controlledBy": "llm"
+      }
+    ]
+  },
+  "seedMemories": [
+    {
+      "id": "00000000-0000-4000-8000-6d656d310000",
+      "characterId": "00000000-0000-4000-8000-736167650000",
+      "content": "The north tower key is hidden behind the third brick.",
+      "summary": "North tower key location.",
+      "importance": 0.5,
+      "vector": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "createdAt": "2026-06-01T00:00:00.000Z"
+    }
+  ],
+  "priorExchanges": [
+    {
+      "answererId": "00000000-0000-4000-8000-6563686f0000",
+      "participantId": null,
+      "question": "Prior question for Echo?",
+      "answer": "Prior answer from Echo."
+    }
+  ],
+  "cannedEmbeddings": {
+    "What do you remember about the north tower?": [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "detection": {
+    "tool-a": [
+      {
+        "name": "search",
+        "arguments": {
+          "query": "north"
+        },
+        "callId": "call-a"
+      }
+    ],
+    "tool-f": [
+      {
+        "name": "search",
+        "arguments": {
+          "query": "deep"
+        },
+        "callId": "call-f"
+      }
+    ]
+  },
+  "cannedTools": [
+    {
+      "name": "search",
+      "arguments": {
+        "query": "north"
+      },
+      "callId": "call-a",
+      "success": true,
+      "result": "Found the north key."
+    },
+    {
+      "name": "search",
+      "arguments": {
+        "query": "deep"
+      },
+      "callId": "call-f",
+      "success": true,
+      "result": "Deep search result."
+    }
+  ],
+  "brahma": {
+    "ok": true,
+    "answer": "Brahma reports: the answer is 42.",
+    "detail": null
+  },
+  "brahmaSentinel": "b4a4c0de-0000-4000-8000-000000000001",
+  "cases": [
+    {
+      "name": "plain",
+      "characterName": "Alice",
+      "question": "How do I find the archive?",
+      "whisper": false,
+      "askerParticipantId": "00000000-0000-4000-8000-707061750000",
+      "operatorInitiated": false,
+      "streams": [
+        [
+          {
+            "content": "Alice answers plainly."
+          },
+          {
+            "done": true
+          }
+        ]
+      ],
+      "expectPost": true,
+      "brahma": false
+    },
+    {
+      "name": "collision",
+      "characterName": "Bob",
+      "question": "Which Bob answers?",
+      "whisper": false,
+      "askerParticipantId": "00000000-0000-4000-8000-707061750000",
+      "operatorInitiated": false,
+      "streams": [
+        [
+          {
+            "content": "Bob the answerer responds."
+          },
+          {
+            "done": true
+          }
+        ]
+      ],
+      "expectPost": true,
+      "brahma": false
+    },
+    {
+      "name": "profile_chain",
+      "characterName": "Prof",
+      "question": "Via which provider?",
+      "whisper": false,
+      "askerParticipantId": "00000000-0000-4000-8000-707061750000",
+      "operatorInitiated": false,
+      "streams": [
+        [
+          {
+            "content": "Prof answers via anthropic."
+          },
+          {
+            "done": true
+          }
+        ]
+      ],
+      "expectPost": true,
+      "brahma": false
+    },
+    {
+      "name": "memory_recall",
+      "characterName": "Sage",
+      "question": "What do you remember about the north tower?",
+      "whisper": false,
+      "askerParticipantId": "00000000-0000-4000-8000-707061750000",
+      "operatorInitiated": false,
+      "streams": [
+        [
+          {
+            "content": "Sage recalls the tower."
+          },
+          {
+            "done": true
+          }
+        ]
+      ],
+      "expectPost": true,
+      "brahma": false
+    },
+    {
+      "name": "prior_exchange",
+      "characterName": "Echo",
+      "question": "Follow-up for Echo?",
+      "whisper": false,
+      "askerParticipantId": "00000000-0000-4000-8000-707061750000",
+      "operatorInitiated": false,
+      "streams": [
+        [
+          {
+            "content": "Echo follows up."
+          },
+          {
+            "done": true
+          }
+        ]
+      ],
+      "expectPost": true,
+      "brahma": false
+    },
+    {
+      "name": "tool_iteration",
+      "characterName": "Tess",
+      "question": "Search then answer.",
+      "whisper": false,
+      "askerParticipantId": "00000000-0000-4000-8000-707061750000",
+      "operatorInitiated": false,
+      "streams": [
+        [
+          {
+            "done": true,
+            "rawResponse": {
+              "marker": "tool-a"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Tess concludes after searching."
+          },
+          {
+            "done": true
+          }
+        ]
+      ],
+      "expectPost": true,
+      "brahma": false
+    },
+    {
+      "name": "forced_text",
+      "characterName": "Forge",
+      "question": "Keep calling tools.",
+      "whisper": false,
+      "askerParticipantId": "00000000-0000-4000-8000-707061750000",
+      "operatorInitiated": false,
+      "streams": [
+        [
+          {
+            "done": true,
+            "rawResponse": {
+              "marker": "tool-f"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "rawResponse": {
+              "marker": "tool-f"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "rawResponse": {
+              "marker": "tool-f"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "rawResponse": {
+              "marker": "tool-f"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "rawResponse": {
+              "marker": "tool-f"
+            }
+          }
+        ],
+        [
+          {
+            "done": true,
+            "rawResponse": {
+              "marker": "tool-f"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Forge forced final answer."
+          },
+          {
+            "done": true
+          }
+        ]
+      ],
+      "expectPost": true,
+      "brahma": false
+    },
+    {
+      "name": "whisper",
+      "characterName": "Wren",
+      "question": "Tell me privately.",
+      "whisper": true,
+      "askerParticipantId": "00000000-0000-4000-8000-707061750000",
+      "operatorInitiated": false,
+      "streams": [
+        [
+          {
+            "content": "Wren whispers back."
+          },
+          {
+            "done": true
+          }
+        ]
+      ],
+      "expectPost": true,
+      "brahma": false
+    },
+    {
+      "name": "public",
+      "characterName": "Vox",
+      "question": "Tell everyone.",
+      "whisper": false,
+      "askerParticipantId": "00000000-0000-4000-8000-707061750000",
+      "operatorInitiated": false,
+      "streams": [
+        [
+          {
+            "content": "Vox answers publicly."
+          },
+          {
+            "done": true
+          }
+        ]
+      ],
+      "expectPost": true,
+      "brahma": false
+    },
+    {
+      "name": "brahma_reachable",
+      "characterName": "Brahma",
+      "question": "Query the console.",
+      "whisper": false,
+      "askerParticipantId": null,
+      "operatorInitiated": true,
+      "streams": [],
+      "expectPost": true,
+      "brahma": true
+    },
+    {
+      "name": "asker_gate_notfound",
+      "characterName": "Carol",
+      "question": "Are you reachable?",
+      "whisper": false,
+      "askerParticipantId": "00000000-0000-4000-8000-7070616c3200",
+      "operatorInitiated": false,
+      "streams": [],
+      "expectPost": false,
+      "brahma": false
+    },
+    {
+      "name": "empty_llmfailed",
+      "characterName": "Nil",
+      "question": "Say nothing.",
+      "whisper": false,
+      "askerParticipantId": "00000000-0000-4000-8000-707061750000",
+      "operatorInitiated": false,
+      "streams": [
+        [
+          {
+            "done": true
+          }
+        ]
+      ],
+      "expectPost": false,
+      "brahma": false
+    },
+    {
+      "name": "brahma_unreachable",
+      "characterName": "Brahma",
+      "question": "Sneak into the console.",
+      "whisper": false,
+      "askerParticipantId": "00000000-0000-4000-8000-7070616c3200",
+      "operatorInitiated": false,
+      "streams": [],
+      "expectPost": false,
+      "brahma": false
+    }
+  ]
+}

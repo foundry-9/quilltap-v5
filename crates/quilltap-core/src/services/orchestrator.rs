@@ -2861,16 +2861,21 @@ mod tests {
 
     struct NoChainCarina;
     impl RunCarinaQuery for NoChainCarina {
+        #[allow(clippy::manual_async_fn)]
         fn run(
             &mut self,
             _o: crate::services::carina_runner::RunCarinaQueryOptions,
-        ) -> Result<
-            crate::services::carina_runner::CarinaResult,
-            crate::services::carina_runner::CarinaRunError,
-        > {
-            Err(crate::services::carina_runner::CarinaRunError(
-                "no carina".into(),
-            ))
+        ) -> impl std::future::Future<
+            Output = Result<
+                crate::services::carina_runner::CarinaResult,
+                crate::services::carina_runner::CarinaRunError,
+            >,
+        > + Send {
+            async {
+                Err(crate::services::carina_runner::CarinaRunError(
+                    "no carina".into(),
+                ))
+            }
         }
     }
 

@@ -246,28 +246,34 @@ struct HarnessCarina {
     spec: Option<CarinaW>,
 }
 impl RunCarinaQuery for HarnessCarina {
-    fn run(&mut self, opts: RunCarinaQueryOptions) -> Result<CarinaResult, CarinaRunError> {
-        let Some(c) = self.spec.clone() else {
-            return Err(CarinaRunError(format!(
-                "unexpected carina query for {}",
-                opts.character_name
-            )));
-        };
-        assert_eq!(opts.character_name, c.character_name, "carina parse name");
-        assert!(!opts.whisper, "corpus carina case is public");
-        let msg = carina_message_json(&c);
-        self.sink.emit(ChatEvent::carina_answer(msg.clone()));
-        Ok(CarinaResult::Ok {
-            answer: c.answer.clone(),
-            message_id: c.message_id.clone(),
-            message: PostedCarinaMessage {
-                id: c.message_id.clone(),
-                message: msg,
-                target_participant_ids: None,
-            },
-            answerer_id: c.answerer_character_id.clone(),
-            answerer_name: c.answerer_name.clone(),
-        })
+    #[allow(clippy::manual_async_fn)]
+    fn run(
+        &mut self,
+        opts: RunCarinaQueryOptions,
+    ) -> impl std::future::Future<Output = Result<CarinaResult, CarinaRunError>> + Send {
+        async move {
+            let Some(c) = self.spec.clone() else {
+                return Err(CarinaRunError(format!(
+                    "unexpected carina query for {}",
+                    opts.character_name
+                )));
+            };
+            assert_eq!(opts.character_name, c.character_name, "carina parse name");
+            assert!(!opts.whisper, "corpus carina case is public");
+            let msg = carina_message_json(&c);
+            self.sink.emit(ChatEvent::carina_answer(msg.clone()));
+            Ok(CarinaResult::Ok {
+                answer: c.answer.clone(),
+                message_id: c.message_id.clone(),
+                message: PostedCarinaMessage {
+                    id: c.message_id.clone(),
+                    message: msg,
+                    target_participant_ids: None,
+                },
+                answerer_id: c.answerer_character_id.clone(),
+                answerer_name: c.answerer_name.clone(),
+            })
+        }
     }
 }
 

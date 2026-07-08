@@ -4031,3 +4031,57 @@ v4): the upload/ingest half of `chat-files-v2` (Phase-4 FSM storage), the real
 image codec + FSM byte layer (the `ImageTranscoder`/`FileBytesStore` production
 impls), and the 60 s image-description timeout timer (only the timeout→error
 mapping is ported).
+
+**Wave 4 (W4.5): the Carina query engine is DONE** (`services::carina_query`, v4
+`carina.service.ts` `runCarinaQuery`) — the isolated reference-answer engine the
+markup runner / orchestrator / finalizer / `ask_carina` all drive. The async
+`run_carina_query` composes the ported subsystems in v4's order: answerer
+resolution (`db::character_resolver::find_characters_by_name`, all matches
+oldest-first, prefer `canBeCarina`, else `askerOpensCarinaLine` —
+operator/user-controlled/`canBeCarina`-asker via the overlay-free raw read); the
+Brahma gate (`is_brahma_name` + sentinel `BRAHMA_CARINA_ANSWERER_ID` +
+`brahmaIsReachable` on `systemTransparency`) with the console engine behind the
+injected `RunBrahmaConsole` seam (default `UnavailableBrahmaConsole` → llm-failed;
+the gate + sentinel-id post path ARE ported — the console is the **W4.5b**
+follow-up); the NOT-participant-scoped profile chain (answerer default →
+`connection_profiles::find_default` [added] → first web-search-capable via
+`Registry::supports_capability(_, WebSearch)` → no-profile); the system prompt
+(`build_identity_stack` + `## Scenario` + the surface-level asker card over the
+OVERLAID `characters_read::find_by_id` [title/pronouns/aliases are vault-managed]
++ the byte-exact `## Reference Query` framing + the Commonplace memory-recall
+block via `search_memories_semantic` limit 12 / minImportance 0.3 →
+`format_memories_for_context` budget 1200 → `build_commonplace_llm_context`);
+`loadPriorCarinaExchanges` replay; Carina's OWN 5-iteration
+detect→execute→re-stream tool loop (a NO-OP sink for the tool frames, matching
+v4's swallowing `StreamController`) + the forced-text final turn; the
+`systemSender:'carina'` post via the ported `post_carina_response` + the live
+`carinaAnswer` emit (v4's `onPosted`, engine-owned); and the
+`CARINA_MEMORY_EXTRACTION` enqueue. Also ported: `services::carina_memory_extraction`
+(v4 `handleCarinaMemoryExtraction` — the SELF-only synthetic one-slice transcript
+over the ported `process_turn_for_memory`; the debug-log write + the cost event
+with the pricing/limits injected) and `queue_service::enqueue_carina_memory_extraction`
+(dedupe by `carinaMessageId` across the user's PENDING+PROCESSING jobs). **The
+`RunCarinaQuery` seam was converted to async** (RPITIT `-> impl Future + Send`) —
+the work orders' "frozen" is the behavior + argument shape, not the sync-ness (an
+artifact of the canned test impl; every real caller is already async and awaits,
+matching how `BuildContextSeams`/`ContextSummarySeams`/`LanternNotificationSink`
+went async — see `[[w4.5-carina-async-seam]]`); `run_carina_markup_query` /
+`execute_ask_carina` became generic over the seam (RPITIT is not dyn-compatible),
+and the sync `#[test]` harnesses gained a current-thread runtime.
+`carina_runner_tier3` + `mail_carina_tools` re-verified green against fresh v4
+oracles (behavior identical — NOT regenerated). Verified by
+`carina_query_tier3_equivalence` (13 cases driving v4's REAL `runCarinaQuery`,
+diffing `CarinaResult` + the `carinaAnswer` event + `chat_messages`/`chats`/
+`background_jobs` in the shared-id-map remap form — the system-prompt + recall
+bytes proven inside the canned stream key; no engine divergence) and
+`carina_memory_extraction_tier3_equivalence` (the SELF-only outcome over v4's REAL
+handler). **Corpus constraint (documented seam):** keep the memory recall SMALL —
+the Rust `format_memories_for_context` uses a fixed 3.5 chars/token while v4 uses
+the answerer-provider rate, so the 1200-token budget BOUNDARY must never be the
+limiter or the system-prompt bytes diverge. **Tracked handoffs to the spine owner
+(W4.4b / unification):** the `ask_carina` `BuiltInToolRunner` dispatch row +
+constructing the real `RunCarinaQuery` at the orchestrator/finalizer composition
+point (needs the engine deps the spine owns) + the live `@Name:`/`ask_carina`
+spine-corpus cases; `orchestrator_tier3` / `message_finalizer_tier3` were NOT
+regenerated this round (spine-owned). **W4.5b (the Brahma one-shot console)** is a
+tracked follow-up.

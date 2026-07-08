@@ -161,55 +161,65 @@ enum OutcomeKind {
 }
 
 impl RunCarinaQuery for CorpusQuery<'_> {
-    fn run(&mut self, opts: RunCarinaQueryOptions) -> Result<CarinaResult, CarinaRunError> {
-        match &self.outcome {
-            OutcomeKind::Throw { message } => Err(CarinaRunError(message.clone())),
-            OutcomeKind::Err {
-                kind,
-                character_name,
-                detail,
-            } => Ok(CarinaResult::Err {
-                error: CarinaError {
-                    kind: *kind,
-                    detail: detail.clone(),
-                    character_name: character_name.clone(),
-                },
-            }),
-            OutcomeKind::OkPost { answer } => {
-                let params = PostCarinaResponseParams {
-                    chat_id: self.chat_id.clone(),
-                    answer: answer.clone(),
-                    answerer_id: self.answerer_id.clone(),
-                    question: opts.question.clone(),
-                    participant_id: Some(self.answerer_participant_id.clone()),
-                    whisper: opts.whisper,
-                    asker_participant_id: opts.asker_participant_id.clone(),
-                };
-                // The ported marshaling — the same bytes `post_carina_response`
-                // writes; posted synchronously through the writer thread.
-                let (event, posted) = build_carina_message(&params)
-                    .ok_or_else(|| CarinaRunError("build_carina_message failed".into()))?;
-                let chat_id = self.chat_id.clone();
-                let write = self.db.write_blocking(move |writers| {
-                    writers.main().chat_messages().add_message(&chat_id, &event)
-                });
-                match write {
-                    Ok(()) => Ok(CarinaResult::Ok {
+    #[allow(clippy::manual_async_fn)]
+    fn run(
+        &mut self,
+        opts: RunCarinaQueryOptions,
+    ) -> impl std::future::Future<Output = Result<CarinaResult, CarinaRunError>> + Send {
+        async move {
+            match &self.outcome {
+                OutcomeKind::Throw { message } => Err(CarinaRunError(message.clone())),
+                OutcomeKind::Err {
+                    kind,
+                    character_name,
+                    detail,
+                } => Ok(CarinaResult::Err {
+                    error: CarinaError {
+                        kind: *kind,
+                        detail: detail.clone(),
+                        character_name: character_name.clone(),
+                    },
+                }),
+                OutcomeKind::OkPost { answer } => {
+                    let params = PostCarinaResponseParams {
+                        chat_id: self.chat_id.clone(),
                         answer: answer.clone(),
-                        message_id: posted.id.clone(),
-                        message: posted,
                         answerer_id: self.answerer_id.clone(),
-                        answerer_name: opts.character_name.clone(),
-                    }),
-                    // v4's postCarinaResponse returns null on a write failure →
-                    // runCarinaQuery maps that to an llm-failed error.
-                    Err(_) => Ok(CarinaResult::Err {
-                        error: CarinaError {
-                            kind: CarinaErrorKind::LlmFailed,
-                            detail: Some("failed to persist answer".into()),
-                            character_name: Some(opts.character_name.clone()),
-                        },
-                    }),
+                        question: opts.question.clone(),
+                        participant_id: Some(self.answerer_participant_id.clone()),
+                        whisper: opts.whisper,
+                        asker_participant_id: opts.asker_participant_id.clone(),
+                    };
+                    // The ported marshaling — the same bytes `post_carina_response`
+                    // writes; posted through the writer thread (async now that the
+                    // seam is `-> impl Future`).
+                    let (event, posted) = build_carina_message(&params)
+                        .ok_or_else(|| CarinaRunError("build_carina_message failed".into()))?;
+                    let chat_id = self.chat_id.clone();
+                    let write = self
+                        .db
+                        .write(move |writers| {
+                            writers.main().chat_messages().add_message(&chat_id, &event)
+                        })
+                        .await;
+                    match write {
+                        Ok(()) => Ok(CarinaResult::Ok {
+                            answer: answer.clone(),
+                            message_id: posted.id.clone(),
+                            message: posted,
+                            answerer_id: self.answerer_id.clone(),
+                            answerer_name: opts.character_name.clone(),
+                        }),
+                        // v4's postCarinaResponse returns null on a write failure →
+                        // runCarinaQuery maps that to an llm-failed error.
+                        Err(_) => Ok(CarinaResult::Err {
+                            error: CarinaError {
+                                kind: CarinaErrorKind::LlmFailed,
+                                detail: Some("failed to persist answer".into()),
+                                character_name: Some(opts.character_name.clone()),
+                            },
+                        }),
+                    }
                 }
             }
         }
@@ -393,6 +403,11 @@ fn carina_runner_tier3_matches_oracle() {
     let db = Db::open(DbPaths::main_only(&work), &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
 
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("build tokio runtime");
+
     for call in &spec.calls {
         let mut cb = RecordingCallbacks {
             consulting: Vec::new(),
@@ -438,7 +453,15 @@ fn carina_runner_tier3_matches_oracle() {
             },
         };
 
-        let trace = run_carina_markup_query(&opts, &mut cb, &mut query, &mut prospero);
+        // The Carina query seam is async (`-> impl Future`); drive the runner on a
+        // current-thread runtime. `CorpusQuery`'s write goes through the writer OS
+        // thread, so `db.write().await` completes under block_on.
+        let trace = rt.block_on(run_carina_markup_query(
+            &opts,
+            &mut cb,
+            &mut query,
+            &mut prospero,
+        ));
         let got_trace = trace_to_json(&trace);
         let oracle_trace = oracle_traces
             .get(&call.name)
