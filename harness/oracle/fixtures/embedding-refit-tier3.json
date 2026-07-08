@@ -1,0 +1,92 @@
+{
+  "$comment": [
+    "Tier-3 (DB-state) spec for v4's EMBEDDING_REFIT handler (W4.7e2 — the BUILTIN",
+    "TF-IDF embedder refit). One committed file drives BOTH sides:",
+    "  - the v4 oracle (build-embedding-refit-fixture.ts + embedding-refit-tier3.ts)",
+    "  - the Rust port (quilltap-harness embedding_refit_tier3 equivalence test).",
+    "",
+    "WHAT IT PROVES: handleEmbeddingRefit gathers every character's memories",
+    "(${summary}\\n\\n${content}) then the help docs (${title}\\n\\n${content}),",
+    "fitCorpus's the BUILTIN vocabulary, persists it via tfidf_vocabularies.",
+    "upsertByProfileId, and enqueues EMBEDDING_REINDEX_ALL (priority -1). The",
+    "differential diffs tfidf_vocabularies + background_jobs.",
+    "",
+    "FIXTURE: two DBs (main + mount-index). Characters are baked via v4's REAL",
+    "repos.characters.create (minted ids + vaults); memories reference the minted",
+    "character ids by name; the BUILTIN embedding profile has a PINNED id so both",
+    "sides build the job with a known profileId. Both sides read a COPY of this",
+    "SAME baked fixture, then run the handler; the READS see identical ids, the",
+    "WRITES (the vocab row + the reindex job) mint fresh ids/timestamps that are",
+    "placeholder-normalized.",
+    "",
+    "NORMALIZATION: id/createdAt/updatedAt (both tables) + scheduledAt (jobs) are",
+    "placeholdered; fittedAt is PINNED (the injected fit clock == v4's frozen Date).",
+    "The idf column carries the Math.log libm seam (macOS ln vs V8 Math.log differ",
+    "by <=1 ULP) — its JSON array is compared NUMERICALLY at 1e-12, everything else",
+    "byte-exact. Corpus/vocabulary order is mathematically irrelevant (set+sort, df",
+    "counts, sum/count avg), so cross-side iteration order cannot diverge the output.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key (shared with the other",
+    "tier-2 fixtures); it protects nothing real."
+  ],
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "frozenDate": "2026-07-07T12:00:00.000Z",
+  "userId": "a0000000-0000-4000-8000-000000000abc",
+  "profileId": "eeeeeeee-0000-4000-8000-00000000e001",
+  "characters": [
+    {
+      "userId": "a0000000-0000-4000-8000-000000000abc",
+      "name": "Aurelia",
+      "identity": "A clockwork diviner of the upper wards.",
+      "description": "Speaks in measured, brass-bright cadences.",
+      "personality": "Precise, wry, unhurried.",
+      "title": "the diviner",
+      "firstMessage": "Mind the gears, traveller.",
+      "talkativeness": 0.6,
+      "pronouns": { "subject": "she", "object": "her", "possessive": "hers" },
+      "controlledBy": "llm"
+    },
+    {
+      "userId": "a0000000-0000-4000-8000-000000000abc",
+      "name": "Basil",
+      "identity": "A wandering cartographer of forgotten roads.",
+      "description": "Carries a satchel of half-drawn maps.",
+      "personality": "Curious, patient, easily distracted.",
+      "title": "the cartographer",
+      "firstMessage": "Ah, another crossroads.",
+      "talkativeness": 0.5,
+      "pronouns": { "subject": "he", "object": "him", "possessive": "his" },
+      "controlledBy": "llm"
+    }
+  ],
+  "memories": [
+    {
+      "character": "Aurelia",
+      "summary": "The dragon guards the ancient treasure.",
+      "content": "Deep in the mountain cave the dragon coils around a hoard of gold and relics."
+    },
+    {
+      "character": "Aurelia",
+      "summary": "A knight rides toward the mountain.",
+      "content": "The brave knight sharpens her blade, intending to slay the sleeping dragon at dawn."
+    },
+    {
+      "character": "Basil",
+      "summary": "The coastal roads carry merchants.",
+      "content": "Merchants trading spices and silk travel the winding coastal roads every season."
+    },
+    {
+      "character": "Basil",
+      "summary": "The wizard studies forbidden magic.",
+      "content": "In his lonely tower the wizard pores over ancient books of forbidden magic and starlore."
+    }
+  ],
+  "helpDocs": [
+    {
+      "title": "Getting started with the Salon",
+      "path": "help/salon.md",
+      "url": "/help/salon",
+      "content": "The Salon lets characters converse. Add participants and begin the conversation to explore the story together."
+    }
+  ]
+}

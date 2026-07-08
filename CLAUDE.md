@@ -3987,6 +3987,73 @@ TF-IDF + BM25 + Porter stemming + optional bigrams, `loadState` from the ported
 sub-units 1–4; only the `tfidf_vocabulary` STORAGE repo is ported, NOT the
 vectorizer — the decomposition doc's "builtin already ported" claim was wrong).
 
+**Tracked follow-ups (explicit, per the W4.7e work order's degradation plan — the
+call-site closures + oracle regenerations serialize last):** the `logLLMCall`
+writer's **through-a-real-call-site row diff** (regenerate the smallest cheap-LLM
+oracle, `compression_tier3`, with logging un-mocked + the `llm_logs` table dumped)
+and the five **call-site logging closures** (`cheap_llm_exec` — the dynamic
+task→type map covering every cheap-LLM consumer — plus `primary_stream`
+[`CHAT_MESSAGE` + requestHashes/rawProviderUsage/finishReason at the wire], the
+gatekeeper [`DANGER_CLASSIFICATION`], answer confirmation [`ANSWER_CONFIRMATION`],
+and image generation [`IMAGE_GENERATION`]) with their oracle regenerations, each
+its own commit-able step. Not started to avoid leaving an oracle half-regenerated;
+the writer's constituent parts ARE verified (the hash tier-1 diff, the Phase-2
+`llm_logs_tier2` create diff, and the summarize/task-map self-tests). ~~**Sub-unit
+5 — the BUILTIN TF-IDF/BM25 vectorizer** — is split off as W4.7e2.~~ (**DONE** —
+see the W4.7e2 note below.)
+
+**Wave 4 (W4.7e2): the BUILTIN TF-IDF/BM25 embedding provider is DONE**
+(2026-07-07). v4's zero-network fallback embedder
+(`plugins/dist/qtap-plugin-builtin-embeddings/`) is ported end to end — pure
+computation, no model seam, no HTTP. New `quilltap-core::tfidf`: the **Porter
+stemmer + tokenizer** (`tfidf::porter` — a byte-for-byte transcription of v4's
+hand-rolled stemmer over `Vec<char>` [== JS UTF-16 code units for the ASCII
+domain the tokenizer guarantees], NOT a crate, since a divergent stem shifts
+every stored vocabulary index; the `STOP_WORDS` set verbatim, `stem` [steps
+1a–5b in v4's exact order + quirks], `tokenize` [lowercase → replace non-`[a-z0-9\s]`
+with space → split → drop stop/short → stem], `generate_bigrams`), the
+**`TfIdfVectorizer`** (`tfidf::vectorizer` — `fit_corpus`/`transform`/`get_state`/
+`load_state`/`is_fitted`, the BM25 IDF `ln((N-df+0.5)/(df+0.5)+1)` + TF
+saturation `(tf·(k1+1))/(tf+k1·(1-b+b·dl/avgdl))`, sorted-term vocabulary →
+index map, L2-normalized f64 output, the fit clock injected; `state_vocabulary_json`
+/ `state_idf_json` reproducing `JSON.stringify` of the state), and the
+**`BuiltinEmbeddingProvider`** wrapper (`tfidf::provider` — synchronous
+`generate_embedding`, the exact not-fitted message). Host glue
+`services::builtin_embedding::generate_builtin_embedding` (v4
+`generateBuiltinEmbedding`: read `tfidf_vocabulary.findByProfileId`, `JSON.parse`
+the `vocabulary`/`idf` columns, `loadState`, transform, then narrow to Float32 +
+`applyEmbeddingProfile`) over new scoped reads `embedding_profiles::find_by_id`
+(+ `EmbeddingProfileRow`, `normalizeL2 !== false`) and
+`tfidf_vocabulary::find_by_profile_id` (+ `TvReadRow`). The **`EMBEDDING_REFIT`
+job handler** (`services::embedding_refit_job::handle_embedding_refit` — resolve
+the profile [not-found error, non-BUILTIN skip], gather every character's
+memories [`${summary}\n\n${content}`] via `characters_read::find_by_user_id` +
+`memories_read::find_by_character_id`, append help docs [`${title}\n\n${content}`,
+read failure swallowed], `fit_corpus`, persist via `upsertByProfileId`, then
+`enqueue_embedding_reindex_all`; empty-corpus/no-characters/no-memories → skip),
+registered with the W4.8 runner via `EmbeddingRefitHandler`; the debounce
+scheduler is host-timing (only the pure `is_builtin_profile` gate is ported).
+`queue_service::enqueue_embedding_reindex_all` added (priority −1; the REINDEX
+handler stays on the loud fallback). Verified by two differentials, both green:
+a **tier-1 `tfidf_vectorizer_equivalence`** (159 rows driving v4's REAL
+`stem`/`tokenize`/`generateBigrams`/`TfIdfVectorizer` — dozens of stemmer words
+per suffix family, tokenizer casing/punctuation/digits/non-ASCII, bigrams, four
+fit corpora × [getState + transform], loadState-from-persisted-JSON, and the two
+throw messages; `idf`/vectors compared at 1e-12) and a **tier-3
+`embedding_refit_tier3_equivalence`** (a jest-real-DB oracle driving v4's REAL
+`handleEmbeddingRefit` over a two-DB fixture [characters + vaults + memories +
+help docs + a BUILTIN profile], diffing `tfidf_vocabularies` + `background_jobs`
+in the minted-timestamp placeholder form + a runner-registration E2E
+[enqueue → pump → dispatch → the vocab row lands]). **Documented seam (the ln
+libm divergence):** macOS's system `ln` AND the `libm` crate diverge from V8's
+`Math.log` by ≤1 ULP on many inputs, so the persisted `idf` JSON column is
+compared NUMERICALLY at 1e-12 in the tier-3 diff (a 1-ULP ≈1e-16 divergence
+never affects search); the fittedAt column IS byte-exact (the Rust fit clock is
+injected to v4's frozen value), and everything else (vocabulary / avgDocLength /
+vocabularySize / includeBigrams / the reindex job payload) is byte-exact. The
+jest oracle pins `ensureProcessorRunning` → no-op so the enqueued reindex row
+stays PENDING (the Rust port defers the runner the same way).
+
 **Round-4 unification (2026-07-07): DONE — Round 4's provider/image/librarian
 lanes are integrated on main.** The four parallel branches (W4.7d, W4.7e
 sub-units 1–4, W4.9c, W4.6c) were cherry-picked onto main alongside the
@@ -4117,3 +4184,7 @@ point (needs the engine deps the spine owns) + the live `@Name:`/`ask_carina`
 spine-corpus cases; `orchestrator_tier3` / `message_finalizer_tier3` were NOT
 regenerated this round (spine-owned). **W4.5b (the Brahma one-shot console)** is a
 tracked follow-up.
+
+wiring, both → W4.4b) — plus ~~**W4.7e2** (the BUILTIN TF-IDF/BM25 vectorizer)~~
+(**DONE** — see the W4.7e2 note above) and the W4.7e logLLMCall call-site
+closures/regens as tracked follow-ups.

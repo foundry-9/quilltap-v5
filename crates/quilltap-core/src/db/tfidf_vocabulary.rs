@@ -54,10 +54,51 @@
 //!     create to avoid relying on the Zod default.
 
 use rusqlite::types::ToSql;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use super::DbError;
 use crate::clock;
+
+/// The subset of a `tfidf_vocabularies` row the BUILTIN embedding read path
+/// consumes (v4 `findByProfileId` → the state passed to `loadState`).
+/// `vocabulary`/`idf` are the single-encoded JSON-text columns; `avg_doc_length`
+/// is the fractional REAL; `vocabulary_size` is the integer-valued REAL (read as
+/// f64, the caller coerces to usize).
+#[derive(Debug, Clone)]
+pub struct TvReadRow {
+    pub vocabulary: String,
+    pub idf: String,
+    pub avg_doc_length: f64,
+    pub vocabulary_size: f64,
+    pub include_bigrams: bool,
+    pub fitted_at: String,
+}
+
+/// Read the fitted vocabulary for `profile_id` (v4 `findByProfileId`), or `None`
+/// if the BUILTIN profile has not been fitted yet. Returns the state columns the
+/// [`crate::tfidf::BuiltinEmbeddingProvider`] loads.
+pub fn find_by_profile_id(
+    conn: &Connection,
+    profile_id: &str,
+) -> Result<Option<TvReadRow>, DbError> {
+    conn.query_row(
+        "SELECT vocabulary, idf, avgDocLength, vocabularySize, includeBigrams, fittedAt \
+         FROM tfidf_vocabularies WHERE profileId = ?1",
+        params![profile_id],
+        |row| {
+            Ok(TvReadRow {
+                vocabulary: row.get(0)?,
+                idf: row.get(1)?,
+                avg_doc_length: row.get(2)?,
+                vocabulary_size: row.get(3)?,
+                include_bigrams: row.get::<_, i64>(4)? != 0,
+                fitted_at: row.get(5)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(Into::into)
+}
 
 /// Fields for creating a TF-IDF vocabulary record (the `Omit<TfidfVocabulary,
 /// 'id'|timestamps>` shape). `vocabulary`/`idf` are PLAIN strings (JSON text the

@@ -4,6 +4,37 @@
 
 ### 5.0-dev
 
+W4.7e2: ported the BUILTIN TF-IDF/BM25 embedding provider (v4's zero-network
+fallback embedder, `plugins/dist/qtap-plugin-builtin-embeddings/`). New
+`quilltap-core::tfidf` module: the Porter stemmer + tokenizer (`porter` — a
+byte-for-byte transcription of v4's hand-rolled stemmer, NOT a crate, since a
+divergent stem shifts every stored vocabulary index; `STOP_WORDS`, `stem`,
+`tokenize`, `generate_bigrams`), the BM25-enhanced vectorizer (`vectorizer` —
+`fit_corpus`/`transform`/`get_state`/`load_state`/`is_fitted`, the BM25 IDF
+`ln((N-df+0.5)/(df+0.5)+1)` and TF saturation, f64 throughout; the fit clock
+injected), and the `BuiltinEmbeddingProvider` wrapper. Host glue
+`services::builtin_embedding::generate_builtin_embedding` (v4
+`generateBuiltinEmbedding`: load the persisted state via
+`tfidf_vocabulary.findByProfileId`, transform, route through
+`applyEmbeddingProfile`), plus new scoped reads
+`embedding_profiles::find_by_id` and `tfidf_vocabulary::find_by_profile_id`.
+The `EMBEDDING_REFIT` job handler (`services::embedding_refit_job` — gather
+every character's memories + the help docs, `fit_corpus`, persist via
+`tfidf_vocabulary.upsertByProfileId`, enqueue `EMBEDDING_REINDEX_ALL`; skip
+branches for non-BUILTIN / no-characters / no-memories), registered with the
+W4.8 runner via `EmbeddingRefitHandler`;
+`queue_service::enqueue_embedding_reindex_all` added. The debounce scheduler is
+host-timing (not ported — the only pure gate, BUILTIN-profile, is
+`is_builtin_profile`). Two differentials: a tier-1
+`tfidf_vectorizer_equivalence` (159 rows — stemmer suffix families, tokenizer,
+bigrams, fit→getState + transform, loadState-from-JSON, the two throw messages;
+`idf`/vectors compared at 1e-12) and a tier-3 `embedding_refit_tier3_equivalence`
+(drives v4's REAL `handleEmbeddingRefit` over a two-DB fixture, diffs
+`tfidf_vocabularies` + `background_jobs`, plus a runner-registration E2E).
+Documented seam: the IDF's `Math.log` diverges from V8 by <=1 ULP on macOS libm
+(and the `libm` crate), so the persisted `idf` JSON is compared numerically at
+1e-12 in the tier-3 diff; everything else is byte-exact.
+
 W4.7e3: wired the six `logLLMCall` call-site closures so ported call sites now
 write `llm_logs` rows via the W4.7e `services::llm_logging` writer.
 `CheapLlmTaskExecutor` gained an optional `CheapLlmLogConfig` (Db + per-service

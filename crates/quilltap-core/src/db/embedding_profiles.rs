@@ -51,9 +51,49 @@
 //! field as "set to this value", so a nullable setter lands when an op needs it.
 
 use rusqlite::types::ToSql;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use super::DbError;
+
+/// The subset of an `embedding_profiles` row the BUILTIN embedding + refit paths
+/// consume (v4 `repos.embeddingProfiles.findById`). Scoped read, not the full net
+/// marshaling: `provider` gates the refit / dispatch; `truncate_to_dimensions` /
+/// `normalize_l2` feed `applyEmbeddingProfile`.
+#[derive(Debug, Clone)]
+pub struct EmbeddingProfileRow {
+    pub id: String,
+    pub user_id: String,
+    /// `OPENAI` / `OLLAMA` / `OPENROUTER` / `BUILTIN`.
+    pub provider: String,
+    /// The Matryoshka slice target (`None` when the column is NULL).
+    pub truncate_to_dimensions: Option<f64>,
+    /// v4 `applyEmbeddingProfile` uses `normalizeL2 !== false` — so a NULL column
+    /// resolves to `true` here (matching `!== false`).
+    pub normalize_l2: bool,
+}
+
+/// Read an embedding profile by id (v4 `findById`), or `None` when absent.
+pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<EmbeddingProfileRow>, DbError> {
+    conn.query_row(
+        "SELECT id, userId, provider, truncateToDimensions, normalizeL2 \
+         FROM embedding_profiles WHERE id = ?1",
+        params![id],
+        |row| {
+            Ok(EmbeddingProfileRow {
+                id: row.get(0)?,
+                user_id: row.get(1)?,
+                provider: row.get(2)?,
+                truncate_to_dimensions: row.get::<_, Option<f64>>(3)?,
+                normalize_l2: row
+                    .get::<_, Option<i64>>(4)?
+                    .map(|v| v != 0)
+                    .unwrap_or(true),
+            })
+        },
+    )
+    .optional()
+    .map_err(Into::into)
+}
 
 /// Fields for creating an embedding profile (the `Omit<EmbeddingProfile,'id'|
 /// timestamps>` shape). `api_key_id`/`base_url` are the nullable string columns;

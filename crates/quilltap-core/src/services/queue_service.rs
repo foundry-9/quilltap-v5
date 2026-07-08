@@ -544,6 +544,21 @@ pub async fn enqueue_wardrobe_outfit_announcement(
     Ok((job_id, true))
 }
 
+/// v4 `enqueueEmbeddingReindexAll`: enqueue an `EMBEDDING_REINDEX_ALL` job at
+/// `priority = -1` (below interactive), `maxAttempts` = the default 3. The
+/// `EMBEDDING_REFIT` handler fires this after a successful vocabulary refit. The
+/// payload is v4's `{ profileId }` (the `scope` field defaults to `'all'` and is
+/// omitted, matching the refit call site's object literal). The REINDEX handler
+/// itself is not ported (it stays on the runner's loud fallback).
+pub async fn enqueue_embedding_reindex_all(
+    db: &Db,
+    user_id: &str,
+    profile_id: &str,
+) -> Result<String, DbError> {
+    let payload = serde_json::json!({ "profileId": profile_id });
+    enqueue_job_with_priority(db, user_id, "EMBEDDING_REINDEX_ALL", payload, -1.0, 3.0).await
+}
+
 // ============================================================================
 // Retention windows (v4 `lib/background-jobs/maintenance/retention-constants.ts`)
 // ============================================================================

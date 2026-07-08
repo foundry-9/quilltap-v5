@@ -209,6 +209,7 @@ pub mod tag_style;
 pub mod template_prompt_hint;
 pub mod templates;
 pub mod terminal_clean;
+pub mod tfidf;
 pub mod token_estimation;
 pub mod tools;
 pub mod turn_order;
