@@ -1,12 +1,17 @@
 # Work order: Unit 4 — the enclave engine
 
 **Size: one Opus session** (internal parallelization: U4.1 + U4.2 + U4.3 are
-disjoint and can be sub-agented; U4.4 serialized after). **Prerequisites:**
-W4.8 (the job runner — `step()`'s dispatch row and the re-enqueue live
-there) and W4.6b (the Host announcement writer). The full decomposition,
-architecture decisions, and verification plan are in
-[`../enclave-engine.md`](../enclave-engine.md) — **read it first; it is the
-spec.** This order adds only the execution constraints.
+disjoint and can be sub-agented; U4.4 serialized after). **Prerequisites
+(ALL met as of the W4.11 cleanup round, 2026-07-08):** W4.8 (the job
+runner — `step()`'s dispatch row and the re-enqueue live there), W4.6b
+(the Host announcement writer), and the W4.7e/e3 + W4.11 logging
+composition (`LogContext` with the explicit autonomous-run-id field;
+`with_logging` live at the spine composition point; `llm_logs` rows
+byte-verified through real call sites — the token-accounting substrate).
+The full decomposition, architecture decisions, and verification plan are
+in [`../enclave-engine.md`](../enclave-engine.md) — **read it first; it is
+the spec.** This order adds only the execution constraints. **Oracle
+baseline: v4 `6b6e39ad`** (verify at session start; drift check first).
 
 ## Ground rules
 
@@ -28,6 +33,14 @@ spec.** This order adds only the execution constraints.
 - `suppress_automatic_images`: check whether the ported finalizer/spine
   actually consumes it; if it was never plumbed (the corpus kept it
   inert), plumb + bank it here — the enclave is its consumer.
+- The run-id `LogContext` threading (spec decision #4): the turn's
+  executor is constructed `with_logging(... ctx: <run LogContext>)`, and
+  the primary stream's hard-coded `LogContext::none()` in
+  `log_chat_message_call` must be parameterized (a `log_context` input
+  threaded to `run_primary_stream`, DEFAULTING to none — every existing
+  caller and corpus stays untouched; regen only what the enclave
+  differential itself dumps). U4.4's token accounting then sums real
+  `llm_logs` rows by run-id.
 
 ## Sequencing inside the session
 

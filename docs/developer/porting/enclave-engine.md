@@ -63,10 +63,19 @@ scheduleNextRunAt/scheduleLastRunAt`, `runDestructiveToolsAllowed`,
    `maxAttempts: 1` + the failure reconciliation keep v4's
    no-automatic-retry semantics.
 4. **The run-id context** becomes an explicit parameter (no ambient
-   AsyncLocalStorage): the cheap-LLM/stream executors gain an optional
-   `autonomous_run_id` they thread to `logLLMCall` (a W4.7e composition
-   point; until it lands, the token accounting reads `llm_logs` rows the
-   differential seeds/mocks — see the work order).
+   AsyncLocalStorage). This landed with W4.7e/e3: `LogContext` carries the
+   explicit autonomous-run-id field, `CheapLlmTaskExecutor::with_logging`
+   takes it via `CheapLlmLogConfig.ctx`, and every request-path caller
+   passes `LogContext::none()`. The enclave is the first caller to supply a
+   REAL context: the turn handler constructs its executor
+   `with_logging(... ctx: <the run's LogContext>)`. **One known gap to
+   close in U4.4:** the primary stream's `log_chat_message_call`
+   (`primary_stream.rs`) passes `LogContext::none()` HARD-CODED — the
+   enclave's turn needs it parameterized (a `log_context` input threaded
+   through the spine to `run_primary_stream`, defaulting to none so every
+   existing caller/corpus is untouched). Token accounting then sums real
+   `llm_logs` rows by run-id (the W4.11 cleanup round made the spine's
+   logging composition live and byte-verified).
 5. **Announcements** ride W4.6b's Host writer (persona + opaque bodies,
    byte-exact); the run-start banner, halfway/near-end/grace nudges, and
    end/paused/error posts are enclave-owned strings in a generated
