@@ -527,6 +527,79 @@ pub struct ChatUpdate {
     /// job's minted generation timestamp). No `updatedAt` bump beyond an explicit
     /// `updated_at`.
     pub last_background_generated_at: Option<Option<String>>,
+    // ------------------------------------------------------------------
+    // Autonomous-room run-state / schedule / budget setters (U4.3, the
+    // enclave lifecycle — v4 `autonomous-room.service.ts` +
+    // `autonomous-run-start.ts` / `autonomous-room-announce.ts`). All ride
+    // the same no-`updatedAt`-mint invariant (v4 `_update` preserves it;
+    // none of the lifecycle writes pass one).
+    // ------------------------------------------------------------------
+    /// `runState` (enum TEXT: `idle|running|paused|stopped|budgetExhausted|error`).
+    /// Always written with a value (v4 never clears it to NULL).
+    pub run_state: Option<String>,
+    /// Nullable `runStateMessage` — the run-status cause vocabulary
+    /// (`manual:paused`, `manual:stopped`, `restart:interrupted`,
+    /// `turn_failed:{reason}`, `start:enqueue_failed`, `schedule:enqueue_failed`,
+    /// the `budget:*` family). `Some(Some(msg))` sets it; `Some(None)` clears to
+    /// SQL NULL (v4 `runStateMessage: null` in `runStartPatch` / resume); `None`
+    /// leaves it unset.
+    pub run_state_message: Option<Option<String>>,
+    /// `currentRunId` — always written with a value (a fresh UUID on start, and a
+    /// bump on stop/reconcile so queued turns die on the stale-run guard).
+    pub current_run_id: Option<String>,
+    /// `runStartedAt` — stamped by `runStartPatch` (anchors both the wall-clock
+    /// budget and the per-run token window). Never written NULL by v4.
+    pub run_started_at: Option<String>,
+    /// Nullable `runEndedAt`. `Some(Some(ts))` sets it (stop / the enqueue-failure
+    /// rollback); `Some(None)` clears to SQL NULL (`runStartPatch`, resume, the
+    /// resumable-pause reconcile patch); `None` leaves it unset.
+    pub run_ended_at: Option<Option<String>>,
+    /// Nullable `runPausedAt`. `Some(Some(ts))` stamps the pause instant;
+    /// `Some(None)` clears it (fresh start / resume); `None` leaves it unset.
+    pub run_paused_at: Option<Option<String>>,
+    /// `runPausedAccumMs` (REAL) — the accumulated paused wall-clock the budget
+    /// check subtracts. Zeroed by `runStartPatch`; accumulated on resume.
+    pub run_paused_accum_ms: Option<f64>,
+    /// `runTurnsConsumed` (REAL) — zeroed by `runStartPatch`; bumped by the turn
+    /// handler (U4.4).
+    pub run_turns_consumed: Option<f64>,
+    /// `runTokensConsumed` (REAL) — zeroed by `runStartPatch`; maintained by the
+    /// turn handler's token accounting (U4.4).
+    pub run_tokens_consumed: Option<f64>,
+    /// `runMilestonesAnnounced` (REAL bitmask: 1=halfway, 2=near-end, 4=grace) —
+    /// zeroed by `runStartPatch`; set by the milestone pass (U4.4).
+    pub run_milestones_announced: Option<f64>,
+    /// Nullable `scheduleCron`. `Some(Some(expr))` sets it; `Some(None)` clears
+    /// (drops the room to manual-only); `None` leaves it unset.
+    pub schedule_cron: Option<Option<String>>,
+    /// Nullable `scheduleFreshnessWindowMs` (REAL). `Some(None)` clears back to
+    /// the user-default window.
+    pub schedule_freshness_window_ms: Option<Option<f64>>,
+    /// Nullable `scheduleNextRunAt`. `Some(Some(ts))` advances the slot;
+    /// `Some(None)` clears it (cron removed / failed to advance); `None` leaves it
+    /// unset (a manual start that didn't consume a cron slot).
+    pub schedule_next_run_at: Option<Option<String>>,
+    /// Nullable `scheduleLastRunAt`. `Some(Some(ts))` stamps the run-start time;
+    /// `Some(None)` writes NULL (v4's tri-state passes the value through); `None`
+    /// leaves it unset.
+    pub schedule_last_run_at: Option<Option<String>>,
+    /// Nullable `budgetMaxTurns` (REAL int). `Some(None)` clears the cap.
+    pub budget_max_turns: Option<Option<f64>>,
+    /// Nullable `budgetMaxTokens` (REAL int). `Some(None)` clears the cap.
+    pub budget_max_tokens: Option<Option<f64>>,
+    /// Nullable `budgetMaxWallClockMs` (REAL int). `Some(None)` clears the cap.
+    pub budget_max_wall_clock_ms: Option<Option<f64>>,
+    /// Nullable `budgetEstimatedSpendCapUSD` (REAL). `Some(None)` clears the cap.
+    pub budget_estimated_spend_cap_usd: Option<Option<f64>>,
+    /// `budgetExcludeCacheHits` — v4 writes the NUMBER `0`/`1` (not a bool) from
+    /// the settings editor (`=== false ? 0 : 1`).
+    pub budget_exclude_cache_hits: Option<f64>,
+    /// Nullable `runVisibility` (enum TEXT: `owner_only|household|open`).
+    /// `Some(None)` clears back to "inherit the user default".
+    pub run_visibility: Option<Option<String>>,
+    /// `runDestructiveToolsAllowed` — v4 writes the NUMBER `0`/`1` (clamped by the
+    /// user-level `destructiveToolPolicy` ceiling at write time).
+    pub run_destructive_tools_allowed: Option<f64>,
     pub updated_at: Option<String>,
 }
 
@@ -894,6 +967,70 @@ impl<'c> ChatsRepository<'c> {
         if let Some(v) = &patch.last_background_generated_at {
             // v4 `repos.chats.update({ lastBackgroundGeneratedAt })` (the story job).
             set_col!("lastBackgroundGeneratedAt", Box::new(v.clone()));
+        }
+        // Autonomous-room run-state / schedule / budget columns (U4.3).
+        if let Some(v) = &patch.run_state {
+            set_col!("runState", Box::new(v.clone()));
+        }
+        if let Some(v) = &patch.run_state_message {
+            set_col!("runStateMessage", Box::new(v.clone()));
+        }
+        if let Some(v) = &patch.current_run_id {
+            set_col!("currentRunId", Box::new(v.clone()));
+        }
+        if let Some(v) = &patch.run_started_at {
+            set_col!("runStartedAt", Box::new(v.clone()));
+        }
+        if let Some(v) = &patch.run_ended_at {
+            set_col!("runEndedAt", Box::new(v.clone()));
+        }
+        if let Some(v) = &patch.run_paused_at {
+            set_col!("runPausedAt", Box::new(v.clone()));
+        }
+        if let Some(v) = patch.run_paused_accum_ms {
+            set_col!("runPausedAccumMs", Box::new(v));
+        }
+        if let Some(v) = patch.run_turns_consumed {
+            set_col!("runTurnsConsumed", Box::new(v));
+        }
+        if let Some(v) = patch.run_tokens_consumed {
+            set_col!("runTokensConsumed", Box::new(v));
+        }
+        if let Some(v) = patch.run_milestones_announced {
+            set_col!("runMilestonesAnnounced", Box::new(v));
+        }
+        if let Some(v) = &patch.schedule_cron {
+            set_col!("scheduleCron", Box::new(v.clone()));
+        }
+        if let Some(v) = &patch.schedule_freshness_window_ms {
+            set_col!("scheduleFreshnessWindowMs", Box::new(*v));
+        }
+        if let Some(v) = &patch.schedule_next_run_at {
+            set_col!("scheduleNextRunAt", Box::new(v.clone()));
+        }
+        if let Some(v) = &patch.schedule_last_run_at {
+            set_col!("scheduleLastRunAt", Box::new(v.clone()));
+        }
+        if let Some(v) = &patch.budget_max_turns {
+            set_col!("budgetMaxTurns", Box::new(*v));
+        }
+        if let Some(v) = &patch.budget_max_tokens {
+            set_col!("budgetMaxTokens", Box::new(*v));
+        }
+        if let Some(v) = &patch.budget_max_wall_clock_ms {
+            set_col!("budgetMaxWallClockMs", Box::new(*v));
+        }
+        if let Some(v) = &patch.budget_estimated_spend_cap_usd {
+            set_col!("budgetEstimatedSpendCapUSD", Box::new(*v));
+        }
+        if let Some(v) = patch.budget_exclude_cache_hits {
+            set_col!("budgetExcludeCacheHits", Box::new(v));
+        }
+        if let Some(v) = &patch.run_visibility {
+            set_col!("runVisibility", Box::new(v.clone()));
+        }
+        if let Some(v) = patch.run_destructive_tools_allowed {
+            set_col!("runDestructiveToolsAllowed", Box::new(v));
         }
         set_col!("updatedAt", Box::new(resolved_updated_at));
 

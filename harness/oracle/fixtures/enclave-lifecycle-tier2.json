@@ -1,0 +1,290 @@
+{
+  "comment": "U4.3 enclave-lifecycle tier-2 spec. Seed timestamps are 2020-era sentinels; the op clock is 2031-era, re-anchored per op at baseMs = 1924992000000 + opIndex*3600000 and stepped +1ms per read within the op. The cron triples (expr, anchorMs -> nextMs|null|throw) are pre-verified against real croner under TZ=UTC (see the harness test header).",
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2020-01-01T00:00:00.000Z",
+  "lmaSentinel": "2020-02-02T02:02:02.000Z",
+  "rsaSentinel": "2020-03-03T03:03:03.000Z",
+  "endedSentinel": "2020-04-04T04:04:04.000Z",
+  "pausedSentinel": "2020-05-05T05:05:05.000Z",
+  "baseMs": 1924992000000,
+  "stepPerOpMs": 3600000,
+  "users": {
+    "userA": "11111111-1111-4111-8111-111111111111",
+    "userB": "22222222-2222-4222-8222-222222222222",
+    "userC": "33333333-3333-4333-8333-333333333333"
+  },
+  "chatSettings": [
+    {
+      "id": "51000000-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "autonomousRoomSettings": {
+        "dailyTokenBudget": null,
+        "defaultFreshnessWindowMs": 43200000,
+        "visibilityDefault": "owner_only",
+        "destructiveToolPolicy": "opt_in_per_room"
+      }
+    },
+    {
+      "id": "51000000-0000-4000-8000-000000000002",
+      "userId": "22222222-2222-4222-8222-222222222222",
+      "autonomousRoomSettings": {
+        "dailyTokenBudget": null,
+        "defaultFreshnessWindowMs": 43200000,
+        "visibilityDefault": "owner_only",
+        "destructiveToolPolicy": "always_refuse"
+      }
+    }
+  ],
+  "characters": [
+    { "id": "aaaa0001-0000-4000-8000-000000000001", "name": "Aria", "controlledBy": "llm" },
+    { "id": "aaaa0002-0000-4000-8000-000000000002", "name": "Beau", "controlledBy": "llm" },
+    { "id": "aaaa0003-0000-4000-8000-000000000003", "name": "Cleo", "controlledBy": "llm" },
+    { "id": "aaaa0004-0000-4000-8000-000000000004", "name": "Uma", "controlledBy": "user" }
+  ],
+  "chats": [
+    {
+      "id": "c0000000-0000-4000-8000-000000000001",
+      "title": "C1 manual fresh",
+      "chatType": "autonomous",
+      "budgetMaxTurns": 40,
+      "budgetMaxTokens": 1500000,
+      "budgetMaxWallClockMs": 5400000,
+      "participants": [
+        { "id": "dddd0001-0000-4000-8000-000000000001", "characterId": "aaaa0001-0000-4000-8000-000000000001", "controlledBy": "llm" },
+        { "id": "dddd0001-0000-4000-8000-000000000002", "characterId": "aaaa0002-0000-4000-8000-000000000002", "controlledBy": "llm" },
+        { "id": "dddd0001-0000-4000-8000-000000000003", "characterId": "aaaa0003-0000-4000-8000-000000000003", "controlledBy": "llm" },
+        { "id": "dddd0001-0000-4000-8000-000000000004", "characterId": "aaaa0004-0000-4000-8000-000000000004", "controlledBy": "user" }
+      ]
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000002",
+      "title": "C2 cron consume (default window, userC no settings row)",
+      "chatType": "autonomous",
+      "runState": "idle",
+      "scheduleCron": "0 9 * * *",
+      "scheduleNextRunAt": "2031-01-01T04:00:00.000Z",
+      "participants": [
+        { "id": "dddd0002-0000-4000-8000-000000000001", "characterId": "aaaa0001-0000-4000-8000-000000000001", "controlledBy": "llm" },
+        { "id": "dddd0002-0000-4000-8000-000000000002", "characterId": "aaaa0002-0000-4000-8000-000000000002", "controlledBy": "llm" }
+      ]
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000003",
+      "title": "C2b invalid seeded cron (throw caught, slot kept)",
+      "chatType": "autonomous",
+      "scheduleCron": "not a cron",
+      "scheduleNextRunAt": "2031-01-01T05:00:00.000Z",
+      "budgetMaxTokens": 1234567,
+      "participants": [
+        { "id": "dddd0003-0000-4000-8000-000000000001", "characterId": "aaaa0002-0000-4000-8000-000000000002", "controlledBy": "llm" }
+      ]
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000004",
+      "title": "C3 stale slot via per-chat window override",
+      "chatType": "autonomous",
+      "scheduleCron": "0 9 * * *",
+      "scheduleNextRunAt": "2031-01-01T05:00:00.000Z",
+      "scheduleFreshnessWindowMs": 3600000,
+      "budgetMaxTurns": 7,
+      "participants": [
+        { "id": "dddd0004-0000-4000-8000-000000000001", "characterId": "aaaa0001-0000-4000-8000-000000000001", "controlledBy": "llm" }
+      ]
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000005",
+      "title": "C4 already running",
+      "chatType": "autonomous",
+      "runState": "running",
+      "currentRunId": "40000000-0000-4000-8000-000000000004",
+      "runStartedAt": "2020-03-03T03:03:03.000Z",
+      "participants": [
+        { "id": "dddd0005-0000-4000-8000-000000000001", "characterId": "aaaa0001-0000-4000-8000-000000000001", "controlledBy": "llm" }
+      ]
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000006",
+      "title": "C5 salon (not autonomous)",
+      "participants": [
+        { "id": "dddd0006-0000-4000-8000-000000000001", "characterId": "aaaa0001-0000-4000-8000-000000000001", "controlledBy": "llm" }
+      ]
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000007",
+      "title": "C6 pause/resume accumulation",
+      "chatType": "autonomous",
+      "runState": "running",
+      "currentRunId": "60000000-0000-4000-8000-000000000006",
+      "runStartedAt": "2020-03-03T03:03:03.000Z",
+      "runPausedAccumMs": 500,
+      "runTurnsConsumed": 3,
+      "runTokensConsumed": 1234,
+      "participants": [
+        { "id": "dddd0007-0000-4000-8000-000000000001", "characterId": "aaaa0001-0000-4000-8000-000000000001", "controlledBy": "llm" },
+        { "id": "dddd0007-0000-4000-8000-000000000002", "characterId": "aaaa0002-0000-4000-8000-000000000002", "controlledBy": "llm" }
+      ]
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000008",
+      "title": "C7 resume fallback from stopped (0 names)",
+      "chatType": "autonomous",
+      "runState": "stopped",
+      "currentRunId": "70000000-0000-4000-8000-000000000007",
+      "runEndedAt": "2020-04-04T04:04:04.000Z",
+      "budgetMaxTokens": 2000000,
+      "budgetMaxWallClockMs": 90000,
+      "participants": [
+        { "id": "dddd0008-0000-4000-8000-000000000001", "characterId": "aaaa0004-0000-4000-8000-000000000004", "controlledBy": "user" }
+      ]
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000009",
+      "title": "C7b resume fallback from paused-without-run",
+      "chatType": "autonomous",
+      "runState": "paused",
+      "runPausedAt": "2020-05-05T05:05:05.000Z",
+      "participants": [
+        { "id": "dddd0009-0000-4000-8000-000000000001", "characterId": "aaaa0003-0000-4000-8000-000000000003", "controlledBy": "llm" }
+      ]
+    },
+    {
+      "id": "c0000000-0000-4000-8000-00000000000a",
+      "title": "C8 stop",
+      "chatType": "autonomous",
+      "runState": "running",
+      "currentRunId": "80000000-0000-4000-8000-000000000008",
+      "runStartedAt": "2020-03-03T03:03:03.000Z",
+      "participants": [
+        { "id": "dddd000a-0000-4000-8000-000000000001", "characterId": "aaaa0001-0000-4000-8000-000000000001", "controlledBy": "llm" }
+      ]
+    },
+    {
+      "id": "c0000000-0000-4000-8000-00000000000b",
+      "title": "C9 settings editor",
+      "chatType": "autonomous",
+      "runState": "idle",
+      "participants": [
+        { "id": "dddd000b-0000-4000-8000-000000000001", "characterId": "aaaa0001-0000-4000-8000-000000000001", "controlledBy": "llm" }
+      ]
+    },
+    {
+      "id": "c0000000-0000-4000-8000-00000000000c",
+      "title": "C11 failed-turn reconcile (running, lastMessageAt branch)",
+      "chatType": "autonomous",
+      "runState": "running",
+      "currentRunId": "f0000000-0000-4000-8000-00000000000f",
+      "lastMessageAt": "2020-02-02T02:02:02.000Z",
+      "runStartedAt": "2020-03-03T03:03:03.000Z",
+      "runEndedAt": "2020-04-04T04:04:04.000Z",
+      "runTurnsConsumed": 5,
+      "participants": [
+        { "id": "dddd000c-0000-4000-8000-000000000001", "characterId": "aaaa0001-0000-4000-8000-000000000001", "controlledBy": "llm" }
+      ]
+    },
+    {
+      "id": "c0000000-0000-4000-8000-00000000000d",
+      "title": "C12 failed-turn stale-run no-op (then swept at startup)",
+      "chatType": "autonomous",
+      "runState": "running",
+      "currentRunId": "a0000000-0000-4000-8000-00000000000a",
+      "runStartedAt": "2020-03-03T03:03:03.000Z",
+      "participants": [
+        { "id": "dddd000d-0000-4000-8000-000000000001", "characterId": "aaaa0001-0000-4000-8000-000000000001", "controlledBy": "llm" }
+      ]
+    },
+    {
+      "id": "c0000000-0000-4000-8000-00000000000e",
+      "title": "C13 failed-turn terminal-state no-op",
+      "chatType": "autonomous",
+      "runState": "stopped",
+      "currentRunId": "b0000000-0000-4000-8000-00000000000b",
+      "participants": [
+        { "id": "dddd000e-0000-4000-8000-000000000001", "characterId": "aaaa0001-0000-4000-8000-000000000001", "controlledBy": "llm" }
+      ]
+    },
+    {
+      "id": "c0000000-0000-4000-8000-00000000000f",
+      "title": "C14 failed-turn acts on idle (runStartedAt branch)",
+      "chatType": "autonomous",
+      "runState": "idle",
+      "currentRunId": "e0000000-0000-4000-8000-00000000000e",
+      "runStartedAt": "2020-03-03T03:03:03.000Z",
+      "participants": [
+        { "id": "dddd000f-0000-4000-8000-000000000001", "characterId": "aaaa0001-0000-4000-8000-000000000001", "controlledBy": "llm" }
+      ]
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000010",
+      "title": "R1 startup reconcile: lastMessageAt branch",
+      "chatType": "autonomous",
+      "runState": "running",
+      "currentRunId": "10000000-0000-4000-8000-0000000000a1",
+      "lastMessageAt": "2020-02-02T02:02:02.000Z",
+      "runStartedAt": "2020-03-03T03:03:03.000Z",
+      "participants": [
+        { "id": "dddd0010-0000-4000-8000-000000000001", "characterId": "aaaa0001-0000-4000-8000-000000000001", "controlledBy": "llm" }
+      ]
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000011",
+      "title": "R2 startup reconcile: runStartedAt branch",
+      "chatType": "autonomous",
+      "runState": "running",
+      "currentRunId": "10000000-0000-4000-8000-0000000000a2",
+      "runStartedAt": "2020-03-03T03:03:03.000Z",
+      "participants": [
+        { "id": "dddd0011-0000-4000-8000-000000000001", "characterId": "aaaa0001-0000-4000-8000-000000000001", "controlledBy": "llm" }
+      ]
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000012",
+      "title": "R3 startup reconcile: nowIso branch",
+      "chatType": "autonomous",
+      "runState": "running",
+      "currentRunId": "10000000-0000-4000-8000-0000000000a3",
+      "participants": [
+        { "id": "dddd0012-0000-4000-8000-000000000001", "characterId": "aaaa0001-0000-4000-8000-000000000001", "controlledBy": "llm" }
+      ]
+    }
+  ],
+  "ops": [
+    { "kind": "manualStart", "chatId": "c0000000-0000-4000-8000-000000000001", "userId": "11111111-1111-4111-8111-111111111111", "note": "fresh start, 3 names, all caps, no cron -> scheduleNextRunAt written null (undefined-vs-null quirk)" },
+    { "kind": "manualStart", "chatId": "c0000000-0000-4000-8000-000000000005", "userId": "11111111-1111-4111-8111-111111111111", "note": "already_running reject" },
+    { "kind": "manualStart", "chatId": "c0000000-0000-4000-8000-000000000002", "userId": "33333333-3333-4333-8333-333333333333", "note": "cron slot consumed (userC has no settings row -> DEFAULT 12h window); advance verified vs croner" },
+    { "kind": "manualStart", "chatId": "c0000000-0000-4000-8000-000000000004", "userId": "11111111-1111-4111-8111-111111111111", "note": "stale slot: per-chat 1h window beats the 12h default" },
+    { "kind": "manualStart", "chatId": "c0000000-0000-4000-8000-000000000003", "userId": "11111111-1111-4111-8111-111111111111", "note": "seeded cron invalid -> croner throws, caught, slot kept" },
+    { "kind": "manualStart", "chatId": "99999999-0000-4000-8000-000000000099", "userId": "11111111-1111-4111-8111-111111111111", "note": "chat_not_found" },
+    { "kind": "manualStart", "chatId": "c0000000-0000-4000-8000-000000000006", "userId": "11111111-1111-4111-8111-111111111111", "note": "not_autonomous" },
+    { "kind": "pause", "chatId": "c0000000-0000-4000-8000-000000000007", "note": "pause from running" },
+    { "kind": "pause", "chatId": "c0000000-0000-4000-8000-000000000007", "note": "idempotent re-pause (runPausedAt overwritten)" },
+    { "kind": "resume", "chatId": "c0000000-0000-4000-8000-000000000007", "userId": "11111111-1111-4111-8111-111111111111", "note": "same-run resume: accum = 500 + (base9 - base8) = 3600500; counters/runId/runStartedAt preserved; NO banner" },
+    { "kind": "updateSettings", "chatId": "c0000000-0000-4000-8000-00000000000b", "userId": "11111111-1111-4111-8111-111111111111", "note": "us1 full set incl. cron 30 6 * * 1", "patch": { "title": "  Renamed Room  ", "scheduleCron": "30 6 * * 1", "scheduleFreshnessWindowMs": 3600000, "budgetMaxTurns": 10, "budgetMaxTokens": 20000, "budgetMaxWallClockMs": 600000, "budgetEstimatedSpendCapUSD": 1.5, "runVisibility": "household", "runDestructiveToolsAllowed": true, "budgetExcludeCacheHits": false } },
+    { "kind": "updateSettings", "chatId": "c0000000-0000-4000-8000-00000000000b", "userId": "11111111-1111-4111-8111-111111111111", "note": "us6 no-future cron -> scheduleNextRunAt null", "patch": { "scheduleCron": "0 0 30 2 *" } },
+    { "kind": "updateSettings", "chatId": "c0000000-0000-4000-8000-00000000000b", "userId": "22222222-2222-4222-8222-222222222222", "note": "us2 clears + always_refuse clamp", "patch": { "scheduleCron": null, "scheduleFreshnessWindowMs": null, "budgetMaxTurns": null, "budgetMaxTokens": null, "budgetMaxWallClockMs": null, "budgetEstimatedSpendCapUSD": null, "runVisibility": null, "runDestructiveToolsAllowed": true, "budgetExcludeCacheHits": true } },
+    { "kind": "updateSettings", "chatId": "c0000000-0000-4000-8000-00000000000b", "userId": "11111111-1111-4111-8111-111111111111", "note": "us3 invalid cron rejects the whole edit (title dropped too)", "patch": { "title": "Should Not Land", "scheduleCron": "totally bogus" } },
+    { "kind": "updateSettings", "chatId": "c0000000-0000-4000-8000-00000000000b", "userId": "11111111-1111-4111-8111-111111111111", "note": "us4 empty patch -> ok, no write", "patch": {} },
+    { "kind": "updateSettings", "chatId": "c0000000-0000-4000-8000-00000000000b", "userId": "11111111-1111-4111-8111-111111111111", "note": "us5 whitespace title never clears", "patch": { "title": "   " } },
+    { "kind": "updateSettings", "chatId": "99999999-0000-4000-8000-000000000099", "userId": "11111111-1111-4111-8111-111111111111", "note": "chat_not_found", "patch": { "budgetMaxTurns": 1 } },
+    { "kind": "updateSettings", "chatId": "c0000000-0000-4000-8000-000000000006", "userId": "11111111-1111-4111-8111-111111111111", "note": "not_autonomous", "patch": { "budgetMaxTurns": 1 } },
+    { "kind": "stop", "chatId": "c0000000-0000-4000-8000-00000000000a", "note": "stop: manual:stopped + runId bump + runEndedAt" },
+    { "kind": "stop", "chatId": "99999999-0000-4000-8000-000000000099", "note": "not found" },
+    { "kind": "stop", "chatId": "c0000000-0000-4000-8000-000000000006", "note": "not autonomous" },
+    { "kind": "pause", "chatId": "99999999-0000-4000-8000-000000000099", "note": "not found" },
+    { "kind": "pause", "chatId": "c0000000-0000-4000-8000-000000000006", "note": "not autonomous" },
+    { "kind": "resume", "chatId": "c0000000-0000-4000-8000-000000000008", "userId": "11111111-1111-4111-8111-111111111111", "note": "fallback fresh from stopped: 0 names, tokens+wallclock caps (Math.round(1.5)=2 min), seeded runEndedAt cleared" },
+    { "kind": "resume", "chatId": "c0000000-0000-4000-8000-000000000009", "userId": "11111111-1111-4111-8111-111111111111", "note": "fallback fresh from paused-without-runId: 1 name (Cleo), no caps" },
+    { "kind": "resume", "chatId": "99999999-0000-4000-8000-000000000099", "userId": "11111111-1111-4111-8111-111111111111", "note": "chat_not_found" },
+    { "kind": "resume", "chatId": "c0000000-0000-4000-8000-000000000006", "userId": "11111111-1111-4111-8111-111111111111", "note": "not_autonomous" },
+    { "kind": "resume", "chatId": "c0000000-0000-4000-8000-000000000005", "userId": "11111111-1111-4111-8111-111111111111", "note": "already_running" },
+    { "kind": "begin", "chatId": "99999999-0000-4000-8000-000000000099", "userId": "11111111-1111-4111-8111-111111111111", "runId": "88888888-8888-4888-8888-888888888888", "note": "direct begin: chat_not_found" },
+    { "kind": "begin", "chatId": "c0000000-0000-4000-8000-000000000006", "userId": "11111111-1111-4111-8111-111111111111", "runId": "88888888-8888-4888-8888-888888888888", "note": "direct begin: not_autonomous" },
+    { "kind": "reconcileFailed", "chatId": "c0000000-0000-4000-8000-00000000000c", "runId": "f0000000-0000-4000-8000-00000000000f", "reason": "docMountFolders unique constraint: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "note": "acts: turn_failed sliced to 500, runId bumped, runEndedAt nulled, runPausedAt=lastMessageAt" },
+    { "kind": "reconcileFailed", "chatId": "c0000000-0000-4000-8000-00000000000d", "runId": "99999999-9999-4999-8999-999999999999", "reason": "boom", "note": "stale-run no-op" },
+    { "kind": "reconcileFailed", "chatId": null, "runId": "f0000000-0000-4000-8000-00000000000f", "reason": "boom", "note": "missing chatId no-op" },
+    { "kind": "reconcileFailed", "chatId": "c0000000-0000-4000-8000-00000000000c", "runId": null, "reason": "boom", "note": "missing runId no-op" },
+    { "kind": "reconcileFailed", "chatId": "c0000000-0000-4000-8000-00000000000e", "runId": "b0000000-0000-4000-8000-00000000000b", "reason": "boom", "note": "terminal-state (stopped) no-op" },
+    { "kind": "reconcileFailed", "chatId": "c0000000-0000-4000-8000-00000000000f", "runId": "e0000000-0000-4000-8000-00000000000e", "reason": "idle wedge", "note": "acts on idle: runPausedAt=runStartedAt branch" },
+    { "kind": "reconcileFailed", "chatId": "99999999-0000-4000-8000-000000000099", "runId": "e0000000-0000-4000-8000-00000000000e", "reason": "boom", "note": "missing chat no-op" },
+    { "kind": "reconcileStartup", "note": "sweeps every autonomous+running chat: C1,C2,C2b,C3,C4,C6,C7,C7b,C12,R1,R2,R3 = 12; R3 banks the nowIso branch" }
+  ]
+}

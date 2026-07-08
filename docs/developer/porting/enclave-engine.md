@@ -92,8 +92,11 @@ scheduleNextRunAt/scheduleLastRunAt`, `runDestructiveToolsAllowed`,
   (halfway ≥0.5, near-end ≥0.9 sets halfway too, each fires once), and the
   `runStateMessage` string vocabulary (`budget:turns`, `budget:tokens`,
   `budget:time`, `budget:tokens_user_daily`, `manual:paused`,
-  `manual:stopped`, `restart:interrupted`, `turn_failed:{reason}`,
-  `start:enqueue_failed`, `schedule:enqueue_failed`).
+  `manual:stopped`, `restart:interrupted`, `turn_error:{message}` [the turn
+  handler's own catch — distinct from `turn_failed:{reason}`, which is
+  `reconcile_failed_turn`'s, UTF-16 `.slice(0,500)`-capped],
+  `no_eligible_speaker:{reason}`, `start:enqueue_failed`,
+  `schedule:enqueue_failed`).
   (`compute_autonomous_context_cap` is already ported — Phase 1.)
 - **U4.2 — cron slot computation** (tier-1): find v4's cron library
   (read `package.json` + the tick source), then decide crate-vs-hand-roll
@@ -112,8 +115,9 @@ scheduleNextRunAt/scheduleLastRunAt`, `runDestructiveToolsAllowed`,
   counters/runId; else fall back to fresh start), `stop` (bump
   `currentRunId` so queued turns die on the stale-run guard),
   `update_settings`, `reconcile_at_startup` (`running` → `paused`,
-  `runPausedAt = max(lastMessageAt, runStartedAt)`), and
-  `reconcile_failed_turn`.
+  `runPausedAt = lastMessageAt ?? runStartedAt ?? nowIso` — a nullish-coalesce
+  chain, NOT a max; the U4.3 port verified this against the v4 code and
+  banked all three branches), and `reconcile_failed_turn`.
 - **U4.4 — `step()` + the schedule tick** (tier-3, the capstone): the
   guard chain (missing/non-autonomous → exit; stale-run; the concurrency
   tie-break — earlier `(createdAt, id)` wins; lifecycle gate), the

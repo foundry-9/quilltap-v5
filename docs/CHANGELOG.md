@@ -4,6 +4,43 @@
 
 ### 5.0-dev
 
+U4.1–U4.3 (enclave engine, the parallel phase): the first three sub-units of
+the autonomous-room ("enclave") engine, each with its differential green
+against v4 HEAD `6bf88959`. New module family `quilltap-core::enclave`.
+U4.1 (`enclave::milestones`): the pacing-milestone bitmask/threshold logic
+(halfway/near-end/grace bits; near-end sets both bits so a vaulted halfway
+never fires late) + the Host-voiced milestone and grace message bodies,
+extracted mechanically from the v4 source by a checked-in generator that
+evaluates v4's own template literals under V8 (byte-exact composition proof
+completes in U4.4's tier-3); the existing Phase-1 `enclave_budget`
+differential regenerated — zero drift (42 rows).
+U4.2 (`enclave::cron`): croner-10.0.1-semantics next-occurrence computation,
+HAND-ROLLED (the Rust croner crate was rejected: v4 passes no timezone
+option, so croner-JS runs on plain V8 local-Date semantics, not its own
+fromTZ path); jiff's Compatible disambiguation proven identical to ES
+LocalTZA; `next_occurrence` + the throw-vs-null `try_next_occurrence` split
+(updateSettings rejects on the constructor throw). Tier-1 differential over
+124 committed rows × 2 timezones (America/Chicago DST + Asia/Kolkata),
+driving v4's real installed croner; a probe row pins croner's version. No
+new dependency.
+U4.3 (`enclave::announce` + `enclave::lifecycle`): the run-start row
+contract + Host-authored announcement writers (banner caps/name-list
+byte-exact), and the full lifecycle service — begin/start-scheduled/
+start-manual (cron-slot consumption), pause/resume (pause-interval
+accumulation)/stop (runId bump), update-settings (invalid cron rejects the
+whole edit), startup + failed-turn reconciliation, with every
+runStateMessage string verbatim. `ChatUpdate` gained 21 autonomous setters
+(no `updatedAt` mint); `queue_service` gained the AUTONOMOUS_ROOM_TURN /
+_SCHEDULE_TICK enqueues (maxAttempts 1; turn enqueue dedupe-free, tick
+PENDING-deduped). Tier-2 real-DB differential over a 38-op lifecycle matrix
+(18 chats, 7 jobs, 6 banners diffed byte-for-byte); the integration pass
+closed the cron seam so the differential now proves the lifecycle∘cron
+composition. The chats tier-2/read differentials re-verified green; the
+en-US toLocaleString grouper deduped (primary_stream's is now pub(crate)).
+Spec doc corrected: the startup-reconcile stamp is a nullish-coalesce chain
+(lastMessageAt ?? runStartedAt ?? now), not a max; the runStateMessage
+vocabulary gains turn_error:/no_eligible_speaker:.
+
 Drift check against v4 `6b6e39ad..6bf88959` (1 commit): no ported unit is
 stale. `6bf88959` ("The Green Room" new-conversation status dialog) touches
 only unported surfaces — the new `lib/chat/creation-progress.ts` in-memory

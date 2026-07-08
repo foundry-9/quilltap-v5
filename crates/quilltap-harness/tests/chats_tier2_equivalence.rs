@@ -129,6 +129,9 @@ impl PatchData {
             story_background_image_id: None,
             last_background_generated_at: None,
             updated_at: self.updated_at.clone(),
+            // The U4.3 autonomous run-state / schedule / budget setters are
+            // exercised by the enclave-lifecycle differential, not this corpus.
+            ..Default::default()
         }
     }
 }

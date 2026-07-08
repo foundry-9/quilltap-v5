@@ -235,7 +235,9 @@ pub fn parse_content_limit_error(message: &str) -> (ContentLimitType, Option<i64
 /// Reproduce `Number.prototype.toLocaleString()` (no args) for a non-negative
 /// integer under Node's default en-US locale: group thousands with `,`. The
 /// recovery message text is persisted, so this must be byte-exact.
-pub(super) fn to_locale_string(n: i64) -> String {
+/// (`pub(crate)`: also reused by `enclave::announce` for the run-start
+/// banner's token-cap grouping.)
+pub(crate) fn to_locale_string(n: i64) -> String {
     let neg = n < 0;
     let digits = n.unsigned_abs().to_string();
     let mut out = String::new();

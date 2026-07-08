@@ -4542,6 +4542,41 @@ refreshed for the landed logging reality (the per-run token accounting's
 (parameterize `log_chat_message_call`'s hard-coded `LogContext::none()`) is in
 the order's ground rules.
 
+**Round 5 (Unit 4, the enclave engine) is in progress — U4.1–U4.3 are DONE
+and green** (2026-07-08, branch `u4-enclave`; three parallel agents on
+disjoint files, integrated + gated). New module family
+`quilltap-core::enclave`: **U4.1** `enclave::milestones` (the pacing bitmask
+logic — near-end sets the halfway bit too so a vaulted halfway never fires
+late; the pre/post-turn exhausted-action rules incl. the grace grant — plus
+the Host-voiced milestone/grace bodies via a checked-in generator that
+evaluates v4's own template literals under V8; byte-exact composition proof
+lands in U4.4's tier-3 chat_messages diff; the Phase-1 `enclave_budget`
+differential regenerated, zero drift). **U4.2** `enclave::cron` — croner
+10.0.1 semantics **hand-rolled** (the Rust croner crate REJECTED: v4 passes
+no timezone option, so croner-JS runs on V8 local-Date semantics, not its
+own `fromTZ` path; jiff `Compatible` disambiguation proven identical to ES
+`LocalTZA`); `next_occurrence` + the throw-vs-null `try_next_occurrence`
+split; 124-row × 2-tz tier-1 differential (DST both directions, one-off
+datetimes, L/W/#n modifiers, the `?`-before-star OR quirk, V8 ISO
+day-overflow normalization); the harness pins croner's version and fails
+loud on a bump. **U4.3** `enclave::announce` + `enclave::lifecycle` — the
+run-start row contract + Host announcement writers (the carina-writer
+idiom; banner caps summary + name list byte-exact) and the whole lifecycle
+service (begin / start-scheduled / start-manual with cron-slot consumption /
+pause / resume with pause-interval accumulation / stop with the runId bump /
+update-settings with invalid-cron whole-edit rejection / startup +
+failed-turn reconciliation, every `runStateMessage` string verbatim);
+`ChatUpdate` gained 21 autonomous setters, `queue_service` the
+AUTONOMOUS_ROOM_TURN/_SCHEDULE_TICK enqueues; 38-op tier-2 real-DB
+differential (18 chats, 7 jobs, 6 banners), the cron seam closed at
+integration so it proves the lifecycle∘cron composition. Banked v4 facts:
+the startup-reconcile stamp is `lastMessageAt ?? runStartedAt ?? now` (a
+coalesce, NOT the spec's max — spec fixed); rollback-on-enqueue-failure
+leaves currentRunId + zeroed counters in place and manual start re-throws;
+resume re-enqueue has NO rollback guard; the manual-start
+`scheduleNextRunAt: null` explicit-write quirk. **Next: U4.4** (`step()` +
+the schedule tick + the runner dispatch rows + the LogContext threading).
+
 **Drift check (2026-07-08): v4 `6b6e39ad..6bf88959` (1 commit) audited — no
 ported unit is stale.** `6bf88959` ("The Green Room" — a status dialog
 narrating new-conversation startup) touches only UNPORTED surfaces: the new

@@ -544,6 +544,62 @@ pub async fn enqueue_wardrobe_outfit_announcement(
     Ok((job_id, true))
 }
 
+/// v4 `enqueueAutonomousRoomTurn` (`lib/background-jobs/queue-service.ts`):
+/// enqueue an `AUTONOMOUS_ROOM_TURN` job (4.6 Private Character Rooms).
+///
+/// **No dedupe** — multiple in-flight turn jobs for the same chat is exactly the
+/// failure mode the handler's stale-run guard (`payload.runId` vs
+/// `chats.currentRunId`) catches. `maxAttempts: 1` because the per-room procedure
+/// classifies fatal vs non-fatal itself and decides whether to re-enqueue; the
+/// runner's automatic retry would muddle that lifecycle (the failure path is the
+/// `reconcile_failed_autonomous_turn` reconciliation instead). Default priority
+/// (0), immediate `scheduledAt` — no v4 caller ever passes options.
+///
+/// The payload is v4's `AutonomousRoomTurnPayload` object literal
+/// `{ chatId, runId }` (both keys materialized so the stored bytes match).
+pub async fn enqueue_autonomous_room_turn(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    run_id: &str,
+) -> Result<String, DbError> {
+    let payload = serde_json::json!({ "chatId": chat_id, "runId": run_id });
+    enqueue_job(db, user_id, "AUTONOMOUS_ROOM_TURN", payload, 1.0).await
+}
+
+/// v4 `enqueueAutonomousRoomScheduleTick` (`lib/background-jobs/queue-service.ts`):
+/// enqueue the autonomous-room scheduler tick. Dedup-aware: if an unprocessed
+/// (**PENDING**-only — v4 queries `findByUserId(userId, 'PENDING')`, deliberately
+/// NOT PROCESSING) tick already exists for this user, return its id instead of
+/// stacking duplicate scans. Priority `-1` (below interactive), `maxAttempts: 1`,
+/// empty `{}` payload. The dedupe lookup is NOT error-swallowed (v4 has no
+/// try/catch here — a read failure propagates).
+pub async fn enqueue_autonomous_room_schedule_tick(
+    db: &Db,
+    user_id: &str,
+) -> Result<String, DbError> {
+    let uid = user_id.to_string();
+    let pending = db.read_main(move |conn| {
+        crate::db::background_jobs::BackgroundJobsRepository::new(conn)
+            .find_by_user_id(&uid, Some("PENDING"))
+    })?;
+    if let Some(existing) = pending
+        .iter()
+        .find(|j| j.job_type == "AUTONOMOUS_ROOM_SCHEDULE_TICK")
+    {
+        return Ok(existing.id.clone());
+    }
+    enqueue_job_with_priority(
+        db,
+        user_id,
+        "AUTONOMOUS_ROOM_SCHEDULE_TICK",
+        serde_json::json!({}),
+        -1.0,
+        1.0,
+    )
+    .await
+}
+
 /// v4 `enqueueEmbeddingReindexAll`: enqueue an `EMBEDDING_REINDEX_ALL` job at
 /// `priority = -1` (below interactive), `maxAttempts` = the default 3. The
 /// `EMBEDDING_REFIT` handler fires this after a successful vocabulary refit. The
