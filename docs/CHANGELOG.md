@@ -4,6 +4,21 @@
 
 ### 5.0-dev
 
+Round-4-remainder unification: integrated the four parallel lanes (W4.4b
+file/attachment, W4.5 carina query, W4.7e2 TF-IDF vectorizer, W4.7e3 logLLMCall
+call-site closures) onto main. No cross-branch code conflicts this time — the
+disjoint-files discipline held completely (conflicts were docs/mod-decls only,
+union-resolved; versions auto-merged to one round bump). Verified on the
+integrated tree: the full workspace gate (886 tests, clippy -D warnings on
+default and native-transport, fmt) and a fifteen-differential sweep against
+freshly regenerated v4 oracles — the four units' own proofs (text_detection,
+file_attachment, carina_query, carina_memory_extraction, tfidf_vectorizer,
+embedding_refit) plus the regenerated orchestrator corpus, the shared-file
+cross-checks (answer_confirmation, message_context_leaves, carina_runner,
+mail_carina_tools over the now-async RunCarinaQuery seam), and the
+e3-touched tier-3s (danger_gatekeeper, primary_stream, image_generation,
+avatar_job) — all green.
+
 W4.7e2: ported the BUILTIN TF-IDF/BM25 embedding provider (v4's zero-network
 fallback embedder, `plugins/dist/qtap-plugin-builtin-embeddings/`). New
 `quilltap-core::tfidf` module: the Porter stemmer + tokenizer (`porter` — a

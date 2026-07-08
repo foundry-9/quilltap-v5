@@ -4188,3 +4188,24 @@ tracked follow-up.
 wiring, both → W4.4b) — plus ~~**W4.7e2** (the BUILTIN TF-IDF/BM25 vectorizer)~~
 (**DONE** — see the W4.7e2 note above) and the W4.7e logLLMCall call-site
 closures/regens as tracked follow-ups.
+
+**Round-4-remainder unification (2026-07-08): DONE — Phase 3's port surface is
+fully integrated on main.** The four parallel lanes (W4.4b, W4.5, W4.7e2,
+W4.7e3) were cherry-picked onto main with NO cross-branch code conflicts (docs/
+mod-decl unions only — the disjoint-files discipline held completely; contrast
+the prior round's `GeneratedImageData` type drift). Verified on the integrated
+tree: the full workspace gate (886 tests, clippy `-D warnings` default +
+`native-transport`, fmt) and a fifteen-differential sweep against freshly
+regenerated v4 oracles at `6b6e39ad` — the four units' own proofs, the
+W4.4b-regenerated orchestrator corpus, the shared-file cross-checks
+(`answer_confirmation` [touched by both 4b+5], `message_context_leaves`,
+`carina_runner` + `mail_carina_tools` over the now-async `RunCarinaQuery`
+seam), and the e3-touched tier-3s (`danger_gatekeeper`, `primary_stream`,
+`image_generation`, `avatar_job` — proving the live logging closures inert on
+their corpora). **Standing follow-ups (the next spine/wiring pass):** W4.4b's
+two inherited handoffs were DEFERRED by its session (`model_supports_native_tools`
+sourcing + the ConnApiKeys spine wiring); W4.5's spine closure (the `ask_carina`
+dispatch row + the real `RunCarinaQuery` at the orchestrator/finalizer
+composition points + the live `@Name:`/`ask_carina` corpus cases); W4.7e3's
+spine `with_logging` wiring + the staged per-oracle `llm_logs`-dump regens;
+W4.5b (the Brahma one-shot console). Then Round 5: Unit 4, the enclave.
