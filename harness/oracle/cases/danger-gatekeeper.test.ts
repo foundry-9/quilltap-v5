@@ -96,6 +96,8 @@ async function main(): Promise<void> {
 
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.SQLITE_PATH = work;
+  // W4.10b: a fresh llm-logs DB so the un-mocked `logLLMCall` lands real rows.
+  process.env.SQLITE_LLM_LOGS_PATH = join(scratch, 'data', 'llm-logs.db');
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
@@ -151,10 +153,13 @@ async function main(): Promise<void> {
     const actual = jest.requireActual('@/lib/services/api-key.service');
     return { __esModule: true, ...actual, getApiKeyForCheapLLMSelection: async () => 'test-key' };
   });
-  jest.doMock('@/lib/services/llm-logging.service', () => {
-    const actual = jest.requireActual('@/lib/services/llm-logging.service');
-    return { __esModule: true, ...actual, logLLMCall: async () => undefined };
-  });
+  // W4.10b: run the REAL `logLLMCall` so the LLM-classify path lands
+  // DANGER_CLASSIFICATION rows in the llm-logs DB (dumped below). The moderation
+  // path ALSO logs (`modelName:'moderation'`) but that logging is a tracked
+  // unported seam — the Rust test filters those rows out on both sides.
+  jest.doMock('@/lib/services/llm-logging.service', () =>
+    jest.requireActual('@/lib/services/llm-logging.service')
+  );
   // Run v4's REAL Concierge writer (W4.6b): a NEW flip to dangerous posts the
   // danger bubble into `chat_messages`, matching the ported `RealDangerAnnouncer`.
   jest.doMock('@/lib/services/concierge-notifications/writer', () =>
@@ -196,10 +201,40 @@ async function main(): Promise<void> {
     return canonicalizeRows(table, columns, rawRows, orderBy);
   };
 
+  // `logLLMCall` is fire-and-forget (`.catch`, not awaited); let the pending
+  // synchronous writes settle before reading the llm-logs DB.
+  await new Promise((r) => setTimeout(r, 300));
+  const { getRawLLMLogsDatabase } = await import(
+    '@/lib/database/backends/sqlite/llm-logs-client'
+  );
+  const lldb = getRawLLMLogsDatabase();
+  if (!lldb) throw new Error('llm-logs DB handle unavailable (degraded open?)');
+  const llColumns = (
+    lldb.pragma('table_info(llm_logs)') as Array<{ name: string }>
+  ).map((c) => c.name);
+  const llRawRows = lldb.prepare('SELECT * FROM llm_logs').all() as Array<
+    Record<string, unknown>
+  >;
+  const llRows = llRawRows
+    .map((r) => {
+      const out: Record<string, unknown> = {};
+      for (const col of llColumns) out[col] = canonValue(r[col]);
+      out.id = '<id>';
+      out.createdAt = '<ts>';
+      out.updatedAt = '<ts>';
+      return out;
+    })
+    .sort((a, b) => {
+      const sa = JSON.stringify(a);
+      const sb = JSON.stringify(b);
+      return sa < sb ? -1 : sa > sb ? 1 : 0;
+    });
+
   const lines: string[] = [];
   for (const entry of cannedRecorded.values()) lines.push(JSON.stringify({ kind: 'canned', ...entry }));
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chats', 'id')) }));
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chat_messages', 'chatId')) }));
+  lines.push(JSON.stringify({ kind: 'llmlogs', columns: llColumns, rows: llRows }));
 
   await closeDatabase();
   fs.writeFileSync(outPath, lines.join('\n') + '\n');

@@ -42,6 +42,14 @@ dump is deliberately post-round (it would couple W4.10a's corpus to W4.10b's
 primary-stream regen). Written from two fresh surveys (the v5 composition
 points; v4's brahma-console/one-shot.service.ts at 6b6e39ad — no drift). No
 code changes.
+W4.10b step 2 (logLLMCall regen — danger gatekeeper): un-mocked `logLLMCall` in
+the `danger_gatekeeper_tier3` oracle and attached the llm-logs partition on the
+Rust side, diffing the four `DANGER_CLASSIFICATION` rows the cheap-LLM classify
+path writes. v4's moderation path also logs (`modelName:'moderation'`) but that
+logging is a tracked unported seam (the projected `ModerationResult` drops the
+raw per-category `flagged`), so those rows are filtered on both sides. Green with
+no port change (the closure was already wired in W4.7e3).
+
 W4.10b step 1 (logLLMCall regen — compression): converted the `compression_tier3`
 oracle from a DB-free jest test to a real-DB one on both sides, un-mocking
 `logLLMCall` and dumping the written `llm_logs` rows (`CONTEXT_COMPRESSION`), so

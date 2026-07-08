@@ -16,6 +16,11 @@
 //! aggregate + Concierge post mint fresh values); the minted system-event /
 //! Concierge id + createdAt are placeholdered.
 //!
+//! W4.10b: `logLLMCall` runs REAL now, so both sides also dump `llm_logs` and
+//! diff the written `DANGER_CLASSIFICATION` rows (one per LLM-classify case).
+//! v4's moderation path ALSO logs (`modelName:'moderation'`), but that logging is
+//! a tracked unported seam — those rows are filtered out on both sides.
+//!
 //! Generate (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
 //!   cd ~/source/quilltap-server
@@ -34,7 +39,7 @@
 use std::collections::HashMap;
 
 use quilltap_core::db::dump_table_json_conn;
-use quilltap_core::db::runtime::Db;
+use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::model::completion::{
     canned_completion_key, CompletionError, CompletionMessage, CompletionParams,
     CompletionProvider, CompletionResponse, CompletionRole, CompletionUsage,
@@ -47,6 +52,8 @@ use quilltap_core::services::dangerous_content::gatekeeper_job::{
 };
 use serde::Deserialize;
 use serde_json::Value;
+
+mod common;
 
 const SEED_TS: &str = "2020-01-01T00:00:00.000Z";
 
@@ -312,9 +319,11 @@ async fn danger_gatekeeper_tier3_matches_oracle() {
     // two table dumps.
     let mut completions: HashMap<String, CompletionResponse> = HashMap::new();
     let mut oracle_tables: Vec<Value> = Vec::new();
+    let mut oracle_llm_logs: Option<Vec<Value>> = None;
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
         let v: Value = serde_json::from_str(line).expect("parse oracle line");
         match v.get("kind").and_then(Value::as_str) {
+            Some("llmlogs") => oracle_llm_logs = Some(common::oracle_llm_logs(&v)),
             Some("canned") => {
                 let row: CannedRow = serde_json::from_value(v).expect("parse canned row");
                 let messages: Vec<CompletionMessage> = row
@@ -354,14 +363,31 @@ async fn danger_gatekeeper_tier3_matches_oracle() {
         }
     };
 
+    let oracle_llm_logs = oracle_llm_logs.expect("oracle emitted no llmlogs row");
+
     let work = std::env::temp_dir().join(format!(
         "qt-danger-gatekeeper-rust-{}.db",
         std::process::id()
     ));
     let _ = std::fs::remove_file(&work);
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
-    let db = Db::open_main(&work, &spec.test_pepper_base64)
-        .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
+    // W4.10b: attach a fresh llm-logs partition so the classify path's
+    // DANGER_CLASSIFICATION `logLLMCall` lands rows we can dump.
+    let ll_work = std::env::temp_dir().join(format!(
+        "qt-danger-gatekeeper-rust-ll-{}.db",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&ll_work);
+    common::materialize_llm_logs(&ll_work, &spec.test_pepper_base64);
+    let db = Db::open(
+        DbPaths {
+            main: work.clone(),
+            mount_index: None,
+            llm_logs: Some(ll_work.clone()),
+        },
+        &spec.test_pepper_base64,
+    )
+    .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
 
     // The real moderation provider over the canned per-case wire (W4.7f).
     let tokens: std::collections::HashSet<String> = spec.moderation_wire.keys().cloned().collect();
@@ -400,8 +426,31 @@ async fn danger_gatekeeper_tier3_matches_oracle() {
     let mut got_messages = db
         .read_main(|conn| dump_table_json_conn(conn, "chat_messages", "chatId"))
         .expect("dump chat_messages");
+
+    // The classify path writes one DANGER_CLASSIFICATION row per LLM-classify
+    // case. v4's moderation path ALSO logs (`modelName:'moderation'`), but that
+    // logging is a tracked unported seam (the projected `ModerationResult` drops
+    // the raw per-category `flagged` v4 serializes), so filter those rows out on
+    // BOTH sides — the Rust side never writes them.
+    let strip_moderation = |rows: Vec<Value>| -> Vec<Value> {
+        rows.into_iter()
+            .filter(|r| r["modelName"] != Value::String("moderation".to_string()))
+            .collect()
+    };
+    let got_logs = strip_moderation(common::dump_llm_logs(&db));
+    let want_logs = strip_moderation(oracle_llm_logs);
+
     drop(db);
     let _ = std::fs::remove_file(&work);
+    let _ = std::fs::remove_file(&ll_work);
+
+    assert_eq!(
+        got_logs,
+        want_logs,
+        "llm_logs DANGER_CLASSIFICATION rows diverge (got {} vs oracle {})",
+        got_logs.len(),
+        want_logs.len()
+    );
 
     let mut want_chats = oracle_table(&oracle_tables, "chats").clone();
     let mut want_messages = oracle_table(&oracle_tables, "chat_messages").clone();
