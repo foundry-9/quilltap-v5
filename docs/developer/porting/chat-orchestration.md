@@ -273,6 +273,32 @@ round with a drift check against v4 HEAD.
   W4.4b's finalizer work, that ONE regen goes to unification). Pairwise:
   e2 conflicts with nothing; e3 and W4.5 are file-disjoint; W4.4b vs e3 is
   covered by the spine-ownership rule.
+  **All four are DONE and unified on main (2026-07-08, `68a039d`) —
+  conflict-free at the source level; the ownership rules held.**
+- **The wiring round (launch all three IN PARALLEL — layout decided
+  2026-07-08, v4 still at `6b6e39ad`):**
+  [W4.10a](./work-orders/w4.10a-spine-wiring.md) (the spine wiring pass —
+  owns the four spine files + `tools/executor.rs` + `tools/ask_carina.rs` +
+  the orchestrator corpus/oracle; closes the three deferred
+  composition-point seams: `model_supports_native_tools` sourced in-spine
+  from the real `check_model_supports_tools`, the real DB-backed
+  ApiKeyResolver at the danger router, and the real `RunCarinaQuery` +
+  the `ask_carina` dispatch row + the live `@Name:`/`ask_carina` corpus
+  cases; its `executor.rs` changes must stay ADDITIVE) ∥
+  [W4.5b](./work-orders/w4.5b-brahma-console.md) (the Brahma one-shot
+  console — a new `services::brahma_console` composing already-ported
+  units; implements the frozen `RunBrahmaConsole` trait; constructs
+  `BuiltInToolRunner` via the existing API, touches no W4.10a-owned file;
+  the spine/carina swap-in of the real console is a unification one-liner)
+  ∥ [W4.10b](./work-orders/w4.10b-logging-regens.md) (the staged W4.7e3
+  `llm_logs` oracle regenerations, steps 1–7 — the seven non-spine
+  differentials + fixes only where a genuine port divergence surfaces;
+  `orchestrator_tier3` explicitly NOT regenerated). Pairwise: W4.5b and
+  W4.10b are file-disjoint; W4.10a vs each is covered by the ownership
+  lists in the orders. **Deliberately post-round:** the spine
+  `with_logging` wiring + an orchestrator `llm_logs` dump (couples
+  W4.10a's corpus to W4.10b's primary-stream regen — a unification /
+  follow-up step once both land).
 - **Round 5:** Unit 4 (enclave), then the Phase-4 kickoff.
 
 The markdown-renderer / `qtap-linkify` item below is Phase-4-adjacent and not

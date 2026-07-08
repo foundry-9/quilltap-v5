@@ -4,6 +4,22 @@
 
 ### 5.0-dev
 
+Wiring-round prep: wrote the three work orders for the post-Round-4 spine
+closure — W4.10a (the spine wiring pass: source model_supports_native_tools
+from the real check_model_supports_tools, wire the real DB-backed
+ApiKeyResolver at the danger router, construct the real RunCarinaQuery at the
+orchestrator/finalizer composition points with the ask_carina dispatch row and
+the live @Name:/ask_carina orchestrator-corpus cases), W4.5b (the Brahma
+one-shot console — v4's runBrahmaQuery composed from already-ported units,
+implementing the frozen RunBrahmaConsole trait, with its own tier-3
+differential), and W4.10b (the staged W4.7e3 llm_logs oracle regenerations,
+steps 1-7). Round table updated with the three-lane parallel layout and
+ownership rules; the spine with_logging wiring plus an orchestrator llm_logs
+dump is deliberately post-round (it would couple W4.10a's corpus to W4.10b's
+primary-stream regen). Written from two fresh surveys (the v5 composition
+points; v4's brahma-console/one-shot.service.ts at 6b6e39ad — no drift). No
+code changes.
+
 Round-4-remainder unification: integrated the four parallel lanes (W4.4b
 file/attachment, W4.5 carina query, W4.7e2 TF-IDF vectorizer, W4.7e3 logLLMCall
 call-site closures) onto main. No cross-branch code conflicts this time — the
