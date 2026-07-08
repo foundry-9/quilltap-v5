@@ -4209,3 +4209,54 @@ dispatch row + the real `RunCarinaQuery` at the orchestrator/finalizer
 composition points + the live `@Name:`/`ask_carina` corpus cases); W4.7e3's
 spine `with_logging` wiring + the staged per-oracle `llm_logs`-dump regens;
 W4.5b (the Brahma one-shot console). Then Round 5: Unit 4, the enclave.
+
+**W4.10a (the spine wiring pass): DONE — the three deferred composition-point
+seams are closed.** (1) **`model_supports_native_tools` sourcing:** the
+`ProcessMessageInput` field is DROPPED; `process_message` computes it in-spine via
+the real `pricing_fetcher::check_model_supports_tools` over an injected
+`&PricingFetcher<PF>` (new `PF: PricingFetch` generic on `OrchestratorDeps`; the
+fetch stays a seam — only OPENROUTER consults the cache, every other provider
+answers from the static fallback table). `build_pricing_context` reads the user's
+connection profiles (empty `api_keys` — the live HTTP fetch is Phase-4 host
+wiring). (2) **The real ApiKeyResolver:** added `DbApiKeys(Db)` (the owned-`Db`
+form of `ConnApiKeys` — the `DangerContentRouter` STORES the resolver, so it can't
+hold the router's borrowed connection); the danger router is now constructed with
+`DbApiKeys`, reading the fixture-seeded `api_keys` table end to end (the
+W4.7d→W4.4b handoff). (3) **The carina spine closure:** `RealCarinaQuery` (an
+adapter implementing the frozen `RunCarinaQuery` seam over `run_carina_query`) is
+wired into the finalizer's `@Name:` markup path; and the `ask_carina` dispatch row
+lands on `BuiltInToolRunner` via an ERASED `ErasedAskCarina` seam (the
+`ErasedImageGeneration` precedent — a `TypedAskCarina<EMB,STR,TR,TD,BRA,P>` owning
+the engine seams, erased into an `Arc<dyn AskCarinaRunner>` whose `run` takes the
+per-turn `&dyn EventSink`), additive with a default reproducing the prior loud
+fallback (`ask_carina` moved into `PORTED_TOOLS`; the `onPosted` sink is a no-op in
+the tool path — faithful to v4's absent-client-stream case, the answer still posts
+to `chat_messages`). Verified: `orchestrator_tier3` regenerated + green with a
+**live `@Name:` markup case** (Oracle `canBeCarina` answerer + a recorded inner
+carina stream that proves the engine's system-prompt bytes in composition; the
+carina message posts, the `carinaAnswer` event emits, `CARINA_MEMORY_EXTRACTION`
+enqueues — `carinaMessageId` remapped through the shared idmap, the `carinaAnswer`
+payload's minted id/createdAt placeholdered); the oracle un-mocks
+`checkModelSupportsTools`, mocks `getPricingCache` empty, un-monkey-patches
+`findApiKeyByIdAndUserId` (reads the seeded rows), and points `textblock_mode` at
+an OPENAI `o1-mini` profile (`supportsTools:false` in FALLBACK → text-block mode,
+distinct from the OPENROUTER cases which default true). `tool_dispatch` gained an
+`ask_carina` row driving the REAL engine's not-found early-return (a nonexistent
+answerer → v4's "No answerer by that name is on duty." with NO model call) against
+v4's REAL `executeToolCallWithContext`. `message_finalizer_tier3` /
+`carina_runner_tier3` / `mail_carina_tools` / `tool_build_equivalence` /
+`regenerate_swipe_tier3` / `tool_dispatch_equivalence` all re-verified green
+(additive-inert). **Deferred (flagged):** a live `ask_carina` TOOL-CALL case
+THROUGH the `process_message` spine — the erased-seam `'static` field needs OWNED
+engine providers, but the spine's (and the differential's) streaming/embedding
+providers are borrowed + shared with the primary stream, so the spine can't
+construct a `TypedAskCarina` from its deps. The dispatch + engine are proven
+instead by the `ask_carina` seam unit tests (default + canned), the live `@Name:`
+markup case (the engine end to end through the finalizer), and the `tool_dispatch`
+`ask_carina` row (the dispatch + engine not-found path against v4's real executor);
+the `mail_carina_tools` differential proves `execute_ask_carina` itself. Closing
+the spine tool-call case needs the spine to own/Arc-share the engine providers (a
+production-shaped concern) — tracked as a follow-up. (The `with_logging` /
+orchestrator `llm_logs`-dump item stays post-round, coupled to W4.10b's
+primary-stream regen; W4.5b's real Brahma console keeps the default
+`UnavailableBrahmaConsole` seam.)

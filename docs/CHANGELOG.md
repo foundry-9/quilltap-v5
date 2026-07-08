@@ -4,6 +4,29 @@
 
 ### 5.0-dev
 
+W4.10a (the spine wiring pass): closed three deferred composition-point seams.
+(1) `model_supports_native_tools` is now sourced in-spine from the real
+`check_model_supports_tools` over an injected `PricingFetcher` (the fetch stays a
+seam); the `ProcessMessageInput` field was dropped. (2) The danger router is wired
+with the real DB-backed `DbApiKeys` resolver, reading the fixture-seeded `api_keys`
+table end to end (closing the W4.7d→W4.4b key-material handoff). (3) The real
+`RunCarinaQuery` engine is wired: a `RealCarinaQuery` adapter over
+`run_carina_query` at the finalizer markup path, plus an erased `ErasedAskCarina`
+seam + `ask_carina` dispatch row on `BuiltInToolRunner` (additive; default = the
+prior loud fallback). The orchestrator corpus gained a live `@Name:` markup case
+(the recorded inner carina stream proves the engine's system-prompt bytes; the
+carina message posts, the `carinaAnswer` event emits, the `CARINA_MEMORY_EXTRACTION`
+job enqueues), and `tool_dispatch` gained an `ask_carina` row (a not-found answerer
+drives the real engine's early-return against v4's real dispatch). Regenerated the
+orchestrator oracle (un-mocked `checkModelSupportsTools` + empty `getPricingCache`;
+un-monkey-patched `findApiKeyByIdAndUserId`; `textblock_mode` → OPENAI `o1-mini`).
+`message_finalizer` / `carina_runner` / `mail_carina` / `tool_build` /
+`regenerate_swipe` / `tool_dispatch` re-verified green. Deferred: a live
+`ask_carina` tool-call THROUGH the `process_message` spine (the erased-seam
+`'static` boundary needs owned engine providers, which the differential's shared
+borrowed streaming provider cannot supply); the dispatch + engine are proven by the
+seam unit tests, the live `@Name:` case, and the `tool_dispatch` row.
+
 Wiring-round prep: wrote the three work orders for the post-Round-4 spine
 closure — W4.10a (the spine wiring pass: source model_supports_native_tools
 from the real check_model_supports_tools, wire the real DB-backed
