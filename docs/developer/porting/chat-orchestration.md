@@ -250,10 +250,29 @@ round with a drift check against v4 HEAD.
   the generalized `PendingLibrarianAnnouncement` enum; `doc_fm` / `doc_blob` /
   `doc_ui` regenerated green with the writers live. It touched only the
   executor's post-dispatch block in `tools/executor.rs`, so W4.5's `ask_carina`
-  dispatch row is a clean, non-conflicting merge). W4.7e's
-  `model_supports_native_tools` spine
-  removal and any W4.7d spine-adjacent seam closures go to the unification
-  pass (W4.4b owns the spine).
+  dispatch row is a clean, non-conflicting merge). **W4.7d / W4.7e (sub-units
+  1–4) / W4.7f / W4.9c / W4.6c are all DONE and unified on main (2026-07-07,
+  the Round-4 unification commit `62e818f`)** — one real cross-branch conflict
+  fixed there (W4.9c adapted to W4.7f's `GeneratedImageData` widening) and all
+  eleven differentials re-verified against fresh oracles.
+- **Round 4 remainder (launch all four IN PARALLEL — layout decided
+  2026-07-07, v4 still at `6b6e39ad`):**
+  [W4.4b](./work-orders/w4.4b-file-attachment.md) (owns the spine + the orchestrator
+  oracle corpus; carries the two inherited handoffs —
+  `model_supports_native_tools` sourcing + the ApiKeyResolver spine wiring —
+  and now wires `IMAGE_DESCRIPTION` logging through the real
+  `services::llm_logging`, W4.7e having landed) ∥
+  [W4.5](./work-orders/w4.5-carina-query.md) (carina — finalizer/orchestrator corpus
+  cases go to unification; the old W4.5∥W4.6c `tools/executor.rs` contention
+  is RETIRED, W4.6c landed) ∥
+  [W4.7e2](./work-orders/w4.7e2-builtin-tfidf-vectorizer.md) (the BUILTIN
+  TF-IDF/BM25 vectorizer — fully disjoint) ∥
+  [W4.7e3](./work-orders/w4.7e3-logllmcall-call-sites.md) (the logLLMCall
+  call-site closures + oracle regens — touches five non-spine service files
+  + the two W4.9c handlers; if its answer-confirmation regen collides with
+  W4.4b's finalizer work, that ONE regen goes to unification). Pairwise:
+  e2 conflicts with nothing; e3 and W4.5 are file-disjoint; W4.4b vs e3 is
+  covered by the spine-ownership rule.
 - **Round 5:** Unit 4 (enclave), then the Phase-4 kickoff.
 
 The markdown-renderer / `qtap-linkify` item below is Phase-4-adjacent and not

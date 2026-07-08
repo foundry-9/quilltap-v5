@@ -4,6 +4,17 @@
 
 ### 5.0-dev
 
+Docs: wrote the two remaining follow-up work orders — W4.7e2 (the BUILTIN
+TF-IDF/BM25 vectorizer: Porter stemmer transcription, the BM25 fit/transform
+math, loadState over the ported tfidf_vocabulary rows, and the EMBEDDING_REFIT
+job handler) and W4.7e3 (the logLLMCall call-site closures: six in-scope sites
+mapped with their log types, plus the staged per-oracle regeneration plan with
+llm_logs dumped). Updated the W4.4b order (the IMAGE_DESCRIPTION logging seam
+note retired — W4.7e landed — and the two inherited spine handoffs recorded)
+and the chat-orchestration round table with the Round-4-remainder parallel
+layout: W4.4b ∥ W4.5 ∥ W4.7e2 ∥ W4.7e3, contention rules included. No code
+changes.
+
 Round-4 unification: integrated the four parallel Round-4 branches (W4.7d,
 W4.7e sub-units 1-4, W4.9c, W4.6c) onto main alongside the already-landed
 W4.7f. One real cross-branch conflict fixed: the W4.9c handlers were written
