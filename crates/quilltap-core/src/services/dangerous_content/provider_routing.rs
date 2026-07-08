@@ -113,11 +113,7 @@ impl ApiKeyResolver for DbApiKeys {
         let user_id = user_id.to_string();
         self.0
             .read_main(move |conn| {
-                Ok(crate::db::api_keys::find_by_id_and_user_id(
-                    conn,
-                    &api_key_id,
-                    &user_id,
-                )?)
+                crate::db::api_keys::find_by_id_and_user_id(conn, &api_key_id, &user_id)
             })
             .ok()
             .flatten()

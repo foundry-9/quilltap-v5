@@ -57,14 +57,14 @@ use quilltap_core::services::carina_query::{
 };
 use quilltap_core::services::carina_runner::ClosureProspero;
 use quilltap_core::services::chat_events::RecordingSink;
-use quilltap_core::services::native_tool_loop::NoToolCallDetector;
-use quilltap_core::services::tool_execution::CannedToolRunner;
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use quilltap_core::services::message_finalizer::{NoAnswerConfirmation, NoAsyncCompression};
+use quilltap_core::services::native_tool_loop::NoToolCallDetector;
 use quilltap_core::services::orchestrator::{
     self, ExecuteTurnChainOptions, OrchestratorChatSettings, OrchestratorDeps, ProcessClock,
     ProcessMessageInput, SendMessageOptions,
 };
+use quilltap_core::services::tool_execution::CannedToolRunner;
 use quilltap_core::services::turn_orchestrator::ChainConfig;
 use serde::Deserialize;
 use serde_json::Value;
@@ -1054,4 +1054,3 @@ impl orchestrator::OrchestratorSeams for HarnessOrchestratorSeams {
         })
     }
 }
-

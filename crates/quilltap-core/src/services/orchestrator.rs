@@ -118,12 +118,12 @@ use crate::services::message_finalizer::{
     ProcessMessageResult,
 };
 use crate::services::native_tool_loop;
+use crate::services::pricing_fetcher::{
+    PricingContext, PricingFetch, PricingFetcher, PricingProfile,
+};
 use crate::services::primary_stream::{
     self, EffectiveProfile, PreservePartialOnError, ReasoningSegment, RunPrimaryStreamOptions,
     StreamingState,
-};
-use crate::services::pricing_fetcher::{
-    PricingContext, PricingFetch, PricingFetcher, PricingProfile,
 };
 use crate::services::provider_failover::{
     self, AttemptEmptyResponseRecoveryOptions, DangerSettings, DangerousContentRouter,
@@ -365,8 +365,22 @@ pub struct ProcessMessageInput {
 
 /// The bundle of injected model boundaries + sinks + seams threaded through the
 /// whole spine (grouped so the re-entrant chain driver can pass one reference).
-pub struct OrchestratorDeps<'a, EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST, CARQ, PROS, PF>
-where
+pub struct OrchestratorDeps<
+    'a,
+    EMB,
+    CMP,
+    STR,
+    SNK,
+    BCS,
+    ORC,
+    RTR,
+    CONF,
+    ACOMP,
+    COST,
+    CARQ,
+    PROS,
+    PF,
+> where
     EMB: EmbeddingProvider,
     CMP: CompletionProvider + Sync,
     STR: StreamingCompletionProvider,
@@ -420,7 +434,7 @@ where
 
 /// Build the [`PricingContext`] `checkModelSupportsTools` consults on the
 /// OPENROUTER path (v4 `refreshPricingCache` reads the user's connection profiles
-/// + `findApiKeyByIdAndUserId`). The `api_keys` map is left empty: the live fetch
+/// via `findApiKeyByIdAndUserId`). The `api_keys` map is left empty: the live fetch
 /// is the injected [`PricingFetch`] seam (Phase-4 host wiring supplies real keys
 /// when a real HTTP fetch lands); when the fetch returns nothing, an OPENROUTER
 /// model falls through to v4's "default to native tools" — matching v4's own
@@ -2176,7 +2190,22 @@ async fn persist_tools_only(
 /// title enqueue through the `Db` — the effect the differential banks.
 #[allow(clippy::type_complexity)]
 async fn run_summary_check<EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST, CARQ, PROS, PF>(
-    deps: &OrchestratorDeps<'_, EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST, CARQ, PROS, PF>,
+    deps: &OrchestratorDeps<
+        '_,
+        EMB,
+        CMP,
+        STR,
+        SNK,
+        BCS,
+        ORC,
+        RTR,
+        CONF,
+        ACOMP,
+        COST,
+        CARQ,
+        PROS,
+        PF,
+    >,
     chat_id: &str,
     user_id: &str,
     profile: &EffectiveProfile,

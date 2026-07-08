@@ -394,7 +394,13 @@ mod tests {
     async fn not_available_default_matches_the_loud_fallback_message() {
         let seam = ErasedAskCarina::not_available();
         let out = seam
-            .run(&NoSink, "u", "c", None, &json!({"character": "X", "question": "?"}))
+            .run(
+                &NoSink,
+                "u",
+                "c",
+                None,
+                &json!({"character": "X", "question": "?"}),
+            )
             .await;
         assert!(!out.success);
         assert_eq!(
