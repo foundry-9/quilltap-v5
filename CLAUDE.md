@@ -4965,3 +4965,62 @@ the launcher lock verbs + write-lock (P4.3, over `classify_lock_status`); the
 startup-conflict HTTP surface (P4.2); the flat-`SelfInventoryEnv`
 provider-awareness follow-up; the maintenance sweep's storage-bytes half
 stays lane b's FsSeam (called through the ported collapse).
+
+**Phase 4 (P4.1b): the file/image host-driver lane is DONE** (2026-07-08;
+work order `docs/developer/porting/work-orders/p4.1b-files-images.md`; v4
+baseline `2494a84b`). The byte layer is real. New core
+`services::file_storage` (v4 `file-storage/manager` + the project/user-uploads
+bridges + `webp-conversion` + `blob-transcode` + `store-file`'s database blob
+branch + `images-v2`'s `createFile`/`ingestImageBuffer` + `cascade-delete`'s
+`deleteFileCompletely`): the pure key/path logic (`safe_filename`, storage
+keys, thumbnail keys, the `mount-blob:{mp}:{blob}` codec), the WebP
+**policies** in core (`convert_to_webp` q90 / `transcode_to_webp` q85 — the
+mime/extension rewrite + failure-passthrough shapes are v4 JS code, so they
+live above the pixel seam) over a low-level `PixelCodec` seam, the manager
+ops dispatching mount-blob keys through the ported `doc_mount_blobs` and disk
+keys through a `StorageBackend` seam, the ingest engine (auto-WebP → sha
+dedup with the storage-existence recheck → orphaned-metadata cleanup → the
+user-uploads bridge write → the `files` row with post-transcode mime/size +
+tag inheritance), and the production seam impls (`ProductionFileBytes` for
+BOTH `FileBytesStore` seams; `RealProjectImageUpload` for
+`ProjectImageUpload`). New core `services::help_doc_sync` (v4
+`help-doc-sync.ts` — its LOCAL loose frontmatter/url/title regex quirks, the
+hash-skip, upsert + embedding-clear) over a host-walked file list (the walk
+is host-side by documented decision). New `quilltap-host` modules:
+`image_codec` (`image` + `webp` crates — libwebp bindings for lossy WebP
+encode per D19; implements `files::image_processing::ImageTranscoder`
+[metadata + resize_step], `model::image::ImageTranscoder` [convertToWebP],
+`PixelCodec`, + the thumbnail op; documented degradations: animated GIF →
+first-frame, AVIF/HEIC decode unwired → v4's own failure-passthrough branch,
+`resize_step` decode failure returns the original bytes), `files_store`
+(the local disk backend: tilde expansion, the `buildSafePath` traversal guard
+incl. the `..`-text strip, ENOENT-tolerant delete + legacy `.meta.json`
+sidecar unlink, the transient-error fs retry backoff; + the help-doc tree
+walker), and `apply_fs` (the four `ApplyHost` fs ops — inventory completion,
+unit-tested, no production consumer since U4.4 moved the enclave to direct
+writes). `db::instance_settings` gained `get_user_uploads_mount_point_id`
+(append-only region). **Two new differentials, both green** (D10):
+`help_doc_sync_equivalence` (a tsx real-DB oracle driving v4's REAL
+`syncHelpDocs` over a committed fixture help tree — `process.chdir` into the
+fixture root before importing, since `HELP_DIR` is captured at module load —
+banking created/updated/unchanged/empty-skip, CRLF + unclosed/EOF-fence
+frontmatter quirks, the bare-`url:`-never-matches rule, the title-case
+fallback, the embedding clear on change, and the untouched-row sentinel
+proof) and `image_ingest_tier2_equivalence` (a jest real-DB oracle driving
+v4's REAL `ingestImageBuffer` with ONLY sharp mocked to a deterministic
+passthrough — mirrored by the Rust `PassthroughPixelCodec`, so the WebP
+policy itself is under test — banking fresh ingest, the dedup linkedTo
+merge + no-op, the orphaned-metadata recheck re-ingest, webp/svg
+passthroughs, and the gif convert, diffing per-op entry records + six tables
+across both DBs in a shared-UUID-substring-remap form with the
+`doc_mount_points` aggregates pinned per the refreshStats precedent).
+**Tracked handoffs/deferrals:** the keep_image mount-blob-fallback ingest
+runs inside a `Db::write` closure where `ProductionFileBytes::ingest` fails
+LOUD (a connection-scoped store needs executor-owner wiring); the frozen
+`ProjectImageUpload` trait is infallible while v4's `uploadFile` throws (an
+upload failure returns an `fs-seam:error:` sentinel — widen to `Result` in a
+unification pass); the maintenance sweep still deletes metadata-only (route
+it through `delete_file_completely` — a one-line unification edit);
+`refreshStats` unported (standing precedent); `uploadChatFile` → P4.4;
+thumbnail serving routes → P4.2; the legacy storage-key migration form not
+ported.

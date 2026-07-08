@@ -226,3 +226,39 @@ mod tests {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// P4.1b appends (append-only region — lane b; lane d also appends below).
+// ---------------------------------------------------------------------------
+
+/// The `instance_settings` key that stores the singleton "Quilltap Uploads"
+/// mount-point id (v4 `KEY_USER_UPLOADS_MOUNT_POINT_ID`), provisioned by
+/// `provision-user-uploads-mount-v1`. Home for project-less file uploads,
+/// image pastes, capabilities reports, and restored project-less backup files.
+const KEY_USER_UPLOADS_MOUNT_POINT_ID: &str = "userUploadsMountPointId";
+
+/// v4 `getUserUploadsMountPointId()` — the Quilltap Uploads mount-point id, or
+/// `None` when the store has not been provisioned (or the table is absent).
+pub fn get_user_uploads_mount_point_id(main: &Connection) -> Result<Option<String>, DbError> {
+    Ok(read_setting(main, KEY_USER_UPLOADS_MOUNT_POINT_ID))
+}
+
+#[cfg(test)]
+mod p41b_tests {
+    use super::*;
+
+    #[test]
+    fn user_uploads_mount_point_id_reads() {
+        let c = Connection::open_in_memory().unwrap();
+        assert_eq!(get_user_uploads_mount_point_id(&c).unwrap(), None);
+        c.execute_batch(
+            "CREATE TABLE \"instance_settings\" (\"key\" TEXT PRIMARY KEY, \"value\" TEXT NOT NULL);\
+             INSERT INTO \"instance_settings\" (\"key\", \"value\") VALUES ('userUploadsMountPointId', 'mp-uploads-1');",
+        )
+        .unwrap();
+        assert_eq!(
+            get_user_uploads_mount_point_id(&c).unwrap(),
+            Some("mp-uploads-1".to_string())
+        );
+    }
+}

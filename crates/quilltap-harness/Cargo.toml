@@ -41,3 +41,7 @@ base64 = "0.22"
 # The logLLMCall regen differentials (W4.10b) open a real single-writer `Db` with
 # the llm-logs partition and dump the written `llm_logs` rows.
 tempfile = "3"
+# The P4.1b help-doc-sync differential walks the committed fixture help tree
+# through the HOST walker (the production dir-walk half of the injected file
+# list), so the walk order under test is the real one.
+quilltap-host = { path = "../quilltap-host" }

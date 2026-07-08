@@ -117,6 +117,49 @@ integration tests (conflict boot error, loss handler, the 20 h window across
 a re-boot, the danger gate + live enqueue), and core service self-tests.
 
 
+P4.1b: the file/image host-driver lane — the byte layer is real. New core
+`services::file_storage` ports v4's file-storage manager + bridges over two
+injected seams: the pure key/path logic (`safeFilename`, storage keys,
+thumbnail keys, the `mount-blob:` codec), the WebP POLICIES (`convertToWebP`
+quality 90 / `transcodeToWebP` quality 85 with their mime/extension rewrites
+and failure-passthrough shapes) over a low-level `PixelCodec` pixel seam, the
+manager ops (`downloadFile`/`deleteFile`/`fileExists`/`uploadRaw`/`deleteRaw`/
+`getFileUrl` — mount-blob keys resolve through the ported `doc_mount_blobs`,
+disk keys through a `StorageBackend` seam), the `storeMountFile` database
+blob branch, the user-uploads + project-store bridges, the images-v2 ingest
+engine (`createFile`/`ingestImageBuffer` — auto-WebP, sha dedup with the
+storage-existence recheck and orphaned-metadata cleanup, tag inheritance),
+and `deleteFileCompletely`. The two `FileBytesStore` seams get a production
+`ProductionFileBytes` (chat-files download + photos read/ingest; the ingest
+carries a loud writer-thread guard — the keep_image in-closure fallback needs
+a connection-scoped store, a tracked executor handoff), and
+`ProjectImageUpload` gets `RealProjectImageUpload` (the frozen seam is
+infallible while v4 throws — an upload failure returns an `fs-seam:error:`
+sentinel key, flagged for a Result-widening pass). New core
+`services::help_doc_sync` ports v4's `syncHelpDocs`/`ensureHelpDocsSynced`
+(the local frontmatter/url/title extraction quirks, hash-skip, upsert +
+embedding clear) over a host-walked file list. New `quilltap-host` modules:
+`image_codec` (the `image` + `webp` crates — libwebp bindings for lossy WebP
+encode per D19, with documented degradations: animated GIF→WebP goes
+first-frame, AVIF/HEIC decode unavailable takes v4's own failure-passthrough
+branch), implementing BOTH core `ImageTranscoder` seams + `PixelCodec` + the
+thumbnail op; `files_store` (the local disk backend: tilde expansion, the
+buildSafePath traversal guard, ENOENT-tolerant delete + legacy sidecar
+unlink, the transient-error fs retry; plus the help-doc walker); `apply_fs`
+(the four `ApplyHost` fs operations — inventory completion, no production
+consumer until a batch-mode job returns). `instance_settings` gained
+`get_user_uploads_mount_point_id` (append-only). Two new differentials, both
+green against v4 at `2494a84b`: `help_doc_sync_equivalence` (drives v4's REAL
+`syncHelpDocs` over a committed fixture help tree + a pre-seeded DB — banks
+created/updated/unchanged/skipped-empty, the CRLF + unclosed/EOF-fence
+frontmatter quirks, the embedding clear on change and the untouched-row
+sentinel proof) and `image_ingest_tier2_equivalence` (drives v4's REAL
+`ingestImageBuffer` under jest with sharp mocked to a passthrough mirrored by
+`PassthroughPixelCodec` — banks fresh ingest, the dedup linkedTo merge and
+no-op, the orphaned-metadata recheck re-ingest, webp/svg passthroughs, and
+the gif convert; six-table cross-DB dump in the shared-UUID-remap form with
+the mount aggregates pinned per the refreshStats precedent).
+
 P4.1 kickoff: round drift check (v4 HEAD unchanged at the `2494a84b`
 baseline — no ported unit stale) and the four host-driver lane work orders
 written per the phase-4 decomposition (`docs/developer/porting/work-orders/

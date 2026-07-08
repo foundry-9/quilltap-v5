@@ -1,0 +1,26 @@
+{
+  "comment": "P4.1b image-ingest differential spec (v4 images-v2 ingestImageBuffer/createFile). The builder seeds ONLY the Quilltap Uploads mount + instance_settings key + empty tables; the op sequence runs in the oracle (jest, sharp mocked to a passthrough with mockDims) and in the Rust harness (PassthroughPixelCodec with the same dims). Payload strings are bound as UTF-8 bytes on both sides.",
+  "testPepperBase64": "cXVpbGx0YXAtdGVzdC1wZXBwZXItMzItYnl0ZXMhIQ==",
+  "userId": "b0000000-0000-4000-8000-000000000001",
+  "uploadsMountPointId": "e0000000-0000-4000-8000-0000000000aa",
+  "seedTs": "2020-01-01T00:00:00.000Z",
+  "mockDims": { "width": 64, "height": 48 },
+  "linkA": "c0000000-0000-4000-8000-00000000000a",
+  "linkB": "c0000000-0000-4000-8000-00000000000b",
+  "payloads": {
+    "pngA": "PNG-A-PAYLOAD deterministic bytes for the fresh/dedup/orphan ops",
+    "webpB": "WEBP-B-PAYLOAD already-webp bytes stored as-is",
+    "svgC": "<svg xmlns=\"http://www.w3.org/2000/svg\"><rect/></svg>",
+    "gifD": "GIF-D-PAYLOAD raster bytes the convert policy renames to .webp"
+  },
+  "ops": [
+    { "op": "ingest", "key": "fresh_png", "payload": "pngA", "filename": "photo one?.png", "mimeType": "image/png", "linkedTo": ["c0000000-0000-4000-8000-00000000000a"] },
+    { "op": "ingest", "key": "dedup_merge", "payload": "pngA", "filename": "other name.png", "mimeType": "image/png", "linkedTo": ["c0000000-0000-4000-8000-00000000000b"] },
+    { "op": "ingest", "key": "dedup_noop", "payload": "pngA", "filename": "third.png", "mimeType": "image/png", "linkedTo": ["c0000000-0000-4000-8000-00000000000a"] },
+    { "op": "delete_blob_of", "key": "orphan_setup", "target": "fresh_png" },
+    { "op": "ingest", "key": "orphan_reingest", "payload": "pngA", "filename": "photo one?.png", "mimeType": "image/png", "linkedTo": [] },
+    { "op": "ingest", "key": "webp_passthrough", "payload": "webpB", "filename": "raw.webp", "mimeType": "image/webp", "linkedTo": [] },
+    { "op": "ingest", "key": "svg_passthrough", "payload": "svgC", "filename": "vector.svg", "mimeType": "image/svg+xml", "linkedTo": [] },
+    { "op": "ingest", "key": "gif_convert", "payload": "gifD", "filename": "anim.gif", "mimeType": "image/gif", "linkedTo": [] }
+  ]
+}

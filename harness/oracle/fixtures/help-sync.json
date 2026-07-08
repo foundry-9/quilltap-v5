@@ -1,0 +1,29 @@
+{
+  "comment": "P4.1b help-doc-sync differential spec. The seed rows bake the pre-sync help_docs state: row 1 (getting-started) carries a STALE contentHash + an embedding, so the sync updates it and clears the embedding; row 2 (no-frontmatter) carries the MATCHING contentHash (sha256 of the trimmed fixture file bytes) plus a deliberately-different title, so the sync must leave the whole row (title, embedding, timestamps) untouched. The fixture help tree lives at fixtures/help-sync/help/ (a .gitattributes pins *.md -text so crlf.md keeps its CRLF bytes).",
+  "testPepperBase64": "cXVpbGx0YXAtdGVzdC1wZXBwZXItMzItYnl0ZXMhIQ==",
+  "seedSentinel": "2020-01-01T00:00:00.000Z",
+  "seed": [
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "title": "Old Getting Started",
+      "path": "help/getting-started.md",
+      "url": "/old-url",
+      "content": "old content that has since changed on disk",
+      "contentHash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "embedding": [0.25, -0.5, 1],
+      "createdAt": "2020-01-01T00:00:00.000Z",
+      "updatedAt": "2020-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000002",
+      "title": "Stale Title Untouched",
+      "path": "help/no-frontmatter.md",
+      "url": "/stale-url-untouched",
+      "content": "stale content untouched (hash matches so nothing is rewritten)",
+      "contentHash": "8b8c4225046a78d7b956cbc8c9cbb0ab04373b827135795badefd6ff6f08709f",
+      "embedding": [1, 2, 3],
+      "createdAt": "2020-01-01T00:00:00.000Z",
+      "updatedAt": "2020-01-01T00:00:00.000Z"
+    }
+  ]
+}

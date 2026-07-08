@@ -38,6 +38,13 @@ uuid = { version = "1", features = ["v4"] }
 # (P4.1d — `kill(pid, 0)` + hostname for the lock-file identity). Unix-only
 # usage; Windows falls back conservatively.
 libc = "0.2"
+# The image codec (P4.1b, D19 pure-Rust-first): `image` decodes/resizes/encodes
+# PNG/JPEG/GIF/TIFF/WebP(decode); lossy WebP ENCODING has no mature pure-Rust
+# encoder, so `webp` (libwebp bindings — a C compile, the sqlite3mc precedent)
+# provides it. AVIF/HEIC decode are NOT wired (no dav1d/libheif) — those inputs
+# take the ported failure-passthrough policy branch (stored as-is).
+image = "0.25"
+webp = "0.3"
 
 [dev-dependencies]
 tempfile = "3"
