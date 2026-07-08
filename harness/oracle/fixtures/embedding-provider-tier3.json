@@ -1,0 +1,317 @@
+{
+  "$comment": [
+    "Tier-3 spec for v4's generateEmbeddingForUser (P4.1a deliverable 4 — the",
+    "API-path EmbeddingProvider). One committed file drives BOTH sides:",
+    "  - the fixture builder (build-embedding-provider-fixture.ts) seeds",
+    "    embedding_profiles / api_keys / tfidf_vocabularies through v4's REAL repos,",
+    "  - the v4 oracle (embedding-provider-tier3.test.ts) runs the cases with",
+    "    global.fetch mocked to each case's `wire` script (which also intercepts",
+    "    the bundled OpenRouter SDK), recording the exact requests + results,",
+    "  - the Rust harness (embedding_provider_tier3_equivalence) replays the same",
+    "    calls over a CannedWireTransport registered FROM the oracle-recorded wire",
+    "    (a Rust request-building divergence = canned miss).",
+    "",
+    "The BUILTIN default profile's vocabulary is fitted by v4's REAL",
+    "TfIdfVectorizer over `tfidfCorpus` at fixture-build time, so both sides load",
+    "identical stored bytes (no ln computed at query time — exact compare).",
+    "",
+    "userB is deliberately NEVER seeded (the no-profiles case). The",
+    "missing-api-key profile points at an api_keys id that is never created; the",
+    "explicit-missing case passes `missingProfileId`, which no profile carries.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key (shared with the other",
+    "fixtures); every api key value is SYNTHETIC."
+  ],
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "users": {
+    "a": "79c98ffa-4132-4cc4-a6fc-830f80dbff4f",
+    "b": "c31b0f8d-37b2-48cf-bd7a-7dbbe4df58aa",
+    "c": "d2d8380d-9227-434e-89aa-e15138bfafbf",
+    "d": "505110e9-d539-4e4e-b1b3-fdcb5abb5eb0"
+  },
+  "missingProfileId": "0cd30cce-fd0a-4dba-80cf-7de7dd263ec0",
+  "missingApiKeyId": "72e09937-350d-48a3-b48d-45fa83c7c8dc",
+  "apiKeys": [
+    { "ref": "akA", "user": "a", "provider": "OPENAI", "keyValue": "sk-test-openai-a" },
+    { "ref": "akOrD", "user": "d", "provider": "OPENROUTER", "keyValue": "sk-or-test-d" },
+    { "ref": "akOaiD", "user": "d", "provider": "OPENAI", "keyValue": "sk-test-openai-d" }
+  ],
+  "profiles": [
+    {
+      "id": "c9e29269-eaa8-443f-8f9c-528aa35e23cf",
+      "user": "a",
+      "name": "OpenAI small (truncated)",
+      "provider": "OPENAI",
+      "apiKeyRef": "akA",
+      "baseUrl": null,
+      "modelName": "text-embedding-3-small",
+      "dimensions": 4,
+      "truncateToDimensions": 3,
+      "normalizeL2": true,
+      "isDefault": false
+    },
+    {
+      "id": "0dabb5d2-4a07-4555-89b4-dde66fbb6641",
+      "user": "a",
+      "name": "Built-in TF-IDF (default)",
+      "provider": "BUILTIN",
+      "baseUrl": null,
+      "modelName": "tfidf-bm25-v1",
+      "dimensions": null,
+      "truncateToDimensions": null,
+      "normalizeL2": true,
+      "isDefault": true,
+      "fitted": true
+    },
+    {
+      "id": "69f7ac8a-f3b0-4eb7-bed2-b6122775450b",
+      "user": "c",
+      "name": "OpenAI missing key",
+      "provider": "OPENAI",
+      "apiKeyIdLiteral": "72e09937-350d-48a3-b48d-45fa83c7c8dc",
+      "baseUrl": null,
+      "modelName": "text-embedding-3-small",
+      "dimensions": null,
+      "truncateToDimensions": null,
+      "normalizeL2": true,
+      "isDefault": false
+    },
+    {
+      "id": "ac020542-4c4c-4efc-b5a5-74949d27bb54",
+      "user": "d",
+      "name": "Ollama modern",
+      "provider": "OLLAMA",
+      "baseUrl": "http://ollama.test:11434",
+      "modelName": "nomic-embed-text",
+      "dimensions": null,
+      "truncateToDimensions": null,
+      "normalizeL2": true,
+      "isDefault": false
+    },
+    {
+      "id": "c438ffa0-7208-4aba-99bf-d80458d5a19c",
+      "user": "d",
+      "name": "Ollama legacy",
+      "provider": "OLLAMA",
+      "baseUrl": "http://ollama.test:11434",
+      "modelName": "legacy-embed",
+      "dimensions": null,
+      "truncateToDimensions": null,
+      "normalizeL2": true,
+      "isDefault": false
+    },
+    {
+      "id": "406e16e6-b307-4fb0-8c19-ea63374db094",
+      "user": "d",
+      "name": "OpenRouter",
+      "provider": "OPENROUTER",
+      "apiKeyRef": "akOrD",
+      "baseUrl": null,
+      "modelName": "openai/text-embedding-3-small",
+      "dimensions": null,
+      "truncateToDimensions": null,
+      "normalizeL2": true,
+      "isDefault": false
+    },
+    {
+      "id": "142ce464-1640-409c-8570-217bf3265487",
+      "user": "d",
+      "name": "OpenAI rate-limited",
+      "provider": "OPENAI",
+      "apiKeyRef": "akOaiD",
+      "baseUrl": null,
+      "modelName": "text-embedding-3-small",
+      "dimensions": null,
+      "truncateToDimensions": null,
+      "normalizeL2": true,
+      "isDefault": false
+    },
+    {
+      "id": "d2853172-27d4-479e-aa4a-da3c093dfd9b",
+      "user": "d",
+      "name": "Built-in unfitted",
+      "provider": "BUILTIN",
+      "baseUrl": null,
+      "modelName": "tfidf-bm25-v1",
+      "dimensions": null,
+      "truncateToDimensions": null,
+      "normalizeL2": true,
+      "isDefault": false,
+      "fitted": false
+    },
+    {
+      "id": "bed16896-6682-427a-9673-c88f243d899c",
+      "user": "d",
+      "name": "OpenAI raw magnitudes",
+      "provider": "OPENAI",
+      "apiKeyRef": "akOaiD",
+      "baseUrl": "http://openai-proxy.test/v1",
+      "modelName": "text-embedding-3-small",
+      "dimensions": null,
+      "truncateToDimensions": null,
+      "normalizeL2": false,
+      "isDefault": false
+    }
+  ],
+  "tfidfCorpus": [
+    "hello world of quills and brass",
+    "the lantern hums beside the commonplace book",
+    "hello again world the salon is warm"
+  ],
+  "cases": [
+    {
+      "id": "openai_explicit",
+      "user": "a",
+      "profileId": "c9e29269-eaa8-443f-8f9c-528aa35e23cf",
+      "text": "the salon hums tonight",
+      "wire": [
+        {
+          "urlSuffix": "/embeddings",
+          "status": 200,
+          "statusText": "OK",
+          "body": {
+            "data": [{ "embedding": [3, 4, 0, 12] }],
+            "usage": { "prompt_tokens": 5, "total_tokens": 5 }
+          }
+        }
+      ]
+    },
+    {
+      "id": "builtin_default",
+      "user": "a",
+      "profileId": null,
+      "text": "hello world hello",
+      "wire": []
+    },
+    {
+      "id": "explicit_missing_falls_back",
+      "user": "a",
+      "profileId": "0cd30cce-fd0a-4dba-80cf-7de7dd263ec0",
+      "text": "hello world hello",
+      "wire": []
+    },
+    {
+      "id": "no_profiles",
+      "user": "b",
+      "profileId": null,
+      "text": "anything",
+      "priority": "background",
+      "wire": []
+    },
+    {
+      "id": "missing_api_key",
+      "user": "c",
+      "profileId": "69f7ac8a-f3b0-4eb7-bed2-b6122775450b",
+      "text": "whatever",
+      "wire": []
+    },
+    {
+      "id": "ollama_happy",
+      "user": "d",
+      "profileId": "ac020542-4c4c-4efc-b5a5-74949d27bb54",
+      "text": "brass and steam",
+      "wire": [
+        {
+          "urlSuffix": "/api/show",
+          "status": 200,
+          "statusText": "OK",
+          "body": { "model_info": { "nomic.context_length": 2048 } }
+        },
+        {
+          "urlSuffix": "/api/embed",
+          "status": 200,
+          "statusText": "OK",
+          "body": { "embeddings": [[0.5, 0.5, 0.5, 0.5]] }
+        }
+      ]
+    },
+    {
+      "id": "ollama_legacy_fallback",
+      "user": "d",
+      "profileId": "c438ffa0-7208-4aba-99bf-d80458d5a19c",
+      "text": "clockwork",
+      "wire": [
+        {
+          "urlSuffix": "/api/show",
+          "status": 500,
+          "statusText": "Internal Server Error",
+          "body": {}
+        },
+        { "urlSuffix": "/api/embeddings", "status": 200, "statusText": "OK", "body": { "embedding": [1, 2, 2] } },
+        { "urlSuffix": "/api/embed", "status": 404, "statusText": "Not Found", "body": {} }
+      ]
+    },
+    {
+      "id": "openrouter_happy",
+      "user": "d",
+      "profileId": "406e16e6-b307-4fb0-8c19-ea63374db094",
+      "text": "hello world",
+      "wire": [
+        {
+          "urlSuffix": "/embeddings",
+          "status": 200,
+          "statusText": "OK",
+          "body": {
+            "id": "gen-1",
+            "object": "list",
+            "data": [{ "object": "embedding", "embedding": "AADAPwAAEMA=", "index": 0 }],
+            "model": "openai/text-embedding-3-small",
+            "usage": { "prompt_tokens": 2, "total_tokens": 2, "cost": 0.000001 }
+          }
+        }
+      ]
+    },
+    {
+      "id": "openai_non2xx",
+      "user": "d",
+      "profileId": "142ce464-1640-409c-8570-217bf3265487",
+      "text": "forbidden fruit",
+      "wire": [
+        {
+          "urlSuffix": "/embeddings",
+          "status": 429,
+          "statusText": "Too Many Requests",
+          "body": { "error": { "message": "rate limit exceeded" } }
+        }
+      ]
+    },
+    {
+      "id": "builtin_not_fitted",
+      "user": "d",
+      "profileId": "d2853172-27d4-479e-aa4a-da3c093dfd9b",
+      "text": "anything at all",
+      "wire": []
+    },
+    {
+      "id": "openai_no_normalize",
+      "user": "d",
+      "profileId": "bed16896-6682-427a-9673-c88f243d899c",
+      "text": "raw magnitudes",
+      "wire": [
+        {
+          "urlSuffix": "/embeddings",
+          "status": 200,
+          "statusText": "OK",
+          "body": {
+            "data": [{ "embedding": [3, 4] }],
+            "usage": { "prompt_tokens": 2, "total_tokens": 2 }
+          }
+        }
+      ]
+    },
+    {
+      "id": "openrouter_non2xx",
+      "user": "d",
+      "profileId": "406e16e6-b307-4fb0-8c19-ea63374db094",
+      "text": "rate me",
+      "wire": [
+        {
+          "urlSuffix": "/embeddings",
+          "status": 429,
+          "statusText": "Too Many Requests",
+          "body": { "error": { "message": "rate limited", "code": 429 } }
+        }
+      ]
+    }
+  ]
+}

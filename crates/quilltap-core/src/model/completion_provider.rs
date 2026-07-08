@@ -20,6 +20,7 @@
 use crate::model::completion::{
     CompletionError, CompletionParams, CompletionResponse, CompletionUsage,
 };
+use crate::model::provider_auth::apply_auth;
 use crate::model::request_builder::{build_request, RequestInput, RequestMessage};
 use crate::model::response_parse::parse_for_provider;
 use crate::model::transport::{
@@ -50,38 +51,6 @@ fn request_input_from_params(params: &CompletionParams) -> RequestInput {
         previous_response_id: None,
         strict_max_tokens: params.strict_max_tokens,
         stream: false,
-    }
-}
-
-/// Inject the api key per the manifest `auth` scheme onto (headers, url).
-fn apply_auth(
-    registry: &Registry,
-    provider: &str,
-    api_key: &str,
-    headers: &mut Vec<(String, String)>,
-    url: &mut String,
-) {
-    let Some(manifest) = registry.get_provider(provider) else {
-        return;
-    };
-    match manifest.auth.kind.as_str() {
-        "bearer" => headers.push(("Authorization".to_string(), format!("Bearer {api_key}"))),
-        "header" => {
-            if let Some(h) = &manifest.auth.header {
-                headers.push((h.clone(), api_key.to_string()));
-            }
-        }
-        "query" => {
-            if let Some(param) = &manifest.auth.param {
-                let sep = if url.contains('?') { '&' } else { '?' };
-                url.push(sep);
-                url.push_str(param);
-                url.push('=');
-                url.push_str(api_key);
-            }
-        }
-        // "none" (ollama) and unknown schemes inject nothing.
-        _ => {}
     }
 }
 

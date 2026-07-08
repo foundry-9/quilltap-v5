@@ -450,34 +450,56 @@ pub struct OrchestratorDeps<
 
 /// Build the [`PricingContext`] `checkModelSupportsTools` consults on the
 /// OPENROUTER path (v4 `refreshPricingCache` reads the user's connection profiles
-/// via `findApiKeyByIdAndUserId`). The `api_keys` map is left empty: the live fetch
-/// is the injected [`PricingFetch`] seam (Phase-4 host wiring supplies real keys
-/// when a real HTTP fetch lands); when the fetch returns nothing, an OPENROUTER
-/// model falls through to v4's "default to native tools" — matching v4's own
-/// missing-cache fallback. A read failure yields an empty context (fail-open to
-/// the static fallback table).
+/// and resolves each profile's key via `findApiKeyByIdAndUserId`). The `api_keys`
+/// map carries `apiKeyId → key_value` for every profile that names one (P4.1a —
+/// the live [`PricingFetch`] can now authenticate the OpenRouter SDK path when
+/// the host wires a real HTTP fetch; under the differential's never-called
+/// pricing seam the populated map is inert). When the fetch returns nothing, an
+/// OPENROUTER model falls through to v4's "default to native tools" — matching
+/// v4's own missing-cache fallback. A read failure yields an empty context /
+/// skips the key (fail-open to the static fallback table, v4's `catch`).
 fn build_pricing_context(db: &Db, user_id: &str) -> PricingContext {
-    let user_id = user_id.to_string();
+    let uid = user_id.to_string();
     let profiles = db
-        .read_main(move |conn| connection_profiles::find_by_user_id(conn, &user_id))
+        .read_main(move |conn| connection_profiles::find_by_user_id(conn, &uid))
         .unwrap_or_default();
+    let pricing_profiles: Vec<PricingProfile> = profiles
+        .iter()
+        .map(|p| PricingProfile {
+            provider: p
+                .get("provider")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            api_key_id: p
+                .get("apiKeyId")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            base_url: p.get("baseUrl").and_then(Value::as_str).map(str::to_string),
+        })
+        .collect();
+
+    // v4 `getApiKeyForProvider`: `findApiKeyByIdAndUserId(profile.apiKeyId,
+    // userId)` — resolved here for every key-naming profile so the fetcher's
+    // provider-scan finds them; a missing/foreign-owned row resolves to no
+    // entry (v4's `null`).
+    let mut api_keys = HashMap::new();
+    for key_id in pricing_profiles.iter().filter_map(|p| p.api_key_id.clone()) {
+        if api_keys.contains_key(&key_id) {
+            continue;
+        }
+        let uid = user_id.to_string();
+        let kid = key_id.clone();
+        if let Ok(Some(key)) =
+            db.read_main(move |conn| crate::db::api_keys::find_by_id_and_user_id(conn, &kid, &uid))
+        {
+            api_keys.insert(key_id, key.key_value);
+        }
+    }
+
     PricingContext {
-        profiles: profiles
-            .iter()
-            .map(|p| PricingProfile {
-                provider: p
-                    .get("provider")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string(),
-                api_key_id: p
-                    .get("apiKeyId")
-                    .and_then(Value::as_str)
-                    .map(str::to_string),
-                base_url: p.get("baseUrl").and_then(Value::as_str).map(str::to_string),
-            })
-            .collect(),
-        api_keys: HashMap::new(),
+        profiles: pricing_profiles,
+        api_keys,
     }
 }
 

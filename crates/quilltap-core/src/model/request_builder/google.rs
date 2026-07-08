@@ -96,7 +96,10 @@ pub fn sanitize_schema_for_google(schema: &Value) -> Value {
 // Model classification
 // ============================================================================
 
-fn is_thinking_model(model: &str) -> bool {
+/// v4 `GoogleProvider.isThinkingModel` — the Gemini thinking-model name
+/// predicate. Public for the streaming composer's `google-parts` decoder
+/// selection (the decoder's terminal `finalContent` fallback is gated on it).
+pub fn is_thinking_model(model: &str) -> bool {
     let m = model.to_lowercase();
     if m.contains("gemini-3") {
         return true;

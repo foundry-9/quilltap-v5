@@ -4746,3 +4746,89 @@ first variants, pump enqueued jobs to COMPLETED through the real loop, and
 prove lock → unlock → drivers-restart. **Next: P4.1 host-driver lanes**
 (provider IO / files+images / PTY / environment) ∥ P4.2 (`quilltap-web`) +
 P4.3 (CLI) per the decomposition.
+
+**Phase 4 (P4.1a): the provider-IO host-driver lane is DONE** (2026-07-08).
+Five deliverables: (1) **the production streaming composer**
+(`quilltap-core::model::streaming_provider::WireStreamingProvider` — the
+biggest single gap, now closed): `StreamParams` → `RequestInput` (`stream:
+true`, tools/top_p/stop/web-search/profile-params/cache-key/
+previous_response_id all flowing) → `build_request` + the shared auth
+injector (**`apply_auth` hoisted** into `model::provider_auth`, the
+completion + streaming paths cannot drift) → `ProviderTransport::
+execute_stream` → the **manifest-selected W4.7b decoder** (the
+`ChatCompletionsFlavor` split applied internally: DEEPSEEK/Z_AI/OPENROUTER;
+google over the ported `is_thinking_model` predicate [made `pub` in
+`request_builder::google`]; ollama takes the model as its default echo) →
+the normalized `StreamChunk` channel. The pump is a **plain OS thread**
+(`blocking_recv`/`blocking_send` — the core stays scheduler-free); a
+transport error or `DecodeError` becomes an `Err(StreamError)` item after
+the chunks already emitted (v4 streams can fail after yielding); EOF drives
+the idempotent `finish()`. Keys ride an injected `ProviderKeySource`
+(provider → plaintext key — the failover path re-calls the SAME provider
+seam with a different provider id); a profile `baseUrl` swaps the manifest
+base (localhost-rewritten). **Documented deliberate divergence:** OPENROUTER
+always streams the raw chat-completions wire (v4's no-tools OpenResponses
+SDK protocol — the W4.7b out-of-scope wire — is not ported). Verified by
+the "free" differential `streaming_composer_equivalence`: all **21
+committed W4.7b wire fixtures** replayed through the FULL compose path over
+a fake transport at whole-buffer + byte-at-a-time (ollama line-aligned per
+the ported no-buffer bug), diffing the chunk sequences + error parity
+against the recorded v4 NDJSON — green first run — plus 8 unit tests (auth
+per manifest scheme incl. google's query param, decoder selection for all
+nine providers, mid-stream + pre-stream errors, unknown provider, EOF
+finish-once). (2) **The reqwest wire transports** (`quilltap-host::wire`):
+`ReqwestWireTransport` (async `WireTransport` — a completed non-2xx
+exchange is `Ok`, per the W4.7f dialect contract) + `BlockingWireTransport`
+(`SyncWireTransport` over `reqwest::blocking` ALWAYS driven on a dedicated
+thread — a blocking client panics on a tokio runtime thread; loopback-smoke
+tested from inside a runtime). (3) **The live `PricingFetch`**
+(`quilltap-host::providers::LivePricingFetch`): the three pricing HTTP
+calls (public openrouter models with v4's `Content-Type` header; the
+`@openrouter/sdk` `models.list()` wire surveyed + reproduced — `GET
+/api/v1/models` with Accept/Bearer/HTTP-Referer/X-OpenRouter-Title; ollama
+`/api/tags`), each under v4's 3 s fail-fast pricing timeout, any failure →
+`None` (the ported fetcher owns the negative cache). (4) **The API-path
+`EmbeddingProvider`** (`quilltap-core::services::embedding_provider::
+ApiEmbeddingProvider` over the `WireTransport` seam): the full port of v4
+`generateEmbeddingForUser` — profile resolution (explicit → `find_by_id`,
+fallback → the new `embedding_profiles::find_default`; none → the exact
+"No embedding profile configured"), the BUILTIN dispatch to the ported
+`generate_builtin_embedding`, the registry gate (unknown /
+embeddings-incapable), `rewrite_localhost_url` on a profile baseUrl, the
+requiresApiKey gate over `api_keys::find_by_id_and_user_id` (missing → the
+exact "No API key found for {p} embedding profile"), the three wire
+dialects over the frozen `embedding_wire` builders/parsers (openai;
+ollama incl. the `/api/show` num_ctx derivation + derived-only cache + the
+404 legacy fallback; openrouter via the RECORDED SDK wire — the SDK's own
+body key order + Zod response projection reproduced), and
+`apply_embedding_profile`. **New v4 fact (banked):** v4 `generateEmbedding`'s
+outer catch is DEAD CODE — the body `return`s the async calls WITHOUT
+`await`, so the "Embedding failed for provider …" wrap never fires and raw
+plugin errors escape unwrapped (the `turn_error:` broken-but-exact family);
+ported faithfully (plain throws surface with `provider: None`). The
+priority lane's 50 ms wait loop is host-timing (accepted + ignored,
+documented). Verified by `embedding_provider_tier3_equivalence` — a
+jest-real-DB oracle driving v4's REAL `generateEmbeddingForUser` over a
+baked fixture (9 profiles / 3 synthetic api keys / a BUILTIN vocabulary
+fitted by v4's REAL vectorizer so both sides load identical stored bytes)
+with ONLY `global.fetch` scripted (real `Response` objects — the bundled
+OpenRouter SDK consumes them), 12 cases (openai truncate+L2 / builtin
+default + explicit-missing fallback / no-profile / missing-key / ollama
+modern + 404-legacy incl. a failed `/api/show` / openrouter base64-Float32
++ 429 / openai 429 / builtin not-fitted / normalizeL2-false), the Rust side
+replaying over a `CannedWireTransport` registered FROM the oracle-recorded
+wire (a request-building divergence = loud canned miss), results/errors
+diffed exactly. (5) **The `ProviderIo` constructor bundle**
+(`quilltap-host::providers`) — policy/user-agent/`BASE_URL` knobs +
+constructors for the streaming composer, the completion transport, the
+W4.7f `RealImageProvider`/`RealModerationProvider`/`RealWebSearchProvider`,
+and the pricing fetcher — and **the spine api-keys closure**:
+`build_pricing_context` now populates the connection-profile api keys (v4
+`getApiKeyForProvider` via `findApiKeyByIdAndUserId`), proven inert under
+the canned pricing seam by a freshly regenerated
+`orchestrator_tier3_equivalence`. **Tracked deferrals:** the production
+spine composition (a `ChatSend` dispatch assembling `OrchestratorDeps` from
+these drivers + the model-dependent job-handler registrations) → P4.2; the
+completion-call `withTimeout` family (25 s/60 s) → the spine composition;
+the OpenRouter OpenResponses no-tools wire (documented divergence); the
+real stream duration clock (`durationMs` 0, spine-owned).

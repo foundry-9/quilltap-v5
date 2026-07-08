@@ -56,8 +56,10 @@ use rusqlite::{params, Connection, OptionalExtension};
 use super::DbError;
 
 /// The subset of an `embedding_profiles` row the BUILTIN embedding + refit paths
-/// consume (v4 `repos.embeddingProfiles.findById`). Scoped read, not the full net
-/// marshaling: `provider` gates the refit / dispatch; `truncate_to_dimensions` /
+/// and the API embedding path consume (v4 `repos.embeddingProfiles.findById` /
+/// `findDefault`). Scoped read, not the full net marshaling: `provider` gates the
+/// refit / dispatch; `api_key_id` / `base_url` / `model_name` / `dimensions` feed
+/// the API wire (`generateApiEmbedding`); `truncate_to_dimensions` /
 /// `normalize_l2` feed `applyEmbeddingProfile`.
 #[derive(Debug, Clone)]
 pub struct EmbeddingProfileRow {
@@ -65,6 +67,16 @@ pub struct EmbeddingProfileRow {
     pub user_id: String,
     /// `OPENAI` / `OLLAMA` / `OPENROUTER` / `BUILTIN`.
     pub provider: String,
+    /// The connection api-key id (`None` when the column is NULL).
+    pub api_key_id: Option<String>,
+    /// The profile's base URL override (`None` when the column is NULL).
+    pub base_url: Option<String>,
+    /// The embedding model (e.g. `text-embedding-3-small`).
+    pub model_name: String,
+    /// The provider-requested output dimensions (`None` when NULL; a falsy `0`
+    /// is dropped by the API path, matching v4's `profile.dimensions ||
+    /// undefined`).
+    pub dimensions: Option<f64>,
     /// The Matryoshka slice target (`None` when the column is NULL).
     pub truncate_to_dimensions: Option<f64>,
     /// v4 `applyEmbeddingProfile` uses `normalizeL2 !== false` — so a NULL column
@@ -72,24 +84,52 @@ pub struct EmbeddingProfileRow {
     pub normalize_l2: bool,
 }
 
+const EP_ROW_COLUMNS: &str = "id, userId, provider, apiKeyId, baseUrl, modelName, \
+     dimensions, truncateToDimensions, normalizeL2";
+
+fn marshal_profile_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<EmbeddingProfileRow> {
+    Ok(EmbeddingProfileRow {
+        id: row.get(0)?,
+        user_id: row.get(1)?,
+        provider: row.get(2)?,
+        api_key_id: row.get::<_, Option<String>>(3)?,
+        base_url: row.get::<_, Option<String>>(4)?,
+        model_name: row.get(5)?,
+        dimensions: row.get::<_, Option<f64>>(6)?,
+        truncate_to_dimensions: row.get::<_, Option<f64>>(7)?,
+        normalize_l2: row
+            .get::<_, Option<i64>>(8)?
+            .map(|v| v != 0)
+            .unwrap_or(true),
+    })
+}
+
 /// Read an embedding profile by id (v4 `findById`), or `None` when absent.
 pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<EmbeddingProfileRow>, DbError> {
     conn.query_row(
-        "SELECT id, userId, provider, truncateToDimensions, normalizeL2 \
-         FROM embedding_profiles WHERE id = ?1",
+        &format!("SELECT {EP_ROW_COLUMNS} FROM embedding_profiles WHERE id = ?1"),
         params![id],
-        |row| {
-            Ok(EmbeddingProfileRow {
-                id: row.get(0)?,
-                user_id: row.get(1)?,
-                provider: row.get(2)?,
-                truncate_to_dimensions: row.get::<_, Option<f64>>(3)?,
-                normalize_l2: row
-                    .get::<_, Option<i64>>(4)?
-                    .map(|v| v != 0)
-                    .unwrap_or(true),
-            })
-        },
+        marshal_profile_row,
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
+/// Read the user's default embedding profile (v4 `findDefault` =
+/// `findOneByFilter({ userId, isDefault: true })`), or `None` when the user has
+/// no default. v4's `findOne` carries no ORDER BY; a well-formed instance holds
+/// at most one default per user.
+pub fn find_default(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Option<EmbeddingProfileRow>, DbError> {
+    conn.query_row(
+        &format!(
+            "SELECT {EP_ROW_COLUMNS} FROM embedding_profiles \
+             WHERE userId = ?1 AND isDefault = 1 LIMIT 1"
+        ),
+        params![user_id],
+        marshal_profile_row,
     )
     .optional()
     .map_err(Into::into)

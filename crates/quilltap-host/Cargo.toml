@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-host"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 publish = false
 
@@ -11,9 +11,17 @@ publish = false
 # The core keeps its default-build purity; this crate owns the scheduler.
 
 [dependencies]
-quilltap-core = { path = "../quilltap-core" }
+# The host is the crate that turns the core's IO seams into real IO (P4.1a):
+# `native-transport` pulls the core's feature-gated `ReqwestTransport` for the
+# streaming composer + `execute_completion`.
+quilltap-core = { path = "../quilltap-core", features = ["native-transport"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+# The host HTTP client behind the core's `WireTransport`/`SyncWireTransport`
+# seams + the live pricing fetch. rustls (no system OpenSSL); `blocking` for
+# the sync boundaries (web search, pricing), always driven on a dedicated
+# thread (a blocking client cannot run on a tokio runtime thread).
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2", "blocking"] }
 # The host owns all cadence (D20): a multi-thread runtime + timers. `sync` for
 # Notify/watch; the core itself stays scheduler-free.
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }

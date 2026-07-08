@@ -4,6 +4,49 @@
 
 ### 5.0-dev
 
+P4.1a (host drivers, provider IO): the production streaming composer + the
+reqwest wire + the live pricing fetch + the API-path embedding provider.
+New `quilltap-core::model::streaming_provider` — the production
+`StreamingCompletionProvider` composing the frozen sans-IO surfaces
+(request builder with `stream: true` -> transport -> the manifest-selected
+W4.7b decoder -> the normalized `StreamChunk` channel), the
+`ChatCompletionsFlavor` split applied internally (DEEPSEEK/Z_AI/OPENROUTER),
+google's decoder over the ported `isThinkingModel` predicate, the pump on a
+plain OS thread (the core stays scheduler-free), an injected provider->key
+source (the failover path re-calls with a different provider), and the
+documented OpenRouter divergence (the raw chat-completions wire ALWAYS; the
+SDK's no-tools OpenResponses protocol is not ported). Verified by a new
+"free" differential (`streaming_composer_equivalence`) replaying all 21
+committed W4.7b wire fixtures through the full compose path at whole-buffer
++ byte-at-a-time (ollama line-aligned per the ported no-buffer bug) against
+the recorded v4 chunk sequences, plus 8 composer unit tests (auth per
+manifest scheme, decoder selection for all nine providers, mid-stream and
+pre-stream errors, EOF finish-once). `apply_auth` hoisted into the shared
+`model::provider_auth` (completion + streaming paths cannot drift). New
+`quilltap-host` modules: `wire` (reqwest `WireTransport` + the blocking
+`SyncWireTransport` on a dedicated thread — a blocking client never runs on
+a runtime thread) and `providers` (the `ProviderIo` constructor bundle +
+`LivePricingFetch` — the three pricing HTTP calls with v4's 3 s fail-fast
+timeout; loopback-smoke tested). The spine's `build_pricing_context` now
+populates the connection-profile api keys (v4 `getApiKeyForProvider` via
+`findApiKeyByIdAndUserId`), proven inert under the canned pricing seam by a
+freshly regenerated `orchestrator_tier3_equivalence`.
+The API-path embedding provider
+(`quilltap-core::services::embedding_provider::ApiEmbeddingProvider`) ports
+v4 `generateEmbeddingForUser` whole over the `WireTransport` seam: profile
+resolution (explicit -> default via the new `embedding_profiles::
+find_default`), the BUILTIN dispatch, the registry gate, the requiresApiKey
+gate over `api_keys`, the openai/ollama/openrouter wire dialects over the
+frozen embedding_wire builders (ollama num_ctx derivation + derived-only
+cache + 404 legacy fallback; openrouter via the recorded SDK wire), and
+`apply_embedding_profile`. New v4 fact banked: v4 `generateEmbedding`'s
+error wrap is dead code (the async calls are returned without `await`), so
+raw plugin errors escape unwrapped -- ported faithfully. Verified by a new
+jest-real-DB differential (`embedding_provider_tier3_equivalence`, 12 cases
+over a baked 9-profile fixture with a v4-fitted BUILTIN vocabulary; the
+Rust side replays a CannedWireTransport registered from the oracle-recorded
+wire, so a request-building divergence is a loud canned miss).
+
 P4.1 kickoff: round drift check (v4 HEAD unchanged at the `2494a84b`
 baseline — no ported unit stale) and the four host-driver lane work orders
 written per the phase-4 decomposition (`docs/developer/porting/work-orders/

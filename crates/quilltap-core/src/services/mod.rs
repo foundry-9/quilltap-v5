@@ -54,6 +54,7 @@ pub mod core_whisper;
 pub mod cost_events;
 pub mod courier_transport;
 pub mod dangerous_content;
+pub mod embedding_provider;
 pub mod embedding_refit_job;
 pub mod file_fallback;
 pub mod first_message_context;

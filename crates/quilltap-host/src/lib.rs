@@ -23,6 +23,10 @@
 pub mod host;
 pub mod instances;
 pub mod paths;
+pub mod providers;
+pub mod wire;
 
 pub use host::{Host, HostConfig};
 pub use instances::InstanceRegistry;
+pub use providers::{LivePricingFetch, ProviderIo};
+pub use wire::{BlockingWireTransport, ReqwestWireTransport};
