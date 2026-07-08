@@ -103,6 +103,17 @@ impl From<RequestJson> for LlmLogRequestSummary {
     }
 }
 
+// `error`/`finishReason` are v4 `.nullable().optional()` — the present-null-vs-
+// absent double-option (see `db::llm_logs::LlmLogResponseSummary`). Deserialize
+// them the same way so the fixture's ABSENT `error` and PRESENT `finishReason`
+// round-trip faithfully.
+fn de_double_opt_string<'de, D>(de: D) -> Result<Option<Option<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Some(Option::<String>::deserialize(de)?))
+}
+
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct ResponseJson {
@@ -110,8 +121,10 @@ struct ResponseJson {
     content_preview: Option<String>,
     content_length: i64,
     full_content: Option<String>,
-    error: Option<String>,
-    finish_reason: Option<String>,
+    #[serde(default, deserialize_with = "de_double_opt_string")]
+    error: Option<Option<String>>,
+    #[serde(default, deserialize_with = "de_double_opt_string")]
+    finish_reason: Option<Option<String>>,
 }
 
 impl From<ResponseJson> for LlmLogResponseSummary {

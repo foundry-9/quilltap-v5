@@ -118,8 +118,18 @@ pub struct LlmLogRequestSummary {
 
 /// The `response` JSON object (`LLMLogResponseSummarySchema` field order:
 /// content, contentPreview, contentLength, fullContent, error, finishReason,
-/// toolCalls). All optionals omitted-when-None; `toolCalls` is omitted in the
-/// corpus (avoids the open-JSON `arguments` seam).
+/// toolCalls). `contentPreview`/`fullContent`/`toolCalls` are plain `.optional()`
+/// (omitted-when-None); `toolCalls` is kept out of the corpus (avoids the
+/// open-JSON `arguments` seam).
+///
+/// `error`/`finishReason` are v4 `.nullable().optional()`, so they carry the
+/// **present-null-vs-absent** distinction (the double-`Option` pattern, like
+/// `chats`' `removedAt`). v4's `summarizeResponse` ALWAYS sets them
+/// (`response.error ?? null`), so the SUMMARIZE path stores them **present as
+/// `null`** (`Some(None)`); a raw tier-2 write with the key absent stores them
+/// **absent** (`None`, skipped). The double-option deserializer forces
+/// present→`Some(_)` so a stored `null` round-trips as `Some(None)` rather than
+/// collapsing to the outer `None`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LlmLogResponseSummary {
@@ -129,12 +139,32 @@ pub struct LlmLogResponseSummary {
     pub content_length: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub full_content: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub finish_reason: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "de_double_opt_string",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub error: Option<Option<String>>,
+    #[serde(
+        default,
+        deserialize_with = "de_double_opt_string",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub finish_reason: Option<Option<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<LlmLogToolCall>>,
+}
+
+/// Double-option deserializer for the `.nullable().optional()` `error`/
+/// `finishReason` fields: a PRESENT field (even JSON `null`) becomes `Some(_)`;
+/// an ABSENT field falls to `#[serde(default)]` `None`. Serialization is
+/// serde-default (`Some(None)` → `null`, `Some(Some)` → the string, `None`
+/// skipped).
+fn de_double_opt_string<'de, D>(de: D) -> Result<Option<Option<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Some(Option::<String>::deserialize(de)?))
 }
 
 /// One native tool call — an element of `response.toolCalls` (omitted in the

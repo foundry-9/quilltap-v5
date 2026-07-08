@@ -42,6 +42,21 @@ dump is deliberately post-round (it would couple W4.10a's corpus to W4.10b's
 primary-stream regen). Written from two fresh surveys (the v5 composition
 points; v4's brahma-console/one-shot.service.ts at 6b6e39ad — no drift). No
 code changes.
+W4.10b step 1 (logLLMCall regen — compression): converted the `compression_tier3`
+oracle from a DB-free jest test to a real-DB one on both sides, un-mocking
+`logLLMCall` and dumping the written `llm_logs` rows (`CONTEXT_COMPRESSION`), so
+the writer is proven byte-for-byte through a real cheap-LLM call site. Six rows
+land (happy-path + the two uncensored-fallback pairs + the unicode case; the
+empty-window and llm-failure cases write none). Fixed a real port divergence the
+row diff surfaced: v4's `summarizeResponse` always emits `error`/`finishReason`
+(present as `null`), but the port's `LlmLogResponseSummary` skipped them when
+`None` — changed both to the present-null-vs-absent double-`Option` (like `chats`'
+`removedAt`), so the summarize path stores them present-null while a raw tier-2
+write with the key absent still stores them absent (`llm_logs_tier2` re-verified).
+Also fixed the corpus `userId` (`user-1` -> a real UUID) since the llm_logs schema
+validates `userId` as a UUID and silently dropped the write otherwise. Added a
+shared `tests/common` helper (real-Db-with-llm-logs setup + normalized dump) for
+the remaining regen steps.
 
 Round-4-remainder unification: integrated the four parallel lanes (W4.4b
 file/attachment, W4.5 carina query, W4.7e2 TF-IDF vectorizer, W4.7e3 logLLMCall

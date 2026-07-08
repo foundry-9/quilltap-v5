@@ -184,8 +184,11 @@ pub fn summarize_response(response: &LogResponse) -> LlmLogResponseSummary {
         content_preview: None,
         content_length: utf16_len(&response.content) as i64,
         full_content: None,
-        error: response.error.clone(),
-        finish_reason: response.finish_reason.clone(),
+        // v4 `summarizeResponse` ALWAYS sets these (`response.error ?? null`), so
+        // they store present-as-`null` when absent — `Some(None)`, not the outer
+        // `None` that would skip the key.
+        error: Some(response.error.clone()),
+        finish_reason: Some(response.finish_reason.clone()),
         tool_calls,
     }
 }

@@ -5,69 +5,67 @@
  * (v4 `applyContextCompression`, lib/chat/context/compression.ts:191, driving
  * `compressConversationHistory`, lib/memory/cheap-llm-tasks/compression-tasks.ts).
  *
- * `applyContextCompression` makes NO DB writes, so the differential is
- * result-object equivalence: this oracle drives v4's REAL
- * `applyContextCompression` over the committed corpus
- * (harness/oracle/fixtures/compression-tier3.json) with ONLY the model/infra
- * seams stubbed, and emits each call's full `ContextCompressionResult` plus the
- * exact `provider|model|temperature|messages` canned keys the provider
- * answered. The Rust side replays exactly those recorded entries through
- * `CannedCompletionProvider`, so any prompt/selection/temperature divergence
- * surfaces as a canned-miss.
+ * `applyContextCompression` makes NO DB writes of its own, so the RESULT diff is
+ * result-object equivalence. But `executeCheapLLMTask`'s `sendToProvider` fires
+ * `logLLMCall` after every successful provider call (W4.7e3), so this oracle now
+ * runs against a REAL DB with `logLLMCall` UN-mocked and dumps the `llm_logs`
+ * sibling table (`CONTEXT_COMPRESSION` rows). The real DB stack is wired back in
+ * past `jest.setup` per [[jest-real-db-oracle]]; the ONLY seams pinned are the
+ * model call, the API-key acquisition, and (indirectly) the provider factory.
  *
  * Stubbed seams:
- *   - `createLLMProvider` — the returned provider's `sendMessage` resolves each
- *     call by matching the request messages against the current corpus case's
- *     completion rules (keyed on `provider|model`), RECORDS the exact canned key
- *     it answered (as `kind: "canned"` rows), and returns the rule's fixed
- *     content (empty or non-empty) or throws the rule's error. Already a
- *     `jest.fn()` from jest.setup — re-implemented per case here.
- *   - `getApiKeyForCheapLLMSelection` → a constant (key management is
- *     host-side; the Rust boundary starts at the provider call).
- *   - `logLLMCall` → already a no-op mock from jest.setup.
+ *   - `createLLMProvider` — a provider whose `sendMessage` resolves each call by
+ *     matching the request messages against the CURRENT corpus case's completion
+ *     rules (keyed on `provider|model`), RECORDS the exact canned key it answered
+ *     (as `kind:"canned"` rows), and returns the rule's fixed content (empty or
+ *     non-empty) or throws the rule's error. Re-provided via `jest.doMock`; the
+ *     per-case rules are read from a mutable `currentCall`.
+ *   - `getApiKeyForCheapLLMSelection` → a constant (key management is host-side).
  *
- * Everything else — the split, the prompt building, `executeCheapLLMTask`'s
- * temperature/uncensored orchestration, the token estimates, the result
- * assembly — is v4's REAL code. No database is touched.
+ * `logLLMCall` runs REAL against the real llm-logs DB.
+ *
+ * Emits, per run: `kind:"result"` rows (the `ContextCompressionResult`),
+ * `kind:"canned"` rows (the recorded completion keys), and one `kind:"llmlogs"`
+ * row (the dumped `llm_logs` table, id/createdAt/updatedAt placeholdered).
  *
  * Runs under v4's JEST (not tsx) because `createLLMProvider` is a module export
- * only `jest.mock` can replace. The file lives in the v5 harness tree; v4's jest
- * resolves it via an extra `--roots`, with `@/` mapped to v4.
+ * only `jest.doMock` can replace. The file lives in the v5 harness tree; v4's jest
+ * resolves it via an extra `--roots`, with `@/` mapped to v4. (jest ignores
+ * `.claude/` worktree paths, so stage a copy of this file + the fixture to /tmp.)
  *
  * Run from the v4 server checkout under Node 24:
- *   N=~/.nvm/versions/node/v24.13.1/bin
- *   V5=~/source/quilltap-v5
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+ *   TMPO=/tmp/qt-compression-oracle
+ *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+ *   cp "$V5W/harness/oracle/cases/compression-tier3.test.ts" "$TMPO/cases/"
+ *   cp "$V5W/harness/oracle/fixtures/compression-tier3.json"  "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_ORACLE_OUT=/tmp/oracle-compression.ndjson \
- *     $N/npx jest --silent --watchman=false \
- *       --roots "$PWD" --roots "$V5/harness/oracle/cases" -- compression-tier3
+ *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
+ *       --roots "$PWD" --roots "$TMPO/cases" -- compression-tier3
  */
 
 import * as fs from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { mkdtempSync, mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 
-// Pin the API-key acquisition to a constant (host-side seam). Must be declared
-// before importing the module under test so the mock is in place.
-jest.mock('@/lib/services/api-key.service', () => ({
-  __esModule: true,
-  ...jest.requireActual('@/lib/services/api-key.service'),
-  getApiKeyForCheapLLMSelection: jest.fn(async () => 'test-key'),
-}));
+// The differential test pepper (shared with the Rust harness side).
+const TEST_PEPPER_BASE64 = 'dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=';
 
-import { applyContextCompression } from '@/lib/chat/context/compression';
-import { createLLMProvider } from '@/lib/llm';
+function canonValue(v: unknown): unknown {
+  if (v === null || v === undefined) return null;
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(v)) return v.toString('hex');
+  if (v instanceof Uint8Array) return Buffer.from(v).toString('hex');
+  return v;
+}
 
 interface CompletionRule {
-  /** Provider to match (v4 `selection.provider`). */
   provider: string;
-  /** Model to match (v4 `selection.modelName`). */
   model: string;
-  /** Fixed response content (may be empty to drive the fallback). */
   response?: string;
-  /** Fixed error message to throw instead of responding. */
   error?: string;
-  /** Optional usage returned with the response. */
   usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
 }
 
@@ -89,7 +87,6 @@ interface CallSpec {
   characterName: string;
   userName: string;
   userId: string;
-  /** The cheap-LLM selection passed to compression (v4 `CheapLLMSelection`). */
   selection: {
     provider: string;
     modelName: string;
@@ -107,7 +104,23 @@ interface Spec {
   calls: CallSpec[];
 }
 
-test('compression tier-3 oracle', async () => {
+// Per-case provider control (set before each `applyContextCompression`).
+let currentCall: CallSpec | null = null;
+
+const cannedRecorded = new Map<
+  string,
+  {
+    provider: string;
+    model: string;
+    temperature: number | null;
+    messages: Array<{ role: string; content: string }>;
+    response: string | null;
+    failure: string | null;
+    usage: CompletionRule['usage'] | null;
+  }
+>();
+
+async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
   const spec = JSON.parse(
     fs.readFileSync(join(here, '..', 'fixtures', 'compression-tier3.json'), 'utf8')
@@ -115,78 +128,98 @@ test('compression tier-3 oracle', async () => {
   const outPath = process.env.QT_ORACLE_OUT;
   if (!outPath) throw new Error('QT_ORACLE_OUT must point at the NDJSON file to write');
 
-  // Recorded canned-completion entries, deduped by the exact call key. The key
-  // format MUST match `quilltap_core::model::completion::canned_completion_key`.
-  const cannedRecorded = new Map<
-    string,
-    {
-      provider: string;
-      model: string;
-      temperature: number | null;
-      messages: Array<{ role: string; content: string }>;
-      response: string | null;
-      failure: string | null;
-      usage: CompletionRule['usage'] | null;
-    }
-  >();
+  // Fresh throwaway DBs (main + mount-index) + a fresh llm-logs DB we read back.
+  const scratch = mkdtempSync(join(tmpdir(), 'qt-compression-oracle-'));
+  mkdirSync(join(scratch, 'data'), { recursive: true });
+  process.env.ENCRYPTION_MASTER_PEPPER = TEST_PEPPER_BASE64;
+  process.env.SQLITE_PATH = join(scratch, 'data', 'main.db');
+  process.env.SQLITE_MOUNT_INDEX_PATH = join(scratch, 'data', 'mount-index.db');
+  process.env.SQLITE_LLM_LOGS_PATH = join(scratch, 'data', 'llm-logs.db');
+  process.env.QUILLTAP_DATA_DIR = scratch;
+  delete process.env.SQLITE_WAL_MODE;
+  process.env.LOG_LEVEL = 'error';
+
+  jest.resetModules();
+  const cipherDriverPath = require('node:path').join(
+    process.cwd(),
+    'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers'
+  );
+  jest.doMock('better-sqlite3', () => jest.requireActual(cipherDriverPath));
+  jest.doMock('@/lib/database/manager', () => jest.requireActual('@/lib/database/manager'));
+  jest.doMock('@/lib/database/repositories', () => jest.requireActual('@/lib/database/repositories'));
+  jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
+  // Un-mock the logger service so real llm_logs rows land.
+  jest.doMock('@/lib/services/llm-logging.service', () =>
+    jest.requireActual('@/lib/services/llm-logging.service')
+  );
+
+  jest.doMock('@/lib/services/api-key.service', () => {
+    const actual = jest.requireActual('@/lib/services/api-key.service');
+    return {
+      __esModule: true,
+      ...actual,
+      getApiKeyForCheapLLMSelection: jest.fn(async () => 'test-key'),
+    };
+  });
+
+  jest.doMock('@/lib/llm', () => {
+    const actual = jest.requireActual('@/lib/llm');
+    return {
+      __esModule: true,
+      ...actual,
+      createLLMProvider: async (provider: string, _baseUrl?: string) => ({
+        sendMessage: async (
+          params: {
+            messages: Array<{ role: string; content: string }>;
+            model: string;
+            temperature?: number;
+          },
+          _apiKey: string
+        ) => {
+          const call = currentCall;
+          if (!call) throw new Error('no current call set');
+          const rule = call.completionRules.find(
+            (r) => r.provider === provider && r.model === params.model
+          );
+          if (!rule) {
+            throw new Error(`no completion rule for provider=${provider} model=${params.model}`);
+          }
+          const messages = params.messages.map((m) => ({ role: m.role, content: m.content }));
+          const key = `${provider}|${params.model}|${params.temperature ?? '-'}|${JSON.stringify(messages)}`;
+          if (!cannedRecorded.has(key)) {
+            cannedRecorded.set(key, {
+              provider,
+              model: params.model,
+              temperature: params.temperature ?? null,
+              messages,
+              response: rule.error !== undefined ? null : rule.response ?? '',
+              failure: rule.error ?? null,
+              usage: rule.error !== undefined ? null : rule.usage ?? null,
+            });
+          }
+          if (rule.error !== undefined) {
+            throw new Error(rule.error);
+          }
+          return { content: rule.response ?? '', finishReason: 'stop', usage: rule.usage };
+        },
+      }),
+    };
+  });
+
+  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+  const { getRawLLMLogsDatabase } = await import(
+    '@/lib/database/backends/sqlite/llm-logs-client'
+  );
+  const { applyContextCompression } = await import('@/lib/chat/context/compression');
+
+  await initializeDatabase();
 
   const lines: string[] = [];
 
   for (const call of spec.calls) {
-    // Per-case provider: resolves by (provider, model) against the case rules,
-    // records the answered canned key, returns content or throws.
-    jest.mocked(createLLMProvider).mockImplementation(
-      async (provider: string, _baseUrl?: string) =>
-        ({
-          sendMessage: async (
-            params: {
-              messages: Array<{ role: string; content: string }>;
-              model: string;
-              temperature?: number;
-            },
-            _apiKey: string
-          ) => {
-            const rule = call.completionRules.find(
-              (r) => r.provider === provider && r.model === params.model
-            );
-            if (!rule) {
-              throw new Error(
-                `no completion rule for provider=${provider} model=${params.model}`
-              );
-            }
-            // Record the exact canned key on EVERY answered call — both success
-            // and failure — so the Rust side can replay it (a failure rule is
-            // registered via `with_failure`, a response rule via
-            // `with_response`). A prompt/selection/temperature divergence
-            // therefore surfaces as a canned-miss on either path.
-            const messages = params.messages.map((m) => ({ role: m.role, content: m.content }));
-            const key = `${provider}|${params.model}|${params.temperature ?? '-'}|${JSON.stringify(messages)}`;
-            if (!cannedRecorded.has(key)) {
-              cannedRecorded.set(key, {
-                provider,
-                model: params.model,
-                temperature: params.temperature ?? null,
-                messages,
-                response: rule.error !== undefined ? null : rule.response ?? '',
-                failure: rule.error ?? null,
-                usage: rule.error !== undefined ? null : rule.usage ?? null,
-              });
-            }
-            if (rule.error !== undefined) {
-              throw new Error(rule.error);
-            }
-            return {
-              content: rule.response ?? '',
-              finishReason: 'stop',
-              usage: rule.usage,
-            };
-          },
-        }) as never
-    );
-
-    // v4 builds `uncensoredFallback` from `options.dangerSettings &&
-    // options.availableProfiles` — `isDangerousChat` is NOT part of
-    // `ContextCompressionOptions`, so it is always undefined on this path.
+    currentCall = call;
+    // v4 builds `uncensoredFallback` from `dangerSettings && availableProfiles`;
+    // `isDangerousChat` is NOT part of `ContextCompressionOptions`.
     const result = await applyContextCompression(
       call.messages as never,
       call.systemPrompt,
@@ -205,15 +238,50 @@ test('compression tier-3 oracle', async () => {
           : {}),
       } as never
     );
-
     lines.push(JSON.stringify({ kind: 'result', call: call.name, result }));
   }
+  currentCall = null;
 
-  for (const entry of cannedRecorded.values()) {
-    lines.push(JSON.stringify({ kind: 'canned', ...entry }));
-  }
+  // `sendToProvider` fires `logLLMCall` fire-and-forget (`.catch`, not awaited),
+  // so let the pending writes settle before reading. better-sqlite3 is
+  // synchronous, so a short flush is ample.
+  await new Promise((r) => setTimeout(r, 300));
+
+  // Read the real llm_logs rows through the LLM-LOGS handle directly, BEFORE
+  // closeDatabase() (the backend disconnect closes the llm-logs client). Mint
+  // id/createdAt/updatedAt placeholdered; the rest is byte-exact.
+  const lldb = getRawLLMLogsDatabase();
+  if (!lldb) throw new Error('llm-logs DB handle unavailable (degraded open?)');
+  const columns = (lldb.pragma('table_info(llm_logs)') as Array<{ name: string }>).map(
+    (c) => c.name
+  );
+  const rawRows = lldb.prepare('SELECT * FROM llm_logs').all() as Array<
+    Record<string, unknown>
+  >;
+  const rows = rawRows
+    .map((r) => {
+      const out: Record<string, unknown> = {};
+      for (const col of columns) out[col] = canonValue(r[col]);
+      out.id = '<id>';
+      out.createdAt = '<ts>';
+      out.updatedAt = '<ts>';
+      return out;
+    })
+    .sort((a, b) => {
+      const sa = JSON.stringify(a);
+      const sb = JSON.stringify(b);
+      return sa < sb ? -1 : sa > sb ? 1 : 0;
+    });
+
+  await closeDatabase();
+
+  for (const entry of cannedRecorded.values()) lines.push(JSON.stringify({ kind: 'canned', ...entry }));
+  lines.push(JSON.stringify({ kind: 'llmlogs', columns, rows }));
 
   fs.writeFileSync(outPath, lines.join('\n') + '\n');
-  process.stderr.write(`compression oracle wrote ${outPath}\n`);
-  expect(lines.length).toBeGreaterThanOrEqual(spec.calls.length);
+  process.stderr.write(`compression oracle wrote ${outPath} (${rows.length} llm_logs rows)\n`);
+}
+
+test('compression tier-3 oracle', async () => {
+  await main();
 });

@@ -2,22 +2,33 @@
 //! (`quilltap_core::services::compression` — v4 `applyContextCompression` +
 //! `compressConversationHistory`), the model-dependent compression path.
 //!
-//! `applyContextCompression` makes NO DB writes, so the diff is result-object
-//! equivalence: the jest oracle drives v4's REAL `applyContextCompression` over
-//! the committed corpus (mocking only the model/API-key seams) and emits each
-//! call's full `ContextCompressionResult` JSON plus the exact
-//! `provider|model|temperature|messages` canned keys the provider answered.
-//! This test replays exactly those recorded entries through
+//! `applyContextCompression` makes NO DB writes of its own, so the RESULT diff is
+//! result-object equivalence: the jest oracle drives v4's REAL
+//! `applyContextCompression` over the committed corpus (mocking only the
+//! model/API-key seams) and emits each call's full `ContextCompressionResult` JSON
+//! plus the exact `provider|model|temperature|messages` canned keys the provider
+//! answered. This test replays exactly those recorded entries through
 //! `CannedCompletionProvider` (so a prompt/selection/temperature divergence
-//! surfaces as a canned-miss), runs the Rust port for each call, and compares
-//! the serialized result to the oracle's byte-for-byte.
+//! surfaces as a canned-miss), runs the Rust port for each call, and compares the
+//! serialized result to the oracle's byte-for-byte.
 //!
-//! Generate the oracle output (Node 24, from the v4 checkout):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
+//! `executeCheapLLMTask`'s `sendToProvider` ALSO fires `logLLMCall` after every
+//! successful provider call (W4.7e3), so both sides run against a REAL llm-logs DB
+//! and diff the written `llm_logs` rows (`CONTEXT_COMPRESSION`; id/createdAt/
+//! updatedAt placeholdered, sorted by canonical JSON — see `common::dump_llm_logs`).
+//!
+//! Generate the oracle output (Node 24, from the v4 checkout). The oracle is now a
+//! real-DB jest test, so stage a copy of the case + fixture to /tmp (jest ignores
+//! `.claude/` worktree paths):
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+//!   TMPO=/tmp/qt-compression-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   cp "$V5W/harness/oracle/cases/compression-tier3.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/fixtures/compression-tier3.json"  "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_ORACLE_OUT=/tmp/oracle-compression.ndjson \
-//!     $N/npx jest --silent --watchman=false \
-//!       --roots "$PWD" --roots "$V5/harness/oracle/cases" -- compression-tier3
+//!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
+//!       --roots "$PWD" --roots "$TMPO/cases" -- compression-tier3
 //! Run:
 //!   QT_ORACLE_COMPRESSION=/tmp/oracle-compression.ndjson \
 //!     cargo test -p quilltap-harness --test compression_tier3_equivalence
@@ -31,10 +42,13 @@ use quilltap_core::context_compression::CompressibleMessage;
 use quilltap_core::model::completion::{
     CannedCompletionProvider, CompletionMessage, CompletionRole, CompletionUsage,
 };
-use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use quilltap_core::services::cheap_llm_exec::{CheapLlmLogConfig, CheapLlmTaskExecutor};
 use quilltap_core::services::compression::{apply_context_compression, ContextCompressionOptions};
+use quilltap_core::services::llm_logging::LogContext;
 use serde::Deserialize;
 use serde_json::Value;
+
+mod common;
 
 // ---------------------------------------------------------------------------
 // Spec structures (harness/oracle/fixtures/compression-tier3.json).
@@ -91,7 +105,6 @@ struct CallW {
     compression_target_tokens: i64,
     character_name: String,
     user_name: String,
-    #[allow(dead_code)]
     user_id: String,
     selection: SelectionW,
     #[serde(default)]
@@ -166,6 +179,7 @@ async fn compression_tier3_matches_oracle() {
 
     let mut oracle_results: Vec<(String, Value)> = Vec::new();
     let mut oracle_canned: Vec<CannedRowW> = Vec::new();
+    let mut oracle_llm_logs: Option<Vec<Value>> = None;
     for line in oracle_text.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -179,9 +193,11 @@ async fn compression_tier3_matches_oracle() {
             Some("canned") => {
                 oracle_canned.push(serde_json::from_value(v).expect("parse canned row"))
             }
+            Some("llmlogs") => oracle_llm_logs = Some(common::oracle_llm_logs(&v)),
             other => panic!("unknown oracle row kind {other:?}"),
         }
     }
+    let oracle_llm_logs = oracle_llm_logs.expect("oracle emitted no llmlogs row");
 
     // Replay EXACTLY the entries the oracle recorded — an input the oracle never
     // sent is a surfaced canned-miss, not an answer.
@@ -226,7 +242,23 @@ async fn compression_tier3_matches_oracle() {
         };
     }
 
-    let executor = CheapLlmTaskExecutor::new();
+    // All corpus calls share one userId; the executor carries one log config +
+    // writes into the real llm-logs partition, exactly as the oracle's single DB
+    // accumulates rows across the run.
+    let user_id = spec.calls[0].user_id.clone();
+    assert!(
+        spec.calls.iter().all(|c| c.user_id == user_id),
+        "corpus mixes userIds — the logging executor carries one"
+    );
+    let (db, _db_dir) = common::open_main_and_llm_logs_db(common::TEST_PEPPER);
+    let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+        db: db.clone(),
+        user_id,
+        // Compression passes no chatId/messageId to `executeCheapLLMTask`.
+        chat_id: None,
+        message_id: None,
+        ctx: LogContext::none(),
+    });
 
     assert_eq!(
         spec.calls.len(),
@@ -305,4 +337,17 @@ async fn compression_tier3_matches_oracle() {
         let got = serde_json::to_value(&result).expect("serialize result");
         assert_eq!(got, oracle_result, "{name}: result object diverges");
     }
+
+    // Every successful cheap-LLM provider call wrote one `llm_logs` row (v4's
+    // `sendToProvider` `logLLMCall`, task type CONTEXT_COMPRESSION). Diff the
+    // written rows against v4's byte-for-byte (id/createdAt/updatedAt
+    // placeholdered, sorted by canonical JSON).
+    let got_logs = common::dump_llm_logs(&db);
+    assert_eq!(
+        got_logs,
+        oracle_llm_logs,
+        "llm_logs rows diverge (got {} vs oracle {})",
+        got_logs.len(),
+        oracle_llm_logs.len()
+    );
 }

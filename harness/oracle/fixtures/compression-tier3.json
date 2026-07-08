@@ -3,19 +3,37 @@
     {
       "name": "happy-path",
       "messages": [
-        { "role": "user", "content": "Let's plan the trip to Marseille next month." },
-        { "role": "assistant", "content": "Marvellous! Shall I book the sleeper carriage?" },
-        { "role": "user", "content": "Yes, and note the budget is 2000 francs." },
-        { "role": "assistant", "content": "Noted. The sleeper is reserved." },
-        { "role": "user", "content": "What time does it depart?" },
-        { "role": "assistant", "content": "At the stroke of midnight, naturally." }
+        {
+          "role": "user",
+          "content": "Let's plan the trip to Marseille next month."
+        },
+        {
+          "role": "assistant",
+          "content": "Marvellous! Shall I book the sleeper carriage?"
+        },
+        {
+          "role": "user",
+          "content": "Yes, and note the budget is 2000 francs."
+        },
+        {
+          "role": "assistant",
+          "content": "Noted. The sleeper is reserved."
+        },
+        {
+          "role": "user",
+          "content": "What time does it depart?"
+        },
+        {
+          "role": "assistant",
+          "content": "At the stroke of midnight, naturally."
+        }
       ],
       "systemPrompt": "You are Aurora, a steampunk aviatrix.",
       "windowSize": 3,
       "compressionTargetTokens": 800,
       "characterName": "Aurora",
       "userName": "Charlie",
-      "userId": "user-1",
+      "userId": "11111111-1111-4111-8111-111111111111",
       "selection": {
         "provider": "ANTHROPIC",
         "modelName": "claude-haiku-4-5",
@@ -29,22 +47,32 @@
           "provider": "ANTHROPIC",
           "model": "claude-haiku-4-5",
           "response": "### Current Context\nCharlie is planning a trip to Marseille with Aurora.\n\n### Recent Decisions & Outcomes\n- Sleeper carriage reserved\n- Budget set at 2000 francs\n\n### Active Threads\n- Departure logistics\n\n### User State & Preferences\nCharlie is organized and budget-conscious.\n\n### Technical Details\n- Budget: 2000 francs",
-          "usage": { "promptTokens": 420, "completionTokens": 90, "totalTokens": 510 }
+          "usage": {
+            "promptTokens": 420,
+            "completionTokens": 90,
+            "totalTokens": 510
+          }
         }
       ]
     },
     {
       "name": "empty-window-nothing-to-compress",
       "messages": [
-        { "role": "user", "content": "Only two messages here." },
-        { "role": "assistant", "content": "Indeed, well within the window." }
+        {
+          "role": "user",
+          "content": "Only two messages here."
+        },
+        {
+          "role": "assistant",
+          "content": "Indeed, well within the window."
+        }
       ],
       "systemPrompt": "You are Aurora.",
       "windowSize": 5,
       "compressionTargetTokens": 800,
       "characterName": "Aurora",
       "userName": "Charlie",
-      "userId": "user-1",
+      "userId": "11111111-1111-4111-8111-111111111111",
       "selection": {
         "provider": "ANTHROPIC",
         "modelName": "claude-haiku-4-5",
@@ -58,18 +86,33 @@
     {
       "name": "llm-failure",
       "messages": [
-        { "role": "user", "content": "First older message." },
-        { "role": "assistant", "content": "Second older message." },
-        { "role": "user", "content": "Third older message." },
-        { "role": "assistant", "content": "Recent one." },
-        { "role": "user", "content": "Recent two." }
+        {
+          "role": "user",
+          "content": "First older message."
+        },
+        {
+          "role": "assistant",
+          "content": "Second older message."
+        },
+        {
+          "role": "user",
+          "content": "Third older message."
+        },
+        {
+          "role": "assistant",
+          "content": "Recent one."
+        },
+        {
+          "role": "user",
+          "content": "Recent two."
+        }
       ],
       "systemPrompt": "You are Aurora.",
       "windowSize": 2,
       "compressionTargetTokens": 500,
       "characterName": "Aurora",
       "userName": "Charlie",
-      "userId": "user-1",
+      "userId": "11111111-1111-4111-8111-111111111111",
       "selection": {
         "provider": "OPENAI",
         "modelName": "gpt-mini",
@@ -89,24 +132,39 @@
     {
       "name": "uncensored-fallback-succeeds",
       "messages": [
-        { "role": "user", "content": "A rather spicy older exchange begins." },
-        { "role": "assistant", "content": "The safe provider will refuse this." },
-        { "role": "user", "content": "Keep it recent from here." },
-        { "role": "assistant", "content": "Understood." }
+        {
+          "role": "user",
+          "content": "A rather spicy older exchange begins."
+        },
+        {
+          "role": "assistant",
+          "content": "The safe provider will refuse this."
+        },
+        {
+          "role": "user",
+          "content": "Keep it recent from here."
+        },
+        {
+          "role": "assistant",
+          "content": "Understood."
+        }
       ],
       "systemPrompt": "You are Aurora.",
       "windowSize": 2,
       "compressionTargetTokens": 800,
       "characterName": "Aurora",
       "userName": "Charlie",
-      "userId": "user-1",
+      "userId": "11111111-1111-4111-8111-111111111111",
       "selection": {
         "provider": "ANTHROPIC",
         "modelName": "claude-haiku-4-5",
         "connectionProfileId": "cur",
         "isLocal": false
       },
-      "dangerSettings": { "mode": "AUTO_ROUTE", "uncensoredTextProfileId": "unc-1" },
+      "dangerSettings": {
+        "mode": "AUTO_ROUTE",
+        "uncensoredTextProfileId": "unc-1"
+      },
       "availableProfiles": [
         {
           "id": "cur",
@@ -135,31 +193,50 @@
           "provider": "OLLAMA",
           "model": "dolphin-mistral",
           "response": "### Current Context\nAn uncensored summary of the earlier exchange.",
-          "usage": { "promptTokens": 300, "completionTokens": 40, "totalTokens": 340 }
+          "usage": {
+            "promptTokens": 300,
+            "completionTokens": 40,
+            "totalTokens": 340
+          }
         }
       ]
     },
     {
       "name": "empty-from-both-providers",
       "messages": [
-        { "role": "user", "content": "Older message the safe provider blanks on." },
-        { "role": "assistant", "content": "And the uncensored one blanks too." },
-        { "role": "user", "content": "Recent tail one." },
-        { "role": "assistant", "content": "Recent tail two." }
+        {
+          "role": "user",
+          "content": "Older message the safe provider blanks on."
+        },
+        {
+          "role": "assistant",
+          "content": "And the uncensored one blanks too."
+        },
+        {
+          "role": "user",
+          "content": "Recent tail one."
+        },
+        {
+          "role": "assistant",
+          "content": "Recent tail two."
+        }
       ],
       "systemPrompt": "You are Aurora.",
       "windowSize": 2,
       "compressionTargetTokens": 800,
       "characterName": "Aurora",
       "userName": "Charlie",
-      "userId": "user-1",
+      "userId": "11111111-1111-4111-8111-111111111111",
       "selection": {
         "provider": "ANTHROPIC",
         "modelName": "claude-haiku-4-5",
         "connectionProfileId": "cur",
         "isLocal": false
       },
-      "dangerSettings": { "mode": "AUTO_ROUTE", "uncensoredTextProfileId": "unc-1" },
+      "dangerSettings": {
+        "mode": "AUTO_ROUTE",
+        "uncensoredTextProfileId": "unc-1"
+      },
       "availableProfiles": [
         {
           "id": "cur",
@@ -194,17 +271,29 @@
     {
       "name": "unicode-and-system-role",
       "messages": [
-        { "role": "system", "content": "Scene: the café at dawn. éèê 你好 😀" },
-        { "role": "user", "content": "Bonjour Aurora! Comment ça va aujourd'hui? 🌅" },
-        { "role": "assistant", "content": "Très bien, merci! The dirigible awaits." },
-        { "role": "user", "content": "Recent tail." }
+        {
+          "role": "system",
+          "content": "Scene: the café at dawn. éèê 你好 😀"
+        },
+        {
+          "role": "user",
+          "content": "Bonjour Aurora! Comment ça va aujourd'hui? 🌅"
+        },
+        {
+          "role": "assistant",
+          "content": "Très bien, merci! The dirigible awaits."
+        },
+        {
+          "role": "user",
+          "content": "Recent tail."
+        }
       ],
       "systemPrompt": "You are Aurora.",
       "windowSize": 1,
       "compressionTargetTokens": 1200,
       "characterName": "Aurôre",
       "userName": "Charlie",
-      "userId": "user-1",
+      "userId": "11111111-1111-4111-8111-111111111111",
       "selection": {
         "provider": "ANTHROPIC",
         "modelName": "claude-haiku-4-5",
@@ -218,7 +307,11 @@
           "provider": "ANTHROPIC",
           "model": "claude-haiku-4-5",
           "response": "Résumé: a bilingual dawn greeting with emoji. 😊",
-          "usage": { "promptTokens": 88, "completionTokens": 22, "totalTokens": 110 }
+          "usage": {
+            "promptTokens": 88,
+            "completionTokens": 22,
+            "totalTokens": 110
+          }
         }
       ]
     }
