@@ -38,13 +38,32 @@ use std::path::PathBuf;
 
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
-use quilltap_core::services::tool_execution::{
-    create_tool_context, ToolCall, ToolResult, ToolRunner,
+use quilltap_core::model::embedding::CannedEmbeddingProvider;
+use quilltap_core::model::stream::CannedStreamingProvider;
+use quilltap_core::services::carina_query::UnavailableBrahmaConsole;
+use quilltap_core::services::carina_runner::{
+    CarinaRunError, PostProsperoCarinaError, ProsperoCarinaErrorArgs,
 };
+use quilltap_core::services::native_tool_loop::NoToolCallDetector;
+use quilltap_core::services::tool_execution::{
+    create_tool_context, CannedToolRunner, ToolCall, ToolResult, ToolRunner,
+};
+use quilltap_core::tools::ask_carina::{ErasedAskCarina, TypedAskCarina};
 use quilltap_core::tools::executor::BuiltInToolRunner;
 use quilltap_core::tools::self_inventory::{ClientShell, SelfInventoryEnv};
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
+
+/// A Clone no-op Prospero seam for the `TypedAskCarina` bound. v4's ask_carina
+/// not-found path posts a Prospero announcement to `chat_messages`; the diff is
+/// `conversation_annotations` only, so a no-op is invisible.
+#[derive(Clone)]
+struct NoProspero;
+impl PostProsperoCarinaError for NoProspero {
+    fn post(&mut self, _a: ProsperoCarinaErrorArgs) -> Result<(), CarinaRunError> {
+        Ok(())
+    }
+}
 
 #[derive(Deserialize)]
 struct Spec {
@@ -199,7 +218,24 @@ async fn tool_dispatch_matches_oracle() {
     )
     .unwrap_or_else(|e| panic!("open fixture: {e}"));
 
-    let runner = BuiltInToolRunner::new(db.clone(), dummy_env());
+    // W4.10a: wire the REAL Carina engine behind the `ask_carina` dispatch (the
+    // erased seam over `run_carina_query`). The corpus's ask_carina op names a
+    // NONEXISTENT answerer, so the engine resolves `not-found` and returns v4's
+    // exact error WITHOUT a model call — proving the dispatch row (`fail(...)`) +
+    // the not-found handler path against v4's REAL `executeAskCarinaTool`.
+    let runner = BuiltInToolRunner::new(db.clone(), dummy_env()).with_ask_carina(
+        ErasedAskCarina::new(TypedAskCarina {
+            db: db.clone(),
+            embedding: CannedEmbeddingProvider::new(),
+            streaming: CannedStreamingProvider::new(),
+            tool_runner: CannedToolRunner::new(),
+            tool_detector: NoToolCallDetector,
+            brahma: UnavailableBrahmaConsole,
+            prospero: NoProspero,
+            model_supports_native_tools: false,
+            now_ms: 0.0,
+        }),
+    );
 
     for (i, op) in spec.ops.iter().enumerate() {
         let tc = ToolCall {
