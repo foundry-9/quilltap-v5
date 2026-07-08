@@ -46,8 +46,10 @@ pub struct ModerationWireResult {
 }
 
 impl ModerationWireResult {
-    /// Project to the gatekeeper's [`ModerationResult`] (drop the per-category
-    /// `flagged`, which `map_moderation_result` never reads).
+    /// Project to the gatekeeper's [`ModerationResult`]. The per-category `flagged`
+    /// is CARRIED THROUGH (v4's `ModerationResult` keeps it): `map_moderation_result`
+    /// still never reads it, but the moderation-path `logLLMCall` serializes the raw
+    /// result byte-for-byte, so the field must survive the projection (W4.11c).
     pub fn into_gatekeeper(self) -> ModerationResult {
         ModerationResult {
             flagged: self.flagged,
@@ -56,6 +58,7 @@ impl ModerationWireResult {
                 .into_iter()
                 .map(|c| ModerationCategoryScore {
                     category: c.category,
+                    flagged: c.flagged,
                     score: c.score,
                 })
                 .collect(),

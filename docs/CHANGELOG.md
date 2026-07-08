@@ -4,6 +4,22 @@
 
 ### 5.0-dev
 
+W4.11c: closed the last `logLLMCall` seam — the gatekeeper moderation-path
+`llm_logs` row. The moderation seam was widened so the wire's raw per-category
+`flagged` survives the projection to the gatekeeper (added `flagged` to
+`ModerationCategoryScore`, matching v4's `ModerationCategoryResult`;
+`map_moderation_result` still never reads it — faithful), and the
+`ModerationOutcome::Moderated` branch now writes v4's `modelName:'moderation'`
+`DANGER_CLASSIFICATION` row: provider = the wire provider name, one `user`
+request message, `response.content` = `JSON.stringify({flagged, categories})`
+over the raw result (each category `{category, flagged, score}`, `score` via
+`js_number_to_json`), `userId` + `chatId` only, awaited-and-ignored. The
+`danger_gatekeeper_tier3` differential dropped its `strip_moderation` filter and
+now diffs both moderation rows byte-for-byte (regenerated green). The
+moderation-provider-failure case writes no row (v4 identical — the throw skips
+the log), and a classification-cache hit never reaches the provider. Sibling
+differentials `danger_routing` + `moderation_wire` re-verified green.
+
 Cleanup-round prep: wrote the three work orders that close every standing
 pre-enclave follow-up — W4.11a (spine `with_logging` + the orchestrator
 `llm_logs` dump; Arc blanket impls on the provider traits so composition

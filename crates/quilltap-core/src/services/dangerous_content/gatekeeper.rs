@@ -74,11 +74,15 @@ impl DangerClassificationResult {
     }
 }
 
-/// One provider-side category score (v4 `ModerationCategoryResult`, `flagged`
-/// unused by the mapper).
+/// One provider-side category (v4 `ModerationCategoryResult` — `{ category,
+/// flagged, score }`). [`map_moderation_result`] reads only `category`/`score`
+/// (v4's projection never consults `flagged`); the per-category `flagged` is
+/// carried solely so the moderation-path `logLLMCall` row can serialize the raw
+/// result byte-for-byte (`gatekeeper.service.ts:290`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct ModerationCategoryScore {
     pub category: String,
+    pub flagged: bool,
     pub score: f64,
 }
 
@@ -226,6 +230,35 @@ pub fn map_moderation_result(
         source: None,
         provider_name: None,
     }
+}
+
+/// v4's `JSON.stringify({ flagged, categories })` over the RAW moderation result
+/// — the `response.content` string the moderation-path `logLLMCall` stores
+/// (`gatekeeper.service.ts:290`). Each category is `{ category, flagged, score }`
+/// in v4 field order; `score` renders via [`js_number_to_json`] (integer-valued →
+/// bare) so the string is byte-identical to `JSON.stringify`. An ordered
+/// `serde_json::Map` (crate `preserve_order`) fixes the insertion order — NEVER a
+/// sorted-key value.
+fn serialize_moderation_log_content(result: &ModerationResult) -> String {
+    use crate::db::js_number_to_json;
+    use serde_json::{Map, Value};
+
+    let categories: Vec<Value> = result
+        .categories
+        .iter()
+        .map(|c| {
+            let mut m = Map::new();
+            m.insert("category".to_string(), Value::String(c.category.clone()));
+            m.insert("flagged".to_string(), Value::Bool(c.flagged));
+            m.insert("score".to_string(), js_number_to_json(c.score));
+            Value::Object(m)
+        })
+        .collect();
+
+    let mut root = Map::new();
+    root.insert("flagged".to_string(), Value::Bool(result.flagged));
+    root.insert("categories".to_string(), Value::Array(categories));
+    serde_json::to_string(&Value::Object(root)).unwrap_or_default()
 }
 
 /// v4 `parseClassificationResponse`: strip code fences, parse JSON, derive the
@@ -438,18 +471,47 @@ where
         } => {
             let mut mapped = map_moderation_result(&result, settings.threshold);
             mapped.source = Some("moderation".to_string());
-            mapped.provider_name = Some(provider_name);
+            mapped.provider_name = Some(provider_name.clone());
             cache_result(hash, mapped.clone());
-            // v4 logLLMCall (gatekeeper.service.ts:279) writes a
-            // `modelName:'moderation'` row here whose `response.content` is
-            // `JSON.stringify({ flagged, categories })` over the RAW wire
-            // categories (which carry a per-category `flagged`). The ported
-            // moderation seam projects to `ModerationResult` and drops that
-            // per-category `flagged` (`map_moderation_result` never reads it), so
-            // the byte-exact content is not reproducible without widening the
-            // moderation seam (W4.2/W4.7f). Not ported here — the differential
-            // banks the absence on the moderation path (W4.7e3 order). Widening
-            // the seam to carry the raw categories is the tracked follow-up.
+            // v4 logLLMCall (gatekeeper.service.ts:279): fire-and-forget
+            // DANGER_CLASSIFICATION row on the moderation path — provider the wire
+            // provider name, `modelName:'moderation'`, the single `user` request
+            // message, `response.content` = `JSON.stringify({ flagged, categories })`
+            // over the RAW result (each category `{ category, flagged, score }`, the
+            // per-category `flagged` the mapper never reads). Awaited-and-ignored
+            // (the writer never throws — the LLM-path precedent); `LogContext::none()`
+            // on the request path (only `userId` + `chatId`, no usage/temperature).
+            let log_params = LogLlmCallParams {
+                user_id: user_id.to_string(),
+                log_type: log_type::DANGER_CLASSIFICATION.to_string(),
+                message_id: None,
+                chat_id: chat_id.map(str::to_string),
+                character_id: None,
+                provider: provider_name,
+                model_name: "moderation".to_string(),
+                request: LogRequest {
+                    messages: vec![LogRequestMessage {
+                        role: "user".to_string(),
+                        content: content.to_string(),
+                        attachments: None,
+                    }],
+                    temperature: None,
+                    max_tokens: None,
+                    tools: None,
+                },
+                response: LogResponse {
+                    content: serialize_moderation_log_content(&result),
+                    error: None,
+                    finish_reason: None,
+                    tool_calls: None,
+                },
+                usage: None,
+                cache_usage: None,
+                raw_provider_usage: None,
+                request_hashes: None,
+                duration_ms: None,
+            };
+            let _ = log_llm_call(db, log_params, &LogContext::none()).await;
             return Ok(mapped);
         }
         // v4: `provider.moderate` throwing propagates to the outer catch → safe.
@@ -609,14 +671,17 @@ mod tests {
             categories: vec![
                 ModerationCategoryScore {
                     category: "sexual".into(),
+                    flagged: false,
                     score: 0.3,
                 },
                 ModerationCategoryScore {
                     category: "sexual/minors".into(),
+                    flagged: true,
                     score: 0.8,
                 },
                 ModerationCategoryScore {
                     category: "hate".into(),
+                    flagged: false,
                     score: 0.001, // below floor → dropped
                 },
             ],
@@ -641,5 +706,40 @@ mod tests {
         assert!(r.is_dangerous);
         assert_eq!(r.score, 0.0);
         assert!(r.categories.is_empty());
+    }
+
+    #[test]
+    fn moderation_log_content_matches_json_stringify() {
+        // v4 `JSON.stringify({ flagged, categories })` — field order flagged then
+        // categories, each category { category, flagged, score }; an integer-valued
+        // score renders bare.
+        let mr = ModerationResult {
+            flagged: true,
+            categories: vec![
+                ModerationCategoryScore {
+                    category: "violence".into(),
+                    flagged: true,
+                    score: 0.88,
+                },
+                ModerationCategoryScore {
+                    category: "sexual".into(),
+                    flagged: false,
+                    score: 0.0,
+                },
+            ],
+        };
+        assert_eq!(
+            serialize_moderation_log_content(&mr),
+            r#"{"flagged":true,"categories":[{"category":"violence","flagged":true,"score":0.88},{"category":"sexual","flagged":false,"score":0}]}"#,
+        );
+        // Empty categories.
+        let clean = ModerationResult {
+            flagged: false,
+            categories: vec![],
+        };
+        assert_eq!(
+            serialize_moderation_log_content(&clean),
+            r#"{"flagged":false,"categories":[]}"#,
+        );
     }
 }

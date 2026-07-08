@@ -427,18 +427,13 @@ async fn danger_gatekeeper_tier3_matches_oracle() {
         .read_main(|conn| dump_table_json_conn(conn, "chat_messages", "chatId"))
         .expect("dump chat_messages");
 
-    // The classify path writes one DANGER_CLASSIFICATION row per LLM-classify
-    // case. v4's moderation path ALSO logs (`modelName:'moderation'`), but that
-    // logging is a tracked unported seam (the projected `ModerationResult` drops
-    // the raw per-category `flagged` v4 serializes), so filter those rows out on
-    // BOTH sides — the Rust side never writes them.
-    let strip_moderation = |rows: Vec<Value>| -> Vec<Value> {
-        rows.into_iter()
-            .filter(|r| r["modelName"] != Value::String("moderation".to_string()))
-            .collect()
-    };
-    let got_logs = strip_moderation(common::dump_llm_logs(&db));
-    let want_logs = strip_moderation(oracle_llm_logs);
+    // Both classify paths write a DANGER_CLASSIFICATION row: the LLM path
+    // (`modelName` = the cheap model) AND the moderation path (`modelName:
+    // 'moderation'`, W4.11c — the seam widened to carry the raw per-category
+    // `flagged` so `response.content` = `JSON.stringify({ flagged, categories })`
+    // is byte-exact). Both are diffed — no filtering.
+    let got_logs = common::dump_llm_logs(&db);
+    let want_logs = oracle_llm_logs;
 
     drop(db);
     let _ = std::fs::remove_file(&work);

@@ -20,8 +20,10 @@
  *     for the LLM-path cases; `findApiKeyByIdAndUserId` is patched to a canned key
  *     so the real `autoDetectModerationApiKey` succeeds.
  *   - `getApiKeyForCheapLLMSelection` → constant (host-side seam).
- *   - `logLLMCall` → no-op (host seam). The Concierge danger writer
- *     (`postConciergeDangerAnnouncement`) runs REAL now (W4.6b) — a new flip to
+ *   - `logLLMCall` → REAL (W4.10b/W4.11c): the LLM-classify path AND the
+ *     moderation path both land DANGER_CLASSIFICATION rows in a fresh llm-logs DB
+ *     (dumped below). The Concierge danger writer
+ *     (`postConciergeDangerAnnouncement`) also runs REAL (W4.6b) — a new flip to
  *     dangerous posts the bubble into `chat_messages`.
  *
  * Dumps `chats` + `chat_messages`.
@@ -153,10 +155,11 @@ async function main(): Promise<void> {
     const actual = jest.requireActual('@/lib/services/api-key.service');
     return { __esModule: true, ...actual, getApiKeyForCheapLLMSelection: async () => 'test-key' };
   });
-  // W4.10b: run the REAL `logLLMCall` so the LLM-classify path lands
-  // DANGER_CLASSIFICATION rows in the llm-logs DB (dumped below). The moderation
-  // path ALSO logs (`modelName:'moderation'`) but that logging is a tracked
-  // unported seam — the Rust test filters those rows out on both sides.
+  // W4.10b/W4.11c: run the REAL `logLLMCall` so BOTH classify paths land
+  // DANGER_CLASSIFICATION rows in the llm-logs DB (dumped below) — the LLM path
+  // AND the moderation path (`modelName:'moderation'`, now ported: the Rust seam
+  // was widened to carry the raw per-category `flagged`, so its `response.content`
+  // matches byte-for-byte and both rows are diffed unfiltered).
   jest.doMock('@/lib/services/llm-logging.service', () =>
     jest.requireActual('@/lib/services/llm-logging.service')
   );

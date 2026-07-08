@@ -4395,3 +4395,31 @@ regen (needs the oracle's model mock relocated below `streamMessage`); the
 gatekeeper moderation-path logging seam (needs the projected
 `ModerationResult` widened to carry per-category `flagged`). Then Round 5:
 Unit 4, the enclave (`enclave-engine.md`).
+
+**W4.11c: the gatekeeper moderation-path `logLLMCall` seam is now CLOSED**
+(2026-07-08) — the last tracked `logLLMCall` seam. The moderation seam was
+widened so the wire's raw per-category `flagged` survives the projection:
+`gatekeeper::ModerationCategoryScore` gained a `flagged` field (matching v4's
+`ModerationCategoryResult`; `moderation_wire::into_gatekeeper` now carries it
+through), while `map_moderation_result` still reads ONLY `category`/`score` —
+faithful, v4's projection never consults per-category `flagged`. The
+`ModerationOutcome::Moderated` branch of `classify_inner` now writes v4's
+(`gatekeeper.service.ts:279`) `modelName:'moderation'` `DANGER_CLASSIFICATION`
+row: provider = the wire provider name, one `user` request message,
+`response.content` = a hand-built `JSON.stringify({flagged, categories})`
+(ordered `serde_json::Map`, each category `{category, flagged, score}`, `score`
+via `js_number_to_json` so an integer-valued score renders bare), `userId` +
+`chatId` only (no messageId/characterId/usage/temperature — the summarizers'
+present-null double-`Option` handles v4's absent `?? null` fields),
+awaited-and-ignored (the writer never throws — the LLM-path precedent),
+`LogContext::none()`. A moderation-provider **failure** writes no row (v4
+identical — the throw skips the log, reaching the outer catch → safe fallback),
+and a classification-cache hit never reaches the provider. The
+`danger_gatekeeper_tier3_equivalence` differential dropped its `strip_moderation`
+filter and now diffs BOTH moderation rows byte-for-byte (regenerated green
+against v4 `6b6e39ad`; the oracle already ran the real `logLLMCall` since W4.10b
+— no v4-side change beyond a fresh regen). `danger_routing_equivalence` +
+`moderation_wire_equivalence` re-verified green (the wire types are unchanged).
+With this every `logLLMCall` call site is ported; the remaining logging
+follow-up is only the W4.11b `primary_stream_tier3` regen + the spine
+`with_logging` wiring.
