@@ -59,10 +59,10 @@ use super::doc_edit::{
     PendingLibrarianAnnouncement,
 };
 use super::{
-    annotations, doc_edit, help, help_search, list_email, photo, project_info, read_conversation,
-    request_full_context, rng, run_sql, search, self_inventory, send_mail, state, terminal,
-    wardrobe_archive, wardrobe_create, wardrobe_list, wardrobe_read, wardrobe_take_off,
-    wardrobe_update, wardrobe_wear, web_search, whisper,
+    annotations, ask_carina, doc_edit, help, help_search, list_email, photo, project_info,
+    read_conversation, request_full_context, rng, run_sql, search, self_inventory, send_mail,
+    state, terminal, wardrobe_archive, wardrobe_create, wardrobe_list, wardrobe_read,
+    wardrobe_take_off, wardrobe_update, wardrobe_wear, web_search, whisper,
 };
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read};
@@ -201,14 +201,15 @@ pub const PORTED_TOOLS: &[&str] = &[
     "help_search",
     "request_full_context",
     // W4.1d5: host-seamed + remaining tools (state + run_sql + the Post Office).
-    // `ask_carina` is ported (`tools::ask_carina`) + differential-verified, but its
-    // dispatch needs the W4.5 Carina query engine injected as the `RunCarinaQuery`
-    // seam (orchestrator-provided, frozen this round), so it stays on the loud
-    // fallback until that seam is wired — the handler + differential are complete.
     "state",
     "run_sql",
     "send_mail",
     "list_email",
+    // W4.10a: `ask_carina` dispatches through the injected `ErasedAskCarina` seam
+    // (default: not-available → v4's recognized-but-unavailable failure; production
+    // + the differential wire the real Carina query engine — `run_carina_query` —
+    // host-side). The handler + engine are complete + differential-verified.
+    "ask_carina",
     // `search_web` dispatches through the injected `WebSearchProvider` seam
     // (default: NotConfigured — faithful to a no-search-plugin instance; a real
     // provider is host-wired). The handler + differential are complete.
@@ -262,6 +263,14 @@ impl TerminalScrollbackSource for EmptyScrollback {
     fn scrollback(&self, _session_id: &str) -> String {
         String::new()
     }
+}
+
+/// A no-op [`EventSink`](crate::services::chat_events::EventSink) — the `ask_carina`
+/// dispatch's `onPosted` sink when no live client stream is threaded into the tool
+/// context (v4's optional `emitCarinaAnswer`).
+struct NullSink;
+impl crate::services::chat_events::EventSink for NullSink {
+    fn emit(&self, _event: crate::services::chat_events::ChatEvent) {}
 }
 
 // ===========================================================================
@@ -346,6 +355,13 @@ pub struct BuiltInToolRunner<F: ToolRunner = LoudFallbackRunner> {
     /// → "Image generation is not enabled for this chat"); production + the
     /// differential wire a real bundle host-side.
     image_generation: generate_image::ErasedImageGeneration,
+    /// The Carina engine boundary the `ask_carina` tool dispatches to (v4's
+    /// `runCarinaQuery` + `postProsperoCarinaError`). Defaults to
+    /// [`ErasedAskCarina::not_available`](ask_carina::ErasedAskCarina::not_available)
+    /// (the exact loud-fallback message the runner returned before this seam), so
+    /// moving `ask_carina` into the dispatched set is inert until a real engine is
+    /// wired (production + the differential build one host-side).
+    ask_carina: ask_carina::ErasedAskCarina,
     fallback: F,
 }
 
@@ -362,6 +378,7 @@ impl BuiltInToolRunner<LoudFallbackRunner> {
             file_bytes: Arc::new(NotConfiguredBytes),
             photo_side_effects: Arc::new(NoSideEffects),
             image_generation: generate_image::ErasedImageGeneration::none(),
+            ask_carina: ask_carina::ErasedAskCarina::not_available(),
             fallback: LoudFallbackRunner,
         }
     }
@@ -380,8 +397,17 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             file_bytes: self.file_bytes,
             photo_side_effects: self.photo_side_effects,
             image_generation: self.image_generation,
+            ask_carina: self.ask_carina,
             fallback,
         }
+    }
+
+    /// Inject the Carina engine the `ask_carina` tool dispatches to (production +
+    /// the differential wire a real engine host-side; the core default returns v4's
+    /// recognized-but-unavailable failure).
+    pub fn with_ask_carina(mut self, runner: ask_carina::ErasedAskCarina) -> Self {
+        self.ask_carina = runner;
+        self
     }
 
     /// Inject the image-bytes store the `keep_image` tool uses (production wires a
@@ -472,6 +498,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             "run_sql" => self.run_run_sql(tc, ctx).await,
             "send_mail" => self.run_send_mail(tc, ctx).await,
             "list_email" => self.run_list_email(tc, ctx).await,
+            "ask_carina" => self.run_ask_carina(tc, ctx).await,
             "search_web" => self.run_web_search(tc, ctx),
             // W4.9b: photo trio.
             "keep_image" => self.run_keep_image(tc, ctx).await,
@@ -1181,6 +1208,34 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             }
         })
         .await
+    }
+
+    // -- ask_carina (inline Carina answerer; tool-executor.ts:1096) ----------
+    async fn run_ask_carina(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        // v4 forwards `context.emitCarinaAnswer` as `runCarinaQuery`'s `onPosted`
+        // (the live SSE callback). The `ToolExecutionContext` does not carry the
+        // per-turn sink, so this dispatch passes a no-op sink — faithful to v4's
+        // documented `onPosted`-absent path (autonomous-room / forked-child, no
+        // client stream). The answer is still POSTED to `chat_messages` by the
+        // engine (the load-bearing effect); the live `@Name:` markup path wires
+        // the real sink (through the finalizer, where it is in hand).
+        let out = self
+            .ask_carina
+            .run(
+                &NullSink,
+                &ctx.user_id,
+                &ctx.chat_id,
+                ctx.calling_participant_id.as_deref(),
+                &tc.arguments,
+            )
+            .await;
+        // v4's dispatch row: `{ toolName, success, result: success ? { answer } :
+        // null, error: success ? undefined : out.error }`.
+        if out.success {
+            ok("ask_carina", json!({ "answer": out.answer }))
+        } else {
+            fail("ask_carina", out.error.unwrap_or_default())
+        }
     }
 
     // ── wardrobe tools (tool-executor.ts:667–826) ─────────────────────────

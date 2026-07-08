@@ -99,6 +99,32 @@ impl ApiKeyResolver for ConnApiKeys<'_> {
     }
 }
 
+/// The owned-[`Db`] form of [`ConnApiKeys`] — the same real resolution
+/// (`find_by_id_and_user_id`) but reading off the read pool via a held [`Db`]
+/// handle rather than a borrowed connection. The [`DangerContentRouter`] STORES
+/// the resolver, so it cannot hold the borrowed connection the router opens for
+/// each resolve; this owned form (opening its own pooled read) closes the
+/// spine-composition seam (W4.10a). Additive: `ConnApiKeys` stays for callers
+/// that already hold a connection.
+pub struct DbApiKeys(pub Db);
+impl ApiKeyResolver for DbApiKeys {
+    fn resolve(&self, api_key_id: &str, user_id: &str) -> Option<String> {
+        let api_key_id = api_key_id.to_string();
+        let user_id = user_id.to_string();
+        self.0
+            .read_main(move |conn| {
+                Ok(crate::db::api_keys::find_by_id_and_user_id(
+                    conn,
+                    &api_key_id,
+                    &user_id,
+                )?)
+            })
+            .ok()
+            .flatten()
+            .map(|k| k.key_value)
+    }
+}
+
 fn route_profile_from_value(v: &Value) -> RouteProfile {
     RouteProfile {
         id: str_field(v, "id"),

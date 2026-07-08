@@ -92,14 +92,6 @@ struct CallW {
     /// crypto.randomBytes mock. Absent → empty.
     #[serde(default)]
     rng_bytes: Vec<u8>,
-    /// W4.1g: the injected `checkModelSupportsTools` result (default true → native
-    /// tool mode). Mirrors the oracle's per-call `currentModelSupportsTools`.
-    #[serde(default = "default_true")]
-    model_supports_native_tools: bool,
-}
-
-fn default_true() -> bool {
-    true
 }
 
 #[derive(Deserialize)]
@@ -111,11 +103,9 @@ struct Spec {
     #[serde(default)]
     local_offset_minutes: i64,
     calls: Vec<CallW>,
-    /// W4.2u: the canned `apiKeyId → decrypted key` map for the uncensored-reroute
-    /// router (mirrors the oracle's `findApiKeyByIdAndUserId` monkey-patch). The
-    /// real `DangerContentRouter`'s `ApiKeyResolver` injects it.
-    #[serde(default)]
-    api_keys: HashMap<String, String>,
+    // W4.10a: the fixture builder seeds `api_keys` from the spec's `apiKeys` map;
+    // the Rust harness no longer reads it (the real `DbApiKeys` resolver reads the
+    // seeded table). Left off the struct — serde ignores the unknown key.
 }
 
 fn spec_path() -> PathBuf {
@@ -300,23 +290,29 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
 }
 
 // ---------------------------------------------------------------------------
-// W4.2u: the REAL uncensored-reroute router. The differential now runs v4's REAL
-// danger resolution (global mode AUTO_ROUTE, no `uncensoredTextProfileId` — so the
-// empty-response uncensored failover stays inert, only the FIRST-branch reroute on
-// an actively-dangerous chat fires), so the Rust side wires the REAL
-// `DangerContentRouter` (scans `connection_profiles` for an `isDangerousCompatible`
-// profile off the read pool) with the canned `ApiKeyResolver` from the spec's
-// `apiKeys` map (mirroring the oracle's `findApiKeyByIdAndUserId` monkey-patch).
+// W4.2u/W4.10a: the REAL uncensored-reroute router. The differential runs v4's
+// REAL danger resolution (global mode AUTO_ROUTE, no `uncensoredTextProfileId`, so
+// only the FIRST-branch reroute on an actively-dangerous chat fires), so the Rust
+// side wires the REAL `DangerContentRouter` (scans `connection_profiles` for an
+// `isDangerousCompatible` profile off the read pool). W4.10a swaps the prior canned
+// key map for the REAL DB-backed `DbApiKeys` resolver, reading the fixture-seeded
+// `api_keys` table (the oracle reads its own seeded rows).
+//
+// The never-called pricing fetch backing the in-spine `check_model_supports_tools`
+// (W4.10a): an empty fetch → OPENROUTER cache empty → v4's "default to native
+// tools"; every non-OPENROUTER provider answers from the static fallback table.
 // ---------------------------------------------------------------------------
 
-/// The canned key seam: `apiKeyId` → key, from the spec (the oracle patches
-/// `findApiKeyByIdAndUserId` to the same map).
-struct CannedApiKeys(HashMap<String, String>);
-impl quilltap_core::services::dangerous_content::provider_routing::ApiKeyResolver
-    for CannedApiKeys
-{
-    fn resolve(&self, api_key_id: &str, _user_id: &str) -> Option<String> {
-        self.0.get(api_key_id).cloned()
+struct NoPricingFetch;
+impl quilltap_core::services::pricing_fetcher::PricingFetch for NoPricingFetch {
+    fn openrouter_public_models(&self) -> Option<Value> {
+        None
+    }
+    fn openrouter_sdk_models(&self, _api_key: &str) -> Option<Value> {
+        None
+    }
+    fn ollama_tags(&self, _base_url: &str) -> Option<Value> {
+        None
     }
 }
 
@@ -517,12 +513,22 @@ fn orchestrator_tier3_matches_oracle() {
     // (RealBuildContextSeams). The oracle un-mocks the same writers; the resulting
     // whisper rows appear in the diffed chat_messages dump.
     let bc_seams = RealBuildContextSeams { db: &db };
-    // W4.2u: the REAL router + canned API-key seam (from the spec's `apiKeys` map).
+    // W4.10a: the REAL DB-backed ApiKeyResolver (reads the fixture-seeded `api_keys`
+    // table — the oracle un-monkey-patches `findApiKeyByIdAndUserId` to read its own
+    // seeded rows). Closes the W4.7d→W4.4b handoff: the danger-reroute key material
+    // now comes off the real table end to end.
     let router =
         quilltap_core::services::dangerous_content::provider_routing::DangerContentRouter::new(
             db.clone(),
-            CannedApiKeys(spec.api_keys.clone()),
+            quilltap_core::services::dangerous_content::provider_routing::DbApiKeys(db.clone()),
         );
+    // W4.10a: `model_supports_native_tools` is now sourced in-spine from the REAL
+    // `check_model_supports_tools` over this fetcher. The fetch is a seam: an empty
+    // fetch → OPENROUTER cache empty → v4's "default to native tools" (model not
+    // found); every non-OPENROUTER provider answers from the static fallback table.
+    // The oracle un-mocks `checkModelSupportsTools` + mocks `getPricingCache` empty,
+    // matching this.
+    let pricing = quilltap_core::services::pricing_fetcher::PricingFetcher::new(NoPricingFetch);
 
     let mut got_events: Vec<(String, Vec<Value>)> = Vec::new();
 
@@ -546,6 +552,7 @@ fn orchestrator_tier3_matches_oracle() {
             streaming: &streaming,
             executor: &executor,
             sink: &sink,
+            pricing: &pricing,
             build_context_seams: &bc_seams,
             orchestrator_seams: &orchestrator_seams,
             // The attachment subsystem (W4.4b): the corpus keeps `fileIds` empty
@@ -587,7 +594,6 @@ fn orchestrator_tier3_matches_oracle() {
                 model_context_limit: 200_000,
                 timestamp_config: None,
                 timezone: Some("UTC".to_string()),
-                model_supports_native_tools: call.model_supports_native_tools,
                 provider_supports_web_search: false,
             }
         };
@@ -617,7 +623,6 @@ fn orchestrator_tier3_matches_oracle() {
                     let user_id = spec.user_id.clone();
                     let frozen = spec.frozen_now_ms;
                     let offset = spec.local_offset_minutes;
-                    let model_supports = call.model_supports_native_tools;
                     let make_chain_input = move |pid: String| ProcessMessageInput {
                         chat_id: chat_id.clone(),
                         user_id: user_id.clone(),
@@ -635,7 +640,6 @@ fn orchestrator_tier3_matches_oracle() {
                         model_context_limit: 200_000,
                         timestamp_config: None,
                         timezone: Some("UTC".to_string()),
-                        model_supports_native_tools: model_supports,
                         provider_supports_web_search: false,
                     };
                     rt.block_on(orchestrator::execute_turn_chain(

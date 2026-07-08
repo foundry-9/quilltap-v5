@@ -122,6 +122,9 @@ use crate::services::primary_stream::{
     self, EffectiveProfile, PreservePartialOnError, ReasoningSegment, RunPrimaryStreamOptions,
     StreamingState,
 };
+use crate::services::pricing_fetcher::{
+    PricingContext, PricingFetch, PricingFetcher, PricingProfile,
+};
 use crate::services::provider_failover::{
     self, AttemptEmptyResponseRecoveryOptions, DangerSettings, DangerousContentRouter,
 };
@@ -351,11 +354,6 @@ pub struct ProcessMessageInput {
     /// The IANA timezone buildContext resolves (v4 `resolveTimezone`); `None` =
     /// system default (`UTC` in the corpus).
     pub timezone: Option<String>,
-    /// Injected `checkModelSupportsTools(provider, model, userId)` — the async
-    /// pricing-cache lookup resolved above the seam (registry-seam pattern, like
-    /// [`ProcessMessageInput::model_context_limit`]). Feeds `buildTools` +
-    /// `resolvedToolMode`.
-    pub model_supports_native_tools: bool,
     /// Injected `provider.supportsWebSearch` — the provider-capability flag
     /// resolved above the seam. `useNativeWebSearch` ANDs it with the profile.
     pub provider_supports_web_search: bool,
@@ -367,7 +365,7 @@ pub struct ProcessMessageInput {
 
 /// The bundle of injected model boundaries + sinks + seams threaded through the
 /// whole spine (grouped so the re-entrant chain driver can pass one reference).
-pub struct OrchestratorDeps<'a, EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST, CARQ, PROS>
+pub struct OrchestratorDeps<'a, EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST, CARQ, PROS, PF>
 where
     EMB: EmbeddingProvider,
     CMP: CompletionProvider + Sync,
@@ -381,6 +379,7 @@ where
     COST: CostTracker,
     CARQ: RunCarinaQuery,
     PROS: PostProsperoCarinaError,
+    PF: PricingFetch + Send + Sync,
 {
     pub db: &'a Db,
     pub embedding: &'a EMB,
@@ -388,6 +387,11 @@ where
     pub streaming: &'a STR,
     pub executor: &'a CheapLlmTaskExecutor,
     pub sink: &'a SNK,
+    /// The pricing-cache fetcher backing `checkModelSupportsTools` (v4
+    /// `getPricingCache` → the OpenRouter path; every other provider answers from
+    /// the static fallback table). The fetch itself stays a seam — production wires
+    /// the real HTTP fetch, the differential a never-called one.
+    pub pricing: &'a PricingFetcher<PF>,
     pub build_context_seams: &'a BCS,
     pub orchestrator_seams: &'a ORC,
     /// The host byte store (v4 `fileStorageManager`) — the W4.4b attachment
@@ -414,12 +418,45 @@ where
     pub rng_bytes: &'a mut dyn RandomBytes,
 }
 
+/// Build the [`PricingContext`] `checkModelSupportsTools` consults on the
+/// OPENROUTER path (v4 `refreshPricingCache` reads the user's connection profiles
+/// + `findApiKeyByIdAndUserId`). The `api_keys` map is left empty: the live fetch
+/// is the injected [`PricingFetch`] seam (Phase-4 host wiring supplies real keys
+/// when a real HTTP fetch lands); when the fetch returns nothing, an OPENROUTER
+/// model falls through to v4's "default to native tools" — matching v4's own
+/// missing-cache fallback. A read failure yields an empty context (fail-open to
+/// the static fallback table).
+fn build_pricing_context(db: &Db, user_id: &str) -> PricingContext {
+    let user_id = user_id.to_string();
+    let profiles = db
+        .read_main(move |conn| connection_profiles::find_by_user_id(conn, &user_id))
+        .unwrap_or_default();
+    PricingContext {
+        profiles: profiles
+            .iter()
+            .map(|p| PricingProfile {
+                provider: p
+                    .get("provider")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                api_key_id: p
+                    .get("apiKeyId")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                base_url: p.get("baseUrl").and_then(Value::as_str).map(str::to_string),
+            })
+            .collect(),
+        api_keys: HashMap::new(),
+    }
+}
+
 /// v4 `processMessage`. The main send-path spine. Composes the ported services,
 /// reproducing every unported-subsystem gate and routing the subsystem body
 /// through an [`OrchestratorSeams`] method. Returns the [`ProcessMessageResult`]
 /// the chain driver reads.
 #[allow(clippy::too_many_lines, clippy::type_complexity)]
-pub async fn process_message<EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST, CARQ, PROS>(
+pub async fn process_message<EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST, CARQ, PROS, PF>(
     deps: &mut OrchestratorDeps<
         '_,
         EMB,
@@ -434,6 +471,7 @@ pub async fn process_message<EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COS
         COST,
         CARQ,
         PROS,
+        PF,
     >,
     input: &ProcessMessageInput,
 ) -> Result<ProcessMessageResult, DbError>
@@ -450,6 +488,7 @@ where
     COST: CostTracker,
     CARQ: RunCarinaQuery,
     PROS: PostProsperoCarinaError,
+    PF: PricingFetch + Send + Sync,
 {
     let db = deps.db;
     let sink = deps.sink;
@@ -1133,6 +1172,19 @@ where
     let (mut tools, model_supports_native_tools, use_native_web_search) = if is_effective_courier {
         (Vec::new(), false, false)
     } else {
+        // v4 `buildTools` → `checkModelSupportsTools(effectiveProfile.provider,
+        // effectiveProfile.modelName, userId)`: the async pricing-cache lookup,
+        // sourced here from the real fetcher (only OPENROUTER consults the live
+        // cache; every other provider answers from the static fallback table). The
+        // fetch itself stays a seam. The Courier arm hardcodes `false` (v4 skips
+        // the tool build there entirely).
+        let pricing_ctx = build_pricing_context(db, &user_id);
+        let model_supports = deps.pricing.check_model_supports_tools(
+            &effective_profile.provider,
+            &effective_profile.model_name,
+            input.clock.now_ms,
+            &pricing_ctx,
+        );
         let built = tool_build::build_tools(
             db,
             &user_id,
@@ -1163,7 +1215,7 @@ where
                 include_workspace_tools: true,
                 exclude_memory_search: false,
                 sql_access: false,
-                model_supports_native_tools: input.model_supports_native_tools,
+                model_supports_native_tools: model_supports,
                 provider_supports_web_search: input.provider_supports_web_search,
             },
         )?;
@@ -2123,8 +2175,8 @@ async fn persist_tools_only(
 /// fires a fold, `check_and_generate_summary_if_needed` writes the summary + the
 /// title enqueue through the `Db` — the effect the differential banks.
 #[allow(clippy::type_complexity)]
-async fn run_summary_check<EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST, CARQ, PROS>(
-    deps: &OrchestratorDeps<'_, EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST, CARQ, PROS>,
+async fn run_summary_check<EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST, CARQ, PROS, PF>(
+    deps: &OrchestratorDeps<'_, EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST, CARQ, PROS, PF>,
     chat_id: &str,
     user_id: &str,
     profile: &EffectiveProfile,
@@ -2142,6 +2194,7 @@ where
     COST: CostTracker,
     CARQ: RunCarinaQuery,
     PROS: PostProsperoCarinaError,
+    PF: PricingFetch + Send + Sync,
 {
     // The cheap-LLM profile the summary uses IS the effective profile in the
     // corpus (single-profile chats); the settings are a fixed low-window config.
@@ -2231,6 +2284,7 @@ pub async fn execute_turn_chain<
     COST,
     CARQ,
     PROS,
+    PF,
     F,
 >(
     deps: &mut OrchestratorDeps<
@@ -2247,6 +2301,7 @@ pub async fn execute_turn_chain<
         COST,
         CARQ,
         PROS,
+        PF,
     >,
     opts: ExecuteTurnChainOptions,
     now_ms: i64,
@@ -2266,6 +2321,7 @@ where
     COST: CostTracker,
     CARQ: RunCarinaQuery,
     PROS: PostProsperoCarinaError,
+    PF: PricingFetch + Send + Sync,
     F: FnMut(String) -> ProcessMessageInput,
 {
     let db = deps.db;
@@ -2893,8 +2949,22 @@ mod tests {
             model_context_limit: 1000,
             timestamp_config: None,
             timezone: None,
-            model_supports_native_tools: true,
             provider_supports_web_search: false,
+        }
+    }
+
+    /// A never-called pricing fetch for the guard self-tests (they short-circuit
+    /// before the tool build).
+    struct NoPricingFetch;
+    impl PricingFetch for NoPricingFetch {
+        fn openrouter_public_models(&self) -> Option<Value> {
+            None
+        }
+        fn openrouter_sdk_models(&self, _api_key: &str) -> Option<Value> {
+            None
+        }
+        fn ollama_tags(&self, _base_url: &str) -> Option<Value> {
+            None
         }
     }
 
@@ -2913,6 +2983,7 @@ mod tests {
         let bc = build_context::NoopSeams;
         let orc = NoopOrchestratorSeams;
         let router = NoRouter;
+        let pricing = PricingFetcher::new(NoPricingFetch);
         let prospero_fn: fn(
             crate::services::carina_runner::ProsperoCarinaErrorArgs,
         ) -> Result<(), crate::services::carina_runner::CarinaRunError> = |_a| Ok(());
@@ -2938,6 +3009,7 @@ mod tests {
                 streaming: &streaming,
                 executor: &executor,
                 sink: &sink,
+                pricing: &pricing,
                 build_context_seams: &bc,
                 orchestrator_seams: &orc,
                 file_bytes: &crate::services::chat_files::NotConfiguredBytes,

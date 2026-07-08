@@ -24,14 +24,25 @@
 //!
 //! [`ToolExecutionContext`]: crate::services::tool_execution::ToolExecutionContext
 
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+
 use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
 use serde_json::Value;
 
+use crate::db::runtime::Db;
+use crate::model::embedding::EmbeddingProvider;
+use crate::model::stream::StreamingCompletionProvider;
+use crate::services::carina_query::{CarinaQueryDeps, RealCarinaQuery, RunBrahmaConsole};
 use crate::services::carina_runner::{
     CarinaErrorKind, CarinaResult, PostProsperoCarinaError, ProsperoCarinaErrorArgs,
     RunCarinaQuery, RunCarinaQueryOptions,
 };
+use crate::services::chat_events::EventSink;
+use crate::services::native_tool_loop::ToolCallDetector;
+use crate::services::tool_execution::ToolRunner;
 
 /// v4 `AskCarinaToolOutput` — `{ success, answer, error? }`. Success omits `error`.
 #[derive(Debug, Clone)]
@@ -162,5 +173,182 @@ pub fn format_ask_carina_results(out: &AskCarinaOutput) -> String {
             .clone()
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "Carina was unable to answer.".to_string())
+    }
+}
+
+// ===========================================================================
+// The erased ask_carina dispatch seam (W4.10a)
+// ===========================================================================
+
+/// Re-satisfies `EventSink` for a `&dyn EventSink` (the engine's `SNK` bound is a
+/// concrete generic; a trait object is not itself the trait).
+struct SinkRef<'s>(&'s (dyn EventSink + Sync));
+impl EventSink for SinkRef<'_> {
+    fn emit(&self, event: crate::services::chat_events::ChatEvent) {
+        self.0.emit(event);
+    }
+}
+
+/// The object-safe ask_carina boundary the tool dispatcher holds behind an
+/// `Arc<dyn …>`, so `ask_carina` routes without threading the Carina engine's
+/// six generics through [`BuiltInToolRunner`](crate::tools::executor::BuiltInToolRunner)
+/// (the [`ErasedImageGeneration`](crate::tools::generate_image::ErasedImageGeneration)
+/// precedent). The per-turn live SSE sink (v4's `context.emitCarinaAnswer` →
+/// `onPosted`) is passed as a parameter, since the engine owns the post + emit.
+pub trait AskCarinaRunner: Send + Sync {
+    fn run<'a>(
+        &'a self,
+        sink: &'a (dyn EventSink + Sync),
+        user_id: &'a str,
+        chat_id: &'a str,
+        calling_participant_id: Option<&'a str>,
+        args: &'a Value,
+    ) -> Pin<Box<dyn Future<Output = AskCarinaOutput> + Send + 'a>>;
+}
+
+/// A type-erased ask_carina runner (an `Arc<dyn …>`).
+#[derive(Clone)]
+pub struct ErasedAskCarina(Arc<dyn AskCarinaRunner>);
+
+impl ErasedAskCarina {
+    /// Wrap a concrete runner.
+    pub fn new<R: AskCarinaRunner + 'static>(runner: R) -> Self {
+        Self(Arc::new(runner))
+    }
+
+    /// The not-available default (no Carina engine wired) — reproduces the loud
+    /// fallback [`BuiltInToolRunner`](crate::tools::executor::BuiltInToolRunner)
+    /// returned for `ask_carina` before this seam existed, so every existing
+    /// construction site behaves unchanged.
+    pub fn not_available() -> Self {
+        Self(Arc::new(NotAvailableAskCarina))
+    }
+
+    /// Run the handler.
+    pub async fn run(
+        &self,
+        sink: &(dyn EventSink + Sync),
+        user_id: &str,
+        chat_id: &str,
+        calling_participant_id: Option<&str>,
+        args: &Value,
+    ) -> AskCarinaOutput {
+        self.0
+            .run(sink, user_id, chat_id, calling_participant_id, args)
+            .await
+    }
+}
+
+impl Default for ErasedAskCarina {
+    fn default() -> Self {
+        Self::not_available()
+    }
+}
+
+/// The default runner: no Carina engine is wired into this build. Returns the
+/// exact loud-fallback message the [`LoudFallbackRunner`] produced for a
+/// recognized-but-unported built-in, so moving `ask_carina` into the dispatched
+/// set is behaviorally inert until a real engine is injected.
+///
+/// [`LoudFallbackRunner`]: crate::tools::executor::LoudFallbackRunner
+struct NotAvailableAskCarina;
+impl AskCarinaRunner for NotAvailableAskCarina {
+    fn run<'a>(
+        &'a self,
+        _sink: &'a (dyn EventSink + Sync),
+        _user_id: &'a str,
+        _chat_id: &'a str,
+        _calling_participant_id: Option<&'a str>,
+        _args: &'a Value,
+    ) -> Pin<Box<dyn Future<Output = AskCarinaOutput> + Send + 'a>> {
+        Box::pin(async move {
+            AskCarinaOutput {
+                success: false,
+                answer: String::new(),
+                error: Some(
+                    "Tool 'ask_carina' is recognized but not yet available in this build"
+                        .to_string(),
+                ),
+            }
+        })
+    }
+}
+
+/// A concrete [`AskCarinaRunner`] over owned Carina-engine seams — the production
+/// host + the differential each build one and erase it into [`ErasedAskCarina`]
+/// (the [`TypedImageGeneration`](crate::tools::generate_image::TypedImageGeneration)
+/// precedent). Owns everything the [`CarinaQueryDeps`] needs EXCEPT the per-turn
+/// SSE `sink` (a `run` parameter). `PostProsperoCarinaError` is cloned per call
+/// (its writer is stateless over the [`Db`]), avoiding a `!Send` mutex guard
+/// across the engine's await.
+///
+/// `tool_runner` must NOT be the same [`BuiltInToolRunner`](crate::tools::executor::BuiltInToolRunner)
+/// that holds this seam (a type-level cycle); Carina filters `ask_carina` from its
+/// own slate, so a separate runner suffices.
+pub struct TypedAskCarina<EMB, STR, TR, TD, BRA, P>
+where
+    EMB: EmbeddingProvider,
+    STR: StreamingCompletionProvider,
+    TR: ToolRunner,
+    TD: ToolCallDetector,
+    BRA: RunBrahmaConsole,
+    P: PostProsperoCarinaError + Clone,
+{
+    pub db: Db,
+    pub embedding: EMB,
+    pub streaming: STR,
+    pub tool_runner: TR,
+    pub tool_detector: TD,
+    pub brahma: BRA,
+    pub prospero: P,
+    pub model_supports_native_tools: bool,
+    pub now_ms: f64,
+}
+
+impl<EMB, STR, TR, TD, BRA, P> AskCarinaRunner for TypedAskCarina<EMB, STR, TR, TD, BRA, P>
+where
+    EMB: EmbeddingProvider + Send + Sync,
+    STR: StreamingCompletionProvider + Send + Sync,
+    TR: ToolRunner + Send + Sync,
+    TD: ToolCallDetector + Send + Sync,
+    BRA: RunBrahmaConsole + Send + Sync,
+    P: PostProsperoCarinaError + Clone + Send + Sync,
+{
+    fn run<'a>(
+        &'a self,
+        sink: &'a (dyn EventSink + Sync),
+        user_id: &'a str,
+        chat_id: &'a str,
+        calling_participant_id: Option<&'a str>,
+        args: &'a Value,
+    ) -> Pin<Box<dyn Future<Output = AskCarinaOutput> + Send + 'a>> {
+        Box::pin(async move {
+            // The engine's `SNK: EventSink` is a concrete generic; the per-turn
+            // sink arrives as `&dyn EventSink`, so a thin newtype re-satisfies the
+            // bound (`dyn EventSink` is not itself `EventSink`).
+            let sink_ref = SinkRef(sink);
+            let deps = CarinaQueryDeps {
+                db: &self.db,
+                embedding: &self.embedding,
+                streaming: &self.streaming,
+                tool_runner: &self.tool_runner,
+                tool_detector: &self.tool_detector,
+                sink: &sink_ref,
+                brahma: &self.brahma,
+                model_supports_native_tools: self.model_supports_native_tools,
+                now_ms: self.now_ms,
+            };
+            let mut query = RealCarinaQuery::new(deps);
+            let mut prospero = self.prospero.clone();
+            execute_ask_carina(
+                &mut query,
+                &mut prospero,
+                user_id,
+                chat_id,
+                calling_participant_id,
+                args,
+            )
+            .await
+        })
     }
 }

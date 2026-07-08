@@ -55,7 +55,8 @@ use crate::services::carina_runner::writer::{
     post_carina_response, PostCarinaResponseParams, PostedCarinaMessage,
 };
 use crate::services::carina_runner::{
-    CarinaError, CarinaErrorKind, CarinaResult, RunCarinaQueryOptions,
+    CarinaError, CarinaErrorKind, CarinaResult, CarinaRunError, RunCarinaQuery,
+    RunCarinaQueryOptions,
 };
 use crate::services::chat_events::{ChatEvent, EventSink};
 use crate::services::memory_service::{search_memories_semantic, SemanticSearchOptions};
@@ -178,6 +179,61 @@ where
     pub model_supports_native_tools: bool,
     /// The `Date.now()` (ms) seam for the memory-recall blend.
     pub now_ms: f64,
+}
+
+// ===========================================================================
+// The RunCarinaQuery adapter (spine composition — W4.10a)
+// ===========================================================================
+
+/// The real implementor of the frozen [`RunCarinaQuery`] seam over the engine
+/// [`run_carina_query`]. Holds the [`CarinaQueryDeps`] bundle and forwards each
+/// `run` to the engine (which never throws — its failure is the
+/// [`CarinaResult::Err`] arm — so `run` always returns `Ok(result)`). Constructed
+/// at the orchestrator/finalizer composition points, replacing the test-only
+/// canned seams. The seam is `&mut self` (RPITIT) while the engine is `&`-only;
+/// the adapter reads its deps immutably.
+pub struct RealCarinaQuery<'a, EMB, STR, TR, TD, SNK, BRA>
+where
+    EMB: EmbeddingProvider,
+    STR: StreamingCompletionProvider,
+    TR: ToolRunner,
+    TD: ToolCallDetector,
+    SNK: EventSink,
+    BRA: RunBrahmaConsole,
+{
+    pub deps: CarinaQueryDeps<'a, EMB, STR, TR, TD, SNK, BRA>,
+}
+
+impl<'a, EMB, STR, TR, TD, SNK, BRA> RealCarinaQuery<'a, EMB, STR, TR, TD, SNK, BRA>
+where
+    EMB: EmbeddingProvider,
+    STR: StreamingCompletionProvider,
+    TR: ToolRunner,
+    TD: ToolCallDetector,
+    SNK: EventSink,
+    BRA: RunBrahmaConsole,
+{
+    pub fn new(deps: CarinaQueryDeps<'a, EMB, STR, TR, TD, SNK, BRA>) -> Self {
+        Self { deps }
+    }
+}
+
+impl<EMB, STR, TR, TD, SNK, BRA> RunCarinaQuery for RealCarinaQuery<'_, EMB, STR, TR, TD, SNK, BRA>
+where
+    EMB: EmbeddingProvider + Sync,
+    STR: StreamingCompletionProvider + Sync,
+    TR: ToolRunner + Sync,
+    TD: ToolCallDetector + Sync,
+    SNK: EventSink + Sync,
+    BRA: RunBrahmaConsole + Sync,
+{
+    #[allow(clippy::manual_async_fn)]
+    fn run(
+        &mut self,
+        opts: RunCarinaQueryOptions,
+    ) -> impl std::future::Future<Output = Result<CarinaResult, CarinaRunError>> + Send {
+        async move { Ok(run_carina_query(&self.deps, &opts).await) }
+    }
 }
 
 // ===========================================================================
