@@ -4,6 +4,21 @@
 
 ### 5.0-dev
 
+Cleanup-round prep: wrote the three work orders that close every standing
+pre-enclave follow-up — W4.11a (spine `with_logging` + the orchestrator
+`llm_logs` dump; Arc blanket impls on the provider traits so composition
+points can share one provider between the borrowed spine deps and the owned
+erased seams; the live `ask_carina`-through-spine and live-Brahma corpus
+cases), W4.11b (the W4.7e3 step-6 `primary_stream_tier3` regen — the oracle's
+model mock relocated below the `streamMessage` wrapper — plus the real
+failover-logging gap fix the survey surfaced: v4's provider-failover retries
+write CHAT_MESSAGE `llm_logs` rows and the ported drain loop doesn't), and
+W4.11c (widen the moderation seam so the wire's per-category `flagged`
+reaches the gatekeeper and write v4's `modelName:'moderation'` row
+byte-exact, dropping the `strip_moderation` filter). v4 drift check: HEAD
+still `6b6e39ad`, oracle baseline unchanged. Round table updated; this round
+is the enclave's enabler (U4.4's token accounting sums real `llm_logs` rows).
+
 Wiring-round unification: integrated the three parallel lanes (W4.10a spine
 wiring, W4.5b Brahma console, W4.10b logging regens) onto main — zero
 source-level conflicts for the second consecutive round. One integration fix:

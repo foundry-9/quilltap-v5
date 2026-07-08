@@ -303,6 +303,31 @@ round with a drift check against v4 HEAD.
   eighteen-differential sweep against fresh oracles ran green; the W4.5b
   spine swap-in landed at unification (inert — a live Brahma corpus case is
   a follow-up alongside the live ask_carina-through-spine case).**
+- **The cleanup round (launch all three IN PARALLEL — layout decided
+  2026-07-08, v4 still at `6b6e39ad`):** the four standing follow-ups
+  become three lanes.
+  [W4.11a](./work-orders/w4.11a-spine-logging-and-owned-providers.md) (the
+  spine lane — owns the four spine files + the orchestrator oracle/corpus;
+  Arc blanket impls on the provider traits so a composition point can share
+  one provider between the borrowed spine deps and the owned erased seams;
+  the live `ask_carina`-through-spine + live-Brahma corpus cases; the
+  `with_logging` composition + the orchestrator `llm_logs` dump with the
+  CHAT_MESSAGE rows filtered both sides as a documented mock artifact —
+  W4.11b proves that row shape directly) ∥
+  [W4.11b](./work-orders/w4.11b-primary-stream-log-regen.md) (the W4.7e3
+  step-6 regen — relocate the primary-stream oracle's model mock below the
+  `streamMessage` wrapper, un-mock `logLLMCall`, dump `llm_logs` with the
+  requestHashes asserted; ALSO fixes the real gap the survey found: v4's
+  provider-failover retries log CHAT_MESSAGE rows and the ported
+  `provider_failover.rs` doesn't) ∥
+  [W4.11c](./work-orders/w4.11c-moderation-logging-seam.md) (small — widen
+  the moderation seam so the wire's per-category `flagged` reaches the
+  gatekeeper, write v4's `modelName:'moderation'` row byte-exact, drop the
+  `strip_moderation` filter on both sides). Pairwise file-disjoint per the
+  ownership lists; `tests/common/mod.rs` additive-only for all three.
+  This round is also the enclave's enabler: U4.4's per-run token accounting
+  sums real `llm_logs` rows, which the `with_logging` spine composition
+  makes live.
 - **Round 5:** Unit 4 (enclave), then the Phase-4 kickoff.
 
 The markdown-renderer / `qtap-linkify` item below is Phase-4-adjacent and not
