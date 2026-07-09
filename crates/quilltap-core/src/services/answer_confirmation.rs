@@ -32,13 +32,17 @@
 //!     The failure → `confirmed: null` mapping IS ported; only the timer is
 //!     omitted.
 
+use std::collections::HashMap;
+
 use serde_json::Value;
 
+use crate::chat_predicates::ParticipantStatus;
 use crate::cheap_llm::{
     resolve_uncensored_cheap_llm_selection, CheapLlmProfile, CheapLlmSelection,
     DangerousContentSettings, UncensoredFallbackOptions,
 };
 use crate::jsstr::{js_trim, utf16_len, utf16_slice_from};
+use crate::message_attribution::{get_participant_name, AttributionParticipant};
 use crate::model::completion::{CompletionMessage, CompletionProvider};
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::tool_execution::ToolMessage;
@@ -67,6 +71,17 @@ fn is_confirmation_read_tool(tool_name: &str) -> bool {
 /// Char budget for the assembled reference block handed to the cheap LLM (v4
 /// `REFERENCE_CHAR_BUDGET`). UTF-16 code units.
 const REFERENCE_CHAR_BUDGET: usize = 24_000;
+
+/// Char budget / message cap for the recent-conversation transcript handed to
+/// the re-affirmation pass (v4 `RECENT_CONTEXT_CHAR_BUDGET` /
+/// `RECENT_CONTEXT_MAX_MESSAGES`, `a7b1398d`). This is what keeps a correction
+/// anchored to the CURRENT scene: without it the model only sees its draft plus
+/// the reference material (which can itself contain an OLD conversation the
+/// character read via `read_conversation`), and rewrites its reply as if it were
+/// back in that old scene. Kept small — the model only needs the immediate
+/// moment it was replying to, not the whole history. UTF-16 code units.
+const RECENT_CONTEXT_CHAR_BUDGET: usize = 8_000;
+const RECENT_CONTEXT_MAX_MESSAGES: usize = 20;
 
 /// v4 `AnswerConfirmationOverride` — a per-chat / per-project override string:
 /// `"ON"` / `"OFF"` / absent.
@@ -229,6 +244,147 @@ pub fn gather_confirmation_inputs(
     Some(reference)
 }
 
+/// Whether a JSON value is truthy under JS coercion (the `!m.systemSender` /
+/// `!m.isSilentMessage` filters below). An absent key is `None` at the call site
+/// (JS `undefined` — falsy).
+fn js_truthy(v: Option<&Value>) -> bool {
+    match v {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(Value::Number(n)) => n.as_f64().map(|f| f != 0.0).unwrap_or(true),
+        Some(Value::String(s)) => !s.is_empty(),
+        // Arrays and objects are always truthy in JS (even empty ones).
+        Some(Value::Array(_) | Value::Object(_)) => true,
+    }
+}
+
+/// Build a compact transcript of the recent live conversation for the
+/// re-affirmation pass (v4 `buildRecentConversationContext`, `a7b1398d`), so the
+/// character corrects its draft *in place* rather than drifting to whatever old
+/// scene the reference material happens to quote.
+///
+/// Only real participant dialogue is kept — Staff/system-sender whispers, tool
+/// bubbles, and silent messages are dropped (the recalled/looked-up material is
+/// supplied separately as the "reference"; this block is strictly the scene the
+/// character is speaking into). `messages` is the conversation up to but not
+/// including the draft reply (raw `chat_messages` event JSON — v4 passes the
+/// `type === 'message'` pre-filtered `priorEvents`, but the filter here makes the
+/// raw list equivalent). Returns `None` when there is no prior dialogue.
+///
+/// `participants` are the raw chat participant JSON objects;
+/// `participant_characters` maps character id → display name (v4's
+/// `Map<string, Character>` narrowed to the `name` the lookup reads). Name
+/// resolution REUSES the ported
+/// [`get_participant_name`](crate::message_attribution::get_participant_name);
+/// an unresolved (or empty — JS `||`) name falls back to `User` when
+/// `String(m.role).toUpperCase() === 'USER'`, else `Character`.
+pub fn build_recent_conversation_context(
+    messages: &[Value],
+    participants: &[Value],
+    participant_characters: &HashMap<String, String>,
+) -> Option<String> {
+    let dialogue: Vec<&Value> = messages
+        .iter()
+        .filter(|m| {
+            m.get("type").and_then(Value::as_str) == Some("message")
+                && !js_truthy(m.get("systemSender"))
+                && !js_truthy(m.get("isSilentMessage"))
+                && m.get("content")
+                    .and_then(Value::as_str)
+                    .is_some_and(|c| !js_trim(c).is_empty())
+        })
+        .collect();
+    if dialogue.is_empty() {
+        return None;
+    }
+
+    // The name lookup reuses the ported attribution helper over the raw
+    // participant objects (only id / type / characterId are consulted).
+    let attr_participants: Vec<AttributionParticipant> = participants
+        .iter()
+        .map(|p| AttributionParticipant {
+            id: p
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            participant_type: p
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            character_id: p
+                .get("characterId")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            controlled_by: p
+                .get("controlledBy")
+                .and_then(Value::as_str)
+                .unwrap_or("llm")
+                .to_string(),
+            status: match p.get("status").and_then(Value::as_str) {
+                Some("silent") => ParticipantStatus::Silent,
+                Some("absent") => ParticipantStatus::Absent,
+                Some("removed") => ParticipantStatus::Removed,
+                _ => ParticipantStatus::Active,
+            },
+        })
+        .collect();
+
+    let recent = &dialogue[dialogue.len().saturating_sub(RECENT_CONTEXT_MAX_MESSAGES)..];
+    let lines: Vec<String> = recent
+        .iter()
+        .map(|m| {
+            let resolved = get_participant_name(
+                m.get("participantId").and_then(Value::as_str),
+                participant_characters,
+                &attr_participants,
+            )
+            // JS `||` — an empty resolved name is falsy and falls through.
+            .filter(|n| !n.is_empty());
+            let name = match resolved {
+                Some(n) => n,
+                None => {
+                    // `String(m.role).toUpperCase() === 'USER'` — `String()` renders
+                    // an absent role as `"undefined"` (→ the Character fallback).
+                    let role = match m.get("role") {
+                        Some(Value::String(s)) => s.to_uppercase(),
+                        Some(Value::Null) => "NULL".to_string(),
+                        Some(other) => other.to_string().to_uppercase(),
+                        None => "UNDEFINED".to_string(),
+                    };
+                    if role == "USER" { "User" } else { "Character" }.to_string()
+                }
+            };
+            let content = m.get("content").and_then(Value::as_str).unwrap_or_default();
+            format!("{name}: {}", js_trim(content))
+        })
+        .collect();
+
+    let mut transcript = lines.join("\n\n");
+    if utf16_len(&transcript) > RECENT_CONTEXT_CHAR_BUDGET {
+        // Keep the most-recent turns (the moment being replied to) — drop oldest.
+        // JS `transcript.slice(len - 8000)` — UTF-16 units; the prefix is added
+        // AFTER the slice, so the result exceeds the budget by the prefix length
+        // (faithful).
+        let start = utf16_len(&transcript) - RECENT_CONTEXT_CHAR_BUDGET;
+        let tail = utf16_slice_from(&transcript, start);
+        transcript = format!("[…earlier conversation truncated…]\n{tail}");
+    }
+    Some(transcript)
+}
+
+/// Build the re-affirmation system message (v4 `buildReaffirmationSystemPrompt`,
+/// `a7b1398d`): the optional `You are <name>. ` anchor (JS-falsy — an empty name
+/// is skipped) followed by the fixed template body.
+fn build_reaffirmation_system_prompt(character_name: Option<&str>) -> String {
+    let you = match character_name.filter(|n| !n.is_empty()) {
+        Some(name) => format!("You are {name}. "),
+        None => String::new(),
+    };
+    format!("{you}{}", prompt_text::REAFFIRMATION_SYSTEM_PROMPT_BODY)
+}
+
 /// The resolved outcome the finalizer applies to the persisted message (v4
 /// `AnswerConfirmationOutcome`). `confirmed === undefined` never occurs here — the
 /// finalizer only calls [`run_answer_confirmation`] when the feature is active and
@@ -264,6 +420,16 @@ pub struct RunAnswerConfirmationOptions<'a> {
     pub chat_id: &'a str,
     pub message_id: Option<&'a str>,
     pub character_id: Option<&'a str>,
+    /// Display name of the replying character, used to anchor the re-affirmation
+    /// (v4 `characterName`, `a7b1398d`).
+    pub character_name: Option<&'a str>,
+    /// Compact transcript of the recent live conversation (from
+    /// [`build_recent_conversation_context`]). Anchors the re-affirmation rewrite
+    /// to the current scene; only used on the re-affirmation pass (v4
+    /// `conversationContext`, `a7b1398d` — `string | null | undefined`, the null
+    /// and undefined shapes both `None` here since the consumer only tests
+    /// truthiness).
+    pub conversation_context: Option<&'a str>,
     /// Already-resolved cheap-LLM selection (compression.cheapLLMSelection).
     /// `None` → the whole block is skipped → `confirmed: null`.
     pub cheap_llm_selection: Option<&'a CheapLlmSelection>,
@@ -374,24 +540,41 @@ impl<F: Fn() + Sync> OnAffirming for F {
     }
 }
 
-/// Build the re-affirmation user message (v4's `reaffUser` `[...].join('\n')`).
-/// Factored out so the differential + self-tests reconstruct it byte-identically.
-fn build_reaffirmation_user(reply: &str, discrepancies: &str, reference: &str) -> String {
-    [
-        "You drafted this reply this turn:",
+/// Build the re-affirmation user message (v4's `reaffParts` `.join('\n')`,
+/// `a7b1398d` — the labeled-sections restructure). When `conversation_context`
+/// is non-empty-after-trim, the scene block leads (so the rewrite stays anchored
+/// to the current conversation); the reference block is labeled background
+/// knowledge, NOT the conversation. Factored out so the differential +
+/// self-tests reconstruct it byte-identically.
+fn build_reaffirmation_user(
+    reply: &str,
+    discrepancies: &str,
+    reference: &str,
+    conversation_context: Option<&str>,
+) -> String {
+    let mut reaff_parts: Vec<&str> = Vec::new();
+    if let Some(ctx) = conversation_context.filter(|c| !js_trim(c).is_empty()) {
+        reaff_parts.extend([
+            "=== The conversation so far (this is the scene you are in) ===",
+            ctx,
+            "",
+        ]);
+    }
+    reaff_parts.extend([
+        "=== Your draft reply — the next thing you were about to say ===",
         "\"\"\"",
         reply,
         "\"\"\"",
         "",
-        "A consistency check flagged these apparent conflicts with what you know or looked up this turn:",
+        "A consistency check flagged these apparent conflicts with what you recalled or looked up this turn:",
         discrepancies,
         "",
-        "For reference, here is what you actually knew and looked up this turn:",
+        "=== What you actually recalled and looked up this turn (your background knowledge — NOT the conversation) ===",
         reference,
         "",
-        "If, on reflection, you stand by your reply exactly as written, respond with strict JSON {\"revise\": false}. If you want to correct it, respond with {\"revise\": true, \"reply\": \"<your corrected reply>\"} — the corrected reply replaces what you send, so write it in full and in your own voice.",
-    ]
-    .join("\n")
+        "If, on reflection, you stand by your draft exactly as written, respond with strict JSON {\"revise\": false}. If you want to correct it, respond with {\"revise\": true, \"reply\": \"<your corrected reply>\"}. The corrected reply replaces your draft, so write it in full and in your own voice — but it must fit this exact point in the conversation above: reply to the same person about the same thing, in the same moment, and change only what conflicts with the facts. Do not start over or answer a different or earlier conversation.",
+    ]);
+    reaff_parts.join("\n")
 }
 
 /// Run the consistency check and, if needed, the re-affirmation pass (v4
@@ -508,11 +691,12 @@ pub async fn run_answer_confirmation<C: CompletionProvider>(
     };
 
     let reaff_messages = vec![
-        CompletionMessage::system(prompt_text::REAFFIRMATION_SYSTEM_PROMPT),
+        CompletionMessage::system(build_reaffirmation_system_prompt(opts.character_name)),
         CompletionMessage::user(build_reaffirmation_user(
             opts.reply,
             &discrepancies,
             opts.reference,
+            opts.conversation_context,
         )),
     ];
 
@@ -692,6 +876,153 @@ mod tests {
         assert_eq!(utf16_len(tail), REFERENCE_CHAR_BUDGET);
     }
 
+    // --- build_recent_conversation_context (v4 `a7b1398d`) ----------------------
+
+    fn ctx_participants() -> Vec<Value> {
+        vec![
+            json!({"id":"p-user","type":"CHARACTER","characterId":"c-user","controlledBy":"user"}),
+            json!({"id":"p-ada","type":"CHARACTER","characterId":"c-ada"}),
+        ]
+    }
+
+    fn ctx_names() -> HashMap<String, String> {
+        HashMap::from([
+            ("c-user".to_string(), "Bertie".to_string()),
+            ("c-ada".to_string(), "Ada".to_string()),
+        ])
+    }
+
+    #[test]
+    fn recent_context_renders_names() {
+        let msgs = vec![
+            json!({"type":"message","role":"USER","participantId":"p-user","content":"How tall is the tower?"}),
+            json!({"type":"message","role":"ASSISTANT","participantId":"p-ada","content":"Let me check."}),
+        ];
+        let out =
+            build_recent_conversation_context(&msgs, &ctx_participants(), &ctx_names()).unwrap();
+        assert_eq!(out, "Bertie: How tall is the tower?\n\nAda: Let me check.");
+    }
+
+    #[test]
+    fn recent_context_drops_staff_tool_silent_and_blank() {
+        let msgs = vec![
+            json!({"type":"message","role":"USER","participantId":"p-user","content":"real line"}),
+            json!({"type":"message","role":"ASSISTANT","systemSender":"commonplaceBook","content":"a recalled memory"}),
+            json!({"type":"message","role":"ASSISTANT","systemSender":"prospero","content":"ran a tool"}),
+            json!({"type":"message","role":"ASSISTANT","participantId":"p-ada","isSilentMessage":true,"content":"silent"}),
+            json!({"type":"context-summary","role":"ASSISTANT","content":"a summary"}),
+            json!({"type":"message","role":"ASSISTANT","participantId":"p-ada","content":"   "}),
+        ];
+        let out =
+            build_recent_conversation_context(&msgs, &ctx_participants(), &ctx_names()).unwrap();
+        assert_eq!(out, "Bertie: real line");
+    }
+
+    #[test]
+    fn recent_context_null_when_no_dialogue() {
+        assert_eq!(
+            build_recent_conversation_context(&[], &ctx_participants(), &ctx_names()),
+            None
+        );
+        let only_whispers = vec![
+            json!({"type":"message","role":"ASSISTANT","systemSender":"host","content":"scene note"}),
+        ];
+        assert_eq!(
+            build_recent_conversation_context(&only_whispers, &ctx_participants(), &ctx_names()),
+            None
+        );
+    }
+
+    #[test]
+    fn recent_context_role_fallbacks() {
+        // Unknown participant + role USER → 'User'; role ASSISTANT → 'Character';
+        // absent role → 'Character' (String(undefined) is never 'USER'); an empty
+        // resolved name is JS-falsy and falls through to the role fallback.
+        let msgs = vec![
+            json!({"type":"message","role":"USER","participantId":"p-ghost","content":"hello"}),
+            json!({"type":"message","role":"ASSISTANT","content":"reply"}),
+            json!({"type":"message","content":"no role"}),
+            json!({"type":"message","role":"USER","participantId":"p-blank","content":"blank name"}),
+        ];
+        let mut participants = ctx_participants();
+        participants.push(json!({"id":"p-blank","type":"CHARACTER","characterId":"c-blank"}));
+        let mut names = ctx_names();
+        names.insert("c-blank".to_string(), String::new());
+        let out = build_recent_conversation_context(&msgs, &participants, &names).unwrap();
+        assert_eq!(
+            out,
+            "User: hello\n\nCharacter: reply\n\nCharacter: no role\n\nUser: blank name"
+        );
+    }
+
+    #[test]
+    fn recent_context_caps_at_20_messages() {
+        let msgs: Vec<Value> = (0..25)
+            .map(|i| {
+                json!({"type":"message","role":"USER","participantId":"p-user","content":format!("line {i}")})
+            })
+            .collect();
+        let out =
+            build_recent_conversation_context(&msgs, &ctx_participants(), &ctx_names()).unwrap();
+        // Only the LAST 20 render — lines 5..24.
+        assert!(out.starts_with("Bertie: line 5\n\n"));
+        assert!(out.ends_with("Bertie: line 24"));
+        assert_eq!(out.matches("Bertie: line ").count(), 20);
+    }
+
+    #[test]
+    fn recent_context_truncates_to_tail() {
+        // Two big turns whose joined transcript exceeds the 8 000-unit budget →
+        // keep the UTF-16 tail and prefix the marker AFTER the slice (the result
+        // exceeds the budget by the prefix length — faithful to v4).
+        let msgs = vec![
+            json!({"type":"message","role":"USER","participantId":"p-user","content":"A".repeat(6000)}),
+            json!({"type":"message","role":"ASSISTANT","participantId":"p-ada","content":"B".repeat(6000)}),
+        ];
+        let out =
+            build_recent_conversation_context(&msgs, &ctx_participants(), &ctx_names()).unwrap();
+        let prefix = "[…earlier conversation truncated…]\n";
+        assert!(out.starts_with(prefix));
+        let tail = out.strip_prefix(prefix).unwrap();
+        assert_eq!(utf16_len(tail), RECENT_CONTEXT_CHAR_BUDGET);
+        assert!(tail.ends_with(&"B".repeat(100)));
+    }
+
+    #[test]
+    fn reaffirmation_system_prompt_name_anchor() {
+        assert!(build_reaffirmation_system_prompt(Some("Ada")).starts_with(
+            "You are Ada. You are reconsidering a reply you just drafted, in your own voice,"
+        ));
+        // JS-falsy: an empty name is skipped, like None.
+        assert_eq!(
+            build_reaffirmation_system_prompt(Some("")),
+            build_reaffirmation_system_prompt(None)
+        );
+        assert!(build_reaffirmation_system_prompt(None)
+            .starts_with("You are reconsidering a reply you just drafted,"));
+    }
+
+    #[test]
+    fn reaffirmation_user_scene_block_gating() {
+        // Non-empty context → the scene block leads; blank/absent → no block.
+        let with = build_reaffirmation_user("r", "d", "ref", Some("Bertie: hi"));
+        assert!(with.starts_with(
+            "=== The conversation so far (this is the scene you are in) ===\nBertie: hi\n\n=== Your draft reply — the next thing you were about to say ==="
+        ));
+        let without = build_reaffirmation_user("r", "d", "ref", None);
+        assert!(
+            without.starts_with("=== Your draft reply — the next thing you were about to say ===")
+        );
+        assert_eq!(
+            build_reaffirmation_user("r", "d", "ref", Some("  \n ")),
+            without
+        );
+        // The reference block is labeled background knowledge.
+        assert!(without.contains(
+            "=== What you actually recalled and looked up this turn (your background knowledge — NOT the conversation) ===\nref"
+        ));
+    }
+
     #[test]
     fn extract_json_fenced_and_bare() {
         assert_eq!(
@@ -770,8 +1101,13 @@ mod tests {
 
     fn reaff_messages(discrepancies: &str) -> Vec<CompletionMessage> {
         vec![
-            CompletionMessage::system(prompt_text::REAFFIRMATION_SYSTEM_PROMPT),
-            CompletionMessage::user(build_reaffirmation_user(REPLY, discrepancies, REFERENCE)),
+            CompletionMessage::system(build_reaffirmation_system_prompt(None)),
+            CompletionMessage::user(build_reaffirmation_user(
+                REPLY,
+                discrepancies,
+                REFERENCE,
+                None,
+            )),
         ]
     }
 
@@ -786,6 +1122,8 @@ mod tests {
             chat_id: "c",
             message_id: Some("m"),
             character_id: Some("char"),
+            character_name: None,
+            conversation_context: None,
             cheap_llm_selection: Some(&sel),
             connection_profile: &prof,
             is_dangerous_chat: false,
@@ -875,6 +1213,61 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn reaffirmation_carries_scene_and_name() {
+        // v4 `a7b1398d`: with characterName + conversationContext supplied, the
+        // re-affirmation pass runs on the anchored system prompt + the scene-block
+        // user message — proven by the canned key (a divergence = canned miss).
+        let scene = "Bertie: How tall is the tower?";
+        let anchored_messages = vec![
+            CompletionMessage::system(build_reaffirmation_system_prompt(Some("Ada"))),
+            CompletionMessage::user(build_reaffirmation_user(
+                REPLY,
+                "height wrong",
+                REFERENCE,
+                Some(scene),
+            )),
+        ];
+        let provider = CannedCompletionProvider::new()
+            .with_response(
+                "ANTHROPIC",
+                "cheap",
+                Some(0.3),
+                &check_messages(),
+                "{\"consistent\":false,\"discrepancies\":\"height wrong\"}",
+                None,
+            )
+            .with_response(
+                "ANTHROPIC",
+                "big",
+                Some(0.3),
+                &anchored_messages,
+                "{\"revise\":false}",
+                None,
+            );
+        let executor = CheapLlmTaskExecutor::new();
+        let sel = cheap_selection();
+        let prof = own_profile();
+        let opts = RunAnswerConfirmationOptions {
+            reply: REPLY,
+            reference: REFERENCE,
+            user_id: "u",
+            chat_id: "c",
+            message_id: Some("m"),
+            character_id: Some("char"),
+            character_name: Some("Ada"),
+            conversation_context: Some(scene),
+            cheap_llm_selection: Some(&sel),
+            connection_profile: &prof,
+            is_dangerous_chat: false,
+            uncensored_fallback: None,
+        };
+        let noop = || {};
+        let out = run_answer_confirmation(&provider, &executor, &opts, &noop).await;
+        assert_eq!(out.confirmed, Some(false));
+        assert_eq!(out.notes.as_deref(), Some("height wrong"));
+    }
+
+    #[tokio::test]
     async fn inconsistent_revise_without_text_is_unverified() {
         let mut provider = CannedCompletionProvider::new().with_response(
             "ANTHROPIC",
@@ -925,6 +1318,8 @@ mod tests {
             chat_id: "c",
             message_id: None,
             character_id: None,
+            character_name: None,
+            conversation_context: None,
             cheap_llm_selection: None,
             connection_profile: &prof,
             is_dangerous_chat: false,
@@ -959,6 +1354,8 @@ mod tests {
                 chat_id: "c",
                 message_id: None,
                 character_id: None,
+                character_name: None,
+                conversation_context: None,
                 cheap_llm_selection: Some(&sel),
                 connection_profile: &prof,
                 is_dangerous_chat: false,

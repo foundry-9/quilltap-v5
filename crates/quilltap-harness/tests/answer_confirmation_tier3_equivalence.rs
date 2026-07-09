@@ -3,15 +3,19 @@
 //! `quilltap_core::services::message_finalizer` — v4 `finalizeMessageResponse` +
 //! `answer-confirmation.service.ts`), verified tier-3 → tier-2.
 //!
-//! Both sides copy the same two-DB seed fixture (one character + vault; 14 chats
-//! each with a seeded Commonplace whisper / tool slate; a project with an
-//! `answerConfirmationOverride`) and run the same 14-call finalize sequence with
+//! Both sides copy the same two-DB seed fixture (one character + vault; 17 chats
+//! each with a seeded Commonplace whisper / tool slate — the three `scene_*`
+//! chats also carry seeded prior dialogue; a project with an
+//! `answerConfirmationOverride`) and run the same 17-call finalize sequence with
 //! the answer-confirmation feature ON. The model boundary is canned: the Rust
 //! [`RealAnswerConfirmation`] runner replays the oracle-recorded
 //! `provider|model|temperature|messages` keys (the check on the cheap profile,
 //! the re-affirmation on the character's OWN profile, the danger case's cheap
 //! profile ESCALATED to the uncensored one — the recorded keys prove the prompt
-//! bytes, the 24 K reference truncation, and the profile switch). Then:
+//! bytes, the 24 K reference truncation, the a7b1398d re-affirmation scene block
+//! [`buildRecentConversationContext` — the 20-message cap, the 8 K-UTF-16
+//! tail-slice truncation with a non-ASCII boundary, the null no-dialogue path]
+//! + name anchor, and the profile switch). Then:
 //!
 //!   1. each call's `ProcessMessageResult` is compared (v4's rich
 //!      `sceneTrackingContext` collapsed to its `characterIds`);
@@ -56,8 +60,8 @@ use quilltap_core::services::llm_logging::LogContext;
 use quilltap_core::services::message_finalizer::{
     finalize_message_response, ClosureProspero, FinalizeOptions, FinalizerCharacter, FinalizerChat,
     FinalizerChatSettings, FinalizerCompression, FinalizerConfirmationInputs, FinalizerParticipant,
-    FinalizerProfile, FinalizerStreaming, NoAsyncCompression, NoCostTracking, ProcessMessageResult,
-    RealAnswerConfirmation,
+    FinalizerProfile, FinalizerStreaming, NoAsyncCompression, NoCostTracking, ParticipantCharacter,
+    ProcessMessageResult, RealAnswerConfirmation,
 };
 use quilltap_core::services::tool_execution::ToolMessage;
 use quilltap_core::tools::rng::FixedBytes;
@@ -642,6 +646,14 @@ fn answer_confirmation_tier3_matches_oracle() {
             })
             .collect();
 
+        // Mirrors the oracle's `triggers.participantCharacters` (the responder —
+        // a7b1398d: buildRecentConversationContext resolves its name).
+        let participant_characters = vec![ParticipantCharacter {
+            id: character.id.clone(),
+            name: character.name.clone(),
+            aliases: character.aliases.clone(),
+        }];
+
         let opts = FinalizeOptions {
             chat_id: call.chat_id.clone(),
             user_id: spec.user_id.clone(),
@@ -656,7 +668,7 @@ fn answer_confirmation_tier3_matches_oracle() {
             profile: profile.clone(),
             streaming,
             compression: FinalizerCompression::default(),
-            participant_characters: Vec::new(),
+            participant_characters,
             chat_settings,
             is_dangerous_chat: call.dangerous,
             connection_profile_id: spec.connection_profile.id.clone(),

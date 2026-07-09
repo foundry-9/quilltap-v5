@@ -4,6 +4,22 @@
 
 ### 5.0-dev
 
+P4.d1: answer-confirmation drift catch-up to v4 a7b1398d. Ported
+buildRecentConversationContext (the compact recent-dialogue transcript —
+Staff/tool/silent filtering, the 20-message cap, the 8,000-UTF-16-unit
+tail-slice truncation, name attribution over the ported
+getParticipantName with User/Character fallbacks), the rewritten
+re-affirmation system prompt (optional "You are <name>. " anchor), the
+labeled-sections re-affirmation user message (leading scene block; the
+reference relabeled background knowledge), the new characterName /
+conversationContext options, and the finalizer threading. Corpus
+extended 14 -> 17 cases (a >20-message scene, an over-budget non-ASCII
+truncation scene, a Staff-whispers/silent-only null-context case), with
+the responder now resolvable in name attribution;
+answer_confirmation_tier3_equivalence regenerated green against v4 HEAD;
+message_finalizer_tier3_equivalence re-verified inert against a
+regenerated HEAD oracle. Unit tests for the new pure leaves.
+
 P4.d drift re-port round kickoff: work orders for the two lanes
 (p4.d1 answer-confirmation catch-up; p4.d2 turn-skipping port) with the
 binding ownership matrix. Docs only.

@@ -168,6 +168,15 @@ pub struct FinalizerConfirmationRun<'a> {
     pub chat_id: &'a str,
     pub message_id: &'a str,
     pub character_id: &'a str,
+    /// The replying character's display name (v4 `characterName`, `a7b1398d`) —
+    /// anchors the re-affirmation system prompt.
+    pub character_name: &'a str,
+    /// The compact recent-conversation transcript (v4 `conversationContext`,
+    /// `a7b1398d`, from
+    /// [`answer_confirmation::build_recent_conversation_context`]) — anchors a
+    /// re-affirmation rewrite to the current scene. `None` when there is no prior
+    /// dialogue.
+    pub conversation_context: Option<&'a str>,
     /// The already-resolved cheap-LLM selection (v4 `compression.cheapLLMSelection`).
     /// `None` → the runner returns `confirmed: null` (v4's `if (!cheapLLMSelection)`).
     pub cheap_llm_selection: Option<&'a CheapLlmSelection>,
@@ -206,6 +215,8 @@ impl<C: crate::model::completion::CompletionProvider + Sync> AnswerConfirmationR
             chat_id: opts.chat_id,
             message_id: Some(opts.message_id),
             character_id: Some(opts.character_id),
+            character_name: Some(opts.character_name),
+            conversation_context: opts.conversation_context,
             cheap_llm_selection: opts.cheap_llm_selection,
             connection_profile: opts.connection_profile,
             is_dangerous_chat: opts.is_dangerous_chat,
@@ -781,6 +792,23 @@ where
                     whisper.as_deref(),
                     &tool_messages,
                 ) {
+                    // Recent live conversation, so any re-affirmation rewrite stays
+                    // anchored to THIS scene instead of drifting into an old
+                    // conversation the reference material may quote (v4 `a7b1398d`;
+                    // v4 passes the `type === 'message'`-filtered `priorEvents` —
+                    // the builder's own filter makes the raw list equivalent).
+                    let participant_character_names: std::collections::HashMap<String, String> =
+                        participant_characters
+                            .iter()
+                            .map(|c| (c.id.clone(), c.name.clone()))
+                            .collect();
+                    let conversation_context =
+                        answer_confirmation::build_recent_conversation_context(
+                            &prior_messages,
+                            &chat.participants,
+                            &participant_character_names,
+                        );
+
                     // v4 emits a `confirming` status frame just before the check.
                     sink.emit(ChatEvent::status(super::chat_events::StatusPayload {
                         stage: "confirming".to_string(),
@@ -824,6 +852,8 @@ where
                                 chat_id: &chat_id,
                                 message_id: &assistant_message_id,
                                 character_id: &character.id,
+                                character_name: &character.name,
+                                conversation_context: conversation_context.as_deref(),
                                 cheap_llm_selection: confirmation_inputs
                                     .cheap_llm_selection
                                     .as_ref(),

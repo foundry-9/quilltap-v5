@@ -5271,3 +5271,38 @@ refreshed (CHANGELOG, DDL.md, nothing-to-add.md, salon-answer-
 confirmation.md). **Oracle baseline for new work orders: `a7b1398d` —
 but the three failing differentials pin their units to the OLD baseline
 until the re-port lands.**
+
+**P4.d1: the answer-confirmation drift catch-up is DONE** (2026-07-09,
+v4 `a7b1398d`). `services::answer_confirmation` is current again: the new
+pure `build_recent_conversation_context` (the compact recent-dialogue
+transcript the re-affirmation anchors to — `type:'message'` +
+no-`systemSender` + not-silent + non-blank filtering, the last-20 cap, the
+8 000-UTF-16-unit TAIL slice with the `[…earlier conversation truncated…]`
+prefix added AFTER the slice [faithful], name attribution REUSING the
+Phase-1 `get_participant_name` with the JS-`||` empty-name fallthrough to
+the `User`/`Character` role fallbacks), the rewritten re-affirmation
+system prompt (`build_reaffirmation_system_prompt` — the optional
+`You are <name>. ` anchor over a mechanically-extracted byte-exact body in
+`prompt_text`), the labeled-sections re-affirmation user message (the
+leading scene block when context is non-blank; the reference relabeled
+"your background knowledge — NOT the conversation"; the rewritten closing
+instruction), `RunAnswerConfirmationOptions.{character_name,
+conversation_context}`, and the finalizer threading
+(`message_finalizer` builds the context from the prior messages +
+`chat.participants` + the participant-character name map and passes
+`character.name`; `FinalizerConfirmationRun` widened — pass-through-only
+consumers untouched). Corpus extended 14 → 17 (`scene_over_twenty` — 24
+seeded dialogue rows, only the last 20 render, both name paths;
+`scene_truncate` — an over-budget transcript with `é` at the cut boundary
++ an astral `🗼` in the kept tail; `scene_none_staff_only` — Staff
+whisper + silent + whitespace-only rows → null context, no scene block),
+the oracle's `triggers.participantCharacters` now carries the responder
+(name attribution live on both sides), and the reaff-call discriminator
+keys on the prompt's fixed opening. `answer_confirmation_tier3_equivalence`
+regenerated GREEN against v4 HEAD (17 calls, 19 canned completions — 6
+anchored re-affirmations, 2 with scene blocks, 1 truncated — + 19
+ANSWER_CONFIRMATION `llm_logs` rows); `message_finalizer_tier3_equivalence`
+re-verified INERT against a regenerated HEAD oracle (confirmation OFF in
+its corpus). Eight new unit tests for the pure leaves. The sibling
+turn-skipping re-port (P4.d2) still pins `orchestrator_tier3` /
+`enclave_step_tier3` to the old baseline.

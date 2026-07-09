@@ -120,10 +120,11 @@ interface Spec {
   calls: CallSpec[];
 }
 
-// The re-affirmation system prompt (v4 `buildReaffirmationSystemPrompt`) — used to
-// distinguish a re-affirmation call from the consistency check.
-const REAFFIRMATION_SYSTEM =
-  'You are reconsidering a reply you just drafted, in your own voice, before it is sent. Some of what you wrote appears to conflict with what you actually know or looked up this turn. Respond ONLY with strict JSON.';
+// The re-affirmation system prompt's fixed opening (v4
+// `buildReaffirmationSystemPrompt`, a7b1398d — optionally prefixed with
+// `You are <name>. `) — used to distinguish a re-affirmation call from the
+// consistency check.
+const REAFFIRMATION_MARKER = 'You are reconsidering a reply you just drafted, in your own voice,';
 
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -202,7 +203,7 @@ async function main(): Promise<void> {
           const messages = params.messages.map((m) => ({ role: m.role, content: m.content }));
           const system = messages.find((m) => m.role === 'system')?.content ?? '';
           const user = messages.find((m) => m.role === 'user')?.content ?? '';
-          const isReaff = system === REAFFIRMATION_SYSTEM;
+          const isReaff = system.includes(REAFFIRMATION_MARKER);
           const caseName = caseFromContent(user);
           const rule = isReaff ? spec.reaffRules[caseName] : spec.checkRules[caseName];
           if (rule === undefined) {
@@ -368,7 +369,10 @@ async function main(): Promise<void> {
         uncensoredTextProfileId: spec.uncensoredProfile.id,
       },
       chatSettings: perCaseSettings,
-      participantCharacters: new Map<string, unknown>(),
+      // a7b1398d: the responder resolves in buildRecentConversationContext's
+      // name attribution (an assistant dialogue row renders `Aurora: …`; an
+      // unresolvable USER row falls back to `User: …`).
+      participantCharacters: new Map<string, unknown>([[responderChar.id, responderChar]]),
       resolvedIdentity: {
         name: responderChar.name,
         description: '',

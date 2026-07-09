@@ -46,12 +46,18 @@
     "inconsistent_revise": "{\"consistent\":false,\"discrepancies\":\"height mismatch\"}",
     "inconsistent_revise_empty": "{\"consistent\":false,\"discrepancies\":\"height mismatch\"}",
     "check_parse_failure": "the model rambled and produced no JSON here",
-    "dangerous_escalation": "{\"consistent\":true,\"discrepancies\":\"\"}"
+    "dangerous_escalation": "{\"consistent\":true,\"discrepancies\":\"\"}",
+    "scene_over_twenty": "{\"consistent\":false,\"discrepancies\":\"the reply says 300m but the recall says 324m\"}",
+    "scene_truncate": "{\"consistent\":false,\"discrepancies\":\"height mismatch\"}",
+    "scene_none_staff_only": "{\"consistent\":false,\"discrepancies\":\"height mismatch\"}"
   },
   "reaffRules": {
     "inconsistent_standby": "{\"revise\":false}",
     "inconsistent_revise": "{\"revise\":true,\"reply\":\"The tower is 324 meters tall.\"}",
-    "inconsistent_revise_empty": "{\"revise\":true}"
+    "inconsistent_revise_empty": "{\"revise\":true}",
+    "scene_over_twenty": "{\"revise\":false}",
+    "scene_truncate": "{\"revise\":true,\"reply\":\"The tower is 324 meters tall, gleaming.\"}",
+    "scene_none_staff_only": "{\"revise\":false}"
   },
   "calls": [
     {
@@ -321,6 +327,239 @@
       "toolMessages": [],
       "reply": "The tower is fierce. [[CASE:dangerous_escalation]]",
       "expectActive": true
+    },
+    {
+      "name": "scene_over_twenty",
+      "chatId": "acc0a700-0000-4000-8000-000000000015",
+      "participantId": "acc0a710-0000-4000-8000-000000000015",
+      "assistantMessageId": "acc09000-0000-4000-8000-000000000015",
+      "whisperMessageId": "acc0b000-0000-4000-8000-000000000015",
+      "projectId": null,
+      "chatOverride": "ON",
+      "globalEnabled": false,
+      "impersonated": false,
+      "silent": false,
+      "whisper": "Aurora recalled the tower height is 324 meters.",
+      "toolMessages": [],
+      "reply": "The tower is 300 meters tall. [[CASE:scene_over_twenty]]",
+      "expectActive": true,
+      "dialogue": [
+        {
+          "id": "acc0d015-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "turn 0 of the tower talk"
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "turn 1 of the tower talk",
+          "participant": true
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000003",
+          "role": "USER",
+          "content": "turn 2 of the tower talk"
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000004",
+          "role": "ASSISTANT",
+          "content": "turn 3 of the tower talk",
+          "participant": true
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000005",
+          "role": "USER",
+          "content": "turn 4 of the tower talk"
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000006",
+          "role": "ASSISTANT",
+          "content": "turn 5 of the tower talk",
+          "participant": true
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000007",
+          "role": "USER",
+          "content": "turn 6 of the tower talk"
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000008",
+          "role": "ASSISTANT",
+          "content": "turn 7 of the tower talk",
+          "participant": true
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000009",
+          "role": "USER",
+          "content": "turn 8 of the tower talk"
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000010",
+          "role": "ASSISTANT",
+          "content": "turn 9 of the tower talk",
+          "participant": true
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000011",
+          "role": "USER",
+          "content": "turn 10 of the tower talk"
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000012",
+          "role": "ASSISTANT",
+          "content": "turn 11 of the tower talk",
+          "participant": true
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000013",
+          "role": "USER",
+          "content": "turn 12 of the tower talk"
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000014",
+          "role": "ASSISTANT",
+          "content": "turn 13 of the tower talk",
+          "participant": true
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000015",
+          "role": "USER",
+          "content": "turn 14 of the tower talk"
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000016",
+          "role": "ASSISTANT",
+          "content": "turn 15 of the tower talk",
+          "participant": true
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000017",
+          "role": "USER",
+          "content": "turn 16 of the tower talk"
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000018",
+          "role": "ASSISTANT",
+          "content": "turn 17 of the tower talk",
+          "participant": true
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000019",
+          "role": "USER",
+          "content": "turn 18 of the tower talk"
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000020",
+          "role": "ASSISTANT",
+          "content": "turn 19 of the tower talk",
+          "participant": true
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000021",
+          "role": "USER",
+          "content": "turn 20 of the tower talk"
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000022",
+          "role": "ASSISTANT",
+          "content": "turn 21 of the tower talk",
+          "participant": true
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000023",
+          "role": "USER",
+          "content": "turn 22 of the tower talk"
+        },
+        {
+          "id": "acc0d015-0000-4000-8000-000000000024",
+          "role": "ASSISTANT",
+          "content": "turn 23 of the tower talk",
+          "participant": true
+        }
+      ]
+    },
+    {
+      "name": "scene_truncate",
+      "chatId": "acc0a700-0000-4000-8000-000000000016",
+      "participantId": "acc0a710-0000-4000-8000-000000000016",
+      "assistantMessageId": "acc09000-0000-4000-8000-000000000016",
+      "whisperMessageId": "acc0b000-0000-4000-8000-000000000016",
+      "projectId": null,
+      "chatOverride": "ON",
+      "globalEnabled": false,
+      "impersonated": false,
+      "silent": false,
+      "whisper": "Aurora recalled the tower height is 324 meters.",
+      "toolMessages": [],
+      "reply": "The tower is 300 meters tall. [[CASE:scene_truncate]]",
+      "expectActive": true,
+      "dialogue": [
+        {
+          "id": "acc0d016-0000-4000-8000-000000000001",
+          "role": "USER",
+          "contentRepeat": [
+            {
+              "unit": "x",
+              "times": 100
+            },
+            {
+              "unit": "é",
+              "times": 7950
+            }
+          ]
+        },
+        {
+          "id": "acc0d016-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "participant": true,
+          "contentRepeat": [
+            {
+              "unit": "🗼",
+              "times": 1
+            },
+            {
+              "unit": "z",
+              "times": 60
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "scene_none_staff_only",
+      "chatId": "acc0a700-0000-4000-8000-000000000017",
+      "participantId": "acc0a710-0000-4000-8000-000000000017",
+      "assistantMessageId": "acc09000-0000-4000-8000-000000000017",
+      "whisperMessageId": "acc0b000-0000-4000-8000-000000000017",
+      "projectId": null,
+      "chatOverride": "ON",
+      "globalEnabled": false,
+      "impersonated": false,
+      "silent": false,
+      "whisper": "Aurora recalled the tower height is 324 meters.",
+      "toolMessages": [],
+      "reply": "The tower is 300 meters tall. [[CASE:scene_none_staff_only]]",
+      "expectActive": true,
+      "dialogue": [
+        {
+          "id": "acc0d017-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "systemSender": "host",
+          "content": "The scene shifts."
+        },
+        {
+          "id": "acc0d017-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "participant": true,
+          "silent": true,
+          "content": "a silent aside"
+        },
+        {
+          "id": "acc0d017-0000-4000-8000-000000000003",
+          "role": "USER",
+          "content": "   "
+        }
+      ]
     }
   ]
 }

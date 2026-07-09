@@ -40,6 +40,19 @@ interface CharacterSpec {
   controlledBy: string;
   talkativeness: number;
 }
+interface DialogueSpec {
+  id: string;
+  role: 'USER' | 'ASSISTANT';
+  content?: string;
+  /** Content assembled from repeated units (large / non-ASCII transcripts). */
+  contentRepeat?: Array<{ unit: string; times: number }>;
+  /** When true, the row carries the call's participantId (name-resolvable). */
+  participant?: boolean;
+  /** A Staff whisper (dropped by buildRecentConversationContext). */
+  systemSender?: string;
+  /** isSilentMessage: true (dropped by buildRecentConversationContext). */
+  silent?: boolean;
+}
 interface CallSpec {
   name: string;
   chatId: string;
@@ -52,6 +65,8 @@ interface CallSpec {
   dangerous?: boolean;
   whisper?: string | null;
   whisperRepeat?: { unit: string; times: number };
+  /** Prior real-dialogue rows seeded BEFORE the whisper (a7b1398d scene cases). */
+  dialogue?: DialogueSpec[];
 }
 interface Spec {
   testPepperBase64: string;
@@ -189,6 +204,33 @@ async function main(): Promise<void> {
       } as never,
       { id: call.chatId, createdAt: TS, updatedAt: TS }
     );
+
+    // Seed the prior-dialogue rows (a7b1398d — the recent-conversation context
+    // the re-affirmation pass anchors to). Strictly increasing createdAt so both
+    // sides read the same order; the whisper (below) keeps the seed timestamp so
+    // it sorts first (buildRecentConversationContext drops it by systemSender
+    // regardless; findLatestCommonplaceWhisper scans backward by position).
+    if (call.dialogue && call.dialogue.length > 0) {
+      const rows = call.dialogue.map((d, i) => {
+        const content =
+          d.contentRepeat != null
+            ? d.contentRepeat.map((p) => p.unit.repeat(p.times)).join('')
+            : d.content ?? '';
+        const row: Record<string, unknown> = {
+          id: d.id,
+          type: 'message',
+          role: d.role,
+          content,
+          createdAt: `2020-01-01T00:01:${String(i + 1).padStart(2, '0')}.000Z`,
+          attachments: [],
+        };
+        if (d.participant) row.participantId = call.participantId;
+        if (d.systemSender) row.systemSender = d.systemSender;
+        if (d.silent) row.isSilentMessage = true;
+        return row;
+      });
+      await repos.chats.addMessages(call.chatId, rows as never);
+    }
 
     // Seed a Commonplace Book whisper for this participant when the case wants one.
     const whisperText =
