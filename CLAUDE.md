@@ -5182,3 +5182,37 @@ backup/integrity — recognized, loud), docs files/status/find/grep +
 memories/logs (Tier B), every server-required verb + the
 HTTP-dispatch mode (P4.4), themes/migrations/maintenance/file-verify, and
 wiring bare `quilltap` to embed `quilltap-web` (unification/next round).
+
+**P4.2/P4.3 unification (2026-07-08): DONE — both transport lanes are
+integrated on main; milestones M1 and M2 both stand.** The two lane
+branches cherry-picked onto main with only the four expected mechanical
+conflicts (CLAUDE.md/CHANGELOG two-block unions; host `Cargo.toml`
+verified version-only on BOTH sides before resolving to 0.0.4 — the
+tempfile lesson applied; Cargo.lock taken from the web lane then
+regenerated to pick up `quilltap-cli`). Zero source-level conflicts for
+the fifth consecutive round — only P4.2 touched host `lib.rs` (the spine
+append), and the ownership matrix held completely. Verified on the
+integrated tree: the full workspace gate (**1,110 tests / 0 failed**;
+769 core under `native-transport`; clippy `-D warnings` on both feature
+sets; fmt), the **124-case CLI differential re-run live against the v4
+launcher** (136 s, green), and the quilltap-web suites re-surfaced
+(`m2_chat_send_end_to_end`, the dispatch/SSE + locked-vault contract
+tests, terminal REST+WS round-trip, binary routes). The round's core
+diffs are additive/visibility-only on ported surfaces (`find_by_storage_key`
+new read, `build_pricing_context` pub, `SelfInventoryEnv: Clone`,
+`execute_completion`'s opt-in per-call `base_url` override whose `None`
+path is byte-identical) — no oracle-covered path changed, so no
+differential regens were required. Versions: core 0.0.141, host 0.0.4,
+web 0.0.1, cli 0.0.1. **Standing follow-ups after this round:** wiring
+bare `quilltap` to embed/exec `quilltap-web` (deferred deliberately — a
+next-round decision); the P4.3 Tier-B verbs (db high-level verbs, docs
+files/status/find/grep, memories, logs) + `db --repl`; the HTTP-dispatch
+CLI mode with the server-required verbs (P4.4); P4.2's named deferrals
+(themes/photos routes, Setup/Store/ChangePassphrase variants,
+Last-Event-ID replay, the non-raw mount-file JSON envelope, the real
+`/setup` UI → P4.4/P4.5); and the still-unregistered job handlers
+(MEMORY_EXTRACTION needs v4 `buildTurnTranscript`, SCENE_STATE_TRACKING
+needs the W4.6a job wrapper, CONTEXT_SUMMARY/TITLE_UPDATE shells, the
+EMBEDDING_GENERATE family — all P4.4 backfill). Next: P4.4 route-logic
+backfill (chat creation + unlock/pepper-vault first) ∥ P4.5 SPA
+foundation, per the decomposition.

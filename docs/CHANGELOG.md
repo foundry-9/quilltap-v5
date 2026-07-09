@@ -4,6 +4,18 @@
 
 ### 5.0-dev
 
+P4.2/P4.3 unification: both transport lane branches integrated on main.
+Conflicts were the four expected mechanical files only (doc unions; host
+Cargo.toml version-only on both sides, resolved 0.0.4; Cargo.lock
+regenerated); zero source-level conflicts. Verified on the integrated
+tree: full workspace gate (1,110 tests, clippy -D warnings on default and
+native-transport, fmt), the 124-case CLI differential re-run live against
+the v4 launcher, and the quilltap-web suites (M2 chat-send smoke,
+dispatch/SSE contract, terminal WS, binary routes). Milestones M1 and M2
+both stand. Follow-ups recorded in CLAUDE.md (bare-quilltap serve wiring,
+CLI Tier B, HTTP-dispatch mode, the P4.2 named deferrals, the remaining
+job-handler registrations — all P4.4+).
+
 P4.2 (part 2): the production chat-send spine + quilltap-web, milestone M2.
 New quilltap-host::spine — the ChatSendDriver composition point: ChatSpine
 (generic over the embedding/completion/streaming/pricing model boundaries
