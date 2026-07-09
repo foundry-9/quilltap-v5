@@ -5507,3 +5507,71 @@ composes several large unported subsystems — `buildChatContext`, the
 greeting/first-message generator, the identity-stack compiler, scenario
 mount resolution, autonomous-room start — so it is its own full unit).
 Versions: core 0.0.143, harness 0.0.134, web 0.0.3.
+
+**P4.5 (the Angular SPA foundation) is DONE.** New `apps/web` — Angular 21
+(standalone + zoneless + signals, esbuild, Tailwind v4, Vitest), npm, no
+component library (D13). **`CoreClient`** is the one transport seam (D14):
+`dispatch` over `POST /api/dispatch`, ONE global `EventSource` on
+`/api/events` (scope-tagged; reconnect = resync), and the `/health`
+readiness vocabulary; the hand-written TS contract mirror lives in ONE
+module (`src/app/core/core-contract.ts`) for at-a-glance diffing against
+the Rust enums; TanStack Query (the Angular adapter) layers server state
+over dispatch. **The SSE stream reducer** (`chat-stream.reducer.ts`) is a
+pure fold of chat-scoped `ChatEvent` frames ported from v4's
+`useSSEStreaming`/`useMessageStreaming`: content append, cumulative
+reasoning live-replace, tool-batch splice at `anchorOffset`, turn/chain
+lifecycle, the skip/empty/pending-external done family, mid-stream error —
+with the v5 structural adaptation (subscribe by `chatId` BEFORE
+dispatching; the dispatch promise resolves at turn completion) and a
+committed frame-trace fixture. **The `qt-*` CSS system** ports
+file-per-file (`src/styles/qt-components/_*.css` + globals), plus the six
+bundled theme packs (styles/tokens/fonts/textures under `public/themes/`)
+behind a `ThemeService` that applies by id, injects `@font-face`, and
+persists to localStorage; the base UI primitives (icon, brand-name,
+loading/empty/error states, form-actions, section-header, avatar,
+chevron) carry v4's classes + microcopy verbatim. **Screens:** the
+startup gate (health → `pepperState` routing + the 409 lock-conflict and
+unhealthy cards), unlock, the setup wizard (one-time pepper reveal; both
+`needs-setup` and `needs-vault-storage` modes), and the app shell (nav
+skeleton, theme switcher, the `listChats` list). **Verified:** 39
+component/unit tests (reducer over the committed trace, CoreClient
+parsing, ThemeService, wizard/unlock/gate) + Playwright e2e against the
+REAL `quilltap-web` binary over a passphrase-locked COPY of the committed
+fixture (locked → wrong-passphrase error → unlock → shell + a bundled
+theme applied). **Documented divergences** (reconcile when the server
+themes service lands with the Settings vertical): the theme asset-URL
+rewrites (`/api/themes/assets` → bundled `/themes/...`) and the
+localStorage theme persistence. SPA at 0.1.x; no crate changes from this
+lane.
+
+**P4.4/P4.5 unification (2026-07-09): DONE — both lanes are integrated on
+main.** Zero source-level conflicts for the seventh consecutive round
+(the one union: `docs/CHANGELOG.md`); ownership held exactly (P4.4 only
+`crates/**` + `harness/oracle/**`; P4.5 only `apps/web/**` +
+`.gitignore`). **The shared-contract cross-check passes byte-for-byte**:
+the TS mirror's `setup`/`storePepper`/`changePassphrase` requests, the
+`{"type":"setup","data":{pepper,message}}` / `{"type":"ack","data":{}}`
+responses, and the kebab-case `unauthorized` error kind all match the
+Rust serde output exactly. **The deferred LIVE setup-wizard e2e is
+CLOSED at unification** (`apps/web/e2e/setup-flow.spec.ts`): a second
+server against an EMPTY data dir walks needs-setup → the wizard
+(mismatched-confirm validation) → the real `setup` dispatch → the
+one-time pepper reveal → the shell on the freshly provisioned encrypted
+instance (`quilltap.db` + `quilltap.dbkey` on disk) — the full first-run
+story browser-to-disk. **Verified on the integrated tree:** the full
+workspace gate (1,136 tests / 0 failed; clippy `-D warnings` on default
+AND `native-transport`; fmt), the provisioning differential regenerated
+green against v4 HEAD `a7b1398d` (schema byte-exact per partition, seed
+rows, v5-reads-v4) plus BOTH v4-side cross-compat scripts (v4 opened the
+v5-provisioned instance; v4 unlocked the v5 change-passphrase `.dbkey`),
+and the SPA suite (39 unit tests + 2 Playwright e2e incl. the new live
+setup flow). Versions: core 0.0.143, harness 0.0.134, web 0.0.3, SPA
+0.1.1. **Standing follow-ups:** P4.4 unit 2 (the chat creation flow +
+Green Room D6 — its own order; the P4.4 survey confirmed it composes
+several large unported subsystems: `buildChatContext`, the
+greeting/first-message generator, the identity-stack compiler, scenario
+mount resolution), the P4.4 named deferrals (the sample-content seed
+import, the built-in roleplay templates, the three built-in mount
+stores), the P4.5 theme divergences (fold when the themes service
+lands), and then the P4.6 first Salon vertical (M4) per the
+decomposition.

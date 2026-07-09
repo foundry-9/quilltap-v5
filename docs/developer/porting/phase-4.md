@@ -414,10 +414,13 @@ Milestones (each independently demoable):
 
 Open with: *"Continuing the quilltap-v5 native port. Read CLAUDE.md,
 docs/developer/porting/overview.md, and docs/developer/porting/phase-4.md.
-Phases 0–3 are done; Phase 4 is starting — begin with P4.0 (the boundary +
-composition root) per the decomposition, writing the round's work orders
-first."* Run a v4 drift check before each round (the oracle baseline at
-kickoff is `2494a84b` — the kickoff-day drift check audited
-`6bf88959..2494a84b`, a UI-only commit: the Salon copy-chat-UUID buttons +
-header-title link, which join the Salon vertical's reference set; no ported
-unit stale).
+Phase-4 status lives in CLAUDE.md — pick up from the latest status block,
+writing the round's work orders first."* Run a v4 drift check before each
+round. **Progress:** P4.0 (M0), P4.1 (all four host-driver lanes), P4.2
+(M2, `quilltap-web` + Docker), P4.3 (M1, the CLI Tier R), the P4.d drift
+re-port round, P4.4 unit 1 (the unlock/pepper-vault service +
+fresh-instance provisioning; unit 2 — chat creation + Green Room — is the
+next P4.4 order), and P4.5 (the SPA foundation: unlock/setup/shell in a
+real browser against the axum host) are DONE. The oracle baseline is
+`a7b1398d`. Next per the decomposition: P4.4 unit 2, then the P4.6 first
+Salon vertical (M4).

@@ -4,6 +4,17 @@
 
 ### 5.0-dev
 
+P4.4/P4.5 unification: both lanes integrated on main (zero source
+conflicts; ownership held exactly). The shared dispatch contract
+cross-checks byte-for-byte between the TS mirror and the Rust enums. The
+deferred LIVE setup-wizard e2e is closed (apps/web/e2e/setup-flow.spec.ts):
+empty data dir -> wizard -> real setup dispatch -> one-time pepper reveal
+-> shell on the freshly provisioned encrypted instance. Verified on the
+integrated tree: 1,136 workspace tests / 0 failed, clippy -D warnings on
+both feature sets, fmt; the provisioning differential + both v4-side
+cross-compat scripts green against v4 HEAD a7b1398d; 39 SPA unit tests +
+2 Playwright e2e. SPA 0.1.1.
+
 P4.4 unit 1: the unlock/pepper-vault service + fresh-instance
 provisioning. The CORE now creates a brand-new, encrypted-from-byte-zero
 instance at `Setup` time — no plaintext window (v4 creates its DBs
