@@ -4,6 +4,15 @@
 
 ### 5.0-dev
 
+P4.4 unit-2 work order: the chat creation flow + the Green Room (D6),
+decomposed leaf-first from a fresh survey at a7b1398d (scenario
+resolvers, buildChatContext, the identity-stack compiler write side,
+outfit selections + chooseLLMOutfit, the greeting generator + its
+content-filter fallback ladder, chat continuation, the creation-progress
+event bus, and the handleCreate spine + ChatCreate dispatch variant),
+each with its differential plus a capstone tier-3 driving v4's real
+handler. A solo lane; P4.6 is sequenced after it. Docs only.
+
 P4.4/P4.5 unification: both lanes integrated on main (zero source
 conflicts; ownership held exactly). The shared dispatch contract
 cross-checks byte-for-byte between the TS mirror and the Rust enums. The
