@@ -4,6 +4,20 @@
 
 ### 5.0-dev
 
+Drift check against v4 2494a84b..a7b1398d (two commits: "nothing to add"
+turn-skipping b90cd1f5; answer-confirmation conversation anchoring
+a7b1398d). Both stale ported units. Verified empirically against fresh
+v4-HEAD oracles: answer_confirmation_tier3, orchestrator_tier3, and
+enclave_step_tier3 FAIL (the rewritten re-affirmation prompt; the
+[NOTHING TO ADD] Turn note now injected into qualifying group-chat
+prompts — 21 recorded stream keys per spine oracle carry it);
+turn_state, turn_orchestrator_tier2, and chats_tier2 still pass (the
+turn-pass lastSpeakerId branch, the Staff pause-counter exclusion, and
+the new turnSkippingEnabled column are all corpus-inert). Refreshed the
+docs/v4 mirror (CHANGELOG, DDL.md, nothing-to-add.md,
+salon-answer-confirmation.md). A drift re-port round is required; the
+scope is recorded in CLAUDE.md. Docs only — no crate source changed.
+
 P4.2/P4.3 unification: both transport lane branches integrated on main.
 Conflicts were the four expected mechanical files only (doc unions; host
 Cargo.toml version-only on both sides, resolved 0.0.4; Cargo.lock

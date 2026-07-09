@@ -5216,3 +5216,58 @@ needs the W4.6a job wrapper, CONTEXT_SUMMARY/TITLE_UPDATE shells, the
 EMBEDDING_GENERATE family — all P4.4 backfill). Next: P4.4 route-logic
 backfill (chat creation + unlock/pepper-vault first) ∥ P4.5 SPA
 foundation, per the decomposition.
+
+**Drift check (2026-07-09): v4 `2494a84b..a7b1398d` (2 commits) audited —
+BOTH stale ported units; a drift re-port round is REQUIRED before further
+Phase-4 work builds on the affected spine surfaces.** The two commits:
+**`b90cd1f5`** ("nothing to add" turn-skipping for group chats) and
+**`a7b1398d`** (answer-confirmation amendments anchored to the current
+conversation). Empirically verified against fresh v4-HEAD oracles:
+**three differentials FAIL** — `answer_confirmation_tier3` (a7b1398d
+rewrote the re-affirmation system prompt + restructured the reaff user
+message [labeled sections] + added `buildRecentConversationContext` [a
+compact Staff/tool/silent-filtered transcript, 8 K-UTF-16/20-message caps]
++ `characterName` threading; 10 vs 13 ANSWER_CONFIRMATION rows),
+`orchestrator_tier3`, and `enclave_step_tier3` (both by the same
+mechanism: v4's `processMessage` now computes skip eligibility for
+qualifying group chats [>2 active char participants OR ≥2 LLM chars] and
+injects an ephemeral `[NOTHING TO ADD]` Turn note into the outgoing
+context — 21 recorded stream keys per oracle carry it → canned misses).
+**Three differentials verified still GREEN at HEAD** (ports stale but
+corpora unaffected): `turn_state` (v4 `calculateTurnStateFromHistory` now
+sets `lastSpeakerId` from a Host turn-pass record — corpus has none),
+`turn_orchestrator_tier2` (v4 `shouldChainNext` now excludes
+Staff/systemSender messages from the all-LLM pause counter + threads
+`selectionReason: 'queue'|'algorithm'`; `executeTurnChain` continues past
+skipped turns), and `chats_tier2` (the new `turnSkippingEnabled`
+nullable-boolean column is additive — the answer-confirmation-columns
+catch-up pattern applies). **Classified inert** (no regen needed):
+`build_context_tier3`/`message_context` (the `turnSkip` option is gated
+off in every direct-drive corpus), `message_finalizer_tier3`
+(confirmation OFF in corpus), `post_office_host` (the turn-pass writers
+are NEW exports; `postHostMessage`'s `hostEvent` fields going optional is
+inert for existing callers), `chat_events`/`primary_stream` (the done
+`skipped`/`skippedParticipantId` fields + `turnComplete.skipped` + the new
+`hostAnnouncement` frame are additive), `regenerate_swipe`/`courier`/
+`carina_query` (sibling entry points never pass `turnSkip`), and the
+`message-formatter` → `response-normalizer` extraction (a pure move with
+re-exports — the ported `message_formatter` and every oracle import stay
+valid). **The re-port scope (unported v4 surface):** the new pure module
+`lib/chat/turn-manager/skip-signal.ts` (358 lines — sentinel detection
+with the strip-and-keep-prose `cleaned` path, `isTurnPassMessage`,
+`findSkippedSinceLastSubstantive` [the stall guard],
+`isFirstCharacterTurn`, `isRecentlyAddressed`, `qualifiesForTurnSkipping`,
+`computeSkipEligibility`), `buildTurnSkipInstruction` + the two
+buildContext injection routes (trailing section vs its-own-trailing-user-
+message on chained turns), the orchestrator eligibility/sentinel/
+`handleTurnSkip` path (Host post + `computeSpokenThisCycleAfterSkip`
+persist [that leaf is ALREADY ported] + the `skipped` done frame + the
+tools-ran-clears-sentinel rule), the `nudge`/`chainSelectionReason`
+summoned-withhold threading, the turn-state/chain-gate deltas, the Host
+turn-pass writers, the `chats` marshaling catch-up, and the
+answer-confirmation catch-up. The Salon Skip-button route, migration,
+qtap-export schema, and UI are P4.4/P4.6 surface. The `docs/v4/` mirror is
+refreshed (CHANGELOG, DDL.md, nothing-to-add.md, salon-answer-
+confirmation.md). **Oracle baseline for new work orders: `a7b1398d` —
+but the three failing differentials pin their units to the OLD baseline
+until the re-port lands.**

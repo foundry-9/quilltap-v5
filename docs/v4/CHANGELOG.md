@@ -4,6 +4,24 @@
 
 ### 4.8-dev
 
+#### Fix: answer-confirmation amendments now stay in the current conversation
+
+When the answer-confirmation check flagged a character's reply and the character's own model was asked to correct it, the correction pass received only the draft reply plus the reference material (recalled memories and lookup results). It had no view of the actual conversation. When the reference material quoted an older conversation the character had read via `read_conversation`, the model would treat that old exchange as the live scene and rewrite its reply into it — producing an amendment that answered the wrong conversation.
+
+The re-affirmation pass is now given a compact transcript of the recent live conversation (`buildRecentConversationContext` in `answer-confirmation.service.ts`) plus the character's name, and the prompt is rewritten to require a minimal, in-scene correction: same addressee, same moment, same tone, changing only the details that conflict with the facts. The reference block is now explicitly labeled background knowledge rather than the conversation. The transcript filters out Staff/system-sender whispers, tool bubbles, and silent messages, and the pass degrades gracefully when there is no prior dialogue.
+
+#### Feature: characters can pass a turn when they have nothing to add
+
+In group chats, every LLM character is now given a per-turn option to pass instead of being forced to reply with filler. On any turn except the very first character turn of the chat, a character may respond with the single line `[NOTHING TO ADD]`; the Host then posts a short "nothing to add" note and the rotation moves on to the next speaker. If a character has been addressed or mentioned since it last spoke, its turn note warns it to answer rather than pass.
+
+- Scope: the feature applies only to genuine group scenes — chats with more than two active character participants, or with at least two LLM-driven characters. A one-on-one (a lone human plus a single character) is excluded entirely.
+- New per-chat toggle **Turn Skipping** in the Chat Sidebar's Visibility drawer (shown only in qualifying group chats). Default is on; `turnSkippingEnabled` is a nullable chat column where NULL/true = on.
+- A pass is recorded as a Host message (`systemKind: 'turn-pass'`, `hostEvent.participantId`) — no new message-sender or state columns. Turn-state, the stall guard, and the client all recompute passes from history.
+- Stall guard: when every other active character has passed since the last substantive message, the next speaker is forced to speak (the skip option is withheld). The same rule powers the human case — the Salon **Skip** button now posts a Host "nothing to add" note, and is hidden (and refused server-side with a 400) when everyone else has already passed.
+- Nudged or queued characters are never offered the skip option (they were explicitly summoned); the Continue button's algorithm-picked speaker is.
+- Applies to autonomous rooms: a pass consumes a turn from the run budget (already the case — every job counts as a turn), and the stall guard bounds all-skip loops.
+- New migration `add-turn-skipping-field-v1`. `.qtap` export/import round-trips `turnSkippingEnabled` and the turn-pass Host messages.
+
 #### Feature: copy a conversation's UUID from the header or the Organize drawer
 
 The header of a Salon chat now has a small copy button just after the conversation title that puts the chat's UUID on the clipboard, and the title itself is now a direct link to the conversation's Salon URL. The Chat Sidebar's Organize drawer has the same copy button at the top, before Rename. Both buttons flash a check-mark for a moment after copying. New shared component `components/chat/CopyChatIdButton.tsx` (inline icon variant for the header, full palette-button variant for the sidebar), built on the existing `useCopyToClipboard` hook.
