@@ -1,0 +1,254 @@
+@import "tailwindcss";
+
+/* Configure dark mode to use class-based switching instead of prefers-color-scheme.
+   The ThemeService toggles `.dark` / `.light` on <html>. */
+@variant dark (&:where(.dark, .dark *));
+
+/* ---------------------------------------------------------------------------
+ * Base app fonts (ported from v4 app/globals.css). The bundled theme packs
+ * carry their own @font-face rules, injected at runtime by ThemeService.
+ * ------------------------------------------------------------------------- */
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/Inter-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/Inter-SemiBold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/Inter-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "EB Garamond";
+  src: url("/fonts/EBGaramond-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "EB Garamond";
+  src: url("/fonts/EBGaramond-SemiBold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "EB Garamond";
+  src: url("/fonts/EBGaramond-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/*
+ * Quilltap Theming System (Tailwind CSS v4) — ported verbatim from v4
+ * app/globals.css. Base values live in :root (light) / .dark; @theme inline
+ * references them so runtime theme switching needs no rebuild.
+ */
+
+/* Base theme variables (light mode defaults) */
+:root {
+  --theme-background: hsl(225 14% 97%);
+
+  --theme-card: hsl(0 0% 100%);
+  --theme-card-foreground: hsl(225 18% 13%);
+
+  --theme-popover: hsl(0 0% 100%);
+  --theme-popover-foreground: hsl(225 18% 13%);
+
+  --theme-foreground: hsl(225 18% 13%);
+
+  --theme-primary: hsl(225 65% 48%);
+  --theme-primary-foreground: hsl(0 0% 100%);
+
+  --theme-secondary: hsl(225 10% 92%);
+  --theme-secondary-foreground: hsl(225 18% 22%);
+
+  --theme-muted: hsl(225 10% 94%);
+  --theme-muted-foreground: hsl(225 8% 42%);
+
+  --theme-accent: hsl(225 10% 93%);
+  --theme-accent-foreground: hsl(225 18% 22%);
+
+  --theme-destructive: hsl(0 68% 50%);
+  --theme-destructive-foreground: hsl(0 0% 100%);
+
+  --theme-success: hsl(152 60% 38%);
+  --theme-success-foreground: hsl(0 0% 100%);
+
+  --theme-warning: hsl(38 90% 46%);
+  --theme-warning-foreground: hsl(0 0% 10%);
+
+  --theme-info: hsl(210 75% 48%);
+  --theme-info-foreground: hsl(0 0% 100%);
+
+  --theme-border: hsl(225 10% 87%);
+  --theme-input: hsl(225 10% 87%);
+  --theme-ring: hsl(225 65% 48%);
+
+  --theme-chat-user: hsl(225 62% 50%);
+  --theme-chat-user-foreground: hsl(0 0% 100%);
+
+  --theme-sidebar-background: hsl(225 14% 95%);
+  --theme-sidebar-foreground: hsl(225 18% 18%);
+  --theme-sidebar-border: hsl(225 10% 87%);
+  --theme-sidebar-muted: hsl(225 8% 50%);
+  --theme-sidebar-accent: hsl(225 10% 93%);
+  --theme-sidebar-accent-foreground: hsl(225 18% 22%);
+
+  --theme-radius-lg: 0.5rem;
+  --theme-radius-md: 0.375rem;
+  --theme-radius-sm: 0.25rem;
+
+  --theme-font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --theme-font-serif: Georgia, Cambria, "Times New Roman", Times, serif;
+  --theme-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --theme-font-brand: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --theme-font-chat-user: var(--theme-font-sans);
+}
+
+/* DARK MODE — considered companion, not inversion */
+.dark {
+  --theme-background: hsl(225 18% 9%);
+
+  --theme-card: hsl(225 16% 12%);
+  --theme-card-foreground: hsl(225 10% 92%);
+
+  --theme-popover: hsl(225 16% 14%);
+  --theme-popover-foreground: hsl(225 10% 92%);
+
+  --theme-foreground: hsl(225 10% 92%);
+
+  --theme-primary: hsl(225 55% 68%);
+  --theme-primary-foreground: hsl(225 18% 9%);
+
+  --theme-secondary: hsl(225 14% 17%);
+  --theme-secondary-foreground: hsl(225 10% 85%);
+
+  --theme-muted: hsl(225 12% 14%);
+  --theme-muted-foreground: hsl(225 8% 56%);
+
+  --theme-accent: hsl(225 14% 18%);
+  --theme-accent-foreground: hsl(225 10% 85%);
+
+  --theme-destructive: hsl(0 60% 54%);
+  --theme-destructive-foreground: hsl(0 0% 100%);
+
+  --theme-success: hsl(152 55% 44%);
+  --theme-success-foreground: hsl(0 0% 100%);
+
+  --theme-warning: hsl(38 85% 52%);
+  --theme-warning-foreground: hsl(0 0% 10%);
+
+  --theme-info: hsl(210 70% 58%);
+  --theme-info-foreground: hsl(0 0% 100%);
+
+  --theme-border: hsl(225 12% 20%);
+  --theme-input: hsl(225 12% 20%);
+  --theme-ring: hsl(225 55% 60%);
+
+  --theme-chat-user: hsl(225 60% 56%);
+  --theme-chat-user-foreground: hsl(0 0% 100%);
+
+  --theme-sidebar-background: hsl(225 18% 7%);
+  --theme-sidebar-foreground: hsl(225 10% 88%);
+  --theme-sidebar-border: hsl(225 12% 16%);
+  --theme-sidebar-muted: hsl(225 8% 48%);
+  --theme-sidebar-accent: hsl(225 14% 18%);
+  --theme-sidebar-accent-foreground: hsl(225 10% 85%);
+}
+
+/* @theme inline: Tailwind references the CSS variables at runtime, enabling
+   dynamic theme switching without rebuilding CSS. */
+@theme inline {
+  --color-background: var(--theme-background);
+  --color-foreground: var(--theme-foreground);
+  --color-card: var(--theme-card);
+  --color-card-foreground: var(--theme-card-foreground);
+  --color-popover: var(--theme-popover);
+  --color-popover-foreground: var(--theme-popover-foreground);
+  --color-primary: var(--theme-primary);
+  --color-primary-foreground: var(--theme-primary-foreground);
+  --color-secondary: var(--theme-secondary);
+  --color-secondary-foreground: var(--theme-secondary-foreground);
+  --color-muted: var(--theme-muted);
+  --color-muted-foreground: var(--theme-muted-foreground);
+  --color-accent: var(--theme-accent);
+  --color-accent-foreground: var(--theme-accent-foreground);
+  --color-destructive: var(--theme-destructive);
+  --color-destructive-foreground: var(--theme-destructive-foreground);
+  --color-border: var(--theme-border);
+  --color-input: var(--theme-input);
+  --color-ring: var(--theme-ring);
+
+  --color-success: var(--theme-success);
+  --color-success-foreground: var(--theme-success-foreground);
+  --color-warning: var(--theme-warning);
+  --color-warning-foreground: var(--theme-warning-foreground);
+  --color-info: var(--theme-info);
+  --color-info-foreground: var(--theme-info-foreground);
+
+  --color-chat-user: var(--theme-chat-user);
+  --color-chat-user-foreground: var(--theme-chat-user-foreground);
+
+  --color-sidebar-background: var(--theme-sidebar-background);
+  --color-sidebar-foreground: var(--theme-sidebar-foreground);
+  --color-sidebar-border: var(--theme-sidebar-border);
+  --color-sidebar-muted: var(--theme-sidebar-muted);
+  --color-sidebar-accent: var(--theme-sidebar-accent);
+  --color-sidebar-accent-foreground: var(--theme-sidebar-accent-foreground);
+
+  --radius-lg: var(--theme-radius-lg);
+  --radius-md: var(--theme-radius-md);
+  --radius-sm: var(--theme-radius-sm);
+
+  --font-sans: var(--theme-font-sans);
+  --font-serif: var(--theme-font-serif);
+  --font-mono: var(--theme-font-mono);
+  --font-brand: var(--theme-font-brand);
+  --font-chat-user: var(--theme-font-chat-user);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+}
+
+/*
+ * Quilltap Component System (qt-* classes). Ported file-per-file from v4
+ * app/styles/qt-components/. Theme plugins override via [data-theme="name"].
+ */
+@import "./styles/qt-components/_index.css";
+
+/* Mobile viewport overflow prevention (overflow-x: clip preserves sticky). */
+@media (max-width: 768px) {
+  html {
+    overflow-x: clip;
+    width: 100%;
+    max-width: 100vw;
+  }
+  body {
+    overflow-x: clip;
+    width: 100%;
+    max-width: 100vw;
+  }
+  main {
+    overflow-x: clip;
+    max-width: 100vw;
+  }
+}

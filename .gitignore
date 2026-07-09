@@ -11,6 +11,14 @@ node_modules
 dist
 .next
 
+# Angular SPA (apps/web) build artifacts
+apps/web/node_modules
+apps/web/dist
+apps/web/.angular
+apps/web/playwright-report
+apps/web/test-results
+apps/web/e2e/.artifacts
+
 # Real instance data — NEVER commit a database or a pepper
 fixtures/*.db
 *.pepper

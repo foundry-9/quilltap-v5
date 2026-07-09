@@ -1,0 +1,392 @@
+/**
+ * Quilltap Component System - Interactive Components
+ *
+ * Buttons, inputs, selects, textareas, links
+ *
+ * Note: We define shared base styles directly rather than using @apply
+ * to reference other qt-* classes, as Tailwind v4 doesn't support
+ * @apply for classes defined in the same @layer.
+ */
+
+@layer components {
+  /* ==========================================================================
+     BUTTONS - Shared base styles
+     ========================================================================== */
+
+  /**
+   * All button variants share these base styles
+   */
+  .qt-button,
+  .qt-button-primary,
+  .qt-button-secondary,
+  .qt-button-ghost,
+  .qt-button-destructive,
+  .qt-button-warning,
+  .qt-button-success,
+  .qt-button-icon {
+    @apply inline-flex items-center justify-center gap-2;
+    @apply text-sm font-medium;
+    @apply transition-all duration-200;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+    cursor: pointer;
+    padding: var(--qt-button-padding-y) var(--qt-button-padding-x);
+    border-radius: var(--qt-button-radius);
+    font-size: var(--qt-button-font-size);
+    font-weight: var(--qt-button-font-weight);
+    transition: var(--qt-button-transition);
+  }
+
+  /* ==========================================================================
+     BUTTON VARIANTS
+     ========================================================================== */
+
+  /**
+   * Primary button - main call-to-action
+   */
+  .qt-button-primary {
+    background: var(--qt-button-primary-bg);
+    color: var(--qt-button-primary-fg);
+    box-shadow: var(--qt-button-primary-shadow);
+  }
+
+  .qt-button-primary:hover:not(:disabled) {
+    background: var(--qt-button-primary-hover-bg);
+  }
+
+  .qt-button-primary:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  /**
+   * Secondary button - secondary actions
+   */
+  .qt-button-secondary {
+    background: var(--qt-button-secondary-bg);
+    color: var(--qt-button-secondary-fg);
+    border: 1px solid var(--qt-button-secondary-border);
+  }
+
+  .qt-button-secondary:hover:not(:disabled) {
+    background: var(--qt-button-secondary-hover-bg);
+  }
+
+  /**
+   * Ghost button - minimal, transparent background
+   */
+  .qt-button-ghost {
+    background: var(--qt-button-ghost-bg);
+    color: var(--qt-button-ghost-fg);
+  }
+
+  .qt-button-ghost:hover:not(:disabled) {
+    background: var(--qt-button-ghost-hover-bg);
+  }
+
+  /**
+   * Destructive button - dangerous/delete actions
+   */
+  .qt-button-destructive {
+    background: var(--qt-button-destructive-bg);
+    color: var(--qt-button-destructive-fg);
+  }
+
+  .qt-button-destructive:hover:not(:disabled) {
+    background: var(--qt-button-destructive-hover-bg);
+  }
+
+  /**
+   * Warning button - cautionary actions requiring attention
+   */
+  .qt-button-warning {
+    background: var(--qt-button-warning-bg);
+    color: var(--qt-button-warning-fg);
+  }
+
+  .qt-button-warning:hover:not(:disabled) {
+    background: var(--qt-button-warning-hover-bg);
+  }
+
+  /**
+   * Success button - positive actions like Chat, Start, Save.
+   * Shares the common button base (token-driven radius/padding/focus/disabled);
+   * only the colors are success-specific.
+   */
+  .qt-button-success {
+    background: var(--qt-button-success-bg);
+    color: var(--qt-button-success-fg);
+    box-shadow: var(--qt-button-primary-shadow);
+  }
+
+  .qt-button-success:hover:not(:disabled) {
+    background: var(--qt-button-success-hover-bg);
+  }
+
+  /**
+   * Icon button - square button for icons only
+   */
+  .qt-button-icon {
+    @apply p-2 aspect-square;
+  }
+
+  /**
+   * Button size variants (additive modifiers)
+   */
+  .qt-button-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+
+  .qt-button-lg {
+    @apply px-6 py-3 text-base;
+  }
+
+  /* ==========================================================================
+     INPUTS - Shared base styles
+     ========================================================================== */
+
+  /**
+   * All input variants share these base styles
+   */
+  .qt-input,
+  .qt-textarea,
+  .qt-select {
+    @apply w-full;
+    @apply text-sm;
+    @apply focus:outline-none focus:ring-2;
+    @apply disabled:bg-muted disabled:cursor-not-allowed;
+    @apply placeholder:text-muted-foreground;
+    padding: var(--qt-input-padding-y) var(--qt-input-padding-x);
+    border-radius: var(--qt-input-radius);
+    background: var(--qt-input-bg);
+    color: var(--qt-input-fg);
+    border: 1px solid var(--qt-input-border);
+    transition: var(--qt-input-transition);
+  }
+
+  .qt-input:focus,
+  .qt-textarea:focus,
+  .qt-select:focus {
+    border-color: var(--qt-input-focus-ring);
+    --tw-ring-color: var(--qt-input-focus-ring);
+  }
+
+  /* ==========================================================================
+     INPUT VARIANTS
+     ========================================================================== */
+
+  /**
+   * Textarea - multiline text input
+   */
+  .qt-textarea {
+    @apply min-h-20 resize-y;
+  }
+
+  /**
+   * Select - dropdown select
+   */
+  .qt-select {
+    @apply cursor-pointer appearance-none;
+    background-image: var(--qt-select-arrow);
+    background-position: right 0.5rem center;
+    background-repeat: no-repeat;
+    background-size: 1.5em 1.5em;
+    padding-right: 2.5rem;
+  }
+
+  .qt-select-sm {
+    @apply py-1 px-2 text-xs;
+    background-size: 1em 1em;
+    background-position: right 0.25rem center;
+    padding-right: 1.5rem;
+  }
+
+  /**
+   * Input with error state (additive modifier)
+   */
+  .qt-input-error {
+    border-color: var(--color-destructive);
+  }
+
+  .qt-input-error:focus {
+    --tw-ring-color: var(--color-destructive);
+  }
+
+  /* ==========================================================================
+     LINKS
+     ========================================================================== */
+
+  /**
+   * Styled link
+   */
+  .qt-link {
+    color: var(--qt-link-color);
+    text-decoration: var(--qt-link-decoration);
+    transition: color 150ms ease;
+  }
+
+  .qt-link:hover {
+    color: var(--qt-link-hover-color);
+    text-decoration: var(--qt-link-decoration-hover);
+  }
+
+  /**
+   * qtap:// document link. Active links combine with .qt-link and carry a small
+   * document affordance so they read as in-app document references rather than
+   * web links. The icon comes from the shared Icon registry (theme-overridable),
+   * not a hard-coded emoji glyph.
+   */
+  .qt-qtap-doc-icon {
+    @apply inline-block w-3.5 h-3.5 mr-1 align-middle;
+    opacity: 0.8;
+  }
+
+  .qt-qtap-doc--inert {
+    color: inherit;
+    text-decoration: none;
+    cursor: default;
+  }
+
+  /**
+   * Subtle link - less emphasis
+   */
+  .qt-link-subtle {
+    @apply text-muted-foreground;
+    text-decoration: none;
+    transition: color 150ms ease;
+  }
+
+  .qt-link-subtle:hover {
+    @apply text-foreground;
+  }
+
+  /* ==========================================================================
+     FORM LABELS
+     ========================================================================== */
+
+  /**
+   * Form label
+   */
+  .qt-label {
+    @apply block text-sm font-medium;
+    color: var(--qt-label-fg, var(--color-foreground));
+  }
+
+  /**
+   * Form hint/help text
+   */
+  .qt-hint {
+    @apply mt-1 text-xs;
+    color: var(--qt-hint-fg, var(--color-muted-foreground));
+  }
+
+  /* ==========================================================================
+     CHECKBOX & RADIO
+     ========================================================================== */
+
+  /**
+   * Checkbox input — token-driven so themes can restyle the fill (accent-color),
+   * border, size, radius, and focus ring.
+   */
+  .qt-checkbox {
+    @apply focus:ring-2;
+    width: var(--qt-checkbox-size);
+    height: var(--qt-checkbox-size);
+    border-radius: var(--qt-checkbox-radius);
+    border: 1px solid var(--qt-checkbox-border);
+    accent-color: var(--qt-checkbox-accent);
+  }
+
+  .qt-checkbox:focus {
+    --tw-ring-color: var(--qt-checkbox-focus-ring);
+  }
+
+  /**
+   * Radio input — same token model as the checkbox (radii stay circular).
+   */
+  .qt-radio {
+    @apply rounded-full focus:ring-2;
+    width: var(--qt-radio-size);
+    height: var(--qt-radio-size);
+    border: 1px solid var(--qt-radio-border);
+    accent-color: var(--qt-radio-accent);
+  }
+
+  .qt-radio:focus {
+    --tw-ring-color: var(--qt-radio-focus-ring);
+  }
+
+  /* ==========================================================================
+     TABS
+     ========================================================================== */
+
+  /**
+   * Tab group container - wraps the tab buttons
+   */
+  .qt-tab-group {
+    @apply flex flex-wrap;
+    gap: var(--qt-tab-group-gap);
+  }
+
+  /**
+   * Base tab button styles
+   */
+  .qt-tab {
+    @apply inline-flex items-center gap-2 min-w-fit;
+    @apply border border-b-0;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+    padding: var(--qt-tab-padding-y) var(--qt-tab-padding-x);
+    border-radius: var(--qt-tab-radius);
+    font-size: var(--qt-tab-font-size);
+    font-weight: var(--qt-tab-font-weight);
+    transition: var(--qt-tab-transition);
+    cursor: pointer;
+
+    /* Default inactive state */
+    background: var(--qt-tab-bg);
+    color: var(--qt-tab-fg);
+    border-color: var(--qt-tab-border);
+  }
+
+  .qt-tab:hover:not(.qt-tab-active) {
+    background: var(--qt-tab-hover-bg);
+    color: var(--qt-tab-hover-fg);
+  }
+
+  /**
+   * Active tab state
+   */
+  .qt-tab-active,
+  .qt-tab.qt-tab-active {
+    background: var(--qt-tab-active-bg);
+    color: var(--qt-tab-active-fg);
+    border-color: var(--qt-tab-active-border);
+    position: relative;
+  }
+
+  /* Cover the divider line below the active tab */
+  .qt-tab-active::after,
+  .qt-tab.qt-tab-active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--qt-tab-active-bg);
+  }
+
+  /**
+   * Tab divider - the line below the tab group
+   */
+  .qt-tab-divider {
+    @apply w-full;
+    border-bottom: 1px solid var(--qt-tab-divider-color);
+  }
+
+  /**
+   * Tab icon wrapper - ensures consistent icon sizing
+   */
+  .qt-tab-icon {
+    @apply flex-shrink-0;
+  }
+}

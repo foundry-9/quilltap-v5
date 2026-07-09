@@ -1,0 +1,1715 @@
+/**
+ * Quilltap Component System - Content Components
+ *
+ * Badges, avatars, code blocks, typography
+ *
+ * Note: We define shared base styles using comma-separated selectors
+ * rather than @apply to reference other qt-* classes.
+ */
+
+@layer components {
+  /* ==========================================================================
+     PAGE CONTAINER
+     ========================================================================== */
+
+  /**
+   * Page container that respects content width toggle
+   * Replaces manual container + max-w-* classes in page components
+   * Supports story background via --story-background-url CSS variable
+   */
+  .qt-page-container {
+    @apply w-full mx-auto px-4 pt-8 pb-20 relative;
+    max-width: var(--qt-page-max-width);
+    transition: max-width 200ms ease-out;
+    min-height: 100vh;
+  }
+
+  /**
+   * Story background image layer for page containers
+   * Renders behind all page content using a ::before pseudo-element.
+   * Only visible when --story-background-url CSS variable is set.
+   * Uses fixed attachment for parallax effect while scrolling.
+   */
+  .qt-page-container::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: var(--story-background-url) var(--story-background-position, top center)/cover no-repeat;
+    z-index: 0;
+    opacity: 0.35;
+    pointer-events: none;
+  }
+
+  /**
+   * Hide background layer when no story background URL is set
+   */
+  .qt-page-container:not([style*="--story-background-url"])::before {
+    display: none;
+  }
+
+  /**
+   * Ensure page content stays above the background
+   */
+  .qt-page-container > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ==========================================================================
+     ABOUT PAGE — staged intro for the text layer over the background image
+     The content stays hidden until the theme has finished applying (the
+     container gains [data-theme-ready] once useTheme().isLoading is false),
+     so the pre-theme flash is never seen. The intro then holds hidden for
+     ~1s, fades to full strength, blinks out, then fades back in and settles.
+     The ::before background layer is untouched (only direct children animate).
+     ========================================================================== */
+  @keyframes qt-about-intro {
+    0%, 40% { opacity: 0; } /* hidden for the first ~1s after the theme is ready */
+    60%     { opacity: 1; } /* fade in over ~0.5s */
+    80%     { opacity: 0; } /* fade out over ~0.5s */
+    100%    { opacity: 1; } /* fade back in over ~0.5s and stay */
+  }
+
+  /* Hold content hidden while the theme is still loading. */
+  .qt-about-intro:not([data-theme-ready]) > * {
+    opacity: 0;
+  }
+
+  /* Once the theme is applied, run the staged intro from its hidden 0% frame. */
+  .qt-about-intro[data-theme-ready] > * {
+    animation: qt-about-intro 2.5s ease-in-out both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    /* Skip the flashing; just reveal the content once the theme is ready. */
+    .qt-about-intro[data-theme-ready] > * {
+      opacity: 1;
+      animation: none;
+    }
+  }
+
+  /* ==========================================================================
+     SETTINGS PAGE - Background image readability
+     When a subsystem background image is shown on the settings page,
+     tabs and header text need opaque/contrasted treatments to remain legible.
+     ========================================================================== */
+
+  /**
+   * Settings page with background image - tabbed folder readability.
+   * Creates a classic tabbed-folder metaphor: the header sits above,
+   * tabs sit on top of a darkened content panel, and the active tab
+   * merges seamlessly into the panel below.
+   */
+
+  /* Frosted header banner behind title and subtitle */
+  .qt-page-container[style*="--story-background-url"] .qt-settings-header {
+    @apply rounded-lg px-4 py-4 -mx-4;
+    background: color-mix(in srgb, var(--color-background) 80%, transparent);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  /* Opaque inactive tab backgrounds */
+  .qt-page-container[style*="--story-background-url"] .qt-tab-group .qt-tab {
+    background: color-mix(in srgb, var(--color-background) 85%, var(--color-muted-foreground) 15%);
+    border-color: var(--color-border);
+  }
+
+  .qt-page-container[style*="--story-background-url"] .qt-tab-group .qt-tab:hover:not(.qt-tab-active) {
+    background: color-mix(in srgb, var(--color-background) 78%, var(--color-muted-foreground) 22%);
+  }
+
+  /* Active tab matches the panel background so it merges into it */
+  .qt-page-container[style*="--story-background-url"] .qt-tab-group .qt-tab.qt-tab-active {
+    background: color-mix(in srgb, var(--color-background) 88%, transparent);
+    border-color: var(--color-border);
+  }
+
+  .qt-page-container[style*="--story-background-url"] .qt-tab-group .qt-tab.qt-tab-active::after {
+    background: color-mix(in srgb, var(--color-background) 88%, transparent);
+  }
+
+  /* Remove gap between tabs and panel so they connect as a folder */
+  .qt-page-container[style*="--story-background-url"] .qt-tab-divider {
+    display: none;
+  }
+
+  /* Collapse the margin between tab nav wrapper and content panel */
+  .qt-page-container[style*="--story-background-url"] :has(> .qt-tab-group) {
+    margin-bottom: 0 !important;
+  }
+
+  .qt-page-container[style*="--story-background-url"] .qt-tab-group {
+    /* Nudge tabs down onto the panel border so the active tab overlaps it */
+    position: relative;
+    z-index: 1;
+    margin-bottom: -1px;
+  }
+
+  /**
+   * Settings content panel - the "folder" body below the tabs.
+   * Darkened backdrop that the background image shows through dimly,
+   * with a top border that the active tab sits on top of.
+   */
+  .qt-page-container[style*="--story-background-url"] .qt-settings-panel {
+    @apply rounded-b-lg px-4 pt-6 pb-6 -mx-4;
+    background: color-mix(in srgb, var(--color-background) 88%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--color-border);
+    border-top: 1px solid var(--color-border);
+    min-height: 40vh;
+  }
+
+  /* ==========================================================================
+     BADGES - Shared base styles
+     ========================================================================== */
+
+  /**
+   * All badge variants share these base styles
+   */
+  .qt-badge,
+  .qt-badge-primary,
+  .qt-badge-secondary,
+  .qt-badge-outline,
+  .qt-badge-success,
+  .qt-badge-warning,
+  .qt-badge-destructive,
+  .qt-badge-info,
+  .qt-badge-character,
+  .qt-badge-user-character,
+  .qt-badge-chat,
+  .qt-badge-tag,
+  .qt-badge-memory,
+  .qt-badge-message,
+  .qt-badge-project,
+  .qt-badge-characters,
+  .qt-badge-chats,
+  .qt-badge-user-characters,
+  .qt-badge-enabled,
+  .qt-badge-disabled,
+  .qt-badge-related,
+  .qt-badge-manual,
+  .qt-badge-auto,
+  .qt-badge-source-included,
+  .qt-badge-source-npm,
+  .qt-badge-source-git,
+  .qt-badge-source-manual,
+  .qt-badge-capability,
+  .qt-badge-version,
+  .qt-badge-autonomous-running,
+  .qt-badge-autonomous-idle,
+  .qt-badge-autonomous-paused,
+  .qt-badge-autonomous-stopped,
+  .qt-badge-autonomous-budget,
+  .qt-badge-autonomous-error,
+  .qt-badge-provider-openai,
+  .qt-badge-provider-ollama,
+  .qt-badge-provider-openrouter,
+  .qt-badge-provider-builtin,
+  .qt-badge-silent,
+  .qt-badge-absent,
+  .qt-badge-wardrobe-top,
+  .qt-badge-wardrobe-bottom,
+  .qt-badge-wardrobe-footwear,
+  .qt-badge-wardrobe-accessories,
+  .qt-badge-wardrobe-shared {
+    @apply inline-flex items-center justify-center flex-shrink-0;
+    padding: var(--qt-badge-padding-y) var(--qt-badge-padding-x);
+    border-radius: var(--qt-badge-radius);
+    font-size: var(--qt-badge-font-size);
+    font-weight: var(--qt-badge-font-weight);
+  }
+
+  /* ==========================================================================
+     BADGE VARIANTS
+     ========================================================================== */
+
+  /**
+   * Primary badge
+   */
+  .qt-badge-primary {
+    background: var(--qt-badge-primary-bg);
+    color: var(--qt-badge-primary-fg);
+  }
+
+  /**
+   * Secondary badge
+   */
+  .qt-badge-secondary {
+    background: var(--qt-badge-secondary-bg);
+    color: var(--qt-badge-secondary-fg);
+  }
+
+  /**
+   * Outline badge
+   */
+  .qt-badge-outline {
+    background: var(--qt-badge-outline-bg);
+    color: var(--qt-badge-outline-fg);
+    border: 1px solid var(--qt-badge-outline-border);
+  }
+
+  /**
+   * Success badge
+   */
+  .qt-badge-success {
+    background: var(--qt-status-success-bg);
+    color: var(--qt-status-success-fg);
+    border: 1px solid var(--qt-status-success-border);
+  }
+
+  /**
+   * Warning badge
+   */
+  .qt-badge-warning {
+    background: var(--qt-status-warning-bg);
+    color: var(--qt-status-warning-fg);
+    border: 1px solid var(--qt-status-warning-border);
+  }
+
+  /**
+   * Destructive badge
+   */
+  .qt-badge-destructive {
+    background: var(--qt-status-danger-bg);
+    color: var(--qt-status-danger-fg);
+    border: 1px solid var(--qt-status-danger-border);
+  }
+
+  /**
+   * Info badge
+   */
+  .qt-badge-info {
+    background: var(--qt-status-info-bg);
+    color: var(--qt-status-info-fg);
+    border: 1px solid var(--qt-status-info-border);
+  }
+
+  /**
+   * Autonomous-room state badges
+   */
+  .qt-badge-autonomous-running {
+    background: var(--qt-badge-autonomous-running-bg);
+    color: var(--qt-badge-autonomous-running-fg);
+    border: 1px solid var(--qt-badge-autonomous-running-border);
+  }
+
+  .qt-badge-autonomous-idle {
+    background: var(--qt-badge-autonomous-idle-bg);
+    color: var(--qt-badge-autonomous-idle-fg);
+    border: 1px solid var(--qt-badge-autonomous-idle-border);
+  }
+
+  .qt-badge-autonomous-paused {
+    background: var(--qt-badge-autonomous-paused-bg);
+    color: var(--qt-badge-autonomous-paused-fg);
+    border: 1px solid var(--qt-badge-autonomous-paused-border);
+  }
+
+  .qt-badge-autonomous-stopped {
+    background: var(--qt-badge-autonomous-stopped-bg);
+    color: var(--qt-badge-autonomous-stopped-fg);
+    border: 1px solid var(--qt-badge-autonomous-stopped-border);
+  }
+
+  .qt-badge-autonomous-budget {
+    background: var(--qt-badge-autonomous-budget-bg);
+    color: var(--qt-badge-autonomous-budget-fg);
+    border: 1px solid var(--qt-badge-autonomous-budget-border);
+  }
+
+  .qt-badge-autonomous-error {
+    background: var(--qt-badge-autonomous-error-bg);
+    color: var(--qt-badge-autonomous-error-fg);
+    border: 1px solid var(--qt-badge-autonomous-error-border);
+  }
+
+  /* ==========================================================================
+     QUEUE STATUS BADGE GROUP
+     ========================================================================== */
+
+  /**
+   * Queue status badge group container
+   * Displays tightly grouped badges showing active job counts per queue type
+   */
+  .qt-queue-badge-group {
+    @apply inline-flex items-center overflow-hidden flex-shrink-0;
+    gap: var(--qt-queue-badge-group-gap);
+    border-radius: var(--qt-queue-badge-group-radius);
+  }
+
+  /**
+   * Individual queue badge - shared base
+   */
+  .qt-queue-badge,
+  .qt-queue-badge-memory,
+  .qt-queue-badge-embedding,
+  .qt-queue-badge-summary,
+  .qt-queue-badge-danger,
+  .qt-queue-badge-story {
+    @apply inline-flex items-center gap-1 flex-shrink-0 leading-none whitespace-nowrap;
+    padding: var(--qt-queue-badge-padding-y) var(--qt-queue-badge-padding-x);
+    font-size: var(--qt-queue-badge-font-size);
+    font-weight: var(--qt-queue-badge-font-weight);
+    transition: opacity 200ms ease;
+  }
+
+  /**
+   * Queue badge idle state (count is 0)
+   */
+  .qt-queue-badge-idle {
+    opacity: var(--qt-queue-badge-idle-opacity);
+  }
+
+  /**
+   * Memory queue badge (blue)
+   */
+  .qt-queue-badge-memory {
+    background: var(--qt-queue-badge-memory-bg);
+    color: var(--qt-queue-badge-memory-fg);
+  }
+
+  /**
+   * Embedding queue badge (purple)
+   */
+  .qt-queue-badge-embedding {
+    background: var(--qt-queue-badge-embedding-bg);
+    color: var(--qt-queue-badge-embedding-fg);
+  }
+
+  /**
+   * Summarization queue badge (green)
+   */
+  .qt-queue-badge-summary {
+    background: var(--qt-queue-badge-summary-bg);
+    color: var(--qt-queue-badge-summary-fg);
+  }
+
+  /**
+   * Danger classification queue badge (red)
+   */
+  .qt-queue-badge-danger {
+    background: var(--qt-queue-badge-danger-bg);
+    color: var(--qt-queue-badge-danger-fg);
+  }
+
+  /**
+   * Story background queue badge (dark gray)
+   */
+  .qt-queue-badge-story {
+    background: var(--qt-queue-badge-story-bg);
+    color: var(--qt-queue-badge-story-fg);
+  }
+
+  /* ==========================================================================
+     AUTONOMOUS-ROOM BADGES
+     Compact handles in the page toolbar for autonomous chats that are idle,
+     paused, or running. Wraps to a second line when there are too many to
+     fit. Each badge is an anchor to the chat with an inline play/pause
+     button that stops propagation.
+     ========================================================================== */
+
+  .qt-autonomous-badge-group {
+    @apply inline-flex items-center flex-wrap;
+    gap: var(--qt-queue-badge-group-gap);
+  }
+
+  .qt-autonomous-badge {
+    @apply inline-flex items-center gap-1 flex-shrink-0 leading-none whitespace-nowrap no-underline;
+    padding: var(--qt-queue-badge-padding-y) var(--qt-queue-badge-padding-x);
+    font-size: var(--qt-queue-badge-font-size);
+    font-weight: var(--qt-queue-badge-font-weight);
+    border-radius: var(--qt-queue-badge-radius);
+    cursor: pointer;
+    transition: opacity 200ms ease, filter 200ms ease;
+  }
+
+  .qt-autonomous-badge:hover {
+    filter: brightness(1.1);
+  }
+
+  .qt-autonomous-badge-running {
+    background: var(--qt-autonomous-badge-running-bg);
+    color: var(--qt-autonomous-badge-running-fg);
+  }
+
+  .qt-autonomous-badge-idle {
+    background: var(--qt-autonomous-badge-idle-bg);
+    color: var(--qt-autonomous-badge-idle-fg);
+  }
+
+  .qt-autonomous-badge-button {
+    @apply inline-flex items-center justify-center;
+    background: transparent;
+    color: inherit;
+    border: 0;
+    padding: 0 1px;
+    margin-left: 2px;
+    border-radius: 2px;
+    cursor: pointer;
+    line-height: 0;
+    transition: background 150ms ease, opacity 150ms ease;
+  }
+
+  .qt-autonomous-badge-button:hover {
+    background: var(--qt-autonomous-badge-button-hover-bg);
+  }
+
+  .qt-autonomous-badge-button:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+
+  /* ==========================================================================
+     TAG BADGES
+     ========================================================================== */
+
+  /**
+   * Tag badge - base structural styling
+   * Used with dynamic inline styles for colors from tag style provider
+   */
+  .qt-tag-badge {
+    @apply inline-flex items-center gap-1;
+    @apply font-medium;
+    @apply transition-colors;
+    border-width: 2px;
+    border-style: solid;
+    border-radius: var(--qt-tag-badge-radius, 9999px);
+  }
+
+  .qt-tag-badge-sm {
+    @apply text-xs px-2 py-0.5;
+  }
+
+  .qt-tag-badge-md {
+    @apply text-sm px-3 py-1;
+  }
+
+  /**
+   * Tag badge emoji
+   */
+  .qt-tag-badge-emoji {
+    @apply text-base leading-none;
+  }
+
+  /**
+   * Tag badge remove button
+   */
+  .qt-tag-badge-remove {
+    @apply ml-1 inline-flex h-4 w-4 items-center justify-center;
+    @apply rounded-full border border-current bg-transparent;
+    @apply focus:outline-none disabled:opacity-50;
+    @apply transition-colors;
+  }
+
+  .qt-tag-badge-remove:hover:not(:disabled) {
+    @apply bg-current/10;
+  }
+
+  /* ==========================================================================
+     AVATARS
+     ========================================================================== */
+
+  /**
+   * Base avatar
+   */
+  .qt-avatar {
+    @apply relative inline-flex items-center justify-center;
+    @apply overflow-hidden;
+    @apply flex-shrink-0;
+    width: var(--qt-avatar-size);
+    height: var(--qt-avatar-size);
+    border-radius: var(--qt-avatar-radius);
+    background: var(--qt-avatar-bg);
+    color: var(--qt-avatar-fg);
+    border: 2px solid var(--qt-avatar-border);
+  }
+
+  /**
+   * Avatar image
+   */
+  .qt-avatar-image {
+    @apply w-full h-full object-cover;
+  }
+
+  /**
+   * Avatar fallback (initials)
+   */
+  .qt-avatar-fallback {
+    @apply flex items-center justify-center;
+    @apply w-full h-full;
+    @apply text-sm font-medium;
+  }
+
+  /**
+   * Avatar size variants
+   */
+  .qt-avatar-sm {
+    width: var(--qt-avatar-size-sm);
+    height: var(--qt-avatar-size-sm);
+    @apply text-xs;
+  }
+
+  .qt-avatar-lg {
+    width: var(--qt-avatar-size-lg);
+    height: var(--qt-avatar-size-lg);
+    @apply text-base;
+  }
+
+  .qt-avatar-xl {
+    width: var(--qt-avatar-size-xl);
+    height: var(--qt-avatar-size-xl);
+    @apply text-lg;
+  }
+
+  /**
+   * Avatar group (stacked avatars)
+   */
+  .qt-avatar-group {
+    @apply flex -space-x-2;
+  }
+
+  .qt-avatar-group .qt-avatar {
+    @apply ring-2 ring-background;
+  }
+
+  /**
+   * Avatar labels container (name + title below avatar)
+   */
+  .qt-avatar-labels {
+    @apply text-center mt-1;
+  }
+
+  /**
+   * Avatar name text
+   * Themeable for contrast on different backgrounds
+   */
+  .qt-avatar-name {
+    @apply text-sm font-semibold line-clamp-2;
+    color: var(--qt-avatar-name-fg, var(--color-foreground));
+  }
+
+  /**
+   * Avatar title/subtitle text
+   * Themeable for contrast on different backgrounds
+   */
+  .qt-avatar-title {
+    @apply text-xs italic line-clamp-2;
+    color: var(--qt-avatar-title-fg, var(--color-muted-foreground));
+  }
+
+  /* ==========================================================================
+     CODE BLOCKS
+     ========================================================================== */
+
+  /**
+   * Inline code
+   */
+  .qt-code-inline {
+    @apply px-1.5 py-0.5;
+    @apply text-sm;
+    border-radius: calc(var(--qt-code-radius) / 2);
+    background: var(--qt-code-bg);
+    color: var(--qt-code-fg);
+    font-family: var(--qt-code-font);
+  }
+
+  /**
+   * Code block
+   */
+  .qt-code-block {
+    @apply p-4;
+    @apply overflow-x-auto;
+    @apply text-sm;
+    border-radius: var(--qt-code-radius);
+    background: var(--qt-code-bg);
+    color: var(--qt-code-fg);
+    border: 1px solid var(--qt-code-border);
+    font-family: var(--qt-code-font);
+  }
+
+  /**
+   * Code block header (language label, copy button)
+   */
+  .qt-code-header {
+    @apply flex items-center justify-between;
+    @apply px-4 py-2;
+    @apply text-xs text-muted-foreground;
+    @apply border-b border-border;
+    border-radius: var(--qt-code-radius) var(--qt-code-radius) 0 0;
+    background: var(--qt-code-bg);
+  }
+
+  /* ==========================================================================
+     HIGHLIGHT.JS SYNTAX HIGHLIGHTING (Server-side rendered code blocks)
+     ========================================================================== */
+
+  /**
+   * Highlight.js code block container
+   * Matches the client-side oneDark theme colors
+   */
+  /**
+   * Server-rendered code blocks: <pre><code class="hljs">...</code></pre>
+   * Need to style both the pre wrapper and the code element
+   */
+  pre:has(> code.hljs) {
+    @apply my-3 rounded-lg overflow-x-auto;
+    background: var(--qt-code-bg);
+  }
+
+  .hljs {
+    @apply p-4 block;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.5;
+    border-radius: var(--qt-code-radius);
+    background: var(--qt-code-bg);
+    color: var(--qt-code-fg);
+    font-family: var(--qt-code-font);
+  }
+
+  /* Reset prose styles on code inside pre for server-rendered blocks */
+  .prose pre code.hljs,
+  .qt-prose pre code.hljs {
+    @apply p-4 block;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.5;
+    background: transparent;
+  }
+
+  /* Highlight.js syntax colors (oneDark-inspired) */
+  .hljs-keyword,
+  .hljs-selector-tag,
+  .hljs-literal,
+  .hljs-section,
+  .hljs-link {
+    color: #c678dd;
+  }
+
+  .hljs-string,
+  .hljs-title,
+  .hljs-name,
+  .hljs-type,
+  .hljs-attribute,
+  .hljs-symbol,
+  .hljs-bullet,
+  .hljs-addition,
+  .hljs-variable,
+  .hljs-template-tag,
+  .hljs-template-variable {
+    color: #98c379;
+  }
+
+  .hljs-comment,
+  .hljs-quote,
+  .hljs-deletion,
+  .hljs-meta {
+    color: #5c6370;
+  }
+
+  .hljs-keyword,
+  .hljs-selector-class,
+  .hljs-function,
+  .hljs-selector-id,
+  .hljs-attr {
+    color: #61afef;
+  }
+
+  .hljs-number,
+  .hljs-regexp,
+  .hljs-built_in,
+  .hljs-params {
+    color: #d19a66;
+  }
+
+  .hljs-tag {
+    color: #e06c75;
+  }
+
+  .hljs-emphasis {
+    font-style: italic;
+  }
+
+  .hljs-strong {
+    font-weight: bold;
+  }
+
+  /* ==========================================================================
+     TYPOGRAPHY
+     ========================================================================== */
+
+  /**
+   * Prose container for rich text content
+   * Note: Use with "prose prose-sm dark:prose-invert" classes in the component
+   * for typography plugin support (prose classes can't be @apply'd in v4)
+   */
+  .qt-prose {
+    @apply max-w-none;
+  }
+
+  /**
+   * Markdown content styling (for file preview)
+   * Provides typography styles without requiring Tailwind Typography plugin
+   */
+  .qt-markdown {
+    @apply text-sm leading-relaxed;
+    color: var(--color-foreground);
+  }
+
+  /* Headings */
+  .qt-markdown h1 {
+    @apply text-2xl font-bold mt-6 mb-4 pb-2 border-b border-border;
+  }
+
+  .qt-markdown h2 {
+    @apply text-xl font-semibold mt-5 mb-3 pb-1 border-b border-border;
+  }
+
+  .qt-markdown h3 {
+    @apply text-lg font-semibold mt-4 mb-2;
+  }
+
+  .qt-markdown h4 {
+    @apply text-base font-semibold mt-3 mb-2;
+  }
+
+  .qt-markdown h5,
+  .qt-markdown h6 {
+    @apply text-sm font-semibold mt-3 mb-2;
+  }
+
+  /* Paragraphs */
+  .qt-markdown p {
+    @apply my-3;
+  }
+
+  /* Links */
+  .qt-markdown a {
+    @apply text-primary underline underline-offset-2 hover:text-primary/80;
+  }
+
+  /* Lists */
+  .qt-markdown ul {
+    @apply my-3 ml-6 list-disc;
+  }
+
+  .qt-markdown ol {
+    @apply my-3 ml-6 list-decimal;
+  }
+
+  .qt-markdown li {
+    @apply my-1;
+  }
+
+  .qt-markdown li > ul,
+  .qt-markdown li > ol {
+    @apply my-1;
+  }
+
+  /* Task lists (GFM) */
+  .qt-markdown ul.contains-task-list {
+    @apply list-none ml-0;
+  }
+
+  .qt-markdown li.task-list-item {
+    @apply flex items-start gap-2;
+  }
+
+  .qt-markdown li.task-list-item input[type="checkbox"] {
+    @apply mt-1;
+  }
+
+  /* Blockquotes */
+  .qt-markdown blockquote {
+    @apply my-3 pl-4 border-l-4 border-muted-foreground/30 italic;
+    color: var(--color-muted-foreground);
+  }
+
+  /* Code */
+  .qt-markdown code {
+    @apply px-1.5 py-0.5 rounded text-sm font-mono;
+    background: var(--qt-code-bg, var(--color-muted));
+  }
+
+  .qt-markdown pre {
+    @apply my-3 p-4 rounded-lg overflow-x-auto;
+    background: var(--qt-code-bg, var(--color-muted));
+  }
+
+  .qt-markdown pre code {
+    @apply p-0 bg-transparent;
+  }
+
+  /* Tables */
+  .qt-markdown table {
+    @apply my-3 w-full border-collapse;
+  }
+
+  .qt-markdown th {
+    @apply px-3 py-2 text-left font-semibold border border-border;
+    background: var(--color-muted);
+  }
+
+  .qt-markdown td {
+    @apply px-3 py-2 border border-border;
+  }
+
+  .qt-markdown tr:nth-child(even) td {
+    background: var(--color-muted)/30;
+  }
+
+  /* Horizontal rule */
+  .qt-markdown hr {
+    @apply my-6 border-t border-border;
+  }
+
+  /* Images */
+  .qt-markdown img {
+    @apply my-3 max-w-full h-auto rounded;
+  }
+
+  /* Strong and emphasis */
+  .qt-markdown strong {
+    @apply font-semibold;
+  }
+
+  .qt-markdown em {
+    @apply italic;
+  }
+
+  /* Strikethrough (GFM) */
+  .qt-markdown del {
+    @apply line-through opacity-70;
+  }
+
+  /* Definition lists */
+  .qt-markdown dl {
+    @apply my-3;
+  }
+
+  .qt-markdown dt {
+    @apply font-semibold mt-2;
+  }
+
+  .qt-markdown dd {
+    @apply ml-4;
+  }
+
+  /**
+   * YAML Frontmatter styling
+   */
+  .qt-frontmatter {
+    @apply my-4 p-4 rounded-lg border border-border;
+    background: var(--color-muted)/50;
+  }
+
+  .qt-frontmatter-title {
+    @apply text-xs font-semibold uppercase tracking-wider mb-3;
+    color: var(--color-muted-foreground);
+  }
+
+  .qt-frontmatter-table {
+    @apply w-full text-sm;
+  }
+
+  .qt-frontmatter-table tr {
+    @apply border-b border-border/50 last:border-0;
+  }
+
+  .qt-frontmatter-table th {
+    @apply py-1.5 pr-4 text-left font-medium align-top whitespace-nowrap;
+    color: var(--color-muted-foreground);
+    width: 30%;
+  }
+
+  .qt-frontmatter-table td {
+    @apply py-1.5;
+  }
+
+  .qt-frontmatter-chip-list {
+    @apply flex flex-wrap gap-1.5;
+  }
+
+  /**
+   * Wikilink styling for markdown file preview
+   */
+  .qt-wikilink {
+    @apply text-primary font-medium no-underline;
+    @apply px-1 py-0.5 rounded;
+    @apply transition-colors duration-150;
+    background: var(--color-primary)/10;
+  }
+
+  .qt-wikilink:hover {
+    background: var(--color-primary)/20;
+    @apply underline;
+  }
+
+  .qt-wikilink-broken {
+    @apply text-muted-foreground no-underline cursor-not-allowed;
+    background: var(--color-muted);
+    @apply line-through opacity-70;
+  }
+
+  .qt-wikilink-broken:hover {
+    background: var(--color-muted);
+    @apply no-underline;
+  }
+
+  /* ==========================================================================
+     FILE PREVIEW COMPONENTS
+     ========================================================================== */
+
+  /**
+   * File preview scroll container
+   * Provides consistent scrollable area for file content
+   */
+  .qt-file-preview-scroll {
+    @apply w-full h-full overflow-auto;
+    max-height: var(--qt-file-preview-max-height, 70vh);
+  }
+
+  /**
+   * File preview content panel
+   * Background panel for rendered content (markdown, etc.)
+   */
+  .qt-file-preview-panel {
+    @apply p-4 rounded-lg;
+    background: var(--qt-file-preview-panel-bg, var(--color-muted)/30);
+  }
+
+  /**
+   * File preview code block
+   * For displaying plain text and code files with word wrap
+   */
+  .qt-file-preview-code {
+    @apply p-4 rounded-lg text-sm whitespace-pre-wrap break-all;
+    background: var(--qt-code-bg, var(--color-muted));
+    color: var(--qt-code-fg, var(--color-foreground));
+    font-family: var(--qt-code-font, ui-monospace, monospace);
+  }
+
+  /**
+   * File preview loading state
+   */
+  .qt-file-preview-loading {
+    @apply flex items-center justify-center w-full h-full;
+    min-height: var(--qt-file-preview-min-height, 300px);
+  }
+
+  .qt-file-preview-loading-text {
+    @apply animate-pulse;
+    color: var(--color-muted-foreground);
+  }
+
+  /**
+   * File preview empty/error state
+   */
+  .qt-file-preview-empty {
+    @apply flex flex-col items-center justify-center w-full h-full text-center;
+    min-height: var(--qt-file-preview-min-height, 300px);
+    color: var(--color-muted-foreground);
+  }
+
+  .qt-file-preview-empty-icon {
+    @apply text-4xl mb-2;
+  }
+
+  /**
+   * File preview text container
+   * Wrapper for text content with positioned copy button
+   */
+  .qt-file-preview-text-container {
+    @apply relative w-full h-full;
+  }
+
+  /**
+   * Copy button - base styles for all contexts
+   */
+  .qt-copy-button {
+    @apply flex items-center gap-1.5 px-2.5 py-1.5 rounded-md;
+    @apply text-xs font-medium transition-all duration-200;
+    background: var(--qt-copy-button-bg, rgba(0, 0, 0, 0.6));
+    color: var(--qt-copy-button-text, rgba(255, 255, 255, 0.9));
+    backdrop-filter: blur(4px);
+    border: 1px solid var(--qt-copy-button-border, rgba(255, 255, 255, 0.1));
+  }
+
+  .qt-copy-button:hover {
+    background: var(--qt-copy-button-hover-bg, rgba(0, 0, 0, 0.8));
+    color: var(--qt-copy-button-hover-text, #fff);
+    border-color: var(--qt-copy-button-hover-border, rgba(255, 255, 255, 0.2));
+  }
+
+  .qt-copy-button-success,
+  .qt-copy-button.qt-copy-button-success:hover {
+    background: var(--qt-copy-button-success-bg, rgba(34, 197, 94, 0.8));
+    color: var(--qt-copy-button-success-text, #fff);
+    border-color: var(--qt-copy-button-success-border, rgba(34, 197, 94, 0.5));
+  }
+
+  /**
+   * Icon-only copy button variant
+   * Smaller padding for buttons with only an icon (no text)
+   */
+  .qt-copy-button-icon {
+    @apply p-2;
+    @apply gap-0;
+  }
+
+  .qt-copy-button-text {
+    @apply hidden sm:inline;
+  }
+
+  /**
+   * Copy button positioned for file preview overlay
+   * Use within .qt-file-preview-text-container
+   */
+  .qt-file-preview-text-container .qt-copy-button {
+    @apply absolute top-2 right-2 z-10;
+  }
+
+  /**
+   * Copy button positioned for code blocks in chat messages
+   * Use within .qt-code-block-container
+   */
+  .qt-code-block-container .qt-copy-button,
+  .qt-code-block-copy {
+    @apply absolute top-2 right-2 z-10;
+  }
+
+  /**
+   * Heading styles
+   */
+  .qt-heading-1 {
+    @apply text-3xl font-bold tracking-tight;
+    font-family: var(--qt-heading-font);
+  }
+
+  .qt-heading-2 {
+    @apply text-2xl font-semibold tracking-tight;
+    font-family: var(--qt-heading-font);
+  }
+
+  .qt-heading-3 {
+    @apply text-xl font-semibold;
+    font-family: var(--qt-heading-font);
+  }
+
+  .qt-heading-4 {
+    @apply text-lg font-semibold;
+    font-family: var(--qt-heading-font);
+  }
+
+  /**
+   * Size-name aliases — prefer the numbered variants above for precision
+   */
+  .qt-heading-lg {
+    @apply text-2xl font-semibold tracking-tight;
+    font-family: var(--qt-heading-font);
+  }
+
+  .qt-heading-sm {
+    @apply text-lg font-semibold;
+    font-family: var(--qt-heading-font);
+  }
+
+  /**
+   * Text styles
+   */
+  .qt-text-lead {
+    @apply text-xl;
+    color: var(--qt-text-secondary-fg);
+  }
+
+  .qt-text-large {
+    @apply text-lg font-semibold;
+  }
+
+  .qt-text-small {
+    @apply text-sm;
+    color: var(--qt-text-secondary-fg);
+  }
+
+  .qt-text-xs {
+    @apply text-xs;
+    color: var(--qt-text-secondary-fg);
+  }
+
+  .qt-text-muted {
+    color: var(--qt-text-secondary-fg);
+  }
+
+  .qt-text-primary {
+    @apply font-medium;
+    color: var(--qt-text-primary-fg, var(--color-foreground));
+  }
+
+  /**
+   * Label text - standard form labels (text-sm font-medium)
+   */
+  .qt-text-label {
+    @apply text-sm font-medium;
+    color: var(--qt-text-primary-fg, var(--color-foreground));
+  }
+
+  /**
+   * Extra-small label text - compact form labels (text-xs font-medium)
+   */
+  .qt-text-label-xs {
+    @apply text-xs font-medium;
+    color: var(--qt-text-primary-fg, var(--color-foreground));
+  }
+
+  /**
+   * Section heading text - larger section titles (text-lg font-medium)
+   */
+  .qt-text-section {
+    @apply text-lg font-medium;
+    color: var(--qt-text-primary-fg, var(--color-foreground));
+  }
+
+  /* ==========================================================================
+     SETTINGS FORM SHELLS
+     Shared semantic wrappers for settings cards and toggle rows.
+     ========================================================================== */
+
+  .qt-settings-shell {
+    @apply p-4 border rounded;
+    border-color: var(--qt-card-border);
+    background: color-mix(in srgb, var(--color-card) 96%, transparent);
+  }
+
+  .qt-settings-shell-tight {
+    @apply p-3 border rounded;
+    border-color: var(--qt-card-border);
+    background: color-mix(in srgb, var(--color-card) 96%, transparent);
+  }
+
+  .qt-settings-section-heading {
+    @apply text-sm font-medium;
+    color: var(--qt-text-primary-fg, var(--color-foreground));
+  }
+
+  .qt-settings-field-group {
+    @apply space-y-2;
+  }
+
+  .qt-settings-toggle-row {
+    @apply flex items-start gap-3 p-4 border rounded cursor-pointer;
+    border-color: var(--qt-card-border);
+    transition: background-color 150ms ease;
+  }
+
+  .qt-settings-toggle-row:hover {
+    background: var(--qt-card-hover-bg, var(--color-accent));
+  }
+
+  /* ==========================================================================
+     SEARCH HIGHLIGHT
+     ========================================================================== */
+
+  /**
+   * Search result text highlight
+   * Used to highlight matching search terms in results
+   * Designed for high contrast in both light and dark themes
+   */
+  .qt-highlight {
+    background-color: var(--qt-highlight-bg);
+    color: var(--qt-highlight-fg);
+    border-radius: var(--qt-highlight-radius);
+    padding-left: var(--qt-highlight-padding-x);
+    padding-right: var(--qt-highlight-padding-x);
+    font-weight: var(--qt-highlight-font-weight);
+  }
+
+  /* ==========================================================================
+     FILTER CHIPS (Search filter toggles)
+     ========================================================================== */
+
+  /**
+   * Base filter chip styles
+   * Used for toggling search result filters
+   */
+  .qt-filter-chip {
+    @apply inline-flex items-center justify-center cursor-pointer;
+    padding: var(--qt-filter-chip-padding-y) var(--qt-filter-chip-padding-x);
+    border-radius: var(--qt-filter-chip-radius);
+    font-size: var(--qt-filter-chip-font-size);
+    font-weight: var(--qt-filter-chip-font-weight);
+    transition: var(--qt-filter-chip-transition);
+    border: 1px solid var(--qt-filter-chip-inactive-border);
+    background: var(--qt-filter-chip-inactive-bg);
+    color: var(--qt-filter-chip-inactive-fg);
+  }
+
+  .qt-filter-chip:hover {
+    background: var(--qt-filter-chip-inactive-hover-bg);
+  }
+
+  /**
+   * Active filter chip (filter is enabled, showing results)
+   */
+  .qt-filter-chip-active {
+    @apply inline-flex items-center justify-center cursor-pointer;
+    padding: var(--qt-filter-chip-padding-y) var(--qt-filter-chip-padding-x);
+    border-radius: var(--qt-filter-chip-radius);
+    font-size: var(--qt-filter-chip-font-size);
+    font-weight: var(--qt-filter-chip-font-weight);
+    transition: var(--qt-filter-chip-transition);
+    border: 1px solid var(--qt-filter-chip-active-border);
+    background: var(--qt-filter-chip-active-bg);
+    color: var(--qt-filter-chip-active-fg);
+  }
+
+  .qt-filter-chip-active:hover {
+    opacity: 0.9;
+  }
+
+  /* ==========================================================================
+     EMPTY STATES
+     ========================================================================== */
+
+  /**
+   * Empty state container
+   */
+  .qt-empty-state {
+    @apply flex flex-col items-center justify-center;
+    @apply py-12 px-4;
+    @apply text-center;
+  }
+
+  /**
+   * Empty state icon
+   */
+  .qt-empty-state-icon {
+    @apply w-12 h-12;
+    @apply text-muted-foreground/50;
+    @apply mb-4;
+  }
+
+  /**
+   * Empty state title
+   * Matches qt-section-title for visual consistency
+   */
+  .qt-empty-state-title {
+    @apply text-lg font-semibold;
+    @apply mb-1;
+    color: var(--color-foreground);
+  }
+
+  /**
+   * Empty state description
+   * Matches qt-card-subtitle for visual consistency
+   */
+  .qt-empty-state-description {
+    @apply text-sm font-normal;
+    @apply max-w-sm;
+    color: var(--color-muted-foreground);
+  }
+
+  /**
+   * Empty state action
+   */
+  .qt-empty-state-action {
+    @apply mt-4;
+  }
+
+  /* ==========================================================================
+     LOADING STATES - Shared base styles
+     ========================================================================== */
+
+  /**
+   * All spinner variants share these base styles
+   */
+  .qt-spinner,
+  .qt-spinner-sm,
+  .qt-spinner-lg {
+    @apply animate-spin;
+    @apply border-2 border-current border-t-transparent;
+    @apply rounded-full;
+  }
+
+  /* ==========================================================================
+     LOADING STATE VARIANTS
+     ========================================================================== */
+
+  /**
+   * Spinner (default size)
+   */
+  .qt-spinner {
+    @apply w-5 h-5;
+  }
+
+  .qt-spinner-sm {
+    @apply w-4 h-4;
+  }
+
+  .qt-spinner-lg {
+    @apply w-8 h-8;
+  }
+
+  /* ==========================================================================
+     SKELETON - Shared base styles
+     ========================================================================== */
+
+  /**
+   * All skeleton variants share these base styles
+   */
+  .qt-skeleton,
+  .qt-skeleton-text,
+  .qt-skeleton-circle {
+    @apply animate-pulse;
+    @apply bg-muted;
+    @apply rounded;
+  }
+
+  /* ==========================================================================
+     SKELETON VARIANTS
+     ========================================================================== */
+
+  /**
+   * Text skeleton
+   */
+  .qt-skeleton-text {
+    @apply h-4 w-full;
+  }
+
+  /**
+   * Circle skeleton
+   */
+  .qt-skeleton-circle {
+    @apply rounded-full;
+  }
+
+  /* ==========================================================================
+     ALERTS - Shared base styles
+     ========================================================================== */
+
+  /**
+   * All alert variants share these base styles
+   */
+  .qt-alert,
+  .qt-alert-success,
+  .qt-alert-warning,
+  .qt-alert-error,
+  .qt-alert-info {
+    @apply rounded-lg border px-4 py-3 text-sm;
+  }
+
+  /* ==========================================================================
+     ALERT VARIANTS
+     ========================================================================== */
+
+  /**
+   * Success alert
+   */
+  .qt-alert-success {
+    background-color: var(--qt-alert-success-bg);
+    color: var(--qt-alert-success-fg);
+    border-color: var(--qt-alert-success-border);
+  }
+
+  /**
+   * Warning alert
+   */
+  .qt-alert-warning {
+    background-color: var(--qt-alert-warning-bg);
+    color: var(--qt-alert-warning-fg);
+    border-color: var(--qt-alert-warning-border);
+  }
+
+  /**
+   * Error alert
+   */
+  .qt-alert-error {
+    background-color: var(--qt-alert-error-bg);
+    color: var(--qt-alert-error-fg);
+    border-color: var(--qt-alert-error-border);
+  }
+
+  /**
+   * Info alert
+   */
+  .qt-alert-info {
+    background-color: var(--qt-alert-info-bg);
+    color: var(--qt-alert-info-fg);
+    border-color: var(--qt-alert-info-border);
+  }
+
+  /* ==========================================================================
+     ENTITY-TYPE BADGES - Semantic naming with default colors
+     Characters = blue, Chats = green, Personas = purple
+     ========================================================================== */
+
+  /**
+   * Character badge (blue)
+   */
+  .qt-badge-character {
+    background-color: var(--qt-badge-character-bg);
+    color: var(--qt-badge-character-fg);
+  }
+
+  /**
+   * Persona badge (purple)
+   */
+  .qt-badge-user-character {
+    background-color: var(--qt-badge-user-character-bg);
+    color: var(--qt-badge-user-character-fg);
+  }
+
+  /**
+   * Chat badge (green)
+   */
+  .qt-badge-chat {
+    background-color: var(--qt-badge-chat-bg);
+    color: var(--qt-badge-chat-fg);
+  }
+
+  /**
+   * Tag badge (orange)
+   */
+  .qt-badge-tag {
+    background-color: var(--qt-badge-tag-bg);
+    color: var(--qt-badge-tag-fg);
+  }
+
+  /**
+   * Memory badge (pink)
+   */
+  .qt-badge-memory {
+    background-color: var(--qt-badge-memory-bg);
+    color: var(--qt-badge-memory-fg);
+  }
+
+  /**
+   * Message badge (amber)
+   */
+  .qt-badge-message {
+    background-color: var(--qt-badge-message-bg);
+    color: var(--qt-badge-message-fg);
+  }
+
+  /**
+   * Project badge (teal)
+   */
+  .qt-badge-project {
+    background-color: var(--qt-badge-project-bg);
+    color: var(--qt-badge-project-fg);
+  }
+
+  /* ==========================================================================
+     DASHBOARD ENTITY BADGES - For dashboard card counts
+     Characters = blue, Chats = green, Personas = purple
+     ========================================================================== */
+
+  /**
+   * Characters badge (blue) - for dashboard character count
+   */
+  .qt-badge-characters {
+    background-color: var(--qt-badge-character-bg);
+    color: var(--qt-badge-character-fg);
+  }
+
+  /**
+   * Chats badge (green) - for dashboard chat count
+   */
+  .qt-badge-chats {
+    background-color: var(--qt-badge-chat-bg);
+    color: var(--qt-badge-chat-fg);
+  }
+
+  /**
+   * User characters badge (purple) - for dashboard user character count
+   */
+  .qt-badge-user-characters {
+    background-color: var(--qt-badge-user-character-bg);
+    color: var(--qt-badge-user-character-fg);
+  }
+
+  /* ==========================================================================
+     STATUS BADGES
+     ========================================================================== */
+
+  /**
+   * Enabled status badge (green)
+   */
+  .qt-badge-enabled {
+    background-color: var(--qt-badge-enabled-bg);
+    color: var(--qt-badge-enabled-fg);
+  }
+
+  /**
+   * Disabled status badge (muted)
+   */
+  .qt-badge-disabled {
+    background-color: var(--qt-badge-disabled-bg);
+    color: var(--qt-badge-disabled-fg);
+  }
+
+  /**
+   * Related badge (purple)
+   */
+  .qt-badge-related {
+    background-color: var(--qt-badge-related-bg);
+    color: var(--qt-badge-related-fg);
+  }
+
+  /**
+   * Manual badge (purple)
+   */
+  .qt-badge-manual {
+    background-color: var(--qt-badge-manual-bg);
+    color: var(--qt-badge-manual-fg);
+  }
+
+  /**
+   * Auto badge (muted)
+   */
+  .qt-badge-auto {
+    background-color: var(--qt-badge-auto-bg);
+    color: var(--qt-badge-auto-fg);
+  }
+
+  /* ==========================================================================
+     PLUGIN SOURCE BADGES
+     ========================================================================== */
+
+  /**
+   * Included plugin source badge (purple)
+   */
+  .qt-badge-source-included {
+    background-color: var(--qt-badge-source-included-bg);
+    color: var(--qt-badge-source-included-fg);
+  }
+
+  /**
+   * NPM plugin source badge (red)
+   */
+  .qt-badge-source-npm {
+    background-color: var(--qt-badge-source-npm-bg);
+    color: var(--qt-badge-source-npm-fg);
+  }
+
+  /**
+   * Git plugin source badge (orange)
+   */
+  .qt-badge-source-git {
+    background-color: var(--qt-badge-source-git-bg);
+    color: var(--qt-badge-source-git-fg);
+  }
+
+  /**
+   * Manual plugin source badge (muted)
+   */
+  .qt-badge-source-manual {
+    background-color: var(--qt-badge-source-manual-bg);
+    color: var(--qt-badge-source-manual-fg);
+  }
+
+  /* ==========================================================================
+     CAPABILITY & VERSION BADGES
+     ========================================================================== */
+
+  /**
+   * Capability badge (blue)
+   */
+  .qt-badge-capability {
+    background-color: var(--qt-badge-capability-bg);
+    color: var(--qt-badge-capability-fg);
+  }
+
+  /**
+   * Version badge (muted)
+   */
+  .qt-badge-version {
+    background-color: var(--qt-badge-disabled-bg);
+    color: var(--qt-badge-disabled-fg);
+  }
+
+  /* ==========================================================================
+     WARDROBE SLOT BADGES
+     ========================================================================== */
+
+  /**
+   * Wardrobe top badge (blue)
+   */
+  .qt-badge-wardrobe-top {
+    background-color: var(--qt-badge-wardrobe-top-bg);
+    color: var(--qt-badge-wardrobe-top-fg);
+  }
+
+  /**
+   * Wardrobe bottom badge (green)
+   */
+  .qt-badge-wardrobe-bottom {
+    background-color: var(--qt-badge-wardrobe-bottom-bg);
+    color: var(--qt-badge-wardrobe-bottom-fg);
+  }
+
+  /**
+   * Wardrobe footwear badge (amber)
+   */
+  .qt-badge-wardrobe-footwear {
+    background-color: var(--qt-badge-wardrobe-footwear-bg);
+    color: var(--qt-badge-wardrobe-footwear-fg);
+  }
+
+  /**
+   * Wardrobe accessories badge (purple)
+   */
+  .qt-badge-wardrobe-accessories {
+    background-color: var(--qt-badge-wardrobe-accessories-bg);
+    color: var(--qt-badge-wardrobe-accessories-fg);
+  }
+
+  /**
+   * Wardrobe shared/archetype badge (indigo)
+   */
+  .qt-badge-wardrobe-shared {
+    background-color: var(--qt-badge-wardrobe-shared-bg);
+    color: var(--qt-badge-wardrobe-shared-fg);
+  }
+
+  /* ==========================================================================
+     EMBEDDING PROVIDER BADGES
+     ========================================================================== */
+
+  /**
+   * OpenAI provider badge (green/success semantic)
+   */
+  .qt-badge-provider-openai {
+    background: var(--qt-status-success-bg);
+    color: var(--qt-status-success-fg);
+    border: 1px solid var(--qt-status-success-border);
+  }
+
+  /**
+   * Ollama provider badge (secondary/muted)
+   */
+  .qt-badge-provider-ollama {
+    background: var(--qt-badge-secondary-bg);
+    color: var(--qt-badge-secondary-fg);
+    border: 1px solid var(--qt-badge-secondary-border);
+  }
+
+  /**
+   * OpenRouter provider badge (warning/orange semantic)
+   */
+  .qt-badge-provider-openrouter {
+    background: var(--qt-status-warning-bg);
+    color: var(--qt-status-warning-fg);
+    border: 1px solid var(--qt-status-warning-border);
+  }
+
+  /**
+   * Built-in provider badge (info/blue semantic)
+   */
+  .qt-badge-provider-builtin {
+    background: var(--qt-status-info-bg);
+    color: var(--qt-status-info-fg);
+    border: 1px solid var(--qt-status-info-border);
+  }
+}

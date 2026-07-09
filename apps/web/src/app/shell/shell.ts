@@ -1,0 +1,76 @@
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+
+import { ThemeSwitcher } from '../theme/theme-switcher';
+import { Icon, type IconName } from '../ui/icon';
+import { ChatsList } from './chats-list';
+
+interface NavItem {
+  id: string;
+  label: string;
+  tooltip: string;
+  href: string;
+  icon: IconName;
+}
+
+/** v4 `collapsed-nav.tsx` navItems — the foundation nav skeleton (P4.6 wires targets). */
+const NAV_ITEMS: NavItem[] = [
+  { id: 'projects', label: 'Projects', tooltip: 'View all projects', href: '/prospero', icon: 'projects' },
+  { id: 'files', label: 'Files', tooltip: 'View all files', href: '/files', icon: 'files' },
+  { id: 'scriptorium', label: 'The Scriptorium', tooltip: 'View document stores', href: '/scriptorium', icon: 'scriptorium' },
+  { id: 'characters', label: 'Characters', tooltip: 'View all characters', href: '/aurora', icon: 'characters' },
+  { id: 'photos', label: 'My Photos', tooltip: 'Your saved photo gallery', href: '/photos', icon: 'photos' },
+  { id: 'scenarios', label: 'Scenarios', tooltip: 'Manage general scenarios', href: '/scenarios', icon: 'scenarios' },
+  { id: 'chats', label: 'Chats', tooltip: 'View all chats', href: '/salon', icon: 'chat' },
+];
+
+/**
+ * The app shell (v4 `app-layout.tsx` + `left-sidebar`): the icon-only collapsed
+ * nav rail + a footer with the theme switcher, and the chats list as the first
+ * real screen. Scaffolding for the P4.6 verticals — the nav items are a skeleton
+ * (their targets land with each vertical), not live routes yet.
+ */
+@Component({
+  selector: 'qt-shell',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [Icon, ThemeSwitcher, ChatsList],
+  template: `
+    <div class="qt-app-layout">
+      <aside class="qt-left-sidebar qt-left-sidebar-collapsed" aria-label="Main navigation">
+        <div class="qt-left-sidebar-content">
+          <nav class="qt-collapsed-nav" aria-label="Quick navigation">
+            <a class="qt-collapsed-nav-button" href="/" title="Home" aria-label="Home">
+              <qt-icon name="brand" class="w-8 h-8" />
+            </a>
+            @for (item of navItems; track item.id) {
+              <button
+                type="button"
+                class="qt-collapsed-nav-button"
+                [title]="item.tooltip"
+                [attr.aria-label]="item.label"
+                disabled
+              >
+                <qt-icon [name]="item.icon" class="w-7 h-7" />
+              </button>
+            }
+          </nav>
+        </div>
+        <div class="qt-left-sidebar-footer">
+          <div class="qt-left-sidebar-footer-actions">
+            <qt-theme-switcher />
+          </div>
+        </div>
+      </aside>
+
+      <div class="qt-app-main">
+        <main class="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div class="flex-1 min-h-0 overflow-y-auto">
+            <qt-chats-list />
+          </div>
+        </main>
+      </div>
+    </div>
+  `,
+})
+export class Shell {
+  protected readonly navItems = NAV_ITEMS;
+}

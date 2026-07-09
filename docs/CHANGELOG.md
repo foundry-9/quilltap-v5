@@ -40,6 +40,29 @@ ported repo), and the three built-in mount stores (General / Uploads /
 Lantern). Unit 2 (chat creation + Green Room) is the next P4.4 order.
 (core 0.0.143, harness 0.0.134, web 0.0.3)
 
+P4.5: the Angular SPA foundation (`apps/web`). Scaffolded Angular 21
+(standalone + zoneless + signals, Tailwind v4, Vitest). Built the one
+`CoreClient` transport seam (`dispatch` over `POST /api/dispatch`, the
+single global `EventSource` on `/api/events` with resync-on-reconnect,
+the `/health` readiness vocabulary) with hand-written TS contract types
+mirroring the Rust enums, and layered TanStack Query for server state.
+Ported the SSE stream reducer from v4's Salon hooks (content append,
+reasoning replace, tool-batch splice at anchor offsets, turn/chain,
+skip/empty/pending-external done, mid-stream error) as a pure fold with
+a committed frame-trace fixture. Ported the `qt-*` CSS system + globals
+file-per-file, the six bundled theme packs (with a `ThemeService` that
+applies by id + injects fonts + persists to localStorage), and the base
+UI primitives (icon, brand-name, loading/empty/error, form-actions,
+section-header, avatar, chevron). Built the startup-gate -> unlock ->
+setup-wizard (one-time pepper reveal) -> app-shell (nav skeleton, theme
+switcher, chats list) screens with v4-verbatim copy. Verified: 39
+component/unit tests plus a Playwright e2e against the real
+`quilltap-web` (locked -> unlock -> shell + theme switch over a
+passphrase-locked copy of the committed fixture). SPA at 0.1.0; no crate
+changes. Documented divergences: the theme asset-URL rewrites and the
+localStorage theme persistence (both reconcile when the server themes
+service lands).
+
 P4.4/P4.5 round kickoff: the two lane work orders. P4.4 round 1 (the
 route-logic backfill: the unlock/pepper-vault service with
 fresh-instance provisioning, then the chat creation flow + the Green
