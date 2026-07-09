@@ -2109,7 +2109,7 @@ checksum = "a993555f31e5a609f617c12db6250dedcac1b0a85076912c436e6fc9b2c8e6a3"
 
 [[package]]
 name = "quilltap-core"
-version = "0.0.140"
+version = "0.0.141"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -2162,7 +2162,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-host"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "image",
  "jiff",
