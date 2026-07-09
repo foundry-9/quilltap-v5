@@ -4,6 +4,16 @@
 
 ### 5.0-dev
 
+P4.4/P4.5 round kickoff: the two lane work orders. P4.4 round 1 (the
+route-logic backfill: the unlock/pepper-vault service with
+fresh-instance provisioning, then the chat creation flow + the Green
+Room creation-progress events) and P4.5 (the Angular SPA foundation:
+scaffold, CoreClient, the SSE stream reducer, the qt-* CSS + bundled
+theme port, the UI primitives, and the startup-gate/unlock/setup
+screens), with the binding shared dispatch contract and cross-lane
+ownership matrix pinned identically in both. v4 baseline a7b1398d
+re-verified (no drift). Docs only.
+
 P4.d unification: both drift re-port lanes integrated on main. Zero
 source-level conflicts (doc unions only; version deltas verified
 identical). The two P4.d2 ownership workarounds folded: skipped/
