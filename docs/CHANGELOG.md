@@ -4,6 +4,42 @@
 
 ### 5.0-dev
 
+P4.4 unit 1: the unlock/pepper-vault service + fresh-instance
+provisioning. The CORE now creates a brand-new, encrypted-from-byte-zero
+instance at `Setup` time — no plaintext window (v4 creates its DBs
+plaintext during pre-setup migrations, then encrypts in place; v5 keys
+every partition on creation). New `services::provisioning`: replays the
+captured generateDDL schema across all three partitions (main /
+mount-index / llm-logs — the tier-2-fixture-proven, v4-compatible
+surface, dumped from v4's real repositories by
+`harness/oracle/provision/dump-fresh-schema.ts`) and seeds v4's
+deterministic first-boot rows — the single user (`getOrCreateSingleUser`),
+its default chat settings (raw INSERT of v4's captured row — the ported
+`ChatSettings` nested structs serialize optionals as explicit `null`,
+but `updateForUser` omits them, so byte-exact seeding replays the
+capture), and the default `Built-in TF-IDF` embedding profile. New
+`Request::{Setup, StorePepper, ChangePassphrase}` + `Response::{Setup,
+Ack}` DTOs + `ErrorKind::Unauthorized` (401); the engine wires them
+(setup provisions+assembles from `needs-setup`; store writes the
+`.dbkey` from `needs-vault-storage`; change-passphrase re-wraps from
+`resolved`, writing both `.dbkey` files for v4 parity). `dbkey` gained
+`change_passphrase` (decrypt-with-old, re-wrap, no DB re-encryption).
+The provisioning differential proves it: v5's `sqlite_master` (per
+partition) equals v4's LIVE generateDDL schema byte-for-byte; the seed
+rows match (minted id/timestamps normalized); and both cross-compat
+directions hold — a v4-built instance opens under v5's ported reads, a
+v5-provisioned instance opens under v4's REAL repositories
+(`verify-v5-provisioned.ts`), and a v5 change-passphrase `.dbkey`
+unlocks under v4 (`verify-dbkey-crosscompat.ts`). The web `/setup` flow
+is proven end-to-end over real HTTP (empty dir → 423/needs-setup →
+`setup` dispatch → unlocked engine on a real schema'd instance →
+`listChats` = `[]`). Named deferrals: the sample-content seed import
+(lorian-and-riya.qtap → the import service), the built-in roleplay
+templates (need the `delimiters` discriminated-union marshaling on the
+ported repo), and the three built-in mount stores (General / Uploads /
+Lantern). Unit 2 (chat creation + Green Room) is the next P4.4 order.
+(core 0.0.143, harness 0.0.134, web 0.0.3)
+
 P4.4/P4.5 round kickoff: the two lane work orders. P4.4 round 1 (the
 route-logic backfill: the unlock/pepper-vault service with
 fresh-instance provisioning, then the chat creation flow + the Green

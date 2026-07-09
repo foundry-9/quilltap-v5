@@ -5442,3 +5442,68 @@ GET + migration + qtap-export + UI + help), the two live orchestrator
 corpus cases (ask_carina sink threading; the Brahma `isDefault` fixture
 profile), the spine failover-log threading, and the P4.4 ∥ P4.5 round
 (route-logic backfill ∥ SPA foundation) as the next planned work.
+
+**P4.4 unit 1 (the unlock/pepper-vault service + fresh-instance
+provisioning) is DONE.** The CORE now creates an
+**encrypted-from-byte-zero** instance at `Setup` — no plaintext window
+(v4 creates its DBs plaintext in pre-setup migrations then encrypts in
+place; v5 keys every partition on creation via `Writer::open_writable`).
+New `quilltap-core::services::provisioning`: `provision_fresh_instance`
+opens the three writable partitions, replays the captured **generateDDL
+schema** (the tier-2-fixture-proven, v4-compatible surface — v4's real
+repositories create it on first access; a migration-accumulated instance
+has the SAME column set but a different column ORDER, which v4's
+column-name-addressed repos accept, so a byte-match with the
+migration-accumulated form is a tracked deferral needing the migration
+runner, unnecessary for correctness), and seeds v4's deterministic
+first-boot rows. The schema + the captured `chat_settings` seed row live
+in the crate (`fresh_schema.json` / `chat_settings_seed.json`,
+`include_str!`'d), dumped from v4 by
+`harness/oracle/provision/dump-fresh-schema.ts`. **The seed:** the single
+user (composing the ported `users.create`) + the default `Built-in
+TF-IDF` embedding profile (`embedding_profiles.create`) + the default
+chat settings via a **raw INSERT of v4's captured row** — the ported
+`ChatSettings` nested structs serialize optional keys as explicit `null`
+(built for the always-present tier-2 corpus), but v4's `updateForUser`
+OMITS keys the input doesn't supply, so byte-exact seeding replays the
+capture rather than composing `create`. (New v4 fact: `users.create`
+called with no `options.id` MINTS an id; v4's boot converges to
+SINGLE_USER_ID via multiple `getOrCreateSingleUser` calls whose 2nd finds
+the row by email and migrates it — the oracle calls it twice; v5
+provisions directly at the converged id.) New contract:
+`Request::{Setup, StorePepper, ChangePassphrase}` +
+`Response::{Setup, Ack}` + `ErrorKind::Unauthorized` (→ HTTP 401); the
+engine wires them (setup provisions+assembles from `needs-setup`
+[verbatim v4 `setupDbKey` message, pepper shown once]; store writes the
+`.dbkey` from `needs-vault-storage`; change-passphrase re-wraps from
+`resolved`). `dbkey` gained `change_passphrase` (decrypt-with-the-old-
+passphrase — NOT try-internal-first — re-wrap, write BOTH `.dbkey` files
+for v4 parity; no DB re-encryption) over refactored
+`encrypt_dbkey_json`/`write_dbkey_file` helpers. **Verified:** the
+provisioning differential (`provisioning_equivalence.rs`, gated) —
+v5's `sqlite_master` per partition equals v4's LIVE generateDDL schema
+byte-for-byte; the seed rows (users/chat_settings/embedding_profile)
+match with minted id/timestamps normalized; both cross-compat
+directions — a v4-built instance opens under v5's ported reads, a
+v5-provisioned instance opens under v4's REAL repositories
+(`verify-v5-provisioned.ts`), and a v5 change-passphrase `.dbkey`
+unlocks under v4's real `unlockDbKey` (`verify-dbkey-crosscompat.ts`) —
+plus the web `/setup` e2e over real HTTP (empty dir → 423/needs-setup →
+`setup` dispatch → the host's REAL spine assembles against the fresh
+instance → `listChats` = `[]`) and unit tests for provisioning, the
+engine setup/store/change flows, and the dbkey round-trips. **Named
+deferrals:** the sample-content seed import
+(`first-startup/imports/lorian-and-riya.qtap` → 2 characters + 42
+memories + avatars, drags in the unported import service — a fresh
+instance boots and the SPA is fully usable with zero characters); the
+built-in roleplay templates (`Standard`/`Quilltap RP` — need the
+`delimiters` discriminated-union marshaling completed on the ported
+`roleplay_templates` repo); and the three built-in mount stores
+(`Quilltap General`/`Quilltap Uploads`/`Lantern Backgrounds` +
+`instance_settings` pointers — needed before the image/upload/general-
+scenario verticals). **Unit 2 — the chat creation flow + Green Room (D6)
+— is the next P4.4 order** (deferred this round: the survey shows it
+composes several large unported subsystems — `buildChatContext`, the
+greeting/first-message generator, the identity-stack compiler, scenario
+mount resolution, autonomous-room start — so it is its own full unit).
+Versions: core 0.0.143, harness 0.0.134, web 0.0.3.

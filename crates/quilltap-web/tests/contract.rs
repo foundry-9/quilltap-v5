@@ -140,6 +140,75 @@ async fn dispatch_health_and_sse_contract() {
     assert_eq!(payload, expected_json);
 }
 
+/// P4.4 unit 1 e2e: an EMPTY data dir → 423/needs-setup → `setup` dispatch →
+/// an unlocked engine on a real schema'd instance → `listChats` answers `[]`.
+#[tokio::test(flavor = "multi_thread")]
+async fn setup_flow_end_to_end() {
+    // A truly empty data dir: no main DB, no .dbkey, no env pepper → needs-setup.
+    let base = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(base.path().join("data")).unwrap();
+    let (addr, _state) = common::serve_instance(base.path(), |mut c| {
+        c.env_pepper = None;
+        c.terminal = false;
+        c
+    })
+    .await;
+
+    let client = reqwest::Client::new();
+
+    // /health → 423 needs-setup.
+    let resp = client
+        .get(format!("http://{addr}/health"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 423);
+    let body: Value = serde_json::from_str(&resp.text().await.unwrap()).unwrap();
+    assert_eq!(body["status"], "locked");
+    assert_eq!(body["dbKeyState"], "needs-setup");
+
+    // unlockState reports needs-setup.
+    let (status, body) = post_dispatch(addr, json!({"type": "unlockState"})).await;
+    assert_eq!(status, 200);
+    assert_eq!(body["data"]["state"], "needs-setup");
+
+    // A ready-gated dispatch is still refused (503).
+    let (status, _) = post_dispatch(addr, json!({"type": "listChats"})).await;
+    assert_eq!(status, 503);
+
+    // setup mints a pepper, provisions the encrypted instance, and unlocks.
+    let (status, body) = post_dispatch(addr, json!({"type": "setup", "passphrase": ""})).await;
+    assert_eq!(status, 200);
+    assert_eq!(body["type"], "setup");
+    let pepper = body["data"]["pepper"].as_str().unwrap().to_string();
+    assert!(!pepper.is_empty());
+    assert!(body["data"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("will not be displayed again"));
+
+    // The instance is now on disk, encrypted, with a real schema.
+    assert!(base.path().join("data").join("quilltap.db").exists());
+    assert!(base.path().join("data").join("quilltap.dbkey").exists());
+
+    // /health flips to 200; listChats answers [].
+    let resp = client
+        .get(format!("http://{addr}/health"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let (status, body) = post_dispatch(addr, json!({"type": "listChats"})).await;
+    assert_eq!(status, 200);
+    assert_eq!(body["type"], "chats");
+    assert_eq!(body["data"], json!([]));
+
+    // A second setup refuses (already set up).
+    let (status, body) = post_dispatch(addr, json!({"type": "setup", "passphrase": ""})).await;
+    assert_eq!(status, 400);
+    assert_eq!(body["data"]["kind"], "bad-request");
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn locked_vault_contract() {
     // A passphrase vault with no env pepper boots locked.

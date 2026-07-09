@@ -92,6 +92,7 @@ pub mod pricing_fetcher;
 pub mod primary_stream;
 pub mod prospero_notifications;
 pub mod provider_failover;
+pub mod provisioning;
 pub mod pseudo_tool;
 pub mod queue_service;
 pub mod recovery;

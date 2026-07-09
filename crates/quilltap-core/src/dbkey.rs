@@ -269,7 +269,15 @@ pub fn save_dbkey(data_dir: &Path, pepper: &str, passphrase: &str) -> Result<(),
     } else {
         passphrase
     };
+    let content = encrypt_dbkey_json(pepper, actual_pass)?;
+    std::fs::create_dir_all(data_dir).map_err(DbKeyError::Io)?;
+    write_dbkey_file(&data_dir.join("quilltap.dbkey"), &content)
+}
 
+/// Encrypt `pepper` under `actual_passphrase` (already resolved — empty→internal
+/// is the caller's decision) into the 2-space-pretty `.dbkey` JSON string in v4's
+/// exact field order. Fresh random salt+IV per call.
+fn encrypt_dbkey_json(pepper: &str, actual_passphrase: &str) -> Result<String, DbKeyError> {
     let mut salt = [0u8; SALT_LEN];
     getrandom::getrandom(&mut salt)
         .map_err(|e| DbKeyError::Parse(format!("csprng unavailable: {e}")))?;
@@ -278,8 +286,13 @@ pub fn save_dbkey(data_dir: &Path, pepper: &str, passphrase: &str) -> Result<(),
         .map_err(|e| DbKeyError::Parse(format!("csprng unavailable: {e}")))?;
 
     let mut key = [0u8; KEY_LEN];
-    pbkdf2::pbkdf2::<Hmac<Sha256>>(actual_pass.as_bytes(), &salt, PBKDF2_ITERATIONS, &mut key)
-        .map_err(|_| DbKeyError::DecryptFailed)?;
+    pbkdf2::pbkdf2::<Hmac<Sha256>>(
+        actual_passphrase.as_bytes(),
+        &salt,
+        PBKDF2_ITERATIONS,
+        &mut key,
+    )
+    .map_err(|_| DbKeyError::DecryptFailed)?;
 
     // The `aes-gcm` crate returns ciphertext||tag; v4 stores them as separate
     // hex fields, so split the trailing 16-byte tag back off.
@@ -309,19 +322,72 @@ pub fn save_dbkey(data_dir: &Path, pepper: &str, passphrase: &str) -> Result<(),
         auth_tag: hex::encode(tag),
         pepper_hash: hash_pepper(pepper),
     };
-    let content =
-        serde_json::to_string_pretty(&out).map_err(|e| DbKeyError::Parse(e.to_string()))?;
+    serde_json::to_string_pretty(&out).map_err(|e| DbKeyError::Parse(e.to_string()))
+}
 
-    std::fs::create_dir_all(data_dir).map_err(DbKeyError::Io)?;
-    let path = data_dir.join("quilltap.dbkey");
-    std::fs::write(&path, content).map_err(DbKeyError::Io)?;
+/// Write a `.dbkey` JSON string to `path` with mode 0600 (POSIX), creating the
+/// parent directory if needed.
+fn write_dbkey_file(path: &Path, content: &str) -> Result<(), DbKeyError> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(DbKeyError::Io)?;
+    }
+    std::fs::write(path, content).map_err(DbKeyError::Io)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
             .map_err(DbKeyError::Io)?;
     }
     Ok(())
+}
+
+/// v4 `changePassphrase` (`lib/startup/dbkey.ts`): re-wrap the pepper under a new
+/// passphrase without touching the databases. Decrypts `quilltap.dbkey` with the
+/// old passphrase (empty string = the internal no-passphrase sentinel, exactly as
+/// v4), re-encrypts, and writes the new wrapping to BOTH `quilltap.dbkey` and
+/// `quilltap-llm-logs.dbkey` (v4 keeps them in sync — same pepper, new
+/// passphrase — so a v5-rewrapped instance unlocks under v4's real code and vice
+/// versa). Returns the recovered pepper.
+///
+/// Fails `DecryptFailed` when the old passphrase is wrong (v4's `unauthorized`
+/// "Current passphrase is incorrect"). Unlike [`load_pepper`], this does NOT try
+/// the internal passphrase first — it decrypts with exactly the resolved old
+/// passphrase, matching v4.
+pub fn change_passphrase(
+    data_dir: &Path,
+    old_passphrase: &str,
+    new_passphrase: &str,
+) -> Result<String, DbKeyError> {
+    let path = data_dir.join("quilltap.dbkey");
+    if !path.exists() {
+        return Err(DbKeyError::NotFound(path));
+    }
+    let raw = std::fs::read_to_string(&path).map_err(DbKeyError::Io)?;
+    let file: DbKeyFile =
+        serde_json::from_str(&raw).map_err(|e| DbKeyError::Parse(e.to_string()))?;
+    if !file.algorithm.eq_ignore_ascii_case("aes-256-gcm") {
+        return Err(DbKeyError::Unsupported(file.algorithm.clone()));
+    }
+
+    let actual_old = if old_passphrase.is_empty() {
+        INTERNAL_PASSPHRASE
+    } else {
+        old_passphrase
+    };
+    let pepper = match try_decrypt(&file, actual_old)? {
+        Some(p) => p,
+        None => return Err(DbKeyError::DecryptFailed),
+    };
+
+    let actual_new = if new_passphrase.is_empty() {
+        INTERNAL_PASSPHRASE
+    } else {
+        new_passphrase
+    };
+    let content = encrypt_dbkey_json(&pepper, actual_new)?;
+    write_dbkey_file(&path, &content)?;
+    write_dbkey_file(&data_dir.join("quilltap-llm-logs.dbkey"), &content)?;
+    Ok(pepper)
 }
 
 /// Convert the base64 pepper into the lowercase hex string used in the raw-key
@@ -370,6 +436,51 @@ mod tests {
         save_dbkey(dir.path(), &pepper, "").unwrap();
         let loaded = load_pepper(dir.path(), None).unwrap();
         assert_eq!(loaded, pepper);
+    }
+
+    /// `change_passphrase` re-wraps the pepper: the new passphrase unlocks, the
+    /// old no longer does, the pepper is preserved, and BOTH `.dbkey` files are
+    /// written (v4 parity / cross-compat). The output is byte-format-identical to
+    /// `save_dbkey` (same `encrypt_dbkey_json`), which is Friday-verified against
+    /// v4, so a v5-rewrapped file is v4-readable (and the reverse — v5 reads any
+    /// v4 `.dbkey` — is the ported read path).
+    #[test]
+    fn change_passphrase_round_trip() {
+        let dir = tempdir().unwrap();
+        let pepper = generate_pepper().unwrap();
+        save_dbkey(dir.path(), &pepper, "first").unwrap();
+
+        // Wrong old passphrase → DecryptFailed (does NOT try the internal first).
+        assert!(matches!(
+            change_passphrase(dir.path(), "wrong", "second"),
+            Err(DbKeyError::DecryptFailed)
+        ));
+
+        // Correct old → re-wrapped; returns the recovered pepper.
+        let recovered = change_passphrase(dir.path(), "first", "second").unwrap();
+        assert_eq!(recovered, pepper);
+        assert!(load_pepper(dir.path(), Some("first")).is_err());
+        assert_eq!(load_pepper(dir.path(), Some("second")).unwrap(), pepper);
+        // The llm-logs .dbkey was written with the same wrapping.
+        assert!(dir.path().join("quilltap-llm-logs.dbkey").exists());
+    }
+
+    /// The empty-string old/new passphrases are the internal no-passphrase
+    /// sentinel: a no-passphrase vault re-wraps to no-passphrase and back.
+    #[test]
+    fn change_passphrase_empty_sentinel() {
+        let dir = tempdir().unwrap();
+        let pepper = generate_pepper().unwrap();
+        save_dbkey(dir.path(), &pepper, "").unwrap(); // no passphrase
+
+        // old="" (internal) → set a real passphrase.
+        assert_eq!(change_passphrase(dir.path(), "", "secret").unwrap(), pepper);
+        assert!(load_pepper(dir.path(), None).is_err()); // internal no longer works
+        assert_eq!(load_pepper(dir.path(), Some("secret")).unwrap(), pepper);
+
+        // new="" (internal) → back to no passphrase; None unlocks again.
+        assert_eq!(change_passphrase(dir.path(), "secret", "").unwrap(), pepper);
+        assert_eq!(load_pepper(dir.path(), None).unwrap(), pepper);
     }
 
     /// A passphrase-protected file requires the passphrase: `None` errors with

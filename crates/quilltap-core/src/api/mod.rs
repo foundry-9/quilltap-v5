@@ -31,8 +31,9 @@ pub use engine::{
     SINGLE_USER_ID,
 };
 pub use types::{
-    ChatErrorPayload, ChatSendResultDto, ChatSummaryDto, CoreError, ErrorKind, Event, EventPayload,
-    HealthDto, InstanceDto, InstancesDto, PepperState, Request, Response, UnlockStateDto,
+    AckDto, ChatErrorPayload, ChatSendResultDto, ChatSummaryDto, CoreError, ErrorKind, Event,
+    EventPayload, HealthDto, InstanceDto, InstancesDto, PepperState, Request, Response,
+    SetupResultDto, UnlockStateDto,
 };
 
 /// The boundary trait. Transports are generic over `C: QuilltapCore` (the

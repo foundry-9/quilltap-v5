@@ -28,17 +28,23 @@ use tokio::sync::broadcast;
 use crate::db::runtime::{Db, DbPaths};
 use crate::db::{chat_settings, chats_read};
 use crate::dbkey::{self, DbKeyError};
+use crate::services::provisioning;
 
 use super::chat_send::{ChatSendDriver, ChatSendRequest};
 use super::provision::{provision, PepperHashMismatch};
 use super::types::{
-    ChatSummaryDto, ErrorKind, Event, HealthDto, PepperState, Request, Response, UnlockStateDto,
+    AckDto, ChatSummaryDto, ErrorKind, Event, HealthDto, PepperState, Request, Response,
+    SetupResultDto, UnlockStateDto,
 };
 use super::{InstanceDirectory, QuilltapCore};
 
 /// v4 `SINGLE_USER_ID` (`lib/auth/single-user.ts`) — the synthetic single
 /// user every row belongs to. D2: the session layer does not port.
 pub const SINGLE_USER_ID: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+
+/// v4 `handleSetup`'s one-shot save-the-pepper message (shown once, verbatim).
+const SETUP_MESSAGE: &str =
+    "Encryption key generated and stored. Save this value — it will not be displayed again.";
 
 /// Broadcast capacity for the event channel. A slow subscriber past this
 /// lags (drops oldest) rather than blocking the engine — the SSE transport
@@ -256,6 +262,12 @@ impl CoreEngine {
             Request::Health => self.health(),
             Request::UnlockState => self.unlock_state(),
             Request::Unlock { passphrase } => self.unlock(&passphrase),
+            Request::Setup { passphrase } => self.setup(&passphrase),
+            Request::StorePepper { passphrase } => self.store_pepper(&passphrase),
+            Request::ChangePassphrase {
+                old_passphrase,
+                new_passphrase,
+            } => self.change_passphrase(&old_passphrase, &new_passphrase),
             Request::Lock => self.lock(),
             Request::ListInstances => match self.inner.instances.list() {
                 Ok(dto) => Response::Instances(dto),
@@ -390,6 +402,134 @@ impl CoreEngine {
                     Err(e) => Response::error(ErrorKind::Internal, e.to_string()),
                 }
             }
+        }
+    }
+
+    /// v4 `?action=setup` (`handleSetup` + `setupDbKey` + fresh-instance
+    /// provisioning): mint a pepper, write `quilltap.dbkey`, create a fresh
+    /// **encrypted-from-byte-zero** instance (schema + baseline seed), assemble,
+    /// and return the pepper ONCE. Only valid from `needs-setup`.
+    ///
+    /// v4's post-setup plaintext→cipher conversion is a **named non-port**: v4
+    /// creates the DB plaintext during pre-setup migrations, so setup must encrypt
+    /// it in place; v5 has no plaintext window (the pepper is in hand before any
+    /// partition is created), so there is nothing to convert.
+    fn setup(&self, passphrase: &str) -> Response {
+        let mut state = self.inner.state.lock().unwrap();
+        match &*state {
+            EngineState::Ready(_) => Response::error(
+                ErrorKind::BadRequest,
+                "Already set up (the vault is unlocked)",
+            ),
+            EngineState::Locked {
+                pepper_state: PepperState::NeedsSetup,
+                ..
+            } => {
+                let data_dir = self.inner.config.data_dir();
+                let pepper = match dbkey::generate_pepper() {
+                    Ok(p) => p,
+                    Err(e) => return Response::error(ErrorKind::Internal, e.to_string()),
+                };
+                // Write quilltap.dbkey (main only — v4 setup writes just the main
+                // .dbkey; the llm-logs .dbkey lands on the first passphrase change).
+                if let Err(e) = dbkey::save_dbkey(&data_dir, &pepper, passphrase) {
+                    return Response::error(ErrorKind::Internal, e.to_string());
+                }
+                // Provision the schema + baseline seed, encrypted from creation.
+                if let Err(e) = provisioning::provision_fresh_instance(&data_dir, &pepper) {
+                    return Response::error(ErrorKind::Internal, e.to_string());
+                }
+                let has_user_passphrase = !passphrase.is_empty();
+                match open_ready(
+                    &self.inner,
+                    &pepper,
+                    PepperState::Resolved,
+                    has_user_passphrase,
+                ) {
+                    Ok(ready) => {
+                        *state = EngineState::Ready(ready);
+                        Response::Setup(SetupResultDto {
+                            pepper,
+                            message: SETUP_MESSAGE.to_string(),
+                        })
+                    }
+                    Err(e) => Response::error(ErrorKind::Internal, e.to_string()),
+                }
+            }
+            EngineState::Locked { .. } => Response::error(
+                ErrorKind::BadRequest,
+                "Setup is only available on a fresh instance",
+            ),
+        }
+    }
+
+    /// v4 `?action=store` (`storeEnvPepperInDbKey`): persist the env-provided
+    /// pepper into `quilltap.dbkey`, the `needs-vault-storage` → `resolved`
+    /// transition. The engine is already Ready (an env pepper is operational); this
+    /// just writes the file and advances the reported state.
+    fn store_pepper(&self, passphrase: &str) -> Response {
+        let mut state = self.inner.state.lock().unwrap();
+        match &mut *state {
+            EngineState::Ready(r) if r.pepper_state == PepperState::NeedsVaultStorage => {
+                let pepper = match self.inner.config.env_pepper.as_deref() {
+                    Some(p) if !p.is_empty() => p,
+                    _ => {
+                        return Response::error(
+                            ErrorKind::Internal,
+                            "No pepper in environment to store",
+                        )
+                    }
+                };
+                if let Err(e) = dbkey::save_dbkey(&self.inner.config.data_dir(), pepper, passphrase)
+                {
+                    return Response::error(ErrorKind::Internal, e.to_string());
+                }
+                r.pepper_state = PepperState::Resolved;
+                r.has_user_passphrase = !passphrase.is_empty();
+                Response::Ack(AckDto::default())
+            }
+            EngineState::Ready(_) => Response::error(
+                ErrorKind::BadRequest,
+                "The pepper is already stored in a .dbkey file",
+            ),
+            EngineState::Locked { pepper_state, .. } => Response::locked(*pepper_state),
+        }
+    }
+
+    /// v4 `?action=change-passphrase` (`changePassphrase`): re-wrap the pepper
+    /// under a new passphrase (no DB re-encryption). Only valid when `resolved`
+    /// (v4 requires exactly that state — `needs-vault-storage` has no .dbkey to
+    /// re-wrap). Either passphrase may be empty (the no-passphrase sentinel).
+    fn change_passphrase(&self, old_passphrase: &str, new_passphrase: &str) -> Response {
+        let mut state = self.inner.state.lock().unwrap();
+        match &mut *state {
+            EngineState::Ready(r) if r.pepper_state == PepperState::Resolved => {
+                match dbkey::change_passphrase(
+                    &self.inner.config.data_dir(),
+                    old_passphrase,
+                    new_passphrase,
+                ) {
+                    Ok(_) => {
+                        r.has_user_passphrase = !new_passphrase.is_empty();
+                        Response::Ack(AckDto::default())
+                    }
+                    Err(DbKeyError::DecryptFailed) => {
+                        Response::error(ErrorKind::Unauthorized, "Current passphrase is incorrect")
+                    }
+                    Err(DbKeyError::NotFound(_)) => {
+                        Response::error(ErrorKind::BadRequest, "No .dbkey file found")
+                    }
+                    Err(e) => Response::error(ErrorKind::Internal, e.to_string()),
+                }
+            }
+            EngineState::Ready(_) => Response::error(
+                ErrorKind::BadRequest,
+                "Application must be unlocked before changing the passphrase",
+            ),
+            EngineState::Locked { .. } => Response::error(
+                ErrorKind::BadRequest,
+                "Application must be unlocked before changing the passphrase",
+            ),
         }
     }
 
@@ -746,6 +886,162 @@ mod tests {
             Response::Error(e) => assert_eq!(e.kind, ErrorKind::BadRequest),
             other => panic!("unexpected: {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn setup_provisions_a_bootable_instance() {
+        // A truly empty data dir → needs-setup.
+        let base = tempdir().unwrap();
+        std::fs::create_dir_all(base.path().join("data")).unwrap();
+        let assembled = Arc::new(AtomicUsize::new(0));
+        let shutdowns = Arc::new(AtomicUsize::new(0));
+        let engine = CoreEngine::boot(
+            config(&base, None),
+            Box::new(CountingAssembler {
+                assembled: assembled.clone(),
+                shutdowns: shutdowns.clone(),
+            }),
+            Arc::new(EmptyInstances),
+        )
+        .unwrap();
+
+        // needs-setup boots locked; not assembled yet.
+        assert_eq!(assembled.load(Ordering::SeqCst), 0);
+
+        // Setup with a user passphrase mints a pepper, provisions, assembles.
+        let pepper = match engine
+            .dispatch(Request::Setup {
+                passphrase: "open sesame".into(),
+            })
+            .await
+        {
+            Response::Setup(s) => {
+                assert!(!s.pepper.is_empty());
+                assert!(s.message.contains("will not be displayed again"));
+                s.pepper
+            }
+            other => panic!("unexpected: {other:?}"),
+        };
+        assert_eq!(assembled.load(Ordering::SeqCst), 1);
+
+        // The instance now boots and answers: ready, resolved, listChats -> [].
+        match engine.dispatch(Request::Health).await {
+            Response::Health(h) => {
+                assert!(h.ready);
+                assert_eq!(h.pepper_state, PepperState::Resolved);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        match engine.dispatch(Request::ListChats).await {
+            Response::Chats(c) => assert!(c.is_empty()),
+            other => panic!("unexpected: {other:?}"),
+        }
+        // The .dbkey was written and unlocks with the passphrase.
+        let recovered = dbkey::load_pepper(&base.path().join("data"), Some("open sesame")).unwrap();
+        assert_eq!(recovered, pepper);
+
+        // A second Setup refuses (already set up).
+        match engine
+            .dispatch(Request::Setup {
+                passphrase: "x".into(),
+            })
+            .await
+        {
+            Response::Error(e) => assert_eq!(e.kind, ErrorKind::BadRequest),
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn store_pepper_advances_needs_vault_storage_to_resolved() {
+        // Env pepper + a main DB but no .dbkey → needs-vault-storage (operational).
+        let base = make_instance();
+        let engine = CoreEngine::boot(
+            config(&base, Some(PEPPER)),
+            Box::new(NoopAssembler),
+            Arc::new(EmptyInstances),
+        )
+        .unwrap();
+        match engine.dispatch(Request::UnlockState).await {
+            Response::UnlockState(u) => assert_eq!(u.state, PepperState::NeedsVaultStorage),
+            other => panic!("unexpected: {other:?}"),
+        }
+
+        // Store writes quilltap.dbkey and advances to resolved.
+        match engine
+            .dispatch(Request::StorePepper {
+                passphrase: String::new(),
+            })
+            .await
+        {
+            Response::Ack(_) => {}
+            other => panic!("unexpected: {other:?}"),
+        }
+        assert!(base.path().join("data").join("quilltap.dbkey").exists());
+        match engine.dispatch(Request::UnlockState).await {
+            Response::UnlockState(u) => {
+                assert_eq!(u.state, PepperState::Resolved);
+                assert!(!u.has_user_passphrase);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        // The written .dbkey decrypts to the same pepper (no user passphrase).
+        assert_eq!(
+            dbkey::load_pepper(&base.path().join("data"), None).unwrap(),
+            PEPPER
+        );
+    }
+
+    #[tokio::test]
+    async fn change_passphrase_rewraps_and_gates_wrong_old() {
+        let base = tempdir().unwrap();
+        std::fs::create_dir_all(base.path().join("data")).unwrap();
+        let engine = CoreEngine::boot(
+            config(&base, None),
+            Box::new(NoopAssembler),
+            Arc::new(EmptyInstances),
+        )
+        .unwrap();
+        // Set up with an initial passphrase.
+        match engine
+            .dispatch(Request::Setup {
+                passphrase: "first".into(),
+            })
+            .await
+        {
+            Response::Setup(_) => {}
+            other => panic!("unexpected: {other:?}"),
+        }
+
+        // Wrong old passphrase → unauthorized.
+        match engine
+            .dispatch(Request::ChangePassphrase {
+                old_passphrase: "wrong".into(),
+                new_passphrase: "second".into(),
+            })
+            .await
+        {
+            Response::Error(e) => assert_eq!(e.kind, ErrorKind::Unauthorized),
+            other => panic!("unexpected: {other:?}"),
+        }
+
+        // Correct old → re-wrapped; the new passphrase now unlocks, the old does not.
+        match engine
+            .dispatch(Request::ChangePassphrase {
+                old_passphrase: "first".into(),
+                new_passphrase: "second".into(),
+            })
+            .await
+        {
+            Response::Ack(_) => {}
+            other => panic!("unexpected: {other:?}"),
+        }
+        let data = base.path().join("data");
+        assert!(dbkey::load_pepper(&data, Some("first")).is_err());
+        assert!(dbkey::load_pepper(&data, Some("second")).is_ok());
+        // Both .dbkey files were written (v4 parity / cross-compat).
+        assert!(data.join("quilltap.dbkey").exists());
+        assert!(data.join("quilltap-llm-logs.dbkey").exists());
     }
 
     #[test]

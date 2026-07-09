@@ -20,6 +20,7 @@ fn status_for(resp: &Response) -> StatusCode {
     match resp {
         Response::Error(e) => match e.kind {
             ErrorKind::BadRequest => StatusCode::BAD_REQUEST,
+            ErrorKind::Unauthorized => StatusCode::UNAUTHORIZED,
             ErrorKind::NotFound => StatusCode::NOT_FOUND,
             ErrorKind::Locked => StatusCode::SERVICE_UNAVAILABLE,
             ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,

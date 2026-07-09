@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-harness"
-version = "0.0.133"
+version = "0.0.134"
 edition = "2021"
 publish = false
 
@@ -45,3 +45,7 @@ tempfile = "3"
 # through the HOST walker (the production dir-walk half of the injected file
 # list), so the walk order under test is the real one.
 quilltap-host = { path = "../quilltap-host" }
+# The P4.4 provisioning differential dumps `sqlite_master` + the seed rows from a
+# v5-provisioned instance (raw reads over the writer connection) to diff against
+# the v4 oracle. Links the workspace sqlite3 (the sys crate), NOT bundled.
+rusqlite = { workspace = true }

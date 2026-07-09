@@ -60,10 +60,26 @@ pub enum Request {
     Health,
     /// The unlock-family state read (v4 `GET /api/v1/system/unlock`).
     UnlockState,
-    /// Unlock a passphrase-protected vault (v4 `?action=unlock`). The
-    /// `setup`/`store`/`change-passphrase` actions land with the P4.4
-    /// unlock-service backfill (setup also needs schema creation).
+    /// Unlock a passphrase-protected vault (v4 `?action=unlock`).
     Unlock { passphrase: String },
+    /// First-run setup (v4 `?action=setup`): mint a pepper, write
+    /// `quilltap.dbkey`, provision a fresh encrypted instance (schema + baseline
+    /// seed), and assemble. Only valid from `needs-setup`. Returns the pepper
+    /// ONCE (shown for the user to save).
+    Setup { passphrase: String },
+    /// Store an env-provided pepper in a `.dbkey` file (v4 `?action=store`): the
+    /// `needs-vault-storage` → `resolved` transition. Only valid from
+    /// `needs-vault-storage`.
+    #[serde(rename_all = "camelCase")]
+    StorePepper { passphrase: String },
+    /// Change the passphrase that wraps the pepper (v4 `?action=change-passphrase`):
+    /// re-wrap only, no DB re-encryption. Only valid when unlocked (`resolved`).
+    /// Either passphrase may be empty (the no-passphrase sentinel).
+    #[serde(rename_all = "camelCase")]
+    ChangePassphrase {
+        old_passphrase: String,
+        new_passphrase: String,
+    },
     /// Lock the application (v4 `?action=lock` / auto-lock). Tears the engine
     /// down; the vault returns to `needs-passphrase`.
     Lock,
@@ -101,6 +117,11 @@ pub enum Request {
 pub enum Response {
     Health(HealthDto),
     UnlockState(UnlockStateDto),
+    /// v4 setup response — the minted pepper (shown once) + the save-it message.
+    Setup(SetupResultDto),
+    /// The empty-body success ack (v4 `successResponse({})`) — `storePepper` /
+    /// `changePassphrase`.
+    Ack(AckDto),
     Instances(InstancesDto),
     Chats(Vec<ChatSummaryDto>),
     ChatSend(ChatSendResultDto),
@@ -144,6 +165,19 @@ pub struct HealthDto {
     pub ready: bool,
     pub pepper_state: PepperState,
 }
+
+/// v4 `?action=setup` success body: the pepper is returned ONCE (the user must
+/// save it — it is never displayed again).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetupResultDto {
+    pub pepper: String,
+    pub message: String,
+}
+
+/// The empty success body (v4 `successResponse({})`). Serializes to `{}`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct AckDto {}
 
 /// v4 `GET /api/v1/system/unlock` body: `{ state, hasUserPassphrase,
 /// autoLockMinutes }` — `autoLockMinutes` only populated when unlocked and
@@ -229,6 +263,8 @@ pub struct CoreError {
 #[serde(rename_all = "kebab-case")]
 pub enum ErrorKind {
     BadRequest,
+    /// v4 `unauthorized` (HTTP 401): a wrong passphrase on `changePassphrase`.
+    Unauthorized,
     NotFound,
     Locked,
     Internal,
