@@ -71,6 +71,27 @@ pub enum Request {
     ListInstances,
     /// List the single user's chats (v4 `GET /api/v1/chats`), summarized.
     ListChats,
+    /// Send a chat message and run the full turn (v4
+    /// `POST /api/v1/chats/{id}/messages` → `handleSendMessage`). The stream
+    /// frames ride the [`Event`] channel (chat-scoped); the dispatch reply is
+    /// the typed result of the initial turn. Fields project v4's
+    /// `SendMessageOptions`.
+    #[serde(rename_all = "camelCase")]
+    ChatSend {
+        chat_id: String,
+        #[serde(default)]
+        content: String,
+        #[serde(default)]
+        continue_mode: bool,
+        #[serde(default)]
+        responding_participant_id: Option<String>,
+        #[serde(default)]
+        target_participant_ids: Option<Vec<String>>,
+        #[serde(default)]
+        speaking_as_participant_id: Option<String>,
+        #[serde(default)]
+        file_ids: Vec<String>,
+    },
 }
 
 /// Typed DTO per variant (the uniffi payoff). `Error` carries the one
@@ -82,6 +103,7 @@ pub enum Response {
     UnlockState(UnlockStateDto),
     Instances(InstancesDto),
     Chats(Vec<ChatSummaryDto>),
+    ChatSend(ChatSendResultDto),
     Error(CoreError),
 }
 
@@ -169,6 +191,21 @@ pub struct ChatSummaryDto {
     pub updated_at: String,
 }
 
+/// The typed result of a `ChatSend` dispatch — a projection of the spine's
+/// [`ProcessMessageResult`](crate::services::message_finalizer::ProcessMessageResult)
+/// (the frames themselves ride the [`Event`] channel).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatSendResultDto {
+    /// The assistant message id the turn minted (or targeted, in continue mode).
+    pub message_id: String,
+    pub has_content: bool,
+    pub is_multi_character: bool,
+    pub is_paused: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_participant_id: Option<String>,
+}
+
 // ============================================================================
 // Errors
 // ============================================================================
@@ -226,6 +263,22 @@ pub struct Event {
 #[serde(untagged)]
 pub enum EventPayload {
     Chat(ChatEvent),
+    /// v4's transport-shell error frame (`handleStreamError` →
+    /// `encodeErrorEvent`: `{error, errorType, details}`). The ported
+    /// `process_message` propagates its error to the caller; the TRANSPORT owns
+    /// the frame — the spine driver emits this when the turn errors, exactly
+    /// where v4's stream shell does.
+    ChatError(ChatErrorPayload),
+}
+
+/// v4 `encodeErrorEvent(encoder, error, errorType, details)`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ChatErrorPayload {
+    /// v4 hardcodes `'Failed to generate response'` at the send-path shell.
+    pub error: String,
+    #[serde(rename = "errorType")]
+    pub error_type: String,
+    pub details: String,
 }
 
 impl Event {

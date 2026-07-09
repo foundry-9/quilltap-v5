@@ -4,6 +4,20 @@
 
 ### 5.0-dev
 
+P4.2 (part 1): the ChatSend boundary contract. quilltap-core::api gains the
+Request::ChatSend variant (camelCase projection of v4 SendMessageOptions:
+chatId/content/continueMode/respondingParticipantId/targetParticipantIds/
+speakingAsParticipantId/fileIds), Response::ChatSend(ChatSendResultDto), the
+transport-shell error frame (EventPayload::ChatError — v4 encodeErrorEvent's
+{error, errorType, details}), and the dyn-compatible ChatSendDriver seam
+(api::chat_send — boxed-future, the JobHandler precedent).
+EngineAssembler::assemble now takes the engine's event broadcast and returns
+an EngineAssembly (shutdown handle + optional chat driver); NoopAssembler and
+the host assembler updated (driver still None — the production spine lands
+next). The engine's ChatSend arm is readiness-gated in dispatch; a ready
+engine without a driver answers the typed "chat dispatch not assembled"
+internal error (read-only embedders stay valid).
+
 P4.2/P4.3 round kickoff: drift check clean (v4 HEAD still 2494a84b) and the
 two lane work orders written (docs/developer/porting/work-orders/
 p4.2-quilltap-web.md and p4.3-quilltap-cli.md), each with the binding

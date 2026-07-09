@@ -36,7 +36,8 @@ use std::time::Duration;
 use tokio::sync::{watch, Notify};
 
 use quilltap_core::api::{
-    BootError, CoreConfig, CoreEngine, EngineAssembler, EngineShutdown, InstanceDirectory,
+    BootError, CoreConfig, CoreEngine, EngineAssembler, EngineAssembly, EngineShutdown, Event,
+    InstanceDirectory,
 };
 use quilltap_core::clock::{iso_to_ms, now_unix_ms};
 use quilltap_core::db::background_jobs::BackgroundJobsRepository;
@@ -303,7 +304,11 @@ impl EngineShutdown for HostShutdown {
 }
 
 impl EngineAssembler for HostAssembler {
-    fn assemble(&self, db: &Db) -> Result<Box<dyn EngineShutdown>, String> {
+    fn assemble(
+        &self,
+        db: &Db,
+        events: &tokio::sync::broadcast::Sender<Event>,
+    ) -> Result<EngineAssembly, String> {
         // The single-instance lock (v4 acquires at backend init — here, when
         // the databases open). A live conflict is a typed boot error the
         // engine surfaces as `BootError::Assemble` (the P4.2 startup-status
@@ -401,11 +406,12 @@ impl EngineAssembler for HostAssembler {
             self.danger_scan_interval_ms,
         ));
 
-        Ok(Box::new(HostShutdown {
+        let _ = events; // chat-send driver wiring lands with the spine (below)
+        Ok(EngineAssembly::shutdown_only(Box::new(HostShutdown {
             stop: stop_tx,
             lock_path,
             _wake_target: wake_target,
-        }))
+        })))
     }
 }
 

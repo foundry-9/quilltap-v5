@@ -29,6 +29,7 @@ use crate::db::runtime::{Db, DbPaths};
 use crate::db::{chat_settings, chats_read};
 use crate::dbkey::{self, DbKeyError};
 
+use super::chat_send::{ChatSendDriver, ChatSendRequest};
 use super::provision::{provision, PepperHashMismatch};
 use super::types::{
     ChatSummaryDto, ErrorKind, Event, HealthDto, PepperState, Request, Response, UnlockStateDto,
@@ -67,13 +68,37 @@ impl CoreConfig {
     }
 }
 
+/// One assembly's products (P4.2 — grown from the bare shutdown handle): the
+/// teardown handle plus the optional chat-send driver. `chat_send: None` keeps
+/// read-only embedders (and the P4.0 tests) valid — the `ChatSend` dispatch
+/// arm answers "chat dispatch not assembled".
+pub struct EngineAssembly {
+    pub shutdown: Box<dyn EngineShutdown>,
+    pub chat_send: Option<Arc<dyn ChatSendDriver>>,
+}
+
+impl EngineAssembly {
+    /// A driver-less assembly around a shutdown handle.
+    pub fn shutdown_only(shutdown: Box<dyn EngineShutdown>) -> Self {
+        EngineAssembly {
+            shutdown,
+            chat_send: None,
+        }
+    }
+}
+
 /// The composition-root seam: called whenever the pepper becomes operational
-/// (boot or unlock) with the freshly opened [`Db`]. The host clones the `Db`
-/// into its drivers (job runner, cadence loops), spawns them, and returns the
-/// handle that tears them down again on `Lock`. Must be reusable — a
-/// lock/unlock cycle assembles more than once.
+/// (boot or unlock) with the freshly opened [`Db`] and the engine's event
+/// broadcast (the spine's frames ride it). The host clones the `Db` into its
+/// drivers (job runner, cadence loops), spawns them, and returns the assembly
+/// that tears them down again on `Lock`. Must be reusable — a lock/unlock
+/// cycle assembles more than once.
 pub trait EngineAssembler: Send + Sync {
-    fn assemble(&self, db: &Db) -> Result<Box<dyn EngineShutdown>, String>;
+    fn assemble(
+        &self,
+        db: &Db,
+        events: &broadcast::Sender<Event>,
+    ) -> Result<EngineAssembly, String>;
 }
 
 /// Tears down one assembly (stop loops, drop `Db` clones). Idempotent.
@@ -90,8 +115,12 @@ impl EngineShutdown for NoopShutdown {
 }
 
 impl EngineAssembler for NoopAssembler {
-    fn assemble(&self, _db: &Db) -> Result<Box<dyn EngineShutdown>, String> {
-        Ok(Box::new(NoopShutdown))
+    fn assemble(
+        &self,
+        _db: &Db,
+        _events: &broadcast::Sender<Event>,
+    ) -> Result<EngineAssembly, String> {
+        Ok(EngineAssembly::shutdown_only(Box::new(NoopShutdown)))
     }
 }
 
@@ -145,6 +174,8 @@ struct ReadyEngine {
     pepper_state: PepperState,
     has_user_passphrase: bool,
     shutdown: Box<dyn EngineShutdown>,
+    /// The assembly's chat-send driver (P4.2); `None` for read-only embedders.
+    chat_send: Option<Arc<dyn ChatSendDriver>>,
 }
 
 /// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
@@ -231,6 +262,50 @@ impl CoreEngine {
                 Err(e) => Response::error(ErrorKind::Internal, e),
             },
             Request::ListChats => self.list_chats(),
+            Request::ChatSend {
+                chat_id,
+                content,
+                continue_mode,
+                responding_participant_id,
+                target_participant_ids,
+                speaking_as_participant_id,
+                file_ids,
+            } => {
+                self.chat_send(ChatSendRequest {
+                    chat_id,
+                    content,
+                    continue_mode,
+                    responding_participant_id,
+                    target_participant_ids,
+                    speaking_as_participant_id,
+                    file_ids,
+                })
+                .await
+            }
+        }
+    }
+
+    /// The `ChatSend` arm: readiness-gated (D2), then delegated to the
+    /// assembly's driver. A ready engine without a driver (read-only embedder)
+    /// answers a plain internal error.
+    async fn chat_send(&self, req: ChatSendRequest) -> Response {
+        let driver = {
+            let state = self.inner.state.lock().unwrap();
+            match &*state {
+                EngineState::Ready(r) => match &r.chat_send {
+                    Some(d) => Arc::clone(d),
+                    None => {
+                        return Response::error(ErrorKind::Internal, "chat dispatch not assembled");
+                    }
+                },
+                EngineState::Locked { pepper_state, .. } => {
+                    return Response::locked(*pepper_state);
+                }
+            }
+        };
+        match driver.send(req).await {
+            Ok(dto) => Response::ChatSend(dto),
+            Err(e) => Response::Error(e),
         }
     }
 
@@ -399,12 +474,16 @@ fn open_ready(
         llm_logs: optional("quilltap-llm-logs.db"),
     };
     let db = Db::open(paths, pepper).map_err(BootError::Db)?;
-    let shutdown = inner.assembler.assemble(&db).map_err(BootError::Assemble)?;
+    let assembly = inner
+        .assembler
+        .assemble(&db, &inner.events)
+        .map_err(BootError::Assemble)?;
     Ok(ReadyEngine {
         db,
         pepper_state,
         has_user_passphrase,
-        shutdown,
+        shutdown: assembly.shutdown,
+        chat_send: assembly.chat_send,
     })
 }
 
@@ -481,9 +560,15 @@ mod tests {
         }
     }
     impl EngineAssembler for CountingAssembler {
-        fn assemble(&self, _db: &Db) -> Result<Box<dyn EngineShutdown>, String> {
+        fn assemble(
+            &self,
+            _db: &Db,
+            _events: &broadcast::Sender<Event>,
+        ) -> Result<EngineAssembly, String> {
             self.assembled.fetch_add(1, Ordering::SeqCst);
-            Ok(Box::new(CountingShutdown(self.shutdowns.clone())))
+            Ok(EngineAssembly::shutdown_only(Box::new(CountingShutdown(
+                self.shutdowns.clone(),
+            ))))
         }
     }
 
@@ -527,6 +612,26 @@ mod tests {
         // surfaces as an internal read error — NOT the locked refusal).
         match engine.dispatch(Request::ListChats).await {
             Response::Error(e) => assert_eq!(e.kind, ErrorKind::Internal),
+            other => panic!("unexpected: {other:?}"),
+        }
+        // ChatSend on a ready engine WITHOUT a driver (NoopAssembler): the
+        // typed not-assembled refusal, not the locked one.
+        match engine
+            .dispatch(Request::ChatSend {
+                chat_id: "c1".into(),
+                content: "hi".into(),
+                continue_mode: false,
+                responding_participant_id: None,
+                target_participant_ids: None,
+                speaking_as_participant_id: None,
+                file_ids: vec![],
+            })
+            .await
+        {
+            Response::Error(e) => {
+                assert_eq!(e.kind, ErrorKind::Internal);
+                assert_eq!(e.message, "chat dispatch not assembled");
+            }
             other => panic!("unexpected: {other:?}"),
         }
     }
