@@ -293,6 +293,8 @@ pub async fn dispatch_courier_transport<S: EventSink>(
         user_participant_id: opts.user_participant_id,
         is_paused: true,
         scene_tracking_character_ids: None,
+        skipped: false,
+        skipped_participant_id: None,
     })
 }
 

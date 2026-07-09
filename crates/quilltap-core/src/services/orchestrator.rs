@@ -337,42 +337,6 @@ pub struct SendMessageOptions {
     pub chain_selection_reason: Option<turn_orchestrator::ChainSelectionReason>,
 }
 
-/// The spine's per-turn result: v4 adds `skipped?` / `skippedParticipantId?`
-/// directly to `ProcessMessageResult`, but the Rust struct lives in the
-/// `message_finalizer` module (owned by the parallel P4.d1 lane this round, per
-/// the binding ownership matrix), so the spine WRAPS it instead — a unification
-/// pass can fold the two fields into `ProcessMessageResult` proper. `Deref`s to
-/// the inner result so existing field reads (the host spine, the DTO assembly)
-/// compose unchanged.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TurnResult {
-    pub inner: ProcessMessageResult,
-    /// "Nothing to add" turn-skipping: the character passed this turn (posted a
-    /// Host turn-pass record, persisted no reply). The chain continuation treats
-    /// this like a content turn — it advances the rotation rather than stopping.
-    pub skipped: bool,
-    /// Participant ID of the character who passed (set when `skipped` is true).
-    pub skipped_participant_id: Option<String>,
-}
-
-impl TurnResult {
-    /// A non-skipped result (every pre-existing path).
-    pub fn plain(inner: ProcessMessageResult) -> Self {
-        TurnResult {
-            inner,
-            skipped: false,
-            skipped_participant_id: None,
-        }
-    }
-}
-
-impl std::ops::Deref for TurnResult {
-    type Target = ProcessMessageResult;
-    fn deref(&self) -> &ProcessMessageResult {
-        &self.inner
-    }
-}
-
 /// The wall-clock + RNG values injected into one `process_message` call (v4's
 /// `Date.now()` / `crypto.randomUUID()` seed points + `Math.random()`).
 #[derive(Clone, Copy, Debug)]
@@ -574,7 +538,7 @@ pub async fn process_message<EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COS
         PF,
     >,
     input: &ProcessMessageInput,
-) -> Result<TurnResult, DbError>
+) -> Result<ProcessMessageResult, DbError>
 where
     EMB: EmbeddingProvider,
     CMP: CompletionProvider + Sync,
@@ -1716,8 +1680,7 @@ where
                 now_ms: input.clock.now_ms,
             },
         )
-        .await
-        .map(TurnResult::plain);
+        .await;
     }
 
     // --- Primary stream (orchestrator.service.ts:1205–1255) ---
@@ -1803,14 +1766,16 @@ where
 
     if let Some(early) = primary.early_return {
         // Request-limit recovery handled the whole request.
-        return Ok(TurnResult::plain(ProcessMessageResult {
+        return Ok(ProcessMessageResult {
             is_multi_character: early.is_multi_character,
             has_content: early.has_content,
             message_id: early.message_id.unwrap_or_default(),
             user_participant_id: early.user_participant_id,
             is_paused: early.is_paused,
             scene_tracking_character_ids: None,
-        }));
+            skipped: false,
+            skipped_participant_id: None,
+        });
     }
 
     // --- Native tool loop (orchestrator.service.ts:1259–1280) ---
@@ -2236,7 +2201,7 @@ where
         // Keep `existing_messages` referenced (it fed buildContext + the previous
         // response id scan; nothing after this reads it).
         existing_messages.clear();
-        Ok(TurnResult::plain(result))
+        Ok(result)
     } else if !tool_messages.is_empty() {
         // Tool-only terminal (orchestrator.service.ts:1443–1479): no assistant
         // prose, but tools executed → persist the TOOL rows, bump the chat's
@@ -2283,14 +2248,16 @@ where
             ..Default::default()
         }));
 
-        Ok(TurnResult::plain(ProcessMessageResult {
+        Ok(ProcessMessageResult {
             is_multi_character,
             has_content: true,
             message_id: save_result.first_tool_message_id.unwrap_or_default(),
             user_participant_id,
             is_paused,
             scene_tracking_character_ids: None,
-        }))
+            skipped: false,
+            skipped_participant_id: None,
+        })
     } else {
         // Empty response (no tool messages in the corpus). Emit the done frame.
         let empty_reason = provider_failover::get_empty_response_reason(
@@ -2316,14 +2283,16 @@ where
             model_name: Some(effective_profile.model_name.clone()),
             ..Default::default()
         }));
-        Ok(TurnResult::plain(ProcessMessageResult {
+        Ok(ProcessMessageResult {
             is_multi_character,
             has_content: false,
             message_id: String::new(),
             user_participant_id,
             is_paused,
             scene_tracking_character_ids: None,
-        }))
+            skipped: false,
+            skipped_participant_id: None,
+        })
     }
 }
 
@@ -2394,7 +2363,7 @@ async fn handle_turn_skip(
     db: &Db,
     sink: &(impl EventSink + Sync),
     params: HandleTurnSkipParams<'_>,
-) -> Result<TurnResult, DbError> {
+) -> Result<ProcessMessageResult, DbError> {
     // Post the Host announcement (errors swallowed by the writer contract).
     let host_message = crate::services::host_notifications::post_host_turn_pass_announcement(
         db,
@@ -2452,30 +2421,27 @@ async fn handle_turn_skip(
     if let Some(posted) = &host_message {
         sink.emit(ChatEvent::host_announcement(posted.message.clone()));
     }
-    sink.emit(ChatEvent::done_skipped(
-        crate::services::chat_events::SkipDonePayload {
-            message_id: None,
-            participant_id: params.character_participant_id.to_string(),
-            usage: params.usage.map(to_done_usage),
-            cache_usage: params.cache_usage.map(to_done_cache_usage),
-            attachment_results: Some(params.attachment_results.unwrap_or(Value::Null)),
-            tools_executed: false,
-            skipped: true,
-            skipped_participant_id: params.character_participant_id.to_string(),
-            provider: params.provider,
-            model_name: params.model_name,
-        },
-    ));
+    sink.emit(ChatEvent::done(DonePayload {
+        message_id: None,
+        participant_id: Some(params.character_participant_id.to_string()),
+        usage: params.usage.map(to_done_usage),
+        cache_usage: params.cache_usage.map(to_done_cache_usage),
+        attachment_results: Some(params.attachment_results.unwrap_or(Value::Null)),
+        tools_executed: false,
+        skipped: Some(true),
+        skipped_participant_id: Some(params.character_participant_id.to_string()),
+        provider: Some(params.provider),
+        model_name: Some(params.model_name),
+        ..Default::default()
+    }));
 
-    Ok(TurnResult {
-        inner: ProcessMessageResult {
-            is_multi_character: params.is_multi_character,
-            has_content: false,
-            message_id: String::new(),
-            user_participant_id: params.user_participant_id,
-            is_paused,
-            scene_tracking_character_ids: None,
-        },
+    Ok(ProcessMessageResult {
+        is_multi_character: params.is_multi_character,
+        has_content: false,
+        message_id: String::new(),
+        user_participant_id: params.user_participant_id,
+        is_paused,
+        scene_tracking_character_ids: None,
         skipped: true,
         skipped_participant_id: Some(params.character_participant_id.to_string()),
     })
@@ -2617,7 +2583,7 @@ pub struct ExecuteTurnChainOptions {
     pub chat_id: String,
     /// The initial `processMessage` result (whether to chain at all is decided
     /// from it).
-    pub initial_result: TurnResult,
+    pub initial_result: ProcessMessageResult,
     pub initial_continue_mode: bool,
     /// Autonomous-room flag (bypasses the all-LLM pause).
     pub never_pause_for_user: bool,
@@ -3427,14 +3393,16 @@ mod tests {
                 &mut deps,
                 ExecuteTurnChainOptions {
                     chat_id: "chat-x".into(),
-                    initial_result: TurnResult::plain(ProcessMessageResult {
+                    initial_result: ProcessMessageResult {
                         is_multi_character: is_multi,
                         has_content,
                         message_id: "m".into(),
                         user_participant_id: None,
                         is_paused,
                         scene_tracking_character_ids: None,
-                    }),
+                        skipped: false,
+                        skipped_participant_id: None,
+                    },
                     initial_continue_mode: false,
                     never_pause_for_user: false,
                     single_turn,

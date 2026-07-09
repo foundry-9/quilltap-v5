@@ -541,6 +541,12 @@ pub struct ProcessMessageResult {
     /// `sceneTrackingContext.characterIds`). The rest of v4's `sceneTrackingContext`
     /// (connectionProfile, memoryChatSettings) is host-side context, not diffed.
     pub scene_tracking_character_ids: Option<Vec<String>>,
+    /// "Nothing to add" turn-skipping: the character passed this turn (posted a
+    /// Host turn-pass record, persisted no reply). The chain continuation treats
+    /// this like a content turn — it advances the rotation rather than stopping.
+    pub skipped: bool,
+    /// Participant ID of the character who passed (set when `skipped` is true).
+    pub skipped_participant_id: Option<String>,
 }
 
 /// Everything [`finalize_message_response`] needs (v4's `FinalizeMessageResponseOptions`
@@ -1187,6 +1193,10 @@ where
         attachment_results: Some(streaming.attachment_results.clone().unwrap_or(Value::Null)),
         // v4 `toolsExecuted: toolMessages.length > 0` (message-finalizer.service.ts:464).
         tools_executed: !tool_messages.is_empty(),
+        // Never set on the finalizer path — the skip frame is emitted by the
+        // orchestrator's `handle_turn_skip` before the finalizer ever runs.
+        skipped: None,
+        skipped_participant_id: None,
         turn: Some(DoneTurn {
             next_speaker_id: turn_info.next_speaker_id.clone(),
             reason: turn_info.reason.clone(),
@@ -1292,6 +1302,8 @@ where
         user_participant_id,
         is_paused: chat.is_paused,
         scene_tracking_character_ids,
+        skipped: false,
+        skipped_participant_id: None,
     })
 }
 

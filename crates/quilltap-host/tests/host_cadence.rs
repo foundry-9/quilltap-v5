@@ -144,6 +144,7 @@ fn chats_ddl() -> String {
         "runVisibility TEXT",
         "coreWhisperEnabled INTEGER",
         "coreWhisperInterval REAL",
+        "turnSkippingEnabled INTEGER",
         "showThinking INTEGER",
         "createdAt TEXT",
         "updatedAt TEXT",

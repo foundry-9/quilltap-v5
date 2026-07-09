@@ -176,6 +176,16 @@ pub struct DonePayload {
     /// `false` on the recovery paths (no tool loop ran); on the finalizer path,
     /// `toolMessages.length > 0`.
     pub tools_executed: bool,
+    /// `true` on the "nothing to add" skip done frame (v4 `handleTurnSkip`'s
+    /// `skipped: true`), else ABSENT. Declared right after `tools_executed` so the
+    /// skip frame matches v4's `{ …, toolsExecuted, skipped, skippedParticipantId,
+    /// provider, modelName }` order.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skipped: Option<bool>,
+    /// Participant ID of the character who passed — present only alongside
+    /// `skipped`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skipped_participant_id: Option<String>,
     /// The next-speaker info (finalizer only). Absent on recovery.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub turn: Option<DoneTurn>,
@@ -324,20 +334,6 @@ pub enum ChatEvent {
         #[serde(rename = "hostAnnouncement")]
         host_announcement: serde_json::Value,
     },
-    /// `{done:true, messageId:null, participantId, usage, cacheUsage,
-    /// attachmentResults, toolsExecuted:false, skipped:true,
-    /// skippedParticipantId, provider, modelName}` — the "nothing to add"
-    /// skip-path done frame (v4 `handleTurnSkip`'s `encodeDoneEvent` call,
-    /// b90cd1f5). v4 adds `skipped?` / `skippedParticipantId?` to the ONE done
-    /// payload; here the skip frame is a dedicated variant because `DonePayload`
-    /// is constructed as a full literal by the finalizer (a P4.d1-owned file this
-    /// round) — fold the two fields into [`DonePayload`] at unification. The
-    /// serialized frame is byte-identical to v4's.
-    DoneSkipped {
-        done: DoneBool,
-        #[serde(flatten)]
-        payload: Box<SkipDonePayload>,
-    },
     /// `{done:true, …}` — the payload spreads flat next to `done: true`. Boxed:
     /// the full finalizer payload is by far the largest variant
     /// (clippy::large_enum_variant), and every event is heap-bound for the
@@ -406,30 +402,6 @@ pub struct PendingExternalTurnPayload {
     pub character_name: String,
 }
 
-/// The skip-path done payload (v4 `handleTurnSkip`'s `encodeDoneEvent` data, in
-/// its exact key order): `messageId: null`, the passing participant, the
-/// streaming usage/cache/attachments, `toolsExecuted: false`, `skipped: true`,
-/// `skippedParticipantId`, and the effective provider/model.
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SkipDonePayload {
-    /// Always `null` on the skip frame (no reply persisted).
-    pub message_id: Option<String>,
-    pub participant_id: String,
-    /// `null` when the stream reported no usage… in practice the sentinel reply
-    /// carries real usage (v4 passes `streaming.usage` through).
-    pub usage: Option<DoneUsage>,
-    pub cache_usage: Option<DoneCacheUsage>,
-    pub attachment_results: Option<serde_json::Value>,
-    /// Always `false` (the tools-ran case clears the sentinel instead).
-    pub tools_executed: bool,
-    /// Always `true`.
-    pub skipped: bool,
-    pub skipped_participant_id: String,
-    pub provider: String,
-    pub model_name: String,
-}
-
 /// A unit type that always serializes to the JSON literal `true`, so
 /// [`ChatEvent::Done`] carries `"done": true` (v4's `{ done: true, ... }`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -458,14 +430,6 @@ impl ChatEvent {
     pub fn reasoning(reasoning: impl Into<String>) -> Self {
         ChatEvent::Reasoning {
             reasoning: reasoning.into(),
-        }
-    }
-
-    /// The "nothing to add" skip-path done event (v4 `handleTurnSkip`).
-    pub fn done_skipped(payload: SkipDonePayload) -> Self {
-        ChatEvent::DoneSkipped {
-            done: DoneBool,
-            payload: Box::new(payload),
         }
     }
 
@@ -707,6 +671,8 @@ mod tests {
             cache_usage: None,
             attachment_results: None,
             tools_executed: false,
+            skipped: None,
+            skipped_participant_id: None,
             turn: Some(DoneTurn {
                 next_speaker_id: None,
                 reason: "user_turn".into(),
@@ -743,6 +709,32 @@ mod tests {
                 "reasoningContent": null,
                 "reasoningSegments": [ { "anchorOffset": 5, "content": "thinking", "seq": 0 } ]
             })
+        );
+    }
+
+    #[test]
+    fn skip_done_frame_matches_v4_handle_turn_skip_key_order() {
+        // The "nothing to add" skip-path done frame (v4 `handleTurnSkip`'s
+        // `encodeDoneEvent` call): `skipped`/`skippedParticipantId` sit between
+        // `toolsExecuted` and `provider`, `messageId` is an explicit null, and
+        // none of the finalizer-only keys appear. Asserted on the serialized
+        // STRING (the SSE wire is byte-level).
+        let ev = ChatEvent::done(DonePayload {
+            message_id: None,
+            participant_id: Some("p9".into()),
+            usage: None,
+            cache_usage: None,
+            attachment_results: Some(serde_json::Value::Null),
+            tools_executed: false,
+            skipped: Some(true),
+            skipped_participant_id: Some("p9".into()),
+            provider: Some("ANTHROPIC".into()),
+            model_name: Some("claude".into()),
+            ..Default::default()
+        });
+        assert_eq!(
+            serde_json::to_string(&ev).unwrap(),
+            "{\"done\":true,\"messageId\":null,\"participantId\":\"p9\",\"usage\":null,\"cacheUsage\":null,\"attachmentResults\":null,\"toolsExecuted\":false,\"skipped\":true,\"skippedParticipantId\":\"p9\",\"provider\":\"ANTHROPIC\",\"modelName\":\"claude\"}"
         );
     }
 

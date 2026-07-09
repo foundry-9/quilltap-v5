@@ -4,6 +4,19 @@
 
 ### 5.0-dev
 
+P4.d unification: both drift re-port lanes integrated on main. Zero
+source-level conflicts (doc unions only; version deltas verified
+identical). The two P4.d2 ownership workarounds folded: skipped/
+skippedParticipantId moved onto ProcessMessageResult (TurnResult wrapper
+deleted) and onto DonePayload as optional fields in v4's key position
+(the DoneSkipped variant deleted; a byte-level unit test pins the skip
+frame's serialized order). One straggler fixture DDL (host_cadence)
+gained turnSkippingEnabled. Verified: full workspace gate (1,127 tests,
+clippy -D warnings on default and native-transport, fmt) and a
+thirteen-differential sweep against fresh v4 oracles at a7b1398d.
+Oracle baseline advances to a7b1398d. Regen gotcha recorded: the
+enclave-step oracle requires TZ=UTC in the invocation env.
+
 P4.d1: answer-confirmation drift catch-up to v4 a7b1398d. Ported
 buildRecentConversationContext (the compact recent-dialogue transcript —
 Staff/tool/silent filtering, the 20-message cap, the 8,000-UTF-16-unit

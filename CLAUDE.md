@@ -5399,3 +5399,46 @@ an idempotent ALTER at test setup — v4's `add-turn-skipping-field-v1`
 migration effect on an old instance). **Out of scope per the order
 (P4.4/P4.6):** the Salon Skip-button route + chat-GET `canSkipTurn`, the
 migration script, the qtap-export schema line, help content, and all UI.
+
+**P4.d unification (2026-07-09): DONE — both drift re-port lanes are
+integrated on main; the three stale spine differentials are green again at
+v4 HEAD `a7b1398d`, and the oracle baseline advances to `a7b1398d`
+unconditionally.** The two lane branches (P4.d1 answer-confirmation
+catch-up; P4.d2 turn-skipping) cherry-picked with only the two doc unions
+(CLAUDE.md/CHANGELOG) — zero source-level conflicts for the sixth
+consecutive round; every shared `Cargo.toml` delta was verified
+version-only and identical (both lanes → core 0.0.142 / harness 0.0.133).
+**The two ownership-forced workarounds P4.d2 flagged were FOLDED at
+unification** (the reason this pass exists): (1) the `TurnResult` wrapper
+dissolved — `skipped`/`skipped_participant_id` now live on
+`ProcessMessageResult` proper (`message_finalizer.rs`), every constructor
+sets them, the `Deref` shim is deleted; (2) the dedicated
+`DoneSkipped`/`SkipDonePayload` variant dissolved — `DonePayload` gained
+the two optional fields declared between `tools_executed` and `turn` so
+the skip frame serializes v4's exact `{…, toolsExecuted, skipped,
+skippedParticipantId, provider, modelName}` order (a new byte-level unit
+test pins the serialized STRING), and `handle_turn_skip` emits a plain
+`ChatEvent::done`. One straggler test-infra catch-up: the `host_cadence`
+danger-scan fixture's hand-rolled chats DDL gained `turnSkippingEnabled`
+(the sibling fixtures were caught by the lane). Verified on the
+integrated tree: the full workspace gate (**1,127 tests / 0 failed**;
+clippy `-D warnings` on default AND `native-transport`; fmt) and a
+**thirteen-differential sweep** against freshly regenerated v4 oracles at
+`a7b1398d` — the lanes' own proofs (`skip_signal` 99 rows,
+`answer_confirmation` 17 calls, `orchestrator_tier3` 27 calls,
+`enclave_step_tier3` 20 calls, `turn_state`, `turn_orchestrator_tier2`,
+`chats_tier2`, `chats_read`, `post_office_host`,
+`post_office_writers_tier3`, `message_finalizer_tier3`) plus the two
+fold cross-checks (`courier_transport_tier3`, `primary_stream_tier3` —
+both `DonePayload` consumers). **Regen gotcha recorded:** the
+enclave-step oracle MUST be generated with `TZ=UTC` in the invocation
+env (the recipe's line — V8 caches the local zone at process start, so
+the in-file `process.env.TZ` pin is not sufficient); a local-TZ regen
+diverges only on `scheduleNextRunAt` (the croner local-Date semantics).
+Versions: core 0.0.142, harness 0.0.133, host 0.0.5, web 0.0.2.
+**Standing follow-ups (unchanged from the lanes + the prior round):**
+the P4.4/P4.6 turn-skipping surface (Skip-button route + `canSkipTurn`
+GET + migration + qtap-export + UI + help), the two live orchestrator
+corpus cases (ask_carina sink threading; the Brahma `isDefault` fixture
+profile), the spine failover-log threading, and the P4.4 ∥ P4.5 round
+(route-logic backfill ∥ SPA foundation) as the next planned work.
