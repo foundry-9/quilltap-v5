@@ -315,6 +315,29 @@ pub enum ChatEvent {
         #[serde(flatten)]
         payload: PendingExternalTurnPayload,
     },
+    /// `{hostAnnouncement: <message>}` — a Host announcement persisted mid-turn
+    /// (v4 `encodeHostAnnouncementEvent`; currently the "nothing to add"
+    /// turn-pass note), so the Salon can surface the Host bubble immediately.
+    /// Carries the full posted `MessageEvent` object (a raw `Value` — the
+    /// message shape is owned by the Host writer, which produces it).
+    HostAnnouncement {
+        #[serde(rename = "hostAnnouncement")]
+        host_announcement: serde_json::Value,
+    },
+    /// `{done:true, messageId:null, participantId, usage, cacheUsage,
+    /// attachmentResults, toolsExecuted:false, skipped:true,
+    /// skippedParticipantId, provider, modelName}` — the "nothing to add"
+    /// skip-path done frame (v4 `handleTurnSkip`'s `encodeDoneEvent` call,
+    /// b90cd1f5). v4 adds `skipped?` / `skippedParticipantId?` to the ONE done
+    /// payload; here the skip frame is a dedicated variant because `DonePayload`
+    /// is constructed as a full literal by the finalizer (a P4.d1-owned file this
+    /// round) — fold the two fields into [`DonePayload`] at unification. The
+    /// serialized frame is byte-identical to v4's.
+    DoneSkipped {
+        done: DoneBool,
+        #[serde(flatten)]
+        payload: Box<SkipDonePayload>,
+    },
     /// `{done:true, …}` — the payload spreads flat next to `done: true`. Boxed:
     /// the full finalizer payload is by far the largest variant
     /// (clippy::large_enum_variant), and every event is heap-bound for the
@@ -356,6 +379,10 @@ pub struct TurnCompletePayload {
     /// v4 passes `chainResult.messageId || ''` — the empty string on a null id.
     pub message_id: String,
     pub chain_depth: i64,
+    /// "Nothing to add" turn-skipping: whether the chained turn was passed. The
+    /// chain driver ALWAYS passes `chainResult.skipped === true` (b90cd1f5), so
+    /// the key is present on every chained turn's frame.
+    pub skipped: bool,
 }
 
 /// The `chainComplete` frame payload (v4 `encodeChainCompleteEvent`'s `data`).
@@ -377,6 +404,30 @@ pub struct PendingExternalTurnPayload {
     pub message_id: String,
     pub participant_id: String,
     pub character_name: String,
+}
+
+/// The skip-path done payload (v4 `handleTurnSkip`'s `encodeDoneEvent` data, in
+/// its exact key order): `messageId: null`, the passing participant, the
+/// streaming usage/cache/attachments, `toolsExecuted: false`, `skipped: true`,
+/// `skippedParticipantId`, and the effective provider/model.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkipDonePayload {
+    /// Always `null` on the skip frame (no reply persisted).
+    pub message_id: Option<String>,
+    pub participant_id: String,
+    /// `null` when the stream reported no usage… in practice the sentinel reply
+    /// carries real usage (v4 passes `streaming.usage` through).
+    pub usage: Option<DoneUsage>,
+    pub cache_usage: Option<DoneCacheUsage>,
+    pub attachment_results: Option<serde_json::Value>,
+    /// Always `false` (the tools-ran case clears the sentinel instead).
+    pub tools_executed: bool,
+    /// Always `true`.
+    pub skipped: bool,
+    pub skipped_participant_id: String,
+    pub provider: String,
+    pub model_name: String,
 }
 
 /// A unit type that always serializes to the JSON literal `true`, so
@@ -410,6 +461,14 @@ impl ChatEvent {
         }
     }
 
+    /// The "nothing to add" skip-path done event (v4 `handleTurnSkip`).
+    pub fn done_skipped(payload: SkipDonePayload) -> Self {
+        ChatEvent::DoneSkipped {
+            done: DoneBool,
+            payload: Box::new(payload),
+        }
+    }
+
     /// A done event.
     pub fn done(payload: DonePayload) -> Self {
         ChatEvent::Done {
@@ -430,6 +489,14 @@ impl ChatEvent {
     pub fn carina_answer(message: serde_json::Value) -> Self {
         ChatEvent::CarinaAnswer {
             carina_answer: message,
+        }
+    }
+
+    /// A Host announcement event carrying the full posted message object (v4
+    /// `encodeHostAnnouncementEvent`).
+    pub fn host_announcement(message: serde_json::Value) -> Self {
+        ChatEvent::HostAnnouncement {
+            host_announcement: message,
         }
     }
 
@@ -705,9 +772,10 @@ mod tests {
                 participant_id: "p1".into(),
                 message_id: "m1".into(),
                 chain_depth: 1,
+                skipped: false,
             }))
             .unwrap(),
-            json!({ "turnComplete": true, "participantId": "p1", "messageId": "m1", "chainDepth": 1 })
+            json!({ "turnComplete": true, "participantId": "p1", "messageId": "m1", "chainDepth": 1, "skipped": false })
         );
         assert_eq!(
             serde_json::to_value(ChatEvent::chain_complete(ChainCompletePayload {

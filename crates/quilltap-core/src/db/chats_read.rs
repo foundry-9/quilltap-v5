@@ -70,7 +70,7 @@ const ALL_COLUMNS: &str = "id, userId, participants, title, contextSummary, sill
      runEndedAt, runPausedAt, runPausedAccumMs, runTurnsConsumed, runTokensConsumed, \
      runMilestonesAnnounced, runDestructiveToolsAllowed, budgetExcludeCacheHits, runVisibility, \
      coreWhisperEnabled, coreWhisperInterval, showThinking, createdAt, updatedAt, \
-     answerConfirmationOverride";
+     answerConfirmationOverride, turnSkippingEnabled";
 
 /// Insert a nullable-optional TEXT/UUID/enum value: `Some` → string, `None` → omit.
 fn put_opt_string(obj: &mut Map<String, Value>, key: &str, v: Option<String>) {
@@ -306,6 +306,9 @@ fn marshal_row(row: &Row) -> Result<Value, rusqlite::Error> {
     obj.insert("createdAt".into(), Value::String(row.get::<_, String>(94)?));
     obj.insert("updatedAt".into(), Value::String(row.get::<_, String>(95)?));
     put_opt_string(&mut obj, "answerConfirmationOverride", row.get(96)?);
+    // "Nothing to add" turn-skipping toggle (nullable boolean; NULL → omitted,
+    // v4's `undefined` dropped by `JSON.stringify`). v4 b90cd1f5.
+    put_opt_bool(&mut obj, "turnSkippingEnabled", row.get(97)?);
 
     Ok(Value::Object(obj))
 }

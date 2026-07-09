@@ -87,6 +87,7 @@ interface Case {
   isNew?: boolean;
   originBy?: string;
   originCharacterName?: string;
+  turnPassSource?: string;
   usage?: Usage;
   provider?: string;
   modelName?: string;
@@ -205,6 +206,14 @@ async function main(): Promise<void> {
         break;
       case 'hostScenario':
         await host.postHostScenarioAnnouncement({ chatId, scenarioText: c.scenarioText! });
+        break;
+      case 'hostTurnPass':
+        await host.postHostTurnPassAnnouncement({
+          chatId,
+          characterName: c.characterName!,
+          participantId: participantRef(c.participantRef),
+          source: c.turnPassSource as never,
+        });
         break;
       case 'auroraCoreWhisper':
         await auroraCore.postCoreWhisper({

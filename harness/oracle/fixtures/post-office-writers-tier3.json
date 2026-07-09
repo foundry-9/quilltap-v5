@@ -28,8 +28,15 @@
         "score": 0.82,
         "threshold": 0.5,
         "categories": [
-          { "category": "violence", "score": 0.82 },
-          { "category": "self-harm", "score": 0.4, "label": "Self Harm" }
+          {
+            "category": "violence",
+            "score": 0.82
+          },
+          {
+            "category": "self-harm",
+            "score": 0.4,
+            "label": "Self Harm"
+          }
         ],
         "source": "moderation",
         "providerName": "OPENAI"
@@ -99,10 +106,24 @@
       "scenarioText": "A dim tavern at dusk; rain against the panes."
     },
     {
+      "name": "host_turn_pass_llm",
+      "kind": "hostTurnPass",
+      "characterName": "Ada",
+      "participantRef": "p1",
+      "turnPassSource": "llm"
+    },
+    {
+      "name": "host_turn_pass_user",
+      "kind": "hostTurnPass",
+      "characterName": "Charlie",
+      "participantRef": "p2",
+      "turnPassSource": "user"
+    },
+    {
       "name": "aurora_core_whisper",
       "kind": "auroraCoreWhisper",
       "targetRef": "p1",
-      "content": "You have a Core — Aurora offers it back to you.",
+      "content": "You have a Core \u2014 Aurora offers it back to you.",
       "opaqueContent": "Your Core, restated plainly."
     },
     {
@@ -110,9 +131,15 @@
       "kind": "auroraOutfitChange",
       "characterName": "Ada",
       "outfit": {
-        "top": ["a linen blouse"],
-        "bottom": ["charcoal trousers"],
-        "footwear": ["worn boots"],
+        "top": [
+          "a linen blouse"
+        ],
+        "bottom": [
+          "charcoal trousers"
+        ],
+        "footwear": [
+          "worn boots"
+        ],
         "accessories": []
       }
     },
@@ -120,7 +147,7 @@
       "name": "suparna_mail",
       "kind": "suparnaMail",
       "targetRef": "p2",
-      "content": "*Suparṇā glides in from the Post Office with a letter for you.*"
+      "content": "*Supar\u1e47\u0101 glides in from the Post Office with a letter for you.*"
     },
     {
       "name": "commonplace_targeted",
@@ -140,7 +167,9 @@
       "name": "librarian_summary",
       "kind": "librarianSummary",
       "summary": "The party discussed the map and agreed to head north.",
-      "targetRefs": ["p1"],
+      "targetRefs": [
+        "p1"
+      ],
       "summaryAnchor": 3
     },
     {
@@ -157,7 +186,11 @@
     {
       "name": "cost_context_summary",
       "kind": "costContextSummary",
-      "usage": { "promptTokens": 120, "completionTokens": 45, "totalTokens": 165 },
+      "usage": {
+        "promptTokens": 120,
+        "completionTokens": 45,
+        "totalTokens": 165
+      },
       "provider": "OPENAI",
       "modelName": "gpt-4o-mini",
       "estimatedCostUSD": 0.0012
@@ -165,7 +198,11 @@
     {
       "name": "cost_title_generation",
       "kind": "costTitleGeneration",
-      "usage": { "promptTokens": 30, "completionTokens": 8, "totalTokens": 38 },
+      "usage": {
+        "promptTokens": 30,
+        "completionTokens": 8,
+        "totalTokens": 38
+      },
       "provider": "OPENAI",
       "modelName": "gpt-4o-mini",
       "estimatedCostUSD": 0.0003

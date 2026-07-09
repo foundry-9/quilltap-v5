@@ -56,9 +56,10 @@ use quilltap_core::services::cost_events::{
 };
 use quilltap_core::services::host_notifications::{
     post_host_add_announcement, post_host_off_scene_characters_announcement,
-    post_host_scenario_announcement, post_host_status_change_announcement, HostAddAnnouncement,
-    HostCharacter, HostOffSceneCharactersAnnouncement, HostScenarioAnnouncement,
-    HostStatusChangeAnnouncement, OffSceneCharacterCard,
+    post_host_scenario_announcement, post_host_status_change_announcement,
+    post_host_turn_pass_announcement, HostAddAnnouncement, HostCharacter,
+    HostOffSceneCharactersAnnouncement, HostScenarioAnnouncement, HostStatusChangeAnnouncement,
+    HostTurnPassAnnouncement, OffSceneCharacterCard, TurnPassSource,
 };
 use quilltap_core::services::librarian_notifications::{
     post_librarian_open_announcement, post_librarian_summary_announcement,
@@ -202,6 +203,8 @@ struct Case {
     origin_by: Option<String>,
     #[serde(default)]
     origin_character_name: Option<String>,
+    #[serde(default)]
+    turn_pass_source: Option<String>,
     #[serde(default)]
     usage: Option<UsageSpec>,
     #[serde(default)]
@@ -431,6 +434,21 @@ async fn run_case(db: &Db, spec: &Spec, c: &Case) {
                 HostOffSceneCharactersAnnouncement {
                     chat_id: chat_id.clone(),
                     characters,
+                },
+            )
+            .await;
+        }
+        "hostTurnPass" => {
+            post_host_turn_pass_announcement(
+                db,
+                HostTurnPassAnnouncement {
+                    chat_id: chat_id.clone(),
+                    character_name: c.character_name.clone().expect("characterName"),
+                    participant_id: participant(&c.participant_ref),
+                    source: match c.turn_pass_source.as_deref() {
+                        Some("user") => TurnPassSource::User,
+                        _ => TurnPassSource::Llm,
+                    },
                 },
             )
             .await;
@@ -687,6 +705,6 @@ async fn post_office_writers_tier3_matches_oracle() {
         .as_array()
         .map(|a| a.len())
         .unwrap_or(0);
-    assert_eq!(nm, 19, "expected 17 persona + 2 cost SYSTEM rows");
+    assert_eq!(nm, 21, "expected 19 persona + 2 cost SYSTEM rows");
     eprintln!("OK: post-office-writers tier-3 matched oracle ({nm} rows, chats aggregate).");
 }

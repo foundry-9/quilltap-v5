@@ -272,6 +272,9 @@ where
         // Not an autonomous turn — no per-turn context cap (v4's regenerate path
         // never carries `autonomousContextCap`).
         autonomous_context_cap: None,
+        // Regenerate-as-swipe never offers the "nothing to add" pass (v4 passes
+        // no `turnSkip`).
+        turn_skip: None,
     });
 
     // The per-character opaque-anywhere transparency map (v4's wrapper reads each

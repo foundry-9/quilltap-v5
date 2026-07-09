@@ -2175,7 +2175,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-host"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "image",
  "jiff",
@@ -2201,7 +2201,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-web"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "axum",
  "futures-util",

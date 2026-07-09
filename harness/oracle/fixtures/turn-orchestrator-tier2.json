@@ -308,6 +308,57 @@
           "participantId": "eeee000f-0000-4000-8000-e0000000000f"
         }
       ]
+    },
+    {
+      "id": "cccc0010-0000-4000-8000-c00000000010",
+      "title": "All-LLM Staff In Window",
+      "isPaused": false,
+      "turnQueue": "[]",
+      "spokenThisCycleParticipantIds": "[]",
+      "participants": [
+        {
+          "id": "eeee0016-0000-4000-8000-e00000000016",
+          "type": "CHARACTER",
+          "characterId": "aaaa0000-0000-4000-8000-a00000000000",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "id": "eeee0017-0000-4000-8000-e00000000017",
+          "type": "CHARACTER",
+          "characterId": "bbbb0000-0000-4000-8000-b00000000000",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
+      ],
+      "messages": [
+        {
+          "id": "ffff0010-0000-4000-8000-f00000000010",
+          "role": "ASSISTANT",
+          "content": "turn 1",
+          "participantId": "eeee0016-0000-4000-8000-e00000000016"
+        },
+        {
+          "id": "ffff0011-0000-4000-8000-f00000000011",
+          "role": "ASSISTANT",
+          "content": "The Host marks the time as teatime.",
+          "participantId": null,
+          "systemSender": "host",
+          "systemKind": "timestamp"
+        },
+        {
+          "id": "ffff0012-0000-4000-8000-f00000000012",
+          "role": "ASSISTANT",
+          "content": "turn 2",
+          "participantId": "eeee0017-0000-4000-8000-e00000000017"
+        }
+      ]
     }
   ],
   "ops": [
@@ -430,6 +481,16 @@
       "participantId": null,
       "random01": 0.5,
       "note": "query: read-only, no write"
+    },
+    {
+      "kind": "shouldChainNext",
+      "chatId": "cccc0010-0000-4000-8000-c00000000010",
+      "userParticipantId": null,
+      "chainDepth": 0,
+      "nowMs": 1000,
+      "chainStartTimeMs": 0,
+      "random01": 0.1,
+      "note": "Staff (systemSender) rows excluded from the all-LLM pause counter: 2 real turns + 1 Staff row != threshold 3 -> chain continues"
     }
   ]
 }

@@ -189,6 +189,7 @@ async fn turn_orchestrator_tier2_matches_oracle() {
                     "participantId": decision.participant_id,
                     "characterName": decision.character_name,
                     "reason": decision.reason.as_str(),
+                    "selectionReason": decision.selection_reason.map(|r| r.as_str()),
                 }));
             }
             Op::TurnAction {

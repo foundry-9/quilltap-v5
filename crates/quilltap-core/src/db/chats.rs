@@ -361,6 +361,12 @@ pub struct ChatCreate {
     pub core_whisper_enabled: Option<bool>,
     #[serde(default)]
     pub core_whisper_interval: Option<f64>,
+    /// "Nothing to add" turn-skipping — per-chat toggle:
+    /// `z.boolean().nullable().optional()`. NULL = enabled (the default);
+    /// false = disabled. Schema position between `coreWhisperInterval` and
+    /// `showThinking` (v4 b90cd1f5).
+    #[serde(default)]
+    pub turn_skipping_enabled: Option<bool>,
     #[serde(default)]
     pub show_thinking: Option<bool>,
 }
@@ -600,6 +606,10 @@ pub struct ChatUpdate {
     /// `runDestructiveToolsAllowed` — v4 writes the NUMBER `0`/`1` (clamped by the
     /// user-level `destructiveToolPolicy` ceiling at write time).
     pub run_destructive_tools_allowed: Option<f64>,
+    /// Nullable `turnSkippingEnabled` (INTEGER 0/1) — the "nothing to add"
+    /// per-chat toggle (v4 b90cd1f5). `Some(Some(b))` sets it; `Some(None)`
+    /// clears to SQL NULL (= enabled, the default); `None` leaves it unset.
+    pub turn_skipping_enabled: Option<Option<bool>>,
     pub updated_at: Option<String>,
 }
 
@@ -663,14 +673,15 @@ impl<'c> ChatsRepository<'c> {
                currentRunId, runStateMessage, runStartedAt, runEndedAt, runPausedAt, \
                runPausedAccumMs, runTurnsConsumed, runTokensConsumed, runMilestonesAnnounced, \
                runDestructiveToolsAllowed, budgetExcludeCacheHits, runVisibility, coreWhisperEnabled, \
-               coreWhisperInterval, showThinking, createdAt, updatedAt, answerConfirmationOverride) \
+               coreWhisperInterval, showThinking, createdAt, updatedAt, answerConfirmationOverride, \
+               turnSkippingEnabled) \
              VALUES (\
                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, \
                ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, \
                ?35, ?36, ?37, ?38, ?39, ?40, ?41, ?42, ?43, ?44, ?45, ?46, ?47, ?48, ?49, ?50, \
                ?51, ?52, ?53, ?54, ?55, ?56, ?57, ?58, ?59, ?60, ?61, ?62, ?63, ?64, ?65, ?66, \
                ?67, ?68, ?69, ?70, ?71, ?72, ?73, ?74, ?75, ?76, ?77, ?78, ?79, ?80, ?81, ?82, \
-               ?83, ?84, ?85, ?86, ?87, ?88, ?89, ?90, ?91, ?92, ?93, ?94, ?95, ?96, ?97)",
+               ?83, ?84, ?85, ?86, ?87, ?88, ?89, ?90, ?91, ?92, ?93, ?94, ?95, ?96, ?97, ?98)",
             params![
                 opts.id,
                 data.user_id,
@@ -769,6 +780,7 @@ impl<'c> ChatsRepository<'c> {
                 opts.created_at,
                 opts.updated_at,
                 data.answer_confirmation_override,
+                data.turn_skipping_enabled,
             ],
         )?;
         Ok(())
@@ -1031,6 +1043,9 @@ impl<'c> ChatsRepository<'c> {
         }
         if let Some(v) = patch.run_destructive_tools_allowed {
             set_col!("runDestructiveToolsAllowed", Box::new(v));
+        }
+        if let Some(v) = patch.turn_skipping_enabled {
+            set_col!("turnSkippingEnabled", Box::new(v));
         }
         set_col!("updatedAt", Box::new(resolved_updated_at));
 

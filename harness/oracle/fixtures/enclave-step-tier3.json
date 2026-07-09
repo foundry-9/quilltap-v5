@@ -604,6 +604,37 @@
    }
   },
   {
+   "id": "dddddddd-0000-4000-8000-000000000017",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "title": "Pass room",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000017",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000017",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ccccccc0-0000-4000-8000-000017000001",
+     "role": "ASSISTANT",
+     "content": "Opening remark 17.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000017"
+    }
+   ],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "running",
+    "currentRunId": "aaaaaaa7-0000-4000-8000-000000000017",
+    "runStartedAt": "2026-01-01T00:00:00.000Z"
+   }
+  },
+  {
    "id": "dddddddd-0000-4000-8000-000000000021",
    "userId": "f2222222-2222-4222-8222-222222222222",
    "title": "Tick seed",
@@ -647,7 +678,7 @@
     "chatType": "autonomous",
     "runState": "idle",
     "scheduleCron": "0 3 * * *",
-    "scheduleNextRunAt": "2026-01-01T06:54:05.000Z"
+    "scheduleNextRunAt": "2026-01-01T07:04:05.000Z"
    }
   },
   {
@@ -671,7 +702,7 @@
     "chatType": "autonomous",
     "runState": "idle",
     "scheduleCron": "*/15 * * * *",
-    "scheduleNextRunAt": "2026-01-02T06:53:05.000Z"
+    "scheduleNextRunAt": "2026-01-02T07:03:05.000Z"
    }
   },
   {
@@ -937,16 +968,27 @@
    "anchorMs": 1767336245000
   },
   {
+   "name": "autonomous_pass",
+   "kind": "turn",
+   "chatId": "dddddddd-0000-4000-8000-000000000017",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "runId": "aaaaaaa7-0000-4000-8000-000000000017",
+   "jobId": "eeeeeeee-0000-4000-8000-000000000017",
+   "jobCreatedAt": "2026-01-02T06:54:00.000Z",
+   "streamLabel": "autonomous_pass",
+   "anchorMs": 1767336845000
+  },
+  {
    "name": "tick_first",
    "kind": "tick",
    "userId": "f2222222-2222-4222-8222-222222222222",
-   "anchorMs": 1767336845000
+   "anchorMs": 1767337445000
   },
   {
    "name": "tick_second",
    "kind": "tick",
    "userId": "f2222222-2222-4222-8222-222222222222",
-   "anchorMs": 1767337445000
+   "anchorMs": 1767338045000
   }
  ],
  "streams": {
@@ -1088,6 +1130,21 @@
       "promptTokens": 35,
       "completionTokens": 7,
       "totalTokens": 42
+     }
+    }
+   ]
+  ],
+  "autonomous_pass": [
+   [
+    {
+     "content": "[NOTHING TO ADD]"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 28,
+      "completionTokens": 4,
+      "totalTokens": 32
      }
     }
    ]

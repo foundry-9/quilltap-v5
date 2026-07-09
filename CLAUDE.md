@@ -5306,3 +5306,96 @@ re-verified INERT against a regenerated HEAD oracle (confirmation OFF in
 its corpus). Eight new unit tests for the pure leaves. The sibling
 turn-skipping re-port (P4.d2) still pins `orchestrator_tier3` /
 `enclave_step_tier3` to the old baseline.
+**P4.d2: the "nothing to add" turn-skipping port is DONE** (2026-07-09,
+v4 `b90cd1f5`; oracle baseline `a7b1398d`). The whole feature is ported
+across the already-ported spine, leaf-first per the work order. New pure
+module **`crate::skip_signal`** (v4 `lib/chat/turn-manager/skip-signal.ts`
+whole, over the ALREADY-PORTED `normalize_content_block_format` /
+`strip_character_name_prefix` / `find_mentioned_character_ids` /
+`is_participant_present` — v4's `response-normalizer.ts` extraction is a
+pure refactor with re-exports, so the ported `message_formatter` stays the
+canonical home): the sentinel detection (the wrapper-shedding
+`isSentinelLine`, the no-name strip guard, the sentinel+prose → `cleaned`
+path), `is_turn_pass_message`/`turn_pass_participant_id`,
+`find_skipped_since_last_substantive` (whispers don't terminate the walk),
+`qualifies_for_turn_skipping` (>2 active chars OR ≥2 LLM),
+`is_first_character_turn` (greetings count, Staff doesn't),
+`is_recently_addressed` (the 10-turn visible window + targeted-whisper
+hit), and `compute_skip_eligibility` (recentlyAddressed unconditional; the
+withhold precedence not-multi-character → feature-disabled →
+first-character-turn → summoned → already-skipped → all-others-skipped;
+the vacuous-`.every()` stall form is unreachable with a consistent roster
+— documented, the `.every()` exercised non-trivially). The history
+functions take raw `getMessages` JSON rows. **Turn state:**
+`calculate_turn_state_from_history` advances `lastSpeakerId` past a Host
+turn-pass record (the converters in `turn_orchestrator` +
+`participant_resolver` tag it via `TURN_PASS_VIEW_TYPE` carrying
+`hostEvent.participantId` — `MessageView` itself is unchanged, so the
+lane-frozen finalizer's converter needed no edit; its walk can never see a
+pass as the newest relevant record). **Chain gates:** `should_chain_next`
+excludes Staff (`systemSender`) rows from the all-LLM pause counter and
+returns `selection_reason: Option<ChainSelectionReason>` (queue |
+algorithm) on the chain-true decision; `execute_turn_chain`'s initial +
+per-turn gates treat a skipped turn as rotation-advancing (only
+no-content-AND-no-skip stops), stamp `skipped` on EVERY chained
+`turnComplete` frame, and thread `chain_selection_reason` into the chained
+input. **Context:** `BuildContextInput.turn_skip` + the byte-exact
+`build_turn_skip_instruction` (base note + the recently-addressed
+caution), pushed as the LAST trailing section on a new user message or as
+its own trailing `role: user` message on chained/continue turns
+(`message_context` passes the input through unchanged). **Spine:**
+eligibility computed after the existing-messages read (summoned = `nudge
+== true` OR queue-popped; `turnSkippingEnabled !== false`), the sentinel
+handling after the wardrobe drain via the unit-tested
+`resolve_sentinel_action` precedence (tools-ran clears the bare sentinel
+so the tool-save branch wins; offer → `handle_turn_skip`; no offer →
+the empty-response branch; cleaned prose falls through as a real reply),
+and `handle_turn_skip` (Host post → fresh re-read →
+`compute_spoken_this_cycle_after_skip` → the chat update minting
+`updatedAt` UNCONDITIONALLY [faithful] → the `hostAnnouncement` frame +
+the skipped `done` frame). **Events/writers/marshaling:**
+`TurnCompletePayload.skipped` (always present on chained frames), the new
+`HostAnnouncement` variant, the skip done frame as the dedicated
+`DoneSkipped`/`SkipDonePayload` variant in v4's exact key order;
+`host_notifications` gained the three byte-exact turn-pass builders +
+`post_host_turn_pass_announcement` (one-key `hostEvent`, errors swallowed,
+returns the persisted MessageEvent); `chats` gained the
+`turnSkippingEnabled` nullable-boolean marshaling (create + `ChatUpdate`
+double-`Option` setter + omit-when-NULL read). **Two shape deviations
+from v4 (fold-in at unification, both forced by the binding ownership
+matrix — `message_finalizer.rs` is P4.d1's this round):**
+`ProcessMessageResult`'s `skipped`/`skipped_participant_id` ride a
+`TurnResult` wrapper (Derefs to the inner result, so the untouchable host
+spine + enclave step compile unchanged), and the skip done frame is a
+separate `ChatEvent` variant instead of two `DonePayload` fields (the
+finalizer constructs `DonePayload` as a full literal). **Verified — ten
+differentials green against fresh v4-HEAD oracles:** the NEW
+`skip_signal_equivalence` (99 rows, tier-1 exact); `turn_state` (+4
+turn-pass rows incl. the malformed-guard fall-through);
+`turn_orchestrator_tier2` (+the Staff-in-pause-window chat — 2 real turns
++ 1 Staff row ≠ threshold 3 → chain continues — and `selectionReason` on
+every decision); `chats_tier2` (+create-true / update-false / null
+round-trip on `turnSkippingEnabled`); `chats_read` (+the materialized
+toggle on the rich chat); `post_office_host` (+the three builders);
+`post_office_writers_tier3` (+the llm AND user turn-pass rows, 21 rows);
+**`orchestrator_tier3` regenerated at 27 calls** — every qualifying
+group-chat case now carries the Turn note in its recorded canned keys
+(byte-proving the instruction + both injection routes), plus four new
+cases: `skip_fire` (bare sentinel → the Host turn-pass row + the
+`hostAnnouncement` + skipped `done` frames + the rotation advancing past
+the passer + the chain continuing to two more turns then the all-LLM
+pause), `sentinel_prose` (the cleaned prose persists as a normal reply),
+`nudge_withhold` (summoned → no note in the recorded key), and
+`skip_disabled` (`turnSkippingEnabled: false` at create → no note);
+**`enclave_step_tier3` regenerated at 20 calls** incl. the NEW
+`autonomous_pass` case (a room's speaker passes → the Host turn-pass row,
+no assistant message, the turn still counts against the run budget, the
+job re-enqueues — the enclave step itself needed zero logic change, only
+the result-shape ripple); and `build_context_tier3` /
+`message_context_leaves` / `primary_stream_tier3` re-verified inert.
+Test-infra catch-ups: the enclave/host-boot hand-rolled chats DDLs + the
+committed quilltap-web fixture gained the new column (the web fixture via
+an idempotent ALTER at test setup — v4's `add-turn-skipping-field-v1`
+migration effect on an old instance). **Out of scope per the order
+(P4.4/P4.6):** the Salon Skip-button route + chat-GET `canSkipTurn`, the
+migration script, the qtap-export schema line, help content, and all UI.

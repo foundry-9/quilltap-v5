@@ -192,6 +192,34 @@ pub fn build_status_change_opaque_content(
     format!("{character_name} is now {after} (previously {before}).")
 }
 
+// ---------------------------------------------------------------------------
+// Turn-pass announcements ("nothing to add", v4 b90cd1f5).
+//
+// When a character (or the human, via the Skip button) passes their turn, the
+// Host notes it and the rotation moves on. The persona content NEVER contains
+// the `[NOTHING TO ADD]` sentinel — otherwise the announcement would sit in
+// history and teach later turns the very phrase we detect. `systemKind` is
+// `turn-pass`; `hostEvent.participantId` records who passed so the turn-state
+// derivations (last speaker, stall guard) can reconstruct the pass from history.
+// ---------------------------------------------------------------------------
+
+/// v4 `buildTurnPassContent`.
+pub fn build_turn_pass_content(name: &str) -> String {
+    format!("The Host inclines his head as {name} waves the turn graciously by — nothing to add for the moment, it seems. The floor passes on.")
+}
+
+/// v4 `buildUserTurnPassContent`.
+pub fn build_user_turn_pass_content(name: &str) -> String {
+    format!(
+        "The Host observes {name} declining the floor with a courteous wave; the turn passes on."
+    )
+}
+
+/// v4 `buildTurnPassOpaqueContent`.
+pub fn build_turn_pass_opaque_content(name: &str) -> String {
+    format!("{name} has nothing to add right now. The conversation moves on.")
+}
+
 /// v4 `buildScenarioContent`.
 pub fn build_scenario_content(scenario_text: &str) -> String {
     format!(
@@ -765,6 +793,54 @@ pub async fn post_host_status_change_announcement(
         content,
         Some(opaque_content),
         &kind_label,
+        Some(host_event),
+    )
+    .await
+}
+
+/// v4 `HostTurnPassAnnouncement`.
+#[derive(Clone, Debug)]
+pub struct HostTurnPassAnnouncement {
+    pub chat_id: String,
+    pub character_name: String,
+    /// Participant ID of the character (or user-controlled participant) who passed.
+    pub participant_id: String,
+    /// Whether an LLM character passed via the sentinel (`"llm"`), or the human
+    /// hit Skip (`"user"`).
+    pub source: TurnPassSource,
+}
+
+/// v4's `source: 'llm' | 'user'`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TurnPassSource {
+    Llm,
+    User,
+}
+
+/// v4 `postHostTurnPassAnnouncement`. Errors are swallowed (the existing
+/// Host-notification contract): a pass must never fail the turn. Returns the
+/// persisted `MessageEvent` so the caller can surface it live over SSE (the
+/// orchestrator's `hostAnnouncement` frame). The `hostEvent` is the ONE-KEY
+/// `{ participantId }` object (v4's widened `postHostMessage` takes optional
+/// `participantId`/`toStatus`; the existing status-change callers keep their
+/// two-key shape byte-identical — the v5 `host_event` is already a raw `Value`,
+/// so no type widening is needed).
+pub async fn post_host_turn_pass_announcement(
+    db: &Db,
+    params: HostTurnPassAnnouncement,
+) -> Option<PostedHostMessage> {
+    let content = match params.source {
+        TurnPassSource::User => build_user_turn_pass_content(&params.character_name),
+        TurnPassSource::Llm => build_turn_pass_content(&params.character_name),
+    };
+    let opaque_content = build_turn_pass_opaque_content(&params.character_name);
+    let host_event = json!({ "participantId": params.participant_id });
+    post_host_message(
+        db,
+        &params.chat_id,
+        content,
+        Some(opaque_content),
+        crate::skip_signal::TURN_PASS_SYSTEM_KIND,
         Some(host_event),
     )
     .await

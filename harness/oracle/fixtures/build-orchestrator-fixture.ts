@@ -83,6 +83,8 @@ interface ChatSpec {
   conciergeOverride?: string | null;
   /** W4.2u: the classification label (dangerous chat → the first-branch reroute). */
   isDangerousChat?: boolean;
+  /** P4.d2: the "nothing to add" per-chat toggle (b90cd1f5). NULL/absent = on. */
+  turnSkippingEnabled?: boolean;
 }
 interface Spec {
   testPepperBase64: string;
@@ -286,6 +288,9 @@ async function main(): Promise<void> {
         ...(chat.agentTurnCount !== undefined ? { agentTurnCount: chat.agentTurnCount } : {}),
         ...(chat.conciergeOverride !== undefined ? { conciergeOverride: chat.conciergeOverride } : {}),
         ...(chat.isDangerousChat !== undefined ? { isDangerousChat: chat.isDangerousChat } : {}),
+        ...(chat.turnSkippingEnabled !== undefined
+          ? { turnSkippingEnabled: chat.turnSkippingEnabled }
+          : {}),
       } as never,
       { id: chat.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );

@@ -49,7 +49,7 @@ const wire = (s: TurnState): WireState => ({
 });
 
 // Message view: { type?, role, participantId?, targetParticipantIds? }
-type WireMsg = { type?: string; role: string; participantId?: string | null; targetParticipantIds?: string[] };
+type WireMsg = { type?: string; role: string; participantId?: string | null; targetParticipantIds?: string[]; systemSender?: string; systemKind?: string; hostEvent?: { participantId?: unknown } | null };
 const asMsg = (m: WireMsg) => m as unknown as MessageEvent;
 const asEvent = (m: WireMsg) => m as unknown as ChatEvent;
 
@@ -98,6 +98,32 @@ rows.push({ kind: 'calc', id: 'empty', messages: [], spokenJson: null, out: wire
 rows.push({ kind: 'calc', id: 'bad-json', messages: msgs1, spokenJson: 'not json', out: wire(calculateTurnStateFromHistory({ messages: msgs1 as unknown as MessageEvent[], participants: [], userParticipantId: null, spokenThisCycleParticipantIds: 'not json' })) });
 const msgsNoPid: WireMsg[] = [{ role: 'ASSISTANT', participantId: null }, { role: 'SYSTEM', participantId: 'sys' }];
 rows.push({ kind: 'calc', id: 'no-eligible', messages: msgsNoPid, spokenJson: '["x","y",123]', out: wire(calculateTurnStateFromHistory({ messages: msgsNoPid as unknown as MessageEvent[], participants: [], userParticipantId: null, spokenThisCycleParticipantIds: '["x","y",123]' })) });
+
+// Turn-pass records (b90cd1f5): a Host turn-pass occupies the passer's floor
+// position — the walk sets lastSpeakerId from hostEvent.participantId and breaks.
+const passMsg = (pid: unknown): WireMsg => ({
+  type: 'message', role: 'ASSISTANT', participantId: null,
+  systemSender: 'host', systemKind: 'turn-pass', hostEvent: { participantId: pid },
+});
+const msgsPass: WireMsg[] = [
+  { type: 'message', role: 'USER', participantId: 'u1' },
+  { type: 'message', role: 'ASSISTANT', participantId: 'c1' },
+  passMsg('c2'),
+];
+rows.push({ kind: 'calc', id: 'turn-pass-last', messages: msgsPass, spokenJson: '["c1"]', out: wire(calculateTurnStateFromHistory({ messages: msgsPass as unknown as MessageEvent[], participants: [], userParticipantId: null, spokenThisCycleParticipantIds: '["c1"]' })) });
+const msgsPassThenSubstantive: WireMsg[] = [passMsg('c2'), { type: 'message', role: 'ASSISTANT', participantId: 'c3' }];
+rows.push({ kind: 'calc', id: 'turn-pass-then-substantive', messages: msgsPassThenSubstantive, spokenJson: null, out: wire(calculateTurnStateFromHistory({ messages: msgsPassThenSubstantive as unknown as MessageEvent[], participants: [], userParticipantId: null })) });
+const msgsPassMalformed: WireMsg[] = [
+  { type: 'message', role: 'ASSISTANT', participantId: 'c1' },
+  { ...passMsg(7) }, // hostEvent.participantId not a string -> NOT a turn-pass; Staff row skipped
+];
+rows.push({ kind: 'calc', id: 'turn-pass-malformed', messages: msgsPassMalformed, spokenJson: null, out: wire(calculateTurnStateFromHistory({ messages: msgsPassMalformed as unknown as MessageEvent[], participants: [], userParticipantId: null })) });
+const msgsPassWhisperAfter: WireMsg[] = [
+  { type: 'message', role: 'ASSISTANT', participantId: 'c1' },
+  passMsg('c2'),
+  { type: 'message', role: 'ASSISTANT', participantId: 'c3', targetParticipantIds: ['c1'] }, // whisper after the pass
+];
+rows.push({ kind: 'calc', id: 'turn-pass-whisper-after', messages: msgsPassWhisperAfter, spokenJson: null, out: wire(calculateTurnStateFromHistory({ messages: msgsPassWhisperAfter as unknown as MessageEvent[], participants: [], userParticipantId: null })) });
 
 // ---- updateTurnStateAfterMessage ------------------------------------------
 const upBase = st(['c1'], 'c2', ['c2', 'c3'], 'c1');

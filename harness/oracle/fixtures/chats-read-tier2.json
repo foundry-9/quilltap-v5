@@ -155,6 +155,7 @@
       "runVisibility": "household",
       "coreWhisperEnabled": true,
       "coreWhisperInterval": 3,
+      "turnSkippingEnabled": false,
       "showThinking": false,
       "answerConfirmationOverride": "ON"
     },

@@ -840,6 +840,127 @@
         }
       ],
       "messages": []
+    },
+    {
+      "id": "5f000001-0000-4000-8000-0000000000f1",
+      "chatType": "salon",
+      "contextSummary": null,
+      "participants": [
+        {
+          "id": "5f0a0001-0000-4000-8000-0000000000a1",
+          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "5f0b0001-0000-4000-8000-0000000000b1",
+          "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+          "controlledBy": "llm",
+          "status": "active"
+        }
+      ],
+      "messages": [
+        {
+          "id": "5f010001-0000-4000-8000-000000000101",
+          "role": "ASSISTANT",
+          "content": "An opening remark to set the scene.",
+          "participantId": "5f0b0001-0000-4000-8000-0000000000b1"
+        }
+      ]
+    },
+    {
+      "id": "59000002-0000-4000-8000-0000000000f2",
+      "chatType": "salon",
+      "contextSummary": null,
+      "participants": [
+        {
+          "id": "590a0002-0000-4000-8000-0000000000a2",
+          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "590b0002-0000-4000-8000-0000000000b2",
+          "character": "c1000001-0000-4000-8000-000000000011",
+          "controlledBy": "user",
+          "status": "active"
+        },
+        {
+          "id": "590c0002-0000-4000-8000-0000000000c2",
+          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": [
+        {
+          "id": "59010001-0000-4000-8000-000000000101",
+          "role": "USER",
+          "content": "Tell us more of the ledger.",
+          "participantId": "590c0002-0000-4000-8000-0000000000c2"
+        },
+        {
+          "id": "59010002-0000-4000-8000-000000000102",
+          "role": "ASSISTANT",
+          "content": "As I was saying before the interruption.",
+          "participantId": "590a0002-0000-4000-8000-0000000000a2"
+        }
+      ]
+    },
+    {
+      "id": "6e000003-0000-4000-8000-0000000000f3",
+      "chatType": "salon",
+      "contextSummary": null,
+      "participants": [
+        {
+          "id": "6e0a0003-0000-4000-8000-0000000000a3",
+          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "6e0b0003-0000-4000-8000-0000000000b3",
+          "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+          "controlledBy": "llm",
+          "status": "active"
+        }
+      ],
+      "messages": [
+        {
+          "id": "6e010001-0000-4000-8000-000000000101",
+          "role": "ASSISTANT",
+          "content": "A word before the summons.",
+          "participantId": "6e0b0003-0000-4000-8000-0000000000b3"
+        }
+      ]
+    },
+    {
+      "id": "5d000004-0000-4000-8000-0000000000f4",
+      "chatType": "salon",
+      "contextSummary": null,
+      "participants": [
+        {
+          "id": "5d0a0004-0000-4000-8000-0000000000a4",
+          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "5d0b0004-0000-4000-8000-0000000000b4",
+          "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+          "controlledBy": "llm",
+          "status": "active"
+        }
+      ],
+      "messages": [
+        {
+          "id": "5d010001-0000-4000-8000-000000000101",
+          "role": "ASSISTANT",
+          "content": "A remark under the old rules.",
+          "participantId": "5d0b0004-0000-4000-8000-0000000000b4"
+        }
+      ],
+      "turnSkippingEnabled": false
     }
   ],
   "calls": [
@@ -1096,6 +1217,51 @@
       "cheapLLMSettings": false,
       "summaryCheck": false,
       "respondingParticipant": "cc0a0001-0000-4000-8000-0000000000a1"
+    },
+    {
+      "name": "skip_fire",
+      "kind": "chain",
+      "chatId": "5f000001-0000-4000-8000-0000000000f1",
+      "content": "",
+      "continueMode": true,
+      "streamLabel": "skip_fire",
+      "cheapLLMSettings": false,
+      "summaryCheck": false,
+      "respondingParticipant": "5f0a0001-0000-4000-8000-0000000000a1"
+    },
+    {
+      "name": "sentinel_prose",
+      "kind": "single",
+      "chatId": "59000002-0000-4000-8000-0000000000f2",
+      "content": "",
+      "continueMode": true,
+      "streamLabel": "sentinel_prose",
+      "cheapLLMSettings": false,
+      "summaryCheck": false,
+      "respondingParticipant": "590a0002-0000-4000-8000-0000000000a2"
+    },
+    {
+      "name": "nudge_withhold",
+      "kind": "chain",
+      "chatId": "6e000003-0000-4000-8000-0000000000f3",
+      "content": "",
+      "continueMode": true,
+      "streamLabel": "nudge_withhold",
+      "cheapLLMSettings": false,
+      "summaryCheck": false,
+      "respondingParticipant": "6e0a0003-0000-4000-8000-0000000000a3",
+      "nudge": true
+    },
+    {
+      "name": "skip_disabled",
+      "kind": "chain",
+      "chatId": "5d000004-0000-4000-8000-0000000000f4",
+      "content": "",
+      "continueMode": true,
+      "streamLabel": "skip_disabled",
+      "cheapLLMSettings": false,
+      "summaryCheck": false,
+      "respondingParticipant": "5d0a0004-0000-4000-8000-0000000000a4"
     }
   ],
   "streams": {
@@ -1745,6 +1911,118 @@
             "promptTokens": 12,
             "completionTokens": 5,
             "totalTokens": 17
+          }
+        }
+      ]
+    ],
+    "skip_fire": [
+      [
+        {
+          "content": "[NOTHING TO ADD]"
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 60,
+            "completionTokens": 4,
+            "totalTokens": 64
+          }
+        }
+      ],
+      [
+        {
+          "content": "Jeeves carries the scene onward with a raised eyebrow."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 62,
+            "completionTokens": 9,
+            "totalTokens": 71
+          }
+        }
+      ],
+      [
+        {
+          "content": "Friday returns with a considered thought after all."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 64,
+            "completionTokens": 8,
+            "totalTokens": 72
+          }
+        }
+      ]
+    ],
+    "sentinel_prose": [
+      [
+        {
+          "content": "[NOTHING TO ADD]\nActually \u2014 on reflection, the ledger disagrees with itself."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 58,
+            "completionTokens": 14,
+            "totalTokens": 72
+          }
+        }
+      ]
+    ],
+    "nudge_withhold": [
+      [
+        {
+          "content": "Friday answers the summons directly."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 56,
+            "completionTokens": 6,
+            "totalTokens": 62
+          }
+        }
+      ],
+      [
+        {
+          "content": "Jeeves follows with a footnote."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 57,
+            "completionTokens": 6,
+            "totalTokens": 63
+          }
+        }
+      ]
+    ],
+    "skip_disabled": [
+      [
+        {
+          "content": "Friday replies without ceremony."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 55,
+            "completionTokens": 5,
+            "totalTokens": 60
+          }
+        }
+      ],
+      [
+        {
+          "content": "Jeeves adds a further word."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 56,
+            "completionTokens": 5,
+            "totalTokens": 61
           }
         }
       ]

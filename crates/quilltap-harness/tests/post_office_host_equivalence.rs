@@ -78,6 +78,9 @@ fn rust_value(kind: &str, id: &str) -> Value {
             let (n, sc, u) = join_case(id);
             hn::build_join_scenario_opaque_content(n, sc, u)
         }
+        "turn_pass_content" => hn::build_turn_pass_content(turn_pass_case(id)),
+        "user_turn_pass_content" => hn::build_user_turn_pass_content(turn_pass_case(id)),
+        "turn_pass_opaque" => hn::build_turn_pass_opaque_content(turn_pass_case(id)),
         "timestamp_content" => hn::build_timestamp_content(timestamp_case(id)),
         "timestamp_opaque" => hn::build_timestamp_opaque_content(timestamp_case(id)),
         other => panic!("unknown oracle kind {other}"),
@@ -185,6 +188,14 @@ fn join_case(id: &str) -> (&'static str, &'static str, Option<&'static str>) {
         ),
         "no-user" => ("Ada", "You simply appeared.", None),
         other => panic!("unknown join case {other}"),
+    }
+}
+
+fn turn_pass_case(id: &str) -> &'static str {
+    match id {
+        "plain" => "Ada",
+        "unicode" => "Zoë",
+        other => panic!("unknown turn-pass case {other}"),
     }
 }
 

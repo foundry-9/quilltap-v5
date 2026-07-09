@@ -323,6 +323,54 @@ pub struct SendMessageOptions {
     /// Autonomous-room per-turn context cap (tokens) — clamps the model-derived
     /// budget. `None` = uncapped. (Threaded into `buildContext`'s budget cap.)
     pub autonomous_context_cap: Option<i64>,
+    /// Nudge flag (v4 `options.nudge`): the human explicitly summoned this
+    /// specific character to speak (Nudge button / queue). Distinct from an
+    /// algorithm-picked chained turn. When `Some(true)`, the "nothing to add"
+    /// skip option is withheld — you don't offer a pass to a voice the operator
+    /// just called on.
+    pub nudge: Option<bool>,
+    /// How a chained turn's speaker was chosen (v4 `chainSelectionReason`):
+    /// `queue` (popped from the manual turn queue — treated as summoned) or
+    /// `algorithm` (weighted rotation — the skip option is offered). Threaded
+    /// from the turn orchestrator into chained `process_message` calls; `None`
+    /// on the initial (non-chained) turn.
+    pub chain_selection_reason: Option<turn_orchestrator::ChainSelectionReason>,
+}
+
+/// The spine's per-turn result: v4 adds `skipped?` / `skippedParticipantId?`
+/// directly to `ProcessMessageResult`, but the Rust struct lives in the
+/// `message_finalizer` module (owned by the parallel P4.d1 lane this round, per
+/// the binding ownership matrix), so the spine WRAPS it instead — a unification
+/// pass can fold the two fields into `ProcessMessageResult` proper. `Deref`s to
+/// the inner result so existing field reads (the host spine, the DTO assembly)
+/// compose unchanged.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TurnResult {
+    pub inner: ProcessMessageResult,
+    /// "Nothing to add" turn-skipping: the character passed this turn (posted a
+    /// Host turn-pass record, persisted no reply). The chain continuation treats
+    /// this like a content turn — it advances the rotation rather than stopping.
+    pub skipped: bool,
+    /// Participant ID of the character who passed (set when `skipped` is true).
+    pub skipped_participant_id: Option<String>,
+}
+
+impl TurnResult {
+    /// A non-skipped result (every pre-existing path).
+    pub fn plain(inner: ProcessMessageResult) -> Self {
+        TurnResult {
+            inner,
+            skipped: false,
+            skipped_participant_id: None,
+        }
+    }
+}
+
+impl std::ops::Deref for TurnResult {
+    type Target = ProcessMessageResult;
+    fn deref(&self) -> &ProcessMessageResult {
+        &self.inner
+    }
 }
 
 /// The wall-clock + RNG values injected into one `process_message` call (v4's
@@ -526,7 +574,7 @@ pub async fn process_message<EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COS
         PF,
     >,
     input: &ProcessMessageInput,
-) -> Result<ProcessMessageResult, DbError>
+) -> Result<TurnResult, DbError>
 where
     EMB: EmbeddingProvider,
     CMP: CompletionProvider + Sync,
@@ -917,6 +965,48 @@ where
     let chat_id_owned = chat_id.clone();
     let mut existing_messages =
         db.read_main(move |c| chats_messages_read::get_messages(c, &chat_id_owned))?;
+
+    // ========================================================================
+    // "Nothing to add" turn-skipping — eligibility (orchestrator.service.ts:492)
+    // ========================================================================
+    // Decide once whether this character may be offered the pass option this
+    // turn. Only meaningful in multi-character chats with an LLM-controlled
+    // responder. `summoned` (nudge or queue-pop) withholds the option — you don't
+    // offer a pass to a voice the operator explicitly called on. NOTE: when the
+    // triple is computed, sentinel handling later runs even when `offer_skip` is
+    // false — the branches differ (a sentinel without the offer routes to the
+    // empty-response branch).
+    let chat_participants = turn_orchestrator::participants_array(&chat);
+    let turn_skip: Option<build_context::TurnSkip> =
+        if crate::skip_signal::qualifies_for_turn_skipping(&chat_participants)
+            && json_str(&character_participant, "controlledBy").as_deref() != Some("user")
+        {
+            let responding = crate::skip_signal::RespondingCharacter {
+                id: character_id.clone(),
+                name: character_name.clone(),
+                aliases: json_str_array(&character, "aliases"),
+            };
+            let eligibility = crate::skip_signal::compute_skip_eligibility(
+                &crate::skip_signal::ComputeSkipEligibilityOptions {
+                    events: &existing_messages,
+                    participants: &chat_participants,
+                    responding_participant_id: &character_participant_id,
+                    responding_character: &responding,
+                    summoned: input.options.nudge == Some(true)
+                        || input.options.chain_selection_reason
+                            == Some(turn_orchestrator::ChainSelectionReason::Queue),
+                    turn_skipping_enabled: chat.get("turnSkippingEnabled").and_then(Value::as_bool)
+                        != Some(false),
+                },
+            );
+            Some(build_context::TurnSkip {
+                offer_skip: eligibility.offer_skip,
+                recently_addressed: eligibility.recently_addressed,
+                character_name: character_name.clone(),
+            })
+        } else {
+            None
+        };
 
     // --- Prospero cadence gate (orchestrator.service.ts:494–534) ---
     let reinject_interval = chat_settings
@@ -1463,6 +1553,10 @@ where
         // U4.4: the autonomous per-turn context cap (v4 orchestrator.service.ts:984
         // passes `options.autonomousContextCap` straight through to buildContext).
         autonomous_context_cap: input.options.autonomous_context_cap,
+        // "Nothing to add" turn-skipping — per-turn ephemeral instruction control
+        // (v4 orchestrator.service.ts:1030 threads `turnSkip` through
+        // `buildMessageContext` into buildContext).
+        turn_skip: turn_skip.clone(),
     });
 
     // v4 `buildMessageContext` (context-builder.service.ts): the wrapper that runs
@@ -1622,7 +1716,8 @@ where
                 now_ms: input.clock.now_ms,
             },
         )
-        .await;
+        .await
+        .map(TurnResult::plain);
     }
 
     // --- Primary stream (orchestrator.service.ts:1205–1255) ---
@@ -1708,14 +1803,14 @@ where
 
     if let Some(early) = primary.early_return {
         // Request-limit recovery handled the whole request.
-        return Ok(ProcessMessageResult {
+        return Ok(TurnResult::plain(ProcessMessageResult {
             is_multi_character: early.is_multi_character,
             has_content: early.has_content,
             message_id: early.message_id.unwrap_or_default(),
             user_participant_id: early.user_participant_id,
             is_paused: early.is_paused,
             scene_tracking_character_ids: None,
-        });
+        }));
     }
 
     // --- Native tool loop (orchestrator.service.ts:1259–1280) ---
@@ -1965,6 +2060,51 @@ where
     )
     .await;
 
+    // ========================================================================
+    // "Nothing to add" turn-skipping — sentinel handling
+    //     (orchestrator.service.ts:1454–1498)
+    // ========================================================================
+    // Detect the pass sentinel on the raw response before the finalizer. Only
+    // when eligibility was computed for this turn (multi-character, LLM responder).
+    if let Some(ts) = &turn_skip {
+        match resolve_sentinel_action(
+            crate::skip_signal::detect_skip_sentinel(
+                &streaming_state.full_response,
+                Some(&character_name),
+                Some(character_aliases.as_slice()),
+            ),
+            ts.offer_skip,
+            !tool_messages.is_empty(),
+        ) {
+            SentinelAction::ClearResponse => {
+                streaming_state.full_response = String::new();
+            }
+            SentinelAction::HandleSkip => {
+                return handle_turn_skip(
+                    db,
+                    sink,
+                    HandleTurnSkipParams {
+                        chat_id: &chat_id,
+                        character_name: &character_name,
+                        character_participant_id: &character_participant_id,
+                        is_multi_character,
+                        user_participant_id: user_participant_id.clone(),
+                        usage: streaming_state.usage,
+                        cache_usage: streaming_state.cache_usage,
+                        attachment_results: streaming_state.attachment_results.clone(),
+                        provider: effective_profile.provider.clone(),
+                        model_name: effective_profile.model_name.clone(),
+                    },
+                )
+                .await;
+            }
+            SentinelAction::ReplaceWithCleaned(cleaned) => {
+                streaming_state.full_response = cleaned;
+            }
+            SentinelAction::LeaveAsIs => {}
+        }
+    }
+
     // --- Terminal branches (orchestrator.service.ts:1408–1515) ---
     let has_response = !crate::jsstr::js_trim(&streaming_state.full_response).is_empty();
 
@@ -2096,7 +2236,7 @@ where
         // Keep `existing_messages` referenced (it fed buildContext + the previous
         // response id scan; nothing after this reads it).
         existing_messages.clear();
-        Ok(result)
+        Ok(TurnResult::plain(result))
     } else if !tool_messages.is_empty() {
         // Tool-only terminal (orchestrator.service.ts:1443–1479): no assistant
         // prose, but tools executed → persist the TOOL rows, bump the chat's
@@ -2143,14 +2283,14 @@ where
             ..Default::default()
         }));
 
-        Ok(ProcessMessageResult {
+        Ok(TurnResult::plain(ProcessMessageResult {
             is_multi_character,
             has_content: true,
             message_id: save_result.first_tool_message_id.unwrap_or_default(),
             user_participant_id,
             is_paused,
             scene_tracking_character_ids: None,
-        })
+        }))
     } else {
         // Empty response (no tool messages in the corpus). Emit the done frame.
         let empty_reason = provider_failover::get_empty_response_reason(
@@ -2176,15 +2316,169 @@ where
             model_name: Some(effective_profile.model_name.clone()),
             ..Default::default()
         }));
-        Ok(ProcessMessageResult {
+        Ok(TurnResult::plain(ProcessMessageResult {
             is_multi_character,
             has_content: false,
             message_id: String::new(),
             user_participant_id,
             is_paused,
             scene_tracking_character_ids: None,
-        })
+        }))
     }
+}
+
+/// What the sentinel handling does with the streamed response (the decision half
+/// of v4 orchestrator.service.ts:1454–1498, isolated so the tools-ran precedence
+/// is unit-testable without a full spine drive).
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum SentinelAction {
+    /// Clear `fullResponse` to `''` — either tools ran this turn (the tool-save
+    /// branch must win; v4 logs a warning) or the sentinel arrived without the
+    /// offer (routes to the empty-response branch, nothing persisted).
+    ClearResponse,
+    /// A bare sentinel with the offer standing → the skip path.
+    HandleSkip,
+    /// Sentinel line + trailing prose → keep the prose as a real reply.
+    ReplaceWithCleaned(String),
+    /// No sentinel — the response proceeds untouched.
+    LeaveAsIs,
+}
+
+/// The sentinel-handling precedence (v4 b90cd1f5): tools-ran beats the skip,
+/// the skip needs the offer, prose survives its sentinel line.
+fn resolve_sentinel_action(
+    detection: crate::skip_signal::DetectSkipResult,
+    offer_skip: bool,
+    tools_ran: bool,
+) -> SentinelAction {
+    match detection {
+        crate::skip_signal::DetectSkipResult::Skip => {
+            if tools_ran {
+                SentinelAction::ClearResponse
+            } else if offer_skip {
+                SentinelAction::HandleSkip
+            } else {
+                SentinelAction::ClearResponse
+            }
+        }
+        crate::skip_signal::DetectSkipResult::NoSkip {
+            cleaned: Some(cleaned),
+        } => SentinelAction::ReplaceWithCleaned(cleaned),
+        crate::skip_signal::DetectSkipResult::NoSkip { cleaned: None } => SentinelAction::LeaveAsIs,
+    }
+}
+
+/// The inputs [`handle_turn_skip`] needs (v4 `handleTurnSkip`'s params, minus the
+/// repos/controller/encoder plumbing the v5 `Db` + sink replace).
+struct HandleTurnSkipParams<'a> {
+    chat_id: &'a str,
+    character_name: &'a str,
+    character_participant_id: &'a str,
+    is_multi_character: bool,
+    user_participant_id: Option<String>,
+    usage: Option<crate::model::stream::StreamUsage>,
+    cache_usage: Option<crate::model::stream::StreamCacheUsage>,
+    attachment_results: Option<Value>,
+    provider: String,
+    model_name: String,
+}
+
+/// "Nothing to add" turn-skipping — the skip path (v4 `handleTurnSkip`).
+///
+/// Posts the Host turn-pass announcement, records the passing participant in the
+/// persisted cycle set (so the rotation advances past them), surfaces the Host
+/// bubble live (the `hostAnnouncement` frame), and emits a `done` event flagged
+/// `skipped: true` so the client resets its streaming buffer without appending a
+/// phantom bubble. No character reply is persisted.
+async fn handle_turn_skip(
+    db: &Db,
+    sink: &(impl EventSink + Sync),
+    params: HandleTurnSkipParams<'_>,
+) -> Result<TurnResult, DbError> {
+    // Post the Host announcement (errors swallowed by the writer contract).
+    let host_message = crate::services::host_notifications::post_host_turn_pass_announcement(
+        db,
+        crate::services::host_notifications::HostTurnPassAnnouncement {
+            chat_id: params.chat_id.to_string(),
+            character_name: params.character_name.to_string(),
+            participant_id: params.character_participant_id.to_string(),
+            source: crate::services::host_notifications::TurnPassSource::Llm,
+        },
+    )
+    .await;
+
+    // Record the pass in the persisted cycle so the next speaker selection
+    // advances past this character. Re-read for fresh participants/cycle state.
+    // v4 wraps the whole re-read/update in a swallow-and-warn try/catch; the
+    // update mints `updatedAt` UNCONDITIONALLY (unusual for this repo —
+    // faithful: v4 always includes `updatedAt: new Date().toISOString()`).
+    let mut is_paused = false;
+    let chat_id_owned = params.chat_id.to_string();
+    if let Ok(Some(fresh_chat)) = db.read_main(move |c| chats_read::find_by_id(c, &chat_id_owned)) {
+        is_paused = fresh_chat.get("isPaused").and_then(Value::as_bool) == Some(true);
+        let ts_participants: Vec<crate::turn_state::ParticipantView> =
+            turn_orchestrator::participants_array(&fresh_chat)
+                .iter()
+                .map(turn_orchestrator::to_turnstate_participant)
+                .collect();
+        let spoken_json = fresh_chat
+            .get("spokenThisCycleParticipantIds")
+            .and_then(Value::as_str);
+        let cycle_update = crate::turn_state::compute_spoken_this_cycle_after_skip(
+            params.character_participant_id,
+            &ts_participants,
+            spoken_json,
+        );
+        let chat_id_owned = params.chat_id.to_string();
+        let now = crate::clock::now_iso();
+        let _ = db
+            .write(move |w| {
+                w.main()
+                    .chats()
+                    .update(
+                        &chat_id_owned,
+                        &crate::db::chats::ChatUpdate {
+                            updated_at: Some(now),
+                            spoken_this_cycle_participant_ids: cycle_update,
+                            ..Default::default()
+                        },
+                    )
+                    .map(|_| ())
+            })
+            .await;
+    }
+
+    // Surface the Host bubble live, then close the turn with the skipped flag.
+    if let Some(posted) = &host_message {
+        sink.emit(ChatEvent::host_announcement(posted.message.clone()));
+    }
+    sink.emit(ChatEvent::done_skipped(
+        crate::services::chat_events::SkipDonePayload {
+            message_id: None,
+            participant_id: params.character_participant_id.to_string(),
+            usage: params.usage.map(to_done_usage),
+            cache_usage: params.cache_usage.map(to_done_cache_usage),
+            attachment_results: Some(params.attachment_results.unwrap_or(Value::Null)),
+            tools_executed: false,
+            skipped: true,
+            skipped_participant_id: params.character_participant_id.to_string(),
+            provider: params.provider,
+            model_name: params.model_name,
+        },
+    ));
+
+    Ok(TurnResult {
+        inner: ProcessMessageResult {
+            is_multi_character: params.is_multi_character,
+            has_content: false,
+            message_id: String::new(),
+            user_participant_id: params.user_participant_id,
+            is_paused,
+            scene_tracking_character_ids: None,
+        },
+        skipped: true,
+        skipped_participant_id: Some(params.character_participant_id.to_string()),
+    })
 }
 
 /// The tool-only terminal's DB effect (orchestrator.service.ts:1449–1460):
@@ -2323,7 +2617,7 @@ pub struct ExecuteTurnChainOptions {
     pub chat_id: String,
     /// The initial `processMessage` result (whether to chain at all is decided
     /// from it).
-    pub initial_result: ProcessMessageResult,
+    pub initial_result: TurnResult,
     pub initial_continue_mode: bool,
     /// Autonomous-room flag (bypasses the all-LLM pause).
     pub never_pause_for_user: bool,
@@ -2404,8 +2698,14 @@ where
     let db = deps.db;
     let initial = &opts.initial_result;
     // v4: only chain for a multi-character chat that produced content and isn't
-    // paused.
-    if !initial.is_multi_character || !initial.has_content || initial.is_paused {
+    // paused. A skipped initial turn ("nothing to add") is NOT terminal — it
+    // advanced the rotation via a Host turn-pass record, so the chain must
+    // continue to the next speaker. Only a genuinely empty (no content, no skip)
+    // initial turn stops here.
+    if !initial.is_multi_character
+        || (!initial.has_content && !initial.skipped)
+        || initial.is_paused
+    {
         return Ok(());
     }
     // Single-turn callers enqueue the next turn themselves.
@@ -2471,7 +2771,11 @@ where
         }));
 
         // Re-enter processMessage for the chained turn (v4 `processChainedMessage`).
-        let input = make_chain_input(participant_id.clone());
+        // The decision's selection reason rides into the chained options (v4
+        // `chainSelectionReason: decision.selectionReason`) so a queue-popped
+        // (summoned) turn withholds the skip offer.
+        let mut input = make_chain_input(participant_id.clone());
+        input.options.chain_selection_reason = decision.selection_reason;
         let chain_step = process_message(deps, &input).await;
         match chain_step {
             Ok(chain_result) => {
@@ -2480,8 +2784,14 @@ where
                         participant_id: participant_id.clone(),
                         message_id: chain_result.message_id.clone(),
                         chain_depth,
+                        // v4 passes `chainResult.skipped === true` (always present
+                        // on chained turns).
+                        skipped: chain_result.skipped,
                     }));
-                if !chain_result.has_content {
+                // A skipped turn advanced the rotation (Host turn-pass record) —
+                // fall through to the next decideNextTurn iteration. Only a
+                // genuinely empty response (no content, no skip) stops the chain.
+                if !chain_result.has_content && !chain_result.skipped {
                     let _ = turn_orchestrator::persist_turn_participant_id(db, &opts.chat_id, None)
                         .await;
                     deps.sink
@@ -2577,6 +2887,10 @@ pub(crate) struct BuildContextArgs<'a> {
     /// the per-run token budget. `None` (every non-autonomous caller) leaves the
     /// budget untouched.
     pub autonomous_context_cap: Option<i64>,
+    /// "Nothing to add" turn-skipping — the per-turn ephemeral instruction
+    /// control (v4 `turnSkip`, b90cd1f5). `None` for the sibling entry points
+    /// (regenerate-swipe) that never offer the pass.
+    pub turn_skip: Option<build_context::TurnSkip>,
 }
 
 /// Convert a connection-profile net-read `Value` into a [`CheapLlmProfile`] (v4's
@@ -2693,6 +3007,7 @@ pub(crate) fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInp
         local_offset_minutes: args.local_offset_minutes,
         minutes_since_last_timestamp_announcement: None,
         autonomous_context_cap: args.autonomous_context_cap,
+        turn_skip: args.turn_skip,
     }
 }
 
@@ -3112,14 +3427,14 @@ mod tests {
                 &mut deps,
                 ExecuteTurnChainOptions {
                     chat_id: "chat-x".into(),
-                    initial_result: ProcessMessageResult {
+                    initial_result: TurnResult::plain(ProcessMessageResult {
                         is_multi_character: is_multi,
                         has_content,
                         message_id: "m".into(),
                         user_participant_id: None,
                         is_paused,
                         scene_tracking_character_ids: None,
-                    },
+                    }),
                     initial_continue_mode: false,
                     never_pause_for_user: false,
                     single_turn,
@@ -3156,6 +3471,53 @@ mod tests {
         assert_eq!(ep.provider, "ANTHROPIC");
         assert_eq!(ep.model_name, "claude");
         assert_eq!(ep.base_url, None);
+    }
+
+    /// The sentinel-handling precedence (v4 orchestrator.service.ts:1454–1498):
+    /// tools-ran clears the bare sentinel (the tool-save branch must win) even
+    /// when the offer stands; the offer gates the skip path; a sentinel without
+    /// the offer clears to the empty-response branch; prose survives its
+    /// sentinel line. (The corpus banks the skip / cleaned / withheld paths
+    /// end-to-end; the tools-ran rule is pinned here — a corpus case would need
+    /// a live tool slate.)
+    #[test]
+    fn sentinel_action_precedence() {
+        use crate::skip_signal::DetectSkipResult as D;
+        // Tools ran → clear, regardless of the offer.
+        assert_eq!(
+            resolve_sentinel_action(D::Skip, true, true),
+            SentinelAction::ClearResponse
+        );
+        assert_eq!(
+            resolve_sentinel_action(D::Skip, false, true),
+            SentinelAction::ClearResponse
+        );
+        // Offer stands, no tools → the skip path.
+        assert_eq!(
+            resolve_sentinel_action(D::Skip, true, false),
+            SentinelAction::HandleSkip
+        );
+        // Sentinel without the offer → the empty-response branch.
+        assert_eq!(
+            resolve_sentinel_action(D::Skip, false, false),
+            SentinelAction::ClearResponse
+        );
+        // Sentinel + prose → the cleaned prose is a real reply (offer irrelevant).
+        assert_eq!(
+            resolve_sentinel_action(
+                D::NoSkip {
+                    cleaned: Some("the prose".into())
+                },
+                true,
+                true,
+            ),
+            SentinelAction::ReplaceWithCleaned("the prose".into())
+        );
+        // No sentinel → untouched.
+        assert_eq!(
+            resolve_sentinel_action(D::NoSkip { cleaned: None }, true, false),
+            SentinelAction::LeaveAsIs
+        );
     }
 
     /// A canned embedding provider + settings default construct cleanly (smoke —

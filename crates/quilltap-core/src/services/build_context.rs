@@ -490,6 +490,38 @@ pub struct BuildContextInput {
     /// non-autonomous caller passes `None`, so pre-existing corpora are
     /// untouched.
     pub autonomous_context_cap: Option<i64>,
+    /// "Nothing to add" turn-skipping — per-turn ephemeral instruction control
+    /// (v4 `options.turnSkip`, b90cd1f5). When `offer_skip` is true, a Turn note
+    /// is appended to (or pushed after) the outgoing messages inviting the
+    /// character to pass with the `[NOTHING TO ADD]` sentinel;
+    /// `recently_addressed` adds a caution to answer rather than pass. Never
+    /// persisted. `None` / `offer_skip: false` → no note.
+    pub turn_skip: Option<TurnSkip>,
+}
+
+/// v4's `turnSkip` option bag (`{ offerSkip, recentlyAddressed, characterName }`).
+#[derive(Clone, Debug)]
+pub struct TurnSkip {
+    pub offer_skip: bool,
+    pub recently_addressed: bool,
+    pub character_name: String,
+}
+
+/// Build the ephemeral "you may pass this turn" Turn note (v4
+/// `buildTurnSkipInstruction`). Not persisted — it rides only in the outgoing
+/// LLM context for this single turn. The Host announcement text deliberately
+/// never contains the sentinel, so history can't teach the phrase; this note is
+/// the only place it appears.
+pub fn build_turn_skip_instruction(character_name: &str, recently_addressed: bool) -> String {
+    let base = "[Turn note from the Salon — not spoken by any character]\nYou are not obliged to speak this turn. If — and only if — you genuinely have\nnothing substantive to add to the conversation right now, reply with exactly\nthis single line and nothing else:\n\n[NOTHING TO ADD]\n\nThe floor will then pass to someone else and the scene continues without you\nthis turn. Do not use it to be coy or mysterious — a brief in-character\nremark is always better than an empty pass. If you have anything worth\nsaying, write your reply as normal and ignore this note entirely.";
+
+    if !recently_addressed {
+        return base.to_string();
+    }
+
+    format!(
+        "{base}\n\nOne caution: {character_name} appears to have been addressed or mentioned since you last spoke. If someone has spoken to you and you have not yet answered them, you should answer rather than pass."
+    )
 }
 
 /// Owned form of [`UncensoredFallbackOptions`] (the borrowing lives inside the
@@ -2456,6 +2488,18 @@ where
             None => String::new(),
         };
 
+    // "Nothing to add" turn-skipping: build the ephemeral Turn note when the
+    // orchestrator has decided this character may pass. Injected as a trailing
+    // context section on the new user message when there is one, or as its own
+    // trailing user message on chained/continue turns (no newUserMessage). Never
+    // persisted.
+    let turn_skip_instruction = match &input.turn_skip {
+        Some(ts) if ts.offer_skip => {
+            build_turn_skip_instruction(&ts.character_name, ts.recently_addressed)
+        }
+        _ => String::new(),
+    };
+
     // New user message with trailing recall / core / mail context.
     let mut messages_included = selected_messages.len();
     if let Some(new_user_message) = &input.new_user_message {
@@ -2495,6 +2539,9 @@ where
         if !suparna_mail_llm_context.is_empty() {
             trailing.push(suparna_mail_llm_context.clone());
         }
+        if !turn_skip_instruction.is_empty() {
+            trailing.push(turn_skip_instruction.clone());
+        }
         let composed = if trailing.is_empty() {
             new_user_message.clone()
         } else {
@@ -2512,6 +2559,19 @@ where
             cache_control: None,
         });
         messages_included += 1;
+    } else if !turn_skip_instruction.is_empty() {
+        // Chained / continue turns carry no new user message, so the note can't
+        // ride as a trailing section above. Push it as its own trailing user
+        // message (same off-scene/timestamp pattern) so the model sees it this
+        // turn. Anthropic 4.6+ rejects role=assistant tails, so 'user' is required.
+        context_messages.push(ContextMessage {
+            role: "user",
+            content: turn_skip_instruction,
+            metadata: None,
+            thought_signature: None,
+            name: None,
+            cache_control: None,
+        });
     }
 
     // Token accounting.

@@ -32,6 +32,14 @@ pub struct TurnState {
 /// discriminator (`Some("message")` for real messages); it is unused by the
 /// `MessageEvent`-typed functions and may be `None` there. A non-empty
 /// `target_participant_ids` marks a whisper.
+///
+/// A Host **turn-pass** record (v4 `isTurnPassMessage`: `type === 'message'`,
+/// `systemSender === 'host'`, `systemKind === 'turn-pass'`, and
+/// `hostEvent.participantId` a string) is tagged by the converters with
+/// `msg_type = Some(TURN_PASS_VIEW_TYPE)` and carries `hostEvent.participantId`
+/// in `participant_id` — [`calculate_turn_state_from_history`] consumes the tag
+/// exactly where v4 runs its guard. Rows failing the guard stay ordinary views
+/// (role ASSISTANT, null participantId → skipped by the walk, as in v4).
 #[derive(Clone, Debug)]
 pub struct MessageView {
     pub msg_type: Option<String>,
@@ -39,6 +47,11 @@ pub struct MessageView {
     pub participant_id: Option<String>,
     pub target_participant_ids: Option<Vec<String>>,
 }
+
+/// The `msg_type` tag the converters stamp on a Host turn-pass record (see
+/// [`MessageView`]). Deliberately NOT `"message"` so the tagged view can never
+/// be mistaken for a substantive message by the `compute_spoken_*` paths.
+pub const TURN_PASS_VIEW_TYPE: &str = "turn-pass";
 
 impl MessageView {
     /// A whisper is a message whose `targetParticipantIds` is present and non-empty.
@@ -180,7 +193,17 @@ pub fn calculate_turn_state_from_history(
     let mut state = create_initial_turn_state();
     state.spoken_since_user_turn = parse_spoken(spoken_this_cycle_json);
 
+    // lastSpeakerId = most recent non-whisper message with a participantId.
+    // A Host turn-pass record occupies the floor position of the character who
+    // passed (stall prevention): without this, the last substantive speaker
+    // would stay permanently unpickable while everyone else ping-pongs passes.
     for msg in messages.iter().rev() {
+        if msg.msg_type.as_deref() == Some(TURN_PASS_VIEW_TYPE) {
+            // v4 assigns `hostEvent.participantId` unconditionally (the guard
+            // already proved it a string) and breaks.
+            state.last_speaker_id = msg.participant_id.clone();
+            break;
+        }
         if !msg.is_user_or_assistant() {
             continue;
         }

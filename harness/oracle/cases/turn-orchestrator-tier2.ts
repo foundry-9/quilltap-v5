@@ -247,6 +247,7 @@ async function main(): Promise<void> {
           participantId: decision.participantId ?? null,
           characterName: decision.characterName ?? null,
           reason: decision.reason,
+          selectionReason: decision.selectionReason ?? null,
         });
       } else {
         const r = await runTurnAction(op.chatId, op.action as never, op.participantId ?? null);

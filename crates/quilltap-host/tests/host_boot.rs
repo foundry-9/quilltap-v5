@@ -131,6 +131,7 @@ fn chats_ddl() -> String {
         "createdAt TEXT",
         "updatedAt TEXT",
         "answerConfirmationOverride TEXT",
+        "turnSkippingEnabled INTEGER",
     ];
     format!("CREATE TABLE chats ({});", cols.join(", "))
 }

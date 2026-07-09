@@ -19,6 +19,41 @@ the responder now resolvable in name attribution;
 answer_confirmation_tier3_equivalence regenerated green against v4 HEAD;
 message_finalizer_tier3_equivalence re-verified inert against a
 regenerated HEAD oracle. Unit tests for the new pure leaves.
+P4.d2: ported v4 b90cd1f5 ("nothing to add" turn-skipping for group
+chats). New pure module skip_signal (sentinel detection with the
+strip-and-keep-prose cleaned path, isTurnPassMessage,
+findSkippedSinceLastSubstantive, isFirstCharacterTurn,
+isRecentlyAddressed, qualifiesForTurnSkipping, computeSkipEligibility
+with the withhold precedence + stall guard); the turn-state walk now
+advances lastSpeakerId past Host turn-pass records; shouldChainNext
+excludes Staff rows from the all-LLM pause counter and threads
+selectionReason (queue vs algorithm) into chained turns; executeTurnChain
+continues past skipped turns and stamps skipped on every chained
+turnComplete frame; buildContext gained the turnSkip option + the
+byte-exact Turn note (trailing section on a user message, its own
+trailing user message on chained/continue turns); the orchestrator spine
+computes eligibility per turn (nudge/queue-pop summoned withhold), runs
+the sentinel handling (tools-ran-clears precedence), and handleTurnSkip
+posts the Host turn-pass note, advances the persisted cycle (minted
+updatedAt), and emits the hostAnnouncement + skipped done frames; the
+Host writers gained the three byte-exact turn-pass builders +
+postHostTurnPassAnnouncement; chats gained the turnSkippingEnabled
+nullable-boolean marshaling (create/update/read). New tier-1
+skip_signal_equivalence (99 rows); regenerated + extended turn_state
+(turn-pass rows), turn_orchestrator_tier2 (Staff-in-pause-window +
+selectionReason), chats_tier2 (toggle create/update/null round-trip),
+chats_read (materialized toggle), post_office_host (3 builders),
+post_office_writers_tier3 (llm + user turn-pass rows),
+orchestrator_tier3 (27 calls — skip fire, sentinel+prose, nudge
+withhold, turnSkippingEnabled:false), and enclave_step_tier3 (20 calls
+incl. an autonomous pass that consumes a run turn); build_context_tier3
+/ message_context_leaves / primary_stream_tier3 re-verified inert
+against fresh v4-HEAD oracles. ProcessMessageResult's skipped fields
+ride a TurnResult wrapper (the finalizer file is lane-frozen this
+round); the skip done frame is a dedicated DoneSkipped event variant —
+both fold into their v4 homes at unification. Out of scope per the work
+order: the Salon Skip-button route, migration script, qtap-export
+schema line, and UI.
 
 P4.d drift re-port round kickoff: work orders for the two lanes
 (p4.d1 answer-confirmation catch-up; p4.d2 turn-skipping port) with the

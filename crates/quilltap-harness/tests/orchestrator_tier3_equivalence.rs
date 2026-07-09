@@ -102,6 +102,10 @@ struct CallW {
     /// crypto.randomBytes mock. Absent → empty.
     #[serde(default)]
     rng_bytes: Vec<u8>,
+    /// P4.d2: the Nudge flag (b90cd1f5) — a summoned turn withholds the
+    /// "nothing to add" offer.
+    #[serde(default)]
+    nudge: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -435,6 +439,26 @@ fn filter_events(events: &[Value]) -> Vec<Value> {
                 // live emit) carries the posted Carina message — a fresh minted
                 // `id` + `createdAt` on each side. Placeholder both; the rest
                 // (content / answererId / systemSender / carinaMeta) is deterministic.
+                // P4.d2: the `hostAnnouncement` frame (the turn-pass note) carries
+                // the full posted MessageEvent — a fresh minted `id` + `createdAt`
+                // on each side. Placeholder both; the rest (content / opaqueContent
+                // / systemSender / systemKind / hostEvent.participantId) is
+                // deterministic.
+                if let Some(msg) = obj
+                    .get_mut("hostAnnouncement")
+                    .and_then(Value::as_object_mut)
+                {
+                    if let Some(v) = msg.get_mut("id") {
+                        if v.is_string() {
+                            *v = Value::String("<msgid>".into());
+                        }
+                    }
+                    if let Some(v) = msg.get_mut("createdAt") {
+                        if v.is_string() {
+                            *v = Value::String("<ts>".into());
+                        }
+                    }
+                }
                 if let Some(msg) = obj.get_mut("carinaAnswer").and_then(Value::as_object_mut) {
                     if let Some(v) = msg.get_mut("id") {
                         if v.is_string() {
@@ -727,6 +751,7 @@ fn orchestrator_tier3_matches_oracle() {
         // assertion. A native tool CALL end-to-end is proven separately by
         // `native_tool_loop_tier3` (v4's REAL `runNativeToolLoop` + threading).
 
+        let call_nudge = call.nudge;
         let make_input = |chat_id: &str, content: &str, continue_mode: bool, resp: Option<&str>| {
             ProcessMessageInput {
                 // U4.4: the request-path default (none) — inert on this corpus.
@@ -737,6 +762,8 @@ fn orchestrator_tier3_matches_oracle() {
                     continue_mode,
                     content: content.to_string(),
                     responding_participant_id: resp.map(String::from),
+                    // P4.d2: the Nudge flag (summoned → the skip offer is withheld).
+                    nudge: call_nudge,
                     ..Default::default()
                 },
                 clock: ProcessClock {

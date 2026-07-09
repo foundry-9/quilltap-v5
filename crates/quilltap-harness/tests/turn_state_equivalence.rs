@@ -65,10 +65,39 @@ struct WireMsg {
     participant_id: Option<String>,
     #[serde(rename = "targetParticipantIds")]
     target_participant_ids: Option<Vec<String>>,
+    #[serde(rename = "systemSender")]
+    system_sender: Option<String>,
+    #[serde(rename = "systemKind")]
+    system_kind: Option<String>,
+    #[serde(rename = "hostEvent")]
+    host_event: Option<serde_json::Value>,
 }
 
 impl WireMsg {
     fn to_core(&self) -> MessageView {
+        // The production converters (`turn_orchestrator::to_message_views` and
+        // its participant-resolver sibling) tag a Host turn-pass record with
+        // TURN_PASS_VIEW_TYPE, carrying `hostEvent.participantId` (v4
+        // `isTurnPassMessage`, b90cd1f5); mirror the same conversion here.
+        if self.msg_type.as_deref() == Some("message")
+            && self.system_sender.as_deref() == Some("host")
+            && self.system_kind.as_deref() == Some("turn-pass")
+        {
+            if let Some(pid) = self
+                .host_event
+                .as_ref()
+                .filter(|he| he.is_object())
+                .and_then(|he| he.get("participantId"))
+                .and_then(serde_json::Value::as_str)
+            {
+                return MessageView {
+                    msg_type: Some(quilltap_core::turn_state::TURN_PASS_VIEW_TYPE.to_string()),
+                    role: self.role.clone(),
+                    participant_id: Some(pid.to_string()),
+                    target_participant_ids: None,
+                };
+            }
+        }
         MessageView {
             msg_type: self.msg_type.clone(),
             role: self.role.clone(),

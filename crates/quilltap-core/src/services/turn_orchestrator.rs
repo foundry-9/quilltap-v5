@@ -127,6 +127,25 @@ impl ChainReason {
     }
 }
 
+/// How a chained turn's speaker was chosen (v4 `ChainDecision.selectionReason`):
+/// `queue` (popped from the manual turn queue — treated as summoned) or
+/// `algorithm` (weighted rotation — the skip option is offered).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChainSelectionReason {
+    Queue,
+    Algorithm,
+}
+
+impl ChainSelectionReason {
+    /// The v4 string form.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ChainSelectionReason::Queue => "queue",
+            ChainSelectionReason::Algorithm => "algorithm",
+        }
+    }
+}
+
 /// The per-step chain decision (v4 `ChainDecision`). `participant_id` /
 /// `character_name` are present only when a next speaker was resolved (chain or a
 /// user-turn stop that surfaces which user character is up).
@@ -136,6 +155,11 @@ pub struct ChainDecision {
     pub participant_id: Option<String>,
     pub character_name: Option<String>,
     pub reason: ChainReason,
+    /// How this turn's speaker was chosen — threaded into the chained
+    /// `processMessage` so the "nothing to add" skip option is withheld for
+    /// queue-popped (summoned) turns. Only set when `chain` is true (v4 sets it
+    /// on the `continue` return only).
+    pub selection_reason: Option<ChainSelectionReason>,
 }
 
 impl ChainDecision {
@@ -145,6 +169,7 @@ impl ChainDecision {
             participant_id: None,
             character_name: None,
             reason,
+            selection_reason: None,
         }
     }
 }
@@ -177,7 +202,7 @@ fn nonempty_character_id(p: &Value) -> Option<String> {
 }
 
 /// Build a [`turn_state::ParticipantView`] from a marshaled participant object.
-fn to_turnstate_participant(p: &Value) -> ParticipantView {
+pub(crate) fn to_turnstate_participant(p: &Value) -> ParticipantView {
     ParticipantView {
         id: str_field(p, "id").unwrap_or_default().to_string(),
         participant_type: str_field(p, "type").unwrap_or_default().to_string(),
@@ -210,33 +235,53 @@ pub(crate) fn to_speaker_participant(p: &Value) -> SpeakerParticipant {
 
 /// Build the [`MessageView`] list the turn machine reads from `getMessages`.
 /// Every returned row is a `type: 'message'` event (v4 filters to those before
-/// calling the turn manager).
+/// calling the turn manager). A Host turn-pass record (v4 `isTurnPassMessage`)
+/// is tagged with [`crate::turn_state::TURN_PASS_VIEW_TYPE`] carrying
+/// `hostEvent.participantId`, so `calculateTurnStateFromHistory`'s turn-pass
+/// branch fires exactly where v4's guard does.
 pub(crate) fn to_message_views(messages: &[Value]) -> Vec<MessageView> {
     messages
         .iter()
         .filter(|m| str_field(m, "type") == Some("message"))
-        .map(|m| MessageView {
-            msg_type: Some("message".to_string()),
-            role: str_field(m, "role").unwrap_or_default().to_string(),
-            participant_id: str_field(m, "participantId").map(String::from),
-            target_participant_ids: m.get("targetParticipantIds").and_then(|t| {
-                t.as_array().map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(String::from))
-                        .collect()
-                })
-            }),
+        .map(|m| {
+            if let Some(pid) = crate::skip_signal::turn_pass_participant_id(m) {
+                return MessageView {
+                    msg_type: Some(crate::turn_state::TURN_PASS_VIEW_TYPE.to_string()),
+                    role: str_field(m, "role").unwrap_or_default().to_string(),
+                    participant_id: Some(pid.to_string()),
+                    target_participant_ids: None,
+                };
+            }
+            MessageView {
+                msg_type: Some("message".to_string()),
+                role: str_field(m, "role").unwrap_or_default().to_string(),
+                participant_id: str_field(m, "participantId").map(String::from),
+                target_participant_ids: m.get("targetParticipantIds").and_then(|t| {
+                    t.as_array().map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
+                }),
+            }
         })
         .collect()
 }
 
-/// The message events that carry a `role` (for the all-LLM turn count + presence
-/// check). v4 reads `role` off the same filtered `MessageEvent[]`.
-fn message_roles(messages: &[Value]) -> Vec<String> {
+/// The message events' `(role, has_system_sender)` pairs (for the all-LLM turn
+/// count + presence check). v4 reads `role` / `systemSender` off the same
+/// filtered `MessageEvent[]`; `has_system_sender` is JS truthiness (a non-empty
+/// string).
+fn message_roles(messages: &[Value]) -> Vec<(String, bool)> {
     messages
         .iter()
         .filter(|m| str_field(m, "type") == Some("message"))
-        .map(|m| str_field(m, "role").unwrap_or_default().to_string())
+        .map(|m| {
+            (
+                str_field(m, "role").unwrap_or_default().to_string(),
+                str_field(m, "systemSender").is_some_and(|s| !s.is_empty()),
+            )
+        })
         .collect()
 }
 
@@ -387,14 +432,20 @@ pub async fn should_chain_next(
     // user-controlled participant AND no USER messages in history (a user typing
     // means a human is present).
     let is_all_llm = is_all_llm_chat(&filter_participants);
-    let has_user_presence = user_participant_id.is_some() || roles.iter().any(|r| r == "USER");
+    let has_user_presence = user_participant_id.is_some() || roles.iter().any(|(r, _)| r == "USER");
     let effective_all_llm = is_all_llm && !has_user_presence;
     if effective_all_llm {
-        // Count assistant messages since the last user message.
+        // Count assistant messages since the last user message. Staff messages
+        // (systemSender set — Host turn-pass notes, Lantern/Librarian whispers,
+        // etc.) are ASSISTANT-role but are not character turns, so they must not
+        // inflate the pause counter.
         let mut turn_count: i64 = 0;
-        for role in roles.iter().rev() {
+        for (role, has_system_sender) in roles.iter().rev() {
             if role == "USER" {
                 break;
+            }
+            if *has_system_sender {
+                continue;
             }
             if role == "ASSISTANT" {
                 turn_count += 1;
@@ -498,6 +549,7 @@ pub async fn should_chain_next(
             participant_id: Some(next_participant_id),
             character_name,
             reason: ChainReason::UserTurn,
+            selection_reason: None,
         });
     }
 
@@ -510,6 +562,12 @@ pub async fn should_chain_next(
         participant_id: Some(next_participant_id),
         character_name: Some(character_name),
         reason: ChainReason::Continue,
+        // v4: `selectionReason === 'queue' ? 'queue' : 'algorithm'`.
+        selection_reason: Some(if selection_reason == "queue" {
+            ChainSelectionReason::Queue
+        } else {
+            ChainSelectionReason::Algorithm
+        }),
     })
 }
 

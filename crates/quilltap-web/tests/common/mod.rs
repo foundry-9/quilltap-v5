@@ -97,6 +97,23 @@ pub fn materialize_fixture_instance() -> tempfile::TempDir {
     {
         let w = Writer::open_writable(&data.join("quilltap.db"), TEST_PEPPER).unwrap();
         rewrite_user_ids(w.connection());
+        // The committed fixture predates v4 `b90cd1f5`; bring its `chats`
+        // schema up to HEAD the way v4's `add-turn-skipping-field-v1`
+        // migration does on an old instance (idempotent — a regenerated
+        // fixture already carries the column).
+        let has_col: i64 = w
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('chats') WHERE name = 'turnSkippingEnabled'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        if has_col == 0 {
+            w.connection()
+                .execute_batch("ALTER TABLE chats ADD COLUMN turnSkippingEnabled INTEGER;")
+                .unwrap();
+        }
         // The oracle fixture carries no terminal_sessions table (its corpus
         // never spawns); the terminal routes need it (the P4.1c DDL).
         w.connection()

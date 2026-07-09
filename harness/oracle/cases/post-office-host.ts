@@ -40,6 +40,9 @@ import {
   buildJoinScenarioOpaqueContent,
   buildTimestampContent,
   buildTimestampOpaqueContent,
+  buildTurnPassContent,
+  buildUserTurnPassContent,
+  buildTurnPassOpaqueContent,
 } from '@/lib/services/host-notifications/writer';
 
 // ---- add (description / empty branches; no vault mount → no DB) ----
@@ -132,6 +135,12 @@ const joinCases: Array<{ id: string; name: string; scenario: string; user: strin
 ];
 
 // ---- timestamp ----
+// Turn-pass ("nothing to add", b90cd1f5) builder cases.
+const turnPassCases: Array<{ id: string; name: string }> = [
+  { id: 'plain', name: 'Ada' },
+  { id: 'unicode', name: 'Zoë' },
+];
+
 const timestampCases: Array<{ id: string; formatted: string }> = [
   { id: 'plain', formatted: 'Monday, the 3rd of never' },
 ];
@@ -183,6 +192,11 @@ async function main(): Promise<void> {
   for (const c of joinCases) {
     emit('join_content', c.id, buildJoinScenarioContent(c.name, c.scenario, c.user));
     emit('join_opaque', c.id, buildJoinScenarioOpaqueContent(c.name, c.scenario, c.user));
+  }
+  for (const c of turnPassCases) {
+    emit('turn_pass_content', c.id, buildTurnPassContent(c.name));
+    emit('user_turn_pass_content', c.id, buildUserTurnPassContent(c.name));
+    emit('turn_pass_opaque', c.id, buildTurnPassOpaqueContent(c.name));
   }
   for (const c of timestampCases) {
     emit('timestamp_content', c.id, buildTimestampContent(c.formatted));

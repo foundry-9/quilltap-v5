@@ -83,6 +83,17 @@ struct PatchData {
     tags: Option<Vec<String>>,
     #[serde(default, rename = "updatedAt")]
     updated_at: Option<String>,
+    /// The "nothing to add" toggle — the double-`Option` distinguishes an
+    /// absent key (`None` → unset) from an explicit JSON `null`
+    /// (`Some(None)` → clear to SQL NULL, v4's `$set: null`).
+    #[serde(default, deserialize_with = "de_double_opt_bool")]
+    turn_skipping_enabled: Option<Option<bool>>,
+}
+
+fn de_double_opt_bool<'de, D: serde::Deserializer<'de>>(
+    de: D,
+) -> Result<Option<Option<bool>>, D::Error> {
+    Ok(Some(Option::<bool>::deserialize(de)?))
 }
 
 impl PatchData {
@@ -128,6 +139,7 @@ impl PatchData {
             character_avatars: None,
             story_background_image_id: None,
             last_background_generated_at: None,
+            turn_skipping_enabled: self.turn_skipping_enabled,
             updated_at: self.updated_at.clone(),
             // The U4.3 autonomous run-state / schedule / budget setters are
             // exercised by the enclave-lifecycle differential, not this corpus.

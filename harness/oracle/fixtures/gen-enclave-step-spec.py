@@ -268,6 +268,19 @@ chats.append(c)
 add_turn_call("fold_fires", chat_id(n), rid(n),
               turn_stream("And that makes a dozen.", (35, 7, 42)))
 
+# --- Case 17: the "nothing to add" pass (b90cd1f5) -------------------------------
+# A qualifying (two-LLM) autonomous room whose speaker replies with the bare
+# sentinel: the Host posts a turn-pass row, no assistant message persists, the
+# turn still counts against the run budget, and the job re-enqueues.
+n = 17
+c = {"id": chat_id(n), "userId": USER1, "title": "Pass room",
+     "participants": participants(n), "messages": opener(n),
+     "columns": {"chatType": "autonomous", "runState": "running",
+                  "currentRunId": rid(n), "runStartedAt": SEED_TS}}
+chats.append(c)
+add_turn_call("autonomous_pass", chat_id(n), rid(n),
+              turn_stream("[NOTHING TO ADD]", (28, 4, 32)))
+
 # --- Tick chats (user 2) --------------------------------------------------------
 T1, T2, T3, T4 = chat_id(21), chat_id(22), chat_id(23), chat_id(24)
 tick_anchor = a(len(calls))

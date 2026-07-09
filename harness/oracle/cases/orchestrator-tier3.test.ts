@@ -105,6 +105,8 @@ interface CallSpec {
   expectThrow?: boolean;
   /** The committed byte stream for RNG auto-detect (mirrors the Rust FixedBytes). */
   rngBytes?: number[];
+  /** P4.d2: the Nudge flag — the summoned turn withholds the skip offer (b90cd1f5). */
+  nudge?: boolean;
 }
 interface Spec {
   testPepperBase64: string;
@@ -670,6 +672,7 @@ async function main(): Promise<void> {
         content: call.continueMode ? undefined : call.content,
         continueMode: call.continueMode ? true : undefined,
         respondingParticipantId: call.respondingParticipant,
+        nudge: call.nudge,
       } as never);
       // Drain the ReadableStream.
       const reader = stream.getReader();

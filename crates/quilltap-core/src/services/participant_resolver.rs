@@ -208,17 +208,29 @@ fn to_message_views(messages: &[Value]) -> Vec<MessageView> {
     messages
         .iter()
         .filter(|m| str_field(m, "type") == Some("message"))
-        .map(|m| MessageView {
-            msg_type: Some("message".to_string()),
-            role: str_field(m, "role").unwrap_or_default().to_string(),
-            participant_id: str_field(m, "participantId").map(String::from),
-            target_participant_ids: m.get("targetParticipantIds").and_then(|t| {
-                t.as_array().map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(String::from))
-                        .collect()
-                })
-            }),
+        .map(|m| {
+            // A Host turn-pass record is tagged so `calculateTurnStateFromHistory`
+            // advances `lastSpeakerId` past it (v4 `isTurnPassMessage`, b90cd1f5).
+            if let Some(pid) = crate::skip_signal::turn_pass_participant_id(m) {
+                return MessageView {
+                    msg_type: Some(crate::turn_state::TURN_PASS_VIEW_TYPE.to_string()),
+                    role: str_field(m, "role").unwrap_or_default().to_string(),
+                    participant_id: Some(pid.to_string()),
+                    target_participant_ids: None,
+                };
+            }
+            MessageView {
+                msg_type: Some("message".to_string()),
+                role: str_field(m, "role").unwrap_or_default().to_string(),
+                participant_id: str_field(m, "participantId").map(String::from),
+                target_participant_ids: m.get("targetParticipantIds").and_then(|t| {
+                    t.as_array().map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
+                }),
+            }
         })
         .collect()
 }
