@@ -5131,3 +5131,54 @@ mount-file read envelope + themes assets/fonts + `characters/{id}/photos`
 `Last-Event-ID` replay + creation-progress events (P4.4), the real
 `/setup` UI (P4.5), the WS `action=signal` non-SIGTERM delivery (the
 P4.1c manager exposes SIGTERM only), and the spine mappings above.
+**Phase 4 (P4.3): the `quilltap` CLI Tier R is DONE — milestone M1**
+(2026-07-08; work order `docs/developer/porting/work-orders/
+p4.3-quilltap-cli.md`; v4 baseline `2494a84b`). New **`quilltap-cli`** crate
+(bin `quilltap`) — the v4 launcher's direct-mode verb set, every shipped verb
+**byte-diffed against `node <v4>/packages/quilltap/bin/quilltap.js` on shared
+fixtures** (`tests/cli_differential.rs`, env-gated on `QT_V4_CHECKOUT` +
+Node 24; 118 cases diffing stdout + stderr + exit code, green). Shipped: the
+router (v4 `locateSubcommand` — global value flags skipped with their values,
+first bare token decides, an instance named `db` never mis-routes; all 11
+subcommands recognized, unshipped ones exit loud; bare `quilltap` prints a
+banner pointing at `quilltap-web` per D12); **`db`** legacy flags (--tables /
+--count / raw SQL reader+writer / --json / --write / --llm-logs /
+--mount-points) with **V8 `console.table` reproduced byte-for-byte**
+(`vtable.rs` — box-drawing, `(index)` column, `util.inspect` string quoting;
+non-TTY form, the diffed one; TTY value-coloring a documented divergence) and
+JS number/JSON rendering (`nodefmt.rs` — better-sqlite3's lossy
+integer→double conversion included); the **lock commands** (--lock-status /
+--lock-clean / --lock-override — literal-ANSI classification
+ACTIVE/SUSPECT/STALE, heartbeat ages, last-10 history, operating on the raw
+JSON so unknown fields survive; corrupt-lock silent-clean quirk ported);
+**`docs`** read verbs (list / show / ls / dir / tree / read incl. --rendered
++ the TTY-binary guard, `qtap://` addressing over the ported core codec with
+the document-store-only + `self` rejections, `assertDocsSchema`'s
+migration refusal with instance hints); **`instances`** CRUD (list / show /
+path / add / remove / set-passphrase / default / rename + the interactive
+prompts); **`completion`** (bash/zsh/fish — v4's templates transcribed
+byte-exact). The resolution chain + pepper unlock are v4's `db-helpers.js`
+ported over `quilltap-core::dbkey` (`resolve.rs` — the five-step precedence,
+the one-shot stderr hint + `QUILLTAP_QUIET_HINTS`, `loadDbKey`'s
+internal-sentinel-first order, the `hasPassphrase` strip-and-rewrite
+migration, flag → env → hidden-TTY-prompt with Ctrl-C exit 130, the exact
+no-TTY error, and Node's AES-GCM failure message verbatim on a wrong
+passphrase). **`quilltap-host` additions (the P4.1d handoffs, closed):**
+`lock.rs` gained `verify_pid_is_quilltap` (the v4 probe regex verbatim —
+`node|electron|quilltap|next-server`, per-OS ps//proc/tasklist),
+`classify_lock_status_probed` (emits the `Suspect` state), and
+`acquire_write_lock`/`release_write_lock` (the CLI write-lock — refuse on
+live/suspect holder with v4's exact multi-line messages, claim stale with
+history preserved, no override); `instances.rs` gained the full v4 registry
+surface (read/write on an insertion-ordered `Value` so unknown fields
+survive, atomic 0600 tmp+rename writes, `resolve/list/upsert/remove/
+set_passphrase/default/rename/verify_passphrase`, `expand_path`).
+**Documented divergences:** TTY table colors; the Node readline
+pipe-buffer discard (two piped prompt answers work in v5, hang-and-exit in
+v4 — asserted v5-side); heartbeat elapsed-seconds normalized in the diff;
+`db --repl` deferred. **Deferred (tracked):** the db high-level verbs
+(schema/find/chats/messages/logs/message/log/memories/characters/optimize/
+backup/integrity — recognized, loud), docs files/status/find/grep +
+memories/logs (Tier B), every server-required verb + the
+HTTP-dispatch mode (P4.4), themes/migrations/maintenance/file-verify, and
+wiring bare `quilltap` to embed `quilltap-web` (unification/next round).

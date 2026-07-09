@@ -564,6 +564,275 @@ pub fn instance_lock_path(base_dir: &Path) -> PathBuf {
     base_dir.join("data").join("quilltap.lock")
 }
 
+// ============================================================================
+// P4.3 additions: the PID-identity probe + the CLI write-lock
+// (v4 `packages/quilltap/lib/lock-helpers.js`)
+// ============================================================================
+
+/// v4 `verifyPidIsNode` (launcher `lock-helpers.js`): best-effort check that a
+/// live PID looks like a Quilltap-shaped process. v4's regex
+/// `/node|electron|quilltap|next-server/i` already names `quilltap`, so the v5
+/// native binary matches it too — the probe is ported verbatim (a plain
+/// case-insensitive substring alternation).
+///
+/// Per-OS sources, each failing OPEN (`true` — refuse-to-clobber bias):
+/// - Linux: `/proc/<pid>/cmdline` first NUL-separated segment.
+/// - macOS: `ps -p <pid> -o comm=`.
+/// - Windows: `tasklist /FI "PID eq <pid>" /NH`.
+/// - anything else: `true`.
+pub fn verify_pid_is_quilltap(pid: u32) -> bool {
+    fn looks_quilltap(s: &str) -> bool {
+        let lower = s.to_lowercase();
+        ["node", "electron", "quilltap", "next-server"]
+            .iter()
+            .any(|n| lower.contains(n))
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        match std::fs::read_to_string(format!("/proc/{pid}/cmdline")) {
+            Ok(cmdline) => {
+                let cmd = cmdline.split('\0').next().unwrap_or("");
+                looks_quilltap(cmd)
+            }
+            Err(_) => true, // Can't read — assume match (v4)
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        match std::process::Command::new("ps")
+            .args(["-p", &pid.to_string(), "-o", "comm="])
+            .output()
+        {
+            Ok(out) => looks_quilltap(String::from_utf8_lossy(&out.stdout).trim()),
+            Err(_) => true,
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        match std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/NH"])
+            .output()
+        {
+            Ok(out) => looks_quilltap(String::from_utf8_lossy(&out.stdout).trim()),
+            Err(_) => true,
+        }
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        let _ = pid;
+        true
+    }
+}
+
+/// The launcher's full `getLockStatus` — [`classify_lock_status`] PLUS the
+/// same-host PID-identity probe, so a live-but-not-Quilltap-shaped PID
+/// classifies as [`LockStatus::Suspect`] (possible PID reuse). This is the
+/// classification the CLI lock verbs and the write-lock use; the server-side
+/// acquire path deliberately never probes (see [`classify_lock_status`]).
+pub fn classify_lock_status_probed(lock_path: &Path, now_ms: i64) -> LockStatus {
+    if !lock_path.exists() {
+        return LockStatus::Absent;
+    }
+    let Some(lock) = read_lock_file(lock_path) else {
+        return LockStatus::Corrupt;
+    };
+    let same_host = lock.hostname == hostname();
+    if same_host && is_pid_alive(lock.pid) && !verify_pid_is_quilltap(lock.pid) {
+        return LockStatus::Suspect {
+            reason: format!(
+                "PID {} is alive but does not look like a Quilltap process",
+                lock.pid
+            ),
+        };
+    }
+    classify_lock_content(&lock, now_ms)
+}
+
+/// The CLI write-lock refusal/failure (v4 `acquireWriteLock`'s thrown Error).
+/// `Display` is the exact v4 message — the CLI prints it verbatim (no
+/// `Error:` prefix) and exits 1.
+#[derive(Debug)]
+pub struct WriteLockError {
+    pub message: String,
+    /// v4 `err.locked` — true when a live instance holds it.
+    pub locked: bool,
+}
+
+impl std::fmt::Display for WriteLockError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+impl std::error::Error for WriteLockError {}
+
+/// v4 launcher `acquireWriteLock(dataDir)` — claim `<dataDir>/quilltap.lock`
+/// for a read-write CLI session (`quilltap db --write`), in the very same JSON
+/// shape the server writes, so a server starting mid-operation refuses to run.
+///
+/// Hard rule carried from v4: **NO overrides.** A live lock (`active` or
+/// `suspect`) is always refused; only an absent or stale lock is claimed.
+/// `data_dir` is the instance's `data/` directory (the lock's own directory),
+/// matching the v4 signature.
+pub fn acquire_write_lock(data_dir: &Path) -> Result<(), WriteLockError> {
+    let lock_path = data_dir.join("quilltap.lock");
+    let now_ms = iso_to_ms(&now_iso()).unwrap_or(0);
+    let status = classify_lock_status_probed(&lock_path, now_ms);
+
+    fn refuse(status: &LockStatus) -> WriteLockError {
+        let (reason, suspect) = match status {
+            LockStatus::Active { reason } => (reason.clone(), false),
+            LockStatus::Suspect { reason } => (reason.clone(), true),
+            _ => unreachable!(),
+        };
+        let mut lines = vec![format!("Database is currently in use — {reason}.")];
+        if !suspect {
+            lines.push(
+                "Stop the running Quilltap instance before opening the database read-write."
+                    .to_string(),
+            );
+        } else {
+            lines.push("This may be a stale lock from a reused PID. Inspect it with".to_string());
+            lines.push(
+                "`quilltap db --lock-status` and clean it with `quilltap db --lock-clean` if safe."
+                    .to_string(),
+            );
+        }
+        lines.push("(See `quilltap db --lock-status` for details.)".to_string());
+        WriteLockError {
+            message: lines.join("\n"),
+            locked: true,
+        }
+    }
+
+    match &status {
+        LockStatus::Active { .. } | LockStatus::Suspect { .. } => return Err(refuse(&status)),
+        LockStatus::Corrupt => {
+            return Err(WriteLockError {
+                message: format!(
+                    "Lock file at {} is corrupt. Inspect it manually or clean it with \
+                     `quilltap db --lock-clean`, then retry.",
+                    lock_path.display()
+                ),
+                locked: false,
+            });
+        }
+        LockStatus::Stale { reason } => {
+            let existing = read_lock_file(&lock_path);
+            return claim_stale_write_lock(&lock_path, existing, reason.clone());
+        }
+        LockStatus::Absent => {}
+    }
+
+    // Absent — atomic create so we lose cleanly to any racing process.
+    let mut content = build_lock_content();
+    add_history_entry(
+        &mut content,
+        LockEvent::Acquired,
+        Some("Read-write CLI session (quilltap db --write)".to_string()),
+    );
+    let json = serde_json::to_string_pretty(&content).map_err(|e| WriteLockError {
+        message: format!("serialize lock: {e}"),
+        locked: false,
+    })?;
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&lock_path)
+    {
+        Ok(mut f) => {
+            f.write_all(format!("{json}\n").as_bytes())
+                .map_err(|e| WriteLockError {
+                    message: format!("write lock: {e}"),
+                    locked: false,
+                })?;
+            Ok(())
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            // Someone created the lock between our check and our create.
+            // Re-decide (v4's EEXIST recheck).
+            let recheck = classify_lock_status_probed(&lock_path, now_ms);
+            match &recheck {
+                LockStatus::Active { reason } | LockStatus::Suspect { reason } => {
+                    Err(WriteLockError {
+                        message: format!(
+                            "Database is currently in use — {reason}.\n\
+                             Stop the running Quilltap instance before opening the database read-write."
+                        ),
+                        locked: true,
+                    })
+                }
+                LockStatus::Corrupt => Err(WriteLockError {
+                    message: "Database is currently in use — lock just claimed by another \
+                              process.\n\
+                              Stop the running Quilltap instance before opening the database \
+                              read-write."
+                        .to_string(),
+                    locked: true,
+                }),
+                LockStatus::Stale { reason } => {
+                    claim_stale_write_lock(&lock_path, read_lock_file(&lock_path), reason.clone())
+                }
+                LockStatus::Absent => claim_stale_write_lock(
+                    &lock_path,
+                    None,
+                    "reclaimed after race".to_string(),
+                ),
+            }
+        }
+        Err(e) => Err(WriteLockError {
+            message: format!("create lock: {e}"),
+            locked: false,
+        }),
+    }
+}
+
+/// v4 launcher `claimStaleLock`: fresh content for THIS process, prior history
+/// preserved, `stale-detected` + `stale-claimed` entries appended (the CLI
+/// detail flavor).
+fn claim_stale_write_lock(
+    lock_path: &Path,
+    existing: Option<LockFileContent>,
+    reason: String,
+) -> Result<(), WriteLockError> {
+    let mut content = build_lock_content();
+    if let Some(prior) = existing {
+        content.history = prior.history;
+    }
+    add_history_entry(&mut content, LockEvent::StaleDetected, Some(reason));
+    let (pid, _, _, _) = our_identity();
+    add_history_entry(
+        &mut content,
+        LockEvent::StaleClaimed,
+        Some(format!("Claimed by PID {pid} (quilltap db --write)")),
+    );
+    write_lock_file(lock_path, &content).map_err(|e| WriteLockError {
+        message: e.to_string(),
+        locked: false,
+    })
+}
+
+/// v4 launcher `releaseWriteLock(dataDir)`: release iff we own it — write a
+/// final `released` history entry, then unlink. Idempotent; never errors.
+pub fn release_write_lock(data_dir: &Path) {
+    let lock_path = data_dir.join("quilltap.lock");
+    let Some(existing) = read_lock_file(&lock_path) else {
+        return; // missing or corrupt — don't touch a lock we can't prove is ours
+    };
+    let (pid, host, _, _) = our_identity();
+    if existing.pid != pid || existing.hostname != host {
+        return;
+    }
+    let mut updated = existing;
+    add_history_entry(
+        &mut updated,
+        LockEvent::Released,
+        Some(format!("Released by PID {pid} (quilltap db --write)")),
+    );
+    let _ = write_lock_file(&lock_path, &updated);
+    let _ = std::fs::remove_file(&lock_path);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -804,6 +1073,129 @@ mod tests {
             acquire_instance_lock(&path),
             Err(LockError::Io(_))
         ));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn probed_classification_reports_suspect_and_write_lock_refuses() {
+        let path = temp_lock_path();
+        // Spawn a live non-Quilltap-shaped process ("sleep") and lock under it.
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn sleep");
+        let mut content = build_lock_content();
+        content.pid = child.id();
+        write_lock_file(&path, &content).unwrap();
+
+        // The un-probed classifier says Active (server behavior)...
+        assert!(matches!(
+            classify_lock_status(&path, 0),
+            LockStatus::Active { .. }
+        ));
+        // ...the probed one says Suspect.
+        match classify_lock_status_probed(&path, 0) {
+            LockStatus::Suspect { reason } => {
+                assert_eq!(
+                    reason,
+                    format!(
+                        "PID {} is alive but does not look like a Quilltap process",
+                        child.id()
+                    )
+                );
+            }
+            other => panic!("expected suspect, got {other:?}"),
+        }
+        // The write lock refuses with v4's exact suspect message shape.
+        let data_dir = path.parent().unwrap().to_path_buf();
+        let err = acquire_write_lock(&data_dir).unwrap_err();
+        assert!(err.locked);
+        assert!(err
+            .message
+            .starts_with("Database is currently in use — PID"));
+        assert!(err
+            .message
+            .contains("This may be a stale lock from a reused PID."));
+        assert!(err
+            .message
+            .ends_with("(See `quilltap db --lock-status` for details.)"));
+
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn write_lock_acquires_claims_stale_and_releases() {
+        let path = temp_lock_path();
+        let data_dir = path.parent().unwrap().to_path_buf();
+
+        // Fresh acquire writes the CLI acquisition detail.
+        acquire_write_lock(&data_dir).unwrap();
+        let content = read_lock_file(&path).unwrap();
+        assert_eq!(content.pid, std::process::id());
+        assert_eq!(
+            content.history[0].detail.as_deref(),
+            Some("Read-write CLI session (quilltap db --write)")
+        );
+
+        // Release writes a released entry then unlinks.
+        release_write_lock(&data_dir);
+        assert!(!path.exists());
+
+        // A stale (dead-PID) lock is claimed, preserving history.
+        let dead = dead_pid();
+        let mut stale = build_lock_content();
+        stale.pid = dead;
+        add_history_entry(&mut stale, LockEvent::Acquired, Some("old".to_string()));
+        write_lock_file(&path, &stale).unwrap();
+        acquire_write_lock(&data_dir).unwrap();
+        let claimed = read_lock_file(&path).unwrap();
+        assert_eq!(claimed.pid, std::process::id());
+        let events: Vec<LockEvent> = claimed.history.iter().map(|h| h.event).collect();
+        assert_eq!(
+            events,
+            vec![
+                LockEvent::Acquired,
+                LockEvent::StaleDetected,
+                LockEvent::StaleClaimed
+            ]
+        );
+        assert_eq!(
+            claimed.history[2].detail.as_deref(),
+            Some(
+                format!(
+                    "Claimed by PID {} (quilltap db --write)",
+                    std::process::id()
+                )
+                .as_str()
+            )
+        );
+        release_write_lock(&data_dir);
+
+        // A live Quilltap-shaped lock (our own test binary's PID — its
+        // executable name contains "quilltap", so the probe passes) refuses
+        // with the ACTIVE message shape.
+        let own = std::process::id();
+        let mut live = build_lock_content();
+        live.pid = own;
+        write_lock_file(&path, &live).unwrap();
+        let err = acquire_write_lock(&data_dir).unwrap_err();
+        assert!(err.locked);
+        assert!(err
+            .message
+            .contains(&format!("held by PID {own} on this host")));
+        assert!(err.message.contains(
+            "Stop the running Quilltap instance before opening the database read-write."
+        ));
+        // Release skips a lock we don't own (foreign PID).
+        let mut foreign = read_lock_file(&path).unwrap();
+        foreign.pid = own.wrapping_add(1);
+        write_lock_file(&path, &foreign).unwrap();
+        release_write_lock(&data_dir);
+        assert!(path.exists());
         let _ = std::fs::remove_file(&path);
     }
 

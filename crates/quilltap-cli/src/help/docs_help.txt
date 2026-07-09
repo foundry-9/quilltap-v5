@@ -1,0 +1,114 @@
+
+Quilltap Document Store Tool
+
+Usage: quilltap docs <subcommand> [options]
+
+Read subcommands:
+  list                                   List all mount points
+  show <mount>                           Details for one mount point
+  files <mount> [--folder <path>]        List files in a mount
+  ls|dir <mount> [path] [options]        ls-style listing of one folder (or file)
+  tree <mount> [path] [options]          ASCII tree view of a folder hierarchy
+  read <mount> <relativePath>            Print file contents to stdout
+  read --rendered <mount> <relativePath> Print extracted plaintext to stdout
+  export <mount> <outputDir>             Export an entire mount to a directory
+  scan <mount>                           Trigger a rescan via the running server
+  find [--mount <name|id|all>] [--type file|folder] [--ext <ext>] [--limit N] <pattern>
+                                         Substring search on file (or folder) names
+  grep [--mount <name|id|all>] [--ignore-case] [-l] [--max N] [--context N] <pattern>
+                                         Substring search inside extracted text
+  status [--mount <name|id>] [--top N]   Per-mount extraction + embedding rollup
+
+Server-required subcommands (background-job queue lives in the running server):
+  reindex <mount> [path] [--force]       Re-extract text + re-chunk affected files
+  embed <mount> [path] [--force] [--wait]
+                                         Enqueue embedding jobs for un-embedded chunks
+
+Write subcommands (server required for database-backed mounts):
+  write [--force] [--base64] <mount> <path> [file]  Write a file from <file> or stdin
+  delete <mount> <path>                              Idempotent file delete
+  mkdir <mount> <path>                               Idempotent folder create
+  move <srcMount> <srcPath> <dstMount> <dstPath>                   Move file (hard-link when possible)
+  copy [--force] <srcMount> <srcPath> <dstMount> <dstPath>         Copy file (hard-link unless --force)
+  link <srcMount> <srcPath> <dstMount> <dstPath>                   Hard-link file (server-required)
+  rmdir <mount> <path>                               Delete an empty folder (server-required)
+  mvdir <mount> <fromPath> <toPath>                  Rename/move a folder (server-required)
+
+<mount> may be a mount name or UUID. Names are case-insensitive; ambiguous
+names print candidates and exit non-zero.
+
+Addressing with qtap:// URIs: anywhere a <mount> <relativePath> pair is taken,
+you may instead pass a single qtap:// URI in its place — e.g.
+  quilltap docs read qtap://notes/today.md
+  quilltap docs move qtap://drafts/foo.md qtap://notes/2026/foo.md
+The CLI addresses document stores only: qtap://self/… needs a character context
+and qtap://project/… and qtap://general/… are not CLI-addressable; pass a store
+name or UUID instead. --mount on find/grep also accepts a qtap://store/ URI.
+
+Options:
+  -d, --data-dir <path>     Override data directory
+  -i, --instance <name>     Use a registered instance (see 'quilltap instances')
+  --passphrase <pass>       Decrypt .dbkey if peppered
+  --port <number>           Server port for API calls (default: 3000)
+  --json                    Machine-readable output (find/grep/ls/files/tree rows
+                            carry a 'uri' field)
+  --uri                     For find/grep/files: show the canonical qtap:// URI
+                            as the locator instead of the mount/path columns
+  --rendered                For 'read': output extracted plaintext
+  --folder <path>           For 'files': narrow to a folder prefix
+  --recursive, -R           For 'ls': list all files recursively, grouped by folder
+  --sort name|time|size|links  For 'ls': sort by name (default), modification time,
+                            file size, or hard-link count
+  -r, --reverse             Reverse sort order
+  --links                   For 'ls' / 'dir': under each file with more than
+                            one hard link, list the other mount/path entries
+  --depth N                 For 'tree': maximum nesting depth (default: 20)
+  --max-nodes N             For 'tree': maximum nodes to render (default: 1000)
+  --long                    For 'tree': include text/emb columns (reserved for future)
+  --force                   For 'read': dump binary to TTY anyway
+                            For 'write': overwrite existing destination
+                            For 'copy':  overwrite + force a real byte copy
+                                         (skips the default hard-link path)
+  --base64                  For 'write': send content as base64 JSON via PUT
+                                         .../files/{path} (portable path used
+                                         by the file browser; server-required)
+                            For 'read':  fetch raw bytes via GET .../files/{path}
+                                         ?encoding=base64 and emit to stdout
+  -h, --help                Show this help
+
+Read-only operations (list, show, files, read, export) open the mount-index
+database directly. Write operations talk to the running Quilltap server when
+available (so reindex/embed kicks off automatically); they fall back to
+filesystem-only writes when the server is down, and report what the index
+will see after the next 'docs scan'.
+
+Verification: every write computes a SHA-256 on both ends and compares them
+before reporting success. Hard-linked files match trivially.
+
+Examples:
+  quilltap docs ls notes
+  quilltap docs ls notes 2026/may --links
+  quilltap docs dir notes today.md --json
+  quilltap docs write notes today.md < draft.md
+  quilltap docs write --force notes today.md draft.md
+  quilltap docs delete notes today.md
+  quilltap docs mkdir notes 2026/may
+  quilltap docs move drafts foo.md notes 2026/foo.md
+  quilltap docs copy notes today.md archive 2026-05/today.md
+  quilltap docs copy --force notes today.md archive copy.md
+  quilltap docs link notes today.md archive 2026-05/today.md
+  quilltap docs rmdir notes 2026/may
+  quilltap docs mvdir notes drafts/old drafts/archive
+  quilltap docs write --base64 notes image.png < image.png
+  quilltap docs read --base64 notes image.png > image.png
+  quilltap docs find Manifesto
+  quilltap docs find --mount notes --ext md Knowledge
+  quilltap docs grep --mount notes --ignore-case "five-point Calvinist"
+  quilltap docs grep --mount notes -l "TODO"
+  quilltap docs read qtap://notes/today.md
+  quilltap docs find --uri Manifesto
+  quilltap docs status
+  quilltap docs status --mount notes --top 10
+  quilltap docs reindex notes Knowledge --force
+  quilltap docs embed notes --wait
+

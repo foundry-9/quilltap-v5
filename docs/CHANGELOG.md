@@ -76,6 +76,38 @@ the host assembler updated (driver still None — the production spine lands
 next). The engine's ChatSend arm is readiness-gated in dispatch; a ready
 engine without a driver answers the typed "chat dispatch not assembled"
 internal error (read-only embedders stay valid).
+P4.3 (the `quilltap` CLI, Tier R): new `quilltap-cli` crate — the native
+`quilltap` binary covering the v4 launcher's direct-mode verbs, each shipped
+verb byte-diffed against `node <v4>/packages/quilltap/bin/quilltap.js` on
+shared fixtures (118 differential cases green: stdout + stderr + exit code).
+Shipped: the subcommand router (locateSubcommand semantics, all 11 v4
+subcommands recognized, unshipped ones exit loud), `db` legacy flags
+(--tables/--count/raw SQL reader+writer/--json/--write/--llm-logs/
+--mount-points) with V8's console.table reproduced byte-exactly, the
+instance-lock commands (--lock-status/--lock-clean/--lock-override, ANSI
+classification, last-10 history), `docs` read verbs (list/show/ls/dir/tree/
+read incl. --rendered and qtap:// addressing over the ported codec, the
+post-link-table schema guard), and `instances` CRUD (list/show/path/add/
+remove/set-passphrase/default/rename + verifyPassphrase), plus the
+`completion` emitters (bash/zsh/fish — v4's templates transcribed
+byte-exact). The resolution
+chain (--data-dir → --instance → default instance → QUILLTAP_DATA_DIR →
+platform default), the default-instance stderr hint, and the loadDbKey
+passphrase chain (flag → env → hidden TTY prompt, Ctrl-C exit 130) are
+ported over quilltap-core::dbkey. quilltap-host additions: the write-lock
+(acquire_write_lock/release_write_lock — refuse on live holder, no
+override), the Suspect PID-identity probe (verify_pid_is_quilltap +
+classify_lock_status_probed), and the instance-registry write verbs
+(upsert/remove/set-passphrase/default/rename/verify_passphrase, atomic
+0600 tmp+rename writes). Help texts are byte transcriptions of the v4
+launcher's output. Documented divergences: interactive-TTY table colors
+not reproduced (non-TTY output is the diffed form); the Node
+readline pipe-buffer discard on multi-prompt stdin scripting is not
+reproduced (v5 reads line-per-prompt); elapsed-seconds heartbeat displays
+normalized in the diff. Deferred per the work order: db high-level verbs
+(schema/find/chats/...), docs files/status/find/grep, memories/logs
+(Tier B); every server-required verb + HTTP-dispatch mode
+(P4.4); themes/migrations/maintenance/file-verify; db --repl.
 
 P4.2/P4.3 round kickoff: drift check clean (v4 HEAD still 2494a84b) and the
 two lane work orders written (docs/developer/porting/work-orders/

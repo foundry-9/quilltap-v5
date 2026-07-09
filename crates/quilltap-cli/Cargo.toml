@@ -1,0 +1,34 @@
+# quilltap-cli — the native `quilltap` binary (P4.3).
+#
+# The direct-mode CLI: read-only encrypted-DB opens (`db`, `docs`), the
+# instance registry (`instances`), and the launcher lock verbs — the verbs
+# v4's launcher (`packages/quilltap/bin/quilltap.js` + `lib/*`) itself runs
+# without a server. Output is byte-diffed against the v4 launcher on shared
+# fixtures (tier-4 #4; see tests/cli_differential.rs). Server-required verbs
+# land with the HTTP-dispatch mode (P4.4) and exit loud until then.
+
+[package]
+name = "quilltap-cli"
+version = "0.0.1"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "quilltap"
+path = "src/main.rs"
+
+[dependencies]
+quilltap-core = { path = "../quilltap-core" }
+quilltap-host = { path = "../quilltap-host" }
+# Read-only encrypted opens over the workspace-linked SQLite3MC (the sys crate
+# links `sqlite3` for the whole workspace, so this binds the ChaCha20 cipher).
+rusqlite = { workspace = true }
+serde_json = { version = "1", features = ["preserve_order"] }
+# TTY detection + termios raw mode for the hidden passphrase prompt.
+libc = "0.2"
+# Local-time rendering for `docs ls` (v4 formatLsDate uses the process TZ).
+# Same pinned line as the core's.
+jiff = "0.2"
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,29 @@
+
+Quilltap Shell Completion
+
+Usage: quilltap completion <shell> [--help]
+
+Supported shells:
+  bash          Bash completion script
+  zsh           Zsh completion script
+  fish          Fish completion script
+
+This command generates a shell completion script for the given shell.
+To install:
+
+  Bash:
+    quilltap completion bash >> ~/.bashrc
+
+  Zsh:
+    mkdir -p ~/.zsh/completions
+    quilltap completion zsh > ~/.zsh/completions/_quilltap
+    # Then add to ~/.zshrc: fpath=(~/.zsh/completions $fpath)
+
+  Fish:
+    quilltap completion fish > ~/.config/fish/completions/quilltap.fish
+
+Examples:
+  quilltap completion bash | bash -c 'source /dev/stdin'  # Test in current shell
+  quilltap completion zsh                                 # Print to stdout
+  quilltap completion fish > ~/completions.fish           # Save to file
+

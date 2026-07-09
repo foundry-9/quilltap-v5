@@ -2108,6 +2108,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a993555f31e5a609f617c12db6250dedcac1b0a85076912c436e6fc9b2c8e6a3"
 
 [[package]]
+name = "quilltap-cli"
+version = "0.0.1"
+dependencies = [
+ "jiff",
+ "libc",
+ "quilltap-core",
+ "quilltap-host",
+ "rusqlite",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "quilltap-core"
 version = "0.0.141"
 dependencies = [
