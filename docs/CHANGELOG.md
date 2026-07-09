@@ -4,6 +4,65 @@
 
 ### 5.0-dev
 
+P4.2 (part 2): the production chat-send spine + quilltap-web, milestone M2.
+New quilltap-host::spine — the ChatSendDriver composition point: ChatSpine
+(generic over the embedding/completion/streaming/pricing model boundaries
+only; every other seam is the REAL one, mirroring the tier-3 orchestrator
+differential's construction — RealBuildContextSeams, RealAnswerConfirmation
+under the host 25s+60s timeout ceiling, RealAsyncCompression, a
+pricing-backed CostTracker, RealCarinaQuery, RealBrahmaConsole, the erased
+ask_carina engine, DangerContentRouter over DbApiKeys, the Prospero writer
+bridged on a dedicated thread, OsRandomBytes). Each dispatch runs
+process_message + executeTurnChain on its own thread + current-thread
+runtime (the U4.4 non-Send bridge) with frames riding the engine Event
+broadcast; a turn error emits v4's transport-shell {error, errorType,
+details} frame. Per-request inputs are pre-resolved (the same deterministic
+participant->profile resolution, then getModelContextLimit + the registry
+web-search capability); chat.timestampConfig || defaultTimestampConfig and
+the chat_settings -> OrchestratorChatSettings projection are documented
+NEW host-tier mappings (flagged for the P4.4/P4.5 verified readers), and
+the provider->key scan (first active key per provider) is a documented
+host seam. ProductionSpineFactory wires the ProviderIo drivers and
+registers the model-dependent job handlers per assembly:
+AUTONOMOUS_ROOM_TURN (the step-runner closure), MEMORY_HOUSEKEEPING (the
+v4 handler body over ported pieces), CHAT_DANGER_CLASSIFICATION,
+CARINA_MEMORY_EXTRACTION, CHARACTER_AVATAR_GENERATION, and
+STORY_BACKGROUND_GENERATION (per-job construction so now_ms is the wall
+clock). The host assembler also constructs a per-assembly TerminalManager
+(published on the Host for the transport; cleared on Lock). Core enablers:
+execute_completion gained the per-call profile baseUrl override (the
+streaming composer's manifest-base swap), build_pricing_context is pub,
+SelfInventoryEnv is Clone, files::find_by_storage_key added, and
+paths.rs resolves /app/quilltap inside a container.
+
+New crate quilltap-web — the axum HTTP transport (D1-D5): POST
+/api/dispatch (Response-to-status mapping; the Locked 503 carries v4's
+{error: "Setup required", setupUrl: "/setup", pepperState} body merged
+alongside the typed envelope), GET /api/events (one global SSE stream,
+v4's data:-frame encoding with incrementing id: fields + the ": keep-alive"
+comment every 15 s; broadcast lag = the resync signal), GET /health (v4's
+vocabulary collapsed to v5's phases: 200 healthy / 423 locked / 409
+lock-conflict via the host lock classifier / 503 unhealthy), the D4 binary
+GETs (files proxy by storage key, files by id + the cached WebP thumbnail
+action with the v4 size clamp and canonical _thumbnails cache key, the
+mount-point raw file read, the blob read with the documents fallback —
+cache/sha/disposition/frame headers per the v4 routes), the D5 terminal
+surface (spawn posts the session-opened Ariel announcement — the P4.1c
+call-site handoff closed — list/get/kill/write/delete, and the WebSocket
+marshalling terminal::protocol verbatim incl. the unknown-session
+exit-then-close-1000 semantics), static SPA serving with the index
+fallback + embedded placeholder pages (/ and /setup readable pre-P4.5),
+and the bind policy (--host default 127.0.0.1, --port default 3000,
+--data-dir/--instance/--spa-dir). Tests: the M2 chat-send e2e smoke
+(always-on: a committed v4-baked test-pepper fixture instance, real HTTP
+dispatch -> live SSE content/done frames -> the assistant row + chat
+bumps asserted in the DB), the transport contract tests (statuses, the
+Locked body, unlock round-trip, exact SSE frame bytes), the terminal
+REST+WS integration over a real PTY, and the binary-route matrix. The
+Dockerfile (multi-stage, BuildKit cache mounts over the pinned
+amalgamation) builds and the container serves /health 423 needs-setup on
+an empty volume.
+
 P4.2 (part 1): the ChatSend boundary contract. quilltap-core::api gains the
 Request::ChatSend variant (camelCase projection of v4 SendMessageOptions:
 chatId/content/continueMode/respondingParticipantId/targetParticipantIds/

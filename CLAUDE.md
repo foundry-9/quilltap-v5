@@ -5067,3 +5067,67 @@ the P4.1 drivers + the model-dependent job-handler registrations), the
 terminal WS route marshalling over `terminal::protocol`, the thumbnail
 serving routes, and the startup-conflict 503 surface over
 `classify_lock_status`. Next: P4.2 (`quilltap-web`) ∥ P4.3 (CLI).
+
+**Phase 4 (P4.2): quilltap-web + the production chat-send spine — DONE,
+milestone M2** (2026-07-08). The production spine (`quilltap-host::spine`):
+`ChatSpine` implements the new `api::ChatSendDriver` seam — generic over ONLY
+the four model boundaries (embedding / completion / streaming / pricing
+fetch), every other seam REAL, mirroring the tier-3 orchestrator
+differential's construction (`RealBuildContextSeams`,
+`RealAnswerConfirmation` under a host 25 s + 60 s timeout ceiling,
+`RealAsyncCompression`, a pricing-backed `CostTracker`, `RealCarinaQuery`,
+`RealBrahmaConsole`, the erased ask_carina engine, `DangerContentRouter`
+over `DbApiKeys`, a thread-bridged Prospero writer, `OsRandomBytes`). Each
+dispatch runs `process_message` + `execute_turn_chain` on a dedicated thread
++ current-thread runtime (the U4.4 non-`Send` bridge), frames riding the
+engine `Event` broadcast; a turn error emits v4's transport-shell
+`{error, errorType, details}` frame (new `EventPayload::ChatError`).
+`EngineAssembler::assemble` grew the event broadcast + an `EngineAssembly`
+return (shutdown + optional chat driver); the engine's `ChatSend` arm is
+readiness-gated, with the typed "chat dispatch not assembled" refusal for
+driver-less embedders. `ProductionSpineFactory` wires the P4.1a `ProviderIo`
+drivers and registers the model-dependent job handlers per assembly
+(`AUTONOMOUS_ROOM_TURN` via the step-runner closure, `MEMORY_HOUSEKEEPING`
+[the v4 handler body as glue over ported pieces — its end-to-end
+differential rides the P4.4 jobs vertical], `CHAT_DANGER_CLASSIFICATION`,
+`CARINA_MEMORY_EXTRACTION`, `CHARACTER_AVATAR_GENERATION`,
+`STORY_BACKGROUND_GENERATION` — the image handlers constructed per job so
+`now_ms` is the wall clock). **Documented host-tier seams** (spine.rs module
+header): the provider→key scan (first active key per provider — v4 follows
+the profile's `apiKeyId`; divergence only under multiple same-provider
+keys), the `chat_settings`→`OrchestratorChatSettings` + timestamp-config
+projections (NEW differential-less mappings, to fold into the P4.4/P4.5
+verified readers), the single 85 s confirmation ceiling (v4 splits
+25 s/60 s inside the service), and the step's best-effort profile
+pre-resolve. New crate **`quilltap-web`** (the axum transport, D1–D5):
+`POST /api/dispatch` (ErrorKind→status; the Locked 503 merges v4's
+`{error:"Setup required", setupUrl:"/setup", pepperState}` body alongside
+the typed envelope), `GET /api/events` (one global SSE stream — v4's
+`data:` frame encoding, incrementing `id:` fields, the `: keep-alive`
+comment every 15 s, lag = resync), `GET /health` (200 healthy / 423 locked
+/ 409 lock-conflict over `classify_lock_status` / 503 unhealthy — the
+P4.1d startup-conflict handoff closed), the D4 binary GETs (files proxy /
+files by id + the cached WebP thumbnail action / the mount-point raw file
+read / the blob read with documents fallback — v4's cache/sha/disposition
+headers), the D5 terminal surface (spawn posts the session-opened Ariel
+announcement — the P4.1c handoff closed — plus list/get/kill/write/delete
+and the WS marshalling `terminal::protocol` verbatim with v4's
+unknown-session exit-then-close-1000), static SPA serving with the index
+fallback + embedded steampunk placeholders, and the D2 bind policy. The
+host assembler now constructs a per-assembly `TerminalManager` (exposed via
+`Host::terminal_manager()`, cleared on Lock). **Verified:** the M2 e2e
+smoke (always-on CI: a COMMITTED v4-baked test-pepper fixture instance
+[`crates/quilltap-web/tests/fixtures/`, built by the orchestrator fixture
+builder; user ids rewritten to `SINGLE_USER_ID` at test setup] — real HTTP
+dispatch → live SSE content/done frames → the assistant row + chat bumps
+asserted in the DB), the transport contract tests (statuses, the Locked
+body, the unlock round trip, exact SSE frame bytes), the terminal REST+WS
+integration over a real PTY (incl. the Ariel announcement row), the
+binary-route matrix (bytes/mime/cache/sha/RFC-5987 headers, the thumbnail
+cache write), and the Dockerfile BUILT + RUN (196 MB image; `/health` 423
+needs-setup on an empty volume). **Tracked deferrals:** the non-raw JSON
+mount-file read envelope + themes assets/fonts + `characters/{id}/photos`
+(P4.4), the `Setup`/`Store`/`ChangePassphrase` dispatch variants (P4.4),
+`Last-Event-ID` replay + creation-progress events (P4.4), the real
+`/setup` UI (P4.5), the WS `action=signal` non-SIGTERM delivery (the
+P4.1c manager exposes SIGTERM only), and the spine mappings above.
