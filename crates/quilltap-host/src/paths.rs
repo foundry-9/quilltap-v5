@@ -1,10 +1,10 @@
 //! Data-dir and app-dir resolution (v4 `lib/paths.ts` + the launcher's
 //! platform conventions).
 //!
-//! P4.0 ships the minimal chain — explicit → `QUILLTAP_DATA_DIR` → platform
-//! default. The docker default (`/app/quilltap`) lands with P4.2's
-//! Dockerfile; the default-instance link in the chain lands with the CLI
-//! (P4.3).
+//! P4.0 shipped the minimal chain — explicit → `QUILLTAP_DATA_DIR` →
+//! platform default; P4.2 adds the docker default (`/app/quilltap` when
+//! `is_docker_environment()`, v4 `getBaseDataDir()`'s container branch). The
+//! default-instance link in the chain lands with the CLI (P4.3).
 
 use std::path::PathBuf;
 
@@ -18,8 +18,12 @@ fn home_dir() -> PathBuf {
 }
 
 /// v4 `getPlatformDefaultBaseDir()` — where an instance lives when nothing
-/// says otherwise.
+/// says otherwise. Inside a container (v4 `isDockerEnvironment()`) the data
+/// dir is the conventional volume mount `/app/quilltap` (P4.2 D21).
 pub fn platform_default_base_dir() -> PathBuf {
+    if crate::env::is_docker_environment() {
+        return PathBuf::from("/app/quilltap");
+    }
     #[cfg(target_os = "macos")]
     {
         home_dir()

@@ -519,6 +519,22 @@ impl<'c> FilesRepository<'c> {
         Ok(row)
     }
 
+    /// v4 `findByStorageKey(storageKey)` — the file row at a storage key (the
+    /// files-proxy route's lookup, `files/proxy/[...key]/route.ts:60`). `None`
+    /// when absent.
+    pub fn find_by_storage_key(&self, storage_key: &str) -> Result<Option<FileEntry>, DbError> {
+        let sql = format!("{FILE_ENTRY_SELECT_ALL} WHERE storageKey = ?1 LIMIT 1");
+        let row = self
+            .conn
+            .query_row(&sql, params![storage_key], map_file_entry)
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+        Ok(row)
+    }
+
     /// v4 `findBySha256(sha256)` — every file row with this content hash, hydrated
     /// into the [`FileEntry`] subset the photo tools consume. Ordered by
     /// `createdAt` ASC (insertion order) so `sisters[0]` is deterministic.

@@ -82,6 +82,7 @@ pub enum ClientShell {
 /// The injected host-environment values the `quilltap` section + the mount-index
 /// degraded check + the model-context registry need. The harness feeds these the
 /// same values v4's oracle run produces.
+#[derive(Clone)]
 pub struct SelfInventoryEnv {
     /// v4 `packageJson.version` — the Quilltap version string surfaced at the
     /// output top level (`quilltapVersion`) AND inside the `quilltap` section. A

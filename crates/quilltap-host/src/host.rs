@@ -59,6 +59,8 @@ use quilltap_core::services::scheduled_maintenance::{run_scheduled_maintenance, 
 
 use crate::instances::InstanceRegistry;
 use crate::lock;
+use crate::spine::SpineFactory;
+use crate::terminal::{TerminalManager, TerminalManagerConfig};
 
 // ============================================================================
 // Config
@@ -107,6 +109,14 @@ pub struct HostConfig {
     /// Additional job handlers (tests; the P4.1 lanes register the
     /// seam-needing ones here until they move into the built-in set).
     pub extra_handlers: Vec<(String, Arc<dyn JobHandler>)>,
+    /// The chat-send spine factory (P4.2). `Some` wires the `ChatSend`
+    /// dispatch driver + the model-dependent job handlers per assembly;
+    /// `None` keeps the P4.0 read-only shape (ChatSend answers
+    /// "chat dispatch not assembled").
+    pub spine: Option<Arc<dyn SpineFactory>>,
+    /// Whether each assembly runs a [`TerminalManager`] (the PTY host driver).
+    /// Default true; tests that don't need PTYs may switch it off.
+    pub terminal: bool,
 }
 
 impl HostConfig {
@@ -129,7 +139,15 @@ impl HostConfig {
             heartbeat_ms: lock::HEARTBEAT_INTERVAL_MS,
             on_lock_lost: None,
             extra_handlers: Vec::new(),
+            spine: None,
+            terminal: true,
         }
+    }
+
+    /// Wire a chat-send spine factory (chainable).
+    pub fn with_spine(mut self, spine: Arc<dyn SpineFactory>) -> Self {
+        self.spine = Some(spine);
+        self
     }
 
     /// Register an extra job handler (chainable).
@@ -171,6 +189,10 @@ impl std::error::Error for HostError {}
 /// stop the drivers — dispatch `Lock` (or end the runtime) to tear down.
 pub struct Host {
     core: CoreEngine,
+    /// The CURRENT assembly's terminal manager (filled on assemble, cleared
+    /// on shutdown — a lock/unlock cycle swaps it).
+    terminal: Arc<Mutex<Option<Arc<TerminalManager>>>>,
+    base_dir: PathBuf,
 }
 
 impl Host {
@@ -185,8 +207,12 @@ impl Host {
             None => InstanceRegistry::at_default_location(),
         });
 
+        let terminal_slot: Arc<Mutex<Option<Arc<TerminalManager>>>> = Arc::new(Mutex::new(None));
         let assembler = HostAssembler {
             base_dir: config.base_dir.clone(),
+            spine: config.spine,
+            terminal: config.terminal,
+            terminal_slot: terminal_slot.clone(),
             tz: config.tz,
             autonomous_tick_ms: config.autonomous_tick_ms,
             stuck_check_ms: config.stuck_check_ms,
@@ -201,6 +227,7 @@ impl Host {
             rt,
         };
 
+        let base_dir = config.base_dir.clone();
         let core = CoreEngine::boot(
             CoreConfig {
                 base_dir: config.base_dir,
@@ -212,12 +239,27 @@ impl Host {
         )
         .map_err(HostError::Boot)?;
 
-        Ok(Host { core })
+        Ok(Host {
+            core,
+            terminal: terminal_slot,
+            base_dir,
+        })
     }
 
     /// The boundary handle (`Clone`) transports dispatch through.
     pub fn core(&self) -> &CoreEngine {
         &self.core
+    }
+
+    /// The CURRENT assembly's terminal manager (None while locked or when
+    /// `HostConfig::terminal` is off).
+    pub fn terminal_manager(&self) -> Option<Arc<TerminalManager>> {
+        self.terminal.lock().unwrap().clone()
+    }
+
+    /// The instance root this host serves.
+    pub fn base_dir(&self) -> &std::path::Path {
+        &self.base_dir
     }
 }
 
@@ -270,6 +312,9 @@ impl JobHandler for SharedHandler {
 
 struct HostAssembler {
     base_dir: PathBuf,
+    spine: Option<Arc<dyn SpineFactory>>,
+    terminal: bool,
+    terminal_slot: Arc<Mutex<Option<Arc<TerminalManager>>>>,
     tz: String,
     autonomous_tick_ms: u64,
     stuck_check_ms: u64,
@@ -286,6 +331,8 @@ struct HostAssembler {
 
 struct HostShutdown {
     stop: watch::Sender<bool>,
+    /// Clears the host's terminal-manager slot for this assembly.
+    terminal_slot: Arc<Mutex<Option<Arc<TerminalManager>>>>,
     /// The instance lock this assembly holds; released on shutdown (AFTER the
     /// stop flag flips, so the heartbeat loop never mistakes our own release
     /// for a lock loss).
@@ -298,6 +345,9 @@ struct HostShutdown {
 impl EngineShutdown for HostShutdown {
     fn shutdown(&self) {
         let _ = self.stop.send(true);
+        // Drop this assembly's terminal manager (live PTYs keep their reader
+        // threads until the shells exit; new spawns need a fresh unlock).
+        self.terminal_slot.lock().unwrap().take();
         // Idempotent: a second shutdown finds no file (or not ours) and no-ops.
         lock::release_instance_lock(&self.lock_path);
     }
@@ -315,6 +365,29 @@ impl EngineAssembler for HostAssembler {
         // route carries it to the UI).
         let lock_path = lock::instance_lock_path(&self.base_dir);
         lock::acquire_instance_lock(&lock_path).map_err(|e| e.to_string())?;
+
+        // The terminal manager (P4.1c) — one per assembly (it holds this
+        // assembly's Db); published on the host slot for the transport's
+        // terminal routes.
+        let terminal_manager = if self.terminal {
+            let manager = TerminalManager::new(TerminalManagerConfig::new(
+                db.clone(),
+                self.base_dir.join("files"),
+                self.base_dir.join("logs"),
+                self.base_dir.clone(),
+            ));
+            *self.terminal_slot.lock().unwrap() = Some(manager.clone());
+            Some(manager)
+        } else {
+            None
+        };
+
+        // The chat-send spine (P4.2), when configured: the ChatSend driver +
+        // the model-dependent job handlers.
+        let spine_bundle = self
+            .spine
+            .as_ref()
+            .map(|f| f.build(db, events, terminal_manager));
 
         // The seam-free built-in handler set (P4.0). Every other known job
         // type stays on the runner's loud fallback until its P4.1 lane wires
@@ -337,6 +410,15 @@ impl EngineAssembler for HostAssembler {
         for (job_type, handler) in &self.extra {
             registry.register(job_type.clone(), Box::new(SharedHandler(handler.clone())));
         }
+        let chat_send = match spine_bundle {
+            Some(bundle) => {
+                for (job_type, handler) in bundle.job_handlers {
+                    registry.register(job_type, handler);
+                }
+                Some(bundle.chat_send)
+            }
+            None => None,
+        };
 
         let runner = JobRunner::new(db.clone(), registry);
         let (stop_tx, stop_rx) = watch::channel(false);
@@ -406,12 +488,15 @@ impl EngineAssembler for HostAssembler {
             self.danger_scan_interval_ms,
         ));
 
-        let _ = events; // chat-send driver wiring lands with the spine (below)
-        Ok(EngineAssembly::shutdown_only(Box::new(HostShutdown {
-            stop: stop_tx,
-            lock_path,
-            _wake_target: wake_target,
-        })))
+        Ok(EngineAssembly {
+            shutdown: Box::new(HostShutdown {
+                stop: stop_tx,
+                terminal_slot: self.terminal_slot.clone(),
+                lock_path,
+                _wake_target: wake_target,
+            }),
+            chat_send,
+        })
     }
 }
 

@@ -57,11 +57,16 @@ fn request_input_from_params(params: &CompletionParams) -> RequestInput {
 /// Compose a full non-streaming completion: build → transport → parse → map to
 /// the [`CompletionResponse`] the cheap-LLM path consumes. `user_agent` /
 /// `base_url_env` feed [`transport_headers`] (the host injects the version +
-/// `BASE_URL`). Errors carry the transport message (higher layers classify via
+/// `BASE_URL`); `base_url` is the connection profile's per-call base override
+/// (v4 `createLLMProvider(provider, baseUrl)`), swapped for the manifest base
+/// like the streaming composer's, localhost-rewritten. Errors carry the
+/// transport message (higher layers classify via
 /// [`handle_provider_error`](crate::services::llm_errors::handle_provider_error)).
+#[allow(clippy::too_many_arguments)]
 pub fn execute_completion<'a, T: ProviderTransport + ?Sized>(
     transport: &'a T,
     provider: &'a str,
+    base_url: Option<&'a str>,
     api_key: &'a str,
     params: &'a CompletionParams,
     policy: &'a TransportPolicy,
@@ -74,7 +79,22 @@ pub fn execute_completion<'a, T: ProviderTransport + ?Sized>(
         let built = build_request(provider, &input)
             .map_err(|e| CompletionError::new(format!("request build: {e}")))?;
 
-        let mut url = built.url.clone();
+        // A profile baseUrl overrides the manifest base (the streaming
+        // composer's swap, verbatim): strip the manifest base off the built
+        // url and re-root on the override, localhost-rewritten.
+        let mut url = match base_url.filter(|b| !b.is_empty()) {
+            Some(base) => {
+                let base = crate::provider_manifest::rewrite_localhost_url(base, None);
+                match registry
+                    .get_provider(provider)
+                    .and_then(|m| built.url.strip_prefix(m.base_url.as_str()))
+                {
+                    Some(rest) => format!("{base}{rest}"),
+                    None => built.url.clone(),
+                }
+            }
+            None => built.url.clone(),
+        };
         let mut headers = transport_headers(provider, &built.headers, user_agent, base_url_env);
         apply_auth(registry, provider, api_key, &mut headers, &mut url);
 
@@ -169,6 +189,7 @@ mod tests {
         let resp = execute_completion(
             &transport,
             "DEEPSEEK",
+            None,
             "synthetic-key",
             &params("deepseek-chat"),
             &policy,
@@ -204,6 +225,7 @@ mod tests {
         let resp = execute_completion(
             &transport,
             "GOOGLE",
+            None,
             "synthetic-key",
             &params("gemini-2.5-flash"),
             &policy,

@@ -458,7 +458,7 @@ pub struct OrchestratorDeps<
 /// OPENROUTER model falls through to v4's "default to native tools" — matching
 /// v4's own missing-cache fallback. A read failure yields an empty context /
 /// skips the key (fail-open to the static fallback table, v4's `catch`).
-fn build_pricing_context(db: &Db, user_id: &str) -> PricingContext {
+pub fn build_pricing_context(db: &Db, user_id: &str) -> PricingContext {
     let uid = user_id.to_string();
     let profiles = db
         .read_main(move |conn| connection_profiles::find_by_user_id(conn, &uid))

@@ -291,4 +291,14 @@ impl Event {
             payload: EventPayload::Chat(frame),
         }
     }
+
+    /// A chat-scoped transport-shell error frame (v4 `handleStreamError`).
+    pub fn chat_error(chat_id: impl Into<String>, payload: ChatErrorPayload) -> Event {
+        Event {
+            chat_id: Some(chat_id.into()),
+            room_id: None,
+            progress_id: None,
+            payload: EventPayload::ChatError(payload),
+        }
+    }
 }

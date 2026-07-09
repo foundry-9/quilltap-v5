@@ -40,6 +40,7 @@ pub mod instances;
 pub mod lock;
 pub mod paths;
 pub mod providers;
+pub mod spine;
 pub mod terminal;
 pub mod wire;
 
@@ -49,4 +50,5 @@ pub use host::{Host, HostConfig};
 pub use image_codec::HostImageCodec;
 pub use instances::InstanceRegistry;
 pub use providers::{LivePricingFetch, ProviderIo};
+pub use spine::{ChatSpine, ProductionSpineFactory, SpineBundle, SpineFactory};
 pub use wire::{BlockingWireTransport, ReqwestWireTransport};
