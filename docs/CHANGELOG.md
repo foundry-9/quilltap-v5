@@ -4,6 +4,18 @@
 
 ### 5.0-dev
 
+P4.2/P4.3 round kickoff: drift check clean (v4 HEAD still 2494a84b) and the
+two lane work orders written (docs/developer/porting/work-orders/
+p4.2-quilltap-web.md and p4.3-quilltap-cli.md), each with the binding
+crate/file ownership matrix for the round. P4.2 owns quilltap-web, the
+core api surface, and the quilltap-host spine/terminal/providers regions
+(the production ChatSend spine composition + model-dependent job-handler
+registrations; exit = the headless chat-send e2e smoke, milestone M2).
+P4.3 owns quilltap-cli plus host lock.rs/instances.rs (the direct-mode
+verb set diffed against v4's launcher, the write-lock + Suspect probe,
+and the instance-registry write verbs; exit = db --tables / docs ls
+byte-diffed vs the v4 launcher, milestone M1). Docs-only commit.
+
 P4.1 unification: the four host-driver lane branches (P4.1a provider IO,
 P4.1b files/images, P4.1c PTY/terminal, P4.1d environment/cadence) are
 integrated on main. All conflicts were mechanical unions (host lib.rs mod
