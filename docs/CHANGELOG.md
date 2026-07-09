@@ -4,6 +4,10 @@
 
 ### 5.0-dev
 
+P4.d drift re-port round kickoff: work orders for the two lanes
+(p4.d1 answer-confirmation catch-up; p4.d2 turn-skipping port) with the
+binding ownership matrix. Docs only.
+
 Drift check against v4 2494a84b..a7b1398d (two commits: "nothing to add"
 turn-skipping b90cd1f5; answer-confirmation conversation anchoring
 a7b1398d). Both stale ported units. Verified empirically against fresh
