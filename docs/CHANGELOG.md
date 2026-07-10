@@ -91,8 +91,34 @@ controlledBy) with optimistic updates, the Chat / Export / Delete actions, the
 delete dialog with the `cascadeChats`/`cascadeImages` flags over
 `cascade-preview`, and the SillyTavern import dialog (JSON via dispatch, PNG via
 the multipart web route). "Summon From Lore", "Reset Built-ins", and the Groups
-grid render disabled / omitted per the deferral list. Detail / edit / create are
-scaffolded and land next.
+grid render disabled / omitted per the deferral list.
+
+The detail / edit / create screens land, completing the P4.6g vertical
+(`apps/web` 0.5.0). **Detail** (`/characters/:id`): the tabbed hall over
+`qt-entity-tabs` (`?tab=` deep links) — a header (avatar / name / title /
+pronouns / aliases / the `characterStats` line / the three optimistic toggles /
+Start-Chat / Convert-to-NPC), Details (read-only render with `{{char}}`/`{{user}}`
+highlighting + the template replace/reverse fan-out over `characterUpdate` +
+per-prompt `characterPromptUpdate`), System Prompts (read), Tags (add/remove/
+create over `characterAddTag`/`characterRemoveTag`/`tagCreate`), the Default
+Settings autosave tab (per-control save-on-change, one `characterUpdate` /
+`characterSetDefaultPartner` per field with the v4 payload shapes pinned by
+tests), Photo Gallery (grid + `characterPhotoRemove`), Appearance (physical
+description read + the depiction-guidelines editor), and the deferred Wardrobe /
+Conversations / Memories bodies. **Create** (`/characters/new`): the plain
+full-page form (name + the four DISTINCT vantage points with v4's helper copy
+verbatim + a singular scenario + first message / example dialogues / system
+prompt / avatar URL / default profile) → `characterCreate`. **Edit**
+(`/characters/:id/edit`): the explicit-save form (ONE `characterUpdate` of the
+whole Details bag, a `window.confirm` dirty guard), the inline scenarios array
+editor, the tag chip editor, the System Prompts CRUD modals, the Appearance tab
+(separate `physicalDescription` + depiction-guidelines saves), and an avatar
+picker over the gallery (`characterAvatar`). The image-generation-profile picker
+renders disabled (no P4.6d contract variant yet); the optimizer, AI wizards,
+Rename/Replace, and the wardrobe dialog are named deferrals. The Playwright
+`characters-flow.spec.ts` skeleton is written and skipped, to un-skip against
+lane A's committed characters fixture at unification. `ng test` green (182),
+prod build green.
 
 CLAUDE.md is trimmed from 5,922 lines (~430 KB, loaded into every turn of
 every session and lane agent) to 287: the unit-by-unit Status journal moved

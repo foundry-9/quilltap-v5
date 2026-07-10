@@ -5859,3 +5859,57 @@ fresh v5 instance matches a fresh v4 instance.
   (node_modules resolves by walking up from the script) — the `/tmp` mirror the
   `@/`-only cases use fails on the bare import.
 - **Versions**: core 0.0.159, host 0.0.10, harness 0.0.144, web 0.0.7.
+**P4.6g — the Characters SPA vertical (lane B), 2026-07-10.** The
+`apps/web` characters screens over the pinned p4.6f Shared contract
+(coded against the TS mirror + `CoreClient.dispatchData`; MOCKED responses
+in the component tests — the live e2e beat lands at unification over lane
+A's fixture, the P4.6b precedent). `apps/web` 0.4.0 → 0.5.0.
+
+- **Foundation.** The core-contract TS mirror gained every character/tag
+  `Request` variant (serde names transcribed verbatim from the p4.6f
+  Shared contract) + the list / detail / stats / tags / cascade-preview /
+  physical-description / pronouns DTOs. A pure `processTemplate` port
+  substitutes `{{char}}`/`{{user}}`. `characters.api.ts` holds the query
+  keys + `dispatchData` read helpers + `characterAvatarSrc` (the
+  `?v={defaultImageId}` cache-bust). Routes (`/characters`, `/new`,
+  `/:id`, `/:id/edit`) + the shell Characters nav went live.
+- **LIST** (`AuroraView.tsx`): cards over `characterList` with the v4 sort
+  (NPCs last → favorites first → chat count desc → name A–Z), the three
+  optimistic inline toggles, Chat/Export/Delete, the cascade delete dialog
+  over `cascade-preview`, and the ST import dialog (JSON via dispatch, PNG
+  via the multipart web route). Groups grid / Summon-From-Lore /
+  Reset-Builtins deferred (omitted / disabled).
+- **DETAIL** (`[id]/view/**`): the nine-tab hall — header (stat line +
+  optimistic toggles + Convert-to-NPC), Details (highlighted read + the
+  template replace/reverse fan-out: `characterUpdate` scalars/scenarios/
+  physicalDescription + per-prompt `characterPromptUpdate`, ported from
+  v4 `TemplateHighlighter` + `apply-character-field-updates`), System
+  Prompts (read), Tags CRUD, the Default Settings autosave tab (per-field
+  `characterUpdate`/`characterSetDefaultPartner` with the exact v4 payload
+  shapes, test-pinned), Photo Gallery (grid + remove), Appearance (phys
+  desc read + depiction-guidelines editor), and the deferred Wardrobe /
+  Conversations / Memories bodies.
+- **CREATE** (`new/NewCharacterView.tsx`): the plain form → `characterCreate`;
+  the four vantage points DISTINCT with v4's helper copy verbatim; singular
+  scenario. **EDIT** (`[id]/edit/**`): explicit-save (ONE `characterUpdate`
+  bag + `window.confirm` dirty guard), the scenarios array editor, the tag
+  chip editor, the System-Prompts CRUD modals, the Appearance tab (separate
+  `physicalDescription` + depiction saves), the avatar picker (`characterAvatar`).
+- **Built parallel** in two isolated worktrees (VIEW ∥ EDIT+CREATE) over
+  the committed foundation+list, then integrated by disjoint-subtree
+  checkout. **Gate:** `tsc` clean (app + spec), `ng test --no-watch`
+  **182 green**, `ng build` succeeds. The Playwright `characters-flow.spec.ts`
+  skeleton is written + skipped (un-skip at unification).
+- **Deferrals** (disabled affordances / omitted, no stubbed logic): the
+  wardrobe dialog, the AI import wizard (Summon-From-Lore), the inline AI
+  Wizard, the optimizer, Rename/Replace, reset-builtins, external prompt,
+  refresh-archive, the Groups grid, Memories/Conversations tab bodies,
+  prompt-template import, the image-generation-profile picker (no P4.6d
+  contract), photo upload, Lexical-equivalent markdown editing (plain
+  textareas this round). **Simplifications flagged:** the edit dirty guard
+  is a plain `window.confirm` (not v4's three-way alert); the timestamp
+  card is mode/format/interval only; `systemTransparency`/`coreWhisperEnabled`
+  ride `CharacterDetail`'s catch-all (unverified vs the oracle until P4.6f
+  lands). **Standing caveat:** the DTO bytes are proven only when lane A's
+  `characters_*_equivalence` differentials land; this lane is component-tested
+  against the pinned contract, not the oracle.

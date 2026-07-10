@@ -1,0 +1,104 @@
+import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+
+import type { CharacterScenario } from '../../../core/core-contract';
+import { Icon } from '../../../ui/icon';
+import { newScenario } from './character-form';
+
+/**
+ * The inline scenarios array editor (v4 `CharacterBasicInfo.tsx` scenarios
+ * block): each row is a title + a content textarea; "+ Add Scenario" appends a
+ * fresh row (client-minted id via `crypto.randomUUID()`); the trash icon
+ * removes a row. The whole array round-trips in the parent form's
+ * `scenarios` field and is saved as part of the ONE `characterUpdate` bag —
+ * v4 instead POSTs each scenario to its own sub-resource immediately; this
+ * port defers persistence to the parent's explicit Save (per the work order).
+ */
+@Component({
+  selector: 'qt-scenario-editor',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [Icon],
+  template: `
+    <div>
+      <div class="flex justify-between items-center mb-2">
+        <label class="block qt-label">Scenarios (Optional)</label>
+        <button type="button" class="qt-button-secondary qt-button-sm" (click)="add()">
+          + Add Scenario
+        </button>
+      </div>
+      <p class="text-xs qt-text-secondary mb-3">
+        Named settings and contexts for conversations. Each scenario can be selected when starting a
+        chat.
+      </p>
+
+      @if (scenarios().length === 0) {
+        <div class="qt-card text-center py-6">
+          <p class="qt-text-small mb-3">
+            No scenarios yet. Add one to give this character distinct roleplay contexts.
+          </p>
+          <button type="button" class="qt-button-primary" (click)="add()">
+            Add First Scenario
+          </button>
+        </div>
+      } @else {
+        <div class="space-y-3">
+          @for (scenario of scenarios(); track scenario.id; let i = $index) {
+            <div class="qt-card">
+              <div class="flex items-center gap-2 mb-2">
+                <input
+                  type="text"
+                  class="qt-input flex-1"
+                  placeholder="Scenario title"
+                  [value]="scenario.title"
+                  (input)="setTitle(i, $any($event.target).value)"
+                />
+                <button
+                  type="button"
+                  class="qt-button-icon qt-button-ghost hover:qt-text-destructive"
+                  title="Remove scenario"
+                  (click)="remove(i)"
+                >
+                  <qt-icon name="trash" class="w-4 h-4" />
+                </button>
+              </div>
+              <textarea
+                class="qt-input"
+                rows="4"
+                aria-label="Scenario content"
+                [value]="scenario.content"
+                (input)="setContent(i, $any($event.target).value)"
+              ></textarea>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  `,
+})
+export class ScenarioEditor {
+  readonly scenarios = input.required<CharacterScenario[]>();
+  readonly scenariosChange = output<CharacterScenario[]>();
+
+  protected add(): void {
+    this.scenariosChange.emit([...this.scenarios(), newScenario()]);
+  }
+
+  protected remove(index: number): void {
+    this.scenariosChange.emit(this.scenarios().filter((_, i) => i !== index));
+  }
+
+  protected setTitle(index: number, title: string): void {
+    this.scenariosChange.emit(
+      this.scenarios().map((s, i) =>
+        i === index ? { ...s, title, updatedAt: new Date().toISOString() } : s,
+      ),
+    );
+  }
+
+  protected setContent(index: number, content: string): void {
+    this.scenariosChange.emit(
+      this.scenarios().map((s, i) =>
+        i === index ? { ...s, content, updatedAt: new Date().toISOString() } : s,
+      ),
+    );
+  }
+}

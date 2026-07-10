@@ -1,0 +1,405 @@
+import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
+
+import type { CharacterScenario, Pronouns } from '../../../core/core-contract';
+import type { CharacterFormData } from './character-form';
+import { getPronounPreset, PRONOUN_PRESETS } from './character-form';
+import { ScenarioEditor } from './scenario-editor';
+import { TagChipEditor } from './tag-chip-editor';
+
+/**
+ * The Details tab (v4 `app/aurora/[id]/edit/components/CharacterBasicInfo.tsx`):
+ * the system-transparency / Carina / Core-whisper toggles, name, aliases,
+ * pronouns, the four vantage points (identity / description / manifesto /
+ * personality — DISTINCT, never collapsed), the inline scenarios editor,
+ * first message, example dialogues, the legacy system prompt, and the tag
+ * editor. Markdown fields are plain `<textarea>`s this round (the
+ * Lexical-equivalent editor is a standing deferral). Copy carries over
+ * verbatim from v4.
+ */
+@Component({
+  selector: 'qt-character-details-tab',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [ScenarioEditor, TagChipEditor],
+  template: `
+    <div class="space-y-6">
+      <!-- System Transparency Switch -->
+      <div class="qt-card">
+        <div class="flex items-start justify-between gap-4">
+          <div class="flex-1">
+            <label for="systemTransparency" class="block qt-label">System transparency</label>
+            <p class="text-xs qt-text-secondary mt-1">
+              @if (form().systemTransparency) {
+                <em>On:</em> &ldquo;My character will be able to verify everything about their
+                existence, including how they are crafted and how they interact with me.&rdquo;
+              } @else {
+                <em>Off:</em> &ldquo;My character will trust me without being able to verify me. I
+                accept the covenant of that trust.&rdquo;
+              }
+            </p>
+            <p class="text-xs qt-text-secondary mt-2">
+              When off, this character cannot use the <code>self_inventory</code> tool, cannot
+              perceive announcements from the Staff (the Lantern, Aurora, the Librarian, and so on),
+              and cannot reach any character vault &mdash; their own included &mdash; through the
+              document tools. This setting overrides any chat- or project-level toggles for those
+              three things; turning it on simply lets the chat- and project-level settings have
+              their say.
+            </p>
+          </div>
+          <label class="inline-flex items-center cursor-pointer select-none">
+            <input
+              id="systemTransparency"
+              type="checkbox"
+              [checked]="form().systemTransparency"
+              (change)="
+                fieldChange.emit({ ...form(), systemTransparency: $any($event.target).checked })
+              "
+              class="h-5 w-5 qt-accent-primary"
+            />
+          </label>
+        </div>
+      </div>
+
+      <!-- Carina (@-query) Switch -->
+      <div class="qt-card">
+        <div class="flex items-start justify-between gap-4">
+          <div class="flex-1">
+            <label for="canBeCarina" class="block qt-label">Can answer @-queries (Carina)</label>
+            <p class="text-xs qt-text-secondary mt-1">
+              When enabled, this character may be invoked with <code>&#64;Name</code> in any chat to
+              field a quick question by way of their personality and available tools &mdash; without
+              so much as setting foot in the conversation proper.
+            </p>
+          </div>
+          <label class="inline-flex items-center cursor-pointer select-none">
+            <input
+              id="canBeCarina"
+              type="checkbox"
+              [checked]="form().canBeCarina"
+              (change)="fieldChange.emit({ ...form(), canBeCarina: $any($event.target).checked })"
+              class="h-5 w-5 qt-accent-primary"
+            />
+          </label>
+        </div>
+      </div>
+
+      <!-- Aurora's Core Whisper — per-character override -->
+      <div class="qt-card">
+        <div class="flex items-start justify-between gap-4">
+          <div class="flex-1">
+            <label for="coreWhisperEnabled" class="block qt-label"
+              >Aurora&apos;s Core whisper</label
+            >
+            <p class="text-xs qt-text-secondary mt-1">
+              Whether Aurora periodically re-offers this character their own
+              <code>Core/</code> vault folder before they next take the floor.
+              <em>Inherit</em> defers to the per-chat and global settings; explicit values override
+              both.
+            </p>
+          </div>
+          <select
+            id="coreWhisperEnabled"
+            class="qt-select"
+            [value]="coreWhisperSelectValue()"
+            (change)="onCoreWhisperChange($any($event.target).value)"
+          >
+            <option value="inherit">Inherit (default)</option>
+            <option value="on">Always offered</option>
+            <option value="off">Never offered</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Name -->
+      <div>
+        <label for="name" class="block qt-label mb-2">Name *</label>
+        <input
+          type="text"
+          id="name"
+          class="qt-input"
+          required
+          [value]="form().name"
+          (input)="fieldChange.emit({ ...form(), name: $any($event.target).value })"
+        />
+      </div>
+
+      <!-- Aliases -->
+      <div>
+        <label class="block qt-label mb-2">Aliases (Optional)</label>
+        <p class="text-xs qt-text-secondary mb-2">
+          Alternate names this character goes by. Press Enter to add.
+        </p>
+        <div class="flex flex-wrap gap-2 mb-2">
+          @for (alias of form().aliases; track alias; let i = $index) {
+            <span
+              class="inline-flex items-center gap-1 rounded-full qt-bg-muted px-3 py-1 text-sm text-foreground"
+            >
+              {{ alias }}
+              <button
+                type="button"
+                class="ml-1 qt-text-secondary hover:text-foreground"
+                (click)="removeAlias(i)"
+              >
+                &times;
+              </button>
+            </span>
+          }
+        </div>
+        <input
+          type="text"
+          class="qt-input"
+          placeholder="Type an alias and press Enter"
+          [value]="aliasDraft()"
+          (input)="aliasDraft.set($any($event.target).value)"
+          (keydown.enter)="addAlias($event)"
+        />
+      </div>
+
+      <!-- Pronouns -->
+      <div>
+        <label class="block qt-label mb-2">Pronouns (Optional)</label>
+        <p class="text-xs qt-text-secondary mb-2">
+          The character&apos;s pronouns, included in system prompts so the LLM uses them correctly.
+        </p>
+        <select
+          class="qt-select"
+          [value]="pronounPreset()"
+          (change)="onPronounPresetChange($any($event.target).value)"
+        >
+          @for (preset of pronounPresets; track preset.label) {
+            <option [value]="preset.label">{{ preset.label }}</option>
+          }
+        </select>
+        @if (form().pronouns && pronounPreset() === 'Custom') {
+          <div class="mt-2 grid grid-cols-3 gap-2">
+            <div>
+              <label class="block text-xs qt-text-secondary mb-1">Subject</label>
+              <input
+                type="text"
+                class="qt-input"
+                placeholder="e.g., they"
+                [value]="form().pronouns!.subject"
+                (input)="setCustomPronoun('subject', $any($event.target).value)"
+              />
+            </div>
+            <div>
+              <label class="block text-xs qt-text-secondary mb-1">Object</label>
+              <input
+                type="text"
+                class="qt-input"
+                placeholder="e.g., them"
+                [value]="form().pronouns!.object"
+                (input)="setCustomPronoun('object', $any($event.target).value)"
+              />
+            </div>
+            <div>
+              <label class="block text-xs qt-text-secondary mb-1">Possessive</label>
+              <input
+                type="text"
+                class="qt-input"
+                placeholder="e.g., their"
+                [value]="form().pronouns!.possessive"
+                (input)="setCustomPronoun('possessive', $any($event.target).value)"
+              />
+            </div>
+          </div>
+        }
+      </div>
+
+      <!-- Title -->
+      <div>
+        <label for="title" class="block qt-label mb-2">Title (Optional)</label>
+        <input
+          type="text"
+          id="title"
+          class="qt-input"
+          placeholder="Your private label for this character — e.g., the protagonist, the rival, the love interest. Not how strangers refer to them."
+          [value]="form().title"
+          (input)="fieldChange.emit({ ...form(), title: $any($event.target).value })"
+        />
+      </div>
+
+      <!-- Identity -->
+      <div>
+        <label for="identity" class="block qt-label mb-2">Identity (Optional)</label>
+        <p class="text-xs qt-text-secondary mb-2">
+          What strangers know about the character on sight or by reputation &mdash; name, station,
+          occupation, public reputation. The shallow first impression.
+        </p>
+        <textarea
+          id="identity"
+          class="qt-input"
+          rows="4"
+          [value]="form().identity"
+          (input)="fieldChange.emit({ ...form(), identity: $any($event.target).value })"
+        ></textarea>
+      </div>
+
+      <!-- Description -->
+      <div>
+        <label for="description" class="block qt-label mb-2">Description (Optional)</label>
+        <p class="text-xs qt-text-secondary mb-2">
+          How acquaintances perceive the character &mdash; behaviour, mannerisms, frequent verbal
+          patterns. Not physical appearance (that lives in physical descriptions).
+        </p>
+        <textarea
+          id="description"
+          class="qt-input"
+          rows="5"
+          [value]="form().description"
+          (input)="fieldChange.emit({ ...form(), description: $any($event.target).value })"
+        ></textarea>
+      </div>
+
+      <!-- Manifesto -->
+      <div>
+        <label for="manifesto" class="block qt-label mb-2">Manifesto (Optional)</label>
+        <p class="text-xs qt-text-secondary mb-2">
+          The foundational tenets of this character &mdash; the basic truths that anchor everything
+          else. What this character is, at root.
+        </p>
+        <textarea
+          id="manifesto"
+          class="qt-input"
+          rows="5"
+          [value]="form().manifesto"
+          (input)="fieldChange.emit({ ...form(), manifesto: $any($event.target).value })"
+        ></textarea>
+      </div>
+
+      <!-- Personality -->
+      <div>
+        <label for="personality" class="block qt-label mb-2">Personality (Optional)</label>
+        <p class="text-xs qt-text-secondary mb-2">
+          What the character knows about themselves &mdash; inner drivers of speech and behaviour,
+          motivations, beliefs.
+        </p>
+        <textarea
+          id="personality"
+          class="qt-input"
+          rows="5"
+          [value]="form().personality"
+          (input)="fieldChange.emit({ ...form(), personality: $any($event.target).value })"
+        ></textarea>
+      </div>
+
+      <!-- Scenarios -->
+      <qt-scenario-editor
+        [scenarios]="form().scenarios"
+        (scenariosChange)="onScenariosChange($event)"
+      />
+
+      <!-- First Message -->
+      <div>
+        <label for="firstMessage" class="block qt-label mb-2">First Message (Optional)</label>
+        <p class="text-xs qt-text-secondary mb-2">
+          The character&rsquo;s opening message to start conversations.
+        </p>
+        <textarea
+          id="firstMessage"
+          class="qt-input"
+          rows="4"
+          [value]="form().firstMessage"
+          (input)="fieldChange.emit({ ...form(), firstMessage: $any($event.target).value })"
+        ></textarea>
+      </div>
+
+      <!-- Example Dialogues -->
+      <div>
+        <label for="exampleDialogues" class="block qt-label mb-2"
+          >Example Dialogues (Optional)</label
+        >
+        <p class="text-xs qt-text-secondary mb-2">
+          Example conversations to guide the AI&rsquo;s responses.
+        </p>
+        <textarea
+          id="exampleDialogues"
+          class="qt-input"
+          rows="8"
+          [value]="form().exampleDialogues"
+          (input)="fieldChange.emit({ ...form(), exampleDialogues: $any($event.target).value })"
+        ></textarea>
+      </div>
+
+      <!-- System Prompt -->
+      <div>
+        <label for="systemPrompt" class="block qt-label mb-2">System Prompt (Optional)</label>
+        <p class="text-xs qt-text-secondary mb-2">
+          Custom system instructions (will be combined with auto-generated prompt).
+        </p>
+        <textarea
+          id="systemPrompt"
+          class="qt-input"
+          rows="5"
+          [value]="form().systemPrompt"
+          (input)="fieldChange.emit({ ...form(), systemPrompt: $any($event.target).value })"
+        ></textarea>
+      </div>
+
+      <!-- Tags -->
+      <qt-tag-chip-editor
+        [tagIds]="form().tags"
+        (tagIdsChange)="fieldChange.emit({ ...form(), tags: $event })"
+      />
+    </div>
+  `,
+})
+export class CharacterDetailsTab {
+  readonly form = input.required<CharacterFormData>();
+  readonly fieldChange = output<CharacterFormData>();
+
+  protected readonly aliasDraft = signal('');
+  protected readonly pronounPresets = PRONOUN_PRESETS;
+
+  protected readonly pronounPreset = computed(() => getPronounPreset(this.form().pronouns));
+
+  protected readonly coreWhisperSelectValue = computed(() => {
+    const v = this.form().coreWhisperEnabled;
+    return v === true ? 'on' : v === false ? 'off' : 'inherit';
+  });
+
+  protected addAlias(event: Event): void {
+    event.preventDefault();
+    const trimmed = this.aliasDraft().trim();
+    if (trimmed && !this.form().aliases.includes(trimmed)) {
+      this.fieldChange.emit({ ...this.form(), aliases: [...this.form().aliases, trimmed] });
+    }
+    this.aliasDraft.set('');
+  }
+
+  protected removeAlias(index: number): void {
+    this.fieldChange.emit({
+      ...this.form(),
+      aliases: this.form().aliases.filter((_, i) => i !== index),
+    });
+  }
+
+  protected onPronounPresetChange(label: string): void {
+    const preset = PRONOUN_PRESETS.find((p) => p.label === label);
+    if (!preset) {
+      return;
+    }
+    let pronouns: Pronouns | null;
+    if (preset.value === null) {
+      pronouns = null;
+    } else if (preset.value === 'custom') {
+      pronouns = this.form().pronouns ?? { subject: '', object: '', possessive: '' };
+    } else {
+      pronouns = { ...preset.value };
+    }
+    this.fieldChange.emit({ ...this.form(), pronouns });
+  }
+
+  protected setCustomPronoun(field: keyof Pronouns, value: string): void {
+    const current = this.form().pronouns ?? { subject: '', object: '', possessive: '' };
+    this.fieldChange.emit({ ...this.form(), pronouns: { ...current, [field]: value } });
+  }
+
+  protected onCoreWhisperChange(value: string): void {
+    const coreWhisperEnabled = value === 'on' ? true : value === 'off' ? false : null;
+    this.fieldChange.emit({ ...this.form(), coreWhisperEnabled });
+  }
+
+  protected onScenariosChange(scenarios: CharacterScenario[]): void {
+    this.fieldChange.emit({ ...this.form(), scenarios });
+  }
+}
