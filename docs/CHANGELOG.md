@@ -4,6 +4,20 @@
 
 ### 5.0-dev
 
+P4.4 unit-2 sub-unit 7: the Green Room creation-progress bus (D6), ported
+from v4's lib/chat/creation-progress.ts. The kind-tagged frames
+(status/log/wardrobe-start/wardrobe-result/done/error) are a new
+api::EventPayload::CreationProgress variant scope-tagged by progress_id on
+the one global /api/events stream; services::creation_progress adds the
+core-adjacent replay buffer (CreationProgressBus: 200-frame cap,
+replay-on-subscribe via active_snapshot, 60s TTL after the terminal done —
+pruned lazily, no core timer) and the inert-without-progressId emitter
+(fans each frame out to the bus + the live broadcast). v4's un-emitted
+terminal error frame is faithful (fail() is ported but handleCreate never
+calls it). Unit tests cover cap/replay/TTL + the v4 frame serialization
+shape; the frame TRACE is diffed in the capstone. The transport
+replay-on-subscribe wiring lands with the handleCreate spine.
+
 P4.4 unit-2 sub-unit 1: the preset-scenario resolvers
 (db::scenarios::resolve_{general,project,group}_scenario_body), ported
 from v4's lib/mount-index/{scenarios-common,project,group,general}-scenarios

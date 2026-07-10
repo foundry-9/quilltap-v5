@@ -5591,7 +5591,20 @@ and the swallow-to-null-on-miss are byte-faithful. Read-differential drives
 v4's REAL `resolveGeneralScenarioBody`/`resolveProjectScenarioBody` over a
 baked two-store fixture (bare / full-path / missing-`.md` / leading-slash /
 missing-file → null / whitespace-only-body → null). The
-list/read-by-path/set-default write surface is a **P4.6 deferral**. Next
-sub-units: the Green Room bus (D6), `buildChatContext`, the identity-stack
-compiler, outfit selections, the greeting generator, chat continuation,
-then the `handleCreate` spine + `ChatCreate` dispatch + capstone.
+list/read-by-path/set-default write surface is a **P4.6 deferral**.
+**Sub-unit 7 — the Green Room creation-progress bus (D6) — is also DONE**
+(`services::creation_progress`; v4 `lib/chat/creation-progress.ts`): the
+`kind`-tagged frames (status/log/wardrobe-start/wardrobe-result/done/error)
+are a new `api::EventPayload::CreationProgress` variant scope-tagged by
+`progress_id` on the one global `/api/events` stream, plus the core-adjacent
+`CreationProgressBus` (200-frame cap, replay-on-subscribe via
+`active_snapshot`, 60 s TTL after the terminal `done` — pruned lazily, no
+core timer) and the inert-without-`progressId` `CreationProgressEmitter`
+(fans each frame to the bus + the live broadcast). v4's un-emitted terminal
+`error` frame is faithful (`fail` ported, never called by `handleCreate`).
+Unit-tested for cap/replay/TTL + the v4 frame serialization; the frame
+TRACE is diffed in the capstone, and the transport replay-on-subscribe
+wiring lands with the spine. Next sub-units: `buildChatContext`, the
+identity-stack compiler, outfit selections, the greeting generator, chat
+continuation, then the `handleCreate` spine + `ChatCreate` dispatch +
+capstone.

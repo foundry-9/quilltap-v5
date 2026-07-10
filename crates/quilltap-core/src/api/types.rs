@@ -18,6 +18,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::services::chat_events::ChatEvent;
+use crate::services::creation_progress::CreationProgressFrame;
 
 // ============================================================================
 // Readiness (v4 DbKeyState — lib/startup/dbkey.ts)
@@ -305,6 +306,11 @@ pub enum EventPayload {
     /// the frame — the spine driver emits this when the turn errors, exactly
     /// where v4's stream shell does.
     ChatError(ChatErrorPayload),
+    /// A chat-creation progress frame (D6, "The Green Room" —
+    /// `services::creation_progress`), scope-tagged by `progress_id`. Serializes
+    /// to v4's `{kind, …, ts}` frame shape; the [`Event`] envelope adds the
+    /// `progressId` tag.
+    CreationProgress(CreationProgressFrame),
 }
 
 /// v4 `encodeErrorEvent(encoder, error, errorType, details)`.
@@ -335,6 +341,21 @@ impl Event {
             room_id: None,
             progress_id: None,
             payload: EventPayload::ChatError(payload),
+        }
+    }
+
+    /// A creation-progress frame scope-tagged by `progress_id` (D6). The
+    /// transport uses this to replay a `CreationProgressBus` backlog onto a new
+    /// `/api/events` stream.
+    pub fn creation_progress(
+        progress_id: impl Into<String>,
+        frame: CreationProgressFrame,
+    ) -> Event {
+        Event {
+            chat_id: None,
+            room_id: None,
+            progress_id: Some(progress_id.into()),
+            payload: EventPayload::CreationProgress(frame),
         }
     }
 }

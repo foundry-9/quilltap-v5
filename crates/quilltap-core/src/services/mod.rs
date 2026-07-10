@@ -54,6 +54,7 @@ pub mod conversation_summary_vault_bridge;
 pub mod core_whisper;
 pub mod cost_events;
 pub mod courier_transport;
+pub mod creation_progress;
 pub mod danger_scan;
 pub mod dangerous_content;
 pub mod embedding_provider;
