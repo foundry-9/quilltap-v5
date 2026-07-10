@@ -1,0 +1,119 @@
+/**
+ * Fixture builder for the buildChatContext read-differential (P4.4 unit 2,
+ * sub-unit 2).
+ *
+ * Bakes three characters via v4's REAL repos.characters.create (each mints a
+ * linked vault, pinned ids/ts) across main + mount-index:
+ *   - Aria (llm): description/personality/firstMessage/systemPrompts/scenarios
+ *     with {{user}}/{{char}} template vars, two system prompts.
+ *   - Sam (user-controlled): aliases + pronouns + a description whose {{char}}
+ *     refers to Sam (the minimal-context processTemplate path).
+ *   - Bob (llm): defaultPartnerId = Sam (the default-partner resolution path).
+ *
+ * Both v4's real buildChatContext and the Rust port
+ * (services::chat_initialize::build_chat_context) read the SAME baked fixture.
+ *
+ * Run (Node 24, from the v4 checkout):
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
+ *   cd ~/source/quilltap-server
+ *   QT_FIXTURE_CCTX_MAIN=/tmp/qt-cctx-main.db QT_FIXTURE_CCTX_MOUNT=/tmp/qt-cctx-mount.db \
+ *     $N/node --import tsx $V5/harness/oracle/fixtures/build-chat-context-init-fixture.ts
+ */
+
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+
+interface Spec {
+  testPepperBase64: string;
+  ariaId: string;
+  samId: string;
+  bobId: string;
+  aria: Record<string, unknown>;
+  sam: Record<string, unknown>;
+  bob: Record<string, unknown>;
+}
+
+const TS = '2026-02-01T00:00:00.000Z';
+
+async function main(): Promise<void> {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const spec = JSON.parse(readFileSync(join(here, 'chat-context-init.json'), 'utf8')) as Spec;
+
+  const mainOut = process.env.QT_FIXTURE_CCTX_MAIN;
+  const mountOut = process.env.QT_FIXTURE_CCTX_MOUNT;
+  if (!mainOut || !mountOut) {
+    throw new Error('QT_FIXTURE_CCTX_MAIN and QT_FIXTURE_CCTX_MOUNT must both point at the .db files to write');
+  }
+  for (const out of [mainOut, mountOut]) {
+    for (const suffix of ['', '-journal', '-wal', '-shm']) {
+      const p = out + suffix;
+      if (existsSync(p)) rmSync(p);
+    }
+  }
+
+  const scratch = mkdtempSync(join(tmpdir(), 'qt-cctx-fixture-build-'));
+  mkdirSync(join(scratch, 'data'), { recursive: true });
+
+  process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
+  process.env.SQLITE_PATH = mainOut;
+  process.env.SQLITE_MOUNT_INDEX_PATH = mountOut;
+  process.env.QUILLTAP_DATA_DIR = scratch;
+  delete process.env.SQLITE_WAL_MODE;
+  process.env.LOG_LEVEL = 'error';
+
+  const { initializeDatabase, ensureCollection, closeDatabase } = await import(
+    '@/lib/database/manager'
+  );
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  const { getRawMountIndexDatabase, closeMountIndexSQLiteClient } = await import(
+    '@/lib/database/backends/sqlite/mount-index-client'
+  );
+  const { CharacterSchema } = await import('@/lib/schemas/types');
+  const { generateDDL } = await import('@/lib/database/schema-translator');
+  const {
+    DocMountPointSchema,
+    DocMountFileSchema,
+    DocMountDocumentSchema,
+    DocMountFolderSchema,
+    DocMountFileLinkSchema,
+    DocMountChunkSchema,
+  } = await import('@/lib/schemas/mount-index.types');
+
+  await initializeDatabase();
+  await ensureCollection('characters', CharacterSchema);
+
+  const midb = getRawMountIndexDatabase();
+  if (!midb) throw new Error('mount-index DB handle unavailable');
+  const ddl: Array<[string, unknown]> = [
+    ['doc_mount_points', DocMountPointSchema],
+    ['doc_mount_files', DocMountFileSchema],
+    ['doc_mount_documents', DocMountDocumentSchema],
+    ['doc_mount_folders', DocMountFolderSchema],
+    ['doc_mount_file_links', DocMountFileLinkSchema],
+    ['doc_mount_chunks', DocMountChunkSchema],
+  ];
+  for (const [name, schema] of ddl) {
+    for (const sql of generateDDL(name, schema as never)) midb.exec(sql);
+  }
+
+  const repos = getRepositories();
+  const bake = async (id: string, char: Record<string, unknown>): Promise<void> => {
+    await repos.characters.create(char as never, { id, createdAt: TS, updatedAt: TS } as never);
+  };
+  await bake(spec.ariaId, spec.aria);
+  await bake(spec.samId, spec.sam);
+  await bake(spec.bobId, spec.bob);
+
+  closeMountIndexSQLiteClient();
+  await closeDatabase();
+
+  process.stderr.write(`built chat-context-init fixtures: main=${mainOut} mount=${mountOut}\n`);
+  process.exit(0);
+}
+
+main().catch((err) => {
+  process.stderr.write(`chat-context-init fixture build failed: ${err?.stack ?? err}\n`);
+  process.exit(1);
+});

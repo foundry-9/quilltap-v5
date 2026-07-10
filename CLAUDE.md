@@ -5604,7 +5604,20 @@ core timer) and the inert-without-`progressId` `CreationProgressEmitter`
 `error` frame is faithful (`fail` ported, never called by `handleCreate`).
 Unit-tested for cap/replay/TTL + the v4 frame serialization; the frame
 TRACE is diffed in the capstone, and the transport replay-on-subscribe
-wiring lands with the spine. Next sub-units: `buildChatContext`, the
-identity-stack compiler, outfit selections, the greeting generator, chat
-continuation, then the `handleCreate` spine + `ChatCreate` dispatch +
-capstone.
+wiring lands with the spine. **Sub-unit 2 — `buildChatContext` — is also
+DONE** (`services::chat_initialize`; v4 `lib/chat/initialize.ts`): resolves
+the `{systemPrompt, firstMessage, character, userCharacter}` seed bundle —
+the vault-overlaid responding character, the optional user-controlled
+character (explicit id or the character's `defaultPartnerId`, gated on
+`controlledBy === 'user'`), the system-prompt selection
+(`selectedSystemPromptId` → `isDefault` → first → nothing), the scenario
+override, and the template pass — porting `initialize.ts`'s OWN flat
+`buildSystemPrompt` (distinct from the per-turn identity-stack builder) over
+the verified template processor + `characters_read`. Read-differential
+(`chat_context_init_equivalence`) drives v4's REAL `buildChatContext` over a
+baked three-character fixture (llm / user / llm-with-`defaultPartner`),
+comparing `systemPrompt` + `firstMessage` + resolved character/user-character
+ids and names (bare / user+scenario / selected-non-default-prompt /
+default-partner), zero normalization. Next sub-units: the identity-stack
+compiler, outfit selections, the greeting generator, chat continuation, then
+the `handleCreate` spine + `ChatCreate` dispatch + capstone.

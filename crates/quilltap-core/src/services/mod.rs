@@ -44,6 +44,7 @@ pub mod carina_runner;
 pub mod character_avatar_job;
 pub mod chat_events;
 pub mod chat_files;
+pub mod chat_initialize;
 pub mod cheap_llm_exec;
 pub mod commonplace_notifications;
 pub mod compression;

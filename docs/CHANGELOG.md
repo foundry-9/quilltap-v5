@@ -4,6 +4,21 @@
 
 ### 5.0-dev
 
+P4.4 unit-2 sub-unit 2: buildChatContext (services::chat_initialize), ported
+from v4's lib/chat/initialize.ts. Resolves the {systemPrompt, firstMessage,
+character, userCharacter} seed bundle: the vault-overlaid responding
+character, the optional user-controlled character (explicit id or the
+character's defaultPartnerId, gated on controlledBy === 'user'), the
+system-prompt selection (selectedSystemPromptId -> isDefault -> first ->
+nothing), the scenario override, and the template pass. Ports initialize.ts's
+OWN flat buildSystemPrompt (distinct from the per-turn identity-stack
+builder) over the verified template processor + characters_read. Verified by
+a read-differential (chat_context_init_equivalence) driving v4's real
+buildChatContext over a baked three-character fixture (llm / user / llm with
+defaultPartner) — bare / user+scenario / selected-non-default-prompt /
+default-partner cases, comparing systemPrompt + firstMessage + resolved
+character/user-character ids and names, zero normalization.
+
 P4.4 unit-2 sub-unit 7: the Green Room creation-progress bus (D6), ported
 from v4's lib/chat/creation-progress.ts. The kind-tagged frames
 (status/log/wardrobe-start/wardrobe-result/done/error) are a new
