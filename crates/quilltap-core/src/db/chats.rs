@@ -66,30 +66,46 @@ pub struct ChatParticipant {
     pub character_id: String,
     #[serde(rename = "controlledBy", default = "default_llm")]
     pub controlled_by: String,
+    /// Double-`Option` (see [`ChatParticipant::removed_at`] for the full
+    /// rationale): v4 `buildCharacterParticipant` writes this as
+    /// `isUserControlled ? null : data.connectionProfileId || null` — **always
+    /// present**, `null` when falsy — and v4's `.nullable().optional()` KEEPS
+    /// the stored `null`, so a v4-created participant carries an explicit
+    /// `"connectionProfileId":null`. Plain `Option<String>` would collapse that
+    /// null to `None` and DROP the key on re-serialization; the double-`Option`
+    /// with [`de_double_opt_string`] preserves all three on-disk shapes
+    /// (absent, `null`, string) byte-for-byte.
     #[serde(
         rename = "connectionProfileId",
         default,
+        deserialize_with = "de_double_opt_string",
         skip_serializing_if = "Option::is_none"
     )]
-    pub connection_profile_id: Option<String>,
+    pub connection_profile_id: Option<Option<String>>,
+    /// Double-`Option` — v4 writes `data.imageProfileId || null` (always
+    /// present, `null` when falsy). See [`ChatParticipant::connection_profile_id`].
     #[serde(
         rename = "imageProfileId",
         default,
+        deserialize_with = "de_double_opt_string",
         skip_serializing_if = "Option::is_none"
     )]
-    pub image_profile_id: Option<String>,
+    pub image_profile_id: Option<Option<String>>,
     #[serde(
         rename = "roleplayTemplateId",
         default,
         skip_serializing_if = "Option::is_none"
     )]
     pub roleplay_template_id: Option<String>,
+    /// Double-`Option` — v4 writes `data.selectedSystemPromptId || null` (always
+    /// present, `null` when falsy). See [`ChatParticipant::connection_profile_id`].
     #[serde(
         rename = "selectedSystemPromptId",
         default,
+        deserialize_with = "de_double_opt_string",
         skip_serializing_if = "Option::is_none"
     )]
-    pub selected_system_prompt_id: Option<String>,
+    pub selected_system_prompt_id: Option<Option<String>>,
     #[serde(rename = "displayOrder", default)]
     pub display_order: i64,
     #[serde(rename = "isActive", default = "default_true")]

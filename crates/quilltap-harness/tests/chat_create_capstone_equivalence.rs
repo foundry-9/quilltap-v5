@@ -212,53 +212,6 @@ fn sort_rows(table: &str, rows: &mut [Value]) {
     }
 }
 
-/// The one documented persisted-state seam (see the report / test header): v4's
-/// `buildCharacterParticipant` writes `connectionProfileId`/`imageProfileId`/
-/// `selectedSystemPromptId` as EXPLICIT `null` (its `|| null`), and v4's
-/// `ChatParticipantSchema` keeps them (`.nullable().optional()`), so the stored
-/// `chats.participants` JSON carries `"...":null`. The ported `ChatParticipant`
-/// marshaling (`db/chats.rs`) drops a null via `skip_serializing_if` (it is a
-/// plain `Option`, not the present-keeps-null double-`Option` used for
-/// `removedAt`), so the Rust-created chat omits those keys. This normalizer strips
-/// those explicit-null keys from BOTH sides so the rest of the ~96-column `chats`
-/// row is proven byte-exact; the seam itself is a reported finding.
-fn strip_participant_null_seam(row: &mut Value) {
-    const SEAM_KEYS: [&str; 3] = [
-        "connectionProfileId",
-        "imageProfileId",
-        "selectedSystemPromptId",
-    ];
-    let Some(obj) = row.as_object_mut() else {
-        return;
-    };
-    let Some(Value::String(s)) = obj.get("participants") else {
-        return;
-    };
-    let Ok(mut arr) = serde_json::from_str::<Value>(s) else {
-        return;
-    };
-    if let Some(list) = arr.as_array_mut() {
-        for p in list {
-            if let Some(po) = p.as_object() {
-                // Rebuild preserving insertion order (Map::remove swap-removes
-                // under preserve_order, which would reorder).
-                let mut m = serde_json::Map::new();
-                for (k, v) in po.iter() {
-                    if SEAM_KEYS.contains(&k.as_str()) && v.is_null() {
-                        continue;
-                    }
-                    m.insert(k.clone(), v.clone());
-                }
-                *p = Value::Object(m);
-            }
-        }
-    }
-    obj.insert(
-        "participants".into(),
-        Value::String(serde_json::to_string(&arr).unwrap()),
-    );
-}
-
 /// Extract the sorted, number-canonicalized `rows` array from a dump/oracle
 /// `{table, columns, rows}` object.
 fn table_rows(table: &str, dump: &Value) -> Value {
@@ -268,9 +221,6 @@ fn table_rows(table: &str, dump: &Value) -> Value {
         .cloned()
         .unwrap_or_default();
     sort_rows(table, &mut rows);
-    if table == "chats" {
-        rows.iter_mut().for_each(strip_participant_null_seam);
-    }
     let mut arr = Value::Array(rows);
     canon_numbers(&mut arr);
     sorted(&arr)

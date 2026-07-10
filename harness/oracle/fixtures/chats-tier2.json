@@ -192,6 +192,52 @@
       "data": {
         "turnSkippingEnabled": null
       }
+    },
+    {
+      "$comment": "Banks the participant explicit-null seam: v4 buildCharacterParticipant writes connectionProfileId/imageProfileId/selectedSystemPromptId as `... || null` (always present, null when falsy) and .nullable().optional() KEEPS the stored null. p1 (user-controlled) carries all three explicit null; p2 (llm) mixes a present value with an explicit null.",
+      "kind": "create",
+      "options": {
+        "id": "eeeeeeee-0000-4000-8000-00000000000e",
+        "createdAt": "2026-03-01T00:00:01.000Z",
+        "updatedAt": "2026-03-01T00:00:01.000Z"
+      },
+      "data": {
+        "userId": "11111111-1111-4111-8111-111111111111",
+        "title": "Chat with explicit-null participant fields",
+        "participants": [
+          {
+            "id": "e3333333-0000-4000-8000-000000000003",
+            "type": "CHARACTER",
+            "characterId": "22222222-2222-4222-8222-222222222222",
+            "controlledBy": "user",
+            "connectionProfileId": null,
+            "imageProfileId": null,
+            "selectedSystemPromptId": null,
+            "displayOrder": 0,
+            "isActive": true,
+            "status": "active",
+            "hasHistoryAccess": true,
+            "createdAt": "2026-03-01T00:00:01.000Z",
+            "updatedAt": "2026-03-01T00:00:01.000Z"
+          },
+          {
+            "id": "e4444444-0000-4000-8000-000000000004",
+            "type": "CHARACTER",
+            "characterId": "33333333-3333-4333-8333-333333333333",
+            "controlledBy": "llm",
+            "connectionProfileId": "44444444-4444-4444-8444-444444444444",
+            "imageProfileId": null,
+            "selectedSystemPromptId": "55555555-5555-4555-8555-555555555555",
+            "displayOrder": 1,
+            "isActive": true,
+            "status": "active",
+            "talkativeness": 0.5,
+            "createdAt": "2026-03-01T00:00:01.000Z",
+            "updatedAt": "2026-03-01T00:00:01.000Z"
+          }
+        ],
+        "chatType": "salon"
+      }
     }
   ]
 }

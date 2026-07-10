@@ -4,6 +4,18 @@
 
 ### 5.0-dev
 
+Fix the `chats.participants` explicit-null marshaling seam. v4's
+`buildCharacterParticipant` writes `connectionProfileId` / `imageProfileId` /
+`selectedSystemPromptId` as `... || null` (always present, `null` when falsy)
+and `.nullable().optional()` keeps the stored `null`, but the ported
+`ChatParticipant` marshaled them as plain `Option<String>` and dropped the key
+on re-serialization. Changed all three to the present-keeps-null double-`Option`
+(the `removedAt` pattern); `roleplayTemplateId` stays single-`Option` (v4 never
+writes it). Banked with an explicit-null participant row in the `chats-tier2`
+corpus. Closes the marshaling half of the P4.4u2b unification follow-up: the
+capstone's `strip_participant_null_seam` normalizer is dropped and the
+participant nulls now diff byte-exact.
+
 P4.4u2b unification: the chat-creation spine integrated on main (pure
 fast-forward; one fmt fix folded into the lane's capstone commit).
 services::chat_create composes the seven leaf sub-units into v4's
