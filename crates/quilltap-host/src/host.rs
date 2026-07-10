@@ -45,6 +45,7 @@ use quilltap_core::db::chat_settings;
 use quilltap_core::db::runtime::Db;
 use quilltap_core::enclave::step::AutonomousRoomScheduleTickHandler;
 use quilltap_core::services::aurora_notifications::WardrobeOutfitAnnouncementHandler;
+use quilltap_core::services::creation_progress::CreationProgressBus;
 use quilltap_core::services::danger_scan;
 use quilltap_core::services::embedding_refit_job::EmbeddingRefitHandler;
 use quilltap_core::services::job_runner::{
@@ -358,6 +359,9 @@ impl EngineAssembler for HostAssembler {
         &self,
         db: &Db,
         events: &tokio::sync::broadcast::Sender<Event>,
+        pepper: &str,
+        data_dir: &std::path::Path,
+        bus: &Arc<CreationProgressBus>,
     ) -> Result<EngineAssembly, String> {
         // The single-instance lock (v4 acquires at backend init — here, when
         // the databases open). A live conflict is a typed boot error the
@@ -382,12 +386,12 @@ impl EngineAssembler for HostAssembler {
             None
         };
 
-        // The chat-send spine (P4.2), when configured: the ChatSend driver +
-        // the model-dependent job handlers.
+        // The chat-send + chat-create spines (P4.2 / P4.4u2b), when configured:
+        // the ChatSend / ChatCreate drivers + the model-dependent job handlers.
         let spine_bundle = self
             .spine
             .as_ref()
-            .map(|f| f.build(db, events, terminal_manager));
+            .map(|f| f.build(db, events, terminal_manager, pepper, data_dir, bus));
 
         // The seam-free built-in handler set (P4.0). Every other known job
         // type stays on the runner's loud fallback until its P4.1 lane wires
@@ -410,14 +414,14 @@ impl EngineAssembler for HostAssembler {
         for (job_type, handler) in &self.extra {
             registry.register(job_type.clone(), Box::new(SharedHandler(handler.clone())));
         }
-        let chat_send = match spine_bundle {
+        let (chat_send, chat_create) = match spine_bundle {
             Some(bundle) => {
                 for (job_type, handler) in bundle.job_handlers {
                     registry.register(job_type, handler);
                 }
-                Some(bundle.chat_send)
+                (Some(bundle.chat_send), Some(bundle.chat_create))
             }
-            None => None,
+            None => (None, None),
         };
 
         let runner = JobRunner::new(db.clone(), registry);
@@ -496,9 +500,7 @@ impl EngineAssembler for HostAssembler {
                 _wake_target: wake_target,
             }),
             chat_send,
-            // The production chat-create driver is a follow-up (the P4.4u2b
-            // work order delivers the core spine + the contract seam only).
-            chat_create: None,
+            chat_create,
         })
     }
 }

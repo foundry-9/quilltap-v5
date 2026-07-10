@@ -1,16 +1,16 @@
-//! **The M2 smoke** (the P4.2 exit criterion, always-on in CI): a scripted
-//! chat send against a fixture instance through the running axum transport —
-//! real HTTP dispatch → the SSE trace → the DB state.
+//! **The P4.4u2b chat-create smoke** (always-on in CI): a scripted
+//! `POST /api/dispatch` `chatCreate` against the committed fixture instance
+//! through the running axum transport — real HTTP dispatch → the created chat
+//! → the Green-Room `creationProgress` replay on a late `/api/events`
+//! subscriber.
 //!
-//! The fixture is the committed v4-baked orchestrator corpus instance
-//! (test-pepper-keyed; see `tests/common`). The spine bundle is constructed
-//! with TEST providers through the IDENTICAL production composition
-//! ([`ChatSpine`] is generic over the model boundaries only): the streaming
-//! provider answers every call with a fixed content+done sequence, the
-//! completion provider answers `{}` (the cheap-LLM parsers treat it as
-//! nothing-found), and the embedding provider fails (the search legs degrade
-//! per the ported fallbacks). Production swaps in the `ProviderIo` drivers
-//! via `ProductionSpineFactory` — same type, different providers.
+//! Hermetic: the create spine runs the IDENTICAL production composition
+//! ([`ChatCreateSpine`] is generic over the model boundaries only) but over the
+//! smoke's canned providers — the streaming provider answers the auto-greeting
+//! with a fixed reply, the completion provider answers `{}` (the outfit
+//! `default` path never calls it anyway), and the embedding provider fails (the
+//! first-message-context search legs degrade per the ported fallbacks). No
+//! network.
 
 mod common;
 
@@ -19,12 +19,13 @@ use std::sync::Arc;
 
 use futures_util::StreamExt;
 use quilltap_core::api::Event;
-use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::db::runtime::Db;
 use quilltap_core::model::completion::{
     CompletionError, CompletionParams, CompletionProvider, CompletionResponse,
 };
 use quilltap_core::model::embedding::CannedEmbeddingProvider;
 use quilltap_core::model::stream::{StreamChunk, StreamChunkResult, StreamParams, StreamUsage};
+use quilltap_core::services::creation_progress::CreationProgressBus;
 use quilltap_core::services::file_storage::ProductionFileBytes;
 use quilltap_core::services::pricing_fetcher::{PricingFetch, PricingFetcher};
 use quilltap_core::tools::self_inventory::{ClientShell, SelfInventoryEnv};
@@ -32,18 +33,19 @@ use quilltap_host::spine::{ChatCreateSpine, ChatSpine, SpineBundle, SpineFactory
 use quilltap_host::{HostImageCodec, LocalStorageBackend};
 use serde_json::{json, Value};
 
-/// The fixture's `single_basic` chat (a single LLM character + a user
-/// participant; the corpus drives it in continue mode).
-const SMOKE_CHAT_ID: &str = "9fe3f87b-3833-46a9-bc1e-a88fc43dee6b";
-const SMOKE_REPLY: &str = "Ahoy from the M2 smoke.";
+/// The fixture's `Friday` LLM character (controlledBy `llm`, no vault
+/// `firstMessage` → the auto-greeting runs; the canned stream answers it).
+const FRIDAY_CHARACTER_ID: &str = "969a21df-73ad-465f-8f6c-2bc52d90ddc6";
+/// The fixture's ANTHROPIC connection profile (apiKeyId `None` → the greeting
+/// path proceeds with an empty key, straight to the canned stream — no network).
+const ANTHROPIC_PROFILE_ID: &str = "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221";
+const PROGRESS_ID: &str = "green-room-e2e";
+const GREETING_REPLY: &str = "Ahoy — the players are ready.";
 
 // ---------------------------------------------------------------------------
 // Test providers (the canned model boundaries)
 // ---------------------------------------------------------------------------
 
-/// A streaming provider that answers EVERY call with one fixed sequence —
-/// the smoke asserts the transport plumbing, not prompt bytes (those are the
-/// orchestrator differential's job).
 struct AnyStream;
 impl quilltap_core::model::stream::StreamingCompletionProvider for AnyStream {
     #[allow(clippy::manual_async_fn)]
@@ -56,7 +58,7 @@ impl quilltap_core::model::stream::StreamingCompletionProvider for AnyStream {
         async move {
             let (tx, rx) = tokio::sync::mpsc::channel(4);
             let _ = tx
-                .send(Ok(StreamChunk::content(SMOKE_REPLY.to_string())))
+                .send(Ok(StreamChunk::content(GREETING_REPLY.to_string())))
                 .await;
             let _ = tx
                 .send(Ok(StreamChunk::done(Some(StreamUsage {
@@ -70,8 +72,6 @@ impl quilltap_core::model::stream::StreamingCompletionProvider for AnyStream {
     }
 }
 
-/// A completion provider answering `{}` for every cheap-LLM call (the ported
-/// parsers resolve it to nothing-found and the paths degrade gracefully).
 struct AnyCompletion;
 impl CompletionProvider for AnyCompletion {
     #[allow(clippy::manual_async_fn)]
@@ -106,7 +106,7 @@ impl PricingFetch for NoPricingFetch {
 
 fn test_env() -> SelfInventoryEnv {
     SelfInventoryEnv {
-        version: "0.0.0-smoke".to_string(),
+        version: "0.0.0-create".to_string(),
         runtime_mode: "local-dev".to_string(),
         client_shell: ClientShell::Browser,
         mount_index_degraded: false,
@@ -118,13 +118,13 @@ fn test_env() -> SelfInventoryEnv {
     }
 }
 
-/// The smoke's spine factory: the production [`ChatSpine`] over the canned
-/// providers.
-struct SmokeSpineFactory {
+/// The create smoke's factory: the production [`ChatSpine`] + [`ChatCreateSpine`]
+/// over the canned providers (Arcs shared, mirroring `ProductionSpineFactory`).
+struct CreateSpineFactory {
     base_dir: std::path::PathBuf,
 }
 
-impl SpineFactory for SmokeSpineFactory {
+impl SpineFactory for CreateSpineFactory {
     fn build(
         &self,
         db: &Db,
@@ -132,7 +132,7 @@ impl SpineFactory for SmokeSpineFactory {
         _terminal: Option<Arc<quilltap_host::terminal::TerminalManager>>,
         pepper: &str,
         data_dir: &std::path::Path,
-        bus: &Arc<quilltap_core::services::creation_progress::CreationProgressBus>,
+        bus: &Arc<CreationProgressBus>,
     ) -> SpineBundle {
         let embedding = Arc::new(CannedEmbeddingProvider::new());
         let completion = Arc::new(AnyCompletion);
@@ -178,19 +178,78 @@ impl SpineFactory for SmokeSpineFactory {
 // ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread")]
-async fn m2_chat_send_end_to_end() {
+async fn chat_create_end_to_end() {
     let base = common::materialize_fixture_instance();
     let base_dir = base.path().to_path_buf();
     let (addr, state) = common::serve_instance(base.path(), move |mut c| {
         c.terminal = false;
-        c.spine = Some(Arc::new(SmokeSpineFactory { base_dir }));
+        c.spine = Some(Arc::new(CreateSpineFactory { base_dir }));
         c
     })
     .await;
 
     let client = reqwest::Client::new();
 
-    // Open the SSE stream FIRST so the turn's frames are observed live.
+    // Dispatch the create: a single LLM character (Friday) + its ANTHROPIC
+    // profile, default outfits (mode omitted), a Green-Room progressId.
+    let dispatch = client
+        .post(format!("http://{addr}/api/dispatch"))
+        .header("content-type", "application/json")
+        .body(
+            json!({
+                "type": "chatCreate",
+                "title": "Green Room E2E",
+                "progressId": PROGRESS_ID,
+                "participants": [{
+                    "type": "CHARACTER",
+                    "characterId": FRIDAY_CHARACTER_ID,
+                    "connectionProfileId": ANTHROPIC_PROFILE_ID,
+                }],
+            })
+            .to_string(),
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(dispatch.status(), 200, "create dispatch failed");
+    let body: Value = serde_json::from_str(&dispatch.text().await.unwrap()).unwrap();
+    assert_eq!(body["type"], "chatCreate", "unexpected envelope: {body}");
+    let chat = &body["data"]["chat"];
+    let chat_id = chat["id"].as_str().expect("chat.id present").to_string();
+    assert!(!chat_id.is_empty());
+    // The 201 body's participants are the enriched summaries (array present).
+    assert!(
+        chat["participants"].is_array(),
+        "chat.participants missing: {chat}"
+    );
+    assert_eq!(
+        chat["participants"]
+            .as_array()
+            .map(|a| a.len())
+            .unwrap_or(0),
+        1,
+        "expected one enriched participant: {chat}"
+    );
+
+    // The created chat is now listed (the row landed in the DB).
+    let list = client
+        .post(format!("http://{addr}/api/dispatch"))
+        .header("content-type", "application/json")
+        .body(json!({"type": "listChats"}).to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(list.status(), 200);
+    let list_body: Value = serde_json::from_str(&list.text().await.unwrap()).unwrap();
+    let listed = list_body["data"]
+        .as_array()
+        .expect("listChats data array")
+        .iter()
+        .any(|c| c["id"].as_str() == Some(chat_id.as_str()));
+    assert!(listed, "created chat not in listChats: {list_body}");
+
+    // Open a LATE /api/events subscriber (AFTER the create) — the Green-Room
+    // bus replays the buffered backlog for our progressId.
     let sse = client
         .get(format!("http://{addr}/api/events"))
         .send()
@@ -198,37 +257,12 @@ async fn m2_chat_send_end_to_end() {
         .unwrap();
     assert_eq!(sse.status(), 200);
     let mut sse_stream = sse.bytes_stream();
-    // Give the SSE task a beat to subscribe before dispatching.
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    // Dispatch the send (the corpus drives single_basic in continue mode —
-    // a nudge; no new user message, the sole LLM character answers).
-    let dispatch = client
-        .post(format!("http://{addr}/api/dispatch"))
-        .header("content-type", "application/json")
-        .body(
-            json!({
-                "type": "chatSend",
-                "chatId": SMOKE_CHAT_ID,
-                "content": "",
-                "continueMode": true,
-            })
-            .to_string(),
-        )
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(dispatch.status(), 200, "dispatch failed");
-    let body: Value = serde_json::from_str(&dispatch.text().await.unwrap()).unwrap();
-    assert_eq!(body["type"], "chatSend", "unexpected envelope: {body}");
-    let message_id = body["data"]["messageId"].as_str().unwrap().to_string();
-    assert!(!message_id.is_empty());
-    assert_eq!(body["data"]["hasContent"], true);
-
-    // Collect SSE frames until the done frame for our message arrives.
     let mut buffer: Vec<u8> = Vec::new();
     let mut frames: Vec<Value> = Vec::new();
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    let mut saw_status = false;
+    let mut saw_done = false;
     'collect: loop {
         #[allow(clippy::single_match)]
         match tokio::time::timeout(std::time::Duration::from_secs(2), sse_stream.next()).await {
@@ -236,8 +270,8 @@ async fn m2_chat_send_end_to_end() {
                 buffer.extend_from_slice(&bytes);
                 let text = String::from_utf8_lossy(&buffer).to_string();
                 frames.clear();
-                for frame in text.split("\n\n") {
-                    for line in frame.lines() {
+                for block in text.split("\n\n") {
+                    for line in block.lines() {
                         if let Some(data) = line.strip_prefix("data: ") {
                             if let Ok(v) = serde_json::from_str::<Value>(data) {
                                 frames.push(v);
@@ -245,39 +279,30 @@ async fn m2_chat_send_end_to_end() {
                         }
                     }
                 }
-                if frames.iter().any(|f| {
-                    f.get("done").is_some()
-                        && f.get("messageId").and_then(Value::as_str) == Some(&message_id)
-                }) {
+                for f in &frames {
+                    if f["progressId"].as_str() != Some(PROGRESS_ID) {
+                        continue;
+                    }
+                    match f["kind"].as_str() {
+                        Some("status") => saw_status = true,
+                        Some("done") => saw_done = true,
+                        _ => {}
+                    }
+                }
+                if saw_status && saw_done {
                     break 'collect;
                 }
             }
             _ => {}
         }
         if tokio::time::Instant::now() > deadline {
-            panic!("no done frame arrived; frames so far: {frames:#?}");
+            panic!("Green-Room replay incomplete; frames so far: {frames:#?}");
         }
     }
+    assert!(saw_status, "no creationProgress status frame replayed");
+    assert!(saw_done, "no terminal creationProgress done frame replayed");
 
-    // The trace: every frame chat-scoped; content + done present with the
-    // streamed reply.
-    assert!(frames
-        .iter()
-        .all(|f| f.get("chatId").and_then(Value::as_str) == Some(SMOKE_CHAT_ID)));
-    assert!(
-        frames
-            .iter()
-            .any(|f| f.get("content").and_then(Value::as_str) == Some(SMOKE_REPLY)),
-        "no content frame: {frames:#?}"
-    );
-    let done = frames
-        .iter()
-        .find(|f| f.get("done").is_some())
-        .expect("done frame");
-    assert_eq!(done["messageId"], message_id.as_str());
-
-    // The DB state: lock the engine (drops the writers), reopen, and assert
-    // the assistant row landed with the streamed content.
+    // Confirm the chat row + its opening ASSISTANT message landed in the DB.
     let lock = client
         .post(format!("http://{addr}/api/dispatch"))
         .header("content-type", "application/json")
@@ -290,7 +315,7 @@ async fn m2_chat_send_end_to_end() {
 
     let data = base.path().join("data");
     let db = Db::open(
-        DbPaths {
+        quilltap_core::db::runtime::DbPaths {
             main: data.join("quilltap.db"),
             mount_index: Some(data.join("quilltap-mount-index.db")),
             llm_logs: Some(data.join("quilltap-llm-logs.db")),
@@ -298,35 +323,23 @@ async fn m2_chat_send_end_to_end() {
         common::TEST_PEPPER,
     )
     .unwrap();
-    let mid = message_id.clone();
-    let (content, role): (String, String) = db
+    let cid = chat_id.clone();
+    // `messageCount` is a REAL-affinity column (bound f64; see `db::chats`).
+    let (title, message_count): (String, f64) = db
         .read_main(move |conn| {
             Ok(conn
                 .query_row(
-                    "SELECT content, role FROM chat_messages WHERE id = ?1",
-                    rusqlite::params![mid],
+                    "SELECT title, messageCount FROM chats WHERE id = ?1",
+                    rusqlite::params![cid],
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 )
-                .expect("assistant row present"))
+                .expect("created chat row present"))
         })
         .unwrap();
-    assert_eq!(role, "ASSISTANT");
-    assert_eq!(content, SMOKE_REPLY);
-
-    // The chat's lastMessageAt/updatedAt were bumped by the turn.
-    let chat_id = SMOKE_CHAT_ID.to_string();
-    let (updated_at, last_message_at): (String, Option<String>) = db
-        .read_main(move |conn| {
-            Ok(conn
-                .query_row(
-                    "SELECT updatedAt, lastMessageAt FROM chats WHERE id = ?1",
-                    rusqlite::params![chat_id],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
-                )
-                .expect("chat row"))
-        })
-        .unwrap();
-    assert!(last_message_at.is_some());
-    // The fixture seeds 2020-era timestamps; the turn minted a fresh one.
-    assert!(updated_at.as_str() > "2025", "updatedAt: {updated_at}");
+    assert_eq!(title, "Green Room E2E");
+    // The auto-greeting ASSISTANT message was written (visible count ≥ 1).
+    assert!(
+        message_count >= 1.0,
+        "no opening messages: count={message_count}"
+    );
 }

@@ -28,6 +28,7 @@ use tokio::sync::broadcast;
 use crate::db::runtime::{Db, DbPaths};
 use crate::db::{chat_settings, chats_read};
 use crate::dbkey::{self, DbKeyError};
+use crate::services::creation_progress::CreationProgressBus;
 use crate::services::provisioning;
 
 use super::chat_create::{ChatCreateDriver, ChatCreateDriverRequest};
@@ -104,11 +105,21 @@ impl EngineAssembly {
 /// drivers (job runner, cadence loops), spawns them, and returns the assembly
 /// that tears them down again on `Lock`. Must be reusable — a lock/unlock
 /// cycle assembles more than once.
+///
+/// `pepper` + `data_dir` are threaded through because the chat-create driver
+/// opens its OWN writable [`Writer`](crate::db::Writer)s per create (the outfit
+/// sub-unit holds writable connections across an LLM await, which the sync
+/// single-writer closure cannot host); `bus` is the shared
+/// [`CreationProgressBus`] the driver's emitter publishes to and the transport
+/// replays from.
 pub trait EngineAssembler: Send + Sync {
     fn assemble(
         &self,
         db: &Db,
         events: &broadcast::Sender<Event>,
+        pepper: &str,
+        data_dir: &std::path::Path,
+        bus: &Arc<CreationProgressBus>,
     ) -> Result<EngineAssembly, String>;
 }
 
@@ -130,6 +141,9 @@ impl EngineAssembler for NoopAssembler {
         &self,
         _db: &Db,
         _events: &broadcast::Sender<Event>,
+        _pepper: &str,
+        _data_dir: &std::path::Path,
+        _bus: &Arc<CreationProgressBus>,
     ) -> Result<EngineAssembly, String> {
         Ok(EngineAssembly::shutdown_only(Box::new(NoopShutdown)))
     }
@@ -205,6 +219,9 @@ struct EngineInner {
     /// std Mutex — never held across an await (all state work is sync).
     state: Mutex<EngineState>,
     events: broadcast::Sender<Event>,
+    /// The Green-Room replay buffer (D6) — one per engine, shared by the
+    /// chat-create driver's emitter (publish) and the transport (replay).
+    creation_progress_bus: Arc<CreationProgressBus>,
 }
 
 impl CoreEngine {
@@ -230,6 +247,7 @@ impl CoreEngine {
                 has_user_passphrase: provisioned.has_user_passphrase,
             }),
             events,
+            creation_progress_bus: Arc::new(CreationProgressBus::new()),
         };
 
         if provisioned.state.is_operational() {
@@ -254,6 +272,14 @@ impl CoreEngine {
     /// through this; transports subscribe via [`QuilltapCore::subscribe`].
     pub fn event_sender(&self) -> &broadcast::Sender<Event> {
         &self.inner.events
+    }
+
+    /// The Green-Room replay buffer (D6). The transport drains
+    /// [`CreationProgressBus::active_snapshot`] onto each new `/api/events`
+    /// stream so a late-connecting creation dialog replays the buffered
+    /// backlog; the chat-create driver's emitter publishes into the same bus.
+    pub fn creation_progress_bus(&self) -> Arc<CreationProgressBus> {
+        Arc::clone(&self.inner.creation_progress_bus)
     }
 
     /// The open `Db`, when ready (a clone — the runtime handle is `Clone`).
@@ -653,7 +679,13 @@ fn open_ready(
     let db = Db::open(paths, pepper).map_err(BootError::Db)?;
     let assembly = inner
         .assembler
-        .assemble(&db, &inner.events)
+        .assemble(
+            &db,
+            &inner.events,
+            pepper,
+            &data,
+            &inner.creation_progress_bus,
+        )
         .map_err(BootError::Assemble)?;
     Ok(ReadyEngine {
         db,
@@ -742,6 +774,9 @@ mod tests {
             &self,
             _db: &Db,
             _events: &broadcast::Sender<Event>,
+            _pepper: &str,
+            _data_dir: &std::path::Path,
+            _bus: &Arc<CreationProgressBus>,
         ) -> Result<EngineAssembly, String> {
             self.assembled.fetch_add(1, Ordering::SeqCst);
             Ok(EngineAssembly::shutdown_only(Box::new(CountingShutdown(

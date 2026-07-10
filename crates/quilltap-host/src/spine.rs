@@ -65,13 +65,18 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use quilltap_core::api::{
+    ChatCreateDriver, ChatCreateDriverRequest, ChatCreateFuture, ChatCreateResultDto,
     ChatErrorPayload, ChatSendDriver, ChatSendFuture, ChatSendRequest, ChatSendResultDto,
     CoreError, ErrorKind, Event, SINGLE_USER_ID,
 };
 use quilltap_core::chat_timestamp::{TimestampConfig, TimestampFormat, TimestampMode};
 use quilltap_core::clock::now_unix_ms;
 use quilltap_core::db::runtime::Db;
-use quilltap_core::db::{background_jobs::BackgroundJob, chat_settings, chats_read, DbError};
+use quilltap_core::db::{
+    background_jobs::BackgroundJob, chat_settings, chats_read, DbError, Writer,
+};
+use quilltap_core::enclave::cron;
+use quilltap_core::enclave::lifecycle::LifecycleDeps;
 use quilltap_core::enclave::step::{
     step as enclave_step, AutonomousRoomTurnHandler, AutonomousRoomTurnPayload, StepDeps,
     StepFuture, StepOutcome, TurnJobMeta,
@@ -96,8 +101,12 @@ use quilltap_core::services::carina_runner::{
     CarinaRunError, PostProsperoCarinaError, ProsperoCarinaErrorArgs,
 };
 use quilltap_core::services::character_avatar_job::CharacterAvatarGenerationHandler;
+use quilltap_core::services::chat_create::{
+    handle_create, ChatCreateDeps, ChatCreateRequest, ChatCreateResult, HandleCreateError,
+};
 use quilltap_core::services::chat_events::{ChatEvent, EventSink};
 use quilltap_core::services::cheap_llm_exec::{CheapLlmLogConfig, CheapLlmTaskExecutor};
+use quilltap_core::services::creation_progress::{CreationProgressBus, CreationProgressEmitter};
 use quilltap_core::services::dangerous_content::gatekeeper_job::{
     handle_chat_danger_classification, ChatDangerClassificationJob, RealDangerAnnouncer,
 };
@@ -1053,6 +1062,225 @@ where
     }
 }
 
+// ===========================================================================
+// The chat-create driver (P4.4u2b)
+// ===========================================================================
+
+/// Map a [`HandleCreateError`] to the transport [`CoreError`] (the same shape
+/// the engine's `ChatCreate` arm returns).
+fn map_create_error(e: HandleCreateError) -> CoreError {
+    let kind = match &e {
+        HandleCreateError::NotFound(_) => ErrorKind::NotFound,
+        HandleCreateError::BadRequest(_) => ErrorKind::BadRequest,
+        HandleCreateError::Db(_) => ErrorKind::Internal,
+    };
+    CoreError {
+        kind,
+        message: e.to_string(),
+        pepper_state: None,
+    }
+}
+
+/// The production [`ChatCreateDriver`]: assembles [`ChatCreateDeps`] and runs
+/// [`handle_create`] per dispatch, sharing the [`ChatSpine`] provider Arcs.
+///
+/// Unlike [`ChatSpine`], the create spine opens its OWN writable
+/// [`Writer`]s (main + mount-index + optional llm-logs) per create: the outfit
+/// sub-unit (`apply_outfit_selections`) holds writable `&Connection`s across an
+/// LLM await, which the sync single-writer [`Db::write`](Db) closure cannot host.
+/// A `busy_timeout` guards the rare overlap with the engine `Db`'s writer thread
+/// (they are used sequentially within one create). Green-Room frames ride the
+/// engine broadcast AND the shared [`CreationProgressBus`] (replay-on-subscribe).
+pub struct ChatCreateSpine<EMB, CMP, STR>
+where
+    EMB: EmbeddingProvider + Send + Sync + 'static,
+    CMP: CompletionProvider + Send + Sync + 'static,
+    STR: StreamingCompletionProvider + Send + Sync + 'static,
+{
+    pub db: Db,
+    pub events: tokio::sync::broadcast::Sender<Event>,
+    pub bus: Arc<CreationProgressBus>,
+    /// The instance pepper (opens the per-create writable partitions).
+    pub pepper: String,
+    /// The instance `<base>/data` dir (where the partitions live).
+    pub data_dir: PathBuf,
+    pub embedding: Arc<EMB>,
+    pub completion: Arc<CMP>,
+    pub streaming: Arc<STR>,
+    pub tz: String,
+}
+
+impl<EMB, CMP, STR> ChatCreateSpine<EMB, CMP, STR>
+where
+    EMB: EmbeddingProvider + Send + Sync + 'static,
+    CMP: CompletionProvider + Send + Sync + 'static,
+    STR: StreamingCompletionProvider + Send + Sync + 'static,
+{
+    fn clone_state(&self) -> Self {
+        ChatCreateSpine {
+            db: self.db.clone(),
+            events: self.events.clone(),
+            bus: Arc::clone(&self.bus),
+            pepper: self.pepper.clone(),
+            data_dir: self.data_dir.clone(),
+            embedding: Arc::clone(&self.embedding),
+            completion: Arc::clone(&self.completion),
+            streaming: Arc::clone(&self.streaming),
+            tz: self.tz.clone(),
+        }
+    }
+
+    /// One full chat-creation flow (the non-`Send` inner the dedicated thread
+    /// runs).
+    async fn run_create(
+        self,
+        req: ChatCreateDriverRequest,
+    ) -> Result<ChatCreateResultDto, CoreError> {
+        let request: ChatCreateRequest =
+            serde_json::from_value(req.raw).map_err(|e| CoreError {
+                kind: ErrorKind::BadRequest,
+                message: format!("invalid chatCreate request: {e}"),
+                pepper_state: None,
+            })?;
+
+        // Open the OWN writable partitions (module note). `busy_timeout` guards
+        // the rare overlap with the engine Db's writer thread.
+        let busy = std::time::Duration::from_millis(5000);
+        let open = |name: &str| -> Result<Writer, CoreError> {
+            let w =
+                Writer::open_writable(&self.data_dir.join(name), &self.pepper).map_err(|e| {
+                    CoreError {
+                        kind: ErrorKind::Internal,
+                        message: format!("open {name}: {e}"),
+                        pepper_state: None,
+                    }
+                })?;
+            w.connection().busy_timeout(busy).map_err(|e| CoreError {
+                kind: ErrorKind::Internal,
+                message: format!("busy_timeout {name}: {e}"),
+                pepper_state: None,
+            })?;
+            Ok(w)
+        };
+        let main_writer = open("quilltap.db")?;
+        let mount_writer = open("quilltap-mount-index.db")?;
+        let llm_writer = if self.data_dir.join("quilltap-llm-logs.db").exists() {
+            Some(open("quilltap-llm-logs.db")?)
+        } else {
+            None
+        };
+
+        let db = self.db.clone();
+        let now_ms = now_unix_ms();
+        let random01 = os_random01();
+
+        // The outfit `llm_choose` executor (per-call llm-logs logging).
+        let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+            db: db.clone(),
+            user_id: SINGLE_USER_ID.to_string(),
+            chat_id: None,
+            message_id: None,
+            ctx: LogContext::none(),
+        });
+        let api_keys = DbApiKeys(db.clone());
+
+        // The lifecycle seam (the enclave-step construction): system clock +
+        // UUID mint + the cron next-run evaluation.
+        let now_fn = quilltap_core::enclave::announce::system_now_ms;
+        let mint_fn = quilltap_core::enclave::announce::system_mint_uuid;
+        let tz_for_cron = self.tz.clone();
+        let cron_seam = move |expr: &str, anchor: i64| -> Result<Option<i64>, String> {
+            cron::try_next_occurrence(expr, anchor, &tz_for_cron)
+        };
+        let lifecycle = LifecycleDeps {
+            now_ms: &now_fn,
+            mint_uuid: &mint_fn,
+            next_occurrence: &cron_seam,
+        };
+
+        let deps = ChatCreateDeps {
+            embedding: &*self.embedding,
+            completion: &*self.completion,
+            streaming: &*self.streaming,
+            executor: &executor,
+            api_keys: &api_keys,
+            tz: self.tz.clone(),
+            now_ms,
+            random01,
+            lifecycle: &lifecycle,
+            greeting_log: true,
+        };
+
+        let emitter = CreationProgressEmitter::from_id(
+            request.progress_id.as_deref(),
+            Arc::clone(&self.bus),
+            self.events.clone(),
+        );
+
+        let ChatCreateResult {
+            mut chat,
+            participants,
+        } = handle_create(
+            &db,
+            main_writer.connection(),
+            mount_writer.connection(),
+            llm_writer.as_ref().map(|w| w.connection()),
+            &deps,
+            &request,
+            &emitter,
+        )
+        .await
+        .map_err(map_create_error)?;
+
+        // v4 201 body: chat.participants := the enriched summaries.
+        if let Value::Object(map) = &mut chat {
+            map.insert(
+                "participants".into(),
+                serde_json::to_value(participants).unwrap_or(Value::Null),
+            );
+        }
+        Ok(ChatCreateResultDto { chat })
+    }
+}
+
+impl<EMB, CMP, STR> ChatCreateDriver for ChatCreateSpine<EMB, CMP, STR>
+where
+    EMB: EmbeddingProvider + Send + Sync + 'static,
+    CMP: CompletionProvider + Send + Sync + 'static,
+    STR: StreamingCompletionProvider + Send + Sync + 'static,
+{
+    fn create(&self, req: ChatCreateDriverRequest) -> ChatCreateFuture<'_> {
+        let state = self.clone_state();
+        Box::pin(async move {
+            // The Send bridge (the `ChatSpine::send` pattern): `handle_create`'s
+            // future is non-`Send`, so it runs on its own thread + current-thread
+            // runtime while the driver future awaits a oneshot.
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            std::thread::spawn(move || {
+                let result = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(rt) => rt.block_on(state.run_create(req)),
+                    Err(e) => Err(CoreError {
+                        kind: ErrorKind::Internal,
+                        message: format!("chat create runtime: {e}"),
+                        pepper_state: None,
+                    }),
+                };
+                let _ = tx.send(result);
+            });
+            rx.await.unwrap_or_else(|_| {
+                Err(CoreError {
+                    kind: ErrorKind::Internal,
+                    message: "chat create thread panicked".to_string(),
+                    pepper_state: None,
+                })
+            })
+        })
+    }
+}
+
 /// `Math.random()` off the OS CSPRNG (via the ported `RandomBytes` source).
 fn os_random01() -> f64 {
     use quilltap_core::tools::rng::RandomBytes as _;
@@ -1488,19 +1716,25 @@ impl JobHandler for StoryBackgroundJobHandler {
 /// One assembly's spine products.
 pub struct SpineBundle {
     pub chat_send: Arc<dyn ChatSendDriver>,
+    /// The chat-creation driver (P4.4u2b).
+    pub chat_create: Arc<dyn ChatCreateDriver>,
     pub job_handlers: Vec<(String, Box<dyn JobHandler>)>,
 }
 
-/// Builds the chat-send driver + the model-dependent job handlers for one
-/// assembly (a fresh `Db` per unlock). Production is
+/// Builds the chat-send + chat-create drivers + the model-dependent job
+/// handlers for one assembly (a fresh `Db` per unlock). Production is
 /// [`ProductionSpineFactory`]; the M2 smoke registers a canned-provider
-/// factory.
+/// factory. `pepper` + `data_dir` let the create driver open its own writable
+/// partitions; `bus` is the shared Green-Room replay buffer.
 pub trait SpineFactory: Send + Sync {
     fn build(
         &self,
         db: &Db,
         events: &tokio::sync::broadcast::Sender<Event>,
         terminal: Option<Arc<TerminalManager>>,
+        pepper: &str,
+        data_dir: &std::path::Path,
+        bus: &Arc<CreationProgressBus>,
     ) -> SpineBundle;
 }
 
@@ -1538,8 +1772,12 @@ impl SpineFactory for ProductionSpineFactory {
         db: &Db,
         events: &tokio::sync::broadcast::Sender<Event>,
         terminal: Option<Arc<TerminalManager>>,
+        pepper: &str,
+        data_dir: &std::path::Path,
+        bus: &Arc<CreationProgressBus>,
     ) -> SpineBundle {
         let wire = WireConfig::from_io(&self.io);
+        // The provider Arcs are SHARED between the send + create drivers.
         let streaming = Arc::new(self.io.streaming_provider(DbProviderKeys(db.clone())));
         let completion = Arc::new(wire.completion(db));
         let embedding = Arc::new(ApiEmbeddingProvider::new(
@@ -1558,15 +1796,26 @@ impl SpineFactory for ProductionSpineFactory {
         let spine = Arc::new(ChatSpine {
             db: db.clone(),
             events: events.clone(),
-            embedding,
-            completion,
-            streaming,
+            embedding: Arc::clone(&embedding),
+            completion: Arc::clone(&completion),
+            streaming: Arc::clone(&streaming),
             pricing: Arc::clone(&self.pricing),
             tz: self.tz.clone(),
             env,
             file_bytes,
             image_transcoder: Arc::new(HostImageCodec),
             scrollback,
+        });
+        let chat_create: Arc<dyn ChatCreateDriver> = Arc::new(ChatCreateSpine {
+            db: db.clone(),
+            events: events.clone(),
+            bus: Arc::clone(bus),
+            pepper: pepper.to_string(),
+            data_dir: data_dir.to_path_buf(),
+            embedding,
+            completion,
+            streaming,
+            tz: self.tz.clone(),
         });
 
         let job_handlers: Vec<(String, Box<dyn JobHandler>)> = vec![
@@ -1601,6 +1850,7 @@ impl SpineFactory for ProductionSpineFactory {
 
         SpineBundle {
             chat_send: spine,
+            chat_create,
             job_handlers,
         }
     }
