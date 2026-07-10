@@ -5646,6 +5646,19 @@ malformed-JSON response yields empty slots (vs v4's throw → default-fallback);
 the corpus keeps responses valid JSON and drives the fallback via a provider
 failure. The pure leaves (default resolution, prompt layout, parser) are
 unit-tested here; the composed `applyOutfitSelections` tier-3 diff
-(`equippedOutfit` + progress frames) rides the capstone. Next sub-units: the
-greeting generator, chat continuation, then the `handleCreate` spine +
-`ChatCreate` dispatch + capstone.
+(`equippedOutfit` + progress frames) rides the capstone. **Sub-unit 5 — the
+initial-greeting core — is also DONE** (`services::initial_greeting::
+generate_greeting_message`; v4 `initial-greeting.ts`): streams a short
+in-character greeting over the streaming model boundary (v4 `streamMessage` +
+concatenate), accumulates content + usage, returns `{content,
+contentFilterDetected}`; `buildContextSection` folds project + memories + the
+recent-conversations block into the augmented prompt; `logLLMCall`
+(`CHAT_MESSAGE`) is an optional injected config. DB-free tier-3 differential
+(`initial_greeting_equivalence`) drives v4's REAL `generateGreetingMessage`
+(streaming provider + `logLLMCall` mocked), recording the request messages
+(proving the augmented prompt bytes) and diffing `{content,
+contentFilterDetected}` across success / content-filter / empty-no-usage /
+whitespace-only / with-context. The route ladder `autoGenerateFirstMessage`
+(participant/profile/key + the four-attempt retry matrix + the Concierge
+reroute) is the spine's (capstone-verified). Next sub-units: chat continuation,
+then the `handleCreate` spine + `ChatCreate` dispatch + capstone.

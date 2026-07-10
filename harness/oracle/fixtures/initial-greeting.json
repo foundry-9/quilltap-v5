@@ -1,0 +1,72 @@
+{
+  "cases": [
+    {
+      "id": "success_plain",
+      "systemPrompt": "You are Aria, a knight.",
+      "characterName": "Aria",
+      "provider": "ANTHROPIC",
+      "model": "claude-sonnet-5",
+      "temperature": 0.7,
+      "memories": [],
+      "project": null,
+      "recentConversationsBlock": null,
+      "cannedContent": "Well met, traveler! I am Aria, and I stand ready.",
+      "cannedUsage": { "promptTokens": 40, "completionTokens": 12, "totalTokens": 52 }
+    },
+    {
+      "id": "content_filter",
+      "systemPrompt": "You are Aria, a knight.",
+      "characterName": "Aria",
+      "provider": "ANTHROPIC",
+      "model": "claude-sonnet-5",
+      "temperature": 0.7,
+      "memories": [],
+      "project": null,
+      "recentConversationsBlock": null,
+      "cannedContent": "",
+      "cannedUsage": { "promptTokens": 40, "completionTokens": 5, "totalTokens": 45 }
+    },
+    {
+      "id": "empty_no_usage",
+      "systemPrompt": "You are Aria, a knight.",
+      "characterName": "Aria",
+      "provider": "ANTHROPIC",
+      "model": "claude-sonnet-5",
+      "temperature": null,
+      "memories": [],
+      "project": null,
+      "recentConversationsBlock": null,
+      "cannedContent": "",
+      "cannedUsage": null
+    },
+    {
+      "id": "whitespace_only",
+      "systemPrompt": "You are Aria, a knight.",
+      "characterName": "Aria",
+      "provider": "ANTHROPIC",
+      "model": "claude-sonnet-5",
+      "temperature": 0.7,
+      "memories": [],
+      "project": null,
+      "recentConversationsBlock": null,
+      "cannedContent": "   \n  ",
+      "cannedUsage": { "promptTokens": 40, "completionTokens": 4, "totalTokens": 44 }
+    },
+    {
+      "id": "with_context",
+      "systemPrompt": "You are Bo, a sailor.",
+      "characterName": "Bo",
+      "provider": "OPENAI",
+      "model": "gpt-5",
+      "temperature": 0.5,
+      "memories": [
+        { "aboutCharacterName": "Mira", "summary": "loves the sea" },
+        { "aboutCharacterName": "Mira", "summary": "fears the deep" }
+      ],
+      "project": { "name": "Voyage", "description": "A sea trek.", "instructions": "Be nautical." },
+      "recentConversationsBlock": "### Recent Conversations\n- A prior chat about tides.",
+      "cannedContent": "Ahoy! Bo here — ready to set sail whenever you are.",
+      "cannedUsage": { "promptTokens": 90, "completionTokens": 14, "totalTokens": 104 }
+    }
+  ]
+}

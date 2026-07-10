@@ -72,6 +72,7 @@ pub mod image_job_common;
 pub mod image_job_storage;
 pub mod image_profile_resolution;
 pub mod image_scene_tasks;
+pub mod initial_greeting;
 pub mod job_runner;
 pub mod job_scheduler;
 pub mod knowledge_injector;

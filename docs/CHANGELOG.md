@@ -4,6 +4,24 @@
 
 ### 5.0-dev
 
+P4.4 unit-2 sub-unit 5: the initial-greeting core
+(services::initial_greeting::generate_greeting_message), ported from v4's
+lib/chat/initial-greeting.ts generateGreetingMessage. Streams a short
+in-character greeting over the streaming model boundary (v4 consumes
+streamMessage + concatenates), accumulates content + usage, and returns
+{content, contentFilterDetected} (empty content + burned completion tokens =>
+a likely content filter). buildContextSection folds project + participant
+memories + the recent-conversations block into the augmented prompt; logLLMCall
+(a CHAT_MESSAGE row) is an optional injected config (the spine attaches it).
+Verified by a DB-free tier-3 differential (initial_greeting_equivalence)
+driving v4's REAL generateGreetingMessage with the streaming provider mocked +
+logLLMCall no-op, recording the request messages (proving the augmented prompt
+bytes) and diffing {content, contentFilterDetected} across success /
+content-filter / empty-no-usage / whitespace-only / with-context cases. The
+route ladder autoGenerateFirstMessage (participant/profile/key resolution + the
+four-attempt retry matrix + the Concierge reroute) is the handleCreate spine's
+(capstone-verified).
+
 P4.4 unit-2 sub-unit 4: outfit selections (services::outfit_selections),
 ported from v4's lib/wardrobe/apply-outfit-selections.ts + the chooseLLMOutfit
 cheap-LLM task. applyOutfitSelections dispatches each character's
