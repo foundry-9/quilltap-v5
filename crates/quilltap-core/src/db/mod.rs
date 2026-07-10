@@ -523,6 +523,41 @@ fn cell_to_json(v: ValueRef<'_>) -> Value {
 /// fractional values (`9.5`) pass through unchanged, as they do in JS. The i64
 /// range guard keeps the cast exact (DB integer columns are small; values beyond
 /// it are not integer-collapsed, mirroring nothing we store).
+/// Build a SELECT column list that tolerates columns MISSING from the live
+/// table. A real, migration-accumulated v4 instance can lack schema columns
+/// that never got a migration (v4 has no runtime column sync — its
+/// `generateAlterStatements` is exported but never called), and v4 never
+/// notices because its reads are `SELECT *`, where a missing column is simply
+/// an absent key the Zod parse tolerates. The port's explicit column lists
+/// error with `no such column` instead (the second Friday dogfood finding:
+/// `chat_settings.timezone`). Present columns are named verbatim; missing ones
+/// become `NULL AS "col"` so the caller's positional extraction is unchanged
+/// and a missing column reads as SQL NULL — v4's absent-key semantics for the
+/// nullable-optional fields this is used on.
+pub(crate) fn tolerant_select_list(
+    conn: &rusqlite::Connection,
+    table: &str,
+    cols: &[&str],
+) -> Result<String, rusqlite::Error> {
+    let mut present = std::collections::HashSet::new();
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info(\"{table}\")"))?;
+    let mut rows = stmt.query([])?;
+    while let Some(r) = rows.next()? {
+        present.insert(r.get::<_, String>(1)?);
+    }
+    Ok(cols
+        .iter()
+        .map(|c| {
+            if present.contains(*c) {
+                format!("\"{c}\"")
+            } else {
+                format!("NULL AS \"{c}\"")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", "))
+}
+
 pub(crate) fn js_number_to_json(f: f64) -> Value {
     if f.is_finite() && f.fract() == 0.0 && f >= i64::MIN as f64 && f <= i64::MAX as f64 {
         Value::from(f as i64)

@@ -4,6 +4,20 @@
 
 ### 5.0-dev
 
+The second Friday dogfood finding is fixed: the chat GET errored with
+`no such column: timezone` — the INVERSE affinity class. v4 added
+`chat_settings.timezone` to the schema with NO migration (nothing calls its
+`generateAlterStatements` at runtime), and its `SELECT *` reads never notice a
+missing column — but the port's explicit column list does. New
+`db::tolerant_select_list` (PRAGMA table_info → present columns named
+verbatim, missing ones substituted `NULL AS "col"`, so the positional
+extraction is unchanged and a missing column reads as v4's absent key),
+applied to `chat_settings::find_by_user_id`; `sidebarWidth`'s extraction also
+went NULL-tolerant (`.default(256).optional()` — the OUTER optional means an
+absent key stays absent). Regression test over a migration-vintage table;
+`settings_routes_equivalence` regenerated + green (the fresh-shape echo is
+unchanged).
+
 The first Friday dogfood finding is fixed: the Salon list errored with
 `Invalid column type Integer … isSilentMessage` against a real instance. Root
 cause: a fresh `generateDDL` table declares `isSilentMessage` TEXT (the

@@ -713,20 +713,52 @@ pub fn find_by_user_id(
         }
     }
 
+    // The tolerant list: a real instance can lack never-migrated columns
+    // (e.g. `timezone`) — substitute NULL so the positional extraction below
+    // is unchanged (v4's SELECT-*-plus-absent-key semantics).
+    let cols = crate::db::tolerant_select_list(
+        conn,
+        "chat_settings",
+        &[
+            "id",
+            "userId",
+            "avatarDisplayMode",
+            "avatarDisplayStyle",
+            "tagStyles",
+            "cheapLLMSettings",
+            "imageDescriptionProfileId",
+            "uncensoredImageDescriptionProfileId",
+            "defaultRoleplayTemplateId",
+            "themePreference",
+            "sidebarWidth",
+            "defaultTimestampConfig",
+            "memoryCascadePreferences",
+            "autoHousekeepingSettings",
+            "memoryExtractionLimits",
+            "autonomousRoomSettings",
+            "tokenDisplaySettings",
+            "contextCompressionSettings",
+            "llmLoggingSettings",
+            "autoDetectRng",
+            "compositionModeDefault",
+            "composerSpellcheck",
+            "textReplacementsEnabled",
+            "autoScrollOnResponseComplete",
+            "agentModeSettings",
+            "coreWhisper",
+            "thinkingDisplay",
+            "answerConfirmationSettings",
+            "storyBackgroundsSettings",
+            "dangerousContentSettings",
+            "autoLockSettings",
+            "timezone",
+            "createdAt",
+            "updatedAt",
+        ],
+    )?;
     let row = conn
         .query_row(
-            "SELECT id, userId, avatarDisplayMode, avatarDisplayStyle, tagStyles, \
-                    cheapLLMSettings, imageDescriptionProfileId, \
-                    uncensoredImageDescriptionProfileId, defaultRoleplayTemplateId, \
-                    themePreference, sidebarWidth, defaultTimestampConfig, \
-                    memoryCascadePreferences, autoHousekeepingSettings, \
-                    memoryExtractionLimits, autonomousRoomSettings, tokenDisplaySettings, \
-                    contextCompressionSettings, llmLoggingSettings, autoDetectRng, \
-                    compositionModeDefault, composerSpellcheck, textReplacementsEnabled, \
-                    autoScrollOnResponseComplete, agentModeSettings, coreWhisper, \
-                    thinkingDisplay, answerConfirmationSettings, storyBackgroundsSettings, \
-                    dangerousContentSettings, autoLockSettings, timezone, createdAt, updatedAt \
-             FROM chat_settings WHERE userId = ?1 LIMIT 1",
+            &format!("SELECT {cols} FROM chat_settings WHERE userId = ?1 LIMIT 1"),
             params![user_id],
             |r| {
                 // Build in schema field order (the ChatSettingsSchema declaration
@@ -769,10 +801,14 @@ pub fn find_by_user_id(
                     "themePreference".into(),
                     parse_json(r.get::<_, Option<String>>(9)?),
                 );
-                obj.insert(
-                    "sidebarWidth".into(),
-                    super::js_number_to_json(r.get::<_, f64>(10)?),
-                );
+                // `.default(256).optional()` — the OUTER optional means an
+                // absent key stays absent (the default never fires on
+                // undefined), so a NULL/missing cell OMITS the key. A fresh
+                // create always writes the column; NULL only arises on a
+                // migration-vintage instance missing the column entirely.
+                if let Some(w) = r.get::<_, Option<f64>>(10)? {
+                    obj.insert("sidebarWidth".into(), super::js_number_to_json(w));
+                }
                 obj.insert(
                     "defaultTimestampConfig".into(),
                     parse_json(r.get::<_, Option<String>>(11)?),
@@ -1120,4 +1156,56 @@ pub fn patch_create_return_shape(settings: &mut serde_json::Value) {
         rebuilt.insert(k.clone(), v.clone());
     }
     *settings = serde_json::Value::Object(rebuilt);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The second Friday dogfood finding: a real instance's `chat_settings`
+    /// table predates the schema's `timezone` column (added to v4 with NO
+    /// migration — v4's `SELECT *` reads never notice). The tolerant SELECT
+    /// substitutes NULL so the read succeeds and the key is omitted, matching
+    /// v4's absent-key semantics.
+    #[test]
+    fn find_by_user_id_tolerates_a_missing_timezone_column() {
+        let conn = Connection::open_in_memory().unwrap();
+        // A migration-vintage table: every column the read names EXCEPT
+        // `timezone` (all TEXT is fine — the reader parses cell text).
+        conn.execute_batch(
+            "CREATE TABLE chat_settings (\
+                id TEXT PRIMARY KEY, userId TEXT, avatarDisplayMode TEXT, \
+                avatarDisplayStyle TEXT, tagStyles TEXT, cheapLLMSettings TEXT, \
+                imageDescriptionProfileId TEXT, uncensoredImageDescriptionProfileId TEXT, \
+                defaultRoleplayTemplateId TEXT, themePreference TEXT, sidebarWidth REAL, \
+                defaultTimestampConfig TEXT, memoryCascadePreferences TEXT, \
+                autoHousekeepingSettings TEXT, memoryExtractionLimits TEXT, \
+                autonomousRoomSettings TEXT, tokenDisplaySettings TEXT, \
+                contextCompressionSettings TEXT, llmLoggingSettings TEXT, \
+                autoDetectRng INTEGER, compositionModeDefault INTEGER, \
+                composerSpellcheck INTEGER, textReplacementsEnabled INTEGER, \
+                autoScrollOnResponseComplete INTEGER, agentModeSettings TEXT, \
+                coreWhisper TEXT, thinkingDisplay TEXT, answerConfirmationSettings TEXT, \
+                storyBackgroundsSettings TEXT, dangerousContentSettings TEXT, \
+                autoLockSettings TEXT, createdAt TEXT, updatedAt TEXT);",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO chat_settings (id, userId, avatarDisplayMode, avatarDisplayStyle, \
+             tagStyles, cheapLLMSettings, autoDetectRng, compositionModeDefault, \
+             composerSpellcheck, textReplacementsEnabled, autoScrollOnResponseComplete, \
+             createdAt, updatedAt) VALUES ('s1', 'u1', 'ALWAYS', 'CIRCULAR', '{}', \
+             '{\"strategy\":\"PROVIDER_CHEAPEST\",\"fallbackToLocal\":true,\
+             \"embeddingProvider\":\"OPENAI\"}', 1, 0, 1, 1, 0, \
+             '2026-07-10T00:00:00.000Z', '2026-07-10T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+
+        let row = find_by_user_id(&conn, "u1").unwrap().expect("row");
+        // The missing column reads as absent (v4 `undefined`, dropped).
+        assert!(row.get("timezone").is_none());
+        assert_eq!(row["avatarDisplayMode"], "ALWAYS");
+        assert_eq!(row["cheapLLMSettings"]["strategy"], "PROVIDER_CHEAPEST");
+    }
 }
