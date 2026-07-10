@@ -212,6 +212,300 @@ export interface ModelFetchRequest {
   baseUrl?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Characters surface (P4.6f implements the server side; see its Shared contract)
+//
+// Serde names transcribed VERBATIM from the p4.6f Shared contract. The response
+// bodies are pinned by lane A's differentials, not by a Rust `Response` type, so
+// the SPA reads these ops through {@link CoreClient.dispatchData} (raw `data`)
+// rather than a narrowed response variant — the response `type` string is not
+// load-bearing here (the settings-lane precedent for unpinned response types).
+// ---------------------------------------------------------------------------
+
+/** List characters with the v4 `npc` / `controlledBy` filters (v4 GET `/characters`). */
+export interface CharacterListRequest {
+  type: 'characterList';
+  npc?: 'true' | 'false';
+  controlledBy?: 'user' | 'llm';
+}
+
+/** The detail projection (v4 GET `/characters/:id`). */
+export interface CharacterGetRequest {
+  type: 'characterGet';
+  characterId: string;
+}
+
+/** Create a character from the full form bag (v4 POST `/characters`). */
+export interface CharacterCreateRequest {
+  type: 'characterCreate';
+  character: Record<string, unknown>;
+}
+
+/** Quick-create by name only (v4 POST `?action=quick-create`). */
+export interface CharacterQuickCreateRequest {
+  type: 'characterQuickCreate';
+  name: string;
+}
+
+/** Update a character (v4 PUT `/characters/:id`) — the whole form bag merged. */
+export interface CharacterUpdateRequest {
+  type: 'characterUpdate';
+  characterId: string;
+  character: Record<string, unknown>;
+}
+
+/** Delete with the cascade flags (v4 DELETE `/characters/:id`). */
+export interface CharacterDeleteRequest {
+  type: 'characterDelete';
+  characterId: string;
+  cascadeChats?: boolean;
+  cascadeImages?: boolean;
+}
+
+/** The pre-delete impact preview (v4 `?action=cascade-preview`). */
+export interface CharacterCascadePreviewRequest {
+  type: 'characterCascadePreview';
+  characterId: string;
+}
+
+/** Set / clear the avatar (v4 `?action=avatar`) — `imageId: null` clears. */
+export interface CharacterAvatarRequest {
+  type: 'characterAvatar';
+  characterId: string;
+  imageId: string | null;
+}
+
+/** The thin toggle verbs (v4 `?action=favorite|toggle-controlled-by|toggle-carina`). */
+export interface CharacterFavoriteRequest {
+  type: 'characterFavorite';
+  characterId: string;
+}
+export interface CharacterToggleControlledByRequest {
+  type: 'characterToggleControlledBy';
+  characterId: string;
+}
+export interface CharacterToggleCarinaRequest {
+  type: 'characterToggleCarina';
+  characterId: string;
+}
+
+/** Set / clear the default partner (v4 `?action=set-default-partner`). */
+export interface CharacterSetDefaultPartnerRequest {
+  type: 'characterSetDefaultPartner';
+  characterId: string;
+  partnerId: string | null;
+}
+
+/** Add / remove a tag on the character (v4 `?action=add-tag|remove-tag`). */
+export interface CharacterAddTagRequest {
+  type: 'characterAddTag';
+  characterId: string;
+  tagId: string;
+}
+export interface CharacterRemoveTagRequest {
+  type: 'characterRemoveTag';
+  characterId: string;
+  tagId: string;
+}
+
+/** Resolve the character's own tag details (v4 `?action=get-tags`). */
+export interface CharacterGetTagsRequest {
+  type: 'characterGetTags';
+  characterId: string;
+}
+
+/** The header stat line (v4 `?action=stats`). */
+export interface CharacterStatsRequest {
+  type: 'characterStats';
+  characterId: string;
+}
+
+/** The per-character conversation list (v4 `?action=chats`). */
+export interface CharacterChatsRequest {
+  type: 'characterChats';
+  characterId: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/** Read `defaultPartnerId` (v4 `?action=default-partner`). */
+export interface CharacterDefaultPartnerRequest {
+  type: 'characterDefaultPartner';
+  characterId: string;
+}
+
+/** The Ariel Clause depiction-guidelines file (v4 `?action=depiction-guidelines`). */
+export interface CharacterDepictionGuidelinesRequest {
+  type: 'characterDepictionGuidelines';
+  characterId: string;
+}
+export interface CharacterDepictionGuidelinesUpdateRequest {
+  type: 'characterDepictionGuidelinesUpdate';
+  characterId: string;
+  content: string;
+}
+
+/** System-prompt sub-resource CRUD (v4 `/characters/:id/prompts`). */
+export interface CharacterPromptListRequest {
+  type: 'characterPromptList';
+  characterId: string;
+}
+export interface CharacterPromptCreateRequest {
+  type: 'characterPromptCreate';
+  characterId: string;
+  name: string;
+  content: string;
+  isDefault?: boolean;
+}
+export interface CharacterPromptUpdateRequest {
+  type: 'characterPromptUpdate';
+  characterId: string;
+  promptId: string;
+  name?: string;
+  content?: string;
+  isDefault?: boolean;
+}
+export interface CharacterPromptDeleteRequest {
+  type: 'characterPromptDelete';
+  characterId: string;
+  promptId: string;
+}
+export interface CharacterPromptSetDefaultRequest {
+  type: 'characterPromptSetDefault';
+  characterId: string;
+  promptId: string;
+}
+
+/** Scenario sub-resource CRUD (v4 `/characters/:id/scenarios`). */
+export interface CharacterScenarioListRequest {
+  type: 'characterScenarioList';
+  characterId: string;
+}
+export interface CharacterScenarioCreateRequest {
+  type: 'characterScenarioCreate';
+  characterId: string;
+  title: string;
+  content: string;
+}
+export interface CharacterScenarioUpdateRequest {
+  type: 'characterScenarioUpdate';
+  characterId: string;
+  scenarioId: string;
+  title?: string;
+  content?: string;
+}
+export interface CharacterScenarioDeleteRequest {
+  type: 'characterScenarioDelete';
+  characterId: string;
+  scenarioId: string;
+}
+
+/** Plugin-data sub-resource (v4 `/characters/:id/plugin-data`). */
+export interface CharacterPluginDataMapRequest {
+  type: 'characterPluginDataMap';
+  characterId: string;
+}
+export interface CharacterPluginDataUpsertRequest {
+  type: 'characterPluginDataUpsert';
+  characterId: string;
+  pluginName: string;
+  data: unknown;
+}
+export interface CharacterPluginDataGetRequest {
+  type: 'characterPluginDataGet';
+  characterId: string;
+  pluginName: string;
+}
+export interface CharacterPluginDataDeleteRequest {
+  type: 'characterPluginDataDelete';
+  characterId: string;
+  pluginName: string;
+}
+
+/** Wardrobe sub-resource (v4 `/characters/:id/wardrobe`) — the dialog is deferred,
+ *  but the read/CRUD contract is transcribed for completeness. */
+export interface CharacterWardrobeListRequest {
+  type: 'characterWardrobeList';
+  characterId: string;
+}
+export interface CharacterWardrobeCreateRequest {
+  type: 'characterWardrobeCreate';
+  characterId: string;
+  item: Record<string, unknown>;
+}
+export interface CharacterWardrobeGetRequest {
+  type: 'characterWardrobeGet';
+  characterId: string;
+  itemId: string;
+}
+export interface CharacterWardrobeUpdateRequest {
+  type: 'characterWardrobeUpdate';
+  characterId: string;
+  itemId: string;
+  item: Record<string, unknown>;
+}
+export interface CharacterWardrobeDeleteRequest {
+  type: 'characterWardrobeDelete';
+  characterId: string;
+  itemId: string;
+}
+
+/** SillyTavern export / import (v4 `?action=export` / `?action=import`). */
+export interface CharacterExportRequest {
+  type: 'characterExport';
+  characterId: string;
+  format: 'json';
+}
+export interface CharacterImportRequest {
+  type: 'characterImport';
+  payload: unknown;
+}
+
+/** Photo gallery reads + JSON saves (the multipart upload leg is a web route). */
+export interface CharacterPhotoListRequest {
+  type: 'characterPhotoList';
+  characterId: string;
+  limit?: number;
+  offset?: number;
+}
+export interface CharacterPhotoSaveByIdRequest {
+  type: 'characterPhotoSaveById';
+  characterId: string;
+  fileId?: string;
+  linkId?: string;
+}
+export interface CharacterPhotoRemoveRequest {
+  type: 'characterPhotoRemove';
+  characterId: string;
+  linkId: string;
+}
+
+/** Tags CRUD (v4 `/tags`). */
+export interface TagListRequest {
+  type: 'tagList';
+  search?: string;
+}
+export interface TagCreateRequest {
+  type: 'tagCreate';
+  name: string;
+}
+export interface TagGetRequest {
+  type: 'tagGet';
+  tagId: string;
+}
+export interface TagUpdateRequest {
+  type: 'tagUpdate';
+  tagId: string;
+  name?: string;
+  visualStyle?: string;
+  quickHide?: boolean;
+}
+export interface TagDeleteRequest {
+  type: 'tagDelete';
+  tagId: string;
+}
+
 /** The internally-tagged request union (one variant per user-meaningful op). */
 export type CoreRequest =
   | { type: 'health' }
@@ -253,7 +547,56 @@ export type CoreRequest =
   | ApiKeyTestRequest
   | { type: 'providerList' }
   | ModelListRequest
-  | ModelFetchRequest;
+  | ModelFetchRequest
+  // --- The Characters surface (P4.6f implements the server side) ---
+  | CharacterListRequest
+  | CharacterGetRequest
+  | CharacterCreateRequest
+  | CharacterQuickCreateRequest
+  | CharacterUpdateRequest
+  | CharacterDeleteRequest
+  | CharacterCascadePreviewRequest
+  | CharacterAvatarRequest
+  | CharacterFavoriteRequest
+  | CharacterToggleControlledByRequest
+  | CharacterToggleCarinaRequest
+  | CharacterSetDefaultPartnerRequest
+  | CharacterAddTagRequest
+  | CharacterRemoveTagRequest
+  | CharacterGetTagsRequest
+  | CharacterStatsRequest
+  | CharacterChatsRequest
+  | CharacterDefaultPartnerRequest
+  | CharacterDepictionGuidelinesRequest
+  | CharacterDepictionGuidelinesUpdateRequest
+  | CharacterPromptListRequest
+  | CharacterPromptCreateRequest
+  | CharacterPromptUpdateRequest
+  | CharacterPromptDeleteRequest
+  | CharacterPromptSetDefaultRequest
+  | CharacterScenarioListRequest
+  | CharacterScenarioCreateRequest
+  | CharacterScenarioUpdateRequest
+  | CharacterScenarioDeleteRequest
+  | CharacterPluginDataMapRequest
+  | CharacterPluginDataUpsertRequest
+  | CharacterPluginDataGetRequest
+  | CharacterPluginDataDeleteRequest
+  | CharacterWardrobeListRequest
+  | CharacterWardrobeCreateRequest
+  | CharacterWardrobeGetRequest
+  | CharacterWardrobeUpdateRequest
+  | CharacterWardrobeDeleteRequest
+  | CharacterExportRequest
+  | CharacterImportRequest
+  | CharacterPhotoListRequest
+  | CharacterPhotoSaveByIdRequest
+  | CharacterPhotoRemoveRequest
+  | TagListRequest
+  | TagCreateRequest
+  | TagGetRequest
+  | TagUpdateRequest
+  | TagDeleteRequest;
 
 export type RequestType = CoreRequest['type'];
 
@@ -524,6 +867,208 @@ export interface ChatDetail {
   lastTurnParticipantId: string | null;
   activeTypingParticipantId?: string | null;
   impersonatingParticipantIds?: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Characters DTOs (v4 `app/aurora/[id]/view/types.ts` + the handler projections)
+// ---------------------------------------------------------------------------
+
+/** The subject/object/possessive pronoun triple (v4 `pronouns`). */
+export interface Pronouns {
+  subject: string;
+  object: string;
+  possessive: string;
+}
+
+/** v4 `TimestampConfig` (kept loose — the SPA round-trips it opaquely). */
+export type TimestampConfig = Record<string, unknown>;
+
+/** One system prompt on a character (v4 `CharacterSystemPrompt`). */
+export interface CharacterSystemPrompt {
+  id: string;
+  name: string;
+  content: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** One scenario on a character (v4 `CharacterScenario`). */
+export interface CharacterScenario {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The physical-description packet (v4 `CharacterPhysicalDescription`). */
+export interface CharacterPhysicalDescription {
+  id?: string;
+  name?: string | null;
+  usageContext?: string | null;
+  headAndShouldersPrompt?: string | null;
+  shortPrompt?: string | null;
+  mediumPrompt?: string | null;
+  longPrompt?: string | null;
+  completePrompt?: string | null;
+  fullDescription?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/**
+ * One row of the character LIST DTO (v4 `handlers/get.ts:58-92` — the
+ * hand-assembled whitelist). The `description` runs through `processTemplate`
+ * for the card preview; the toggles read `isFavorite` / `controlledBy` /
+ * `canBeCarina`.
+ */
+export interface CharacterListItem {
+  id: string;
+  name: string;
+  title: string | null;
+  description: string | null;
+  defaultImageId: string | null;
+  defaultImage: EnrichedImage | null;
+  isFavorite: boolean;
+  controlledBy: 'llm' | 'user';
+  canBeCarina: boolean;
+  defaultConnectionProfileId: string | null;
+  defaultPartnerId: string | null;
+  defaultPartnerName: string | null;
+  defaultTimestampConfig: TimestampConfig | null;
+  defaultScenarioId: string | null;
+  defaultSystemPromptId: string | null;
+  defaultImageProfileId: string | null;
+  npc: boolean;
+  createdAt: string;
+  tags: string[];
+  updatedAt: string;
+  systemPrompts: Array<{ id: string; name: string; isDefault: boolean }>;
+  scenarios: Array<{ id: string; title: string; content: string }>;
+  _count: { chats: number };
+}
+
+/**
+ * The character DETAIL projection (v4 `[id]/handlers/get.ts` — the full row
+ * spread + `defaultImage` + `_count`). The four vantage points
+ * (identity / description / manifesto / personality) are DISTINCT — never
+ * collapse them.
+ */
+export interface CharacterDetail {
+  id: string;
+  name: string;
+  title: string | null;
+  identity: string | null;
+  description: string | null;
+  manifesto: string | null;
+  personality: string | null;
+  scenarios: CharacterScenario[];
+  firstMessage: string | null;
+  exampleDialogues: string | null;
+  systemPrompt?: string | null;
+  systemPrompts: CharacterSystemPrompt[];
+  physicalDescription: CharacterPhysicalDescription | null;
+  avatarUrl?: string | null;
+  defaultImageId: string | null;
+  defaultImage: EnrichedImage | null;
+  defaultConnectionProfileId: string | null;
+  controlledBy: 'llm' | 'user';
+  isFavorite: boolean;
+  canBeCarina: boolean | null;
+  npc: boolean;
+  defaultAgentModeEnabled: boolean | null;
+  defaultHelpToolsEnabled: boolean | null;
+  canDressThemselves: boolean | null;
+  canCreateOutfits: boolean | null;
+  defaultTimestampConfig: TimestampConfig | null;
+  defaultScenarioId: string | null;
+  defaultSystemPromptId: string | null;
+  defaultPartnerId: string | null;
+  defaultImageProfileId: string | null;
+  aliases: string[];
+  pronouns: Pronouns | null;
+  characterDocumentMountPointId: string | null;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+  _count?: { chats: number };
+  [key: string]: unknown;
+}
+
+/** The character's own tag details (v4 `?action=get-tags`). */
+export interface CharacterTagDetail {
+  id: string;
+  name: string;
+  visualStyle: string | null;
+}
+
+/** The header stat line (v4 `?action=stats` → `stats`). */
+export interface CharacterStats {
+  memories: number;
+  conversations: number;
+  wardrobeItems: number;
+  photos: number;
+  scenarios: number;
+  knowledge: number;
+  core: number;
+  characterFiles: number;
+  characterFilesTotal: number;
+}
+
+/** A group badge on the header (v4 `?action=stats` → `groups`). */
+export interface CharacterGroupBadge {
+  id: string;
+  name: string;
+  description: string | null;
+  color: string | null;
+  icon: string | null;
+}
+
+/** One exclusive chat in the delete-cascade preview (v4 `cascade-preview`). */
+export interface CascadePreviewChat {
+  id: string;
+  title: string;
+  messageCount: number;
+  lastMessageAt: string | null;
+}
+
+/** The delete-cascade impact preview (v4 `?action=cascade-preview`). */
+export interface CascadePreview {
+  characterId: string;
+  characterName: string;
+  exclusiveChats: CascadePreviewChat[];
+  exclusiveCharacterImageCount: number;
+  exclusiveChatImageCount: number;
+  totalExclusiveImageCount: number;
+  memoryCount: number;
+}
+
+/** One row of the tags list (v4 `/tags`). */
+export interface TagDto {
+  id: string;
+  name: string;
+  visualStyle?: string | null;
+  quickHide?: boolean;
+  [key: string]: unknown;
+}
+
+/** A photo-gallery entry (v4 `/characters/:id/photos`). */
+export interface CharacterPhoto {
+  id: string;
+  linkId?: string;
+  fileId?: string;
+  filepath: string;
+  url?: string | null;
+  [key: string]: unknown;
+}
+
+/** A connection profile as the character screens consume it (id + name + model). */
+export interface CharacterConnectionProfile {
+  id: string;
+  name: string;
+  provider?: string;
+  modelName?: string;
 }
 
 // ---------------------------------------------------------------------------

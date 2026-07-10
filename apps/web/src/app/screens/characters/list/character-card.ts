@@ -1,0 +1,171 @@
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { RouterLink } from '@angular/router';
+
+import type { CharacterConnectionProfile, CharacterListItem } from '../../../core/core-contract';
+import { Icon } from '../../../ui/icon';
+import { characterAvatarSrc } from '../characters.api';
+import { processTemplate, resolveUserToken } from '../templates';
+
+/**
+ * One character card in the roster (v4 `AuroraView.tsx` card block). The card
+ * body links to `/characters/:id`; the three inline toggles (favorite / Carina /
+ * controlledBy) and the Chat / Export / Delete actions emit up to the list, which
+ * owns the mutations (optimistic) and dialogs.
+ *
+ * `qt-entity-card character-card` + the action classes carry over verbatim.
+ */
+@Component({
+  selector: 'qt-character-card',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [RouterLink, Icon],
+  template: `
+    <div class="qt-entity-card character-card hover:qt-border-primary/50 transition-colors">
+      <div class="flex items-start justify-between mb-4">
+        <a
+          class="flex items-center flex-grow gap-4 min-w-0 cursor-pointer"
+          [routerLink]="['/characters', character().id]"
+        >
+          @if (avatarSrc()) {
+            <img
+              [src]="avatarSrc()"
+              [alt]="character().name"
+              width="48"
+              height="48"
+              class="w-12 h-15 rounded-lg object-cover qt-bg-muted flex-shrink-0"
+              style="aspect-ratio: 4/5"
+            />
+          } @else {
+            <div
+              class="w-12 h-15 rounded-lg qt-bg-muted flex items-center justify-center flex-shrink-0"
+              style="aspect-ratio: 4/5"
+            >
+              <span class="text-lg font-bold qt-text-secondary">{{ initial() }}</span>
+            </div>
+          }
+          <div class="flex-grow min-w-0">
+            <h2 class="qt-heading-3 text-foreground truncate">{{ character().name }}</h2>
+            @if (character().title) {
+              <p class="qt-text-small truncate">{{ character().title }}</p>
+            }
+            <p class="qt-text-small">{{ chatCountLabel() }}</p>
+            @if (profileBadge(); as badge) {
+              <span
+                class="inline-flex items-center gap-1 mt-1 rounded-full qt-bg-muted qt-text-secondary px-2 py-0.5 qt-text-xs"
+                [title]="badge.provider + ' · ' + badge.modelName"
+              >
+                <qt-icon name="cpu" class="w-3 h-3" />{{ badge.modelName }}
+              </span>
+            }
+          </div>
+        </a>
+        <div class="flex items-center gap-1 ml-2 flex-shrink-0">
+          <button
+            type="button"
+            class="text-2xl qt-text-favorite transition-transform hover:scale-110 leading-none"
+            [title]="character().isFavorite ? 'Remove from favorites' : 'Add to favorites'"
+            (click)="favorite.emit()"
+          >
+            {{ character().isFavorite ? '⭐' : '☆' }}
+          </button>
+          <button
+            type="button"
+            [class]="
+              'transition hover:scale-110 ' +
+              (character().canBeCarina ? 'qt-text-favorite' : 'qt-text-secondary')
+            "
+            [title]="
+              character().canBeCarina
+                ? 'Disable Carina answers (@-queries)'
+                : 'Enable Carina answers (@-queries)'
+            "
+            (click)="toggleCarina.emit()"
+          >
+            <qt-icon name="monitor" class="w-6 h-6" />
+          </button>
+          <button
+            type="button"
+            [class]="
+              'transition hover:scale-110 ' +
+              (character().controlledBy === 'user' ? 'qt-text-favorite' : 'qt-text-secondary')
+            "
+            [title]="
+              character().controlledBy === 'user'
+                ? 'Switch to LLM control'
+                : 'Switch to user control'
+            "
+            (click)="toggleControlledBy.emit()"
+          >
+            <qt-icon name="user" class="w-6 h-6" />
+          </button>
+        </div>
+      </div>
+
+      <p class="line-clamp-3 qt-text-small">{{ descriptionPreview() }}</p>
+
+      <div class="qt-entity-card-actions character-card-actions">
+        <a
+          [routerLink]="['/characters', character().id]"
+          [queryParams]="{ action: 'chat' }"
+          class="character-card__action character-card__action--chat inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-success px-4 py-2 text-sm font-semibold qt-text-success-foreground qt-shadow-sm transition hover:qt-bg-success/90"
+          title="Start a chat with this character"
+        >
+          <qt-icon name="chat" class="w-5 h-5" />
+          Chat
+        </a>
+        <button
+          type="button"
+          class="character-card__action inline-flex items-center justify-center gap-2 rounded-lg border qt-border-default qt-bg-muted/80 px-3 py-2 text-sm qt-text-primary qt-shadow-sm transition hover:qt-bg-muted"
+          title="Export character data"
+          (click)="exportCharacter.emit()"
+        >
+          <qt-icon name="download" class="w-5 h-5" />
+        </button>
+        <button
+          type="button"
+          class="character-card__action qt-button-destructive qt-shadow-sm"
+          title="Delete this character"
+          (click)="deleteCharacter.emit()"
+        >
+          <qt-icon name="trash" class="w-5 h-5" />
+        </button>
+      </div>
+    </div>
+  `,
+})
+export class CharacterCard {
+  readonly character = input.required<CharacterListItem>();
+  /** Resolved by the list from `connectionProfileList` (v4 `getProfileProvider`). */
+  readonly profile = input<CharacterConnectionProfile | null>(null);
+
+  readonly favorite = output<void>();
+  readonly toggleCarina = output<void>();
+  readonly toggleControlledBy = output<void>();
+  readonly exportCharacter = output<void>();
+  readonly deleteCharacter = output<void>();
+
+  protected readonly avatarSrc = computed(() =>
+    characterAvatarSrc(this.character().defaultImage, this.character().defaultImageId),
+  );
+  protected readonly initial = computed(() => (this.character().name[0] ?? '?').toUpperCase());
+  protected readonly chatCountLabel = computed(() => {
+    const n = this.character()._count?.chats ?? 0;
+    return `${n} chat${n !== 1 ? 's' : ''}`;
+  });
+
+  protected readonly profileBadge = computed(() => {
+    const p = this.profile();
+    if (!this.character().defaultConnectionProfileId || !p?.provider || !p?.modelName) {
+      return null;
+    }
+    return { provider: p.provider, modelName: p.modelName };
+  });
+
+  /** v4 card preview: the description with `{{char}}`/`{{user}}` substituted. */
+  protected readonly descriptionPreview = computed(() => {
+    const c = this.character();
+    return processTemplate(c.description || '', {
+      char: c.name,
+      user: resolveUserToken(c.controlledBy, c.name, c.defaultPartnerName),
+    });
+  });
+}

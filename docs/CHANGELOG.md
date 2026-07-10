@@ -78,6 +78,21 @@ tolerating a not-yet-provisioned db. New differentials drive v4's REAL
 provisioning differential now diffs the seeded tables against a
 fresh-v4-with-migrations+seed instance. The `lorian-and-riya.qtap`
 sample-content import stays deferred.
+P4.6g (Characters SPA, lane B) foundation + list lands (`apps/web` 0.4.0). The
+`/characters` route goes live in the shell nav; `app.routes.ts` gains the four
+lazy routes (list / new / :id / :id/edit). The core contract TS mirror
+transcribes the p4.6f Shared contract — every character/tag `Request` variant
+plus the list / detail / stats / tags / cascade-preview / physical-description
+DTOs. A small pure `processTemplate` port substitutes `{{char}}`/`{{user}}` in
+card previews. The Characters roster screen ships: cards over the
+`characterList` dispatch with the v4 sort (NPCs last → favorites first → chat
+count desc → name A–Z), the three inline toggles (favorite / Carina /
+controlledBy) with optimistic updates, the Chat / Export / Delete actions, the
+delete dialog with the `cascadeChats`/`cascadeImages` flags over
+`cascade-preview`, and the SillyTavern import dialog (JSON via dispatch, PNG via
+the multipart web route). "Summon From Lore", "Reset Built-ins", and the Groups
+grid render disabled / omitted per the deferral list. Detail / edit / create are
+scaffolded and land next.
 
 CLAUDE.md is trimmed from 5,922 lines (~430 KB, loaded into every turn of
 every session and lane agent) to 287: the unit-by-unit Status journal moved

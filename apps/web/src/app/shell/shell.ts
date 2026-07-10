@@ -37,7 +37,7 @@ const NAV_ITEMS: NavItem[] = [
     id: 'characters',
     label: 'Characters',
     tooltip: 'View all characters',
-    route: null,
+    route: '/characters',
     icon: 'characters',
   },
   {
