@@ -5758,3 +5758,30 @@ remaining in P4.6f: create/quick-create/update handlers, delete-cascade, the
 sub-resource mutations (prompts/scenarios/plugin-data/wardrobe), tags CRUD +
 delete fan-out, the heavier read actions (stats/chats), the photo gallery, ST
 import/export, depiction-guidelines, and the Tier-3 refusals.
+
+**P4.6f slice 3 — the sub-resource mutations (2026-07-10).** The prompts /
+scenarios / plugin-data mutation handlers (`api::characters::character_{prompt,
+scenario,plugin_data}_*`), composed over the already-proven
+`vault_character_arrays::{add,update,delete,set_default}_system_prompt` /
+`{add,update,remove}_scenario` and `character_plugin_data` ops. Handler-level
+concerns ported: v4's ownership `findById` + `checkOwnership`, the
+prompt-exists pre-check (`notFound('Prompt')`), scenario update/delete's
+null→`notFound('Scenario')`, the `{message:'Scenario removed'}` delete body.
+One seam closed against the oracle: the plugin-data POST/PUT upsert echo returns
+`data` as the input OBJECT, NOT the stored string — v4's `upsert` returns the
+base create/update entity (`validate({...existing, ...{data:inputObject}})`),
+whose `data` is the input value; the item GET's `data` is the DB-re-parsed
+string (slice 1). So the upsert handler re-reads for the row metadata
+(id/timestamps) then overlays the input `data`. Added
+`character_plugin_data::delete_by_character_and_plugin`. The
+`set-default-prompt` verb (contract-shared with the SPA) maps to
+`set_default_system_prompt` — v4 has no dedicated route for it (the prompt PUT
+with `{isDefault:true}` is the diffed path), so it ships implemented but not in
+the differential. Proven: `characters_subresources_equivalence` — 9 cases
+(prompt/scenario create/update/delete, plugin upsert existing+new, plugin
+delete) vs v4's real handlers; update/delete target baked sub-items resolved by
+name (stable across copies), create/upsert normalize the minted
+id/createdAt/updatedAt. Versions: core 0.0.161, harness 0.0.146. Remaining in
+P4.6f: create/quick-create/update, delete-cascade, wardrobe mutations, tags CRUD
++ delete fan-out, stats/chats, the photo gallery, ST import/export,
+depiction-guidelines, and the Tier-3 refusals.

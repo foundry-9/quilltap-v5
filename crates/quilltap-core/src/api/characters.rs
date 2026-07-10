@@ -626,3 +626,312 @@ pub async fn character_remove_tag(
         Err(e) => internal(e),
     }
 }
+
+// ===========================================================================
+// Sub-resource mutations (prompts / scenarios / plugin-data)
+// ===========================================================================
+
+/// Ownership gate inside a write closure (v4 `findById` + `checkOwnership`).
+fn require_character_owned(
+    main: &rusqlite::Connection,
+    mount: &rusqlite::Connection,
+    character_id: &str,
+) -> Result<Result<Value, Response>, DbError> {
+    Ok(
+        match characters_read::find_by_id(main, mount, character_id)? {
+            Some(c) => Ok(c),
+            None => Err(not_found("Character")),
+        },
+    )
+}
+
+/// v4 `POST /characters/[id]/prompts` — `addSystemPrompt` → `{ prompt }` (201).
+pub async fn character_prompt_create(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    name: &str,
+    content: &str,
+    is_default: bool,
+) -> Response {
+    let (cid, name, content) = (
+        character_id.to_string(),
+        name.to_string(),
+        content.to_string(),
+    );
+    let out = with_both_conns(db, move |main, mount| {
+        if let Err(r) = require_character_owned(main, mount, &cid)? {
+            return Ok(Err(r));
+        }
+        match vault_character_arrays::add_system_prompt(
+            main, mount, &cid, &name, &content, is_default,
+        )? {
+            Some(p) => Ok(Ok(p)),
+            None => Ok(Err(internal("Failed to add system prompt"))),
+        }
+    })
+    .await;
+    wrap_obj(out, "prompt")
+}
+
+/// v4 `PUT /characters/[id]/prompts/[promptId]` — verify the prompt exists,
+/// `updateSystemPrompt` (patch = the present fields) → `{ prompt }`.
+pub async fn character_prompt_update(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    prompt_id: &str,
+    name: Option<&str>,
+    content: Option<&str>,
+    is_default: Option<bool>,
+) -> Response {
+    let (cid, pid) = (character_id.to_string(), prompt_id.to_string());
+    let (name, content) = (name.map(str::to_string), content.map(str::to_string));
+    let out = with_both_conns(db, move |main, mount| {
+        let character = match require_character_owned(main, mount, &cid)? {
+            Ok(c) => c,
+            Err(r) => return Ok(Err(r)),
+        };
+        if !sub_array_contains(&character, "systemPrompts", &pid) {
+            return Ok(Err(not_found("Prompt")));
+        }
+        let mut patch = serde_json::Map::new();
+        if let Some(n) = &name {
+            patch.insert("name".into(), json!(n));
+        }
+        if let Some(c) = &content {
+            patch.insert("content".into(), json!(c));
+        }
+        if let Some(d) = is_default {
+            patch.insert("isDefault".into(), json!(d));
+        }
+        match vault_character_arrays::update_system_prompt(main, mount, &cid, &pid, &patch)? {
+            Some(p) => Ok(Ok(p)),
+            None => Ok(Err(internal("Failed to update system prompt"))),
+        }
+    })
+    .await;
+    wrap_obj(out, "prompt")
+}
+
+/// v4 `DELETE /characters/[id]/prompts/[promptId]` — `{ success: true }`.
+pub async fn character_prompt_delete(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    prompt_id: &str,
+) -> Response {
+    let (cid, pid) = (character_id.to_string(), prompt_id.to_string());
+    let out = with_both_conns(db, move |main, mount| {
+        let character = match require_character_owned(main, mount, &cid)? {
+            Ok(c) => c,
+            Err(r) => return Ok(Err(r)),
+        };
+        if !sub_array_contains(&character, "systemPrompts", &pid) {
+            return Ok(Err(not_found("Prompt")));
+        }
+        if vault_character_arrays::delete_system_prompt(main, mount, &cid, &pid)? {
+            Ok(Ok(()))
+        } else {
+            Ok(Err(internal("Failed to delete system prompt")))
+        }
+    })
+    .await;
+    success_or(out)
+}
+
+/// The `set-default-prompt` verb (contract-shared with the SPA; v4 reaches it via
+/// the prompt PUT with `{isDefault:true}`). Composes the ported
+/// `set_default_system_prompt`.
+pub async fn character_prompt_set_default(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    prompt_id: &str,
+) -> Response {
+    let (cid, pid) = (character_id.to_string(), prompt_id.to_string());
+    let out = with_both_conns(db, move |main, mount| {
+        if let Err(r) = require_character_owned(main, mount, &cid)? {
+            return Ok(Err(r));
+        }
+        if vault_character_arrays::set_default_system_prompt(main, mount, &cid, &pid)? {
+            Ok(Ok(()))
+        } else {
+            Ok(Err(not_found("Prompt")))
+        }
+    })
+    .await;
+    success_or(out)
+}
+
+/// v4 `POST /characters/[id]/scenarios` — `addScenario` → `{ scenario }` (201).
+pub async fn character_scenario_create(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    title: &str,
+    content: &str,
+) -> Response {
+    let (cid, title, content) = (
+        character_id.to_string(),
+        title.to_string(),
+        content.to_string(),
+    );
+    let out = with_both_conns(db, move |main, mount| {
+        if let Err(r) = require_character_owned(main, mount, &cid)? {
+            return Ok(Err(r));
+        }
+        match vault_character_arrays::add_scenario(main, mount, &cid, &title, &content)? {
+            Some(s) => Ok(Ok(s)),
+            None => Ok(Err(internal("Failed to add scenario"))),
+        }
+    })
+    .await;
+    wrap_obj(out, "scenario")
+}
+
+/// v4 `PUT /characters/[id]/scenarios?scenarioId=` — `updateScenario` (null →
+/// NotFound) → `{ scenario }`.
+pub async fn character_scenario_update(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    scenario_id: &str,
+    title: Option<&str>,
+    content: Option<&str>,
+) -> Response {
+    let (cid, sid) = (character_id.to_string(), scenario_id.to_string());
+    let (title, content) = (title.map(str::to_string), content.map(str::to_string));
+    let out = with_both_conns(db, move |main, mount| {
+        if let Err(r) = require_character_owned(main, mount, &cid)? {
+            return Ok(Err(r));
+        }
+        let mut patch = serde_json::Map::new();
+        if let Some(t) = &title {
+            patch.insert("title".into(), json!(t));
+        }
+        if let Some(c) = &content {
+            patch.insert("content".into(), json!(c));
+        }
+        match vault_character_arrays::update_scenario(main, mount, &cid, &sid, &patch)? {
+            Some(s) => Ok(Ok(s)),
+            None => Ok(Err(not_found("Scenario"))),
+        }
+    })
+    .await;
+    wrap_obj(out, "scenario")
+}
+
+/// v4 `DELETE /characters/[id]/scenarios?scenarioId=` — `{ message: "Scenario
+/// removed" }` (or NotFound).
+pub async fn character_scenario_delete(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    scenario_id: &str,
+) -> Response {
+    let (cid, sid) = (character_id.to_string(), scenario_id.to_string());
+    let out = with_both_conns(db, move |main, mount| {
+        if let Err(r) = require_character_owned(main, mount, &cid)? {
+            return Ok(Err(r));
+        }
+        if vault_character_arrays::remove_scenario(main, mount, &cid, &sid)? {
+            Ok(Ok(()))
+        } else {
+            Ok(Err(not_found("Scenario")))
+        }
+    })
+    .await;
+    match out {
+        Ok(Ok(())) => Response::Character(json!({ "message": "Scenario removed" })),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `POST/PUT plugin-data` — `upsert(id, pluginName, data)` → re-read →
+/// `{ pluginData: entry }`.
+pub async fn character_plugin_data_upsert(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    plugin_name: &str,
+    data: Value,
+) -> Response {
+    let (cid, plugin) = (character_id.to_string(), plugin_name.to_string());
+    let out = with_both_conns(db, move |main, mount| {
+        if let Err(r) = require_character_owned(main, mount, &cid)? {
+            return Ok(Err(r));
+        }
+        crate::db::character_plugin_data::CharacterPluginDataRepository::new(main).upsert(
+            &cid,
+            &plugin,
+            data.clone(),
+        )?;
+        // v4's `upsert` returns the entity from the base create/update, whose
+        // `data` is the INPUT value (an object), NOT the stored-then-re-parsed
+        // string. Re-read for the row metadata (id/timestamps), then overlay the
+        // input `data` object.
+        let mut entry = character_plugin_data::find_by_character_and_plugin(main, &cid, &plugin)?
+            .unwrap_or(Value::Null);
+        if let Some(obj) = entry.as_object_mut() {
+            obj.insert("data".into(), data);
+        }
+        Ok(Ok(entry))
+    })
+    .await;
+    wrap_obj(out, "pluginData")
+}
+
+/// v4 `DELETE plugin-data/[pluginName]` — `{ success: true }` (or NotFound).
+pub async fn character_plugin_data_delete(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    plugin_name: &str,
+) -> Response {
+    let (cid, plugin) = (character_id.to_string(), plugin_name.to_string());
+    let out = with_both_conns(db, move |main, mount| {
+        if let Err(r) = require_character_owned(main, mount, &cid)? {
+            return Ok(Err(r));
+        }
+        if character_plugin_data::delete_by_character_and_plugin(main, &cid, &plugin)? {
+            Ok(Ok(()))
+        } else {
+            Ok(Err(not_found("Plugin data")))
+        }
+    })
+    .await;
+    success_or(out)
+}
+
+/// Whether `character[field]` (an array of `{id,…}`) contains an element with
+/// `id == target`.
+fn sub_array_contains(character: &Value, field: &str, target: &str) -> bool {
+    character
+        .get(field)
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .any(|e| e.get("id").and_then(Value::as_str) == Some(target))
+        })
+        .unwrap_or(false)
+}
+
+/// Wrap a `{ key: value }` success body, or propagate the refusal.
+fn wrap_obj(out: Result<Result<Value, Response>, DbError>, key: &str) -> Response {
+    match out {
+        Ok(Ok(v)) => Response::Character(json!({ key: v })),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// `{ success: true }` on success, or propagate the refusal.
+fn success_or(out: Result<Result<(), Response>, DbError>) -> Response {
+    match out {
+        Ok(Ok(())) => Response::Character(json!({ "success": true })),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}

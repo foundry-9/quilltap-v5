@@ -146,6 +146,20 @@ pub fn get_plugin_data_map(
     Ok(serde_json::Value::Object(map))
 }
 
+/// v4 `deleteByCharacterAndPlugin` — delete the entry for a `(characterId,
+/// pluginName)` pair; `false` when no row matched.
+pub fn delete_by_character_and_plugin(
+    conn: &Connection,
+    character_id: &str,
+    plugin_name: &str,
+) -> Result<bool, DbError> {
+    let affected = conn.execute(
+        "DELETE FROM character_plugin_data WHERE characterId = ?1 AND pluginName = ?2",
+        params![character_id, plugin_name],
+    )?;
+    Ok(affected > 0)
+}
+
 /// v4 `findByCharacterAndPlugin` — the entry for a `(characterId, pluginName)`
 /// pair, or `None`.
 pub fn find_by_character_and_plugin(

@@ -784,33 +784,159 @@ impl CoreEngine {
             Request::CharacterDepictionGuidelinesUpdate { .. } => {
                 super::characters::not_available("depiction-guidelines-update")
             }
-            Request::CharacterPromptCreate { .. } => {
-                super::characters::not_available("prompt-create")
-            }
-            Request::CharacterPromptUpdate { .. } => {
-                super::characters::not_available("prompt-update")
-            }
-            Request::CharacterPromptDelete { .. } => {
-                super::characters::not_available("prompt-delete")
-            }
-            Request::CharacterPromptSetDefault { .. } => {
-                super::characters::not_available("prompt-set-default")
-            }
-            Request::CharacterScenarioCreate { .. } => {
-                super::characters::not_available("scenario-create")
-            }
-            Request::CharacterScenarioUpdate { .. } => {
-                super::characters::not_available("scenario-update")
-            }
-            Request::CharacterScenarioDelete { .. } => {
-                super::characters::not_available("scenario-delete")
-            }
-            Request::CharacterPluginDataUpsert { .. } => {
-                super::characters::not_available("plugin-data-upsert")
-            }
-            Request::CharacterPluginDataDelete { .. } => {
-                super::characters::not_available("plugin-data-delete")
-            }
+            Request::CharacterPromptCreate {
+                character_id,
+                name,
+                content,
+                is_default,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_prompt_create(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        &name,
+                        &content,
+                        is_default,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterPromptUpdate {
+                character_id,
+                prompt_id,
+                name,
+                content,
+                is_default,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_prompt_update(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        &prompt_id,
+                        name.as_deref(),
+                        content.as_deref(),
+                        is_default,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterPromptDelete {
+                character_id,
+                prompt_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_prompt_delete(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        &prompt_id,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterPromptSetDefault {
+                character_id,
+                prompt_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_prompt_set_default(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        &prompt_id,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterScenarioCreate {
+                character_id,
+                title,
+                content,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_scenario_create(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        &title,
+                        &content,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterScenarioUpdate {
+                character_id,
+                scenario_id,
+                title,
+                content,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_scenario_update(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        &scenario_id,
+                        title.as_deref(),
+                        content.as_deref(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterScenarioDelete {
+                character_id,
+                scenario_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_scenario_delete(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        &scenario_id,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterPluginDataUpsert {
+                character_id,
+                plugin_name,
+                data,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_plugin_data_upsert(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        &plugin_name,
+                        data,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterPluginDataDelete {
+                character_id,
+                plugin_name,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_plugin_data_delete(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        &plugin_name,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
             Request::CharacterWardrobeCreate { .. } => {
                 super::characters::not_available("wardrobe-create")
             }

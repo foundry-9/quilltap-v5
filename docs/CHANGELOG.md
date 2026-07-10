@@ -4,6 +4,18 @@
 
 ### 5.0-dev
 
+P4.6f (Characters server, lane A) slice 3: the sub-resource mutation handlers
+— prompts (`create`/`update`/`delete`/`set-default`), scenarios
+(`create`/`update`/`delete`), and plugin-data (`upsert`/`delete`) — composed
+over the already-proven `vault_character_arrays` + `character_plugin_data` ops.
+One seam closed: the plugin-data upsert echo returns `data` as the input OBJECT
+(v4's `upsert` returns the base create/update entity, whose `data` is the input
+value, not the stored-then-re-parsed string that the item GET returns). Added
+`character_plugin_data::delete_by_character_and_plugin`. Proven by
+`characters_subresources_equivalence` (9 cases; update/delete target baked
+sub-items resolved by name, creates normalize the minted id/timestamps) vs v4's
+real route handlers. core 0.0.161, harness 0.0.146.
+
 P4.6f (Characters server, lane A) slice 2: the thin action verbs
 (`characters/[id]/handlers/post.ts`) as dispatch handlers —
 `character_favorite`, `character_toggle_controlled_by`,
