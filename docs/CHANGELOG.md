@@ -4,6 +4,13 @@
 
 ### 5.0-dev
 
+P4.4u2 unification: the seven chat-creation leaf sub-units integrated on
+main (pure fast-forward, zero conflicts). Verified: 1,161 workspace tests
+/ 0 failed, clippy -D warnings on both feature sets, fmt; the four gated
+differentials re-run green against freshly regenerated v4 oracles at
+a7b1398d. Remaining: sub-unit 8 (the handleCreate spine + ChatCreate
+dispatch + capstone), the next order.
+
 P4.4 unit-2 sub-unit 6: chat continuation (services::chat_continuation),
 ported from v4's lib/chat/apply-chat-continuation.ts. applyChatContinuation
 posts a Host continuation-from bubble in the new chat, replays the carryover

@@ -5674,3 +5674,20 @@ form) rides the capstone (the continuation-create case). **All six leaf
 sub-units are done; next is sub-unit 8 — the `handleCreate` spine + `ChatCreate`
 dispatch + the capstone tier-3 differential + the quilltap-web integration
 test.**
+
+**P4.4u2 unification (2026-07-09): the seven leaf sub-units are integrated
+on main** (a pure fast-forward — the solo lane branched from main HEAD, so
+zero conflicts; ownership held exactly: only `crates/**` +
+`harness/oracle/**` + docs). Verified on the integrated tree: the full
+workspace gate (**1,161 tests / 0 failed**; clippy `-D warnings` on default
+AND `native-transport`; fmt) and the four gated differentials re-run green
+against FRESHLY regenerated v4 oracles at `a7b1398d`
+(`scenario_resolvers_equivalence`, `chat_context_init_equivalence`,
+`identity_compiler_equivalence`, `initial_greeting_equivalence`; sub-units
+4/6/7 are unit-test-verified with their composed diffs riding the
+capstone). Versions: core 0.0.150, harness 0.0.138. **Next: the P4.4u2b
+order — sub-unit 8** (the `handleCreate` spine + `Request::ChatCreate` +
+the `ChatCreateDriver` host assembly + the capstone tier-3 differential +
+the quilltap-web integration test); the full inventory is in the
+`[[p4-4-u2-chat-creation]]` memory note and the unit-2 work order. Then
+P4.6 (the first Salon vertical, M4).
