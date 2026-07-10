@@ -4,6 +4,12 @@
 
 ### 5.0-dev
 
+The Friday dogfood findings log is started
+(`docs/developer/porting/dogfood-findings.md`): findings #1/#2 recorded as
+fixed; finding #3 — a large chat renders 10+ s and lands stuck at the top (no
+virtualization; scroll-to-bottom fires pre-layout) — is logged OPEN and
+promotes virtualization to the top of the next Salon order.
+
 The second Friday dogfood finding is fixed: the chat GET errored with
 `no such column: timezone` — the INVERSE affinity class. v4 added
 `chat_settings.timezone` to the schema with NO migration (nothing calls its
