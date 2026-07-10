@@ -106,6 +106,22 @@ struct CallW {
     /// "nothing to add" offer.
     #[serde(default)]
     nudge: Option<bool>,
+    /// P4.6c: user-initiated tool results pre-inserted as TOOL messages before
+    /// the user message (orchestrator.service.ts:601–624).
+    #[serde(default)]
+    pending_tool_results: Vec<PtrW>,
+}
+
+/// A corpus `pendingToolResults` element.
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct PtrW {
+    tool: String,
+    success: bool,
+    result: String,
+    prompt: String,
+    arguments: serde_json::Map<String, serde_json::Value>,
+    created_at: String,
 }
 
 #[derive(Deserialize)]
@@ -752,6 +768,18 @@ fn orchestrator_tier3_matches_oracle() {
         // `native_tool_loop_tier3` (v4's REAL `runNativeToolLoop` + threading).
 
         let call_nudge = call.nudge;
+        let call_ptrs: Vec<orchestrator::PendingToolResult> = call
+            .pending_tool_results
+            .iter()
+            .map(|p| orchestrator::PendingToolResult {
+                tool: p.tool.clone(),
+                success: p.success,
+                result: p.result.clone(),
+                prompt: p.prompt.clone(),
+                arguments: p.arguments.clone(),
+                created_at: p.created_at.clone(),
+            })
+            .collect();
         let make_input = |chat_id: &str, content: &str, continue_mode: bool, resp: Option<&str>| {
             ProcessMessageInput {
                 // U4.4: the request-path default (none) — inert on this corpus.
@@ -764,6 +792,13 @@ fn orchestrator_tier3_matches_oracle() {
                     responding_participant_id: resp.map(String::from),
                     // P4.d2: the Nudge flag (summoned → the skip offer is withheld).
                     nudge: call_nudge,
+                    // P4.6c: pending tool results pre-inserted before the user msg
+                    // (only on the INITIAL non-continue turn — the chain passes none).
+                    pending_tool_results: if continue_mode {
+                        Vec::new()
+                    } else {
+                        call_ptrs.clone()
+                    },
                     ..Default::default()
                 },
                 clock: ProcessClock {

@@ -1,2042 +1,2099 @@
 {
-  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
-  "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
-  "seedTimestamp": "2026-01-02T03:04:05.000Z",
-  "frozenNowMs": 1767326645000,
-  "localOffsetMinutes": 0,
-  "connectionProfiles": [
-    {
-      "id": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221",
-      "name": "Primary",
-      "provider": "ANTHROPIC",
-      "modelName": "claude-sonnet"
-    },
-    {
-      "id": "b0000001-0000-4000-8000-000000000001",
-      "name": "Router",
-      "provider": "OPENROUTER",
-      "modelName": "router-model"
-    },
-    {
-      "id": "c0000003-0000-4000-8000-000000000003",
-      "name": "Uncensored",
-      "provider": "OPENROUTER",
-      "modelName": "uncensored-model",
-      "apiKeyId": "c0000004-0000-4000-8000-000000000004",
-      "isDangerousCompatible": true
-    },
-    {
-      "id": "d0000001-0000-4000-8000-0000000000d1",
-      "name": "Courier",
-      "provider": "OPENAI",
-      "modelName": "gpt-4o",
-      "transport": "courier"
-    },
-    {
-      "id": "e0000005-0000-4000-8000-000000000005",
-      "name": "TextBlockModel",
-      "provider": "OPENAI",
-      "modelName": "o1-mini"
-    }
-  ],
-  "chatSettings": {
-    "id": "475d8e74-4bdc-4d46-a9c1-62c382b76116",
-    "cheapLLMSettings": {
-      "strategy": "PROVIDER_CHEAPEST",
-      "fallbackToLocal": false
-    },
-    "compressionEnabled": false,
-    "autoDetectRng": true,
-    "answerConfirmationEnabled": false,
-    "dangerMode": "AUTO_ROUTE",
-    "agentModeSettings": {
-      "maxTurns": 15,
-      "defaultEnabled": false
-    }
+ "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+ "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+ "seedTimestamp": "2026-01-02T03:04:05.000Z",
+ "frozenNowMs": 1767326645000,
+ "localOffsetMinutes": 0,
+ "connectionProfiles": [
+  {
+   "id": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221",
+   "name": "Primary",
+   "provider": "ANTHROPIC",
+   "modelName": "claude-sonnet"
   },
-  "characters": [
-    {
-      "id": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-      "name": "Friday",
-      "description": "A capable assistant.",
-      "aliases": [],
-      "controlledBy": "llm",
-      "talkativeness": 0.5,
-      "connectionProfileId": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221"
-    },
-    {
-      "id": "a990117b-2f44-466f-a853-6b4d4c2db52d",
-      "name": "Jeeves",
-      "description": "A composed valet.",
-      "aliases": [],
-      "controlledBy": "llm",
-      "talkativeness": 0.5,
-      "connectionProfileId": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221"
-    },
-    {
-      "id": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-      "name": "Operator",
-      "description": "The user persona.",
-      "aliases": [],
-      "controlledBy": "user",
-      "talkativeness": 0.5,
-      "connectionProfileId": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221"
-    },
-    {
-      "id": "c1000001-0000-4000-8000-000000000011",
-      "name": "Clara",
-      "description": "A transparent companion.",
-      "aliases": [],
-      "controlledBy": "llm",
-      "talkativeness": 0.5,
-      "connectionProfileId": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221",
-      "systemTransparency": true
-    },
-    {
-      "id": "c2000002-0000-4000-8000-000000000022",
-      "name": "Bertie",
-      "description": "A router-backed gentleman.",
-      "aliases": [],
-      "controlledBy": "llm",
-      "talkativeness": 0.5,
-      "connectionProfileId": "b0000001-0000-4000-8000-000000000001"
-    },
-    {
-      "id": "d0000002-0000-4000-8000-0000000000d2",
-      "name": "Postman",
-      "controlledBy": "llm",
-      "talkativeness": 0.5,
-      "connectionProfileId": "d0000001-0000-4000-8000-0000000000d1"
-    },
-    {
-      "id": "0ac1e000-0000-4000-8000-00000000000a",
-      "name": "Oracle",
-      "description": "A knowing oracle.",
-      "aliases": [],
-      "controlledBy": "llm",
-      "talkativeness": 0.5,
-      "connectionProfileId": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221",
-      "canBeCarina": true
-    }
-  ],
-  "chats": [
-    {
-      "id": "9fe3f87b-3833-46a9-bc1e-a88fc43dee6b",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "e3e3e97c-5216-40b1-b2b9-a8f139bf22ab",
-          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "93e0f489-e592-5c46-89f5-9a1dbb2a42af",
-          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-          "controlledBy": "user",
-          "status": "active"
-        }
-      ],
-      "messages": []
-    },
-    {
-      "id": "0103c571-ea48-44d0-bbff-98402eb270a9",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "e4a43155-b1ed-4cc2-8ef6-44e5d9ffb430",
-          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "39091c6a-3975-53c9-a51e-b957c779868d",
-          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-          "controlledBy": "user",
-          "status": "active"
-        }
-      ],
-      "messages": [
-        {
-          "id": "04c6ec86-26e5-5210-81cf-21763ed32045",
-          "role": "USER",
-          "content": "Please continue the scene.",
-          "participantId": null
-        }
-      ]
-    },
-    {
-      "id": "4f6efed3-51ee-4495-a582-5821533b477c",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "f22fb775-8181-4fc1-8784-91266d4dc996",
-          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "4ff439f3-91c8-5bd0-8228-5d8af93c9a42",
-          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-          "controlledBy": "user",
-          "status": "active"
-        }
-      ],
-      "messages": []
-    },
-    {
-      "id": "6bcba106-5fa1-4b0e-869c-4fab3470f450",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "ff08a1e3-f357-462f-abfb-9e369f7f2fc0",
-          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "7c49683d-5a78-54c9-8800-cadff7814e7c",
-          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-          "controlledBy": "user",
-          "status": "active"
-        }
-      ],
-      "messages": []
-    },
-    {
-      "id": "c860cf74-128f-4a81-9a5c-6c2275f24302",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "d40bef50-aa9f-448a-9023-54013f233381",
-          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "c96713aa-ea7f-5ad6-b4cd-e62d3d984059",
-          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-          "controlledBy": "user",
-          "status": "active"
-        }
-      ],
-      "messages": [
-        {
-          "id": "c382036c-9c42-5b71-9ceb-fc41269ca395",
-          "role": "USER",
-          "content": "u01",
-          "participantId": null
-        },
-        {
-          "id": "4dee4ddf-9c61-5fae-89e7-1063e0239d96",
-          "role": "ASSISTANT",
-          "content": "a01",
-          "participantId": "d40bef50-aa9f-448a-9023-54013f233381"
-        },
-        {
-          "id": "71f9c2dd-a8b8-57f8-8ba9-6a4a9d3d6d2b",
-          "role": "USER",
-          "content": "u02",
-          "participantId": null
-        },
-        {
-          "id": "881fd5c7-3cea-5bc8-890b-89da293aff4e",
-          "role": "ASSISTANT",
-          "content": "a02",
-          "participantId": "d40bef50-aa9f-448a-9023-54013f233381"
-        },
-        {
-          "id": "5470e98e-5f75-5441-a58f-f23543ff2926",
-          "role": "USER",
-          "content": "u03",
-          "participantId": null
-        },
-        {
-          "id": "d84cdebd-606d-5edd-af3b-722e1dfbce76",
-          "role": "ASSISTANT",
-          "content": "a03",
-          "participantId": "d40bef50-aa9f-448a-9023-54013f233381"
-        },
-        {
-          "id": "99b925ef-c1f5-5c08-b3f6-48795747e70c",
-          "role": "USER",
-          "content": "u04",
-          "participantId": null
-        },
-        {
-          "id": "7547ccd1-62f1-5c40-a30f-8053c9033300",
-          "role": "ASSISTANT",
-          "content": "a04",
-          "participantId": "d40bef50-aa9f-448a-9023-54013f233381"
-        },
-        {
-          "id": "d3b1ce09-37ae-55a1-a95f-2ffb7e85eabf",
-          "role": "USER",
-          "content": "u05",
-          "participantId": null
-        },
-        {
-          "id": "c71c949c-fffe-564d-8c0e-bcd5402d5830",
-          "role": "ASSISTANT",
-          "content": "a05",
-          "participantId": "d40bef50-aa9f-448a-9023-54013f233381"
-        },
-        {
-          "id": "f291448d-f6c6-5066-8312-d51626ecbc49",
-          "role": "USER",
-          "content": "u06",
-          "participantId": null
-        },
-        {
-          "id": "ff6ed9ac-24e2-5ff4-a08c-e4a1d55bb516",
-          "role": "ASSISTANT",
-          "content": "a06",
-          "participantId": "d40bef50-aa9f-448a-9023-54013f233381"
-        },
-        {
-          "id": "d305a88b-eed8-5fc9-a88a-a9d7a3de5b8c",
-          "role": "USER",
-          "content": "u07",
-          "participantId": null
-        },
-        {
-          "id": "468a085b-0e35-516a-9a12-f8914c65eb62",
-          "role": "ASSISTANT",
-          "content": "a07",
-          "participantId": "d40bef50-aa9f-448a-9023-54013f233381"
-        },
-        {
-          "id": "fea5688a-cc89-5fe6-a6d9-3e46b4ae603f",
-          "role": "USER",
-          "content": "u08",
-          "participantId": null
-        },
-        {
-          "id": "12dd2c51-d40d-54a2-babf-1865a3730824",
-          "role": "ASSISTANT",
-          "content": "a08",
-          "participantId": "d40bef50-aa9f-448a-9023-54013f233381"
-        },
-        {
-          "id": "2ee4c724-a45e-5a71-bfe0-b4f879cc1518",
-          "role": "USER",
-          "content": "u09",
-          "participantId": null
-        },
-        {
-          "id": "8b908948-a136-51e7-bf37-6234828ee7b1",
-          "role": "ASSISTANT",
-          "content": "a09",
-          "participantId": "d40bef50-aa9f-448a-9023-54013f233381"
-        },
-        {
-          "id": "18b54a46-3f89-5fbc-98bb-0de1326a9be7",
-          "role": "USER",
-          "content": "u10",
-          "participantId": null
-        },
-        {
-          "id": "f59e4edd-da56-5f54-b858-9fa67758c133",
-          "role": "ASSISTANT",
-          "content": "a10",
-          "participantId": "d40bef50-aa9f-448a-9023-54013f233381"
-        },
-        {
-          "id": "191d7dc2-f804-51cc-aff9-9c513c1c89af",
-          "role": "USER",
-          "content": "u11",
-          "participantId": null
-        }
-      ]
-    },
-    {
-      "id": "c89ee722-b555-40db-9e02-bbd0e82ee56b",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "f7428408-f9c7-4787-9c26-1aa7493e6f3e",
-          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "3e85d11c-6293-4776-b9a8-a60838ad7bcb",
-          "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
-          "controlledBy": "llm",
-          "status": "active"
-        }
-      ],
-      "messages": []
-    },
-    {
-      "id": "ca000001-0000-4000-8000-000000000001",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "ca0a0001-0000-4000-8000-0000000000a1",
-          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "ca0b0002-0000-4000-8000-0000000000b2",
-          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-          "controlledBy": "user",
-          "status": "active"
-        }
-      ],
-      "messages": []
-    },
-    {
-      "id": "cb000002-0000-4000-8000-000000000002",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "cb0a0001-0000-4000-8000-0000000000a1",
-          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "cb0b0002-0000-4000-8000-0000000000b2",
-          "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
-          "controlledBy": "llm",
-          "status": "active"
-        }
-      ],
-      "messages": []
-    },
-    {
-      "id": "d1000001-0000-4000-8000-000000000001",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "d10a0001-0000-4000-8000-0000000000a1",
-          "character": "c2000002-0000-4000-8000-000000000022",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "d10b0001-0000-4000-8000-0000000000b1",
-          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-          "controlledBy": "user",
-          "status": "active"
-        }
-      ],
-      "messages": []
-    },
-    {
-      "id": "d2000002-0000-4000-8000-000000000002",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "d20a0002-0000-4000-8000-0000000000a2",
-          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "d20b0002-0000-4000-8000-0000000000b2",
-          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-          "controlledBy": "user",
-          "status": "active"
-        }
-      ],
-      "messages": [
-        {
-          "id": "d2010001-0000-4000-8000-000000000101",
-          "role": "USER",
-          "content": "hello there",
-          "participantId": null
-        },
-        {
-          "id": "d2010002-0000-4000-8000-000000000102",
-          "role": "ASSISTANT",
-          "content": "greetings",
-          "participantId": "d20a0002-0000-4000-8000-0000000000a2"
-        },
-        {
-          "id": "d2010003-0000-4000-8000-000000000103",
-          "role": "ASSISTANT",
-          "content": "A stale recall whisper.",
-          "participantId": null,
-          "systemSender": "commonplaceBook",
-          "systemKind": null
-        },
-        {
-          "id": "d2010004-0000-4000-8000-000000000104",
-          "role": "ASSISTANT",
-          "content": "A persistent relevant-conversations note.",
-          "participantId": null,
-          "systemSender": "commonplaceBook",
-          "systemKind": "relevant-conversations"
-        }
-      ]
-    },
-    {
-      "id": "d3000003-0000-4000-8000-000000000003",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "d30a0003-0000-4000-8000-0000000000a3",
-          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "d30b0003-0000-4000-8000-0000000000b3",
-          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-          "controlledBy": "user",
-          "status": "active"
-        }
-      ],
-      "messages": [
-        {
-          "id": "d3010001-0000-4000-8000-000000000201",
-          "role": "USER",
-          "content": "what time is it",
-          "participantId": null
-        },
-        {
-          "id": "d3010002-0000-4000-8000-000000000202",
-          "role": "ASSISTANT",
-          "content": "The Host announces it is 3pm sharp.",
-          "participantId": null,
-          "systemSender": "host",
-          "opaqueContent": "It is now afternoon."
-        },
-        {
-          "id": "d3010003-0000-4000-8000-000000000203",
-          "role": "ASSISTANT",
-          "content": "A lantern image has appeared.",
-          "participantId": null,
-          "systemSender": "lantern",
-          "attachments": [
-            "d3ff0001-0000-4000-8000-0000000000f1"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "d4000004-0000-4000-8000-000000000004",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "d40a0004-0000-4000-8000-0000000000a4",
-          "character": "c1000001-0000-4000-8000-000000000011",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "d40b0004-0000-4000-8000-0000000000b4",
-          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-          "controlledBy": "user",
-          "status": "active"
-        }
-      ],
-      "messages": [
-        {
-          "id": "d4010001-0000-4000-8000-000000000301",
-          "role": "USER",
-          "content": "what time is it",
-          "participantId": null
-        },
-        {
-          "id": "d4010002-0000-4000-8000-000000000302",
-          "role": "ASSISTANT",
-          "content": "The Host announces it is 3pm sharp.",
-          "participantId": null,
-          "systemSender": "host",
-          "opaqueContent": "It is now afternoon."
-        }
-      ]
-    },
-    {
-      "id": "d5000005-0000-4000-8000-000000000005",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "d50a0005-0000-4000-8000-0000000000a5",
-          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "d50b0005-0000-4000-8000-0000000000b5",
-          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-          "controlledBy": "user",
-          "status": "active"
-        }
-      ],
-      "messages": [
-        {
-          "id": "d5010001-0000-4000-8000-000000000401",
-          "role": "USER",
-          "content": "proceed",
-          "participantId": null
-        },
-        {
-          "id": "d5010002-0000-4000-8000-000000000402",
-          "role": "TOOL",
-          "content": "{\"toolName\":\"secret\",\"result\":\"operator-only payload\"}",
-          "participantId": null,
-          "targetParticipantIds": [
-            "d50b0005-0000-4000-8000-0000000000b5"
-          ]
-        },
-        {
-          "id": "d5010003-0000-4000-8000-000000000403",
-          "role": "ASSISTANT",
-          "content": "acknowledged",
-          "participantId": "d50a0005-0000-4000-8000-0000000000a5"
-        }
-      ]
-    },
-    {
-      "id": "e1000001-0000-4000-8000-000000000001",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "e10a0001-0000-4000-8000-0000000000a1",
-          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "e10b0001-0000-4000-8000-0000000000b1",
-          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-          "controlledBy": "user",
-          "status": "active"
-        }
-      ],
-      "messages": []
-    },
-    {
-      "id": "e2000002-0000-4000-8000-000000000002",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "e20a0002-0000-4000-8000-0000000000a2",
-          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "e20b0002-0000-4000-8000-0000000000b2",
-          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-          "controlledBy": "user",
-          "status": "active"
-        }
-      ],
-      "messages": []
-    },
-    {
-      "id": "e3000003-0000-4000-8000-000000000003",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "e30a0003-0000-4000-8000-0000000000a3",
-          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "e30b0003-0000-4000-8000-0000000000b3",
-          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-          "controlledBy": "user",
-          "status": "active"
-        }
-      ],
-      "messages": []
-    },
-    {
-      "id": "f1000001-0000-4000-8000-000000000001",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "f10a0001-0000-4000-8000-0000000000a1",
-          "character": "c2000002-0000-4000-8000-000000000022",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "f10b0001-0000-4000-8000-0000000000b1",
-          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-          "controlledBy": "user",
-          "status": "active"
-        }
-      ],
-      "messages": [
-        {
-          "id": "f1010001-0000-4000-8000-000000000301",
-          "role": "USER",
-          "content": "hello there",
-          "participantId": null
-        },
-        {
-          "id": "f1010002-0000-4000-8000-000000000302",
-          "role": "ASSISTANT",
-          "content": "Greetings.",
-          "participantId": "f10a0001-0000-4000-8000-0000000000a1"
-        }
-      ],
-      "disabledTools": [
-        "rng",
-        "state",
-        "terminal_read"
-      ]
-    },
-    {
-      "id": "f2000002-0000-4000-8000-000000000002",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "f20a0002-0000-4000-8000-0000000000a2",
-          "character": "c2000002-0000-4000-8000-000000000022",
-          "controlledBy": "llm",
-          "status": "active",
-          "connectionProfileId": "e0000005-0000-4000-8000-000000000005"
-        },
-        {
-          "id": "f20b0002-0000-4000-8000-0000000000b2",
-          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-          "controlledBy": "user",
-          "status": "active"
-        }
-      ],
-      "messages": [
-        {
-          "id": "f2010001-0000-4000-8000-000000000301",
-          "role": "USER",
-          "content": "hello there",
-          "participantId": null
-        },
-        {
-          "id": "f2010002-0000-4000-8000-000000000302",
-          "role": "ASSISTANT",
-          "content": "Greetings.",
-          "participantId": "f20a0002-0000-4000-8000-0000000000a2"
-        }
-      ]
-    },
-    {
-      "id": "ab000001-0000-4000-8000-000000000001",
-      "chatType": "salon",
-      "contextSummary": null,
-      "agentModeEnabled": true,
-      "agentTurnCount": 5,
-      "participants": [
-        {
-          "id": "ab0a0001-0000-4000-8000-0000000000a1",
-          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "ab0b0002-0000-4000-8000-0000000000b2",
-          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-          "controlledBy": "user",
-          "status": "active"
-        }
-      ],
-      "messages": []
-    },
-    {
-      "id": "da000001-0000-4000-8000-000000000001",
-      "chatType": "salon",
-      "contextSummary": "A prior summary exists for this chat.",
-      "conciergeOverride": "OFF",
-      "participants": [
-        {
-          "id": "da0000a1-0000-4000-8000-0000000000a1",
-          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "da0000a2-0000-4000-8000-0000000000a2",
-          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-          "controlledBy": "user",
-          "status": "active"
-        }
-      ],
-      "messages": []
-    },
-    {
-      "id": "db000002-0000-4000-8000-000000000002",
-      "chatType": "salon",
-      "contextSummary": null,
-      "isDangerousChat": true,
-      "participants": [
-        {
-          "id": "db0000b1-0000-4000-8000-0000000000b1",
-          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "db0000b2-0000-4000-8000-0000000000b2",
-          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-          "controlledBy": "user",
-          "status": "active"
-        }
-      ],
-      "messages": []
-    },
-    {
-      "id": "d0000003-0000-4000-8000-0000000000d3",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "d0000004-0000-4000-8000-0000000000d4",
-          "character": "d0000002-0000-4000-8000-0000000000d2",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "d0000005-0000-4000-8000-0000000000d5",
-          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-          "controlledBy": "user",
-          "status": "active"
-        }
-      ],
-      "messages": []
-    },
-    {
-      "id": "cc000001-0000-4000-8000-0000000000cc",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "cc0a0001-0000-4000-8000-0000000000a1",
-          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "cc0b0001-0000-4000-8000-0000000000b1",
-          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-          "controlledBy": "user",
-          "status": "active"
-        }
-      ],
-      "messages": []
-    },
-    {
-      "id": "5f000001-0000-4000-8000-0000000000f1",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "5f0a0001-0000-4000-8000-0000000000a1",
-          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "5f0b0001-0000-4000-8000-0000000000b1",
-          "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
-          "controlledBy": "llm",
-          "status": "active"
-        }
-      ],
-      "messages": [
-        {
-          "id": "5f010001-0000-4000-8000-000000000101",
-          "role": "ASSISTANT",
-          "content": "An opening remark to set the scene.",
-          "participantId": "5f0b0001-0000-4000-8000-0000000000b1"
-        }
-      ]
-    },
-    {
-      "id": "59000002-0000-4000-8000-0000000000f2",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "590a0002-0000-4000-8000-0000000000a2",
-          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "590b0002-0000-4000-8000-0000000000b2",
-          "character": "c1000001-0000-4000-8000-000000000011",
-          "controlledBy": "user",
-          "status": "active"
-        },
-        {
-          "id": "590c0002-0000-4000-8000-0000000000c2",
-          "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
-          "controlledBy": "user",
-          "status": "active"
-        }
-      ],
-      "messages": [
-        {
-          "id": "59010001-0000-4000-8000-000000000101",
-          "role": "USER",
-          "content": "Tell us more of the ledger.",
-          "participantId": "590c0002-0000-4000-8000-0000000000c2"
-        },
-        {
-          "id": "59010002-0000-4000-8000-000000000102",
-          "role": "ASSISTANT",
-          "content": "As I was saying before the interruption.",
-          "participantId": "590a0002-0000-4000-8000-0000000000a2"
-        }
-      ]
-    },
-    {
-      "id": "6e000003-0000-4000-8000-0000000000f3",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "6e0a0003-0000-4000-8000-0000000000a3",
-          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "6e0b0003-0000-4000-8000-0000000000b3",
-          "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
-          "controlledBy": "llm",
-          "status": "active"
-        }
-      ],
-      "messages": [
-        {
-          "id": "6e010001-0000-4000-8000-000000000101",
-          "role": "ASSISTANT",
-          "content": "A word before the summons.",
-          "participantId": "6e0b0003-0000-4000-8000-0000000000b3"
-        }
-      ]
-    },
-    {
-      "id": "5d000004-0000-4000-8000-0000000000f4",
-      "chatType": "salon",
-      "contextSummary": null,
-      "participants": [
-        {
-          "id": "5d0a0004-0000-4000-8000-0000000000a4",
-          "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "5d0b0004-0000-4000-8000-0000000000b4",
-          "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
-          "controlledBy": "llm",
-          "status": "active"
-        }
-      ],
-      "messages": [
-        {
-          "id": "5d010001-0000-4000-8000-000000000101",
-          "role": "ASSISTANT",
-          "content": "A remark under the old rules.",
-          "participantId": "5d0b0004-0000-4000-8000-0000000000b4"
-        }
-      ],
-      "turnSkippingEnabled": false
-    }
-  ],
-  "calls": [
-    {
-      "name": "single_basic",
-      "kind": "single",
-      "chatId": "9fe3f87b-3833-46a9-bc1e-a88fc43dee6b",
-      "content": "",
-      "continueMode": true,
-      "streamLabel": "single_basic",
-      "cheapLLMSettings": false,
-      "summaryCheck": false,
-      "respondingParticipant": null
-    },
-    {
-      "name": "continue_mode",
-      "kind": "single",
-      "chatId": "0103c571-ea48-44d0-bbff-98402eb270a9",
-      "content": "",
-      "continueMode": true,
-      "streamLabel": "continue_mode",
-      "cheapLLMSettings": false,
-      "summaryCheck": false,
-      "respondingParticipant": null
-    },
-    {
-      "name": "empty_retry",
-      "kind": "single",
-      "chatId": "4f6efed3-51ee-4495-a582-5821533b477c",
-      "content": "Say something.",
-      "continueMode": false,
-      "streamLabel": "empty_retry",
-      "cheapLLMSettings": false,
-      "summaryCheck": false
-    },
-    {
-      "name": "mid_stream_error",
-      "kind": "single",
-      "chatId": "6bcba106-5fa1-4b0e-869c-4fab3470f450",
-      "content": "Trigger an error.",
-      "continueMode": false,
-      "streamLabel": "mid_stream_error",
-      "cheapLLMSettings": false,
-      "summaryCheck": false,
-      "expectThrow": true
-    },
-    {
-      "name": "summary_fold",
-      "kind": "single",
-      "chatId": "c860cf74-128f-4a81-9a5c-6c2275f24302",
-      "content": "",
-      "continueMode": true,
-      "streamLabel": "summary_fold",
-      "cheapLLMSettings": true,
-      "summaryCheck": true,
-      "respondingParticipant": null
-    },
-    {
-      "name": "multi_chain",
-      "kind": "chain",
-      "chatId": "c89ee722-b555-40db-9e02-bbd0e82ee56b",
-      "content": "",
-      "continueMode": true,
-      "streamLabel": "multi_chain",
-      "cheapLLMSettings": false,
-      "summaryCheck": false,
-      "respondingParticipant": "f7428408-f9c7-4787-9c26-1aa7493e6f3e"
-    },
-    {
-      "name": "noncontinue_single_user_chain",
-      "kind": "chain",
-      "chatId": "ca000001-0000-4000-8000-000000000001",
-      "content": "Begin the scene.",
-      "continueMode": false,
-      "streamLabel": "cd_single",
-      "cheapLLMSettings": false,
-      "summaryCheck": false
-    },
-    {
-      "name": "noncontinue_two_llm_maxdepth",
-      "kind": "chain",
-      "chatId": "cb000002-0000-4000-8000-000000000002",
-      "content": "Converse.",
-      "continueMode": false,
-      "streamLabel": "cd_two",
-      "cheapLLMSettings": false,
-      "summaryCheck": false
-    },
-    {
-      "name": "nonanthropic_scene",
-      "kind": "single",
-      "chatId": "d1000001-0000-4000-8000-000000000001",
-      "content": "",
-      "continueMode": true,
-      "streamLabel": "nonanthropic_scene",
-      "cheapLLMSettings": false,
-      "summaryCheck": false,
-      "respondingParticipant": "d10a0001-0000-4000-8000-0000000000a1"
-    },
-    {
-      "name": "commonplace_strip",
-      "kind": "single",
-      "chatId": "d2000002-0000-4000-8000-000000000002",
-      "content": "",
-      "continueMode": true,
-      "streamLabel": "commonplace_strip",
-      "cheapLLMSettings": false,
-      "summaryCheck": false,
-      "respondingParticipant": "d20a0002-0000-4000-8000-0000000000a2"
-    },
-    {
-      "name": "opaque_swap",
-      "kind": "single",
-      "chatId": "d3000003-0000-4000-8000-000000000003",
-      "content": "",
-      "continueMode": true,
-      "streamLabel": "opaque_swap",
-      "cheapLLMSettings": false,
-      "summaryCheck": false,
-      "respondingParticipant": "d30a0003-0000-4000-8000-0000000000a3"
-    },
-    {
-      "name": "transparent_no_swap",
-      "kind": "single",
-      "chatId": "d4000004-0000-4000-8000-000000000004",
-      "content": "",
-      "continueMode": true,
-      "streamLabel": "transparent_no_swap",
-      "cheapLLMSettings": false,
-      "summaryCheck": false,
-      "respondingParticipant": "d40a0004-0000-4000-8000-0000000000a4"
-    },
-    {
-      "name": "tool_whisper_filter",
-      "kind": "single",
-      "chatId": "d5000005-0000-4000-8000-000000000005",
-      "content": "",
-      "continueMode": true,
-      "streamLabel": "tool_whisper_filter",
-      "cheapLLMSettings": false,
-      "summaryCheck": false,
-      "respondingParticipant": "d50a0005-0000-4000-8000-0000000000a5"
-    },
-    {
-      "name": "rng_dice",
-      "kind": "chain",
-      "chatId": "e1000001-0000-4000-8000-000000000001",
-      "content": "Roll 2d6 for initiative.",
-      "continueMode": false,
-      "streamLabel": "rng_dice",
-      "cheapLLMSettings": false,
-      "summaryCheck": false,
-      "rngBytes": [
-        3,
-        4
-      ]
-    },
-    {
-      "name": "rng_two_patterns",
-      "kind": "chain",
-      "chatId": "e2000002-0000-4000-8000-000000000002",
-      "content": "Flip a coin then roll d20.",
-      "continueMode": false,
-      "streamLabel": "rng_two",
-      "cheapLLMSettings": false,
-      "summaryCheck": false,
-      "rngBytes": [
-        9,
-        0
-      ]
-    },
-    {
-      "name": "rng_no_fire",
-      "kind": "chain",
-      "chatId": "e3000003-0000-4000-8000-000000000003",
-      "content": "Let's flip the coin, not d1.",
-      "continueMode": false,
-      "streamLabel": "rng_no_fire",
-      "cheapLLMSettings": false,
-      "summaryCheck": false,
-      "rngBytes": []
-    },
-    {
-      "name": "disabled_tools",
-      "kind": "single",
-      "chatId": "f1000001-0000-4000-8000-000000000001",
-      "content": "",
-      "continueMode": true,
-      "streamLabel": "disabled_tools",
-      "cheapLLMSettings": false,
-      "summaryCheck": false,
-      "respondingParticipant": "f10a0001-0000-4000-8000-0000000000a1"
-    },
-    {
-      "name": "textblock_mode",
-      "kind": "single",
-      "chatId": "f2000002-0000-4000-8000-000000000002",
-      "content": "",
-      "continueMode": true,
-      "streamLabel": "textblock_mode",
-      "cheapLLMSettings": false,
-      "summaryCheck": false,
-      "respondingParticipant": "f20a0002-0000-4000-8000-0000000000a2",
-      "modelSupportsNativeTools": false
-    },
-    {
-      "name": "agent_mode_on",
-      "kind": "chain",
-      "chatId": "ab000001-0000-4000-8000-000000000001",
-      "content": "Investigate the archive.",
-      "continueMode": false,
-      "streamLabel": "agent_mode_on",
-      "cheapLLMSettings": false,
-      "summaryCheck": false
-    },
-    {
-      "name": "danger_off_short_circuit",
-      "kind": "single",
-      "chatId": "da000001-0000-4000-8000-000000000001",
-      "content": "Hello there.",
-      "continueMode": false,
-      "streamLabel": "danger_off",
-      "cheapLLMSettings": true,
-      "summaryCheck": false
-    },
-    {
-      "name": "danger_live_reroute",
-      "kind": "single",
-      "chatId": "db000002-0000-4000-8000-000000000002",
-      "content": "Something the Concierge flagged.",
-      "continueMode": false,
-      "streamLabel": "danger_reroute",
-      "cheapLLMSettings": true,
-      "summaryCheck": false
-    },
-    {
-      "name": "courier_send",
-      "kind": "single",
-      "chatId": "d0000003-0000-4000-8000-0000000000d3",
-      "content": "",
-      "continueMode": true,
-      "streamLabel": "courier_send",
-      "cheapLLMSettings": false,
-      "summaryCheck": false,
-      "respondingParticipant": "d0000004-0000-4000-8000-0000000000d4"
-    },
-    {
-      "name": "carina_markup",
-      "kind": "single",
-      "chatId": "cc000001-0000-4000-8000-0000000000cc",
-      "content": "Ask the oracle the time.",
-      "continueMode": false,
-      "streamLabel": "carina_markup",
-      "cheapLLMSettings": false,
-      "summaryCheck": false,
-      "respondingParticipant": "cc0a0001-0000-4000-8000-0000000000a1"
-    },
-    {
-      "name": "skip_fire",
-      "kind": "chain",
-      "chatId": "5f000001-0000-4000-8000-0000000000f1",
-      "content": "",
-      "continueMode": true,
-      "streamLabel": "skip_fire",
-      "cheapLLMSettings": false,
-      "summaryCheck": false,
-      "respondingParticipant": "5f0a0001-0000-4000-8000-0000000000a1"
-    },
-    {
-      "name": "sentinel_prose",
-      "kind": "single",
-      "chatId": "59000002-0000-4000-8000-0000000000f2",
-      "content": "",
-      "continueMode": true,
-      "streamLabel": "sentinel_prose",
-      "cheapLLMSettings": false,
-      "summaryCheck": false,
-      "respondingParticipant": "590a0002-0000-4000-8000-0000000000a2"
-    },
-    {
-      "name": "nudge_withhold",
-      "kind": "chain",
-      "chatId": "6e000003-0000-4000-8000-0000000000f3",
-      "content": "",
-      "continueMode": true,
-      "streamLabel": "nudge_withhold",
-      "cheapLLMSettings": false,
-      "summaryCheck": false,
-      "respondingParticipant": "6e0a0003-0000-4000-8000-0000000000a3",
-      "nudge": true
-    },
-    {
-      "name": "skip_disabled",
-      "kind": "chain",
-      "chatId": "5d000004-0000-4000-8000-0000000000f4",
-      "content": "",
-      "continueMode": true,
-      "streamLabel": "skip_disabled",
-      "cheapLLMSettings": false,
-      "summaryCheck": false,
-      "respondingParticipant": "5d0a0004-0000-4000-8000-0000000000a4"
-    }
-  ],
-  "streams": {
-    "single_basic": [
-      [
-        {
-          "content": "I am well, thank you."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 40,
-            "completionTokens": 8,
-            "totalTokens": 48
-          }
-        }
-      ]
-    ],
-    "continue_mode": [
-      [
-        {
-          "content": "The scene continues quietly."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 20,
-            "completionTokens": 6,
-            "totalTokens": 26
-          }
-        }
-      ]
-    ],
-    "empty_retry": [
-      [
-        {
-          "content": ""
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 15,
-            "completionTokens": 0,
-            "totalTokens": 15
-          }
-        }
-      ],
-      [
-        {
-          "content": ""
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 15,
-            "completionTokens": 0,
-            "totalTokens": 15
-          }
-        }
-      ]
-    ],
-    "mid_stream_error": [
-      [
-        {
-          "content": "partial reply that"
-        },
-        {
-          "error": "upstream connection reset"
-        }
-      ]
-    ],
-    "summary_fold": [
-      [
-        {
-          "content": "A folded response."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 30,
-            "completionTokens": 4,
-            "totalTokens": 34
-          }
-        }
-      ]
-    ],
-    "multi_chain": [
-      [
-        {
-          "content": "Friday speaks first."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 40,
-            "completionTokens": 4,
-            "totalTokens": 44
-          }
-        }
-      ],
-      [
-        {
-          "content": ""
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 42,
-            "completionTokens": 0,
-            "totalTokens": 42
-          }
-        }
-      ]
-    ],
-    "cd_single": [
-      [
-        {
-          "content": "Friday replies."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 12,
-            "completionTokens": 2,
-            "totalTokens": 14
-          }
-        }
-      ]
-    ],
-    "cd_two": [
-      [
-        {
-          "content": "turn 1"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ],
-      [
-        {
-          "content": "turn 2"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ],
-      [
-        {
-          "content": "turn 3"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ],
-      [
-        {
-          "content": "turn 4"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ],
-      [
-        {
-          "content": "turn 5"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ],
-      [
-        {
-          "content": "turn 6"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ],
-      [
-        {
-          "content": "turn 7"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ],
-      [
-        {
-          "content": "turn 8"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ],
-      [
-        {
-          "content": "turn 9"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ],
-      [
-        {
-          "content": "turn 10"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ],
-      [
-        {
-          "content": "turn 11"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ],
-      [
-        {
-          "content": "turn 12"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ],
-      [
-        {
-          "content": "turn 13"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ],
-      [
-        {
-          "content": "turn 14"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ],
-      [
-        {
-          "content": "turn 15"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ],
-      [
-        {
-          "content": "turn 16"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ],
-      [
-        {
-          "content": "turn 17"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ],
-      [
-        {
-          "content": "turn 18"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ],
-      [
-        {
-          "content": "turn 19"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ],
-      [
-        {
-          "content": "turn 20"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ],
-      [
-        {
-          "content": "turn 21"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ],
-      [
-        {
-          "content": "turn 22"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ],
-      [
-        {
-          "content": "turn 23"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 2,
-            "totalTokens": 12
-          }
-        }
-      ]
-    ],
-    "nonanthropic_scene": [
-      [
-        {
-          "content": "Bertie tips his hat."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 14,
-            "completionTokens": 4,
-            "totalTokens": 18
-          }
-        }
-      ]
-    ],
-    "commonplace_strip": [
-      [
-        {
-          "content": "Friday recalls the note."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 16,
-            "completionTokens": 4,
-            "totalTokens": 20
-          }
-        }
-      ]
-    ],
-    "opaque_swap": [
-      [
-        {
-          "content": "Friday marks the afternoon."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 18,
-            "completionTokens": 4,
-            "totalTokens": 22
-          }
-        }
-      ]
-    ],
-    "transparent_no_swap": [
-      [
-        {
-          "content": "Clara greets the Host."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 15,
-            "completionTokens": 4,
-            "totalTokens": 19
-          }
-        }
-      ]
-    ],
-    "tool_whisper_filter": [
-      [
-        {
-          "content": "Friday proceeds without the secret."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 13,
-            "completionTokens": 4,
-            "totalTokens": 17
-          }
-        }
-      ]
-    ],
-    "rng_dice": [
-      [
-        {
-          "content": "Friday reads the dice and nods."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 22,
-            "completionTokens": 6,
-            "totalTokens": 28
-          }
-        }
-      ]
-    ],
-    "rng_two": [
-      [
-        {
-          "content": "Friday marks the coin and the die."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 24,
-            "completionTokens": 6,
-            "totalTokens": 30
-          }
-        }
-      ]
-    ],
-    "rng_no_fire": [
-      [
-        {
-          "content": "Friday considers the request plainly."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 15,
-            "completionTokens": 5,
-            "totalTokens": 20
-          }
-        }
-      ]
-    ],
-    "disabled_tools": [
-      [
-        {
-          "content": "A polite reply from Bertie."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 12,
-            "completionTokens": 4,
-            "totalTokens": 16
-          }
-        }
-      ]
-    ],
-    "textblock_mode": [
-      [
-        {
-          "content": "A simple answer from Bertie."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 12,
-            "completionTokens": 4,
-            "totalTokens": 16
-          }
-        }
-      ]
-    ],
-    "agent_mode_on": [
-      [
-        {
-          "content": "Friday begins the investigation."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 30,
-            "completionTokens": 5,
-            "totalTokens": 35
-          }
-        }
-      ]
-    ],
-    "danger_off": [
-      [
-        {
-          "content": "An ordinary reply."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 20,
-            "completionTokens": 5,
-            "totalTokens": 25
-          }
-        }
-      ]
-    ],
-    "danger_reroute": [
-      [
-        {
-          "content": "A rerouted reply."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 20,
-            "completionTokens": 5,
-            "totalTokens": 25
-          }
-        }
-      ]
-    ],
-    "carina_markup": [
-      [
-        {
-          "content": "Certainly.\n@Oracle: What is the time?"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 10,
-            "completionTokens": 8,
-            "totalTokens": 18
-          }
-        }
-      ],
-      [
-        {
-          "content": "It is high noon."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 12,
-            "completionTokens": 5,
-            "totalTokens": 17
-          }
-        }
-      ]
-    ],
-    "skip_fire": [
-      [
-        {
-          "content": "[NOTHING TO ADD]"
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 60,
-            "completionTokens": 4,
-            "totalTokens": 64
-          }
-        }
-      ],
-      [
-        {
-          "content": "Jeeves carries the scene onward with a raised eyebrow."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 62,
-            "completionTokens": 9,
-            "totalTokens": 71
-          }
-        }
-      ],
-      [
-        {
-          "content": "Friday returns with a considered thought after all."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 64,
-            "completionTokens": 8,
-            "totalTokens": 72
-          }
-        }
-      ]
-    ],
-    "sentinel_prose": [
-      [
-        {
-          "content": "[NOTHING TO ADD]\nActually \u2014 on reflection, the ledger disagrees with itself."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 58,
-            "completionTokens": 14,
-            "totalTokens": 72
-          }
-        }
-      ]
-    ],
-    "nudge_withhold": [
-      [
-        {
-          "content": "Friday answers the summons directly."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 56,
-            "completionTokens": 6,
-            "totalTokens": 62
-          }
-        }
-      ],
-      [
-        {
-          "content": "Jeeves follows with a footnote."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 57,
-            "completionTokens": 6,
-            "totalTokens": 63
-          }
-        }
-      ]
-    ],
-    "skip_disabled": [
-      [
-        {
-          "content": "Friday replies without ceremony."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 55,
-            "completionTokens": 5,
-            "totalTokens": 60
-          }
-        }
-      ],
-      [
-        {
-          "content": "Jeeves adds a further word."
-        },
-        {
-          "done": true,
-          "usage": {
-            "promptTokens": 56,
-            "completionTokens": 5,
-            "totalTokens": 61
-          }
-        }
-      ]
-    ]
+  {
+   "id": "b0000001-0000-4000-8000-000000000001",
+   "name": "Router",
+   "provider": "OPENROUTER",
+   "modelName": "router-model"
   },
-  "summaryCompletion": {
-    "response": "The user greeted Friday and Friday responded warmly.",
-    "usage": {
-      "promptTokens": 60,
-      "completionTokens": 12,
-      "totalTokens": 72
-    }
+  {
+   "id": "c0000003-0000-4000-8000-000000000003",
+   "name": "Uncensored",
+   "provider": "OPENROUTER",
+   "modelName": "uncensored-model",
+   "apiKeyId": "c0000004-0000-4000-8000-000000000004",
+   "isDangerousCompatible": true
   },
-  "apiKeys": {
-    "c0000004-0000-4000-8000-000000000004": "unc-decrypted-key"
+  {
+   "id": "d0000001-0000-4000-8000-0000000000d1",
+   "name": "Courier",
+   "provider": "OPENAI",
+   "modelName": "gpt-4o",
+   "transport": "courier"
+  },
+  {
+   "id": "e0000005-0000-4000-8000-000000000005",
+   "name": "TextBlockModel",
+   "provider": "OPENAI",
+   "modelName": "o1-mini"
   }
+ ],
+ "chatSettings": {
+  "id": "475d8e74-4bdc-4d46-a9c1-62c382b76116",
+  "cheapLLMSettings": {
+   "strategy": "PROVIDER_CHEAPEST",
+   "fallbackToLocal": false
+  },
+  "compressionEnabled": false,
+  "autoDetectRng": true,
+  "answerConfirmationEnabled": false,
+  "dangerMode": "AUTO_ROUTE",
+  "agentModeSettings": {
+   "maxTurns": 15,
+   "defaultEnabled": false
+  }
+ },
+ "characters": [
+  {
+   "id": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+   "name": "Friday",
+   "description": "A capable assistant.",
+   "aliases": [],
+   "controlledBy": "llm",
+   "talkativeness": 0.5,
+   "connectionProfileId": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221"
+  },
+  {
+   "id": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+   "name": "Jeeves",
+   "description": "A composed valet.",
+   "aliases": [],
+   "controlledBy": "llm",
+   "talkativeness": 0.5,
+   "connectionProfileId": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221"
+  },
+  {
+   "id": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+   "name": "Operator",
+   "description": "The user persona.",
+   "aliases": [],
+   "controlledBy": "user",
+   "talkativeness": 0.5,
+   "connectionProfileId": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221"
+  },
+  {
+   "id": "c1000001-0000-4000-8000-000000000011",
+   "name": "Clara",
+   "description": "A transparent companion.",
+   "aliases": [],
+   "controlledBy": "llm",
+   "talkativeness": 0.5,
+   "connectionProfileId": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221",
+   "systemTransparency": true
+  },
+  {
+   "id": "c2000002-0000-4000-8000-000000000022",
+   "name": "Bertie",
+   "description": "A router-backed gentleman.",
+   "aliases": [],
+   "controlledBy": "llm",
+   "talkativeness": 0.5,
+   "connectionProfileId": "b0000001-0000-4000-8000-000000000001"
+  },
+  {
+   "id": "d0000002-0000-4000-8000-0000000000d2",
+   "name": "Postman",
+   "controlledBy": "llm",
+   "talkativeness": 0.5,
+   "connectionProfileId": "d0000001-0000-4000-8000-0000000000d1"
+  },
+  {
+   "id": "0ac1e000-0000-4000-8000-00000000000a",
+   "name": "Oracle",
+   "description": "A knowing oracle.",
+   "aliases": [],
+   "controlledBy": "llm",
+   "talkativeness": 0.5,
+   "connectionProfileId": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221",
+   "canBeCarina": true
+  }
+ ],
+ "chats": [
+  {
+   "id": "9fe3f87b-3833-46a9-bc1e-a88fc43dee6b",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "e3e3e97c-5216-40b1-b2b9-a8f139bf22ab",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "93e0f489-e592-5c46-89f5-9a1dbb2a42af",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "0103c571-ea48-44d0-bbff-98402eb270a9",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "e4a43155-b1ed-4cc2-8ef6-44e5d9ffb430",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "39091c6a-3975-53c9-a51e-b957c779868d",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "04c6ec86-26e5-5210-81cf-21763ed32045",
+     "role": "USER",
+     "content": "Please continue the scene.",
+     "participantId": null
+    }
+   ]
+  },
+  {
+   "id": "4f6efed3-51ee-4495-a582-5821533b477c",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "f22fb775-8181-4fc1-8784-91266d4dc996",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "4ff439f3-91c8-5bd0-8228-5d8af93c9a42",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "6bcba106-5fa1-4b0e-869c-4fab3470f450",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "ff08a1e3-f357-462f-abfb-9e369f7f2fc0",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "7c49683d-5a78-54c9-8800-cadff7814e7c",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "c860cf74-128f-4a81-9a5c-6c2275f24302",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "d40bef50-aa9f-448a-9023-54013f233381",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "c96713aa-ea7f-5ad6-b4cd-e62d3d984059",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "c382036c-9c42-5b71-9ceb-fc41269ca395",
+     "role": "USER",
+     "content": "u01",
+     "participantId": null
+    },
+    {
+     "id": "4dee4ddf-9c61-5fae-89e7-1063e0239d96",
+     "role": "ASSISTANT",
+     "content": "a01",
+     "participantId": "d40bef50-aa9f-448a-9023-54013f233381"
+    },
+    {
+     "id": "71f9c2dd-a8b8-57f8-8ba9-6a4a9d3d6d2b",
+     "role": "USER",
+     "content": "u02",
+     "participantId": null
+    },
+    {
+     "id": "881fd5c7-3cea-5bc8-890b-89da293aff4e",
+     "role": "ASSISTANT",
+     "content": "a02",
+     "participantId": "d40bef50-aa9f-448a-9023-54013f233381"
+    },
+    {
+     "id": "5470e98e-5f75-5441-a58f-f23543ff2926",
+     "role": "USER",
+     "content": "u03",
+     "participantId": null
+    },
+    {
+     "id": "d84cdebd-606d-5edd-af3b-722e1dfbce76",
+     "role": "ASSISTANT",
+     "content": "a03",
+     "participantId": "d40bef50-aa9f-448a-9023-54013f233381"
+    },
+    {
+     "id": "99b925ef-c1f5-5c08-b3f6-48795747e70c",
+     "role": "USER",
+     "content": "u04",
+     "participantId": null
+    },
+    {
+     "id": "7547ccd1-62f1-5c40-a30f-8053c9033300",
+     "role": "ASSISTANT",
+     "content": "a04",
+     "participantId": "d40bef50-aa9f-448a-9023-54013f233381"
+    },
+    {
+     "id": "d3b1ce09-37ae-55a1-a95f-2ffb7e85eabf",
+     "role": "USER",
+     "content": "u05",
+     "participantId": null
+    },
+    {
+     "id": "c71c949c-fffe-564d-8c0e-bcd5402d5830",
+     "role": "ASSISTANT",
+     "content": "a05",
+     "participantId": "d40bef50-aa9f-448a-9023-54013f233381"
+    },
+    {
+     "id": "f291448d-f6c6-5066-8312-d51626ecbc49",
+     "role": "USER",
+     "content": "u06",
+     "participantId": null
+    },
+    {
+     "id": "ff6ed9ac-24e2-5ff4-a08c-e4a1d55bb516",
+     "role": "ASSISTANT",
+     "content": "a06",
+     "participantId": "d40bef50-aa9f-448a-9023-54013f233381"
+    },
+    {
+     "id": "d305a88b-eed8-5fc9-a88a-a9d7a3de5b8c",
+     "role": "USER",
+     "content": "u07",
+     "participantId": null
+    },
+    {
+     "id": "468a085b-0e35-516a-9a12-f8914c65eb62",
+     "role": "ASSISTANT",
+     "content": "a07",
+     "participantId": "d40bef50-aa9f-448a-9023-54013f233381"
+    },
+    {
+     "id": "fea5688a-cc89-5fe6-a6d9-3e46b4ae603f",
+     "role": "USER",
+     "content": "u08",
+     "participantId": null
+    },
+    {
+     "id": "12dd2c51-d40d-54a2-babf-1865a3730824",
+     "role": "ASSISTANT",
+     "content": "a08",
+     "participantId": "d40bef50-aa9f-448a-9023-54013f233381"
+    },
+    {
+     "id": "2ee4c724-a45e-5a71-bfe0-b4f879cc1518",
+     "role": "USER",
+     "content": "u09",
+     "participantId": null
+    },
+    {
+     "id": "8b908948-a136-51e7-bf37-6234828ee7b1",
+     "role": "ASSISTANT",
+     "content": "a09",
+     "participantId": "d40bef50-aa9f-448a-9023-54013f233381"
+    },
+    {
+     "id": "18b54a46-3f89-5fbc-98bb-0de1326a9be7",
+     "role": "USER",
+     "content": "u10",
+     "participantId": null
+    },
+    {
+     "id": "f59e4edd-da56-5f54-b858-9fa67758c133",
+     "role": "ASSISTANT",
+     "content": "a10",
+     "participantId": "d40bef50-aa9f-448a-9023-54013f233381"
+    },
+    {
+     "id": "191d7dc2-f804-51cc-aff9-9c513c1c89af",
+     "role": "USER",
+     "content": "u11",
+     "participantId": null
+    }
+   ]
+  },
+  {
+   "id": "c89ee722-b555-40db-9e02-bbd0e82ee56b",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "f7428408-f9c7-4787-9c26-1aa7493e6f3e",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "3e85d11c-6293-4776-b9a8-a60838ad7bcb",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "ca000001-0000-4000-8000-000000000001",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "ca0a0001-0000-4000-8000-0000000000a1",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "ca0b0002-0000-4000-8000-0000000000b2",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "cb000002-0000-4000-8000-000000000002",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "cb0a0001-0000-4000-8000-0000000000a1",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "cb0b0002-0000-4000-8000-0000000000b2",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "d1000001-0000-4000-8000-000000000001",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "d10a0001-0000-4000-8000-0000000000a1",
+     "character": "c2000002-0000-4000-8000-000000000022",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "d10b0001-0000-4000-8000-0000000000b1",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "d2000002-0000-4000-8000-000000000002",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "d20a0002-0000-4000-8000-0000000000a2",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "d20b0002-0000-4000-8000-0000000000b2",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "d2010001-0000-4000-8000-000000000101",
+     "role": "USER",
+     "content": "hello there",
+     "participantId": null
+    },
+    {
+     "id": "d2010002-0000-4000-8000-000000000102",
+     "role": "ASSISTANT",
+     "content": "greetings",
+     "participantId": "d20a0002-0000-4000-8000-0000000000a2"
+    },
+    {
+     "id": "d2010003-0000-4000-8000-000000000103",
+     "role": "ASSISTANT",
+     "content": "A stale recall whisper.",
+     "participantId": null,
+     "systemSender": "commonplaceBook",
+     "systemKind": null
+    },
+    {
+     "id": "d2010004-0000-4000-8000-000000000104",
+     "role": "ASSISTANT",
+     "content": "A persistent relevant-conversations note.",
+     "participantId": null,
+     "systemSender": "commonplaceBook",
+     "systemKind": "relevant-conversations"
+    }
+   ]
+  },
+  {
+   "id": "d3000003-0000-4000-8000-000000000003",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "d30a0003-0000-4000-8000-0000000000a3",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "d30b0003-0000-4000-8000-0000000000b3",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "d3010001-0000-4000-8000-000000000201",
+     "role": "USER",
+     "content": "what time is it",
+     "participantId": null
+    },
+    {
+     "id": "d3010002-0000-4000-8000-000000000202",
+     "role": "ASSISTANT",
+     "content": "The Host announces it is 3pm sharp.",
+     "participantId": null,
+     "systemSender": "host",
+     "opaqueContent": "It is now afternoon."
+    },
+    {
+     "id": "d3010003-0000-4000-8000-000000000203",
+     "role": "ASSISTANT",
+     "content": "A lantern image has appeared.",
+     "participantId": null,
+     "systemSender": "lantern",
+     "attachments": [
+      "d3ff0001-0000-4000-8000-0000000000f1"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "d4000004-0000-4000-8000-000000000004",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "d40a0004-0000-4000-8000-0000000000a4",
+     "character": "c1000001-0000-4000-8000-000000000011",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "d40b0004-0000-4000-8000-0000000000b4",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "d4010001-0000-4000-8000-000000000301",
+     "role": "USER",
+     "content": "what time is it",
+     "participantId": null
+    },
+    {
+     "id": "d4010002-0000-4000-8000-000000000302",
+     "role": "ASSISTANT",
+     "content": "The Host announces it is 3pm sharp.",
+     "participantId": null,
+     "systemSender": "host",
+     "opaqueContent": "It is now afternoon."
+    }
+   ]
+  },
+  {
+   "id": "d5000005-0000-4000-8000-000000000005",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "d50a0005-0000-4000-8000-0000000000a5",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "d50b0005-0000-4000-8000-0000000000b5",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "d5010001-0000-4000-8000-000000000401",
+     "role": "USER",
+     "content": "proceed",
+     "participantId": null
+    },
+    {
+     "id": "d5010002-0000-4000-8000-000000000402",
+     "role": "TOOL",
+     "content": "{\"toolName\":\"secret\",\"result\":\"operator-only payload\"}",
+     "participantId": null,
+     "targetParticipantIds": [
+      "d50b0005-0000-4000-8000-0000000000b5"
+     ]
+    },
+    {
+     "id": "d5010003-0000-4000-8000-000000000403",
+     "role": "ASSISTANT",
+     "content": "acknowledged",
+     "participantId": "d50a0005-0000-4000-8000-0000000000a5"
+    }
+   ]
+  },
+  {
+   "id": "e1000001-0000-4000-8000-000000000001",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "e10a0001-0000-4000-8000-0000000000a1",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "e10b0001-0000-4000-8000-0000000000b1",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "e2000002-0000-4000-8000-000000000002",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "e20a0002-0000-4000-8000-0000000000a2",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "e20b0002-0000-4000-8000-0000000000b2",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "e3000003-0000-4000-8000-000000000003",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "e30a0003-0000-4000-8000-0000000000a3",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "e30b0003-0000-4000-8000-0000000000b3",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "f1000001-0000-4000-8000-000000000001",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "f10a0001-0000-4000-8000-0000000000a1",
+     "character": "c2000002-0000-4000-8000-000000000022",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "f10b0001-0000-4000-8000-0000000000b1",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "f1010001-0000-4000-8000-000000000301",
+     "role": "USER",
+     "content": "hello there",
+     "participantId": null
+    },
+    {
+     "id": "f1010002-0000-4000-8000-000000000302",
+     "role": "ASSISTANT",
+     "content": "Greetings.",
+     "participantId": "f10a0001-0000-4000-8000-0000000000a1"
+    }
+   ],
+   "disabledTools": [
+    "rng",
+    "state",
+    "terminal_read"
+   ]
+  },
+  {
+   "id": "f2000002-0000-4000-8000-000000000002",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "f20a0002-0000-4000-8000-0000000000a2",
+     "character": "c2000002-0000-4000-8000-000000000022",
+     "controlledBy": "llm",
+     "status": "active",
+     "connectionProfileId": "e0000005-0000-4000-8000-000000000005"
+    },
+    {
+     "id": "f20b0002-0000-4000-8000-0000000000b2",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "f2010001-0000-4000-8000-000000000301",
+     "role": "USER",
+     "content": "hello there",
+     "participantId": null
+    },
+    {
+     "id": "f2010002-0000-4000-8000-000000000302",
+     "role": "ASSISTANT",
+     "content": "Greetings.",
+     "participantId": "f20a0002-0000-4000-8000-0000000000a2"
+    }
+   ]
+  },
+  {
+   "id": "ab000001-0000-4000-8000-000000000001",
+   "chatType": "salon",
+   "contextSummary": null,
+   "agentModeEnabled": true,
+   "agentTurnCount": 5,
+   "participants": [
+    {
+     "id": "ab0a0001-0000-4000-8000-0000000000a1",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "ab0b0002-0000-4000-8000-0000000000b2",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "da000001-0000-4000-8000-000000000001",
+   "chatType": "salon",
+   "contextSummary": "A prior summary exists for this chat.",
+   "conciergeOverride": "OFF",
+   "participants": [
+    {
+     "id": "da0000a1-0000-4000-8000-0000000000a1",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "da0000a2-0000-4000-8000-0000000000a2",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "db000002-0000-4000-8000-000000000002",
+   "chatType": "salon",
+   "contextSummary": null,
+   "isDangerousChat": true,
+   "participants": [
+    {
+     "id": "db0000b1-0000-4000-8000-0000000000b1",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "db0000b2-0000-4000-8000-0000000000b2",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "d0000003-0000-4000-8000-0000000000d3",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "d0000004-0000-4000-8000-0000000000d4",
+     "character": "d0000002-0000-4000-8000-0000000000d2",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "d0000005-0000-4000-8000-0000000000d5",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "cc000001-0000-4000-8000-0000000000cc",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "cc0a0001-0000-4000-8000-0000000000a1",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "cc0b0001-0000-4000-8000-0000000000b1",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "5f000001-0000-4000-8000-0000000000f1",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "5f0a0001-0000-4000-8000-0000000000a1",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "5f0b0001-0000-4000-8000-0000000000b1",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "5f010001-0000-4000-8000-000000000101",
+     "role": "ASSISTANT",
+     "content": "An opening remark to set the scene.",
+     "participantId": "5f0b0001-0000-4000-8000-0000000000b1"
+    }
+   ]
+  },
+  {
+   "id": "59000002-0000-4000-8000-0000000000f2",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "590a0002-0000-4000-8000-0000000000a2",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "590b0002-0000-4000-8000-0000000000b2",
+     "character": "c1000001-0000-4000-8000-000000000011",
+     "controlledBy": "user",
+     "status": "active"
+    },
+    {
+     "id": "590c0002-0000-4000-8000-0000000000c2",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "59010001-0000-4000-8000-000000000101",
+     "role": "USER",
+     "content": "Tell us more of the ledger.",
+     "participantId": "590c0002-0000-4000-8000-0000000000c2"
+    },
+    {
+     "id": "59010002-0000-4000-8000-000000000102",
+     "role": "ASSISTANT",
+     "content": "As I was saying before the interruption.",
+     "participantId": "590a0002-0000-4000-8000-0000000000a2"
+    }
+   ]
+  },
+  {
+   "id": "6e000003-0000-4000-8000-0000000000f3",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "6e0a0003-0000-4000-8000-0000000000a3",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "6e0b0003-0000-4000-8000-0000000000b3",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "6e010001-0000-4000-8000-000000000101",
+     "role": "ASSISTANT",
+     "content": "A word before the summons.",
+     "participantId": "6e0b0003-0000-4000-8000-0000000000b3"
+    }
+   ]
+  },
+  {
+   "id": "5d000004-0000-4000-8000-0000000000f4",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "5d0a0004-0000-4000-8000-0000000000a4",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "5d0b0004-0000-4000-8000-0000000000b4",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "5d010001-0000-4000-8000-000000000101",
+     "role": "ASSISTANT",
+     "content": "A remark under the old rules.",
+     "participantId": "5d0b0004-0000-4000-8000-0000000000b4"
+    }
+   ],
+   "turnSkippingEnabled": false
+  },
+  {
+   "id": "a7000001-0000-4000-8000-000000000001",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "a7100001-0000-4000-8000-000000000001",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "a7100002-0000-4000-8000-000000000002",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  }
+ ],
+ "calls": [
+  {
+   "name": "single_basic",
+   "kind": "single",
+   "chatId": "9fe3f87b-3833-46a9-bc1e-a88fc43dee6b",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "single_basic",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": null
+  },
+  {
+   "name": "continue_mode",
+   "kind": "single",
+   "chatId": "0103c571-ea48-44d0-bbff-98402eb270a9",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "continue_mode",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": null
+  },
+  {
+   "name": "empty_retry",
+   "kind": "single",
+   "chatId": "4f6efed3-51ee-4495-a582-5821533b477c",
+   "content": "Say something.",
+   "continueMode": false,
+   "streamLabel": "empty_retry",
+   "cheapLLMSettings": false,
+   "summaryCheck": false
+  },
+  {
+   "name": "mid_stream_error",
+   "kind": "single",
+   "chatId": "6bcba106-5fa1-4b0e-869c-4fab3470f450",
+   "content": "Trigger an error.",
+   "continueMode": false,
+   "streamLabel": "mid_stream_error",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "expectThrow": true
+  },
+  {
+   "name": "summary_fold",
+   "kind": "single",
+   "chatId": "c860cf74-128f-4a81-9a5c-6c2275f24302",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "summary_fold",
+   "cheapLLMSettings": true,
+   "summaryCheck": true,
+   "respondingParticipant": null
+  },
+  {
+   "name": "multi_chain",
+   "kind": "chain",
+   "chatId": "c89ee722-b555-40db-9e02-bbd0e82ee56b",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "multi_chain",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "f7428408-f9c7-4787-9c26-1aa7493e6f3e"
+  },
+  {
+   "name": "noncontinue_single_user_chain",
+   "kind": "chain",
+   "chatId": "ca000001-0000-4000-8000-000000000001",
+   "content": "Begin the scene.",
+   "continueMode": false,
+   "streamLabel": "cd_single",
+   "cheapLLMSettings": false,
+   "summaryCheck": false
+  },
+  {
+   "name": "noncontinue_two_llm_maxdepth",
+   "kind": "chain",
+   "chatId": "cb000002-0000-4000-8000-000000000002",
+   "content": "Converse.",
+   "continueMode": false,
+   "streamLabel": "cd_two",
+   "cheapLLMSettings": false,
+   "summaryCheck": false
+  },
+  {
+   "name": "nonanthropic_scene",
+   "kind": "single",
+   "chatId": "d1000001-0000-4000-8000-000000000001",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "nonanthropic_scene",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d10a0001-0000-4000-8000-0000000000a1"
+  },
+  {
+   "name": "commonplace_strip",
+   "kind": "single",
+   "chatId": "d2000002-0000-4000-8000-000000000002",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "commonplace_strip",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d20a0002-0000-4000-8000-0000000000a2"
+  },
+  {
+   "name": "opaque_swap",
+   "kind": "single",
+   "chatId": "d3000003-0000-4000-8000-000000000003",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "opaque_swap",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d30a0003-0000-4000-8000-0000000000a3"
+  },
+  {
+   "name": "transparent_no_swap",
+   "kind": "single",
+   "chatId": "d4000004-0000-4000-8000-000000000004",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "transparent_no_swap",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d40a0004-0000-4000-8000-0000000000a4"
+  },
+  {
+   "name": "tool_whisper_filter",
+   "kind": "single",
+   "chatId": "d5000005-0000-4000-8000-000000000005",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "tool_whisper_filter",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d50a0005-0000-4000-8000-0000000000a5"
+  },
+  {
+   "name": "rng_dice",
+   "kind": "chain",
+   "chatId": "e1000001-0000-4000-8000-000000000001",
+   "content": "Roll 2d6 for initiative.",
+   "continueMode": false,
+   "streamLabel": "rng_dice",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "rngBytes": [
+    3,
+    4
+   ]
+  },
+  {
+   "name": "rng_two_patterns",
+   "kind": "chain",
+   "chatId": "e2000002-0000-4000-8000-000000000002",
+   "content": "Flip a coin then roll d20.",
+   "continueMode": false,
+   "streamLabel": "rng_two",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "rngBytes": [
+    9,
+    0
+   ]
+  },
+  {
+   "name": "rng_no_fire",
+   "kind": "chain",
+   "chatId": "e3000003-0000-4000-8000-000000000003",
+   "content": "Let's flip the coin, not d1.",
+   "continueMode": false,
+   "streamLabel": "rng_no_fire",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "rngBytes": []
+  },
+  {
+   "name": "disabled_tools",
+   "kind": "single",
+   "chatId": "f1000001-0000-4000-8000-000000000001",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "disabled_tools",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "f10a0001-0000-4000-8000-0000000000a1"
+  },
+  {
+   "name": "textblock_mode",
+   "kind": "single",
+   "chatId": "f2000002-0000-4000-8000-000000000002",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "textblock_mode",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "f20a0002-0000-4000-8000-0000000000a2",
+   "modelSupportsNativeTools": false
+  },
+  {
+   "name": "agent_mode_on",
+   "kind": "chain",
+   "chatId": "ab000001-0000-4000-8000-000000000001",
+   "content": "Investigate the archive.",
+   "continueMode": false,
+   "streamLabel": "agent_mode_on",
+   "cheapLLMSettings": false,
+   "summaryCheck": false
+  },
+  {
+   "name": "danger_off_short_circuit",
+   "kind": "single",
+   "chatId": "da000001-0000-4000-8000-000000000001",
+   "content": "Hello there.",
+   "continueMode": false,
+   "streamLabel": "danger_off",
+   "cheapLLMSettings": true,
+   "summaryCheck": false
+  },
+  {
+   "name": "danger_live_reroute",
+   "kind": "single",
+   "chatId": "db000002-0000-4000-8000-000000000002",
+   "content": "Something the Concierge flagged.",
+   "continueMode": false,
+   "streamLabel": "danger_reroute",
+   "cheapLLMSettings": true,
+   "summaryCheck": false
+  },
+  {
+   "name": "courier_send",
+   "kind": "single",
+   "chatId": "d0000003-0000-4000-8000-0000000000d3",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "courier_send",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d0000004-0000-4000-8000-0000000000d4"
+  },
+  {
+   "name": "carina_markup",
+   "kind": "single",
+   "chatId": "cc000001-0000-4000-8000-0000000000cc",
+   "content": "Ask the oracle the time.",
+   "continueMode": false,
+   "streamLabel": "carina_markup",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "cc0a0001-0000-4000-8000-0000000000a1"
+  },
+  {
+   "name": "skip_fire",
+   "kind": "chain",
+   "chatId": "5f000001-0000-4000-8000-0000000000f1",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "skip_fire",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "5f0a0001-0000-4000-8000-0000000000a1"
+  },
+  {
+   "name": "sentinel_prose",
+   "kind": "single",
+   "chatId": "59000002-0000-4000-8000-0000000000f2",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "sentinel_prose",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "590a0002-0000-4000-8000-0000000000a2"
+  },
+  {
+   "name": "nudge_withhold",
+   "kind": "chain",
+   "chatId": "6e000003-0000-4000-8000-0000000000f3",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "nudge_withhold",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "6e0a0003-0000-4000-8000-0000000000a3",
+   "nudge": true
+  },
+  {
+   "name": "skip_disabled",
+   "kind": "chain",
+   "chatId": "5d000004-0000-4000-8000-0000000000f4",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "skip_disabled",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "5d0a0004-0000-4000-8000-0000000000a4"
+  },
+  {
+   "name": "pending_tool_results",
+   "kind": "single",
+   "chatId": "a7000001-0000-4000-8000-000000000001",
+   "content": "Given the roll, what happens next?",
+   "continueMode": false,
+   "streamLabel": "pending_tool_results",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "pendingToolResults": [
+    {
+     "tool": "roll_dice",
+     "success": true,
+     "result": "Rolled 2d6: [3, 5] = 8",
+     "prompt": "roll 2d6",
+     "arguments": {
+      "notation": "2d6"
+     },
+     "createdAt": "2026-01-02T03:04:05.000Z"
+    }
+   ]
+  }
+ ],
+ "streams": {
+  "single_basic": [
+   [
+    {
+     "content": "I am well, thank you."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 40,
+      "completionTokens": 8,
+      "totalTokens": 48
+     }
+    }
+   ]
+  ],
+  "continue_mode": [
+   [
+    {
+     "content": "The scene continues quietly."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 20,
+      "completionTokens": 6,
+      "totalTokens": 26
+     }
+    }
+   ]
+  ],
+  "empty_retry": [
+   [
+    {
+     "content": ""
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 15,
+      "completionTokens": 0,
+      "totalTokens": 15
+     }
+    }
+   ],
+   [
+    {
+     "content": ""
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 15,
+      "completionTokens": 0,
+      "totalTokens": 15
+     }
+    }
+   ]
+  ],
+  "mid_stream_error": [
+   [
+    {
+     "content": "partial reply that"
+    },
+    {
+     "error": "upstream connection reset"
+    }
+   ]
+  ],
+  "summary_fold": [
+   [
+    {
+     "content": "A folded response."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 30,
+      "completionTokens": 4,
+      "totalTokens": 34
+     }
+    }
+   ]
+  ],
+  "multi_chain": [
+   [
+    {
+     "content": "Friday speaks first."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 40,
+      "completionTokens": 4,
+      "totalTokens": 44
+     }
+    }
+   ],
+   [
+    {
+     "content": ""
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 42,
+      "completionTokens": 0,
+      "totalTokens": 42
+     }
+    }
+   ]
+  ],
+  "cd_single": [
+   [
+    {
+     "content": "Friday replies."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 12,
+      "completionTokens": 2,
+      "totalTokens": 14
+     }
+    }
+   ]
+  ],
+  "cd_two": [
+   [
+    {
+     "content": "turn 1"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ],
+   [
+    {
+     "content": "turn 2"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ],
+   [
+    {
+     "content": "turn 3"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ],
+   [
+    {
+     "content": "turn 4"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ],
+   [
+    {
+     "content": "turn 5"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ],
+   [
+    {
+     "content": "turn 6"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ],
+   [
+    {
+     "content": "turn 7"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ],
+   [
+    {
+     "content": "turn 8"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ],
+   [
+    {
+     "content": "turn 9"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ],
+   [
+    {
+     "content": "turn 10"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ],
+   [
+    {
+     "content": "turn 11"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ],
+   [
+    {
+     "content": "turn 12"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ],
+   [
+    {
+     "content": "turn 13"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ],
+   [
+    {
+     "content": "turn 14"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ],
+   [
+    {
+     "content": "turn 15"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ],
+   [
+    {
+     "content": "turn 16"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ],
+   [
+    {
+     "content": "turn 17"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ],
+   [
+    {
+     "content": "turn 18"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ],
+   [
+    {
+     "content": "turn 19"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ],
+   [
+    {
+     "content": "turn 20"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ],
+   [
+    {
+     "content": "turn 21"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ],
+   [
+    {
+     "content": "turn 22"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ],
+   [
+    {
+     "content": "turn 23"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 2,
+      "totalTokens": 12
+     }
+    }
+   ]
+  ],
+  "nonanthropic_scene": [
+   [
+    {
+     "content": "Bertie tips his hat."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 14,
+      "completionTokens": 4,
+      "totalTokens": 18
+     }
+    }
+   ]
+  ],
+  "commonplace_strip": [
+   [
+    {
+     "content": "Friday recalls the note."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 16,
+      "completionTokens": 4,
+      "totalTokens": 20
+     }
+    }
+   ]
+  ],
+  "opaque_swap": [
+   [
+    {
+     "content": "Friday marks the afternoon."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 18,
+      "completionTokens": 4,
+      "totalTokens": 22
+     }
+    }
+   ]
+  ],
+  "transparent_no_swap": [
+   [
+    {
+     "content": "Clara greets the Host."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 15,
+      "completionTokens": 4,
+      "totalTokens": 19
+     }
+    }
+   ]
+  ],
+  "tool_whisper_filter": [
+   [
+    {
+     "content": "Friday proceeds without the secret."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 13,
+      "completionTokens": 4,
+      "totalTokens": 17
+     }
+    }
+   ]
+  ],
+  "rng_dice": [
+   [
+    {
+     "content": "Friday reads the dice and nods."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 22,
+      "completionTokens": 6,
+      "totalTokens": 28
+     }
+    }
+   ]
+  ],
+  "rng_two": [
+   [
+    {
+     "content": "Friday marks the coin and the die."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 24,
+      "completionTokens": 6,
+      "totalTokens": 30
+     }
+    }
+   ]
+  ],
+  "rng_no_fire": [
+   [
+    {
+     "content": "Friday considers the request plainly."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 15,
+      "completionTokens": 5,
+      "totalTokens": 20
+     }
+    }
+   ]
+  ],
+  "disabled_tools": [
+   [
+    {
+     "content": "A polite reply from Bertie."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 12,
+      "completionTokens": 4,
+      "totalTokens": 16
+     }
+    }
+   ]
+  ],
+  "textblock_mode": [
+   [
+    {
+     "content": "A simple answer from Bertie."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 12,
+      "completionTokens": 4,
+      "totalTokens": 16
+     }
+    }
+   ]
+  ],
+  "agent_mode_on": [
+   [
+    {
+     "content": "Friday begins the investigation."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 30,
+      "completionTokens": 5,
+      "totalTokens": 35
+     }
+    }
+   ]
+  ],
+  "danger_off": [
+   [
+    {
+     "content": "An ordinary reply."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 20,
+      "completionTokens": 5,
+      "totalTokens": 25
+     }
+    }
+   ]
+  ],
+  "danger_reroute": [
+   [
+    {
+     "content": "A rerouted reply."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 20,
+      "completionTokens": 5,
+      "totalTokens": 25
+     }
+    }
+   ]
+  ],
+  "carina_markup": [
+   [
+    {
+     "content": "Certainly.\n@Oracle: What is the time?"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 8,
+      "totalTokens": 18
+     }
+    }
+   ],
+   [
+    {
+     "content": "It is high noon."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 12,
+      "completionTokens": 5,
+      "totalTokens": 17
+     }
+    }
+   ]
+  ],
+  "skip_fire": [
+   [
+    {
+     "content": "[NOTHING TO ADD]"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 60,
+      "completionTokens": 4,
+      "totalTokens": 64
+     }
+    }
+   ],
+   [
+    {
+     "content": "Jeeves carries the scene onward with a raised eyebrow."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 62,
+      "completionTokens": 9,
+      "totalTokens": 71
+     }
+    }
+   ],
+   [
+    {
+     "content": "Friday returns with a considered thought after all."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 64,
+      "completionTokens": 8,
+      "totalTokens": 72
+     }
+    }
+   ]
+  ],
+  "sentinel_prose": [
+   [
+    {
+     "content": "[NOTHING TO ADD]\nActually \u2014 on reflection, the ledger disagrees with itself."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 58,
+      "completionTokens": 14,
+      "totalTokens": 72
+     }
+    }
+   ]
+  ],
+  "nudge_withhold": [
+   [
+    {
+     "content": "Friday answers the summons directly."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 56,
+      "completionTokens": 6,
+      "totalTokens": 62
+     }
+    }
+   ],
+   [
+    {
+     "content": "Jeeves follows with a footnote."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 57,
+      "completionTokens": 6,
+      "totalTokens": 63
+     }
+    }
+   ]
+  ],
+  "skip_disabled": [
+   [
+    {
+     "content": "Friday replies without ceremony."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 55,
+      "completionTokens": 5,
+      "totalTokens": 60
+     }
+    }
+   ],
+   [
+    {
+     "content": "Jeeves adds a further word."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 56,
+      "completionTokens": 5,
+      "totalTokens": 61
+     }
+    }
+   ]
+  ],
+  "pending_tool_results": [
+   [
+    {
+     "content": "With an 8, the door creaks open."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 50,
+      "completionTokens": 9,
+      "totalTokens": 59
+     }
+    }
+   ]
+  ]
+ },
+ "summaryCompletion": {
+  "response": "The user greeted Friday and Friday responded warmly.",
+  "usage": {
+   "promptTokens": 60,
+   "completionTokens": 12,
+   "totalTokens": 72
+  }
+ },
+ "apiKeys": {
+  "c0000004-0000-4000-8000-000000000004": "unc-decrypted-key"
+ }
 }

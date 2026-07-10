@@ -1,266 +1,306 @@
 {
-  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
-  "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
-  "seedTimestamp": "2026-02-01T00:00:00.000Z",
-  "connectionProfiles": [
-    {
-      "id": "c0000001-0000-4000-8000-000000000001",
-      "name": "Local Mock",
-      "provider": "OPENAI_COMPATIBLE",
-      "modelName": "mock-model",
-      "baseUrl": "http://127.0.0.1:1/v1",
-      "apiKeyId": "a0000001-0000-4000-8000-000000000001"
-    }
-  ],
-  "apiKeys": [
-    {
-      "id": "a0000001-0000-4000-8000-000000000001",
-      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
-      "label": "mock-key",
-      "provider": "OPENAI_COMPATIBLE",
-      "key_value": "sk-synthetic-mock-key",
-      "isActive": true,
-      "lastUsed": null
-    }
-  ],
-  "imageProfiles": [
-    {
-      "id": "10000001-0000-4000-8000-000000000001",
-      "name": "Mock Images",
-      "provider": "OPENAI_COMPATIBLE",
-      "modelName": "mock-image-model"
-    }
-  ],
-  "files": [
-    {
-      "id": "f0000001-0000-4000-8000-000000000001",
-      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
-      "originalFilename": "aria-avatar.png",
-      "mimeType": "image/png",
-      "size": 1024,
-      "source": "GENERATED",
-      "category": "IMAGE"
-    },
-    {
-      "id": "f0000002-0000-4000-8000-000000000002",
-      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
-      "originalFilename": "story-bg.png",
-      "mimeType": "image/png",
-      "size": 2048,
-      "source": "GENERATED",
-      "category": "IMAGE"
-    }
-  ],
-  "tags": [
-    { "id": "70000001-0000-4000-8000-000000000001", "name": "Adventure" }
-  ],
-  "projects": [
-    { "id": "70000002-0000-4000-8000-000000000001", "name": "Skyhaven", "color": "#aabbcc" }
-  ],
-  "characters": [
-    {
-      "id": "a1000000-0000-4000-8000-000000000001",
-      "name": "Aria",
-      "description": "A daring sky-captain.",
-      "aliases": ["Cap"],
-      "controlledBy": "llm",
-      "talkativeness": 0.7,
-      "connectionProfileId": "c0000001-0000-4000-8000-000000000001",
-      "defaultImageId": "f0000001-0000-4000-8000-000000000001",
-      "systemPrompt": { "name": "Explorer", "prompt": "You are Aria, bold and curious.", "isDefault": true }
-    },
-    {
-      "id": "a1000000-0000-4000-8000-000000000002",
-      "name": "Bram",
-      "description": "A cautious navigator.",
-      "controlledBy": "llm",
-      "talkativeness": 0.5,
-      "connectionProfileId": "c0000001-0000-4000-8000-000000000001"
-    },
-    {
-      "id": "a1000000-0000-4000-8000-000000000003",
-      "name": "Cleo",
-      "description": "The player-character.",
-      "controlledBy": "user",
-      "talkativeness": 0.5,
-      "connectionProfileId": "c0000001-0000-4000-8000-000000000001"
-    },
-    {
-      "id": "a1000000-0000-4000-8000-000000000004",
-      "name": "Dax",
-      "description": "An off-scene stranger.",
-      "controlledBy": "llm",
-      "talkativeness": 0.5,
-      "connectionProfileId": "c0000001-0000-4000-8000-000000000001"
-    }
-  ],
-  "chatSettings": {
-    "cheapLLMSettings": { "strategy": "PROVIDER_CHEAPEST", "fallbackToLocal": true },
-    "compressionEnabled": false,
-    "autoDetectRng": false,
-    "answerConfirmationEnabled": false,
-    "dangerMode": "DETECT_ONLY"
+ "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+ "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+ "seedTimestamp": "2026-02-01T00:00:00.000Z",
+ "connectionProfiles": [
+  {
+   "id": "c0000001-0000-4000-8000-000000000001",
+   "name": "Local Mock",
+   "provider": "OPENAI_COMPATIBLE",
+   "modelName": "mock-model",
+   "baseUrl": "http://127.0.0.1:1/v1",
+   "apiKeyId": "a0000001-0000-4000-8000-000000000001"
+  }
+ ],
+ "apiKeys": [
+  {
+   "id": "a0000001-0000-4000-8000-000000000001",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "label": "mock-key",
+   "provider": "OPENAI_COMPATIBLE",
+   "key_value": "sk-synthetic-mock-key",
+   "isActive": true,
+   "lastUsed": null
+  }
+ ],
+ "imageProfiles": [
+  {
+   "id": "10000001-0000-4000-8000-000000000001",
+   "name": "Mock Images",
+   "provider": "OPENAI_COMPATIBLE",
+   "modelName": "mock-image-model"
+  }
+ ],
+ "files": [
+  {
+   "id": "f0000001-0000-4000-8000-000000000001",
+   "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+   "originalFilename": "aria-avatar.png",
+   "mimeType": "image/png",
+   "size": 1024,
+   "source": "GENERATED",
+   "category": "IMAGE",
+   "linkedTo": [
+    "d2000000-0000-4000-8000-000000000002"
+   ]
   },
-  "chats": [
+  {
+   "id": "f0000002-0000-4000-8000-000000000002",
+   "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+   "originalFilename": "story-bg.png",
+   "mimeType": "image/png",
+   "size": 2048,
+   "source": "GENERATED",
+   "category": "IMAGE"
+  }
+ ],
+ "tags": [
+  {
+   "id": "70000001-0000-4000-8000-000000000001",
+   "name": "Adventure"
+  }
+ ],
+ "projects": [
+  {
+   "id": "70000002-0000-4000-8000-000000000001",
+   "name": "Skyhaven",
+   "color": "#aabbcc"
+  }
+ ],
+ "characters": [
+  {
+   "id": "a1000000-0000-4000-8000-000000000001",
+   "name": "Aria",
+   "description": "A daring sky-captain.",
+   "aliases": [
+    "Cap"
+   ],
+   "controlledBy": "llm",
+   "talkativeness": 0.7,
+   "connectionProfileId": "c0000001-0000-4000-8000-000000000001",
+   "defaultImageId": "f0000001-0000-4000-8000-000000000001",
+   "systemPrompt": {
+    "name": "Explorer",
+    "prompt": "You are Aria, bold and curious.",
+    "isDefault": true
+   }
+  },
+  {
+   "id": "a1000000-0000-4000-8000-000000000002",
+   "name": "Bram",
+   "description": "A cautious navigator.",
+   "controlledBy": "llm",
+   "talkativeness": 0.5,
+   "connectionProfileId": "c0000001-0000-4000-8000-000000000001"
+  },
+  {
+   "id": "a1000000-0000-4000-8000-000000000003",
+   "name": "Cleo",
+   "description": "The player-character.",
+   "controlledBy": "user",
+   "talkativeness": 0.5,
+   "connectionProfileId": "c0000001-0000-4000-8000-000000000001"
+  },
+  {
+   "id": "a1000000-0000-4000-8000-000000000004",
+   "name": "Dax",
+   "description": "An off-scene stranger.",
+   "controlledBy": "llm",
+   "talkativeness": 0.5,
+   "connectionProfileId": "c0000001-0000-4000-8000-000000000001"
+  }
+ ],
+ "chatSettings": {
+  "cheapLLMSettings": {
+   "strategy": "PROVIDER_CHEAPEST",
+   "fallbackToLocal": true
+  },
+  "compressionEnabled": false,
+  "autoDetectRng": false,
+  "answerConfirmationEnabled": false,
+  "dangerMode": "DETECT_ONLY"
+ },
+ "chats": [
+  {
+   "id": "c1000000-0000-4000-8000-000000000001",
+   "title": "Solo Voyage",
+   "chatType": "salon",
+   "projectId": "70000002-0000-4000-8000-000000000001",
+   "tags": [
+    "70000001-0000-4000-8000-000000000001"
+   ],
+   "participants": [
     {
-      "id": "c1000000-0000-4000-8000-000000000001",
-      "title": "Solo Voyage",
-      "chatType": "salon",
-      "projectId": "70000002-0000-4000-8000-000000000001",
-      "tags": ["70000001-0000-4000-8000-000000000001"],
-      "participants": [
-        {
-          "id": "b1000000-0000-4000-8000-000000000001",
-          "character": "a1000000-0000-4000-8000-000000000001",
-          "controlledBy": "llm",
-          "connectionProfileId": "c0000001-0000-4000-8000-000000000001",
-          "imageProfileId": "10000001-0000-4000-8000-000000000001",
-          "talkativeness": 0.9
-        },
-        {
-          "id": "b1000000-0000-4000-8000-000000000002",
-          "character": "a1000000-0000-4000-8000-000000000003",
-          "controlledBy": "user"
-        }
-      ],
-      "messages": [
-        {
-          "id": "d1000000-0000-4000-8000-000000000001",
-          "role": "USER",
-          "content": "Hello there, captain.",
-          "participantId": "b1000000-0000-4000-8000-000000000002"
-        },
-        {
-          "id": "d1000000-0000-4000-8000-000000000002",
-          "role": "ASSISTANT",
-          "content": "Well met, traveller!",
-          "participantId": "b1000000-0000-4000-8000-000000000001",
-          "provider": "OPENAI_COMPATIBLE",
-          "modelName": "mock-model",
-          "tokenCount": 12,
-          "promptTokens": 8,
-          "completionTokens": 4,
-          "reasoningContent": "The user greeted me warmly.",
-          "reasoningSegments": [{ "anchorOffset": 0, "content": "Greet back warmly.", "seq": 0 }]
-        },
-        {
-          "id": "d1000000-0000-4000-8000-000000000003",
-          "role": "USER",
-          "content": "Tell me a tale.",
-          "participantId": "b1000000-0000-4000-8000-000000000002"
-        },
-        {
-          "id": "d1000000-0000-4000-8000-000000000004",
-          "role": "ASSISTANT",
-          "content": "Once, above the clouds...",
-          "participantId": "b1000000-0000-4000-8000-000000000001",
-          "confirmed": true,
-          "confirmationChecked": true,
-          "confirmationNotes": "Consistent with canon."
-        }
-      ]
+     "id": "b1000000-0000-4000-8000-000000000001",
+     "character": "a1000000-0000-4000-8000-000000000001",
+     "controlledBy": "llm",
+     "connectionProfileId": "c0000001-0000-4000-8000-000000000001",
+     "imageProfileId": "10000001-0000-4000-8000-000000000001",
+     "talkativeness": 0.9
     },
     {
-      "id": "c1000000-0000-4000-8000-000000000002",
-      "title": "Group Expedition",
-      "chatType": "salon",
-      "storyBackgroundImageId": "f0000002-0000-4000-8000-000000000002",
-      "renderedMarkdown": "# Group Expedition\n\nRendered.",
-      "chunks": [
-        { "interchangeIndex": 0, "content": "Aria and Bram set out.", "embedded": true },
-        { "interchangeIndex": 1, "content": "They found the cache.", "embedded": true }
-      ],
-      "participants": [
-        {
-          "id": "b2000000-0000-4000-8000-000000000001",
-          "character": "a1000000-0000-4000-8000-000000000001",
-          "controlledBy": "llm",
-          "connectionProfileId": "c0000001-0000-4000-8000-000000000001"
-        },
-        {
-          "id": "b2000000-0000-4000-8000-000000000002",
-          "character": "a1000000-0000-4000-8000-000000000002",
-          "controlledBy": "llm",
-          "connectionProfileId": "c0000001-0000-4000-8000-000000000001"
-        },
-        {
-          "id": "b2000000-0000-4000-8000-000000000003",
-          "character": "a1000000-0000-4000-8000-000000000003",
-          "controlledBy": "user"
-        }
-      ],
-      "messages": [
-        {
-          "id": "d2000000-0000-4000-8000-000000000001",
-          "role": "USER",
-          "content": "Let's begin the expedition.",
-          "participantId": "b2000000-0000-4000-8000-000000000003"
-        },
-        {
-          "id": "d2000000-0000-4000-8000-000000000002",
-          "role": "ASSISTANT",
-          "content": "I stride toward the ridge.",
-          "participantId": "b2000000-0000-4000-8000-000000000001",
-          "provider": "OPENAI_COMPATIBLE",
-          "modelName": "mock-model"
-        },
-        {
-          "id": "d2000000-0000-4000-8000-000000000003",
-          "role": "ASSISTANT",
-          "content": "The Host welcomes Bram.",
-          "participantId": null,
-          "systemSender": "host",
-          "systemKind": "host-add",
-          "hostEvent": { "participantId": "b2000000-0000-4000-8000-000000000002" }
-        },
-        {
-          "id": "d2000000-0000-4000-8000-000000000004",
-          "role": "TOOL",
-          "content": "{\"tool\":\"rng\",\"initiatedBy\":\"auto-detect\",\"success\":true,\"result\":\"Rolled 1d6: [4]\",\"prompt\":\"1d6\",\"arguments\":{\"type\":6,\"rolls\":1}}",
-          "participantId": null
-        },
-        {
-          "id": "d2000000-0000-4000-8000-000000000005",
-          "role": "ASSISTANT",
-          "content": "I follow close behind.",
-          "participantId": "b2000000-0000-4000-8000-000000000002",
-          "swipeGroupId": "e2000000-0000-4000-8000-000000000001",
-          "swipeIndex": 0
-        },
-        {
-          "id": "d2000000-0000-4000-8000-000000000006",
-          "role": "ASSISTANT",
-          "content": "I hesitate at the edge.",
-          "participantId": "b2000000-0000-4000-8000-000000000002",
-          "swipeGroupId": "e2000000-0000-4000-8000-000000000001",
-          "swipeIndex": 1
-        },
-        {
-          "id": "d2000000-0000-4000-8000-000000000007",
-          "role": "ASSISTANT",
-          "content": "A stranger calls from afar.",
-          "participantId": "b2000000-0000-4000-8000-000000000001",
-          "customAnnouncer": { "kind": "character", "characterId": "a1000000-0000-4000-8000-000000000004" }
-        }
-      ]
+     "id": "b1000000-0000-4000-8000-000000000002",
+     "character": "a1000000-0000-4000-8000-000000000003",
+     "controlledBy": "user"
     }
-  ],
-  "memories": [
+   ],
+   "messages": [
     {
-      "id": "0e000000-0000-4000-8000-000000000001",
-      "characterId": "a1000000-0000-4000-8000-000000000001",
-      "chatId": "c1000000-0000-4000-8000-000000000002",
-      "sourceMessageId": "d2000000-0000-4000-8000-000000000002",
-      "content": "Aria strode toward the ridge with the expedition.",
-      "summary": "Aria led the ridge expedition."
+     "id": "d1000000-0000-4000-8000-000000000001",
+     "role": "USER",
+     "content": "Hello there, captain.",
+     "participantId": "b1000000-0000-4000-8000-000000000002"
     },
     {
-      "id": "0e000000-0000-4000-8000-000000000002",
-      "characterId": "a1000000-0000-4000-8000-000000000001",
-      "chatId": "c1000000-0000-4000-8000-000000000002",
-      "sourceMessageId": "d2000000-0000-4000-8000-000000000002",
-      "content": "The ridge overlooked a hidden cache.",
-      "summary": "A cache lay beyond the ridge."
+     "id": "d1000000-0000-4000-8000-000000000002",
+     "role": "ASSISTANT",
+     "content": "Well met, traveller!",
+     "participantId": "b1000000-0000-4000-8000-000000000001",
+     "provider": "OPENAI_COMPATIBLE",
+     "modelName": "mock-model",
+     "tokenCount": 12,
+     "promptTokens": 8,
+     "completionTokens": 4,
+     "reasoningContent": "The user greeted me warmly.",
+     "reasoningSegments": [
+      {
+       "anchorOffset": 0,
+       "content": "Greet back warmly.",
+       "seq": 0
+      }
+     ]
+    },
+    {
+     "id": "d1000000-0000-4000-8000-000000000003",
+     "role": "USER",
+     "content": "Tell me a tale.",
+     "participantId": "b1000000-0000-4000-8000-000000000002"
+    },
+    {
+     "id": "d1000000-0000-4000-8000-000000000004",
+     "role": "ASSISTANT",
+     "content": "Once, above the clouds...",
+     "participantId": "b1000000-0000-4000-8000-000000000001",
+     "confirmed": true,
+     "confirmationChecked": true,
+     "confirmationNotes": "Consistent with canon."
     }
-  ]
+   ]
+  },
+  {
+   "id": "c1000000-0000-4000-8000-000000000002",
+   "title": "Group Expedition",
+   "chatType": "salon",
+   "storyBackgroundImageId": "f0000002-0000-4000-8000-000000000002",
+   "renderedMarkdown": "# Group Expedition\n\nRendered.",
+   "chunks": [
+    {
+     "interchangeIndex": 0,
+     "content": "Aria and Bram set out.",
+     "embedded": true
+    },
+    {
+     "interchangeIndex": 1,
+     "content": "They found the cache.",
+     "embedded": true
+    }
+   ],
+   "participants": [
+    {
+     "id": "b2000000-0000-4000-8000-000000000001",
+     "character": "a1000000-0000-4000-8000-000000000001",
+     "controlledBy": "llm",
+     "connectionProfileId": "c0000001-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "b2000000-0000-4000-8000-000000000002",
+     "character": "a1000000-0000-4000-8000-000000000002",
+     "controlledBy": "llm",
+     "connectionProfileId": "c0000001-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "b2000000-0000-4000-8000-000000000003",
+     "character": "a1000000-0000-4000-8000-000000000003",
+     "controlledBy": "user"
+    }
+   ],
+   "messages": [
+    {
+     "id": "d2000000-0000-4000-8000-000000000001",
+     "role": "USER",
+     "content": "Let's begin the expedition.",
+     "participantId": "b2000000-0000-4000-8000-000000000003"
+    },
+    {
+     "id": "d2000000-0000-4000-8000-000000000002",
+     "role": "ASSISTANT",
+     "content": "I stride toward the ridge.",
+     "participantId": "b2000000-0000-4000-8000-000000000001",
+     "provider": "OPENAI_COMPATIBLE",
+     "modelName": "mock-model"
+    },
+    {
+     "id": "d2000000-0000-4000-8000-000000000003",
+     "role": "ASSISTANT",
+     "content": "The Host welcomes Bram.",
+     "participantId": null,
+     "systemSender": "host",
+     "systemKind": "host-add",
+     "hostEvent": {
+      "participantId": "b2000000-0000-4000-8000-000000000002"
+     }
+    },
+    {
+     "id": "d2000000-0000-4000-8000-000000000004",
+     "role": "TOOL",
+     "content": "{\"tool\":\"rng\",\"initiatedBy\":\"auto-detect\",\"success\":true,\"result\":\"Rolled 1d6: [4]\",\"prompt\":\"1d6\",\"arguments\":{\"type\":6,\"rolls\":1}}",
+     "participantId": null
+    },
+    {
+     "id": "d2000000-0000-4000-8000-000000000005",
+     "role": "ASSISTANT",
+     "content": "I follow close behind.",
+     "participantId": "b2000000-0000-4000-8000-000000000002",
+     "swipeGroupId": "e2000000-0000-4000-8000-000000000001",
+     "swipeIndex": 0
+    },
+    {
+     "id": "d2000000-0000-4000-8000-000000000006",
+     "role": "ASSISTANT",
+     "content": "I hesitate at the edge.",
+     "participantId": "b2000000-0000-4000-8000-000000000002",
+     "swipeGroupId": "e2000000-0000-4000-8000-000000000001",
+     "swipeIndex": 1
+    },
+    {
+     "id": "d2000000-0000-4000-8000-000000000007",
+     "role": "ASSISTANT",
+     "content": "A stranger calls from afar.",
+     "participantId": "b2000000-0000-4000-8000-000000000001",
+     "customAnnouncer": {
+      "kind": "character",
+      "characterId": "a1000000-0000-4000-8000-000000000004"
+     }
+    }
+   ]
+  }
+ ],
+ "memories": [
+  {
+   "id": "0e000000-0000-4000-8000-000000000001",
+   "characterId": "a1000000-0000-4000-8000-000000000001",
+   "chatId": "c1000000-0000-4000-8000-000000000002",
+   "sourceMessageId": "d2000000-0000-4000-8000-000000000002",
+   "content": "Aria strode toward the ridge with the expedition.",
+   "summary": "Aria led the ridge expedition."
+  },
+  {
+   "id": "0e000000-0000-4000-8000-000000000002",
+   "characterId": "a1000000-0000-4000-8000-000000000001",
+   "chatId": "c1000000-0000-4000-8000-000000000002",
+   "sourceMessageId": "d2000000-0000-4000-8000-000000000002",
+   "content": "The ridge overlooked a hidden cache.",
+   "summary": "A cache lay beyond the ridge."
+  }
+ ]
 }

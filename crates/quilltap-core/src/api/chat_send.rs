@@ -15,6 +15,8 @@
 use std::future::Future;
 use std::pin::Pin;
 
+use serde_json::Value;
+
 use super::types::{ChatSendResultDto, CoreError, PendingToolResult};
 
 /// The projected `SendMessageOptions` a `ChatSend` dispatch carries (the
@@ -46,4 +48,34 @@ pub type ChatSendFuture<'a> =
 /// into the `Response` envelope).
 pub trait ChatSendDriver: Send + Sync {
     fn send(&self, req: ChatSendRequest) -> ChatSendFuture<'_>;
+}
+
+/// The inputs a swipe-generate (v4 `handleGenerateSwipe`) hands its driver — the
+/// route handler has already loaded the chat + resolved ownership + passed the
+/// role/`systemSender` guards, so the driver only composes the regeneration.
+#[derive(Debug, Clone, Default)]
+pub struct SwipeGenerateRequest {
+    pub user_id: String,
+    /// The owning chat (slim-row read + overlaid `Value`).
+    pub chat: Value,
+    /// The ASSISTANT `chat_messages` event being regenerated.
+    pub target_message: Value,
+    /// Every `type:'message'` event in the chat (v4's `allMessages` filter).
+    pub all_messages: Vec<Value>,
+    /// The user-controlled participant the human is "Speaking As" (v4
+    /// `chat.activeTypingParticipantId ?? null`).
+    pub active_user_participant_id: Option<String>,
+}
+
+/// The boxed future a [`SwipeGenerateDriver`] returns (the new swipe `chat_messages`
+/// event `Value`, v4's `{ message: newSwipe }` 201 body).
+pub type SwipeGenerateFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<Value, CoreError>> + Send + 'a>>;
+
+/// The model-boundary seam for swipe generation (v4 `regenerateMessageAsSwipe`,
+/// the sibling of `process_message`). Like [`ChatSendDriver`], only the composing
+/// host can construct the provider bundle, so the engine holds this type-erased
+/// and the host's assembler returns it per assembly.
+pub trait SwipeGenerateDriver: Send + Sync {
+    fn generate_swipe(&self, req: SwipeGenerateRequest) -> SwipeGenerateFuture<'_>;
 }

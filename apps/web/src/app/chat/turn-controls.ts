@@ -1,0 +1,117 @@
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+
+import { Icon } from '../ui/icon';
+import { SpeakerSelector, type ControlledCharacter } from './speaker-selector';
+
+/**
+ * The Salon turn-controls bar above the composer (v4 SalonView's speaker
+ * selector + user-turn banner + the sidebar's pause toggle, consolidated). It is
+ * purely presentational — the parent (`SalonConversation`) owns the dispatches.
+ *
+ *   - The **Speaking-As** selector (v4 `SpeakerSelector`), shown when the user
+ *     controls two or more characters.
+ *   - The **user-turn banner** (v4 SalonView ~1394–1455): when it is a
+ *     user-controlled participant's turn, prompt to type or Skip; when everyone
+ *     else has passed, the must-speak copy with no Skip button.
+ *   - **Pause/Resume** (v4 `qt-chat-pause-button`) + a paused-state notice.
+ *   - **Nudge** (v4 `handleNudge`): summon the next LLM speaker out of turn.
+ */
+@Component({
+  selector: 'qt-turn-controls',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [Icon, SpeakerSelector],
+  template: `
+    <div class="qt-chat-turn-controls border-t qt-border-default">
+      @if (isPaused()) {
+        <div class="qt-chat-paused-banner px-4 py-2 text-sm qt-text-secondary">
+          Auto-responses are paused — the next character won't speak until you resume.
+        </div>
+      }
+
+      @if (userTurnName(); as name) {
+        <div class="qt-chat-user-turn-banner flex items-center justify-between px-4 py-2 text-sm">
+          <span class="qt-text-secondary">{{ bannerText() }}</span>
+          @if (!mustSpeak()) {
+            <button
+              type="button"
+              class="qt-button-secondary px-3 py-1 rounded text-sm"
+              [disabled]="disabled()"
+              (click)="skipUserTurn.emit()"
+            >
+              Skip
+            </button>
+          }
+        </div>
+        @if (skipError(); as err) {
+          <div class="qt-chat-turn-error px-4 py-1 text-sm qt-text-danger">{{ err }}</div>
+        }
+      }
+
+      <div class="qt-chat-turn-controls-row flex items-center gap-2 px-4 py-2">
+        @if (controlledCharacters().length >= 2) {
+          <qt-speaker-selector
+            [characters]="controlledCharacters()"
+            [activeParticipantId]="activeSpeakerId()"
+            [disabled]="disabled()"
+            (select)="selectSpeaker.emit($event)"
+          />
+        }
+
+        <span class="flex-1"></span>
+
+        @if (nudgeTargetName(); as target) {
+          <button
+            type="button"
+            class="qt-button-secondary inline-flex items-center gap-1.5 px-3 py-1 rounded text-sm"
+            title="Nudge the next character to respond"
+            [disabled]="disabled()"
+            (click)="nudge.emit()"
+          >
+            <qt-icon name="megaphone" class="w-4 h-4" />
+            <span>Nudge {{ target }}</span>
+          </button>
+        }
+
+        <button
+          type="button"
+          class="qt-chat-pause-button inline-flex items-center gap-1.5 px-3 py-1 rounded text-sm"
+          [class.qt-chat-pause-button-paused]="isPaused()"
+          [title]="isPaused() ? 'Resume auto-responses' : 'Pause auto-responses'"
+          [attr.aria-label]="isPaused() ? 'Resume auto-responses' : 'Pause auto-responses'"
+          (click)="togglePause.emit()"
+        >
+          <qt-icon [name]="isPaused() ? 'play' : 'pause'" class="w-4 h-4" />
+          <span>{{ isPaused() ? 'Resume' : 'Pause' }}</span>
+        </button>
+      </div>
+    </div>
+  `,
+})
+export class TurnControls {
+  /** User-controlled characters the speaker selector offers (≥2 → shown). */
+  readonly controlledCharacters = input.required<ControlledCharacter[]>();
+  readonly activeSpeakerId = input<string | null>(null);
+  /** Streaming/awaiting in flight — disables the interactive controls. */
+  readonly disabled = input(false);
+  readonly isPaused = input(false);
+  /** The name whose (user-controlled) turn it is, or null to hide the banner. */
+  readonly userTurnName = input<string | null>(null);
+  /** When true, the responder must speak (everyone else passed) — no Skip. */
+  readonly mustSpeak = input(false);
+  /** A refusal message from a rejected skip (v4's exact copy), or null. */
+  readonly skipError = input<string | null>(null);
+  /** The next LLM speaker's name, or null to hide the Nudge button. */
+  readonly nudgeTargetName = input<string | null>(null);
+
+  readonly selectSpeaker = output<string>();
+  readonly skipUserTurn = output<void>();
+  readonly togglePause = output<void>();
+  readonly nudge = output<void>();
+
+  protected readonly bannerText = computed(() => {
+    const name = this.userTurnName() ?? 'this character';
+    return this.mustSpeak()
+      ? `Everyone else has passed — it falls to ${name} to say something.`
+      : `${name}'s turn — type as them, or skip to let someone else respond.`;
+  });
+}

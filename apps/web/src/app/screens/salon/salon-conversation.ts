@@ -1,4 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { filter } from 'rxjs';
@@ -9,15 +16,34 @@ import { ConversationHeader } from '../../chat/conversation-header';
 import { MessageList } from '../../chat/message-list';
 import { MemoryCascadeDialog, type MemoryCascadeAction } from '../../chat/memory-cascade-dialog';
 import { splitSwipeGroups, type SwipeState } from '../../chat/chat-view-model';
+import { TurnControls } from '../../chat/turn-controls';
+import { type ControlledCharacter } from '../../chat/speaker-selector';
+import { isParticipantPresent } from '../../chat/skip-signal-helpers';
+import {
+  computeSkipEligibility,
+  type SkipEvent,
+  type SkipParticipant,
+} from '../../chat/skip-signal';
 import {
   initialChatStreamState,
   reduceChatFrame,
   type ChatStreamState,
 } from '../../core/chat-stream.reducer';
 import { CoreClient } from '../../core/core-client';
-import type { ChatDetail, ChatSettingsDto, MessageDto } from '../../core/core-contract';
+import type {
+  ChatDetail,
+  ChatSettingsDto,
+  MessageDto,
+  ParticipantDetail,
+} from '../../core/core-contract';
 import { ErrorAlert } from '../../ui/error-alert';
 import { LoadingState } from '../../ui/loading-state';
+
+/** The next-speaker projection off `chatTurnAction { action: 'query' }`. */
+interface TurnInfo {
+  nextSpeakerId: string | null;
+  nextSpeakerControlledBy: string | null;
+}
 
 /** A pending delete awaiting the memory-cascade choice. */
 interface CascadePrompt {
@@ -42,6 +68,7 @@ interface CascadePrompt {
     ErrorAlert,
     ConversationHeader,
     MessageList,
+    TurnControls,
     ChatComposer,
     MemoryCascadeDialog,
   ],
@@ -80,6 +107,21 @@ interface CascadePrompt {
               (cancelEdit)="editingId.set(null)"
             />
           </div>
+
+          <qt-turn-controls
+            [controlledCharacters]="controlledCharacters()"
+            [activeSpeakerId]="activeSpeakerId()"
+            [disabled]="busy()"
+            [isPaused]="chat()!.isPaused"
+            [userTurnName]="userTurnName()"
+            [mustSpeak]="mustSpeak()"
+            [skipError]="skipError()"
+            [nudgeTargetName]="nudgeTargetName()"
+            (selectSpeaker)="onSelectSpeaker($event)"
+            (skipUserTurn)="onSkipUserTurn()"
+            (togglePause)="onTogglePause()"
+            (nudge)="onNudge()"
+          />
 
           <qt-chat-composer
             [busy]="busy()"
@@ -182,6 +224,176 @@ export class SalonConversation {
   );
 
   // -------------------------------------------------------------------------
+  // Turn management (Speaking-As, the user-turn Skip banner, pause, nudge)
+  // -------------------------------------------------------------------------
+
+  /** The authoritative next speaker from `chatTurnAction { action: 'query' }`. */
+  private readonly turnInfo = signal<TurnInfo | null>(null);
+  /** The user's Speaking-As choice (immediate feedback ahead of the refetch). */
+  private readonly activeSpeakerOverride = signal<string | null>(null);
+  /** A rejected-skip message (v4's all-others-skipped copy). */
+  protected readonly skipError = signal<string | null>(null);
+
+  /** Re-query the next speaker whenever the chat settles and no turn is running. */
+  private readonly _turnEffect = effect(() => {
+    const chat = this.chat();
+    const busy = this.busy();
+    if (chat && !busy) {
+      void this.refreshTurn();
+    }
+  });
+
+  private async refreshTurn(): Promise<void> {
+    const chatId = this.chatId();
+    if (!chatId) return;
+    const resp = await this.core.dispatch({ type: 'chatTurnAction', chatId, action: 'query' });
+    if (resp.type === 'turnAction') {
+      const turn = (resp.data as { turn?: Partial<TurnInfo> }).turn;
+      this.turnInfo.set({
+        nextSpeakerId: turn?.nextSpeakerId ?? null,
+        nextSpeakerControlledBy: turn?.nextSpeakerControlledBy ?? null,
+      });
+    } else {
+      this.turnInfo.set(null);
+    }
+  }
+
+  /** User-controlled, present characters — the Speaking-As selector's options. */
+  protected readonly controlledCharacters = computed<ControlledCharacter[]>(() =>
+    (this.chat()?.participants ?? [])
+      .filter(
+        (p) =>
+          p.type === 'CHARACTER' &&
+          p.controlledBy === 'user' &&
+          p.isActive &&
+          isParticipantPresent(p.status),
+      )
+      .map((p) => ({
+        participantId: p.id,
+        name: p.character?.name ?? 'Character',
+        avatarUrl: participantAvatar(p),
+      })),
+  );
+
+  protected readonly activeSpeakerId = computed(
+    () => this.activeSpeakerOverride() ?? this.chat()?.activeTypingParticipantId ?? null,
+  );
+
+  private readonly nextSpeaker = computed<ParticipantDetail | null>(() => {
+    const id = this.turnInfo()?.nextSpeakerId;
+    if (!id) return null;
+    return (this.chat()?.participants ?? []).find((p) => p.id === id) ?? null;
+  });
+
+  /** The name whose (user-controlled) turn it is, or null when it isn't. */
+  protected readonly userTurnName = computed<string | null>(() => {
+    if (this.busy()) return null;
+    const next = this.nextSpeaker();
+    if (!next || next.controlledBy !== 'user') return null;
+    return next.character?.name ?? 'this character';
+  });
+
+  /** Everyone else has passed → the responder must speak (no Skip button). */
+  protected readonly mustSpeak = computed<boolean>(() => {
+    const chat = this.chat();
+    const next = this.nextSpeaker();
+    if (!chat || !next || next.controlledBy !== 'user' || !next.character) return false;
+    try {
+      const events: SkipEvent[] = chat.messages.map((m) => ({
+        type: 'message',
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        participantId: m.participantId,
+        targetParticipantIds: m.targetParticipantIds,
+        systemSender: m.systemSender,
+        systemKind: m.systemKind,
+        hostEvent: m.hostEvent,
+        isSilentMessage: m.isSilentMessage,
+      }));
+      const participants: SkipParticipant[] = chat.participants.map((p) => ({
+        id: p.id,
+        type: p.type,
+        characterId: p.character?.id ?? null,
+        controlledBy: p.controlledBy,
+        status: p.status,
+      }));
+      const eligibility = computeSkipEligibility({
+        events,
+        participants,
+        respondingParticipantId: next.id,
+        respondingCharacter: { id: next.character.id, name: next.character.name, aliases: [] },
+        summoned: false,
+        turnSkippingEnabled: chat.turnSkippingEnabled !== false,
+      });
+      return eligibility.mustSpeakReason === 'all-others-skipped';
+    } catch {
+      return false;
+    }
+  });
+
+  /** The next LLM speaker's name — the Nudge target, or null when it's a user turn. */
+  protected readonly nudgeTargetName = computed<string | null>(() => {
+    if (this.busy()) return null;
+    const info = this.turnInfo();
+    if (!info?.nextSpeakerId || info.nextSpeakerControlledBy === 'user') return null;
+    const next = this.nextSpeaker();
+    return next?.character?.name ?? 'the next character';
+  });
+
+  protected onSelectSpeaker(participantId: string): void {
+    this.activeSpeakerOverride.set(participantId);
+    const chatId = this.chatId();
+    if (!chatId) return;
+    void this.core
+      .dispatch({ type: 'chatSetActiveSpeaker', chatId, participantId })
+      .then(() => this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] }));
+  }
+
+  protected async onSkipUserTurn(): Promise<void> {
+    const chatId = this.chatId();
+    const target = this.nextSpeaker();
+    if (!chatId || !target) return;
+    this.skipError.set(null);
+    const resp = await this.core.dispatch({
+      type: 'chatTurnAction',
+      chatId,
+      action: 'skipUserTurn',
+      participantId: target.id,
+    });
+    if (resp.type === 'error') {
+      this.skipError.set(resp.data.message);
+      return;
+    }
+    await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+    // v4 `handleSkipUserTurn`: if the skip hands the turn to an LLM, generate.
+    const turn = resp.type === 'turnAction' ? (resp.data as { turn?: TurnInfo }).turn : undefined;
+    if (turn?.nextSpeakerId && turn.nextSpeakerControlledBy !== 'user') {
+      await this.runTurn({ continueMode: true, respondingParticipantId: turn.nextSpeakerId });
+    } else {
+      await this.refreshTurn();
+    }
+  }
+
+  protected async onTogglePause(): Promise<void> {
+    const chatId = this.chatId();
+    const chat = this.chat();
+    if (!chatId || !chat) return;
+    await this.core.dispatch({ type: 'chatUpdate', chatId, chat: { isPaused: !chat.isPaused } });
+    await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+  }
+
+  protected onNudge(): void {
+    const info = this.turnInfo();
+    if (!info?.nextSpeakerId || info.nextSpeakerControlledBy === 'user') return;
+    void this.runTurn({
+      continueMode: true,
+      respondingParticipantId: info.nextSpeakerId,
+      nudge: true,
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // Send + streaming
   // -------------------------------------------------------------------------
 
@@ -193,7 +405,12 @@ export class SalonConversation {
     void this.runTurn({ continueMode: true });
   }
 
-  private async runTurn(opts: { content?: string; continueMode?: boolean }): Promise<void> {
+  private async runTurn(opts: {
+    content?: string;
+    continueMode?: boolean;
+    respondingParticipantId?: string;
+    nudge?: boolean;
+  }): Promise<void> {
     const chatId = this.chatId();
     if (!chatId || this.busy()) {
       return;
@@ -215,7 +432,17 @@ export class SalonConversation {
 
     try {
       await this.core.dispatchExpect(
-        { type: 'chatSend', chatId, content: opts.content, continueMode: opts.continueMode },
+        {
+          type: 'chatSend',
+          chatId,
+          content: opts.content,
+          continueMode: opts.continueMode,
+          respondingParticipantId: opts.respondingParticipantId,
+          nudge: opts.nudge,
+          // Thread the Speaking-As choice onto a user-authored send (v4 does the
+          // same); irrelevant to a continue/nudge, so only sent with content.
+          speakingAsParticipantId: opts.content ? (this.activeSpeakerId() ?? undefined) : undefined,
+        },
         'chatSend',
       );
     } catch (err) {
@@ -240,9 +467,11 @@ export class SalonConversation {
   }
 
   private makeTempUserMessage(content: string): MessageDto {
-    const activeUser = (this.chat()?.participants ?? []).find(
-      (p) => p.type === 'CHARACTER' && p.controlledBy === 'user',
-    );
+    const participants = this.chat()?.participants ?? [];
+    const speakingAsId = this.activeSpeakerId();
+    const activeUser =
+      (speakingAsId && participants.find((p) => p.id === speakingAsId)) ||
+      participants.find((p) => p.type === 'CHARACTER' && p.controlledBy === 'user');
     return {
       id: `temp-user-${Date.now()}`,
       role: 'USER',
@@ -305,11 +534,18 @@ export class SalonConversation {
   }
 
   protected async onDelete(message: MessageDto): Promise<void> {
-    if (typeof window !== 'undefined' && !window.confirm('Are you sure you want to delete this message?')) {
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm('Are you sure you want to delete this message?')
+    ) {
       return;
     }
     const resp = await this.core.dispatch({ type: 'messageDelete', messageId: message.id });
-    if (resp.type === 'messageDelete' && 'requiresConfirmation' in resp.data && resp.data.requiresConfirmation) {
+    if (
+      resp.type === 'messageDelete' &&
+      'requiresConfirmation' in resp.data &&
+      resp.data.requiresConfirmation
+    ) {
       this.cascade.set({
         messageId: message.id,
         memoryCount: resp.data.memoryCount,
@@ -337,4 +573,9 @@ export class SalonConversation {
     const err = this.chatQuery.error();
     return err instanceof Error ? err.message : 'Failed to load the conversation.';
   }
+}
+
+/** Resolve a participant's avatar src (explicit URL → default image filepath). */
+function participantAvatar(p: ParticipantDetail): string | null {
+  return p.character?.avatarUrl ?? p.character?.defaultImage?.filepath ?? null;
 }

@@ -4,6 +4,30 @@
 
 ### 5.0-dev
 
+P4.6c (Salon consolidation) is ported and green against v4 `a7b1398d`. Server:
+the skipUserTurn differential (`salon_skip_equivalence` — the minted-values skip
+success + the all-others-skipped refusal; caught and fixed a turn-action
+`participant.name` bug — a user-controlled skip must resolve to "Unknown" via the
+active-LLM character map); swipe-generate through a new `SwipeGenerateDriver`
+host seam (`api::salon::message_swipe_generate` + the production
+`ChatSpine::generate_swipe` + `salon_swipe_generate_equivalence` vs v4's real
+`handleGenerateSwipe`) — the engine-arm swap stays a unification wire; the
+`pendingToolResults` orchestrator corpus case (the TOOL row pre-inserted before
+the model turn, byte-exact); the full `processChatUpdates` `chat` bag via a raw
+`UPDATE` (every `updateChatSchema` column + the roleplayTemplateId/projectId 404
+gates; extended the chat-PUT differential); and the single-chat GET
+attachment-resolution branch (linked `files` + image sha256 + link summary; the
+salon fixture now links an image to a message). SPA: the skip-signal TS port + the
+user-turn Skip banner, Speaking-As (`SpeakerSelector` + set-active-speaker +
+`speakingAsParticipantId`), and pause/resume + nudge; component tests over the
+mocked CoreClient. Deferred (named): the chat-settings GET default-injection
+(needs `updateForUser`, P4.6d's file); the mount-file (Scriptorium) attachment
+branch; the participant/conciergeState PUT families; the impersonate menu and
+per-participant turn-queue UI. Flagged for a build_context follow-up: the salon
+fixture surfaces a v4 identity-stack quirk (a literal `undefined` leaks into a
+character's base system-prompt slot) the Rust port does not reproduce — orthogonal
+to the swipe route, whose output byte-matches.
+
 The P4.6c ∥ Settings round is planned: three work orders written from
 fresh v4 surveys at `a7b1398d` —
 `docs/developer/porting/work-orders/p4.6c-salon-consolidation.md` (the

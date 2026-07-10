@@ -673,6 +673,102 @@ where
         )
     }
 
+    /// One swipe generation (the non-`Send` inner the dedicated thread runs):
+    /// v4 `handleGenerateSwipe` → `regenerateMessageAsSwipe`. The route handler
+    /// (`api::salon::message_swipe_generate`) already loaded the chat + passed the
+    /// guards; here the spine resolves the same registry / timestamp / clock inputs
+    /// `run_send` does and composes the ported service over its real providers +
+    /// `RealBuildContextSeams`. The message-context K-loader is
+    /// `NoopMessageContextSeams` — the same boundary `regenerate_swipe_tier3`
+    /// proves against v4's REAL service (Lantern image loading into a regenerated
+    /// context is a tracked deferral, shared with the core port).
+    async fn run_swipe(
+        self,
+        req: quilltap_core::api::chat_send::SwipeGenerateRequest,
+    ) -> Result<Value, CoreError> {
+        use quilltap_core::services::message_context::NoopMessageContextSeams;
+        use quilltap_core::services::regenerate_swipe::{
+            regenerate_message_as_swipe, RegenError, RegenerateSwipeOptions,
+        };
+
+        let db = self.db.clone();
+        let chat_id = req
+            .chat
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+
+        let now_ms = now_unix_ms();
+        let random01 = os_random01();
+
+        // The responder in continue mode is the target message's own participant.
+        let target_pid = req
+            .target_message
+            .get("participantId")
+            .and_then(Value::as_str)
+            .map(String::from);
+        let resolved = self
+            .preresolve_provider_model(
+                &chat_id,
+                target_pid.as_deref(),
+                None,
+                req.active_user_participant_id.as_deref(),
+                true,
+                random01,
+            )
+            .await;
+        let (model_context_limit, _web) = self.registry_inputs(resolved);
+        let timestamp_config = self.resolve_timestamp_config(&chat_id);
+
+        let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+            db: db.clone(),
+            user_id: req.user_id.clone(),
+            chat_id: Some(chat_id.clone()),
+            message_id: None,
+            ctx: LogContext::none(),
+        });
+        let bc_seams = RealBuildContextSeams { db: &db };
+        let mc_seams = NoopMessageContextSeams;
+
+        let opts = RegenerateSwipeOptions {
+            user_id: req.user_id.clone(),
+            chat: req.chat.clone(),
+            target_message: req.target_message.clone(),
+            all_messages: req.all_messages.clone(),
+            active_user_participant_id: req.active_user_participant_id.clone(),
+            model_context_limit,
+            timestamp_config,
+            timezone: Some(self.tz.clone()),
+            now_ms,
+            local_offset_minutes: self.local_offset_minutes(now_ms),
+            random01,
+        };
+
+        regenerate_message_as_swipe(
+            &db,
+            &*self.embedding,
+            &*self.completion,
+            &executor,
+            &bc_seams,
+            &mc_seams,
+            opts,
+        )
+        .await
+        .map_err(|e| match e {
+            RegenError::NotAssistant | RegenError::StaffMessage => CoreError {
+                kind: ErrorKind::BadRequest,
+                message: e.to_string(),
+                pepper_state: None,
+            },
+            RegenError::Db(_) => CoreError {
+                kind: ErrorKind::Internal,
+                message: e.to_string(),
+                pepper_state: None,
+            },
+        })
+    }
+
     /// One full send turn (the non-`Send` inner the dedicated thread runs):
     /// v4 `handleSendMessage` — `processMessage`, then ALWAYS
     /// `executeTurnChain` (the chain's own guard decides whether it fires).
@@ -1334,6 +1430,49 @@ where
                 Err(CoreError {
                     kind: ErrorKind::Internal,
                     message: "chat send thread panicked".to_string(),
+                    pepper_state: None,
+                })
+            })
+        })
+    }
+}
+
+impl<EMB, CMP, STR, PF> quilltap_core::api::chat_send::SwipeGenerateDriver
+    for ChatSpine<EMB, CMP, STR, PF>
+where
+    EMB: EmbeddingProvider + Send + Sync + 'static,
+    CMP: CompletionProvider + Send + Sync + 'static,
+    STR: StreamingCompletionProvider + Send + Sync + 'static,
+    PF: PricingFetch + Send + Sync + 'static,
+{
+    fn generate_swipe(
+        &self,
+        req: quilltap_core::api::chat_send::SwipeGenerateRequest,
+    ) -> quilltap_core::api::chat_send::SwipeGenerateFuture<'_> {
+        let state = self.clone_state();
+        Box::pin(async move {
+            // The Send bridge (module header): `regenerate_message_as_swipe`'s
+            // future is non-`Send` (the same buildContext composition), so it runs
+            // on its own thread + current-thread runtime.
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            std::thread::spawn(move || {
+                let result = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(rt) => rt.block_on(state.run_swipe(req)),
+                    Err(e) => Err(CoreError {
+                        kind: ErrorKind::Internal,
+                        message: format!("spine runtime: {e}"),
+                        pepper_state: None,
+                    }),
+                };
+                let _ = tx.send(result);
+            });
+            rx.await.unwrap_or_else(|_| {
+                Err(CoreError {
+                    kind: ErrorKind::Internal,
+                    message: "swipe generation thread panicked".to_string(),
                     pepper_state: None,
                 })
             })

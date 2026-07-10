@@ -107,6 +107,9 @@ interface CallSpec {
   rngBytes?: number[];
   /** P4.d2: the Nudge flag — the summoned turn withholds the skip offer (b90cd1f5). */
   nudge?: boolean;
+  /** P4.6c: user-initiated tool results pre-inserted as TOOL messages before the
+   * user message (orchestrator.service.ts:601–624). */
+  pendingToolResults?: unknown[];
 }
 interface Spec {
   testPepperBase64: string;
@@ -673,6 +676,7 @@ async function main(): Promise<void> {
         continueMode: call.continueMode ? true : undefined,
         respondingParticipantId: call.respondingParticipant,
         nudge: call.nudge,
+        pendingToolResults: call.pendingToolResults,
       } as never);
       // Drain the ReadableStream.
       const reader = stream.getReader();

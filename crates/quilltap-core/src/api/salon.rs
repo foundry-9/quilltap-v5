@@ -176,14 +176,20 @@ fn assemble_chat_get(
         )?);
     }
 
-    // All messages, projected (minus renderedHtml + attachments).
+    // All messages, projected (minus renderedHtml). Attachments are resolved from
+    // linked `files` (+ image sha256/linkSummary); the mount-file (Scriptorium)
+    // `event.attachments` probe is a tracked deferral.
     let events = chats_messages_read::get_messages(main, chat_id)?;
     let mut messages: Vec<Value> = Vec::new();
     for e in &events {
         if e.get("type").and_then(Value::as_str) != Some("message") {
             continue;
         }
-        messages.push(project_message(e));
+        let attachments = match e.get("id").and_then(Value::as_str) {
+            Some(mid) => resolve_message_attachments(main, mount, mid)?,
+            None => Value::Array(Vec::new()),
+        };
+        messages.push(project_message(e, attachments));
     }
 
     // Off-scene characters (customAnnouncer.characterId + carinaMeta.answererId
@@ -394,10 +400,11 @@ fn assemble_chat_get(
     Ok(Value::Object(out))
 }
 
-/// The per-message projection (v4 get.ts:373–435, minus `renderedHtml` +
-/// attachment resolution). Reproduces v4's `X || null` (falsy→null) vs
-/// `X ?? null`/`?? undefined` (nullish) operators exactly.
-fn project_message(e: &Value) -> Value {
+/// The per-message projection (v4 get.ts:373–435, minus `renderedHtml`).
+/// Reproduces v4's `X || null` (falsy→null) vs `X ?? null`/`?? undefined`
+/// (nullish) operators exactly. `attachments` is resolved by the caller
+/// ([`resolve_message_attachments`]).
+fn project_message(e: &Value, attachments: Value) -> Value {
     // `X || null` — falsy (null/false/0/"") collapses to null.
     let or_null = |k: &str| -> Value {
         match e.get(k) {
@@ -430,9 +437,7 @@ fn project_message(e: &Value) -> Value {
     m.insert("swipeGroupId".into(), or_null("swipeGroupId"));
     m.insert("swipeIndex".into(), or_null("swipeIndex"));
     m.insert("participantId".into(), or_null("participantId"));
-    // Attachment resolution deferred (corpus bakes none) → v4's `attachments`
-    // default `[]`.
-    m.insert("attachments".into(), json!([]));
+    m.insert("attachments".into(), attachments);
     // debugMemoryLogs — `|| undefined` (omit when falsy).
     if let Some(v) = e.get("debugMemoryLogs") {
         if is_truthy(v) {
@@ -574,6 +579,116 @@ fn read_user_block(main: &rusqlite::Connection, user_id: &str) -> Result<Value, 
     Ok(Value::Object(u))
 }
 
+/// v4 `handleGet`'s per-message attachment resolution (get.ts:303–370) — the
+/// LINKED-FILES branch: files whose `linkedTo` array contains the message id, each
+/// projected `{ id, filename, filepath: /api/v1/files/{id}, mimeType }` (+ `sha256`
+/// and `linkSummary` for images via [`photo_link_summary`]). The mount-file
+/// (Scriptorium `event.attachments`) branch is a tracked deferral.
+fn resolve_message_attachments(
+    main: &rusqlite::Connection,
+    mount: &rusqlite::Connection,
+    message_id: &str,
+) -> Result<Value, DbError> {
+    // v4 `files.findByLinkedTo(messageId)` — files whose JSON `linkedTo` includes
+    // the id (the same `json_each` query the translator builds).
+    let mut stmt = main.prepare(
+        "SELECT f.id, f.originalFilename, f.mimeType, f.sha256 FROM files f \
+         WHERE EXISTS (SELECT 1 FROM json_each(f.linkedTo) WHERE json_each.value = ?1) \
+         ORDER BY f.rowid",
+    )?;
+    let rows = stmt.query_map(rusqlite::params![message_id], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, String>(2)?,
+            r.get::<_, String>(3)?,
+        ))
+    })?;
+    let mut attachments: Vec<Value> = Vec::new();
+    for row in rows {
+        let (id, filename, mime, sha256) = row?;
+        let filepath = format!("/api/v1/files/{id}");
+        if mime.starts_with("image/") {
+            attachments.push(json!({
+                "id": id,
+                "filename": filename,
+                "filepath": filepath,
+                "mimeType": mime,
+                "sha256": sha256,
+                "linkSummary": photo_link_summary(mount, &sha256)?,
+            }));
+        } else {
+            attachments.push(json!({
+                "id": id,
+                "filename": filename,
+                "filepath": filepath,
+                "mimeType": mime,
+            }));
+        }
+    }
+    Ok(Value::Array(attachments))
+}
+
+/// v4 `getPhotoLinkSummaryBySha256` — the reverse index from an image's content
+/// hash to every `doc_mount_file_links` row that hard-links those bytes. Empty
+/// (`{ count: 0, linkers: [] }`) when the sha isn't in the mount-index (a legacy
+/// `files` image, never written there — the common case). The non-empty linker
+/// resolution is faithful but not differential-exercised (the salon fixture's
+/// images are legacy `files`, not mount-index-linked).
+fn photo_link_summary(mount: &rusqlite::Connection, sha256: &str) -> Result<Value, DbError> {
+    let empty = || json!({ "count": 0, "linkers": [] });
+    if sha256.is_empty() {
+        return Ok(empty());
+    }
+    let file_id =
+        crate::db::doc_mount_files::DocMountFilesRepository::new(mount).find_by_sha256(sha256)?;
+    let Some(file_id) = file_id else {
+        return Ok(empty());
+    };
+    let links = crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount)
+        .find_by_file_id(&file_id)?;
+    if links.is_empty() {
+        return Ok(empty());
+    }
+    let points = crate::db::doc_mount_points::DocMountPointsRepository::new(mount);
+    let mut cache: std::collections::HashMap<String, (String, String)> =
+        std::collections::HashMap::new();
+    let mut linkers: Vec<Value> = Vec::new();
+    for link in &links {
+        let (name, store_type) = match cache.get(&link.mount_point_id) {
+            Some(v) => v.clone(),
+            None => {
+                let Some(mp) = points.find_store_naming_by_id(&link.mount_point_id)? else {
+                    continue;
+                };
+                let v = (
+                    mp.name,
+                    mp.store_type.unwrap_or_else(|| "documents".to_string()),
+                );
+                cache.insert(link.mount_point_id.clone(), v.clone());
+                v
+            }
+        };
+        let fm = crate::photos::keep_image_markdown::parse_kept_image_frontmatter(
+            link.extracted_text.as_deref(),
+        );
+        linkers.push(json!({
+            "linkId": link.id,
+            "mountPointId": link.mount_point_id,
+            "mountPointName": name,
+            "mountStoreType": store_type,
+            "relativePath": link.relative_path,
+            "isPhotoAlbum": crate::db::doc_mount_file_links::is_photos_relative_path(Some(&link.relative_path)),
+            "linkedAt": link.created_at,
+            "linkedBy": fm.linked_by,
+            "linkedById": fm.linked_by_id,
+            "caption": fm.caption,
+            "tags": fm.tags,
+        }));
+    }
+    Ok(json!({ "count": linkers.len(), "linkers": linkers }))
+}
+
 // ===========================================================================
 // Shared helpers for the mutation handlers
 // ===========================================================================
@@ -614,6 +729,42 @@ fn character_name(
         })
         .and_then(|c| s(&c, "name"))
         .unwrap_or_else(|| "Unknown".to_string())
+}
+
+/// v4 `handleTurnAction`'s participant-name resolution: names come only from the
+/// ACTIVE LLM character map (`getActiveLLMParticipants` → `findById`), so a
+/// user-controlled participant (never in that map) resolves to `"Unknown"`. The
+/// lookup is by characterId, matching v4's `charactersMap.get(characterId)`.
+fn resolve_active_llm_name(
+    main: &rusqlite::Connection,
+    mount: &rusqlite::Connection,
+    chat: &Value,
+    participant_id: &str,
+) -> String {
+    let unknown = || "Unknown".to_string();
+    let Some(participants) = chat.get("participants").and_then(Value::as_array) else {
+        return unknown();
+    };
+    let Some(char_id) = participants
+        .iter()
+        .find(|p| p.get("id").and_then(Value::as_str) == Some(participant_id))
+        .and_then(|p| s(p, "characterId"))
+    else {
+        return unknown();
+    };
+    let in_active_llm = participants.iter().any(|p| {
+        participant_present(p.get("status").and_then(Value::as_str))
+            && p.get("controlledBy").and_then(Value::as_str) == Some("llm")
+            && p.get("characterId").and_then(Value::as_str) == Some(char_id.as_str())
+    });
+    if !in_active_llm {
+        return unknown();
+    }
+    crate::db::characters_read::find_by_id(main, mount, &char_id)
+        .ok()
+        .flatten()
+        .and_then(|c| s(&c, "name"))
+        .unwrap_or_else(unknown)
 }
 
 // ===========================================================================
@@ -784,10 +935,11 @@ pub async fn turn_action(
     );
     resp.insert("state".into(), json!({ "queue": result.queue }));
     if let Some(pid) = participant_id {
+        // v4 resolves the affected participant's name from the ACTIVE LLM character
+        // map (`getActiveLLMParticipants` → findById), so a user-controlled
+        // participant (never in that map) resolves to "Unknown".
         let name = read_main_mount(db, |main, mount| {
-            Ok(find_participant(&chat, pid)
-                .map(|p| character_name(main, mount, p))
-                .unwrap_or_else(|| "Unknown".to_string()))
+            Ok(resolve_active_llm_name(main, mount, &chat, pid))
         })
         .unwrap_or_else(|_| "Unknown".to_string());
         resp.insert(
@@ -1003,9 +1155,61 @@ pub async fn message_delete(
     Response::MessageDelete(json!({ "success": true, "memoriesDeleted": memories_deleted }))
 }
 
+/// v4 `handleGenerateSwipe` (POST `/messages/{id}?action=swipe`, no `swipeIndex`):
+/// the ownership gate + the ASSISTANT-only / non-`systemSender` guards, then the
+/// injected [`SwipeGenerateDriver`] (the model boundaries stay host-side; the driver
+/// composes the ported [`regenerate_message_as_swipe`](crate::services::regenerate_swipe)
+/// over the spine's providers). Returns v4's `{ message: newSwipe }` (201 at the
+/// transport). The engine-arm swap (its current "swipe generation not yet
+/// assembled" refusal → this call) is a unification wire.
+pub async fn message_swipe_generate(
+    db: &Db,
+    driver: &dyn super::chat_send::SwipeGenerateDriver,
+    user_id: &str,
+    message_id: &str,
+) -> Response {
+    let (chat, messages, message) = match resolve_message(db, user_id, message_id) {
+        Ok(Some(v)) => v,
+        Ok(None) => return not_found("Message"),
+        Err(e) => return internal(e),
+    };
+    // Only character-authored ASSISTANT messages regenerate (v4's exact copy — note
+    // the handler says "swiped" where the service's backstop says "regenerated").
+    if message.get("role").and_then(Value::as_str) != Some("ASSISTANT") {
+        return bad_request("Only assistant messages can be swiped");
+    }
+    if message
+        .get("systemSender")
+        .and_then(Value::as_str)
+        .is_some_and(|s| !s.is_empty())
+    {
+        return bad_request("Staff and system messages cannot be regenerated");
+    }
+
+    let all_messages: Vec<Value> = messages
+        .into_iter()
+        .filter(|m| m.get("type").and_then(Value::as_str) == Some("message"))
+        .collect();
+    let active_user_participant_id = chat
+        .get("activeTypingParticipantId")
+        .and_then(Value::as_str)
+        .map(String::from);
+
+    let req = super::chat_send::SwipeGenerateRequest {
+        user_id: user_id.to_string(),
+        chat,
+        target_message: message,
+        all_messages,
+        active_user_participant_id,
+    };
+    match driver.generate_swipe(req).await {
+        Ok(new_swipe) => Response::Message(json!({ "message": new_swipe })),
+        Err(e) => Response::Error(e),
+    }
+}
+
 /// v4 message SWIPE — the SWITCH branch (`swipeIndex` present). The GENERATE
-/// branch (absent) needs the model driver and is a tracked deferral (returns a
-/// typed error).
+/// branch ([`message_swipe_generate`]) needs the model driver.
 pub fn message_swipe_switch(
     db: &Db,
     user_id: &str,
@@ -1035,11 +1239,20 @@ pub fn message_swipe_switch(
 // The chat PUT (v4 processChatUpdates, Salon-minimal) + impersonation verbs
 // ===========================================================================
 
-/// v4 `PUT /api/v1/chats/{id}` → `processChatUpdates` (the Salon pause/resume +
-/// title path). Only the plain `chats.update` field family is ported here (the
-/// fields with a `ChatUpdate` setter); the roster/participant/conciergeState
-/// families are tracked deferrals (named in the report). The response is v4's
+/// v4 `PUT /api/v1/chats/{id}` → `processChatUpdates` (the `chat` bag family).
+/// Ports the whole `updateChatSchema` field set — every column the bag can carry
+/// — plus the `roleplayTemplateId`/`projectId` existence gates (404). The write is
+/// a raw `UPDATE chats SET <cols> WHERE id` (byte-identical to v4's
+/// `chats.update(validatedData.chat)`: only the passed keys, no `updatedAt` mint;
+/// the `[[standalone-write-avoids-frozen-chatupdate]]` pattern, since `db/chats.rs`
+/// is another lane's file this round). The response is v4's
 /// `{ chat: {...chat, participants: enrichParticipantDetail[]} }`.
+///
+/// Deferrals (named in the report): the participant families
+/// (`updateParticipant`/`addParticipant`/`removeParticipantId`), `conciergeState`,
+/// the top-level `roleplayTemplateId`/`imageProfileId` shortcuts (not in the v5
+/// `chatUpdate` contract — it carries only `chat`), and the `projectId`
+/// `characterRoster` auto-add (a store-backed properties.json RMW).
 pub async fn chat_update(db: &Db, chat_id: &str, chat_bag: &Value) -> Response {
     let chat_id_owned = chat_id.to_string();
     let existing = match db.read_main(move |conn| chats_read::find_by_id(conn, &chat_id_owned)) {
@@ -1048,26 +1261,74 @@ pub async fn chat_update(db: &Db, chat_id: &str, chat_bag: &Value) -> Response {
         Err(e) => return internal(e),
     };
 
-    let patch = match build_chat_update(chat_bag) {
-        Ok(p) => p,
-        Err(msg) => return bad_request(msg),
-    };
-    let cid = chat_id.to_string();
-    if let Err(e) = db
-        .write(move |w| w.main().chats().update(&cid, &patch))
-        .await
-    {
-        return internal(e);
+    // Existence gates (v4 `processChatUpdates`): a non-null roleplayTemplateId /
+    // projectId in the bag must resolve, else 404.
+    if let Some(v) = chat_bag.get("roleplayTemplateId") {
+        if let Some(id) = v.as_str() {
+            let id = id.to_string();
+            match db.read_main(move |conn| row_exists(conn, "roleplay_templates", &id)) {
+                Ok(true) => {}
+                Ok(false) => return not_found("Roleplay template"),
+                Err(e) => return internal(e),
+            }
+        }
+    }
+    if let Some(v) = chat_bag.get("projectId") {
+        if let Some(id) = v.as_str() {
+            let id = id.to_string();
+            match db.read_main(move |conn| row_exists(conn, "projects", &id)) {
+                Ok(true) => {}
+                Ok(false) => return not_found("Project"),
+                Err(e) => return internal(e),
+            }
+        }
     }
 
-    // Re-read + enrich participants (detail).
-    let chat_id_owned = chat_id.to_string();
-    let chat = match db.read_main(move |conn| chats_read::find_by_id(conn, &chat_id_owned)) {
-        Ok(Some(c)) => c,
-        Ok(None) => return not_found("Chat"),
-        Err(e) => return internal(e),
+    let columns = match build_chat_update_columns(chat_bag) {
+        Ok(c) => c,
+        Err(msg) => return bad_request(msg),
     };
-    let _ = existing;
+    // The recognized keys we wrote (== column == JSON key) — used to overlay the
+    // response object below (v4 returns the merged `{...existing, ...set}`, not a
+    // fresh re-read, so an explicit-null set field stays present as `null`).
+    let set_keys: Vec<&'static str> = columns.iter().map(|(c, _)| *c).collect();
+    if !columns.is_empty() {
+        let cid = chat_id.to_string();
+        if let Err(e) = db
+            .write(move |w| {
+                let conn = w.main().connection();
+                let set: Vec<String> = columns
+                    .iter()
+                    .map(|(c, _)| format!("\"{c}\" = ?"))
+                    .collect();
+                let sql = format!("UPDATE chats SET {} WHERE id = ?", set.join(", "));
+                let mut params: Vec<rusqlite::types::Value> =
+                    columns.into_iter().map(|(_, v)| v).collect();
+                params.push(rusqlite::types::Value::Text(cid));
+                conn.execute(&sql, rusqlite::params_from_iter(params))?;
+                Ok(())
+            })
+            .await
+        {
+            return internal(e);
+        }
+    }
+
+    // v4's `_update` returns `ChatSchema.parse({...existing, ...data})` — the
+    // MERGE of the (Zod-parsed, null-omitted) existing row and the set fields —
+    // NOT a fresh DB re-read. So overlay each set key (verbatim JSON value,
+    // explicit nulls kept) onto the existing marshaled chat; the DB write above
+    // persists the same columns.
+    let mut chat = existing;
+    if let Some(obj) = chat.as_object_mut() {
+        if let Some(bag) = chat_bag.as_object() {
+            for k in &set_keys {
+                if let Some(v) = bag.get(*k) {
+                    obj.insert((*k).to_string(), v.clone());
+                }
+            }
+        }
+    }
     let chat_id_s = chat_id.to_string();
     let out = read_main_mount(db, move |main, mount| {
         let participants = chat
@@ -1094,39 +1355,137 @@ pub async fn chat_update(db: &Db, chat_id: &str, chat_bag: &Value) -> Response {
     }
 }
 
-/// Build a `ChatUpdate` patch from the validated `chat` field bag — only the
-/// fields with an existing setter (Salon-minimal). Unknown/unported field
-/// families are ignored (tracked deferral); a value with the wrong type is a
-/// bad-request.
-fn build_chat_update(bag: &Value) -> Result<crate::db::chats::ChatUpdate, String> {
-    use crate::db::chats::ChatUpdate;
-    let mut patch = ChatUpdate::default();
+/// `SELECT 1 FROM <table> WHERE id = ?` existence probe (v4's `findById` truthiness
+/// for the validation gates — the slim-row check, no vault overlay). A missing
+/// table resolves to `false`: v4's lazy `getCollection` would create the empty
+/// collection and `findById` return null, so a not-yet-materialized table is
+/// "not found", not an error.
+fn row_exists(conn: &rusqlite::Connection, table: &str, id: &str) -> Result<bool, DbError> {
+    use rusqlite::OptionalExtension;
+    match conn
+        .query_row(
+            &format!("SELECT 1 FROM \"{table}\" WHERE id = ?1"),
+            rusqlite::params![id],
+            |_| Ok(()),
+        )
+        .optional()
+    {
+        Ok(found) => Ok(found.is_some()),
+        Err(rusqlite::Error::SqliteFailure(_, Some(msg))) if msg.contains("no such table") => {
+            Ok(false)
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Marshal the validated `chat` bag into `(column, bound-value)` pairs for the raw
+/// `UPDATE`, one per present `updateChatSchema` field with v4's SQLite affinity
+/// (bool → INTEGER 0/1, number → INTEGER when integer-valued else REAL, string →
+/// TEXT, an explicit `null` on a nullish field → SQL NULL). Absent keys are
+/// omitted (v4's Zod `.optional()` drops them). A present value of the wrong JSON
+/// type is a bad-request.
+fn build_chat_update_columns(
+    bag: &Value,
+) -> Result<Vec<(&'static str, rusqlite::types::Value)>, String> {
+    use rusqlite::types::Value as SqlValue;
+    let mut out: Vec<(&'static str, SqlValue)> = Vec::new();
     let Some(obj) = bag.as_object() else {
-        return Ok(patch);
+        return Ok(out);
     };
-    if let Some(v) = obj.get("title") {
-        patch.title = Some(v.as_str().ok_or("Invalid title")?.to_string());
+
+    // TEXT columns (non-nullable in the schema).
+    for col in ["title", "contextSummary", "documentMode", "terminalMode"] {
+        if let Some(v) = obj.get(col) {
+            let s = v.as_str().ok_or_else(|| format!("Invalid {col}"))?;
+            out.push((col, SqlValue::Text(s.to_string())));
+        }
     }
-    if let Some(v) = obj.get("isPaused") {
-        patch.is_paused = Some(v.as_bool().ok_or("Invalid isPaused")?);
+    // TEXT columns (nullish → explicit null clears).
+    for col in [
+        "roleplayTemplateId",
+        "projectId",
+        "imageProfileId",
+        "answerConfirmationOverride",
+        "activeTerminalSessionId",
+    ] {
+        if let Some(v) = obj.get(col) {
+            out.push((col, nullable_text(v, col)?));
+        }
     }
-    if let Some(v) = obj.get("isManuallyRenamed") {
-        patch.is_manually_renamed = Some(v.as_bool().ok_or("Invalid isManuallyRenamed")?);
+    // Boolean columns (non-nullable → INTEGER 0/1).
+    for col in [
+        "isPaused",
+        "isManuallyRenamed",
+        "documentEditingMode",
+        "allowCrossCharacterVaultReads",
+    ] {
+        if let Some(v) = obj.get(col) {
+            let b = v.as_bool().ok_or_else(|| format!("Invalid {col}"))?;
+            out.push((col, SqlValue::Integer(b as i64)));
+        }
     }
-    if let Some(v) = obj.get("contextSummary") {
-        patch.context_summary = Some(v.as_str().map(String::from));
+    // Boolean columns (nullish → explicit null clears).
+    for col in [
+        "turnSkippingEnabled",
+        "showThinking",
+        "coreWhisperEnabled",
+        "alertCharactersOfLanternImages",
+    ] {
+        if let Some(v) = obj.get(col) {
+            out.push((col, nullable_bool(v, col)?));
+        }
     }
-    if let Some(v) = obj.get("turnSkippingEnabled") {
-        patch.turn_skipping_enabled = Some(if v.is_null() {
-            None
-        } else {
-            Some(v.as_bool().ok_or("Invalid turnSkippingEnabled")?)
-        });
+    // Number columns (non-nullable → INTEGER when integer-valued else REAL).
+    for col in ["dividerPosition", "rightPaneVerticalSplit"] {
+        if let Some(v) = obj.get(col) {
+            out.push((col, number_value(v, col)?));
+        }
     }
-    if let Some(v) = obj.get("documentMode") {
-        patch.document_mode = Some(v.as_str().ok_or("Invalid documentMode")?.to_string());
+    // Number columns (nullish → explicit null clears).
+    for col in ["coreWhisperInterval"] {
+        if let Some(v) = obj.get(col) {
+            if v.is_null() {
+                out.push((col, SqlValue::Null));
+            } else {
+                out.push((col, number_value(v, col)?));
+            }
+        }
     }
-    Ok(patch)
+    Ok(out)
+}
+
+fn nullable_text(v: &Value, col: &str) -> Result<rusqlite::types::Value, String> {
+    use rusqlite::types::Value as SqlValue;
+    if v.is_null() {
+        Ok(SqlValue::Null)
+    } else {
+        Ok(SqlValue::Text(
+            v.as_str()
+                .ok_or_else(|| format!("Invalid {col}"))?
+                .to_string(),
+        ))
+    }
+}
+fn nullable_bool(v: &Value, col: &str) -> Result<rusqlite::types::Value, String> {
+    use rusqlite::types::Value as SqlValue;
+    if v.is_null() {
+        Ok(SqlValue::Null)
+    } else {
+        Ok(SqlValue::Integer(
+            v.as_bool().ok_or_else(|| format!("Invalid {col}"))? as i64,
+        ))
+    }
+}
+/// A JSON number → INTEGER when integer-valued (mirrors better-sqlite3's
+/// `Number.isInteger` binding), else REAL.
+fn number_value(v: &Value, col: &str) -> Result<rusqlite::types::Value, String> {
+    use rusqlite::types::Value as SqlValue;
+    let f = v.as_f64().ok_or_else(|| format!("Invalid {col}"))?;
+    if f.fract() == 0.0 && f.abs() < 9.007_199_254_740_992e15 {
+        Ok(SqlValue::Integer(f as i64))
+    } else {
+        Ok(SqlValue::Real(f))
+    }
 }
 
 /// v4 `?action=impersonate` (`handleImpersonate`).

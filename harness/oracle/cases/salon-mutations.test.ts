@@ -219,6 +219,40 @@ async function main(): Promise<void> {
     { name: 'message_delete_swipe', method: 'messageDelete', url: `${mbase(SWIPE_MSG)}`, paramId: SWIPE_MSG },
     { name: 'message_swipe_switch', method: 'messagePost', url: `${mbase(SWIPE_MSG)}?action=swipe`, paramId: SWIPE_MSG, body: { swipeIndex: 1 } },
     { name: 'chat_update', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { isPaused: true, title: 'Paused Expedition' } } },
+    // P4.6c: the full `chat` bag field set (every updateChatSchema column the bag
+    // can carry, minus the gated roleplayTemplateId/projectId) — one raw update,
+    // no updatedAt mint, so still zero-mint.
+    {
+      name: 'chat_update_broad',
+      method: 'chatPut',
+      url: cbase,
+      paramId: GROUP,
+      body: {
+        chat: {
+          title: 'Broadly Reconfigured',
+          contextSummary: 'A terse recap.',
+          isManuallyRenamed: true,
+          documentEditingMode: true,
+          allowCrossCharacterVaultReads: true,
+          coreWhisperEnabled: false,
+          coreWhisperInterval: 5,
+          turnSkippingEnabled: false,
+          showThinking: true,
+          answerConfirmationOverride: 'OFF',
+          documentMode: 'split',
+          dividerPosition: 60,
+          terminalMode: 'focus',
+          activeTerminalSessionId: null,
+          rightPaneVerticalSplit: 40,
+          alertCharactersOfLanternImages: true,
+          imageProfileId: null,
+        },
+      },
+    },
+    // P4.6c: the existence gates (404) — a non-null roleplayTemplateId / projectId
+    // that doesn't resolve.
+    { name: 'chat_update_roleplay_404', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { roleplayTemplateId: '99999999-9999-4999-8999-999999999999' } } },
+    { name: 'chat_update_project_404', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { projectId: '99999999-9999-4999-8999-999999999999' } } },
     { name: 'message_delete_cascade', method: 'messageDelete', url: `${mbase(EDIT_MSG)}?memoryAction=DELETE_MEMORIES`, paramId: EDIT_MSG },
   ];
 

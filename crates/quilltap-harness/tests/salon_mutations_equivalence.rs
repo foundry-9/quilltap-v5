@@ -244,6 +244,54 @@ fn salon_mutations_match_oracle() {
             }),
         ),
         (
+            "chat_update_broad",
+            Box::new(|db: &Db| {
+                rt.block_on(salon::chat_update(
+                    db,
+                    GROUP,
+                    &serde_json::json!({
+                        "title": "Broadly Reconfigured",
+                        "contextSummary": "A terse recap.",
+                        "isManuallyRenamed": true,
+                        "documentEditingMode": true,
+                        "allowCrossCharacterVaultReads": true,
+                        "coreWhisperEnabled": false,
+                        "coreWhisperInterval": 5,
+                        "turnSkippingEnabled": false,
+                        "showThinking": true,
+                        "answerConfirmationOverride": "OFF",
+                        "documentMode": "split",
+                        "dividerPosition": 60,
+                        "terminalMode": "focus",
+                        "activeTerminalSessionId": null,
+                        "rightPaneVerticalSplit": 40,
+                        "alertCharactersOfLanternImages": true,
+                        "imageProfileId": null,
+                    }),
+                ))
+            }),
+        ),
+        (
+            "chat_update_roleplay_404",
+            Box::new(|db: &Db| {
+                rt.block_on(salon::chat_update(
+                    db,
+                    GROUP,
+                    &serde_json::json!({ "roleplayTemplateId": "99999999-9999-4999-8999-999999999999" }),
+                ))
+            }),
+        ),
+        (
+            "chat_update_project_404",
+            Box::new(|db: &Db| {
+                rt.block_on(salon::chat_update(
+                    db,
+                    GROUP,
+                    &serde_json::json!({ "projectId": "99999999-9999-4999-8999-999999999999" }),
+                ))
+            }),
+        ),
+        (
             "message_delete_cascade",
             Box::new(|db: &Db| {
                 rt.block_on(salon::message_delete(
@@ -261,8 +309,28 @@ fn salon_mutations_match_oracle() {
     for (name, f) in &cases {
         let want = &oracle[*name];
         let (got_body, got_chats, got_msgs) = run(name, f.as_ref());
-        let sections: [(&str, Value, Value); 3] = [
-            ("body", got_body, want["body"].clone()),
+        // Body: v4 error responses are `{ error: msg }`; the v5 typed shape is
+        // `{ kind, message }`. Compare the copy when the oracle body is an error.
+        if let Some(err) = want["body"].get("error").and_then(Value::as_str) {
+            let got_msg = got_body
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            if got_msg != err {
+                eprintln!(
+                    "[{name}] section `body` error-copy MISMATCH:\n  GOT : {got_msg}\n  WANT: {err}"
+                );
+                failed.push(format!("{name}/body"));
+            }
+        } else {
+            let g = norm(&got_body);
+            let w = norm(&want["body"]);
+            if g != w {
+                eprintln!("[{name}] section `body` MISMATCH:\n{}", first_diff(&g, &w));
+                failed.push(format!("{name}/body"));
+            }
+        }
+        let sections: [(&str, Value, Value); 2] = [
             (
                 "chats",
                 table_rows(&got_chats),
