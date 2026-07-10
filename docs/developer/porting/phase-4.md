@@ -419,8 +419,15 @@ writing the round's work orders first."* Run a v4 drift check before each
 round. **Progress:** P4.0 (M0), P4.1 (all four host-driver lanes), P4.2
 (M2, `quilltap-web` + Docker), P4.3 (M1, the CLI Tier R), the P4.d drift
 re-port round, P4.4 unit 1 (the unlock/pepper-vault service +
-fresh-instance provisioning; unit 2 — chat creation + Green Room — is the
-next P4.4 order), and P4.5 (the SPA foundation: unlock/setup/shell in a
-real browser against the axum host) are DONE. The oracle baseline is
-`a7b1398d`. Next per the decomposition: P4.4 unit 2, then the P4.6 first
-Salon vertical (M4).
+fresh-instance provisioning), P4.4 unit 2 (chat creation + the Green Room
+— the seven leaf sub-units plus the P4.4u2b `handleCreate` spine,
+`Request::ChatCreate` + `ChatCreateDriver`, the capstone tier-3
+differential, and the web e2e incl. the Green-Room SSE replay), and P4.5
+(the SPA foundation: unlock/setup/shell in a real browser against the
+axum host) are DONE. The oracle baseline is `a7b1398d`. Next per the
+decomposition: the P4.6 first Salon vertical (M4), which consumes the
+`chatCreate` contract. Tracked chat-creation follow-ups: the
+participants explicit-null marshaling seam + the create-echo DTO shape
+(see the capstone test header), and the capstone corpus extension
+(continuation create, outfit modes, the scenario-precedence path cases,
+the greeting retry/reroute ladder branches).

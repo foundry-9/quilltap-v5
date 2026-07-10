@@ -4,6 +4,21 @@
 
 ### 5.0-dev
 
+P4.4u2b unification: the chat-creation spine integrated on main (pure
+fast-forward; one fmt fix folded into the lane's capstone commit).
+services::chat_create composes the seven leaf sub-units into v4's
+handleCreate + the autoGenerateFirstMessage ladder behind the
+ChatCreateDriver seam; Request::ChatCreate/Response::ChatCreate land the
+contract; the host ChatCreateSpine assembles it and the /api/events SSE
+replays the Green-Room backlog to late subscribers. Verified: 1,171
+workspace tests / 0 failed, clippy -D warnings both feature sets, fmt;
+the capstone tier-3 differential green against a freshly regenerated v4
+oracle at a7b1398d (6 cases × 6 sections incl. the byte-exact seed rows
+and Green-Room frames). Tracked follow-ups: the participants
+explicit-null marshaling seam + the create-echo DTO shape, and the
+capstone corpus extension (continuation, outfit modes,
+scenario-precedence paths, the greeting retry/reroute branches).
+
 P4.4u2b work order: the handleCreate spine + ChatCreate dispatch (the
 chat-creation capstone). Composes the seven landed leaf sub-units into
 v4's POST /api/v1/chats pipeline behind a ChatCreateDriver host seam,

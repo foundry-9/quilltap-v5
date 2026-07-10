@@ -5691,3 +5691,68 @@ the `ChatCreateDriver` host assembly + the capstone tier-3 differential +
 the quilltap-web integration test); the full inventory is in the
 `[[p4-4-u2-chat-creation]]` memory note and the unit-2 work order. Then
 P4.6 (the first Salon vertical, M4).
+
+**P4.4u2b (the `handleCreate` spine + `ChatCreate` dispatch): DONE and
+unified on main (2026-07-10) — P4.4 unit 2 (chat creation + the Green
+Room) is COMPLETE.** The solo lane landed three commits (pure
+fast-forward; one `cargo fmt` fix folded into the capstone commit at
+unification): **(1)** `services::chat_create` — `handle_create` composing
+the seven leaf sub-units in v4's exact order (continuation ownership
+precheck → autonomous preconditions [user-controlled reject, ≥2 LLM,
+cron via `enclave::cron`] → `buildAllParticipants` +
+`pickWeightedByTalkativeness` [RNG injected] → the scenario precedence
+chain → `build_chat_context` → participant minting → project
+defaults/roster auto-add → `chats.create` [+ the autonomous column
+block] → outfits [never fatal] → the compiler → the
+continuation/autonomous/normal branch over the seed writers → enrich →
+the ad-hoc autonomous auto-start → finish) +
+`auto_generate_first_message` (the 4-attempt ladder incl. the
+content-filter Concierge reroute) + the previously-unported memory-recap
+recent-conversations helpers; `services::chat_enrichment`
+(`enrich_participant_summary` + `get_character_summary`, the
+no-preloaded 201-body path); `photos::resolve_character_avatar` (the URL
+half); `api::chat_create` (`ChatCreateDriver`) + `Request::ChatCreate` /
+`Response::ChatCreate` + the readiness-gated engine arm. Two write
+paths: the caller-opened writable connections for the `&Connection`
+sub-units + direct repo writes, and the single-writer `Db` for the seed
+writers / continuation / avatar / greeting-log. **(2)** The production
+`ChatCreateSpine` in `quilltap-host::spine` — per dispatch it opens its
+OWN writable Writers (busy_timeout guards the rare overlap with the
+engine writer thread; the outfit sub-unit holds writable connections
+across an LLM await, which the sync `Db::write` channel cannot host),
+shares the ChatSpine provider Arcs + the cheap-LLM executor +
+`DbApiKeys`, and runs on the Send-bridge dedicated thread; the engine
+owns ONE shared `CreationProgressBus` and the `/api/events` SSE replays
+`active_snapshot` to late subscribers; `chat_create_end_to_end` proves
+it over real HTTP (201 + listChats + a LATE subscriber replaying the
+Green-Room frames). **(3)** The capstone tier-3 differential
+(`chat_create_capstone_equivalence`) driving v4's REAL `handleCreate`
+(jest, mocked NextRequest/auth, model boundaries canned by recorded
+keys) over a 6-case corpus — single-char first message, two-char +
+scenario (Host adds + scenario + Prospero + Aurora seed rows
+byte-exact), no-progress (inert emitter), autonomous ad-hoc (auto-start
+→ the AUTONOMOUS_ROOM_TURN job + run-start banner), generated greeting
+(the ladder builds a byte-identical prompt → canned stream hit), and
+autonomous cron (next-run stamped, TZ=UTC oracle) — diffing 6 sections
+each (`chats` / `chat_messages` / `projects` / `background_jobs` / the
+ordered Green-Room frame trace / the 201 DTO) in the minted-values remap
+form. Unification verified: the full workspace gate (**1,171 tests / 0
+failed**; clippy `-D warnings` default + `native-transport`; fmt) and
+the capstone re-run green against a freshly regenerated v4 oracle at
+`a7b1398d`. Versions: core 0.0.152, harness 0.0.139, host 0.0.6, web
+0.0.4. **Tracked follow-ups (two fidelity findings + the corpus
+extension, one already in flight as a spun-off subtask):** (1) the
+persisted `chats.participants` drops explicit-null
+`connectionProfileId`/`imageProfileId`/`selectedSystemPromptId` (needs
+the `removedAt` double-`Option` pattern + `chats_tier2`/`chats_read`/
+`chats_participants` regens — normalized as a bounded seam in the
+capstone, a genuine null-vs-value divergence still surfaces); (2) the
+201 DTO body is built from a re-read (NULL columns dropped) vs v4's
+create-echo (explicit nulls kept) — flagged for P4.5/P4.6 confirmation;
+(3) extend the capstone corpus to the order's floor (continuation
+create, the outfit modes + failure, the scenario-precedence path cases,
+the greeting retry/reroute branches, no-connection-profile). Standing
+deferrals unchanged (`handleImport`, participant `?action=` verbs, chat
+merge, `handleList` enrichment → P4.6). **Next: P4.6, the first Salon
+vertical (M4)** — it consumes the `chatCreate` contract; report the TS
+mirror shape to that order.
