@@ -309,6 +309,9 @@ impl<'c> ProviderModelsRepository<'c> {
         }
     }
 
+    // NOTE: the `find_by_provider` / `find_all` net reads (the models GET route)
+    // are free functions below (the scoped-read precedent), not repo methods.
+
     /// True iff a row with this id exists — v4's `_update` `findById` precondition
     /// (a missing target makes the update a no-op returning `null`).
     fn row_exists(&self, id: &str) -> Result<bool, DbError> {
@@ -326,4 +329,78 @@ impl<'c> ProviderModelsRepository<'c> {
             })?;
         Ok(found.is_some())
     }
+}
+
+// ============================================================================
+// Net reads — the models GET route (v4 `findByProvider` / `findAll`) — P4.6d
+// ============================================================================
+
+/// The shared column list every provider-models net read selects (marshal order).
+const PM_COLUMNS: &str = "id, provider, modelId, modelType, displayName, baseUrl, contextWindow, \
+     maxOutputTokens, deprecated, experimental, createdAt, updatedAt";
+
+/// Marshal one `provider_models` row (selected in [`PM_COLUMNS`] order) into the
+/// net-read [`serde_json::Value`], faithful to v4's `hydrateRow` + Zod parse:
+///   * the three nullable-optional columns (`baseUrl`, `contextWindow`,
+///     `maxOutputTokens`) are OMITTED when SQL NULL (v4's `undefined` dropped by
+///     `JSON.stringify`); the two REAL number columns JS-render when present;
+///   * `modelType` (default `'chat'`), `deprecated`/`experimental` (default
+///     `false`) are materialized — a v4-written row always carries them, so the
+///     stored cell is simply rendered;
+///   * booleans coerce INTEGER 0/1 → bool; numbers JS-render.
+fn marshal_pm_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<serde_json::Value> {
+    use serde_json::{Map, Value};
+    let mut obj = Map::new();
+    obj.insert("id".into(), Value::String(r.get::<_, String>(0)?));
+    obj.insert("provider".into(), Value::String(r.get::<_, String>(1)?));
+    obj.insert("modelId".into(), Value::String(r.get::<_, String>(2)?));
+    obj.insert("modelType".into(), Value::String(r.get::<_, String>(3)?));
+    obj.insert("displayName".into(), Value::String(r.get::<_, String>(4)?));
+    if let Some(s) = r.get::<_, Option<String>>(5)? {
+        obj.insert("baseUrl".into(), Value::String(s));
+    }
+    if let Some(n) = r.get::<_, Option<f64>>(6)? {
+        obj.insert("contextWindow".into(), super::js_number_to_json(n));
+    }
+    if let Some(n) = r.get::<_, Option<f64>>(7)? {
+        obj.insert("maxOutputTokens".into(), super::js_number_to_json(n));
+    }
+    obj.insert("deprecated".into(), Value::Bool(r.get::<_, i64>(8)? == 1));
+    obj.insert("experimental".into(), Value::Bool(r.get::<_, i64>(9)? == 1));
+    obj.insert("createdAt".into(), Value::String(r.get::<_, String>(10)?));
+    obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(11)?));
+    Ok(Value::Object(obj))
+}
+
+/// v4 `repos.providerModels.findAll()` — every cached model, in insertion (rowid)
+/// order (v4 `findByFilter({})`, no sort). Used by the models GET route (no
+/// provider filter).
+pub fn find_all(conn: &Connection) -> Result<Vec<serde_json::Value>, DbError> {
+    let mut stmt = conn.prepare(&format!("SELECT {PM_COLUMNS} FROM provider_models"))?;
+    let rows = stmt.query_map([], marshal_pm_row)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+/// v4 `repos.providerModels.findByProvider(provider)` — cached models for one
+/// provider, in insertion (rowid) order (`findByFilter({ provider })`, no sort).
+/// The optional `modelType` filter is not exposed (the models GET route never
+/// passes one — the `hasVision`/`hasStreaming` query params are display-only in
+/// v4 and do not constrain the DB query).
+pub fn find_by_provider(
+    conn: &Connection,
+    provider: &str,
+) -> Result<Vec<serde_json::Value>, DbError> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {PM_COLUMNS} FROM provider_models WHERE provider = ?1"
+    ))?;
+    let rows = stmt.query_map(params![provider], marshal_pm_row)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
 }

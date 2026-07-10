@@ -1,0 +1,268 @@
+//! P4.6d settings-server differential — the Rust `api::settings::*` handlers vs
+//! v4's REAL route handlers over the shared settings fixture. Consolidates the
+//! work order's four DB-family differentials (`settings_chat`,
+//! `connection_profiles_routes`, `api_keys_routes`, `provider_models_routes`) —
+//! each case is tagged with its `family`.
+//!
+//! Both sides run each case over a FRESH copy of the committed fixture; the
+//! response body (+ a post-mutation family-list refetch, observing the persisted
+//! effect via the already-verified read marshaling) is diffed after normalizing
+//! minted ids (UUIDs not in the fixture spec → `<newid>`) and timestamps (ISO →
+//! `<ts>`). Delete/reorder/reset-sort return an ack (the contract folds v4's
+//! `{success:true}` body → ack), so their body is not compared — the refetched
+//! list carries the effect.
+//!
+//! Generate the fixture + oracle (Node 24, from the v4 checkout — see the
+//! `build-settings-fixture.ts` + `settings-routes.test.ts` headers):
+//!   QT_FIXTURE_SETTINGS_MAIN=/tmp/qt-settings-fixture.db node --import tsx …build-settings-fixture.ts
+//!   … QT_ORACLE_OUT=/tmp/oracle-settings-routes.ndjson npx jest -- settings-routes
+//! Run:
+//!   QT_ORACLE_SETTINGS_ROUTES=/tmp/oracle-settings-routes.ndjson \
+//!   QT_FIXTURE_SETTINGS=/tmp/qt-settings-fixture.db \
+//!     cargo test -p quilltap-harness --test settings_routes_equivalence
+
+use std::collections::HashSet;
+use std::path::PathBuf;
+
+use quilltap_core::api::settings;
+use quilltap_core::api::types::Response;
+use quilltap_core::db::runtime::{Db, DbPaths};
+use regex::Regex;
+use serde_json::Value;
+
+const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+fn env_or_skip(key: &str) -> Option<String> {
+    match std::env::var(key) {
+        Ok(v) => Some(v),
+        Err(_) => {
+            eprintln!("SKIP: set {key} (see test header).");
+            None
+        }
+    }
+}
+
+fn spec_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../harness/oracle/fixtures/settings.json")
+}
+
+/// The fixture id set (so minted UUIDs collapse but baked ids stay, keeping
+/// enrichment relationships verifiable).
+fn known_ids(spec: &Value) -> HashSet<String> {
+    let mut ids = HashSet::new();
+    let mut push = |v: &Value| {
+        if let Some(s) = v.as_str() {
+            ids.insert(s.to_string());
+        }
+    };
+    for k in ["userA", "userB", "settingsIdA", "roleplayTemplateId"] {
+        push(&spec[k]);
+    }
+    for group in ["apiKeys", "profiles", "providerModels"] {
+        if let Some(obj) = spec[group].as_object() {
+            for v in obj.values() {
+                push(v);
+            }
+        }
+    }
+    ids
+}
+
+fn normalize(v: &mut Value, known: &HashSet<String>, uuid_re: &Regex, ts_re: &Regex) {
+    match v {
+        Value::String(s) => {
+            if ts_re.is_match(s) {
+                *s = "<ts>".to_string();
+            } else if uuid_re.is_match(s) && !known.contains(s.as_str()) {
+                *s = "<newid>".to_string();
+            }
+        }
+        Value::Array(a) => {
+            for x in a {
+                normalize(x, known, uuid_re, ts_re);
+            }
+        }
+        Value::Object(o) => {
+            for x in o.values_mut() {
+                normalize(x, known, uuid_re, ts_re);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Run a single case's handler and return `(body, is_ack)`.
+fn run_handler(rt: &tokio::runtime::Runtime, db: &Db, user: &str, req: &Value) -> (Value, bool) {
+    let route = req["route"].as_str().unwrap();
+    let method = req["method"].as_str().unwrap();
+    let url = req["url"].as_str().unwrap();
+    let param_id = req["paramId"].as_str();
+    let body = &req["body"];
+
+    let resp = match (route, method) {
+        ("settingsChat", "GET") => rt.block_on(settings::chat_settings_get(db, user)),
+        ("settingsChat", "PUT") => rt.block_on(settings::chat_settings_update(db, user, body)),
+        ("connProfiles", "GET") => settings::connection_profile_list(db, user, false),
+        ("connProfiles", "POST") => {
+            if url.contains("action=reorder") {
+                let mut order: Vec<(i64, String)> = body["order"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|e| {
+                        (
+                            e["sortIndex"].as_i64().unwrap(),
+                            e["id"].as_str().unwrap().to_string(),
+                        )
+                    })
+                    .collect();
+                order.sort_by_key(|(i, _)| *i);
+                let ids: Vec<String> = order.into_iter().map(|(_, id)| id).collect();
+                rt.block_on(settings::connection_profile_reorder(db, user, &ids))
+            } else if url.contains("action=reset-sort") {
+                rt.block_on(settings::connection_profile_reset_sort(db, user))
+            } else {
+                rt.block_on(settings::connection_profile_create(db, user, body))
+            }
+        }
+        ("connProfileItem", "PUT") => rt.block_on(settings::connection_profile_update(
+            db,
+            user,
+            param_id.unwrap(),
+            body,
+        )),
+        ("connProfileItem", "DELETE") => {
+            rt.block_on(settings::connection_profile_delete(db, param_id.unwrap()))
+        }
+        ("apiKeys", "GET") => settings::api_key_list(db, user),
+        ("apiKeys", "POST") => rt.block_on(settings::api_key_create(
+            db,
+            user,
+            body["provider"].as_str().unwrap_or(""),
+            body["label"].as_str().unwrap_or(""),
+            body["apiKey"].as_str().unwrap_or(""),
+        )),
+        ("apiKeyItem", "PUT") => rt.block_on(settings::api_key_update(
+            db,
+            param_id.unwrap(),
+            body["label"].as_str(),
+            body["isActive"].as_bool(),
+            body["apiKey"].as_str(),
+        )),
+        ("apiKeyItem", "DELETE") => rt.block_on(settings::api_key_delete(db, param_id.unwrap())),
+        ("models", "GET") => {
+            let provider = url
+                .split("provider=")
+                .nth(1)
+                .map(|s| s.split('&').next().unwrap_or(s).to_string());
+            settings::model_list(db, provider.as_deref())
+        }
+        other => panic!("unhandled route/method: {other:?}"),
+    };
+    response_to_body(resp)
+}
+
+fn response_to_body(resp: Response) -> (Value, bool) {
+    match resp {
+        Response::ChatSettings(v)
+        | Response::ConnectionProfiles(v)
+        | Response::ConnectionProfile(v)
+        | Response::ApiKeys(v)
+        | Response::ApiKey(v)
+        | Response::Models(v) => (v, false),
+        Response::Ack(_) => (serde_json::json!({}), true),
+        Response::Error(e) => (serde_json::json!({ "error": e.message }), false),
+        other => panic!("unexpected response variant: {other:?}"),
+    }
+}
+
+#[test]
+fn settings_routes_match_v4() {
+    let (Some(oracle_path), Some(fixture)) = (
+        env_or_skip("QT_ORACLE_SETTINGS_ROUTES"),
+        env_or_skip("QT_FIXTURE_SETTINGS"),
+    ) else {
+        return;
+    };
+    let spec: Value =
+        serde_json::from_str(&std::fs::read_to_string(spec_path()).expect("read settings.json"))
+            .expect("parse spec");
+    let user_a = spec["userA"].as_str().unwrap().to_string();
+    let user_b = spec["userB"].as_str().unwrap().to_string();
+    let known = known_ids(&spec);
+    let uuid_re = Regex::new(
+        r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+    )
+    .unwrap();
+    let ts_re = Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$").unwrap();
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .unwrap();
+
+    let oracle = std::fs::read_to_string(&oracle_path).expect("read oracle ndjson");
+    let mut n = 0;
+    for line in oracle.lines().filter(|l| !l.trim().is_empty()) {
+        let row: Value = serde_json::from_str(line).expect("parse oracle row");
+        let name = row["name"].as_str().unwrap().to_string();
+        let req = &row["req"];
+        let user = if req["user"].as_str() == Some("A") {
+            &user_a
+        } else {
+            &user_b
+        };
+
+        // Fresh fixture copy per case (mutations mint / delete).
+        let tmp = tempfile::tempdir().unwrap();
+        let main = tmp.path().join("main.db");
+        std::fs::copy(&fixture, &main).unwrap();
+        let db = Db::open(
+            DbPaths {
+                main,
+                mount_index: None,
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .expect("open db");
+
+        let (mut got_body, is_ack) = run_handler(&rt, &db, user, req);
+
+        // The `after` refetch (post-mutation family list).
+        let after = req["after"].as_str();
+        let got_after = after.map(|kind| {
+            let r = match kind {
+                "connProfiles" => settings::connection_profile_list(&db, user, false),
+                "apiKeys" => settings::api_key_list(&db, user),
+                _ => panic!("unknown after: {kind}"),
+            };
+            response_to_body(r).0
+        });
+        drop(db);
+
+        let mut oracle_body = row["body"].clone();
+        normalize(&mut got_body, &known, &uuid_re, &ts_re);
+        normalize(&mut oracle_body, &known, &uuid_re, &ts_re);
+
+        if !is_ack {
+            assert_eq!(
+                oracle_body, got_body,
+                "[{name}] response body mismatch\noracle: {oracle_body}\ngot:    {got_body}"
+            );
+        }
+        if let Some(mut got_after) = got_after {
+            let mut oracle_after = row["after"].clone();
+            normalize(&mut got_after, &known, &uuid_re, &ts_re);
+            normalize(&mut oracle_after, &known, &uuid_re, &ts_re);
+            assert_eq!(
+                oracle_after, got_after,
+                "[{name}] after-refetch mismatch\noracle: {oracle_after}\ngot:    {got_after}"
+            );
+        }
+        n += 1;
+    }
+    assert!(n >= 19, "expected >= 19 cases, got {n}");
+    eprintln!("settings-routes differential: {n} cases matched");
+}

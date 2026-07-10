@@ -133,6 +133,17 @@ pub struct CpUpdate {
     pub transport: Option<String>,
     pub courier_delta_mode: Option<bool>,
     pub base_url: Option<String>,
+    /// Set `baseUrl` to SQL NULL (v4's courier gate / an explicit `baseUrl: null`).
+    /// Wins over [`Self::base_url`] when true (the route never sets both).
+    pub clear_base_url: bool,
+    /// Set `apiKeyId` — the route PUT can set a value (`Some(Some(id))`), clear it
+    /// (`Some(None)` → SQL NULL, the courier gate / explicit null), or leave it
+    /// (`None`). A double-`Option` so NULL is expressible (the base field is not
+    /// exercised NULL by the Phase-2 corpus).
+    pub api_key_id: Option<Option<String>>,
+    /// Open-JSON `parameters` object (the route PUT can replace it). CONSTRAINED to
+    /// `{}` / single-key by the same open-JSON key-order seam as `create`.
+    pub parameters: Option<serde_json::Value>,
     pub model_name: Option<String>,
     pub is_default: Option<bool>,
     pub is_cheap: Option<bool>,
@@ -141,7 +152,13 @@ pub struct CpUpdate {
     pub allow_tool_use: Option<bool>,
     pub pseudo_tool_mode: Option<String>,
     pub model_class: Option<String>,
+    /// Set `modelClass` to SQL NULL (the route PUT's `modelClass: null|''`). Wins
+    /// over [`Self::model_class`] when true.
+    pub clear_model_class: bool,
     pub max_context: Option<f64>,
+    /// Set `maxContext` to SQL NULL (the route PUT's `maxContext: null|''|0`). Wins
+    /// over [`Self::max_context`] when true.
+    pub clear_max_context: bool,
     pub max_tokens: Option<f64>,
     pub is_dangerous_compatible: Option<bool>,
     pub supports_image_upload: Option<bool>,
@@ -245,9 +262,26 @@ impl<'c> ConnectionProfilesRepository<'c> {
             assignments.push(format!("courierDeltaMode = ?{}", values.len() + 1));
             values.push(Box::new(i64::from(courier_delta_mode)));
         }
-        if let Some(base_url) = &patch.base_url {
+        if patch.clear_base_url {
+            assignments.push("baseUrl = NULL".to_string());
+        } else if let Some(base_url) = &patch.base_url {
             assignments.push(format!("baseUrl = ?{}", values.len() + 1));
             values.push(Box::new(base_url.clone()));
+        }
+        if let Some(api_key_id) = &patch.api_key_id {
+            match api_key_id {
+                Some(id) => {
+                    assignments.push(format!("apiKeyId = ?{}", values.len() + 1));
+                    values.push(Box::new(id.clone()));
+                }
+                None => assignments.push("apiKeyId = NULL".to_string()),
+            }
+        }
+        if let Some(parameters) = &patch.parameters {
+            let json = serde_json::to_string(parameters)
+                .map_err(|e| DbError::Key(format!("parameters serialize: {e}")))?;
+            assignments.push(format!("parameters = ?{}", values.len() + 1));
+            values.push(Box::new(json));
         }
         if let Some(model_name) = &patch.model_name {
             assignments.push(format!("modelName = ?{}", values.len() + 1));
@@ -277,11 +311,15 @@ impl<'c> ConnectionProfilesRepository<'c> {
             assignments.push(format!("pseudoToolMode = ?{}", values.len() + 1));
             values.push(Box::new(pseudo_tool_mode.clone()));
         }
-        if let Some(model_class) = &patch.model_class {
+        if patch.clear_model_class {
+            assignments.push("modelClass = NULL".to_string());
+        } else if let Some(model_class) = &patch.model_class {
             assignments.push(format!("modelClass = ?{}", values.len() + 1));
             values.push(Box::new(model_class.clone()));
         }
-        if let Some(max_context) = patch.max_context {
+        if patch.clear_max_context {
+            assignments.push("maxContext = NULL".to_string());
+        } else if let Some(max_context) = patch.max_context {
             assignments.push(format!("maxContext = ?{}", values.len() + 1));
             values.push(Box::new(max_context));
         }
@@ -515,6 +553,72 @@ fn marshal_cp_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<serde_json::Value> 
     obj.insert("createdAt".into(), Value::String(r.get::<_, String>(27)?));
     obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(28)?));
     Ok(Value::Object(obj))
+}
+
+/// Reproduce v4's `repos.connections.create` RETURN shape from a [`find_by_id`]
+/// re-read. v4's `handleCreate` create-input explicitly sets `apiKeyId`/`baseUrl`/
+/// `modelClass`/`maxContext` (as `X || null`), so the parsed create-return keeps
+/// them present (null when null) — whereas the re-read OMITS a NULL
+/// nullable-optional column. `maxTokens` is NOT in the create input, so it stays
+/// omitted (the re-read agrees). Rebuilds the object in CP schema order, filling
+/// the four create-input-nullable keys with the re-read value or `null`.
+pub fn create_return_shape(reread: &serde_json::Value) -> serde_json::Value {
+    use serde_json::{Map, Value};
+    let empty = Map::new();
+    let src = reread.as_object().unwrap_or(&empty);
+    let take = |k: &str| src.get(k).cloned();
+    // The four create-input nullable keys: present in the create-return (null when
+    // absent from the re-read).
+    let nullable = |k: &str| take(k).unwrap_or(Value::Null);
+
+    let mut out = Map::new();
+    for key in [
+        "id",
+        "userId",
+        "name",
+        "provider",
+        "transport",
+        "courierDeltaMode",
+    ] {
+        if let Some(v) = take(key) {
+            out.insert(key.to_string(), v);
+        }
+    }
+    out.insert("apiKeyId".into(), nullable("apiKeyId"));
+    out.insert("baseUrl".into(), nullable("baseUrl"));
+    for key in [
+        "modelName",
+        "parameters",
+        "isDefault",
+        "isCheap",
+        "allowWebSearch",
+        "useNativeWebSearch",
+        "allowToolUse",
+        "pseudoToolMode",
+    ] {
+        if let Some(v) = take(key) {
+            out.insert(key.to_string(), v);
+        }
+    }
+    out.insert("modelClass".into(), nullable("modelClass"));
+    out.insert("maxContext".into(), nullable("maxContext"));
+    for key in [
+        "isDangerousCompatible",
+        "supportsImageUpload",
+        "tags",
+        "sortIndex",
+        "totalTokens",
+        "totalPromptTokens",
+        "totalCompletionTokens",
+        "messageCount",
+        "createdAt",
+        "updatedAt",
+    ] {
+        if let Some(v) = take(key) {
+            out.insert(key.to_string(), v);
+        }
+    }
+    Value::Object(out)
 }
 
 /// Net read for one profile by id (see the module net-read shape doc above).

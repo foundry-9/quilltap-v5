@@ -28,6 +28,36 @@ fixture surfaces a v4 identity-stack quirk (a literal `undefined` leaks into a
 character's base system-prompt slot) the Rust port does not reproduce — orthogonal
 to the swipe route, whose output byte-matches.
 
+P4.6d (the Settings server surface) lands the Settings-vertical route
+backfill as Core dispatch variants, each a differential port of v4's real
+route handlers (`api/settings.rs`). Chat settings: the GET now
+default-injects the seed row when none exists (closing the P4.6a deferral)
+and a new PUT (`chatSettingsUpdate`) folds the ~27-field validation layer
+into a ported `updateForUser` upsert (`db::chat_settings::update_for_user`
+over the captured default seed). Connection profiles: list (the
+`enrichWithApiKey` + `enrichWithTags` join, the `imageCapable` filter, the
+sortIndex→localeCompare sort), create (name uniqueness, apiKey
+provider-match, default-unset sweep, auto sortIndex, courier forced flags),
+update (per-field validation + courier gating + name collision), delete,
+reorder, reset-sort. API keys: list with the `maskApiKey` projection,
+create (autoAssociate deferred → `associations: []`), update, delete. The
+providers listing off the W4.7a manifest `Registry`; the models cached read
++ live fetch/cache. The wire actions (test-connection / test-message /
+api-key test / models fetch) are ported over injected seams
+(`ConnectionValidator` / `CompletionProvider` / `ModelsFetcher` — the
+per-provider validate WIRE is a host plugin seam); the engine gates them
+behind a not-assembled refusal until a host provider-actions driver is
+wired (the swipe-generate precedent). DB additions: `provider_models`
+net reads (`find_all` / `find_by_provider`), `connection_profiles`
+`CpUpdate` null-clearing + `create_return_shape`,
+`chat_settings::update_for_user`. Theme preference is stored in
+`chat_settings.themePreference` (P4.6e persists via `chatSettingsUpdate`).
+Verified: `providers_listing_equivalence` (tier-1 vs v4's real plugins),
+`settings_routes_equivalence` (19 cases driving v4's REAL route handlers
+for chat-settings / connection-profiles / api-keys / provider-models over
+a baked fixture), the `settings_wire_actions` composition tests, and
+`api::settings` unit tests.
+
 The P4.6c ∥ Settings round is planned: three work orders written from
 fresh v4 surveys at `a7b1398d` —
 `docs/developer/porting/work-orders/p4.6c-salon-consolidation.md` (the

@@ -325,7 +325,120 @@ impl CoreEngine {
                 Err(r) => r,
             },
             Request::ChatSettings => match self.ready_db() {
-                Ok(db) => super::salon::chat_settings(&db, SINGLE_USER_ID),
+                Ok(db) => super::settings::chat_settings_get(&db, SINGLE_USER_ID).await,
+                Err(r) => r,
+            },
+            Request::ChatSettingsUpdate { settings } => match self.ready_db() {
+                Ok(db) => {
+                    super::settings::chat_settings_update(&db, SINGLE_USER_ID, &settings).await
+                }
+                Err(r) => r,
+            },
+            Request::ConnectionProfileList { image_capable } => match self.ready_db() {
+                Ok(db) => {
+                    super::settings::connection_profile_list(&db, SINGLE_USER_ID, image_capable)
+                }
+                Err(r) => r,
+            },
+            Request::ConnectionProfileCreate { profile } => match self.ready_db() {
+                Ok(db) => {
+                    super::settings::connection_profile_create(&db, SINGLE_USER_ID, &profile).await
+                }
+                Err(r) => r,
+            },
+            Request::ConnectionProfileUpdate {
+                profile_id,
+                profile,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::settings::connection_profile_update(
+                        &db,
+                        SINGLE_USER_ID,
+                        &profile_id,
+                        &profile,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ConnectionProfileDelete { profile_id } => match self.ready_db() {
+                Ok(db) => super::settings::connection_profile_delete(&db, &profile_id).await,
+                Err(r) => r,
+            },
+            Request::ConnectionProfileReorder { ordered_ids } => match self.ready_db() {
+                Ok(db) => {
+                    super::settings::connection_profile_reorder(&db, SINGLE_USER_ID, &ordered_ids)
+                        .await
+                }
+                Err(r) => r,
+            },
+            Request::ConnectionProfileResetSort => match self.ready_db() {
+                Ok(db) => super::settings::connection_profile_reset_sort(&db, SINGLE_USER_ID).await,
+                Err(r) => r,
+            },
+            // The wire actions need a host provider-actions driver (validator /
+            // completion / models-fetch seam) — a tracked deferral (the swipe-
+            // generate precedent). The handler functions ARE ported and
+            // differential-verified; the live wiring lands at P4.6e unification.
+            Request::ConnectionProfileTest { .. }
+            | Request::ConnectionProfileTestMessage { .. }
+            | Request::ApiKeyTest { .. }
+            | Request::ModelFetch { .. } => match self.ready_db() {
+                Ok(_) => Response::error(
+                    ErrorKind::Internal,
+                    "provider wire actions not assembled (provider-actions driver deferral)",
+                ),
+                Err(r) => r,
+            },
+            Request::ApiKeyList => match self.ready_db() {
+                Ok(db) => super::settings::api_key_list(&db, SINGLE_USER_ID),
+                Err(r) => r,
+            },
+            Request::ApiKeyCreate {
+                label,
+                provider,
+                api_key,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::settings::api_key_create(
+                        &db,
+                        SINGLE_USER_ID,
+                        &provider,
+                        &label,
+                        &api_key,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ApiKeyUpdate {
+                api_key_id,
+                label,
+                is_active,
+                api_key,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::settings::api_key_update(
+                        &db,
+                        &api_key_id,
+                        label.as_deref(),
+                        is_active,
+                        api_key.as_deref(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ApiKeyDelete { api_key_id } => match self.ready_db() {
+                Ok(db) => super::settings::api_key_delete(&db, &api_key_id).await,
+                Err(r) => r,
+            },
+            Request::ProviderList => match self.ready_db() {
+                Ok(_) => super::settings::provider_list(),
+                Err(r) => r,
+            },
+            Request::ModelList { provider } => match self.ready_db() {
+                Ok(db) => super::settings::model_list(&db, provider.as_deref()),
                 Err(r) => r,
             },
             Request::ChatTurnAction {

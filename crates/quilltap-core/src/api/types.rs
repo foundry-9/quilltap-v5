@@ -106,8 +106,90 @@ pub enum Request {
     /// branch): the fully-enriched chat + all messages (minus `renderedHtml`).
     #[serde(rename_all = "camelCase")]
     ChatGet { chat_id: String },
-    /// The chat-settings read (v4 `GET /api/v1/settings/chat`).
+    /// The chat-settings read (v4 `GET /api/v1/settings/chat`). Now
+    /// default-injects the seed row when none exists (P4.6d).
     ChatSettings,
+    /// The chat-settings PUT (v4 `PUT /api/v1/settings/chat`): the partial field
+    /// bag folds into the `updateForUser` upsert. Returns the updated row.
+    ChatSettingsUpdate { settings: serde_json::Value },
+    // --- Connection profiles (v4 connection-profiles/route.ts + [id]/) ---
+    /// v4 `GET /api/v1/connection-profiles` — the enriched list.
+    #[serde(rename_all = "camelCase")]
+    ConnectionProfileList {
+        /// v4 `?imageCapable=true` — filter to image-generation-capable providers.
+        #[serde(default)]
+        image_capable: bool,
+    },
+    /// v4 `POST /api/v1/connection-profiles` (create) — the field bag.
+    ConnectionProfileCreate { profile: serde_json::Value },
+    /// v4 `PUT /api/v1/connection-profiles/[id]` — the field bag.
+    #[serde(rename_all = "camelCase")]
+    ConnectionProfileUpdate {
+        profile_id: String,
+        profile: serde_json::Value,
+    },
+    /// v4 `DELETE /api/v1/connection-profiles/[id]`.
+    #[serde(rename_all = "camelCase")]
+    ConnectionProfileDelete { profile_id: String },
+    /// v4 `?action=reorder` — the contract's ordered-id list.
+    #[serde(rename_all = "camelCase")]
+    ConnectionProfileReorder { ordered_ids: Vec<String> },
+    /// v4 `?action=reset-sort`.
+    ConnectionProfileResetSort,
+    /// v4 `?action=test-connection` — the `{provider, apiKeyId?, baseUrl?}` bag.
+    ConnectionProfileTest { profile: serde_json::Value },
+    /// v4 `?action=test-message` — the `{provider, apiKeyId?, baseUrl?, modelName,
+    /// parameters?}` bag.
+    ConnectionProfileTestMessage { profile: serde_json::Value },
+    // --- API keys (v4 api-keys/route.ts + [id]/) ---
+    /// v4 `GET /api/v1/api-keys` — the masked list.
+    ApiKeyList,
+    /// v4 `POST /api/v1/api-keys` (create).
+    #[serde(rename_all = "camelCase")]
+    ApiKeyCreate {
+        label: String,
+        provider: String,
+        api_key: String,
+    },
+    /// v4 `PUT /api/v1/api-keys/[id]`.
+    #[serde(rename_all = "camelCase")]
+    ApiKeyUpdate {
+        api_key_id: String,
+        #[serde(default)]
+        label: Option<String>,
+        #[serde(default)]
+        is_active: Option<bool>,
+        #[serde(default)]
+        api_key: Option<String>,
+    },
+    /// v4 `DELETE /api/v1/api-keys/[id]`.
+    #[serde(rename_all = "camelCase")]
+    ApiKeyDelete { api_key_id: String },
+    /// v4 `POST /api/v1/api-keys/[id]?action=test`.
+    #[serde(rename_all = "camelCase")]
+    ApiKeyTest {
+        api_key_id: String,
+        #[serde(default)]
+        base_url: Option<String>,
+    },
+    // --- Providers + models (v4 providers/route.ts + models/route.ts) ---
+    /// v4 `GET /api/v1/providers`.
+    ProviderList,
+    /// v4 `GET /api/v1/models` (+ `?provider=`) — the cached read.
+    #[serde(rename_all = "camelCase")]
+    ModelList {
+        #[serde(default)]
+        provider: Option<String>,
+    },
+    /// v4 `POST /api/v1/models` — the live fetch + cache.
+    #[serde(rename_all = "camelCase")]
+    ModelFetch {
+        provider: String,
+        #[serde(default)]
+        api_key_id: Option<String>,
+        #[serde(default)]
+        base_url: Option<String>,
+    },
     /// A turn action (v4 `POST /api/v1/chats/{id}/actions?action=turn` →
     /// `handleTurnAction`): nudge/queue/dequeue/query/skipUserTurn.
     #[serde(rename_all = "camelCase")]
@@ -242,6 +324,23 @@ pub enum Response {
     MessageDelete(serde_json::Value),
     /// v4 impersonation-verb body (`{ success, ... }`).
     ChatImpersonation(serde_json::Value),
+    // --- Settings surface (P4.6d) ---
+    /// v4 connection-profiles list (`{profiles, count}`).
+    ConnectionProfiles(serde_json::Value),
+    /// v4 connection-profile create/update/get (`{profile}`).
+    ConnectionProfile(serde_json::Value),
+    /// v4 connection test-connection / test-message body.
+    ConnectionTest(serde_json::Value),
+    /// v4 api-keys list (`{apiKeys, count}`).
+    ApiKeys(serde_json::Value),
+    /// v4 api-key create/update/get (`{apiKey}`).
+    ApiKey(serde_json::Value),
+    /// v4 api-key test body (`{valid, error?}`).
+    ApiKeyTest(serde_json::Value),
+    /// v4 providers listing (`{providers, count}`).
+    Providers(serde_json::Value),
+    /// v4 models read/fetch body.
+    Models(serde_json::Value),
     Error(CoreError),
 }
 

@@ -284,6 +284,7 @@ fn connection_profiles_tier2_matches_oracle() {
                                 total_completion_tokens: data.total_completion_tokens,
                                 message_count: data.message_count,
                                 updated_at: data.updated_at.clone(),
+                                ..Default::default()
                             },
                         )
                         .expect("cp.update");

@@ -25,6 +25,7 @@ pub mod chat_send;
 pub mod engine;
 pub mod provision;
 pub mod salon;
+pub mod settings;
 pub mod types;
 
 pub use chat_create::{ChatCreateDriver, ChatCreateDriverRequest, ChatCreateFuture};

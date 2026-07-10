@@ -939,3 +939,185 @@ pub fn find_all_scheduler_settings(
         })
         .collect())
 }
+
+// ============================================================================
+// updateForUser — v4 `ChatSettingsRepository.updateForUser` (P4.6d)
+// ============================================================================
+
+/// A ready-to-bind chat-settings column value (the affinity the column expects):
+/// `Text` for TEXT (incl. compact JSON-object columns, schema-ordered by the
+/// caller), `Int` for the INTEGER/boolean columns, `Null` for a SQL NULL.
+#[derive(Debug, Clone)]
+pub enum SettingsColVal {
+    Text(String),
+    Int(i64),
+    Null,
+}
+
+impl rusqlite::types::ToSql for SettingsColVal {
+    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+        use rusqlite::types::{ToSqlOutput, Value as SqlValue};
+        Ok(match self {
+            SettingsColVal::Text(s) => ToSqlOutput::Owned(SqlValue::Text(s.clone())),
+            SettingsColVal::Int(i) => ToSqlOutput::Owned(SqlValue::Integer(*i)),
+            SettingsColVal::Null => ToSqlOutput::Owned(SqlValue::Null),
+        })
+    }
+}
+
+/// The captured default `chat_settings` seed — the byte-exact row v4's
+/// `updateForUser` create branch produces (the same artifact the provisioner
+/// replays). Reused so the P4.6d GET default-injection and fresh-row PUT are
+/// byte-identical to v4's `updateForUser(userId, defaults ∪ data)`.
+static CHAT_SETTINGS_SEED_JSON: &str =
+    include_str!("../services/provisioning/chat_settings_seed.json");
+
+#[derive(Deserialize)]
+struct SeedRow {
+    columns: Vec<String>,
+    values: serde_json::Map<String, serde_json::Value>,
+}
+
+/// The 30 default non-id/non-timestamp columns of a fresh settings row, in v4
+/// schema (create) order, each mapped to its bind value. Reads the captured seed
+/// (a string cell → `Text`, a number → `Int`, JSON `null` → `Null`).
+fn default_settings_columns() -> Result<Vec<(String, SettingsColVal)>, DbError> {
+    let seed: SeedRow = serde_json::from_str(CHAT_SETTINGS_SEED_JSON)
+        .map_err(|e| DbError::Key(format!("chat_settings_seed.json: {e}")))?;
+    let mut out = Vec::with_capacity(seed.columns.len());
+    for col in &seed.columns {
+        let v = seed
+            .values
+            .get(col)
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        let cell = match v {
+            serde_json::Value::String(s) => SettingsColVal::Text(s),
+            serde_json::Value::Number(n) => SettingsColVal::Int(
+                n.as_i64()
+                    .ok_or_else(|| DbError::Key(format!("seed {col} not an integer")))?,
+            ),
+            serde_json::Value::Null => SettingsColVal::Null,
+            other => {
+                return Err(DbError::Key(format!(
+                    "seed {col} unexpected shape: {other}"
+                )));
+            }
+        };
+        out.push((col.clone(), cell));
+    }
+    Ok(out)
+}
+
+/// v4 `ChatSettingsRepository.updateForUser(userId, data)` — the upsert chokepoint.
+///
+/// `assignments` is the validated `updateData` map (column → bind value, the
+/// JSON-object columns already serialized schema-ordered by the caller). If the
+/// user already has a settings row, this is a partial `SET` of the assignments +
+/// a minted `updatedAt` (byte-identical to v4's full `$set: validated` because a
+/// v4-written existing row already holds the schema-parsed value in every other
+/// column). If not, it INSERTs a full default row (the captured seed) with the
+/// assignments overriding the matching columns, minting `id` + `createdAt` ==
+/// `updatedAt` == `now` (v4's create-branch `createdAt == updatedAt`).
+///
+/// Runs on the writer connection (both the existence check and the write in one
+/// closure). The caller re-reads [`find_by_user_id`] for the response. Returns
+/// `true` when it created a new row (v4's `updateForUser` create branch) — the
+/// caller uses this to reproduce the create-RETURN shape, which keeps the explicit
+/// `defaultRoleplayTemplateId: null` the default bag carries (the re-read omits it).
+pub fn update_for_user(
+    conn: &Connection,
+    user_id: &str,
+    assignments: &[(&str, SettingsColVal)],
+    now: &str,
+) -> Result<bool, DbError> {
+    // Existing row?
+    let existing_id: Option<String> = conn
+        .query_row(
+            "SELECT id FROM chat_settings WHERE userId = ?1 LIMIT 1",
+            params![user_id],
+            |r| r.get::<_, String>(0),
+        )
+        .map(Some)
+        .or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other),
+        })?;
+
+    if let Some(id) = existing_id {
+        // Update branch: partial SET of the assignments + updatedAt.
+        let mut set_clauses: Vec<String> = Vec::new();
+        let mut binds: Vec<Box<dyn ToSql>> = Vec::new();
+        for (col, val) in assignments {
+            set_clauses.push(format!("{col} = ?{}", binds.len() + 1));
+            binds.push(Box::new(val.clone()));
+        }
+        set_clauses.push(format!("updatedAt = ?{}", binds.len() + 1));
+        binds.push(Box::new(now.to_string()));
+        let id_idx = binds.len() + 1;
+        binds.push(Box::new(id));
+        let sql = format!(
+            "UPDATE chat_settings SET {} WHERE id = ?{}",
+            set_clauses.join(", "),
+            id_idx
+        );
+        let refs: Vec<&dyn ToSql> = binds.iter().map(|b| b.as_ref()).collect();
+        conn.execute(&sql, refs.as_slice())?;
+        return Ok(false);
+    }
+
+    // Create branch: full default row, assignments override, minted id + now/now.
+    let mut columns = default_settings_columns()?;
+    for (col, val) in assignments {
+        if let Some(slot) = columns.iter_mut().find(|(c, _)| c == col) {
+            slot.1 = val.clone();
+        }
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    let mut col_names: Vec<String> = vec!["id".to_string(), "userId".to_string()];
+    let mut binds: Vec<Box<dyn ToSql>> = vec![Box::new(id), Box::new(user_id.to_string())];
+    for (col, val) in &columns {
+        col_names.push(col.clone());
+        binds.push(Box::new(val.clone()));
+    }
+    col_names.push("createdAt".to_string());
+    binds.push(Box::new(now.to_string()));
+    col_names.push("updatedAt".to_string());
+    binds.push(Box::new(now.to_string()));
+
+    let placeholders: Vec<String> = (1..=binds.len()).map(|i| format!("?{i}")).collect();
+    let sql = format!(
+        "INSERT INTO chat_settings ({}) VALUES ({})",
+        col_names.join(", "),
+        placeholders.join(", ")
+    );
+    let refs: Vec<&dyn ToSql> = binds.iter().map(|b| b.as_ref()).collect();
+    conn.execute(&sql, refs.as_slice())?;
+    Ok(true)
+}
+
+/// Reproduce v4's `updateForUser` create-RETURN shape from a [`find_by_user_id`]
+/// re-read: the create branch's `defaultSettings` carries an explicit
+/// `defaultRoleplayTemplateId: null`, so the create return has that key present
+/// (whereas the re-read omits the NULL nullable-optional column). Insert it at its
+/// schema position (before `themePreference`) when absent.
+pub fn patch_create_return_shape(settings: &mut serde_json::Value) {
+    let Some(obj) = settings.as_object() else {
+        return;
+    };
+    if obj.contains_key("defaultRoleplayTemplateId") {
+        return;
+    }
+    // Rebuild preserving order, inserting the key just before `themePreference`.
+    let mut rebuilt = serde_json::Map::new();
+    for (k, v) in obj.iter() {
+        if k == "themePreference" {
+            rebuilt.insert(
+                "defaultRoleplayTemplateId".to_string(),
+                serde_json::Value::Null,
+            );
+        }
+        rebuilt.insert(k.clone(), v.clone());
+    }
+    *settings = serde_json::Value::Object(rebuilt);
+}
