@@ -4,6 +4,15 @@
 
 ### 5.0-dev
 
+P4.4u2b work order: the handleCreate spine + ChatCreate dispatch (the
+chat-creation capstone). Composes the seven landed leaf sub-units into
+v4's POST /api/v1/chats pipeline behind a ChatCreateDriver host seam,
+with two small new ports (enrichParticipantSummary + the
+resolveCharacterAvatar URL half), one capstone tier-3 differential
+driving v4's real handler (delivering the deferred outfit/continuation
+composed diffs + the Green Room frame-trace diff), and a quilltap-web
+integration test. Solo lane; P4.6 consumes the contract next round.
+
 P4.4u2 unification: the seven chat-creation leaf sub-units integrated on
 main (pure fast-forward, zero conflicts). Verified: 1,161 workspace tests
 / 0 failed, clippy -D warnings on both feature sets, fmt; the four gated
