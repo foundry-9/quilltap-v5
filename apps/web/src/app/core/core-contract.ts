@@ -52,6 +52,81 @@ export interface ChatSendRequest {
   targetParticipantIds?: string[] | null;
   speakingAsParticipantId?: string | null;
   fileIds?: string[];
+  /** Client-computed skip-eligibility summon (v4 `sendMessageSchema.nudge`). */
+  nudge?: boolean;
+  /** Pre-computed tool results to thread (v4 `sendMessageSchema.pendingToolResults`). */
+  pendingToolResults?: unknown[];
+}
+
+/** List chats with the v4 `handleList` query knobs (all optional). */
+export interface ListChatsRequest {
+  type: 'listChats';
+  excludeTagIds?: string[];
+  limit?: number;
+  includeAutonomous?: boolean;
+}
+
+/** Fetch one enriched conversation (v4 `handleGet`). */
+export interface ChatGetRequest {
+  type: 'chatGet';
+  chatId: string;
+}
+
+/** A partial chat update (v4 PUT `/chats/:id`). */
+export interface ChatUpdateRequest {
+  type: 'chatUpdate';
+  chatId: string;
+  chat: Record<string, unknown>;
+}
+
+/** Turn-management actions (v4 `handleTurnAction`). */
+export interface ChatTurnActionRequest {
+  type: 'chatTurnAction';
+  chatId: string;
+  action: 'nudge' | 'queue' | 'dequeue' | 'query' | 'skipUserTurn';
+  participantId?: string;
+}
+
+/** Edit a message's content (v4 PUT `/messages/:id`). */
+export interface MessageEditRequest {
+  type: 'messageEdit';
+  messageId: string;
+  content: string;
+}
+
+/** Delete a message, optionally handling the memory cascade (v4 DELETE `/messages/:id`). */
+export interface MessageDeleteRequest {
+  type: 'messageDelete';
+  messageId: string;
+  /** The v4 memory-cascade choice. */
+  memoryAction?: 'KEEP_MEMORIES' | 'DELETE_MEMORIES' | 'REGENERATE_MEMORIES';
+  /** Skip the confirmation round-trip once the user has chosen. */
+  skipConfirmation?: boolean;
+}
+
+/** Switch / generate a swipe variant (v4 `messageSwipe`). */
+export interface MessageSwipeRequest {
+  type: 'messageSwipe';
+  messageId: string;
+  /** Omit to generate a NEW variant; provide to switch to an existing one. */
+  swipeIndex?: number;
+}
+
+/** Impersonation + Speaking-As controls (v4 `actions/participants.ts`). */
+export interface ChatImpersonateRequest {
+  type: 'chatImpersonate';
+  chatId: string;
+  participantId: string;
+}
+export interface ChatStopImpersonateRequest {
+  type: 'chatStopImpersonate';
+  chatId: string;
+  participantId: string;
+}
+export interface ChatSetActiveSpeakerRequest {
+  type: 'chatSetActiveSpeaker';
+  chatId: string;
+  participantId: string | null;
 }
 
 /**
@@ -74,13 +149,23 @@ export type CoreRequest =
   | { type: 'unlock'; passphrase: string }
   | { type: 'lock' }
   | { type: 'listInstances' }
-  | { type: 'listChats' }
+  | ListChatsRequest
   | ChatSendRequest
-  // --- New this round (the P4.4 lane implements the server side) ---
   | { type: 'setup'; passphrase: string }
   | { type: 'storePepper'; passphrase: string }
   | { type: 'changePassphrase'; oldPassphrase: string; newPassphrase: string }
-  | ChatCreateRequest;
+  | ChatCreateRequest
+  // --- The Salon conversation surface (P4.6a implements the server side) ---
+  | ChatGetRequest
+  | { type: 'chatSettings' }
+  | ChatUpdateRequest
+  | ChatTurnActionRequest
+  | MessageEditRequest
+  | MessageDeleteRequest
+  | MessageSwipeRequest
+  | ChatImpersonateRequest
+  | ChatStopImpersonateRequest
+  | ChatSetActiveSpeakerRequest;
 
 export type RequestType = CoreRequest['type'];
 
@@ -115,6 +200,7 @@ export interface InstancesDto {
   defaultInstance?: string;
 }
 
+/** The pre-enrichment summary (P4.5 foundation shape; retained for reference). */
 export interface ChatSummaryDto {
   id: string;
   title: string;
@@ -125,12 +211,272 @@ export interface ChatSummaryDto {
   updatedAt: string;
 }
 
+// ---------------------------------------------------------------------------
+// Enriched list (v4 `EnrichedChatSummary` — `handleList` / `cleanEnrichedChats`)
+// ---------------------------------------------------------------------------
+
+export interface EnrichedImage {
+  id: string;
+  filepath: string;
+  url: string | null;
+}
+
+/** A list-card character summary (v4 `EnrichedCharacterSummary`). */
+export interface EnrichedCharacterSummary {
+  id: string;
+  name: string;
+  title: string | null;
+  avatarUrl: string | null;
+  defaultImageId: string | null;
+  defaultImage: EnrichedImage | null;
+  talkativeness: number;
+  /** Tag IDs (strings), resolved to styles client-side. */
+  tags: string[];
+}
+
+export interface EnrichedParticipantSummary {
+  id: string;
+  type: 'CHARACTER';
+  displayOrder: number;
+  isActive: boolean;
+  status: string;
+  removedAt?: string | null;
+  character: EnrichedCharacterSummary | null;
+}
+
+/** A chat tag reference (v4 `EnrichedTag`). */
+export interface EnrichedTag {
+  tag: { id: string; name: string };
+}
+
+export interface EnrichedProject {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
+export interface EnrichedStoryBackground {
+  id: string;
+  filepath: string;
+}
+
+/** One row in the Salon list (v4 `EnrichedChatSummary`, minus `_allTagIds`). */
+export interface EnrichedChatSummary {
+  id: string;
+  title: string;
+  contextSummary: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastMessageAt: string | null;
+  participants: EnrichedParticipantSummary[];
+  tags: EnrichedTag[];
+  project: EnrichedProject | null;
+  storyBackground: EnrichedStoryBackground | null;
+  isDangerousChat: boolean;
+  conciergeOverride: 'OFF' | null;
+  chatType: 'salon' | 'help' | 'autonomous' | 'brahma';
+  scriptoriumStatus: 'none' | 'rendered' | 'embedded';
+  _count: { messages: number; memories: number };
+}
+
 export interface ChatSendResultDto {
   messageId: string;
   hasContent: boolean;
   isMultiCharacter: boolean;
   isPaused: boolean;
   userParticipantId?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Conversation detail (v4 `handleGet` → `{ chat }`)
+// ---------------------------------------------------------------------------
+
+/** A reasoning block anchored into the content (v4 `ReasoningSegment`). */
+export interface MessageReasoningSegment {
+  anchorOffset: number;
+  content: string;
+  seq: number;
+}
+
+export interface MessageAttachment {
+  id: string;
+  filename: string;
+  filepath: string;
+  mimeType: string;
+  sha256?: string;
+}
+
+/** v4 systemSender union (the personified Staff). */
+export type SystemSender =
+  | 'lantern'
+  | 'aurora'
+  | 'librarian'
+  | 'concierge'
+  | 'prospero'
+  | 'host'
+  | 'commonplaceBook'
+  | 'ariel'
+  | 'carina'
+  | 'suparna'
+  | null;
+
+export interface HostEvent {
+  participantId?: string | null;
+  toStatus?: string | null;
+  introducedCharacterIds?: string[] | null;
+}
+
+export interface CustomAnnouncer {
+  kind: 'character' | 'custom';
+  characterId?: string | null;
+  displayName?: string | null;
+}
+
+export interface CarinaMeta {
+  answererId: string;
+  question: string;
+}
+
+/**
+ * One persisted message (v4 `handleGet` per-message projection) — MINUS
+ * `renderedHtml` (v5 renders markdown client-side; see the rendering service).
+ */
+export interface MessageDto {
+  id: string;
+  role: 'USER' | 'ASSISTANT' | 'SYSTEM';
+  content: string;
+  tokenCount: number | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  createdAt: string;
+  swipeGroupId: string | null;
+  swipeIndex: number | null;
+  participantId: string | null;
+  attachments: MessageAttachment[];
+  provider: string | null;
+  modelName: string | null;
+  targetParticipantIds: string[] | null;
+  isSilentMessage: boolean | null;
+  systemSender: SystemSender;
+  systemKind: string | null;
+  hostEvent: HostEvent | null;
+  customAnnouncer: CustomAnnouncer | null;
+  carinaMeta: CarinaMeta | null;
+  pendingExternalPrompt: string | null;
+  pendingExternalPromptFull: string | null;
+  pendingExternalAttachments: unknown[] | null;
+  reasoningContent: string | null;
+  reasoningSegments: MessageReasoningSegment[] | null;
+  confirmed?: boolean;
+  confirmationChecked?: boolean;
+  confirmationRevised?: boolean;
+  confirmationNotes?: string | null;
+  confirmationOriginalContent?: string | null;
+}
+
+/** An enriched participant on the conversation detail (v4 `enrichParticipantDetail`). */
+export interface ParticipantDetail {
+  id: string;
+  type: string;
+  displayOrder: number;
+  isActive: boolean;
+  controlledBy: 'llm' | 'user';
+  status: 'active' | 'silent' | 'absent' | 'removed';
+  removedAt?: string | null;
+  character: DetailCharacter | null;
+  connectionProfile: { id: string; name: string; provider: string; modelName: string } | null;
+  imageProfile: { id: string; name: string; provider: string; modelName: string } | null;
+  selectedSystemPromptId?: string | null;
+  talkativeness?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DetailCharacter {
+  id: string;
+  name: string;
+  title: string | null;
+  avatarUrl: string | null;
+  defaultImageId: string | null;
+  defaultImage: EnrichedImage | null;
+  talkativeness?: number;
+}
+
+export interface OffSceneCharacter {
+  id: string;
+  name: string;
+  title: string | null;
+  avatarUrl: string | null;
+}
+
+/** The `{ chat }` body of v4 `handleGet` (the fields the read path consumes). */
+export interface ChatDetail {
+  id: string;
+  title: string;
+  contextSummary: string | null;
+  roleplayTemplateId: string | null;
+  chatType: 'salon' | 'autonomous' | 'help' | 'brahma';
+  createdAt: string;
+  updatedAt: string;
+  isPaused: boolean;
+  isManuallyRenamed: boolean;
+  participants: ParticipantDetail[];
+  user: { id: string; name: string; image: string | null };
+  messages: MessageDto[];
+  projectId: string | null;
+  projectName: string | null;
+  turnSkippingEnabled: boolean | null;
+  agentModeEnabled: boolean;
+  resolvedAgentModeEnabled: boolean;
+  agentModeSource: string;
+  isDangerousChat: boolean | null;
+  dangerCategories: string[];
+  conciergeOverride: 'OFF' | null;
+  offSceneCharacters: OffSceneCharacter[];
+  lastTurnParticipantId: string | null;
+  activeTypingParticipantId?: string | null;
+  impersonatingParticipantIds?: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Chat settings (v4 GET `/api/v1/settings/chat`)
+// ---------------------------------------------------------------------------
+
+export interface ChatSettingsDto {
+  avatarDisplayMode: 'ALWAYS' | 'GROUP_ONLY' | 'NEVER';
+  avatarDisplayStyle: 'CIRCULAR' | 'RECTANGULAR';
+  tokenDisplaySettings?: {
+    showPerMessageTokens: boolean;
+    showPerMessageCost: boolean;
+    showChatTotals: boolean;
+    showSystemEvents: boolean;
+  };
+  thinkingDisplay?: { defaultVisible: boolean; defaultCollapsed: boolean };
+  dangerousContentSettings?: {
+    mode: 'OFF' | 'DETECT_ONLY' | 'AUTO_ROUTE';
+    displayMode: 'SHOW' | 'BLUR' | 'COLLAPSE';
+    showWarningBadges: boolean;
+  };
+  autoScrollOnResponseComplete?: boolean;
+  [key: string]: unknown;
+}
+
+// ---------------------------------------------------------------------------
+// Message-mutation / turn-action results
+// ---------------------------------------------------------------------------
+
+/** v4 `messageDelete` — either the confirmation prompt or the applied result. */
+export type MessageDeleteDto =
+  | {
+      requiresConfirmation: true;
+      memoryCount: number;
+      messageIds: string[];
+      isSwipeGroup: boolean;
+    }
+  | { success: boolean; memoriesDeleted?: number };
+
+export interface TurnActionDto {
+  [key: string]: unknown;
 }
 
 /** The one-time setup response — `data.pepper` is shown once, then never again. */
@@ -179,11 +525,17 @@ export type CoreResponse =
   | { type: 'health'; data: HealthDto }
   | { type: 'unlockState'; data: UnlockStateDto }
   | { type: 'instances'; data: InstancesDto }
-  | { type: 'chats'; data: ChatSummaryDto[] }
+  | { type: 'chats'; data: EnrichedChatSummary[] }
   | { type: 'chatSend'; data: ChatSendResultDto }
   | { type: 'setup'; data: SetupDto }
   | { type: 'ack'; data: Record<string, never> }
   | { type: 'chatCreate'; data: ChatCreateDto }
+  // --- The Salon conversation surface ---
+  | { type: 'chat'; data: { chat: ChatDetail } }
+  | { type: 'chatSettings'; data: ChatSettingsDto }
+  | { type: 'turnAction'; data: TurnActionDto }
+  | { type: 'message'; data: { message: MessageDto } }
+  | { type: 'messageDelete'; data: MessageDeleteDto }
   | { type: 'error'; data: CoreError };
 
 export type ResponseType = CoreResponse['type'];

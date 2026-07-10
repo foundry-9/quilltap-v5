@@ -4,6 +4,35 @@
 
 ### 5.0-dev
 
+P4.6b (the Salon SPA vertical) landed in `apps/web` (lane branch; unifies
+with P4.6a). Introduced real Angular routing (`/salon` list + `/salon/:id`
+conversation; the startup gate still owns the pre-operational states and the
+shell hosts the outlet). The Salon list renders the enriched `listChats` DTO
+as v4-faithful `ChatCard`s (participant avatar stack, message/memory counts,
+danger flag, project chip, tags, `updatedAt`) with v4-verbatim microcopy. The
+conversation screen reads `chatGet` + `chatSettings`, collapses swipe groups
+to the highest-`swipeIndex` variant (client-side swipe switching), and renders
+the message list via a render-item pipeline (message rows + packed Staff
+announcement chips, whisper/silent labels, reasoning blocks, timestamps,
+avatars). The markdown/roleplay/qtap-linkify renderer is a byte-for-byte TS
+port of v4's server `renderMarkdownToHtml` (same pinned unified/remark/rehype
+versions), verified against 23 fixtures captured from v4's real renderer. Send
++ live streaming ride the P4.5 stream reducer over the global SSE (optimistic
+user bubble, live bubble through the same pipeline, status line, tool frames,
+`done` → canonical refetch); tier-1 message actions (copy, inline edit, delete
++ the memory-cascade dialog, regenerate, swipe arrows) are wired. The composer
+is the sanctioned textarea MVP (Enter-sends, Stop, Continue) — Lexical is a
+locked deferral. Shipped a Node OPENAI-compatible mock LLM and the M4
+Playwright spec (skipped-with-reason until the sibling lane's fixture + server
+dispatch variants land). Verification: 76 Vitest tests (render parity,
+swipe-group split, list/conversation components, reducer→bubble), the existing
+foundation + setup Playwright specs re-run green against the real binary, and
+the SPA prod build is clean. Tracked deferrals: the tier-2 controls (Skip
+banner + skip-signal TS port, Speaking-As, pause/resume), the full
+`ToolMessage` renderer, token badges, virtualization, `qtap://` navigation
+targets, the sidebar/modals, and the new-chat (Green Room) entry point.
+SPA 0.1.1 → 0.2.0.
+
 P4.6a (Salon server surface) in progress — the read surface is landed and
 differentially verified against v4 `a7b1398d`. Ported the chat-enrichment
 service (`services::chat_enrichment`): the LIST orchestration

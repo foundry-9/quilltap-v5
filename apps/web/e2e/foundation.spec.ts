@@ -25,9 +25,9 @@ test('walks locked → unlock → shell, then applies a bundled theme', async ({
   // The shell shows the chats list (the first real server data).
   await expect(page.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible();
   await expect(page.getByText('Loading chats...')).toBeHidden();
-  // Either the fixture's chats render as rows, or the empty state — both prove
+  // Either the fixture's chats render as cards, or the empty state — both prove
   // the `listChats` round trip completed.
-  const rows = page.locator('.chat-page li.qt-card');
+  const rows = page.locator('.chat-card-stack a.qt-entity-card');
   const empty = page.getByText('No chats yet');
   await expect(async () => {
     expect((await rows.count()) > 0 || (await empty.count()) > 0).toBe(true);

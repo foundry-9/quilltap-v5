@@ -1,0 +1,117 @@
+[
+  {
+    "name": "plain",
+    "input": "Just a plain sentence.",
+    "html": "<p>Just a plain sentence.</p>"
+  },
+  {
+    "name": "bold",
+    "input": "This is **bold** text.",
+    "html": "<p>This is <strong>bold</strong> text.</p>"
+  },
+  {
+    "name": "italic-narration",
+    "input": "She *looks around* nervously.",
+    "html": "<p>She <em>looks around</em> nervously.</p>"
+  },
+  {
+    "name": "bracket-narration",
+    "input": "A hush falls. [the door creaks open]",
+    "html": "<p>A hush falls. <span class=\"qt-chat-narration\">[the door creaks open]</span></p>"
+  },
+  {
+    "name": "ooc-parens",
+    "input": "Right then. ((this is just me talking))",
+    "html": "<p>Right then. <span class=\"qt-chat-ooc\">((this is just me talking))</span></p>"
+  },
+  {
+    "name": "ooc-line",
+    "input": "// a meta note on its own line",
+    "html": "<p><span class=\"qt-chat-ooc\">// a meta note on its own line</span></p>"
+  },
+  {
+    "name": "monologue",
+    "input": "He paused. {What do I even say now?}",
+    "html": "<p>He paused. <span class=\"qt-chat-inner-monologue\">{What do I even say now?}</span></p>"
+  },
+  {
+    "name": "dialogue-straight",
+    "input": "\"Hello there,\" she said warmly.",
+    "html": "<p><span class=\"qt-chat-dialogue\">\"Hello there,\"</span> she said warmly.</p>"
+  },
+  {
+    "name": "dialogue-curly",
+    "input": "“Well met, traveller.”",
+    "html": "<p>“Well met, traveller.”</p>"
+  },
+  {
+    "name": "mixed-line",
+    "input": "She smiled. \"Come in,\" *stepping aside* to let him pass.",
+    "html": "<p>She smiled. <span class=\"qt-chat-dialogue\">\"Come in,\"</span> <em>stepping aside</em> to let him pass.</p>"
+  },
+  {
+    "name": "qtap-bare",
+    "input": "See qtap://project/notes/plan.md for the outline.",
+    "html": "<p>See <a href=\"qtap://project/notes/plan.md\">qtap://project/notes/plan.md</a> for the outline.</p>"
+  },
+  {
+    "name": "qtap-in-code",
+    "input": "Inline `qtap://x/y` should stay literal.",
+    "html": "<p>Inline <code>qtap://x/y</code> should stay literal.</p>"
+  },
+  {
+    "name": "md-link",
+    "input": "Visit [the site](https://example.com) sometime.",
+    "html": "<p>Visit <a href=\"https://example.com\">the site</a> sometime.</p>"
+  },
+  {
+    "name": "heading",
+    "input": "# A Heading\n\nAnd a paragraph.",
+    "html": "<h1>A Heading</h1>\n<p>And a paragraph.</p>"
+  },
+  {
+    "name": "ul",
+    "input": "- one\n- two\n- three",
+    "html": "<ul>\n<li>one</li>\n<li>two</li>\n<li>three</li>\n</ul>"
+  },
+  {
+    "name": "ol",
+    "input": "1. first\n2. second",
+    "html": "<ol>\n<li>first</li>\n<li>second</li>\n</ol>"
+  },
+  {
+    "name": "blockquote",
+    "input": "> a quiet aside",
+    "html": "<blockquote>\n<p>a quiet aside</p>\n</blockquote>"
+  },
+  {
+    "name": "strikethrough",
+    "input": "This is ~~struck~~ through.",
+    "html": "<p>This is <del>struck</del> through.</p>"
+  },
+  {
+    "name": "table",
+    "input": "| A | B |\n| - | - |\n| 1 | 2 |",
+    "html": "<table>\n<thead>\n<tr>\n<th>A</th>\n<th>B</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>1</td>\n<td>2</td>\n</tr>\n</tbody>\n</table>"
+  },
+  {
+    "name": "code-fence-plain",
+    "input": "```\nplain code block\nno language\n```",
+    "html": "<pre><code>plain code block\nno language\n</code></pre>"
+  },
+  {
+    "name": "soft-break",
+    "input": "line one\nline two",
+    "html": "<p>line one<br>\nline two</p>"
+  },
+  {
+    "name": "inline-code",
+    "input": "Use the `render()` function.",
+    "html": "<p>Use the <code>render()</code> function.</p>"
+  },
+  {
+    "name": "escapes-in-brackets",
+    "input": "[she said *softly* with _weight_]",
+    "html": "<p><span class=\"qt-chat-narration\">[she said *softly* with _weight_]</span></p>"
+  }
+]
