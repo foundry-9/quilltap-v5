@@ -26,6 +26,11 @@
 //!   default chat settings, and the default `Built-in TF-IDF` embedding profile
 //!   (v4 `seedEmbeddingProfiles`) — so zero-config semantic search works without
 //!   an API key.
+//! - **The built-in roleplay templates** (`Standard` / `Quilltap RP`, v4
+//!   `seedBuiltInTemplates`) via [`builtin_templates`] (P4.4u3, family 1).
+//! - **The three built-in mount stores** (`Lantern Backgrounds` / `Quilltap
+//!   Uploads` / `Quilltap General`) + their `instance_settings` pointers, via
+//!   [`builtin_mounts`] (P4.4u3, family 2).
 //!
 //! ## Tracked deferrals (named in the P4.4 report)
 //!
@@ -33,14 +38,6 @@
 //!   lorian-and-riya.qtap` → 2 characters + 42 memories + avatars) drags in the
 //!   unported import service; a fresh instance boots and the SPA is fully usable
 //!   with zero characters (you create your own).
-//! - **The built-in roleplay templates** (`Standard` / `Quilltap RP`) need the
-//!   `delimiters` discriminated-union marshaling completed on the ported
-//!   `roleplay_templates` repo (currently held empty); roleplay presets are
-//!   non-critical (chats fall back to no template).
-//! - **The three built-in mount stores** (`Quilltap General` / `Quilltap Uploads`
-//!   / `Lantern Backgrounds`) + their `instance_settings` pointers — needed
-//!   before the image/upload/general-scenario verticals; the Salon-create
-//!   baseline degrades gracefully without them.
 //!
 //! ## The chat_settings seam
 //!
@@ -61,6 +58,7 @@ use serde::Deserialize;
 
 use crate::clock;
 use crate::db::{embedding_profiles, users, DbError, Writer};
+use crate::services::{builtin_mounts, builtin_templates};
 
 /// v4 `SINGLE_USER_ID` (`lib/auth/single-user.ts`) — the fixed UUID every row
 /// belongs to in single-user mode.
@@ -131,17 +129,23 @@ pub fn provision_fresh_instance(data_dir: &Path, pepper_b64: &str) -> Result<(),
     let schema: FreshSchema = serde_json::from_str(FRESH_SCHEMA_JSON)
         .map_err(|e| ProvisionError::Artifact(format!("fresh_schema.json: {e}")))?;
 
-    // Main partition: schema + seed.
+    // Main partition: schema + seed rows + the built-in roleplay templates
+    // (family 1, main-only).
     let main = Writer::open_writable(&data_dir.join("quilltap.db"), pepper_b64)?;
     exec_ddl(main.connection(), &schema.main)?;
     seed_main(&main)?;
-    drop(main);
+    builtin_templates::seed_built_in_templates(main.connection())?;
 
-    // Sibling partitions: schema only.
+    // Mount-index sibling: schema, then the three built-in mount stores (family 2)
+    // — which span both partitions (pointers in main, rows/folders here). Kept
+    // open alongside `main` so the provisioner can write both.
     let mount_index = Writer::open_writable(&data_dir.join("quilltap-mount-index.db"), pepper_b64)?;
     exec_ddl(mount_index.connection(), &schema.mount_index)?;
+    builtin_mounts::ensure_builtin_mounts(main.connection(), mount_index.connection())?;
     drop(mount_index);
+    drop(main);
 
+    // llm-logs sibling: schema only.
     let llm_logs = Writer::open_writable(&data_dir.join("quilltap-llm-logs.db"), pepper_b64)?;
     exec_ddl(llm_logs.connection(), &schema.llm_logs)?;
     drop(llm_logs);

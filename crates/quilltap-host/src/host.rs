@@ -370,6 +370,16 @@ impl EngineAssembler for HostAssembler {
         let lock_path = lock::instance_lock_path(&self.base_dir);
         lock::acquire_instance_lock(&lock_path).map_err(|e| e.to_string())?;
 
+        // Seed the built-in roleplay templates + provision-or-adopt the three
+        // built-in mount stores (P4.4u3), on EVERY assemble/unlock — matching v4's
+        // every-startup `seedBuiltInTemplates` + the mount-provisioning migrations
+        // + `ensureGeneralScenariosFolder`. Idempotent by construction: a
+        // pre-existing instance drift-updates its templates and ADOPTS its existing
+        // stores, never duplicating. Run on a fresh OS thread so `write_blocking`
+        // is legal whether `assemble` was reached from the sync boot path or an
+        // async `Unlock` dispatch (`blocking_recv` panics on a tokio worker).
+        seed_built_ins(db)?;
+
         // The terminal manager (P4.1c) — one per assembly (it holds this
         // assembly's Db); published on the host slot for the transport's
         // terminal routes.
@@ -510,6 +520,33 @@ impl EngineAssembler for HostAssembler {
             provider_actions,
         })
     }
+}
+
+/// Seed the built-in roleplay templates + provision-or-adopt the three built-in
+/// mount stores (P4.4u3, families 1 & 2) through the writer thread. Spawned on a
+/// fresh OS thread and joined so `write_blocking` is legal from either the sync
+/// boot path or an async `Unlock` dispatch. The mount families are skipped on a
+/// main-only instance (no mount-index partition).
+fn seed_built_ins(db: &Db) -> Result<(), String> {
+    use quilltap_core::db::DbError;
+    use quilltap_core::services::{builtin_mounts, builtin_templates};
+
+    let db = db.clone();
+    std::thread::spawn(move || -> Result<(), DbError> {
+        db.write_blocking(|ws| {
+            let main = ws.main().connection();
+            builtin_templates::seed_built_in_templates(main)?;
+            if let Some(mi) = ws.mount_index() {
+                let mount_index = mi.connection();
+                builtin_mounts::ensure_builtin_mounts(main, mount_index)?;
+                builtin_mounts::ensure_general_scenarios_folder(main, mount_index)?;
+            }
+            Ok(())
+        })
+    })
+    .join()
+    .map_err(|_| "built-in seed thread panicked".to_string())?
+    .map_err(|e| format!("built-in seed failed: {e}"))
 }
 
 /// v4's dispatcher loop over the ported [`JobRunner::pump_claim`]:

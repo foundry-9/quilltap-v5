@@ -42,6 +42,10 @@ interface DialogueDetection {
   className: string;
 }
 
+// A delimiter entry (the discriminated union) — passed straight through to the
+// JSON column, so its precise shape is validated by the repo, not typed here.
+type TemplateDelimiter = Record<string, unknown>;
+
 interface Spec {
   testPepperBase64: string;
   seed: Array<{
@@ -52,12 +56,16 @@ interface Spec {
     systemPrompt: string;
     isBuiltIn: boolean;
     tags: string[];
+    delimiters: TemplateDelimiter[];
     renderingPatterns: RenderingPattern[];
     dialogueDetection: DialogueDetection | null;
-    narrationDelimiters: string;
+    narrationDelimiters: string | [string, string];
     createdAt: string;
     updatedAt: string;
   }>;
+  // Post-seed RAW UPDATEs that bypass Zod, so a seed row can carry a genuine
+  // legacy kind-less delimiter on disk (validation would backfill kind:'wrap').
+  rawDelimiters?: Array<{ id: string; delimitersJson: string }>;
 }
 
 async function main(): Promise<void> {
@@ -91,9 +99,8 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE; // writable path uses journal_mode = TRUNCATE
   process.env.LOG_LEVEL = 'error'; // keep stdout/stderr quiet for clean runs
 
-  const { initializeDatabase, ensureCollection, closeDatabase } = await import(
-    '@/lib/database/manager'
-  );
+  const { initializeDatabase, ensureCollection, rawQuery, closeDatabase } =
+    await import('@/lib/database/manager');
   const { RoleplayTemplatesRepository } = await import(
     '@/lib/database/repositories/roleplay-templates.repository'
   );
@@ -112,13 +119,23 @@ async function main(): Promise<void> {
         systemPrompt: row.systemPrompt,
         isBuiltIn: row.isBuiltIn,
         tags: row.tags,
-        delimiters: [],
+        delimiters: row.delimiters,
         renderingPatterns: row.renderingPatterns,
         dialogueDetection: row.dialogueDetection,
         narrationDelimiters: row.narrationDelimiters,
       } as never,
       { id: row.id, createdAt: row.createdAt, updatedAt: row.updatedAt }
     );
+  }
+
+  // Post-seed raw overrides: write a legacy kind-less delimiter directly to the
+  // column, bypassing the repo's Zod validation (which would backfill kind:'wrap'
+  // on the way in). The update op under test then round-trips it.
+  for (const raw of spec.rawDelimiters ?? []) {
+    await rawQuery('UPDATE roleplay_templates SET delimiters = ? WHERE id = ?', [
+      raw.delimitersJson,
+      raw.id,
+    ]);
   }
 
   await closeDatabase();

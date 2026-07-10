@@ -57,6 +57,27 @@ five characters exercising favorite/npc/controlledBy/canBeCarina/default-partner
 broken-vault branches). Proven by `characters_reads_equivalence` (13 cases vs
 v4's real route handlers). The mutations, tags CRUD, actions, the heavier read
 actions, the gallery, and ST import/export land in the following slices.
+P4.4u3 built-in seeds: a fresh v5 instance now carries the two built-in
+roleplay templates ("Standard" / "Quilltap RP") and the three built-in mount
+stores ("Lantern Backgrounds" / "Quilltap Uploads" / "Quilltap General"),
+matching a fresh v4 instance. The `roleplay_templates` `delimiters`
+discriminated-union marshaling the Phase-2 port deferred is completed: typed
+serde structs in schema field order for the three kinds (wrap / linePrefix /
+tagPrefix), the `addOns` and string-or-pair sub-unions, and the read-side
+`kind:'wrap'` backfill v4's `_update` applies on rewrite. The seeder
+reproduces v4's two-path quirk exactly — the INSERT path stores delimiters in
+Zod schema order, the drift-UPDATE path stores them in the raw seed-literal
+order — proven byte-for-byte. Mount provisioning is the three v4 migrations as
+one idempotent unit: settings-pointer provision-or-adopt (a live pointer
+adopts its store, a dangling one re-provisions), the verbatim `doc_mount_points`
+row, and the subfolder scaffolds. Both families run in fresh-instance
+provisioning and on every host assemble/unlock (drift-update + adopt/heal),
+tolerating a not-yet-provisioned db. New differentials drive v4's REAL
+`seedBuiltInTemplates()` and the migration `run()` functions
+(`builtin_templates_equivalence`, `builtin_mounts_equivalence`), and the
+provisioning differential now diffs the seeded tables against a
+fresh-v4-with-migrations+seed instance. The `lorian-and-riya.qtap`
+sample-content import stays deferred.
 
 CLAUDE.md is trimmed from 5,922 lines (~430 KB, loaded into every turn of
 every session and lane agent) to 287: the unit-by-unit Status journal moved

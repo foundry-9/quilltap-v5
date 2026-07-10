@@ -30,7 +30,8 @@
 use std::path::{Path, PathBuf};
 
 use quilltap_core::db::roleplay_templates::{
-    CreateOptions, DialogueDetection, RenderingPattern, RtCreate, RtUpdate,
+    CreateOptions, DialogueDetection, RenderingPattern, RtCreate, RtUpdate, StringOrPair,
+    TemplateDelimiter,
 };
 use quilltap_core::db::Writer;
 use serde::Deserialize;
@@ -69,12 +70,13 @@ struct CreateData {
     #[serde(rename = "isBuiltIn")]
     is_built_in: bool,
     tags: Vec<String>,
+    delimiters: Vec<TemplateDelimiter>,
     #[serde(rename = "renderingPatterns")]
     rendering_patterns: Vec<RenderingPattern>,
     #[serde(rename = "dialogueDetection")]
     dialogue_detection: Option<DialogueDetection>,
     #[serde(rename = "narrationDelimiters")]
-    narration_delimiters: String,
+    narration_delimiters: StringOrPair,
 }
 
 #[derive(Deserialize)]
@@ -96,12 +98,14 @@ struct UpdateData {
     system_prompt: Option<String>,
     #[serde(default)]
     tags: Option<Vec<String>>,
+    #[serde(default)]
+    delimiters: Option<Vec<TemplateDelimiter>>,
     #[serde(default, rename = "renderingPatterns")]
     rendering_patterns: Option<Vec<RenderingPattern>>,
     #[serde(default, rename = "dialogueDetection")]
     dialogue_detection: Option<DialogueDetection>,
     #[serde(default, rename = "narrationDelimiters")]
-    narration_delimiters: Option<String>,
+    narration_delimiters: Option<StringOrPair>,
     #[serde(rename = "updatedAt")]
     updated_at: String,
 }
@@ -161,6 +165,7 @@ fn roleplay_templates_tier2_matches_oracle() {
                             system_prompt: data.system_prompt.clone(),
                             is_built_in: data.is_built_in,
                             tags: data.tags.clone(),
+                            delimiters: data.delimiters.clone(),
                             rendering_patterns: data.rendering_patterns.clone(),
                             dialogue_detection: data.dialogue_detection.clone(),
                             narration_delimiters: data.narration_delimiters.clone(),
@@ -181,6 +186,7 @@ fn roleplay_templates_tier2_matches_oracle() {
                                 description: data.description.clone(),
                                 system_prompt: data.system_prompt.clone(),
                                 tags: data.tags.clone(),
+                                delimiters: data.delimiters.clone(),
                                 rendering_patterns: data.rendering_patterns.clone(),
                                 dialogue_detection: data.dialogue_detection.clone(),
                                 narration_delimiters: data.narration_delimiters.clone(),

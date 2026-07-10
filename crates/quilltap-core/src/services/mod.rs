@@ -38,6 +38,8 @@ pub mod avatar_prompt;
 pub mod brahma_console;
 pub mod build_context;
 pub mod builtin_embedding;
+pub mod builtin_mounts;
+pub mod builtin_templates;
 pub mod carina_memory_extraction;
 pub mod carina_query;
 pub mod carina_runner;

@@ -1,0 +1,107 @@
+[
+  {
+    "name": "Standard",
+    "description": "Traditional roleplay formatting with *actions* in asterisks and \"dialogue\" in quotes.",
+    "systemPrompt": "[SYSTEM INSTRUCTION: STANDARD ROLEPLAY FORMATTING]\nYou must adhere to the following standard roleplay syntax for all outputs.\n\n1. ACTION & NARRATION: Enclose all physical movements, sensory details, and narration in ASTERISKS *.\n   - Example: *I sighed heavily, wiping the rain from my eyes.*\n   - Example: *She drew her sword, the steel glinting in the firelight.*\n\n2. SPOKEN DIALOGUE: Enclose all spoken words in DOUBLE QUOTES \".\n   - Example: \"I don't think that's a good idea, Captain.\"\n\n3. OUT-OF-CHARACTER (OOC): Enclose meta-comments, questions, or clarifications in PARENTHESES ( ) or DOUBLE PARENTHESES (( )).\n   - Example: ((Should we skip to the next morning?))\n\n4. EMPHASIS: Use Markdown bold (**text**) for vocal stress within dialogue. Do NOT use italics for emphasis inside dialogue to avoid confusion with actions.\n   - Example: \"I said **stop** moving!\"\n\n5. STRICT COMPLIANCE: Ensure a clear visual separation between actions (* *) and speech (\" \").",
+    "delimiters": [
+      {
+        "kind": "wrap",
+        "name": "Narration",
+        "buttonName": "Nar",
+        "delimiters": "*",
+        "style": "qt-chat-narration"
+      },
+      {
+        "kind": "wrap",
+        "name": "Out of Character",
+        "buttonName": "OOC",
+        "delimiters": [
+          "((",
+          "))"
+        ],
+        "style": "qt-chat-ooc"
+      }
+    ],
+    "renderingPatterns": [
+      {
+        "pattern": "\\(\\([^)]+\\)\\)",
+        "className": "qt-chat-ooc"
+      },
+      {
+        "pattern": "[\"\"“][^\"\"”]+[\"\"”]",
+        "className": "qt-chat-dialogue"
+      },
+      {
+        "pattern": "(?<!\\*)\\*[^*]+\\*(?!\\*)",
+        "className": "qt-chat-narration"
+      }
+    ],
+    "dialogueDetection": {
+      "openingChars": [
+        "\"",
+        "“"
+      ],
+      "closingChars": [
+        "\"",
+        "”"
+      ],
+      "className": "qt-chat-dialogue"
+    },
+    "narrationDelimiters": "*"
+  },
+  {
+    "name": "Quilltap RP",
+    "description": "Custom formatting protocol with dialogue as bare text, actions in [brackets], thoughts in {braces}, and OOC with // prefix.",
+    "systemPrompt": "[SYSTEM INSTRUCTION: INTERACTION FORMATTING PROTOCOL]\nYou must adhere to the following custom syntax for all outputs. Do NOT use standard roleplay formatting.\n\n1. SPOKEN DIALOGUE: Write as bare text. Do NOT use quotation marks.\n   - Example: Put the gun down, John.\n   - Markdown Italics (*text*) denote VOCAL EMPHASIS only, never action.\n\n2. ACTION & NARRATION: Enclose all physical movements, facial expressions, and environmental descriptions in SQUARE BRACKETS [ ].\n   - Example: [I lean back in the chair, crossing my arms.]\n\n3. INTERNAL MONOLOGUE: Enclose private thoughts and feelings in CURLY BRACES { }.\n   - Example: {He's lying to me. I can feel it.}\n\n4. META/OOC: Any Out-of-Character comments or instructions must start with \"// \".\n   - Example: // The user is simulating a high-gravity environment now.\n\n5. STRICT COMPLIANCE: You must mirror this formatting in your responses. Never use asterisks for actions.",
+    "delimiters": [
+      {
+        "kind": "wrap",
+        "name": "Narration",
+        "buttonName": "Nar",
+        "delimiters": [
+          "[",
+          "]"
+        ],
+        "style": "qt-chat-narration"
+      },
+      {
+        "kind": "wrap",
+        "name": "Internal Monologue",
+        "buttonName": "Int",
+        "delimiters": [
+          "{",
+          "}"
+        ],
+        "style": "qt-chat-inner-monologue"
+      },
+      {
+        "kind": "linePrefix",
+        "name": "Out of Character",
+        "buttonName": "OOC",
+        "marker": "// ",
+        "style": "qt-chat-ooc"
+      }
+    ],
+    "renderingPatterns": [
+      {
+        "pattern": "^// .+$",
+        "className": "qt-chat-ooc",
+        "flags": "m",
+        "scope": "line"
+      },
+      {
+        "pattern": "\\[[^\\]]+\\](?!\\()",
+        "className": "qt-chat-narration"
+      },
+      {
+        "pattern": "\\{[^}]+\\}",
+        "className": "qt-chat-inner-monologue"
+      }
+    ],
+    "dialogueDetection": null,
+    "narrationDelimiters": [
+      "[",
+      "]"
+    ]
+  }
+]

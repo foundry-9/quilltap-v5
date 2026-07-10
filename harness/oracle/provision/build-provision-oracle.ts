@@ -74,7 +74,11 @@ async function main(): Promise<void> {
   const scratch = mkdtempSync(join(tmpdir(), 'qt-provision-oracle-'));
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const mainPath = join(scratch, 'quilltap.db');
-  const miPath = join(scratch, 'quilltap-mount-index.db');
+  // The mount-index sits under `data/` so `SQLITE_MOUNT_INDEX_PATH` (the manager)
+  // and `getMountIndexDatabasePath()` (the mount-provisioning migrations) resolve
+  // to the SAME file — otherwise the migrations would write a different db than
+  // the manager reads.
+  const miPath = join(scratch, 'data', 'quilltap-mount-index.db');
   const llPath = join(scratch, 'quilltap-llm-logs.db');
 
   process.env.ENCRYPTION_MASTER_PEPPER = TEST_PEPPER;
@@ -126,6 +130,25 @@ async function main(): Promise<void> {
     prepareSeedEmbeddingProfile(getSeedEmbeddingProfiles()[0], SINGLE_USER_ID),
   );
 
+  // --- P4.4u3 families 1 & 2: built-in roleplay templates + mount stores ---
+  // v4's every-startup `seedBuiltInTemplates` (a repo op through the manager) and
+  // the three mount-provisioning migrations' `run()` (they read/write the settings
+  // pointers via getSQLiteDatabase and open their own mount-index connection at
+  // getMountIndexDatabasePath, aligned above with SQLITE_MOUNT_INDEX_PATH).
+  await anyRepos.roleplayTemplates.seedBuiltInTemplates();
+  const { provisionLanternBackgroundsMountMigration } = await import(
+    '@/migrations/scripts/provision-lantern-backgrounds-mount'
+  );
+  const { provisionUserUploadsMountMigration } = await import(
+    '@/migrations/scripts/provision-user-uploads-mount'
+  );
+  const { provisionGeneralMountMigration } = await import(
+    '@/migrations/scripts/provision-general-mount'
+  );
+  await provisionLanternBackgroundsMountMigration.run();
+  await provisionUserUploadsMountMigration.run();
+  await provisionGeneralMountMigration.run();
+
   const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
   const { getRawMountIndexDatabase } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
@@ -159,7 +182,23 @@ async function main(): Promise<void> {
   // Re-add the fixed userId to users for an explicit compare.
   (seed.users as Record<string, unknown>).id = SINGLE_USER_ID;
 
-  writeFileSync(oracleOut, JSON.stringify({ schema, seed }, null, 2));
+  // --- P4.4u3 seeded tables (raw dumps; the Rust side remaps minted ids) ---
+  const dumpRawTable = (db: import('better-sqlite3').Database, table: string) => {
+    const columns = (
+      db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>
+    ).map((c) => c.name);
+    const rows = db.prepare(`SELECT * FROM "${table}"`).all() as Array<Record<string, unknown>>;
+    return { table, columns, rows };
+  };
+  const mi = getRawMountIndexDatabase();
+  const seeded = {
+    roleplayTemplates: dumpRawTable(main, 'roleplay_templates'),
+    docMountPoints: dumpRawTable(mi, 'doc_mount_points'),
+    docMountFolders: dumpRawTable(mi, 'doc_mount_folders'),
+    instanceSettings: dumpRawTable(main, 'instance_settings'),
+  };
+
+  writeFileSync(oracleOut, JSON.stringify({ schema, seed, seeded }, null, 2));
 
   await closeDatabase();
 

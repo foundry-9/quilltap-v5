@@ -203,6 +203,43 @@ async fn setup_flow_end_to_end() {
     assert_eq!(body["type"], "chats");
     assert_eq!(body["data"], json!([]));
 
+    // P4.4u3: the fresh instance carries the built-in seeds (2 roleplay templates,
+    // 3 mount stores + their pointers). Read them back read-only with the minted
+    // pepper (the running server holds the writer; readers coexist).
+    let ro = |db: &str| {
+        let flags =
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX;
+        let conn = rusqlite::Connection::open_with_flags(base.path().join("data").join(db), flags)
+            .unwrap();
+        let key_hex = dbkey::pepper_b64_to_key_hex(&pepper).unwrap();
+        conn.pragma_update(None, "key", format!("x'{key_hex}'"))
+            .unwrap();
+        conn
+    };
+    let main = ro("quilltap.db");
+    let n_templates: i64 = main
+        .query_row(
+            "SELECT count(*) FROM roleplay_templates WHERE isBuiltIn = 1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(n_templates, 2, "2 built-in roleplay templates after setup");
+    let n_pointers: i64 = main
+        .query_row(
+            "SELECT count(*) FROM instance_settings WHERE key IN \
+             ('generalMountPointId','userUploadsMountPointId','lanternBackgroundsMountPointId')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(n_pointers, 3, "3 mount-pointer settings after setup");
+    let mi = ro("quilltap-mount-index.db");
+    let n_mounts: i64 = mi
+        .query_row("SELECT count(*) FROM doc_mount_points", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(n_mounts, 3, "3 built-in mount stores after setup");
+
     // A second setup refuses (already set up).
     let (status, body) = post_dispatch(addr, json!({"type": "setup", "passphrase": ""})).await;
     assert_eq!(status, 400);

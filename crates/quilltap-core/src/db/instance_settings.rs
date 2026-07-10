@@ -243,6 +243,27 @@ pub fn get_user_uploads_mount_point_id(main: &Connection) -> Result<Option<Strin
     Ok(read_setting(main, KEY_USER_UPLOADS_MOUNT_POINT_ID))
 }
 
+// ---------------------------------------------------------------------------
+// P4.4u3 appends (lane d) — the mount-point-pointer setters. The built-in mount
+// provisioner ([`crate::services::builtin_mounts`]) writes each store's id here
+// after minting it (v4's `INSERT ... ON CONFLICT(key) DO UPDATE`).
+// ---------------------------------------------------------------------------
+
+/// v4 `setGeneralMountPointId` — persist the Quilltap General store's id.
+pub fn set_general_mount_point_id(main: &Connection, id: &str) -> Result<(), DbError> {
+    write_setting(main, KEY_GENERAL_MOUNT_POINT_ID, id)
+}
+
+/// v4 `setUserUploadsMountPointId` — persist the Quilltap Uploads store's id.
+pub fn set_user_uploads_mount_point_id(main: &Connection, id: &str) -> Result<(), DbError> {
+    write_setting(main, KEY_USER_UPLOADS_MOUNT_POINT_ID, id)
+}
+
+/// v4 `setLanternBackgroundsMountPointId` — persist the Lantern Backgrounds id.
+pub fn set_lantern_backgrounds_mount_point_id(main: &Connection, id: &str) -> Result<(), DbError> {
+    write_setting(main, KEY_LANTERN_BACKGROUNDS_MOUNT_POINT_ID, id)
+}
+
 #[cfg(test)]
 mod p41b_tests {
     use super::*;

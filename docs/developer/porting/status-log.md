@@ -5785,3 +5785,77 @@ id/createdAt/updatedAt. Versions: core 0.0.161, harness 0.0.146. Remaining in
 P4.6f: create/quick-create/update, delete-cascade, wardrobe mutations, tags CRUD
 + delete fan-out, stats/chats, the photo gallery, ST import/export,
 depiction-guidelines, and the Tier-3 refusals.
+---
+
+**P4.4u3 — the built-in seeds (roleplay templates + the three mount stores):
+done (2026-07-10).** Two of the three P4.4 named seed deferrals closed so a
+fresh v5 instance matches a fresh v4 instance.
+
+- **Family 1 — the `delimiters` discriminated-union marshaling** (the Phase-2
+  scope dodge, `db::roleplay_templates`). Typed serde structs in Zod schema
+  field order for the three kinds (`wrap` / `linePrefix` / `tagPrefix`): an
+  internally-tagged (`#[serde(tag="kind")]`) enum with the shared
+  `name`/`buttonName`/`style`/`hideDelimiter?`/`addOns?` before the
+  kind-specific tail, plus the `StringOrPair` untagged union shared by `wrap`'s
+  `delimiters` and the row-level `narrationDelimiters` (bare string → plain
+  TEXT; pair → JSON array text, mirroring `documentToRow`'s array-value branch
+  on a schema-`'unknown'` column). `addOns` carries field-level serde defaults
+  matching Zod's, so a partial input materializes identically. The read-side
+  `kind:'wrap'` backfill (`TemplateDelimiterSchema`'s `z.preprocess`) lives in
+  `parse_delimiters`, exercised by the update path: v4 `_update` reads →
+  validates → `$set`s EVERY column, so a legacy kind-less delimiter is upgraded
+  to `kind:'wrap'` on the next update; the port always rewrites the `delimiters`
+  column (from the patch or the re-parsed existing value) to reproduce that,
+  byte-for-byte, while leaving the identity columns partial. The tier-2 corpus
+  now exercises every kind (+ addOns present/absent, hideDelimiter, tokenPattern
+  present/absent, narration string/pair) and a `rawDelimiters` post-seed
+  kind-less row round-tripped through update.
+- **Family 1 seeder** (`services::builtin_templates`): v4's every-startup
+  `seedBuiltInTemplates` — find-by-`(name, isBuiltIn)`, INSERT (minted id) when
+  absent, drift-UPDATE six fields + `updatedAt` when present. THE QUIRK v4 has
+  and the port reproduces: the INSERT path (`this.validate` → Zod parse) stores
+  delimiters in SCHEMA order, but the drift-UPDATE path (`collection.updateOne`
+  raw `$set`) stores them in the SEED-LITERAL order of the `BUILT_IN_TEMPLATES`
+  literal. The seed data module (`builtin_templates.json`) is generated verbatim
+  from v4's real seeder (`dump-builtin-templates.ts`, double-seeded to capture
+  the seed-literal order); the INSERT path re-parses it through the typed union
+  (→ schema order), the UPDATE path serializes it raw (→ seed-literal order).
+- **Family 2 — the three mount stores** (`services::builtin_mounts`): v4's
+  `provision-{lantern-backgrounds,user-uploads,general}-mount` migrations as one
+  idempotent provision-or-adopt unit, keyed by the `instance_settings` POINTER
+  (not by name): empty/dangling pointer → mint fresh (verbatim `doc_mount_points`
+  INSERT + `ON CONFLICT` pointer upsert), live pointer → adopt; always ensure the
+  subfolders via the ported `ensure_folder_path`. `ensure_mount_index_tables`
+  ports `ensureMountIndexTables` (CREATE IF NOT EXISTS, a no-op on the generateDDL
+  schema) and the `instance_settings`-existence guard ports the migration
+  `shouldRun`. Plus `ensure_general_scenarios_folder` (the runtime re-ensure) and
+  the three `instance_settings` pointer setters.
+- **Wiring**: `provision_fresh_instance` runs both families (main + mount-index
+  writers held open together for the cross-partition mount step); the host
+  assembler runs both on EVERY assemble/unlock via a spawned-and-joined OS thread
+  (so `write_blocking` is legal from the sync boot path and the async `Unlock`
+  dispatch alike). Idempotent: a pre-existing instance adopts + drift-updates,
+  never duplicates.
+- **Differentials**: `builtin_templates_equivalence` (drives v4's REAL
+  `seedBuiltInTemplates` over fresh / stale-builtin / user-same-name states),
+  `builtin_mounts_equivalence` (drives the REAL migration `run()` over empty /
+  dangling / live states, shared-id-map remap), `provisioning_equivalence`
+  extended (a fresh v5 instance's roleplay_templates / doc_mount_points /
+  doc_mount_folders / instance_settings diffed against a
+  fresh-v4-with-migrations+seed instance — build-provision-oracle.ts now runs
+  seedBuiltInTemplates + the migration `run()`s, mount-index path aligned so the
+  manager and migrations share the file), the tier-2 corpus regen, a host
+  adopt/seed test, and the web setup e2e asserting 2 templates + 3 mounts + 3
+  pointers post-setup. All green.
+- **Deferred (unchanged)**: the `lorian-and-riya.qtap` sample-content import
+  (needs the ~2,500-line quilltap-import service; v4 gates it on zero-characters
+  and swallows failures — a fresh v5 instance is fully functional without it).
+- **Gotcha banked**: v4's mount migrations open the mount-index via
+  `getMountIndexDatabasePath()` (`<dataDir>/data/quilltap-mount-index.db`), which
+  IGNORES `SQLITE_MOUNT_INDEX_PATH` — the manager honors the env var. Any oracle
+  running the migrations in-process must place the mount-index under `data/` so
+  both agree, or they write/read different files. Oracle scripts that import
+  `better-sqlite3` at top level must run from a mirror INSIDE the v4 checkout
+  (node_modules resolves by walking up from the script) — the `/tmp` mirror the
+  `@/`-only cases use fails on the bare import.
+- **Versions**: core 0.0.159, host 0.0.10, harness 0.0.144, web 0.0.7.

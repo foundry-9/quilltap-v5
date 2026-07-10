@@ -1,0 +1,69 @@
+{
+  "$comment": [
+    "Shared pre-state spec for the built-in roleplay-templates seeder differential",
+    "(P4.4u3, family 1). Drives BOTH the v4 oracle (cases/builtin-templates.ts,",
+    "which runs v4's REAL seedBuiltInTemplates) and the Rust port",
+    "(builtin_templates_equivalence). Three states exercise the three seeder paths:",
+    "",
+    "  - `fresh`          : empty table → INSERT both built-ins (SCHEMA-order",
+    "                       delimiters, the fresh-instance path).",
+    "  - `stale-builtin`  : a built-in `Standard` with stale content → UPDATE-in-",
+    "                       place (proving upgrade-drift; the delimiters land in",
+    "                       SEED-LITERAL order, the v4 collection.updateOne quirk).",
+    "  - `user-same-name` : a USER `Standard` (isBuiltIn=false) → the built-in is",
+    "                       INSERTED alongside it (the isBuiltIn-keying invariant).",
+    "",
+    "Each pre-row is created via the real repo with a PINNED id + timestamps so both",
+    "sides start byte-identical; the seeder's minted ids/timestamps are normalized",
+    "out of the compared dump (keyed by name+isBuiltIn).",
+    "",
+    "SAFETY: testPepperBase64 is the shared throwaway 32-byte key, not the real",
+    "Friday pepper."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "states": [
+    { "name": "fresh", "pre": [] },
+    {
+      "name": "stale-builtin",
+      "pre": [
+        {
+          "id": "b0000000-0000-4000-8000-0000000000b1",
+          "userId": null,
+          "name": "Standard",
+          "description": "STALE description to be overwritten.",
+          "systemPrompt": "STALE prompt to be overwritten.",
+          "isBuiltIn": true,
+          "tags": [],
+          "delimiters": [
+            { "kind": "wrap", "name": "Stale", "buttonName": "St", "style": "qt-stale", "delimiters": "?" }
+          ],
+          "renderingPatterns": [],
+          "dialogueDetection": null,
+          "narrationDelimiters": "?",
+          "createdAt": "2025-01-01T00:00:00.000Z",
+          "updatedAt": "2025-01-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "user-same-name",
+      "pre": [
+        {
+          "id": "c0000000-0000-4000-8000-0000000000c1",
+          "userId": "9f000000-0000-4000-8000-0000000000ff",
+          "name": "Standard",
+          "description": "A user's own template that happens to share the name.",
+          "systemPrompt": "User-authored prompt; must NOT be touched by the seeder.",
+          "isBuiltIn": false,
+          "tags": [],
+          "delimiters": [],
+          "renderingPatterns": [],
+          "dialogueDetection": null,
+          "narrationDelimiters": "*",
+          "createdAt": "2025-02-02T00:00:00.000Z",
+          "updatedAt": "2025-02-02T00:00:00.000Z"
+        }
+      ]
+    }
+  ]
+}

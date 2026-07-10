@@ -111,6 +111,119 @@ fn opt_env(name: &str) -> Option<PathBuf> {
     std::env::var(name).ok().map(PathBuf::from)
 }
 
+/// Normalize a `roleplay_templates` dump: minted id/createdAt/updatedAt →
+/// placeholders, rows sorted by (name, isBuiltIn).
+fn normalize_templates(dump: &Value) -> Value {
+    let mut rows: Vec<Value> = dump["rows"].as_array().unwrap().clone();
+    for row in &mut rows {
+        let obj = row.as_object_mut().unwrap();
+        obj.insert("id".into(), Value::from("<id>"));
+        obj.insert("createdAt".into(), Value::from("<ts>"));
+        obj.insert("updatedAt".into(), Value::from("<ts>"));
+    }
+    rows.sort_by_key(|r| format!("{} {}", r["name"].as_str().unwrap_or(""), r["isBuiltIn"]));
+    json!({ "columns": dump["columns"], "rows": rows })
+}
+
+/// Collapse an integer-valued REAL to an integer (v5's generateDDL REAL count
+/// columns store `0.0`; v4's migration INTEGER columns store `0`).
+fn collapse_int(v: &Value) -> Value {
+    if v.is_f64() {
+        if let Some(f) = v.as_f64() {
+            if f.fract() == 0.0 && f.is_finite() {
+                return json!(f as i64);
+            }
+        }
+    }
+    v.clone()
+}
+
+/// Remap mount dumps to the shared id map (mount id → name, folder id → path,
+/// settings value → store name), dropping minted ids/timestamps.
+fn remap_mounts(dmp: &Value, dmf: &Value, isettings: &Value) -> Value {
+    use std::collections::HashMap;
+    const MOUNT_KEYS: [&str; 3] = [
+        "lanternBackgroundsMountPointId",
+        "userUploadsMountPointId",
+        "generalMountPointId",
+    ];
+    let mut id_to_name: HashMap<String, String> = HashMap::new();
+    for row in dmp["rows"].as_array().unwrap() {
+        id_to_name.insert(
+            row["id"].as_str().unwrap().to_string(),
+            row["name"].as_str().unwrap().to_string(),
+        );
+    }
+    let mut fid_to_path: HashMap<String, String> = HashMap::new();
+    for row in dmf["rows"].as_array().unwrap() {
+        fid_to_path.insert(
+            row["id"].as_str().unwrap().to_string(),
+            row["path"].as_str().unwrap().to_string(),
+        );
+    }
+    let count_cols = ["fileCount", "chunkCount", "totalSizeBytes"];
+    let mut points: Vec<Value> = dmp["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| {
+            let mut o = row.as_object().unwrap().clone();
+            o.remove("id");
+            o.remove("createdAt");
+            o.remove("updatedAt");
+            for c in count_cols {
+                if let Some(v) = o.get(c) {
+                    let cv = collapse_int(v);
+                    o.insert(c.to_string(), cv);
+                }
+            }
+            Value::Object(o)
+        })
+        .collect();
+    points.sort_by_key(|r| r["name"].as_str().unwrap_or("").to_string());
+
+    let mut folders: Vec<Value> = dmf["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| {
+            let mount = id_to_name
+                .get(row["mountPointId"].as_str().unwrap())
+                .cloned()
+                .unwrap_or_default();
+            let parent = match row["parentId"].as_str() {
+                Some(pid) => Value::from(fid_to_path.get(pid).cloned()),
+                None => Value::Null,
+            };
+            json!({ "mount": mount, "name": row["name"], "path": row["path"], "parent": parent })
+        })
+        .collect();
+    folders.sort_by_key(|r| {
+        format!(
+            "{}|{}",
+            r["mount"].as_str().unwrap_or(""),
+            r["path"].as_str().unwrap_or("")
+        )
+    });
+
+    let mut settings: Vec<Value> = isettings["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|row| MOUNT_KEYS.contains(&row["key"].as_str().unwrap_or("")))
+        .map(|row| {
+            let points_to = id_to_name
+                .get(row["value"].as_str().unwrap())
+                .cloned()
+                .unwrap_or_default();
+            json!({ "key": row["key"], "points_to": points_to })
+        })
+        .collect();
+    settings.sort_by_key(|r| r["key"].as_str().unwrap_or("").to_string());
+
+    json!({ "points": points, "folders": folders, "settings": settings })
+}
+
 #[test]
 fn provisioning_matches_v4_fresh_instance() {
     let Some(oracle_path) = opt_env("QT_ORACLE_PROVISION") else {
@@ -176,6 +289,43 @@ fn provisioning_matches_v4_fresh_instance() {
         &["id", "createdAt", "updatedAt"],
     );
     assert_eq!(got_ep, want["embeddingProfile"], "embedding seed mismatch");
+
+    // --- (2b) P4.4u3 seeded tables: built-in roleplay templates + mount stores ---
+    // A fresh v5 instance must carry the SAME seeds as a fresh-v4-with-migrations
+    // instance. Minted ids/timestamps are normalized (templates: placeholdered +
+    // keyed by name+isBuiltIn; mounts: remapped to the shared id map).
+    if let Some(seeded) = oracle.get("seeded") {
+        let got_templates = normalize_templates(
+            &quilltap_core::db::dump_table_json_conn(main.connection(), "roleplay_templates", "id")
+                .unwrap(),
+        );
+        assert_eq!(
+            got_templates,
+            normalize_templates(&seeded["roleplayTemplates"]),
+            "roleplay_templates seed mismatch"
+        );
+
+        let got_mounts = remap_mounts(
+            &quilltap_core::db::dump_table_json_conn(mi.connection(), "doc_mount_points", "id")
+                .unwrap(),
+            &quilltap_core::db::dump_table_json_conn(mi.connection(), "doc_mount_folders", "id")
+                .unwrap(),
+            &quilltap_core::db::dump_table_json_conn(main.connection(), "instance_settings", "key")
+                .unwrap(),
+        );
+        assert_eq!(
+            got_mounts,
+            remap_mounts(
+                &seeded["docMountPoints"],
+                &seeded["docMountFolders"],
+                &seeded["instanceSettings"],
+            ),
+            "mount-store seed mismatch"
+        );
+        eprintln!("OK: P4.4u3 seeded templates + mount stores match v4-fresh.");
+    } else {
+        eprintln!("note: oracle has no `seeded` block — regenerate build-provision-oracle.ts.");
+    }
 
     drop((main, mi, ll));
 
