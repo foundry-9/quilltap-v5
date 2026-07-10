@@ -1,0 +1,312 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+  "cpNoKeyId": "b1000000-0000-4000-8000-000000000001",
+  "cpWithKeyId": "b2000000-0000-4000-8000-000000000002",
+  "apiKeyId": "d1000000-0000-4000-8000-000000000001",
+  "ariaId": "a1000000-0000-4000-8000-0000000000a1",
+  "cleoId": "a2000000-0000-4000-8000-0000000000a2",
+  "bramId": "a3000000-0000-4000-8000-0000000000a3",
+  "connectionProfiles": [
+    {
+      "id": "b1000000-0000-4000-8000-000000000001",
+      "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      "name": "Anthropic (no key)",
+      "provider": "ANTHROPIC",
+      "apiKeyId": null,
+      "modelName": "claude-sonnet-4-5",
+      "parameters": {}
+    },
+    {
+      "id": "b2000000-0000-4000-8000-000000000002",
+      "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      "name": "Anthropic (with key)",
+      "provider": "ANTHROPIC",
+      "apiKeyId": "d1000000-0000-4000-8000-000000000001",
+      "modelName": "claude-sonnet-4-5",
+      "parameters": { "temperature": 0.7 }
+    }
+  ],
+  "apiKeys": [
+    {
+      "id": "d1000000-0000-4000-8000-000000000001",
+      "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      "label": "Anthropic",
+      "provider": "ANTHROPIC",
+      "key_value": "test-key-anthropic"
+    }
+  ],
+  "characters": {
+    "aria": {
+      "id": "a1000000-0000-4000-8000-0000000000a1",
+      "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      "name": "Aria",
+      "identity": "A knight of the realm.",
+      "description": "A knight sworn to protect the realm.",
+      "manifesto": "",
+      "personality": "Bold and loyal.",
+      "exampleDialogues": "",
+      "title": "",
+      "firstMessage": "Well met, traveler! I am Aria.",
+      "talkativeness": 1.0,
+      "pronouns": { "subject": "she", "object": "her", "possessive": "hers" },
+      "aliases": [],
+      "physicalDescription": null,
+      "systemPrompts": [
+        {
+          "id": "5b000000-0000-4000-8000-000000000001",
+          "name": "Default",
+          "content": "You embody Aria, protector of the realm.",
+          "isDefault": true,
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "5c000000-0000-4000-8000-000000000001",
+          "title": "Opening",
+          "content": "A quiet keep at dawn.",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ],
+      "controlledBy": "llm",
+      "isFavorite": false,
+      "npc": false,
+      "defaultImageId": null,
+      "defaultConnectionProfileId": null,
+      "defaultPartnerId": null,
+      "defaultRoleplayTemplateId": null,
+      "defaultImageProfileId": null,
+      "sillyTavernData": null,
+      "defaultAgentModeEnabled": null,
+      "defaultHelpToolsEnabled": null,
+      "defaultTimestampConfig": null,
+      "defaultScenarioId": null,
+      "defaultSystemPromptId": null,
+      "characterDocumentMountPointId": null,
+      "canDressThemselves": null,
+      "canCreateOutfits": null,
+      "systemTransparency": null,
+      "coreWhisperEnabled": null
+    },
+    "cleo": {
+      "id": "a2000000-0000-4000-8000-0000000000a2",
+      "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      "name": "Cleo",
+      "identity": "A traveling scholar.",
+      "description": "A scholar who chronicles the realm.",
+      "manifesto": "",
+      "personality": "Wry and curious.",
+      "exampleDialogues": "",
+      "title": "",
+      "firstMessage": "Greetings. I am Cleo, keeper of records.",
+      "talkativeness": 0.1,
+      "pronouns": { "subject": "she", "object": "her", "possessive": "hers" },
+      "aliases": [],
+      "physicalDescription": null,
+      "systemPrompts": [
+        {
+          "id": "5b000000-0000-4000-8000-000000000002",
+          "name": "Default",
+          "content": "You embody Cleo, the scholar.",
+          "isDefault": true,
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ],
+      "scenarios": [],
+      "controlledBy": "llm",
+      "isFavorite": false,
+      "npc": false,
+      "defaultImageId": null,
+      "defaultConnectionProfileId": null,
+      "defaultPartnerId": null,
+      "defaultRoleplayTemplateId": null,
+      "defaultImageProfileId": null,
+      "sillyTavernData": null,
+      "defaultAgentModeEnabled": null,
+      "defaultHelpToolsEnabled": null,
+      "defaultTimestampConfig": null,
+      "defaultScenarioId": null,
+      "defaultSystemPromptId": null,
+      "characterDocumentMountPointId": null,
+      "canDressThemselves": null,
+      "canCreateOutfits": null,
+      "systemTransparency": null,
+      "coreWhisperEnabled": null
+    },
+    "bram": {
+      "id": "a3000000-0000-4000-8000-0000000000a3",
+      "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      "name": "Bram",
+      "identity": "A quiet ranger.",
+      "description": "A ranger of the deep wood.",
+      "manifesto": "",
+      "personality": "Terse.",
+      "exampleDialogues": "",
+      "title": "",
+      "firstMessage": "",
+      "talkativeness": 1.0,
+      "pronouns": { "subject": "he", "object": "him", "possessive": "his" },
+      "aliases": [],
+      "physicalDescription": null,
+      "systemPrompts": [
+        {
+          "id": "5b000000-0000-4000-8000-000000000003",
+          "name": "Default",
+          "content": "You embody Bram, the ranger.",
+          "isDefault": true,
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ],
+      "scenarios": [],
+      "controlledBy": "llm",
+      "isFavorite": false,
+      "npc": false,
+      "defaultImageId": null,
+      "defaultConnectionProfileId": null,
+      "defaultPartnerId": null,
+      "defaultRoleplayTemplateId": null,
+      "defaultImageProfileId": null,
+      "sillyTavernData": null,
+      "defaultAgentModeEnabled": null,
+      "defaultHelpToolsEnabled": null,
+      "defaultTimestampConfig": null,
+      "defaultScenarioId": null,
+      "defaultSystemPromptId": null,
+      "characterDocumentMountPointId": null,
+      "canDressThemselves": null,
+      "canCreateOutfits": null,
+      "systemTransparency": null,
+      "coreWhisperEnabled": null
+    }
+  },
+  "cases": [
+    {
+      "name": "single_char_first_message",
+      "progressId": "e0000000-0000-4000-8000-000000000001",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-000000000001",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    },
+    {
+      "name": "two_char_scenario",
+      "progressId": "e0000000-0000-4000-8000-000000000002",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-000000000002",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          },
+          {
+            "type": "CHARACTER",
+            "characterId": "a2000000-0000-4000-8000-0000000000a2",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "scenario": "They meet at dawn in the keep."
+      }
+    },
+    {
+      "name": "no_progress",
+      "progressId": "e0000000-0000-4000-8000-000000000003",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    },
+    {
+      "name": "autonomous_adhoc",
+      "progressId": "e0000000-0000-4000-8000-000000000004",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-000000000004",
+        "chatType": "autonomous",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          },
+          {
+            "type": "CHARACTER",
+            "characterId": "a2000000-0000-4000-8000-0000000000a2",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    },
+    {
+      "name": "generated_greeting",
+      "progressId": "e0000000-0000-4000-8000-000000000006",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "greetingContent": "Greetings from the deep wood. I am Bram.",
+      "greetingUsage": { "promptTokens": 40, "completionTokens": 9, "totalTokens": 49 },
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-000000000006",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a3000000-0000-4000-8000-0000000000a3",
+            "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
+          }
+        ]
+      }
+    },
+    {
+      "name": "autonomous_cron",
+      "progressId": "e0000000-0000-4000-8000-000000000005",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-000000000005",
+        "chatType": "autonomous",
+        "scheduleCron": "0 9 * * *",
+        "budgetMaxTurns": 12,
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          },
+          {
+            "type": "CHARACTER",
+            "characterId": "a2000000-0000-4000-8000-0000000000a2",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    }
+  ]
+}
