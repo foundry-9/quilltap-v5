@@ -5618,6 +5618,20 @@ the verified template processor + `characters_read`. Read-differential
 baked three-character fixture (llm / user / llm-with-`defaultPartner`),
 comparing `systemPrompt` + `firstMessage` + resolved character/user-character
 ids and names (bare / user+scenario / selected-non-default-prompt /
-default-partner), zero normalization. Next sub-units: the identity-stack
-compiler, outfit selections, the greeting generator, chat continuation, then
-the `handleCreate` spine + `ChatCreate` dispatch + capstone.
+default-partner), zero normalization. **Sub-unit 3 — the identity-stack
+compiler write side — is also DONE** (`services::system_prompt_compiler`; v4
+`compiler.ts` `compileAllIdentityStacks`): precompiles each LLM-controlled
+CHARACTER participant's identity stack (the verified `build_identity_stack`
+with `{{user}}`/`{{scenario}}`/`{{persona}}` resolved) and persists the
+`{participantId → stack}` map to `chats.compiledIdentityStacks` via a new
+`ChatUpdate.compiled_identity_stacks` setter (nullable JSON object, no
+`updatedAt` bump — the `compression_cache` pattern). Errors never propagate
+past the create handler. Tier-2 differential (`identity_compiler_equivalence`)
+drives v4's REAL `compileAllIdentityStacks` over a baked chat (Aria/llm rich,
+Bob/llm, Sam/user, Ghost/llm-removed), diffing the persisted map byte-for-byte
+(only the two active LLM participants; user/removed skipped;
+`physicalDescription` surfaces). The single-participant compile is a P4.6
+deferral; the spine populating `precompiled_identity_stack` per turn is
+verified in the capstone. Next sub-units: outfit selections, the greeting
+generator, chat continuation, then the `handleCreate` spine + `ChatCreate`
+dispatch + capstone.

@@ -4,6 +4,23 @@
 
 ### 5.0-dev
 
+P4.4 unit-2 sub-unit 3: the identity-stack compiler write side
+(services::system_prompt_compiler), ported from v4's
+lib/services/system-prompt-compiler/compiler.ts (compileAllIdentityStacks).
+Precompiles each LLM-controlled CHARACTER participant's identity stack (the
+verified build_identity_stack, with {{user}}/{{scenario}}/{{persona}}
+resolved) and persists the {participantId -> stack} map to
+chats.compiledIdentityStacks via a new ChatUpdate.compiled_identity_stacks
+setter (nullable JSON object, no updatedAt bump — the compression_cache
+pattern). Errors never propagate past the create handler (writeStacks
+swallows its update error; a character-read error surfaces for the spine's
+try/catch). The single-participant compile is a P4.6 deferral. Verified by a
+tier-2 differential (identity_compiler_equivalence) driving v4's real
+compileAllIdentityStacks over a baked chat (Aria/llm rich, Bob/llm, Sam/user,
+Ghost/llm-removed + a scenarioText), diffing the persisted map byte-for-byte
+(only the two active LLM participants get a stack; user/removed skipped;
+physicalDescription surfaces), zero normalization.
+
 P4.4 unit-2 sub-unit 2: buildChatContext (services::chat_initialize), ported
 from v4's lib/chat/initialize.ts. Resolves the {systemPrompt, firstMessage,
 character, userCharacter} seed bundle: the vault-overlaid responding

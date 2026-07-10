@@ -104,6 +104,7 @@ pub mod scheduled_maintenance;
 pub mod story_background_job;
 pub mod suparna_mail;
 pub mod suparna_notifications;
+pub mod system_prompt_compiler;
 pub mod text_tool_loop;
 pub mod tool_build;
 pub mod tool_call_threading;

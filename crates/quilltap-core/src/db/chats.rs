@@ -491,6 +491,13 @@ pub struct ChatUpdate {
     /// `repos.chats.update(chatId, { documentMode })` — no `updatedAt` bump
     /// (the chats `_update` preserves `updatedAt` unless the caller passes one).
     pub document_mode: Option<String>,
+    /// `compiledIdentityStacks` (nullable JSON object) — the per-participant
+    /// identity-stack cache written by the system-prompt compiler
+    /// ([`crate::services::system_prompt_compiler`], v4
+    /// `repos.chats.update(chatId, { compiledIdentityStacks })`). `Some(obj)`
+    /// stores the map; `Some(Value::Null)` clears the column to SQL NULL (v4's
+    /// `keys > 0 ? stacks : null`); `None` leaves it unset. No `updatedAt` bump.
+    pub compiled_identity_stacks: Option<Value>,
     /// `compressionCache` (nullable JSON object) — the async pre-compression cache
     /// ([`crate::services::compression_cache`]) `persistToDatabase` /
     /// `clearFromDatabase`. `Some(obj)` stores the cache object; `Some(Value::Null)`
@@ -904,6 +911,18 @@ impl<'c> ChatsRepository<'c> {
         }
         if let Some(v) = &patch.document_mode {
             set_col!("documentMode", Box::new(v.clone()));
+        }
+        if let Some(v) = &patch.compiled_identity_stacks {
+            // The identity-stack cache (v4 `writeStacks` via
+            // `repos.chats.update({ compiledIdentityStacks })`). A JSON `null` clears
+            // the column (SQL NULL, v4's `keys > 0 ? stacks : null`); an object is
+            // stored as compact JSON text. No `updatedAt` bump.
+            let text: Option<String> = if v.is_null() {
+                None
+            } else {
+                Some(json_text(v)?)
+            };
+            set_col!("compiledIdentityStacks", Box::new(text));
         }
         if let Some(v) = &patch.compression_cache {
             // The async compression cache (v4 `persistToDatabase`/`clearFromDatabase`
