@@ -4,6 +4,22 @@
 
 ### 5.0-dev
 
+P4.4 unit-2 sub-unit 6: chat continuation (services::chat_continuation),
+ported from v4's lib/chat/apply-chat-continuation.ts. applyChatContinuation
+posts a Host continuation-from bubble in the new chat, replays the carryover
+window (the most recent Librarian summary onward) with participant ids remapped
+by shared characterId + old-chat-lifecycle fields stripped, replicates turn
+state (isPaused / turnQueue / lastTurnParticipantId / activeTypingParticipantId
+/ impersonatingParticipantIds / allLLMPauseTurnCount / spokenThisCycle) with the
+same remap, and posts a Host continuation-to tail bubble in the source chat
+last. Composes the verified Host continuation writers + the single-writer
+message/update path over Db; mints message ids + createdAt per replayed row.
+Errors are logged, not fatal. The pure leaves (participant-id map, librarian
+anchor, message projection with the drop-unmapped-author / drop-all-targets-gone
+/ hostEvent-remap rules) are unit-tested here; the composed applyChatContinuation
+tier-2 diff (both chats' tables) rides the capstone driving v4's real handleCreate
+(the continuation-create case).
+
 P4.4 unit-2 sub-unit 5: the initial-greeting core
 (services::initial_greeting::generate_greeting_message), ported from v4's
 lib/chat/initial-greeting.ts generateGreetingMessage. Streams a short

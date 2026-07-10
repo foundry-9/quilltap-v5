@@ -5660,5 +5660,17 @@ recent-conversations block into the augmented prompt; `logLLMCall`
 contentFilterDetected}` across success / content-filter / empty-no-usage /
 whitespace-only / with-context. The route ladder `autoGenerateFirstMessage`
 (participant/profile/key + the four-attempt retry matrix + the Concierge
-reroute) is the spine's (capstone-verified). Next sub-units: chat continuation,
-then the `handleCreate` spine + `ChatCreate` dispatch + capstone.
+reroute) is the spine's (capstone-verified). **Sub-unit 6 — chat continuation —
+is also DONE** (`services::chat_continuation`; v4 `apply-chat-continuation.ts`):
+`apply_chat_continuation` posts the Host continuation-from bubble, replays the
+carryover window (most-recent Librarian summary onward) with participant ids
+remapped by shared `characterId` + lifecycle fields stripped, replicates turn
+state with the same remap, and posts the continuation-to tail bubble in the
+source chat last — composing the verified Host writers + the single-writer
+message/update path. The pure leaves (participant-id map, librarian anchor,
+message projection: drop-unmapped-author / drop-all-targets-gone / hostEvent
+remap) are unit-tested; the composed diff (both chats' tables, minted-remap
+form) rides the capstone (the continuation-create case). **All six leaf
+sub-units are done; next is sub-unit 8 — the `handleCreate` spine + `ChatCreate`
+dispatch + the capstone tier-3 differential + the quilltap-web integration
+test.**
