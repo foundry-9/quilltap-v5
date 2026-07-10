@@ -88,6 +88,84 @@ pub struct CharacterPluginDataRepository<'c> {
     conn: &'c Connection,
 }
 
+/// Marshal one `character_plugin_data` row → the v4-shaped entity
+/// `{id, characterId, pluginName, data, createdAt, updatedAt}` (with `data`
+/// parsed back from its JSON-text column).
+fn marshal_row(r: &rusqlite::Row) -> Result<serde_json::Value, rusqlite::Error> {
+    let id: String = r.get(0)?;
+    let character_id: String = r.get(1)?;
+    let plugin_name: String = r.get(2)?;
+    let data_json: String = r.get(3)?;
+    let created_at: String = r.get(4)?;
+    let updated_at: String = r.get(5)?;
+    // v4 keeps `data` as its stored TEXT value — it is NOT re-parsed on read
+    // (the schema column is a plain string), so the marshaled entity carries the
+    // raw JSON string, not a parsed object. Confirmed against the oracle.
+    Ok(serde_json::json!({
+        "id": id,
+        "characterId": character_id,
+        "pluginName": plugin_name,
+        "data": data_json,
+        "createdAt": created_at,
+        "updatedAt": updated_at,
+    }))
+}
+
+/// v4 `findByCharacterId` — every plugin-data entry for a character (insertion
+/// order). Each entry's `data` is parsed back from its JSON-text column.
+pub fn find_by_character_id(
+    conn: &Connection,
+    character_id: &str,
+) -> Result<Vec<serde_json::Value>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, characterId, pluginName, data, createdAt, updatedAt \
+         FROM character_plugin_data WHERE characterId = ?1 ORDER BY createdAt ASC, id ASC",
+    )?;
+    let rows = stmt.query_map(params![character_id], marshal_row)?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
+}
+
+/// v4 `getPluginDataMap` — `{ pluginName: data }` over the character's entries.
+pub fn get_plugin_data_map(
+    conn: &Connection,
+    character_id: &str,
+) -> Result<serde_json::Value, DbError> {
+    let mut map = serde_json::Map::new();
+    for entry in find_by_character_id(conn, character_id)? {
+        if let (Some(name), Some(data)) = (
+            entry.get("pluginName").and_then(|v| v.as_str()),
+            entry.get("data"),
+        ) {
+            map.insert(name.to_string(), data.clone());
+        }
+    }
+    Ok(serde_json::Value::Object(map))
+}
+
+/// v4 `findByCharacterAndPlugin` — the entry for a `(characterId, pluginName)`
+/// pair, or `None`.
+pub fn find_by_character_and_plugin(
+    conn: &Connection,
+    character_id: &str,
+    plugin_name: &str,
+) -> Result<Option<serde_json::Value>, DbError> {
+    conn.query_row(
+        "SELECT id, characterId, pluginName, data, createdAt, updatedAt \
+         FROM character_plugin_data WHERE characterId = ?1 AND pluginName = ?2",
+        params![character_id, plugin_name],
+        marshal_row,
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other.into()),
+    })
+}
+
 impl<'c> CharacterPluginDataRepository<'c> {
     pub fn new(conn: &'c Connection) -> Self {
         Self { conn }

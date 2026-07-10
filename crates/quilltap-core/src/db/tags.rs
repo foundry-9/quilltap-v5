@@ -172,6 +172,47 @@ pub fn find_by_ids(conn: &Connection, ids: &[String]) -> Result<Vec<TagRow>, DbE
     Ok(out)
 }
 
+/// v4 characters `get-tags` action projection — `{ id, name, visualStyle }` for
+/// each requested tag id, in **input order**, dropping ids not found (v4 maps
+/// `tags.findById` per id and filters `Boolean`). `visualStyle` is the parsed
+/// object or `null`.
+pub fn find_details_by_ids(
+    conn: &Connection,
+    ids: &[String],
+) -> Result<Vec<serde_json::Value>, DbError> {
+    if ids.is_empty() {
+        return Ok(vec![]);
+    }
+    let mut stmt = conn.prepare("SELECT id, name, visualStyle FROM tags WHERE id = ?1")?;
+    let mut out = Vec::with_capacity(ids.len());
+    for id in ids {
+        let row = stmt
+            .query_row(params![id], |r| {
+                let id: String = r.get(0)?;
+                let name: String = r.get(1)?;
+                let vs: Option<String> = r.get(2)?;
+                Ok((id, name, vs))
+            })
+            .optional()?;
+        if let Some((id, name, vs)) = row {
+            // v4's marshaled tag exposes `visualStyle` as `.optional()` — a stored
+            // NULL comes back `undefined`, so `{id,name,visualStyle}` OMITS the key
+            // (JSON.stringify drops undefined). Only a present style object is
+            // emitted. Confirmed against the oracle.
+            let mut obj = serde_json::Map::new();
+            obj.insert("id".into(), serde_json::Value::String(id));
+            obj.insert("name".into(), serde_json::Value::String(name));
+            if let Some(text) = vs {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text) {
+                    obj.insert("visualStyle".into(), parsed);
+                }
+            }
+            out.push(serde_json::Value::Object(obj));
+        }
+    }
+    Ok(out)
+}
+
 impl<'c> TagsRepository<'c> {
     pub fn new(conn: &'c Connection) -> Self {
         Self { conn }

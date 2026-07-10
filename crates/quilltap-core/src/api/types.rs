@@ -62,17 +62,23 @@ pub enum Request {
     /// The unlock-family state read (v4 `GET /api/v1/system/unlock`).
     UnlockState,
     /// Unlock a passphrase-protected vault (v4 `?action=unlock`).
-    Unlock { passphrase: String },
+    Unlock {
+        passphrase: String,
+    },
     /// First-run setup (v4 `?action=setup`): mint a pepper, write
     /// `quilltap.dbkey`, provision a fresh encrypted instance (schema + baseline
     /// seed), and assemble. Only valid from `needs-setup`. Returns the pepper
     /// ONCE (shown for the user to save).
-    Setup { passphrase: String },
+    Setup {
+        passphrase: String,
+    },
     /// Store an env-provided pepper in a `.dbkey` file (v4 `?action=store`): the
     /// `needs-vault-storage` → `resolved` transition. Only valid from
     /// `needs-vault-storage`.
     #[serde(rename_all = "camelCase")]
-    StorePepper { passphrase: String },
+    StorePepper {
+        passphrase: String,
+    },
     /// Change the passphrase that wraps the pepper (v4 `?action=change-passphrase`):
     /// re-wrap only, no DB re-encryption. Only valid when unlocked (`resolved`).
     /// Either passphrase may be empty (the no-passphrase sentinel).
@@ -105,13 +111,17 @@ pub enum Request {
     /// The single-chat GET (v4 `GET /api/v1/chats/{id}` → `handleGet` default
     /// branch): the fully-enriched chat + all messages (minus `renderedHtml`).
     #[serde(rename_all = "camelCase")]
-    ChatGet { chat_id: String },
+    ChatGet {
+        chat_id: String,
+    },
     /// The chat-settings read (v4 `GET /api/v1/settings/chat`). Now
     /// default-injects the seed row when none exists (P4.6d).
     ChatSettings,
     /// The chat-settings PUT (v4 `PUT /api/v1/settings/chat`): the partial field
     /// bag folds into the `updateForUser` upsert. Returns the updated row.
-    ChatSettingsUpdate { settings: serde_json::Value },
+    ChatSettingsUpdate {
+        settings: serde_json::Value,
+    },
     // --- Connection profiles (v4 connection-profiles/route.ts + [id]/) ---
     /// v4 `GET /api/v1/connection-profiles` — the enriched list.
     #[serde(rename_all = "camelCase")]
@@ -121,7 +131,9 @@ pub enum Request {
         image_capable: bool,
     },
     /// v4 `POST /api/v1/connection-profiles` (create) — the field bag.
-    ConnectionProfileCreate { profile: serde_json::Value },
+    ConnectionProfileCreate {
+        profile: serde_json::Value,
+    },
     /// v4 `PUT /api/v1/connection-profiles/[id]` — the field bag.
     #[serde(rename_all = "camelCase")]
     ConnectionProfileUpdate {
@@ -130,17 +142,25 @@ pub enum Request {
     },
     /// v4 `DELETE /api/v1/connection-profiles/[id]`.
     #[serde(rename_all = "camelCase")]
-    ConnectionProfileDelete { profile_id: String },
+    ConnectionProfileDelete {
+        profile_id: String,
+    },
     /// v4 `?action=reorder` — the contract's ordered-id list.
     #[serde(rename_all = "camelCase")]
-    ConnectionProfileReorder { ordered_ids: Vec<String> },
+    ConnectionProfileReorder {
+        ordered_ids: Vec<String>,
+    },
     /// v4 `?action=reset-sort`.
     ConnectionProfileResetSort,
     /// v4 `?action=test-connection` — the `{provider, apiKeyId?, baseUrl?}` bag.
-    ConnectionProfileTest { profile: serde_json::Value },
+    ConnectionProfileTest {
+        profile: serde_json::Value,
+    },
     /// v4 `?action=test-message` — the `{provider, apiKeyId?, baseUrl?, modelName,
     /// parameters?}` bag.
-    ConnectionProfileTestMessage { profile: serde_json::Value },
+    ConnectionProfileTestMessage {
+        profile: serde_json::Value,
+    },
     // --- API keys (v4 api-keys/route.ts + [id]/) ---
     /// v4 `GET /api/v1/api-keys` — the masked list.
     ApiKeyList,
@@ -164,7 +184,9 @@ pub enum Request {
     },
     /// v4 `DELETE /api/v1/api-keys/[id]`.
     #[serde(rename_all = "camelCase")]
-    ApiKeyDelete { api_key_id: String },
+    ApiKeyDelete {
+        api_key_id: String,
+    },
     /// v4 `POST /api/v1/api-keys/[id]?action=test`.
     #[serde(rename_all = "camelCase")]
     ApiKeyTest {
@@ -201,7 +223,10 @@ pub enum Request {
     },
     /// Edit a message's content (v4 `PUT /api/v1/messages/{id}`).
     #[serde(rename_all = "camelCase")]
-    MessageEdit { message_id: String, content: String },
+    MessageEdit {
+        message_id: String,
+        content: String,
+    },
     /// Delete a message / swipe group (v4 `DELETE /api/v1/messages/{id}`) — the
     /// memory-cascade confirmation protocol.
     #[serde(rename_all = "camelCase")]
@@ -292,6 +317,299 @@ pub enum Request {
         #[serde(flatten)]
         request: serde_json::Map<String, serde_json::Value>,
     },
+    // ========================================================================
+    // Characters family (P4.6f) — the characters-server surface. Every variant
+    // is a differential port of a v4 route handler; response bytes are pinned by
+    // the `characters_{reads,mutations}_equivalence` differentials, not the loose
+    // `serde_json::Value` payload types. This block is BINDING (identical in the
+    // sibling P4.6g SPA order): a name change here changes both orders.
+    // ========================================================================
+    /// v4 `GET /api/v1/characters` (`handleGet`): the enriched whitelist DTO
+    /// list. `npc`/`controlledBy` mirror v4's query-string filters verbatim
+    /// (`"true"`/`"false"`, `"user"`/`"llm"`).
+    #[serde(rename_all = "camelCase")]
+    CharacterList {
+        #[serde(default)]
+        npc: Option<String>,
+        #[serde(default)]
+        controlled_by: Option<String>,
+    },
+    /// v4 `GET /api/v1/characters/[id]` default branch: the detail projection.
+    #[serde(rename_all = "camelCase")]
+    CharacterGet {
+        character_id: String,
+    },
+    /// v4 `POST /api/v1/characters` (create): the `createCharacterSchema` bag.
+    CharacterCreate {
+        character: serde_json::Value,
+    },
+    /// v4 `POST /api/v1/characters?action=quick-create`.
+    CharacterQuickCreate {
+        name: String,
+    },
+    /// v4 `PUT /api/v1/characters/[id]` default branch: the `updateCharacterSchema`
+    /// bag folded onto the pre-update read.
+    #[serde(rename_all = "camelCase")]
+    CharacterUpdate {
+        character_id: String,
+        character: serde_json::Value,
+    },
+    /// v4 `DELETE /api/v1/characters/[id]` (+ `cascadeChats`/`cascadeImages`).
+    #[serde(rename_all = "camelCase")]
+    CharacterDelete {
+        character_id: String,
+        #[serde(default)]
+        cascade_chats: bool,
+        #[serde(default)]
+        cascade_images: bool,
+    },
+    /// v4 `GET /api/v1/characters/[id]?action=cascade-preview`.
+    #[serde(rename_all = "camelCase")]
+    CharacterCascadePreview {
+        character_id: String,
+    },
+    /// v4 `POST /api/v1/characters/[id]?action=avatar` (`{imageId: string|null}`).
+    #[serde(rename_all = "camelCase")]
+    CharacterAvatar {
+        character_id: String,
+        #[serde(default)]
+        image_id: Option<String>,
+    },
+    /// v4 `POST /api/v1/characters/[id]?action=favorite`.
+    #[serde(rename_all = "camelCase")]
+    CharacterFavorite {
+        character_id: String,
+    },
+    /// v4 `POST /api/v1/characters/[id]?action=toggle-controlled-by`.
+    #[serde(rename_all = "camelCase")]
+    CharacterToggleControlledBy {
+        character_id: String,
+    },
+    /// v4 `POST /api/v1/characters/[id]?action=toggle-carina`.
+    #[serde(rename_all = "camelCase")]
+    CharacterToggleCarina {
+        character_id: String,
+    },
+    /// v4 `POST /api/v1/characters/[id]?action=set-default-partner`.
+    #[serde(rename_all = "camelCase")]
+    CharacterSetDefaultPartner {
+        character_id: String,
+        #[serde(default)]
+        partner_id: Option<String>,
+    },
+    /// v4 `POST /api/v1/characters/[id]?action=add-tag`.
+    #[serde(rename_all = "camelCase")]
+    CharacterAddTag {
+        character_id: String,
+        tag_id: String,
+    },
+    /// v4 `POST /api/v1/characters/[id]?action=remove-tag`.
+    #[serde(rename_all = "camelCase")]
+    CharacterRemoveTag {
+        character_id: String,
+        tag_id: String,
+    },
+    /// v4 `GET /api/v1/characters/[id]?action=get-tags`.
+    #[serde(rename_all = "camelCase")]
+    CharacterGetTags {
+        character_id: String,
+    },
+    /// v4 `GET /api/v1/characters/[id]?action=default-partner`.
+    #[serde(rename_all = "camelCase")]
+    CharacterDefaultPartner {
+        character_id: String,
+    },
+    /// v4 `GET /api/v1/characters/[id]?action=stats`.
+    #[serde(rename_all = "camelCase")]
+    CharacterStats {
+        character_id: String,
+    },
+    /// v4 `GET /api/v1/characters/[id]?action=chats`.
+    #[serde(rename_all = "camelCase")]
+    CharacterChats {
+        character_id: String,
+        #[serde(default)]
+        search: Option<String>,
+        #[serde(default)]
+        limit: Option<i64>,
+        #[serde(default)]
+        offset: Option<i64>,
+    },
+    /// v4 `GET /api/v1/characters/[id]?action=depiction-guidelines`.
+    #[serde(rename_all = "camelCase")]
+    CharacterDepictionGuidelines {
+        character_id: String,
+    },
+    /// v4 `PUT /api/v1/characters/[id]?action=depiction-guidelines`.
+    #[serde(rename_all = "camelCase")]
+    CharacterDepictionGuidelinesUpdate {
+        character_id: String,
+        #[serde(default)]
+        content: String,
+    },
+    // --- Sub-resource: system prompts ---
+    #[serde(rename_all = "camelCase")]
+    CharacterPromptList {
+        character_id: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    CharacterPromptCreate {
+        character_id: String,
+        name: String,
+        content: String,
+        #[serde(default)]
+        is_default: bool,
+    },
+    #[serde(rename_all = "camelCase")]
+    CharacterPromptUpdate {
+        character_id: String,
+        prompt_id: String,
+        #[serde(default)]
+        name: Option<String>,
+        #[serde(default)]
+        content: Option<String>,
+        #[serde(default)]
+        is_default: Option<bool>,
+    },
+    #[serde(rename_all = "camelCase")]
+    CharacterPromptDelete {
+        character_id: String,
+        prompt_id: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    CharacterPromptSetDefault {
+        character_id: String,
+        prompt_id: String,
+    },
+    // --- Sub-resource: scenarios ---
+    #[serde(rename_all = "camelCase")]
+    CharacterScenarioList {
+        character_id: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    CharacterScenarioCreate {
+        character_id: String,
+        title: String,
+        content: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    CharacterScenarioUpdate {
+        character_id: String,
+        scenario_id: String,
+        #[serde(default)]
+        title: Option<String>,
+        #[serde(default)]
+        content: Option<String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    CharacterScenarioDelete {
+        character_id: String,
+        scenario_id: String,
+    },
+    // --- Sub-resource: plugin data ---
+    #[serde(rename_all = "camelCase")]
+    CharacterPluginDataMap {
+        character_id: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    CharacterPluginDataUpsert {
+        character_id: String,
+        plugin_name: String,
+        data: serde_json::Value,
+    },
+    #[serde(rename_all = "camelCase")]
+    CharacterPluginDataGet {
+        character_id: String,
+        plugin_name: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    CharacterPluginDataDelete {
+        character_id: String,
+        plugin_name: String,
+    },
+    // --- Sub-resource: wardrobe ---
+    #[serde(rename_all = "camelCase")]
+    CharacterWardrobeList {
+        character_id: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    CharacterWardrobeCreate {
+        character_id: String,
+        item: serde_json::Value,
+    },
+    #[serde(rename_all = "camelCase")]
+    CharacterWardrobeGet {
+        character_id: String,
+        item_id: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    CharacterWardrobeUpdate {
+        character_id: String,
+        item_id: String,
+        item: serde_json::Value,
+    },
+    #[serde(rename_all = "camelCase")]
+    CharacterWardrobeDelete {
+        character_id: String,
+        item_id: String,
+    },
+    // --- Import / export ---
+    /// v4 `GET /api/v1/characters/[id]?action=export` (`format=json|png`).
+    #[serde(rename_all = "camelCase")]
+    CharacterExport {
+        character_id: String,
+        #[serde(default)]
+        format: Option<String>,
+    },
+    /// v4 `POST /api/v1/characters?action=import` (JSON body leg; the PNG leg is
+    /// the quilltap-web multipart route).
+    CharacterImport {
+        payload: serde_json::Value,
+    },
+    // --- Photo gallery (JSON legs; multipart save is the web route) ---
+    #[serde(rename_all = "camelCase")]
+    CharacterPhotoList {
+        character_id: String,
+        #[serde(default)]
+        limit: Option<i64>,
+        #[serde(default)]
+        offset: Option<i64>,
+    },
+    #[serde(rename_all = "camelCase")]
+    CharacterPhotoSaveById {
+        character_id: String,
+        #[serde(default)]
+        file_id: Option<String>,
+        #[serde(default)]
+        link_id: Option<String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    CharacterPhotoRemove {
+        character_id: String,
+        link_id: String,
+    },
+    // --- Tags (v4 tags/route.ts + tags/[id]/route.ts) ---
+    #[serde(rename_all = "camelCase")]
+    TagList {
+        #[serde(default)]
+        search: Option<String>,
+    },
+    TagCreate {
+        name: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    TagGet {
+        tag_id: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    TagUpdate {
+        tag_id: String,
+        tag: serde_json::Value,
+    },
+    #[serde(rename_all = "camelCase")]
+    TagDelete {
+        tag_id: String,
+    },
 }
 
 /// Typed DTO per variant (the uniffi payoff). `Error` carries the one
@@ -341,6 +659,18 @@ pub enum Response {
     Providers(serde_json::Value),
     /// v4 models read/fetch body.
     Models(serde_json::Value),
+    // --- Characters surface (P4.6f) ---
+    /// A single-object characters-family body (`{character}`, `{data}`, the
+    /// action bodies, `{prompts}`/`{scenarios}`/`{wardrobeItems}`/`{pluginData}`,
+    /// `{stats,groups}`, `{chats,total}`, `{content}`, the export/import/photo
+    /// bodies, …). The exact bytes are pinned by the differentials.
+    Character(serde_json::Value),
+    /// v4 `GET /api/v1/characters` body (`{characters, count}`).
+    Characters(serde_json::Value),
+    /// v4 tags list body (`{tags, count}`).
+    Tags(serde_json::Value),
+    /// v4 single-tag body (`{tag}`).
+    Tag(serde_json::Value),
     Error(CoreError),
 }
 

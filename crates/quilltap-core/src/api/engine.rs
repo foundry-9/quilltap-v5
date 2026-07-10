@@ -622,6 +622,150 @@ impl CoreEngine {
                 })
                 .await
             }
+            // --- Characters family (P4.6f) ---------------------------------
+            Request::CharacterList { npc, controlled_by } => match self.ready_db() {
+                Ok(db) => super::characters::character_list(
+                    &db,
+                    SINGLE_USER_ID,
+                    npc.as_deref(),
+                    controlled_by.as_deref(),
+                ),
+                Err(r) => r,
+            },
+            Request::CharacterGet { character_id } => match self.ready_db() {
+                Ok(db) => super::characters::character_get(&db, SINGLE_USER_ID, &character_id),
+                Err(r) => r,
+            },
+            Request::CharacterDefaultPartner { character_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_default_partner(&db, SINGLE_USER_ID, &character_id)
+                }
+                Err(r) => r,
+            },
+            Request::CharacterGetTags { character_id } => match self.ready_db() {
+                Ok(db) => super::characters::character_get_tags(&db, SINGLE_USER_ID, &character_id),
+                Err(r) => r,
+            },
+            Request::CharacterPromptList { character_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_prompt_list(&db, SINGLE_USER_ID, &character_id)
+                }
+                Err(r) => r,
+            },
+            Request::CharacterScenarioList { character_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_scenario_list(&db, SINGLE_USER_ID, &character_id)
+                }
+                Err(r) => r,
+            },
+            Request::CharacterWardrobeList { character_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_wardrobe_list(&db, SINGLE_USER_ID, &character_id)
+                }
+                Err(r) => r,
+            },
+            Request::CharacterPluginDataMap { character_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_plugin_data_map(&db, SINGLE_USER_ID, &character_id)
+                }
+                Err(r) => r,
+            },
+            Request::CharacterPluginDataGet {
+                character_id,
+                plugin_name,
+            } => match self.ready_db() {
+                Ok(db) => super::characters::character_plugin_data_get(
+                    &db,
+                    SINGLE_USER_ID,
+                    &character_id,
+                    &plugin_name,
+                ),
+                Err(r) => r,
+            },
+            // --- Deferred to later P4.6f milestones (loud refusal) ----------
+            Request::CharacterCreate { .. } => super::characters::not_available("create"),
+            Request::CharacterQuickCreate { .. } => {
+                super::characters::not_available("quick-create")
+            }
+            Request::CharacterUpdate { .. } => super::characters::not_available("update"),
+            Request::CharacterDelete { .. } => super::characters::not_available("delete"),
+            Request::CharacterCascadePreview { .. } => {
+                super::characters::not_available("cascade-preview")
+            }
+            Request::CharacterAvatar { .. } => super::characters::not_available("avatar"),
+            Request::CharacterFavorite { .. } => super::characters::not_available("favorite"),
+            Request::CharacterToggleControlledBy { .. } => {
+                super::characters::not_available("toggle-controlled-by")
+            }
+            Request::CharacterToggleCarina { .. } => {
+                super::characters::not_available("toggle-carina")
+            }
+            Request::CharacterSetDefaultPartner { .. } => {
+                super::characters::not_available("set-default-partner")
+            }
+            Request::CharacterAddTag { .. } => super::characters::not_available("add-tag"),
+            Request::CharacterRemoveTag { .. } => super::characters::not_available("remove-tag"),
+            Request::CharacterStats { .. } => super::characters::not_available("stats"),
+            Request::CharacterChats { .. } => super::characters::not_available("chats"),
+            Request::CharacterDepictionGuidelines { .. } => {
+                super::characters::not_available("depiction-guidelines")
+            }
+            Request::CharacterDepictionGuidelinesUpdate { .. } => {
+                super::characters::not_available("depiction-guidelines-update")
+            }
+            Request::CharacterPromptCreate { .. } => {
+                super::characters::not_available("prompt-create")
+            }
+            Request::CharacterPromptUpdate { .. } => {
+                super::characters::not_available("prompt-update")
+            }
+            Request::CharacterPromptDelete { .. } => {
+                super::characters::not_available("prompt-delete")
+            }
+            Request::CharacterPromptSetDefault { .. } => {
+                super::characters::not_available("prompt-set-default")
+            }
+            Request::CharacterScenarioCreate { .. } => {
+                super::characters::not_available("scenario-create")
+            }
+            Request::CharacterScenarioUpdate { .. } => {
+                super::characters::not_available("scenario-update")
+            }
+            Request::CharacterScenarioDelete { .. } => {
+                super::characters::not_available("scenario-delete")
+            }
+            Request::CharacterPluginDataUpsert { .. } => {
+                super::characters::not_available("plugin-data-upsert")
+            }
+            Request::CharacterPluginDataDelete { .. } => {
+                super::characters::not_available("plugin-data-delete")
+            }
+            Request::CharacterWardrobeCreate { .. } => {
+                super::characters::not_available("wardrobe-create")
+            }
+            Request::CharacterWardrobeGet { .. } => {
+                super::characters::not_available("wardrobe-get")
+            }
+            Request::CharacterWardrobeUpdate { .. } => {
+                super::characters::not_available("wardrobe-update")
+            }
+            Request::CharacterWardrobeDelete { .. } => {
+                super::characters::not_available("wardrobe-delete")
+            }
+            Request::CharacterExport { .. } => super::characters::not_available("export"),
+            Request::CharacterImport { .. } => super::characters::not_available("import"),
+            Request::CharacterPhotoList { .. } => super::characters::not_available("photo-list"),
+            Request::CharacterPhotoSaveById { .. } => {
+                super::characters::not_available("photo-save")
+            }
+            Request::CharacterPhotoRemove { .. } => {
+                super::characters::not_available("photo-remove")
+            }
+            Request::TagList { .. } => super::characters::not_available("tag-list"),
+            Request::TagCreate { .. } => super::characters::not_available("tag-create"),
+            Request::TagGet { .. } => super::characters::not_available("tag-get"),
+            Request::TagUpdate { .. } => super::characters::not_available("tag-update"),
+            Request::TagDelete { .. } => super::characters::not_available("tag-delete"),
         }
     }
 

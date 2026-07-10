@@ -4,6 +4,26 @@
 
 ### 5.0-dev
 
+P4.6f (Characters server, lane A) lands its first slice: the characters
+**read** surface as dispatch variants. New `Request`/`Response` contract for
+the whole characters + tags family (binding, shared with the P4.6g SPA lane);
+a `character_enrichment` service (the list whitelist DTO + the detail
+projection + the `enrichWithDefaultImage` wrapper, reproducing v4's `||`/`??`
+coercions); and the read handlers `character_list` (npc/controlledBy filters,
+createdAt-desc sort, N+1 partner-name + chat-count), `character_get`,
+`character_default_partner`, `character_get_tags`, and the prompts / scenarios
+/ wardrobe / plugin-data (map + item) sub-resource GETs. Added marshaled reads
+`character_plugin_data::{find_by_character_id, get_plugin_data_map,
+find_by_character_and_plugin}` (plugin `data` round-trips as its raw stored
+string, not a parsed object) and `tags::find_details_by_ids` (omits
+`visualStyle` when null). Committed the characters web fixture
+(`build-characters-fixture.ts` + `characters.json` + `characters-{main,mount}.db`:
+five characters exercising favorite/npc/controlledBy/canBeCarina/default-partner
+/tags/prompts/scenarios/vault-avatar/legacy-avatar/wardrobe/plugin-data/
+broken-vault branches). Proven by `characters_reads_equivalence` (13 cases vs
+v4's real route handlers). The mutations, tags CRUD, actions, the heavier read
+actions, the gallery, and ST import/export land in the following slices.
+
 CLAUDE.md is trimmed from 5,922 lines (~430 KB, loaded into every turn of
 every session and lane agent) to 287: the unit-by-unit Status journal moved
 VERBATIM (diff-verified) to `docs/developer/porting/status-log.md`, and

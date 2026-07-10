@@ -5691,3 +5691,37 @@ wired into fresh provisioning AND every assembly; the `lorian-and-riya.qtap`
 sample import stays deferred with its ~2,500-line import service). Round
 layout + ownership matrix in `phase-4.md`; orders under
 `docs/developer/porting/work-orders/` (p4.6f/g/h, p4.4u3).
+
+**P4.6f slice 1 — the characters READ surface (2026-07-10).** Lane A opens
+with the characters read handlers as dispatch variants. The binding
+`Request`/`Response` contract for the whole characters + tags family is
+declared up front (shared verbatim with the P4.6g SPA lane; a name change
+touches both orders). New `services::character_enrichment` ports v4's
+`enrichWithDefaultImage` reduced wrapper + the hand-assembled list whitelist
+DTO (`characters/handlers/get.ts:58-92`) + the detail spread, reproducing v4's
+JS `||` (falsy→null) vs `??` (nullish→default) coercions and the N+1
+partner-name / chat-count fan-out. Handlers (`api::characters`): `character_list`
+(in-memory npc/controlledBy filter, createdAt-desc sort), `character_get`,
+`character_default_partner`, `character_get_tags`, and the `prompts` /
+`scenarios` / `wardrobe` / `plugin-data` (map + item) sub-resource GETs.
+Marshaled reads added: `character_plugin_data::{find_by_character_id,
+get_plugin_data_map, find_by_character_and_plugin}` and
+`tags::find_details_by_ids`. Two seams closed against the oracle: plugin
+`data` round-trips as its **raw stored JSON string** (v4 does not re-parse the
+column), and a tag's `visualStyle` is **omitted** when null (v4's `.optional()`
+→ undefined → dropped). Fixture (`build-characters-fixture.ts` + `characters.json`
++ committed `characters-{main,mount}.db`): five characters covering
+favorite/npc/controlledBy(both)/canBeCarina/default-partner-pair/tags/two
+system-prompts(one default)/two scenarios(one default)/a vault avatar/a legacy
+avatar/two wardrobe items/plugin data/a broken-vault character. Proven:
+`characters_reads_equivalence` — 13 cases vs v4's real route handlers, byte-exact
+after key-sort + number-canon (the detail's read-time-minted
+`physicalDescription.{createdAt,updatedAt}` normalized, the established
+char-read pattern). NOTE for later slices: v4's character `addTag`/`removeTag`
+are the generic `TaggableBaseRepository` pattern (findById → push/filter the
+slim `tags` column → update), NOT a dedicated ported op — the add-tag/remove-tag
+verbs compose them from `find_by_id` + `update_character`. Versions: core
+0.0.159, harness 0.0.144. Remaining P4.6f: the mutations (create/quick-create/
+update/delete-cascade), the action verbs, the sub-resource mutations, tags CRUD
++ the delete fan-out, the heavier read actions (stats/chats), the photo gallery,
+ST import/export, depiction-guidelines, and the Tier-3 refusals.

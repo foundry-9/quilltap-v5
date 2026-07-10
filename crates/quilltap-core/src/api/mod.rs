@@ -20,6 +20,7 @@
 //! Submodules: [`types`] (the pure contract — D8), [`provision`] (the pepper
 //! resolution the readiness gate rides on), [`engine`] (the implementation).
 
+pub mod characters;
 pub mod chat_create;
 pub mod chat_send;
 pub mod engine;

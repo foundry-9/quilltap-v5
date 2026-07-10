@@ -42,6 +42,7 @@ pub mod carina_memory_extraction;
 pub mod carina_query;
 pub mod carina_runner;
 pub mod character_avatar_job;
+pub mod character_enrichment;
 pub mod chat_continuation;
 pub mod chat_create;
 pub mod chat_enrichment;
