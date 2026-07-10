@@ -1870,6 +1870,12 @@ pub struct SpineBundle {
     pub chat_send: Arc<dyn ChatSendDriver>,
     /// The chat-creation driver (P4.4u2b).
     pub chat_create: Arc<dyn ChatCreateDriver>,
+    /// The swipe-generate model driver (P4.6c; `None` for canned test
+    /// factories that predate it).
+    pub swipe_generate: Option<Arc<dyn quilltap_core::api::chat_send::SwipeGenerateDriver>>,
+    /// The provider wire-actions driver (P4.6d; `None` for canned test
+    /// factories).
+    pub provider_actions: Option<Arc<dyn quilltap_core::api::ProviderActionsDriver>>,
     pub job_handlers: Vec<(String, Box<dyn JobHandler>)>,
 }
 
@@ -1996,13 +2002,26 @@ impl SpineFactory for ProductionSpineFactory {
             ),
             (
                 "STORY_BACKGROUND_GENERATION".to_string(),
-                Box::new(StoryBackgroundJobHandler { wire }),
+                Box::new(StoryBackgroundJobHandler { wire: wire.clone() }),
             ),
         ];
 
+        // The provider wire-actions driver (the P4.6 unification wire): the
+        // live validate/models probes over the blocking wire transport + the
+        // shared completion path.
+        let provider_actions: Arc<dyn quilltap_core::api::ProviderActionsDriver> =
+            Arc::new(quilltap_core::api::RealProviderActions {
+                db: db.clone(),
+                transport: self.io.sync_wire_transport(),
+                completion: wire.completion(db),
+                user_agent: self.io.user_agent().to_string(),
+                base_url_env: self.io.base_url_env().map(str::to_string),
+            });
         SpineBundle {
-            chat_send: spine,
+            chat_send: Arc::clone(&spine) as Arc<dyn ChatSendDriver>,
+            swipe_generate: Some(spine),
             chat_create,
+            provider_actions: Some(provider_actions),
             job_handlers,
         }
     }

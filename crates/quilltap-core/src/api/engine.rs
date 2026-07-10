@@ -32,7 +32,8 @@ use crate::services::creation_progress::CreationProgressBus;
 use crate::services::provisioning;
 
 use super::chat_create::{ChatCreateDriver, ChatCreateDriverRequest};
-use super::chat_send::{ChatSendDriver, ChatSendRequest};
+use super::chat_send::{ChatSendDriver, ChatSendRequest, SwipeGenerateDriver};
+use super::provider_actions::ProviderActionsDriver;
 use super::provision::{provision, PepperHashMismatch};
 use super::types::{
     AckDto, ErrorKind, Event, HealthDto, PepperState, Request, Response, SetupResultDto,
@@ -86,6 +87,13 @@ pub struct EngineAssembly {
     /// The chat-creation driver (P4.4u2b); `None` keeps read-only embedders (and
     /// the P4.0 tests) valid — the `ChatCreate` arm answers "not assembled".
     pub chat_create: Option<Arc<dyn ChatCreateDriver>>,
+    /// The swipe-generate model driver (P4.6c, wired at unification); `None`
+    /// keeps read-only embedders valid — the generate branch answers
+    /// "not assembled".
+    pub swipe_generate: Option<Arc<dyn SwipeGenerateDriver>>,
+    /// The provider wire-actions driver (P4.6d, wired at unification) —
+    /// connection test / test message / api-key test / models fetch.
+    pub provider_actions: Option<Arc<dyn ProviderActionsDriver>>,
 }
 
 impl EngineAssembly {
@@ -95,6 +103,8 @@ impl EngineAssembly {
             shutdown,
             chat_send: None,
             chat_create: None,
+            swipe_generate: None,
+            provider_actions: None,
         }
     }
 }
@@ -203,6 +213,10 @@ struct ReadyEngine {
     chat_send: Option<Arc<dyn ChatSendDriver>>,
     /// The assembly's chat-create driver (P4.4u2b); `None` for read-only embedders.
     chat_create: Option<Arc<dyn ChatCreateDriver>>,
+    /// The assembly's swipe-generate driver (P4.6); `None` for read-only embedders.
+    swipe_generate: Option<Arc<dyn SwipeGenerateDriver>>,
+    /// The assembly's provider wire-actions driver (P4.6).
+    provider_actions: Option<Arc<dyn ProviderActionsDriver>>,
 }
 
 /// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
@@ -376,18 +390,39 @@ impl CoreEngine {
                 Ok(db) => super::settings::connection_profile_reset_sort(&db, SINGLE_USER_ID).await,
                 Err(r) => r,
             },
-            // The wire actions need a host provider-actions driver (validator /
-            // completion / models-fetch seam) — a tracked deferral (the swipe-
-            // generate precedent). The handler functions ARE ported and
-            // differential-verified; the live wiring lands at P4.6e unification.
-            Request::ConnectionProfileTest { .. }
-            | Request::ConnectionProfileTestMessage { .. }
-            | Request::ApiKeyTest { .. }
-            | Request::ModelFetch { .. } => match self.ready_db() {
-                Ok(_) => Response::error(
-                    ErrorKind::Internal,
-                    "provider wire actions not assembled (provider-actions driver deferral)",
-                ),
+            // The wire actions delegate to the assembly's provider-actions
+            // driver (the P4.6 unification wire over the live seams —
+            // validator / completion / models fetch); a driver-less assembly
+            // keeps the P4.6d refusal.
+            Request::ConnectionProfileTest { profile } => match self.ready_provider_actions() {
+                Ok(d) => d.connection_test(profile).await,
+                Err(r) => r,
+            },
+            Request::ConnectionProfileTestMessage { profile } => {
+                match self.ready_provider_actions() {
+                    Ok(d) => d.connection_test_message(profile).await,
+                    Err(r) => r,
+                }
+            }
+            Request::ApiKeyTest {
+                api_key_id,
+                base_url,
+            } => match self.ready_provider_actions() {
+                Ok(d) => {
+                    d.api_key_test(SINGLE_USER_ID.to_string(), api_key_id, base_url)
+                        .await
+                }
+                Err(r) => r,
+            },
+            Request::ModelFetch {
+                provider,
+                api_key_id,
+                base_url,
+            } => match self.ready_provider_actions() {
+                Ok(d) => {
+                    d.model_fetch(SINGLE_USER_ID.to_string(), provider, api_key_id, base_url)
+                        .await
+                }
                 Err(r) => r,
             },
             Request::ApiKeyList => match self.ready_db() {
@@ -492,11 +527,20 @@ impl CoreEngine {
                     Some(idx) => {
                         super::salon::message_swipe_switch(&db, SINGLE_USER_ID, &message_id, idx)
                     }
-                    // The generate branch needs the model driver (tracked deferral).
-                    None => Response::error(
-                        ErrorKind::Internal,
-                        "swipe generation not yet assembled (model driver deferral)",
-                    ),
+                    // The generate branch (the P4.6c unification wire): the
+                    // assembly's model driver composes the regeneration.
+                    None => match self.ready_swipe() {
+                        Ok((db, driver)) => {
+                            super::salon::message_swipe_generate(
+                                &db,
+                                driver.as_ref(),
+                                SINGLE_USER_ID,
+                                &message_id,
+                            )
+                            .await
+                        }
+                        Err(r) => r,
+                    },
                 },
                 Err(r) => r,
             },
@@ -586,6 +630,36 @@ impl CoreEngine {
     fn ready_db(&self) -> Result<Db, Response> {
         match &*self.inner.state.lock().unwrap() {
             EngineState::Ready(r) => Ok(r.db.clone()),
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
+    /// The Db + swipe-generate driver under the readiness gate; a ready engine
+    /// without the driver (read-only embedder) answers a plain internal error.
+    fn ready_swipe(&self) -> Result<(Db, Arc<dyn SwipeGenerateDriver>), Response> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => match &r.swipe_generate {
+                Some(d) => Ok((r.db.clone(), Arc::clone(d))),
+                None => Err(Response::error(
+                    ErrorKind::Internal,
+                    "swipe generation not assembled",
+                )),
+            },
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
+    /// The provider wire-actions driver under the readiness gate; a ready engine
+    /// without the driver answers the P4.6d refusal verbatim.
+    fn ready_provider_actions(&self) -> Result<Arc<dyn ProviderActionsDriver>, Response> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => match &r.provider_actions {
+                Some(d) => Ok(Arc::clone(d)),
+                None => Err(Response::error(
+                    ErrorKind::Internal,
+                    "provider wire actions not assembled (provider-actions driver deferral)",
+                )),
+            },
             EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
         }
     }
@@ -943,6 +1017,8 @@ fn open_ready(
         shutdown: assembly.shutdown,
         chat_send: assembly.chat_send,
         chat_create: assembly.chat_create,
+        swipe_generate: assembly.swipe_generate,
+        provider_actions: assembly.provider_actions,
     })
 }
 

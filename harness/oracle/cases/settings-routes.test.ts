@@ -246,6 +246,30 @@ describe('settings-routes oracle', () => {
       body: { sidebarWidth: 400, composerSpellcheck: false },
     },
     {
+      // A PARTIAL nested bag — the SPA wizard's exact save payload. The base
+      // repo's merge-then-validate runs the full CheapLLMSettingsSchema, so the
+      // Zod defaults materialize (fallbackToLocal true, embeddingProvider
+      // 'OPENAI') and the nullable-optional ids stay ABSENT in the stored bytes.
+      name: 's_put_cheap_partial',
+      family: 'settings_chat',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { cheapLLMSettings: { strategy: 'PROVIDER_CHEAPEST' } },
+    },
+    {
+      // A partial themePreference — the route-level ThemePreferenceSchema.parse
+      // defaults activeThemeId null + showNavThemeSelector false.
+      name: 's_put_theme_partial',
+      family: 'settings_chat',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { themePreference: { colorMode: 'dark' } },
+    },
+    {
       name: 's_put_reject',
       family: 'settings_chat',
       user: 'A',

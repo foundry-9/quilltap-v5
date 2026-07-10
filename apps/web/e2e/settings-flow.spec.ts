@@ -12,12 +12,11 @@ import { startMockLlm, type MockLlm } from './support/mock-llm';
  * wizard → a validated OPENAI_COMPATIBLE key + profile against the e2e mock LLM →
  * the configured profile appears in the Providers tab.
  *
- * SKIPPED until the P4.6 unification wires the sibling lane's dispatch variants
+ * Live since the P4.6 unification wired the sibling lane's dispatch variants
  * (`providerList` / `apiKeyCreate` / `connectionProfileTest` / `modelFetch` /
- * `connectionProfileCreate` / `chatSettingsUpdate` / `connectionProfileTestMessage`
- * — P4.6d). Everything up to those dispatches is real; only the server-side
- * handlers are missing on this lane's base commit. The mock serves both
- * `GET /models` (validate + models list) and streaming `POST /chat/completions`.
+ * `connectionProfileCreate` / `chatSettingsUpdate` — P4.6d handlers + the
+ * unification's provider-actions driver). The mock serves both `GET /models`
+ * (validate + models list) and streaming `POST /chat/completions`.
  */
 const SETTINGS_PORT = 4321;
 const SETTINGS_MOCK_PORT = 45302;
@@ -29,7 +28,7 @@ const SETTINGS_PASSPHRASE = 'settings vertical passphrase';
 let serverPid: number | undefined;
 let mock: MockLlm;
 
-test.describe.skip('Settings vertical (fresh instance → wizard → configured profile)', () => {
+test.describe('Settings vertical (fresh instance → wizard → configured profile)', () => {
   test.beforeAll(async () => {
     rmSync(SETTINGS_INSTANCE, { recursive: true, force: true });
     mkdirSync(resolve(SETTINGS_INSTANCE, 'data'), { recursive: true });
@@ -109,13 +108,14 @@ test.describe.skip('Settings vertical (fresh instance → wizard → configured 
 
     // Step 1: pick the OpenAI-Compatible provider (requires a base URL we can
     // point at the mock).
-    await page.getByRole('button', { name: /OpenAI Compatible/i }).click();
+    await page.getByRole('button', { name: /OpenAI-Compatible/i }).click();
     await page.getByRole('button', { name: 'Next' }).click();
 
-    // Step 2: enter a synthetic key + the mock base URL, then validate.
+    // Step 2: OPENAI_COMPATIBLE's key is optional (`requiresApiKey: false`) so
+    // the wizard renders no key input — just the base URL, pointed at the mock,
+    // then validate (a live `connectionProfileTest` → the mock's `GET /models`).
     await expect(page.getByRole('heading', { name: 'Configure API Keys' })).toBeVisible();
-    await page.getByPlaceholder('Enter your API key').fill('sk-mock-synthetic');
-    await page.getByPlaceholder('https://...').fill(mock.url);
+    await page.getByPlaceholder('http://localhost:8080/v1').fill(mock.url);
     await page.getByRole('button', { name: 'Validate' }).click();
     await expect(page.getByText('Connection validated successfully.')).toBeVisible();
     await page.getByRole('button', { name: 'Next' }).click();
@@ -137,6 +137,8 @@ test.describe.skip('Settings vertical (fresh instance → wizard → configured 
 
     // The Providers tab now lists the configured profile.
     await page.goto(`${SETTINGS_URL}/settings?tab=providers&section=connection-profiles`);
-    await expect(page.getByText(/mock-model/)).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'OpenAI-Compatible - mock-model' }),
+    ).toBeVisible();
   });
 });

@@ -23,6 +23,7 @@
 pub mod chat_create;
 pub mod chat_send;
 pub mod engine;
+pub mod provider_actions;
 pub mod provision;
 pub mod salon;
 pub mod settings;
@@ -34,6 +35,7 @@ pub use engine::{
     BootError, CoreConfig, CoreEngine, EngineAssembler, EngineAssembly, EngineShutdown,
     SINGLE_USER_ID,
 };
+pub use provider_actions::{ProviderActionsDriver, RealProviderActions};
 pub use types::{
     AckDto, ChatCreateResultDto, ChatErrorPayload, ChatSendResultDto, ChatSummaryDto, ChatWrapDto,
     CoreError, ErrorKind, Event, EventPayload, HealthDto, InstanceDto, InstancesDto,

@@ -435,14 +435,29 @@ plus the committed Salon web fixture; P4.6b landed the Angular Salon
 v4's markdown/roleplay/qtap-linkify renderer, streaming send over the
 P4.5 reducer, tier-1 message actions); the unification wired and ran the
 LIVE M4 Playwright walk (unlock → list → open baked history → send → a
-streamed mock-LLM reply that survives reload). P4.6 follow-ups: the turn
-`skipUserTurn` differential case, swipe **generate** through dispatch,
-the `pendingToolResults` orchestrator corpus case, the full
-`processChatUpdates` field set, and the SPA tier-2 controls (Skip banner,
-Speaking-As, pause/resume) — see the CLAUDE.md status block. Next: the
-remaining Salon slices (full Salon: Document Mode pane, terminal pane,
-courier, images) or the Settings vertical, per the P4.6+ screen-family
-list above. The oracle baseline is `a7b1398d`. Tracked chat-creation
+streamed mock-LLM reply that survives reload). **The P4.6c ∥ P4.6d ∥
+P4.6e round is also DONE and unified (2026-07-10):** P4.6c closed every
+carried Salon follow-up (skipUserTurn differential, swipe-generate through
+a `SwipeGenerateDriver` host seam, the pendingToolResults orchestrator
+case, the full `processChatUpdates` chat bag, GET attachments) plus the
+SPA tier-2 controls (the skip-signal TS port + Skip banner, Speaking-As,
+pause/resume + nudge); P4.6d landed the Settings dispatch backfill
+(`api::settings` — chat-settings GET default-injection + PUT, connection
+profiles CRUD/enrichment/reorder, API keys with the masked projection, the
+providers listing off the manifest Registry, models read/fetch, the wire
+actions over injected seams), each family differential-verified vs v4's
+real route handlers; P4.6e built the Settings SPA (the seven-tab shell,
+the AI Providers tab, the provider setup wizard, basic Appearance with
+server-persisted `themePreference`). The unification wired both named
+seams live (the swipe engine arm; the `api::provider_actions` live wire
+over `SyncWireTransport`) and un-skipped the LIVE Settings first-run
+Playwright walk (fresh instance → setup → wizard → a validated
+OPENAI_COMPATIBLE profile against the mock LLM), which caught and fixed a
+real PUT fidelity bug (partial nested bags must get v4's Zod-default
+materialization — proven by two new settings-routes corpus cases). Next:
+the remaining Salon slices (full Salon: Document Mode pane, terminal pane,
+courier, images) or the Memory/Images/Templates verticals, per the P4.6+
+screen-family list above. The oracle baseline is `a7b1398d`. Tracked chat-creation
 follow-ups: the
 create-echo DTO shape (see the capstone test header) and the capstone
 corpus extension (continuation create, outfit modes, the

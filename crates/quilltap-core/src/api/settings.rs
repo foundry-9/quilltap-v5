@@ -120,7 +120,8 @@ fn requires_base_url(provider: &str) -> bool {
 
 /// v4 `requiresApiKey`: `getConfigRequirements(provider)?.requiresApiKey ?? true` —
 /// exact-case, unknown → **true** (fail-safe, asymmetric with `requiresBaseUrl`).
-fn requires_api_key(provider: &str) -> bool {
+/// `pub(super)` — the live provider-actions validator reuses the guard.
+pub(super) fn requires_api_key(provider: &str) -> bool {
     Registry::built_in()
         .get_provider(provider)
         .map(|m| m.config_requirements.requires_api_key)
@@ -297,6 +298,99 @@ where
     Ok(chat_settings::SettingsColVal::Text(text))
 }
 
+/// v4 `CheapLLMSettingsSchema.parse` over a PUT sub-bag (the base repo's
+/// merge-then-`validate` runs the FULL nested schema, so Zod defaults
+/// materialize on a partial input): `strategy` defaults `PROVIDER_CHEAPEST`,
+/// `fallbackToLocal` `true`, `embeddingProvider` `'OPENAI'`; the three
+/// `.nullable().optional()` ids keep a present `null` and are OMITTED when
+/// absent; unknown keys are stripped; output in schema field order. The UUID
+/// format check on the ids is a documented seam (the corpus sends valid ids);
+/// a type mismatch is `Invalid cheap LLM settings` (the Zod-throw-message seam).
+fn zod_cheap_llm_settings(v: &Value) -> Result<chat_settings::SettingsColVal, String> {
+    let err = || "Invalid cheap LLM settings".to_string();
+    let o = v.as_object().ok_or_else(err)?;
+    let mut out = Map::new();
+    let strategy = match o.get("strategy") {
+        None => "PROVIDER_CHEAPEST",
+        Some(Value::String(s)) => s.as_str(),
+        Some(_) => return Err(err()),
+    };
+    out.insert("strategy".into(), json!(strategy));
+    let opt_id = |key: &str, out: &mut Map<String, Value>| -> Result<(), String> {
+        match o.get(key) {
+            None => Ok(()),
+            Some(Value::Null) => {
+                out.insert(key.to_string(), Value::Null);
+                Ok(())
+            }
+            Some(Value::String(s)) => {
+                out.insert(key.to_string(), json!(s));
+                Ok(())
+            }
+            Some(_) => Err(err()),
+        }
+    };
+    opt_id("userDefinedProfileId", &mut out)?;
+    opt_id("defaultCheapProfileId", &mut out)?;
+    let fallback = match o.get("fallbackToLocal") {
+        None => true,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return Err(err()),
+    };
+    out.insert("fallbackToLocal".into(), json!(fallback));
+    let embedding = match o.get("embeddingProvider") {
+        None => "OPENAI",
+        Some(Value::String(s)) => s.as_str(),
+        Some(_) => return Err(err()),
+    };
+    out.insert("embeddingProvider".into(), json!(embedding));
+    opt_id("imagePromptProfileId", &mut out)?;
+    serde_json::to_string(&Value::Object(out))
+        .map(chat_settings::SettingsColVal::Text)
+        .map_err(|_| err())
+}
+
+/// v4 `ThemePreferenceSchema.parse` over a PUT sub-bag (route-level parse):
+/// `activeThemeId` defaults `null` (ALWAYS present), `colorMode` `'system'`,
+/// `showNavThemeSelector` `false`; `customOverrides` is `.optional()` with no
+/// default (omitted when absent); unknown keys stripped; schema field order.
+fn zod_theme_preference(v: &Value) -> Result<chat_settings::SettingsColVal, String> {
+    let err = || "Invalid theme preference".to_string();
+    let o = v.as_object().ok_or_else(err)?;
+    let mut out = Map::new();
+    let active = match o.get("activeThemeId") {
+        None | Some(Value::Null) => Value::Null,
+        Some(Value::String(s)) => json!(s),
+        Some(_) => return Err(err()),
+    };
+    out.insert("activeThemeId".into(), active);
+    let color_mode = match o.get("colorMode") {
+        None => "system",
+        Some(Value::String(s)) if matches!(s.as_str(), "light" | "dark" | "system") => s.as_str(),
+        Some(_) => return Err(err()),
+    };
+    out.insert("colorMode".into(), json!(color_mode));
+    match o.get("customOverrides") {
+        None => {}
+        Some(Value::Object(m)) => {
+            if !m.values().all(Value::is_string) {
+                return Err(err());
+            }
+            out.insert("customOverrides".into(), Value::Object(m.clone()));
+        }
+        Some(_) => return Err(err()),
+    }
+    let show = match o.get("showNavThemeSelector") {
+        None => false,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return Err(err()),
+    };
+    out.insert("showNavThemeSelector".into(), json!(show));
+    serde_json::to_string(&Value::Object(out))
+        .map(chat_settings::SettingsColVal::Text)
+        .map_err(|_| err())
+}
+
 /// Nullable-string column: `null` → SQL NULL, a string → TEXT, anything else →
 /// error.
 fn nullable_string(label: &str, v: &Value) -> Result<chat_settings::SettingsColVal, String> {
@@ -366,10 +460,7 @@ fn build_settings_assignments(
                 }
             }
         }
-        out.push((
-            "cheapLLMSettings",
-            json_field::<chat_settings::CheapLlmSettings>("cheap LLM settings", v)?,
-        ));
+        out.push(("cheapLLMSettings", zod_cheap_llm_settings(v)?));
     }
     if let Some(v) = obj.get("imageDescriptionProfileId") {
         out.push((
@@ -384,10 +475,7 @@ fn build_settings_assignments(
         ));
     }
     if let Some(v) = obj.get("themePreference") {
-        out.push((
-            "themePreference",
-            json_field::<chat_settings::ThemePreference>("theme preference", v)?,
-        ));
+        out.push(("themePreference", zod_theme_preference(v)?));
     }
     if let Some(v) = obj.get("defaultRoleplayTemplateId") {
         // Validate the template exists when setting a non-null value.

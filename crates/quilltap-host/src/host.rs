@@ -414,14 +414,19 @@ impl EngineAssembler for HostAssembler {
         for (job_type, handler) in &self.extra {
             registry.register(job_type.clone(), Box::new(SharedHandler(handler.clone())));
         }
-        let (chat_send, chat_create) = match spine_bundle {
+        let (chat_send, chat_create, swipe_generate, provider_actions) = match spine_bundle {
             Some(bundle) => {
                 for (job_type, handler) in bundle.job_handlers {
                     registry.register(job_type, handler);
                 }
-                (Some(bundle.chat_send), Some(bundle.chat_create))
+                (
+                    Some(bundle.chat_send),
+                    Some(bundle.chat_create),
+                    bundle.swipe_generate,
+                    bundle.provider_actions,
+                )
             }
-            None => (None, None),
+            None => (None, None, None, None),
         };
 
         let runner = JobRunner::new(db.clone(), registry);
@@ -501,6 +506,8 @@ impl EngineAssembler for HostAssembler {
             }),
             chat_send,
             chat_create,
+            swipe_generate,
+            provider_actions,
         })
     }
 }

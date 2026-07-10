@@ -168,6 +168,8 @@ impl SpineFactory for SmokeSpineFactory {
         SpineBundle {
             chat_send: spine,
             chat_create,
+            swipe_generate: None,
+            provider_actions: None,
             job_handlers: Vec::new(),
         }
     }

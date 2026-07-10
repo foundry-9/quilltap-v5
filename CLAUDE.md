@@ -5838,3 +5838,64 @@ Speaking-As, pause/resume) — plus the standing full-Salon deferrals
 (Document Mode pane, terminal pane, courier UI, images, sidebar/modals,
 Lexical). **Next:** the remaining Salon slices or the Settings vertical
 per the P4.6+ screen-family list in `phase-4.md`.
+
+**P4.6c/d/e unification (2026-07-10): DONE — the Salon consolidation, the
+Settings server surface, and the Settings SPA are integrated on main; the
+first-run story is complete end to end.** The three lane branches
+cherry-picked with zero source-level conflicts for the eighth consecutive
+round (CHANGELOG + version unions only; the SPA lock re-synced to 0.3.0).
+**Both named unification wires closed live:** (1) the swipe-generate
+engine-arm swap — `EngineAssembly`/`ReadyEngine` carry the P4.6c
+`SwipeGenerateDriver` (+ a `ready_swipe` gate), the `MessageSwipe` generate
+branch delegates to it, `SpineBundle` exposes the `ChatSpine` impl; (2) the
+P4.6d provider wire actions went LIVE via the new `api::provider_actions`
+module — the dyn-erased `ProviderActionsDriver` (the `ChatSendDriver`
+precedent) + the live seam impls composed IN CORE over `SyncWireTransport`
+(the W4.7f `Real*Provider` precedent; the host factory plugs
+`io.sync_wire_transport()` + the shared completion): the per-provider
+`validateApiKey` matrix surveyed from v4 (SDK-family models-list GET with
+the requiresApiKey guard, OPENAI's `POST /v1/moderations {"input":"test"}`
+probe, ANTHROPIC [claude-haiku-4-5, max_tokens 1] / GOOGLE
+[gemini-2.5-flash] minimal-completion probes via the ported request
+builders, OLLAMA `/api/tags`; every wire failure → `Ok(false)`, never
+`Err` — v4's catch), and the live models fetcher
+(`models_list_request`/`parse_models_list` + the transcribed 11-model
+anthropic static fallback; unknown provider is the one `Err`). **Documented
+divergence:** the per-plugin model-metadata enrichment
+(`getModelsWithMetadata`/`getModelInfo`) is v4 plugin data not in the
+manifest — `modelsWithInfo` carries `{id}` rows only (same net cache effect
+as v4's metadata-less providers). **The live Settings e2e caught a real
+port bug, fixed per the discipline:** the chat-settings PUT deserialized
+nested `cheapLLMSettings`/`themePreference` via the strict storage structs,
+but v4's base-repo merge-then-`validate` runs the FULL nested Zod schema —
+a partial bag (the wizard's exact `{strategy:'PROVIDER_CHEAPEST'}` save)
+materializes the defaults and OMITS the nullable-optional ids. The PUT now
+applies Zod-parse semantics (`zod_cheap_llm_settings` /
+`zod_theme_preference` — defaults, unknown-key strip, schema order,
+present-null kept vs absent omitted), proven by two new corpus cases in the
+regenerated 21-case `settings_routes_equivalence` (byte-exact vs v4's REAL
+handler). Verified on the integrated tree: the full workspace gate (clippy
+`-D warnings` default + `native-transport`, fmt), a **twelve-differential
+fresh-oracle sweep** at `a7b1398d` (salon skip/swipe-generate/mutations/
+reads, settings routes [21 cases] + wire actions, providers listing, the
+28-case orchestrator regen, connection_profiles/provider_models/
+chat_settings tier-2s, regenerate_swipe_tier3 — all green, zero
+divergences), the SPA suite (139 Vitest), and **ALL FIVE Playwright specs
+green including the newly-LIVE Settings first-run walk**: fresh instance →
+setup → the provider wizard → a validated OPENAI_COMPATIBLE profile against
+the mock LLM → the profile in the Providers tab (three spec corrections:
+v4's real hyphenated `OpenAI-Compatible` display name, the
+no-key-input optional-key step [`requiresApiKey: false` renders no key
+field], a strict-mode locator). Versions: core 0.0.156, harness 0.0.143,
+host 0.0.9, web 0.0.6, SPA 0.3.1. **Tracked follow-ups:** the UUID-format
+check on the cheap-LLM id fields (type-level only — the Zod `z.uuid()`
+seam, corpus sends valid ids); P4.6d's named deferrals (the themes service
+[the SPA keeps client-side bundled packs], embedding/image profile route
+families, api-key export/import + auto-associate, auto-configure, tag
+actions, the Templates/Data-tab route families); P4.6c's (the mount-file
+attachment branch, participant/conciergeState PUT families, the impersonate
+menu + turn-queue UI); P4.6e's (the `.qtap-theme` registry UI, the other
+five tabs' placeholder cards, key export/import dialogs); and the standing
+full-Salon list. **Next:** the remaining Salon slices (Document Mode /
+terminal / courier / images) or the Memory/Images/Templates verticals, per
+the P4.6+ screen-family list in `phase-4.md`.

@@ -4,6 +4,44 @@
 
 ### 5.0-dev
 
+The P4.6c ∥ P4.6d ∥ P4.6e round is unified on main. The three lane branches
+cherry-picked with zero source-level conflicts (CHANGELOG/version unions only);
+the two named unification wires are closed live: (1) the swipe-generate
+engine-arm swap — `EngineAssembly`/`ReadyEngine` gained the P4.6c
+`SwipeGenerateDriver` slot, the `MessageSwipe` generate branch now delegates to
+the assembly's driver (`ChatSpine` implements it; the production factory wires
+it), and (2) the P4.6d provider wire actions went LIVE — a new
+`api::provider_actions` module holds the dyn-erased `ProviderActionsDriver` the
+engine gates on plus the live seam impls composed in core over the
+`SyncWireTransport` seam (the W4.7f `Real*Provider` precedent): the
+per-provider `validateApiKey` matrix surveyed from v4 at `a7b1398d` (the
+OpenAI-SDK family's models-list GET, OPENAI's `/v1/moderations` probe,
+ANTHROPIC/GOOGLE's minimal-completion probes via the ported request builders,
+OLLAMA's `/api/tags`, every wire failure → `false` never `Err`) and the live
+models fetcher (the ported `models_list_request`/`parse_models_list` + the
+transcribed anthropic static fallback list; the per-plugin model-METADATA
+enrichment is a documented divergence — `modelsWithInfo` carries `{id}` rows
+only, matching v4's metadata-less providers' net effect). The unification's
+live Settings e2e surfaced a REAL port bug, fixed per the discipline: the
+chat-settings PUT deserialized nested `cheapLLMSettings`/`themePreference` bags
+into the strict storage structs, but v4's base-repo merge-then-validate runs
+the FULL nested Zod schema — a partial bag (the wizard's exact
+`{strategy: 'PROVIDER_CHEAPEST'}` save) gets its defaults MATERIALIZED and its
+nullable-optional ids OMITTED. The PUT now applies the Zod-parse semantics
+(`zod_cheap_llm_settings` / `zod_theme_preference`, schema field order, unknown
+keys stripped), proven by two new corpus cases (`s_put_cheap_partial` /
+`s_put_theme_partial`) in the regenerated 21-case `settings_routes_equivalence`
+— byte-exact vs v4's REAL handler. Verified on the integrated tree: the full
+workspace gate, a **twelve-differential fresh-oracle sweep** at v4 `a7b1398d`
+(the four salon differentials, settings routes + wire actions, providers
+listing, the 28-case orchestrator regen, the three adjacent tier-2s, and
+`regenerate_swipe_tier3`), the SPA Vitest suite (139), and ALL FIVE Playwright
+specs — including the newly-LIVE Settings first-run walk (fresh instance →
+setup → the provider wizard → a validated OPENAI_COMPATIBLE profile against
+the mock LLM → the profile in the Providers tab), un-skipped and green with
+three spec corrections (v4's real hyphenated `OpenAI-Compatible` display name,
+the no-key-input optional-key step, a strict-mode locator).
+
 P4.6c (Salon consolidation) is ported and green against v4 `a7b1398d`. Server:
 the skipUserTurn differential (`salon_skip_equivalence` — the minted-values skip
 success + the all-others-skipped refusal; caught and fixed a turn-action
