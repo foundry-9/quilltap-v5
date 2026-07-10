@@ -4,6 +4,23 @@
 
 ### 5.0-dev
 
+P4.6 round planned: the two work orders for the first Salon vertical (M4)
+are written from fresh v4 surveys at `a7b1398d` —
+`docs/developer/porting/work-orders/p4.6a-salon-server.md` (the dispatch
+backfill: enriched chat list, the single-chat GET, the send pre-gate, the
+turn/skip action, message edit/delete/swipe, chat PUT, impersonation verbs,
+the chat-settings read, and the committed Salon web fixture — each handler
+differentially verified against v4's real route handler) and
+`p4.6b-salon-spa.md` (the Angular Salon: routing, list + conversation
+screens, the client-side markdown/roleplay/qtap-linkify pipeline port, the
+composer MVP + live streaming, and the M4 Playwright e2e over a Node mock
+LLM). Two survey findings baked into the orders: v4 has NO `canSkipTurn`
+server field (the client computes eligibility via the pure skip-signal
+logic, already ported in Rust), and v4's server-side `renderedHtml`
+markdown pre-render is a LOCKED divergence — v5 renders client-side in the
+SPA with the identical unified/remark/rehype pipeline. The shared-contract
+and ownership sections are binding and identical in both orders.
+
 Participants-null-seam subtask unification: integrated on main (pure
 fast-forward). Verified on the integrated tree: the full workspace gate
 (1,171 tests / 0 failed; clippy `-D warnings` default + `native-transport`;
