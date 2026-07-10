@@ -1,0 +1,291 @@
+//! P4.6a mutation-surface differential: the Salon mutation handlers
+//! (`api::salon::{chat_impersonate, chat_stop_impersonate, chat_set_active_speaker,
+//! turn_action, message_edit, message_delete, message_swipe_switch}`) vs v4's REAL
+//! route handlers (the impersonation verbs, the turn action, and the message
+//! edit/delete/swipe). Both sides run each case over a FRESH copy of the committed
+//! salon fixture; the response body + the affected MAIN-db tables (`chats` /
+//! `chat_messages`) are diffed byte-for-byte. Every case is zero-mint (skipUserTurn
+//! is excluded), so no id/timestamp remap is needed.
+//!
+//! Generate the oracle (Node 24, from the v4 checkout — see the .ts header):
+//!   … QT_ORACLE_OUT=/tmp/oracle-salon-mutations.ndjson npx jest -- salon-mutations
+//! Run:
+//!   QT_ORACLE_SALON_MUTATIONS=/tmp/oracle-salon-mutations.ndjson \
+//!     cargo test -p quilltap-harness --test salon_mutations_equivalence
+
+use std::collections::HashMap;
+use std::path::PathBuf;
+
+use quilltap_core::api::salon;
+use quilltap_core::api::types::Response;
+use quilltap_core::db::dump_table_json_conn;
+use quilltap_core::db::runtime::{Db, DbPaths};
+use serde::Deserialize;
+use serde_json::Value;
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Spec {
+    test_pepper_base64: String,
+    user_id: String,
+}
+
+fn spec_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../harness/oracle/fixtures/salon.json")
+}
+fn fixtures_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../quilltap-web/tests/fixtures")
+}
+fn env_or_skip(key: &str) -> Option<String> {
+    match std::env::var(key) {
+        Ok(v) => Some(v),
+        Err(_) => {
+            eprintln!("SKIP: set {key} (see test header).");
+            None
+        }
+    }
+}
+
+fn canon_numbers(v: &mut Value) {
+    match v {
+        Value::Number(n) => {
+            if let Some(f) = n.as_f64() {
+                if f.is_finite() && f.fract() == 0.0 && f.abs() < 9.007_199_254_740_992e15 {
+                    *v = Value::Number((f as i64).into());
+                }
+            }
+        }
+        Value::Array(a) => a.iter_mut().for_each(canon_numbers),
+        Value::Object(o) => o.iter_mut().for_each(|(_, x)| canon_numbers(x)),
+        _ => {}
+    }
+}
+fn sorted(v: &Value) -> Value {
+    match v {
+        Value::Array(a) => Value::Array(a.iter().map(sorted).collect()),
+        Value::Object(o) => {
+            let mut keys: Vec<&String> = o.keys().collect();
+            keys.sort();
+            let mut m = serde_json::Map::new();
+            for k in keys {
+                m.insert(k.clone(), sorted(&o[k]));
+            }
+            Value::Object(m)
+        }
+        _ => v.clone(),
+    }
+}
+fn norm(v: &Value) -> String {
+    let mut v = v.clone();
+    canon_numbers(&mut v);
+    serde_json::to_string_pretty(&sorted(&v)).unwrap()
+}
+fn first_diff(got: &str, want: &str) -> String {
+    let g: Vec<&str> = got.lines().collect();
+    let w: Vec<&str> = want.lines().collect();
+    for i in 0..g.len().max(w.len()) {
+        let gi = g.get(i).copied().unwrap_or("<none>");
+        let wi = w.get(i).copied().unwrap_or("<none>");
+        if gi != wi {
+            let mut ctx = String::new();
+            for j in i.saturating_sub(3)..i {
+                ctx.push_str(&format!("   = {}\n", g.get(j).copied().unwrap_or("")));
+            }
+            ctx.push_str(&format!("  GOT : {gi}\n  WANT: {wi}\n"));
+            return ctx;
+        }
+    }
+    "(identical)".to_string()
+}
+/// Extract the `rows` array (sorted by id, `renderedHtml` stripped) from a
+/// dump/oracle `{table, columns, rows}` object.
+fn table_rows(dump: &Value) -> Value {
+    let mut rows: Vec<Value> = dump
+        .get("rows")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    rows.sort_by_key(|r| {
+        r.get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    });
+    for r in &mut rows {
+        if let Some(o) = r.as_object_mut() {
+            o.remove("renderedHtml");
+        }
+    }
+    Value::Array(rows)
+}
+fn response_data(r: &Response) -> Value {
+    let v = serde_json::to_value(r).unwrap();
+    v.get("data").cloned().unwrap_or(Value::Null)
+}
+
+#[test]
+fn salon_mutations_match_oracle() {
+    let Some(oracle_path) = env_or_skip("QT_ORACLE_SALON_MUTATIONS") else {
+        return;
+    };
+    let spec: Spec =
+        serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).expect("spec");
+    let mut oracle: HashMap<String, Value> = HashMap::new();
+    for line in std::fs::read_to_string(&oracle_path)
+        .unwrap()
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+    {
+        let v: Value = serde_json::from_str(line).unwrap();
+        oracle.insert(v["name"].as_str().unwrap().to_string(), v);
+    }
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    let uid = spec.user_id.clone();
+    const GROUP: &str = "c1000000-0000-4000-8000-000000000002";
+    const USER_P: &str = "b2000000-0000-4000-8000-000000000003";
+    const LLM_P: &str = "b2000000-0000-4000-8000-000000000001";
+    const EDIT_MSG: &str = "d2000000-0000-4000-8000-000000000002";
+    const SWIPE_MSG: &str = "d2000000-0000-4000-8000-000000000005";
+
+    // Run one case over a fresh fixture copy; return (body, chats_rows, msgs_rows).
+    let run = |case: &str, f: &dyn Fn(&Db) -> Response| -> (Value, Value, Value) {
+        let scratch =
+            std::env::temp_dir().join(format!("qt-salon-mut-{}-{}", std::process::id(), case));
+        let _ = std::fs::remove_dir_all(&scratch);
+        std::fs::create_dir_all(&scratch).unwrap();
+        let main = scratch.join("main.db");
+        let mount = scratch.join("mount.db");
+        std::fs::copy(fixtures_dir().join("salon-main.db"), &main).unwrap();
+        std::fs::copy(fixtures_dir().join("salon-mount.db"), &mount).unwrap();
+        let db = Db::open(
+            DbPaths {
+                main,
+                mount_index: Some(mount),
+                llm_logs: None,
+            },
+            &spec.test_pepper_base64,
+        )
+        .expect("open db");
+        let body = response_data(&f(&db));
+        let chats = db
+            .read_main(|conn| dump_table_json_conn(conn, "chats", "id"))
+            .unwrap();
+        let msgs = db
+            .read_main(|conn| dump_table_json_conn(conn, "chat_messages", "id"))
+            .unwrap();
+        drop(db);
+        let _ = std::fs::remove_dir_all(&scratch);
+        (body, chats, msgs)
+    };
+
+    // (name, run closure)
+    #[allow(clippy::type_complexity)]
+    let cases: Vec<(&str, Box<dyn Fn(&Db) -> Response>)> = vec![
+        (
+            "impersonate",
+            Box::new(|db: &Db| rt.block_on(salon::chat_impersonate(db, GROUP, USER_P))),
+        ),
+        (
+            "stop_impersonate",
+            Box::new(|db: &Db| rt.block_on(salon::chat_stop_impersonate(db, GROUP, USER_P, None))),
+        ),
+        (
+            "set_active_speaker",
+            Box::new(|db: &Db| rt.block_on(salon::chat_set_active_speaker(db, GROUP, USER_P))),
+        ),
+        (
+            "turn_query",
+            Box::new(|db: &Db| rt.block_on(salon::turn_action(db, GROUP, "query", None, 0.42))),
+        ),
+        (
+            "turn_nudge",
+            Box::new(|db: &Db| {
+                rt.block_on(salon::turn_action(db, GROUP, "nudge", Some(LLM_P), 0.42))
+            }),
+        ),
+        (
+            "message_edit",
+            Box::new(|db: &Db| {
+                rt.block_on(salon::message_edit(
+                    db,
+                    &uid,
+                    EDIT_MSG,
+                    "I stride toward the ridge, resolute.",
+                ))
+            }),
+        ),
+        (
+            "message_delete_confirm",
+            Box::new(|db: &Db| rt.block_on(salon::message_delete(db, &uid, EDIT_MSG, None, false))),
+        ),
+        (
+            "message_delete_swipe",
+            Box::new(|db: &Db| {
+                rt.block_on(salon::message_delete(db, &uid, SWIPE_MSG, None, false))
+            }),
+        ),
+        (
+            "message_swipe_switch",
+            Box::new(|db: &Db| salon::message_swipe_switch(db, &uid, SWIPE_MSG, 1)),
+        ),
+        (
+            "chat_update",
+            Box::new(|db: &Db| {
+                rt.block_on(salon::chat_update(
+                    db,
+                    GROUP,
+                    &serde_json::json!({ "isPaused": true, "title": "Paused Expedition" }),
+                ))
+            }),
+        ),
+        (
+            "message_delete_cascade",
+            Box::new(|db: &Db| {
+                rt.block_on(salon::message_delete(
+                    db,
+                    &uid,
+                    EDIT_MSG,
+                    Some("DELETE_MEMORIES"),
+                    false,
+                ))
+            }),
+        ),
+    ];
+
+    let mut failed = Vec::new();
+    for (name, f) in &cases {
+        let want = &oracle[*name];
+        let (got_body, got_chats, got_msgs) = run(name, f.as_ref());
+        let sections: [(&str, Value, Value); 3] = [
+            ("body", got_body, want["body"].clone()),
+            (
+                "chats",
+                table_rows(&got_chats),
+                table_rows(&want["tables"]["chats"]),
+            ),
+            (
+                "chat_messages",
+                table_rows(&got_msgs),
+                table_rows(&want["tables"]["chatMessages"]),
+            ),
+        ];
+        for (section, got, want_v) in &sections {
+            let g = norm(got);
+            let w = norm(want_v);
+            if g != w {
+                eprintln!(
+                    "[{name}] section `{section}` MISMATCH:\n{}",
+                    first_diff(&g, &w)
+                );
+                failed.push(format!("{name}/{section}"));
+            }
+        }
+        eprintln!("[{name}] done.");
+    }
+    assert!(failed.is_empty(), "salon-mutations FAILED: {failed:?}");
+}

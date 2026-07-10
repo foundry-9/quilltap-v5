@@ -24,10 +24,16 @@ rejection + `nudge` + `pendingToolResults` (pre-inserted as TOOL messages, the
 RNG-auto-detect pattern). Committed the shared Salon web fixture
 (`crates/quilltap-web/tests/fixtures/salon-*.db`) for the M4 e2e + differentials.
 Verified: `salon_reads_equivalence` (settings + enriched list [3 param variants]
-+ single-chat GET [solo + group], byte-exact vs v4's real handlers over the
-committed fixture) + the send-gate rejection unit test. The mutation-handler
-differentials (turn / message mutations / chat PUT / impersonation) and the
-`pendingToolResults` corpus case are the remaining P4.6a follow-ups.
++ single-chat GET [solo + group]) and `salon_mutations_equivalence` (the three
+impersonation verbs, the turn action [query + nudge], message edit / delete
+[confirmation + swipe-group + memory-cascade] / swipe-switch, and the chat PUT
+[isPaused + title]) — both byte-exact vs v4's real route handlers over the
+committed fixture, zero-mint zero-normalization — plus the send-gate rejection
+unit test. Remaining P4.6a follow-ups: the turn `skipUserTurn` branch (posts a
+Host announcement — excluded from the zero-mint differential), the swipe
+**generate** branch (needs the model driver), the `pendingToolResults`
+orchestrator corpus case, and the full `processChatUpdates` field set /
+roster / conciergeState families.
 
 P4.6 round planned: the two work orders for the first Salon vertical (M4)
 are written from fresh v4 surveys at `a7b1398d` —
