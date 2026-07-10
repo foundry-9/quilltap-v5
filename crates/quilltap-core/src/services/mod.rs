@@ -89,6 +89,7 @@ pub mod message_finalizer;
 pub mod native_tool_loop;
 pub mod off_scene;
 pub mod orchestrator;
+pub mod outfit_selections;
 pub mod participant_resolver;
 pub mod pricing_fetcher;
 pub mod primary_stream;

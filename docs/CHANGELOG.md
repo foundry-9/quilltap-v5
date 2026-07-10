@@ -4,6 +4,23 @@
 
 ### 5.0-dev
 
+P4.4 unit-2 sub-unit 4: outfit selections (services::outfit_selections),
+ported from v4's lib/wardrobe/apply-outfit-selections.ts + the chooseLLMOutfit
+cheap-LLM task. applyOutfitSelections dispatches each character's
+OutfitSelection (default / manual / none / previous_chat / llm_choose) to
+set_equipped_outfit; resolveDefaultOutfit (default-marked items, oldest-first,
+per-slot) and the chooseLLMOutfit prompt (byte-exact OUTFIT_SELECTION_PROMPT +
+wardrobe listing) + its id/slot-validating response parser compose the
+verified cheap-LLM executor + wardrobe reads. The 6bf88959 progress narration
+(wardrobe-start / wardrobe-result OutfitPreviewSlots, log fallback) rides the
+Green Room emitter. Documented seam: the ported executor's infallible parser
+means a malformed-JSON response yields empty slots (vs v4's throw ->
+default-fallback); the corpus keeps responses valid JSON and drives the
+fallback via a provider failure. The pure leaves (default resolution, prompt
+layout, parser) are unit-tested here; the composed applyOutfitSelections tier-3
+diff (equippedOutfit + progress frames) rides the capstone driving v4's real
+handleCreate.
+
 P4.4 unit-2 sub-unit 3: the identity-stack compiler write side
 (services::system_prompt_compiler), ported from v4's
 lib/services/system-prompt-compiler/compiler.ts (compileAllIdentityStacks).

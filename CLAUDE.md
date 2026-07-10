@@ -5632,6 +5632,20 @@ Bob/llm, Sam/user, Ghost/llm-removed), diffing the persisted map byte-for-byte
 (only the two active LLM participants; user/removed skipped;
 `physicalDescription` surfaces). The single-participant compile is a P4.6
 deferral; the spine populating `precompiled_identity_stack` per turn is
-verified in the capstone. Next sub-units: outfit selections, the greeting
-generator, chat continuation, then the `handleCreate` spine + `ChatCreate`
-dispatch + capstone.
+verified in the capstone. **Sub-unit 4 — outfit selections — is also DONE**
+(`services::outfit_selections`; v4 `apply-outfit-selections.ts` +
+`chooseLLMOutfit`): `apply_outfit_selections` dispatches each character's
+`OutfitSelection` (`default`/`manual`/`none`/`previous_chat`/`llm_choose`) to
+`set_equipped_outfit`, composing `resolve_default_outfit` (default-marked
+items, oldest-first, per-slot) + the byte-exact `OUTFIT_SELECTION_PROMPT` +
+its id/slot-validating response parser over the verified `CheapLlmTaskExecutor`
++ wardrobe reads, with the `6bf88959` progress narration
+(wardrobe-start/wardrobe-result/log) riding the Green Room emitter.
+**Documented seam:** the ported executor's infallible parser means a
+malformed-JSON response yields empty slots (vs v4's throw → default-fallback);
+the corpus keeps responses valid JSON and drives the fallback via a provider
+failure. The pure leaves (default resolution, prompt layout, parser) are
+unit-tested here; the composed `applyOutfitSelections` tier-3 diff
+(`equippedOutfit` + progress frames) rides the capstone. Next sub-units: the
+greeting generator, chat continuation, then the `handleCreate` spine +
+`ChatCreate` dispatch + capstone.
