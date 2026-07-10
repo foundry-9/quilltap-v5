@@ -1,9 +1,17 @@
-import { Injectable, computed, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 
+import { CoreClient } from '../core/core-client';
 import { BUNDLED_THEMES, type ThemeDescriptor } from './bundled-themes';
 
 export type ColorMode = 'light' | 'dark' | 'system';
 export type ResolvedColorMode = 'light' | 'dark';
+
+/** The server-persisted theme preference (v4 `chat_settings.themePreference`). */
+export interface ThemePreference {
+  activeThemeId: string | null;
+  colorMode: ColorMode;
+  showNavThemeSelector: boolean;
+}
 
 /** A theme option for the switcher: the bundled packs plus the built-in default. */
 export interface ThemeOption {
@@ -17,6 +25,7 @@ export interface ThemeOption {
 
 const THEME_STORAGE_KEY = 'quilltap-theme-id';
 const MODE_STORAGE_KEY = 'quilltap-color-mode';
+const NAV_SELECTOR_STORAGE_KEY = 'quilltap-nav-theme-selector';
 const THEME_LINK_ID = 'qt-theme-styles';
 const THEME_FONTS_ID = 'qt-theme-fonts';
 
@@ -25,7 +34,11 @@ const DEFAULT_OPTION: ThemeOption = {
   name: 'Default',
   description: "Quilltap's built-in professional-neutral theme.",
   supportsDarkMode: true,
-  previewColors: { background: 'hsl(225 14% 97%)', primary: 'hsl(225 65% 48%)', secondary: 'hsl(225 10% 92%)' },
+  previewColors: {
+    background: 'hsl(225 14% 97%)',
+    primary: 'hsl(225 65% 48%)',
+    secondary: 'hsl(225 10% 92%)',
+  },
 };
 
 /**
@@ -38,23 +51,33 @@ const DEFAULT_OPTION: ThemeOption = {
  */
 @Injectable({ providedIn: 'root' })
 export class ThemeService {
+  private readonly core = inject(CoreClient);
+
   private readonly _activeThemeId = signal<string | null>(readStored(THEME_STORAGE_KEY));
-  private readonly _colorMode = signal<ColorMode>((readStored(MODE_STORAGE_KEY) as ColorMode) ?? 'system');
+  private readonly _colorMode = signal<ColorMode>(
+    (readStored(MODE_STORAGE_KEY) as ColorMode) ?? 'system',
+  );
+  private readonly _showNavThemeSelector = signal<boolean>(
+    readStored(NAV_SELECTOR_STORAGE_KEY) === 'true',
+  );
   private readonly _systemPrefersDark = signal(prefersDark());
 
   /** The currently active pack id (`null` = default). */
   readonly activeThemeId = this._activeThemeId.asReadonly();
   /** The chosen color mode (may be `system`). */
   readonly colorMode = this._colorMode.asReadonly();
+  /** Whether the nav-bar quick theme selector is shown (v4 `showNavThemeSelector`). */
+  readonly showNavThemeSelector = this._showNavThemeSelector.asReadonly();
   /** The resolved light/dark mode after folding `system`. */
   readonly resolvedColorMode = computed<ResolvedColorMode>(() =>
-    this._colorMode() === 'system' ? (this._systemPrefersDark() ? 'dark' : 'light') : (this._colorMode() as ResolvedColorMode),
+    this._colorMode() === 'system'
+      ? this._systemPrefersDark()
+        ? 'dark'
+        : 'light'
+      : (this._colorMode() as ResolvedColorMode),
   );
 
-  private readonly options: ThemeOption[] = [
-    DEFAULT_OPTION,
-    ...BUNDLED_THEMES.map(toOption),
-  ];
+  private readonly options: ThemeOption[] = [DEFAULT_OPTION, ...BUNDLED_THEMES.map(toOption)];
 
   constructor() {
     // Track the OS preference so `system` mode re-resolves live.
@@ -79,22 +102,90 @@ export class ThemeService {
     return BUNDLED_THEMES;
   }
 
-  /** Apply a theme by id (`null` = default). Persists + repaints the DOM. */
+  /** The full server-persisted preference (v4 `chat_settings.themePreference`). */
+  themePreference(): ThemePreference {
+    return {
+      activeThemeId: this._activeThemeId(),
+      colorMode: this._colorMode(),
+      showNavThemeSelector: this._showNavThemeSelector(),
+    };
+  }
+
+  /** Apply a theme by id (`null` = default). Persists (local + server) + repaints. */
   applyTheme(id: string | null): void {
     this._activeThemeId.set(id);
     writeStored(THEME_STORAGE_KEY, id);
     this.applyToDom();
+    this.persistToServer();
   }
 
-  /** Set the light/dark/system color mode. Persists + repaints. */
+  /** Set the light/dark/system color mode. Persists (local + server) + repaints. */
   setColorMode(mode: ColorMode): void {
     this._colorMode.set(mode);
     writeStored(MODE_STORAGE_KEY, mode);
     this.applyToDom();
+    this.persistToServer();
+  }
+
+  /** Toggle the nav-bar quick theme selector. Persists (local + server). */
+  setShowNavThemeSelector(show: boolean): void {
+    this._showNavThemeSelector.set(show);
+    writeStored(NAV_SELECTOR_STORAGE_KEY, show ? 'true' : 'false');
+    this.persistToServer();
+  }
+
+  /**
+   * Read the server's `themePreference` and apply it as the source of truth
+   * (localStorage is the offline fallback). Best-effort — a locked/erroring
+   * server leaves the local preference in place. Does NOT write back.
+   */
+  async loadFromServer(): Promise<void> {
+    try {
+      const resp = await this.core.dispatch({ type: 'chatSettings' });
+      if (resp.type !== 'chatSettings') {
+        return;
+      }
+      const pref = resp.data['themePreference'] as Partial<ThemePreference> | undefined;
+      if (!pref) {
+        return;
+      }
+      this.applyServerPreference(pref);
+    } catch {
+      // Offline / locked — keep the local preference.
+    }
+  }
+
+  /** Apply a server preference locally (+ localStorage) WITHOUT persisting back. */
+  private applyServerPreference(pref: Partial<ThemePreference>): void {
+    if (pref.activeThemeId !== undefined) {
+      this._activeThemeId.set(pref.activeThemeId);
+      writeStored(THEME_STORAGE_KEY, pref.activeThemeId);
+    }
+    if (pref.colorMode !== undefined) {
+      this._colorMode.set(pref.colorMode);
+      writeStored(MODE_STORAGE_KEY, pref.colorMode);
+    }
+    if (pref.showNavThemeSelector !== undefined) {
+      this._showNavThemeSelector.set(pref.showNavThemeSelector);
+      writeStored(NAV_SELECTOR_STORAGE_KEY, pref.showNavThemeSelector ? 'true' : 'false');
+    }
+    this.applyToDom();
+  }
+
+  /** Fire-and-forget persist of the full preference to `chat_settings` (v4 store). */
+  private persistToServer(): void {
+    void this.core
+      .dispatch({
+        type: 'chatSettingsUpdate',
+        settings: { themePreference: this.themePreference() },
+      })
+      .catch(() => {
+        // Best-effort — localStorage already holds the value.
+      });
   }
 
   private descriptor(id: string | null): ThemeDescriptor | null {
-    return id ? BUNDLED_THEMES.find((t) => t.id === id) ?? null : null;
+    return id ? (BUNDLED_THEMES.find((t) => t.id === id) ?? null) : null;
   }
 
   /** Repaint `<html>` + swap the pack's stylesheet + fonts. */
@@ -107,7 +198,8 @@ export class ThemeService {
     const desc = this.descriptor(id);
     // A single-mode pack (e.g. Madman's Box) is dark by decree — honor its lack
     // of a light variant by forcing dark; otherwise use the resolved mode.
-    const resolved: ResolvedColorMode = desc && !desc.supportsDarkMode ? 'dark' : this.resolvedColorMode();
+    const resolved: ResolvedColorMode =
+      desc && !desc.supportsDarkMode ? 'dark' : this.resolvedColorMode();
 
     root.dataset['theme'] = id ?? 'default';
     root.dataset['colorMode'] = resolved;
@@ -152,7 +244,8 @@ export class ThemeService {
     }
     style.textContent = desc.fonts
       .map(
-        (f) => `@font-face{font-family:${cssFamily(f.family)};src:url("/themes/${desc.id}/${f.src}") format("woff2");` +
+        (f) =>
+          `@font-face{font-family:${cssFamily(f.family)};src:url("/themes/${desc.id}/${f.src}") format("woff2");` +
           `font-weight:${f.weight};font-style:${f.style};font-display:${f.display};}`,
       )
       .join('\n');

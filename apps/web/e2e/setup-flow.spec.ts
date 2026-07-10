@@ -12,6 +12,11 @@ import { ARTIFACTS_DIR, spaDir, webBinary } from './support/env';
  * the setup wizard → the one-time pepper reveal → the shell on the freshly
  * provisioned instance. Self-contained — spawns/kills its own server on a
  * separate port so the globalSetup fixture server is untouched.
+ *
+ * P4.6e note: a fresh instance now hands off to the provider setup wizard after
+ * "Continue to Quilltap" (v4 `navigateAfterSetup`: no connection profiles → the
+ * wizard). The wizard is reachable from the nav's Settings, so navigating there
+ * still reaches the (empty) Salon.
  */
 const SETUP_PORT = 4320;
 const SETUP_URL = `http://127.0.0.1:${SETUP_PORT}`;
@@ -34,7 +39,16 @@ test.beforeAll(async () => {
   const logFd = openSync(SETUP_LOG, 'w');
   const child = spawn(
     web,
-    ['--host', '127.0.0.1', '--port', String(SETUP_PORT), '--data-dir', SETUP_INSTANCE, '--spa-dir', spaDir()],
+    [
+      '--host',
+      '127.0.0.1',
+      '--port',
+      String(SETUP_PORT),
+      '--data-dir',
+      SETUP_INSTANCE,
+      '--spa-dir',
+      spaDir(),
+    ],
     { stdio: ['ignore', logFd, logFd], detached: true, env },
   );
   child.unref();
@@ -72,7 +86,9 @@ test.afterAll(() => {
   rmSync(SETUP_INSTANCE, { recursive: true, force: true });
 });
 
-test('walks needs-setup → wizard → pepper reveal → shell on the provisioned instance', async ({ page }) => {
+test('walks needs-setup → wizard → pepper reveal → shell on the provisioned instance', async ({
+  page,
+}) => {
   await page.goto(SETUP_URL);
 
   // The empty instance routes to the first-run wizard (v4-voiced).
@@ -89,12 +105,19 @@ test('walks needs-setup → wizard → pepper reveal → shell on the provisione
   await page.locator('#qt-setup-confirm').fill(SETUP_PASSPHRASE);
   await page.getByRole('button', { name: 'Set Up with Passphrase' }).click();
   await expect(page.getByRole('heading', { name: 'Setup Complete' })).toBeVisible();
-  await expect(page.getByText('Save this encryption pepper now. It will not be shown again.')).toBeVisible();
+  await expect(
+    page.getByText('Save this encryption pepper now. It will not be shown again.'),
+  ).toBeVisible();
   const pepper = (await page.locator('pre.qt-code-block').textContent())?.trim() ?? '';
   expect(pepper.length).toBeGreaterThan(0);
 
-  // Continue lands on the shell; the fresh instance has no chats.
+  // Continue hands a profile-less fresh instance off to the provider wizard
+  // (v4 `navigateAfterSetup`).
   await page.getByRole('button', { name: 'Continue to Quilltap' }).click();
+  await expect(page.getByRole('heading', { name: 'Choose Your Providers' })).toBeVisible();
+
+  // The Settings nav still reaches the (empty) Salon.
+  await page.getByRole('link', { name: 'Home' }).click();
   await expect(page.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible();
   await expect(page.getByText('No chats yet')).toBeVisible();
 

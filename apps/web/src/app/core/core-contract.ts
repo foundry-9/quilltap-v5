@@ -24,11 +24,7 @@
  * are not. `loading` is a CLIENT-only sentinel while the first `health` is in
  * flight — never sent by the server.
  */
-export type PepperState =
-  | 'resolved'
-  | 'needs-setup'
-  | 'needs-passphrase'
-  | 'needs-vault-storage';
+export type PepperState = 'resolved' | 'needs-setup' | 'needs-passphrase' | 'needs-vault-storage';
 
 /** Client-side readiness including the pre-first-response `loading` sentinel. */
 export type ReadinessState = PepperState | 'loading';
@@ -142,6 +138,80 @@ export interface ChatCreateRequest {
   [key: string]: unknown;
 }
 
+// ---------------------------------------------------------------------------
+// Settings surface (P4.6d implements the server side; see its Shared contract)
+// ---------------------------------------------------------------------------
+
+/** PUT the chat-settings row (v4 `settings/chat` PUT) — a partial merge. */
+export interface ChatSettingsUpdateRequest {
+  type: 'chatSettingsUpdate';
+  settings: Record<string, unknown>;
+}
+
+/** Create / update / delete / reorder a connection profile (v4 `connection-profiles`). */
+export interface ConnectionProfileCreateRequest {
+  type: 'connectionProfileCreate';
+  profile: Record<string, unknown>;
+}
+export interface ConnectionProfileUpdateRequest {
+  type: 'connectionProfileUpdate';
+  profileId: string;
+  profile: Record<string, unknown>;
+}
+export interface ConnectionProfileDeleteRequest {
+  type: 'connectionProfileDelete';
+  profileId: string;
+}
+/** Persist a new profile order (v4 `?action=reorder`) — ids in display order. */
+export interface ConnectionProfileReorderRequest {
+  type: 'connectionProfileReorder';
+  orderedIds: string[];
+}
+/** The provider actions (v4 `?action=test-connection` / `test-message`). */
+export interface ConnectionProfileTestRequest {
+  type: 'connectionProfileTest';
+  profile: Record<string, unknown>;
+}
+export interface ConnectionProfileTestMessageRequest {
+  type: 'connectionProfileTestMessage';
+  profile: Record<string, unknown>;
+}
+
+/** API-key CRUD + test (v4 `api-keys`). */
+export interface ApiKeyCreateRequest {
+  type: 'apiKeyCreate';
+  label: string;
+  provider: string;
+  apiKey: string;
+}
+export interface ApiKeyUpdateRequest {
+  type: 'apiKeyUpdate';
+  apiKeyId: string;
+  label?: string;
+  isActive?: boolean;
+  apiKey?: string;
+}
+export interface ApiKeyDeleteRequest {
+  type: 'apiKeyDelete';
+  apiKeyId: string;
+}
+export interface ApiKeyTestRequest {
+  type: 'apiKeyTest';
+  apiKeyId: string;
+}
+
+/** The registry listing + models read/fetch (v4 `providers` / `models`). */
+export interface ModelListRequest {
+  type: 'modelList';
+  provider?: string;
+}
+export interface ModelFetchRequest {
+  type: 'modelFetch';
+  provider: string;
+  apiKeyId?: string;
+  baseUrl?: string;
+}
+
 /** The internally-tagged request union (one variant per user-meaningful op). */
 export type CoreRequest =
   | { type: 'health' }
@@ -165,7 +235,25 @@ export type CoreRequest =
   | MessageSwipeRequest
   | ChatImpersonateRequest
   | ChatStopImpersonateRequest
-  | ChatSetActiveSpeakerRequest;
+  | ChatSetActiveSpeakerRequest
+  // --- The Settings surface (P4.6d implements the server side) ---
+  | ChatSettingsUpdateRequest
+  | { type: 'connectionProfileList' }
+  | ConnectionProfileCreateRequest
+  | ConnectionProfileUpdateRequest
+  | ConnectionProfileDeleteRequest
+  | ConnectionProfileReorderRequest
+  | { type: 'connectionProfileResetSort' }
+  | ConnectionProfileTestRequest
+  | ConnectionProfileTestMessageRequest
+  | { type: 'apiKeyList' }
+  | ApiKeyCreateRequest
+  | ApiKeyUpdateRequest
+  | ApiKeyDeleteRequest
+  | ApiKeyTestRequest
+  | { type: 'providerList' }
+  | ModelListRequest
+  | ModelFetchRequest;
 
 export type RequestType = CoreRequest['type'];
 
@@ -462,6 +550,112 @@ export interface ChatSettingsDto {
 }
 
 // ---------------------------------------------------------------------------
+// Settings DTOs (v4 providers / connection-profiles / api-keys / models bodies)
+// ---------------------------------------------------------------------------
+
+/** One provider row (v4 GET `/providers`). `icon`/`optionsSchema` are `null` on
+ *  the v5 manifest — documented absent fields, kept for shape faithfulness. */
+export interface ProviderInfo {
+  id: string;
+  name: string;
+  displayName: string;
+  description: string;
+  abbreviation: string;
+  colors?: { bg: string; text: string; icon: string };
+  icon?: string | null;
+  type: 'llm' | 'search' | string;
+  capabilities: {
+    chat: boolean;
+    imageGeneration: boolean;
+    embeddings: boolean;
+    webSearch: boolean;
+    toolUse?: boolean;
+  };
+  configRequirements: {
+    requiresApiKey: boolean;
+    requiresBaseUrl: boolean;
+    apiKeyLabel?: string;
+    baseUrlLabel?: string;
+    baseUrlDefault?: string;
+    baseUrlPlaceholder?: string;
+  };
+  optionsSchema?: unknown | null;
+}
+
+/** The masked API-key projection (v4 `api-keys` list — never the plaintext key). */
+export interface ApiKeyDto {
+  id: string;
+  provider: string;
+  label: string;
+  isActive: boolean;
+  lastUsed: string | null;
+  createdAt: string;
+  updatedAt: string;
+  keyPreview: string;
+}
+
+/** An auto-association surfaced by `apiKeyCreate` (v4 `ProfileAssociation`). */
+export interface ProfileAssociation {
+  profileId: string;
+  profileName: string;
+}
+
+/** The `apiKey` reference joined onto a connection profile (v4 `enrichWithApiKey`). */
+export interface ProfileApiKeyRef {
+  id: string;
+  label: string;
+  provider: string;
+  isActive: boolean;
+}
+
+export interface ProfileTag {
+  id: string;
+  name: string;
+}
+
+/** One enriched connection profile (v4 `connection-profiles` list/detail). */
+export interface ConnectionProfileDto {
+  id: string;
+  name: string;
+  transport?: 'api' | 'courier';
+  courierDeltaMode?: boolean;
+  provider: string;
+  apiKeyId?: string | null;
+  baseUrl?: string | null;
+  modelName: string;
+  parameters: Record<string, unknown>;
+  isDefault: boolean;
+  isCheap?: boolean;
+  isDangerousCompatible?: boolean;
+  allowWebSearch?: boolean;
+  useNativeWebSearch?: boolean;
+  allowToolUse?: boolean;
+  pseudoToolMode?: 'auto' | 'native' | 'simple-json' | 'text-block';
+  supportsImageUpload?: boolean;
+  modelClass?: string | null;
+  maxContext?: number | null;
+  sortIndex?: number;
+  apiKey?: ProfileApiKeyRef | null;
+  tags?: ProfileTag[];
+}
+
+/** Per-model info returned alongside a models fetch (v4 `ModelInfo`). */
+export interface ModelInfo {
+  id: string;
+  displayName?: string;
+  deprecated?: boolean;
+  experimental?: boolean;
+  maxOutputTokens?: number;
+  contextWindow?: number;
+}
+
+/** The models read/fetch body (v4 POST `/models`). */
+export interface ModelsDto {
+  models: string[];
+  modelsWithInfo?: ModelInfo[];
+}
+
+// ---------------------------------------------------------------------------
 // Message-mutation / turn-action results
 // ---------------------------------------------------------------------------
 
@@ -536,6 +730,19 @@ export type CoreResponse =
   | { type: 'turnAction'; data: TurnActionDto }
   | { type: 'message'; data: { message: MessageDto } }
   | { type: 'messageDelete'; data: MessageDeleteDto }
+  // --- The Settings surface (P4.6d implements the server side) ---
+  | { type: 'connectionProfiles'; data: { profiles: ConnectionProfileDto[]; count: number } }
+  | { type: 'connectionProfile'; data: { profile: ConnectionProfileDto } }
+  | { type: 'connectionTest'; data: { valid: boolean; error?: string } }
+  // The test-message response type is not pinned by name in the Shared contract
+  // (only its `{success,message?,error?}` body is). `connectionTestMessage` is
+  // this lane's best guess; the SPA reads it defensively via `dispatch`, so the
+  // exact type string is not load-bearing — reconcile at unification.
+  | { type: 'connectionTestMessage'; data: { success: boolean; message?: string; error?: string } }
+  | { type: 'apiKeys'; data: { apiKeys: ApiKeyDto[]; count: number } }
+  | { type: 'apiKey'; data: { apiKey: ApiKeyDto & { associations?: ProfileAssociation[] } } }
+  | { type: 'providers'; data: { providers: ProviderInfo[]; count: number } }
+  | { type: 'models'; data: ModelsDto }
   | { type: 'error'; data: CoreError };
 
 export type ResponseType = CoreResponse['type'];

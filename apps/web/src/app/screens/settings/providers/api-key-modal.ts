@@ -1,0 +1,155 @@
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
+import { injectQuery } from '@tanstack/angular-query-experimental';
+
+import { CoreClient } from '../../../core/core-client';
+import type { ProviderInfo } from '../../../core/core-contract';
+import { ErrorAlert } from '../../../ui/error-alert';
+import { FormActions } from '../../../ui/form-actions';
+import { Modal } from '../../../ui/modal';
+
+interface ProviderOption {
+  value: string;
+  label: string;
+}
+
+/**
+ * The "Add New API Key" modal (v4 `components/settings/api-keys/ApiKeyModal.tsx`):
+ * a label, a provider dropdown (LLM providers that require a key), and a password
+ * field. Emits `saved` on success so the list refetches. Copy is v4-verbatim.
+ */
+@Component({
+  selector: 'qt-api-key-modal',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [Modal, FormActions, ErrorAlert],
+  template: `
+    <qt-modal title="Add New API Key" (close)="close.emit()">
+      @if (error()) {
+        <qt-error-alert [message]="error()!" class="mb-4" />
+      }
+      <div class="space-y-4">
+        <div>
+          <label for="qt-key-label" class="block qt-text-label mb-2">Label *</label>
+          <input
+            id="qt-key-label"
+            type="text"
+            class="qt-input"
+            placeholder="e.g., My OpenAI Key"
+            [value]="label()"
+            (input)="label.set($any($event.target).value)"
+          />
+          <p class="qt-text-xs mt-1">A friendly name to identify this key</p>
+        </div>
+
+        <div>
+          <label for="qt-key-provider" class="block qt-text-label mb-2">Provider *</label>
+          <select
+            id="qt-key-provider"
+            class="qt-select"
+            [disabled]="providersQuery.isPending()"
+            [value]="provider()"
+            (change)="provider.set($any($event.target).value)"
+          >
+            @if (providersQuery.isPending()) {
+              <option value="">Loading providers...</option>
+            } @else {
+              <option value="">Select a provider</option>
+              @for (p of providerOptions(); track p.value) {
+                <option [value]="p.value">{{ p.label }}</option>
+              }
+            }
+          </select>
+        </div>
+
+        <div>
+          <label for="qt-key-value" class="block qt-text-label mb-2">API Key *</label>
+          <input
+            id="qt-key-value"
+            type="password"
+            class="qt-input"
+            placeholder="Your API key (will be encrypted)"
+            [value]="apiKey()"
+            (input)="apiKey.set($any($event.target).value)"
+          />
+          <p class="qt-text-xs mt-1">Your key is encrypted and never exposed</p>
+        </div>
+      </div>
+
+      <div qt-modal-footer>
+        <qt-form-actions
+          [submitLabel]="saving() ? 'Creating...' : 'Create API Key'"
+          [isLoading]="saving()"
+          [isDisabled]="!isValid()"
+          (cancel)="close.emit()"
+          (submit)="submit()"
+        />
+      </div>
+    </qt-modal>
+  `,
+})
+export class ApiKeyModal {
+  private readonly core = inject(CoreClient);
+
+  readonly close = output<void>();
+  readonly saved = output<void>();
+
+  protected readonly label = signal('');
+  protected readonly provider = signal('');
+  protected readonly apiKey = signal('');
+  protected readonly saving = signal(false);
+  protected readonly error = signal<string | null>(null);
+
+  protected readonly providersQuery = injectQuery(() => ({
+    queryKey: ['providers'],
+    queryFn: async (): Promise<ProviderInfo[]> => {
+      const resp = await this.core.dispatchExpect({ type: 'providerList' }, 'providers');
+      return resp.data.providers;
+    },
+  }));
+
+  protected readonly providerOptions = computed<ProviderOption[]>(() =>
+    (this.providersQuery.data() ?? [])
+      .filter((p) => p.type === 'llm' && p.configRequirements?.requiresApiKey)
+      .map((p) => ({ value: p.name, label: p.displayName }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+  );
+
+  protected readonly isValid = computed(
+    () =>
+      this.label().trim().length > 0 &&
+      this.provider().length > 0 &&
+      this.apiKey().trim().length > 0,
+  );
+
+  protected async submit(): Promise<void> {
+    if (!this.isValid()) {
+      return;
+    }
+    this.saving.set(true);
+    this.error.set(null);
+    try {
+      await this.core.dispatchExpect(
+        {
+          type: 'apiKeyCreate',
+          label: this.label().trim(),
+          provider: this.provider(),
+          apiKey: this.apiKey().trim(),
+        },
+        'apiKey',
+      );
+      this.saved.emit();
+      this.close.emit();
+    } catch (err) {
+      this.error.set(err instanceof Error ? err.message : 'Failed to create API key');
+    } finally {
+      this.saving.set(false);
+    }
+  }
+}

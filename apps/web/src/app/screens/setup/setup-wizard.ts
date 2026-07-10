@@ -1,7 +1,16 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 
 import { CoreClient } from '../../core/core-client';
+import { FirstRunService } from '../../startup/first-run.service';
 
 type Mode = 'needs-setup' | 'needs-vault-storage';
 
@@ -24,9 +33,12 @@ type Mode = 'needs-setup' | 'needs-vault-storage';
         <div class="qt-card max-w-lg w-full p-6 space-y-4">
           <h1 class="qt-heading-2">Setup Complete</h1>
           <div class="qt-alert qt-alert-warning space-y-2">
-            <p class="qt-text-small font-semibold">Save this encryption pepper now. It will not be shown again.</p>
+            <p class="qt-text-small font-semibold">
+              Save this encryption pepper now. It will not be shown again.
+            </p>
             <p class="qt-text-xs qt-text-muted">
-              If you ever need to recover your data without a passphrase, you will need this value set as the
+              If you ever need to recover your data without a passphrase, you will need this value
+              set as the
               <code class="qt-code-inline">ENCRYPTION_MASTER_PEPPER</code> environment variable.
             </p>
           </div>
@@ -40,7 +52,11 @@ type Mode = 'needs-setup' | 'needs-vault-storage';
               {{ copied() ? 'Copied!' : 'Copy' }}
             </button>
           </div>
-          <button class="qt-button qt-button-primary w-full py-2" type="button" (click)="continueToApp()">
+          <button
+            class="qt-button qt-button-primary w-full py-2"
+            type="button"
+            (click)="continueToApp()"
+          >
             Continue to Quilltap
           </button>
         </div>
@@ -49,8 +65,8 @@ type Mode = 'needs-setup' | 'needs-vault-storage';
         <div class="qt-card max-w-lg w-full p-6 space-y-4">
           <h1 class="qt-heading-2">Secure Your Encryption Key</h1>
           <p class="qt-text-muted">
-            Your encryption key is set via environment variable. Store it in an encrypted .dbkey file so Quilltap can
-            start without the environment variable in the future.
+            Your encryption key is set via environment variable. Store it in an encrypted .dbkey
+            file so Quilltap can start without the environment variable in the future.
           </p>
           <ng-container [ngTemplateOutlet]="passphraseFields"></ng-container>
           @if (error()) {
@@ -65,7 +81,11 @@ type Mode = 'needs-setup' | 'needs-vault-storage';
             >
               {{ loading() ? 'Storing...' : 'Store Key File' }}
             </button>
-            <button class="qt-button qt-button-secondary flex-1 opacity-60" type="button" (click)="skip.emit()">
+            <button
+              class="qt-button qt-button-secondary flex-1 opacity-60"
+              type="button"
+              (click)="skip.emit()"
+            >
               Skip for Now
             </button>
           </div>
@@ -75,14 +95,19 @@ type Mode = 'needs-setup' | 'needs-vault-storage';
         <div class="qt-card max-w-lg w-full p-6 space-y-4">
           <h1 class="qt-heading-2">Welcome to Quilltap</h1>
           <p class="qt-text-muted">
-            Quilltap needs an encryption key to protect your API keys and sensitive data. One will be generated
-            automatically. You can optionally protect it with a passphrase.
+            Quilltap needs an encryption key to protect your API keys and sensitive data. One will
+            be generated automatically. You can optionally protect it with a passphrase.
           </p>
           <ng-container [ngTemplateOutlet]="passphraseFields"></ng-container>
           @if (error()) {
             <p class="qt-alert qt-alert-error text-sm">{{ error() }}</p>
           }
-          <button class="qt-button qt-button-primary w-full py-2" type="button" [disabled]="loading()" (click)="setup()">
+          <button
+            class="qt-button qt-button-primary w-full py-2"
+            type="button"
+            [disabled]="loading()"
+            (click)="setup()"
+          >
             {{ submitLabel() }}
           </button>
         </div>
@@ -122,6 +147,7 @@ type Mode = 'needs-setup' | 'needs-vault-storage';
 })
 export class SetupWizard {
   private readonly core = inject(CoreClient);
+  private readonly firstRun = inject(FirstRunService);
 
   readonly mode = input<Mode>('needs-setup');
   /** Emitted once setup / storage completes and the user proceeds. */
@@ -172,6 +198,9 @@ export class SetupWizard {
       const resp = await this.core.dispatch({ type: 'setup', passphrase: this.passphrase() });
       if (resp.type === 'setup') {
         this.generatedPepper.set(resp.data.pepper);
+        // A fresh instance has no connection profiles — route into the provider
+        // wizard once the shell mounts (v4 `navigateAfterSetup`).
+        this.firstRun.markSetupComplete();
         return;
       }
       this.error.set(resp.type === 'error' ? resp.data.message : 'Setup failed');

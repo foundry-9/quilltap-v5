@@ -15,8 +15,22 @@ export interface MockLlm {
 
 export const MOCK_LLM_REPLY = 'The kettle is on. Do come in.';
 
+/** The model ids the mock advertises (the Settings wizard/profile-modal fetch). */
+export const MOCK_LLM_MODELS = ['mock-model', 'mock-model-mini'];
+
 export async function startMockLlm(reply: string = MOCK_LLM_REPLY, port = 0): Promise<MockLlm> {
   const server = createServer((req, res) => {
+    // The models-list + validate probe (OPENAI_COMPATIBLE `GET {baseUrl}/models`
+    // → `{ data: [{ id }] }`; a successful list is also the connection validate).
+    if (
+      req.method === 'GET' &&
+      req.url?.includes('/models') &&
+      !req.url.includes('/chat/completions')
+    ) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ data: MOCK_LLM_MODELS.map((id) => ({ id })) }));
+      return;
+    }
     if (req.method !== 'POST' || !req.url?.includes('/chat/completions')) {
       res.writeHead(404).end();
       return;
@@ -46,7 +60,11 @@ export async function startMockLlm(reply: string = MOCK_LLM_REPLY, port = 0): Pr
         object: 'chat.completion.chunk',
         model,
         choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
-        usage: { prompt_tokens: 10, completion_tokens: words.length, total_tokens: 10 + words.length },
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: words.length,
+          total_tokens: 10 + words.length,
+        },
       };
       res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
       res.write('data: [DONE]\n\n');

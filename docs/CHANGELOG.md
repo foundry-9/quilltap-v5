@@ -58,6 +58,40 @@ for chat-settings / connection-profiles / api-keys / provider-models over
 a baked fixture), the `settings_wire_actions` composition tests, and
 `api::settings` unit tests.
 
+P4.6e (Settings SPA vertical, tier-4): the first Settings slice in
+`apps/web`. The Settings screen shell ports v4's seven-tab hall over new
+`EntityTabs` + `CollapsibleCard` primitives (`?tab=`/`&section=` deep
+links, a per-tab `data-subsystem` background); AI Providers + Appearance
+are populated, the other five tabs render a v4-voiced "not yet fitted out"
+placeholder. AI Providers: an API Keys card (masked `keyPreview` rows,
+create modal filtered to key-requiring providers, per-key Test, delete
+with confirm — export/import deferred), a Connection Profiles card (the
+profile modal's Connect → Fetch Models → Test Message flow with the model
+combobox + free-text fallback, the full flag set [default/cheap/uncensored/
+tool-use + pseudo-tool mode/image-upload/web-search/model-class/max-context/
+sampling], the Courier transport option, up/down reorder + Reset Sort,
+inline duplicate-name validation; Auto-Configure slot disabled, tag editing
+deferred), and a Cheap LLM card (PUT-merge of `cheapLLMSettings`). The
+provider setup wizard (providers → api-keys → models → confirm; the
+embedding/image steps render skippable and skip immediately) maps 1:1 onto
+the pinned dispatch variants; settings-mode re-entry pre-populates from the
+list variants. Basic Appearance: theme select over the bundled packs, color
+mode, the nav quick-theme toggle, and avatar mode/style — the theme
+preference now persists server-side via `chatSettingsUpdate
+{themePreference}` (v4's `chat_settings.themePreference` store, surveyed and
+pinned) and re-applies on boot, with localStorage as the offline fallback.
+A fresh instance hands off to the wizard after setup (v4
+`navigateAfterSetup`). The contract mirror grows the pinned Settings request
++ response variants; the SPA is built against a mocked `CoreClient` (live
+wire-up at unification). New `ModelSelector` + `Modal` primitives. 96 Vitest
+tests (tab deep links, masked-key rendering, duplicate-name validation, the
+wizard reducer walk, PUT-merge, theme round-trip) + a clean SPA prod build;
+a skipped live-flow Playwright spec + the mock-LLM `/models` endpoint. SPA
+0.2.1 → 0.3.0. Contract note for P4.6d: the provider-test / api-key-test
+response `type` strings are not pinned by name in the Shared contract (only
+their `data` bodies are) — the SPA reads them defensively via a new
+`CoreClient.dispatchData`, so the exact type names reconcile at unification.
+
 The P4.6c ∥ Settings round is planned: three work orders written from
 fresh v4 surveys at `a7b1398d` —
 `docs/developer/porting/work-orders/p4.6c-salon-consolidation.md` (the
@@ -777,7 +811,6 @@ transcript path forms + the ENOENT rule, and the stamp); the adjacent
 differentials re-verified green; plus lock unit tests, host cadence
 integration tests (conflict boot error, loss handler, the 20 h window across
 a re-boot, the danger gate + live enqueue), and core service self-tests.
-
 
 P4.1b: the file/image host-driver lane — the byte layer is real. New core
 `services::file_storage` ports v4's file-storage manager + bridges over two

@@ -103,6 +103,20 @@ export class CoreClient {
     return expectResponse(resp, expect);
   }
 
+  /**
+   * Dispatch and return the raw `data` body of any non-error response, throwing a
+   * {@link CoreDispatchError} on `{ type: "error" }`. Use for ops whose response
+   * `type` string is not pinned by the Shared contract (the provider-test
+   * actions) — only their `data` shape is load-bearing.
+   */
+  async dispatchData(request: CoreRequest): Promise<Record<string, unknown>> {
+    const resp = await this.dispatch(request);
+    if (resp.type === 'error') {
+      throw new CoreDispatchError(resp.data);
+    }
+    return (resp.data ?? {}) as Record<string, unknown>;
+  }
+
   // -------------------------------------------------------------------------
   // Health (the startup readiness gate)
   // -------------------------------------------------------------------------
@@ -129,11 +143,17 @@ export class CoreClient {
       case 200:
         return { kind: 'healthy' };
       case 423:
-        return { kind: 'locked', pepperState: (body['dbKeyState'] as PepperState) ?? 'needs-passphrase' };
+        return {
+          kind: 'locked',
+          pepperState: (body['dbKeyState'] as PepperState) ?? 'needs-passphrase',
+        };
       case 409:
         return { kind: 'lock-conflict', lockConflict: body['lockConflict'] ?? null };
       case 503:
-        return { kind: 'unhealthy', message: (body['error'] as string) ?? 'The server is not ready.' };
+        return {
+          kind: 'unhealthy',
+          message: (body['error'] as string) ?? 'The server is not ready.',
+        };
       default:
         return { kind: 'unhealthy', message: `Unexpected health status ${res.status}.` };
     }
