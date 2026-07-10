@@ -4,6 +4,15 @@
 
 ### 5.0-dev
 
+CLAUDE.md is trimmed from 5,922 lines (~430 KB, loaded into every turn of
+every session and lane agent) to 287: the unit-by-unit Status journal moved
+VERBATIM (diff-verified) to `docs/developer/porting/status-log.md`, and
+CLAUDE.md keeps the standing rules plus a phase-level summary. New
+convention: append unit/round records to the status log; update CLAUDE.md's
+summary only at phase/round boundaries. The commit checklist (step 8),
+`overview.md`'s status pointers, and the P4.6f order's ownership block are
+retargeted accordingly.
+
 The next parallel round is planned and its four work orders are written
 (docs-only; drift check clean — v4 HEAD still `a7b1398d`; four fresh v4
 surveys): **P4.6f** the Characters server surface (dispatch backfill over the

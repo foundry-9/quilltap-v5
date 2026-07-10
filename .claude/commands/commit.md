@@ -111,8 +111,11 @@ apply here.
 
 - If a user-facing string was added or changed, confirm it keeps v4's
   steampunk / Wodehouse / Lemony Snicket register.
-- If this commit moved the port forward, update the **Status** section of
-  [`CLAUDE.md`](../../CLAUDE.md) so it reflects what's actually done.
+- If this commit moved the port forward, append the unit's record to
+  [`docs/developer/porting/status-log.md`](../../docs/developer/porting/status-log.md)
+  (the unit-by-unit journal). Update CLAUDE.md's phase-level Status summary
+  ONLY when a phase or round completes — CLAUDE.md loads every turn and must
+  stay small.
 - If the change affects the boundary, the cipher, or a phase plan, keep the
   relevant doc under `docs/developer/porting/` (`overview.md`, `phase-0.md`,
   `api-boundary.md`) in sync.
