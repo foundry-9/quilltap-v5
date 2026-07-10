@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
   afterNextRender,
   computed,
@@ -8,61 +9,107 @@ import {
   inject,
   input,
   output,
+  untracked,
   viewChild,
 } from '@angular/core';
+import { injectVirtualizer } from '@tanstack/angular-virtual';
 
 import type { ChatStreamState } from '../core/chat-stream.reducer';
 import type { ChatDetail, ChatSettingsDto, MessageDto } from '../core/core-contract';
 import { AnnouncementGroup } from './announcement-group';
+import { AutoScrollController } from './auto-scroll';
 import { buildRenderItems, type SwipeState } from './chat-view-model';
 import { MessageRow } from './message-row';
 import { StreamingMessage } from './streaming-message';
+import { Icon } from '../ui/icon';
+import { VirtualRow } from './virtual-row';
 
 /**
- * The scrolling message list — the render-item pipeline (message rows +
- * collapsed announcement groups) plus the live streaming bubble. A plain scroll
- * container with bottom-anchoring is the sanctioned MVP substitute for v4's
- * TanStack virtualizer (virtualization is a tracked deferral).
+ * The scrolling message list — a port of v4's `VirtualizedMessageList` +
+ * `useAutoScroll` (`app/salon/[id]/…`). The render-item array (message rows +
+ * collapsed announcement groups) is windowed with `@tanstack/angular-virtual`
+ * (the official Angular adapter over the exact virtual-core v4 uses): only the
+ * viewport + overscan rows mount, so a 300-message chat pays a bounded render
+ * cost instead of rendering every row through the markdown pipeline at once
+ * (dogfood finding #3b). Row markdown is memoized ({@link
+ * import('./render/render-cache')}) so re-entering rows re-mount as a cache hit.
+ *
+ * The scroll behavior — initial settle + one-time instant scroll-to-bottom,
+ * stick-to-bottom intent, completion-gated auto-scroll, the jump-to-bottom
+ * button — lives in {@link AutoScrollController}.
  */
 @Component({
   selector: 'qt-message-list',
   // Stretch inside .qt-chat-messages-viewport so .qt-chat-messages (flex-1 +
   // overflow-y-auto) gets a BOUNDED height and actually scrolls — an unstyled
-  // host breaks the flex chain (the third Friday dogfood finding).
+  // host breaks the flex chain (dogfood finding #3a). The virtualizer measures
+  // its offsets against .qt-chat-messages, so that element must stay the bounded
+  // scroll container.
   host: { class: 'flex flex-col flex-1 min-h-0' },
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MessageRow, AnnouncementGroup, StreamingMessage],
+  imports: [MessageRow, AnnouncementGroup, StreamingMessage, VirtualRow, Icon],
   template: `
     <div #scroll class="qt-chat-messages">
       <div class="qt-chat-messages-list">
-        @for (item of items(); track itemKey(item)) {
-          @if (item.type === 'message') {
-            <qt-message-row
-              [message]="item.message"
-              [chat]="chat()"
-              [swipeState]="swipeFor(item.message)"
-              [settings]="settings()"
-              [showAvatar]="showAvatars()"
-              [editing]="item.message.id === editingId()"
-              (copy)="copy.emit($event)"
-              (edit)="edit.emit($event)"
-              (delete)="delete.emit($event)"
-              (regenerate)="regenerate.emit($event)"
-              (swipePrev)="swipePrev.emit($event)"
-              (swipeNext)="swipeNext.emit($event)"
-              (saveEdit)="saveEdit.emit($event)"
-              (cancelEdit)="cancelEdit.emit()"
-            />
-          } @else {
-            <qt-announcement-group [chips]="item.chips" />
+        <!-- Total-size spacer: reserves the full scroll height; rows are absolutely
+             positioned within it and translated to their measured offsets (v4's
+             inline-styled rows, VirtualizedMessageList.tsx:188-293). The 1rem
+             padding-bottom restores the inter-row gap the old space-y-4 gave, so
+             each measured row height includes it. -->
+        <div style="position:relative;width:100%" [style.height.px]="virtualizer.getTotalSize()">
+          @for (row of virtualizer.getVirtualItems(); track row.key) {
+            @let item = items()[row.index];
+            @if (item) {
+              <div
+                style="position:absolute;top:0;left:0;width:100%;padding-bottom:1rem"
+                [qtVirtualRow]="virtualizer"
+                [attr.data-index]="row.index"
+                [style.transform]="'translateY(' + row.start + 'px)'"
+              >
+                @if (item.type === 'message') {
+                  <qt-message-row
+                    [message]="item.message"
+                    [chat]="chat()"
+                    [swipeState]="swipeFor(item.message)"
+                    [settings]="settings()"
+                    [showAvatar]="showAvatars()"
+                    [editing]="item.message.id === editingId()"
+                    (copy)="copy.emit($event)"
+                    (edit)="edit.emit($event)"
+                    (delete)="delete.emit($event)"
+                    (regenerate)="regenerate.emit($event)"
+                    (swipePrev)="swipePrev.emit($event)"
+                    (swipeNext)="swipeNext.emit($event)"
+                    (saveEdit)="saveEdit.emit($event)"
+                    (cancelEdit)="cancelEdit.emit()"
+                  />
+                } @else {
+                  <qt-announcement-group [chips]="item.chips" />
+                }
+              </div>
+            }
           }
-        }
+        </div>
 
         @if (stream(); as s) {
           <qt-streaming-message [state]="s" />
         }
+
+        <div #endAnchor></div>
       </div>
     </div>
+
+    @if (autoScroll.showScrollToBottom()) {
+      <button
+        type="button"
+        class="qt-chat-scroll-to-bottom"
+        aria-label="Jump to latest message"
+        title="Jump to latest message"
+        (click)="autoScroll.scrollToBottom()"
+      >
+        <qt-icon name="chevron-down" class="w-5 h-5" />
+      </button>
+    }
   `,
 })
 export class MessageList {
@@ -83,8 +130,20 @@ export class MessageList {
   readonly cancelEdit = output<void>();
 
   private readonly scroll = viewChild<ElementRef<HTMLElement>>('scroll');
+  private readonly endAnchor = viewChild<ElementRef<HTMLElement>>('endAnchor');
 
   protected readonly items = computed(() => buildRenderItems(this.messages()));
+
+  /** The virtualizer over the render-item array (v4 `useVirtualizer`). */
+  protected readonly virtualizer = injectVirtualizer<HTMLElement, Element>(() => ({
+    scrollElement: this.scroll()?.nativeElement,
+    count: this.items().length,
+    estimateSize: () => 150,
+    overscan: 5,
+    getItemKey: (index) => this.itemKey(this.items()[index]),
+  }));
+
+  protected readonly autoScroll = new AutoScrollController();
 
   /** Avatar display: v4 ALWAYS / GROUP_ONLY (≥2 chars) / NEVER. */
   protected readonly showAvatars = computed(() => {
@@ -97,14 +156,53 @@ export class MessageList {
   });
 
   constructor() {
-    afterNextRender(() => this.scrollToBottom());
-    // Re-anchor to the newest content whenever the list or the live stream grows.
-    effect(() => {
-      this.messages();
-      this.stream()?.content;
-      this.stream()?.messages.length;
-      queueMicrotask(() => this.scrollToBottom());
+    // Attach the scroll controller once the container exists (post-render).
+    afterNextRender(() => {
+      const container = this.scroll()?.nativeElement;
+      if (!container) return;
+      this.autoScroll.bind(
+        {
+          container,
+          end: this.endAnchor()?.nativeElement ?? null,
+          virtualizer: this.virtualizer,
+          itemCount: () => this.items().length,
+          autoScrollOnComplete: () => this.settings()?.autoScrollOnResponseComplete ?? false,
+        },
+        this.messages().length,
+      );
     });
+
+    // Feed the controller its two v4 signals: the streaming flags and the flat
+    // message count. Streaming NEVER scrolls per chunk — only completion (gated).
+    effect(() => {
+      const s = this.stream();
+      this.autoScroll.notifyStreaming(s != null, s?.waitingForResponse ?? false);
+    });
+    effect(() => {
+      const count = this.messages().length;
+      const s = this.stream();
+      this.autoScroll.notifyMessageCount(count, s != null, s?.waitingForResponse ?? false);
+    });
+
+    inject(DestroyRef).onDestroy(() => this.autoScroll.dispose());
+
+    // Drive the virtualizer's window computation from a plain effect as well as
+    // the adapter's own `afterRenderEffect`. `_willUpdate()` wires the scroll-rect
+    // / scroll-offset observers the first time the container resolves (which is
+    // what recomputes `range`); it is a guarded no-op once the scroll element is
+    // unchanged, so the redundant call in the browser is free. This also makes
+    // the list render its window in environments where afterRender hooks don't
+    // fire (the jsdom unit-test harness).
+    effect(() => {
+      const el = this.scroll()?.nativeElement;
+      this.items().length; // re-run when the render-item count changes
+      if (el) untracked(() => this.virtualizer._willUpdate());
+    });
+  }
+
+  /** Called by the conversation screen when the user sends — always scrolls + re-enables. */
+  scrollOnUserMessage(): void {
+    this.autoScroll.scrollOnUserMessage();
   }
 
   protected swipeFor(message: MessageDto): SwipeState | null {
@@ -113,12 +211,5 @@ export class MessageList {
 
   protected itemKey(item: ReturnType<typeof buildRenderItems>[number]): string {
     return item.type === 'message' ? item.message.id : `grp-${item.chips[0]?.id ?? ''}`;
-  }
-
-  private scrollToBottom(): void {
-    const el = this.scroll()?.nativeElement;
-    if (el) {
-      el.scrollTop = el.scrollHeight;
-    }
   }
 }

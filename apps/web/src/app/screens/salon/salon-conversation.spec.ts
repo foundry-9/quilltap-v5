@@ -2,7 +2,23 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { Subject, of } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+
+/**
+ * The message list is virtualized (`@tanstack/angular-virtual`). The virtualizer
+ * measures the scroll container via `offsetHeight`, and forces an empty window
+ * when it reads 0 — which is exactly what JSDOM reports (no layout). Stub a
+ * non-zero `offsetHeight`/`offsetWidth` so the container has a viewport and the
+ * (small) fixture's rows fall inside the window and render into the DOM.
+ */
+beforeAll(() => {
+  const proto = globalThis.HTMLElement?.prototype;
+  if (proto && !('__qtSizeStubbed' in proto)) {
+    Object.defineProperty(proto, '__qtSizeStubbed', { value: true });
+    Object.defineProperty(proto, 'offsetHeight', { configurable: true, get: () => 800 });
+    Object.defineProperty(proto, 'offsetWidth', { configurable: true, get: () => 800 });
+  }
+});
 
 import { CoreClient } from '../../core/core-client';
 import type {

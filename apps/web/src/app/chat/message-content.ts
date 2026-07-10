@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 
-import { renderMarkdownToHtml } from './render/markdown-renderer';
+import { renderMarkdownCached } from './render/render-cache';
 
 /**
  * Renders a message's markdown through the v4-parity pipeline
@@ -27,6 +27,6 @@ export class MessageContent {
   private readonly sanitizer = inject(DomSanitizer);
 
   protected readonly html = computed<SafeHtml>(() =>
-    this.sanitizer.bypassSecurityTrustHtml(renderMarkdownToHtml(this.content())),
+    this.sanitizer.bypassSecurityTrustHtml(renderMarkdownCached(this.content())),
   );
 }

@@ -1,6 +1,6 @@
 {
   "name": "quilltap-spa",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
@@ -32,6 +32,7 @@
     "@angular/platform-browser": "^21.0.0",
     "@angular/router": "^21.0.0",
     "@tanstack/angular-query-experimental": "^5.101.2",
+    "@tanstack/angular-virtual": "5.0.7",
     "rehype-highlight": "7.0.2",
     "rehype-stringify": "10.0.1",
     "remark-breaks": "4.0.0",

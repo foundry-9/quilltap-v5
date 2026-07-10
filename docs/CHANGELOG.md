@@ -119,6 +119,27 @@ Rename/Replace, and the wardrobe dialog are named deferrals. The Playwright
 `characters-flow.spec.ts` skeleton is written and skipped, to un-skip against
 lane A's committed characters fixture at unification. `ng test` green (182),
 prod build green.
+Dogfood finding #3b is fixed: the Salon message list is virtualized, a port of
+v4's own `@tanstack/react-virtual` + `useAutoScroll` architecture. The Angular
+adapter `@tanstack/angular-virtual` (5.0.7, pinned) windows the existing
+render-item array (estimate 150, overscan 5, dynamic measurement via a
+`measureElement` directive, total-size spacer + translated absolute rows), so a
+large chat renders only the viewport plus overscan instead of pushing every
+message through the markdown pipeline at once. Markdown output is now memoized
+per `(content, renderingPatterns, dialogueDetection)` so a row re-entering the
+window re-mounts as a cache hit. A new `AutoScrollController` ports the
+`useAutoScroll` state machine — initial settle + one-time instant
+scroll-to-bottom, 100px stick-to-bottom tracking, completion-gated auto-scroll
+(reads the `autoScrollOnResponseComplete` chat setting), scroll-on-user-send,
+and the jump-to-bottom button — with unit tests over a fake scroll element. A
+separate committed long-chat fixture (`salon-long-*.db`, ~300 mixed messages
+via a new `build-long-chat-fixture.ts`, built through v4's real
+`repos.chats.addMessages`) backs a new Playwright walk (`salon-scroll.spec.ts`):
+the long chat opens interactive in under 3s, lands at the bottom, keeps only a
+window of rows in the DOM, and the jump button round-trips. The virtualizer's
+window is additionally driven from a plain effect (`_willUpdate`) so the list
+also renders under the jsdom unit harness, where afterRender hooks do not fire.
+SPA 0.4.0.
 
 CLAUDE.md is trimmed from 5,922 lines (~430 KB, loaded into every turn of
 every session and lane agent) to 287: the unit-by-unit Status journal moved

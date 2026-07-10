@@ -5913,3 +5913,52 @@ A's fixture, the P4.6b precedent). `apps/web` 0.4.0 → 0.5.0.
   lands). **Standing caveat:** the DTO bytes are proven only when lane A's
   `characters_*_equivalence` differentials land; this lane is component-tested
   against the pinned contract, not the oracle.
+**P4.6h — Salon virtualization (dogfood finding #3b): done (2026-07-10).** A
+port of v4's OWN virtualization (`app/salon/[id]/components/VirtualizedMessageList.tsx`
++ `hooks/useAutoScroll.ts`, HEAD `a7b1398d`), not a perf project. Adopted
+`@tanstack/angular-virtual` 5.0.7 (pinned; the official Angular adapter over
+the exact `virtual-core` v4 uses — peer `@angular/core >=19` satisfied by 21)
+in `chat/message-list.ts`, windowing the existing `chat-view-model`
+render-item array (estimate 150, overscan 5, stable render-item keys, dynamic
+measurement, total-size spacer + translated absolute rows). Row heights carry
+a `padding-bottom:1rem` (the inter-row gap the old `space-y-4` gave, now
+inside each measured row since absolute rows drop the list's `space-y`).
+Measurement rides a `VirtualRow` directive = v4's `ref={virtualizer.measureElement}`
+(measure in `afterNextRender`, prune with `measureElement(null)` on destroy).
+Markdown is memoized in a new `render/render-cache.ts` keyed by
+`(content, renderingPatterns, dialogueDetection)` (v4's `LazyMessageContent`
+memo), so a windowed re-mount is a Map hit — the second half of the fix
+(windowing bounds HOW MANY rows render; the cache bounds HOW OFTEN a row's
+markdown recomputes). `chat/auto-scroll.ts` (`AutoScrollController`) ports
+`useAutoScroll` verbatim — `SCROLL_THRESHOLD=100`, `SETTLE_DELAY_MS=400`,
+`SCROLL_CHECK_DEBOUNCE_MS=100`; initial settle + one-time instant
+multi-strategy scroll-to-bottom (never smooth with dynamic sizes),
+stick-to-bottom tracking, completion-gated auto-scroll (reads
+`autoScrollOnResponseComplete`, default false), scroll-on-user-send (wired via
+a `viewChild(MessageList)` in `salon-conversation.ts`), the jump-to-bottom
+button (`showScrollToBottom = isSettled && !isAtBottom`) — with a unit test
+over a fake scroll element (settle gate, 100px threshold, suppress/re-enable,
+completion gating). GOTCHA banked: the `@angular/build:unit-test` jsdom
+harness does NOT run `afterRender`/`afterRenderEffect` hooks, so the adapter's
+own `_willUpdate` (which computes the visible `range`) never fires there —
+message-list additionally drives `_willUpdate()` from a plain `effect()`
+(guarded no-op in the browser, where afterRenderEffect works and the e2e
+proves it). `calculateRange` also forces an empty window when the scroll
+container's `offsetHeight===0` (jsdom's default), so the component spec stubs
+`HTMLElement.prototype.offsetHeight`. A SEPARATE committed long-chat fixture
+(`crates/quilltap-web/tests/fixtures/salon-long-*.db`, ~300 mixed messages —
+markdown-heavy, whispers, packed staff-announcement runs — via a NEW
+`harness/oracle/fixtures/build-long-chat-fixture.ts` through v4's real
+`repos.chats.addMessages`; the salon fixture pair is FROZEN, never touched)
+backs a new `e2e/salon-scroll.spec.ts` on its OWN locked server (the shared
+global-setup server stays pinned to the small salon fixture): open → interactive
+< 3s → landed at bottom → windowed DOM (< 60 rows vs 300) → scroll up → jump
+button → click → back at bottom → composer present. E2e recipe note: each
+`quilltap db --write` unwraps the .dbkey via PBKDF2 (~5s), so the per-hook
+timeout is raised and only the tables this read walk touches (`chats`,
+`characters`, `chat_settings`) are rewritten; the fixture must materialize the
+empty tables the read path reads (`memories`, `files`, `tags`,
+`conversation_chunks`, `vector_indices`, `background_jobs`) or they surface as
+`no such table` at runtime. All 22 SPA unit files (151 tests) + all 6
+Playwright specs + the prod build green. No server/Rust change; the
+client-side-markdown locked divergence stands. SPA 0.4.0.

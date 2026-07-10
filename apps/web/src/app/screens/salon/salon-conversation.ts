@@ -5,6 +5,7 @@ import {
   effect,
   inject,
   signal,
+  viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -154,6 +155,9 @@ export class SalonConversation {
 
   private readonly params = toSignal(this.route.paramMap, { requireSync: true });
   protected readonly chatId = computed(() => this.params().get('id'));
+
+  /** The message list, so a user send can force a scroll-to-bottom (v4 `scrollOnUserMessage`). */
+  private readonly messageList = viewChild(MessageList);
 
   protected readonly chatQuery = injectQuery(() => ({
     queryKey: ['chat', this.chatId()],
@@ -421,6 +425,8 @@ export class SalonConversation {
 
     if (opts.content) {
       this.optimisticUser.set(this.makeTempUserMessage(opts.content));
+      // A user send always chases the bottom and re-enables auto-scroll (v4).
+      this.messageList()?.scrollOnUserMessage();
     }
 
     let state: ChatStreamState = { ...initialChatStreamState(), waitingForResponse: true };
