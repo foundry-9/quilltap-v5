@@ -19,6 +19,14 @@ export const TEST_PEPPER = 'dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=';
 export const FIXTURE_USER = 'e18e05bc-63e8-4539-8a85-719b7a508850';
 export const SINGLE_USER_ID = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
 
+/**
+ * The fixed port the M4 mock LLM listens on. The fixture's OPENAI_COMPATIBLE
+ * profile `baseUrl` is rewritten to this in global setup (pre-server — the CLI
+ * write-lock refuses once the server holds the instance); the M4 spec starts
+ * the mock on this port in-worker.
+ */
+export const MOCK_LLM_PORT = 45301;
+
 /** The passphrase the e2e locks the fixture behind, and the wrong one it tries. */
 export const E2E_PASSPHRASE = 'open sesame please';
 export const E2E_WRONG_PASSPHRASE = 'not the passphrase';

@@ -15,7 +15,7 @@ export interface MockLlm {
 
 export const MOCK_LLM_REPLY = 'The kettle is on. Do come in.';
 
-export async function startMockLlm(reply: string = MOCK_LLM_REPLY): Promise<MockLlm> {
+export async function startMockLlm(reply: string = MOCK_LLM_REPLY, port = 0): Promise<MockLlm> {
   const server = createServer((req, res) => {
     if (req.method !== 'POST' || !req.url?.includes('/chat/completions')) {
       res.writeHead(404).end();
@@ -54,9 +54,9 @@ export async function startMockLlm(reply: string = MOCK_LLM_REPLY): Promise<Mock
     });
   });
 
-  const port = await listen(server);
+  const boundPort = await listen(server, port);
   return {
-    url: `http://127.0.0.1:${port}`,
+    url: `http://127.0.0.1:${boundPort}`,
     close: () =>
       new Promise<void>((resolve, reject) =>
         server.close((err) => (err ? reject(err) : resolve())),
@@ -64,9 +64,9 @@ export async function startMockLlm(reply: string = MOCK_LLM_REPLY): Promise<Mock
   };
 }
 
-function listen(server: Server): Promise<number> {
+function listen(server: Server, port = 0): Promise<number> {
   return new Promise((resolve) => {
-    server.listen(0, '127.0.0.1', () => {
+    server.listen(port, '127.0.0.1', () => {
       const addr = server.address();
       resolve(typeof addr === 'object' && addr ? addr.port : 0);
     });

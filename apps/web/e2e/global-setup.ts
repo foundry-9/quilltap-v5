@@ -12,6 +12,7 @@ import {
   FIXTURES_DIR,
   INSTANCE_DATA_DIR,
   INSTANCE_DIR,
+  MOCK_LLM_PORT,
   PID_FILE,
   PORT,
   SERVER_LOG,
@@ -46,8 +47,8 @@ export default async function globalSetup(): Promise<void> {
   // Fresh instance dir from the committed fixture (copy, never mutate original).
   rmSync(ARTIFACTS_DIR, { recursive: true, force: true });
   mkdirSync(INSTANCE_DATA_DIR, { recursive: true });
-  copyFileSync(resolve(FIXTURES_DIR, 'chat-send-main.db'), resolve(INSTANCE_DATA_DIR, 'quilltap.db'));
-  copyFileSync(resolve(FIXTURES_DIR, 'chat-send-mount.db'), resolve(INSTANCE_DATA_DIR, 'quilltap-mount-index.db'));
+  copyFileSync(resolve(FIXTURES_DIR, 'salon-main.db'), resolve(INSTANCE_DATA_DIR, 'quilltap.db'));
+  copyFileSync(resolve(FIXTURES_DIR, 'salon-mount.db'), resolve(INSTANCE_DATA_DIR, 'quilltap-mount-index.db'));
 
   // Lock the instance: a user-passphrase .dbkey wrapping the test pepper (and NO
   // env pepper when we launch → the server boots `needs-passphrase`). Written
@@ -61,7 +62,18 @@ export default async function globalSetup(): Promise<void> {
   // SINGLE_USER_ID (so `listChats` — filtered by that id — sees the chats). The
   // CLI unlocks the .dbkey via QUILLTAP_DB_PASSPHRASE.
   runCliWrite(cli, 'ALTER TABLE chats ADD COLUMN turnSkippingEnabled INTEGER;', { allowFail: true });
-  runCliWrite(cli, `UPDATE chats SET userId = '${SINGLE_USER_ID}' WHERE userId = '${FIXTURE_USER}';`);
+  for (const table of ['chats', 'connection_profiles', 'api_keys', 'chat_settings', 'characters', 'tags', 'projects', 'memories']) {
+    runCliWrite(cli, `UPDATE ${table} SET userId = '${SINGLE_USER_ID}' WHERE userId = '${FIXTURE_USER}';`, {
+      allowFail: true,
+    });
+  }
+  // Point the fixture's OPENAI_COMPATIBLE profile at the M4 mock LLM — this must
+  // happen BEFORE the server launches (the CLI write-lock refuses a live holder),
+  // so the mock listens on the fixed MOCK_LLM_PORT and the spec starts it there.
+  runCliWrite(
+    cli,
+    `UPDATE connection_profiles SET baseUrl = 'http://127.0.0.1:${MOCK_LLM_PORT}/v1' WHERE provider = 'OPENAI_COMPATIBLE';`,
+  );
 
   // Launch the real server (no env pepper → locked) serving the built SPA.
   const logFd = openSync(SERVER_LOG, 'w');

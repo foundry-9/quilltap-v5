@@ -5777,3 +5777,64 @@ differentials re-run green against freshly regenerated v4 oracles at
 capstone with the strip removed). Versions: core 0.0.153, harness
 0.0.140. Remaining chat-creation follow-ups: (2) the create-echo DTO
 shape and (3) the capstone corpus extension, above.
+
+**Phase 4 (P4.6): the first Salon vertical is DONE — milestone M4 stands,
+run live** (2026-07-10; two parallel lanes unified on main, zero
+source-level conflicts, one CHANGELOG union). **P4.6a (the Salon server
+surface):** new `api::salon` dispatch handlers + contract variants —
+`chatSettings`, the enriched `listChats`
+(`excludeTagIds`/`limit`/`includeAutonomous`; `services::chat_enrichment`
+grew the LIST orchestration [`enrich_chats_for_list` + tag filtering +
+`_allTagIds` stripped via `#[serde(skip)]`; the batched-list vault-only
+avatar quirk reproduced] and the DETAIL participant path
+[`enrich_participant_detail`/`get_character_detail` incl. the
+avatar-override branch]), `chatGet` (the full single-chat projection —
+enriched participants, all messages, off-scene characters, agent-mode
+cascade — minus the deliberately-omitted `renderedHtml`: the **locked
+markdown divergence**, v5 renders client-side), the turn action
+(query/nudge), message edit / delete (the memory-cascade confirmation
+protocol) / swipe-switch, the Salon-minimal chat PUT (isPaused/title), the
+three impersonation verbs, and the extended `chatSend` gate (the
+superRefine blank-content rejection + `nudge` + `pendingToolResults`
+pre-inserted as TOOL messages). Verified by `salon_reads_equivalence`
+(6 cases: settings + 3 list variants + solo/group GET) and
+`salon_mutations_equivalence` (11 cases, zero-mint zero-normalization) —
+both byte-exact vs v4's REAL route handlers over the new committed Salon
+web fixture (`crates/quilltap-web/tests/fixtures/salon-*.db`). New reads:
+`tags::find_by_ids`, `conversation_chunks::count_stats_by_chat_id`.
+**P4.6b (the Salon SPA):** real Angular routing (`/salon` + `/salon/:id`),
+the list as v4-faithful `ChatCard`s over the enriched DTO, the
+conversation read path (swipe-group collapse, render-item pipeline with
+staff announcement chips / whisper + silent labels / reasoning blocks),
+a **byte-for-byte TS port of v4's `renderMarkdownToHtml`** (pinned
+unified/remark/rehype + roleplay-rendering + qtap-linkify, verified
+against 23 fixtures captured from v4's real renderer), streaming send over
+the P4.5 reducer (optimistic bubble, live markdown, done → canonical
+refetch), tier-1 message actions (copy / edit / delete + cascade dialog /
+regenerate + swipe arrows), the textarea-MVP composer, and the header with
+`CopyChatIdButton`. 76 Vitest tests. **Unification verified:** the full
+workspace gate (1,174 tests / 0 failed; clippy `-D warnings` default +
+`native-transport`; fmt), fresh-oracle re-runs of both Salon differentials
++ `orchestrator_tier3` (the lane's orchestrator threading inert on the
+corpus), and ALL THREE Playwright specs green including the **live M4
+e2e** — unlock → list → open the baked group history (staff chip) → send
+in the solo chat → the streamed mock-LLM reply renders live and survives
+reload, through the real binary + spine + an OPENAI-compatible mock.
+**Unification wiring:** the e2e instance switched to the Salon fixture,
+the user-id rewrite extended to the user-scoped tables the send path reads
+(api_keys/connection_profiles/chat_settings/…), the mock `baseUrl` rewrite
+moved BEFORE server launch (the CLI write-lock refuses a live holder — the
+spec's original in-test rewrite could never work; the mock now listens on
+a fixed `MOCK_LLM_PORT`), and the M4 spec un-skipped +
+unlock-state-tolerant. Versions: core 0.0.154, harness 0.0.142, host
+0.0.7, web 0.0.5, SPA 0.2.1. **Tracked follow-ups:** the turn
+`skipUserTurn` differential case (a minted-value Host post, excluded from
+the zero-mint differential), swipe **generate** through dispatch (the
+model driver), the `pendingToolResults` orchestrator corpus case, the full
+`processChatUpdates` field set (roster/conciergeState families), the GET
+attachment-resolution branch + chat-settings default-injection branch, and
+the SPA tier-2 controls (Skip banner + the skip-signal TS port,
+Speaking-As, pause/resume) — plus the standing full-Salon deferrals
+(Document Mode pane, terminal pane, courier UI, images, sidebar/modals,
+Lexical). **Next:** the remaining Salon slices or the Settings vertical
+per the P4.6+ screen-family list in `phase-4.md`.

@@ -424,9 +424,26 @@ fresh-instance provisioning), P4.4 unit 2 (chat creation + the Green Room
 `Request::ChatCreate` + `ChatCreateDriver`, the capstone tier-3
 differential, and the web e2e incl. the Green-Room SSE replay), and P4.5
 (the SPA foundation: unlock/setup/shell in a real browser against the
-axum host) are DONE. The oracle baseline is `a7b1398d`. Next per the
-decomposition: the P4.6 first Salon vertical (M4), which consumes the
-`chatCreate` contract. Tracked chat-creation follow-ups: the
+axum host), and **P4.6 (the first Salon vertical — milestone M4)** are
+DONE. P4.6a landed the Salon dispatch surface (`api::salon`: the enriched
+`listChats`, `chatGet` [minus the locked `renderedHtml` divergence],
+`chatSettings`, the turn action, message edit/delete/swipe-switch, the
+Salon-minimal chat PUT, the three impersonation verbs, the extended
+`chatSend` gate) with two differentials against v4's real route handlers
+plus the committed Salon web fixture; P4.6b landed the Angular Salon
+(`/salon` list + `/salon/:id` conversation, the byte-for-byte TS port of
+v4's markdown/roleplay/qtap-linkify renderer, streaming send over the
+P4.5 reducer, tier-1 message actions); the unification wired and ran the
+LIVE M4 Playwright walk (unlock → list → open baked history → send → a
+streamed mock-LLM reply that survives reload). P4.6 follow-ups: the turn
+`skipUserTurn` differential case, swipe **generate** through dispatch,
+the `pendingToolResults` orchestrator corpus case, the full
+`processChatUpdates` field set, and the SPA tier-2 controls (Skip banner,
+Speaking-As, pause/resume) — see the CLAUDE.md status block. Next: the
+remaining Salon slices (full Salon: Document Mode pane, terminal pane,
+courier, images) or the Settings vertical, per the P4.6+ screen-family
+list above. The oracle baseline is `a7b1398d`. Tracked chat-creation
+follow-ups: the
 create-echo DTO shape (see the capstone test header) and the capstone
 corpus extension (continuation create, outfit modes, the
 scenario-precedence path cases, the greeting retry/reroute ladder

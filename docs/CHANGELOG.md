@@ -4,6 +4,33 @@
 
 ### 5.0-dev
 
+P4.6 unification: the first Salon vertical is integrated on main —
+**milestone M4 stands, run live.** The two lane branches (P4.6a Salon
+server surface, P4.6b Salon SPA) cherry-picked cleanly (one CHANGELOG
+union; ownership held exactly — zero source-level conflicts). Verified on
+the integrated tree: the full workspace gate (1,174 tests / 0 failed;
+clippy `-D warnings` default + `native-transport`; fmt), the two new Salon
+differentials re-run green against freshly regenerated v4 oracles at
+`a7b1398d` (`salon_reads_equivalence` 6 cases, `salon_mutations_equivalence`
+11 cases), `orchestrator_tier3_equivalence` regenerated + green (the lane's
+nudge/`pendingToolResults` threading is inert on the corpus), 76 Vitest
+tests + a clean SPA prod build, and all three Playwright specs green —
+including the previously-skipped **live M4 walk** (unlock → salon list →
+open the baked Group Expedition history [staff chip renders] → send in
+Solo Voyage → the streamed mock-LLM reply appears live and survives a
+reload). Unification wiring (this pass): the e2e instance switched to the
+committed Salon fixture, the user-id rewrite extended to the user-scoped
+tables the send path reads, the mock-LLM `baseUrl` rewrite moved BEFORE
+server launch (the CLI write-lock refuses a live holder — the spec's
+original live rewrite could never work) with the mock on a fixed port, and
+the M4 spec un-skipped + made unlock-state-tolerant (the shared server is
+already unlocked after the foundation spec). SPA 0.2.0 → 0.2.1.
+Follow-ups carried from the lanes: the turn `skipUserTurn` differential
+case, swipe **generate** through dispatch, the `pendingToolResults`
+orchestrator corpus case, the full `processChatUpdates` field set, and the
+SPA tier-2 controls (Skip banner + skip-signal TS port, Speaking-As,
+pause/resume).
+
 P4.6b (the Salon SPA vertical) landed in `apps/web` (lane branch; unifies
 with P4.6a). Introduced real Angular routing (`/salon` list + `/salon/:id`
 conversation; the startup gate still owns the pre-operational states and the
