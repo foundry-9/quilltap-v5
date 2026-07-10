@@ -50,6 +50,18 @@
 //! `=== 1.0` → bool; `NULL` → the key is omitted as v4 `undefined`). Proven by a
 //! silent-message row in the read corpus. (See "Deferred seams #8" in
 //! `docs/developer/porting/phase-2-onramp.md`.)
+//!
+//! **Migration-affinity addendum (the first Friday dogfood finding, 2026-07-10):**
+//! the TEXT affinity above is the FRESH-`generateDDL` shape. A real v4 instance
+//! got the column from the `add-silent-message-field` migration —
+//! `ALTER TABLE "chat_messages" ADD COLUMN "isSilentMessage" INTEGER DEFAULT NULL`
+//! — so migrated cells are stored **INTEGER** `1`/`0` (numeric affinity converts
+//! v4's bound REAL losslessly). v4's dynamically-typed read coerces either
+//! storage class through the same union; the port therefore reads the RAW sql
+//! value and coerces Integer/Real/Text uniformly. (A migrations audit found no
+//! other fresh-vs-migration affinity divergence that a strictly-typed read
+//! consumes: every other TEXT-read column is TEXT in both shapes, and the
+//! numeric INTEGER-vs-REAL divergences are harmless under `f64` reads.)
 
 use rusqlite::{Connection, Row};
 use serde_json::{Map, Value};
@@ -116,11 +128,19 @@ fn put_opt_json(obj: &mut Map<String, Value>, key: &str, v: Option<String>) {
 /// key is omitted (v4 `undefined`, dropped by `JSON.stringify`). A non-numeric
 /// stored value coerces to `NaN`, and `NaN === 1` is `false` (matching JS
 /// `Number()`).
-fn put_is_silent(obj: &mut Map<String, Value>, v: Option<String>) {
-    if let Some(s) = v {
-        let is_one = s.trim().parse::<f64>().map(|n| n == 1.0).unwrap_or(false);
-        obj.insert("isSilentMessage".to_string(), Value::Bool(is_one));
-    }
+fn put_is_silent(obj: &mut Map<String, Value>, v: rusqlite::types::Value) {
+    use rusqlite::types::Value as SqlValue;
+    let is_one = match &v {
+        // NULL → the key is omitted (v4 `undefined`).
+        SqlValue::Null => return,
+        // The migration-affinity cell (INTEGER 1/0 on a real instance).
+        SqlValue::Integer(i) => *i == 1,
+        SqlValue::Real(f) => *f == 1.0,
+        // The fresh-DDL TEXT-affinity cell ("1.0"/"0.0").
+        SqlValue::Text(s) => s.trim().parse::<f64>().map(|n| n == 1.0).unwrap_or(false),
+        SqlValue::Blob(_) => false,
+    };
+    obj.insert("isSilentMessage".to_string(), Value::Bool(is_one));
 }
 
 /// `attachments` (`z.array(UUIDSchema).default([])`, baked on write): parsed
@@ -292,4 +312,71 @@ pub fn find_chat_id_for_message(
         other => Err(other),
     })
     .map_err(DbError::from)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The MIGRATION-shape table (`add-silent-message-field`:
+    /// `ADD COLUMN "isSilentMessage" INTEGER DEFAULT NULL`) — a real v4 instance
+    /// stores INTEGER 1/0 cells where a fresh-`generateDDL` table stores numeric
+    /// TEXT. The first Friday dogfood run surfaced this: a strictly-`String`
+    /// read errors with "Invalid column type Integer … isSilentMessage".
+    const MIGRATED_DDL: &str = "CREATE TABLE chat_messages (\
+        id TEXT PRIMARY KEY, chatId TEXT, type TEXT, role TEXT, content TEXT, \
+        rawResponse TEXT, tokenCount REAL, promptTokens REAL, completionTokens REAL, \
+        swipeGroupId TEXT, swipeIndex REAL, attachments TEXT DEFAULT '[]', \
+        debugMemoryLogs TEXT, thoughtSignature TEXT, reasoningContent TEXT, \
+        reasoningSegments TEXT, participantId TEXT, recoveryType TEXT, renderedHtml TEXT, \
+        dangerFlags TEXT, targetParticipantIds TEXT, isSilentMessage INTEGER, systemSender TEXT, \
+        systemKind TEXT, opaqueContent TEXT, hostEvent TEXT, customAnnouncer TEXT, \
+        carinaMeta TEXT, pendingExternalPrompt TEXT, pendingExternalPromptFull TEXT, \
+        pendingExternalAttachments TEXT, summaryAnchor TEXT, context TEXT, \
+        systemEventType TEXT, description TEXT, totalTokens REAL, provider TEXT, \
+        modelName TEXT, estimatedCostUSD REAL, createdAt TEXT, confirmed INTEGER, \
+        confirmationChecked INTEGER, confirmationRevised INTEGER, confirmationNotes TEXT, \
+        confirmationOriginalContent TEXT);";
+
+    #[test]
+    fn is_silent_reads_integer_cells_from_a_migrated_instance() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(MIGRATED_DDL).unwrap();
+        let insert = |id: &str, silent: Option<i64>, at: &str| {
+            conn.execute(
+                "INSERT INTO chat_messages (id, chatId, type, role, content, createdAt, \
+                 isSilentMessage) VALUES (?1, 'c1', 'message', 'ASSISTANT', 'hi', ?2, ?3)",
+                rusqlite::params![id, at, silent],
+            )
+            .unwrap();
+        };
+        insert("m1", Some(1), "2026-07-10T00:00:01.000Z");
+        insert("m2", Some(0), "2026-07-10T00:00:02.000Z");
+        insert("m3", None, "2026-07-10T00:00:03.000Z");
+
+        let msgs = get_messages(&conn, "c1").unwrap();
+        assert_eq!(msgs.len(), 3);
+        assert_eq!(msgs[0]["isSilentMessage"], Value::Bool(true));
+        assert_eq!(msgs[1]["isSilentMessage"], Value::Bool(false));
+        // NULL → the key is omitted (v4 `undefined`).
+        assert!(msgs[2].get("isSilentMessage").is_none());
+    }
+
+    #[test]
+    fn is_silent_still_reads_fresh_ddl_text_cells() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            &MIGRATED_DDL.replace("isSilentMessage INTEGER", "isSilentMessage TEXT"),
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO chat_messages (id, chatId, type, role, content, createdAt, \
+             isSilentMessage) VALUES ('m1', 'c1', 'message', 'ASSISTANT', 'hi', \
+             '2026-07-10T00:00:01.000Z', '1.0')",
+            [],
+        )
+        .unwrap();
+        let msgs = get_messages(&conn, "c1").unwrap();
+        assert_eq!(msgs[0]["isSilentMessage"], Value::Bool(true));
+    }
 }

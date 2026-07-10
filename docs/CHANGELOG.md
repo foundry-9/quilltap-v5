@@ -4,6 +4,20 @@
 
 ### 5.0-dev
 
+The first Friday dogfood finding is fixed: the Salon list errored with
+`Invalid column type Integer … isSilentMessage` against a real instance. Root
+cause: a fresh `generateDDL` table declares `isSilentMessage` TEXT (the
+row-schema union → numeric-TEXT `"1.0"` cells, the shape every fixture bakes),
+but a real v4 instance got the column from the `add-silent-message-field`
+migration — `ADD COLUMN "isSilentMessage" INTEGER` — so migrated cells are
+stored INTEGER `1`/`0`, and the port's strictly-`String` read refused them
+(v4's better-sqlite3 read is dynamically typed and coerces either through the
+same union). `put_is_silent` now reads the RAW sql value and coerces
+Integer/Real/Text uniformly, with regression tests over BOTH table shapes. A
+migrations audit found no other fresh-vs-migration affinity divergence that a
+strictly-typed read consumes (the numeric INTEGER-vs-REAL divergences are
+harmless under `f64` reads).
+
 The P4.6c ∥ P4.6d ∥ P4.6e round is unified on main. The three lane branches
 cherry-picked with zero source-level conflicts (CHANGELOG/version unions only);
 the two named unification wires are closed live: (1) the swipe-generate
