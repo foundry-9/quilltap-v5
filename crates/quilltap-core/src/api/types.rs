@@ -109,6 +109,17 @@ pub enum Request {
         #[serde(default)]
         file_ids: Vec<String>,
     },
+    /// Create a chat and run the full seed sequence (v4 `POST /api/v1/chats` →
+    /// `handleCreate`). The dispatch payload's create fields (everything but
+    /// `type`) are flattened into `request` and handed to the driver, which
+    /// deserializes them into a
+    /// [`ChatCreateRequest`](crate::services::chat_create::ChatCreateRequest).
+    /// Creation-progress frames ride the [`Event`] channel (scope-tagged by
+    /// `progressId`); the dispatch reply is the created chat.
+    ChatCreate {
+        #[serde(flatten)]
+        request: serde_json::Map<String, serde_json::Value>,
+    },
 }
 
 /// Typed DTO per variant (the uniffi payoff). `Error` carries the one
@@ -126,6 +137,8 @@ pub enum Response {
     Instances(InstancesDto),
     Chats(Vec<ChatSummaryDto>),
     ChatSend(ChatSendResultDto),
+    /// The v4 `POST /api/v1/chats` 201 body (`{ chat: {...} }`).
+    ChatCreate(ChatCreateResultDto),
     Error(CoreError),
 }
 
@@ -239,6 +252,20 @@ pub struct ChatSendResultDto {
     pub is_paused: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_participant_id: Option<String>,
+}
+
+/// The typed result of a `ChatCreate` dispatch. Serializes to v4's 201 body,
+/// `{ "chat": { ...chat, "participants": [EnrichedParticipantSummary] } }`:
+/// `chat` is the full hydrated chat row whose own `participants` array has been
+/// REPLACED by the enriched participant summaries (the driver merges
+/// [`ChatCreateResult`](crate::services::chat_create::ChatCreateResult)'s two
+/// halves before constructing this). The SPA's chat-create call and the P4.5 TS
+/// contract mirror both consume this shape.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatCreateResultDto {
+    /// The created chat, with `participants` = the enriched summaries.
+    pub chat: serde_json::Value,
 }
 
 // ============================================================================

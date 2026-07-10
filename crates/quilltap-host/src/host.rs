@@ -496,6 +496,9 @@ impl EngineAssembler for HostAssembler {
                 _wake_target: wake_target,
             }),
             chat_send,
+            // The production chat-create driver is a follow-up (the P4.4u2b
+            // work order delivers the core spine + the contract seam only).
+            chat_create: None,
         })
     }
 }

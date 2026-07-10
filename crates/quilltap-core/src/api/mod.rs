@@ -20,20 +20,22 @@
 //! Submodules: [`types`] (the pure contract — D8), [`provision`] (the pepper
 //! resolution the readiness gate rides on), [`engine`] (the implementation).
 
+pub mod chat_create;
 pub mod chat_send;
 pub mod engine;
 pub mod provision;
 pub mod types;
 
+pub use chat_create::{ChatCreateDriver, ChatCreateDriverRequest, ChatCreateFuture};
 pub use chat_send::{ChatSendDriver, ChatSendFuture, ChatSendRequest};
 pub use engine::{
     BootError, CoreConfig, CoreEngine, EngineAssembler, EngineAssembly, EngineShutdown,
     SINGLE_USER_ID,
 };
 pub use types::{
-    AckDto, ChatErrorPayload, ChatSendResultDto, ChatSummaryDto, CoreError, ErrorKind, Event,
-    EventPayload, HealthDto, InstanceDto, InstancesDto, PepperState, Request, Response,
-    SetupResultDto, UnlockStateDto,
+    AckDto, ChatCreateResultDto, ChatErrorPayload, ChatSendResultDto, ChatSummaryDto, CoreError,
+    ErrorKind, Event, EventPayload, HealthDto, InstanceDto, InstancesDto, PepperState, Request,
+    Response, SetupResultDto, UnlockStateDto,
 };
 
 /// The boundary trait. Transports are generic over `C: QuilltapCore` (the

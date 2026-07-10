@@ -30,6 +30,7 @@ use crate::db::{chat_settings, chats_read};
 use crate::dbkey::{self, DbKeyError};
 use crate::services::provisioning;
 
+use super::chat_create::{ChatCreateDriver, ChatCreateDriverRequest};
 use super::chat_send::{ChatSendDriver, ChatSendRequest};
 use super::provision::{provision, PepperHashMismatch};
 use super::types::{
@@ -81,6 +82,9 @@ impl CoreConfig {
 pub struct EngineAssembly {
     pub shutdown: Box<dyn EngineShutdown>,
     pub chat_send: Option<Arc<dyn ChatSendDriver>>,
+    /// The chat-creation driver (P4.4u2b); `None` keeps read-only embedders (and
+    /// the P4.0 tests) valid — the `ChatCreate` arm answers "not assembled".
+    pub chat_create: Option<Arc<dyn ChatCreateDriver>>,
 }
 
 impl EngineAssembly {
@@ -89,6 +93,7 @@ impl EngineAssembly {
         EngineAssembly {
             shutdown,
             chat_send: None,
+            chat_create: None,
         }
     }
 }
@@ -182,6 +187,8 @@ struct ReadyEngine {
     shutdown: Box<dyn EngineShutdown>,
     /// The assembly's chat-send driver (P4.2); `None` for read-only embedders.
     chat_send: Option<Arc<dyn ChatSendDriver>>,
+    /// The assembly's chat-create driver (P4.4u2b); `None` for read-only embedders.
+    chat_create: Option<Arc<dyn ChatCreateDriver>>,
 }
 
 /// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
@@ -294,6 +301,36 @@ impl CoreEngine {
                 })
                 .await
             }
+            Request::ChatCreate { request } => {
+                self.chat_create(ChatCreateDriverRequest {
+                    raw: serde_json::Value::Object(request),
+                })
+                .await
+            }
+        }
+    }
+
+    /// The `ChatCreate` arm: readiness-gated (D2), then delegated to the
+    /// assembly's driver (mirrors [`Self::chat_send`]). A ready engine without a
+    /// driver (read-only embedder) answers a plain internal error.
+    async fn chat_create(&self, req: ChatCreateDriverRequest) -> Response {
+        let driver = {
+            let state = self.inner.state.lock().unwrap();
+            match &*state {
+                EngineState::Ready(r) => match &r.chat_create {
+                    Some(d) => Arc::clone(d),
+                    None => {
+                        return Response::error(ErrorKind::Internal, "chat create not assembled");
+                    }
+                },
+                EngineState::Locked { pepper_state, .. } => {
+                    return Response::locked(*pepper_state);
+                }
+            }
+        };
+        match driver.create(req).await {
+            Ok(dto) => Response::ChatCreate(dto),
+            Err(e) => Response::Error(e),
         }
     }
 
@@ -624,6 +661,7 @@ fn open_ready(
         has_user_passphrase,
         shutdown: assembly.shutdown,
         chat_send: assembly.chat_send,
+        chat_create: assembly.chat_create,
     })
 }
 
