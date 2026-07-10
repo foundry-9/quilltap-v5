@@ -4,6 +4,31 @@
 
 ### 5.0-dev
 
+The P4.6c ∥ Settings round is planned: three work orders written from
+fresh v4 surveys at `a7b1398d` —
+`docs/developer/porting/work-orders/p4.6c-salon-consolidation.md` (the
+carried Salon follow-ups: the skipUserTurn differential case,
+swipe-generate through a host-driver seam, the pendingToolResults
+orchestrator corpus case, the full processChatUpdates field set, the two
+deferred GET branches; SPA tier-2 controls — the skip-signal TS port +
+Skip banner, Speaking-As, pause/resume, nudge),
+`p4.6d-settings-server.md` (the Settings dispatch backfill: chat-settings
+PUT + default-injection, connection profiles CRUD/enrichment/provider
+actions [test-connection / test-message / models fetch+cache], API keys
+CRUD + masking + test, the providers listing off the manifest registry —
+each family differentially verified against v4's real route handlers),
+and `p4.6e-settings-spa.md` (the Settings shell + AI Providers tab + the
+setup wizard [settings mode] + basic Appearance with server-persisted
+theme preference). Three-lane ownership: P4.6c owns `api/salon.rs` /
+`chat_send.rs` / `spine.rs` / the orchestrator corpus + the Salon SPA
+regions; P4.6d owns `api/types.rs` / `engine.rs` / a new `api/settings.rs`
++ the settings oracles; P4.6e owns the contract mirror / routes / shell /
+settings screens. P4.6c's one engine-arm swap (the swipe-generate refusal
+→ driver call) is a named unification wire. Deferred whole: the themes
+service (`.qtap-theme` registry/bundle-loader — the largest genuinely-new
+surface), embedding/image-profile route families, key export/import,
+auto-associate/auto-configure.
+
 P4.6 unification: the first Salon vertical is integrated on main —
 **milestone M4 stands, run live.** The two lane branches (P4.6a Salon
 server surface, P4.6b Salon SPA) cherry-picked cleanly (one CHANGELOG
