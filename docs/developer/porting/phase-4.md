@@ -427,7 +427,13 @@ differential, and the web e2e incl. the Green-Room SSE replay), and P4.5
 axum host) are DONE. The oracle baseline is `a7b1398d`. Next per the
 decomposition: the P4.6 first Salon vertical (M4), which consumes the
 `chatCreate` contract. Tracked chat-creation follow-ups: the
-participants explicit-null marshaling seam + the create-echo DTO shape
-(see the capstone test header), and the capstone corpus extension
-(continuation create, outfit modes, the scenario-precedence path cases,
-the greeting retry/reroute ladder branches).
+create-echo DTO shape (see the capstone test header) and the capstone
+corpus extension (continuation create, outfit modes, the
+scenario-precedence path cases, the greeting retry/reroute ladder
+branches). The participants explicit-null marshaling seam is CLOSED
+(2026-07-10): `ChatParticipant`'s `connectionProfileId` /
+`imageProfileId` / `selectedSystemPromptId` are now the
+present-keeps-null double-`Option` (the `removedAt` pattern), banked in
+the `chats-tier2` corpus, and the capstone's
+`strip_participant_null_seam` normalizer is dropped — the persisted
+participant nulls diff byte-exact.

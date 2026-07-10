@@ -4,6 +4,17 @@
 
 ### 5.0-dev
 
+Participants-null-seam subtask unification: integrated on main (pure
+fast-forward). Verified on the integrated tree: the full workspace gate
+(1,171 tests / 0 failed; clippy `-D warnings` default + `native-transport`;
+fmt) and six differentials re-run green against freshly regenerated v4
+oracles at `a7b1398d` — `chats_tier2` (the new explicit-null corpus rows),
+`chats_read`, `chats_participants_tier2`, `chats_messages_tier2`,
+`identity_compiler`, and the chat-create capstone with the
+`strip_participant_null_seam` normalizer removed (the persisted participant
+nulls now diff byte-exact). Remaining chat-creation follow-ups: the
+create-echo DTO shape and the capstone corpus extension.
+
 Fix the `chats.participants` explicit-null marshaling seam. v4's
 `buildCharacterParticipant` writes `connectionProfileId` / `imageProfileId` /
 `selectedSystemPromptId` as `... || null` (always present, `null` when falsy)

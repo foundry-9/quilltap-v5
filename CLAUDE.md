@@ -5756,3 +5756,24 @@ deferrals unchanged (`handleImport`, participant `?action=` verbs, chat
 merge, `handleList` enrichment → P4.6). **Next: P4.6, the first Salon
 vertical (M4)** — it consumes the `chatCreate` contract; report the TS
 mirror shape to that order.
+
+**Follow-up (1) — the participants explicit-null marshaling seam — is
+now CLOSED** (2026-07-10, the spun-off subtask, unified as a pure
+fast-forward). `ChatParticipant`'s `connectionProfileId` /
+`imageProfileId` / `selectedSystemPromptId` are the present-keeps-null
+double-`Option` (the `removedAt` pattern + `de_double_opt_string`;
+`roleplayTemplateId` stays single-`Option` — v4's
+`buildCharacterParticipant` never writes it), banked with explicit-null
+participant rows in the `chats-tier2` corpus, and the capstone's
+`strip_participant_null_seam` normalizer is DROPPED — the persisted
+participant nulls diff byte-exact. The double-`Option` stays contained
+at the DB marshaling boundary (consumers project into their own input
+structs, e.g. `RespondingParticipant`, so no service files changed).
+Unification verified: the full workspace gate (1,171 tests / 0 failed;
+clippy `-D warnings` default + `native-transport`; fmt) and SIX
+differentials re-run green against freshly regenerated v4 oracles at
+`a7b1398d` (`chats_tier2`, `chats_read`, `chats_participants_tier2`,
+`chats_messages_tier2`, `identity_compiler`, and the chat-create
+capstone with the strip removed). Versions: core 0.0.153, harness
+0.0.140. Remaining chat-creation follow-ups: (2) the create-echo DTO
+shape and (3) the capstone corpus extension, above.
