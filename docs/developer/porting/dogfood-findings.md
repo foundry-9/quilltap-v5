@@ -13,13 +13,13 @@ catch, since every fixture is built fresh.
 | 2 | Chat GET: `no such column: timezone` | Never-migrated column — v4 added `chat_settings.timezone` with NO migration; its `SELECT *` reads tolerate the absence, the port's explicit column list errored | **FIXED** `bb71652` — `db::tolerant_select_list` (PRAGMA table_info → missing columns substituted `NULL AS "col"`), applied to `chat_settings::find_by_user_id`; `sidebarWidth` extraction NULL-tolerant; `settings_routes_equivalence` re-verified |
 | 3 | A large Salon chat renders for 10+ s and lands stuck at the top (console: `'setTimeout' handler took 10196ms`, no errors) | TWO distinct causes — see #3a/#3b | split |
 | 3a | NO chat could scroll at all (an 80-message chat reproduced it) | The scroll chain was broken for every chat: the v5 shell dropped v4 `app-layout.tsx`'s inner `flex-1 min-h-0 overflow-y-auto` scroller wrapper around the page content, and two unstyled Angular component hosts (`qt-salon-conversation`, `qt-message-list`) broke the flex/height chain React never has — `.qt-chat-messages`' own `overflow-y-auto` never got a bounded height. Fixture chats FIT the viewport and the e2e never scrolls, so it slipped through | **FIXED** — the shell scroller wrapper restored + `host:` classes on both components (`block h-full` / `flex flex-col flex-1 min-h-0`); a real scroll e2e beat lands with the long-chat fixture the virtualization deliverable needs anyway |
-| 3b | The 10+ s synchronous render on a LARGE chat | No virtualization — every message renders through the full markdown pipeline in one task | **OPEN — promoted**: virtualization + post-render scroll-to-bottom is the first deliverable of the next Salon order |
+| 3b | The 10+ s synchronous render on a LARGE chat | No virtualization — every message renders through the full markdown pipeline in one task | **ORDERED** — `work-orders/p4.6h-salon-virtualization.md` (lane C of the P4.6f/g/h + P4.4u3 round): a port of v4's own tanstack-virtual architecture + the `useAutoScroll` semantics + a long-chat fixture + the scroll e2e beat |
 
 ## Standing notes for the next orders
 
 - Finding #3 makes **virtualization + post-render scroll-to-bottom** the first
   deliverable of the next Salon slice — it blocks dogfooding long-running
-  chats outright.
+  chats outright. (Now ordered: `p4.6h-salon-virtualization.md`.)
 - If findings of class #1/#2 keep appearing, the systematic close-out is a
   **migration-vintage fixture**: a test DB built by replaying v4's actual
   migration chain (instead of fresh `generateDDL`) so the differential harness

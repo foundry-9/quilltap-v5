@@ -4,6 +4,23 @@
 
 ### 5.0-dev
 
+The next parallel round is planned and its four work orders are written
+(docs-only; drift check clean — v4 HEAD still `a7b1398d`; four fresh v4
+surveys): **P4.6f** the Characters server surface (dispatch backfill over the
+fully-ported characters repo layer — list DTO, detail + read actions,
+create/update/cascade-delete, action verbs, the prompts/scenarios/plugin-data/
+wardrobe sub-resources, tags CRUD incl. the delete fan-out, the photo gallery
+service, ST import/export; the four LLM services deferred), **P4.6g** the
+Characters SPA (list / view / edit / create screens over a pinned Shared
+contract; the ~5k-line wardrobe dialog and the AI wizards deferred as their
+own verticals), **P4.6h** Salon virtualization (dogfood finding #3b — a port
+of v4's own tanstack-virtual + `useAutoScroll` architecture, a long-chat
+fixture, and the scroll e2e beat), and **P4.4u3** the built-in seeds (the
+Standard/Quilltap-RP roleplay templates closing the deferred `delimiters`
+discriminated-union marshaling, plus the three built-in mount stores with
+settings-pointer idempotent provision-or-adopt; the sample-content import
+stays deferred). The round layout + ownership matrix is in `phase-4.md`.
+
 Dogfood finding #3a is fixed: no Salon chat could scroll (an 80-message chat
 reproduced it — masked on fixtures because their content fits the viewport and
 the e2e never scrolls). The v5 shell had dropped v4 `app-layout.tsx`'s inner

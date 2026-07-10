@@ -469,3 +469,54 @@ present-keeps-null double-`Option` (the `removedAt` pattern), banked in
 the `chats-tier2` corpus, and the capstone's
 `strip_participant_null_seam` normalizer is dropped — the persisted
 participant nulls diff byte-exact.
+
+**The next round is PLANNED (2026-07-10): four parallel lanes, orders
+written** (drift check at planning time: v4 HEAD still `a7b1398d`; four
+fresh surveys — the characters API + UI, v4's long-chat rendering, the
+first-boot seeds — inform the orders):
+
+- **Lane A — P4.6f, the Characters server surface**
+  (`work-orders/p4.6f-characters-server.md`): the characters-family
+  dispatch backfill (list DTO / detail + read actions / create / update /
+  cascade delete / thin action verbs / prompts-scenarios-plugin-data-
+  wardrobe sub-resources / tags CRUD incl. the delete fan-out; tier 2:
+  stats, per-character chats, the photo gallery service, ST
+  import/export, depiction-guidelines) + the committed characters web
+  fixture. The repo layer is already fully ported — this is handler
+  assembly with jest real-DB differentials vs v4's real handlers.
+  Tier-3 deferrals: the four LLM services (wizard / optimizer / rename /
+  ai-import), reset-builtins, refresh-archive.
+- **Lane B — P4.6g, the Characters SPA**
+  (`work-orders/p4.6g-characters-spa.md`): `/characters` list +
+  `/characters/:id` view (9 tabs, per-field autosave Default Settings) +
+  edit (form-with-save, the four vantage points, system-prompts editor)
+  + the plain create page, over the pinned Shared contract (mocked until
+  unification; live e2e at unification over lane A's fixture). The
+  wardrobe dialog (~5k lines) and the AI wizards are deferred verticals.
+- **Lane C — P4.6h, Salon virtualization**
+  (`work-orders/p4.6h-salon-virtualization.md`): closes dogfood finding
+  #3b by porting v4's OWN architecture (`@tanstack/react-virtual` →
+  the Angular adapter, estimate 150 / overscan 5 / dynamic measurement,
+  NO pagination) + the `useAutoScroll` semantics (100px stick threshold,
+  400ms settle, multi-strategy scroll-to-bottom, completion-gated
+  auto-scroll, jump button) + memoized client-side markdown (the locked
+  divergence stands — windowing bounds the render cost) + a separate
+  committed long-chat fixture + the scroll e2e beat.
+- **Lane D — P4.4u3, the built-in seeds**
+  (`work-orders/p4.4u3-builtin-seeds.md`): the Standard/Quilltap-RP
+  built-in roleplay templates (closing the deferred `delimiters`
+  discriminated-union marshaling; v4 seeds update-in-place on EVERY
+  startup) + the three built-in mount stores (settings-pointer
+  idempotent provision-or-adopt, verbatim row shapes, subfolder
+  scaffolds) wired into fresh provisioning AND every assembly. The
+  sample-content import (`lorian-and-riya.qtap`, ~2,500-line import
+  service) stays deferred as its own future order.
+
+Contention notes: lane A owns `api/**` + the web crate; lane D owns
+`provisioning.rs` + `host.rs` + `roleplay_templates.rs`; lane B owns
+`app.routes.ts` + shell nav + `core-contract.ts`; lane C owns `chat/**`
++ `screens/salon/**`; the salon fixture pair + `build-salon-fixture.ts`
+are FROZEN (lane C builds a separate long-chat fixture; lane A a
+separate characters fixture). `db/mod.rs` / `services/mod.rs` /
+CHANGELOG / CLAUDE.md are union-resolved at unification per
+`[[parallel-round-reconciliation]]`.

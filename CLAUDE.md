@@ -5899,3 +5899,24 @@ five tabs' placeholder cards, key export/import dialogs); and the standing
 full-Salon list. **Next:** the remaining Salon slices (Document Mode /
 terminal / courier / images) or the Memory/Images/Templates verticals, per
 the P4.6+ screen-family list in `phase-4.md`.
+
+**Next-round prep (2026-07-10): the four-lane round is planned, orders
+written** (drift check clean, v4 HEAD still `a7b1398d`; four fresh
+surveys): **P4.6f** the Characters server surface (dispatch backfill over
+the fully-ported characters repo layer; the four LLM services — wizard /
+optimizer / rename / ai-import — deferred), **P4.6g** the Characters SPA
+(list/view/edit/create over a pinned Shared contract; the ~5k-line
+wardrobe dialog + AI wizards deferred as their own verticals), **P4.6h**
+Salon virtualization (dogfood finding #3b — v4 itself virtualizes via
+`@tanstack/react-virtual` + a `useAutoScroll` controller; the order ports
+that architecture, keeps the client-side-markdown locked divergence since
+windowing bounds the render cost, and adds a separate long-chat fixture +
+the scroll e2e beat), and **P4.4u3** the built-in seeds (Standard /
+Quilltap-RP roleplay templates incl. the deferred `delimiters`
+discriminated-union marshaling — v4 seeds update-in-place on EVERY
+startup, find-by-(name,isBuiltIn) — plus the three built-in mount stores
+with settings-pointer idempotent provision-or-adopt + subfolder scaffolds,
+wired into fresh provisioning AND every assembly; the `lorian-and-riya.qtap`
+sample import stays deferred with its ~2,500-line import service). Round
+layout + ownership matrix in `phase-4.md`; orders under
+`docs/developer/porting/work-orders/` (p4.6f/g/h, p4.4u3).
