@@ -5725,3 +5725,36 @@ verbs compose them from `find_by_id` + `update_character`. Versions: core
 update/delete-cascade), the action verbs, the sub-resource mutations, tags CRUD
 + the delete fan-out, the heavier read actions (stats/chats), the photo gallery,
 ST import/export, depiction-guidelines, and the Tier-3 refusals.
+
+**P4.6f slice 2 — the characters action verbs (2026-07-10).** The thin
+`characters/[id]/handlers/post.ts` verbs as dispatch handlers:
+`character_favorite`, `character_toggle_controlled_by`,
+`character_toggle_carina`, `character_set_default_partner` (partner-exists /
+must-be-`controlledBy:'user'` / not-self guards — note v4 checks controlledBy
+BEFORE the self-check, so a self-partner where self is llm returns the
+controlledBy message), `character_avatar` (resolve + `image/*` validation; set
+and clear), `character_add_tag` / `character_remove_tag` (the generic
+`TaggableBaseRepository` pattern composed from `find_by_id` +
+`update_character` — characters have no dedicated tag mutator). Two load-bearing
+findings closed against the oracle: (1) the flip/avatar echo is v4 base
+`_update`'s MERGE — `validate({...preUpdateOverlaidRead, ...patch, updatedAt:
+now})`, the patch overlaid on the PRE-update read, NOT a re-read (the P4.6c D4
+finding), so an explicit `defaultImageId: null` from the patch survives in the
+echo where a fresh `find_by_id` would omit it; (2) `update_character` could
+never NULL a nullable slim column — `slim_update_from_patch`'s `Option<String>`
+fields collapse an absent key and an explicit JSON `null` to the same `None`
+(= skip), but v4's `_update` NULLs a column set to `null`. Fixed additively:
+`update_character` now issues a supplementary `SET <col>=NULL` for the nullable
+slim columns present-as-null in the DB-bound patch (`NULLABLE_SLIM_COLUMNS`).
+The fix is regression-checked: `characters_update_tier2` (whose corpus DOES
+send explicit nulls) still passes. Added `tags::find_full_by_id` (the marshaled
+Tag entity for the add-tag `{success, tag}` echo). Proven:
+`characters_actions_equivalence` — 11 cases (seven verbs + two set-partner
+guard failures + avatar set/clear) vs v4's real handlers, echo + post-op slim
+`find_by_id_raw` diffed (op-minted `updatedAt` + read-time-minted
+`physicalDescription` ts normalized; v4's 201/`{error:msg}` REST shapes mapped
+to the dispatch envelope). Versions: core 0.0.160, harness 0.0.145. Still
+remaining in P4.6f: create/quick-create/update handlers, delete-cascade, the
+sub-resource mutations (prompts/scenarios/plugin-data/wardrobe), tags CRUD +
+delete fan-out, the heavier read actions (stats/chats), the photo gallery, ST
+import/export, depiction-guidelines, and the Tier-3 refusals.

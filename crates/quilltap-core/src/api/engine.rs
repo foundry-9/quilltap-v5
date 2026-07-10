@@ -692,19 +692,90 @@ impl CoreEngine {
             Request::CharacterCascadePreview { .. } => {
                 super::characters::not_available("cascade-preview")
             }
-            Request::CharacterAvatar { .. } => super::characters::not_available("avatar"),
-            Request::CharacterFavorite { .. } => super::characters::not_available("favorite"),
-            Request::CharacterToggleControlledBy { .. } => {
-                super::characters::not_available("toggle-controlled-by")
-            }
-            Request::CharacterToggleCarina { .. } => {
-                super::characters::not_available("toggle-carina")
-            }
-            Request::CharacterSetDefaultPartner { .. } => {
-                super::characters::not_available("set-default-partner")
-            }
-            Request::CharacterAddTag { .. } => super::characters::not_available("add-tag"),
-            Request::CharacterRemoveTag { .. } => super::characters::not_available("remove-tag"),
+            Request::CharacterAvatar {
+                character_id,
+                image_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_avatar(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        image_id.as_deref(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterFavorite { character_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_favorite(&db, SINGLE_USER_ID, &character_id).await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterToggleControlledBy { character_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_toggle_controlled_by(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterToggleCarina { character_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_toggle_carina(&db, SINGLE_USER_ID, &character_id)
+                        .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterSetDefaultPartner {
+                character_id,
+                partner_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_set_default_partner(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        partner_id.as_deref(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterAddTag {
+                character_id,
+                tag_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_add_tag(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        &tag_id,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterRemoveTag {
+                character_id,
+                tag_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_remove_tag(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        &tag_id,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
             Request::CharacterStats { .. } => super::characters::not_available("stats"),
             Request::CharacterChats { .. } => super::characters::not_available("chats"),
             Request::CharacterDepictionGuidelines { .. } => {

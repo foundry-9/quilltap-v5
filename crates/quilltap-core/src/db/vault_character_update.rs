@@ -261,7 +261,58 @@ pub fn update_character(
         return Ok(false);
     }
     let update = slim_update_from_patch(&db_patch)?;
-    CharactersRepository::new(main).update(character_id, &update)
+    let mut changed = CharactersRepository::new(main).update(character_id, &update)?;
+    // Explicit-null clears: `slim_update_from_patch`'s `Option<T>` fields collapse
+    // an ABSENT key and an explicit JSON `null` to the same `None` (= "skip"), so
+    // the slim `_update` above can never NULL a column. v4's `_update` DOES null a
+    // column set to `null` (e.g. the avatar / default-partner "clear" verbs). Issue
+    // a supplementary NULL update for the nullable slim columns present-as-null.
+    changed |= clear_null_slim_columns(main, character_id, &db_patch)?;
+    Ok(changed)
+}
+
+/// The nullable slim `characters` columns a patch may explicitly `null` (JSON key
+/// == column name). MANAGED_FIELDS are already routed to the vault and stripped
+/// from `db_patch`, so the remaining null-valued keys are exactly these.
+const NULLABLE_SLIM_COLUMNS: &[&str] = &[
+    "defaultImageId",
+    "defaultConnectionProfileId",
+    "defaultPartnerId",
+    "defaultRoleplayTemplateId",
+    "defaultImageProfileId",
+    "defaultScenarioId",
+    "defaultSystemPromptId",
+    "characterDocumentMountPointId",
+    "sillyTavernData",
+    "defaultTimestampConfig",
+    "defaultAgentModeEnabled",
+    "defaultHelpToolsEnabled",
+    "systemTransparency",
+    "coreWhisperEnabled",
+    "canBeCarina",
+];
+
+/// `SET <col> = NULL, …, updatedAt = now WHERE id = ?` for every nullable slim
+/// column present-as-`null` in `db_patch`. Returns `true` if a row was updated.
+fn clear_null_slim_columns(
+    main: &Connection,
+    character_id: &str,
+    db_patch: &Map<String, Value>,
+) -> Result<bool, DbError> {
+    let cols: Vec<&str> = NULLABLE_SLIM_COLUMNS
+        .iter()
+        .copied()
+        .filter(|col| matches!(db_patch.get(*col), Some(Value::Null)))
+        .collect();
+    if cols.is_empty() {
+        return Ok(false);
+    }
+    let now = crate::clock::now_iso();
+    let mut sets: Vec<String> = cols.iter().map(|c| format!("{c} = NULL")).collect();
+    sets.push("updatedAt = ?1".to_string());
+    let sql = format!("UPDATE characters SET {} WHERE id = ?2", sets.join(", "));
+    let affected = main.execute(&sql, params![now, character_id])?;
+    Ok(affected > 0)
 }
 
 /// Read the character's `characterDocumentMountPointId` (the vault FK), `None` when

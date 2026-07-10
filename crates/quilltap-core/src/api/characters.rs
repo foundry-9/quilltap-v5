@@ -19,9 +19,11 @@ use serde_json::{json, Value};
 use crate::db::runtime::Db;
 use crate::db::{
     character_plugin_data, characters_read, doc_mount_documents::DocMountDocumentsRepository, tags,
-    wardrobe_read, DbError,
+    vault_character_arrays, vault_character_update, wardrobe_read, DbError,
 };
+use crate::photos::resolve_character_avatar::resolve_character_avatar;
 use crate::services::character_enrichment;
+use crate::services::image_job_common::with_both_conns;
 
 use super::types::{ErrorKind, Response};
 
@@ -35,7 +37,6 @@ fn internal(e: impl std::fmt::Display) -> Response {
 fn not_found(resource: &str) -> Response {
     Response::error(ErrorKind::NotFound, format!("{resource} not found"))
 }
-#[allow(dead_code)] // used by the mutation handlers landing in later P4.6f milestones
 fn bad_request(msg: impl Into<String>) -> Response {
     Response::error(ErrorKind::BadRequest, msg)
 }
@@ -310,6 +311,317 @@ pub fn character_plugin_data_get(
     });
     match result {
         Ok(Ok(entry)) => Response::Character(json!({ "pluginData": entry })),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+// ===========================================================================
+// The thin action verbs (v4 characters/[id]/handlers/post.ts)
+// ===========================================================================
+
+/// Overlay a patch onto the pre-update overlaid character (v4 base `_update`:
+/// `validate({...existing, ...data, id, createdAt, updatedAt: now})` — it MERGES
+/// the patch onto the pre-update read and does NOT re-read, so an explicit `null`
+/// in the patch survives in the echo; the P4.6c D4 finding). `id`/`createdAt` are
+/// preserved by keeping `existing`'s; `updatedAt` is minted.
+fn merge_update_echo(mut pre: Value, patch: &[(&str, Value)]) -> Value {
+    if let Some(o) = pre.as_object_mut() {
+        for (k, v) in patch {
+            o.insert((*k).to_string(), v.clone());
+        }
+        o.insert("updatedAt".into(), Value::String(crate::clock::now_iso()));
+    }
+    pre
+}
+
+/// v4 `?action=favorite` — flip `isFavorite`; `{ character }` (the merged
+/// pre-update character `setFavorite`→`update` returns).
+pub async fn character_favorite(db: &Db, _user_id: &str, character_id: &str) -> Response {
+    let cid = character_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        let character = match characters_read::find_by_id(main, mount, &cid)? {
+            Some(c) => c,
+            None => return Ok(Err(not_found("Character"))),
+        };
+        let cur = character
+            .get("isFavorite")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        vault_character_arrays::set_favorite(main, mount, &cid, !cur)?;
+        Ok(Ok(merge_update_echo(
+            character,
+            &[("isFavorite", json!(!cur))],
+        )))
+    })
+    .await;
+    merged_character_response(out)
+}
+
+/// v4 `?action=toggle-controlled-by` — `'user'` ⇄ `'llm'`; `{ character }`.
+pub async fn character_toggle_controlled_by(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+) -> Response {
+    let cid = character_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        let character = match characters_read::find_by_id(main, mount, &cid)? {
+            Some(c) => c,
+            None => return Ok(Err(not_found("Character"))),
+        };
+        let next = if character.get("controlledBy").and_then(Value::as_str) == Some("user") {
+            "llm"
+        } else {
+            "user"
+        };
+        vault_character_arrays::set_controlled_by(main, mount, &cid, next)?;
+        Ok(Ok(merge_update_echo(
+            character,
+            &[("controlledBy", json!(next))],
+        )))
+    })
+    .await;
+    merged_character_response(out)
+}
+
+/// v4 `?action=toggle-carina` — flip `canBeCarina` (null/undefined → true);
+/// `{ character }`.
+pub async fn character_toggle_carina(db: &Db, _user_id: &str, character_id: &str) -> Response {
+    let cid = character_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        let character = match characters_read::find_by_id(main, mount, &cid)? {
+            Some(c) => c,
+            None => return Ok(Err(not_found("Character"))),
+        };
+        // v4 `!character.canBeCarina`: a null/undefined/false current value → true.
+        let next = !character
+            .get("canBeCarina")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        vault_character_arrays::set_can_be_carina(main, mount, &cid, next)?;
+        Ok(Ok(merge_update_echo(
+            character,
+            &[("canBeCarina", json!(next))],
+        )))
+    })
+    .await;
+    merged_character_response(out)
+}
+
+/// Shared tail for the three "flip a slim flag → merged `{ character }`" verbs.
+fn merged_character_response(out: Result<Result<Value, Response>, DbError>) -> Response {
+    match out {
+        Ok(Ok(c)) => Response::Character(json!({ "character": c })),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `?action=set-default-partner` — guards (partner exists, is
+/// `controlledBy:'user'`, not self) → `update({defaultPartnerId})` →
+/// `{ partnerId, success: true }`.
+pub async fn character_set_default_partner(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    partner_id: Option<&str>,
+) -> Response {
+    let cid = character_id.to_string();
+    let partner_id = partner_id.map(str::to_string);
+    let out = with_both_conns(db, move |main, mount| {
+        // Ownership gate (v4 `findById(id)` first).
+        if characters_read::find_by_id(main, mount, &cid)?.is_none() {
+            return Ok(Err(not_found("Character")));
+        }
+        if let Some(pid) = partner_id.as_deref() {
+            let partner = match characters_read::find_by_id(main, mount, pid)? {
+                Some(p) => p,
+                None => return Ok(Err(not_found("Partner character"))),
+            };
+            if partner.get("controlledBy").and_then(Value::as_str) != Some("user") {
+                return Ok(Err(bad_request(
+                    "Partner must be a user-controlled character",
+                )));
+            }
+            if pid == cid {
+                return Ok(Err(bad_request("Character cannot be its own partner")));
+            }
+        }
+        let mut patch = serde_json::Map::new();
+        patch.insert(
+            "defaultPartnerId".into(),
+            match &partner_id {
+                Some(p) => Value::String(p.clone()),
+                None => Value::Null,
+            },
+        );
+        vault_character_update::update_character(main, mount, &cid, &patch)?;
+        Ok(Ok(partner_id))
+    })
+    .await;
+    match out {
+        Ok(Ok(partner_id)) => Response::Character(json!({
+            "partnerId": partner_id.map(Value::String).unwrap_or(Value::Null),
+            "success": true,
+        })),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `?action=avatar` — `{imageId: string|null}`: validate the image resolves
+/// and is `image/*`, then `update({defaultImageId})` + re-enrich →
+/// `{ data: {...character, defaultImage} }`.
+pub async fn character_avatar(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    image_id: Option<&str>,
+) -> Response {
+    let cid = character_id.to_string();
+    let image_id = image_id.map(str::to_string);
+    let out = with_both_conns(db, move |main, mount| {
+        // Ownership gate + the pre-update read the merged echo is built from.
+        let pre = match characters_read::find_by_id(main, mount, &cid)? {
+            Some(c) => c,
+            None => return Ok(Err(not_found("Character"))),
+        };
+        // Validate a provided image (v4: resolve → must exist and be image/*).
+        if let Some(iid) = image_id.as_deref() {
+            match resolve_character_avatar(main, mount, Some(iid))? {
+                None => return Ok(Err(not_found("Image file"))),
+                Some(resolved) => {
+                    if let Some(mime) = &resolved.mime_type {
+                        if !mime.starts_with("image/") {
+                            return Ok(Err(bad_request(format!(
+                                "Invalid file type. Expected an image, got {mime}"
+                            ))));
+                        }
+                    }
+                }
+            }
+        }
+        let image_val = match &image_id {
+            Some(i) => Value::String(i.clone()),
+            None => Value::Null,
+        };
+        let mut patch = serde_json::Map::new();
+        patch.insert("defaultImageId".into(), image_val.clone());
+        vault_character_update::update_character(main, mount, &cid, &patch)?;
+        // v4 builds `{...update(id,{defaultImageId}), defaultImage}` — the update
+        // return is the patch merged onto the pre-update read (D4), and
+        // enrichWithDefaultImage runs off the updated defaultImageId.
+        let merged = merge_update_echo(pre, &[("defaultImageId", image_val)]);
+        let default_image =
+            character_enrichment::enrich_with_default_image(main, mount, image_id.as_deref())?;
+        Ok(Ok((merged, default_image)))
+    })
+    .await;
+    match out {
+        Ok(Ok((mut character, default_image))) => {
+            if let Some(obj) = character.as_object_mut() {
+                obj.insert(
+                    "defaultImage".into(),
+                    match default_image {
+                        Some(i) => serde_json::to_value(i).unwrap_or(Value::Null),
+                        None => Value::Null,
+                    },
+                );
+            }
+            Response::Character(json!({ "data": character }))
+        }
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `?action=add-tag` — verify the tag exists, add its id to the character's
+/// slim `tags` array (idempotent), `{ success: true, tag }` (201).
+pub async fn character_add_tag(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    tag_id: &str,
+) -> Response {
+    let cid = character_id.to_string();
+    let tid = tag_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        let character = match characters_read::find_by_id(main, mount, &cid)? {
+            Some(c) => c,
+            None => return Ok(Err(not_found("Character"))),
+        };
+        let tag = match tags::find_full_by_id(main, &tid)? {
+            Some(t) => t,
+            None => return Ok(Err(not_found("Tag"))),
+        };
+        // v4 TaggableBaseRepository.addTag: push + update only if not present.
+        let mut current: Vec<String> = character
+            .get("tags")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !current.iter().any(|t| t == &tid) {
+            current.push(tid.clone());
+            let mut patch = serde_json::Map::new();
+            patch.insert(
+                "tags".into(),
+                Value::Array(current.into_iter().map(Value::String).collect()),
+            );
+            vault_character_update::update_character(main, mount, &cid, &patch)?;
+        }
+        Ok(Ok(tag))
+    })
+    .await;
+    match out {
+        Ok(Ok(tag)) => Response::Character(json!({ "success": true, "tag": tag })),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `?action=remove-tag` — filter the id from the character's slim `tags`
+/// array (update only if changed), `{ success: true }`.
+pub async fn character_remove_tag(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    tag_id: &str,
+) -> Response {
+    let cid = character_id.to_string();
+    let tid = tag_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        let character = match characters_read::find_by_id(main, mount, &cid)? {
+            Some(c) => c,
+            None => return Ok(Err(not_found("Character"))),
+        };
+        let current: Vec<String> = character
+            .get("tags")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let filtered: Vec<String> = current.iter().filter(|t| *t != &tid).cloned().collect();
+        if filtered.len() != current.len() {
+            let mut patch = serde_json::Map::new();
+            patch.insert(
+                "tags".into(),
+                Value::Array(filtered.into_iter().map(Value::String).collect()),
+            );
+            vault_character_update::update_character(main, mount, &cid, &patch)?;
+        }
+        Ok(Ok(()))
+    })
+    .await;
+    match out {
+        Ok(Ok(())) => Response::Character(json!({ "success": true })),
         Ok(Err(r)) => r,
         Err(e) => internal(e),
     }

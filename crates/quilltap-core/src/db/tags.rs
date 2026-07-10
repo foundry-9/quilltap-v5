@@ -213,6 +213,59 @@ pub fn find_details_by_ids(
     Ok(out)
 }
 
+/// v4 `repos.tags.findById(id)` — the full marshaled Tag entity `{id, userId,
+/// name, nameLower, quickHide, visualStyle?, createdAt, updatedAt}` (quickHide as
+/// a bool; visualStyle OMITTED when the column is NULL, per its
+/// `.nullable().optional()` schema), or `None`. Used by the add-tag verb's
+/// `{success, tag}` echo and the tag GET/PUT/DELETE ownership reads.
+pub fn find_full_by_id(conn: &Connection, id: &str) -> Result<Option<serde_json::Value>, DbError> {
+    conn.query_row(
+        "SELECT id, userId, name, nameLower, quickHide, visualStyle, createdAt, updatedAt \
+         FROM tags WHERE id = ?1",
+        params![id],
+        |r| {
+            let id: String = r.get(0)?;
+            let user_id: String = r.get(1)?;
+            let name: String = r.get(2)?;
+            let name_lower: String = r.get(3)?;
+            let quick_hide: i64 = r.get(4)?;
+            let visual_style: Option<String> = r.get(5)?;
+            let created_at: String = r.get(6)?;
+            let updated_at: String = r.get(7)?;
+            Ok((
+                id,
+                user_id,
+                name,
+                name_lower,
+                quick_hide,
+                visual_style,
+                created_at,
+                updated_at,
+            ))
+        },
+    )
+    .optional()?
+    .map(
+        |(id, user_id, name, name_lower, quick_hide, visual_style, created_at, updated_at)| {
+            let mut o = serde_json::Map::new();
+            o.insert("id".into(), serde_json::Value::String(id));
+            o.insert("userId".into(), serde_json::Value::String(user_id));
+            o.insert("name".into(), serde_json::Value::String(name));
+            o.insert("nameLower".into(), serde_json::Value::String(name_lower));
+            o.insert("quickHide".into(), serde_json::Value::Bool(quick_hide != 0));
+            if let Some(text) = visual_style {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text) {
+                    o.insert("visualStyle".into(), parsed);
+                }
+            }
+            o.insert("createdAt".into(), serde_json::Value::String(created_at));
+            o.insert("updatedAt".into(), serde_json::Value::String(updated_at));
+            Ok(serde_json::Value::Object(o))
+        },
+    )
+    .transpose()
+}
+
 impl<'c> TagsRepository<'c> {
     pub fn new(conn: &'c Connection) -> Self {
         Self { conn }

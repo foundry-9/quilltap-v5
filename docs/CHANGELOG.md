@@ -4,6 +4,28 @@
 
 ### 5.0-dev
 
+P4.6f (Characters server, lane A) slice 2: the thin action verbs
+(`characters/[id]/handlers/post.ts`) as dispatch handlers —
+`character_favorite`, `character_toggle_controlled_by`,
+`character_toggle_carina`, `character_set_default_partner` (with its
+partner-exists / must-be-user-controlled / not-self guards),
+`character_avatar` (image resolve + `image/*` validation, set + clear), and
+`character_add_tag` / `character_remove_tag` (the generic Taggable pattern
+composed from `find_by_id` + `update_character`). The flip/avatar echoes
+reproduce v4's base `_update` MERGE semantics (`validate({...preUpdateRead,
+...patch, updatedAt: now})` — the patch overlaid on the pre-update read, NOT a
+re-read, so an explicit `defaultImageId: null` survives; the P4.6c D4 finding).
+Fixed a shared-op seam: `db::vault_character_update::update_character` now
+NULLs a nullable slim column when the patch carries an explicit JSON `null`
+(the `Option<String>` slim patch previously collapsed absent and null to
+"skip", so it could never clear a column — v4's `_update` does; the avatar /
+default-partner "clear" verbs need it). Added `tags::find_full_by_id` (the
+marshaled Tag entity for the add-tag echo). Proven by
+`characters_actions_equivalence` (11 cases: the seven verbs, the two
+set-partner guard failures, avatar set + clear) vs v4's real handlers;
+`characters_update_tier2` re-verified against the null-clearing change (no
+regression).
+
 P4.6f (Characters server, lane A) lands its first slice: the characters
 **read** surface as dispatch variants. New `Request`/`Response` contract for
 the whole characters + tags family (binding, shared with the P4.6g SPA lane);
