@@ -4,6 +4,18 @@
 
 ### 5.0-dev
 
+P4.4 unit-2 sub-unit 1: the preset-scenario resolvers
+(db::scenarios::resolve_{general,project,group}_scenario_body), ported
+from v4's lib/mount-index/{scenarios-common,project,group,general}-scenarios
+(the resolveScenarioBody read slice chat creation needs). Composes the
+verified read_database_document + parse_frontmatter; the general resolver
+reads the "Quilltap General" store pointer from main-DB instance_settings.
+Verified by a read-differential (scenario_resolvers_equivalence) driving
+v4's real resolveGeneralScenarioBody / resolveProjectScenarioBody over a
+baked two-store fixture across the path matrix (bare / full / missing-.md /
+leading-slash / missing-file / empty-body). The list / set-default write
+surface is a P4.6 deferral.
+
 P4.4 unit-2 work order: the chat creation flow + the Green Room (D6),
 decomposed leaf-first from a fresh survey at a7b1398d (scenario
 resolvers, buildChatContext, the identity-stack compiler write side,

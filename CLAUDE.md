@@ -5575,3 +5575,23 @@ import, the built-in roleplay templates, the three built-in mount
 stores), the P4.5 theme divergences (fold when the themes service
 lands), and then the P4.6 first Salon vertical (M4) per the
 decomposition.
+
+**P4.4 unit 2 (chat creation + the Green Room) is in progress** (solo lane;
+oracle baseline `a7b1398d`, no drift at lane start). Ported leaf-first.
+**Sub-unit 1 — the preset-scenario resolvers — is DONE and green**
+(`db::scenarios`, `scenario_resolvers_equivalence`): v4's
+`resolveScenarioBody` slice (`lib/mount-index/{scenarios-common,project,
+group,general}-scenarios.ts`) — resolve a chosen preset scenario's body
+(post-frontmatter, trimmed) out of a document store's `Scenarios/` folder,
+composing the verified `read_database_document` + `parse_frontmatter`; the
+three scoped wrappers (project/group take a resolved `mountPointId`, general
+reads the "Quilltap General" pointer from main-DB `instance_settings`). The
+path normalization (folder prefix, `/\.md$/i` suffix, leading-slash strip)
+and the swallow-to-null-on-miss are byte-faithful. Read-differential drives
+v4's REAL `resolveGeneralScenarioBody`/`resolveProjectScenarioBody` over a
+baked two-store fixture (bare / full-path / missing-`.md` / leading-slash /
+missing-file → null / whitespace-only-body → null). The
+list/read-by-path/set-default write surface is a **P4.6 deferral**. Next
+sub-units: the Green Room bus (D6), `buildChatContext`, the identity-stack
+compiler, outfit selections, the greeting generator, chat continuation,
+then the `handleCreate` spine + `ChatCreate` dispatch + capstone.
