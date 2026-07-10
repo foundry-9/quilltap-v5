@@ -26,6 +26,10 @@ import { StreamingMessage } from './streaming-message';
  */
 @Component({
   selector: 'qt-message-list',
+  // Stretch inside .qt-chat-messages-viewport so .qt-chat-messages (flex-1 +
+  // overflow-y-auto) gets a BOUNDED height and actually scrolls — an unstyled
+  // host breaks the flex chain (the third Friday dogfood finding).
+  host: { class: 'flex flex-col flex-1 min-h-0' },
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [MessageRow, AnnouncementGroup, StreamingMessage],
   template: `

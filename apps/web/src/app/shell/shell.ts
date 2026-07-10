@@ -119,7 +119,12 @@ const NAV_ITEMS: NavItem[] = [
 
       <div class="qt-app-main">
         <main class="flex flex-col flex-1 min-h-0 overflow-hidden">
-          <router-outlet />
+          <!-- v4 app-layout.tsx: the inner scroller wrapper — page content
+               scrolls HERE; full-height views (the chat) size to it exactly
+               and run their own inner scroller instead. -->
+          <div class="flex-1 min-h-0 overflow-y-auto">
+            <router-outlet />
+          </div>
         </main>
       </div>
     </div>

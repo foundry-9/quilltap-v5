@@ -4,6 +4,17 @@
 
 ### 5.0-dev
 
+Dogfood finding #3a is fixed: no Salon chat could scroll (an 80-message chat
+reproduced it — masked on fixtures because their content fits the viewport and
+the e2e never scrolls). The v5 shell had dropped v4 `app-layout.tsx`'s inner
+`flex-1 min-h-0 overflow-y-auto` scroller wrapper around the routed content,
+and two unstyled Angular component hosts (`qt-salon-conversation`,
+`qt-message-list`) broke the flex/height chain React never has, so
+`.qt-chat-messages`' own `overflow-y-auto` never received a bounded height.
+Restored the wrapper + added `host:` classes to both components. The 10+ s
+synchronous render on LARGE chats remains open as #3b (virtualization, the
+next Salon order's first deliverable). SPA 0.3.2.
+
 The Friday dogfood findings log is started
 (`docs/developer/porting/dogfood-findings.md`): findings #1/#2 recorded as
 fixed; finding #3 — a large chat renders 10+ s and lands stuck at the top (no

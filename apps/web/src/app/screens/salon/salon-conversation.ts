@@ -61,6 +61,9 @@ interface CascadePrompt {
  */
 @Component({
   selector: 'qt-salon-conversation',
+  // The host must span the shell's scroller exactly (v4 renders
+  // .qt-chat-layout h-full directly; Angular's host element sits in between).
+  host: { class: 'block h-full' },
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     RouterLink,
