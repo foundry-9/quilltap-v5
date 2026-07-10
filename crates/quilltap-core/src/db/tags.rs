@@ -32,7 +32,7 @@
 //! oracle, so `findByName`'s case-insensitive lookup stays correct on real data.
 
 use rusqlite::types::ToSql;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 use super::DbError;
@@ -137,6 +137,39 @@ fn derive_name_lower(name: &str, name_lower: &Option<String>) -> String {
         _ => name,
     };
     base.to_lowercase()
+}
+
+/// A tag's list-enrichment shape (v4 `enrichTags` → `{ tag: { id, name } }`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TagRow {
+    pub id: String,
+    pub name: String,
+}
+
+/// v4 `repos.tags.findByIds(ids)` reshaped for `enrichTags`: return the `{id,
+/// name}` rows for the given ids, in **input order** (v4's `enrichTags` loops the
+/// requested `tagIds` and skips any not found — order-preserving, dropping
+/// missing). Empty input → `[]`.
+pub fn find_by_ids(conn: &Connection, ids: &[String]) -> Result<Vec<TagRow>, DbError> {
+    if ids.is_empty() {
+        return Ok(vec![]);
+    }
+    let mut stmt = conn.prepare("SELECT id, name FROM tags WHERE id = ?1")?;
+    let mut out = Vec::with_capacity(ids.len());
+    for id in ids {
+        let row = stmt
+            .query_row(params![id], |r| {
+                Ok(TagRow {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                })
+            })
+            .optional()?;
+        if let Some(r) = row {
+            out.push(r);
+        }
+    }
+    Ok(out)
 }
 
 impl<'c> TagsRepository<'c> {

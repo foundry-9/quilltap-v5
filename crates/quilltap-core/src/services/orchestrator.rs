@@ -298,6 +298,18 @@ impl OrchestratorChatSettings {
 // Options
 // ===========================================================================
 
+/// v4 `pendingToolResultSchema` element — a user-initiated tool result the send
+/// route pre-inserts as a TOOL message.
+#[derive(Clone, Debug)]
+pub struct PendingToolResult {
+    pub tool: String,
+    pub success: bool,
+    pub result: String,
+    pub prompt: String,
+    pub arguments: serde_json::Map<String, serde_json::Value>,
+    pub created_at: String,
+}
+
 /// v4 `SendMessageOptions` (the subset the ported spine consumes). The unported
 /// flags (`suppressAutomaticImages`, `browserUserAgent`, …) are omitted.
 #[derive(Clone, Debug, Default)]
@@ -316,6 +328,10 @@ pub struct SendMessageOptions {
     pub speaking_as_participant_id: Option<String>,
     /// `fileIds` — attachment ids (the corpus keeps this empty).
     pub file_ids: Vec<String>,
+    /// `pendingToolResults` — user-initiated tool results pre-inserted as TOOL
+    /// messages before the user message (v4 orchestrator.service.ts:601–624). Only
+    /// applied on a normal (non-continue) send.
+    pub pending_tool_results: Vec<PendingToolResult>,
     /// Autonomous-room flag (bypasses the all-LLM pause in the chain).
     pub never_pause_for_user: bool,
     /// Autonomous-room flag (chain enqueues the next turn as a separate job).
@@ -1064,6 +1080,40 @@ where
         )
         .await
     };
+
+    // --- Pending tool results → TOOL messages (orchestrator.service.ts:601–624) ---
+    // Save each user-initiated pending tool result as a TOOL message BEFORE the
+    // user message, and append to `existing_messages` so the model turn sees it.
+    // The content JSON is byte-exact in v4's field order.
+    if !is_continue_mode && !input.options.pending_tool_results.is_empty() {
+        for tr in &input.options.pending_tool_results {
+            let content_str = serde_json::to_string(&serde_json::json!({
+                "tool": tr.tool,
+                "initiatedBy": "user",
+                "success": tr.success,
+                "result": tr.result,
+                "prompt": tr.prompt,
+                "arguments": tr.arguments,
+            }))
+            .map_err(|e| DbError::Key(format!("pending tool result marshal: {e}")))?;
+            let tool_id = uuid::Uuid::new_v4().to_string();
+            let mut msg = serde_json::Map::new();
+            msg.insert("id".into(), json!(tool_id));
+            msg.insert("type".into(), json!("message"));
+            msg.insert("role".into(), json!("TOOL"));
+            msg.insert("content".into(), json!(content_str));
+            msg.insert("createdAt".into(), json!(tr.created_at));
+            msg.insert("attachments".into(), json!([]));
+            let msg_value = Value::Object(msg);
+            let write_chat_id = chat_id.clone();
+            let event: crate::db::chats_messages::ChatEventInput =
+                serde_json::from_value(msg_value.clone())
+                    .map_err(|e| DbError::Key(format!("pending tool message marshal: {e}")))?;
+            db.write(move |w| w.main().chat_messages().add_message(&write_chat_id, &event))
+                .await?;
+            existing_messages.push(msg_value);
+        }
+    }
 
     // --- RNG auto-detect on the user message (orchestrator.service.ts:587–625) ---
     // Gated on `autoDetectRng ?? true`, `!continueMode`, and non-empty content.

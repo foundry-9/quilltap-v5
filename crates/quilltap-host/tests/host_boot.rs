@@ -144,6 +144,24 @@ fn make_instance(base: &Path) {
     let w = Writer::open_writable(&data.join("quilltap.db"), PEPPER).unwrap();
     w.connection().execute_batch(BACKGROUND_JOBS_DDL).unwrap();
     w.connection().execute_batch(&chats_ddl()).unwrap();
+    // The enriched chat-list read (P4.6a) computes `_count` from these tables
+    // (the full chat_messages column set the event marshaling SELECTs; empty here).
+    w.connection()
+        .execute_batch(
+            "CREATE TABLE IF NOT EXISTS chat_messages (chatId TEXT, id TEXT, type TEXT, role TEXT, \
+             content TEXT, rawResponse TEXT, tokenCount TEXT, promptTokens TEXT, completionTokens TEXT, \
+             swipeGroupId TEXT, swipeIndex TEXT, attachments TEXT, debugMemoryLogs TEXT, \
+             thoughtSignature TEXT, reasoningContent TEXT, reasoningSegments TEXT, participantId TEXT, \
+             recoveryType TEXT, renderedHtml TEXT, dangerFlags TEXT, targetParticipantIds TEXT, \
+             systemSender TEXT, systemKind TEXT, opaqueContent TEXT, hostEvent TEXT, customAnnouncer TEXT, \
+             carinaMeta TEXT, pendingExternalPrompt TEXT, pendingExternalPromptFull TEXT, \
+             pendingExternalAttachments TEXT, summaryAnchor TEXT, context TEXT, systemEventType TEXT, \
+             description TEXT, totalTokens TEXT, provider TEXT, modelName TEXT, estimatedCostUSD TEXT, \
+             createdAt TEXT, isSilentMessage TEXT, confirmed TEXT, confirmationChecked TEXT, \
+             confirmationRevised TEXT, confirmationNotes TEXT, confirmationOriginalContent TEXT);\
+             CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, chatId TEXT);",
+        )
+        .unwrap();
     w.connection()
         .execute(
             "INSERT INTO chats (id, userId, title, chatType, messageCount, createdAt, updatedAt) \
@@ -154,6 +172,10 @@ fn make_instance(base: &Path) {
             [],
         )
         .unwrap();
+    // The enriched list nests a mount-index read (the vault overlay) — a
+    // provisioned Salon instance always has this partition; create an empty one.
+    drop(w);
+    let _ = Writer::open_writable(&data.join("quilltap-mount-index.db"), PEPPER).unwrap();
 }
 
 /// A recording handler: counts invocations, completes every job.
@@ -235,12 +257,19 @@ async fn boots_headless_and_pumps_jobs() {
     }
 
     // ListChats: the seeded row, projected.
-    match core.dispatch(Request::ListChats).await {
+    match core
+        .dispatch(Request::ListChats {
+            exclude_tag_ids: vec![],
+            limit: None,
+            include_autonomous: false,
+        })
+        .await
+    {
         Response::Chats(chats) => {
             assert_eq!(chats.len(), 1);
             assert_eq!(chats[0].title, "The Reading Room");
             assert_eq!(chats[0].chat_type, "salon");
-            assert_eq!(chats[0].message_count, 3);
+            assert_eq!(chats[0].count.messages, 0);
             assert_eq!(chats[0].last_message_at, None);
         }
         other => panic!("unexpected: {other:?}"),
@@ -308,7 +337,14 @@ async fn dbkey_lock_unlock_cycle_restarts_drivers() {
         }
         other => panic!("unexpected: {other:?}"),
     }
-    match core.dispatch(Request::ListChats).await {
+    match core
+        .dispatch(Request::ListChats {
+            exclude_tag_ids: vec![],
+            limit: None,
+            include_autonomous: false,
+        })
+        .await
+    {
         Response::Error(e) => {
             assert_eq!(e.kind, ErrorKind::Locked);
             assert_eq!(e.pepper_state, Some(PepperState::NeedsPassphrase));

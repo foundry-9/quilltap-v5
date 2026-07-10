@@ -15,7 +15,7 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use super::types::{ChatSendResultDto, CoreError};
+use super::types::{ChatSendResultDto, CoreError, PendingToolResult};
 
 /// The projected `SendMessageOptions` a `ChatSend` dispatch carries (the
 /// [`Request::ChatSend`](super::types::Request::ChatSend) fields, untangled
@@ -29,6 +29,10 @@ pub struct ChatSendRequest {
     pub target_participant_ids: Option<Vec<String>>,
     pub speaking_as_participant_id: Option<String>,
     pub file_ids: Vec<String>,
+    /// v4 continue-mode `nudge` (withholds the "nothing to add" skip option).
+    pub nudge: Option<bool>,
+    /// v4 `pendingToolResults` — pre-inserted as TOOL messages by the spine.
+    pub pending_tool_results: Vec<PendingToolResult>,
 }
 
 /// The boxed future a [`ChatSendDriver`] returns (dyn-compatibility — RPITIT

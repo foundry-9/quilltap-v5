@@ -4,6 +4,31 @@
 
 ### 5.0-dev
 
+P4.6a (Salon server surface) in progress — the read surface is landed and
+differentially verified against v4 `a7b1398d`. Ported the chat-enrichment
+service (`services::chat_enrichment`): the LIST orchestration
+(`enrich_chats_for_list` / `enrich_chat_for_list` / `enrich_tags` /
+`filter_chats_by_excluded_tags`, `_allTagIds` stripped via `#[serde(skip)]`;
+the batched-list vault-only avatar quirk reproduced — a legacy-file avatar
+resolves to `null` in the list, unlike the GET/create no-preloaded path) and
+the DETAIL participant path (`enrich_participant_detail` /
+`get_character_detail` with the avatar-override branch / `get_connection_profile`
+/ `get_image_profile`). Added the read gaps `tags::find_by_ids` +
+`conversation_chunks::count_stats_by_chat_id`. New `api::salon` dispatch handlers
++ contract variants: `chatSettings` (settings GET), the enriched `listChats`
+(`excludeTagIds`/`limit`/`includeAutonomous`), `chatGet` (the full single-chat
+projection minus the deliberately-omitted `renderedHtml`), plus the turn action,
+message edit/delete/swipe-switch, chat PUT (Salon-minimal), and the three
+impersonation verbs. Extended `chatSend` with the `sendMessageSchema` superRefine
+rejection + `nudge` + `pendingToolResults` (pre-inserted as TOOL messages, the
+RNG-auto-detect pattern). Committed the shared Salon web fixture
+(`crates/quilltap-web/tests/fixtures/salon-*.db`) for the M4 e2e + differentials.
+Verified: `salon_reads_equivalence` (settings + enriched list [3 param variants]
++ single-chat GET [solo + group], byte-exact vs v4's real handlers over the
+committed fixture) + the send-gate rejection unit test. The mutation-handler
+differentials (turn / message mutations / chat PUT / impersonation) and the
+`pendingToolResults` corpus case are the remaining P4.6a follow-ups.
+
 P4.6 round planned: the two work orders for the first Salon vertical (M4)
 are written from fresh v4 surveys at `a7b1398d` —
 `docs/developer/porting/work-orders/p4.6a-salon-server.md` (the dispatch

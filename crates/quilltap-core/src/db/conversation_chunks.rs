@@ -126,6 +126,26 @@ impl<'c> ConversationChunksRepository<'c> {
         Self { conn }
     }
 
+    /// The `(total, embedded)` chunk counts for one chat — the no-preloaded
+    /// scriptorium-status source (v4 chat-list enrichment reads
+    /// `conversationChunks.findByChatId(chatId)` then `chunks.length` /
+    /// `chunks.filter(c => c.embedding != null).length`). One `COUNT` for the total
+    /// plus a `COUNT WHERE embedding IS NOT NULL` for the embedded count — the same
+    /// numbers the batched `countByChatIds` GROUP BY yields. Read-only.
+    pub fn count_stats_by_chat_id(&self, chat_id: &str) -> Result<(i64, i64), DbError> {
+        let total: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM conversation_chunks WHERE chatId = ?1",
+            rusqlite::params![chat_id],
+            |r| r.get(0),
+        )?;
+        let embedded: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM conversation_chunks WHERE chatId = ?1 AND embedding IS NOT NULL",
+            rusqlite::params![chat_id],
+            |r| r.get(0),
+        )?;
+        Ok((total, embedded))
+    }
+
     /// v4 `findAllWithEmbeddings` = `_findAll()` filtered to a non-null, non-empty
     /// embedding. Reads every chunk (no scoping, rowid/insertion order) and keeps
     /// only those carrying a decoded embedding. Read-only.

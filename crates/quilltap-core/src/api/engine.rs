@@ -25,8 +25,8 @@ use std::sync::{Arc, Mutex};
 
 use tokio::sync::broadcast;
 
+use crate::db::chat_settings;
 use crate::db::runtime::{Db, DbPaths};
-use crate::db::{chat_settings, chats_read};
 use crate::dbkey::{self, DbKeyError};
 use crate::services::creation_progress::CreationProgressBus;
 use crate::services::provisioning;
@@ -35,8 +35,8 @@ use super::chat_create::{ChatCreateDriver, ChatCreateDriverRequest};
 use super::chat_send::{ChatSendDriver, ChatSendRequest};
 use super::provision::{provision, PepperHashMismatch};
 use super::types::{
-    AckDto, ChatSummaryDto, ErrorKind, Event, HealthDto, PepperState, Request, Response,
-    SetupResultDto, UnlockStateDto,
+    AckDto, ErrorKind, Event, HealthDto, PepperState, Request, Response, SetupResultDto,
+    UnlockStateDto,
 };
 use super::{InstanceDirectory, QuilltapCore};
 
@@ -306,7 +306,123 @@ impl CoreEngine {
                 Ok(dto) => Response::Instances(dto),
                 Err(e) => Response::error(ErrorKind::Internal, e),
             },
-            Request::ListChats => self.list_chats(),
+            Request::ListChats {
+                exclude_tag_ids,
+                limit,
+                include_autonomous,
+            } => match self.ready_db() {
+                Ok(db) => super::salon::list_chats(
+                    &db,
+                    SINGLE_USER_ID,
+                    &exclude_tag_ids,
+                    limit,
+                    include_autonomous,
+                ),
+                Err(r) => r,
+            },
+            Request::ChatGet { chat_id } => match self.ready_db() {
+                Ok(db) => super::salon::chat_get(&db, SINGLE_USER_ID, &chat_id).await,
+                Err(r) => r,
+            },
+            Request::ChatSettings => match self.ready_db() {
+                Ok(db) => super::salon::chat_settings(&db, SINGLE_USER_ID),
+                Err(r) => r,
+            },
+            Request::ChatTurnAction {
+                chat_id,
+                action,
+                participant_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::salon::turn_action(
+                        &db,
+                        &chat_id,
+                        &action,
+                        participant_id.as_deref(),
+                        random_f64(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::MessageEdit {
+                message_id,
+                content,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::salon::message_edit(&db, SINGLE_USER_ID, &message_id, &content).await
+                }
+                Err(r) => r,
+            },
+            Request::MessageDelete {
+                message_id,
+                memory_action,
+                skip_confirmation,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::salon::message_delete(
+                        &db,
+                        SINGLE_USER_ID,
+                        &message_id,
+                        memory_action.as_deref(),
+                        skip_confirmation,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::MessageSwipe {
+                message_id,
+                swipe_index,
+            } => match self.ready_db() {
+                Ok(db) => match swipe_index {
+                    Some(idx) => {
+                        super::salon::message_swipe_switch(&db, SINGLE_USER_ID, &message_id, idx)
+                    }
+                    // The generate branch needs the model driver (tracked deferral).
+                    None => Response::error(
+                        ErrorKind::Internal,
+                        "swipe generation not yet assembled (model driver deferral)",
+                    ),
+                },
+                Err(r) => r,
+            },
+            Request::ChatUpdate { chat_id, chat } => match self.ready_db() {
+                Ok(db) => super::salon::chat_update(&db, &chat_id, &chat).await,
+                Err(r) => r,
+            },
+            Request::ChatImpersonate {
+                chat_id,
+                participant_id,
+            } => match self.ready_db() {
+                Ok(db) => super::salon::chat_impersonate(&db, &chat_id, &participant_id).await,
+                Err(r) => r,
+            },
+            Request::ChatStopImpersonate {
+                chat_id,
+                participant_id,
+                new_connection_profile_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::salon::chat_stop_impersonate(
+                        &db,
+                        &chat_id,
+                        &participant_id,
+                        new_connection_profile_id.as_deref(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ChatSetActiveSpeaker {
+                chat_id,
+                participant_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::salon::chat_set_active_speaker(&db, &chat_id, &participant_id).await
+                }
+                Err(r) => r,
+            },
             Request::ChatSend {
                 chat_id,
                 content,
@@ -315,7 +431,21 @@ impl CoreEngine {
                 target_participant_ids,
                 speaking_as_participant_id,
                 file_ids,
+                nudge,
+                pending_tool_results,
             } => {
+                // v4 `sendMessageSchema` superRefine: a normal (non-continue) send
+                // with blank content, no files, and no tool results is rejected.
+                if !continue_mode
+                    && content.trim().is_empty()
+                    && file_ids.is_empty()
+                    && pending_tool_results.is_empty()
+                {
+                    return Response::error(
+                        ErrorKind::BadRequest,
+                        "Message must have content, attached files, or tool results",
+                    );
+                }
                 self.chat_send(ChatSendRequest {
                     chat_id,
                     content,
@@ -324,6 +454,8 @@ impl CoreEngine {
                     target_participant_ids,
                     speaking_as_participant_id,
                     file_ids,
+                    nudge,
+                    pending_tool_results,
                 })
                 .await
             }
@@ -333,6 +465,15 @@ impl CoreEngine {
                 })
                 .await
             }
+        }
+    }
+
+    /// Extract the open `Db` under the readiness gate (D2). `Err` is the locked
+    /// refusal the caller returns directly.
+    fn ready_db(&self) -> Result<Db, Response> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => Ok(r.db.clone()),
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
         }
     }
 
@@ -622,22 +763,17 @@ impl CoreEngine {
         }
         self.unlock_state()
     }
+}
 
-    fn list_chats(&self) -> Response {
-        let state = self.inner.state.lock().unwrap();
-        let db = match &*state {
-            EngineState::Ready(r) => r.db.clone(),
-            EngineState::Locked { pepper_state, .. } => {
-                return Response::locked(*pepper_state);
-            }
-        };
-        drop(state);
-
-        match db.read_main(|conn| chats_read::find_by_user_id(conn, SINGLE_USER_ID)) {
-            Ok(chats) => Response::Chats(chats.iter().map(chat_summary).collect()),
-            Err(e) => Response::error(ErrorKind::Internal, e.to_string()),
-        }
-    }
+/// A uniform random `f64` in `[0, 1)` (v4 `Math.random()`), sourced from the OS
+/// CSPRNG. Used by the turn-action next-speaker selection (the engine's real
+/// clock/RNG; the differential harness injects a pinned value).
+fn random_f64() -> f64 {
+    let mut bytes = [0u8; 8];
+    getrandom::getrandom(&mut bytes).expect("getrandom");
+    let n = u64::from_le_bytes(bytes);
+    // 53-bit mantissa → uniform [0,1).
+    (n >> 11) as f64 / (1u64 << 53) as f64
 }
 
 impl QuilltapCore for CoreEngine {
@@ -708,34 +844,6 @@ fn read_auto_lock_minutes(db: &Db) -> Option<f64> {
         auto.get("idleMinutes").and_then(|v| v.as_f64())
     } else {
         None
-    }
-}
-
-/// Project one hydrated chat (the differential-verified read shape) to the
-/// list DTO. The defaulted columns (`title`, `chatType`, `messageCount`,
-/// `createdAt`, `updatedAt`) are always present on a valid row; a malformed
-/// row degrades to empty/zero rather than failing the whole list.
-fn chat_summary(chat: &serde_json::Value) -> ChatSummaryDto {
-    let s = |k: &str| {
-        chat.get(k)
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string()
-    };
-    ChatSummaryDto {
-        id: s("id"),
-        title: s("title"),
-        chat_type: s("chatType"),
-        message_count: chat
-            .get("messageCount")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0) as i64,
-        last_message_at: chat
-            .get("lastMessageAt")
-            .and_then(|v| v.as_str())
-            .map(str::to_string),
-        created_at: s("createdAt"),
-        updated_at: s("updatedAt"),
     }
 }
 
@@ -823,7 +931,14 @@ mod tests {
         }
         // ListChats reaches the engine (the fixture has no chats table, so it
         // surfaces as an internal read error — NOT the locked refusal).
-        match engine.dispatch(Request::ListChats).await {
+        match engine
+            .dispatch(Request::ListChats {
+                exclude_tag_ids: vec![],
+                limit: None,
+                include_autonomous: false,
+            })
+            .await
+        {
             Response::Error(e) => assert_eq!(e.kind, ErrorKind::Internal),
             other => panic!("unexpected: {other:?}"),
         }
@@ -838,6 +953,66 @@ mod tests {
                 target_participant_ids: None,
                 speaking_as_participant_id: None,
                 file_ids: vec![],
+                nudge: None,
+                pending_tool_results: vec![],
+            })
+            .await
+        {
+            Response::Error(e) => {
+                assert_eq!(e.kind, ErrorKind::Internal);
+                assert_eq!(e.message, "chat dispatch not assembled");
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn chat_send_gate_rejects_blank_message() {
+        // v4 sendMessageSchema superRefine: a normal send with blank content, no
+        // files, and no tool results → bad-request with the exact message.
+        let base = make_instance();
+        let engine = CoreEngine::boot(
+            config(&base, Some(PEPPER)),
+            Box::new(NoopAssembler),
+            Arc::new(EmptyInstances),
+        )
+        .unwrap();
+        match engine
+            .dispatch(Request::ChatSend {
+                chat_id: "c1".into(),
+                content: "   ".into(),
+                continue_mode: false,
+                responding_participant_id: None,
+                target_participant_ids: None,
+                speaking_as_participant_id: None,
+                file_ids: vec![],
+                nudge: None,
+                pending_tool_results: vec![],
+            })
+            .await
+        {
+            Response::Error(e) => {
+                assert_eq!(e.kind, ErrorKind::BadRequest);
+                assert_eq!(
+                    e.message,
+                    "Message must have content, attached files, or tool results"
+                );
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        // A continue-mode send with blank content is NOT rejected by the gate
+        // (it reaches the driver → the not-assembled refusal on NoopAssembler).
+        match engine
+            .dispatch(Request::ChatSend {
+                chat_id: "c1".into(),
+                content: String::new(),
+                continue_mode: true,
+                responding_participant_id: None,
+                target_participant_ids: None,
+                speaking_as_participant_id: None,
+                file_ids: vec![],
+                nudge: Some(true),
+                pending_tool_results: vec![],
             })
             .await
         {
@@ -868,7 +1043,14 @@ mod tests {
 
         // Locked boot: not assembled, ready-gated variants refused.
         assert_eq!(assembled.load(Ordering::SeqCst), 0);
-        match engine.dispatch(Request::ListChats).await {
+        match engine
+            .dispatch(Request::ListChats {
+                exclude_tag_ids: vec![],
+                limit: None,
+                include_autonomous: false,
+            })
+            .await
+        {
             Response::Error(e) => {
                 assert_eq!(e.kind, ErrorKind::Locked);
                 assert_eq!(e.pepper_state, Some(PepperState::NeedsPassphrase));
@@ -1005,7 +1187,14 @@ mod tests {
             }
             other => panic!("unexpected: {other:?}"),
         }
-        match engine.dispatch(Request::ListChats).await {
+        match engine
+            .dispatch(Request::ListChats {
+                exclude_tag_ids: vec![],
+                limit: None,
+                include_autonomous: false,
+            })
+            .await
+        {
             Response::Chats(c) => assert!(c.is_empty()),
             other => panic!("unexpected: {other:?}"),
         }

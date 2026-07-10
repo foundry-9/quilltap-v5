@@ -24,6 +24,7 @@ pub mod chat_create;
 pub mod chat_send;
 pub mod engine;
 pub mod provision;
+pub mod salon;
 pub mod types;
 
 pub use chat_create::{ChatCreateDriver, ChatCreateDriverRequest, ChatCreateFuture};
@@ -33,9 +34,9 @@ pub use engine::{
     SINGLE_USER_ID,
 };
 pub use types::{
-    AckDto, ChatCreateResultDto, ChatErrorPayload, ChatSendResultDto, ChatSummaryDto, CoreError,
-    ErrorKind, Event, EventPayload, HealthDto, InstanceDto, InstancesDto, PepperState, Request,
-    Response, SetupResultDto, UnlockStateDto,
+    AckDto, ChatCreateResultDto, ChatErrorPayload, ChatSendResultDto, ChatSummaryDto, ChatWrapDto,
+    CoreError, ErrorKind, Event, EventPayload, HealthDto, InstanceDto, InstancesDto,
+    PendingToolResult, PepperState, Request, Response, SetupResultDto, UnlockStateDto,
 };
 
 /// The boundary trait. Transports are generic over `C: QuilltapCore` (the

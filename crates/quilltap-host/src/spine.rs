@@ -810,6 +810,19 @@ where
                 target_participant_ids: req.target_participant_ids.clone(),
                 speaking_as_participant_id: req.speaking_as_participant_id.clone(),
                 file_ids: req.file_ids.clone(),
+                nudge: req.nudge,
+                pending_tool_results: req
+                    .pending_tool_results
+                    .iter()
+                    .map(|t| orchestrator::PendingToolResult {
+                        tool: t.tool.clone(),
+                        success: t.success,
+                        result: t.result.clone(),
+                        prompt: t.prompt.clone(),
+                        arguments: t.arguments.clone(),
+                        created_at: t.created_at.clone(),
+                    })
+                    .collect(),
                 ..Default::default()
             },
             clock,

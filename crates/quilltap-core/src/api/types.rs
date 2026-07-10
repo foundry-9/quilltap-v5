@@ -86,8 +86,90 @@ pub enum Request {
     Lock,
     /// List registered instances (the v4 launcher's instance registry).
     ListInstances,
-    /// List the single user's chats (v4 `GET /api/v1/chats`), summarized.
-    ListChats,
+    /// List the single user's chats, enriched (v4 `GET /api/v1/chats` →
+    /// `handleList` + `enrichChatsForList`). The optional params mirror v4's
+    /// query string.
+    #[serde(rename_all = "camelCase")]
+    ListChats {
+        /// v4 `?excludeTagIds=a,b` — drop chats carrying any of these tags.
+        #[serde(default)]
+        exclude_tag_ids: Vec<String>,
+        /// v4 `?limit=N` — cap the post-filter list (applied only when `> 0`).
+        #[serde(default)]
+        limit: Option<i64>,
+        /// v4 `?includeAutonomous=true` — include autonomous rooms regardless of
+        /// their `runVisibility`.
+        #[serde(default)]
+        include_autonomous: bool,
+    },
+    /// The single-chat GET (v4 `GET /api/v1/chats/{id}` → `handleGet` default
+    /// branch): the fully-enriched chat + all messages (minus `renderedHtml`).
+    #[serde(rename_all = "camelCase")]
+    ChatGet { chat_id: String },
+    /// The chat-settings read (v4 `GET /api/v1/settings/chat`).
+    ChatSettings,
+    /// A turn action (v4 `POST /api/v1/chats/{id}/actions?action=turn` →
+    /// `handleTurnAction`): nudge/queue/dequeue/query/skipUserTurn.
+    #[serde(rename_all = "camelCase")]
+    ChatTurnAction {
+        chat_id: String,
+        action: String,
+        #[serde(default)]
+        participant_id: Option<String>,
+    },
+    /// Edit a message's content (v4 `PUT /api/v1/messages/{id}`).
+    #[serde(rename_all = "camelCase")]
+    MessageEdit { message_id: String, content: String },
+    /// Delete a message / swipe group (v4 `DELETE /api/v1/messages/{id}`) — the
+    /// memory-cascade confirmation protocol.
+    #[serde(rename_all = "camelCase")]
+    MessageDelete {
+        message_id: String,
+        /// v4 `?memoryAction=` — DELETE_MEMORIES / KEEP_MEMORIES /
+        /// REGENERATE_MEMORIES / ASK_EVERY_TIME.
+        #[serde(default)]
+        memory_action: Option<String>,
+        /// v4 `?skipConfirmation=true`.
+        #[serde(default)]
+        skip_confirmation: bool,
+    },
+    /// Swipe a message (v4 `POST /api/v1/messages/{id}?action=swipe`): switch
+    /// (`swipeIndex` present) or generate (absent — needs the model driver).
+    #[serde(rename_all = "camelCase")]
+    MessageSwipe {
+        message_id: String,
+        #[serde(default)]
+        swipe_index: Option<i64>,
+    },
+    /// The general chat edit (v4 `PUT /api/v1/chats/{id}` → `processChatUpdates`):
+    /// the Salon pause/resume + title path. `chat` is the partial field bag
+    /// (`updateChatSchema`).
+    #[serde(rename_all = "camelCase")]
+    ChatUpdate {
+        chat_id: String,
+        chat: serde_json::Value,
+    },
+    /// Start impersonating a participant (v4 `POST …?action=impersonate`).
+    #[serde(rename_all = "camelCase")]
+    ChatImpersonate {
+        chat_id: String,
+        participant_id: String,
+    },
+    /// Stop impersonating (v4 `POST …?action=stop-impersonate`); the optional new
+    /// connection profile flips the participant back to `controlledBy:'llm'`.
+    #[serde(rename_all = "camelCase")]
+    ChatStopImpersonate {
+        chat_id: String,
+        participant_id: String,
+        #[serde(default)]
+        new_connection_profile_id: Option<String>,
+    },
+    /// Set the active typing/speaking participant (v4 `POST …?action=set-active-speaker`).
+    #[serde(rename_all = "camelCase")]
+    ChatSetActiveSpeaker {
+        chat_id: String,
+        participant_id: String,
+    },
     /// Send a chat message and run the full turn (v4
     /// `POST /api/v1/chats/{id}/messages` → `handleSendMessage`). The stream
     /// frames ride the [`Event`] channel (chat-scoped); the dispatch reply is
@@ -108,6 +190,14 @@ pub enum Request {
         speaking_as_participant_id: Option<String>,
         #[serde(default)]
         file_ids: Vec<String>,
+        /// v4 continue-mode `nudge` — the human explicitly summoned this character
+        /// (withholds the "nothing to add" skip option for this turn).
+        #[serde(default)]
+        nudge: Option<bool>,
+        /// v4 `pendingToolResults` — user-initiated tool results pre-inserted as
+        /// TOOL messages before the user message.
+        #[serde(default)]
+        pending_tool_results: Vec<PendingToolResult>,
     },
     /// Create a chat and run the full seed sequence (v4 `POST /api/v1/chats` →
     /// `handleCreate`). The dispatch payload's create fields (everything but
@@ -135,10 +225,23 @@ pub enum Response {
     /// `changePassphrase`.
     Ack(AckDto),
     Instances(InstancesDto),
-    Chats(Vec<ChatSummaryDto>),
+    /// v4 `handleList`'s `cleanEnrichedChats` output — the enriched chat list.
+    Chats(Vec<crate::services::chat_enrichment::EnrichedChatSummary>),
     ChatSend(ChatSendResultDto),
     /// The v4 `POST /api/v1/chats` 201 body (`{ chat: {...} }`).
     ChatCreate(ChatCreateResultDto),
+    /// The single-chat GET / chat PUT body (`{ chat: {...} }`).
+    Chat(ChatWrapDto),
+    /// v4 `GET /api/v1/settings/chat` body (the raw settings object).
+    ChatSettings(serde_json::Value),
+    /// v4 `handleTurnAction` body.
+    TurnAction(serde_json::Value),
+    /// v4 message edit / swipe body (`{ message: {...} }`).
+    Message(serde_json::Value),
+    /// v4 message-delete body (the confirmation body OR `{ success, memoriesDeleted }`).
+    MessageDelete(serde_json::Value),
+    /// v4 impersonation-verb body (`{ success, ... }`).
+    ChatImpersonation(serde_json::Value),
     Error(CoreError),
 }
 
@@ -266,6 +369,26 @@ pub struct ChatSendResultDto {
 pub struct ChatCreateResultDto {
     /// The created chat, with `participants` = the enriched summaries.
     pub chat: serde_json::Value,
+}
+
+/// The `{ chat: {...} }` wrapper the single-chat GET + chat PUT return.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatWrapDto {
+    pub chat: serde_json::Value,
+}
+
+/// v4 `pendingToolResultSchema` element — a user-initiated tool result the send
+/// route pre-inserts as a TOOL message.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingToolResult {
+    pub tool: String,
+    pub success: bool,
+    pub result: String,
+    pub prompt: String,
+    pub arguments: serde_json::Map<String, serde_json::Value>,
+    pub created_at: String,
 }
 
 // ============================================================================
