@@ -798,12 +798,29 @@ impl CoreEngine {
             },
             Request::CharacterStats { .. } => super::characters::not_available("stats"),
             Request::CharacterChats { .. } => super::characters::not_available("chats"),
-            Request::CharacterDepictionGuidelines { .. } => {
-                super::characters::not_available("depiction-guidelines")
-            }
-            Request::CharacterDepictionGuidelinesUpdate { .. } => {
-                super::characters::not_available("depiction-guidelines-update")
-            }
+            Request::CharacterDepictionGuidelines { character_id } => match self.ready_db() {
+                Ok(db) => super::characters::character_depiction_guidelines(
+                    &db,
+                    SINGLE_USER_ID,
+                    &character_id,
+                ),
+                Err(r) => r,
+            },
+            Request::CharacterDepictionGuidelinesUpdate {
+                character_id,
+                content,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_depiction_guidelines_update(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        &content,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
             Request::CharacterPromptCreate {
                 character_id,
                 name,

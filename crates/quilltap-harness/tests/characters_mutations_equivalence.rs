@@ -323,6 +323,9 @@ fn characters_mutations_match_oracle() {
         .unwrap();
     let uid = spec.user_id.clone();
     let mut failed: Vec<String> = Vec::new();
+    // Manual (non-`run`) checks push here — `run` holds a mutable borrow of
+    // `failed` for its whole scope, so direct pushes would conflict.
+    let mut extra: Vec<String> = Vec::new();
 
     let mut run = |name: &str, resp: Response| {
         let want = &oracle[name];
@@ -415,6 +418,42 @@ fn characters_mutations_match_oracle() {
         run("wardrobe_delete", r);
     }
     {
+        let db = fresh_db(&spec, "depget");
+        run(
+            "depiction_get_empty",
+            characters::character_depiction_guidelines(&db, &uid, ARIA),
+        );
+    }
+    {
+        let db = fresh_db(&spec, "depput");
+        let r = rt.block_on(characters::character_depiction_guidelines_update(
+            &db,
+            &uid,
+            ARIA,
+            "Keep depictions tasteful and in-period.",
+        ));
+        run("depiction_put_write", r);
+        let rb = response_data(&characters::character_depiction_guidelines(&db, &uid, ARIA));
+        let got_rb = rb.get("content").cloned().unwrap_or(Value::Null);
+        if norm(&got_rb) != norm(&oracle["depiction_put_write"]["readback"]) {
+            eprintln!("[depiction_put_write readback] MISMATCH: {got_rb:?}");
+            extra.push("depiction_put_write_readback".to_string());
+        }
+    }
+    {
+        let db = fresh_db(&spec, "depclr");
+        let r = rt.block_on(characters::character_depiction_guidelines_update(
+            &db, &uid, ARIA, "   ",
+        ));
+        run("depiction_put_clear", r);
+        let rb = response_data(&characters::character_depiction_guidelines(&db, &uid, ARIA));
+        let got_rb = rb.get("content").cloned().unwrap_or(Value::Null);
+        if norm(&got_rb) != norm(&oracle["depiction_put_clear"]["readback"]) {
+            eprintln!("[depiction_put_clear readback] MISMATCH: {got_rb:?}");
+            extra.push("depiction_put_clear_readback".to_string());
+        }
+    }
+    {
         let db = fresh_db(&spec, "tl");
         run("tag_list", characters::tag_list(&db, &uid, None));
     }
@@ -461,11 +500,12 @@ fn characters_mutations_match_oracle() {
                 "[tag_delete tables] MISMATCH:\n{}",
                 first_diff(&norm_tables(&got), &norm_tables(want))
             );
-            failed.push("tag_delete_tables".to_string());
+            extra.push("tag_delete_tables".to_string());
         } else {
             eprintln!("[tag_delete tables] OK.");
         }
     }
 
+    failed.extend(extra);
     assert!(failed.is_empty(), "characters-mutations FAILED: {failed:?}");
 }

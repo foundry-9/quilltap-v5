@@ -18,6 +18,7 @@ use serde_json::{json, Map, Value};
 
 use crate::db::characters::CharacterCreate;
 use crate::db::chats_outfits::ChatOutfitsRepository;
+use crate::db::database_store;
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::runtime::Db;
 use crate::db::tags::{
@@ -34,6 +35,7 @@ use crate::db::{
     vault_character_update, wardrobe_read, DbError,
 };
 use crate::photos::resolve_character_avatar::resolve_character_avatar;
+use crate::services::aesthetics::DEPICTION_GUIDELINES_FILENAME;
 use crate::services::character_enrichment;
 use crate::services::image_job_common::with_both_conns;
 use crate::vault_overlay::WardrobeItem;
@@ -221,6 +223,92 @@ pub fn character_get_tags(db: &Db, _user_id: &str, character_id: &str) -> Respon
     });
     match result {
         Ok(Ok(details)) => Response::Character(json!({ "tags": details })),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `?action=depiction-guidelines` (GET) — ownership (overlaid `findById`) →
+/// read the `depiction-guidelines.md` file from the character's own vault root
+/// (RAW, single-tier). `{ content }` (`''` when no vault or no file). Errors on
+/// the read fall soft to `''` (v4's `readStoreFile` catch → null → `?? ''`).
+pub fn character_depiction_guidelines(db: &Db, _user_id: &str, character_id: &str) -> Response {
+    let cid = character_id.to_string();
+    let result = read_main_mount(db, move |main, mount| {
+        let character = match require_character(main, mount, &cid) {
+            Ok(c) => c,
+            Err(r) => return Ok(Err(r)),
+        };
+        let content = match character
+            .get("characterDocumentMountPointId")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        {
+            None => String::new(),
+            Some(mount_id) => DocMountDocumentsRepository::new(mount)
+                .find_by_mount_point_and_path(mount_id, DEPICTION_GUIDELINES_FILENAME)
+                .ok()
+                .flatten()
+                .unwrap_or_default(),
+        };
+        Ok(Ok(content))
+    });
+    match result {
+        Ok(Ok(content)) => Response::Character(json!({ "content": content })),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `PUT ?action=depiction-guidelines` — ownership (RAW `findByIdRaw`, so a
+/// broken-vault character can still edit) → `writeStoreFile` (empty/whitespace
+/// deletes the file, else create-or-update) → `{ success: true }`; a character
+/// with no vault → BadRequest.
+pub async fn character_depiction_guidelines_update(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    content: &str,
+) -> Response {
+    let cid = character_id.to_string();
+    let content = content.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        let raw = match characters_read::find_by_id_raw(main, &cid)? {
+            Some(c) => c,
+            None => return Ok(Err(not_found("Character"))),
+        };
+        let mount_id = match raw
+            .get("characterDocumentMountPointId")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        {
+            Some(m) => m.to_string(),
+            None => {
+                return Ok(Err(bad_request(
+                    "Character has no document vault to store depiction guidelines",
+                )))
+            }
+        };
+        // v4 `writeStoreFile`: empty/whitespace → delete, else write.
+        if content.trim().is_empty() {
+            database_store::delete_database_document(
+                mount,
+                &mount_id,
+                DEPICTION_GUIDELINES_FILENAME,
+            )?;
+        } else if let Err(e) = database_store::write_database_document(
+            mount,
+            &mount_id,
+            DEPICTION_GUIDELINES_FILENAME,
+            &content,
+        ) {
+            return Ok(Err(internal(e)));
+        }
+        Ok(Ok(()))
+    })
+    .await;
+    match out {
+        Ok(Ok(())) => Response::Character(json!({ "success": true })),
         Ok(Err(r)) => r,
         Err(e) => internal(e),
     }

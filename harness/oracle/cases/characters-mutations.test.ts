@@ -66,7 +66,9 @@ interface CaseSpec {
     | 'tag-get'
     | 'tag-create'
     | 'tag-update'
-    | 'tag-delete';
+    | 'tag-delete'
+    | 'depiction-get'
+    | 'depiction-put';
   id?: string;
   /** For wardrobe item ops: discover the baked item id by this title. */
   itemTitle?: string;
@@ -179,6 +181,30 @@ async function runCase(
     let status: number;
     let body: unknown;
     let tables: unknown;
+    if (c.kind.startsWith('depiction')) {
+      const url = `http://localhost/api/v1/characters/${ARIA}?action=depiction-guidelines`;
+      const mod = (await import('@/app/api/v1/characters/[id]/route')) as {
+        GET: (...a: unknown[]) => Promise<unknown>;
+        PUT: (...a: unknown[]) => Promise<unknown>;
+      };
+      const params = { params: Promise.resolve({ id: ARIA }) };
+      const fn = c.kind === 'depiction-get' ? mod.GET : mod.PUT;
+      const response = (await fn(mockRequest(url, c.body), params)) as {
+        status: number;
+        json: () => Promise<unknown>;
+      };
+      status = response.status;
+      body = await response.json();
+      let readback: unknown;
+      if (c.kind === 'depiction-put') {
+        // Read the file back through the GET path to prove the write landed.
+        const rb = (await mod.GET(mockRequest(url, undefined), params)) as {
+          json: () => Promise<{ content?: string }>;
+        };
+        readback = (await rb.json()).content ?? '';
+      }
+      return { name: c.name, status, body, ...(readback !== undefined ? { readback } : {}) };
+    }
     if (c.kind.startsWith('tag')) {
       if (c.kind === 'tag-list' || c.kind === 'tag-create') {
         const url = 'http://localhost/api/v1/tags';
@@ -406,6 +432,13 @@ async function main(): Promise<void> {
       body: { name: 'Enigma', quickHide: true },
     },
     { name: 'tag_delete', kind: 'tag-delete', id: ADVENTURE },
+    { name: 'depiction_get_empty', kind: 'depiction-get' },
+    {
+      name: 'depiction_put_write',
+      kind: 'depiction-put',
+      body: { content: 'Keep depictions tasteful and in-period.' },
+    },
+    { name: 'depiction_put_clear', kind: 'depiction-put', body: { content: '   ' } },
   ];
 
   const outLines: string[] = [];

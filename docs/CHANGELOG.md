@@ -4,6 +4,19 @@
 
 ### 5.0-dev
 
+P4.6f (Characters server, lane A): the depiction-guidelines GET/PUT actions.
+`character_depiction_guidelines` (overlaid `findById` ownership → RAW single-tier
+read of `depiction-guidelines.md` from the character's own vault root →
+`{ content }`, `''` when no vault/file) and `character_depiction_guidelines_update`
+(RAW `findByIdRaw` ownership so a broken-vault character can still edit →
+`writeStoreFile`: empty/whitespace deletes the file, else create-or-update →
+`{ success: true }`; no vault → BadRequest). Composes the ported
+`database_store::{write,delete}_database_document` + the aesthetics module's
+`DEPICTION_GUIDELINES_FILENAME`. The two arms replace their `not_available`
+refusals. Differential: `characters_mutations` extended to 18 cases (depiction
+get-empty / put-write / put-clear; each PUT reads the file back through the GET
+path to prove the write landed). Versions: core 0.0.166, harness 0.0.151.
+
 P4.6f (Characters server, lane A) slice 4d: the tags CRUD + the delete fan-out.
 `tag_list` (`findAll` → search filter → `localeCompare` sort → the 6-entity
 usage-count DTO), `tag_get` (full spread + `_count`/`totalUsage`), `tag_create`

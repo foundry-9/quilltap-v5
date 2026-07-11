@@ -5878,6 +5878,24 @@ the photo gallery, ST import/export, depiction-guidelines, and the Tier-3
 refusals.
 ---
 
+**P4.6f — depiction-guidelines GET/PUT (2026-07-10).** The Ariel-Clause editor
+file (`api::characters::{character_depiction_guidelines,
+character_depiction_guidelines_update}`). GET: overlaid `findById` ownership →
+`DocMountDocumentsRepository::find_by_mount_point_and_path(mount,
+"depiction-guidelines.md")` (RAW single-tier, NOT the trimmed/capped
+`read_store_file_internal`; the editor shows exactly what's on disk) →
+`{content}` (`''` when no vault/file; a read error falls soft to `''`, v4's
+`readStoreFile` catch). PUT: RAW `findByIdRaw` ownership (broken-vault characters
+stay editable) → `writeStoreFile` semantics (empty/whitespace →
+`database_store::delete_database_document`, else `write_database_document`) →
+`{success:true}`; no vault → BadRequest. Both arms replace `not_available`.
+Proven: `characters_mutations_equivalence` extended to 18 cases (depiction
+get-empty / put-write / put-clear; each PUT reads the file back through the GET
+path — the differential compares the readback content on both sides). Versions:
+core 0.0.166, harness 0.0.151. Remaining in P4.6f: delete-cascade, stats/chats,
+the photo gallery, ST import/export, and the Tier-3 refusals.
+---
+
 **P4.4u3 — the built-in seeds (roleplay templates + the three mount stores):
 done (2026-07-10).** Two of the three P4.4 named seed deferrals closed so a
 fresh v5 instance matches a fresh v4 instance.
