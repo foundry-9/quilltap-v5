@@ -683,11 +683,31 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // --- Deferred to later P4.6f milestones (loud refusal) ----------
-            Request::CharacterCreate { .. } => super::characters::not_available("create"),
-            Request::CharacterQuickCreate { .. } => {
-                super::characters::not_available("quick-create")
-            }
-            Request::CharacterUpdate { .. } => super::characters::not_available("update"),
+            Request::CharacterCreate { character } => match self.ready_db() {
+                Ok(db) => super::characters::character_create(&db, SINGLE_USER_ID, character).await,
+                Err(r) => r,
+            },
+            Request::CharacterQuickCreate { name } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_quick_create(&db, SINGLE_USER_ID, &name).await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterUpdate {
+                character_id,
+                character,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_update(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        character,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
             Request::CharacterDelete { .. } => super::characters::not_available("delete"),
             Request::CharacterCascadePreview { .. } => {
                 super::characters::not_available("cascade-preview")

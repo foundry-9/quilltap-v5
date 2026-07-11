@@ -5787,6 +5787,38 @@ P4.6f: create/quick-create/update, delete-cascade, wardrobe mutations, tags CRUD
 depiction-guidelines, and the Tier-3 refusals.
 ---
 
+**P4.6f slice 4a — create / quick-create / update (2026-07-10).** The three
+character-mutation handlers (`api::characters::{character_create,
+character_quick_create, character_update}`), composed over the already-proven
+`character_vault::create_character` (vault provisioning) and
+`vault_character_update::update_character` (write overlay). Handler-level
+concerns ported: v4 `createCharacterSchema`'s slim defaults + managed-field bag
+(`controlledBy`→`'llm'`, `npc`→`false`, empty tags/partnerLinks/avatarOverrides,
+`defaultImageId` null; the managed inputs deserialize straight off the body,
+unknown keys ignored); quick-create's fixed `"Character created during chat
+import"` description; update's `findByIdRaw`-first ownership (broken-vault
+characters stay editable), the `updateCharacterSchema` key whitelist (Zod strips
+unknowns) with the empty-string transforms (`defaultConnectionProfileId`/
+`defaultImageProfileId` `""`→omit, `characterDocumentMountPointId` `""`→null).
+Both echoes reload through the overlay (v4 create reloads via `findById`; update
+returns `applyDocumentStoreOverlayOne`), so the echo diff transitively re-proves
+the vault round-trip in composition — every managed field reads back from the
+vault the handler just wrote; the raw storage rows stay byte-proven by the
+standing `characters_create_tier2` / `vault_character_update` tier-2
+differentials (a documented scoping — not re-dumped here). Oracle gotcha: v4's
+`put.ts` calls `revalidatePath('/')` (`next/cache`) which throws outside a Next
+request context — stubbed to a no-op via `jest.doMock(..., {virtual:true})`
+(jest can't resolve `next/cache` from the /tmp mirror otherwise). v4 quirk
+preserved: a managed-only update that replaces the scenarios array does NOT
+clear a now-dangling `defaultScenarioId`. Proven:
+`characters_mutations_equivalence` — 5 cases (create-full/minimal,
+quick-create, update-managed/slim) vs v4's real POST/PUT handlers, echo-diffed
+with minted `id`/`createdAt`/`updatedAt`/`characterDocumentMountPointId`
+blanked. Versions: core 0.0.163, harness 0.0.148. Remaining in P4.6f:
+delete-cascade, wardrobe mutations, tags CRUD + delete fan-out, stats/chats, the
+photo gallery, ST import/export, depiction-guidelines, and the Tier-3 refusals.
+---
+
 **P4.4u3 — the built-in seeds (roleplay templates + the three mount stores):
 done (2026-07-10).** Two of the three P4.4 named seed deferrals closed so a
 fresh v5 instance matches a fresh v4 instance.

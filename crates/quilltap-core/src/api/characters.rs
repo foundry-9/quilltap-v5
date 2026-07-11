@@ -14,12 +14,15 @@
 //! passes `SINGLE_USER_ID`. Ownership (v4 `checkOwnership`) collapses to
 //! NotFound-on-absent for the single-user v5.
 
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
+use crate::db::characters::CharacterCreate;
 use crate::db::runtime::Db;
+use crate::db::vault_character_write::CharacterVaultWriteInput;
 use crate::db::{
-    character_plugin_data, characters_read, doc_mount_documents::DocMountDocumentsRepository, tags,
-    vault_character_arrays, vault_character_update, wardrobe_read, DbError,
+    character_plugin_data, character_vault::create_character, characters_read,
+    doc_mount_documents::DocMountDocumentsRepository, tags, vault_character_arrays,
+    vault_character_update, wardrobe_read, DbError,
 };
 use crate::photos::resolve_character_avatar::resolve_character_avatar;
 use crate::services::character_enrichment;
@@ -625,6 +628,249 @@ pub async fn character_remove_tag(
         Ok(Err(r)) => r,
         Err(e) => internal(e),
     }
+}
+
+// ===========================================================================
+// Create / quick-create / update (v4 post.ts :304/:353, put.ts :86)
+// ===========================================================================
+
+/// A non-empty string field (`""` treated as absent, like v4's `|| null`).
+fn opt_str(body: &Value, key: &str) -> Option<String> {
+    body.get(key)
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+/// Build the slim `CharacterCreate` from a validated create body (v4
+/// `handleCreate`'s hand-mapped `repos.characters.create` call). `controlledBy`
+/// defaults to `'llm'`, `npc` to `false`; the rest of the slim columns take their
+/// create-time defaults (fresh vault ⇒ `defaultImageId` null, empty tags /
+/// partnerLinks / avatarOverrides). Returns BadRequest when `name` is missing.
+fn build_create_slim(user_id: &str, body: &Value) -> Result<CharacterCreate, Response> {
+    let name = match body.get("name").and_then(Value::as_str) {
+        Some(n) if !n.is_empty() => n.to_string(),
+        _ => return Err(bad_request("Name is required")),
+    };
+    let controlled_by = body
+        .get("controlledBy")
+        .and_then(Value::as_str)
+        .filter(|s| *s == "user" || *s == "llm")
+        .unwrap_or("llm")
+        .to_string();
+    let npc = body.get("npc").and_then(Value::as_bool).unwrap_or(false);
+    Ok(CharacterCreate {
+        user_id: user_id.to_string(),
+        name,
+        default_image_id: None,
+        default_connection_profile_id: opt_str(body, "defaultConnectionProfileId"),
+        default_partner_id: None,
+        default_roleplay_template_id: None,
+        default_image_profile_id: None,
+        silly_tavern_data: None,
+        is_favorite: false,
+        npc,
+        controlled_by,
+        default_agent_mode_enabled: None,
+        default_help_tools_enabled: None,
+        default_timestamp_config: None,
+        default_scenario_id: None,
+        default_system_prompt_id: None,
+        // create always provisions a fresh vault; the FK is nulled internally.
+        character_document_mount_point_id: None,
+        can_dress_themselves: None,
+        can_create_outfits: None,
+        system_transparency: None,
+        core_whisper_enabled: None,
+        can_be_carina: None,
+        partner_links: vec![],
+        tags: vec![],
+        avatar_overrides: vec![],
+    })
+}
+
+/// v4 `POST /characters` (`handleCreate`): `createCharacterSchema.parse` → slim
+/// defaults + the managed inputs → `create_character` (which provisions the vault)
+/// → reload through the overlay. Response `{ character }` (201). The managed-field
+/// bag (`title`/`identity`/`description`/`manifesto`/`personality`/`firstMessage`/
+/// `exampleDialogues`/`scenarios`/`systemPrompts`/`physicalDescription`)
+/// deserializes straight off the body (unknown keys ignored; a scenario's
+/// id/timestamps are irrelevant to the title/content vault projection).
+pub async fn character_create(db: &Db, user_id: &str, body: Value) -> Response {
+    let slim = match build_create_slim(user_id, &body) {
+        Ok(s) => s,
+        Err(r) => return r,
+    };
+    let vault: CharacterVaultWriteInput = match serde_json::from_value(body) {
+        Ok(v) => v,
+        Err(e) => return bad_request(format!("Invalid character data: {e}")),
+    };
+    let out = with_both_conns(db, move |main, mount| {
+        let id = create_character(main, mount, &slim, &vault)?;
+        // v4 reloads through the overlay (`findById`) so the echo reflects the
+        // vault-backed state incl. the freshly-set mount-point id.
+        Ok(characters_read::find_by_id(main, mount, &id)?.unwrap_or(Value::Null))
+    })
+    .await;
+    match out {
+        Ok(c) => Response::Character(json!({ "character": c })),
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `POST /characters?action=quick-create` (`handleQuickCreate`): a minimal
+/// character (name only via the contract) with a fixed `description` of
+/// `"Character created during chat import"`, everything else defaulted, `'llm'`
+/// control. Response `{ character }` (201).
+pub async fn character_quick_create(db: &Db, user_id: &str, name: &str) -> Response {
+    if name.is_empty() {
+        return bad_request("Name is required");
+    }
+    let slim = CharacterCreate {
+        user_id: user_id.to_string(),
+        name: name.to_string(),
+        default_image_id: None,
+        default_connection_profile_id: None,
+        default_partner_id: None,
+        default_roleplay_template_id: None,
+        default_image_profile_id: None,
+        silly_tavern_data: None,
+        is_favorite: false,
+        npc: false,
+        controlled_by: "llm".to_string(),
+        default_agent_mode_enabled: None,
+        default_help_tools_enabled: None,
+        default_timestamp_config: None,
+        default_scenario_id: None,
+        default_system_prompt_id: None,
+        character_document_mount_point_id: None,
+        can_dress_themselves: None,
+        can_create_outfits: None,
+        system_transparency: None,
+        core_whisper_enabled: None,
+        can_be_carina: None,
+        partner_links: vec![],
+        tags: vec![],
+        avatar_overrides: vec![],
+    };
+    // v4 passes `description: 'Character created during chat import'`; the rest of
+    // the managed fields are their empty defaults.
+    let vault = CharacterVaultWriteInput {
+        description: Some("Character created during chat import".to_string()),
+        ..Default::default()
+    };
+    let out = with_both_conns(db, move |main, mount| {
+        let id = create_character(main, mount, &slim, &vault)?;
+        Ok(characters_read::find_by_id(main, mount, &id)?.unwrap_or(Value::Null))
+    })
+    .await;
+    match out {
+        Ok(c) => Response::Character(json!({ "character": c })),
+        Err(e) => internal(e),
+    }
+}
+
+/// The `updateCharacterSchema` keys (v4 `put.ts`). Zod `.parse` strips unknown
+/// keys, so the patch is whitelisted to exactly these; the vault write-overlay
+/// routes the managed ones (`title`/`identity`/… + `scenarios`/`systemPrompts`/
+/// `physicalDescription`) and the slim `_update` takes the rest.
+const UPDATE_SCHEMA_KEYS: &[&str] = &[
+    "name",
+    "title",
+    "identity",
+    "description",
+    "manifesto",
+    "personality",
+    "scenarios",
+    "firstMessage",
+    "exampleDialogues",
+    "talkativeness",
+    "defaultConnectionProfileId",
+    "defaultImageProfileId",
+    "aliases",
+    "pronouns",
+    "controlledBy",
+    "npc",
+    "defaultAgentModeEnabled",
+    "defaultHelpToolsEnabled",
+    "defaultTimestampConfig",
+    "defaultScenarioId",
+    "defaultSystemPromptId",
+    "characterDocumentMountPointId",
+    "systemTransparency",
+    "coreWhisperEnabled",
+    "canBeCarina",
+    "physicalDescription",
+];
+
+/// v4 `PUT /characters/[id]` (`handlePut` default branch). `findByIdRaw` first
+/// (a broken-vault character stays editable and thereby self-repairs), then the
+/// whitelisted patch (with v4's empty-string transforms) routes through
+/// `update_character` (managed → vault, remainder → slim `_update`). Response
+/// `{ character }` = the reloaded overlay (v4 `applyDocumentStoreOverlayOne` of the
+/// merged slim; after the write a re-read is byte-equal once minted ids /
+/// timestamps normalize).
+pub async fn character_update(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    body: Value,
+) -> Response {
+    let cid = character_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        // Existence/ownership on the RAW row (broken-vault chars stay editable).
+        if characters_read::find_by_id_raw(main, &cid)?.is_none() {
+            return Ok(Err(not_found("Character")));
+        }
+        let patch = build_update_patch(&body);
+        vault_character_update::update_character(main, mount, &cid, &patch)?;
+        // Reload through the overlay (managed fields read back from the vault).
+        Ok(Ok(
+            characters_read::find_by_id(main, mount, &cid)?.unwrap_or(Value::Null)
+        ))
+    })
+    .await;
+    match out {
+        Ok(Ok(c)) => Response::Character(json!({ "character": c })),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// Build the slim+managed patch from an update body: keep only
+/// [`UPDATE_SCHEMA_KEYS`] (Zod strip-unknown) and apply v4's empty-string
+/// transforms (`defaultConnectionProfileId`/`defaultImageProfileId` `""` → omit;
+/// `characterDocumentMountPointId` `""` → `null`).
+fn build_update_patch(body: &Value) -> Map<String, Value> {
+    let mut patch = Map::new();
+    let Some(obj) = body.as_object() else {
+        return patch;
+    };
+    for key in UPDATE_SCHEMA_KEYS {
+        let Some(v) = obj.get(*key) else { continue };
+        match *key {
+            // `.or(z.literal('').transform(() => undefined))` — drop empty string.
+            "defaultConnectionProfileId" | "defaultImageProfileId" => {
+                if v.as_str() == Some("") {
+                    continue;
+                }
+                patch.insert((*key).to_string(), v.clone());
+            }
+            // `.or(z.literal('').transform(() => null))` — empty string → null.
+            "characterDocumentMountPointId" => {
+                let val = if v.as_str() == Some("") {
+                    Value::Null
+                } else {
+                    v.clone()
+                };
+                patch.insert((*key).to_string(), val);
+            }
+            _ => {
+                patch.insert((*key).to_string(), v.clone());
+            }
+        }
+    }
+    patch
 }
 
 // ===========================================================================

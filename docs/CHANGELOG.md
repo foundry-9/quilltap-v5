@@ -4,6 +4,24 @@
 
 ### 5.0-dev
 
+P4.6f (Characters server, lane A) slice 4a: the create / quick-create / update
+handlers. `characterCreate` runs v4's `createCharacterSchema` shaping (slim
+defaults, `controlledBy`→`'llm'`, `npc`→`false`, the managed-field bag off the
+body) into the ported `create_character` (vault provisioning) then reloads
+through the overlay; `characterQuickCreate` is the minimal name-only variant
+with the fixed `"Character created during chat import"` description;
+`characterUpdate` does `findByIdRaw` first (broken-vault characters stay
+editable), whitelists the patch to the `updateCharacterSchema` keys with v4's
+empty-string transforms, routes managed fields to the vault and the remainder
+to the slim `_update`, and re-reads the overlay for the echo. The three arms
+replace their `not_available` refusals. New `characters_mutations` differential
+(oracle drives v4's real POST/PUT handlers; five cases — create-full,
+create-minimal, quick-create, update-managed, update-slim — echo-diffed with
+minted ids/timestamps blanked); the echo is a full overlay re-read, so it
+transitively proves the vault round-trip in composition (the raw storage rows
+stay proven by the standing create-tier2 / vault-update-tier2 differentials).
+Versions: core 0.0.163, harness 0.0.148.
+
 Docs: the P4.6f work order (`docs/developer/porting/work-orders/
 p4.6f-characters-server.md`) now carries a status header marking slices 1–3
 LANDED (unification `b29f2bb`) and enumerating the open slice-4 remainder, so

@@ -1,0 +1,302 @@
+//! P4.6f (slice 4) characters MUTATIONS differential: the create / quick-create /
+//! update handlers (`api::characters::{character_create, character_quick_create,
+//! character_update}`) vs v4's REAL `characters/handlers/post.ts` (create /
+//! quick-create) + `characters/[id]/handlers/put.ts` (update). Each case runs on a
+//! FRESH copy of the committed characters fixture; the response ECHO (a full
+//! overlay re-read of the freshly-written vault) is diffed byte-exact.
+//!
+//! The echo diff transitively proves the vault round-trip in composition (every
+//! managed field is read back through the overlay the handler just wrote); the raw
+//! storage rows are already byte-proven by the standing `characters_create_tier2`
+//! and `vault_character_update` tier-2 differentials, so they are not re-dumped.
+//!
+//! Minted ids + timestamps (the created character id, its mount-point FK, and the
+//! per-array scenario/prompt/physical ids/timestamps) are blanked on both sides
+//! (keys `id`/`createdAt`/`updatedAt`/`characterDocumentMountPointId`).
+//!
+//! The case INPUTS below MUST stay identical to `characters-mutations.test.ts`.
+//!
+//! Generate the oracle (Node 24, from the v4 checkout — see the .ts header):
+//!   … QT_ORACLE_OUT=/tmp/oracle-characters-mutations.ndjson npx jest -- characters-mutations
+//! Run:
+//!   QT_ORACLE_CHARACTERS_MUTATIONS=/tmp/oracle-characters-mutations.ndjson \
+//!     cargo test -p quilltap-harness --test characters_mutations_equivalence
+
+use std::collections::HashMap;
+use std::path::PathBuf;
+
+use quilltap_core::api::characters;
+use quilltap_core::api::types::Response;
+use quilltap_core::db::runtime::{Db, DbPaths};
+use serde::Deserialize;
+use serde_json::{json, Value};
+
+const ARIA: &str = "a1000000-0000-4000-8000-000000000001";
+const CONN: &str = "c0000001-0000-4000-8000-000000000001";
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Spec {
+    test_pepper_base64: String,
+    user_id: String,
+}
+
+fn spec_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../harness/oracle/fixtures/characters.json")
+}
+fn fixtures_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../quilltap-web/tests/fixtures")
+}
+fn env_or_skip(key: &str) -> Option<String> {
+    match std::env::var(key) {
+        Ok(v) => Some(v),
+        Err(_) => {
+            eprintln!("SKIP: set {key} (see test header).");
+            None
+        }
+    }
+}
+
+fn canon_numbers(v: &mut Value) {
+    match v {
+        Value::Number(n) => {
+            if let Some(f) = n.as_f64() {
+                if f.is_finite() && f.fract() == 0.0 && f.abs() < 9.007_199_254_740_992e15 {
+                    *v = Value::Number((f as i64).into());
+                }
+            }
+        }
+        Value::Array(a) => a.iter_mut().for_each(canon_numbers),
+        Value::Object(o) => o.iter_mut().for_each(|(_, x)| canon_numbers(x)),
+        _ => {}
+    }
+}
+fn sorted(v: &Value) -> Value {
+    match v {
+        Value::Array(a) => Value::Array(a.iter().map(sorted).collect()),
+        Value::Object(o) => {
+            let mut keys: Vec<&String> = o.keys().collect();
+            keys.sort();
+            let mut m = serde_json::Map::new();
+            for k in keys {
+                m.insert(k.clone(), sorted(&o[k]));
+            }
+            Value::Object(m)
+        }
+        _ => v.clone(),
+    }
+}
+/// Recursively blank the minted keys (id + timestamps + the vault mount FK) so the
+/// per-op-minted values don't defeat the echo diff. Every OTHER field is compared.
+fn blank_minted(v: &mut Value) {
+    match v {
+        Value::Object(o) => {
+            for k in [
+                "id",
+                "createdAt",
+                "updatedAt",
+                "characterDocumentMountPointId",
+            ] {
+                if o.contains_key(k) {
+                    o.insert(k.to_string(), Value::String(format!("<{k}>")));
+                }
+            }
+            o.iter_mut().for_each(|(_, x)| blank_minted(x));
+        }
+        Value::Array(a) => a.iter_mut().for_each(blank_minted),
+        _ => {}
+    }
+}
+fn norm(v: &Value) -> String {
+    let mut v = v.clone();
+    canon_numbers(&mut v);
+    blank_minted(&mut v);
+    serde_json::to_string_pretty(&sorted(&v)).unwrap()
+}
+fn first_diff(got: &str, want: &str) -> String {
+    let g: Vec<&str> = got.lines().collect();
+    let w: Vec<&str> = want.lines().collect();
+    for i in 0..g.len().max(w.len()) {
+        let gi = g.get(i).copied().unwrap_or("<none>");
+        let wi = w.get(i).copied().unwrap_or("<none>");
+        if gi != wi {
+            let mut ctx = String::new();
+            for j in i.saturating_sub(3)..i {
+                ctx.push_str(&format!("   = {}\n", g.get(j).copied().unwrap_or("")));
+            }
+            ctx.push_str(&format!("  GOT : {gi}\n  WANT: {wi}\n"));
+            return ctx;
+        }
+    }
+    "(identical line-by-line)".to_string()
+}
+fn response_data(r: &Response) -> Value {
+    let v = serde_json::to_value(r).unwrap();
+    v.get("data").cloned().unwrap_or(Value::Null)
+}
+
+fn fresh_db(spec: &Spec, tag: &str) -> Db {
+    let scratch = std::env::temp_dir().join(format!("qt-char-mut-{}-{}", tag, std::process::id()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let main = scratch.join("main.db");
+    let mount = scratch.join("mount.db");
+    std::fs::copy(fixtures_dir().join("characters-main.db"), &main).unwrap();
+    std::fs::copy(fixtures_dir().join("characters-mount.db"), &mount).unwrap();
+    Db::open(
+        DbPaths {
+            main,
+            mount_index: Some(mount),
+            llm_logs: None,
+        },
+        &spec.test_pepper_base64,
+    )
+    .expect("open db")
+}
+
+/// The case input bodies — kept identical to `characters-mutations.test.ts`.
+fn create_full_body() -> Value {
+    json!({
+        "name": "Fenwick",
+        "title": "The Cartographer",
+        "identity": "A wandering mapmaker.",
+        "description": "Ink-stained and curious.",
+        "manifesto": "Every coast deserves a name.",
+        "personality": "Meticulous, wry.",
+        "firstMessage": "Ah — a fellow traveller.",
+        "exampleDialogues": "User: Where to?\nFenwick: North, always north.",
+        "controlledBy": "llm",
+        "npc": false,
+        "defaultConnectionProfileId": CONN,
+        "scenarios": [
+            { "title": "The Harbor", "content": "Fog rolls over the docks." },
+            { "title": "The Summit", "content": "The last ridge before the map ends." }
+        ],
+        "systemPrompts": [
+            {
+                "id": "d0000001-0000-4000-8000-000000000001",
+                "name": "Terse",
+                "content": "Answer in few words.",
+                "isDefault": true,
+                "createdAt": "2020-01-01T00:00:00.000Z",
+                "updatedAt": "2020-01-01T00:00:00.000Z"
+            }
+        ],
+        "physicalDescription": {
+            "id": "e0000001-0000-4000-8000-000000000001",
+            "name": "Fenwick body",
+            "shortPrompt": "weathered coat",
+            "mediumPrompt": "a weathered coat and a brass spyglass",
+            "fullDescription": "Tall, lean, ink on the fingers.",
+            "createdAt": "2020-01-01T00:00:00.000Z",
+            "updatedAt": "2020-01-01T00:00:00.000Z"
+        }
+    })
+}
+fn update_managed_body() -> Value {
+    json!({
+        "title": "Renamed Title",
+        "identity": "A rewritten identity.",
+        "description": "A rewritten description.",
+        "personality": "Newly bold.",
+        "firstMessage": "A fresh greeting.",
+        "scenarios": [{ "title": "Only Scenario", "content": "The reprojected scene." }],
+        "physicalDescription": {
+            "name": "Aria body v2",
+            "shortPrompt": "silver cloak",
+            "longPrompt": "a flowing silver cloak with embroidered stars"
+        }
+    })
+}
+fn update_slim_body() -> Value {
+    json!({
+        "name": "Aria Reforged",
+        "controlledBy": "user",
+        "npc": true,
+        "canBeCarina": false
+    })
+}
+
+#[test]
+fn characters_mutations_match_oracle() {
+    let Some(oracle_path) = env_or_skip("QT_ORACLE_CHARACTERS_MUTATIONS") else {
+        return;
+    };
+    let spec: Spec =
+        serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).expect("spec");
+    let mut oracle: HashMap<String, Value> = HashMap::new();
+    for line in std::fs::read_to_string(&oracle_path)
+        .unwrap()
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+    {
+        let v: Value = serde_json::from_str(line).unwrap();
+        oracle.insert(v["name"].as_str().unwrap().to_string(), v);
+    }
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let uid = spec.user_id.clone();
+    let mut failed: Vec<String> = Vec::new();
+
+    let mut run = |name: &str, resp: Response| {
+        let want = &oracle[name];
+        if let Response::Error(e) = &resp {
+            eprintln!("[{name}] expected success, got error: {}", e.message);
+            failed.push(name.to_string());
+            return;
+        }
+        let got = norm(&response_data(&resp));
+        let wnt = norm(&want["body"]);
+        if got != wnt {
+            eprintln!("[{name}] MISMATCH:\n{}", first_diff(&got, &wnt));
+            failed.push(name.to_string());
+        } else {
+            eprintln!("[{name}] OK.");
+        }
+    };
+
+    {
+        let db = fresh_db(&spec, "create_full");
+        let r = rt.block_on(characters::character_create(&db, &uid, create_full_body()));
+        run("create_full", r);
+    }
+    {
+        let db = fresh_db(&spec, "create_min");
+        let r = rt.block_on(characters::character_create(
+            &db,
+            &uid,
+            json!({ "name": "Mimsy" }),
+        ));
+        run("create_minimal", r);
+    }
+    {
+        let db = fresh_db(&spec, "quick");
+        let r = rt.block_on(characters::character_quick_create(&db, &uid, "Quill"));
+        run("quick_create", r);
+    }
+    {
+        let db = fresh_db(&spec, "upd_mgd");
+        let r = rt.block_on(characters::character_update(
+            &db,
+            &uid,
+            ARIA,
+            update_managed_body(),
+        ));
+        run("update_managed", r);
+    }
+    {
+        let db = fresh_db(&spec, "upd_slim");
+        let r = rt.block_on(characters::character_update(
+            &db,
+            &uid,
+            ARIA,
+            update_slim_body(),
+        ));
+        run("update_slim", r);
+    }
+
+    assert!(failed.is_empty(), "characters-mutations FAILED: {failed:?}");
+}
