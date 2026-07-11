@@ -6528,3 +6528,30 @@ Still OPEN under lane A: projects units (2), scenarios + union (3), project
 wardrobe (4), list-files/background/aesthetic (5). Their variants answer the
 loud `not_available` refusal until landed. Versions: core 0.0.173, harness
 0.0.158.
+
+## P4.6k (lane A) unit 2 — Projects server surface (2026-07-11, in progress)
+
+Projects CRUD + roster + chats + state + tool-settings + mount-points, all
+differential-proven vs v4's REAL route handlers (`projects/route.ts`,
+`[id]/actions/{project-crud,roster,chats,state,tools}.ts`, `mount-points/route.ts`)
+via `projects_routes_equivalence` (21 cases). Faithful ports of the quirks:
+O(n²) list `_count` (chats.findAll+files.findAll per project), the enriched
+roster detail (`{id, name, [defaultImageId], defaultImage, tags, chatCount}` —
+defaultImageId OMITTED when the character's is undefined, matching JS
+stringify), list-chats pagination + `lastMessageAt ?? updatedAt` sort fallback,
+delete nulling chats/files projectId but NOT touching `projectDocMountLinks`,
+hand-rolled roster (idempotent add / always-write remove), state
+get(`{success,state}`)/set(`{success,state}`)/reset(`{success,previousState}`),
+tool-settings, mount link/unlink.
+
+Gotchas banked:
+- **null-vs-absent seam at create:** v4's route injects `color/icon: x || null`;
+  v5's `ProjectProperties` folds null→absent (a documented repo-layer open-JSON
+  seam). The create differential passes `icon` explicitly to avoid it; a create
+  omitting color/icon diverges (v4 stores null, v5 omits) — carried from Phase 2.
+- Update/create/mount-link mint a fresh `updatedAt`/link id → blank those keys;
+  all other ids are baked → no remap.
+- Repo additions: `project_doc_mount_links::{unlink, link_returning}`.
+
+Still OPEN under lane A: scenarios + union (3), project wardrobe (4),
+list-files/background/aesthetic (5). Versions: core 0.0.174, harness 0.0.159.

@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.6k (lane A) unit 2 — the Projects server surface at the core boundary.
+Landed the projects CRUD (list with the faithful O(n²) `_count`, create
+with default injection, get with enriched roster + `_count`, update,
+delete that nulls chats/files `projectId` but leaves `projectDocMountLinks`
+dangling), roster (hand-rolled add/remove per v4's route quirk, list),
+chats (paginated list with the `lastMessageAt ?? updatedAt` sort fallback
++ enriched participants/tags/storyBackground, add/remove), state
+(get/set/reset), tool-settings, and mount-points (list/link/unlink) — all
+differential ports proven by `projects_routes_equivalence` (21 cases,
+reads + mutations with table dumps). Added `project_doc_mount_links::
+{unlink,link_returning}`. list-files/background/aesthetic/scenarios/
+wardrobe still answer the loud `not_available` refusal until their units.
+
 P4.6k (lane A) unit 1 — the Groups server surface at the core boundary.
 New `api::groups` dispatch module + the pinned Groups/Projects `Request`
 variants (the full Shared contract) + engine dispatch arms. Landed groups

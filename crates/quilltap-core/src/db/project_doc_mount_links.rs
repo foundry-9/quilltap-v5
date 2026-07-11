@@ -198,4 +198,42 @@ impl<'c> ProjectDocMountLinksRepository<'c> {
             },
         )
     }
+
+    /// v4 `unlink(projectId, mountPointId)` — `deleteMany({projectId,mountPointId})`.
+    /// Returns whether any link row was removed (the mount-points DELETE route
+    /// 400s when nothing matched).
+    pub fn unlink(&self, project_id: &str, mount_point_id: &str) -> Result<bool, DbError> {
+        let affected = self.conn.execute(
+            "DELETE FROM project_doc_mount_links WHERE projectId = ?1 AND mountPointId = ?2",
+            params![project_id, mount_point_id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    /// v4 `link(...)` returns the full link row; the mount-points POST route echoes
+    /// it as `{ link, mountPoint }`. Find-or-create the `(projectId, mountPointId)`
+    /// link and return its row as JSON.
+    pub fn link_returning(
+        &self,
+        project_id: &str,
+        mount_point_id: &str,
+    ) -> Result<serde_json::Value, DbError> {
+        self.link(project_id, mount_point_id)?;
+        self.conn
+            .query_row(
+                "SELECT id, projectId, mountPointId, createdAt, updatedAt \
+                 FROM project_doc_mount_links WHERE projectId = ?1 AND mountPointId = ?2",
+                params![project_id, mount_point_id],
+                |row| {
+                    Ok(serde_json::json!({
+                        "id": row.get::<_, String>(0)?,
+                        "projectId": row.get::<_, String>(1)?,
+                        "mountPointId": row.get::<_, String>(2)?,
+                        "createdAt": row.get::<_, String>(3)?,
+                        "updatedAt": row.get::<_, String>(4)?,
+                    }))
+                },
+            )
+            .map_err(DbError::from)
+    }
 }

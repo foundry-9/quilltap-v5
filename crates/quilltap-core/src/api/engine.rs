@@ -1225,45 +1225,134 @@ impl CoreEngine {
             Request::GroupScenarioDelete { .. } => super::groups::not_available("scenario-delete"),
             Request::GroupScenariosUnion { .. } => super::groups::not_available("scenarios-union"),
 
-            // --- Projects family (P4.6k Unit 2+ — loud refusal until landed) -
-            Request::ProjectList => super::projects::not_available("list"),
-            Request::ProjectCreate { .. } => super::projects::not_available("create"),
-            Request::ProjectGet { .. } => super::projects::not_available("get"),
-            Request::ProjectUpdate { .. } => super::projects::not_available("update"),
-            Request::ProjectDelete { .. } => super::projects::not_available("delete"),
-            Request::ProjectCharacterList { .. } => {
-                super::projects::not_available("list-characters")
-            }
-            Request::ProjectCharacterAdd { .. } => super::projects::not_available("add-character"),
-            Request::ProjectCharacterRemove { .. } => {
-                super::projects::not_available("remove-character")
-            }
-            Request::ProjectChatList { .. } => super::projects::not_available("list-chats"),
-            Request::ProjectChatAdd { .. } => super::projects::not_available("add-chat"),
-            Request::ProjectChatRemove { .. } => super::projects::not_available("remove-chat"),
+            // --- Projects family (P4.6k) ------------------------------------
+            Request::ProjectList => match self.ready_db() {
+                Ok(db) => super::projects::project_list(&db),
+                Err(r) => r,
+            },
+            Request::ProjectCreate { project } => match self.ready_db() {
+                Ok(db) => super::projects::project_create(&db, project).await,
+                Err(r) => r,
+            },
+            Request::ProjectGet { project_id } => match self.ready_db() {
+                Ok(db) => super::projects::project_get(&db, &project_id),
+                Err(r) => r,
+            },
+            Request::ProjectUpdate {
+                project_id,
+                project,
+            } => match self.ready_db() {
+                Ok(db) => super::projects::project_update(&db, &project_id, project).await,
+                Err(r) => r,
+            },
+            Request::ProjectDelete { project_id } => match self.ready_db() {
+                Ok(db) => super::projects::project_delete(&db, &project_id).await,
+                Err(r) => r,
+            },
+            Request::ProjectCharacterList { project_id } => match self.ready_db() {
+                Ok(db) => super::projects::project_character_list(&db, &project_id),
+                Err(r) => r,
+            },
+            Request::ProjectCharacterAdd {
+                project_id,
+                character_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::projects::project_character_add(&db, &project_id, &character_id).await
+                }
+                Err(r) => r,
+            },
+            Request::ProjectCharacterRemove {
+                project_id,
+                character_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::projects::project_character_remove(&db, &project_id, &character_id).await
+                }
+                Err(r) => r,
+            },
+            Request::ProjectChatList {
+                project_id,
+                limit,
+                offset,
+            } => match self.ready_db() {
+                Ok(db) => super::projects::project_chat_list(&db, &project_id, limit, offset),
+                Err(r) => r,
+            },
+            Request::ProjectChatAdd {
+                project_id,
+                chat_id,
+            } => match self.ready_db() {
+                Ok(db) => super::projects::project_chat_add(&db, &project_id, &chat_id).await,
+                Err(r) => r,
+            },
+            Request::ProjectChatRemove {
+                project_id,
+                chat_id,
+            } => match self.ready_db() {
+                Ok(db) => super::projects::project_chat_remove(&db, &project_id, &chat_id).await,
+                Err(r) => r,
+            },
             Request::ProjectFileList { .. } => super::projects::not_available("list-files"),
             Request::ProjectFileAdd { .. } => super::projects::not_available("add-file"),
             Request::ProjectFileRemove { .. } => super::projects::not_available("remove-file"),
-            Request::ProjectStateGet { .. } => super::projects::not_available("get-state"),
-            Request::ProjectStateSet { .. } => super::projects::not_available("set-state"),
-            Request::ProjectStateReset { .. } => super::projects::not_available("reset-state"),
+            Request::ProjectStateGet { project_id } => match self.ready_db() {
+                Ok(db) => super::projects::project_state_get(&db, &project_id),
+                Err(r) => r,
+            },
+            Request::ProjectStateSet { project_id, state } => match self.ready_db() {
+                Ok(db) => super::projects::project_state_set(&db, &project_id, state).await,
+                Err(r) => r,
+            },
+            Request::ProjectStateReset { project_id } => match self.ready_db() {
+                Ok(db) => super::projects::project_state_reset(&db, &project_id).await,
+                Err(r) => r,
+            },
             Request::ProjectBackgroundGet { .. } => {
                 super::projects::not_available("get-background")
             }
             Request::ProjectAestheticGet { .. } => super::projects::not_available("aesthetic-get"),
             Request::ProjectAestheticSet { .. } => super::projects::not_available("aesthetic-set"),
-            Request::ProjectToolSettingsUpdate { .. } => {
-                super::projects::not_available("update-tool-settings")
-            }
-            Request::ProjectMountPointList { .. } => {
-                super::projects::not_available("mount-point-list")
-            }
-            Request::ProjectMountPointLink { .. } => {
-                super::projects::not_available("mount-point-link")
-            }
-            Request::ProjectMountPointUnlink { .. } => {
-                super::projects::not_available("mount-point-unlink")
-            }
+            Request::ProjectToolSettingsUpdate {
+                project_id,
+                default_disabled_tools,
+                default_disabled_tool_groups,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::projects::project_tool_settings_update(
+                        &db,
+                        &project_id,
+                        default_disabled_tools,
+                        default_disabled_tool_groups,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ProjectMountPointList { project_id } => match self.ready_db() {
+                Ok(db) => super::projects::project_mount_point_list(&db, &project_id),
+                Err(r) => r,
+            },
+            Request::ProjectMountPointLink {
+                project_id,
+                mount_point_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::projects::project_mount_point_link(&db, &project_id, &mount_point_id)
+                        .await
+                }
+                Err(r) => r,
+            },
+            Request::ProjectMountPointUnlink {
+                project_id,
+                mount_point_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::projects::project_mount_point_unlink(&db, &project_id, &mount_point_id)
+                        .await
+                }
+                Err(r) => r,
+            },
             Request::ProjectScenarioList { .. } => super::projects::not_available("scenario-list"),
             Request::ProjectScenarioCreate { .. } => {
                 super::projects::not_available("scenario-create")
