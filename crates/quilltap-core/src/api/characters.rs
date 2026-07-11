@@ -419,6 +419,264 @@ pub fn character_stats(db: &Db, _user_id: &str, character_id: &str) -> Response 
     }
 }
 
+/// v4 `?action=chats` (`characters/[id]/handlers/get.ts` `chats`) — the enriched
+/// recent-chats DTO. Ownership (overlaid `findById`) → `chats.findByCharacterId`
+/// → filter to the caller's `userId` → per-chat `getMessages` + `lastMessageAt`
+/// (the max `type==='message'` createdAt, round-tripped through
+/// `new Date(...).toISOString()`; else `chat.updatedAt`) → **stable** desc sort
+/// by `lastMessageAt` → optional case-insensitive `search` over title + message
+/// content → `slice(offset, offset+limit)` (defaults limit 10 / offset 0) → per
+/// chat enrich (project map / tags / `_count` / scriptorium status / 3 most-recent
+/// messages / story background / `isDangerousChat`). Body:
+/// `{ chats, total: filteredChats.length }`.
+pub fn character_chats(
+    db: &Db,
+    user_id: &str,
+    character_id: &str,
+    search: Option<&str>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Response {
+    use crate::clock::{iso_from_unix_ms, iso_to_ms};
+    use crate::db::conversation_chunks::ConversationChunksRepository;
+    use crate::db::files::FilesRepository;
+    use crate::db::projects::ProjectsRepository;
+    use std::collections::HashMap;
+
+    let cid = character_id.to_string();
+    let user_id = user_id.to_string();
+    // v4: `searchParams.get('search')?.toLowerCase() || ''`, then `if (search)`.
+    let search = search.map(str::to_lowercase).filter(|s| !s.is_empty());
+    let limit = limit.unwrap_or(10);
+    let offset = offset.unwrap_or(0);
+
+    let result = read_main_mount(db, move |main, mount| {
+        // Ownership gate (overlaid read → 503 on a broken vault, matching v4).
+        let character = match require_character(main, mount, &cid) {
+            Ok(c) => c,
+            Err(r) => return Ok(Err(r)),
+        };
+        let char_id = character.get("id").and_then(Value::as_str).unwrap_or(&cid);
+        let char_name = character.get("name").cloned().unwrap_or(Value::Null);
+
+        // chats.findByCharacterId → filter to this user.
+        let all_chats = crate::db::chats_read::find_by_character_id(main, &cid)?;
+        let mut with_messages: Vec<(Value, Vec<Value>, String)> = Vec::new();
+        for chat in all_chats {
+            if chat.get("userId").and_then(Value::as_str) != Some(user_id.as_str()) {
+                continue;
+            }
+            let chat_id = chat
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let messages = crate::db::chats_messages_read::get_messages(main, &chat_id)?;
+            // lastMessageAt = max(type==='message' createdAt) round-tripped through
+            // JS `new Date(ms).toISOString()`, else chat.updatedAt (raw).
+            let max_ms = messages
+                .iter()
+                .filter(|m| m.get("type").and_then(Value::as_str) == Some("message"))
+                .filter_map(|m| m.get("createdAt").and_then(Value::as_str))
+                .filter_map(iso_to_ms)
+                .max();
+            let last_message_at = match max_ms {
+                Some(ms) => iso_from_unix_ms(ms),
+                None => chat
+                    .get("updatedAt")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+            };
+            with_messages.push((chat, messages, last_message_at));
+        }
+
+        // Stable desc sort by lastMessageAt (v4 `new Date(b) - new Date(a)`).
+        with_messages.sort_by(|a, b| {
+            let ta = iso_to_ms(&a.2).unwrap_or(0);
+            let tb = iso_to_ms(&b.2).unwrap_or(0);
+            tb.cmp(&ta)
+        });
+
+        // Optional search over title + message content (both already lowercased).
+        let filtered: Vec<&(Value, Vec<Value>, String)> = match &search {
+            None => with_messages.iter().collect(),
+            Some(q) => with_messages
+                .iter()
+                .filter(|(chat, messages, _)| {
+                    let title_hit = chat
+                        .get("title")
+                        .and_then(Value::as_str)
+                        .map(|t| t.to_lowercase().contains(q))
+                        .unwrap_or(false);
+                    if title_hit {
+                        return true;
+                    }
+                    messages.iter().any(|m| {
+                        m.get("type").and_then(Value::as_str) == Some("message")
+                            && m.get("content")
+                                .and_then(Value::as_str)
+                                .map(|c| c.to_lowercase().contains(q))
+                                .unwrap_or(false)
+                    })
+                })
+                .collect(),
+        };
+        let total = filtered.len();
+
+        // slice(offset, offset+limit) — clamp to JS-Array.slice semantics.
+        let start = offset.max(0) as usize;
+        let page: Vec<&(Value, Vec<Value>, String)> = if start >= filtered.len() || limit <= 0 {
+            Vec::new()
+        } else {
+            let end = start.saturating_add(limit as usize).min(filtered.len());
+            filtered[start..end].to_vec()
+        };
+
+        // Project map for the page (v4 dedups projectIds → findById each).
+        let projects = ProjectsRepository::new(main, mount);
+        let mut project_map: HashMap<String, Value> = HashMap::new();
+        for (chat, _, _) in &page {
+            if let Some(pid) = chat.get("projectId").and_then(Value::as_str) {
+                if !project_map.contains_key(pid) {
+                    if let Ok(Some(p)) = projects.find_by_id(pid) {
+                        let id = p.get("id").cloned().unwrap_or(Value::Null);
+                        let name = p.get("name").cloned().unwrap_or(Value::Null);
+                        project_map.insert(pid.to_string(), json!({ "id": id, "name": name }));
+                    }
+                }
+            }
+        }
+
+        let chunks_repo = ConversationChunksRepository::new(main);
+        let files_repo = FilesRepository::new(main);
+        let mut enriched: Vec<Value> = Vec::with_capacity(page.len());
+        for (chat, messages, last_message_at) in &page {
+            let chat_id = chat.get("id").and_then(Value::as_str).unwrap_or("");
+
+            // Tags → `{ tag: { id, name } }`, input order, dropping missing.
+            let tag_ids: Vec<String> = chat
+                .get("tags")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let tag_rows = tags::find_by_ids(main, &tag_ids)?;
+            let tag_data: Vec<Value> = tag_rows
+                .into_iter()
+                .map(|t| json!({ "tag": { "id": t.id, "name": t.name } }))
+                .collect();
+
+            // messageCount = type==='message' && role NOT SYSTEM/TOOL.
+            let message_count = messages
+                .iter()
+                .filter(|m| {
+                    m.get("type").and_then(Value::as_str) == Some("message")
+                        && !matches!(
+                            m.get("role").and_then(Value::as_str),
+                            Some("SYSTEM") | Some("TOOL")
+                        )
+                })
+                .count() as i64;
+            let memory_count = crate::db::memories_read::count_by_chat_id(main, chat_id)?;
+
+            // Scriptorium status from renderedMarkdown + chunk embedding coverage.
+            let has_rendered = chat
+                .get("renderedMarkdown")
+                .map(|v| !v.is_null())
+                .unwrap_or(false);
+            let (total_chunks, embedded_chunks) = if has_rendered {
+                chunks_repo.count_stats_by_chat_id(chat_id)?
+            } else {
+                (0, 0)
+            };
+            let scriptorium_status = if has_rendered {
+                if embedded_chunks >= total_chunks && total_chunks > 0 {
+                    "embedded"
+                } else {
+                    "rendered"
+                }
+            } else {
+                "none"
+            };
+
+            // 3 most-recent type==='message' messages (stable desc by createdAt).
+            let mut msg_refs: Vec<&Value> = messages
+                .iter()
+                .filter(|m| m.get("type").and_then(Value::as_str) == Some("message"))
+                .collect();
+            msg_refs.sort_by(|a, b| {
+                let ta = a
+                    .get("createdAt")
+                    .and_then(Value::as_str)
+                    .and_then(iso_to_ms)
+                    .unwrap_or(0);
+                let tb = b
+                    .get("createdAt")
+                    .and_then(Value::as_str)
+                    .and_then(iso_to_ms)
+                    .unwrap_or(0);
+                tb.cmp(&ta)
+            });
+            let recent_messages: Vec<Value> = msg_refs
+                .iter()
+                .take(3)
+                .map(|m| {
+                    json!({
+                        "id": m.get("id").cloned().unwrap_or(Value::Null),
+                        "role": m.get("role").cloned().unwrap_or(Value::Null),
+                        "content": m.get("content").cloned().unwrap_or(Value::Null),
+                        "createdAt": m.get("createdAt").cloned().unwrap_or(Value::Null),
+                    })
+                })
+                .collect();
+
+            let project = chat
+                .get("projectId")
+                .and_then(Value::as_str)
+                .and_then(|pid| project_map.get(pid).cloned())
+                .unwrap_or(Value::Null);
+
+            let story_background = match chat.get("storyBackgroundImageId").and_then(Value::as_str)
+            {
+                Some(bg_id) if !bg_id.is_empty() => match files_repo.find_by_id(bg_id)? {
+                    Some(f) => json!({ "id": f.id, "filepath": format!("/api/v1/files/{}", f.id) }),
+                    None => Value::Null,
+                },
+                _ => Value::Null,
+            };
+
+            let is_dangerous = chat.get("isDangerousChat").and_then(Value::as_bool) == Some(true);
+
+            enriched.push(json!({
+                "id": chat.get("id").cloned().unwrap_or(Value::Null),
+                "title": chat.get("title").cloned().unwrap_or(Value::Null),
+                "createdAt": chat.get("createdAt").cloned().unwrap_or(Value::Null),
+                "updatedAt": chat.get("updatedAt").cloned().unwrap_or(Value::Null),
+                "lastMessageAt": last_message_at,
+                "character": { "id": char_id, "name": char_name },
+                "project": project,
+                "storyBackground": story_background,
+                "messages": recent_messages,
+                "tags": tag_data,
+                "isDangerousChat": is_dangerous,
+                "_count": { "messages": message_count, "memories": memory_count },
+                "scriptoriumStatus": scriptorium_status,
+            }));
+        }
+
+        Ok(Ok(json!({ "chats": enriched, "total": total })))
+    });
+    match result {
+        Ok(Ok(body)) => Response::Character(body),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
 // ===========================================================================
 // Sub-resource reads
 // ===========================================================================

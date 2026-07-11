@@ -172,6 +172,14 @@ async function main(): Promise<void> {
     { name: 'plugin_data_item', module: '@/app/api/v1/characters/[id]/plugin-data/[pluginName]/route', url: `${B}/${aria}/plugin-data/com.example.notes`, params: { id: aria, pluginName: 'com.example.notes' } },
     { name: 'stats', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=stats`, params: { id: aria } },
     { name: 'depiction_guidelines', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=depiction-guidelines`, params: { id: aria } },
+    // P4.6i: the enriched recent-chats DTO — plain, search (title / content /
+    // miss), and pagination (limit / offset) legs.
+    { name: 'chats_plain', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=chats`, params: { id: aria } },
+    { name: 'chats_search_title', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=chats&search=voyage`, params: { id: aria } },
+    { name: 'chats_search_content', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=chats&search=traveller`, params: { id: aria } },
+    { name: 'chats_search_miss', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=chats&search=zzzznope`, params: { id: aria } },
+    { name: 'chats_limit0', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=chats&limit=0`, params: { id: aria } },
+    { name: 'chats_offset1', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=chats&offset=1`, params: { id: aria } },
   ];
 
   const outLines: string[] = [];

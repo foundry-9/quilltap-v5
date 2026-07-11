@@ -6175,3 +6175,46 @@ middle-click); `characters-list.spec.ts` adds the navigate-from-body /
 no-navigate-from-star unit test; the `characters-flow` e2e's detail-open beat
 now clicks the card BODY (`p.line-clamp-3`). Gate: 195 SPA unit tests, prod
 build, the characters e2e green. SPA 0.5.3.
+
+---
+
+## P4.6i — Characters server remainder (lane A, in progress)
+
+Closes the OPEN slice-5 remainder of `p4.6f-characters-server.md`. v4 baseline
+`a7b1398d` (drift-checked clean at lane start). Own branch
+`claude/p4-6i-characters-remainder-5cf414`.
+
+**Unit 1 — `deleteMemoriesWithUnlinkBatch`: ALREADY LANDED (pre-existing).**
+The order's 2026-07-11 survey said "NOT ported", but the fresh v5 survey found
+it done: `MemoriesRepository::delete_many_with_unlink` (`db/memories.rs:529`,
+Phase-3 memory family) with a passing tier-2 differential
+(`memory_delete_tier2_equivalence.rs` + `harness/oracle/cases/memory-delete-
+tier2.ts`) that drives v4's REAL `deleteMemoriesWithUnlinkBatch` /
+`deleteMemoryWithUnlink` (single-item + batch, missing-row noop, empty-batch,
+by-character grouping). No duplicate `memory-gate-unlink-*.ts` authored (the
+"extend, don't recreate" rule). Cascade-delete (unit 3) consumes it.
+
+**Unit 4 — `?action=chats` enriched recent-chats DTO (DONE).**
+`api::characters::character_chats` (`api/characters.rs`) ports the `chats`
+action of `characters/[id]/handlers/get.ts` (105-229): overlaid ownership →
+`chats_read::find_by_character_id` → filter to the caller's `userId` → per-chat
+`get_messages` + `lastMessageAt` (max `type==='message'` createdAt round-tripped
+through `clock::iso_to_ms`/`iso_from_unix_ms` = JS `new Date(...).toISOString()`,
+else `chat.updatedAt`) → **stable** desc sort → optional lowercased search over
+title + message content → `slice(offset, offset+limit)` (defaults 10/0) → enrich
+(project map via `ProjectsRepository::find_by_id`; tags `{tag:{id,name}}` via
+`tags::find_by_ids`; `_count.messages` = non-SYSTEM/TOOL `type==='message'`;
+`_count.memories` via `memories_read::count_by_chat_id`; scriptorium status from
+`renderedMarkdown` + `ConversationChunksRepository::count_stats_by_chat_id`; 3
+recent messages; story background via `FilesRepository::find_by_id` →
+`/api/v1/files/{id}`; `isDangerousChat`). Wired the `CharacterChats` dispatch
+arm. NO fixture change needed (the committed "Solo Voyage" chat + 2 memories
+suffice; new read cases append to the existing oracle). No new `Response`
+variant — `Response::Character` already covers `{chats,total}`.
+Differential: extended `characters_reads_equivalence` with six cases
+(`chats_plain` / `chats_search_title` / `chats_search_content` /
+`chats_search_miss` / `chats_limit0` / `chats_offset1`) — all green against a
+FRESH v4 oracle at `a7b1398d`. Regen: the characters-reads header recipe
+(`QT_ORACLE_OUT=/tmp/oracle-characters-reads.ndjson`,
+`QT_ORACLE_CHARACTERS_READS` for the Rust side). Versions: core 0.0.168,
+harness 0.0.153.

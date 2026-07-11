@@ -14,6 +14,17 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+P4.6i (characters server remainder, lane A): ported the `?action=chats`
+enriched recent-chats DTO (`api::characters::character_chats`) — per-character
+chats filtered to the caller, `lastMessageAt` round-tripped through JS
+`Date`, stable desc sort, case-insensitive search over title + message
+content, offset/limit pagination, and per-chat enrichment (project / tags /
+`_count` / scriptorium status / 3 recent messages / story background /
+`isDangerousChat`). Composed over already-ported repos; wired the
+`CharacterChats` dispatch arm. Extended `characters_reads_equivalence` with
+six chats cases (plain / search title+content+miss / limit / offset) against
+v4's real route handler.
+
 Four slash commands capture the porting-round workflow as repeatable process
 docs under `.claude/commands/`: `/setupphase` (drift-check, scope the next
 round, write parallel-lane work orders, report their paths), `/carryout

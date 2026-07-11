@@ -800,7 +800,22 @@ impl CoreEngine {
                 Ok(db) => super::characters::character_stats(&db, SINGLE_USER_ID, &character_id),
                 Err(r) => r,
             },
-            Request::CharacterChats { .. } => super::characters::not_available("chats"),
+            Request::CharacterChats {
+                character_id,
+                search,
+                limit,
+                offset,
+            } => match self.ready_db() {
+                Ok(db) => super::characters::character_chats(
+                    &db,
+                    SINGLE_USER_ID,
+                    &character_id,
+                    search.as_deref(),
+                    limit,
+                    offset,
+                ),
+                Err(r) => r,
+            },
             Request::CharacterDepictionGuidelines { character_id } => match self.ready_db() {
                 Ok(db) => super::characters::character_depiction_guidelines(
                     &db,

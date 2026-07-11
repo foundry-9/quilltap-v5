@@ -225,6 +225,68 @@ fn characters_reads_match_oracle() {
         "depiction_guidelines",
         response_data(&characters::character_depiction_guidelines(&db, uid, ARIA)),
     );
+    // P4.6i: the enriched recent-chats DTO (plain / search / pagination).
+    push(
+        "chats_plain",
+        response_data(&characters::character_chats(
+            &db, uid, ARIA, None, None, None,
+        )),
+    );
+    push(
+        "chats_search_title",
+        response_data(&characters::character_chats(
+            &db,
+            uid,
+            ARIA,
+            Some("voyage"),
+            None,
+            None,
+        )),
+    );
+    push(
+        "chats_search_content",
+        response_data(&characters::character_chats(
+            &db,
+            uid,
+            ARIA,
+            Some("traveller"),
+            None,
+            None,
+        )),
+    );
+    push(
+        "chats_search_miss",
+        response_data(&characters::character_chats(
+            &db,
+            uid,
+            ARIA,
+            Some("zzzznope"),
+            None,
+            None,
+        )),
+    );
+    push(
+        "chats_limit0",
+        response_data(&characters::character_chats(
+            &db,
+            uid,
+            ARIA,
+            None,
+            Some(0),
+            None,
+        )),
+    );
+    push(
+        "chats_offset1",
+        response_data(&characters::character_chats(
+            &db,
+            uid,
+            ARIA,
+            None,
+            None,
+            Some(1),
+        )),
+    );
 
     drop(db);
     let _ = std::fs::remove_dir_all(&scratch);
