@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 import type { EnrichedChatSummary } from '../../core/core-contract';
@@ -11,9 +11,12 @@ import { Icon } from '../../ui/icon';
  * card is a link to `/salon/:id`; badges/tags/participants are read-only.
  *
  * Deferrals (v4 features not in the M4 slice): the memory / scriptorium
- * badges are shown as static counts (no click-to-reextract / re-render), tag
- * colours use the default style (v4 resolves them client-side by id), and the
- * delete / remove action button is omitted.
+ * badges are shown as static counts (no click-to-reextract / re-render) and tag
+ * colours use the default style (v4 resolves them client-side by id).
+ *
+ * The optional `removable` mode (v4 `actionType="remove"`, used by the project
+ * chats section) overlays an X that emits `remove` — it DISASSOCIATES the chat
+ * from its project, never deletes it.
  */
 @Component({
   selector: 'qt-chat-card',
@@ -24,6 +27,17 @@ import { Icon } from '../../ui/icon';
       class="qt-entity-card chat-card relative block cursor-pointer transition-colors"
       [routerLink]="['/salon', chat().id]"
     >
+      @if (removable()) {
+        <button
+          type="button"
+          class="absolute top-2 right-2 z-10 p-1.5 rounded-full qt-text-secondary hover:qt-text-destructive hover:qt-bg-destructive/10 transition-colors"
+          title="Remove from project"
+          aria-label="Remove from project"
+          (click)="onRemove($event)"
+        >
+          <qt-icon name="close" class="w-4 h-4" />
+        </button>
+      }
       <div class="flex items-stretch justify-between gap-4">
         <div class="flex items-stretch flex-1 gap-4 min-w-0">
           @if (storyBackgroundUrl()) {
@@ -115,6 +129,9 @@ import { Icon } from '../../ui/icon';
 })
 export class ChatCard {
   readonly chat = input.required<EnrichedChatSummary>();
+  /** v4 `actionType="remove"` — overlay an X that disassociates from the project. */
+  readonly removable = input(false);
+  readonly remove = output<string>();
 
   protected readonly copied = signal(false);
 
@@ -140,9 +157,7 @@ export class ChatCard {
       .join(', '),
   );
 
-  protected readonly tagNames = computed(() =>
-    (this.chat().tags ?? []).map((t) => t.tag.name),
-  );
+  protected readonly tagNames = computed(() => (this.chat().tags ?? []).map((t) => t.tag.name));
 
   protected readonly dateStr = computed(() => {
     // The Salon transform deliberately omits lastMessageAt, so cards show updatedAt.
@@ -150,11 +165,16 @@ export class ChatCard {
     return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString();
   });
 
+  protected onRemove(event: Event): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.remove.emit(this.chat().id);
+  }
+
   protected copyLink(event: Event): void {
     event.preventDefault();
     event.stopPropagation();
-    const origin =
-      typeof window !== 'undefined' && window.location ? window.location.origin : '';
+    const origin = typeof window !== 'undefined' && window.location ? window.location.origin : '';
     const url = `${origin}/salon/${this.chat().id}`;
     void navigator.clipboard?.writeText(url).then(() => {
       this.copied.set(true);

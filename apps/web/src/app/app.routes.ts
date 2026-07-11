@@ -47,6 +47,15 @@ export const routes: Routes = [
       import('./screens/characters/view/character-detail').then((m) => m.CharacterDetail),
   },
   {
+    path: 'prospero',
+    loadComponent: () => import('./screens/prospero/prospero-list').then((m) => m.ProsperoList),
+  },
+  {
+    path: 'prospero/:id',
+    loadComponent: () =>
+      import('./screens/prospero/project-detail').then((m) => m.ProjectDetailScreen),
+  },
+  {
     path: 'settings/wizard',
     loadComponent: () =>
       import('./screens/settings/wizard/wizard-screen').then((m) => m.WizardScreen),

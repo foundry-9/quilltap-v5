@@ -106,6 +106,28 @@ compared at the decoded level (identical IHDR + tEXt chunks and inflated
 pixels — v4 zlib-compresses the IDAT, the port emits stored DEFLATE blocks,
 the one declared seam). New oracle `harness/oracle/cases/st-png.ts` +
 `st_png_equivalence` differential.
+P4.6l (lane B, in progress) — the Projects (Prospero) vertical in the SPA, tier
+1. The Projects nav item is enabled (`/prospero`); the list (grid/card/create
+dialog/delete-with-confirm) and the routed detail (`/prospero/:id`) land. The
+detail is a dense card grid with per-card expansion memory (all expanded on the
+first visit, collapsed after — localStorage `quilltap_project_visited_{id}`):
+Header (inline title/description edit + Save, New Chat link), Scriptorium
+(linked stores + unlink, reusing the groups stores card), Characters ("Allow Any
+Character" immediate toggle + roster grid with hover-remove; no add picker),
+Model Behavior (Agent Mode + Answer Confirmation immediate selects), Settings
+(instructions textarea + explicit Save + a Project State JSON editor modal), and
+the full-width chats section (paginated, page size 20, the shared ChatCard in a
+new removable mode — remove DISASSOCIATES). Every immediate-save select/toggle
+catches and surfaces failures with v4's fallback microcopy.
+
+Loud deferrals (no ported listing surface this round): the Default Roleplay
+Template select and the Default Tool Settings row are disabled affordances with
+v4-register tooltips; the project Scriptorium link-store picker is likewise
+disabled (list + unlink live). Recorded divergence: Project Instructions use a
+plain textarea, not v4's Lexical editor (bytes round-trip exactly). `ng test`
+36 files / 229 tests green; `ng build` clean; `projects-flow` e2e beats skip
+until lane A's fixture lands. SPA 0.5.13.
+
 P4.6l (lane B, in progress) — the Groups vertical in the Angular SPA. The
 Characters page now carries a Groups section above the roster (grid + card +
 the toolbar Create Group dialog) and a routed group editor at

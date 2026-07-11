@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  OnInit,
   effect,
   inject,
   input,
@@ -55,7 +56,7 @@ import { Icon, type IconName } from './icon';
     </div>
   `,
 })
-export class CollapsibleCard {
+export class CollapsibleCard implements OnInit {
   private readonly host = inject(ElementRef<HTMLElement>);
 
   readonly title = input.required<string>();
@@ -71,9 +72,10 @@ export class CollapsibleCard {
   private scrolled = false;
 
   constructor() {
-    // Seed the open state from defaultOpen/forceOpen, and react to forceOpen
-    // toggling on (deep-link) by opening + scrolling once.
-    this.isOpen.set(this.defaultOpen() || this.forceOpen());
+    // React to forceOpen toggling on (deep-link) by opening + scrolling once.
+    // (The initial defaultOpen/forceOpen seed happens in ngOnInit, where bound
+    // signal inputs have resolved — reading them in the constructor would see
+    // only their defaults.)
     effect(() => {
       if (this.forceOpen()) {
         this.isOpen.set(true);
@@ -87,6 +89,11 @@ export class CollapsibleCard {
         this.scrolled = false;
       }
     });
+  }
+
+  ngOnInit(): void {
+    // Bound inputs have resolved by ngOnInit — seed the initial open state now.
+    this.isOpen.set(this.defaultOpen() || this.forceOpen());
   }
 
   protected toggle(): void {

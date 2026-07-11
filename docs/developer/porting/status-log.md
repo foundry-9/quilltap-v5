@@ -6846,3 +6846,38 @@ on the select.
 groups tests); `ng build` clean; `groups-flow.spec.ts` parses (2 beats) and skips
 until lane A's `groups-projects-{main,mount}.db` fixture lands (auto-activates
 via a fixture-existence guard). SPA 0.5.12.
+
+**Commit 2 — the Projects (Prospero) vertical, tier 1.** `apps/web/src/app/
+screens/prospero/`: `projects.api.ts`, `project-card-state.ts` (the
+first-visit localStorage memory), `project-card.ts`, `project-create-dialog.ts`,
+`project-delete-dialog.ts`, `prospero-list.ts` (the `/prospero` list), plus the
+routed `project-detail.ts` composing `cards/project-header.ts`,
+`cards/project-characters-card.ts`, `cards/project-model-behavior-card.ts`,
+`cards/project-settings-card.ts`, `cards/project-chats-section.ts`, the
+`state-editor-modal.ts`, and the reused groups `group-stores-card.ts` for the
+Scriptorium. Routes `/prospero` + `/prospero/:id` registered; the Projects nav
+item enabled → `/prospero`. The shared salon `chat-card.ts` grew an optional
+`removable` mode (v4 `actionType="remove"`, disassociates). `collapsible-card.ts`
+now seeds `defaultOpen` in `ngOnInit` (a bound signal input isn't readable in the
+constructor — the pre-existing `forceOpen` effect is unaffected).
+
+Faithful behaviors: list card = swatch/emoji (folder fallback) + "N chats • M
+files"; delete confirm copy ("disassociated but not deleted"); detail = 1/2/3-col
+`grid-flow-row-dense`; header inline edit saves name+description+instructions
+together; Characters "Allow Any Character" immediate toggle + roster grid (no add
+picker, "added when chats are associated"); Model Behavior Agent Mode + Answer
+Confirmation immediate selects; Settings instructions + Project State modal; chats
+section paginated (page size 20) with the removable ChatCard.
+
+**Loud deferrals / recorded divergences (commit 2):** (a) Default Roleplay
+Template select + Default Tool Settings row disabled (no roleplay-templates /
+tools listing dispatch surface in v5 this round); (b) project Scriptorium
+link-store picker disabled (no global mount-points listing — same as groups);
+(c) Project Instructions is a plain `<textarea>`, not v4's `MarkdownLexicalEditor`
+(bytes round-trip exactly); (d) the chats IntersectionObserver auto-load is a
+"Load more" button (v4's visible fallback). Tier-2 cards (Files, Scenarios,
+Wardrobe, Image Generation) are the next slice.
+
+**Gate (commit 2):** `ng test` 36 files / 229 tests green (10 new projects
+tests + the groups suite); `ng build` clean; `projects-flow.spec.ts` parses
+(2 beats) and skips until lane A's fixture lands. SPA 0.5.13.
