@@ -199,4 +199,53 @@ impl<'c> GroupDocMountLinksRepository<'c> {
             },
         )
     }
+
+    /// v4 `unlink(groupId, mountPointId)` — `deleteMany({groupId,mountPointId})`.
+    /// Returns whether any link row was removed (the mount-points DELETE route
+    /// 400s when nothing matched).
+    pub fn unlink(&self, group_id: &str, mount_point_id: &str) -> Result<bool, DbError> {
+        let affected = self.conn.execute(
+            "DELETE FROM group_doc_mount_links WHERE groupId = ?1 AND mountPointId = ?2",
+            params![group_id, mount_point_id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    /// v4 `deleteByGroupId(groupId)` — drop every additional-store link of a group
+    /// (the group-delete cascade; the stores themselves are orphaned, not deleted).
+    /// Returns the number of link rows removed.
+    pub fn delete_by_group_id(&self, group_id: &str) -> Result<usize, DbError> {
+        let affected = self.conn.execute(
+            "DELETE FROM group_doc_mount_links WHERE groupId = ?1",
+            params![group_id],
+        )?;
+        Ok(affected)
+    }
+
+    /// v4 `link(...)` returns the full link row; the mount-points POST route echoes
+    /// it as `{ link, mountPoint }`. Find-or-create the `(groupId, mountPointId)`
+    /// link and return its row (`id`/`groupId`/`mountPointId`/timestamps) as JSON.
+    pub fn link_returning(
+        &self,
+        group_id: &str,
+        mount_point_id: &str,
+    ) -> Result<serde_json::Value, DbError> {
+        self.link(group_id, mount_point_id)?;
+        self.conn
+            .query_row(
+                "SELECT id, groupId, mountPointId, createdAt, updatedAt \
+                 FROM group_doc_mount_links WHERE groupId = ?1 AND mountPointId = ?2",
+                params![group_id, mount_point_id],
+                |row| {
+                    Ok(serde_json::json!({
+                        "id": row.get::<_, String>(0)?,
+                        "groupId": row.get::<_, String>(1)?,
+                        "mountPointId": row.get::<_, String>(2)?,
+                        "createdAt": row.get::<_, String>(3)?,
+                        "updatedAt": row.get::<_, String>(4)?,
+                    }))
+                },
+            )
+            .map_err(DbError::from)
+    }
 }

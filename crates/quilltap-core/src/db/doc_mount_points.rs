@@ -451,6 +451,75 @@ impl<'c> DocMountPointsRepository<'c> {
         self.find_row_by_id(id)
     }
 
+    /// v4 `findById` fully hydrated — the whole `DocMountPointSchema` row as JSON,
+    /// exactly what the groups/projects mount-points routes echo (`{mountPoints}`
+    /// list and the POST `{link, mountPoint}` body). Array columns parse back from
+    /// their JSON text, `enabled` → bool, the three counts → numbers. `None` when
+    /// absent. (The differential key-sorts, so the object's construction order is
+    /// irrelevant — only the key set + value types matter.)
+    pub fn find_full_json_by_id(&self, id: &str) -> Result<Option<serde_json::Value>, DbError> {
+        use serde_json::{json, Value};
+        let row = self
+            .conn
+            .query_row(
+                "SELECT id, name, basePath, mountType, storeType, includePatterns, \
+                        excludePatterns, enabled, lastScannedAt, scanStatus, lastScanError, \
+                        conversionStatus, conversionError, fileCount, chunkCount, \
+                        totalSizeBytes, createdAt, updatedAt \
+                 FROM doc_mount_points WHERE id = ?1",
+                params![id],
+                |row| {
+                    let include: String = row.get(5)?;
+                    let exclude: String = row.get(6)?;
+                    // v4's `DocMountPointSchema` marks `lastScannedAt`/`lastScanError`/
+                    // `conversionError` `.nullable().optional()` — when null they are
+                    // OMITTED from the serialized DTO (not rendered as null). Insert
+                    // them only when present.
+                    let mut obj = serde_json::Map::new();
+                    obj.insert("id".into(), Value::String(row.get::<_, String>(0)?));
+                    obj.insert("name".into(), Value::String(row.get::<_, String>(1)?));
+                    obj.insert("basePath".into(), Value::String(row.get::<_, String>(2)?));
+                    obj.insert("mountType".into(), Value::String(row.get::<_, String>(3)?));
+                    obj.insert("storeType".into(), Value::String(row.get::<_, String>(4)?));
+                    obj.insert(
+                        "includePatterns".into(),
+                        serde_json::from_str::<Value>(&include).unwrap_or(Value::Array(vec![])),
+                    );
+                    obj.insert(
+                        "excludePatterns".into(),
+                        serde_json::from_str::<Value>(&exclude).unwrap_or(Value::Array(vec![])),
+                    );
+                    obj.insert("enabled".into(), Value::Bool(row.get::<_, i64>(7)? != 0));
+                    if let Some(s) = row.get::<_, Option<String>>(8)? {
+                        obj.insert("lastScannedAt".into(), Value::String(s));
+                    }
+                    obj.insert("scanStatus".into(), Value::String(row.get::<_, String>(9)?));
+                    if let Some(s) = row.get::<_, Option<String>>(10)? {
+                        obj.insert("lastScanError".into(), Value::String(s));
+                    }
+                    obj.insert(
+                        "conversionStatus".into(),
+                        Value::String(row.get::<_, String>(11)?),
+                    );
+                    if let Some(s) = row.get::<_, Option<String>>(12)? {
+                        obj.insert("conversionError".into(), Value::String(s));
+                    }
+                    obj.insert("fileCount".into(), json!(row.get::<_, f64>(13)?));
+                    obj.insert("chunkCount".into(), json!(row.get::<_, f64>(14)?));
+                    obj.insert("totalSizeBytes".into(), json!(row.get::<_, f64>(15)?));
+                    obj.insert("createdAt".into(), Value::String(row.get::<_, String>(16)?));
+                    obj.insert("updatedAt".into(), Value::String(row.get::<_, String>(17)?));
+                    Ok(Value::Object(obj))
+                },
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+        Ok(row)
+    }
+
     /// The `storeType` of a mount point by id, or `None` when absent — a scoped
     /// read (v4's overlaid `findById(...).storeType`). Used by the stale-chat
     /// sweep to detect a `'character'`-vault hard link protecting an image's bytes.

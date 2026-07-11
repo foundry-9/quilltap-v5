@@ -610,6 +610,327 @@ pub enum Request {
     TagDelete {
         tag_id: String,
     },
+
+    // ========================================================================
+    // Groups + Projects family (P4.6k) — the Prospero dispatch backfill. Every
+    // variant is a differential port of a v4 route handler; response bytes are
+    // pinned by the `groups_routes_equivalence` / `projects_routes_equivalence`
+    // differentials, not the loose `serde_json::Value` payload types. This block
+    // is BINDING (identical in the sibling P4.6l SPA order): a name change here
+    // changes both orders. Optional body fields are the v4 Zod schema fields.
+    // ========================================================================
+    // --- Groups ---
+    /// v4 `GET /api/v1/groups` — createdAt-desc list + `_count.members`.
+    GroupList,
+    /// v4 `POST /api/v1/groups` (`createGroupSchema`).
+    #[serde(rename_all = "camelCase")]
+    GroupCreate {
+        name: String,
+        #[serde(default)]
+        description: Option<String>,
+        #[serde(default)]
+        color: Option<String>,
+        #[serde(default)]
+        icon: Option<String>,
+    },
+    /// v4 `GET /api/v1/groups/[id]` default — detail + `_count.members`.
+    #[serde(rename_all = "camelCase")]
+    GroupGet {
+        group_id: String,
+    },
+    /// v4 `PUT /api/v1/groups/[id]` (`updateGroupSchema`).
+    #[serde(rename_all = "camelCase")]
+    GroupUpdate {
+        group_id: String,
+        group: serde_json::Value,
+    },
+    /// v4 `DELETE /api/v1/groups/[id]` default.
+    #[serde(rename_all = "camelCase")]
+    GroupDelete {
+        group_id: String,
+    },
+    /// v4 `GET /api/v1/groups/[id]?action=members`.
+    #[serde(rename_all = "camelCase")]
+    GroupMembers {
+        group_id: String,
+    },
+    /// v4 `POST /api/v1/groups/[id]?action=addMember`.
+    #[serde(rename_all = "camelCase")]
+    GroupMemberAdd {
+        group_id: String,
+        character_id: String,
+    },
+    /// v4 `DELETE /api/v1/groups/[id]?action=removeMember`.
+    #[serde(rename_all = "camelCase")]
+    GroupMemberRemove {
+        group_id: String,
+        character_id: String,
+    },
+    /// v4 `GET /api/v1/groups/[id]/mount-points`.
+    #[serde(rename_all = "camelCase")]
+    GroupMountPointList {
+        group_id: String,
+    },
+    /// v4 `POST /api/v1/groups/[id]/mount-points`.
+    #[serde(rename_all = "camelCase")]
+    GroupMountPointLink {
+        group_id: String,
+        mount_point_id: String,
+    },
+    /// v4 `DELETE /api/v1/groups/[id]/mount-points`.
+    #[serde(rename_all = "camelCase")]
+    GroupMountPointUnlink {
+        group_id: String,
+        mount_point_id: String,
+    },
+    /// v4 `GET /api/v1/groups/[id]/scenarios`.
+    #[serde(rename_all = "camelCase")]
+    GroupScenarioList {
+        group_id: String,
+    },
+    /// v4 `POST /api/v1/groups/[id]/scenarios` (`createScenarioSchema`).
+    #[serde(rename_all = "camelCase")]
+    GroupScenarioCreate {
+        group_id: String,
+        scenario: serde_json::Value,
+    },
+    /// v4 `GET /api/v1/groups/[id]/scenarios/[scenarioPath]`.
+    #[serde(rename_all = "camelCase")]
+    GroupScenarioGet {
+        group_id: String,
+        scenario_path: String,
+    },
+    /// v4 `PUT /api/v1/groups/[id]/scenarios/[scenarioPath]`.
+    #[serde(rename_all = "camelCase")]
+    GroupScenarioUpdate {
+        group_id: String,
+        scenario_path: String,
+        scenario: serde_json::Value,
+    },
+    /// v4 `POST /api/v1/groups/[id]/scenarios/[scenarioPath]?action=rename`.
+    #[serde(rename_all = "camelCase")]
+    GroupScenarioRename {
+        group_id: String,
+        scenario_path: String,
+        new_filename: String,
+    },
+    /// v4 `DELETE /api/v1/groups/[id]/scenarios/[scenarioPath]`.
+    #[serde(rename_all = "camelCase")]
+    GroupScenarioDelete {
+        group_id: String,
+        scenario_path: String,
+    },
+    /// v4 `GET /api/v1/groups/scenarios?characterIds=` — the participant-union.
+    #[serde(rename_all = "camelCase")]
+    GroupScenariosUnion {
+        character_ids: Vec<String>,
+    },
+    // --- Projects ---
+    /// v4 `GET /api/v1/projects` — createdAt-desc list + `_count` (BARE envelope).
+    ProjectList,
+    /// v4 `POST /api/v1/projects` (`createProjectSchema`).
+    ProjectCreate {
+        project: serde_json::Value,
+    },
+    /// v4 `GET /api/v1/projects/[id]` default — detail + enriched roster.
+    #[serde(rename_all = "camelCase")]
+    ProjectGet {
+        project_id: String,
+    },
+    /// v4 `PUT /api/v1/projects/[id]` (`updateProjectSchema`).
+    #[serde(rename_all = "camelCase")]
+    ProjectUpdate {
+        project_id: String,
+        project: serde_json::Value,
+    },
+    /// v4 `DELETE /api/v1/projects/[id]` default.
+    #[serde(rename_all = "camelCase")]
+    ProjectDelete {
+        project_id: String,
+    },
+    /// v4 `GET /api/v1/projects/[id]?action=list-characters`.
+    #[serde(rename_all = "camelCase")]
+    ProjectCharacterList {
+        project_id: String,
+    },
+    /// v4 `POST /api/v1/projects/[id]?action=add-character`.
+    #[serde(rename_all = "camelCase")]
+    ProjectCharacterAdd {
+        project_id: String,
+        character_id: String,
+    },
+    /// v4 `DELETE /api/v1/projects/[id]?action=remove-character`.
+    #[serde(rename_all = "camelCase")]
+    ProjectCharacterRemove {
+        project_id: String,
+        character_id: String,
+    },
+    /// v4 `GET /api/v1/projects/[id]?action=list-chats`.
+    #[serde(rename_all = "camelCase")]
+    ProjectChatList {
+        project_id: String,
+        #[serde(default)]
+        limit: Option<i64>,
+        #[serde(default)]
+        offset: Option<i64>,
+    },
+    /// v4 `POST /api/v1/projects/[id]?action=add-chat`.
+    #[serde(rename_all = "camelCase")]
+    ProjectChatAdd {
+        project_id: String,
+        chat_id: String,
+    },
+    /// v4 `DELETE /api/v1/projects/[id]?action=remove-chat`.
+    #[serde(rename_all = "camelCase")]
+    ProjectChatRemove {
+        project_id: String,
+        chat_id: String,
+    },
+    /// v4 `GET /api/v1/projects/[id]?action=list-files`.
+    #[serde(rename_all = "camelCase")]
+    ProjectFileList {
+        project_id: String,
+    },
+    /// v4 `POST /api/v1/projects/[id]?action=add-file`.
+    #[serde(rename_all = "camelCase")]
+    ProjectFileAdd {
+        project_id: String,
+        file_id: String,
+    },
+    /// v4 `DELETE /api/v1/projects/[id]?action=remove-file`.
+    #[serde(rename_all = "camelCase")]
+    ProjectFileRemove {
+        project_id: String,
+        file_id: String,
+    },
+    /// v4 `GET /api/v1/projects/[id]?action=get-state`.
+    #[serde(rename_all = "camelCase")]
+    ProjectStateGet {
+        project_id: String,
+    },
+    /// v4 `PUT /api/v1/projects/[id]?action=set-state`.
+    #[serde(rename_all = "camelCase")]
+    ProjectStateSet {
+        project_id: String,
+        state: serde_json::Value,
+    },
+    /// v4 `DELETE /api/v1/projects/[id]?action=reset-state`.
+    #[serde(rename_all = "camelCase")]
+    ProjectStateReset {
+        project_id: String,
+    },
+    /// v4 `GET /api/v1/projects/[id]?action=get-background`.
+    #[serde(rename_all = "camelCase")]
+    ProjectBackgroundGet {
+        project_id: String,
+    },
+    /// v4 `GET /api/v1/projects/[id]?action=aesthetic&kind=`.
+    #[serde(rename_all = "camelCase")]
+    ProjectAestheticGet {
+        project_id: String,
+        kind: String,
+    },
+    /// v4 `PUT /api/v1/projects/[id]?action=aesthetic&kind=`.
+    #[serde(rename_all = "camelCase")]
+    ProjectAestheticSet {
+        project_id: String,
+        kind: String,
+        #[serde(default)]
+        content: Option<String>,
+    },
+    /// v4 `POST /api/v1/projects/[id]?action=update-tool-settings`.
+    #[serde(rename_all = "camelCase")]
+    ProjectToolSettingsUpdate {
+        project_id: String,
+        #[serde(default)]
+        default_disabled_tools: Vec<String>,
+        #[serde(default)]
+        default_disabled_tool_groups: Vec<String>,
+    },
+    /// v4 `GET /api/v1/projects/[id]/mount-points`.
+    #[serde(rename_all = "camelCase")]
+    ProjectMountPointList {
+        project_id: String,
+    },
+    /// v4 `POST /api/v1/projects/[id]/mount-points`.
+    #[serde(rename_all = "camelCase")]
+    ProjectMountPointLink {
+        project_id: String,
+        mount_point_id: String,
+    },
+    /// v4 `DELETE /api/v1/projects/[id]/mount-points`.
+    #[serde(rename_all = "camelCase")]
+    ProjectMountPointUnlink {
+        project_id: String,
+        mount_point_id: String,
+    },
+    /// v4 `GET /api/v1/projects/[id]/scenarios`.
+    #[serde(rename_all = "camelCase")]
+    ProjectScenarioList {
+        project_id: String,
+    },
+    /// v4 `POST /api/v1/projects/[id]/scenarios`.
+    #[serde(rename_all = "camelCase")]
+    ProjectScenarioCreate {
+        project_id: String,
+        scenario: serde_json::Value,
+    },
+    /// v4 `GET /api/v1/projects/[id]/scenarios/[scenarioPath]`.
+    #[serde(rename_all = "camelCase")]
+    ProjectScenarioGet {
+        project_id: String,
+        scenario_path: String,
+    },
+    /// v4 `PUT /api/v1/projects/[id]/scenarios/[scenarioPath]`.
+    #[serde(rename_all = "camelCase")]
+    ProjectScenarioUpdate {
+        project_id: String,
+        scenario_path: String,
+        scenario: serde_json::Value,
+    },
+    /// v4 `POST /api/v1/projects/[id]/scenarios/[scenarioPath]?action=rename`.
+    #[serde(rename_all = "camelCase")]
+    ProjectScenarioRename {
+        project_id: String,
+        scenario_path: String,
+        new_filename: String,
+    },
+    /// v4 `DELETE /api/v1/projects/[id]/scenarios/[scenarioPath]`.
+    #[serde(rename_all = "camelCase")]
+    ProjectScenarioDelete {
+        project_id: String,
+        scenario_path: String,
+    },
+    /// v4 `GET /api/v1/projects/[id]/wardrobe`.
+    #[serde(rename_all = "camelCase")]
+    ProjectWardrobeList {
+        project_id: String,
+    },
+    /// v4 `POST /api/v1/projects/[id]/wardrobe`.
+    #[serde(rename_all = "camelCase")]
+    ProjectWardrobeCreate {
+        project_id: String,
+        item: serde_json::Value,
+    },
+    /// v4 `GET /api/v1/projects/[id]/wardrobe/[itemId]`.
+    #[serde(rename_all = "camelCase")]
+    ProjectWardrobeGet {
+        project_id: String,
+        item_id: String,
+    },
+    /// v4 `PUT /api/v1/projects/[id]/wardrobe/[itemId]`.
+    #[serde(rename_all = "camelCase")]
+    ProjectWardrobeUpdate {
+        project_id: String,
+        item_id: String,
+        item: serde_json::Value,
+    },
+    /// v4 `DELETE /api/v1/projects/[id]/wardrobe/[itemId]`.
+    #[serde(rename_all = "camelCase")]
+    ProjectWardrobeDelete {
+        project_id: String,
+        item_id: String,
+    },
 }
 
 /// Typed DTO per variant (the uniffi payoff). `Error` carries the one
@@ -671,6 +992,18 @@ pub enum Response {
     Tags(serde_json::Value),
     /// v4 single-tag body (`{tag}`).
     Tag(serde_json::Value),
+    // --- Groups + Projects surface (P4.6k) ---
+    /// A groups-family body (`{groups}`, `{group}`, `{members}`, `{mountPoints}`,
+    /// `{link, mountPoint}`, `{mountPointId, scenarios, warnings}`,
+    /// `{groupScenarios}`, `{success}`, `{message}`, …). The exact bytes are
+    /// pinned by `groups_routes_equivalence`.
+    Group(serde_json::Value),
+    /// A projects-family body (`{projects}`, `{project}`, `{characters,count}`,
+    /// `{chats,pagination}`, `{files,count}`, `{success,state}`,
+    /// `{success,previousState}`, `{backgroundUrl,displayMode}`, `{content}`,
+    /// `{wardrobeItem}`, …). The exact bytes are pinned by
+    /// `projects_routes_equivalence`.
+    Project(serde_json::Value),
     Error(CoreError),
 }
 

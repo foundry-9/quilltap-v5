@@ -182,4 +182,60 @@ impl<'c> GroupCharacterMembersRepository<'c> {
         )?;
         Ok(affected > 0)
     }
+
+    /// v4 `addMember(groupId, characterId)` — idempotent add: if a
+    /// `(groupId, characterId)` row already exists, return without touching the
+    /// DB; otherwise mint an id + `now` timestamps and insert. The groups
+    /// `addMember` route ignores the returned row (it answers `{success:true}`),
+    /// so nothing observes the minted id.
+    pub fn add_member(&self, group_id: &str, character_id: &str) -> Result<(), DbError> {
+        let existing: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT 1 FROM group_character_members WHERE groupId = ?1 AND characterId = ?2",
+                params![group_id, character_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+        if existing.is_some() {
+            return Ok(());
+        }
+        let now = crate::clock::now_iso();
+        self.create(
+            &GcmCreate {
+                group_id: group_id.to_string(),
+                character_id: character_id.to_string(),
+            },
+            &CreateOptions {
+                id: uuid::Uuid::new_v4().to_string(),
+                created_at: now.clone(),
+                updated_at: now,
+            },
+        )
+    }
+
+    /// v4 `removeMember(groupId, characterId)` — `deleteMany({groupId,characterId})`.
+    /// Returns whether any row was removed (the route ignores it, always answering
+    /// `{success:true}`).
+    pub fn remove_member(&self, group_id: &str, character_id: &str) -> Result<bool, DbError> {
+        let affected = self.conn.execute(
+            "DELETE FROM group_character_members WHERE groupId = ?1 AND characterId = ?2",
+            params![group_id, character_id],
+        )?;
+        Ok(affected > 0)
+    }
+
+    /// v4 `deleteByGroupId(groupId)` — drop every membership row of a group (the
+    /// group-delete cascade). Returns the number of rows removed.
+    pub fn delete_by_group_id(&self, group_id: &str) -> Result<usize, DbError> {
+        let affected = self.conn.execute(
+            "DELETE FROM group_character_members WHERE groupId = ?1",
+            params![group_id],
+        )?;
+        Ok(affected)
+    }
 }

@@ -6486,3 +6486,45 @@ dialog, rename/replace). Lane B's flagged divergences stand as recorded
 
 **Orders P4.6f, P4.6g, P4.6i, P4.6j are all CLOSED.** Versions after the
 round: core 0.0.172, harness 0.0.157, host 0.0.10, web 0.0.7, SPA 0.5.8.
+
+---
+
+## P4.6k (lane A) unit 1 — Groups server surface (2026-07-11, in progress)
+
+The groups half of the Prospero dispatch backfill (`groups_routes_equivalence`).
+New `crates/quilltap-core/src/api/groups.rs` + the pinned Groups/Projects
+`Request`/`Response` variants (the full Shared contract, per the work order's
+"pin in the first commit") + engine dispatch. Landed + differential-proven vs
+v4's REAL route handlers (`groups/route.ts`, `[id]/actions/group-crud.ts`,
+`[id]/mount-points/route.ts`):
+
+- **Reads:** list (createdAt-desc + `_count.members` cross-partition), detail
+  (rich + empty), members (`{id,name}` null-filtered), mount-points (dangling
+  link filtered; official store IS in the list; empty group).
+- **Mutations:** create (`|| null` coercion, `state:{}`, Scenarios/Knowledge
+  folder-ensure dumped as DB state), update (passthrough patch), delete
+  (memberships + links dropped, row gone, **official store SURVIVES**),
+  addMember (idempotent), removeMember (result ignored), mount link (idempotent
+  echo `{link, mountPoint}`), mount unlink (`{message}` + link dump).
+
+Recipe notes for the next lanes / regen:
+- Fixture built with pinned entity ids via `create(data, {id,...})` (store-backed
+  create accepts CreateOptions); `officialMountPointId`/link ids are MINTED at
+  build but baked → both differential sides read identical values (no remap).
+  Only the route-level CREATE mints fresh ids → blank `id`/`createdAt`/
+  `updatedAt`/`officialMountPointId`. Update mints a fresh `updatedAt` → blank it.
+- v4's `DocMountPointSchema` DTO **omits** null nullable fields (`lastScannedAt`/
+  `lastScanError`/`conversionError`) — the hydrator (`find_full_json_by_id`) must
+  skip them, not render null.
+- Fixture regen recipe is in the builder header
+  (`build-groups-projects-fixture.ts`); oracle regen in `groups-routes.test.ts`.
+
+Repo additions (shared db files, append-only union-safe):
+`group_character_members::{add_member,remove_member,delete_by_group_id}`,
+`group_doc_mount_links::{unlink,delete_by_group_id,link_returning}`,
+`doc_mount_points::find_full_json_by_id`.
+
+Still OPEN under lane A: projects units (2), scenarios + union (3), project
+wardrobe (4), list-files/background/aesthetic (5). Their variants answer the
+loud `not_available` refusal until landed. Versions: core 0.0.173, harness
+0.0.158.

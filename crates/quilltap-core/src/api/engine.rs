@@ -1149,6 +1149,146 @@ impl CoreEngine {
                 Ok(db) => super::characters::tag_delete(&db, SINGLE_USER_ID, &tag_id).await,
                 Err(r) => r,
             },
+
+            // --- Groups family (P4.6k) --------------------------------------
+            Request::GroupList => match self.ready_db() {
+                Ok(db) => super::groups::group_list(&db),
+                Err(r) => r,
+            },
+            Request::GroupCreate {
+                name,
+                description,
+                color,
+                icon,
+            } => match self.ready_db() {
+                Ok(db) => super::groups::group_create(&db, name, description, color, icon).await,
+                Err(r) => r,
+            },
+            Request::GroupGet { group_id } => match self.ready_db() {
+                Ok(db) => super::groups::group_get(&db, &group_id),
+                Err(r) => r,
+            },
+            Request::GroupUpdate { group_id, group } => match self.ready_db() {
+                Ok(db) => super::groups::group_update(&db, &group_id, group).await,
+                Err(r) => r,
+            },
+            Request::GroupDelete { group_id } => match self.ready_db() {
+                Ok(db) => super::groups::group_delete(&db, &group_id).await,
+                Err(r) => r,
+            },
+            Request::GroupMembers { group_id } => match self.ready_db() {
+                Ok(db) => super::groups::group_members(&db, &group_id),
+                Err(r) => r,
+            },
+            Request::GroupMemberAdd {
+                group_id,
+                character_id,
+            } => match self.ready_db() {
+                Ok(db) => super::groups::group_member_add(&db, &group_id, &character_id).await,
+                Err(r) => r,
+            },
+            Request::GroupMemberRemove {
+                group_id,
+                character_id,
+            } => match self.ready_db() {
+                Ok(db) => super::groups::group_member_remove(&db, &group_id, &character_id).await,
+                Err(r) => r,
+            },
+            Request::GroupMountPointList { group_id } => match self.ready_db() {
+                Ok(db) => super::groups::group_mount_point_list(&db, &group_id),
+                Err(r) => r,
+            },
+            Request::GroupMountPointLink {
+                group_id,
+                mount_point_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::groups::group_mount_point_link(&db, &group_id, &mount_point_id).await
+                }
+                Err(r) => r,
+            },
+            Request::GroupMountPointUnlink {
+                group_id,
+                mount_point_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::groups::group_mount_point_unlink(&db, &group_id, &mount_point_id).await
+                }
+                Err(r) => r,
+            },
+            // --- Groups scenarios (P4.6k Unit 3 — loud refusal until landed) -
+            Request::GroupScenarioList { .. } => super::groups::not_available("scenario-list"),
+            Request::GroupScenarioCreate { .. } => super::groups::not_available("scenario-create"),
+            Request::GroupScenarioGet { .. } => super::groups::not_available("scenario-get"),
+            Request::GroupScenarioUpdate { .. } => super::groups::not_available("scenario-update"),
+            Request::GroupScenarioRename { .. } => super::groups::not_available("scenario-rename"),
+            Request::GroupScenarioDelete { .. } => super::groups::not_available("scenario-delete"),
+            Request::GroupScenariosUnion { .. } => super::groups::not_available("scenarios-union"),
+
+            // --- Projects family (P4.6k Unit 2+ — loud refusal until landed) -
+            Request::ProjectList => super::projects::not_available("list"),
+            Request::ProjectCreate { .. } => super::projects::not_available("create"),
+            Request::ProjectGet { .. } => super::projects::not_available("get"),
+            Request::ProjectUpdate { .. } => super::projects::not_available("update"),
+            Request::ProjectDelete { .. } => super::projects::not_available("delete"),
+            Request::ProjectCharacterList { .. } => {
+                super::projects::not_available("list-characters")
+            }
+            Request::ProjectCharacterAdd { .. } => super::projects::not_available("add-character"),
+            Request::ProjectCharacterRemove { .. } => {
+                super::projects::not_available("remove-character")
+            }
+            Request::ProjectChatList { .. } => super::projects::not_available("list-chats"),
+            Request::ProjectChatAdd { .. } => super::projects::not_available("add-chat"),
+            Request::ProjectChatRemove { .. } => super::projects::not_available("remove-chat"),
+            Request::ProjectFileList { .. } => super::projects::not_available("list-files"),
+            Request::ProjectFileAdd { .. } => super::projects::not_available("add-file"),
+            Request::ProjectFileRemove { .. } => super::projects::not_available("remove-file"),
+            Request::ProjectStateGet { .. } => super::projects::not_available("get-state"),
+            Request::ProjectStateSet { .. } => super::projects::not_available("set-state"),
+            Request::ProjectStateReset { .. } => super::projects::not_available("reset-state"),
+            Request::ProjectBackgroundGet { .. } => {
+                super::projects::not_available("get-background")
+            }
+            Request::ProjectAestheticGet { .. } => super::projects::not_available("aesthetic-get"),
+            Request::ProjectAestheticSet { .. } => super::projects::not_available("aesthetic-set"),
+            Request::ProjectToolSettingsUpdate { .. } => {
+                super::projects::not_available("update-tool-settings")
+            }
+            Request::ProjectMountPointList { .. } => {
+                super::projects::not_available("mount-point-list")
+            }
+            Request::ProjectMountPointLink { .. } => {
+                super::projects::not_available("mount-point-link")
+            }
+            Request::ProjectMountPointUnlink { .. } => {
+                super::projects::not_available("mount-point-unlink")
+            }
+            Request::ProjectScenarioList { .. } => super::projects::not_available("scenario-list"),
+            Request::ProjectScenarioCreate { .. } => {
+                super::projects::not_available("scenario-create")
+            }
+            Request::ProjectScenarioGet { .. } => super::projects::not_available("scenario-get"),
+            Request::ProjectScenarioUpdate { .. } => {
+                super::projects::not_available("scenario-update")
+            }
+            Request::ProjectScenarioRename { .. } => {
+                super::projects::not_available("scenario-rename")
+            }
+            Request::ProjectScenarioDelete { .. } => {
+                super::projects::not_available("scenario-delete")
+            }
+            Request::ProjectWardrobeList { .. } => super::projects::not_available("wardrobe-list"),
+            Request::ProjectWardrobeCreate { .. } => {
+                super::projects::not_available("wardrobe-create")
+            }
+            Request::ProjectWardrobeGet { .. } => super::projects::not_available("wardrobe-get"),
+            Request::ProjectWardrobeUpdate { .. } => {
+                super::projects::not_available("wardrobe-update")
+            }
+            Request::ProjectWardrobeDelete { .. } => {
+                super::projects::not_available("wardrobe-delete")
+            }
         }
     }
 

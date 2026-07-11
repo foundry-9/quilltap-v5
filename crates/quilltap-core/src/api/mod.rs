@@ -24,6 +24,8 @@ pub mod characters;
 pub mod chat_create;
 pub mod chat_send;
 pub mod engine;
+pub mod groups;
+pub mod projects;
 pub mod provider_actions;
 pub mod provision;
 pub mod salon;

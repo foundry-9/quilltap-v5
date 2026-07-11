@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+P4.6k (lane A) unit 1 — the Groups server surface at the core boundary.
+New `api::groups` dispatch module + the pinned Groups/Projects `Request`
+variants (the full Shared contract) + engine dispatch arms. Landed groups
+CRUD, members (add/remove/list), and mount-points (list/link/unlink), each
+a differential port of v4's real route handlers. Added a committed
+groups-projects fixture (built via real v4 repos + store-write helpers:
+2 groups, 3 projects, characters, scenarios, wardrobe, aesthetics, chats,
+legacy + store-backed files, a dangling mount-link) and the
+`groups_routes_equivalence` differential (reads + mutations, table dumps
+for the delete/member/mount-link side effects). Repo additions:
+`group_character_members::{add_member,remove_member,delete_by_group_id}`,
+`group_doc_mount_links::{unlink,delete_by_group_id,link_returning}`,
+`doc_mount_points::find_full_json_by_id`. Projects + scenarios variants
+answer the loud `not_available` refusal until their units land.
+
 Scoped the next porting round: three agent-ready work orders for the
 P4.6k ∥ P4.6l ∥ P4.6m parallel round —
 `docs/developer/porting/work-orders/p4.6k-groups-projects-server.md`
