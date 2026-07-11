@@ -106,6 +106,20 @@ compared at the decoded level (identical IHDR + tEXt chunks and inflated
 pixels — v4 zlib-compresses the IDAT, the port emits stored DEFLATE blocks,
 the one declared seam). New oracle `harness/oracle/cases/st-png.ts` +
 `st_png_equivalence` differential.
+P4.6l (lane B, in progress) — the Groups vertical in the Angular SPA. The
+Characters page now carries a Groups section above the roster (grid + card +
+the toolbar Create Group dialog) and a routed group editor at
+`/characters/groups/:id` (v5 path idiom; v4 used `/aurora/groups/[id]`). The
+editor is an explicit-Save form (name/description/color/icon — no autosave)
+over two collapsed-by-default cards: Members (list + X-remove + an Add-Member
+`<select>` that binds `[selected]` per option, the finding-#6 discipline) and
+"The Scriptorium" (linked stores list + unlink; the Link-store picker is a
+disabled affordance since the global mount-points listing is not a ported
+dispatch surface this round). All 18 group Request variants + 40 project
+variants added to `core-contract.ts`; the group editor route registered.
+Delete is immediate with no confirm (v4 behavior). Coded against a mocked
+CoreClient (lane A pins the server side); the live `groups-flow` e2e beats
+skip until lane A's fixture lands at unification. SPA 0.5.12.
 
 Scoped the next porting round: three agent-ready work orders for the
 P4.6k ∥ P4.6l ∥ P4.6m parallel round —

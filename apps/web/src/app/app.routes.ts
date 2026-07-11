@@ -33,6 +33,10 @@ export const routes: Routes = [
       import('./screens/characters/new/new-character').then((m) => m.NewCharacter),
   },
   {
+    path: 'characters/groups/:id',
+    loadComponent: () => import('./screens/groups/group-editor').then((m) => m.GroupEditor),
+  },
+  {
     path: 'characters/:id/edit',
     loadComponent: () =>
       import('./screens/characters/edit/character-edit').then((m) => m.CharacterEdit),

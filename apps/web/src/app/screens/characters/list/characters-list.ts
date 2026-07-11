@@ -13,6 +13,7 @@ import {
   fetchConnectionProfiles,
   triggerJsonDownload,
 } from '../characters.api';
+import { GroupsSection } from '../../groups/groups-section';
 import { CharacterCard } from './character-card';
 import { CharacterDeleteDialog, type DeleteChoice } from './character-delete-dialog';
 import { CharacterImportDialog } from './character-import-dialog';
@@ -36,9 +37,10 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
 /**
  * The character roster (v4 `app/aurora/AuroraView.tsx`). Cards over the
  * `characterList` dispatch (TanStack Query), the v4 sort, the three inline
- * toggles with optimistic updates, and the Create / Import toolbar. The Groups
- * grid, "Summon From Lore" (AI import), and "Reset Built-ins" are deferrals —
- * omitted / disabled with v4 microcopy. Copy + `qt-*` classes carry over verbatim.
+ * toggles with optimistic updates, the Create / Import toolbar, and the Groups
+ * section (P4.6l) above the grid. "Summon From Lore" (AI import) and "Reset
+ * Built-ins" remain deferrals — disabled with v4 microcopy. Copy + `qt-*`
+ * classes carry over verbatim.
  */
 @Component({
   selector: 'qt-characters-list',
@@ -50,6 +52,7 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
     CharacterCard,
     CharacterDeleteDialog,
     CharacterImportDialog,
+    GroupsSection,
   ],
   template: `
     <div class="character-page qt-page-container text-foreground">
@@ -81,6 +84,14 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
           >
             Summon From Lore
           </button>
+          <button
+            type="button"
+            class="qt-button character-toolbar__button inline-flex items-center rounded-lg border qt-border-default qt-bg-muted/70 px-4 py-2 text-sm qt-text-primary qt-shadow-sm transition hover:qt-bg-muted"
+            title="Create a new group"
+            (click)="groupsSection.openCreate()"
+          >
+            Create Group
+          </button>
           <a
             routerLink="/characters/new"
             class="qt-button character-toolbar__button character-toolbar__button--primary inline-flex items-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground qt-shadow-md transition hover:qt-bg-primary/90"
@@ -89,6 +100,9 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
           </a>
         </div>
       </div>
+
+      <!-- Groups section (v4 AuroraView.tsx) — above the characters grid. -->
+      <qt-groups-section #groupsSection />
 
       @if (charactersQuery.isPending()) {
         <qt-loading-state message="Loading characters..." class="mt-12" />
@@ -109,9 +123,7 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
           </a>
         </div>
       } @else {
-        <div
-          class="character-card-grid mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3"
-        >
+        <div class="character-card-grid mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           @for (character of visibleCharacters(); track character.id) {
             <qt-character-card
               [character]="character"
@@ -128,10 +140,7 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
     </div>
 
     @if (importOpen()) {
-      <qt-character-import-dialog
-        (close)="importOpen.set(false)"
-        (imported)="onImported()"
-      />
+      <qt-character-import-dialog (close)="importOpen.set(false)" (imported)="onImported()" />
     }
 
     @if (deleteTarget(); as target) {

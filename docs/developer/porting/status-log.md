@@ -6809,3 +6809,40 @@ retirement + `photo_link_summary` dedup (unit 5).
 Version: core 0.0.176. **P4.6m is COMPLETE** — all five units landed; the three
 standing byte-shaped characters deferrals (photo multipart upload,
 photo-save-fileid, SillyTavern PNG export/import) are CLOSED.
+## P4.6l — Groups + Projects SPA (lane B, in progress)
+
+Tier-4 SPA lane; no Rust. Coded against a mocked `CoreClient` over the
+p4.6k/l Shared contract (lane A pins the server side in parallel).
+
+**Commit 1 — the Groups vertical.** `apps/web/src/app/screens/groups/`:
+`groups.api.ts` (dispatch helpers + TanStack keys), `group-card.ts`,
+`group-create-dialog.ts`, `groups-section.ts` (the Characters-page section
+above the roster), `group-members-card.ts`, `group-stores-card.ts`,
+`group-editor.ts` (routed at `/characters/groups/:id`). Wired into
+`characters-list.ts` (Groups section + toolbar Create Group button) and
+`app.routes.ts`. `core-contract.ts` gained all 18 group + 40 project
+Request variants + the groups/projects DTO interfaces. `ui/format-bytes.ts`
+ports v4 `lib/utils/format-bytes`.
+
+Faithful v4 behaviors: card = 10×10 swatch + emoji (users-icon fallback),
+member count, 2-line-clamp description, Edit link + immediate no-confirm
+Delete; editor = explicit-Save `<form>` (name*/description/color/icon, no
+autosave, no image upload) over two collapsed cards. The routed editor path
+diverges from v4's `/aurora/groups/[id]` → `/characters/groups/:id` (v5
+idiom; recorded).
+
+**Recorded divergence / loud deferral:** the "Link Document Store" picker in
+the Scriptorium card is a DISABLED affordance (v4-register tooltip). Reason:
+`groupMountPointList`/`projectMountPointList` return only the LINKED stores;
+the GLOBAL mount-points listing (v4 `GET /api/v1/mount-points`) is not a
+ported dispatch surface this round (it belongs to the future Scriptorium
+vertical). List + unlink are live; linking a new store is not.
+
+**Finding-#6 discipline:** the Add-Member `<select>` (async options) binds
+`[selected]` per option and reads the choice via `(change)`, never `[value]`
+on the select.
+
+**Gate (commit 1):** `ng test` 35 files / 219 tests green (incl. 7 new
+groups tests); `ng build` clean; `groups-flow.spec.ts` parses (2 beats) and skips
+until lane A's `groups-projects-{main,mount}.db` fixture lands (auto-activates
+via a fixture-existence guard). SPA 0.5.12.

@@ -506,6 +506,343 @@ export interface TagDeleteRequest {
   tagId: string;
 }
 
+// ---------------------------------------------------------------------------
+// Groups + Projects surface (P4.6k implements the server side; see its Shared
+// contract). Serde names transcribed VERBATIM from the p4.6k/l Shared contract.
+// The response bodies are pinned by lane A's differentials, not by a Rust
+// `Response` type, so the SPA reads these ops through {@link CoreClient.dispatchData}
+// (raw `data`) rather than a narrowed response variant.
+// ---------------------------------------------------------------------------
+
+/** List groups with `_count.members` (v4 GET `/groups`, createdAt desc). */
+export interface GroupListRequest {
+  type: 'groupList';
+}
+
+/** Create a group (v4 POST `/groups`). */
+export interface GroupCreateRequest {
+  type: 'groupCreate';
+  name: string;
+  description?: string | null;
+  color?: string | null;
+  icon?: string | null;
+}
+
+/** The group detail projection (v4 GET `/groups/:id`). */
+export interface GroupGetRequest {
+  type: 'groupGet';
+  groupId: string;
+}
+
+/** Update a group (v4 PUT `/groups/:id`). */
+export interface GroupUpdateRequest {
+  type: 'groupUpdate';
+  groupId: string;
+  name?: string;
+  description?: string | null;
+  color?: string | null;
+  icon?: string | null;
+}
+
+/** Delete a group (v4 DELETE `/groups/:id`) — immediate, no confirm. */
+export interface GroupDeleteRequest {
+  type: 'groupDelete';
+  groupId: string;
+}
+
+/** The group's members (v4 `?action=members`). */
+export interface GroupMembersRequest {
+  type: 'groupMembers';
+  groupId: string;
+}
+
+/** Add / remove a member character (v4 `?action=addMember|removeMember`). */
+export interface GroupMemberAddRequest {
+  type: 'groupMemberAdd';
+  groupId: string;
+  characterId: string;
+}
+export interface GroupMemberRemoveRequest {
+  type: 'groupMemberRemove';
+  groupId: string;
+  characterId: string;
+}
+
+/** The document stores linked to a group (v4 GET `/groups/:id/mount-points`). */
+export interface GroupMountPointListRequest {
+  type: 'groupMountPointList';
+  groupId: string;
+}
+export interface GroupMountPointLinkRequest {
+  type: 'groupMountPointLink';
+  groupId: string;
+  mountPointId: string;
+}
+export interface GroupMountPointUnlinkRequest {
+  type: 'groupMountPointUnlink';
+  groupId: string;
+  mountPointId: string;
+}
+
+/** Group scenarios (v4 `/groups/:id/scenarios`), mirror of character scenarios. */
+export interface GroupScenarioListRequest {
+  type: 'groupScenarioList';
+  groupId: string;
+}
+export interface GroupScenarioCreateRequest {
+  type: 'groupScenarioCreate';
+  groupId: string;
+  name: string;
+  content: string;
+  isDefault?: boolean;
+}
+export interface GroupScenarioGetRequest {
+  type: 'groupScenarioGet';
+  groupId: string;
+  scenarioPath: string;
+}
+export interface GroupScenarioUpdateRequest {
+  type: 'groupScenarioUpdate';
+  groupId: string;
+  scenarioPath: string;
+  name?: string;
+  content?: string;
+  isDefault?: boolean;
+}
+export interface GroupScenarioRenameRequest {
+  type: 'groupScenarioRename';
+  groupId: string;
+  scenarioPath: string;
+  newName: string;
+}
+export interface GroupScenarioDeleteRequest {
+  type: 'groupScenarioDelete';
+  groupId: string;
+  scenarioPath: string;
+}
+
+/** The New-Chat participant-union scenarios (v4 GET `/groups/scenarios?characterIds=`). */
+export interface GroupScenariosUnionRequest {
+  type: 'groupScenariosUnion';
+  characterIds: string[];
+}
+
+/** List projects with `_count` (v4 GET `/projects`, createdAt desc). */
+export interface ProjectListRequest {
+  type: 'projectList';
+}
+
+/** Create a project (v4 POST `/projects`). */
+export interface ProjectCreateRequest {
+  type: 'projectCreate';
+  name: string;
+  description?: string;
+}
+
+/** The project detail projection (v4 GET `/projects/:id`). */
+export interface ProjectGetRequest {
+  type: 'projectGet';
+  projectId: string;
+}
+
+/** Update a project (v4 PUT `/projects/:id`) — a partial per `updateProjectSchema`. */
+export interface ProjectUpdateRequest {
+  type: 'projectUpdate';
+  projectId: string;
+  name?: string;
+  description?: string | null;
+  instructions?: string | null;
+  allowAnyCharacter?: boolean;
+  characterRoster?: string[];
+  color?: string | null;
+  icon?: string | null;
+  defaultAgentModeEnabled?: boolean | null;
+  defaultAvatarGenerationEnabled?: boolean | null;
+  defaultImageProfileId?: string | null;
+  defaultRoleplayTemplateId?: string | null;
+  defaultAlertCharactersOfLanternImages?: boolean | null;
+  answerConfirmationOverride?: 'ON' | 'OFF' | null;
+  backgroundDisplayMode?: 'latest_chat' | 'project' | 'static' | 'theme';
+}
+
+/** Delete a project (v4 DELETE `/projects/:id`) — chats/files disassociated. */
+export interface ProjectDeleteRequest {
+  type: 'projectDelete';
+  projectId: string;
+}
+
+/** The project roster (v4 `?action=roster`) + roster mutations. */
+export interface ProjectCharacterListRequest {
+  type: 'projectCharacterList';
+  projectId: string;
+}
+export interface ProjectCharacterAddRequest {
+  type: 'projectCharacterAdd';
+  projectId: string;
+  characterId: string;
+}
+export interface ProjectCharacterRemoveRequest {
+  type: 'projectCharacterRemove';
+  projectId: string;
+  characterId: string;
+}
+
+/** The project chats page (v4 `?action=chats`, limit/offset) + chat mutations. */
+export interface ProjectChatListRequest {
+  type: 'projectChatList';
+  projectId: string;
+  limit?: number;
+  offset?: number;
+}
+export interface ProjectChatAddRequest {
+  type: 'projectChatAdd';
+  projectId: string;
+  chatId: string;
+}
+export interface ProjectChatRemoveRequest {
+  type: 'projectChatRemove';
+  projectId: string;
+  chatId: string;
+}
+
+/** The project files list (v4 `?action=files`, two-branch DTO) + file mutations. */
+export interface ProjectFileListRequest {
+  type: 'projectFileList';
+  projectId: string;
+}
+export interface ProjectFileAddRequest {
+  type: 'projectFileAdd';
+  projectId: string;
+  fileId: string;
+}
+export interface ProjectFileRemoveRequest {
+  type: 'projectFileRemove';
+  projectId: string;
+  fileId: string;
+}
+
+/** Project state (v4 `?action=state`) — set REPLACES wholesale; reset returns previous. */
+export interface ProjectStateGetRequest {
+  type: 'projectStateGet';
+  projectId: string;
+}
+export interface ProjectStateSetRequest {
+  type: 'projectStateSet';
+  projectId: string;
+  state: Record<string, unknown>;
+}
+export interface ProjectStateResetRequest {
+  type: 'projectStateReset';
+  projectId: string;
+}
+
+/** The story-background URL resolution by display mode (v4 `?action=background`). */
+export interface ProjectBackgroundGetRequest {
+  type: 'projectBackgroundGet';
+  projectId: string;
+}
+
+/** The Prospero aesthetic files (v4 `?action=aesthetic`) — `lantern|aurora` only. */
+export interface ProjectAestheticGetRequest {
+  type: 'projectAestheticGet';
+  projectId: string;
+  kind: 'lantern' | 'aurora';
+}
+export interface ProjectAestheticSetRequest {
+  type: 'projectAestheticSet';
+  projectId: string;
+  kind: 'lantern' | 'aurora';
+  content?: string;
+}
+
+/** Default tool settings (v4 `?action=update-tool-settings`) — the SPA row is deferred. */
+export interface ProjectToolSettingsUpdateRequest {
+  type: 'projectToolSettingsUpdate';
+  projectId: string;
+  defaultDisabledTools: string[];
+  defaultDisabledToolGroups: string[];
+}
+
+/** The document stores linked to a project (v4 GET `/projects/:id/mount-points`). */
+export interface ProjectMountPointListRequest {
+  type: 'projectMountPointList';
+  projectId: string;
+}
+export interface ProjectMountPointLinkRequest {
+  type: 'projectMountPointLink';
+  projectId: string;
+  mountPointId: string;
+}
+export interface ProjectMountPointUnlinkRequest {
+  type: 'projectMountPointUnlink';
+  projectId: string;
+  mountPointId: string;
+}
+
+/** Project scenarios (v4 `/projects/:id/scenarios`), mirror of groups. */
+export interface ProjectScenarioListRequest {
+  type: 'projectScenarioList';
+  projectId: string;
+}
+export interface ProjectScenarioCreateRequest {
+  type: 'projectScenarioCreate';
+  projectId: string;
+  name: string;
+  content: string;
+  isDefault?: boolean;
+}
+export interface ProjectScenarioGetRequest {
+  type: 'projectScenarioGet';
+  projectId: string;
+  scenarioPath: string;
+}
+export interface ProjectScenarioUpdateRequest {
+  type: 'projectScenarioUpdate';
+  projectId: string;
+  scenarioPath: string;
+  name?: string;
+  content?: string;
+  isDefault?: boolean;
+}
+export interface ProjectScenarioRenameRequest {
+  type: 'projectScenarioRename';
+  projectId: string;
+  scenarioPath: string;
+  newName: string;
+}
+export interface ProjectScenarioDeleteRequest {
+  type: 'projectScenarioDelete';
+  projectId: string;
+  scenarioPath: string;
+}
+
+/** Project wardrobe (v4 `/projects/:id/wardrobe`) — reuses the character wardrobe machinery. */
+export interface ProjectWardrobeListRequest {
+  type: 'projectWardrobeList';
+  projectId: string;
+}
+export interface ProjectWardrobeCreateRequest {
+  type: 'projectWardrobeCreate';
+  projectId: string;
+  item: Record<string, unknown>;
+}
+export interface ProjectWardrobeGetRequest {
+  type: 'projectWardrobeGet';
+  projectId: string;
+  itemId: string;
+}
+export interface ProjectWardrobeUpdateRequest {
+  type: 'projectWardrobeUpdate';
+  projectId: string;
+  itemId: string;
+  item: Record<string, unknown>;
+}
+export interface ProjectWardrobeDeleteRequest {
+  type: 'projectWardrobeDelete';
+  projectId: string;
+  itemId: string;
+}
+
 /** The internally-tagged request union (one variant per user-meaningful op). */
 export type CoreRequest =
   | { type: 'health' }
@@ -596,7 +933,61 @@ export type CoreRequest =
   | TagCreateRequest
   | TagGetRequest
   | TagUpdateRequest
-  | TagDeleteRequest;
+  | TagDeleteRequest
+  // --- The Groups + Projects surface (P4.6k implements the server side) ---
+  | GroupListRequest
+  | GroupCreateRequest
+  | GroupGetRequest
+  | GroupUpdateRequest
+  | GroupDeleteRequest
+  | GroupMembersRequest
+  | GroupMemberAddRequest
+  | GroupMemberRemoveRequest
+  | GroupMountPointListRequest
+  | GroupMountPointLinkRequest
+  | GroupMountPointUnlinkRequest
+  | GroupScenarioListRequest
+  | GroupScenarioCreateRequest
+  | GroupScenarioGetRequest
+  | GroupScenarioUpdateRequest
+  | GroupScenarioRenameRequest
+  | GroupScenarioDeleteRequest
+  | GroupScenariosUnionRequest
+  | ProjectListRequest
+  | ProjectCreateRequest
+  | ProjectGetRequest
+  | ProjectUpdateRequest
+  | ProjectDeleteRequest
+  | ProjectCharacterListRequest
+  | ProjectCharacterAddRequest
+  | ProjectCharacterRemoveRequest
+  | ProjectChatListRequest
+  | ProjectChatAddRequest
+  | ProjectChatRemoveRequest
+  | ProjectFileListRequest
+  | ProjectFileAddRequest
+  | ProjectFileRemoveRequest
+  | ProjectStateGetRequest
+  | ProjectStateSetRequest
+  | ProjectStateResetRequest
+  | ProjectBackgroundGetRequest
+  | ProjectAestheticGetRequest
+  | ProjectAestheticSetRequest
+  | ProjectToolSettingsUpdateRequest
+  | ProjectMountPointListRequest
+  | ProjectMountPointLinkRequest
+  | ProjectMountPointUnlinkRequest
+  | ProjectScenarioListRequest
+  | ProjectScenarioCreateRequest
+  | ProjectScenarioGetRequest
+  | ProjectScenarioUpdateRequest
+  | ProjectScenarioRenameRequest
+  | ProjectScenarioDeleteRequest
+  | ProjectWardrobeListRequest
+  | ProjectWardrobeCreateRequest
+  | ProjectWardrobeGetRequest
+  | ProjectWardrobeUpdateRequest
+  | ProjectWardrobeDeleteRequest;
 
 export type RequestType = CoreRequest['type'];
 
@@ -1273,6 +1664,142 @@ export interface SetupDto {
 export interface ChatCreateDto {
   id: string;
   [key: string]: unknown;
+}
+
+// ---------------------------------------------------------------------------
+// Groups + Projects DTOs (v4 `app/aurora/types.ts` + `app/prospero` projections)
+// ---------------------------------------------------------------------------
+
+/** One group row (v4 `GroupRowSchema` projection + the list `_count.members`). */
+export interface GroupSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  color: string | null;
+  icon: string | null;
+  officialMountPointId: string | null;
+  state?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Present on the list read (`_count.members`); the card reads `memberCount`. */
+  _count?: { members: number };
+}
+
+/** A member / add-picker character (v4 `GroupMember` — null-filtered `{id, name}`). */
+export interface GroupMemberSummary {
+  id: string;
+  name: string;
+}
+
+/**
+ * A linked document store (v4 `DocumentStore`). `groupMountPointList` /
+ * `projectMountPointList` return the LINKED stores; fields beyond `id`/`name`/
+ * `mountType` are read defensively (the raw mount-point row may omit computed
+ * `fileCount`/`totalSizeBytes`/`enabled`).
+ */
+export interface DocumentStoreSummary {
+  id: string;
+  name: string;
+  description?: string | null;
+  mountType: string;
+  fileCount?: number;
+  totalSizeBytes?: number;
+  enabled?: boolean;
+  [key: string]: unknown;
+}
+
+/** One project list row (v4 list projection + `_count: {chats, files, characters}`). */
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  color: string | null;
+  icon: string | null;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { chats: number; files: number; characters: number };
+  [key: string]: unknown;
+}
+
+/** One enriched roster character on a project (v4 `?action=roster` projection). */
+export interface ProjectRosterCharacter {
+  id: string;
+  name: string;
+  defaultImageId: string | null;
+  defaultImage: EnrichedImage | null;
+  tags: string[];
+  chatCount: number;
+}
+
+/**
+ * The project DETAIL projection (v4 `actions/project-crud.ts` GET). The full
+ * project row + enriched roster + `_count`. Kept loose (index signature) — the
+ * per-field save handlers read/write individual keys.
+ */
+export interface ProjectDetail {
+  id: string;
+  name: string;
+  description: string | null;
+  instructions: string | null;
+  color: string | null;
+  icon: string | null;
+  allowAnyCharacter: boolean;
+  characterRoster: string[];
+  roster?: ProjectRosterCharacter[];
+  defaultAgentModeEnabled: boolean | null;
+  defaultAvatarGenerationEnabled: boolean | null;
+  defaultImageProfileId: string | null;
+  defaultRoleplayTemplateId: string | null;
+  defaultAlertCharactersOfLanternImages: boolean | null;
+  answerConfirmationOverride: 'ON' | 'OFF' | null;
+  backgroundDisplayMode: 'latest_chat' | 'project' | 'static' | 'theme';
+  state: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { chats: number; files: number; characters: number };
+  [key: string]: unknown;
+}
+
+/**
+ * One project file row (v4 `?action=files` legacy-file-shaped DTO). Store-backed
+ * rows add `mountPointId`/`relativePath`; both branches share this shape.
+ */
+export interface ProjectFileDto {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  fileSizeBytes: number;
+  category: string;
+  filepath?: string | null;
+  thumbnailUrl?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  folderPath?: string | null;
+  mountPointId?: string;
+  relativePath?: string;
+  [key: string]: unknown;
+}
+
+/** One scenario in a group/project store (v4 scenario list item). */
+export interface ScenarioItem {
+  scenarioPath: string;
+  name: string;
+  content?: string;
+  isDefault: boolean;
+  [key: string]: unknown;
+}
+
+/** The scenario list envelope (v4 `{mountPointId, scenarios, warnings}`). */
+export interface ScenarioListDto {
+  mountPointId: string | null;
+  scenarios: ScenarioItem[];
+  warnings?: string[];
+}
+
+/** The story-background resolution (v4 `?action=background`). */
+export interface ProjectBackgroundDto {
+  url: string | null;
+  sourceChatId?: string | null;
 }
 
 // ===========================================================================

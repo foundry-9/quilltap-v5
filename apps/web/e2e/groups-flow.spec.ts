@@ -1,0 +1,207 @@
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, openSync, rmSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+import { expect, test, type Page } from '@playwright/test';
+
+import { makeDbKeyFile } from './support/dbkey';
+import {
+  ARTIFACTS_DIR,
+  cliBinary,
+  E2E_PASSPHRASE,
+  FIXTURE_USER,
+  FIXTURES_DIR,
+  SINGLE_USER_ID,
+  spaDir,
+  TEST_PEPPER,
+  webBinary,
+} from './support/env';
+
+/**
+ * P4.6l — browser walk of the Groups vertical (the Characters-page section +
+ * the routed group editor). Authored pre-unification against lane A's committed
+ * groups-projects fixture; the whole describe SKIPS when that fixture is absent
+ * (this worktree) and auto-activates once lane A lands it at unification. The
+ * unifier reconciles the exact fixture file names if lane A differs from the
+ * `groups-projects-{main,mount}.db` guess below.
+ *
+ * Beats: unlock → the Characters page renders the Groups section with lane A's
+ * fixture group cards → open a group's editor → rename + Save (`groupUpdate`) →
+ * the Members card lists its members → the rename survives a full reload
+ * (server state). Plus a create-group beat through the toolbar dialog.
+ *
+ * Recipe mirrors `characters-flow.spec.ts`: copy the fixture pair, write the
+ * locked .dbkey, rewrite the fixture user id to SINGLE_USER_ID via
+ * `quilltap db --write` BEFORE launch, then boot quilltap-web on a private port.
+ */
+
+const GROUPS_PORT = 4324;
+const GROUPS_BASE_URL = `http://127.0.0.1:${GROUPS_PORT}`;
+const GROUPS_INSTANCE_DIR = resolve(ARTIFACTS_DIR, 'groups-instance');
+const GROUPS_DATA_DIR = resolve(GROUPS_INSTANCE_DIR, 'data');
+const GROUPS_SERVER_LOG = resolve(ARTIFACTS_DIR, 'groups-server.log');
+
+const MAIN_FIXTURE = resolve(FIXTURES_DIR, 'groups-projects-main.db');
+const MOUNT_FIXTURE = resolve(FIXTURES_DIR, 'groups-projects-mount.db');
+/** Lane A owns the fixture; skip the live walk until it is committed. */
+const FIXTURE_READY = existsSync(MAIN_FIXTURE);
+
+/** Every fixture table the groups walk reads is filtered by userId. */
+const USER_TABLES = ['characters', 'chats', 'tags', 'groups', 'projects'];
+
+let server: ChildProcess | undefined;
+
+test.describe('P4.6l — Groups vertical (section → editor → rename → persist)', () => {
+  test.skip(!FIXTURE_READY, 'awaits lane A groups-projects fixture (wired at unification)');
+
+  test.beforeAll(async () => {
+    test.setTimeout(120_000);
+    const web = webBinary();
+    const cli = cliBinary();
+
+    rmSync(GROUPS_INSTANCE_DIR, { recursive: true, force: true });
+    mkdirSync(GROUPS_DATA_DIR, { recursive: true });
+    copyFileSync(MAIN_FIXTURE, resolve(GROUPS_DATA_DIR, 'quilltap.db'));
+    if (existsSync(MOUNT_FIXTURE)) {
+      copyFileSync(MOUNT_FIXTURE, resolve(GROUPS_DATA_DIR, 'quilltap-mount-index.db'));
+    }
+
+    writeFileSync(
+      resolve(GROUPS_DATA_DIR, 'quilltap.dbkey'),
+      makeDbKeyFile(TEST_PEPPER, E2E_PASSPHRASE),
+    );
+    for (const table of USER_TABLES) {
+      runCliWrite(
+        cli,
+        `UPDATE ${table} SET userId = '${SINGLE_USER_ID}' WHERE userId = '${FIXTURE_USER}';`,
+      );
+    }
+
+    const logFd = openSync(GROUPS_SERVER_LOG, 'w');
+    server = spawn(
+      web,
+      [
+        '--host',
+        '127.0.0.1',
+        '--port',
+        String(GROUPS_PORT),
+        '--data-dir',
+        GROUPS_INSTANCE_DIR,
+        '--spa-dir',
+        spaDir(),
+      ],
+      { stdio: ['ignore', logFd, logFd], detached: true, env: withoutPepper() },
+    );
+    server.unref();
+    await waitForHealth();
+  });
+
+  test.afterAll(async () => {
+    if (server?.pid) {
+      try {
+        process.kill(-server.pid, 'SIGTERM');
+      } catch {
+        try {
+          process.kill(server.pid, 'SIGTERM');
+        } catch {
+          // already gone
+        }
+      }
+    }
+    rmSync(GROUPS_INSTANCE_DIR, { recursive: true, force: true });
+  });
+
+  async function unlockIfLocked(page: Page): Promise<void> {
+    const passphrase = page.locator('#qt-passphrase');
+    const roster = page.getByRole('heading', { name: 'Characters', exact: true });
+    await expect(passphrase.or(roster).first()).toBeVisible({ timeout: 15_000 });
+    if (await passphrase.isVisible()) {
+      await passphrase.fill(E2E_PASSPHRASE);
+      await page.getByRole('button', { name: 'Unlock' }).click();
+    }
+    await expect(roster).toBeVisible({ timeout: 10_000 });
+  }
+
+  test('the Groups section renders, opens the editor, renames, and persists', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.goto(`${GROUPS_BASE_URL}/characters`);
+    await unlockIfLocked(page);
+
+    // The Groups section sits above the character grid.
+    await expect(page.getByRole('heading', { name: 'Groups', exact: true })).toBeVisible();
+    const groupCards = page.locator('qt-group-card');
+    await expect(groupCards.first()).toBeVisible({ timeout: 10_000 });
+
+    // Open the first group's editor via its Edit link.
+    await groupCards.first().getByRole('link', { name: 'Edit' }).click();
+    await expect(page).toHaveURL(/\/characters\/groups\/[^/]+$/);
+    const nameInput = page.locator('#qt-group-name');
+    await expect(nameInput).toBeVisible({ timeout: 10_000 });
+
+    // Rename + Save (`groupUpdate`).
+    await nameInput.fill('Renamed by the walk');
+    await page.getByRole('button', { name: 'Save Changes' }).click();
+
+    // The Members card is present (collapsed by default).
+    await expect(page.getByRole('heading', { name: 'Members' })).toBeVisible();
+
+    // The rename survives a reload back on the Characters page (server state).
+    await page.goto(`${GROUPS_BASE_URL}/characters`);
+    await page.reload();
+    await expect(
+      page.locator('qt-group-card').filter({ hasText: 'Renamed by the walk' }),
+    ).toHaveCount(1, { timeout: 10_000 });
+  });
+
+  test('create a throwaway group through the toolbar dialog', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.goto(`${GROUPS_BASE_URL}/characters`);
+    await unlockIfLocked(page);
+
+    await page.getByRole('button', { name: 'Create Group' }).click();
+    const dialogName = page.locator('#qt-group-name');
+    await expect(dialogName).toBeVisible();
+    await dialogName.fill('Walk-created Guild');
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+
+    // On success the SPA navigates into the new group's editor.
+    await expect(page).toHaveURL(/\/characters\/groups\/[^/]+$/, { timeout: 10_000 });
+    await expect(page.locator('#qt-group-name')).toHaveValue('Walk-created Guild', {
+      timeout: 10_000,
+    });
+  });
+});
+
+function runCliWrite(cli: string, sql: string): void {
+  const res = spawnSync(cli, ['db', '--data-dir', GROUPS_INSTANCE_DIR, '--write', sql], {
+    env: { ...withoutPepper(), QUILLTAP_DB_PASSPHRASE: E2E_PASSPHRASE, QUILLTAP_QUIET_HINTS: '1' },
+    encoding: 'utf8',
+  });
+  if (res.status !== 0) {
+    throw new Error(`CLI rewrite failed (${sql}):\n${res.stdout}\n${res.stderr}`);
+  }
+}
+
+function withoutPepper(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  delete env['ENCRYPTION_MASTER_PEPPER'];
+  return env;
+}
+
+async function waitForHealth(): Promise<void> {
+  const deadline = Date.now() + 30_000;
+  let lastErr = '';
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${GROUPS_BASE_URL}/health`);
+      if (res.status === 423 || res.status === 200) return;
+      lastErr = `health status ${res.status}`;
+    } catch (e) {
+      lastErr = e instanceof Error ? e.message : String(e);
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  throw new Error(
+    `groups server did not become ready within 30s (${lastErr}); see ${GROUPS_SERVER_LOG}`,
+  );
+}
