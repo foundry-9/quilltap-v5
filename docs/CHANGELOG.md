@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+Scoped the next porting round: three agent-ready work orders for the
+P4.6k ∥ P4.6l ∥ P4.6m parallel round —
+`docs/developer/porting/work-orders/p4.6k-groups-projects-server.md`
+(the full groups + projects/Prospero dispatch backfill over the
+Phase-2-ported repos, ~40 pinned Request variants, jest real-DB
+differentials, a committed groups-projects fixture),
+`p4.6l-groups-projects-spa.md` (the groups section + editor on the
+Characters page, the `/prospero` list + card-grid detail, the Projects
+nav item, plus the characters upload/ST-PNG affordances and the
+dogfood-#6 `<select [value]>` audit as riders), and
+`p4.6m-multipart-binary-routes.md` (quilltap-web's first multipart
+machinery + the three v4-shaped routes closing the photo-upload,
+photo-save-fileid, and SillyTavern-PNG deferrals, with the hand-rolled
+PNG tEXt codec as a tier-1 byte-exact port). Fresh v4 surveys informed
+all three; oracle baseline unchanged (`a7b1398d`).
+
 Unified the P4.6i ∥ P4.6j characters-remainder round onto main. All eight
 characters `not_available` arms are live and differential-proven (delete
 cascade + cascade-preview, per-character chats, photo gallery list/save-by-
