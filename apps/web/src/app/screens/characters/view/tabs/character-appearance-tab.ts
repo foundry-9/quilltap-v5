@@ -72,7 +72,8 @@ import { characterKeys, fetchDepictionGuidelines } from '../../characters.api';
           </div>
         } @else {
           <p class="qt-text-small qt-text-secondary">
-            No physical description set for this character yet. Add one from the character-edit screen.
+            No physical description set for this character yet. Add one from the character-edit
+            screen.
           </p>
         }
       </div>
@@ -80,7 +81,8 @@ import { characterKeys, fetchDepictionGuidelines } from '../../characters.api';
       <div class="character-section-card rounded-lg border qt-border-default qt-bg-card p-6">
         <h2 class="qt-heading-4 text-foreground mb-2">Depiction Guidelines</h2>
         <p class="qt-text-small mb-4">
-          The Ariel Clause: freeform guidance steering how this character is depicted in generated images.
+          The Ariel Clause: freeform guidance steering how this character is depicted in generated
+          images.
         </p>
         @if (guidelinesQuery.isPending()) {
           <p class="qt-text-small qt-text-secondary">Loading…</p>
@@ -111,7 +113,9 @@ export class CharacterAppearanceTab {
   readonly characterId = input.required<string>();
   readonly character = input.required<CharacterDetail>();
 
-  protected readonly physicalDescription = computed(() => this.character().physicalDescription ?? null);
+  protected readonly physicalDescription = computed(
+    () => this.character().physicalDescription ?? null,
+  );
 
   protected readonly draft = signal('');
   protected readonly saving = signal(false);
@@ -136,7 +140,9 @@ export class CharacterAppearanceTab {
         content: this.draft(),
       });
       this.saved.set(true);
-      await this.queryClient.invalidateQueries({ queryKey: characterKeys.depiction(this.characterId()) });
+      await this.queryClient.invalidateQueries({
+        queryKey: characterKeys.depiction(this.characterId()),
+      });
     } finally {
       this.saving.set(false);
     }

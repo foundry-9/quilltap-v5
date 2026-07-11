@@ -6881,3 +6881,34 @@ Wardrobe, Image Generation) are the next slice.
 **Gate (commit 2):** `ng test` 36 files / 229 tests green (10 new projects
 tests + the groups suite); `ng build` clean; `projects-flow.spec.ts` parses
 (2 beats) and skips until lane A's fixture lands. SPA 0.5.13.
+
+**Commit 3 — the characters riders + the `<select [value]>` audit (tier 2).**
+Riders (byte-leg web routes lane C ships; called by `fetch`, live at
+unification): `characters.api.ts` gained `uploadCharacterPhoto` (multipart
+`POST /api/v1/characters/{id}/photos`) and `downloadCharacterPng`
+(`GET ?action=export&format=png` → blob download). The gallery tab's Upload
+Photo button is now live (failed upload surfaces the v4 400-keyword message via
+`{error}`); the roster card gained an "Export as PNG" button beside the JSON
+export. The ST-import PNG multipart leg was ALREADY wired (P4.6j). The live
+`characters-flow` upload/PNG beats defer to unification (the base web binary
+lacks lane C's routes); the riders are unit-tested with mocked `fetch`.
+
+**The finding-#6 `<select>` audit (per-site verdict):**
+- CONVERTED to per-option `[selected]` (saved value + async options): 
+  `settings/providers/cheap-llm-card.ts` (userDefinedProfileId + 
+  defaultCheapProfileId), `settings/providers/profile-modal.ts` (provider + 
+  apiKeyId), `settings/wizard/steps/model-selection-step.ts` (provider).
+- SAFE, no change (recorded): `characters/edit/details-tab.ts` pronoun preset 
+  (STATIC options); `characters/new/new-character.ts` connection-profile 
+  (NEW form — value starts '' before options, only set by user post-load); 
+  `characters/view/tabs/details-tab.ts` reverse-user dialog (options from 
+  already-loaded sync data, dialog opens post-load); 
+  `settings/providers/api-key-modal.ts` provider (CREATE-only modal, 
+  `provider=signal('')`); `settings/providers/profile-modal.ts:475` modelClass 
+  (STATIC `modelClasses` array).
+Every NEW select this lane wrote (group members picker, project model-behavior 
+selects) binds `[selected]` per option from the start.
+
+**Gate (commit 3):** `ng test` 36 files / 231 tests green (2 new gallery-upload 
+tests; settings + characters specs green after the conversions); `ng build` 
+clean. SPA 0.5.14.

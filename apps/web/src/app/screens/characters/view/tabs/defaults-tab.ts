@@ -3,7 +3,11 @@ import { RouterLink } from '@angular/router';
 import { injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../../../core/core-client';
-import type { CharacterConnectionProfile, CharacterDetail, CharacterListItem } from '../../../../core/core-contract';
+import type {
+  CharacterConnectionProfile,
+  CharacterDetail,
+  CharacterListItem,
+} from '../../../../core/core-contract';
 import { characterKeys } from '../../characters.api';
 
 /** v4 `lib/constants/character.ts` — the virtual "User Acts As Character" profile id. */
@@ -66,7 +70,8 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
       <div class="character-section-card rounded-lg border qt-border-default qt-bg-card p-6">
         <h2 class="qt-heading-4 text-foreground mb-2">Default Connection Profile</h2>
         <p class="qt-text-small mb-4">
-          The default AI provider and model to use when chatting with this character. Can be overridden per chat.
+          The default AI provider and model to use when chatting with this character. Can be
+          overridden per chat.
         </p>
         <div class="flex items-center gap-3">
           <!-- [selected] per option, not [value] on the select: the profiles
@@ -77,12 +82,19 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
             [disabled]="saving().connectionProfile"
             (change)="onConnectionProfileChange($any($event.target).value)"
           >
-            <option value="" [selected]="connectionProfileValue() === ''">No default profile</option>
-            <option [value]="userControlledProfileId" [selected]="connectionProfileValue() === userControlledProfileId">
+            <option value="" [selected]="connectionProfileValue() === ''">
+              No default profile
+            </option>
+            <option
+              [value]="userControlledProfileId"
+              [selected]="connectionProfileValue() === userControlledProfileId"
+            >
               User Acts As Character
             </option>
             @for (profile of connectionProfiles(); track profile.id) {
-              <option [value]="profile.id" [selected]="connectionProfileValue() === profile.id">{{ profile.name }}</option>
+              <option [value]="profile.id" [selected]="connectionProfileValue() === profile.id">
+                {{ profile.name }}
+              </option>
             }
           </select>
           @if (saving().connectionProfile) {
@@ -92,7 +104,10 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
         @if (connectionProfiles().length === 0) {
           <p class="mt-2 text-sm qt-text-warning">
             No connection profiles available.
-            <a routerLink="/settings" [queryParams]="{ tab: 'providers' }" class="underline hover:no-underline"
+            <a
+              routerLink="/settings"
+              [queryParams]="{ tab: 'providers' }"
+              class="underline hover:no-underline"
               >Create one in AI Providers</a
             >.
           </p>
@@ -120,7 +135,9 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
             [disabled]="saving().partner || isUserControlled()"
             (change)="onPartnerChange($any($event.target).value)"
           >
-            <option value="" [selected]="(defaultPartnerId() ?? '') === ''">No default partner</option>
+            <option value="" [selected]="(defaultPartnerId() ?? '') === ''">
+              No default partner
+            </option>
             @for (char of otherUserControlled(); track char.id) {
               <option [value]="char.id" [selected]="defaultPartnerId() === char.id">
                 {{ char.name }}{{ char.title ? ' - ' + char.title : '' }}
@@ -139,7 +156,11 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
         <p class="qt-text-small mb-4">
           The default image generation profile for creating images during chats. Optional.
         </p>
-        <select class="qt-select w-full" disabled title="Image-generation profiles are not yet available in this contract">
+        <select
+          class="qt-select w-full"
+          disabled
+          title="Image-generation profiles are not yet available in this contract"
+        >
           <option>Not yet available</option>
         </select>
       </div>
@@ -149,8 +170,8 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
         <div class="character-section-card rounded-lg border qt-border-default qt-bg-card p-6">
           <h2 class="qt-heading-4 text-foreground mb-2">Default System Prompt</h2>
           <p class="qt-text-small mb-4">
-            The system prompt to use by default when starting new chats with this character. Can be overridden per
-            chat.
+            The system prompt to use by default when starting new chats with this character. Can be
+            overridden per chat.
           </p>
           <div class="flex items-center gap-3">
             <select
@@ -162,7 +183,10 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
                 Use first prompt marked as default
               </option>
               @for (prompt of character().systemPrompts; track prompt.id) {
-                <option [value]="prompt.id" [selected]="character().defaultSystemPromptId === prompt.id">
+                <option
+                  [value]="prompt.id"
+                  [selected]="character().defaultSystemPromptId === prompt.id"
+                >
                   {{ prompt.name }}{{ prompt.isDefault ? ' (current default)' : '' }}
                 </option>
               }
@@ -179,8 +203,8 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
         <div class="character-section-card rounded-lg border qt-border-default qt-bg-card p-6">
           <h2 class="qt-heading-4 text-foreground mb-2">Default Scenario</h2>
           <p class="qt-text-small mb-4">
-            The scenario to pre-select by default when starting new chats with this character. Can be overridden per
-            chat.
+            The scenario to pre-select by default when starting new chats with this character. Can
+            be overridden per chat.
           </p>
           <div class="flex items-center gap-3">
             <select
@@ -188,9 +212,14 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
               [disabled]="saving().scenario"
               (change)="onDefaultScenarioChange($any($event.target).value)"
             >
-              <option value="" [selected]="(character().defaultScenarioId ?? '') === ''">No default scenario</option>
+              <option value="" [selected]="(character().defaultScenarioId ?? '') === ''">
+                No default scenario
+              </option>
               @for (scenario of character().scenarios; track scenario.id) {
-                <option [value]="scenario.id" [selected]="character().defaultScenarioId === scenario.id">
+                <option
+                  [value]="scenario.id"
+                  [selected]="character().defaultScenarioId === scenario.id"
+                >
                   {{ scenario.title }}
                 </option>
               }
@@ -206,8 +235,9 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
       <div class="character-section-card rounded-lg border qt-border-default qt-bg-card p-6">
         <h2 class="qt-heading-4 text-foreground mb-2">Agent Mode</h2>
         <p class="qt-text-small mb-4">
-          Control whether agent mode is enabled by default for chats with this character. Agent mode allows the AI to
-          iteratively use tools, verify results, and self-correct before delivering a final response.
+          Control whether agent mode is enabled by default for chats with this character. Agent mode
+          allows the AI to iteratively use tools, verify results, and self-correct before delivering
+          a final response.
         </p>
         <div class="flex items-center gap-3">
           <select
@@ -230,8 +260,9 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
       <div class="character-section-card rounded-lg border qt-border-default qt-bg-card p-6">
         <h2 class="qt-heading-4 text-foreground mb-2">Help Tools</h2>
         <p class="qt-text-small mb-4">
-          Control whether help tools are available for this character. When enabled, the character can search
-          Quilltap documentation and read instance settings to assist users with configuration.
+          Control whether help tools are available for this character. When enabled, the character
+          can search Quilltap documentation and read instance settings to assist users with
+          configuration.
         </p>
         <div class="flex items-center gap-3">
           <select
@@ -257,7 +288,8 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
         <div class="mb-6">
           <h3 class="qt-text-label mb-1">Self-Dressing</h3>
           <p class="qt-text-small mb-3">
-            Control whether this character can change their own outfit during conversations using wardrobe tools.
+            Control whether this character can change their own outfit during conversations using
+            wardrobe tools.
           </p>
           <div class="flex items-center gap-3">
             <select
@@ -279,7 +311,8 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
         <div>
           <h3 class="qt-text-label mb-1">Outfit Creation</h3>
           <p class="qt-text-small mb-3">
-            Control whether this character can create new wardrobe items mid-conversation. Requires tool use.
+            Control whether this character can create new wardrobe items mid-conversation. Requires
+            tool use.
           </p>
           <div class="flex items-center gap-3">
             <select
@@ -303,12 +336,15 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
       <div class="character-section-card rounded-lg border qt-border-default qt-bg-card p-6">
         <h2 class="qt-heading-4 text-foreground mb-2">Default Timestamp Settings</h2>
         <p class="qt-text-small mb-4">
-          Default timestamp injection settings for new chats with this character. When this character is the only
-          participant in a new chat, these settings will be pre-filled in the chat creation dialog.
+          Default timestamp injection settings for new chats with this character. When this
+          character is the only participant in a new chat, these settings will be pre-filled in the
+          chat creation dialog.
         </p>
         <div class="space-y-3">
           @for (mode of timestampModes; track mode.value) {
-            <label class="flex items-start gap-3 p-3 border qt-border-default rounded qt-hover-accent cursor-pointer">
+            <label
+              class="flex items-start gap-3 p-3 border qt-border-default rounded qt-hover-accent cursor-pointer"
+            >
               <input
                 type="radio"
                 name="defaultsTimestampMode"
@@ -395,14 +431,25 @@ export class CharacterDefaultsTab {
   );
 
   protected readonly connectionProfileValue = computed(() =>
-    this.isUserControlled() ? USER_CONTROLLED_PROFILE_ID : this.character().defaultConnectionProfileId ?? '',
+    this.isUserControlled()
+      ? USER_CONTROLLED_PROFILE_ID
+      : (this.character().defaultConnectionProfileId ?? ''),
   );
 
   private readonly timestampConfig = computed<Record<string, unknown>>(
-    () => this.character().defaultTimestampConfig ?? { mode: 'NONE', format: 'FRIENDLY', intervalMinutes: 15 },
+    () =>
+      this.character().defaultTimestampConfig ?? {
+        mode: 'NONE',
+        format: 'FRIENDLY',
+        intervalMinutes: 15,
+      },
   );
-  protected readonly timestampMode = computed(() => String(this.timestampConfig()['mode'] ?? 'NONE'));
-  protected readonly timestampFormat = computed(() => String(this.timestampConfig()['format'] ?? 'FRIENDLY'));
+  protected readonly timestampMode = computed(() =>
+    String(this.timestampConfig()['mode'] ?? 'NONE'),
+  );
+  protected readonly timestampFormat = computed(() =>
+    String(this.timestampConfig()['format'] ?? 'FRIENDLY'),
+  );
   protected readonly timestampIntervalMinutes = computed(() =>
     Number(this.timestampConfig()['intervalMinutes'] ?? 15),
   );
@@ -416,16 +463,26 @@ export class CharacterDefaultsTab {
   }
 
   /** `fallback` = v4's `showErrorToast` fallback microcopy for this control. */
-  private async save(field: keyof SavingState, body: Record<string, unknown>, fallback: string): Promise<void> {
+  private async save(
+    field: keyof SavingState,
+    body: Record<string, unknown>,
+    fallback: string,
+  ): Promise<void> {
     this.saving.update((s) => ({ ...s, [field]: true }));
     this.error.set(null);
     try {
-      await this.core.dispatchData({ type: 'characterUpdate', characterId: this.characterId(), character: body });
+      await this.core.dispatchData({
+        type: 'characterUpdate',
+        characterId: this.characterId(),
+        character: body,
+      });
     } catch (err) {
       this.error.set(err instanceof Error && err.message ? err.message : fallback);
     } finally {
       this.saving.update((s) => ({ ...s, [field]: false }));
-      await this.queryClient.invalidateQueries({ queryKey: characterKeys.detail(this.characterId()) });
+      await this.queryClient.invalidateQueries({
+        queryKey: characterKeys.detail(this.characterId()),
+      });
     }
   }
 
@@ -447,28 +504,50 @@ export class CharacterDefaultsTab {
         partnerId: value || null,
       });
     } catch (err) {
-      this.error.set(err instanceof Error && err.message ? err.message : 'Failed to update partner');
+      this.error.set(
+        err instanceof Error && err.message ? err.message : 'Failed to update partner',
+      );
     } finally {
       this.saving.update((s) => ({ ...s, partner: false }));
-      await this.queryClient.invalidateQueries({ queryKey: characterKeys.defaultPartner(this.characterId()) });
-      await this.queryClient.invalidateQueries({ queryKey: characterKeys.detail(this.characterId()) });
+      await this.queryClient.invalidateQueries({
+        queryKey: characterKeys.defaultPartner(this.characterId()),
+      });
+      await this.queryClient.invalidateQueries({
+        queryKey: characterKeys.detail(this.characterId()),
+      });
     }
   }
 
   protected onDefaultSystemPromptChange(value: string): void {
-    void this.save('systemPrompt', { defaultSystemPromptId: value || null }, 'Failed to update default system prompt');
+    void this.save(
+      'systemPrompt',
+      { defaultSystemPromptId: value || null },
+      'Failed to update default system prompt',
+    );
   }
 
   protected onDefaultScenarioChange(value: string): void {
-    void this.save('scenario', { defaultScenarioId: value || null }, 'Failed to update default scenario');
+    void this.save(
+      'scenario',
+      { defaultScenarioId: value || null },
+      'Failed to update default scenario',
+    );
   }
 
   protected onAgentModeChange(value: string): void {
-    void this.save('agentMode', { defaultAgentModeEnabled: this.fromTri(value) }, 'Failed to update agent mode');
+    void this.save(
+      'agentMode',
+      { defaultAgentModeEnabled: this.fromTri(value) },
+      'Failed to update agent mode',
+    );
   }
 
   protected onHelpToolsChange(value: string): void {
-    void this.save('helpTools', { defaultHelpToolsEnabled: this.fromTri(value) }, 'Failed to update help tools');
+    void this.save(
+      'helpTools',
+      { defaultHelpToolsEnabled: this.fromTri(value) },
+      'Failed to update help tools',
+    );
   }
 
   protected onCanDressThemselvesChange(value: string): void {
@@ -507,6 +586,10 @@ export class CharacterDefaultsTab {
 
   private saveTimestampConfig(config: Record<string, unknown>): void {
     const value = config['mode'] === 'NONE' ? null : config;
-    void this.save('timestampConfig', { defaultTimestampConfig: value }, 'Failed to update timestamp config');
+    void this.save(
+      'timestampConfig',
+      { defaultTimestampConfig: value },
+      'Failed to update timestamp config',
+    );
   }
 }

@@ -68,7 +68,9 @@ interface DetailField {
             <qt-icon name="refresh" class="w-4 h-4" />
             <span class="hidden sm:inline">{{ defaultPartnerName() }}</span>
             <span>→</span>
-            <code class="rounded qt-bg-success/20 px-1 text-xs qt-text-success">{{ '{{user}}' }}</code>
+            <code class="rounded qt-bg-success/20 px-1 text-xs qt-text-success"
+              >{{ '{{user}}' }}</code
+            >
             <span class="text-xs">({{ templateCounts().userCount }})</span>
           </button>
         }
@@ -96,7 +98,9 @@ interface DetailField {
             (click)="openReverseUserDialog()"
           >
             <qt-icon name="refresh" class="w-4 h-4" />
-            <code class="rounded qt-bg-success/20 px-1 text-xs qt-text-success">{{ '{{user}}' }}</code>
+            <code class="rounded qt-bg-success/20 px-1 text-xs qt-text-success"
+              >{{ '{{user}}' }}</code
+            >
             <span>→</span>
             <span class="hidden sm:inline">name…</span>
             <span class="text-xs">({{ literalCounts().userCount }})</span>
@@ -150,21 +154,35 @@ interface DetailField {
     </div>
 
     @if (showReverseUserDialog()) {
-      <qt-modal title="Restore {{ '{{user}}' }} to a name" maxWidth="md" (close)="showReverseUserDialog.set(false)">
+      <qt-modal
+        title="Restore {{ '{{user}}' }} to a name"
+        maxWidth="md"
+        (close)="showReverseUserDialog.set(false)"
+      >
         <div class="space-y-4">
           <p class="qt-text-small">
             Choose which user-controlled character's name should replace every
-            <code class="rounded qt-bg-muted px-1 text-xs">{{ '{{user}}' }}</code> token in this character's
-            prompts.
+            <code class="rounded qt-bg-muted px-1 text-xs">{{ '{{user}}' }}</code> token in this
+            character's prompts.
           </p>
-          <select class="qt-select" [value]="reverseUserSelection()" (change)="reverseUserSelection.set($any($event.target).value)">
+          <select
+            class="qt-select"
+            [value]="reverseUserSelection()"
+            (change)="reverseUserSelection.set($any($event.target).value)"
+          >
             @for (char of otherUserControlled(); track char.id) {
-              <option [value]="char.id">{{ char.name }}{{ char.title ? ' - ' + char.title : '' }}</option>
+              <option [value]="char.id">
+                {{ char.name }}{{ char.title ? ' - ' + char.title : '' }}
+              </option>
             }
           </select>
         </div>
         <div qt-modal-footer class="flex gap-3 justify-end">
-          <button type="button" class="qt-button-secondary" (click)="showReverseUserDialog.set(false)">
+          <button
+            type="button"
+            class="qt-button-secondary"
+            (click)="showReverseUserDialog.set(false)"
+          >
             Cancel
           </button>
           <button type="button" class="qt-button-primary" (click)="confirmReverseUser()">
@@ -209,16 +227,20 @@ export class CharacterDetailsTab {
   );
 
   protected readonly replaceCharTitle = computed(
-    () => `Replace ${this.templateCounts().charCount} occurrences of "${this.character().name}" with {{char}}`,
+    () =>
+      `Replace ${this.templateCounts().charCount} occurrences of "${this.character().name}" with {{char}}`,
   );
   protected readonly replaceUserTitle = computed(
-    () => `Replace ${this.templateCounts().userCount} occurrences of "${this.defaultPartnerName()}" with {{user}}`,
+    () =>
+      `Replace ${this.templateCounts().userCount} occurrences of "${this.defaultPartnerName()}" with {{user}}`,
   );
   protected readonly reverseCharTitle = computed(
-    () => `Replace ${this.literalCounts().charCount} occurrences of {{char}} with "${this.character().name}"`,
+    () =>
+      `Replace ${this.literalCounts().charCount} occurrences of {{char}} with "${this.character().name}"`,
   );
   protected readonly reverseUserTitle = computed(
-    () => `Replace ${this.literalCounts().userCount} occurrences of {{user}} with a user-controlled character's name`,
+    () =>
+      `Replace ${this.literalCounts().userCount} occurrences of {{user}} with a user-controlled character's name`,
   );
 
   protected readonly activePromptName = computed(() => {
@@ -234,7 +256,10 @@ export class CharacterDetailsTab {
     if (c.manifesto) out.push({ label: 'Manifesto', content: c.manifesto });
     if (c.personality) out.push({ label: 'Personality', content: c.personality });
     for (const scenario of c.scenarios) {
-      out.push({ label: c.scenarios.length > 1 ? scenario.title : 'Scenario', content: scenario.content });
+      out.push({
+        label: c.scenarios.length > 1 ? scenario.title : 'Scenario',
+        content: scenario.content,
+      });
     }
     if (c.firstMessage) out.push({ label: 'First Message', content: c.firstMessage });
     if (c.exampleDialogues) out.push({ label: 'Example Dialogues', content: c.exampleDialogues });
@@ -270,8 +295,9 @@ export class CharacterDetailsTab {
   }
 
   protected confirmReverseUser(): void {
-    const chosen = this.otherUserControlled().find((c) => c.id === this.reverseUserSelection())
-      ?? this.otherUserControlled()[0];
+    const chosen =
+      this.otherUserControlled().find((c) => c.id === this.reverseUserSelection()) ??
+      this.otherUserControlled()[0];
     this.showReverseUserDialog.set(false);
     if (chosen) {
       void this.reverseTemplate('user', chosen.name);
@@ -279,7 +305,10 @@ export class CharacterDetailsTab {
   }
 
   private async runTemplateSave(transform: (text: string) => string): Promise<void> {
-    const { mainUpdates, changedSystemPrompts } = applyTemplateTransform(this.character(), transform);
+    const { mainUpdates, changedSystemPrompts } = applyTemplateTransform(
+      this.character(),
+      transform,
+    );
     if (Object.keys(mainUpdates).length === 0 && changedSystemPrompts.length === 0) {
       return;
     }
@@ -294,7 +323,11 @@ export class CharacterDetailsTab {
         });
       }
       if (Object.keys(mainUpdates).length > 0) {
-        await this.core.dispatchData({ type: 'characterUpdate', characterId, character: mainUpdates });
+        await this.core.dispatchData({
+          type: 'characterUpdate',
+          characterId,
+          character: mainUpdates,
+        });
       }
     } finally {
       await this.queryClient.invalidateQueries({ queryKey: characterKeys.detail(characterId) });

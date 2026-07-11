@@ -1,7 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
-import type { CharacterDetail, CharacterGroupBadge, CharacterStats } from '../../../core/core-contract';
+import type {
+  CharacterDetail,
+  CharacterGroupBadge,
+  CharacterStats,
+} from '../../../core/core-contract';
 import { Icon } from '../../../ui/icon';
 import { characterAvatarSrc } from '../characters.api';
 
@@ -36,7 +40,11 @@ interface StatItem {
       <!-- Avatar -->
       <div class="relative overflow-hidden rounded-lg w-24 h-30" style="aspect-ratio: 4/5">
         @if (avatarSrc()) {
-          <img [src]="avatarSrc()" [alt]="character().name" class="absolute inset-0 h-full w-full object-cover" />
+          <img
+            [src]="avatarSrc()"
+            [alt]="character().name"
+            class="absolute inset-0 h-full w-full object-cover"
+          />
         } @else {
           <div class="absolute inset-0 flex items-center justify-center qt-bg-muted">
             <span class="text-3xl font-bold qt-text-secondary">{{ initial() }}</span>
@@ -83,7 +91,9 @@ interface StatItem {
                 "
                 [disabled]="togglingControlledBy()"
                 [title]="
-                  character().controlledBy === 'user' ? 'Switch to LLM control' : 'Switch to user control'
+                  character().controlledBy === 'user'
+                    ? 'Switch to LLM control'
+                    : 'Switch to user control'
                 "
                 (click)="toggleControlledBy.emit()"
               >
@@ -134,7 +144,9 @@ interface StatItem {
 
         <div class="mt-auto space-y-2 pt-4">
           @if (statItems().length > 0) {
-            <div class="flex flex-wrap items-center gap-x-2 gap-y-1 qt-text-small qt-text-secondary">
+            <div
+              class="flex flex-wrap items-center gap-x-2 gap-y-1 qt-text-small qt-text-secondary"
+            >
               @for (s of statItems(); track s.key; let i = $index) {
                 @if (i > 0) {
                   <span class="opacity-40" aria-hidden="true">|</span>
@@ -181,7 +193,13 @@ interface StatItem {
           class="inline-flex items-center justify-center rounded-lg border qt-border-default qt-bg-card px-4 py-2 qt-label text-foreground qt-shadow-sm hover:qt-bg-muted disabled:opacity-50"
           (click)="toggleNpc.emit()"
         >
-          {{ togglingNpc() ? 'Converting...' : character().npc ? 'Convert to Character' : 'Convert to NPC' }}
+          {{
+            togglingNpc()
+              ? 'Converting...'
+              : character().npc
+                ? 'Convert to Character'
+                : 'Convert to NPC'
+          }}
         </button>
         <button
           type="button"

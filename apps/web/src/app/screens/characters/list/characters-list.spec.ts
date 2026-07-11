@@ -153,9 +153,9 @@ describe('CharactersList', () => {
     expect(navigated).toEqual([['/characters', 'a']]);
 
     // A click on an inner interactive element (the favorite star) does NOT.
-    const starButton = Array.from(
-      fixture.nativeElement.querySelectorAll('button'),
-    ).find((b) => (b as HTMLButtonElement).textContent?.trim() === '☆') as HTMLButtonElement;
+    const starButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+      (b) => (b as HTMLButtonElement).textContent?.trim() === '☆',
+    ) as HTMLButtonElement;
     starButton.click();
     expect(navigated.length).toBe(1);
   });
@@ -193,7 +193,7 @@ describe('CharactersList', () => {
 
     try {
       const exportBtn = fixture.nativeElement.querySelector(
-        'button[title="Export character data"]',
+        'button[title="Export as SillyTavern JSON"]',
       ) as HTMLButtonElement;
       expect(exportBtn).toBeTruthy();
       exportBtn.click();
@@ -219,9 +219,9 @@ describe('CharactersList', () => {
         seen.push(req.type);
       }),
     );
-    const starButton = Array.from(
-      fixture.nativeElement.querySelectorAll('button'),
-    ).find((b) => (b as HTMLButtonElement).textContent?.trim() === '☆') as HTMLButtonElement;
+    const starButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+      (b) => (b as HTMLButtonElement).textContent?.trim() === '☆',
+    ) as HTMLButtonElement;
     expect(starButton).toBeTruthy();
     starButton.click();
     // The optimistic `setQueryData` propagates to the query signal on the next

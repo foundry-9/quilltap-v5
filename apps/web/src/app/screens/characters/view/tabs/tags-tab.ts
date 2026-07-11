@@ -22,10 +22,13 @@ import { characterKeys, fetchCharacterTags, fetchTags, tagKeys } from '../../cha
       <div>
         <h2 class="qt-heading-4 text-foreground">Character Tags</h2>
         <p class="qt-text-small">
-          Tags help organize and categorize this character. They can also be used for filtering and searching.
+          Tags help organize and categorize this character. They can also be used for filtering and
+          searching.
         </p>
       </div>
-      <div class="character-section-card rounded-lg border qt-border-default qt-bg-card p-6 space-y-2">
+      <div
+        class="character-section-card rounded-lg border qt-border-default qt-bg-card p-6 space-y-2"
+      >
         <label class="block text-sm qt-text-primary">Tags</label>
         <div class="inline-flex flex-wrap gap-2 w-auto">
           @for (tag of tags(); track tag.id) {
@@ -113,7 +116,9 @@ import { characterKeys, fetchCharacterTags, fetchTags, tagKeys } from '../../cha
           }
         </div>
         @if (isAdding()) {
-          <p class="qt-text-xs">Press Enter to add a tag, or select from suggestions. Press Esc to cancel.</p>
+          <p class="qt-text-xs">
+            Press Enter to add a tag, or select from suggestions. Press Esc to cancel.
+          </p>
         }
       </div>
     </div>
@@ -179,7 +184,11 @@ export class CharacterTagsTab {
     try {
       const created = await this.core.dispatchData({ type: 'tagCreate', name: trimmed });
       const tag = (created['tag'] ?? created) as TagDto;
-      await this.core.dispatchData({ type: 'characterAddTag', characterId: this.characterId(), tagId: tag.id });
+      await this.core.dispatchData({
+        type: 'characterAddTag',
+        characterId: this.characterId(),
+        tagId: tag.id,
+      });
       await Promise.all([
         this.queryClient.invalidateQueries({ queryKey: characterKeys.tags(this.characterId()) }),
         this.queryClient.invalidateQueries({ queryKey: tagKeys.list() }),
@@ -194,8 +203,14 @@ export class CharacterTagsTab {
     if (this.busy()) return;
     this.busy.set(true);
     try {
-      await this.core.dispatchData({ type: 'characterAddTag', characterId: this.characterId(), tagId });
-      await this.queryClient.invalidateQueries({ queryKey: characterKeys.tags(this.characterId()) });
+      await this.core.dispatchData({
+        type: 'characterAddTag',
+        characterId: this.characterId(),
+        tagId,
+      });
+      await this.queryClient.invalidateQueries({
+        queryKey: characterKeys.tags(this.characterId()),
+      });
       this.cancelAdding();
     } finally {
       this.busy.set(false);
@@ -206,8 +221,14 @@ export class CharacterTagsTab {
     if (this.busy()) return;
     this.busy.set(true);
     try {
-      await this.core.dispatchData({ type: 'characterRemoveTag', characterId: this.characterId(), tagId });
-      await this.queryClient.invalidateQueries({ queryKey: characterKeys.tags(this.characterId()) });
+      await this.core.dispatchData({
+        type: 'characterRemoveTag',
+        characterId: this.characterId(),
+        tagId,
+      });
+      await this.queryClient.invalidateQueries({
+        queryKey: characterKeys.tags(this.characterId()),
+      });
     } finally {
       this.busy.set(false);
     }

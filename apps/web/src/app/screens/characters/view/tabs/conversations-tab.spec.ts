@@ -17,7 +17,14 @@ function chat(over: Partial<CharacterChatSummary>): CharacterChatSummary {
     character: { id: 'c1', name: 'Jeeves' },
     project: null,
     storyBackground: null,
-    messages: [{ id: 'm1', role: 'ASSISTANT', content: 'Very good, sir.', createdAt: '2024-01-02T00:00:00.000Z' }],
+    messages: [
+      {
+        id: 'm1',
+        role: 'ASSISTANT',
+        content: 'Very good, sir.',
+        createdAt: '2024-01-02T00:00:00.000Z',
+      },
+    ],
     tags: [],
     isDangerousChat: false,
     _count: { messages: 4, memories: 0 },
@@ -90,7 +97,9 @@ describe('CharacterConversationsTab', () => {
 
   it('renders a card per chat with title, message count, and scriptorium badge', async () => {
     const fixture = await render(
-      stubClient([chat({ id: 'chat-1', title: 'Tea at Midnight', _count: { messages: 7, memories: 2 } })]),
+      stubClient([
+        chat({ id: 'chat-1', title: 'Tea at Midnight', _count: { messages: 7, memories: 2 } }),
+      ]),
     );
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('Tea at Midnight');

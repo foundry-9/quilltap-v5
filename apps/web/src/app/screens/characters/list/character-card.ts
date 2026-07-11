@@ -120,10 +120,18 @@ import { processTemplate, resolveUserToken } from '../templates';
         <button
           type="button"
           class="character-card__action inline-flex items-center justify-center gap-2 rounded-lg border qt-border-default qt-bg-muted/80 px-3 py-2 text-sm qt-text-primary qt-shadow-sm transition hover:qt-bg-muted"
-          title="Export character data"
+          title="Export as SillyTavern JSON"
           (click)="exportCharacter.emit()"
         >
           <qt-icon name="download" class="w-5 h-5" />
+        </button>
+        <button
+          type="button"
+          class="character-card__action inline-flex items-center justify-center gap-2 rounded-lg border qt-border-default qt-bg-muted/80 px-3 py-2 text-sm qt-text-primary qt-shadow-sm transition hover:qt-bg-muted"
+          title="Export as SillyTavern PNG card"
+          (click)="exportPng.emit()"
+        >
+          <qt-icon name="image" class="w-5 h-5" />
         </button>
         <button
           type="button"
@@ -148,6 +156,7 @@ export class CharacterCard {
   readonly toggleCarina = output<void>();
   readonly toggleControlledBy = output<void>();
   readonly exportCharacter = output<void>();
+  readonly exportPng = output<void>();
   readonly deleteCharacter = output<void>();
 
   /**

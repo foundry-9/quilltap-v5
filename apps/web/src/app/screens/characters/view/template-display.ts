@@ -18,9 +18,11 @@ import { highlightSegments } from './template-highlighter';
     @for (seg of segments(); track $index) {
       @switch (seg.kind) {
         @case ('char-template') {
-          <span class="px-0.5 rounded border-b-2 qt-badge-chat qt-border-info" [title]="seg.title">{{
-            seg.text
-          }}</span>
+          <span
+            class="px-0.5 rounded border-b-2 qt-badge-chat qt-border-info"
+            [title]="seg.title"
+            >{{ seg.text }}</span
+          >
         }
         @case ('user-template') {
           <span

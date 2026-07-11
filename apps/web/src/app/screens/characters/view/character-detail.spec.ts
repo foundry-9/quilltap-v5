@@ -148,8 +148,12 @@ describe('CharacterDetail', () => {
 
   it('dispatches characterFavorite when the favorite star is toggled', async () => {
     const seen: string[] = [];
-    const fixture = await render(stubClient(character({ isFavorite: false }), (req) => seen.push(req.type)));
-    const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[];
+    const fixture = await render(
+      stubClient(character({ isFavorite: false }), (req) => seen.push(req.type)),
+    );
+    const buttons = Array.from(
+      fixture.nativeElement.querySelectorAll('button'),
+    ) as HTMLButtonElement[];
     const favorite = buttons.find((b) => b.title === 'Add to favorites');
     expect(favorite).toBeTruthy();
     favorite!.click();
@@ -160,8 +164,12 @@ describe('CharacterDetail', () => {
 
   it('dispatches characterToggleCarina when the Carina toggle is clicked', async () => {
     const seen: string[] = [];
-    const fixture = await render(stubClient(character({ canBeCarina: false }), (req) => seen.push(req.type)));
-    const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[];
+    const fixture = await render(
+      stubClient(character({ canBeCarina: false }), (req) => seen.push(req.type)),
+    );
+    const buttons = Array.from(
+      fixture.nativeElement.querySelectorAll('button'),
+    ) as HTMLButtonElement[];
     const carina = buttons.find((b) => b.title === 'Enable Carina answers (@-queries)');
     expect(carina).toBeTruthy();
     carina!.click();
@@ -175,7 +183,9 @@ describe('CharacterDetail', () => {
     const fixture = await render(
       stubClient(character({ controlledBy: 'llm' }), (req) => seen.push(req.type)),
     );
-    const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[];
+    const buttons = Array.from(
+      fixture.nativeElement.querySelectorAll('button'),
+    ) as HTMLButtonElement[];
     const controlledBy = buttons.find((b) => b.title === 'Switch to user control');
     expect(controlledBy).toBeTruthy();
     controlledBy!.click();
@@ -187,7 +197,9 @@ describe('CharacterDetail', () => {
   it('dispatches characterUpdate with npc:true when Convert to NPC is clicked', async () => {
     const seen: Array<{ type: string; [k: string]: unknown }> = [];
     const fixture = await render(stubClient(character({ npc: false }), (req) => seen.push(req)));
-    const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[];
+    const buttons = Array.from(
+      fixture.nativeElement.querySelectorAll('button'),
+    ) as HTMLButtonElement[];
     const convert = buttons.find((b) => b.textContent?.trim() === 'Convert to NPC');
     expect(convert).toBeTruthy();
     convert!.click();

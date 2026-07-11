@@ -106,6 +106,24 @@ compared at the decoded level (identical IHDR + tEXt chunks and inflated
 pixels — v4 zlib-compresses the IDAT, the port emits stored DEFLATE blocks,
 the one declared seam). New oracle `harness/oracle/cases/st-png.ts` +
 `st_png_equivalence` differential.
+P4.6l (lane B, in progress) — the characters riders + the `<select [value]>`
+audit (dogfood finding #6 class). The Photo Gallery "Upload Photo" button is now
+live: it multipart-POSTs to lane C's `POST /api/v1/characters/{id}/photos` web
+route (failures surface the v4 400 keyword message). A second export button on
+each roster card downloads the SillyTavern PNG card via
+`GET ?action=export&format=png` (JSON export unchanged). Both call the byte-leg
+web routes by `fetch` (dispatch can't carry bytes) — mocked in unit tests, live
+at unification against lane C. The ST **import** PNG leg was already wired.
+
+The `[value]` audit converted the five genuinely-risky async-options selects to
+per-option `[selected]` (saved value + async options = the finding-#6 trap):
+`cheap-llm-card` ×2, `profile-modal` provider + apiKeyId, `model-selection-step`
+provider. Proven safe as-is (recorded, no change): the pronoun-preset select
+(static options), the new-character connection-profile select (empty initial
+value), the reverse-user dialog select (options from already-loaded data), the
+api-key-modal provider select (create-only, starts empty), and the profile-modal
+modelClass select (static options). SPA 0.5.14.
+
 P4.6l (lane B, in progress) — the Projects (Prospero) vertical in the SPA, tier
 1. The Projects nav item is enabled (`/prospero`); the list (grid/card/create
 dialog/delete-with-confirm) and the routed detail (`/prospero/:id`) land. The

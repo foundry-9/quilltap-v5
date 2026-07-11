@@ -9,7 +9,9 @@ function character(promptContent: string): CharacterDetail {
   return {
     id: 'c1',
     name: 'Friday',
-    systemPrompts: [{ id: 'sp1', name: 'Friday as Executive Assistant', content: promptContent, isDefault: true }],
+    systemPrompts: [
+      { id: 'sp1', name: 'Friday as Executive Assistant', content: promptContent, isDefault: true },
+    ],
   } as unknown as CharacterDetail;
 }
 

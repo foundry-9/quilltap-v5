@@ -8,6 +8,7 @@ import { ErrorAlert } from '../../../ui/error-alert';
 import { LoadingState } from '../../../ui/loading-state';
 import {
   characterKeys,
+  downloadCharacterPng,
   fetchCharacterExport,
   fetchCharacterList,
   fetchConnectionProfiles,
@@ -132,6 +133,7 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
               (toggleCarina)="toggleCarina(character)"
               (toggleControlledBy)="toggleControlledBy(character)"
               (exportCharacter)="exportCharacter(character)"
+              (exportPng)="exportPng(character)"
               (deleteCharacter)="deleteTarget.set(character)"
             />
           }
@@ -230,10 +232,15 @@ export class CharactersList {
 
   protected async exportCharacter(character: CharacterListItem): Promise<void> {
     // Dispatch the JSON export (v4 `?action=export&format=json`) and download the
-    // returned ST card client-side as `<name>.json`. PNG export stays the
-    // deferred binary web route.
+    // returned ST card client-side as `<name>.json`.
     const card = await fetchCharacterExport(this.core, character.id);
     triggerJsonDownload(`${character.name}.json`, card);
+  }
+
+  protected async exportPng(character: CharacterListItem): Promise<void> {
+    // Download the SillyTavern PNG card via lane C's binary web route
+    // (`?action=export&format=png`). Live at unification.
+    await downloadCharacterPng(character.id, character.name);
   }
 
   protected async onDeleteConfirm(

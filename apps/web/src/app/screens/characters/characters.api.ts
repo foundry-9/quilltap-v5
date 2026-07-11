@@ -81,7 +81,10 @@ export async function fetchCharacterList(
   return (data['characters'] as CharacterListItem[]) ?? [];
 }
 
-export async function fetchCharacter(core: CoreClient, characterId: string): Promise<CharacterDetail> {
+export async function fetchCharacter(
+  core: CoreClient,
+  characterId: string,
+): Promise<CharacterDetail> {
   const data = await core.dispatchData({ type: 'characterGet', characterId });
   return data['character'] as CharacterDetail;
 }
@@ -206,4 +209,83 @@ export function triggerJsonDownload(filename: string, value: unknown): void {
 export async function fetchTags(core: CoreClient, search?: string): Promise<TagDto[]> {
   const data = await core.dispatchData({ type: 'tagList', ...(search ? { search } : {}) });
   return (data['tags'] as TagDto[]) ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// Multipart / binary WEB ROUTES (v4-shaped, NOT dispatch variants — the byte
+// legs dispatch can't carry). Lane C (P4.6m) ships these; the SPA calls them via
+// `fetch`, live at unification. Contract B↔C is pinned in the work orders.
+// ---------------------------------------------------------------------------
+
+/** The parsed 201 body of a photo upload (contract B↔C). */
+export interface UploadedPhoto {
+  linkId: string;
+  mountPointId: string;
+  relativePath: string;
+  keptAt: string;
+  sha256: string;
+}
+
+/**
+ * Upload a photo to a character's gallery (`POST /api/v1/characters/{id}/photos`,
+ * multipart). `file` is required; `caption` + repeated `tags` are optional. The
+ * v4 400 keyword list surfaces as the thrown message.
+ */
+export async function uploadCharacterPhoto(
+  characterId: string,
+  file: File,
+  opts?: { caption?: string; tags?: string[] },
+): Promise<UploadedPhoto> {
+  const form = new FormData();
+  form.append('file', file);
+  if (opts?.caption) {
+    form.append('caption', opts.caption);
+  }
+  for (const tag of opts?.tags ?? []) {
+    form.append('tags', tag);
+  }
+  const res = await fetch(`/api/v1/characters/${encodeURIComponent(characterId)}/photos`, {
+    method: 'POST',
+    body: form,
+  });
+  if (!res.ok) {
+    let message = `Upload failed (HTTP ${res.status})`;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body?.error) {
+        message = body.error;
+      }
+    } catch {
+      // non-JSON error body — keep the status message
+    }
+    throw new Error(message);
+  }
+  return (await res.json()) as UploadedPhoto;
+}
+
+/**
+ * Export a character as a SillyTavern PNG card (`GET /api/v1/characters/{id}?
+ * action=export&format=png`) and trigger a client-side download. The route sets
+ * `Content-Disposition: attachment; filename="<name>.png"`; over `fetch` the SPA
+ * rebuilds the blob download itself. No-op in non-DOM contexts.
+ */
+export async function downloadCharacterPng(characterId: string, name: string): Promise<void> {
+  const res = await fetch(
+    `/api/v1/characters/${encodeURIComponent(characterId)}?action=export&format=png`,
+  );
+  if (!res.ok) {
+    throw new Error(`PNG export failed (HTTP ${res.status})`);
+  }
+  const blob = await res.blob();
+  if (typeof document === 'undefined' || typeof URL === 'undefined' || !URL.createObjectURL) {
+    return;
+  }
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `${name}.png`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }

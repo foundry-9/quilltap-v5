@@ -1,4 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal, type WritableSignal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  signal,
+  type WritableSignal,
+} from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
@@ -79,7 +86,10 @@ const CHARACTER_TABS: Tab[] = [
   ],
   template: `
     <div class="character-view qt-page-container min-h-screen text-foreground">
-      <a routerLink="/characters" class="mb-4 inline-flex items-center qt-label text-primary hover:text-primary/80">
+      <a
+        routerLink="/characters"
+        class="mb-4 inline-flex items-center qt-label text-primary hover:text-primary/80"
+      >
         ← Back to Characters
       </a>
 
@@ -169,10 +179,9 @@ export class CharacterDetail {
 
   protected readonly tabs = CHARACTER_TABS;
 
-  protected readonly id = toSignal(
-    this.route.paramMap.pipe(map((p) => p.get('id') ?? '')),
-    { requireSync: true },
-  );
+  protected readonly id = toSignal(this.route.paramMap.pipe(map((p) => p.get('id') ?? '')), {
+    requireSync: true,
+  });
 
   protected readonly characterQuery = injectQuery(() => ({
     queryKey: characterKeys.detail(this.id()),
@@ -186,7 +195,8 @@ export class CharacterDetail {
 
   private readonly userControlledQuery = injectQuery(() => ({
     queryKey: characterKeys.list({ controlledBy: 'user' }),
-    queryFn: (): Promise<CharacterListItem[]> => fetchCharacterList(this.core, { controlledBy: 'user' }),
+    queryFn: (): Promise<CharacterListItem[]> =>
+      fetchCharacterList(this.core, { controlledBy: 'user' }),
   }));
 
   private readonly defaultPartnerQuery = injectQuery(() => ({
@@ -202,7 +212,9 @@ export class CharacterDetail {
 
   protected readonly character = computed(() => this.characterQuery.data() ?? null);
   protected readonly connectionProfiles = computed(() => this.profilesQuery.data() ?? []);
-  protected readonly userControlledCharacters = computed(() => this.userControlledQuery.data() ?? []);
+  protected readonly userControlledCharacters = computed(
+    () => this.userControlledQuery.data() ?? [],
+  );
   protected readonly defaultPartnerId = computed(
     () => this.defaultPartnerQuery.data() ?? this.character()?.defaultPartnerId ?? null,
   );
@@ -214,7 +226,9 @@ export class CharacterDetail {
     const partnerId = this.defaultPartnerId();
     const partner = this.userControlledCharacters().find((c) => c.id === partnerId);
     const character = this.character();
-    return character ? resolveUserToken(character.controlledBy, character.name, partner?.name) : null;
+    return character
+      ? resolveUserToken(character.controlledBy, character.name, partner?.name)
+      : null;
   });
 
   protected readonly togglingFavorite = signal(false);

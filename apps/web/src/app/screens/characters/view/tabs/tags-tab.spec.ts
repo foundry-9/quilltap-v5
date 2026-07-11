@@ -5,7 +5,9 @@ import { describe, expect, it } from 'vitest';
 import { CoreClient } from '../../../../core/core-client';
 import { CharacterTagsTab } from './tags-tab';
 
-function stubClient(onDispatch: (req: { type: string; [k: string]: unknown }) => void): Partial<CoreClient> {
+function stubClient(
+  onDispatch: (req: { type: string; [k: string]: unknown }) => void,
+): Partial<CoreClient> {
   return {
     dispatchData: (async (req: { type: string; [k: string]: unknown }) => {
       onDispatch(req);
@@ -53,7 +55,9 @@ describe('CharacterTagsTab', () => {
   it('dispatches characterRemoveTag when a chip is removed', async () => {
     const seen: Array<{ type: string; [k: string]: unknown }> = [];
     const fixture = await render(stubClient((r) => seen.push(r)));
-    const removeButton = fixture.nativeElement.querySelector('[aria-label="Remove tag valet"]') as HTMLButtonElement;
+    const removeButton = fixture.nativeElement.querySelector(
+      '[aria-label="Remove tag valet"]',
+    ) as HTMLButtonElement;
     expect(removeButton).toBeTruthy();
     removeButton.click();
     await new Promise((r) => setTimeout(r, 0));
@@ -108,7 +112,10 @@ describe('CharacterTagsTab', () => {
     createButton.click();
     await new Promise((r) => setTimeout(r, 0));
     fixture.detectChanges();
-    expect(seen.find((r) => r.type === 'tagCreate')).toEqual({ type: 'tagCreate', name: 'brand-new-tag' });
+    expect(seen.find((r) => r.type === 'tagCreate')).toEqual({
+      type: 'tagCreate',
+      name: 'brand-new-tag',
+    });
     expect(seen.find((r) => r.type === 'characterAddTag')).toEqual({
       type: 'characterAddTag',
       characterId: 'c1',

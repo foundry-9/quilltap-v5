@@ -42,26 +42,23 @@ export interface TemplatableCharacter {
 }
 
 type TemplatableScalarField =
-  | 'identity'
-  | 'manifesto'
-  | 'description'
-  | 'personality'
-  | 'firstMessage'
-  | 'exampleDialogues';
+  'identity' | 'manifesto' | 'description' | 'personality' | 'firstMessage' | 'exampleDialogues';
 
 type PhysicalSubField =
-  | 'fullDescription'
-  | 'shortPrompt'
-  | 'mediumPrompt'
-  | 'longPrompt'
-  | 'completePrompt';
+  'fullDescription' | 'shortPrompt' | 'mediumPrompt' | 'longPrompt' | 'completePrompt';
 
 /** One templatable text slice on a character, tagged for write-back routing. */
 export type TemplateFieldDescriptor =
   | { key: string; kind: 'scalar'; field: TemplatableScalarField; value: string | null | undefined }
   | { key: string; kind: 'scenario'; id: string; value: string }
   | { key: string; kind: 'systemPrompt'; id: string; value: string }
-  | { key: string; kind: 'physical'; id: string; sub: PhysicalSubField; value: string | null | undefined };
+  | {
+      key: string;
+      kind: 'physical';
+      id: string;
+      sub: PhysicalSubField;
+      value: string | null | undefined;
+    };
 
 const SCALAR_FIELDS: TemplatableScalarField[] = [
   'identity',
@@ -88,7 +85,12 @@ export function collectTemplateFields(character: TemplatableCharacter): Template
   }
 
   for (const scenario of character.scenarios ?? []) {
-    descriptors.push({ key: `scenario:${scenario.id}`, kind: 'scenario', id: scenario.id, value: scenario.content });
+    descriptors.push({
+      key: `scenario:${scenario.id}`,
+      kind: 'scenario',
+      id: scenario.id,
+      value: scenario.content,
+    });
   }
 
   for (const prompt of character.systemPrompts ?? []) {
@@ -104,7 +106,13 @@ export function collectTemplateFields(character: TemplatableCharacter): Template
   if (pd) {
     const pdId = pd.id ?? 'physical';
     for (const sub of PHYSICAL_SUBS) {
-      descriptors.push({ key: `physicalDescription:${pdId}:${sub}`, kind: 'physical', id: pdId, sub, value: pd[sub] });
+      descriptors.push({
+        key: `physicalDescription:${pdId}:${sub}`,
+        kind: 'physical',
+        id: pdId,
+        sub,
+        value: pd[sub],
+      });
     }
   }
 
@@ -116,7 +124,11 @@ export function countTemplateReplacements(
   fields: Record<string, string | null | undefined>,
   characterName: string,
   userCharacterName?: string | null,
-): { charCount: number; userCount: number; fieldCounts: Record<string, { char: number; user: number }> } {
+): {
+  charCount: number;
+  userCount: number;
+  fieldCounts: Record<string, { char: number; user: number }>;
+} {
   let charCount = 0;
   let userCount = 0;
   const fieldCounts: Record<string, { char: number; user: number }> = {};
@@ -145,9 +157,10 @@ export function countTemplateReplacements(
 }
 
 /** Counts `{{char}}`/`{{user}}` template literals across a set of strings. */
-export function countTemplateLiterals(
-  values: Array<string | null | undefined>,
-): { charCount: number; userCount: number } {
+export function countTemplateLiterals(values: Array<string | null | undefined>): {
+  charCount: number;
+  userCount: number;
+} {
   let charCount = 0;
   let userCount = 0;
   for (const value of values) {
@@ -166,7 +179,11 @@ export function replaceWithTemplate(content: string, name: string, template: str
 }
 
 /** Replaces every `{{char}}` (or `{{user}}`) literal with a concrete name. */
-export function replaceTemplateWithName(content: string, which: 'char' | 'user', name: string): string {
+export function replaceTemplateWithName(
+  content: string,
+  which: 'char' | 'user',
+  name: string,
+): string {
   if (!content) return content;
   const regex = which === 'char' ? /\{\{char\}\}/gi : /\{\{user\}\}/gi;
   return content.replace(regex, () => name);
@@ -180,7 +197,10 @@ export function replaceTemplateWithName(content: string, which: 'char' | 'user',
 export function applyTemplateTransform(
   character: TemplatableCharacter,
   transform: (text: string) => string,
-): { mainUpdates: Record<string, unknown>; changedSystemPrompts: Array<{ id: string; content: string }> } {
+): {
+  mainUpdates: Record<string, unknown>;
+  changedSystemPrompts: Array<{ id: string; content: string }>;
+} {
   const mainUpdates: Record<string, unknown> = {};
   const changedSystemPrompts: Array<{ id: string; content: string }> = [];
   const scenarioChanges = new Map<string, string>();
@@ -209,7 +229,9 @@ export function applyTemplateTransform(
 
   if (scenarioChanges.size > 0 && character.scenarios) {
     mainUpdates['scenarios'] = character.scenarios.map((scenario) =>
-      scenarioChanges.has(scenario.id) ? { ...scenario, content: scenarioChanges.get(scenario.id)! } : scenario,
+      scenarioChanges.has(scenario.id)
+        ? { ...scenario, content: scenarioChanges.get(scenario.id)! }
+        : scenario,
     );
   }
 
@@ -256,7 +278,11 @@ export function highlightSegments(
   const userName = userCharacterName || 'USER';
   const matches: ContentMatch[] = [];
 
-  const push = (regex: RegExp, kind: ContentMatch['kind'], text: (m: RegExpExecArray) => string): void => {
+  const push = (
+    regex: RegExp,
+    kind: ContentMatch['kind'],
+    text: (m: RegExpExecArray) => string,
+  ): void => {
     let m: RegExpExecArray | null;
     while ((m = regex.exec(content)) !== null) {
       const start = m.index;
@@ -287,7 +313,9 @@ export function highlightSegments(
   let lastEnd = 0;
   const titleFor: Record<ContentMatch['kind'], string> = {
     'char-template': 'Character name (from {{char}})',
-    'user-template': userCharacterName ? 'User character name (from {{user}})' : 'User (no default user character set)',
+    'user-template': userCharacterName
+      ? 'User character name (from {{user}})'
+      : 'User (no default user character set)',
     'char-hardcoded': 'Hard-coded character name — consider replacing with {{char}}',
     'user-hardcoded': 'Hard-coded user character name — consider replacing with {{user}}',
   };

@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../../core/core-client';
 import type { CharacterPhoto } from '../../../../core/core-contract';
@@ -69,7 +69,9 @@ describe('CharacterGalleryTab', () => {
   });
 
   it('renders the caption as alt text and an overlay', async () => {
-    const fixture = await render(stubClient([entry({ linkId: 'link-9', caption: 'By the sea', tags: ['beach'] })]));
+    const fixture = await render(
+      stubClient([entry({ linkId: 'link-9', caption: 'By the sea', tags: ['beach'] })]),
+    );
     const img = fixture.nativeElement.querySelector('img') as HTMLImageElement;
     expect(img.alt).toBe('By the sea');
     expect(fixture.nativeElement.textContent).toContain('By the sea');
@@ -78,7 +80,9 @@ describe('CharacterGalleryTab', () => {
   it('dispatches characterPhotoRemove with the linkId when a photo is deleted', async () => {
     const seen: Array<{ type: string; [k: string]: unknown }> = [];
     const fixture = await render(stubClient([entry({ linkId: 'link-1' })], (r) => seen.push(r)));
-    const deleteButton = fixture.nativeElement.querySelector('button[title="Delete this photo"]') as HTMLButtonElement;
+    const deleteButton = fixture.nativeElement.querySelector(
+      'button[title="Delete this photo"]',
+    ) as HTMLButtonElement;
     expect(deleteButton).toBeTruthy();
     deleteButton.click();
     await new Promise((r) => setTimeout(r, 0));
@@ -88,5 +92,71 @@ describe('CharacterGalleryTab', () => {
       characterId: 'c1',
       linkId: 'link-1',
     });
+  });
+
+  // --- Upload Photo rider (multipart web route, B↔C contract) ---
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function pickFile(fixture: ComponentFixture<CharacterGalleryTab>): void {
+    const input = fixture.nativeElement.querySelector(
+      'input[aria-label="Upload photo"]',
+    ) as HTMLInputElement;
+    const file = new File([new Uint8Array([1, 2, 3])], 'portrait.png', { type: 'image/png' });
+    Object.defineProperty(input, 'files', { value: [file], configurable: true });
+    input.dispatchEvent(new Event('change'));
+  }
+
+  it('uploads a picked file via the multipart photos web route', async () => {
+    const calls: Array<{ url: string; method?: string; body: unknown }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({ url, method: init?.method, body: init?.body });
+        return {
+          ok: true,
+          status: 201,
+          json: async () => ({
+            linkId: 'new-link',
+            mountPointId: 'mp-1',
+            relativePath: 'photos/new.png',
+            keptAt: '2026-04-02T00:00:00.000Z',
+            sha256: 'deadbeef',
+          }),
+        } as Response;
+      }),
+    );
+    const fixture = await render(stubClient([]));
+    pickFile(fixture);
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+    expect(calls.length).toBe(1);
+    expect(calls[0].url).toBe('/api/v1/characters/c1/photos');
+    expect(calls[0].method).toBe('POST');
+    expect(calls[0].body).toBeInstanceOf(FormData);
+  });
+
+  it('surfaces the v4 error message when the upload fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          ({
+            ok: false,
+            status: 400,
+            json: async () => ({ error: 'Unsupported MIME type' }),
+          }) as Response,
+      ),
+    );
+    const fixture = await render(stubClient([]));
+    pickFile(fixture);
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeTruthy();
+    expect(fixture.nativeElement.textContent).toContain('Unsupported MIME type');
   });
 });

@@ -27,7 +27,8 @@ import { TemplateDisplay } from '../template-display';
         <div>
           <h2 class="qt-heading-4 text-foreground">System Prompts</h2>
           <p class="qt-text-small">
-            Named system prompts for this character. The default prompt is used when starting new chats.
+            Named system prompts for this character. The default prompt is used when starting new
+            chats.
           </p>
         </div>
         <a
@@ -46,7 +47,9 @@ import { TemplateDisplay } from '../template-display';
             <div
               [class]="
                 'rounded-lg border p-4 ' +
-                (prompt.isDefault ? 'qt-border-primary/40 qt-bg-primary/5' : 'qt-border-default qt-bg-card')
+                (prompt.isDefault
+                  ? 'qt-border-primary/40 qt-bg-primary/5'
+                  : 'qt-border-default qt-bg-card')
               "
             >
               <div class="flex items-center gap-2 mb-3">
@@ -66,7 +69,9 @@ import { TemplateDisplay } from '../template-display';
           }
         </div>
       } @else {
-        <div class="rounded-lg border border-dashed qt-border-default qt-bg-muted/30 p-8 text-center">
+        <div
+          class="rounded-lg border border-dashed qt-border-default qt-bg-muted/30 p-8 text-center"
+        >
           <qt-icon name="code" class="mx-auto w-12 h-12 qt-text-secondary/50" />
           <p class="mt-4 qt-text-small">No system prompts defined for this character.</p>
           <a

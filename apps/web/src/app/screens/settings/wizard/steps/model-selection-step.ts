@@ -140,12 +140,15 @@ import { WizardStore } from '../wizard-state';
               <label class="qt-text-label block mb-1.5">Provider</label>
               <select
                 class="qt-input w-full"
-                [value]="store.cheapConfig().provider || ''"
                 (change)="store.setCheapConfig({ provider: $any($event.target).value, model: '' })"
               >
-                <option value="">Select a provider</option>
+                <option value="" [selected]="!store.cheapConfig().provider">
+                  Select a provider
+                </option>
                 @for (p of chatProviders(); track p.id) {
-                  <option [value]="p.id">{{ p.displayName }}</option>
+                  <option [value]="p.id" [selected]="store.cheapConfig().provider === p.id">
+                    {{ p.displayName }}
+                  </option>
                 }
               </select>
             </div>

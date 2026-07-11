@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../../../core/core-client';
@@ -6,19 +6,21 @@ import type { CharacterPhoto } from '../../../../core/core-contract';
 import { Icon } from '../../../../ui/icon';
 import { normalizeAvatarSrc } from '../../../../ui/avatar-stack';
 import { EmptyState } from '../../../../ui/empty-state';
+import { ErrorAlert } from '../../../../ui/error-alert';
 import { LoadingState } from '../../../../ui/loading-state';
-import { characterKeys, fetchCharacterPhotos } from '../../characters.api';
+import { characterKeys, fetchCharacterPhotos, uploadCharacterPhoto } from '../../characters.api';
 
 /**
  * The Photo Gallery tab (v4 `components/CharacterGallery.tsx` →
  * `EmbeddedPhotoGallery`): a minimal grid over `characterPhotoList`, delete
- * via `characterPhotoRemove`. Upload (the v4 drag-and-drop / paste flow) is
- * deferred — noted inline.
+ * via `characterPhotoRemove`, and an **Upload Photo** affordance that multipart-
+ * POSTs to lane C's `POST /api/v1/characters/{id}/photos` web route (the byte leg
+ * dispatch can't carry). Upload failures surface the v4 400 keyword message.
  */
 @Component({
   selector: 'qt-character-gallery-tab',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, EmptyState, LoadingState],
+  imports: [Icon, EmptyState, ErrorAlert, LoadingState],
   template: `
     <div class="space-y-4">
       <div class="flex items-center justify-between flex-wrap gap-2">
@@ -28,23 +30,43 @@ import { characterKeys, fetchCharacterPhotos } from '../../characters.api';
         </div>
         <button
           type="button"
-          disabled
           class="qt-button-secondary"
-          title="Uploading new photos is not yet available in this vertical"
+          [disabled]="uploading()"
+          title="Upload a new portrait for this character"
+          (click)="fileInput.click()"
         >
           <qt-icon name="upload" class="w-4 h-4" />
-          Upload Photo
+          {{ uploading() ? 'Uploading...' : 'Upload Photo' }}
         </button>
+        <input
+          #fileInput
+          type="file"
+          accept="image/*"
+          class="hidden"
+          aria-label="Upload photo"
+          (change)="onPick($any($event.target))"
+        />
       </div>
+
+      @if (uploadError(); as msg) {
+        <qt-error-alert [message]="msg" />
+      }
 
       @if (photosQuery.isPending()) {
         <qt-loading-state message="Loading photos..." />
       } @else if (photos().length === 0) {
-        <qt-empty-state title="No photos yet" description="Portraits added to this character will appear here." variant="dashed" />
+        <qt-empty-state
+          title="No photos yet"
+          description="Portraits added to this character will appear here."
+          variant="dashed"
+        />
       } @else {
         <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
           @for (photo of photos(); track photo.linkId) {
-            <div class="relative overflow-hidden rounded-lg border qt-border-default qt-bg-muted" style="aspect-ratio: 4/5">
+            <div
+              class="relative overflow-hidden rounded-lg border qt-border-default qt-bg-muted"
+              style="aspect-ratio: 4/5"
+            >
               <img
                 [src]="srcFor(photo)"
                 [alt]="photo.caption || 'Character photo'"
@@ -85,9 +107,32 @@ export class CharacterGalleryTab {
   }));
 
   protected readonly photos = computed(() => this.photosQuery.data() ?? []);
+  protected readonly uploading = signal(false);
+  protected readonly uploadError = signal<string | null>(null);
 
   protected srcFor(photo: CharacterPhoto): string | null {
     return normalizeAvatarSrc(photo.blobUrl);
+  }
+
+  protected async onPick(input: HTMLInputElement): Promise<void> {
+    const file = input.files?.[0];
+    // Reset the input so re-picking the same file re-fires change.
+    input.value = '';
+    if (!file) {
+      return;
+    }
+    this.uploading.set(true);
+    this.uploadError.set(null);
+    try {
+      await uploadCharacterPhoto(this.characterId(), file);
+      await this.queryClient.invalidateQueries({
+        queryKey: characterKeys.photos(this.characterId()),
+      });
+    } catch (err) {
+      this.uploadError.set(err instanceof Error ? err.message : 'Failed to upload photo');
+    } finally {
+      this.uploading.set(false);
+    }
   }
 
   protected async remove(photo: CharacterPhoto): Promise<void> {
@@ -96,6 +141,8 @@ export class CharacterGalleryTab {
       characterId: this.characterId(),
       linkId: photo.linkId,
     });
-    await this.queryClient.invalidateQueries({ queryKey: characterKeys.photos(this.characterId()) });
+    await this.queryClient.invalidateQueries({
+      queryKey: characterKeys.photos(this.characterId()),
+    });
   }
 }

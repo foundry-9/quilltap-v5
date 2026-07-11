@@ -114,21 +114,31 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
               <select
                 id="qt-pf-provider"
                 class="qt-select"
-                [value]="form().provider"
                 (change)="onProviderChange($any($event.target).value)"
               >
                 @if (chatProviders().length > 0) {
                   @for (p of chatProviders(); track p.name) {
-                    <option [value]="p.name">{{ p.displayName }}</option>
+                    <option [value]="p.name" [selected]="form().provider === p.name">
+                      {{ p.displayName }}
+                    </option>
                   }
                 } @else {
-                  <option value="OPENAI">OpenAI</option>
-                  <option value="ANTHROPIC">Anthropic</option>
-                  <option value="GOOGLE">Google</option>
-                  <option value="GROK">Grok</option>
-                  <option value="OLLAMA">Ollama</option>
-                  <option value="OPENROUTER">OpenRouter</option>
-                  <option value="OPENAI_COMPATIBLE">OpenAI Compatible</option>
+                  <option value="OPENAI" [selected]="form().provider === 'OPENAI'">OpenAI</option>
+                  <option value="ANTHROPIC" [selected]="form().provider === 'ANTHROPIC'">
+                    Anthropic
+                  </option>
+                  <option value="GOOGLE" [selected]="form().provider === 'GOOGLE'">Google</option>
+                  <option value="GROK" [selected]="form().provider === 'GROK'">Grok</option>
+                  <option value="OLLAMA" [selected]="form().provider === 'OLLAMA'">Ollama</option>
+                  <option value="OPENROUTER" [selected]="form().provider === 'OPENROUTER'">
+                    OpenRouter
+                  </option>
+                  <option
+                    value="OPENAI_COMPATIBLE"
+                    [selected]="form().provider === 'OPENAI_COMPATIBLE'"
+                  >
+                    OpenAI Compatible
+                  </option>
                 }
               </select>
             </div>
@@ -214,12 +224,13 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
                 <select
                   id="qt-pf-key"
                   class="qt-select"
-                  [value]="form().apiKeyId"
                   (change)="setField('apiKeyId', $any($event.target).value)"
                 >
-                  <option value="">Select an API Key</option>
+                  <option value="" [selected]="!form().apiKeyId">Select an API Key</option>
                   @for (key of keysForProvider(); track key.id) {
-                    <option [value]="key.id">{{ key.label }}</option>
+                    <option [value]="key.id" [selected]="form().apiKeyId === key.id">
+                      {{ key.label }}
+                    </option>
                   }
                 </select>
               </div>

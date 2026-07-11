@@ -63,7 +63,11 @@ const SEARCH_DEBOUNCE_MS = 300;
       } @else if (chatsQuery.isError()) {
         <div class="text-center py-12">
           <p class="qt-text-destructive">{{ errorMessage() }}</p>
-          <button type="button" class="mt-4 text-primary hover:underline" (click)="chatsQuery.refetch()">
+          <button
+            type="button"
+            class="mt-4 text-primary hover:underline"
+            (click)="chatsQuery.refetch()"
+          >
             Try again
           </button>
         </div>

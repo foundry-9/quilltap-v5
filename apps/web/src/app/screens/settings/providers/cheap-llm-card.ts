@@ -94,12 +94,15 @@ const EMBEDDING_PROVIDERS: Array<{ value: EmbeddingProvider; label: string; desc
             <select
               class="qt-select"
               [disabled]="saving() || profilesQuery.isPending()"
-              [value]="cheap().userDefinedProfileId || ''"
               (change)="update({ userDefinedProfileId: $any($event.target).value || null })"
             >
-              <option value="">Select a profile...</option>
+              <option value="" [selected]="!cheap().userDefinedProfileId">
+                Select a profile...
+              </option>
               @for (p of profiles(); track p.id) {
-                <option [value]="p.id">{{ profileLabel(p) }}</option>
+                <option [value]="p.id" [selected]="cheap().userDefinedProfileId === p.id">
+                  {{ profileLabel(p) }}
+                </option>
               }
             </select>
             @if (profiles().length === 0 && !profilesQuery.isPending()) {
@@ -121,12 +124,13 @@ const EMBEDDING_PROVIDERS: Array<{ value: EmbeddingProvider; label: string; desc
           <select
             class="qt-select"
             [disabled]="saving() || profilesQuery.isPending()"
-            [value]="cheap().defaultCheapProfileId || ''"
             (change)="update({ defaultCheapProfileId: $any($event.target).value || null })"
           >
-            <option value="">Not set</option>
+            <option value="" [selected]="!cheap().defaultCheapProfileId">Not set</option>
             @for (p of profiles(); track p.id) {
-              <option [value]="p.id">{{ profileLabel(p) }}</option>
+              <option [value]="p.id" [selected]="cheap().defaultCheapProfileId === p.id">
+                {{ profileLabel(p) }}
+              </option>
             }
           </select>
         </div>

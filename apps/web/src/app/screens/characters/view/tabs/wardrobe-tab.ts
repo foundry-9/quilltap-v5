@@ -12,8 +12,8 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
   template: `
     <div class="space-y-2">
       <p class="qt-text-small qt-text-secondary">
-        The wardrobe lives in a global dialog so it travels with you — edit, layer, and save outfits from anywhere,
-        including from inside a chat.
+        The wardrobe lives in a global dialog so it travels with you — edit, layer, and save outfits
+        from anywhere, including from inside a chat.
       </p>
       <button
         type="button"
