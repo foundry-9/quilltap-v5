@@ -44,6 +44,8 @@ const BRAM = 'a1000000-0000-4000-8000-000000000002';
 const GAMMA_EXTRA_MP = 'b0000000-0000-4000-8000-000000000001';
 const IOTA_DANGLING_MP = 'b0000000-0000-4000-8000-0000000000df';
 const CHAT_A = 'c1000000-0000-4000-8000-000000000001';
+const CLOAK = 'aa000000-0000-4000-8000-000000000001';
+const ENSEMBLE = 'aa000000-0000-4000-8000-000000000002';
 
 function mockRequest(url: string, body?: unknown): unknown {
   return {
@@ -285,6 +287,23 @@ async function main(): Promise<void> {
     { name: 'set_state', run: async () => respond(await (await loadRoute(idRoute)).PUT(mockRequest(`${B}/${IOTA}?action=set-state`, { state: { mood: 'tense', turns: 9 } }), p(IOTA))) },
     { name: 'reset_state', run: async () => respond(await (await loadRoute(idRoute)).DELETE(mockRequest(`${B}/${IOTA}?action=reset-state`), p(IOTA))) },
     { name: 'tool_settings', run: async () => respond(await (await loadRoute(idRoute)).POST(mockRequest(`${B}/${IOTA}?action=update-tool-settings`, { defaultDisabledTools: ['web_search'], defaultDisabledToolGroups: ['danger'] }), p(IOTA))) },
+    // --- Wardrobe (Unit 4) ---
+    { name: 'wardrobe_list', run: async () => respond(await (await loadRoute('@/app/api/v1/projects/[id]/wardrobe/route')).GET(mockRequest(`${B}/${IOTA}/wardrobe`), p(IOTA))) },
+    { name: 'wardrobe_get', run: async () => respond(await (await loadRoute('@/app/api/v1/projects/[id]/wardrobe/[itemId]/route')).GET(mockRequest(`${B}/${IOTA}/wardrobe/${CLOAK}`), { params: Promise.resolve({ id: IOTA, itemId: CLOAK }) })) },
+    { name: 'wardrobe_create', run: async () => respond(await (await loadRoute('@/app/api/v1/projects/[id]/wardrobe/route')).POST(mockRequest(`${B}/${IOTA}/wardrobe`, { title: 'Rain Boots', description: 'For puddles.', imagePrompt: 'yellow rubber boots', types: ['footwear'], isDefault: false }), p(IOTA))) },
+    { name: 'wardrobe_update', run: async () => respond(await (await loadRoute('@/app/api/v1/projects/[id]/wardrobe/[itemId]/route')).PUT(mockRequest(`${B}/${IOTA}/wardrobe/${CLOAK}`, { title: 'Weathered Cloak', description: null }), { params: Promise.resolve({ id: IOTA, itemId: CLOAK }) })) },
+    {
+      name: 'wardrobe_delete',
+      run: async () => {
+        const mod = await loadRoute('@/app/api/v1/projects/[id]/wardrobe/[itemId]/route');
+        const r = await mod.DELETE(mockRequest(`${B}/${IOTA}/wardrobe/${ENSEMBLE}`), { params: Promise.resolve({ id: IOTA, itemId: ENSEMBLE }) });
+        const { status, body } = await respond(r);
+        // Re-list to prove the remaining wardrobe (only the Cloak survives).
+        const list = await (await loadRoute('@/app/api/v1/projects/[id]/wardrobe/route')).GET(mockRequest(`${B}/${IOTA}/wardrobe`), p(IOTA));
+        const remaining = ((await (list as { json: () => Promise<{ wardrobeItems?: unknown[] }> }).json()).wardrobeItems ?? []).map((i: { id: string; title: string }) => ({ id: i.id, title: i.title }));
+        return { status, body: { ...(body as object), remaining } };
+      },
+    },
     { name: 'mount_link', run: async () => respond(await (await loadRoute(mpRoute)).POST(mockRequest(`${B}/${IOTA}/mount-points`, { mountPointId: GAMMA_EXTRA_MP }), p(IOTA))) },
     {
       name: 'mount_unlink',

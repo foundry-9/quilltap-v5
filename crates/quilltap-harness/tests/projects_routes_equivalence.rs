@@ -26,6 +26,8 @@ const BRAM: &str = "a1000000-0000-4000-8000-000000000002";
 const GAMMA_EXTRA_MP: &str = "b0000000-0000-4000-8000-000000000001";
 const IOTA_DANGLING_MP: &str = "b0000000-0000-4000-8000-0000000000df";
 const CHAT_A: &str = "c1000000-0000-4000-8000-000000000001";
+const CLOAK: &str = "aa000000-0000-4000-8000-000000000001";
+const ENSEMBLE: &str = "aa000000-0000-4000-8000-000000000002";
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -501,6 +503,70 @@ fn projects_routes_match_oracle() {
         ));
         check("mount_unlink", &response_data(&resp), false, &mut failed);
         check_tables("mount_unlink", &dump_project_tables(&db), &mut failed);
+    }
+
+    // --- Wardrobe (Unit 4) ---
+    {
+        let db = fresh_db(&spec, "wl");
+        check(
+            "wardrobe_list",
+            &response_data(&projects::project_wardrobe_list(&db, IOTA)),
+            false,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "wg");
+        check(
+            "wardrobe_get",
+            &response_data(&projects::project_wardrobe_get(&db, IOTA, CLOAK)),
+            false,
+            &mut failed,
+        );
+    }
+    {
+        // create mints a fresh id + timestamps (both sides) → blank.
+        let db = fresh_db(&spec, "wc");
+        let resp = rt.block_on(projects::project_wardrobe_create(
+            &db,
+            IOTA,
+            json!({ "title": "Rain Boots", "description": "For puddles.", "imagePrompt": "yellow rubber boots", "types": ["footwear"], "isDefault": false }),
+        ));
+        check("wardrobe_create", &response_data(&resp), true, &mut failed);
+    }
+    {
+        // update mints a fresh updatedAt (both sides) → blank.
+        let db = fresh_db(&spec, "wu");
+        let resp = rt.block_on(projects::project_wardrobe_update(
+            &db,
+            IOTA,
+            CLOAK,
+            json!({ "title": "Weathered Cloak", "description": null }),
+        ));
+        check("wardrobe_update", &response_data(&resp), true, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "wd");
+        let resp = rt.block_on(projects::project_wardrobe_delete(&db, IOTA, ENSEMBLE));
+        let mut body = response_data(&resp);
+        let remaining: Vec<Value> = response_data(&projects::project_wardrobe_list(&db, IOTA))
+            .get("wardrobeItems")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .map(|i| {
+                        json!({
+                            "id": i.get("id").cloned().unwrap_or(Value::Null),
+                            "title": i.get("title").cloned().unwrap_or(Value::Null),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        if let Value::Object(o) = &mut body {
+            o.insert("remaining".into(), Value::Array(remaining));
+        }
+        check("wardrobe_delete", &body, false, &mut failed);
     }
 
     assert!(failed.is_empty(), "projects-routes FAILED: {failed:?}");

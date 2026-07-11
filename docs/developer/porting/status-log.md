@@ -6555,3 +6555,19 @@ Gotchas banked:
 
 Still OPEN under lane A: scenarios + union (3), project wardrobe (4),
 list-files/background/aesthetic (5). Versions: core 0.0.174, harness 0.0.159.
+
+## P4.6k (lane A) units 4+5partial — project wardrobe + background/aesthetic (2026-07-11)
+
+Unit 4 (project wardrobe, 5 variants) + Unit 5's background + aesthetic get/set
+(3 of 5 variants), all differential-proven in projects_routes_equivalence (35
+cases total). Reused the P4.6f vault-write machinery (create/update/delete_
+project_wardrobe_item, read_project_wardrobe) pointed at the project store's
+Wardrobe/ folder. Gotchas: the wardrobe UPDATE must re-read through
+read_project_wardrobe (the WardrobeItem struct serialize skips None fields; the
+Value read path renders them null — v4's JS object always emits the full shape);
+aesthetic GET returns the RAW store-file content (readStoreFile does NOT trim —
+only the injection path does); aesthetic SET empty/whitespace DELETES the file.
+
+STILL OPEN under lane A: Unit 3 (scenarios both families + participant-union,
+12 variants) and Unit 5's list-files two-branch (2 variants) — both answer the
+loud not_available refusal. Versions: core 0.0.176, harness 0.0.161.

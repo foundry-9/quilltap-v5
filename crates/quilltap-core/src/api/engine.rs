@@ -1380,17 +1380,40 @@ impl CoreEngine {
             Request::ProjectScenarioDelete { .. } => {
                 super::projects::not_available("scenario-delete")
             }
-            Request::ProjectWardrobeList { .. } => super::projects::not_available("wardrobe-list"),
-            Request::ProjectWardrobeCreate { .. } => {
-                super::projects::not_available("wardrobe-create")
-            }
-            Request::ProjectWardrobeGet { .. } => super::projects::not_available("wardrobe-get"),
-            Request::ProjectWardrobeUpdate { .. } => {
-                super::projects::not_available("wardrobe-update")
-            }
-            Request::ProjectWardrobeDelete { .. } => {
-                super::projects::not_available("wardrobe-delete")
-            }
+            Request::ProjectWardrobeList { project_id } => match self.ready_db() {
+                Ok(db) => super::projects::project_wardrobe_list(&db, &project_id),
+                Err(r) => r,
+            },
+            Request::ProjectWardrobeCreate { project_id, item } => match self.ready_db() {
+                Ok(db) => super::projects::project_wardrobe_create(&db, &project_id, item).await,
+                Err(r) => r,
+            },
+            Request::ProjectWardrobeGet {
+                project_id,
+                item_id,
+            } => match self.ready_db() {
+                Ok(db) => super::projects::project_wardrobe_get(&db, &project_id, &item_id),
+                Err(r) => r,
+            },
+            Request::ProjectWardrobeUpdate {
+                project_id,
+                item_id,
+                item,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::projects::project_wardrobe_update(&db, &project_id, &item_id, item).await
+                }
+                Err(r) => r,
+            },
+            Request::ProjectWardrobeDelete {
+                project_id,
+                item_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::projects::project_wardrobe_delete(&db, &project_id, &item_id).await
+                }
+                Err(r) => r,
+            },
         }
     }
 

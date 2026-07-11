@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.6k (lane A) unit 4 — project wardrobe CRUD. list / get / create / update /
+delete over the project store's `Wardrobe/` folder (PROJECT_WARDROBE_FOLDER =
+CHARACTER_WARDROBE_FOLDER), reusing the P4.6f vault-write functions
+(create/update/delete_project_wardrobe_item, read_project_wardrobe). Create
+mints id + ISO timestamps in the route (blanked in the differential); delete
+runs removeEquippedItemFromAllChats warn-and-proceed. Update re-reads through
+the overlay so the echo carries the full null-inclusive item shape. Proven by
+projects_routes_equivalence (now 35 cases).
+
 P4.6k (lane A) unit 5 (partial) — project background + aesthetic editor. The
 `get-background` resolver (URL by `backgroundDisplayMode`: theme/static/project/
 latest_chat, BARE envelope) and the lantern/aurora aesthetic get/set (get returns

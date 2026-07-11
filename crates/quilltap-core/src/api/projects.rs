@@ -11,15 +11,26 @@
 
 use serde_json::{json, Map, Value};
 
+use crate::db::chats_outfits::ChatOutfitsRepository;
+use crate::db::doc_mount_documents::DocMountDocumentsRepository;
+use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::doc_mount_points::DocMountPointsRepository;
 use crate::db::document_store_overlay::OverlayError;
+use crate::db::ensure_official_store::ensure_official_store;
 use crate::db::files::FilesRepository;
 use crate::db::project_doc_mount_links::ProjectDocMountLinksRepository;
-use crate::db::projects::{ProjectCreateInput, ProjectCreateOptions, ProjectsRepository};
+use crate::db::projects::{
+    ProjectCreateInput, ProjectCreateOptions, ProjectEntity, ProjectsRepository,
+};
 use crate::db::runtime::Db;
-use crate::db::{characters_read, chats_read, tags, DbError};
+use crate::db::vault_wardrobe_public::{
+    create_project_wardrobe_item, delete_project_wardrobe_item, update_project_wardrobe_item,
+    WardrobePatch, WardrobePublicError,
+};
+use crate::db::{archetype_wardrobe, characters_read, chats_read, tags, DbError};
 use crate::services::character_enrichment::enrich_with_default_image;
 use crate::services::image_job_common::with_both_conns;
+use crate::vault_overlay::WardrobeItem;
 
 use super::types::{ErrorKind, Response};
 
@@ -985,5 +996,282 @@ pub async fn project_mount_point_unlink(
         Ok(Ok(())) => Response::Project(json!({ "message": "Mount point unlinked from project" })),
         Ok(Err(r)) => r,
         Err(e) => internal(e),
+    }
+}
+
+// ===========================================================================
+// Wardrobe (v4 [id]/wardrobe/route.ts + [itemId]/route.ts)
+// ===========================================================================
+//
+// PROJECT_WARDROBE_FOLDER = CHARACTER_WARDROBE_FOLDER ("Wardrobe"); the project
+// tier reuses the same vault-write functions the P4.6f character wardrobe uses,
+// pointed at the project's official store's `Wardrobe/` folder.
+
+fn wardrobe_err(e: WardrobePublicError) -> Response {
+    match e {
+        WardrobePublicError::Cycle(msg) => bad_request(msg),
+        WardrobePublicError::NoMount => internal("no wardrobe mount resolved"),
+        WardrobePublicError::Db(d) => internal(d),
+    }
+}
+
+/// v4 `optional string` field → `Some(v)` when present (even null-ish absent →
+/// null), used for the create/patch nullable columns.
+fn nullable_str(body: &Value, key: &str) -> Option<String> {
+    body.get(key).and_then(Value::as_str).map(str::to_string)
+}
+
+/// Resolve the project's official store mount id (v4 `ensureProjectOfficialStore`)
+/// and ensure the `Wardrobe/` folder. Returns the mount id, or the NotFound
+/// refusal when the project is absent.
+fn ensure_project_wardrobe_mount(
+    main: &rusqlite::Connection,
+    mount: &rusqlite::Connection,
+    project_id: &str,
+) -> Result<Result<String, Response>, DbError> {
+    let repo = ProjectsRepository::new(main, mount);
+    let Some(project) = repo.find_by_id(project_id).map_err(overlay_to_db)? else {
+        return Ok(Err(not_found("Project")));
+    };
+    let name = project.get("name").and_then(Value::as_str).unwrap_or("");
+    let Some(ensured) = ensure_official_store::<ProjectEntity>(main, mount, project_id, name)?
+    else {
+        return Ok(Err(internal("Failed to ensure project document store")));
+    };
+    let links = DocMountFileLinksRepository::new(mount);
+    let _ = links.ensure_folder_path(&ensured.mount_point_id, "Wardrobe");
+    Ok(Ok(ensured.mount_point_id))
+}
+
+/// v4 GET `/wardrobe`: `{ mountPointId, wardrobeItems }` (include archived).
+pub fn project_wardrobe_list(db: &Db, project_id: &str) -> Response {
+    let pid = project_id.to_string();
+    let out = read_both(db, move |main, mount| {
+        let mp = match ensure_project_wardrobe_mount(main, mount, &pid)? {
+            Ok(mp) => mp,
+            Err(r) => return Ok(Err(r)),
+        };
+        let docs = DocMountDocumentsRepository::new(mount);
+        let items = archetype_wardrobe::read_project_wardrobe(&docs, &mp, true)?;
+        Ok(Ok((mp, items)))
+    });
+    match out {
+        Ok(Ok((mp, items))) => {
+            Response::Project(json!({ "mountPointId": mp, "wardrobeItems": items }))
+        }
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 POST `/wardrobe`: mints the item id + ISO timestamps IN THE ROUTE, creates
+/// it in the project store, re-lists. Body `{ mountPointId, wardrobeItem,
+/// wardrobeItems }` (201). Component cycles → 400.
+pub async fn project_wardrobe_create(db: &Db, project_id: &str, body: Value) -> Response {
+    let pid = project_id.to_string();
+    let title = match body.get("title").and_then(Value::as_str) {
+        Some(t) if !t.is_empty() => t.to_string(),
+        _ => return bad_request("Title is required"),
+    };
+    let types: Vec<String> = body
+        .get("types")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    if types.is_empty() {
+        return bad_request("At least one type is required");
+    }
+    let component_item_ids: Vec<String> = body
+        .get("componentItemIds")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    let description = nullable_str(&body, "description");
+    let image_prompt = nullable_str(&body, "imagePrompt");
+    let appropriateness = nullable_str(&body, "appropriateness");
+    let is_default = body
+        .get("isDefault")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let replace = body
+        .get("replace")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    let out = with_both_conns(db, move |main, mount| {
+        let mp = match ensure_project_wardrobe_mount(main, mount, &pid)? {
+            Ok(mp) => mp,
+            Err(r) => return Ok(Err(r)),
+        };
+        // v4 route mints id + ISO timestamps + the null columns (characterId,
+        // migratedFromClothingRecordId, archivedAt all explicit null).
+        let now = crate::clock::now_iso();
+        let item = WardrobeItem {
+            id: uuid::Uuid::new_v4().to_string(),
+            character_id: Some(None),
+            title,
+            description: Some(description),
+            image_prompt: Some(image_prompt),
+            types,
+            component_item_ids,
+            appropriateness: Some(appropriateness),
+            is_default,
+            replace,
+            migrated_from_clothing_record_id: Some(None),
+            archived_at: Some(None),
+            created_at: now.clone(),
+            updated_at: now,
+        };
+        let links = DocMountFileLinksRepository::new(mount);
+        let docs = DocMountDocumentsRepository::new(mount);
+        let stored = match create_project_wardrobe_item(main, &links, &docs, &mp, &item) {
+            Ok(s) => s,
+            Err(e) => return Ok(Err(wardrobe_err(e))),
+        };
+        let items = archetype_wardrobe::read_project_wardrobe(&docs, &mp, true)?;
+        Ok(Ok((
+            mp,
+            serde_json::to_value(stored).unwrap_or(Value::Null),
+            items,
+        )))
+    })
+    .await;
+    match out {
+        Ok(Ok((mp, item, items))) => Response::Project(json!({
+            "mountPointId": mp,
+            "wardrobeItem": item,
+            "wardrobeItems": items,
+        })),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 GET `/wardrobe/[itemId]`: `{ wardrobeItem }` or NotFound.
+pub fn project_wardrobe_get(db: &Db, project_id: &str, item_id: &str) -> Response {
+    let pid = project_id.to_string();
+    let iid = item_id.to_string();
+    let out = read_both(db, move |main, mount| {
+        let mp = match ensure_project_wardrobe_mount(main, mount, &pid)? {
+            Ok(mp) => mp,
+            Err(_) => return Ok(None), // v4 resolveProjectMount → notFound('Project')
+        };
+        let docs = DocMountDocumentsRepository::new(mount);
+        let items = archetype_wardrobe::read_project_wardrobe(&docs, &mp, true)?;
+        Ok(Some(items.into_iter().find(|i| {
+            i.get("id").and_then(Value::as_str) == Some(iid.as_str())
+        })))
+    });
+    match out {
+        Ok(Some(Some(item))) => Response::Project(json!({ "wardrobeItem": item })),
+        Ok(Some(None)) => not_found("Project wardrobe item"),
+        Ok(None) => not_found("Project"),
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 PUT `/wardrobe/[itemId]`: apply the partial patch. Body `{ wardrobeItem }`.
+/// Component cycles → 400; missing item → NotFound.
+pub async fn project_wardrobe_update(
+    db: &Db,
+    project_id: &str,
+    item_id: &str,
+    body: Value,
+) -> Response {
+    let pid = project_id.to_string();
+    let iid = item_id.to_string();
+    let patch = build_wardrobe_patch(&body);
+    let out = with_both_conns(db, move |main, mount| {
+        let mp = match ensure_project_wardrobe_mount(main, mount, &pid)? {
+            Ok(mp) => mp,
+            Err(_) => return Ok(Err(not_found("Project"))),
+        };
+        let links = DocMountFileLinksRepository::new(mount);
+        let docs = DocMountDocumentsRepository::new(mount);
+        match update_project_wardrobe_item(main, &links, &docs, &mp, &iid, &patch) {
+            // Re-read through the overlay so the echo carries the full null-inclusive
+            // shape v4's JS object emits (the WardrobeItem struct serialize skips
+            // `None` fields; the Value read path renders them as null).
+            Ok(Some(_)) => {
+                let item = archetype_wardrobe::read_project_wardrobe(&docs, &mp, true)?
+                    .into_iter()
+                    .find(|i| i.get("id").and_then(Value::as_str) == Some(iid.as_str()))
+                    .unwrap_or(Value::Null);
+                Ok(Ok(item))
+            }
+            Ok(None) => Ok(Err(not_found("Project wardrobe item"))),
+            Err(e) => Ok(Err(wardrobe_err(e))),
+        }
+    })
+    .await;
+    match out {
+        Ok(Ok(item)) => Response::Project(json!({ "wardrobeItem": item })),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 DELETE `/wardrobe/[itemId]`: `removeEquippedItemFromAllChats(itemId)`
+/// warn-and-proceed → delete. Body `{ success: true }`; missing item → NotFound.
+pub async fn project_wardrobe_delete(db: &Db, project_id: &str, item_id: &str) -> Response {
+    let pid = project_id.to_string();
+    let iid = item_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        let mp = match ensure_project_wardrobe_mount(main, mount, &pid)? {
+            Ok(mp) => mp,
+            Err(_) => return Ok(Err(not_found("Project"))),
+        };
+        // warn-and-proceed cleanup (v4 wraps this in its own try/catch → warn).
+        let _ = ChatOutfitsRepository::new(main).remove_equipped_item_from_all_chats(&iid);
+        let links = DocMountFileLinksRepository::new(mount);
+        let docs = DocMountDocumentsRepository::new(mount);
+        match delete_project_wardrobe_item(main, &links, &docs, &mp, &iid) {
+            Ok(true) => Ok(Ok(())),
+            Ok(false) => Ok(Err(not_found("Project wardrobe item"))),
+            Err(e) => Ok(Err(wardrobe_err(e))),
+        }
+    })
+    .await;
+    match out {
+        Ok(Ok(())) => Response::Project(json!({ "success": true })),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// Build a `WardrobePatch` from the `updateWardrobeSchema.partial()` body (only
+/// present keys are set; nullable columns distinguish present-null from absent).
+fn build_wardrobe_patch(body: &Value) -> WardrobePatch {
+    let arr = |k: &str| -> Option<Vec<String>> {
+        body.get(k).and_then(Value::as_array).map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+    };
+    // A present nullable key → Some(inner) where inner mirrors null-vs-value.
+    let nullable =
+        |k: &str| -> Option<Option<String>> { body.get(k).map(|v| v.as_str().map(str::to_string)) };
+    WardrobePatch {
+        title: body
+            .get("title")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        types: arr("types"),
+        component_item_ids: arr("componentItemIds"),
+        description: nullable("description"),
+        image_prompt: nullable("imagePrompt"),
+        appropriateness: nullable("appropriateness"),
+        is_default: body.get("isDefault").and_then(Value::as_bool),
+        replace: body.get("replace").and_then(Value::as_bool),
+        archived_at: None,
     }
 }
