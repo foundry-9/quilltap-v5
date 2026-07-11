@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { copyFileSync, mkdirSync, openSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { expect, test, type Page } from '@playwright/test';
@@ -291,6 +291,55 @@ test.describe('P4.6g — Characters vertical (list → view → toggle → mutat
     const before = await deleteButtons.count();
     await deleteButtons.first().click();
     await expect(deleteButtons).toHaveCount(before - 1, { timeout: 10_000 });
+  });
+
+  // The two P4.6l riders over lane C's byte-leg web routes, live at unification.
+
+  test('Upload Photo adds a gallery tile via the multipart route', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.goto(`${CHAR_BASE_URL}/characters`);
+    await unlockIfLocked(page);
+
+    const aria = page.locator('.character-card-grid .character-card').filter({ hasText: 'Aria' }).first();
+    await aria.locator('p.line-clamp-3').click();
+    await expect(page.getByRole('heading', { name: 'Aria' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Photo Gallery' }).click();
+    const deleteButtons = page.getByTitle('Delete this photo');
+    await expect(deleteButtons.first()).toBeVisible({ timeout: 10_000 });
+    const before = await deleteButtons.count();
+
+    // A 1×1 transparent PNG; the route validates non-empty image/* bytes and
+    // dedups by sha — fresh per run since beforeAll recreates the instance.
+    const tinyPng = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    await page.locator('input[aria-label="Upload photo"]').setInputFiles({
+      name: 'unification-beat.png',
+      mimeType: 'image/png',
+      buffer: tinyPng,
+    });
+    await expect(deleteButtons).toHaveCount(before + 1, { timeout: 15_000 });
+  });
+
+  test('Export as SillyTavern PNG downloads a PNG card', async ({ page }, testInfo) => {
+    test.setTimeout(60_000);
+    await page.goto(`${CHAR_BASE_URL}/characters`);
+    await unlockIfLocked(page);
+
+    const aria = page.locator('.character-card-grid .character-card').filter({ hasText: 'Aria' }).first();
+    // Glyph button — locate by title (the accname gotcha).
+    const downloadPromise = page.waitForEvent('download');
+    await aria.getByTitle('Export as SillyTavern PNG card').click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe('Aria.png');
+
+    const saved = testInfo.outputPath('aria-card.png');
+    await download.saveAs(saved);
+    const bytes = readFileSync(saved);
+    // The PNG signature — the container the tEXt card chunk rides in.
+    expect(Array.from(bytes.subarray(0, 8))).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
   });
 });
 
