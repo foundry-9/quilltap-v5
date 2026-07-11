@@ -1420,6 +1420,57 @@ pub async fn character_photo_remove(
     }
 }
 
+/// v4 `POST /characters/[id]/photos` JSON leg (`saveByIdSchema` — exactly one of
+/// `fileId`/`linkId`). The `linkId` leg (`saveLinkToCharacterGallery`) reads bytes
+/// from the source link's mount-blob and hard-links a copy into the character's
+/// `photos/` folder — fully DB-resolvable and LIVE. The `fileId` leg
+/// (`saveFileToCharacterGallery`) reads bytes via the host file store
+/// (`fileStorageManager.downloadFile`), which the characters dispatch doesn't wire
+/// — a loud `not_available("photo-save-fileid")` deferral (the multipart upload
+/// leg is likewise a web-route deferral). `keptAt` is minted here (the injected
+/// ISO clock).
+pub async fn character_photo_save_by_id(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    file_id: Option<&str>,
+    link_id: Option<&str>,
+) -> Response {
+    // v4 `saveByIdSchema.refine`: exactly one of fileId/linkId.
+    match (file_id, link_id) {
+        (Some(_), Some(_)) | (None, None) => {
+            return bad_request("Provide exactly one of fileId or linkId")
+        }
+        _ => {}
+    }
+    let Some(lid) = link_id else {
+        // The fileId leg needs the host file-store bytes seam (unwired here).
+        return not_available("photo-save-fileid");
+    };
+    let kept_at = crate::clock::now_iso();
+    let cid = character_id.to_string();
+    let lid = lid.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        Ok(
+            crate::photos::character_gallery_service::save_link_to_character_gallery(
+                main,
+                mount,
+                &cid,
+                &lid,
+                None,
+                &[],
+                &kept_at,
+            ),
+        )
+    })
+    .await;
+    match out {
+        Ok(Ok(v)) => Response::Character(v),
+        Ok(Err(e)) => gallery_err(e),
+        Err(e) => internal(e),
+    }
+}
+
 /// The `updateCharacterSchema` keys (v4 `put.ts`). Zod `.parse` strips unknown
 /// keys, so the patch is whitelisted to exactly these; the vault write-overlay
 /// routes the managed ones (`title`/`identity`/… + `scenarios`/`systemPrompts`/

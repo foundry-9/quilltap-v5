@@ -1078,9 +1078,23 @@ impl CoreEngine {
                 ),
                 Err(r) => r,
             },
-            Request::CharacterPhotoSaveById { .. } => {
-                super::characters::not_available("photo-save")
-            }
+            Request::CharacterPhotoSaveById {
+                character_id,
+                file_id,
+                link_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_photo_save_by_id(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        file_id.as_deref(),
+                        link_id.as_deref(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
             Request::CharacterPhotoRemove {
                 character_id,
                 link_id,

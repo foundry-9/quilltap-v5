@@ -395,6 +395,34 @@ fn dump_photo_tables(db: &Db, character_id: &str) -> Value {
     .unwrap()
 }
 
+/// Dump the mount's `photos/` links (raw columns; deterministic under the fixed
+/// clock — the link id is excluded as the only minted value), in the oracle's shape.
+fn dump_saved_photo_links(db: &Db, mount_point_id: &str) -> Value {
+    let mp = mount_point_id.to_string();
+    db.read_mount_index(move |mount| {
+        let mut stmt = mount.prepare(
+            "SELECT relativePath, fileId, originalMimeType, extractedText, description \
+             FROM doc_mount_file_links WHERE mountPointId = ?1 AND relativePath LIKE 'photos/%' \
+             ORDER BY relativePath",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![mp], |r| {
+            Ok(json!({
+                "relativePath": r.get::<_, String>(0)?,
+                "fileId": r.get::<_, String>(1)?,
+                "originalMimeType": r.get::<_, Option<String>>(2)?,
+                "extractedText": r.get::<_, Option<String>>(3)?,
+                "description": r.get::<_, Option<String>>(4)?,
+            }))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(json!({ "savedLinks": out }))
+    })
+    .unwrap()
+}
+
 #[test]
 fn characters_mutations_match_oracle() {
     let Some(oracle_path) = env_or_skip("QT_ORACLE_CHARACTERS_MUTATIONS") else {
@@ -656,6 +684,57 @@ fn characters_mutations_match_oracle() {
             extra.push("st_import_card_readback".to_string());
         } else {
             eprintln!("[st_import_card readback] OK.");
+        }
+    }
+
+    {
+        // P4.6i: save Aria's avatar link into photos/ (the linkId save-by-id leg).
+        // A fixed keptAt (matching the oracle's frozen Date) makes the minted path
+        // + kept-image markdown deterministic; only the link id is minted (blanked).
+        const FIXED_KEPT_AT: &str = "2026-04-01T12:00:00.000Z";
+        let db = fresh_db(&spec, "photosave");
+        let source_link = discover_photo_link_id(&db, ARIA, "images/avatar.webp");
+        let saved: Value = rt
+            .block_on(db.write(move |writers| {
+                let mount = writers.mount_index().unwrap().connection();
+                let main = writers.main().connection();
+                let r = quilltap_core::photos::character_gallery_service::save_link_to_character_gallery(
+                    main, mount, ARIA, &source_link, None, &[], FIXED_KEPT_AT,
+                );
+                Ok(r.map_err(|e| format!("{e:?}")))
+            }))
+            .unwrap()
+            .expect("save_link ok");
+        // Return-value diff (linkId minted → blank on both sides).
+        let mut got_body = saved.clone();
+        let mut want_body = oracle["photo_save_link"]["body"].clone();
+        got_body["linkId"] = Value::String("<linkId>".into());
+        want_body["linkId"] = Value::String("<linkId>".into());
+        if norm_tables(&got_body) != norm_tables(&want_body) {
+            eprintln!(
+                "[photo_save_link] MISMATCH:\n{}",
+                first_diff(&norm_tables(&got_body), &norm_tables(&want_body))
+            );
+            extra.push("photo_save_link".to_string());
+        } else {
+            eprintln!("[photo_save_link] OK.");
+        }
+        // Dump the freshly-written photos/ link (deterministic under the fixed clock).
+        let mp_id = saved
+            .get("mountPointId")
+            .and_then(Value::as_str)
+            .unwrap()
+            .to_string();
+        let saved_links = dump_saved_photo_links(&db, &mp_id);
+        let want_tables = &oracle["photo_save_link"]["tables"];
+        if norm_tables(&saved_links) != norm_tables(want_tables) {
+            eprintln!(
+                "[photo_save_link tables] MISMATCH:\n{}",
+                first_diff(&norm_tables(&saved_links), &norm_tables(want_tables))
+            );
+            extra.push("photo_save_link_tables".to_string());
+        } else {
+            eprintln!("[photo_save_link tables] OK.");
         }
     }
 

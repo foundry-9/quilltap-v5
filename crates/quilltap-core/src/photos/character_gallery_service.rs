@@ -12,12 +12,23 @@ use rusqlite::Connection;
 use serde_json::{json, Value};
 
 use crate::db::characters_read;
-use crate::db::doc_mount_file_links::{is_photos_relative_path, DocMountFileLinksRepository};
+use crate::db::doc_mount_blobs::DocMountBlobsRepository;
+use crate::db::doc_mount_file_links::{
+    is_photos_relative_path, DocMountFileLinksRepository, LinkBlobInput,
+};
 use crate::db::doc_mount_points::DocMountPointsRepository;
 use crate::db::DbError;
-use crate::photos::keep_image_markdown::parse_kept_image_frontmatter;
+use crate::photos::keep_image_markdown::{
+    basename_of_relative_path, build_kept_image_markdown, build_slug_and_filename,
+    parse_kept_image_frontmatter, sha256_of_buffer, sha256_of_string, BuildKeptImageMarkdownInput,
+    BuildSlugAndFilenameInput, KeptImageAttributionRole,
+};
 use crate::photos::photo_link_summary::get_photo_link_summary_by_sha256;
+use crate::photos::photos_paths::{build_photos_relative_path, PHOTOS_FOLDER};
 use crate::photos::resolve_character_avatar::build_mount_file_url;
+use crate::photos::save_image_to_album::{
+    chunk_and_insert_extracted_text, resolve_unique_relative_path,
+};
 
 /// v4 `DEFAULT_LIMIT` for the gallery listing.
 const DEFAULT_LIMIT: i64 = 60;
@@ -198,4 +209,230 @@ pub fn remove_from_character_gallery(
 
     let file_gc = links.delete_with_gc(link_id)?;
     Ok((true, file_gc))
+}
+
+/// Output of the save legs (v4 `SaveToCharacterGalleryOutput`).
+fn save_output(
+    link_id: &str,
+    mount_point_id: &str,
+    relative_path: &str,
+    kept_at: &str,
+    sha256: &str,
+) -> Value {
+    json!({
+        "linkId": link_id,
+        "mountPointId": mount_point_id,
+        "relativePath": relative_path,
+        "keptAt": kept_at,
+        "sha256": sha256,
+    })
+}
+
+/// v4 `saveToCharacterGallery` — hard-link freshly-uploaded bytes into the
+/// character's vault `photos/` folder (deduped by sha256; a re-upload of the same
+/// image into the same vault is refused). `kept_at` is the injected ISO clock (v4
+/// mints `new Date().toISOString()`; the differential freezes `Date` to pin it).
+///
+/// A WRITE — run inside `Db::write`.
+#[allow(clippy::too_many_arguments)]
+pub fn save_to_character_gallery(
+    main: &Connection,
+    mount: &Connection,
+    character_id: &str,
+    data: &[u8],
+    filename: &str,
+    mime_type: &str,
+    caption: Option<&str>,
+    tags: &[String],
+    kept_at: &str,
+) -> Result<Value, GalleryError> {
+    let Some(character) = characters_read::find_by_id(main, mount, character_id)? else {
+        return Err(GalleryError::CharacterNotFound);
+    };
+    let character_name = character.get("name").and_then(Value::as_str).unwrap_or("");
+    let Some(vault) = resolve_character_vault(mount, &character)? else {
+        return Err(GalleryError::BadRequest(format!(
+            "Character {character_id} has no linked database-backed vault"
+        )));
+    };
+
+    if data.is_empty() {
+        return Err(GalleryError::BadRequest("Uploaded image is empty".into()));
+    }
+    if !mime_type.starts_with("image/") {
+        return Err(GalleryError::BadRequest(format!(
+            "Unsupported MIME type for character gallery: {mime_type}"
+        )));
+    }
+
+    let sha256 = sha256_of_buffer(data);
+
+    // Re-upload guard: refuse a second copy of the same bytes in this character's
+    // photos/ folder (v4 scans the sha's linkers for a photos-album link in this
+    // vault).
+    let summary = get_photo_link_summary_by_sha256(mount, &sha256)?;
+    if let Some(linkers) = summary.get("linkers").and_then(Value::as_array) {
+        if let Some(existing) = linkers.iter().find(|l| {
+            l.get("mountPointId").and_then(Value::as_str) == Some(vault.mount_point_id.as_str())
+                && is_photos_relative_path(l.get("relativePath").and_then(Value::as_str))
+        }) {
+            let rel = existing
+                .get("relativePath")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            return Err(GalleryError::BadRequest(format!(
+                "Image already in {character_name}'s photo album at {rel}"
+            )));
+        }
+    }
+
+    let character_idv = character
+        .get("id")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let markdown = build_kept_image_markdown(&BuildKeptImageMarkdownInput {
+        generation_prompt: None,
+        generation_revised_prompt: None,
+        generation_model: None,
+        scene_state: None,
+        scene_state_malformed: false,
+        linked_by_name: character_name,
+        linked_by_id: character_idv.as_deref(),
+        linked_by_role: Some(KeptImageAttributionRole::Character),
+        tags,
+        caption,
+        kept_at,
+    });
+    let extracted_text_sha256 = sha256_of_string(&markdown);
+
+    let slug = build_slug_and_filename(&BuildSlugAndFilenameInput {
+        caption,
+        generation_prompt: None,
+        mime_type,
+        kept_at,
+    });
+    // Prefer the uploader's filename when it carries an extension; else the slug.
+    let desired_leaf = if filename.contains('.') {
+        sanitize_leaf_name(filename)
+    } else {
+        slug.filename.clone()
+    };
+    let desired_path = build_photos_relative_path(&desired_leaf);
+    let relative_path = resolve_unique_relative_path(mount, &vault.mount_point_id, &desired_path)?;
+    let links = DocMountFileLinksRepository::new(mount);
+    links.ensure_folder_path(&vault.mount_point_id, PHOTOS_FOLDER)?;
+
+    let result = links.link_blob_content(&LinkBlobInput {
+        mount_point_id: vault.mount_point_id.clone(),
+        relative_path: relative_path.clone(),
+        file_name: basename_of_relative_path(&relative_path),
+        file_type: None,
+        original_file_name: if filename.is_empty() {
+            basename_of_relative_path(&relative_path)
+        } else {
+            filename.to_string()
+        },
+        original_mime_type: mime_type.to_string(),
+        stored_mime_type: mime_type.to_string(),
+        sha256: sha256.clone(),
+        data: data.to_vec(),
+        description: Some(caption.unwrap_or("").to_string()),
+        conversion_status: None,
+        extracted_text: Some(markdown.clone()),
+        extracted_text_sha256: Some(extracted_text_sha256),
+        extraction_status: Some("converted".to_string()),
+    })?;
+
+    chunk_and_insert_extracted_text(mount, &result.link_id, &markdown, kept_at)?;
+    // invalidateMountPoint / emitDocumentWritten / refreshStats / enqueueEmbedding
+    // are host-side recorded seams (no-op in the core).
+
+    Ok(save_output(
+        &result.link_id,
+        &vault.mount_point_id,
+        &relative_path,
+        kept_at,
+        &sha256,
+    ))
+}
+
+/// v4 `saveLinkToCharacterGallery` — hard-link an EXISTING vault link's bytes
+/// (read from its mount-blob) into the target character's `photos/` folder. The
+/// fully-DB-resolvable save-by-id leg.
+#[allow(clippy::too_many_arguments)]
+pub fn save_link_to_character_gallery(
+    main: &Connection,
+    mount: &Connection,
+    character_id: &str,
+    source_link_id: &str,
+    caption: Option<&str>,
+    tags: &[String],
+    kept_at: &str,
+) -> Result<Value, GalleryError> {
+    let links = DocMountFileLinksRepository::new(mount);
+    let Some(source_link) = links.find_by_id_with_content(source_link_id)? else {
+        return Err(GalleryError::BadRequest(format!(
+            "Image link not found: {source_link_id}"
+        )));
+    };
+    let mime_type = source_link
+        .original_mime_type
+        .clone()
+        .unwrap_or_else(|| "application/octet-stream".to_string());
+    if !mime_type.starts_with("image/") {
+        return Err(GalleryError::BadRequest(format!(
+            "Link {source_link_id} is not an image"
+        )));
+    }
+    let buffer = DocMountBlobsRepository::new(mount).read_data_by_file_id(&source_link.file_id)?;
+    let buffer = buffer.filter(|b| !b.is_empty());
+    let Some(buffer) = buffer else {
+        return Err(GalleryError::BadRequest(format!(
+            "Image link {source_link_id} has empty bytes"
+        )));
+    };
+    let filename = source_link
+        .original_file_name
+        .clone()
+        .unwrap_or_else(|| source_link.file_name.clone());
+    save_to_character_gallery(
+        main,
+        mount,
+        character_id,
+        &buffer,
+        &filename,
+        &mime_type,
+        caption,
+        tags,
+        kept_at,
+    )
+}
+
+/// v4 `sanitizeLeafName` — strip path separators + unsafe chars, collapse runs of
+/// `_`, trim leading/trailing `_`/`.`; empty → `'image'`.
+fn sanitize_leaf_name(name: &str) -> String {
+    // basename: the last `\`/`/` segment.
+    let basename = name.rsplit(['\\', '/']).next().unwrap_or(name);
+    let mut cleaned = String::with_capacity(basename.len());
+    let mut prev_underscore = false;
+    for ch in basename.chars() {
+        let unsafe_char = matches!(ch, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+            || (ch as u32) <= 0x1f
+            || (ch as u32) == 0x7f;
+        if unsafe_char {
+            if !prev_underscore {
+                cleaned.push('_');
+                prev_underscore = true;
+            }
+        } else {
+            cleaned.push(ch);
+            prev_underscore = false;
+        }
+    }
+    let trimmed = cleaned.trim_matches(|c| c == '_' || c == '.');
+    if trimmed.is_empty() {
+        "image".to_string()
+    } else {
+        trimmed.to_string()
+    }
 }

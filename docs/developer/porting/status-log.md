@@ -6271,3 +6271,30 @@ jest.setup global mocks it to a fake `mock-vault-mount`, which made the gallery
 spuriously empty; un-mocking resolves the real vault. Both green at `a7b1398d`.
 Versions: core 0.0.170, harness 0.0.155. **Save-by-id (photo-save) stays a loud
 `not_available` refusal until part 2.**
+
+**Unit 2 (part 2) — photo gallery SAVE-by-id (DONE, linkId leg LIVE).**
+`photos::character_gallery_service::{save_to_character_gallery,
+save_link_to_character_gallery}` port the write core + the `linkId` save-by-id
+leg. save-to: overlaid ownership → vault → empty/mime guards → sha256 →
+re-upload dedup (via `get_photo_link_summary_by_sha256`) → kept-image markdown
+(character attribution) → slug/filename (prefer uploader ext via `sanitizeLeafName`
+else the timestamped slug) → `resolve_unique_relative_path` → `ensure_folder_path`
+→ `link_blob_content` → `chunk_and_insert_extracted_text`; `kept_at` INJECTED
+(the ISO clock) so the mint is testable. save-link: source `findByIdWithContent`
+→ mime guard → mount-blob bytes → save-to. `chunk_and_insert_extracted_text` /
+`resolve_unique_relative_path` reused from `save_image_to_album` (made
+`pub(crate)`). Wired `CharacterPhotoSaveById` — `linkId` LIVE; **the `fileId`
+leg is a loud `not_available("photo-save-fileid")` DEFERRAL** (it reads bytes via
+the host file store `fileStorageManager.downloadFile`, which the characters
+dispatch doesn't wire — the same host-bytes seam `keep_image` carries; port a
+`FileBytesStore` into the characters dispatch to close it). The multipart upload
+leg stays the web route. Differential: `characters_mutations_equivalence`
++`photo_save_link` — **RECIPE:** freeze `global.Date` to a `FIXED_KEPT_AT`
+(`2026-04-01T12:00:00.000Z`) in the oracle (the photo-tools pattern) and inject
+the same `kept_at` on the Rust side (call `save_link_to_character_gallery`
+directly via `db.write`, bypassing the dispatch's `now_iso` mint); then the
+return value (linkId blanked — the only mint) AND the written `photos/` link row
+(relativePath / fileId / originalMimeType / extractedText markdown / description,
+raw-column dump) diff byte-exact. Green at `a7b1398d`. Versions: core 0.0.171,
+harness 0.0.156. **Unit 2 (gallery list/save/remove) COMPLETE** except the
+enumerated fileId-host-bytes + multipart deferrals.

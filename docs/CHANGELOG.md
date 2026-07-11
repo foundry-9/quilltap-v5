@@ -15,6 +15,20 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 ### 5.0-dev
 
 P4.6i (characters server remainder, lane A): ported the character photo
+gallery SAVE-by-id JSON leg (`save_to_character_gallery` +
+`save_link_to_character_gallery`). The `linkId` leg reads bytes from the
+source vault link's mount-blob and hard-links a copy into the character's
+`photos/` folder (deduped by sha256; kept-image markdown sidecar with a
+character attribution) — fully DB-resolvable and LIVE. The `fileId` leg reads
+bytes via the host file store the characters dispatch doesn't wire, so it
+stays a loud `not_available("photo-save-fileid")` deferral (alongside the
+multipart upload web-route deferral). Wired the `CharacterPhotoSaveById`
+dispatch arm. Differential: `characters_mutations_equivalence` +photo_save_link
+— under a frozen clock (matching keptAt injected both sides) the return value
+AND the written `photos/` link row (relativePath / fileId / mime / kept-image
+markdown) diff byte-exact.
+
+P4.6i (characters server remainder, lane A): ported the character photo
 gallery LIST + REMOVE JSON legs (`photos::character_gallery_service::
 {list_character_gallery, remove_from_character_gallery}` + the shared
 `photo_link_summary::get_photo_link_summary_by_sha256`). List surfaces the

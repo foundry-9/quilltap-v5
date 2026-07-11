@@ -51,6 +51,9 @@ const ARIA = 'a1000000-0000-4000-8000-000000000001';
 const CONN = 'c0000001-0000-4000-8000-000000000001';
 const ADVENTURE = '70000001-0000-4000-8000-000000000001';
 const MYSTERY = '70000002-0000-4000-8000-000000000002';
+/** Frozen instant for the photo-save case so the minted keptAt / relativePath /
+ *  kept-image markdown are deterministic on both differential sides. */
+const FIXED_KEPT_AT = '2026-04-01T12:00:00.000Z';
 
 interface CaseSpec {
   name: string;
@@ -70,7 +73,8 @@ interface CaseSpec {
     | 'depiction-get'
     | 'depiction-put'
     | 'st-import'
-    | 'photo-remove';
+    | 'photo-remove'
+    | 'photo-save';
   id?: string;
   /** For wardrobe item ops: discover the baked item id by this title. */
   itemTitle?: string;
@@ -209,6 +213,74 @@ async function runCase(
     let status: number;
     let body: unknown;
     let tables: unknown;
+    if (c.kind === 'photo-save') {
+      // POST /api/v1/characters/[id]/photos {linkId}. Save the source vault link
+      // (the avatar) into photos/. Date is frozen (see FIXED_KEPT_AT) so the
+      // minted keptAt / relativePath / kept-image markdown are deterministic.
+      const RealDate = Date;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      global.Date = class extends RealDate {
+        constructor(...a: unknown[]) {
+          if (a.length === 0) super(FIXED_KEPT_AT);
+          // @ts-expect-error forward variadic args
+          else super(...a);
+        }
+        static now(): number {
+          return RealDate.parse(FIXED_KEPT_AT);
+        }
+      } as unknown as DateConstructor;
+      try {
+        const { getCharacterVaultStore } = await import(
+          '@/lib/file-storage/character-vault-bridge'
+        );
+        const vault = await getCharacterVaultStore(ARIA);
+        if (!vault) throw new Error('Aria vault did not resolve');
+        const allLinks = await getRepositories().docMountFileLinks.findByMountPointId(
+          vault.mountPointId,
+        );
+        const source = allLinks.find(
+          (l: { relativePath: string }) => l.relativePath === c.photoRelativePath,
+        );
+        if (!source) throw new Error(`source link ${c.photoRelativePath} not found`);
+        const url = `http://localhost/api/v1/characters/${ARIA}/photos`;
+        const { POST } = (await import('@/app/api/v1/characters/[id]/photos/route')) as {
+          POST: (...a: unknown[]) => Promise<unknown>;
+        };
+        const req = {
+          method: 'POST',
+          url,
+          nextUrl: new URL(url),
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: jest.fn().mockResolvedValue({ linkId: (source as { id: string }).id }),
+        };
+        const response = (await POST(req, { params: Promise.resolve({ id: ARIA }) })) as {
+          status: number;
+          json: () => Promise<unknown>;
+        };
+        status = response.status;
+        body = await response.json();
+        // Dump the freshly-written photos/ link straight from the raw column
+        // (deterministic under the frozen clock; the link id is not selected —
+        // it's the only minted value).
+        const { getRawMountIndexDatabase } = await import(
+          '@/lib/database/backends/sqlite/mount-index-client'
+        );
+        const midb = getRawMountIndexDatabase() as unknown as {
+          prepare: (s: string) => { all: (...a: unknown[]) => unknown };
+        };
+        const savedLinks = midb
+          .prepare(
+            "SELECT relativePath, fileId, originalMimeType, extractedText, description " +
+              "FROM doc_mount_file_links WHERE mountPointId = ? AND relativePath LIKE 'photos/%' " +
+              'ORDER BY relativePath',
+          )
+          .all(vault.mountPointId);
+        tables = { savedLinks };
+      } finally {
+        global.Date = RealDate;
+      }
+      return { name: c.name, status, body, tables };
+    }
     if (c.kind === 'photo-remove') {
       // DELETE /api/v1/characters/[id]/photos/[linkId]. Discover the vault link
       // id by relativePath, call the route, dump the GC tables + defaultImageId.
@@ -554,6 +626,10 @@ async function main(): Promise<void> {
         },
       },
     },
+    // P4.6i: save Aria's avatar link into the photos/ folder (the linkId save-by-id
+    // leg — bytes from the source link's mount-blob). Frozen clock → deterministic
+    // path + markdown.
+    { name: 'photo_save_link', kind: 'photo-save', photoRelativePath: 'images/avatar.webp' },
     // P4.6i: remove Aria's avatar from the gallery — exercises the
     // defaultImageId-pointer clear + the GC-safe deleteWithGC (last link → the
     // file + blob are reclaimed).
