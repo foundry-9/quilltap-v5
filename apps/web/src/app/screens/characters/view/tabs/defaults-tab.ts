@@ -58,6 +58,10 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
   imports: [RouterLink],
   template: `
     <div class="space-y-8">
+      @if (error()) {
+        <div class="qt-alert-error">{{ error() }}</div>
+      }
+
       <!-- Connection Profile -->
       <div class="character-section-card rounded-lg border qt-border-default qt-bg-card p-6">
         <h2 class="qt-heading-4 text-foreground mb-2">Default Connection Profile</h2>
@@ -370,6 +374,11 @@ export class CharacterDefaultsTab {
     timestampConfig: false,
   });
 
+  /** v4 surfaces every failed save via `showErrorToast`; v5's affordance is
+   *  the tab-level alert. Without this, a server-rejected save silently snaps
+   *  the control back and reads as "the tab doesn't accept edits". */
+  protected readonly error = signal<string | null>(null);
+
   protected readonly isUserControlled = computed(() => this.character().controlledBy === 'user');
 
   protected readonly otherUserControlled = computed(() =>
@@ -397,10 +406,14 @@ export class CharacterDefaultsTab {
     return value === 'inherit' ? null : value === 'enabled';
   }
 
-  private async save(field: keyof SavingState, body: Record<string, unknown>): Promise<void> {
+  /** `fallback` = v4's `showErrorToast` fallback microcopy for this control. */
+  private async save(field: keyof SavingState, body: Record<string, unknown>, fallback: string): Promise<void> {
     this.saving.update((s) => ({ ...s, [field]: true }));
+    this.error.set(null);
     try {
       await this.core.dispatchData({ type: 'characterUpdate', characterId: this.characterId(), character: body });
+    } catch (err) {
+      this.error.set(err instanceof Error && err.message ? err.message : fallback);
     } finally {
       this.saving.update((s) => ({ ...s, [field]: false }));
       await this.queryClient.invalidateQueries({ queryKey: characterKeys.detail(this.characterId()) });
@@ -412,17 +425,20 @@ export class CharacterDefaultsTab {
       value === USER_CONTROLLED_PROFILE_ID
         ? { controlledBy: 'user' as const, defaultConnectionProfileId: undefined }
         : { controlledBy: 'llm' as const, defaultConnectionProfileId: value || undefined };
-    void this.save('connectionProfile', body);
+    void this.save('connectionProfile', body, 'Failed to update connection profile');
   }
 
   protected async onPartnerChange(value: string): Promise<void> {
     this.saving.update((s) => ({ ...s, partner: true }));
+    this.error.set(null);
     try {
       await this.core.dispatchData({
         type: 'characterSetDefaultPartner',
         characterId: this.characterId(),
         partnerId: value || null,
       });
+    } catch (err) {
+      this.error.set(err instanceof Error && err.message ? err.message : 'Failed to update partner');
     } finally {
       this.saving.update((s) => ({ ...s, partner: false }));
       await this.queryClient.invalidateQueries({ queryKey: characterKeys.defaultPartner(this.characterId()) });
@@ -431,27 +447,35 @@ export class CharacterDefaultsTab {
   }
 
   protected onDefaultSystemPromptChange(value: string): void {
-    void this.save('systemPrompt', { defaultSystemPromptId: value || null });
+    void this.save('systemPrompt', { defaultSystemPromptId: value || null }, 'Failed to update default system prompt');
   }
 
   protected onDefaultScenarioChange(value: string): void {
-    void this.save('scenario', { defaultScenarioId: value || null });
+    void this.save('scenario', { defaultScenarioId: value || null }, 'Failed to update default scenario');
   }
 
   protected onAgentModeChange(value: string): void {
-    void this.save('agentMode', { defaultAgentModeEnabled: this.fromTri(value) });
+    void this.save('agentMode', { defaultAgentModeEnabled: this.fromTri(value) }, 'Failed to update agent mode');
   }
 
   protected onHelpToolsChange(value: string): void {
-    void this.save('helpTools', { defaultHelpToolsEnabled: this.fromTri(value) });
+    void this.save('helpTools', { defaultHelpToolsEnabled: this.fromTri(value) }, 'Failed to update help tools');
   }
 
   protected onCanDressThemselvesChange(value: string): void {
-    void this.save('canDressThemselves', { canDressThemselves: this.fromTri(value) });
+    void this.save(
+      'canDressThemselves',
+      { canDressThemselves: this.fromTri(value) },
+      'Failed to update self-dressing setting',
+    );
   }
 
   protected onCanCreateOutfitsChange(value: string): void {
-    void this.save('canCreateOutfits', { canCreateOutfits: this.fromTri(value) });
+    void this.save(
+      'canCreateOutfits',
+      { canCreateOutfits: this.fromTri(value) },
+      'Failed to update outfit creation setting',
+    );
   }
 
   protected onTimestampModeChange(mode: string): void {
@@ -474,6 +498,6 @@ export class CharacterDefaultsTab {
 
   private saveTimestampConfig(config: Record<string, unknown>): void {
     const value = config['mode'] === 'NONE' ? null : config;
-    void this.save('timestampConfig', { defaultTimestampConfig: value });
+    void this.save('timestampConfig', { defaultTimestampConfig: value }, 'Failed to update timestamp config');
   }
 }

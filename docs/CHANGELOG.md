@@ -31,6 +31,16 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+Dogfood finding #6 (Friday smoke, partial): the Default Settings tab
+appeared to reject edits on real data. Confirmed port divergence fixed: v4
+surfaces every failed defaults save via an error toast; v5's autosave had
+try/finally with no catch, so a server-side rejection silently reverted the
+control with nothing shown. The tab now renders a `qt-alert-error` with the
+server's message (v4's per-control fallback microcopy otherwise), plus unit
+tests for both paths. The underlying real-data rejection is still to be
+identified from the now-visible error (saves verified working end-to-end
+against the fixture instance). SPA 0.5.10.
+
 Dogfood finding #5 (Friday smoke): the System Prompts view tab rendered a
 prompt containing the character's name as scattered fragments with huge
 gaps. Cause: v5 had inlined v4's `TemplateDisplay` markup into the tab

@@ -219,6 +219,35 @@ describe('CharacterDefaultsTab (autosave contract)', () => {
     expect(req!['character']).toEqual({ canDressThemselves: false });
   });
 
+  it('surfaces a rejected save in the tab alert instead of swallowing it (finding #6)', async () => {
+    const failing: Partial<CoreClient> = {
+      dispatchData: (async () => {
+        throw new Error('overlay write failed: vault unavailable');
+      }) as CoreClient['dispatchData'],
+    };
+    const fixture = await render(failing, { character: character({}) });
+    change(selectByFirstOptionText(fixture, 'Inherit from global settings'), 'enabled');
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+    const alert = fixture.nativeElement.querySelector('.qt-alert-error') as HTMLElement;
+    expect(alert).toBeTruthy();
+    expect(alert.textContent).toContain('overlay write failed: vault unavailable');
+  });
+
+  it('falls back to the v4 toast microcopy when the rejection carries no message', async () => {
+    const failing: Partial<CoreClient> = {
+      dispatchData: (async () => {
+        throw new Error('');
+      }) as CoreClient['dispatchData'],
+    };
+    const fixture = await render(failing, { character: character({}) });
+    change(selectByFirstOptionText(fixture, 'Inherit from global settings'), 'enabled');
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+    const alert = fixture.nativeElement.querySelector('.qt-alert-error') as HTMLElement;
+    expect(alert.textContent).toContain('Failed to update agent mode');
+  });
+
   it('dispatches characterUpdate {defaultTimestampConfig: null} when the timestamp mode is Disabled', async () => {
     const seen: Array<{ type: string; [k: string]: unknown }> = [];
     const fixture = await render(stubClient((r) => seen.push(r)), {
