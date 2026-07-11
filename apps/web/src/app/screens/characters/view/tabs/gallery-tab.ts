@@ -45,7 +45,12 @@ import { characterKeys, fetchCharacterPhotos } from '../../characters.api';
         <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
           @for (photo of photos(); track photo.id) {
             <div class="relative overflow-hidden rounded-lg border qt-border-default qt-bg-muted" style="aspect-ratio: 4/5">
-              <img [src]="srcFor(photo)" [alt]="'Character photo'" class="h-full w-full object-cover" />
+              <img
+                [src]="srcFor(photo)"
+                [alt]="photo.caption || 'Character photo'"
+                [title]="photo.caption || null"
+                class="h-full w-full object-cover"
+              />
               <button
                 type="button"
                 class="absolute top-1 right-1 rounded-full qt-bg-card/90 p-1.5 qt-text-secondary hover:text-destructive"
@@ -54,6 +59,13 @@ import { characterKeys, fetchCharacterPhotos } from '../../characters.api';
               >
                 <qt-icon name="trash" class="w-4 h-4" />
               </button>
+              @if (photo.caption) {
+                <p
+                  class="absolute inset-x-0 bottom-0 truncate qt-bg-card/80 px-2 py-1 qt-text-xs qt-text-secondary"
+                >
+                  {{ photo.caption }}
+                </p>
+              }
             </div>
           }
         </div>

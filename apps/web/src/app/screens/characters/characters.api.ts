@@ -110,7 +110,10 @@ export async function fetchCharacterPhotos(
   characterId: string,
 ): Promise<CharacterPhoto[]> {
   const data = await core.dispatchData({ type: 'characterPhotoList', characterId });
-  const photos = data['photos'] ?? data['images'];
+  // v4's `/photos` returns `{ entries }` (each entry's `id` is the vault
+  // `doc_mount_file_links.id` = the linkId); fall back to the legacy
+  // `photos`/`images` keys until lane A's envelope is pinned at unification.
+  const photos = data['entries'] ?? data['photos'] ?? data['images'];
   return (photos as CharacterPhoto[]) ?? [];
 }
 

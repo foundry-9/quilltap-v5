@@ -6389,3 +6389,19 @@ navigate-away is required since the character's pages cease to exist). The
 roster-level delete wiring (P4.6g `characters-list.ts`) is unchanged. Gate: 1
 new unit test (open dialog → preview → confirm → dispatch → navigate to roster),
 202 SPA unit tests, the SPA prod build clean. SPA 0.5.5.
+
+**P4.6j unit 3 — the photo gallery verify (SPA, 2026-07-11).** Verified
+`view/tabs/gallery-tab.ts` against the finalized `CharacterGalleryEntry`. Fresh
+v4 survey (`components/images/embedded-gallery/`): the list endpoint returns
+`{ entries }`, each entry `{ id, filename, filepath, url?, mimeType, size,
+width?, height?, createdAt, caption: string|null, tags: string[] }` where `id`
+is the vault `doc_mount_file_links.id` (the linkId) and delete uses that `id`.
+The P4.6g `fetchCharacterPhotos` read only `photos`/`images`, so it would miss
+the real `entries` envelope — fixed to read `entries` first with the legacy keys
+as fallback (reconciled with lane A's pinned bytes at unification). Added
+`caption`/`tags` to the `CharacterPhoto` contract type + a `CharacterGalleryEntry`
+alias. The tile now renders the caption (img `alt`/`title` + a bottom overlay);
+remove keeps `linkId ?? id`, so an `id`-only entry deletes by id-as-linkId.
+Upload stays the deferred multipart web route (disabled control + inline note).
+Gate: 2 new unit tests (the `{ entries }` envelope + caption render; remove-by-id
+when linkId absent), 204 SPA unit tests, the SPA prod build clean. SPA 0.5.6.

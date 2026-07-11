@@ -14,6 +14,15 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+P4.6j unit 3 — the photo gallery, verified against the finalized envelope (SPA).
+v4's `/photos` returns `{ entries }` where each entry's `id` is the vault
+`doc_mount_file_links.id` (the linkId), plus `caption` / `tags`. `fetchCharacterPhotos`
+now reads `entries` first (legacy `photos`/`images` kept as a fallback until lane
+A pins the bytes at unification); the gallery tile renders the caption (as the
+image `alt`/`title` and a bottom overlay) and remove uses `linkId ?? id`, so an
+entry that carries only `id` still deletes correctly. Upload stays the deferred
+multipart web route (disabled control + inline note). SPA 0.5.6.
+
 P4.6j unit 2 — the delete + cascade-preview entry point (SPA). The existing
 `character-delete-dialog` is byte-faithful to v4 (it renders title +
 messageCount per exclusive chat and the total image count — v4 does not render
