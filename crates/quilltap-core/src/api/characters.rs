@@ -677,6 +677,38 @@ pub fn character_chats(
     }
 }
 
+/// v4 `?action=export` (`characters/[id]/handlers/get.ts:63`), JSON leg —
+/// ownership (overlaid `findById`) → `exportSTCharacter(character)` → the ST
+/// `chara_card_v2` card (the SPA downloads it client-side). `format=png` is the
+/// quilltap-web multipart route (deferred) → a loud `not_available("export-png")`.
+pub fn character_export(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    format: Option<&str>,
+) -> Response {
+    // v4: `format = searchParams.get('format') || 'json'`.
+    let format = format.filter(|s| !s.is_empty()).unwrap_or("json");
+    if format == "png" {
+        return not_available("export-png");
+    }
+    let cid = character_id.to_string();
+    let result = read_main_mount(db, move |main, mount| {
+        let character = match require_character(main, mount, &cid) {
+            Ok(c) => c,
+            Err(r) => return Ok(Err(r)),
+        };
+        Ok(Ok(crate::services::sillytavern::export_st_character(
+            &character,
+        )))
+    });
+    match result {
+        Ok(Ok(card)) => Response::Character(card),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
 // ===========================================================================
 // Sub-resource reads
 // ===========================================================================
@@ -1227,6 +1259,92 @@ pub async fn character_quick_create(db: &Db, user_id: &str, name: &str) -> Respo
     .await;
     match out {
         Ok(c) => Response::Character(json!({ "character": c })),
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `POST /characters?action=import` (`characters/handlers/post.ts`
+/// `handleImport`, JSON leg). Parse the ST card (`body.characterData || body`,
+/// then `importSTCharacter`'s `.data` unwrap), then create the character DIRECTLY
+/// through the create primitive — NOT `character_create`: the import path calls
+/// `repos.characters.create` with the ST-derived bag, so `sillyTavernData` lands
+/// in the slim column and no `createCharacterSchema` runs. Echo the slim create
+/// shape `{ character: { id, name, description, defaultImageId, createdAt,
+/// updatedAt, _count: { chats } } }`. The PNG/multipart leg is the quilltap-web
+/// route (deferred → `not_available("import-png")` at that transport).
+pub async fn character_import(db: &Db, user_id: &str, payload: Value) -> Response {
+    // v4: `characterData = body.characterData || body`.
+    let character_data = payload
+        .get("characterData")
+        .filter(|v| !v.is_null())
+        .cloned()
+        .unwrap_or(payload);
+    let imported = crate::services::sillytavern::import_st_character(&character_data);
+
+    let name = match imported.get("name").and_then(Value::as_str) {
+        Some(n) if !n.is_empty() => n.to_string(),
+        _ => return bad_request("Character data is required"),
+    };
+
+    // The slim create bag: v4 `repos.characters.create({ userId, ...importedData,
+    // isFavorite:false, tags:[], partnerLinks:[], avatarOverrides:[],
+    // defaultImageId:null, physicalDescription:null })`. `sillyTavernData` is the
+    // only slim managed input the import carries beyond name/controlledBy defaults.
+    let slim = CharacterCreate {
+        user_id: user_id.to_string(),
+        name,
+        default_image_id: None,
+        default_connection_profile_id: None,
+        default_partner_id: None,
+        default_roleplay_template_id: None,
+        default_image_profile_id: None,
+        silly_tavern_data: imported.get("sillyTavernData").cloned(),
+        is_favorite: false,
+        npc: false,
+        controlled_by: "llm".to_string(),
+        default_agent_mode_enabled: None,
+        default_help_tools_enabled: None,
+        default_timestamp_config: None,
+        default_scenario_id: None,
+        default_system_prompt_id: None,
+        character_document_mount_point_id: None,
+        can_dress_themselves: None,
+        can_create_outfits: None,
+        system_transparency: None,
+        core_whisper_enabled: None,
+        can_be_carina: None,
+        partner_links: vec![],
+        tags: vec![],
+        avatar_overrides: vec![],
+    };
+    // The vault-managed inputs deserialize off the imported bag
+    // (title/description/personality/firstMessage/exampleDialogues/scenarios/
+    // systemPrompts; `physicalDescription` is absent → `None`, matching the
+    // handler's explicit `physicalDescription: null`).
+    let vault: CharacterVaultWriteInput = match serde_json::from_value(imported) {
+        Ok(v) => v,
+        Err(e) => return bad_request(format!("Invalid character data: {e}")),
+    };
+
+    let out = with_both_conns(db, move |main, mount| {
+        let id = create_character(main, mount, &slim, &vault)?;
+        let character = characters_read::find_by_id(main, mount, &id)?.unwrap_or(Value::Null);
+        let chat_count = crate::db::chats_read::find_by_character_id(main, &id)?.len();
+        Ok((character, chat_count))
+    })
+    .await;
+    match out {
+        Ok((character, chat_count)) => Response::Character(json!({
+            "character": {
+                "id": character.get("id").cloned().unwrap_or(Value::Null),
+                "name": character.get("name").cloned().unwrap_or(Value::Null),
+                "description": character.get("description").cloned().unwrap_or(Value::Null),
+                "defaultImageId": Value::Null,
+                "createdAt": character.get("createdAt").cloned().unwrap_or(Value::Null),
+                "updatedAt": character.get("updatedAt").cloned().unwrap_or(Value::Null),
+                "_count": { "chats": chat_count },
+            }
+        })),
         Err(e) => internal(e),
     }
 }

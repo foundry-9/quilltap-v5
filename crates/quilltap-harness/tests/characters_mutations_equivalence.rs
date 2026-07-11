@@ -506,6 +506,64 @@ fn characters_mutations_match_oracle() {
         }
     }
 
+    {
+        // P4.6i: ST import (JSON leg). Diff the slim create echo AND the overlay
+        // readback of the created character (proving the ST-derived vault fields
+        // round-tripped). Minted ids/timestamps blanked by `norm`.
+        let db = fresh_db(&spec, "stimport");
+        let card = json!({
+            "spec": "chara_card_v2",
+            "spec_version": "2.0",
+            "data": {
+                "name": "Fable",
+                "description": "A traveling storyteller.",
+                "personality": "Whimsical and wry.",
+                "scenario": "The caravan halts at dusk.",
+                "first_mes": "Gather round, friends.",
+                "mes_example": "User: A tale?\nFable: Always a tale.",
+                "system_prompt": "You are Fable, a wandering storyteller.",
+                "creator_notes": "imported for the differential",
+                "tags": ["bard"],
+                "creator": "TestSuite",
+                "character_version": "2.1",
+                "extensions": { "origin": "sillytavern" },
+                "title": "The Wandering Bard",
+            },
+        });
+        let resp = rt.block_on(characters::character_import(&db, &uid, card));
+        let echo = response_data(&resp);
+        // Echo diff.
+        if norm(&echo) != norm(&oracle["st_import_card"]["body"]) {
+            eprintln!(
+                "[st_import_card] MISMATCH:\n{}",
+                first_diff(&norm(&echo), &norm(&oracle["st_import_card"]["body"]))
+            );
+            extra.push("st_import_card".to_string());
+        } else {
+            eprintln!("[st_import_card] OK.");
+        }
+        // Readback: the created character's overlay.
+        let created_id = echo
+            .get("character")
+            .and_then(|c| c.get("id"))
+            .and_then(Value::as_str)
+            .expect("created id in echo")
+            .to_string();
+        let readback = response_data(&characters::character_get(&db, &uid, &created_id));
+        if norm(&readback) != norm(&oracle["st_import_card"]["readback"]) {
+            eprintln!(
+                "[st_import_card readback] MISMATCH:\n{}",
+                first_diff(
+                    &norm(&readback),
+                    &norm(&oracle["st_import_card"]["readback"])
+                )
+            );
+            extra.push("st_import_card_readback".to_string());
+        } else {
+            eprintln!("[st_import_card readback] OK.");
+        }
+    }
+
     failed.extend(extra);
     assert!(failed.is_empty(), "characters-mutations FAILED: {failed:?}");
 }

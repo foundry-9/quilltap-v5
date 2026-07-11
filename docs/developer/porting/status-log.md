@@ -6218,3 +6218,28 @@ FRESH v4 oracle at `a7b1398d`. Regen: the characters-reads header recipe
 (`QT_ORACLE_OUT=/tmp/oracle-characters-reads.ndjson`,
 `QT_ORACLE_CHARACTERS_READS` for the Rust side). Versions: core 0.0.168,
 harness 0.0.153.
+
+**Unit 5 — ST import/export JSON legs (DONE).**
+`services::sillytavern::export_st_character` / `import_st_character` port the
+JSON paths of `lib/sillytavern/character.ts`. Export (`character_export`,
+`CharacterExport` format=json) = overlaid character → `chara_card_v2` card
+(systemPromptContent from the default/first prompt; scenarioContent 1→content,
+many→`## title\ncontent` joined; `sillyTavernData` base OR the default card;
+`title || undefined`, `mes_example = exampleDialogues || ''`). Reads only stable
+fields → no minted id in the output. Import (`character_import`,
+`CharacterImport` JSON body) = `body.characterData || body` → `importSTCharacter`
+(`.data` unwrap; `mes_example` array→JSON.stringify; `system_prompt`→one Default
+prompt; `scenario`→one Default scenario; `sillyTavernData = data`) → create
+DIRECTLY through the create primitive (NOT `character_create` — which hardcodes
+`silly_tavern_data: None`; import writes it to the slim column) → echo
+`{character:{id,name,description,defaultImageId:null,createdAt,updatedAt,_count:{chats}}}`.
+Wired the `CharacterExport` / `CharacterImport` dispatch arms. PNG legs deferred
+(loud `export-png` / handled at the web multipart route). Differentials:
+`characters_reads_equivalence` +`export_json`; `characters_mutations_equivalence`
++`st_import_card` (diffs the create echo AND the overlay readback of the created
+character — proving the ST scenarios/systemPrompts/firstMessage/exampleDialogues/
+sillyTavernData round-tripped; minted ids/ts blanked by the existing `norm`).
+The export handler returns a raw `JSON.stringify(card)` download body, so the
+reads oracle's `response.json()` yields the JSON TEXT as a string — the case
+carries a `parseStringBody` flag to parse it back for the semantic diff. Both
+green vs FRESH v4 oracles at `a7b1398d`. Versions: core 0.0.169, harness 0.0.154.

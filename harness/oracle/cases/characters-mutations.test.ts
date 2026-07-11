@@ -68,7 +68,8 @@ interface CaseSpec {
     | 'tag-update'
     | 'tag-delete'
     | 'depiction-get'
-    | 'depiction-put';
+    | 'depiction-put'
+    | 'st-import';
   id?: string;
   /** For wardrobe item ops: discover the baked item id by this title. */
   itemTitle?: string;
@@ -181,6 +182,35 @@ async function runCase(
     let status: number;
     let body: unknown;
     let tables: unknown;
+    if (c.kind === 'st-import') {
+      // JSON leg of `POST /api/v1/characters?action=import`. Capture the slim
+      // create echo, then read the created character back through the overlay
+      // GET to prove the ST-derived vault fields (scenarios / systemPrompts /
+      // firstMessage / exampleDialogues / sillyTavernData) round-tripped.
+      const url = 'http://localhost/api/v1/characters?action=import';
+      const { POST } = (await import('@/app/api/v1/characters/route')) as {
+        POST: (...a: unknown[]) => Promise<unknown>;
+      };
+      const response = (await POST(mockRequest(url, c.body))) as {
+        status: number;
+        json: () => Promise<{ character?: { id?: string } }>;
+      };
+      status = response.status;
+      body = await response.json();
+      const createdId = (body as { character?: { id?: string } })?.character?.id;
+      let readback: unknown = null;
+      if (createdId) {
+        const getUrl = `http://localhost/api/v1/characters/${createdId}`;
+        const mod = (await import('@/app/api/v1/characters/[id]/route')) as {
+          GET: (...a: unknown[]) => Promise<unknown>;
+        };
+        const rb = (await mod.GET(mockRequest(getUrl, undefined), {
+          params: Promise.resolve({ id: createdId }),
+        })) as { json: () => Promise<unknown> };
+        readback = await rb.json();
+      }
+      return { name: c.name, status, body, readback };
+    }
     if (c.kind.startsWith('depiction')) {
       const url = `http://localhost/api/v1/characters/${ARIA}?action=depiction-guidelines`;
       const mod = (await import('@/app/api/v1/characters/[id]/route')) as {
@@ -439,6 +469,32 @@ async function main(): Promise<void> {
       body: { content: 'Keep depictions tasteful and in-period.' },
     },
     { name: 'depiction_put_clear', kind: 'depiction-put', body: { content: '   ' } },
+    // P4.6i: ST import (JSON leg) — a chara_card_v2 card exercising the card
+    // unwrap, scenario/system_prompt → single-item arrays, mes_example string,
+    // title, and sillyTavernData passthrough.
+    {
+      name: 'st_import_card',
+      kind: 'st-import',
+      body: {
+        spec: 'chara_card_v2',
+        spec_version: '2.0',
+        data: {
+          name: 'Fable',
+          description: 'A traveling storyteller.',
+          personality: 'Whimsical and wry.',
+          scenario: 'The caravan halts at dusk.',
+          first_mes: 'Gather round, friends.',
+          mes_example: 'User: A tale?\nFable: Always a tale.',
+          system_prompt: 'You are Fable, a wandering storyteller.',
+          creator_notes: 'imported for the differential',
+          tags: ['bard'],
+          creator: 'TestSuite',
+          character_version: '2.1',
+          extensions: { origin: 'sillytavern' },
+          title: 'The Wandering Bard',
+        },
+      },
+    },
   ];
 
   const outLines: string[] = [];

@@ -1048,8 +1048,22 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
-            Request::CharacterExport { .. } => super::characters::not_available("export"),
-            Request::CharacterImport { .. } => super::characters::not_available("import"),
+            Request::CharacterExport {
+                character_id,
+                format,
+            } => match self.ready_db() {
+                Ok(db) => super::characters::character_export(
+                    &db,
+                    SINGLE_USER_ID,
+                    &character_id,
+                    format.as_deref(),
+                ),
+                Err(r) => r,
+            },
+            Request::CharacterImport { payload } => match self.ready_db() {
+                Ok(db) => super::characters::character_import(&db, SINGLE_USER_ID, payload).await,
+                Err(r) => r,
+            },
             Request::CharacterPhotoList { .. } => super::characters::not_available("photo-list"),
             Request::CharacterPhotoSaveById { .. } => {
                 super::characters::not_available("photo-save")

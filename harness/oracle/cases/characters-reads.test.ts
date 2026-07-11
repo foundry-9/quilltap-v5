@@ -45,6 +45,11 @@ interface CaseSpec {
   module: string;
   url: string;
   params?: Record<string, string>;
+  /** The export handler returns a raw `JSON.stringify(card, null, 2)` download
+   * body (Content-Type application/json), so `response.json()` yields the JSON
+   * text as a STRING. Parse it back to the card object so the differential
+   * compares the semantic card (the SPA downloads it client-side). */
+  parseStringBody?: boolean;
 }
 
 function mockRequest(url: string): unknown {
@@ -122,7 +127,8 @@ async function runCase(
     if (c.params) args.push({ params: Promise.resolve(c.params) });
     const response = (await mod.GET(...args)) as { status: number; json: () => Promise<unknown> };
     const status = response.status;
-    const body = await response.json();
+    let body = await response.json();
+    if (c.parseStringBody && typeof body === 'string') body = JSON.parse(body);
     return { name: c.name, status, body };
   } finally {
     await closeDatabase();
@@ -180,6 +186,9 @@ async function main(): Promise<void> {
     { name: 'chats_search_miss', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=chats&search=zzzznope`, params: { id: aria } },
     { name: 'chats_limit0', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=chats&limit=0`, params: { id: aria } },
     { name: 'chats_offset1', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=chats&offset=1`, params: { id: aria } },
+    // P4.6i: ST export (JSON leg) — the chara_card_v2 card. The handler returns a
+    // raw `JSON.stringify(card)` NextResponse; `response.json()` reparses it.
+    { name: 'export_json', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=export&format=json`, params: { id: aria }, parseStringBody: true },
   ];
 
   const outLines: string[] = [];

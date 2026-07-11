@@ -14,6 +14,20 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+P4.6i (characters server remainder, lane A): ported the SillyTavern
+character-card JSON legs (`services::sillytavern::{export_st_character,
+import_st_character}`). Export (`CharacterExport` format=json) turns the
+overlaid character into a `chara_card_v2` card the SPA downloads. Import
+(`CharacterImport`, JSON body) unwraps the card, creates the character
+directly through the repo (so `sillyTavernData` lands in the slim column and
+no create schema runs), and echoes the slim create shape. The PNG legs
+(export/import) stay deferred to the quilltap-web multipart route (loud
+`export-png` refusal). Differentials: `characters_reads_equivalence` gains
+an `export_json` case; `characters_mutations_equivalence` gains an
+`st_import_card` case diffing both the create echo and the created
+character's overlay readback (proving the ST-derived scenarios / systemPrompts
+/ firstMessage / exampleDialogues / sillyTavernData round-tripped).
+
 P4.6i (characters server remainder, lane A): ported the `?action=chats`
 enriched recent-chats DTO (`api::characters::character_chats`) — per-character
 chats filtered to the caller, `lastMessageAt` round-tripped through JS

@@ -287,6 +287,11 @@ fn characters_reads_match_oracle() {
             Some(1),
         )),
     );
+    // P4.6i: ST export (JSON leg).
+    push(
+        "export_json",
+        response_data(&characters::character_export(&db, uid, ARIA, Some("json"))),
+    );
 
     drop(db);
     let _ = std::fs::remove_dir_all(&scratch);
