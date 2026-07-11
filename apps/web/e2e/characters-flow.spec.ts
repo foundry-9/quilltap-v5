@@ -23,12 +23,12 @@ import {
  * fixture cards → toggle a favorite → open Aria's detail view → remove a tag
  * on the Tags tab → the change survives a full reload.
  *
- * The mutation beat rides `characterRemoveTag` (P4.6f slice 2, differential-
- * proven) over the fixture's baked "Adventure" tag. The edit-title→Save beat
- * AND the add-tag beat are WAITING on P4.6f slice 4 (`characterUpdate` and
- * the tags CRUD — `tagList`/`tagCreate` — are still recognized-but-not-yet-
- * available refusals, the banked remainder in the P4.6f order); restore them
- * when slice 4 lands.
+ * The mutation beats: `characterRemoveTag` (P4.6f slice 2) over the fixture's
+ * baked "Adventure" tag; the add-tag beat (`tagCreate` + `characterAddTag`,
+ * P4.6f slice 4d — RESTORED when slice 4 landed) minting a brand-new tag
+ * through the Tags tab's Enter-to-create path; and the edit-title→Save beat
+ * (`characterUpdate`, P4.6f slice 4a — RESTORED with it) proving the write
+ * through the roster card's title line after a full reload.
  *
  * Runs against its OWN locked server + instance dir (the shared global-setup
  * server is pinned to the small Salon fixture) — the recipe mirrors
@@ -110,9 +110,11 @@ test.describe('P4.6g — Characters vertical (list → view → toggle → mutat
     rmSync(CHAR_INSTANCE_DIR, { recursive: true, force: true });
   });
 
-  test('unlock → roster → toggle favorite → open detail → remove tag persists', async ({
+  test('unlock → roster → toggle favorite → detail → remove/add tag → edit title persists', async ({
     page,
   }) => {
+    // The walk crosses three full reloads plus several mutation round-trips.
+    test.setTimeout(60_000);
     await page.goto(`${CHAR_BASE_URL}/characters`);
 
     // Unlock (this server starts locked and is only used by this spec).
@@ -157,6 +159,38 @@ test.describe('P4.6g — Characters vertical (list → view → toggle → mutat
     await page.getByRole('button', { name: 'Tags' }).click();
     await expect(page.getByRole('button', { name: '+ Add Tag' })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByLabel('Remove tag Adventure')).toBeHidden();
+
+    // Add a BRAND-NEW tag through the Enter-to-create path (`tagCreate` then
+    // `characterAddTag` — P4.6f slice 4d). "Zeppelin" substring-matches no
+    // catalog tag, so Enter takes the create branch, not a suggestion.
+    await page.getByRole('button', { name: '+ Add Tag' }).click();
+    const tagInput = page.getByPlaceholder('Add a tag...');
+    await tagInput.fill('Zeppelin');
+    await tagInput.press('Enter');
+    const removeZeppelin = page.getByLabel('Remove tag Zeppelin');
+    await expect(removeZeppelin).toBeVisible();
+
+    // ...and it persists server-side across a reload.
+    await page.reload();
+    await page.getByRole('button', { name: 'Tags' }).click();
+    await expect(page.getByLabel('Remove tag Zeppelin')).toBeVisible({ timeout: 10_000 });
+
+    // Edit-title→Save (`characterUpdate` — P4.6f slice 4a): retitle Aria on
+    // the edit screen. The "Edit Character" link renders on the DETAILS tab
+    // (not the header), so switch back off the Tags tab first.
+    await page.getByRole('button', { name: 'Details' }).click();
+    await page.getByRole('link', { name: /Edit Character/i }).click();
+    const titleInput = page.locator('#title');
+    await expect(titleInput).toHaveValue('Sky-Captain');
+    await titleInput.fill('Fleet Admiral');
+    await page.getByRole('button', { name: 'Save Character' }).click();
+    await expect(page.getByRole('heading', { name: 'Aria' })).toBeVisible({ timeout: 10_000 });
+
+    // The new title survives a full reload of the roster (server state).
+    await page.goto(`${CHAR_BASE_URL}/characters`);
+    await page.reload();
+    const retitled = page.locator('.character-card-grid .character-card').filter({ hasText: 'Aria' }).first();
+    await expect(retitled).toContainText('Fleet Admiral', { timeout: 10_000 });
   });
 });
 

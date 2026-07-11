@@ -4,6 +4,27 @@
 
 ### 5.0-dev
 
+P4.6f slice 4 is UNIFIED on main: the five lane commits (create/quick-create/
+update, wardrobe mutations, tags CRUD + the six-table delete fan-out,
+depiction-guidelines GET/PUT, stats) cherry-picked with only the CHANGELOG
+conflicting, and the `characters-flow` e2e's two annotated beats RESTORED as
+the unification wire: the add-tag beat mints a brand-new tag through the Tags
+tab's Enter-to-create path (`tagCreate` + `characterAddTag`) and proves it
+across a reload, and the edit-title→Save beat retitles Aria through the edit
+screen (`characterUpdate`) and proves the write on the roster card after a
+full reload. Two spec fixes en route: the "Edit Character" link renders on the
+detail view's DETAILS tab (not the header), so the walk switches back off the
+Tags tab first; and the now-three-reload walk gets a 60s budget. The P4.6f
+order's remaining OPEN items: delete-cascade + cascade-preview, the
+per-character `chats` read, the photo gallery, ST import/export (plus the
+long-standing tier-3 refusal deferrals). Full gate: fmt + release build clean,
+clippy (default and native-transport) clean, 1,207 workspace tests green with
+all five characters/tags differentials re-verified against FRESH v4 oracles
+(`a7b1398d`: mutations 18 / reads 15 / actions 11 / sub-resources 9 / tags
+tier-2), 194 SPA unit tests, the SPA prod build, and the full 7-test
+Playwright suite. Versions: core 0.0.167, harness 0.0.152, host 0.0.10,
+web 0.0.7, SPA 0.5.2.
+
 P4.6f (Characters server, lane A): the `stats` read action. `character_stats`
 fans out the independent counts (memories / conversations / wardrobe items / the
 vault file links / group memberships) and derives photos / knowledge / core /

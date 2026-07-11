@@ -6138,3 +6138,27 @@ commit before removal.
   the latter needs `QT_FIXTURE_V5_PROVISIONED`, not the header's OUT var
   name); 194 SPA unit tests; the SPA prod build; the full 8-spec Playwright
   suite (7 tests) green including the two new walks.
+
+**P4.6f slice-4 unification (2026-07-11).** The five lane commits (slice 4a
+create/quick-create/update; 4c wardrobe mutations; 4d tags CRUD + the
+six-table delete fan-out; depiction-guidelines GET/PUT; stats) cherry-picked
+from `claude/characters-server-p4-6f-396f76` onto main — only the CHANGELOG
+conflicted (both-sides union). The unification wire: the `characters-flow`
+e2e's two annotated beats RESTORED — add-tag via the Tags tab's
+Enter-to-create path (`tagCreate` + `characterAddTag`, proven across a
+reload) and edit-title→Save (`characterUpdate`, proven on the roster card
+after a full reload). Two spec findings: the "Edit Character" link renders
+on the detail view's DETAILS tab, not the header (the walk must switch back
+off the Tags tab first — the first failure screenshot showed a healthy page
+with no such link), and the now-three-reload walk needs a 60s test budget.
+Gate: fmt + release build clean; clippy default AND native-transport clean;
+1,207 workspace tests green; the five characters/tags differentials
+re-verified by name against FRESH v4 oracles at `a7b1398d` (mutations 18 /
+reads 15 / actions 11 / sub-resources 9 / tags tier-2 — the tags fixture
+builder must run FROM the v4 checkout, it imports v4 lib); 194 SPA unit
+tests; the SPA prod build; the full Playwright suite 7/7. Versions: core
+0.0.167, harness 0.0.152, SPA 0.5.2. **The P4.6f order's remaining OPEN
+items:** delete-cascade + cascade-preview, the per-character `chats` read,
+the photo gallery (photo-list/save/remove), ST import/export — plus the
+tier-3 refusal deferrals (ai-wizard, optimizer, rename, ai-import,
+reset-builtins).
