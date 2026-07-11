@@ -281,13 +281,17 @@ records THERE. Update this summary only when a phase or round completes.
   server slices 1–3 (reads / action verbs / sub-resource mutations) ∥ the
   Characters SPA (roster / detail / edit / create screens) ∥ Salon
   virtualization (dogfood finding #3b CLOSED) ∥ the built-in seeds (roleplay
-  templates + the three mount stores). **P4.6f slice 4 UNIFIED 2026-07-11:**
-  create/quick-create/update, wardrobe mutations, tags CRUD + delete
-  fan-out, depiction-guidelines, stats — the SPA edit/create/autosave/
-  add-tag surfaces are LIVE and the two annotated e2e beats restored.
-  **The order's final remainder stays OPEN:** delete-cascade +
-  cascade-preview, per-character chats, photo gallery, ST import/export.
+  templates + the three mount stores). Slice 4 (create/update, wardrobe
+  mutations, tags CRUD, depiction-guidelines, stats) unified 2026-07-11.
+- **The P4.6i ∥ P4.6j characters-remainder round: UNIFIED on main
+  (2026-07-11) — the P4.6f/g/i/j orders are all CLOSED.** All eight
+  characters refusal arms LIVE (delete cascade + preview / per-character
+  chats / photo gallery JSON legs / ST import-export JSON) + the SPA
+  Conversations tab, delete flow, gallery, and ST import/Export-JSON, with
+  three live e2e beats. The characters family's remaining deferrals are
+  enumerated loud refusals (ST PNG, photo multipart upload,
+  photo-save-fileid, the tier-3 LLM services, the wardrobe dialog).
 - **Oracle baseline:** v4 HEAD `a7b1398d` (drift-check before every round).
-  Versions: core 0.0.167, harness 0.0.152, host 0.0.10, web 0.0.7, SPA 0.5.2.
+  Versions: core 0.0.172, harness 0.0.157, host 0.0.10, web 0.0.7, SPA 0.5.8.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

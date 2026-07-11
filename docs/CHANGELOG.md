@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+Unified the P4.6i ∥ P4.6j characters-remainder round onto main. All eight
+characters `not_available` arms are live and differential-proven (delete
+cascade + cascade-preview, per-character chats, photo gallery list/save-by-
+linkId/remove, ST import/export JSON), and the SPA's Conversations tab,
+delete flow, gallery, and ST import/Export-JSON ride them. Unification
+wires: the gallery contract reconciled to the pinned
+`{entries,total,hasMore}` envelope (gallery tab + avatar picker on
+`linkId`/`blobUrl`) and the three live `characters-flow` e2e beats
+activated with their gestures fixed. Gate: clippy clean both feature sets,
+fresh characters oracles at `a7b1398d` (24 + 22 cases) with both
+differentials green by name, 275 workspace test suites green, 206 SPA unit
+tests, `ng build` clean, the full 10-test Playwright suite green. Orders
+P4.6f/g/i/j all CLOSED; remaining deferrals are enumerated loud refusals
+(ST PNG, photo multipart upload, photo-save-fileid, the tier-3 LLM
+services, the wardrobe dialog vertical). Versions: core 0.0.172, harness
+0.0.157, SPA 0.5.8.
+
 Scoped the characters-remainder round: two agent-ready work orders that close
 the OPEN slice-5 remainder of P4.6f/P4.6g —
 `docs/developer/porting/work-orders/p4.6i-characters-remainder-server.md`

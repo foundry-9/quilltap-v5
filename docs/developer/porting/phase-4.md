@@ -473,12 +473,32 @@ participant nulls diff byte-exact.
 **The P4.6f/g/h + P4.4u3 round is UNIFIED on main (2026-07-10)** — P4.6f
 slices 1–3 + P4.6g + P4.6h (finding #3b closed) + P4.4u3, full gate green
 (fresh-oracle differential sweep, 847 workspace tests, 194 SPA tests, the
-8-spec Playwright suite incl. the two new walks). **P4.6f "slice 4" — the
-banked remainder (create/quick-create/update, delete-cascade, wardrobe
-mutations, tags CRUD + delete fan-out, stats/chats, the photo gallery, ST
-import/export, depiction-guidelines) — stays OPEN under the same order**; the
-SPA's edit/create/autosave/add-tag surfaces answer the typed refusal until it
-lands. Round record: `status-log.md`. The original round plan follows.
+8-spec Playwright suite incl. the two new walks). P4.6f "slice 4"
+(create/quick-create/update, wardrobe mutations, tags CRUD + delete
+fan-out, stats, depiction-guidelines) landed 2026-07-11, and the final
+remainder became the P4.6i ∥ P4.6j round below. Round record:
+`status-log.md`. The original round plan follows.
+
+**The P4.6i ∥ P4.6j characters-remainder round is UNIFIED on main
+(2026-07-11) — orders P4.6f / P4.6g / P4.6i / P4.6j are all CLOSED.** All
+eight characters `not_available` arms are live and differential-proven
+(delete cascade + preview via `services::cascade_delete`, per-character
+chats, the `photos::character_gallery_service` JSON legs, ST import/export
+JSON via `services::sillytavern`), and the SPA detail vertical is complete
+over them (the Conversations tab, the delete/cascade-preview flow, the
+gallery, ST import + Export-JSON) with three live `characters-flow` e2e
+beats. Unification wires: the gallery contract reconciled to the pinned
+`{entries,total,hasMore}` envelope (`linkId`/`blobUrl`; the avatar picker
+fixed with it). **The characters family's remaining deferrals are all
+enumerated loud refusals:** ST PNG import/export + the photo multipart
+upload (quilltap-web multipart/binary routes), `photo-save-fileid` (host
+file-store bytes seam), the tier-3 LLM services (ai-wizard / optimizer /
+rename / ai-import), reset-builtins, refresh-archive, and the deferred SPA
+verticals (the wardrobe dialog, rename/replace). **Next candidates:** the
+remaining Salon slices (Document Mode pane, terminal pane, courier,
+images), the Memory/Images/Templates verticals per the P4.6+ screen-family
+list, the `.qtap` sample-content import, or P4.7 (`quilltap-tauri`).
+Round record: `status-log.md`.
 
 **The round as planned (2026-07-10): four parallel lanes, orders
 written** (drift check at planning time: v4 HEAD still `a7b1398d`; four

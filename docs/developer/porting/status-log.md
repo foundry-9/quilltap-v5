@@ -6428,3 +6428,61 @@ SPA prod build clean, `playwright --list` compiles the 4-beat spec. SPA 0.5.7.
 self-contained (creates its own throwaway), but the Conversations + Gallery beats
 need the fixture's lead character (Aria) to carry ≥1 exclusive chat and ≥1
 gallery photo.
+
+---
+
+## The P4.6i ∥ P4.6j characters-remainder round — UNIFIED on main (2026-07-11)
+
+Both lanes cherry-picked onto `unify/p4.6ij` (lane A's five server commits,
+then lane B's four SPA commits; only CHANGELOG/status-log union conflicts).
+v4 baseline re-verified at `a7b1398d` before unification.
+
+**The unification wires (one commit):**
+
+- **The gallery contract reconciled.** Lane B's unit-3 survey had coded the
+  SPA against v4's embedded-gallery web-route shape (`{id, filename,
+  filepath, url?}`) with defensive fallbacks; lane A's pinned dispatch
+  envelope is `{entries, total, hasMore}` with entries `{linkId,
+  mountPointId, relativePath, fileName, blobUrl, mimeType, sha256,
+  fileSizeBytes, keptAt, caption, tags, linkSummary}`. The SPA
+  `CharacterPhoto` type now IS that entry; `fetchCharacterPhotos` reads
+  `entries` only; the gallery tab tracks/removes by `linkId` and renders
+  from `blobUrl`. The **avatar picker** was a latent third consumer of the
+  wrong shape (never live pre-round): it now selects the `linkId` — which is
+  what `characterAvatar {imageId}` stores for vault photos (cascade/remove
+  null `defaultImageId` against the link id) — and renders from `blobUrl`.
+- **The three live e2e beats activated** (`test.fixme` dropped). Lane B's
+  fixture ask was satisfiable without a rebake: Aria's vault avatar
+  (`images/avatar.webp`) is a gallery entry per the list rules, and "Solo
+  Voyage" is her chat. Gesture fixes found by the live walk (fix the
+  gesture, never the assertion): (1) beats sharing one server must be
+  unlock-state-tolerant (`unlockIfLocked` helper — the old single-test file
+  never hit this; each failing beat had been getting a fresh locked server
+  only because Playwright restarts the worker after a failure); (2) a
+  quick-created character has no description, so the roster card's
+  `p.line-clamp-3` is empty/unclickable AND the card title is an `h2`
+  inside the routerLink anchor (not `h3`); (3) the delete-dialog confirm
+  must be scoped to `qt-character-delete-dialog` — the edit view's
+  danger-zone button keeps the same accname under the overlay; (4) count
+  gallery tiles by the `Delete this photo` affordance — a bare `img[alt]`
+  count catches the detail header's avatar.
+
+**The full gate:** `cargo fmt` clean; clippy `-D warnings` clean on the
+default set AND `--features quilltap-core/native-transport`; release build
+clean; characters-reads (24 cases) + characters-mutations (22 cases) oracles
+regenerated FRESH from v4 at `a7b1398d` and both differentials re-run green
+by name; `cargo test --workspace` green (275 suites, incl. the 842-test
+core suite); `ng test` 206 green; `ng build` clean; the FULL Playwright
+suite 10/10 green against the fresh build (the four characters-flow beats
+incl. the three new live ones).
+
+**What stays deferred (all loud, none silent):** ST PNG export/import + the
+photo multipart upload (quilltap-web multipart/binary routes); the
+`photo-save-fileid` fileId leg (host file-store bytes seam); the P4.6f
+tier-3 LLM refusals (ai-wizard / optimizer / rename / ai-import /
+reset-builtins / refresh-archive); the P4.6g deferred verticals (wardrobe
+dialog, rename/replace). Lane B's flagged divergences stand as recorded
+(story-background thumbnail; the additive edit-view delete entry point).
+
+**Orders P4.6f, P4.6g, P4.6i, P4.6j are all CLOSED.** Versions after the
+round: core 0.0.172, harness 0.0.157, host 0.0.10, web 0.0.7, SPA 0.5.8.
