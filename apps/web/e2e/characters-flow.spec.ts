@@ -194,6 +194,97 @@ test.describe('P4.6g — Characters vertical (list → view → toggle → mutat
     const retitled = page.locator('.character-card-grid .character-card').filter({ hasText: 'Aria' }).first();
     await expect(retitled).toContainText('Fleet Admiral', { timeout: 10_000 });
   });
+
+  // ---------------------------------------------------------------------------
+  // P4.6j live beats — ACTIVATED AT UNIFICATION over lane A's live dispatch +
+  // fixture (the P4.6b/g precedent). `test.fixme` keeps them out of the
+  // pre-unification run; the unifier drops `.fixme` and confirms them live.
+  // They assume lane A's extended fixture (a character with exclusive chats +
+  // gallery photos). Mind the banked e2e gotchas: glyph-button accname via
+  // getByTitle, scroll-drain waits, the Edit link lives on the Details tab.
+  // ---------------------------------------------------------------------------
+
+  test.fixme(
+    'Conversations tab lists a per-character chat that links into the Salon',
+    async ({ page }) => {
+      test.setTimeout(60_000);
+      await page.goto(`${CHAR_BASE_URL}/characters`);
+      const passphrase = page.locator('#qt-passphrase');
+      await expect(passphrase).toBeVisible({ timeout: 15_000 });
+      await passphrase.fill(E2E_PASSPHRASE);
+      await page.getByRole('button', { name: 'Unlock' }).click();
+
+      const cards = page.locator('.character-card-grid .character-card');
+      const aria = cards.filter({ hasText: 'Aria' }).first();
+      await aria.locator('p.line-clamp-3').click();
+      await expect(page.getByRole('heading', { name: 'Aria' })).toBeVisible();
+
+      await page.getByRole('button', { name: 'Conversations' }).click();
+      const chatCard = page.locator('a.chat-card').first();
+      await expect(chatCard).toBeVisible({ timeout: 10_000 });
+      await chatCard.click();
+      await expect(page).toHaveURL(/\/salon\/[^/]+$/);
+    },
+  );
+
+  test.fixme('delete a throwaway character via the cascade-preview dialog', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.goto(`${CHAR_BASE_URL}/characters`);
+    const passphrase = page.locator('#qt-passphrase');
+    await expect(passphrase).toBeVisible({ timeout: 15_000 });
+    await passphrase.fill(E2E_PASSPHRASE);
+    await page.getByRole('button', { name: 'Unlock' }).click();
+    await expect(page.getByRole('heading', { name: 'Characters', exact: true })).toBeVisible();
+
+    // Create a throwaway so the fixture cast is left intact.
+    await page.getByRole('link', { name: 'Create Character' }).click();
+    await page.locator('#name').fill('Ephemeron');
+    await page.getByRole('button', { name: /Create Character/i }).click();
+    await expect(page.getByRole('heading', { name: /Edit: Ephemeron|Ephemeron/ })).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // Delete from the edit view's danger zone → cascade dialog → confirm.
+    await page.goto(`${CHAR_BASE_URL}/characters`);
+    const throwaway = page
+      .locator('.character-card-grid .character-card')
+      .filter({ hasText: 'Ephemeron' })
+      .first();
+    await throwaway.getByTitle('Export character data'); // ensure the card actions rendered
+    await throwaway.locator('p.line-clamp-3, h3').first().click();
+    await page.getByRole('link', { name: /Edit Character/i }).click();
+    await page.getByRole('button', { name: 'Delete Character' }).click();
+    // The dialog's own confirm (destructive) — preview loads first.
+    await page
+      .getByRole('button', { name: 'Delete Character' })
+      .last()
+      .click();
+
+    await expect(page).toHaveURL(/\/characters$/);
+    await expect(
+      page.locator('.character-card-grid .character-card').filter({ hasText: 'Ephemeron' }),
+    ).toHaveCount(0, { timeout: 10_000 });
+  });
+
+  test.fixme('Photo Gallery lists photos and removes one', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.goto(`${CHAR_BASE_URL}/characters`);
+    const passphrase = page.locator('#qt-passphrase');
+    await expect(passphrase).toBeVisible({ timeout: 15_000 });
+    await passphrase.fill(E2E_PASSPHRASE);
+    await page.getByRole('button', { name: 'Unlock' }).click();
+
+    const aria = page.locator('.character-card-grid .character-card').filter({ hasText: 'Aria' }).first();
+    await aria.locator('p.line-clamp-3').click();
+    await expect(page.getByRole('heading', { name: 'Aria' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Photo Gallery' }).click();
+    const thumbs = page.locator('img[alt]').filter({ hasNot: page.locator('[data-icon]') });
+    const before = await thumbs.count();
+    expect(before).toBeGreaterThan(0);
+    await page.getByTitle('Delete this photo').first().click();
+    await expect(thumbs).toHaveCount(before - 1, { timeout: 10_000 });
+  });
 });
 
 function runCliWrite(cli: string, sql: string): void {

@@ -6405,3 +6405,26 @@ remove keeps `linkId ?? id`, so an `id`-only entry deletes by id-as-linkId.
 Upload stays the deferred multipart web route (disabled control + inline note).
 Gate: 2 new unit tests (the `{ entries }` envelope + caption render; remove-by-id
 when linkId absent), 204 SPA unit tests, the SPA prod build clean. SPA 0.5.6.
+
+**P4.6j unit 4 — ST import verify + Export (JSON) + live e2e beats (SPA,
+2026-07-11).** Verified `list/character-import-dialog.ts`: the JSON leg reads the
+file client-side and dispatches `characterImport {payload}` (the PNG tEXt-chunk
+leg rides the deferred `POST /characters?action=import` multipart web route);
+`imported` fires so the roster refetches — covered by a new spec (parse →
+dispatch → refresh; malformed-JSON error microcopy). Added the Export (JSON)
+action: v4's `?action=export&format=json` returns the ST card with a
+`Content-Disposition: <name>.json`; over dispatch the SPA now dispatches
+`characterExport {format:'json'}` (`fetchCharacterExport`, unwrapping a
+`card`/`character` wrapper defensively) and downloads the returned card via a
+Blob (`triggerJsonDownload`), replacing the roster's prior `window.open` route
+hit. PNG export stays the deferred binary web route. Added the three live
+`characters-flow` e2e beats — Conversations tab → chat card → `/salon/:id`;
+create-then-delete a throwaway via the edit-view cascade dialog → gone from the
+roster; Photo Gallery lists → remove — as `test.fixme` (activated AT unification
+over lane A's fixture, per the P4.6b/g precedent). Gate: 3 new unit tests (export
+dispatch+download; import parse+refresh; import error), 207 SPA unit tests, the
+SPA prod build clean, `playwright --list` compiles the 4-beat spec. SPA 0.5.7.
+**Fixture ask for lane A (Shared-contract channel):** the fixme delete beat is
+self-contained (creates its own throwaway), but the Conversations + Gallery beats
+need the fixture's lead character (Aria) to carry ≥1 exclusive chat and ≥1
+gallery photo.

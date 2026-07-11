@@ -8,8 +8,10 @@ import { ErrorAlert } from '../../../ui/error-alert';
 import { LoadingState } from '../../../ui/loading-state';
 import {
   characterKeys,
+  fetchCharacterExport,
   fetchCharacterList,
   fetchConnectionProfiles,
+  triggerJsonDownload,
 } from '../characters.api';
 import { CharacterCard } from './character-card';
 import { CharacterDeleteDialog, type DeleteChoice } from './character-delete-dialog';
@@ -217,12 +219,12 @@ export class CharactersList {
     }
   }
 
-  protected exportCharacter(character: CharacterListItem): void {
-    // v4 links straight at the export route; the browser downloads the JSON.
-    const url = `/api/v1/characters/${character.id}?action=export&format=json`;
-    if (typeof window !== 'undefined') {
-      window.open(url, '_blank');
-    }
+  protected async exportCharacter(character: CharacterListItem): Promise<void> {
+    // Dispatch the JSON export (v4 `?action=export&format=json`) and download the
+    // returned ST card client-side as `<name>.json`. PNG export stays the
+    // deferred binary web route.
+    const card = await fetchCharacterExport(this.core, character.id);
+    triggerJsonDownload(`${character.name}.json`, card);
   }
 
   protected async onDeleteConfirm(

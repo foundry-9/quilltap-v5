@@ -14,6 +14,17 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+P4.6j unit 4 — ST import verified + Export (JSON) action, and the live e2e beats
+(SPA). The SillyTavern import dialog already reads a JSON file client-side and
+dispatches `characterImport {payload}` (PNG rides the deferred multipart web
+route) — verified with new specs (parse → dispatch → refresh; malformed-file
+error). Replaced the roster's `window.open` export with a dispatch-based
+Export-JSON: `characterExport {format:'json'}` returns the ST card, downloaded
+client-side as `<name>.json` via a Blob. Added the three live characters-flow
+e2e beats (Conversations→Salon link, delete-via-cascade-dialog, gallery
+list→remove) as `test.fixme`, activated at unification over lane A's fixture.
+SPA 0.5.7.
+
 P4.6j unit 3 — the photo gallery, verified against the finalized envelope (SPA).
 v4's `/photos` returns `{ entries }` where each entry's `id` is the vault
 `doc_mount_file_links.id` (the linkId), plus `caption` / `tags`. `fetchCharacterPhotos`

@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
 import type { CharacterListItem } from '../../../core/core-contract';
@@ -91,6 +91,10 @@ describe('sortCharacters', () => {
 });
 
 describe('CharactersList', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('renders the v4-verbatim heading and the Create Character action', async () => {
     const fixture = await render(stubClient([character({})]));
     const text = fixture.nativeElement.textContent as string;
@@ -154,6 +158,58 @@ describe('CharactersList', () => {
     ).find((b) => (b as HTMLButtonElement).textContent?.trim() === '☆') as HTMLButtonElement;
     starButton.click();
     expect(navigated.length).toBe(1);
+  });
+
+  it('exports a character as JSON: dispatches characterExport and downloads <name>.json', async () => {
+    const seen: Array<{ type: string; [k: string]: unknown }> = [];
+    const client: Partial<CoreClient> = {
+      dispatchData: (async (req: { type: string; [k: string]: unknown }) => {
+        seen.push(req);
+        switch (req.type) {
+          case 'characterList':
+            return { characters: [character({ id: 'x', name: 'Jeeves' })] };
+          case 'connectionProfileList':
+            return { profiles: [] };
+          case 'characterExport':
+            return { spec: 'chara_card_v2', spec_version: '2.0', data: { name: 'Jeeves' } };
+          default:
+            return {};
+        }
+      }) as CoreClient['dispatchData'],
+    };
+    const fixture = await render(client);
+
+    const origCreate = URL.createObjectURL;
+    const origRevoke = URL.revokeObjectURL;
+    const createUrl = vi.fn(() => 'blob:mock');
+    (URL as unknown as { createObjectURL: unknown }).createObjectURL = createUrl;
+    (URL as unknown as { revokeObjectURL: unknown }).revokeObjectURL = vi.fn();
+    let downloadName = '';
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      downloadName = this.download;
+    });
+
+    try {
+      const exportBtn = fixture.nativeElement.querySelector(
+        'button[title="Export character data"]',
+      ) as HTMLButtonElement;
+      expect(exportBtn).toBeTruthy();
+      exportBtn.click();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(seen.find((r) => r.type === 'characterExport')).toMatchObject({
+        type: 'characterExport',
+        characterId: 'x',
+        format: 'json',
+      });
+      expect(createUrl).toHaveBeenCalled();
+      expect(downloadName).toBe('Jeeves.json');
+    } finally {
+      (URL as unknown as { createObjectURL: unknown }).createObjectURL = origCreate;
+      (URL as unknown as { revokeObjectURL: unknown }).revokeObjectURL = origRevoke;
+    }
   });
 
   it('optimistically flips the favorite star and dispatches characterFavorite', async () => {

@@ -172,6 +172,40 @@ export async function fetchDefaultPartner(
   return (data['partnerId'] as string | null) ?? null;
 }
 
+/**
+ * Fetch the SillyTavern JSON export card via dispatch (v4 `?action=export&
+ * format=json`, which returns the ST card object). Lane A pins the exact
+ * envelope; unwrap a `card`/`character` wrapper defensively, else the data IS
+ * the card. PNG export stays the deferred binary web route.
+ */
+export async function fetchCharacterExport(
+  core: CoreClient,
+  characterId: string,
+): Promise<unknown> {
+  const data = await core.dispatchData({ type: 'characterExport', characterId, format: 'json' });
+  return data['card'] ?? data['character'] ?? data;
+}
+
+/**
+ * Trigger a client-side JSON download (v4's export route sets a
+ * `Content-Disposition: attachment; filename="<name>.json"`; over dispatch the
+ * SPA builds the Blob itself). No-op in non-DOM contexts.
+ */
+export function triggerJsonDownload(filename: string, value: unknown): void {
+  if (typeof document === 'undefined' || typeof URL === 'undefined' || !URL.createObjectURL) {
+    return;
+  }
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 export async function fetchTags(core: CoreClient, search?: string): Promise<TagDto[]> {
   const data = await core.dispatchData({ type: 'tagList', ...(search ? { search } : {}) });
   return (data['tags'] as TagDto[]) ?? [];
