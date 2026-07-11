@@ -3,18 +3,24 @@ import { RouterLink } from '@angular/router';
 
 import type { CharacterDetail } from '../../../../core/core-contract';
 import { Icon } from '../../../../ui/icon';
-import { highlightSegments, type HighlightSegment } from '../template-highlighter';
+import { TemplateDisplay } from '../template-display';
 
 /**
  * The System Prompts tab (v4 `components/SystemPromptsTab.tsx`): a read-only
  * list of `character.systemPrompts`, the default one highlighted, each body
  * rendered with the `{{char}}`/`{{user}}` highlighter — editing lives on the
  * character-edit screen (`/characters/:id/edit?tab=system-prompts`).
+ *
+ * The prompt body sits inside a real `<pre>` element (as in v4), so the
+ * segment markup MUST stay in `qt-template-display` — Angular preserves
+ * template whitespace inside `<pre>`, and inlining the control flow here
+ * renders the template's own indentation into the prompt (finding #5). Keep
+ * the `<pre><code><qt-template-display/>` chain free of literal whitespace.
  */
 @Component({
   selector: 'qt-character-system-prompts-tab',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon],
+  imports: [RouterLink, Icon, TemplateDisplay],
   template: `
     <div class="space-y-6">
       <div class="flex items-center justify-between flex-wrap gap-2">
@@ -49,43 +55,13 @@ import { highlightSegments, type HighlightSegment } from '../template-highlighte
                   <span class="qt-badge-primary">Default</span>
                 }
               </div>
-              <pre class="overflow-hidden rounded-md qt-bg-muted/80 p-4 text-sm text-foreground">
-                <code class="text-sm whitespace-pre-wrap break-words">
-                  @for (seg of segmentsFor(prompt.content); track $index) {
-                    @switch (seg.kind) {
-                      @case ('char-template') {
-                        <span class="px-0.5 rounded border-b-2 qt-badge-chat qt-border-info" [title]="seg.title">{{
-                          seg.text
-                        }}</span>
-                      }
-                      @case ('user-template') {
-                        <span
-                          class="px-0.5 rounded border-b-2 qt-badge-user-character qt-border-success"
-                          [title]="seg.title"
-                          >{{ seg.text }}</span
-                        >
-                      }
-                      @case ('char-hardcoded') {
-                        <span
-                          class="px-0.5 rounded border-b-2 border-dashed qt-bg-warning/10 qt-border-warning"
-                          [title]="seg.title"
-                          >{{ seg.text }}</span
-                        >
-                      }
-                      @case ('user-hardcoded') {
-                        <span
-                          class="px-0.5 rounded border-b-2 border-dashed qt-bg-warning/10 qt-border-warning"
-                          [title]="seg.title"
-                          >{{ seg.text }}</span
-                        >
-                      }
-                      @default {
-                        <span>{{ seg.text }}</span>
-                      }
-                    }
-                  }
-                </code>
-              </pre>
+              <pre
+                class="overflow-hidden rounded-md qt-bg-muted/80 p-4 text-sm text-foreground"
+              ><code class="text-sm whitespace-pre-wrap break-words"><qt-template-display
+                    [content]="prompt.content"
+                    [characterName]="character().name"
+                    [userCharacterName]="defaultPartnerName()"
+                  /></code></pre>
             </div>
           }
         </div>
@@ -110,8 +86,4 @@ export class CharacterSystemPromptsTab {
   readonly characterId = input.required<string>();
   readonly character = input.required<CharacterDetail>();
   readonly defaultPartnerName = input<string | null>(null);
-
-  protected segmentsFor(content: string): HighlightSegment[] {
-    return highlightSegments(content, this.character().name, this.defaultPartnerName());
-  }
 }

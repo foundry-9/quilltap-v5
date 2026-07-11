@@ -31,6 +31,17 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+Dogfood finding #5 (Friday smoke): the System Prompts view tab rendered a
+prompt containing the character's name as scattered fragments with huge
+gaps. Cause: v5 had inlined v4's `TemplateDisplay` markup into the tab
+template inside a `<pre>` element, and Angular preserves template whitespace
+inside `<pre>` — every highlight segment rendered wrapped in the template's
+own newlines and indentation. Fix: port v4's shared `TemplateDisplay` as
+`qt-template-display` (compiled outside any `<pre>`, so default whitespace
+stripping applies) and use it from both the System Prompts and Details tabs
+(deduplicating the inlined copies). New unit test pins the rendered
+`<pre><code>` text byte-exact to the prompt content. SPA 0.5.9.
+
 P4.6i/j unification wire — the gallery contract reconciled to lane A's pinned
 `{ entries, total, hasMore }` envelope (each entry `{linkId, mountPointId,
 relativePath, fileName, blobUrl, mimeType, sha256, fileSizeBytes, keptAt,

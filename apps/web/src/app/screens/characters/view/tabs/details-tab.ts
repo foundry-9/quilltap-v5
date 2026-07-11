@@ -7,15 +7,14 @@ import type { CharacterDetail, CharacterListItem } from '../../../../core/core-c
 import { Icon } from '../../../../ui/icon';
 import { Modal } from '../../../../ui/modal';
 import { characterKeys } from '../../characters.api';
+import { TemplateDisplay } from '../template-display';
 import {
   applyTemplateTransform,
   collectTemplateFields,
   countTemplateLiterals,
   countTemplateReplacements,
-  highlightSegments,
   replaceTemplateWithName,
   replaceWithTemplate,
-  type HighlightSegment,
 } from '../template-highlighter';
 
 /** One prose field rendered with template highlighting. */
@@ -39,7 +38,7 @@ interface DetailField {
 @Component({
   selector: 'qt-character-details-tab',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon, Modal],
+  imports: [RouterLink, Icon, Modal, TemplateDisplay],
   template: `
     <div class="space-y-6">
       <div class="flex flex-wrap items-center justify-end gap-2">
@@ -117,39 +116,11 @@ interface DetailField {
           <div>
             <h2 class="qt-heading-4 text-foreground mb-2">{{ field.label }}</h2>
             <div class="qt-text-small whitespace-pre-wrap">
-              @for (seg of segmentsFor(field.content); track $index) {
-                @switch (seg.kind) {
-                  @case ('char-template') {
-                    <span class="px-0.5 rounded border-b-2 qt-badge-chat qt-border-info" [title]="seg.title">{{
-                      seg.text
-                    }}</span>
-                  }
-                  @case ('user-template') {
-                    <span
-                      class="px-0.5 rounded border-b-2 qt-badge-user-character qt-border-success"
-                      [title]="seg.title"
-                      >{{ seg.text }}</span
-                    >
-                  }
-                  @case ('char-hardcoded') {
-                    <span
-                      class="px-0.5 rounded border-b-2 border-dashed qt-bg-warning/10 qt-border-warning"
-                      [title]="seg.title"
-                      >{{ seg.text }}</span
-                    >
-                  }
-                  @case ('user-hardcoded') {
-                    <span
-                      class="px-0.5 rounded border-b-2 border-dashed qt-bg-warning/10 qt-border-warning"
-                      [title]="seg.title"
-                      >{{ seg.text }}</span
-                    >
-                  }
-                  @default {
-                    <span>{{ seg.text }}</span>
-                  }
-                }
-              }
+              <qt-template-display
+                [content]="field.content"
+                [characterName]="character().name"
+                [userCharacterName]="defaultPartnerName()"
+              />
             </div>
           </div>
         }
@@ -269,10 +240,6 @@ export class CharacterDetailsTab {
     if (c.exampleDialogues) out.push({ label: 'Example Dialogues', content: c.exampleDialogues });
     return out;
   });
-
-  protected segmentsFor(content: string): HighlightSegment[] {
-    return highlightSegments(content, this.character().name, this.defaultPartnerName());
-  }
 
   protected async replaceTemplate(type: 'char' | 'user'): Promise<void> {
     const name = type === 'char' ? this.character().name : this.defaultPartnerName();
