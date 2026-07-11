@@ -4,6 +4,11 @@
 
 ### 5.0-dev
 
+Docs: the P4.6f work order (`docs/developer/porting/work-orders/
+p4.6f-characters-server.md`) now carries a status header marking slices 1–3
+LANDED (unification `b29f2bb`) and enumerating the open slice-4 remainder, so
+the order is self-contained for a fresh handoff.
+
 The P4.6f ∥ P4.6g ∥ P4.6h ∥ P4.4u3 round is UNIFIED on main: the four lane
 branches cherry-picked onto the reconciliation branch (zero source-level
 conflicts — only version files and append-only docs), the P4.6f/g Shared
