@@ -6162,3 +6162,16 @@ items:** delete-cascade + cascade-preview, the per-character `chats` read,
 the photo gallery (photo-list/save/remove), ST import/export — plus the
 tier-3 refusal deferrals (ai-wizard, optimizer, rename, ai-import,
 reset-builtins).
+
+**Dogfood finding #4 — whole-card click on the characters roster
+(2026-07-11).** v4's `AuroraView` card navigates from a click ANYWHERE on the
+card (`cursor-pointer` + `handleCardClick` with a
+`closest('button')`/`closest('a')` guard for the inner toggles/actions); the
+P4.6g port had narrowed the click target to the avatar+name `<a>` only, so a
+click on the description/body did nothing — and the e2e missed it because it
+clicked the name link directly. Fix: `character-card.ts` gets the v4-faithful
+card-level `(click)` with the same guard (the inner `<a>` stays for
+middle-click); `characters-list.spec.ts` adds the navigate-from-body /
+no-navigate-from-star unit test; the `characters-flow` e2e's detail-open beat
+now clicks the card BODY (`p.line-clamp-3`). Gate: 195 SPA unit tests, prod
+build, the characters e2e green. SPA 0.5.3.

@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { describe, expect, it } from 'vitest';
 
@@ -127,6 +127,33 @@ describe('CharactersList', () => {
     expect(text).toContain('Tea with Bertie');
     expect(text).toContain('The Valet');
     expect(text).toContain('5 chats');
+  });
+
+  it('navigates to the detail view from a click anywhere on the card body (v4 handleCardClick)', async () => {
+    const fixture = await render(
+      stubClient([character({ id: 'a', name: 'Bertie', description: 'A gentleman of leisure.' })]),
+    );
+    const router = TestBed.inject(Router);
+    const navigated: unknown[][] = [];
+    router.navigate = ((commands: unknown[]) => {
+      navigated.push(commands);
+      return Promise.resolve(true);
+    }) as Router['navigate'];
+
+    // A click on the description paragraph — NOT the name link — navigates.
+    const description = Array.from(fixture.nativeElement.querySelectorAll('p')).find((p) =>
+      (p as HTMLParagraphElement).textContent?.includes('gentleman of leisure'),
+    ) as HTMLParagraphElement;
+    expect(description).toBeTruthy();
+    description.click();
+    expect(navigated).toEqual([['/characters', 'a']]);
+
+    // A click on an inner interactive element (the favorite star) does NOT.
+    const starButton = Array.from(
+      fixture.nativeElement.querySelectorAll('button'),
+    ).find((b) => (b as HTMLButtonElement).textContent?.trim() === '☆') as HTMLButtonElement;
+    starButton.click();
+    expect(navigated.length).toBe(1);
   });
 
   it('optimistically flips the favorite star and dispatches characterFavorite', async () => {

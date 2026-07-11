@@ -4,6 +4,17 @@
 
 ### 5.0-dev
 
+Dogfood finding #4 fixed: clicking a character card on `/characters` did
+nothing unless the click landed on the name/avatar link. v4's `AuroraView`
+card is clickable anywhere (`handleCardClick`, ignoring clicks that land on
+inner buttons/links); the v5 card had narrowed the target to the avatar+name
+`<a>`. The card now carries the whole-card click with v4's
+`closest('button')`/`closest('a')` guard (the inner link stays, so
+middle-click still works). A unit test proves navigate-from-body /
+no-navigate-from-star (195 SPA tests), and the `characters-flow` e2e's
+detail-open beat now clicks the card BODY instead of the name link. SPA
+version 0.5.3.
+
 P4.6f slice 4 is UNIFIED on main: the five lane commits (create/quick-create/
 update, wardrobe mutations, tags CRUD + the six-table delete fan-out,
 depiction-guidelines GET/PUT, stats) cherry-picked with only the CHANGELOG

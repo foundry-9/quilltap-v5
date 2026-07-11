@@ -138,8 +138,10 @@ test.describe('P4.6g — Characters vertical (list → view → toggle → mutat
     await star.click();
     await expect(other.getByTitle('Remove from favorites')).toBeVisible();
 
-    // Open Aria's detail view.
-    await aria.getByRole('link').first().click();
+    // Open Aria's detail view by clicking the card BODY (the description
+    // preview), not the name link — the whole card navigates in v4
+    // (`handleCardClick`; dogfood finding #4).
+    await aria.locator('p.line-clamp-3').click();
     await expect(page.getByRole('heading', { name: 'Aria' })).toBeVisible();
     const editLink = page.getByRole('link', { name: /Edit Character/i });
     await expect(editLink).toBeVisible();

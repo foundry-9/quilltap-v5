@@ -1,5 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import { Router, RouterLink } from '@angular/router';
 
 import type { CharacterConnectionProfile, CharacterListItem } from '../../../core/core-contract';
 import { Icon } from '../../../ui/icon';
@@ -7,10 +7,12 @@ import { characterAvatarSrc } from '../characters.api';
 import { processTemplate, resolveUserToken } from '../templates';
 
 /**
- * One character card in the roster (v4 `AuroraView.tsx` card block). The card
- * body links to `/characters/:id`; the three inline toggles (favorite / Carina /
- * controlledBy) and the Chat / Export / Delete actions emit up to the list, which
- * owns the mutations (optimistic) and dialogs.
+ * One character card in the roster (v4 `AuroraView.tsx` card block). The WHOLE
+ * card is clickable and navigates to `/characters/:id` (v4 `handleCardClick`),
+ * except clicks landing on an inner button/link — the three inline toggles
+ * (favorite / Carina / controlledBy) and the Chat / Export / Delete actions,
+ * which emit up to the list; it owns the mutations (optimistic) and dialogs.
+ * The avatar+name block is additionally a real link (middle-click works).
  *
  * `qt-entity-card character-card` + the action classes carry over verbatim.
  */
@@ -19,7 +21,10 @@ import { processTemplate, resolveUserToken } from '../templates';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterLink, Icon],
   template: `
-    <div class="qt-entity-card character-card hover:qt-border-primary/50 transition-colors">
+    <div
+      class="qt-entity-card character-card cursor-pointer hover:qt-border-primary/50 transition-colors"
+      (click)="onCardClick($event)"
+    >
       <div class="flex items-start justify-between mb-4">
         <a
           class="flex items-center flex-grow gap-4 min-w-0 cursor-pointer"
@@ -133,6 +138,8 @@ import { processTemplate, resolveUserToken } from '../templates';
   `,
 })
 export class CharacterCard {
+  private readonly router = inject(Router);
+
   readonly character = input.required<CharacterListItem>();
   /** Resolved by the list from `connectionProfileList` (v4 `getProfileProvider`). */
   readonly profile = input<CharacterConnectionProfile | null>(null);
@@ -142,6 +149,18 @@ export class CharacterCard {
   readonly toggleControlledBy = output<void>();
   readonly exportCharacter = output<void>();
   readonly deleteCharacter = output<void>();
+
+  /**
+   * v4 `handleCardClick`: don't navigate if the click landed on a button, link,
+   * or other interactive element — those own their own behavior.
+   */
+  protected onCardClick(e: MouseEvent): void {
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('a')) {
+      return;
+    }
+    void this.router.navigate(['/characters', this.character().id]);
+  }
 
   protected readonly avatarSrc = computed(() =>
     characterAvatarSrc(this.character().defaultImage, this.character().defaultImageId),
