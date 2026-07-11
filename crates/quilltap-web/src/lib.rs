@@ -66,6 +66,10 @@ pub fn build_router(state: SharedState) -> Router {
             post(characters_routes::characters_photos_post),
         )
         .route(
+            "/api/v1/characters/{id}",
+            get(characters_routes::characters_get),
+        )
+        .route(
             "/api/v1/terminals",
             post(terminal_routes::terminals_post).get(terminal_routes::terminals_get),
         )

@@ -10,15 +10,20 @@
 //! - `POST /api/v1/characters?action=import` — a `.png` / `.json` ST card
 //!   (v4 `characters/handlers/post.ts` `handleImport`).
 
-use axum::extract::{Path, Request, State};
+use std::collections::HashMap;
+
+use axum::extract::{Path, Query, Request, State};
 use axum::http::{header::CONTENT_TYPE, StatusCode};
 use axum::response::{IntoResponse, Response as AxumResponse};
+use quilltap_core::db::doc_mount_blobs::DocMountBlobsRepository;
+use quilltap_core::db::doc_mount_file_links::DocMountFileLinksRepository;
 use quilltap_core::db::files::FilesRepository;
 use quilltap_core::db::runtime::Db;
 use quilltap_core::photos::character_gallery_service::{
     save_link_to_character_gallery, save_to_character_gallery, GalleryError,
 };
 use quilltap_core::services::file_storage::download_file;
+use quilltap_core::services::sillytavern::{create_st_character_png, export_st_character};
 use quilltap_host::LocalStorageBackend;
 use serde_json::Value;
 
@@ -300,4 +305,122 @@ fn json_tags(body: &Value) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+// ===========================================================================
+// GET /api/v1/characters/{id}?action=export  (the PNG binary leg + JSON leg)
+// ===========================================================================
+
+/// v4 `GET /api/v1/characters/[id]?action=export` (`handlers/get.ts` export
+/// action). `format=png` → the ST-card PNG (bytes); else → the ST-card JSON,
+/// both as `attachment` downloads. This route exists for the byte-out PNG leg
+/// the `/api/dispatch` channel can't carry; the JSON leg is also the SPA's
+/// dispatch `character_export` path (kept here for v4-faithful REST parity).
+/// Any other `action` at this path → 400 (the JSON reads live on `/api/dispatch`).
+pub async fn characters_get(
+    State(state): State<SharedState>,
+    Path(id): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+) -> AxumResponse {
+    let (db, backend) = match db_and_backend(&state) {
+        Ok(v) => v,
+        Err(resp) => return *resp,
+    };
+    if query.get("action").map(String::as_str) != Some("export") {
+        return error_json(
+            StatusCode::BAD_REQUEST,
+            "This route serves ?action=export only; JSON reads are on /api/dispatch",
+        );
+    }
+
+    // Ownership (single-user): the overlaid character must exist.
+    let character = match resolve_character(&db, &id) {
+        Ok(Some(c)) => c,
+        Ok(None) => return not_found("Character"),
+        Err(e) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
+    };
+
+    // v4: `format = searchParams.get('format') || 'json'`.
+    let format = query
+        .get("format")
+        .map(String::as_str)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("json");
+    let name = character.get("name").and_then(Value::as_str).unwrap_or("");
+
+    if format == "png" {
+        // Read the avatar bytes the ST card embeds (defaultImageId → vault link
+        // or legacy file); missing/unreadable → the placeholder (v4 warns).
+        let avatar = character
+            .get("defaultImageId")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .and_then(|aid| read_avatar_bytes(&db, &backend, aid));
+        let png = create_st_character_png(&character, avatar.as_deref());
+        return (
+            StatusCode::OK,
+            [
+                ("content-type", "image/png".to_string()),
+                (
+                    "content-disposition",
+                    format!("attachment; filename=\"{name}.png\""),
+                ),
+            ],
+            png,
+        )
+            .into_response();
+    }
+
+    // v4 JSON leg: `JSON.stringify(exportSTCharacter(character), null, 2)`.
+    let card = export_st_character(&character);
+    let body = serde_json::to_string_pretty(&card).unwrap_or_default();
+    (
+        StatusCode::OK,
+        [
+            ("content-type", "application/json".to_string()),
+            (
+                "content-disposition",
+                format!("attachment; filename=\"{name}.json\""),
+            ),
+        ],
+        body,
+    )
+        .into_response()
+}
+
+/// Read the overlaid character (main + mount) by id — the api layer's
+/// `read_main_mount` nesting (two pooled read connections; reads never contend).
+fn resolve_character(db: &Db, id: &str) -> Result<Option<Value>, quilltap_core::db::DbError> {
+    db.read_main(|main| {
+        db.read_mount_index(|mount| quilltap_core::db::characters_read::find_by_id(main, mount, id))
+    })
+}
+
+/// v4 `readCharacterAvatarBuffer` — the bytes a character-avatar id points at.
+/// Path 1: a vault link → its blob bytes (pure DB). Path 2: a legacy `files`
+/// row → the two-mode `download_file`. `None` when neither resolves (→ the
+/// placeholder). Missing mount-index partition is treated as "no vault link".
+fn read_avatar_bytes(db: &Db, backend: &LocalStorageBackend, id: &str) -> Option<Vec<u8>> {
+    // Path 1: vault link.
+    let idv = id.to_string();
+    let link = db
+        .read_mount_index(move |c| {
+            DocMountFileLinksRepository::new(c).find_by_id_with_content(&idv)
+        })
+        .ok()
+        .flatten();
+    if let Some(link) = link {
+        let fid = link.file_id.clone();
+        return db
+            .read_mount_index(move |c| DocMountBlobsRepository::new(c).read_data_by_file_id(&fid))
+            .ok()
+            .flatten();
+    }
+    // Path 2: legacy files row.
+    let idv = id.to_string();
+    let entry = db
+        .read_main(move |c| FilesRepository::new(c).find_by_id(&idv))
+        .ok()
+        .flatten()?;
+    download_file(db, backend, &entry).ok()
 }

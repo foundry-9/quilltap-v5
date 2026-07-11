@@ -6693,3 +6693,33 @@ QT_ORACLE_PHOTO_UPLOAD=/tmp/oracle-photo-upload.ndjson \
 Versions: core 0.0.174, harness 0.0.159, web 0.0.8. Next: the PNG export route
 (unit 3), the ST import route + main-avatar vault write (unit 4), refusal-arm
 retirement + `photo_link_summary` dedup (unit 5).
+
+---
+
+### P4.6m unit 3 — the SillyTavern PNG export route — LANDED
+
+`GET /api/v1/characters/{id}?action=export` (`characters_routes::characters_get`)
+— v4 `handlers/get.ts`'s export action. `format=png` → `create_st_character_png`
+over the overlaid character + the avatar bytes (`read_avatar_bytes`: the vault
+link's blob, else the legacy `files` row via `download_file`; missing/unreadable
+→ the placeholder), streamed `image/png` with `Content-Disposition: attachment;
+filename="<name>.png"`. `format=json` → the pretty ST card as an attachment
+(v4-faithful REST parity; the SPA's JSON path is dispatch `character_export`).
+Non-export actions → 400 (a loud pointer to `/api/dispatch`); unknown character
+→ 404. Overlaid read via the api layer's `read_main` → `read_mount_index`
+nesting. Closes the `export-png` deferral.
+
+**Faithful edge note:** Aria's avatar is a WebP; v4's `createSTCharacterPNG`
+reads the IHDR length from the avatar and (for a non-PNG container) walks off the
+end — `Buffer.subarray` clamps, appending the `tEXt` at the tail. The port
+clamps identically (`insert_offset.min(len)`), byte-for-byte the same broken-but-
+faithful output. The placeholder leg (no avatar) is a valid 256×256 PNG that
+round-trips through `parse_st_character_png`.
+
+Proof: `crates/quilltap-web/tests/characters_export_route.rs` — the real-avatar
+embed (card keyword + spec present), the placeholder round-trip, the JSON leg,
+and the 404 / 400 arms. The PNG codec's byte-exactness is proven by unit 1's
+`st_png_equivalence` tier-1 differential.
+
+Version: web 0.0.9. Next: the ST import route + main-avatar vault write (unit 4),
+refusal-arm retirement + `photo_link_summary` dedup (unit 5).

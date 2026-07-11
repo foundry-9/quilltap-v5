@@ -47,6 +47,15 @@ for the delete/member/mount-link side effects). Repo additions:
 `group_doc_mount_links::{unlink,delete_by_group_id,link_returning}`,
 `doc_mount_points::find_full_json_by_id`. Projects + scenarios variants
 answer the loud `not_available` refusal until their units land.
+Added the SillyTavern PNG-export route (P4.6m unit 3):
+`GET /api/v1/characters/{id}?action=export&format=png` streams the ST card
+embedded in a PNG `tEXt` chunk (the avatar bytes — vault link or legacy file
+— as the container, or the generated placeholder), `Content-Disposition:
+attachment`. The `format=json` leg (pretty ST card) and the error arms (404
+unknown character, 400 non-export action) ride the same route. Closes the
+`export-png` deferral. Route-level integration test: the real-avatar embed,
+the placeholder round-trip, JSON, and the arms.
+
 Gave quilltap-web its first multipart machinery + the photo-upload route
 (P4.6m unit 2). New `multipart` module (a browser-`FormData`-shaped helper:
 whole-body buffering, string-or-file fields, `get`/`getAll`) and
