@@ -52,9 +52,18 @@ const CONN = 'c0000001-0000-4000-8000-000000000001';
 
 interface CaseSpec {
   name: string;
-  kind: 'create' | 'quick-create' | 'update';
+  kind:
+    | 'create'
+    | 'quick-create'
+    | 'update'
+    | 'wardrobe-create'
+    | 'wardrobe-get'
+    | 'wardrobe-update'
+    | 'wardrobe-delete';
   id?: string;
-  body: unknown;
+  /** For wardrobe item ops: discover the baked item id by this title. */
+  itemTitle?: string;
+  body?: unknown;
 }
 
 function mockRequest(url: string, body: unknown): unknown {
@@ -134,13 +143,50 @@ async function runCase(
   const { closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
+  const { getRepositories } = await import('@/lib/repositories/factory');
 
   await initializeDatabase();
 
   try {
     let status: number;
     let body: unknown;
-    if (c.kind === 'update') {
+    if (c.kind.startsWith('wardrobe')) {
+      // Discover the baked item id (minted at fixture build) by title.
+      let itemId = '';
+      if (c.itemTitle) {
+        const items = await getRepositories().wardrobe.findByCharacterId(ARIA);
+        const found = items.find((i: { title: string }) => i.title === c.itemTitle) as
+          | { id: string }
+          | undefined;
+        if (!found) throw new Error(`wardrobe item titled ${c.itemTitle} not found`);
+        itemId = found.id;
+      }
+      if (c.kind === 'wardrobe-create') {
+        const url = `http://localhost/api/v1/characters/${ARIA}/wardrobe`;
+        const { POST } = (await import('@/app/api/v1/characters/[id]/wardrobe/route')) as {
+          POST: (...a: unknown[]) => Promise<unknown>;
+        };
+        const response = (await POST(mockRequest(url, c.body), {
+          params: Promise.resolve({ id: ARIA }),
+        })) as { status: number; json: () => Promise<unknown> };
+        status = response.status;
+        body = await response.json();
+      } else {
+        const url = `http://localhost/api/v1/characters/${ARIA}/wardrobe/${itemId}`;
+        const mod = (await import('@/app/api/v1/characters/[id]/wardrobe/[itemId]/route')) as {
+          GET: (...a: unknown[]) => Promise<unknown>;
+          PUT: (...a: unknown[]) => Promise<unknown>;
+          DELETE: (...a: unknown[]) => Promise<unknown>;
+        };
+        const fn =
+          c.kind === 'wardrobe-get' ? mod.GET : c.kind === 'wardrobe-update' ? mod.PUT : mod.DELETE;
+        const response = (await fn(mockRequest(url, c.body), {
+          params: Promise.resolve({ id: ARIA, itemId }),
+        })) as { status: number; json: () => Promise<unknown> };
+        status = response.status;
+        body = await response.json();
+      }
+    } else if (c.kind === 'update') {
       const url = `http://localhost/api/v1/characters/${c.id}`;
       const { PUT } = (await import('@/app/api/v1/characters/[id]/route')) as {
         PUT: (...a: unknown[]) => Promise<unknown>;
@@ -266,6 +312,25 @@ async function main(): Promise<void> {
         canBeCarina: false,
       },
     },
+    {
+      name: 'wardrobe_create',
+      kind: 'wardrobe-create',
+      body: {
+        title: 'Storm Cloak',
+        description: 'An oilskin cloak for rough weather.',
+        imagePrompt: 'heavy grey oilskin storm cloak',
+        types: ['top', 'accessories'],
+        isDefault: false,
+      },
+    },
+    { name: 'wardrobe_get', kind: 'wardrobe-get', itemTitle: 'Flight Jacket' },
+    {
+      name: 'wardrobe_update',
+      kind: 'wardrobe-update',
+      itemTitle: 'Flight Jacket',
+      body: { title: 'Weathered Flight Jacket', description: null, isDefault: false },
+    },
+    { name: 'wardrobe_delete', kind: 'wardrobe-delete', itemTitle: 'Goggles' },
   ];
 
   const outLines: string[] = [];

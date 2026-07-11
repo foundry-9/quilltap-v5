@@ -216,6 +216,39 @@ fn update_slim_body() -> Value {
         "canBeCarina": false
     })
 }
+fn wardrobe_create_body() -> Value {
+    json!({
+        "title": "Storm Cloak",
+        "description": "An oilskin cloak for rough weather.",
+        "imagePrompt": "heavy grey oilskin storm cloak",
+        "types": ["top", "accessories"],
+        "isDefault": false
+    })
+}
+fn wardrobe_update_body() -> Value {
+    json!({ "title": "Weathered Flight Jacket", "description": null, "isDefault": false })
+}
+
+/// Discover a baked wardrobe item's minted id (identical on both sides) by title.
+fn discover_item_id(db: &Db, character_id: &str, title: &str) -> String {
+    let cid = character_id.to_string();
+    let needle = title.to_string();
+    db.read_main(move |main| {
+        db.read_mount_index(move |mount| {
+            let docs =
+                quilltap_core::db::doc_mount_documents::DocMountDocumentsRepository::new(mount);
+            let items =
+                quilltap_core::db::wardrobe_read::find_by_character_id(main, &docs, &cid, false)?;
+            Ok(items
+                .iter()
+                .find(|i| i.get("title").and_then(Value::as_str) == Some(needle.as_str()))
+                .and_then(|i| i.get("id").and_then(Value::as_str))
+                .map(str::to_string))
+        })
+    })
+    .unwrap()
+    .unwrap_or_else(|| panic!("wardrobe item titled {title} not found"))
+}
 
 #[test]
 fn characters_mutations_match_oracle() {
@@ -296,6 +329,40 @@ fn characters_mutations_match_oracle() {
             update_slim_body(),
         ));
         run("update_slim", r);
+    }
+    {
+        let db = fresh_db(&spec, "wc");
+        let r = rt.block_on(characters::character_wardrobe_create(
+            &db,
+            &uid,
+            ARIA,
+            wardrobe_create_body(),
+        ));
+        run("wardrobe_create", r);
+    }
+    {
+        let db = fresh_db(&spec, "wg");
+        let iid = discover_item_id(&db, ARIA, "Flight Jacket");
+        let r = characters::character_wardrobe_get(&db, &uid, ARIA, &iid);
+        run("wardrobe_get", r);
+    }
+    {
+        let db = fresh_db(&spec, "wu");
+        let iid = discover_item_id(&db, ARIA, "Flight Jacket");
+        let r = rt.block_on(characters::character_wardrobe_update(
+            &db,
+            &uid,
+            ARIA,
+            &iid,
+            wardrobe_update_body(),
+        ));
+        run("wardrobe_update", r);
+    }
+    {
+        let db = fresh_db(&spec, "wd");
+        let iid = discover_item_id(&db, ARIA, "Goggles");
+        let r = rt.block_on(characters::character_wardrobe_delete(&db, &uid, ARIA, &iid));
+        run("wardrobe_delete", r);
     }
 
     assert!(failed.is_empty(), "characters-mutations FAILED: {failed:?}");

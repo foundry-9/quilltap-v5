@@ -4,6 +4,23 @@
 
 ### 5.0-dev
 
+P4.6f (Characters server, lane A) slice 4c: the wardrobe mutation handlers.
+`character_wardrobe_create` (mints id/timestamps → the vault-backed
+`create_vault_wardrobe_item`), `character_wardrobe_get`
+(`find_by_id_for_character`), `character_wardrobe_update`
+(`update_vault_wardrobe_item` then a re-read for the echo), and
+`character_wardrobe_delete` (equipped-reference cleanup via
+`remove_equipped_item_from_all_chats`, then `delete_vault_wardrobe_item`), each
+gated by v4's overlaid `findById` ownership. The four arms replace their
+`not_available` refusals. Echo-shape seam proven against the oracle: v4's CREATE
+echo is the constructed object (carries `migratedFromClothingRecordId: null`,
+omits `archivedAt`), while the UPDATE echo is the full read-shaped item (includes
+`archivedAt: null`) — so create serializes the write-struct (with
+`migratedFromClothingRecordId` set to null) and update re-reads through
+`find_by_id_for_character`. Extended the `characters_mutations` differential
+with four wardrobe cases (create / get / update / delete; item ids discovered by
+title since they mint at fixture-build). Versions: core 0.0.164, harness 0.0.149.
+
 P4.6f (Characters server, lane A) slice 4a: the create / quick-create / update
 handlers. `characterCreate` runs v4's `createCharacterSchema` shaping (slim
 defaults, `controlledBy`→`'llm'`, `npc`→`false`, the managed-field bag off the

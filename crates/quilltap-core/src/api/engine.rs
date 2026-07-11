@@ -957,18 +957,62 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
-            Request::CharacterWardrobeCreate { .. } => {
-                super::characters::not_available("wardrobe-create")
-            }
-            Request::CharacterWardrobeGet { .. } => {
-                super::characters::not_available("wardrobe-get")
-            }
-            Request::CharacterWardrobeUpdate { .. } => {
-                super::characters::not_available("wardrobe-update")
-            }
-            Request::CharacterWardrobeDelete { .. } => {
-                super::characters::not_available("wardrobe-delete")
-            }
+            Request::CharacterWardrobeCreate { character_id, item } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_wardrobe_create(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        item,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterWardrobeGet {
+                character_id,
+                item_id,
+            } => match self.ready_db() {
+                Ok(db) => super::characters::character_wardrobe_get(
+                    &db,
+                    SINGLE_USER_ID,
+                    &character_id,
+                    &item_id,
+                ),
+                Err(r) => r,
+            },
+            Request::CharacterWardrobeUpdate {
+                character_id,
+                item_id,
+                item,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_wardrobe_update(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        &item_id,
+                        item,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterWardrobeDelete {
+                character_id,
+                item_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_wardrobe_delete(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        &item_id,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
             Request::CharacterExport { .. } => super::characters::not_available("export"),
             Request::CharacterImport { .. } => super::characters::not_available("import"),
             Request::CharacterPhotoList { .. } => super::characters::not_available("photo-list"),

@@ -17,8 +17,14 @@
 use serde_json::{json, Map, Value};
 
 use crate::db::characters::CharacterCreate;
+use crate::db::chats_outfits::ChatOutfitsRepository;
+use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::runtime::Db;
 use crate::db::vault_character_write::CharacterVaultWriteInput;
+use crate::db::vault_wardrobe_public::{
+    create_vault_wardrobe_item, delete_vault_wardrobe_item, update_vault_wardrobe_item,
+    WardrobePatch, WardrobePublicError,
+};
 use crate::db::{
     character_plugin_data, character_vault::create_character, characters_read,
     doc_mount_documents::DocMountDocumentsRepository, tags, vault_character_arrays,
@@ -27,6 +33,7 @@ use crate::db::{
 use crate::photos::resolve_character_avatar::resolve_character_avatar;
 use crate::services::character_enrichment;
 use crate::services::image_job_common::with_both_conns;
+use crate::vault_overlay::WardrobeItem;
 
 use super::types::{ErrorKind, Response};
 
@@ -1145,6 +1152,249 @@ pub async fn character_plugin_data_delete(
             Ok(Ok(()))
         } else {
             Ok(Err(not_found("Plugin data")))
+        }
+    })
+    .await;
+    success_or(out)
+}
+
+// ===========================================================================
+// Wardrobe mutations (v4 characters/[id]/wardrobe/**)
+// ===========================================================================
+
+/// A JSON `null | string` field → `Option<String>` (null/absent → `None`,
+/// string → `Some`). v4's `?? null` create-default coalesces both to null.
+fn nullable_str(body: &Value, key: &str) -> Option<String> {
+    body.get(key).and_then(Value::as_str).map(str::to_string)
+}
+
+/// A wardrobe UPDATE patch triple-state for a nullable string key: absent →
+/// `None` (unchanged), JSON `null` → `Some(None)` (clear), string →
+/// `Some(Some(s))`.
+fn patch_nullable(body: &Value, key: &str) -> Option<Option<String>> {
+    match body.get(key) {
+        None => None,
+        Some(Value::Null) => Some(None),
+        Some(Value::String(s)) => Some(Some(s.clone())),
+        Some(_) => None,
+    }
+}
+
+/// Map a public-wardrobe write failure to the dispatch refusal (v4 lets the throw
+/// surface as a 500 `serverError`).
+fn wardrobe_err(e: WardrobePublicError) -> Response {
+    match e {
+        WardrobePublicError::NoMount => {
+            internal("Character has no wardrobe vault to store the item")
+        }
+        WardrobePublicError::Cycle(m) => internal(m),
+        WardrobePublicError::Db(db) => internal(db),
+    }
+}
+
+/// v4 `POST /characters/[id]/wardrobe` — `findById` ownership →
+/// `createWardrobeItemSchema` → `repos.wardrobe.create` (mints id/timestamps →
+/// the vault-backed create) → `{ wardrobeItem }` (201).
+pub async fn character_wardrobe_create(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    body: Value,
+) -> Response {
+    let cid = character_id.to_string();
+    let title = match body.get("title").and_then(Value::as_str) {
+        Some(t) if !t.is_empty() => t.to_string(),
+        _ => return bad_request("Title is required"),
+    };
+    let types: Vec<String> = body
+        .get("types")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    if types.is_empty() {
+        return bad_request("At least one type is required");
+    }
+    let component_item_ids: Vec<String> = body
+        .get("componentItemIds")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    let description = nullable_str(&body, "description");
+    let image_prompt = nullable_str(&body, "imagePrompt");
+    let appropriateness = nullable_str(&body, "appropriateness");
+    let is_default = body
+        .get("isDefault")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let replace = body
+        .get("replace")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    let out = with_both_conns(db, move |main, mount| {
+        if let Err(r) = require_character_owned(main, mount, &cid)? {
+            return Ok(Err(r));
+        }
+        // Mint id/timestamps (v4 `repos.wardrobe.create` materializes them).
+        let now = crate::clock::now_iso();
+        let item = WardrobeItem {
+            id: uuid::Uuid::new_v4().to_string(),
+            character_id: Some(Some(cid.clone())),
+            title,
+            description: Some(description),
+            image_prompt: Some(image_prompt),
+            types,
+            component_item_ids,
+            appropriateness: Some(appropriateness),
+            is_default,
+            replace,
+            // v4's create sets `migratedFromClothingRecordId: null` explicitly (it
+            // appears as null in the create echo), but NOT `archivedAt` (absent),
+            // so the create echo carries the former and omits the latter.
+            migrated_from_clothing_record_id: Some(None),
+            archived_at: None,
+            created_at: now.clone(),
+            updated_at: now,
+        };
+        let links = DocMountFileLinksRepository::new(mount);
+        let docs = DocMountDocumentsRepository::new(mount);
+        match create_vault_wardrobe_item(main, &links, &docs, &item) {
+            Ok(stored) => Ok(Ok(serde_json::to_value(stored).unwrap_or(Value::Null))),
+            Err(e) => Ok(Err(wardrobe_err(e))),
+        }
+    })
+    .await;
+    wrap_obj(out, "wardrobeItem")
+}
+
+/// v4 `GET /characters/[id]/wardrobe/[itemId]` — `findById` ownership →
+/// `findByIdForCharacter` (guard `characterId === id`) → `{ wardrobeItem }`.
+pub fn character_wardrobe_get(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    item_id: &str,
+) -> Response {
+    let cid = character_id.to_string();
+    let iid = item_id.to_string();
+    let result = read_main_mount(db, move |main, mount| {
+        if let Err(r) = require_character(main, mount, &cid) {
+            return Ok(Err(r));
+        }
+        let docs = DocMountDocumentsRepository::new(mount);
+        match wardrobe_read::find_by_id_for_character(main, &docs, &cid, &iid, &[])? {
+            Some(item) => Ok(Ok(item)),
+            None => Ok(Err(not_found("Wardrobe item"))),
+        }
+    });
+    match result {
+        Ok(Ok(item)) => Response::Character(json!({ "wardrobeItem": item })),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `PUT /characters/[id]/wardrobe/[itemId]` — ownership + existence pre-check
+/// → `updateWardrobeItemSchema` patch → `repos.wardrobe.update` → `{ wardrobeItem }`.
+pub async fn character_wardrobe_update(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    item_id: &str,
+    body: Value,
+) -> Response {
+    let cid = character_id.to_string();
+    let iid = item_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        if let Err(r) = require_character_owned(main, mount, &cid)? {
+            return Ok(Err(r));
+        }
+        let docs = DocMountDocumentsRepository::new(mount);
+        // v4 pre-checks existence before update (findByIdForCharacter).
+        if wardrobe_read::find_by_id_for_character(main, &docs, &cid, &iid, &[])?.is_none() {
+            return Ok(Err(not_found("Wardrobe item")));
+        }
+        let mut patch = WardrobePatch::default();
+        if let Some(t) = body.get("title").and_then(Value::as_str) {
+            patch.title = Some(t.to_string());
+        }
+        if let Some(a) = body.get("types").and_then(Value::as_array) {
+            patch.types = Some(
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect(),
+            );
+        }
+        if let Some(a) = body.get("componentItemIds").and_then(Value::as_array) {
+            patch.component_item_ids = Some(
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect(),
+            );
+        }
+        patch.description = patch_nullable(&body, "description");
+        patch.image_prompt = patch_nullable(&body, "imagePrompt");
+        patch.appropriateness = patch_nullable(&body, "appropriateness");
+        if let Some(v) = body.get("isDefault").and_then(Value::as_bool) {
+            patch.is_default = Some(v);
+        }
+        if let Some(v) = body.get("replace").and_then(Value::as_bool) {
+            patch.replace = Some(v);
+        }
+        let links = DocMountFileLinksRepository::new(mount);
+        match update_vault_wardrobe_item(main, &links, &docs, &iid, &patch, Some(&cid)) {
+            // v4's update echo is the full read-shaped item (the merged read row,
+            // incl. `archivedAt: null`), not the write-struct — re-read for the
+            // v4-exact Value shape (the reads differential's proven bytes).
+            Ok(Some(_)) => {
+                match wardrobe_read::find_by_id_for_character(main, &docs, &cid, &iid, &[])? {
+                    Some(item) => Ok(Ok(item)),
+                    None => Ok(Err(not_found("Wardrobe item"))),
+                }
+            }
+            Ok(None) => Ok(Err(not_found("Wardrobe item"))),
+            Err(e) => Ok(Err(wardrobe_err(e))),
+        }
+    })
+    .await;
+    wrap_obj(out, "wardrobeItem")
+}
+
+/// v4 `DELETE /characters/[id]/wardrobe/[itemId]` — ownership + existence
+/// pre-check → `removeEquippedItemFromAllChats` cleanup → `repos.wardrobe.delete`
+/// → `{ success: true }`.
+pub async fn character_wardrobe_delete(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    item_id: &str,
+) -> Response {
+    let cid = character_id.to_string();
+    let iid = item_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        if let Err(r) = require_character_owned(main, mount, &cid)? {
+            return Ok(Err(r));
+        }
+        let docs = DocMountDocumentsRepository::new(mount);
+        if wardrobe_read::find_by_id_for_character(main, &docs, &cid, &iid, &[])?.is_none() {
+            return Ok(Err(not_found("Wardrobe item")));
+        }
+        // Clean up equipped references before deleting (v4 logs + proceeds on
+        // cleanup failure; composite componentItemIds are intentionally left).
+        ChatOutfitsRepository::new(main).remove_equipped_item_from_all_chats(&iid)?;
+        let links = DocMountFileLinksRepository::new(mount);
+        match delete_vault_wardrobe_item(main, &links, &docs, &iid, Some(&cid)) {
+            Ok(true) => Ok(Ok(())),
+            Ok(false) => Ok(Err(not_found("Wardrobe item"))),
+            Err(e) => Ok(Err(wardrobe_err(e))),
         }
     })
     .await;

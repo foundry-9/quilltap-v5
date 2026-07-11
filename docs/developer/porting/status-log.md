@@ -5819,6 +5819,31 @@ delete-cascade, wardrobe mutations, tags CRUD + delete fan-out, stats/chats, the
 photo gallery, ST import/export, depiction-guidelines, and the Tier-3 refusals.
 ---
 
+**P4.6f slice 4c — wardrobe mutations (2026-07-10).** The four wardrobe
+item-mutation handlers (`api::characters::character_wardrobe_{create,get,update,
+delete}`), composed over the already-proven vault-public wardrobe CRUD
+(`create/update/delete_vault_wardrobe_item`), `wardrobe_read::
+find_by_id_for_character`, and the equipped-reference cleanup
+(`ChatOutfitsRepository::remove_equipped_item_from_all_chats`). Each gated by
+v4's OVERLAID `findById` ownership (a broken vault → 503, unlike the delete/
+update character paths which use `findByIdRaw`); update/delete pre-check
+existence via `findByIdForCharacter` (empty project scope, matching v4's no-opts
+call). The echo-shape seam (proven against the oracle): v4's CREATE echo is the
+constructed object — it carries `migratedFromClothingRecordId: null` (create sets
+it explicitly) but OMITS `archivedAt` — whereas the UPDATE echo is the full
+read-shaped item (includes `archivedAt: null`). So create serializes the
+write-struct with `migrated_from_clothing_record_id: Some(None)` +
+`archived_at: None`, and update re-reads through `find_by_id_for_character` for
+the v4-exact Value bytes (the reads differential's proven shape) rather than
+serializing the write-struct (whose `skip_serializing_if` would drop the null
+fields v4 emits). The four arms replace their `not_available` refusals. Proven:
+the `characters_mutations_equivalence` differential extended to 9 cases (the +4
+wardrobe create/get/update/delete; item ids discovered by title on both sides
+since they mint at fixture-build). Versions: core 0.0.164, harness 0.0.149.
+Remaining in P4.6f: delete-cascade, tags CRUD + delete fan-out, stats/chats, the
+photo gallery, ST import/export, depiction-guidelines, and the Tier-3 refusals.
+---
+
 **P4.4u3 — the built-in seeds (roleplay templates + the three mount stores):
 done (2026-07-10).** Two of the three P4.4 named seed deferrals closed so a
 fresh v5 instance matches a fresh v4 instance.
