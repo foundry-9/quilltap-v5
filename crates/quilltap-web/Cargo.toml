@@ -8,23 +8,26 @@
 
 [package]
 name = "quilltap-web"
-version = "0.0.7"
+version = "0.0.8"
 edition = "2021"
 publish = false
 
 [dependencies]
 quilltap-core = { path = "../quilltap-core", features = ["native-transport"] }
 quilltap-host = { path = "../quilltap-host" }
-axum = { version = "0.8", features = ["ws"] }
+axum = { version = "0.8", features = ["ws", "multipart"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "signal"] }
 tokio-stream = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+# The photo-gallery write closures name the `rusqlite::Connection` the ported
+# core service takes (the writer thread hands them out per partition).
+rusqlite = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
 # Test HTTP client (already in the tree via quilltap-host).
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2", "multipart", "json"] }
 # Test WebSocket client for the terminal stream route.
 tokio-tungstenite = "0.24"
 futures-util = "0.3"

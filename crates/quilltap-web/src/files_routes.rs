@@ -46,7 +46,7 @@ const MAX_THUMBNAIL_SIZE: i64 = 300;
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-fn error_json(status: StatusCode, message: &str) -> AxumResponse {
+pub(crate) fn error_json(status: StatusCode, message: &str) -> AxumResponse {
     (
         status,
         [("content-type", "application/json")],
@@ -55,12 +55,14 @@ fn error_json(status: StatusCode, message: &str) -> AxumResponse {
         .into_response()
 }
 
-fn not_found(resource: &str) -> AxumResponse {
+pub(crate) fn not_found(resource: &str) -> AxumResponse {
     error_json(StatusCode::NOT_FOUND, &format!("{resource} not found"))
 }
 
 /// The ready `Db` + disk backend, or the locked/failed refusal.
-fn db_and_backend(state: &SharedState) -> Result<(Db, LocalStorageBackend), Box<AxumResponse>> {
+pub(crate) fn db_and_backend(
+    state: &SharedState,
+) -> Result<(Db, LocalStorageBackend), Box<AxumResponse>> {
     let Some(host) = state.host() else {
         return Err(Box::new(error_json(
             StatusCode::SERVICE_UNAVAILABLE,

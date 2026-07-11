@@ -6619,3 +6619,77 @@ Versions: core 0.0.173, harness 0.0.158. Next: the multipart machinery +
 photos POST route (unit 2), the PNG export route (unit 3), the ST import
 route + main-avatar vault write (unit 4), refusal-arm retirement +
 `photo_link_summary` dedup (unit 5).
+
+---
+
+### P4.6m unit 2 — multipart machinery + the photos POST route (all 3 legs) — LANDED
+
+Gave `quilltap-web` its first `multipart/form-data` machinery and the first
+v4-shaped multipart route.
+
+- **`quilltap-web::multipart`** — a browser-`FormData`-shaped helper over axum's
+  `Multipart` extractor: whole-body buffering (v4 buffers too — no streaming
+  uploads), `file(name)` (a part is a "file" ⟺ it carried a `filename`, matching
+  v4's `instanceof File`), `text(name)`, `all_text(name)` (non-empty string
+  values, file parts dropped — v4's `getAll(...).filter(typeof === 'string')`).
+  Reusable for the remaining multipart routes (import [unit 4] + the deferred
+  images-v2 / attachments / mount-ingest / .qtap families).
+- **`POST /api/v1/characters/{id}/photos`** (`characters_routes.rs`) — v4's
+  content-type dispatch: JSON → `{fileId|linkId}` (exactly-one refine); else a
+  multipart upload. Three legs behind the ported gallery service:
+  `save_link_to_character_gallery` (linkId), `save_to_character_gallery` (upload
+  bytes), and the fileId leg = `files.find_by_id` + the image guard + the
+  two-mode `download_file` (`mount-blob:` → the DB blob, else the disk
+  `LocalStorageBackend`) + delegate. v4's error mapping reproduced exactly
+  (`Character not found` → 404; the 7-keyword list → 400; else 500). Thin edge
+  code — the write closures run on the writer thread (`db.write` with both
+  partition connections); no business logic in the transport.
+- **Deps:** axum `multipart` feature; `rusqlite` promoted to a normal dep (the
+  write closures name `rusqlite::Connection`); reqwest dev-dep gained
+  `multipart` + `json` for the route test.
+
+**Proofs.** (1) Route-level integration
+(`crates/quilltap-web/tests/characters_photos_routes.rs`): all three legs in
+both fileId storage modes (local-key off disk, `mount-blob:` off the DB) + every
+error arm (missing file, non-image mime, fileId-not-found, non-image fileId,
+both-ids, neither-id, character-not-found) — REAL HTTP multipart/JSON bodies
+against the committed characters fixture (Aria + her vault). (2) A tier-2
+differential (`character-photo-upload-tier2` oracle +
+`character_photo_upload_tier2_equivalence`) driving v4's REAL
+`saveToCharacterGallery` over the UPLOAD-specific filename→path branches (dotless
+timestamped slug vs the dotted `sanitizeLeafName`), the dedup guard, and the two
+400-keyword arms — the freshly-written `photos/` link dumped and diffed
+byte-exact (the minted per-blob `fileId` is the one blanked value; frozen
+`kept_at`). The shared write spine was already proven by `photo_save_link`.
+
+**Scoping note (proportionality, documented — NOT a silent gap):** the fileId
+leg's byte fetch is `download_file`, already differentially proven
+(`file_storage` tests; the same function `files_routes` serves) and re-exercised
+end-to-end by the route test in BOTH storage modes; its write is the proven
+`save_to_character_gallery` spine. So the tier-2 differential targets the one
+genuinely-new core write branch (the upload filename→path logic) rather than
+re-baking a `files` table into the committed characters fixture (which stays
+frozen for lanes A/B). The committed `characters-*.db` is UNCHANGED, so the
+existing characters-reads / characters-mutations oracles do NOT need regen.
+
+Regen recipe (jest /tmp mirror; Node 24):
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<worktree>
+TMPO=/tmp/qt-photo-upload-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/character-photo-upload-tier2.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/characters.json"                   "$TMPO/fixtures/"
+cd ~/source/quilltap-server
+QT_FIXTURE_CHARACTERS_MAIN=$V5W/crates/quilltap-web/tests/fixtures/characters-main.db \
+QT_FIXTURE_CHARACTERS_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/characters-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-photo-upload.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- character-photo-upload-tier2
+cd $V5W
+QT_ORACLE_PHOTO_UPLOAD=/tmp/oracle-photo-upload.ndjson \
+  cargo test -p quilltap-harness --test character_photo_upload_tier2_equivalence
+```
+
+Versions: core 0.0.174, harness 0.0.159, web 0.0.8. Next: the PNG export route
+(unit 3), the ST import route + main-avatar vault write (unit 4), refusal-arm
+retirement + `photo_link_summary` dedup (unit 5).

@@ -20,10 +20,12 @@
 //! `Request`/`Response`/`Event` contract; every decision lives behind
 //! `CoreEngine::dispatch` (or, for the byte routes, the ported repo reads).
 
+pub mod characters_routes;
 pub mod dispatch;
 pub mod events;
 pub mod files_routes;
 pub mod health;
+pub mod multipart;
 pub mod state;
 pub mod static_serve;
 pub mod terminal_routes;
@@ -58,6 +60,10 @@ pub fn build_router(state: SharedState) -> Router {
         .route(
             "/api/v1/mount-points/{id}/blobs/{*path}",
             get(files_routes::mount_blob_get),
+        )
+        .route(
+            "/api/v1/characters/{id}/photos",
+            post(characters_routes::characters_photos_post),
         )
         .route(
             "/api/v1/terminals",

@@ -128,6 +128,57 @@ pub fn materialize_fixture_instance() -> tempfile::TempDir {
     base
 }
 
+/// Materialize an instance dir from the committed CHARACTERS fixture (Aria +
+/// her vault; the P4.6f/i corpus), user ids rewritten. Used by the characters
+/// multipart/binary route tests.
+#[allow(dead_code)]
+pub fn materialize_characters_instance() -> tempfile::TempDir {
+    let base = tempfile::tempdir().expect("tempdir");
+    let data = base.path().join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::copy(
+        fixtures_dir().join("characters-main.db"),
+        data.join("quilltap.db"),
+    )
+    .unwrap();
+    std::fs::copy(
+        fixtures_dir().join("characters-mount.db"),
+        data.join("quilltap-mount-index.db"),
+    )
+    .unwrap();
+    {
+        let w = Writer::open_writable(&data.join("quilltap-llm-logs.db"), TEST_PEPPER).unwrap();
+        w.connection().execute_batch(LLM_LOGS_DDL).unwrap();
+    }
+    {
+        let w = Writer::open_writable(&data.join("quilltap.db"), TEST_PEPPER).unwrap();
+        rewrite_user_ids(w.connection());
+        // Idempotent schema top-ups (a regenerated fixture already carries them).
+        let has_col: i64 = w
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('chats') WHERE name = 'turnSkippingEnabled'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        if has_col == 0 {
+            w.connection()
+                .execute_batch("ALTER TABLE chats ADD COLUMN turnSkippingEnabled INTEGER;")
+                .unwrap();
+        }
+        w.connection()
+            .execute_batch(
+                "CREATE TABLE IF NOT EXISTS terminal_sessions (\
+                   id TEXT PRIMARY KEY, chatId TEXT, label TEXT, shell TEXT, \
+                   cwd TEXT, startedAt TEXT, exitedAt TEXT, exitCode REAL, \
+                   transcriptPath TEXT, createdAt TEXT, updatedAt TEXT);",
+            )
+            .unwrap();
+    }
+    base
+}
+
 /// A bare instance (empty encrypted main DB) — the M0 pattern.
 #[allow(dead_code)]
 pub fn materialize_bare_instance() -> tempfile::TempDir {

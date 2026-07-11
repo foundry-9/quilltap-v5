@@ -47,6 +47,21 @@ for the delete/member/mount-link side effects). Repo additions:
 `group_doc_mount_links::{unlink,delete_by_group_id,link_returning}`,
 `doc_mount_points::find_full_json_by_id`. Projects + scenarios variants
 answer the loud `not_available` refusal until their units land.
+Gave quilltap-web its first multipart machinery + the photo-upload route
+(P4.6m unit 2). New `multipart` module (a browser-`FormData`-shaped helper:
+whole-body buffering, string-or-file fields, `get`/`getAll`) and
+`POST /api/v1/characters/{id}/photos` with all three v4 legs — multipart
+upload, JSON `linkId`, and JSON `fileId` (the two-mode `downloadFile`:
+`mount-blob:` → the DB blob, else the disk backend) — behind the ported
+`save_to_character_gallery` / `save_link_to_character_gallery` write spine
+and v4's content-type dispatch + error mapping (404/400-keyword/500). Thin
+edge code (the `files_routes` precedent). Proven by a route-level
+integration test (all three legs in both storage modes + every error arm,
+real HTTP bodies against the characters fixture) and a tier-2 differential
+(`character-photo-upload-tier2`) driving v4's real `saveToCharacterGallery`
+over the upload filename→path branches, the dedup refusal, and the two
+400-keyword arms.
+
 Ported the SillyTavern PNG codec (P4.6m unit 1, tier-1). Added
 `create_st_character_png` / `parse_st_character_png` / the solid-colour
 placeholder generator + CRC32 to `quilltap-core`'s `sillytavern` module —
