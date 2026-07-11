@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.6k (lane A) unit 5 (partial) — project background + aesthetic editor. The
+`get-background` resolver (URL by `backgroundDisplayMode`: theme/static/project/
+latest_chat, BARE envelope) and the lantern/aurora aesthetic get/set (get returns
+the RAW store-file content; set writes, and an empty/whitespace body DELETES the
+file to restore the fallback). Proven by `projects_routes_equivalence` (now 30
+cases incl. write+readback). The `list-files` two-branch DTO remains a loud
+`not_available` deferral (it needs the net-new `mimeForMountFile` /
+`resolveEffectiveFolderPath` helper ports).
+
 P4.6k (lane A) unit 2 — the Projects server surface at the core boundary.
 Landed the projects CRUD (list with the faithful O(n²) `_count`, create
 with default injection, get with enriched roster + `_count`, update,

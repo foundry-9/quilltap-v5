@@ -324,6 +324,51 @@ fn projects_routes_match_oracle() {
             &mut failed,
         );
     }
+    {
+        let db = fresh_db(&spec, "bgi");
+        check(
+            "background_iota",
+            &response_data(&projects::project_background_get(&db, IOTA)),
+            false,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "bgk");
+        check(
+            "background_kappa",
+            &response_data(&projects::project_background_get(&db, KAPPA)),
+            false,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "agl");
+        check(
+            "aesthetic_get_lantern",
+            &response_data(&projects::project_aesthetic_get(&db, IOTA, "lantern")),
+            false,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "aga");
+        check(
+            "aesthetic_get_aurora",
+            &response_data(&projects::project_aesthetic_get(&db, IOTA, "aurora")),
+            false,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "age");
+        check(
+            "aesthetic_get_empty",
+            &response_data(&projects::project_aesthetic_get(&db, KAPPA, "lantern")),
+            false,
+            &mut failed,
+        );
+    }
 
     // --- Mutations ---
     {
@@ -399,6 +444,44 @@ fn projects_routes_match_oracle() {
             vec!["danger".into()],
         ));
         check("tool_settings", &response_data(&resp), false, &mut failed);
+    }
+    {
+        // aesthetic set (write) + GET readback (trimmed) — body {success, readback}.
+        let db = fresh_db(&spec, "aset");
+        let resp = rt.block_on(projects::project_aesthetic_set(
+            &db,
+            IOTA,
+            "aurora",
+            Some("  A brand new aurora palette.  ".into()),
+        ));
+        let mut body = response_data(&resp);
+        let readback = response_data(&projects::project_aesthetic_get(&db, IOTA, "aurora"))
+            .get("content")
+            .cloned()
+            .unwrap_or(Value::Null);
+        if let Value::Object(o) = &mut body {
+            o.insert("readback".into(), readback);
+        }
+        check("aesthetic_set", &body, false, &mut failed);
+    }
+    {
+        // aesthetic clear (empty → delete) + GET readback ('').
+        let db = fresh_db(&spec, "aclr");
+        let resp = rt.block_on(projects::project_aesthetic_set(
+            &db,
+            IOTA,
+            "lantern",
+            Some("   ".into()),
+        ));
+        let mut body = response_data(&resp);
+        let readback = response_data(&projects::project_aesthetic_get(&db, IOTA, "lantern"))
+            .get("content")
+            .cloned()
+            .unwrap_or(Value::Null);
+        if let Value::Object(o) = &mut body {
+            o.insert("readback".into(), readback);
+        }
+        check("aesthetic_clear", &body, false, &mut failed);
     }
     {
         let db = fresh_db(&spec, "ml");

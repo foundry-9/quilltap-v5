@@ -719,6 +719,190 @@ pub async fn project_tool_settings_update(
 }
 
 // ===========================================================================
+// Background (v4 background.ts) — BARE {backgroundUrl, displayMode, sourceChatId?}
+// ===========================================================================
+
+/// v4 `handleGetBackground`: URL resolution by `backgroundDisplayMode`. BARE
+/// envelope. `theme` (or any unresolvable mode) → `{ backgroundUrl: null,
+/// displayMode }`; `static`/`project` resolve their image id; `latest_chat`
+/// scans project chats (desc updatedAt) for the first with a story background.
+pub fn project_background_get(db: &Db, project_id: &str) -> Response {
+    use crate::clock::iso_to_ms;
+    let pid = project_id.to_string();
+    let result = read_both(db, move |main, mount| {
+        let repo = ProjectsRepository::new(main, mount);
+        let Some(project) = repo.find_by_id(&pid).map_err(overlay_to_db)? else {
+            return Ok(None);
+        };
+        let mode = project
+            .get("backgroundDisplayMode")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("theme")
+            .to_string();
+        let files = FilesRepository::new(main);
+        let by_id = |img: Option<&str>| -> Result<Option<String>, DbError> {
+            match img {
+                Some(id) if !id.is_empty() => Ok(files.find_by_id(id)?.map(|f| file_path(&f.id))),
+                _ => Ok(None),
+            }
+        };
+        let body = match mode.as_str() {
+            "static" => match by_id(
+                project
+                    .get("staticBackgroundImageId")
+                    .and_then(Value::as_str),
+            )? {
+                Some(url) => json!({ "backgroundUrl": url, "displayMode": mode }),
+                None => json!({ "backgroundUrl": null, "displayMode": mode }),
+            },
+            "project" => {
+                match by_id(
+                    project
+                        .get("storyBackgroundImageId")
+                        .and_then(Value::as_str),
+                )? {
+                    Some(url) => json!({ "backgroundUrl": url, "displayMode": mode }),
+                    None => json!({ "backgroundUrl": null, "displayMode": mode }),
+                }
+            }
+            "latest_chat" => {
+                let mut chats: Vec<Value> = project_chats(main, &pid)?
+                    .into_iter()
+                    .filter(|c| {
+                        c.get("storyBackgroundImageId")
+                            .and_then(Value::as_str)
+                            .map(|s| !s.is_empty())
+                            .unwrap_or(false)
+                    })
+                    .collect();
+                chats.sort_by(|a, b| {
+                    let ta = a
+                        .get("updatedAt")
+                        .and_then(Value::as_str)
+                        .and_then(iso_to_ms)
+                        .unwrap_or(0);
+                    let tb = b
+                        .get("updatedAt")
+                        .and_then(Value::as_str)
+                        .and_then(iso_to_ms)
+                        .unwrap_or(0);
+                    tb.cmp(&ta)
+                });
+                match chats.first() {
+                    Some(chat) => {
+                        let bg = chat.get("storyBackgroundImageId").and_then(Value::as_str);
+                        match by_id(bg)? {
+                            Some(url) => json!({
+                                "backgroundUrl": url,
+                                "displayMode": mode,
+                                "sourceChatId": chat.get("id").cloned().unwrap_or(Value::Null),
+                            }),
+                            None => json!({ "backgroundUrl": null, "displayMode": mode }),
+                        }
+                    }
+                    None => json!({ "backgroundUrl": null, "displayMode": mode }),
+                }
+            }
+            // theme + any fallthrough.
+            _ => json!({ "backgroundUrl": null, "displayMode": mode }),
+        };
+        Ok(Some(body))
+    });
+    match result {
+        Ok(Some(body)) => Response::Project(body),
+        Ok(None) => not_found("Project"),
+        Err(e) => internal(e),
+    }
+}
+
+// ===========================================================================
+// Aesthetic (v4 aesthetic.ts + lib/image-gen/aesthetic.ts)
+// ===========================================================================
+
+fn aesthetic_filename(kind: &str) -> Option<&'static str> {
+    match kind {
+        "lantern" => Some(crate::services::aesthetics::LANTERN_AESTHETICS_FILENAME),
+        "aurora" => Some(crate::services::aesthetics::AURORA_AESTHETICS_FILENAME),
+        _ => None,
+    }
+}
+
+/// v4 `handleGetAesthetic`: ownership → kind guard → if no official store `{content:''}`
+/// → `readAesthetic` (single tier, absent/error → ''). Body `{ content }`.
+pub fn project_aesthetic_get(db: &Db, project_id: &str, kind: &str) -> Response {
+    let Some(filename) = aesthetic_filename(kind) else {
+        return bad_request("Query param \"kind\" must be \"lantern\" or \"aurora\"");
+    };
+    let pid = project_id.to_string();
+    let result = read_both(db, move |main, mount| {
+        let repo = ProjectsRepository::new(main, mount);
+        let Some(project) = repo.find_by_id(&pid).map_err(overlay_to_db)? else {
+            return Ok(None);
+        };
+        let Some(mp) = project.get("officialMountPointId").and_then(Value::as_str) else {
+            return Ok(Some(String::new()));
+        };
+        // readStoreFile (the editor route path): `doc?.content ?? ''` — the RAW
+        // content (NOT trimmed; the trim is only the aesthetic-injection path).
+        // Absent doc or any read error → '' (swallowed).
+        let content = match crate::db::database_store::read_database_document(mount, mp, filename) {
+            Ok(doc) => doc.content,
+            Err(_) => String::new(),
+        };
+        Ok(Some(content))
+    });
+    match result {
+        Ok(Some(content)) => Response::Project(json!({ "content": content })),
+        Ok(None) => not_found("Project"),
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `handlePutAesthetic`: ownership → kind guard → no official store → 500 →
+/// `writeAesthetic` (empty/whitespace content DELETES the file). Body
+/// `{ success: true }`. (Malformed-JSON-body-means-delete is a transport concern;
+/// the boundary receives the parsed `content` already.)
+pub async fn project_aesthetic_set(
+    db: &Db,
+    project_id: &str,
+    kind: &str,
+    content: Option<String>,
+) -> Response {
+    let Some(filename) = aesthetic_filename(kind) else {
+        return bad_request("Query param \"kind\" must be \"lantern\" or \"aurora\"");
+    };
+    // safeParse(...).data?.content ?? '' — a missing/invalid content → ''.
+    let content = content.unwrap_or_default();
+    let pid = project_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        let repo = ProjectsRepository::new(main, mount);
+        let Some(project) = repo.find_by_id(&pid).map_err(overlay_to_db)? else {
+            return Ok(Err(not_found("Project")));
+        };
+        let Some(mp) = project.get("officialMountPointId").and_then(Value::as_str) else {
+            return Ok(Err(internal(
+                "Project has no official document store to write the aesthetic into",
+            )));
+        };
+        // writeStoreFile: `!content || !content.trim()` → delete; else write.
+        if crate::jsstr::js_trim(&content).is_empty() {
+            let _ = crate::db::database_store::delete_database_document(mount, mp, filename)?;
+        } else {
+            crate::db::database_store::write_database_document(mount, mp, filename, &content)
+                .map_err(|e| DbError::Key(e.to_string()))?;
+        }
+        Ok(Ok(()))
+    })
+    .await;
+    match out {
+        Ok(Ok(())) => Response::Project(json!({ "success": true })),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+// ===========================================================================
 // Mount points (v4 [id]/mount-points/route.ts)
 // ===========================================================================
 

@@ -200,6 +200,11 @@ async function main(): Promise<void> {
     { name: 'list_chats', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=list-chats`), p(IOTA))) },
     { name: 'list_chats_page', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=list-chats&limit=1&offset=0`), p(IOTA))) },
     { name: 'get_state', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=get-state`), p(IOTA))) },
+    { name: 'background_iota', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=get-background`), p(IOTA))) },
+    { name: 'background_kappa', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${KAPPA}?action=get-background`), p(KAPPA))) },
+    { name: 'aesthetic_get_lantern', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=aesthetic&kind=lantern`), p(IOTA))) },
+    { name: 'aesthetic_get_aurora', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=aesthetic&kind=aurora`), p(IOTA))) },
+    { name: 'aesthetic_get_empty', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${KAPPA}?action=aesthetic&kind=lantern`), p(KAPPA))) },
     { name: 'mount_points_iota', run: async () => respond(await (await loadRoute(mpRoute)).GET(mockRequest(`${B}/${IOTA}/mount-points`), p(IOTA))) },
     { name: 'mount_points_kappa', run: async () => respond(await (await loadRoute(mpRoute)).GET(mockRequest(`${B}/${KAPPA}/mount-points`), p(KAPPA))) },
     // --- Mutations ---
@@ -250,6 +255,31 @@ async function main(): Promise<void> {
         const r = await (await loadRoute(idRoute)).DELETE(mockRequest(`${B}/${IOTA}?action=remove-chat`, { chatId: CHAT_A }), p(IOTA));
         const { status, body } = await respond(r);
         return { status, body, tables: await dumpProjectTables() };
+      },
+    },
+    {
+      name: 'aesthetic_set',
+      run: async () => {
+        const mod = await loadRoute(idRoute);
+        const url = `${B}/${IOTA}?action=aesthetic&kind=aurora`;
+        const put = await mod.PUT(mockRequest(url, { content: '  A brand new aurora palette.  ' }), p(IOTA));
+        const { status, body } = await respond(put);
+        // Readback via GET to prove the write landed (trimmed).
+        const rb = await mod.GET(mockRequest(url), p(IOTA));
+        const readback = ((await (rb as { json: () => Promise<{ content?: string }> }).json()).content) ?? '';
+        return { status, body: { ...(body as object), readback } };
+      },
+    },
+    {
+      name: 'aesthetic_clear',
+      run: async () => {
+        const mod = await loadRoute(idRoute);
+        const url = `${B}/${IOTA}?action=aesthetic&kind=lantern`;
+        const put = await mod.PUT(mockRequest(url, { content: '   ' }), p(IOTA));
+        const { status, body } = await respond(put);
+        const rb = await mod.GET(mockRequest(url), p(IOTA));
+        const readback = ((await (rb as { json: () => Promise<{ content?: string }> }).json()).content) ?? '';
+        return { status, body: { ...(body as object), readback } };
       },
     },
     { name: 'set_state', run: async () => respond(await (await loadRoute(idRoute)).PUT(mockRequest(`${B}/${IOTA}?action=set-state`, { state: { mood: 'tense', turns: 9 } }), p(IOTA))) },

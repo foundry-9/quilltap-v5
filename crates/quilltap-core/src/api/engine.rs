@@ -1308,11 +1308,24 @@ impl CoreEngine {
                 Ok(db) => super::projects::project_state_reset(&db, &project_id).await,
                 Err(r) => r,
             },
-            Request::ProjectBackgroundGet { .. } => {
-                super::projects::not_available("get-background")
-            }
-            Request::ProjectAestheticGet { .. } => super::projects::not_available("aesthetic-get"),
-            Request::ProjectAestheticSet { .. } => super::projects::not_available("aesthetic-set"),
+            Request::ProjectBackgroundGet { project_id } => match self.ready_db() {
+                Ok(db) => super::projects::project_background_get(&db, &project_id),
+                Err(r) => r,
+            },
+            Request::ProjectAestheticGet { project_id, kind } => match self.ready_db() {
+                Ok(db) => super::projects::project_aesthetic_get(&db, &project_id, &kind),
+                Err(r) => r,
+            },
+            Request::ProjectAestheticSet {
+                project_id,
+                kind,
+                content,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::projects::project_aesthetic_set(&db, &project_id, &kind, content).await
+                }
+                Err(r) => r,
+            },
             Request::ProjectToolSettingsUpdate {
                 project_id,
                 default_disabled_tools,
