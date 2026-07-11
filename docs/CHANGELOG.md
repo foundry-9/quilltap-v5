@@ -4,6 +4,16 @@
 
 ### 5.0-dev
 
+Four slash commands capture the porting-round workflow as repeatable process
+docs under `.claude/commands/`: `/setupphase` (drift-check, scope the next
+round, write parallel-lane work orders, report their paths), `/carryout
+<order>` (execute one order as an isolated lane under the differential
+discipline), `/unify <orders>` (cherry-pick finished lanes onto main,
+unification wires, the full gate, cleanup, docs/memory), and `/dogfood
+<orders>` (produce the hands-on test script for a landed round, then
+diagnose/fix findings in place with the finding-class taxonomy and the
+broad-gesture rule).
+
 Dogfood finding #4 fixed: clicking a character card on `/characters` did
 nothing unless the click landed on the name/avatar link. v4's `AuroraView`
 card is clickable anywhere (`handleCardClick`, ignoring clicks that land on
