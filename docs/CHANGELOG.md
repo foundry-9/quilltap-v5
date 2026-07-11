@@ -4,6 +4,17 @@
 
 ### 5.0-dev
 
+P4.6f (Characters server, lane A): the `stats` read action. `character_stats`
+fans out the independent counts (memories / conversations / wardrobe items / the
+vault file links / group memberships) and derives photos / knowledge / core /
+characterFiles from the link relative paths (the `isPhotosRelativePath` predicate
++ the `SINGLE_FILE_OVERLAY_PATHS` health figure), hydrating the character's groups
+through the overlay. `{ stats, groups }`. Composes ported reads only. The arm
+replaces its `not_available` refusal. Differential: `characters_reads` extended
+with `stats` (+ a `depiction_guidelines` GET case) — over the fixture Aria's
+stats read memories 2 / conversations 1 / photos 1 / characterFiles 8-of-8.
+Versions: core 0.0.167, harness 0.0.152.
+
 P4.6f (Characters server, lane A): the depiction-guidelines GET/PUT actions.
 `character_depiction_guidelines` (overlaid `findById` ownership → RAW single-tier
 read of `depiction-guidelines.md` from the character's own vault root →

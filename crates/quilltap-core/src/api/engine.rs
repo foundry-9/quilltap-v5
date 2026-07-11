@@ -796,7 +796,10 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
-            Request::CharacterStats { .. } => super::characters::not_available("stats"),
+            Request::CharacterStats { character_id } => match self.ready_db() {
+                Ok(db) => super::characters::character_stats(&db, SINGLE_USER_ID, &character_id),
+                Err(r) => r,
+            },
             Request::CharacterChats { .. } => super::characters::not_available("chats"),
             Request::CharacterDepictionGuidelines { character_id } => match self.ready_db() {
                 Ok(db) => super::characters::character_depiction_guidelines(

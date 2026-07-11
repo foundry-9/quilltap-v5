@@ -314,6 +314,111 @@ pub async fn character_depiction_guidelines_update(
     }
 }
 
+/// v4 `?action=stats` — a fan-out of independent counts + group hydration
+/// (`[id]/handlers/get.ts:293`). Ownership (overlaid `findById`) → counts over
+/// memories / chats / wardrobe / the vault file links / group memberships, with
+/// photos/knowledge/core/characterFiles derived from the link relative paths (the
+/// links fetched once and reused). `{ stats, groups }`.
+pub fn character_stats(db: &Db, _user_id: &str, character_id: &str) -> Response {
+    use crate::db::doc_mount_file_links::{is_photos_relative_path, DocMountFileLinksRepository};
+    use crate::db::group_character_members::GroupCharacterMembersRepository;
+    use crate::db::groups::GroupsRepository;
+    use crate::db::vault_read_overlay::SINGLE_FILE_OVERLAY_PATHS;
+    use std::collections::HashSet;
+
+    let cid = character_id.to_string();
+    let result = read_main_mount(db, move |main, mount| {
+        let character = match require_character(main, mount, &cid) {
+            Ok(c) => c,
+            Err(r) => return Ok(Err(r)),
+        };
+        let mount_point_id = character
+            .get("characterDocumentMountPointId")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty());
+
+        let memory_count = crate::db::memories_read::count_by_character_id(main, &cid)?;
+        let conversations = crate::db::chats_read::find_by_character_id(main, &cid)?.len();
+        let docs = DocMountDocumentsRepository::new(mount);
+        let wardrobe_items = wardrobe_read::find_by_character_id(main, &docs, &cid, false)?.len();
+        let file_links = match mount_point_id {
+            Some(mid) => DocMountFileLinksRepository::new(mount).find_by_mount_point_id(mid)?,
+            None => vec![],
+        };
+        let group_ids =
+            GroupCharacterMembersRepository::new(mount).find_group_ids_by_character_id(&cid)?;
+
+        // Photos / knowledge / core from the link relative paths (v4's predicate),
+        // and the present-paths set for the characterFiles health figure.
+        let mut present_paths: HashSet<String> = HashSet::new();
+        let (mut photos, mut knowledge, mut core) = (0i64, 0i64, 0i64);
+        for link in &file_links {
+            let rel = link.relative_path.to_lowercase();
+            present_paths.insert(rel.clone());
+            if is_photos_relative_path(Some(&link.relative_path))
+                || rel == "images/avatar.webp"
+                || rel.starts_with("images/history/")
+            {
+                photos += 1;
+            }
+            if rel.starts_with("knowledge/") {
+                knowledge += 1;
+            }
+            if rel.starts_with("core/") {
+                core += 1;
+            }
+        }
+        let mut character_files = 0i64;
+        for core_path in SINGLE_FILE_OVERLAY_PATHS {
+            if present_paths.contains(&core_path.to_lowercase()) {
+                character_files += 1;
+            }
+        }
+
+        // Hydrate the character's groups (deduped ids → the overlaid group record).
+        let mut seen: HashSet<String> = HashSet::new();
+        let groups_repo = GroupsRepository::new(main, mount);
+        let mut groups: Vec<Value> = Vec::new();
+        for gid in &group_ids {
+            if !seen.insert(gid.clone()) {
+                continue;
+            }
+            if let Ok(Some(g)) = groups_repo.find_by_id(gid) {
+                groups.push(json!({
+                    "id": g.get("id").cloned().unwrap_or(Value::Null),
+                    "name": g.get("name").cloned().unwrap_or(Value::Null),
+                    "description": g.get("description").cloned().unwrap_or(Value::Null),
+                    "color": g.get("color").cloned().unwrap_or(Value::Null),
+                    "icon": g.get("icon").cloned().unwrap_or(Value::Null),
+                }));
+            }
+        }
+
+        let scenarios = character
+            .get("scenarios")
+            .and_then(Value::as_array)
+            .map(|a| a.len())
+            .unwrap_or(0);
+        let stats = json!({
+            "memories": memory_count,
+            "conversations": conversations,
+            "wardrobeItems": wardrobe_items,
+            "photos": photos,
+            "scenarios": scenarios,
+            "knowledge": knowledge,
+            "core": core,
+            "characterFiles": character_files,
+            "characterFilesTotal": SINGLE_FILE_OVERLAY_PATHS.len(),
+        });
+        Ok(Ok(json!({ "stats": stats, "groups": groups })))
+    });
+    match result {
+        Ok(Ok(body)) => Response::Character(body),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
 // ===========================================================================
 // Sub-resource reads
 // ===========================================================================

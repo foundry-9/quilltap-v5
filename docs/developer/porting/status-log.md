@@ -5896,6 +5896,26 @@ core 0.0.166, harness 0.0.151. Remaining in P4.6f: delete-cascade, stats/chats,
 the photo gallery, ST import/export, and the Tier-3 refusals.
 ---
 
+**P4.6f — the `stats` read action (2026-07-10).** `api::characters::
+character_stats` over v4 `[id]/handlers/get.ts:293`. Ownership (overlaid
+`findById`) → the Promise.all fan-out reproduced as sequential reads (memories
+`count_by_character_id`, chats `find_by_character_id`, wardrobe
+`find_by_character_id`, the vault links `find_by_mount_point_id`, group
+memberships `find_group_ids_by_character_id`), the links fetched once and reused
+for photos/knowledge/core (v4's `isPhotosRelativePath` + the `images/avatar.webp`
+/ `images/history/` special-cases; `knowledge/` + `core/` prefix counts) and the
+present-paths set for the `characterFiles` N/8 health figure (per-canonical-path
+so case-variant duplicates can't overcount). Groups hydrated by looping the
+deduped ids through the overlay (`GroupsRepository::find_by_id` → `{id, name,
+description, color, icon}`). All-ported reads; no new leaf. The arm replaces its
+`not_available`. Proven: `characters_reads_equivalence` extended with `stats` (+
+a `depiction_guidelines` GET case) — the fixture Aria reads memories 2 /
+conversations 1 / wardrobeItems 2 / photos 1 / scenarios 2 / characterFiles 8-of-8
+/ groups []. Versions: core 0.0.167, harness 0.0.152. Remaining in P4.6f:
+delete-cascade, the `chats` read action, the photo gallery, ST import/export, and
+the Tier-3 refusals.
+---
+
 **P4.4u3 — the built-in seeds (roleplay templates + the three mount stores):
 done (2026-07-10).** Two of the three P4.4 named seed deferrals closed so a
 fresh v5 instance matches a fresh v4 instance.

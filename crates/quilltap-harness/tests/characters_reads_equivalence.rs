@@ -217,6 +217,14 @@ fn characters_reads_match_oracle() {
             "com.example.notes",
         )),
     );
+    push(
+        "stats",
+        response_data(&characters::character_stats(&db, uid, ARIA)),
+    );
+    push(
+        "depiction_guidelines",
+        response_data(&characters::character_depiction_guidelines(&db, uid, ARIA)),
+    );
 
     drop(db);
     let _ = std::fs::remove_dir_all(&scratch);

@@ -170,6 +170,8 @@ async function main(): Promise<void> {
     { name: 'wardrobe', module: '@/app/api/v1/characters/[id]/wardrobe/route', url: `${B}/${aria}/wardrobe`, params: { id: aria } },
     { name: 'plugin_data_map', module: '@/app/api/v1/characters/[id]/plugin-data/route', url: `${B}/${aria}/plugin-data`, params: { id: aria } },
     { name: 'plugin_data_item', module: '@/app/api/v1/characters/[id]/plugin-data/[pluginName]/route', url: `${B}/${aria}/plugin-data/com.example.notes`, params: { id: aria, pluginName: 'com.example.notes' } },
+    { name: 'stats', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=stats`, params: { id: aria } },
+    { name: 'depiction_guidelines', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=depiction-guidelines`, params: { id: aria } },
   ];
 
   const outLines: string[] = [];
