@@ -5,8 +5,10 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
-import type { ProjectDetail } from '../../core/core-contract';
+import type { ProjectDetail, ProjectFileDto } from '../../core/core-contract';
 import { ProjectCharactersCard } from './cards/project-characters-card';
+import { ProjectFilesCard } from './cards/project-files-card';
+import { ProjectImageGenerationCard } from './cards/project-image-generation-card';
 import { ProjectModelBehaviorCard } from './cards/project-model-behavior-card';
 import { ProjectDetailScreen } from './project-detail';
 import { ProsperoList } from './prospero-list';
@@ -361,5 +363,149 @@ describe('ProjectDetailScreen', () => {
     ).click();
     await settle(fixture);
     expect(fixture.nativeElement.textContent).toContain('save failed');
+  });
+});
+
+describe('ProjectImageGenerationCard', () => {
+  async function render(
+    client: Partial<CoreClient>,
+    proj: ProjectDetail,
+  ): Promise<ComponentFixture<ProjectImageGenerationCard>> {
+    TestBed.configureTestingModule({
+      imports: [ProjectImageGenerationCard],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: client },
+      ],
+    });
+    const fixture = TestBed.createComponent(ProjectImageGenerationCard);
+    fixture.componentRef.setInput('project', proj);
+    fixture.componentRef.setInput('defaultOpen', true);
+    fixture.detectChanges();
+    await settle(fixture);
+    return fixture;
+  }
+
+  it('immediate-saves the background display mode and alerts on failure', async () => {
+    const seen: DispatchReq[] = [];
+    const fixture = await render(
+      stubClient((r) => {
+        seen.push(r);
+        if (r.type === 'projectAestheticGet') return { content: '' };
+        return r.type === 'projectUpdate' ? new Error('bg fail') : {};
+      }),
+      project(),
+    );
+    const bg = fixture.nativeElement.querySelector(
+      'select[aria-label="Story Backgrounds"]',
+    ) as HTMLSelectElement;
+    bg.value = 'project';
+    bg.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    expect(seen.find((r) => r.type === 'projectUpdate')).toMatchObject({
+      projectId: 'p1',
+      backgroundDisplayMode: 'project',
+    });
+    expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeTruthy();
+  });
+
+  it('the Default Image Profile select is a disabled (deferred) affordance', async () => {
+    const fixture = await render(
+      stubClient((r) => (r.type === 'projectAestheticGet' ? { content: '' } : {})),
+      project(),
+    );
+    const prof = fixture.nativeElement.querySelector(
+      'select[aria-label="Default Image Profile"]',
+    ) as HTMLSelectElement;
+    expect(prof.disabled).toBe(true);
+  });
+
+  it('round-trips the aesthetic content byte-exact through the mocked client', async () => {
+    const saved: DispatchReq[] = [];
+    const content = '# House style\n\n- muted **sepia** tones\n';
+    const fixture = await render(
+      stubClient((r) => {
+        if (r.type === 'projectAestheticGet') {
+          return r['kind'] === 'lantern' ? { content } : { content: '' };
+        }
+        if (r.type === 'projectAestheticSet') saved.push(r);
+        return {};
+      }),
+      project(),
+    );
+    const lantern = fixture.nativeElement.querySelector(
+      'textarea[aria-label="Default Image Aesthetic"]',
+    ) as HTMLTextAreaElement;
+    expect(lantern.value).toBe(content);
+    // Save it back unchanged — the bytes must match exactly.
+    const saveBtn = [
+      ...lantern.closest('qt-project-aesthetic-field')!.querySelectorAll('button'),
+    ].find((b: HTMLButtonElement) => b.textContent?.includes('Save')) as HTMLButtonElement;
+    saveBtn.click();
+    await settle(fixture);
+    expect(saved.find((r) => r.type === 'projectAestheticSet')).toMatchObject({
+      projectId: 'p1',
+      kind: 'lantern',
+      content,
+    });
+  });
+});
+
+describe('ProjectFilesCard', () => {
+  function file(over: Partial<ProjectFileDto> = {}): ProjectFileDto {
+    return {
+      id: 'f1',
+      fileName: 'map.png',
+      mimeType: 'image/png',
+      fileSizeBytes: 2048,
+      category: 'image',
+      filepath: '/uploads/map.png',
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+      ...over,
+    };
+  }
+
+  async function render(files: ProjectFileDto[]): Promise<ComponentFixture<ProjectFilesCard>> {
+    const client = stubClient((r) => (r.type === 'projectFileList' ? { files } : {}));
+    TestBed.configureTestingModule({
+      imports: [ProjectFilesCard],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: client },
+      ],
+    });
+    const fixture = TestBed.createComponent(ProjectFilesCard);
+    fixture.componentRef.setInput('projectId', 'p1');
+    fixture.componentRef.setInput('defaultOpen', true);
+    fixture.detectChanges();
+    await settle(fixture);
+    return fixture;
+  }
+
+  it('shows the empty state when there are no files', async () => {
+    const empty = await render([]);
+    expect(empty.nativeElement.textContent).toContain('No files in this project yet');
+  });
+
+  it('lists files with size and category', async () => {
+    const fixture = await render([file({ fileName: 'map.png', category: 'image' })]);
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('map.png');
+    expect(text).toContain('2.0 KB');
+    expect(text).toContain('image');
+  });
+
+  it('caps the list at the first 10 files and disables Browse All Files', async () => {
+    const many = Array.from({ length: 14 }, (_, i) => file({ id: `f${i}`, fileName: `f${i}.png` }));
+    const fixture = await render(many);
+    const rows = fixture.nativeElement.querySelectorAll('img');
+    expect(rows.length).toBe(10);
+    const browse = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.trim() === 'Browse All Files',
+    ) as HTMLButtonElement;
+    expect(browse.disabled).toBe(true);
   });
 });

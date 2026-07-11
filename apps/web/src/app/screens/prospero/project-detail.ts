@@ -16,12 +16,15 @@ import type {
   DocumentStoreSummary,
   ProjectDetail as ProjectDetailDto,
 } from '../../core/core-contract';
+import { CollapsibleCard } from '../../ui/collapsible-card';
 import { ErrorAlert } from '../../ui/error-alert';
 import { LoadingState } from '../../ui/loading-state';
 import { GroupStoresCard } from '../groups/group-stores-card';
 import { ProjectChatsSection } from './cards/project-chats-section';
 import { ProjectCharactersCard } from './cards/project-characters-card';
+import { ProjectFilesCard } from './cards/project-files-card';
 import { ProjectHeader, type ProjectEditForm } from './cards/project-header';
+import { ProjectImageGenerationCard } from './cards/project-image-generation-card';
 import { ProjectModelBehaviorCard } from './cards/project-model-behavior-card';
 import { ProjectSettingsCard } from './cards/project-settings-card';
 import { resolveFirstVisit } from './project-card-state';
@@ -39,21 +42,26 @@ import {
  * `projectGet`, with per-card expansion memory (all expanded on the first visit,
  * collapsed after — localStorage `quilltap_project_visited_{id}`).
  *
- * Tier-1 cards: Header, Scriptorium (linked stores + unlink), Characters, Model
- * Behavior, Settings (instructions + state), plus the full-width chats section.
- * Files / Scenarios / Wardrobe / Image Generation land in the tier-2 slice.
+ * Cards: Header, Files (list + thumbnails), Scriptorium (linked stores +
+ * unlink), Characters, Model Behavior, Settings (instructions + state), Image
+ * Generation (selects + aesthetic editors), plus the full-width chats section.
+ * Scenarios + Wardrobe render as loud "not yet available" cards (deferred — see
+ * the inline note).
  */
 @Component({
   selector: 'qt-project-detail',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    CollapsibleCard,
     LoadingState,
     ErrorAlert,
     ProjectHeader,
     GroupStoresCard,
+    ProjectFilesCard,
     ProjectCharactersCard,
     ProjectModelBehaviorCard,
     ProjectSettingsCard,
+    ProjectImageGenerationCard,
     ProjectChatsSection,
   ],
   template: `
@@ -85,11 +93,39 @@ import {
         }
 
         <div class="mt-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 grid-flow-row-dense">
+          <qt-project-files-card [projectId]="id()" [defaultOpen]="firstVisit" />
           <qt-group-stores-card
             [stores]="stores()"
             [unlinking]="storeUnlinking()"
             (unlink)="onUnlinkStore($event)"
           />
+
+          <!-- Scenarios + Wardrobe: DEFERRED LOUDLY. The scenario dispatch body
+               fields (v4 filename/body/newFilename vs the pinned name/content)
+               aren't reconciled by lane A yet; the project wardrobe inline form
+               (360 ln) is banked to a follow-up slice. Both render a loud
+               "not yet available" card rather than a silent omission. -->
+          <qt-collapsible-card
+            title="Scenarios"
+            description="Reusable starting scenes for new chats in this project"
+            icon="scenarios"
+            [defaultOpen]="firstVisit"
+          >
+            <p class="qt-text-secondary text-sm">
+              Managing this project's scenarios is not yet available in this vertical.
+            </p>
+          </qt-collapsible-card>
+          <qt-collapsible-card
+            title="Wardrobe"
+            description="Project-tier outfits for this project's chats"
+            icon="wardrobe"
+            [defaultOpen]="firstVisit"
+          >
+            <p class="qt-text-secondary text-sm">
+              Managing this project's wardrobe is not yet available in this vertical.
+            </p>
+          </qt-collapsible-card>
+
           <qt-project-characters-card [project]="project()!" [defaultOpen]="firstVisit" />
           <qt-project-model-behavior-card [project]="project()!" [defaultOpen]="firstVisit" />
           <qt-project-settings-card
@@ -99,6 +135,7 @@ import {
             (formChange)="patchForm($event)"
             (save)="save()"
           />
+          <qt-project-image-generation-card [project]="project()!" [defaultOpen]="firstVisit" />
         </div>
 
         <qt-project-chats-section [projectId]="id()" />

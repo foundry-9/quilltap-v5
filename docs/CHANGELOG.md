@@ -106,6 +106,21 @@ compared at the decoded level (identical IHDR + tEXt chunks and inflated
 pixels — v4 zlib-compresses the IDAT, the port emits stored DEFLATE blocks,
 the one declared seam). New oracle `harness/oracle/cases/st-png.ts` +
 `st_png_equivalence` differential.
+P4.6l (lane B, in progress) — the project-detail tier-2 cards. The **Files**
+card lists the first 10 files (image thumbnails, name, size, category; a plain
+lightbox on click; "Browse All Files" disabled — the FileBrowser family + file
+upload defer). The **Image Generation** card ships the Avatar Generation,
+Announce Lantern Images, and Story-Background immediate selects plus the two
+aesthetic textareas (byte-exact round-trip via `projectAestheticGet/Set`); the
+Default Image Profile select is a disabled affordance (no image-profiles listing
+surface this round). Both wired into the detail card grid.
+
+**Scenarios + Wardrobe defer LOUDLY** (disabled "not yet available" cards, not
+silent omissions): the scenario dispatch body fields (v4 filename/body/
+newFilename vs the pinned name/content) aren't reconciled by lane A yet, and the
+project wardrobe inline form (360 ln) is banked — both are OPEN tier-2 remaining
+for a follow-up slice. SPA 0.5.15.
+
 P4.6l (lane B, in progress) — the characters riders + the `<select [value]>`
 audit (dogfood finding #6 class). The Photo Gallery "Upload Photo" button is now
 live: it multipart-POSTs to lane C's `POST /api/v1/characters/{id}/photos` web

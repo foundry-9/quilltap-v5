@@ -6912,3 +6912,32 @@ selects) binds `[selected]` per option from the start.
 **Gate (commit 3):** `ng test` 36 files / 231 tests green (2 new gallery-upload 
 tests; settings + characters specs green after the conversions); `ng build` 
 clean. SPA 0.5.14.
+
+**Commit 4 — the project-detail tier-2 cards (Files + Image Generation).**
+`cards/project-files-card.ts` (list first 10 files, image thumbnails via the
+blob filepath, name/size/category, a plain-`<img>` lightbox on click; "Browse
+All Files" disabled — the FileBrowser/FilePreview family + project file upload
+are tier-3 loud deferrals). `cards/project-image-generation-card.ts` (Avatar
+Generation + Announce Lantern Images + Story-Background display-mode immediate
+selects, all static-option → per-option `[selected]`; the Default Image Profile
+select disabled — no image-profiles listing dispatch surface this round) +
+`cards/project-aesthetic-field.ts` (the two aesthetic textareas over
+`projectAestheticGet/Set`, byte-exact round-trip; v4's Lexical editor → plain
+textarea, recorded). Both wired into `project-detail.ts`.
+
+**OPEN tier-2 remaining (deferred LOUDLY — disabled "not yet available" cards in
+the detail grid, NOT silent):**
+- **Scenarios card + ScenariosManager** — blocked on the scenario dispatch body
+  fields: v4's REST uses `filename`/`body`/`newFilename` (+ `name`/`description`/
+  `isDefault`, 5 fields on create), but the pinned dispatch contract only has
+  `{name, content, isDefault}` (3 fields, no explicit filename on create). Lane A
+  must pin the exact scenario create/update/rename bodies before this can be
+  built without speculative field mapping. The core-contract's
+  `Group/ProjectScenario*` variants may need field changes at that point.
+- **Wardrobe card + ProjectWardrobeManager** (v4 360-ln self-contained inline
+  form: title/description/imagePrompt/slot-types/appropriateness/isDefault/
+  replace/composite componentItemIds). Banked to a follow-up slice; the
+  `projectWardrobe*` dispatch variants (opaque `item` bag) are in the contract.
+
+**Gate (commit 4):** `ng test` 36 files / 237 tests green (6 new: ImageGen +
+Files + aesthetic round-trip); `ng build` clean. SPA 0.5.15.
