@@ -289,9 +289,17 @@ records THERE. Update this summary only when a phase or round completes.
   chats / photo gallery JSON legs / ST import-export JSON) + the SPA
   Conversations tab, delete flow, gallery, and ST import/Export-JSON, with
   three live e2e beats. The characters family's remaining deferrals are
-  enumerated loud refusals (ST PNG, photo multipart upload,
-  photo-save-fileid, the tier-3 LLM services, the wardrobe dialog).
+  enumerated loud refusals (the tier-3 LLM services, the wardrobe dialog).
+- **The P4.6k ∥ P4.6l ∥ P4.6m groups+projects+multipart round: UNIFIED on
+  main (2026-07-11) — P4.6m CLOSED; P4.6k/P4.6l LANDED-partial.** The
+  groups + projects (Prospero) dispatch surface ∥ the Groups + Prospero
+  SPA verticals (+ the characters upload/PNG riders and the dogfood-#6
+  select audit) ∥ the quilltap-web multipart machinery closing the
+  photo-upload / photo-save-fileid / ST-PNG deferrals. Still
+  refusal-armed: scenarios both families (needs the field re-pin from
+  v4's Zod schemas), `list-files` two-branch, the SPA Scenarios/Wardrobe
+  cards — see the order status headers + the phase-4 status block.
 - **Oracle baseline:** v4 HEAD `a7b1398d` (drift-check before every round).
-  Versions: core 0.0.172, harness 0.0.157, host 0.0.10, web 0.0.7, SPA 0.5.8.
+  Versions: core 0.0.176, harness 0.0.161, host 0.0.10, web 0.0.10, SPA 0.5.16.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

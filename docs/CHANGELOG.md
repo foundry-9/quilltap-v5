@@ -2,6 +2,27 @@
 
 ## Recent Changes
 
+Unified the P4.6k ∥ P4.6l ∥ P4.6m groups+projects+multipart round onto
+main. Lane A landed the groups + projects (Prospero) dispatch surface
+(CRUD/members/roster/chats/state/tool-settings/mount-points + wardrobe +
+background/aesthetic, proven by the groups-routes [14] and projects-routes
+[33] differentials, over a new committed groups-projects fixture); lane B
+landed the Groups + Prospero SPA verticals (groups section + editor, the
+/prospero list + card-grid detail, Projects nav) plus the characters
+upload/PNG riders and the finding-#6 select audit; lane C closed ALL
+three byte-shaped characters deferrals (multipart photo upload,
+photo-save-fileid both storage modes, ST PNG export/import) with the
+hand-rolled PNG codec proven byte-exact (st-png tier-1) and the reusable
+quilltap-web multipart helper. Unification wires: the nested
+group/project update-bag reconciliation, the .qt-page-container dialog
+z-trap fix, and six live e2e beats. Gate: clippy clean both feature
+sets, five fresh oracles at `a7b1398d` green by name, 283 workspace
+suites / 1221 tests, ng test 237, ng build clean, Playwright 16/16.
+Still refusal-armed: scenarios + participant-union and list-files
+(P4.6k), the Scenarios/Wardrobe cards (P4.6l). Versions: core 0.0.176,
+harness 0.0.161, web 0.0.10, SPA 0.5.16.
+
+
 Unification wires for the P4.6k ∥ P4.6l ∥ P4.6m round (live-seam fixes
 found by the first real-server walks). Contract reconciliation: the SPA's
 `groupUpdate`/`projectUpdate`/`projectCreate` senders now ride the nested

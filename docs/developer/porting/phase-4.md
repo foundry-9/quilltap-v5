@@ -500,6 +500,38 @@ images), the Memory/Images/Templates verticals per the P4.6+ screen-family
 list, the `.qtap` sample-content import, or P4.7 (`quilltap-tauri`).
 Round record: `status-log.md`.
 
+**The P4.6k ∥ P4.6l ∥ P4.6m groups+projects+multipart round is UNIFIED on
+main (2026-07-11) — P4.6m is CLOSED; P4.6k/P4.6l are LANDED with
+enumerated remainders.** Lane A (P4.6k) landed the groups + projects
+(Prospero) dispatch surface — groups CRUD/members/mount-points, projects
+CRUD/roster/chats/state/tool-settings/mount-points, project wardrobe,
+background + aesthetic — proven by the `groups_routes_equivalence` (14)
+and `projects_routes_equivalence` (33) differentials over the new
+committed `groups-projects-{main,mount}.db` fixture. Lane B (P4.6l)
+landed the Groups section + routed editor (on the Characters page), the
+`/prospero` list + card-grid detail (8 cards, per-field immediate saves),
+the enabled Projects nav item, the characters gallery-upload/PNG-export
+riders, and the dogfood-#6 `<select [value]>` audit (3 converted, 5
+proven safe). Lane C (P4.6m, COMPLETE) gave quilltap-web its multipart
+machinery and closed the three byte-shaped characters deferrals: the
+photo multipart upload, the fileId save leg (both storage-key modes), and
+ST PNG export/import (the hand-rolled tEXt codec, tier-1 byte-exact; the
+placeholder-DEFLATE and avatar-WebP-transcode seams declared).
+Unification wires: the nested `group`/`project` update-bag
+reconciliation (the differential-proven shape won over the SPA's flat
+sends), the `.qt-page-container > *` dialog z-trap fix
+(`:has(.qt-dialog-overlay)` raise), and six live e2e beats (upload, PNG
+export, the four groups/projects walks). **Still refusal-armed:**
+scenarios (both families + the participant-union; re-pin the scenario
+body fields from v4's Zod schemas first — v4 uses
+`filename`/`body`/`newFilename`, richer than the pinned sketch),
+`list-files` two-branch, and the SPA Scenarios/Wardrobe cards. **Next
+candidates:** the scenarios re-pin + remainder round (closing P4.6k/l),
+the remaining Salon slices (Document Mode pane, terminal pane, courier,
+images), the Memory/Images/Templates verticals, the `.qtap`
+sample-content import, or P4.7 (`quilltap-tauri`). Round record:
+`status-log.md`.
+
 **The round as planned (2026-07-10): four parallel lanes, orders
 written** (drift check at planning time: v4 HEAD still `a7b1398d`; four
 fresh surveys — the characters API + UI, v4's long-chat rendering, the

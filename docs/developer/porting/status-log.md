@@ -6941,3 +6941,73 @@ the detail grid, NOT silent):**
 
 **Gate (commit 4):** `ng test` 36 files / 237 tests green (6 new: ImageGen +
 Files + aesthetic round-trip); `ng build` clean. SPA 0.5.15.
+
+## The P4.6k ∥ P4.6l ∥ P4.6m groups+projects+multipart round — UNIFIED on main (2026-07-11)
+
+Three lanes cherry-picked onto `unify/p4.6klm` (lane A's four server
+commits, lane C's five multipart/PNG commits, lane B's four SPA commits;
+conflicts only on version files + the CHANGELOG/status-log unions). v4
+baseline re-verified at `a7b1398d` before unification. The reconciliation
+restored lane C's `flate2` harness dev-dep dropped by a version-line
+resolution (the whole-file Cargo.toml check earns its keep again).
+
+**The unification wires (two commits):**
+
+- **The A↔B dispatch contract diffed name-for-name:** 53 group/project
+  variants, identical on both sides. But the LIVE walks caught a
+  field-shape drift the name diff can't see: the SPA sent
+  `groupUpdate`/`projectUpdate`/`projectCreate` fields FLAT while lane
+  A's differential-proven shape nests the patch in a `group`/`project`
+  bag. Senders, `core-contract.ts`, and unit tests reconciled to the
+  pinned server shape (the same reconciliation class as P4.6i/j's
+  gallery envelope: the differential-proven side wins).
+- **A real SPA layering bug:** `.qt-page-container > *` (the v4-ported
+  story-background rule) gives every direct page child a z-1 stacking
+  context, trapping any `.qt-dialog-overlay` (fixed, z-60) opened from an
+  EARLY child beneath later siblings — the groups Create dialog was
+  unclickable under the roster grid. Diagnosed live in the browser
+  (`elementFromPoint` pierced the overlay). Fixed in
+  `_content.css` with `.qt-page-container > *:has(.qt-dialog-overlay)
+  { z-index: 60 }` — systemic, covers every dialog-in-early-child site.
+- **Live e2e beats added/activated:** the characters gallery multipart
+  upload + the ST PNG-export download (NEW beats over lane C's routes —
+  the PNG assertion checks the embedded card, since the container is
+  v4-faithful to the avatar bytes: Aria's WebP avatar yields a RIFF
+  container per v4's clamped-offset quirk); the groups/projects walks
+  activated over lane A's fixture. Gesture fixes (fix the gesture, never
+  the assertion): the fixture userId-rewrite tolerates absent tables
+  (`tags` — never materialized; repos auto-ensure) and un-scoped
+  store-backed rows (groups/projects have no `userId` column); strict-mode
+  locator scoping for headings/buttons that lane B's own commit-4 cards
+  made ambiguous; the upload beat tolerates an empty gallery (the earlier
+  remove beat may have taken the last photo).
+
+**The full gate:** `cargo fmt` clean; clippy `-D warnings` clean on the
+default set AND `--features quilltap-core/native-transport`; release
+build clean; the five round oracles regenerated FRESH from v4 at
+`a7b1398d` (groups-routes 14, projects-routes 33, st-png 13,
+photo-upload 5, avatar-write 1) and every differential re-run green by
+name; `cargo test --workspace` green (283 suites / 1221 tests); `ng test`
+36 files / 237 green; `ng build` clean; the FULL Playwright suite 16/16
+green (incl. the two new rider beats and the four newly-live
+groups/projects beats). Mid-gate ENOSPC handled per the standing recipe
+(lane worktrees removed post-cherry-pick, incremental cache cleared,
+`CARGO_INCREMENTAL=0`).
+
+**What stays OPEN (all loud, none silent):** P4.6k unit 3 — scenarios
+(both families + the participant-union, 12 refusal-armed variants; the
+scenario body fields need a re-pin from v4's Zod schemas first — lane B
+found v4 uses `filename`/`body`/`newFilename`, richer than the pinned
+sketch) and unit 5's `list-files` two-branch (2 variants); P4.6l's
+Scenarios + Wardrobe cards (loud disabled cards, blocked on/banked with
+the same re-pin); the P4.6l recorded divergences (disabled link-store /
+roleplay-template / tool-settings / image-profile pickers pending their
+listing surfaces; textarea editors for Lexical; the Load-more button).
+P4.6m is COMPLETE — the photo-upload / photo-save-fileid / ST-PNG
+deferrals are CLOSED; the remaining multipart families (images-v2, chat
+attachments, files upload, mount ingest, .qtap, themes) stay deferred
+with the reusable `quilltap-web::multipart` helper waiting.
+
+**Orders:** P4.6m CLOSED; P4.6k and P4.6l LANDED-partial with enumerated
+remainders (see their status headers). Versions after the round: core
+0.0.176, harness 0.0.161, host 0.0.10, web 0.0.10, SPA 0.5.16.
