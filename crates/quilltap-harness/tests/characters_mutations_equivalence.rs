@@ -423,6 +423,90 @@ fn dump_saved_photo_links(db: &Db, mount_point_id: &str) -> Value {
     .unwrap()
 }
 
+/// Dump every cascade-touched table (baked ids → no remap), in the oracle's shape.
+fn dump_cascade_tables(db: &Db) -> Value {
+    let main_part = db
+        .read_main(|main| {
+            let simple = |sql: &str, cols: &[&str]| -> Result<Vec<Value>, quilltap_core::db::DbError> {
+                let mut stmt = main.prepare(sql)?;
+                let ncols = cols.len();
+                let rows = stmt.query_map([], move |r| {
+                    let mut o = serde_json::Map::new();
+                    for (i, c) in cols.iter().enumerate() {
+                        o.insert(c.to_string(), Value::String(r.get::<_, String>(i)?));
+                    }
+                    let _ = ncols;
+                    Ok(Value::Object(o))
+                })?;
+                let mut out = Vec::new();
+                for row in rows {
+                    out.push(row?);
+                }
+                Ok(out)
+            };
+            Ok(json!({
+                "characters": simple("SELECT id FROM characters ORDER BY id", &["id"])?,
+                "chats": simple("SELECT id FROM chats ORDER BY id", &["id"])?,
+                "messages": simple("SELECT id, chatId FROM chat_messages ORDER BY id", &["id", "chatId"])?,
+                "memories": simple("SELECT id, characterId FROM memories ORDER BY id", &["id", "characterId"])?,
+                "pluginData": simple("SELECT id, characterId FROM character_plugin_data ORDER BY id", &["id", "characterId"])?,
+            }))
+        })
+        .unwrap();
+    let mount_part = db
+        .read_mount_index(|mount| {
+            let mut links = Vec::new();
+            {
+                let mut stmt = mount.prepare(
+                    "SELECT id, mountPointId, relativePath FROM doc_mount_file_links ORDER BY id",
+                )?;
+                let rows = stmt.query_map([], |r| {
+                    Ok(json!({
+                        "id": r.get::<_, String>(0)?,
+                        "mountPointId": r.get::<_, String>(1)?,
+                        "relativePath": r.get::<_, String>(2)?,
+                    }))
+                })?;
+                for row in rows {
+                    links.push(row?);
+                }
+            }
+            let mut files = Vec::new();
+            {
+                let mut stmt =
+                    mount.prepare("SELECT id, sha256 FROM doc_mount_files ORDER BY id")?;
+                let rows = stmt.query_map([], |r| {
+                    Ok(json!({ "id": r.get::<_, String>(0)?, "sha256": r.get::<_, String>(1)? }))
+                })?;
+                for row in rows {
+                    files.push(row?);
+                }
+            }
+            let mut blobs = Vec::new();
+            {
+                let mut stmt =
+                    mount.prepare("SELECT fileId FROM doc_mount_blobs ORDER BY fileId")?;
+                let rows =
+                    stmt.query_map([], |r| Ok(json!({ "fileId": r.get::<_, String>(0)? })))?;
+                for row in rows {
+                    blobs.push(row?);
+                }
+            }
+            Ok(json!({ "links": links, "files": files, "blobs": blobs }))
+        })
+        .unwrap();
+    json!({
+        "characters": main_part["characters"],
+        "chats": main_part["chats"],
+        "messages": main_part["messages"],
+        "memories": main_part["memories"],
+        "pluginData": main_part["pluginData"],
+        "links": mount_part["links"],
+        "files": mount_part["files"],
+        "blobs": mount_part["blobs"],
+    })
+}
+
 #[test]
 fn characters_mutations_match_oracle() {
     let Some(oracle_path) = env_or_skip("QT_ORACLE_CHARACTERS_MUTATIONS") else {
@@ -758,6 +842,26 @@ fn characters_mutations_match_oracle() {
             extra.push("photo_remove_avatar_tables".to_string());
         } else {
             eprintln!("[photo_remove_avatar tables] OK.");
+        }
+    }
+
+    {
+        // P4.6i: cascade-delete Aria (cascadeChats + cascadeImages). Diff the
+        // {success,deletedChats,deletedImages,deletedMemories} body AND the full
+        // cascade-table dump (baked ids → no remap).
+        let db = fresh_db(&spec, "cascade");
+        let r = rt.block_on(characters::character_delete(&db, &uid, ARIA, true, true));
+        run("character_delete_cascade", r);
+        let got = dump_cascade_tables(&db);
+        let want = &oracle["character_delete_cascade"]["tables"];
+        if norm_tables(&got) != norm_tables(want) {
+            eprintln!(
+                "[character_delete_cascade tables] MISMATCH:\n{}",
+                first_diff(&norm_tables(&got), &norm_tables(want))
+            );
+            extra.push("character_delete_cascade_tables".to_string());
+        } else {
+            eprintln!("[character_delete_cascade tables] OK.");
         }
     }
 

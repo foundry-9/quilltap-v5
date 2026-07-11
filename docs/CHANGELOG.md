@@ -14,6 +14,27 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+P4.6i (characters server remainder, lane A): ported the character
+cascade-delete preview + executor (`services::cascade_delete`). Preview
+(`CharacterCascadePreview`) composes the exclusive-chat / exclusive-image /
+exclusive-chat-image finders + memory count over the RAW character row
+(broken-vault-safe). Delete (`CharacterDelete`, `findByIdRaw` ownership) runs
+the destructive fan-out: exclusive chats + their images, exclusive character
+images (vault-links via the gallery remove, legacy files via the GC-safe file
+delete), memories via the unlink-batch chokepoint, the vector index, plugin
+data, and the slim row. Wired both dispatch arms — the last two of the eight
+characters `not_available` refusals are now live. The legacy-`files`
+exclusive-image branch and `findExclusiveImagesForChats` are ported faithfully
+but not corpus-exercised (the fixture avatar is a vault-link with no chat
+attachments); `deleteFileCompletely`'s host byte reclaim is a host seam.
+Differentials: `characters_reads_equivalence` +cascade_preview;
+`characters_mutations_equivalence` +character_delete_cascade (the
+`{success,deletedChats,deletedImages,deletedMemories}` body AND the full
+cascade-touched multi-table dump across both DBs — characters / chats /
+messages / memories / plugin data / vault links / files / blobs). Green at
+a7b1398d. This CLOSES the P4.6f server remainder except the enumerated tier-3
+refusals.
+
 P4.6i (characters server remainder, lane A): ported the character photo
 gallery SAVE-by-id JSON leg (`save_to_character_gallery` +
 `save_link_to_character_gallery`). The `linkId` leg reads bytes from the

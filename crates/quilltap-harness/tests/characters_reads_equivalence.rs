@@ -299,6 +299,11 @@ fn characters_reads_match_oracle() {
             &db, uid, ARIA, None, None,
         )),
     );
+    // P4.6i: the cascade-delete preview.
+    push(
+        "cascade_preview",
+        response_data(&characters::character_cascade_preview(&db, uid, ARIA)),
+    );
 
     drop(db);
     let _ = std::fs::remove_dir_all(&scratch);

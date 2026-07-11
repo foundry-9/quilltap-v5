@@ -199,6 +199,9 @@ async function main(): Promise<void> {
     // P4.6i: the character photo gallery listing — `{ entries, total, hasMore }`.
     // Aria's vault carries its avatar (images/avatar.webp), surfaced by the list.
     { name: 'photo_list', module: '@/app/api/v1/characters/[id]/photos/route', url: `${B}/${aria}/photos`, params: { id: aria } },
+    // P4.6i: the cascade-delete preview — Aria's exclusive chat + vault-link
+    // avatar + memory count.
+    { name: 'cascade_preview', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=cascade-preview`, params: { id: aria } },
   ];
 
   const outLines: string[] = [];

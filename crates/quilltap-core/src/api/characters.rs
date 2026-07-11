@@ -1471,6 +1471,111 @@ pub async fn character_photo_save_by_id(
     }
 }
 
+// ===========================================================================
+// Cascade delete + preview (v4 cascade-delete.ts)
+// ===========================================================================
+
+/// v4 `?action=cascade-preview` (`characters/[id]/handlers/get.ts:236`) —
+/// overlaid ownership → `getCascadeDeletePreview` → the projected preview DTO
+/// `{ characterId, characterName, exclusiveChats:[{id,title,messageCount,
+/// lastMessageAt}], exclusiveCharacterImageCount, exclusiveChatImageCount,
+/// totalExclusiveImageCount, memoryCount }`.
+pub fn character_cascade_preview(db: &Db, _user_id: &str, character_id: &str) -> Response {
+    let cid = character_id.to_string();
+    let result = read_main_mount(db, move |main, mount| {
+        // v4's GET-action ownership gate (overlaid findById + checkOwnership).
+        if let Err(r) = require_character(main, mount, &cid) {
+            return Ok(Err(r));
+        }
+        let preview =
+            match crate::services::cascade_delete::get_cascade_delete_preview(main, mount, &cid)? {
+                Some(p) => p,
+                None => return Ok(Err(internal("Failed to generate preview"))),
+            };
+        let exclusive_chats: Vec<Value> = preview
+            .exclusive_chats
+            .iter()
+            .map(|(chat, message_count)| {
+                let mut o = serde_json::Map::new();
+                o.insert("id".into(), chat.get("id").cloned().unwrap_or(Value::Null));
+                o.insert(
+                    "title".into(),
+                    chat.get("title").cloned().unwrap_or(Value::Null),
+                );
+                o.insert("messageCount".into(), json!(message_count));
+                // v4 `lastMessageAt: c.chat.lastMessageAt` — omitted when the slim
+                // column is NULL (chats_read drops the key).
+                if let Some(lma) = chat.get("lastMessageAt") {
+                    o.insert("lastMessageAt".into(), lma.clone());
+                }
+                Value::Object(o)
+            })
+            .collect();
+        let char_img = preview.exclusive_character_images.len() as i64;
+        let chat_img = preview.exclusive_chat_images.len() as i64;
+        Ok(Ok(json!({
+            "characterId": cid,
+            "characterName": preview.character_name,
+            "exclusiveChats": exclusive_chats,
+            "exclusiveCharacterImageCount": char_img,
+            "exclusiveChatImageCount": chat_img,
+            "totalExclusiveImageCount": char_img + chat_img,
+            "memoryCount": preview.memory_count,
+        })))
+    });
+    match result {
+        Ok(Ok(body)) => Response::Character(body),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `DELETE /characters/[id]` (`[id]/handlers/delete.ts`) — `findByIdRaw`
+/// ownership (a broken-vault character stays deletable), then
+/// `executeCascadeDelete` with the `cascadeChats`/`cascadeImages` flags. Body
+/// `{ success, deletedChats, deletedImages, deletedMemories }`; a not-`success`
+/// result → serverError.
+pub async fn character_delete(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    cascade_chats: bool,
+    cascade_images: bool,
+) -> Response {
+    let cid = character_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        // v4 raw-row ownership gate (broken-vault-safe).
+        if characters_read::find_by_id_raw(main, &cid)?.is_none() {
+            return Ok(Err(not_found("Character")));
+        }
+        let (success, dc, di, dm) = crate::services::cascade_delete::execute_cascade_delete(
+            main,
+            mount,
+            &cid,
+            cascade_chats,
+            cascade_images,
+        )?;
+        Ok(Ok((success, dc, di, dm)))
+    })
+    .await;
+    match out {
+        Ok(Ok((success, dc, di, dm))) => {
+            if !success {
+                internal("Failed to delete character")
+            } else {
+                Response::Character(json!({
+                    "success": true,
+                    "deletedChats": dc,
+                    "deletedImages": di,
+                    "deletedMemories": dm,
+                }))
+            }
+        }
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
 /// The `updateCharacterSchema` keys (v4 `put.ts`). Zod `.parse` strips unknown
 /// keys, so the patch is whitelisted to exactly these; the vault write-overlay
 /// routes the managed ones (`title`/`identity`/… + `scenarios`/`systemPrompts`/

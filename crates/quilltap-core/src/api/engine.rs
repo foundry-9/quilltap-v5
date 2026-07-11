@@ -708,10 +708,29 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
-            Request::CharacterDelete { .. } => super::characters::not_available("delete"),
-            Request::CharacterCascadePreview { .. } => {
-                super::characters::not_available("cascade-preview")
-            }
+            Request::CharacterDelete {
+                character_id,
+                cascade_chats,
+                cascade_images,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_delete(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        cascade_chats,
+                        cascade_images,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterCascadePreview { character_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_cascade_preview(&db, SINGLE_USER_ID, &character_id)
+                }
+                Err(r) => r,
+            },
             Request::CharacterAvatar {
                 character_id,
                 image_id,

@@ -74,7 +74,8 @@ interface CaseSpec {
     | 'depiction-put'
     | 'st-import'
     | 'photo-remove'
-    | 'photo-save';
+    | 'photo-save'
+    | 'character-delete';
   id?: string;
   /** For wardrobe item ops: discover the baked item id by this title. */
   itemTitle?: string;
@@ -121,6 +122,29 @@ function dumpTagTables(getRawDatabase: () => { prepare: (s: string) => { all: ()
   }
   dump.tags = raw.prepare('SELECT id, name FROM tags ORDER BY id').all();
   return dump;
+}
+
+/** Dump every cascade-touched table (baked ids identical on both sides → no
+ *  remap): the character/chat/message/memory/plugin rows (MAIN) + the vault
+ *  link/file/blob rows (MOUNT-INDEX). */
+function dumpCascadeTables(
+  mainDb: { prepare: (s: string) => { all: (...a: unknown[]) => unknown } },
+  mountDb: { prepare: (s: string) => { all: (...a: unknown[]) => unknown } },
+): unknown {
+  return {
+    characters: mainDb.prepare('SELECT id FROM characters ORDER BY id').all(),
+    chats: mainDb.prepare('SELECT id FROM chats ORDER BY id').all(),
+    messages: mainDb.prepare('SELECT id, chatId FROM chat_messages ORDER BY id').all(),
+    memories: mainDb.prepare('SELECT id, characterId FROM memories ORDER BY id').all(),
+    pluginData: mainDb
+      .prepare('SELECT id, characterId FROM character_plugin_data ORDER BY id')
+      .all(),
+    links: mountDb
+      .prepare('SELECT id, mountPointId, relativePath FROM doc_mount_file_links ORDER BY id')
+      .all(),
+    files: mountDb.prepare('SELECT id, sha256 FROM doc_mount_files ORDER BY id').all(),
+    blobs: mountDb.prepare('SELECT fileId FROM doc_mount_blobs ORDER BY fileId').all(),
+  };
 }
 
 function mockRequest(url: string, body: unknown): unknown {
@@ -213,6 +237,24 @@ async function runCase(
     let status: number;
     let body: unknown;
     let tables: unknown;
+    if (c.kind === 'character-delete') {
+      // DELETE /api/v1/characters/[id]?cascadeChats=true&cascadeImages=true.
+      const url = `http://localhost/api/v1/characters/${ARIA}?cascadeChats=true&cascadeImages=true`;
+      const { DELETE } = (await import('@/app/api/v1/characters/[id]/route')) as {
+        DELETE: (...a: unknown[]) => Promise<unknown>;
+      };
+      const response = (await DELETE(mockRequest(url, undefined), {
+        params: Promise.resolve({ id: ARIA }),
+      })) as { status: number; json: () => Promise<unknown> };
+      status = response.status;
+      body = await response.json();
+      const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+      const { getRawMountIndexDatabase } = await import(
+        '@/lib/database/backends/sqlite/mount-index-client'
+      );
+      tables = dumpCascadeTables(getRawDatabase() as never, getRawMountIndexDatabase() as never);
+      return { name: c.name, status, body, tables };
+    }
     if (c.kind === 'photo-save') {
       // POST /api/v1/characters/[id]/photos {linkId}. Save the source vault link
       // (the avatar) into photos/. Date is frozen (see FIXED_KEPT_AT) so the
@@ -634,6 +676,10 @@ async function main(): Promise<void> {
     // defaultImageId-pointer clear + the GC-safe deleteWithGC (last link → the
     // file + blob are reclaimed).
     { name: 'photo_remove_avatar', kind: 'photo-remove', photoRelativePath: 'images/avatar.webp' },
+    // P4.6i: cascade-delete Aria with cascadeChats + cascadeImages — the whole
+    // fan-out (exclusive chat + messages, vault-link avatar via the gallery
+    // remove, memories via the unlink batch, plugin data, the slim row).
+    { name: 'character_delete_cascade', kind: 'character-delete' },
   ];
 
   const outLines: string[] = [];

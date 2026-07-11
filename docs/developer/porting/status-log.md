@@ -6298,3 +6298,46 @@ return value (linkId blanked — the only mint) AND the written `photos/` link r
 raw-column dump) diff byte-exact. Green at `a7b1398d`. Versions: core 0.0.171,
 harness 0.0.156. **Unit 2 (gallery list/save/remove) COMPLETE** except the
 enumerated fileId-host-bytes + multipart deferrals.
+
+**Unit 3 — cascade delete + preview (DONE). CLOSES the P4.6f server remainder.**
+`services::cascade_delete` ports `lib/cascade-delete.ts`:
+`find_exclusive_chats_for_character` (the only AI-controlled CHARACTER
+participant is this one; user-controlled participants ignored),
+`find_exclusive_images_for_character` (defaultImageId + avatarOverrides →
+resolve_character_avatar → vault-link exclusive-by-construction, else the legacy
+`linkedTo` + not-used-elsewhere check), `find_exclusive_images_for_chats`
+(message attachments → files → not-linked-elsewhere / not-used-by-a-character),
+`get_cascade_delete_preview`, `execute_cascade_delete` (delete exclusive chats +
+their images, character images [vault-link via `remove_from_character_gallery`,
+legacy via `delete_file_completely`], memories via `delete_many_with_unlink`,
+vector index via `delete_by_character_id`, plugin data, the slim row). All over
+the RAW character (`find_by_id_raw` — broken-vault-safe). Wired
+`CharacterCascadePreview` (read, overlaid-ownership gate then the raw preview) +
+`CharacterDelete` (`findByIdRaw` ownership → executor → `{success, deletedChats,
+deletedImages, deletedMemories}`). **The last two of the eight characters
+`not_available` refusals are now LIVE.** Two seams flagged: the legacy-`files`
+exclusive-image branch + `find_exclusive_images_for_chats` are ported faithfully
+but NOT corpus-exercised (Aria's avatar is a vault-link, her exclusive chat has
+no attachments); `delete_file_completely`'s host byte reclaim
+(`fileStorageManager.deleteFile`) is a host seam (the core deletes the `files`
+metadata row). `characters.delete` removes only the slim row (the vault mount
+stays, minus the removed avatar link — matches v4). Differentials:
+`characters_reads_equivalence` +`cascade_preview`;
+`characters_mutations_equivalence` +`character_delete_cascade` (body:
+deletedChats=1/deletedImages=1/deletedMemories=2; + a full multi-table dump —
+characters/chats/messages/memories/pluginData [MAIN] + links/files/blobs
+[MOUNT], baked ids → no remap). Green at `a7b1398d`. Versions: core 0.0.172,
+harness 0.0.157.
+
+**P4.6i LANE COMPLETE.** All eight characters `not_available` arms from the P4.6f
+remainder are LIVE (delete / cascade-preview / chats / export[json] / import[json]
+/ photo-list / photo-save[linkId] / photo-remove). Remaining loud deferrals
+(reported, not silent): ST PNG export/import (`export-png` + multipart web route),
+the photo multipart upload leg, the `fileId` photo-save leg (`photo-save-fileid`,
+host bytes seam), plus the pre-existing P4.6f tier-3 LLM refusals (ai-wizard /
+optimizer / rename / ai-import / reset-builtins / refresh-archive). Unit 1
+(`deleteMemoriesWithUnlinkBatch`) was found ALREADY ported (order survey stale) —
+covered by the existing `memory_delete_tier2` differential; no duplicate authored.
+Oracle regen recipes: the characters-reads / characters-mutations `.test.ts`
+headers (both now un-mock `character-vault-bridge`; the mutations file freezes
+`global.Date` to `FIXED_KEPT_AT` for photo-save).
