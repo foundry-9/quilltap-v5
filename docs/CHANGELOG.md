@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Scoped the characters-remainder round: two agent-ready work orders that close
+the OPEN slice-5 remainder of P4.6f/P4.6g —
+`docs/developer/porting/work-orders/p4.6i-characters-remainder-server.md`
+(delete cascade + cascade-preview, per-character chats, the photo gallery
+JSON legs, ST import/export JSON — with the `deleteMemoriesWithUnlinkBatch`
+and `character-gallery-service` ports and their differentials) and
+`p4.6j-characters-remainder-spa.md` (the Conversations tab, the live
+delete/gallery/import flows, the ST-export action). The parent P4.6f/P4.6g
+status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
+
 ### 5.0-dev
 
 Four slash commands capture the porting-round workflow as repeatable process
