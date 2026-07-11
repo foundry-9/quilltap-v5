@@ -31,6 +31,17 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+Dogfood finding #6 root cause FIXED (code in `ab985d4`): the Default
+Settings tab's saves were succeeding all along — the profile/partner
+selects never displayed the stored value because a select-level `[value]`
+binding fires before the async-loaded options render, silently resetting
+to "" (Angular re-fires nothing when the options arrive; React
+re-renders). The profile/partner/prompt/scenario selects now bind
+`[selected]` per option, with regression tests that deliver the options
+after first render. Verified live against the Friday copy (stored profile
++ partner display; an edit round-trips). ~8 more `[value]`+dynamic-options
+sites are listed for audit in dogfood-findings' standing notes. SPA 0.5.11.
+
 Dogfood finding #6 (Friday smoke, partial): the Default Settings tab
 appeared to reject edits on real data. Confirmed port divergence fixed: v4
 surfaces every failed defaults save via an error toast; v5's autosave had
