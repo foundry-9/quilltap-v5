@@ -300,6 +300,101 @@ fn discover_item_id(db: &Db, character_id: &str, title: &str) -> String {
     .unwrap_or_else(|| panic!("wardrobe item titled {title} not found"))
 }
 
+/// Resolve a vault link id by its relativePath (both sides read the same baked
+/// .db, so the minted link id matches). Reads the character's mount FK off the
+/// slim row, then the link.
+fn discover_photo_link_id(db: &Db, character_id: &str, relative_path: &str) -> String {
+    let cid = character_id.to_string();
+    let rel = relative_path.to_string();
+    db.read_main(move |main| {
+        let mp_id: String = main
+            .query_row(
+                "SELECT characterDocumentMountPointId FROM characters WHERE id = ?1",
+                rusqlite::params![cid],
+                |r| r.get(0),
+            )
+            .expect("aria mount fk");
+        db.read_mount_index(move |mount| {
+            let id: String = mount
+                .query_row(
+                    "SELECT id FROM doc_mount_file_links WHERE mountPointId = ?1 AND relativePath = ?2",
+                    rusqlite::params![mp_id, rel],
+                    |r| r.get(0),
+                )
+                .expect("avatar link");
+            Ok(id)
+        })
+    })
+    .unwrap()
+}
+
+/// Dump the mount-index photo GC tables + the character's defaultImageId, in the
+/// oracle's shape.
+fn dump_photo_tables(db: &Db, character_id: &str) -> Value {
+    let cid = character_id.to_string();
+    db.read_main(move |main| {
+        let mp_id: String = main
+            .query_row(
+                "SELECT characterDocumentMountPointId FROM characters WHERE id = ?1",
+                rusqlite::params![cid],
+                |r| r.get(0),
+            )
+            .expect("aria mount fk");
+        let character: Value = main
+            .query_row(
+                "SELECT id, defaultImageId FROM characters WHERE id = ?1",
+                rusqlite::params![cid],
+                |r| {
+                    Ok(json!({
+                        "id": r.get::<_, String>(0)?,
+                        "defaultImageId": r.get::<_, Option<String>>(1)?,
+                    }))
+                },
+            )
+            .expect("aria row");
+        db.read_mount_index(move |mount| {
+            let mut links = Vec::new();
+            {
+                let mut stmt = mount.prepare(
+                    "SELECT id, relativePath FROM doc_mount_file_links WHERE mountPointId = ?1 ORDER BY id",
+                )?;
+                let rows = stmt.query_map(rusqlite::params![mp_id], |r| {
+                    Ok(json!({ "id": r.get::<_, String>(0)?, "relativePath": r.get::<_, String>(1)? }))
+                })?;
+                for row in rows {
+                    links.push(row?);
+                }
+            }
+            let mut files = Vec::new();
+            {
+                let mut stmt = mount.prepare("SELECT id, sha256 FROM doc_mount_files ORDER BY id")?;
+                let rows = stmt.query_map([], |r| {
+                    Ok(json!({ "id": r.get::<_, String>(0)?, "sha256": r.get::<_, String>(1)? }))
+                })?;
+                for row in rows {
+                    files.push(row?);
+                }
+            }
+            let mut blobs = Vec::new();
+            {
+                let mut stmt = mount.prepare("SELECT fileId FROM doc_mount_blobs ORDER BY fileId")?;
+                let rows =
+                    stmt.query_map([], |r| Ok(json!({ "fileId": r.get::<_, String>(0)? })))?;
+                for row in rows {
+                    blobs.push(row?);
+                }
+            }
+            Ok(json!({
+                "links": links,
+                "files": files,
+                "blobs": blobs,
+                "character": character,
+            }))
+        })
+    })
+    .unwrap()
+}
+
 #[test]
 fn characters_mutations_match_oracle() {
     let Some(oracle_path) = env_or_skip("QT_ORACLE_CHARACTERS_MUTATIONS") else {
@@ -561,6 +656,29 @@ fn characters_mutations_match_oracle() {
             extra.push("st_import_card_readback".to_string());
         } else {
             eprintln!("[st_import_card readback] OK.");
+        }
+    }
+
+    {
+        // P4.6i: remove Aria's avatar from the gallery. Diff the {deleted,fileGC}
+        // body AND the GC-table dump (links/files/blobs + defaultImageId) — all
+        // baked ids, so no remap.
+        let db = fresh_db(&spec, "photorm");
+        let link_id = discover_photo_link_id(&db, ARIA, "images/avatar.webp");
+        let r = rt.block_on(characters::character_photo_remove(
+            &db, &uid, ARIA, &link_id,
+        ));
+        run("photo_remove_avatar", r);
+        let got = dump_photo_tables(&db, ARIA);
+        let want = &oracle["photo_remove_avatar"]["tables"];
+        if norm_tables(&got) != norm_tables(want) {
+            eprintln!(
+                "[photo_remove_avatar tables] MISMATCH:\n{}",
+                first_diff(&norm_tables(&got), &norm_tables(want))
+            );
+            extra.push("photo_remove_avatar_tables".to_string());
+        } else {
+            eprintln!("[photo_remove_avatar tables] OK.");
         }
     }
 

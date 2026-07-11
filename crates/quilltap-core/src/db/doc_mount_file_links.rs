@@ -101,6 +101,9 @@ pub struct LinkRow {
     pub original_mime_type: Option<String>,
     pub conversion_status: String,
     pub chunk_count: i64,
+    /// `l.description` (the link's caption fallback; `''` default). Read for the
+    /// character-gallery listing's `caption` field.
+    pub description: Option<String>,
 }
 
 /// A link row joined with its file-row content fields — v4
@@ -869,8 +872,10 @@ impl<'c> DocMountFileLinksRepository<'c> {
     /// if it was the last link referencing its file — delete the file row too.
     /// Chunks cascade off the link (FK `ON DELETE CASCADE`); documents/blobs
     /// cascade off the file row. The writable open enforces `foreign_keys = ON`,
-    /// so the cascades fire. No-op when the link id is unknown.
-    pub fn delete_with_gc(&self, link_id: &str) -> Result<(), DbError> {
+    /// so the cascades fire. No-op when the link id is unknown. Returns `fileGC` —
+    /// `true` when this was the last link and the file row was reclaimed (v4
+    /// `deleteWithGC` returns `{ fileGC }`).
+    pub fn delete_with_gc(&self, link_id: &str) -> Result<bool, DbError> {
         let file_id: Option<String> = self
             .conn
             .query_row(
@@ -881,7 +886,7 @@ impl<'c> DocMountFileLinksRepository<'c> {
             .map(Some)
             .or_else(no_rows_to_none)?;
         let Some(file_id) = file_id else {
-            return Ok(());
+            return Ok(false);
         };
 
         let tx = self.conn.unchecked_transaction()?;
@@ -894,14 +899,15 @@ impl<'c> DocMountFileLinksRepository<'c> {
             params![file_id],
             |row| row.get(0),
         )?;
-        if remaining == 0 {
+        let file_gc = remaining == 0;
+        if file_gc {
             tx.execute(
                 "DELETE FROM doc_mount_files WHERE id = ?1",
                 params![file_id],
             )?;
         }
         tx.commit()?;
-        Ok(())
+        Ok(file_gc)
     }
 
     /// Idempotently create every missing `doc_mount_folders` segment along
@@ -1197,7 +1203,7 @@ impl<'c> DocMountFileLinksRepository<'c> {
                l.lastModified, l.createdAt, \
                l.allowCharacterRead, l.allowCharacterWrite, \
                l.extractedText, l.originalMimeType, l.conversionStatus, l.chunkCount, \
-               f.sha256, f.fileSizeBytes, f.fileType, f.source \
+               f.sha256, f.fileSizeBytes, f.fileType, f.source, l.description \
              FROM doc_mount_file_links l \
              JOIN doc_mount_files f ON f.id = l.fileId \
              {where_clause}"
@@ -1229,6 +1235,7 @@ impl<'c> DocMountFileLinksRepository<'c> {
             file_size_bytes: real_affinity_i64(row.get_ref(15)?),
             file_type: row.get(16)?,
             source: row.get(17)?,
+            description: row.get(18)?,
         })
     }
 }

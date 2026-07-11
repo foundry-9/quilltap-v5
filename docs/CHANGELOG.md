@@ -14,6 +14,24 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+P4.6i (characters server remainder, lane A): ported the character photo
+gallery LIST + REMOVE JSON legs (`photos::character_gallery_service::
+{list_character_gallery, remove_from_character_gallery}` + the shared
+`photo_link_summary::get_photo_link_summary_by_sha256`). List surfaces the
+vault `photos/` folder plus the historic `images/avatar.webp` +
+`images/history/*` portraits, most-recent first, each entry carrying its
+mount-blob URL / caption / tags / reverse-index link summary. Remove clears
+the character's `defaultImageId`/`avatarOverrides` pointers, then reclaims the
+link (and its file + blob when it was the last reference) through the GC-safe
+`deleteWithGC` chokepoint (now reports `fileGC`). Wired the `CharacterPhotoList`
+/ `CharacterPhotoRemove` dispatch arms (save-by-id stays a loud refusal until
+the save unit lands). Differentials: `characters_reads_equivalence` +photo_list;
+`characters_mutations_equivalence` +photo_remove_avatar (diffing the
+`{deleted,fileGC}` body AND the mount-index GC-table dump — the removed link /
+reclaimed file+blob / nulled `defaultImageId`). Both oracles now un-mock
+`character-vault-bridge` (jest.setup stubs it) so the vault resolves against
+the real DB.
+
 P4.6i (characters server remainder, lane A): ported the SillyTavern
 character-card JSON legs (`services::sillytavern::{export_st_character,
 import_st_character}`). Export (`CharacterExport` format=json) turns the

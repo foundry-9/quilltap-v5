@@ -6243,3 +6243,31 @@ The export handler returns a raw `JSON.stringify(card)` download body, so the
 reads oracle's `response.json()` yields the JSON TEXT as a string — the case
 carries a `parseStringBody` flag to parse it back for the semantic diff. Both
 green vs FRESH v4 oracles at `a7b1398d`. Versions: core 0.0.169, harness 0.0.154.
+
+**Unit 2 (part 1) — photo gallery LIST + REMOVE (DONE).**
+`photos::character_gallery_service::{list_character_gallery,
+remove_from_character_gallery}` port the read + delete JSON legs of
+`lib/photos/character-gallery-service.ts`; the shared
+`photos::photo_link_summary::get_photo_link_summary_by_sha256` ports
+`getPhotoLinkSummaryBySha256` (api::salon carries a byte-identical private copy
+predating this — unify later). List: overlaid ownership → vault resolution
+(`characterDocumentMountPointId` → mount point must be database+character) →
+`findByMountPointId` → keep `isPhotosRelativePath` ∪ `images/avatar.webp` ∪
+`images/history/*` → createdAt-desc → clamp(1,200)/offset paginate → entries
+(linkId/mountPointId/relativePath/fileName/blobUrl/mimeType/sha256/
+fileSizeBytes/keptAt/caption[frontmatter ?? description]/tags/linkSummary);
+absent/broken vault → `{entries:[],total:0,hasMore:false}`. Remove (write): null
+`defaultImageId` / filter `avatarOverrides` when they point at the link, then
+`deleteWithGC` (extended to RETURN `fileGC`). Wired the `CharacterPhotoList` /
+`CharacterPhotoRemove` dispatch arms. Two small shared-code deltas: `LinkRow`
+gained a `description` field (appended to the join SELECT at index 18 — additive,
+existing consumers unaffected) for the caption fallback; `delete_with_gc` now
+returns the `fileGC` bool (both prior callers ignore it via `?`). Differentials:
+`characters_reads_equivalence` +`photo_list`; `characters_mutations_equivalence`
++`photo_remove_avatar` (+ its GC-table dump: links/files/blobs + defaultImageId,
+baked ids → no remap). **KEY RECIPE:** the reads AND mutations oracles now
+`jest.doMock('@/lib/file-storage/character-vault-bridge', requireActual)` — the
+jest.setup global mocks it to a fake `mock-vault-mount`, which made the gallery
+spuriously empty; un-mocking resolves the real vault. Both green at `a7b1398d`.
+Versions: core 0.0.170, harness 0.0.155. **Save-by-id (photo-save) stays a loud
+`not_available` refusal until part 2.**

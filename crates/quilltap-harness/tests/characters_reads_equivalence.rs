@@ -292,6 +292,13 @@ fn characters_reads_match_oracle() {
         "export_json",
         response_data(&characters::character_export(&db, uid, ARIA, Some("json"))),
     );
+    // P4.6i: the character photo gallery listing.
+    push(
+        "photo_list",
+        response_data(&characters::character_photo_list(
+            &db, uid, ARIA, None, None,
+        )),
+    );
 
     drop(db);
     let _ = std::fs::remove_dir_all(&scratch);

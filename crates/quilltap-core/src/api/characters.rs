@@ -1349,6 +1349,77 @@ pub async fn character_import(db: &Db, user_id: &str, payload: Value) -> Respons
     }
 }
 
+// ===========================================================================
+// Photo gallery (v4 characters/[id]/photos + [linkId]) — JSON legs
+// ===========================================================================
+
+/// Map a [`GalleryError`] to the route's response (v4's `catch` message routing:
+/// `Character not found` → 404; the enumerated validation messages → 400; else 500).
+fn gallery_err(e: crate::photos::character_gallery_service::GalleryError) -> Response {
+    use crate::photos::character_gallery_service::GalleryError;
+    match e {
+        GalleryError::CharacterNotFound => not_found("Character"),
+        GalleryError::BadRequest(msg) => bad_request(msg),
+        GalleryError::Db(err) => internal(err),
+    }
+}
+
+/// v4 `GET /characters/[id]/photos` — `listCharacterGallery` →
+/// `{ entries, total, hasMore }`.
+pub fn character_photo_list(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Response {
+    let cid = character_id.to_string();
+    let result = read_main_mount(db, move |main, mount| {
+        Ok(
+            crate::photos::character_gallery_service::list_character_gallery(
+                main, mount, &cid, limit, offset,
+            ),
+        )
+    });
+    match result {
+        Ok(Ok(body)) => Response::Character(body),
+        Ok(Err(e)) => gallery_err(e),
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `DELETE /characters/[id]/photos/[linkId]` — `removeFromCharacterGallery`
+/// (via the GC-safe `deleteWithGC` chokepoint). `{ deleted, fileGC }`; a
+/// not-deleted result (unknown/foreign link) → `notFound('Gallery entry')`.
+pub async fn character_photo_remove(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    link_id: &str,
+) -> Response {
+    let cid = character_id.to_string();
+    let lid = link_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        Ok(
+            crate::photos::character_gallery_service::remove_from_character_gallery(
+                main, mount, &cid, &lid,
+            ),
+        )
+    })
+    .await;
+    match out {
+        Ok(Ok((deleted, file_gc))) => {
+            if !deleted {
+                not_found("Gallery entry")
+            } else {
+                Response::Character(json!({ "deleted": true, "fileGC": file_gc }))
+            }
+        }
+        Ok(Err(e)) => gallery_err(e),
+        Err(e) => internal(e),
+    }
+}
+
 /// The `updateCharacterSchema` keys (v4 `put.ts`). Zod `.parse` strips unknown
 /// keys, so the patch is whitelisted to exactly these; the vault write-overlay
 /// routes the managed ones (`title`/`identity`/… + `scenarios`/`systemPrompts`/

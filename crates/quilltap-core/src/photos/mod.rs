@@ -15,7 +15,9 @@
 //!   `save-image-to-album.ts`), with image bytes behind an injected
 //!   [`save_image_to_album::FileBytesStore`] seam.
 
+pub mod character_gallery_service;
 pub mod keep_image_markdown;
+pub mod photo_link_summary;
 pub mod photos_paths;
 pub mod resolve_character_avatar;
 pub mod save_image_to_album;

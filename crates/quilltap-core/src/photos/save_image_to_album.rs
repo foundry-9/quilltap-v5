@@ -437,7 +437,7 @@ pub fn save_image_to_album(
 /// differential). Clears prior chunks for the link, then rolls up `chunkCount`
 /// (`0` — no chunker) + `plainTextLength` (UTF-16 length of the extractedText).
 /// A whitespace-only extractedText zeroes both.
-fn chunk_and_insert_extracted_text(
+pub(crate) fn chunk_and_insert_extracted_text(
     mount: &Connection,
     link_id: &str,
     extracted_text: &str,
@@ -464,7 +464,7 @@ fn chunk_and_insert_extracted_text(
 /// ISO timestamp + slug, so a collision is effectively impossible in practice — the
 /// bump/sha1 branches are ported for faithfulness but never hit by the corpus (the
 /// sha1 branch is non-deterministic, a documented seam).
-fn resolve_unique_relative_path(
+pub(crate) fn resolve_unique_relative_path(
     mount: &Connection,
     mount_point_id: &str,
     desired: &str,

@@ -1064,13 +1064,38 @@ impl CoreEngine {
                 Ok(db) => super::characters::character_import(&db, SINGLE_USER_ID, payload).await,
                 Err(r) => r,
             },
-            Request::CharacterPhotoList { .. } => super::characters::not_available("photo-list"),
+            Request::CharacterPhotoList {
+                character_id,
+                limit,
+                offset,
+            } => match self.ready_db() {
+                Ok(db) => super::characters::character_photo_list(
+                    &db,
+                    SINGLE_USER_ID,
+                    &character_id,
+                    limit,
+                    offset,
+                ),
+                Err(r) => r,
+            },
             Request::CharacterPhotoSaveById { .. } => {
                 super::characters::not_available("photo-save")
             }
-            Request::CharacterPhotoRemove { .. } => {
-                super::characters::not_available("photo-remove")
-            }
+            Request::CharacterPhotoRemove {
+                character_id,
+                link_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_photo_remove(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        &link_id,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
             Request::TagList { search } => match self.ready_db() {
                 Ok(db) => super::characters::tag_list(&db, SINGLE_USER_ID, search.as_deref()),
                 Err(r) => r,

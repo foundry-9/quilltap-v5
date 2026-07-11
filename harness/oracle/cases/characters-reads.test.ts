@@ -83,6 +83,13 @@ async function runCase(
   jest.doMock('@/lib/embedding/vector-store', () =>
     jest.requireActual('@/lib/embedding/vector-store'),
   );
+  // The character photo gallery resolves the vault via character-vault-bridge;
+  // jest.setup globally mocks it to a fake mount, so un-mock it to the real
+  // module (the DB is real here) — else `getCharacterVaultStore` returns an
+  // empty stub vault and the gallery list is spuriously empty.
+  jest.doMock('@/lib/file-storage/character-vault-bridge', () =>
+    jest.requireActual('@/lib/file-storage/character-vault-bridge'),
+  );
   jest.doMock('@/lib/auth/session', () => ({
     __esModule: true,
     ...jest.requireActual('@/lib/auth/session'),
@@ -189,6 +196,9 @@ async function main(): Promise<void> {
     // P4.6i: ST export (JSON leg) — the chara_card_v2 card. The handler returns a
     // raw `JSON.stringify(card)` NextResponse; `response.json()` reparses it.
     { name: 'export_json', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=export&format=json`, params: { id: aria }, parseStringBody: true },
+    // P4.6i: the character photo gallery listing — `{ entries, total, hasMore }`.
+    // Aria's vault carries its avatar (images/avatar.webp), surfaced by the list.
+    { name: 'photo_list', module: '@/app/api/v1/characters/[id]/photos/route', url: `${B}/${aria}/photos`, params: { id: aria } },
   ];
 
   const outLines: string[] = [];

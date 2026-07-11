@@ -69,11 +69,33 @@ interface CaseSpec {
     | 'tag-delete'
     | 'depiction-get'
     | 'depiction-put'
-    | 'st-import';
+    | 'st-import'
+    | 'photo-remove';
   id?: string;
   /** For wardrobe item ops: discover the baked item id by this title. */
   itemTitle?: string;
+  /** For photo-remove: discover the vault link id by this relativePath. */
+  photoRelativePath?: string;
   body?: unknown;
+}
+
+/** Dump the mount-index photo GC tables + the character's defaultImageId — the
+ *  DELETE-with-GC verification (baked ids identical on both sides → no remap). */
+function dumpPhotoTables(
+  mountDb: { prepare: (s: string) => { all: (...a: unknown[]) => unknown } },
+  mainDb: { prepare: (s: string) => { get: (...a: unknown[]) => unknown } },
+  mountPointId: string,
+): unknown {
+  return {
+    links: mountDb
+      .prepare('SELECT id, relativePath FROM doc_mount_file_links WHERE mountPointId = ? ORDER BY id')
+      .all(mountPointId),
+    files: mountDb.prepare('SELECT id, sha256 FROM doc_mount_files ORDER BY id').all(),
+    blobs: mountDb.prepare('SELECT fileId FROM doc_mount_blobs ORDER BY fileId').all(),
+    character: mainDb
+      .prepare(`SELECT id, defaultImageId FROM characters WHERE id = '${ARIA}'`)
+      .get(),
+  };
 }
 
 const TAGGABLE_TABLES = [
@@ -140,6 +162,11 @@ async function runCase(
   jest.doMock('@/lib/embedding/vector-store', () =>
     jest.requireActual('@/lib/embedding/vector-store'),
   );
+  // Un-mock the character-vault-bridge (jest.setup stubs it) so the photo
+  // gallery resolves the REAL vault mount point against the real DB.
+  jest.doMock('@/lib/file-storage/character-vault-bridge', () =>
+    jest.requireActual('@/lib/file-storage/character-vault-bridge'),
+  );
   jest.doMock('@/lib/auth/session', () => ({
     __esModule: true,
     ...jest.requireActual('@/lib/auth/session'),
@@ -182,6 +209,38 @@ async function runCase(
     let status: number;
     let body: unknown;
     let tables: unknown;
+    if (c.kind === 'photo-remove') {
+      // DELETE /api/v1/characters/[id]/photos/[linkId]. Discover the vault link
+      // id by relativePath, call the route, dump the GC tables + defaultImageId.
+      const { getCharacterVaultStore } = await import(
+        '@/lib/file-storage/character-vault-bridge'
+      );
+      const vault = await getCharacterVaultStore(ARIA);
+      if (!vault) throw new Error('Aria vault did not resolve');
+      const links = await getRepositories().docMountFileLinks.findByMountPointId(vault.mountPointId);
+      const target = links.find((l: { relativePath: string }) => l.relativePath === c.photoRelativePath);
+      if (!target) throw new Error(`photo link ${c.photoRelativePath} not found`);
+      const linkId = (target as { id: string }).id;
+      const url = `http://localhost/api/v1/characters/${ARIA}/photos/${linkId}`;
+      const { DELETE } = (await import('@/app/api/v1/characters/[id]/photos/[linkId]/route')) as {
+        DELETE: (...a: unknown[]) => Promise<unknown>;
+      };
+      const response = (await DELETE(mockRequest(url, undefined), {
+        params: Promise.resolve({ id: ARIA, linkId }),
+      })) as { status: number; json: () => Promise<unknown> };
+      status = response.status;
+      body = await response.json();
+      const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+      const { getRawMountIndexDatabase } = await import(
+        '@/lib/database/backends/sqlite/mount-index-client'
+      );
+      tables = dumpPhotoTables(
+        getRawMountIndexDatabase() as never,
+        getRawDatabase() as never,
+        vault.mountPointId,
+      );
+      return { name: c.name, status, body, tables };
+    }
     if (c.kind === 'st-import') {
       // JSON leg of `POST /api/v1/characters?action=import`. Capture the slim
       // create echo, then read the created character back through the overlay
@@ -495,6 +554,10 @@ async function main(): Promise<void> {
         },
       },
     },
+    // P4.6i: remove Aria's avatar from the gallery — exercises the
+    // defaultImageId-pointer clear + the GC-safe deleteWithGC (last link → the
+    // file + blob are reclaimed).
+    { name: 'photo_remove_avatar', kind: 'photo-remove', photoRelativePath: 'images/avatar.webp' },
   ];
 
   const outLines: string[] = [];
