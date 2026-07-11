@@ -1044,6 +1044,38 @@ export interface CascadePreview {
   memoryCount: number;
 }
 
+/** One recent-message preview in a per-character chat card (v4 `action=chats`). */
+export interface CharacterChatMessagePreview {
+  id: string;
+  role: string;
+  content: string;
+  createdAt: string;
+}
+
+/** One conversation in the character Conversations tab (v4 `action=chats`). */
+export interface CharacterChatSummary {
+  id: string;
+  title: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastMessageAt: string | null;
+  character: { id: string; name: string };
+  project: { id: string; name: string } | null;
+  storyBackground: { id: string; filepath: string } | null;
+  /** Up to three most-recent messages, recent-first (v4 `slice(0, 3)`). */
+  messages: CharacterChatMessagePreview[];
+  tags: Array<{ tag: { id: string; name: string } }>;
+  isDangerousChat: boolean;
+  _count: { messages: number; memories: number };
+  scriptoriumStatus: 'none' | 'rendered' | 'embedded';
+}
+
+/** The `action=chats` page (v4 `{ chats, total }`). */
+export interface CharacterChatsResult {
+  chats: CharacterChatSummary[];
+  total: number;
+}
+
 /** One row of the tags list (v4 `/tags`). */
 export interface TagDto {
   id: string;
@@ -1053,15 +1085,22 @@ export interface TagDto {
   [key: string]: unknown;
 }
 
-/** A photo-gallery entry (v4 `/characters/:id/photos`). */
+/** A photo-gallery entry (v4 `/characters/:id/photos`). Lane A pins the exact
+ *  envelope in `p4.6i`; the SPA codes defensively over the union of shapes it may
+ *  return (`linkId`/`filepath`/`caption`/`tags`, plus the legacy `id`/`fileId`). */
 export interface CharacterPhoto {
   id: string;
   linkId?: string;
   fileId?: string;
   filepath: string;
   url?: string | null;
+  caption?: string | null;
+  tags?: string[] | null;
   [key: string]: unknown;
 }
+
+/** The finalized gallery-entry alias (Shared contract `CharacterGalleryEntry`). */
+export type CharacterGalleryEntry = CharacterPhoto;
 
 /** A connection profile as the character screens consume it (id + name + model). */
 export interface CharacterConnectionProfile {

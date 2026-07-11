@@ -6341,3 +6341,33 @@ covered by the existing `memory_delete_tier2` differential; no duplicate authore
 Oracle regen recipes: the characters-reads / characters-mutations `.test.ts`
 headers (both now un-mock `character-vault-bridge`; the mutations file freezes
 `global.Date` to `FIXED_KEPT_AT` for photo-save).
+**P4.6j unit 1 — the Conversations tab (SPA, 2026-07-11).** Lane B of the
+characters-remainder round (worktree `claude/p4-6j-characters-remainder-spa`).
+Replaced `view/tabs/conversations-tab.ts` (a 23-line empty-state placeholder)
+with the real per-character chat list, ported from v4
+`components/character/character-conversations-tab.tsx` + `components/chat/
+ChatCard.tsx` fed by `lib/chat-utils.ts transformCharacterChatToCardData`
+(`showAvatars=false`, `showProject`, `showPreview`, `useRelativeDates`). Over
+`characterChats {characterId, search?, limit?, offset?}` via
+`injectInfiniteQuery` (v4 `CHATS_PER_PAGE=10`; `getNextPageParam` mirrors v4's
+`hasMore = page.length === 10`). Debounced (300ms) search box; an
+IntersectionObserver sentinel plus a testable "Load more" button. New
+`character-conversation-card.ts` (display-only, links to `/salon/:id`) carries
+the message/memory badges, a STATIC scriptorium badge (v4 colours + the
+descriptive half of the title — no click-to-render in this contract), the
+dangerous `*`, the relative date (ported `formatChatListDate`), the preview
+(ported `getCharacterChatPreview` verbatim, incl. its oldest-of-recent-three
+quirk), and project + tags. Contract: added `CharacterChatMessagePreview` /
+`CharacterChatSummary` / `CharacterChatsResult` to `core-contract.ts` (byte
+list confirmed against v4 `app/api/v1/characters/[id]/handlers/get.ts` `chats`
+action); `fetchCharacterChats` + `characterKeys.chats` in `characters.api.ts`.
+Wired into `character-detail.ts` (`[characterId]`, `[characterName]`).
+**Divergence flagged:** the story-background thumbnail renders when present —
+v4's `ChatCard` gates it behind `showAvatars`, false in this tab; the work
+order enumerates it as a card field. The v4 per-card delete/re-extract/
+re-render, "Refresh Conversation Archive", and "New Chat" actions hit routes
+outside this vertical's contract and are omitted (a follow-up vertical). Gate:
+6 new unit tests (empty state / card render / Salon link / dangerous marker /
+pagination append / debounced search), 201 SPA unit tests, the SPA prod build
+clean. Component-tested against MOCK `CoreClient`; the LIVE e2e beats land at
+unification over lane A's fixture. SPA 0.5.4.

@@ -13,6 +13,7 @@ import type { CoreClient } from '../../core/core-client';
 import { normalizeAvatarSrc } from '../../ui/avatar-stack';
 import type {
   CascadePreview,
+  CharacterChatsResult,
   CharacterConnectionProfile,
   CharacterDetail,
   CharacterListItem,
@@ -32,6 +33,10 @@ export const characterKeys = {
   detail: (id: string) => ['characters', 'detail', id] as const,
   stats: (id: string) => ['characters', 'stats', id] as const,
   tags: (id: string) => ['characters', 'tags', id] as const,
+  chats: (id: string, search?: string) =>
+    search
+      ? (['characters', 'chats', id, search] as const)
+      : (['characters', 'chats', id] as const),
   photos: (id: string) => ['characters', 'photos', id] as const,
   depiction: (id: string) => ['characters', 'depiction', id] as const,
   prompts: (id: string) => ['characters', 'prompts', id] as const,
@@ -107,6 +112,24 @@ export async function fetchCharacterPhotos(
   const data = await core.dispatchData({ type: 'characterPhotoList', characterId });
   const photos = data['photos'] ?? data['images'];
   return (photos as CharacterPhoto[]) ?? [];
+}
+
+export async function fetchCharacterChats(
+  core: CoreClient,
+  characterId: string,
+  opts?: { search?: string; limit?: number; offset?: number },
+): Promise<CharacterChatsResult> {
+  const data = await core.dispatchData({
+    type: 'characterChats',
+    characterId,
+    ...(opts?.search ? { search: opts.search } : {}),
+    ...(opts?.limit !== undefined ? { limit: opts.limit } : {}),
+    ...(opts?.offset !== undefined ? { offset: opts.offset } : {}),
+  });
+  return {
+    chats: (data['chats'] as CharacterChatsResult['chats']) ?? [],
+    total: (data['total'] as number) ?? 0,
+  };
 }
 
 export async function fetchDepictionGuidelines(

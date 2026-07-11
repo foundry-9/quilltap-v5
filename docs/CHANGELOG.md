@@ -14,6 +14,19 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+P4.6j unit 1 — the character Conversations tab (SPA). Replaced the empty-state
+placeholder with the real per-character chat list over the `characterChats`
+dispatch: a debounced search box, offset pagination (v4 `CHATS_PER_PAGE = 10`,
+infinite-scroll sentinel plus a "Load more" fallback), and a display-only chat
+card (title, message/memory badges, a static scriptorium badge, the dangerous
+marker, relative date, preview text, project + tags) that links into
+`/salon/:id`. New contract types `CharacterChatSummary` / `CharacterChatsResult`
+and a `fetchCharacterChats` api helper. Ported v4's `formatChatListDate` and the
+`getCharacterChatPreview` quirk (preview is the oldest of the recent three)
+verbatim. Divergence: the story-background thumbnail renders when present (v4's
+`ChatCard` hides it here behind `showAvatars=false`); the v4 per-card
+delete/re-extract/re-render and refresh-archive actions hit routes outside this
+vertical's contract and are omitted. SPA 0.5.4.
 P4.6i (characters server remainder, lane A): ported the character
 cascade-delete preview + executor (`services::cascade_delete`). Preview
 (`CharacterCascadePreview`) composes the exclusive-chat / exclusive-image /
