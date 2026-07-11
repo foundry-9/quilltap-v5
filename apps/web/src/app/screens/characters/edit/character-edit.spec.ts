@@ -65,6 +65,18 @@ function stubClient(
           return { tags: [] };
         case 'characterUpdate':
           return { character: char };
+        case 'characterCascadePreview':
+          return {
+            characterId: char.id,
+            characterName: char.name,
+            exclusiveChats: [],
+            exclusiveCharacterImageCount: 0,
+            exclusiveChatImageCount: 0,
+            totalExclusiveImageCount: 0,
+            memoryCount: 0,
+          };
+        case 'characterDelete':
+          return { success: true, deletedChats: 0, deletedImages: 0, deletedMemories: 0 };
         default:
           return {};
       }
@@ -152,6 +164,46 @@ describe('CharacterEdit', () => {
 
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(navigateSpy).toHaveBeenCalledWith(['/characters', 'char-1']);
+  });
+
+  it('Delete Character opens the cascade dialog, dispatches characterDelete, and navigates to the roster', async () => {
+    const seen: CoreRequest[] = [];
+    const fixture = await render(
+      stubClient(character(), (req) => seen.push(req as unknown as CoreRequest)),
+    );
+    const router = TestBed.inject(Router);
+    const navigateSpy = vi.spyOn(router, 'navigate');
+
+    // Open the delete dialog from the edit-view danger zone.
+    const trigger = fixture.nativeElement.querySelector(
+      '.mt-6 button.qt-button-destructive',
+    ) as HTMLButtonElement;
+    expect(trigger.textContent?.trim()).toBe('Delete Character');
+    trigger.click();
+    fixture.detectChanges();
+    // Let the cascade-preview query settle so the confirm button enables.
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+
+    const confirm = fixture.nativeElement.querySelector(
+      'qt-character-delete-dialog button.qt-button-destructive',
+    ) as HTMLButtonElement;
+    expect(confirm).toBeTruthy();
+    confirm.click();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+
+    const deleteCall = seen.find(
+      (r) => (r as unknown as { type: string }).type === 'characterDelete',
+    ) as unknown as { characterId: string; cascadeChats: boolean; cascadeImages: boolean };
+    expect(deleteCall).toMatchObject({
+      characterId: 'char-1',
+      cascadeChats: true,
+      cascadeImages: true,
+    });
+    expect(navigateSpy).toHaveBeenCalledWith(['/characters']);
   });
 
   it('"Save Character" dispatches ONE characterUpdate with the exact PUT bag', async () => {

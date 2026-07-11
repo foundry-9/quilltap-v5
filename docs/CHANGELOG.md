@@ -14,6 +14,17 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+P4.6j unit 2 — the delete + cascade-preview entry point (SPA). The existing
+`character-delete-dialog` is byte-faithful to v4 (it renders title +
+messageCount per exclusive chat and the total image count — v4 does not render
+per-chat `lastMessageAt` or the three separate image counts), so it is
+unchanged. Added a "Delete Character" affordance to the character EDIT view's
+danger zone (next to Rename/Replace): it opens the cascade dialog, dispatches
+`characterDelete {cascadeChats, cascadeImages}`, drops the roster cache, and
+navigates to `/characters` (the character's own pages no longer exist).
+Divergence: v4 deletes only from the roster `AuroraView`; this detail/edit
+entry point is an additive SPA affordance the work order requests. SPA 0.5.5.
+
 P4.6j unit 1 — the character Conversations tab (SPA). Replaced the empty-state
 placeholder with the real per-character chat list over the `characterChats`
 dispatch: a debounced search box, offset pagination (v4 `CHATS_PER_PAGE = 10`,

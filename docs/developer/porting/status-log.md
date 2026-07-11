@@ -6371,3 +6371,21 @@ outside this vertical's contract and are omitted (a follow-up vertical). Gate:
 pagination append / debounced search), 201 SPA unit tests, the SPA prod build
 clean. Component-tested against MOCK `CoreClient`; the LIVE e2e beats land at
 unification over lane A's fixture. SPA 0.5.4.
+
+**P4.6j unit 2 — the delete + cascade-preview entry point (SPA, 2026-07-11).**
+Verified `list/character-delete-dialog.ts` against the finalized `CascadePreview`
+DTO: it is byte-faithful to v4 `components/character-delete-dialog.tsx` (renders
+title + messageCount per exclusive chat, the total exclusive-image count, and the
+memory count; the two cascade checkboxes drive `cascadeChats`/`cascadeImages`,
+both defaulting true) — no change needed. v4 renders neither per-chat
+`lastMessageAt` nor the three separate image counts, so the SPA doesn't either.
+Added a "Delete Character" affordance to `edit/character-edit.ts` (danger zone,
+beside the deferred Rename/Replace): opens the dialog, dispatches
+`characterDelete`, invalidates the roster list query, and navigates to
+`/characters`. **Divergence flagged:** v4's `CharacterDeleteDialog` is used ONLY
+by the roster `app/aurora/AuroraView.tsx` — there is no detail/edit delete in
+v4; this entry point is an additive SPA affordance the order requests (the
+navigate-away is required since the character's pages cease to exist). The
+roster-level delete wiring (P4.6g `characters-list.ts`) is unchanged. Gate: 1
+new unit test (open dialog → preview → confirm → dispatch → navigate to roster),
+202 SPA unit tests, the SPA prod build clean. SPA 0.5.5.

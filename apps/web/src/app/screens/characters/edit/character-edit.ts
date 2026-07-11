@@ -17,6 +17,7 @@ import { ErrorAlert } from '../../../ui/error-alert';
 import { Icon } from '../../../ui/icon';
 import { LoadingState } from '../../../ui/loading-state';
 import { characterAvatarSrc, characterKeys, fetchCharacter } from '../characters.api';
+import { CharacterDeleteDialog, type DeleteChoice } from '../list/character-delete-dialog';
 import { CharacterAppearanceTab } from './appearance-tab';
 import {
   buildCharacterUpdateBag,
@@ -61,6 +62,7 @@ const EDIT_TABS: Tab[] = [
     CharacterSystemPromptsTab,
     CharacterAppearanceTab,
     AvatarPickerModal,
+    CharacterDeleteDialog,
   ],
   template: `
     <div class="character-edit qt-page-container text-foreground">
@@ -165,7 +167,7 @@ const EDIT_TABS: Tab[] = [
           </div>
         </form>
 
-        <div class="mt-6">
+        <div class="mt-6 flex gap-3">
           <button
             type="button"
             class="qt-button-secondary"
@@ -173,6 +175,13 @@ const EDIT_TABS: Tab[] = [
             title="Rename this character and replace all references (not yet available)"
           >
             Rename/Replace
+          </button>
+          <button
+            type="button"
+            class="qt-button qt-button-destructive"
+            (click)="deleteOpen.set(true)"
+          >
+            Delete Character
           </button>
         </div>
       }
@@ -183,6 +192,15 @@ const EDIT_TABS: Tab[] = [
         [characterId]="characterId()!"
         (close)="avatarPickerOpen.set(false)"
         (saved)="onAvatarSaved()"
+      />
+    }
+
+    @if (deleteOpen() && character(); as target) {
+      <qt-character-delete-dialog
+        [characterId]="characterId()!"
+        [characterName]="target.name"
+        (close)="deleteOpen.set(false)"
+        (confirmed)="onDeleteConfirm($event)"
       />
     }
   `,
@@ -211,6 +229,7 @@ export class CharacterEdit {
   private seeded = false;
 
   protected readonly avatarPickerOpen = signal(false);
+  protected readonly deleteOpen = signal(false);
   protected readonly saving = signal(false);
   protected readonly saveError = signal<string | null>(null);
 
@@ -266,6 +285,32 @@ export class CharacterEdit {
       this.saveError.set(err instanceof Error ? err.message : 'Failed to update character');
     } finally {
       this.saving.set(false);
+    }
+  }
+
+  /**
+   * Delete from the edit view: dispatch `characterDelete` with the cascade
+   * flags, drop the roster + detail caches, and return to the roster (the
+   * character's own pages no longer exist). v4 only deletes from the roster
+   * (`AuroraView`); this detail/edit entry point is an additive SPA affordance
+   * the work order asks for, navigating away since we can't stay on the page.
+   */
+  protected async onDeleteConfirm(choice: DeleteChoice): Promise<void> {
+    const id = this.characterId();
+    if (!id) {
+      return;
+    }
+    try {
+      await this.core.dispatchData({
+        type: 'characterDelete',
+        characterId: id,
+        cascadeChats: choice.cascadeChats,
+        cascadeImages: choice.cascadeImages,
+      });
+    } finally {
+      this.deleteOpen.set(false);
+      await this.queryClient.invalidateQueries({ queryKey: characterKeys.list() });
+      this.router.navigate(['/characters']);
     }
   }
 
