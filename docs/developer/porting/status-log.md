@@ -5962,3 +5962,50 @@ empty tables the read path reads (`memories`, `files`, `tags`,
 `no such table` at runtime. All 22 SPA unit files (151 tests) + all 6
 Playwright specs + the prod build green. No server/Rust change; the
 client-side-markdown locked divergence stands. SPA 0.4.0.
+
+---
+
+**The P4.6f ∥ P4.6g ∥ P4.6h ∥ P4.4u3 unification (2026-07-10).** The four lane
+branches cherry-picked onto `unify-p46fgh-44u3` from main — the ninth
+consecutive round with zero source-level conflicts (only version files +
+append-only docs; versions resolved core 0.0.162 / harness 0.0.147 / SPA
+0.5.1, host 0.0.10 + web 0.0.7 from lane D). The two P4.6g child worktrees
+(detail/view ∥ edit/create) were verified subsumed by the lane's consolidation
+commit before removal.
+
+- **The Shared contract wire:** all 48 characters/tags `Request` variants
+  match name-for-name between `api/types.rs` and the SPA mirror
+  (`core-contract.ts`) — verified mechanically (variant-name extraction diff).
+- **The e2e wire:** `characters-flow.spec.ts` un-skipped on a spec-private
+  server (port 4322, the salon-scroll recipe) over the committed
+  `characters-*` fixture. THREE fixes emerged:
+  (1) **accname gotcha** — the favorite star's accessible NAME is its text
+  content (`☆`), not its `title` attr (content outranks title in accname
+  computation); locate icon-glyph buttons `getByTitle`.
+  (2) **the scroll-strategy drain window** — the salon-scroll walk set
+  `scrollTop = 0` within 300ms of landing, and the controller's pending final
+  correction (v4-faithful, +300ms) yanked it back to the bottom; the spec now
+  waits 450ms post-landing.
+  (3) **programmatic scrolls fire no scroll events in a frame-throttled
+  renderer** (scroll events dispatch during the rendering steps, and an
+  occluded page produces no frames — rAF never fires); the spec scrolls up
+  with REAL `page.mouse.wheel` input, which is also the behavior the stick
+  tracker actually guards.
+- **P4.6f scope (IMPORTANT):** the lane landed slices 1–3 only (reads / action
+  verbs / sub-resource mutations, each differential-proven vs fresh v4
+  oracles). The banked remainder — create/quick-create/update, delete-cascade,
+  wardrobe mutations, tags CRUD + the delete fan-out, stats/chats, the photo
+  gallery, ST import/export, depiction-guidelines, and re-pointing the Tier-3
+  refusal list — is **slice 4, OPEN under the same order**
+  (`work-orders/p4.6f-characters-server.md`). Until it lands, the SPA's
+  edit-save / create page / Default-Settings autosave / add-tag surfaces
+  answer the loud `not_available` refusal (they render and fail gracefully);
+  the e2e's edit-title→Save and add-tag beats are annotated for restoration.
+- **Gate:** fmt + clippy (default AND native-transport) clean; the 847-test
+  workspace sweep green; the six new/extended differentials re-verified
+  against FRESH oracles regenerated from v4 at `a7b1398d` (characters reads
+  13 / actions 11 / subresources 9 cases; builtin-templates 3 states;
+  builtin-mounts 3 states; provisioning incl. v5-reads-v4 AND v4-reads-v5 —
+  the latter needs `QT_FIXTURE_V5_PROVISIONED`, not the header's OUT var
+  name); 194 SPA unit tests; the SPA prod build; the full 8-spec Playwright
+  suite (7 tests) green including the two new walks.

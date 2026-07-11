@@ -470,7 +470,17 @@ the `chats-tier2` corpus, and the capstone's
 `strip_participant_null_seam` normalizer is dropped — the persisted
 participant nulls diff byte-exact.
 
-**The next round is PLANNED (2026-07-10): four parallel lanes, orders
+**The P4.6f/g/h + P4.4u3 round is UNIFIED on main (2026-07-10)** — P4.6f
+slices 1–3 + P4.6g + P4.6h (finding #3b closed) + P4.4u3, full gate green
+(fresh-oracle differential sweep, 847 workspace tests, 194 SPA tests, the
+8-spec Playwright suite incl. the two new walks). **P4.6f "slice 4" — the
+banked remainder (create/quick-create/update, delete-cascade, wardrobe
+mutations, tags CRUD + delete fan-out, stats/chats, the photo gallery, ST
+import/export, depiction-guidelines) — stays OPEN under the same order**; the
+SPA's edit/create/autosave/add-tag surfaces answer the typed refusal until it
+lands. Round record: `status-log.md`. The original round plan follows.
+
+**The round as planned (2026-07-10): four parallel lanes, orders
 written** (drift check at planning time: v4 HEAD still `a7b1398d`; four
 fresh surveys — the characters API + UI, v4's long-chat rendering, the
 first-boot seeds — inform the orders):

@@ -277,11 +277,15 @@ records THERE. Update this summary only when a phase or round completes.
   Playwright walks). **Dogfooding a COPY of real Friday data is underway**
   (`docs/developer/porting/dogfood-findings.md` — findings #1/#2/#3a fixed,
   #3b ordered).
-- **The current round (planned 2026-07-10, orders written):** four parallel
-  lanes — P4.6f Characters server ∥ P4.6g Characters SPA ∥ P4.6h Salon
-  virtualization (finding #3b) ∥ P4.4u3 built-in seeds. Orders + ownership
-  matrix: `docs/developer/porting/work-orders/` + `phase-4.md`.
+- **The P4.6f/g/h + P4.4u3 round: UNIFIED on main (2026-07-10).** Characters
+  server slices 1–3 (reads / action verbs / sub-resource mutations) ∥ the
+  Characters SPA (roster / detail / edit / create screens) ∥ Salon
+  virtualization (dogfood finding #3b CLOSED) ∥ the built-in seeds (roleplay
+  templates + the three mount stores). **P4.6f slice 4 (create/update/
+  delete-cascade, tags CRUD, stats/chats, gallery, ST import/export) is the
+  banked remainder, OPEN under the same order** — the SPA edit/create/
+  autosave/add-tag surfaces answer a typed refusal until it lands.
 - **Oracle baseline:** v4 HEAD `a7b1398d` (drift-check before every round).
-  Versions: core 0.0.156, harness 0.0.143, host 0.0.9, web 0.0.6, SPA 0.3.2.
+  Versions: core 0.0.162, harness 0.0.147, host 0.0.10, web 0.0.7, SPA 0.5.1.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

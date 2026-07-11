@@ -134,10 +134,16 @@ test.describe('P4.6h — virtualized Salon scroll (long chat)', () => {
     const jump = page.locator('.qt-chat-scroll-to-bottom');
     await expect(jump).toBeHidden();
 
-    // Scroll up to the top → the jump-to-bottom button appears.
-    await page.locator('.qt-chat-messages').evaluate((el) => {
-      el.scrollTop = 0;
-    });
+    // Let the multi-strategy initial scroll DRAIN before scrolling away: its
+    // last correction fires at +300ms and would yank a too-early scroll-up
+    // straight back to the bottom (v4 has the same 300ms window).
+    await page.waitForTimeout(450);
+
+    // Scroll up with REAL wheel input (fires the scroll events the stick
+    // tracker listens for in every environment, unlike a bare scrollTop
+    // assignment in a frame-throttled renderer) → the jump button appears.
+    await list.hover();
+    await page.mouse.wheel(0, -80_000);
     await expect(jump).toBeVisible({ timeout: 5_000 });
 
     // Click it → back at the bottom, button hidden again.

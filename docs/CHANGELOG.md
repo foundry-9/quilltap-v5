@@ -4,6 +4,38 @@
 
 ### 5.0-dev
 
+The P4.6f ∥ P4.6g ∥ P4.6h ∥ P4.4u3 round is UNIFIED on main: the four lane
+branches cherry-picked onto the reconciliation branch (zero source-level
+conflicts — only version files and append-only docs), the P4.6f/g Shared
+contract verified name-for-name (all 48 characters/tags request variants match
+between `api/types.rs` and the SPA's `core-contract.ts`), and the
+`characters-flow` Playwright walk UN-SKIPPED on a spec-private server over
+lane A's committed characters fixture (the `salon-scroll` recipe): unlock →
+the roster renders the fixture cards favorites-first → optimistic favorite
+toggle → Aria's detail view → remove the baked "Adventure" tag → the change
+survives a full reload. **Scope note:** P4.6f landed slices 1–3 of its order
+(the read surface, the action verbs, the sub-resource mutations — each
+differential-proven); the banked remainder ("slice 4": create/quick-create/
+update, delete-cascade, wardrobe mutations, tags CRUD + delete fan-out,
+stats/chats, the photo gallery, ST import/export, depiction-guidelines) stays
+OPEN under the same order, and the SPA's edit-save / create / Default-Settings
+autosave / add-tag surfaces answer its loud typed refusal until it lands — the
+e2e's edit-title→Save and add-tag beats are annotated to be restored then.
+Two unification fixes to the new e2e walks: the salon-scroll spec now DRAINS
+the multi-strategy initial scroll (its last correction at +300ms yanked a
+too-early scroll-up back to the bottom — v4 has the same window) and scrolls
+up with REAL wheel input (a bare `scrollTop` assignment fires no scroll event
+in a frame-throttled renderer, since scroll events dispatch during rendering
+steps); the characters walk locates the favorite star by `title` (its
+accessible NAME is the `☆` glyph — text content outranks the title attribute
+in accname computation). Full gate: fmt + clippy (default and
+native-transport) clean, the 847-test workspace sweep green, all six
+new/extended differentials re-verified against FRESH v4 oracles (characters
+reads / actions / sub-resources, builtin-templates, builtin-mounts,
+provisioning incl. both cross-compat directions), 194 SPA unit tests, the SPA
+prod build, and the full 8-spec Playwright suite. Versions: core 0.0.162,
+harness 0.0.147, host 0.0.10, web 0.0.7, SPA 0.5.1.
+
 P4.6f (Characters server, lane A) slice 3: the sub-resource mutation handlers
 — prompts (`create`/`update`/`delete`/`set-default`), scenarios
 (`create`/`update`/`delete`), and plugin-data (`upsert`/`delete`) — composed
