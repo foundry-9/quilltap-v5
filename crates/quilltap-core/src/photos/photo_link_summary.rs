@@ -3,11 +3,9 @@
 //!
 //! Empty (`{ count: 0, linkers: [] }`) when the sha isn't in the mount-index (a
 //! legacy `files` image never written there — the common case). Consumed by the
-//! character-gallery listing (per-entry `linkSummary`) and the save-path
-//! re-upload guard.
-//!
-//! NB: `api::salon` carries a byte-identical private copy predating this shared
-//! module; a later cleanup can unify them.
+//! character-gallery listing (per-entry `linkSummary`), the save-path re-upload
+//! guard, and `api::salon`'s message-attachment resolution (P4.6m unified the
+//! salon copy onto this shared module — one implementation, all callers).
 
 use rusqlite::Connection;
 use serde_json::{json, Value};

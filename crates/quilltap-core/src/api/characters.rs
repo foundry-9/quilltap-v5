@@ -679,8 +679,10 @@ pub fn character_chats(
 
 /// v4 `?action=export` (`characters/[id]/handlers/get.ts:63`), JSON leg —
 /// ownership (overlaid `findById`) → `exportSTCharacter(character)` → the ST
-/// `chara_card_v2` card (the SPA downloads it client-side). `format=png` is the
-/// quilltap-web multipart route (deferred) → a loud `not_available("export-png")`.
+/// `chara_card_v2` card (the SPA downloads it client-side). `format=png` streams
+/// binary and rides the quilltap-web REST route
+/// (`GET /api/v1/characters/{id}?action=export&format=png`, P4.6m) — the dispatch
+/// channel carries JSON only, so the PNG arm points there.
 pub fn character_export(
     db: &Db,
     _user_id: &str,
@@ -690,7 +692,10 @@ pub fn character_export(
     // v4: `format = searchParams.get('format') || 'json'`.
     let format = format.filter(|s| !s.is_empty()).unwrap_or("json");
     if format == "png" {
-        return not_available("export-png");
+        return bad_request(
+            "PNG export streams binary — use GET \
+             /api/v1/characters/{id}?action=export&format=png",
+        );
     }
     let cid = character_id.to_string();
     let result = read_main_mount(db, move |main, mount| {
@@ -1270,8 +1275,9 @@ pub async fn character_quick_create(db: &Db, user_id: &str, name: &str) -> Respo
 /// `repos.characters.create` with the ST-derived bag, so `sillyTavernData` lands
 /// in the slim column and no `createCharacterSchema` runs. Echo the slim create
 /// shape `{ character: { id, name, description, defaultImageId, createdAt,
-/// updatedAt, _count: { chats } } }`. The PNG/multipart leg is the quilltap-web
-/// route (deferred → `not_available("import-png")` at that transport).
+/// updatedAt, _count: { chats } } }`. The PNG/multipart import leg rides the
+/// quilltap-web REST route (`POST /api/v1/characters?action=import`, P4.6m),
+/// which reuses this create spine and then writes the imported avatar.
 pub async fn character_import(db: &Db, user_id: &str, payload: Value) -> Response {
     // v4: `characterData = body.characterData || body`.
     let character_data = payload
@@ -1425,10 +1431,10 @@ pub async fn character_photo_remove(
 /// from the source link's mount-blob and hard-links a copy into the character's
 /// `photos/` folder — fully DB-resolvable and LIVE. The `fileId` leg
 /// (`saveFileToCharacterGallery`) reads bytes via the host file store
-/// (`fileStorageManager.downloadFile`), which the characters dispatch doesn't wire
-/// — a loud `not_available("photo-save-fileid")` deferral (the multipart upload
-/// leg is likewise a web-route deferral). `keptAt` is minted here (the injected
-/// ISO clock).
+/// (`fileStorageManager.downloadFile`), which the dispatch channel can't build;
+/// it rides the quilltap-web REST route (`POST /api/v1/characters/{id}/photos`
+/// with a JSON `{fileId}` body, P4.6m), which constructs the per-request storage
+/// backend. `keptAt` is minted here (the injected ISO clock).
 pub async fn character_photo_save_by_id(
     db: &Db,
     _user_id: &str,
@@ -1444,8 +1450,12 @@ pub async fn character_photo_save_by_id(
         _ => {}
     }
     let Some(lid) = link_id else {
-        // The fileId leg needs the host file-store bytes seam (unwired here).
-        return not_available("photo-save-fileid");
+        // The fileId leg needs the host file-store bytes seam the dispatch
+        // channel can't build — it rides the quilltap-web REST route.
+        return bad_request(
+            "Saving by fileId reads host-stored bytes — POST \
+             /api/v1/characters/{id}/photos with a JSON {fileId} body",
+        );
     };
     let kept_at = crate::clock::now_iso();
     let cid = character_id.to_string();

@@ -582,8 +582,9 @@ fn read_user_block(main: &rusqlite::Connection, user_id: &str) -> Result<Value, 
 /// v4 `handleGet`'s per-message attachment resolution (get.ts:303–370) — the
 /// LINKED-FILES branch: files whose `linkedTo` array contains the message id, each
 /// projected `{ id, filename, filepath: /api/v1/files/{id}, mimeType }` (+ `sha256`
-/// and `linkSummary` for images via [`photo_link_summary`]). The mount-file
-/// (Scriptorium `event.attachments`) branch is a tracked deferral.
+/// and `linkSummary` for images via
+/// [`crate::photos::photo_link_summary::get_photo_link_summary_by_sha256`]). The
+/// mount-file (Scriptorium `event.attachments`) branch is a tracked deferral.
 fn resolve_message_attachments(
     main: &rusqlite::Connection,
     mount: &rusqlite::Connection,
@@ -615,7 +616,7 @@ fn resolve_message_attachments(
                 "filepath": filepath,
                 "mimeType": mime,
                 "sha256": sha256,
-                "linkSummary": photo_link_summary(mount, &sha256)?,
+                "linkSummary": crate::photos::photo_link_summary::get_photo_link_summary_by_sha256(mount, &sha256)?,
             }));
         } else {
             attachments.push(json!({
@@ -627,66 +628,6 @@ fn resolve_message_attachments(
         }
     }
     Ok(Value::Array(attachments))
-}
-
-/// v4 `getPhotoLinkSummaryBySha256` — the reverse index from an image's content
-/// hash to every `doc_mount_file_links` row that hard-links those bytes. Empty
-/// (`{ count: 0, linkers: [] }`) when the sha isn't in the mount-index (a legacy
-/// `files` image, never written there — the common case). The non-empty linker
-/// resolution is faithful but not differential-exercised (the salon fixture's
-/// images are legacy `files`, not mount-index-linked).
-fn photo_link_summary(mount: &rusqlite::Connection, sha256: &str) -> Result<Value, DbError> {
-    let empty = || json!({ "count": 0, "linkers": [] });
-    if sha256.is_empty() {
-        return Ok(empty());
-    }
-    let file_id =
-        crate::db::doc_mount_files::DocMountFilesRepository::new(mount).find_by_sha256(sha256)?;
-    let Some(file_id) = file_id else {
-        return Ok(empty());
-    };
-    let links = crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount)
-        .find_by_file_id(&file_id)?;
-    if links.is_empty() {
-        return Ok(empty());
-    }
-    let points = crate::db::doc_mount_points::DocMountPointsRepository::new(mount);
-    let mut cache: std::collections::HashMap<String, (String, String)> =
-        std::collections::HashMap::new();
-    let mut linkers: Vec<Value> = Vec::new();
-    for link in &links {
-        let (name, store_type) = match cache.get(&link.mount_point_id) {
-            Some(v) => v.clone(),
-            None => {
-                let Some(mp) = points.find_store_naming_by_id(&link.mount_point_id)? else {
-                    continue;
-                };
-                let v = (
-                    mp.name,
-                    mp.store_type.unwrap_or_else(|| "documents".to_string()),
-                );
-                cache.insert(link.mount_point_id.clone(), v.clone());
-                v
-            }
-        };
-        let fm = crate::photos::keep_image_markdown::parse_kept_image_frontmatter(
-            link.extracted_text.as_deref(),
-        );
-        linkers.push(json!({
-            "linkId": link.id,
-            "mountPointId": link.mount_point_id,
-            "mountPointName": name,
-            "mountStoreType": store_type,
-            "relativePath": link.relative_path,
-            "isPhotoAlbum": crate::db::doc_mount_file_links::is_photos_relative_path(Some(&link.relative_path)),
-            "linkedAt": link.created_at,
-            "linkedBy": fm.linked_by,
-            "linkedById": fm.linked_by_id,
-            "caption": fm.caption,
-            "tags": fm.tags,
-        }));
-    }
-    Ok(json!({ "count": linkers.len(), "linkers": linkers }))
 }
 
 // ===========================================================================

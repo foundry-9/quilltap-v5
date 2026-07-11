@@ -6788,3 +6788,24 @@ QT_ORACLE_AVATAR_WRITE=/tmp/oracle-avatar-write.ndjson \
 
 Versions: core 0.0.175, harness 0.0.160, web 0.0.10. Next: refusal-arm
 retirement + `photo_link_summary` dedup (unit 5).
+
+---
+
+### P4.6m unit 5 — refusal-arm retirement + `photo_link_summary` dedup — LANDED
+
+- **Refusals re-messaged to point at the now-live REST routes** (all three P4.6m
+  deferrals closed): `character_export`'s `format=png` arm and
+  `character_photo_save_by_id`'s fileId leg no longer `not_available` — they
+  return a `bad_request` naming the quilltap-web route that carries the binary
+  (`GET …?action=export&format=png`, `POST …/photos {fileId}`); the
+  `character_import` doc note now describes the multipart route
+  (`POST /api/v1/characters?action=import`) reusing its create spine + writing the
+  avatar. `not_available` stays `pub` (the remaining P4.6f tier-3 LLM refusals).
+- **`photo_link_summary` unified:** `api::salon`'s byte-identical private copy is
+  deleted; `resolve_message_attachments` now calls the shared
+  `photos::photo_link_summary::get_photo_link_summary_by_sha256`. Pure code
+  motion (identical body) — no behavior change; the module note is updated.
+
+Version: core 0.0.176. **P4.6m is COMPLETE** — all five units landed; the three
+standing byte-shaped characters deferrals (photo multipart upload,
+photo-save-fileid, SillyTavern PNG export/import) are CLOSED.

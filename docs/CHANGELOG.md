@@ -47,6 +47,16 @@ for the delete/member/mount-link side effects). Repo additions:
 `group_doc_mount_links::{unlink,delete_by_group_id,link_returning}`,
 `doc_mount_points::find_full_json_by_id`. Projects + scenarios variants
 answer the loud `not_available` refusal until their units land.
+Retired the closed characters deferral refusals and unified the duplicated
+photo-link-summary (P4.6m unit 5). The dispatch `export-png` /
+`photo-save-fileid` `not_available` arms now point at the live quilltap-web
+REST routes (PNG export streams binary; the fileId photo save reads
+host-stored bytes — both need the transport the dispatch channel can't
+carry), and the import-png doc note reflects the new multipart route. The
+`api::salon` message-attachment resolver now calls the shared
+`photos::photo_link_summary::get_photo_link_summary_by_sha256` instead of its
+byte-identical private copy (one implementation, all callers).
+
 Added the SillyTavern multipart import route + the main-avatar vault write
 (P4.6m unit 4). `POST /api/v1/characters?action=import` accepts a `.png` or
 `.json` ST card (multipart): it creates the character through the ported
