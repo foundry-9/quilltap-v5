@@ -30,6 +30,13 @@ Read, in this order:
   findings that were promoted into "the next order".
 - The memory notes (MEMORY.md index) for standing gotchas and carry-forwards.
 
+These five sources are the round-lifecycle handoff: `/unify` keeps the
+phase plan, order status headers, status-log, and memory current, and
+`/dogfood` keeps the findings file's standing notes and order headers
+current — so between them, everything needed to answer "what's next"
+should already be here. If it isn't (a stale header, a phase plan that
+doesn't reflect main), fix that first and flag the gap.
+
 ## 3. Decide the parallel split
 
 Default to as many parallel lanes as the scope honestly supports. A split is

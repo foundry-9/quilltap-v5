@@ -68,6 +68,22 @@ Then stop and wait for findings — do not fix hypothetical problems.
 5. Tell the human it's fixed, what the cause was, and to rebuild/restart
    their dogfood server — then continue the walk where they left off.
 
+## 3. Leave the trail for the next round
+
+A finding that can't be fixed in place must land somewhere durable the next
+`/setupphase` reads — never only in this conversation:
+
+- Too big for a dogfood commit → add it to the **"Standing notes for the
+  next orders"** section of `dogfood-findings.md` with enough detail to
+  scope from, and to the owning order's OPEN list (or say a new order is
+  needed) if one exists.
+- A finding that reveals a landed order was incomplete → correct that
+  order's **status header** now, not at the next unification.
+- A pattern worth a systematic close-out (e.g. the migration-vintage
+  fixture rule after repeated schema-divergence findings) → record the
+  trigger condition in the standing notes.
+- New reusable gotchas → the round's memory note + MEMORY.md.
+
 ## Standing e2e gotchas (check before blaming the app)
 
 Glyph-content buttons need `getByTitle` (content outranks `title` in

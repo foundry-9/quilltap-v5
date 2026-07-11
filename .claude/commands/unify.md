@@ -58,6 +58,10 @@ work is a commit of its own.
 - CHANGELOG: one unification entry (scope, wires, gate results, final
   versions). Status-log: the round record. Each order's **status header**:
   move landed items to Done, enumerate exactly what stays OPEN.
+- **Keep the phase plan current** (the `phase-*.md` decomposition): mark
+  this round's items done and make sure what's next is legible — the next
+  `/setupphase` reads the phase plan FIRST, so "what's next" must live
+  there and in the order status headers, not only in your chat report.
 - Update CLAUDE.md's Status only if this completes a round/phase — keep it
   phase-level.
 - `git checkout main && git merge --ff-only unify/<round> && git push`.
@@ -77,4 +81,7 @@ work is a commit of its own.
 
 Lead with what's on main (commit hash, pushed) and the gate numbers. Then
 the caveats that change what the human does next: anything a lane banked,
-any surface still refusal-armed, and the recommended next ask.
+any surface still refusal-armed, and the recommended next ask. Everything
+in that recommendation must ALSO already be durable in the docs above — a
+fresh `/setupphase` session must be able to reconstruct it without this
+conversation.

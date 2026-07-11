@@ -12,7 +12,12 @@ discipline), `/unify <orders>` (cherry-pick finished lanes onto main,
 unification wires, the full gate, cleanup, docs/memory), and `/dogfood
 <orders>` (produce the hands-on test script for a landed round, then
 diagnose/fix findings in place with the finding-class taxonomy and the
-broad-gesture rule).
+broad-gesture rule). Follow-up: the round-lifecycle handoff made explicit —
+`/unify` also keeps the phase plan current and must make its "next ask"
+reconstructible from docs alone; `/dogfood` gains a "leave the trail"
+section (promote unfixable findings into the standing notes / order OPEN
+lists, correct stale status headers immediately); `/setupphase` names the
+five handoff sources and says to fix-and-flag any that are stale.
 
 Dogfood finding #4 fixed: clicking a character card on `/characters` did
 nothing unless the click landed on the name/avatar link. v4's `AuroraView`
