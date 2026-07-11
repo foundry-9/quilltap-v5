@@ -130,7 +130,9 @@ test.describe('P4.6l — Projects vertical (list → detail → toggle → renam
     // Open the first project's detail via its Open link.
     await projectCards.first().getByRole('link', { name: 'Open' }).click();
     await expect(page).toHaveURL(/\/prospero\/[^/]+$/);
-    await expect(page.getByRole('heading', { name: 'Characters' })).toBeVisible({
+    // `exact` — the Image Generation card's "Announce Lantern Images to
+    // Characters" heading also matches a loose name filter.
+    await expect(page.getByRole('heading', { name: 'Characters', exact: true })).toBeVisible({
       timeout: 10_000,
     });
 
@@ -144,7 +146,9 @@ test.describe('P4.6l — Projects vertical (list → detail → toggle → renam
     await page.getByRole('button', { name: 'Edit', exact: true }).click();
     const nameInput = page.getByRole('textbox', { name: 'Project name' });
     await nameInput.fill('Renamed by the walk');
-    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    // Scope to the header — the Settings card and the two aesthetic fields
+    // (commit-4 cards) carry their own Save buttons.
+    await page.locator('qt-project-header').getByRole('button', { name: 'Save', exact: true }).click();
 
     // The rename survives a full reload (server state).
     await page.reload();
@@ -178,6 +182,16 @@ function runCliWrite(cli: string, sql: string): void {
     encoding: 'utf8',
   });
   if (res.status !== 0) {
+    // The fixture materializes only the tables its walks read; v4/v5 repos
+    // auto-ensure collections on first access, so a table can be legitimately
+    // absent (e.g. `tags`). Skip those instead of failing the setup.
+    // …and the store-backed slim rows (groups/projects) carry no userId
+    // column at all — they are not user-scoped. Skip both shapes.
+    const out = `${res.stdout}${res.stderr}`;
+    if (out.includes('no such table') || out.includes('no such column: userId')) {
+      console.warn(`fixture rewrite skipped (not user-scoped): ${sql}`);
+      return;
+    }
     throw new Error(`CLI rewrite failed (${sql}):\n${res.stdout}\n${res.stderr}`);
   }
 }

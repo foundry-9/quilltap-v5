@@ -49,10 +49,10 @@ export async function createProject(
   name: string,
   description?: string | null,
 ): Promise<ProjectDetail> {
+  // The body rides a nested `project` bag (the server's pinned shape).
   const data = await core.dispatchData({
     type: 'projectCreate',
-    name,
-    ...(description ? { description } : {}),
+    project: { name, ...(description ? { description } : {}) },
   });
   return (data['project'] as ProjectDetail) ?? (data as unknown as ProjectDetail);
 }
@@ -72,7 +72,8 @@ export async function updateProject(
   projectId: string,
   patch: Record<string, unknown>,
 ): Promise<ProjectDetail> {
-  const data = await core.dispatchData({ type: 'projectUpdate', projectId, ...patch });
+  // The partial rides a nested `project` bag (the server's pinned shape).
+  const data = await core.dispatchData({ type: 'projectUpdate', projectId, project: patch });
   return (data['project'] as ProjectDetail) ?? (data as unknown as ProjectDetail);
 }
 

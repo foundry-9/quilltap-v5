@@ -178,6 +178,16 @@ function runCliWrite(cli: string, sql: string): void {
     encoding: 'utf8',
   });
   if (res.status !== 0) {
+    // The fixture materializes only the tables its walks read; v4/v5 repos
+    // auto-ensure collections on first access, so a table can be legitimately
+    // absent (e.g. `tags`). Skip those instead of failing the setup.
+    // …and the store-backed slim rows (groups/projects) carry no userId
+    // column at all — they are not user-scoped. Skip both shapes.
+    const out = `${res.stdout}${res.stderr}`;
+    if (out.includes('no such table') || out.includes('no such column: userId')) {
+      console.warn(`fixture rewrite skipped (not user-scoped): ${sql}`);
+      return;
+    }
     throw new Error(`CLI rewrite failed (${sql}):\n${res.stdout}\n${res.stderr}`);
   }
 }

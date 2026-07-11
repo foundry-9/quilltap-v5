@@ -65,7 +65,8 @@ export async function updateGroup(
     icon?: string | null;
   },
 ): Promise<GroupSummary> {
-  const data = await core.dispatchData({ type: 'groupUpdate', groupId, ...patch });
+  // The patch rides a nested `group` bag (the server's pinned shape).
+  const data = await core.dispatchData({ type: 'groupUpdate', groupId, group: patch });
   return (data['group'] as GroupSummary) ?? (data as unknown as GroupSummary);
 }
 

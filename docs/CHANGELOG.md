@@ -2,6 +2,24 @@
 
 ## Recent Changes
 
+Unification wires for the P4.6k ∥ P4.6l ∥ P4.6m round (live-seam fixes
+found by the first real-server walks). Contract reconciliation: the SPA's
+`groupUpdate`/`projectUpdate`/`projectCreate` senders now ride the nested
+`group`/`project` bags lane A pinned and differential-proved (the flat
+form the order sketched was never live); `core-contract.ts` and the unit
+tests updated with them. A real layering bug fixed: `.qt-page-container >
+*`'s z-1 stacking context trapped any dialog opened from an early page
+child beneath later siblings (the groups Create dialog was unclickable) —
+a `:has(.qt-dialog-overlay)` exception raises the hosting child to the
+dialog layer. New live e2e beats: the characters gallery multipart upload
+and the SillyTavern PNG-export download (asserting the embedded card —
+the container is v4-faithful to the avatar bytes, not necessarily PNG);
+the groups/projects walks activated over lane A's fixture with
+fixture-tolerant setup (absent `tags` table, un-scoped store-backed rows)
+and post-commit-4 strict-mode locator scoping. Full Playwright suite
+16/16 green. SPA 0.5.16.
+
+
 P4.6k (lane A) unit 4 — project wardrobe CRUD. list / get / create / update /
 delete over the project store's `Wardrobe/` folder (PROJECT_WARDROBE_FOLDER =
 CHARACTER_WARDROBE_FOLDER), reusing the P4.6f vault-write functions

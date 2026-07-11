@@ -55,6 +55,17 @@
     z-index: 1;
   }
 
+  /**
+   * A dialog must escape that z-1 stacking context: a `.qt-dialog-overlay`
+   * (fixed, z-60) opened inside an EARLY page child would otherwise paint
+   * beneath later z-1 siblings — the whole subtree is capped at z-1. Raise
+   * the child hosting an open dialog to the dialog layer so its overlay
+   * genuinely covers the page (found live by the P4.6l groups-dialog walk).
+   */
+  .qt-page-container > *:has(.qt-dialog-overlay) {
+    z-index: 60;
+  }
+
   /* ==========================================================================
      ABOUT PAGE — staged intro for the text layer over the background image
      The content stays hidden until the theme has finished applying (the

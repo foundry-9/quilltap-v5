@@ -534,14 +534,23 @@ export interface GroupGetRequest {
   groupId: string;
 }
 
-/** Update a group (v4 PUT `/groups/:id`). */
-export interface GroupUpdateRequest {
-  type: 'groupUpdate';
-  groupId: string;
+/** The group patch bag (v4 PUT `/groups/:id` body, `updateGroupSchema`). */
+export interface GroupUpdatePatch {
   name?: string;
   description?: string | null;
   color?: string | null;
   icon?: string | null;
+}
+
+/**
+ * Update a group (v4 PUT `/groups/:id`). The patch rides a nested `group` bag —
+ * the shape lane A pinned and differential-proved (reconciled at unification;
+ * the flat form the order sketched was never live).
+ */
+export interface GroupUpdateRequest {
+  type: 'groupUpdate';
+  groupId: string;
+  group: GroupUpdatePatch;
 }
 
 /** Delete a group (v4 DELETE `/groups/:id`) — immediate, no confirm. */
@@ -632,11 +641,17 @@ export interface ProjectListRequest {
   type: 'projectList';
 }
 
-/** Create a project (v4 POST `/projects`). */
+/**
+ * Create a project (v4 POST `/projects`). The body rides a nested `project`
+ * bag — the shape lane A pinned and differential-proved (reconciled at
+ * unification).
+ */
 export interface ProjectCreateRequest {
   type: 'projectCreate';
-  name: string;
-  description?: string;
+  project: {
+    name: string;
+    description?: string;
+  };
 }
 
 /** The project detail projection (v4 GET `/projects/:id`). */
@@ -645,10 +660,8 @@ export interface ProjectGetRequest {
   projectId: string;
 }
 
-/** Update a project (v4 PUT `/projects/:id`) — a partial per `updateProjectSchema`. */
-export interface ProjectUpdateRequest {
-  type: 'projectUpdate';
-  projectId: string;
+/** The project patch bag (v4 PUT `/projects/:id` body, `updateProjectSchema`). */
+export interface ProjectUpdatePatch {
   name?: string;
   description?: string | null;
   instructions?: string | null;
@@ -663,6 +676,17 @@ export interface ProjectUpdateRequest {
   defaultAlertCharactersOfLanternImages?: boolean | null;
   answerConfirmationOverride?: 'ON' | 'OFF' | null;
   backgroundDisplayMode?: 'latest_chat' | 'project' | 'static' | 'theme';
+}
+
+/**
+ * Update a project (v4 PUT `/projects/:id`). The partial rides a nested
+ * `project` bag — the shape lane A pinned and differential-proved (reconciled
+ * at unification).
+ */
+export interface ProjectUpdateRequest {
+  type: 'projectUpdate';
+  projectId: string;
+  project: ProjectUpdatePatch;
 }
 
 /** Delete a project (v4 DELETE `/projects/:id`) — chats/files disassociated. */

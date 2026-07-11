@@ -189,7 +189,7 @@ describe('ProjectModelBehaviorCard', () => {
     agentSelect.dispatchEvent(new Event('change'));
     await settle(fixture);
     const put = seen.find((r) => r.type === 'projectUpdate');
-    expect(put).toMatchObject({ projectId: 'p1', defaultAgentModeEnabled: true });
+    expect(put).toMatchObject({ projectId: 'p1', project: { defaultAgentModeEnabled: true } });
     // The failed immediate save surfaces the alert.
     expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeTruthy();
   });
@@ -243,7 +243,7 @@ describe('ProjectCharactersCard', () => {
     await settle(fixture);
     expect(seen.find((r) => r.type === 'projectUpdate')).toMatchObject({
       projectId: 'p1',
-      allowAnyCharacter: true,
+      project: { allowAnyCharacter: true },
     });
     expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeTruthy();
   });
@@ -338,9 +338,11 @@ describe('ProjectDetailScreen', () => {
     const put = seen.find((r) => r.type === 'projectUpdate');
     expect(put).toMatchObject({
       projectId: 'p1',
-      name: 'Renamed Saga',
-      description: 'A grand tale',
-      instructions: 'Be dramatic',
+      project: {
+        name: 'Renamed Saga',
+        description: 'A grand tale',
+        instructions: 'Be dramatic',
+      },
     });
   });
 
@@ -405,7 +407,7 @@ describe('ProjectImageGenerationCard', () => {
     await settle(fixture);
     expect(seen.find((r) => r.type === 'projectUpdate')).toMatchObject({
       projectId: 'p1',
-      backgroundDisplayMode: 'project',
+      project: { backgroundDisplayMode: 'project' },
     });
     expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeTruthy();
   });

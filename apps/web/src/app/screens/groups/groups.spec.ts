@@ -199,10 +199,12 @@ describe('GroupEditor', () => {
     expect(put).toBeTruthy();
     expect(put).toMatchObject({
       groupId: 'g1',
-      name: 'Renamed Party',
-      description: 'The regulars',
-      color: '#123456',
-      icon: '🎭',
+      group: {
+        name: 'Renamed Party',
+        description: 'The regulars',
+        color: '#123456',
+        icon: '🎭',
+      },
     });
   });
 

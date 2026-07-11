@@ -306,7 +306,11 @@ test.describe('P4.6g — Characters vertical (list → view → toggle → mutat
 
     await page.getByRole('button', { name: 'Photo Gallery' }).click();
     const deleteButtons = page.getByTitle('Delete this photo');
-    await expect(deleteButtons.first()).toBeVisible({ timeout: 10_000 });
+    // The earlier gallery beat may have removed Aria's only photo — wait for
+    // the tab to settle on EITHER a tile or the empty state, then count.
+    await expect(
+      deleteButtons.first().or(page.getByText('No photos yet')),
+    ).toBeVisible({ timeout: 10_000 });
     const before = await deleteButtons.count();
 
     // A 1×1 transparent PNG; the route validates non-empty image/* bytes and
@@ -338,8 +342,16 @@ test.describe('P4.6g — Characters vertical (list → view → toggle → mutat
     const saved = testInfo.outputPath('aria-card.png');
     await download.saveAs(saved);
     const bytes = readFileSync(saved);
-    // The PNG signature — the container the tEXt card chunk rides in.
-    expect(Array.from(bytes.subarray(0, 8))).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+    // Container bytes are v4-faithful, NOT necessarily a valid PNG: Aria's
+    // avatar is a WebP, and v4's createSTCharacterPNG appends the tEXt card to
+    // whatever container the avatar bytes are (the clamped-offset quirk — see
+    // the P4.6m unit-3 status-log note). Byte-exactness is the tier-1
+    // st_png_equivalence differential's job; this beat proves the SEAM: the
+    // route streams the codec output carrying the embedded ST card.
+    const text = bytes.toString('latin1');
+    expect(text).toContain('tEXt');
+    expect(text).toContain('chara');
+    expect(text).toContain('"spec":"chara_card_v2"');
   });
 });
 
