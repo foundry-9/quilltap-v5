@@ -47,6 +47,16 @@ for the delete/member/mount-link side effects). Repo additions:
 `group_doc_mount_links::{unlink,delete_by_group_id,link_returning}`,
 `doc_mount_points::find_full_json_by_id`. Projects + scenarios variants
 answer the loud `not_available` refusal until their units land.
+Ported the SillyTavern PNG codec (P4.6m unit 1, tier-1). Added
+`create_st_character_png` / `parse_st_character_png` / the solid-colour
+placeholder generator + CRC32 to `quilltap-core`'s `sillytavern` module —
+hand-rolled PNG `tEXt`-chunk arithmetic with no image library, matching v4.
+Byte-exact against the v4 oracle on the real-avatar encode leg and every
+decode case (chara/ccv2/bare-data/malformed); the placeholder leg is
+compared at the decoded level (identical IHDR + tEXt chunks and inflated
+pixels — v4 zlib-compresses the IDAT, the port emits stored DEFLATE blocks,
+the one declared seam). New oracle `harness/oracle/cases/st-png.ts` +
+`st_png_equivalence` differential.
 
 Scoped the next porting round: three agent-ready work orders for the
 P4.6k ∥ P4.6l ∥ P4.6m parallel round —

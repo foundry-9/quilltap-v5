@@ -6571,3 +6571,51 @@ only the injection path does); aesthetic SET empty/whitespace DELETES the file.
 STILL OPEN under lane A: Unit 3 (scenarios both families + participant-union,
 12 variants) and Unit 5's list-files two-branch (2 variants) — both answer the
 loud not_available refusal. Versions: core 0.0.176, harness 0.0.161.
+### P4.6m unit 1 — the SillyTavern PNG codec (tier-1) — LANDED
+
+Lane C of the P4.6k ∥ P4.6l ∥ P4.6m round (branch
+`claude/multipart-binary-routes-b08c2c`). v4 baseline `a7b1398d` (no drift).
+
+Ported the PNG legs of v4 `lib/sillytavern/character.ts` into
+`quilltap-core::services::sillytavern`: `create_st_character_png`,
+`parse_st_character_png`, `generate_placeholder_png`, `calculate_crc32`, and
+the chunk framing. v4 hand-rolls the whole codec with NO image library
+(CRC32 poly `0xedb88320`, `u32 len | type | data | u32 CRC` chunk framing, a
+256×256 name-hash solid-colour placeholder, the `tEXt` insert immediately
+after IHDR); the port matches, staying pure and adding no core dependency.
+The JSON embedded in the `tEXt` chunk is `serde_json::to_string` over
+`export_st_character` (preserve_order → byte-identical to v4's
+`JSON.stringify`).
+
+**Two faithful-port notes carried forward:** (1) `parse_st_character_png`
+replicates v4's null-terminator `continue` that does NOT advance the chunk
+offset — a `tEXt` chunk with no NUL byte loops forever in v4 too; valid PNG
+text chunks always carry a keyword/NUL separator so it is unreachable in
+practice (documented, not altered). (2) The placeholder DEFLATE is a
+declared seam: v4 emits `zlib.deflateSync` (compressed), the port emits
+stored (uncompressed) DEFLATE blocks via a hand-rolled `zlib_stored` — both
+valid zlib that inflate to identical raw scanlines.
+
+**Differential:** new `harness/oracle/cases/st-png.ts` drives v4's REAL
+`createSTCharacterPNG`/`parseSTCharacterPNG` over a corpus (rich
+`sillyTavernData` round-trip, default-baseData, unicode/emoji fields;
+placeholder ascii + unicode names; decode cases: chara card / ccv2 keyword /
+bare-data / spec-without-data / bad-signature / bad-JSON / other-keyword /
+no-tEXt). `st_png_equivalence` asserts: encode/real-avatar BYTE-IDENTICAL;
+encode/placeholder tEXt+IHDR byte-identical and IDAT inflates (flate2
+dev-dep) to identical pixels; decode results match. Green (3 real-avatar, 2
+placeholder, 8 decode).
+
+Regen recipe:
+```
+cd ~/source/quilltap-server
+npx tsx <worktree>/harness/oracle/cases/st-png.ts > /tmp/oracle-st-png.ndjson
+cd <worktree>
+QT_ORACLE_ST_PNG=/tmp/oracle-st-png.ndjson \
+  cargo test -p quilltap-harness --test st_png_equivalence
+```
+
+Versions: core 0.0.173, harness 0.0.158. Next: the multipart machinery +
+photos POST route (unit 2), the PNG export route (unit 3), the ST import
+route + main-avatar vault write (unit 4), refusal-arm retirement +
+`photo_link_summary` dedup (unit 5).
