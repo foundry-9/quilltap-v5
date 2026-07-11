@@ -121,6 +121,89 @@ pub fn write_character_avatar_to_vault(
     )
 }
 
+/// The result of a main-avatar vault write (v4 `WriteAvatarResult`, the subset
+/// the ST import consumes).
+#[derive(Clone, Debug)]
+pub struct AvatarWrite {
+    /// `doc_mount_file_links.id` — what the character's `defaultImageId` is set to.
+    pub link_id: String,
+    pub stored_mime_type: String,
+    pub sha256: String,
+    #[allow(dead_code)]
+    pub size_bytes: usize,
+}
+
+/// v4 `writeCharacterAvatarToVault({ kind: 'main' })`: overwrite the canonical
+/// main avatar at `images/avatar.webp` in place (delete-then-insert — the
+/// existing link is `deleteWithGC`'d so its blob is reclaimed when it was the
+/// last reference, then the replacement is linked). Image MIME types the codec
+/// can decode are transcoded to WebP; everything else is stored as-is (the same
+/// `transcodeToWebP` policy the project bridge uses — the WebP bytes are the
+/// declared `[[w4-9c-image-job-handlers]]` codec seam). Throws (`Err`) when the
+/// character has no linked database-backed vault.
+///
+/// A WRITE — run inside `Db::write` (both `main` + `mount` writable).
+#[allow(clippy::too_many_arguments)]
+pub fn write_main_avatar_to_vault(
+    main: &Connection,
+    mount: &Connection,
+    codec: &dyn crate::services::file_storage::PixelCodec,
+    character_id: &str,
+    filename: &str,
+    content: &[u8],
+    content_type: &str,
+    description: Option<&str>,
+) -> Result<AvatarWrite, DbError> {
+    let Some(mount_point_id) = resolve_character_vault_mount(main, mount, character_id) else {
+        return Err(DbError::Key(format!(
+            "Character {character_id} has no linked database-backed vault"
+        )));
+    };
+    // transcodeToWebP (the codec seam): PNG/JPEG/… → WebP, else pass-through.
+    let transcoded = crate::services::file_storage::transcode_to_webp(
+        codec,
+        content,
+        content_type,
+        crate::services::file_storage::TRANSCODE_WEBP_QUALITY,
+    );
+
+    const MAIN_AVATAR_PATH: &str = "images/avatar.webp";
+    let links = DocMountFileLinksRepository::new(mount);
+    links.ensure_folder_path(&mount_point_id, "images")?;
+    // Drop any existing link at the canonical main path (GC-safe — takes the
+    // blob when it was the last reference).
+    if let Some(existing) = links.find_by_mount_point_and_path(&mount_point_id, MAIN_AVATAR_PATH)? {
+        links.delete_with_gc(&existing.id)?;
+    }
+
+    let safe_original_name = sanitize_leaf_name(filename);
+    let written = links.link_blob_content(&LinkBlobInput {
+        mount_point_id: mount_point_id.clone(),
+        relative_path: MAIN_AVATAR_PATH.to_string(),
+        file_name: "avatar.webp".to_string(),
+        // v4 omits fileType here (the repo defaults it, like the other bridges).
+        file_type: None,
+        original_file_name: safe_original_name,
+        original_mime_type: content_type.to_string(),
+        stored_mime_type: transcoded.stored_mime_type.clone(),
+        sha256: transcoded.sha256.clone(),
+        data: transcoded.data.clone(),
+        // v4: `description: input.description ?? ''`.
+        description: Some(description.unwrap_or("").to_string()),
+        conversion_status: None,
+        extracted_text: None,
+        extracted_text_sha256: None,
+        extraction_status: None,
+    })?;
+
+    Ok(AvatarWrite {
+        link_id: written.link_id,
+        stored_mime_type: transcoded.stored_mime_type,
+        sha256: transcoded.sha256,
+        size_bytes: transcoded.size_bytes,
+    })
+}
+
 /// v4 `writeLanternBackgroundToMountStore`: write into the Lantern Backgrounds
 /// mount under `<subfolder>/`. Throws (`Err`) when the mount is unprovisioned.
 pub fn write_lantern_background_to_mount_store(

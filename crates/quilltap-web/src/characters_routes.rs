@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use axum::extract::{Path, Query, Request, State};
 use axum::http::{header::CONTENT_TYPE, StatusCode};
 use axum::response::{IntoResponse, Response as AxumResponse};
+use quilltap_core::api::{characters, ErrorKind, Response};
 use quilltap_core::db::doc_mount_blobs::DocMountBlobsRepository;
 use quilltap_core::db::doc_mount_file_links::DocMountFileLinksRepository;
 use quilltap_core::db::files::FilesRepository;
@@ -23,8 +24,11 @@ use quilltap_core::photos::character_gallery_service::{
     save_link_to_character_gallery, save_to_character_gallery, GalleryError,
 };
 use quilltap_core::services::file_storage::download_file;
-use quilltap_core::services::sillytavern::{create_st_character_png, export_st_character};
-use quilltap_host::LocalStorageBackend;
+use quilltap_core::services::image_job_storage::write_main_avatar_to_vault;
+use quilltap_core::services::sillytavern::{
+    create_st_character_png, export_st_character, parse_st_character_png,
+};
+use quilltap_host::{HostImageCodec, LocalStorageBackend};
 use serde_json::Value;
 
 use crate::files_routes::{db_and_backend, error_json, not_found};
@@ -394,6 +398,177 @@ fn resolve_character(db: &Db, id: &str) -> Result<Option<Value>, quilltap_core::
     db.read_main(|main| {
         db.read_mount_index(|mount| quilltap_core::db::characters_read::find_by_id(main, mount, id))
     })
+}
+
+// ===========================================================================
+// POST /api/v1/characters?action=import  (the multipart .png / .json ST card)
+// ===========================================================================
+
+/// v4 `POST /api/v1/characters?action=import` (`handlers/post.ts` `handleImport`).
+/// Multipart `file` (a `.png` ST card or a `.json` ST card) → create the
+/// character (the ported `character_import` spine) and, for a PNG, land its bytes
+/// as the imported avatar in the new vault (`write_main_avatar_to_vault`,
+/// codec-injected) and set `defaultImageId`. Avatar failure is NON-FATAL (v4:
+/// the character is kept without a portrait). The JSON-body import (no avatar) is
+/// the SPA's dispatch `character_import` path; this route is the multipart leg.
+pub async fn characters_import_post(
+    State(state): State<SharedState>,
+    Query(query): Query<HashMap<String, String>>,
+    req: Request,
+) -> AxumResponse {
+    let (db, _backend) = match db_and_backend(&state) {
+        Ok(v) => v,
+        Err(resp) => return *resp,
+    };
+    if query.get("action").map(String::as_str) != Some("import") {
+        return error_json(
+            StatusCode::BAD_REQUEST,
+            "This route serves ?action=import only; character creation is on /api/dispatch",
+        );
+    }
+
+    let content_type = req
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    if !content_type.contains("multipart/form-data") {
+        return error_json(
+            StatusCode::BAD_REQUEST,
+            "The import route takes multipart/form-data; JSON imports are on /api/dispatch",
+        );
+    }
+
+    let form = match FormData::from_request(req, &state).await {
+        Ok(f) => f,
+        Err(_) => return bad_request("No file provided"),
+    };
+    let Some(file) = form.file("file") else {
+        return bad_request("No file provided");
+    };
+    let name_lower = file.filename.as_deref().unwrap_or("").to_lowercase();
+    let is_png = file.content_type.as_deref() == Some("image/png") || name_lower.ends_with(".png");
+    let is_json =
+        file.content_type.as_deref() == Some("application/json") || name_lower.ends_with(".json");
+
+    let (character_data, png_bytes): (Value, Option<Vec<u8>>) = if is_png {
+        match parse_st_character_png(&file.bytes) {
+            Some(data) => (data, Some(file.bytes.clone())),
+            None => return bad_request("Invalid SillyTavern PNG file"),
+        }
+    } else if is_json {
+        // v4 `JSON.parse` — a throw propagates to the outer catch → 500.
+        match serde_json::from_slice(&file.bytes) {
+            Ok(v) => (v, None),
+            Err(_) => {
+                return error_json(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to import character",
+                )
+            }
+        }
+    } else {
+        return bad_request("Unsupported file type. Please upload PNG or JSON");
+    };
+
+    // Create through the ported import spine (importSTCharacter + create).
+    let uid = quilltap_core::api::SINGLE_USER_ID;
+    let mut echo = match characters::character_import(&db, uid, character_data).await {
+        Response::Character(v) => v,
+        Response::Error(e) => return response_error(e),
+        _ => {
+            return error_json(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to import character",
+            )
+        }
+    };
+
+    // The PNG leg lands the portrait in the new vault (non-fatal per v4).
+    if let Some(png) = png_bytes {
+        let created_id = echo
+            .get("character")
+            .and_then(|c| c.get("id"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let name = echo
+            .get("character")
+            .and_then(|c| c.get("name"))
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("avatar")
+            .to_string();
+        let filename = format!("{name}.png");
+        if let Some(link_id) = write_avatar(&db, &created_id, filename, png).await {
+            set_default_image_id(&db, &created_id, &link_id).await;
+            if let Some(c) = echo.get_mut("character").and_then(Value::as_object_mut) {
+                c.insert("defaultImageId".into(), Value::String(link_id));
+            }
+        }
+    }
+
+    created(echo)
+}
+
+/// Write the imported PNG as the character's main vault avatar. Returns the new
+/// link id, or `None` on any failure (v4 keeps the character without a portrait).
+async fn write_avatar(
+    db: &Db,
+    character_id: &str,
+    filename: String,
+    png: Vec<u8>,
+) -> Option<String> {
+    let cid = character_id.to_string();
+    let written = db
+        .write(move |writers| {
+            let mount = writers
+                .mount_index()
+                .ok_or_else(|| quilltap_core::db::DbError::Key("no mount-index database".into()))?
+                .connection();
+            let main = writers.main().connection();
+            Ok(write_main_avatar_to_vault(
+                main,
+                mount,
+                &HostImageCodec,
+                &cid,
+                &filename,
+                &png,
+                "image/png",
+                None,
+            ))
+        })
+        .await
+        .ok()?;
+    written.ok().map(|a| a.link_id)
+}
+
+/// Set the character's `defaultImageId` slim column (v4 `repos.characters.update`).
+async fn set_default_image_id(db: &Db, character_id: &str, link_id: &str) {
+    let cid = character_id.to_string();
+    let lid = link_id.to_string();
+    let _ = db
+        .write(move |writers| {
+            writers.main().connection().execute(
+                "UPDATE characters SET defaultImageId = ?1 WHERE id = ?2",
+                rusqlite::params![lid, cid],
+            )?;
+            Ok(())
+        })
+        .await;
+}
+
+/// Map a dispatch `Response::Error` to its HTTP response ({error: message}).
+fn response_error(e: quilltap_core::api::types::CoreError) -> AxumResponse {
+    let status = match e.kind {
+        ErrorKind::BadRequest => StatusCode::BAD_REQUEST,
+        ErrorKind::Unauthorized => StatusCode::UNAUTHORIZED,
+        ErrorKind::NotFound => StatusCode::NOT_FOUND,
+        ErrorKind::Locked => StatusCode::SERVICE_UNAVAILABLE,
+        ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    error_json(status, &e.message)
 }
 
 /// v4 `readCharacterAvatarBuffer` — the bytes a character-avatar id points at.

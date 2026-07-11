@@ -6723,3 +6723,68 @@ and the 404 / 400 arms. The PNG codec's byte-exactness is proven by unit 1's
 
 Version: web 0.0.9. Next: the ST import route + main-avatar vault write (unit 4),
 refusal-arm retirement + `photo_link_summary` dedup (unit 5).
+
+---
+
+### P4.6m unit 4 — the ST import multipart route + the main-avatar vault write — LANDED
+
+Two pieces.
+
+- **`write_main_avatar_to_vault`** (`services/image_job_storage.rs`) — v4
+  `writeCharacterAvatarToVault({ kind: 'main' })`: `transcode_to_webp` (the
+  injected codec seam) → `ensure_folder_path('images')` → delete-then-insert at
+  `images/avatar.webp` (`find_by_mount_point_and_path` → `delete_with_gc` the
+  existing avatar, then `link_blob_content` the replacement) → returns the new
+  link id. Errs when the character has no database-backed vault. The sibling
+  `write_character_avatar_to_vault` (history kind) is unchanged.
+- **`POST /api/v1/characters?action=import`** (`characters_routes::
+  characters_import_post`) — v4 `handleImport`, multipart leg. A `.png`
+  (`content-type image/png` or `.png` name) → `parse_st_character_png` (null →
+  400 `Invalid SillyTavern PNG file`); a `.json` → `serde_json` parse. The card
+  is created through the ported `character_import` spine (proven by
+  `st_import_card`); for the PNG leg the bytes are written as the main avatar
+  (non-fatal per v4 — failure keeps the character) and `defaultImageId` is set
+  (raw slim update) + reflected in the echo. Wrong `action` / non-multipart → a
+  loud 400 pointer to `/api/dispatch`.
+
+**Proofs.** (1) Route integration
+(`crates/quilltap-web/tests/characters_import_route.rs`): the PNG import (create
++ avatar + `defaultImageId`), verified END-TO-END by re-exporting the created
+character through the unit-3 route and confirming the container is the
+transcoded WebP carrying the card; the JSON-file leg (no avatar); the error arms
+(no file, invalid ST PNG, unsupported type, wrong action). (2) A tier-2
+differential (`character-avatar-write-tier2` oracle +
+`character_avatar_write_tier2_equivalence`) driving v4's REAL
+`writeCharacterAvatarToVault({kind:'main'})` over Aria (who already has an
+avatar, so the delete-then-insert REPLACEMENT is exercised): the link row's
+stable fields (`relativePath`/`fileName`/`originalMimeType`/`storedMimeType`) +
+the replaced link-count (1) + the blob's decoded metadata (16×16 WebP, non-empty)
+diffed exactly; the WebP bytes + `sha256` are the declared codec seam
+(`[[w4-9c-image-job-handlers]]` — sharp vs the host `image`/`webp` stack).
+
+**Scoping note:** the CREATE half of the import is proven by the standing
+`st_import_card` differential; this unit's differential isolates the genuinely-new
+`write_main_avatar_to_vault`. The oracle imports sharp by absolute path
+(`packages/quilltap/node_modules/sharp`) since jest can't resolve it from the
+/tmp mirror.
+
+Regen recipe:
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<worktree>
+TMPO=/tmp/qt-avatar-write-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/character-avatar-write-tier2.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/characters.json"                   "$TMPO/fixtures/"
+cd ~/source/quilltap-server
+QT_FIXTURE_CHARACTERS_MAIN=$V5W/crates/quilltap-web/tests/fixtures/characters-main.db \
+QT_FIXTURE_CHARACTERS_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/characters-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-avatar-write.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- character-avatar-write-tier2
+cd $V5W
+QT_ORACLE_AVATAR_WRITE=/tmp/oracle-avatar-write.ndjson \
+  cargo test -p quilltap-harness --test character_avatar_write_tier2_equivalence
+```
+
+Versions: core 0.0.175, harness 0.0.160, web 0.0.10. Next: refusal-arm
+retirement + `photo_link_summary` dedup (unit 5).

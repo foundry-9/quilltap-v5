@@ -70,6 +70,10 @@ pub fn build_router(state: SharedState) -> Router {
             get(characters_routes::characters_get),
         )
         .route(
+            "/api/v1/characters",
+            post(characters_routes::characters_import_post),
+        )
+        .route(
             "/api/v1/terminals",
             post(terminal_routes::terminals_post).get(terminal_routes::terminals_get),
         )

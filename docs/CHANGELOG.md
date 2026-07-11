@@ -47,6 +47,21 @@ for the delete/member/mount-link side effects). Repo additions:
 `group_doc_mount_links::{unlink,delete_by_group_id,link_returning}`,
 `doc_mount_points::find_full_json_by_id`. Projects + scenarios variants
 answer the loud `not_available` refusal until their units land.
+Added the SillyTavern multipart import route + the main-avatar vault write
+(P4.6m unit 4). `POST /api/v1/characters?action=import` accepts a `.png` or
+`.json` ST card (multipart): it creates the character through the ported
+import spine and, for a PNG, lands the bytes as the imported avatar via the
+new `write_main_avatar_to_vault` (v4 `writeCharacterAvatarToVault({kind:
+'main'})` — the delete-then-insert at `images/avatar.webp`, WebP transcode
+via the injected host codec) and sets `defaultImageId`. Avatar failure is
+non-fatal (character kept). Closes the `import-png` deferral. Proofs: a
+route-level integration test (PNG create + avatar + defaultImageId, verified
+end-to-end by re-exporting the character; the JSON leg; the error arms) and a
+tier-2 differential (`character-avatar-write-tier2`) driving v4's real
+`writeCharacterAvatarToVault` — the link row's stable fields + the replaced-
+count + the blob's decoded metadata (16×16 WebP) diffed exactly, the WebP
+bytes/sha the declared codec seam.
+
 Added the SillyTavern PNG-export route (P4.6m unit 3):
 `GET /api/v1/characters/{id}?action=export&format=png` streams the ST card
 embedded in a PNG `tEXt` chunk (the avatar bytes — vault link or legacy file
