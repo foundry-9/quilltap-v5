@@ -69,16 +69,20 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
           The default AI provider and model to use when chatting with this character. Can be overridden per chat.
         </p>
         <div class="flex items-center gap-3">
+          <!-- [selected] per option, not [value] on the select: the profiles
+               list loads async, and a select-level value binding fires before
+               the options exist, silently resetting to "" (finding #6). -->
           <select
             class="qt-select flex-1"
             [disabled]="saving().connectionProfile"
-            [value]="connectionProfileValue()"
             (change)="onConnectionProfileChange($any($event.target).value)"
           >
-            <option value="">No default profile</option>
-            <option [value]="userControlledProfileId">User Acts As Character</option>
+            <option value="" [selected]="connectionProfileValue() === ''">No default profile</option>
+            <option [value]="userControlledProfileId" [selected]="connectionProfileValue() === userControlledProfileId">
+              User Acts As Character
+            </option>
             @for (profile of connectionProfiles(); track profile.id) {
-              <option [value]="profile.id">{{ profile.name }}</option>
+              <option [value]="profile.id" [selected]="connectionProfileValue() === profile.id">{{ profile.name }}</option>
             }
           </select>
           @if (saving().connectionProfile) {
@@ -114,12 +118,13 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
           <select
             class="qt-select flex-1"
             [disabled]="saving().partner || isUserControlled()"
-            [value]="defaultPartnerId() ?? ''"
             (change)="onPartnerChange($any($event.target).value)"
           >
-            <option value="">No default partner</option>
+            <option value="" [selected]="(defaultPartnerId() ?? '') === ''">No default partner</option>
             @for (char of otherUserControlled(); track char.id) {
-              <option [value]="char.id">{{ char.name }}{{ char.title ? ' - ' + char.title : '' }}</option>
+              <option [value]="char.id" [selected]="defaultPartnerId() === char.id">
+                {{ char.name }}{{ char.title ? ' - ' + char.title : '' }}
+              </option>
             }
           </select>
           @if (saving().partner) {
@@ -151,12 +156,15 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
             <select
               class="qt-select flex-1"
               [disabled]="saving().systemPrompt"
-              [value]="character().defaultSystemPromptId ?? ''"
               (change)="onDefaultSystemPromptChange($any($event.target).value)"
             >
-              <option value="">Use first prompt marked as default</option>
+              <option value="" [selected]="(character().defaultSystemPromptId ?? '') === ''">
+                Use first prompt marked as default
+              </option>
               @for (prompt of character().systemPrompts; track prompt.id) {
-                <option [value]="prompt.id">{{ prompt.name }}{{ prompt.isDefault ? ' (current default)' : '' }}</option>
+                <option [value]="prompt.id" [selected]="character().defaultSystemPromptId === prompt.id">
+                  {{ prompt.name }}{{ prompt.isDefault ? ' (current default)' : '' }}
+                </option>
               }
             </select>
             @if (saving().systemPrompt) {
@@ -178,12 +186,13 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
             <select
               class="qt-select flex-1"
               [disabled]="saving().scenario"
-              [value]="character().defaultScenarioId ?? ''"
               (change)="onDefaultScenarioChange($any($event.target).value)"
             >
-              <option value="">No default scenario</option>
+              <option value="" [selected]="(character().defaultScenarioId ?? '') === ''">No default scenario</option>
               @for (scenario of character().scenarios; track scenario.id) {
-                <option [value]="scenario.id">{{ scenario.title }}</option>
+                <option [value]="scenario.id" [selected]="character().defaultScenarioId === scenario.id">
+                  {{ scenario.title }}
+                </option>
               }
             </select>
             @if (saving().scenario) {

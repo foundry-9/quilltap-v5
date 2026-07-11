@@ -219,6 +219,41 @@ describe('CharacterDefaultsTab (autosave contract)', () => {
     expect(req!['character']).toEqual({ canDressThemselves: false });
   });
 
+  it('shows the stored profile when the profiles list loads AFTER first render (finding #6)', async () => {
+    // The real-data gesture: the character (with a saved default profile)
+    // renders before the async profiles query resolves. A select-level
+    // [value] binding fires against an empty option list and silently resets
+    // to "" — the stored value must still display once the options arrive.
+    const fixture = await render(stubClient(() => {}), {
+      character: character({ defaultConnectionProfileId: 'profile-1' }),
+      connectionProfiles: [],
+    });
+    const select = selectByFirstOptionText(fixture, 'No default profile');
+    expect(select.value).toBe(''); // no matching option yet
+
+    fixture.componentRef.setInput('connectionProfiles', [{ id: 'profile-1', name: 'My GPT' }]);
+    fixture.detectChanges();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+    expect(select.value).toBe('profile-1');
+  });
+
+  it('shows the stored partner when the partner id resolves AFTER first render (finding #6)', async () => {
+    const fixture = await render(stubClient(() => {}), {
+      character: character({}),
+      userControlledCharacters: [partner('p1', 'Jeeves')],
+      defaultPartnerId: null,
+    });
+    const select = selectByFirstOptionText(fixture, 'No default partner');
+    expect(select.value).toBe('');
+
+    fixture.componentRef.setInput('defaultPartnerId', 'p1');
+    fixture.detectChanges();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+    expect(select.value).toBe('p1');
+  });
+
   it('surfaces a rejected save in the tab alert instead of swallowing it (finding #6)', async () => {
     const failing: Partial<CoreClient> = {
       dispatchData: (async () => {
