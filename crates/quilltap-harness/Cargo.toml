@@ -38,6 +38,10 @@ regex = "1"
 # The file-attachment tier-3 differential base64-encodes the fixture's per-file
 # bytes to build the (B) processFileAttachmentFallback `data` payload.
 base64 = "0.22"
+# The ST-PNG differential inflates the placeholder leg's IDAT to diff the decoded
+# raw scanlines (v4 zlib-compresses, the port stores — the declared DEFLATE seam,
+# compared at the decoded level, not byte-exact).
+flate2 = "1"
 # The logLLMCall regen differentials (W4.10b) open a real single-writer `Db` with
 # the llm-logs partition and dump the written `llm_logs` rows.
 tempfile = "3"
