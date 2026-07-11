@@ -150,6 +150,7 @@ fn tags_tier2_matches_oracle() {
                             &TagUpdate {
                                 name: data.name.clone(),
                                 quick_hide: data.quick_hide,
+                                visual_style: None,
                                 updated_at: data.updated_at.clone(),
                             },
                         )

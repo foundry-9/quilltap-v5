@@ -33,6 +33,8 @@ use serde_json::{json, Value};
 
 const ARIA: &str = "a1000000-0000-4000-8000-000000000001";
 const CONN: &str = "c0000001-0000-4000-8000-000000000001";
+const ADVENTURE: &str = "70000001-0000-4000-8000-000000000001";
+const MYSTERY: &str = "70000002-0000-4000-8000-000000000002";
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -229,6 +231,54 @@ fn wardrobe_update_body() -> Value {
     json!({ "title": "Weathered Flight Jacket", "description": null, "isDefault": false })
 }
 
+/// The six taggable tables' (id, tags) + the tags table (id, name) — the DELETE
+/// fan-out verification dump (matches the oracle's `dumpTagTables`).
+fn dump_tag_tables(db: &Db) -> Value {
+    db.read_main(|main| {
+        let mut out = serde_json::Map::new();
+        for t in [
+            "characters",
+            "chats",
+            "connection_profiles",
+            "image_profiles",
+            "embedding_profiles",
+            "files",
+        ] {
+            let mut stmt = main.prepare(&format!("SELECT id, tags FROM {t} ORDER BY id"))?;
+            let rows = stmt.query_map([], |r| {
+                Ok(json!({
+                    "id": r.get::<_, String>(0)?,
+                    "tags": r.get::<_, Option<String>>(1)?,
+                }))
+            })?;
+            let mut arr = Vec::new();
+            for row in rows {
+                arr.push(row?);
+            }
+            out.insert(t.to_string(), Value::Array(arr));
+        }
+        let mut stmt = main.prepare("SELECT id, name FROM tags ORDER BY id")?;
+        let rows = stmt.query_map([], |r| {
+            Ok(json!({ "id": r.get::<_, String>(0)?, "name": r.get::<_, String>(1)? }))
+        })?;
+        let mut arr = Vec::new();
+        for row in rows {
+            arr.push(row?);
+        }
+        out.insert("tags".to_string(), Value::Array(arr));
+        Ok(Value::Object(out))
+    })
+    .unwrap()
+}
+
+/// Sorted stable form WITHOUT the minted-key blanking (the fan-out dump rows carry
+/// baked ids identical on both sides).
+fn norm_tables(v: &Value) -> String {
+    let mut v = v.clone();
+    canon_numbers(&mut v);
+    serde_json::to_string_pretty(&sorted(&v)).unwrap()
+}
+
 /// Discover a baked wardrobe item's minted id (identical on both sides) by title.
 fn discover_item_id(db: &Db, character_id: &str, title: &str) -> String {
     let cid = character_id.to_string();
@@ -363,6 +413,58 @@ fn characters_mutations_match_oracle() {
         let iid = discover_item_id(&db, ARIA, "Goggles");
         let r = rt.block_on(characters::character_wardrobe_delete(&db, &uid, ARIA, &iid));
         run("wardrobe_delete", r);
+    }
+    {
+        let db = fresh_db(&spec, "tl");
+        run("tag_list", characters::tag_list(&db, &uid, None));
+    }
+    {
+        let db = fresh_db(&spec, "tg");
+        run("tag_get", characters::tag_get(&db, &uid, ADVENTURE));
+    }
+    {
+        let db = fresh_db(&spec, "tcn");
+        run(
+            "tag_create_new",
+            rt.block_on(characters::tag_create(&db, &uid, "Voyage")),
+        );
+    }
+    {
+        let db = fresh_db(&spec, "tcd");
+        run(
+            "tag_create_dedup",
+            rt.block_on(characters::tag_create(&db, &uid, "adventure")),
+        );
+    }
+    {
+        let db = fresh_db(&spec, "tu");
+        run(
+            "tag_update",
+            rt.block_on(characters::tag_update(
+                &db,
+                &uid,
+                MYSTERY,
+                json!({ "name": "Enigma", "quickHide": true }),
+            )),
+        );
+    }
+    {
+        let db = fresh_db(&spec, "tdel");
+        let r = rt.block_on(characters::tag_delete(&db, &uid, ADVENTURE));
+        run("tag_delete", r);
+        // Verify the multi-entity fan-out: diff all six taggable tables + the
+        // tags table against the oracle's post-delete dump.
+        let got = dump_tag_tables(&db);
+        let want = &oracle["tag_delete"]["tables"];
+        if norm_tables(&got) != norm_tables(want) {
+            eprintln!(
+                "[tag_delete tables] MISMATCH:\n{}",
+                first_diff(&norm_tables(&got), &norm_tables(want))
+            );
+            failed.push("tag_delete_tables".to_string());
+        } else {
+            eprintln!("[tag_delete tables] OK.");
+        }
     }
 
     assert!(failed.is_empty(), "characters-mutations FAILED: {failed:?}");

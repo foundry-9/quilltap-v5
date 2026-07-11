@@ -115,12 +115,13 @@ pub struct CreateOptions {
 
 /// A tag update patch. Mirrors v4 `tags.update` over `_update`: when `name` is
 /// supplied, `nameLower` is re-derived; `updatedAt` is set explicitly; id and
-/// createdAt are preserved. The pilot patches `name` + `quickHide` + `updatedAt`;
-/// `visualStyle` patching and the "updatedAt = now when absent" fallback land
-/// when an op needs them.
+/// createdAt are preserved. `visual_style` is the nullable JSON column:
+/// `None` = key absent (unchanged), `Some(None)` = set NULL, `Some(Some(vs))` =
+/// set the (already Zod-parsed, defaults-materialized) style.
 pub struct TagUpdate {
     pub name: Option<String>,
     pub quick_hide: Option<bool>,
+    pub visual_style: Option<Option<TagVisualStyle>>,
     pub updated_at: String,
 }
 
@@ -219,51 +220,147 @@ pub fn find_details_by_ids(
 /// `.nullable().optional()` schema), or `None`. Used by the add-tag verb's
 /// `{success, tag}` echo and the tag GET/PUT/DELETE ownership reads.
 pub fn find_full_by_id(conn: &Connection, id: &str) -> Result<Option<serde_json::Value>, DbError> {
-    conn.query_row(
+    let mut stmt = conn.prepare(
         "SELECT id, userId, name, nameLower, quickHide, visualStyle, createdAt, updatedAt \
          FROM tags WHERE id = ?1",
-        params![id],
-        |r| {
-            let id: String = r.get(0)?;
-            let user_id: String = r.get(1)?;
-            let name: String = r.get(2)?;
-            let name_lower: String = r.get(3)?;
-            let quick_hide: i64 = r.get(4)?;
-            let visual_style: Option<String> = r.get(5)?;
-            let created_at: String = r.get(6)?;
-            let updated_at: String = r.get(7)?;
-            Ok((
-                id,
-                user_id,
-                name,
-                name_lower,
-                quick_hide,
-                visual_style,
-                created_at,
-                updated_at,
-            ))
-        },
-    )
-    .optional()?
-    .map(
-        |(id, user_id, name, name_lower, quick_hide, visual_style, created_at, updated_at)| {
-            let mut o = serde_json::Map::new();
-            o.insert("id".into(), serde_json::Value::String(id));
-            o.insert("userId".into(), serde_json::Value::String(user_id));
-            o.insert("name".into(), serde_json::Value::String(name));
-            o.insert("nameLower".into(), serde_json::Value::String(name_lower));
-            o.insert("quickHide".into(), serde_json::Value::Bool(quick_hide != 0));
-            if let Some(text) = visual_style {
-                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text) {
-                    o.insert("visualStyle".into(), parsed);
-                }
-            }
-            o.insert("createdAt".into(), serde_json::Value::String(created_at));
-            o.insert("updatedAt".into(), serde_json::Value::String(updated_at));
-            Ok(serde_json::Value::Object(o))
-        },
-    )
-    .transpose()
+    )?;
+    stmt.query_row(params![id], marshal_full_tag)
+        .optional()
+        .map_err(DbError::from)
+}
+
+/// Marshal a full `tags` row (the `SELECT id, userId, name, nameLower, quickHide,
+/// visualStyle, createdAt, updatedAt` shape) into v4's Tag entity: `quickHide` as
+/// a bool, `visualStyle` OMITTED when the column is NULL (its `.nullable().
+/// optional()` schema).
+fn marshal_full_tag(r: &rusqlite::Row) -> rusqlite::Result<serde_json::Value> {
+    let id: String = r.get(0)?;
+    let user_id: String = r.get(1)?;
+    let name: String = r.get(2)?;
+    let name_lower: String = r.get(3)?;
+    let quick_hide: i64 = r.get(4)?;
+    let visual_style: Option<String> = r.get(5)?;
+    let created_at: String = r.get(6)?;
+    let updated_at: String = r.get(7)?;
+    let mut o = serde_json::Map::new();
+    o.insert("id".into(), serde_json::Value::String(id));
+    o.insert("userId".into(), serde_json::Value::String(user_id));
+    o.insert("name".into(), serde_json::Value::String(name));
+    o.insert("nameLower".into(), serde_json::Value::String(name_lower));
+    o.insert("quickHide".into(), serde_json::Value::Bool(quick_hide != 0));
+    if let Some(text) = visual_style {
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text) {
+            o.insert("visualStyle".into(), parsed);
+        }
+    }
+    o.insert("createdAt".into(), serde_json::Value::String(created_at));
+    o.insert("updatedAt".into(), serde_json::Value::String(updated_at));
+    Ok(serde_json::Value::Object(o))
+}
+
+/// v4 `repos.tags.findAll()` — every tag (full marshaled entity), no ordering (v4
+/// sorts in the route). The single-user v5 has one user, so no user filter.
+pub fn find_all(conn: &Connection) -> Result<Vec<serde_json::Value>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, userId, name, nameLower, quickHide, visualStyle, createdAt, updatedAt \
+         FROM tags",
+    )?;
+    let rows = stmt.query_map([], marshal_full_tag)?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
+}
+
+/// v4 `repos.tags.findByName(userId, name)` — the tag whose `nameLower` matches
+/// `name.toLowerCase()` for the user, or `None` (the create-dedup + rename-conflict
+/// lookup).
+pub fn find_by_name(
+    conn: &Connection,
+    user_id: &str,
+    name: &str,
+) -> Result<Option<serde_json::Value>, DbError> {
+    let name_lower = name.to_lowercase();
+    let mut stmt = conn.prepare(
+        "SELECT id, userId, name, nameLower, quickHide, visualStyle, createdAt, updatedAt \
+         FROM tags WHERE userId = ?1 AND nameLower = ?2",
+    )?;
+    stmt.query_row(params![user_id, name_lower], marshal_full_tag)
+        .optional()
+        .map_err(DbError::from)
+}
+
+// ---------------------------------------------------------------------------
+// The taggable-entity fan-out (the tags-list `_count` + the DELETE cascade).
+// ---------------------------------------------------------------------------
+
+/// The six taggable tables the usage-count map + delete cascade sweep. Each has a
+/// `tags` TEXT JSON-array column and an `id` PK. The order + the paired `_count`
+/// key matches v4's route (`characterTags` / `chatTags` / … / `fileTags`). Only
+/// these constants are ever interpolated into the fan-out SQL (no injection).
+pub const TAGGABLE_TABLES: &[(&str, &str)] = &[
+    ("characters", "characterTags"),
+    ("chats", "chatTags"),
+    ("connection_profiles", "connectionProfileTags"),
+    ("image_profiles", "imageProfileTags"),
+    ("embedding_profiles", "embeddingProfileTags"),
+    ("files", "fileTags"),
+];
+
+fn parse_tags(text: Option<&str>) -> Vec<String> {
+    text.and_then(|t| serde_json::from_str::<Vec<String>>(t).ok())
+        .unwrap_or_default()
+}
+
+/// Count rows in `table` whose `tags` array contains `tag_id` (v4's
+/// `allX.filter(x => x.tags.includes(tag.id)).length`). `table` MUST be one of
+/// [`TAGGABLE_TABLES`].
+pub fn count_tag_usage(conn: &Connection, table: &str, tag_id: &str) -> Result<usize, DbError> {
+    let mut stmt = conn.prepare(&format!("SELECT tags FROM {table}"))?;
+    let rows = stmt.query_map([], |r| r.get::<_, Option<String>>(0))?;
+    let mut count = 0usize;
+    for row in rows {
+        if parse_tags(row?.as_deref()).iter().any(|t| t == tag_id) {
+            count += 1;
+        }
+    }
+    Ok(count)
+}
+
+/// Remove `tag_id` from every row's `tags` array in `table`, bumping `updatedAt`
+/// on each changed row (v4's per-entity `update(id, {tags: filtered})` — a
+/// tags-only patch changes only those two columns, so the raw UPDATE reproduces
+/// the base repo's re-validated write byte-for-byte). `table` MUST be one of
+/// [`TAGGABLE_TABLES`]. Returns the number of rows changed.
+pub fn remove_tag_from_table(
+    conn: &Connection,
+    table: &str,
+    tag_id: &str,
+    now: &str,
+) -> Result<usize, DbError> {
+    // Collect the changed ids + filtered arrays first (can't UPDATE mid-query).
+    let mut stmt = conn.prepare(&format!("SELECT id, tags FROM {table}"))?;
+    let rows = stmt.query_map([], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+    })?;
+    let mut updates: Vec<(String, String)> = Vec::new();
+    for row in rows {
+        let (id, tags_text) = row?;
+        let current = parse_tags(tags_text.as_deref());
+        if current.iter().any(|t| t == tag_id) {
+            let filtered: Vec<String> = current.into_iter().filter(|t| t != tag_id).collect();
+            let json = serde_json::to_string(&filtered)
+                .map_err(|e| DbError::Key(format!("tags serialize: {e}")))?;
+            updates.push((id, json));
+        }
+    }
+    let update_sql = format!("UPDATE {table} SET tags = ?1, updatedAt = ?2 WHERE id = ?3");
+    let mut count = 0usize;
+    for (id, json) in &updates {
+        count += conn.execute(&update_sql, params![json, now, id])?;
+    }
+    Ok(count)
 }
 
 impl<'c> TagsRepository<'c> {
@@ -320,6 +417,20 @@ impl<'c> TagsRepository<'c> {
         if let Some(quick_hide) = patch.quick_hide {
             assignments.push(format!("quickHide = ?{}", values.len() + 1));
             values.push(Box::new(i64::from(quick_hide)));
+        }
+        if let Some(visual_style) = &patch.visual_style {
+            // v4's base `_update` validates the merged entity, so a supplied style
+            // is stored as its Zod-parsed JSON (defaults materialized); `null`
+            // clears the column.
+            let text: Option<String> = match visual_style {
+                Some(vs) => Some(
+                    serde_json::to_string(vs)
+                        .map_err(|e| DbError::Key(format!("visualStyle serialize: {e}")))?,
+                ),
+                None => None,
+            };
+            assignments.push(format!("visualStyle = ?{}", values.len() + 1));
+            values.push(Box::new(text));
         }
         assignments.push(format!("updatedAt = ?{}", values.len() + 1));
         values.push(Box::new(patch.updated_at.clone()));

@@ -1022,11 +1022,26 @@ impl CoreEngine {
             Request::CharacterPhotoRemove { .. } => {
                 super::characters::not_available("photo-remove")
             }
-            Request::TagList { .. } => super::characters::not_available("tag-list"),
-            Request::TagCreate { .. } => super::characters::not_available("tag-create"),
-            Request::TagGet { .. } => super::characters::not_available("tag-get"),
-            Request::TagUpdate { .. } => super::characters::not_available("tag-update"),
-            Request::TagDelete { .. } => super::characters::not_available("tag-delete"),
+            Request::TagList { search } => match self.ready_db() {
+                Ok(db) => super::characters::tag_list(&db, SINGLE_USER_ID, search.as_deref()),
+                Err(r) => r,
+            },
+            Request::TagCreate { name } => match self.ready_db() {
+                Ok(db) => super::characters::tag_create(&db, SINGLE_USER_ID, &name).await,
+                Err(r) => r,
+            },
+            Request::TagGet { tag_id } => match self.ready_db() {
+                Ok(db) => super::characters::tag_get(&db, SINGLE_USER_ID, &tag_id),
+                Err(r) => r,
+            },
+            Request::TagUpdate { tag_id, tag } => match self.ready_db() {
+                Ok(db) => super::characters::tag_update(&db, SINGLE_USER_ID, &tag_id, tag).await,
+                Err(r) => r,
+            },
+            Request::TagDelete { tag_id } => match self.ready_db() {
+                Ok(db) => super::characters::tag_delete(&db, SINGLE_USER_ID, &tag_id).await,
+                Err(r) => r,
+            },
         }
     }
 

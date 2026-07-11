@@ -20,6 +20,9 @@ use crate::db::characters::CharacterCreate;
 use crate::db::chats_outfits::ChatOutfitsRepository;
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::runtime::Db;
+use crate::db::tags::{
+    CreateOptions as TagCreateOptions, TagCreate, TagUpdate, TagVisualStyle, TagsRepository,
+};
 use crate::db::vault_character_write::CharacterVaultWriteInput;
 use crate::db::vault_wardrobe_public::{
     create_vault_wardrobe_item, delete_vault_wardrobe_item, update_vault_wardrobe_item,
@@ -1399,6 +1402,218 @@ pub async fn character_wardrobe_delete(
     })
     .await;
     success_or(out)
+}
+
+// ===========================================================================
+// Tags CRUD (v4 tags/route.ts + tags/[id]/route.ts) — all six taggable tables
+// live in MAIN, so these are main-only reads/writes.
+// ===========================================================================
+
+/// Build the `_count` map + `totalUsage` for a tag (v4's 6-entity usage fan-out).
+fn tag_usage(main: &rusqlite::Connection, tag_id: &str) -> Result<(Value, i64), DbError> {
+    let mut counts = serde_json::Map::new();
+    let mut total = 0i64;
+    for (table, key) in tags::TAGGABLE_TABLES {
+        let n = tags::count_tag_usage(main, table, tag_id)? as i64;
+        counts.insert((*key).to_string(), json!(n));
+        total += n;
+    }
+    Ok((Value::Object(counts), total))
+}
+
+/// The reduced tags-list DTO (v4 `tags/route.ts:58-77`): a whitelist (NO
+/// `nameLower`/`userId`) with `visualStyle ?? null` ALWAYS present.
+fn tag_list_dto(tag: &Value, count: Value, total: i64) -> Value {
+    json!({
+        "id": tag.get("id").cloned().unwrap_or(Value::Null),
+        "name": tag.get("name").cloned().unwrap_or(Value::Null),
+        "quickHide": tag.get("quickHide").cloned().unwrap_or(Value::Bool(false)),
+        "visualStyle": tag.get("visualStyle").cloned().unwrap_or(Value::Null),
+        "createdAt": tag.get("createdAt").cloned().unwrap_or(Value::Null),
+        "updatedAt": tag.get("updatedAt").cloned().unwrap_or(Value::Null),
+        "_count": count,
+        "totalUsage": total,
+    })
+}
+
+/// v4 `GET /tags` — `findAll` → `search` filter (nameLower contains) → name-sort
+/// (`localeCompare`) → per-tag usage-count DTO. `{ tags, count }`.
+pub fn tag_list(db: &Db, _user_id: &str, search: Option<&str>) -> Response {
+    let search = search.map(str::to_string);
+    let result = db.read_main(move |main| {
+        let mut all = tags::find_all(main)?;
+        if let Some(s) = &search {
+            let sl = s.to_lowercase();
+            all.retain(|t| {
+                t.get("nameLower")
+                    .and_then(Value::as_str)
+                    .map(|nl| nl.contains(&sl))
+                    .unwrap_or(false)
+            });
+        }
+        all.sort_by(|a, b| {
+            let na = a.get("name").and_then(Value::as_str).unwrap_or("");
+            let nb = b.get("name").and_then(Value::as_str).unwrap_or("");
+            crate::collation::locale_compare(na, nb)
+        });
+        let mut out = Vec::with_capacity(all.len());
+        for t in &all {
+            let id = t.get("id").and_then(Value::as_str).unwrap_or("");
+            let (count, total) = tag_usage(main, id)?;
+            out.push(tag_list_dto(t, count, total));
+        }
+        Ok(out)
+    });
+    match result {
+        Ok(list) => {
+            let count = list.len();
+            Response::Tags(json!({ "tags": list, "count": count }))
+        }
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `GET /tags/[id]` — ownership → `{...tag, _count, totalUsage}` (the FULL tag
+/// spread, incl. `userId`/`nameLower`).
+pub fn tag_get(db: &Db, _user_id: &str, tag_id: &str) -> Response {
+    let tid = tag_id.to_string();
+    let result = db.read_main(move |main| {
+        let tag = match tags::find_full_by_id(main, &tid)? {
+            Some(t) => t,
+            None => return Ok(Err(not_found("Tag"))),
+        };
+        let (count, total) = tag_usage(main, &tid)?;
+        let mut o = tag.as_object().cloned().unwrap_or_default();
+        o.insert("_count".into(), count);
+        o.insert("totalUsage".into(), json!(total));
+        Ok(Ok(Value::Object(o)))
+    });
+    match result {
+        Ok(Ok(tag)) => Response::Tag(json!({ "tag": tag })),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `POST /tags` — `createTagSchema` → dedup by name (return the existing tag)
+/// → `create` → `{ tag }`.
+pub async fn tag_create(db: &Db, user_id: &str, name: &str) -> Response {
+    if name.is_empty() {
+        return bad_request("Tag name is required");
+    }
+    let (uid, name) = (user_id.to_string(), name.to_string());
+    let out = db
+        .write(move |writers| {
+            let main = writers.main().connection();
+            // Dedup (case-insensitive) — return the existing tag, no create.
+            if let Some(existing) = tags::find_by_name(main, &uid, &name)? {
+                return Ok(existing);
+            }
+            let id = uuid::Uuid::new_v4().to_string();
+            let now = crate::clock::now_iso();
+            TagsRepository::new(main).create(
+                &TagCreate {
+                    user_id: uid.clone(),
+                    name: name.clone(),
+                    name_lower: None,
+                    quick_hide: Some(false),
+                    visual_style: None,
+                },
+                &TagCreateOptions {
+                    id: id.clone(),
+                    created_at: now.clone(),
+                    updated_at: now,
+                },
+            )?;
+            Ok(tags::find_full_by_id(main, &id)?.unwrap_or(Value::Null))
+        })
+        .await;
+    match out {
+        Ok(tag) => Response::Tag(json!({ "tag": tag })),
+        Err(e) => internal(e),
+    }
+}
+
+/// Parse the update body's `visualStyle` into the nullable patch triple-state
+/// (absent → `None`, `null` → `Some(None)`, object → `Some(Some(parsed))` with
+/// Zod-default materialization via [`TagVisualStyle`]'s serde defaults).
+fn parse_visual_style(body: &Value) -> Result<Option<Option<TagVisualStyle>>, Response> {
+    match body.get("visualStyle") {
+        None => Ok(None),
+        Some(Value::Null) => Ok(Some(None)),
+        Some(v) => match serde_json::from_value::<TagVisualStyle>(v.clone()) {
+            Ok(vs) => Ok(Some(Some(vs))),
+            Err(e) => Err(bad_request(format!("Invalid visualStyle: {e}"))),
+        },
+    }
+}
+
+/// v4 `PUT /tags/[id]` — ownership → `updateTagSchema` → name-conflict guard →
+/// `update` → `{ tag }` (the merged updated tag, no `_count`).
+pub async fn tag_update(db: &Db, user_id: &str, tag_id: &str, body: Value) -> Response {
+    let (uid, tid) = (user_id.to_string(), tag_id.to_string());
+    let visual_style = match parse_visual_style(&body) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let out = db
+        .write(move |writers| {
+            let main = writers.main().connection();
+            let existing = match tags::find_full_by_id(main, &tid)? {
+                Some(t) => t,
+                None => return Ok(Err(not_found("Tag"))),
+            };
+            // Rename-conflict guard (v4: only when the name actually changes).
+            if let Some(new_name) = body.get("name").and_then(Value::as_str) {
+                let cur = existing.get("name").and_then(Value::as_str).unwrap_or("");
+                if new_name != cur {
+                    if let Some(other) = tags::find_by_name(main, &uid, new_name)? {
+                        if other.get("id").and_then(Value::as_str) != Some(tid.as_str()) {
+                            return Ok(Err(bad_request("A tag with this name already exists")));
+                        }
+                    }
+                }
+            }
+            let patch = TagUpdate {
+                name: body.get("name").and_then(Value::as_str).map(str::to_string),
+                quick_hide: body.get("quickHide").and_then(Value::as_bool),
+                visual_style,
+                updated_at: crate::clock::now_iso(),
+            };
+            TagsRepository::new(main).update(&tid, &patch)?;
+            Ok(Ok(tags::find_full_by_id(main, &tid)?.unwrap_or(Value::Null)))
+        })
+        .await;
+    match out {
+        Ok(Ok(tag)) => Response::Tag(json!({ "tag": tag })),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `DELETE /tags/[id]` — ownership → the multi-entity fan-out (remove the id
+/// from every taggable table) → delete the tag → `{ success: true }`.
+pub async fn tag_delete(db: &Db, _user_id: &str, tag_id: &str) -> Response {
+    let tid = tag_id.to_string();
+    let out = db
+        .write(move |writers| {
+            let main = writers.main().connection();
+            if tags::find_full_by_id(main, &tid)?.is_none() {
+                return Ok(Err(not_found("Tag")));
+            }
+            let now = crate::clock::now_iso();
+            for (table, _key) in tags::TAGGABLE_TABLES {
+                tags::remove_tag_from_table(main, table, &tid, &now)?;
+            }
+            TagsRepository::new(main).delete(&tid)?;
+            Ok(Ok(()))
+        })
+        .await;
+    match out {
+        Ok(Ok(())) => Response::Tag(json!({ "success": true })),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
 }
 
 /// Whether `character[field]` (an array of `{id,…}`) contains an element with

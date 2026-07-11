@@ -49,6 +49,8 @@ interface Spec {
 
 const ARIA = 'a1000000-0000-4000-8000-000000000001';
 const CONN = 'c0000001-0000-4000-8000-000000000001';
+const ADVENTURE = '70000001-0000-4000-8000-000000000001';
+const MYSTERY = '70000002-0000-4000-8000-000000000002';
 
 interface CaseSpec {
   name: string;
@@ -59,11 +61,37 @@ interface CaseSpec {
     | 'wardrobe-create'
     | 'wardrobe-get'
     | 'wardrobe-update'
-    | 'wardrobe-delete';
+    | 'wardrobe-delete'
+    | 'tag-list'
+    | 'tag-get'
+    | 'tag-create'
+    | 'tag-update'
+    | 'tag-delete';
   id?: string;
   /** For wardrobe item ops: discover the baked item id by this title. */
   itemTitle?: string;
   body?: unknown;
+}
+
+const TAGGABLE_TABLES = [
+  'characters',
+  'chats',
+  'connection_profiles',
+  'image_profiles',
+  'embedding_profiles',
+  'files',
+];
+
+/** Dump each taggable table's (id, tags) + the tags table (id, name) — the
+ *  DELETE fan-out verification. */
+function dumpTagTables(getRawDatabase: () => { prepare: (s: string) => { all: () => unknown } }): unknown {
+  const raw = getRawDatabase();
+  const dump: Record<string, unknown> = {};
+  for (const t of TAGGABLE_TABLES) {
+    dump[t] = raw.prepare(`SELECT id, tags FROM ${t} ORDER BY id`).all();
+  }
+  dump.tags = raw.prepare('SELECT id, name FROM tags ORDER BY id').all();
+  return dump;
 }
 
 function mockRequest(url: string, body: unknown): unknown {
@@ -150,6 +178,42 @@ async function runCase(
   try {
     let status: number;
     let body: unknown;
+    let tables: unknown;
+    if (c.kind.startsWith('tag')) {
+      if (c.kind === 'tag-list' || c.kind === 'tag-create') {
+        const url = 'http://localhost/api/v1/tags';
+        const mod = (await import('@/app/api/v1/tags/route')) as {
+          GET: (...a: unknown[]) => Promise<unknown>;
+          POST: (...a: unknown[]) => Promise<unknown>;
+        };
+        const fn = c.kind === 'tag-list' ? mod.GET : mod.POST;
+        const response = (await fn(mockRequest(url, c.body))) as {
+          status: number;
+          json: () => Promise<unknown>;
+        };
+        status = response.status;
+        body = await response.json();
+      } else {
+        const url = `http://localhost/api/v1/tags/${c.id}`;
+        const mod = (await import('@/app/api/v1/tags/[id]/route')) as {
+          GET: (...a: unknown[]) => Promise<unknown>;
+          PUT: (...a: unknown[]) => Promise<unknown>;
+          DELETE: (...a: unknown[]) => Promise<unknown>;
+        };
+        const fn =
+          c.kind === 'tag-get' ? mod.GET : c.kind === 'tag-update' ? mod.PUT : mod.DELETE;
+        const response = (await fn(mockRequest(url, c.body), {
+          params: Promise.resolve({ id: c.id }),
+        })) as { status: number; json: () => Promise<unknown> };
+        status = response.status;
+        body = await response.json();
+        if (c.kind === 'tag-delete') {
+          const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+          tables = dumpTagTables(getRawDatabase as never);
+        }
+      }
+      return { name: c.name, status, body, ...(tables !== undefined ? { tables } : {}) };
+    }
     if (c.kind.startsWith('wardrobe')) {
       // Discover the baked item id (minted at fixture build) by title.
       let itemId = '';
@@ -331,6 +395,17 @@ async function main(): Promise<void> {
       body: { title: 'Weathered Flight Jacket', description: null, isDefault: false },
     },
     { name: 'wardrobe_delete', kind: 'wardrobe-delete', itemTitle: 'Goggles' },
+    { name: 'tag_list', kind: 'tag-list' },
+    { name: 'tag_get', kind: 'tag-get', id: ADVENTURE },
+    { name: 'tag_create_new', kind: 'tag-create', body: { name: 'Voyage' } },
+    { name: 'tag_create_dedup', kind: 'tag-create', body: { name: 'adventure' } },
+    {
+      name: 'tag_update',
+      kind: 'tag-update',
+      id: MYSTERY,
+      body: { name: 'Enigma', quickHide: true },
+    },
+    { name: 'tag_delete', kind: 'tag-delete', id: ADVENTURE },
   ];
 
   const outLines: string[] = [];

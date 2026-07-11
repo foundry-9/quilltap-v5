@@ -4,6 +4,25 @@
 
 ### 5.0-dev
 
+P4.6f (Characters server, lane A) slice 4d: the tags CRUD + the delete fan-out.
+`tag_list` (`findAll` → search filter → `localeCompare` sort → the 6-entity
+usage-count DTO), `tag_get` (full spread + `_count`/`totalUsage`), `tag_create`
+(dedup by name → return the existing tag), `tag_update` (rename-conflict guard +
+name/quickHide/visualStyle), and `tag_delete` (the multi-entity fan-out — remove
+the id from every taggable table, then delete the tag). All six taggable tables
+(characters / chats / connection_profiles / image_profiles / embedding_profiles /
+files) live in MAIN, so these are main-only. New `tags::{find_all, find_by_name,
+count_tag_usage, remove_tag_from_table, TAGGABLE_TABLES}` and a `visual_style`
+field on `TagUpdate`. The five arms replace their `not_available` refusals.
+Extended the committed characters fixture: tagged the connection profile, image
+profile, and legacy file with "Adventure" (so the delete fan-out exercises five
+of six entity shapes with real mutations) and materialized the empty
+`embedding_profiles` table (v4 auto-creates it via `ensureCollection`; the Rust
+raw SQL needs it present). Extended `characters_mutations` to 15 cases (+ tag
+list/get/create-new/create-dedup/update/delete); tag_delete additionally diffs
+all six taggable tables + the tags table against the oracle's post-delete dump.
+Versions: core 0.0.165, harness 0.0.150.
+
 P4.6f (Characters server, lane A) slice 4c: the wardrobe mutation handlers.
 `character_wardrobe_create` (mints id/timestamps → the vault-backed
 `create_vault_wardrobe_item`), `character_wardrobe_get`

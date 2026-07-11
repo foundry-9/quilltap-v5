@@ -5844,6 +5844,40 @@ Remaining in P4.6f: delete-cascade, tags CRUD + delete fan-out, stats/chats, the
 photo gallery, ST import/export, depiction-guidelines, and the Tier-3 refusals.
 ---
 
+**P4.6f slice 4d — tags CRUD + the delete fan-out (2026-07-10).** The five tags
+handlers (`api::characters::{tag_list, tag_get, tag_create, tag_update,
+tag_delete}`) over v4's `tags/route.ts` + `tags/[id]/route.ts`. All six taggable
+tables (characters / chats / connection_profiles / image_profiles /
+embedding_profiles / files) live in MAIN, so the handlers are main-only
+(`db.read_main` / `db.write` with just the main writer — no mount). Added to the
+tags repo: `find_all`, `find_by_name` (case-insensitive `nameLower`),
+`count_tag_usage` + `remove_tag_from_table` (generic over the `TAGGABLE_TABLES`
+whitelist — a tags-only patch changes only `tags` + `updatedAt`, so the raw
+UPDATE reproduces v4's base-repo re-validated write byte-for-byte), and a
+`visual_style` field on `TagUpdate` (nullable, Zod-default materialized via the
+`TagVisualStyle` serde defaults). Handler seams: the list DTO whitelist (NO
+`nameLower`/`userId`, `visualStyle ?? null` always present) vs. the detail's full
+spread (`{...tag, _count, totalUsage}`); create's dedup-returns-existing; the
+rename-conflict guard fires only when the name actually changes; the delete
+fan-out sweeps every taggable table then deletes the tag. Name sort uses the
+ported `collation::locale_compare` (ICU en-US). **Fixture extended** (deliverable
+#14): tagged the connection profile / image profile / legacy file with "Adventure"
+(so the delete fan-out exercises FIVE of six entity shapes with real mutations —
+embedding_profiles stays a verified no-op) and materialized the empty
+`embedding_profiles` table (v4's `findAll` auto-creates it via `ensureCollection`
+per-case; the Rust raw SQL 404s without it). Rebuilding the fixture re-mints the
+non-pinned vault ids, so ALL four characters differentials (reads / actions /
+subresources / mutations) were regenerated + re-run green against the new .db.
+Proven: `characters_mutations_equivalence` extended to 15 cases (+ tag list / get
+/ create-new / create-dedup / update / delete); tag_delete additionally diffs all
+six taggable tables + the tags table against the oracle's post-delete dump (ids
+baked-identical, no remap). Regen gotcha: regenerate each oracle in its OWN clean
+jest invocation — a batched multi-oracle run left a stale mount id. Versions:
+core 0.0.165, harness 0.0.150. Remaining in P4.6f: delete-cascade, stats/chats,
+the photo gallery, ST import/export, depiction-guidelines, and the Tier-3
+refusals.
+---
+
 **P4.4u3 — the built-in seeds (roleplay templates + the three mount stores):
 done (2026-07-10).** Two of the three P4.4 named seed deferrals closed so a
 fresh v5 instance matches a fresh v4 instance.

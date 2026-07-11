@@ -372,7 +372,12 @@ async function main(): Promise<void> {
     } as never);
   }
 
-  // Force the empty tables the read/mutation paths touch into existence.
+  // Force the empty tables the read/mutation paths touch into existence. The
+  // tags usage-count + delete fan-out sweeps `embedding_profiles`, which nothing
+  // else seeds — materialize it so both differential sides read the same (empty)
+  // table rather than v4 auto-creating it per-case while the Rust raw SQL 404s.
+  const { EmbeddingProfileSchema } = await import('@/lib/schemas/profile.types');
+  await ensureCollection('embedding_profiles', EmbeddingProfileSchema);
   await repos.backgroundJobs.findByUserId(spec.userId, 'PENDING');
   await repos.vectorIndices.findMetaByCharacterId(spec.characters[0].id);
   await repos.vectorIndices.findEntriesByCharacterId(spec.characters[0].id);

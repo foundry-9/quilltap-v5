@@ -9,7 +9,10 @@
    "provider": "OPENAI_COMPATIBLE",
    "modelName": "mock-model",
    "baseUrl": "http://127.0.0.1:1/v1",
-   "apiKeyId": "a0000001-0000-4000-8000-000000000001"
+   "apiKeyId": "a0000001-0000-4000-8000-000000000001",
+   "tags": [
+    "70000001-0000-4000-8000-000000000001"
+   ]
   }
  ],
  "apiKeys": [
@@ -28,7 +31,10 @@
    "id": "10000001-0000-4000-8000-000000000001",
    "name": "Mock Images",
    "provider": "OPENAI_COMPATIBLE",
-   "modelName": "mock-image-model"
+   "modelName": "mock-image-model",
+   "tags": [
+    "70000001-0000-4000-8000-000000000001"
+   ]
   }
  ],
  "files": [
@@ -42,6 +48,9 @@
    "category": "IMAGE",
    "linkedTo": [
     "a1000000-0000-4000-8000-000000000004"
+   ],
+   "tags": [
+    "70000001-0000-4000-8000-000000000001"
    ]
   }
  ],
