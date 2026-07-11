@@ -196,23 +196,30 @@ test.describe('P4.6g — Characters vertical (list → view → toggle → mutat
   });
 
   // ---------------------------------------------------------------------------
-  // P4.6j live beats — ACTIVATED AT UNIFICATION over lane A's live dispatch +
-  // fixture (the P4.6b/g precedent). `test.fixme` keeps them out of the
-  // pre-unification run; the unifier drops `.fixme` and confirms them live.
-  // They assume lane A's extended fixture (a character with exclusive chats +
-  // gallery photos). Mind the banked e2e gotchas: glyph-button accname via
-  // getByTitle, scroll-drain waits, the Edit link lives on the Details tab.
+  // P4.6j live beats — activated at the P4.6i/j unification over lane A's live
+  // dispatch arms (the P4.6b/g precedent). The committed fixture's Aria carries
+  // the "Solo Voyage" chat and her vault avatar counts as a gallery entry.
+  // Unlock-state-tolerant: the shared server is unlocked by whichever beat in
+  // this file runs first, so a later beat may never see the passphrase gate.
   // ---------------------------------------------------------------------------
 
-  test.fixme(
+  async function unlockIfLocked(page: Page): Promise<void> {
+    const passphrase = page.locator('#qt-passphrase');
+    const roster = page.getByRole('heading', { name: 'Characters', exact: true });
+    await expect(passphrase.or(roster).first()).toBeVisible({ timeout: 15_000 });
+    if (await passphrase.isVisible()) {
+      await passphrase.fill(E2E_PASSPHRASE);
+      await page.getByRole('button', { name: 'Unlock' }).click();
+    }
+    await expect(roster).toBeVisible({ timeout: 10_000 });
+  }
+
+  test(
     'Conversations tab lists a per-character chat that links into the Salon',
     async ({ page }) => {
       test.setTimeout(60_000);
       await page.goto(`${CHAR_BASE_URL}/characters`);
-      const passphrase = page.locator('#qt-passphrase');
-      await expect(passphrase).toBeVisible({ timeout: 15_000 });
-      await passphrase.fill(E2E_PASSPHRASE);
-      await page.getByRole('button', { name: 'Unlock' }).click();
+      await unlockIfLocked(page);
 
       const cards = page.locator('.character-card-grid .character-card');
       const aria = cards.filter({ hasText: 'Aria' }).first();
@@ -227,14 +234,10 @@ test.describe('P4.6g — Characters vertical (list → view → toggle → mutat
     },
   );
 
-  test.fixme('delete a throwaway character via the cascade-preview dialog', async ({ page }) => {
+  test('delete a throwaway character via the cascade-preview dialog', async ({ page }) => {
     test.setTimeout(60_000);
     await page.goto(`${CHAR_BASE_URL}/characters`);
-    const passphrase = page.locator('#qt-passphrase');
-    await expect(passphrase).toBeVisible({ timeout: 15_000 });
-    await passphrase.fill(E2E_PASSPHRASE);
-    await page.getByRole('button', { name: 'Unlock' }).click();
-    await expect(page.getByRole('heading', { name: 'Characters', exact: true })).toBeVisible();
+    await unlockIfLocked(page);
 
     // Create a throwaway so the fixture cast is left intact.
     await page.getByRole('link', { name: 'Create Character' }).click();
@@ -250,14 +253,19 @@ test.describe('P4.6g — Characters vertical (list → view → toggle → mutat
       .locator('.character-card-grid .character-card')
       .filter({ hasText: 'Ephemeron' })
       .first();
-    await throwaway.getByTitle('Export character data'); // ensure the card actions rendered
-    await throwaway.locator('p.line-clamp-3, h3').first().click();
+    await expect(throwaway).toBeVisible();
+    // A fresh quick-create has no description, so the card body's
+    // `p.line-clamp-3` is empty (zero-height, unclickable) — click the `h2`
+    // title (it sits inside the card's routerLink anchor).
+    await throwaway.locator('h2').first().click();
     await page.getByRole('link', { name: /Edit Character/i }).click();
     await page.getByRole('button', { name: 'Delete Character' }).click();
-    // The dialog's own confirm (destructive) — preview loads first.
+    // The dialog's own confirm (destructive) — preview loads first. Scope to
+    // the dialog: the edit view's danger-zone button keeps the same accname
+    // and sits under the overlay.
     await page
+      .locator('qt-character-delete-dialog')
       .getByRole('button', { name: 'Delete Character' })
-      .last()
       .click();
 
     await expect(page).toHaveURL(/\/characters$/);
@@ -266,24 +274,23 @@ test.describe('P4.6g — Characters vertical (list → view → toggle → mutat
     ).toHaveCount(0, { timeout: 10_000 });
   });
 
-  test.fixme('Photo Gallery lists photos and removes one', async ({ page }) => {
+  test('Photo Gallery lists photos and removes one', async ({ page }) => {
     test.setTimeout(60_000);
     await page.goto(`${CHAR_BASE_URL}/characters`);
-    const passphrase = page.locator('#qt-passphrase');
-    await expect(passphrase).toBeVisible({ timeout: 15_000 });
-    await passphrase.fill(E2E_PASSPHRASE);
-    await page.getByRole('button', { name: 'Unlock' }).click();
+    await unlockIfLocked(page);
 
     const aria = page.locator('.character-card-grid .character-card').filter({ hasText: 'Aria' }).first();
     await aria.locator('p.line-clamp-3').click();
     await expect(page.getByRole('heading', { name: 'Aria' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Photo Gallery' }).click();
-    const thumbs = page.locator('img[alt]').filter({ hasNot: page.locator('[data-icon]') });
-    const before = await thumbs.count();
-    expect(before).toBeGreaterThan(0);
-    await page.getByTitle('Delete this photo').first().click();
-    await expect(thumbs).toHaveCount(before - 1, { timeout: 10_000 });
+    // Count gallery tiles by their delete affordance — a bare `img` count
+    // would also catch the detail header's avatar.
+    const deleteButtons = page.getByTitle('Delete this photo');
+    await expect(deleteButtons.first()).toBeVisible({ timeout: 10_000 });
+    const before = await deleteButtons.count();
+    await deleteButtons.first().click();
+    await expect(deleteButtons).toHaveCount(before - 1, { timeout: 10_000 });
   });
 });
 

@@ -14,6 +14,25 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+P4.6i/j unification wire — the gallery contract reconciled to lane A's pinned
+`{ entries, total, hasMore }` envelope (each entry `{linkId, mountPointId,
+relativePath, fileName, blobUrl, mimeType, sha256, fileSizeBytes, keptAt,
+caption, tags, linkSummary}`): the SPA `CharacterPhoto` type now IS that entry;
+`fetchCharacterPhotos` drops the legacy `photos`/`images` fallbacks; the
+gallery tab tracks/removes by `linkId` and renders from `blobUrl`; the avatar
+picker (a latent pre-unification consumer of the old shape) selects the
+`linkId` — which is what `characterAvatar {imageId}` stores for vault photos —
+and renders from `blobUrl`. The three P4.6j `characters-flow` e2e beats
+(Conversations → Salon link, cascade-delete a throwaway, gallery list +
+remove) are activated (`test.fixme` dropped) with their gestures fixed for
+the live walk: unlock-state-tolerant entry (the file's beats share one
+server), the throwaway card clicked by its `h2` title (a quick-create has no
+description, so `p.line-clamp-3` is empty and unclickable), the dialog
+confirm scoped to `qt-character-delete-dialog` (the edit view's danger-zone
+button keeps the same accname under the overlay), and gallery tiles counted
+by their delete affordance (a bare `img` count catches the header avatar).
+SPA 0.5.8.
+
 P4.6j unit 4 — ST import verified + Export (JSON) action, and the live e2e beats
 (SPA). The SillyTavern import dialog already reads a JSON file client-side and
 dispatches `characterImport {payload}` (PNG rides the deferred multipart web

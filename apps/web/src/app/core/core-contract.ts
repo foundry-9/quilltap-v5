@@ -1085,17 +1085,23 @@ export interface TagDto {
   [key: string]: unknown;
 }
 
-/** A photo-gallery entry (v4 `/characters/:id/photos`). Lane A pins the exact
- *  envelope in `p4.6i`; the SPA codes defensively over the union of shapes it may
- *  return (`linkId`/`filepath`/`caption`/`tags`, plus the legacy `id`/`fileId`). */
+/** A photo-gallery entry (v4 `listCharacterGallery` → the pinned P4.6i
+ *  `{ entries, total, hasMore }` envelope). `linkId` is the vault
+ *  `doc_mount_file_links.id` — it is also what `characterPhotoRemove` takes and
+ *  what `characterAvatar {imageId}` stores for vault photos. */
 export interface CharacterPhoto {
-  id: string;
-  linkId?: string;
-  fileId?: string;
-  filepath: string;
-  url?: string | null;
-  caption?: string | null;
-  tags?: string[] | null;
+  linkId: string;
+  mountPointId: string;
+  relativePath: string;
+  fileName: string;
+  blobUrl: string;
+  mimeType: string;
+  sha256: string;
+  fileSizeBytes: number;
+  keptAt: string;
+  caption: string | null;
+  tags: string[];
+  linkSummary?: unknown;
   [key: string]: unknown;
 }
 

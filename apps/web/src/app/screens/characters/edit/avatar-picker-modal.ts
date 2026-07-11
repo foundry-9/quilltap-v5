@@ -32,14 +32,14 @@ import { characterKeys, fetchCharacterPhotos } from '../characters.api';
         </p>
       } @else {
         <div class="grid grid-cols-4 gap-3">
-          @for (photo of photos(); track photo.id) {
+          @for (photo of photos(); track photo.linkId) {
             <button
               type="button"
               class="rounded-lg overflow-hidden border-2"
-              [class]="selectedId() === photo.id ? 'qt-border-primary' : 'qt-border-default'"
-              (click)="selectedId.set(photo.id)"
+              [class]="selectedId() === photo.linkId ? 'qt-border-primary' : 'qt-border-default'"
+              (click)="selectedId.set(photo.linkId)"
             >
-              <img [src]="photo.url ?? photo.filepath" alt="" class="w-full h-full object-cover" />
+              <img [src]="photo.blobUrl" alt="" class="w-full h-full object-cover" />
             </button>
           }
         </div>

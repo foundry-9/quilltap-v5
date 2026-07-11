@@ -43,7 +43,7 @@ import { characterKeys, fetchCharacterPhotos } from '../../characters.api';
         <qt-empty-state title="No photos yet" description="Portraits added to this character will appear here." variant="dashed" />
       } @else {
         <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-          @for (photo of photos(); track photo.id) {
+          @for (photo of photos(); track photo.linkId) {
             <div class="relative overflow-hidden rounded-lg border qt-border-default qt-bg-muted" style="aspect-ratio: 4/5">
               <img
                 [src]="srcFor(photo)"
@@ -87,12 +87,15 @@ export class CharacterGalleryTab {
   protected readonly photos = computed(() => this.photosQuery.data() ?? []);
 
   protected srcFor(photo: CharacterPhoto): string | null {
-    return photo.url || normalizeAvatarSrc(photo.filepath);
+    return normalizeAvatarSrc(photo.blobUrl);
   }
 
   protected async remove(photo: CharacterPhoto): Promise<void> {
-    const linkId = photo.linkId ?? photo.id;
-    await this.core.dispatchData({ type: 'characterPhotoRemove', characterId: this.characterId(), linkId });
+    await this.core.dispatchData({
+      type: 'characterPhotoRemove',
+      characterId: this.characterId(),
+      linkId: photo.linkId,
+    });
     await this.queryClient.invalidateQueries({ queryKey: characterKeys.photos(this.characterId()) });
   }
 }
