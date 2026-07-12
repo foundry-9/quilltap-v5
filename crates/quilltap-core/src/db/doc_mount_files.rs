@@ -154,6 +154,72 @@ impl<'c> DocMountFilesRepository<'c> {
         Ok(rows)
     }
 
+    /// v4 `docMountFiles.findByMountPointId` (`queryLinks`) — the FULL
+    /// `DocMountFileLinkWithContent` shape the files-list route returns, verbatim.
+    /// Each row is serialized as a JSON object with the exact 25 columns v4's
+    /// better-sqlite3 `.all()` yields (NULL columns render as JSON `null`, not
+    /// omitted; INTEGER/REAL as numbers). Rows come back in table (rowid) order,
+    /// matching v4's unordered `WHERE l.mountPointId = ?` scan. (P4.6v: the
+    /// mount-files-list surface — lane C's DocumentPicker consumes this.)
+    pub fn find_links_with_content_json_by_mount_point_id(
+        &self,
+        mount_point_id: &str,
+    ) -> Result<Vec<serde_json::Value>, DbError> {
+        // Column order must match v4's queryLinks SELECT exactly.
+        const COLS: &[&str] = &[
+            "id",
+            "fileId",
+            "mountPointId",
+            "relativePath",
+            "fileName",
+            "folderId",
+            "originalFileName",
+            "originalMimeType",
+            "description",
+            "descriptionUpdatedAt",
+            "conversionStatus",
+            "conversionError",
+            "plainTextLength",
+            "extractedText",
+            "extractedTextSha256",
+            "extractionStatus",
+            "extractionError",
+            "chunkCount",
+            "lastModified",
+            "createdAt",
+            "updatedAt",
+        ];
+        const FCOLS: &[&str] = &["sha256", "fileSizeBytes", "fileType", "source"];
+        let sql = "SELECT \
+              l.id, l.fileId, l.mountPointId, l.relativePath, l.fileName, \
+              l.folderId, l.originalFileName, l.originalMimeType, \
+              l.description, l.descriptionUpdatedAt, \
+              l.conversionStatus, l.conversionError, l.plainTextLength, \
+              l.extractedText, l.extractedTextSha256, l.extractionStatus, l.extractionError, \
+              l.chunkCount, l.lastModified, l.createdAt, l.updatedAt, \
+              f.sha256, f.fileSizeBytes, f.fileType, f.source \
+            FROM doc_mount_file_links l \
+            JOIN doc_mount_files f ON f.id = l.fileId \
+            WHERE l.mountPointId = ?1";
+        let mut stmt = self.conn.prepare(sql)?;
+        let rows = stmt
+            .query_map(params![mount_point_id], |row| {
+                let mut obj = serde_json::Map::new();
+                for (i, key) in COLS.iter().enumerate() {
+                    obj.insert((*key).to_string(), valueref_to_json(row.get_ref(i)?));
+                }
+                for (j, key) in FCOLS.iter().enumerate() {
+                    obj.insert(
+                        (*key).to_string(),
+                        valueref_to_json(row.get_ref(COLS.len() + j)?),
+                    );
+                }
+                Ok(serde_json::Value::Object(obj))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// v4 `docMountFiles.findBySha256` (`doc-mount-files.repository.ts:109`): the
     /// content-row id for a sha256, or `None`. Used by the stale-chat sweep's
     /// album/vault-link reverse index (sha256 → file → links).
@@ -263,5 +329,19 @@ impl<'c> DocMountFilesRepository<'c> {
                 other => Err(other),
             })?;
         Ok(found.is_some())
+    }
+}
+
+/// Convert a SQLite column value to the JSON value v4's better-sqlite3 `.all()`
+/// would yield: NULL → `null`, INTEGER → number, REAL → number, TEXT → string.
+/// (BLOB is never selected on this surface.)
+fn valueref_to_json(v: rusqlite::types::ValueRef<'_>) -> serde_json::Value {
+    use rusqlite::types::ValueRef;
+    match v {
+        ValueRef::Null => serde_json::Value::Null,
+        ValueRef::Integer(i) => serde_json::Value::from(i),
+        ValueRef::Real(f) => serde_json::json!(f),
+        ValueRef::Text(t) => serde_json::Value::String(String::from_utf8_lossy(t).into_owned()),
+        ValueRef::Blob(b) => serde_json::Value::String(String::from_utf8_lossy(b).into_owned()),
     }
 }

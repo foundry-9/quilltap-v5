@@ -8738,3 +8738,63 @@ Regenerate: `cd ~/source/quilltap-server && npx tsx
 quilltap-harness --test mount_chunker_equivalence`.
 
 **Versions:** core 0.0.194, web 0.0.14, harness 0.0.178.
+
+### P4.6v unit 2 — the mounts fixture family + committed fs tree — LANDED
+
+`crates/quilltap-web/tests/fixtures/mounts-{main,mount}.db` (**note the
+location correction:** the order named `crates/quilltap-harness/fixtures/`,
+but every committed `.db` fixture and every harness test that reads one lives
+under `crates/quilltap-web/tests/fixtures/` — followed the working convention)
++ `mounts-fs-tree/` (a committed small tree: `notes/{alpha.md,beta.txt,sub/
+deep.md}`, `data/config.json`, `empty/.gitkeep`, and an excluded
+`node_modules/`). Built by `harness/oracle/fixtures/build-mounts-fixture.ts`
+(spec `mounts.json`) via v4's REAL repos + `storeMountFile`
+(`enqueueEmbedding:false` for determinism): MP_DB (database/documents — two
+text docs + a described blob + one embedded chunk + the ensureFolderPath
+folders), MP_EMPTY (empty database mount), MP_FS (filesystem,
+excludePatterns `['node_modules','*.tmp']`), MP_OBS (obsidian). MP_FS/MP_OBS
+store the sentinel basePath `__MOUNTS_FS_TREE__`; each differential side
+rewrites it to its own temp copy of `mounts-fs-tree/`. GOTCHAS: `generateDDL`
+cannot emit the `data BLOB` `doc_mount_blobs` table — trigger the repo's
+hand-written DDL (`new DocMountBlobsRepository().findByFileId(...)`) first;
+seed a main-DB user so the MAIN partition is a valid non-empty encrypted DB
+the Db runtime can open. New fixture family ⇒ no dependent-oracle regens.
+
+### P4.6v unit 3 — the mount READ + LIST surface — LANDED
+
+`services/mount_index/{read_file,list,file_ops}.rs` + `api/mount_files.rs` +
+the `mountFilesList` / `mountFileRead` dispatch variants.
+
+- **read_file.rs** — `read_mount_file` / `read_mount_file_bytes` (v4
+  `read-file.ts`): fs bytes (`std::fs`, matching `fs.readFile`), database
+  documents (`doc_mount_documents`; sha computed from content = stored
+  `contentSha256`), database blobs (`doc_mount_blobs`), with UTF-8 vs base64
+  encoding selection + line-window `offset`/`limit` (`truncated` keyed on the
+  UNCLAMPED end, per v4). mtime = fs stat / link `lastModified`.
+- **list.rs** — `mount_files_list` (v4 `files/route.ts`): the full
+  `DocMountFileLinkWithContent` set + the `doc_mount_folders` path set merged,
+  for non-database mounts, with the on-disk tree (`list_filesystem_folders` +
+  `matches_pattern`, honoring excludePatterns).
+- **file_ops.rs** — `resolve_fs_absolute` (v4 `resolveFsAbsolute`, the
+  boundary-escape guard) via a faithful `path.posix.resolve`; unit-pinned
+  (in-bounds, resolved-`..`, escapes, sibling-prefix, no-basePath).
+- Repo additions: `DocMountPointsRepository::find_service_info_by_id`
+  (+ `MountServiceInfo`), `DocMountFilesRepository::
+  find_links_with_content_json_by_mount_point_id` (the 25-column raw-row JSON).
+- The two variants are reachable through the generic `/api/dispatch` (no
+  per-variant web route needed for the JSON form). The RAW-byte fs-mount GET
+  leg of `files/[...path]` (web edge) is still OPEN (tier-1 item #8).
+
+Differential: `harness/oracle/cases/mount-read.ts` drives v4's REAL
+`readMountFile` + the list-route body over per-side copies of the fixture +
+fs tree (18 cases: db doc/txt/blob reads, base64 + force-utf8, line windows,
+fs/obsidian reads, folder-merge listings with exclusion, not-found arms).
+Rust diff `mount_read_equivalence.rs` (fs-read mtimes normalized to 0).
+Regenerate: `cd ~/source/quilltap-server && QT_FIXTURE_MOUNTS_MAIN=$W/.../
+mounts-main.db QT_FIXTURE_MOUNTS_MOUNT=$W/.../mounts-mount.db
+QT_MOUNTS_FS_TREE=$W/.../mounts-fs-tree node --import tsx $W/harness/oracle/
+cases/mount-read.ts > /tmp/oracle-mount-read.ndjson`; run
+`QT_ORACLE_MOUNT_READ=/tmp/oracle-mount-read.ndjson cargo test -p
+quilltap-harness --test mount_read_equivalence`.
+
+**Versions:** core 0.0.195, harness 0.0.179.

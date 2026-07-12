@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+P4.6v (lane A) unit 3: the mount-index READ + LIST surface. Ports v4's
+`readMountFile` / `readMountFileBytes` (`read-file.ts`, all storage
+shapes — fs bytes, database documents, database blobs, with line-window
+pagination), the files-list route body (the full
+`DocMountFileLinkWithContent` set + the `doc_mount_folders` ∪ on-disk
+folder merge via `listFilesystemFolders`/`matchesPattern`), and
+`resolveFsAbsolute` (the boundary-escape guard, unit-pinned). New:
+`services/mount_index/{read_file,list,file_ops}.rs`,
+`api/mount_files.rs`, the `mountFilesList` + `mountFileRead` dispatch
+variants (reachable via `/api/dispatch`; lane C's DocumentPicker
+consumes `mountFilesList`), a `find_service_info_by_id` /
+`find_links_with_content_json_by_mount_point_id` repo pair, and the
+committed `mounts-{main,mount}.db` fixture + `mounts-fs-tree/`.
+Differential-proven exact against v4's real code (18-case tsx oracle
+`mount-read.ts` over per-side fixture + fs-tree copies).
+
 P4.6v (lane A, the mount-index file-ops server) unit 1: the tier-1 pure
 leaves of v4's `lib/mount-index/` — the chunker (`chunkDocument` /
 `estimateTokens`), the path utilities (`normaliseRelativePath` /

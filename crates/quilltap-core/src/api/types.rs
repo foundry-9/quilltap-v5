@@ -1220,6 +1220,29 @@ pub enum Request {
     ChatQueueMemories {
         chat_id: String,
     },
+    // === P4.6v: mount files (lane A, append-only) ===
+    /// v4 `GET /api/v1/mount-points/[id]/files` → `{ files, folders }` (the full
+    /// `DocMountFileLinkWithContent` set + the merged folder path set). Lane C's
+    /// DocumentPicker consumes this.
+    #[serde(rename_all = "camelCase")]
+    MountFilesList {
+        mount_point_id: String,
+    },
+    /// v4 `GET /api/v1/mount-points/[id]/files/[...path]` JSON envelope form →
+    /// the `readMountFile` result (`{mountPointId, relativePath, encoding,
+    /// content, mtime, sha256, sizeBytes, mimeType, fileType, totalLines?,
+    /// truncated?}`).
+    #[serde(rename_all = "camelCase")]
+    MountFileRead {
+        mount_point_id: String,
+        path: String,
+        #[serde(default)]
+        encoding: Option<String>,
+        #[serde(default)]
+        offset: Option<i64>,
+        #[serde(default)]
+        limit: Option<i64>,
+    },
 }
 
 /// Typed DTO per variant (the uniffi payoff). `Error` carries the one
@@ -1320,6 +1343,10 @@ pub enum Response {
     /// `{success, jobId|enqueued|...}`, the per-chat `{success, jobCount, ...}`.
     /// The exact bytes are pinned by `memories_routes_equivalence` (P4.6s).
     Memory(serde_json::Value),
+    /// A mount-files-family body (P4.6v): the list `{files, folders}`, the read
+    /// envelope (`readMountFile` result), and the file-op mutation results. Pinned
+    /// by `mount_read_equivalence` (+ later mount-ops differentials).
+    MountFile(serde_json::Value),
     Error(CoreError),
 }
 

@@ -27,6 +27,7 @@ pub mod engine;
 pub mod groups;
 pub mod image_profiles;
 pub mod memories;
+pub mod mount_files;
 pub mod mount_points;
 pub mod projects;
 pub mod provider_actions;

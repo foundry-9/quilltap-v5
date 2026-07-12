@@ -520,6 +520,38 @@ impl<'c> DocMountPointsRepository<'c> {
         Ok(row)
     }
 
+    /// The scoped mount-point row the mount-index file-op **service** layer reads
+    /// (P4.6v): `id` / `mountType` / `basePath` (empty → `None`, matching v4's
+    /// `if (!mp.basePath)` falsy guard) / `excludePatterns`. `None` when absent.
+    pub fn find_service_info_by_id(&self, id: &str) -> Result<Option<MountServiceInfo>, DbError> {
+        self.conn
+            .query_row(
+                "SELECT id, mountType, basePath, excludePatterns \
+                 FROM doc_mount_points WHERE id = ?1",
+                params![id],
+                |row| {
+                    let base_raw: String = row.get(2)?;
+                    let exclude_raw: String = row.get(3)?;
+                    Ok(MountServiceInfo {
+                        id: row.get::<_, String>(0)?,
+                        mount_type: row.get::<_, String>(1)?,
+                        base_path: if base_raw.is_empty() {
+                            None
+                        } else {
+                            Some(base_raw)
+                        },
+                        exclude_patterns: serde_json::from_str::<Vec<String>>(&exclude_raw)
+                            .unwrap_or_default(),
+                    })
+                },
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
+    }
+
     /// The `storeType` of a mount point by id, or `None` when absent — a scoped
     /// read (v4's overlaid `findById(...).storeType`). Used by the stale-chat
     /// sweep to detect a `'character'`-vault hard link protecting an image's bytes.
@@ -628,6 +660,25 @@ pub fn find_all_full_json(conn: &Connection) -> Result<Vec<serde_json::Value>, D
         out.push(r?);
     }
     Ok(out)
+}
+
+/// The mount-index file-op service layer's scoped mount-point row (P4.6v). A
+/// `None` `base_path` reproduces v4's `if (!mp.basePath)` falsy check (empty
+/// string → treated as unconfigured).
+#[derive(Debug, Clone)]
+pub struct MountServiceInfo {
+    pub id: String,
+    pub mount_type: String,
+    pub base_path: Option<String>,
+    pub exclude_patterns: Vec<String>,
+}
+
+impl MountServiceInfo {
+    /// v4 `isFilesystemMount`: filesystem or obsidian mounts read/write bytes on
+    /// disk; everything else is a database mount.
+    pub fn is_filesystem_mount(&self) -> bool {
+        self.mount_type == "filesystem" || self.mount_type == "obsidian"
+    }
 }
 
 /// The scoped mount-point row the doc-edit path resolver + URI producers consume.

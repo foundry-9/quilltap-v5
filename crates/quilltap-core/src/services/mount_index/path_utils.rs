@@ -127,6 +127,33 @@ fn normalize_string(path: &[char], allow_above_root: bool) -> String {
     res.into_iter().collect()
 }
 
+/// Node `path.posix.resolve(...segments)` — right-to-left assembly, stopping at
+/// the first absolute segment, then `normalizeString`. All our call sites pass
+/// an absolute base first, so `posixCwd()` is never consulted (we omit it).
+pub(crate) fn path_posix_resolve(segments: &[&str]) -> String {
+    let mut resolved_path = String::new();
+    let mut resolved_absolute = false;
+    for seg in segments.iter().rev() {
+        if resolved_absolute {
+            break;
+        }
+        if seg.is_empty() {
+            continue;
+        }
+        resolved_path = format!("{seg}/{resolved_path}");
+        resolved_absolute = seg.starts_with('/');
+    }
+    let chars: Vec<char> = resolved_path.chars().collect();
+    let normalized = normalize_string(&chars, !resolved_absolute);
+    if resolved_absolute {
+        format!("/{normalized}")
+    } else if normalized.is_empty() {
+        ".".to_string()
+    } else {
+        normalized
+    }
+}
+
 /// Node `path.posix.normalize`.
 fn path_posix_normalize(input: &str) -> String {
     let chars: Vec<char> = input.chars().collect();
@@ -154,7 +181,7 @@ fn path_posix_normalize(input: &str) -> String {
 
 /// Node `path.posix.extname` — returns the extension including the leading dot,
 /// or `""`. A dotfile like `.md` has no extension.
-fn path_extname(path: &str) -> String {
+pub(crate) fn path_extname(path: &str) -> String {
     let chars: Vec<char> = path.chars().collect();
     let mut start_dot: isize = -1;
     let mut start_part: isize = 0;

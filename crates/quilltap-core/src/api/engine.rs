@@ -1885,6 +1885,28 @@ impl CoreEngine {
                 Ok(_) => super::memories::not_available("queue-memories"),
                 Err(r) => r,
             },
+            // === P4.6v: mount files (lane A, append-only) ===
+            Request::MountFilesList { mount_point_id } => match self.ready_db() {
+                Ok(db) => super::mount_files::mount_files_list(&db, &mount_point_id),
+                Err(r) => r,
+            },
+            Request::MountFileRead {
+                mount_point_id,
+                path,
+                encoding,
+                offset,
+                limit,
+            } => match self.ready_db() {
+                Ok(db) => super::mount_files::mount_file_read(
+                    &db,
+                    &mount_point_id,
+                    &path,
+                    encoding.as_deref(),
+                    offset,
+                    limit,
+                ),
+                Err(r) => r,
+            },
         }
     }
 
