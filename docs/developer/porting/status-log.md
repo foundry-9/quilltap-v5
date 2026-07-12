@@ -8935,3 +8935,53 @@ HTTP route is the byte route. The qtap route is covered by construction (its
 resolve + byte-read primitives are already differential-proven — the route is
 a thin assembly), so it ships without its own oracle (a tier-2 byte route, D4).
 web 0.0.14.
+---
+
+## P4.6x (lane C) — the Document Mode SPA vertical [IN PROGRESS]
+
+Lane C of the P4.6v ∥ P4.6w ∥ P4.6x round (v4 baseline `a7b1398d`,
+drift-checked clean at lane start). SPA-only (touches no crates). Closes
+the P4.6u "Document Mode pane" deferral. Builds against the pinned Shared
+contract with mocks + unit specs in-lane; the fixture-guarded e2e beats
+activate at unification (the P4.6t precedent).
+
+**Unit 1 — the document state store + the core-contract document block
+(SPA 0.5.44).** Ported v4 `useDocumentMode` (`app/salon/[id]/hooks/`) as
+`DocumentModeController` (`apps/web/src/app/documents/document-mode.ts`),
+an Angular signals store: the open-document SET (the UI shows the focused
+one; the set model is kept so LLM multi-doc opens reconcile), focus,
+per-doc dirty/saving tracking, 30s debounced autosave + flush-on-blur, the
+absorb-first-serialization baseline (gated on `USES_RICH_MARKDOWN_EDITOR`,
+default false = textarea, so a non-re-serializing editor never mis-absorbs
+the first edit), the 409-conflict reload (re-read server, NO write retry;
+no-local-edits adopts server, local-edits keeps content + refreshes
+mtime), `handleLLMEditEnd` (re-read every open doc, skip dirty panes),
+`reconcileOpenDocuments`/`reloadFromServer`, `handleDocFocus` id-then-path
+resolution, and the Librarian-announcement append. The store OWNS the
+horizontal `dividerPosition` (v4: the document hook owns it, the terminal
+hook owns only `rightPaneVerticalSplit`) — the P4.6x ownership move.
+
+Pure ports (each unit-specced, exact against v4): `qtap-uri.ts`
+(`formatQtapUri`/`documentPaneUri` producer subset — the pane's copy-URL),
+`frontmatter.ts` (`isMarkdownFile`, `countWords`, `extractFrontmatter` +
+loose-parser row projection), `unified-diff.ts` (v4 `diffLines` Myers +
+`generateUnifiedDiff` + `formatAutosaveNotification` — the client-side
+`diffContent` a save hands the server so it posts one Librarian save
+announcement). DIVERGENCE (deliberate, no new dep): the frontmatter table
+uses v4's LOOSE line parser directly — the SPA has no `yaml` dep and the
+table is display-only (flat `key: value` + inline `[a, b]` arrays render
+identically; nested/multiline YAML is the only differing case).
+
+Dispatch client `DocumentApi` (`document-api.ts`) reads every body
+DEFENSIVELY off the dispatch envelope's `data` (lane B owns the response
+`type` strings — not pinned by the Shared contract; the P4.6t precedent),
+except `writeDocument`, which inspects the error envelope to tell a write
+conflict (v4's 409 → the `conflict` ErrorKind after P4.6p; with a
+`code`/message fallback, reconciled at unification) from any other
+failure. Core-contract single-author document block: the chat-scoped
+document family + `mountFilesList` request variants, the response DTOs,
+and `documentMode` merged onto `ChatDetail` (the standalone/workspace-tab
+variants are a loud tier-3 deferral, intentionally NOT declared).
+
+Gate so far: `ng test` 453 (64 files) green incl. the new
+frontmatter/qtap-uri/unified-diff/document-mode specs; `ng build` clean.

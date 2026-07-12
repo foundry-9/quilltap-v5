@@ -1041,6 +1041,19 @@ status headers now point at them. Oracle baseline unchanged (`a7b1398d`).
 
 ### 5.0-dev
 
+P4.6x (lane C, in progress) — the Document Mode SPA state store + the
+core-contract document block. The `useDocumentMode` port lands as an
+Angular signals store (`DocumentModeController`) with the open-document
+set, focus, dirty tracking, 30s autosave + flush, the 409-conflict
+reload (no retry), Librarian-announcement append, and the shared
+`dividerPosition` ownership (moved off the terminal controller, matching
+v4). Pure ports: the qtap:// URI producer, the frontmatter/word-count
+helpers, and the Myers unified-diff for autosave notifications. The
+dispatch client (`DocumentApi`) reads lane B's document family + lane A's
+`mountFilesList` defensively off the envelope. Contract: the single-author
+document block + `mountFilesList` request variants, `documentMode` merged
+onto `ChatDetail`. SPA 0.5.44.
+
 Dogfood finding #6 root cause FIXED (code in `ab985d4`): the Default
 Settings tab's saves were succeeding all along — the profile/partner
 selects never displayed the stored value because a select-level `[value]`

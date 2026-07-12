@@ -2952,7 +2952,26 @@ export type MemoryRequest =
   | MemoryExtractionConcurrencySetRequest
   | MemoryRegenerateAllStatusRequest
   | MemoryRegenerateAllRequest
-  | ChatQueueMemoriesRequest;
+  | ChatQueueMemoriesRequest
+  // === P4.6x (lane C): the Document Mode client surface ===
+  // The chat-scoped document family (lane B's oracle) + the one lane-A variant
+  // the SPA consumes (`mountFilesList`). Lane C is the SINGLE AUTHOR of this
+  // block per the round contract; lanes A/B do not touch `apps/web/**`. Response
+  // bodies are read DEFENSIVELY via `CoreClient.dispatchData` (their `type`
+  // strings are lane B's to choose and are not load-bearing here — the P4.6t /
+  // settings precedent), so no CoreResponse variants are added for them.
+  | ChatActiveDocumentRequest
+  | ChatOpenDocumentsRequest
+  | ChatRecentDocumentsRequest
+  | ChatAccessibleStoresRequest
+  | ChatDocumentOpenRequest
+  | ChatDocumentCloseRequest
+  | ChatDocumentReadRequest
+  | ChatDocumentResolveRequest
+  | ChatDocumentWriteRequest
+  | ChatDocumentRenameRequest
+  | ChatDocumentDeleteRequest
+  | MountFilesListRequest;
 // P4.6u (lane C) — the Salon terminal-pane block.
 // Appended by lane C; single-author (lane B, the file owner, must not edit this
 // block). The terminal WebSocket + REST protocol types live in
@@ -2980,3 +2999,200 @@ export interface ChatTerminalPaneState {
 
 /** Merge the pane-state read fields onto `ChatDetail` (the server echoes them). */
 export interface ChatDetail extends ChatTerminalPaneState {}
+
+// ===========================================================================
+// P4.6x (lane C) — the Document Mode client surface.
+//
+// Single-author block (lane C owns `apps/web/**`). The wire request `type`
+// names mirror the Shared contract; the RESPONSE bodies are read defensively
+// through `CoreClient.dispatchData` (see the union note above), so the
+// interfaces below type only the fields this vertical reads — extra fields the
+// server echoes are ignored, and a defensive extractor tolerates their absence.
+//
+// The standalone/workspace-tab document surface (`documentStores`,
+// `documentsRecent`, `documentOpen`, and the standalone read/write/rename/
+// delete variants) is a LOUD tier-3 deferral this round (it awaits a v5
+// workspace decision), so those variants are intentionally NOT declared here.
+// ===========================================================================
+
+/** A document's scope triple selector (v4 `DocEditScope`). */
+export type DocumentScope = 'project' | 'document_store' | 'general';
+
+/** Query the chat's single active (focused) document (v4 `?action=active-document`). */
+export interface ChatActiveDocumentRequest {
+  type: 'chatActiveDocument';
+  chatId: string;
+}
+
+/** List every open document for the chat, oldest-first (v4 `?action=open-documents`). */
+export interface ChatOpenDocumentsRequest {
+  type: 'chatOpenDocuments';
+  chatId: string;
+}
+
+/** Recently-opened documents (current-chat rows win the dedupe; server-owned order). */
+export interface ChatRecentDocumentsRequest {
+  type: 'chatRecentDocuments';
+  chatId: string;
+}
+
+/** Document stores reachable from this chat; `all` widens to every enabled store. */
+export interface ChatAccessibleStoresRequest {
+  type: 'chatAccessibleStores';
+  chatId: string;
+  all?: boolean;
+}
+
+/** Open (or create-and-open) a document into the chat's open set. */
+export interface ChatDocumentOpenRequest {
+  type: 'chatDocumentOpen';
+  chatId: string;
+  /** Omit for a new blank document (the server mints an "Untitled Document.md"). */
+  filePath?: string;
+  title?: string;
+  /** Default 'project' (server-side). */
+  scope?: DocumentScope;
+  mountPoint?: string;
+  /** Default 'split'. */
+  mode?: 'split' | 'focus';
+  /** For new blank docs, the folder (relative to scope root) to create inside. */
+  targetFolder?: string;
+}
+
+/** Close one open document; omit `chatDocumentId` to close the focused document. */
+export interface ChatDocumentCloseRequest {
+  type: 'chatDocumentClose';
+  chatId: string;
+  chatDocumentId?: string;
+}
+
+/** Read a document's bytes + mtime (never mutates). */
+export interface ChatDocumentReadRequest {
+  type: 'chatDocumentRead';
+  chatId: string;
+  filePath: string;
+  scope?: DocumentScope;
+  mountPoint?: string | null;
+}
+
+/** Existence probe for a `qtap://` target — returns `{ exists, kind }`, never bytes. */
+export interface ChatDocumentResolveRequest {
+  type: 'chatDocumentResolve';
+  chatId: string;
+  filePath: string;
+  scope?: DocumentScope;
+  mountPoint?: string | null;
+}
+
+/** Write a document; `mtime` guards against clobbering an out-of-band edit (409). */
+export interface ChatDocumentWriteRequest {
+  type: 'chatDocumentWrite';
+  chatId: string;
+  filePath: string;
+  scope?: DocumentScope;
+  mountPoint?: string | null;
+  content: string;
+  mtime?: number;
+  /** Pre-formatted diff → the server posts a single Librarian save announcement. */
+  diffContent?: string;
+}
+
+/** Rename the focused (or identified) document; the server relocates the file. */
+export interface ChatDocumentRenameRequest {
+  type: 'chatDocumentRename';
+  chatId: string;
+  newTitle: string;
+  chatDocumentId?: string;
+}
+
+/** Delete the focused (or identified) document and its underlying file. */
+export interface ChatDocumentDeleteRequest {
+  type: 'chatDocumentDelete';
+  chatId: string;
+  chatDocumentId?: string;
+}
+
+/** List a mount point's files + folders (lane A; v4 `GET /mount-points/{id}/files`). */
+export interface MountFilesListRequest {
+  type: 'mountFilesList';
+  mountPointId: string;
+}
+
+// --- Response DTOs (read defensively; only the consumed fields are typed) ---
+
+/** A `chat_documents` row as the document family returns it. */
+export interface ActiveDocumentRecordDto {
+  id: string;
+  filePath: string;
+  scope: DocumentScope;
+  mountPoint?: string | null;
+  displayTitle?: string | null;
+}
+
+/** The open/rename response envelope body (carries a Librarian announcement). */
+export interface OpenDocumentResultDto {
+  document: ActiveDocumentRecordDto;
+  content?: string;
+  mtime?: number;
+  /** Posted alongside the open/save/rename/delete (null if the chat was gone). */
+  librarianMessage?: MessageDto | null;
+}
+
+/** The write response body. */
+export interface WriteDocumentResultDto {
+  success?: boolean;
+  mtime?: number;
+  librarianMessage?: MessageDto | null;
+}
+
+/** A document store reachable from a chat (v4 `AccessibleStoreOption`). */
+export interface AccessibleStoreDto {
+  mountPointId: string;
+  name: string;
+  label: string;
+  kind: 'character' | 'document-store';
+  mountType: 'filesystem' | 'obsidian' | 'database';
+  storeType: 'documents' | 'character';
+  characterId?: string;
+  /** True when reached via a group membership — bucketed into "Group Files". */
+  isGroupStore?: boolean;
+}
+
+/** The project's official document store, when provisioned. */
+export interface ProjectLibraryTargetDto {
+  mountPointId: string;
+  name: string;
+  mountType: 'filesystem' | 'obsidian' | 'database';
+}
+
+/** A recent-document row (server-owned order; `fromCurrentChat` rows win). */
+export interface RecentDocumentDto {
+  id: string;
+  filePath: string;
+  scope: DocumentScope;
+  mountPoint?: string | null;
+  displayTitle?: string | null;
+  isActive?: boolean;
+  fromCurrentChat?: boolean;
+  updatedAt?: string;
+}
+
+/**
+ * A `doc_mount_files` row from `mountFilesList` (lane A pins the exact
+ * serialization; typed permissively here as only these fields are consumed).
+ */
+export interface DocMountFileDto {
+  id: string;
+  relativePath: string;
+  size?: number | null;
+  mimeType?: string | null;
+  updatedAt?: string | null;
+}
+
+/** The pane-state document read fields the server echoes onto the chat record. */
+export interface ChatDocumentPaneState {
+  documentMode?: 'normal' | 'split' | 'focus' | null;
+}
+
+/** Merge the document-mode read field onto `ChatDetail` (server echoes it). */
+export interface ChatDetail extends ChatDocumentPaneState {}
