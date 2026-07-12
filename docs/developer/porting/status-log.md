@@ -7866,3 +7866,25 @@ checkout (identical `package.json`; the lane adds no npm deps).
 - **`character-picker-panel.spec.ts`** — renders the roster, seeds an LLM entry on
   select (first profile), asserts the Play-As option. Gate: `tsc` clean, `ng test`
   green (283), `ng build` clean. SPA 0.5.24 → 0.5.25.
+
+### P4.6q unit 4 — the Green Room (creation-progress dialog) — LANDED
+
+- **`green-room.reducer.ts`** (pure, unit-tested) — `applyGreenRoomFrame`: folds one
+  creation-progress frame (v4 `applyEvent`) into the dialog state — `status`/`log`
+  (cap 100, drop oldest), the `wardrobe-start`/`wardrobe-result` upsert (keep a
+  resolved outfit if a later frame lacks slots), `done` → "The players are ready.",
+  `error` → "Something went awry."
+- **`green-room.state.ts`** — `GreenRoomStore` (`@Injectable` root, v4
+  `CreationProgressProvider`): on `begin(progressId)` subscribes to the ONE global
+  `CoreClient.events$`, filters frames scope-tagged with that `progressId` + a
+  creation `kind`, and folds them. No bespoke SSE route (D3/D6) — the server
+  buffers/replays; our stream is already open. `complete()` closes; `fail(msg)`
+  keeps it open with the error + Close button.
+- **`outfit-slots-preview.ts`** (`qt-outfit-slots-preview`, v4 `OutfitSlotsPreview`)
+  — the read-only four-slot outfit render.
+- **`green-room-dialog.ts`** (`qt-green-room-dialog`, v4 `ChatCreationProgressModal`)
+  — the blocking, non-dismissable dialog (no backdrop/Escape/✕); the error state
+  offers the only Close. Copy verbatim: "The Green Room", "Fetching the players from
+  the green room…", "The players are ready.", "Something went awry."
+- **`green-room.reducer.spec.ts`** — the transitions + copy + the 100-cap. Gate:
+  `tsc` clean, `ng test` green (292), `ng build` clean. SPA 0.5.25 → 0.5.26.

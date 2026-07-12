@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.6q (New-Chat SPA, lane B) — the Green Room (creation-progress dialog).
+Ported v4's `CreationProgressProvider` + `ChatCreationProgressModal` over
+the ONE global event stream: `GreenRoomStore` subscribes to
+`CoreClient.events$`, filters frames scope-tagged with the submit's
+`progressId`, and folds them through a pure reducer (`applyGreenRoomFrame`
+— status/log with a 100-cap, the wardrobe-start/result upsert, done →
+"The players are ready.", error → "Something went awry."). The dialog is
+blocking and non-dismissable while creation runs; only the error state
+offers Close. `qt-outfit-slots-preview` renders the decided four-slot
+outfit. No bespoke SSE route (D3/D6) — the server buffers/replays.
+SPA 0.5.26.
+
 P4.6q (New-Chat SPA, lane B) — the character picker panel. Ported v4's
 `CharacterPickerPanel` as `qt-new-chat-picker`: the searchable, v4-sorted
 roster (favorites > user-controlled > chat count > name > title) on the
