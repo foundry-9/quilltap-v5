@@ -21,10 +21,19 @@
 //! column); the only divergence — a character whose vault is unavailable, which
 //! v4's overlaid `findById` would drop to NotFound — is out of the fixture.
 
+use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
+use crate::db::memories::MemUpdate;
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read, memories_read, tags, DbError};
+use crate::model::embedding::EmbeddingProvider;
+use crate::services::memory_gate::{
+    create_memory_with_gate, CreateMemoryOptions, GateAction, MemoryServiceOptions,
+};
+use crate::services::memory_service::{
+    delete_memories_by_chat_id_with_vectors, search_memories_semantic, SemanticSearchOptions,
+};
 
 use super::types::{ErrorKind, Response};
 
@@ -406,6 +415,349 @@ pub fn memory_character_counts(db: &Db, user_id: &str) -> Response {
     });
     match result {
         Ok(characters) => Response::Memory(json!({ "success": true, "characters": characters })),
+        Err(e) => internal(e),
+    }
+}
+
+// ===========================================================================
+// Create (v4 POST /api/v1/memories, no action)
+// ===========================================================================
+
+/// v4 `createMemorySchema` — the create body (Zod prefaults inlined as serde
+/// defaults). Nullable-optional uuids collapse null/absent → `None`.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateBag {
+    character_id: String,
+    content: String,
+    summary: String,
+    #[serde(default)]
+    keywords: Vec<String>,
+    #[serde(default)]
+    tags: Vec<String>,
+    #[serde(default = "default_importance")]
+    importance: f64,
+    #[serde(default)]
+    about_character_id: Option<String>,
+    #[serde(default)]
+    chat_id: Option<String>,
+    #[serde(default = "default_source")]
+    source: String,
+    #[serde(default)]
+    source_message_id: Option<String>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    skip_gate: Option<bool>,
+}
+fn default_importance() -> f64 {
+    0.5
+}
+fn default_source() -> String {
+    "MANUAL".to_string()
+}
+
+/// v4 `handleCreateMemory` → `createMemoryWithEmbedding` (the gate). 201 `{memory}`.
+/// SKIP_EMBEDDING_FAILED → serverError (no row). `skipGate` is accepted but has
+/// NO direct-create path (v5's gate port always runs the gate — a documented
+/// P4.6s divergence; distinctive content INSERTs either way).
+pub async fn memory_create<P: EmbeddingProvider + Sync>(
+    db: &Db,
+    provider: &P,
+    user_id: &str,
+    bag: Value,
+) -> Response {
+    let bag: CreateBag = match serde_json::from_value(bag) {
+        Ok(b) => b,
+        Err(e) => return bad_request(format!("Invalid memory body: {e}")),
+    };
+    match character_exists(db, &bag.character_id) {
+        Ok(true) => {}
+        Ok(false) => return not_found("Character"),
+        Err(e) => return internal(e),
+    }
+    let data = CreateMemoryOptions {
+        character_id: bag.character_id,
+        content: bag.content,
+        summary: bag.summary,
+        keywords: bag.keywords,
+        tags: bag.tags,
+        importance: Some(bag.importance),
+        about_character_id: bag.about_character_id,
+        chat_id: bag.chat_id,
+        project_id: None,
+        source: Some(bag.source),
+        source_message_id: bag.source_message_id,
+        source_message_timestamp: None,
+        witnessed_context: None,
+    };
+    let opts = MemoryServiceOptions {
+        user_id: user_id.to_string(),
+        embedding_profile_id: None,
+    };
+    let outcome = match create_memory_with_gate(db, provider, &data, &opts).await {
+        Ok(o) => o,
+        Err(e) => return internal(e),
+    };
+    // SKIP_EMBEDDING_FAILED → no row written → serverError (v4 parity).
+    if matches!(outcome.action, GateAction::SkipEmbeddingFailed) {
+        return Response::error(
+            ErrorKind::Internal,
+            "Failed to generate embedding for memory — no row was created. Check the configured embedding profile.",
+        );
+    }
+    let Some(memory_id) = outcome.memory_id else {
+        return internal("memory gate returned no memory id");
+    };
+    // v4 echoes the gate outcome's memory (the created/reinforced row).
+    let reread: Result<Option<Value>, DbError> =
+        db.read_main(move |main| memories_read::find_by_id(main, &memory_id));
+    match reread {
+        Ok(Some(memory)) => Response::Memory(json!({ "memory": memory })),
+        Ok(None) => internal("created memory not found on re-read"),
+        Err(e) => internal(e),
+    }
+}
+
+// ===========================================================================
+// Update (v4 PUT /api/v1/memories/[id])
+// ===========================================================================
+
+/// v4 `updateMemorySchema` — the item PUT body (all optional). `aboutCharacterId`
+/// / `chatId` are nullable (present-null → SQL NULL).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateBag {
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    summary: Option<String>,
+    #[serde(default)]
+    keywords: Option<Vec<String>>,
+    #[serde(default)]
+    tags: Option<Vec<String>>,
+    #[serde(default)]
+    importance: Option<f64>,
+    // `Option<Option<_>>`: absent → None (untouched); present (incl. null) → Some.
+    #[serde(default, deserialize_with = "double_option")]
+    about_character_id: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    chat_id: Option<Option<String>>,
+    #[serde(default)]
+    related_memory_ids: Option<Vec<String>>,
+}
+
+/// Distinguish `absent` from an explicit `null` for a nullable field.
+fn double_option<'de, D, T>(de: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Ok(Some(Option::deserialize(de)?))
+}
+
+/// v4 item PUT: ownership via character, `updateForCharacter`, `{memory}`. Does
+/// NOT re-embed (only v4's fire-and-forget `scheduleRefit` — a host-timing seam).
+pub async fn memory_update(db: &Db, memory_id: &str, bag: Value) -> Response {
+    let bag: UpdateBag = match serde_json::from_value(bag) {
+        Ok(b) => b,
+        Err(e) => return bad_request(format!("Invalid memory update body: {e}")),
+    };
+    // Ownership: find existing + its character.
+    let mid = memory_id.to_string();
+    let character_id: Result<Option<String>, DbError> = db.read_main(move |main| {
+        let Some(existing) = memories_read::find_by_id(main, &mid)? else {
+            return Ok(None);
+        };
+        let cid = existing
+            .get("characterId")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        if characters_read::find_by_id_raw(main, &cid)?.is_none() {
+            return Ok(None);
+        }
+        Ok(Some(cid))
+    });
+    let character_id = match character_id {
+        Ok(Some(c)) => c,
+        Ok(None) => return not_found("Memory"),
+        Err(e) => return internal(e),
+    };
+
+    let patch = MemUpdate {
+        content: bag.content,
+        summary: bag.summary,
+        keywords: bag.keywords,
+        tags: bag.tags,
+        related_memory_ids: bag.related_memory_ids,
+        importance: bag.importance,
+        about_character_id: bag.about_character_id,
+        chat_id: bag.chat_id,
+        ..Default::default()
+    };
+    let mid = memory_id.to_string();
+    let cid = character_id.clone();
+    let updated = db
+        .write(move |w| w.main().memories().update_for_character(&cid, &mid, &patch))
+        .await;
+    match updated {
+        Ok(true) => {}
+        Ok(false) => return not_found("Memory"),
+        Err(e) => return internal(e),
+    }
+    let mid = memory_id.to_string();
+    let reread: Result<Option<Value>, DbError> =
+        db.read_main(move |main| memories_read::find_by_id(main, &mid));
+    match reread {
+        Ok(Some(memory)) => Response::Memory(json!({ "memory": memory })),
+        Ok(None) => not_found("Memory"),
+        Err(e) => internal(e),
+    }
+}
+
+// ===========================================================================
+// Delete (v4 DELETE /api/v1/memories/[id])
+// ===========================================================================
+
+/// v4 item DELETE: ownership via character, `deleteMemoryWithUnlink` (scrubs
+/// neighbours' `relatedMemoryIds`), `{success: true}`. v4's fire-and-forget
+/// `handleEntityDeletion` / `scheduleRefit` are host-timing seams (not ported).
+pub async fn memory_delete(db: &Db, memory_id: &str) -> Response {
+    let mid = memory_id.to_string();
+    let exists: Result<bool, DbError> = db.read_main(move |main| {
+        let Some(existing) = memories_read::find_by_id(main, &mid)? else {
+            return Ok(false);
+        };
+        let cid = existing
+            .get("characterId")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        Ok(characters_read::find_by_id_raw(main, cid)?.is_some())
+    });
+    match exists {
+        Ok(true) => {}
+        Ok(false) => return not_found("Memory"),
+        Err(e) => return internal(e),
+    }
+    let mid = memory_id.to_string();
+    let deleted = db
+        .write(move |w| w.main().memories().delete_with_unlink(&mid))
+        .await;
+    match deleted {
+        Ok(_) => Response::Memory(json!({ "success": true })),
+        Err(e) => internal(e),
+    }
+}
+
+// ===========================================================================
+// Delete by chat (v4 DELETE /api/v1/memories?chatId=)
+// ===========================================================================
+
+/// v4 `handleDeleteByChatId`: chat ownership, `deleteMemoriesByChatIdWithVectors`,
+/// `{success, chatId, deletedCount}`.
+pub async fn memory_delete_by_chat(db: &Db, chat_id: &str) -> Response {
+    let cid = chat_id.to_string();
+    let owned: Result<bool, DbError> =
+        db.read_main(move |main| Ok(chats_read::find_by_id(main, &cid)?.is_some()));
+    match owned {
+        Ok(true) => {}
+        Ok(false) => return not_found("Chat"),
+        Err(e) => return internal(e),
+    }
+    match delete_memories_by_chat_id_with_vectors(db, chat_id).await {
+        Ok(res) => Response::Memory(
+            json!({ "success": true, "chatId": chat_id, "deletedCount": res.deleted }),
+        ),
+        Err(e) => internal(e),
+    }
+}
+
+// ===========================================================================
+// Search (v4 POST /api/v1/memories?action=search)
+// ===========================================================================
+
+/// v4 `searchMemorySchema` — the search body.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SearchBag {
+    character_id: String,
+    query: String,
+    #[serde(default = "default_search_limit")]
+    limit: usize,
+    #[serde(default)]
+    min_importance: Option<f64>,
+    #[serde(default)]
+    min_score: Option<f64>,
+    #[serde(default)]
+    source: Option<String>,
+}
+fn default_search_limit() -> usize {
+    20
+}
+
+/// v4 `handleSearch`: `searchMemoriesSemantic` → each result carries the memory +
+/// `score`, `usedEmbedding`, `tagDetails`; top-level `{count, query, usedEmbedding}`.
+/// `now_ms` is threaded so the recency-weighted ranking is pinnable in the
+/// differential (v4's route uses `Date.now()` — the oracle mocks it).
+pub async fn memory_search<P: EmbeddingProvider + Sync>(
+    db: &Db,
+    provider: &P,
+    user_id: &str,
+    now_ms: f64,
+    bag: Value,
+) -> Response {
+    let bag: SearchBag = match serde_json::from_value(bag) {
+        Ok(b) => b,
+        Err(e) => return bad_request(format!("Invalid search body: {e}")),
+    };
+    match character_exists(db, &bag.character_id) {
+        Ok(true) => {}
+        Ok(false) => return not_found("Character"),
+        Err(e) => return internal(e),
+    }
+    let options = SemanticSearchOptions {
+        user_id: user_id.to_string(),
+        embedding_profile_id: None,
+        limit: Some(bag.limit),
+        min_score: bag.min_score,
+        min_importance: bag.min_importance,
+        source: bag.source,
+        about_character_id: None,
+        apply_literal_phrase_boost: false,
+        now_ms,
+    };
+    let results =
+        match search_memories_semantic(db, provider, &bag.character_id, &bag.query, &options).await
+        {
+            Ok(r) => r,
+            Err(e) => return internal(e),
+        };
+    let used_embedding = results.first().map(|r| r.used_embedding).unwrap_or(false);
+    let query = bag.query.clone();
+    let cid = bag.character_id.clone();
+    let body: Result<Value, DbError> = db.read_main(move |main| {
+        let tm = tag_map(main)?;
+        let memories: Vec<Value> = results
+            .into_iter()
+            .map(|r| {
+                let mut m = with_tag_details(r.memory, &tm);
+                if let Some(obj) = m.as_object_mut() {
+                    obj.insert("score".into(), json!(r.score));
+                    obj.insert("usedEmbedding".into(), json!(r.used_embedding));
+                }
+                m
+            })
+            .collect();
+        let _ = cid;
+        Ok(json!({
+            "memories": memories.clone(),
+            "count": memories.len(),
+            "query": query,
+            "usedEmbedding": used_embedding,
+        }))
+    });
+    match body {
+        Ok(b) => Response::Memory(b),
         Err(e) => internal(e),
     }
 }

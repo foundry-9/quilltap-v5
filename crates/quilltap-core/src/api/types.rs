@@ -1105,6 +1105,32 @@ pub enum Request {
     /// v4 GET `?action=character-memory-counts` — `{success, characters: [{id,
     /// name, memoryCount}]}` (memoryCount desc).
     MemoryCharacterCounts,
+    /// v4 POST `/api/v1/memories` (no action) — the gate-driven create; 201
+    /// `{memory}`. Embedding failure → server-error (no row).
+    MemoryCreate {
+        memory: serde_json::Value,
+    },
+    /// v4 PUT `/api/v1/memories/[id]` — `{memory}` (NO re-embed).
+    #[serde(rename_all = "camelCase")]
+    MemoryUpdate {
+        memory_id: String,
+        memory: serde_json::Value,
+    },
+    /// v4 DELETE `/api/v1/memories/[id]` — `{success: true}` (+ unlink scrub).
+    #[serde(rename_all = "camelCase")]
+    MemoryDelete {
+        memory_id: String,
+    },
+    /// v4 DELETE `/api/v1/memories?chatId=` — `{success, chatId, deletedCount}`.
+    #[serde(rename_all = "camelCase")]
+    MemoryDeleteByChat {
+        chat_id: String,
+    },
+    /// v4 POST `?action=search` — `{memories: (…&{score, usedEmbedding,
+    /// tagDetails})[], count, query, usedEmbedding}` (builtin TF-IDF LIVE).
+    MemorySearch {
+        search: serde_json::Value,
+    },
 }
 
 /// Typed DTO per variant (the uniffi payoff). `Error` carries the one

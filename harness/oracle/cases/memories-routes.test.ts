@@ -42,8 +42,17 @@ const PIP = 'b1000000-0000-4000-8000-000000000003';
 const CHAT_SALON = 'c1000000-0000-4000-8000-000000000001';
 const MSG_S1 = 'd1000000-0000-4000-8000-000000000001';
 const MSG_S2A = 'd1000000-0000-4000-8000-000000000002';
+const MEM_TAGGED_1 = 'b2000000-0000-4000-8000-0000000000a0';
 const MEM_TAGGED_2 = 'b2000000-0000-4000-8000-0000000000a1';
+const MEM_REL_A = 'b2000000-0000-4000-8000-0000000000e0';
+const MEM_REL_B = 'b2000000-0000-4000-8000-0000000000e1';
+const MEM_NEARDUP = 'b2000000-0000-4000-8000-0000000000d0';
 const MISSING = '00000000-0000-4000-8000-0000000000ff';
+
+// A fixed wall-clock the memory-search recency weighting is pinned to (v4's
+// route uses `new Date()`; the Rust differential passes the same now_ms). After
+// the fixture memory dates (2026-02/03) so recency is positive.
+const FIXED_NOW = 1783000000000;
 
 function mockRequest(url: string, body?: unknown): unknown {
   return {
@@ -55,7 +64,18 @@ function mockRequest(url: string, body?: unknown): unknown {
   };
 }
 
-function applyMocks(spec: Spec): void {
+function applyMocks(spec: Spec, pinClock: boolean): void {
+  // Pin `new Date()` / `Date.now()` so the search recency weighting is
+  // deterministic, but leave the real timers alone (the per-case settle delay
+  // relies on a real setTimeout). Only the search (read) cases pin the clock —
+  // a frozen `Date.now` breaks v4's single-writer IPC deadline logic, so the
+  // write cases run on the real clock (their minted timestamps are blanked).
+  if (pinClock) {
+    jest.useFakeTimers({
+      now: FIXED_NOW,
+      doNotFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval'],
+    });
+  }
   const cipherDriverPath = require('node:path').join(
     process.cwd(),
     'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers',
@@ -68,6 +88,12 @@ function applyMocks(spec: Spec): void {
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
   jest.doMock('@/lib/embedding/vector-store', () =>
     jest.requireActual('@/lib/embedding/vector-store'),
+  );
+  // jest.setup stubs generateEmbeddingForUser to a 3-dim `[0.1,0.2,0.3]` vector;
+  // un-mock it so the gate/search run the REAL builtin TF-IDF (286-dim, matching
+  // the fixture's baked vectors).
+  jest.doMock('@/lib/embedding/embedding-service', () =>
+    jest.requireActual('@/lib/embedding/embedding-service'),
   );
   jest.doMock('@/lib/auth/session', () => ({
     __esModule: true,
@@ -94,11 +120,51 @@ function applyMocks(spec: Spec): void {
 
 interface CaseSpec {
   name: string;
-  run: (mods: Record<string, unknown>) => Promise<{ status: number; body: unknown }>;
+  /** Pin `new Date()`/`Date.now()` to FIXED_NOW (search recency determinism). */
+  clock?: boolean;
+  run: (mods: Record<string, unknown>) => Promise<{ status: number; body: unknown; tables?: unknown }>;
 }
 
 async function loadRoute(path: string): Promise<Record<string, (...a: unknown[]) => Promise<unknown>>> {
   return (await import(path)) as never;
+}
+
+/** Dump the reinforcement/link state of specific memory rows (baked ids → no
+ *  remap), for the create-reinforce + delete-unlink structural checks. */
+async function dumpMemoryRows(ids: string[]): Promise<unknown> {
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const db = getRawDatabase() as unknown as {
+    prepare: (s: string) => { get: (...a: unknown[]) => unknown };
+  };
+  const rows = ids.map((id) => {
+    const r = db
+      .prepare(
+        'SELECT id, reinforcementCount, reinforcedImportance, relatedMemoryIds FROM memories WHERE id = ?',
+      )
+      .get(id) as
+      | { id: string; reinforcementCount: number; reinforcedImportance: number; relatedMemoryIds: string }
+      | undefined;
+    if (!r) return { id, present: false };
+    return {
+      id: r.id,
+      present: true,
+      reinforcementCount: r.reinforcementCount,
+      relatedMemoryIds: JSON.parse(r.relatedMemoryIds ?? '[]'),
+    };
+  });
+  return { rows };
+}
+
+/** Count memories in a chat (deleteByChat structural check). */
+async function countMemoriesInChat(chatId: string): Promise<unknown> {
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const db = getRawDatabase() as unknown as {
+    prepare: (s: string) => { get: (...a: unknown[]) => unknown };
+  };
+  const row = db.prepare('SELECT COUNT(*) AS c FROM memories WHERE chatId = ?').get(chatId) as {
+    c: number;
+  };
+  return { remaining: row.c };
 }
 
 async function respond(r: unknown): Promise<{ status: number; body: unknown }> {
@@ -113,7 +179,7 @@ async function runCase(
   fixtures: { main: string; mount: string },
 ): Promise<Record<string, unknown>> {
   jest.resetModules();
-  applyMocks(spec);
+  applyMocks(spec, c.clock === true);
   // Register the provider plugins (incl. the BUILTIN embeddings provider) so the
   // semantic-search arm resolves the builtin embedding at query time.
   const { initializePlugins } = await import('@/lib/startup/plugin-initialization');
@@ -134,7 +200,12 @@ async function runCase(
   await initializeDatabase();
   try {
     const out = await c.run({});
-    return { name: c.name, status: out.status, body: out.body };
+    return {
+      name: c.name,
+      status: out.status,
+      body: out.body,
+      ...(out.tables !== undefined ? { tables: out.tables } : {}),
+    };
   } finally {
     // Let any fire-and-forget write (the item-GET access-time bump; the search
     // access bumps) settle before teardown, so it can't leave the single-writer
@@ -142,6 +213,7 @@ async function runCase(
     await new Promise((r) => setTimeout(r, 150));
     await closeDatabase();
     closeMountIndexSQLiteClient();
+    jest.useRealTimers();
     rmSync(work, { recursive: true, force: true });
   }
 }
@@ -219,6 +291,104 @@ async function main(): Promise<void> {
     { name: 'by_message_missing', run: () => listGet(`messageId=${MISSING}`) },
     // --- Character memory counts ---
     { name: 'character_counts', run: () => listGet(`action=character-memory-counts`) },
+    // --- Create (gate) ---
+    {
+      name: 'create_insert',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(B, {
+              characterId: MNEMO,
+              content: 'The clocktower chimes thirteen times on the winter solstice.',
+              summary: 'The clocktower chimes thirteen at solstice.',
+              keywords: ['clocktower', 'solstice'],
+              importance: 0.55,
+              source: 'MANUAL',
+            }),
+          ),
+        ),
+    },
+    {
+      // Identical content to the near-dup anchor → cosine 1.0 → the gate absorbs
+      // it (SKIP_NEAR_DUPLICATE): no new row, the anchor is returned unchanged.
+      name: 'create_near_duplicate',
+      run: async () => {
+        const r = await (await loadRoute('@/app/api/v1/memories/route')).POST(
+          mockRequest(B, {
+            characterId: MNEMO,
+            content: 'Mnemo always double-checks the barometer before hoisting the mainsail.',
+            summary: 'Mnemo checks the barometer before the mainsail.',
+            source: 'AUTO',
+          }),
+        );
+        const { status, body } = await respond(r);
+        return { status, body, tables: await dumpMemoryRows([MEM_NEARDUP]) };
+      },
+    },
+    // --- Update (no re-embed) ---
+    {
+      name: 'update',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/memories/[id]/route')).PUT(
+            mockRequest(`${B}/${MEM_TAGGED_1}`, { importance: 0.95, summary: 'Alden, the stern mentor.' }),
+            { params: Promise.resolve({ id: MEM_TAGGED_1 }) },
+          ),
+        ),
+    },
+    // --- Delete (+ unlink scrub) ---
+    {
+      name: 'delete',
+      run: async () => {
+        const r = await (await loadRoute('@/app/api/v1/memories/[id]/route')).DELETE(
+          mockRequest(`${B}/${MEM_REL_B}`),
+          { params: Promise.resolve({ id: MEM_REL_B }) },
+        );
+        const { status, body } = await respond(r);
+        return { status, body, tables: await dumpMemoryRows([MEM_REL_A, MEM_REL_B]) };
+      },
+    },
+    // --- Delete by chat ---
+    {
+      name: 'delete_by_chat',
+      run: async () => {
+        const r = await (await loadRoute('@/app/api/v1/memories/route')).DELETE(
+          mockRequest(`${B}?chatId=${CHAT_SALON}`),
+        );
+        const { status, body } = await respond(r);
+        return { status, body, tables: await countMemoriesInChat(CHAT_SALON) };
+      },
+    },
+    // --- Search (builtin TF-IDF; pinned clock) ---
+    {
+      name: 'search',
+      clock: true,
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=search`, {
+              characterId: MNEMO,
+              query: 'smuggler cove hidden by the reef',
+              limit: 5,
+            }),
+          ),
+        ),
+    },
+    {
+      name: 'search_min_importance',
+      clock: true,
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=search`, {
+              characterId: MNEMO,
+              query: 'lighthouse keeper storm beacon',
+              limit: 10,
+              minImportance: 0.7,
+            }),
+          ),
+        ),
+    },
   ];
 
   const lines: string[] = [];

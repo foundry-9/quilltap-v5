@@ -8180,3 +8180,41 @@ shortest-round-trip is identical). Ownership uses MAIN-only
 `characters_read::find_by_id_raw` (id is overlay-invariant; the broken-vault
 drop is out of the fixture). Response variant: `Response::Memory(Value)`.
 Bumps: core 0.0.189, harness 0.0.173.
+
+### P4.6s unit 2 — the write + search arms — LANDED (branch)
+
+`memoryCreate` / `memoryUpdate` / `memoryDelete` / `memoryDeleteByChat` /
+`memorySearch` over the ported gate + semantic-search engine. The two
+embedding arms (create + search) take an injected `EmbeddingProvider`; the
+engine holds an `Option<ErasedEmbeddingProvider>` on the **ReadyEngine only**
+(NOT threaded through `EngineAssembly` this lane — that would break the host
++ web-test `EngineAssembly` initializers outside lane-A ownership), defaulted
+to `None`, so `MemoryCreate`/`MemorySearch` answer the loud not-assembled
+refusal until a future host-wiring lane adds the assembly field. The
+differential proves both arms LIVE via a directly-constructed
+`ApiEmbeddingProvider` over the fixture's builtin default profile.
+
+Gotchas banked:
+- **The oracle MUST un-mock `@/lib/embedding/embedding-service`.** jest.setup
+  (:410) stubs `generateEmbeddingForUser` to a 3-dim `[0.1,0.2,0.3]` vector;
+  left mocked, the gate/search embed at 3 dims while the fixture's baked
+  vectors are 286 (vocab size) → a "Vector dimension mismatch: expected 286,
+  got 3" throw on create (→ 500) and a silent text fallback on search
+  (`usedEmbedding:false`). `jest.doMock(... requireActual)` restores the real
+  builtin TF-IDF. (Also un-mock `@/lib/embedding/vector-store`.)
+- **Pin the clock only for the search (read) cases.** The recency ranking
+  uses `new Date()`; a `jest.useFakeTimers({now, doNotFake:[timers]})` pins it
+  deterministically, but a frozen `Date.now()` breaks v4's single-writer IPC
+  deadline logic → the WRITE cases 500. So `clock: true` gates only search;
+  writes run on the real clock (minted timestamps blanked). v5 passes the same
+  `FIXED_NOW_MS` = 1_783_000_000_000.
+- Search scores compare at **1e-6 rounding** (f32-storage + ln-ULP seams); the
+  re-read embedding vectors on create are **blanked** (id/timestamps/embedding).
+- The "near-duplicate" create posts content IDENTICAL to the anchor → cosine
+  1.0 → SKIP_NEAR_DUPLICATE (returns the anchor unchanged, no bump), not
+  REINFORCE. v5's gate matches. The **skipGate direct-create path is a v5
+  non-port** (the Phase-3 gate always runs the gate) — accepted-but-ignored,
+  documented divergence; and SKIP_EMBEDDING_FAILED → server error is ported
+  (memory_id None → Internal) but not differential-exercised (the real builtin
+  never fails).
+Bumps: core 0.0.190, harness 0.0.174.

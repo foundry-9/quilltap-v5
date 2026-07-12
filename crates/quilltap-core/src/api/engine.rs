@@ -217,6 +217,13 @@ struct ReadyEngine {
     swipe_generate: Option<Arc<dyn SwipeGenerateDriver>>,
     /// The assembly's provider wire-actions driver (P4.6).
     provider_actions: Option<Arc<dyn ProviderActionsDriver>>,
+    /// The memory embedding provider the create/search arms run LIVE (P4.6s);
+    /// always `None` this lane (the differential proves the arms via a
+    /// directly-constructed provider). Host wiring — threading the spine's shared
+    /// `ApiEmbeddingProvider` through a NEW `EngineAssembly` field — is a named
+    /// deferral so this lane leaves `EngineAssembly` (and its host / web-test
+    /// initializers) untouched.
+    memory_embedding: Option<crate::model::embedding::ErasedEmbeddingProvider>,
 }
 
 /// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
@@ -1722,6 +1729,37 @@ impl CoreEngine {
                 Ok(db) => super::memories::memory_character_counts(&db, SINGLE_USER_ID),
                 Err(r) => r,
             },
+            Request::MemoryCreate { memory } => match self.ready_memory_embedding() {
+                Ok((db, provider)) => {
+                    super::memories::memory_create(&db, &provider, SINGLE_USER_ID, memory).await
+                }
+                Err(r) => r,
+            },
+            Request::MemoryUpdate { memory_id, memory } => match self.ready_db() {
+                Ok(db) => super::memories::memory_update(&db, &memory_id, memory).await,
+                Err(r) => r,
+            },
+            Request::MemoryDelete { memory_id } => match self.ready_db() {
+                Ok(db) => super::memories::memory_delete(&db, &memory_id).await,
+                Err(r) => r,
+            },
+            Request::MemoryDeleteByChat { chat_id } => match self.ready_db() {
+                Ok(db) => super::memories::memory_delete_by_chat(&db, &chat_id).await,
+                Err(r) => r,
+            },
+            Request::MemorySearch { search } => match self.ready_memory_embedding() {
+                Ok((db, provider)) => {
+                    super::memories::memory_search(
+                        &db,
+                        &provider,
+                        SINGLE_USER_ID,
+                        wall_clock_ms(),
+                        search,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
         }
     }
 
@@ -1758,6 +1796,25 @@ impl CoreEngine {
                 None => Err(Response::error(
                     ErrorKind::Internal,
                     "provider wire actions not assembled (provider-actions driver deferral)",
+                )),
+            },
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
+    /// The Db + memory embedding provider under the readiness gate (P4.6s); a
+    /// ready engine without the provider (unwired host / read-only embedder)
+    /// answers the loud not-assembled refusal — the memory create/search arms
+    /// alone need it. Host wiring lands with the SPA integration.
+    fn ready_memory_embedding(
+        &self,
+    ) -> Result<(Db, crate::model::embedding::ErasedEmbeddingProvider), Response> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => match &r.memory_embedding {
+                Some(p) => Ok((r.db.clone(), p.clone())),
+                None => Err(Response::error(
+                    ErrorKind::Internal,
+                    "memory embedding not assembled (create/search embedding-seam deferral)",
                 )),
             },
             EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
@@ -2063,6 +2120,15 @@ fn random_f64() -> f64 {
     (n >> 11) as f64 / (1u64 << 53) as f64
 }
 
+/// Wall-clock epoch milliseconds (v4 `Date.now()`). Feeds the memory-search
+/// recency ranking (the engine's real clock; the differential pins it).
+fn wall_clock_ms() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as f64)
+        .unwrap_or(0.0)
+}
+
 impl QuilltapCore for CoreEngine {
     fn dispatch(&self, req: Request) -> impl std::future::Future<Output = Response> + Send {
         self.dispatch_impl(req)
@@ -2119,6 +2185,9 @@ fn open_ready(
         chat_create: assembly.chat_create,
         swipe_generate: assembly.swipe_generate,
         provider_actions: assembly.provider_actions,
+        // P4.6s: not carried on the assembly this lane (see the field doc) — the
+        // create/search arms answer the not-assembled refusal until host wiring.
+        memory_embedding: None,
     })
 }
 

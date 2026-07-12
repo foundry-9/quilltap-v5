@@ -17,16 +17,23 @@ use std::path::PathBuf;
 use quilltap_core::api::memories;
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::model::embedding::ErasedEmbeddingProvider;
+use quilltap_core::model::wire::CannedWireTransport;
+use quilltap_core::services::embedding_provider::ApiEmbeddingProvider;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 const MNEMO: &str = "b1000000-0000-4000-8000-000000000001";
 const ORLA: &str = "b1000000-0000-4000-8000-000000000002";
 const CHAT_SALON: &str = "c1000000-0000-4000-8000-000000000001";
 const MSG_S1: &str = "d1000000-0000-4000-8000-000000000001";
 const MSG_S2A: &str = "d1000000-0000-4000-8000-000000000002";
+const MEM_TAGGED_1: &str = "b2000000-0000-4000-8000-0000000000a0";
 const MEM_TAGGED_2: &str = "b2000000-0000-4000-8000-0000000000a1";
+const MEM_REL_B: &str = "b2000000-0000-4000-8000-0000000000e1";
 const MISSING: &str = "00000000-0000-4000-8000-0000000000ff";
+/// The wall-clock the search recency ranking is pinned to (mirrors the oracle).
+const FIXED_NOW_MS: f64 = 1_783_000_000_000.0;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -120,6 +127,64 @@ fn status_of(kind: ErrorKind) -> u16 {
 fn response_data(r: &Response) -> Value {
     let v = serde_json::to_value(r).unwrap();
     v.get("data").cloned().unwrap_or(Value::Null)
+}
+
+/// The differential's embedding provider: the production `ApiEmbeddingProvider`
+/// over the fixture db (a canned transport that the BUILTIN path never touches),
+/// type-erased so the generic create/search take it by `&`.
+fn provider(db: &Db) -> ErasedEmbeddingProvider {
+    ErasedEmbeddingProvider::new(ApiEmbeddingProvider::new(
+        db.clone(),
+        CannedWireTransport::new(),
+    ))
+}
+
+/// Blank the given keys (recursively) to a `<key>` sentinel — the minted /
+/// re-generated fields on create/update (`id`, timestamps, `embedding`).
+fn blank_keys(v: &mut Value, keys: &[&str]) {
+    match v {
+        Value::Object(o) => {
+            for k in keys {
+                if o.contains_key(*k) {
+                    o.insert((*k).to_string(), Value::String(format!("<{k}>")));
+                }
+            }
+            o.iter_mut().for_each(|(_, x)| blank_keys(x, keys));
+        }
+        Value::Array(a) => a.iter_mut().for_each(|x| blank_keys(x, keys)),
+        _ => {}
+    }
+}
+/// Round every float to 6 decimals (absorbs the f32-storage + ln-ULP seams on the
+/// search scores + the re-read embedding vectors).
+fn round_floats(v: &mut Value) {
+    match v {
+        Value::Number(n) => {
+            if let Some(f) = n.as_f64() {
+                if f.fract() != 0.0 {
+                    let r = (f * 1_000_000.0).round() / 1_000_000.0;
+                    if let Some(nn) = serde_json::Number::from_f64(r) {
+                        *v = Value::Number(nn);
+                    }
+                }
+            }
+        }
+        Value::Array(a) => a.iter_mut().for_each(round_floats),
+        Value::Object(o) => o.iter_mut().for_each(|(_, x)| round_floats(x)),
+        _ => {}
+    }
+}
+fn norm_blanked(v: &Value, keys: &[&str]) -> String {
+    let mut v = v.clone();
+    canon_numbers(&mut v);
+    blank_keys(&mut v, keys);
+    serde_json::to_string_pretty(&sorted(&v)).unwrap()
+}
+fn norm_rounded(v: &Value) -> String {
+    let mut v = v.clone();
+    round_floats(&mut v);
+    canon_numbers(&mut v);
+    serde_json::to_string_pretty(&sorted(&v)).unwrap()
 }
 
 fn fresh_db(spec: &Spec, tag: &str) -> Db {
@@ -403,6 +468,184 @@ fn memories_routes_match_oracle() {
             &memories::memory_character_counts(&db, &uid),
             &mut failed,
         );
+    }
+
+    // Dump the reinforcement/link state of specific memory rows (the create /
+    // delete structural checks) — mirrors the oracle's `dumpMemoryRows`.
+    let dump_rows = |db: &Db, ids: &[&str]| -> Value {
+        let ids: Vec<String> = ids.iter().map(|s| s.to_string()).collect();
+        db.read_main(move |conn| {
+            let rows: Vec<Value> = ids
+                .iter()
+                .map(
+                    |id| match quilltap_core::db::memories_read::find_by_id(conn, id).unwrap() {
+                        None => json!({ "id": id, "present": false }),
+                        Some(m) => json!({
+                            "id": id,
+                            "present": true,
+                            "reinforcementCount": m.get("reinforcementCount"),
+                            "relatedMemoryIds": m.get("relatedMemoryIds"),
+                        }),
+                    },
+                )
+                .collect();
+            Ok(json!({ "rows": rows }))
+        })
+        .unwrap()
+    };
+
+    // Create/update blank the minted/regenerated fields (id + timestamps +
+    // embedding — the vector fidelity is proven by the search + W4.7e2 seams).
+    let create_blank = [
+        "id",
+        "createdAt",
+        "updatedAt",
+        "lastReinforcedAt",
+        "embedding",
+    ];
+    let check_blanked = |name: &str, got: &Response, keys: &[&str], failed: &mut Vec<String>| {
+        let want = &oracle[name]["body"];
+        let got = response_data(got);
+        if norm_blanked(&got, keys) != norm_blanked(want, keys) {
+            eprintln!(
+                "[{name}] MISMATCH:\n{}",
+                first_diff(&norm_blanked(&got, keys), &norm_blanked(want, keys))
+            );
+            failed.push(name.to_string());
+        } else {
+            eprintln!("[{name}] OK.");
+        }
+    };
+    let check_tables = |name: &str, got: &Value, failed: &mut Vec<String>| {
+        let want = &oracle[name]["tables"];
+        if norm(got) != norm(want) {
+            eprintln!(
+                "[{name} tables] MISMATCH:\n{}",
+                first_diff(&norm(got), &norm(want))
+            );
+            failed.push(format!("{name}_tables"));
+        } else {
+            eprintln!("[{name} tables] OK.");
+        }
+    };
+    let check_rounded = |name: &str, got: &Response, failed: &mut Vec<String>| {
+        let want = &oracle[name]["body"];
+        let got = response_data(got);
+        if norm_rounded(&got) != norm_rounded(want) {
+            eprintln!(
+                "[{name}] MISMATCH:\n{}",
+                first_diff(&norm_rounded(&got), &norm_rounded(want))
+            );
+            failed.push(name.to_string());
+        } else {
+            eprintln!("[{name}] OK.");
+        }
+    };
+
+    // --- Create (gate) ---
+    {
+        let db = fresh_db(&spec, "ci");
+        let p = provider(&db);
+        let resp = rt.block_on(memories::memory_create(
+            &db,
+            &p,
+            &uid,
+            json!({
+                "characterId": MNEMO,
+                "content": "The clocktower chimes thirteen times on the winter solstice.",
+                "summary": "The clocktower chimes thirteen at solstice.",
+                "keywords": ["clocktower", "solstice"],
+                "importance": 0.55,
+                "source": "MANUAL",
+            }),
+        ));
+        check_blanked("create_insert", &resp, &create_blank, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "cnd");
+        let p = provider(&db);
+        let resp = rt.block_on(memories::memory_create(
+            &db,
+            &p,
+            &uid,
+            json!({
+                "characterId": MNEMO,
+                "content": "Mnemo always double-checks the barometer before hoisting the mainsail.",
+                "summary": "Mnemo checks the barometer before the mainsail.",
+                "source": "AUTO",
+            }),
+        ));
+        check_blanked("create_near_duplicate", &resp, &create_blank, &mut failed);
+        check_tables(
+            "create_near_duplicate",
+            &dump_rows(&db, &["b2000000-0000-4000-8000-0000000000d0"]),
+            &mut failed,
+        );
+    }
+    // --- Update (no re-embed) ---
+    {
+        let db = fresh_db(&spec, "up");
+        let resp = rt.block_on(memories::memory_update(
+            &db,
+            MEM_TAGGED_1,
+            json!({ "importance": 0.95, "summary": "Alden, the stern mentor." }),
+        ));
+        check_blanked("update", &resp, &["updatedAt"], &mut failed);
+    }
+    // --- Delete (+ unlink scrub) ---
+    {
+        let db = fresh_db(&spec, "del");
+        let resp = rt.block_on(memories::memory_delete(&db, MEM_REL_B));
+        check_body("delete", &resp, &mut failed);
+        check_tables(
+            "delete",
+            &dump_rows(&db, &["b2000000-0000-4000-8000-0000000000e0", MEM_REL_B]),
+            &mut failed,
+        );
+    }
+    // --- Delete by chat ---
+    {
+        let db = fresh_db(&spec, "dbc");
+        let resp = rt.block_on(memories::memory_delete_by_chat(&db, CHAT_SALON));
+        check_body("delete_by_chat", &resp, &mut failed);
+        let remaining = db
+            .read_main(|conn| quilltap_core::db::memories_read::count_by_chat_id(conn, CHAT_SALON))
+            .unwrap();
+        check_tables(
+            "delete_by_chat",
+            &json!({ "remaining": remaining }),
+            &mut failed,
+        );
+    }
+    // --- Search (builtin TF-IDF; pinned clock) ---
+    {
+        let db = fresh_db(&spec, "srch");
+        let p = provider(&db);
+        let resp = rt.block_on(memories::memory_search(
+            &db,
+            &p,
+            &uid,
+            FIXED_NOW_MS,
+            json!({ "characterId": MNEMO, "query": "smuggler cove hidden by the reef", "limit": 5 }),
+        ));
+        check_rounded("search", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "srchi");
+        let p = provider(&db);
+        let resp = rt.block_on(memories::memory_search(
+            &db,
+            &p,
+            &uid,
+            FIXED_NOW_MS,
+            json!({
+                "characterId": MNEMO,
+                "query": "lighthouse keeper storm beacon",
+                "limit": 10,
+                "minImportance": 0.7,
+            }),
+        ));
+        check_rounded("search_min_importance", &resp, &mut failed);
     }
 
     assert!(failed.is_empty(), "mismatched cases: {failed:?}");

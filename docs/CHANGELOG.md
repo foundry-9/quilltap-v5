@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.6s memories server, part 2 (writes + search): `memoryCreate` (the
+gate-driven create — INSERT, the near-duplicate absorb, 201 `{memory}`,
+SKIP_EMBEDDING_FAILED → server error), `memoryUpdate` (no re-embed),
+`memoryDelete` (the relatedMemoryIds unlink scrub), `memoryDeleteByChat`,
+and `memorySearch` — the builtin TF-IDF semantic search running LIVE. The
+embedding arms take an injected `EmbeddingProvider` (the engine holds an
+`ErasedEmbeddingProvider` seam, refused until host-wired); the differential
+drives them with the fixture's builtin profile. Seven more cases in
+`memories_routes_equivalence` (24 total), incl. the create/delete structural
+dumps and the rounded-score search match.
+
 P4.6s memories server, part 1 (reads + the fixture): the new committed
 `memories-{main,mount}.db` fixture (3 characters, 51 memories on one,
 builtin TF-IDF embeddings via v4's real path, a swipe group, tagged +
