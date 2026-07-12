@@ -8393,3 +8393,25 @@ run-now; writes merge-patch via `memoryHousekeepingConfigSet`),
 Profiles sub-tab, the Memory Deduplication card (`memory-dedup-card`,
 server unported), the Regenerate Conversation Summaries card. Gate:
 `ng test` 380/380, `ng build` clean. SPA → 0.5.37.
+
+**Unit 4 — the fixture-guarded e2e beats (2026-07-12).** Two describes
+authored, guarded on `existsSync(memories-main.db)` (absent this
+worktree → SKIP; auto-activate at unification over lane A's committed
+fixture + live `memory*` variants). `characters-flow.spec.ts` +=
+"P4.6t — Memories tab (Commonplace Book)": boots its own locked server
+(port 4327, tolerant CLI userId rewrite) and walks open-detail → click
+Memories → the count-bearing `Memories (N)` header renders over the
+fixture → Add Memory (memoryCreate) → the card appears → Edit
+(memoryUpdate) → Delete via the inline-confirm dialog (memoryDelete).
+`settings-flow.spec.ts` += "P4.6t — Settings Memory tab": port 4328;
+one beat asserts the four ported card headings render (and the deferred
+`Memory Deduplication` card has count 0), a second toggles the Recall
+Relevance "Follow the threads between memories" checkbox and asserts it
+persists across a full reload (memoryRecallConfigSet → Get). `playwright
+--list` discovers all three (26 total, no parse errors). NOTE for the
+unifier: the Memories-tab walk opens the FIRST roster card and asserts
+the header's total count (not a specific baked memory) since lane A's
+fixture character/name is its detail — if that character has zero
+memories the create/edit/delete round-trip still proves the vertical.
+Gate: `ng test` 380/380, `ng build` clean, `playwright --list` 26. SPA
+→ 0.5.38.

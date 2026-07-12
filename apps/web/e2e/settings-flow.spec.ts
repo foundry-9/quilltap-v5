@@ -339,3 +339,160 @@ function withoutPepper(): NodeJS.ProcessEnv {
   delete env['ENCRYPTION_MASTER_PEPPER'];
   return env;
 }
+
+// ---------------------------------------------------------------------------
+// P4.6t — the Settings → Memory tab (the Commonplace Book cards). Authored
+// pre-unification against lane A's NEW `memories-{main,mount}.db` fixture; the
+// describe SKIPS when that fixture is absent (this worktree) and auto-activates
+// once lane A lands it + the `memory*` config dispatch variants at unification.
+// ---------------------------------------------------------------------------
+
+const MEMSET_PORT = 4328;
+const MEMSET_BASE_URL = `http://127.0.0.1:${MEMSET_PORT}`;
+const MEMSET_INSTANCE_DIR = resolve(ARTIFACTS_DIR, 'settings-memory-instance');
+const MEMSET_DATA_DIR = resolve(MEMSET_INSTANCE_DIR, 'data');
+const MEMSET_SERVER_LOG = resolve(ARTIFACTS_DIR, 'settings-memory-server.log');
+const MEMSET_MAIN_FIXTURE = resolve(FIXTURES_DIR, 'memories-main.db');
+const MEMSET_MOUNT_FIXTURE = resolve(FIXTURES_DIR, 'memories-mount.db');
+const MEMSET_FIXTURE_READY = existsSync(MEMSET_MAIN_FIXTURE);
+const MEMSET_USER_TABLES = ['characters', 'memories', 'tags', 'chats'];
+
+let memSetServer: ChildProcess | undefined;
+
+test.describe('P4.6t — Settings Memory tab (Commonplace Book cards)', () => {
+  test.skip(!MEMSET_FIXTURE_READY, 'awaits lane A memories fixture (wired at unification)');
+
+  test.beforeAll(async () => {
+    test.setTimeout(120_000);
+    const web = webBinary();
+    const cli = cliBinary();
+
+    rmSync(MEMSET_INSTANCE_DIR, { recursive: true, force: true });
+    mkdirSync(MEMSET_DATA_DIR, { recursive: true });
+    copyFileSync(MEMSET_MAIN_FIXTURE, resolve(MEMSET_DATA_DIR, 'quilltap.db'));
+    if (existsSync(MEMSET_MOUNT_FIXTURE)) {
+      copyFileSync(MEMSET_MOUNT_FIXTURE, resolve(MEMSET_DATA_DIR, 'quilltap-mount-index.db'));
+    }
+    writeFileSync(
+      resolve(MEMSET_DATA_DIR, 'quilltap.dbkey'),
+      makeDbKeyFile(TEST_PEPPER, E2E_PASSPHRASE),
+    );
+    for (const table of MEMSET_USER_TABLES) {
+      const res = spawnSync(
+        cli,
+        [
+          'db',
+          '--data-dir',
+          MEMSET_INSTANCE_DIR,
+          '--write',
+          `UPDATE ${table} SET userId = '${SINGLE_USER_ID}' WHERE userId = '${FIXTURE_USER}';`,
+        ],
+        {
+          env: {
+            ...withoutPepper(),
+            QUILLTAP_DB_PASSPHRASE: E2E_PASSPHRASE,
+            QUILLTAP_QUIET_HINTS: '1',
+          },
+          encoding: 'utf8',
+        },
+      );
+      if (res.status !== 0) {
+        const out = `${res.stdout}${res.stderr}`;
+        if (!out.includes('no such table') && !out.includes('no such column: userId')) {
+          throw new Error(`memories fixture rewrite failed (${table}):\n${res.stdout}\n${res.stderr}`);
+        }
+      }
+    }
+
+    const logFd = openSync(MEMSET_SERVER_LOG, 'w');
+    memSetServer = spawn(
+      web,
+      [
+        '--host',
+        '127.0.0.1',
+        '--port',
+        String(MEMSET_PORT),
+        '--data-dir',
+        MEMSET_INSTANCE_DIR,
+        '--spa-dir',
+        spaDir(),
+      ],
+      { stdio: ['ignore', logFd, logFd], detached: true, env: withoutPepper() },
+    );
+    memSetServer.unref();
+
+    const deadline = Date.now() + 30_000;
+    for (;;) {
+      try {
+        const res = await fetch(`${MEMSET_BASE_URL}/health`);
+        if (res.status === 423 || res.status === 200) break;
+      } catch {
+        // not up yet
+      }
+      if (Date.now() > deadline) {
+        throw new Error(`settings memory server not ready within 30s; see ${MEMSET_SERVER_LOG}`);
+      }
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  });
+
+  test.afterAll(() => {
+    if (memSetServer?.pid) {
+      try {
+        process.kill(-memSetServer.pid, 'SIGTERM');
+      } catch {
+        try {
+          process.kill(memSetServer.pid, 'SIGTERM');
+        } catch {
+          // already gone
+        }
+      }
+    }
+    rmSync(MEMSET_INSTANCE_DIR, { recursive: true, force: true });
+  });
+
+  async function unlockIfLocked(page: Page, ready: ReturnType<Page['getByRole']>): Promise<void> {
+    const passphrase = page.locator('#qt-passphrase');
+    await expect(passphrase.or(ready).first()).toBeVisible({ timeout: 15_000 });
+    if (await passphrase.isVisible()) {
+      await passphrase.fill(E2E_PASSPHRASE);
+      await page.getByRole('button', { name: 'Unlock' }).click();
+    }
+    await expect(ready).toBeVisible({ timeout: 10_000 });
+  }
+
+  test('the four Commonplace Book cards render over the fixture', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.goto(`${MEMSET_BASE_URL}/settings?tab=memory`);
+    await unlockIfLocked(page, page.getByRole('heading', { name: 'Repair Missing Embeddings' }));
+    // The four ported cards' titles all render (the deferred dedup /
+    // conversation-summary / embedding-profiles cards render nothing).
+    await expect(page.getByRole('heading', { name: 'Memory Housekeeping' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Recall Relevance' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Regenerate Memories' })).toBeVisible();
+    await expect(page.getByText('Memory Deduplication')).toHaveCount(0);
+  });
+
+  test('a Recall Relevance toggle round-trips through the server', async ({ page }) => {
+    test.setTimeout(60_000);
+    // Deep-link force-opens the Recall Relevance card (it is not the first card).
+    await page.goto(`${MEMSET_BASE_URL}/settings?tab=memory&section=memory-recall`);
+    await unlockIfLocked(page, page.getByRole('heading', { name: 'Recall Relevance' }));
+
+    const checkbox = page
+      .locator('label', { hasText: 'Follow the threads between memories' })
+      .locator('input[type="checkbox"]');
+    await expect(checkbox).toBeVisible({ timeout: 10_000 });
+    const wasChecked = await checkbox.isChecked();
+    await checkbox.click();
+    // The memoryRecallConfigSet round-trip lands and the checkbox reflects it.
+    await expect(checkbox).toBeChecked({ checked: !wasChecked });
+
+    // The new value persists across a full reload (server state).
+    await page.reload();
+    const reloaded = page
+      .locator('label', { hasText: 'Follow the threads between memories' })
+      .locator('input[type="checkbox"]');
+    await expect(reloaded).toBeChecked({ checked: !wasChecked, timeout: 10_000 });
+  });
+});

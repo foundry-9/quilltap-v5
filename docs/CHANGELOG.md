@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.6t lane B, unit 4 — the fixture-guarded e2e beats. A
+`characters-flow.spec.ts` describe (P4.6t) boots its own locked server
+over lane A's NEW `memories-main.db` and walks: open a character's
+Memories tab → the count-bearing header renders over the fixture →
+create a memory → edit it → delete it (memoryCreate/Update/Delete). A
+`settings-flow.spec.ts` describe asserts the four Commonplace Book cards
+render on the Memory tab (and the deferred dedup card does NOT) and that
+a Recall Relevance toggle round-trips through the server across a reload
+(memoryRecallConfigSet/Get). Both describes SKIP while `memories-main.db`
+is absent (this worktree) and auto-activate at unification;
+`playwright --list` discovers all three (26 total). SPA → 0.5.38.
+
 P4.6t lane B, unit 3 — the Settings → Memory tab (the Commonplace Book
 cards). The Memory tab now renders v4's `MemorySearchTabContent`
 CollapsibleCards (titles/descriptions + `?section=` deep-link ids ported

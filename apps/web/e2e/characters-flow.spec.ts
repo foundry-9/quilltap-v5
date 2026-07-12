@@ -1,5 +1,13 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { copyFileSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { resolve } from 'node:path';
 
 import { expect, test, type Page } from '@playwright/test';
@@ -386,3 +394,169 @@ async function waitForHealth(): Promise<void> {
   }
   throw new Error(`characters server did not become ready within 30s (${lastErr}); see ${CHAR_SERVER_LOG}`);
 }
+
+// ===========================================================================
+// P4.6t — the character Memories (Commonplace Book) tab. Authored
+// pre-unification against lane A's NEW `memories-{main,mount}.db` fixture; the
+// describe SKIPS when that fixture is absent (this worktree) and auto-activates
+// once lane A lands it + the `memory*` dispatch variants at unification. Runs
+// its OWN locked server + instance dir on a spec-private port (the P4.6r
+// recipe). The CLI rewrite is tolerant of tables the fixture may not carry.
+// ===========================================================================
+
+const MEM_PORT = 4327;
+const MEM_BASE_URL = `http://127.0.0.1:${MEM_PORT}`;
+const MEM_INSTANCE_DIR = resolve(ARTIFACTS_DIR, 'memories-instance');
+const MEM_DATA_DIR = resolve(MEM_INSTANCE_DIR, 'data');
+const MEM_SERVER_LOG = resolve(ARTIFACTS_DIR, 'memories-server.log');
+const MEM_MAIN_FIXTURE = resolve(FIXTURES_DIR, 'memories-main.db');
+const MEM_MOUNT_FIXTURE = resolve(FIXTURES_DIR, 'memories-mount.db');
+const MEM_FIXTURE_READY = existsSync(MEM_MAIN_FIXTURE);
+const MEM_USER_TABLES = ['characters', 'memories', 'tags', 'chats', 'files'];
+
+let memServer: ChildProcess | undefined;
+
+test.describe('P4.6t — Memories tab (Commonplace Book)', () => {
+  test.skip(!MEM_FIXTURE_READY, 'awaits lane A memories fixture (wired at unification)');
+
+  test.beforeAll(async () => {
+    test.setTimeout(120_000);
+    const web = webBinary();
+    const cli = cliBinary();
+
+    rmSync(MEM_INSTANCE_DIR, { recursive: true, force: true });
+    mkdirSync(MEM_DATA_DIR, { recursive: true });
+    copyFileSync(MEM_MAIN_FIXTURE, resolve(MEM_DATA_DIR, 'quilltap.db'));
+    if (existsSync(MEM_MOUNT_FIXTURE)) {
+      copyFileSync(MEM_MOUNT_FIXTURE, resolve(MEM_DATA_DIR, 'quilltap-mount-index.db'));
+    }
+    writeFileSync(resolve(MEM_DATA_DIR, 'quilltap.dbkey'), makeDbKeyFile(TEST_PEPPER, E2E_PASSPHRASE));
+    for (const table of MEM_USER_TABLES) {
+      const res = spawnSync(
+        cli,
+        [
+          'db',
+          '--data-dir',
+          MEM_INSTANCE_DIR,
+          '--write',
+          `UPDATE ${table} SET userId = '${SINGLE_USER_ID}' WHERE userId = '${FIXTURE_USER}';`,
+        ],
+        {
+          env: { ...withoutPepper(), QUILLTAP_DB_PASSPHRASE: E2E_PASSPHRASE, QUILLTAP_QUIET_HINTS: '1' },
+          encoding: 'utf8',
+        },
+      );
+      if (res.status !== 0) {
+        const out = `${res.stdout}${res.stderr}`;
+        if (!out.includes('no such table') && !out.includes('no such column: userId')) {
+          throw new Error(`memories fixture rewrite failed (${table}):\n${res.stdout}\n${res.stderr}`);
+        }
+      }
+    }
+
+    const logFd = openSync(MEM_SERVER_LOG, 'w');
+    memServer = spawn(
+      web,
+      ['--host', '127.0.0.1', '--port', String(MEM_PORT), '--data-dir', MEM_INSTANCE_DIR, '--spa-dir', spaDir()],
+      { stdio: ['ignore', logFd, logFd], detached: true, env: withoutPepper() },
+    );
+    memServer.unref();
+
+    const deadline = Date.now() + 30_000;
+    for (;;) {
+      try {
+        const res = await fetch(`${MEM_BASE_URL}/health`);
+        if (res.status === 423 || res.status === 200) break;
+      } catch {
+        // not up yet
+      }
+      if (Date.now() > deadline) {
+        throw new Error(`memories server not ready within 30s; see ${MEM_SERVER_LOG}`);
+      }
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  });
+
+  test.afterAll(() => {
+    if (memServer?.pid) {
+      try {
+        process.kill(-memServer.pid, 'SIGTERM');
+      } catch {
+        try {
+          process.kill(memServer.pid, 'SIGTERM');
+        } catch {
+          // already gone
+        }
+      }
+    }
+    rmSync(MEM_INSTANCE_DIR, { recursive: true, force: true });
+  });
+
+  async function unlockIfLocked(page: Page): Promise<void> {
+    const passphrase = page.locator('#qt-passphrase');
+    const roster = page.getByRole('heading', { name: 'Characters', exact: true });
+    await expect(passphrase.or(roster).first()).toBeVisible({ timeout: 15_000 });
+    if (await passphrase.isVisible()) {
+      await passphrase.fill(E2E_PASSPHRASE);
+      await page.getByRole('button', { name: 'Unlock' }).click();
+    }
+    await expect(roster).toBeVisible({ timeout: 10_000 });
+  }
+
+  test('open a character\'s Memories tab → baked memories render → create → edit → delete', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await page.goto(`${MEM_BASE_URL}/characters`);
+    await unlockIfLocked(page);
+
+    // Open the first character card's detail view (h2 title works whether or
+    // not the card carries a description body).
+    const firstCard = page.locator('.character-card-grid .character-card').first();
+    await expect(firstCard).toBeVisible({ timeout: 10_000 });
+    await firstCard.locator('h2').first().click();
+
+    // The Memories tab renders v4's MemoryList over the fixture. The section
+    // header carries the total count — its presence proves the paginated list
+    // queried the fixture (the baked memories render as cards below it, or the
+    // empty state if this character has none — either way the vertical is live).
+    await page.getByRole('button', { name: 'Memories' }).click();
+    await expect(page.getByRole('heading', { name: /Memories \(\d+\)/ })).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // Create a manual memory (memoryCreate). A distinctive summary avoids
+    // colliding with any baked memory.
+    const summary = 'E2E Commonplace walk';
+    await page.getByRole('button', { name: 'Add Memory', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByPlaceholder('Brief summary of this memory').fill(summary);
+    await dialog.getByLabel('Memory content').fill('A note filed away by the P4.6t e2e walk.');
+    await dialog.getByRole('button', { name: 'Create Memory' }).click();
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
+
+    const card = page.locator('qt-memory-card', { hasText: summary });
+    await expect(card).toBeVisible({ timeout: 10_000 });
+
+    // Edit it (memoryUpdate).
+    const renamed = 'E2E Commonplace walk (revised)';
+    await card.getByRole('button', { name: 'Edit', exact: true }).click();
+    const editDialog = page.getByRole('dialog');
+    await expect(editDialog).toBeVisible();
+    await editDialog.getByPlaceholder('Brief summary of this memory').fill(renamed);
+    await editDialog.getByRole('button', { name: 'Save Changes' }).click();
+    await expect(editDialog).toBeHidden({ timeout: 10_000 });
+    const renamedCard = page.locator('qt-memory-card', { hasText: renamed });
+    await expect(renamedCard).toBeVisible({ timeout: 10_000 });
+
+    // Delete it (memoryDelete) via the inline confirm dialog.
+    await renamedCard.getByRole('button', { name: 'Delete', exact: true }).click();
+    const confirm = page.getByRole('dialog');
+    await expect(confirm).toContainText('Are you sure you want to delete this memory?');
+    await confirm.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(page.locator('qt-memory-card', { hasText: renamed })).toHaveCount(0, {
+      timeout: 10_000,
+    });
+  });
+});
