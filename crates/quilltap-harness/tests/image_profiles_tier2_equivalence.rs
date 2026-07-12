@@ -187,6 +187,7 @@ fn image_profiles_tier2_matches_oracle() {
                                 is_dangerous_compatible: data.is_dangerous_compatible,
                                 tags: data.tags.clone(),
                                 updated_at: data.updated_at.clone(),
+                                ..Default::default()
                             },
                         )
                         .expect("image_profiles.update");

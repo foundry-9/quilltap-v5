@@ -265,6 +265,12 @@ pub struct Manifest {
     /// The provider's declared model ids (`getModelInfo().map(m => m.id)`).
     #[serde(default, rename = "fallbackModels")]
     pub fallback_models: Vec<String>,
+    /// The provider's declared image-generation model ids — v4's
+    /// `getImageGenerationModels().map(m => m.id)` (else the image provider's
+    /// `supportedModels`). Backs the `imageProfileList` `list-providers`
+    /// `defaultModels` (P4.6p); empty on providers without image generation.
+    #[serde(default, rename = "imageGenerationModels")]
+    pub image_generation_models: Vec<String>,
     /// Static fallback pricing by model id. Empty on every built-in today (the
     /// live fetcher is W4.7e); a manifest MAY carry rows.
     #[serde(default)]

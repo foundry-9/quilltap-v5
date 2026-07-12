@@ -7675,3 +7675,62 @@ QT_ORACLE_ROLEPLAY_ROUTES=/tmp/oracle-roleplay-templates-routes.ndjson \
 ```
 
 Versions: core 0.0.186, harness 0.0.170, web 0.0.13.
+
+### P4.6p unit 3 — image-profiles dispatch surface — LANDED
+
+Ported v4's `image-profiles/route.ts` + `[id]/route.ts` as `api::image_profiles`
+(list [+ `?sortByCharacter=`] / create / get / update / delete +
+`imageProviderList`; the three LLM/IO actions are loud refusal arms), composed
+over the ported repo + new reads (`find_by_user_id`, `find_id_by_user_and_name`,
+`unset_all_defaults` [mints updatedAt on flipped rows], and the
+nullable-clearing `IpUpdate` tri-state `Option<Option<String>>` for
+apiKeyId/baseUrl), the api-key + tag enrichment (`{id,label,provider,isActive}`,
+`[{tagId, tag}]`), and the manifest `Registry`.
+
+**Manifest change:** added an optional `imageGenerationModels` field (serde
+default, `deny_unknown_fields` absent → backward compatible) to the `Manifest`
+struct + the five image-capable manifests (openai/google/grok/z_ai/openrouter),
+byte-exact-transcribed from v4's plugin `getImageGenerationModels()`/
+`supportedModels` so `list-providers`' `defaultModels` matches. No other manifest
+consumer reads it; the 19 provider_manifest unit tests + providers_listing stay
+green.
+
+Pinned quirks: list = default-first then createdAt DESC; `?sortByCharacter=`
+re-sorts by matching-tag count DESC with v4's tie-break `b.isDefault?1:a.isDefault?-1:0`
+and appends `matchingTags`/`matchingTagCount`; create returns the in-memory
+validated object + `apiKey` (apiKeyId/baseUrl present-as-null, tags raw `[]`);
+GET/list/update read-marshal omits null nullables then enriches; PUT is per-field
+`!== undefined` gated (apiKeyId tri-state clear, `''`→null baseUrl,
+isDefault→unset-others, tags NOT updatable).
+
+**Provider-probe gotcha (banked):** v4's `createImageProvider` registry probe is
+a NO-OP in the jest sandbox — the plugin registration doesn't reach
+`requireProvider`, so it accepts EVERY provider there (standalone Node and
+production both reject unknown/non-image). So the reject path can't be
+oracle-tested; it's covered by a core unit test (`probe_matches_v4_production`:
+accepts the 5 image providers + the GOOGLE_IMAGEN alias, rejects
+unknown/non-image/wrong-case), and the ACCEPT path is proven end-to-end by
+`create_happy`. `create_provider_unavailable` was dropped from the differential
+for this reason. Oracle registration recipe: the jest oracle loads the 9 plugin
+dists (`plugins/dist/qtap-plugin-*`) and `registerProvider`s them per case (needs
+`@jest-environment node` for `ReadableStream`), which populates `getAllProviders`
+(so `list-providers` returns the real 5) even though the probe stays lenient.
+
+Differential `image_profiles_routes_equivalence` (18 cases + a refusal-arm test).
+Regen recipe (Node 24, from the v4 checkout):
+```
+W=<worktree>; N=~/.nvm/versions/node/v24.13.1/bin; TMPO=/tmp/qt-gp-oracle
+mkdir -p $TMPO/cases $TMPO/fixtures
+cp $W/harness/oracle/cases/image-profiles-routes.test.ts $TMPO/cases/
+cp $W/harness/oracle/fixtures/groups-projects.json $TMPO/fixtures/
+cd ~/source/quilltap-server
+QT_FIXTURE_GP_MAIN=$W/crates/quilltap-web/tests/fixtures/groups-projects-main.db \
+QT_FIXTURE_GP_MOUNT=$W/crates/quilltap-web/tests/fixtures/groups-projects-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-image-profiles-routes.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- image-profiles-routes
+QT_ORACLE_IMAGE_ROUTES=/tmp/oracle-image-profiles-routes.ndjson \
+  cargo test -p quilltap-harness --test image_profiles_routes_equivalence
+```
+
+Versions: core 0.0.187, harness 0.0.171.

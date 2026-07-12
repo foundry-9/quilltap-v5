@@ -780,6 +780,59 @@ pub enum Request {
     RoleplayTemplateDelete {
         template_id: String,
     },
+    // --- Image profiles (P4.6p) ---
+    /// v4 `GET /api/v1/image-profiles` (+ optional `?sortByCharacter=`) →
+    /// `{profiles, count}`.
+    #[serde(rename_all = "camelCase")]
+    ImageProfileList {
+        #[serde(default)]
+        sort_by_character: Option<String>,
+    },
+    /// v4 `POST /api/v1/image-profiles` → created profile + `apiKey`.
+    ImageProfileCreate {
+        profile: serde_json::Value,
+    },
+    /// v4 `GET /api/v1/image-profiles/[id]` → profile + `apiKey` + enriched tags.
+    #[serde(rename_all = "camelCase")]
+    ImageProfileGet {
+        profile_id: String,
+    },
+    /// v4 `PUT /api/v1/image-profiles/[id]` (per-field gated) → updated + enrichment.
+    #[serde(rename_all = "camelCase")]
+    ImageProfileUpdate {
+        profile_id: String,
+        profile: serde_json::Value,
+    },
+    /// v4 `DELETE /api/v1/image-profiles/[id]` → `{message}`.
+    #[serde(rename_all = "camelCase")]
+    ImageProfileDelete {
+        profile_id: String,
+    },
+    /// v4 `GET /api/v1/image-profiles?action=list-providers` → `{providers, count}`.
+    ImageProviderList,
+    /// v4 `POST /api/v1/image-profiles/[id]?action=generate` — LLM/IO-coupled
+    /// (loud refusal arm this round).
+    #[serde(rename_all = "camelCase")]
+    ImageProfileGenerate {
+        profile_id: String,
+        #[serde(default)]
+        payload: serde_json::Value,
+    },
+    /// v4 `POST /api/v1/image-profiles?action=validate-key` — live IO (loud refusal
+    /// arm this round).
+    ImageProfileValidateKey {
+        #[serde(default)]
+        payload: serde_json::Value,
+    },
+    /// v4 `GET /api/v1/image-profiles?action=list-models` — live IO (loud refusal
+    /// arm this round).
+    #[serde(rename_all = "camelCase")]
+    ImageProfileListModels {
+        #[serde(default)]
+        provider: Option<String>,
+        #[serde(default)]
+        api_key_id: Option<String>,
+    },
     // --- Projects ---
     /// v4 `GET /api/v1/projects` — createdAt-desc list + `_count` (BARE envelope).
     ProjectList,

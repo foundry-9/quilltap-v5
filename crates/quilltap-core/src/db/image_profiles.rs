@@ -92,6 +92,12 @@ pub struct CreateOptions {
 pub struct IpUpdate {
     pub name: Option<String>,
     pub provider: Option<String>,
+    /// The nullable-clearing tri-state (P4.6p): `None` skips the column;
+    /// `Some(None)` sets it to SQL NULL (v4 PUT's explicit `apiKeyId: null`);
+    /// `Some(Some(v))` sets the value.
+    pub api_key_id: Option<Option<String>>,
+    /// The nullable-clearing tri-state — v4 PUT's `baseUrl: baseUrl || null`.
+    pub base_url: Option<Option<String>>,
     pub model_name: Option<String>,
     /// Re-serialized to compact JSON text when provided.
     pub parameters: Option<serde_json::Value>,
@@ -177,6 +183,14 @@ impl<'c> ImageProfilesRepository<'c> {
             assignments.push(format!("provider = ?{}", values.len() + 1));
             values.push(Box::new(provider.clone()));
         }
+        if let Some(api_key_id) = &patch.api_key_id {
+            assignments.push(format!("apiKeyId = ?{}", values.len() + 1));
+            values.push(Box::new(api_key_id.clone()));
+        }
+        if let Some(base_url) = &patch.base_url {
+            assignments.push(format!("baseUrl = ?{}", values.len() + 1));
+            values.push(Box::new(base_url.clone()));
+        }
         if let Some(model_name) = &patch.model_name {
             assignments.push(format!("modelName = ?{}", values.len() + 1));
             values.push(Box::new(model_name.clone()));
@@ -226,6 +240,59 @@ impl<'c> ImageProfilesRepository<'c> {
             .execute("DELETE FROM image_profiles WHERE id = ?1", params![id])?;
         Ok(affected > 0)
     }
+
+    /// v4 `unsetAllDefaults(userId)` — `updateMany({userId, isDefault:true},
+    /// {isDefault:false})`. The base `updateMany` injects a fresh `updatedAt` into
+    /// every matched row's `$set`, so this mints `updated_at` on all flipped rows
+    /// (one wall-clock stamp for the whole `UPDATE`, matching v4's single
+    /// `getCurrentTimestamp()`). Returns the modified-row count.
+    pub fn unset_all_defaults(&self, user_id: &str, updated_at: &str) -> Result<usize, DbError> {
+        let n = self.conn.execute(
+            "UPDATE image_profiles SET isDefault = 0, updatedAt = ?1 \
+             WHERE userId = ?2 AND isDefault = 1",
+            params![updated_at, user_id],
+        )?;
+        Ok(n)
+    }
+}
+
+/// v4 `repos.imageProfiles.findByUserId(userId)` — every profile for the user,
+/// UNSORTED (the route applies the default-first + createdAt-DESC sort, then the
+/// optional `sortByCharacter` re-sort).
+pub fn find_by_user_id(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Vec<serde_json::Value>, DbError> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {IP_COLUMNS} FROM image_profiles WHERE userId = ?1"
+    ))?;
+    let rows = stmt.query_map(params![user_id], marshal_ip_row)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+/// v4 `repos.imageProfiles.findByName(userId, name)` — the user-scoped duplicate
+/// probe. Returns the matching profile's id (the routes need existence /
+/// self-comparison), or `None`.
+pub fn find_id_by_user_and_name(
+    conn: &Connection,
+    user_id: &str,
+    name: &str,
+) -> Result<Option<String>, DbError> {
+    conn.query_row(
+        "SELECT id FROM image_profiles WHERE userId = ?1 AND name = ?2 LIMIT 1",
+        params![user_id, name],
+        |row| row.get::<_, String>(0),
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other),
+    })
+    .map_err(DbError::from)
 }
 
 /// The shared column list every image-profile net read selects.

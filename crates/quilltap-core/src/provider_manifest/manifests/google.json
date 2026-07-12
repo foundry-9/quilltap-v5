@@ -68,6 +68,7 @@
   },
   "charsPerToken": 3.8,
   "defaultContextWindow": 1000000,
+  "imageGenerationModels": ["gemini-2.5-flash-image", "gemini-3-pro-image-preview", "imagen-4", "imagen-4-fast"],
   "fallbackModels": [
     "gemini-3-flash-preview",
     "gemini-3-pro-preview",

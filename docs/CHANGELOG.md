@@ -2,6 +2,25 @@
 
 ## Recent Changes
 
+P4.6p unit 3 (lane A): the image-profiles dispatch surface — the five
+CRUD variants (list incl. `?sortByCharacter=` / create / get / update /
+delete) + `imageProviderList` as `api::image_profiles`, composed over the
+ported repo plus new reads (`find_by_user_id`, `find_id_by_user_and_name`,
+`unset_all_defaults`, and the nullable-clearing `IpUpdate` tri-state for
+apiKeyId/baseUrl), the api-key + tag enrichment, and the manifest
+Registry. The three LLM/IO-coupled actions (generate / validate-key /
+list-models) are loud typed refusal arms. Added an `imageGenerationModels`
+field to the five image-capable provider manifests (byte-exact
+transcription of v4's plugin model lists) so `list-providers`'
+`defaultModels` matches. Differential `image_profiles_routes_equivalence`
+(18 cases, incl. the default-first + createdAt-DESC sort, the
+sortByCharacter matching-tag re-sort with v4's default-last tie-break, the
+apiKeyId-null-clears / ''→null-baseUrl / isDefault-unsets-others side
+effects, list-providers, and every validation arm) against v4's real
+route handlers. The provider probe's reject path is unit-tested directly
+(the v4 registry probe is a no-op in the jest sandbox); its accept path is
+covered end-to-end by the create happy-path.
+
 P4.6p unit 2 (lane A): the roleplay-templates dispatch surface — the
 five variants (list / create / get / update / delete) as
 `api::roleplay_templates`, composed over the ported repo + new

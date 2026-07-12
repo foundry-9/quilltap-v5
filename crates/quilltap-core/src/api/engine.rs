@@ -1347,6 +1347,61 @@ impl CoreEngine {
                 Err(r) => r,
             },
 
+            // --- Image profiles (P4.6p) -------------------------------------
+            Request::ImageProfileList { sort_by_character } => match self.ready_db() {
+                Ok(db) => super::image_profiles::image_profile_list(
+                    &db,
+                    SINGLE_USER_ID,
+                    sort_by_character,
+                ),
+                Err(r) => r,
+            },
+            Request::ImageProfileCreate { profile } => match self.ready_db() {
+                Ok(db) => {
+                    super::image_profiles::image_profile_create(&db, SINGLE_USER_ID, profile).await
+                }
+                Err(r) => r,
+            },
+            Request::ImageProfileGet { profile_id } => match self.ready_db() {
+                Ok(db) => super::image_profiles::image_profile_get(&db, &profile_id),
+                Err(r) => r,
+            },
+            Request::ImageProfileUpdate {
+                profile_id,
+                profile,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::image_profiles::image_profile_update(
+                        &db,
+                        SINGLE_USER_ID,
+                        &profile_id,
+                        profile,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ImageProfileDelete { profile_id } => match self.ready_db() {
+                Ok(db) => super::image_profiles::image_profile_delete(&db, &profile_id).await,
+                Err(r) => r,
+            },
+            Request::ImageProviderList => match self.ready_db() {
+                Ok(_) => super::image_profiles::image_provider_list(),
+                Err(r) => r,
+            },
+            Request::ImageProfileGenerate { profile_id, .. } => match self.ready_db() {
+                Ok(_) => super::image_profiles::image_profile_generate(&profile_id),
+                Err(r) => r,
+            },
+            Request::ImageProfileValidateKey { .. } => match self.ready_db() {
+                Ok(_) => super::image_profiles::image_profile_validate_key(),
+                Err(r) => r,
+            },
+            Request::ImageProfileListModels { .. } => match self.ready_db() {
+                Ok(_) => super::image_profiles::image_profile_list_models(),
+                Err(r) => r,
+            },
+
             // --- Projects family (P4.6k) ------------------------------------
             Request::ProjectList => match self.ready_db() {
                 Ok(db) => super::projects::project_list(&db),

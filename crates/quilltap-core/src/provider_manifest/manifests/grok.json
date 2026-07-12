@@ -67,6 +67,7 @@
   },
   "charsPerToken": 3.5,
   "defaultContextWindow": 131072,
+  "imageGenerationModels": ["grok-imagine-image", "grok-imagine-image-pro", "grok-2-image"],
   "fallbackModels": [
     "grok-4",
     "grok-4-1-fast",

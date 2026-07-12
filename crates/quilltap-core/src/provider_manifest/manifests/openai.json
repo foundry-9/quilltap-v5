@@ -67,6 +67,7 @@
   },
   "charsPerToken": 3.5,
   "defaultContextWindow": 128000,
+  "imageGenerationModels": ["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini", "dall-e-3", "dall-e-2"],
   "fallbackModels": [
     "gpt-4o",
     "gpt-4-turbo",
