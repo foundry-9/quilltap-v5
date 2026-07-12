@@ -1183,6 +1183,43 @@ pub enum Request {
     /// v4 POST `?action=regenerate-all` — `{success, jobId, isNew, cleared,
     /// message}`.
     MemoryRegenerateAll,
+    /// v4 GET `?action=embeddings&characterId=` — `{total, withEmbeddings,
+    /// withoutEmbeddings, percentComplete, embeddingProfileConfigured,
+    /// embeddingProfileName}`.
+    #[serde(rename_all = "camelCase")]
+    MemoryEmbeddingStatus {
+        character_id: String,
+    },
+    /// v4 POST `?action=backfill-embeddings` — `{success, enqueued, remaining,
+    /// message}`.
+    #[serde(rename_all = "camelCase")]
+    MemoryBackfillStart {
+        #[serde(default)]
+        character_id: Option<String>,
+        #[serde(default)]
+        batch_size: Option<i64>,
+    },
+    /// v4 POST `?action=embeddings` — deferred (the `generateMissingEmbeddings`
+    /// service is unported); recognized-but-refused.
+    #[serde(rename_all = "camelCase")]
+    MemoryGenerateEmbeddings {
+        character_id: String,
+        #[serde(default)]
+        batch_size: Option<i64>,
+    },
+    /// v4 PUT `?action=embeddings` — deferred (the `rebuildVectorIndex` service is
+    /// unported); recognized-but-refused.
+    #[serde(rename_all = "camelCase")]
+    MemoryRebuildIndex {
+        character_id: String,
+        confirm: bool,
+    },
+    /// v4 per-chat `?action=queue-memories` — deferred (`resolveCheapLLMProfileId`
+    /// + the batch extraction enqueue are unported); recognized-but-refused.
+    #[serde(rename_all = "camelCase")]
+    ChatQueueMemories {
+        chat_id: String,
+    },
 }
 
 /// Typed DTO per variant (the uniffi payoff). `Error` carries the one

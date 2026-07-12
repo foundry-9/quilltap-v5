@@ -182,6 +182,24 @@ async function dumpJobsByType(jobType: string): Promise<unknown> {
   };
 }
 
+/** The EMBEDDING_GENERATE backfill jobs, reduced to a stable (order-independent)
+ *  shape: count + sorted entityIds + the profileId. */
+async function dumpEmbeddingJobs(): Promise<unknown> {
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const db = getRawDatabase() as unknown as {
+    prepare: (s: string) => { all: (...a: unknown[]) => unknown };
+  };
+  const rows = db
+    .prepare("SELECT payload FROM background_jobs WHERE type = 'EMBEDDING_GENERATE'")
+    .all() as Array<{ payload: string }>;
+  const payloads = rows.map((r) => JSON.parse(r.payload));
+  return {
+    count: payloads.length,
+    entityIds: payloads.map((p) => p.entityId).sort(),
+    profileIds: [...new Set(payloads.map((p) => p.profileId))].sort(),
+  };
+}
+
 async function respond(r: unknown): Promise<{ status: number; body: unknown }> {
   const resp = r as { status: number; json: () => Promise<unknown> };
   return { status: resp.status, body: await resp.json() };
@@ -362,6 +380,18 @@ async function main(): Promise<void> {
         );
         const { status, body } = await respond(r);
         return { status, body, tables: await dumpJobsByType('MEMORY_REGENERATE_ALL') };
+      },
+    },
+    // --- Embedding status + backfill (tier 2) ---
+    { name: 'embedding_status', run: () => listGet(`action=embeddings&characterId=${MNEMO}`) },
+    {
+      name: 'backfill_start',
+      run: async () => {
+        const r = await (await loadRoute('@/app/api/v1/memories/route')).POST(
+          mockRequest(`${B}?action=backfill-embeddings`, { characterId: MNEMO, batchSize: 500 }),
+        );
+        const { status, body } = await respond(r);
+        return { status, body, tables: await dumpEmbeddingJobs() };
       },
     },
   ];

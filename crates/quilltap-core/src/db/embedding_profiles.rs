@@ -135,6 +135,21 @@ pub fn find_default(
     .map_err(Into::into)
 }
 
+/// The default profile's `(id, name)` — the memories embedding-status route reads
+/// `defaultProfile?.name` (the scoped [`EmbeddingProfileRow`] omits `name`).
+pub fn find_default_id_name(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Option<(String, String)>, DbError> {
+    conn.query_row(
+        "SELECT id, name FROM embedding_profiles WHERE userId = ?1 AND isDefault = 1 LIMIT 1",
+        params![user_id],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
 /// Fields for creating an embedding profile (the `Omit<EmbeddingProfile,'id'|
 /// timestamps>` shape). `api_key_id`/`base_url` are the nullable string columns;
 /// `dimensions`/`truncate_to_dimensions` are the nullable REAL columns;

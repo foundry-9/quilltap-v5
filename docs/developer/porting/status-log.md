@@ -8278,3 +8278,27 @@ update / delete / deleteByChat / search / housekeep preview+run+sweep /
 housekeeping-config get+set / recall-config get+set / extraction-limits get+set /
 extraction-concurrency get+set / backfillProgress / regenerateStatus /
 regenerateAll. Bumps: core 0.0.192, harness 0.0.176.
+
+### P4.6s unit 5 — embedding status + backfill (tier 2 close) — LANDED (branch)
+
+`memoryEmbeddingStatus` (`{total, withEmbeddings, withoutEmbeddings,
+percentComplete, embeddingProfileConfigured, embeddingProfileName}` — NEW
+additive `embedding_profiles::find_default_id_name` for the name) +
+`memoryBackfillStart` (find-ids-without-embedding → default-profile resolve →
+per-memory `enqueue_embedding_generate`; `{success, enqueued, remaining,
+message}` — `remaining` counts memories still missing embeddings, so it stays
+non-zero right after enqueue, faithful to v4). Two more cases in the config
+oracle (→ 17); the embedding-job dump is reduced to a stable {count, sorted
+entityIds, profileIds} shape.
+
+**Loud deferrals (the `not_available` refusal, recognized-but-refused):**
+- `memoryGenerateEmbeddings` (POST `?action=embeddings`) — `generateMissingEmbeddings`
+  is unported (a real service port touching the vector store + provider).
+- `memoryRebuildIndex` (PUT `?action=embeddings`) — `rebuildVectorIndex` unported.
+- `chatQueueMemories` (per-chat `?action=queue-memories`) — `resolveCheapLLMProfileId`
+  + the batch `MEMORY_EXTRACTION` enqueue are unported.
+These carry Request variants (so lane B can call them and get the typed refusal)
+but no differential. Also unported/no-variant per the order: the
+`extract-memories-dry-run` NDJSON stream + CLI memory-diff, the memory-dedup
+pair, embedding-profiles management, conversation-summaries regen.
+Bumps: core 0.0.193, harness 0.0.177.

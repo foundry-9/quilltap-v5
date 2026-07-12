@@ -1841,6 +1841,47 @@ impl CoreEngine {
                 Ok(db) => super::memories::memory_regenerate_all(&db, SINGLE_USER_ID).await,
                 Err(r) => r,
             },
+            Request::MemoryEmbeddingStatus { character_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::memories::memory_embedding_status(&db, SINGLE_USER_ID, &character_id)
+                }
+                Err(r) => r,
+            },
+            Request::MemoryBackfillStart {
+                character_id,
+                batch_size,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    let mut bag = serde_json::Map::new();
+                    if let Some(c) = character_id {
+                        bag.insert("characterId".into(), serde_json::json!(c));
+                    }
+                    if let Some(b) = batch_size {
+                        bag.insert("batchSize".into(), serde_json::json!(b));
+                    }
+                    super::memories::memory_backfill_start(
+                        &db,
+                        SINGLE_USER_ID,
+                        serde_json::Value::Object(bag),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            // Deferred (unported services / cheap-profile resolution) — the loud
+            // enumerated refusals (P4.6s tier-3).
+            Request::MemoryGenerateEmbeddings { .. } => match self.ready_db() {
+                Ok(_) => super::memories::not_available("generate-embeddings"),
+                Err(r) => r,
+            },
+            Request::MemoryRebuildIndex { .. } => match self.ready_db() {
+                Ok(_) => super::memories::not_available("rebuild-index"),
+                Err(r) => r,
+            },
+            Request::ChatQueueMemories { .. } => match self.ready_db() {
+                Ok(_) => super::memories::not_available("queue-memories"),
+                Err(r) => r,
+            },
         }
     }
 

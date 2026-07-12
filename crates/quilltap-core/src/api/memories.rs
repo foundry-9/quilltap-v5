@@ -1311,3 +1311,147 @@ pub async fn memory_regenerate_all(db: &Db, user_id: &str) -> Response {
         "message": message,
     }))
 }
+
+// ===========================================================================
+// Embedding status + backfill start (tier 2)
+// ===========================================================================
+
+/// v4 GET `?action=embeddings&characterId=` — `handleEmbeddingStatus`: `{total,
+/// withEmbeddings, withoutEmbeddings, percentComplete, embeddingProfileConfigured,
+/// embeddingProfileName}`. (Embedding presence = the marshaled memory carries a
+/// non-empty `embedding` key.)
+pub fn memory_embedding_status(db: &Db, user_id: &str, character_id: &str) -> Response {
+    match character_exists(db, character_id) {
+        Ok(true) => {}
+        Ok(false) => return not_found("Character"),
+        Err(e) => return internal(e),
+    }
+    let cid = character_id.to_string();
+    let uid = user_id.to_string();
+    let result: Result<Value, DbError> = db.read_main(move |main| {
+        let memories = memories_read::find_by_character_id(main, &cid)?;
+        let total = memories.len();
+        let with = memories
+            .iter()
+            .filter(|m| m.get("embedding").map(|e| !e.is_null()).unwrap_or(false))
+            .count();
+        let without = total - with;
+        let percent = if total > 0 {
+            ((with as f64 / total as f64) * 100.0).round() as i64
+        } else {
+            100
+        };
+        let default = crate::db::embedding_profiles::find_default_id_name(main, &uid)?;
+        Ok(json!({
+            "total": total,
+            "withEmbeddings": with,
+            "withoutEmbeddings": without,
+            "percentComplete": percent,
+            "embeddingProfileConfigured": default.is_some(),
+            "embeddingProfileName": default.map(|(_, n)| Value::String(n)).unwrap_or(Value::Null),
+        }))
+    });
+    match result {
+        Ok(body) => Response::Memory(body),
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `backfillStartSchema`.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BackfillBag {
+    #[serde(default)]
+    character_id: Option<String>,
+    #[serde(default = "default_batch_size")]
+    batch_size: i64,
+}
+fn default_batch_size() -> i64 {
+    500
+}
+
+/// v4 POST `?action=backfill-embeddings` — `handleBackfillStart`: batch-enqueue
+/// `EMBEDDING_GENERATE` for memories missing an embedding. `{success, enqueued,
+/// remaining, message}`.
+pub async fn memory_backfill_start(db: &Db, user_id: &str, bag: Value) -> Response {
+    let bag: BackfillBag = match serde_json::from_value(bag) {
+        Ok(b) => b,
+        Err(e) => return bad_request(format!("Invalid backfill body: {e}")),
+    };
+    if let Some(cid) = &bag.character_id {
+        match character_exists(db, cid) {
+            Ok(true) => {}
+            Ok(false) => return not_found("Character"),
+            Err(e) => return internal(e),
+        }
+    }
+    let char_filter = bag.character_id.clone();
+    let batch = bag.batch_size;
+    let missing: Result<Vec<Value>, DbError> = db.read_main(move |conn| {
+        memories_read::find_ids_without_embedding(conn, char_filter.as_deref(), Some(batch))
+    });
+    let missing = match missing {
+        Ok(m) => m,
+        Err(e) => return internal(e),
+    };
+    if missing.is_empty() {
+        return Response::Memory(json!({
+            "success": true,
+            "enqueued": 0,
+            "remaining": 0,
+            "message": "No memories missing embeddings — nothing to backfill.",
+        }));
+    }
+    // Resolve the user's default embedding profile.
+    let uid = user_id.to_string();
+    let default = db.read_main(move |conn| crate::db::embedding_profiles::find_default(conn, &uid));
+    let profile = match default {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            return bad_request(
+                "No default embedding profile is configured. Set one in the Commonplace Book tab before running the backfill.",
+            )
+        }
+        Err(e) => return internal(e),
+    };
+    // Enqueue one EMBEDDING_GENERATE per missing memory (v4 warns + continues on
+    // an individual enqueue failure).
+    let mut enqueued = 0i64;
+    for m in &missing {
+        let (Some(id), Some(char_id)) = (
+            m.get("id").and_then(Value::as_str),
+            m.get("characterId").and_then(Value::as_str),
+        ) else {
+            continue;
+        };
+        let payload = json!({
+            "entityType": "MEMORY",
+            "entityId": id,
+            "characterId": char_id,
+            "profileId": profile.id,
+        });
+        if crate::services::queue_service::enqueue_embedding_generate(db, user_id, payload)
+            .await
+            .is_ok()
+        {
+            enqueued += 1;
+        }
+    }
+    let char_filter = bag.character_id.clone();
+    let remaining = db
+        .read_main(move |conn| memories_read::count_without_embedding(conn, char_filter.as_deref()))
+        .unwrap_or(0);
+    let message = if remaining > 0 {
+        format!(
+            "Enqueued {enqueued} embedding jobs. {remaining} memories still missing embeddings — run again to continue."
+        )
+    } else {
+        format!("Enqueued {enqueued} embedding jobs. All memories are now accounted for.")
+    };
+    Response::Memory(json!({
+        "success": true,
+        "enqueued": enqueued,
+        "remaining": remaining,
+        "message": message,
+    }))
+}

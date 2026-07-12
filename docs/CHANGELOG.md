@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.6s memories server, part 5 (embedding status + backfill; tier-2 close):
+`memoryEmbeddingStatus` (coverage % + configured profile name via a new
+`find_default_id_name` finder) and `memoryBackfillStart` (batch-enqueue
+EMBEDDING_GENERATE for memories missing an embedding). The three heavy arms
+stay LOUD refusals (the `not_available` idiom) — `memoryGenerateEmbeddings` /
+`memoryRebuildIndex` (the `generateMissingEmbeddings` / `rebuildVectorIndex`
+services are unported) and `chatQueueMemories` (`resolveCheapLLMProfileId` + the
+batch extraction enqueue are unported). 42 differential cases.
+
 P4.6s memories server, part 4 (regenerate + backfill status): `memoryBackfillProgress`
 (count-without-embedding + in-flight EMBEDDING_GENERATE MEMORY jobs),
 `memoryRegenerateAllStatus` (fan-out/wipe/extraction job counts), and

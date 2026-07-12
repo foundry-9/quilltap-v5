@@ -806,6 +806,60 @@ fn memories_routes_match_oracle() {
             eprintln!("[regenerate_all tables] OK.");
         }
     }
+    // --- Embedding status + backfill (tier 2) ---
+    {
+        let db = fresh_db(&spec, "est");
+        check_body(
+            "embedding_status",
+            &memories::memory_embedding_status(&db, &uid, MNEMO),
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "bfs");
+        let resp = rt.block_on(memories::memory_backfill_start(
+            &db,
+            &uid,
+            json!({ "characterId": MNEMO, "batchSize": 500 }),
+        ));
+        check_body("backfill_start", &resp, &mut failed);
+        // The order-independent embedding-job dump (count + sorted entityIds + profileIds).
+        let dump = db
+            .read_main(|conn| {
+                let repo = quilltap_core::db::background_jobs::BackgroundJobsRepository::new(conn);
+                let jobs = repo.find_recent_by_type("EMBEDDING_GENERATE", 100)?;
+                let payloads: Vec<Value> = jobs
+                    .iter()
+                    .filter_map(|j| serde_json::from_str::<Value>(&j.payload).ok())
+                    .collect();
+                let mut entity_ids: Vec<String> = payloads
+                    .iter()
+                    .filter_map(|p| {
+                        p.get("entityId")
+                            .and_then(Value::as_str)
+                            .map(str::to_string)
+                    })
+                    .collect();
+                entity_ids.sort();
+                let mut profile_ids: Vec<String> = payloads
+                    .iter()
+                    .filter_map(|p| {
+                        p.get("profileId")
+                            .and_then(Value::as_str)
+                            .map(str::to_string)
+                    })
+                    .collect();
+                profile_ids.sort();
+                profile_ids.dedup();
+                Ok(json!({
+                    "count": payloads.len(),
+                    "entityIds": entity_ids,
+                    "profileIds": profile_ids,
+                }))
+            })
+            .unwrap();
+        check_tables("backfill_start", &dump, &mut failed);
+    }
 
     assert!(failed.is_empty(), "mismatched cases: {failed:?}");
 }
