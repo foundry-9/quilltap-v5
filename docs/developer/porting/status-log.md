@@ -8415,3 +8415,49 @@ fixture character/name is its detail — if that character has zero
 memories the create/edit/delete round-trip still proves the vertical.
 Gate: `ng test` 380/380, `ng build` clean, `playwright --list` 26. SPA
 → 0.5.38.
+## P4.6u (lane C) — the Salon terminal pane (2026-07-12, in progress)
+
+The last remaining Salon slices this order tackles are SPA-only: the
+entire server side (terminal REST + WebSocket routes in `quilltap-web`,
+the portable-pty manager + protocol in `quilltap-host`, the pane-state
+chat-bag round-trip) already exists and is FROZEN this round. Lane C
+ports v4's terminal UI into the Angular Salon and proves it with a LIVE
+`terminal-flow` e2e over a real PTY.
+
+### P4.6u unit 1 — protocol types + marker + session service + qt-terminal — LANDED
+
+`apps/web/src/app/terminal/` created. `terminal-protocol.ts`: the WS +
+REST wire types pinned FROM the frozen Rust source
+(`crates/quilltap-host/src/terminal/protocol.rs` +
+`crates/quilltap-web/src/terminal_routes.rs`, themselves byte-verbatim
+ports of v4 `lib/schemas/terminal.types.ts`) — `PtySessionMeta`,
+`WsClientMessage` (`input`/`resize`/`ping`), `WsServerMessage`
+(`output`/`exit`/`meta`/`pong`/`chat-update`) — plus the
+`<!-- terminalSessionId:UUID -->` marker regex + `extractTerminalSessionId`
+(byte-for-byte from v4 `MessageRow.tsx:25`).
+
+`terminal-session.service.ts`: the WS client (v4 `useTerminalSession`)
+as an injectable, ref-counted — ONE WebSocket per session id shared by
+the pane / embed / pop-out. Ports v4's connect-on-acquire, 30 s
+ping/pong keepalive, the 512 KiB client-side replay buffer (so output
+arriving before xterm opens is not dropped), resize, and reconnect on a
+transient close (1006/1011, max 3, 2 s backoff). The output fan-out is
+factored into an exported `OutputFanout` and the frame→state map into
+`handleServerMessage(SessionSink, …)` so both are unit-testable without
+a live socket (quirk #6 — jsdom has no terminal geometry).
+
+`terminal.ts` (`qt-terminal`): the xterm surface (v4 `Terminal.tsx`),
+lazy-importing `@xterm/xterm` + `@xterm/addon-fit` (D18; the only deps
+this round — v4's optional web-links/serialize/canvas addons are a
+tracked no-behaviour-change omission). Theme read from the
+`--qt-terminal-*` CSS variables (already ported); `ResizeObserver` →
+fit → `resize`; exit line on PTY exit. `xterm.css` added to
+angular.json styles (xterm injects unscoped `.xterm` DOM).
+
+**Differential:** SPA tier 4 — no byte oracle. Unit specs
+(`terminal-protocol.spec.ts`, `terminal-session.service.spec.ts`):
+marker extraction (v4 cases + regex-source pin), the replay/fan-out
+semantics incl. the 512 KiB tail cap, and the server-frame → state
+mapping (exit `signal: null → undefined`, chat-update DOM re-emit,
+pong ignored). `ng test` green (49 files / 344 tests); `ng build`
+clean; `tsc -p tsconfig.app.json` clean. SPA 0.5.35.

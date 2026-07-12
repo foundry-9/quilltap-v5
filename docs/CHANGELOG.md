@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.6u (lane C) — the Salon terminal foundation. Added `@xterm/xterm`
+5.5.0 + `@xterm/addon-fit` 0.10.0 (the only deps this round) and
+`apps/web/src/app/terminal/`: the WebSocket protocol types pinned from
+the frozen Rust source (`quilltap_host::terminal::protocol`), the
+`<!-- terminalSessionId:UUID -->` marker extraction, the ref-counted
+`TerminalSessionService` (one WS per session id: ping/pong keepalive,
+client-side replay buffer, resize, reconnect on 1006/1011), and the
+`qt-terminal` xterm surface (lazy-imported). Unit specs cover the
+marker regex, the output fan-out/replay, and the server-frame → state
+mapping.
 P4.6t lane B, unit 4 — the fixture-guarded e2e beats. A
 `characters-flow.spec.ts` describe (P4.6t) boots its own locked server
 over lane A's NEW `memories-main.db` and walks: open a character's
