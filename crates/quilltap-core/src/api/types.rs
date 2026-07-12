@@ -833,6 +833,31 @@ pub enum Request {
         #[serde(default)]
         api_key_id: Option<String>,
     },
+    // --- Global mount points (P4.6p) ---
+    /// v4 `GET /api/v1/mount-points` → `{mountPoints}` (createdAt DESC).
+    MountPointList,
+    /// v4 `GET /api/v1/mount-points/[id]` → `{mountPoint: {…, embeddedChunkCount,
+    /// capabilities}}`.
+    #[serde(rename_all = "camelCase")]
+    MountPointGet {
+        mount_point_id: String,
+    },
+    /// v4 `POST /api/v1/mount-points` → `{mountPoint, warning?}`.
+    #[serde(rename_all = "camelCase")]
+    MountPointCreate {
+        mount_point: serde_json::Value,
+    },
+    /// v4 `PATCH /api/v1/mount-points/[id]` → `{mountPoint}` (no count/capabilities).
+    #[serde(rename_all = "camelCase")]
+    MountPointUpdate {
+        mount_point_id: String,
+        mount_point: serde_json::Value,
+    },
+    /// v4 `DELETE /api/v1/mount-points/[id]` → `{message}` (the ordered cascade).
+    #[serde(rename_all = "camelCase")]
+    MountPointDelete {
+        mount_point_id: String,
+    },
     // --- Projects ---
     /// v4 `GET /api/v1/projects` — createdAt-desc list + `_count` (BARE envelope).
     ProjectList,

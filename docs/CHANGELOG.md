@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+P4.6p unit 4 (lane A): the global mount-points dispatch surface — the
+five variants (list / get / create / patch / delete-cascade) as
+`api::mount_points`, composed over the ported `db::doc_mount_points`
+repo plus the new `find_all_full_json` + the two embedded-count reads
+(the cheap LIST GROUP-BY `IS NOT NULL` and the expensive GET-[id]
+`IS NOT NULL AND length > 0`) and the pure `deriveMountCapabilities`.
+Pinned quirks: the LIST is `{mountPoints}` (createdAt DESC, no
+capabilities); GET-[id] adds `embeddedChunkCount` + `capabilities`;
+create returns the in-memory validated mount (nulls present) +
+optional `warning` (the `verifyBasePath` seam is injected — a
+non-database mount always warns, and the differential drives a
+nonexistent path so v4 agrees); the PATCH handler's single try/catch
+means a bad body 500s (not 400) and the echo omits count/capabilities;
+DELETE runs the exact ordered cascade (chunks → files [+ orphan GC] →
+documents → blobs → folders → project-links → the point). The twelve
+action verbs + semantic-search get NO variants this round (D7).
+Differential `mount_points_routes_equivalence` (13 cases, incl. the
+character-scaffold folder dumps and the full cascade table dump)
+against v4's real route handlers.
+
 P4.6p unit 3 (lane A): the image-profiles dispatch surface — the five
 CRUD variants (list incl. `?sortByCharacter=` / create / get / update /
 delete) + `imageProviderList` as `api::image_profiles`, composed over the

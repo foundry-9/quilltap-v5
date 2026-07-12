@@ -567,6 +567,69 @@ impl<'c> DocMountPointsRepository<'c> {
     }
 }
 
+/// The full-JSON column list every route read selects (schema field order).
+const DMP_FULL_COLUMNS: &str = "id, name, basePath, mountType, storeType, includePatterns, \
+     excludePatterns, enabled, lastScannedAt, scanStatus, lastScanError, conversionStatus, \
+     conversionError, fileCount, chunkCount, totalSizeBytes, createdAt, updatedAt";
+
+/// Marshal one `doc_mount_points` row (selected in [`DMP_FULL_COLUMNS`] order) into
+/// the route-read DTO — the same rules as
+/// [`DocMountPointsRepository::find_full_json_by_id`] (null nullables omitted, bool
+/// coerced, pattern JSON parsed).
+fn marshal_dmp_full_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<serde_json::Value> {
+    use serde_json::{json, Value};
+    let include: String = row.get(5)?;
+    let exclude: String = row.get(6)?;
+    let mut obj = serde_json::Map::new();
+    obj.insert("id".into(), Value::String(row.get::<_, String>(0)?));
+    obj.insert("name".into(), Value::String(row.get::<_, String>(1)?));
+    obj.insert("basePath".into(), Value::String(row.get::<_, String>(2)?));
+    obj.insert("mountType".into(), Value::String(row.get::<_, String>(3)?));
+    obj.insert("storeType".into(), Value::String(row.get::<_, String>(4)?));
+    obj.insert(
+        "includePatterns".into(),
+        serde_json::from_str::<Value>(&include).unwrap_or(Value::Array(vec![])),
+    );
+    obj.insert(
+        "excludePatterns".into(),
+        serde_json::from_str::<Value>(&exclude).unwrap_or(Value::Array(vec![])),
+    );
+    obj.insert("enabled".into(), Value::Bool(row.get::<_, i64>(7)? != 0));
+    if let Some(s) = row.get::<_, Option<String>>(8)? {
+        obj.insert("lastScannedAt".into(), Value::String(s));
+    }
+    obj.insert("scanStatus".into(), Value::String(row.get::<_, String>(9)?));
+    if let Some(s) = row.get::<_, Option<String>>(10)? {
+        obj.insert("lastScanError".into(), Value::String(s));
+    }
+    obj.insert(
+        "conversionStatus".into(),
+        Value::String(row.get::<_, String>(11)?),
+    );
+    if let Some(s) = row.get::<_, Option<String>>(12)? {
+        obj.insert("conversionError".into(), Value::String(s));
+    }
+    obj.insert("fileCount".into(), json!(row.get::<_, f64>(13)?));
+    obj.insert("chunkCount".into(), json!(row.get::<_, f64>(14)?));
+    obj.insert("totalSizeBytes".into(), json!(row.get::<_, f64>(15)?));
+    obj.insert("createdAt".into(), Value::String(row.get::<_, String>(16)?));
+    obj.insert("updatedAt".into(), Value::String(row.get::<_, String>(17)?));
+    Ok(Value::Object(obj))
+}
+
+/// v4 `repos.docMountPoints.findAll()` — every mount point (unscoped/global,
+/// mount-index partition), UNSORTED (the mount-points LIST route sorts createdAt
+/// DESC). Each row marshaled to the route-read DTO.
+pub fn find_all_full_json(conn: &Connection) -> Result<Vec<serde_json::Value>, DbError> {
+    let mut stmt = conn.prepare(&format!("SELECT {DMP_FULL_COLUMNS} FROM doc_mount_points"))?;
+    let rows = stmt.query_map([], marshal_dmp_full_row)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
 /// The scoped mount-point row the doc-edit path resolver + URI producers consume.
 #[derive(Debug, Clone)]
 pub struct DmpRow {

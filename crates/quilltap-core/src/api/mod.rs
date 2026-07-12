@@ -26,6 +26,7 @@ pub mod chat_send;
 pub mod engine;
 pub mod groups;
 pub mod image_profiles;
+pub mod mount_points;
 pub mod projects;
 pub mod provider_actions;
 pub mod provision;

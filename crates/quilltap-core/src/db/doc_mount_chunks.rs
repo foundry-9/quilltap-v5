@@ -253,3 +253,51 @@ impl<'c> DocMountChunksRepository<'c> {
         Ok(found.is_some())
     }
 }
+
+/// v4 `docMountChunks.countEmbeddedByMountPointIds(ids)` — the CHEAP GROUP-BY count
+/// (`embedding IS NOT NULL`, no BLOB decode) used by the mount-points LIST route.
+/// Returns `(mountPointId, count)` rows for the ids that have ≥1 embedded chunk;
+/// mounts with none are absent (the route's `|| 0` fallback fills them).
+pub fn count_embedded_by_mount_point_ids(
+    conn: &Connection,
+    ids: &[String],
+) -> Result<std::collections::HashMap<String, i64>, DbError> {
+    let mut out = std::collections::HashMap::new();
+    if ids.is_empty() {
+        return Ok(out);
+    }
+    let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT mountPointId, COUNT(*) FROM doc_mount_chunks \
+         WHERE mountPointId IN ({placeholders}) AND embedding IS NOT NULL \
+         GROUP BY mountPointId"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let params: Vec<&dyn rusqlite::ToSql> = ids.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+    let rows = stmt.query_map(params.as_slice(), |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+    })?;
+    for r in rows {
+        let (mp, c) = r?;
+        out.insert(mp, c);
+    }
+    Ok(out)
+}
+
+/// v4 GET-\[id\]'s EXPENSIVE embedded count: `findByMountPointId(id)` hydrates all
+/// chunks, then filters `c.embedding != null && c.embedding.length > 0`. The SQL
+/// `embedding IS NOT NULL AND length(embedding) > 0` is byte-length > 0, which
+/// matches the JS float-length > 0 (both are false only for a 0-byte BLOB). This
+/// differs from the cheap LIST count, which checks only `IS NOT NULL`.
+pub fn count_nonempty_embeddings_by_mount_point_id(
+    conn: &Connection,
+    mount_point_id: &str,
+) -> Result<i64, DbError> {
+    let n = conn.query_row(
+        "SELECT COUNT(*) FROM doc_mount_chunks \
+         WHERE mountPointId = ?1 AND embedding IS NOT NULL AND length(embedding) > 0",
+        params![mount_point_id],
+        |r| r.get::<_, i64>(0),
+    )?;
+    Ok(n)
+}

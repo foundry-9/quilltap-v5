@@ -1402,6 +1402,33 @@ impl CoreEngine {
                 Err(r) => r,
             },
 
+            // --- Global mount points (P4.6p) --------------------------------
+            Request::MountPointList => match self.ready_db() {
+                Ok(db) => super::mount_points::mount_point_list(&db),
+                Err(r) => r,
+            },
+            Request::MountPointGet { mount_point_id } => match self.ready_db() {
+                Ok(db) => super::mount_points::mount_point_get(&db, &mount_point_id),
+                Err(r) => r,
+            },
+            Request::MountPointCreate { mount_point } => match self.ready_db() {
+                Ok(db) => super::mount_points::mount_point_create(&db, mount_point).await,
+                Err(r) => r,
+            },
+            Request::MountPointUpdate {
+                mount_point_id,
+                mount_point,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::mount_points::mount_point_update(&db, &mount_point_id, mount_point).await
+                }
+                Err(r) => r,
+            },
+            Request::MountPointDelete { mount_point_id } => match self.ready_db() {
+                Ok(db) => super::mount_points::mount_point_delete(&db, &mount_point_id).await,
+                Err(r) => r,
+            },
+
             // --- Projects family (P4.6k) ------------------------------------
             Request::ProjectList => match self.ready_db() {
                 Ok(db) => super::projects::project_list(&db),

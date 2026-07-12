@@ -7734,3 +7734,56 @@ QT_ORACLE_IMAGE_ROUTES=/tmp/oracle-image-profiles-routes.ndjson \
 ```
 
 Versions: core 0.0.187, harness 0.0.171.
+
+### P4.6p unit 4 — global mount-points dispatch surface — LANDED (tier 2)
+
+Ported v4's `mount-points/route.ts` + `[id]/route.ts` as `api::mount_points`
+(list / get / create / patch / delete-cascade), composed over the ported
+`db::doc_mount_points` repo + the new `find_all_full_json` (unscoped global read),
+the two embedded-count reads (`count_embedded_by_mount_point_ids` cheap GROUP-BY
+`IS NOT NULL`; `count_nonempty_embeddings_by_mount_point_id` expensive
+`IS NOT NULL AND length(embedding) > 0`), and the pure `derive_mount_capabilities`
+(inline; unit-tested). Whole family is mount-index-partitioned (reads via
+`read_mount_index`, writes on the mount-index writer).
+
+Pinned quirks: LIST = `{mountPoints}` (createdAt DESC, cheap count, no
+capabilities); GET-[id] = `{mountPoint:{…, embeddedChunkCount(expensive),
+capabilities}}`; create returns the in-memory validated DocMountPoint (the three
+nullables present as null) + optional `warning`; PATCH's whole-handler try/catch
+→ a bad body 500s `Failed to update mount point` (NOT 400) and the echo omits
+count/capabilities; DELETE runs the exact ordered cascade (chunks → files [+ the
+orphan-file GC via the link snapshot] → documents → blobs → folders →
+project-links → the point). The 12 action verbs + semantic-search get NO variants
+(D7 — the Scriptorium/file-manager surface).
+
+Seams: `verifyBasePath` and the watcher (attach/detach/refresh) are injected —
+a non-database create always warns (deterministic); the oracle drives a
+nonexistent basePath so v4's real `verifyBasePath` also returns false → both
+produce the warning string. The character-scaffold arm (create + PATCH-flip)
+calls the ported `scaffold_character_mount`; both verified via a folder-path dump
+(7 folders: Outfits/Prompts/Scenarios/Wardrobe/files/images/lore). The full
+cascade verified via a per-table count dump (all 0 + mountPointExists false).
+
+**Oracle gotcha (banked):** the mount-points route imports the watcher, which
+pulls **chokidar (ESM)** — jest CJS chokes on it. The oracle `jest.doMock`s
+`@/lib/mount-index/watcher` to no-op seams so chokidar never loads (verifyBasePath
+in `scanner` stays real). Needs `@jest-environment node`.
+
+Differential `mount_points_routes_equivalence` (13 cases). Regen recipe (Node 24,
+from the v4 checkout):
+```
+W=<worktree>; N=~/.nvm/versions/node/v24.13.1/bin; TMPO=/tmp/qt-gp-oracle
+mkdir -p $TMPO/cases $TMPO/fixtures
+cp $W/harness/oracle/cases/mount-points-routes.test.ts $TMPO/cases/
+cp $W/harness/oracle/fixtures/groups-projects.json $TMPO/fixtures/
+cd ~/source/quilltap-server
+QT_FIXTURE_GP_MAIN=$W/crates/quilltap-web/tests/fixtures/groups-projects-main.db \
+QT_FIXTURE_GP_MOUNT=$W/crates/quilltap-web/tests/fixtures/groups-projects-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-mount-points-routes.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- mount-points-routes
+QT_ORACLE_MOUNT_ROUTES=/tmp/oracle-mount-points-routes.ndjson \
+  cargo test -p quilltap-harness --test mount_points_routes_equivalence
+```
+
+Versions: core 0.0.188, harness 0.0.172.
