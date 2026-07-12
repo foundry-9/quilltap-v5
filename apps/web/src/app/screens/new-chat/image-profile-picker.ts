@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, effect, inject, input, output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { CoreClient } from '../../core/core-client';
@@ -26,7 +34,9 @@ interface PickerProfile {
   template: `
     @if (loading()) {
       <div class="flex items-center gap-2 qt-text-secondary">
-        <div class="h-4 w-4 animate-spin rounded-full border-2 border-ring border-r-transparent"></div>
+        <div
+          class="h-4 w-4 animate-spin rounded-full border-2 border-ring border-r-transparent"
+        ></div>
         Loading profiles...
       </div>
     } @else {
@@ -40,9 +50,8 @@ interface PickerProfile {
           <option value="">No image generation</option>
           @for (p of profiles(); track p.id) {
             <option [value]="p.id" [selected]="p.id === (value() || '')">
-              {{ p.name }} ({{ p.modelName }}){{ p.isDefault ? ' [Default]' : '' }}{{
-                !p.hasApiKey ? ' ⚠️ No API Key' : ''
-              }}
+              {{ p.name }} ({{ p.modelName }}){{ p.isDefault ? ' [Default]' : ''
+              }}{{ !p.hasApiKey ? ' ⚠️ No API Key' : '' }}
             </option>
           }
         </select>
@@ -51,7 +60,9 @@ interface PickerProfile {
           <p class="qt-text-destructive text-sm">{{ error() }}</p>
         }
         @if (profiles().length === 0 && !error()) {
-          <p class="text-sm qt-text-secondary">No image profiles available. Create one in Settings first.</p>
+          <p class="text-sm qt-text-secondary">
+            No image profiles available. Create one in Settings first.
+          </p>
         }
       </div>
     }

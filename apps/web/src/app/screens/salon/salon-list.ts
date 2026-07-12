@@ -26,6 +26,7 @@ import { ChatCard } from './chat-card';
     <div class="chat-page qt-page-container p-6">
       <div class="flex items-center justify-between gap-4 mb-4">
         <h1 class="qt-heading-1 leading-tight">Chats</h1>
+        <a routerLink="/salon/new" class="qt-button-success">New Chat</a>
       </div>
 
       @if (chats.isPending()) {

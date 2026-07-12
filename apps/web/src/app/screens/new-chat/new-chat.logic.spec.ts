@@ -158,7 +158,9 @@ describe('scenarioSelectPatch (v4 handleScenarioSelectChange)', () => {
     });
   });
   it('a general token sets generalScenarioPath', () => {
-    expect(scenarioSelectPatch('general:Scenarios/c.md').generalScenarioPath).toBe('Scenarios/c.md');
+    expect(scenarioSelectPatch('general:Scenarios/c.md').generalScenarioPath).toBe(
+      'Scenarios/c.md',
+    );
   });
   it('a bare UUID is a character scenario', () => {
     expect(scenarioSelectPatch('uuid-123').scenarioId).toBe('uuid-123');
@@ -174,7 +176,10 @@ describe('scenarioSelectPatch (v4 handleScenarioSelectChange)', () => {
   });
   it('does NOT touch free-text scenario notes (the layering invariant)', () => {
     // The patch owns only the source fields; applied over typed notes, they survive.
-    const next = { ...form({ scenario: 'typed notes' }), ...scenarioSelectPatch('general:Scenarios/c.md') };
+    const next = {
+      ...form({ scenario: 'typed notes' }),
+      ...scenarioSelectPatch('general:Scenarios/c.md'),
+    };
     expect(next.generalScenarioPath).toBe('Scenarios/c.md');
     expect(next.scenario).toBe('typed notes');
   });
@@ -231,8 +236,16 @@ describe('buildCreateRequest (v4 handleCreateChat payload)', () => {
 
   it('drops timestampConfig when its mode is NONE, keeps it otherwise', () => {
     const cast = [llm(char('a', 'Alice'))];
-    expect(buildCreateRequest(cast, form({ timestampConfig: { mode: 'NONE' } }), null, undefined).timestampConfig).toBeUndefined();
-    const kept = buildCreateRequest(cast, form({ timestampConfig: { mode: 'START_ONLY' } }), null, undefined);
+    expect(
+      buildCreateRequest(cast, form({ timestampConfig: { mode: 'NONE' } }), null, undefined)
+        .timestampConfig,
+    ).toBeUndefined();
+    const kept = buildCreateRequest(
+      cast,
+      form({ timestampConfig: { mode: 'START_ONLY' } }),
+      null,
+      undefined,
+    );
     expect(kept.timestampConfig).toEqual({ mode: 'START_ONLY' });
   });
 

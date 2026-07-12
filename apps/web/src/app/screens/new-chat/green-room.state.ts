@@ -17,7 +17,11 @@ import type { Subscription } from 'rxjs';
 
 import { CoreClient } from '../../core/core-client';
 import { applyGreenRoomFrame } from './green-room.reducer';
-import { GREEN_ROOM_INITIAL, type GreenRoomController, type GreenRoomState } from './green-room.types';
+import {
+  GREEN_ROOM_INITIAL,
+  type GreenRoomController,
+  type GreenRoomState,
+} from './green-room.types';
 
 @Injectable({ providedIn: 'root' })
 export class GreenRoomStore implements GreenRoomController {
@@ -53,7 +57,9 @@ export class GreenRoomStore implements GreenRoomController {
     this.sub?.unsubscribe();
     this.sub = null;
     this._state.update((prev) =>
-      prev.open ? { ...prev, phase: 'error', errorMessage: message, status: 'Something went awry.' } : prev,
+      prev.open
+        ? { ...prev, phase: 'error', errorMessage: message, status: 'Something went awry.' }
+        : prev,
     );
   }
 

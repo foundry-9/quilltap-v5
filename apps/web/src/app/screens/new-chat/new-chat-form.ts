@@ -71,7 +71,9 @@ interface PlayAsOption {
 
         @if (playAsOptions().length > 0) {
           <div>
-            <label for="new-chat-partner" class="mb-2 block text-sm qt-text-primary">Play As (Optional)</label>
+            <label for="new-chat-partner" class="mb-2 block text-sm qt-text-primary"
+              >Play As (Optional)</label
+            >
             <select
               id="new-chat-partner"
               [ngModel]="userEntry()?.character?.id ?? ''"
@@ -90,7 +92,9 @@ interface PlayAsOption {
         }
 
         <div>
-          <label class="mb-2 block text-sm qt-text-primary">Image Generation Profile (Optional)</label>
+          <label class="mb-2 block text-sm qt-text-primary"
+            >Image Generation Profile (Optional)</label
+          >
           <qt-image-profile-picker
             [value]="form().imageProfileId || null"
             [characterId]="characterIdForImage()"
@@ -101,7 +105,9 @@ interface PlayAsOption {
         </div>
 
         <div>
-          <label for="new-chat-scenario" class="mb-2 block text-sm qt-text-primary">Starting Scenario (Optional)</label>
+          <label for="new-chat-scenario" class="mb-2 block text-sm qt-text-primary"
+            >Starting Scenario (Optional)</label
+          >
           @if (showScenarioDropdown()) {
             <select
               id="new-chat-scenario-select"
@@ -110,7 +116,10 @@ interface PlayAsOption {
               [disabled]="creating()"
               class="qt-select mb-2"
             >
-              <option [value]="CUSTOM_SCENARIO_VALUE" [selected]="dropdownValue() === CUSTOM_SCENARIO_VALUE">
+              <option
+                [value]="CUSTOM_SCENARIO_VALUE"
+                [selected]="dropdownValue() === CUSTOM_SCENARIO_VALUE"
+              >
                 Custom...
               </option>
               @if (projectScenarios().length > 0) {
@@ -120,7 +129,8 @@ interface PlayAsOption {
                       [value]="PROJECT_SCENARIO_PREFIX + s.path"
                       [selected]="dropdownValue() === PROJECT_SCENARIO_PREFIX + s.path"
                     >
-                      {{ s.name }}{{ s.isDefault ? ' (project default)' : '' }}{{ s.description ? ' — ' + s.description : '' }}
+                      {{ s.name }}{{ s.isDefault ? ' (project default)' : ''
+                      }}{{ s.description ? ' — ' + s.description : '' }}
                     </option>
                   }
                 </optgroup>
@@ -132,7 +142,8 @@ interface PlayAsOption {
                       [value]="GENERAL_SCENARIO_PREFIX + s.path"
                       [selected]="dropdownValue() === GENERAL_SCENARIO_PREFIX + s.path"
                     >
-                      {{ s.name }}{{ s.isDefault ? ' (general default)' : '' }}{{ s.description ? ' — ' + s.description : '' }}
+                      {{ s.name }}{{ s.isDefault ? ' (general default)' : ''
+                      }}{{ s.description ? ' — ' + s.description : '' }}
                     </option>
                   }
                 </optgroup>
@@ -141,7 +152,12 @@ interface PlayAsOption {
                 <optgroup label="Character Scenarios">
                   @for (s of characterScenarios(); track s.id) {
                     <option [value]="s.id" [selected]="dropdownValue() === s.id">
-                      {{ s.title }}{{ singleLlm()?.character?.defaultScenarioId === s.id ? ' (character default)' : '' }}
+                      {{ s.title
+                      }}{{
+                        singleLlm()?.character?.defaultScenarioId === s.id
+                          ? ' (character default)'
+                          : ''
+                      }}
                     </option>
                   }
                 </optgroup>
@@ -152,18 +168,27 @@ interface PlayAsOption {
           @if (overrideNote(); as note) {
             <p class="mb-2 text-xs qt-text-muted">
               Using the project default. Character default:
-              <button type="button" (click)="switchToCharacterDefault()" [disabled]="creating()" class="underline hover:no-underline qt-text-primary">
-                {{ note.title }}</button
+              <button
+                type="button"
+                (click)="switchToCharacterDefault()"
+                [disabled]="creating()"
+                class="underline hover:no-underline qt-text-primary"
               >
+                {{ note.title }}
+              </button>
               — click to switch.
             </p>
           }
 
           @if (presetContent(); as preview) {
-            <div class="rounded-lg border qt-border-default qt-bg-muted/40 px-3 py-2 text-sm qt-text-secondary whitespace-pre-wrap">
+            <div
+              class="rounded-lg border qt-border-default qt-bg-muted/40 px-3 py-2 text-sm qt-text-secondary whitespace-pre-wrap"
+            >
               {{ preview }}
             </div>
-            <p class="mb-1 mt-2 text-xs qt-text-muted">Your notes here are added beneath the scenario above.</p>
+            <p class="mb-1 mt-2 text-xs qt-text-muted">
+              Your notes here are added beneath the scenario above.
+            </p>
           }
 
           <textarea
@@ -196,7 +221,9 @@ interface PlayAsOption {
             />
             <span class="qt-text-small">Auto-generate character avatars</span>
           </label>
-          <p class="qt-text-xs qt-text-muted mt-1">Generate new portraits when outfits change (uses image API)</p>
+          <p class="qt-text-xs qt-text-muted mt-1">
+            Generate new portraits when outfits change (uses image API)
+          </p>
         </div>
       </div>
 
@@ -213,7 +240,9 @@ interface PlayAsOption {
       <!-- Project row -->
       @if (availableProjects().length > 0) {
         <div class="md:col-span-2 rounded-lg border qt-border-default qt-bg-card/50 p-3 space-y-2">
-          <label for="new-chat-project-select" class="qt-text-xs qt-text-muted">File this chat under a project</label>
+          <label for="new-chat-project-select" class="qt-text-xs qt-text-muted"
+            >File this chat under a project</label
+          >
           <div class="flex items-center gap-3">
             <div
               class="w-6 h-6 rounded flex items-center justify-center flex-shrink-0"
@@ -230,7 +259,9 @@ interface PlayAsOption {
             >
               <option value="">— None (General) —</option>
               @for (p of availableProjects(); track p.id) {
-                <option [value]="p.id" [selected]="p.id === (selectedProjectId() ?? '')">{{ p.name }}</option>
+                <option [value]="p.id" [selected]="p.id === (selectedProjectId() ?? '')">
+                  {{ p.name }}
+                </option>
               }
             </select>
           </div>
@@ -279,7 +310,9 @@ export class NewChatForm {
     this.llmSelected().length === 1 ? this.llmSelected()[0] : null,
   );
   protected readonly userEntry = computed<NewChatSelectedCharacter | undefined>(() =>
-    this.core().selectedCharacters().find((sc) => sc.controlledBy === 'user'),
+    this.core()
+      .selectedCharacters()
+      .find((sc) => sc.controlledBy === 'user'),
   );
 
   protected readonly characterScenarios = computed<CharacterScenarioOption[]>(() => {
@@ -305,7 +338,9 @@ export class NewChatForm {
       : undefined,
   );
   private readonly selectedCharacterScenario = computed<CharacterScenarioOption | undefined>(() =>
-    this.form().scenarioId ? this.characterScenarios().find((s) => s.id === this.form().scenarioId) : undefined,
+    this.form().scenarioId
+      ? this.characterScenarios().find((s) => s.id === this.form().scenarioId)
+      : undefined,
   );
 
   protected readonly presetContent = computed<string | null>(() => {
@@ -316,8 +351,10 @@ export class NewChatForm {
   });
 
   protected readonly dropdownValue = computed<string>(() => {
-    if (this.selectedProjectScenario()) return PROJECT_SCENARIO_PREFIX + this.selectedProjectScenario()!.path;
-    if (this.selectedGeneralScenario()) return GENERAL_SCENARIO_PREFIX + this.selectedGeneralScenario()!.path;
+    if (this.selectedProjectScenario())
+      return PROJECT_SCENARIO_PREFIX + this.selectedProjectScenario()!.path;
+    if (this.selectedGeneralScenario())
+      return GENERAL_SCENARIO_PREFIX + this.selectedGeneralScenario()!.path;
     if (this.selectedCharacterScenario()) return this.selectedCharacterScenario()!.id;
     return CUSTOM_SCENARIO_VALUE;
   });
@@ -346,7 +383,10 @@ export class NewChatForm {
   });
 
   protected readonly characterIdForImage = computed<string | undefined>(
-    () => this.singleLlm()?.character.id ?? this.core().selectedCharacters()[0]?.character.id ?? undefined,
+    () =>
+      this.singleLlm()?.character.id ??
+      this.core().selectedCharacters()[0]?.character.id ??
+      undefined,
   );
 
   protected readonly projectColor = computed<string | null | undefined>(
@@ -358,7 +398,10 @@ export class NewChatForm {
     const cast = this.core().selectedCharacters();
     const castIds = new Set(cast.map((sc) => sc.character.id));
     const dupNames = this.duplicateUserNames();
-    const fromCast = cast.map((sc) => ({ id: sc.character.id, label: this.formatName(sc.character.name, sc.character.title, dupNames) }));
+    const fromCast = cast.map((sc) => ({
+      id: sc.character.id,
+      label: this.formatName(sc.character.name, sc.character.title, dupNames),
+    }));
     const fromDefaults = this.core()
       .userControlledCharacters()
       .filter((c) => !castIds.has(c.id))
@@ -383,7 +426,9 @@ export class NewChatForm {
   // --- Handlers --------------------------------------------------------------
 
   protected onPlayAs(nextId: string): void {
-    this.core().setSelectedCharacters((prev) => applyPlayAs(prev, nextId, this.core().userControlledCharacters()));
+    this.core().setSelectedCharacters((prev) =>
+      applyPlayAs(prev, nextId, this.core().userControlledCharacters()),
+    );
   }
 
   protected onScenarioSelect(value: string): void {

@@ -4,7 +4,11 @@ import type { CreationProgressFrame, OutfitPreviewSlots } from '../../core/core-
 import { applyGreenRoomFrame } from './green-room.reducer';
 import { GREEN_ROOM_INITIAL, type GreenRoomState } from './green-room.types';
 
-const OPEN: GreenRoomState = { ...GREEN_ROOM_INITIAL, open: true, status: 'Fetching the players from the green room…' };
+const OPEN: GreenRoomState = {
+  ...GREEN_ROOM_INITIAL,
+  open: true,
+  status: 'Fetching the players from the green room…',
+};
 
 function slots(): OutfitPreviewSlots {
   return {
@@ -22,14 +26,23 @@ describe('applyGreenRoomFrame', () => {
   });
 
   it('a status frame updates the headline and logs it', () => {
-    const next = applyGreenRoomFrame(OPEN, { kind: 'status', message: 'Assembling the cast…', ts: 5 });
+    const next = applyGreenRoomFrame(OPEN, {
+      kind: 'status',
+      message: 'Assembling the cast…',
+      ts: 5,
+    });
     expect(next.status).toBe('Assembling the cast…');
     expect(next.logs).toHaveLength(1);
     expect(next.logs[0]).toEqual({ message: 'Assembling the cast…', level: 'info', ts: 5 });
   });
 
   it('a log frame appends with its level (default info)', () => {
-    const warn = applyGreenRoomFrame(OPEN, { kind: 'log', message: 'careful', level: 'warn', ts: 2 });
+    const warn = applyGreenRoomFrame(OPEN, {
+      kind: 'log',
+      message: 'careful',
+      level: 'warn',
+      ts: 2,
+    });
     expect(warn.logs[0].level).toBe('warn');
     const info = applyGreenRoomFrame(OPEN, { kind: 'log', message: 'note', ts: 3 });
     expect(info.logs[0].level).toBe('info');
@@ -66,8 +79,19 @@ describe('applyGreenRoomFrame', () => {
   });
 
   it('keeps a resolved outfit if a later frame lacks slots', () => {
-    let s = applyGreenRoomFrame(OPEN, { kind: 'wardrobe-result', characterId: 'c1', characterName: 'Aria', slots: slots(), ts: 6 });
-    s = applyGreenRoomFrame(s, { kind: 'wardrobe-start', characterId: 'c1', characterName: 'Aria', ts: 7 });
+    let s = applyGreenRoomFrame(OPEN, {
+      kind: 'wardrobe-result',
+      characterId: 'c1',
+      characterName: 'Aria',
+      slots: slots(),
+      ts: 6,
+    });
+    s = applyGreenRoomFrame(s, {
+      kind: 'wardrobe-start',
+      characterId: 'c1',
+      characterName: 'Aria',
+      ts: 7,
+    });
     expect(s.wardrobe[0].slots).not.toBeNull();
   });
 

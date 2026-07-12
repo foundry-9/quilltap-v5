@@ -7,10 +7,7 @@
  * test (tier-4's one differential class).
  */
 
-import type {
-  CharacterListItem,
-  ChatCreateRequest,
-} from '../../core/core-contract';
+import type { CharacterListItem, ChatCreateRequest } from '../../core/core-contract';
 import {
   CUSTOM_SCENARIO_VALUE,
   GENERAL_SCENARIO_PREFIX,
@@ -29,8 +26,7 @@ export function generateTitle(selected: NewChatSelectedCharacter[]): string {
   const llm = selected.filter((sc) => sc.controlledBy === 'llm');
   if (llm.length === 0) return 'New Chat';
   if (llm.length === 1) return `Chat with ${llm[0].character.name}`;
-  if (llm.length === 2)
-    return `Chat with ${llm[0].character.name} and ${llm[1].character.name}`;
+  if (llm.length === 2) return `Chat with ${llm[0].character.name} and ${llm[1].character.name}`;
   if (llm.length === 3) {
     return `Chat with ${llm[0].character.name}, ${llm[1].character.name}, and ${llm[2].character.name}`;
   }
@@ -118,8 +114,7 @@ export function applyPlayAs(
     );
   }
   const fromDefault = userControlledCharacters.find((c) => c.id === nextId) as
-    | CharacterListItem
-    | undefined;
+    CharacterListItem | undefined;
   if (fromDefault) {
     return [
       ...next,
@@ -160,7 +155,11 @@ export function applyProfileChange(
 /** The five scenario-source fields the dropdown owns (mutually exclusive). */
 type ScenarioSourcePatch = Pick<
   NewChatFormState,
-  'scenarioId' | 'projectScenarioPath' | 'generalScenarioPath' | 'groupScenarioPath' | 'groupScenarioGroupId'
+  | 'scenarioId'
+  | 'projectScenarioPath'
+  | 'generalScenarioPath'
+  | 'groupScenarioPath'
+  | 'groupScenarioGroupId'
 >;
 
 /**

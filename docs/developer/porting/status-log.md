@@ -7928,3 +7928,29 @@ checkout (identical `package.json`; the lane adds no npm deps).
   `?autonomous=1` → a loud not-yet-available notice; the page proceeds as an
   ordinary new chat (autonomous mode deferred). Gate: `tsc` clean, `ng build`
   clean (lazy `new-chat-page` chunk). SPA 0.5.27 → 0.5.28.
+
+### P4.6q unit 7 — the Salon-list rider + the e2e beat — LANDED
+
+- **`salon-list.ts`** — added the "New Chat" header affordance (routerLink
+  `/salon/new`). The empty-state "Start a new chat" link and the
+  project-chats/project-header links now resolve.
+- **`e2e/new-chat-flow.spec.ts`** — the walk: unlock (tolerant) → Salon-list
+  "New Chat" → `/salon/new` → pick the first roster character (its profile
+  auto-seeds, "Speaks First" appears, Create enables) → Create → the URL lands
+  on `/salon/<id>` with the streamed greeting (`MOCK_LLM_REPLY`) rendered. Runs
+  against the committed salon fixture the global setup provisions (same recipe as
+  `m4-salon.spec.ts`; starts the mock on `MOCK_LLM_PORT`). Discovered by
+  `playwright test --list`; the live run is verified at unification (the Green
+  Room assertion is best-effort — the dispatch resolving closes the dialog).
+- Prettier-normalized the new-chat modules (they were committed unformatted in
+  u1–u6; the repo does not enforce Prettier globally). Gate: `tsc` clean,
+  `ng test` green (295), `ng build` clean, `playwright --list` discovers the beat.
+  SPA 0.5.28 → 0.5.29.
+
+**Lane B status:** all Tier-1 + Tier-2 deliverables landed. Deferrals (Tier 3,
+loud): autonomous mode (disabled-with-title), manual outfit composition
+(disabled-with-title), the continuation/"change of venue" entry (`NewChatModal`),
+and the Lexical editor (plain-textarea divergence). Sibling dependency:
+`imageProfileList` is lane A's live variant (mocked here; wired at unification).
+The listing-surface appendix in `core-contract.ts` is the BINDING byte-identical
+B↔C block.

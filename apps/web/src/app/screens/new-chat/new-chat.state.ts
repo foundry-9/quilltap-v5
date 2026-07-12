@@ -70,7 +70,9 @@ export class NewChatState {
   readonly error = signal<string | null>(null);
 
   readonly characters = signal<CharacterListItem[]>([]);
-  readonly profiles = signal<{ id: string; name: string; provider?: string; modelName?: string }[]>([]);
+  readonly profiles = signal<{ id: string; name: string; provider?: string; modelName?: string }[]>(
+    [],
+  );
   readonly userControlledCharacters = signal<CharacterListItem[]>([]);
   readonly project = signal<NewChatProject | null>(null);
   readonly projectScenarios = signal<ScenarioOption[]>([]);
@@ -140,7 +142,9 @@ export class NewChatState {
         provider: p.provider,
         modelName: p.modelName,
       }));
-      const loadedGeneral = ((generalData as unknown as ScenarioListDto).scenarios ?? []).map(mapScenario);
+      const loadedGeneral = ((generalData as unknown as ScenarioListDto).scenarios ?? []).map(
+        mapScenario,
+      );
       const loadedProjects: ProjectListEntry[] = (
         (projectListData['projects'] as { id: string; name: string; color?: string | null }[]) ?? []
       ).map((p) => ({ id: p.id, name: p.name, color: p.color ?? null }));
@@ -154,7 +158,9 @@ export class NewChatState {
           this.core.dispatchData({ type: 'projectScenarioList', projectId }),
         ]);
         loadedProject = (projData['project'] as NewChatProject) ?? null;
-        loadedProjectScenarios = ((projScenData as unknown as ScenarioListDto).scenarios ?? []).map(mapScenario);
+        loadedProjectScenarios = ((projScenData as unknown as ScenarioListDto).scenarios ?? []).map(
+          mapScenario,
+        );
       }
 
       // The seed character + its default partner (?characterId=).
@@ -163,7 +169,10 @@ export class NewChatState {
       if (initialCharacterId) {
         const [charDetail, partner] = await Promise.all([
           this.core.dispatchData({ type: 'characterGet', characterId: initialCharacterId }),
-          this.core.dispatchData({ type: 'characterDefaultPartner', characterId: initialCharacterId }),
+          this.core.dispatchData({
+            type: 'characterDefaultPartner',
+            characterId: initialCharacterId,
+          }),
         ]);
         seededChar = (charDetail['character'] as CharacterListItem) ?? null;
         seededPartnerId = (partner['partnerId'] as string | null) ?? null;
@@ -183,14 +192,22 @@ export class NewChatState {
 
       if (initialCharacterId && seededChar && !this.seeded) {
         this.seeded = true;
-        this.seedFromCharacter(seededChar, seededPartnerId, loadedProject, all, projectDefaultPath, seededGeneralPath);
+        this.seedFromCharacter(
+          seededChar,
+          seededPartnerId,
+          loadedProject,
+          all,
+          projectDefaultPath,
+          seededGeneralPath,
+        );
       } else if (loadedProject) {
         this.form.update((prev) => ({
           ...prev,
           projectScenarioPath: projectDefaultPath,
           generalScenarioPath: seededGeneralPath,
           imageProfileId: loadedProject.defaultImageProfileId || prev.imageProfileId,
-          avatarGenerationEnabled: loadedProject.defaultAvatarGenerationEnabled ?? prev.avatarGenerationEnabled,
+          avatarGenerationEnabled:
+            loadedProject.defaultAvatarGenerationEnabled ?? prev.avatarGenerationEnabled,
         }));
       } else if (generalDefaultPath) {
         this.form.update((prev) => ({ ...prev, generalScenarioPath: generalDefaultPath }));
@@ -222,13 +239,23 @@ export class NewChatState {
       ? prompts.find((p) => p.id === char.defaultSystemPromptId)?.id
       : (prompts.find((p) => p.isDefault)?.id ?? prompts[0]?.id);
     const seeded: NewChatSelectedCharacter[] = [
-      { character: char, connectionProfileId, selectedSystemPromptId: defaultPromptId ?? null, controlledBy: 'llm' },
+      {
+        character: char,
+        connectionProfileId,
+        selectedSystemPromptId: defaultPromptId ?? null,
+        controlledBy: 'llm',
+      },
     ];
     const partnerId = seededPartnerId || char.defaultPartnerId || '';
     if (partnerId) {
       const partner = allCharacters.find((c) => c.id === partnerId);
       if (partner && partner.id !== char.id) {
-        seeded.push({ character: partner, connectionProfileId: '', selectedSystemPromptId: null, controlledBy: 'user' });
+        seeded.push({
+          character: partner,
+          connectionProfileId: '',
+          selectedSystemPromptId: null,
+          controlledBy: 'user',
+        });
       }
     }
     this.selectedCharacters.set(seeded);
@@ -258,11 +285,12 @@ export class NewChatState {
     }
     try {
       const data = await this.core.dispatchData({ type: 'groupScenariosUnion', characterIds });
-      const groups = (data['groupScenarios'] as Array<{
-        groupId: string;
-        groupName: string;
-        scenarios: ScenarioDto[];
-      }>) ?? [];
+      const groups =
+        (data['groupScenarios'] as Array<{
+          groupId: string;
+          groupName: string;
+          scenarios: ScenarioDto[];
+        }>) ?? [];
       const flat: GroupScenarioOption[] = [];
       for (const g of groups) {
         for (const s of g.scenarios ?? []) {
@@ -309,7 +337,10 @@ export class NewChatState {
         ...prev,
         timestampConfig: char.defaultTimestampConfig ?? prev.timestampConfig,
         scenarioId: char.defaultScenarioId ?? prev.scenarioId,
-        imageProfileId: this.project()?.defaultImageProfileId || char.defaultImageProfileId || prev.imageProfileId,
+        imageProfileId:
+          this.project()?.defaultImageProfileId ||
+          char.defaultImageProfileId ||
+          prev.imageProfileId,
       }));
       const partnerId = char.defaultPartnerId;
       if (partnerId) {
@@ -320,7 +351,12 @@ export class NewChatState {
           if (!partner) return prev;
           return [
             ...prev,
-            { character: partner, connectionProfileId: '', selectedSystemPromptId: null, controlledBy: 'user' },
+            {
+              character: partner,
+              connectionProfileId: '',
+              selectedSystemPromptId: null,
+              controlledBy: 'user',
+            },
           ];
         });
       }
@@ -347,7 +383,9 @@ export class NewChatState {
       this.error.set('Please select at least one character');
       return null;
     }
-    const missingProfile = cast.filter((sc) => sc.controlledBy === 'llm' && !sc.connectionProfileId);
+    const missingProfile = cast.filter(
+      (sc) => sc.controlledBy === 'llm' && !sc.connectionProfileId,
+    );
     if (missingProfile.length > 0) {
       this.error.set(
         `Please select a connection profile for: ${missingProfile.map((sc) => sc.character.name).join(', ')}`,
@@ -363,7 +401,9 @@ export class NewChatState {
     this.creating.set(true);
 
     const progressId =
-      this.greenRoom && typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : undefined;
+      this.greenRoom && typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : undefined;
 
     try {
       const body = buildCreateRequest(cast, this.form(), this.selectedProjectId(), progressId);

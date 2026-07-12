@@ -27,8 +27,16 @@ const DEFAULT_TS: Ts = {
 
 const MODES: { value: TimestampMode; label: string; description: string }[] = [
   { value: 'NONE', label: 'Disabled', description: 'No timestamp injection' },
-  { value: 'START_ONLY', label: 'Conversation Start', description: 'Include timestamp only in the initial system prompt' },
-  { value: 'EVERY_MESSAGE', label: 'Every Message', description: 'Update timestamp with each message sent' },
+  {
+    value: 'START_ONLY',
+    label: 'Conversation Start',
+    description: 'Include timestamp only in the initial system prompt',
+  },
+  {
+    value: 'EVERY_MESSAGE',
+    label: 'Every Message',
+    description: 'Update timestamp with each message sent',
+  },
   {
     value: 'EVERY_N_MINUTES',
     label: 'Every X Minutes',
@@ -38,11 +46,36 @@ const MODES: { value: TimestampMode; label: string; description: string }[] = [
 ];
 
 const FORMATS: { value: TimestampFormat; label: string; description: string; example: string }[] = [
-  { value: 'FRIENDLY', label: 'Friendly', description: 'Human-readable format (e.g., "March 15, 2024 at 2:30 PM")', example: 'March 15, 2024 at 2:30 PM' },
-  { value: 'ISO8601', label: 'ISO 8601', description: 'Standard machine-readable format', example: '2024-03-15T14:30:00Z' },
-  { value: 'DATE_ONLY', label: 'Date Only', description: 'Just the date, no time', example: 'March 15, 2024' },
-  { value: 'TIME_ONLY', label: 'Time Only', description: 'Just the time, no date', example: '2:30 PM' },
-  { value: 'CUSTOM', label: 'Custom', description: 'Use a custom format string (date-fns tokens)', example: '' },
+  {
+    value: 'FRIENDLY',
+    label: 'Friendly',
+    description: 'Human-readable format (e.g., "March 15, 2024 at 2:30 PM")',
+    example: 'March 15, 2024 at 2:30 PM',
+  },
+  {
+    value: 'ISO8601',
+    label: 'ISO 8601',
+    description: 'Standard machine-readable format',
+    example: '2024-03-15T14:30:00Z',
+  },
+  {
+    value: 'DATE_ONLY',
+    label: 'Date Only',
+    description: 'Just the date, no time',
+    example: 'March 15, 2024',
+  },
+  {
+    value: 'TIME_ONLY',
+    label: 'Time Only',
+    description: 'Just the time, no date',
+    example: '2:30 PM',
+  },
+  {
+    value: 'CUSTOM',
+    label: 'Custom',
+    description: 'Use a custom format string (date-fns tokens)',
+    example: '',
+  },
 ];
 
 /**
@@ -57,13 +90,19 @@ const FORMATS: { value: TimestampFormat; label: string; description: string; exa
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FormsModule],
   template: `
-    <div class="space-y-4 qt-text-small" [class.opacity-60]="disabled()" [class.pointer-events-none]="disabled()">
+    <div
+      class="space-y-4 qt-text-small"
+      [class.opacity-60]="disabled()"
+      [class.pointer-events-none]="disabled()"
+    >
       <!-- Mode -->
       <div>
         <label class="block qt-text-label mb-2">Timestamp Injection Mode</label>
         <div class="space-y-2">
           @for (m of modes; track m.value) {
-            <label class="flex items-start gap-3 p-3 border qt-border-default rounded qt-hover-accent cursor-pointer transition-colors">
+            <label
+              class="flex items-start gap-3 p-3 border qt-border-default rounded qt-hover-accent cursor-pointer transition-colors"
+            >
               <input
                 type="radio"
                 name="qt-ts-mode"
@@ -153,7 +192,9 @@ const FORMATS: { value: TimestampFormat; label: string; description: string; exa
 
         <div>
           <label class="block qt-text-label mb-2">Injection Method</label>
-          <label class="flex items-start gap-3 p-3 border qt-border-default rounded qt-hover-accent cursor-pointer transition-colors">
+          <label
+            class="flex items-start gap-3 p-3 border qt-border-default rounded qt-hover-accent cursor-pointer transition-colors"
+          >
             <input
               type="checkbox"
               [ngModel]="cfg().autoPrepend ?? true"
@@ -167,8 +208,8 @@ const FORMATS: { value: TimestampFormat; label: string; description: string; exa
                 {{
                   (cfg().autoPrepend ?? true)
                     ? 'Timestamp will be automatically prepended to system prompt'
-                    : 'Use {{timestamp}} template variable in system prompt instead'
-                }}
+                    : 'Use {{timestamp}}
+                template variable in system prompt instead' }}
               </div>
             </div>
           </label>
@@ -176,7 +217,9 @@ const FORMATS: { value: TimestampFormat; label: string; description: string; exa
 
         <div>
           <label class="block qt-text-label mb-2">Fictional Time</label>
-          <label class="flex items-start gap-3 p-3 border qt-border-default rounded qt-hover-accent cursor-pointer transition-colors">
+          <label
+            class="flex items-start gap-3 p-3 border qt-border-default rounded qt-hover-accent cursor-pointer transition-colors"
+          >
             <input
               type="checkbox"
               [ngModel]="cfg().useFictionalTime ?? false"
@@ -226,7 +269,10 @@ export class TimestampConfigCard {
     }
   })();
 
-  protected readonly cfg = computed<Ts>(() => ({ ...DEFAULT_TS, ...((this.value() as Ts | null) ?? {}) }));
+  protected readonly cfg = computed<Ts>(() => ({
+    ...DEFAULT_TS,
+    ...((this.value() as Ts | null) ?? {}),
+  }));
 
   protected setMode(mode: TimestampMode): void {
     const next: Ts = { ...this.cfg(), mode };

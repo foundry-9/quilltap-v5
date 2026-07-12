@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.6q (New-Chat SPA, lane B) — the Salon-list rider + the e2e beat. Added
+the "New Chat" affordance to the Salon-list header (the empty-state link
+and the project links now resolve to `/salon/new`). Authored
+`e2e/new-chat-flow.spec.ts` (unlock → New Chat → pick a character → the
+profile auto-seeds → Create → the Green Room narrates → land on the
+created conversation with the streamed greeting), fixture-guarded for the
+salon fixture and discovered by `playwright test --list` (activated at the
+P4.6p/q/r unification). Normalized the new-chat modules with Prettier.
+SPA 0.5.29.
+
 P4.6q (New-Chat SPA, lane B) — the `/salon/new` route + page. Ported v4's
 `app/salon/new/page.tsx` as `qt-new-chat-page`: reads `?projectId=` /
 `?characterId=` / `?autonomous=1`, composes the picker + form + submit

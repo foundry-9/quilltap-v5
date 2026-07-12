@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, effect, input, output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 
 import type { ChatCreateOutfitSelectionInput, OutfitSelectionMode } from '../../core/core-contract';
 
@@ -54,13 +62,17 @@ interface ModeOption {
                   />
                   <div class="flex-1 min-w-0">
                     <span class="qt-text-primary">{{ opt.label }}</span>
-                    <span class="ml-1.5 text-xs qt-text-secondary italic">{{ opt.description }}</span>
+                    <span class="ml-1.5 text-xs qt-text-secondary italic">{{
+                      opt.description
+                    }}</span>
                   </div>
                 </label>
               }
             </div>
             @if (modeFor(char.id) === 'none') {
-              <div class="mt-2 ml-6 rounded border qt-border-warning/50 qt-bg-warning/10 px-2 py-1.5 text-xs qt-text-warning">
+              <div
+                class="mt-2 ml-6 rounded border qt-border-warning/50 qt-bg-warning/10 px-2 py-1.5 text-xs qt-text-warning"
+              >
                 Character will start undressed
               </div>
             }
@@ -80,7 +92,10 @@ export class OutfitSelector {
   protected readonly showHeaders = computed(() => this.characters().length > 1);
 
   private readonly selections = computed<ChatCreateOutfitSelectionInput[]>(() =>
-    this.characters().map((c) => ({ characterId: c.id, mode: this.overrides()[c.id] ?? 'default' })),
+    this.characters().map((c) => ({
+      characterId: c.id,
+      mode: this.overrides()[c.id] ?? 'default',
+    })),
   );
 
   constructor() {
@@ -94,7 +109,11 @@ export class OutfitSelector {
 
   protected optionsFor(char: OutfitSelectorCharacter): ModeOption[] {
     const opts: ModeOption[] = [
-      { value: 'default', label: 'Use defaults', description: 'Items marked default in their wardrobe.' },
+      {
+        value: 'default',
+        label: 'Use defaults',
+        description: 'Items marked default in their wardrobe.',
+      },
       {
         value: 'manual',
         label: 'Compose outfit',
@@ -109,7 +128,11 @@ export class OutfitSelector {
         description: 'The character picks based on the scenario.',
       });
     }
-    opts.push({ value: 'none', label: 'Start undressed', description: 'Character will start undressed.' });
+    opts.push({
+      value: 'none',
+      label: 'Start undressed',
+      description: 'Character will start undressed.',
+    });
     return opts;
   }
 

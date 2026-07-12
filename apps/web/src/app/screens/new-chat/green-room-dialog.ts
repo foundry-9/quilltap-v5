@@ -56,7 +56,9 @@ import { OutfitSlotsPreview } from './outfit-slots-preview';
                             class="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent opacity-70"
                           ></span>
                         }
-                        <span class="qt-text-primary text-sm font-semibold">{{ panel.characterName }}</span>
+                        <span class="qt-text-primary text-sm font-semibold">{{
+                          panel.characterName
+                        }}</span>
                         <span class="qt-text-tertiary text-xs">{{
                           panel.slots === null ? 'consulting the wardrobe…' : 'is wearing'
                         }}</span>
@@ -77,7 +79,9 @@ import { OutfitSlotsPreview } from './outfit-slots-preview';
                     <ul class="flex flex-col gap-1 text-sm">
                       @for (entry of state().logs; track $index) {
                         <li [class]="logColor(entry.level)">
-                          <span class="qt-text-tertiary mr-2 tabular-nums">{{ time(entry.ts) }}</span>
+                          <span class="qt-text-tertiary mr-2 tabular-nums">{{
+                            time(entry.ts)
+                          }}</span>
                           {{ entry.message }}
                         </li>
                       }

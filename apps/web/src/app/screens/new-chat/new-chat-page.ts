@@ -25,14 +25,19 @@ import { NewChatState } from './new-chat.state';
       @if (state.loading()) {
         <qt-loading-state message="Loading..." />
       } @else {
-        <a [routerLink]="backLink()" class="mb-4 inline-flex items-center qt-label text-primary transition hover:text-primary/80">
+        <a
+          [routerLink]="backLink()"
+          class="mb-4 inline-flex items-center qt-label text-primary transition hover:text-primary/80"
+        >
           ← Back to {{ backLabel() }}
         </a>
 
         <h1 class="mb-6 qt-heading-1">New Chat</h1>
 
         @if (autonomousRequested) {
-          <div class="mb-6 rounded-lg border qt-border-warning/50 qt-bg-warning/10 p-4 qt-text-warning">
+          <div
+            class="mb-6 rounded-lg border qt-border-warning/50 qt-bg-warning/10 p-4 qt-text-warning"
+          >
             <p class="font-medium">Autonomous rooms are not yet available</p>
             <p class="mt-1 text-sm">
               This build cannot create autonomous rooms yet. You can start an ordinary chat below.
@@ -43,7 +48,10 @@ import { NewChatState } from './new-chat.state';
         @if (state.project(); as proj) {
           <div class="mb-6 rounded-lg border qt-border-default qt-bg-card/50 p-4">
             <div class="flex items-center gap-3">
-              <div class="w-8 h-8 rounded-lg flex items-center justify-center" [style.background-color]="proj.color || 'var(--muted)'"></div>
+              <div
+                class="w-8 h-8 rounded-lg flex items-center justify-center"
+                [style.background-color]="proj.color || 'var(--muted)'"
+              ></div>
               <div>
                 <p class="text-sm qt-text-primary">Creating chat in project</p>
                 <p class="font-medium text-foreground">{{ proj.name }}</p>
@@ -53,14 +61,20 @@ import { NewChatState } from './new-chat.state';
         }
 
         @if (state.profiles().length === 0) {
-          <div class="mb-6 rounded-lg border qt-border-warning/50 qt-bg-warning/10 p-4 qt-text-warning">
+          <div
+            class="mb-6 rounded-lg border qt-border-warning/50 qt-bg-warning/10 p-4 qt-text-warning"
+          >
             <p class="font-medium">No connection profiles available</p>
-            <p class="mt-1 text-sm">You need to create a connection profile before starting a chat.</p>
+            <p class="mt-1 text-sm">
+              You need to create a connection profile before starting a chat.
+            </p>
           </div>
         }
 
         @if (state.error(); as err) {
-          <div class="mb-6 rounded-lg border qt-border-destructive/50 qt-bg-destructive/10 p-4 qt-text-destructive">
+          <div
+            class="mb-6 rounded-lg border qt-border-destructive/50 qt-bg-destructive/10 p-4 qt-text-destructive"
+          >
             {{ err }}
           </div>
         }
@@ -73,7 +87,12 @@ import { NewChatState } from './new-chat.state';
 
         <div class="mt-6 flex justify-end gap-3">
           <a [routerLink]="backLink()" class="qt-button qt-button-secondary">Cancel</a>
-          <button type="button" (click)="create()" [disabled]="!state.canSubmit()" class="qt-button-success">
+          <button
+            type="button"
+            (click)="create()"
+            [disabled]="!state.canSubmit()"
+            class="qt-button-success"
+          >
             {{ state.creating() ? 'Creating...' : 'Create Chat' }}
           </button>
         </div>

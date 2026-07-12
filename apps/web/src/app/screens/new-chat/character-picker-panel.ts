@@ -70,7 +70,9 @@ import { USER_CONTROLLED_PROFILE, type NewChatSelectedCharacter } from './new-ch
       <div class="rounded-xl border qt-border-default qt-bg-card p-6">
         <h2 class="mb-4 qt-section-title">Selected Characters ({{ selected().length }})</h2>
         @if (selected().length === 0) {
-          <div class="py-8 text-center qt-text-small">Click on characters to add them to the chat</div>
+          <div class="py-8 text-center qt-text-small">
+            Click on characters to add them to the chat
+          </div>
         } @else {
           <div class="space-y-4">
             @for (sc of selected(); track sc.character.id; let index = $index) {
@@ -81,7 +83,8 @@ import { USER_CONTROLLED_PROFILE, type NewChatSelectedCharacter } from './new-ch
                     <div class="flex items-center gap-2">
                       <span class="qt-text-primary">{{ sc.character.name }}</span>
                       @if (index === 0) {
-                        <span class="rounded qt-bg-primary/20 px-2 py-0.5 text-xs font-medium text-primary"
+                        <span
+                          class="rounded qt-bg-primary/20 px-2 py-0.5 text-xs font-medium text-primary"
                           >Speaks First</span
                         >
                       }
@@ -90,7 +93,9 @@ import { USER_CONTROLLED_PROFILE, type NewChatSelectedCharacter } from './new-ch
                       <div class="qt-text-small">{{ sc.character.title }}</div>
                     }
                     <div class="mt-3">
-                      <label class="mb-1 block text-xs font-medium qt-text-xs">Connection Profile</label>
+                      <label class="mb-1 block text-xs font-medium qt-text-xs"
+                        >Connection Profile</label
+                      >
                       <select
                         [ngModel]="profileValue(sc)"
                         (ngModelChange)="onProfileChange(sc.character.id, $event)"
@@ -108,7 +113,9 @@ import { USER_CONTROLLED_PROFILE, type NewChatSelectedCharacter } from './new-ch
                     </div>
                     @if (sc.character.systemPrompts && sc.character.systemPrompts.length > 0) {
                       <div class="mt-2">
-                        <label class="mb-1 block text-xs font-medium qt-text-xs">System Prompt</label>
+                        <label class="mb-1 block text-xs font-medium qt-text-xs"
+                          >System Prompt</label
+                        >
                         <select
                           [ngModel]="sc.selectedSystemPromptId || ''"
                           (ngModelChange)="onPromptChange(sc.character.id, $event)"
@@ -117,7 +124,10 @@ import { USER_CONTROLLED_PROFILE, type NewChatSelectedCharacter } from './new-ch
                         >
                           <option value="">Use Default</option>
                           @for (prompt of sc.character.systemPrompts; track prompt.id) {
-                            <option [value]="prompt.id" [selected]="prompt.id === (sc.selectedSystemPromptId || '')">
+                            <option
+                              [value]="prompt.id"
+                              [selected]="prompt.id === (sc.selectedSystemPromptId || '')"
+                            >
                               {{ prompt.name }}{{ prompt.isDefault ? ' (Default)' : '' }}
                             </option>
                           }
@@ -170,7 +180,9 @@ export class CharacterPickerPanel {
 
   /** Grow the list to at least the starred count, ≥3 rows, and never fewer than selected (v4). */
   protected readonly listHeightPx = computed(() => {
-    const starred = this.core().characters().filter((c) => c.isFavorite).length;
+    const starred = this.core()
+      .characters()
+      .filter((c) => c.isFavorite).length;
     const rows = Math.max(starred, 3, this.selected().length);
     return rows * 80;
   });
@@ -190,7 +202,9 @@ export class CharacterPickerPanel {
   protected toggle(character: CharacterListItem): void {
     this.core().patchForm({ scenarioId: null });
     if (this.isSelected(character.id)) {
-      this.core().setSelectedCharacters((prev) => prev.filter((sc) => sc.character.id !== character.id));
+      this.core().setSelectedCharacters((prev) =>
+        prev.filter((sc) => sc.character.id !== character.id),
+      );
     } else {
       const seeded = seedSelectedCharacter(character, this.profiles());
       this.core().setSelectedCharacters((prev) => [...prev, seeded]);
@@ -199,7 +213,9 @@ export class CharacterPickerPanel {
 
   protected remove(characterId: string): void {
     this.core().patchForm({ scenarioId: null });
-    this.core().setSelectedCharacters((prev) => prev.filter((sc) => sc.character.id !== characterId));
+    this.core().setSelectedCharacters((prev) =>
+      prev.filter((sc) => sc.character.id !== characterId),
+    );
   }
 
   protected onProfileChange(characterId: string, profileId: string): void {
@@ -226,7 +242,9 @@ export class CharacterPickerPanel {
   protected checkClass(selected: boolean): string {
     return (
       'flex h-6 w-6 items-center justify-center rounded-full border-2 ' +
-      (selected ? 'qt-border-primary bg-primary text-primary-foreground' : 'border-muted-foreground')
+      (selected
+        ? 'qt-border-primary bg-primary text-primary-foreground'
+        : 'border-muted-foreground')
     );
   }
 }

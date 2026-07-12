@@ -5,7 +5,11 @@
  * `'user'`, never a separate slot (v4's in-place Play-As).
  */
 
-import type { CharacterListItem, ChatCreateOutfitSelectionInput, TimestampConfig } from '../../core/core-contract';
+import type {
+  CharacterListItem,
+  ChatCreateOutfitSelectionInput,
+  TimestampConfig,
+} from '../../core/core-contract';
 
 /** The special connection-profile option that flips a cast entry to the user (v4 `USER_CONTROLLED_PROFILE`). */
 export const USER_CONTROLLED_PROFILE = '__USER_CONTROLLED__';
