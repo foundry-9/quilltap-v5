@@ -660,6 +660,32 @@ bump core + harness (unifier accumulates); lane B alone bumps the SPA.
 status-log are union-resolved at unification per
 `[[parallel-round-reconciliation]]`.
 
+**The P4.6p ∥ P4.6q ∥ P4.6r listing-surfaces + New-Chat round is
+UNIFIED on main (2026-07-12) — all three orders CLOSED, closing the
+three P4.6l listing-surface picker gaps.** Lane A (P4.6p) made the
+three global listing/CRUD surfaces live — roleplay templates (5
+variants + the tier-1 `generateRenderingPatterns`), image profiles
+(5 variants + `imageProviderList`), global mount points (5 variants +
+capabilities + the delete cascade) — proven by four new differentials
+(25/21/18/13 cases) over the extended groups-projects fixture;
+ErrorKind gained Forbidden(403) + Conflict(409). Lane B (P4.6q)
+landed the whole New-Chat vertical: `/salon/new`, the two-pane
+picker, in-place Play-As, the four-source scenario dropdown, the
+verbatim create payload, and the Green Room dialog over the global
+event stream — with the live `new-chat-flow` e2e walk. Lane C (P4.6r)
+populated the Templates & Prompts and Images settings tabs (managers
++ full delimiter editor), enabled the three default-* pickers, and
+enabled reset-builtins. Unification reconciled the diverged B↔C
+contract appendix to lane B's union fold. **Still refusal-armed:**
+`imageProfileGenerate`/`ValidateKey`/`ListModels`; the mount-point
+action verbs have no variants (D7, the Scriptorium surface). **Next
+candidates:** the remaining Salon slices (Document Mode pane,
+terminal pane, courier, images), the Memory (Commonplace Book)
+vertical, the Scriptorium/file-manager vertical (mount-point verbs +
+ngx-explorer spike), autonomous-rooms settings (unblocks the New-Chat
+autonomous toggle), or P4.7 (`quilltap-tauri`). Round record:
+`status-log.md`.
+
 **The round as planned (2026-07-12): three parallel lanes, orders
 written** (drift check at planning time: v4 HEAD still `a7b1398d`;
 three fresh surveys — the v4 New-Chat form UI, the v4

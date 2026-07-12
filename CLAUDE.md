@@ -305,9 +305,21 @@ records THERE. Update this summary only when a phase or round completes.
   subset + the startup sample-content seed (**default ON** — a fresh
   boot seeds Lorian + Riya + 42 memories) + `reset_builtins` (dispatch
   at the web edge). **No refusal arms remain in the
-  groups/projects/scenarios surface.** Next SPA vertical wanted: the
-  New-Chat form (`/salon/new`).
+  groups/projects/scenarios surface.**
+- **The P4.6p ∥ P4.6q ∥ P4.6r listing-surfaces + New-Chat round:
+  UNIFIED on main (2026-07-12) — P4.6p/q/r CLOSED, closing the P4.6l
+  listing-surface picker gaps.** The three global listing surfaces
+  (roleplay templates + image profiles + global mount points, four
+  new differentials over the extended groups-projects fixture) ∥ the
+  New-Chat vertical (`/salon/new` + the Green Room over the global
+  event stream, live e2e walk) ∥ the Templates & Images settings tabs
+  + the three default-* pickers + reset-builtins enabled. Still
+  refusal-armed: `imageProfileGenerate`/`ValidateKey`/`ListModels`;
+  the mount-point action verbs have no variants (the Scriptorium
+  surface). Next candidates: the remaining Salon slices, the Memory
+  vertical, the Scriptorium/file-manager vertical, autonomous-rooms
+  settings, or P4.7 (Tauri) — see phase-4.md.
 - **Oracle baseline:** v4 HEAD `a7b1398d` (drift-check before every round).
-  Versions: core 0.0.184, harness 0.0.168, host 0.0.12, web 0.0.12, SPA 0.5.22.
+  Versions: core 0.0.188, harness 0.0.172, host 0.0.12, web 0.0.13, SPA 0.5.34.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

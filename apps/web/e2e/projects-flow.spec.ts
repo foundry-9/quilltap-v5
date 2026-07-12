@@ -2,7 +2,7 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, openSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { makeDbKeyFile } from './support/dbkey';
 import {
@@ -106,15 +106,17 @@ test.describe('P4.6l — Projects vertical (list → detail → toggle → renam
     rmSync(PROJ_INSTANCE_DIR, { recursive: true, force: true });
   });
 
-  async function unlockIfLocked(page: Page): Promise<void> {
+  async function unlockIfLocked(page: Page, ready?: Locator): Promise<void> {
     const passphrase = page.locator('#qt-passphrase');
-    const projectsHeading = page.getByRole('heading', { name: 'Projects', exact: true });
-    await expect(passphrase.or(projectsHeading).first()).toBeVisible({ timeout: 15_000 });
+    // The default ready signal is the Projects LIST heading; a beat that
+    // reloads on a DETAIL page passes its own (the settings-flow idiom).
+    const readySignal = ready ?? page.getByRole('heading', { name: 'Projects', exact: true });
+    await expect(passphrase.or(readySignal).first()).toBeVisible({ timeout: 15_000 });
     if (await passphrase.isVisible()) {
       await passphrase.fill(E2E_PASSPHRASE);
       await page.getByRole('button', { name: 'Unlock' }).click();
     }
-    await expect(projectsHeading).toBeVisible({ timeout: 10_000 });
+    await expect(readySignal).toBeVisible({ timeout: 10_000 });
   }
 
   test('the Projects list opens a detail, toggles Allow Any Character, renames, persists', async ({
@@ -218,7 +220,7 @@ test.describe('P4.6l — Projects vertical (list → detail → toggle → renam
 
     // The selection survives a full reload (server state).
     await page.reload();
-    await unlockIfLocked(page);
+    await unlockIfLocked(page, page.locator('qt-project-model-behavior-card'));
     await expect(page).toHaveURL(/\/prospero\/[^/]+$/);
     const reloaded = page.locator('qt-project-model-behavior-card').getByLabel(
       'Default Roleplay Template',

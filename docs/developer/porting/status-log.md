@@ -8047,3 +8047,88 @@ refers to the server ordering. (3) the `roleplayTemplateList` envelope
 is a BARE array; `fetchRoleplayTemplates` accepts array-or-wrapper
 defensively — reconcile against lane A's real body. Versions after the
 lane: SPA 0.5.25 (accumulated 0.5.23/24/25 across the three commits).
+
+## The P4.6p ∥ P4.6q ∥ P4.6r listing-surfaces + New-Chat round — UNIFIED on main (2026-07-12)
+
+Three lanes cherry-picked onto `unify/p4.6pqr` (lane A's five server
+commits, lane B's seven New-Chat SPA commits, lane C's three
+settings-SPA commits; conflicts on version files + the
+CHANGELOG/status-log unions + the predicted core-contract appendix).
+v4 baseline re-verified at `a7b1398d` before unification. The
+whole-file version check found no dependency drift.
+
+**The unification wires (one commit):**
+
+- **The B↔C core-contract appendix DIVERGED as lane B's memory note
+  predicted** — lane B folded the listing-surface variants into the
+  `CoreRequest` union (`…Bag` bags, inline delimiter-union arms); lane
+  C shipped `…Input` names behind a localized
+  `as unknown as CoreRequest` cast seam. Reconciled to lane B's union
+  fold: lane C's `templates.api.ts` / `image-profiles.api.ts` renamed
+  to the `…Bag` types and the cast seams dropped (requests now
+  typecheck through the union). Lesson: "byte-identical appendix in
+  both lanes" needs the block committed BEFORE the lanes fork, or one
+  lane named as the block's author with the other consuming it as a
+  spec — prose alone drifted.
+- **The A↔B/C contract diffed name-for-name against the Rust
+  variants:** all 16 live variants match (5 roleplay + 6 image + 5
+  mount). The three refusal-armed image-profile action interfaces had
+  GUESSED shapes (`prompt`/`profileId`) — reconciled to the Rust
+  mirrors (opaque `payload` / `provider`+`apiKeyId`).
+  `sortByUserCharacter` annotated read-by-neither-server (v4's picker
+  sends it; v4's route reads only `sortByCharacter`; serde ignores it
+  — wire parity).
+- **DTO nullability widened per lane A's oracle pins:**
+  `RoleplayTemplateDto.description`/`dialogueDetection` →
+  `| null` (route reads omit null nullables; the create/update
+  echoes carry them AS null), and `ImageProfileCreateBag`
+  apiKeyId/baseUrl accept explicit null (v4's `|| null` coercion).
+  Lane C's `FALLBACK_PROVIDERS` literals gained the required
+  `legacyNames`.
+- Verified `defaultRoleplayTemplateId` is plumbed through
+  chat_settings create/update (lane C's flag 1) — the live settings
+  walk exercises it.
+- Lane C's fixture-guarded beats self-activated (the groups-projects
+  fixture predates the round, so the `existsSync` guards were always
+  true — they were live-run for the first time at the gate; see
+  fallout).
+
+**The full gate:** `cargo fmt --check` clean; clippy `-D warnings`
+clean on the default set AND `--features
+quilltap-core/native-transport`; release build clean; the seven round
+oracles regenerated FRESH from v4 at `a7b1398d` (annotations 25 /
+roleplay-templates 21 / image-profiles 18 / mount-points 13 / groups
+14 / projects 39 / scenarios 41) and every differential re-run green
+BY NAME; `cargo test --workspace` green (293 suites, 1,250 tests, 0
+failed); `ng test` green (328); `ng build` clean; the FULL Playwright
+suite green (23/23), incl. the newly-live `new-chat-flow` walk
+(unlock → Salon "New Chat" → pick → auto-seeded profile → Create →
+`/salon/<id>` with the streamed greeting) and the P4.6r settings +
+picker beats.
+
+**Gate fallout — three fixes, all gesture/assertion class (no product
+bugs):** (1) the Templates beat asserted visibility on
+`qt-template-form-modal` — an Angular HOST with no box of its own
+(the overlay child is position-fixed), so Playwright reports it
+hidden while the dialog is fully rendered; assert on
+`getByRole('dialog')` (NEW standing gotcha for modal hosts). (2)
+Strict-mode: a created template's name also appears as an option
+inside the Default Template selector `section.qt-card` — the template
+cards are `div.qt-card`, scope by element type; and a
+delete-confirm locator must not `filter({has: Delete})` on the card
+whose Delete button the click just replaced with Confirm/Cancel.
+(3) The projects picker beat reloads on a DETAIL page, but its
+`unlockIfLocked` hard-coded the Projects LIST heading as the ready
+signal — the helper gained the settings-flow ready-override param.
+
+**Orders:** P4.6p CLOSED, P4.6q CLOSED, P4.6r CLOSED — closing the
+three P4.6l "unported listing surfaces" picker gaps. **Still
+refusal-armed after the round:** `imageProfileGenerate` /
+`imageProfileValidateKey` / `imageProfileListModels` (the wire-seam
+stretch did not land); the twelve mount-point action verbs +
+semantic-search have NO variants (D7 — the Scriptorium surface).
+Deferred loudly in the SPA: autonomous mode, manual outfit
+composition, the continuation entry, the Lexical editors, the
+Validate/list-models buttons, tag pickers, the mount-points
+management UI. Versions after the round: core 0.0.188, harness
+0.0.172, host 0.0.12, web 0.0.13, SPA 0.5.34.

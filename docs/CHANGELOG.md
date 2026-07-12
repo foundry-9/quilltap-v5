@@ -2,6 +2,25 @@
 
 ## Recent Changes
 
+The P4.6p ∥ P4.6q ∥ P4.6r round gate + close-out. Full gate green:
+fmt/clippy (both feature sets)/release build clean; the seven round
+oracles regenerated fresh from v4 `a7b1398d` (annotations 25,
+roleplay-templates 21, image-profiles 18, mount-points 13, groups 14,
+projects 39, scenarios 41) and every differential re-run green by
+name; cargo test --workspace 293 suites / 1,250 tests / 0 failed;
+ng test 328; ng build clean; Playwright 23/23 including the
+newly-live new-chat walk and the P4.6r settings/picker beats. Gate
+fixes (gesture/assertion class only, no product bugs): the Templates
+beat asserted visibility on the zero-box qt-template-form-modal HOST
+(→ ARIA dialog role) and hit strict-mode against the Default Template
+selector card (→ div.qt-card element-type scoping, and the
+delete-confirm filter could not require the Delete button it had just
+replaced); the projects picker beat's post-reload unlock helper
+expected the Projects LIST heading on a DETAIL page (→ ready-signal
+override, the settings-flow idiom). Orders P4.6p / P4.6q / P4.6r
+CLOSED — closing the three P4.6l listing-surface picker gaps with
+them. Versions: core 0.0.188, harness 0.0.172, web 0.0.13, SPA 0.5.34.
+
 Unification wires for the P4.6p ∥ P4.6q ∥ P4.6r round. The B↔C
 core-contract listing-surface appendix diverged (lane B folded the
 variants into the CoreRequest union with …Bag bags; lane C shipped a

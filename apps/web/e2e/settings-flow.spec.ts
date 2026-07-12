@@ -284,34 +284,41 @@ test.describe('P4.6r — Templates & Images settings verticals', () => {
 
     // Create.
     await page.getByRole('button', { name: 'Create Template', exact: true }).first().click();
-    const dialog = page.locator('qt-template-form-modal');
+    // The qt-template-form-modal HOST has no box of its own (the overlay child
+    // is position-fixed), so assert on the ARIA dialog it renders.
+    const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     await dialog.getByPlaceholder('My Custom RP Style').fill('Walk Template');
     await dialog.locator('textarea').first().fill('Render narration between *stars*.');
     await dialog.getByRole('button', { name: 'Create Template', exact: true }).click();
     await expect(dialog).toBeHidden({ timeout: 10_000 });
 
-    const card = page.locator('.qt-card', { hasText: 'Walk Template' });
+    // Strict-mode scope: the new template's name also appears as an option in
+    // the Default Template selector card (a section.qt-card) — the template
+    // cards themselves are div.qt-card.
+    const card = page.locator('div.qt-card', { hasText: 'Walk Template' });
     await expect(card).toBeVisible({ timeout: 10_000 });
 
     // Edit → rename.
     await card.getByRole('button', { name: 'Edit', exact: true }).click();
-    const editDialog = page.locator('qt-template-form-modal');
+    const editDialog = page.getByRole('dialog');
+    await expect(editDialog).toBeVisible();
     const nameInput = editDialog.getByPlaceholder('My Custom RP Style');
     await nameInput.fill('Walk Template Renamed');
     await editDialog.getByRole('button', { name: 'Save Changes' }).click();
     await expect(editDialog).toBeHidden({ timeout: 10_000 });
-    await expect(page.locator('.qt-card', { hasText: 'Walk Template Renamed' })).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(
+      page.locator('div.qt-card', { hasText: 'Walk Template Renamed' }),
+    ).toBeVisible({ timeout: 10_000 });
 
     // Delete (inline confirm).
-    const renamed = page.locator('.qt-card', { hasText: 'Walk Template Renamed' });
+    const renamed = page.locator('div.qt-card', { hasText: 'Walk Template Renamed' });
     await renamed.getByRole('button', { name: 'Delete', exact: true }).click();
     await renamed.getByRole('button', { name: 'Confirm', exact: true }).click();
-    await expect(page.locator('.qt-card', { hasText: 'Walk Template Renamed' })).toHaveCount(0, {
-      timeout: 10_000,
-    });
+    await expect(page.locator('div.qt-card', { hasText: 'Walk Template Renamed' })).toHaveCount(
+      0,
+      { timeout: 10_000 },
+    );
   });
 
   test('Images tab: the Image Profiles card lists the fixture profiles', async ({ page }) => {
