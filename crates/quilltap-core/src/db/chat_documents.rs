@@ -443,6 +443,13 @@ impl<'c> ChatDocumentsRepository<'c> {
     }
 
     /// The open (`isActive`) full rows for a chat, oldest-opened first (createdAt
+    /// asc). The full-column analogue of [`Self::find_open_for_chat`] — the
+    /// Document Mode `open-documents` route reads `displayTitle` off these.
+    pub fn find_open_for_chat_full(&self, chat_id: &str) -> Result<Vec<ChatDocumentFull>, DbError> {
+        self.find_open_full(chat_id)
+    }
+
+    /// The open (`isActive`) full rows for a chat, oldest-opened first (createdAt
     /// asc). The full-column analogue of [`Self::find_open_for_chat`].
     fn find_open_full(&self, chat_id: &str) -> Result<Vec<ChatDocumentFull>, DbError> {
         let mut stmt = self.conn.prepare(

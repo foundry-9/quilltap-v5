@@ -8857,3 +8857,62 @@ counter, slash-trim, mime gate, and Node path helpers. The stateful functions
 
 Regen: `cd ~/source/quilltap-server && npx tsx <worktree>/harness/oracle/cases/documents-rename-target.ts > /tmp/oracle-documents-rename-target.ndjson`
 then `QT_ORACLE_DOCUMENTS_RENAME=/tmp/oracle-documents-rename-target.ndjson cargo test -p quilltap-harness --test documents_rename_target_equivalence`.
+
+### P4.6w unit 3 — the `api::documents` route surface (lane B) — 2026-07-12
+
+`crates/quilltap-core/src/api/documents.rs`: the 11 chat-scoped + 7 standalone
+Document Mode handlers (`chats/[id]/actions/documents.ts` +
+`documents/route.ts`). Chat-scoped: active/open/recent document lists,
+accessible-stores (both the look-everywhere `all` mode and the chat-reach
+default — participant vaults via `getCharacterVaultStore`, group stores, the
+project-linked stores, then Quilltap General), open (read-or-create-blank +
+`chat_documents.openDocument` + `chats.update({documentMode})` +
+`postLibrarianOpenAnnouncement`), close (`refreshDocumentMode` recompute),
+read, resolve (existence probe + `classifyResolvedTarget`), write
+(mtime-checked + save announcement on `diffContent`), rename (compute-target +
+move + row update + recents sweep + rename announcement), delete (delete +
+deactivate + delete announcement). Standalone: stores/recent (project-scope
+filtered) + open/read/write/rename/delete under `STANDALONE_CHAT_ID`, no
+Librarian, scope restricted to `document_store`/`general`. Wired into
+`api::types` (`Request` variants — bag-carrying variants `#[serde(flatten)]`
+the schema fields — + `Response::Document`) and `api::engine` (dispatch + the
+`EngineAssembly.mount_refresh` seam field, threaded to the write arms via
+`ready_db_and_refresh`, defaulting to `None`).
+
+**24-case route differential** (`documents-routes.test.ts` →
+`documents_routes_equivalence`) drives v4's REAL handlers over per-side copies
+of a new committed `documents-{main,mount}.db` fixture and diffs response
+bodies AND the id-free `chat_documents`/`documentMode` state — the recents
+dedupe (current-chat wins), the reactivate/create/close/rename/delete state
+transitions, the effectiveScope fallback, and every Librarian announcement's
+BODY TEXT are byte-exact. Minted fields (open/write mtime, created row id,
+Librarian message id/createdAt) blanked; everything else exact.
+
+**Gotchas.** (1) Reads OMIT null nullables (`mountPoint`/`displayTitle` render
+as `undefined` → dropped by `JSON.stringify`) — the P4.6p rule; the DTOs omit
+`None`. Standalone open/rename document objects are LITERALS with `?? null`, so
+they KEEP a null `mountPoint`. (2) The jest oracle must un-mock
+`character-vault-bridge` (the P4.6i gotcha) or the default accessible-stores
+mode silently drops participant vaults. (3) The fixture must materialize
+`chat_messages` (`repos.chats.getMessageCount`) so the Librarian post has a
+table — a chat with no messages never creates it, and the live Librarian path
+(the doc-ui differential mocks it) surfaces `no such table: chat_messages`.
+(4) `writeDocumentFile` reproduces v4's `expectedMtime` guard locally (lane A's
+`database_store` write does not port it) so the 409 arm is faithful. core
+0.0.196, harness 0.0.179, host 0.0.13.
+
+Regen: build the fixture then run the jest oracle + Rust diff — see the
+`documents_routes_equivalence` header for the exact env vars/invocation
+(`build-documents-web-fixture.ts`; `documents-routes.test.ts`).
+
+**Deferred loud (tier-2 image-classify).** `classifyResolvedTarget`'s
+image/blob arm is unreachable via `resolve-document` on database stores:
+`resolvedPathExists` gates `classify` on `doc_mount_documents` membership,
+which blobs (PNG/etc.) never have — so a database image resolves to
+`{exists:false, kind:'other'}` and `classify` never runs on it (the image path
+is fs-seam-only). The `document`/`other` arms are proven; the blob-image arm is
+a tracked fs-seam deferral (not fixtured). **Correction to the order's
+fixtures section:** the fs-scope cases are also fs-seam-deferred (v5 cannot
+resolve `general`/fs mounts — a `ResolvedPath` is database-only), so the
+differential corpus is database-backed only, matching the whole doc-edit
+surface.

@@ -537,6 +537,10 @@ impl EngineAssembler for HostAssembler {
             swipe_generate,
             provider_actions,
             memory_embedding,
+            // P4.6w: the document-store refresh scheduler is wired at unification
+            // (lane A's reindex/embed services); unwired here, the write sites
+            // loud-skip the refresh.
+            mount_refresh: None,
         })
     }
 }

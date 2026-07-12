@@ -1243,6 +1243,113 @@ pub enum Request {
         #[serde(default)]
         limit: Option<i64>,
     },
+    // === P4.6w: documents ===
+    // Chat-scoped Document Mode (all take `chatId`). See `api::documents`. The
+    // schema-bag variants flatten the remaining fields into `body` (the exact
+    // shapes are the v4 Zod schemas, parsed inside the handler).
+    /// v4 `active-document` — `{ document | null }` (earliest-opened active).
+    #[serde(rename_all = "camelCase")]
+    ChatActiveDocument {
+        chat_id: String,
+    },
+    /// v4 `open-documents` — `{ documents }` (oldest-first).
+    #[serde(rename_all = "camelCase")]
+    ChatOpenDocuments {
+        chat_id: String,
+    },
+    /// v4 `recent-documents` — `{ documents }` (current-chat rows win the dedupe).
+    #[serde(rename_all = "camelCase")]
+    ChatRecentDocuments {
+        chat_id: String,
+    },
+    /// v4 `accessible-stores` — `{ stores, projectLibrary }` (`all` = look-everywhere).
+    #[serde(rename_all = "camelCase")]
+    ChatAccessibleStores {
+        chat_id: String,
+        #[serde(default)]
+        all: bool,
+    },
+    /// v4 `open-document` — `{ document, content, mtime, librarianMessage }`.
+    #[serde(rename_all = "camelCase")]
+    ChatDocumentOpen {
+        chat_id: String,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 `close-document` — `{ success }`.
+    #[serde(rename_all = "camelCase")]
+    ChatDocumentClose {
+        chat_id: String,
+        #[serde(default)]
+        chat_document_id: Option<String>,
+    },
+    /// v4 `read-document` — `{ content, mtime }`.
+    #[serde(rename_all = "camelCase")]
+    ChatDocumentRead {
+        chat_id: String,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 `resolve-document` — `{ exists, kind }` (never bytes).
+    #[serde(rename_all = "camelCase")]
+    ChatDocumentResolve {
+        chat_id: String,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 `write-document` — `{ success, mtime, librarianMessage }`.
+    #[serde(rename_all = "camelCase")]
+    ChatDocumentWrite {
+        chat_id: String,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 `rename-document` — `{ document, librarianMessage }`.
+    #[serde(rename_all = "camelCase")]
+    ChatDocumentRename {
+        chat_id: String,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 `delete-document` — `{ success, librarianMessage }`.
+    #[serde(rename_all = "camelCase")]
+    ChatDocumentDelete {
+        chat_id: String,
+        #[serde(default)]
+        chat_document_id: Option<String>,
+    },
+    // Standalone (chat-less) Document Mode — no chat rows in the response, no
+    // Librarian; scope restricted to `document_store`/`general`.
+    /// v4 standalone `accessible-stores` — `{ stores, projectLibrary: null }`.
+    DocumentStores,
+    /// v4 standalone `recent-documents` — `{ documents }` (project-scope filtered).
+    DocumentsRecent,
+    /// v4 standalone `open-document` — `{ document, content, mtime, isNew }`.
+    DocumentOpen {
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 standalone `read-document` — `{ content, mtime }`.
+    DocumentRead {
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 standalone `write-document` — `{ success, mtime }`.
+    DocumentWrite {
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 standalone `rename-document` — `{ document }`.
+    DocumentRename {
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 standalone `delete-document` — `{ success }`.
+    DocumentDelete {
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    // === end P4.6w ===
 }
 
 /// Typed DTO per variant (the uniffi payoff). `Error` carries the one
@@ -1347,6 +1454,14 @@ pub enum Response {
     /// envelope (`readMountFile` result), and the file-op mutation results. Pinned
     /// by `mount_read_equivalence` (+ later mount-ops differentials).
     MountFile(serde_json::Value),
+    // === P4.6w: documents ===
+    /// A Document Mode body (chat-scoped + standalone): the active/open/recent
+    /// document lists, `{stores, projectLibrary}`, the open
+    /// `{document, content, mtime, librarianMessage}`, the read `{content, mtime}`,
+    /// the resolve `{exists, kind}`, the write/rename/delete envelopes. The exact
+    /// bytes are pinned by `documents_routes_equivalence` (P4.6w).
+    Document(serde_json::Value),
+    // === end P4.6w ===
     Error(CoreError),
 }
 

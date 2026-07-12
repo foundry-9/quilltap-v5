@@ -99,6 +99,10 @@ pub struct EngineAssembly {
     /// `ApiEmbeddingProvider`); `None` keeps read-only embedders valid — the
     /// arms answer "not assembled".
     pub memory_embedding: Option<crate::model::embedding::ErasedEmbeddingProvider>,
+    /// The document-store refresh scheduler (P4.6w, wired at unification to lane
+    /// A's reindex/embed services); `None` = a loud unwired skip at the
+    /// `document_store` write sites.
+    pub mount_refresh: Option<Arc<dyn crate::documents::MountRefreshScheduler>>,
 }
 
 impl EngineAssembly {
@@ -111,6 +115,7 @@ impl EngineAssembly {
             swipe_generate: None,
             provider_actions: None,
             memory_embedding: None,
+            mount_refresh: None,
         }
     }
 }
@@ -227,6 +232,9 @@ struct ReadyEngine {
     /// threaded from `EngineAssembly::memory_embedding` at the P4.6stu
     /// unification — the host supplies the spine's `ApiEmbeddingProvider`).
     memory_embedding: Option<crate::model::embedding::ErasedEmbeddingProvider>,
+    /// The document-store refresh scheduler (P4.6w; `None` until unification wires
+    /// lane A's reindex/embed services).
+    mount_refresh: Option<Arc<dyn crate::documents::MountRefreshScheduler>>,
 }
 
 /// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
@@ -1907,6 +1915,94 @@ impl CoreEngine {
                 ),
                 Err(r) => r,
             },
+            // === P4.6w: documents ===
+            Request::ChatActiveDocument { chat_id } => match self.ready_db() {
+                Ok(db) => super::documents::chat_active_document(&db, &chat_id),
+                Err(r) => r,
+            },
+            Request::ChatOpenDocuments { chat_id } => match self.ready_db() {
+                Ok(db) => super::documents::chat_open_documents(&db, &chat_id),
+                Err(r) => r,
+            },
+            Request::ChatRecentDocuments { chat_id } => match self.ready_db() {
+                Ok(db) => super::documents::chat_recent_documents(&db, &chat_id),
+                Err(r) => r,
+            },
+            Request::ChatAccessibleStores { chat_id, all } => match self.ready_db() {
+                Ok(db) => super::documents::chat_accessible_stores(&db, &chat_id, all),
+                Err(r) => r,
+            },
+            Request::ChatDocumentOpen { chat_id, body } => match self.ready_db() {
+                Ok(db) => super::documents::chat_document_open(&db, &chat_id, body).await,
+                Err(r) => r,
+            },
+            Request::ChatDocumentClose {
+                chat_id,
+                chat_document_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::documents::chat_document_close(&db, &chat_id, chat_document_id).await
+                }
+                Err(r) => r,
+            },
+            Request::ChatDocumentRead { chat_id, body } => match self.ready_db() {
+                Ok(db) => super::documents::chat_document_read(&db, &chat_id, body),
+                Err(r) => r,
+            },
+            Request::ChatDocumentResolve { chat_id, body } => match self.ready_db() {
+                Ok(db) => super::documents::chat_document_resolve(&db, &chat_id, body),
+                Err(r) => r,
+            },
+            Request::ChatDocumentWrite { chat_id, body } => match self.ready_db_and_refresh() {
+                Ok((db, refresh)) => {
+                    super::documents::chat_document_write(&db, &chat_id, body, refresh).await
+                }
+                Err(r) => r,
+            },
+            Request::ChatDocumentRename { chat_id, body } => match self.ready_db_and_refresh() {
+                Ok((db, refresh)) => {
+                    super::documents::chat_document_rename(&db, &chat_id, body, refresh).await
+                }
+                Err(r) => r,
+            },
+            Request::ChatDocumentDelete {
+                chat_id,
+                chat_document_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::documents::chat_document_delete(&db, &chat_id, chat_document_id).await
+                }
+                Err(r) => r,
+            },
+            Request::DocumentStores => match self.ready_db() {
+                Ok(db) => super::documents::document_stores(&db),
+                Err(r) => r,
+            },
+            Request::DocumentsRecent => match self.ready_db() {
+                Ok(db) => super::documents::documents_recent(&db),
+                Err(r) => r,
+            },
+            Request::DocumentOpen { body } => match self.ready_db() {
+                Ok(db) => super::documents::document_open(&db, body).await,
+                Err(r) => r,
+            },
+            Request::DocumentRead { body } => match self.ready_db() {
+                Ok(db) => super::documents::document_read(&db, body),
+                Err(r) => r,
+            },
+            Request::DocumentWrite { body } => match self.ready_db_and_refresh() {
+                Ok((db, refresh)) => super::documents::document_write(&db, body, refresh).await,
+                Err(r) => r,
+            },
+            Request::DocumentRename { body } => match self.ready_db_and_refresh() {
+                Ok((db, refresh)) => super::documents::document_rename(&db, body, refresh).await,
+                Err(r) => r,
+            },
+            Request::DocumentDelete { body } => match self.ready_db() {
+                Ok(db) => super::documents::document_delete(&db, body).await,
+                Err(r) => r,
+            },
+            // === end P4.6w ===
         }
     }
 
@@ -1915,6 +2011,19 @@ impl CoreEngine {
     fn ready_db(&self) -> Result<Db, Response> {
         match &*self.inner.state.lock().unwrap() {
             EngineState::Ready(r) => Ok(r.db.clone()),
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
+    /// The `Db` + the (optional) document-store refresh scheduler under the
+    /// readiness gate (P4.6w). `None` when unwired — the write sites loud-skip
+    /// the refresh. `Err` is the locked refusal.
+    #[allow(clippy::type_complexity)]
+    fn ready_db_and_refresh(
+        &self,
+    ) -> Result<(Db, Option<Arc<dyn crate::documents::MountRefreshScheduler>>), Response> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => Ok((r.db.clone(), r.mount_refresh.clone())),
             EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
         }
     }
@@ -2333,6 +2442,7 @@ fn open_ready(
         swipe_generate: assembly.swipe_generate,
         provider_actions: assembly.provider_actions,
         memory_embedding: assembly.memory_embedding,
+        mount_refresh: assembly.mount_refresh,
     })
 }
 

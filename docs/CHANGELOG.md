@@ -28,6 +28,22 @@ and the `fileOpStatus` HTTP-status mapper. Landed under
 `mime_for_extension` port (the duplicate in `files_routes.rs` removed).
 Differential-proven exact against v4's real code (a 69-row tsx oracle,
 `harness/oracle/cases/mount-chunker.ts`).
+P4.6w (Document Mode server, lane B): the `api::documents` dispatch — the
+11 chat-scoped + 7 standalone Document Mode variants (active/open/recent
+document lists, accessible-stores in both modes, open/close/read/resolve/
+write/rename/delete, plus the standalone stores/recent/open/read/write/
+rename/delete). Wired into `api::types` (the `Request` variants + a
+`Response::Document`) and `api::engine` (dispatch + the
+`MountRefreshScheduler` seam on `EngineAssembly`, defaulting to `None`).
+`refreshDocumentMode` recompute, the recents dedupe (current-chat wins), the
+Librarian open/save/rename/delete announcements, the effectiveScope fallback,
+and the move-sync sweeps are all differential-proven — a 24-case route
+differential over a new committed `documents-{main,mount}.db` fixture drives
+v4's REAL chat-scoped + standalone handlers and diffs response bodies +
+Librarian message text + the chat_documents/documentMode state byte-for-byte.
+Fixture-build gotcha closed: materialize `chat_messages` (via `getMessageCount`)
+so the Librarian post has a table to append to.
+
 P4.6w (Document Mode server, lane B): the `documents` core module — the
 chat-agnostic operator-doc-actions port (`STANDALONE_CHAT_ID`,
 `MAX_RECENT_DOCUMENTS`, `resolveOperatorDocPath`, `resolvedPathExists`,

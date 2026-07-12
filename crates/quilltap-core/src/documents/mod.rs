@@ -664,6 +664,29 @@ pub fn list_all_enabled_stores(
 // Internal helpers
 // ===========================================================================
 
+/// Read a resolved target for a route handler (the `read-document` surface):
+/// `(content, mtime_ms)`, mapping the database NOT_FOUND to
+/// [`DocError::Missing`] (v4's `ENOENT` → 404) and any other store error to
+/// [`DocError::Store`] (→ 500). A non-database resolved path is the host-fs seam.
+pub fn read_route_document(
+    mount: &Connection,
+    resolved: &ResolvedPath,
+) -> Result<(String, i64), DocError> {
+    if resolved.mount_type.as_deref() != Some("database") {
+        return Err(DocError::Fs);
+    }
+    let mp = resolved.mount_point_id.as_deref().ok_or_else(|| {
+        DocError::Store("Database-backed ResolvedPath is missing mountPointId".into())
+    })?;
+    match database_store::read_database_document(mount, mp, &resolved.relative_path) {
+        Ok(doc) => Ok((doc.content, doc.mtime_ms)),
+        Err(StoreError::Store(s)) if s.code == DbStoreErrorCode::NotFound => {
+            Err(DocError::Missing(s.message))
+        }
+        Err(e) => Err(store_err(e)),
+    }
+}
+
 /// Read a database-backed resolved path's content + mtime. Non-database is the
 /// host-fs seam.
 fn read_database(mount: &Connection, resolved: &ResolvedPath) -> Result<ReadDoc, DocError> {

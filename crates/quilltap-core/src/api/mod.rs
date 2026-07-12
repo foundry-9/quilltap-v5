@@ -23,6 +23,7 @@
 pub mod characters;
 pub mod chat_create;
 pub mod chat_send;
+pub mod documents;
 pub mod engine;
 pub mod groups;
 pub mod image_profiles;
