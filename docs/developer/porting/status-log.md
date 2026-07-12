@@ -9041,3 +9041,22 @@ doesn't await them). DEFERRED LOUDLY: the project/general FileBrowser path
 (no project/general listing endpoint consumed this round) and the in-picker
 new-folder control (needs `mountFolderCreate`, not a consumed variant).
 `ng test` 467 (66 files) green.
+
+**Unit 3 — Document Mode split integration (SPA 0.5.47).** Wired the
+`DocumentModeController` + `DocumentApi` into the Salon conversation
+(provided per-screen alongside the terminal controller): configure (chatId
++ a Librarian-append sink that invalidates the chat query so the persisted
+announcement chip appears — the announcement-asymmetry lesson, no bespoke
+append), hydrate on chat load. The `DocumentPane` rides the frozen
+`SplitLayout` `documentContent` slot; `combinedMode` (v4) drives the layout
+(focus wins, else split if either pane is split, else normal), and the
+document + terminal stack via `RightPaneVerticalSplit` when both are open.
+`dividerPosition` OWNERSHIP MOVED off `TerminalModeController` (its signal /
+`setDividerPosition` / hydrate line / `TerminalPaneState` field removed) onto
+`DocumentModeController` — the terminal keeps only `rightPaneVerticalSplit`;
+the salon wires the split's horizontal divider to the document controller
+(v4: the document hook owns it even when only the terminal is open). Added a
+composer "Open document" button (hidden while a doc is open, mirroring the
+terminal button) → the `qt-document-picker`; a selection routes through
+`onSelectDocument` → `openDocument`. `ng test` 467 (66 files) + `ng build`
+green.

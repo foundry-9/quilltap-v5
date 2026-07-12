@@ -28,6 +28,18 @@ import { Icon } from '../ui/icon';
         ></textarea>
 
         <div class="qt-chat-composer-actions">
+          @if (!documentActive()) {
+            <button
+              type="button"
+              class="qt-chat-toolbar-button"
+              title="Open document"
+              aria-label="Open document"
+              (click)="openDocument.emit()"
+            >
+              <qt-icon name="book" class="w-5 h-5" />
+            </button>
+          }
+
           @if (!terminalActive()) {
             <button
               type="button"
@@ -84,11 +96,14 @@ export class ChatComposer {
   readonly hasActiveCharacters = input(true);
   /** Terminal Mode is showing a pane — hide the open-terminal button (v4). */
   readonly terminalActive = input(false);
+  /** Document Mode is showing a pane — hide the open-document button (v4). */
+  readonly documentActive = input(false);
 
   readonly send = output<string>();
   readonly stop = output<void>();
   readonly continue = output<void>();
   readonly openTerminal = output<void>();
+  readonly openDocument = output<void>();
 
   protected readonly text = signal('');
 

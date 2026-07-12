@@ -10,9 +10,9 @@ export type TerminalMode = 'normal' | 'split' | 'focus';
 export interface TerminalPaneState {
   terminalMode: TerminalMode;
   activeTerminalSessionId: string | null;
-  /** Horizontal chat|pane divider (v4 shares this with Document Mode). */
-  dividerPosition: number;
-  /** Vertical split when doc + terminal both stack (ported generic, terminal-only now). */
+  /** Vertical split when doc + terminal both stack. The horizontal
+   *  chat|pane `dividerPosition` is owned by Document Mode (v4; the P4.6x
+   *  ownership move) — the terminal no longer reads or persists it. */
   rightPaneVerticalSplit: number;
 }
 

@@ -44,6 +44,10 @@ import { SplitLayout } from '../../terminal/split-layout';
 import { TerminalPane } from '../../terminal/terminal-pane';
 import { TerminalSessionPicker } from '../../terminal/terminal-session-picker';
 import { TerminalModeController } from '../../terminal/terminal-mode';
+import { DocumentApi } from '../../documents/document-api';
+import { DocumentModeController } from '../../documents/document-mode';
+import { DocumentPane } from '../../documents/document-pane';
+import { DocumentPicker, type DocumentSelection } from '../../documents/document-picker';
 
 /** The next-speaker projection off `chatTurnAction { action: 'query' }`. */
 interface TurnInfo {
@@ -71,7 +75,7 @@ interface CascadePrompt {
   // .qt-chat-layout h-full directly; Angular's host element sits in between).
   host: { class: 'block h-full' },
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [TerminalModeController],
+  providers: [TerminalModeController, DocumentModeController, DocumentApi],
   imports: [
     RouterLink,
     LoadingState,
@@ -84,6 +88,8 @@ interface CascadePrompt {
     SplitLayout,
     TerminalPane,
     TerminalSessionPicker,
+    DocumentPane,
+    DocumentPicker,
   ],
   template: `
     <div class="qt-chat-layout">
@@ -101,12 +107,13 @@ interface CascadePrompt {
           </div>
         } @else {
           <qt-split-layout
-            [mode]="terminalMode.terminalMode()"
-            [dividerPosition]="terminalMode.dividerPosition()"
+            [mode]="combinedMode()"
+            [dividerPosition]="documentMode.dividerPosition()"
             [rightPaneVerticalSplit]="terminalMode.rightPaneVerticalSplit()"
             [chatContent]="chatContentTpl"
+            [documentContent]="documentPaneActive() ? documentPaneTpl : null"
             [terminalContent]="terminalActive() ? terminalPaneTpl : null"
-            (dividerPositionChange)="terminalMode.setDividerPosition($event)"
+            (dividerPositionChange)="documentMode.setDividerPosition($event)"
             (rightPaneVerticalSplitChange)="terminalMode.setRightPaneVerticalSplit($event)"
           />
         }
@@ -154,11 +161,28 @@ interface CascadePrompt {
         [busy]="busy()"
         [hasActiveCharacters]="hasActiveCharacters()"
         [terminalActive]="terminalActive()"
+        [documentActive]="documentPaneActive()"
         (send)="send($event)"
         (stop)="stop()"
         (continue)="continueTurn()"
         (openTerminal)="onOpenTerminal()"
+        (openDocument)="showDocumentPicker.set(true)"
       />
+    </ng-template>
+
+    <ng-template #documentPaneTpl>
+      @if (documentMode.activeEntry(); as entry) {
+        <qt-document-pane
+          [entry]="entry"
+          [mode]="documentMode.documentMode()"
+          (contentChange)="documentMode.handleContentChange(entry.document.id, $event)"
+          (blur)="documentMode.flushSave(entry.document.id)"
+          (rename)="documentMode.renameDocument(entry.document.id, $event)"
+          (close)="documentMode.closeDocument(entry.document.id)"
+          (delete)="documentMode.deleteDocument(entry.document.id)"
+          (toggleFocus)="documentMode.toggleFocusMode()"
+        />
+      }
     </ng-template>
 
     <ng-template #terminalPaneTpl>
@@ -180,6 +204,14 @@ interface CascadePrompt {
       />
     }
 
+    @if (showDocumentPicker() && chatId(); as id) {
+      <qt-document-picker
+        [chatId]="id"
+        (selectDocument)="onSelectDocument($event)"
+        (close)="showDocumentPicker.set(false)"
+      />
+    }
+
     @if (cascade(); as c) {
       <qt-memory-cascade-dialog
         [memoryCount]="c.memoryCount"
@@ -197,6 +229,11 @@ export class SalonConversation {
   private readonly destroyRef = inject(DestroyRef);
   /** Terminal Mode state for this conversation (v4 `useTerminalMode`). */
   protected readonly terminalMode = inject(TerminalModeController);
+  /** Document Mode state for this conversation (v4 `useDocumentMode`). */
+  protected readonly documentMode = inject(DocumentModeController);
+
+  /** The Open-Document picker's visibility (local UX). */
+  protected readonly showDocumentPicker = signal(false);
 
   private readonly params = toSignal(this.route.paramMap, { requireSync: true });
   protected readonly chatId = computed(() => this.params().get('id'));
@@ -208,6 +245,23 @@ export class SalonConversation {
       this.terminalMode.terminalMode() !== 'normal',
   );
 
+  /** The document pane is showing when a document is open (v4 `documentActive`). */
+  protected readonly documentPaneActive = computed(
+    () => this.documentMode.activeDocument() !== null,
+  );
+
+  /**
+   * Combine the two panes' modes for the split layout (v4 `combinedMode`): focus
+   * on either side wins, else split if either is split, else normal.
+   */
+  protected readonly combinedMode = computed<'normal' | 'split' | 'focus'>(() => {
+    const d = this.documentMode.documentMode();
+    const t = this.terminalMode.terminalMode();
+    if (d === 'focus' || t === 'focus') return 'focus';
+    if (d === 'split' || t === 'split') return 'split';
+    return 'normal';
+  });
+
   constructor() {
     // Bind the terminal controller to this conversation (refetch after spawn so
     // the Ariel session-opened announcement appears) and hydrate on chat load.
@@ -216,8 +270,15 @@ export class SalonConversation {
       this.terminalMode.configure(chatId, () => {
         void this.chatQuery.refetch();
       });
+      // The Librarian open/save/rename/delete announcements are persisted
+      // server-side; refetch so the collapsed Librarian chip appears (the
+      // announcement-asymmetry lesson — no bespoke append path).
+      this.documentMode.configure(chatId, () => {
+        void this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+      });
     }
     effect(() => this.terminalMode.hydrate(this.chat()));
+    effect(() => this.documentMode.hydrate(this.chat()));
 
     // A terminal announcement (open/close/periodic summary) landed → refetch the
     // chat so the new Ariel message appears (v4's salon-page listeners).
@@ -259,6 +320,12 @@ export class SalonConversation {
   /** Terminal-open entry: the controller re-attaches, shows the picker, or spawns. */
   protected onOpenTerminal(): void {
     void this.terminalMode.requestOpen();
+  }
+
+  /** A picker selection opens (or creates) the document, then closes the picker. */
+  protected onSelectDocument(params: DocumentSelection): void {
+    this.showDocumentPicker.set(false);
+    void this.documentMode.openDocument(params);
   }
 
   /** The message list, so a user send can force a scroll-to-bottom (v4 `scrollOnUserMessage`). */

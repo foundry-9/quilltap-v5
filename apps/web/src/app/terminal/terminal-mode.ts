@@ -13,7 +13,6 @@ export interface ChatTerminalFields {
   terminalMode?: TerminalMode | null;
   activeTerminalSessionId?: string | null;
   rightPaneVerticalSplit?: number | null;
-  dividerPosition?: number | null;
 }
 
 /** Clamp a split/divider percentage to the [20, 80] band, rounded (v4). */
@@ -49,7 +48,6 @@ export class TerminalModeController {
   readonly terminalMode = signal<TerminalMode>('normal');
   readonly activeTerminalSessionId = signal<string | null>(null);
   readonly rightPaneVerticalSplit = signal<number>(50);
-  readonly dividerPosition = signal<number>(45);
 
   readonly showTerminalPicker = signal(false);
   readonly pickerSessions = signal<PtySessionMeta[]>([]);
@@ -89,7 +87,6 @@ export class TerminalModeController {
     const incomingMode = (chat.terminalMode ?? 'normal') as TerminalMode;
     const incomingSessionId = chat.activeTerminalSessionId ?? null;
     this.rightPaneVerticalSplit.set(chat.rightPaneVerticalSplit ?? 50);
-    this.dividerPosition.set(chat.dividerPosition ?? 45);
 
     if (incomingMode !== 'normal' && incomingSessionId) {
       const token = ++this.hydrateToken;
@@ -199,12 +196,6 @@ export class TerminalModeController {
     const clamped = clampSplit(position);
     this.rightPaneVerticalSplit.set(clamped);
     void this.persist({ rightPaneVerticalSplit: clamped });
-  }
-
-  setDividerPosition(position: number): void {
-    const clamped = clampSplit(position);
-    this.dividerPosition.set(clamped);
-    void this.persist({ dividerPosition: clamped });
   }
 
   private async enterModeWithSession(sessionId: string): Promise<void> {

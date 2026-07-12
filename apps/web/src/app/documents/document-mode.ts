@@ -139,12 +139,17 @@ export class DocumentModeController {
   /** True while any document is open (v4 `documentActive`). */
   readonly documentActive = computed(() => this.openDocs().length > 0);
 
-  /** The focused document, or the first open one (v4 `activeDocument`). */
-  readonly activeDocument = computed<ActiveDocument | null>(() => {
+  /** The focused open-doc entry, or the first one (drives the single pane). */
+  readonly activeEntry = computed<OpenDocEntry | null>(() => {
     const docs = this.openDocs();
     const focused = this.focusedDocId();
-    return docs.find((e) => e.document.id === focused)?.document ?? docs[0]?.document ?? null;
+    return docs.find((e) => e.document.id === focused) ?? docs[0] ?? null;
   });
+
+  /** The focused document, or the first open one (v4 `activeDocument`). */
+  readonly activeDocument = computed<ActiveDocument | null>(
+    () => this.activeEntry()?.document ?? null,
+  );
 
   // Per-document refs keyed by chat_documents row id (v4's useRef maps).
   private readonly contentRefs = new Map<string, string>();

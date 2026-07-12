@@ -1054,6 +1054,16 @@ dispatch client (`DocumentApi`) reads lane B's document family + lane A's
 document block + `mountFilesList` request variants, `documentMode` merged
 onto `ChatDetail`. SPA 0.5.44.
 
+P4.6x unit 3 — Document Mode split integration. The `DocumentModeController`
++ `DocumentPane` ride the frozen `SplitLayout` / `RightPaneVerticalSplit`
+`documentContent` slot; a combined mode (focus/split/normal across the two
+panes) drives the layout, and the document + terminal stack vertically when
+both are open. `dividerPosition` ownership moved off the terminal controller
+onto Document Mode (matching v4); the terminal keeps `rightPaneVerticalSplit`.
+A composer "Open document" button opens the picker; a selection opens/creates
+the doc; Librarian announcements refetch the chat so the collapsed chip
+appears. SPA 0.5.47.
+
 P4.6x unit 4 — the `qt-document-picker` modal (v4 `DocumentPickerModal`,
 chat-scoped): the source step (new blank, recents, the four store
 accordions + look-everywhere) and the browse step (a mount point's folder
