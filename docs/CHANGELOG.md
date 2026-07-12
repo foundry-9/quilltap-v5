@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+P4.6r lane C, part 1 — the Templates & Prompts and Images settings tabs
+(SPA-only, tier-4). The two placeholder tabs now render v4's management
+surfaces: the Roleplay Templates manager (built-in read-only grid with
+Preview + Copy-as-New; My Templates create/edit/delete-with-confirm; the
+full Formatting Delimiters editor — wrap/linePrefix/tagPrefix + flourishes;
+narration single/pair; the global Default Template selector over
+chatSettings; duplicate-name 409 + built-in-guard 403 surfaced verbatim)
+and the Image Profiles card (default/uncensored badges; create/edit via a
+provider-select + filtered API-key-select + JSON parameters form;
+delete-with-confirm; isDefault). The listing-surface DTOs + Request
+interfaces landed as the byte-identical B↔C core-contract appendix block;
+the SPA dispatches them through a localized cast until lane A wires the
+`CoreRequest` union at unification. Deferred loudly: the image-profile
+Validate / list-models (their variants are refusal-armed), the structured
+per-provider parameters editor (a JSON textarea stands in), and the
+"Draft formatting instructions" template helper. SPA 0.5.23.
+
 P4.6q (New-Chat SPA, lane B) — the Salon-list rider + the e2e beat. Added
 the "New Chat" affordance to the Salon-list header (the empty-state link
 and the project links now resolve to `/salon/new`). Authored

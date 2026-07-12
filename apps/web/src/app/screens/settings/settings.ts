@@ -5,8 +5,10 @@ import { ActivatedRoute } from '@angular/router';
 import { BrandName } from '../../ui/brand-name';
 import { EntityTabs, type Tab } from '../../ui/entity-tabs';
 import { AppearanceTab } from './appearance/appearance-tab';
+import { ImagesTab } from './images/images-tab';
 import { SettingsPlaceholder } from './placeholder-tab';
 import { ProvidersTab } from './providers/providers-tab';
+import { TemplatesTab } from './templates/templates-tab';
 
 /**
  * The Settings screen shell (v4 `app/settings/SettingsView.tsx`): the seven-tab
@@ -18,7 +20,15 @@ import { ProvidersTab } from './providers/providers-tab';
 @Component({
   selector: 'qt-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [EntityTabs, BrandName, ProvidersTab, AppearanceTab, SettingsPlaceholder],
+  imports: [
+    EntityTabs,
+    BrandName,
+    ProvidersTab,
+    AppearanceTab,
+    TemplatesTab,
+    ImagesTab,
+    SettingsPlaceholder,
+  ],
   template: `
     <div class="qt-page-container" [attr.data-subsystem]="subsystem()">
       <div class="qt-settings-header mb-8">
@@ -44,10 +54,10 @@ import { ProvidersTab } from './providers/providers-tab';
               <qt-settings-placeholder title="Commonplace Book" />
             }
             @case ('images') {
-              <qt-settings-placeholder title="Images" />
+              <qt-settings-images />
             }
             @case ('templates') {
-              <qt-settings-placeholder title="Templates &amp; Prompts" />
+              <qt-settings-templates />
             }
             @case ('system') {
               <qt-settings-placeholder title="Data &amp; System" />
