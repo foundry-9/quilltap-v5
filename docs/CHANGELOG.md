@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.6n unit 4: added the general (instance-wide "Quilltap General")
+scenarios family — six NEW dispatch variants (`scenarioList`/`Create`/
+`Get`/`Update`/`Rename`/`Delete`) + `api::scenarios` general handlers that
+resolve the singleton mount from `instance_settings.generalMountPointId`,
+with the pre-provision race arms (GET → `{mountPointId:null, …}`; mutations
+→ 400/404 "Quilltap General mount has not been provisioned yet"). Proven by
+the `scenarios_routes` differential extended with 13 general cases,
+including the default-conflict warning (two scenarios both marking
+isDefault → the alphabetically-first wins, the other is demoted-in-response)
+and the three race arms (the pointer deleted on both differential sides).
+
 P4.6n unit 3: made the projects scenarios surface live — the six
 `projectScenario*` dispatch arms, mirroring the groups family over the
 shared `api::scenarios` CRUD but ensuring ONLY `Scenarios/` (no Knowledge)

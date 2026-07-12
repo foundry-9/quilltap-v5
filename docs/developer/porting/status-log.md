@@ -7117,3 +7117,30 @@ cases over Iota (opening[default], climax): list, get, get-missing(404),
 get-nested(400), create(+isDefault demotion, ts-blanked), collision(400),
 update(ts-blanked), empty-body(400), rename, rename-conflict(400), delete,
 delete-missing(404). Core 0.0.178 → 0.0.179, harness 0.0.162 → 0.0.163.
+
+## P4.6n (lane A) unit 4 — General (instance-wide) scenarios (2026-07-11, in progress)
+
+Added the general family. Six NEW `Request` variants (`ScenarioList`,
+`ScenarioCreate {scenario}`, `ScenarioGet/Update/Rename/Delete {scenarioPath …}`
+— the bare `scenario*` names from the shared contract) + the `api::scenarios`
+general handlers, which resolve the singleton "Quilltap General" store from
+`instance_settings.generalMountPointId` (`general_mount_id` — read the pointer,
+ensure `Scenarios/`) and reuse the same shared CRUD as groups/projects.
+
+The pre-provision RACE ARMS survive: GET → `{mountPointId:null, scenarios:[],
+warnings:[]}`; POST → 400 "Quilltap General mount has not been provisioned yet —
+restart the server"; the item routes → 404 "Quilltap General mount has not been
+provisioned yet" (the `not_found` helper's " not found" suffix matches v4's
+`notFound(msg)` byte-for-byte).
+
+**Differential:** `scenarios_routes_equivalence` extended with 13 general
+cases — list (the **default-conflict warning**: aurora & dusk both raw-default
+→ aurora wins, dusk demoted-in-response, warning names both), get, get-missing(404),
+create(+isDefault demoting BOTH siblings, ts-blanked), collision(400),
+update(ts-blanked), rename (baked, the raw-default state travels with the move →
+warning persists), delete (last conflict gone → no warning), and the three race
+arms (`instance_settings.generalMountPointId` deleted on BOTH sides via
+`unprovisionGeneral` / `db.write_blocking`). The whole surface is now live —
+43 scenario cases total (18 groups + 12 projects + 13 general). Retired the
+`scenarios::not_available` refusal helper. Core 0.0.179 → 0.0.180,
+harness 0.0.163 → 0.0.164.

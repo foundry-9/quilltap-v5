@@ -51,15 +51,6 @@ fn bad_request(msg: impl Into<String>) -> Response {
     Response::error(ErrorKind::BadRequest, msg)
 }
 
-/// The loud "recognized but not yet available" refusal for the general
-/// scenarios variants whose handler lands in a later P4.6n unit.
-pub fn not_available(action: &str) -> Response {
-    Response::error(
-        ErrorKind::Internal,
-        format!("The '{action}' scenarios action is recognized but not yet available."),
-    )
-}
-
 /// Map a scenario write/DB failure to an Internal response (the family routes'
 /// outer catch → serverError).
 pub(crate) fn write_err(e: ScenarioWriteError) -> Response {

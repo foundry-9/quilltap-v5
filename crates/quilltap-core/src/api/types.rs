@@ -725,6 +725,36 @@ pub enum Request {
     GroupScenariosUnion {
         character_ids: Vec<String>,
     },
+    // --- General (instance-wide "Quilltap General") scenarios (P4.6n) ---
+    /// v4 `GET /api/v1/scenarios` — the instance-wide scenario list (race arm:
+    /// `mountPointId: null` + empty arrays when unprovisioned).
+    ScenarioList,
+    /// v4 `POST /api/v1/scenarios` (race arm: 400 when unprovisioned).
+    ScenarioCreate {
+        scenario: serde_json::Value,
+    },
+    /// v4 `GET /api/v1/scenarios/[scenarioPath]`.
+    #[serde(rename_all = "camelCase")]
+    ScenarioGet {
+        scenario_path: String,
+    },
+    /// v4 `PUT /api/v1/scenarios/[scenarioPath]`.
+    #[serde(rename_all = "camelCase")]
+    ScenarioUpdate {
+        scenario_path: String,
+        scenario: serde_json::Value,
+    },
+    /// v4 `POST /api/v1/scenarios/[scenarioPath]?action=rename`.
+    #[serde(rename_all = "camelCase")]
+    ScenarioRename {
+        scenario_path: String,
+        new_filename: String,
+    },
+    /// v4 `DELETE /api/v1/scenarios/[scenarioPath]`.
+    #[serde(rename_all = "camelCase")]
+    ScenarioDelete {
+        scenario_path: String,
+    },
     // --- Projects ---
     /// v4 `GET /api/v1/projects` — createdAt-desc list + `_count` (BARE envelope).
     ProjectList,

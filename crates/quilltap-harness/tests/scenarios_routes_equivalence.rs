@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use quilltap_core::api::types::{ErrorKind, Response};
-use quilltap_core::api::{groups, projects};
+use quilltap_core::api::{groups, projects, scenarios};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -153,6 +153,19 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         &spec.test_pepper_base64,
     )
     .expect("open db")
+}
+
+/// Delete the general mount pointer to exercise the pre-provision race arms
+/// (both differential sides drop `instance_settings.generalMountPointId`).
+fn unprovision_general(db: &Db) {
+    db.write_blocking(|ws| {
+        ws.main().connection().execute(
+            "DELETE FROM \"instance_settings\" WHERE \"key\" = 'generalMountPointId'",
+            [],
+        )?;
+        Ok(())
+    })
+    .expect("unprovision general");
 }
 
 #[test]
@@ -479,6 +492,99 @@ fn scenarios_routes_match_oracle() {
         let db = fresh_db(&spec, "p_delete_miss");
         let resp = rt.block_on(projects::project_scenario_delete(&db, IOTA, "ghost.md"));
         err("project_delete_missing", &resp, &mut failed);
+    }
+
+    // --- General (aurora[default] + dusk[default] → default-conflict) ---
+    {
+        let db = fresh_db(&spec, "gen_list");
+        ok(
+            "general_list",
+            &rt.block_on(scenarios::scenario_list(&db)),
+            false,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "gen_get");
+        ok(
+            "general_get",
+            &rt.block_on(scenarios::scenario_get(&db, "aurora.md".into())),
+            false,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "gen_get_miss");
+        err(
+            "general_get_missing",
+            &rt.block_on(scenarios::scenario_get(&db, "ghost.md".into())),
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "gen_create");
+        let resp = rt.block_on(scenarios::scenario_create(
+            &db,
+            json!({ "filename": "Twilight", "isDefault": true, "body": "Between." }),
+        ));
+        ok("general_create", &resp, true, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "gen_collide");
+        let resp = rt.block_on(scenarios::scenario_create(
+            &db,
+            json!({ "filename": "aurora", "body": "dup" }),
+        ));
+        err("general_create_collision", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "gen_update");
+        let resp = rt.block_on(scenarios::scenario_update(
+            &db,
+            "aurora.md".into(),
+            json!({ "name": "Aurora II", "body": "Brighter." }),
+        ));
+        ok("general_update", &resp, true, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "gen_rename");
+        let resp = rt.block_on(scenarios::scenario_rename(
+            &db,
+            "dusk.md".into(),
+            "evening".into(),
+        ));
+        ok("general_rename", &resp, false, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "gen_delete");
+        let resp = rt.block_on(scenarios::scenario_delete(&db, "dusk.md".into()));
+        ok("general_delete", &resp, false, &mut failed);
+    }
+    // --- General: pre-provision race arms ---
+    {
+        let db = fresh_db(&spec, "gen_list_unprov");
+        unprovision_general(&db);
+        ok(
+            "general_list_unprov",
+            &rt.block_on(scenarios::scenario_list(&db)),
+            false,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "gen_create_unprov");
+        unprovision_general(&db);
+        let resp = rt.block_on(scenarios::scenario_create(
+            &db,
+            json!({ "filename": "x", "body": "y" }),
+        ));
+        err("general_create_unprov", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "gen_get_unprov");
+        unprovision_general(&db);
+        let resp = rt.block_on(scenarios::scenario_get(&db, "aurora.md".into()));
+        err("general_get_unprov", &resp, &mut failed);
     }
 
     assert!(failed.is_empty(), "scenarios-routes FAILED: {failed:?}");

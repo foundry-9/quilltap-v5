@@ -97,6 +97,18 @@ function applyMocks(spec: Spec): void {
 interface CaseSpec {
   name: string;
   run: () => Promise<{ status: number; body: unknown }>;
+  /** Runs after initializeDatabase, before `run` — e.g. to unprovision the
+   *  general mount (delete instance_settings.generalMountPointId). */
+  prep?: () => Promise<void>;
+}
+
+/** Delete the general mount pointer to exercise the pre-provision race arms. */
+async function unprovisionGeneral(): Promise<void> {
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const main = getRawDatabase() as unknown as {
+    prepare: (s: string) => { run: (...a: unknown[]) => unknown };
+  };
+  main.prepare('DELETE FROM "instance_settings" WHERE "key" = ?').run('generalMountPointId');
 }
 
 async function loadRoute(path: string): Promise<Record<string, (...a: unknown[]) => Promise<unknown>>> {
@@ -131,6 +143,7 @@ async function runCase(
   );
   await initializeDatabase();
   try {
+    if (c.prep) await c.prep();
     const out = await c.run();
     return { name: c.name, status: out.status, body: out.body };
   } finally {
@@ -182,6 +195,22 @@ async function projectItem(
   const route = await loadRoute('@/app/api/v1/projects/[id]/scenarios/[scenarioPath]/route');
   const req = mockRequest(`${B}/projects/${id}/scenarios/${scenarioPath}${query}`, body);
   const ctx = { params: Promise.resolve({ id, scenarioPath }) };
+  return respond(await route[method](req, ctx));
+}
+async function generalCollection(method: 'GET' | 'POST', body?: unknown) {
+  const route = await loadRoute('@/app/api/v1/scenarios/route');
+  const req = mockRequest(`${B}/scenarios`, body);
+  return respond(await route[method](req));
+}
+async function generalItem(
+  method: 'GET' | 'PUT' | 'POST' | 'DELETE',
+  scenarioPath: string,
+  body?: unknown,
+  query = '',
+) {
+  const route = await loadRoute('@/app/api/v1/scenarios/[scenarioPath]/route');
+  const req = mockRequest(`${B}/scenarios/${scenarioPath}${query}`, body);
+  const ctx = { params: Promise.resolve({ scenarioPath }) };
   return respond(await route[method](req, ctx));
 }
 
@@ -308,6 +337,40 @@ async function main(): Promise<void> {
     },
     { name: 'project_delete', run: () => projectItem('DELETE', IOTA, 'climax.md') },
     { name: 'project_delete_missing', run: () => projectItem('DELETE', IOTA, 'ghost.md') },
+    // --- General (aurora[default] + dusk[default] → the default-conflict) ---
+    { name: 'general_list', run: () => generalCollection('GET') },
+    { name: 'general_get', run: () => generalItem('GET', 'aurora.md') },
+    { name: 'general_get_missing', run: () => generalItem('GET', 'ghost.md') },
+    {
+      name: 'general_create',
+      run: () =>
+        generalCollection('POST', { filename: 'Twilight', isDefault: true, body: 'Between.' }),
+    },
+    {
+      name: 'general_create_collision',
+      run: () => generalCollection('POST', { filename: 'aurora', body: 'dup' }),
+    },
+    {
+      name: 'general_update',
+      run: () => generalItem('PUT', 'aurora.md', { name: 'Aurora II', body: 'Brighter.' }),
+    },
+    {
+      name: 'general_rename',
+      run: () => generalItem('POST', 'dusk.md', { newFilename: 'evening' }, '?action=rename'),
+    },
+    { name: 'general_delete', run: () => generalItem('DELETE', 'dusk.md') },
+    // --- General: pre-provision race arms (mount pointer deleted) ---
+    { name: 'general_list_unprov', prep: unprovisionGeneral, run: () => generalCollection('GET') },
+    {
+      name: 'general_create_unprov',
+      prep: unprovisionGeneral,
+      run: () => generalCollection('POST', { filename: 'x', body: 'y' }),
+    },
+    {
+      name: 'general_get_unprov',
+      prep: unprovisionGeneral,
+      run: () => generalItem('GET', 'aurora.md'),
+    },
   ];
 
   const outLines: string[] = [];

@@ -1273,6 +1273,38 @@ impl CoreEngine {
                 Err(r) => r,
             },
 
+            // --- General (instance-wide) scenarios (P4.6n) -------------------
+            Request::ScenarioList => match self.ready_db() {
+                Ok(db) => super::scenarios::scenario_list(&db).await,
+                Err(r) => r,
+            },
+            Request::ScenarioCreate { scenario } => match self.ready_db() {
+                Ok(db) => super::scenarios::scenario_create(&db, scenario).await,
+                Err(r) => r,
+            },
+            Request::ScenarioGet { scenario_path } => match self.ready_db() {
+                Ok(db) => super::scenarios::scenario_get(&db, scenario_path).await,
+                Err(r) => r,
+            },
+            Request::ScenarioUpdate {
+                scenario_path,
+                scenario,
+            } => match self.ready_db() {
+                Ok(db) => super::scenarios::scenario_update(&db, scenario_path, scenario).await,
+                Err(r) => r,
+            },
+            Request::ScenarioRename {
+                scenario_path,
+                new_filename,
+            } => match self.ready_db() {
+                Ok(db) => super::scenarios::scenario_rename(&db, scenario_path, new_filename).await,
+                Err(r) => r,
+            },
+            Request::ScenarioDelete { scenario_path } => match self.ready_db() {
+                Ok(db) => super::scenarios::scenario_delete(&db, scenario_path).await,
+                Err(r) => r,
+            },
+
             // --- Projects family (P4.6k) ------------------------------------
             Request::ProjectList => match self.ready_db() {
                 Ok(db) => super::projects::project_list(&db),
