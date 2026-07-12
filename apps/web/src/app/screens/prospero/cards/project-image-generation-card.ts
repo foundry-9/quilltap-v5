@@ -1,10 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
-import { injectQueryClient } from '@tanstack/angular-query-experimental';
+import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../../core/core-client';
-import type { ProjectDetail } from '../../../core/core-contract';
+import type { ImageProfileDto, ProjectDetail } from '../../../core/core-contract';
 import { CollapsibleCard } from '../../../ui/collapsible-card';
 import { ErrorAlert } from '../../../ui/error-alert';
+import { fetchImageProfiles, imageProfileKeys } from '../../settings/images/image-profiles.api';
 import { projectKeys, updateProject } from '../projects.api';
 import { ProjectAestheticField } from './project-aesthetic-field';
 
@@ -12,12 +13,11 @@ import { ProjectAestheticField } from './project-aesthetic-field';
  * The Image Generation card (v4 `ImageGenerationCard.tsx`, full-width): four
  * immediate-save selects plus the two aesthetic editors.
  *
- * LIVE: Avatar Generation, Announce Lantern Images, and Story-Background display
- * mode are static-option immediate selects (each PUTs one field). DEFERRED
- * LOUDLY: the Default Image Profile select needs the image-profiles listing
- * (v4 `GET /api/v1/image-profiles`), not a ported dispatch surface this round →
- * disabled with a v4-register tooltip. The background RENDER defers with the
- * Salon-side story-background work; the display-mode select still saves.
+ * LIVE: Avatar Generation, Announce Lantern Images, Story-Background display
+ * mode, and the Default Image Profile picker (over the P4.6p image-profiles
+ * listing, binding the project's `defaultImageProfileId`) — each PUTs one field.
+ * The background RENDER defers with the Salon-side story-background work; the
+ * display-mode select still saves.
  */
 @Component({
   selector: 'qt-project-image-generation-card',
@@ -67,11 +67,21 @@ import { ProjectAestheticField } from './project-aesthetic-field';
           <select
             class="qt-input w-full max-w-xs"
             aria-label="Default Image Profile"
-            title="Choosing a specific image profile is not yet available"
-            disabled
+            [disabled]="savingProfile()"
+            (change)="onImageProfile($event)"
           >
-            <option>Inherit from global default</option>
+            <option value="" [selected]="imageProfileValue() === ''">
+              Inherit from global default
+            </option>
+            @for (p of imageProfiles(); track p.id) {
+              <option [value]="p.id" [selected]="imageProfileValue() === p.id">
+                {{ p.name }} ({{ p.provider }} / {{ p.modelName }})
+              </option>
+            }
           </select>
+          @if (savingProfile()) {
+            <p class="qt-text-xs qt-text-secondary mt-1">Saving…</p>
+          }
         </div>
 
         <div class="p-3 rounded-lg qt-border qt-bg-surface">
@@ -156,6 +166,17 @@ export class ProjectImageGenerationCard {
   private readonly core = inject(CoreClient);
   private readonly queryClient = injectQueryClient();
   protected readonly saveError = signal<string | null>(null);
+  protected readonly savingProfile = signal(false);
+
+  private readonly profilesQuery = injectQuery(() => ({
+    queryKey: imageProfileKeys.list(),
+    queryFn: (): Promise<ImageProfileDto[]> => fetchImageProfiles(this.core),
+  }));
+
+  protected readonly imageProfiles = computed(() => this.profilesQuery.data() ?? []);
+  protected readonly imageProfileValue = computed(
+    () => this.project().defaultImageProfileId ?? '',
+  );
 
   protected readonly avatarValue = computed(() =>
     triState(this.project().defaultAvatarGenerationEnabled),
@@ -199,6 +220,19 @@ export class ProjectImageGenerationCard {
   protected onBackground(event: Event): void {
     const v = (event.target as HTMLSelectElement).value;
     void this.save({ backgroundDisplayMode: v }, 'Failed to update background mode');
+  }
+
+  protected async onImageProfile(event: Event): Promise<void> {
+    const v = (event.target as HTMLSelectElement).value;
+    this.savingProfile.set(true);
+    try {
+      await this.save(
+        { defaultImageProfileId: v || null },
+        'Failed to update default image profile',
+      );
+    } finally {
+      this.savingProfile.set(false);
+    }
   }
 
   private async save(patch: Record<string, unknown>, fallback: string): Promise<void> {

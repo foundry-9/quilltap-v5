@@ -194,15 +194,15 @@ describe('ProjectModelBehaviorCard', () => {
     expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeTruthy();
   });
 
-  it('the Default Roleplay Template select is a disabled (deferred) affordance', async () => {
+  it('the Default Roleplay Template select is live (P4.6r) and enabled', async () => {
     const fixture = await render(
-      stubClient(() => ({})),
+      stubClient((r) => (r.type === 'roleplayTemplateList' ? [] : {})),
       project(),
     );
     const rp = fixture.nativeElement.querySelector(
       'select[aria-label="Default Roleplay Template"]',
     ) as HTMLSelectElement;
-    expect(rp.disabled).toBe(true);
+    expect(rp.disabled).toBe(false);
   });
 });
 
@@ -412,7 +412,7 @@ describe('ProjectImageGenerationCard', () => {
     expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeTruthy();
   });
 
-  it('the Default Image Profile select is a disabled (deferred) affordance', async () => {
+  it('the Default Image Profile select is live (P4.6r) and enabled', async () => {
     const fixture = await render(
       stubClient((r) => (r.type === 'projectAestheticGet' ? { content: '' } : {})),
       project(),
@@ -420,7 +420,7 @@ describe('ProjectImageGenerationCard', () => {
     const prof = fixture.nativeElement.querySelector(
       'select[aria-label="Default Image Profile"]',
     ) as HTMLSelectElement;
-    expect(prof.disabled).toBe(true);
+    expect(prof.disabled).toBe(false);
   });
 
   it('round-trips the aesthetic content byte-exact through the mocked client', async () => {

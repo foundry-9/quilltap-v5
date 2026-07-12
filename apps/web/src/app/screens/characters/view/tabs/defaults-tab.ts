@@ -1,13 +1,15 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { injectQueryClient } from '@tanstack/angular-query-experimental';
+import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../../../core/core-client';
 import type {
   CharacterConnectionProfile,
   CharacterDetail,
   CharacterListItem,
+  ImageProfileDto,
 } from '../../../../core/core-contract';
+import { fetchImageProfiles, imageProfileKeys } from '../../../settings/images/image-profiles.api';
 import { characterKeys } from '../../characters.api';
 
 /** v4 `lib/constants/character.ts` — the virtual "User Acts As Character" profile id. */
@@ -25,6 +27,7 @@ interface SavingState {
   canDressThemselves: boolean;
   canCreateOutfits: boolean;
   timestampConfig: boolean;
+  imageProfile: boolean;
 }
 
 /** v4 `components/settings/chat-settings/types.ts` `TIMESTAMP_MODES` (labels/copy verbatim). */
@@ -48,8 +51,9 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
  * `characterUpdate` PUT — except the default partner, which rides the
  * dedicated `characterSetDefaultPartner` op. Every save invalidates the
  * shared character-detail query so the rest of the screen resyncs. The
- * image-generation-profile picker has no contract variant this round (the
- * P4.6d deferral) and renders disabled with a note.
+ * image-generation-profile picker fetches the P4.6p image-profiles listing and
+ * binds the character's `defaultImageProfileId` (v4's shared `ImageProfilePicker`
+ * rendered as a plain `[selected]`-per-option select this round).
  *
  * The timestamp-config card is a SIMPLIFIED port of v4's
  * `TimestampConfigCard` — mode, format, and the `EVERY_N_MINUTES` interval
@@ -150,19 +154,30 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
         </div>
       </div>
 
-      <!-- Image Profile (deferred — no contract variant) -->
+      <!-- Image Profile -->
       <div class="character-section-card rounded-lg border qt-border-default qt-bg-card p-6">
         <h2 class="qt-heading-4 text-foreground mb-2">Image Generation Profile</h2>
         <p class="qt-text-small mb-4">
           The default image generation profile for creating images during chats. Optional.
         </p>
-        <select
-          class="qt-select w-full"
-          disabled
-          title="Image-generation profiles are not yet available in this contract"
-        >
-          <option>Not yet available</option>
-        </select>
+        <div class="flex items-center gap-3">
+          <!-- [selected] per option (async options load after first render). -->
+          <select
+            class="qt-select flex-1"
+            [disabled]="saving().imageProfile"
+            (change)="onImageProfileChange($any($event.target).value)"
+          >
+            <option value="" [selected]="imageProfileValue() === ''">No image generation</option>
+            @for (profile of imageProfiles(); track profile.id) {
+              <option [value]="profile.id" [selected]="imageProfileValue() === profile.id">
+                {{ profileLabel(profile) }}
+              </option>
+            }
+          </select>
+          @if (saving().imageProfile) {
+            <span class="qt-text-small">Saving…</span>
+          }
+        </div>
       </div>
 
       <!-- Default System Prompt -->
@@ -417,7 +432,30 @@ export class CharacterDefaultsTab {
     canDressThemselves: false,
     canCreateOutfits: false,
     timestampConfig: false,
+    imageProfile: false,
   });
+
+  private readonly profilesQuery = injectQuery(() => ({
+    queryKey: imageProfileKeys.list(),
+    queryFn: (): Promise<ImageProfileDto[]> => fetchImageProfiles(this.core),
+  }));
+
+  protected readonly imageProfiles = computed(() => this.profilesQuery.data() ?? []);
+  protected readonly imageProfileValue = computed(
+    () => this.character().defaultImageProfileId ?? '',
+  );
+
+  /** v4 shared `ImageProfilePicker` option label: name (model) + default / no-key suffixes. */
+  protected profileLabel(profile: ImageProfileDto): string {
+    let label = `${profile.name} (${profile.modelName})`;
+    if (profile.isDefault) {
+      label += ' [Default]';
+    }
+    if (!profile.apiKey) {
+      label += ' ⚠️ No API Key';
+    }
+    return label;
+  }
 
   /** v4 surfaces every failed save via `showErrorToast`; v5's affordance is
    *  the tab-level alert. Without this, a server-rejected save silently snaps
@@ -523,6 +561,14 @@ export class CharacterDefaultsTab {
       'systemPrompt',
       { defaultSystemPromptId: value || null },
       'Failed to update default system prompt',
+    );
+  }
+
+  protected onImageProfileChange(value: string): void {
+    void this.save(
+      'imageProfile',
+      { defaultImageProfileId: value || null },
+      'Failed to update image profile',
     );
   }
 

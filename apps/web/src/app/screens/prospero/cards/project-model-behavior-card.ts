@@ -1,23 +1,23 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
-import { injectQueryClient } from '@tanstack/angular-query-experimental';
+import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../../core/core-client';
-import type { ProjectDetail } from '../../../core/core-contract';
+import type { ProjectDetail, RoleplayTemplateDto } from '../../../core/core-contract';
 import { CollapsibleCard } from '../../../ui/collapsible-card';
 import { ErrorAlert } from '../../../ui/error-alert';
+import { fetchRoleplayTemplates, templateKeys } from '../../settings/templates/templates.api';
 import { projectKeys, updateProject } from '../projects.api';
 
 /**
  * The Model Behavior card (v4 `ModelBehaviorCard.tsx`): immediate-save selects.
- * Agent Mode (inherit/enabled/disabled) and Answer Confirmation
- * (inherit/ON/OFF) are static-option selects and land LIVE — each PUTs one field
- * on change and surfaces a failed save with v4's fallback microcopy.
+ * Agent Mode (inherit/enabled/disabled), Answer Confirmation (inherit/ON/OFF),
+ * and the Default Roleplay Template picker land LIVE — each PUTs one field on
+ * change and surfaces a failed save with v4's fallback microcopy. The template
+ * picker fetches the roleplay-templates listing (P4.6p) and binds the project's
+ * `defaultRoleplayTemplateId`.
  *
- * DEFERRED LOUDLY: the Default Roleplay Template select needs the
- * roleplay-templates listing (v4 `GET /api/v1/roleplay-templates`), not a ported
- * dispatch surface this round → disabled with a v4-register tooltip. The Default
- * Tool Settings row (v4 `ProjectToolSettingsModal`, needs a tools-listing
- * surface v5 doesn't expose) is likewise a disabled affordance.
+ * DEFERRED LOUDLY: the Default Tool Settings row (v4 `ProjectToolSettingsModal`,
+ * needs a tools-listing surface v5 doesn't expose) stays a disabled affordance.
  */
 @Component({
   selector: 'qt-project-model-behavior-card',
@@ -90,11 +90,19 @@ import { projectKeys, updateProject } from '../projects.api';
           <select
             class="qt-input w-full max-w-xs"
             aria-label="Default Roleplay Template"
-            title="Choosing a specific roleplay template is not yet available"
-            disabled
+            [disabled]="savingTemplate()"
+            (change)="onRoleplayTemplate($event)"
           >
-            <option>Inherit from global default</option>
+            <option value="" [selected]="roleplayTemplateValue() === ''">
+              Inherit from global default
+            </option>
+            @for (t of roleplayTemplates(); track t.id) {
+              <option [value]="t.id" [selected]="roleplayTemplateValue() === t.id">{{ t.name }}</option>
+            }
           </select>
+          @if (savingTemplate()) {
+            <p class="qt-text-xs qt-text-secondary mt-1">Saving…</p>
+          }
         </div>
 
         <div class="flex items-center justify-between p-3 rounded-lg qt-border qt-bg-surface">
@@ -122,6 +130,17 @@ export class ProjectModelBehaviorCard {
   private readonly core = inject(CoreClient);
   private readonly queryClient = injectQueryClient();
   protected readonly saveError = signal<string | null>(null);
+  protected readonly savingTemplate = signal(false);
+
+  private readonly templatesQuery = injectQuery(() => ({
+    queryKey: templateKeys.list(),
+    queryFn: (): Promise<RoleplayTemplateDto[]> => fetchRoleplayTemplates(this.core),
+  }));
+
+  protected readonly roleplayTemplates = computed(() => this.templatesQuery.data() ?? []);
+  protected readonly roleplayTemplateValue = computed(
+    () => this.project().defaultRoleplayTemplateId ?? '',
+  );
 
   protected readonly agentModeValue = computed(() => {
     const v = this.project().defaultAgentModeEnabled;
@@ -145,6 +164,19 @@ export class ProjectModelBehaviorCard {
       { answerConfirmationOverride: override },
       'Failed to update answer confirmation',
     );
+  }
+
+  protected async onRoleplayTemplate(event: Event): Promise<void> {
+    const value = (event.target as HTMLSelectElement).value;
+    this.savingTemplate.set(true);
+    try {
+      await this.save(
+        { defaultRoleplayTemplateId: value || null },
+        'Failed to update default roleplay template',
+      );
+    } finally {
+      this.savingTemplate.set(false);
+    }
   }
 
   private async save(patch: Record<string, unknown>, fallback: string): Promise<void> {

@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.6r lane C, part 2 — the three disabled default-* pickers go live. The
+project Model-Behavior roleplay-template picker, the project
+Image-Generation image-profile picker, and the character Defaults-tab
+image-profile picker now fetch the P4.6p listings and bind their existing
+`defaultRoleplayTemplateId` / `defaultImageProfileId` fields, joining the
+per-field immediate-save flow (catch + surface errors). Each uses
+`[selected]`-per-option to survive async option loading (the dogfood-#6
+regression), covered by a picker spec that seeds options after first
+render. The two now-stale "disabled affordance" project-card specs flip to
+assert the enabled state. SPA 0.5.24.
+
 P4.6r lane C, part 1 — the Templates & Prompts and Images settings tabs
 (SPA-only, tier-4). The two placeholder tabs now render v4's management
 surfaces: the Roleplay Templates manager (built-in read-only grid with
