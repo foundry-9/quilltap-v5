@@ -123,6 +123,40 @@ pub async fn enqueue_memory_housekeeping(
     enqueue_job(db, user_id, "MEMORY_HOUSEKEEPING", payload, 1.0).await
 }
 
+/// v4 `enqueueMemoryRegenerateAll` (P4.6s) — the single fan-out job, deduped on
+/// an in-flight `MEMORY_REGENERATE_ALL` for the user (a double-click yields the
+/// existing job). Returns `(jobId, isNew)`. `maxAttempts` 1.
+pub async fn enqueue_memory_regenerate_all(
+    db: &Db,
+    user_id: &str,
+    payload: Value,
+) -> Result<(String, bool), DbError> {
+    let uid = user_id.to_string();
+    let in_flight = db.read_main(|conn| {
+        let repo = crate::db::background_jobs::BackgroundJobsRepository::new(conn);
+        let mut jobs = repo.find_by_user_id(&uid, Some("PENDING"))?;
+        jobs.extend(repo.find_by_user_id(&uid, Some("PROCESSING"))?);
+        Ok(jobs)
+    });
+    if let Ok(jobs) = in_flight {
+        if let Some(existing) = jobs.iter().find(|j| j.job_type == "MEMORY_REGENERATE_ALL") {
+            return Ok((existing.id.clone(), false));
+        }
+    }
+    let id = enqueue_job(db, user_id, "MEMORY_REGENERATE_ALL", payload, 1.0).await?;
+    Ok((id, true))
+}
+
+/// v4 `enqueueEmbeddingGenerate` (P4.6s) — one `EMBEDDING_GENERATE` job (payload
+/// `{entityType, entityId, characterId, profileId}`).
+pub async fn enqueue_embedding_generate(
+    db: &Db,
+    user_id: &str,
+    payload: Value,
+) -> Result<String, DbError> {
+    enqueue_job(db, user_id, "EMBEDDING_GENERATE", payload, 3.0).await
+}
+
 /// v4 `enqueueJob` variant carrying an explicit `priority` (v4's
 /// `options.priority`). Mints and persists a PENDING background job. The
 /// zero-priority [`enqueue_job`] above is the common case; the danger /

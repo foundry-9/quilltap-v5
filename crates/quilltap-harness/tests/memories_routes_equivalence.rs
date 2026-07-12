@@ -754,5 +754,58 @@ fn memories_routes_match_oracle() {
         check_body("extraction_concurrency_set", &resp, &mut failed);
     }
 
+    // --- Regenerate + backfill status ---
+    {
+        let db = fresh_db(&spec, "bfp");
+        check_body(
+            "backfill_progress",
+            &memories::memory_backfill_progress(&db, &uid),
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "rgs");
+        check_body(
+            "regenerate_status",
+            &memories::memory_regenerate_all_status(&db, &uid),
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "rga");
+        let resp = rt.block_on(memories::memory_regenerate_all(&db, &uid));
+        // jobId minted → blank; message compared verbatim (cleared=0).
+        check_blanked("regenerate_all", &resp, &["jobId"], &mut failed);
+        // The enqueued fan-out row: v4's processor auto-claims it to PROCESSING in
+        // the jest env while v5 (no processor) leaves it PENDING — a timing
+        // artifact, so `status` is blanked. type + payload are the port's proof.
+        let rows = db
+            .read_main(|conn| {
+                let repo = quilltap_core::db::background_jobs::BackgroundJobsRepository::new(conn);
+                let jobs = repo.find_recent_by_type("MEMORY_REGENERATE_ALL", 10)?;
+                Ok(json!({
+                    "jobs": jobs.iter().map(|j| json!({
+                        "type": j.job_type,
+                        "status": j.status,
+                        "payload": serde_json::from_str::<Value>(&j.payload).unwrap_or(Value::Null),
+                    })).collect::<Vec<_>>(),
+                }))
+            })
+            .unwrap();
+        let want = &oracle["regenerate_all"]["tables"];
+        if norm_blanked(&rows, &["status"]) != norm_blanked(want, &["status"]) {
+            eprintln!(
+                "[regenerate_all tables] MISMATCH:\n{}",
+                first_diff(
+                    &norm_blanked(&rows, &["status"]),
+                    &norm_blanked(want, &["status"])
+                )
+            );
+            failed.push("regenerate_all_tables".into());
+        } else {
+            eprintln!("[regenerate_all tables] OK.");
+        }
+    }
+
     assert!(failed.is_empty(), "mismatched cases: {failed:?}");
 }

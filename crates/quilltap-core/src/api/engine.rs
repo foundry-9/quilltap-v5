@@ -1829,6 +1829,18 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            Request::MemoryBackfillProgress => match self.ready_db() {
+                Ok(db) => super::memories::memory_backfill_progress(&db, SINGLE_USER_ID),
+                Err(r) => r,
+            },
+            Request::MemoryRegenerateAllStatus => match self.ready_db() {
+                Ok(db) => super::memories::memory_regenerate_all_status(&db, SINGLE_USER_ID),
+                Err(r) => r,
+            },
+            Request::MemoryRegenerateAll => match self.ready_db() {
+                Ok(db) => super::memories::memory_regenerate_all(&db, SINGLE_USER_ID).await,
+                Err(r) => r,
+            },
         }
     }
 

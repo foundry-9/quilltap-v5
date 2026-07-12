@@ -8254,3 +8254,27 @@ Gotchas banked:
   clock-independent `deleted:0` result on both sides; the deletion logic itself
   is `memory_housekeeping_tier2`-proven.
 Bumps: core 0.0.191, harness 0.0.175.
+
+### P4.6s unit 4 — regenerate + backfill status — LANDED (branch); TIER 1 COMPLETE
+
+`memoryBackfillProgress`, `memoryRegenerateAllStatus`, `memoryRegenerateAll`
+(the full v4 handler: `deleteByTypesAndStatuses` wipe → cheap-profile
+resolution [defaultCheapProfileId → standard; uncensored/dangerous-compatible →
+dangerous] → deduped `enqueue_memory_regenerate_all`; `{success, jobId, isNew,
+cleared, message}`). NEW additive `services/queue_service` enqueuers
+`enqueue_memory_regenerate_all` (userId-deduped, returns `(jobId, isNew)`) +
+`enqueue_embedding_generate`. Job-structural differential over the config-oracle
+file (3 cases → 15).
+
+Gotcha: **v4's processor auto-claims the fan-out to `PROCESSING`** in the jest
+env while v5 (no processor in-test) leaves it `PENDING` — a timing artifact, so
+the job-row `status` is BLANKED in the differential; `type` + `payload`
+(standardProfileId / dangerousProfileId, both the fixture's cheap CONN) are the
+port's proof.
+
+**Tier 1 of the P4.6s surface is COMPLETE and differential-proven** (39 cases):
+list (both paths) / get / countByChat / byMessage / characterCounts / create /
+update / delete / deleteByChat / search / housekeep preview+run+sweep /
+housekeeping-config get+set / recall-config get+set / extraction-limits get+set /
+extraction-concurrency get+set / backfillProgress / regenerateStatus /
+regenerateAll. Bumps: core 0.0.192, harness 0.0.176.

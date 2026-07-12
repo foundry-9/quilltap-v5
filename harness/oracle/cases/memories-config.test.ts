@@ -167,6 +167,21 @@ async function countMemoriesInChat(chatId: string): Promise<unknown> {
   return { remaining: row.c };
 }
 
+/** Dump background_jobs rows of a type (type/status/payload) — the regenerate-all
+ *  structural check (minted id/timestamps not selected). */
+async function dumpJobsByType(jobType: string): Promise<unknown> {
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const db = getRawDatabase() as unknown as {
+    prepare: (s: string) => { all: (...a: unknown[]) => unknown };
+  };
+  const rows = db
+    .prepare('SELECT type, status, payload FROM background_jobs WHERE type = ? ORDER BY id')
+    .all(jobType) as Array<{ type: string; status: string; payload: string }>;
+  return {
+    jobs: rows.map((r) => ({ type: r.type, status: r.status, payload: JSON.parse(r.payload) })),
+  };
+}
+
 async function respond(r: unknown): Promise<{ status: number; body: unknown }> {
   const resp = r as { status: number; json: () => Promise<unknown> };
   return { status: resp.status, body: await resp.json() };
@@ -335,6 +350,19 @@ async function main(): Promise<void> {
             mockRequest(`${B}?action=extraction-concurrency`, { concurrency: 8 }),
           ),
         ),
+    },
+    // --- Regenerate + backfill status (job-structural) ---
+    { name: 'backfill_progress', run: () => listGet(`action=backfill-embeddings`) },
+    { name: 'regenerate_status', run: () => listGet(`action=regenerate-all`) },
+    {
+      name: 'regenerate_all',
+      run: async () => {
+        const r = await (await loadRoute('@/app/api/v1/memories/route')).POST(
+          mockRequest(`${B}?action=regenerate-all`, {}),
+        );
+        const { status, body } = await respond(r);
+        return { status, body, tables: await dumpJobsByType('MEMORY_REGENERATE_ALL') };
+      },
     },
   ];
 

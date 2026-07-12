@@ -1174,6 +1174,15 @@ pub enum Request {
     MemoryExtractionConcurrencySet {
         concurrency: i64,
     },
+    /// v4 GET `?action=backfill-embeddings` — `{success, progress: {remaining,
+    /// inFlight}}`.
+    MemoryBackfillProgress,
+    /// v4 GET `?action=regenerate-all` — `{success, inFlightFanOut, inFlightWipes,
+    /// inFlightExtractions, inFlight}`.
+    MemoryRegenerateAllStatus,
+    /// v4 POST `?action=regenerate-all` — `{success, jobId, isNew, cleared,
+    /// message}`.
+    MemoryRegenerateAll,
 }
 
 /// Typed DTO per variant (the uniffi payoff). `Error` carries the one

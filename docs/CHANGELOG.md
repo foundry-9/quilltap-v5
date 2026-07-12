@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+P4.6s memories server, part 4 (regenerate + backfill status): `memoryBackfillProgress`
+(count-without-embedding + in-flight EMBEDDING_GENERATE MEMORY jobs),
+`memoryRegenerateAllStatus` (fan-out/wipe/extraction job counts), and
+`memoryRegenerateAll` (wipe in-flight jobs, resolve the standard + dangerous-
+compatible cheap profiles, enqueue one deduped fan-out). New additive enqueuers
+`enqueue_memory_regenerate_all` (userId-deduped) + `enqueue_embedding_generate`.
+Tier 1 of the memories surface is complete; 39 differential cases.
+
 P4.6s memories server, part 3 (housekeeping + configs): `memoryHousekeepPreview`
 (GET envelope), `memoryHousekeep` (POST dryRun/run — details only on dryRun),
 `memoryHousekeepSweep` (job enqueue), `memoryHousekeepingConfigGet/Set` (per-user

@@ -1128,3 +1128,186 @@ pub async fn memory_extraction_concurrency_set(db: &Db, bag: Value) -> Response 
         Err(e) => internal(e),
     }
 }
+
+// ===========================================================================
+// Regenerate + backfill status (background_jobs reads / job enqueues)
+// ===========================================================================
+
+/// Load the user's in-flight (PENDING + PROCESSING) background jobs.
+fn in_flight_jobs(
+    db: &Db,
+    user_id: &str,
+) -> Result<Vec<crate::db::background_jobs::BackgroundJob>, DbError> {
+    let uid = user_id.to_string();
+    db.read_main(move |conn| {
+        let repo = crate::db::background_jobs::BackgroundJobsRepository::new(conn);
+        let mut jobs = repo.find_by_user_id(&uid, Some("PENDING"))?;
+        jobs.extend(repo.find_by_user_id(&uid, Some("PROCESSING"))?);
+        Ok(jobs)
+    })
+}
+
+/// v4 GET `?action=backfill-embeddings` — `handleBackfillProgress`: `{success,
+/// progress: {remaining, inFlight}}`. `inFlight` counts PENDING/PROCESSING
+/// `EMBEDDING_GENERATE` jobs whose `payload.entityType === 'MEMORY'`.
+pub fn memory_backfill_progress(db: &Db, user_id: &str) -> Response {
+    let remaining = match db.read_main(|conn| memories_read::count_without_embedding(conn, None)) {
+        Ok(n) => n,
+        Err(e) => return internal(e),
+    };
+    let jobs = match in_flight_jobs(db, user_id) {
+        Ok(j) => j,
+        Err(e) => return internal(e),
+    };
+    let in_flight = jobs
+        .iter()
+        .filter(|j| {
+            j.job_type == "EMBEDDING_GENERATE"
+                && serde_json::from_str::<Value>(&j.payload)
+                    .ok()
+                    .and_then(|p| {
+                        p.get("entityType")
+                            .and_then(Value::as_str)
+                            .map(str::to_string)
+                    })
+                    == Some("MEMORY".to_string())
+        })
+        .count();
+    Response::Memory(json!({
+        "success": true,
+        "progress": { "remaining": remaining, "inFlight": in_flight },
+    }))
+}
+
+/// v4 GET `?action=regenerate-all` — `handleRegenerateAllStatus`: `{success,
+/// inFlightFanOut, inFlightWipes, inFlightExtractions, inFlight}`.
+pub fn memory_regenerate_all_status(db: &Db, user_id: &str) -> Response {
+    let jobs = match in_flight_jobs(db, user_id) {
+        Ok(j) => j,
+        Err(e) => return internal(e),
+    };
+    let count = |t: &str| jobs.iter().filter(|j| j.job_type == t).count();
+    let fan_out = count("MEMORY_REGENERATE_ALL");
+    let wipes = count("MEMORY_REGENERATE_CHAT");
+    let extractions = count("MEMORY_EXTRACTION");
+    Response::Memory(json!({
+        "success": true,
+        "inFlightFanOut": fan_out,
+        "inFlightWipes": wipes,
+        "inFlightExtractions": extractions,
+        "inFlight": fan_out + wipes + extractions,
+    }))
+}
+
+/// v4 POST `?action=regenerate-all` — `handleRegenerateAll`: wipe in-flight
+/// regenerate/extraction jobs, resolve the standard + dangerous-compatible cheap
+/// profiles, enqueue ONE fan-out (deduped on userId). `{success, jobId, isNew,
+/// cleared, message}`.
+pub async fn memory_regenerate_all(db: &Db, user_id: &str) -> Response {
+    // 1. Wipe the previous sweep's in-flight jobs.
+    let cleared = db
+        .write(|w| {
+            w.main().background_jobs().delete_by_types_and_statuses(
+                &[
+                    "MEMORY_REGENERATE_ALL".into(),
+                    "MEMORY_REGENERATE_CHAT".into(),
+                    "MEMORY_EXTRACTION".into(),
+                    "INTER_CHARACTER_MEMORY".into(),
+                ],
+                &["PENDING".into(), "PROCESSING".into()],
+            )
+        })
+        .await;
+    let cleared = match cleared {
+        Ok(n) => n as i64,
+        Err(e) => return internal(e),
+    };
+
+    // 2. Resolve the cheap profiles up front (v4's self-contained payload).
+    let uid = user_id.to_string();
+    let resolved: Result<Option<(String, String)>, DbError> = db.read_main(move |conn| {
+        let settings = chat_settings::find_by_user_id(conn, &uid)?;
+        let profiles = crate::db::connection_profiles::find_by_user_id(conn, &uid)?;
+        let cheap_default_id = settings
+            .as_ref()
+            .and_then(|s| s.get("cheapLLMSettings"))
+            .and_then(|c| c.get("defaultCheapProfileId"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let find_id = |id: &str| {
+            profiles
+                .iter()
+                .find(|p| p.get("id").and_then(Value::as_str) == Some(id))
+        };
+        let standard = cheap_default_id
+            .as_deref()
+            .and_then(find_id)
+            .or_else(|| profiles.first())
+            .and_then(|p| p.get("id").and_then(Value::as_str).map(str::to_string));
+        let Some(standard) = standard else {
+            return Ok(None);
+        };
+        let uncensored_id = settings
+            .as_ref()
+            .and_then(|s| s.get("dangerousContentSettings"))
+            .and_then(|d| d.get("uncensoredTextProfileId"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let is_cheap = |p: &Value| p.get("isCheap").and_then(Value::as_bool) == Some(true);
+        let is_dangerous =
+            |p: &Value| p.get("isDangerousCompatible").and_then(Value::as_bool) == Some(true);
+        let uncensored_cheap = uncensored_id
+            .as_deref()
+            .and_then(find_id)
+            .filter(|p| is_cheap(p))
+            .and_then(|p| p.get("id").and_then(Value::as_str).map(str::to_string));
+        let any_dangerous_cheap = profiles
+            .iter()
+            .find(|p| is_cheap(p) && is_dangerous(p))
+            .and_then(|p| p.get("id").and_then(Value::as_str).map(str::to_string));
+        let dangerous = uncensored_cheap
+            .or(any_dangerous_cheap)
+            .unwrap_or_else(|| standard.clone());
+        Ok(Some((standard, dangerous)))
+    });
+    let (standard_id, dangerous_id) = match resolved {
+        Ok(Some(pair)) => pair,
+        Ok(None) => {
+            return bad_request(
+                "No connection profiles found. Add at least one provider connection before regenerating memories.",
+            )
+        }
+        Err(e) => return internal(e),
+    };
+
+    // 3. Enqueue the fan-out (deduped on userId).
+    let payload = json!({ "standardProfileId": standard_id, "dangerousProfileId": dangerous_id });
+    let (job_id, is_new) =
+        match crate::services::queue_service::enqueue_memory_regenerate_all(db, user_id, payload)
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => return internal(e),
+        };
+
+    let cleared_suffix = if cleared > 0 {
+        format!(
+            " Cleared {cleared} in-flight job{} from the previous sweep.",
+            if cleared == 1 { "" } else { "s" }
+        )
+    } else {
+        String::new()
+    };
+    let message = if is_new {
+        format!("Regeneration scheduled — building the chat list in the background. The Mem badge will start ticking shortly.{cleared_suffix}")
+    } else {
+        format!("A regeneration sweep is already in progress. The existing run will continue.{cleared_suffix}")
+    };
+    Response::Memory(json!({
+        "success": true,
+        "jobId": job_id,
+        "isNew": is_new,
+        "cleared": cleared,
+        "message": message,
+    }))
+}
