@@ -106,6 +106,14 @@ async function main(): Promise<void> {
     }
   }
 
+  // `doc_mount_blobs` is created by its repo's hand-written DDL (it carries a
+  // BLOB `data` column the schema translator doesn't model); trigger it with a
+  // read so the avatar-seed write has somewhere to land bytes.
+  const { DocMountBlobsRepository } = await import(
+    '@/lib/database/repositories/doc-mount-blobs.repository'
+  );
+  await new DocMountBlobsRepository().findByFileId('00000000-0000-4000-8000-000000000000');
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
 

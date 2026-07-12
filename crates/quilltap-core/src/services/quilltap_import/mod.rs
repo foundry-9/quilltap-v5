@@ -40,6 +40,7 @@
 mod characters;
 mod memories;
 mod reconcile;
+pub mod seed;
 pub mod seed_assets;
 
 use serde::Deserialize;

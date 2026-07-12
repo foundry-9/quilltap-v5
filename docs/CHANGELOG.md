@@ -2,6 +2,25 @@
 
 ## Recent Changes
 
+P4.4u4 unit 2 (lane C): the startup sample-content seed wire. Ported v4's
+`seedInitialData` gated tail (`quilltap-core::services::quilltap_import::
+seed`): the zero-characters gate, `seedFromImports` (import the committed
+`.qtap`), and `seedAvatars` (match each seed avatar to its character by
+name, idempotency check, delete-then-insert vault write, `defaultImageId`
+update) + `reseedAvatarsForCharacters`. Every layer swallows and collects
+its errors (seeding never blocks boot). The seed assets are embedded into
+the binary (`seed_assets`). Wired into the host `assemble` step behind a
+new `HostConfig::seed_sample_content` flag (default OFF this lane — the
+default-on flip + the fresh-boot e2e fixture updates land at unification).
+Corrected a stale survey note: BOTH seed characters carry an avatar file
+at v4 `a7b1398d` (Lorian.webp + Riya.webp) — committed both; seeding
+produces two avatars, not one. Proven by `seed_avatars_equivalence`
+(tier-2: v4's real `reseedAvatarsForCharacters` vs the port — both WebP
+blobs diffed sha-exact since WebP is stored as-is, plus the idempotency
+no-op) and a host fresh-boot smoke (`host_sample_content_seed`: first boot
+seeds Lorian + Riya + 42 memories + 2 avatars + 8 wardrobe .md; second
+boot short-circuits on the gate).
+
 P4.4u4 unit 1 (lane C): ported the seed subset of the quilltap-import
 service (`quilltap-core::services::quilltap_import`). The legacy
 monolithic-JSON parse + the `format`/`version` hard pins, the subset

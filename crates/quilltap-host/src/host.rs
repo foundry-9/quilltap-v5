@@ -118,6 +118,13 @@ pub struct HostConfig {
     /// Whether each assembly runs a [`TerminalManager`] (the PTY host driver).
     /// Default true; tests that don't need PTYs may switch it off.
     pub terminal: bool,
+    /// Whether a first boot seeds the sample content (v4's `seedFromImports` +
+    /// `seedAvatars`: Lorian + Riya + 42 memories + Lorian's avatar), behind the
+    /// zero-characters gate. **Default `false`** for this lane so existing
+    /// fresh-provision tests keep zero characters; flipping it on by default (and
+    /// updating the fresh-boot e2e fixtures that then assert the seed) happens at
+    /// unification.
+    pub seed_sample_content: bool,
 }
 
 impl HostConfig {
@@ -142,6 +149,7 @@ impl HostConfig {
             extra_handlers: Vec::new(),
             spine: None,
             terminal: true,
+            seed_sample_content: false,
         }
     }
 
@@ -225,6 +233,7 @@ impl Host {
             heartbeat_ms: config.heartbeat_ms,
             on_lock_lost: config.on_lock_lost,
             extra: config.extra_handlers,
+            seed_sample_content: config.seed_sample_content,
             rt,
         };
 
@@ -327,6 +336,7 @@ struct HostAssembler {
     heartbeat_ms: u64,
     on_lock_lost: Option<Arc<dyn Fn() + Send + Sync>>,
     extra: Vec<(String, Arc<dyn JobHandler>)>,
+    seed_sample_content: bool,
     rt: tokio::runtime::Handle,
 }
 
@@ -379,6 +389,14 @@ impl EngineAssembler for HostAssembler {
         // is legal whether `assemble` was reached from the sync boot path or an
         // async `Unlock` dispatch (`blocking_recv` panics on a tokio worker).
         seed_built_ins(db)?;
+
+        // The gated sample-content seed (P4.4u4): on a first boot (zero-characters
+        // gate) import Lorian + Riya + 42 memories + Lorian's avatar, matching a
+        // fresh v4 instance. Behind the config flag (default off this lane).
+        // Swallows every failure (v4: seeding never blocks startup).
+        if self.seed_sample_content {
+            seed_sample_content(db)?;
+        }
 
         // The terminal manager (P4.1c) — one per assembly (it holds this
         // assembly's Db); published on the host slot for the transport's
@@ -547,6 +565,36 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
     .join()
     .map_err(|_| "built-in seed thread panicked".to_string())?
     .map_err(|e| format!("built-in seed failed: {e}"))
+}
+
+/// The gated sample-content seed (P4.4u4): v4's `seedFromImports` + `seedAvatars`
+/// tail, behind the zero-characters gate, through the writer thread with the host
+/// image codec. Spawned on a fresh OS thread and joined (like [`seed_built_ins`])
+/// so `write_blocking` is legal from either the sync boot path or an async
+/// `Unlock` dispatch. Requires the mount-index partition (vault writes); a
+/// main-only instance is a no-op. Never fails the boot — v4's seeding is
+/// swallow-and-continue, so the collected warnings are dropped here.
+fn seed_sample_content(db: &Db) -> Result<(), String> {
+    use crate::image_codec::HostImageCodec;
+    use quilltap_core::db::DbError;
+    use quilltap_core::services::quilltap_import::seed;
+
+    let db = db.clone();
+    std::thread::spawn(move || -> Result<(), DbError> {
+        db.write_blocking(|ws| {
+            let main = ws.main().connection();
+            if let Some(mi) = ws.mount_index() {
+                let mount = mi.connection();
+                // The report's warnings are v4's swallowed per-item log lines; core
+                // has no logger, so they are dropped here (the boot never blocks).
+                let _report = seed::seed_sample_content(main, mount, &HostImageCodec);
+            }
+            Ok(())
+        })
+    })
+    .join()
+    .map_err(|_| "sample-content seed thread panicked".to_string())?
+    .map_err(|e| format!("sample-content seed failed: {e}"))
 }
 
 /// v4's dispatcher loop over the ported [`JobRunner::pump_claim`]:

@@ -19,15 +19,30 @@ pub struct SeedAvatar {
     pub mime_type: &'static str,
 }
 
-/// Lorian's avatar (`first-startup/avatars/Lorian.webp`). Riya has no avatar file
-/// (matching v4). Already-WebP, so the vault write stores it as-is (no transcode).
+/// Lorian's avatar (`first-startup/avatars/Lorian.webp`). Already-WebP, so the
+/// vault write stores it as-is (no transcode) and its blob sha is deterministic.
 pub const LORIAN_WEBP: &[u8] =
     include_bytes!("../../../../../assets/first-startup/avatars/Lorian.webp");
 
-/// The seed avatars, sorted by filename (v4 `getSeedAvatars` sorts the dir).
-pub const SEED_AVATARS: &[SeedAvatar] = &[SeedAvatar {
-    character_name: "Lorian",
-    filename: "Lorian.webp",
-    content: LORIAN_WEBP,
-    mime_type: "image/webp",
-}];
+/// Riya's avatar (`first-startup/avatars/Riya.webp`). **Both** seed characters
+/// carry an avatar file at v4 `a7b1398d` — the work order's survey note claiming
+/// "Riya has no avatar file" is stale; v4's `getSeedAvatars` seeds both.
+pub const RIYA_WEBP: &[u8] =
+    include_bytes!("../../../../../assets/first-startup/avatars/Riya.webp");
+
+/// The seed avatars, sorted by filename (v4 `getSeedAvatars` sorts the dir):
+/// Lorian.webp then Riya.webp.
+pub const SEED_AVATARS: &[SeedAvatar] = &[
+    SeedAvatar {
+        character_name: "Lorian",
+        filename: "Lorian.webp",
+        content: LORIAN_WEBP,
+        mime_type: "image/webp",
+    },
+    SeedAvatar {
+        character_name: "Riya",
+        filename: "Riya.webp",
+        content: RIYA_WEBP,
+        mime_type: "image/webp",
+    },
+];

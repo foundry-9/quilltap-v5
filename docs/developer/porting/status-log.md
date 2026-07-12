@@ -7086,6 +7086,78 @@ QT_FIXTURE_QTAPIMPORT_MOUNT=/tmp/qt-qtapimport-mount.db \
 
 Versions after unit 1: core 0.0.177, harness 0.0.162.
 
+**Unit 2 — the startup seed wire + avatars (DONE).** v4
+`lib/startup/seed-initial-data.ts`'s gated tail, ported to
+`quilltap-core::services::quilltap_import::seed` (run inside one
+`Db::write` closure over both connections):
+
+- `seed_sample_content` — the zero-characters gate (v4 :66–68:
+  `findByUserId(SINGLE_USER_ID).length > 0 → return`) then
+  `seed_from_imports` + `seed_avatars`.
+- `seed_from_imports` — parse the embedded `.qtap` (`seed_assets`) and run
+  `execute_import` with the seed options.
+- `seed_avatars(main, mount, codec, target_names, report)` — match each
+  seed avatar to its character by case-insensitive name, idempotency check
+  via `resolve_character_avatar`, `write_main_avatar_to_vault` (main kind,
+  delete-then-insert), `characters.update({defaultImageId})`. Both WebP
+  avatars are stored AS-IS (WebP not in the transcodable set → passthrough
+  → deterministic blob sha, no codec seam).
+- `reseed_avatars_for_characters` — the reset-builtins entry point (unit 3).
+
+Every layer swallows + collects errors into `SeedReport::warnings` (v4:
+seeding never blocks boot). The two seed assets are embedded via
+`include_bytes!`/`include_str!` (`seed_assets`) — no runtime filesystem
+dependency.
+
+**Host wire:** `HostConfig::seed_sample_content` (**default OFF this
+lane**) threads to `HostAssembler`; `assemble` runs the gated seed after
+`seed_built_ins`, on a joined OS thread through `write_blocking` with
+`HostImageCodec`, gated on the mount-index partition. Default-off keeps
+existing fresh-provision tests at zero characters (e.g.
+`host_builtin_seeds` asserts `doc_mount_points == 3`, which the char
+vaults would bump to 5). **Flipping the default ON — and updating the
+fresh-boot e2e fixtures that then assert the seed — is a UNIFICATION
+step.**
+
+**⚠️ Survey correction (fix-the-port, not-the-diff):** the work order's
+survey says "Riya has no avatar file", but v4 `a7b1398d` has BOTH
+`first-startup/avatars/Lorian.webp` AND `Riya.webp`. The differential
+(v4's real `reseedAvatarsForCharacters`) seeds both, so the port must too.
+Committed both (Riya.webp sha256
+`6b37bd5dbdfad0fde18083e354dbe5a6cb2bd7c3401f0af6fa5501e9201ebfe6`);
+`SEED_AVATARS` carries both; the seed produces TWO avatars.
+
+Differentials:
+- `seed_avatars_equivalence` (tier-2): v4's real `executeImport` +
+  `reseedAvatarsForCharacters(['Lorian','Riya'])` vs the port. Per
+  character: the `images/avatar.webp` link + blob
+  (relativePath/fileName/originalMimeType/storedMimeType/**sha256 exact**/
+  size) diffed, `defaultImageId == link.id`, the two blobs are distinct
+  files, and a 2nd reseed no-ops (defaultImageId stable, still 1 link
+  each). Reuses the qtap-import fixtures (now with `doc_mount_blobs`
+  materialized via its repo's hand-written DDL trigger).
+- `host_sample_content_seed` (host integration smoke): provision fresh →
+  boot with the flag on → 2 characters + 42 memories + 2 avatar links + 8
+  wardrobe links; Lock + drop → second boot → gate short-circuits (state
+  unchanged, no doubling).
+
+Regen recipe (Node 24, from the v4 checkout — note the fixture rebuild now
+materializes `doc_mount_blobs`; run from the v4 root so
+`first-startup/avatars/` resolves):
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; cd ~/source/quilltap-server
+QT_FIXTURE_QTAPIMPORT_MAIN=/tmp/qt-qtapimport-main.db \
+QT_FIXTURE_QTAPIMPORT_MOUNT=/tmp/qt-qtapimport-mount.db \
+  $N/npx tsx <v5>/harness/oracle/fixtures/build-qtap-import-fixture.ts
+QT_FIXTURE_QTAPIMPORT_MAIN=/tmp/qt-qtapimport-main.db \
+QT_FIXTURE_QTAPIMPORT_MOUNT=/tmp/qt-qtapimport-mount.db \
+  $N/npx tsx <v5>/harness/oracle/cases/seed-avatars.ts > /tmp/oracle-seed-avatars.ndjson
+# run: QT_ORACLE_SEED_AVATARS + QT_FIXTURE_QTAPIMPORT_{MAIN,MOUNT} \
+#   cargo test -p quilltap-harness --test seed_avatars_equivalence
+```
+
+Versions after unit 2: core 0.0.178, harness 0.0.163, host 0.0.11.
+
 ## P4.6n (lane A) unit 1 — scenarios-common service surface (2026-07-11, in progress)
 
 Ported the write/list half of v4's `lib/mount-index/scenarios-common.ts`
