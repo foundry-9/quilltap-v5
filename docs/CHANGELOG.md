@@ -37,6 +37,12 @@ at page scope behind the now-enabled `scenarios` nav item (route
 registered). When the general mount is unprovisioned the list is empty
 and mutations surface the server refusal — matching v4.
 
+Authored the Playwright beats (activated at unification over lane A's
+fixture): `scenarios-flow.spec.ts` (project card create → `.md` suffix →
+edit → set default → rename → delete; general page create + list) and a
+wardrobe beat in `projects-flow.spec.ts` (create → badges → delete).
+Fixture-guarded skip until the groups-projects fixture lands.
+
 P4.4u4 unit 3 (lane C, tier 2): reset_builtins as a service. Ported v4's
 `handleResetBuiltins` to `quilltap-core::services::quilltap_import::reset::
 reset_builtins` — cascade-delete the built-in characters (Lorian, Riya),

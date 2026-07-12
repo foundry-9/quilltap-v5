@@ -174,6 +174,46 @@ test.describe('P4.6l — Projects vertical (list → detail → toggle → renam
       timeout: 10_000,
     });
   });
+
+  // P4.6o — the project Wardrobe card (inline draft form + rows).
+  test('the Wardrobe card: create a default item, see its badges, delete it', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.goto(`${PROJ_BASE_URL}/prospero`);
+    await unlockIfLocked(page);
+
+    const projectCards = page.locator('qt-project-card');
+    await expect(projectCards.first()).toBeVisible({ timeout: 10_000 });
+    await projectCards.first().getByRole('link', { name: 'Open' }).click();
+    await expect(page).toHaveURL(/\/prospero\/[^/]+$/);
+
+    const card = page.locator('qt-project-wardrobe-card');
+    await expect(card).toBeVisible({ timeout: 10_000 });
+    const newBtn = card.getByRole('button', { name: '+ New wardrobe item' });
+    if (!(await newBtn.isVisible().catch(() => false))) {
+      await card.getByRole('button', { name: /^Wardrobe \(/ }).click();
+      await expect(newBtn).toBeVisible({ timeout: 10_000 });
+    }
+
+    // --- Create a default (top) garment ---
+    await newBtn.click();
+    const title = card.getByPlaceholder('e.g. House livery jacket');
+    await expect(title).toBeVisible();
+    await title.fill('Walk livery cloak');
+    await card.locator('label', { hasText: 'Default item' }).locator('input[type="checkbox"]').check();
+    await card.getByRole('button', { name: 'Create item' }).click();
+
+    const row = card.locator('li', { hasText: 'Walk livery cloak' });
+    await expect(row).toBeVisible({ timeout: 10_000 });
+    await expect(row).toContainText('top');
+    await expect(row).toContainText('Default');
+
+    // --- Delete (window.confirm) ---
+    page.once('dialog', (d) => void d.accept());
+    await row.getByRole('button', { name: 'Delete' }).click();
+    await expect(card.locator('li', { hasText: 'Walk livery cloak' })).toHaveCount(0, {
+      timeout: 10_000,
+    });
+  });
 });
 
 function runCliWrite(cli: string, sql: string): void {

@@ -7014,6 +7014,71 @@ remainders (see their status headers). Versions after the round: core
 
 ---
 
+### P4.6o (lane B) — the Scenarios + Wardrobe SPA remainder — LANE COMPLETE (branch, awaits unification)
+
+Tier-4 SPA lane; v4 is the behavioral/visual reference, no byte target.
+Drift-checked v4 clean at `a7b1398d`. Closes the P4.6l SPA remainder (the
+two loud-disabled Prospero cards + the disabled `scenarios` nav item).
+Five commits on `claude/p4-6o-scenarios-wardrobe-spa-fc23ae`.
+
+**Contract re-pin (`core-contract.ts`).** Re-pinned the SPA scenario bag
+to v4's Zod-schema shape, identical across the group/project/general
+families: create rides a nested `scenario` bag
+`{filename, name?, description?, isDefault?, body}` (optionals truly
+absent), update drops `filename` (the path rides the variant), rename
+takes `newFilename`. The `ScenarioDto` gains
+`filename`/`rawIsDefault`/`body`/`lastModified`/`createdAt`/`updatedAt`
+(superseded the `{name, content, isDefault}` sketch). Added the six
+net-new general `scenario*` request variants (`scenarioList`/`Create`/
+`Get`/`Update`/`Rename`/`Delete`) + a `WardrobeItemDto` and
+`WardrobeSlotType`. **Lane A owns the matching Rust change — reconcile
+the variant/bag names + response bytes at unification.**
+
+**The scope-agnostic `qt-scenarios-manager` family.** manager + row +
+editor modal + a `ScenarioMutator` service interface with project-
+(`projectScenario*`) and general- (`scenario*`) scoped factories over
+`CoreClient` (`screens/scenarios/`). Exactly v4-shaped: the manager makes
+no dispatches itself; the scope lives in the mutator. Delete uses
+`window.confirm`, rename `window.prompt` on the FILENAME, set-default
+re-sends update with `isDefault: true` (no dedicated verb). The editor is
+a plain `<textarea>` (established Lexical divergence; body round-trips
+byte-exact). Added a `closeOnBackdrop` input to the shared Modal
+(default true, backward-compatible) for the no-click-outside editor.
+12 vitest specs against a mock mutator.
+
+**The `qt-project-wardrobe-manager`.** Self-contained inline draft form +
+rows (`screens/prospero/wardrobe/`), fed by a project-scoped mutator over
+`projectWardrobe*`. Blank optional strings ride as `null` (v4
+`handleSave`); the composite picker excludes the item being edited; the
+slot-type floor keeps ≥1 slot; rows show Composite/Default/Archived
+badges and prefer the Portrait Cue over the description. 7 vitest specs.
+
+**Wiring.** Both cards replace their loud-disabled placeholders on the
+project detail; the general `/scenarios` page renders the manager at page
+scope; the `scenarios` nav item is enabled and its route registered.
+Removed the now-unused `CollapsibleCard` import from `project-detail.ts`.
+
+**e2e (authored-but-mocked; activate at unification over lane A's
+fixture).** `scenarios-flow.spec.ts` (project card: create → `.md`
+suffix → edit body → set default → rename → delete; general page: create
++ list) + a wardrobe beat in `projects-flow.spec.ts` (create default item
+→ badges → delete). Fixture-guarded `test.skip` until
+`groups-projects-main.db` exists; both `window.confirm`/`window.prompt`
+beats install one-shot `page.on('dialog')` handlers. Discovered by
+`playwright --list`; not run live in-lane (no fixture / built binaries).
+
+**Gate:** `ng test` 38 files / 256 tests green; `ng build` clean;
+Playwright specs discovered/parse. SPA 0.5.16 → 0.5.21 (five commits).
+
+**OPEN under this order (all loud, none silent):** the New-Chat form
+(the primary scenario-picker consumer — the named NEXT SPA vertical; no
+`/salon/new` route yet); the Lexical-equivalent markdown editor
+(textarea divergence); the P4.6l recorded divergences (disabled
+link-store / roleplay-template / tool-settings / image-profile pickers;
+Load-more vs IntersectionObserver). No group scenarios card (matches v4).
+
+**When this unifies, mark `p4.6l-groups-projects-spa.md` CLOSED.**
+
 ## P4.4u4 (lane C) — the sample-content import (the quilltap-import seed subset)
 
 **In progress on `claude/p4-4u4-sample-content-7f9828`** (drift check clean at
