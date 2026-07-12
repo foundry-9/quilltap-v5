@@ -1054,6 +1054,18 @@ dispatch client (`DocumentApi`) reads lane B's document family + lane A's
 document block + `mountFilesList` request variants, `documentMode` merged
 onto `ChatDetail`. SPA 0.5.44.
 
+P4.6x unit 7 — the Document Mode e2e beats (fixture-guarded). A live Salon
+walk: open a chat → open the picker → new blank document → the pane renders
+→ edit → flush-save → the edit survives a reload → rename (Librarian chip)
+→ close (pane collapses, Open-document button returns), plus a both-panes
+beat (document + terminal stacked). Guarded by a runtime capability probe
+that skips the describe when the shared server lacks the document dispatch
+(the in-lane signature) and auto-activates once lane B's arms land at
+unification; `chat_documents` is materialized pre-launch in global-setup.
+The full Playwright suite is green (27 passed, 2 guarded-skip) — the
+terminal walk confirms the dividerPosition ownership move didn't regress.
+SPA 0.5.49.
+
 P4.6x unit 5 — tool-result reload wiring. A persistent Salon subscription
 watches the live stream for the LLM's document tools (v4 `onToolResult`):
 `doc_open/close_document` + the `doc_write/move/delete_file/folder` family

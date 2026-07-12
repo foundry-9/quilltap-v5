@@ -9073,3 +9073,26 @@ no anchor scroll). On turn end (`runTurn` completion), `handleLLMEditEnd`
 re-reads every open doc, skipping dirty panes. Store specs cover
 `handleLLMEditEnd` (re-read clean / skip dirty) and `reloadFromServer`
 (reconcile the open set). `ng test` 469 (66 files) green.
+
+**Unit 7 — the Document Mode e2e beats (SPA 0.5.49).** `document-flow.spec.ts`
+over the shared Salon server: (1) open a fixture chat → open the picker → New
+blank document → the pane renders → type → status Unsaved → blur → flush-save
+→ Saved → reload survives → rename via the title (title updates + a Librarian
+announcement chip lands) → close (the pane collapses, the Open-document button
+returns); (2) a both-panes beat — document + terminal stacked in the right
+pane's vertical split. GUARD: a `beforeAll` capability probe posts
+`chatActiveDocument` to `/api/dispatch`; in-lane the Rust core has no document
+arms so serde rejects the variant ("unknown variant") → the describe skips;
+once lane B's arms merge at unification the probe passes and the beats run
+live (self-activating — no unifier edit needed, unlike the file-existence
+guards). `global-setup.ts` materializes `chat_documents` (CREATE TABLE IF NOT
+EXISTS, columns matching `quilltap-core::db::chat_documents`) pre-launch — the
+terminal_sessions precedent, a no-op if the fixture already carries it. FULL
+Playwright suite green: 27 passed, 2 guarded-skip; the P4.6u terminal walk
+still passes, proving the `dividerPosition` ownership move + the new composer
+Open-document button didn't regress the terminal integration. New blank uses
+project scope by default — the unifier should confirm the fixture chat's
+project resolves (or the walk switches to a store-file open once lane A's
+mount fixture is present). Deferred loudly: `doc_focus` pane-level
+scroll-to-anchor, the maximize/focus toggle live beat, qtap:// link opening
+from chat, and the tier-3 standalone/workspace-tab surface.

@@ -78,6 +78,18 @@ export default async function globalSetup(): Promise<void> {
       'startedAt TEXT, exitedAt TEXT, exitCode REAL, transcriptPath TEXT, ' +
       'createdAt TEXT, updatedAt TEXT);',
   );
+  // The Salon fixture may predate Document Mode; the P4.6x document dispatch
+  // (lane B, wired at unification) reads/writes `chat_documents`. The columns
+  // match `quilltap-core::db::chat_documents` (the frozen v4 schema). IF NOT
+  // EXISTS keeps it a no-op when the fixture already carries the table — this is
+  // schema materialization, NOT a fixture regen (the terminal_sessions precedent).
+  runCliWrite(
+    cli,
+    'CREATE TABLE IF NOT EXISTS chat_documents (' +
+      'id TEXT PRIMARY KEY, chatId TEXT, filePath TEXT, scope TEXT, ' +
+      'mountPoint TEXT, displayTitle TEXT, isActive INTEGER, ' +
+      'createdAt TEXT, updatedAt TEXT);',
+  );
   for (const table of ['chats', 'connection_profiles', 'api_keys', 'chat_settings', 'characters', 'tags', 'projects', 'memories']) {
     runCliWrite(cli, `UPDATE ${table} SET userId = '${SINGLE_USER_ID}' WHERE userId = '${FIXTURE_USER}';`, {
       allowFail: true,
