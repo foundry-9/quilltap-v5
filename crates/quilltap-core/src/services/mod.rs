@@ -28,6 +28,7 @@
 
 pub mod aesthetics;
 pub mod agent_mode;
+pub mod annotations;
 pub mod answer_confirmation;
 pub mod api_key_service;
 pub mod appearance_resolution;

@@ -7550,3 +7550,41 @@ the characters family's reset-builtins deferral (P4.6f/P4.6i).
 **The groups/projects/scenarios surface has NO remaining refusal
 arms.** Versions after the round: core 0.0.184, harness 0.0.168,
 host 0.0.12, web 0.0.12, SPA 0.5.22.
+
+## P4.6p — Listing-surfaces server (lane A, in progress)
+
+Lane A of the P4.6p ∥ P4.6q ∥ P4.6r round (New-Chat + listing surfaces).
+v4 baseline `a7b1398d` (drift-check clean at lane start). Own branch/worktree;
+unification is separate. Closes the three P4.6l "unported listing surfaces"
+(global mount-points / roleplay-templates / image-profiles disabled pickers).
+
+### P4.6p unit 1 — `generateRenderingPatterns` (tier-1 pure) — LANDED
+
+Ported v4 `lib/chat/annotations.ts` `generateRenderingPatterns` (+ the private
+helpers `delimiterToPrefixSuffix` / `addOnClassesFor` / `composeClassName` /
+`buildDelimiterPattern` / `buildWrapPattern`) into the new pure module
+`crates/quilltap-core/src/services/annotations.rs`. It consumes the P4.4u3
+`db::roleplay_templates` marshaling types (`TemplateDelimiter` /
+`RenderingPattern` / `DelimiterAddOns` / `StringOrPair`). Pure string generation
+— emits regex *source* strings, never compiles a regex — so it's a tier-1 EXACT
+differential. Covers all three delimiter kinds, add-on class composition, the
+same-open/close negative-lookaround, the `]`-suffix markdown-link exclusion, the
+empty-suffix degrade-to-line-prefix defensive branch, the kind-tagged dedupe
+key, and the narration append (string + tuple, covered-vs-uncovered).
+
+Differential `annotations_rendering_patterns_equivalence` (25 cases). The corpus
+input (delimiters + narrationDelimiters) rides the NDJSON so both sides run
+identical input; output diffed byte-for-byte (object keys order-insensitive,
+array order preserved).
+
+Regen recipe (Node 24, from the v4 checkout):
+```
+cd ~/source/quilltap-server
+~/.nvm/versions/node/v24.13.1/bin/npx tsx \
+  <worktree>/harness/oracle/cases/annotations-rendering-patterns.ts \
+  > /tmp/oracle-annotations.ndjson
+QT_ORACLE_ANNOTATIONS=/tmp/oracle-annotations.ndjson \
+  cargo test -p quilltap-harness --test annotations_rendering_patterns_equivalence
+```
+
+Versions: core 0.0.185, harness 0.0.169.

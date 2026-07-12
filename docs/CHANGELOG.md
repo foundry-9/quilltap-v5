@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.6p unit 1 (lane A): ported `generateRenderingPatterns` (v4
+`lib/chat/annotations.ts`) as the pure `services::annotations`
+module — the rendering-pattern auto-generation the roleplay-template
+routes use when a template carries no explicit `renderingPatterns`
+(all three delimiter kinds, add-on class composition, the
+same-open/close lookaround, the `]`-suffix markdown-link exclusion,
+the kind-tagged dedupe key, narration append). Tier-1 EXACT
+differential (`annotations_rendering_patterns_equivalence`, 25 cases)
+against v4's real code.
+
 Work orders for the P4.6p ∥ P4.6q ∥ P4.6r round (docs only). Three
 fresh surveys at v4 `a7b1398d` (drift check clean); three lanes: P4.6p
 — the listing-surfaces server round (roleplay templates + image
