@@ -7011,3 +7011,42 @@ with the reusable `quilltap-web::multipart` helper waiting.
 **Orders:** P4.6m CLOSED; P4.6k and P4.6l LANDED-partial with enumerated
 remainders (see their status headers). Versions after the round: core
 0.0.176, harness 0.0.161, host 0.0.10, web 0.0.10, SPA 0.5.16.
+
+## P4.6n (lane A) unit 1 — scenarios-common service surface (2026-07-11, in progress)
+
+Ported the write/list half of v4's `lib/mount-index/scenarios-common.ts`
+into `quilltap-core::db::scenarios` (the module already carried the
+read-only `resolveScenarioBody` slice): `parse_scenario_doc`,
+`list_scenarios_in_folder`, `read_scenario_by_path`,
+`set_scenario_default_in_folder`, `build_scenario_file_content`,
+`resolve_scenario_path`, plus the `ParsedScenario` DTO
+(`description` omitted-when-absent) and `ListScenariosResult`.
+
+Carried v4's why-comments: the alphabetically-first `rawIsDefault`
+default-conflict winner (losers demoted in the RESPONSE only, on-disk
+frontmatter untouched, warning naming winner+offenders); the empty-body
+drop in `parse_scenario_doc`; the deliberate NO-transaction sequenced
+set-default (partial failure → alphabetical-tiebreaker + soft warning);
+`resolve_scenario_path`'s nested-path rejection. **Boundary seam:** v4's
+`resolveScenarioPath` `decodeURIComponent`s the raw Next.js segment;
+v5's dispatch delivers an already-decoded JSON string, so no decode is
+applied (same seam as the existing `resolve_scenario_body`).
+
+Supporting reads added to `doc_mount_documents`: `VaultFolderDoc` gained
+a `last_modified` field (`l.lastModified`, the DTO's `lastModified` —
+purely additive; the vault overlay's per-file parsers ignore it) and the
+folder query selects it; a new `find_with_link_by_mount_point_and_path`
+returns the full joined `DocMountDocumentWithLink` shape `readScenarioByPath`
+consumes (case-insensitive path compare, like `findByMountPointAndPath`).
+
+Helper ports (the list-files legacy branch, unit 5): `mime::detect_mime_type`
++ `EXTENSION_MIME_MAP` (v4 `scanner.ts`) and
+`folder_utils::{normalize_folder_path, derive_folder_path_from_storage_key,
+resolve_effective_folder_path}` (v4 `folder-utils.ts`).
+
+**Differential:** the pure leaves (`resolve_scenario_path`,
+`build_scenario_file_content`, `parse_scenario_doc`) + the mime/folder
+helpers carry tier-1 unit tests transcribed from v4's logic; the composed
+list/read/set-default surface is proven byte-for-byte by the
+`scenarios_routes_equivalence` differential landing with the route arms
+(units 2–4). Core 0.0.176 → 0.0.177.

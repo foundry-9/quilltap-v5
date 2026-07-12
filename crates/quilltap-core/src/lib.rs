@@ -191,6 +191,7 @@ pub mod mentioned_characters;
 pub mod message_attribution;
 pub mod message_formatter;
 pub mod message_selector;
+pub mod mime;
 pub mod model;
 pub mod model_classes;
 pub mod model_context;

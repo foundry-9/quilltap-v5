@@ -382,7 +382,7 @@ impl<'c> DocMountDocumentsRepository<'c> {
             .join(",");
         let like_idx = mount_point_ids.len() + 1;
         let sql = format!(
-            "SELECT d.content, l.mountPointId, l.relativePath, l.fileName, d.createdAt, d.updatedAt \
+            "SELECT d.content, l.mountPointId, l.relativePath, l.fileName, d.createdAt, d.updatedAt, l.lastModified \
              FROM doc_mount_file_links l \
              JOIN doc_mount_documents d ON d.fileId = l.fileId \
              JOIN doc_mount_files f ON f.id = l.fileId \
@@ -403,6 +403,7 @@ impl<'c> DocMountDocumentsRepository<'c> {
                     file_name: row.get(3)?,
                     created_at: row.get(4)?,
                     updated_at: row.get(5)?,
+                    last_modified: row.get(6)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -432,4 +433,52 @@ pub struct VaultFolderDoc {
     pub file_name: String,
     pub created_at: String,
     pub updated_at: String,
+    /// The joined LINK's `lastModified` — v4's `DocMountDocumentWithLink.lastModified`
+    /// (`l.lastModified`, distinct from the document row's `updatedAt`). The
+    /// scenarios service (`parseScenarioDoc`) surfaces it in the API DTO; the vault
+    /// overlay's per-file parsers ignore it.
+    pub last_modified: String,
+}
+
+impl<'c> DocMountDocumentsRepository<'c> {
+    /// v4 `findByMountPointAndPath` returning the FULL joined
+    /// `DocMountDocumentWithLink` (not just `content`) — the shape
+    /// `readScenarioByPath` (`scenarios-common.ts:184`) consumes. Same 3-table
+    /// join + case-insensitive path compare as
+    /// [`Self::find_by_mount_point_and_path`], but projects the extra columns the
+    /// scenario parser reads (`fileName`, the document `createdAt`/`updatedAt`, the
+    /// link `lastModified`). Returns the stored `relativePath` (its own casing, not
+    /// the query's). `None` when no link matches.
+    pub fn find_with_link_by_mount_point_and_path(
+        &self,
+        mount_point_id: &str,
+        relative_path: &str,
+    ) -> Result<Option<VaultFolderDoc>, DbError> {
+        self.conn
+            .query_row(
+                "SELECT d.content, l.mountPointId, l.relativePath, l.fileName, d.createdAt, d.updatedAt, l.lastModified \
+                 FROM doc_mount_file_links l \
+                 JOIN doc_mount_documents d ON d.fileId = l.fileId \
+                 JOIN doc_mount_files f ON f.id = l.fileId \
+                 WHERE l.mountPointId = ?1 AND LOWER(l.relativePath) = LOWER(?2) \
+                 LIMIT 1",
+                params![mount_point_id, relative_path],
+                |row| {
+                    Ok(VaultFolderDoc {
+                        content: row.get(0)?,
+                        mount_point_id: row.get(1)?,
+                        relative_path: row.get(2)?,
+                        file_name: row.get(3)?,
+                        created_at: row.get(4)?,
+                        updated_at: row.get(5)?,
+                        last_modified: row.get(6)?,
+                    })
+                },
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
+    }
 }

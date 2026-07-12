@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+P4.6n unit 1: ported the scenarios-common service surface into
+`quilltap-core::db::scenarios` — `parseScenarioDoc`,
+`listScenariosInFolder` (ICU4X-collated sort + the alphabetically-first
+default-conflict resolution + warning), `readScenarioByPath`,
+`setScenarioDefaultInFolder` (sequenced no-transaction multi-write),
+`buildScenarioFileContent`, and `resolveScenarioPath` (nested-path
+rejection). Added the supporting mount-index reads (a `lastModified`
+field on `VaultFolderDoc` + a full single-doc read
+`find_with_link_by_mount_point_and_path`) and the `mime::detect_mime_type`
++ `folder_utils::{normalize_folder_path, derive_folder_path_from_storage_key,
+resolve_effective_folder_path}` helper ports the list-files legacy branch
+needs. Pure leaves unit-tested; the composed surface is proven by the
+`scenarios_routes_equivalence` differential landing with the route arms.
+
 Planned the P4.6n ∥ P4.6o ∥ P4.4u4 round and committed the three work
 orders (docs only). P4.6n closes the P4.6k server remainder: the
 scenario contract re-pinned at planning time from v4's Zod schemas
