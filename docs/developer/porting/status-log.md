@@ -7888,3 +7888,29 @@ checkout (identical `package.json`; the lane adds no npm deps).
   the green room…", "The players are ready.", "Something went awry."
 - **`green-room.reducer.spec.ts`** — the transitions + copy + the 100-cap. Gate:
   `tsc` clean, `ng test` green (292), `ng build` clean. SPA 0.5.25 → 0.5.26.
+
+### P4.6q unit 5 — the form body + shared children — LANDED
+
+- **`new-chat-form.ts`** (`qt-new-chat-form`, v4 `NewChatForm`): the Play-As select
+  (with the `usePersonaDisplayName` duplicate-name disambiguation ported inline),
+  the image-profile picker, the scenario dropdown (project/general/character
+  sources + preview + layered notes), the outfit selector, the avatar toggle, the
+  timestamp card, and the project row (picker/read-only). Autonomous toggle is a
+  loud disabled-with-title deferral. The group optgroup is intentionally absent
+  (v4's page passes no group scenarios — dead UI).
+- **`image-profile-picker.ts`** (`qt-image-profile-picker`, v4 `ImageProfilePicker`)
+  — self-fetching over `imageProfileList` (`sortByCharacter`/`sortByUserCharacter`),
+  the lane-A live variant (coded against the pinned `{profiles, count}` shape; an
+  error read yields the empty state until unification). `[selected]`-per-option.
+- **`outfit-selector.ts`** (`qt-outfit-selector`) — per-character mode radios
+  default / llm_choose (hidden for the user persona) / none; `manual` renders loudly
+  disabled-with-title (the wardrobe-composer deferral); `previous_chat` (continuation)
+  not rendered. Emits `{characterId, mode}`.
+- **`timestamp-config-card.ts`** (`qt-timestamp-config-card`) — the compact "Reality
+  Injection Mode" card (mode radios, interval, format, custom format, timezone +
+  Detect, injection method, fictional time + base, compact info line). Selecting
+  `EVERY_N_MINUTES` seeds a 15-min interval.
+- **`new-chat-form.spec.ts`** — the scenario-layering render (preview + append hint +
+  relabeled 'Additional scenario notes' editor) + the Play-As option listing,
+  transcribed from v4's `NewChatForm.test.tsx`. Gate: `tsc` clean, `ng test` green
+  (295), `ng build` clean. SPA 0.5.26 → 0.5.27.

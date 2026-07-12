@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+P4.6q (New-Chat SPA, lane B) — the form body + shared children. Ported
+v4's `NewChatForm` as `qt-new-chat-form`: the in-place Play-As select
+(with duplicate-name disambiguation), the self-fetching image-profile
+picker (`imageProfileList`, lane-A live variant, `[selected]`-per-option),
+the scenario dropdown (project / general / character sources, prefix
+tokens, precedence, read-only preview, layered free-text notes via a
+plain textarea), the outfit selector (default / llm_choose / none;
+manual + previous_chat loudly disabled/omitted), the compact
+"Reality Injection Mode" timestamp card, the avatar-generation toggle,
+and the project row (picker / read-only). Autonomous mode is a
+disabled-with-title deferral; the group optgroup stays absent (dead UI
+in v4's /salon/new). Component spec transcribes v4's scenario-layering +
+Play-As-listing assertions. SPA 0.5.27.
+
 P4.6q (New-Chat SPA, lane B) — the Green Room (creation-progress dialog).
 Ported v4's `CreationProgressProvider` + `ChatCreationProgressModal` over
 the ONE global event stream: `GreenRoomStore` subscribes to
