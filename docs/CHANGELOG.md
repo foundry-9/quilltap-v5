@@ -1054,6 +1054,14 @@ dispatch client (`DocumentApi`) reads lane B's document family + lane A's
 document block + `mountFilesList` request variants, `documentMode` merged
 onto `ChatDetail`. SPA 0.5.44.
 
+P4.6x unit 4 — the `qt-document-picker` modal (v4 `DocumentPickerModal`,
+chat-scoped): the source step (new blank, recents, the four store
+accordions + look-everywhere) and the browse step (a mount point's folder
+tree over lane A's `mountFilesList`, breadcrumbs, folder navigation, and
+"new document here"). Deferred loudly: the project/general FileBrowser path
+(no listing endpoint consumed this round) and the in-picker new-folder
+control (needs `mountFolderCreate`). SPA 0.5.46.
+
 P4.6x unit 2 — the `qt-document-pane` component (v4 `DocumentPane`):
 click-to-rename title, focus/split toggle, delete (confirm), close, the
 qtap:// URL row with copy, the frontmatter "Document Info" table (markdown

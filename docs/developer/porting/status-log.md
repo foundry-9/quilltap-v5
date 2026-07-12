@@ -9021,3 +9021,23 @@ title/URL/status render, markdown-vs-plain split, the frontmatter
 recombine, rename-on-Enter, close, and LLM-editing disable; the
 multi-render spec resets the test module (the P4.6t lesson). `ng test`
 461 (65 files) green.
+
+**Unit 4 — the `qt-document-picker` modal (SPA 0.5.46).** v4
+`DocumentPickerModal`, the chat-scoped surface, over `qt-modal` +
+`qt-collapsible-card`. Source step: New blank document (project-scope
+open), a Recent card (server-owned order; `fromCurrentChat`/`isActive`
+render, not re-sorted), and the four store-bucket accordions
+(character-vaults / group / database / filesystem, bucketed exactly as v4)
++ the look-everywhere checkbox (refetches `chatAccessibleStores` with
+`all`). Browse step: a mount point's folder tree over lane A's
+`mountFilesList` — the `mountPointEntries` folder derivation (prefix walk +
+server folder rows), breadcrumbs, up-nav, and "New document here"
+(`targetFolder` open). The collapsible cards are gated behind a `ready`
+signal so they mount only after the first fetch settles — a card seeds
+`defaultOpen` in its own `ngOnInit`, which fires before the async load, so
+this reproduces v4's key-remount-on-data-arrival (the P4.6l lesson).
+Spec drains the ngOnInit fetch microtasks manually (zoneless `whenStable`
+doesn't await them). DEFERRED LOUDLY: the project/general FileBrowser path
+(no project/general listing endpoint consumed this round) and the in-picker
+new-folder control (needs `mountFolderCreate`, not a consumed variant).
+`ng test` 467 (66 files) green.
