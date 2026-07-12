@@ -1876,6 +1876,10 @@ pub struct SpineBundle {
     /// The provider wire-actions driver (P4.6d; `None` for canned test
     /// factories).
     pub provider_actions: Option<Arc<dyn quilltap_core::api::ProviderActionsDriver>>,
+    /// The memory embedding provider the `MemoryCreate`/`MemorySearch` dispatch
+    /// arms run LIVE over (P4.6s, wired at the P4.6stu unification; `None` for
+    /// canned test factories — the arms answer "not assembled").
+    pub memory_embedding: Option<quilltap_core::model::embedding::ErasedEmbeddingProvider>,
     pub job_handlers: Vec<(String, Box<dyn JobHandler>)>,
 }
 
@@ -2017,11 +2021,18 @@ impl SpineFactory for ProductionSpineFactory {
                 user_agent: self.io.user_agent().to_string(),
                 base_url_env: self.io.base_url_env().map(str::to_string),
             });
+        // The memory-embedding provider for the dispatch arms (P4.6s): the same
+        // API-path provider the spine embeds with, resolved per call against the
+        // default embedding profile (the BUILTIN TF-IDF path needs no wire IO).
+        let memory_embedding = quilltap_core::model::embedding::ErasedEmbeddingProvider::new(
+            ApiEmbeddingProvider::new(db.clone(), self.io.wire_transport()),
+        );
         SpineBundle {
             chat_send: Arc::clone(&spine) as Arc<dyn ChatSendDriver>,
             swipe_generate: Some(spine),
             chat_create,
             provider_actions: Some(provider_actions),
+            memory_embedding: Some(memory_embedding),
             job_handlers,
         }
     }

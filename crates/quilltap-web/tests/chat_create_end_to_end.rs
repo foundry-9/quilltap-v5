@@ -170,6 +170,7 @@ impl SpineFactory for CreateSpineFactory {
             chat_create,
             swipe_generate: None,
             provider_actions: None,
+            memory_embedding: None,
             job_handlers: Vec::new(),
         }
     }

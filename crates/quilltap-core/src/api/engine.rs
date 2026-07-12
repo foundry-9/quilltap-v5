@@ -94,6 +94,11 @@ pub struct EngineAssembly {
     /// The provider wire-actions driver (P4.6d, wired at unification) —
     /// connection test / test message / api-key test / models fetch.
     pub provider_actions: Option<Arc<dyn ProviderActionsDriver>>,
+    /// The memory embedding provider the `MemoryCreate`/`MemorySearch` arms run
+    /// LIVE over (P4.6s, wired at unification — the host threads the spine's
+    /// `ApiEmbeddingProvider`); `None` keeps read-only embedders valid — the
+    /// arms answer "not assembled".
+    pub memory_embedding: Option<crate::model::embedding::ErasedEmbeddingProvider>,
 }
 
 impl EngineAssembly {
@@ -105,6 +110,7 @@ impl EngineAssembly {
             chat_create: None,
             swipe_generate: None,
             provider_actions: None,
+            memory_embedding: None,
         }
     }
 }
@@ -217,12 +223,9 @@ struct ReadyEngine {
     swipe_generate: Option<Arc<dyn SwipeGenerateDriver>>,
     /// The assembly's provider wire-actions driver (P4.6).
     provider_actions: Option<Arc<dyn ProviderActionsDriver>>,
-    /// The memory embedding provider the create/search arms run LIVE (P4.6s);
-    /// always `None` this lane (the differential proves the arms via a
-    /// directly-constructed provider). Host wiring — threading the spine's shared
-    /// `ApiEmbeddingProvider` through a NEW `EngineAssembly` field — is a named
-    /// deferral so this lane leaves `EngineAssembly` (and its host / web-test
-    /// initializers) untouched.
+    /// The memory embedding provider the create/search arms run LIVE (P4.6s;
+    /// threaded from `EngineAssembly::memory_embedding` at the P4.6stu
+    /// unification — the host supplies the spine's `ApiEmbeddingProvider`).
     memory_embedding: Option<crate::model::embedding::ErasedEmbeddingProvider>,
 }
 
@@ -2307,9 +2310,7 @@ fn open_ready(
         chat_create: assembly.chat_create,
         swipe_generate: assembly.swipe_generate,
         provider_actions: assembly.provider_actions,
-        // P4.6s: not carried on the assembly this lane (see the field doc) — the
-        // create/search arms answer the not-assembled refusal until host wiring.
-        memory_embedding: None,
+        memory_embedding: assembly.memory_embedding,
     })
 }
 
