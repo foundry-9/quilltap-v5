@@ -22,6 +22,14 @@ rename prompts on the FILENAME, set-default re-sends update with
 (the established Lexical divergence). Added a `closeOnBackdrop` input to
 the shared Modal (default true) for the no-click-outside editor.
 
+Built the `qt-project-wardrobe-manager` (self-contained inline draft
+form + rows) + a project-scoped wardrobe mutator over the
+`projectWardrobe*` verbs. Blank optional strings ride as `null` (v4
+`handleSave`); the composite picker excludes the item being edited; the
+slot-type floor keeps at least one slot. Unit-tested against a mock
+mutator: draft round-trip, blanks→null payload, self-exclusion, the slot
+floor, badge states, delete confirm (7 specs).
+
 P4.4u4 unit 3 (lane C, tier 2): reset_builtins as a service. Ported v4's
 `handleResetBuiltins` to `quilltap-core::services::quilltap_import::reset::
 reset_builtins` — cascade-delete the built-in characters (Lorian, Riya),
