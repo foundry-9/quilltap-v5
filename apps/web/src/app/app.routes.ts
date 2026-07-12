@@ -6,7 +6,8 @@ import { Routes } from '@angular/router';
  * hosts the `<router-outlet>` — once the vault is operational, so these routes
  * only ever match against an operational engine.
  *
- * `/salon` is the conversation list; `/salon/:id` is one conversation;
+ * `/salon` is the conversation list; `/salon/new` is the New-Chat form;
+ * `/salon/:id` is one conversation;
  * `/characters` is the character roster, `/characters/new` the create form,
  * `/characters/:id` a character's detail and `/characters/:id/edit` its editor;
  * `/settings` is the Settings hall and `/settings/wizard` the provider wizard;
@@ -17,6 +18,10 @@ export const routes: Routes = [
   {
     path: 'salon',
     loadComponent: () => import('./screens/salon/salon-list').then((m) => m.SalonList),
+  },
+  {
+    path: 'salon/new',
+    loadComponent: () => import('./screens/new-chat/new-chat-page').then((m) => m.NewChatPage),
   },
   {
     path: 'salon/:id',

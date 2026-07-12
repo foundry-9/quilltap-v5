@@ -7914,3 +7914,17 @@ checkout (identical `package.json`; the lane adds no npm deps).
   relabeled 'Additional scenario notes' editor) + the Play-As option listing,
   transcribed from v4's `NewChatForm.test.tsx`. Gate: `tsc` clean, `ng test` green
   (295), `ng build` clean. SPA 0.5.26 → 0.5.27.
+
+### P4.6q unit 6 — the /salon/new route + page — LANDED
+
+- **`app.routes.ts`** — added `salon/new` BEFORE `salon/:id` (which previously
+  swallowed the path as `id="new"`; the dangling links from salon-list /
+  project-chats / project-header now resolve).
+- **`new-chat-page.ts`** (`qt-new-chat-page`, v4 `app/salon/new/page.tsx`): reads
+  `?projectId=` / `?characterId=` / `?autonomous=1`, constructs `NewChatState`
+  (with the `GreenRoomStore`), composes the picker + form + submit spine + the
+  Green Room dialog, and navigates to `/salon/<id>` on success. Back link +
+  project card + connection-profile warning + the load/pre-flight error banner.
+  `?autonomous=1` → a loud not-yet-available notice; the page proceeds as an
+  ordinary new chat (autonomous mode deferred). Gate: `tsc` clean, `ng build`
+  clean (lazy `new-chat-page` chunk). SPA 0.5.27 → 0.5.28.

@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+P4.6q (New-Chat SPA, lane B) — the `/salon/new` route + page. Ported v4's
+`app/salon/new/page.tsx` as `qt-new-chat-page`: reads `?projectId=` /
+`?characterId=` / `?autonomous=1`, composes the picker + form + submit
+spine + the Green Room dialog, and navigates to the created chat. Added
+the `salon/new` route (before `salon/:id`, which previously swallowed it
+as `id="new"`). `?autonomous=1` surfaces a loud not-yet-available notice
+and proceeds as an ordinary chat. SPA 0.5.28.
+
 P4.6q (New-Chat SPA, lane B) — the form body + shared children. Ported
 v4's `NewChatForm` as `qt-new-chat-form`: the in-place Play-As select
 (with duplicate-name disambiguation), the self-fetching image-profile
