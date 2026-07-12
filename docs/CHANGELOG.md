@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.6n unit 2: made the groups scenarios surface live — the six
+`groupScenario*` dispatch arms + the `groupScenariosUnion` participant
+aggregation, composing the shared mount-scoped scenario CRUD (new
+`api::scenarios` module: validate-bag, filename sanitisation, the
+collision guard, write + set-default, the fresh re-list) over each
+group's official store (ensuring both `Scenarios/` and `Knowledge/`).
+The union re-resolves every requested character through the user-scoped
+lookup before the membership table (the security invariant), skips
+zero-scenario groups, and sorts by group name (ICU4X en-US). Added the
+`Response::Scenario` variant. Proven by the new `scenarios_routes`
+differential (18 groups cases: reads/create/update/rename/delete + the
+error arms + the union's multi-group/sort/skip/ownership-gate).
+
 P4.6n: extended the committed groups-projects test fixture for the
 scenarios surface — added groups Beacon (member Aria, one scenario;
 sorts before Gamma) and Zephyr (member Aria, zero scenarios) to exercise

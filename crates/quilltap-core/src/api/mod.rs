@@ -29,6 +29,7 @@ pub mod projects;
 pub mod provider_actions;
 pub mod provision;
 pub mod salon;
+pub mod scenarios;
 pub mod settings;
 pub mod types;
 

@@ -7050,3 +7050,52 @@ helpers carry tier-1 unit tests transcribed from v4's logic; the composed
 list/read/set-default surface is proven byte-for-byte by the
 `scenarios_routes_equivalence` differential landing with the route arms
 (units 2–4). Core 0.0.176 → 0.0.177.
+
+## P4.6n (lane A) unit 2 — Groups scenarios + participant-union (2026-07-11, in progress)
+
+Made the 7 groups-scenario refusal arms live. New `api::scenarios` module
+holds the **shared** mount-scoped CRUD every family composes: validate the
+scenario bag (the Zod schemas duplicated across v4's route files — the
+empty-`body` custom message `Scenario body cannot be empty` is byte-exact),
+sanitise+strip the filename, the collision guard, `buildScenarioFileContent`
+→ `writeDatabaseDocument`, the isDefault demotion via
+`setScenarioDefaultInFolder`, and the fresh re-list. `api::groups` resolves
+the group's official store (v4 ensures BOTH `Scenarios/` and `Knowledge/`):
+`ensure_group_scenarios_store` (collection routes, provisions) vs
+`load_group_scenarios_store` (item routes, RAW FK, 404 "…no official store
+yet"). Added `Response::Scenario`.
+
+`group_scenarios_union`: re-resolves every requested character id through
+the user-scoped `characters_read::find_by_id` BEFORE the unscoped membership
+table (the security invariant / why-comment), collects distinct groups,
+skips zero-scenario groups, catches per-group failures, and sorts by
+`groupName.localeCompare` (ICU4X en-US). The ONE sanctioned exception to
+Groups' per-responding-character isolation.
+
+**Differential:** `scenarios_routes_equivalence` (new) — 18 groups cases
+over the extended fixture: list, get, get-missing(404), get-nested(400),
+create(+sanitisation `:`→`_` +isDefault demotion, ts-blanked), collision(400),
+update(ts-blanked), empty-body(400), update-missing(404), rename, rename-noop,
+rename-conflict(400), delete, delete-missing(404), and union
+{aria→[Beacon,Gamma] sorted+Zephyr-skipped, bram→[Gamma], empty→[], unknown→[]}.
+Reads/rename/delete keep the baked fixture timestamps (rename/delete mint
+none — `move` touches the LINK's updatedAt, not the DTO's d.createdAt/updatedAt/
+l.lastModified); create/update blank them. Error arms compared as HTTP
+status + message (v4 `{error}` vs the dispatch `Error{kind,message}`).
+v4's `?action != rename → 400` has no v5 dispatch equivalent (intentionally
+out of the differential). Core 0.0.177 → 0.0.178, harness 0.0.161 → 0.0.162.
+
+Regen recipe (Node 24 @ `~/.nvm/versions/node/v24.13.1/bin`, from the v4
+checkout, `/tmp` mirror; jest ignores `.claude/`):
+```
+TMPO=/tmp/qt-gp-oracle; W=<worktree>
+cp $W/harness/oracle/cases/scenarios-routes.test.ts $TMPO/cases/
+cp $W/harness/oracle/fixtures/groups-projects.json $TMPO/fixtures/
+cd ~/source/quilltap-server
+QT_FIXTURE_GP_MAIN=$W/crates/quilltap-web/tests/fixtures/groups-projects-main.db \
+QT_FIXTURE_GP_MOUNT=$W/crates/quilltap-web/tests/fixtures/groups-projects-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-scenarios-routes.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- scenarios-routes
+# then: QT_ORACLE_SCENARIOS_ROUTES=/tmp/oracle-scenarios-routes.ndjson cargo test -p quilltap-harness --test scenarios_routes_equivalence
+```

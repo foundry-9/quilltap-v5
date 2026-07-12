@@ -1216,14 +1216,62 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
-            // --- Groups scenarios (P4.6k Unit 3 — loud refusal until landed) -
-            Request::GroupScenarioList { .. } => super::groups::not_available("scenario-list"),
-            Request::GroupScenarioCreate { .. } => super::groups::not_available("scenario-create"),
-            Request::GroupScenarioGet { .. } => super::groups::not_available("scenario-get"),
-            Request::GroupScenarioUpdate { .. } => super::groups::not_available("scenario-update"),
-            Request::GroupScenarioRename { .. } => super::groups::not_available("scenario-rename"),
-            Request::GroupScenarioDelete { .. } => super::groups::not_available("scenario-delete"),
-            Request::GroupScenariosUnion { .. } => super::groups::not_available("scenarios-union"),
+            // --- Groups scenarios (P4.6n) -----------------------------------
+            Request::GroupScenarioList { group_id } => match self.ready_db() {
+                Ok(db) => super::groups::group_scenario_list(&db, &group_id).await,
+                Err(r) => r,
+            },
+            Request::GroupScenarioCreate { group_id, scenario } => match self.ready_db() {
+                Ok(db) => super::groups::group_scenario_create(&db, &group_id, scenario).await,
+                Err(r) => r,
+            },
+            Request::GroupScenarioGet {
+                group_id,
+                scenario_path,
+            } => match self.ready_db() {
+                Ok(db) => super::groups::group_scenario_get(&db, &group_id, &scenario_path).await,
+                Err(r) => r,
+            },
+            Request::GroupScenarioUpdate {
+                group_id,
+                scenario_path,
+                scenario,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::groups::group_scenario_update(&db, &group_id, &scenario_path, scenario)
+                        .await
+                }
+                Err(r) => r,
+            },
+            Request::GroupScenarioRename {
+                group_id,
+                scenario_path,
+                new_filename,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::groups::group_scenario_rename(
+                        &db,
+                        &group_id,
+                        &scenario_path,
+                        &new_filename,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::GroupScenarioDelete {
+                group_id,
+                scenario_path,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::groups::group_scenario_delete(&db, &group_id, &scenario_path).await
+                }
+                Err(r) => r,
+            },
+            Request::GroupScenariosUnion { character_ids } => match self.ready_db() {
+                Ok(db) => super::groups::group_scenarios_union(&db, character_ids).await,
+                Err(r) => r,
+            },
 
             // --- Projects family (P4.6k) ------------------------------------
             Request::ProjectList => match self.ready_db() {

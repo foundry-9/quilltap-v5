@@ -1004,6 +1004,11 @@ pub enum Response {
     /// `{wardrobeItem}`, …). The exact bytes are pinned by
     /// `projects_routes_equivalence`.
     Project(serde_json::Value),
+    /// A general (instance-wide) scenarios-family body (`{mountPointId, scenarios,
+    /// warnings}`, `{mountPointId, path, scenarios, warnings}`, `{scenario}`,
+    /// `{path, scenarios, warnings}`, `{scenarios, warnings}`). The exact bytes are
+    /// pinned by `scenarios_routes_equivalence` (P4.6n).
+    Scenario(serde_json::Value),
     Error(CoreError),
 }
 
