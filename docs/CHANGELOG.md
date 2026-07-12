@@ -28,6 +28,19 @@ and the `fileOpStatus` HTTP-status mapper. Landed under
 `mime_for_extension` port (the duplicate in `files_routes.rs` removed).
 Differential-proven exact against v4's real code (a 69-row tsx oracle,
 `harness/oracle/cases/mount-chunker.ts`).
+P4.6w (Document Mode server, lane B): the `documents` core module — the
+chat-agnostic operator-doc-actions port (`STANDALONE_CHAT_ID`,
+`MAX_RECENT_DOCUMENTS`, `resolveOperatorDocPath`, `resolvedPathExists`,
+`classifyResolvedTarget`, `pickUntitledDocumentPath`, `openDocumentFile`,
+`writeDocumentFile`, `computeRenameTarget`, `renameDocumentFile`,
+`deleteDocumentFile`, `listAllEnabledStores`) plus the `MountRefreshScheduler`
+seam (defaults to a loud unwired skip; the machinery is wired at unification).
+Filesystem/`general` scopes surface the host-fs seam (database-backed corpus
+only, matching the doc-edit surface). The mtime-conflict guard is reproduced in
+`writeDocumentFile` so the 409 arm stays faithful without touching
+`database_store`. `computeRenameTarget` is proven byte-exact against v4 (pure
+tier-1 oracle); the stateful functions are proven with the route surface.
+
 P4.6w (Document Mode server, lane B): extend the `chat_documents` repo
 with the six Document Mode queries/sweeps — `find_active_for_chat`
 (earliest-opened active), `find_recent_for_chat`, `find_recent_across_chats`

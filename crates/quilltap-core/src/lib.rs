@@ -166,6 +166,7 @@ pub mod courier;
 pub mod db;
 pub mod dbkey;
 pub mod doc_edit;
+pub mod documents;
 pub mod embedding_blob;
 pub mod embedding_vector;
 pub mod enclave;

@@ -8816,3 +8816,44 @@ stable string sorts reproduce v4's comparators. Six Rust unit tests over an
 in-memory table prove each; the v4-oracle differential arrives with the
 `api::documents` route surface (the recents dedupe + rename sweep are
 exercised there). core 0.0.194.
+
+### P4.6w unit 2 — the `documents` operator-doc-actions core (lane B) — 2026-07-12
+
+`crates/quilltap-core/src/documents/mod.rs`: the chat-agnostic core v4's two
+Document Mode routes drive (`lib/documents/operator-doc-actions.ts` +
+`lib/chat-documents/constants.ts`). Constants (`STANDALONE_CHAT_ID` =
+all-zeros UUID, `MAX_RECENT_DOCUMENTS` = 10); `DocumentAccessContext` +
+`standalone()`; the `MountRefreshScheduler` seam trait; and the full port:
+`resolve_operator_doc_path` (operator override), `resolved_path_exists`
+(NOT_FOUND→false, other errors re-raise), `classify_resolved_target`
+(document/image/other via a faithful `mime_for_extension` + the blob mime),
+`pick_untitled_document_path` (counter + UUID fallback), `open_document_file`
+(read existing or create blank), `write_document_file`, `compute_rename_target`
+(pure), `rename_document_file`, `delete_document_file`, and
+`list_all_enabled_stores` (the "look everywhere" listing, vaults labelled by
+owner via `characters_read::find_all_raw`).
+
+**Seam decisions.** (1) The v5 path resolver defers `general`/fs mounts to the
+host-fs seam — a `ResolvedPath` is only ever database-backed — so the core
+resolves + operates on database stores faithfully and any fs/general target
+surfaces `DocError::Fs` (loud). This matches the whole doc-edit surface; the
+differential corpus is database-only. This is a **correction to the work
+order's fixtures section**, which suggested per-side fs temp trees: v5 cannot
+resolve fs scopes, so the fs-scope cases are a tracked deferral, not fixtured.
+(2) `write_document_file` reproduces v4's `expectedMtime` guard (read existing
+`lastModified`, compare, CONFLICT on mismatch) locally so the 409 arm is
+faithful WITHOUT touching lane A's `database_store.rs` (whose write does not
+port the guard). (3) The `MountRefreshScheduler` defaults to `None` + an
+`eprintln!` loud skip; unification wires lane A's reindex/embed services.
+
+`compute_rename_target` is proven **byte-exact** against v4's real
+`computeRenameTarget` (16-case pure tier-1 oracle:
+`documents-rename-target.ts` → `documents_rename_target_equivalence`, covering
+extension inheritance, directory preservation, JS trim, dotfile/bare-extension
+edges, and every rejection arm). Eight more Rust unit tests cover the naming
+counter, slash-trim, mime gate, and Node path helpers. The stateful functions
+(open/write/rename/delete/list/resolve/exists/classify) are proven with the
+`api::documents` route surface (next unit). core 0.0.195, harness 0.0.178.
+
+Regen: `cd ~/source/quilltap-server && npx tsx <worktree>/harness/oracle/cases/documents-rename-target.ts > /tmp/oracle-documents-rename-target.ndjson`
+then `QT_ORACLE_DOCUMENTS_RENAME=/tmp/oracle-documents-rename-target.ndjson cargo test -p quilltap-harness --test documents_rename_target_equivalence`.
