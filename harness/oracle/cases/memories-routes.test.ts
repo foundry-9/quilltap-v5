@@ -1,0 +1,237 @@
+/**
+ * @jest-environment node
+ *
+ * P4.6s MEMORIES route-surface ORACLE: drives v4's REAL memories route handlers
+ * over a FRESH copy of the committed memories-{main,mount}.db fixture per case,
+ * and emits each response body (+ status) so the Rust ports (`api::memories::*`)
+ * can be diffed byte-for-byte.
+ *
+ * Only the seams the Rust harness also neutralizes are mocked: the auth session
+ * and the startup gate. The DB stack + the provider registry (for the builtin
+ * embedding search) are doMocked to the REAL modules (past jest.setup) + the real
+ * cipher binding.
+ *
+ * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+ *   TMPO=/tmp/qt-mem-oracle
+ *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+ *   cp "$V5W/harness/oracle/cases/memories-routes.test.ts" "$TMPO/cases/"
+ *   cp "$V5W/harness/oracle/fixtures/memories-web.json" "$TMPO/fixtures/"
+ *   cd ~/source/quilltap-server
+ *   QT_FIXTURE_MEM_MAIN=$V5W/crates/quilltap-web/tests/fixtures/memories-main.db \
+ *   QT_FIXTURE_MEM_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/memories-mount.db \
+ *   QT_ORACLE_OUT=/tmp/oracle-memories-routes.ndjson \
+ *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
+ *       --roots "$PWD" --roots "$TMPO/cases" -- memories-routes
+ */
+
+import * as fs from 'fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+
+interface Spec {
+  testPepperBase64: string;
+  userId: string;
+}
+
+const MNEMO = 'b1000000-0000-4000-8000-000000000001';
+const ORLA = 'b1000000-0000-4000-8000-000000000002';
+const PIP = 'b1000000-0000-4000-8000-000000000003';
+const CHAT_SALON = 'c1000000-0000-4000-8000-000000000001';
+const MSG_S1 = 'd1000000-0000-4000-8000-000000000001';
+const MSG_S2A = 'd1000000-0000-4000-8000-000000000002';
+const MEM_TAGGED_2 = 'b2000000-0000-4000-8000-0000000000a1';
+const MISSING = '00000000-0000-4000-8000-0000000000ff';
+
+function mockRequest(url: string, body?: unknown): unknown {
+  return {
+    method: 'GET',
+    url,
+    nextUrl: new URL(url),
+    headers: new Headers({ 'Content-Type': 'application/json' }),
+    json: jest.fn().mockResolvedValue(body ?? {}),
+  };
+}
+
+function applyMocks(spec: Spec): void {
+  const cipherDriverPath = require('node:path').join(
+    process.cwd(),
+    'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers',
+  );
+  jest.doMock('better-sqlite3', () => jest.requireActual(cipherDriverPath));
+  jest.doMock('@/lib/database/manager', () => jest.requireActual('@/lib/database/manager'));
+  jest.doMock('@/lib/database/repositories', () =>
+    jest.requireActual('@/lib/database/repositories'),
+  );
+  jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
+  jest.doMock('@/lib/embedding/vector-store', () =>
+    jest.requireActual('@/lib/embedding/vector-store'),
+  );
+  jest.doMock('@/lib/auth/session', () => ({
+    __esModule: true,
+    ...jest.requireActual('@/lib/auth/session'),
+    getServerSession: async () => ({ user: { id: spec.userId } }),
+  }));
+  jest.doMock('@/lib/startup/startup-state', () => {
+    const actual = jest.requireActual('@/lib/startup/startup-state');
+    return {
+      __esModule: true,
+      ...actual,
+      startupState: {
+        ...actual.startupState,
+        isReady: () => true,
+        waitForReady: async () => true,
+        isPepperResolved: () => true,
+        getPepperState: () => 'resolved',
+        getPhase: () => 'ready',
+        isLockedMode: () => false,
+      },
+    };
+  });
+}
+
+interface CaseSpec {
+  name: string;
+  run: (mods: Record<string, unknown>) => Promise<{ status: number; body: unknown }>;
+}
+
+async function loadRoute(path: string): Promise<Record<string, (...a: unknown[]) => Promise<unknown>>> {
+  return (await import(path)) as never;
+}
+
+async function respond(r: unknown): Promise<{ status: number; body: unknown }> {
+  const resp = r as { status: number; json: () => Promise<unknown> };
+  return { status: resp.status, body: await resp.json() };
+}
+
+async function runCase(
+  spec: Spec,
+  c: CaseSpec,
+  scratch: string,
+  fixtures: { main: string; mount: string },
+): Promise<Record<string, unknown>> {
+  jest.resetModules();
+  applyMocks(spec);
+  // Register the provider plugins (incl. the BUILTIN embeddings provider) so the
+  // semantic-search arm resolves the builtin embedding at query time.
+  const { initializePlugins } = await import('@/lib/startup/plugin-initialization');
+  await initializePlugins();
+
+  const work = mkdtempSync(join(scratch, 'mem-'));
+  const mainWork = join(work, 'main.db');
+  const mountWork = join(work, 'mount.db');
+  copyFileSync(fixtures.main, mainWork);
+  copyFileSync(fixtures.mount, mountWork);
+  process.env.SQLITE_PATH = mainWork;
+  process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
+
+  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+  const { closeMountIndexSQLiteClient } = await import(
+    '@/lib/database/backends/sqlite/mount-index-client'
+  );
+  await initializeDatabase();
+  try {
+    const out = await c.run({});
+    return { name: c.name, status: out.status, body: out.body };
+  } finally {
+    // Let any fire-and-forget write (the item-GET access-time bump; the search
+    // access bumps) settle before teardown, so it can't leave the single-writer
+    // child / connection in a state that corrupts the NEXT case's user read.
+    await new Promise((r) => setTimeout(r, 150));
+    await closeDatabase();
+    closeMountIndexSQLiteClient();
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
+async function main(): Promise<void> {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const spec = JSON.parse(
+    fs.readFileSync(join(here, '..', 'fixtures', 'memories-web.json'), 'utf8'),
+  ) as Spec;
+
+  const fixtures = {
+    main: process.env.QT_FIXTURE_MEM_MAIN ?? '',
+    mount: process.env.QT_FIXTURE_MEM_MOUNT ?? '',
+  };
+  for (const [k, v] of Object.entries(fixtures)) {
+    if (!v || !existsSync(v)) throw new Error(`fixture ${k} missing: ${v}`);
+  }
+  const outPath = process.env.QT_ORACLE_OUT;
+  if (!outPath) throw new Error('QT_ORACLE_OUT must point at the NDJSON file to write');
+
+  const scratch = mkdtempSync(join(tmpdir(), 'qt-mem-oracle-'));
+  mkdirSync(join(scratch, 'data'), { recursive: true });
+  process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
+  process.env.QUILLTAP_DATA_DIR = scratch;
+  delete process.env.SQLITE_WAL_MODE;
+  process.env.LOG_LEVEL = 'error';
+
+  const B = 'http://localhost/api/v1/memories';
+  const listGet = async (qs: string) =>
+    respond(await (await loadRoute('@/app/api/v1/memories/route')).GET(mockRequest(`${B}?${qs}`)));
+  const itemGet = async (id: string) =>
+    respond(
+      await (await loadRoute('@/app/api/v1/memories/[id]/route')).GET(mockRequest(`${B}/${id}`), {
+        params: Promise.resolve({ id }),
+      }),
+    );
+
+  const cases: CaseSpec[] = [
+    // --- List (paginated) ---
+    { name: 'list_paginated', run: () => listGet(`characterId=${MNEMO}&limit=20&offset=0`) },
+    {
+      name: 'list_paginated_p2',
+      run: () => listGet(`characterId=${MNEMO}&limit=20&offset=20`),
+    },
+    {
+      name: 'list_paginated_importance_asc',
+      run: () => listGet(`characterId=${MNEMO}&limit=15&sortBy=importance&sortOrder=asc`),
+    },
+    {
+      name: 'list_paginated_search',
+      run: () => listGet(`characterId=${MNEMO}&limit=50&search=smuggler`),
+    },
+    {
+      name: 'list_paginated_minImportance',
+      run: () => listGet(`characterId=${MNEMO}&limit=50&minImportance=0.7`),
+    },
+    {
+      name: 'list_paginated_source_manual',
+      run: () => listGet(`characterId=${MNEMO}&limit=50&source=MANUAL`),
+    },
+    // --- List (legacy, no limit) ---
+    { name: 'list_legacy', run: () => listGet(`characterId=${ORLA}`) },
+    { name: 'list_legacy_search', run: () => listGet(`characterId=${MNEMO}&search=barometer`) },
+    // --- List errors ---
+    { name: 'list_missing_character', run: () => listGet(`characterId=${MISSING}`) },
+    // --- Item GET ---
+    { name: 'get', run: () => itemGet(MEM_TAGGED_2) },
+    { name: 'get_missing', run: () => itemGet(MISSING) },
+    // --- Count by chat ---
+    { name: 'count_by_chat', run: () => listGet(`chatId=${CHAT_SALON}`) },
+    { name: 'count_by_chat_missing', run: () => listGet(`chatId=${MISSING}`) },
+    // --- By message ---
+    { name: 'by_message_swipe', run: () => listGet(`messageId=${MSG_S2A}`) },
+    { name: 'by_message_single', run: () => listGet(`messageId=${MSG_S1}`) },
+    { name: 'by_message_missing', run: () => listGet(`messageId=${MISSING}`) },
+    // --- Character memory counts ---
+    { name: 'character_counts', run: () => listGet(`action=character-memory-counts`) },
+  ];
+
+  const lines: string[] = [];
+  for (const c of cases) {
+    const rec = await runCase(spec, c, scratch, fixtures);
+    lines.push(JSON.stringify(rec));
+  }
+  fs.writeFileSync(outPath, lines.join('\n') + '\n');
+  rmSync(scratch, { recursive: true, force: true });
+  process.stderr.write(`wrote ${cases.length} memories-routes oracle records to ${outPath}\n`);
+}
+
+// Jest wrapper: one test that runs the whole corpus.
+test('memories-routes oracle', async () => {
+  await main();
+}, 120000);

@@ -1064,6 +1064,47 @@ pub enum Request {
         project_id: String,
         item_id: String,
     },
+    // --- Memories (P4.6s) — v4 `memories/route.ts` + `[id]/route.ts` +
+    //     `chats/[id]/actions/memories.ts`. See `api::memories`. ---
+    /// v4 GET `?characterId=` — the two-path list (paginated when `limit` present,
+    /// else legacy-all). `{memories: (…&{tagDetails})[], count, totalCount}`.
+    #[serde(rename_all = "camelCase")]
+    MemoryList {
+        character_id: String,
+        #[serde(default)]
+        search: Option<String>,
+        #[serde(default)]
+        min_importance: Option<f64>,
+        #[serde(default)]
+        source: Option<String>,
+        #[serde(default)]
+        sort_by: Option<String>,
+        #[serde(default)]
+        sort_order: Option<String>,
+        #[serde(default)]
+        limit: Option<i64>,
+        #[serde(default)]
+        offset: Option<i64>,
+    },
+    /// v4 GET `/api/v1/memories/[id]` — `{memory}` (+ tagDetails; access-time bump).
+    #[serde(rename_all = "camelCase")]
+    MemoryGet {
+        memory_id: String,
+    },
+    /// v4 GET `?chatId=` — `{chatId, memoryCount}`.
+    #[serde(rename_all = "camelCase")]
+    MemoryCountByChat {
+        chat_id: String,
+    },
+    /// v4 GET `?messageId=` — the trimmed `{memoryCount, isSwipeGroup, swipeCount,
+    /// memories: [{id, summary, characterId, importance}]}`.
+    #[serde(rename_all = "camelCase")]
+    MemoryByMessage {
+        message_id: String,
+    },
+    /// v4 GET `?action=character-memory-counts` — `{success, characters: [{id,
+    /// name, memoryCount}]}` (memoryCount desc).
+    MemoryCharacterCounts,
 }
 
 /// Typed DTO per variant (the uniffi payoff). `Error` carries the one
@@ -1157,6 +1198,13 @@ pub enum Response {
     /// `{mountPoint, warning?}`, `{message}`). Pinned by
     /// `mount_points_routes_equivalence`.
     MountPoint(serde_json::Value),
+    /// A memories-family body — the list `{memories, count, totalCount}`, the item
+    /// `{memory}`, the by-message trimmed shape, the search
+    /// `{memories, count, query, usedEmbedding}`, the housekeeping envelopes, the
+    /// config get/set `{success, settings|concurrency|...}`, the job-enqueue
+    /// `{success, jobId|enqueued|...}`, the per-chat `{success, jobCount, ...}`.
+    /// The exact bytes are pinned by `memories_routes_equivalence` (P4.6s).
+    Memory(serde_json::Value),
     Error(CoreError),
 }
 

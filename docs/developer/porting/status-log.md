@@ -8132,3 +8132,51 @@ composition, the continuation entry, the Lexical editors, the
 Validate/list-models buttons, tag pickers, the mount-points
 management UI. Versions after the round: core 0.0.188, harness
 0.0.172, host 0.0.12, web 0.0.13, SPA 0.5.34.
+
+## P4.6s (lane A) — the memories server surface — IN PROGRESS (branch) (2026-07-12)
+
+### P4.6s unit 1 — the memories-web fixture + the read arms — LANDED (branch)
+
+The NEW committed `memories-{main,mount}.db` fixture
+(`harness/oracle/fixtures/build-memories-web-fixture.ts`, spec
+`memories-web.json`), built via v4's REAL repos + the REAL builtin
+TF-IDF vectorizer: FIXTURE_USER (`e18e05bc…`, the web e2e rewrites to
+SINGLE_USER_ID), one connection + api key + a `chat_settings` row
+(cheapLLMSettings → the connection), a BUILTIN **default** embedding
+profile with a fitted `tfidf_vocabularies` row; three characters —
+**Mnemo** (51 memories: 40 nautical fillers + tagged pair + near-dup
+anchor + related pair + two swipe-source AUTO memories; 47 embedded via
+`generateMissingEmbeddings`, 4 bare), **Orla** (4), **Pip** (0); two
+tags (one with a visualStyle); a salon chat (USER + two swipe-sibling
+ASSISTANT messages) and an autonomous chat (two ASSISTANT messages).
+
+Gotchas banked while building the fixture + oracle:
+- **`initializePlugins()` is REQUIRED** in both the fixture builder and
+  the oracle per-case setup — the BUILTIN embedding path calls
+  `providerRegistry.createEmbeddingProvider('BUILTIN')` (embedding-service.ts
+  :204), which throws "Provider 'BUILTIN' not found in registry" until the
+  provider plugins are registered. Fitting the vocab via the imported
+  `TfIdfVectorizer` alone is NOT enough — generation goes through the
+  registry.
+- **The oracle needs a ~150 ms settle before `closeDatabase()` per case.**
+  The item-GET access-time bump (and the search access bumps) are
+  fire-and-forget; without the settle they corrupt the single-writer /
+  DB-manager state for the NEXT case, so the auth middleware's
+  `repos.users.findById` returns null → a spurious 500 "User not found"
+  in place of the faithful 404. With the settle, `get_missing` correctly
+  returns 404 "Memory not found" (the route's real behavior).
+
+First five arms LANDED + differential-proven (`memories_routes_equivalence`,
+17 read cases): `memoryList` (paginated + legacy in-memory paths, the
+`tagDetails` full-tag enrichment via `tags::find_all`, search /
+minImportance / source filters, importance-on-RAW + createdAt/updatedAt
+sorts), `memoryGet` (tagDetails + a synchronous access-time bump — the v5
+read boundary has no fire-and-forget lane), `memoryCountByChat`,
+`memoryByMessage` (the swipe-group expansion + the trimmed
+`{id,summary,characterId,importance}` shape), `memoryCharacterCounts`
+(count-desc, stable ties). The read shape ECHOES `embedding` as an
+index-keyed Float32 object — v4 and v5 match byte-for-byte (the f32→JSON
+shortest-round-trip is identical). Ownership uses MAIN-only
+`characters_read::find_by_id_raw` (id is overlay-invariant; the broken-vault
+drop is out of the fixture). Response variant: `Response::Memory(Value)`.
+Bumps: core 0.0.189, harness 0.0.173.

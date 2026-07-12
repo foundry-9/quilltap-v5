@@ -1682,6 +1682,46 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            // --- Memories (P4.6s) ---
+            Request::MemoryList {
+                character_id,
+                search,
+                min_importance,
+                source,
+                sort_by,
+                sort_order,
+                limit,
+                offset,
+            } => match self.ready_db() {
+                Ok(db) => super::memories::memory_list(
+                    &db,
+                    &character_id,
+                    search.as_deref(),
+                    min_importance,
+                    source.as_deref(),
+                    sort_by.as_deref(),
+                    sort_order.as_deref(),
+                    limit,
+                    offset,
+                ),
+                Err(r) => r,
+            },
+            Request::MemoryGet { memory_id } => match self.ready_db() {
+                Ok(db) => super::memories::memory_get(&db, &memory_id).await,
+                Err(r) => r,
+            },
+            Request::MemoryCountByChat { chat_id } => match self.ready_db() {
+                Ok(db) => super::memories::memory_count_by_chat(&db, &chat_id),
+                Err(r) => r,
+            },
+            Request::MemoryByMessage { message_id } => match self.ready_db() {
+                Ok(db) => super::memories::memory_by_message(&db, SINGLE_USER_ID, &message_id),
+                Err(r) => r,
+            },
+            Request::MemoryCharacterCounts => match self.ready_db() {
+                Ok(db) => super::memories::memory_character_counts(&db, SINGLE_USER_ID),
+                Err(r) => r,
+            },
         }
     }
 

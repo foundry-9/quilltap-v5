@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.6s memories server, part 1 (reads + the fixture): the new committed
+`memories-{main,mount}.db` fixture (3 characters, 51 memories on one,
+builtin TF-IDF embeddings via v4's real path, a swipe group, tagged +
+related pairs) and the first five dispatch arms — `memoryList` (both the
+paginated and the legacy in-memory paths, tagDetails, search/minImportance/
+source filters), `memoryGet` (tagDetails + access-time bump), `memoryCountByChat`,
+`memoryByMessage` (swipe-group expansion + the trimmed shape), and
+`memoryCharacterCounts` (count-desc). Proven by `memories_routes_equivalence`
+against v4's real route handlers (17 read cases, byte-for-byte incl. the
+embedding index-keyed object).
+
 Work orders for the P4.6s ∥ P4.6t ∥ P4.6u round (the Commonplace Book
 + terminal-pane round), docs only. Lane A (p4.6s-memories-server.md):
 the memories dispatch surface — the collection endpoint's ~20 action
