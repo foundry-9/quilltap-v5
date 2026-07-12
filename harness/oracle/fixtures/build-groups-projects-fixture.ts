@@ -1,9 +1,17 @@
 /**
  * The committed Groups + Projects server-surface fixture builder (P4.6k
- * deliverable #3) — the shared test-pepper substrate for the whole
- * groups-projects-server differential set (`groups_routes_equivalence` /
- * `projects_routes_equivalence`) AND the sibling P4.6l Groups/Projects-SPA
- * Playwright e2e.
+ * deliverable #3, extended in P4.6n) — the shared test-pepper substrate for the
+ * whole groups-projects-server differential set (`groups_routes_equivalence` /
+ * `projects_routes_equivalence` / `scenarios_routes_equivalence`) AND the sibling
+ * P4.6l/P4.6o Groups/Projects/Scenarios-SPA Playwright e2e.
+ *
+ * P4.6n additions:
+ *   - Groups Beacon (member Aria, one scenario; sorts before Gamma) + Zephyr
+ *     (member Aria, ZERO scenarios) — the participant-union's sort + zero-scenario
+ *     skip. Gamma/Delta are untouched (their existing route cases stay valid).
+ *   - The singleton "Quilltap General" mount + `instance_settings.generalMountPointId`
+ *     + two general scenarios that BOTH mark isDefault (the default-conflict
+ *     warning: alphabetically-first 'aurora' wins, 'dusk' is demoted-in-response).
  *
  * Bakes, via v4's REAL repositories + store-write helpers (all ids/timestamps
  * pinned so both differential sides read identical rows — reads diff with no
@@ -61,6 +69,15 @@ const APIKEY = 'a0000001-0000-4000-8000-000000000001';
 
 const GAMMA = 'a2000000-0000-4000-8000-000000000001';
 const DELTA = 'a2000000-0000-4000-8000-000000000002';
+// P4.6n union coverage: Beacon (member Aria, HAS scenarios; name sorts BEFORE
+// Gamma) and Zephyr (member Aria, ZERO scenarios → the zero-scenario skip).
+const BEACON = 'a2000000-0000-4000-8000-000000000003';
+const ZEPHYR = 'a2000000-0000-4000-8000-000000000004';
+
+// P4.6n general (instance-wide) family: the singleton "Quilltap General" mount +
+// two scenarios that BOTH mark isDefault (the alphabetically-first wins, the other
+// is demoted-in-response with a warning — the default-conflict case).
+const GENERAL_MP = 'b0000000-0000-4000-8000-0000000000a0';
 
 const IOTA = 'a3000000-0000-4000-8000-000000000001';
 const LAMBDA = 'a3000000-0000-4000-8000-000000000002';
@@ -113,6 +130,7 @@ async function main(): Promise<void> {
   const { getRawMountIndexDatabase, closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
   const { CharacterSchema } = await import('@/lib/schemas/types');
   const { GroupSchema } = await import('@/lib/schemas/group.types');
   const { ProjectSchema } = await import('@/lib/schemas/project.types');
@@ -308,6 +326,79 @@ async function main(): Promise<void> {
     buildScenarioFileContent({ name: 'Interlude', body: 'A quiet pause.' }),
   );
   await setGroupScenarioDefault(gammaMp, 'Scenarios/prologue.md');
+
+  // Beacon — member Aria, one non-default scenario. Its name sorts BEFORE Gamma,
+  // so the participant-union's groupName sort is observable.
+  const beacon = await repos.groups.create(
+    { name: 'Beacon', state: {} } as never,
+    { id: BEACON, createdAt: TS, updatedAt: TS } as never,
+  );
+  if (beacon.id !== BEACON) throw new Error(`Beacon id drift: got ${beacon.id}, expected ${BEACON}`);
+  await repos.groupCharacterMembers.addMember(BEACON, ARIA);
+  const beaconMp = beacon.officialMountPointId as string;
+  await ensureGroupScenariosFolder(beaconMp);
+  await writeDatabaseDocument(
+    beaconMp,
+    'Scenarios/beacon-intro.md',
+    buildScenarioFileContent({ name: 'Beacon Intro', body: 'A light in the fog.' }),
+  );
+
+  // Zephyr — member Aria, ZERO scenarios (its official store exists but carries no
+  // Scenarios entries) → the union's zero-scenario skip.
+  const zephyr = await repos.groups.create(
+    { name: 'Zephyr', state: {} } as never,
+    { id: ZEPHYR, createdAt: TS, updatedAt: TS } as never,
+  );
+  if (zephyr.id !== ZEPHYR) throw new Error(`Zephyr id drift: got ${zephyr.id}, expected ${ZEPHYR}`);
+  await repos.groupCharacterMembers.addMember(ZEPHYR, ARIA);
+
+  // General (instance-wide) "Quilltap General" mount + its Scenarios/. Persist the
+  // pointer in the MAIN db's instance_settings (the general-scenarios helpers read
+  // it via getGeneralMountPointId).
+  await repos.docMountPoints.create(
+    {
+      name: 'Quilltap General',
+      basePath: '',
+      mountType: 'database',
+      storeType: 'documents',
+      includePatterns: [],
+      excludePatterns: [],
+      enabled: true,
+      lastScannedAt: null,
+      scanStatus: 'idle',
+      lastScanError: null,
+      conversionStatus: 'idle',
+      conversionError: null,
+      fileCount: 0,
+      chunkCount: 0,
+      totalSizeBytes: 0,
+    } as never,
+    { id: GENERAL_MP, createdAt: TS, updatedAt: TS } as never,
+  );
+  const mainDb = getRawDatabase();
+  if (!mainDb) throw new Error('main DB handle unavailable');
+  mainDb.exec(
+    'CREATE TABLE IF NOT EXISTS "instance_settings" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)',
+  );
+  mainDb
+    .prepare('INSERT OR REPLACE INTO "instance_settings" ("key", "value") VALUES (?, ?)')
+    .run('generalMountPointId', GENERAL_MP);
+  // Two scenarios that BOTH set isDefault (no setGeneralScenarioDefault, so both
+  // stay raw-default on disk) → the default-conflict warning: alphabetically-first
+  // 'aurora' wins, 'dusk' is demoted-in-response.
+  const { ensureGeneralScenariosFolder } = await import('@/lib/mount-index/general-scenarios');
+  const ensuredGeneral = await ensureGeneralScenariosFolder();
+  if (!ensuredGeneral.mountPointId) throw new Error('general mount not resolved after seeding pointer');
+  await writeDatabaseDocument(
+    GENERAL_MP,
+    'Scenarios/aurora.md',
+    buildScenarioFileContent({ name: 'Aurora', description: 'Dawn light', isDefault: true, body: 'The sky pales.' }),
+  );
+  await writeDatabaseDocument(
+    GENERAL_MP,
+    'Scenarios/dusk.md',
+    buildScenarioFileContent({ name: 'Dusk', isDefault: true, body: 'The lamps are lit.' }),
+  );
 
   // 5. Projects.
   // Iota — rich.

@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.6n: extended the committed groups-projects test fixture for the
+scenarios surface — added groups Beacon (member Aria, one scenario;
+sorts before Gamma) and Zephyr (member Aria, zero scenarios) to exercise
+the participant-union's sort + zero-scenario skip, and the singleton
+"Quilltap General" mount + `instance_settings.generalMountPointId` + two
+general scenarios that both mark isDefault (the default-conflict warning).
+Gamma/Delta/the projects are untouched; the existing `groups_routes` (14)
+and `projects_routes` (33) differentials re-verify green against the
+regenerated `.db` files.
+
 P4.6n unit 1: ported the scenarios-common service surface into
 `quilltap-core::db::scenarios` — `parseScenarioDoc`,
 `listScenariosInFolder` (ICU4X-collated sort + the alphabetically-first
