@@ -8985,3 +8985,22 @@ variants are a loud tier-3 deferral, intentionally NOT declared).
 
 Gate so far: `ng test` 453 (64 files) green incl. the new
 frontmatter/qtap-uri/unified-diff/document-mode specs; `ng build` clean.
+
+**Unit 6 / the D17 spike — RED (markdown ships in the textarea too).**
+Spiked the sanctioned vanilla Lexical scope (`lexical` + `@lexical/rich-text`
++ `@lexical/markdown` 0.47) headless: a markdown round-trip
+(`$convertFromMarkdownString` → `$convertToMarkdownString`, default
+`TRANSFORMERS`). Headings + inline text-formats round-trip LOSSLESS; but the
+scope THROWS on any list (`ListItemNode` unconfigured), code fence (`CodeNode`
+unregistered), or table — those nodes live in `@lexical/list`/`@lexical/code`/
+`@lexical/table`, outside the three sanctioned packages. And v4 never uses the
+default transformers: its `MarkdownBridgePlugin` carries preserve-asterisks/
+underscores/backticks/tildes flags because naive Lexical markdown is lossy on
+emphasis. A markdown editor that throws on lists/code or mangles emphasis would
+corrupt files on save; a non-lossy port needs the full node set + v4's whole
+bridge — the "half-port a second editor" the gate forbids. DECISION: ship the
+byte-exact `<textarea>` for markdown too (`USES_RICH_MARKDOWN_EDITOR = false`,
+already the default; the store's absorb-first-serialization is correctly gated
+on it, so no first-edit mis-absorb). Removed the spike-gated Lexical deps.
+ProseMirror stays the named next-round decision (recorded on phase-4.md's D17
+line); the separate D17 chat-composer spike is untouched.

@@ -1054,6 +1054,14 @@ dispatch client (`DocumentApi`) reads lane B's document family + lane A's
 document block + `mountFilesList` request variants, `documentMode` merged
 onto `ChatDetail`. SPA 0.5.44.
 
+P4.6x — the D17 Lexical spike for the Document Mode markdown editor is
+RED. The sanctioned vanilla scope (lexical + @lexical/rich-text +
+@lexical/markdown) round-trips headings/text-formats but throws on any
+list, code fence, or table, and v4's non-lossy markdown needs its custom
+preservation bridge — a safe port would mean half-porting a second editor.
+Markdown ships in the byte-exact textarea too; ProseMirror stays the named
+next-round decision. Recorded on phase-4.md's D17 line.
+
 Dogfood finding #6 root cause FIXED (code in `ab985d4`): the Default
 Settings tab's saves were succeeding all along — the profile/partner
 selects never displayed the stored value because a select-level `[value]`

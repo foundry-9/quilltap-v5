@@ -198,6 +198,25 @@ boundary; streaming only on `Event`; the `Db` ownership model; enclave
   is framework-agnostic (the React bindings are a separate package), so an
   Angular wrapper is plausible — spike it; if it fights, ProseMirror is the
   fallback. (Same spike-with-fallback pattern as the file manager.)
+  **SPIKE OUTCOME (P4.6x, 2026-07-12): RED for the Document Mode markdown
+  editor.** Empirically, the sanctioned vanilla scope (`lexical` +
+  `@lexical/rich-text` + `@lexical/markdown`, 0.47) round-trips headings +
+  inline text-formats losslessly but **throws outright** on any document
+  containing a list, code fence, or table (`ListItemNode`/`CodeNode`/table
+  nodes are not in those three packages — they need `@lexical/list` /
+  `@lexical/code` / `@lexical/table`). Worse, v4 does **not** use the default
+  `TRANSFORMERS`: its `MarkdownBridgePlugin` carries
+  `preserveAsterisks`/`preserveUnderscores`/`preserveBackticks`/`preserveTildes`
+  precisely because naive Lexical markdown round-trips are LOSSY on emphasis
+  and escaping. A markdown-document editor that throws on lists/code or
+  mangles emphasis would corrupt real files on save — a non-lossy port needs
+  the full node set + v4's whole preservation bridge, i.e. the "half-port a
+  second editor / framework fight" the gate rules out. **Decision: Document
+  Mode ships the byte-exact `<textarea>` for markdown files too**
+  (`USES_RICH_MARKDOWN_EDITOR = false`; the spike-gated Lexical deps were
+  removed). ProseMirror stays the NAMED next-round decision for a rich
+  markdown/chat-composer editor; the D17 chat-composer spike (Lexical's
+  second, separate consumer) is untouched by this outcome and remains open.
 - **D18 — Settled component choices carry over.** File manager: **ngx-explorer
   spike, build-our-own fallback** (`scriptorium-file-manager.md`, unchanged).
   Terminal: **xterm.js** (framework-agnostic, ports directly). Virtualized
