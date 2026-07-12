@@ -8554,3 +8554,67 @@ round; the route is placed BEFORE `salon/:id` so the deeper path wins.
 **Differential:** SPA tier 4 — the embed's live behaviour (collapse,
 in-pane note, exit) is proven by the e2e (next unit); the marker gate is
 the pinned unit spec. `ng test` green (359); `ng build` clean. SPA 0.5.38.
+
+### P4.6u unit 5 — the LIVE terminal-flow e2e + the fixes it surfaced — LANDED
+
+`e2e/terminal-flow.spec.ts`: unlock → open Solo Voyage → composer
+"Open terminal" → the pane + a live xterm render → the "terminal opened"
+announcement chip lands → expand it → the inline embed shows "Showing in
+Terminal Mode pane" → type `echo quilltap` → the output renders in the
+pane's xterm → kill (two-click confirm) → the pane closes + a "terminal
+closed" chip lands. GREEN over a REAL PTY through the real WebSocket.
+
+Three fixes the live walk forced (none touch the frozen crates):
+
+1. **Static xterm import.** A runtime `await import('@xterm/xterm')` of
+   xterm 5.x's UMD build breaks esbuild's interop — the named `Terminal`
+   export resolves to a non-constructor (`TypeError: n is not a
+   constructor`). `qt-terminal` now statically imports `@xterm/xterm` +
+   `@xterm/addon-fit`; the whole terminal module stays lazy because
+   `qt-terminal` is only referenced from the lazy Salon route chunk.
+
+2. **Embed moved to the announcement-group expanded chip.** v5 collapses
+   EVERY Staff announcement (bar Carina) into a chip — so an Ariel
+   `session-opened` message renders via `qt-announcement-group`, never
+   `qt-message-row`. v4 collapses it identically and shows the terminal
+   embed only when the chip is EXPANDED (v4 renders the full `MessageRow`,
+   embed included, for an expanded announcement). So the embed now rides
+   the expanded chip body in `announcement-group.ts` (new `chatId` input),
+   gated on the same `session-opened` + marker. The `message-row.ts`
+   wiring from unit 4 is reverted (dead in v5 — ariel never reaches it).
+
+3. **e2e fixture materialization (`global-setup.ts`).** The frozen Salon
+   fixture predates terminal support, so it lacks the `terminal_sessions`
+   table — spawn 500s (`no such table: terminal_sessions`). Added a
+   `CREATE TABLE IF NOT EXISTS terminal_sessions (…)` (the P4.1c DDL,
+   verbatim from the Rust web harness `common::materialize_fixture_instance`)
+   to the pre-launch CLI-migration sequence (the CLI write-lock refuses a
+   live server, so it must precede launch — the established pattern), plus
+   `mkdir` of the PTY's `<data>/files` cwd + `<data>/logs`. This is
+   fixture-schema materialization, NOT a fixture regen (the committed
+   `.db` is untouched).
+
+4. **Split-layout host must stretch (dogfood #3a redux).** Wrapping the
+   conversation body in `<qt-split-layout>` regressed the `salon-scroll`
+   virtualization walk — the Angular host element sits between
+   `.qt-chat-main` and `.qt-doc-split-layout` (v4/React has no wrapper), so
+   the `h-full` cascade broke and the message-list scroll container lost its
+   bound → the virtualizer rendered every row (`windowed < 60` failed). Fix:
+   `host: { class: 'flex flex-col flex-1 min-h-0 min-w-0' }` on `SplitLayout`
+   (the same remedy `qt-message-list` already carries). STANDING LESSON:
+   every Angular component inserted into a flex height-cascade needs an
+   explicit stretch host class.
+
+**Gate:** the live `terminal-flow` walk green; the FULL Playwright suite
+green (24/24 — no regression once the host-stretch fix landed); `ng test`
+359; `ng build` clean; `cargo fmt --check` clean, crates untouched. SPA
+0.5.39.
+
+**Tier-3 deferrals (loud, enumerated):** the Document Mode pane (the
+other split occupant — this lane leaves only its `documentContent` slot +
+the generic `RightPaneVerticalSplit`); the `chat-update` WS frame's UI
+side effects beyond a refetch (its Zod union is kept verbatim in the
+protocol types); no new terminal features beyond v4 (D22). SPA scoping:
+v4's optional xterm web-links / serialize / canvas addons are omitted
+(no behaviour change); the "attach existing session already-exited" and
+kill-failure toasts are no-ops (the SPA has no toast bus yet).

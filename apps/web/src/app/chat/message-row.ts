@@ -9,8 +9,6 @@ import {
 } from '@angular/core';
 
 import type { ChatDetail, ChatSettingsDto, MessageDto } from '../core/core-contract';
-import { TerminalEmbed } from '../terminal/terminal-embed';
-import { extractTerminalSessionId } from '../terminal/terminal-protocol';
 import { Avatar } from '../ui/avatar';
 import { Icon } from '../ui/icon';
 import { resolveMessageAuthor, type SwipeState } from './chat-view-model';
@@ -29,7 +27,7 @@ type Variant = 'user' | 'assistant' | 'whisper' | 'silent';
 @Component({
   selector: 'qt-message-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Avatar, Icon, MessageContent, ThinkingBlock, TerminalEmbed],
+  imports: [Avatar, Icon, MessageContent, ThinkingBlock],
   template: `
     <div
       class="qt-chat-message-row"
@@ -88,12 +86,6 @@ type Variant = 'user' | 'assistant' | 'whisper' | 'silent';
             </div>
           } @else {
             <qt-message-content [content]="message().content" />
-          }
-
-          @if (terminalSessionId(); as sid) {
-            <div class="mt-2">
-              <qt-terminal-embed [sessionId]="sid" [chatId]="chat().id" />
-            </div>
           }
 
           <div class="qt-chat-message-action-bar">
@@ -207,17 +199,6 @@ export class MessageRow {
   }
 
   protected readonly author = computed(() => resolveMessageAuthor(this.message(), this.chat()));
-
-  /**
-   * The bound terminal session for an Ariel session-opened announcement (v4
-   * `MessageRow`: gate on `systemSender === 'ariel' && systemKind ===
-   * 'session-opened'`, then the `<!-- terminalSessionId:UUID -->` marker).
-   */
-  protected readonly terminalSessionId = computed<string | null>(() => {
-    const m = this.message();
-    if (m.systemSender !== 'ariel' || m.systemKind !== 'session-opened') return null;
-    return extractTerminalSessionId(m.content);
-  });
 
   protected readonly variant = computed<Variant>(() => {
     const m = this.message();

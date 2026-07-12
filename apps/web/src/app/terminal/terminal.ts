@@ -12,15 +12,20 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { Terminal as XTermTerminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
 
 import { TerminalSessionService, type TerminalSessionHandle } from './terminal-session.service';
 
 /**
  * `qt-terminal` — the xterm.js surface (v4 `components/terminal/Terminal.tsx`).
- * Lazily imports `@xterm/xterm` + `@xterm/addon-fit` (keeps the ~250 KB terminal
- * bundle out of the initial chunk), applies the theme from the `--qt-terminal-*`
- * CSS variables, wires xterm input → the session service and session output →
- * xterm, and refits on container resize via a `ResizeObserver`.
+ * `@xterm/xterm` + `@xterm/addon-fit` are statically imported (a runtime
+ * `await import()` of xterm 5.x's UMD build breaks esbuild's interop — the named
+ * `Terminal` export resolves to a non-constructor). The whole terminal module is
+ * still lazy: `qt-terminal` is only referenced from the lazy Salon route chunk,
+ * so xterm never lands in the initial bundle. Applies the theme from the
+ * `--qt-terminal-*` CSS variables, wires xterm input → the session service and
+ * session output → xterm, and refits on container resize via a `ResizeObserver`.
  *
  * D18 locked xterm.js; this lane adds only `@xterm/xterm` + `@xterm/addon-fit`
  * (v4's optional web-links / serialize / canvas addons are progressive
@@ -50,16 +55,8 @@ export class Terminal implements OnInit, AfterViewInit {
   /** The bound session (WS opens on acquire — mirrors v4's connect-on-mount). */
   private handle!: TerminalSessionHandle;
 
-  /** The xterm instance + fit addon (untyped — the modules are dynamically imported). */
-  private term: {
-    write(d: string): void;
-    focus(): void;
-    dispose(): void;
-    cols: number;
-    rows: number;
-    onData(cb: (d: string) => void): { dispose(): void };
-  } | null = null;
-  private fitAddon: { fit(): void } | null = null;
+  private term: XTermTerminal | null = null;
+  private fitAddon: FitAddon | null = null;
   private observer: ResizeObserver | null = null;
   private outputUnsub: (() => void) | null = null;
   private inputDisposable: { dispose(): void } | null = null;
@@ -103,16 +100,8 @@ export class Terminal implements OnInit, AfterViewInit {
     );
   }
 
-  async ngAfterViewInit(): Promise<void> {
+  ngAfterViewInit(): void {
     const el = this.container().nativeElement;
-    let cancelled = false;
-    this.destroyRef.onDestroy(() => {
-      cancelled = true;
-    });
-
-    const { Terminal: XTermTerminal } = await import('@xterm/xterm');
-    const { FitAddon } = await import('@xterm/addon-fit');
-    if (cancelled) return;
 
     const term = new XTermTerminal({
       rows: this.rows(),
@@ -137,7 +126,7 @@ export class Terminal implements OnInit, AfterViewInit {
       /* noop */
     }
 
-    this.term = term as unknown as typeof this.term;
+    this.term = term;
     this.fitAddon = fitAddon;
 
     // xterm output ← session; session input ← xterm.

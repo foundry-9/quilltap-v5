@@ -1,5 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 
+import { TerminalEmbed } from '../terminal/terminal-embed';
+import { extractTerminalSessionId } from '../terminal/terminal-protocol';
 import { Icon } from '../ui/icon';
 import type { AnnouncementChip } from './chat-view-model';
 import { MessageContent } from './message-content';
@@ -8,11 +10,18 @@ import { MessageContent } from './message-content';
  * A packed row of collapsed Staff announcement chips (v4 `qt-chat-announcement-group`).
  * Each chip shows an importance dot, the sender name, its kind, and a time; a
  * click expands it into the full announcement body below the row.
+ *
+ * v5 groups every Staff announcement (bar Carina) into a chip, so an Ariel
+ * `session-opened` message renders here, not in a `qt-message-row` — v4 collapses
+ * it the same way and shows the terminal embed only when the chip is EXPANDED
+ * (v4 renders the full `MessageRow`, incl. its embed, for an expanded
+ * announcement). So the inline `qt-terminal-embed` rides the expanded body here,
+ * gated on the same `session-opened` + `<!-- terminalSessionId:UUID -->` marker.
  */
 @Component({
   selector: 'qt-announcement-group',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, MessageContent],
+  imports: [Icon, MessageContent, TerminalEmbed],
   template: `
     <div class="qt-chat-announcement-group">
       @for (chip of chips(); track chip.id) {
@@ -36,6 +45,11 @@ import { MessageContent } from './message-content';
         <div class="qt-chat-message-body">
           <div class="qt-chat-message qt-chat-message-system">
             <qt-message-content [content]="chip.message.content" />
+            @if (terminalSessionId(chip); as sid) {
+              <div class="mt-2">
+                <qt-terminal-embed [sessionId]="sid" [chatId]="chatId()" />
+              </div>
+            }
           </div>
         </div>
       </div>
@@ -44,6 +58,19 @@ import { MessageContent } from './message-content';
 })
 export class AnnouncementGroup {
   readonly chips = input.required<AnnouncementChip[]>();
+  /** The parent chat id (the embed binds pop-out / kill against it). */
+  readonly chatId = input.required<string>();
+
+  /**
+   * The bound terminal session for an Ariel session-opened chip (v4 `MessageRow`
+   * gate: `systemSender === 'ariel' && systemKind === 'session-opened'`, then the
+   * marker) — or null.
+   */
+  protected terminalSessionId(chip: AnnouncementChip): string | null {
+    const m = chip.message;
+    if (m.systemSender !== 'ariel' || m.systemKind !== 'session-opened') return null;
+    return extractTerminalSessionId(m.content);
+  }
 
   private readonly expanded = signal<Set<string>>(new Set());
 

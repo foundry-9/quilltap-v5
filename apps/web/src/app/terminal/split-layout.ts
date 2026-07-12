@@ -32,6 +32,11 @@ type LayoutMode = 'normal' | 'split' | 'focus';
  */
 @Component({
   selector: 'qt-split-layout',
+  // Stretch inside .qt-chat-main so .qt-doc-split-layout (h-full) gets a BOUNDED
+  // height — an unstyled Angular host breaks the flex chain and the message
+  // list's scroll container loses its bound (dogfood finding #3a; v4/React has
+  // no host wrapper here).
+  host: { class: 'flex flex-col flex-1 min-h-0 min-w-0' },
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [NgTemplateOutlet, RightPaneVerticalSplit],
   template: `

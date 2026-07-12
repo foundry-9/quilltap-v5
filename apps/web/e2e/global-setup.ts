@@ -47,6 +47,11 @@ export default async function globalSetup(): Promise<void> {
   // Fresh instance dir from the committed fixture (copy, never mutate original).
   rmSync(ARTIFACTS_DIR, { recursive: true, force: true });
   mkdirSync(INSTANCE_DATA_DIR, { recursive: true });
+  // The terminal PTY spawns with its cwd at `<data>/files` and transcripts under
+  // `<data>/logs/terminals`; the manager doesn't create the cwd (P4.6u), so make
+  // them here (a real instance provisions them).
+  mkdirSync(resolve(INSTANCE_DATA_DIR, 'files'), { recursive: true });
+  mkdirSync(resolve(INSTANCE_DATA_DIR, 'logs'), { recursive: true });
   copyFileSync(resolve(FIXTURES_DIR, 'salon-main.db'), resolve(INSTANCE_DATA_DIR, 'quilltap.db'));
   copyFileSync(resolve(FIXTURES_DIR, 'salon-mount.db'), resolve(INSTANCE_DATA_DIR, 'quilltap-mount-index.db'));
 
@@ -62,6 +67,17 @@ export default async function globalSetup(): Promise<void> {
   // SINGLE_USER_ID (so `listChats` — filtered by that id — sees the chats). The
   // CLI unlocks the .dbkey via QUILLTAP_DB_PASSPHRASE.
   runCliWrite(cli, 'ALTER TABLE chats ADD COLUMN turnSkippingEnabled INTEGER;', { allowFail: true });
+  // The Salon fixture predates terminal support; the terminal routes (P4.6u) need
+  // the `terminal_sessions` table (the P4.1c DDL, verbatim from the Rust web test
+  // harness `common::materialize_fixture_instance`). IF NOT EXISTS keeps it
+  // idempotent; this is fixture-schema materialization, NOT a fixture regen.
+  runCliWrite(
+    cli,
+    'CREATE TABLE IF NOT EXISTS terminal_sessions (' +
+      'id TEXT PRIMARY KEY, chatId TEXT, label TEXT, shell TEXT, cwd TEXT, ' +
+      'startedAt TEXT, exitedAt TEXT, exitCode REAL, transcriptPath TEXT, ' +
+      'createdAt TEXT, updatedAt TEXT);',
+  );
   for (const table of ['chats', 'connection_profiles', 'api_keys', 'chat_settings', 'characters', 'tags', 'projects', 'memories']) {
     runCliWrite(cli, `UPDATE ${table} SET userId = '${SINGLE_USER_ID}' WHERE userId = '${FIXTURE_USER}';`, {
       allowFail: true,

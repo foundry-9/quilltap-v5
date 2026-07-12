@@ -2,6 +2,25 @@
 
 ## Recent Changes
 
+P4.6u (lane C) — the LIVE terminal-flow e2e + the fixes it surfaced. The
+`e2e/terminal-flow.spec.ts` walk (unlock → open a chat → open the pane →
+spawn a real PTY → `echo quilltap` renders → expand the "terminal opened"
+chip to see the in-pane embed note → kill → "terminal closed" chip)
+runs green over the real WebSocket. Fixes it forced: (1) `qt-terminal`
+now STATICALLY imports `@xterm/xterm` (a runtime `import()` of xterm
+5.x's UMD build breaks esbuild interop — the named export isn't a
+constructor); the module stays lazy via the Salon route chunk. (2) The
+inline embed moved from `message-row` to the announcement-group's
+EXPANDED chip — v5 collapses every Staff announcement (incl. Ariel
+`session-opened`) into a chip, and v4 shows the embed only on an expanded
+announcement. (3) `global-setup` materializes the `terminal_sessions`
+table (the frozen Salon fixture predates terminal support) and the PTY's
+`files`/`logs` dirs before launch — fixture-schema materialization, not a
+regen. (4) `SplitLayout` gained a stretch host class — the Angular host
+element between `.qt-chat-main` and `.qt-doc-split-layout` broke the
+`h-full` cascade and regressed the message-list virtualization (dogfood
+#3a redux).
+
 P4.6u (lane C) — the inline terminal embed + the pop-out route. Added
 `terminal-embed.ts` (v4 `TerminalEmbed`: a collapsible inline surface,
 collapse persisted to localStorage per session, pop-out / kill controls,

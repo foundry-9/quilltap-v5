@@ -84,7 +84,7 @@ import { VirtualRow } from './virtual-row';
                     (cancelEdit)="cancelEdit.emit()"
                   />
                 } @else {
-                  <qt-announcement-group [chips]="item.chips" />
+                  <qt-announcement-group [chips]="item.chips" [chatId]="chat().id" />
                 }
               </div>
             }
