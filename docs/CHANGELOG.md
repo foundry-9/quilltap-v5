@@ -2,6 +2,29 @@
 
 ## Recent Changes
 
+The P4.6s ∥ P4.6t ∥ P4.6u round unified: the Commonplace Book (memories
+server + Memory SPA) and the Salon terminal pane. Unification wires:
+EngineAssembly/SpineBundle gained memory_embedding and the production
+host now threads the spine's ApiEmbeddingProvider into ReadyEngine, so
+memoryCreate/memorySearch run LIVE in the real server (lane A's named
+seam closed); the A-to-B contract diffed clean name-for-name (all 29
+memory variants); the B+C core-contract single-author blocks merged
+without drift (one stray concat marker dropped); SPA version
+accumulated to 0.5.43. Full gate green: fmt/clippy (both feature
+sets)/release build clean; the two memories oracles regenerated fresh
+from v4 a7b1398d (routes 24 + config 17 = 41 cases) and the
+memories_routes_equivalence differential green by name; cargo test
+--workspace 294 suites / 1,251 tests / 0 failed; ng test 411 (60
+files); ng build clean; Playwright 27/27 including the newly-activated
+P4.6t memory beats (the create/edit/delete walk exercises the live
+embedding wire end-to-end) and the P4.6u terminal walk. Gate fallout
+(gesture/materialization class only): the Memories tab click needed
+nav-scoped locators (a conversation card's count glyph shares the
+name), and the memory beat's fixture userId rewrite gained the
+embedding/settings tables so the baked default BUILTIN profile follows
+the session user. Versions: core 0.0.193, harness 0.0.177, host
+0.0.12, web 0.0.13, SPA 0.5.43.
+
 P4.6u (lane C) — the LIVE terminal-flow e2e + the fixes it surfaced. The
 `e2e/terminal-flow.spec.ts` walk (unlock → open a chat → open the pane →
 spawn a real PTY → `echo quilltap` renders → expand the "terminal opened"

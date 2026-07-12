@@ -8618,3 +8618,77 @@ protocol types); no new terminal features beyond v4 (D22). SPA scoping:
 v4's optional xterm web-links / serialize / canvas addons are omitted
 (no behaviour change); the "attach existing session already-exited" and
 kill-failure toasts are no-ops (the SPA has no toast bus yet).
+
+## The P4.6s ∥ P4.6t ∥ P4.6u Commonplace Book + terminal-pane round — UNIFIED on main (2026-07-12)
+
+Three lanes cherry-picked onto `unify/p4.6stu` (lane A's five memories-
+server commits, lane B's four Memory-SPA commits, lane C's five
+terminal-pane commits; conflicts only on the version files + the
+CHANGELOG/status-log unions + the B/C core-contract seam point). v4
+baseline re-verified at `a7b1398d` before unification. Whole-file
+version-delta check clean (package.json carries only the version + the
+two xterm deps); SPA version accumulated to 0.5.43.
+
+**The unification wires (one commit):**
+
+- **The P4.6s embedding seam wired LIVE** — lane A had left
+  `ReadyEngine.memory_embedding` always-`None` (its named deferral), so
+  live `memoryCreate`/`memorySearch` refused. `EngineAssembly` and
+  `SpineBundle` gained a `memory_embedding` field; the production spine
+  factory populates it with the same API-path `ApiEmbeddingProvider`
+  the spine embeds with (the BUILTIN TF-IDF path needs no wire IO); the
+  host threads it through `assemble()`; canned web-test factories set
+  `None` (unchanged refusal). Proven end-to-end by lane B's live
+  create/edit/delete walk.
+- **The A↔B contract diffed clean name-for-name** — all 29 memory
+  variants match the Rust wire names, and lane B's defensive envelope
+  extractors read exactly the oracle-pinned bodies (incl. the
+  preview/run asymmetry). The B/C single-author core-contract blocks
+  merged without reconciliation (the P4.6pqr lesson applied — one
+  author per block; the only fallout was a stray concat conflict-marker
+  line, dropped).
+
+**The full gate:** `cargo fmt --check` clean; clippy `-D warnings`
+clean on the default set AND `--features
+quilltap-core/native-transport`; release build clean; the two memories
+oracles regenerated FRESH from v4 at `a7b1398d` (routes 24 + config 17
+= 41 cases) and `memories_routes_equivalence` re-run green BY NAME;
+`cargo test --workspace` green (294 suites, 1,251 tests, 0 failed);
+`ng test` 411 (60 files); `ng build` clean; the FULL Playwright suite
+green (27/27), incl. the newly-ACTIVATED P4.6t beats (the Memories-tab
+walk now exercises live memoryCreate → gate → BUILTIN embedding →
+memoryUpdate → memoryDelete; the Settings Memory tab + recall-config
+persistence walk) and the P4.6u live terminal walk. A mid-gate ENOSPC
+(the parallel-round disk-pressure class) was reclaimed by deleting the
+already-picked lane worktree `target/` dirs (~40 GB) and re-running
+non-incremental.
+
+**Gate fallout — two fixes, both gesture/materialization class (no
+product bugs):** (1) the Memories tab click hit strict mode — a
+conversation card's "Memories" count glyph (P4.6j) shares the
+accessible name; scope tab clicks to `nav.qt-tab-group`. (2) The
+memory beat's per-spec fixture userId rewrite listed only
+characters/memories/tags/chats/files — the baked default BUILTIN
+embedding profile stayed on FIXTURE_USER, so every live create failed
+with the faithful "Failed to generate embedding" server error; the
+rewrite list now carries every user-scoped table the vertical touches
+(chat_settings / connection_profiles / api_keys / embedding_profiles /
+tfidf_vocabularies; the loop tolerates absent tables). NEW STANDING
+GOTCHA: a per-spec fixture rewrite must move EVERY user-scoped table
+its vertical reads — a missed table surfaces as a faithful-looking
+server error, not a test error. Fills in fresh dialogs gained explicit
+`toHaveValue` sync points (a first-fill render race left the required
+field empty and the submit a silent no-op).
+
+**Orders:** P4.6s CLOSED (three loud refusal variants stand:
+`memoryGenerateEmbeddings` / `memoryRebuildIndex` /
+`chatQueueMemories`; no-variant deferrals: extract-memories-dry-run +
+CLI memory-diff, memory-dedup, embedding-profiles management,
+conversation-summaries regen; the skipGate non-port is a recorded
+divergence), P4.6t CLOSED (deferred loud: the Lexical memory editor,
+deep source anchoring, tag editing, the dedup / conversation-summary /
+embedding-profiles cards), P4.6u CLOSED (deferred loud: the Document
+Mode pane [the split scaffolding + `documentContent` slot await it],
+xterm optional addons, exit/kill toasts pending a toast bus).
+**Versions after the round:** core 0.0.193, harness 0.0.177, host
+0.0.12, web 0.0.13, SPA 0.5.43.

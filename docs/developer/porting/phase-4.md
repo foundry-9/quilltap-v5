@@ -737,6 +737,31 @@ copy). Lane A bumps core + harness; lanes B and C both bump the SPA
 (unifier accumulates). CHANGELOG / status-log are append-only
 union-merge blocks.
 
+**The P4.6s ∥ P4.6t ∥ P4.6u Commonplace Book + terminal-pane round is
+UNIFIED on main (2026-07-12) — all three orders CLOSED.** Lane A
+(P4.6s) made the memories dispatch surface live — 26 variants
+(list/CRUD/search/housekeeping/configs/backfill/regenerate) proven by
+`memories_routes_equivalence` (41 cases, split routes+config oracles)
+over the new committed `memories-{main,mount}.db` fixture; loud
+refusal variants stand for `memoryGenerateEmbeddings` /
+`memoryRebuildIndex` / `chatQueueMemories`. Lane B (P4.6t) built the
+Commonplace Book SPA (the character Memories tab + the Settings
+Memory tab) with its e2e beats activated green at unification. Lane C
+(P4.6u) built the Salon terminal pane (xterm.js, WS session service,
+SplitLayout scaffolding Document Mode will reuse, embed-on-expanded-
+chip, pop-out route) with a live PTY e2e. The unification wired the
+P4.6s embedding seam LIVE (`EngineAssembly.memory_embedding` → the
+spine's `ApiEmbeddingProvider` — memoryCreate/memorySearch live in
+the real server). **Still deferred (named):** extract-memories-dry-run
++ CLI memory-diff, memory-dedup, embedding-profiles management,
+conversation-summaries regen, the Document Mode pane, the Lexical
+editors. **Next candidates:** the Document Mode Salon slice (its
+split-pane mount point now exists), the Scriptorium/file-manager
+vertical (mount-point verbs; the P4.6p order's tier-3 notes hold the
+verb-by-verb survey), the courier/images Salon slices,
+autonomous-rooms settings, or P4.7 (`quilltap-tauri`). Round record:
+`status-log.md`.
+
 **The round as planned (2026-07-12, second round of the day): three
 parallel lanes, orders written** (drift check at planning time: v4
 HEAD still `a7b1398d`; four fresh surveys — the v4 memories surface,

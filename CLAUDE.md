@@ -316,10 +316,25 @@ records THERE. Update this summary only when a phase or round completes.
   + the three default-* pickers + reset-builtins enabled. Still
   refusal-armed: `imageProfileGenerate`/`ValidateKey`/`ListModels`;
   the mount-point action verbs have no variants (the Scriptorium
-  surface). Next candidates: the remaining Salon slices, the Memory
-  vertical, the Scriptorium/file-manager vertical, autonomous-rooms
+  surface).
+- **The P4.6s ∥ P4.6t ∥ P4.6u Commonplace Book + terminal-pane round:
+  UNIFIED on main (2026-07-12) — P4.6s/t/u CLOSED.** The memories
+  dispatch surface (26 live variants, a 41-case differential over the
+  new memories fixture; refusal-armed:
+  `memoryGenerateEmbeddings`/`RebuildIndex`/`chatQueueMemories`) ∥
+  the Commonplace Book SPA (the character Memories tab + the Settings
+  Memory tab, e2e beats activated at unification) ∥ the Salon
+  terminal pane (xterm.js + the split-pane scaffolding Document Mode
+  reuses, live PTY e2e). Unification wired the embedding seam live
+  (`EngineAssembly.memory_embedding` — memoryCreate/memorySearch run
+  live in the real server). Deferred loud: extract-memories-dry-run +
+  CLI memory-diff, memory-dedup, embedding-profiles management,
+  conversation-summaries regen, the Document Mode pane, the Lexical
+  editors. Next candidates: the Document Mode Salon slice (its
+  split-pane mount point now exists), the Scriptorium/file-manager
+  vertical, the courier/images Salon slices, autonomous-rooms
   settings, or P4.7 (Tauri) — see phase-4.md.
 - **Oracle baseline:** v4 HEAD `a7b1398d` (drift-check before every round).
-  Versions: core 0.0.188, harness 0.0.172, host 0.0.12, web 0.0.13, SPA 0.5.34.
+  Versions: core 0.0.193, harness 0.0.177, host 0.0.12, web 0.0.13, SPA 0.5.43.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.
