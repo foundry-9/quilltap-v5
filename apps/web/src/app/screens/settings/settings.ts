@@ -6,6 +6,7 @@ import { BrandName } from '../../ui/brand-name';
 import { EntityTabs, type Tab } from '../../ui/entity-tabs';
 import { AppearanceTab } from './appearance/appearance-tab';
 import { ImagesTab } from './images/images-tab';
+import { MemoryTab } from './memory/memory-tab';
 import { SettingsPlaceholder } from './placeholder-tab';
 import { ProvidersTab } from './providers/providers-tab';
 import { TemplatesTab } from './templates/templates-tab';
@@ -27,6 +28,7 @@ import { TemplatesTab } from './templates/templates-tab';
     AppearanceTab,
     TemplatesTab,
     ImagesTab,
+    MemoryTab,
     SettingsPlaceholder,
   ],
   template: `
@@ -51,7 +53,7 @@ import { TemplatesTab } from './templates/templates-tab';
               <qt-settings-placeholder title="Chat" />
             }
             @case ('memory') {
-              <qt-settings-placeholder title="Commonplace Book" />
+              <qt-settings-memory />
             }
             @case ('images') {
               <qt-settings-images />

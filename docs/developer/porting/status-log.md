@@ -8370,3 +8370,26 @@ preview/run envelope asymmetry (`data.preview` with `wouldDelete/…` vs
 `data.result` with `deleted/…`; `details` only on dryRun) is read
 through the api-layer defensive extractors; lane A's oracle pins the
 exact bodies. Gate: `ng test` 364/364, `ng build` clean. SPA → 0.5.36.
+
+**Unit 3 — the Settings → Memory tab (2026-07-12).** New
+`screens/settings/memory/`: `memory-tab.ts` (the CollapsibleCard shell,
+v4 titles/descriptions/`sectionId`s ported verbatim, `?section=` deep
+link, first card `defaultOpen`) + four cards (each + spec):
+`memory-backfill-card.ts` (v4 `memory-backfill-card`: `injectQuery`
+`refetchInterval:4000` over `memoryBackfillProgress` + `memoryBackfillStart`
+500), `memory-housekeeping-card.ts` (v4 `memory-housekeeping-card`:
+config + `memoryCharacterCounts` queries, enable toggle / cap blur-save
+[100–100000 guard] / collapsible per-character overrides [draft signals,
+blank clears, 100–100000 guard] / merge-similar, `memoryHousekeepSweep`
+run-now; writes merge-patch via `memoryHousekeepingConfigSet`),
+`memory-recall-card.ts` (v4 `memory-recall-card`: scope-policy select
+[`[selected]`-per-option, dogfood #6] + expand-related toggle over
+`memoryRecallConfigGet/Set`), `memory-regenerate-card.ts` (v4
+`memory-regenerate-card`: inline-confirm destructive `memoryRegenerateAll`
++ a `memoryRegenerateAllStatus` line polled every 5s ONLY while
+`inFlight > 0`, via `refetchInterval` returning `false` when idle).
+`settings.ts` swaps the Memory placeholder for `qt-settings-memory`.
+**Deferred loudly — rendered as NOTHING (no dead cards):** the Embedding
+Profiles sub-tab, the Memory Deduplication card (`memory-dedup-card`,
+server unported), the Regenerate Conversation Summaries card. Gate:
+`ng test` 380/380, `ng build` clean. SPA → 0.5.37.

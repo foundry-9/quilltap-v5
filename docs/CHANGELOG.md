@@ -2,6 +2,24 @@
 
 ## Recent Changes
 
+P4.6t lane B, unit 3 — the Settings → Memory tab (the Commonplace Book
+cards). The Memory tab now renders v4's `MemorySearchTabContent`
+CollapsibleCards (titles/descriptions + `?section=` deep-link ids ported
+verbatim): Repair Missing Embeddings (`memoryBackfillProgress` polled
+every 4s + `memoryBackfillStart`), Memory Housekeeping (config +
+character counts, the enable toggle / per-character cap / collapsible
+per-character overrides / merge-similar, all merge-patch via
+`memoryHousekeepingConfigSet`, + a `memoryHousekeepSweep` run-now),
+Recall Relevance (`memoryRecallConfigGet/Set`: the down-weight|exclude
+scope policy + expand-related toggle), and Regenerate Memories (the
+destructive wipe-and-rebuild behind an inline confirm, with a
+`memoryRegenerateAllStatus` line that polls every 5s only while a sweep
+is in flight). The `<select>` binds `[selected]` per option (dogfood #6).
+Deferred loudly — rendered as NOTHING, no dead cards: the Embedding
+Profiles sub-tab, the Memory Deduplication card (server unported), and
+the Regenerate Conversation Summaries card. Unit specs (mocked
+CoreClient) per card. SPA → 0.5.37.
+
 P4.6t lane B, unit 2 — the per-character memory Cleanup (housekeeping)
 dialog. The Memories tab's Cleanup button (shown when the list is
 non-empty) opens v4's `housekeeping-dialog.tsx` over `qt-modal`: the

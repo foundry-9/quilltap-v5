@@ -1,0 +1,91 @@
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ActivatedRoute } from '@angular/router';
+
+import { CollapsibleCard } from '../../../ui/collapsible-card';
+import { MemoryBackfillCard } from './memory-backfill-card';
+import { MemoryHousekeepingCard } from './memory-housekeeping-card';
+import { MemoryRecallCard } from './memory-recall-card';
+import { MemoryRegenerateCard } from './memory-regenerate-card';
+
+/**
+ * The Settings → Memory tab (v4 `components/settings/tabs/
+ * MemorySearchTabContent.tsx`, subsystem `commonplace-book`): the CollapsibleCards
+ * for backfill, housekeeping, recall, and regenerate. v4's card titles/descriptions
+ * + `sectionId`s (the `?section=` deep link) are ported verbatim.
+ *
+ * DEFERRED LOUDLY (rendered as NOTHING — no dead cards): v4's Embedding Profiles
+ * sub-tab, the Memory Deduplication card (server unported), and the Regenerate
+ * Conversation Summaries card. Their verticals land in later rounds; enumerated in
+ * this lane's closing notes.
+ */
+@Component({
+  selector: 'qt-settings-memory',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [
+    CollapsibleCard,
+    MemoryBackfillCard,
+    MemoryHousekeepingCard,
+    MemoryRecallCard,
+    MemoryRegenerateCard,
+  ],
+  template: `
+    <div>
+      <p class="qt-text-small qt-text-muted italic mb-6">
+        The Commonplace Book — where each character's remembered truths are kept, pruned, and
+        recalled.
+      </p>
+
+      <div class="space-y-4">
+        <qt-collapsible-card
+          title="Repair Missing Embeddings"
+          description="Generate embeddings for legacy memories that predate the embedding-aware gate"
+          sectionId="memory-backfill"
+          [defaultOpen]="defaultOpen()"
+          [forceOpen]="section() === 'memory-backfill'"
+        >
+          <qt-memory-backfill-card />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Memory Housekeeping"
+          description="Automatically prune stale, low-importance memories as characters approach their cap"
+          sectionId="memory-housekeeping"
+          [forceOpen]="section() === 'memory-housekeeping'"
+        >
+          <qt-memory-housekeeping-card />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Recall Relevance"
+          description="Keep project-specific memories from wandering into unrelated chats"
+          sectionId="memory-recall"
+          [forceOpen]="section() === 'memory-recall'"
+        >
+          <qt-memory-recall-card />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Regenerate Memories"
+          description="Wipe and rebuild every chat-linked memory using the current extraction pipeline"
+          sectionId="memory-regenerate"
+          [forceOpen]="section() === 'memory-regenerate'"
+        >
+          <qt-memory-regenerate-card />
+        </qt-collapsible-card>
+      </div>
+    </div>
+  `,
+})
+export class MemoryTab implements OnInit {
+  private readonly route = inject(ActivatedRoute);
+  private readonly queryParams = toSignal(this.route.queryParamMap, { requireSync: true });
+
+  protected readonly section = computed(() => this.queryParams().get('section'));
+  protected readonly defaultOpen = signal(false);
+
+  ngOnInit(): void {
+    // Open the first card by default (bound inputs have resolved by ngOnInit).
+    this.defaultOpen.set(true);
+  }
+}
