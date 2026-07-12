@@ -2953,7 +2953,6 @@ export type MemoryRequest =
   | MemoryRegenerateAllStatusRequest
   | MemoryRegenerateAllRequest
   | ChatQueueMemoriesRequest;
-=======
 // P4.6u (lane C) — the Salon terminal-pane block.
 // Appended by lane C; single-author (lane B, the file owner, must not edit this
 // block). The terminal WebSocket + REST protocol types live in
