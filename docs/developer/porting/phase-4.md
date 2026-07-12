@@ -659,3 +659,54 @@ bump core + harness (unifier accumulates); lane B alone bumps the SPA.
 `services/mod.rs` / `db/mod.rs` / `api/mod.rs` / CHANGELOG /
 status-log are union-resolved at unification per
 `[[parallel-round-reconciliation]]`.
+
+**The round as planned (2026-07-12): three parallel lanes, orders
+written** (drift check at planning time: v4 HEAD still `a7b1398d`;
+three fresh surveys — the v4 New-Chat form UI, the v4
+roleplay-templates/image-profiles/mount-points route surfaces, and the
+v5 current state — inform the orders; key survey findings: the server
+`ChatCreate` + Green Room are FULLY live so the New-Chat vertical is
+SPA-only, the D16 server-side markdown renderer needs NO core port
+[v4 renders at GET-time; v5's locked divergence renders client-side —
+the seam resolved to omission], and all four repo layers for the three
+listing families are already ported, so lane A is handler assembly):
+
+- **Lane A — P4.6p, the listing-surfaces server round**
+  (`work-orders/p4.6p-listing-surfaces-server.md`): the three global
+  listing/CRUD surfaces the P4.6l round enumerated as unported —
+  roleplay templates (5 variants + the tier-1
+  `generateRenderingPatterns` pure port), image profiles (5 variants +
+  the registry-backed `imageProviderList`; `generate`/`validate-key`/
+  `list-models` refusal-armed, wire-seam stretch), global mount points
+  (5 variants + the pure capabilities derivation + the delete
+  cascade; the twelve action verbs get NO variants — D7). Extends the
+  `groups-projects` fixture and regenerates every dependent oracle.
+- **Lane B — P4.6q, the New-Chat SPA vertical**
+  (`work-orders/p4.6q-new-chat-spa.md`): `/salon/new` (the named next
+  vertical) — the `useNewChat` port, the two-pane character picker,
+  in-place Play-As (the eight pinned behaviors), the four-source
+  scenario dropdown with prefix tokens, the submit spine with v4's
+  exact payload, and the Green Room dialog over the existing
+  creation-progress events; re-pins `core-contract.ts`'s provisional
+  `ChatCreateRequest` + `CreationProgressFrame`. Deferred loudly:
+  autonomous mode, manual outfit composition, the continuation
+  ("change of venue") entry.
+- **Lane C — P4.6r, the Templates & Images settings SPA**
+  (`work-orders/p4.6r-templates-images-spa.md`): populates the two
+  placeholder Settings tabs (the roleplay-templates manager, the
+  image-profiles card) and enables the three disabled pickers
+  (project model-behavior template picker, project + character
+  image-profile pickers) over lane A's variants; rider: enable the
+  stale "Reset Built-in Characters" button (its web route went live
+  in P4.4u4).
+
+Contention notes: lane A owns `api/**` (ALL variant edits) + the
+`db/*` read-path extensions + the groups-projects fixture family;
+lanes B and C split `apps/web/**` by directory (B: routes + contract
++ `screens/new-chat/**` + salon-list rider; C: settings/prospero/
+characters screens + e2e beats), with the new listing-surface
+contract interfaces landing as ONE byte-identical pinned appendix
+block in `core-contract.ts` in both lanes (the unifier keeps a single
+copy). Lane A bumps core + harness; lanes B and C both bump the SPA
+(unifier accumulates). CHANGELOG / status-log are append-only
+union-merge blocks.

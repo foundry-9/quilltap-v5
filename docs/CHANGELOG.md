@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+Work orders for the P4.6p ∥ P4.6q ∥ P4.6r round (docs only). Three
+fresh surveys at v4 `a7b1398d` (drift check clean); three lanes: P4.6p
+— the listing-surfaces server round (roleplay templates + image
+profiles + global mount points, closing the three P4.6l picker gaps);
+P4.6q — the New-Chat SPA vertical (/salon/new + the Green Room; the
+server side is already live, so the lane is SPA-only); P4.6r — the
+Templates & Images settings tabs + picker enablement + the
+reset-builtins button rider. Round plan appended to phase-4.md. Survey
+finding recorded: the D16 server-side markdown renderer resolved to
+omission (v4 renders at GET-time; v5's locked divergence renders
+client-side) — no core port needed.
+
 The P4.6n ∥ P4.6o ∥ P4.4u4 round gate + close-out. Full gate green:
 fmt/clippy (both feature sets)/release build clean; the six round
 oracles regenerated fresh from v4 `a7b1398d` and every differential
