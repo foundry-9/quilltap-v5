@@ -8461,3 +8461,39 @@ semantics incl. the 512 KiB tail cap, and the server-frame → state
 mapping (exit `signal: null → undefined`, chat-update DOM re-emit,
 pong ignored). `ng test` green (49 files / 344 tests); `ng build`
 clean; `tsc -p tsconfig.app.json` clean. SPA 0.5.35.
+
+### P4.6u unit 2 — terminal REST api + mode controller + split scaffolding — LANDED
+
+`terminal-api.ts` (v4 `terminalModeApi.ts`): the REST wrapper over the
+frozen `/api/v1/terminals*` routes — list / get (404→null) / spawn /
+kill — plus `persistChatTerminalState`, which rides the SPA's
+`chatUpdate` dispatch envelope rather than v4's bespoke chat PUT (the
+terminal endpoints are the only REST surface the SPA touches directly).
+`isLiveSession` = `!meta.exitedAt`.
+
+`terminal-mode.ts` (v4 `useTerminalMode`): the injectable
+`TerminalModeController`, ONE per conversation (provided at the Salon
+screen so the inline embed can inject the same instance — v4's
+`TerminalModeContext`). Signals for `terminalMode` /
+`activeTerminalSessionId` / `rightPaneVerticalSplit` / `dividerPosition`
+(all chat-persisted) + the local picker visibility. Ports `requestOpen`
+(re-attach live bound → picker if other live → spawn), attach / spawn /
+hide / kill / toggleFocus / setSplit, the `quilltap:terminal-exited`
+listener, and `hydrate` (chat load → dead-session fallback to normal).
+NOTE: `dividerPosition` (the horizontal chat|pane split, server default
+45) is owned here this round because Document Mode — v4's owner — isn't
+ported yet; it's the same chat field Document Mode will share later.
+
+`split-layout.ts` + `right-pane-vertical-split.ts` (v4 `SplitLayout` /
+`RightPaneVerticalSplit`): the generic scaffolding, content passed as
+`TemplateRef` inputs (v4's `ReactNode` props) rendered via
+`ngTemplateOutlet`. Draggable dividers (document-level mousemove/mouseup,
+mouseup-only persist) + keyboard (Arrow/Home/End). The vertical split is
+ported even though only the terminal mounts the right pane now — Document
+Mode supplies the top pane in a later slice.
+
+**Differential:** SPA tier 4. Pure-logic specs — `split-clamp.spec.ts`
+(the width/height-aware clamps + the absolute [20, 80] band) and
+`terminal-mode.spec.ts` (`clampSplit`, `nextFocusMode`, `isLiveSession`,
+and the controller's open/hydrate/kill/focus decision tree over a stub
+api). `ng test` green (51 files / 359 tests); `tsc` clean. SPA 0.5.36.

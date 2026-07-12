@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.6u (lane C) — the terminal mode controller + split layout. Added
+`terminal-api.ts` (the REST wrapper over the frozen `/api/v1/terminals*`
+routes + pane-state persistence via `chatUpdate`), `terminal-mode.ts`
+(the injectable per-conversation `TerminalModeController` — v4
+`useTerminalMode`: smart open/attach/spawn/hide/kill/focus, hydrate from
+the chat with a dead-session fallback), and the generic split
+scaffolding `split-layout.ts` + `right-pane-vertical-split.ts` (v4
+`SplitLayout` / `RightPaneVerticalSplit`, `TemplateRef`-slotted,
+draggable dividers with keyboard support; the vertical split is ported
+for Document Mode's future top pane though only the terminal mounts it
+now). Pure-logic specs cover the [20, 80] clamps, the focus toggle,
+`isLiveSession`, and the controller's open/hydrate/kill decision tree.
+
 P4.6u (lane C) — the Salon terminal foundation. Added `@xterm/xterm`
 5.5.0 + `@xterm/addon-fit` 0.10.0 (the only deps this round) and
 `apps/web/src/app/terminal/`: the WebSocket protocol types pinned from
