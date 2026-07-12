@@ -582,3 +582,52 @@ are FROZEN (lane C builds a separate long-chat fixture; lane A a
 separate characters fixture). `db/mod.rs` / `services/mod.rs` /
 CHANGELOG / CLAUDE.md are union-resolved at unification per
 `[[parallel-round-reconciliation]]`.
+
+**The round as planned (2026-07-11): three parallel lanes, orders
+written** (drift check at planning time: v4 HEAD still `a7b1398d`; three
+fresh surveys — the scenario routes + Zod schemas, the ScenariosManager/
+ProjectWardrobeManager UI, the quilltap-import pipeline — inform the
+orders; the scenario contract re-pin was done AT PLANNING TIME so both
+scenario lanes run unblocked):
+
+- **Lane A — P4.6n, the scenarios server remainder**
+  (`work-orders/p4.6n-scenarios-server.md`): closes P4.6k — the
+  `scenarios-common` list/read/write service port (the
+  `resolveScenarioBody` slice is already in `db/scenarios.rs`), the 13
+  refusal-armed group/project scenario arms + the participant-union
+  made live, the **general (instance-wide) scenarios family the P4.6k
+  round missed** (6 net-new variants over the "Quilltap General"
+  mount), and the project `list-files` two-branch + file add/remove.
+  The re-pin: the create bag is `{filename, name?, description?,
+  isDefault?, body}` (byte-identical Zod schemas across all three
+  families), update drops `filename`, rename is `{newFilename}` — the
+  opaque `scenario` bag variants survive unchanged.
+- **Lane B — P4.6o, the Scenarios + Wardrobe SPA remainder**
+  (`work-orders/p4.6o-scenarios-wardrobe-spa.md`): closes P4.6l — the
+  scope-agnostic ScenariosManager family (project card + the general
+  `/scenarios` page behind the disabled nav item) and the Wardrobe
+  card + ProjectWardrobeManager (self-contained 360-ln inline form; no
+  wardrobe-control dialog needed). The New-Chat form (753+833 ln, the
+  scenario pickers' primary consumer; no `/salon/new` route exists
+  yet) is the named NEXT SPA vertical, deliberately not a rider.
+- **Lane C — P4.4u4, the sample-content import**
+  (`work-orders/p4.4u4-sample-content-import.md`): closes P4.4u3's
+  family-3 deferral — the quilltap-import SEED SUBSET (`.qtap` is
+  plain JSON, not an archive: legacy monolithic format only;
+  characters + wardrobe + the legacy scenario→scenarios migration +
+  memories, `conflictStrategy:'skip'`), the startup wire
+  (zero-characters gate, per-file swallow, avatar seeding from
+  `Lorian.webp`), and tier-2 `reset_builtins` as a service (its
+  dispatch arm is a unification wire — lane A owns `api/types.rs`).
+  Everything outside the subset refuses loudly, including payloads
+  with unsupported entity kinds (a recorded deliberate divergence).
+
+Contention notes: lane A owns `api/**` (ALL variant edits incl. the
+general family) + `db/scenarios.rs` + the groups-projects fixture
+family; lane B owns `apps/web/**`; lane C owns
+`services/quilltap_import*` + the host seeding site +
+`assets/first-startup/**` and touches NO `api/**`. Lanes A and C both
+bump core + harness (unifier accumulates); lane B alone bumps the SPA.
+`services/mod.rs` / `db/mod.rs` / `api/mod.rs` / CHANGELOG /
+status-log are union-resolved at unification per
+`[[parallel-round-reconciliation]]`.

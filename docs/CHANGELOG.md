@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+Planned the P4.6n ∥ P4.6o ∥ P4.4u4 round and committed the three work
+orders (docs only). P4.6n closes the P4.6k server remainder: the
+scenario contract re-pinned at planning time from v4's Zod schemas
+(create `{filename, name?, description?, isDefault?, body}`, identical
+across the groups/projects/general families; update drops filename;
+rename `{newFilename}`), the scenarios-common service surface, the 13
+refusal-armed scenario arms + the participant-union, the net-new
+general (instance-wide) scenarios family, and the list-files
+two-branch + file add/remove. P4.6o closes the P4.6l SPA remainder:
+the scope-agnostic ScenariosManager (project card + the general
+/scenarios page behind the disabled nav item) and the Wardrobe card +
+ProjectWardrobeManager. P4.4u4 closes the P4.4u3 family-3 deferral:
+the quilltap-import seed subset (.qtap is plain JSON, not an archive;
+characters + wardrobe + scenario-migration + memories, skip strategy),
+the startup seeding wire with the zero-characters gate and avatar
+seeding, and reset_builtins as a tier-2 service (dispatch wire at
+unification). Round plan appended to phase-4.md; drift check clean at
+`a7b1398d`.
+
+
 Unified the P4.6k ∥ P4.6l ∥ P4.6m groups+projects+multipart round onto
 main. Lane A landed the groups + projects (Prospero) dispatch surface
 (CRUD/members/roster/chats/state/tool-settings/mount-points + wardrobe +
