@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.6s memories server, part 3 (housekeeping + configs): `memoryHousekeepPreview`
+(GET envelope), `memoryHousekeep` (POST dryRun/run — details only on dryRun),
+`memoryHousekeepSweep` (job enqueue), `memoryHousekeepingConfigGet/Set` (per-user
+chat_settings, default injection + merge-patch), and the three instance-wide
+config pairs — `memoryRecallConfigGet/Set`, `memoryExtractionLimitsGet/Set`,
+`memoryExtractionConcurrencyGet/Set` (new additive `instance_settings` getters/
+setters). The oracle splits into `memories-routes` + `memories-config` to stay
+under the jest cross-case-contamination threshold; the fixture gains the
+`instance_settings` table. `memories_routes_equivalence` covers 36 cases total.
+
 P4.6s memories server, part 2 (writes + search): `memoryCreate` (the
 gate-driven create — INSERT, the near-duplicate absorb, 201 `{memory}`,
 SKIP_EMBEDDING_FAILED → server error), `memoryUpdate` (no re-embed),

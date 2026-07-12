@@ -212,16 +212,21 @@ fn memories_routes_match_oracle() {
     let Some(oracle_path) = env_or_skip("QT_ORACLE_MEMORIES_ROUTES") else {
         return;
     };
+    let Some(config_path) = env_or_skip("QT_ORACLE_MEMORIES_CONFIG") else {
+        return;
+    };
     let spec: Spec =
         serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).expect("spec");
     let mut oracle: HashMap<String, Value> = HashMap::new();
-    for line in std::fs::read_to_string(&oracle_path)
-        .unwrap()
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-    {
-        let v: Value = serde_json::from_str(line).unwrap();
-        oracle.insert(v["name"].as_str().unwrap().to_string(), v);
+    for path in [&oracle_path, &config_path] {
+        for line in std::fs::read_to_string(path)
+            .unwrap()
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+        {
+            let v: Value = serde_json::from_str(line).unwrap();
+            oracle.insert(v["name"].as_str().unwrap().to_string(), v);
+        }
     }
 
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -646,6 +651,107 @@ fn memories_routes_match_oracle() {
             }),
         ));
         check_rounded("search_min_importance", &resp, &mut failed);
+    }
+
+    // --- Housekeeping (deletes-nothing config → clock-independent) ---
+    {
+        let db = fresh_db(&spec, "hkp");
+        let resp = rt.block_on(memories::memory_housekeep_preview(
+            &db,
+            MNEMO,
+            Some(10000),
+            None,
+            Some(0.0),
+            None,
+        ));
+        check_body("housekeep_preview", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "hkd");
+        let resp = rt.block_on(memories::memory_housekeep(
+            &db,
+            json!({ "characterId": MNEMO, "maxMemories": 10000, "minImportance": 0, "dryRun": true }),
+        ));
+        check_body("housekeep_dryrun", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "hkr");
+        let resp = rt.block_on(memories::memory_housekeep(
+            &db,
+            json!({ "characterId": MNEMO, "maxMemories": 10000, "minImportance": 0, "dryRun": false }),
+        ));
+        check_body("housekeep_run", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "hks");
+        let resp = rt.block_on(memories::memory_housekeep_sweep(&db, &uid));
+        check_blanked("housekeep_sweep", &resp, &["jobId"], &mut failed);
+    }
+    // --- Configs ---
+    {
+        let db = fresh_db(&spec, "hcg");
+        check_body(
+            "housekeeping_config_get",
+            &memories::memory_housekeeping_config_get(&db, &uid),
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "hcs");
+        let resp = rt.block_on(memories::memory_housekeeping_config_set(
+            &db,
+            &uid,
+            json!({ "enabled": true, "perCharacterCap": 1500 }),
+        ));
+        check_body("housekeeping_config_set", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "rcg");
+        check_body(
+            "recall_config_get",
+            &memories::memory_recall_config_get(&db),
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "rcs");
+        let resp = rt.block_on(memories::memory_recall_config_set(
+            &db,
+            json!({ "scopePolicy": "exclude" }),
+        ));
+        check_body("recall_config_set", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "elg");
+        check_body(
+            "extraction_limits_get",
+            &memories::memory_extraction_limits_get(&db),
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "els");
+        let resp = rt.block_on(memories::memory_extraction_limits_set(
+            &db,
+            json!({ "maxPerHour": 50 }),
+        ));
+        check_body("extraction_limits_set", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "ecg");
+        check_body(
+            "extraction_concurrency_get",
+            &memories::memory_extraction_concurrency_get(&db),
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "ecs");
+        let resp = rt.block_on(memories::memory_extraction_concurrency_set(
+            &db,
+            json!({ "concurrency": 8 }),
+        ));
+        check_body("extraction_concurrency_set", &resp, &mut failed);
     }
 
     assert!(failed.is_empty(), "mismatched cases: {failed:?}");

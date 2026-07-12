@@ -26,14 +26,20 @@ use serde_json::{json, Map, Value};
 
 use crate::db::memories::MemUpdate;
 use crate::db::runtime::Db;
-use crate::db::{characters_read, chats_read, memories_read, tags, DbError};
+use crate::db::{
+    characters_read, chat_settings, chats_read, instance_settings, memories_read, tags, DbError,
+};
 use crate::model::embedding::EmbeddingProvider;
+use crate::services::housekeeping::{
+    get_housekeeping_preview, run_housekeeping, HousekeepingOptions, HousekeepingResult,
+};
 use crate::services::memory_gate::{
     create_memory_with_gate, CreateMemoryOptions, GateAction, MemoryServiceOptions,
 };
 use crate::services::memory_service::{
     delete_memories_by_chat_id_with_vectors, search_memories_semantic, SemanticSearchOptions,
 };
+use crate::services::queue_service::enqueue_memory_housekeeping;
 
 use super::types::{ErrorKind, Response};
 
@@ -758,6 +764,367 @@ pub async fn memory_search<P: EmbeddingProvider + Sync>(
     });
     match body {
         Ok(b) => Response::Memory(b),
+        Err(e) => internal(e),
+    }
+}
+
+// ===========================================================================
+// Housekeeping
+// ===========================================================================
+
+/// One `HousekeepingResult` detail → v4's `{memoryId, action, reason, summary?}`
+/// (summary omitted when null).
+fn hk_details(r: &HousekeepingResult) -> Vec<Value> {
+    r.details
+        .iter()
+        .map(|d| {
+            let mut o = serde_json::Map::new();
+            o.insert("memoryId".into(), json!(d.memory_id));
+            o.insert("action".into(), json!(d.action));
+            o.insert("reason".into(), json!(d.reason));
+            if let Some(s) = &d.summary {
+                o.insert("summary".into(), json!(s));
+            }
+            Value::Object(o)
+        })
+        .collect()
+}
+
+/// v4 GET `?action=housekeep` — `handleHousekeepPreview`. Query params
+/// `maxMemories`/`maxAgeMonths`/`minImportance`/`mergeSimilar` (manual range
+/// validation, NOT Zod). Envelope `{success, preview: {wouldDelete, wouldMerge,
+/// wouldKeep, totalBefore, totalAfter, details}}`.
+pub async fn memory_housekeep_preview(
+    db: &Db,
+    character_id: &str,
+    max_memories: Option<i64>,
+    max_age_months: Option<i64>,
+    min_importance: Option<f64>,
+    merge_similar: Option<bool>,
+) -> Response {
+    match character_exists(db, character_id) {
+        Ok(true) => {}
+        Ok(false) => return not_found("Character"),
+        Err(e) => return internal(e),
+    }
+    let mut opts = HousekeepingOptions::default();
+    // v4's manual per-param range checks → badRequest.
+    if let Some(n) = max_memories {
+        if !(1..=100000).contains(&n) {
+            return bad_request("maxMemories must be an integer between 1 and 100000");
+        }
+        opts.max_memories = Some(n as usize);
+    }
+    if let Some(n) = max_age_months {
+        if !(1..=1200).contains(&n) {
+            return bad_request("maxAgeMonths must be an integer between 1 and 1200");
+        }
+        opts.max_age_months = Some(n as f64);
+    }
+    if let Some(n) = min_importance {
+        if !(0.0..=1.0).contains(&n) {
+            return bad_request("minImportance must be a number between 0 and 1");
+        }
+        opts.min_importance = Some(n);
+    }
+    if let Some(b) = merge_similar {
+        opts.merge_similar = Some(b);
+    }
+    match get_housekeeping_preview(db, character_id, &opts).await {
+        Ok(r) => Response::Memory(json!({
+            "success": true,
+            "preview": {
+                "wouldDelete": r.deleted,
+                "wouldMerge": r.merged,
+                "wouldKeep": r.kept,
+                "totalBefore": r.total_before,
+                "totalAfter": r.total_after,
+                "details": hk_details(&r),
+            },
+        })),
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `housekeepingOptionsSchema` (POST `?action=housekeep`).
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct HousekeepBag {
+    character_id: String,
+    #[serde(default)]
+    max_memories: Option<usize>,
+    #[serde(default)]
+    max_age_months: Option<f64>,
+    #[serde(default)]
+    max_inactive_months: Option<f64>,
+    #[serde(default)]
+    min_importance: Option<f64>,
+    #[serde(default)]
+    merge_similar: Option<bool>,
+    #[serde(default)]
+    merge_threshold: Option<f64>,
+    #[serde(default)]
+    dry_run: Option<bool>,
+}
+
+/// v4 POST `?action=housekeep` — `handleHousekeep`. dryRun → preview else run.
+/// `{success, dryRun, result: {…, details?}}` — `details` ONLY on dryRun.
+pub async fn memory_housekeep(db: &Db, bag: Value) -> Response {
+    let bag: HousekeepBag = match serde_json::from_value(bag) {
+        Ok(b) => b,
+        Err(e) => return bad_request(format!("Invalid housekeeping options: {e}")),
+    };
+    match character_exists(db, &bag.character_id) {
+        Ok(true) => {}
+        Ok(false) => return not_found("Character"),
+        Err(e) => return internal(e),
+    }
+    let dry_run = bag.dry_run.unwrap_or(false);
+    let opts = HousekeepingOptions {
+        max_memories: bag.max_memories,
+        max_age_months: bag.max_age_months,
+        max_inactive_months: bag.max_inactive_months,
+        min_importance: bag.min_importance,
+        merge_similar: bag.merge_similar,
+        merge_threshold: bag.merge_threshold,
+        dry_run: bag.dry_run,
+    };
+    let result = if dry_run {
+        get_housekeeping_preview(db, &bag.character_id, &opts).await
+    } else {
+        run_housekeeping(db, &bag.character_id, &opts).await
+    };
+    match result {
+        Ok(r) => {
+            let mut result_obj = serde_json::Map::new();
+            result_obj.insert("deleted".into(), json!(r.deleted));
+            result_obj.insert("merged".into(), json!(r.merged));
+            result_obj.insert("kept".into(), json!(r.kept));
+            result_obj.insert("totalBefore".into(), json!(r.total_before));
+            result_obj.insert("totalAfter".into(), json!(r.total_after));
+            result_obj.insert("deletedIds".into(), json!(r.deleted_ids));
+            result_obj.insert("mergedIds".into(), json!(r.merged_ids));
+            // v4: `details: options.dryRun ? result.details : undefined` — undefined
+            // is dropped from the JSON, so the key is present only on dryRun.
+            if dry_run {
+                result_obj.insert("details".into(), json!(hk_details(&r)));
+            }
+            Response::Memory(json!({
+                "success": true,
+                "dryRun": dry_run,
+                "result": Value::Object(result_obj),
+            }))
+        }
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 POST `?action=housekeep-sweep` — enqueue `MEMORY_HOUSEKEEPING` across every
+/// character. `{success, jobId}`.
+pub async fn memory_housekeep_sweep(db: &Db, user_id: &str) -> Response {
+    match enqueue_memory_housekeeping(db, user_id, json!({ "reason": "manual" })).await {
+        Ok(job_id) => Response::Memory(json!({ "success": true, "jobId": job_id })),
+        Err(_) => Response::error(ErrorKind::Internal, "Failed to enqueue housekeeping sweep"),
+    }
+}
+
+// ===========================================================================
+// Config: auto-housekeeping (per-user, chat_settings)
+// ===========================================================================
+
+/// v4's `autoHousekeepingSettings` default injection.
+fn housekeeping_config_default() -> Value {
+    json!({
+        "enabled": false,
+        "perCharacterCap": 2000,
+        "perCharacterCapOverrides": {},
+        "autoMergeSimilarThreshold": 0.90,
+        "mergeSimilar": false,
+    })
+}
+
+/// v4 GET `?action=housekeeping-config` — `{success, settings}` (default-injected).
+pub fn memory_housekeeping_config_get(db: &Db, user_id: &str) -> Response {
+    let uid = user_id.to_string();
+    let settings: Result<Value, DbError> = db.read_main(move |main| {
+        Ok(
+            chat_settings::find_auto_housekeeping_settings_by_user_id(main, &uid)?
+                .unwrap_or_else(housekeeping_config_default),
+        )
+    });
+    match settings {
+        Ok(s) => Response::Memory(json!({ "success": true, "settings": s })),
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 POST `?action=housekeeping-config` — merge-patch each field `?? current`,
+/// store via `updateForUser`, `{success, settings: merged}`.
+pub async fn memory_housekeeping_config_set(db: &Db, user_id: &str, bag: Value) -> Response {
+    if !bag.is_object() {
+        return bad_request("Invalid housekeeping config body");
+    }
+    let uid = user_id.to_string();
+    let current: Result<Value, DbError> = db.read_main(move |main| {
+        Ok(
+            chat_settings::find_auto_housekeeping_settings_by_user_id(main, &uid)?
+                .unwrap_or_else(housekeeping_config_default),
+        )
+    });
+    let current = match current {
+        Ok(c) => c,
+        Err(e) => return internal(e),
+    };
+    let pick = |key: &str| {
+        bag.get(key)
+            .cloned()
+            .unwrap_or_else(|| current[key].clone())
+    };
+    let merged = json!({
+        "enabled": pick("enabled"),
+        "perCharacterCap": pick("perCharacterCap"),
+        "perCharacterCapOverrides": pick("perCharacterCapOverrides"),
+        "autoMergeSimilarThreshold": pick("autoMergeSimilarThreshold"),
+        "mergeSimilar": pick("mergeSimilar"),
+    });
+    let uid = user_id.to_string();
+    let merged_str = merged.to_string();
+    let now = crate::clock::now_iso();
+    let wrote = db
+        .write(move |w| {
+            chat_settings::update_for_user(
+                w.main().connection(),
+                &uid,
+                &[(
+                    "autoHousekeepingSettings",
+                    chat_settings::SettingsColVal::Text(merged_str),
+                )],
+                &now,
+            )
+        })
+        .await;
+    match wrote {
+        Ok(_) => Response::Memory(json!({ "success": true, "settings": merged })),
+        Err(e) => internal(e),
+    }
+}
+
+// ===========================================================================
+// Config: recall / extraction-limits / extraction-concurrency (instance-wide)
+// ===========================================================================
+
+/// v4 GET `?action=recall-config` — `{success, settings: {scopePolicy, expandRelated}}`.
+pub fn memory_recall_config_get(db: &Db) -> Response {
+    let r: Result<(String, bool), DbError> =
+        db.read_main(instance_settings::get_memory_recall_settings);
+    match r {
+        Ok((scope_policy, expand_related)) => Response::Memory(json!({
+            "success": true,
+            "settings": { "scopePolicy": scope_policy, "expandRelated": expand_related },
+        })),
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 POST `?action=recall-config` — merge-patch, store, `{success, settings}`.
+pub async fn memory_recall_config_set(db: &Db, bag: Value) -> Response {
+    if !bag.is_object() {
+        return bad_request("Invalid recall config body");
+    }
+    let current: Result<(String, bool), DbError> =
+        db.read_main(instance_settings::get_memory_recall_settings);
+    let (cur_scope, cur_expand) = match current {
+        Ok(c) => c,
+        Err(e) => return internal(e),
+    };
+    let scope = bag
+        .get("scopePolicy")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or(cur_scope);
+    let expand = bag
+        .get("expandRelated")
+        .and_then(Value::as_bool)
+        .unwrap_or(cur_expand);
+    let (s2, e2) = (scope.clone(), expand);
+    let wrote = db
+        .write(move |w| {
+            instance_settings::set_memory_recall_settings(w.main().connection(), &s2, e2)
+        })
+        .await;
+    match wrote {
+        Ok(_) => Response::Memory(json!({
+            "success": true,
+            "settings": { "scopePolicy": scope, "expandRelated": expand },
+        })),
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 GET `?action=extraction-limits-config` — `{success, settings}`.
+pub fn memory_extraction_limits_get(db: &Db) -> Response {
+    match db.read_main(instance_settings::get_memory_extraction_limits) {
+        Ok(s) => Response::Memory(json!({ "success": true, "settings": s })),
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 POST `?action=extraction-limits-config` — merge-patch, store, `{success, settings}`.
+pub async fn memory_extraction_limits_set(db: &Db, bag: Value) -> Response {
+    if !bag.is_object() {
+        return bad_request("Invalid extraction limits body");
+    }
+    let current = match db.read_main(instance_settings::get_memory_extraction_limits) {
+        Ok(c) => c,
+        Err(e) => return internal(e),
+    };
+    let pick = |key: &str| {
+        bag.get(key)
+            .cloned()
+            .unwrap_or_else(|| current[key].clone())
+    };
+    let merged = json!({
+        "enabled": pick("enabled"),
+        "maxPerHour": pick("maxPerHour"),
+        "softStartFraction": pick("softStartFraction"),
+        "softFloor": pick("softFloor"),
+    });
+    let m2 = merged.clone();
+    let wrote = db
+        .write(move |w| instance_settings::set_memory_extraction_limits(w.main().connection(), &m2))
+        .await;
+    match wrote {
+        Ok(_) => Response::Memory(json!({ "success": true, "settings": merged })),
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 GET `?action=extraction-concurrency` — `{success, concurrency}`.
+pub fn memory_extraction_concurrency_get(db: &Db) -> Response {
+    match db.read_main(instance_settings::get_memory_extraction_concurrency) {
+        Ok(c) => Response::Memory(json!({ "success": true, "concurrency": c })),
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 POST `?action=extraction-concurrency` — `{concurrency}` (int 1–32). Stores the
+/// setting AND pushes a runtime override into the processor (the runtime half is a
+/// host seam — injected, no-op default). `{success, concurrency}`.
+pub async fn memory_extraction_concurrency_set(db: &Db, bag: Value) -> Response {
+    let Some(concurrency) = bag.get("concurrency").and_then(Value::as_i64) else {
+        return bad_request("concurrency must be an integer between 1 and 32");
+    };
+    if !(1..=32).contains(&concurrency) {
+        return bad_request("concurrency must be an integer between 1 and 32");
+    }
+    let wrote = db
+        .write(move |w| {
+            instance_settings::set_memory_extraction_concurrency(w.main().connection(), concurrency)
+        })
+        .await;
+    // The runtime processor-override push is a host seam (no-op here).
+    match wrote {
+        Ok(_) => Response::Memory(json!({ "success": true, "concurrency": concurrency })),
         Err(e) => internal(e),
     }
 }

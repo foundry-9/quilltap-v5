@@ -109,6 +109,71 @@ pub fn get_memory_recall_settings(main: &Connection) -> Result<(String, bool), D
     Ok((scope_policy, expand_related))
 }
 
+/// v4 `setMemoryRecallSettings` — store the recall settings (validated object
+/// `{scopePolicy, expandRelated}`). The route merges before calling this.
+pub fn set_memory_recall_settings(
+    main: &Connection,
+    scope_policy: &str,
+    expand_related: bool,
+) -> Result<(), DbError> {
+    let value = serde_json::json!({ "scopePolicy": scope_policy, "expandRelated": expand_related });
+    write_setting(main, KEY_MEMORY_RECALL, &value.to_string())
+}
+
+/// v4 `KEY_MEMORY_EXTRACTION_CONCURRENCY` — the per-instance MEMORY_EXTRACTION
+/// concurrency cap (default **1**, distinct from `maxConcurrentJobs`'s 4).
+const KEY_MEMORY_EXTRACTION_CONCURRENCY: &str = "memoryExtractionConcurrency";
+const DEFAULT_MEMORY_EXTRACTION_CONCURRENCY: i64 = 1;
+/// v4 `KEY_MEMORY_EXTRACTION_LIMITS`.
+const KEY_MEMORY_EXTRACTION_LIMITS: &str = "memoryExtractionLimits";
+
+/// v4 `getMemoryExtractionConcurrency()` — default 1 when unset OR when the stored
+/// value is not a finite integer `>= 1`; otherwise clamped to `[1, 32]`.
+pub fn get_memory_extraction_concurrency(main: &Connection) -> Result<i64, DbError> {
+    let Some(raw) = read_setting(main, KEY_MEMORY_EXTRACTION_CONCURRENCY) else {
+        return Ok(DEFAULT_MEMORY_EXTRACTION_CONCURRENCY);
+    };
+    match raw.trim().parse::<f64>() {
+        Ok(f) if f.is_finite() && f.floor() as i64 >= 1 => Ok((f.floor() as i64).clamp(1, 32)),
+        _ => Ok(DEFAULT_MEMORY_EXTRACTION_CONCURRENCY),
+    }
+}
+
+/// v4 `setMemoryExtractionConcurrency(value)` — clamp `[1, 32]` (floor) and store.
+pub fn set_memory_extraction_concurrency(main: &Connection, value: i64) -> Result<(), DbError> {
+    let clamped = value.clamp(1, 32);
+    write_setting(
+        main,
+        KEY_MEMORY_EXTRACTION_CONCURRENCY,
+        &clamped.to_string(),
+    )
+}
+
+/// v4 `getMemoryExtractionLimits()` — the `{enabled, maxPerHour, softStartFraction,
+/// softFloor}` object; documented defaults `{false, 20, 0.7, 0.7}` when unset /
+/// malformed.
+pub fn get_memory_extraction_limits(main: &Connection) -> Result<serde_json::Value, DbError> {
+    let default = serde_json::json!({
+        "enabled": false, "maxPerHour": 20, "softStartFraction": 0.7, "softFloor": 0.7,
+    });
+    let Some(raw) = read_setting(main, KEY_MEMORY_EXTRACTION_LIMITS) else {
+        return Ok(default);
+    };
+    match serde_json::from_str::<serde_json::Value>(&raw) {
+        Ok(v) if v.is_object() => Ok(v),
+        _ => Ok(default),
+    }
+}
+
+/// v4 `setMemoryExtractionLimits(value)` — store the validated object (the route
+/// merges + validates before calling).
+pub fn set_memory_extraction_limits(
+    main: &Connection,
+    value: &serde_json::Value,
+) -> Result<(), DbError> {
+    write_setting(main, KEY_MEMORY_EXTRACTION_LIMITS, &value.to_string())
+}
+
 /// v4 `getMaxConcurrentJobs()` — the per-instance background-job concurrency cap.
 /// Returns the documented default (4) when unset OR when the stored value is not a
 /// finite integer `>= 1` (v4: `Math.floor(Number(raw))`, reject `!Number.isFinite`

@@ -155,6 +155,16 @@ async function main(): Promise<void> {
     for (const sql of generateDDL(name, schema as never)) midb.exec(sql);
   }
 
+  // The instance_settings key/value table (the recall / extraction-limits /
+  // extraction-concurrency config writes target it; reads default gracefully but
+  // an INSERT into a missing table throws).
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const mainDb = getRawDatabase();
+  if (!mainDb) throw new Error('main DB handle unavailable');
+  mainDb.exec(
+    'CREATE TABLE IF NOT EXISTS "instance_settings" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)',
+  );
+
   const repos = getRepositories();
   const TS = spec.seedTimestamp;
 

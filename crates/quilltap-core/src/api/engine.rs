@@ -1760,6 +1760,75 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            Request::MemoryHousekeepPreview {
+                character_id,
+                max_memories,
+                max_age_months,
+                min_importance,
+                merge_similar,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::memories::memory_housekeep_preview(
+                        &db,
+                        &character_id,
+                        max_memories,
+                        max_age_months,
+                        min_importance,
+                        merge_similar,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::MemoryHousekeep { options } => match self.ready_db() {
+                Ok(db) => super::memories::memory_housekeep(&db, options).await,
+                Err(r) => r,
+            },
+            Request::MemoryHousekeepSweep => match self.ready_db() {
+                Ok(db) => super::memories::memory_housekeep_sweep(&db, SINGLE_USER_ID).await,
+                Err(r) => r,
+            },
+            Request::MemoryHousekeepingConfigGet => match self.ready_db() {
+                Ok(db) => super::memories::memory_housekeeping_config_get(&db, SINGLE_USER_ID),
+                Err(r) => r,
+            },
+            Request::MemoryHousekeepingConfigSet { config } => match self.ready_db() {
+                Ok(db) => {
+                    super::memories::memory_housekeeping_config_set(&db, SINGLE_USER_ID, config)
+                        .await
+                }
+                Err(r) => r,
+            },
+            Request::MemoryRecallConfigGet => match self.ready_db() {
+                Ok(db) => super::memories::memory_recall_config_get(&db),
+                Err(r) => r,
+            },
+            Request::MemoryRecallConfigSet { config } => match self.ready_db() {
+                Ok(db) => super::memories::memory_recall_config_set(&db, config).await,
+                Err(r) => r,
+            },
+            Request::MemoryExtractionLimitsGet => match self.ready_db() {
+                Ok(db) => super::memories::memory_extraction_limits_get(&db),
+                Err(r) => r,
+            },
+            Request::MemoryExtractionLimitsSet { config } => match self.ready_db() {
+                Ok(db) => super::memories::memory_extraction_limits_set(&db, config).await,
+                Err(r) => r,
+            },
+            Request::MemoryExtractionConcurrencyGet => match self.ready_db() {
+                Ok(db) => super::memories::memory_extraction_concurrency_get(&db),
+                Err(r) => r,
+            },
+            Request::MemoryExtractionConcurrencySet { concurrency } => match self.ready_db() {
+                Ok(db) => {
+                    super::memories::memory_extraction_concurrency_set(
+                        &db,
+                        serde_json::json!({ "concurrency": concurrency }),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
         }
     }
 

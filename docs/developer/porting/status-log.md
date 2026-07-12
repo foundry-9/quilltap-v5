@@ -8218,3 +8218,39 @@ Gotchas banked:
   (memory_id None → Internal) but not differential-exercised (the real builtin
   never fails).
 Bumps: core 0.0.190, harness 0.0.174.
+
+### P4.6s unit 3 — housekeeping + config arms — LANDED (branch)
+
+`memoryHousekeepPreview` (GET `{success, preview:{wouldDelete/Merge/Keep,
+totalBefore/After, details}}`), `memoryHousekeep` (POST — dryRun→preview else
+run; `{success, dryRun, result:{…, details?}}`, `details` present ONLY on
+dryRun via key-omission not null), `memoryHousekeepSweep` (enqueue
+MEMORY_HOUSEKEEPING, `{success, jobId}`), `memoryHousekeepingConfigGet/Set`
+(per-user `chat_settings.autoHousekeepingSettings`, v4 default-injection +
+merge-patch via `update_for_user` Text assignment), plus the three
+instance-wide config pairs over NEW additive `db/instance_settings`
+getters/setters — `set_memory_recall_settings`,
+`get/set_memory_extraction_limits`, `get/set_memory_extraction_concurrency`
+(concurrency default **1**, key `memoryExtractionConcurrency`, distinct from
+`maxConcurrentJobs`'s 4). The extraction-concurrency runtime-override push into
+the processor is a host seam (no-op).
+
+Gotchas banked:
+- **The fixture MUST create the `instance_settings` table.** v4's `readSetting`
+  try/catches a missing table → default, but an INSERT (the recall/extraction
+  SETs) throws → 500. Added `CREATE TABLE IF NOT EXISTS instance_settings` to
+  the builder (the groups-fixture precedent). Both differential sides need it.
+- **The oracle SPLITS into two files** — `memories-routes.test.ts` (24 read/
+  write/search) + `memories-config.test.ts` (12 housekeep/config). A single
+  jest run past ~24 cases hits a **cumulative cross-case contamination** (the
+  auth middleware's `users.findById` starts returning null → spurious 500
+  "User not found"/"Internal server error" clustered at the tail; writes-in-
+  process, so not a forked-writer issue — a harness/instance-lock resource
+  creep). Under ~20 cases per run it is clean. The Rust test loads BOTH oracles
+  (`QT_ORACLE_MEMORIES_ROUTES` + `QT_ORACLE_MEMORIES_CONFIG`).
+- Housekeep is **clock-sensitive** (`crate::clock::now_unix_ms`, no override).
+  Proven with a **deletes-nothing config** (`maxMemories:10000, minImportance:0`;
+  the fixture's ~4-month-old memories miss the default 6-month age gate) → a
+  clock-independent `deleted:0` result on both sides; the deletion logic itself
+  is `memory_housekeeping_tier2`-proven.
+Bumps: core 0.0.191, harness 0.0.175.

@@ -1131,6 +1131,49 @@ pub enum Request {
     MemorySearch {
         search: serde_json::Value,
     },
+    /// v4 GET `?action=housekeep&characterId=` — `{success, preview: {…}}`.
+    #[serde(rename_all = "camelCase")]
+    MemoryHousekeepPreview {
+        character_id: String,
+        #[serde(default)]
+        max_memories: Option<i64>,
+        #[serde(default)]
+        max_age_months: Option<i64>,
+        #[serde(default)]
+        min_importance: Option<f64>,
+        #[serde(default)]
+        merge_similar: Option<bool>,
+    },
+    /// v4 POST `?action=housekeep` — `{success, dryRun, result: {…, details?}}`.
+    MemoryHousekeep {
+        options: serde_json::Value,
+    },
+    /// v4 POST `?action=housekeep-sweep` — `{success, jobId}`.
+    MemoryHousekeepSweep,
+    /// v4 GET `?action=housekeeping-config` — `{success, settings}`.
+    MemoryHousekeepingConfigGet,
+    /// v4 POST `?action=housekeeping-config` — merge-patch `{success, settings}`.
+    MemoryHousekeepingConfigSet {
+        config: serde_json::Value,
+    },
+    /// v4 GET `?action=recall-config` — `{success, settings}`.
+    MemoryRecallConfigGet,
+    /// v4 POST `?action=recall-config` — merge-patch `{success, settings}`.
+    MemoryRecallConfigSet {
+        config: serde_json::Value,
+    },
+    /// v4 GET `?action=extraction-limits-config` — `{success, settings}`.
+    MemoryExtractionLimitsGet,
+    /// v4 POST `?action=extraction-limits-config` — merge-patch `{success, settings}`.
+    MemoryExtractionLimitsSet {
+        config: serde_json::Value,
+    },
+    /// v4 GET `?action=extraction-concurrency` — `{success, concurrency}`.
+    MemoryExtractionConcurrencyGet,
+    /// v4 POST `?action=extraction-concurrency` — `{success, concurrency}`.
+    MemoryExtractionConcurrencySet {
+        concurrency: i64,
+    },
 }
 
 /// Typed DTO per variant (the uniffi payoff). `Error` carries the one

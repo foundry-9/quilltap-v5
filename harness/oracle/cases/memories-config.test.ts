@@ -15,14 +15,14 @@
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-mem-oracle
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
- *   cp "$V5W/harness/oracle/cases/memories-routes.test.ts" "$TMPO/cases/"
+ *   cp "$V5W/harness/oracle/cases/memories-config.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/fixtures/memories-web.json" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_MEM_MAIN=$V5W/crates/quilltap-web/tests/fixtures/memories-main.db \
  *   QT_FIXTURE_MEM_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/memories-mount.db \
- *   QT_ORACLE_OUT=/tmp/oracle-memories-routes.ndjson \
+ *   QT_ORACLE_OUT=/tmp/oracle-memories-config.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
- *       --roots "$PWD" --roots "$TMPO/cases" -- memories-routes
+ *       --roots "$PWD" --roots "$TMPO/cases" -- memories-config
  */
 
 import * as fs from 'fs';
@@ -252,140 +252,87 @@ async function main(): Promise<void> {
     );
 
   const cases: CaseSpec[] = [
-    // --- List (paginated) ---
-    { name: 'list_paginated', run: () => listGet(`characterId=${MNEMO}&limit=20&offset=0`) },
+    // --- Housekeeping (a deletes-nothing config → clock-independent result;
+    //     the deletion logic itself is proven by memory_housekeeping_tier2) ---
     {
-      name: 'list_paginated_p2',
-      run: () => listGet(`characterId=${MNEMO}&limit=20&offset=20`),
+      name: 'housekeep_preview',
+      run: () => listGet(`action=housekeep&characterId=${MNEMO}&maxMemories=10000&minImportance=0`),
     },
     {
-      name: 'list_paginated_importance_asc',
-      run: () => listGet(`characterId=${MNEMO}&limit=15&sortBy=importance&sortOrder=asc`),
-    },
-    {
-      name: 'list_paginated_search',
-      run: () => listGet(`characterId=${MNEMO}&limit=50&search=smuggler`),
-    },
-    {
-      name: 'list_paginated_minImportance',
-      run: () => listGet(`characterId=${MNEMO}&limit=50&minImportance=0.7`),
-    },
-    {
-      name: 'list_paginated_source_manual',
-      run: () => listGet(`characterId=${MNEMO}&limit=50&source=MANUAL`),
-    },
-    // --- List (legacy, no limit) ---
-    { name: 'list_legacy', run: () => listGet(`characterId=${ORLA}`) },
-    { name: 'list_legacy_search', run: () => listGet(`characterId=${MNEMO}&search=barometer`) },
-    // --- List errors ---
-    { name: 'list_missing_character', run: () => listGet(`characterId=${MISSING}`) },
-    // --- Item GET ---
-    { name: 'get', run: () => itemGet(MEM_TAGGED_2) },
-    { name: 'get_missing', run: () => itemGet(MISSING) },
-    // --- Count by chat ---
-    { name: 'count_by_chat', run: () => listGet(`chatId=${CHAT_SALON}`) },
-    { name: 'count_by_chat_missing', run: () => listGet(`chatId=${MISSING}`) },
-    // --- By message ---
-    { name: 'by_message_swipe', run: () => listGet(`messageId=${MSG_S2A}`) },
-    { name: 'by_message_single', run: () => listGet(`messageId=${MSG_S1}`) },
-    { name: 'by_message_missing', run: () => listGet(`messageId=${MISSING}`) },
-    // --- Character memory counts ---
-    { name: 'character_counts', run: () => listGet(`action=character-memory-counts`) },
-    // --- Create (gate) ---
-    {
-      name: 'create_insert',
+      name: 'housekeep_dryrun',
       run: async () =>
         respond(
           await (await loadRoute('@/app/api/v1/memories/route')).POST(
-            mockRequest(B, {
+            mockRequest(`${B}?action=housekeep`, {
               characterId: MNEMO,
-              content: 'The clocktower chimes thirteen times on the winter solstice.',
-              summary: 'The clocktower chimes thirteen at solstice.',
-              keywords: ['clocktower', 'solstice'],
-              importance: 0.55,
-              source: 'MANUAL',
+              maxMemories: 10000,
+              minImportance: 0,
+              dryRun: true,
             }),
           ),
         ),
     },
     {
-      // Identical content to the near-dup anchor → cosine 1.0 → the gate absorbs
-      // it (SKIP_NEAR_DUPLICATE): no new row, the anchor is returned unchanged.
-      name: 'create_near_duplicate',
-      run: async () => {
-        const r = await (await loadRoute('@/app/api/v1/memories/route')).POST(
-          mockRequest(B, {
-            characterId: MNEMO,
-            content: 'Mnemo always double-checks the barometer before hoisting the mainsail.',
-            summary: 'Mnemo checks the barometer before the mainsail.',
-            source: 'AUTO',
-          }),
-        );
-        const { status, body } = await respond(r);
-        return { status, body, tables: await dumpMemoryRows([MEM_NEARDUP]) };
-      },
-    },
-    // --- Update (no re-embed) ---
-    {
-      name: 'update',
-      run: async () =>
-        respond(
-          await (await loadRoute('@/app/api/v1/memories/[id]/route')).PUT(
-            mockRequest(`${B}/${MEM_TAGGED_1}`, { importance: 0.95, summary: 'Alden, the stern mentor.' }),
-            { params: Promise.resolve({ id: MEM_TAGGED_1 }) },
-          ),
-        ),
-    },
-    // --- Delete (+ unlink scrub) ---
-    {
-      name: 'delete',
-      run: async () => {
-        const r = await (await loadRoute('@/app/api/v1/memories/[id]/route')).DELETE(
-          mockRequest(`${B}/${MEM_REL_B}`),
-          { params: Promise.resolve({ id: MEM_REL_B }) },
-        );
-        const { status, body } = await respond(r);
-        return { status, body, tables: await dumpMemoryRows([MEM_REL_A, MEM_REL_B]) };
-      },
-    },
-    // --- Delete by chat ---
-    {
-      name: 'delete_by_chat',
-      run: async () => {
-        const r = await (await loadRoute('@/app/api/v1/memories/route')).DELETE(
-          mockRequest(`${B}?chatId=${CHAT_SALON}`),
-        );
-        const { status, body } = await respond(r);
-        return { status, body, tables: await countMemoriesInChat(CHAT_SALON) };
-      },
-    },
-    // --- Search (builtin TF-IDF; pinned clock) ---
-    {
-      name: 'search',
-      clock: true,
+      name: 'housekeep_run',
       run: async () =>
         respond(
           await (await loadRoute('@/app/api/v1/memories/route')).POST(
-            mockRequest(`${B}?action=search`, {
+            mockRequest(`${B}?action=housekeep`, {
               characterId: MNEMO,
-              query: 'smuggler cove hidden by the reef',
-              limit: 5,
+              maxMemories: 10000,
+              minImportance: 0,
+              dryRun: false,
             }),
           ),
         ),
     },
     {
-      name: 'search_min_importance',
-      clock: true,
+      name: 'housekeep_sweep',
       run: async () =>
         respond(
           await (await loadRoute('@/app/api/v1/memories/route')).POST(
-            mockRequest(`${B}?action=search`, {
-              characterId: MNEMO,
-              query: 'lighthouse keeper storm beacon',
-              limit: 10,
-              minImportance: 0.7,
-            }),
+            mockRequest(`${B}?action=housekeep-sweep`, {}),
+          ),
+        ),
+    },
+    // --- Configs ---
+    { name: 'housekeeping_config_get', run: () => listGet(`action=housekeeping-config`) },
+    {
+      name: 'housekeeping_config_set',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=housekeeping-config`, { enabled: true, perCharacterCap: 1500 }),
+          ),
+        ),
+    },
+    { name: 'recall_config_get', run: () => listGet(`action=recall-config`) },
+    {
+      name: 'recall_config_set',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=recall-config`, { scopePolicy: 'exclude' }),
+          ),
+        ),
+    },
+    { name: 'extraction_limits_get', run: () => listGet(`action=extraction-limits-config`) },
+    {
+      name: 'extraction_limits_set',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=extraction-limits-config`, { maxPerHour: 50 }),
+          ),
+        ),
+    },
+    { name: 'extraction_concurrency_get', run: () => listGet(`action=extraction-concurrency`) },
+    {
+      name: 'extraction_concurrency_set',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=extraction-concurrency`, { concurrency: 8 }),
           ),
         ),
     },
@@ -402,6 +349,6 @@ async function main(): Promise<void> {
 }
 
 // Jest wrapper: one test that runs the whole corpus.
-test('memories-routes oracle', async () => {
+test('memories-config oracle', async () => {
   await main();
 }, 120000);
