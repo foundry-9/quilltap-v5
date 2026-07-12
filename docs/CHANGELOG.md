@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+P4.6q (New-Chat SPA, lane B) — the new-chat state service + pure logic.
+Ported v4's `useNewChat` as an Angular signals object (`NewChatState`):
+the batched reference-data load (characters / connection profiles /
+general + project scenarios / seed character + default partner / the
+participant-union group scenarios), the seeding precedence (project
+default > general default; the seed character's default partner
+auto-joins as the user persona; `projectGet` loads the defaults the
+list omits), the single-LLM default propagation, and the submit spine
+(open the Green Room before the dispatch; the dispatch resolving is the
+authoritative ready signal). The load-bearing decisions live in pure
+helpers (`generateTitle`, `applyPlayAs`, `applyProfileChange`,
+`scenarioSelectPatch`, `buildCreateRequest`, `sortRoster`,
+`seedSelectedCharacter`) with a Vitest spec transcribing v4's Play-As +
+scenario-layering + payload assertions. The group participant-union is
+fetched faithfully but never rendered (dead UI in v4's `/salon/new`).
+SPA 0.5.24.
+
 P4.6q (New-Chat SPA, lane B) — core-contract.ts re-pins. Replaced the
 provisional `ChatCreateRequest` with the real flattened v4 `POST
 /api/v1/chats` body (participants, scenario-source precedence fields,

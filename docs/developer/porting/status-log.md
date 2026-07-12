@@ -7821,3 +7821,33 @@ checkout (identical `package.json`; the lane adds no npm deps).
   via `ListingSurfaceRequest`. Lane B's own functional need from it is only
   `imageProfileList` (the picker); the rest is for the shared block + lane C.
 - Gate: `tsc --noEmit` clean, `ng build` clean. SPA 0.5.22 → 0.5.23.
+
+### P4.6q unit 2 — the new-chat state service + pure logic — LANDED
+
+- **`new-chat.types.ts`** — the cast entry (`NewChatSelectedCharacter`), the form
+  state (`NewChatFormState`, minus the deferred autonomous slice), the scenario
+  option shapes, and the dropdown token constants (`USER_CONTROLLED_PROFILE`,
+  `CUSTOM_SCENARIO_VALUE`, the three source prefixes).
+- **`new-chat.logic.ts`** (pure, unit-tested) — `generateTitle`, `applyPlayAs`
+  (the in-place Play-As transition), `applyProfileChange`, `scenarioSelectPatch`
+  (the token → source-field patch that never touches free text), `sortRoster`,
+  `seedSelectedCharacter`, and `buildCreateRequest` (the verbatim submit payload:
+  booleans only-when-true, optionals absent, the scenario precedence chain,
+  timestampConfig dropped when mode NONE).
+- **`new-chat.state.ts`** — `NewChatState` (v4 `useNewChat`): the batched load +
+  seeding precedence (pin 4), the single-LLM default propagation (v4's post-load
+  effect, run imperatively on cast change), and `handleCreate` (the submit spine
+  opening the Green Room before the dispatch; the dispatch resolving is the ready
+  signal). Reuses the live reads `characterList` / `connectionProfileList` /
+  `scenarioList` / `projectList` / `projectGet` / `projectScenarioList` /
+  `characterGet` / `characterDefaultPartner` / `groupScenariosUnion`.
+- **`green-room.types.ts`** — the dialog state + the `GreenRoomController` seam
+  the submit spine drives (the concrete controller/reducer/dialog land in u6).
+- **DECISION (recorded):** the group participant-union is fetched faithfully (v4
+  `useNewChat` fetches it) but NEVER rendered — v4's `/salon/new` page destructures
+  `projectScenarios`/`generalScenarios` but not `groupScenarios`, so the form's
+  group optgroup is dead UI. Ported as a fetched-but-unrendered seam.
+- **`new-chat.logic.spec.ts`** — Vitest transcription of v4's
+  `NewChatForm.test.tsx` Play-As + scenario-layering behaviors + `generateTitle`
+  + the payload precedence/only-when-true rules. Gate: `tsc` clean (app + spec),
+  `ng test` green (280), `ng build` clean. SPA 0.5.23 → 0.5.24.
