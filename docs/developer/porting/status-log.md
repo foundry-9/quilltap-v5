@@ -8916,3 +8916,22 @@ fixtures section:** the fs-scope cases are also fs-seam-deferred (v5 cannot
 resolve `general`/fs mounts — a `ResolvedPath` is database-only), so the
 differential corpus is database-backed only, matching the whole doc-edit
 surface.
+
+### P4.6w unit 4 — the qtap-target byte route + web edge (lane B) — 2026-07-12
+
+`crates/quilltap-web/src/qtap_target_route.rs`: `GET /api/v1/chats/{id}/
+qtap-target?filePath=&scope=&mountPoint=` — ports v4's `qtap-target/route.ts`.
+Resolves via `documents::resolve_operator_doc_path` (operator override, the
+chat's project + participant character ids), then reads the database-mount
+bytes the same way `mount_file_get` does (text docs → `mime_for_extension`;
+blobs → `storedMimeType`). Registered in `quilltap-web/src/lib.rs` inside a
+delimited P4.6w append-only block. fs mounts are the standing FsSeam (the
+resolver never yields one); chat-missing → 400 "Chat not found", not-found →
+404, resolve/read failure → 500 (v4's error mapping).
+
+**The 18 dispatch variants need NO router change** — they flow through the
+generic `POST /api/dispatch` (the `Request`/`Response` contract). The only new
+HTTP route is the byte route. The qtap route is covered by construction (its
+resolve + byte-read primitives are already differential-proven — the route is
+a thin assembly), so it ships without its own oracle (a tier-2 byte route, D4).
+web 0.0.14.

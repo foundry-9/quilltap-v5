@@ -26,6 +26,9 @@ pub mod events;
 pub mod files_routes;
 pub mod health;
 pub mod multipart;
+// === P4.6w: documents ===
+pub mod qtap_target_route;
+// === end P4.6w ===
 pub mod state;
 pub mod static_serve;
 pub mod terminal_routes;
@@ -87,6 +90,12 @@ pub fn build_router(state: SharedState) -> Router {
             "/api/v1/terminals/{id}/stream",
             get(terminal_routes::terminal_stream),
         )
+        // === P4.6w: documents — the qtap-target byte route (D4) ===
+        .route(
+            "/api/v1/chats/{id}/qtap-target",
+            get(qtap_target_route::qtap_target_get),
+        )
+        // === end P4.6w ===
         .route("/setup", get(static_serve::setup))
         .fallback(get(static_serve::spa_fallback))
         .with_state(state)

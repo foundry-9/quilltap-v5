@@ -28,6 +28,16 @@ and the `fileOpStatus` HTTP-status mapper. Landed under
 `mime_for_extension` port (the duplicate in `files_routes.rs` removed).
 Differential-proven exact against v4's real code (a 69-row tsx oracle,
 `harness/oracle/cases/mount-chunker.ts`).
+P4.6w (Document Mode server, lane B): the qtap-target byte route
+(`GET /api/v1/chats/{id}/qtap-target`) — resolves a `{filePath, scope,
+mountPoint}` through the operator override (the same chat access rules as
+Document Mode) and streams the raw bytes (text docs + blobs), for the global
+qtap image viewer on non-Salon surfaces. A dedicated byte route (D4 —
+binary is a real URL, never enum dispatch), reusing the differential-proven
+`documents::resolve_operator_doc_path` + the `mount_file_get` byte read. The
+18 dispatch variants need no router change — they flow through the generic
+`/api/dispatch`.
+
 P4.6w (Document Mode server, lane B): the `api::documents` dispatch — the
 11 chat-scoped + 7 standalone Document Mode variants (active/open/recent
 document lists, accessible-stores in both modes, open/close/read/resolve/
