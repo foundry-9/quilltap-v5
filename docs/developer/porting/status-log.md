@@ -7851,3 +7851,18 @@ checkout (identical `package.json`; the lane adds no npm deps).
   `NewChatForm.test.tsx` Play-As + scenario-layering behaviors + `generateTitle`
   + the payload precedence/only-when-true rules. Gate: `tsc` clean (app + spec),
   `ng test` green (280), `ng build` clean. SPA 0.5.23 → 0.5.24.
+
+### P4.6q unit 3 — the character picker panel — LANDED
+
+- **`character-picker-panel.ts`** (`qt-new-chat-picker`, v4 `CharacterPickerPanel`):
+  the two-pane picker over `NewChatState`. Left: the searchable, `sortRoster`-sorted
+  roster; right: the selected cast with the "Speaks First" badge (index 0) and the
+  per-character connection-profile + system-prompt selects. The profile select's
+  `Play As (User)` option (`USER_CONTROLLED_PROFILE`) flips the entry via
+  `applyProfileChange`; select/remove resets `scenarioId` only (path selections
+  survive) then defers to the state's single-LLM propagation. `[selected]`-per-option
+  on both async selects (the dogfood-#6 class). Reuses `qt-avatar` +
+  `characterAvatarSrc`.
+- **`character-picker-panel.spec.ts`** — renders the roster, seeds an LLM entry on
+  select (first profile), asserts the Play-As option. Gate: `tsc` clean, `ng test`
+  green (283), `ng build` clean. SPA 0.5.24 → 0.5.25.

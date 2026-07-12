@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.6q (New-Chat SPA, lane B) — the character picker panel. Ported v4's
+`CharacterPickerPanel` as `qt-new-chat-picker`: the searchable, v4-sorted
+roster (favorites > user-controlled > chat count > name > title) on the
+left; the selected cast with the "Speaks First" badge and per-character
+connection-profile + system-prompt selects on the right. The profile
+select's "Play As (User)" option flips the entry to the human in place;
+selecting/removing a character resets the chosen character scenario only.
+Component spec + the reused pure logic cover the wiring. SPA 0.5.25.
+
 P4.6q (New-Chat SPA, lane B) — the new-chat state service + pure logic.
 Ported v4's `useNewChat` as an Angular signals object (`NewChatState`):
 the batched reference-data load (characters / connection profiles /
