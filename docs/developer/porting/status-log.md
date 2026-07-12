@@ -7012,6 +7012,80 @@ with the reusable `quilltap-web::multipart` helper waiting.
 remainders (see their status headers). Versions after the round: core
 0.0.176, harness 0.0.161, host 0.0.10, web 0.0.10, SPA 0.5.16.
 
+---
+
+## P4.4u4 (lane C) — the sample-content import (the quilltap-import seed subset)
+
+**In progress on `claude/p4-4u4-sample-content-7f9828`** (drift check clean at
+v4 `a7b1398d`). Closes P4.4u3's family-3 deferral (the
+`lorian-and-riya.qtap` sample-content import) and unblocks the characters
+family's `reset-builtins` deferral.
+
+**Unit 1 — the import service + differential + assets (DONE).**
+`quilltap-core::services::quilltap_import` (new module family:
+`mod`/`characters`/`memories`/`reconcile`). Ported the SEED SUBSET of v4's
+`executeImport` (`lib/import/quilltap-import/`):
+
+- `parse_export_file` + the legacy-JSON `format`/`version` hard pins
+  (`quilltap-export` / `'1.0'`); loud NDJSON refusal on sniff.
+- `execute_import(main, mount, user_id, export, options)` over the two
+  connections (the sync-handlers-over-both-connections idiom): characters
+  (id-then-name existence check → `skip`, else `create_character` — which
+  mints a fresh id, provisions the vault, projects the managed fields — with
+  the legacy `scenario` string → `scenarios[]` migration, then per-character
+  **vault-backed** wardrobe via `create_vault_wardrobe_item`) → remap-only
+  memories (`aboutCharacterId` remaps through the character map; `chatId`/
+  `projectId` → null via the empty maps; `sourceMessageId`/`lastReinforcedAt`
+  pass through) → the character reconcile loop (a faithful no-op for the seed).
+- The one-big-try error semantics (a chokepoint DbError → `success:false` with
+  the error in `warnings`; per-item failures → `warnings` + continue).
+- **The deliberate divergence — loud typed refusals** (`ImportError`):
+  unsupported entity kinds enumerated (anything beyond characters+memories),
+  NDJSON payloads, non-`skip` conflict strategies, non-empty per-character
+  `pluginData`. The seed file never trips any of them.
+
+Key survey findings banked: `.qtap` is plain JSON, NOT an archive; the seed's
+plural `physicalDescriptions` is IGNORED by `create` (which reads singular
+`physicalDescription ?? null`) so physical files are skipped; wardrobe is
+**vault-backed** (each item → a `Wardrobe/*.md`, no slim `wardrobe_items`
+row); v4's `create` MINTS fresh ids (the source id is stripped) so imported
+ids — incl. reset-builtins' "preserved" ids — are minted, not preserved;
+memories are always-insert (a 2nd import duplicates them).
+
+Committed assets (byte-identical to v4 @ `a7b1398d`):
+`assets/first-startup/imports/lorian-and-riya.qtap`
+(sha256 `b833f1e358a0a7d7608ae11b9f4cb3f473dcad5f55bce9dc1eb59f9eedc1970f`) +
+`assets/first-startup/avatars/Lorian.webp`
+(sha256 `c24d500c2923369a0152d45e5db4369388010e8c1a789d62374ac146052317d9`).
+
+Differential — `qtap_import_equivalence` (tier-2): v4's REAL `executeImport`
+over the committed `.qtap` on empty fixtures vs the port. Row-diffs
+characters + `wardrobe_items` (empty, vault-backed) + memories + the vault
+`points`/`folders`/`links` with a shared minted-id remap (FKs verify by
+relationship, incl. each memory's remapped `characterId`/`aboutCharacterId`);
+`memories` is walked LAST so the 2nd-import dupes can't offset the token
+counter. The `doc_mount_files`/`_documents` content sha is a minted-content
+seam (wardrobe `.md` embeds its minted id + timestamps) — diffed by row-count
++ `fileSizeBytes` multiset instead (the deterministic char-managed bytes are
+already byte-proven by `characters_create_tier2`). Also exercises the
+name-match `skip` branch (2nd import: characters skipped, wardrobe/vault
+unchanged, memories doubled). Plus 5 Rust unit tests for the refusal arms.
+
+Regen recipe (Node 24, from the v4 checkout):
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; cd ~/source/quilltap-server
+QT_FIXTURE_QTAPIMPORT_MAIN=/tmp/qt-qtapimport-main.db \
+QT_FIXTURE_QTAPIMPORT_MOUNT=/tmp/qt-qtapimport-mount.db \
+  $N/npx tsx <v5>/harness/oracle/fixtures/build-qtap-import-fixture.ts
+QT_FIXTURE_QTAPIMPORT_MAIN=/tmp/qt-qtapimport-main.db \
+QT_FIXTURE_QTAPIMPORT_MOUNT=/tmp/qt-qtapimport-mount.db \
+  $N/npx tsx <v5>/harness/oracle/cases/qtap-import.ts > /tmp/oracle-qtap-import.ndjson
+# run: QT_ORACLE_QTAPIMPORT + QT_FIXTURE_QTAPIMPORT_{MAIN,MOUNT} \
+#   cargo test -p quilltap-harness --test qtap_import_equivalence
+```
+
+Versions after unit 1: core 0.0.177, harness 0.0.162.
+
 ## P4.6n (lane A) unit 1 — scenarios-common service surface (2026-07-11, in progress)
 
 Ported the write/list half of v4's `lib/mount-index/scenarios-common.ts`

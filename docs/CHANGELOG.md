@@ -2,6 +2,24 @@
 
 ## Recent Changes
 
+P4.4u4 unit 1 (lane C): ported the seed subset of the quilltap-import
+service (`quilltap-core::services::quilltap_import`). The legacy
+monolithic-JSON parse + the `format`/`version` hard pins, the subset
+`execute_import` (characters with the legacy `scenario` → `scenarios`
+migration + per-character vault-backed wardrobe, then remap-only
+memories, then the character reconcile loop), `conflictStrategy: 'skip'`
+(id-then-name existence check), the shared id-map, and the
+counts/warnings result shape. Everything outside the subset is a hard
+typed refusal (unsupported entity kinds enumerated, NDJSON sniff,
+non-skip strategies, non-empty pluginData) — a deliberate divergence
+from v4, which would import them. Committed the byte-identical
+`assets/first-startup/{imports/lorian-and-riya.qtap,avatars/Lorian.webp}`
+sample-content assets. Proven by the `qtap_import_equivalence` tier-2
+differential (v4's real `executeImport` over the committed `.qtap` vs
+the port: characters + wardrobe-vault + memories + the vault structure,
+plus the name-match skip branch on a 2nd import). Dispatch/seed wiring
+lands in later units.
+
 P4.6n unit 5: made the project `list-files` two-branch + add-file/remove-file
 arms live. Branch A (a linked primary Scriptorium store present) lists that
 store's `doc_mount_files`; branch B (no store) lists the legacy `files` rows
