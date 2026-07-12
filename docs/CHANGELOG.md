@@ -1054,6 +1054,13 @@ dispatch client (`DocumentApi`) reads lane B's document family + lane A's
 document block + `mountFilesList` request variants, `documentMode` merged
 onto `ChatDetail`. SPA 0.5.44.
 
+P4.6x unit 5 — tool-result reload wiring. A persistent Salon subscription
+watches the live stream for the LLM's document tools (v4 `onToolResult`):
+`doc_open/close_document` + the `doc_write/move/delete_file/folder` family
+reload the open set from the server; `doc_focus` routes to the pane that
+owns the target document. On turn end, every open document is re-read
+(dirty panes skipped) so an unsurfaced LLM edit still lands. SPA 0.5.48.
+
 P4.6x unit 3 — Document Mode split integration. The `DocumentModeController`
 + `DocumentPane` ride the frozen `SplitLayout` / `RightPaneVerticalSplit`
 `documentContent` slot; a combined mode (focus/split/normal across the two

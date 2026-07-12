@@ -9060,3 +9060,16 @@ composer "Open document" button (hidden while a doc is open, mirroring the
 terminal button) → the `qt-document-picker`; a selection routes through
 `onSelectDocument` → `openDocument`. `ng test` 467 (66 files) + `ng build`
 green.
+
+**Unit 5 — tool-result reload wiring (SPA 0.5.48).** A persistent Salon
+`events$` subscription (filtered to the chat) reacts to `frame.toolResult`
+(v4 SalonView `onToolResult`): the `DOC_RELOAD_TOOLS` set —
+`doc_open_document` / `doc_close_document` / `doc_write_file` /
+`doc_move_file` / `doc_move_folder` / `doc_delete_file` /
+`doc_delete_folder` — triggers `reloadFromServer`; `doc_focus` routes
+`handleDocFocus(result)` to the owning pane (the pane-level scroll-to-anchor
+is a tracked tier-2 deferral — the store focuses the doc; the textarea has
+no anchor scroll). On turn end (`runTurn` completion), `handleLLMEditEnd`
+re-reads every open doc, skipping dirty panes. Store specs cover
+`handleLLMEditEnd` (re-read clean / skip dirty) and `reloadFromServer`
+(reconcile the open set). `ng test` 469 (66 files) green.

@@ -45,9 +45,26 @@ import { TerminalPane } from '../../terminal/terminal-pane';
 import { TerminalSessionPicker } from '../../terminal/terminal-session-picker';
 import { TerminalModeController } from '../../terminal/terminal-mode';
 import { DocumentApi } from '../../documents/document-api';
-import { DocumentModeController } from '../../documents/document-mode';
+import { DocumentModeController, type DocFocusTarget } from '../../documents/document-mode';
 import { DocumentPane } from '../../documents/document-pane';
 import { DocumentPicker, type DocumentSelection } from '../../documents/document-picker';
+
+/**
+ * The LLM document tools whose success invalidates an open pane's cached
+ * content / mtime / path, so the pane reloads from the server (v4 SalonView
+ * `onToolResult`): open/close reconcile the open set; the write/move/delete
+ * family can rewrite bytes, mtime, or the path (the move handlers sync
+ * `chat_documents.filePath`, so the reload picks up the new path).
+ */
+const DOC_RELOAD_TOOLS = new Set<string>([
+  'doc_open_document',
+  'doc_close_document',
+  'doc_write_file',
+  'doc_move_file',
+  'doc_move_folder',
+  'doc_delete_file',
+  'doc_delete_folder',
+]);
 
 /** The next-speaker projection off `chatTurnAction { action: 'query' }`. */
 interface TurnInfo {
@@ -279,6 +296,25 @@ export class SalonConversation {
     }
     effect(() => this.terminalMode.hydrate(this.chat()));
     effect(() => this.documentMode.hydrate(this.chat()));
+
+    // React to the LLM's document tools on the live stream (v4 SalonView
+    // `onToolResult`): open/close/write/move/delete → reload from server;
+    // doc_focus → route to the pane that owns the target document.
+    if (chatId) {
+      const sub = this.core.events$
+        .pipe(filter((frame) => frame.chatId === chatId))
+        .subscribe((frame) => {
+          const result = frame.toolResult;
+          if (!result) return;
+          if (result.success && DOC_RELOAD_TOOLS.has(result.name)) {
+            void this.documentMode.reloadFromServer();
+          }
+          if (result.name === 'doc_focus' && result.success && result.result) {
+            this.documentMode.handleDocFocus(result.result as DocFocusTarget);
+          }
+        });
+      this.destroyRef.onDestroy(() => sub.unsubscribe());
+    }
 
     // A terminal announcement (open/close/periodic summary) landed → refetch the
     // chat so the new Ariel message appears (v4's salon-page listeners).
@@ -638,6 +674,13 @@ export class SalonConversation {
     await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
     this.stream.set(null);
     this.optimisticUser.set(null);
+
+    // On turn end, re-read every open document (the LLM may have edited one
+    // without a surfaced doc_* tool result); dirty panes are skipped (v4
+    // `handleLLMEditEnd`).
+    if (this.documentMode.documentActive()) {
+      await this.documentMode.handleLLMEditEnd();
+    }
   }
 
   protected stop(): void {

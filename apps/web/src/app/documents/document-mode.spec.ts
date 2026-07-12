@@ -235,6 +235,32 @@ describe('DocumentModeController (v4 useDocumentMode)', () => {
     expect(ctrl.openDocs().map((e) => e.document.id)).toEqual(['d2']);
   });
 
+  it('handleLLMEditEnd re-reads a clean pane but skips a dirty one', async () => {
+    const { ctrl, api } = build();
+    await ctrl.openDocument({ filePath: 'notes.txt' });
+    api.readResult = { content: 'edited by the LLM', mtime: 100 };
+    await ctrl.handleLLMEditEnd();
+    expect(ctrl.activeDocument()?.content).toBe('edited by the LLM');
+
+    // Now make it dirty and confirm a subsequent re-read is skipped.
+    ctrl.handleContentChange('d1', 'my local edit');
+    api.readResult = { content: 'another LLM write', mtime: 200 };
+    await ctrl.handleLLMEditEnd();
+    expect(ctrl.activeDocument()?.content).toBe('my local edit');
+  });
+
+  it('reloadFromServer reconciles the open set to what the server reports', async () => {
+    const { ctrl, api } = build();
+    await ctrl.openDocument({ filePath: 'notes.txt' });
+    // Server now reports a different doc open; d1 should drop, d9 should appear.
+    api.fetchChatDocumentState = vi.fn(async () => ({ documentMode: 'split' as const }));
+    api.openDocsResult = [record({ id: 'd9', filePath: 'server.txt' })];
+    api.readResult = { content: 'server body', mtime: 1 };
+    await ctrl.reloadFromServer();
+    expect(ctrl.openDocs().map((e) => e.document.id)).toEqual(['d9']);
+    expect(ctrl.activeDocument()?.content).toBe('server body');
+  });
+
   it('setDividerPosition + toggleFocusMode persist to the chat record', async () => {
     const { ctrl, api } = build();
     ctrl.setDividerPosition(30);
