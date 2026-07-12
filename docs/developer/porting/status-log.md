@@ -7099,3 +7099,21 @@ QT_ORACLE_OUT=/tmp/oracle-scenarios-routes.ndjson \
     --roots "$PWD" --roots "$TMPO/cases" -- scenarios-routes
 # then: QT_ORACLE_SCENARIOS_ROUTES=/tmp/oracle-scenarios-routes.ndjson cargo test -p quilltap-harness --test scenarios_routes_equivalence
 ```
+
+## P4.6n (lane A) unit 3 — Projects scenarios (2026-07-11, in progress)
+
+Made the 6 projects-scenario refusal arms live, mirroring unit 2 over the
+shared `api::scenarios` CRUD. Two family differences: projects ensure ONLY
+`Scenarios/` (no `Knowledge/`), and the store resolvers use
+`ProjectsRepository::find_by_id` (overlay, for the collection routes' name →
+`ensure_official_store::<ProjectEntity>`) vs `find_official_mount_point_id_raw`
+(the item routes' RAW FK, 404 "…no official document store yet"). The
+projects GET envelope drift (bare `NextResponse.json` vs `successResponse`) is
+a no-op — both are `NextResponse.json(body, {status})`, so the body shapes are
+identical (verified). There is no projects participant-union.
+
+**Differential:** `scenarios_routes_equivalence` extended with 12 projects
+cases over Iota (opening[default], climax): list, get, get-missing(404),
+get-nested(400), create(+isDefault demotion, ts-blanked), collision(400),
+update(ts-blanked), empty-body(400), rename, rename-conflict(400), delete,
+delete-missing(404). Core 0.0.178 → 0.0.179, harness 0.0.162 → 0.0.163.

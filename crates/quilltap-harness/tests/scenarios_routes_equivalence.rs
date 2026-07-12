@@ -15,8 +15,8 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use quilltap_core::api::groups;
 use quilltap_core::api::types::{ErrorKind, Response};
+use quilltap_core::api::{groups, projects};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -24,6 +24,7 @@ use serde_json::{json, Value};
 const ARIA: &str = "a1000000-0000-4000-8000-000000000001";
 const BRAM: &str = "a1000000-0000-4000-8000-000000000002";
 const GAMMA: &str = "a2000000-0000-4000-8000-000000000001";
+const IOTA: &str = "a3000000-0000-4000-8000-000000000001";
 const BOGUS: &str = "a1000000-0000-4000-8000-0000000000ff";
 
 #[derive(Deserialize)]
@@ -374,6 +375,110 @@ fn scenarios_routes_match_oracle() {
         let db = fresh_db(&spec, "u_unknown");
         let resp = rt.block_on(groups::group_scenarios_union(&db, vec![BOGUS.to_string()]));
         ok("union_unknown", &resp, false, &mut failed);
+    }
+
+    // --- Projects (Iota: opening[default], climax) ---
+    {
+        let db = fresh_db(&spec, "p_list");
+        ok(
+            "project_list",
+            &rt.block_on(projects::project_scenario_list(&db, IOTA)),
+            false,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "p_get");
+        ok(
+            "project_get",
+            &rt.block_on(projects::project_scenario_get(&db, IOTA, "opening.md")),
+            false,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "p_get_miss");
+        err(
+            "project_get_missing",
+            &rt.block_on(projects::project_scenario_get(&db, IOTA, "ghost.md")),
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "p_get_nest");
+        err(
+            "project_get_nested",
+            &rt.block_on(projects::project_scenario_get(&db, IOTA, "sub/deep.md")),
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "p_create");
+        let resp = rt.block_on(projects::project_scenario_create(
+            &db,
+            IOTA,
+            json!({ "filename": "Act Two", "description": "The middle", "isDefault": true, "body": "It deepens." }),
+        ));
+        ok("project_create", &resp, true, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "p_collide");
+        let resp = rt.block_on(projects::project_scenario_create(
+            &db,
+            IOTA,
+            json!({ "filename": "opening", "body": "dup" }),
+        ));
+        err("project_create_collision", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "p_update");
+        let resp = rt.block_on(projects::project_scenario_update(
+            &db,
+            IOTA,
+            "climax.md",
+            json!({ "name": "Climax!", "body": "Peak." }),
+        ));
+        ok("project_update", &resp, true, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "p_update_empty");
+        let resp = rt.block_on(projects::project_scenario_update(
+            &db,
+            IOTA,
+            "climax.md",
+            json!({ "body": "" }),
+        ));
+        err("project_update_emptybody", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "p_rename");
+        let resp = rt.block_on(projects::project_scenario_rename(
+            &db,
+            IOTA,
+            "climax.md",
+            "climax-2",
+        ));
+        ok("project_rename", &resp, false, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "p_rename_conf");
+        let resp = rt.block_on(projects::project_scenario_rename(
+            &db,
+            IOTA,
+            "climax.md",
+            "opening",
+        ));
+        err("project_rename_conflict", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "p_delete");
+        let resp = rt.block_on(projects::project_scenario_delete(&db, IOTA, "climax.md"));
+        ok("project_delete", &resp, false, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "p_delete_miss");
+        let resp = rt.block_on(projects::project_scenario_delete(&db, IOTA, "ghost.md"));
+        err("project_delete_missing", &resp, &mut failed);
     }
 
     assert!(failed.is_empty(), "scenarios-routes FAILED: {failed:?}");

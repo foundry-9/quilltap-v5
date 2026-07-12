@@ -20,7 +20,8 @@ use crate::db::ensure_official_store::ensure_official_store;
 use crate::db::files::FilesRepository;
 use crate::db::project_doc_mount_links::ProjectDocMountLinksRepository;
 use crate::db::projects::{
-    ProjectCreateInput, ProjectCreateOptions, ProjectEntity, ProjectsRepository,
+    find_official_mount_point_id_raw, ProjectCreateInput, ProjectCreateOptions, ProjectEntity,
+    ProjectsRepository,
 };
 use crate::db::runtime::Db;
 use crate::db::vault_wardrobe_public::{
@@ -32,6 +33,7 @@ use crate::services::character_enrichment::enrich_with_default_image;
 use crate::services::image_job_common::with_both_conns;
 use crate::vault_overlay::WardrobeItem;
 
+use super::scenarios as scenarios_api;
 use super::types::{ErrorKind, Response};
 
 // ===========================================================================
@@ -1273,5 +1275,208 @@ fn build_wardrobe_patch(body: &Value) -> WardrobePatch {
         is_default: body.get("isDefault").and_then(Value::as_bool),
         replace: body.get("replace").and_then(Value::as_bool),
         archived_at: None,
+    }
+}
+
+// ===========================================================================
+// Scenarios (v4 projects/[id]/scenarios/route.ts + [scenarioPath]/route.ts) —
+// P4.6n. Mirrors the groups family, but ensures ONLY `Scenarios/` (no Knowledge)
+// and the projects-side store resolvers. The mount-scoped CRUD is shared in
+// [`super::scenarios`]. There is no projects participant-union.
+// ===========================================================================
+
+const PROJECT_SCENARIOS_FOLDER: &str = "Scenarios";
+
+/// Ensure a project's official store + the Scenarios/ folder (v4 the collection
+/// routes' `ensureProjectOfficialStore` + `ensureProjectScenariosFolder`). Returns
+/// the mount id, or an early Response.
+fn ensure_project_scenarios_store(
+    main: &rusqlite::Connection,
+    mount: &rusqlite::Connection,
+    project_id: &str,
+) -> Result<Result<String, Response>, DbError> {
+    let repo = ProjectsRepository::new(main, mount);
+    let Some(project) = repo.find_by_id(project_id).map_err(overlay_to_db)? else {
+        return Ok(Err(not_found("Project")));
+    };
+    let name = project.get("name").and_then(Value::as_str).unwrap_or("");
+    let Some(ensured) = ensure_official_store::<ProjectEntity>(main, mount, project_id, name)?
+    else {
+        return Ok(Err(internal("Failed to ensure project document store")));
+    };
+    let _ = DocMountFileLinksRepository::new(mount)
+        .ensure_folder_path(&ensured.mount_point_id, PROJECT_SCENARIOS_FOLDER);
+    Ok(Ok(ensured.mount_point_id))
+}
+
+/// v4 `loadProjectAndStore` — the RAW official-store pointer (404 when null) + the
+/// Scenarios/ folder ensure. Used by the [scenarioPath] item routes.
+fn load_project_scenarios_store(
+    main: &rusqlite::Connection,
+    mount: &rusqlite::Connection,
+    project_id: &str,
+) -> Result<Result<String, Response>, DbError> {
+    let Some(fk) = find_official_mount_point_id_raw(main, project_id)? else {
+        return Ok(Err(not_found("Project")));
+    };
+    let Some(mp) = fk else {
+        return Ok(Err(not_found(
+            "Project has no official document store yet — restart the server or call GET /scenarios first",
+        )));
+    };
+    let _ =
+        DocMountFileLinksRepository::new(mount).ensure_folder_path(&mp, PROJECT_SCENARIOS_FOLDER);
+    Ok(Ok(mp))
+}
+
+/// v4 `GET /api/v1/projects/[id]/scenarios`.
+pub async fn project_scenario_list(db: &Db, project_id: &str) -> Response {
+    let pid = project_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        let mp = match ensure_project_scenarios_store(main, mount, &pid)? {
+            Ok(mp) => mp,
+            Err(r) => return Ok(Err(r)),
+        };
+        Ok(Ok(scenarios_api::list_body(mount, &mp)?))
+    })
+    .await;
+    match out {
+        Ok(Ok(body)) => Response::Project(body),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `POST /api/v1/projects/[id]/scenarios`.
+pub async fn project_scenario_create(db: &Db, project_id: &str, bag: Value) -> Response {
+    let pid = project_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        let mp = match ensure_project_scenarios_store(main, mount, &pid)? {
+            Ok(mp) => mp,
+            Err(r) => return Ok(Err(r)),
+        };
+        Ok(match scenarios_api::create_op(mount, &mp, &bag) {
+            Ok(inner) => inner,
+            Err(e) => Err(scenarios_api::write_err(e)),
+        })
+    })
+    .await;
+    match out {
+        Ok(Ok(body)) => Response::Project(body),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `GET /api/v1/projects/[id]/scenarios/[scenarioPath]`.
+pub async fn project_scenario_get(db: &Db, project_id: &str, scenario_path: &str) -> Response {
+    let resolved = match scenarios_api::resolve_path_or_400(scenario_path) {
+        Ok(p) => p,
+        Err(r) => return r,
+    };
+    let pid = project_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        let mp = match load_project_scenarios_store(main, mount, &pid)? {
+            Ok(mp) => mp,
+            Err(r) => return Ok(Err(r)),
+        };
+        Ok(match scenarios_api::get_op(mount, &mp, &resolved) {
+            Ok(inner) => inner,
+            Err(e) => Err(scenarios_api::write_err(e)),
+        })
+    })
+    .await;
+    match out {
+        Ok(Ok(body)) => Response::Project(body),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `PUT /api/v1/projects/[id]/scenarios/[scenarioPath]`.
+pub async fn project_scenario_update(
+    db: &Db,
+    project_id: &str,
+    scenario_path: &str,
+    bag: Value,
+) -> Response {
+    let resolved = match scenarios_api::resolve_path_or_400(scenario_path) {
+        Ok(p) => p,
+        Err(r) => return r,
+    };
+    let pid = project_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        let mp = match load_project_scenarios_store(main, mount, &pid)? {
+            Ok(mp) => mp,
+            Err(r) => return Ok(Err(r)),
+        };
+        Ok(
+            match scenarios_api::update_op(mount, &mp, &resolved, &bag) {
+                Ok(inner) => inner,
+                Err(e) => Err(scenarios_api::write_err(e)),
+            },
+        )
+    })
+    .await;
+    match out {
+        Ok(Ok(body)) => Response::Project(body),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `POST /api/v1/projects/[id]/scenarios/[scenarioPath]?action=rename`.
+pub async fn project_scenario_rename(
+    db: &Db,
+    project_id: &str,
+    scenario_path: &str,
+    new_filename: &str,
+) -> Response {
+    let resolved = match scenarios_api::resolve_path_or_400(scenario_path) {
+        Ok(p) => p,
+        Err(r) => return r,
+    };
+    let pid = project_id.to_string();
+    let nf = new_filename.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        let mp = match load_project_scenarios_store(main, mount, &pid)? {
+            Ok(mp) => mp,
+            Err(r) => return Ok(Err(r)),
+        };
+        Ok(match scenarios_api::rename_op(mount, &mp, &resolved, &nf) {
+            Ok(inner) => inner,
+            Err(e) => Err(scenarios_api::write_err(e)),
+        })
+    })
+    .await;
+    match out {
+        Ok(Ok(body)) => Response::Project(body),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `DELETE /api/v1/projects/[id]/scenarios/[scenarioPath]`.
+pub async fn project_scenario_delete(db: &Db, project_id: &str, scenario_path: &str) -> Response {
+    let resolved = match scenarios_api::resolve_path_or_400(scenario_path) {
+        Ok(p) => p,
+        Err(r) => return r,
+    };
+    let pid = project_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        let mp = match load_project_scenarios_store(main, mount, &pid)? {
+            Ok(mp) => mp,
+            Err(r) => return Ok(Err(r)),
+        };
+        Ok(match scenarios_api::delete_op(mount, &mp, &resolved) {
+            Ok(inner) => inner,
+            Err(e) => Err(scenarios_api::write_err(e)),
+        })
+    })
+    .await;
+    match out {
+        Ok(Ok(body)) => Response::Project(body),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
     }
 }

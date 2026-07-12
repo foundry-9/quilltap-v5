@@ -44,6 +44,7 @@ interface Spec {
 const ARIA = 'a1000000-0000-4000-8000-000000000001';
 const BRAM = 'a1000000-0000-4000-8000-000000000002';
 const GAMMA = 'a2000000-0000-4000-8000-000000000001';
+const IOTA = 'a3000000-0000-4000-8000-000000000001';
 const BOGUS = 'a1000000-0000-4000-8000-0000000000ff';
 
 function mockRequest(url: string, body?: unknown): unknown {
@@ -165,6 +166,24 @@ async function groupsUnion(characterIds: string) {
   const req = mockRequest(`${B}/groups/scenarios?characterIds=${characterIds}`);
   return respond(await route.GET(req));
 }
+async function projectCollection(method: 'GET' | 'POST', id: string, body?: unknown) {
+  const route = await loadRoute('@/app/api/v1/projects/[id]/scenarios/route');
+  const req = mockRequest(`${B}/projects/${id}/scenarios`, body);
+  const ctx = { params: Promise.resolve({ id }) };
+  return respond(await route[method](req, ctx));
+}
+async function projectItem(
+  method: 'GET' | 'PUT' | 'POST' | 'DELETE',
+  id: string,
+  scenarioPath: string,
+  body?: unknown,
+  query = '',
+) {
+  const route = await loadRoute('@/app/api/v1/projects/[id]/scenarios/[scenarioPath]/route');
+  const req = mockRequest(`${B}/projects/${id}/scenarios/${scenarioPath}${query}`, body);
+  const ctx = { params: Promise.resolve({ id, scenarioPath }) };
+  return respond(await route[method](req, ctx));
+}
 
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -250,6 +269,45 @@ async function main(): Promise<void> {
     { name: 'union_bram', run: () => groupsUnion(BRAM) },
     { name: 'union_empty', run: () => groupsUnion('') },
     { name: 'union_unknown', run: () => groupsUnion(BOGUS) },
+    // --- Projects (Iota: opening[default], climax) ---
+    { name: 'project_list', run: () => projectCollection('GET', IOTA) },
+    { name: 'project_get', run: () => projectItem('GET', IOTA, 'opening.md') },
+    { name: 'project_get_missing', run: () => projectItem('GET', IOTA, 'ghost.md') },
+    { name: 'project_get_nested', run: () => projectItem('GET', IOTA, 'sub/deep.md') },
+    {
+      name: 'project_create',
+      run: () =>
+        projectCollection('POST', IOTA, {
+          filename: 'Act Two',
+          description: 'The middle',
+          isDefault: true,
+          body: 'It deepens.',
+        }),
+    },
+    {
+      name: 'project_create_collision',
+      run: () => projectCollection('POST', IOTA, { filename: 'opening', body: 'dup' }),
+    },
+    {
+      name: 'project_update',
+      run: () => projectItem('PUT', IOTA, 'climax.md', { name: 'Climax!', body: 'Peak.' }),
+    },
+    {
+      name: 'project_update_emptybody',
+      run: () => projectItem('PUT', IOTA, 'climax.md', { body: '' }),
+    },
+    {
+      name: 'project_rename',
+      run: () =>
+        projectItem('POST', IOTA, 'climax.md', { newFilename: 'climax-2' }, '?action=rename'),
+    },
+    {
+      name: 'project_rename_conflict',
+      run: () =>
+        projectItem('POST', IOTA, 'climax.md', { newFilename: 'opening' }, '?action=rename'),
+    },
+    { name: 'project_delete', run: () => projectItem('DELETE', IOTA, 'climax.md') },
+    { name: 'project_delete_missing', run: () => projectItem('DELETE', IOTA, 'ghost.md') },
   ];
 
   const outLines: string[] = [];

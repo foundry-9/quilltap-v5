@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+P4.6n unit 3: made the projects scenarios surface live — the six
+`projectScenario*` dispatch arms, mirroring the groups family over the
+shared `api::scenarios` CRUD but ensuring ONLY `Scenarios/` (no Knowledge)
+and resolving the project's official store (overlay find for the collection
+routes' name; the RAW FK for the item routes). Proven by the
+`scenarios_routes` differential extended with 12 projects cases (Iota's
+opening[default]/climax scenarios).
+
 P4.6n unit 2: made the groups scenarios surface live — the six
 `groupScenario*` dispatch arms + the `groupScenariosUnion` participant
 aggregation, composing the shared mount-scoped scenario CRUD (new

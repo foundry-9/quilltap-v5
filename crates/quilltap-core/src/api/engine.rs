@@ -1414,20 +1414,69 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
-            Request::ProjectScenarioList { .. } => super::projects::not_available("scenario-list"),
-            Request::ProjectScenarioCreate { .. } => {
-                super::projects::not_available("scenario-create")
-            }
-            Request::ProjectScenarioGet { .. } => super::projects::not_available("scenario-get"),
-            Request::ProjectScenarioUpdate { .. } => {
-                super::projects::not_available("scenario-update")
-            }
-            Request::ProjectScenarioRename { .. } => {
-                super::projects::not_available("scenario-rename")
-            }
-            Request::ProjectScenarioDelete { .. } => {
-                super::projects::not_available("scenario-delete")
-            }
+            Request::ProjectScenarioList { project_id } => match self.ready_db() {
+                Ok(db) => super::projects::project_scenario_list(&db, &project_id).await,
+                Err(r) => r,
+            },
+            Request::ProjectScenarioCreate {
+                project_id,
+                scenario,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::projects::project_scenario_create(&db, &project_id, scenario).await
+                }
+                Err(r) => r,
+            },
+            Request::ProjectScenarioGet {
+                project_id,
+                scenario_path,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::projects::project_scenario_get(&db, &project_id, &scenario_path).await
+                }
+                Err(r) => r,
+            },
+            Request::ProjectScenarioUpdate {
+                project_id,
+                scenario_path,
+                scenario,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::projects::project_scenario_update(
+                        &db,
+                        &project_id,
+                        &scenario_path,
+                        scenario,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ProjectScenarioRename {
+                project_id,
+                scenario_path,
+                new_filename,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::projects::project_scenario_rename(
+                        &db,
+                        &project_id,
+                        &scenario_path,
+                        &new_filename,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ProjectScenarioDelete {
+                project_id,
+                scenario_path,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::projects::project_scenario_delete(&db, &project_id, &scenario_path).await
+                }
+                Err(r) => r,
+            },
             Request::ProjectWardrobeList { project_id } => match self.ready_db() {
                 Ok(db) => super::projects::project_wardrobe_list(&db, &project_id),
                 Err(r) => r,
