@@ -65,7 +65,10 @@ test.describe('P4.6o — Scenarios verticals (project card CRUD + the general pa
       copyFileSync(MOUNT_FIXTURE, resolve(SCEN_DATA_DIR, 'quilltap-mount-index.db'));
     }
 
-    writeFileSync(resolve(SCEN_DATA_DIR, 'quilltap.dbkey'), makeDbKeyFile(TEST_PEPPER, E2E_PASSPHRASE));
+    writeFileSync(
+      resolve(SCEN_DATA_DIR, 'quilltap.dbkey'),
+      makeDbKeyFile(TEST_PEPPER, E2E_PASSPHRASE),
+    );
     for (const table of USER_TABLES) {
       runCliWrite(
         cli,
@@ -149,7 +152,7 @@ test.describe('P4.6o — Scenarios verticals (project card CRUD + the general pa
     await expect(row).toContainText(`${stamp}.md`);
 
     // --- Edit the body (the modal drops the filename field in edit mode) ---
-    await row.getByRole('button', { name: 'Edit' }).click();
+    await rowAction(row, 'Edit');
     await expect(page.locator('#scenario-filename')).toHaveCount(0);
     await page.locator('#scenario-body').fill('Rewritten: {{char}} lingers at the gate.');
     await page.getByRole('button', { name: 'Save changes' }).click();
@@ -162,15 +165,16 @@ test.describe('P4.6o — Scenarios verticals (project card CRUD + the general pa
     // --- Rename on the FILENAME (window.prompt) ---
     const renamed = `${stamp}-renamed`;
     page.once('dialog', (d) => void d.accept(renamed));
-    await row.getByRole('button', { name: 'Rename' }).click();
+    await rowAction(row, 'Rename');
     await expect(row).toContainText(`${renamed}.md`, { timeout: 10_000 });
 
     // --- Delete (window.confirm) ---
     page.once('dialog', (d) => void d.accept());
-    await row.getByRole('button', { name: 'Delete' }).click();
-    await expect(
-      card.locator('qt-scenario-row', { hasText: 'A Walk-created Scene' }),
-    ).toHaveCount(0, { timeout: 10_000 });
+    await rowAction(row, 'Delete');
+    await expect(card.locator('qt-scenario-row', { hasText: 'A Walk-created Scene' })).toHaveCount(
+      0,
+      { timeout: 10_000 },
+    );
   });
 
   test('the general /scenarios page: create a scenario and see it listed', async ({ page }) => {
@@ -190,6 +194,21 @@ test.describe('P4.6o — Scenarios verticals (project card CRUD + the general pa
     await expect(row).toContainText(`${stamp}.md`);
   });
 });
+
+/**
+ * Click a row action (Edit/Rename/Delete) whichever layout the row is in: the
+ * row is container-query adaptive (v4 parity), so inside the dense project
+ * card grid it renders the narrow `⋮` kebab instead of inline buttons.
+ */
+async function rowAction(row: ReturnType<Page['locator']>, name: string): Promise<void> {
+  const inline = row.getByRole('button', { name, exact: true });
+  if (await inline.isVisible().catch(() => false)) {
+    await inline.click();
+    return;
+  }
+  await row.getByRole('button', { name: /^More actions for / }).click();
+  await row.getByRole('menuitem', { name, exact: true }).click();
+}
 
 /** Expand a collapsible card if its body's primary action is not yet visible. */
 async function expandCard(page: Page, card: ReturnType<Page['locator']>): Promise<void> {

@@ -234,11 +234,25 @@ async fn setup_flow_end_to_end() {
         )
         .unwrap();
     assert_eq!(n_pointers, 3, "3 mount-pointer settings after setup");
+    // P4.4u4: the fresh boot also seeds the sample content (default ON since
+    // unification — v4 parity), so setup lands Lorian + Riya + 42 memories and
+    // their two character-vault stores alongside the three built-in mounts.
+    let n_characters: i64 = main
+        .query_row("SELECT count(*) FROM characters", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(n_characters, 2, "the seeded built-in pair after setup");
+    let n_memories: i64 = main
+        .query_row("SELECT count(*) FROM memories", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(n_memories, 42, "the seeded memories after setup");
     let mi = ro("quilltap-mount-index.db");
     let n_mounts: i64 = mi
         .query_row("SELECT count(*) FROM doc_mount_points", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(n_mounts, 3, "3 built-in mount stores after setup");
+    assert_eq!(
+        n_mounts, 5,
+        "3 built-in mount stores + 2 seeded character vaults after setup"
+    );
 
     // A second setup refuses (already set up).
     let (status, body) = post_dispatch(addr, json!({"type": "setup", "passphrase": ""})).await;

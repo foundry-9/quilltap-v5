@@ -142,13 +142,20 @@ test.describe('P4.6l — Projects vertical (list → detail → toggle → renam
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-checked', before === 'true' ? 'false' : 'true');
 
-    // Edit the title on the header + Save.
-    await page.getByRole('button', { name: 'Edit', exact: true }).click();
+    // Edit the title on the header + Save. Scope to the header — the P4.6o
+    // wardrobe rows carry their own "Edit" buttons (strict-mode collision).
+    await page
+      .locator('qt-project-header')
+      .getByRole('button', { name: 'Edit', exact: true })
+      .click();
     const nameInput = page.getByRole('textbox', { name: 'Project name' });
     await nameInput.fill('Renamed by the walk');
     // Scope to the header — the Settings card and the two aesthetic fields
     // (commit-4 cards) carry their own Save buttons.
-    await page.locator('qt-project-header').getByRole('button', { name: 'Save', exact: true }).click();
+    await page
+      .locator('qt-project-header')
+      .getByRole('button', { name: 'Save', exact: true })
+      .click();
 
     // The rename survives a full reload (server state).
     await page.reload();
@@ -199,7 +206,10 @@ test.describe('P4.6l — Projects vertical (list → detail → toggle → renam
     const title = card.getByPlaceholder('e.g. House livery jacket');
     await expect(title).toBeVisible();
     await title.fill('Walk livery cloak');
-    await card.locator('label', { hasText: 'Default item' }).locator('input[type="checkbox"]').check();
+    await card
+      .locator('label', { hasText: 'Default item' })
+      .locator('input[type="checkbox"]')
+      .check();
     await card.getByRole('button', { name: 'Create item' }).click();
 
     const row = card.locator('li', { hasText: 'Walk livery cloak' });

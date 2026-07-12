@@ -291,15 +291,23 @@ records THERE. Update this summary only when a phase or round completes.
   three live e2e beats. The characters family's remaining deferrals are
   enumerated loud refusals (the tier-3 LLM services, the wardrobe dialog).
 - **The P4.6k ∥ P4.6l ∥ P4.6m groups+projects+multipart round: UNIFIED on
-  main (2026-07-11) — P4.6m CLOSED; P4.6k/P4.6l LANDED-partial.** The
-  groups + projects (Prospero) dispatch surface ∥ the Groups + Prospero
-  SPA verticals (+ the characters upload/PNG riders and the dogfood-#6
-  select audit) ∥ the quilltap-web multipart machinery closing the
-  photo-upload / photo-save-fileid / ST-PNG deferrals. Still
-  refusal-armed: scenarios both families (needs the field re-pin from
-  v4's Zod schemas), `list-files` two-branch, the SPA Scenarios/Wardrobe
-  cards — see the order status headers + the phase-4 status block.
+  main (2026-07-11) — P4.6m CLOSED.** The groups + projects (Prospero)
+  dispatch surface ∥ the Groups + Prospero SPA verticals (+ the
+  characters upload/PNG riders and the dogfood-#6 select audit) ∥ the
+  quilltap-web multipart machinery closing the photo-upload /
+  photo-save-fileid / ST-PNG deferrals.
+- **The P4.6n ∥ P4.6o ∥ P4.4u4 scenarios+import round: UNIFIED on main
+  (2026-07-11) — P4.6n/P4.6o/P4.4u4 CLOSED, closing P4.6k, P4.6l, and
+  P4.4u3's family-3 deferral with them.** The whole scenarios surface
+  (group/project/general + participant-union + `list-files` + file
+  add/remove) ∥ the scope-agnostic ScenariosManager + Wardrobe SPA
+  cards + the general `/scenarios` page ∥ the quilltap-import seed
+  subset + the startup sample-content seed (**default ON** — a fresh
+  boot seeds Lorian + Riya + 42 memories) + `reset_builtins` (dispatch
+  at the web edge). **No refusal arms remain in the
+  groups/projects/scenarios surface.** Next SPA vertical wanted: the
+  New-Chat form (`/salon/new`).
 - **Oracle baseline:** v4 HEAD `a7b1398d` (drift-check before every round).
-  Versions: core 0.0.176, harness 0.0.161, host 0.0.10, web 0.0.10, SPA 0.5.16.
+  Versions: core 0.0.184, harness 0.0.168, host 0.0.12, web 0.0.12, SPA 0.5.22.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

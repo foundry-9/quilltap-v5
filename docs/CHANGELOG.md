@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+The P4.6n ∥ P4.6o ∥ P4.4u4 round gate + close-out. Full gate green:
+fmt/clippy (both feature sets)/release build clean; the six round
+oracles regenerated fresh from v4 `a7b1398d` and every differential
+green by name; cargo test --workspace 289 suites / 1,243 tests / 0
+failed; ng test 256; ng build clean; Playwright 19/19 including the
+newly-activated scenarios + wardrobe walks. Gate fixes (assertion/
+gesture class only): the web contract setup-flow test now asserts the
+v4-parity seeded fresh boot (2 characters, 42 memories, 5 mount
+stores) after the seed default-ON flip; the projects-flow walk scopes
+its header Edit (the P4.6o wardrobe rows added same-named buttons);
+the scenarios walk gained a rowAction helper for the container-query
+kebab. Orders P4.6n / P4.6o / P4.4u4 CLOSED — closing P4.6k, P4.6l,
+and P4.4u3's family-3 deferral with them. No refusal arms remain in
+the groups/projects/scenarios surface. Versions: web 0.0.12, SPA
+0.5.22.
+
 Unification wires for the P4.6n ∥ P4.6o ∥ P4.4u4 round. The A↔B scenario
 contract diffed name-for-name and field-level: 19 request variants + the
 opaque scenario bag identical on both sides (nested bag, newFilename;

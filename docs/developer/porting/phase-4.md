@@ -532,6 +532,34 @@ images), the Memory/Images/Templates verticals, the `.qtap`
 sample-content import, or P4.7 (`quilltap-tauri`). Round record:
 `status-log.md`.
 
+**The P4.6n ∥ P4.6o ∥ P4.4u4 scenarios+import round is UNIFIED on main
+(2026-07-11) — P4.6n / P4.6o / P4.4u4 are all CLOSED, and they close
+P4.6k, P4.6l, and P4.4u3's family-3 deferral.** Lane A (P4.6n) made the
+whole scenarios surface live — the `scenarios-common` service port, all
+13 group/project arms + the participant-union, the general
+(instance-wide) family (6 new variants over the "Quilltap General"
+mount, with the unprovisioned race arms), and the project `list-files`
+two-branch + file add/remove — proven by `scenarios_routes_equivalence`
+(41) plus the extended groups (14) / projects (39) differentials over
+the extended fixture. **No refusal arms remain in the
+groups/projects/scenarios surface.** Lane B (P4.6o) landed the
+scope-agnostic ScenariosManager family (project Scenarios card + the
+general `/scenarios` page + the nav item) and the Wardrobe card +
+ProjectWardrobeManager. Lane C (P4.4u4) landed the quilltap-import
+seed subset (`.qtap` is plain JSON; characters + wardrobe +
+scenario-migration + memories, `skip`; loud typed refusals outside the
+subset), the startup seed wire (zero-characters gate, both avatars),
+and `reset_builtins`. Unification wires: the A↔B contract diffed clean
+(zero drift — a first), reset-builtins dispatched at the WEB EDGE
+(`?action=reset-builtins`, codec lives at the edge per the P4.6m
+precedent), and `seed_sample_content` default-ON (v4 parity — a fresh
+v5 boot now lands Lorian + Riya + 42 memories; the setup contract test
+asserts it). **Next candidates:** the New-Chat form SPA vertical (the
+scenario pickers' primary consumer — no `/salon/new` route yet; named
+in P4.6o's deferrals), the remaining Salon slices (Document Mode pane,
+terminal pane, courier, images), the Memory/Images/Templates
+verticals, or P4.7 (`quilltap-tauri`). Round record: `status-log.md`.
+
 **The round as planned (2026-07-10): four parallel lanes, orders
 written** (drift check at planning time: v4 HEAD still `a7b1398d`; four
 fresh surveys — the characters API + UI, v4's long-chat rendering, the

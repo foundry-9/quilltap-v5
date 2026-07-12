@@ -7468,3 +7468,85 @@ folderPath `/sub/`, width/height only on the png), `list_files_kappa` (empty),
 
 **P4.6n surface COMPLETE — no tier-3 refusal arms remain in the scenarios/
 list-files family.** Core 0.0.180 → 0.0.181, harness 0.0.164 → 0.0.165.
+
+## The P4.6n ∥ P4.6o ∥ P4.4u4 scenarios+import round — UNIFIED on main (2026-07-11)
+
+Three lanes cherry-picked onto `unify/p4.6no-4u4` (lane A's six scenario/
+list-files commits, lane C's three import commits, lane B's five SPA
+commits; conflicts only on version files + the CHANGELOG/status-log
+unions — the whole-file Cargo.toml check found NO dependency drift this
+round). v4 baseline re-verified at `a7b1398d` before unification.
+
+**The unification wires (one commit):**
+
+- **The A↔B scenario contract diffed name-for-name and field-level:**
+  19 request variants (7 group + 6 project + 6 general) + the opaque
+  create/update `scenario` bag + `newFilename` + `characterIds` —
+  identical on both sides, and `dispatchData` is response-tag-agnostic,
+  so lane B's "richer DTO" re-pin needed NO server-side reconciliation.
+  The first round since P4.6i with zero contract drift at unification.
+- **The reset-builtins dispatch wire went in at the WEB EDGE, not as a
+  core dispatch arm:** `POST /api/v1/characters?action=reset-builtins`
+  (`quilltap-web::characters_routes`) runs the differential-proven
+  `quilltap_import::reset::reset_builtins` inside one `Db::write` with
+  `HostImageCodec`, echoing v4's response shape (the full 11-key
+  QuilltapExportCounts, zeros for unported kinds). Rationale: core has
+  no pixel-codec seam — every codec-needing leg lives at the edge (the
+  P4.6m precedent). A route-level roundtrip test covers the fresh-import
+  round and the delete-and-reimport round; the second round asserts
+  post-reset ids DIFFER from "preserved" ids (v4's create-mints quirk
+  the `reset_builtins` differential pinned — the remap is vestigial).
+- **`HostConfig::seed_sample_content` flipped to default ON** (v4
+  parity — its startup seeding is unconditional). Fallout: exactly one
+  test — `host_builtin_seeds` pins the 3 built-in mount stores and now
+  opts out (the seed adds the two character vaults' stores on top);
+  the quilltap-web fixture boots are unaffected (their fixtures have
+  characters, so the zero-characters gate short-circuits).
+- **Lane B's fixture-guarded e2e beats self-activated** — the specs
+  gate on `existsSync(groups-projects-main.db)`, which lane A's commit
+  satisfies; no spec edits were needed.
+
+**Mid-gate ENOSPC (worse than the standing recipe's case):** the disk
+hit literal zero — even Bash was blocked (the harness couldn't create
+its own output file). Recovery: the Monitor tool still launched (its
+plumbing survived), and one Monitor-run `rm -rf` of the three
+already-cherry-picked lane worktrees' `target/` dirs + the main
+`target/debug/incremental` freed 55+ GB. Recipe note: when Bash itself
+is ENOSPC-blocked, Monitor is the escape hatch.
+
+**The full gate:** `cargo fmt --check` clean; clippy `-D warnings`
+clean on the default set AND `--features
+quilltap-core/native-transport`; release build clean; the six round
+oracles regenerated FRESH from v4 at `a7b1398d` (groups-routes 14,
+projects-routes 39, scenarios-routes 41, qtap-import, seed-avatars,
+reset-builtins) and every differential re-run green BY NAME;
+`cargo test --workspace` green (289 suites, 1,243 tests, 0 failed);
+`ng test` green (256); `ng build` clean; the FULL Playwright suite
+green (19/19), incl. the newly-activated scenarios walk (project card
+create→edit→default→rename→delete + the general page) and the
+wardrobe beat.
+
+**Gate fallout — three fixes, all assertion/gesture class (no product
+bugs):** (1) the seed default-ON flip moved the truthful post-setup
+state, so `setup_flow_end_to_end` (web `contract.rs`) now asserts the
+v4-parity fresh boot — 2 characters, 42 memories, **5** mount stores
+(3 built-ins + the pair's vaults) — and `host_builtin_seeds` opts out
+of the seed (it pins the 3 built-in mounts); (2) the P4.6o wardrobe
+rows' "Edit" buttons broke the projects-flow walk's bare
+`getByRole('Edit')` — scoped to `qt-project-header` (the standing
+later-cards-duplicate-names gotcha); (3) the scenarios walk's row
+actions timed out inside the dense project-card grid — `qt-scenario-row`
+is container-query adaptive, so a narrow container renders the `⋮`
+kebab instead of inline buttons; the spec gained a `rowAction` helper
+(inline-if-visible, else kebab → `menuitem`). **Flake note:** one
+contended full run (concurrent with `cargo test --workspace`) failed
+groups-flow's create-dialog beat; it passes in isolation and in the
+final uncontended full run — watch it, don't chase it yet.
+
+**Orders:** P4.6n CLOSED, P4.6o CLOSED, P4.4u4 CLOSED — and they close
+P4.6k (its scenarios/list-files remainder), P4.6l (its
+Scenarios/Wardrobe cards), and P4.4u3's family-3 deferral +
+the characters family's reset-builtins deferral (P4.6f/P4.6i).
+**The groups/projects/scenarios surface has NO remaining refusal
+arms.** Versions after the round: core 0.0.184, harness 0.0.168,
+host 0.0.12, web 0.0.12, SPA 0.5.22.
