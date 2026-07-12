@@ -7787,3 +7787,37 @@ QT_ORACLE_MOUNT_ROUTES=/tmp/oracle-mount-points-routes.ndjson \
 ```
 
 Versions: core 0.0.188, harness 0.0.172.
+
+## P4.6q (lane B) — the New-Chat SPA vertical (2026-07-12, in progress)
+
+Lane B of the P4.6p ∥ P4.6q ∥ P4.6r round. Tier-4 (v4's React app is the
+behavioral reference, not a byte target). Server side of chat creation is
+FULLY LIVE (`Request::ChatCreate` + the Green-Room bus, both e2e-proven in
+P4.4u2). Branch `claude/p4-6q-chat-spa-porting-7f01c1`. Drift check clean
+(v4 HEAD == `a7b1398d`). Worktree `node_modules` symlinked to the main
+checkout (identical `package.json`; the lane adds no npm deps).
+
+### P4.6q unit 1 — core-contract.ts re-pins + the listing-surface appendix — LANDED
+
+- **`ChatCreateRequest`** re-pinned from the flattened v4 `POST /api/v1/chats`
+  body + the live `services/chat_create::ChatCreateRequest`: `title` +
+  `participants` (`ChatCreateParticipantInput`), `imageProfileId`, the four
+  scenario-source fields (precedence `scenarioId` > project > group > general),
+  free `scenario`, `timestampConfig`, `projectId`, `avatarGenerationEnabled`,
+  `outfitSelections` (`ChatCreateOutfitSelectionInput` + `OutfitSelectionMode`),
+  `continuationFromChatId`, `progressId`, and the carried autonomous fields
+  (deferred this round; kept for shape).
+- **`ChatCreateDto`** re-pinned to the live `{ chat: { id, participants?, … } }`
+  echo (`ChatCreateResultDto`), matching `data.chat.id` (the web e2e reads it).
+- **`CreationProgressFrame`** re-pinned FROM `services/creation_progress.rs`:
+  the `kind`-tagged Green-Room frame folded FLAT into `ScopedEvent` (`kind`,
+  `message`, `level`, `characterId`, `characterName`, `slots`, `ts`) plus
+  `OutfitPreviewSlots` / `OutfitPreviewEntry`. Kept flat (not a distributed
+  union) so `ScopedEvent`'s chat-frame consumers are unaffected.
+- **Listing-surface appendix** (BINDING, byte-identical B↔C): roleplay-template
+  / image-profile / mount-point request variants + DTOs (transcribed from the
+  p4.6p Shared contract + the live Rust DTOs `db/roleplay_templates.rs`,
+  `db/image_profiles.rs`, `db/doc_mount_points.rs`), folded into `CoreRequest`
+  via `ListingSurfaceRequest`. Lane B's own functional need from it is only
+  `imageProfileList` (the picker); the rest is for the shared block + lane C.
+- Gate: `tsc --noEmit` clean, `ng build` clean. SPA 0.5.22 → 0.5.23.

@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.6q (New-Chat SPA, lane B) — core-contract.ts re-pins. Replaced the
+provisional `ChatCreateRequest` with the real flattened v4 `POST
+/api/v1/chats` body (participants, scenario-source precedence fields,
+timestampConfig, outfitSelections, progressId, the carried autonomous
+fields) and re-pinned `ChatCreateDto` to the live `{ chat: { id, … } }`
+echo. Replaced the `CreationProgressFrame` sketch with the real shape
+transcribed from `services/creation_progress.rs` (the `kind`-tagged
+Green-Room frame folded flat into `ScopedEvent`, plus `OutfitPreviewSlots`
+/ `OutfitPreviewEntry`). Appended the BINDING listing-surface block
+(roleplay-template / image-profile / mount-point request variants + DTOs,
+byte-identical with lane C) and folded it into `CoreRequest`. SPA 0.5.23.
+
 P4.6p unit 4 (lane A): the global mount-points dispatch surface — the
 five variants (list / get / create / patch / delete-cascade) as
 `api::mount_points`, composed over the ported `db::doc_mount_points`

@@ -126,16 +126,69 @@ export interface ChatSetActiveSpeakerRequest {
 }
 
 /**
- * The chat-creation request. **Provisional (P4.5-owned):** P4.5 does not consume
- * this — the first Salon vertical (P4.6) finalises the body/DTO from the v4 POST
- * body. Shape kept loose on purpose; the P4.4 lane implements the server variant.
+ * One participant in the flattened chat-create body (v4 `createChatSchema`
+ * participant). `connectionProfileId` rides only LLM-controlled entries;
+ * `controlledBy` is `'user'` for the human's in-place persona.
+ */
+export interface ChatCreateParticipantInput {
+  type: 'CHARACTER';
+  characterId: string;
+  connectionProfileId?: string;
+  selectedSystemPromptId?: string;
+  controlledBy?: 'llm' | 'user';
+}
+
+/** The starting-outfit mode per character (v4 `OutfitSelectionMode`). */
+export type OutfitSelectionMode = 'default' | 'manual' | 'llm_choose' | 'none' | 'previous_chat';
+
+/** One character's starting-outfit choice (v4 `OutfitSelection`). */
+export interface ChatCreateOutfitSelectionInput {
+  characterId: string;
+  mode: OutfitSelectionMode;
+  /** Present only for `manual` (the wardrobe-composer deferral). */
+  slots?: Record<string, unknown>;
+}
+
+/**
+ * The chat-creation request (re-pinned P4.6q from v4's flattened `POST
+ * /api/v1/chats` body and the live `services/chat_create::ChatCreateRequest`).
+ * The dispatch flattens every field beside `type` into the server's create
+ * driver. Scenario source precedence is `scenarioId` > `projectScenarioPath` >
+ * (`groupScenarioPath` + `groupScenarioGroupId`) > `generalScenarioPath`; free
+ * `scenario` notes ride independently and layer beneath the resolved preset.
+ * `timestampConfig` is omitted when its `mode` is `NONE`; `avatarGenerationEnabled`
+ * is only ever sent `true`. The autonomous-room fields are carried for shape (the
+ * P4.6q form defers autonomous mode) — their hours→ms / minutes→ms conversions
+ * live at submit.
  */
 export interface ChatCreateRequest {
   type: 'chatCreate';
-  title?: string;
+  title: string;
+  participants: ChatCreateParticipantInput[];
+  imageProfileId?: string;
+  scenario?: string;
+  scenarioId?: string;
+  projectScenarioPath?: string;
+  groupScenarioPath?: string;
+  groupScenarioGroupId?: string;
+  generalScenarioPath?: string;
+  timestampConfig?: TimestampConfig;
+  projectId?: string;
+  avatarGenerationEnabled?: boolean;
+  outfitSelections?: ChatCreateOutfitSelectionInput[];
+  continuationFromChatId?: string;
+  progressId?: string;
+  // Autonomous-room fields (deferred this round; kept for shape parity).
   chatType?: string;
-  participantCharacterIds?: string[];
-  [key: string]: unknown;
+  scheduleCron?: string;
+  scheduleFreshnessWindowMs?: number;
+  budgetMaxTurns?: number;
+  budgetMaxTokens?: number;
+  budgetMaxWallClockMs?: number;
+  budgetEstimatedSpendCapUSD?: number;
+  runVisibility?: 'owner_only' | 'household' | 'open';
+  runDestructiveToolsAllowed?: boolean;
+  budgetExcludeCacheHits?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -1067,7 +1120,9 @@ export type CoreRequest =
   | ScenarioGetRequest
   | ScenarioUpdateRequest
   | ScenarioRenameRequest
-  | ScenarioDeleteRequest;
+  | ScenarioDeleteRequest
+  // --- The listing surfaces (P4.6p/q/r Shared contract; byte-identical appendix) ---
+  | ListingSurfaceRequest;
 
 export type RequestType = CoreRequest['type'];
 
@@ -1740,10 +1795,13 @@ export interface SetupDto {
   message: string;
 }
 
-/** Provisional chat-create DTO (see [`ChatCreateRequest`]). */
+/**
+ * The chat-create echo (v4's 201 body / `ChatCreateResultDto`): the created
+ * chat under `chat`, whose `participants` array is the enriched participant
+ * summaries. The New-Chat submit reads `data.chat.id` to navigate.
+ */
 export interface ChatCreateDto {
-  id: string;
-  [key: string]: unknown;
+  chat: { id: string; participants?: unknown[]; [key: string]: unknown };
 }
 
 // ---------------------------------------------------------------------------
@@ -2146,12 +2204,400 @@ export type ScopedEvent = {
 } & ChatStreamFrame &
   CreationProgressFrame;
 
+/** One resolved garment in a Green-Room slot preview (Rust `OutfitPreviewEntry`). */
+export interface OutfitPreviewEntry {
+  id: string;
+  title: string;
+  isComposite: boolean;
+}
+
+/** The decided four-slot outfit rendered read-only in the Green Room (Rust `OutfitPreviewSlots`). */
+export interface OutfitPreviewSlots {
+  top: OutfitPreviewEntry[];
+  bottom: OutfitPreviewEntry[];
+  footwear: OutfitPreviewEntry[];
+  accessories: OutfitPreviewEntry[];
+}
+
 /**
- * Creation-progress frame fields (D6). **P4.5 does not consume these this
- * round** — declared so the envelope type is complete and the P4.6 verticals can
- * fold them in. Field names are faithful to v4's `creation-progress.ts` shapes.
+ * Creation-progress frame fields (D6 — the Green Room), re-pinned P4.6q FROM
+ * `crates/quilltap-core/src/services/creation_progress.rs`
+ * (`CreationProgressFrame`). The Rust side is a `kind`-tagged kebab-case union;
+ * its fields fold FLAT into the {@link ScopedEvent} envelope (like
+ * {@link ChatStreamFrame}), so a frame arrives as `{ progressId, kind, ... }`.
+ * The Green-Room reducer narrows on `kind`. `level` rides only `log` frames;
+ * `characterId`/`characterName`/`slots` ride the two `wardrobe-*` frames.
  */
 export interface CreationProgressFrame {
-  level?: 'log' | 'info' | 'warn' | 'error' | 'status';
+  kind?: 'status' | 'log' | 'wardrobe-start' | 'wardrobe-result' | 'done' | 'error';
   message?: string;
+  level?: 'info' | 'warn' | 'error';
+  characterId?: string;
+  characterName?: string;
+  slots?: OutfitPreviewSlots;
+  ts?: number;
 }
+
+// ===========================================================================
+// Listing-surface appendix (P4.6p/q/r) — BINDING, BYTE-IDENTICAL in lanes B & C
+// ---------------------------------------------------------------------------
+// Roleplay templates, image profiles, and global mount points. Lane A (p4.6p)
+// owns the server variants + differentials; the SPA lanes append this identical
+// block so each worktree compiles (the unifier keeps ONE copy). Request `type`
+// names + DTO shapes are pinned by the p4.6p Shared contract and the live Rust
+// DTOs (`db/roleplay_templates.rs`, `db/image_profiles.rs`,
+// `db/doc_mount_points.rs`). Reads go through `CoreClient.dispatchData` (raw
+// `data`), so only the request `type` strings are load-bearing on this side.
+// ===========================================================================
+
+// --- Roleplay templates ----------------------------------------------------
+
+/** Styling add-ons on a template delimiter (Rust `DelimiterAddOns`). */
+export interface TemplateDelimiterAddOns {
+  bold: boolean;
+  italic: boolean;
+  reverse: boolean;
+  underline: string;
+  border: string;
+  font: string;
+}
+
+/**
+ * One roleplay-template delimiter (Rust `TemplateDelimiter`, kind-discriminated:
+ * `wrap` | `linePrefix` | `tagPrefix`). `narrationDelimiters` on the template
+ * itself is a `StringOrPair`; these are the styled inline/line markers.
+ */
+export type TemplateDelimiter =
+  | {
+      kind: 'wrap';
+      name: string;
+      buttonName: string;
+      style: string;
+      hideDelimiter?: boolean;
+      addOns?: TemplateDelimiterAddOns;
+      /** `open…close` around an inline span — a string or an `[open, close]` pair. */
+      delimiters: string | [string, string];
+    }
+  | {
+      kind: 'linePrefix';
+      name: string;
+      buttonName: string;
+      style: string;
+      hideDelimiter?: boolean;
+      addOns?: TemplateDelimiterAddOns;
+      marker: string;
+    }
+  | {
+      kind: 'tagPrefix';
+      name: string;
+      buttonName: string;
+      style: string;
+      hideDelimiter?: boolean;
+      addOns?: TemplateDelimiterAddOns;
+      open: string;
+      close: string;
+      tokenPattern?: string;
+    };
+
+/** One read-time rendering pattern (Rust `RenderingPattern`, auto-gen, non-persisted). */
+export interface RenderingPattern {
+  pattern: string;
+  className: string;
+  flags?: string;
+  scope?: string;
+  hideDelimiters?: boolean;
+}
+
+/** Dialogue-detection config on a roleplay template (Rust `DialogueDetection`). */
+export interface DialogueDetection {
+  openingChars: string[];
+  closingChars: string[];
+  className: string;
+}
+
+/** The narration delimiter: a single string, or an `[open, close]` pair. */
+export type NarrationDelimiters = string | [string, string];
+
+/** One roleplay template (v4 `RoleplayTemplateDto`; `userId: null` = built-in). */
+export interface RoleplayTemplateDto {
+  id: string;
+  userId: string | null;
+  name: string;
+  description?: string;
+  systemPrompt: string;
+  isBuiltIn: boolean;
+  tags: string[];
+  delimiters: TemplateDelimiter[];
+  renderingPatterns: RenderingPattern[];
+  dialogueDetection?: DialogueDetection;
+  narrationDelimiters: NarrationDelimiters;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The create bag (v4 `createRoleplayTemplateSchema`). */
+export interface RoleplayTemplateCreateBag {
+  name: string;
+  description?: string | null;
+  systemPrompt: string;
+  narrationDelimiters: NarrationDelimiters;
+  delimiters?: TemplateDelimiter[];
+  renderingPatterns?: RenderingPattern[];
+  dialogueDetection?: DialogueDetection | null;
+}
+
+/** The update bag (v4 `updateRoleplayTemplateSchema`, all-optional). */
+export interface RoleplayTemplateUpdateBag {
+  name?: string;
+  description?: string | null;
+  systemPrompt?: string;
+  tags?: string[];
+  delimiters?: TemplateDelimiter[];
+  renderingPatterns?: RenderingPattern[];
+  dialogueDetection?: DialogueDetection | null;
+  narrationDelimiters?: NarrationDelimiters;
+}
+
+export interface RoleplayTemplateListRequest {
+  type: 'roleplayTemplateList';
+}
+export interface RoleplayTemplateCreateRequest {
+  type: 'roleplayTemplateCreate';
+  template: RoleplayTemplateCreateBag;
+}
+export interface RoleplayTemplateGetRequest {
+  type: 'roleplayTemplateGet';
+  templateId: string;
+}
+export interface RoleplayTemplateUpdateRequest {
+  type: 'roleplayTemplateUpdate';
+  templateId: string;
+  template: RoleplayTemplateUpdateBag;
+}
+export interface RoleplayTemplateDeleteRequest {
+  type: 'roleplayTemplateDelete';
+  templateId: string;
+}
+
+// --- Image profiles ---------------------------------------------------------
+
+/** The API-key summary attached to an image profile (v4 `apiKey` enrichment). */
+export interface ImageProfileApiKeyRef {
+  id: string;
+  label: string;
+  provider: string;
+  isActive: boolean;
+}
+
+/** An enriched image-profile tag (v4 get/list `tags` → `[{tagId, tag}]`). */
+export interface ImageProfileTagRef {
+  tagId: string;
+  tag: string;
+}
+
+/**
+ * One image-generation profile (v4 `ImageProfileDto` + `apiKey` summary). The
+ * get/list reads enrich `tags` to {@link ImageProfileTagRef}; the
+ * `sortByCharacter` list additionally carries `matchingTags` + `matchingTagCount`.
+ */
+export interface ImageProfileDto {
+  id: string;
+  userId: string;
+  name: string;
+  provider: string;
+  apiKeyId?: string | null;
+  baseUrl?: string | null;
+  modelName: string;
+  parameters: Record<string, unknown>;
+  isDefault: boolean;
+  isDangerousCompatible: boolean;
+  tags: ImageProfileTagRef[];
+  createdAt: string;
+  updatedAt: string;
+  apiKey: ImageProfileApiKeyRef | null;
+  matchingTags?: ImageProfileTagRef[];
+  matchingTagCount?: number;
+}
+
+/** One image provider descriptor (v4 `imageProviderList`). */
+export interface ImageProviderInfo {
+  value: string;
+  label: string;
+  defaultModels: string[];
+  apiKeyProvider: string;
+  legacyNames: string[];
+}
+
+/** The create bag (v4 `createImageProfileSchema`). */
+export interface ImageProfileCreateBag {
+  name: string;
+  provider: string;
+  apiKeyId?: string;
+  baseUrl?: string;
+  modelName: string;
+  parameters?: Record<string, unknown>;
+  isDefault?: boolean;
+  isDangerousCompatible?: boolean;
+}
+
+/** The update bag (v4 `updateImageProfileSchema`; explicit `apiKeyId: null` clears). */
+export interface ImageProfileUpdateBag {
+  name?: string;
+  provider?: string;
+  apiKeyId?: string | null;
+  baseUrl?: string | null;
+  modelName?: string;
+  parameters?: Record<string, unknown>;
+  isDefault?: boolean;
+  isDangerousCompatible?: boolean;
+}
+
+export interface ImageProfileListRequest {
+  type: 'imageProfileList';
+  /** Bubble a character's matching profiles to the top (v4 `?sortByCharacter=`). */
+  sortByCharacter?: string;
+  /** The user-persona variant (server behavior pinned by lane A's oracle). */
+  sortByUserCharacter?: string;
+}
+export interface ImageProfileCreateRequest {
+  type: 'imageProfileCreate';
+  profile: ImageProfileCreateBag;
+}
+export interface ImageProfileGetRequest {
+  type: 'imageProfileGet';
+  profileId: string;
+}
+export interface ImageProfileUpdateRequest {
+  type: 'imageProfileUpdate';
+  profileId: string;
+  profile: ImageProfileUpdateBag;
+}
+export interface ImageProfileDeleteRequest {
+  type: 'imageProfileDelete';
+  profileId: string;
+}
+export interface ImageProviderListRequest {
+  type: 'imageProviderList';
+}
+/** Refusal-armed image-profile action verbs (loud unless lane A lands the wire pair). */
+export interface ImageProfileGenerateRequest {
+  type: 'imageProfileGenerate';
+  profileId: string;
+  prompt: string;
+}
+export interface ImageProfileValidateKeyRequest {
+  type: 'imageProfileValidateKey';
+  profileId: string;
+}
+export interface ImageProfileListModelsRequest {
+  type: 'imageProfileListModels';
+  profileId: string;
+}
+
+// --- Global mount points ----------------------------------------------------
+
+/** Per-mount capability flags (v4 mount-point GET `capabilities`). */
+export interface MountPointCapabilities {
+  canWrite: boolean;
+  canDelete: boolean;
+  canCreateFolder: boolean;
+  canMoveIn: boolean;
+  canMoveOut: boolean;
+  canConvert: boolean;
+}
+
+/**
+ * One global document mount point (v4 `DocMountPointSchema` + `embeddedChunkCount`;
+ * the GET read adds {@link MountPointCapabilities}).
+ */
+export interface DocMountPointDto {
+  id: string;
+  userId: string;
+  name: string;
+  basePath: string;
+  mountType: string;
+  storeType: string;
+  includePatterns: string[];
+  excludePatterns: string[];
+  enabled: boolean;
+  lastScannedAt: string | null;
+  scanStatus: string;
+  lastScanError: string | null;
+  conversionStatus: string;
+  conversionError: string | null;
+  fileCount: number;
+  chunkCount: number;
+  totalSizeBytes: number;
+  createdAt: string;
+  updatedAt: string;
+  embeddedChunkCount: number;
+  capabilities?: MountPointCapabilities;
+}
+
+/** The create bag (v4 `createMountPointSchema`). */
+export interface MountPointCreateBag {
+  name: string;
+  basePath?: string;
+  mountType: string;
+  storeType?: string;
+  includePatterns?: string[];
+  excludePatterns?: string[];
+  enabled?: boolean;
+}
+
+/** The update bag (v4 `updateMountPointSchema`, PATCH semantics). */
+export interface MountPointUpdateBag {
+  name?: string;
+  basePath?: string;
+  mountType?: string;
+  storeType?: string;
+  includePatterns?: string[];
+  excludePatterns?: string[];
+  enabled?: boolean;
+}
+
+export interface MountPointListRequest {
+  type: 'mountPointList';
+}
+export interface MountPointGetRequest {
+  type: 'mountPointGet';
+  mountPointId: string;
+}
+export interface MountPointCreateRequest {
+  type: 'mountPointCreate';
+  mountPoint: MountPointCreateBag;
+}
+export interface MountPointUpdateRequest {
+  type: 'mountPointUpdate';
+  mountPointId: string;
+  mountPoint: MountPointUpdateBag;
+}
+export interface MountPointDeleteRequest {
+  type: 'mountPointDelete';
+  mountPointId: string;
+}
+
+/**
+ * The listing-surface request variants (P4.6p/q/r). Folded into {@link CoreRequest}
+ * via {@link ListingSurfaceRequest} — BINDING, byte-identical in lanes B & C.
+ */
+export type ListingSurfaceRequest =
+  | RoleplayTemplateListRequest
+  | RoleplayTemplateCreateRequest
+  | RoleplayTemplateGetRequest
+  | RoleplayTemplateUpdateRequest
+  | RoleplayTemplateDeleteRequest
+  | ImageProfileListRequest
+  | ImageProfileCreateRequest
+  | ImageProfileGetRequest
+  | ImageProfileUpdateRequest
+  | ImageProfileDeleteRequest
+  | ImageProviderListRequest
+  | ImageProfileGenerateRequest
+  | ImageProfileValidateKeyRequest
+  | ImageProfileListModelsRequest
+  | MountPointListRequest
+  | MountPointGetRequest
+  | MountPointCreateRequest
+  | MountPointUpdateRequest
+  | MountPointDeleteRequest;
