@@ -51,7 +51,7 @@ const NAV_ITEMS: NavItem[] = [
     id: 'scenarios',
     label: 'Scenarios',
     tooltip: 'Manage general scenarios',
-    route: null,
+    route: '/scenarios',
     icon: 'scenarios',
   },
   { id: 'chats', label: 'Chats', tooltip: 'View all chats', route: '/salon', icon: 'chat' },

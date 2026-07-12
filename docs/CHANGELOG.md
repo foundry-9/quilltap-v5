@@ -30,6 +30,13 @@ slot-type floor keeps at least one slot. Unit-tested against a mock
 mutator: draft round-trip, blanks→null payload, self-exclusion, the slot
 floor, badge states, delete confirm (7 specs).
 
+Wired the two managers into the Prospero project detail: the Scenarios
+and Wardrobe cards replace their loud-disabled placeholders (closing the
+P4.6l remainder), and the general `/scenarios` page renders the manager
+at page scope behind the now-enabled `scenarios` nav item (route
+registered). When the general mount is unprovisioned the list is empty
+and mutations surface the server refusal — matching v4.
+
 P4.4u4 unit 3 (lane C, tier 2): reset_builtins as a service. Ported v4's
 `handleResetBuiltins` to `quilltap-core::services::quilltap_import::reset::
 reset_builtins` — cascade-delete the built-in characters (Lorian, Riya),

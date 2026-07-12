@@ -9,7 +9,8 @@ import { Routes } from '@angular/router';
  * `/salon` is the conversation list; `/salon/:id` is one conversation;
  * `/characters` is the character roster, `/characters/new` the create form,
  * `/characters/:id` a character's detail and `/characters/:id/edit` its editor;
- * `/settings` is the Settings hall and `/settings/wizard` the provider wizard.
+ * `/settings` is the Settings hall and `/settings/wizard` the provider wizard;
+ * `/scenarios` is the general (instance-wide) scenarios page.
  * Every other path redirects to the Salon.
  */
 export const routes: Routes = [
@@ -54,6 +55,11 @@ export const routes: Routes = [
     path: 'prospero/:id',
     loadComponent: () =>
       import('./screens/prospero/project-detail').then((m) => m.ProjectDetailScreen),
+  },
+  {
+    path: 'scenarios',
+    loadComponent: () =>
+      import('./screens/scenarios/scenarios-page').then((m) => m.ScenariosPage),
   },
   {
     path: 'settings/wizard',
