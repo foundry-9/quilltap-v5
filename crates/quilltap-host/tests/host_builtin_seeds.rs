@@ -25,6 +25,10 @@ fn hermetic_config(base: &Path) -> HostConfig {
     config.autonomous_tick_ms = 3_600_000;
     config.stuck_check_ms = 3_600_000;
     config.terminal = false;
+    // This test pins the P4.4u3 built-in mount counts; the sample-content seed
+    // (default ON since the P4.4u4 unification) would add the two character
+    // vaults' stores on top.
+    config.seed_sample_content = false;
     config
 }
 

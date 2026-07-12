@@ -3,8 +3,9 @@
 //! both avatars; a SECOND boot over the same instance short-circuits on the gate
 //! (no duplicated characters/memories, no re-written avatars).
 //!
-//! The seed rides `HostConfig::seed_sample_content` (default off; this test opts
-//! in). It is a REAL fresh-provisioned instance booted through `assemble`.
+//! The seed rides `HostConfig::seed_sample_content` (default ON since the round
+//! unified; kept explicit here so the test stays self-describing). It is a REAL
+//! fresh-provisioned instance booted through `assemble`.
 
 use std::path::Path;
 
@@ -23,7 +24,7 @@ fn seeding_config(base: &Path) -> HostConfig {
     config.autonomous_tick_ms = 3_600_000;
     config.stuck_check_ms = 3_600_000;
     config.terminal = false;
-    config.seed_sample_content = true; // opt in to the sample-content seed
+    config.seed_sample_content = true; // explicit: the seed is the surface under test
     config
 }
 

@@ -120,10 +120,8 @@ pub struct HostConfig {
     pub terminal: bool,
     /// Whether a first boot seeds the sample content (v4's `seedFromImports` +
     /// `seedAvatars`: Lorian + Riya + 42 memories + Lorian's avatar), behind the
-    /// zero-characters gate. **Default `false`** for this lane so existing
-    /// fresh-provision tests keep zero characters; flipping it on by default (and
-    /// updating the fresh-boot e2e fixtures that then assert the seed) happens at
-    /// unification.
+    /// zero-characters gate. **Default `true`** (v4 parity — its startup seeding
+    /// is unconditional); tests that need a bare fresh instance opt out.
     pub seed_sample_content: bool,
 }
 
@@ -149,7 +147,7 @@ impl HostConfig {
             extra_handlers: Vec::new(),
             spine: None,
             terminal: true,
-            seed_sample_content: false,
+            seed_sample_content: true,
         }
     }
 

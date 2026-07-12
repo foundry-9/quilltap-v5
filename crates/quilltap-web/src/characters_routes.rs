@@ -9,6 +9,10 @@
 //!   (v4 `characters/[id]/handlers/get.ts`, the `format=png` leg).
 //! - `POST /api/v1/characters?action=import` — a `.png` / `.json` ST card
 //!   (v4 `characters/handlers/post.ts` `handleImport`).
+//! - `POST /api/v1/characters?action=reset-builtins` — delete + re-seed the
+//!   built-in pair (v4 `handlers/post.ts` `handleResetBuiltins`). Lives here,
+//!   not on `/api/dispatch`: the avatar re-seed needs the host pixel codec,
+//!   which (like every codec-needing leg) is wired at the web edge.
 
 use std::collections::HashMap;
 
@@ -420,11 +424,16 @@ pub async fn characters_import_post(
         Ok(v) => v,
         Err(resp) => return *resp,
     };
-    if query.get("action").map(String::as_str) != Some("import") {
-        return error_json(
-            StatusCode::BAD_REQUEST,
-            "This route serves ?action=import only; character creation is on /api/dispatch",
-        );
+    match query.get("action").map(String::as_str) {
+        Some("import") => {}
+        Some("reset-builtins") => return characters_reset_builtins(&db).await,
+        _ => {
+            return error_json(
+                StatusCode::BAD_REQUEST,
+                "This route serves ?action=import and ?action=reset-builtins only; \
+                 character creation is on /api/dispatch",
+            );
+        }
     }
 
     let content_type = req
@@ -542,6 +551,93 @@ async fn write_avatar(
         .await
         .ok()?;
     written.ok().map(|a| a.link_id)
+}
+
+/// v4 `handleResetBuiltins` (`characters/handlers/post.ts:196`): cascade-delete
+/// the built-in pair (no exclusive chats/images), re-import the embedded seed
+/// with the seed→preserved id remap, re-seed the avatars, and echo v4's response
+/// shape. The whole reset runs inside ONE `Db::write` closure (both connections),
+/// matching the service's contract; the codec is the host image stack.
+async fn characters_reset_builtins(db: &Db) -> AxumResponse {
+    use quilltap_core::services::quilltap_import::reset::{reset_builtins, ResetError};
+
+    let uid = quilltap_core::api::SINGLE_USER_ID;
+    let outcome = db
+        .write(move |writers| {
+            let mount = writers
+                .mount_index()
+                .ok_or_else(|| quilltap_core::db::DbError::Key("no mount-index database".into()))?
+                .connection();
+            let main = writers.main().connection();
+            Ok(reset_builtins(main, mount, &HostImageCodec, uid))
+        })
+        .await;
+
+    let result = match outcome {
+        Ok(Ok(r)) => r,
+        // v4's per-cause error mapping: a failed built-in delete → 500 with the
+        // named message; a missing/unparseable embedded seed → 400; anything
+        // else → the generic catch-all 500.
+        Ok(Err(ResetError::DeleteFailed { name })) => {
+            return error_json(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("Failed to delete {name} during reset"),
+            );
+        }
+        Ok(Err(ResetError::Seed(_))) => {
+            return bad_request("Built-in character seed data is unavailable");
+        }
+        Ok(Err(_)) | Err(_) => {
+            return error_json(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to reset built-in characters",
+            );
+        }
+    };
+
+    // v4's `QuilltapExportCounts` key set, in declaration order (`execute.ts:71`);
+    // the port only ever counts characters/memories — the rest stay 0.
+    let counts_json = |c: &quilltap_core::services::quilltap_import::ImportCounts| {
+        serde_json::json!({
+            "characters": c.characters,
+            "chats": 0,
+            "messages": 0,
+            "roleplayTemplates": 0,
+            "connectionProfiles": 0,
+            "imageProfiles": 0,
+            "embeddingProfiles": 0,
+            "tags": 0,
+            "memories": c.memories,
+            "projects": 0,
+            "groups": 0,
+        })
+    };
+    let ids_record = |pairs: &[(String, Option<String>)]| {
+        let mut m = serde_json::Map::new();
+        for (name, id) in pairs {
+            m.insert(
+                name.clone(),
+                id.clone().map(Value::String).unwrap_or(Value::Null),
+            );
+        }
+        Value::Object(m)
+    };
+
+    let body = serde_json::json!({
+        "success": true,
+        "deletedCharacterIds": result.deleted_character_ids,
+        "preservedIds": ids_record(&result.preserved_ids),
+        "postResetIds": ids_record(&result.post_reset_ids),
+        "remappedIdCount": result.remapped_id_count,
+        "importResult": {
+            "success": result.import.success,
+            "imported": counts_json(&result.import.imported),
+            "skipped": counts_json(&result.import.skipped),
+            "warnings": result.import.warnings,
+            "importedCharacterIds": result.import.imported_character_ids,
+        },
+    });
+    (StatusCode::OK, axum::Json(body)).into_response()
 }
 
 /// Set the character's `defaultImageId` slim column (v4 `repos.characters.update`).

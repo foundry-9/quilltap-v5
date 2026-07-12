@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+Unification wires for the P4.6n ∥ P4.6o ∥ P4.4u4 round. The A↔B scenario
+contract diffed name-for-name and field-level: 19 request variants + the
+opaque scenario bag identical on both sides (nested bag, newFilename;
+dispatchData is response-tag-agnostic) — no reconciliation needed this
+round. The reset-builtins wire landed at the web edge, not as a core
+dispatch arm: `POST /api/v1/characters?action=reset-builtins`
+(quilltap-web characters routes) calls the differential-proven
+`quilltap_import::reset::reset_builtins` inside one Db::write with the
+host image codec — codec-needing legs live at the edge (the P4.6m
+precedent), and core has no codec seam. Route-level roundtrip test added
+(fresh import round + delete-and-re-mint round; post-reset ids DIFFER
+from preserved per v4's create-mints quirk the differential pinned).
+`HostConfig::seed_sample_content` flipped to default ON (v4 parity);
+the builtin-seeds host test opts out (it pins the 3 built-in mount
+stores; the seed adds the two character vaults on top). Lane B's
+fixture-guarded scenarios/wardrobe e2e beats auto-activate over lane
+A's committed groups-projects fixture. Versions: web 0.0.11, host
+0.0.12.
+
+
 P4.6o (lane B, SPA) — the Scenarios + Wardrobe SPA remainder. Re-pinned
 the SPA scenario contract (`core-contract.ts`) to v4's Zod-schema shape:
 `groupScenario*`/`projectScenario*` create/update now ride a nested
