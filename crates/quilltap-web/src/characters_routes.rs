@@ -660,7 +660,9 @@ fn response_error(e: quilltap_core::api::types::CoreError) -> AxumResponse {
     let status = match e.kind {
         ErrorKind::BadRequest => StatusCode::BAD_REQUEST,
         ErrorKind::Unauthorized => StatusCode::UNAUTHORIZED,
+        ErrorKind::Forbidden => StatusCode::FORBIDDEN,
         ErrorKind::NotFound => StatusCode::NOT_FOUND,
+        ErrorKind::Conflict => StatusCode::CONFLICT,
         ErrorKind::Locked => StatusCode::SERVICE_UNAVAILABLE,
         ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
     };

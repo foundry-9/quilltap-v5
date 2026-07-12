@@ -1305,6 +1305,48 @@ impl CoreEngine {
                 Err(r) => r,
             },
 
+            // --- Roleplay templates (P4.6p) ---------------------------------
+            Request::RoleplayTemplateList => match self.ready_db() {
+                Ok(db) => super::roleplay_templates::roleplay_template_list(&db, SINGLE_USER_ID),
+                Err(r) => r,
+            },
+            Request::RoleplayTemplateCreate { template } => match self.ready_db() {
+                Ok(db) => {
+                    super::roleplay_templates::roleplay_template_create(
+                        &db,
+                        SINGLE_USER_ID,
+                        template,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::RoleplayTemplateGet { template_id } => match self.ready_db() {
+                Ok(db) => super::roleplay_templates::roleplay_template_get(&db, &template_id),
+                Err(r) => r,
+            },
+            Request::RoleplayTemplateUpdate {
+                template_id,
+                template,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::roleplay_templates::roleplay_template_update(
+                        &db,
+                        SINGLE_USER_ID,
+                        &template_id,
+                        template,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::RoleplayTemplateDelete { template_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::roleplay_templates::roleplay_template_delete(&db, &template_id).await
+                }
+                Err(r) => r,
+            },
+
             // --- Projects family (P4.6k) ------------------------------------
             Request::ProjectList => match self.ready_db() {
                 Ok(db) => super::projects::project_list(&db),

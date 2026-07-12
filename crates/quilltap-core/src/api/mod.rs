@@ -28,6 +28,7 @@ pub mod groups;
 pub mod projects;
 pub mod provider_actions;
 pub mod provision;
+pub mod roleplay_templates;
 pub mod salon;
 pub mod scenarios;
 pub mod settings;

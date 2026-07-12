@@ -544,6 +544,151 @@ pub struct SeedUpdate {
     pub updated_at: String,
 }
 
+/// The shared column list every roleplay-template full read selects (schema order).
+const RT_COLUMNS: &str = "id, userId, name, description, systemPrompt, isBuiltIn, tags, \
+     delimiters, renderingPatterns, dialogueDetection, narrationDelimiters, createdAt, updatedAt";
+
+/// Marshal one `roleplay_templates` row into the route-read [`serde_json::Value`],
+/// reproducing v4's SQLite-backend `hydrateRow` + `RoleplayTemplateSchema.parse`:
+/// null nullable columns (`userId` / `description` / `dialogueDetection`) become
+/// `undefined` → **omitted**; `isBuiltIn` → bool; the JSON columns
+/// (`tags`/`delimiters`/`renderingPatterns`/`dialogueDetection`) are `JSON.parse`d;
+/// **`narrationDelimiters` is NOT a registered JSON column** (its heterogeneous
+/// `string | [string,string]` union classifies as `'unknown'`), so it is returned
+/// as the RAW column string — a stored `[open,close]` pair round-trips to the
+/// literal JSON string, exactly as v4's union `z.string()` branch keeps it.
+fn marshal_rt_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<serde_json::Value> {
+    use serde_json::{Map, Value};
+    let mut obj = Map::new();
+    obj.insert("id".into(), Value::String(r.get::<_, String>(0)?));
+    if let Some(s) = r.get::<_, Option<String>>(1)? {
+        obj.insert("userId".into(), Value::String(s));
+    }
+    obj.insert("name".into(), Value::String(r.get::<_, String>(2)?));
+    if let Some(s) = r.get::<_, Option<String>>(3)? {
+        obj.insert("description".into(), Value::String(s));
+    }
+    obj.insert("systemPrompt".into(), Value::String(r.get::<_, String>(4)?));
+    obj.insert("isBuiltIn".into(), Value::Bool(r.get::<_, i64>(5)? == 1));
+    obj.insert(
+        "tags".into(),
+        parse_json_array_col(r.get::<_, Option<String>>(6)?),
+    );
+    obj.insert(
+        "delimiters".into(),
+        parse_json_array_col(r.get::<_, Option<String>>(7)?),
+    );
+    obj.insert(
+        "renderingPatterns".into(),
+        parse_json_array_col(r.get::<_, Option<String>>(8)?),
+    );
+    // dialogueDetection: nullable JSON object → omit when SQL NULL.
+    if let Some(raw) = r.get::<_, Option<String>>(9)? {
+        if !raw.is_empty() {
+            if let Ok(v) = serde_json::from_str::<Value>(&raw) {
+                obj.insert("dialogueDetection".into(), v);
+            }
+        }
+    }
+    // narrationDelimiters: RAW string passthrough (not a JSON column).
+    obj.insert(
+        "narrationDelimiters".into(),
+        Value::String(r.get::<_, String>(10)?),
+    );
+    obj.insert("createdAt".into(), Value::String(r.get::<_, String>(11)?));
+    obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(12)?));
+    Ok(Value::Object(obj))
+}
+
+/// Parse a stored JSON-array column text into a `Value`, defaulting to `[]` on
+/// NULL / empty / parse failure (v4 hydrate → `undefined` → Zod `.default([])`).
+fn parse_json_array_col(raw: Option<String>) -> serde_json::Value {
+    match raw {
+        Some(s) if !s.is_empty() => {
+            serde_json::from_str(&s).unwrap_or_else(|_| serde_json::Value::Array(Vec::new()))
+        }
+        _ => serde_json::Value::Array(Vec::new()),
+    }
+}
+
+/// v4 `repos.roleplayTemplates.findById(id)` (route read) — the full-JSON DTO, or
+/// `None`.
+pub fn find_full_json_by_id(
+    conn: &Connection,
+    id: &str,
+) -> Result<Option<serde_json::Value>, DbError> {
+    conn.query_row(
+        &format!("SELECT {RT_COLUMNS} FROM roleplay_templates WHERE id = ?1"),
+        params![id],
+        marshal_rt_row,
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other.into()),
+    })
+}
+
+/// v4 `repos.roleplayTemplates.findAllForUser(userId)` — `$or: [{isBuiltIn:true},
+/// {userId}]`, UNSORTED (the route sorts built-in-first then localeCompare).
+pub fn find_all_for_user(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Vec<serde_json::Value>, DbError> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {RT_COLUMNS} FROM roleplay_templates WHERE isBuiltIn = 1 OR userId = ?1"
+    ))?;
+    let rows = stmt.query_map(params![user_id], marshal_rt_row)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+/// v4 `repos.roleplayTemplates.findByName(userId, name)` — the user-scoped
+/// duplicate-name probe. Returns the matching template's id (the routes only need
+/// existence / self-comparison), or `None`.
+pub fn find_id_by_user_and_name(
+    conn: &Connection,
+    user_id: &str,
+    name: &str,
+) -> Result<Option<String>, DbError> {
+    conn.query_row(
+        "SELECT id FROM roleplay_templates WHERE userId = ?1 AND name = ?2 LIMIT 1",
+        params![user_id, name],
+        |row| row.get::<_, String>(0),
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other),
+    })
+    .map_err(DbError::from)
+}
+
+/// Parse a `delimiters` JSON [`serde_json::Value`] (from a marshaled DTO) into the
+/// typed union, applying the read-side `kind:'wrap'` backfill — for the routes'
+/// on-the-fly rendering-pattern regeneration. A non-array or unparseable entry
+/// yields an empty list (v4's `template.delimiters || []`).
+pub fn delimiters_from_value(v: &serde_json::Value) -> Vec<TemplateDelimiter> {
+    let serde_json::Value::Array(items) = v else {
+        return Vec::new();
+    };
+    let mut out = Vec::with_capacity(items.len());
+    for item in items {
+        let mut item = item.clone();
+        if let serde_json::Value::Object(map) = &mut item {
+            map.entry("kind")
+                .or_insert_with(|| serde_json::Value::String("wrap".to_string()));
+        }
+        if let Ok(d) = serde_json::from_value::<TemplateDelimiter>(item) {
+            out.push(d);
+        }
+    }
+    out
+}
+
 /// **Scoped read** for the roleplay-template fallback chain
 /// ([`crate::services::participant_resolver`]): the `systemPrompt` of a template,
 /// v4 `roleplayTemplates.findById(id)?.systemPrompt`. Follows the scoped-read

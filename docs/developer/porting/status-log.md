@@ -7618,3 +7618,60 @@ QT_FIXTURE_GP_MOUNT=$W/crates/quilltap-web/tests/fixtures/groups-projects-mount.
   $N/node --import tsx $W/harness/oracle/fixtures/build-groups-projects-fixture.ts
 # then regen groups/projects/scenarios oracles (see their .test.ts headers)
 ```
+
+### P4.6p unit 2 — roleplay-templates dispatch surface — LANDED
+
+Ported v4's `roleplay-templates/route.ts` + `[id]/route.ts` as
+`api::roleplay_templates` (five variants: list / create / get / update / delete),
+composed over the ported `db::roleplay_templates` repo + three new full-JSON
+route reads (`find_full_json_by_id`, `find_all_for_user`,
+`find_id_by_user_and_name`) and the pure `generate_rendering_patterns`.
+
+**ErrorKind widened:** added `Forbidden` (403) + `Conflict` (409) — v4's
+`responses.ts` vocabulary the built-in guards / duplicate-name arms require.
+Updated the two exhaustive `quilltap-web` ErrorKind→StatusCode matches
+(dispatch.rs, characters_routes.rs) + the three harness `http_for` test helpers.
+**Bumped quilltap-web** (0.0.13) — the only lane-A touch outside
+`quilltap-core::api`; noted for the unifier.
+
+Pinned v4 quirks (oracle-observed, ported faithfully):
+- LIST is a **bare JSON array**, built-in-first then `name.localeCompare`.
+- Route-read marshaling omits null nullables (v4 backend hydrateRow: null →
+  undefined → Zod-omitted). `narrationDelimiters` is NOT a registered JSON
+  column (heterogeneous union → 'unknown'), so a stored `[open,close]` pair
+  reads back as the **raw JSON string**.
+- GET-[id] regenerates empty renderingPatterns on the fly (non-persisted).
+- CREATE/UPDATE return the in-memory `validate(entityInput)` (not a DB re-read):
+  create's `narrationDelimiters` echoes the input verbatim (array stays array),
+  description/dialogueDetection present as null-or-value.
+- **PUT `updateData` ALWAYS sets name/description/systemPrompt** to
+  `validatedData.field?.trim()` (undefined when absent), which the `_update`
+  merge overwrites → the full `RoleplayTemplateSchema.parse` re-validate then
+  REQUIRES name+systemPrompt (a partial body omitting either → **400 Validation
+  error**), and every successful update **drops `description`** unless a string
+  is supplied. The dup-name 409 precedes this 400. The 400's Zod `details[]` are
+  dropped by the Response error envelope (message-only) — status+message match.
+
+Differential `roleplay_templates_routes_equivalence` (21 cases): list / 3 gets
+(user / read-regen / built-in) / 404 / 2 creates (auto-regen; narration-array) /
+4 create-validation arms / dup 409 / update happy / built-in 403 / dup 409 / 2
+regen arms / null-description / missing-required 400 / delete / built-in 403 /
+404. Built-in ids (minted at fixture build) resolved by name on both sides.
+
+Regen recipe (Node 24, from the v4 checkout):
+```
+W=<worktree>; N=~/.nvm/versions/node/v24.13.1/bin; TMPO=/tmp/qt-gp-oracle
+mkdir -p $TMPO/cases $TMPO/fixtures
+cp $W/harness/oracle/cases/roleplay-templates-routes.test.ts $TMPO/cases/
+cp $W/harness/oracle/fixtures/groups-projects.json $TMPO/fixtures/
+cd ~/source/quilltap-server
+QT_FIXTURE_GP_MAIN=$W/crates/quilltap-web/tests/fixtures/groups-projects-main.db \
+QT_FIXTURE_GP_MOUNT=$W/crates/quilltap-web/tests/fixtures/groups-projects-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-roleplay-templates-routes.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- roleplay-templates-routes
+QT_ORACLE_ROLEPLAY_ROUTES=/tmp/oracle-roleplay-templates-routes.ndjson \
+  cargo test -p quilltap-harness --test roleplay_templates_routes_equivalence
+```
+
+Versions: core 0.0.186, harness 0.0.170, web 0.0.13.

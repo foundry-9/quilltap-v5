@@ -755,6 +755,31 @@ pub enum Request {
     ScenarioDelete {
         scenario_path: String,
     },
+    // --- Roleplay templates (P4.6p) ---
+    /// v4 `GET /api/v1/roleplay-templates` — a BARE JSON array (built-in-first,
+    /// then `name` localeCompare).
+    RoleplayTemplateList,
+    /// v4 `POST /api/v1/roleplay-templates` (hand-validated body).
+    RoleplayTemplateCreate {
+        template: serde_json::Value,
+    },
+    /// v4 `GET /api/v1/roleplay-templates/[id]` (read-time renderingPatterns
+    /// auto-gen, non-persisted).
+    #[serde(rename_all = "camelCase")]
+    RoleplayTemplateGet {
+        template_id: String,
+    },
+    /// v4 `PUT /api/v1/roleplay-templates/[id]` (`updateRoleplayTemplateSchema`).
+    #[serde(rename_all = "camelCase")]
+    RoleplayTemplateUpdate {
+        template_id: String,
+        template: serde_json::Value,
+    },
+    /// v4 `DELETE /api/v1/roleplay-templates/[id]` → `{success, deletedId}`.
+    #[serde(rename_all = "camelCase")]
+    RoleplayTemplateDelete {
+        template_id: String,
+    },
     // --- Projects ---
     /// v4 `GET /api/v1/projects` — createdAt-desc list + `_count` (BARE envelope).
     ProjectList,
@@ -1039,6 +1064,21 @@ pub enum Response {
     /// `{path, scenarios, warnings}`, `{scenarios, warnings}`). The exact bytes are
     /// pinned by `scenarios_routes_equivalence` (P4.6n).
     Scenario(serde_json::Value),
+    // --- Listing surfaces (P4.6p) ---
+    /// A roleplay-templates-family body: the LIST is a **bare JSON array** of
+    /// templates; create/get/update return the bare template; delete returns
+    /// `{success, deletedId}`. The exact bytes are pinned by
+    /// `roleplay_templates_routes_equivalence`.
+    RoleplayTemplate(serde_json::Value),
+    /// An image-profiles-family body (`{profiles, count}`, the bare
+    /// profile+`apiKey`(+`tags`), `{message}`, `{providers, count}`, the
+    /// `{valid, message, modelCount?}` verdict, …). Pinned by
+    /// `image_profiles_routes_equivalence`.
+    ImageProfile(serde_json::Value),
+    /// A mount-points-family body (`{mountPoints}`, `{mountPoint}`,
+    /// `{mountPoint, warning?}`, `{message}`). Pinned by
+    /// `mount_points_routes_equivalence`.
+    MountPoint(serde_json::Value),
     Error(CoreError),
 }
 
@@ -1213,7 +1253,13 @@ pub enum ErrorKind {
     BadRequest,
     /// v4 `unauthorized` (HTTP 401): a wrong passphrase on `changePassphrase`.
     Unauthorized,
+    /// v4 `forbidden` (HTTP 403): e.g. editing/deleting a built-in roleplay
+    /// template.
+    Forbidden,
     NotFound,
+    /// v4 `conflict` / an explicit `errorResponse(msg, 409)`: a duplicate name
+    /// on roleplay-template / image-profile create/update.
+    Conflict,
     Locked,
     Internal,
 }

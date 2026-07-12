@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+P4.6p unit 2 (lane A): the roleplay-templates dispatch surface — the
+five variants (list / create / get / update / delete) as
+`api::roleplay_templates`, composed over the ported repo + new
+full-JSON reads (`find_full_json_by_id`, `find_all_for_user`,
+`find_id_by_user_and_name`) and the pure `generate_rendering_patterns`.
+Extended `ErrorKind` with `Forbidden` (403) and `Conflict` (409) — v4's
+`responses.ts` vocabulary the built-in guards and duplicate-name arms
+need — and mapped both in the `quilltap-web` transport. Differential
+`roleplay_templates_routes_equivalence` (21 cases) against v4's real
+route handlers. Pinned v4 quirks: the LIST is a bare JSON array
+(built-in-first, then localeCompare); `narrationDelimiters` reads back
+as a raw string (not a registered JSON column); GET auto-regenerates
+empty rendering patterns non-persisted; and the PUT `updateData` always
+overwrites name/description/systemPrompt, so a partial body omitting
+name or systemPrompt 400s on the full-schema re-validate and every
+update drops `description` unless a string is supplied.
+
 P4.6p fixture extension (lane A): extended the shared groups-projects
 fixture with the listing-surfaces rows — the two built-in roleplay
 templates (via v4's real seeder) + two user templates, four tags, a
