@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.6u (lane C) — the inline terminal embed + the pop-out route. Added
+`terminal-embed.ts` (v4 `TerminalEmbed`: a collapsible inline surface,
+collapse persisted to localStorage per session, pop-out / kill controls,
+a "showing in the pane" note when the session is the active pane one, and
+the `quilltap:terminal-exited` dispatch on PTY exit). Message rows render
+it for Ariel session-opened announcements matched by the
+`<!-- terminalSessionId:UUID -->` marker. Added the full-page pop-out
+route `/salon/:id/terminal/:sessionId` (`terminal-popout.ts`, v4's
+pop-out page).
+
 P4.6u (lane C) — the terminal pane wired into the Salon. Added
 `terminal-pane.ts` (v4 `TerminalPane`: header focus-toggle / hide / kill
 with a two-click confirm + the xterm body) and `terminal-session-picker.ts`

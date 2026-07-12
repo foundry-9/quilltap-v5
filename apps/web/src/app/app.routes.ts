@@ -24,6 +24,10 @@ export const routes: Routes = [
     loadComponent: () => import('./screens/new-chat/new-chat-page').then((m) => m.NewChatPage),
   },
   {
+    path: 'salon/:id/terminal/:sessionId',
+    loadComponent: () => import('./screens/salon/terminal-popout').then((m) => m.TerminalPopout),
+  },
+  {
     path: 'salon/:id',
     loadComponent: () =>
       import('./screens/salon/salon-conversation').then((m) => m.SalonConversation),
@@ -63,8 +67,7 @@ export const routes: Routes = [
   },
   {
     path: 'scenarios',
-    loadComponent: () =>
-      import('./screens/scenarios/scenarios-page').then((m) => m.ScenariosPage),
+    loadComponent: () => import('./screens/scenarios/scenarios-page').then((m) => m.ScenariosPage),
   },
   {
     path: 'settings/wizard',

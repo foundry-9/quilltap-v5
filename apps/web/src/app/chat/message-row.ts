@@ -1,6 +1,16 @@
-import { ChangeDetectionStrategy, Component, computed, effect, input, output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 
 import type { ChatDetail, ChatSettingsDto, MessageDto } from '../core/core-contract';
+import { TerminalEmbed } from '../terminal/terminal-embed';
+import { extractTerminalSessionId } from '../terminal/terminal-protocol';
 import { Avatar } from '../ui/avatar';
 import { Icon } from '../ui/icon';
 import { resolveMessageAuthor, type SwipeState } from './chat-view-model';
@@ -19,10 +29,14 @@ type Variant = 'user' | 'assistant' | 'whisper' | 'silent';
 @Component({
   selector: 'qt-message-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Avatar, Icon, MessageContent, ThinkingBlock],
+  imports: [Avatar, Icon, MessageContent, ThinkingBlock, TerminalEmbed],
   template: `
-    <div class="qt-chat-message-row" [class.qt-chat-message-row-user]="author().isUser"
-      [class.qt-chat-message-row-assistant]="!author().isUser" [class.group]="true">
+    <div
+      class="qt-chat-message-row"
+      [class.qt-chat-message-row-user]="author().isUser"
+      [class.qt-chat-message-row-assistant]="!author().isUser"
+      [class.group]="true"
+    >
       @if (showAvatar() && !author().isUser) {
         <div class="qt-chat-desktop-avatar">
           <qt-avatar [name]="author().name" [src]="author().avatarUrl" size="chat" />
@@ -57,7 +71,11 @@ type Variant = 'user' | 'assistant' | 'whisper' | 'silent';
               (input)="editDraft.set($any($event.target).value)"
             ></textarea>
             <div class="flex justify-end gap-2 mt-2">
-              <button type="button" class="qt-button-secondary qt-button-sm" (click)="cancelEdit.emit()">
+              <button
+                type="button"
+                class="qt-button-secondary qt-button-sm"
+                (click)="cancelEdit.emit()"
+              >
                 Cancel
               </button>
               <button
@@ -72,39 +90,77 @@ type Variant = 'user' | 'assistant' | 'whisper' | 'silent';
             <qt-message-content [content]="message().content" />
           }
 
+          @if (terminalSessionId(); as sid) {
+            <div class="mt-2">
+              <qt-terminal-embed [sessionId]="sid" [chatId]="chat().id" />
+            </div>
+          }
+
           <div class="qt-chat-message-action-bar">
             <div class="qt-chat-message-action-bar-icons">
-              <button type="button" class="qt-chat-message-action-icon" title="Copy message"
-                aria-label="Copy message" (click)="copy.emit(message())">
+              <button
+                type="button"
+                class="qt-chat-message-action-icon"
+                title="Copy message"
+                aria-label="Copy message"
+                (click)="copy.emit(message())"
+              >
                 <qt-icon name="copy" class="w-4 h-4" />
               </button>
               @if (message().role === 'USER') {
-                <button type="button" class="qt-chat-message-action-icon" title="Edit message"
-                  aria-label="Edit message" (click)="edit.emit(message())">
+                <button
+                  type="button"
+                  class="qt-chat-message-action-icon"
+                  title="Edit message"
+                  aria-label="Edit message"
+                  (click)="edit.emit(message())"
+                >
                   <qt-icon name="pencil" class="w-4 h-4" />
                 </button>
               }
               @if (message().role === 'ASSISTANT') {
-                <button type="button" class="qt-chat-message-action-icon" title="Regenerate response"
-                  aria-label="Regenerate response" (click)="regenerate.emit(message())">
+                <button
+                  type="button"
+                  class="qt-chat-message-action-icon"
+                  title="Regenerate response"
+                  aria-label="Regenerate response"
+                  (click)="regenerate.emit(message())"
+                >
                   <qt-icon name="refresh" class="w-4 h-4" />
                 </button>
               }
-              <button type="button" class="qt-chat-message-action-icon" title="Delete message"
-                aria-label="Delete message" (click)="delete.emit(message())">
+              <button
+                type="button"
+                class="qt-chat-message-action-icon"
+                title="Delete message"
+                aria-label="Delete message"
+                (click)="delete.emit(message())"
+              >
                 <qt-icon name="trash" class="w-4 h-4" />
               </button>
 
               @if (swipeState() && swipeState()!.total > 1) {
-                <button type="button" class="qt-chat-message-action-icon" title="Previous response"
-                  aria-label="Previous response" [disabled]="swipeState()!.current === 0"
-                  (click)="swipePrev.emit(message())">
+                <button
+                  type="button"
+                  class="qt-chat-message-action-icon"
+                  title="Previous response"
+                  aria-label="Previous response"
+                  [disabled]="swipeState()!.current === 0"
+                  (click)="swipePrev.emit(message())"
+                >
                   <qt-icon name="chevron-left" class="w-4 h-4" />
                 </button>
-                <span class="qt-text-xs px-1">{{ swipeState()!.current + 1 }} / {{ swipeState()!.total }}</span>
-                <button type="button" class="qt-chat-message-action-icon" title="Next response"
-                  aria-label="Next response" [disabled]="swipeState()!.current === swipeState()!.total - 1"
-                  (click)="swipeNext.emit(message())">
+                <span class="qt-text-xs px-1"
+                  >{{ swipeState()!.current + 1 }} / {{ swipeState()!.total }}</span
+                >
+                <button
+                  type="button"
+                  class="qt-chat-message-action-icon"
+                  title="Next response"
+                  aria-label="Next response"
+                  [disabled]="swipeState()!.current === swipeState()!.total - 1"
+                  (click)="swipeNext.emit(message())"
+                >
                   <qt-icon name="chevron-right" class="w-4 h-4" />
                 </button>
               }
@@ -151,6 +207,17 @@ export class MessageRow {
   }
 
   protected readonly author = computed(() => resolveMessageAuthor(this.message(), this.chat()));
+
+  /**
+   * The bound terminal session for an Ariel session-opened announcement (v4
+   * `MessageRow`: gate on `systemSender === 'ariel' && systemKind ===
+   * 'session-opened'`, then the `<!-- terminalSessionId:UUID -->` marker).
+   */
+  protected readonly terminalSessionId = computed<string | null>(() => {
+    const m = this.message();
+    if (m.systemSender !== 'ariel' || m.systemKind !== 'session-opened') return null;
+    return extractTerminalSessionId(m.content);
+  });
 
   protected readonly variant = computed<Variant>(() => {
     const m = this.message();

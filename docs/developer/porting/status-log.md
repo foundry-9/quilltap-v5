@@ -8528,3 +8528,29 @@ onto `ChatDetail` via interface declaration-merging — the original
 
 **Differential:** SPA tier 4 — the surface's proof is the live e2e (next
 unit). `ng test` green (359); `ng build` clean. SPA 0.5.37.
+
+### P4.6u unit 4 — inline terminal embed + pop-out route — LANDED
+
+`terminal-embed.ts` (v4 `TerminalEmbed`): the collapsible inline
+chat-bubble surface — header (collapse chevron / pop-out / kill), the
+xterm body, collapse state persisted to localStorage
+(`terminalEmbed:<id>:collapsed`, the SEPARATE store from the chat-persisted
+pane state — quirk #4). When the session is the pane's active one
+(injected `TerminalModeController`, optional), the body is v4's "Showing
+in Terminal Mode pane." note + a Go-to-pane focus jump instead of a second
+live surface. Dispatches `quilltap:terminal-exited` once on PTY exit.
+
+`message-row.ts`: renders `qt-terminal-embed` for an Ariel session-opened
+announcement — gated on `systemSender === 'ariel' && systemKind ===
+'session-opened'` AND the `<!-- terminalSessionId:UUID -->` marker (v4
+`MessageRow.tsx:25/385`). Marker extraction is unit-pinned in
+`terminal-protocol.spec.ts`.
+
+`terminal-popout.ts` + `app.routes.ts`: the full-page pop-out
+`/salon/:id/terminal/:sessionId` (v4's pop-out page) — one terminal filling
+the page, Back / chat-breadcrumb / Kill. Lane C owns `app.routes.ts` this
+round; the route is placed BEFORE `salon/:id` so the deeper path wins.
+
+**Differential:** SPA tier 4 — the embed's live behaviour (collapse,
+in-pane note, exit) is proven by the e2e (next unit); the marker gate is
+the pinned unit spec. `ng test` green (359); `ng build` clean. SPA 0.5.38.
