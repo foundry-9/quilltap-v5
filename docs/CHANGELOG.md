@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.6n unit 5: made the project `list-files` two-branch + add-file/remove-file
+arms live. Branch A (a linked primary Scriptorium store present) lists that
+store's `doc_mount_files`; branch B (no store) lists the legacy `files` rows
+scoped to the project, deriving each file's effective folderPath and omitting
+null description/width/height (the read marshaling drops them). Added the
+`mime::detect_mime_type`-backed `mimeForMountFile` and
+`folder_utils::resolve_effective_folder_path` uses, a `files` listing read,
+and a NULL-clearing project-link update. Proven by the `projects_routes`
+differential extended with the two-branch list (Iota store-backed / Lambda
+legacy / Kappa empty), add-file (+ file-row dump), add-file-missing(404), and
+remove-file. **This closes the P4.6n surface — no tier-3 refusal arms
+remain.**
+
 P4.6n unit 4: added the general (instance-wide "Quilltap General")
 scenarios family — six NEW dispatch variants (`scenarioList`/`Create`/
 `Get`/`Update`/`Rename`/`Delete`) + `api::scenarios` general handlers that

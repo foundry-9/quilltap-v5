@@ -14,12 +14,13 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use quilltap_core::api::projects;
-use quilltap_core::api::types::Response;
+use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 const IOTA: &str = "a3000000-0000-4000-8000-000000000001";
+const LAMBDA: &str = "a3000000-0000-4000-8000-000000000002";
 const KAPPA: &str = "a3000000-0000-4000-8000-000000000003";
 const ARIA: &str = "a1000000-0000-4000-8000-000000000001";
 const BRAM: &str = "a1000000-0000-4000-8000-000000000002";
@@ -28,6 +29,19 @@ const IOTA_DANGLING_MP: &str = "b0000000-0000-4000-8000-0000000000df";
 const CHAT_A: &str = "c1000000-0000-4000-8000-000000000001";
 const CLOAK: &str = "aa000000-0000-4000-8000-000000000001";
 const ENSEMBLE: &str = "aa000000-0000-4000-8000-000000000002";
+const BG_FILE: &str = "f0000001-0000-4000-8000-000000000001";
+const LAMBDA_FILE_1: &str = "f0000002-0000-4000-8000-000000000002";
+const MISSING_FILE: &str = "f0000009-0000-4000-8000-000000000009";
+
+fn http_for(kind: ErrorKind) -> i64 {
+    match kind {
+        ErrorKind::BadRequest => 400,
+        ErrorKind::Unauthorized => 401,
+        ErrorKind::NotFound => 404,
+        ErrorKind::Locked => 503,
+        ErrorKind::Internal => 500,
+    }
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -567,6 +581,76 @@ fn projects_routes_match_oracle() {
             o.insert("remaining".into(), Value::Array(remaining));
         }
         check("wardrobe_delete", &body, false, &mut failed);
+    }
+
+    // --- Files (Unit 5): list-files two-branch + add/remove ---
+    let check_err = |name: &str, resp: &Response, failed: &mut Vec<String>| {
+        let want = &oracle[name];
+        let want_status = want["status"].as_i64().unwrap();
+        let want_msg = want["body"]["error"].as_str().unwrap_or("");
+        match resp {
+            Response::Error(e) if http_for(e.kind) == want_status && e.message == want_msg => {
+                eprintln!("[{name}] OK (err {want_status}).");
+            }
+            Response::Error(e) => {
+                eprintln!(
+                    "[{name}] ERR MISMATCH: got {}:'{}' want {want_status}:'{want_msg}'",
+                    http_for(e.kind),
+                    e.message
+                );
+                failed.push(name.to_string());
+            }
+            _ => {
+                eprintln!("[{name}] expected error, got success");
+                failed.push(name.to_string());
+            }
+        }
+    };
+    {
+        // Branch A: Iota's primary store (baked/committed ts → no blank).
+        let db = fresh_db(&spec, "lf_iota");
+        check(
+            "list_files_iota",
+            &response_data(&projects::project_file_list(&db, IOTA)),
+            false,
+            &mut failed,
+        );
+    }
+    {
+        // Branch B: Lambda's legacy files.
+        let db = fresh_db(&spec, "lf_lambda");
+        check(
+            "list_files_lambda",
+            &response_data(&projects::project_file_list(&db, LAMBDA)),
+            false,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "lf_kappa");
+        check(
+            "list_files_kappa",
+            &response_data(&projects::project_file_list(&db, KAPPA)),
+            false,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "add_file");
+        let resp = rt.block_on(projects::project_file_add(&db, KAPPA, BG_FILE));
+        check("add_file", &response_data(&resp), false, &mut failed);
+        check_tables("add_file", &dump_project_tables(&db), &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "add_file_miss");
+        let resp = rt.block_on(projects::project_file_add(&db, KAPPA, MISSING_FILE));
+        check_err("add_file_missing", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "rm_file");
+        let resp = rt.block_on(projects::project_file_remove(&db, LAMBDA, LAMBDA_FILE_1));
+        check("remove_file", &response_data(&resp), false, &mut failed);
+        check_tables("remove_file", &dump_project_tables(&db), &mut failed);
     }
 
     assert!(failed.is_empty(), "projects-routes FAILED: {failed:?}");

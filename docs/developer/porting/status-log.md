@@ -7144,3 +7144,34 @@ arms (`instance_settings.generalMountPointId` deleted on BOTH sides via
 43 scenario cases total (18 groups + 12 projects + 13 general). Retired the
 `scenarios::not_available` refusal helper. Core 0.0.179 → 0.0.180,
 harness 0.0.163 → 0.0.164.
+
+## P4.6n (lane A) unit 5 — project list-files + add/remove (2026-07-11, in progress)
+
+Made the 3 project-file refusal arms live. `project_file_list` is the
+two-branch v4 `handleListFiles`: **Branch A** — when `getProjectDocumentStore`
+resolves a primary store (`project_doc_mount_links` → `find_store_naming_by_id`
+→ `pick_primary_project_store`), list that store's `doc_mount_files` via
+`DocMountFileLinksRepository::find_by_mount_point_id` (LinkRow, natural rowid
+order = v4's `queryLinks`), DTO keyed `mimeForMountFile(fileType, fileName)`
+(the `blob` case → `mime::detect_mime_type`), `category` from the mime prefix,
+`updatedAt = lastModified || updatedAt` (lastModified always set; LinkRow has no
+separate updatedAt — documented seam), explicit null description/folderPath/
+width/height. **Branch B** — `files.findAll().filter(projectId===)` via
+`find_by_project_id_for_listing` (rowid order), `folderPath` from
+`resolve_effective_folder_path(folderPath, storageKey)`, and null
+description/width/height DROPPED (the file read marshals them away).
+
+`project_file_add`: ownership → `files.findById` (404 'File') →
+`files.update(fileId, {projectId})`. `project_file_remove`: ownership →
+`clear_project_id` (a guarded raw `SET projectId = NULL` — `FileUpdate.project_id:
+Option<String>` can't express NULL). Both answer `{success:true}`.
+
+**Differential:** `projects_routes_equivalence` extended — `list_files_iota`
+(Branch A, 11 store files incl. the seeded logo.png/scenarios/wardrobe, baked
+committed ts → no blank), `list_files_lambda` (Branch B, 2 legacy files,
+folderPath `/sub/`, width/height only on the png), `list_files_kappa` (empty),
+`add_file` (+ the file-row projectId dump), `add_file_missing` (404 File),
+`remove_file` (+ dump). Helper ports (`mime`, `folder_utils`) landed in unit 1.
+
+**P4.6n surface COMPLETE — no tier-3 refusal arms remain in the scenarios/
+list-files family.** Core 0.0.180 → 0.0.181, harness 0.0.164 → 0.0.165.

@@ -17,8 +17,9 @@ use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::doc_mount_points::DocMountPointsRepository;
 use crate::db::document_store_overlay::OverlayError;
 use crate::db::ensure_official_store::ensure_official_store;
-use crate::db::files::FilesRepository;
+use crate::db::files::{FileUpdate, FilesRepository};
 use crate::db::project_doc_mount_links::ProjectDocMountLinksRepository;
+use crate::db::project_store_naming::pick_primary_project_store;
 use crate::db::projects::{
     find_official_mount_point_id_raw, ProjectCreateInput, ProjectCreateOptions, ProjectEntity,
     ProjectsRepository,
@@ -1476,6 +1477,210 @@ pub async fn project_scenario_delete(db: &Db, project_id: &str, scenario_path: &
     .await;
     match out {
         Ok(Ok(body)) => Response::Project(body),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+// ===========================================================================
+// Files (v4 projects/[id]/actions/files.ts) — the list-files two-branch +
+// add-file/remove-file, P4.6n unit 5.
+// ===========================================================================
+
+/// v4 `mimeForMountFile` — a doc_mount_files fileType (+ filename for the `blob`
+/// catch-all) → a concrete MIME. Non-enum fileTypes fall through to the `blob`
+/// extension-detect (v4's switch is exhaustive over the fileType enum).
+fn mime_for_mount_file(file_type: &str, file_name: &str) -> String {
+    match file_type {
+        "pdf" => "application/pdf".to_string(),
+        "docx" => {
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document".to_string()
+        }
+        "markdown" => "text/markdown".to_string(),
+        "txt" => "text/plain".to_string(),
+        "json" => "application/json".to_string(),
+        "jsonl" => "application/jsonl".to_string(),
+        _ => crate::mime::detect_mime_type(file_name),
+    }
+}
+
+/// v4 `getProjectDocumentStore(projectId).mountPointId` — the primary linked
+/// Scriptorium store's mount id, or `None`. Resolves each linked mount point's
+/// naming subset and applies `pickPrimaryProjectStore`.
+fn get_project_document_store_mount_id(
+    mount: &rusqlite::Connection,
+    project_id: &str,
+) -> Result<Option<String>, DbError> {
+    let link_ids = ProjectDocMountLinksRepository::new(mount).find_by_project_id(project_id)?;
+    if link_ids.is_empty() {
+        return Ok(None);
+    }
+    let points = DocMountPointsRepository::new(mount);
+    let mut stores = Vec::new();
+    for id in &link_ids {
+        if let Some(s) = points.find_store_naming_by_id(id)? {
+            stores.push(s);
+        }
+    }
+    Ok(pick_primary_project_store(&stores).map(|s| s.id.clone()))
+}
+
+/// v4 `GET /api/v1/projects/[id]?action=list-files`. Branch A: when a primary
+/// Scriptorium store is linked, list its `doc_mount_files` (store = source of
+/// truth). Branch B: else the legacy `files` rows scoped to the project. Body
+/// `{ files, count }`.
+pub fn project_file_list(db: &Db, project_id: &str) -> Response {
+    let pid = project_id.to_string();
+    let result = read_both(db, move |main, mount| {
+        let repo = ProjectsRepository::new(main, mount);
+        if repo.find_by_id(&pid).map_err(overlay_to_db)?.is_none() {
+            return Ok(Err(not_found("Project")));
+        }
+
+        // Branch A: primary store present → the store's doc_mount_files.
+        if let Some(store_mp) = get_project_document_store_mount_id(mount, &pid)? {
+            let links =
+                DocMountFileLinksRepository::new(mount).find_by_mount_point_id(&store_mp)?;
+            let files: Vec<Value> = links
+                .iter()
+                .map(|l| {
+                    let mime = mime_for_mount_file(&l.file_type, &l.file_name);
+                    let category = if mime.starts_with("image/") {
+                        "IMAGE"
+                    } else {
+                        "DOCUMENT"
+                    };
+                    // v4 `f.lastModified || f.updatedAt`; lastModified is always set
+                    // on a store write (the `|| updatedAt` fallback is unreachable
+                    // in-corpus, and LinkRow carries no separate updatedAt).
+                    let updated = if l.last_modified.is_empty() {
+                        l.created_at.clone()
+                    } else {
+                        l.last_modified.clone()
+                    };
+                    json!({
+                        "id": l.id,
+                        "originalFilename": l.file_name,
+                        "filename": l.file_name,
+                        "mimeType": mime,
+                        "size": l.file_size_bytes,
+                        "category": category,
+                        "description": Value::Null,
+                        "projectId": pid,
+                        "folderPath": Value::Null,
+                        "width": Value::Null,
+                        "height": Value::Null,
+                        "createdAt": l.created_at,
+                        "updatedAt": updated,
+                        "mountPointId": l.mount_point_id,
+                        "relativePath": l.relative_path,
+                    })
+                })
+                .collect();
+            let count = files.len();
+            return Ok(Ok(json!({ "files": files, "count": count })));
+        }
+
+        // Branch B: the legacy files table.
+        let rows = FilesRepository::new(main).find_by_project_id_for_listing(&pid)?;
+        let files: Vec<Value> = rows
+            .iter()
+            .map(|f| {
+                let mut m = Map::new();
+                m.insert("id".into(), json!(f.id));
+                m.insert("userId".into(), json!(f.user_id));
+                m.insert("originalFilename".into(), json!(f.original_filename));
+                m.insert("filename".into(), json!(f.original_filename));
+                m.insert("mimeType".into(), json!(f.mime_type));
+                m.insert("size".into(), json!(f.size));
+                m.insert("category".into(), json!(f.category));
+                // Read marshaling omits null description/width/height → drop keys.
+                if let Some(d) = &f.description {
+                    m.insert("description".into(), json!(d));
+                }
+                m.insert(
+                    "projectId".into(),
+                    match &f.project_id {
+                        Some(p) => json!(p),
+                        None => Value::Null,
+                    },
+                );
+                m.insert(
+                    "folderPath".into(),
+                    json!(crate::folder_utils::resolve_effective_folder_path(
+                        f.folder_path.as_deref(),
+                        f.storage_key.as_deref()
+                    )),
+                );
+                if let Some(w) = f.width {
+                    m.insert("width".into(), json!(w));
+                }
+                if let Some(h) = f.height {
+                    m.insert("height".into(), json!(h));
+                }
+                m.insert("createdAt".into(), json!(f.created_at));
+                m.insert("updatedAt".into(), json!(f.updated_at));
+                Value::Object(m)
+            })
+            .collect();
+        let count = files.len();
+        Ok(Ok(json!({ "files": files, "count": count })))
+    });
+    match result {
+        Ok(Ok(body)) => Response::Project(body),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `POST /api/v1/projects/[id]?action=add-file`: ownership('Project') → file
+/// existence ('File') → `files.update(fileId, {projectId})`. Body `{ success: true }`.
+pub async fn project_file_add(db: &Db, project_id: &str, file_id: &str) -> Response {
+    let pid = project_id.to_string();
+    let fid = file_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        let repo = ProjectsRepository::new(main, mount);
+        if repo.find_by_id(&pid).map_err(overlay_to_db)?.is_none() {
+            return Ok(Err(not_found("Project")));
+        }
+        let files = FilesRepository::new(main);
+        if files.find_by_id(&fid)?.is_none() {
+            return Ok(Err(not_found("File")));
+        }
+        files.update(
+            &fid,
+            &FileUpdate {
+                project_id: Some(pid.clone()),
+                updated_at: crate::clock::now_iso(),
+                ..Default::default()
+            },
+        )?;
+        Ok(Ok(()))
+    })
+    .await;
+    match out {
+        Ok(Ok(())) => Response::Project(json!({ "success": true })),
+        Ok(Err(r)) => r,
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `DELETE /api/v1/projects/[id]?action=remove-file`: ownership('Project') →
+/// `files.update(fileId, {projectId: null})`. Body `{ success: true }`.
+pub async fn project_file_remove(db: &Db, project_id: &str, file_id: &str) -> Response {
+    let pid = project_id.to_string();
+    let fid = file_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        let repo = ProjectsRepository::new(main, mount);
+        if repo.find_by_id(&pid).map_err(overlay_to_db)?.is_none() {
+            return Ok(Err(not_found("Project")));
+        }
+        FilesRepository::new(main).clear_project_id(&fid)?;
+        Ok(Ok(()))
+    })
+    .await;
+    match out {
+        Ok(Ok(())) => Response::Project(json!({ "success": true })),
         Ok(Err(r)) => r,
         Err(e) => internal(e),
     }

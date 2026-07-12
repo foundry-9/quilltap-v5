@@ -38,6 +38,7 @@ interface Spec {
 }
 
 const IOTA = 'a3000000-0000-4000-8000-000000000001';
+const LAMBDA = 'a3000000-0000-4000-8000-000000000002';
 const KAPPA = 'a3000000-0000-4000-8000-000000000003';
 const ARIA = 'a1000000-0000-4000-8000-000000000001';
 const BRAM = 'a1000000-0000-4000-8000-000000000002';
@@ -46,6 +47,9 @@ const IOTA_DANGLING_MP = 'b0000000-0000-4000-8000-0000000000df';
 const CHAT_A = 'c1000000-0000-4000-8000-000000000001';
 const CLOAK = 'aa000000-0000-4000-8000-000000000001';
 const ENSEMBLE = 'aa000000-0000-4000-8000-000000000002';
+const BG_FILE = 'f0000001-0000-4000-8000-000000000001'; // legacy image, projectId null
+const LAMBDA_FILE_1 = 'f0000002-0000-4000-8000-000000000002'; // projectId = Lambda
+const MISSING_FILE = 'f0000009-0000-4000-8000-000000000009';
 
 function mockRequest(url: string, body?: unknown): unknown {
   return {
@@ -309,6 +313,30 @@ async function main(): Promise<void> {
       name: 'mount_unlink',
       run: async () => {
         const r = await (await loadRoute(mpRoute)).DELETE(mockRequest(`${B}/${IOTA}/mount-points`, { mountPointId: IOTA_DANGLING_MP }), p(IOTA));
+        const { status, body } = await respond(r);
+        return { status, body, tables: await dumpProjectTables() };
+      },
+    },
+    // --- Files (Unit 5 / P4.6n): list-files two-branch + add/remove ---
+    // Iota: STORE-BACKED branch (its official store carries assets/logo.png).
+    { name: 'list_files_iota', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=list-files`), p(IOTA))) },
+    // Lambda: LEGACY branch (official-store link removed; two legacy files).
+    { name: 'list_files_lambda', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${LAMBDA}?action=list-files`), p(LAMBDA))) },
+    // Kappa: empty (legacy branch, no files).
+    { name: 'list_files_kappa', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${KAPPA}?action=list-files`), p(KAPPA))) },
+    {
+      name: 'add_file',
+      run: async () => {
+        const r = await (await loadRoute(idRoute)).POST(mockRequest(`${B}/${KAPPA}?action=add-file`, { fileId: BG_FILE }), p(KAPPA));
+        const { status, body } = await respond(r);
+        return { status, body, tables: await dumpProjectTables() };
+      },
+    },
+    { name: 'add_file_missing', run: async () => respond(await (await loadRoute(idRoute)).POST(mockRequest(`${B}/${KAPPA}?action=add-file`, { fileId: MISSING_FILE }), p(KAPPA))) },
+    {
+      name: 'remove_file',
+      run: async () => {
+        const r = await (await loadRoute(idRoute)).DELETE(mockRequest(`${B}/${LAMBDA}?action=remove-file`, { fileId: LAMBDA_FILE_1 }), p(LAMBDA));
         const { status, body } = await respond(r);
         return { status, body, tables: await dumpProjectTables() };
       },

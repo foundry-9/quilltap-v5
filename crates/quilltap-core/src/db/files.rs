@@ -211,6 +211,55 @@ impl<'c> FilesRepository<'c> {
         Ok(n)
     }
 
+    /// v4 the legacy `list-files` branch: `files.findAll().filter(projectId === ?)`
+    /// (natural/rowid order — the `WHERE` filter yields the identical set + order)
+    /// hydrated into the fields the Files-card DTO reads. `description`/`width`/
+    /// `height` are Option — the file read marshaling omits them when NULL, so the
+    /// DTO drops those keys.
+    pub fn find_by_project_id_for_listing(
+        &self,
+        project_id: &str,
+    ) -> Result<Vec<ProjectFileListRow>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, userId, originalFilename, mimeType, size, category, description, \
+                    projectId, folderPath, storageKey, width, height, createdAt, updatedAt \
+             FROM files WHERE projectId = ?1",
+        )?;
+        let rows = stmt
+            .query_map(rusqlite::params![project_id], |row| {
+                Ok(ProjectFileListRow {
+                    id: row.get(0)?,
+                    user_id: row.get(1)?,
+                    original_filename: row.get(2)?,
+                    mime_type: row.get(3)?,
+                    size: real_affinity_opt_i64(row.get_ref(4)?).unwrap_or(0),
+                    category: row.get(5)?,
+                    description: row.get(6)?,
+                    project_id: row.get(7)?,
+                    folder_path: row.get(8)?,
+                    storage_key: row.get(9)?,
+                    width: real_affinity_opt_i64(row.get_ref(10)?),
+                    height: real_affinity_opt_i64(row.get_ref(11)?),
+                    created_at: row.get(12)?,
+                    updated_at: row.get(13)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// v4 handleRemoveFile: `files.update(fileId, { projectId: null })` — clear the
+    /// project link. `FileUpdate.project_id` can't express NULL, so this is a
+    /// direct guarded update (mints `updatedAt`). Result ignored by the route
+    /// (always `{success:true}`).
+    pub fn clear_project_id(&self, file_id: &str) -> Result<(), DbError> {
+        self.conn.execute(
+            "UPDATE files SET projectId = NULL, updatedAt = ?1 WHERE id = ?2",
+            rusqlite::params![crate::clock::now_iso(), file_id],
+        )?;
+        Ok(())
+    }
+
     /// Insert a file entry with the given pinned id + timestamps. `linkedTo`/`tags`
     /// → compact JSON array text; `size`/`width`/`height` bind `f64`/`Option<f64>`
     /// (REAL); `isPlainText` binds `Option<i64>` (0/1 or NULL); the enum + nullable
@@ -611,6 +660,27 @@ pub struct FileEntry {
     /// reuse tier falls back to this after the two generation-prompt columns).
     pub description: Option<String>,
     pub storage_key: Option<String>,
+}
+
+/// The legacy `list-files` branch row — the file columns the Files-card DTO
+/// reads. `description`/`width`/`height` are Option so the DTO can omit them when
+/// NULL (the file read marshaling drops null optionals).
+#[derive(Debug, Clone)]
+pub struct ProjectFileListRow {
+    pub id: String,
+    pub user_id: String,
+    pub original_filename: String,
+    pub mime_type: String,
+    pub size: i64,
+    pub category: String,
+    pub description: Option<String>,
+    pub project_id: Option<String>,
+    pub folder_path: Option<String>,
+    pub storage_key: Option<String>,
+    pub width: Option<i64>,
+    pub height: Option<i64>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 /// The canonical column list, referenced by the lockstep test that guards the two

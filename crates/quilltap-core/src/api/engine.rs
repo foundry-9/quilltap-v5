@@ -1373,9 +1373,24 @@ impl CoreEngine {
                 Ok(db) => super::projects::project_chat_remove(&db, &project_id, &chat_id).await,
                 Err(r) => r,
             },
-            Request::ProjectFileList { .. } => super::projects::not_available("list-files"),
-            Request::ProjectFileAdd { .. } => super::projects::not_available("add-file"),
-            Request::ProjectFileRemove { .. } => super::projects::not_available("remove-file"),
+            Request::ProjectFileList { project_id } => match self.ready_db() {
+                Ok(db) => super::projects::project_file_list(&db, &project_id),
+                Err(r) => r,
+            },
+            Request::ProjectFileAdd {
+                project_id,
+                file_id,
+            } => match self.ready_db() {
+                Ok(db) => super::projects::project_file_add(&db, &project_id, &file_id).await,
+                Err(r) => r,
+            },
+            Request::ProjectFileRemove {
+                project_id,
+                file_id,
+            } => match self.ready_db() {
+                Ok(db) => super::projects::project_file_remove(&db, &project_id, &file_id).await,
+                Err(r) => r,
+            },
             Request::ProjectStateGet { project_id } => match self.ready_db() {
                 Ok(db) => super::projects::project_state_get(&db, &project_id),
                 Err(r) => r,
