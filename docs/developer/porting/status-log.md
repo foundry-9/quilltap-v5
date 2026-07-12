@@ -8302,3 +8302,54 @@ but no differential. Also unported/no-variant per the order: the
 `extract-memories-dry-run` NDJSON stream + CLI memory-diff, the memory-dedup
 pair, embedding-profiles management, conversation-summaries regen.
 Bumps: core 0.0.193, harness 0.0.177.
+## P4.6t — the Memory SPA vertical (lane B, in progress)
+
+Branch `claude/p4-6t-memory-spa-port-1e649c`. Drift check at lane start:
+v4 HEAD still `a7b1398d` (`git log a7b1398d..HEAD` empty). Builds over
+lane A's (p4.6s) pinned Shared contract; unit tests mock `CoreClient`,
+e2e beats are fixture-guarded on the NEW `memories-{main,mount}.db`
+(committed by lane A; the beats activate at unification).
+
+**Unit 1 — the character Memories vertical + the contract block
+(2026-07-12).** Closed the `memories-tab.ts` placeholder ("The
+Commonplace Book vertical for this character lands later"). New files
+under `apps/web/src/app/memory/`:
+
+- `memory-format.ts` (+ spec) — pure logic transcribed verbatim from v4
+  and unit-proven the P4.6q way: importance buckets (`>=0.7` High/
+  destructive, `>=0.4` Medium/warning, else Low/secondary — boundaries
+  inclusive), `importancePercent` = `round(importance*100)`, keywords
+  join (`', '`) / split (comma → trim → drop-empty), `appendUniqueMemories`
+  page-dedupe (skip ids already present — offset instability during a
+  regenerate sweep), and `formatMemoryDate` (v4 `formatDate` locale
+  short-date, '' for empty).
+- `memory.api.ts` — TanStack keys + thin `dispatchData` helpers over the
+  P4.6t variants (list/create/update/delete + housekeeping preview/run +
+  the settings-card gets/sets). Response bodies read defensively (lane A's
+  oracle pins exact envelopes; reconciled at unification).
+- `memory-card.ts` (+ spec) — v4 `memory-card.tsx`: summary, importance
+  bucket w/ %-title, AUTO(blue)/MANUAL(green) badge, expandable content
+  (>150 chars), keyword chips, read-only tag badges, footer date + AUTO
+  Source link (emits `navigateToSource`; deep message anchoring deferred),
+  Edit/Delete.
+- `memory-editor.ts` (+ spec) — v4 `memory-editor.tsx` over `qt-modal` +
+  `qt-form-actions`: Summary (required) + Full Content (required, plain
+  textarea — Lexical deferred) + comma Keywords + importance slider
+  (0–1 step 0.1, Low/Med/High + %). Always sends `source:'MANUAL'`; does
+  NOT send/edit tags or aboutCharacterId (v4 fidelity). Create POST /
+  edit PUT (no re-embed). Save errors surface in an alert (dogfood #6a).
+- `memory-list.ts` (+ spec) — v4 `memory-list.tsx`: `SectionHeader`
+  (title + total count + Add Memory), debounced (300ms) search, sort-by /
+  sort-order (↑/↓) / source (ALL/AUTO/MANUAL) filters, `injectInfiniteQuery`
+  offset pagination (`MEMORIES_PER_PAGE = 30`, NOT virtualized) with the
+  id-dedupe applied across page boundaries, empty/error states with v4's
+  copy, inline delete-confirm modal. "All memories loaded" shows ONLY when
+  `length < totalCount` (faithful to v4's odd guard). The Cleanup /
+  housekeeping-dialog button lands in unit 2.
+
+`memories-tab.ts` is now the 12-line `MemoryList` wrapper (as v4's
+`MemoriesTab` wraps `MemoryList`), taking `[characterId]` from
+`character-detail.ts`. `core-contract.ts` gained the memory block
+(`MemoryDto`/`MemoryWriteBag`/housekeeping+config+backfill+recall+
+regenerate DTOs + all Request variants) folded into `CoreRequest` via
+`MemoryRequest`. Gate: `ng test` 359/359, `ng build` clean. SPA → 0.5.35.

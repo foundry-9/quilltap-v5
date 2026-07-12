@@ -1122,7 +1122,9 @@ export type CoreRequest =
   | ScenarioRenameRequest
   | ScenarioDeleteRequest
   // --- The listing surfaces (P4.6p/q/r Shared contract; byte-identical appendix) ---
-  | ListingSurfaceRequest;
+  | ListingSurfaceRequest
+  // --- The memory surface (P4.6t; p4.6s implements the server side) ---
+  | MemoryRequest;
 
 export type RequestType = CoreRequest['type'];
 
@@ -2609,3 +2611,346 @@ export type ListingSurfaceRequest =
   | MountPointCreateRequest
   | MountPointUpdateRequest
   | MountPointDeleteRequest;
+
+// ===========================================================================
+// Memory surface appendix (P4.6t — the Commonplace Book) — LANE B AUTHORS THIS
+// ---------------------------------------------------------------------------
+// The memory (Commonplace Book) Request variants + read DTOs for the
+// per-character Memories tab and the Settings → Memory tab. Lane A (p4.6s) owns
+// the server variants + differentials over the NEW `memories-{main,mount}.db`
+// fixture; the Shared contract pins the variant `type` names + param names at
+// name level, and lane A's oracle pins the exact response envelopes/nullability
+// (expect the P4.6p pattern — route reads may omit null nullables while
+// create/update echo them AS null). Reads go through `CoreClient.dispatchData`
+// (raw `data`), so only the request `type` strings + param names are
+// load-bearing on this side; response bodies are read defensively and reconciled
+// name-for-name at unification.
+// ===========================================================================
+
+/** A derived tag row on a memory read (list/get/search enrich `tags` → rows). */
+export interface MemoryTagDetail {
+  id: string;
+  name: string;
+  /** Optional presentational color — NOT relied upon (unpinned by lane A). */
+  color?: string | null;
+}
+
+/**
+ * One Commonplace Book memory (v4 `MemoryDto` + derived `tagDetails`). Whether
+ * `embedding` rides the JSON echo is pinned by lane A's oracle — this side must
+ * NOT rely on it.
+ */
+export interface MemoryDto {
+  id: string;
+  userId: string;
+  characterId: string;
+  content: string;
+  summary: string;
+  keywords: string[];
+  tags: string[];
+  importance: number;
+  source: 'AUTO' | 'MANUAL';
+  chatId: string | null;
+  projectId: string | null;
+  aboutCharacterId: string | null;
+  sourceMessageId: string | null;
+  witnessedContext: string | null;
+  lastAccessedAt: string | null;
+  reinforcementCount: number;
+  lastReinforcedAt: string | null;
+  relatedMemoryIds: string[];
+  reinforcedImportance: number;
+  createdAt: string;
+  updatedAt: string;
+  /** Derived tag rows on list/get/search reads (absent on trimmed shapes). */
+  tagDetails?: MemoryTagDetail[];
+}
+
+/** A search hit (v4 `memorySearch`): a memory plus its match score. */
+export interface MemorySearchHit extends MemoryDto {
+  score: number;
+  usedEmbedding: boolean;
+}
+
+/**
+ * The create/edit payload the editor sends (v4 `memory-editor` always sends
+ * `source:'MANUAL'`; it does NOT send/edit `tags` or `aboutCharacterId`).
+ */
+export interface MemoryWriteBag {
+  characterId: string;
+  content: string;
+  summary: string;
+  keywords: string[];
+  importance: number;
+  source: 'MANUAL';
+}
+
+// --- Memory list / read / write --------------------------------------------
+
+export type MemorySortBy = 'createdAt' | 'updatedAt' | 'importance';
+export type MemorySortOrder = 'asc' | 'desc';
+
+export interface MemoryListRequest {
+  type: 'memoryList';
+  characterId: string;
+  search?: string;
+  minImportance?: number;
+  source?: 'AUTO' | 'MANUAL';
+  sortBy?: MemorySortBy;
+  sortOrder?: MemorySortOrder;
+  /** Present = paginated; absent = legacy-all (v4's two code paths). */
+  limit?: number;
+  offset?: number;
+}
+export interface MemoryGetRequest {
+  type: 'memoryGet';
+  memoryId: string;
+}
+export interface MemoryCreateRequest {
+  type: 'memoryCreate';
+  memory: MemoryWriteBag;
+}
+export interface MemoryUpdateRequest {
+  type: 'memoryUpdate';
+  memoryId: string;
+  memory: MemoryWriteBag;
+}
+export interface MemoryDeleteRequest {
+  type: 'memoryDelete';
+  memoryId: string;
+}
+export interface MemoryDeleteByChatRequest {
+  type: 'memoryDeleteByChat';
+  chatId: string;
+}
+export interface MemorySearchRequest {
+  type: 'memorySearch';
+  characterId: string;
+  query: string;
+  limit?: number;
+  minImportance?: number;
+  minScore?: number;
+  source?: 'AUTO' | 'MANUAL';
+}
+export interface MemoryCountByChatRequest {
+  type: 'memoryCountByChat';
+  chatId: string;
+}
+export interface MemoryByMessageRequest {
+  type: 'memoryByMessage';
+  messageId: string;
+}
+
+// --- Housekeeping -----------------------------------------------------------
+
+/** One line of a housekeeping preview/run detail (v4 `HousekeepingDetail`). */
+export interface HousekeepingDetail {
+  memoryId: string;
+  action: 'deleted' | 'merged' | 'kept';
+  reason: string;
+  summary?: string;
+}
+
+/** The preview shape (v4 GET `action=housekeep` → `data.preview`). */
+export interface HousekeepingPreview {
+  wouldDelete: number;
+  wouldMerge: number;
+  wouldKeep: number;
+  totalBefore: number;
+  totalAfter: number;
+  details: HousekeepingDetail[];
+}
+
+/** The run result (v4 POST `action=housekeep` → `data.result`; `details` only when dryRun). */
+export interface HousekeepingResult {
+  deleted: number;
+  merged: number;
+  kept: number;
+  totalBefore: number;
+  totalAfter: number;
+  deletedIds: string[];
+  mergedIds: string[];
+  details?: HousekeepingDetail[];
+}
+
+/** The run options bag (v4 `housekeepingOptionsSchema`, incl. `dryRun`). */
+export interface MemoryHousekeepOptions {
+  characterId: string;
+  maxMemories?: number;
+  maxAgeMonths?: number;
+  minImportance?: number;
+  mergeSimilar?: boolean;
+  dryRun?: boolean;
+}
+
+/** The instance-wide housekeeping config (v4 defaults injected on Get). */
+export interface HousekeepingConfig {
+  enabled: boolean;
+  perCharacterCap: number;
+  perCharacterCapOverrides: Record<string, number>;
+  autoMergeSimilarThreshold: number;
+  mergeSimilar: boolean;
+}
+
+/** One row of the character memory-count roster (memoryCount desc). */
+export interface CharacterMemoryCount {
+  id: string;
+  name: string;
+  memoryCount: number;
+}
+
+export interface MemoryHousekeepPreviewRequest {
+  type: 'memoryHousekeepPreview';
+  characterId: string;
+  maxMemories?: number;
+  maxAgeMonths?: number;
+  minImportance?: number;
+  mergeSimilar?: boolean;
+}
+export interface MemoryHousekeepRequest {
+  type: 'memoryHousekeep';
+  options: MemoryHousekeepOptions;
+}
+export interface MemoryHousekeepSweepRequest {
+  type: 'memoryHousekeepSweep';
+}
+export interface MemoryHousekeepingConfigGetRequest {
+  type: 'memoryHousekeepingConfigGet';
+}
+export interface MemoryHousekeepingConfigSetRequest {
+  type: 'memoryHousekeepingConfigSet';
+  /** Merge-patch: send only changed fields. */
+  config: Partial<HousekeepingConfig>;
+}
+export interface MemoryCharacterCountsRequest {
+  type: 'memoryCharacterCounts';
+}
+
+// --- Embeddings / backfill --------------------------------------------------
+
+/** Per-character embedding coverage (v4 `memoryEmbeddingStatus`). */
+export interface MemoryEmbeddingStatus {
+  total: number;
+  withEmbeddings: number;
+  withoutEmbeddings: number;
+  percentComplete: number;
+  embeddingProfileConfigured: boolean;
+  embeddingProfileName: string | null;
+}
+
+/** The instance-wide backfill progress (v4 `action=backfill-embeddings` GET). */
+export interface BackfillProgress {
+  remaining: number;
+  inFlight: number;
+}
+
+export interface MemoryEmbeddingStatusRequest {
+  type: 'memoryEmbeddingStatus';
+  characterId: string;
+}
+export interface MemoryGenerateEmbeddingsRequest {
+  type: 'memoryGenerateEmbeddings';
+  characterId: string;
+  batchSize?: number;
+}
+export interface MemoryRebuildIndexRequest {
+  type: 'memoryRebuildIndex';
+  characterId: string;
+  confirm: true;
+}
+export interface MemoryBackfillProgressRequest {
+  type: 'memoryBackfillProgress';
+}
+export interface MemoryBackfillStartRequest {
+  type: 'memoryBackfillStart';
+  characterId?: string;
+  batchSize?: number;
+}
+
+// --- Configs (all merge-patch on Set) --------------------------------------
+
+/** The cross-project recall policy (v4 `memoryRecall` instance setting). */
+export interface RecallConfig {
+  scopePolicy: 'down-weight' | 'exclude';
+  expandRelated: boolean;
+}
+
+export interface MemoryExtractionLimitsGetRequest {
+  type: 'memoryExtractionLimitsGet';
+}
+export interface MemoryExtractionLimitsSetRequest {
+  type: 'memoryExtractionLimitsSet';
+  config: Record<string, unknown>;
+}
+export interface MemoryRecallConfigGetRequest {
+  type: 'memoryRecallConfigGet';
+}
+export interface MemoryRecallConfigSetRequest {
+  type: 'memoryRecallConfigSet';
+  config: Partial<RecallConfig>;
+}
+export interface MemoryExtractionConcurrencyGetRequest {
+  type: 'memoryExtractionConcurrencyGet';
+}
+export interface MemoryExtractionConcurrencySetRequest {
+  type: 'memoryExtractionConcurrencySet';
+  concurrency: number;
+}
+
+// --- Regenerate + per-chat --------------------------------------------------
+
+/** The regenerate-all in-flight breakdown (v4 `action=regenerate-all` GET). */
+export interface RegenerateAllStatus {
+  inFlightFanOut: number;
+  inFlightWipes: number;
+  inFlightExtractions: number;
+  inFlight: number;
+}
+
+export interface MemoryRegenerateAllStatusRequest {
+  type: 'memoryRegenerateAllStatus';
+}
+export interface MemoryRegenerateAllRequest {
+  type: 'memoryRegenerateAll';
+}
+export interface ChatQueueMemoriesRequest {
+  type: 'chatQueueMemories';
+  chatId: string;
+}
+
+/**
+ * The memory-surface request variants (P4.6t). Folded into {@link CoreRequest}
+ * via {@link MemoryRequest}. Variant `type` names + param names are BINDING at
+ * name level (identical in p4.6s / p4.6t / p4.6u); the SPA reads response bodies
+ * through `dispatchData` and reconciles envelopes at unification.
+ */
+export type MemoryRequest =
+  | MemoryListRequest
+  | MemoryGetRequest
+  | MemoryCreateRequest
+  | MemoryUpdateRequest
+  | MemoryDeleteRequest
+  | MemoryDeleteByChatRequest
+  | MemorySearchRequest
+  | MemoryCountByChatRequest
+  | MemoryByMessageRequest
+  | MemoryHousekeepPreviewRequest
+  | MemoryHousekeepRequest
+  | MemoryHousekeepSweepRequest
+  | MemoryHousekeepingConfigGetRequest
+  | MemoryHousekeepingConfigSetRequest
+  | MemoryCharacterCountsRequest
+  | MemoryEmbeddingStatusRequest
+  | MemoryGenerateEmbeddingsRequest
+  | MemoryRebuildIndexRequest
+  | MemoryBackfillProgressRequest
+  | MemoryBackfillStartRequest
+  | MemoryExtractionLimitsGetRequest
+  | MemoryExtractionLimitsSetRequest
+  | MemoryRecallConfigGetRequest
+  | MemoryRecallConfigSetRequest
+  | MemoryExtractionConcurrencyGetRequest
+  | MemoryExtractionConcurrencySetRequest
+  | MemoryRegenerateAllStatusRequest
+  | MemoryRegenerateAllRequest
+  | ChatQueueMemoriesRequest;

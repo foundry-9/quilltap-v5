@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+P4.6t lane B, unit 1 — the character Memories (Commonplace Book)
+vertical. The `memories-tab.ts` placeholder is closed: the per-character
+Memories tab now renders v4's `MemoryList` — a debounced search box,
+sort-by / sort-order / source filters, an infinite-scroll grid of memory
+cards (`MEMORIES_PER_PAGE = 30`, id-deduped across pages to survive
+offset instability during a regenerate sweep), the create/edit editor
+(plain textarea for content — the Lexical editor is a D17 deferral;
+always sends `source:'MANUAL'`, never edits tags), and inline
+delete-with-confirm. The memory card renders v4's Low/Medium/High
+importance buckets, AUTO/MANUAL badge, keyword chips, read-only tag
+badges, expandable content (>150 chars), and an AUTO Source link (deep
+message anchoring deferred — navigates to the chat). Lane B authors the
+`core-contract.ts` memory block (all P4.6t Shared-contract Request
+variants + read DTOs, folded into `CoreRequest`) and the shared
+`memory/` data layer + pure-logic helpers. Unit specs for the pure logic
+(bucket thresholds, keywords join/split, page-dedupe transcribed from
+v4), card, editor, and list (mocked CoreClient). SPA → 0.5.35.
 P4.6s memories server, part 5 (embedding status + backfill; tier-2 close):
 `memoryEmbeddingStatus` (coverage % + configured profile name via a new
 `find_default_id_name` finder) and `memoryBackfillStart` (batch-enqueue

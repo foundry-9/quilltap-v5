@@ -142,7 +142,7 @@ const CHARACTER_TABS: Tab[] = [
                 />
               }
               @case ('memories') {
-                <qt-character-memories-tab />
+                <qt-character-memories-tab [characterId]="id()" />
               }
               @case ('tags') {
                 <qt-character-tags-tab [characterId]="id()" />
