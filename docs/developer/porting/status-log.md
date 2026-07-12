@@ -8692,3 +8692,49 @@ Mode pane [the split scaffolding + `documentContent` slot await it],
 xterm optional addons, exit/kill toasts pending a toast bus).
 **Versions after the round:** core 0.0.193, harness 0.0.177, host
 0.0.12, web 0.0.13, SPA 0.5.43.
+
+## P4.6v (lane A) — the mount-index file-ops server surface (2026-07-12, in progress)
+
+Lane A of the P4.6v ∥ P4.6w ∥ P4.6x round (v4 baseline `a7b1398d`,
+drift-checked clean at lane start). Ports v4's `lib/mount-index/`
+service layer + the route surface over it as mount-file dispatch
+variants. New home: `quilltap-core::services::mount_index`.
+
+### P4.6v unit 1 — the tier-1 pure leaves — LANDED
+
+`services/mount_index/{chunker,file_op_error,file_op_status,path_utils}.rs`.
+
+- **chunker.rs** — `chunk_document` + `estimate_tokens` (v4
+  `lib/mount-index/chunker.ts`). Every string op preserves JS semantics
+  via `jsstr`: `.length` → `utf16_len`, `.trim()` → `js_trim`,
+  `.slice`/`.indexOf` → UTF-16 offsets. The sentence splitter
+  (`/(?<=[.?!])\s+/`, lookbehind — unsupported by the `regex` crate) is
+  hand-rolled walking JS-whitespace runs; the heading regex is built
+  from `JS_WS_CLASS` + JS line-terminator exclusion for `.`.
+- **path_utils.rs** — `normalise_relative_path` (throws
+  `FileOpError('INVALID_PATH')`), `detect_native_text`,
+  `mime_for_extension`. Reproduces Node `path.posix.normalize`
+  (the `.`/`..` collapsing that partially resolves traversal, then
+  strip-slashes + reject surviving `..`) and `path.posix.extname` (a
+  leading-dot dotfile has NO extension) faithfully. The web edge
+  (`files_routes.rs`) now shares this one `mime_for_extension` — the
+  duplicate there (an `rsplit`-based approximation that diverged on
+  dotfiles) is removed.
+- **file_op_error.rs / file_op_status.rs** — `FileOpError` (leaf module,
+  no imports, per v4) + `file_op_status_for_code` mapping the
+  `FileOpError` ∪ `DatabaseStoreError` code union to 404/409/400/500.
+
+Differential: `harness/oracle/cases/mount-chunker.ts` drives v4's REAL
+`chunker` / `path-utils` / `file-op-status` / `file-op-error` /
+`database-store` (69 rows: chunk trees under small token targets to
+exercise greedy-flush / overlap / oversized sentence-word-hardsplit
+branches, estimateTokens UTF-16 cases, normalise happy+traversal paths,
+nativeText/mime extension table, fileOpStatus over both code unions).
+Rust diff `mount_chunker_equivalence.rs` — exact string / integer.
+Regenerate: `cd ~/source/quilltap-server && npx tsx
+~/source/quilltap-v5/harness/oracle/cases/mount-chunker.ts >
+/tmp/oracle-mount-chunker.ndjson`; run
+`QT_ORACLE_MOUNT_CHUNKER=/tmp/oracle-mount-chunker.ndjson cargo test -p
+quilltap-harness --test mount_chunker_equivalence`.
+
+**Versions:** core 0.0.194, web 0.0.14, harness 0.0.178.

@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.6v (lane A, the mount-index file-ops server) unit 1: the tier-1 pure
+leaves of v4's `lib/mount-index/` — the chunker (`chunkDocument` /
+`estimateTokens`), the path utilities (`normaliseRelativePath` /
+`detectNativeText` / `mimeForExtension`, ported with a faithful
+`path.posix.normalize` / `path.posix.extname`), the `FileOpError` type,
+and the `fileOpStatus` HTTP-status mapper. Landed under
+`quilltap-core::services::mount_index`; the web edge now shares the one
+`mime_for_extension` port (the duplicate in `files_routes.rs` removed).
+Differential-proven exact against v4's real code (a 69-row tsx oracle,
+`harness/oracle/cases/mount-chunker.ts`).
+
 Work orders for the P4.6v ∥ P4.6w ∥ P4.6x round (the Document Mode +
 Scriptorium-server round), docs only. Lane A
 (p4.6v-mount-index-file-ops-server.md): the mount-index file-ops

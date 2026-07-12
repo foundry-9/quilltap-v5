@@ -33,6 +33,7 @@ use quilltap_core::files::image_processing::can_resize_image;
 use quilltap_core::services::file_storage::{
     build_thumbnail_storage_key, download_file, storage_key_exists, upload_raw,
 };
+use quilltap_core::services::mount_index::path_utils::mime_for_extension;
 use quilltap_host::{HostImageCodec, LocalStorageBackend};
 use serde_json::json;
 
@@ -142,29 +143,10 @@ fn file_bytes_response(mime: &str, filename: &str, bytes: Vec<u8>) -> AxumRespon
         .into_response()
 }
 
-/// v4 `mimeForExtension` (`lib/mount-index/path-utils.ts`).
-fn mime_for_extension(relative_path: &str) -> &'static str {
-    let ext = relative_path
-        .rsplit('/')
-        .next()
-        .and_then(|name| name.rsplit_once('.').map(|(_, e)| e))
-        .map(|e| e.to_ascii_lowercase())
-        .unwrap_or_default();
-    match ext.as_str() {
-        "md" | "markdown" => "text/markdown; charset=utf-8",
-        "txt" => "text/plain; charset=utf-8",
-        "json" => "application/json; charset=utf-8",
-        "jsonl" | "ndjson" => "application/jsonl; charset=utf-8",
-        "webp" => "image/webp",
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "svg" => "image/svg+xml",
-        "pdf" => "application/pdf",
-        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        _ => "application/octet-stream",
-    }
-}
+// `mime_for_extension` is shared from
+// `quilltap_core::services::mount_index::path_utils` (P4.6v moved the v4
+// `mimeForExtension` port into core so the web edge and the mount-index service
+// layer share one `path.extname`-faithful implementation) — imported at the top.
 
 /// v4 `mimeForDocument` (the blobs route's documents fallback).
 fn mime_for_document(file_type: &str) -> &'static str {
