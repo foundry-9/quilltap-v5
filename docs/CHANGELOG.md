@@ -2,6 +2,24 @@
 
 ## Recent Changes
 
+P4.4u4 unit 3 (lane C, tier 2): reset_builtins as a service. Ported v4's
+`handleResetBuiltins` to `quilltap-core::services::quilltap_import::reset::
+reset_builtins` — cascade-delete the built-in characters (Lorian, Riya),
+re-import the committed seed with the seed-id → preserved-id remap
+(`replace_mapped_ids_recursively` + `find_builtin_character_ids`), then
+reseed the built-in avatars. Composes the already-differentially-proven
+`execute_cascade_delete` (P4.6i), `execute_import` (unit 1), and
+`seed_avatars` (unit 2). Reproduces v4's quirk that `create` mints fresh
+ids, so the "preserved" ids are not actually preserved (postResetIds
+differ). Proven by `reset_builtins_equivalence` (tier-2: v4's real
+`handleResetBuiltins` driven through the collection route over a
+pre-seeded instance vs the service — the result shape, the post-state
+counts, and the normalized post-reset characters/memories rows). The
+qtap-import fixture builder now also materializes the cascade-touched
+tables (chats/files/character_plugin_data/vector_indices/vector_entries).
+The dispatch arm (the Request variant + api/characters.rs arm) is deferred
+to unification (lane A owns api/types.rs this round).
+
 P4.4u4 unit 2 (lane C): the startup sample-content seed wire. Ported v4's
 `seedInitialData` gated tail (`quilltap-core::services::quilltap_import::
 seed`): the zero-characters gate, `seedFromImports` (import the committed

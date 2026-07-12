@@ -7158,6 +7158,88 @@ QT_FIXTURE_QTAPIMPORT_MOUNT=/tmp/qt-qtapimport-mount.db \
 
 Versions after unit 2: core 0.0.178, harness 0.0.163, host 0.0.11.
 
+**Unit 3 — reset_builtins as a service (tier 2, DONE).** v4
+`handleResetBuiltins` (`app/api/v1/characters/handlers/post.ts:196`) ported
+to `quilltap-core::services::quilltap_import::reset::reset_builtins`
+(run inside one `Db::write` closure):
+
+- Cascade-delete each built-in (`BUILTIN_CHARACTER_NAMES = ['Lorian',
+  'Riya']`) via `execute_cascade_delete(id, false, false)` (P4.6i);
+  capture `preserved_ids` first.
+- Seed-id → preserved-id remap: `find_builtin_character_ids` (`{name: id}`
+  from `data.characters`) + `replace_mapped_ids_recursively` (the recursive
+  string remap over the whole export), then re-`execute_import` with the
+  seed options.
+- `reseed_avatars_for_characters(['Lorian','Riya'])`.
+- Returns `{deleted_character_ids, preserved_ids, post_reset_ids,
+  remapped_id_count, import}`.
+
+**Banked quirk (ported faithfully):** `create` MINTS a fresh id (strips the
+source id), so the seed-id → preserved-id remap does NOT make the
+re-imported character keep its old id — `postResetIds` are a THIRD set of
+minted ids, different from `preservedIds`. The remap machinery is
+effectively vestigial for character ids; ported verbatim (the differential
+pins it). Confirmed on both sides (v4 body: preserved
+`dca3ec57…`/`3bd0cbae…`, postReset `0cba9cdf…`/`f50edb1b…`,
+remappedIdCount 2).
+
+Differential — `reset_builtins_equivalence` (tier-2): v4's REAL
+`handleResetBuiltins` driven through the collection route
+(`POST /characters?action=reset-builtins`, jest, auth-session +
+startup-state mocked, character-vault-bridge un-mocked) over a PRE-SEEDED
+instance (Lorian + Riya + both avatars) vs the Rust service. Diffs the
+result shape (deletedCharacterCount / remappedIdCount / preserved+postReset
+present / postReset ≠ preserved / imported {2,42}), the post-state counts
+(2 chars, 42 memories, 2 avatar links, 2 chars-with-avatar), and the
+normalized post-reset characters + memories rows. (Cascade delete / import
+/ avatar seed are each byte-proven separately — this pins the composition +
+the two pure helpers + the result shape.)
+
+**Fixture change:** the shared qtap-import fixture builder now materializes
+the tables the cascade delete touches (`chats` / `files` /
+`character_plugin_data` via `ensureCollection`, `vector_indices` /
+`vector_entries` via a `VectorIndicesRepository` read) — the Rust port
+never issues DDL, so they must pre-exist (v4 auto-creates them lazily).
+Harmless extra empty tables for the plain-import + avatar oracles (never
+dumped); all three oracles regenerated. The reset oracle also seeds the
+single `users` row (the v4 auth middleware needs `users.findById`; the Rust
+reset reads characters by userId directly and needs none).
+
+**⚠️ UNIFICATION WIRE (deferred, loud):** the `reset-builtins` DISPATCH arm
+— the `Request::CharactersResetBuiltins`-style variant in `api/types.rs`
+(lane A's file this round) + the `api/characters.rs` dispatch arm calling
+`reset_builtins` — is NOT in this lane. The `pub` service + its differential
+are delivered; wire the dispatch at unification (the
+`[[p4.6i-characters-remainder-server]]` photo_link_summary precedent). Also
+flip `HostConfig::seed_sample_content` to default-ON and update the
+fresh-boot e2e fixtures at unification.
+
+Regen recipe (jest, from the v4 checkout — /tmp mirror, cwd = v4 root):
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<worktree>
+TMPO=/tmp/qt-reset-builtins-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
+cp "$V5W/harness/oracle/cases/reset-builtins.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/qtap-import-tier2.json" "$TMPO/fixtures/"
+cp "$V5W/harness/oracle/lib/tier2.ts" "$TMPO/lib/"
+cd ~/source/quilltap-server
+QT_FIXTURE_QTAPIMPORT_MAIN=/tmp/qt-qtapimport-main.db \
+QT_FIXTURE_QTAPIMPORT_MOUNT=/tmp/qt-qtapimport-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-reset-builtins.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- reset-builtins
+# run: QT_ORACLE_RESET_BUILTINS + QT_FIXTURE_QTAPIMPORT_{MAIN,MOUNT} \
+#   cargo test -p quilltap-harness --test reset_builtins_equivalence
+```
+
+**P4.4u4 lane C COMPLETE** (units 1–3): the quilltap-import seed subset +
+the startup seed wire + reset_builtins, all differential-proven. Versions
+after the lane: core 0.0.179, harness 0.0.164, host 0.0.11. Deferred to
+unification: the reset-builtins dispatch wire; the
+`seed_sample_content` default-on flip + e2e fixture activation. Both
+characters-family orders' (P4.6f/P4.6i) `reset-builtins` deferral is now
+UNBLOCKED (the service exists; only the dispatch wire remains).
+
 ## P4.6n (lane A) unit 1 — scenarios-common service surface (2026-07-11, in progress)
 
 Ported the write/list half of v4's `lib/mount-index/scenarios-common.ts`

@@ -67,9 +67,14 @@ async function main(): Promise<void> {
   const { getRawMountIndexDatabase, closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
-  const { CharacterSchema } = await import('@/lib/schemas/types');
+  const { CharacterSchema, ChatMetadataSchema, FileEntrySchema } = await import(
+    '@/lib/schemas/types'
+  );
   const { WardrobeItemSchema } = await import('@/lib/schemas/wardrobe.types');
   const { MemorySchema } = await import('@/lib/schemas/memory.types');
+  const { CharacterPluginDataSchema } = await import(
+    '@/lib/schemas/character-plugin-data.types'
+  );
   const { generateDDL } = await import('@/lib/database/schema-translator');
   const {
     DocMountPointSchema,
@@ -87,6 +92,19 @@ async function main(): Promise<void> {
   await ensureCollection('characters', CharacterSchema);
   await ensureCollection('wardrobe_items', WardrobeItemSchema);
   await ensureCollection('memories', MemorySchema);
+
+  // The tables the reset-builtins cascade delete touches (the Rust port never
+  // issues DDL, so they must pre-exist; v4 auto-creates them lazily). Harmless
+  // extra empty tables for the plain import + avatar oracles (never dumped).
+  await ensureCollection('chats', ChatMetadataSchema);
+  await ensureCollection('files', FileEntrySchema);
+  await ensureCollection('character_plugin_data', CharacterPluginDataSchema);
+  // vector_indices + vector_entries — created by the repo's hand-written DDL,
+  // triggered with a read.
+  const { VectorIndicesRepository } = await import(
+    '@/lib/database/repositories/vector-indices.repository'
+  );
+  await new VectorIndicesRepository().getAllCharacterIds();
 
   // MOUNT-INDEX db: materialize every store table the create/provision/write path
   // touches, via v4's own generated DDL.

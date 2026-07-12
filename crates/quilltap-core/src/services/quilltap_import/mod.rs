@@ -40,6 +40,7 @@
 mod characters;
 mod memories;
 mod reconcile;
+pub mod reset;
 pub mod seed;
 pub mod seed_assets;
 
