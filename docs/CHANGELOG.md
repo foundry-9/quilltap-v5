@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+P4.6t lane B, unit 2 — the per-character memory Cleanup (housekeeping)
+dialog. The Memories tab's Cleanup button (shown when the list is
+non-empty) opens v4's `housekeeping-dialog.tsx` over `qt-modal`: the
+options (max unprotected memories, max age in months, min-importance
+deletion threshold slider, merge-similar), a 300ms-debounced preview
+(`memoryHousekeepPreview`) rendering the Keep / Delete / Merge stat tiles
+and a changes list (kept rows omitted), and a Run
+(`memoryHousekeep`, `dryRun:false`) that deletes and refetches. Run is
+disabled while loading or when the preview shows nothing to do. Preview
+errors surface in an alert. Unit spec (mocked CoreClient) covers the
+debounced preview, the changed-details filter, the disabled-when-idle
+guard, the dryRun:false run + complete emit, and the error path.
+SPA → 0.5.36.
+
 P4.6t lane B, unit 1 — the character Memories (Commonplace Book)
 vertical. The `memories-tab.ts` placeholder is closed: the per-character
 Memories tab now renders v4's `MemoryList` — a debounced search box,

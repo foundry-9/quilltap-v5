@@ -8353,3 +8353,20 @@ under `apps/web/src/app/memory/`:
 (`MemoryDto`/`MemoryWriteBag`/housekeeping+config+backfill+recall+
 regenerate DTOs + all Request variants) folded into `CoreRequest` via
 `MemoryRequest`. Gate: `ng test` 359/359, `ng build` clean. SPA → 0.5.35.
+
+**Unit 2 — the per-character housekeeping dialog (2026-07-12).**
+`memory/housekeeping-dialog.ts` (+ spec) ports v4
+`components/memory/housekeeping-dialog.tsx` over `qt-modal`: the options
+(max unprotected memories / max age months / min-importance threshold
+slider 0–0.7 step 0.1 / merge-similar), a 300ms-debounced preview via
+`memoryHousekeepPreview` (an Angular `effect` reading the option signals
++ a debounce timer), the Keep/Delete/Merge stat tiles, the changes list
+(`action !== 'kept'`), and the Run via `memoryHousekeep`
+(`dryRun:false`) → `complete` emit → list refetch. Run disabled while
+loading or when `wouldDelete === 0 && wouldMerge === 0` (v4 parity).
+`memory-list.ts` grew the Cleanup button (shown only when the list is
+non-empty, v4 `memories.length > 0`) + the dialog wiring. NOTE: the
+preview/run envelope asymmetry (`data.preview` with `wouldDelete/…` vs
+`data.result` with `deleted/…`; `details` only on dryRun) is read
+through the api-layer defensive extractors; lane A's oracle pins the
+exact bodies. Gate: `ng test` 364/364, `ng build` clean. SPA → 0.5.36.

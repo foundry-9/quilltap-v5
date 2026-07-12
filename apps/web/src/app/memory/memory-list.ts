@@ -17,6 +17,7 @@ import { CoreClient } from '../core/core-client';
 import type { MemoryDto, MemorySortBy, MemorySortOrder } from '../core/core-contract';
 import { SectionHeader } from '../ui/section-header';
 import { fetchMemories, memoryKeys, type MemoryListPage } from './memory.api';
+import { HousekeepingDialog } from './housekeeping-dialog';
 import { MemoryCard } from './memory-card';
 import { MemoryEditor } from './memory-editor';
 import { appendUniqueMemories } from './memory-format';
@@ -42,7 +43,7 @@ type SourceFilter = 'ALL' | 'AUTO' | 'MANUAL';
 @Component({
   selector: 'qt-memory-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SectionHeader, MemoryCard, MemoryEditor],
+  imports: [SectionHeader, MemoryCard, MemoryEditor, HousekeepingDialog],
   template: `
     <div class="space-y-4">
       @if (banner(); as msg) {
@@ -50,11 +51,23 @@ type SourceFilter = 'ALL' | 'AUTO' | 'MANUAL';
       }
 
       <!-- Header -->
-      <qt-section-header title="Memories" [count]="totalCount()">
-        <button type="button" class="qt-button-primary qt-button-sm" (click)="openCreate()">
-          Add Memory
-        </button>
-      </qt-section-header>
+      <div class="flex items-center justify-between gap-4">
+        <qt-section-header title="Memories" [count]="totalCount()" class="flex-1">
+          <button type="button" class="qt-button-primary qt-button-sm" (click)="openCreate()">
+            Add Memory
+          </button>
+        </qt-section-header>
+        @if (memories().length > 0) {
+          <button
+            type="button"
+            class="px-3 py-1.5 qt-bg-muted qt-text-body text-sm rounded-lg qt-hover-accent"
+            title="Clean up old and low-importance memories"
+            (click)="showHousekeeping.set(true)"
+          >
+            Cleanup
+          </button>
+        }
+      </div>
 
       <!-- Filters -->
       <div class="flex flex-wrap gap-3 items-center">
@@ -163,6 +176,14 @@ type SourceFilter = 'ALL' | 'AUTO' | 'MANUAL';
       />
     }
 
+    @if (showHousekeeping()) {
+      <qt-housekeeping-dialog
+        [characterId]="characterId()"
+        (close)="showHousekeeping.set(false)"
+        (complete)="onHousekeepingComplete()"
+      />
+    }
+
     @if (pendingDeleteId(); as id) {
       <div class="qt-dialog-overlay" (click)="pendingDeleteId.set(null)">
         <div class="qt-dialog max-w-md" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
@@ -205,6 +226,7 @@ export class MemoryList {
   protected readonly sourceFilter = signal<SourceFilter>('ALL');
 
   protected readonly showEditor = signal(false);
+  protected readonly showHousekeeping = signal(false);
   protected readonly editingMemory = signal<MemoryDto | null>(null);
   protected readonly pendingDeleteId = signal<string | null>(null);
   protected readonly deletingId = signal<string | null>(null);
@@ -338,6 +360,11 @@ export class MemoryList {
     } finally {
       this.deletingId.set(null);
     }
+  }
+
+  protected onHousekeepingComplete(): void {
+    this.showHousekeeping.set(false);
+    void this.queryClient.invalidateQueries({ queryKey: memoryKeys.list(this.characterId()) });
   }
 
   protected navigateToSource(e: { chatId: string; messageId: string }): void {
