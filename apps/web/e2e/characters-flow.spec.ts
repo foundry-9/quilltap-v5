@@ -412,7 +412,24 @@ const MEM_SERVER_LOG = resolve(ARTIFACTS_DIR, 'memories-server.log');
 const MEM_MAIN_FIXTURE = resolve(FIXTURES_DIR, 'memories-main.db');
 const MEM_MOUNT_FIXTURE = resolve(FIXTURES_DIR, 'memories-mount.db');
 const MEM_FIXTURE_READY = existsSync(MEM_MAIN_FIXTURE);
-const MEM_USER_TABLES = ['characters', 'memories', 'tags', 'chats', 'files'];
+// Every user-scoped table the memory vertical touches. The embedding tables
+// matter: memoryCreate runs the gate, which resolves the DEFAULT embedding
+// profile for the SESSION user — left un-rewritten, the fixture's BUILTIN
+// profile stays on FIXTURE_USER and every create fails with the (faithful)
+// "Failed to generate embedding" server error. The rewrite loop tolerates
+// tables/columns a fixture doesn't carry.
+const MEM_USER_TABLES = [
+  'characters',
+  'memories',
+  'tags',
+  'chats',
+  'files',
+  'chat_settings',
+  'connection_profiles',
+  'api_keys',
+  'embedding_profiles',
+  'tfidf_vocabularies',
+];
 
 let memServer: ChildProcess | undefined;
 
@@ -520,7 +537,9 @@ test.describe('P4.6t — Memories tab (Commonplace Book)', () => {
     // header carries the total count — its presence proves the paginated list
     // queried the fixture (the baked memories render as cards below it, or the
     // empty state if this character has none — either way the vertical is live).
-    await page.getByRole('button', { name: 'Memories' }).click();
+    // Scope to the tab bar: a conversation card's "Memories" count glyph shares
+    // the accessible name (strict-mode collision — the P4.6pqr scoping recipe).
+    await page.locator('nav.qt-tab-group').getByRole('button', { name: 'Memories' }).click();
     await expect(page.getByRole('heading', { name: /Memories \(\d+\)/ })).toBeVisible({
       timeout: 10_000,
     });
@@ -531,8 +550,13 @@ test.describe('P4.6t — Memories tab (Commonplace Book)', () => {
     await page.getByRole('button', { name: 'Add Memory', exact: true }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
+    // Assert each fill stuck before submitting (explicit sync points — the
+    // fresh dialog's first fill was observed lost to a render race without
+    // them, leaving the required field empty and the submit a silent no-op).
     await dialog.getByPlaceholder('Brief summary of this memory').fill(summary);
+    await expect(dialog.getByPlaceholder('Brief summary of this memory')).toHaveValue(summary);
     await dialog.getByLabel('Memory content').fill('A note filed away by the P4.6t e2e walk.');
+    await expect(dialog.getByPlaceholder('Brief summary of this memory')).toHaveValue(summary);
     await dialog.getByRole('button', { name: 'Create Memory' }).click();
     await expect(dialog).toBeHidden({ timeout: 10_000 });
 
