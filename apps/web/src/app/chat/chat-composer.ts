@@ -28,6 +28,18 @@ import { Icon } from '../ui/icon';
         ></textarea>
 
         <div class="qt-chat-composer-actions">
+          @if (!terminalActive()) {
+            <button
+              type="button"
+              class="qt-chat-toolbar-button"
+              title="Open terminal"
+              aria-label="Open terminal"
+              (click)="openTerminal.emit()"
+            >
+              <qt-icon name="code" class="w-5 h-5" />
+            </button>
+          }
+
           <button
             type="button"
             class="qt-chat-toolbar-button qt-chat-continue-button"
@@ -70,15 +82,22 @@ export class ChatComposer {
   readonly busy = input(false);
   readonly disabled = input(false);
   readonly hasActiveCharacters = input(true);
+  /** Terminal Mode is showing a pane — hide the open-terminal button (v4). */
+  readonly terminalActive = input(false);
 
   readonly send = output<string>();
   readonly stop = output<void>();
   readonly continue = output<void>();
+  readonly openTerminal = output<void>();
 
   protected readonly text = signal('');
 
   protected readonly canSend = computed(
-    () => !this.disabled() && !this.busy() && this.text().trim().length > 0 && this.hasActiveCharacters(),
+    () =>
+      !this.disabled() &&
+      !this.busy() &&
+      this.text().trim().length > 0 &&
+      this.hasActiveCharacters(),
   );
 
   protected readonly placeholder = computed(() =>

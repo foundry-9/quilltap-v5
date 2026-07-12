@@ -8497,3 +8497,34 @@ Mode supplies the top pane in a later slice.
 `terminal-mode.spec.ts` (`clampSplit`, `nextFocusMode`, `isLiveSession`,
 and the controller's open/hydrate/kill/focus decision tree over a stub
 api). `ng test` green (51 files / 359 tests); `tsc` clean. SPA 0.5.36.
+
+### P4.6u unit 3 — terminal pane + picker + Salon wiring — LANDED
+
+`terminal-pane.ts` (v4 `TerminalPane`): the right-side wrapper — header
+with focus-toggle / hide-pane / kill (two-click confirm, auto-cancel 4 s)
+and the `qt-terminal` body. Reads the session meta (a second ref-counted
+handle sharing the WS) for the title. `terminal-session-picker.ts` (v4
+`TerminalSessionPicker`): the live-session list + New-terminal row over
+`qt-modal`.
+
+Salon wiring (`salon-conversation.ts`): provides `TerminalModeController`
+at the component; the chat body + the terminal pane are passed as
+`TemplateRef`s into `qt-split-layout`; `configure(chatId, refetch)` +
+`hydrate(chat())` on load; the `quilltap:chat-update` /
+`quilltap:terminal-exited` DOM events refetch the chat (so Ariel's
+announcements appear); Cmd/Ctrl+Shift+T toggles the pane, Escape exits
+focus (v4's shortcuts). `chat-composer.ts` gained the "Open terminal"
+button (v4's `code` glyph, hidden while a pane is up) + `terminalActive`
+input.
+
+core-contract.ts: ONE clearly-delimited lane-C block (single-author) —
+documents that the terminal WS/REST protocol types live in
+`app/terminal/terminal-protocol.ts` (NOT the dispatch envelope), and
+merges the pane-state read fields (`terminalMode` /
+`activeTerminalSessionId` / `rightPaneVerticalSplit` / `dividerPosition`)
+onto `ChatDetail` via interface declaration-merging — the original
+`ChatDetail` (lane B's surface) is untouched. The write bag rides
+`ChatUpdateRequest.chat: Record<string, unknown>` as-is.
+
+**Differential:** SPA tier 4 — the surface's proof is the live e2e (next
+unit). `ng test` green (359); `ng build` clean. SPA 0.5.37.

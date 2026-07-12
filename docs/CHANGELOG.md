@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.6u (lane C) — the terminal pane wired into the Salon. Added
+`terminal-pane.ts` (v4 `TerminalPane`: header focus-toggle / hide / kill
+with a two-click confirm + the xterm body) and `terminal-session-picker.ts`
+(v4 `TerminalSessionPicker`, over `qt-modal`). The Salon conversation now
+provides `TerminalModeController`, wraps its chat + terminal pane in
+`qt-split-layout`, hydrates the pane state on chat load, refetches on the
+`quilltap:chat-update` / `quilltap:terminal-exited` DOM events, and binds
+Cmd/Ctrl+Shift+T (toggle) + Escape (exit focus). The composer gained an
+"Open terminal" button (hidden while the pane is up). The lane-C
+core-contract block documents the terminal protocol home + merges the
+pane-state read fields onto `ChatDetail`.
+
 P4.6u (lane C) — the terminal mode controller + split layout. Added
 `terminal-api.ts` (the REST wrapper over the frozen `/api/v1/terminals*`
 routes + pane-state persistence via `chatUpdate`), `terminal-mode.ts`

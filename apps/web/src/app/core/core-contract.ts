@@ -2625,8 +2625,7 @@ export type ListingSurfaceRequest =
 // (raw `data`), so only the request `type` strings + param names are
 // load-bearing on this side; response bodies are read defensively and reconciled
 // name-for-name at unification.
-// ===========================================================================
-
+// ====================================================================
 /** A derived tag row on a memory read (list/get/search enrich `tags` → rows). */
 export interface MemoryTagDetail {
   id: string;
@@ -2954,3 +2953,31 @@ export type MemoryRequest =
   | MemoryRegenerateAllStatusRequest
   | MemoryRegenerateAllRequest
   | ChatQueueMemoriesRequest;
+=======
+// P4.6u (lane C) — the Salon terminal-pane block.
+// Appended by lane C; single-author (lane B, the file owner, must not edit this
+// block). The terminal WebSocket + REST protocol types live in
+// `app/terminal/terminal-protocol.ts` (pinned from the frozen Rust source
+// `quilltap_host::terminal::protocol`, itself a byte-verbatim port of v4
+// `lib/schemas/terminal.types.ts`) — they are NOT part of the dispatch envelope
+// (the terminal surface is direct REST + WebSocket, not `POST /api/dispatch`).
+//
+// The pane state the `chatUpdate` bag round-trips (P4.6c full-bag port) and the
+// enriched `chatGet` chat echoes back (server defaults: terminalMode "normal",
+// dividerPosition 45, rightPaneVerticalSplit 50). `ChatUpdateRequest.chat` is a
+// `Record<string, unknown>`, so these ride the WRITE bag without a signature
+// change; the READ fields are added to `ChatDetail` via interface
+// declaration-merging below (the original `ChatDetail` declaration stays
+// untouched — lane B's surface).
+// ===========================================================================
+
+/** The Salon terminal-pane state persisted on the chat record (P4.6c round-trip). */
+export interface ChatTerminalPaneState {
+  terminalMode?: 'normal' | 'split' | 'focus' | null;
+  activeTerminalSessionId?: string | null;
+  rightPaneVerticalSplit?: number | null;
+  dividerPosition?: number | null;
+}
+
+/** Merge the pane-state read fields onto `ChatDetail` (the server echoes them). */
+export interface ChatDetail extends ChatTerminalPaneState {}

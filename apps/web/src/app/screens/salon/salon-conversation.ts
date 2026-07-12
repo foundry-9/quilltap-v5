@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   computed,
   effect,
   inject,
@@ -39,6 +40,10 @@ import type {
 } from '../../core/core-contract';
 import { ErrorAlert } from '../../ui/error-alert';
 import { LoadingState } from '../../ui/loading-state';
+import { SplitLayout } from '../../terminal/split-layout';
+import { TerminalPane } from '../../terminal/terminal-pane';
+import { TerminalSessionPicker } from '../../terminal/terminal-session-picker';
+import { TerminalModeController } from '../../terminal/terminal-mode';
 
 /** The next-speaker projection off `chatTurnAction { action: 'query' }`. */
 interface TurnInfo {
@@ -66,6 +71,7 @@ interface CascadePrompt {
   // .qt-chat-layout h-full directly; Angular's host element sits in between).
   host: { class: 'block h-full' },
   changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [TerminalModeController],
   imports: [
     RouterLink,
     LoadingState,
@@ -75,6 +81,9 @@ interface CascadePrompt {
     TurnControls,
     ChatComposer,
     MemoryCascadeDialog,
+    SplitLayout,
+    TerminalPane,
+    TerminalSessionPicker,
   ],
   template: `
     <div class="qt-chat-layout">
@@ -91,52 +100,85 @@ interface CascadePrompt {
             <a routerLink="/salon" class="qt-link">← Back to chats</a>
           </div>
         } @else {
-          <qt-conversation-header [chat]="chat()!" />
-
-          <div class="qt-chat-messages-viewport">
-            <qt-message-list
-              [messages]="displayMessages()"
-              [chat]="chat()!"
-              [swipeStates]="effectiveSwipeStates()"
-              [settings]="settings()"
-              [stream]="stream()"
-              [editingId]="editingId()"
-              (copy)="onCopy($event)"
-              (edit)="onEdit($event)"
-              (delete)="onDelete($event)"
-              (regenerate)="onRegenerate($event)"
-              (swipePrev)="onSwipe($event, -1)"
-              (swipeNext)="onSwipe($event, 1)"
-              (saveEdit)="onSaveEdit($event)"
-              (cancelEdit)="editingId.set(null)"
-            />
-          </div>
-
-          <qt-turn-controls
-            [controlledCharacters]="controlledCharacters()"
-            [activeSpeakerId]="activeSpeakerId()"
-            [disabled]="busy()"
-            [isPaused]="chat()!.isPaused"
-            [userTurnName]="userTurnName()"
-            [mustSpeak]="mustSpeak()"
-            [skipError]="skipError()"
-            [nudgeTargetName]="nudgeTargetName()"
-            (selectSpeaker)="onSelectSpeaker($event)"
-            (skipUserTurn)="onSkipUserTurn()"
-            (togglePause)="onTogglePause()"
-            (nudge)="onNudge()"
-          />
-
-          <qt-chat-composer
-            [busy]="busy()"
-            [hasActiveCharacters]="hasActiveCharacters()"
-            (send)="send($event)"
-            (stop)="stop()"
-            (continue)="continueTurn()"
+          <qt-split-layout
+            [mode]="terminalMode.terminalMode()"
+            [dividerPosition]="terminalMode.dividerPosition()"
+            [rightPaneVerticalSplit]="terminalMode.rightPaneVerticalSplit()"
+            [chatContent]="chatContentTpl"
+            [terminalContent]="terminalActive() ? terminalPaneTpl : null"
+            (dividerPositionChange)="terminalMode.setDividerPosition($event)"
+            (rightPaneVerticalSplitChange)="terminalMode.setRightPaneVerticalSplit($event)"
           />
         }
       </div>
     </div>
+
+    <ng-template #chatContentTpl>
+      <qt-conversation-header [chat]="chat()!" />
+
+      <div class="qt-chat-messages-viewport">
+        <qt-message-list
+          [messages]="displayMessages()"
+          [chat]="chat()!"
+          [swipeStates]="effectiveSwipeStates()"
+          [settings]="settings()"
+          [stream]="stream()"
+          [editingId]="editingId()"
+          (copy)="onCopy($event)"
+          (edit)="onEdit($event)"
+          (delete)="onDelete($event)"
+          (regenerate)="onRegenerate($event)"
+          (swipePrev)="onSwipe($event, -1)"
+          (swipeNext)="onSwipe($event, 1)"
+          (saveEdit)="onSaveEdit($event)"
+          (cancelEdit)="editingId.set(null)"
+        />
+      </div>
+
+      <qt-turn-controls
+        [controlledCharacters]="controlledCharacters()"
+        [activeSpeakerId]="activeSpeakerId()"
+        [disabled]="busy()"
+        [isPaused]="chat()!.isPaused"
+        [userTurnName]="userTurnName()"
+        [mustSpeak]="mustSpeak()"
+        [skipError]="skipError()"
+        [nudgeTargetName]="nudgeTargetName()"
+        (selectSpeaker)="onSelectSpeaker($event)"
+        (skipUserTurn)="onSkipUserTurn()"
+        (togglePause)="onTogglePause()"
+        (nudge)="onNudge()"
+      />
+
+      <qt-chat-composer
+        [busy]="busy()"
+        [hasActiveCharacters]="hasActiveCharacters()"
+        [terminalActive]="terminalActive()"
+        (send)="send($event)"
+        (stop)="stop()"
+        (continue)="continueTurn()"
+        (openTerminal)="onOpenTerminal()"
+      />
+    </ng-template>
+
+    <ng-template #terminalPaneTpl>
+      <qt-terminal-pane
+        [sessionId]="terminalMode.activeTerminalSessionId()!"
+        [mode]="terminalMode.terminalMode()"
+        (toggleFocusMode)="terminalMode.toggleFocusMode()"
+        (hidePane)="terminalMode.hidePane()"
+        (kill)="terminalMode.killTerminal()"
+      />
+    </ng-template>
+
+    @if (terminalMode.showTerminalPicker()) {
+      <qt-terminal-session-picker
+        [sessions]="terminalMode.pickerSessions()"
+        (attach)="terminalMode.attachExistingSession($event)"
+        (spawnNew)="terminalMode.spawnNewSession()"
+        (close)="terminalMode.closeTerminalPicker()"
+      />
+    }
 
     @if (cascade(); as c) {
       <qt-memory-cascade-dialog
@@ -152,9 +194,72 @@ export class SalonConversation {
   private readonly route = inject(ActivatedRoute);
   private readonly core = inject(CoreClient);
   private readonly queryClient = injectQueryClient();
+  private readonly destroyRef = inject(DestroyRef);
+  /** Terminal Mode state for this conversation (v4 `useTerminalMode`). */
+  protected readonly terminalMode = inject(TerminalModeController);
 
   private readonly params = toSignal(this.route.paramMap, { requireSync: true });
   protected readonly chatId = computed(() => this.params().get('id'));
+
+  /** The terminal pane is showing when a session is bound and mode isn't normal (v4). */
+  protected readonly terminalActive = computed(
+    () =>
+      !!this.terminalMode.activeTerminalSessionId() &&
+      this.terminalMode.terminalMode() !== 'normal',
+  );
+
+  constructor() {
+    // Bind the terminal controller to this conversation (refetch after spawn so
+    // the Ariel session-opened announcement appears) and hydrate on chat load.
+    const chatId = this.chatId();
+    if (chatId) {
+      this.terminalMode.configure(chatId, () => {
+        void this.chatQuery.refetch();
+      });
+    }
+    effect(() => this.terminalMode.hydrate(this.chat()));
+
+    // A terminal announcement (open/close/periodic summary) landed → refetch the
+    // chat so the new Ariel message appears (v4's salon-page listeners).
+    const onTerminalChatUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<{ chatId?: string }>).detail;
+      if (detail?.chatId && detail.chatId === this.chatId()) {
+        void this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+      }
+    };
+    // Cmd/Ctrl+Shift+T toggles the terminal pane; Escape exits focus back to split (v4).
+    const onKeydown = (event: KeyboardEvent) => {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.shiftKey &&
+        (event.key === 'T' || event.key === 't')
+      ) {
+        event.preventDefault();
+        if (this.terminalMode.terminalMode() === 'normal') void this.terminalMode.requestOpen();
+        else void this.terminalMode.hidePane();
+        return;
+      }
+      if (event.key === 'Escape' && this.terminalMode.terminalMode() === 'focus') {
+        event.preventDefault();
+        this.terminalMode.toggleFocusMode();
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('quilltap:chat-update', onTerminalChatUpdate);
+      window.addEventListener('quilltap:terminal-exited', onTerminalChatUpdate);
+      window.addEventListener('keydown', onKeydown);
+      this.destroyRef.onDestroy(() => {
+        window.removeEventListener('quilltap:chat-update', onTerminalChatUpdate);
+        window.removeEventListener('quilltap:terminal-exited', onTerminalChatUpdate);
+        window.removeEventListener('keydown', onKeydown);
+      });
+    }
+  }
+
+  /** Terminal-open entry: the controller re-attaches, shows the picker, or spawns. */
+  protected onOpenTerminal(): void {
+    void this.terminalMode.requestOpen();
+  }
 
   /** The message list, so a user send can force a scroll-to-bottom (v4 `scrollOnUserMessage`). */
   private readonly messageList = viewChild(MessageList);
