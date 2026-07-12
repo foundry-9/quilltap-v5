@@ -17,12 +17,14 @@ export const FALLBACK_PROVIDERS: ImageProviderInfo[] = [
     label: 'OpenAI (DALL-E / GPT Image)',
     defaultModels: ['gpt-image-2', 'gpt-image-1', 'dall-e-3', 'dall-e-2'],
     apiKeyProvider: 'OPENAI',
+    legacyNames: [],
   },
   {
     value: 'GROK',
     label: 'Grok (xAI)',
     defaultModels: ['grok-2-image'],
     apiKeyProvider: 'GROK',
+    legacyNames: [],
   },
   {
     value: 'GOOGLE',

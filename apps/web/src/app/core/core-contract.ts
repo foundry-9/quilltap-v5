@@ -2323,13 +2323,15 @@ export interface RoleplayTemplateDto {
   id: string;
   userId: string | null;
   name: string;
-  description?: string;
+  /** Omitted on route reads when null; the create/update echoes carry `null`. */
+  description?: string | null;
   systemPrompt: string;
   isBuiltIn: boolean;
   tags: string[];
   delimiters: TemplateDelimiter[];
   renderingPatterns: RenderingPattern[];
-  dialogueDetection?: DialogueDetection;
+  /** Omitted on route reads when null; the create/update echoes carry `null`. */
+  dialogueDetection?: DialogueDetection | null;
   narrationDelimiters: NarrationDelimiters;
   createdAt: string;
   updatedAt: string;
@@ -2428,12 +2430,13 @@ export interface ImageProviderInfo {
   legacyNames: string[];
 }
 
-/** The create bag (v4 `createImageProfileSchema`). */
+/** The create bag (v4's hand-validated create body; `apiKeyId || null` /
+ * `baseUrl || null` route coercions make explicit `null` ≡ absent). */
 export interface ImageProfileCreateBag {
   name: string;
   provider: string;
-  apiKeyId?: string;
-  baseUrl?: string;
+  apiKeyId?: string | null;
+  baseUrl?: string | null;
   modelName: string;
   parameters?: Record<string, unknown>;
   isDefault?: boolean;
@@ -2456,7 +2459,9 @@ export interface ImageProfileListRequest {
   type: 'imageProfileList';
   /** Bubble a character's matching profiles to the top (v4 `?sortByCharacter=`). */
   sortByCharacter?: string;
-  /** The user-persona variant (server behavior pinned by lane A's oracle). */
+  /** Sent by v4's picker but READ BY NEITHER SERVER (v4 route.ts reads only
+   * `sortByCharacter`; the Rust variant ignores unknown fields) — kept for
+   * wire parity with v4's client. */
   sortByUserCharacter?: string;
 }
 export interface ImageProfileCreateRequest {
@@ -2479,19 +2484,22 @@ export interface ImageProfileDeleteRequest {
 export interface ImageProviderListRequest {
   type: 'imageProviderList';
 }
-/** Refusal-armed image-profile action verbs (loud unless lane A lands the wire pair). */
+/** Refusal-armed image-profile action verbs (loud; shapes mirror the Rust variants). */
 export interface ImageProfileGenerateRequest {
   type: 'imageProfileGenerate';
   profileId: string;
-  prompt: string;
+  /** v4 `generateImageSchema` body (prompt, count, size, …) — opaque until live. */
+  payload?: Record<string, unknown>;
 }
 export interface ImageProfileValidateKeyRequest {
   type: 'imageProfileValidateKey';
-  profileId: string;
+  /** v4 `?action=validate-key` body — opaque until live. */
+  payload?: Record<string, unknown>;
 }
 export interface ImageProfileListModelsRequest {
   type: 'imageProfileListModels';
-  profileId: string;
+  provider?: string;
+  apiKeyId?: string;
 }
 
 // --- Global mount points ----------------------------------------------------

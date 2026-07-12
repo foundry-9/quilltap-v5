@@ -4,22 +4,18 @@
  * dispatch helpers over the P4.6p listing variants. Reads through
  * {@link CoreClient.dispatchData} (raw `data`) — the Shared contract pins the
  * response BODIES.
- *
- * Lane A folds the `imageProfile*` / `imageProviderList` Request interfaces into
- * the `CoreRequest` union at unification; until then this lane dispatches them
- * through the localized {@link listingDispatch} `as unknown as CoreRequest` seam.
+
  */
 
 import type { CoreClient } from '../../../core/core-client';
 import type {
-  CoreRequest,
-  ImageProfileCreateInput,
+  ImageProfileCreateBag,
   ImageProfileCreateRequest,
   ImageProfileDeleteRequest,
   ImageProfileDto,
   ImageProfileGetRequest,
   ImageProfileListRequest,
-  ImageProfileUpdateInput,
+  ImageProfileUpdateBag,
   ImageProfileUpdateRequest,
   ImageProviderInfo,
   ImageProviderListRequest,
@@ -33,12 +29,11 @@ type ImageProfileRequest =
   | ImageProfileDeleteRequest
   | ImageProviderListRequest;
 
-/** Dispatch a listing-surface request lane A has not yet wired into `CoreRequest`. */
 function listingDispatch(
   core: CoreClient,
   req: ImageProfileRequest,
 ): Promise<Record<string, unknown>> {
-  return core.dispatchData(req as unknown as CoreRequest);
+  return core.dispatchData(req);
 }
 
 export const imageProfileKeys = {
@@ -70,7 +65,7 @@ export async function fetchImageProviders(core: CoreClient): Promise<ImageProvid
 
 export async function createImageProfile(
   core: CoreClient,
-  profile: ImageProfileCreateInput,
+  profile: ImageProfileCreateBag,
 ): Promise<ImageProfileDto> {
   const data = await listingDispatch(core, { type: 'imageProfileCreate', profile });
   return (data['profile'] as ImageProfileDto) ?? (data as unknown as ImageProfileDto);
@@ -79,7 +74,7 @@ export async function createImageProfile(
 export async function updateImageProfile(
   core: CoreClient,
   profileId: string,
-  profile: ImageProfileUpdateInput,
+  profile: ImageProfileUpdateBag,
 ): Promise<ImageProfileDto> {
   const data = await listingDispatch(core, { type: 'imageProfileUpdate', profileId, profile });
   return (data['profile'] as ImageProfileDto) ?? (data as unknown as ImageProfileDto);

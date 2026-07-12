@@ -2,6 +2,25 @@
 
 ## Recent Changes
 
+Unification wires for the P4.6p ∥ P4.6q ∥ P4.6r round. The B↔C
+core-contract listing-surface appendix diverged (lane B folded the
+variants into the CoreRequest union with …Bag bags; lane C shipped a
+localized `as unknown as CoreRequest` cast seam over …Input names) —
+reconciled to lane B's union fold: lane C's templates/image-profiles
+api layers renamed to the …Bag types and the cast seams dropped (the
+requests now typecheck through the union). Contract diffed
+name-for-name against the Rust variants: all 16 live variants match;
+the three refusal-armed image-profile action interfaces reconciled to
+the Rust shapes (opaque payload / provider+apiKeyId — the appendix had
+guessed prompt/profileId); `sortByUserCharacter` annotated as
+read-by-neither-server (v4 parity). RoleplayTemplateDto
+description/dialogueDetection widened to `| null` (the create/update
+echoes carry null per lane A's oracle; route reads omit) and the
+image-profile create bag accepts explicit null apiKeyId/baseUrl (v4's
+`|| null` coercion). FALLBACK_PROVIDERS literals gained the required
+`legacyNames`. Verified `defaultRoleplayTemplateId` is plumbed through
+chat_settings create/update (lane C's flag). SPA 0.5.33.
+
 P4.6r lane C, part 3 — the reset-builtins rider + e2e beats. "Reset
 Built-in Characters" on the roster is now live: a confirm dialog (v4
 copy) over the WEB-EDGE `POST /api/v1/characters?action=reset-builtins`

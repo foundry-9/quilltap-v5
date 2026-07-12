@@ -10,7 +10,13 @@ import {
 } from './image-profile-form';
 
 const PROVIDERS: ImageProviderInfo[] = [
-  { value: 'OPENAI', label: 'OpenAI', defaultModels: ['dall-e-3', 'dall-e-2'], apiKeyProvider: 'OPENAI' },
+  {
+    value: 'OPENAI',
+    label: 'OpenAI',
+    defaultModels: ['dall-e-3', 'dall-e-2'],
+    apiKeyProvider: 'OPENAI',
+    legacyNames: [],
+  },
   {
     value: 'GOOGLE',
     label: 'Google Gemini',
