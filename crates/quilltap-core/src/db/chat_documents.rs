@@ -106,6 +106,26 @@ pub struct OpenChatDocument {
     pub created_at: String,
 }
 
+/// A full `chat_documents` row (every column) — the shape the Document Mode
+/// route handlers (P4.6w) operate over: `resolveTargetDocument`, the
+/// active/recents pickers, and the rename/delete verbs all read
+/// `id`/`chatId`/`filePath`/`scope`/`mountPoint`/`displayTitle`/`isActive`/
+/// timestamps. `scope`'s Zod `.default('project')` materializes on a NULL cell
+/// (never written NULL by `create`, but faithful); the two nullable columns come
+/// back as `None` on NULL.
+#[derive(Clone, Debug)]
+pub struct ChatDocumentFull {
+    pub id: String,
+    pub chat_id: String,
+    pub file_path: String,
+    pub scope: String,
+    pub mount_point: Option<String>,
+    pub display_title: Option<String>,
+    pub is_active: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 /// Input for [`ChatDocumentsRepository::open_document`] — v4 `openDocument`'s
 /// `data` bag (`filePath` / `scope` / `mountPoint?` / `displayTitle?`).
 pub struct OpenDocumentInput {
@@ -387,5 +407,517 @@ impl<'c> ChatDocumentsRepository<'c> {
             .conn
             .execute("DELETE FROM chat_documents WHERE id = ?1", params![id])?;
         Ok(affected > 0)
+    }
+
+    // ========================================================================
+    // Full-row queries + move-sync sweeps (P4.6w — the Document Mode surface)
+    // ========================================================================
+
+    /// Read one full row by id (v4 base `findById`). `None` on no match.
+    pub fn find_by_id(&self, id: &str) -> Result<Option<ChatDocumentFull>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, chatId, filePath, scope, mountPoint, displayTitle, isActive, \
+                    createdAt, updatedAt \
+               FROM chat_documents WHERE id = ?1",
+        )?;
+        let row = stmt
+            .query_row(params![id], row_to_full)
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+        Ok(row)
+    }
+
+    /// v4 `findActiveForChat` (`chat-documents.repository.ts:64`): the
+    /// earliest-opened active row (the first of `findOpenForChat`), or `None`.
+    /// Full columns for the Document Mode route handlers.
+    pub fn find_active_for_chat(&self, chat_id: &str) -> Result<Option<ChatDocumentFull>, DbError> {
+        let mut rows = self.find_open_full(chat_id)?;
+        Ok(if rows.is_empty() {
+            None
+        } else {
+            Some(rows.remove(0))
+        })
+    }
+
+    /// The open (`isActive`) full rows for a chat, oldest-opened first (createdAt
+    /// asc). The full-column analogue of [`Self::find_open_for_chat`].
+    fn find_open_full(&self, chat_id: &str) -> Result<Vec<ChatDocumentFull>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, chatId, filePath, scope, mountPoint, displayTitle, isActive, \
+                    createdAt, updatedAt \
+               FROM chat_documents WHERE chatId = ?1 AND isActive = 1",
+        )?;
+        let mut rows = stmt
+            .query_map(params![chat_id], row_to_full)?
+            .collect::<Result<Vec<_>, _>>()?;
+        // v4 sorts by `new Date(createdAt).getTime()` ascending; ISO strings sort
+        // lexically identically for our fixed-width timestamps.
+        rows.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        Ok(rows)
+    }
+
+    /// v4 `findByChatId` (full rows, incl. inactive) — table (rowid) order, the
+    /// order v4's `findByFilter({ chatId })` returns. The recents picker re-sorts.
+    pub fn find_by_chat_id_full(&self, chat_id: &str) -> Result<Vec<ChatDocumentFull>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, chatId, filePath, scope, mountPoint, displayTitle, isActive, \
+                    createdAt, updatedAt \
+               FROM chat_documents WHERE chatId = ?1",
+        )?;
+        let rows = stmt
+            .query_map(params![chat_id], row_to_full)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// v4 `findRecentForChat` (`chat-documents.repository.ts:117`): the inactive
+    /// rows for a chat, most-recently-updated first, capped at `limit`.
+    pub fn find_recent_for_chat(
+        &self,
+        chat_id: &str,
+        limit: usize,
+    ) -> Result<Vec<ChatDocumentFull>, DbError> {
+        let mut rows: Vec<ChatDocumentFull> = self
+            .find_by_chat_id_full(chat_id)?
+            .into_iter()
+            .filter(|r| !r.is_active)
+            .collect();
+        // updatedAt DESC; stable (JS Array.sort) so ties keep rowid order.
+        rows.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        rows.truncate(limit);
+        Ok(rows)
+    }
+
+    /// v4 `findRecentAcrossChats` (`chat-documents.repository.ts:139`): every row
+    /// across ALL chats, most-recently-updated first, capped at `limit`. Callers
+    /// over-fetch, then dedupe by file identity + re-rank current-chat-first.
+    pub fn find_recent_across_chats(&self, limit: usize) -> Result<Vec<ChatDocumentFull>, DbError> {
+        // v4 `findAll()` returns table (rowid) order; a stable updatedAt-desc sort
+        // keeps ties in that order.
+        let mut stmt = self.conn.prepare(
+            "SELECT id, chatId, filePath, scope, mountPoint, displayTitle, isActive, \
+                    createdAt, updatedAt \
+               FROM chat_documents",
+        )?;
+        let mut rows = stmt
+            .query_map([], row_to_full)?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        rows.truncate(limit);
+        Ok(rows)
+    }
+
+    /// v4 `renameFilePathInStore` (`chat-documents.repository.ts:268`): rewrite
+    /// every row in `(scope, mountPoint||null)` whose `filePath` exactly matches
+    /// `old_path` to `new_path` + `new_display_title`. Returns the update count.
+    /// Best-effort in the callers (the on-disk rename already succeeded).
+    pub fn rename_file_path_in_store(
+        &self,
+        scope: &str,
+        mount_point: Option<&str>,
+        old_path: &str,
+        new_path: &str,
+        new_display_title: &str,
+    ) -> Result<usize, DbError> {
+        // v4 filters `findByFilter({ scope, filePath })` then keeps the
+        // normalized-null mountPoint matches. Model the same in SQL.
+        let mut stmt = self.conn.prepare(
+            "SELECT id, mountPoint FROM chat_documents WHERE scope = ?1 AND filePath = ?2",
+        )?;
+        let candidates: Vec<(String, Option<String>)> = stmt
+            .query_map(params![scope, old_path], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(stmt);
+        let want = mount_point.map(str::to_string);
+        let mut count = 0usize;
+        for (id, mp) in candidates {
+            if mp != want {
+                continue;
+            }
+            let patch = CdUpdate {
+                file_path: Some(new_path.to_string()),
+                display_title: Some(new_display_title.to_string()),
+                updated_at: crate::clock::now_iso(),
+                ..Default::default()
+            };
+            if self.update(&id, &patch)? {
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
+
+    /// v4 `renameFolderPathInStore` (`chat-documents.repository.ts:305`): rewrite
+    /// rows in `(scope, mountPoint||null)` whose `filePath` sits under
+    /// `old_folder_path` — swap the folder prefix to `new_folder_path` and refresh
+    /// `displayTitle` to the new basename. Returns the update count.
+    pub fn rename_folder_path_in_store(
+        &self,
+        scope: &str,
+        mount_point: Option<&str>,
+        old_folder_path: &str,
+        new_folder_path: &str,
+    ) -> Result<usize, DbError> {
+        let old_prefix = if old_folder_path.ends_with('/') {
+            old_folder_path.to_string()
+        } else {
+            format!("{old_folder_path}/")
+        };
+        let new_prefix = if new_folder_path.ends_with('/') {
+            new_folder_path.to_string()
+        } else {
+            format!("{new_folder_path}/")
+        };
+        let want = mount_point.map(str::to_string);
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, mountPoint, filePath FROM chat_documents WHERE scope = ?1")?;
+        let candidates: Vec<(String, Option<String>, String)> = stmt
+            .query_map(params![scope], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(stmt);
+        let mut count = 0usize;
+        for (id, mp, file_path) in candidates {
+            if mp != want || !file_path.starts_with(&old_prefix) {
+                continue;
+            }
+            let new_file_path = format!("{new_prefix}{}", &file_path[old_prefix.len()..]);
+            let new_display_title = new_file_path
+                .rfind('/')
+                .map(|i| new_file_path[i + 1..].to_string())
+                .unwrap_or_else(|| new_file_path.clone());
+            let patch = CdUpdate {
+                file_path: Some(new_file_path),
+                display_title: Some(new_display_title),
+                updated_at: crate::clock::now_iso(),
+                ..Default::default()
+            };
+            if self.update(&id, &patch)? {
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
+
+    /// v4 `deleteByChatId` (`chat-documents.repository.ts:340`): cascade-delete all
+    /// document associations for a chat. Returns the delete count.
+    pub fn delete_by_chat_id(&self, chat_id: &str) -> Result<usize, DbError> {
+        let affected = self.conn.execute(
+            "DELETE FROM chat_documents WHERE chatId = ?1",
+            params![chat_id],
+        )?;
+        Ok(affected)
+    }
+}
+
+/// Map a full-column `chat_documents` row (the 9-column projection used by the
+/// P4.6w queries) into a [`ChatDocumentFull`]. `scope`'s `.default('project')`
+/// materializes on a NULL cell; the two nullable columns come back as `None`.
+fn row_to_full(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatDocumentFull> {
+    let scope: Option<String> = row.get(3)?;
+    Ok(ChatDocumentFull {
+        id: row.get::<_, String>(0)?,
+        chat_id: row.get::<_, String>(1)?,
+        file_path: row.get::<_, String>(2)?,
+        scope: scope.unwrap_or_else(|| "project".to_string()),
+        mount_point: row.get::<_, Option<String>>(4)?,
+        display_title: row.get::<_, Option<String>>(5)?,
+        is_active: row.get::<_, i64>(6)? != 0,
+        created_at: row.get::<_, String>(7)?,
+        updated_at: row.get::<_, String>(8)?,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A minimal `chat_documents` table (the columns the P4.6w queries read).
+    fn setup() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE chat_documents (
+               id TEXT PRIMARY KEY,
+               chatId TEXT NOT NULL,
+               filePath TEXT NOT NULL,
+               scope TEXT,
+               mountPoint TEXT,
+               displayTitle TEXT,
+               isActive INTEGER NOT NULL,
+               createdAt TEXT NOT NULL,
+               updatedAt TEXT NOT NULL
+             );",
+        )
+        .unwrap();
+        conn
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn insert(
+        conn: &Connection,
+        id: &str,
+        chat: &str,
+        path: &str,
+        scope: &str,
+        mount: Option<&str>,
+        active: bool,
+        created: &str,
+        updated: &str,
+    ) {
+        conn.execute(
+            "INSERT INTO chat_documents \
+               (id, chatId, filePath, scope, mountPoint, displayTitle, isActive, createdAt, updatedAt) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![id, chat, path, scope, mount, path, i64::from(active), created, updated],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn find_active_for_chat_is_earliest_opened() {
+        let conn = setup();
+        // Two active + one inactive; the earliest-createdAt active wins.
+        insert(
+            &conn,
+            "d2",
+            "c1",
+            "b.md",
+            "general",
+            None,
+            true,
+            "2026-01-02T00:00:00.000Z",
+            "2026-01-05T00:00:00.000Z",
+        );
+        insert(
+            &conn,
+            "d1",
+            "c1",
+            "a.md",
+            "general",
+            None,
+            true,
+            "2026-01-01T00:00:00.000Z",
+            "2026-01-06T00:00:00.000Z",
+        );
+        insert(
+            &conn,
+            "d0",
+            "c1",
+            "z.md",
+            "general",
+            None,
+            false,
+            "2026-01-00T00:00:00.000Z",
+            "2026-01-07T00:00:00.000Z",
+        );
+        let repo = ChatDocumentsRepository::new(&conn);
+        let active = repo.find_active_for_chat("c1").unwrap().unwrap();
+        assert_eq!(active.id, "d1");
+    }
+
+    #[test]
+    fn find_recent_across_chats_newest_first_capped() {
+        let conn = setup();
+        insert(
+            &conn,
+            "d1",
+            "c1",
+            "a.md",
+            "general",
+            None,
+            true,
+            "t",
+            "2026-01-01T00:00:00.000Z",
+        );
+        insert(
+            &conn,
+            "d2",
+            "c2",
+            "b.md",
+            "general",
+            None,
+            false,
+            "t",
+            "2026-01-03T00:00:00.000Z",
+        );
+        insert(
+            &conn,
+            "d3",
+            "c1",
+            "c.md",
+            "general",
+            None,
+            true,
+            "t",
+            "2026-01-02T00:00:00.000Z",
+        );
+        let repo = ChatDocumentsRepository::new(&conn);
+        let recent = repo.find_recent_across_chats(2).unwrap();
+        assert_eq!(
+            recent.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            ["d2", "d3"]
+        );
+    }
+
+    #[test]
+    fn find_recent_for_chat_inactive_only() {
+        let conn = setup();
+        insert(
+            &conn,
+            "d1",
+            "c1",
+            "a.md",
+            "general",
+            None,
+            true,
+            "t",
+            "2026-01-05T00:00:00.000Z",
+        );
+        insert(
+            &conn,
+            "d2",
+            "c1",
+            "b.md",
+            "general",
+            None,
+            false,
+            "t",
+            "2026-01-04T00:00:00.000Z",
+        );
+        insert(
+            &conn,
+            "d3",
+            "c1",
+            "c.md",
+            "general",
+            None,
+            false,
+            "t",
+            "2026-01-06T00:00:00.000Z",
+        );
+        let repo = ChatDocumentsRepository::new(&conn);
+        let recent = repo.find_recent_for_chat("c1", 5).unwrap();
+        // Inactive only, newest-updated first: d3 then d2.
+        assert_eq!(
+            recent.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            ["d3", "d2"]
+        );
+    }
+
+    #[test]
+    fn rename_file_path_in_store_matches_scope_and_null_mount() {
+        let conn = setup();
+        // Two rows at the same (scope, filePath) but different mountPoints; only the
+        // null-mount one is swept when mount_point is None.
+        insert(
+            &conn,
+            "d1",
+            "c1",
+            "old.md",
+            "document_store",
+            None,
+            false,
+            "t",
+            "u",
+        );
+        insert(
+            &conn,
+            "d2",
+            "c2",
+            "old.md",
+            "document_store",
+            Some("MP"),
+            false,
+            "t",
+            "u",
+        );
+        insert(
+            &conn, "d3", "c3", "old.md", "general", None, false, "t", "u",
+        ); // wrong scope
+        let repo = ChatDocumentsRepository::new(&conn);
+        let n = repo
+            .rename_file_path_in_store("document_store", None, "old.md", "new.md", "new.md")
+            .unwrap();
+        assert_eq!(n, 1);
+        assert_eq!(repo.find_by_id("d1").unwrap().unwrap().file_path, "new.md");
+        assert_eq!(repo.find_by_id("d2").unwrap().unwrap().file_path, "old.md");
+        assert_eq!(repo.find_by_id("d3").unwrap().unwrap().file_path, "old.md");
+    }
+
+    #[test]
+    fn rename_folder_path_in_store_rewrites_prefix_and_title() {
+        let conn = setup();
+        insert(
+            &conn,
+            "d1",
+            "c1",
+            "notes/a.md",
+            "document_store",
+            Some("MP"),
+            false,
+            "t",
+            "u",
+        );
+        insert(
+            &conn,
+            "d2",
+            "c1",
+            "notes/sub/b.md",
+            "document_store",
+            Some("MP"),
+            false,
+            "t",
+            "u",
+        );
+        insert(
+            &conn,
+            "d3",
+            "c1",
+            "other/c.md",
+            "document_store",
+            Some("MP"),
+            false,
+            "t",
+            "u",
+        );
+        let repo = ChatDocumentsRepository::new(&conn);
+        let n = repo
+            .rename_folder_path_in_store("document_store", Some("MP"), "notes", "archive")
+            .unwrap();
+        assert_eq!(n, 2);
+        let d1 = repo.find_by_id("d1").unwrap().unwrap();
+        assert_eq!(d1.file_path, "archive/a.md");
+        assert_eq!(d1.display_title.as_deref(), Some("a.md"));
+        let d2 = repo.find_by_id("d2").unwrap().unwrap();
+        assert_eq!(d2.file_path, "archive/sub/b.md");
+        assert_eq!(d2.display_title.as_deref(), Some("b.md"));
+        // Unrelated folder untouched.
+        assert_eq!(
+            repo.find_by_id("d3").unwrap().unwrap().file_path,
+            "other/c.md"
+        );
+    }
+
+    #[test]
+    fn delete_by_chat_id_cascades() {
+        let conn = setup();
+        insert(&conn, "d1", "c1", "a.md", "general", None, true, "t", "u");
+        insert(&conn, "d2", "c1", "b.md", "general", None, false, "t", "u");
+        insert(&conn, "d3", "c2", "c.md", "general", None, true, "t", "u");
+        let repo = ChatDocumentsRepository::new(&conn);
+        assert_eq!(repo.delete_by_chat_id("c1").unwrap(), 2);
+        assert!(repo.find_by_id("d1").unwrap().is_none());
+        assert!(repo.find_by_id("d3").unwrap().is_some());
     }
 }

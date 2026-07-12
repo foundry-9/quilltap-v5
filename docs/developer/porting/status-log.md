@@ -8798,3 +8798,21 @@ cases/mount-read.ts > /tmp/oracle-mount-read.ndjson`; run
 quilltap-harness --test mount_read_equivalence`.
 
 **Versions:** core 0.0.195, harness 0.0.179.
+### P4.6w unit 1 — chat_documents repo extensions (lane B) — 2026-07-12
+
+The Document Mode server surface (lane B of the P4.6v∥w∥x round) opens with
+the `db/chat_documents.rs` extensions v4's route handlers consume: a
+full-column `ChatDocumentFull` projection + `find_by_id`,
+`find_active_for_chat` (earliest-opened active, the first of the createdAt-asc
+open set), `find_recent_for_chat` (inactive-only, updatedAt-desc, capped),
+`find_recent_across_chats` (all rows, stable updatedAt-desc, capped — the
+recents picker over-fetches then dedupes/re-ranks), `rename_file_path_in_store`
+and `rename_folder_path_in_store` (the best-effort move-sync sweeps — scope +
+normalized-null mountPoint matched, displayTitle refreshed to the new
+basename), and `delete_by_chat_id` (cascade). Ports
+`chat-documents.repository.ts:64/117/139/268/305/340`. ISO timestamps sort
+lexically identically to `Date.getTime()` for the fixed-width form, so the
+stable string sorts reproduce v4's comparators. Six Rust unit tests over an
+in-memory table prove each; the v4-oracle differential arrives with the
+`api::documents` route surface (the recents dedupe + rename sweep are
+exercised there). core 0.0.194.

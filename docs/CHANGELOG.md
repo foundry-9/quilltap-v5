@@ -28,6 +28,14 @@ and the `fileOpStatus` HTTP-status mapper. Landed under
 `mime_for_extension` port (the duplicate in `files_routes.rs` removed).
 Differential-proven exact against v4's real code (a 69-row tsx oracle,
 `harness/oracle/cases/mount-chunker.ts`).
+P4.6w (Document Mode server, lane B): extend the `chat_documents` repo
+with the six Document Mode queries/sweeps — `find_active_for_chat`
+(earliest-opened active), `find_recent_for_chat`, `find_recent_across_chats`
+(newest-first), `rename_file_path_in_store` / `rename_folder_path_in_store`
+(the best-effort move-sync sweeps, scope + normalized-null mount matched),
+and `delete_by_chat_id` (cascade) — plus a full-row `ChatDocumentFull`
+projection. Rust unit tests cover each; the v4-oracle differential lands
+with the route surface.
 
 Work orders for the P4.6v ∥ P4.6w ∥ P4.6x round (the Document Mode +
 Scriptorium-server round), docs only. Lane A
