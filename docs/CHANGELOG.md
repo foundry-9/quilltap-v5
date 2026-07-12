@@ -2,6 +2,29 @@
 
 ## Recent Changes
 
+Work orders for the P4.6v ∥ P4.6w ∥ P4.6x round (the Document Mode +
+Scriptorium-server round), docs only. Lane A
+(p4.6v-mount-index-file-ops-server.md): the mount-index file-ops
+server surface — v4's lib/mount-index service layer (chunker,
+file-ops strategies, store-file, read-file, reindex/embed, scanner)
+under ~20 mount-file dispatch variants plus the multipart/raw web
+legs, closing the standing D7 Scriptorium refusal; convert/deconvert
+refusal-armed, pdf/docx extraction and the fs watcher behind named
+seams; new committed mounts fixture + fs tree. Lane B
+(p4.6w-document-mode-server.md): the Document Mode server surface —
+the operator-doc-actions core with STANDALONE_CHAT_ID, 11 chat-scoped
++ 7 standalone document variants, chat_documents repo extensions, the
+qtap-target byte route, and the MountRefreshScheduler seam wired at
+unification; new committed documents fixture. Lane C
+(p4.6x-document-mode-spa.md): the Document Mode SPA vertical — the
+pane in the P4.6u split scaffolding, the useDocumentMode state store,
+the Document Picker (consuming lane A's mountFilesList), autosave +
+409 reload, tool-result reloads, and the D17 Lexical spike with a
+loud textarea fallback; standalone/workspace-tab surface deferred.
+Shared contract + ownership blocks verified byte-identical across the
+three orders; the Scriptorium SPA (D18 ngx-explorer spike) is
+deliberately next round over lane A's then-frozen surface.
+
 The P4.6s ∥ P4.6t ∥ P4.6u round unified: the Commonplace Book (memories
 server + Memory SPA) and the Salon terminal pane. Unification wires:
 EngineAssembly/SpineBundle gained memory_embedding and the production

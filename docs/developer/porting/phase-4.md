@@ -815,3 +815,70 @@ block; C: its delimited terminal appendix) — nothing is written
 byte-identically twice. Lane A bumps core + harness; lanes B and C
 both bump the SPA (unifier accumulates). CHANGELOG / status-log are
 append-only union-merge blocks.
+
+**The round as planned (2026-07-12, third round of the day): three
+parallel lanes, orders written** (drift check at planning time: v4
+HEAD still `a7b1398d`; two fresh surveys — the v4 Document Mode
+surface [chat-scoped + standalone + the client] and the v4
+Scriptorium/mount-index surface [the file-op verbs, the lib layer,
+the SVAR wrapper] — plus a v5-side sweep inform the orders; key
+survey findings: the mount-index DATA layer is fully ported but v4's
+`lib/mount-index/` SERVICE layer [chunker, file-ops strategies,
+store-file, read-file, scanner, reindex] has NO v5 port — the
+doc-edit tools reimplemented only the database-mount subset; the
+Document Mode path machinery [path resolver with `operatorOverride`,
+database store, Librarian writers, the doc UI tools] IS ported, so
+the DM server lane is P4.6s-class route assembly; Document Mode has
+NO message marker [state = the chats `documentMode` flag + Librarian
+announcements + client reload]; v4's DocumentPickerModal consumes the
+mount files LISTING, which pins one lane-A variant into the SPA
+contract; the standalone DM surface is a workspace TAB in v4, and v5
+has no workspace system):
+
+- **Lane A — P4.6v, the mount-index file-ops server surface**
+  (`work-orders/p4.6v-mount-index-file-ops-server.md`): closes the
+  standing D7 Scriptorium refusal — the `lib/mount-index/` service
+  layer ported leaf-to-root (chunker tier-1; file-ops' four
+  strategies + sha verify; store-file's three ingest branches;
+  read-file; reindex sync-in-request + embed-async split; scanner
+  tier 2) under ~20 mount-file dispatch variants + the multipart/raw
+  web-edge legs, over a NEW committed `mounts-{main,mount}.db`
+  fixture + a committed fs tree. Refusal-armed WITH variants:
+  `mountConvert`/`mountDeconvert`; named seam deferrals: the
+  `DocumentTextExtractor` production impl (pdf/docx) and the fs
+  watcher. The Scriptorium SPA (D18's ngx-explorer spike) is
+  deliberately NEXT round, over this lane's then-frozen surface.
+- **Lane B — P4.6w, the Document Mode server surface**
+  (`work-orders/p4.6w-document-mode-server.md`): the
+  `operator-doc-actions.ts` core (with `STANDALONE_CHAT_ID` and the
+  tier-1 pure `computeRenameTarget`/`pickUntitledDocumentPath`), the
+  11 chat-scoped + 7 standalone document dispatch variants, the
+  `chat_documents` repo extensions (recents + the move-sync sweeps),
+  the qtap-target byte route, and the `MountRefreshScheduler` seam
+  (None + loud skip in-lane; the unifier wires lane A's reindex/embed
+  in — the `memory_embedding` precedent), over a NEW committed
+  `documents-{main,mount}.db` fixture.
+- **Lane C — P4.6x, the Document Mode SPA vertical**
+  (`work-orders/p4.6x-document-mode-spa.md`): closes the P4.6u
+  "Document Mode pane" deferral — the document pane in the frozen
+  split scaffolding's `documentContent` slot, the `useDocumentMode`
+  state store, the Document Picker modal (consuming lane A's
+  `mountFilesList`), autosave + mtime-409 reload, the tool-result
+  reload wiring, and **the D17 Lexical spike** (vanilla core for the
+  markdown editor; red = textarea-everywhere recorded loudly,
+  ProseMirror stays the named fallback decision). Deferred loudly:
+  the standalone/workspace-tab surface, multi-document tabs, the
+  change-tracker/gutter plugins.
+
+Contention notes: the two server lanes split `api/**` by module (A:
+`api/mount_files.rs` + `mount_points.rs`; B: `api/documents.rs` +
+`db/chat_documents.rs`) and BOTH append to `api/types.rs` /
+`api/engine.rs` / the web router only at the end inside their own
+delimiter blocks (the unifier keeps both sides — the first round to
+run two core-dispatch writers). Lane C owns `apps/web/**` wholesale
+and is the single author of the whole core-contract addition (both
+families). Each lane delivers its own new fixture family — no
+dependent-oracle regens anywhere. `tools/doc_edit/**` is FROZEN for
+everyone (no dedup refactor mid-port). A and B bump
+core/web/harness; C bumps the SPA (unifier accumulates). CHANGELOG /
+status-log are append-only union-merge blocks.
