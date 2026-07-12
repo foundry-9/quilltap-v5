@@ -736,3 +736,57 @@ block in `core-contract.ts` in both lanes (the unifier keeps a single
 copy). Lane A bumps core + harness; lanes B and C both bump the SPA
 (unifier accumulates). CHANGELOG / status-log are append-only
 union-merge blocks.
+
+**The round as planned (2026-07-12, second round of the day): three
+parallel lanes, orders written** (drift check at planning time: v4
+HEAD still `a7b1398d`; four fresh surveys — the v4 memories surface,
+the v4 mount-point verbs/Scriptorium, the v4 remaining Salon slices +
+autonomous settings, and the v5 current state — inform the orders;
+key survey findings: the memory ENGINE is fully ported with zero
+dispatch variants and a placeholder SPA tab, the terminal REST +
+WebSocket server surface is fully live so the terminal pane is
+SPA-only, `services/housekeeping.rs` + `db/instance_settings.rs`
+exist, and `lib/tools/memory-dedup.ts` is unported):
+
+- **Lane A — P4.6s, the memories server surface**
+  (`work-orders/p4.6s-memories-server.md`): the Commonplace Book
+  dispatch backfill — the collection endpoint's ~20 `?action=` verbs
+  + the two-code-path list, the item CRUD (incl. the
+  PUT-does-not-re-embed quirk), and `chatQueueMemories` — over the
+  fully-ported memory engine, with the embedding seam threaded per
+  the P4.6c provider-actions precedent, a NEW committed
+  `memories-{main,mount}.db` fixture, and the
+  `memories_routes_equivalence` differential. No variants (loud
+  deferrals): `extract-memories-dry-run` (streaming; the CLI
+  memory-diff order), memory-dedup (service unported),
+  embedding-profiles management, conversation-summaries.
+- **Lane B — P4.6t, the Memory SPA vertical**
+  (`work-orders/p4.6t-memory-spa.md`): the per-character Memories tab
+  (infinite-scroll list with id-dedupe, buckets/badges card, the
+  create/edit editor with a plain-textarea stand-in, delete, the
+  housekeeping dialog) + the Settings Memory tab (backfill /
+  housekeeping / recall / regenerate cards); owns `core-contract.ts`
+  and authors the memory block; fixture-guarded e2e beats over lane
+  A's new fixture.
+- **Lane C — P4.6u, the Salon terminal pane**
+  (`work-orders/p4.6u-salon-terminal-pane.md`): the first remaining
+  Salon slice — the xterm.js surface, the WS session client (pinned
+  from the Rust protocol source), TerminalPane + the split-pane
+  scaffolding Document Mode reuses next, TerminalEmbed via the
+  `<!-- terminalSessionId:UUID -->` marker, session picker +
+  spawn/kill, pane-state via the existing chatUpdate bag, the pop-out
+  route, and a LIVE in-lane `terminal-flow` e2e walk (the server side
+  already exists end-to-end).
+
+Contention notes: lane A owns `api/**` (ALL variant edits) + additive
+`db/*` extensions + the new memories fixture (existing fixtures
+FROZEN — no dependent-oracle regens); lanes B and C split
+`apps/web/**` by directory (B: `core-contract.ts` owner +
+settings/memory + the characters memories tab + `app/memory/**`; C:
+`app.routes.ts` + salon/chat screens + `app/terminal/**` + the only
+npm dep additions). Per the P4.6pqr lesson, every shared
+core-contract block has exactly ONE named author (B: the memory
+block; C: its delimited terminal appendix) — nothing is written
+byte-identically twice. Lane A bumps core + harness; lanes B and C
+both bump the SPA (unifier accumulates). CHANGELOG / status-log are
+append-only union-merge blocks.

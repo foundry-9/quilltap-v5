@@ -2,6 +2,25 @@
 
 ## Recent Changes
 
+Work orders for the P4.6s ∥ P4.6t ∥ P4.6u round (the Commonplace Book
++ terminal-pane round), docs only. Lane A (p4.6s-memories-server.md):
+the memories dispatch surface — the collection endpoint's ~20 action
+verbs, the item CRUD, and chat queue-memories over the fully-ported
+memory engine, with a new committed memories fixture and a
+memories_routes_equivalence differential; extract-memories-dry-run,
+memory-dedup, embedding-profiles management, and
+conversation-summaries stay deferred with no variants. Lane B
+(p4.6t-memory-spa.md): the Memory SPA vertical — the per-character
+Memories tab (list/card/editor/housekeeping dialog) and the Settings
+Memory tab (backfill/housekeeping/recall/regenerate cards), owning the
+core-contract memory block. Lane C (p4.6u-salon-terminal-pane.md): the
+Salon terminal pane — xterm.js surface, WebSocket session client over
+the existing quilltap-web terminal routes, the split-pane scaffolding
+Document Mode will reuse, message-embed markers, and a live
+terminal-flow e2e walk. Shared contract pinned once per block with a
+single named author per the P4.6pqr lesson. Drift check at planning
+time: v4 HEAD still a7b1398d.
+
 The P4.6p ∥ P4.6q ∥ P4.6r round gate + close-out. Full gate green:
 fmt/clippy (both feature sets)/release build clean; the seven round
 oracles regenerated fresh from v4 `a7b1398d` (annotations 25,
