@@ -103,7 +103,7 @@ describe('CharactersList', () => {
     expect(text).toContain('Import from SillyTavern');
   });
 
-  it('disables the Summon From Lore and Reset Built-in Characters affordances', async () => {
+  it('keeps Summon From Lore disabled but Reset Built-in Characters live (P4.6r)', async () => {
     const fixture = await render(stubClient([character({})]));
     const buttons = Array.from(
       fixture.nativeElement.querySelectorAll('button'),
@@ -111,7 +111,8 @@ describe('CharactersList', () => {
     const summon = buttons.find((b) => b.textContent?.includes('Summon From Lore'));
     const reset = buttons.find((b) => b.textContent?.includes('Reset Built-in Characters'));
     expect(summon?.disabled).toBe(true);
-    expect(reset?.disabled).toBe(true);
+    // Reset is now wired to the live WEB-EDGE ?action=reset-builtins route.
+    expect(reset?.disabled).toBe(false);
   });
 
   it('shows the empty state when there are no characters', async () => {

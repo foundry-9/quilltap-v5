@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.6r lane C, part 3 — the reset-builtins rider + e2e beats. "Reset
+Built-in Characters" on the roster is now live: a confirm dialog (v4
+copy) over the WEB-EDGE `POST /api/v1/characters?action=reset-builtins`
+route (live since P4.4u4), dispatched via `fetch`, with a result banner.
+Two fixture-guarded Playwright beats authored for activation at
+unification: the project Model-Behavior template picker seeds options +
+persists a selection (projects-flow), and the Templates create→edit→
+delete + Images card listing (a new settings-flow describe over lane A's
+extended fixture). SPA 0.5.25. Lane C complete on its branch (awaits
+unification, which wires the `CoreRequest` union + drops the localized
+dispatch cast).
+
 P4.6r lane C, part 2 — the three disabled default-* pickers go live. The
 project Model-Behavior roleplay-template picker, the project
 Image-Generation image-profile picker, and the character Defaults-tab

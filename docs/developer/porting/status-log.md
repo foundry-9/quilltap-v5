@@ -7954,3 +7954,96 @@ and the Lexical editor (plain-textarea divergence). Sibling dependency:
 `imageProfileList` is lane A's live variant (mocked here; wired at unification).
 The listing-surface appendix in `core-contract.ts` is the BINDING byte-identical
 B↔C block.
+
+## P4.6r (lane C) — Templates & Images settings SPA + picker enablement — LANE COMPLETE (branch, awaits unification) (2026-07-12)
+
+Tier-4 SPA lane; v4 baseline `a7b1398d` (drift check clean at lane
+start). Branch `claude/p4-6r-templates-images-spa-c11fc4`. Three
+commits.
+
+**What landed:**
+
+1. **The Templates & Prompts tab** — the Roleplay Templates manager
+   (`screens/settings/templates/`): the read-only built-in grid
+   (Preview + Copy-as-New), My Templates (create / edit /
+   delete-with-inline-confirm), the global Default Template selector
+   (over the live `chatSettings` / `chatSettingsUpdate` surface writing
+   `defaultRoleplayTemplateId`), the create/edit modal (name /
+   description / LLM Prompt / narration single-or-pair), and the FULL
+   Formatting Delimiters editor (wrap / linePrefix / tagPrefix, the
+   style datalist, hideDelimiter, and the bold/italic/reverse/
+   underline/border/font flourishes). renderingPatterns are omitted on
+   save so the server regenerates. Duplicate-name 409 + built-in-guard
+   403 surface verbatim in the banner.
+2. **The Images tab** — the Image Profiles card
+   (`screens/settings/images/`): the profile grid (Default / Uncensored
+   badges, model + API-key metadata, the parameters summary,
+   alphabetical-by-name sort per v4's card), the create/edit form modal
+   (Profile Name; Provider select over the live registry with
+   `FALLBACK_PROVIDERS`; API-key select filtered by provider; Model
+   select over the provider `defaultModels`; a Parameters JSON textarea;
+   isDefault + isDangerousCompatible), and delete-with-inline-confirm.
+3. **The three pickers** — the project Model-Behavior roleplay-template
+   picker, the project Image-Generation image-profile picker, and the
+   character Defaults-tab image-profile picker are LIVE, binding the
+   existing `defaultRoleplayTemplateId` / `defaultImageProfileId` fields
+   over the per-field immediate-save flow. `[selected]`-per-option
+   throughout (the dogfood-#6 async-option seeding).
+4. **The reset-builtins rider** — "Reset Built-in Characters"
+   (characters roster) is LIVE via a confirm dialog + result banner over
+   the WEB-EDGE `POST /api/v1/characters?action=reset-builtins` route
+   (live since P4.4u4), dispatched via `fetch` (the upload/PNG-rider
+   precedent).
+
+**Contract:** the listing-surface DTOs + Request interfaces
+(`RoleplayTemplateDto` + the `TemplateDelimiter` union +
+`RenderingPattern`; `ImageProfileDto` + `ImageProviderInfo`; the
+`roleplayTemplate*` / `imageProfile*` / `imageProviderList` Request
+interfaces) landed as the byte-identical B↔C **core-contract appendix
+block** appended at the end of `core-contract.ts`. Lane C does NOT edit
+the `CoreRequest`/`CoreResponse` unions (lane B owns) — the SPA data
+layers dispatch the new variants through a localized
+`as unknown as CoreRequest` seam (`templates.api.ts` /
+`image-profiles.api.ts` `listingDispatch`). **Unification wires the
+union + drops the cast.** Global mount-point variants are pinned in the
+P4.6p contract but SPA-UNCONSUMED (Scriptorium vertical) — NOT declared
+in lane C's appendix; the unifier keeps lane A's Rust mirrors / lane B's
+block if it declared them.
+
+**Tests:** pure helpers exact-unit-tested
+(`template-form.spec.ts` delimiter/narration round-trip + omissions;
+`image-profile-form.spec.ts` provider normalization + API-key
+filtering); mocked-CoreClient CRUD specs
+(`roleplay-templates-card.spec.ts` built-in guard + delete;
+`image-profiles-card.spec.ts` default badge + sort + empty);
+`project-model-behavior-card.spec.ts` async-option seeding + save. Two
+stale project-card "disabled affordance" specs flipped to enabled;
+`characters-list.spec.ts` reset-button assertion flipped to enabled.
+`ng test` 289 (43 files) / `ng build` clean. e2e beats authored + fixture-guarded
+(activate at unification over lane A's extended fixture):
+`projects-flow.spec.ts` (the Model-Behavior template picker seeds +
+persists) and a new `settings-flow.spec.ts` describe (Templates create→
+edit→delete; Images card lists the fixture profiles). `playwright
+--list` discovers all three.
+
+**Deferred loudly (enumerated):** the image-profile Validate /
+list-models buttons (variants refusal-armed — Validate renders
+disabled-with-title, Model uses `defaultModels` only); the structured
+per-provider parameters editor (a JSON textarea stands in — tier-2/8);
+the template "Draft formatting instructions" helper
+(`generateFormattingPromptHint` transcription); template/profile tag
+pickers (tags vertical); the mount-points management UI (Scriptorium);
+the group-stores / project-files browse buttons (file-manager). The
+`systemPrompt` editor is a plain textarea (v4 uses a Markdown Lexical
+editor — no rich editor in the SPA).
+
+**Flags for unification:** (1) the global Default Template selector
+writes `defaultRoleplayTemplateId` into the chat-settings row — confirm
+P4.6d's `chatSettingsUpdate` accepts/round-trips that field (it is a v4
+`settings/chat` field, so expected present). (2) v4's image-profiles
+CARD sorts alphabetically by name (the SERVER returns default-first);
+lane C matched the card (alphabetical) — the contract's "default-first"
+refers to the server ordering. (3) the `roleplayTemplateList` envelope
+is a BARE array; `fetchRoleplayTemplates` accepts array-or-wrapper
+defensively — reconcile against lane A's real body. Versions after the
+lane: SPA 0.5.25 (accumulated 0.5.23/24/25 across the three commits).

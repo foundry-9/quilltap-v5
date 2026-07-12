@@ -1,10 +1,21 @@
-import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, openSync, rmSync } from 'node:fs';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, openSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { expect, test, type Page } from '@playwright/test';
 
-import { ARTIFACTS_DIR, spaDir, webBinary } from './support/env';
+import { makeDbKeyFile } from './support/dbkey';
+import {
+  ARTIFACTS_DIR,
+  cliBinary,
+  E2E_PASSPHRASE,
+  FIXTURE_USER,
+  FIXTURES_DIR,
+  SINGLE_USER_ID,
+  spaDir,
+  TEST_PEPPER,
+  webBinary,
+} from './support/env';
 import { startMockLlm, type MockLlm } from './support/mock-llm';
 
 /**
@@ -142,3 +153,182 @@ test.describe('Settings vertical (fresh instance → wizard → configured profi
     ).toBeVisible();
   });
 });
+
+// ---------------------------------------------------------------------------
+// P4.6r — the Templates & Prompts + Images settings verticals. Authored
+// pre-unification against lane A's extended groups-projects fixture (which gains
+// user roleplay templates + image profiles); the describe SKIPS when that
+// fixture is absent (this worktree) and auto-activates once lane A lands it +
+// the `roleplayTemplate*` / `imageProfile*` dispatch variants at unification.
+// ---------------------------------------------------------------------------
+
+const TMPL_PORT = 4326;
+const TMPL_BASE_URL = `http://127.0.0.1:${TMPL_PORT}`;
+const TMPL_INSTANCE_DIR = resolve(ARTIFACTS_DIR, 'settings-templates-instance');
+const TMPL_DATA_DIR = resolve(TMPL_INSTANCE_DIR, 'data');
+const TMPL_SERVER_LOG = resolve(ARTIFACTS_DIR, 'settings-templates-server.log');
+
+const GP_MAIN_FIXTURE = resolve(FIXTURES_DIR, 'groups-projects-main.db');
+const GP_MOUNT_FIXTURE = resolve(FIXTURES_DIR, 'groups-projects-mount.db');
+const GP_FIXTURE_READY = existsSync(GP_MAIN_FIXTURE);
+const TMPL_USER_TABLES = ['roleplayTemplates', 'imageProfiles', 'apiKeys', 'characters', 'tags'];
+
+let tmplServer: ChildProcess | undefined;
+
+test.describe('P4.6r — Templates & Images settings verticals', () => {
+  test.skip(!GP_FIXTURE_READY, 'awaits lane A groups-projects fixture (wired at unification)');
+
+  test.beforeAll(async () => {
+    test.setTimeout(120_000);
+    const web = webBinary();
+    const cli = cliBinary();
+
+    rmSync(TMPL_INSTANCE_DIR, { recursive: true, force: true });
+    mkdirSync(TMPL_DATA_DIR, { recursive: true });
+    copyFileSync(GP_MAIN_FIXTURE, resolve(TMPL_DATA_DIR, 'quilltap.db'));
+    if (existsSync(GP_MOUNT_FIXTURE)) {
+      copyFileSync(GP_MOUNT_FIXTURE, resolve(TMPL_DATA_DIR, 'quilltap-mount-index.db'));
+    }
+    writeFileSync(
+      resolve(TMPL_DATA_DIR, 'quilltap.dbkey'),
+      makeDbKeyFile(TEST_PEPPER, E2E_PASSPHRASE),
+    );
+    for (const table of TMPL_USER_TABLES) {
+      const res = spawnSync(
+        cli,
+        [
+          'db',
+          '--data-dir',
+          TMPL_INSTANCE_DIR,
+          '--write',
+          `UPDATE ${table} SET userId = '${SINGLE_USER_ID}' WHERE userId = '${FIXTURE_USER}';`,
+        ],
+        {
+          env: {
+            ...withoutPepper(),
+            QUILLTAP_DB_PASSPHRASE: E2E_PASSPHRASE,
+            QUILLTAP_QUIET_HINTS: '1',
+          },
+          encoding: 'utf8',
+        },
+      );
+      if (res.status !== 0) {
+        const out = `${res.stdout}${res.stderr}`;
+        if (!out.includes('no such table') && !out.includes('no such column: userId')) {
+          throw new Error(`fixture rewrite failed (${table}):\n${res.stdout}\n${res.stderr}`);
+        }
+      }
+    }
+
+    const logFd = openSync(TMPL_SERVER_LOG, 'w');
+    tmplServer = spawn(
+      web,
+      [
+        '--host',
+        '127.0.0.1',
+        '--port',
+        String(TMPL_PORT),
+        '--data-dir',
+        TMPL_INSTANCE_DIR,
+        '--spa-dir',
+        spaDir(),
+      ],
+      { stdio: ['ignore', logFd, logFd], detached: true, env: withoutPepper() },
+    );
+    tmplServer.unref();
+
+    const deadline = Date.now() + 30_000;
+    for (;;) {
+      try {
+        const res = await fetch(`${TMPL_BASE_URL}/health`);
+        if (res.status === 423 || res.status === 200) break;
+      } catch {
+        // not up yet
+      }
+      if (Date.now() > deadline) {
+        throw new Error(`templates settings server not ready within 30s; see ${TMPL_SERVER_LOG}`);
+      }
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  });
+
+  test.afterAll(() => {
+    if (tmplServer?.pid) {
+      try {
+        process.kill(-tmplServer.pid, 'SIGTERM');
+      } catch {
+        try {
+          process.kill(tmplServer.pid, 'SIGTERM');
+        } catch {
+          // already gone
+        }
+      }
+    }
+    rmSync(TMPL_INSTANCE_DIR, { recursive: true, force: true });
+  });
+
+  async function unlockIfLocked(page: Page, ready: ReturnType<Page['getByRole']>): Promise<void> {
+    const passphrase = page.locator('#qt-passphrase');
+    await expect(passphrase.or(ready).first()).toBeVisible({ timeout: 15_000 });
+    if (await passphrase.isVisible()) {
+      await passphrase.fill(E2E_PASSPHRASE);
+      await page.getByRole('button', { name: 'Unlock' }).click();
+    }
+    await expect(ready).toBeVisible({ timeout: 10_000 });
+  }
+
+  test('Templates tab: create → appears → edit → delete a roleplay template', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.goto(`${TMPL_BASE_URL}/settings?tab=templates`);
+    await unlockIfLocked(page, page.getByRole('heading', { name: 'My Templates' }));
+
+    // Create.
+    await page.getByRole('button', { name: 'Create Template', exact: true }).first().click();
+    const dialog = page.locator('qt-template-form-modal');
+    await expect(dialog).toBeVisible();
+    await dialog.getByPlaceholder('My Custom RP Style').fill('Walk Template');
+    await dialog.locator('textarea').first().fill('Render narration between *stars*.');
+    await dialog.getByRole('button', { name: 'Create Template', exact: true }).click();
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
+
+    const card = page.locator('.qt-card', { hasText: 'Walk Template' });
+    await expect(card).toBeVisible({ timeout: 10_000 });
+
+    // Edit → rename.
+    await card.getByRole('button', { name: 'Edit', exact: true }).click();
+    const editDialog = page.locator('qt-template-form-modal');
+    const nameInput = editDialog.getByPlaceholder('My Custom RP Style');
+    await nameInput.fill('Walk Template Renamed');
+    await editDialog.getByRole('button', { name: 'Save Changes' }).click();
+    await expect(editDialog).toBeHidden({ timeout: 10_000 });
+    await expect(page.locator('.qt-card', { hasText: 'Walk Template Renamed' })).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // Delete (inline confirm).
+    const renamed = page.locator('.qt-card', { hasText: 'Walk Template Renamed' });
+    await renamed.getByRole('button', { name: 'Delete', exact: true }).click();
+    await renamed.getByRole('button', { name: 'Confirm', exact: true }).click();
+    await expect(page.locator('.qt-card', { hasText: 'Walk Template Renamed' })).toHaveCount(0, {
+      timeout: 10_000,
+    });
+  });
+
+  test('Images tab: the Image Profiles card lists the fixture profiles', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.goto(`${TMPL_BASE_URL}/settings?tab=images`);
+    await unlockIfLocked(
+      page,
+      page.getByRole('heading', { name: /Image Generation Profiles/ }),
+    );
+    // The card fetched the image-profiles listing (proves the lane-A variant is
+    // live) and rendered the New Profile affordance.
+    await expect(page.getByRole('button', { name: 'New Profile' })).toBeVisible({ timeout: 10_000 });
+  });
+});
+
+function withoutPepper(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  delete env['ENCRYPTION_MASTER_PEPPER'];
+  return env;
+}

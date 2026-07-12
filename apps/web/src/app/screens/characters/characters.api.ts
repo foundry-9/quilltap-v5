@@ -263,6 +263,39 @@ export async function uploadCharacterPhoto(
   return (await res.json()) as UploadedPhoto;
 }
 
+/** The v4 `handleResetBuiltins` success body (counts shape). */
+export interface ResetBuiltinsResult {
+  success: boolean;
+  deletedCharacterIds: string[];
+  preservedIds?: { Lorian: string | null; Riya: string | null };
+  postResetIds?: { Lorian: string | null; Riya: string | null };
+  remappedIdCount?: number;
+  importResult?: { imported?: { characters?: number } };
+}
+
+/**
+ * Reset the built-in characters (`POST /api/v1/characters?action=reset-builtins`,
+ * the WEB-EDGE route that went live in P4.4u4 — dispatched at the edge like the
+ * upload/PNG riders). Deletes any existing Lorian/Riya then re-imports their
+ * first-run versions; the success body carries v4's counts shape.
+ */
+export async function resetBuiltinCharacters(): Promise<ResetBuiltinsResult> {
+  const res = await fetch('/api/v1/characters?action=reset-builtins', { method: 'POST' });
+  if (!res.ok) {
+    let message = `Failed to reset built-in characters (HTTP ${res.status})`;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body?.error) {
+        message = body.error;
+      }
+    } catch {
+      // non-JSON error body — keep the status message
+    }
+    throw new Error(message);
+  }
+  return (await res.json()) as ResetBuiltinsResult;
+}
+
 /**
  * Export a character as a SillyTavern PNG card (`GET /api/v1/characters/{id}?
  * action=export&format=png`) and trigger a client-side download. The route sets

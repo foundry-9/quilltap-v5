@@ -182,6 +182,56 @@ test.describe('P4.6l — Projects vertical (list → detail → toggle → renam
     });
   });
 
+  // P4.6r — the Default Roleplay Template picker (Model Behavior card). Fetches
+  // the roleplay-templates listing (lane A) and persists the project's
+  // `defaultRoleplayTemplateId` across a reload. The extended groups-projects
+  // fixture carries at least one user roleplay template for this beat.
+  test('the Model Behavior roleplay-template picker seeds options and persists a selection', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await page.goto(`${PROJ_BASE_URL}/prospero`);
+    await unlockIfLocked(page);
+
+    const projectCards = page.locator('qt-project-card');
+    await expect(projectCards.first()).toBeVisible({ timeout: 10_000 });
+    await projectCards.first().getByRole('link', { name: 'Open' }).click();
+    await expect(page).toHaveURL(/\/prospero\/[^/]+$/);
+
+    const card = page.locator('qt-project-model-behavior-card');
+    await expect(card).toBeVisible({ timeout: 10_000 });
+    // Open the collapsible if it starts closed.
+    const picker = card.getByLabel('Default Roleplay Template');
+    if (!(await picker.isVisible().catch(() => false))) {
+      await card.getByRole('button', { name: /Model Behavior/ }).click();
+    }
+    await expect(picker).toBeEnabled({ timeout: 10_000 });
+
+    // Select the first real template (index 1 — index 0 is "Inherit…").
+    const optionCount = await picker.locator('option').count();
+    expect(optionCount).toBeGreaterThan(1);
+    const value = await picker.locator('option').nth(1).getAttribute('value');
+    await picker.selectOption(value!);
+    await expect(page.locator('qt-project-model-behavior-card')).not.toContainText('Saving…', {
+      timeout: 10_000,
+    });
+
+    // The selection survives a full reload (server state).
+    await page.reload();
+    await unlockIfLocked(page);
+    await expect(page).toHaveURL(/\/prospero\/[^/]+$/);
+    const reloaded = page.locator('qt-project-model-behavior-card').getByLabel(
+      'Default Roleplay Template',
+    );
+    if (!(await reloaded.isVisible().catch(() => false))) {
+      await page
+        .locator('qt-project-model-behavior-card')
+        .getByRole('button', { name: /Model Behavior/ })
+        .click();
+    }
+    await expect(reloaded).toHaveValue(value!, { timeout: 10_000 });
+  });
+
   // P4.6o — the project Wardrobe card (inline draft form + rows).
   test('the Wardrobe card: create a default item, see its badges, delete it', async ({ page }) => {
     test.setTimeout(60_000);
