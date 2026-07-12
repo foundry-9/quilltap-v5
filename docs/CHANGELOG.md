@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.6o (lane B, SPA) — the Scenarios + Wardrobe SPA remainder. Re-pinned
+the SPA scenario contract (`core-contract.ts`) to v4's Zod-schema shape:
+`groupScenario*`/`projectScenario*` create/update now ride a nested
+`scenario` bag (`{filename, name?, description?, isDefault?, body}` on
+create; no `filename` on update), rename takes `newFilename`, and the
+`ScenarioDto` gains `filename`/`rawIsDefault`/`body`/timestamps
+(superseding the `{name, content, isDefault}` sketch). Added the six
+net-new general (instance-wide) `scenario*` request variants and a
+`WardrobeItemDto` + slot-type. (Lane A makes the matching Rust change;
+reconciled at unification.)
+
 P4.4u4 unit 3 (lane C, tier 2): reset_builtins as a service. Ported v4's
 `handleResetBuiltins` to `quilltap-core::services::quilltap_import::reset::
 reset_builtins` — cascade-delete the built-in characters (Lorian, Riya),

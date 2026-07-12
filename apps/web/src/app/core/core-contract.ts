@@ -593,7 +593,34 @@ export interface GroupMountPointUnlinkRequest {
   mountPointId: string;
 }
 
-/** Group scenarios (v4 `/groups/:id/scenarios`), mirror of character scenarios. */
+/**
+ * The scenario body bag — re-pinned 2026-07-11 from v4's Zod schemas
+ * (`createScenarioSchema` / `updateScenarioSchema`), identical across the
+ * group / project / general families (supersedes the earlier
+ * `{name, content, isDefault}` sketch).
+ *
+ * `filename` vs `name` is a four-vantage-grade distinction, never collapsed:
+ * `filename` is the on-disk name without `.md` (set at create, changed only via
+ * rename); `name` is the display title stored in the file's frontmatter. Create
+ * requires `filename` + `body`; every optional is truly absent (no Zod default).
+ */
+export interface ScenarioCreateBag {
+  filename: string;
+  name?: string;
+  description?: string;
+  isDefault?: boolean;
+  body: string;
+}
+
+/** The scenario update bag: `body` required; NO `filename` (the path rides the variant's `scenarioPath`). */
+export interface ScenarioUpdateBag {
+  name?: string;
+  description?: string;
+  isDefault?: boolean;
+  body: string;
+}
+
+/** Group scenarios (v4 `/groups/:id/scenarios`), mirror of project + general. */
 export interface GroupScenarioListRequest {
   type: 'groupScenarioList';
   groupId: string;
@@ -601,9 +628,7 @@ export interface GroupScenarioListRequest {
 export interface GroupScenarioCreateRequest {
   type: 'groupScenarioCreate';
   groupId: string;
-  name: string;
-  content: string;
-  isDefault?: boolean;
+  scenario: ScenarioCreateBag;
 }
 export interface GroupScenarioGetRequest {
   type: 'groupScenarioGet';
@@ -614,15 +639,13 @@ export interface GroupScenarioUpdateRequest {
   type: 'groupScenarioUpdate';
   groupId: string;
   scenarioPath: string;
-  name?: string;
-  content?: string;
-  isDefault?: boolean;
+  scenario: ScenarioUpdateBag;
 }
 export interface GroupScenarioRenameRequest {
   type: 'groupScenarioRename';
   groupId: string;
   scenarioPath: string;
-  newName: string;
+  newFilename: string;
 }
 export interface GroupScenarioDeleteRequest {
   type: 'groupScenarioDelete';
@@ -803,7 +826,7 @@ export interface ProjectMountPointUnlinkRequest {
   mountPointId: string;
 }
 
-/** Project scenarios (v4 `/projects/:id/scenarios`), mirror of groups. */
+/** Project scenarios (v4 `/projects/:id/scenarios`), mirror of groups + general. */
 export interface ProjectScenarioListRequest {
   type: 'projectScenarioList';
   projectId: string;
@@ -811,9 +834,7 @@ export interface ProjectScenarioListRequest {
 export interface ProjectScenarioCreateRequest {
   type: 'projectScenarioCreate';
   projectId: string;
-  name: string;
-  content: string;
-  isDefault?: boolean;
+  scenario: ScenarioCreateBag;
 }
 export interface ProjectScenarioGetRequest {
   type: 'projectScenarioGet';
@@ -824,19 +845,48 @@ export interface ProjectScenarioUpdateRequest {
   type: 'projectScenarioUpdate';
   projectId: string;
   scenarioPath: string;
-  name?: string;
-  content?: string;
-  isDefault?: boolean;
+  scenario: ScenarioUpdateBag;
 }
 export interface ProjectScenarioRenameRequest {
   type: 'projectScenarioRename';
   projectId: string;
   scenarioPath: string;
-  newName: string;
+  newFilename: string;
 }
 export interface ProjectScenarioDeleteRequest {
   type: 'projectScenarioDelete';
   projectId: string;
+  scenarioPath: string;
+}
+
+/**
+ * General (instance-wide "Quilltap General" mount) scenarios (v4 `/scenarios`).
+ * Same bag + verbs as the project/group families, minus the scope id — the
+ * mount is resolved server-side (a null `mountPointId` means unprovisioned).
+ */
+export interface ScenarioListRequest {
+  type: 'scenarioList';
+}
+export interface ScenarioCreateRequest {
+  type: 'scenarioCreate';
+  scenario: ScenarioCreateBag;
+}
+export interface ScenarioGetRequest {
+  type: 'scenarioGet';
+  scenarioPath: string;
+}
+export interface ScenarioUpdateRequest {
+  type: 'scenarioUpdate';
+  scenarioPath: string;
+  scenario: ScenarioUpdateBag;
+}
+export interface ScenarioRenameRequest {
+  type: 'scenarioRename';
+  scenarioPath: string;
+  newFilename: string;
+}
+export interface ScenarioDeleteRequest {
+  type: 'scenarioDelete';
   scenarioPath: string;
 }
 
@@ -1011,7 +1061,13 @@ export type CoreRequest =
   | ProjectWardrobeCreateRequest
   | ProjectWardrobeGetRequest
   | ProjectWardrobeUpdateRequest
-  | ProjectWardrobeDeleteRequest;
+  | ProjectWardrobeDeleteRequest
+  | ScenarioListRequest
+  | ScenarioCreateRequest
+  | ScenarioGetRequest
+  | ScenarioUpdateRequest
+  | ScenarioRenameRequest
+  | ScenarioDeleteRequest;
 
 export type RequestType = CoreRequest['type'];
 
@@ -1804,20 +1860,61 @@ export interface ProjectFileDto {
   [key: string]: unknown;
 }
 
-/** One scenario in a group/project store (v4 scenario list item). */
-export interface ScenarioItem {
-  scenarioPath: string;
+/**
+ * One scenario file in a group/project/general `Scenarios/` folder (v4 scenario
+ * DTO — re-pinned 2026-07-11). `filename`/`name` are the four-vantage-grade
+ * distinction, never collapsed (see {@link ScenarioCreateBag}); `rawIsDefault`
+ * is the file's own frontmatter flag before the multi-default reconciliation
+ * that `isDefault` reflects.
+ */
+export interface ScenarioDto {
+  path: string;
+  filename: string;
   name: string;
-  content?: string;
+  description?: string;
   isDefault: boolean;
-  [key: string]: unknown;
+  rawIsDefault: boolean;
+  body: string;
+  lastModified: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
-/** The scenario list envelope (v4 `{mountPointId, scenarios, warnings}`). */
+/**
+ * The scenario list envelope (v4 `{mountPointId, scenarios, warnings}`). For the
+ * general family `mountPointId` is `null` when the "Quilltap General" mount has
+ * not been provisioned yet (empty arrays alongside).
+ */
 export interface ScenarioListDto {
   mountPointId: string | null;
-  scenarios: ScenarioItem[];
-  warnings?: string[];
+  scenarios: ScenarioDto[];
+  warnings: string[];
+}
+
+/** The four wardrobe coverage slots (v4 `WardrobeItemTypeEnum`). */
+export type WardrobeSlotType = 'top' | 'bottom' | 'footwear' | 'accessories';
+
+/**
+ * One project (or character) wardrobe item (v4 `WardrobeItemSchema`). The
+ * project tier of the tri-tier wardrobe model — wearable by every character in
+ * the project's chats. `imagePrompt` is the terse visual cue preferred over
+ * `title` in image prompts; a non-empty `componentItemIds` marks a composite;
+ * `replace` clears the item's designated slots on wear instead of layering.
+ */
+export interface WardrobeItemDto {
+  id: string;
+  characterId?: string | null;
+  title: string;
+  description?: string | null;
+  imagePrompt?: string | null;
+  types: WardrobeSlotType[];
+  componentItemIds?: string[];
+  appropriateness?: string | null;
+  isDefault?: boolean;
+  replace?: boolean;
+  archivedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /** The story-background resolution (v4 `?action=background`). */
