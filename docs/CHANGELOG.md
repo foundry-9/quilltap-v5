@@ -1054,6 +1054,14 @@ dispatch client (`DocumentApi`) reads lane B's document family + lane A's
 document block + `mountFilesList` request variants, `documentMode` merged
 onto `ChatDetail`. SPA 0.5.44.
 
+P4.6x unit 2 — the `qt-document-pane` component (v4 `DocumentPane`):
+click-to-rename title, focus/split toggle, delete (confirm), close, the
+qtap:// URL row with copy, the frontmatter "Document Info" table (markdown
+only), the status bar (Markdown/Plain text · word count · Saved/Unsaved/
+Saving · AI-editing), and the byte-exact textarea editor. Markdown files
+split the frontmatter into the table and edit the body only, recombining
+`rawBlock + body` on change so on-disk bytes stay faithful. SPA 0.5.45.
+
 P4.6x — the D17 Lexical spike for the Document Mode markdown editor is
 RED. The sanctioned vanilla scope (lexical + @lexical/rich-text +
 @lexical/markdown) round-trips headings/text-formats but throws on any

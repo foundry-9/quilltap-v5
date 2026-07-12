@@ -9004,3 +9004,20 @@ already the default; the store's absorb-first-serialization is correctly gated
 on it, so no first-edit mis-absorb). Removed the spike-gated Lexical deps.
 ProseMirror stays the named next-round decision (recorded on phase-4.md's D17
 line); the separate D17 chat-composer spike is untouched.
+
+**Unit 2 — the `qt-document-pane` component (SPA 0.5.45).** v4
+`DocumentPane` + `DocumentPaneBinding` (the pane's clean prop surface):
+signal inputs `entry` (OpenDocEntry) + `mode`, outputs contentChange /
+blur / rename / close / delete / toggleFocus. Header (click-to-rename
+title with Enter-submit/Escape-cancel + RAF focus, focus/split toggle,
+delete with `window.confirm`, close), the qtap:// URL row with the
+copy-to-clipboard button (1.2s "Copied" flash), the frontmatter table
+(markdown only), and the status bar. Per the D17 RED, EVERY file renders
+in the plain textarea; markdown files show the frontmatter table + edit
+the BODY only, recombining `${rawBlock}${body}` on change (v4
+`handleMarkdownBodyChange`) so bytes stay faithful; word count reads the
+body for markdown, whole content otherwise. Component spec covers
+title/URL/status render, markdown-vs-plain split, the frontmatter
+recombine, rename-on-Enter, close, and LLM-editing disable; the
+multi-render spec resets the test module (the P4.6t lesson). `ng test`
+461 (65 files) green.
