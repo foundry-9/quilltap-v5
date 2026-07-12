@@ -13,6 +13,15 @@ net-new general (instance-wide) `scenario*` request variants and a
 `WardrobeItemDto` + slot-type. (Lane A makes the matching Rust change;
 reconciled at unification.)
 
+Built the scope-agnostic `qt-scenarios-manager` family (manager + row +
+editor modal + a `ScenarioMutator` service interface with project- and
+general-scoped factories over `CoreClient`). The manager makes no
+dispatches itself — the scope lives in the mutator. Delete confirms,
+rename prompts on the FILENAME, set-default re-sends update with
+`isDefault: true` (no dedicated verb); the editor ships a plain textarea
+(the established Lexical divergence). Added a `closeOnBackdrop` input to
+the shared Modal (default true) for the no-click-outside editor.
+
 P4.4u4 unit 3 (lane C, tier 2): reset_builtins as a service. Ported v4's
 `handleResetBuiltins` to `quilltap-core::services::quilltap_import::reset::
 reset_builtins` — cascade-delete the built-in characters (Lorian, Riya),

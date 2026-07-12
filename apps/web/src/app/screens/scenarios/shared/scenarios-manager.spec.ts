@@ -1,0 +1,320 @@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import type { ScenarioDto } from '../../../core/core-contract';
+import type { ScenarioMutator, ScenarioResult } from '../scenarios.api';
+import { ScenariosManager } from './scenarios-manager';
+
+function scenario(over: Partial<ScenarioDto> = {}): ScenarioDto {
+  return {
+    path: 'Scenarios/welcome.md',
+    filename: 'welcome',
+    name: 'Welcome to the Estate',
+    description: 'A summer evening.',
+    isDefault: false,
+    rawIsDefault: false,
+    body: 'The gates swing wide for {{user}}.',
+    lastModified: '2024-01-01T00:00:00.000Z',
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
+    ...over,
+  };
+}
+
+interface MockHandle {
+  mutator: ScenarioMutator;
+  calls: {
+    create: unknown[];
+    update: [string, unknown][];
+    rename: [string, string][];
+    delete: string[];
+    setDefault: string[];
+  };
+  scenarios: ReturnType<typeof signal<ScenarioDto[]>>;
+  results: {
+    create: ScenarioResult<{ path: string }>;
+    update: ScenarioResult;
+    rename: ScenarioResult<{ path: string }>;
+    delete: ScenarioResult;
+    setDefault: ScenarioResult;
+  };
+}
+
+function mockMutator(init: Partial<Record<'scenarios' | 'warnings', unknown>> = {}): MockHandle {
+  const scenarios = signal<ScenarioDto[]>((init.scenarios as ScenarioDto[]) ?? []);
+  const warnings = signal<string[]>((init.warnings as string[]) ?? []);
+  const loading = signal(false);
+  const error = signal<string | null>(null);
+  const mountPointId = signal<string | null>('mount-1');
+  const calls: MockHandle['calls'] = {
+    create: [],
+    update: [],
+    rename: [],
+    delete: [],
+    setDefault: [],
+  };
+  const results: MockHandle['results'] = {
+    create: { ok: true, path: 'Scenarios/x.md' },
+    update: { ok: true },
+    rename: { ok: true, path: 'Scenarios/x.md' },
+    delete: { ok: true },
+    setDefault: { ok: true },
+  };
+  const mutator: ScenarioMutator = {
+    scenarios,
+    warnings,
+    loading,
+    error,
+    mountPointId,
+    refresh: async () => undefined,
+    createScenario: async (input) => {
+      calls.create.push(input);
+      return results.create;
+    },
+    updateScenario: async (path, input) => {
+      calls.update.push([path, input]);
+      return results.update;
+    },
+    renameScenario: async (path, newFilename) => {
+      calls.rename.push([path, newFilename]);
+      return results.rename;
+    },
+    deleteScenario: async (path) => {
+      calls.delete.push(path);
+      return results.delete;
+    },
+    setDefaultScenario: async (path) => {
+      calls.setDefault.push(path);
+      return results.setDefault;
+    },
+  };
+  return { mutator, calls, scenarios, results };
+}
+
+async function settle(fixture: ComponentFixture<unknown>, ticks = 4): Promise<void> {
+  for (let i = 0; i < ticks; i++) {
+    await Promise.resolve();
+    fixture.detectChanges();
+  }
+}
+
+async function render(
+  handle: MockHandle,
+  opts: { scopeLabel?: string; emptyMessage?: string } = {},
+): Promise<ComponentFixture<ScenariosManager>> {
+  TestBed.configureTestingModule({ imports: [ScenariosManager] });
+  const fixture = TestBed.createComponent(ScenariosManager);
+  fixture.componentRef.setInput('mutator', handle.mutator);
+  if (opts.scopeLabel) fixture.componentRef.setInput('scopeLabel', opts.scopeLabel);
+  if (opts.emptyMessage) fixture.componentRef.setInput('emptyMessage', opts.emptyMessage);
+  fixture.detectChanges();
+  await settle(fixture);
+  return fixture;
+}
+
+function text(fixture: ComponentFixture<unknown>): string {
+  return (fixture.nativeElement as HTMLElement).textContent ?? '';
+}
+
+function byText(fixture: ComponentFixture<unknown>, label: string): HTMLButtonElement {
+  const btn = Array.from(
+    (fixture.nativeElement as HTMLElement).querySelectorAll('button'),
+  ).find((b) => (b.textContent ?? '').trim() === label);
+  if (!btn) throw new Error(`button "${label}" not found`);
+  return btn as HTMLButtonElement;
+}
+
+function setInput(el: HTMLElement, selector: string, value: string): void {
+  const input = el.querySelector(selector) as HTMLInputElement | HTMLTextAreaElement;
+  input.value = value;
+  input.dispatchEvent(new Event('input'));
+}
+
+describe('ScenariosManager', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('shows the default empty message with no scenarios', async () => {
+    const fixture = await render(mockMutator());
+    expect(text(fixture)).toContain(
+      "No scenarios yet. Create one and it'll be offered when starting new chats.",
+    );
+  });
+
+  it('honors a scope-specific empty message', async () => {
+    const fixture = await render(mockMutator(), { emptyMessage: 'No general scenarios yet.' });
+    expect(text(fixture)).toContain('No general scenarios yet.');
+  });
+
+  it('renders a row per scenario with the .md filename and Default badge', async () => {
+    const handle = mockMutator({
+      scenarios: [scenario({ isDefault: true }), scenario({ path: 'Scenarios/duel.md', filename: 'duel', name: 'A Duel at Dawn' })],
+    });
+    const fixture = await render(handle);
+    const rows = (fixture.nativeElement as HTMLElement).querySelectorAll('qt-scenario-row');
+    expect(rows.length).toBe(2);
+    expect(text(fixture)).toContain('welcome.md');
+    expect(text(fixture)).toContain('A Duel at Dawn');
+    expect(text(fixture)).toContain('Default');
+  });
+
+  it('surfaces the mutator warnings block', async () => {
+    const fixture = await render(mockMutator({ warnings: ['Two files are marked default.'] }));
+    expect(fixture.nativeElement.querySelector('.qt-alert-warning')).toBeTruthy();
+    expect(text(fixture)).toContain('Two files are marked default.');
+  });
+
+  it('opens the create modal titled "New scenario" with a filename field', async () => {
+    const fixture = await render(mockMutator());
+    byText(fixture, '+ New scenario').click();
+    await settle(fixture);
+    expect(text(fixture)).toContain('New scenario');
+    expect(fixture.nativeElement.querySelector('#scenario-filename')).toBeTruthy();
+  });
+
+  it('creates: routes the full bag through createScenario and closes', async () => {
+    const handle = mockMutator();
+    const fixture = await render(handle, { scopeLabel: 'project' });
+    byText(fixture, '+ New scenario').click();
+    await settle(fixture);
+
+    const el = fixture.nativeElement as HTMLElement;
+    setInput(el, '#scenario-filename', 'garden-party');
+    setInput(el, '#scenario-name', 'Garden Party');
+    setInput(el, '#scenario-description', 'Tea on the lawn.');
+    setInput(el, '#scenario-body', 'The lawn is set for {{char}}.');
+    await settle(fixture);
+    byText(fixture, 'Create scenario').click();
+    await settle(fixture);
+
+    expect(handle.calls.create).toEqual([
+      {
+        filename: 'garden-party',
+        name: 'Garden Party',
+        description: 'Tea on the lawn.',
+        isDefault: false,
+        body: 'The lawn is set for {{char}}.',
+      },
+    ]);
+    // Modal closed on success.
+    expect(el.querySelector('#scenario-body')).toBeFalsy();
+  });
+
+  it('blocks create with empty body / name / filename microcopy', async () => {
+    const fixture = await render(mockMutator());
+    const el = fixture.nativeElement as HTMLElement;
+
+    byText(fixture, '+ New scenario').click();
+    await settle(fixture);
+    byText(fixture, 'Create scenario').click();
+    await settle(fixture);
+    expect(text(fixture)).toContain('Scenario body cannot be empty.');
+
+    setInput(el, '#scenario-body', 'A body.');
+    await settle(fixture);
+    byText(fixture, 'Create scenario').click();
+    await settle(fixture);
+    expect(text(fixture)).toContain('Scenario must have a name.');
+
+    setInput(el, '#scenario-name', 'A Name');
+    await settle(fixture);
+    byText(fixture, 'Create scenario').click();
+    await settle(fixture);
+    expect(text(fixture)).toContain('Filename is required.');
+  });
+
+  it('edits: modal drops the filename field and updateScenario carries no filename', async () => {
+    const handle = mockMutator({ scenarios: [scenario()] });
+    const fixture = await render(handle);
+    const el = fixture.nativeElement as HTMLElement;
+
+    byText(fixture, 'Edit').click();
+    await settle(fixture);
+    expect(text(fixture)).toContain('Edit scenario — Welcome to the Estate');
+    expect(el.querySelector('#scenario-filename')).toBeFalsy();
+
+    setInput(el, '#scenario-body', 'A new body.');
+    await settle(fixture);
+    byText(fixture, 'Save changes').click();
+    await settle(fixture);
+
+    expect(handle.calls.update).toEqual([
+      [
+        'Scenarios/welcome.md',
+        {
+          name: 'Welcome to the Estate',
+          description: 'A summer evening.',
+          isDefault: false,
+          body: 'A new body.',
+        },
+      ],
+    ]);
+  });
+
+  it('deletes only when the confirm is accepted', async () => {
+    const handle = mockMutator({ scenarios: [scenario()] });
+    const fixture = await render(handle);
+
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    byText(fixture, 'Delete').click();
+    await settle(fixture);
+    expect(handle.calls.delete).toEqual([]);
+
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    byText(fixture, 'Delete').click();
+    await settle(fixture);
+    expect(handle.calls.delete).toEqual(['Scenarios/welcome.md']);
+  });
+
+  it('renames on the FILENAME, and no-ops when unchanged or empty', async () => {
+    const handle = mockMutator({ scenarios: [scenario()] });
+    const fixture = await render(handle);
+    const promptSpy = vi.spyOn(window, 'prompt');
+
+    // Unchanged → no call.
+    promptSpy.mockReturnValueOnce('welcome');
+    byText(fixture, 'Rename').click();
+    await settle(fixture);
+    // Cancelled → no call.
+    promptSpy.mockReturnValueOnce(null);
+    byText(fixture, 'Rename').click();
+    await settle(fixture);
+    expect(handle.calls.rename).toEqual([]);
+    // The prompt is prefilled with the current filename.
+    expect(promptSpy).toHaveBeenCalledWith('Rename scenario "welcome" to:', 'welcome');
+
+    promptSpy.mockReturnValueOnce('  welcome-back  ');
+    byText(fixture, 'Rename').click();
+    await settle(fixture);
+    expect(handle.calls.rename).toEqual([['Scenarios/welcome.md', 'welcome-back']]);
+  });
+
+  it('sets default via re-send; no-ops on an already-default row', async () => {
+    const handle = mockMutator({
+      scenarios: [scenario({ isDefault: true }), scenario({ path: 'Scenarios/duel.md', filename: 'duel' })],
+    });
+    const fixture = await render(handle);
+    const radios = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLInputElement>(
+      'input[type="radio"]',
+    );
+    // Clicking the already-default row's radio is a no-op.
+    radios[0].dispatchEvent(new Event('change'));
+    await settle(fixture);
+    expect(handle.calls.setDefault).toEqual([]);
+    // Clicking the non-default row re-sends update.
+    radios[1].dispatchEvent(new Event('change'));
+    await settle(fixture);
+    expect(handle.calls.setDefault).toEqual(['Scenarios/duel.md']);
+  });
+
+  it('surfaces a failed mutation as an action error', async () => {
+    const handle = mockMutator({ scenarios: [scenario()] });
+    handle.results.delete = { ok: false, error: 'A scenario named "welcome" already exists' };
+    const fixture = await render(handle);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    byText(fixture, 'Delete').click();
+    await settle(fixture);
+    expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeTruthy();
+    expect(text(fixture)).toContain('A scenario named "welcome" already exists');
+  });
+});

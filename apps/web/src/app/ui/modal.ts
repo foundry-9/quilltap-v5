@@ -21,7 +21,7 @@ const MAX_WIDTHS: Record<string, string> = {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon],
   template: `
-    <div class="qt-dialog-overlay" (click)="close.emit()">
+    <div class="qt-dialog-overlay" (click)="onBackdrop()">
       <div
         class="qt-dialog flex flex-col max-h-[90vh]"
         [style.max-width]="maxWidthRem()"
@@ -54,7 +54,15 @@ export class Modal {
   readonly title = input.required<string>();
   /** Width token (v4 `maxWidth`: `md` | `lg` | `xl` | `2xl` | `3xl`). */
   readonly maxWidth = input<string>('lg');
+  /** Whether a backdrop click dismisses (v4 `closeOnClickOutside`, default true). */
+  readonly closeOnBackdrop = input(true);
   readonly close = output<void>();
 
   protected readonly maxWidthRem = computed(() => MAX_WIDTHS[this.maxWidth()] ?? MAX_WIDTHS['lg']);
+
+  protected onBackdrop(): void {
+    if (this.closeOnBackdrop()) {
+      this.close.emit();
+    }
+  }
 }
