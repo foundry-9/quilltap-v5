@@ -7588,3 +7588,33 @@ QT_ORACLE_ANNOTATIONS=/tmp/oracle-annotations.ndjson \
 ```
 
 Versions: core 0.0.185, harness 0.0.169.
+
+### P4.6p — fixture extension (the shared groups-projects fixture)
+
+Extended `build-groups-projects-fixture.ts` with the listing-surfaces rows, all
+ADDITIVE and invisible to the existing groups/projects/scenarios reads (they
+enumerate none of these tables; DIANA/MP_INDEXED are referenced by no
+group/project):
+- roleplay: `seedBuiltInTemplates()` (Standard + Quilltap RP, ids minted &
+  baked — resolved by name in the test) + RT_USER_1 (all three delimiter kinds,
+  an addOns-bearing wrap, renderingPatterns PRESENT) + RT_USER_2 (delimiters +
+  EMPTY patterns → the GET read-time regen).
+- tags: TAG_A..D; DIANA character tagged [TAG_B, TAG_C] (the image
+  sortByCharacter case — a NEW character so Aria/Bram/Cleo stay pristine).
+- image profiles: IP_1 (default, apiKeyId=APIKEY, tags [TAG_A]), IP_2 (tags
+  [TAG_B, TAG_C] → 2 matching DIANA), IP_3 (plain).
+- MP_INDEXED "Indexed Store" mount + one embedded chunk (4-byte Float32 BLOB) so
+  the LIST GROUP-BY count and the GET-[id] hydrate-and-filter count both see a
+  non-zero.
+
+Regenerated the three dependent oracles (groups 14 / projects 39 / scenarios 41)
+and re-ran their Rust differentials — all green, confirming zero perturbation.
+
+Regen recipe (Node 24, from the v4 checkout):
+```
+W=<worktree>; N=~/.nvm/versions/node/v24.13.1/bin
+QT_FIXTURE_GP_MAIN=$W/crates/quilltap-web/tests/fixtures/groups-projects-main.db \
+QT_FIXTURE_GP_MOUNT=$W/crates/quilltap-web/tests/fixtures/groups-projects-mount.db \
+  $N/node --import tsx $W/harness/oracle/fixtures/build-groups-projects-fixture.ts
+# then regen groups/projects/scenarios oracles (see their .test.ts headers)
+```

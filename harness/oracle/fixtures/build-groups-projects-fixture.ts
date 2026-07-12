@@ -5,6 +5,18 @@
  * `projects_routes_equivalence` / `scenarios_routes_equivalence`) AND the sibling
  * P4.6l/P4.6o Groups/Projects/Scenarios-SPA Playwright e2e.
  *
+ * P4.6p additions (the listing-surfaces server round — all ADDITIVE and
+ * invisible to the groups/projects/scenarios reads, which enumerate none of
+ * these tables and reference neither DIANA nor MP_INDEXED):
+ *   - the two built-in roleplay templates (via v4's REAL seedBuiltInTemplates)
+ *     + two user templates (one carrying all three delimiter kinds + addOns;
+ *     one with delimiters and EMPTY renderingPatterns for the read-time-regen),
+ *   - four tags + a tagged character DIANA (the image sortByCharacter case),
+ *   - three image profiles (one default + apiKey + tags; one tagged to match
+ *     DIANA; one plain),
+ *   - a dedicated "Indexed Store" mount carrying ONE embedded chunk (a non-null,
+ *     non-empty Float32 embedding) for the mount-points embedded-count paths.
+ *
  * P4.6n additions:
  *   - Groups Beacon (member Aria, one scenario; sorts before Gamma) + Zephyr
  *     (member Aria, ZERO scenarios) — the participant-union's sort + zero-scenario
@@ -97,6 +109,25 @@ const CHAT_B = 'c1000000-0000-4000-8000-000000000002'; // Iota, NO messages
 const MSG_A1 = 'd1000000-0000-4000-8000-000000000001';
 const MSG_A2 = 'd1000000-0000-4000-8000-000000000002';
 
+// P4.6p listing-surfaces coverage — additive rows INVISIBLE to the existing
+// groups/projects/scenarios reads (they enumerate none of these tables, and
+// DIANA/MP_INDEXED are referenced by no group/project). Two built-in roleplay
+// templates (seeded via v4's REAL seedBuiltInTemplates) + two user templates,
+// four tags, one tagged character (DIANA — sortByCharacter), three image
+// profiles, and one dedicated indexed store carrying an embedded chunk.
+const DIANA = 'a1000000-0000-4000-8000-000000000004';
+const RT_USER_1 = 'a4000000-0000-4000-8000-000000000001'; // all 3 delimiter kinds + addOns, patterns present
+const RT_USER_2 = 'a4000000-0000-4000-8000-000000000002'; // delimiters + EMPTY patterns → read-time regen
+const TAG_A = 'a5000000-0000-4000-8000-000000000001';
+const TAG_B = 'a5000000-0000-4000-8000-000000000002';
+const TAG_C = 'a5000000-0000-4000-8000-000000000003';
+const TAG_D = 'a5000000-0000-4000-8000-000000000004';
+const IP_1 = 'a6000000-0000-4000-8000-000000000001'; // default, apiKey, tags [TAG_A]
+const IP_2 = 'a6000000-0000-4000-8000-000000000002'; // non-default, tags [TAG_B, TAG_C] (matches DIANA)
+const IP_3 = 'a6000000-0000-4000-8000-000000000003'; // non-default, no apiKey, no tags
+const MP_INDEXED = 'b0000000-0000-4000-8000-0000000000c0'; // documents store w/ an embedded chunk
+const IDX_CHUNK = 'a7000000-0000-4000-8000-000000000001';
+
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
   const spec = JSON.parse(readFileSync(join(here, 'groups-projects.json'), 'utf8')) as Spec;
@@ -134,6 +165,9 @@ async function main(): Promise<void> {
   const { CharacterSchema } = await import('@/lib/schemas/types');
   const { GroupSchema } = await import('@/lib/schemas/group.types');
   const { ProjectSchema } = await import('@/lib/schemas/project.types');
+  const { RoleplayTemplateSchema } = await import('@/lib/schemas/types');
+  const { ImageProfileSchema } = await import('@/lib/schemas/profile.types');
+  const { TagSchema } = await import('@/lib/schemas/tag.types');
   const { generateDDL } = await import('@/lib/database/schema-translator');
   const {
     DocMountPointSchema,
@@ -151,6 +185,9 @@ async function main(): Promise<void> {
   await ensureCollection('characters', CharacterSchema);
   await ensureCollection('groups', GroupSchema);
   await ensureCollection('projects', ProjectSchema);
+  await ensureCollection('roleplay_templates', RoleplayTemplateSchema);
+  await ensureCollection('image_profiles', ImageProfileSchema);
+  await ensureCollection('tags', TagSchema);
 
   const midb = getRawMountIndexDatabase();
   if (!midb) throw new Error('mount-index DB handle unavailable');
@@ -609,6 +646,195 @@ async function main(): Promise<void> {
     );
   }
 
+  // ── P4.6p listing-surfaces rows (additive; invisible to the reads above) ──
+
+  // Roleplay templates: the two built-ins via v4's REAL seeder (ids minted here,
+  // baked stable into the committed .db — the Rust test resolves them by name),
+  // plus two user templates.
+  await repos.roleplayTemplates.seedBuiltInTemplates();
+  // RT_USER_1 — all three delimiter kinds, an addOns-bearing wrap, patterns
+  // PRESENT (so GET returns them verbatim, no read-time regen).
+  await repos.roleplayTemplates.create(
+    {
+      userId: spec.userId,
+      name: 'Bracket Prose',
+      description: 'User template exercising every delimiter kind.',
+      systemPrompt: 'Write with brackets and tags.',
+      isBuiltIn: false,
+      tags: [],
+      delimiters: [
+        {
+          kind: 'wrap',
+          name: 'Emphasis',
+          buttonName: 'Em',
+          delimiters: '*',
+          style: 'qt-rp-emph',
+          addOns: { bold: true, underline: 'single' },
+        },
+        { kind: 'linePrefix', name: 'Aside', buttonName: 'Asd', marker: '// ', style: 'qt-rp-ooc' },
+        {
+          kind: 'tagPrefix',
+          name: 'Speaker',
+          buttonName: 'Spk',
+          open: '[',
+          close: ']',
+          style: 'qt-rp-speaker',
+        },
+      ],
+      renderingPatterns: [{ pattern: '\\*[^*]+\\*', className: 'qt-rp-emph' }],
+      dialogueDetection: null,
+      narrationDelimiters: '*',
+    } as never,
+    { id: RT_USER_1, createdAt: TS, updatedAt: TS } as never,
+  );
+  // RT_USER_2 — delimiters present but renderingPatterns EMPTY → the GET-[id]
+  // read-time auto-regen (non-persisted).
+  await repos.roleplayTemplates.create(
+    {
+      userId: spec.userId,
+      name: 'Quiet Draft',
+      description: null,
+      systemPrompt: 'Minimal.',
+      isBuiltIn: false,
+      tags: [],
+      delimiters: [
+        { kind: 'wrap', name: 'Underline', buttonName: 'Ul', delimiters: '_', style: 'qt-rp-u' },
+      ],
+      renderingPatterns: [],
+      dialogueDetection: null,
+      narrationDelimiters: '_',
+    } as never,
+    { id: RT_USER_2, createdAt: TS, updatedAt: TS } as never,
+  );
+
+  // Four tags (for image-profile tag enrichment + the sortByCharacter match).
+  for (const [tid, name] of [
+    [TAG_A, 'Portrait'],
+    [TAG_B, 'Landscape'],
+    [TAG_C, 'Night'],
+    [TAG_D, 'Sketch'],
+  ] as Array<[string, string]>) {
+    await repos.tags.create(
+      { userId: spec.userId, name, nameLower: name.toLowerCase(), quickHide: false } as never,
+      { id: tid, createdAt: TS, updatedAt: TS } as never,
+    );
+  }
+
+  // DIANA — a tagged character used ONLY by the image sortByCharacter case (no
+  // group/project references it, so the existing reads are unperturbed).
+  await repos.characters.create(
+    {
+      name: 'Diana',
+      userId: spec.userId,
+      title: null,
+      description: 'The tagged test character.',
+      personality: null,
+      aliases: [],
+      controlledBy: 'llm',
+      talkativeness: 0.5,
+      defaultConnectionProfileId: CONN,
+      isFavorite: false,
+      npc: false,
+      tags: [TAG_B, TAG_C],
+    } as never,
+    { id: DIANA, createdAt: TS, updatedAt: TS } as never,
+  );
+
+  // Three image profiles: IP_1 default + apiKey + [TAG_A]; IP_2 non-default +
+  // [TAG_B, TAG_C] (matches DIANA → 2 matching tags); IP_3 plain.
+  await repos.imageProfiles.create(
+    {
+      userId: spec.userId,
+      name: 'Primary Imagery',
+      provider: 'OPENAI_COMPATIBLE',
+      apiKeyId: APIKEY,
+      baseUrl: 'http://127.0.0.1:1/v1',
+      modelName: 'mock-image-model',
+      parameters: { steps: 30 },
+      isDefault: true,
+      isDangerousCompatible: false,
+      tags: [TAG_A],
+    } as never,
+    { id: IP_1, createdAt: TS, updatedAt: TS } as never,
+  );
+  await repos.imageProfiles.create(
+    {
+      userId: spec.userId,
+      name: 'Scenic',
+      provider: 'OPENAI_COMPATIBLE',
+      apiKeyId: null,
+      baseUrl: null,
+      modelName: 'mock-image-model',
+      parameters: {},
+      isDefault: false,
+      isDangerousCompatible: false,
+      tags: [TAG_B, TAG_C],
+    } as never,
+    { id: IP_2, createdAt: TS, updatedAt: TS } as never,
+  );
+  await repos.imageProfiles.create(
+    {
+      userId: spec.userId,
+      name: 'Bare',
+      provider: 'OPENAI_COMPATIBLE',
+      apiKeyId: null,
+      baseUrl: null,
+      modelName: 'mock-image-model',
+      parameters: {},
+      isDefault: false,
+      isDangerousCompatible: false,
+      tags: [],
+    } as never,
+    { id: IP_3, createdAt: TS, updatedAt: TS } as never,
+  );
+
+  // MP_INDEXED — a dedicated documents store carrying one embedded chunk (a
+  // non-null, non-empty Float32 embedding) so the mount-points embedded-count
+  // paths (LIST GROUP BY + GET-[id] hydrate-and-filter) both see a non-zero.
+  await repos.docMountPoints.create(
+    {
+      name: 'Indexed Store',
+      basePath: '',
+      mountType: 'database',
+      storeType: 'documents',
+      includePatterns: [],
+      excludePatterns: [],
+      enabled: true,
+      lastScannedAt: null,
+      scanStatus: 'idle',
+      lastScanError: null,
+      conversionStatus: 'idle',
+      conversionError: null,
+      fileCount: 0,
+      chunkCount: 0,
+      totalSizeBytes: 0,
+    } as never,
+    { id: MP_INDEXED, createdAt: TS, updatedAt: TS } as never,
+  );
+  await storeMountFile({
+    mountPointId: MP_INDEXED,
+    relativePath: 'notes/intro.md',
+    data: Buffer.from('# Intro\n\nIndexed content.', 'utf8'),
+    originalMimeType: 'text/markdown',
+    transcodeImages: false,
+    extractText: false,
+    enqueueEmbedding: false,
+  } as never);
+  const idxLinkId = (
+    midb
+      .prepare('SELECT id FROM doc_mount_file_links WHERE mountPointId = ? LIMIT 1')
+      .get(MP_INDEXED) as { id: string } | undefined
+  )?.id;
+  if (!idxLinkId) throw new Error('indexed-store file link not found after storeMountFile');
+  // One embedded chunk (4-byte Float32 BLOB → a single 1.0 component).
+  const embedding = Buffer.from(new Uint8Array(new Float32Array([1]).buffer));
+  midb
+    .prepare(
+      'INSERT INTO doc_mount_chunks (id, linkId, mountPointId, chunkIndex, content, tokenCount, headingContext, embedding, createdAt, updatedAt) ' +
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    )
+    .run(IDX_CHUNK, idxLinkId, MP_INDEXED, 0, 'Indexed content.', 3, null, embedding, TS, TS);
+
   // Materialize empty tables the read paths sweep so both sides read identical
   // (empty) state rather than v4 auto-creating per-case while the Rust raw SQL
   // would 404.
@@ -617,7 +843,7 @@ async function main(): Promise<void> {
   closeMountIndexSQLiteClient();
   await closeDatabase();
   process.stderr.write(
-    `built groups-projects fixture: main=${mainOut} mount=${mountOut} (2 groups, 3 projects)\n`,
+    `built groups-projects fixture: main=${mainOut} mount=${mountOut} (2 groups, 3 projects, 4 roleplay templates, 3 image profiles, indexed store)\n`,
   );
   process.exit(0);
 }

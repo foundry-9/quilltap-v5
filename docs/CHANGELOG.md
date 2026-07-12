@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.6p fixture extension (lane A): extended the shared groups-projects
+fixture with the listing-surfaces rows — the two built-in roleplay
+templates (via v4's real seeder) + two user templates, four tags, a
+tagged character (DIANA), three image profiles, and a dedicated
+"Indexed Store" mount carrying one embedded chunk. All additive and
+invisible to the existing groups/projects/scenarios reads;
+regenerated those three oracles and re-verified their differentials
+green (14/39/41 cases) to confirm zero perturbation.
+
 P4.6p unit 1 (lane A): ported `generateRenderingPatterns` (v4
 `lib/chat/annotations.ts`) as the pure `services::annotations`
 module — the rendering-pattern auto-generation the roleplay-template
