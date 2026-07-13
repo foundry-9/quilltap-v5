@@ -22,6 +22,9 @@ use std::collections::HashMap;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response as AxumResponse};
+use quilltap_core::api::{
+    ErrorKind, QuilltapCore, Request as CoreRequest, Response as CoreResponse,
+};
 use quilltap_core::db::doc_mount_blobs::DocMountBlobsRepository;
 use quilltap_core::db::doc_mount_documents::DocMountDocumentsRepository;
 use quilltap_core::db::doc_mount_file_links::{
@@ -37,6 +40,7 @@ use quilltap_core::services::mount_index::path_utils::mime_for_extension;
 use quilltap_host::{HostImageCodec, LocalStorageBackend};
 use serde_json::json;
 
+use crate::multipart::FormData;
 use crate::state::SharedState;
 
 /// v4 `DEFAULT_THUMBNAIL_SIZE` / `MAX_THUMBNAIL_SIZE` (`thumbnail-utils.ts`).
@@ -318,8 +322,55 @@ pub async fn mount_file_get(
         Err(_) => return error_json(StatusCode::BAD_REQUEST, "Invalid path"),
     };
 
-    // v4 readMountFileBytes, the database-mount branch (fs mounts are the
-    // standing FsSeam): the link row picks documents (text) vs blobs.
+    // v4 readMountFileBytes, the filesystem-mount branch (P4.6y): resolve the
+    // path under the mount's basePath (the boundary-escape guard) and stream
+    // the on-disk bytes.
+    let mp_info = db.read_mount_index({
+        let id = id.clone();
+        move |conn| {
+            quilltap_core::db::doc_mount_points::DocMountPointsRepository::new(conn)
+                .find_service_info_by_id(&id)
+        }
+    });
+    let mp_info = match mp_info {
+        Ok(Some(mp)) => mp,
+        Ok(None) => return not_found("Mount point"),
+        Err(_) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Failed to read file"),
+    };
+    if mp_info.is_filesystem_mount() {
+        let abs = match quilltap_core::services::mount_index::file_ops::resolve_fs_absolute(
+            mp_info.base_path.as_deref(),
+            &mp_info.id,
+            &rel,
+        ) {
+            Ok(a) => a,
+            Err(e) => return error_json(StatusCode::BAD_REQUEST, &e.to_string()),
+        };
+        return match std::fs::read(&abs) {
+            Ok(bytes) => {
+                let sha = {
+                    use sha2::{Digest, Sha256};
+                    hex::encode(Sha256::digest(&bytes))
+                };
+                (
+                    StatusCode::OK,
+                    [
+                        ("content-type", mime_for_extension(&rel).to_string()),
+                        ("content-length", bytes.len().to_string()),
+                        ("cache-control", "private, max-age=3600".to_string()),
+                        ("x-file-sha256", sha),
+                    ],
+                    bytes,
+                )
+                    .into_response()
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => not_found("File"),
+            Err(_) => error_json(StatusCode::INTERNAL_SERVER_ERROR, "Failed to read file"),
+        };
+    }
+
+    // v4 readMountFileBytes, the database-mount branch: the link row picks
+    // documents (text) vs blobs.
     #[allow(clippy::type_complexity)]
     let read: Result<Option<(Vec<u8>, String, String)>, quilltap_core::db::DbError> = db
         .read_mount_index({
@@ -438,5 +489,256 @@ pub async fn mount_blob_get(
             .into_response(),
         Ok(None) => not_found("Blob"),
         Err(_) => error_json(StatusCode::INTERNAL_SERVER_ERROR, "Failed to serve blob"),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The P4.6y multipart legs — the only per-variant web routes (JSON variants
+// auto-wire via POST /api/dispatch):
+//   PUT  /api/v1/mount-points/{id}/files/{*path}   (JSON or multipart ingest)
+//   POST /api/v1/mount-points/{id}?action=write-file  (multipart, byte-preserving)
+//   POST /api/v1/mount-points/{id}/blobs            (multipart upload, 201)
+// ---------------------------------------------------------------------------
+
+/// Map a core dispatch `Response` to the v4 route shape: the payload verbatim
+/// on success (`success_status`), `{error, code?}` on the typed failures.
+fn core_response_to_http(resp: CoreResponse, success_status: StatusCode) -> AxumResponse {
+    match resp {
+        CoreResponse::MountFile(v) => (
+            success_status,
+            [("content-type", "application/json")],
+            v.to_string(),
+        )
+            .into_response(),
+        CoreResponse::Error(e) => {
+            let status = match e.kind {
+                ErrorKind::BadRequest => StatusCode::BAD_REQUEST,
+                ErrorKind::NotFound => StatusCode::NOT_FOUND,
+                ErrorKind::Conflict => StatusCode::CONFLICT,
+                ErrorKind::Forbidden => StatusCode::FORBIDDEN,
+                ErrorKind::Unauthorized => StatusCode::UNAUTHORIZED,
+                ErrorKind::Locked => StatusCode::SERVICE_UNAVAILABLE,
+                ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            let mut body = serde_json::Map::new();
+            body.insert("error".to_string(), json!(e.message));
+            if let Some(code) = e.code {
+                body.insert("code".to_string(), json!(code));
+            }
+            (
+                status,
+                [("content-type", "application/json")],
+                serde_json::Value::Object(body).to_string(),
+            )
+                .into_response()
+        }
+        other => {
+            let body = serde_json::to_value(&other).unwrap_or(serde_json::Value::Null);
+            (
+                success_status,
+                [("content-type", "application/json")],
+                body.to_string(),
+            )
+                .into_response()
+        }
+    }
+}
+
+fn base64_of(bytes: &[u8]) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(bytes)
+}
+
+async fn dispatch_core(
+    state: &SharedState,
+    req: CoreRequest,
+) -> Result<CoreResponse, AxumResponse> {
+    let Some(host) = state.host() else {
+        return Err(error_json(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "The engine is not running",
+        ));
+    };
+    Ok(host.core().dispatch(req).await)
+}
+
+/// v4 item-route PUT — the `storeMountFile` ingest (JSON body or multipart
+/// `file` + `expected_mtime` + `force`), mapped onto `MountFileWrite`.
+pub async fn mount_file_put(
+    State(state): State<SharedState>,
+    Path((id, path)): Path<(String, String)>,
+    req: axum::extract::Request,
+) -> AxumResponse {
+    let content_type = req
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+
+    let core_req = if content_type.contains("multipart/form-data") {
+        let form = match FormData::from_request(req, &state).await {
+            Ok(f) => f,
+            Err(_) => return error_json(StatusCode::BAD_REQUEST, "Invalid multipart body"),
+        };
+        let Some(file) = form.file("file") else {
+            return error_json(
+                StatusCode::BAD_REQUEST,
+                "Missing \"file\" field in multipart body",
+            );
+        };
+        let expected_mtime = match form.text("expected_mtime") {
+            Some(raw) if !raw.is_empty() => match raw.parse::<i64>() {
+                Ok(v) if v >= 0 => Some(v),
+                _ => {
+                    return error_json(
+                        StatusCode::BAD_REQUEST,
+                        "expected_mtime must be a non-negative integer",
+                    )
+                }
+            },
+            _ => None,
+        };
+        let force = form
+            .text("force")
+            .map(|f| f.to_lowercase() == "true")
+            .unwrap_or(false);
+        CoreRequest::MountFileWrite {
+            mount_point_id: id,
+            path,
+            content: base64_of(&file.bytes),
+            encoding: Some("base64".to_string()),
+            expected_mtime,
+            force: Some(force),
+            original_mime_type: file.content_type.clone().filter(|t| !t.is_empty()),
+            original_file_name: file.filename.clone().filter(|n| !n.is_empty()),
+        }
+    } else {
+        let bytes = match axum::body::to_bytes(req.into_body(), 64 * 1024 * 1024).await {
+            Ok(b) => b,
+            Err(_) => return error_json(StatusCode::BAD_REQUEST, "Invalid request body"),
+        };
+        let body: serde_json::Value = match serde_json::from_slice(&bytes) {
+            Ok(v) => v,
+            Err(e) => return error_json(StatusCode::BAD_REQUEST, &format!("Invalid body: {e}")),
+        };
+        let Some(content) = body.get("content").and_then(|c| c.as_str()) else {
+            return error_json(StatusCode::BAD_REQUEST, "Invalid body: content is required");
+        };
+        CoreRequest::MountFileWrite {
+            mount_point_id: id,
+            path,
+            content: content.to_string(),
+            encoding: body
+                .get("encoding")
+                .and_then(|e| e.as_str())
+                .map(|s| s.to_string()),
+            expected_mtime: body.get("expected_mtime").and_then(|m| m.as_i64()),
+            force: body.get("force").and_then(|f| f.as_bool()),
+            original_mime_type: None,
+            original_file_name: None,
+        }
+    };
+    match dispatch_core(&state, core_req).await {
+        Ok(resp) => core_response_to_http(resp, StatusCode::OK),
+        Err(r) => r,
+    }
+}
+
+/// v4 `POST /api/v1/mount-points/{id}?action=…` — ONLY the multipart
+/// `write-file` leg lives at this edge (the JSON verbs ride `/api/dispatch`);
+/// other actions get a loud pointer, not a silent 404.
+pub async fn mount_point_action_post(
+    State(state): State<SharedState>,
+    Path(id): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+    req: axum::extract::Request,
+) -> AxumResponse {
+    let action = query.get("action").map(String::as_str).unwrap_or("");
+    if action != "write-file" {
+        return error_json(
+            StatusCode::BAD_REQUEST,
+            "Only the multipart 'write-file' action is served on this route; JSON mount actions ride POST /api/dispatch",
+        );
+    }
+    let content_type = req
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if !content_type.contains("multipart/form-data") {
+        return error_json(StatusCode::BAD_REQUEST, "Expected multipart/form-data");
+    }
+    let form = match FormData::from_request(req, &state).await {
+        Ok(f) => f,
+        Err(_) => return error_json(StatusCode::BAD_REQUEST, "Invalid multipart body"),
+    };
+    let Some(file) = form.file("file") else {
+        return error_json(
+            StatusCode::BAD_REQUEST,
+            "Missing \"file\" field in multipart body",
+        );
+    };
+    let path = form.text("path").unwrap_or_default().trim().to_string();
+    if path.is_empty() {
+        return error_json(StatusCode::BAD_REQUEST, "Missing \"path\" field");
+    }
+    let force = form
+        .text("force")
+        .map(|f| f.to_lowercase() == "true")
+        .unwrap_or(false);
+    let core_req = CoreRequest::MountFileWriteRaw {
+        mount_point_id: id,
+        path,
+        data: base64_of(&file.bytes),
+        force: Some(force),
+    };
+    match dispatch_core(&state, core_req).await {
+        Ok(resp) => core_response_to_http(resp, StatusCode::OK),
+        Err(r) => r,
+    }
+}
+
+/// v4 `POST /api/v1/mount-points/{id}/blobs` — the multipart blob upload
+/// (201; the single ingest pipeline with `assetStorage: 'database'`).
+pub async fn mount_blobs_post(
+    State(state): State<SharedState>,
+    Path(id): Path<String>,
+    req: axum::extract::Request,
+) -> AxumResponse {
+    let content_type = req
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if !content_type.contains("multipart/form-data") {
+        return error_json(StatusCode::BAD_REQUEST, "Expected multipart/form-data");
+    }
+    let form = match FormData::from_request(req, &state).await {
+        Ok(f) => f,
+        Err(_) => return error_json(StatusCode::BAD_REQUEST, "Invalid multipart body"),
+    };
+    let Some(file) = form.file("file") else {
+        return error_json(
+            StatusCode::BAD_REQUEST,
+            "Missing \"file\" field in multipart body",
+        );
+    };
+    let path = form.text("path").unwrap_or_default().trim().to_string();
+    if path.is_empty() {
+        return error_json(StatusCode::BAD_REQUEST, "Missing \"path\" field");
+    }
+    let description = form.text("description").unwrap_or_default();
+    let core_req = CoreRequest::MountBlobUpload {
+        mount_point_id: id,
+        path,
+        description: Some(description),
+        data: base64_of(&file.bytes),
+        original_mime_type: file.content_type.clone().filter(|t| !t.is_empty()),
+        original_file_name: file.filename.clone().filter(|n| !n.is_empty()),
+    };
+    match dispatch_core(&state, core_req).await {
+        Ok(resp) => core_response_to_http(resp, StatusCode::CREATED),
+        Err(r) => r,
     }
 }

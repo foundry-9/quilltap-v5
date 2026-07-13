@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.6y unit H: the quilltap-web edge legs. mount_file_get gains the
+filesystem-mount branch of the raw byte read (boundary-escape guarded,
+X-File-Sha256); new v4-shaped routes: PUT
+/api/v1/mount-points/{id}/files/{path} (JSON + multipart ingest onto
+mountFileWrite), POST /api/v1/mount-points/{id}?action=write-file
+(multipart, onto mountFileWriteRaw; other actions answer a loud pointer
+to /api/dispatch), and POST /api/v1/mount-points/{id}/blobs (multipart
+upload onto mountBlobUpload, 201). doc_mount_blobs gains v4's lazy
+table-init (hand-written DDL verbatim) so runtime-minted stores accept
+their first blob — called from link_blob_content. New live-server
+integration test drives all four legs plus the escape refusal and a
+blob byte round-trip. core 0.0.204, web 0.0.17.
+
 P4.6y unit I: mountConvert/mountDeconvert land refusal-armed — the
 variants exist, v4's capability guards run live (already-database /
 not-database / mid-conversion quiesce / empty targetPath), and the

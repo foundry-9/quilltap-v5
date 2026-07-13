@@ -58,11 +58,20 @@ pub fn build_router(state: SharedState) -> Router {
         .route("/api/v1/files/{id}", get(files_routes::files_get))
         .route(
             "/api/v1/mount-points/{id}/files/{*path}",
-            get(files_routes::mount_file_get),
+            get(files_routes::mount_file_get).put(files_routes::mount_file_put),
         )
         .route(
             "/api/v1/mount-points/{id}/blobs/{*path}",
             get(files_routes::mount_blob_get),
+        )
+        // P4.6y multipart legs (JSON verbs ride /api/dispatch).
+        .route(
+            "/api/v1/mount-points/{id}",
+            post(files_routes::mount_point_action_post),
+        )
+        .route(
+            "/api/v1/mount-points/{id}/blobs",
+            post(files_routes::mount_blobs_post),
         )
         .route(
             "/api/v1/characters/{id}/photos",

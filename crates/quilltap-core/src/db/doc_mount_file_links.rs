@@ -734,6 +734,9 @@ impl<'c> DocMountFileLinksRepository<'c> {
     /// same column DEFAULTs on the unset columns (the `link_document_content`
     /// precedent). Mints `now` + any new ids internally.
     pub fn link_blob_content(&self, input: &LinkBlobInput) -> Result<LinkBlobResult, DbError> {
+        // v4 lazily creates the blob table on first repo access (P4.6y parity
+        // for stores minted at runtime).
+        crate::db::doc_mount_blobs::DocMountBlobsRepository::ensure_table(self.conn)?;
         let now = now_iso();
         let size_bytes = input.data.len() as i64;
         // The content-addressed store is authoritative about its own hashes:

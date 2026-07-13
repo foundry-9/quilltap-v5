@@ -8,7 +8,7 @@
 
 [package]
 name = "quilltap-web"
-version = "0.0.16"
+version = "0.0.17"
 edition = "2021"
 publish = false
 
@@ -23,6 +23,11 @@ serde_json = { version = "1", features = ["preserve_order"] }
 # The photo-gallery write closures name the `rusqlite::Connection` the ported
 # core service takes (the writer thread hands them out per partition).
 rusqlite = { workspace = true }
+# The P4.6y multipart legs: file bytes ride the dispatch variants as base64;
+# the raw-read fs branch hashes the on-disk bytes for X-File-Sha256.
+base64 = "0.22"
+sha2 = "0.10"
+hex = "0.4"
 
 [dev-dependencies]
 tempfile = "3"

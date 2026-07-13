@@ -142,6 +142,30 @@ impl<'c> DocMountBlobsRepository<'c> {
         Self { conn }
     }
 
+    /// v4's lazy table-init (the repo's overridden `db()` creates
+    /// `doc_mount_blobs` on first access — generateDDL can't express the
+    /// `data BLOB` column, so the DDL is hand-written there and reproduced
+    /// verbatim here). Cheap and idempotent; the write paths call it so a
+    /// store created at runtime accepts its first blob (P4.6y).
+    pub fn ensure_table(conn: &Connection) -> Result<(), DbError> {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS \"doc_mount_blobs\" (\
+               \"id\" TEXT PRIMARY KEY,\
+               \"fileId\" TEXT NOT NULL,\
+               \"sha256\" TEXT NOT NULL,\
+               \"sizeBytes\" INTEGER NOT NULL,\
+               \"storedMimeType\" TEXT NOT NULL,\
+               \"data\" BLOB NOT NULL,\
+               \"createdAt\" TEXT NOT NULL,\
+               \"updatedAt\" TEXT NOT NULL,\
+               FOREIGN KEY (\"fileId\") REFERENCES \"doc_mount_files\" (\"id\") ON DELETE CASCADE\
+             );\
+             CREATE UNIQUE INDEX IF NOT EXISTS \"idx_doc_mount_blobs_fileId\" \
+             ON \"doc_mount_blobs\" (\"fileId\");",
+        )?;
+        Ok(())
+    }
+
     /// Insert-or-replace the blob row for `fileId` (v4 `upsertByFileId`). The
     /// stored `sha256` is **recomputed from the bytes** (the caller's `sha256` is
     /// advisory); `sizeBytes = data.len()`. An existing `fileId` row is overwritten

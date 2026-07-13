@@ -9396,3 +9396,25 @@ guards read the widened `MountServiceInfo` (`conversion_status`).
 Pinned by `convert_deconvert_refusal_arms` in the mount-ops test tree
 (no oracle — v4 would really convert; the refusal IS the v5 contract).
 core 0.0.203, harness 0.0.186.
+
+## 2026-07-13 — P4.6y unit H: the web-edge legs (raw-read fs branch + the three multipart routes)
+
+- `mount_file_get` fs branch: resolve under `basePath` via the
+  boundary-escape guard, stream bytes with the v4 headers.
+- New routes registered (additive): item-route PUT (JSON body or
+  multipart `file` + `expected_mtime` + `force`, both onto
+  `MountFileWrite` — multipart bytes ride base64 through dispatch),
+  `?action=write-file` (multipart → `MountFileWriteRaw`; any OTHER
+  action on that route answers a loud 400 pointing at `/api/dispatch` —
+  the JSON verbs auto-wire there, per the order), and the blobs POST
+  (multipart → `MountBlobUpload`, 201 at the edge).
+- **`doc_mount_blobs` lazy DDL** (the standing P4.6v gotcha, now closed
+  in-core): v4's repo creates the `data BLOB` table on first access;
+  `link_blob_content` now calls the verbatim hand-written DDL so a
+  store minted at runtime accepts its first blob (the live-server test
+  caught this — the fixture-borne differentials never did, since the
+  builder pre-triggers the DDL).
+- `mount_multipart_routes` live-server test: fs raw read (+ escape
+  refusal), JSON + multipart PUT, write-file action + the
+  wrong-action pointer, blob upload 201 + byte round-trip.
+- core 0.0.204, web 0.0.17.

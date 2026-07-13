@@ -866,7 +866,7 @@ pub async fn mount_blob_update(
 pub async fn mount_convert(db: &Db, mount_point_id: &str) -> Response {
     let id = mount_point_id.to_string();
     let guard = db.read_mount_index(move |conn| {
-        Ok(DocMountPointsRepository::new(conn).find_service_info_by_id(&id)?)
+        DocMountPointsRepository::new(conn).find_service_info_by_id(&id)
     });
     match guard {
         Ok(None) => Response::error(ErrorKind::NotFound, "Mount point not found"),
@@ -906,7 +906,7 @@ pub async fn mount_deconvert(db: &Db, mount_point_id: &str, target_path: &str) -
     }
     let id = mount_point_id.to_string();
     let guard = db.read_mount_index(move |conn| {
-        Ok(DocMountPointsRepository::new(conn).find_service_info_by_id(&id)?)
+        DocMountPointsRepository::new(conn).find_service_info_by_id(&id)
     });
     match guard {
         Ok(None) => Response::error(ErrorKind::NotFound, "Mount point not found"),
