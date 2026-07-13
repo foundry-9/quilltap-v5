@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+P4.6y units B+G: the storeMountFile ingest pipeline + the blob routes.
+store_file.rs ports all three ingest branches (fs disk write with the
+optimistic-mtime CONFLICT; database native-text into doc_mount_documents
+with the expectedMtime guard, the inline chunk pass, and the post-write
+refresh chain; database blob with WebP transcode + pdf/docx extraction
+through seams). blob_transcode.rs adds the WebpTranscoder seam (the
+refusing default takes v4's store-original fallback arm loudly — the
+production codec is a named deferral, and a real encoder could never be
+byte-identical to sharp anyway); refresh.rs is the shared refresh chain
+(v4 scheduleDocumentStoreRefresh == storeMountFile's fire-and-forget),
+run synchronously under the single-writer model. New variants:
+mountFileWrite (the ingest PUT; multipart legs ride base64 +
+originalMimeType/FileName), mountFileWriteRaw (the byte-preserving
+?action=write-file, behavior-keyed apart), mountBlobUpload (201 at the
+edge), mountBlobsList/Delete/Update (the documents-table fallback and
+the full 21-column joined blob view preserved). New mount-write
+differential: 22 cases green — including the drained fire-and-forget
+parity (chunks + PENDING jobs + refreshed stats after a native-text
+write) and both mtime-conflict arms. core 0.0.202, harness 0.0.185.
+
 P4.6y units C+D: the whole mount-file mutation surface. file_ops.rs
 completes v4's file-ops.ts (copyFile/moveFile/linkFile/writeFile/
 deleteFile — the four strategies db-link/fs-link/rename/byte-copy, the

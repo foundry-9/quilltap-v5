@@ -9347,3 +9347,40 @@ The indexing spine lands (early — file-ops and store-file both ride
   site and rides the chokidar-watcher deferral — no variant, loud in
   this order's close-out header.
 - core 0.0.201, harness 0.0.184.
+
+## 2026-07-12 — P4.6y units B+G: `storeMountFile` + the blob routes (`mount_write_equivalence` 22/22)
+
+- **`store_file.rs`** — the single ingest chokepoint, all three branches:
+  fs (mtime-conflict guard, ENOENT-tolerant; `writeFsFileBytes` +
+  best-effort index), database native-text (the `writeDatabaseDocument`
+  expectedMtime CONFLICT guard + the INLINE chunk pass — v4 chunks at
+  write time, the fire-and-forget only re-chunks — + refresh chain),
+  database blob (transcode seam → `normaliseBlobRelativePath` extension
+  rewrite → collision strategies incl. `resolveUniqueRelativePath` →
+  `linkBlobContent` → pdf/docx extraction bookkeeping through the
+  refusing extractor: 'Converter produced no text' skipped arm pinned).
+- **The fire-and-forget → synchronous decision (why-comment carried):**
+  v4's post-write chain (reindex + embed enqueue + stats) is a Node
+  responsiveness workaround; under the single-writer model the work
+  serializes on the writer thread regardless, so v5 runs `refresh_now`
+  inside the same write closure — deterministic, same end state. The
+  oracle drains v4's chain (setImmediate ×60) before dumping.
+- **`blob_transcode.rs`** — `WebpTranscoder` seam; the refusing default
+  routes through v4's OWN encode-failure fallback (store original bytes,
+  loud) — a real encoder can never match sharp's bytes, so the fallback
+  arm is the only differential-pinnable one; the production codec is a
+  named deferral of this order.
+- **Variants**: `mountFileWrite` (ingest PUT; base64/utf-8 content with
+  a Node-forgiving base64 decode; multipart riders originalMimeType/
+  originalFileName), `mountFileWriteRaw` (the `?action=write-file`
+  byte-preserving verb — BEHAVIOR-KEYED apart per survey quirk 1),
+  `mountBlobUpload` (document-vs-blob response fork; the edge returns
+  v4's 201 — a transport status, pinned in the runner),
+  `mountBlobsList`/`mountBlobDelete` (documents fallback)/
+  `mountBlobUpdate` (the full 21-column joined view, nulls literal, in
+  v4's key order via the new repo JSON views).
+- **Differential**: `mount-write.test.ts` + `mount_write_equivalence`
+  (22 cases). The expected-mtime happy path reads intro.md's stored
+  lastModified from each side's OWN fixture copy (identical bytes).
+  Normalization addition: numeric write-body `mtime` blanked.
+- core 0.0.202, harness 0.0.185.

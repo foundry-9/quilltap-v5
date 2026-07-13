@@ -5,6 +5,7 @@
 //! The mount-index *data layer* (the `doc_mount_*` repos + `database_store`)
 //! lives under `crate::db`; this module is the service tier over it.
 
+pub mod blob_transcode;
 pub mod chunker;
 pub mod converters;
 pub mod embedding_scheduler;
@@ -15,6 +16,8 @@ pub mod folder_ops;
 pub mod list;
 pub mod path_utils;
 pub mod read_file;
+pub mod refresh;
 pub mod reindex;
 pub mod reindex_file;
 pub mod scanner;
+pub mod store_file;

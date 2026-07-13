@@ -252,6 +252,9 @@ pub fn normalize(case: &Value) -> Value {
                         if let Value::String(_) = val {
                             *val = Value::String("<ts>".to_string());
                         }
+                    } else if k == "mtime" && val.is_number() {
+                        // Write bodies mint a wall-clock epoch-ms mtime.
+                        *val = Value::String("<ts-ms>".to_string());
                     } else if (k == "extractionError" || k == "conversionError" || k == "lastError")
                         && val.is_string()
                     {

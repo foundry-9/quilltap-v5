@@ -1347,6 +1347,74 @@ pub enum Request {
         mount_point_id: String,
         path: String,
     },
+    /// v4 item-route PUT (the `storeMountFile` ingest, overwrite semantics) →
+    /// `{mountPointId, relativePath, kind, fileType, sha256, sizeBytes,
+    /// mimeType, mtime}`. The multipart PUT leg maps onto this at the web edge
+    /// (base64 content + originalMimeType/originalFileName riders).
+    #[serde(rename_all = "camelCase")]
+    MountFileWrite {
+        mount_point_id: String,
+        path: String,
+        content: String,
+        #[serde(default)]
+        encoding: Option<String>,
+        #[serde(default)]
+        expected_mtime: Option<i64>,
+        #[serde(default)]
+        force: Option<bool>,
+        #[serde(default)]
+        original_mime_type: Option<String>,
+        #[serde(default)]
+        original_file_name: Option<String>,
+    },
+    /// v4 `?action=write-file` — the BYTE-PRESERVING `file_ops::writeFile`
+    /// (behavior-keyed apart from the transcoding PUT; the multipart action leg
+    /// maps here) → `{sha256, sizeBytes, destPath, mountPointId}`.
+    #[serde(rename_all = "camelCase")]
+    MountFileWriteRaw {
+        mount_point_id: String,
+        path: String,
+        /// Raw bytes, base64.
+        data: String,
+        #[serde(default)]
+        force: Option<bool>,
+    },
+    /// v4 `POST .../blobs` (multipart at the web edge; 201) → `{document}` for
+    /// a native-text upload, else `{blob}` (the full joined view).
+    #[serde(rename_all = "camelCase")]
+    MountBlobUpload {
+        mount_point_id: String,
+        path: String,
+        #[serde(default)]
+        description: Option<String>,
+        /// File bytes, base64 (decoded from the multipart part at the edge).
+        data: String,
+        #[serde(default)]
+        original_mime_type: Option<String>,
+        #[serde(default)]
+        original_file_name: Option<String>,
+    },
+    /// v4 `GET .../blobs` (`?folder=` scoped) → `{blobs}`.
+    #[serde(rename_all = "camelCase")]
+    MountBlobsList {
+        mount_point_id: String,
+        #[serde(default)]
+        folder: Option<String>,
+    },
+    /// v4 blob-item DELETE (documents-table fallback preserved) → `{success}`.
+    #[serde(rename_all = "camelCase")]
+    MountBlobDelete {
+        mount_point_id: String,
+        path: String,
+    },
+    /// v4 blob-item PATCH (description; blob rows only) → `{blob}`.
+    #[serde(rename_all = "camelCase")]
+    MountBlobUpdate {
+        mount_point_id: String,
+        path: String,
+        #[serde(default)]
+        description: Option<String>,
+    },
     // === P4.6w: documents ===
     // Chat-scoped Document Mode (all take `chatId`). See `api::documents`. The
     // schema-bag variants flatten the remaining fields into `body` (the exact

@@ -519,6 +519,346 @@ pub async fn mount_folder_create(db: &Db, mount_point_id: &str, path: &str) -> R
     }
 }
 
+/// Node `Buffer.from(s, 'base64')`-style forgiving decode: non-alphabet chars
+/// are skipped, padding is optional, a trailing partial quantum is dropped.
+fn node_base64_decode(s: &str) -> Vec<u8> {
+    use base64::Engine;
+    let filtered: String = s
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '/'))
+        .collect();
+    let usable = filtered.len() - (filtered.len() % 4).min(filtered.len() % 4);
+    let mut out = Vec::new();
+    // Decode the longest valid prefix; Node keeps whole quantums plus a final
+    // 2-or-3-char partial (which yields 1-2 bytes).
+    let whole = &filtered[..usable - (usable % 4)];
+    if let Ok(mut b) = base64::engine::general_purpose::STANDARD_NO_PAD.decode(whole) {
+        out.append(&mut b);
+    }
+    let rest = &filtered[whole.len()..];
+    if rest.len() >= 2 {
+        if let Ok(mut b) = base64::engine::general_purpose::STANDARD_NO_PAD.decode(rest) {
+            out.append(&mut b);
+        }
+    }
+    out
+}
+
+/// The write payload → raw bytes (v4 `Buffer.from(content, encoding)`).
+fn decode_write_content(content: &str, encoding: Option<&str>) -> Result<Vec<u8>, Response> {
+    match encoding.unwrap_or("utf-8") {
+        "utf-8" => Ok(content.as_bytes().to_vec()),
+        "base64" => Ok(node_base64_decode(content)),
+        other => Err(Response::error(
+            ErrorKind::BadRequest,
+            format!("Invalid body: invalid encoding {other}"),
+        )),
+    }
+}
+
+/// v4 item-route PUT — the canonical ingest write (`storeMountFile` with
+/// `collisionStrategy: 'overwrite'`). Body: `{mountPointId, relativePath,
+/// kind, fileType, sha256, sizeBytes, mimeType, mtime}`. The multipart PUT leg
+/// maps onto the same variant at the web edge (originalMimeType/FileName ride
+/// along).
+#[allow(clippy::too_many_arguments)]
+pub async fn mount_file_write(
+    db: &Db,
+    mount_point_id: &str,
+    path: &str,
+    content: &str,
+    encoding: Option<&str>,
+    expected_mtime: Option<i64>,
+    force: Option<bool>,
+    original_mime_type: Option<String>,
+    original_file_name: Option<String>,
+) -> Response {
+    let data = match decode_write_content(content, encoding) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+    let mut input =
+        crate::services::mount_index::store_file::StoreFileInput::new(mount_point_id, path, data);
+    input.original_mime_type = original_mime_type;
+    input.original_file_name = original_file_name;
+    input.expected_mtime = expected_mtime;
+    input.force = force.unwrap_or(false);
+    input.collision_strategy =
+        crate::services::mount_index::store_file::CollisionStrategy::Overwrite;
+
+    let out = db
+        .write(move |ws| {
+            let mount = mount_conn(ws)?;
+            let main = ws.main().connection();
+            let extractor = default_text_extractor();
+            let webp = crate::services::mount_index::blob_transcode::RefusingWebpTranscoder;
+            Ok(crate::services::mount_index::store_file::store_mount_file(
+                main,
+                mount,
+                &input,
+                extractor.as_ref(),
+                &webp,
+            ))
+        })
+        .await;
+    match out {
+        Ok(Ok(r)) => Response::MountFile(serde_json::json!({
+            "mountPointId": r.mount_point_id,
+            "relativePath": r.relative_path,
+            "kind": r.kind,
+            "fileType": r.file_type,
+            "sha256": r.sha256,
+            "sizeBytes": r.size_bytes,
+            "mimeType": r.stored_mime_type,
+            "mtime": r.mtime,
+        })),
+        // The item route's handleFileOpError codes FileOpError AND
+        // DatabaseStoreError.
+        Ok(Err(e @ (MountFileError::FileOp(_) | MountFileError::Store(_)))) => map_error(e),
+        Ok(Err(e)) => {
+            eprintln!("[Mount Points v1] Error write file: {e}");
+            Response::error(ErrorKind::Internal, "Failed to write file")
+        }
+        Err(e) => {
+            eprintln!("[Mount Points v1] Error write file: {e}");
+            Response::error(ErrorKind::Internal, "Failed to write file")
+        }
+    }
+}
+
+/// v4 `?action=write-file` (`handleWriteFile`) — the BYTE-PRESERVING
+/// `file_ops::writeFile` (multipart at the web edge; distinct behavior from
+/// the transcoding PUT ingest — quirk 1 of the survey). Body: the v4
+/// `WriteResult` `{sha256, sizeBytes, destPath, mountPointId}`.
+pub async fn mount_file_write_raw(
+    db: &Db,
+    mount_point_id: &str,
+    path: &str,
+    data_base64: &str,
+    force: Option<bool>,
+) -> Response {
+    let data = node_base64_decode(data_base64);
+    let (mp, p) = (mount_point_id.to_string(), path.to_string());
+    let force = force.unwrap_or(false);
+    let out = run_mount_op(db, move |conn| {
+        let extractor = default_text_extractor();
+        crate::services::mount_index::file_ops::write_file(
+            conn,
+            &mp,
+            &p,
+            &data,
+            force,
+            extractor.as_ref(),
+        )
+    })
+    .await;
+    match out {
+        Ok(Ok(v)) => Response::MountFile(v),
+        Ok(Err(e)) => map_file_op_only(e, "Failed to write file"),
+        Err(e) => {
+            eprintln!("[Mount Points v1] Error writing file: {e}");
+            Response::error(ErrorKind::Internal, "Failed to write file")
+        }
+    }
+}
+
+/// v4 `POST .../blobs` — the multipart blob upload through the single ingest
+/// pipeline (`assetStorage: 'database'`, `collisionStrategy: 'overwrite'`).
+/// Body: `{document}` for a native-text upload, `{blob}` (the full joined
+/// view) otherwise; the web edge returns 201.
+pub async fn mount_blob_upload(
+    db: &Db,
+    mount_point_id: &str,
+    path: &str,
+    description: Option<String>,
+    data_base64: &str,
+    original_mime_type: Option<String>,
+    original_file_name: Option<String>,
+) -> Response {
+    let data = node_base64_decode(data_base64);
+    if data.is_empty() {
+        return Response::error(ErrorKind::BadRequest, "Empty file payload");
+    }
+    // v4: `file.type || 'application/octet-stream'`,
+    // `file.name || relativePath.split('/').pop() || 'blob'`.
+    let mime = original_mime_type
+        .filter(|m| !m.is_empty())
+        .unwrap_or_else(|| "application/octet-stream".to_string());
+    let name = original_file_name
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| {
+            let base = path.rsplit('/').next().unwrap_or("");
+            if base.is_empty() {
+                "blob".to_string()
+            } else {
+                base.to_string()
+            }
+        });
+    // v4 checks the mount exists BEFORE parsing the form.
+    let exists = {
+        let id = mount_point_id.to_string();
+        db.read_mount_index(move |conn| {
+            DocMountPointsRepository::new(conn).find_service_info_by_id(&id)
+        })
+    };
+    match exists {
+        Ok(Some(_)) => {}
+        Ok(None) => return Response::error(ErrorKind::NotFound, "Mount point not found"),
+        Err(e) => return Response::error(ErrorKind::Internal, e.to_string()),
+    }
+
+    let mut input =
+        crate::services::mount_index::store_file::StoreFileInput::new(mount_point_id, path, data);
+    input.original_mime_type = Some(mime);
+    input.original_file_name = Some(name);
+    input.description = Some(description.unwrap_or_default());
+    input.asset_storage = crate::services::mount_index::store_file::AssetStorageMode::Database;
+    input.collision_strategy =
+        crate::services::mount_index::store_file::CollisionStrategy::Overwrite;
+
+    let out = db
+        .write(move |ws| {
+            let mount = mount_conn(ws)?;
+            let main = ws.main().connection();
+            let extractor = default_text_extractor();
+            let webp = crate::services::mount_index::blob_transcode::RefusingWebpTranscoder;
+            let stored = crate::services::mount_index::store_file::store_mount_file(
+                main,
+                mount,
+                &input,
+                extractor.as_ref(),
+                &webp,
+            );
+            match stored {
+                Ok(r) if r.kind == "document" => Ok(Ok(serde_json::json!({
+                    "document": {
+                        "id": r.file_id.clone().map(serde_json::Value::String).unwrap_or(serde_json::Value::Null),
+                        "mountPointId": input.mount_point_id,
+                        "relativePath": r.relative_path,
+                        "fileName": r.relative_path.rsplit('/').next().unwrap_or(&r.relative_path),
+                        "fileType": r.file_type,
+                        "sizeBytes": r.size_bytes,
+                        "lastModified": crate::clock::iso_from_unix_ms(r.mtime),
+                    }
+                }))),
+                Ok(r) => {
+                    let blob = crate::db::doc_mount_blobs::DocMountBlobsRepository::new(mount)
+                        .find_full_json_by_mount_point_and_path(
+                            &input.mount_point_id,
+                            &r.relative_path,
+                        )?;
+                    Ok(Ok(serde_json::json!({
+                        "blob": blob.unwrap_or(serde_json::Value::Null)
+                    })))
+                }
+                Err(e) => Ok(Err(e)),
+            }
+        })
+        .await;
+    match out {
+        Ok(Ok(v)) => Response::MountFile(v),
+        Ok(Err(e @ (MountFileError::FileOp(_) | MountFileError::Store(_)))) => map_error(e),
+        Ok(Err(e)) => {
+            eprintln!("[Mount Points v1] Error uploading blob: {e}");
+            Response::error(ErrorKind::Internal, "Failed to upload blob")
+        }
+        Err(e) => {
+            eprintln!("[Mount Points v1] Error uploading blob: {e}");
+            Response::error(ErrorKind::Internal, "Failed to upload blob")
+        }
+    }
+}
+
+/// v4 `GET .../blobs` — the blob-metadata listing (`?folder=` scoped).
+/// Body: `{blobs}` (the full joined view rows, nulls literal).
+pub fn mount_blobs_list(db: &Db, mount_point_id: &str, folder: Option<&str>) -> Response {
+    let id = mount_point_id.to_string();
+    let f = folder.map(|s| s.to_string());
+    let out = db.read_mount_index(move |conn| {
+        let mp = DocMountPointsRepository::new(conn).find_service_info_by_id(&id)?;
+        if mp.is_none() {
+            return Ok(None);
+        }
+        let blobs = crate::db::doc_mount_blobs::DocMountBlobsRepository::new(conn)
+            .list_full_json_by_mount_point(&id, f.as_deref())?;
+        Ok(Some(blobs))
+    });
+    match out {
+        Ok(Some(blobs)) => Response::MountFile(serde_json::json!({ "blobs": blobs })),
+        Ok(None) => Response::error(ErrorKind::NotFound, "Mount point not found"),
+        Err(e) => {
+            eprintln!("[Mount Points v1] Error listing blobs: {e}");
+            Response::error(ErrorKind::Internal, "Failed to list blobs")
+        }
+    }
+}
+
+/// v4 blob-item DELETE — remove the blob at the path, FALLING BACK to
+/// `doc_mount_documents` when no blob row matches (text docs live there; one
+/// URL scheme either way). Body: `{success: true}`.
+pub async fn mount_blob_delete(db: &Db, mount_point_id: &str, path: &str) -> Response {
+    let (mp, p) = (mount_point_id.to_string(), path.to_string());
+    let out = db
+        .write(move |ws| {
+            let mount = mount_conn(ws)?;
+            let blobs = crate::db::doc_mount_blobs::DocMountBlobsRepository::new(mount);
+            if blobs.delete_by_mount_point_and_path(&mp, &p)? {
+                return Ok(true);
+            }
+            crate::db::database_store::delete_database_document(mount, &mp, &p)
+        })
+        .await;
+    match out {
+        Ok(true) => Response::MountFile(serde_json::json!({ "success": true })),
+        Ok(false) => Response::error(ErrorKind::NotFound, "Blob not found"),
+        Err(e) => {
+            eprintln!("[Mount Points v1] Error deleting blob: {e}");
+            Response::error(ErrorKind::Internal, "Failed to delete blob")
+        }
+    }
+}
+
+/// v4 blob-item PATCH — update the description (blob rows only; no documents
+/// fallback here). Body: `{blob}` (the refreshed joined view).
+pub async fn mount_blob_update(
+    db: &Db,
+    mount_point_id: &str,
+    path: &str,
+    description: Option<String>,
+) -> Response {
+    let (mp, p) = (mount_point_id.to_string(), path.to_string());
+    // v4: a non-string description coerces to ''.
+    let desc = description.unwrap_or_default();
+    let out = db
+        .write(move |ws| {
+            let mount = mount_conn(ws)?;
+            let blobs = crate::db::doc_mount_blobs::DocMountBlobsRepository::new(mount);
+            let Some(meta) = blobs.find_by_mount_point_and_path(&mp, &p)? else {
+                return Ok(None);
+            };
+            // v4's route calls updateDescription WITHOUT a linkId (the first
+            // link of the blob's file is targeted).
+            let updated = blobs.update_description(&meta.id, &desc, None)?;
+            match updated {
+                Some(u) => Ok(Some(
+                    blobs
+                        .find_full_json_by_link_id(&u.link_id)?
+                        .unwrap_or(serde_json::Value::Null),
+                )),
+                None => Ok(Some(serde_json::Value::Null)),
+            }
+        })
+        .await;
+    match out {
+        Ok(Some(blob)) => Response::MountFile(serde_json::json!({ "blob": blob })),
+        Ok(None) => Response::error(ErrorKind::NotFound, "Blob not found"),
+        Err(e) => {
+            eprintln!("[Mount Points v1] Error updating blob description: {e}");
+            Response::error(ErrorKind::Internal, "Failed to update blob description")
+        }
+    }
+}
+
 /// v4 `POST ?action=reindex` (`handleReindex`) — `reindexLinks` synchronous
 /// in-request. Body: `{mountPointId, mountName, processed, succeeded, failed,
 /// skipped, errors}`.

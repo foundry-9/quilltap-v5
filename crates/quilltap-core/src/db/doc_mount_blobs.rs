@@ -454,6 +454,98 @@ impl<'c> DocMountBlobsRepository<'c> {
         Ok(true)
     }
 
+    /// The FULL v4 `DocMountBlobWithLink` row as JSON in v4's exact key order
+    /// (the 21-column joined view the blobs routes return verbatim — nulls
+    /// literal, REAL numbers collapsed via `js_number_to_json`). `tail` is the
+    /// WHERE/ORDER clause; P4.6y additive.
+    fn full_json_rows(
+        &self,
+        tail: &str,
+        params_slice: &[&dyn rusqlite::types::ToSql],
+    ) -> Result<Vec<serde_json::Value>, DbError> {
+        let sql = format!(
+            "SELECT                b.id, b.fileId, b.sha256, b.sizeBytes, b.storedMimeType,                b.createdAt, b.updatedAt,                l.id AS linkId, l.mountPointId, l.relativePath, l.fileName,                l.folderId, l.originalFileName, l.originalMimeType,                l.description, l.descriptionUpdatedAt,                l.extractedText, l.extractedTextSha256, l.extractionStatus, l.extractionError,                l.lastModified              FROM doc_mount_file_links l              JOIN doc_mount_blobs b ON b.fileId = l.fileId              {tail}"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let names: Vec<String> = stmt
+            .column_names()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect();
+        let rows = stmt
+            .query_map(params_slice, |row| {
+                let mut obj = serde_json::Map::new();
+                for (i, name) in names.iter().enumerate() {
+                    let v = match row.get_ref(i)? {
+                        rusqlite::types::ValueRef::Null => serde_json::Value::Null,
+                        rusqlite::types::ValueRef::Integer(n) => serde_json::json!(n),
+                        rusqlite::types::ValueRef::Real(f) => super::js_number_to_json(f),
+                        rusqlite::types::ValueRef::Text(t) => {
+                            serde_json::Value::String(String::from_utf8_lossy(t).into_owned())
+                        }
+                        rusqlite::types::ValueRef::Blob(b) => serde_json::json!(b.len()),
+                    };
+                    obj.insert(name.clone(), v);
+                }
+                Ok(serde_json::Value::Object(obj))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// v4 `findByMountPointAndPath` as the verbatim JSON view (P4.6y).
+    pub fn find_full_json_by_mount_point_and_path(
+        &self,
+        mount_point_id: &str,
+        relative_path: &str,
+    ) -> Result<Option<serde_json::Value>, DbError> {
+        Ok(self
+            .full_json_rows(
+                "WHERE l.mountPointId = ?1 AND LOWER(l.relativePath) = LOWER(?2)",
+                &[&mount_point_id, &relative_path],
+            )?
+            .into_iter()
+            .next())
+    }
+
+    /// The updated joined view by LINK id (v4 `updateDescription`'s return
+    /// query, `WHERE l.id = ?`) — P4.6y.
+    pub fn find_full_json_by_link_id(
+        &self,
+        link_id: &str,
+    ) -> Result<Option<serde_json::Value>, DbError> {
+        Ok(self
+            .full_json_rows("WHERE l.id = ?1", &[&link_id])?
+            .into_iter()
+            .next())
+    }
+
+    /// v4 `listByMountPoint` as the verbatim JSON view (P4.6y).
+    pub fn list_full_json_by_mount_point(
+        &self,
+        mount_point_id: &str,
+        folder: Option<&str>,
+    ) -> Result<Vec<serde_json::Value>, DbError> {
+        match folder {
+            Some(f) => {
+                let prefix = if f.ends_with('/') {
+                    f.to_string()
+                } else {
+                    format!("{f}/")
+                };
+                let like = format!("{prefix}%");
+                self.full_json_rows(
+                    "WHERE l.mountPointId = ?1 AND l.relativePath LIKE ?2 ORDER BY l.relativePath ASC",
+                    &[&mount_point_id, &like],
+                )
+            }
+            None => self.full_json_rows(
+                "WHERE l.mountPointId = ?1 ORDER BY l.relativePath ASC",
+                &[&mount_point_id],
+            ),
+        }
+    }
+
     /// v4 `readData` (`doc-mount-blobs.repository.ts:189`): the raw bytes for a
     /// blob row by its blob `id`, or `None`.
     pub fn read_data(&self, id: &str) -> Result<Option<Vec<u8>>, DbError> {

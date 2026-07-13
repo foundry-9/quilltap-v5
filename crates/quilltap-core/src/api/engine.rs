@@ -2064,6 +2064,99 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            Request::MountFileWrite {
+                mount_point_id,
+                path,
+                content,
+                encoding,
+                expected_mtime,
+                force,
+                original_mime_type,
+                original_file_name,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::mount_files::mount_file_write(
+                        &db,
+                        &mount_point_id,
+                        &path,
+                        &content,
+                        encoding.as_deref(),
+                        expected_mtime,
+                        force,
+                        original_mime_type,
+                        original_file_name,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::MountFileWriteRaw {
+                mount_point_id,
+                path,
+                data,
+                force,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::mount_files::mount_file_write_raw(
+                        &db,
+                        &mount_point_id,
+                        &path,
+                        &data,
+                        force,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::MountBlobUpload {
+                mount_point_id,
+                path,
+                description,
+                data,
+                original_mime_type,
+                original_file_name,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::mount_files::mount_blob_upload(
+                        &db,
+                        &mount_point_id,
+                        &path,
+                        description,
+                        &data,
+                        original_mime_type,
+                        original_file_name,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::MountBlobsList {
+                mount_point_id,
+                folder,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::mount_files::mount_blobs_list(&db, &mount_point_id, folder.as_deref())
+                }
+                Err(r) => r,
+            },
+            Request::MountBlobDelete {
+                mount_point_id,
+                path,
+            } => match self.ready_db() {
+                Ok(db) => super::mount_files::mount_blob_delete(&db, &mount_point_id, &path).await,
+                Err(r) => r,
+            },
+            Request::MountBlobUpdate {
+                mount_point_id,
+                path,
+                description,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::mount_files::mount_blob_update(&db, &mount_point_id, &path, description)
+                        .await
+                }
+                Err(r) => r,
+            },
             // === P4.6w: documents ===
             Request::ChatActiveDocument { chat_id } => match self.ready_db() {
                 Ok(db) => super::documents::chat_active_document(&db, &chat_id),
