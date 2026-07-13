@@ -268,15 +268,21 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
           <label for="defaultConnectionProfileId" class="block qt-label mb-2 text-foreground">
             Default Connection Profile (Optional)
           </label>
+          <!--
+            dogfood-#6: options come from an async query; bind per-option with
+            [selected], not [value] on the <select> (a [value] set before the
+            options render leaves the control blank — P4.6aa select-audit rider).
+          -->
           <select
             id="defaultConnectionProfileId"
             class="qt-select"
-            [value]="form().defaultConnectionProfileId"
             (change)="setField('defaultConnectionProfileId', $any($event.target).value)"
           >
-            <option value="">No default profile</option>
+            <option value="" [selected]="!form().defaultConnectionProfileId">No default profile</option>
             @for (profile of profiles(); track profile.id) {
-              <option [value]="profile.id">{{ profile.name }}</option>
+              <option [value]="profile.id" [selected]="form().defaultConnectionProfileId === profile.id">
+                {{ profile.name }}
+              </option>
             }
           </select>
           <p class="mt-1 qt-text-xs">Can be overridden for individual chats</p>

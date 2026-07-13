@@ -134,4 +134,24 @@ describe('NewCharacter', () => {
 
     expect(navigateSpy).toHaveBeenCalledWith(['/characters', 'new-char-id']);
   });
+
+  // dogfood-#6 regression (P4.6aa select-audit rider): the connection-profile
+  // options come from an async query, so the select binds the selection
+  // per-option with [selected] (no [value] on the <select>). A profile chosen
+  // once the options have rendered must be reflected by the native control.
+  it('the default-profile select reflects the model via [selected], not [value]', async () => {
+    const fixture = await render(stubClient());
+    const select = fixture.nativeElement.querySelector(
+      '#defaultConnectionProfileId',
+    ) as HTMLSelectElement;
+    // The async option (from connectionProfileList) has rendered.
+    expect(Array.from(select.options).some((o) => o.value === 'p1')).toBe(true);
+    // The <select> must NOT carry a [value] binding — the fix is per-option.
+    expect(select.getAttribute('ng-reflect-value')).toBeNull();
+
+    setInput(fixture, 'defaultConnectionProfileId', 'p1');
+    // The native control (driven only by [selected]) reflects the model.
+    expect(select.value).toBe('p1');
+    expect(Array.from(select.options).find((o) => o.value === 'p1')!.selected).toBe(true);
+  });
 });

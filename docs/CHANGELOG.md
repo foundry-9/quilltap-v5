@@ -38,6 +38,18 @@ hidden-dir skip, and localeCompare (ICU4X en-US) sort all match v4. Verified by
 a new route differential (`browse_directory_equivalence`, 5 cases byte-exact
 over the committed `browse-fs-tree/` fixture) plus Rust unit tests for the
 home-default and permission-denied arms.
+P4.6aa lane B (file-manager, unit 5): the <select [value]> audit rider
+(dogfood-#6). Audited every <select [value]> in the enumerated files.
+Static/synchronous-option selects (coreWhisper, pronoun preset, transport,
+pseudoToolMode, modelClass=MODEL_CLASSES const, the model-selector
+component, the reverse-user computed, and the cheap-llm/model-selection
+selects already on [selected]) are safe and left as-is. Converted the two
+genuinely-risky ones — async query options bound via [value] on the
+<select> — to [selected]-per-option: the api-key-modal Provider select
+(async providerList) and the new-character Default Connection Profile
+select (async connectionProfileList). Regression specs added for both
+(api-key-modal.spec.ts new; a [selected] case in new-character.spec.ts).
+
 P4.6aa lane B (file-manager, unit 4): the probe-guarded e2e
 (file-manager-flow.spec.ts). A live browser walk of qt-file-manager over
 the shared Salon server: seed a database store via the frozen-live

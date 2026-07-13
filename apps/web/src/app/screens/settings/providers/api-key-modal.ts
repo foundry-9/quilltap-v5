@@ -50,19 +50,24 @@ interface ProviderOption {
 
         <div>
           <label for="qt-key-provider" class="block qt-text-label mb-2">Provider *</label>
+          <!--
+            dogfood-#6: options come from an async query, so bind the selection
+            per-option with [selected] rather than [value] on the <select> — a
+            [value] bound before the options render leaves the native control
+            blank (P4.6aa select-audit rider).
+          -->
           <select
             id="qt-key-provider"
             class="qt-select"
             [disabled]="providersQuery.isPending()"
-            [value]="provider()"
             (change)="provider.set($any($event.target).value)"
           >
             @if (providersQuery.isPending()) {
               <option value="">Loading providers...</option>
             } @else {
-              <option value="">Select a provider</option>
+              <option value="" [selected]="!provider()">Select a provider</option>
               @for (p of providerOptions(); track p.value) {
-                <option [value]="p.value">{{ p.label }}</option>
+                <option [value]="p.value" [selected]="provider() === p.value">{{ p.label }}</option>
               }
             }
           </select>

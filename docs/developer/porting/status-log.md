@@ -9811,3 +9811,17 @@ absent) and self-activates once they land at unification (the P4.6x
 precedent). Verified: `playwright test file-manager-flow --list` parses
 the one test; it reports SKIPPED in-lane (no toggle). Sorts alphabetically
 after `foundation.spec.ts` (the shared-server ordering rule).
+
+**Unit 5 — the `<select [value]>` audit rider (dogfood-#6; SPA 0.5.55).**
+Audited every `<select [value]>` in the enumerated files (line numbers had
+drifted). SAFE (static or synchronous options — left as-is with recorded
+proof in the order status header): coreWhisper, pronoun preset, transport,
+pseudoToolMode, `modelClass` (`MODEL_CLASSES` const), the
+`<qt-model-selector>` component (not a native select), the reverse-user
+`computed` (value initialized from the same computed at dialog-open), and
+the cheap-llm-card / model-selection-step selects (already `[selected]`).
+CONVERTED to `[selected]`-per-option (async query options previously bound
+via `[value]` on the `<select>`): `api-key-modal.ts` Provider
+(`providerList`) and `new-character.ts` Default Connection Profile
+(`connectionProfileList`). Regression specs: `api-key-modal.spec.ts` (new)
++ a `[selected]` case in `new-character.spec.ts`. 6 cases green.
