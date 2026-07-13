@@ -71,6 +71,11 @@ function applyMocks(spec: Spec): void {
   jest.doMock('@/lib/embedding/vector-store', () =>
     jest.requireActual('@/lib/embedding/vector-store'),
   );
+  // jest.setup cans generateEmbeddingForUser to a 3-dim test vector — un-mock
+  // so semantic-search embeds queries through the REAL builtin TF-IDF path.
+  jest.doMock('@/lib/embedding/embedding-service', () =>
+    jest.requireActual('@/lib/embedding/embedding-service'),
+  );
   // Keep the in-process job dispatcher OFF: enqueued EMBEDDING_GENERATE rows
   // must stay PENDING in the dump (the W4.7e2 mock-ensureProcessorRunning
   // recipe) — otherwise the drain lets v4 run the jobs and embed the chunks.

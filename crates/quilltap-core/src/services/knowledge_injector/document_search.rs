@@ -48,6 +48,10 @@ pub struct DocumentSearchResult {
 /// path, out of scope), but the fallbacks are ported for faithfulness.
 #[derive(Debug, Clone, Default)]
 pub struct DocumentSearchOptions {
+    /// Scope to a specific project's linked mount points (v4 `projectId`) —
+    /// consulted only when `mount_point_ids` is `None`; an empty link set
+    /// short-circuits to no results (P4.6y, the semantic-search route).
+    pub project_id: Option<String>,
     /// Scope to specific mount point IDs. When `None`, falls back to all enabled
     /// mounts.
     pub mount_point_ids: Option<Vec<String>>,
@@ -89,13 +93,35 @@ pub fn search_document_chunks(
     query_embedding: &[f32],
     options: &DocumentSearchOptions,
 ) -> Result<Vec<DocumentSearchResult>, DbError> {
-    let limit = options.limit.unwrap_or(10);
-    let min_score = options.min_score.unwrap_or(0.3);
+    // v4 uses JS `||` defaults — a FALSY zero falls back too (`limit: 0` → 10,
+    // `minScore: 0` → 0.3; the semantic-search route's `threshold: 0` really
+    // searches at 0.3). Ported broken-but-exact.
+    let limit = match options.limit {
+        Some(l) if l != 0 => l,
+        _ => 10,
+    };
+    let min_score = match options.min_score {
+        Some(m) if m != 0.0 => m,
+        _ => 0.3,
+    };
 
-    // Determine which mount point IDs to search.
+    // Determine which mount point IDs to search (v4 order: explicit ids win;
+    // else a projectId resolves its linked mounts — empty set returns [];
+    // else every enabled mount).
     let mount_point_ids: Vec<String> = match &options.mount_point_ids {
         Some(ids) => ids.clone(),
-        None => find_enabled_mount_point_ids(conn)?,
+        None => match &options.project_id {
+            Some(pid) => {
+                let ids =
+                    crate::db::project_doc_mount_links::ProjectDocMountLinksRepository::new(conn)
+                        .find_by_project_id(pid)?;
+                if ids.is_empty() {
+                    return Ok(Vec::new());
+                }
+                ids
+            }
+            None => find_enabled_mount_point_ids(conn)?,
+        },
     };
     if mount_point_ids.is_empty() {
         return Ok(Vec::new());

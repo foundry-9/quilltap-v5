@@ -213,6 +213,22 @@ impl<'c> DocMountDocumentsRepository<'c> {
     ///
     /// Used by the overlay's `read_properties` (the read-modify-write seed for a
     /// partial property patch).
+    /// v4 `findByFileId(...).content` — the document content row by its
+    /// `fileId` (the reindex byte-read path, P4.6y additive).
+    pub fn find_content_by_file_id(&self, file_id: &str) -> Result<Option<String>, DbError> {
+        self.conn
+            .query_row(
+                "SELECT content FROM doc_mount_documents WHERE fileId = ?1",
+                rusqlite::params![file_id],
+                |row| row.get::<_, String>(0),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
+    }
+
     pub fn find_by_mount_point_and_path(
         &self,
         mount_point_id: &str,

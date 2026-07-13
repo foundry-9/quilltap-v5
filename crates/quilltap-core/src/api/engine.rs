@@ -1919,6 +1919,36 @@ impl CoreEngine {
                 Ok(db) => super::mount_files::mount_scan(&db, &mount_point_id).await,
                 Err(r) => r,
             },
+            Request::MountReindex {
+                mount_point_id,
+                path,
+                force,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::mount_files::mount_reindex(&db, &mount_point_id, path, force).await
+                }
+                Err(r) => r,
+            },
+            Request::MountEmbed {
+                mount_point_id,
+                path,
+                force,
+            } => match self.ready_db() {
+                Ok(db) => super::mount_files::mount_embed(&db, &mount_point_id, path, force).await,
+                Err(r) => r,
+            },
+            Request::MountSemanticSearch { search } => match self.ready_memory_embedding() {
+                Ok((db, provider)) => {
+                    super::mount_files::mount_semantic_search(
+                        &db,
+                        &provider,
+                        SINGLE_USER_ID,
+                        search,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
             // === P4.6w: documents ===
             Request::ChatActiveDocument { chat_id } => match self.ready_db() {
                 Ok(db) => super::documents::chat_active_document(&db, &chat_id),

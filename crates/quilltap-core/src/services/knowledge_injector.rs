@@ -256,6 +256,7 @@ pub async fn retrieve_knowledge_for_turn<P: EmbeddingProvider>(
         let query = params.query.clone();
         let boost = plan.boost;
         let opts = DocumentSearchOptions {
+            project_id: None,
             mount_point_ids: Some(mount_point_ids),
             path_prefix: Some("Knowledge/".to_string()),
             limit: Some(candidate_limit),

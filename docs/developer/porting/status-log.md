@@ -9279,3 +9279,38 @@ The indexing spine lands (early — file-ops and store-file both ride
   (exclusion corpus); `mounts-main.db` + materialized `background_jobs`.
   `mount-read` oracle regenerated (18 cases) — green.
 - core 0.0.199, harness 0.0.182.
+
+## 2026-07-12 — P4.6y unit E: reindex + scoped embed + semantic search (`mountReindex`/`mountEmbed`/`mountSemanticSearch`)
+
+- **`reindex.rs`** — `reindexLinks` (sync in-request; scope matching,
+  `shouldProcess` extraction-state gates, the empty-text arm writing
+  `'extractor returned empty text'` + chunk wipe, the catch arm's
+  best-effort 500-char-truncated status) + `enqueueEmbeddingJobsScoped`
+  (`ScopedEnqueueError::Config` carries v4's thrown
+  `No embedding profile configured`/`No user found` messages verbatim so
+  the 500 body matches).
+- **Variants**: `mountReindex`/`mountEmbed` (`{path?, force?}`) +
+  `mountSemanticSearch` (flattened v4 `semanticSearchSchema` bag; parsed
+  in-handler with zod-v4-shaped type messages; embeds via the engine's
+  `memory_embedding` provider — `ready_memory_embedding`, the P4.6s
+  seam; `includeBlocked: true`).
+- **`search_document_chunks`**: + `project_id` resolution (v4 order:
+  explicit ids → project links (empty → []) → all enabled); **v4's JS
+  `||` falsy defaults reproduced** — `limit: 0` → 10, `minScore: 0` →
+  0.3 (the route's `threshold: 0` really searches at 0.3; caught by the
+  differential, ported broken-but-exact).
+- **`CoreError.code`** (additive, skip-serialized when absent): the
+  BINDING `{error, code}` envelope — populated on the search arms
+  (`EMBEDDING_FAILED`, `EMBEDDING_DIMENSION_MISMATCH`) now; the file-op
+  arms populate it as their units land. The v4 dimension-mismatch body's
+  `queryDimensions`/`storedDimensions` extras are a pinned omission (no
+  differential case reaches that arm). Mechanical `code: None` fills in
+  quilltap-host/spine.rs literals (compile-only spillover).
+- **Differential**: `mount_index_equivalence` now runs ALL 14 cases
+  (scan ×4 + reindex ×4 + embed ×3 + search ×3) — response bodies AND
+  eight-table dumps; search scores are REAL builtin TF-IDF values
+  (rounded 1e-6, the P4.6s float recipe); embed bodies' minted job ids
+  blanked. Oracle gotcha: jest.setup CANS
+  `@/lib/embedding/embedding-service` (3-dim `test-model`) — un-mock via
+  requireActual or every search 500s with a dimension mismatch.
+- core 0.0.200, harness 0.0.183.

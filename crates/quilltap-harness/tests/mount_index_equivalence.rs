@@ -28,8 +28,13 @@ use std::path::PathBuf;
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::db::Writer;
+use quilltap_core::model::embedding::ErasedEmbeddingProvider;
+use quilltap_core::model::wire::CannedWireTransport;
+use quilltap_core::services::embedding_provider::ApiEmbeddingProvider;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
+
+const SINGLE_USER_ID: &str = "e18e05bc-63e8-4539-8a85-719b7a508850";
 
 const MP_DB: &str = "b6000000-0000-4000-8000-000000000001";
 const MP_FS: &str = "b6000000-0000-4000-8000-000000000003";
@@ -356,6 +361,41 @@ fn normalize(case: &Value) -> Value {
         remap(body, &mut map);
     }
 
+    // Embed bodies carry minted job ids ({id, kind, status} rows) — blank them
+    // (nothing references a job id).
+    if let Some(jobs) = v
+        .get_mut("body")
+        .and_then(|b| b.get_mut("jobs"))
+        .and_then(|j| j.as_array_mut())
+    {
+        for job in jobs {
+            if job.get("id").is_some() {
+                job["id"] = Value::String("<jobid>".to_string());
+            }
+        }
+    }
+
+    // Search scores ride the f32-storage + ln-ULP seams — round every float to
+    // 6 decimals (the P4.6s recipe); integer-valued floats already collapsed.
+    fn round_floats(v: &mut Value) {
+        match v {
+            Value::Number(n) => {
+                if let Some(f) = n.as_f64() {
+                    if f.fract() != 0.0 {
+                        let r = (f * 1_000_000.0).round() / 1_000_000.0;
+                        if let Some(num) = serde_json::Number::from_f64(r) {
+                            *v = Value::Number(num);
+                        }
+                    }
+                }
+            }
+            Value::Array(a) => a.iter_mut().for_each(round_floats),
+            Value::Object(o) => o.iter_mut().for_each(|(_, x)| round_floats(x)),
+            _ => {}
+        }
+    }
+    round_floats(&mut v);
+
     // Job rows were SQL-sorted by their RAW payload, which embeds per-side
     // minted chunk uuids — re-sort by the REMAPPED payload so rows align.
     if let Some(jobs) = v
@@ -461,26 +501,128 @@ fn mount_index_matches_oracle() {
         .build()
         .unwrap();
 
-    // (case name, mount id) — the scan family (unit F). Later units append.
-    let scan_cases = [
-        ("scan_fs", MP_FS),
-        ("scan_obs", MP_OBS),
-        ("scan_db", MP_DB),
-        ("scan_404", BOGUS),
+    use quilltap_core::api::mount_files as mf;
+
+    type CaseFn = Box<dyn Fn(&Db, &tokio::runtime::Runtime) -> Response>;
+    fn provider(db: &Db) -> ErasedEmbeddingProvider {
+        ErasedEmbeddingProvider::new(ApiEmbeddingProvider::new(
+            db.clone(),
+            CannedWireTransport::new(),
+        ))
+    }
+    let cases: Vec<(&str, CaseFn)> = vec![
+        // ── scan (unit F) ──
+        (
+            "scan_fs",
+            Box::new(|db, rt| rt.block_on(mf::mount_scan(db, MP_FS))),
+        ),
+        (
+            "scan_obs",
+            Box::new(|db, rt| rt.block_on(mf::mount_scan(db, MP_OBS))),
+        ),
+        (
+            "scan_db",
+            Box::new(|db, rt| rt.block_on(mf::mount_scan(db, MP_DB))),
+        ),
+        (
+            "scan_404",
+            Box::new(|db, rt| rt.block_on(mf::mount_scan(db, BOGUS))),
+        ),
+        // ── reindex / embed / semantic-search (unit E) ──
+        (
+            "reindex_db_default",
+            Box::new(|db, rt| rt.block_on(mf::mount_reindex(db, MP_DB, None, None))),
+        ),
+        (
+            "reindex_db_force",
+            Box::new(|db, rt| rt.block_on(mf::mount_reindex(db, MP_DB, None, Some(true)))),
+        ),
+        (
+            "reindex_db_scoped",
+            Box::new(|db, rt| {
+                rt.block_on(mf::mount_reindex(
+                    db,
+                    MP_DB,
+                    Some("notes/".to_string()),
+                    Some(true),
+                ))
+            }),
+        ),
+        (
+            "reindex_404",
+            Box::new(|db, rt| rt.block_on(mf::mount_reindex(db, BOGUS, None, None))),
+        ),
+        (
+            "embed_db_default",
+            Box::new(|db, rt| rt.block_on(mf::mount_embed(db, MP_DB, None, None))),
+        ),
+        (
+            "embed_db_scoped_force",
+            Box::new(|db, rt| {
+                rt.block_on(mf::mount_embed(
+                    db,
+                    MP_DB,
+                    Some("reference.txt".to_string()),
+                    Some(true),
+                ))
+            }),
+        ),
+        (
+            "embed_404",
+            Box::new(|db, rt| rt.block_on(mf::mount_embed(db, BOGUS, None, None))),
+        ),
+        (
+            "search_basic",
+            Box::new(|db, rt| {
+                rt.block_on(mf::mount_semantic_search(
+                    db,
+                    &provider(db),
+                    SINGLE_USER_ID,
+                    json!({"query": "reference alpha", "threshold": 0, "top": 10}),
+                ))
+            }),
+        ),
+        (
+            "search_scoped",
+            Box::new(|db, rt| {
+                rt.block_on(mf::mount_semantic_search(
+                    db,
+                    &provider(db),
+                    SINGLE_USER_ID,
+                    json!({
+                        "query": "body line",
+                        "mountPointIds": [MP_DB],
+                        "pathPrefix": "notes/",
+                        "threshold": 0
+                    }),
+                ))
+            }),
+        ),
+        (
+            "search_bad_body",
+            Box::new(|db, rt| {
+                rt.block_on(mf::mount_semantic_search(
+                    db,
+                    &provider(db),
+                    SINGLE_USER_ID,
+                    json!({}),
+                ))
+            }),
+        ),
     ];
 
     let mut checked = 0usize;
-    for (name, mp) in scan_cases {
+    for (name, run) in &cases {
         let want = oracle
-            .get(name)
+            .get(*name)
             .unwrap_or_else(|| panic!("no oracle row {name}"));
         let (db, scratch) = fresh_db(&spec.test_pepper_base64, name);
-        let resp = rt.block_on(quilltap_core::api::mount_files::mount_scan(&db, mp));
+        let resp = run(&db, &rt);
         let (status, body) = response_to_status_body(resp);
         let tables = dump_tables(&db);
         let got = json!({ "name": name, "status": status, "body": body, "tables": tables });
-        // The oracle rows for error cases still carry a tables dump — compare it
-        // too (the 404 must leave the fixture untouched on both sides).
+        // Error cases carry a tables dump too — the refusals must leave the
+        // fixture untouched on both sides.
         assert_eq!(
             norm(&got),
             norm(want),
@@ -492,6 +634,6 @@ fn mount_index_matches_oracle() {
         checked += 1;
     }
 
-    assert_eq!(checked, 4, "expected the 4 scan cases");
-    eprintln!("OK: mount-index scan family matched oracle ({checked} cases).");
+    assert_eq!(checked, 14, "expected the 14 mount-index cases");
+    eprintln!("OK: mount-index matched oracle ({checked} cases).");
 }

@@ -760,11 +760,13 @@ where
                 kind: ErrorKind::BadRequest,
                 message: e.to_string(),
                 pepper_state: None,
+                code: None,
             },
             RegenError::Db(_) => CoreError {
                 kind: ErrorKind::Internal,
                 message: e.to_string(),
                 pepper_state: None,
+                code: None,
             },
         })
     }
@@ -944,6 +946,7 @@ where
                     kind: ErrorKind::Internal,
                     message: e.to_string(),
                     pepper_state: None,
+                    code: None,
                 });
             }
         };
@@ -1187,6 +1190,7 @@ fn map_create_error(e: HandleCreateError) -> CoreError {
         kind,
         message: e.to_string(),
         pepper_state: None,
+        code: None,
     }
 }
 
@@ -1250,6 +1254,7 @@ where
                 kind: ErrorKind::BadRequest,
                 message: format!("invalid chatCreate request: {e}"),
                 pepper_state: None,
+                code: None,
             })?;
 
         // Open the OWN writable partitions (module note). `busy_timeout` guards
@@ -1262,12 +1267,14 @@ where
                         kind: ErrorKind::Internal,
                         message: format!("open {name}: {e}"),
                         pepper_state: None,
+                        code: None,
                     }
                 })?;
             w.connection().busy_timeout(busy).map_err(|e| CoreError {
                 kind: ErrorKind::Internal,
                 message: format!("busy_timeout {name}: {e}"),
                 pepper_state: None,
+                code: None,
             })?;
             Ok(w)
         };
@@ -1375,6 +1382,7 @@ where
                         kind: ErrorKind::Internal,
                         message: format!("chat create runtime: {e}"),
                         pepper_state: None,
+                        code: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -1384,6 +1392,7 @@ where
                     kind: ErrorKind::Internal,
                     message: "chat create thread panicked".to_string(),
                     pepper_state: None,
+                    code: None,
                 })
             })
         })
@@ -1422,6 +1431,7 @@ where
                         kind: ErrorKind::Internal,
                         message: format!("spine runtime: {e}"),
                         pepper_state: None,
+                        code: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -1431,6 +1441,7 @@ where
                     kind: ErrorKind::Internal,
                     message: "chat send thread panicked".to_string(),
                     pepper_state: None,
+                    code: None,
                 })
             })
         })
@@ -1465,6 +1476,7 @@ where
                         kind: ErrorKind::Internal,
                         message: format!("spine runtime: {e}"),
                         pepper_state: None,
+                        code: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -1474,6 +1486,7 @@ where
                     kind: ErrorKind::Internal,
                     message: "swipe generation thread panicked".to_string(),
                     pepper_state: None,
+                    code: None,
                 })
             })
         })

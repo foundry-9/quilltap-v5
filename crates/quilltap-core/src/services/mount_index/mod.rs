@@ -14,5 +14,6 @@ pub mod file_ops;
 pub mod list;
 pub mod path_utils;
 pub mod read_file;
+pub mod reindex;
 pub mod reindex_file;
 pub mod scanner;

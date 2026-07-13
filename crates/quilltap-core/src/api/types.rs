@@ -1250,6 +1250,35 @@ pub enum Request {
     MountScan {
         mount_point_id: String,
     },
+    /// v4 `POST ?action=reindex` → `{mountPointId, mountName, processed,
+    /// succeeded, failed, skipped, errors}` (synchronous in-request re-chunk).
+    #[serde(rename_all = "camelCase")]
+    MountReindex {
+        mount_point_id: String,
+        #[serde(default)]
+        path: Option<String>,
+        #[serde(default)]
+        force: Option<bool>,
+    },
+    /// v4 `POST ?action=embed` → `{mountPointId, mountName, jobs, queued,
+    /// skipped}` (the scoped EMBEDDING_GENERATE enqueue).
+    #[serde(rename_all = "camelCase")]
+    MountEmbed {
+        mount_point_id: String,
+        #[serde(default)]
+        path: Option<String>,
+        #[serde(default)]
+        force: Option<bool>,
+    },
+    /// v4 collection-route `?action=semantic-search` → `{results, count, query,
+    /// embeddingModel, embeddingDimensions}`. `search` carries the v4
+    /// `semanticSearchSchema` fields verbatim (`query`, `mountPointIds?`,
+    /// `projectId?`, `pathPrefix?`, `top?`, `threshold?`), parsed in-handler.
+    #[serde(rename_all = "camelCase")]
+    MountSemanticSearch {
+        #[serde(flatten)]
+        search: serde_json::Value,
+    },
     // === P4.6w: documents ===
     // Chat-scoped Document Mode (all take `chatId`). See `api::documents`. The
     // schema-bag variants flatten the remaining fields into `body` (the exact
@@ -1479,6 +1508,22 @@ impl Response {
             kind,
             message: message.into(),
             pepper_state: None,
+            code: None,
+        })
+    }
+
+    /// An error response carrying v4's file-op `code` (P4.6y — the
+    /// `{ error, code }` body; see [`CoreError::code`]).
+    pub fn error_coded(
+        kind: ErrorKind,
+        message: impl Into<String>,
+        code: impl Into<String>,
+    ) -> Response {
+        Response::Error(CoreError {
+            kind,
+            message: message.into(),
+            pepper_state: None,
+            code: Some(code.into()),
         })
     }
 
@@ -1490,6 +1535,7 @@ impl Response {
             kind: ErrorKind::Locked,
             message: "The database is locked. Unlock it to continue.".to_string(),
             pepper_state: Some(pepper_state),
+            code: None,
         })
     }
 }
@@ -1635,6 +1681,14 @@ pub struct CoreError {
     /// unlock/setup screen without a second round-trip.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pepper_state: Option<PepperState>,
+    /// v4's `{ error, code }` file-op body (P4.6y): the `FileOpError` ∪
+    /// `DatabaseStoreError` code union (`SOURCE_NOT_FOUND | DEST_EXISTS |
+    /// MOUNT_NOT_FOUND | INVALID_PATH | UNSUPPORTED | VERIFY_FAILED | CONFLICT |
+    /// NOT_FOUND | NOT_EMPTY | INVALID`) plus `EMBEDDING_FAILED` on the
+    /// semantic-search embed refusal. The SPA error translation keys on this
+    /// first, HTTP status second. Absent everywhere else.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

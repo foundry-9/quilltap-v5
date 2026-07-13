@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+P4.6y unit E: reindex + scoped embedding enqueue + semantic search.
+services/mount_index/reindex.rs ports reindexLinks (synchronous
+in-request, deliberately — the empty-extraction and catch bookkeeping
+arms exact) and enqueueEmbeddingJobsScoped (the {jobs, queued, skipped}
+summary with the config-missing messages verbatim). New dispatch
+variants mountReindex / mountEmbed / mountSemanticSearch (the search
+parses v4's semanticSearchSchema in-handler, embeds through the
+engine's memory_embedding provider, and searches with
+includeBlocked:true). search_document_chunks gains the projectId
+scope resolution and now reproduces v4's JS falsy-|| defaults
+(limit:0 → 10, minScore:0 → 0.3 — threshold 0 really searches at 0.3,
+ported broken-but-exact). CoreError gains an optional `code` field
+(absent unless set) carrying the binding {error, code} file-op union —
+EMBEDDING_FAILED / EMBEDDING_DIMENSION_MISMATCH land on the search
+arms. The mount-index differential now covers all 14 cases (scan +
+reindex + embed + search, incl. real builtin TF-IDF scores rounded at
+1e-6) — green; the oracle un-mocks jest.setup's canned embedding
+service and pins the processor-off recipe. core 0.0.200, harness
+0.0.183.
+
 P4.6y unit F: the scanner + converters + embedding-scheduler ports and
 the mountScan variant. services/mount_index gains converters.rs (the
 markdown/txt converters with JS-regex-faithful syntax stripping — the two

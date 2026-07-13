@@ -144,11 +144,13 @@ impl SwipeGenerateDriver for TestSwipeDriver<'_> {
                         kind: ErrorKind::BadRequest,
                         message: e.to_string(),
                         pepper_state: None,
+                        code: None,
                     },
                     RegenError::Db(_) => CoreError {
                         kind: ErrorKind::Internal,
                         message: e.to_string(),
                         pepper_state: None,
+                        code: None,
                     },
                 })
         })
