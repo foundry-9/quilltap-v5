@@ -9468,3 +9468,65 @@ core 0.0.203, harness 0.0.186.
   unification — the mount_refresh wire changes live document-write
   behavior under lane C's activated document e2e beats (a write now
   chunks + refreshes stats in the background).
+
+## The P4.6y mount-file-ops remainder round — UNIFIED on main (2026-07-13)
+
+A single-lane round (the P4.6v resumption — no siblings by design: the
+`storeMountFile` ingest pipeline, the indexing services, and the
+mutation verbs land in one module tree and one oracle-suite family).
+The lane branched from main HEAD, so `unify/p4.6y` was a clean
+fast-forward — no cherry-pick conflicts, no version-file accumulation,
+no two-writer delimiter-block seams. v4 baseline re-verified at
+`a7b1398d` before unification.
+
+**The unification wires:** none outstanding cross-lane — the seam wire
+(`EngineAssembly.mount_refresh` → the production
+`DbMountRefreshScheduler` at `host.rs`), the P4.6v CLOSE, the D7 note
+deletion, and the P4.6p closure note all landed in-lane. The unifier's
+one named obligation was the FULL Playwright run (the seam wire changes
+live document-write behavior under the P4.6x activated document beats)
+— run and green, see the gate.
+
+**The full gate (all fresh at unification):** `cargo fmt --check`
+clean; clippy `-D warnings` clean on the default set AND
+`--features quilltap-core/native-transport`; `cargo build --workspace
+--release` clean (Cargo.lock in sync); `cargo test --workspace` green
+(296 suite runs, 0 failed; the core unit suite 884 passed); all EIGHT
+affected oracles regenerated FRESH from v4 `a7b1398d` (each in its own
+clean invocation, Node 24, jest cases via /tmp mirrors) and their
+differentials re-run green BY NAME — mount-chunker 69, mount-md-convert
+28, mount-read 18, mount-index 14, mount-ops 39 (+ the
+convert/deconvert refusal-arm test), mount-write 22, mount-refresh 1,
+documents-routes 24; `ng test` 470 passed (66 files); `ng build` clean;
+the FULL Playwright suite **29/29** — including the two Document Mode
+beats (create → edit → flush-save → reload-persist → rename → Librarian
+chip → close; document + terminal stacked) now exercising the LIVE
+refresh path (a document-store write chunks + refreshes stats in the
+background via the spawned writer job).
+
+**Orders:** P4.6y CLOSED (its header carries the contract pins — the
+`mountFileWrite` multipart riders, `mountFileWriteRaw` as the
+byte-preserving variant, the blob-upload 201 as a web-edge transport
+status, `CoreError.code` as the `{error, code}` carrier — and the
+standing deferrals); **P4.6v CLOSED** (completed by P4.6y; the original
+order remains the survey of record and the D18 wire contract); **D7
+CLOSED** (noted in the P4.6p header — every mount-point action verb +
+semantic-search has a live variant; convert/deconvert refusal-armed
+behind v4's live capability guards).
+
+**Standing deferrals (loud, named):** the production pdf/docx
+`DocumentTextExtractor` and the production WebP codec (refusing seams
+routing v4's own empty-text / store-original arms); `conversion.ts`
+behind the refusal-armed convert/deconvert verbs; the
+chokidar-equivalent fs watcher INCLUDING the db-store-event emitter
+chain (`emitDocumentWritten/Deleted/Moved` — annotated at every port
+site); the `quilltap docs` CLI subcommands.
+
+**Next candidates:** the Scriptorium SPA (D18 ngx-explorer spike, now
+over a fully frozen file-ops surface — the wire contract is the P4.6v
+§Shared-contract variant table + the P4.6y contract pins), the
+ProseMirror editor decision (D17), the courier/images Salon slices,
+autonomous-rooms settings, or P4.7 (`quilltap-tauri`).
+
+Versions at unification: core 0.0.205, web 0.0.17, harness 0.0.187,
+host 0.0.15, SPA 0.5.50.

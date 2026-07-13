@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+P4.6y unification: the mount-file-ops remainder round is UNIFIED on
+main. The single lane branched from main HEAD, so the round was a
+clean fast-forward (no cherry-pick conflicts). P4.6y CLOSED, P4.6v
+CLOSED, D7 CLOSED, EngineAssembly.mount_refresh WIRED LIVE. The full
+gate ran fresh at unification: fmt --check; clippy -D warnings on both
+feature sets; release build (Cargo.lock in sync); cargo test
+--workspace green (296 suite runs, 0 failed); all eight oracles
+regenerated FRESH from v4 a7b1398d and their differentials re-run
+green by name (chunker 69, md-convert 28, read 18, index 14, ops 39,
+write 22, refresh 1, documents-routes 24); ng test 470 (66 files); ng
+build clean; the FULL Playwright suite 29/29 — the two Document Mode
+beats now exercise the live refresh path (a document-store write
+chunks + refreshes stats in the background). Standing deferrals (loud,
+named): the production pdf/docx DocumentTextExtractor + WebP codec,
+conversion.ts behind the refusal-armed convert/deconvert verbs, the
+chokidar-equivalent fs watcher + db-store-event emitter chain, the
+quilltap docs CLI subcommands. Next: the Scriptorium SPA (D18).
+Versions: core 0.0.205, web 0.0.17, harness 0.0.187, host 0.0.15,
+SPA 0.5.50.
+
 P4.6y unit K: D7 CLOSED — the api/mount_points.rs refusal note deleted
 (the action verbs + semantic-search all live in api::mount_files now);
 P4.6v marked CLOSED (completed by P4.6y) and the closure noted in the

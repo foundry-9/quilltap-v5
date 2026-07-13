@@ -346,7 +346,24 @@ records THERE. Update this summary only when a phase or round completes.
   finish P4.6v, the Scriptorium SPA (D18, over the frozen file-ops
   surface), the courier/images Salon slices, autonomous-rooms settings,
   or P4.7 (Tauri) — see phase-4.md.
+- **The P4.6y mount-file-ops remainder round: UNIFIED on main
+  (2026-07-13) — P4.6y and P4.6v CLOSED, D7 CLOSED,
+  `EngineAssembly.mount_refresh` WIRED LIVE.** The whole Scriptorium
+  mutation + indexing surface (single lane): the `storeMountFile`
+  ingest pipeline (all three branches) + the blob routes, the
+  file/folder mutation verbs + PATCH + folder-create, reindex / scoped
+  embed / semantic search, the scanner + `mountScan`, the web-edge fs
+  raw read + three multipart legs, and convert/deconvert refusal-armed
+  behind v4's live capability guards. Eight differentials green over
+  fresh `a7b1398d` oracles; full Playwright 29/29 at unification (the
+  document beats exercise the live refresh seam). Refusing seams
+  (loud, named): the production pdf/docx `DocumentTextExtractor`, the
+  production WebP codec, `conversion.ts`, the chokidar-equivalent fs
+  watcher (+ the db-store-event emitter chain), the `quilltap docs`
+  CLI. Next candidates: the Scriptorium SPA (D18), the ProseMirror
+  editor (D17), the courier/images Salon slices, autonomous-rooms
+  settings, or P4.7 (Tauri) — see phase-4.md.
 - **Oracle baseline:** v4 HEAD `a7b1398d` (drift-check before every round).
-  Versions: core 0.0.198, harness 0.0.181, host 0.0.14, web 0.0.15, SPA 0.5.50.
+  Versions: core 0.0.205, harness 0.0.187, host 0.0.15, web 0.0.17, SPA 0.5.50.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

@@ -931,3 +931,37 @@ the refresh seam), then the Scriptorium SPA (D18 ngx-explorer spike
 over the frozen file-ops surface), the ProseMirror editor decision
 (D17), the courier/images Salon slices, autonomous-rooms settings, or
 P4.7 (`quilltap-tauri`). Round record: `status-log.md`.
+
+**The P4.6y mount-file-ops remainder round is UNIFIED on main
+(2026-07-13) — P4.6y CLOSED, and with it P4.6v CLOSED, D7 CLOSED, and
+`EngineAssembly.mount_refresh` WIRED LIVE.** The single resumption
+lane (no siblings — the ingest pipeline couldn't honestly split)
+delivered every tier-1 AND tier-2 unit of the P4.6v remainder,
+differential-proven against fresh v4 `a7b1398d` oracles: the mounts
+fixture extension (TF-IDF embedding profile + extraction substrate +
+pinned chunks; mount-read regenerated); the converters
+(`markdown_to_text` tier-1 exact) + the refusing `DocumentTextExtractor`
+seam; `storeMountFile` (all three ingest branches, incl. the
+optimistic-mtime CONFLICT and the WebP-transcode seam whose refusing
+default takes v4's own encode-failure fallback) + the blob routes; the
+full file/folder mutation surface (four strategies, sha256 verify,
+v4's dest-exists-before-same-path copy quirk pinned); PATCH
+rename+description + folder-create; reindex + scoped embed +
+`mountSemanticSearch` (v4's JS `||` falsy defaults pinned); the
+scanner + `mountScan`; the web-edge fs raw read + the three multipart
+legs; convert/deconvert refusal-armed behind v4's live capability
+guards. The production `DbMountRefreshScheduler` wires the P4.6w seam
+at `host.rs` (a spawned writer job — never re-enters the busy writer),
+proven by the new refresh-parity differential plus a fresh
+documents-routes re-run. The unification gate ran the FULL Playwright
+suite (29/29 — the Document Mode beats now exercise live
+chunk+refresh on write). **Standing deferrals (loud, named):** the
+production pdf/docx `DocumentTextExtractor` and WebP codec,
+`conversion.ts` behind the refusal-armed convert/deconvert verbs, the
+chokidar-equivalent fs watcher INCLUDING the db-store-event emitter
+chain, and the `quilltap docs` CLI subcommands. **Next candidates:**
+the Scriptorium SPA (D18 ngx-explorer spike, now over a fully frozen
+file-ops surface — the D18 wire contract is the P4.6v §Shared-contract
+variant table + the P4.6y contract pins), the ProseMirror editor
+decision (D17), the courier/images Salon slices, autonomous-rooms
+settings, or P4.7 (`quilltap-tauri`). Round record: `status-log.md`.
