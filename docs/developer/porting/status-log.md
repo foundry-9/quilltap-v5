@@ -9956,3 +9956,72 @@ pane" note. Flagged as its own follow-up. help/chat-turn-manager.md's
 new line has no v5 mirror (help surface unported — nothing to carry).
 
 Versions: core 0.0.207, harness 0.0.188, SPA 0.5.61 (web/host untouched).
+
+---
+
+## 2026-07-13 — The terminal-flow in-suite failure: diagnosed and fixed (the flagged follow-up)
+
+The gate note on the `6a8a77aa` re-port flagged `terminal-flow.spec.ts`
+(the P4.6u PTY walk) failing IN-SUITE only: after clicking the newest
+"terminal opened" chip, the expanded `qt-terminal-embed` rendered a
+LIVE terminal instead of the "Showing in Terminal Mode pane" note.
+Reproduced deterministically with the minimal trio (foundation +
+salon-documents-flow + terminal-flow).
+
+**Root cause — a stale-chip race in the SPEC gesture; the embed's
+same-session detection is correct.** salon-documents-flow's both-panes
+beat leaves its own "terminal opened"/"terminal closed" chips in the
+shared "Solo Voyage" chat. terminal-flow's
+`.locator(chip, {hasText:'terminal opened'}).last()` + `toBeVisible`
+was satisfied INSTANTLY by the stale chip, and the click resolved
+before the post-spawn refetch delivered the new session's chip. The
+trace proves the mismatch: the pane's WS attached the fresh spawn
+(`c99839f0…`) while the clicked chip's embed WS attached the stale
+spec's session (`b6a87d2b…`) — different session ⇒ the embed correctly
+declined the "in the pane" note and mounted a live surface. **Fix:**
+snapshot the opened-chip count BEFORE clicking Open terminal, wait for
+`toHaveCount(count+1)` after the spawn, then click `.last()` (messages
+append chronologically). In isolation the count path is a no-op
+(0 → 1). Trio + full suite green.
+
+**Finding 1 (real server bug, ORDERED as a follow-up, not fixed here):
+the chat-load terminal reconcile runs with a stubbed liveness probe.**
+`api::salon::chat_get` calls `reconcile_terminal_sessions_for_chat`
+with `is_live = |_| false` (crates/quilltap-core/src/api/salon.rs:137,
+the tracked P4.2-era deferral — written when no live sessions could
+exist during a read GET). On the LIVE server every chat GET now
+falsely retires every live PTY session: `exitedAt` minted, `exitCode`
+explicit NULL, plus a spurious Ariel "session-closed" announcement.
+Trace-proven in the failing run: BOTH sessions got their false
+"closed" chip ~30ms after their "opened" chip — the post-spawn
+`refetchChat()` itself triggers the false retire of the session it
+just spawned. Consequences on the live server: the DB lies about
+liveness (the requestOpen picker/re-attach path can never trigger —
+the session LIST reads the DB), a spurious "terminal closed" chip
+lands while every terminal is still running, and terminal-flow's
+closed-chip assertion has been passing on the FALSE chip all along
+(in isolation too). The real probe already exists
+(`TerminalManager::reconcile_for_chat` wraps the same walker with
+`self.contains`); the fix is wiring the host's probe through the
+boundary — the `EngineAssembly` seam idiom (`memory_embedding` /
+`mount_refresh` precedents). It also explains the confusing symptom:
+the "stale" session rendered a LIVE zsh because the false reconcile
+had retired it in the DB while its PTY was alive (and still booting)
+in the manager.
+
+**Finding 2 (v4 parity, BANKED): SIGTERM never kills an interactive
+zsh.** Empirical (pty + `/bin/zsh -i`, SIGTERM at 150ms and at 3s
+after spawn): the shell survives both — interactive zsh ignores
+SIGTERM. v4 sends the same signal (`terminals/[id]/route.ts:93`,
+`ptyManager.kill(id, 'SIGTERM')`), so BOTH sides leak a live PTY on
+the pane's Kill; the pane still closes because `killTerminal()` is a
+client-side mode change. Faithful port — no v5 change. But when
+Finding 1's probe is wired, the false "closed" chip disappears and the
+spec's closed-chip beat needs a real exit story (a non-interactive
+shell in the walk, or a stronger kill decided WITH v4) — a loud
+comment in the spec marks this.
+
+**Gate:** repro trio green post-fix; full Playwright 33/33 in-suite
+(the 6a8a77aa gate's 32/33 is resolved). Spec-only change — no crate
+source touched. Versions: SPA 0.5.62 (core/harness/web/host
+untouched).

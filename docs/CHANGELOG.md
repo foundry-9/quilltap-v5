@@ -13,6 +13,24 @@ lanes A and C are the round's two core-dispatch writers. Files-family
 and D17 ProseMirror surveys banked in phase-4.md for the next round.
 No code changes; no version bumps.
 
+Fix the terminal-flow in-suite e2e failure (the follow-up flagged in
+the 6a8a77aa re-port gate): the spec's "terminal opened" chip gesture
+raced the post-spawn refetch — with stale chips left in the shared
+fixture chat by salon-documents-flow, `.last()` resolved instantly to
+the stale chip and the expanded embed bound the WRONG session
+(trace-proven: embed WS vs pane WS on different session ids). The spec
+now snapshots the pre-spawn chip count and waits for it to grow before
+clicking. The embed's same-session detection was correct. The
+diagnosis surfaced two real server-side findings, recorded in the
+status log and ordered as follow-ups, not fixed here: (1) chat_get
+runs the terminal reconcile with the stubbed `is_live = |_| false`
+probe (the tracked deferral), so on the live server every chat load
+falsely marks live PTY sessions exited and posts a spurious Ariel
+"session-closed" announcement ~30ms after every spawn; (2) the pane's
+kill sends SIGTERM, which an interactive zsh ignores (v4 sends the
+same signal — parity, banked). Full Playwright 33/33 in-suite.
+SPA 0.5.62.
+
 Drift re-port (v4 6a8a77aa): nudge is now a persisted Host
 announcement, matching v4. New writer helpers (buildNudgeContent /
 buildNudgeOpaqueContent / postHostNudgeAnnouncement) in
