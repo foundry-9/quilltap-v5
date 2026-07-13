@@ -2470,6 +2470,10 @@ impl CoreEngine {
     > {
         match &*self.inner.state.lock().unwrap() {
             EngineState::Ready(r) => Ok((r.db.clone(), r.terminal_probe.clone())),
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
     /// The courier-resolve driver under the readiness gate (P4.6ab). A ready engine
     /// without the driver (unwired host) answers the loud not-assembled refusal (the
     /// swipe-generate precedent — the host wires it at unification).
