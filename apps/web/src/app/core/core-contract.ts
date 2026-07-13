@@ -1039,7 +1039,8 @@ export interface ChatAddToolResultRequest {
   tool: 'generate_image';
   initiatedBy: string;
   prompt: string;
-  images: { id: string; filename: string; filepath: string; mimeType: string }[];
+  /** v4 sends `{id, filename}`; extra fields are tolerated. */
+  images: { id: string; filename: string; filepath?: string; mimeType?: string }[];
 }
 
 /** List a chat's uploaded/generated files for the gallery (v4 `chatFilesList`). */
@@ -2741,12 +2742,20 @@ export interface ImageProfileDeleteRequest {
 export interface ImageProviderListRequest {
   type: 'imageProviderList';
 }
-/** Refusal-armed image-profile action verbs (loud; shapes mirror the Rust variants). */
+/**
+ * Generate image(s) from a profile (v4 `?action=generate`). Lane A (P4.6ab)
+ * un-refuses this variant; the Shared contract pins the params
+ * `{imageProfileId, prompt, chatId?, count?}` and the response
+ * `{success, data: [{id, filename, filepath, mimeType}], expandedPrompt}` (read
+ * defensively). While the variant is still refusal-armed in a worktree the
+ * dialog degrades loudly on the `not_available` envelope.
+ */
 export interface ImageProfileGenerateRequest {
   type: 'imageProfileGenerate';
-  profileId: string;
-  /** v4 `generateImageSchema` body (prompt, count, size, …) — opaque until live. */
-  payload?: Record<string, unknown>;
+  imageProfileId: string;
+  prompt: string;
+  chatId?: string;
+  count?: number;
 }
 export interface ImageProfileValidateKeyRequest {
   type: 'imageProfileValidateKey';

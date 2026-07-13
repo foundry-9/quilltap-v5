@@ -20,6 +20,7 @@ import type { ImageClickEvent } from '../../chat/message-row';
 import { ImageModal } from '../../images/image-modal';
 import { SaveImageDialog } from '../../images/save-image-dialog';
 import { PhotoGalleryModal } from '../../images/photo-gallery-modal';
+import { GenerateImageDialog, type GeneratedImage } from '../../images/generate-image-dialog';
 import { MemoryCascadeDialog, type MemoryCascadeAction } from '../../chat/memory-cascade-dialog';
 import { splitSwipeGroups, type SwipeState } from '../../chat/chat-view-model';
 import { TurnControls } from '../../chat/turn-controls';
@@ -114,6 +115,7 @@ interface CascadePrompt {
     ImageModal,
     SaveImageDialog,
     PhotoGalleryModal,
+    GenerateImageDialog,
   ],
   template: `
     <div class="qt-chat-layout">
@@ -195,6 +197,7 @@ interface CascadePrompt {
         (continue)="continueTurn()"
         (openTerminal)="onOpenTerminal()"
         (openDocument)="showDocumentPicker.set(true)"
+        (openGenerate)="showGenerate.set(true)"
       />
     </ng-template>
 
@@ -246,6 +249,16 @@ interface CascadePrompt {
         [isSwipeGroup]="c.isSwipeGroup"
         (confirm)="onCascadeConfirm($event)"
         (cancel)="cascade.set(null)"
+      />
+    }
+
+    @if (showGenerate() && chatId(); as id) {
+      <qt-generate-image-dialog
+        [chatId]="id"
+        [imageProfileId]="chatImageProfileId()"
+        [participants]="chat()!.participants"
+        (generated)="onImagesGenerated($event)"
+        (close)="showGenerate.set(false)"
       />
     }
 
@@ -460,6 +473,15 @@ export class SalonConversation {
 
   // --- the in-chat photo gallery (v4 SalonView sidebar gallery entry) ---
   protected readonly showGallery = signal(false);
+
+  // --- the generate-image dialog (v4 SalonView GenerateImageDialog) ---
+  protected readonly showGenerate = signal(false);
+
+  /** The chat's image profile — the generate target (first participant with one). */
+  protected readonly chatImageProfileId = computed<string | null>(
+    () =>
+      (this.chat()?.participants ?? []).find((p) => p.imageProfile)?.imageProfile?.id ?? null,
+  );
 
   /** The target message's attachments, for the SaveImageDialog picker. */
   protected readonly saveImageAttachments = computed(() => {
@@ -829,6 +851,25 @@ export class SalonConversation {
   protected async onImageDeleted(): Promise<void> {
     this.modalImage.set(null);
     await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+  }
+
+  /** Generated images → record the tool result and refetch (v4 `onImagesGenerated`). */
+  protected async onImagesGenerated(event: {
+    images: GeneratedImage[];
+    prompt: string;
+  }): Promise<void> {
+    this.showGenerate.set(false);
+    const chatId = this.chatId();
+    if (!chatId) return;
+    await this.core.dispatch({
+      type: 'chatAddToolResult',
+      chatId,
+      tool: 'generate_image',
+      initiatedBy: 'user',
+      prompt: event.prompt,
+      images: event.images.map((img) => ({ id: img.id, filename: img.filename })),
+    });
+    await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
   }
 
   protected onEdit(message: MessageDto): void {

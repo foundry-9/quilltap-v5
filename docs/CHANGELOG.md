@@ -63,6 +63,18 @@ structural row diffs, invalid-cron/non-autonomous/missing arms, the
 destructive clamp both ways). No `ChatCreateRequest` change needed —
 it already carries every autonomous field (verified). Bumps
 quilltap-core 0.0.208, quilltap-harness 0.0.189.
+P4.6ac (Salon SPA, lane B): the generate-image dialog. A composer
+sparkles button opens GenerateImageDialog (chat mode): a prompt with
+`{{Character}}` quick-inserts for the chat's characters, generating
+against the chat's image profile via `imageProfileGenerate` and
+recording the result via `chatAddToolResult`. It degrades loudly (v4
+voice) when no image profile is configured or while lane A's generate
+arm is still refusal-armed. The `imageProfileGenerate` contract variant
+was reshaped to the Shared-contract params. The
+StandaloneGenerateImageDialog + ImageProfilePicker (explicit-profile
+path) and auto-attaching generated images to the next message are
+deferred (loud). SPA 0.5.66.
+
 P4.6ac (Salon SPA, lane B): the composer attach affordance and the
 courier/images e2e walk. The composer gained an attach button + hidden
 file input + paste-image handler that upload to the chat-files

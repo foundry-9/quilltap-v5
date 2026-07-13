@@ -10484,3 +10484,36 @@ each resolution emission).
 
 **Gate (in-lane):** ng test 593 green, ng build clean, Playwright
 `--list` parses. SPA 0.5.65.
+
+### P4.6ac unit 8 — the generate-image dialog (Tier 2.7) — LANDED
+
+**GenerateImageDialog (`images/generate-image-dialog.ts`, chat mode):**
+a port of v4 `components/chat/GenerateImageDialog.tsx`. A composer
+sparkles button (`openGenerate`) opens it; a prompt textarea with
+`{{Character}}` placeholder quick-inserts (the chat's character
+participants — v4's participant quick-buttons), generating against the
+chat's image profile (`chatImageProfileId` = first participant with an
+`imageProfile`) via `imageProfileGenerate {imageProfileId, prompt,
+chatId, count:1}`. On success it emits `{images, expandedPrompt||prompt}`
+and `salon-conversation` records `chatAddToolResult {tool:'generate_image',
+initiatedBy:'user', images:[{id,filename}]}` + refetches (v4's
+ChatModals `onImagesGenerated`). **Degrades loudly:** the "no image
+profile configured" arm (v4 voice) and any `not_available`/error
+envelope surface inline. **Reshaped** the `imageProfileGenerate`
+contract variant from the refusal-armed `{profileId, payload?}` to the
+Shared-contract `{imageProfileId, prompt, chatId?, count?}` (no SPA
+referenced the old shape — safe). Lane A un-refuses the arm in
+parallel; live at unification.
+
+**Deferred (loud):** the StandaloneGenerateImageDialog +
+ImageProfilePicker (the explicit-profile / non-chat generate path), the
+full all-characters entity dropdown (v4 loads `/characters` — the chat
+participants cover the common case), and auto-attaching generated
+images to the next message (the tool result is recorded + refetched).
+
+**Differential:** `generate-image-dialog.spec.ts` (no-profile loud
+degrade + disabled generate, `{{Character}}` placeholder insertion, the
+`imageProfileGenerate` payload + generated emission with the expanded
+prompt, refusal message surfaced).
+
+**Gate (in-lane):** ng test 597 green, ng build clean. SPA 0.5.66.

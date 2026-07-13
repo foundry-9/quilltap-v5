@@ -105,6 +105,16 @@ export interface ComposerSend {
             <qt-icon name="paperclip" class="w-5 h-5" />
           </button>
 
+          <button
+            type="button"
+            class="qt-chat-toolbar-button"
+            title="Generate an image"
+            aria-label="Generate an image"
+            (click)="openGenerate.emit()"
+          >
+            <qt-icon name="sparkles" class="w-5 h-5" />
+          </button>
+
           @if (!documentActive()) {
             <button
               type="button"
@@ -192,6 +202,7 @@ export class ChatComposer {
   readonly continue = output<void>();
   readonly openTerminal = output<void>();
   readonly openDocument = output<void>();
+  readonly openGenerate = output<void>();
 
   protected readonly text = signal('');
   protected readonly attachedFiles = signal<UploadedChatFile[]>([]);
