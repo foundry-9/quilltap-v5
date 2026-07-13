@@ -386,8 +386,40 @@ records THERE. Update this summary only when a phase or round completes.
   Next candidates: the ProseMirror editor (D17), the courier/images
   Salon slices, the files-family server surface, autonomous-rooms
   settings, or P4.7 (Tauri) — see phase-4.md.
+- **The P4.6ab ∥ P4.6ac ∥ P4.6ad courier+images + autonomous round:
+  UNIFIED on main (2026-07-13) — P4.6ac/P4.6ad CLOSED; P4.6ab tier 1
+  LANDED, tier 2 OPEN.** The courier + chat-images dispatch surface
+  (resolve/cancel external turn, save-image, photo-albums,
+  add-tool-result, chat-files list/delete; 15-check differential over
+  the new `courier-images-{main,mount}.db` fixture) ∥ the whole
+  courier + images Salon SPA (Courier bubble, thumbnails + ImageModal,
+  the markdown store-image rewrite, SaveImageDialog +
+  PhotoGalleryModal, the generate dialog, composer attach + conflict
+  flow, 2 live e2e beats) ∥ the full autonomous-rooms vertical (seven
+  verbs over the frozen `enclave::lifecycle`, 24-case differential
+  over the new `autonomous-{main,mount}.db` fixture, the Settings
+  Chat tab + EditEnclaveModal + New-Chat toggle + shell badges, 3
+  live e2e beats — the P4.6q autonomous deferral CLOSED). The same
+  unification absorbed the two terminal branches: the count-baseline
+  spec fix + the LIVE `TerminalLivenessProbe`
+  (`EngineAssembly::terminal_probe` — the P4.2-era chat-GET
+  stub-probe deferral CLOSED; the walk grew kill→re-attach→exit).
+  Wires: `courier_resolve` + `save_image_bytes` live in the host;
+  `imageProfileGenerate` params reconciled (STILL refusal-armed);
+  lane B's beats seeded from lane A's fixture (pinned-id remap — the
+  fixture families collide — + vault mounts); the e2e instance
+  gained its llm-logs partition (committed `salon-llm-logs.db`).
+  Gate: 307 Rust suites / 1294 tests (three fresh-oracle
+  differentials by name), clippy both feature sets, ng test 618,
+  full Playwright 38/38, every new beat ACTIVE. **P4.6ab tier 2
+  stays OPEN (loud refusals + recipes):** the chat-file multipart
+  upload leg (composer attach degrades inline until then) and the
+  `imageProfileGenerate` un-refusal. Next candidates: the P4.6ab
+  tier-2 remainder, the files-family server surface, the ProseMirror
+  editor (D17), the Salon in-chat Edit-Enclave entry + salon-list
+  autonomous toggle, or P4.7 (Tauri) — see phase-4.md.
 - **Oracle baseline:** v4 HEAD `6a8a77aa` (rebased 2026-07-13 with the
   nudge drift re-port; drift-check before every round).
-  Versions: core 0.0.207, harness 0.0.188, host 0.0.15, web 0.0.18, SPA 0.5.61.
+  Versions: core 0.0.210, harness 0.0.191, host 0.0.16, web 0.0.19, SPA 0.5.70.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

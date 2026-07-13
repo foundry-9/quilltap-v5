@@ -58,6 +58,19 @@ export default async function globalSetup(): Promise<void> {
     resolve(FIXTURES_DIR, 'salon-mount.db'),
     resolve(INSTANCE_DATA_DIR, 'quilltap-mount-index.db'),
   );
+  // The llm-logs partition (P4.6ab/ac/ad unification): the engine only OPENS
+  // `quilltap-llm-logs.db` when the file exists, and an autonomous turn's LLM
+  // log write treats the missing partition as a TURN failure (the run
+  // auto-pauses and the settings-autonomous walk races it). A real instance
+  // always has the partition (fresh provisioning creates it — the salon
+  // fixture family just predates it), so copy the committed empty one: an
+  // instance provisioned by the real `setup` dispatch, its llm-logs db
+  // PRAGMA-rekeyed to TEST_PEPPER. Instance materialization, NOT a fixture
+  // regen (the terminal_sessions precedent).
+  copyFileSync(
+    resolve(FIXTURES_DIR, 'salon-llm-logs.db'),
+    resolve(INSTANCE_DATA_DIR, 'quilltap-llm-logs.db'),
+  );
 
   // Lock the instance: a user-passphrase .dbkey wrapping the test pepper (and NO
   // env pepper when we launch → the server boots `needs-passphrase`). Written

@@ -1082,3 +1082,41 @@ ProseMirror lane (SPA-only, splits by directory; the make-or-break is
 a v4-dialect byte-round-trip markdown serializer — underscore-italic,
 literal `*`, escape preservation — gated by the same test that killed
 Lexical; the chat-composer half needs ~6 of the 7 v4 plugins).
+
+**The P4.6ab ∥ P4.6ac ∥ P4.6ad round is UNIFIED on main (2026-07-13) —
+P4.6ac/P4.6ad CLOSED; P4.6ab tier 1 LANDED, tier 2 OPEN.** Lane A
+(P4.6ab) landed the courier + chat-images dispatch surface
+(`api/chat_media.rs`: the courier pair over the frozen W4.4a4
+transport, save-image/photo-albums, add-tool-result, chat-files
+list/delete) over the new committed `courier-images-{main,mount}.db`
+fixture, proven by `courier_images_routes_equivalence` (15 checks;
+survey correction: `blobMountPointId` is DEAD in v4 — no echo added).
+Lane B (P4.6ac, CLOSED) landed the whole courier + images Salon SPA
+(the Courier bubble + message-row branch, thumbnails + the ImageModal
+lightbox, the markdown store-image rewrite, SaveImageDialog +
+PhotoGalleryModal, the generate dialog, the composer attach + conflict
+flow) + the courier/images e2e walk. Lane C (P4.6ad, CLOSED) landed
+the full autonomous-rooms vertical (the seven dispatch verbs over the
+frozen `enclave::lifecycle`, the 24-case differential over the new
+`autonomous-{main,mount}.db` fixture, the Settings Chat tab's two
+autonomous cards + shared editor + EditEnclaveModal, the New-Chat
+toggle, the shell run-state badges, the three-beat e2e walk) — the
+P4.6q autonomous deferral is CLOSED. The same unification absorbed the
+two human-effort terminal branches: the terminal-flow count-baseline
+spec fix and the live `TerminalLivenessProbe` wire
+(`EngineAssembly::terminal_probe` — the P4.2-era chat-GET stub-probe
+deferral CLOSED; the walk grew kill→re-attach→exit beats).
+Unification wires: `EngineAssembly.courier_resolve` +
+`save_image_bytes` LIVE in the host (ChatSpine thread-bridge driver +
+`ProductionFileBytes`); the `imageProfileGenerate` params reconciled
+to the Shared-contract shape (still refusal-armed); lane B's e2e beats
+activated by seeding the courier fixture chats into the shared e2e
+instance (global-setup, CLI JSON row copy + the meta-sidecar blob
+bytes). **Still OPEN (P4.6ab tier 2, loud refusals with recipes):**
+the chat-file multipart upload leg (the SPA composer attach degrades
+inline until it lands) and the `imageProfileGenerate` un-refusal;
+`validate-key`/`list-models` stay named refusals. **Next candidates:**
+the P4.6ab tier-2 remainder, the files-family server surface (survey
+banked above), the D17 ProseMirror lane (survey banked above), the
+Salon in-chat Edit-Enclave entry + salon-list autonomous toggle, or
+P4.7 (`quilltap-tauri`). Round record: `status-log.md`.

@@ -10538,3 +10538,86 @@ prompt, refusal message surfaced).
 - **Playwright `--list`:** `salon-courier-images-flow.spec.ts` parses (2
   tests).
 - Versions: SPA 0.5.61 → 0.5.66. No crate touched (pure SPA lane).
+
+---
+
+## 2026-07-13 — the P4.6ab ∥ P4.6ac ∥ P4.6ad + terminal-probe round: UNIFIED on main
+
+Five lanes reconciled onto `unify/p4.6ab-ac-ad` and fast-forwarded:
+the two human-effort terminal branches (`claude/admiring-shtern-894679`
+— the count-baseline spec diagnosis; `claude/quizzical-curie-237143` —
+the live `TerminalLivenessProbe` wire, whose spec rework subsumes the
+sibling's gesture), lane A (`claude/courier-images-server-port-3122ce`,
+P4.6ab tier 1), lane C (`claude/autonomous-rooms-vertical-port-317aea`,
+P4.6ad complete), and lane B (`claude/courier-images-salon-spa-417209`,
+P4.6ac complete). Version accumulation (three core, three harness,
+eight SPA bumps): core 0.0.210, harness 0.0.191, web 0.0.19, host
+0.0.16, SPA 0.5.70.
+
+**The unification wires (the cross-lane obligations):**
+
+1. **`EngineAssembly.courier_resolve` + `save_image_bytes` LIVE in the
+   host.** `ChatSpine` implements `CourierResolveDriver` over the
+   dedicated-thread bridge (the settle re-enters the cheap-LLM
+   triggers, whose futures are non-`Send`) with a logging
+   `CheapLlmTaskExecutor`; `ProductionFileBytes` (already the spine's
+   byte store) backs `messageSaveImage`. Spine-less assemblies keep
+   the loud refusal / `NotConfiguredBytes` fallback.
+2. **The Shared-contract reconcile.** `ImageProfileGenerate`'s params
+   reshaped from the refusal-era `{profileId, payload}` to the binding
+   `{imageProfileId, prompt, chatId?, count?}` so lane B's generate
+   dialog reaches the loud `not_available` envelope instead of a serde
+   parse error (the arm STAYS refusal-armed — P4.6ab tier 2 is open).
+   Every other variant/param name verified name-for-name across
+   `types.rs` (lane A + lane C blocks) and `core-contract.ts` (lane
+   B + lane C blocks); `blobMountPointId` confirmed dormant on both
+   sides (dead in v4 — no route emits it).
+3. **Lane B's e2e beats activated** (`salon-courier-images-flow`):
+   `global-setup` seeds the courier + image chats from lane A's
+   committed `courier-images-{main,mount}.db` into the shared
+   instance (`e2e/support/seed-courier-fixture.ts` — CLI `--json` row
+   copy, one multi-row INSERT per table, the image's mount-blob bytes
+   from the committed meta sidecar as an `X'hex'` literal). Two
+   hard-won rules, both found by six specs going down on the first
+   full run: (a) **the two fixture families PIN ids from the same
+   scheme** (the salon fixture's "Solo Voyage" IS `c1000000-…01`) —
+   every pinned courier id is remapped to an e2e-only twin
+   (`XY000000…` → `XYe2e000…`) across all copied values incl. the
+   JSON columns; (b) **the copied characters' vault mounts must ride
+   along** — the document-store overlay fails HARD on a flagged
+   character whose vault mount is absent, which 500s every
+   `listChats`, so the courier mount db's six text tables copy whole
+   (fresh-minted UUIDs, no collision; `doc_mount_chunks` skipped).
+4. **The llm-logs partition materialized in the e2e instance** (new
+   committed `crates/quilltap-web/tests/fixtures/salon-llm-logs.db`):
+   the engine only opens `quilltap-llm-logs.db` when the file exists,
+   and an autonomous turn's LLM log write treats the missing partition
+   as a TURN failure (`turn_failed: partition not available: llmLogs`)
+   — the run auto-pauses and the settings-autonomous walk races it
+   (in-suite only; the warm job pump picks the turn promptly). A real
+   instance always has the partition (fresh provisioning creates it);
+   the fixture file is a real `setup`-dispatch-provisioned empty
+   partition PRAGMA-rekeyed to the test pepper. Instance
+   materialization, not a fixture regen.
+
+**Scope verification against the orders:** P4.6ac all tiers delivered
+(8 units; ImageProfilePicker + StandaloneGenerateImageDialog among the
+loud deferrals); P4.6ad all tiers delivered (the ChatCreateRequest gap
+check was a verified NO-OP); P4.6ab tier 1 only — **tier 2 stays OPEN**
+(the chat-file multipart upload leg incl. the web route, and the
+`imageProfileGenerate` un-refusal; completion recipes in the lane's
+status entry above). Until the upload leg lands, the SPA composer
+attach POSTs to a nonexistent route and surfaces the error inline
+(caught + displayed; verified in `chat-composer.ts`).
+
+**Gate:** cargo fmt clean; release build green; clippy `-D warnings`
+clean on default AND `--features quilltap-core/native-transport`;
+`cargo test --workspace` 307 suites / 1294 tests green with the three
+affected differentials regenerated FRESH from v4 `6a8a77aa` and run by
+name (`courier_images_routes_equivalence` 15 checks,
+`autonomous_rooms_routes_equivalence` 24 cases,
+`salon_reads_equivalence`); ng test 618 green; ng build clean; full
+Playwright 38/38 (the courier + image beats ACTIVE over the seeded
+fixture data; the settings-autonomous walk green after wire 4).
+Versions: core 0.0.210, harness 0.0.191, web 0.0.19, host 0.0.16,
+SPA 0.5.70.

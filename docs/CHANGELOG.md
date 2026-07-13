@@ -2,6 +2,32 @@
 
 ## Recent Changes
 
+Unify the P4.6ab/P4.6ac/P4.6ad round + the two terminal-probe branches
+onto main. The courier + chat-images dispatch surface (resolve/cancel
+external turn, save-image, photo-albums, add-tool-result, chat-files
+list/delete) over the new committed courier-images fixture; the whole
+courier + images Salon SPA (Courier bubble, thumbnails + lightbox,
+markdown store-image rewrite, SaveImageDialog, PhotoGalleryModal, the
+generate dialog, composer attach + conflict flow); the full
+autonomous-rooms vertical (seven dispatch verbs over the frozen
+enclave lifecycle, the Settings Chat tab's two autonomous cards,
+EditEnclaveModal, the New-Chat toggle, shell run-state badges); and
+the live terminal liveness probe (chat GET no longer falsely retires
+live PTY sessions). Unification wires: the host's ChatSpine now backs
+courier resolve (thread-bridge driver) and save-image bytes
+(ProductionFileBytes); imageProfileGenerate's params reconciled to the
+Shared-contract shape (still refusal-armed — the un-refusal and the
+chat-file multipart upload leg are P4.6ab tier 2, OPEN); the courier
+e2e beats activated by seeding lane A's fixture chats into the shared
+walk instance (pinned ids remapped — the two fixture families collide
+— and vault mounts copied along); the e2e instance gained its missing
+llm-logs partition (a committed empty fixture db) so autonomous turns
+can log. Gate: 307 Rust suites / 1294 tests green incl. three
+fresh-oracle differentials by name (courier-images 15, autonomous 24,
+salon-reads), clippy -D warnings both feature sets, ng test 618,
+full Playwright 38/38 with every new beat ACTIVE. Versions: core
+0.0.210, harness 0.0.191, web 0.0.19, host 0.0.16, SPA 0.5.70.
+
 P4.6ab (lane A, courier + chat-images server surface): the Salon's
 courier and image dispatch verbs are now differential-proven against
 v4's real route handlers. New `api::chat_media` module wraps the
