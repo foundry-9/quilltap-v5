@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Drift-amend the files-family + editor round to four lanes: v4 moved
+to dd0d9ff5 (4.8.0-dev.52, DB size reduction — int8-quantized
+embedding blobs, stale-chat cache collapse, cold-tier chunk
+embeddings, dataRetention). New work order P4.d3 re-ports the drift
+(the header-aware quantized codec is load-bearing: v5 cannot read
+post-migration blobs without it) and owns the affected-differential
+regen batch; all four orders re-pinned to baseline dd0d9ff5;
+CLAUDE.md carries the banked-drift note and the back-up-Friday
+caution. Docs only.
+
 Plan the files-family + editor round: three work orders committed
 (P4.6ae the files-family server surface + the P4.6ab tier-2 close-out,
 P4.6af the general Files SPA + the salon autonomous riders, P4.6ag the

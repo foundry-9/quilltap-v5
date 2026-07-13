@@ -418,8 +418,15 @@ records THERE. Update this summary only when a phase or round completes.
   tier-2 remainder, the files-family server surface, the ProseMirror
   editor (D17), the Salon in-chat Edit-Enclave entry + salon-list
   autonomous toggle, or P4.7 (Tauri) — see phase-4.md.
-- **Oracle baseline:** v4 HEAD `6a8a77aa` (rebased 2026-07-13 with the
-  nudge drift re-port; drift-check before every round).
+- **Oracle baseline:** v4 HEAD `6a8a77aa`; **v4 drift `dd0d9ff5`
+  BANKED** (2026-07-13, db-size reduction — quantized embedding
+  blobs, stale-chat cache collapse, dataRetention; re-port ordered as
+  `work-orders/p4.d3-db-size-reduction-drift.md`, lane D of the
+  planned files-family + editor round — the baseline moves to
+  `dd0d9ff5` when it unifies). ⚠ Until the P4.d3 codec lands, v5
+  CANNOT read embedding blobs from an instance v4 `4.8.0-dev.52`+
+  has migrated (`quantize-embeddings-v1` is one-way — back up Friday
+  first). Drift-check before every round.
   Versions: core 0.0.210, harness 0.0.191, host 0.0.16, web 0.0.19, SPA 0.5.70.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

@@ -1174,3 +1174,30 @@ accumulates). Deliberately left out of the round: P4.7 (Tauri — its
 own round) and feature 5.1 (native embeddings — post-parity by its
 own header, `docs/features/5.1-native-embeddings-and-chunked-
 retrieval.md`).
+
+**Drift amendment (2026-07-13, same day): the round is now FOUR
+lanes.** After the three orders committed, v4 moved one commit to
+**`dd0d9ff5`** (v4 `4.8.0-dev.52` — "DB size reduction: stale-chat
+tidying, cold-tier embeddings, int8 quantization"). Classification:
+BEHAVIOR drift on five ported surfaces (the embedding blob codec
+[now self-describing int8/f16, magic `0xEB` — v5's raw-Float32
+reader would mis-decode every blob after v4's one-way
+`quantize-embeddings-v1` migration], the maintenance sweep [new
+step-3 cache collapse + `caches` summary], the chat GET [an
+enqueue-only cold-chunk re-embed side effect], the
+conversation-chunks repo, instance settings) plus one new surface
+(dataRetention setting + GET/PUT route + Settings card). The
+re-port is **lane D — P4.d3**
+(`work-orders/p4.d3-db-size-reduction-drift.md`), which also owns
+regenerating the affected differentials (embedding_vector,
+conversation_chunks/doc_mount_chunks/help_docs tier-2s,
+maintenance_ops; memories_routes/salon_reads/settings_routes
+verified non-diverging). All four orders re-pinned to baseline
+`dd0d9ff5`; the three original lanes' surfaces are verified
+untouched by the drift diff. Lanes A + D are the round's two
+core-dispatch writers (delimited blocks, the P4.6v/w precedent);
+lane D additionally owns `screens/settings/**` and appends
+delimited data-retention blocks to lane B's contract files.
+CLAUDE.md's baseline line moves to `dd0d9ff5` when P4.d3 unifies.
+**Real-data caution recorded there too: back up Friday before
+running v4 `4.8.0-dev.52`+ against it — quantization is one-way.**
