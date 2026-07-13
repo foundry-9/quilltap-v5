@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Write the P4.6y work order (docs only): the single-lane resumption order
+for the P4.6v remainder — the mount-index mutation + indexing surface
+(store-file/file-ops/folder-ops, reindex/embed/scan, semantic search,
+blobs, the multipart + raw-read fs web-edge legs, convert/deconvert
+refusal arms), wiring the EngineAssembly.mount_refresh seam live, and
+closing D7. The P4.6v order stays the survey of record with a pointer to
+P4.6y; v4 baseline re-verified unmoved at a7b1398d.
+
 The P4.6v ∥ P4.6w ∥ P4.6x round unified: Document Mode end-to-end (the
 operator-doc-actions server surface + the SPA pane/picker vertical) and
 the first slice of the Scriptorium server (the mount-index pure leaves
