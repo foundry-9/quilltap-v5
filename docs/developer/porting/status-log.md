@@ -9901,3 +9901,58 @@ proven safe).
 
 Versions at unification: core 0.0.206, web 0.0.18, harness 0.0.187,
 host 0.0.15, SPA 0.5.60.
+
+## 2026-07-13 — drift re-port: the nudge Host announcement (v4 6a8a77aa) — baseline REBASED
+
+**Drift check:** v4 `a7b1398d..6a8a77aa` — exactly the one commit banked
+at the P4.6z/aa round ("nudge is now a persisted Host announcement, not
+a client-only note"). Nothing else landed. Classified and re-ported in
+one lane on main; **oracle baseline rebased to `6a8a77aa`.**
+
+**The v4 change:** nudging a character previously showed an ephemeral
+"was asked to speak" note living only in React state. It is now a real
+Host announcement (`systemSender 'host'`, `systemKind 'nudge'`,
+`hostEvent.participantId`) posted server-side when the summoned turn
+begins and surfaced live over SSE. v4 also removed the now-orphaned
+ephemeral-message subsystem (the nudge was its last user).
+
+**The re-port (all three surfaces additive; the removal side was a
+no-op — v5 never ported the ephemeral subsystem):**
+- `services::host_notifications`: `build_nudge_content` /
+  `build_nudge_opaque_content` / `HostNudgeAnnouncement` /
+  `post_host_nudge_announcement` (the turn-pass idiom: errors swallowed
+  by the writer contract, one-key `{participantId}` hostEvent).
+- `services::orchestrator`: the once-only guard
+  (`is_continue_mode && options.nudge == Some(true)`) between the
+  turnStart/status emit and the Courier detect — posts the announcement
+  and emits it on the existing `hostAnnouncement` frame. The flag rides
+  only the initial summoned request, never the chained turns.
+- SPA `system-message-labels.ts`: `nudge → 'invited to speak'`,
+  host importance `nudge: 'medium'` (v4's amber-dot comment carried).
+  v4's new `inferKindFromContent` line falls under the existing
+  UN-ported content-sniffing deferral (header updated to say so).
+  New chat-view-model spec beat (ng test 546 → 547).
+
+**Differentials (fresh oracles from v4 `6a8a77aa`):**
+- `post-office-host` tier-1 EXTENDED: `nudge_content`/`nudge_opaque`
+  over the turn-pass name corpus (plain + unicode) — byte-exact green.
+- `orchestrator_tier3` regenerated: the corpus already carried a
+  `continueMode+nudge` call, so the oracle now contains the nudge
+  announcement (frame + persisted row) and the diff proves the wiring
+  end-to-end (event trace byte-for-byte; minted-normalized DB dump).
+- `post_office_writers_tier3` + `context_feeders_leaves` (the other two
+  importers of the touched v4 files) regenerated fresh — green, no
+  incidental drift.
+
+**Gate:** cargo test --workspace green; ng test 547; clippy -D warnings
+clean on default + native-transport; fmt clean; the four regenerated
+differentials green. Full Playwright: **32/33 + one PRE-EXISTING
+in-suite failure** — `terminal-flow.spec.ts` (the P4.6u PTY walk) fails
+IN-SUITE but passes in isolation, and reproduces IDENTICALLY at HEAD
+`b64506b` with pre-change binaries (verified by stash + rebuild + full
+walk), so it is NOT this re-port: the expanded session-opened chip's
+embed renders a live terminal instead of the "Showing in Terminal Mode
+pane" note. Flagged as its own follow-up. help/chat-turn-manager.md's
+new line has no v5 mirror (help surface unported — nothing to carry).
+
+Versions: core 0.0.207, harness 0.0.188, SPA 0.5.61 (web/host untouched).

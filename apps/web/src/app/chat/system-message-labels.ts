@@ -1,9 +1,10 @@
 /**
  * Staff / personified-sender display labels — a port of v4
- * `app/salon/[id]/components/system-message-labels.ts` (HEAD a7b1398d). The maps
+ * `app/salon/[id]/components/system-message-labels.ts` (HEAD 6a8a77aa). The maps
  * are verbatim; the legacy content-sniffing `inferKindFromContent` fallback (for
  * pre-`systemKind` rows) is NOT ported — a null `systemKind` resolves to `''`
- * (tracked deferral; modern rows always carry `systemKind`).
+ * (tracked deferral; modern rows always carry `systemKind`; the deferral now
+ * also covers v4 6a8a77aa's nudge inference line).
  */
 
 import type { MessageDto, SystemSender } from '../core/core-contract';
@@ -69,6 +70,7 @@ const KIND_DISPLAY_OVERRIDES: Record<string, string> = {
   'autonomous-room-nearing-end': 'nearing the end',
   'mail-delivery': 'mail delivery',
   'turn-pass': 'nothing to add',
+  nudge: 'invited to speak',
   timestamp: 'time',
 };
 
@@ -134,6 +136,9 @@ const IMPORTANCE_TABLE: Record<NonNullable<SystemSender>, Record<string, Announc
     'autonomous-room-halfway': 'medium',
     'autonomous-room-nearing-end': 'high',
     'turn-pass': 'low',
+    // A nudge is a deliberate operator summon — worth an amber dot, but not the
+    // red reserved for structural room changes (add / remove / status).
+    nudge: 'medium',
     '*': 'medium',
   },
   concierge: { danger: 'high', '*': 'high' },

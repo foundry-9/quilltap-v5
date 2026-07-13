@@ -378,13 +378,16 @@ records THERE. Update this summary only when a phase or round completes.
   full Playwright 33/33 with the file-manager walk ACTIVE. Deferred
   loud: the `/files` files-family page (server surface unported),
   FilePreview, the workspace-tab drill, cross-mount move/copy UI, drag
-  relocation. **v4 drift banked:** `6a8a77aa` (nudge → a persisted Host
-  announcement) needs a p4.d-style re-port when the baseline rebases.
-  Next candidates: the nudge drift re-port, the ProseMirror editor
-  (D17), the courier/images Salon slices, the files-family server
-  surface, autonomous-rooms settings, or P4.7 (Tauri) — see phase-4.md.
-- **Oracle baseline:** v4 HEAD `a7b1398d` (drift-check before every round;
-  one banked drift commit `6a8a77aa`, see the P4.6z/aa round entry).
-  Versions: core 0.0.206, harness 0.0.187, host 0.0.15, web 0.0.18, SPA 0.5.60.
+  relocation. The banked v4 drift `6a8a77aa` (nudge → a persisted Host
+  announcement) was re-ported 2026-07-13 (see the status log): writer
+  builders + the once-only orchestrator announcement + the SPA
+  "invited to speak" chip, verified by the extended post-office-host
+  tier-1 and the regenerated orchestrator tier-3 differentials.
+  Next candidates: the ProseMirror editor (D17), the courier/images
+  Salon slices, the files-family server surface, autonomous-rooms
+  settings, or P4.7 (Tauri) — see phase-4.md.
+- **Oracle baseline:** v4 HEAD `6a8a77aa` (rebased 2026-07-13 with the
+  nudge drift re-port; drift-check before every round).
+  Versions: core 0.0.207, harness 0.0.188, host 0.0.15, web 0.0.18, SPA 0.5.61.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

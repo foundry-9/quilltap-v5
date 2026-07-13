@@ -87,4 +87,17 @@ describe('buildRenderItems', () => {
       expect(group.chips[0].importance).toBe('low');
     }
   });
+
+  it('labels a nudge announcement "invited to speak" at medium importance (v4 6a8a77aa)', () => {
+    const items = buildRenderItems([
+      msg({ id: 'n', systemSender: 'host', systemKind: 'nudge' }),
+    ]);
+    const group = items[0];
+    expect(group.type).toBe('announcement-group');
+    if (group.type === 'announcement-group') {
+      expect(group.chips[0].sender).toBe('The Host');
+      expect(group.chips[0].kind).toBe('invited to speak');
+      expect(group.chips[0].importance).toBe('medium');
+    }
+  });
 });

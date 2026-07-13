@@ -7,7 +7,8 @@
 //! a `services::host_notifications` self-test), `remove`, `status-change` (known
 //! phrases + unknown fallback), `scenario`, `user-character` (desc/empty), the
 //! multi-character roster (alone fallback + company section), silent-mode
-//! entry/exit, `join-scenario`, and `timestamp`. The PRIVATE continuation /
+//! entry/exit, `join-scenario`, `timestamp`, and `nudge` (6a8a77aa — shares
+//! the turn-pass name corpus). The PRIVATE continuation /
 //! merge / no-user-character builders are not exported (not driven here); they
 //! are covered by transcription + self-tests and the parent's central tier-3
 //! differential (persisted `content` column). The POST functions' row shape is
@@ -81,6 +82,8 @@ fn rust_value(kind: &str, id: &str) -> Value {
         "turn_pass_content" => hn::build_turn_pass_content(turn_pass_case(id)),
         "user_turn_pass_content" => hn::build_user_turn_pass_content(turn_pass_case(id)),
         "turn_pass_opaque" => hn::build_turn_pass_opaque_content(turn_pass_case(id)),
+        "nudge_content" => hn::build_nudge_content(turn_pass_case(id)),
+        "nudge_opaque" => hn::build_nudge_opaque_content(turn_pass_case(id)),
         "timestamp_content" => hn::build_timestamp_content(timestamp_case(id)),
         "timestamp_opaque" => hn::build_timestamp_opaque_content(timestamp_case(id)),
         other => panic!("unknown oracle kind {other}"),

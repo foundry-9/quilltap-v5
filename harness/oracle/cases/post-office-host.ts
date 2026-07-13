@@ -43,6 +43,8 @@ import {
   buildTurnPassContent,
   buildUserTurnPassContent,
   buildTurnPassOpaqueContent,
+  buildNudgeContent,
+  buildNudgeOpaqueContent,
 } from '@/lib/services/host-notifications/writer';
 
 // ---- add (description / empty branches; no vault mount → no DB) ----
@@ -141,6 +143,12 @@ const turnPassCases: Array<{ id: string; name: string }> = [
   { id: 'unicode', name: 'Zoë' },
 ];
 
+// Nudge ("invited to speak", 6a8a77aa) builder cases.
+const nudgeCases: Array<{ id: string; name: string }> = [
+  { id: 'plain', name: 'Ada' },
+  { id: 'unicode', name: 'Zoë' },
+];
+
 const timestampCases: Array<{ id: string; formatted: string }> = [
   { id: 'plain', formatted: 'Monday, the 3rd of never' },
 ];
@@ -197,6 +205,10 @@ async function main(): Promise<void> {
     emit('turn_pass_content', c.id, buildTurnPassContent(c.name));
     emit('user_turn_pass_content', c.id, buildUserTurnPassContent(c.name));
     emit('turn_pass_opaque', c.id, buildTurnPassOpaqueContent(c.name));
+  }
+  for (const c of nudgeCases) {
+    emit('nudge_content', c.id, buildNudgeContent(c.name));
+    emit('nudge_opaque', c.id, buildNudgeOpaqueContent(c.name));
   }
   for (const c of timestampCases) {
     emit('timestamp_content', c.id, buildTimestampContent(c.formatted));

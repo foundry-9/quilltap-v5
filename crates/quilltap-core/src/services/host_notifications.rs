@@ -846,6 +846,61 @@ pub async fn post_host_turn_pass_announcement(
     .await
 }
 
+// ---------------------------------------------------------------------------
+// Nudge announcements ("invited to speak", v4 6a8a77aa).
+//
+// When the human summons a specific character to take the floor (the Nudge
+// button), the Host notes the invitation so it persists in the transcript
+// rather than living as a client-only ephemeral note that vanishes on reload.
+// `systemKind` is `nudge`; `hostEvent.participantId` records who was summoned.
+// The persona `content` is what the household reads; `opaqueContent` is the
+// persona-free steering swapped into an opaque room so the summoned voice knows
+// the floor is theirs.
+// ---------------------------------------------------------------------------
+
+const HOST_KIND_NUDGE: &str = "nudge";
+
+/// v4 `buildNudgeContent`.
+pub fn build_nudge_content(name: &str) -> String {
+    format!("The Host turns to {name} with an encouraging nod and invites them to take the floor.")
+}
+
+/// v4 `buildNudgeOpaqueContent`.
+pub fn build_nudge_opaque_content(name: &str) -> String {
+    format!("{name} has been invited to take the floor and speak next.")
+}
+
+/// v4 `HostNudgeAnnouncement`.
+#[derive(Clone, Debug)]
+pub struct HostNudgeAnnouncement {
+    pub chat_id: String,
+    pub character_name: String,
+    /// Participant ID of the summoned character.
+    pub participant_id: String,
+}
+
+/// v4 `postHostNudgeAnnouncement`. Errors are swallowed (the existing
+/// Host-notification contract): a summon must never fail the turn. Returns the
+/// persisted message so the caller can surface it live over the
+/// `hostAnnouncement` frame.
+pub async fn post_host_nudge_announcement(
+    db: &Db,
+    params: HostNudgeAnnouncement,
+) -> Option<PostedHostMessage> {
+    let content = build_nudge_content(&params.character_name);
+    let opaque_content = build_nudge_opaque_content(&params.character_name);
+    let host_event = json!({ "participantId": params.participant_id });
+    post_host_message(
+        db,
+        &params.chat_id,
+        content,
+        Some(opaque_content),
+        HOST_KIND_NUDGE,
+        Some(host_event),
+    )
+    .await
+}
+
 /// v4 `HostScenarioAnnouncement`.
 #[derive(Clone, Debug)]
 pub struct HostScenarioAnnouncement {

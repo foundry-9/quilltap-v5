@@ -650,6 +650,29 @@ where
         character_id: Some(character_id.clone()),
     }));
 
+    // --- Nudge announcement (orchestrator.service.ts:329–345, v4 6a8a77aa) ---
+    // The human explicitly summoned this voice via the Nudge button: the Host
+    // announces the invitation so it persists in the transcript instead of a
+    // client-only ephemeral note that vanishes on reload. Fires exactly once —
+    // the `nudge` flag rides only on this initial summoned request, never on the
+    // server-driven chained turns that follow. Best-effort by the writer
+    // contract; surfaced live so the household sees it before the summoned reply
+    // streams in.
+    if is_continue_mode && input.options.nudge == Some(true) {
+        let nudge_message = crate::services::host_notifications::post_host_nudge_announcement(
+            db,
+            crate::services::host_notifications::HostNudgeAnnouncement {
+                chat_id: chat_id.clone(),
+                character_name: character_name.clone(),
+                participant_id: character_participant_id.clone(),
+            },
+        )
+        .await;
+        if let Some(posted) = &nudge_message {
+            sink.emit(ChatEvent::host_announcement(posted.message.clone()));
+        }
+    }
+
     // --- Courier detect (orchestrator.service.ts:318–330) ---
     // The Courier (manual / clipboard transport) needs no API key and no plugin
     // call. Detected here so the tool build + streaming block can short-circuit

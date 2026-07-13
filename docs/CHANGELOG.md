@@ -2,6 +2,24 @@
 
 ## Recent Changes
 
+Drift re-port (v4 6a8a77aa): nudge is now a persisted Host
+announcement, matching v4. New writer helpers (buildNudgeContent /
+buildNudgeOpaqueContent / postHostNudgeAnnouncement) in
+services::host_notifications; the orchestrator posts the announcement
+once per summon (guarded by continue-mode + the nudge flag) and
+surfaces it live on the hostAnnouncement frame; the SPA labels the
+chip "invited to speak" at medium importance. v4's parallel removal of
+the ephemeral-message subsystem needed no v5 change (never ported).
+Verified: the post-office-host tier-1 differential extended with the
+nudge builders (byte-exact) and the orchestrator tier-3 differential
+regenerated at 6a8a77aa (the corpus's continue+nudge call now
+exercises the announcement end-to-end); post-office-writers and
+context-feeders oracles regenerated fresh, all green. Oracle baseline
+rebased a7b1398d → 6a8a77aa (no other v4 commits). Playwright 32/33:
+the one failure (terminal-flow, in-suite only) reproduces identically
+at the pre-change HEAD and is tracked as its own follow-up. Versions:
+core 0.0.207, harness 0.0.188, SPA 0.5.61.
+
 P4.6z/P4.6aa unification: the Scriptorium-SPA round is UNIFIED on
 main — both orders CLOSED, D18 DECIDED (ngx-explorer spike green on
 its gating checks but rejected for adoption — no move/copy verb, a

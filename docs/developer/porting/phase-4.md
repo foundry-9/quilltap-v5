@@ -1012,11 +1012,12 @@ cross-mount move/copy UI, drag-and-drop relocation (clipboard
 paste shipped). **v4 drift note:** v4 HEAD moved one commit past the
 baseline during the round (`6a8a77aa` — "nudge is now a persisted Host
 announcement, not a client-only note"); every file this round touches
-is byte-identical at both commits (verified in-lane, human-approved),
-but the nudge path IS a ported unit — classify and re-port it (a
-p4.d-style drift order) when the next round rebases the oracle
-baseline. **Next candidates:** the v4-drift re-port (the nudge Host
-announcement), the ProseMirror editor decision (D17), the
-courier/images Salon slices, the files-family server surface (unlocks
-`/files` + FilePreview), autonomous-rooms settings, or P4.7
-(`quilltap-tauri`). Round record: `status-log.md`.
+is byte-identical at both commits (verified in-lane, human-approved).
+**RE-PORTED + baseline REBASED to `6a8a77aa` (2026-07-13):** writer
+builders + the once-only orchestrator announcement + the SPA "invited
+to speak" chip, verified by the extended post-office-host tier-1 and
+the regenerated orchestrator tier-3 differentials (record in
+`status-log.md`). **Next candidates:** the ProseMirror editor decision
+(D17), the courier/images Salon slices, the files-family server
+surface (unlocks `/files` + FilePreview), autonomous-rooms settings,
+or P4.7 (`quilltap-tauri`). Round record: `status-log.md`.
