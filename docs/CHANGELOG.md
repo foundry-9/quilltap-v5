@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+Plan the files-family + editor round: three work orders committed
+(P4.6ae the files-family server surface + the P4.6ab tier-2 close-out,
+P4.6af the general Files SPA + the salon autonomous riders, P4.6ag the
+D17 ProseMirror editor decision lane). Docs only — four fresh v4
+surveys at baseline 6a8a77aa inform the orders; no code changes.
+
 Unify the P4.6ab/P4.6ac/P4.6ad round + the two terminal-probe branches
 onto main. The courier + chat-images dispatch surface (resolve/cancel
 external turn, save-image, photo-albums, add-tool-result, chat-files

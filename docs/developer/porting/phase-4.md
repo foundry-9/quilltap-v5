@@ -1120,3 +1120,57 @@ the P4.6ab tier-2 remainder, the files-family server surface (survey
 banked above), the D17 ProseMirror lane (survey banked above), the
 Salon in-chat Edit-Enclave entry + salon-list autonomous toggle, or
 P4.7 (`quilltap-tauri`). Round record: `status-log.md`.
+
+**The next round as planned (2026-07-13): three parallel lanes, orders
+written** (drift check at planning time: v4 HEAD still `6a8a77aa`;
+four fresh surveys — the v4 files-family routes/lib/SPA, the P4.6ab
+tier-2 edit points, the D17 editor scope [v4's Lexical bridge + the
+prosemirror-markdown configurability facts], and the Edit-Enclave/
+salon-toggle entry points — inform the orders; key survey findings:
+the `imageProfileGenerate` un-refusal needs a NEW
+`EngineAssembly.image_generation` seam [the W4.9a runner is dead in
+production — `with_image_generation` has zero callers]; the chat-file
+upload's SPA client is already LOCKED [`chat-files.api.ts`] so the
+server matches it; the Lexical spike test was never committed, so the
+ProseMirror gate test must be rebuilt from the dialect spec and
+committed this time; the salon riders are pure UI — the
+`includeAutonomous` filter and the Edit-Enclave modal are both fully
+ported already):
+
+- **Lane A — P4.6ae, the files-family server surface + the P4.6ab
+  tier-2 close-out** (`work-orders/p4.6ae-files-family-server.md`):
+  the general `/api/v1/files` dispatch surface (list/upload/move/
+  promote/delete-with-associations + folders CRUD + the maintenance
+  verbs; `filesSync` refusal-armed — reconciliation unported) over a
+  NEW committed `files-{main,mount}.db` fixture, PLUS the
+  `uploadChatFile` port + web-edge multipart leg and the
+  `imageProfileGenerate` un-refusal over the new host-wired
+  image-generation seam. This round's ONLY `crates/**` writer.
+- **Lane B — P4.6af, the general Files SPA + the salon autonomous
+  riders** (`work-orders/p4.6af-files-family-spa.md`): the `/files`
+  screen (legacy FileBrowser + FilePreview family + the dialogs,
+  shell nav wired; NO upload button — v4 parity), plus the
+  `chatType`-gated Edit-Enclave header entry over the existing modal
+  and the salon-list include-autonomous toggle + hidden-rooms hint
+  (closing the P4.6ad deferral). Owns `core-contract.ts`.
+- **Lane C — P4.6ag, the D17 ProseMirror decision lane**
+  (`work-orders/p4.6ag-prosemirror-editor.md`): SPA-only, the D18
+  mold — the committed byte-round-trip gate spec FIRST (v4's
+  composer dialect: underscore-italic, literal `*`, escape
+  preservation), then (only if GREEN) the bespoke `qt-rich-editor`
+  adopted in the Document Mode pane (markdown files only, v4 parity)
+  and the chat composer. Rejection with a decision record is a valid
+  deliverable. Sole `package.json` dependency owner.
+
+Contention notes: lane A is the single core-dispatch and `crates/**`
+writer (no two-writer rule needed this round); lanes B and C split
+`apps/web` by file — B: `screens/**` + `conversation-header.ts` +
+contract; C: `editor/**` + `chat-composer.ts` + `documents/**` +
+deps. Round-wide HANDS OFF: `chat/render/**` (unified 11.0.5) and
+`apps/web/src/app/files/**` (the Scriptorium file manager — the
+general browser lives in `screens/files/`). A bumps
+core+web+host+harness; B and C each bump the SPA (unifier
+accumulates). Deliberately left out of the round: P4.7 (Tauri — its
+own round) and feature 5.1 (native embeddings — post-parity by its
+own header, `docs/features/5.1-native-embeddings-and-chunked-
+retrieval.md`).
