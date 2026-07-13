@@ -1021,3 +1021,64 @@ the regenerated orchestrator tier-3 differentials (record in
 (D17), the courier/images Salon slices, the files-family server
 surface (unlocks `/files` + FilePreview), autonomous-rooms settings,
 or P4.7 (`quilltap-tauri`). Round record: `status-log.md`.
+
+**The round as planned (2026-07-13): three parallel lanes, orders
+written** (drift check at planning time: v4 HEAD still `6a8a77aa`;
+four fresh surveys — the v4 courier/images Salon slices, the v4
+autonomous-rooms surface, the v4 files-family surface, and the D17
+editor scoping — inform the orders; key survey findings: the courier
+transport / photo trio / image-generation handler are all ported so
+lane A is mostly variant assembly plus TWO real ports [the
+`uploadChatFile` service and the `add-tool-result` handler]; the
+message DTO already carries every courier/image field so lane B is
+pure UI; the enclave engine + host cadence + autonomous chat-create
+are fully ported with ZERO dispatch variants, so the autonomous
+vertical's server half is thin marshaling and rides as one full-stack
+lane):
+
+- **Lane A — P4.6ab, the courier + chat-images server surface**
+  (`work-orders/p4.6ab-courier-images-server.md`): the courier pair
+  (`messageResolveExternalTurn`/`CancelExternalTurn` over the frozen
+  W4.4a4 transport), `messageSaveImage` + `chatPhotoAlbums`,
+  `chatAddToolResult`, the chat-files family (the `uploadChatFile`
+  port over the FileBytesStore seam + multipart web edge + list +
+  delete), and the `imageProfileGenerate` un-refusal — over a NEW
+  committed `courier-images-{main,mount}.db` fixture.
+  `validate-key`/`list-models` stay refusal-armed.
+- **Lane B — P4.6ac, the courier + images Salon SPA**
+  (`work-orders/p4.6ac-courier-images-salon-spa.md`): the
+  CourierBubble + message-row courier branch, attachment thumbnails +
+  the ImageModal lightbox, the markdown store-image rewrite
+  (`blobMountPointId`), SaveImageDialog, the in-chat PhotoGallery,
+  the generate dialogs, and the composer attach affordance —
+  probe-guarded e2e activating at unification. Deferred loud: the
+  announcement/mail/RNG gutter tools, drag-drop upload.
+- **Lane C — P4.6ad, the autonomous-rooms vertical**
+  (`work-orders/p4.6ad-autonomous-rooms-vertical.md`): the seven
+  dispatch variants wrapping the frozen `enclave::lifecycle` + the
+  `systemAutonomousRooms` listing (a NEW `autonomous-{main,mount}.db`
+  fixture), then the SPA — the Settings Chat tab's two autonomous
+  cards, the shared room-card editor + EditEnclaveModal, the New-Chat
+  autonomous toggle with v4's exact payload mapping, and the toolbar
+  run-state badges. Closes the P4.6q autonomous deferral. Deferred
+  loud: the Salon in-chat Edit-Enclave entry + salon-list toggle
+  (lane B territory, named for the unifier/next slice).
+
+Contention notes: lanes A and C are the round's two core-dispatch
+writers (delimited end-blocks in `types.rs`/`engine.rs`, the P4.6v/w
+precedent); lane A alone touches `crates/quilltap-web`; lanes B and C
+split `apps/web/**` by directory (B: chat/salon/images +
+core-contract owner; C: settings/new-chat/shell/autonomous + its own
+delimited contract block). A bumps core+web+harness; C bumps
+core+harness+SPA; B bumps the SPA (unifier accumulates). Round-wide
+HANDS OFF: the `chat_get` terminal reconcile stub-probe and the
+terminal closed-chip e2e beat — a separate human effort owns them.
+**Banked for the next round (surveys done 2026-07-13, recorded in the
+planning session):** the files-family surface (server: the general
+`/api/v1/files` listing/upload/move/promote/delete + folders +
+maintenance actions, repo methods included — only the byte GETs
+exist; SPA: `/files` + legacy FileBrowser + FilePreview) and the D17
+ProseMirror lane (SPA-only, splits by directory; the make-or-break is
+a v4-dialect byte-round-trip markdown serializer — underscore-italic,
+literal `*`, escape preservation — gated by the same test that killed
+Lexical; the chat-composer half needs ~6 of the 7 v4 plugins).

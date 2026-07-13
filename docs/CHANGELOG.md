@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Planned the P4.6ab/P4.6ac/P4.6ad round (docs only): three work orders
+written — the courier + chat-images server surface (P4.6ab), the
+courier + images Salon SPA (P4.6ac), and the autonomous-rooms
+vertical (P4.6ad, server marshaling + SPA in one lane). Shared
+contract pins the new dispatch variant names (courier pair,
+save-image/photo-albums, add-tool-result, chat-files family,
+imageProfileGenerate un-refusal, the seven autonomous-room verbs);
+lanes A and C are the round's two core-dispatch writers. Files-family
+and D17 ProseMirror surveys banked in phase-4.md for the next round.
+No code changes; no version bumps.
+
 Drift re-port (v4 6a8a77aa): nudge is now a persisted Host
 announcement, matching v4. New writer helpers (buildNudgeContent /
 buildNudgeOpaqueContent / postHostNudgeAnnouncement) in
