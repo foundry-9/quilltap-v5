@@ -99,6 +99,7 @@ async function main(): Promise<void> {
     DocMountChunkSchema,
   } = await import('@/lib/schemas/mount-index.types');
   const { EmbeddingProfileSchema } = await import('@/lib/schemas/profile.types');
+  const { BackgroundJobSchema } = await import('@/lib/schemas/job.types');
 
   await initializeDatabase();
 
@@ -107,6 +108,9 @@ async function main(): Promise<void> {
   const { initializePlugins } = await import('@/lib/startup/plugin-initialization');
   await initializePlugins();
   await ensureCollection('embedding_profiles', EmbeddingProfileSchema);
+  // Materialized empty: the mountScan/mountEmbed differentials enqueue
+  // EMBEDDING_GENERATE rows here (v4 lazily creates the table; v5 does not).
+  await ensureCollection('background_jobs', BackgroundJobSchema);
 
   // Materialize the mount-index schema on the fresh fixture. The `data BLOB`
   // table (`doc_mount_blobs`) can't be produced by generateDDL — storeMountFile's

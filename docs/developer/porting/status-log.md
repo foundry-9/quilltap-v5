@@ -9231,3 +9231,51 @@ family; the one dependent oracle regenerated below):
   folder row); `mount_read_equivalence` re-run GREEN.
 - quilltap-web → 0.0.16 (the committed fixture bytes live under its
   `tests/fixtures/`).
+
+## 2026-07-12 — P4.6y unit F: scanner + converters + embedding scheduler + `mountScan`
+
+The indexing spine lands (early — file-ops and store-file both ride
+`processMountFile`/`reindexSingleFile`):
+
+- **`converters.rs`** — `markdown_to_text` (frontmatter strip + the
+  13-pass syntax stripper; the code-fence and bold/italic backreference
+  regexes hand-rolled with JS lazy/greedy-backtracking semantics, the
+  rest via the regex crate with the shared `jsstr::JS_WS_CLASS`),
+  `convert_to_plain_text` (fs dispatch) and `convert_buffer_to_plain_text`
+  (**deliberate v4 asymmetry**: buffer-path text-native returns RAW text —
+  reindex chunks raw, scan chunks stripped). **`DocumentTextExtractor`**
+  seam: the refusing default eprintln-refuses then returns `''` — v4's
+  converters NEVER throw (garbage pdf → `''`), so the refusal routes
+  through exactly v4's empty-text arms and the DB state stays v4-shaped.
+- **`reindex_file.rs`** — `reindexSingleFile` (db-backed refresh-in-place
+  vs fs `linkFilesystemFile`; the content-less-orphan why-comment carried;
+  best-effort catch-all).
+- **`scanner.rs`** — the full scan orchestrator + `rescanDatabaseMountPoint`
+  (from database-store.ts) + `verifyBasePath` + `createFilesystemFolder`
+  (escape-guarded, unit-pinned).
+- **`embedding_scheduler.rs`** — `enqueueEmbeddingJobsForMountPoint` with
+  the per-document `embed:false` enforcement (skip + erase), the
+  MOUNT_CHUNK priority (0), the dedup-by-pending-entity enqueue; wakes the
+  pump once per batch from the handler (v4 wakes per job — idempotent).
+- **`mountScan`** variant (P4.6v delimiter blocks) → `{scanResult,
+  embeddingJobsEnqueued}`.
+- **Differentials (green):** `mount_md_convert_equivalence` (28 tier-1
+  cases over v4's REAL `convertMarkdownToText` — temp-file driven; the
+  corpus rides the oracle NDJSON) and `mount_index_equivalence` (jest
+  real-DB oracle over the action-dispatch route; 4 scan cases ×
+  eight-table dumps: points/files/links/documents/folders/chunks/blobs +
+  main background_jobs). **One shared normalization in the Rust test over
+  BOTH sides' raw dumps**: timestamps + error-text + abs-basePath blanked,
+  minted UUIDs remapped over a canonical traversal (fixed key priority),
+  job ids blanked + job rows re-sorted by REMAPPED payload (raw payload
+  sort embeds per-side chunk uuids — the row-alignment gotcha).
+- **Oracle gotcha (memory-note class):** mock
+  `@/lib/background-jobs/host/processor-host` `ensureProcessorRunning` to
+  a no-op or the drain lets v4's in-process dispatcher RUN the enqueued
+  embedding jobs (attempts 1, chunks embedded) while v5's dump stays
+  PENDING (the W4.7e2 recipe, now proven on this surface).
+- Fixture deltas (this lane owns the family): fs tree + `styled.md`
+  (syntax-heavy, `embed: false` frontmatter) + `blank.md` + `scratch.tmp`
+  (exclusion corpus); `mounts-main.db` + materialized `background_jobs`.
+  `mount-read` oracle regenerated (18 cases) — green.
+- core 0.0.199, harness 0.0.182.

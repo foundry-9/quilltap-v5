@@ -356,6 +356,104 @@ impl<'c> DocMountBlobsRepository<'c> {
         }
     }
 
+    /// v4 `updateDescription(id, description, linkId?)`: descriptions live on
+    /// the LINK row (`description` + `descriptionUpdatedAt`); without a linkId
+    /// the first link of the blob's file is targeted. Returns the refreshed
+    /// joined view, or `None` when the blob/link is missing.
+    pub fn update_description(
+        &self,
+        id: &str,
+        description: &str,
+        link_id: Option<&str>,
+    ) -> Result<Option<BlobWithLink>, DbError> {
+        let now = crate::clock::now_iso();
+        let Some(blob) = self.find_by_id(id)? else {
+            return Ok(None);
+        };
+        let target_link = match link_id {
+            Some(l) => Some(l.to_string()),
+            None => self
+                .conn
+                .query_row(
+                    "SELECT id FROM doc_mount_file_links WHERE fileId = ?1 LIMIT 1",
+                    params![blob.file_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .map(Some)
+                .or_else(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                    other => Err(other),
+                })?,
+        };
+        let Some(target_link) = target_link else {
+            return Ok(None);
+        };
+        self.conn.execute(
+            "UPDATE doc_mount_file_links                SET description = ?1, descriptionUpdatedAt = ?2, updatedAt = ?3              WHERE id = ?4",
+            params![description, now, now, target_link],
+        )?;
+        self.conn
+            .query_row(
+                &Self::join_query("WHERE l.id = ?1"),
+                params![target_link],
+                Self::map_blob_with_link,
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
+    }
+
+    /// v4 `updateExtractedText(id, input, linkId?)`: the extraction-state
+    /// bookkeeping rewrite on the LINK row. All four fields are always set
+    /// (`None` → SQL NULL), matching v4's unconditional UPDATE.
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_extracted_text(
+        &self,
+        id: &str,
+        extracted_text: Option<&str>,
+        extracted_text_sha256: Option<&str>,
+        extraction_status: &str,
+        extraction_error: Option<&str>,
+        link_id: Option<&str>,
+    ) -> Result<bool, DbError> {
+        let now = crate::clock::now_iso();
+        let Some(blob) = self.find_by_id(id)? else {
+            return Ok(false);
+        };
+        let target_link = match link_id {
+            Some(l) => Some(l.to_string()),
+            None => self
+                .conn
+                .query_row(
+                    "SELECT id FROM doc_mount_file_links WHERE fileId = ?1 LIMIT 1",
+                    params![blob.file_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .map(Some)
+                .or_else(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                    other => Err(other),
+                })?,
+        };
+        let Some(target_link) = target_link else {
+            return Ok(false);
+        };
+        self.conn.execute(
+            "UPDATE doc_mount_file_links SET                extractedText = ?1, extractedTextSha256 = ?2,                extractionStatus = ?3, extractionError = ?4, updatedAt = ?5              WHERE id = ?6",
+            params![
+                extracted_text,
+                extracted_text_sha256,
+                extraction_status,
+                extraction_error,
+                now,
+                target_link
+            ],
+        )?;
+        Ok(true)
+    }
+
     /// v4 `readData` (`doc-mount-blobs.repository.ts:189`): the raw bytes for a
     /// blob row by its blob `id`, or `None`.
     pub fn read_data(&self, id: &str) -> Result<Option<Vec<u8>>, DbError> {

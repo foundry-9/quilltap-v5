@@ -127,6 +127,22 @@ pub struct DmcUpdate {
     pub updated_at: String,
 }
 
+/// A chunk row as the reindex / embedding-scheduler services read it — the
+/// subset of v4 `DocMountChunk` those paths touch, plus an embedding-presence
+/// flag (the schedulers only test `!chunk.embedding || length === 0`, never the
+/// vector itself).
+#[derive(Clone, Debug)]
+pub struct ChunkRow {
+    pub id: String,
+    pub link_id: String,
+    pub mount_point_id: String,
+    pub chunk_index: i64,
+    pub content: String,
+    /// v4 `!chunk.embedding || chunk.embedding.length === 0` inverted: `true`
+    /// when a non-empty embedding BLOB is stored.
+    pub has_embedding: bool,
+}
+
 /// Repository over a borrowed connection (held by the [`super::Writer`]).
 pub struct DocMountChunksRepository<'c> {
     conn: &'c Connection,
@@ -228,6 +244,48 @@ impl<'c> DocMountChunksRepository<'c> {
 
     /// Delete the chunk `id`. Returns `Ok(false)` when no row matched (v4's
     /// `_delete` "deletedCount === 0 -> false").
+    /// v4 `findByMountPointId`, narrowed to the reindex/scheduler-read fields
+    /// (see [`ChunkRow`]). Insertion order (rowid) like v4's unordered filter
+    /// scan on a fresh table.
+    pub fn find_rows_by_mount_point_id(
+        &self,
+        mount_point_id: &str,
+    ) -> Result<Vec<ChunkRow>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, linkId, mountPointId, chunkIndex, content, \
+                    (embedding IS NOT NULL AND length(embedding) > 0) \
+             FROM doc_mount_chunks WHERE mountPointId = ?1",
+        )?;
+        let rows = stmt
+            .query_map(params![mount_point_id], |row| {
+                Ok(ChunkRow {
+                    id: row.get(0)?,
+                    link_id: row.get(1)?,
+                    mount_point_id: row.get(2)?,
+                    chunk_index: match row.get_ref(3)? {
+                        rusqlite::types::ValueRef::Integer(i) => i,
+                        rusqlite::types::ValueRef::Real(f) => f as i64,
+                        _ => 0,
+                    },
+                    content: row.get(4)?,
+                    has_embedding: row.get::<_, i64>(5)? != 0,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// v4 `clearEmbeddingsByLinkId`: NULL (don't delete) every stored embedding
+    /// under a link. Returns the number of cleared rows.
+    pub fn clear_embeddings_by_link_id(&self, link_id: &str) -> Result<usize, DbError> {
+        let n = self.conn.execute(
+            "UPDATE doc_mount_chunks SET embedding = NULL \
+             WHERE linkId = ?1 AND embedding IS NOT NULL",
+            params![link_id],
+        )?;
+        Ok(n)
+    }
+
     pub fn delete(&self, id: &str) -> Result<bool, DbError> {
         let affected = self
             .conn

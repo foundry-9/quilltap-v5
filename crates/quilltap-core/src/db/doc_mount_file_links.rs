@@ -104,6 +104,12 @@ pub struct LinkRow {
     /// `l.description` (the link's caption fallback; `''` default). Read for the
     /// character-gallery listing's `caption` field.
     pub description: Option<String>,
+    /// `l.extractionStatus` (`'none'|'pending'|'converted'|'failed'|'skipped'`,
+    /// nullable in old rows) — the reindex `shouldProcess` gate reads it (P4.6y).
+    pub extraction_status: Option<String>,
+    /// `l.allowEmbed` via v4 `coerceAllow` — the embedding scheduler's
+    /// per-document `embed:false` policy gate (P4.6y).
+    pub allow_embed: bool,
 }
 
 /// A link row joined with its file-row content fields — v4
@@ -156,17 +162,59 @@ fn map_link_with_content(row: &rusqlite::Row<'_>) -> rusqlite::Result<LinkWithCo
     })
 }
 
-/// A link update patch — v4 `docMountFileLinks.update(id, Partial<...>)`, narrowed
-/// to the columns the move ops set. Each `Some` field sets that column;
-/// `folder_id` is `Option<Option<String>>` so the caller can distinguish "leave
-/// untouched" (outer `None`) from "set to SQL NULL" (`Some(None)`), matching v4
-/// passing `folderId: null` for a root-level move. `updated_at` is always set.
+/// A link update patch — v4 `docMountFileLinks.update(id, Partial<...>)`. Each
+/// `Some` field sets that column; nullable columns are `Option<Option<...>>` so
+/// the caller can distinguish "leave untouched" (outer `None`) from "set to SQL
+/// NULL" (`Some(None)`), matching v4 passing explicit `null`s. `updated_at` is
+/// always set. Extended for the P4.6y scanner/reindex/store-file ports (the
+/// extraction-state + rollup + cross-mount-move columns).
 #[derive(Default)]
 pub struct LinkUpdate {
     pub relative_path: Option<String>,
     pub file_name: Option<String>,
     pub folder_id: Option<Option<String>>,
+    /// v4 `moveFile` db→db re-points the link at the destination mount.
+    pub mount_point_id: Option<String>,
+    pub file_id: Option<String>,
+    pub conversion_status: Option<String>,
+    pub conversion_error: Option<Option<String>>,
+    /// REAL number column (`Some(None)` = SQL NULL).
+    pub plain_text_length: Option<Option<f64>>,
+    /// REAL number column.
+    pub chunk_count: Option<f64>,
+    pub extracted_text: Option<Option<String>>,
+    pub extracted_text_sha256: Option<Option<String>>,
+    pub extraction_status: Option<String>,
+    pub extraction_error: Option<Option<String>>,
+    pub last_modified: Option<String>,
     pub updated_at: String,
+}
+
+/// v4 `LinkFilesystemFileInput` — the scanner/reindex upsert input
+/// (`linkFilesystemFile`). `folderId` is always derived from the relativePath
+/// (the v4 caller never passes one). `None` optionals take v4's defaults:
+/// `source` 'filesystem', `conversionStatus` 'pending', `chunkCount` 0,
+/// policy flags permissive.
+#[derive(Default)]
+pub struct LinkFilesystemFileInput {
+    pub mount_point_id: String,
+    pub relative_path: String,
+    pub file_name: String,
+    pub file_type: String,
+    pub sha256: String,
+    /// REAL number column.
+    pub file_size_bytes: f64,
+    pub last_modified: String,
+    pub source: Option<String>,
+    pub conversion_status: Option<String>,
+    pub conversion_error: Option<String>,
+    /// REAL number column (`None` → SQL NULL).
+    pub plain_text_length: Option<f64>,
+    /// REAL number column.
+    pub chunk_count: Option<f64>,
+    pub allow_embed: Option<bool>,
+    pub allow_character_read: Option<bool>,
+    pub allow_character_write: Option<bool>,
 }
 
 /// The three per-document policy flags, positive sense (`true` == permissive ==
@@ -978,6 +1026,153 @@ impl<'c> DocMountFileLinksRepository<'c> {
         Ok(current_parent)
     }
 
+    /// v4 `linkFilesystemFile` (`doc-mount-file-links.repository.ts:873`) — the
+    /// scanner/reindex upsert for filesystem-indexed files: find-or-create the
+    /// content row by `(sha256, source)` (keeping its UUID stable across
+    /// rewrites), derive `folderId` from the relativePath, then insert or
+    /// re-point the `(mountPointId, relativePath)` link at the new content.
+    /// Returns the link id. Timestamps + minted ids use a fresh `now` (the
+    /// tier-2 differentials normalize them).
+    pub fn link_filesystem_file(&self, input: &LinkFilesystemFileInput) -> Result<String, DbError> {
+        let now = now_iso();
+        let source = input.source.as_deref().unwrap_or("filesystem");
+
+        let existing_file: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT id FROM doc_mount_files WHERE sha256 = ?1 AND source = ?2",
+                params![input.sha256, source],
+                |row| row.get::<_, String>(0),
+            )
+            .map(Some)
+            .or_else(no_rows_to_none)?;
+        let file_id = match existing_file {
+            Some(id) => id,
+            None => {
+                let id = new_id();
+                self.conn.execute(
+                    "INSERT INTO doc_mount_files (id, sha256, fileSizeBytes, fileType, source, createdAt, updatedAt) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![
+                        id,
+                        input.sha256,
+                        input.file_size_bytes,
+                        input.file_type,
+                        source,
+                        now,
+                        now
+                    ],
+                )?;
+                id
+            }
+        };
+
+        // v4: folderId is DERIVED from relativePath here (the scanner passes
+        // none) — `ensureLinkFolderId` walks the dirname.
+        let folder_id =
+            ensure_link_folder_id(self.conn, &input.mount_point_id, &input.relative_path, &now)?;
+
+        let existing_link: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT id FROM doc_mount_file_links WHERE mountPointId = ?1 AND relativePath = ?2",
+                params![input.mount_point_id, input.relative_path],
+                |row| row.get::<_, String>(0),
+            )
+            .map(Some)
+            .or_else(no_rows_to_none)?;
+
+        let conversion_status = input.conversion_status.as_deref().unwrap_or("pending");
+        let plain_text_length = input.plain_text_length;
+        let chunk_count = input.chunk_count.unwrap_or(0.0);
+        // Per-document policy (markdown frontmatter). Default permissive.
+        let allow_embed = i64::from(input.allow_embed != Some(false));
+        let allow_character_read = i64::from(input.allow_character_read != Some(false));
+        let allow_character_write = i64::from(input.allow_character_write != Some(false));
+
+        let link_id = match existing_link {
+            Some(link_id) => {
+                self.conn.execute(
+                    "UPDATE doc_mount_file_links SET \
+                       fileId = ?1, fileName = ?2, folderId = ?3, \
+                       conversionStatus = ?4, conversionError = ?5, \
+                       plainTextLength = ?6, chunkCount = ?7, \
+                       allowEmbed = ?8, allowCharacterRead = ?9, allowCharacterWrite = ?10, \
+                       lastModified = ?11, updatedAt = ?12 \
+                     WHERE id = ?13",
+                    params![
+                        file_id,
+                        input.file_name,
+                        folder_id,
+                        conversion_status,
+                        input.conversion_error,
+                        plain_text_length,
+                        chunk_count,
+                        allow_embed,
+                        allow_character_read,
+                        allow_character_write,
+                        input.last_modified,
+                        now,
+                        link_id
+                    ],
+                )?;
+                link_id
+            }
+            None => {
+                let link_id = new_id();
+                self.conn.execute(
+                    "INSERT INTO doc_mount_file_links (\
+                       id, fileId, mountPointId, relativePath, fileName, folderId, \
+                       conversionStatus, conversionError, plainTextLength, \
+                       allowEmbed, allowCharacterRead, allowCharacterWrite, \
+                       chunkCount, lastModified, createdAt, updatedAt\
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                    params![
+                        link_id,
+                        file_id,
+                        input.mount_point_id,
+                        input.relative_path,
+                        input.file_name,
+                        folder_id,
+                        conversion_status,
+                        input.conversion_error,
+                        plain_text_length,
+                        allow_embed,
+                        allow_character_read,
+                        allow_character_write,
+                        chunk_count,
+                        input.last_modified,
+                        now,
+                        now
+                    ],
+                )?;
+                link_id
+            }
+        };
+        Ok(link_id)
+    }
+
+    /// v4 `updatePolicyFlags` — rewrite the three per-document policy columns.
+    pub fn update_policy_flags(
+        &self,
+        link_id: &str,
+        policy: &DocumentPolicy,
+    ) -> Result<(), DbError> {
+        self.conn.execute(
+            "UPDATE doc_mount_file_links \
+               SET allowEmbed = ?1, allowCharacterRead = ?2, allowCharacterWrite = ?3, updatedAt = ?4 \
+             WHERE id = ?5",
+            params![
+                i64::from(policy.embed),
+                i64::from(policy.character_read),
+                i64::from(policy.character_write),
+                now_iso(),
+                link_id
+            ],
+        )?;
+        Ok(())
+    }
+
     /// The lowercased `relativePath` of every link at `mountPointId` — v4's
     /// `vaultHasRequiredFiles` reads `findByMountPointId(...).map(l =>
     /// l.relativePath.toLowerCase())` into a `Set`. Returned as a `Vec` so the
@@ -1177,6 +1372,50 @@ impl<'c> DocMountFileLinksRepository<'c> {
             assignments.push(format!("folderId = ?{}", values.len() + 1));
             values.push(Box::new(folder_id.clone()));
         }
+        if let Some(mount_point_id) = &patch.mount_point_id {
+            assignments.push(format!("mountPointId = ?{}", values.len() + 1));
+            values.push(Box::new(mount_point_id.clone()));
+        }
+        if let Some(file_id) = &patch.file_id {
+            assignments.push(format!("fileId = ?{}", values.len() + 1));
+            values.push(Box::new(file_id.clone()));
+        }
+        if let Some(conversion_status) = &patch.conversion_status {
+            assignments.push(format!("conversionStatus = ?{}", values.len() + 1));
+            values.push(Box::new(conversion_status.clone()));
+        }
+        if let Some(conversion_error) = &patch.conversion_error {
+            assignments.push(format!("conversionError = ?{}", values.len() + 1));
+            values.push(Box::new(conversion_error.clone()));
+        }
+        if let Some(plain_text_length) = &patch.plain_text_length {
+            assignments.push(format!("plainTextLength = ?{}", values.len() + 1));
+            values.push(Box::new(*plain_text_length));
+        }
+        if let Some(chunk_count) = patch.chunk_count {
+            assignments.push(format!("chunkCount = ?{}", values.len() + 1));
+            values.push(Box::new(chunk_count));
+        }
+        if let Some(extracted_text) = &patch.extracted_text {
+            assignments.push(format!("extractedText = ?{}", values.len() + 1));
+            values.push(Box::new(extracted_text.clone()));
+        }
+        if let Some(extracted_text_sha256) = &patch.extracted_text_sha256 {
+            assignments.push(format!("extractedTextSha256 = ?{}", values.len() + 1));
+            values.push(Box::new(extracted_text_sha256.clone()));
+        }
+        if let Some(extraction_status) = &patch.extraction_status {
+            assignments.push(format!("extractionStatus = ?{}", values.len() + 1));
+            values.push(Box::new(extraction_status.clone()));
+        }
+        if let Some(extraction_error) = &patch.extraction_error {
+            assignments.push(format!("extractionError = ?{}", values.len() + 1));
+            values.push(Box::new(extraction_error.clone()));
+        }
+        if let Some(last_modified) = &patch.last_modified {
+            assignments.push(format!("lastModified = ?{}", values.len() + 1));
+            values.push(Box::new(last_modified.clone()));
+        }
         assignments.push(format!("updatedAt = ?{}", values.len() + 1));
         values.push(Box::new(patch.updated_at.clone()));
 
@@ -1203,7 +1442,8 @@ impl<'c> DocMountFileLinksRepository<'c> {
                l.lastModified, l.createdAt, \
                l.allowCharacterRead, l.allowCharacterWrite, \
                l.extractedText, l.originalMimeType, l.conversionStatus, l.chunkCount, \
-               f.sha256, f.fileSizeBytes, f.fileType, f.source, l.description \
+               f.sha256, f.fileSizeBytes, f.fileType, f.source, l.description, \
+               l.extractionStatus, l.allowEmbed \
              FROM doc_mount_file_links l \
              JOIN doc_mount_files f ON f.id = l.fileId \
              {where_clause}"
@@ -1236,6 +1476,8 @@ impl<'c> DocMountFileLinksRepository<'c> {
             file_type: row.get(16)?,
             source: row.get(17)?,
             description: row.get(18)?,
+            extraction_status: row.get(19)?,
+            allow_embed: coerce_allow(row.get::<_, Option<i64>>(20)?),
         })
     }
 }

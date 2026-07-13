@@ -302,6 +302,7 @@ pub fn move_database_document(
                 file_name: Some(basename(&to_rel).to_string()),
                 folder_id: Some(dest_folder_id),
                 updated_at: now_iso(),
+                ..Default::default()
             },
         )?;
         if link.file_type != file_type {
@@ -577,6 +578,7 @@ pub fn move_database_folder(
                     file_name: Some(basename(&new_path).to_string()),
                     folder_id: Some(new_folder_id),
                     updated_at: now_iso(),
+                    ..Default::default()
                 },
             )?;
         }

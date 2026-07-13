@@ -1915,6 +1915,10 @@ impl CoreEngine {
                 ),
                 Err(r) => r,
             },
+            Request::MountScan { mount_point_id } => match self.ready_db() {
+                Ok(db) => super::mount_files::mount_scan(&db, &mount_point_id).await,
+                Err(r) => r,
+            },
             // === P4.6w: documents ===
             Request::ChatActiveDocument { chat_id } => match self.ready_db() {
                 Ok(db) => super::documents::chat_active_document(&db, &chat_id),

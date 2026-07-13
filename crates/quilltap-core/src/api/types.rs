@@ -1243,6 +1243,13 @@ pub enum Request {
         #[serde(default)]
         limit: Option<i64>,
     },
+    /// v4 `POST /api/v1/mount-points/[id]?action=scan` → `{ scanResult,
+    /// embeddingJobsEnqueued }` (the synchronous scan + the post-scan embedding
+    /// enqueue).
+    #[serde(rename_all = "camelCase")]
+    MountScan {
+        mount_point_id: String,
+    },
     // === P4.6w: documents ===
     // Chat-scoped Document Mode (all take `chatId`). See `api::documents`. The
     // schema-bag variants flatten the remaining fields into `body` (the exact

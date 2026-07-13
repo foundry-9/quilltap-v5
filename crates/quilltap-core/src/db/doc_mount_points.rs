@@ -292,6 +292,91 @@ impl<'c> DocMountPointsRepository<'c> {
         Ok(affected > 0)
     }
 
+    /// v4 `updateScanStatus(id, status, error?)`: set `scanStatus`; on `error`
+    /// (with a message) set `lastScanError`, on any non-error status NULL it.
+    /// Mints `updatedAt` (v4's `_update`). Errors when the row is missing (v4
+    /// throws "Mount point not found for status update").
+    pub fn update_scan_status(
+        &self,
+        id: &str,
+        status: &str,
+        error: Option<&str>,
+    ) -> Result<(), DbError> {
+        let now = crate::clock::now_iso();
+        let affected = if status == "error" {
+            match error {
+                Some(msg) => self.conn.execute(
+                    "UPDATE doc_mount_points SET scanStatus = ?1, lastScanError = ?2, updatedAt = ?3 WHERE id = ?4",
+                    params![status, msg, now, id],
+                )?,
+                // v4: status 'error' with no message leaves lastScanError untouched.
+                None => self.conn.execute(
+                    "UPDATE doc_mount_points SET scanStatus = ?1, updatedAt = ?2 WHERE id = ?3",
+                    params![status, now, id],
+                )?,
+            }
+        } else {
+            self.conn.execute(
+                "UPDATE doc_mount_points SET scanStatus = ?1, lastScanError = NULL, updatedAt = ?2 WHERE id = ?3",
+                params![status, now, id],
+            )?
+        };
+        if affected == 0 {
+            return Err(DbError::Key(format!(
+                "Mount point not found for status update: {id}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// v4 `updateLastScanned(id, fileCount, chunkCount, totalSizeBytes)`: stamp
+    /// `lastScannedAt = now`, `scanStatus = 'idle'`, and the three rollups.
+    pub fn update_last_scanned(
+        &self,
+        id: &str,
+        file_count: f64,
+        chunk_count: f64,
+        total_size_bytes: f64,
+    ) -> Result<(), DbError> {
+        let now = crate::clock::now_iso();
+        let affected = self.conn.execute(
+            "UPDATE doc_mount_points SET lastScannedAt = ?1, scanStatus = 'idle', \
+               fileCount = ?2, chunkCount = ?3, totalSizeBytes = ?4, updatedAt = ?5 \
+             WHERE id = ?6",
+            params![now, file_count, chunk_count, total_size_bytes, now, id],
+        )?;
+        if affected == 0 {
+            return Err(DbError::Key(format!(
+                "Mount point not found for scan update: {id}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// v4 `refreshStats(id)`: recompute the cached rollups from the live link +
+    /// chunk rows (fileCount = link count via the joined files view, chunkCount =
+    /// chunk rows, totalSizeBytes = Σ f.fileSizeBytes) without a full scan.
+    pub fn refresh_stats(&self, id: &str) -> Result<(), DbError> {
+        let (file_count, total_size): (f64, f64) = self.conn.query_row(
+            "SELECT COUNT(*), COALESCE(SUM(f.fileSizeBytes), 0) \
+             FROM doc_mount_file_links l JOIN doc_mount_files f ON f.id = l.fileId \
+             WHERE l.mountPointId = ?1",
+            params![id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        let chunk_count: f64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM doc_mount_chunks WHERE mountPointId = ?1",
+            params![id],
+            |row| row.get(0),
+        )?;
+        let now = crate::clock::now_iso();
+        self.conn.execute(
+            "UPDATE doc_mount_points SET fileCount = ?1, chunkCount = ?2, totalSizeBytes = ?3, updatedAt = ?4 WHERE id = ?5",
+            params![file_count, chunk_count, total_size, now, id],
+        )?;
+        Ok(())
+    }
+
     /// Delete the mount point `id`. Returns `Ok(false)` when no row matched (v4's
     /// `_delete` "deletedCount === 0 -> false").
     pub fn delete(&self, id: &str) -> Result<bool, DbError> {
@@ -526,12 +611,13 @@ impl<'c> DocMountPointsRepository<'c> {
     pub fn find_service_info_by_id(&self, id: &str) -> Result<Option<MountServiceInfo>, DbError> {
         self.conn
             .query_row(
-                "SELECT id, mountType, basePath, excludePatterns \
+                "SELECT id, mountType, basePath, excludePatterns, includePatterns, name, enabled, conversionStatus \
                  FROM doc_mount_points WHERE id = ?1",
                 params![id],
                 |row| {
                     let base_raw: String = row.get(2)?;
                     let exclude_raw: String = row.get(3)?;
+                    let include_raw: String = row.get(4)?;
                     Ok(MountServiceInfo {
                         id: row.get::<_, String>(0)?,
                         mount_type: row.get::<_, String>(1)?,
@@ -542,6 +628,11 @@ impl<'c> DocMountPointsRepository<'c> {
                         },
                         exclude_patterns: serde_json::from_str::<Vec<String>>(&exclude_raw)
                             .unwrap_or_default(),
+                        include_patterns: serde_json::from_str::<Vec<String>>(&include_raw)
+                            .unwrap_or_default(),
+                        name: row.get::<_, String>(5)?,
+                        enabled: row.get::<_, i64>(6)? != 0,
+                        conversion_status: row.get::<_, String>(7)?,
                     })
                 },
             )
@@ -671,6 +762,14 @@ pub struct MountServiceInfo {
     pub mount_type: String,
     pub base_path: Option<String>,
     pub exclude_patterns: Vec<String>,
+    /// v4 `includePatterns` (the scanner's file filter; empty = include all).
+    pub include_patterns: Vec<String>,
+    /// v4 `name` (log/summary surface only).
+    pub name: String,
+    /// v4 `enabled`.
+    pub enabled: bool,
+    /// v4 `conversionStatus` (the convert/deconvert quiesce guard reads it).
+    pub conversion_status: String,
 }
 
 impl MountServiceInfo {

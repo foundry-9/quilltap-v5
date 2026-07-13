@@ -42,8 +42,10 @@ pub fn set_wake_hook(hook: impl Fn() + Send + Sync + 'static) {
 }
 
 /// Fire the wake hook if one is registered (v4 `ensureProcessorRunning()` inside
-/// `enqueueJob`). No-op when unset.
-fn ensure_processor_running() {
+/// `enqueueJob`). No-op when unset. `pub(crate)` so writer-closure enqueues
+/// (the mount-index embedding scheduler, P4.6y) can wake the pump after their
+/// batch lands.
+pub(crate) fn ensure_processor_running() {
     if let Some(hook) = WAKE_HOOK.get() {
         hook();
     }

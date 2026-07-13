@@ -6,9 +6,13 @@
 //! lives under `crate::db`; this module is the service tier over it.
 
 pub mod chunker;
+pub mod converters;
+pub mod embedding_scheduler;
 pub mod file_op_error;
 pub mod file_op_status;
 pub mod file_ops;
 pub mod list;
 pub mod path_utils;
 pub mod read_file;
+pub mod reindex_file;
+pub mod scanner;

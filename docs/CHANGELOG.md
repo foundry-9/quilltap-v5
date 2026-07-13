@@ -2,6 +2,29 @@
 
 ## Recent Changes
 
+P4.6y unit F: the scanner + converters + embedding-scheduler ports and
+the mountScan variant. services/mount_index gains converters.rs (the
+markdown/txt converters with JS-regex-faithful syntax stripping — the two
+backreference patterns hand-rolled — plus the DocumentTextExtractor seam,
+whose refusing default routes pdf/docx through v4's empty-text bookkeeping
+arms, loudly), reindex_file.rs (the doc-edit reindexSingleFile port),
+scanner.rs (walk/processMountFile/removeMountFile/updateMountPointTotals/
+scanMountPoint/rescanDatabaseMountPoint/verifyBasePath/
+createFilesystemFolder), and embedding_scheduler.rs (the MOUNT_CHUNK
+EMBEDDING_GENERATE enqueue with the embed:false erase policy). Repo
+extensions (additive): linkFilesystemFile + updatePolicyFlags + the widened
+LinkUpdate patch on doc_mount_file_links; chunk row reads +
+clearEmbeddingsByLinkId; updateScanStatus/updateLastScanned/refreshStats on
+doc_mount_points; blob updateDescription/updateExtractedText;
+MountServiceInfo widened. New differentials, both green: mount-md-convert
+(28-case tier-1 exact over v4's real convertMarkdownToText) and mount-index
+(the jest real-DB route oracle — 4 scan cases with the full eight-table
+dump diffed under one shared normalization; reindex/embed/search rows
+already emitted for the next unit). The committed fs tree gains a
+syntax-heavy styled.md (embed:false frontmatter), blank.md, and an excluded
+scratch.tmp; mounts-main.db gains the background_jobs table; mount-read
+regenerated + green. core 0.0.199, harness 0.0.182.
+
 P4.6y unit A: extend the committed mounts fixture family for the
 mutation/indexing differentials — the MAIN db gains the BUILTIN TF-IDF
 embedding profile (default) + a fitted tfidf_vocabularies row over the
