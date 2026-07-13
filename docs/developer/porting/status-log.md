@@ -10311,3 +10311,41 @@ Edit-Enclave entry + the salon-list include-autonomous toggle (lane B's
 `screens/salon/**`); the 13 other Chat-tab cards.
 
 Versions: SPA 0.5.62.
+## P4.6ac (lane B) — the courier + chat-images Salon SPA [IN PROGRESS]
+
+Branch `claude/courier-images-salon-spa-417209`. UI port against the
+P4.6ab Shared contract (lane A delivers the mutation variants in
+parallel; where a variant hasn't landed in-worktree the SPA codes to
+the Shared-contract name and the e2e beat self-activates at
+unification). Drift-check at lane start: v4 HEAD == baseline
+`6a8a77aa` (clean).
+
+### P4.6ac unit 1 — the markdown store-image rewrite (Tier 1.3) — LANDED
+
+`chat/render/markdown-renderer.ts`: new `applyBlobImageRewrite` +
+`blobMountPointId` option — a port of v4's client `MessageContent` img
+override (`MessageContent.tsx:468-480`). v4 rewrites the react-markdown
+img node; v5 renders to an HTML string, so the rewrite post-processes
+the emitted `<img>` tags after all roleplay passes (those leave img
+tags in the odd split-parts untouched). Predicate is v4-exact: rewrite
+a bare relative ref to `/api/v1/mount-points/{id}/blobs/{encoded}`
+(encodeURIComponent per path segment, slashes preserved); pass through
+`^([a-z]+:)?//`, `data:`, and `/`-rooted srcs. `render-cache` keys on
+the field; `MessageContent` gained the input. Differential = a byte-
+visible spec block in `markdown-renderer.spec.ts` (rewrite + each pass-
+through arm asserted directly, since v4 never populated the field to
+capture a fixture).
+
+**SURVEY NOTE (reported, non-blocking):** the order says
+`blobMountPointId` "is in v4's chat GET". A fresh survey at `6a8a77aa`
+shows it is NOT — the field appears ONLY as an unused optional prop on
+`MessageContent.tsx` and is never populated anywhere in v4 (no API
+emits it). The rewrite is therefore dormant in v4 too. The port stays
+faithful: the arm passes through when the field is absent (exactly
+v4's behavior), and `ChatDetail.blobMountPointId` is added as an
+optional field so the binding field name has a stable hook if a
+future producer emits it. No lane-A echo is warranted (there is no v4
+oracle basis for one).
+
+**Gate (in-lane):** ng test 574 green (was 547 baseline; +27 across
+this round's specs), ng build clean. SPA 0.5.62.

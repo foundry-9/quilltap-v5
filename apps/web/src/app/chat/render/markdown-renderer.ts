@@ -38,6 +38,13 @@ import { linkifyBareQtapUris } from './qtap-linkify';
 export interface MarkdownRenderOptions {
   renderingPatterns?: RenderingPattern[];
   dialogueDetection?: DialogueDetection | null;
+  /**
+   * When set, relative markdown image refs (`![alt](images/x.webp)`) are
+   * rewritten to the chat's blob mount-point API (v4 `MessageContent` img
+   * override). Absolute URLs, protocol-relative/`data:` URIs, and `/`-rooted
+   * paths pass through untouched.
+   */
+  blobMountPointId?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -69,6 +76,28 @@ export function applyRoleplayPatterns(html: string, compiledRules: CompiledRule[
   });
 
   return processedParts.join('');
+}
+
+/**
+ * Rewrite relative markdown image srcs to the chat's blob mount-point API — a
+ * port of v4's client-side `MessageContent` img override (`MessageContent.tsx:
+ * 468-480`). v4 operates on the react-markdown img node; v5 renders to an HTML
+ * string, so this post-processes the emitted `<img>` tags. Only bare relative
+ * refs are rewritten: absolute URLs (`^([a-z]+:)?//`), `data:` URIs, and
+ * `/`-rooted paths pass through, exactly as v4's predicate.
+ */
+export function applyBlobImageRewrite(html: string, blobMountPointId: string): string {
+  return html.replace(/<img\b[^>]*>/gi, (tag) =>
+    tag.replace(/(\ssrc=")([^"]*)(")/i, (_m, pre, src, post) => `${pre}${rewriteBlobSrc(src, blobMountPointId)}${post}`),
+  );
+}
+
+function rewriteBlobSrc(src: string, blobMountPointId: string): string {
+  if (src && !/^([a-z]+:)?\/\//i.test(src) && !src.startsWith('data:') && !src.startsWith('/')) {
+    const encoded = src.split('/').map(encodeURIComponent).join('/');
+    return `/api/v1/mount-points/${blobMountPointId}/blobs/${encoded}`;
+  }
+  return src;
 }
 
 export function applyDialogueDetection(html: string, detection: DialogueDetection): string {
@@ -170,8 +199,11 @@ function getProcessor() {
  * The returned HTML has NO outer container — the caller adds the container class.
  */
 export function renderMarkdownToHtml(content: string, options: MarkdownRenderOptions = {}): string {
-  const { renderingPatterns = DEFAULT_RENDERING_PATTERNS, dialogueDetection = DEFAULT_DIALOGUE_DETECTION } =
-    options;
+  const {
+    renderingPatterns = DEFAULT_RENDERING_PATTERNS,
+    dialogueDetection = DEFAULT_DIALOGUE_DETECTION,
+    blobMountPointId = null,
+  } = options;
 
   try {
     const patterns = renderingPatterns.length > 0 ? renderingPatterns : DEFAULT_RENDERING_PATTERNS;
@@ -191,6 +223,13 @@ export function renderMarkdownToHtml(content: string, options: MarkdownRenderOpt
 
     const dialogueConfig = dialogueDetection || DEFAULT_DIALOGUE_DETECTION;
     html = applyDialogueDetection(html, dialogueConfig);
+
+    // The blob-image rewrite runs last, on the finished HTML — the roleplay
+    // post-processors leave `<img>` tags (odd split-parts) untouched, so the src
+    // is still the raw relative ref at this point (v4 applies it in the img node).
+    if (blobMountPointId) {
+      html = applyBlobImageRewrite(html, blobMountPointId);
+    }
 
     return html;
   } catch {

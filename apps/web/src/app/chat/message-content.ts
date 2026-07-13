@@ -23,10 +23,17 @@ import { renderMarkdownCached } from './render/render-cache';
 })
 export class MessageContent {
   readonly content = input.required<string>();
+  /**
+   * The chat's blob mount point — when set, relative markdown image refs are
+   * rewritten to the mount-point blob route (v4 `MessageContent blobMountPointId`).
+   */
+  readonly blobMountPointId = input<string | null>(null);
 
   private readonly sanitizer = inject(DomSanitizer);
 
   protected readonly html = computed<SafeHtml>(() =>
-    this.sanitizer.bypassSecurityTrustHtml(renderMarkdownCached(this.content())),
+    this.sanitizer.bypassSecurityTrustHtml(
+      renderMarkdownCached(this.content(), { blobMountPointId: this.blobMountPointId() }),
+    ),
   );
 }

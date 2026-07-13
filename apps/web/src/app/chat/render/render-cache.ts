@@ -58,7 +58,9 @@ export function renderMarkdownCached(
     SEP +
     refId(options?.renderingPatterns) +
     SEP +
-    refId(options?.dialogueDetection);
+    refId(options?.dialogueDetection) +
+    SEP +
+    (options?.blobMountPointId ?? '');
 
   const hit = cache.get(key);
   if (hit !== undefined) return hit;

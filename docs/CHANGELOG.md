@@ -63,6 +63,15 @@ structural row diffs, invalid-cron/non-autonomous/missing arms, the
 destructive clamp both ways). No `ChatCreateRequest` change needed —
 it already carries every autonomous field (verified). Bumps
 quilltap-core 0.0.208, quilltap-harness 0.0.189.
+P4.6ac (Salon SPA, lane B): ported the markdown store-image rewrite.
+Rendering a message with a `blobMountPointId` now rewrites relative
+image refs (`![](images/x.webp)`) to the chat's mount-point blob route,
+matching v4's client `MessageContent` img override; absolute,
+protocol-relative, `data:`, and `/`-rooted srcs pass through. The
+rewrite runs last on the finished HTML (the roleplay post-processors
+leave `<img>` tags untouched). `MessageContent` gained a
+`blobMountPointId` input and the render cache keys on it. Dormant until
+a producer emits the field (as in v4). SPA 0.5.62.
 
 Planned the P4.6ab/P4.6ac/P4.6ad round (docs only): three work orders
 written — the courier + chat-images server surface (P4.6ab), the
