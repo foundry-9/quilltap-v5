@@ -9418,3 +9418,31 @@ core 0.0.203, harness 0.0.186.
   refusal), JSON + multipart PUT, write-file action + the
   wrong-action pointer, blob upload 201 + byte round-trip.
 - core 0.0.204, web 0.0.17.
+
+## 2026-07-13 — P4.6y unit J: the `mount_refresh` seam wired LIVE (+ the refresh-parity differential)
+
+- **`DbMountRefreshScheduler`** (services/mount_index/refresh.rs): the
+  production `MountRefreshScheduler`. The seam's call sites run ON the
+  writer thread (inside the document-save write closure), so the impl
+  spawns a plain OS thread that enqueues its OWN write job via
+  `write_blocking` — strictly after the triggering write commits, never
+  re-entering the busy writer; the writer channel IS the fire-and-forget
+  scheduler. `run_refresh` resolves the mount (fs abs path for
+  filesystem mounts; `path: None` = whole-mount enqueue + stats only).
+- **`host.rs`** wiring site: `mount_refresh: Some(DbMountRefreshScheduler)`
+  replaces the P4.6w `None` + comment block. `None` assemblies (tests,
+  read-only embedders) keep the loud write-site skip.
+- **Refresh-parity differential** (`mount_refresh_equivalence`): the
+  P4.6w oracle MOCKED the refresh chain, so chunks-after-a-write was
+  unpinned — the new `mount-refresh` oracle drives v4's standalone
+  write-document with the chain UNMOCKED + drained; v5 drives
+  `document_write` with the PRODUCTION scheduler and drains by polling
+  the chunk + a writer barrier. Green: links/documents/chunks/points/
+  folders match (the jobs table is deliberately out of this dump — the
+  documents fixture has no embedding profile, so both sides' enqueues
+  no-op through different-but-empty arms; enqueue parity is pinned by
+  the mounts-fixture suites).
+- The P4.6w `documents-routes` differential regenerated FRESH from v4
+  and re-run green after the wire (its corpus drives scheduler-None
+  paths — the loud-skip arm — unchanged).
+- core 0.0.205, host 0.0.15, harness 0.0.187.

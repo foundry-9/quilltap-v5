@@ -537,11 +537,15 @@ impl EngineAssembler for HostAssembler {
             swipe_generate,
             provider_actions,
             memory_embedding,
-            // P4.6w: the document-store refresh scheduler stays UNWIRED — lane A
-            // (P4.6v) has not yet landed the reindex/embed services it needs
-            // (units 4-9 remain open). The document_store write sites loud-skip
-            // the refresh until that order completes and wires this seam.
-            mount_refresh: None,
+            // P4.6y: the document-store refresh scheduler, wired LIVE to the
+            // reindex/embed/stats chain (the P4.6w deferral closed). Unwired
+            // (`None`) assemblies — read-only embedders, focused tests — keep
+            // the loud skip at the write sites.
+            mount_refresh: Some(std::sync::Arc::new(
+                quilltap_core::services::mount_index::refresh::DbMountRefreshScheduler::new(
+                    db.clone(),
+                ),
+            )),
         })
     }
 }

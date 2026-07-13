@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+P4.6y unit J: the EngineAssembly.mount_refresh seam is WIRED LIVE (the
+P4.6w deferral closed). refresh.rs gains run_refresh (mount lookup + fs
+abs-path resolution + the whole-mount form) and DbMountRefreshScheduler —
+the production MountRefreshScheduler: fire-and-forget with the writer
+channel as the scheduler (a spawned OS thread enqueues its own write job,
+so it runs after the triggering write commits and never re-enters the
+busy writer). host.rs replaces the P4.6w mount_refresh: None block with
+the live wiring; None assemblies keep the loud skip. New refresh-parity
+differential (mount-refresh oracle over the documents fixture, refresh
+chain UNMOCKED + drained vs v5 driving the PRODUCTION scheduler and
+polling the chunk) — green; the P4.6w documents-routes differential
+regenerated fresh and re-run green after the wire. core 0.0.205, host
+0.0.15, harness 0.0.187.
+
 P4.6y unit H: the quilltap-web edge legs. mount_file_get gains the
 filesystem-mount branch of the raw byte read (boundary-escape guarded,
 X-File-Sha256); new v4-shaped routes: PUT
