@@ -38,6 +38,25 @@ hidden-dir skip, and localeCompare (ICU4X en-US) sort all match v4. Verified by
 a new route differential (`browse_directory_equivalence`, 5 cases byte-exact
 over the committed `browse-fs-tree/` fixture) plus Rust unit tests for the
 home-default and permission-denied arms.
+P4.6aa lane B (file-manager, unit 1): the D18 ngx-explorer spike ran
+GREEN on all three named gating checks (renders under Angular 21
+zoneless; standalone-from-standalone interop — the lib is standalone in
+5.0.2, not NgModule as the doc said; a mock IDataService adapter drove a
+live listing + createDir mutation), but adoption was REJECTED in favour
+of the bespoke fallback: its IDataService has no move/copy verb (a
+Tier-1 must-land), and wrapping it reintroduces a second theming engine
+(the svar-theme-bridge cost D18 set out to avoid), a numeric-id↔path
+map, and a per-directory listing model at odds with our whole-mount
+mountFilesList. ngx-explorer was uninstalled (package.json/lock clean).
+Ported the v4 SVAR adapter helpers forward as pure spec'd TS under
+apps/web/src/app/files/: node-id (relative-path arithmetic, verbatim),
+listing-to-tree (over the mountFilesList envelope), event-wire-map (the
+gesture→wire translation, re-targeted from v4's REST routes to the P4.6v
+dispatch verbs, both backend-gap refusal arms preserved), error-
+translation (the steampunk code table verbatim; fallback re-targeted
+from HTTP status to the dispatch ErrorKind), reindex-after-copy
+(verbatim). 37 unit cases green (derived from the v4 sources, which
+carried no unit tests).
 
 P4.6z/P4.6aa round setup: work orders written for the Scriptorium SPA
 round (D18) after a fresh v4 survey at a7b1398d (no oracle drift).

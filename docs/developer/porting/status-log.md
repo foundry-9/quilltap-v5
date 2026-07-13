@@ -9731,3 +9731,32 @@ REPRODUCE WITHOUT the scriptorium spec on this loaded/disk-pressured machine
 (full-suite-minus-scriptorium = 27 passed / 2 failed) — environmental, not a
 regression; every spec passes in isolation. The unifier re-runs the full suite on
 a clean machine (contract §7). Bumped `apps/web` 0.5.51→0.5.52.
+---
+
+### P4.6aa lane B (file-manager) — in-lane unit records (branch `claude/file-manager-component-porting-eb1dc1`)
+
+**Drift check (2026-07-13):** v4 HEAD moved `a7b1398d` → `6a8a77aa` (one
+commit, "nudge is now a persisted Host announcement"). It touches only
+chat/salon/nudge orchestration — my oracle surface
+(`components/files/svar/**`, `lib/mount-index/capabilities.ts`) is
+byte-identical between the two commits (`git diff a7b1398d..HEAD` over
+that surface is empty). Zero impact; ported against the pinned baseline.
+
+**Unit 1 — the D18 spike verdict + the adapter helpers (SPA 0.5.51).**
+The ngx-explorer 5.0.2 spike is GREEN on all three named gating checks
+but REJECTED for adoption (no move/copy verb — a Tier-1 must-land — plus
+the second-theming-engine / numeric-id-map / per-directory-model costs);
+full evidence + reasoning in the work-order status header. Net path:
+build the small bespoke `qt-file-manager` over the ported adapter
+helpers. ngx-explorer uninstalled (package.json/lock clean). Ported the
+five adapter helpers as pure spec'd TS under `apps/web/src/app/files/`:
+`node-id` (verbatim), `listing-to-tree` (over the `mountFilesList`
+envelope: `relativePath`/`fileSizeBytes`/`lastModified`), `event-wire-map`
+(the gesture→wire translation, re-targeted from v4's REST routes to the
+P4.6v dispatch verbs — `mountFileUpdate`/`mountFolderCreate`/
+`mountFileDelete`/`mountFolderDelete`/`mountFolderMove`/`mountFileMove`/
+`mountFileCopy` — with both backend-gap refusal arms preserved; upload +
+open/download stay REST), `error-translation` (the code table verbatim;
+fallback keyed on the dispatch `ErrorKind` kebab strings), and
+`reindex-after-copy` (verbatim). 37 unit cases green (derived from the v4
+sources — none carried unit tests, noted in each spec header).
