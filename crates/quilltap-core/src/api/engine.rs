@@ -1949,6 +1949,121 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            Request::MountFileMove {
+                mount_point_id,
+                source_path,
+                dest_mount_point_id,
+                dest_path,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::mount_files::mount_file_move(
+                        &db,
+                        &mount_point_id,
+                        &source_path,
+                        &dest_mount_point_id,
+                        &dest_path,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::MountFileCopy {
+                mount_point_id,
+                source_path,
+                dest_mount_point_id,
+                dest_path,
+                force,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::mount_files::mount_file_copy(
+                        &db,
+                        &mount_point_id,
+                        &source_path,
+                        &dest_mount_point_id,
+                        &dest_path,
+                        force,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::MountFileLink {
+                mount_point_id,
+                source_path,
+                dest_mount_point_id,
+                dest_path,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::mount_files::mount_file_link(
+                        &db,
+                        &mount_point_id,
+                        &source_path,
+                        &dest_mount_point_id,
+                        &dest_path,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::MountFileDelete {
+                mount_point_id,
+                path,
+            } => match self.ready_db() {
+                Ok(db) => super::mount_files::mount_file_delete(&db, &mount_point_id, &path).await,
+                Err(r) => r,
+            },
+            Request::MountFolderDelete {
+                mount_point_id,
+                path,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::mount_files::mount_folder_delete(&db, &mount_point_id, &path).await
+                }
+                Err(r) => r,
+            },
+            Request::MountFolderMove {
+                mount_point_id,
+                from_path,
+                to_path,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::mount_files::mount_folder_move(
+                        &db,
+                        &mount_point_id,
+                        &from_path,
+                        &to_path,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::MountFileUpdate {
+                mount_point_id,
+                path,
+                description,
+                rename,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::mount_files::mount_file_update(
+                        &db,
+                        &mount_point_id,
+                        &path,
+                        description,
+                        rename,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::MountFolderCreate {
+                mount_point_id,
+                path,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::mount_files::mount_folder_create(&db, &mount_point_id, &path).await
+                }
+                Err(r) => r,
+            },
             // === P4.6w: documents ===
             Request::ChatActiveDocument { chat_id } => match self.ready_db() {
                 Ok(db) => super::documents::chat_active_document(&db, &chat_id),

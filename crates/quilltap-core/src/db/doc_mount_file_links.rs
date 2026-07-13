@@ -129,12 +129,23 @@ pub struct LinkWithContent {
     pub created_at: String,
     pub sha256: String,
     pub file_size_bytes: i64,
+    /// `f.fileType` (P4.6y additive — the hard-link metadata copy reads it).
+    pub file_type: String,
+    /// `f.source` (P4.6y additive).
+    pub source: String,
+    /// `l.description` (P4.6y additive; `''` default).
+    pub description: Option<String>,
+    /// `l.conversionStatus` (P4.6y additive).
+    pub conversion_status: String,
+    /// `l.plainTextLength` (P4.6y additive; REAL, nullable).
+    pub plain_text_length: Option<f64>,
 }
 
 const LINK_WITH_CONTENT_SELECT: &str = "SELECT \
        l.id, l.fileId, l.mountPointId, l.relativePath, l.fileName, \
        l.originalFileName, l.originalMimeType, l.extractedText, l.createdAt, \
-       f.sha256, f.fileSizeBytes \
+       f.sha256, f.fileSizeBytes, \
+       f.fileType, f.source, l.description, l.conversionStatus, l.plainTextLength \
      FROM doc_mount_file_links l \
      JOIN doc_mount_files f ON f.id = l.fileId \
      WHERE l.id = ?1";
@@ -158,6 +169,15 @@ fn map_link_with_content(row: &rusqlite::Row<'_>) -> rusqlite::Result<LinkWithCo
                 rusqlite::types::ValueRef::Real(f) => f as i64,
                 _ => 0,
             }
+        },
+        file_type: row.get(11)?,
+        source: row.get(12)?,
+        description: row.get(13)?,
+        conversion_status: row.get(14)?,
+        plain_text_length: match row.get_ref(15)? {
+            rusqlite::types::ValueRef::Integer(i) => Some(i as f64),
+            rusqlite::types::ValueRef::Real(f) => Some(f),
+            _ => None,
         },
     })
 }

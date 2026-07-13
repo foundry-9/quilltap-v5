@@ -1279,6 +1279,74 @@ pub enum Request {
         #[serde(flatten)]
         search: serde_json::Value,
     },
+    /// v4 `?action=move-file` → the v4 `FileOpResult` (strategy + sha pair).
+    #[serde(rename_all = "camelCase")]
+    MountFileMove {
+        mount_point_id: String,
+        source_path: String,
+        dest_mount_point_id: String,
+        dest_path: String,
+    },
+    /// v4 `?action=copy-file` → the v4 `FileOpResult`.
+    #[serde(rename_all = "camelCase")]
+    MountFileCopy {
+        mount_point_id: String,
+        source_path: String,
+        dest_mount_point_id: String,
+        dest_path: String,
+        #[serde(default)]
+        force: Option<bool>,
+    },
+    /// v4 `?action=link-file` → the v4 `FileOpResult` (true hard link; cross-
+    /// storage/device → `UNSUPPORTED`).
+    #[serde(rename_all = "camelCase")]
+    MountFileLink {
+        mount_point_id: String,
+        source_path: String,
+        dest_mount_point_id: String,
+        dest_path: String,
+    },
+    /// v4 `?action=delete-file` → `{deleted, mountPointId, path}` (the item
+    /// route's DELETE rides the same variant at the web edge, 404-ing
+    /// `deleted:false`).
+    #[serde(rename_all = "camelCase")]
+    MountFileDelete {
+        mount_point_id: String,
+        path: String,
+    },
+    /// v4 `?action=delete-folder` → `{mountPointId, path}` (`CONFLICT` when
+    /// non-empty).
+    #[serde(rename_all = "camelCase")]
+    MountFolderDelete {
+        mount_point_id: String,
+        path: String,
+    },
+    /// v4 `?action=move-folder` → `{mountPointId, fromPath, toPath}`
+    /// (same-mount only).
+    #[serde(rename_all = "camelCase")]
+    MountFolderMove {
+        mount_point_id: String,
+        from_path: String,
+        to_path: String,
+    },
+    /// v4 item-route PATCH (rename and/or describe; ≥1 required; rename runs
+    /// FIRST; descriptions are blob-only) → `{mountPointId, relativePath,
+    /// renamed, descriptionUpdated, fileType?}`.
+    #[serde(rename_all = "camelCase")]
+    MountFileUpdate {
+        mount_point_id: String,
+        path: String,
+        #[serde(default)]
+        description: Option<String>,
+        #[serde(default)]
+        rename: Option<String>,
+    },
+    /// v4 `POST .../folders` (`isPathSafe`-guarded) → `{path}`.
+    #[serde(rename_all = "camelCase")]
+    MountFolderCreate {
+        mount_point_id: String,
+        path: String,
+    },
     // === P4.6w: documents ===
     // Chat-scoped Document Mode (all take `chatId`). See `api::documents`. The
     // schema-bag variants flatten the remaining fields into `body` (the exact

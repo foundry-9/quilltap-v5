@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+P4.6y units C+D: the whole mount-file mutation surface. file_ops.rs
+completes v4's file-ops.ts (copyFile/moveFile/linkFile/writeFile/
+deleteFile — the four strategies db-link/fs-link/rename/byte-copy, the
+sha256 end-to-end verify pair, hardLinkDbToDb, updateLinkLocation,
+writeDestBytes, deleteAtSource/Dest, writeFsFileBytes) and folder_ops.rs
+ports folder-ops.ts (deleteFolder refusing non-empty, moveFolder
+same-mount with the fs link-prefix rewrite). Eight new dispatch variants:
+mountFileMove/Copy/Link/Delete, mountFolderDelete/Move, mountFileUpdate
+(item-route PATCH — rename-first, blob-only descriptions), and
+mountFolderCreate (isPathSafe-guarded). v4's per-handler catch split
+reproduced (file verbs code only FileOpError; folder verbs also code
+DatabaseStoreError). New mount-ops differential: 39 cases over the jest
+real-DB oracle — every strategy arm, the error {error, code} envelopes
+byte-exact (including v4's copy_same_path → DEST_EXISTS ordering quirk),
+and the eight-table dumps under the shared normalization (extracted to
+tests/mount_common/). core 0.0.201, harness 0.0.184.
+
 P4.6y unit E: reindex + scoped embedding enqueue + semantic search.
 services/mount_index/reindex.rs ports reindexLinks (synchronous
 in-request, deliberately — the empty-extraction and catch bookkeeping

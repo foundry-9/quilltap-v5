@@ -33,17 +33,27 @@ fn kind_for_status(status: u16) -> ErrorKind {
 }
 
 /// Turn a service error into the boundary error response, mapping the
-/// `FileOpError` ∪ `DatabaseStoreError` code to its HTTP status → `ErrorKind`.
+/// `FileOpError` ∪ `DatabaseStoreError` code to its HTTP status → `ErrorKind`
+/// and carrying the code on the envelope (v4's `{error, code}` body — the SPA
+/// error translation keys on it).
 fn map_error(e: MountFileError) -> Response {
-    let (status, msg) = match &e {
-        MountFileError::FileOp(fe) => (
-            file_op_status_for_code(Some(fe.code.as_str())),
+    use crate::services::mount_index::file_op_status::db_store_code_str;
+    match &e {
+        MountFileError::FileOp(fe) => Response::error_coded(
+            kind_for_status(file_op_status_for_code(Some(fe.code.as_str()))),
             fe.to_string(),
+            fe.code.as_str(),
         ),
-        MountFileError::Db(de) => (500, de.to_string()),
-        MountFileError::Other(m) => (file_op_status_for_code(None), m.clone()),
-    };
-    Response::error(kind_for_status(status), msg)
+        MountFileError::Store(se) => Response::error_coded(
+            kind_for_status(file_op_status_for_code(Some(db_store_code_str(se.code)))),
+            se.to_string(),
+            db_store_code_str(se.code),
+        ),
+        MountFileError::Db(de) => Response::error(ErrorKind::Internal, de.to_string()),
+        MountFileError::Other(m) => {
+            Response::error(kind_for_status(file_op_status_for_code(None)), m.clone())
+        }
+    }
 }
 
 /// v4 `GET /api/v1/mount-points/[id]/files` — `{ files, folders }`.
@@ -108,6 +118,403 @@ pub async fn mount_scan(db: &Db, mount_point_id: &str) -> Response {
         Err(e) => {
             eprintln!("[Mount Points v1] Error scanning mount point: {e}");
             Response::error(ErrorKind::Internal, "Failed to scan mount point")
+        }
+    }
+}
+
+/// v4's per-handler catch split: the FILE-op handlers
+/// (`handleMoveFile`/`Copy`/`Link`/`WriteFile`/`DeleteFile` + the item-route
+/// DELETE) catch ONLY `FileOpError` into the `{error, code}` body — a
+/// `DatabaseStoreError` falls to the generic 500. The FOLDER handlers catch
+/// both. Reproduced exactly.
+fn map_file_op_only(e: MountFileError, failed_msg: &str) -> Response {
+    match &e {
+        MountFileError::FileOp(fe) => Response::error_coded(
+            kind_for_status(file_op_status_for_code(Some(fe.code.as_str()))),
+            fe.to_string(),
+            fe.code.as_str(),
+        ),
+        other => {
+            eprintln!("[Mount Points v1] {failed_msg}: {other}");
+            Response::error(ErrorKind::Internal, failed_msg)
+        }
+    }
+}
+
+/// The folder handlers' arm: `FileOpError` OR `DatabaseStoreError` → coded.
+fn map_file_or_store(e: MountFileError, failed_msg: &str) -> Response {
+    match &e {
+        MountFileError::FileOp(_) | MountFileError::Store(_) => map_error(e),
+        other => {
+            eprintln!("[Mount Points v1] {failed_msg}: {other}");
+            Response::error(ErrorKind::Internal, failed_msg)
+        }
+    }
+}
+
+/// Run a mount-partition mutation on the writer, returning the service-level
+/// result out of the closure (infrastructure `DbError`s become the generic
+/// failure message).
+async fn run_mount_op<F>(
+    db: &Db,
+    f: F,
+) -> Result<Result<serde_json::Value, MountFileError>, DbError>
+where
+    F: FnOnce(&rusqlite::Connection) -> Result<serde_json::Value, MountFileError> + Send + 'static,
+{
+    db.write(move |ws| {
+        let mount = mount_conn(ws)?;
+        Ok(f(mount))
+    })
+    .await
+}
+
+/// v4 `?action=move-file` (`handleMoveFile`) — `moveFile` (same-mount rename or
+/// cross-mount relocate). Body: the v4 `FileOpResult`.
+pub async fn mount_file_move(
+    db: &Db,
+    mount_point_id: &str,
+    source_path: &str,
+    dest_mount_point_id: &str,
+    dest_path: &str,
+) -> Response {
+    let (mp, sp, dmp, dp) = (
+        mount_point_id.to_string(),
+        source_path.to_string(),
+        dest_mount_point_id.to_string(),
+        dest_path.to_string(),
+    );
+    let out = run_mount_op(db, move |conn| {
+        let extractor = default_text_extractor();
+        crate::services::mount_index::file_ops::move_file(
+            conn,
+            &mp,
+            &sp,
+            &dmp,
+            &dp,
+            extractor.as_ref(),
+        )
+        .map(|r| r.to_json())
+    })
+    .await;
+    match out {
+        Ok(Ok(v)) => Response::MountFile(v),
+        Ok(Err(e)) => map_file_op_only(e, "Failed to move file"),
+        Err(e) => {
+            eprintln!("[Mount Points v1] Error moving file: {e}");
+            Response::error(ErrorKind::Internal, "Failed to move file")
+        }
+    }
+}
+
+/// v4 `?action=copy-file` (`handleCopyFile`). Body: the v4 `FileOpResult`.
+pub async fn mount_file_copy(
+    db: &Db,
+    mount_point_id: &str,
+    source_path: &str,
+    dest_mount_point_id: &str,
+    dest_path: &str,
+    force: Option<bool>,
+) -> Response {
+    let opts = crate::services::mount_index::file_ops::CopyOpts {
+        source_mount_point_id: mount_point_id.to_string(),
+        source_path: source_path.to_string(),
+        dest_mount_point_id: dest_mount_point_id.to_string(),
+        dest_path: dest_path.to_string(),
+        force: force.unwrap_or(false),
+    };
+    let out = run_mount_op(db, move |conn| {
+        let extractor = default_text_extractor();
+        crate::services::mount_index::file_ops::copy_file(conn, &opts, extractor.as_ref())
+            .map(|r| r.to_json())
+    })
+    .await;
+    match out {
+        Ok(Ok(v)) => Response::MountFile(v),
+        Ok(Err(e)) => map_file_op_only(e, "Failed to copy file"),
+        Err(e) => {
+            eprintln!("[Mount Points v1] Error copying file: {e}");
+            Response::error(ErrorKind::Internal, "Failed to copy file")
+        }
+    }
+}
+
+/// v4 `?action=link-file` (`handleLinkFile`) — a true hard link; cross-storage
+/// and cross-device are `UNSUPPORTED`, never a silent byte copy.
+pub async fn mount_file_link(
+    db: &Db,
+    mount_point_id: &str,
+    source_path: &str,
+    dest_mount_point_id: &str,
+    dest_path: &str,
+) -> Response {
+    let (mp, sp, dmp, dp) = (
+        mount_point_id.to_string(),
+        source_path.to_string(),
+        dest_mount_point_id.to_string(),
+        dest_path.to_string(),
+    );
+    let out = run_mount_op(db, move |conn| {
+        let extractor = default_text_extractor();
+        crate::services::mount_index::file_ops::link_file(
+            conn,
+            &mp,
+            &sp,
+            &dmp,
+            &dp,
+            extractor.as_ref(),
+        )
+        .map(|r| r.to_json())
+    })
+    .await;
+    match out {
+        Ok(Ok(v)) => Response::MountFile(v),
+        Ok(Err(e)) => map_file_op_only(e, "Failed to link file"),
+        Err(e) => {
+            eprintln!("[Mount Points v1] Error linking file: {e}");
+            Response::error(ErrorKind::Internal, "Failed to link file")
+        }
+    }
+}
+
+/// v4 `?action=delete-file` (`handleDeleteFile`) + the item-route DELETE share
+/// `deleteFile`; the item route 404s a `deleted:false` result while the action
+/// verb returns it verbatim — the WEB EDGE maps the two shapes, this variant is
+/// the action-verb behavior (`{deleted, mountPointId, path}`).
+pub async fn mount_file_delete(db: &Db, mount_point_id: &str, path: &str) -> Response {
+    let (mp, p) = (mount_point_id.to_string(), path.to_string());
+    let out = run_mount_op(db, move |conn| {
+        crate::services::mount_index::file_ops::delete_file(conn, &mp, &p)
+    })
+    .await;
+    match out {
+        Ok(Ok(v)) => Response::MountFile(v),
+        Ok(Err(e)) => map_file_op_only(e, "Failed to delete file"),
+        Err(e) => {
+            eprintln!("[Mount Points v1] Error deleting file: {e}");
+            Response::error(ErrorKind::Internal, "Failed to delete file")
+        }
+    }
+}
+
+/// v4 `?action=delete-folder` (`handleDeleteFolder`) — refuses non-empty
+/// folders (`CONFLICT`/`NOT_EMPTY`).
+pub async fn mount_folder_delete(db: &Db, mount_point_id: &str, path: &str) -> Response {
+    let (mp, p) = (mount_point_id.to_string(), path.to_string());
+    let out = run_mount_op(db, move |conn| {
+        crate::services::mount_index::folder_ops::delete_folder(conn, &mp, &p)
+    })
+    .await;
+    match out {
+        Ok(Ok(v)) => Response::MountFile(v),
+        Ok(Err(e)) => map_file_or_store(e, "Failed to delete folder"),
+        Err(e) => {
+            eprintln!("[Mount Points v1] Error deleting folder: {e}");
+            Response::error(ErrorKind::Internal, "Failed to delete folder")
+        }
+    }
+}
+
+/// v4 `?action=move-folder` (`handleMoveFolder`) — same-mount only; fs mounts
+/// rename on disk + rewrite the affected links' path prefixes.
+pub async fn mount_folder_move(
+    db: &Db,
+    mount_point_id: &str,
+    from_path: &str,
+    to_path: &str,
+) -> Response {
+    let (mp, fp, tp) = (
+        mount_point_id.to_string(),
+        from_path.to_string(),
+        to_path.to_string(),
+    );
+    let out = run_mount_op(db, move |conn| {
+        crate::services::mount_index::folder_ops::move_folder(conn, &mp, &fp, &tp)
+    })
+    .await;
+    match out {
+        Ok(Ok(v)) => Response::MountFile(v),
+        Ok(Err(e)) => map_file_or_store(e, "Failed to move folder"),
+        Err(e) => {
+            eprintln!("[Mount Points v1] Error moving folder: {e}");
+            Response::error(ErrorKind::Internal, "Failed to move folder")
+        }
+    }
+}
+
+/// v4 item-route PATCH — rename and/or set description. Rename runs FIRST (so
+/// a description update lands on the new path); descriptions are BLOB-only (a
+/// text document 400s). Body: `{mountPointId, relativePath, renamed,
+/// descriptionUpdated, fileType?}`.
+pub async fn mount_file_update(
+    db: &Db,
+    mount_point_id: &str,
+    path: &str,
+    description: Option<String>,
+    rename: Option<String>,
+) -> Response {
+    if description.is_none() && rename.is_none() {
+        // v4's zod `.refine` message, verbatim.
+        return Response::error(
+            ErrorKind::BadRequest,
+            "PATCH requires \"description\" or \"rename\"",
+        );
+    }
+    let (mp, p) = (mount_point_id.to_string(), path.to_string());
+    let desc = description.clone();
+    let ren = rename.clone();
+    let out = run_mount_op(db, move |conn| {
+        let mut current_path = p.clone();
+        if let Some(rename_to) = &ren {
+            let extractor = default_text_extractor();
+            let moved = crate::services::mount_index::file_ops::move_file(
+                conn,
+                &mp,
+                &current_path,
+                &mp,
+                rename_to,
+                extractor.as_ref(),
+            )?;
+            current_path = moved.dest_path;
+        }
+        if let Some(d) = &desc {
+            let blobs = crate::db::doc_mount_blobs::DocMountBlobsRepository::new(conn);
+            let Some(meta) = blobs.find_by_mount_point_and_path(&mp, &current_path)? else {
+                // v4's badRequest text, verbatim (NOT a FileOpError).
+                return Err(MountFileError::Other(
+                    "__BLOB_ONLY_DESCRIPTION__".to_string(),
+                ));
+            };
+            blobs.update_description(&meta.id, d, Some(&meta.link_id))?;
+        }
+        Ok(serde_json::json!({ "currentPath": current_path }))
+    })
+    .await;
+    match out {
+        Ok(Ok(v)) => {
+            let current_path = v["currentPath"].as_str().unwrap_or(path).to_string();
+            // v4: re-read for the fileType (base64, 1 line), error-swallowed.
+            let updated = read_mount_file(
+                db,
+                mount_point_id,
+                &current_path,
+                ReadMountFileOptions {
+                    encoding: Some(FileEncoding::Base64),
+                    offset: None,
+                    limit: Some(1),
+                },
+            )
+            .ok();
+            let mut body = serde_json::Map::new();
+            body.insert("mountPointId".into(), mount_point_id.into());
+            body.insert("relativePath".into(), current_path.into());
+            body.insert("renamed".into(), rename.is_some().into());
+            body.insert("descriptionUpdated".into(), description.is_some().into());
+            if let Some(u) = updated {
+                body.insert("fileType".into(), u.file_type.into());
+            }
+            Response::MountFile(serde_json::Value::Object(body))
+        }
+        Ok(Err(MountFileError::Other(m))) if m == "__BLOB_ONLY_DESCRIPTION__" => Response::error(
+            ErrorKind::BadRequest,
+            "Descriptions are only supported for binary (blob) files",
+        ),
+        Ok(Err(e)) => map_error(e),
+        Err(e) => {
+            eprintln!("[Mount Points v1] Error update file: {e}");
+            Response::error(ErrorKind::Internal, "Failed to update file")
+        }
+    }
+}
+
+/// v4 folders-route `normaliseRelativePath` (the route-LOCAL simple form — no
+/// dot-collapsing, unlike `path_utils::normalise_relative_path`).
+fn folders_route_normalise(input: &str) -> String {
+    input
+        .trim_start_matches('/')
+        .trim_end_matches('/')
+        .replace('\\', "/")
+}
+
+/// v4 folders-route `isPathSafe` — rejects absolute paths, `.`/`..`/empty
+/// segments, control chars, `<>:"|?*\`, and >200-char segments. Unit-pinned.
+pub fn is_path_safe(rel: &str) -> bool {
+    if rel.is_empty() {
+        return false;
+    }
+    if rel.starts_with('/') {
+        return false;
+    }
+    for seg in rel.split('/') {
+        if seg.is_empty() || seg == "." || seg == ".." {
+            return false;
+        }
+        if seg.chars().any(|c| ('\x00'..='\x1f').contains(&c)) {
+            return false;
+        }
+        if seg
+            .chars()
+            .any(|c| matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*' | '\\'))
+        {
+            return false;
+        }
+        if seg.chars().count() > 200 {
+            return false;
+        }
+    }
+    true
+}
+
+/// v4 `POST /api/v1/mount-points/[id]/folders` — create a folder (database →
+/// an explicit `doc_mount_folders` row; fs → mkdir with the escape guard).
+/// Body: `{path}`.
+pub async fn mount_folder_create(db: &Db, mount_point_id: &str, path: &str) -> Response {
+    if path.is_empty() || path.chars().count() > 1024 {
+        return Response::error(ErrorKind::BadRequest, "Folder path is required");
+    }
+    let rel = folders_route_normalise(path);
+    if !is_path_safe(&rel) {
+        return Response::error(
+            ErrorKind::BadRequest,
+            "Folder path contains invalid characters or segments",
+        );
+    }
+    let id = mount_point_id.to_string();
+    let out = db
+        .write(move |ws| {
+            let mount = mount_conn(ws)?;
+            let Some(mp) = load_mount_service_info(mount, &id)? else {
+                return Ok(Err("__NOT_FOUND__".to_string()));
+            };
+            if !mp.enabled {
+                return Ok(Err("Mount point is disabled".to_string()));
+            }
+            if mp.mount_type == "database" {
+                let (_, created) =
+                    crate::db::database_store::create_database_folder(mount, &id, &rel)?;
+                return Ok(Ok(created));
+            }
+            let Some(base) = mp.base_path.as_deref().filter(|b| !b.is_empty()) else {
+                return Ok(Err("Mount point has no base path configured".to_string()));
+            };
+            match crate::services::mount_index::scanner::create_filesystem_folder(base, &id, &rel) {
+                Ok(()) => Ok(Ok(rel.clone())),
+                Err(msg) if msg.contains("escapes") => {
+                    Ok(Err("Folder path escapes mount point boundary".to_string()))
+                }
+                Err(msg) => Err(crate::db::DbError::Key(msg)),
+            }
+        })
+        .await;
+    match out {
+        Ok(Ok(created)) => Response::MountFile(serde_json::json!({ "path": created })),
+        Ok(Err(m)) if m == "__NOT_FOUND__" => {
+            Response::error(ErrorKind::NotFound, "Mount point not found")
+        }
+        Ok(Err(m)) => Response::error(ErrorKind::BadRequest, m),
+        Err(e) => {
+            eprintln!("[Mount Points v1] Error creating folder in mount point: {e}");
+            Response::error(ErrorKind::Internal, "Failed to create folder")
         }
     }
 }

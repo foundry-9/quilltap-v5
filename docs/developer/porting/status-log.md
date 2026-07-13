@@ -9314,3 +9314,36 @@ The indexing spine lands (early — file-ops and store-file both ride
   `@/lib/embedding/embedding-service` (3-dim `test-model`) — un-mock via
   requireActual or every search 500s with a dimension mismatch.
 - core 0.0.200, harness 0.0.183.
+
+## 2026-07-12 — P4.6y units C+D: file-ops + folder-ops + PATCH + folder-create (the mutation surface, `mount_ops_equivalence` 39/39)
+
+- **`file_ops.rs` completed**: the four strategies exactly (db→db hard
+  link via a fresh link row / force = byte rewrite; fs→fs `hard_link`
+  with `CrossesDevices` → byte-copy fallback on copy but `UNSUPPORTED`
+  on link; fs rename with EXDEV copy+unlink; cross-storage byte copy
+  through `write_dest_bytes`), the sha verify pair on every op, v4's
+  ORDER-sensitive guards (copy checks dest-exists BEFORE same-path —
+  copying a file onto itself is `DEST_EXISTS`, not `INVALID_PATH`;
+  move/link check same-path first — pinned by the differential).
+- **`folder_ops.rs`**: non-empty folder delete → fs `CONFLICT` vs db
+  `NOT_EMPTY` (different codes, same 409 — pinned); fs `moveFolder`
+  renames on disk then rewrites link path prefixes (exercised by the
+  scan-then-move case).
+- **`mountFileUpdate`** (PATCH): rename runs FIRST so the description
+  lands on the new path; descriptions are BLOB-only (text → 400 with
+  v4's message verbatim); the post-mutation fileType re-read is
+  error-swallowed. **`mountFolderCreate`**: the route-LOCAL
+  normalise (no dot-collapse) + `isPathSafe` ported and unit-pinned.
+- v4's catch SPLIT reproduced: the file verbs put `code` on the body
+  ONLY for `FileOpError` (a `DatabaseStoreError` falls to the generic
+  500); the folder verbs code both.
+- **Differential**: `mount-ops.test.ts` (jest real-DB oracle; 39 cases)
+  + `mount_ops_equivalence` — bodies (incl. `{error, code}`) + the
+  eight-table dumps, green on the first full run. The shared dump +
+  normalization moved to `tests/mount_common/mod.rs` (used by the
+  mount-index suite too).
+- The db-store-event emitter (`emitDocumentWritten`/`Deleted`/`Moved` →
+  the watcher's debounced embedding refresh) is annotated at every port
+  site and rides the chokidar-watcher deferral — no variant, loud in
+  this order's close-out header.
+- core 0.0.201, harness 0.0.184.

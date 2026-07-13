@@ -25,6 +25,9 @@ use super::path_utils::{detect_native_text, mime_for_extension, path_extname};
 #[derive(Debug)]
 pub enum MountFileError {
     FileOp(FileOpError),
+    /// A typed `DatabaseStoreError` (the folder ops delegate to
+    /// `database_store`; its codes ride `fileOpStatus` too — P4.6y).
+    Store(crate::db::database_store::DatabaseStoreError),
     Db(DbError),
     /// An untyped failure (e.g. a non-ENOENT fs error) — v4 rethrows the raw
     /// error, which `fileOpStatus` maps to a 500 via its default arm.
@@ -45,6 +48,7 @@ impl std::fmt::Display for MountFileError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             MountFileError::FileOp(e) => write!(f, "{e}"),
+            MountFileError::Store(e) => write!(f, "{e}"),
             MountFileError::Db(e) => write!(f, "{e}"),
             MountFileError::Other(m) => write!(f, "{m}"),
         }
