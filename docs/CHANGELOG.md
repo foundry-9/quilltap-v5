@@ -38,6 +38,17 @@ hidden-dir skip, and localeCompare (ICU4X en-US) sort all match v4. Verified by
 a new route differential (`browse_directory_equivalence`, 5 cases byte-exact
 over the committed `browse-fs-tree/` fixture) plus Rust unit tests for the
 home-default and permission-denied arms.
+P4.6aa lane B (file-manager, gate): full gate run. ng test 535 green (76
+files), ng build clean, cargo test --workspace untouched-green (no Rust
+changed). Full Playwright: the probe-guarded file-manager spec correctly
+reports SKIPPED in-lane. Added an afterAll cleanup to the e2e spec
+(mountPointDelete the seeded store) so it never contaminates the shared
+fixture DB. Note for the unifier: under this machine's heavy build/disk
+load the full suite showed non-deterministic flakes in the server-
+lifecycle specs (foundation / setup-flow / terminal-flow — a different
+subset each run); all pass in isolation (3/3 green), all orthogonal to
+this lane's changes.
+
 P4.6aa lane B (file-manager, unit 5): the <select [value]> audit rider
 (dogfood-#6). Audited every <select [value]> in the enumerated files.
 Static/synchronous-option selects (coreWhisper, pronoun preset, transport,

@@ -9825,3 +9825,19 @@ via `[value]` on the `<select>`): `api-key-modal.ts` Provider
 (`providerList`) and `new-character.ts` Default Connection Profile
 (`connectionProfileList`). Regression specs: `api-key-modal.spec.ts` (new)
 + a `[selected]` case in `new-character.spec.ts`. 6 cases green.
+
+**Gate (SPA 0.5.56).** `ng test` 535 green (76 files); `ng build` clean.
+Full Playwright: the probe-guarded `file-manager-flow` spec reports
+SKIPPED in-lane (the toggle/detail screen are lane A + the unifier wire).
+Added an `afterAll` `mountPointDelete` so the spec leaves the shared
+fixture DB pristine whether it skips or runs. **Gotcha for the unifier:**
+under this machine's heavy concurrent build + near-full-disk load the full
+suite flaked non-deterministically in the server-lifecycle specs
+(`foundation` / `setup-flow` / `terminal-flow` — a DIFFERENT subset each
+run: 1st run terminal only, 2nd run foundation+setup+terminal). All three
+pass in isolation (verified 3/3 green, real exit 0), all are orthogonal to
+this lane (unlock/theme, fresh-instance provisioning, PTY spawn — none
+touch adapter helpers, the unreferenced component, the skipping e2e, or
+the two select conversions). Re-run the full suite at unification on a
+quieter machine; the file-manager beats ACTIVATE once the sibling detail
+screen + toggle wire land.

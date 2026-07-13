@@ -46,6 +46,22 @@ test.beforeAll(async () => {
   }
 });
 
+test.afterAll(async () => {
+  // Leave the shared server's DB as we found it — delete the seeded store (and,
+  // at unification, whatever the walk created inside it). Keeps this spec from
+  // contaminating the shared fixture whether it skips or runs.
+  if (!storeId) return;
+  try {
+    const ctx = await pwRequest.newContext();
+    await ctx.post(`${BASE_URL}/api/dispatch`, {
+      data: { type: 'mountPointDelete', mountPointId: storeId },
+    });
+    await ctx.dispose();
+  } catch {
+    /* best-effort cleanup */
+  }
+});
+
 /** Unlock only when the passphrase screen is showing (the shared server stays unlocked). */
 async function maybeUnlock(page: Page): Promise<void> {
   const passphrase = page.locator('#qt-passphrase');
