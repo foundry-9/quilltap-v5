@@ -9760,3 +9760,19 @@ open/download stay REST), `error-translation` (the code table verbatim;
 fallback keyed on the dispatch `ErrorKind` kebab strings), and
 `reindex-after-copy` (verbatim). 37 unit cases green (derived from the v4
 sources — none carried unit tests, noted in each spec header).
+
+**Unit 2 — the wiring core (SPA 0.5.52).** Ported v4
+`createSvarAdapter.ts` forward as a framework-free `FileManagerAdapter`
+(a method surface the bespoke widget calls, in place of SVAR's
+`api.on(action)` interception). Keeps v4's choreography exactly:
+serialized mutation chain (`enqueue`), capability gate + revert,
+reload-to-reconcile (`onReloadNeeded` after every mutating op), error
+translation (dispatch `code` first, then `kind`, read defensively), the
+two backend-gap refusals (no request fired), and the post-copy reindex
+(`onIndexing` + `mountReindex`/`mountEmbed`, fire-and-forget). The
+concrete `CoreFileManagerTransport` rides `CoreClient.dispatch` for JSON
+verbs (one localized `as unknown as CoreRequest` cast — the file-op verbs
+are lane A's `core-contract.ts` and not in the SPA union) and the
+multipart `?action=write-file` REST leg (form fields `file` + `path`, v4
+`{error, code}` failure body) for uploads. `loadMountTree` →
+`mountFilesList` → `listingToTree`. 14 unit cases green.

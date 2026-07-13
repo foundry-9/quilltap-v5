@@ -38,6 +38,21 @@ hidden-dir skip, and localeCompare (ICU4X en-US) sort all match v4. Verified by
 a new route differential (`browse_directory_equivalence`, 5 cases byte-exact
 over the committed `browse-fs-tree/` fixture) plus Rust unit tests for the
 home-default and permission-denied arms.
+P4.6aa lane B (file-manager, unit 2): the wiring core. Ported v4's
+createSvarAdapter forward as a framework-free FileManagerAdapter (method
+surface instead of SVAR's api.on interception): the serialized mutation
+chain (a flurry of gestures can't interleave), capability gating before
+any request (a read-only mount refuses and reverts the optimistic
+change), reload-to-reconcile after every mutating op, error translation
+to the steampunk verdict (dispatch code then kind, read defensively), and
+the post-copy reindex for cross-storage byte-copies (onIndexing +
+mountReindex/mountEmbed). The concrete transport (CoreFileManagerTransport)
+rides CoreClient.dispatch for JSON verbs and the multipart
+?action=write-file REST leg for uploads; the file-op verbs aren't in the
+SPA CoreRequest union (lane A's core-contract.ts), so they go through
+dispatch with one localized cast + a defensive envelope read. loadMountTree
+turns mountFilesList into flat tree nodes. 14 unit cases green.
+
 P4.6aa lane B (file-manager, unit 1): the D18 ngx-explorer spike ran
 GREEN on all three named gating checks (renders under Angular 21
 zoneless; standalone-from-standalone interop — the lib is standalone in
