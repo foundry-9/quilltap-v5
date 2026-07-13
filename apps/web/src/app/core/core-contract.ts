@@ -970,6 +970,85 @@ export interface ProjectWardrobeDeleteRequest {
   itemId: string;
 }
 
+// ===========================================================================
+// The courier + chat-images surface (P4.6ac; p4.6ab implements the server side)
+// ---------------------------------------------------------------------------
+// Lane B (this file's owner) authors these request variants; lane A pins their
+// response envelopes with its route oracle. The SPA reads responses defensively
+// (dispatch/dispatchData), so only the request `type`/param NAMES are binding
+// here — the response shapes reconcile name-for-name at unification.
+// ===========================================================================
+
+/** Album option for the save-to-album picker (v4 `chatPhotoAlbums`). */
+export interface AlbumOption {
+  characterId: string;
+  characterName: string;
+  /** Present count of photos already in the album (v4 surfaces it in the label). */
+  photoCount?: number;
+  /** Whether this is the user-controlled character's album (v4 flags it). */
+  isUserCharacter?: boolean;
+}
+
+/** One chat file (v4 `chatFilesList` row). Read defensively; extra fields ok. */
+export interface ChatFileDto {
+  id: string;
+  filename: string;
+  filepath: string;
+  mimeType: string;
+  sizeBytes?: number;
+  createdAt?: string;
+}
+
+/** The Courier paste-back: settle the pending manual turn (v4 `?action=resolve-external-turn`). */
+export interface MessageResolveExternalTurnRequest {
+  type: 'messageResolveExternalTurn';
+  chatId: string;
+  messageId: string;
+  replyContent: string;
+}
+/** The Courier cancel (v4 `?action=cancel-external-turn`). */
+export interface MessageCancelExternalTurnRequest {
+  type: 'messageCancelExternalTurn';
+  chatId: string;
+  messageId: string;
+}
+
+/** Save an in-chat image into a store album (v4 `messageSaveImage`). */
+export interface MessageSaveImageRequest {
+  type: 'messageSaveImage';
+  chatId: string;
+  messageId: string;
+  fileId: string;
+  mountPointId: string;
+  caption?: string;
+}
+/** List the save-to-album target albums for a chat (v4 `chatPhotoAlbums`). */
+export interface ChatPhotoAlbumsRequest {
+  type: 'chatPhotoAlbums';
+  chatId: string;
+}
+
+/** Record a generated-image tool result on a chat (v4 `chatAddToolResult`). */
+export interface ChatAddToolResultRequest {
+  type: 'chatAddToolResult';
+  chatId: string;
+  tool: 'generate_image';
+  initiatedBy: string;
+  prompt: string;
+  images: { id: string; filename: string; filepath: string; mimeType: string }[];
+}
+
+/** List a chat's uploaded/generated files for the gallery (v4 `chatFilesList`). */
+export interface ChatFilesListRequest {
+  type: 'chatFilesList';
+  chatId: string;
+}
+/** Permanently delete a chat file (v4 `/chat-files/[id]` DELETE). */
+export interface ChatFileDeleteRequest {
+  type: 'chatFileDelete';
+  fileId: string;
+}
+
 /** The internally-tagged request union (one variant per user-meaningful op). */
 export type CoreRequest =
   | { type: 'health' }
@@ -1125,6 +1204,14 @@ export type CoreRequest =
   | ListingSurfaceRequest
   // --- The memory surface (P4.6t; p4.6s implements the server side) ---
   | MemoryRequest
+  // --- The courier + chat-images surface (P4.6ac; p4.6ab server side) ---
+  | MessageResolveExternalTurnRequest
+  | MessageCancelExternalTurnRequest
+  | MessageSaveImageRequest
+  | ChatPhotoAlbumsRequest
+  | ChatAddToolResultRequest
+  | ChatFilesListRequest
+  | ChatFileDeleteRequest
   // --- Autonomous rooms (P4.6ad — lane C's own delimited block) ---
   | AutonomousRoomRequest;
 
@@ -1267,6 +1354,19 @@ export interface MessageAttachment {
   sha256?: string;
 }
 
+/**
+ * A referenced attachment on a pending courier turn (v4 CourierBubble's
+ * `message.pendingExternalAttachments`): the file to download and re-upload into
+ * the destination LLM client. Emitted verbatim by `api::salon::project_message`.
+ */
+export interface PendingExternalAttachment {
+  fileId: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  downloadUrl: string;
+}
+
 /** v4 systemSender union (the personified Staff). */
 export type SystemSender =
   | 'lantern'
@@ -1325,7 +1425,7 @@ export interface MessageDto {
   carinaMeta: CarinaMeta | null;
   pendingExternalPrompt: string | null;
   pendingExternalPromptFull: string | null;
-  pendingExternalAttachments: unknown[] | null;
+  pendingExternalAttachments: PendingExternalAttachment[] | null;
   reasoningContent: string | null;
   reasoningSegments: MessageReasoningSegment[] | null;
   confirmed?: boolean;
@@ -1397,6 +1497,14 @@ export interface ChatDetail {
   lastTurnParticipantId: string | null;
   activeTypingParticipantId?: string | null;
   impersonatingParticipantIds?: string[];
+  /**
+   * The chat's blob mount point — the store whose `images/` folder backs
+   * relative markdown image refs (v4 `MessageContent` `blobMountPointId`). v4
+   * declares this plumbing but never populates it, so the rewrite arm stays
+   * dormant until a producer emits it; the field name is binding (Shared
+   * contract) so the client-side rewrite has a stable hook.
+   */
+  blobMountPointId?: string | null;
 }
 
 // ---------------------------------------------------------------------------

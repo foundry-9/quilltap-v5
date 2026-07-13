@@ -8,15 +8,25 @@ import {
   signal,
 } from '@angular/core';
 
-import type { ChatDetail, ChatSettingsDto, MessageDto } from '../core/core-contract';
+import type { ChatDetail, ChatSettingsDto, MessageAttachment, MessageDto } from '../core/core-contract';
 import { Avatar } from '../ui/avatar';
 import { Icon } from '../ui/icon';
+import { thumbnailUrl, fileUrl } from '../images/image-urls';
 import { resolveMessageAuthor, type SwipeState } from './chat-view-model';
+import { CourierBubble } from './courier-bubble';
 import { MessageContent } from './message-content';
 import { ThinkingBlock } from './thinking-block';
 
 /** The bubble variant for a message (drives the qt-chat-message-* class). */
 type Variant = 'user' | 'assistant' | 'whisper' | 'silent';
+
+/** An in-chat image click → opens the lightbox (v4 `onImageClick`). */
+export interface ImageClickEvent {
+  /** Full-resolution image URL (the modal `src`). */
+  src: string;
+  filename: string;
+  fileId?: string;
+}
 
 /**
  * One conversation message row — a slim port of v4 `MessageRow`. Renders the
@@ -27,14 +37,35 @@ type Variant = 'user' | 'assistant' | 'whisper' | 'silent';
 @Component({
   selector: 'qt-message-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Avatar, Icon, MessageContent, ThinkingBlock],
+  imports: [Avatar, Icon, CourierBubble, MessageContent, ThinkingBlock],
   template: `
     <div
       class="qt-chat-message-row"
       [class.qt-chat-message-row-user]="author().isUser"
       [class.qt-chat-message-row-assistant]="!author().isUser"
+      [class.qt-chat-message-row-courier]="isCourier()"
       [class.group]="true"
     >
+      @if (isCourier()) {
+        <!-- The Courier: a pending manual/clipboard turn renders a bubble in place
+             of the normal message, skipping the action bar and danger chrome (v4
+             MessageRow's early-return courier branch). -->
+        @if (showAvatar() && !author().isUser) {
+          <div class="qt-chat-desktop-avatar">
+            <qt-avatar [name]="author().name" [src]="author().avatarUrl" size="chat" />
+          </div>
+        }
+        <div class="qt-chat-message-body group">
+          <div class="qt-chat-message qt-chat-message-assistant">
+            <qt-courier-bubble
+              [chatId]="chat().id"
+              [message]="message()"
+              [characterName]="author().name"
+              (settled)="courierSettled.emit($event)"
+            />
+          </div>
+        </div>
+      } @else {
       @if (showAvatar() && !author().isUser) {
         <div class="qt-chat-desktop-avatar">
           <qt-avatar [name]="author().name" [src]="author().avatarUrl" size="chat" />
@@ -85,7 +116,32 @@ type Variant = 'user' | 'assistant' | 'whisper' | 'silent';
               </button>
             </div>
           } @else {
-            <qt-message-content [content]="message().content" />
+            <qt-message-content [content]="message().content" [blobMountPointId]="blobMountPointId()" />
+          }
+
+          @if (imageAttachments().length > 0) {
+            <div class="qt-chat-attachment-list">
+              @for (att of imageAttachments(); track att.id) {
+                <button
+                  type="button"
+                  class="qt-button qt-chat-attachment-button"
+                  [title]="att.filename"
+                  [attr.aria-label]="'View ' + att.filename"
+                  (click)="onThumbnailClick(att)"
+                >
+                  <img
+                    [src]="thumbFor(att)"
+                    [alt]="att.filename"
+                    width="80"
+                    height="80"
+                    class="qt-chat-attachment-image"
+                  />
+                  <div class="qt-chat-attachment-overlay">
+                    <qt-icon name="zoom-in" class="w-4 h-4" />
+                  </div>
+                </button>
+              }
+            </div>
           }
 
           <div class="qt-chat-message-action-bar">
@@ -167,6 +223,7 @@ type Variant = 'user' | 'assistant' | 'whisper' | 'silent';
           <qt-avatar [name]="author().name" [src]="author().avatarUrl" size="chat" />
         </div>
       }
+      }
     </div>
   `,
 })
@@ -186,6 +243,10 @@ export class MessageRow {
   readonly swipeNext = output<MessageDto>();
   readonly saveEdit = output<{ id: string; content: string }>();
   readonly cancelEdit = output<void>();
+  /** An in-chat image thumbnail was clicked — open the lightbox (v4 `onImageClick`). */
+  readonly imageClick = output<ImageClickEvent>();
+  /** The courier turn settled (resolved/cancelled) — trigger a chat refetch (v4). */
+  readonly courierSettled = output<string>();
 
   protected readonly editDraft = signal('');
 
@@ -199,6 +260,25 @@ export class MessageRow {
   }
 
   protected readonly author = computed(() => resolveMessageAuthor(this.message(), this.chat()));
+
+  /** A pending manual/clipboard turn renders the Courier bubble (v4). */
+  protected readonly isCourier = computed(() => this.message().pendingExternalPrompt != null);
+
+  /** The chat's blob mount point, threaded to the markdown img rewrite (dormant in v4). */
+  protected readonly blobMountPointId = computed(() => this.chat().blobMountPointId ?? null);
+
+  /** The message's image attachments (v4 `getImageAttachments`: image/* MIME). */
+  protected readonly imageAttachments = computed(() =>
+    (this.message().attachments || []).filter((a) => a.mimeType.startsWith('image/')),
+  );
+
+  protected thumbFor(att: MessageAttachment): string {
+    return thumbnailUrl(att.id);
+  }
+
+  protected onThumbnailClick(att: MessageAttachment): void {
+    this.imageClick.emit({ src: fileUrl(att.id), filename: att.filename, fileId: att.id });
+  }
 
   protected readonly variant = computed<Variant>(() => {
     const m = this.message();

@@ -19,7 +19,7 @@ import type { ChatDetail, ChatSettingsDto, MessageDto } from '../core/core-contr
 import { AnnouncementGroup } from './announcement-group';
 import { AutoScrollController } from './auto-scroll';
 import { buildRenderItems, type SwipeState } from './chat-view-model';
-import { MessageRow } from './message-row';
+import { MessageRow, type ImageClickEvent } from './message-row';
 import { StreamingMessage } from './streaming-message';
 import { Icon } from '../ui/icon';
 import { VirtualRow } from './virtual-row';
@@ -82,6 +82,8 @@ import { VirtualRow } from './virtual-row';
                     (swipeNext)="swipeNext.emit($event)"
                     (saveEdit)="saveEdit.emit($event)"
                     (cancelEdit)="cancelEdit.emit()"
+                    (imageClick)="imageClick.emit($event)"
+                    (courierSettled)="courierSettled.emit($event)"
                   />
                 } @else {
                   <qt-announcement-group [chips]="item.chips" [chatId]="chat().id" />
@@ -128,6 +130,8 @@ export class MessageList {
   readonly swipeNext = output<MessageDto>();
   readonly saveEdit = output<{ id: string; content: string }>();
   readonly cancelEdit = output<void>();
+  readonly imageClick = output<ImageClickEvent>();
+  readonly courierSettled = output<string>();
 
   private readonly scroll = viewChild<ElementRef<HTMLElement>>('scroll');
   private readonly endAnchor = viewChild<ElementRef<HTMLElement>>('endAnchor');

@@ -10349,3 +10349,59 @@ oracle basis for one).
 
 **Gate (in-lane):** ng test 574 green (was 547 baseline; +27 across
 this round's specs), ng build clean. SPA 0.5.62.
+
+### P4.6ac units 2+3 — the Courier bubble + the in-chat image lightbox (Tier 1.1 + 1.2) — LANDED
+
+**Contract block (`core-contract.ts`, lane B owns):** authored the
+courier/images request variants — `messageResolveExternalTurn`,
+`messageCancelExternalTurn`, `messageSaveImage`, `chatPhotoAlbums`,
+`chatAddToolResult`, `chatFilesList`, `chatFileDelete` (appended in a
+delimited block at the union tail; lane C appends its own autonomous
+block, untouched here). Typed `PendingExternalAttachment`
+(`{fileId,filename,mimeType,sizeBytes,downloadUrl}`) replaces the
+`unknown[]` on `MessageDto.pendingExternalAttachments`; added
+`AlbumOption` / `ChatFileDto` DTOs and the dormant
+`ChatDetail.blobMountPointId`. Responses are read defensively
+(dispatch/dispatchData) so only the request NAMES are binding in-lane.
+
+**Courier bubble (`chat/courier-bubble.ts`):** a faithful port of v4
+`CourierBubble.tsx` — the delta/full-context toggle (`showFull`), the
+copy button (2s "Copied" latch), attachment download links + byte-size
+meta, the paste-back textarea, Submit → `messageResolveExternalTurn`,
+Cancel → `messageCancelExternalTurn`, `settled` output for the parent
+refetch. v4 posted to `?action=resolve/cancel-external-turn`; v5 routes
+through the dispatch variants. The component injects `CoreClient` and
+keeps v4's self-contained submitting/cancelling/copied/error state.
+
+**Message-row branch (`chat/message-row.ts`):** early courier branch on
+`pendingExternalPrompt != null` (adds `qt-chat-message-row-courier`,
+renders the bubble, skips the action bar/danger chrome — v4's early
+return); `getImageAttachments` (image/* filter) renders 80px thumbnail
+buttons whose src is the v5 id-keyed thumbnail route
+(`/api/v1/files/{id}?action=thumbnail&size=80` — v4 served the raw
+filepath; the order directs the id route). Click emits `imageClick
+{src: fileUrl(id), filename, fileId}`. `[blobMountPointId]` threaded to
+`qt-message-content`.
+
+**ImageModal (`images/image-modal.ts`):** a port of v4
+`ImageModal.tsx` — full-screen lightbox, save-to-character-gallery
+(rides `characterPhotoSaveById`), download (fetch→blob→anchor), copy
+(ClipboardItem), delete (`chatFileDelete`, window.confirm gate), Escape
++ backdrop close, body-scroll lock. v4's toasts become a transient
+inline notice (no SPA toast service yet). `images/image-urls.ts` holds
+the `fileUrl`/`thumbnailUrl` helpers.
+
+**Wiring:** `message-list` forwards `imageClick`/`courierSettled`;
+`salon-conversation` hosts `<qt-image-modal>` (character context from
+`firstCharacter`/`firstUserCharacter`, v4's getFirst*), refetches on
+courierSettled and on image delete.
+
+**Differentials (transcription + specs):** `courier-bubble.spec.ts`
+(delta/full toggle, attachment links + byte meta, resolve/cancel
+dispatch payloads, settled emission, blank-reply disable, server-error
+surfacing), `image-modal.spec.ts` (save/delete dispatch payloads,
+confirm gate, backdrop+button close), `message-row.spec.ts` (courier
+branch renders bubble + skips action bar; thumbnail src = id route;
+non-image filter; imageClick payload).
+
+**Gate (in-lane):** ng test 574 green, ng build clean. SPA 0.5.63.

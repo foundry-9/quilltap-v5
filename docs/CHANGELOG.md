@@ -63,6 +63,19 @@ structural row diffs, invalid-cron/non-autonomous/missing arms, the
 destructive clamp both ways). No `ChatCreateRequest` change needed —
 it already carries every autonomous field (verified). Bumps
 quilltap-core 0.0.208, quilltap-harness 0.0.189.
+P4.6ac (Salon SPA, lane B): the Courier bubble and the in-chat image
+lightbox. A pending manual/clipboard turn (`pendingExternalPrompt`)
+now renders a Courier bubble in the message row — copy the delta or
+full-context prompt, download referenced attachments, paste the reply
+back to settle (`messageResolveExternalTurn`) or cancel
+(`messageCancelExternalTurn`), skipping the normal action bar/danger
+chrome. Image attachments render 80px thumbnails (the id-keyed
+`/api/v1/files/{id}?action=thumbnail` route) that open an ImageModal
+lightbox: save to a character's gallery (`characterPhotoSaveById`),
+download, copy, delete (`chatFileDelete`). The courier/images request
+variants were authored into `core-contract.ts` (lane A pins their
+response envelopes). SPA 0.5.63.
+
 P4.6ac (Salon SPA, lane B): ported the markdown store-image rewrite.
 Rendering a message with a `blobMountPointId` now rewrites relative
 image refs (`![](images/x.webp)`) to the chat's mount-point blob route,

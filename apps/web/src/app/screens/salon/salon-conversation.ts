@@ -16,6 +16,8 @@ import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experime
 import { ChatComposer } from '../../chat/chat-composer';
 import { ConversationHeader } from '../../chat/conversation-header';
 import { MessageList } from '../../chat/message-list';
+import type { ImageClickEvent } from '../../chat/message-row';
+import { ImageModal } from '../../images/image-modal';
 import { MemoryCascadeDialog, type MemoryCascadeAction } from '../../chat/memory-cascade-dialog';
 import { splitSwipeGroups, type SwipeState } from '../../chat/chat-view-model';
 import { TurnControls } from '../../chat/turn-controls';
@@ -107,6 +109,7 @@ interface CascadePrompt {
     TerminalSessionPicker,
     DocumentPane,
     DocumentPicker,
+    ImageModal,
   ],
   template: `
     <div class="qt-chat-layout">
@@ -156,6 +159,8 @@ interface CascadePrompt {
           (swipeNext)="onSwipe($event, 1)"
           (saveEdit)="onSaveEdit($event)"
           (cancelEdit)="editingId.set(null)"
+          (imageClick)="modalImage.set($event)"
+          (courierSettled)="onCourierSettled()"
         />
       </div>
 
@@ -235,6 +240,20 @@ interface CascadePrompt {
         [isSwipeGroup]="c.isSwipeGroup"
         (confirm)="onCascadeConfirm($event)"
         (cancel)="cascade.set(null)"
+      />
+    }
+
+    @if (modalImage(); as img) {
+      <qt-image-modal
+        [src]="img.src"
+        [filename]="img.filename"
+        [fileId]="img.fileId"
+        [characterId]="firstCharacter()?.id"
+        [characterName]="firstCharacter()?.name"
+        [userCharacterId]="firstUserCharacter()?.id"
+        [userCharacterName]="firstUserCharacter()?.name"
+        (close)="modalImage.set(null)"
+        (deleted)="onImageDeleted()"
       />
     }
   `,
@@ -401,6 +420,25 @@ export class SalonConversation {
   // --- inline edit + delete-cascade ---
   protected readonly editingId = signal<string | null>(null);
   protected readonly cascade = signal<CascadePrompt | null>(null);
+
+  // --- the in-chat image lightbox (v4 SalonView `modalImage`) ---
+  protected readonly modalImage = signal<ImageClickEvent | null>(null);
+
+  /** The first non-user character — the save-to-gallery target (v4 `getFirstCharacter`). */
+  protected readonly firstCharacter = computed<{ id: string; name: string } | null>(() => {
+    const p = (this.chat()?.participants ?? []).find(
+      (x) => x.type === 'CHARACTER' && x.controlledBy === 'llm' && x.character,
+    );
+    return p?.character ? { id: p.character.id, name: p.character.name } : null;
+  });
+
+  /** The first user-controlled character (v4 `getFirstUserCharacter`). */
+  protected readonly firstUserCharacter = computed<{ id: string; name: string } | null>(() => {
+    const p = (this.chat()?.participants ?? []).find(
+      (x) => x.type === 'CHARACTER' && x.controlledBy === 'user' && x.character,
+    );
+    return p?.character ? { id: p.character.id, name: p.character.name } : null;
+  });
 
   private readonly split = computed(() =>
     this.chat() ? splitSwipeGroups(this.chat()!.messages) : { messages: [], swipeStates: {} },
@@ -731,6 +769,17 @@ export class SalonConversation {
 
   protected onCopy(message: MessageDto): void {
     void navigator.clipboard?.writeText(message.content);
+  }
+
+  /** A courier turn settled (resolved/cancelled) → refetch (v4 `onCourierTurnSettled`). */
+  protected async onCourierSettled(): Promise<void> {
+    await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+  }
+
+  /** The lightbox deleted an image → refetch so the thumbnail disappears (v4 `onDelete`). */
+  protected async onImageDeleted(): Promise<void> {
+    this.modalImage.set(null);
+    await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
   }
 
   protected onEdit(message: MessageDto): void {
