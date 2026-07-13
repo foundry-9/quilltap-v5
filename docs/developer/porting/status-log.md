@@ -10107,3 +10107,58 @@ the first full run caught the rehydrate racing the exit stamp).
 Versions: core 0.0.208, host 0.0.16, harness 0.0.189, SPA 0.5.62
 (quilltap-web untouched). NOTE: sibling `417566c` also carries SPA
 0.5.62 (spec-only) — reconcile at unification.
+## P4.6ab (lane A) — the courier + chat-images server surface [IN PROGRESS] (branch `claude/courier-images-server-port-3122ce`)
+
+Drift-check: v4 HEAD == baseline `6a8a77aa` (no drift).
+
+### P4.6ab unit 1 — courier/save-image/photo-albums/add-tool-result + chat-files list/delete — LANDED
+
+New `crates/quilltap-core/src/api/chat_media.rs` wraps the already-ported
+services (never re-implements): `messageResolveExternalTurn` /
+`messageCancelExternalTurn` over `courier_transport::{resolve,cancel}_external_turn`
+(W4.4a4, previously ported-but-unwired); `messageSaveImage` over
+`photos::save_image_to_album` (W4.9b) behind the injected `FileBytesStore`;
+`chatPhotoAlbums` (`actions/photo-albums.ts`); `chatAddToolResult`
+(`actions/tools.ts`); and `chatFilesList` / `chatFileDelete`.
+
+Delimited P4.6ab blocks appended (two-core-dispatch-writer rule) to
+`types.rs` (Request variants + the `ChatMedia(Value)` Response), `engine.rs`
+(arms + two new EngineAssembly seams `courier_resolve` + `save_image_bytes`,
+`None` until the P4.6ac unification wire — the swipe-generate/memory-embedding
+precedent), and `mod.rs`. Host initializer got `courier_resolve: None,
+save_image_bytes: None` (compile-only; the live wire is a unification step).
+
+**Fixture (new family):** `harness/oracle/fixtures/build-courier-images-web-fixture.ts`
+→ committed `crates/quilltap-web/tests/fixtures/courier-images-{main,mount}.db`
+(+ `.meta.json` echoing the minted vault/store/image ids). Two characters with
+vaults (Lora/Riya), a project + linked store, Uploads/General mounts, a courier
+PENDING placeholder (participant has a characterId → the checkpoint write, but
+NO connection profile → the resolve triggers are skipped on both sides, exactly
+as v4 `if (connectionProfile)`), a project chat carrying an ingested image, chat
+files, an image profile.
+
+**Differential:** `courier_images_routes_equivalence` (15 checks) vs v4's REAL
+route handlers over the shared fixture — GREEN. Recipe notes: un-mock
+`character-vault-bridge` (else all vaults collapse to `mock-vault-mount`); mock
+`markdown-renderer.service` (chat GET pulls unified/ESM); mock the two
+save-image side-effect seams; the save-image `readImageBuffer` bytes are EMITTED
+by the oracle (build-time recording of `readImageBuffer` diverges from the
+case-time read — the oracle bytes are authoritative, fed to the Rust canned
+`FileBytesStore`); add-tool-result returns the CONSTRUCTED message (v4
+`addMessage` returns the built object with `systemSender:null`, not a re-marshal
+that drops nulls). Save-image is a response-envelope diff (the write internals
+stay proven by `photo_tools_equivalence`).
+
+Survey correction (reported): `blobMountPointId` is a dead optional prop in v4
+(`MessageContent.tsx` only; NO route emits it) — the additive chat-GET echo is a
+no-op and was NOT added (adding it would diverge).
+
+**OPEN under the order (loud deferrals, `not_available` idiom):** the chat-file
+multipart upload leg (`chatFileUpload` + the web route — needs the host
+storage-write seam) and the `imageProfileGenerate` un-refusal (recorder-backed).
+The chat-files-list mount-file-attachment announcement walk is a bounded
+deferral (the fixture carries none).
+
+**Gate:** cargo fmt clean; clippy -D warnings clean on default + native-transport;
+cargo test --workspace green with `courier_images_routes_equivalence` verified BY
+NAME (15/15). Versions: core 0.0.208, web 0.0.19, harness 0.0.189.

@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+P4.6ab (lane A, courier + chat-images server surface): the Salon's
+courier and image dispatch verbs are now differential-proven against
+v4's real route handlers. New `api::chat_media` module wraps the
+already-ported services: resolve/cancel external turn (courier),
+save-image (behind the injected file-bytes seam), photo-albums,
+add-tool-result (the Prospero-authored generate_image recorder), and
+the chat-files list/delete. New `courier-images-{main,mount}.db`
+fixture family + the `courier_images_routes_equivalence` differential
+(15 checks green over a fresh v4 `6a8a77aa` oracle). Two new
+EngineAssembly seams (courier-resolve driver + save-image bytes),
+`None` until the P4.6ac unification wire (loud refusal / EMPTY_bytes
+fallback meanwhile). OPEN under the order (loud deferrals): the
+chat-file multipart upload leg and the imageProfileGenerate un-refusal.
+Survey correction: `blobMountPointId` is a dead prop in v4 (no route
+emits it) — the additive chat-GET echo is a no-op and was NOT added.
+
 Planned the P4.6ab/P4.6ac/P4.6ad round (docs only): three work orders
 written — the courier + chat-images server surface (P4.6ab), the
 courier + images Salon SPA (P4.6ac), and the autonomous-rooms

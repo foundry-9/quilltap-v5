@@ -1544,6 +1544,71 @@ pub enum Request {
         path: Option<String>,
     },
     // === end P4.6z ===
+    // === P4.6ab: courier + chat images (lane A, append-only) ===
+    /// v4 `POST /chats/[id]/messages/[messageId]?action=resolve-external-turn`
+    /// (`{replyContent}`) → `{resolved, messageId, participantId}`. The settle
+    /// re-enters the cheap-LLM triggers when a connection profile resolves (the
+    /// dispatch arm rides the courier-resolve driver seam).
+    #[serde(rename_all = "camelCase")]
+    MessageResolveExternalTurn {
+        chat_id: String,
+        message_id: String,
+        reply_content: String,
+    },
+    /// v4 `?action=cancel-external-turn` → `{cancelled, messageId}`.
+    #[serde(rename_all = "camelCase")]
+    MessageCancelExternalTurn {
+        chat_id: String,
+        message_id: String,
+    },
+    /// v4 `?action=save-image` (`{fileId, mountPointId, caption?, tags?}`) →
+    /// `{saved, mountPoint, relativePath, linkId, keptAt, fileId, sha256}`.
+    #[serde(rename_all = "camelCase")]
+    MessageSaveImage {
+        chat_id: String,
+        message_id: String,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 `GET /chats/[id]?action=photo-albums` → `{albums}`.
+    #[serde(rename_all = "camelCase")]
+    ChatPhotoAlbums {
+        chat_id: String,
+    },
+    /// v4 `POST /chats/[id]?action=add-tool-result`
+    /// (`{tool, initiatedBy, prompt?, result?, images?}`) → `{success, message}`.
+    #[serde(rename_all = "camelCase")]
+    ChatAddToolResult {
+        chat_id: String,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 `GET /api/v1/chats/[id]/files` → `{files}`.
+    #[serde(rename_all = "camelCase")]
+    ChatFilesList {
+        chat_id: String,
+    },
+    /// v4 `DELETE /api/v1/chat-files/[id]` → `{success}`.
+    #[serde(rename_all = "camelCase")]
+    ChatFileDelete {
+        file_id: String,
+    },
+    /// The web-edge base64 CoreRequest for the multipart upload leg (v4
+    /// `POST /api/v1/chats/[id]/files`). `resolution`/`conflicting_file_id` drive the
+    /// project-file conflict resolution.
+    #[serde(rename_all = "camelCase")]
+    ChatFileUpload {
+        chat_id: String,
+        filename: String,
+        content_type: String,
+        /// base64 of the file bytes.
+        data: String,
+        #[serde(default)]
+        resolution: Option<String>,
+        #[serde(default)]
+        conflicting_file_id: Option<String>,
+    },
+    // === end P4.6ab ===
 }
 
 /// Typed DTO per variant (the uniffi payoff). `Error` carries the one
@@ -1661,6 +1726,13 @@ pub enum Response {
     /// error?}`). Pinned by `browse_directory_equivalence`.
     System(serde_json::Value),
     // === end P4.6z ===
+    // === P4.6ab: courier + chat images ===
+    /// A courier/chat-images body — the resolve/cancel envelopes, the save-image
+    /// `{saved, …}`, `{albums}`, the add-tool-result `{success, message}`, the
+    /// chat-files list `{files}` / delete `{success}` / upload
+    /// `{file}` | `{duplicate, …}`. Pinned by `courier_images_routes_equivalence`.
+    ChatMedia(serde_json::Value),
+    // === end P4.6ab ===
     Error(CoreError),
 }
 

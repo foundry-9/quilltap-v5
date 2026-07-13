@@ -109,6 +109,16 @@ pub struct EngineAssembly {
     /// v4's empty `ptyManager` map.
     pub terminal_probe:
         Option<Arc<dyn crate::services::ariel_notifications::TerminalLivenessProbe>>,
+    // === P4.6ab: courier + chat images ===
+    /// The courier-resolve driver (P4.6ab, wired at unification): the host holds the
+    /// completion provider + cheap executor the resolve settle's triggers ride.
+    /// `None` → the `messageResolveExternalTurn` arm answers a loud refusal.
+    pub courier_resolve: Option<Arc<dyn super::chat_media::CourierResolveDriver>>,
+    /// The save-image bytes seam (P4.6ab): the host's `fileStorageManager`-backed
+    /// [`FileBytesStore`]. `None` → the `messageSaveImage` arm falls back to
+    /// [`NotConfiguredBytes`] (faithful "no host byte store" → `EMPTY_BYTES`).
+    pub save_image_bytes: Option<Arc<dyn crate::photos::save_image_to_album::FileBytesStore>>,
+    // === end P4.6ab ===
 }
 
 impl EngineAssembly {
@@ -123,6 +133,8 @@ impl EngineAssembly {
             memory_embedding: None,
             mount_refresh: None,
             terminal_probe: None,
+            courier_resolve: None,
+            save_image_bytes: None,
         }
     }
 }
@@ -245,6 +257,10 @@ struct ReadyEngine {
     /// The live-PTY probe `ChatGet`'s terminal reconcile runs over (threaded
     /// from `EngineAssembly::terminal_probe`).
     terminal_probe: Option<Arc<dyn crate::services::ariel_notifications::TerminalLivenessProbe>>,
+    /// The courier-resolve driver + save-image bytes seam (P4.6ab; `None` until the
+    /// unification wire).
+    courier_resolve: Option<Arc<dyn super::chat_media::CourierResolveDriver>>,
+    save_image_bytes: Option<Arc<dyn crate::photos::save_image_to_album::FileBytesStore>>,
 }
 
 /// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
@@ -2276,6 +2292,98 @@ impl CoreEngine {
             Request::SystemBrowseDirectory { path } => {
                 super::system::browse_directory(path.as_deref())
             } // === end P4.6z ===
+            // === P4.6ab: courier + chat images ===
+            Request::MessageResolveExternalTurn {
+                chat_id,
+                message_id,
+                reply_content,
+            } => match self.ready_courier_resolve() {
+                Ok(driver) => {
+                    driver
+                        .resolve_external_turn(chat_id, message_id, reply_content)
+                        .await
+                }
+                Err(r) => r,
+            },
+            Request::MessageCancelExternalTurn {
+                chat_id,
+                message_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::chat_media::message_cancel_external_turn(&db, &chat_id, &message_id)
+                        .await
+                }
+                Err(r) => r,
+            },
+            Request::MessageSaveImage {
+                chat_id,
+                message_id,
+                body,
+            } => match self.ready_save_image() {
+                Ok((db, bytes)) => {
+                    super::chat_media::message_save_image(
+                        &db,
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        &message_id,
+                        &body,
+                        bytes,
+                        Arc::new(crate::photos::save_image_to_album::NoSideEffects)
+                            as Arc<
+                                dyn crate::photos::save_image_to_album::SaveImageSideEffects
+                                    + Send
+                                    + Sync,
+                            >,
+                        &crate::clock::now_iso(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ChatPhotoAlbums { chat_id } => match self.ready_db() {
+                Ok(db) => super::chat_media::chat_photo_albums(&db, &chat_id),
+                Err(r) => r,
+            },
+            Request::ChatAddToolResult { chat_id, body } => match self.ready_db() {
+                Ok(db) => {
+                    super::chat_media::chat_add_tool_result(&db, SINGLE_USER_ID, &chat_id, &body)
+                        .await
+                }
+                Err(r) => r,
+            },
+            Request::ChatFilesList { chat_id } => match self.ready_db() {
+                Ok(db) => super::chat_media::chat_files_list(&db, &chat_id),
+                Err(r) => r,
+            },
+            Request::ChatFileDelete { file_id } => match self.ready_db() {
+                Ok(db) => super::chat_media::chat_file_delete(&db, SINGLE_USER_ID, &file_id).await,
+                Err(r) => r,
+            },
+            Request::ChatFileUpload {
+                chat_id,
+                filename,
+                content_type,
+                data,
+                resolution,
+                conflicting_file_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::chat_media::chat_file_upload(
+                        &db,
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        super::chat_media::ChatFileUploadInput {
+                            filename,
+                            content_type,
+                            data,
+                            resolution,
+                            conflicting_file_id,
+                        },
+                    )
+                    .await
+                }
+                Err(r) => r,
+            }, // === end P4.6ab ===
         }
     }
 
@@ -2317,6 +2425,43 @@ impl CoreEngine {
     > {
         match &*self.inner.state.lock().unwrap() {
             EngineState::Ready(r) => Ok((r.db.clone(), r.terminal_probe.clone())),
+    /// The courier-resolve driver under the readiness gate (P4.6ab). A ready engine
+    /// without the driver (unwired host) answers the loud not-assembled refusal (the
+    /// swipe-generate precedent — the host wires it at unification).
+    fn ready_courier_resolve(
+        &self,
+    ) -> Result<Arc<dyn super::chat_media::CourierResolveDriver>, Response> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => match &r.courier_resolve {
+                Some(d) => Ok(Arc::clone(d)),
+                None => Err(Response::error(
+                    ErrorKind::Internal,
+                    "courier resolve not assembled (courier-resolve driver deferral)",
+                )),
+            },
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
+    /// The Db + save-image bytes seam under the readiness gate (P4.6ab). An unwired
+    /// host falls back to [`NotConfiguredBytes`] (faithful `EMPTY_BYTES`), so a ready
+    /// engine always answers.
+    fn ready_save_image(
+        &self,
+    ) -> Result<
+        (
+            Db,
+            Arc<dyn crate::photos::save_image_to_album::FileBytesStore>,
+        ),
+        Response,
+    > {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => {
+                let bytes = r.save_image_bytes.clone().unwrap_or_else(|| {
+                    Arc::new(crate::photos::save_image_to_album::NotConfiguredBytes)
+                });
+                Ok((r.db.clone(), bytes))
+            }
             EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
         }
     }
@@ -2737,6 +2882,8 @@ fn open_ready(
         memory_embedding: assembly.memory_embedding,
         mount_refresh: assembly.mount_refresh,
         terminal_probe: assembly.terminal_probe,
+        courier_resolve: assembly.courier_resolve,
+        save_image_bytes: assembly.save_image_bytes,
     })
 }
 

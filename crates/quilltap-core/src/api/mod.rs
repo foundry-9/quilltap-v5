@@ -22,6 +22,9 @@
 
 pub mod characters;
 pub mod chat_create;
+// === P4.6ab: courier + chat images ===
+pub mod chat_media;
+// === end P4.6ab ===
 pub mod chat_send;
 pub mod documents;
 pub mod engine;

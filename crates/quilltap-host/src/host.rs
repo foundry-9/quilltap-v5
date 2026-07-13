@@ -557,6 +557,13 @@ impl EngineAssembler for HostAssembler {
                 ),
             )),
             terminal_probe,
+            // === P4.6ab: courier + chat images ===
+            // The courier-resolve driver + the save-image bytes seam land with the
+            // sibling P4.6ac SPA integration (the unification wire); an unwired host
+            // answers the loud refusal / the NotConfiguredBytes EMPTY_BYTES fallback.
+            courier_resolve: None,
+            save_image_bytes: None,
+            // === end P4.6ab ===
         })
     }
 }
