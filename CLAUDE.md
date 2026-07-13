@@ -329,12 +329,24 @@ records THERE. Update this summary only when a phase or round completes.
   (`EngineAssembly.memory_embedding` — memoryCreate/memorySearch run
   live in the real server). Deferred loud: extract-memories-dry-run +
   CLI memory-diff, memory-dedup, embedding-profiles management,
-  conversation-summaries regen, the Document Mode pane, the Lexical
-  editors. Next candidates: the Document Mode Salon slice (its
-  split-pane mount point now exists), the Scriptorium/file-manager
-  vertical, the courier/images Salon slices, autonomous-rooms
-  settings, or P4.7 (Tauri) — see phase-4.md.
+  conversation-summaries regen.
+- **The P4.6v ∥ P4.6w ∥ P4.6x Document Mode + Scriptorium-server round:
+  UNIFIED on main (2026-07-12) — P4.6w/P4.6x CLOSED; P4.6v OPEN
+  (partial).** The whole Document Mode server surface (operator-doc-
+  actions + `STANDALONE_CHAT_ID`, 11 chat-scoped + 7 standalone
+  variants, chat_documents recents/move-sync, the qtap-target byte
+  route) ∥ the Document Mode SPA (pane + picker + split integration +
+  live e2e; **D17 Document-Mode spike RED** — markdown ships in the
+  byte-exact textarea, ProseMirror is the named next decision) ∥ the
+  P4.6v partial landing (chunker + pure leaves, the mounts fixture
+  family, the READ/LIST keystone with `mountFilesList`/`mountFileRead`).
+  **P4.6v units 4–9 remain OPEN** (write/ops/scan/blobs/convert +
+  reindex/embed; D7 not yet closed; the `mount_refresh` seam stays
+  unwired until they land — see the order header). Next candidates:
+  finish P4.6v, the Scriptorium SPA (D18, over the frozen file-ops
+  surface), the courier/images Salon slices, autonomous-rooms settings,
+  or P4.7 (Tauri) — see phase-4.md.
 - **Oracle baseline:** v4 HEAD `a7b1398d` (drift-check before every round).
-  Versions: core 0.0.193, harness 0.0.177, host 0.0.12, web 0.0.13, SPA 0.5.43.
+  Versions: core 0.0.198, harness 0.0.181, host 0.0.14, web 0.0.15, SPA 0.5.50.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

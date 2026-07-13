@@ -9145,3 +9145,63 @@ gesture/port-divergence class (no server bugs):
    announcement chips.
 
 `ng test` 470 (66 files) after the pane spec addition; SPA 0.5.50.
+
+## The P4.6v ∥ P4.6w ∥ P4.6x Document Mode + Scriptorium-server round — UNIFIED on main (2026-07-12)
+
+Three lanes cherry-picked onto `unify/p4.6vwx` (lane A's two
+mount-index commits — a PARTIAL landing, units 1–3 —, lane B's six
+Document-Mode-server commits, lane C's nine Document-Mode-SPA
+commits; conflicts only on the version files + the
+CHANGELOG/status-log unions + the expected two-writer
+`api/types.rs`/`api/engine.rs` delimited-block seams, resolved by
+keeping both blocks). v4 baseline re-verified at `a7b1398d` before
+unification. Whole-file version-delta check clean.
+
+**The unification wires (one commit):**
+
+- **The `MountRefreshScheduler` seam could NOT be wired** — the round
+  plan expected the unifier to connect lane A's reindex/embed services
+  to `EngineAssembly.mount_refresh`, but lane A closed partial and
+  those services (P4.6v units 4–9) don't exist. The seam stays `None`
+  with the loud skip at the `document_store` write sites; the host.rs
+  comment now records the real wiring condition. **Wiring it is a
+  named deliverable of the P4.6v remainder.**
+- **The contract diffed clean name-for-name** — all 18 P4.6w document
+  variants + the 2 landed P4.6v mount variants (`mountFilesList`,
+  `mountFileRead`) match lane C's core-contract block; the standalone
+  document family is server-only this round by design (the standalone
+  UI is lane C's loud workspace-tab deferral).
+- **Lane C's document e2e beats ACTIVATED** — the runtime capability
+  probe found the document dispatch live; four gate fallouts were
+  fixed (all gesture/port-divergence class — see the preceding
+  record), the load-bearing one being the container `(blur)` →
+  `(focusout)` port divergence that silently disabled the
+  flush-on-blur save in a real browser.
+
+**The full gate:** `cargo fmt --check` clean; clippy `-D warnings`
+clean on the default set AND `--features
+quilltap-core/native-transport`; workspace + release builds clean
+(Cargo.lock verified in sync); all four round oracles regenerated
+FRESH from v4 at `a7b1398d` (mount-chunker 69 rows, mount-read 18
+cases, documents-rename-target 16 rows, documents-routes 24 cases)
+and their differentials re-run green BY NAME; `cargo test
+--workspace` green (298 suites, 0 failed); `ng test` 470 (66 files);
+`ng build` clean; the FULL Playwright suite **29/29** including the
+two newly-activated document beats (open blank → edit → flush-save →
+reload-persist → rename → Librarian chip → close; document + terminal
+stacked in the vertical split) and the P4.6u terminal walk. The lane
+worktree `target/` dirs (~43 GB) were pre-cleaned before the gate
+(the parallel-round disk-pressure rule).
+
+**Orders:** P4.6w CLOSED (deferrals: the seam wire moved to P4.6v;
+the image/blob classify arm is fs-seam-gated; the fs-scope corpus
+correction recorded), P4.6x CLOSED (D17 Document-Mode spike RED —
+markdown ships in the byte-exact textarea; ProseMirror is the named
+next editor decision; deferred loud: doc_focus anchor scroll,
+maximize/focus live beat, qtap:// link opening, the picker
+FileBrowser + new-folder, change-tracker/gutter, the
+standalone/workspace-tab surface), **P4.6v OPEN** (units 1–3 landed
+and proven; units 4–9 enumerated in its status header — write/ops/
+scan/blobs/convert + reindex/embed + the seam wire; D7 NOT closed).
+**Versions after the round:** core 0.0.198, harness 0.0.181, host
+0.0.14, web 0.0.15, SPA 0.5.50.

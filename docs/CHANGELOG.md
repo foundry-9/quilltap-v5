@@ -2,6 +2,24 @@
 
 ## Recent Changes
 
+The P4.6v ∥ P4.6w ∥ P4.6x round unified: Document Mode end-to-end (the
+operator-doc-actions server surface + the SPA pane/picker vertical) and
+the first slice of the Scriptorium server (the mount-index pure leaves
++ the READ/LIST keystone). P4.6w and P4.6x are CLOSED; P4.6v stays OPEN
+with units 4-9 (write/ops/scan/blobs/convert + reindex/embed — D7 not
+yet closed, and the EngineAssembly.mount_refresh seam stays unwired
+until those services land). D17's Document-Mode Lexical spike came back
+RED: markdown documents ship in the byte-exact textarea; ProseMirror is
+the named next editor decision. Full gate green: fmt/clippy (both
+feature sets)/dev+release builds clean; all four round oracles
+regenerated fresh from v4 a7b1398d (69+18+16+24 cases) and their
+differentials green by name; cargo test --workspace 298 suites, 0
+failed; ng test 470 (66 files); ng build clean; the full Playwright
+suite 29/29 with the two document beats newly ACTIVATED (blank →
+edit → flush-save → reload-persist → rename → Librarian chip → close,
+plus document+terminal stacked panes). Versions: core 0.0.198, harness
+0.0.181, host 0.0.14, web 0.0.15, SPA 0.5.50.
+
 Fix the P4.6x document beats at first live run (four gate fallouts,
 all port-divergence/gesture class): (1) the pane's flush-on-blur save never
 fired in a real browser — the editor container listened for `blur`,

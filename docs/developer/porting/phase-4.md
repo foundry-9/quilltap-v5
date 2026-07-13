@@ -901,3 +901,33 @@ dependent-oracle regens anywhere. `tools/doc_edit/**` is FROZEN for
 everyone (no dedup refactor mid-port). A and B bump
 core/web/harness; C bumps the SPA (unifier accumulates). CHANGELOG /
 status-log are append-only union-merge blocks.
+
+**The P4.6v ∥ P4.6w ∥ P4.6x Document Mode + Scriptorium-server round is
+UNIFIED on main (2026-07-12) — P4.6w and P4.6x CLOSED; P4.6v stays OPEN
+with a partial landing.** Lane B (P4.6w) made the whole Document Mode
+server surface live: the `operator-doc-actions` core
+(`quilltap-core::documents`, with `STANDALONE_CHAT_ID` and the tier-1
+`computeRenameTarget`), the 11 chat-scoped + 7 standalone document
+dispatch variants, the `chat_documents` recents/move-sync extensions,
+and the qtap-target byte route — proven by the 16-row pure oracle +
+the 24-case `documents_routes_equivalence` over the committed
+`documents-{main,mount}.db` fixture. Lane C (P4.6x) delivered the
+Document Mode SPA — the pane (byte-exact textarea for EVERY file type
+after the **D17 Document-Mode spike came back RED**; ProseMirror is
+the named next-round editor decision), the document state store, the
+picker (consuming `mountFilesList`), the split integration with the
+`dividerPosition` ownership move, autosave + 409 reload, tool-result
+reloads — its e2e beats ACTIVATED at the gate. Lane A (P4.6v) landed
+its first three units (the pure leaves incl. the chunker, the
+`mounts-{main,mount}.db` + fs-tree fixture family, and the READ/LIST
+keystone with `mountFilesList`/`mountFileRead`) — **units 4–9 remain
+OPEN (write/ops/scan/blobs/convert + reindex/embed) and D7 is NOT yet
+closed.** Because lane A closed partial, the `MountRefreshScheduler`
+seam (`EngineAssembly.mount_refresh`) could NOT be wired at
+unification — it stays `None` + loud skip, and wiring it is now a
+named deliverable of the P4.6v remainder. **Next candidates:** finish
+P4.6v (its order header enumerates the remainder; closes D7 and wires
+the refresh seam), then the Scriptorium SPA (D18 ngx-explorer spike
+over the frozen file-ops surface), the ProseMirror editor decision
+(D17), the courier/images Salon slices, autonomous-rooms settings, or
+P4.7 (`quilltap-tauri`). Round record: `status-log.md`.
