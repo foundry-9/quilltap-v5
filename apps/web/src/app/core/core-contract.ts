@@ -2971,7 +2971,9 @@ export type MemoryRequest =
   | ChatDocumentWriteRequest
   | ChatDocumentRenameRequest
   | ChatDocumentDeleteRequest
-  | MountFilesListRequest;
+  | MountFilesListRequest
+  // === P4.6z (lane A): the Scriptorium mount-file actions + system browse ===
+  | ScriptoriumRequest;
 // P4.6u (lane C) — the Salon terminal-pane block.
 // Appended by lane C; single-author (lane B, the file owner, must not edit this
 // block). The terminal WebSocket + REST protocol types live in
@@ -3196,3 +3198,97 @@ export interface ChatDocumentPaneState {
 
 /** Merge the document-mode read field onto `ChatDetail` (server echoes it). */
 export interface ChatDetail extends ChatDocumentPaneState {}
+
+// ===========================================================================
+// P4.6z (lane A) — the Scriptorium client surface.
+//
+// Lane A is the SINGLE AUTHOR of core-contract this round. The mount-point CRUD
+// requests + `mountFilesList` already exist above (P4.6p/r/x); this block adds
+// the mount-file ACTION verbs the Scriptorium screens dispatch (scan / convert /
+// deconvert / file-delete / file-describe / blob-list) and the one new server
+// variant, `systemBrowseDirectory` (the DirectoryPicker's host-fs browser).
+//
+// The action responses ride the server's `mountPoint` / `mountFile` /
+// `system` envelopes and are read DEFENSIVELY via `CoreClient.dispatchData`
+// (their `type` strings are not load-bearing here — the P4.6x precedent), so no
+// `CoreResponse` variants are added.
+// ===========================================================================
+
+/** v4 `POST …?action=scan` — the synchronous scan + post-scan embedding enqueue. */
+export interface MountScanRequest {
+  type: 'mountScan';
+  mountPointId: string;
+}
+
+/** v4 `POST …?action=convert` (fs→database). REFUSAL-ARMED live (P4.6y). */
+export interface MountConvertRequest {
+  type: 'mountConvert';
+  mountPointId: string;
+}
+
+/** v4 `POST …?action=deconvert` (database→fs, to `targetPath`). REFUSAL-ARMED. */
+export interface MountDeconvertRequest {
+  type: 'mountDeconvert';
+  mountPointId: string;
+  targetPath: string;
+}
+
+/** v4 item-route DELETE — the FileTable's per-file delete (rides `mountFileDelete`). */
+export interface MountFileDeleteRequest {
+  type: 'mountFileDelete';
+  mountPointId: string;
+  path: string;
+}
+
+/** v4 item-route PATCH — rename and/or describe (descriptions are blob-only). */
+export interface MountFileUpdateRequest {
+  type: 'mountFileUpdate';
+  mountPointId: string;
+  path: string;
+  description?: string;
+  rename?: string;
+}
+
+/** v4 `GET …/blobs` (`?folder=` scoped) — the FileTable's lazy blob-detail read. */
+export interface MountBlobsListRequest {
+  type: 'mountBlobsList';
+  mountPointId: string;
+  folder?: string;
+}
+
+/**
+ * v4 `GET /api/v1/system/browse-directory[?path=…]` — the DirectoryPicker's
+ * host-filesystem browser (absent/empty `path` → the process home dir).
+ */
+export interface SystemBrowseDirectoryRequest {
+  type: 'systemBrowseDirectory';
+  path?: string;
+}
+
+/** One directory entry in a {@link BrowseDirectoryResult}. */
+export interface BrowseDirectoryEntry {
+  name: string;
+  path: string;
+}
+
+/** The `systemBrowseDirectory` success body (v4 `browse-directory` route). */
+export interface BrowseDirectoryResult {
+  path: string;
+  parent: string | null;
+  directories: BrowseDirectoryEntry[];
+  /** Present (with an empty `directories`) when the readdir was denied. */
+  error?: string;
+}
+
+/**
+ * The Scriptorium mount-file action + browse requests (P4.6z). Folded into
+ * {@link CoreRequest} below.
+ */
+export type ScriptoriumRequest =
+  | MountScanRequest
+  | MountConvertRequest
+  | MountDeconvertRequest
+  | MountFileDeleteRequest
+  | MountFileUpdateRequest
+  | MountBlobsListRequest
+  | SystemBrowseDirectoryRequest;

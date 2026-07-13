@@ -1,0 +1,201 @@
+import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
+import { Router } from '@angular/router';
+
+import { LoadingState } from '../../ui/loading-state';
+import { ConvertStoreDialog } from './convert-store-dialog';
+import { CreateStoreDialog } from './create-store-dialog';
+import { DeconvertStoreDialog } from './deconvert-store-dialog';
+import { DeleteStoreDialog } from './delete-store-dialog';
+import { EditStoreDialog } from './edit-store-dialog';
+import { StoreCard } from './store-card';
+import { ScriptoriumStore } from './scriptorium.store';
+import type {
+  CreateDocumentStoreData,
+  DocumentStore,
+  UpdateDocumentStoreData,
+} from './scriptorium.api';
+
+/**
+ * The Scriptorium list page (v4 `ScriptoriumView.tsx`): a title + Add Document
+ * Store button, the card grid over `mountPointList`, and the five dialogs
+ * (create / edit / delete / convert / deconvert). Drilling a card routes to
+ * `/scriptorium/:id` (v5 has no workspace-tab in-place drill — a named tier-3
+ * deferral). Scan/convert/deconvert use the store's patch-not-refetch shape.
+ */
+@Component({
+  selector: 'qt-scriptorium-list',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [ScriptoriumStore],
+  imports: [
+    LoadingState,
+    StoreCard,
+    CreateStoreDialog,
+    EditStoreDialog,
+    DeleteStoreDialog,
+    ConvertStoreDialog,
+    DeconvertStoreDialog,
+  ],
+  template: `
+    @if (store.loading()) {
+      <div class="flex min-h-screen items-center justify-center">
+        <qt-loading-state message="Loading document stores..." />
+      </div>
+    } @else if (store.error(); as err) {
+      <div class="flex min-h-screen items-center justify-center">
+        <p class="text-lg qt-text-destructive">Error: {{ err }}</p>
+      </div>
+    } @else {
+      <div class="qt-page-container text-foreground">
+        <div class="flex flex-wrap items-center justify-between gap-4 border-b qt-border-default/60 pb-6">
+          <div>
+            <h1 class="qt-page-title">The Scriptorium</h1>
+            <p class="mt-1 qt-text-small">
+              Mount external document directories as searchable knowledge sources
+            </p>
+          </div>
+          <button type="button" class="qt-button-primary" (click)="createOpen.set(true)">
+            Add Document Store
+          </button>
+        </div>
+
+        @if (store.flash(); as flash) {
+          <div
+            class="mt-4"
+            [class.qt-alert-success]="flash.kind === 'success'"
+            [class.qt-alert-error]="flash.kind === 'error'"
+            role="status"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <span>{{ flash.message }}</span>
+              <button type="button" class="qt-button-ghost qt-button-sm" (click)="store.clearFlash()">
+                Dismiss
+              </button>
+            </div>
+          </div>
+        }
+
+        @if (store.isEmpty()) {
+          <div
+            class="mt-12 rounded-2xl border border-dashed qt-border-default/70 qt-bg-card/80 px-8 py-12 text-center qt-shadow-sm"
+          >
+            <p class="mb-4 text-lg qt-text-secondary">No document stores yet</p>
+            <p class="mb-6 qt-text-small max-w-md mx-auto">
+              Mount external document directories as searchable knowledge sources. Connect filesystem
+              paths or Obsidian vaults to make their contents available to your AI conversations.
+            </p>
+            <button type="button" class="qt-button-primary" (click)="createOpen.set(true)">
+              Add your first document store
+            </button>
+          </div>
+        } @else {
+          <div class="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            @for (s of store.stores(); track s.id) {
+              <qt-store-card
+                [store]="s"
+                [scanning]="scanningIds().has(s.id)"
+                (open)="openStore(s.id)"
+                (edit)="editStore.set(s)"
+                (delete)="deleteStoreId.set(s.id)"
+                (scan)="handleScan(s.id)"
+                (convert)="convertTarget.set(s)"
+                (deconvert)="deconvertTarget.set(s)"
+              />
+            }
+          </div>
+        }
+      </div>
+    }
+
+    @if (createOpen()) {
+      <qt-create-store-dialog (close)="createOpen.set(false)" (submitted)="handleCreate($event)" />
+    }
+    @if (editStore(); as s) {
+      <qt-edit-store-dialog [store]="s" (close)="editStore.set(null)" (submitted)="handleUpdate($event)" />
+    }
+    @if (deleteStoreId() !== null) {
+      <qt-delete-store-dialog (close)="deleteStoreId.set(null)" (confirm)="handleDelete()" />
+    }
+    @if (convertTarget(); as s) {
+      <qt-convert-store-dialog [store]="s" (close)="convertTarget.set(null)" (confirm)="handleConvert()" />
+    }
+    @if (deconvertTarget(); as s) {
+      <qt-deconvert-store-dialog
+        [store]="s"
+        (close)="deconvertTarget.set(null)"
+        (confirm)="handleDeconvert($event)"
+      />
+    }
+  `,
+})
+export class ScriptoriumList implements OnInit {
+  protected readonly store = inject(ScriptoriumStore);
+  private readonly router = inject(Router);
+
+  protected readonly createOpen = signal(false);
+  protected readonly editStore = signal<DocumentStore | null>(null);
+  protected readonly deleteStoreId = signal<string | null>(null);
+  protected readonly convertTarget = signal<DocumentStore | null>(null);
+  protected readonly deconvertTarget = signal<DocumentStore | null>(null);
+  protected readonly scanningIds = signal<Set<string>>(new Set());
+
+  ngOnInit(): void {
+    void this.store.fetchStores();
+  }
+
+  protected openStore(id: string): void {
+    void this.router.navigate(['/scriptorium', id]);
+  }
+
+  protected async handleCreate(data: CreateDocumentStoreData): Promise<void> {
+    const result = await this.store.createStore(data);
+    if (result) {
+      this.createOpen.set(false);
+    }
+  }
+
+  protected async handleUpdate(event: { id: string; data: UpdateDocumentStoreData }): Promise<void> {
+    const result = await this.store.updateStore(event.id, event.data);
+    if (result) {
+      this.editStore.set(null);
+    }
+  }
+
+  protected async handleDelete(): Promise<void> {
+    const id = this.deleteStoreId();
+    if (!id) {
+      return;
+    }
+    const ok = await this.store.deleteStore(id);
+    if (ok) {
+      this.deleteStoreId.set(null);
+    }
+  }
+
+  protected async handleScan(id: string): Promise<void> {
+    this.scanningIds.update((prev) => new Set(prev).add(id));
+    await this.store.scanStore(id);
+    this.scanningIds.update((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }
+
+  protected async handleConvert(): Promise<void> {
+    const target = this.convertTarget();
+    if (!target) {
+      return;
+    }
+    this.convertTarget.set(null);
+    await this.store.convertStore(target.id);
+  }
+
+  protected async handleDeconvert(targetPath: string): Promise<void> {
+    const target = this.deconvertTarget();
+    if (!target) {
+      return;
+    }
+    this.deconvertTarget.set(null);
+    await this.store.deconvertStore(target.id, targetPath);
+  }
+}

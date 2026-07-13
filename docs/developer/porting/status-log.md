@@ -9630,3 +9630,49 @@ QT_ORACLE_BROWSE_DIR=/tmp/oracle-browse-directory.ndjson \
   cargo test -p quilltap-web --test browse_directory_equivalence
 ```
 Crates bumped: `quilltap-core` 0.0.205→0.0.206, `quilltap-web` 0.0.17→0.0.18.
+
+### P4.6z unit 2 — the Scriptorium SPA vertical — LANDED
+
+The `/scriptorium` + `/scriptorium/:id` vertical over the frozen P4.6v/P4.6y
+dispatch surface. Files under `apps/web/src/app/screens/scriptorium/`:
+`scriptorium.api.ts` (view-model types + `CoreClient` dispatch helpers),
+`scriptorium.store.ts` (the `useDocumentStores` signals port), `scriptorium-list.ts`
+(the list page + dialog orchestration), `store-card.ts`, `directory-picker.ts`
+(the DirectoryPicker over `systemBrowseDirectory`), `create-store-dialog.ts` /
+`edit-store-dialog.ts` / `delete-store-dialog.ts` / `convert-store-dialog.ts` /
+`deconvert-store-dialog.ts`, `store-detail.ts` (the `[id]/DocumentStoreDetailView`
+port), `file-table.ts` + `file-detail-row.ts` (the classic FileTable). Route
+wiring in `app.routes.ts` (`/scriptorium` + `/scriptorium/:id`) and the nav flip
+in `shell/shell.ts`. `core-contract.ts` (lane-A single author) gains the P4.6z
+block: the mount-file action verbs (`mountScan`/`mountConvert`/`mountDeconvert`/
+`mountFileDelete`/`mountFileUpdate`/`mountBlobsList`) + `systemBrowseDirectory`
+request + the `BrowseDirectoryResult` DTO; action/browse responses read
+DEFENSIVELY via `dispatchData` (no `CoreResponse` variants).
+
+**Faithful wire mapping (v5 has no DELETE/PATCH on the item route):** the
+FileTable re-targets v4's `DELETE`/`PATCH buildMountFileItemUrl` to the dispatch
+verbs `mountFileDelete`/`mountFileUpdate`, and the `GET /blobs` list to
+`mountBlobsList`; upload stays the multipart **PUT** item-route leg
+(`mount_file_put` → `MountFileWrite`, the byte-preserving `storeMountFile`
+ingest) — matching v4's FileTable code exactly (quirk 4's "blobs route, 201"
+phrasing describes the internal blob branch, not the wire call; the PUT leg is
+the faithful port). Scan/convert/deconvert ride the JSON dispatch verbs (not the
+multipart action route). The list store keeps v4's patch-not-refetch shape
+(create PREPENDS, update REPLACES, delete FILTERS, scan/convert/deconvert re-GET
+the ONE store and splice). Convert/deconvert are live-guarded refusals (P4.6y)
+surfaced loudly via the store's error flash. The detail's file-manager toggle is
+a UNIFICATION wire (Shared contract §4) — ships the classic FileTable only, with
+a marked seam in the Indexed-Files section.
+
+**Deferrals (loud, named):** the `/files` general-files page (the files-family
+server surface is unported — the nav `files` item stays a disabled placeholder);
+the workspace-tab in-place drill (v4 `useWorkspaceTabId` — v5 routes only, noted
+at the drill site); the FilePreview modal family (file "open" is the raw
+download link only).
+
+**Verification:** `scriptorium.spec.ts` (13 vitest specs via `ng test`): the
+store's prepend/warning/patch-not-refetch/refusal shapes, the list empty state +
+grid, the create dialog's db-vs-fs field gating + emitted shape, the
+DirectoryPicker browse+select, and the FileTable rows/filter/sort/upload-gating +
+delete-confirm dispatch. `ng build` clean. SPA-facing behavior is also proven by
+the live Playwright walk (unit 3). Bumped `apps/web` 0.5.50→0.5.51.

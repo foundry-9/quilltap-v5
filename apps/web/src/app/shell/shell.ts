@@ -30,7 +30,7 @@ const NAV_ITEMS: NavItem[] = [
     id: 'scriptorium',
     label: 'The Scriptorium',
     tooltip: 'View document stores',
-    route: null,
+    route: '/scriptorium',
     icon: 'scriptorium',
   },
   {

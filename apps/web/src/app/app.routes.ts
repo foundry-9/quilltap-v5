@@ -70,6 +70,15 @@ export const routes: Routes = [
     loadComponent: () => import('./screens/scenarios/scenarios-page').then((m) => m.ScenariosPage),
   },
   {
+    path: 'scriptorium',
+    loadComponent: () =>
+      import('./screens/scriptorium/scriptorium-list').then((m) => m.ScriptoriumList),
+  },
+  {
+    path: 'scriptorium/:id',
+    loadComponent: () => import('./screens/scriptorium/store-detail').then((m) => m.StoreDetail),
+  },
+  {
     path: 'settings/wizard',
     loadComponent: () =>
       import('./screens/settings/wizard/wizard-screen').then((m) => m.WizardScreen),

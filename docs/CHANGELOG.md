@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+P4.6z unit 2 (lane A): the Scriptorium SPA vertical. New `/scriptorium`
+document-stores screen (card grid + create/edit/delete/convert/deconvert
+dialogs + a server-backed DirectoryPicker over `systemBrowseDirectory` + scan
+with spinner) and `/scriptorium/:id` store detail (header, four info cards,
+scan-error panel, include/exclude pattern cards, and the classic FileTable with
+sort/filter, expandable blob detail, description editing, per-file delete, and
+database-mount multipart upload). The nav's Scriptorium item is now live. The
+store list mirrors v4's patch-not-refetch shape (create prepends, update
+replaces, delete filters, scan/convert/deconvert re-GET the one store and
+splice it). Convert/deconvert fire the live-guarded server verbs and surface
+the typed refusal loudly. Reads dispatch through `CoreClient`; the detail's
+file-manager toggle is a unification wire (ships classic FileTable only
+in-lane). `core-contract.ts` gains the mount-file action verbs
+(scan/convert/deconvert/file-delete/file-describe/blob-list) + the
+`systemBrowseDirectory` request and result types. 13 unit specs.
+
 P4.6z unit 1 (lane A): the `systemBrowseDirectory` server rider — a new
 `api::system::browse_directory` dispatch handler porting v4's
 `GET /api/v1/system/browse-directory` (the DirectoryPicker's host-filesystem
