@@ -10517,3 +10517,24 @@ degrade + disabled generate, `{{Character}}` placeholder insertion, the
 prompt, refusal message surfaced).
 
 **Gate (in-lane):** ng test 597 green, ng build clean. SPA 0.5.66.
+
+### P4.6ac — lane close-out gate (in-lane, branch `claude/courier-images-salon-spa-417209`)
+
+- **ng test:** 597 green (baseline 547; +50 across this lane's 8 new
+  spec files).
+- **ng build:** clean (only the pre-existing xterm/extend CommonJS
+  warnings).
+- **Playwright (full suite):** 31 passed, 2 skipped (this lane's
+  courier + image beats — the probe correctly skips them in-lane: the
+  courier dispatch is an unknown variant and lane A's fixture isn't
+  loaded), 2 in-suite failures — both PRE-EXISTING, neither this lane:
+  (1) `terminal-flow.spec.ts` — the documented HANDS-OFF terminal-probe
+  flake (the expanded session-opened chip renders a live terminal
+  instead of the "Showing in Terminal Mode pane" note), identical to
+  the P4.6z/aa record; (2) `characters-flow.spec.ts:121` (favorite/tag/
+  title mutation walk) — **passes 7/7 in isolation**, an order/timing
+  flake in the shared-server run, and this lane touches none of the
+  characters path (chat/salon/images only). No NEW failures.
+- **Playwright `--list`:** `salon-courier-images-flow.spec.ts` parses (2
+  tests).
+- Versions: SPA 0.5.61 → 0.5.66. No crate touched (pure SPA lane).
