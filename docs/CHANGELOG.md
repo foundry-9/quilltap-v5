@@ -38,6 +38,20 @@ hidden-dir skip, and localeCompare (ICU4X en-US) sort all match v4. Verified by
 a new route differential (`browse_directory_equivalence`, 5 cases byte-exact
 over the committed `browse-fs-tree/` fixture) plus Rust unit tests for the
 home-default and permission-denied arms.
+P4.6aa lane B (file-manager, unit 3): the qt-file-manager component
+(bespoke, D18). Selector qt-file-manager, standalone + lazy-loadable, per
+the pinned component contract: mountPointId / capabilities / mountType
+inputs, no outputs (self-contained load/reload). A navigable folder tree +
+listing over mountFilesList (the document-picker navigation idiom), with
+rename (inline), create-folder (inline), delete, upload (multipart when
+canWrite), open/download (raw item route), and move/copy within the mount
+via a cut/copy -> "paste here" clipboard — every affordance gated by the
+server-derived capabilities bag. The two backend gaps (copy-folder,
+cross-mount folder move) surface v4's steampunk refusals, never a request.
+Loading ("Summoning the file manager…") / empty / error states in v4
+voice. Styling is native qt-* (no second theming engine — the bespoke
+payoff). 10 component cases green (zoneless TestBed over a fake CoreClient).
+
 P4.6aa lane B (file-manager, unit 2): the wiring core. Ported v4's
 createSvarAdapter forward as a framework-free FileManagerAdapter (method
 surface instead of SVAR's api.on interception): the serialized mutation

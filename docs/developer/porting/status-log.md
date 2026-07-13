@@ -9776,3 +9776,24 @@ are lane A's `core-contract.ts` and not in the SPA union) and the
 multipart `?action=write-file` REST leg (form fields `file` + `path`, v4
 `{error, code}` failure body) for uploads. `loadMountTree` →
 `mountFilesList` → `listingToTree`. 14 unit cases green.
+
+**Unit 3 — the `qt-file-manager` component + theming (SPA 0.5.53).** The
+bespoke widget per contract §2 (`apps/web/src/app/files/file-manager/
+file-manager.ts`, class `FileManager`, selector `qt-file-manager`,
+standalone + lazy-loadable). Inputs `mountPointId` / `capabilities`
+(server-derived bag, never re-derived) / `mountType`; no outputs (owns its
+load/reload — the v4 `SvarFileManager` shape). A navigable folder tree +
+listing over `mountFilesList` (the `document-picker` navigation idiom:
+`currentFolder` signal + `entries`/`breadcrumbs` computed). Affordances,
+all capability-gated: inline rename, inline create-folder, delete, upload
+(multipart `?action=write-file` when `canWrite`), open/download (raw item
+route via `window.open`), and move/copy within the mount via a cut/copy →
+"paste here" clipboard (the bespoke answer to ngx-explorer's missing
+move/copy verb). The two backend gaps surface v4's steampunk refusals
+(copy-folder / cross-mount folder move), never a request. Loading
+("Summoning the file manager…") / empty ("This drawer stands empty.") /
+error states in v4 voice. **Theming: native `qt-*` classes** (the
+bespoke-build payoff — no `.nxe-*` override sheet, no icon-font swap, no
+second theming engine). 10 component cases green (zoneless TestBed over a
+fake `CoreClient`; the P4.6x `flush()` microtask-drain idiom, since
+zoneless `whenStable()` doesn't await the dispatch promise chain).
