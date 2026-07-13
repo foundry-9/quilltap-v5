@@ -10025,3 +10025,85 @@ comment in the spec marks this.
 (the 6a8a77aa gate's 32/33 is resolved). Spec-only change — no crate
 source touched. Versions: SPA 0.5.62 (core/harness/web/host
 untouched).
+
+## 2026-07-13 — the terminal reconcile probe wired LIVE: `EngineAssembly::terminal_probe` (the P4.2-era stub-probe deferral CLOSED)
+
+**The bug (trace-proven 2026-07-13, memory note
+`terminal-reconcile-stub-probe`; the full diagnosis entry lives on the
+sibling branch `claude/admiring-shtern-894679` @ `417566c`):**
+`api::salon::chat_get` ran `reconcile_terminal_sessions_for_chat` with
+a stubbed `is_live = |_: &str| false` probe — a tracked P4.2-era
+deferral written when a read GET could see no live sessions. Since the
+P4.6u terminal pane went live, EVERY chat GET on the real server
+falsely retired every live PTY session (`exitedAt` minted, `exitCode`
+explicit NULL — the reconciler's signature) and posted a spurious Ariel
+"session-closed" announcement ~30ms after every spawn (the post-spawn
+`refetchChat()` triggered it on the very session it spawned). The DB
+then lied about liveness, so `requestOpen`'s picker/re-attach arm could
+never fire, while manager-backed reads (`terminal_get`, the WS) still
+saw the session live — the zombie split.
+
+**The fix (the `memory_embedding` / `mount_refresh` seam idiom):**
+- `services::ariel_notifications::TerminalLivenessProbe` — a new
+  object-safe trait (`is_live(&self, session_id) -> bool`), the core
+  stays free of PTY runtime state.
+- `salon::chat_get` takes `Option<&dyn TerminalLivenessProbe>`;
+  `None` ≡ the old `|_| false`, which is v4 parity for an empty
+  `ptyManager` map (read-only embedders, hosts without a terminal
+  subsystem, fresh restarts).
+- `EngineAssembly::terminal_probe` + `ReadyEngine.terminal_probe` +
+  `ready_db_and_terminal_probe()`; the `ChatGet` arm threads it.
+- `quilltap-host`: `impl TerminalLivenessProbe for TerminalManager`
+  (`contains` — v4 `ptyManager.get` truthiness, including the
+  exited-but-subscribed linger, harmless because the reconcile skips
+  DB-exit-stamped rows first); `HostAssembler::assemble` wires the
+  manager in as the probe (`None` when the terminal subsystem is off).
+
+**Equivalence story (the seam change, per the port discipline):**
+- The reconcile walker itself is UNCHANGED and already differential-
+  verified (`ariel_writers_tier3_equivalence` drives it with `|_| false`
+  matching the jest oracle's empty PTY map).
+- The probe-less arm: `salon_reads_equivalence` re-run green against a
+  FRESH v4 oracle (jest @ `6a8a77aa`) — `chat_get(None)` is
+  behavior-identical to the pre-change code.
+- The probe-wired arm: v4's `reconcileTerminalSessionsForChat` reads
+  `ptyManager.get(session.id)` directly; the new host test
+  `manager_is_the_chat_get_liveness_probe` (terminal_pty.rs) proves the
+  trait impl's truthiness (live → spared, unknown → false,
+  exited-but-subscribed lingers → v4 get parity), and the existing
+  `reconcile_marks_orphans_and_spares_live_sessions` covers the walker
+  over `contains`. The full seam is exercised LIVE by the reworked
+  Playwright terminal walk (below).
+
+**The e2e rework (the closed-chip trap, budgeted per the memory note):**
+the old walk's "terminal closed" chip was satisfied by the FALSE
+reconcile chip (the kill's SIGTERM is ignored by an interactive zsh —
+v4 parity, banked; so no real exit announcement ever landed). Now:
+- `terminal-flow.spec.ts`: opened-chip count-baseline gesture
+  (incorporated from the sibling `417566c` — this rewrite subsumes that
+  spec change at unification) + a closed-chip count GUARD after the
+  echo beat (the stub minted the spurious chip in the same refetch that
+  delivered the opened chip — deterministic regression trip); the kill
+  beat asserts pane-close only (the session SURVIVES, v4 parity); a new
+  re-open beat walks the session PICKER over the surviving session
+  (only listable with the real probe) and re-attaches; a typed `exit`
+  ends the shell for REAL (exit sequence → row stamp + genuine Ariel
+  close announcement; the expanded embed's `terminal-exited` dispatch
+  cleans the pane up); a reload then asserts EXACTLY one new closed
+  chip (the announcement write races the exit-triggered refetch, the
+  reload makes it deterministic).
+- `salon-documents-flow.spec.ts`: the stacked-panes beat types `exit`
+  (waiting for xterm's "session ended" line) BEFORE its unwind kill —
+  a SIGTERM-surviving shell would otherwise stay live and greet
+  terminal-flow's Open-terminal click with the picker.
+
+**Gate:** cargo build/test workspace green (305 suites; terminal_pty
+11/11 incl. the new probe test); clippy --all-targets clean; fmt clean;
+salon-reads differential green vs a fresh oracle; ng test 547; full
+Playwright 33/33 (both terminal-affected walks green over the live
+probe; the stacked-panes unwind grew the two-branch exit wait after
+the first full run caught the rehydrate racing the exit stamp).
+
+Versions: core 0.0.208, host 0.0.16, harness 0.0.189, SPA 0.5.62
+(quilltap-web untouched). NOTE: sibling `417566c` also carries SPA
+0.5.62 (spec-only) — reconcile at unification.

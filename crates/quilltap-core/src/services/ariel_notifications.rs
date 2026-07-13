@@ -53,6 +53,17 @@ pub enum ArielFlushReason {
     SessionClosed,
 }
 
+/// The host's live-PTY probe (v4 `ptyManager.get(session.id)`), object-safe so
+/// it can ride [`EngineAssembly`](crate::api::EngineAssembly) like the other
+/// host capabilities (`memory_embedding`, `mount_refresh`). The host's terminal
+/// manager implements it over its live-session map; an unwired assembly
+/// (read-only embedder, host without a terminal subsystem) has no probe, which
+/// matches v4's empty `ptyManager` map — every exitedAt-null row reconciles.
+pub trait TerminalLivenessProbe: Send + Sync {
+    /// Is there a live PTY session with this id?
+    fn is_live(&self, session_id: &str) -> bool;
+}
+
 impl ArielFlushReason {
     /// The wire string (`idle` / `max-age` / `session-closed`).
     pub fn as_str(&self) -> &'static str {

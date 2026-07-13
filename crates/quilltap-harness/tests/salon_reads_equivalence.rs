@@ -212,14 +212,15 @@ fn salon_reads_match_oracle() {
     }
     // get_solo
     {
-        let got = response_data(&rt.block_on(salon::chat_get(&db, uid, solo)));
+        // No probe: identical to the jest oracle's empty `ptyManager` map.
+        let got = response_data(&rt.block_on(salon::chat_get(&db, uid, solo, None)));
         let mut want = oracle["get_solo"]["body"].clone();
         strip_rendered_html(&mut want);
         cases.push(("get_solo".into(), got, want));
     }
     // get_group
     {
-        let got = response_data(&rt.block_on(salon::chat_get(&db, uid, group)));
+        let got = response_data(&rt.block_on(salon::chat_get(&db, uid, group, None)));
         let mut want = oracle["get_group"]["body"].clone();
         strip_rendered_html(&mut want);
         cases.push(("get_group".into(), got, want));

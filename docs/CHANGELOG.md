@@ -13,6 +13,30 @@ lanes A and C are the round's two core-dispatch writers. Files-family
 and D17 ProseMirror surveys banked in phase-4.md for the next round.
 No code changes; no version bumps.
 
+Chat GET now reconciles terminal sessions with the real live-PTY probe
+(the P4.2-era stubbed `is_live = |_| false` deferral is closed). New
+`TerminalLivenessProbe` trait rides `EngineAssembly::terminal_probe`
+(the memory_embedding / mount_refresh seam idiom); the host's
+TerminalManager implements it over its live-session map, matching v4's
+`ptyManager.get` in lib/terminal/reconcile.ts. Fixes the live-server
+bug where every chat load falsely retired live PTY sessions (exitedAt
+minted, exitCode NULL) and posted a spurious Ariel "terminal closed"
+chip ~30ms after every spawn — which also broke the session picker and
+re-attach (the DB lied about liveness). Unwired assemblies (read-only
+embedders, no terminal subsystem) keep the empty-map behavior, which is
+v4 parity. The terminal e2e walk grew real beats: a closed-chip count
+guard against the spurious chip, kill-then-re-attach through the
+session picker (the surviving session is only listable with the real
+probe), and a typed `exit` for a REAL session-closed announcement;
+salon-documents-flow now genuinely ends its shell before its unwind
+kill. Verified: salon-reads differential green against a fresh v4
+oracle (probe-less parity), new host PTY probe test, full Playwright.
+Versions: core 0.0.208, host 0.0.16, harness 0.0.189, SPA 0.5.62.
+(Note: the unmerged sibling branch claude/admiring-shtern-894679 /
+417566c also bumps SPA to 0.5.62 with a spec-only in-suite fix; this
+branch's spec rewrite incorporates that commit's opened-chip
+count-baseline gesture, so unification can subsume it.)
+
 Fix the terminal-flow in-suite e2e failure (the follow-up flagged in
 the 6a8a77aa re-port gate): the spec's "terminal opened" chip gesture
 raced the post-spawn refetch — with stale chips left in the shared

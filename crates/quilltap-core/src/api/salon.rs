@@ -120,11 +120,17 @@ pub fn list_chats(
 /// v4 `handleGet` (default branch): the fully-enriched chat + all messages
 /// (minus `renderedHtml`, the locked divergence).
 ///
-/// `is_live` is the terminal-session PTY probe (the host's terminal manager);
-/// the engine passes `|_| false` (a live-PTY reconcile during a read GET is a
-/// host-driver concern — a tracked deferral; a provisioned Salon read is
-/// unaffected: no live sessions → reconcile no-op).
-pub async fn chat_get(db: &Db, user_id: &str, chat_id: &str) -> Response {
+/// `terminal_probe` is the terminal-session PTY probe (the host's terminal
+/// manager, threaded through `EngineAssembly::terminal_probe` — v4's
+/// `ptyManager.get(session.id)` in `lib/terminal/reconcile.ts`). `None`
+/// (read-only embedders, hosts without a terminal subsystem) matches v4's
+/// empty PTY map: every exitedAt-null row reconciles as orphaned.
+pub async fn chat_get(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    terminal_probe: Option<&dyn ariel_notifications::TerminalLivenessProbe>,
+) -> Response {
     // 1. Ownership-free slim read (single-user).
     let chat_id_owned = chat_id.to_string();
     let chat = match db.read_main(move |conn| chats_read::find_by_id(conn, &chat_id_owned)) {
@@ -134,7 +140,7 @@ pub async fn chat_get(db: &Db, user_id: &str, chat_id: &str) -> Response {
     };
 
     // 2. Pre-read side effects (both best-effort in v4).
-    let is_live = |_: &str| false;
+    let is_live = |id: &str| terminal_probe.is_some_and(|p| p.is_live(id));
     ariel_notifications::reconcile_terminal_sessions_for_chat(db, chat_id, &is_live).await;
     let participants = chat
         .get("participants")

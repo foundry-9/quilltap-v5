@@ -103,6 +103,12 @@ pub struct EngineAssembly {
     /// A's reindex/embed services); `None` = a loud unwired skip at the
     /// `document_store` write sites.
     pub mount_refresh: Option<Arc<dyn crate::documents::MountRefreshScheduler>>,
+    /// The live-PTY probe `ChatGet`'s terminal reconcile runs over (the P4.2-era
+    /// stub-probe deferral, closed post-P4.6u — the host threads its terminal
+    /// manager); `None` (read-only embedders, no terminal subsystem) matches
+    /// v4's empty `ptyManager` map.
+    pub terminal_probe:
+        Option<Arc<dyn crate::services::ariel_notifications::TerminalLivenessProbe>>,
 }
 
 impl EngineAssembly {
@@ -116,6 +122,7 @@ impl EngineAssembly {
             provider_actions: None,
             memory_embedding: None,
             mount_refresh: None,
+            terminal_probe: None,
         }
     }
 }
@@ -235,6 +242,9 @@ struct ReadyEngine {
     /// The document-store refresh scheduler (P4.6w; `None` until unification wires
     /// lane A's reindex/embed services).
     mount_refresh: Option<Arc<dyn crate::documents::MountRefreshScheduler>>,
+    /// The live-PTY probe `ChatGet`'s terminal reconcile runs over (threaded
+    /// from `EngineAssembly::terminal_probe`).
+    terminal_probe: Option<Arc<dyn crate::services::ariel_notifications::TerminalLivenessProbe>>,
 }
 
 /// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
@@ -352,8 +362,10 @@ impl CoreEngine {
                 ),
                 Err(r) => r,
             },
-            Request::ChatGet { chat_id } => match self.ready_db() {
-                Ok(db) => super::salon::chat_get(&db, SINGLE_USER_ID, &chat_id).await,
+            Request::ChatGet { chat_id } => match self.ready_db_and_terminal_probe() {
+                Ok((db, probe)) => {
+                    super::salon::chat_get(&db, SINGLE_USER_ID, &chat_id, probe.as_deref()).await
+                }
                 Err(r) => r,
             },
             Request::ChatSettings => match self.ready_db() {
@@ -2289,6 +2301,26 @@ impl CoreEngine {
         }
     }
 
+    /// The `Db` + the (optional) live-PTY probe under the readiness gate (the
+    /// P4.2-era stub-probe deferral, closed). `None` when unwired — the
+    /// `ChatGet` reconcile treats every exitedAt-null session as orphaned,
+    /// matching v4's empty `ptyManager` map. `Err` is the locked refusal.
+    #[allow(clippy::type_complexity)]
+    fn ready_db_and_terminal_probe(
+        &self,
+    ) -> Result<
+        (
+            Db,
+            Option<Arc<dyn crate::services::ariel_notifications::TerminalLivenessProbe>>,
+        ),
+        Response,
+    > {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => Ok((r.db.clone(), r.terminal_probe.clone())),
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
     /// The Db + swipe-generate driver under the readiness gate; a ready engine
     /// without the driver (read-only embedder) answers a plain internal error.
     fn ready_swipe(&self) -> Result<(Db, Arc<dyn SwipeGenerateDriver>), Response> {
@@ -2704,6 +2736,7 @@ fn open_ready(
         provider_actions: assembly.provider_actions,
         memory_embedding: assembly.memory_embedding,
         mount_refresh: assembly.mount_refresh,
+        terminal_probe: assembly.terminal_probe,
     })
 }
 

@@ -72,7 +72,7 @@ use quilltap_core::jsstr::{utf16_len, utf16_slice_from};
 use quilltap_core::services::ariel_notifications::{
     post_ariel_session_closed_announcement, post_ariel_terminal_output_announcement,
     reconcile_terminal_sessions_for_chat, ArielFlushReason, ArielSessionClosedAnnouncement,
-    ArielTerminalOutputAnnouncement,
+    ArielTerminalOutputAnnouncement, TerminalLivenessProbe,
 };
 use quilltap_core::terminal_clean::clean_terminal_output;
 
@@ -788,6 +788,15 @@ impl TerminalManager {
     /// with this manager's live-session map as the `is_live` probe.
     pub async fn reconcile_for_chat(&self, chat_id: &str) -> usize {
         reconcile_terminal_sessions_for_chat(&self.db, chat_id, &|id| self.contains(id)).await
+    }
+}
+
+/// The manager IS the engine's live-PTY probe (v4 `ptyManager.get(id)`),
+/// threaded through `EngineAssembly::terminal_probe` so `ChatGet`'s reconcile
+/// pass spares live sessions.
+impl TerminalLivenessProbe for TerminalManager {
+    fn is_live(&self, session_id: &str) -> bool {
+        self.contains(session_id)
     }
 }
 

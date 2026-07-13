@@ -412,6 +412,16 @@ impl EngineAssembler for HostAssembler {
             None
         };
 
+        // The manager doubles as `ChatGet`'s live-PTY reconcile probe (the
+        // P4.2-era stub-probe deferral, closed — v4 reconciles with the real
+        // `ptyManager.get`). No terminal subsystem → no probe, which the engine
+        // treats as v4's empty PTY map.
+        let terminal_probe = terminal_manager.clone().map(|m| {
+            m as std::sync::Arc<
+                dyn quilltap_core::services::ariel_notifications::TerminalLivenessProbe,
+            >
+        });
+
         // The chat-send + chat-create spines (P4.2 / P4.4u2b), when configured:
         // the ChatSend / ChatCreate drivers + the model-dependent job handlers.
         let spine_bundle = self
@@ -546,6 +556,7 @@ impl EngineAssembler for HostAssembler {
                     db.clone(),
                 ),
             )),
+            terminal_probe,
         })
     }
 }

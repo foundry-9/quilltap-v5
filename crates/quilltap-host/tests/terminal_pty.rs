@@ -584,3 +584,37 @@ async fn reconcile_marks_orphans_and_spares_live_sessions() {
 
     let _ = mgr.write(&live.id, "exit\n");
 }
+
+/// The manager as the engine's `TerminalLivenessProbe` (the `ChatGet` reconcile
+/// seam): live → true, unknown → false, and an exited-but-still-subscribed
+/// session lingers as true — the same truthiness v4's `ptyManager.get` gives
+/// the reconcile pass (harmless there: the DB row is already exit-stamped).
+#[tokio::test(flavor = "multi_thread")]
+async fn manager_is_the_chat_get_liveness_probe() {
+    use quilltap_core::services::ariel_notifications::TerminalLivenessProbe;
+
+    let inst = test_instance();
+    let mgr = manager_with(&inst, Duration::from_secs(30), Duration::from_secs(120));
+    let probe: Arc<dyn TerminalLivenessProbe> = mgr.clone();
+
+    let meta = spawn_or_skip!(mgr, sh_opts());
+    assert!(probe.is_live(&meta.id), "spawned session is live");
+    assert!(!probe.is_live("does-not-exist"), "unknown id is not live");
+
+    // Hold a subscription across the exit so the session lingers in the map.
+    let _sub = mgr.subscribe(&meta.id).expect("subscribe");
+    assert!(mgr.write(&meta.id, "exit 0\n"));
+    assert!(
+        wait_until(
+            || read_row(&inst.db, &meta.id)
+                .map(|r| r.exited_at.is_some())
+                .unwrap_or(false),
+            Duration::from_secs(10),
+        )
+        .await
+    );
+    assert!(
+        probe.is_live(&meta.id),
+        "exited-but-subscribed session lingers (v4 ptyManager.get parity)"
+    );
+}

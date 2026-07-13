@@ -127,6 +127,9 @@ test.describe('P4.6x — Document Mode (open → edit → save → rename → cl
   });
 
   test('document and terminal panes stack in the right pane', async ({ page }) => {
+    // The unwind's typed `exit` can sit in the tty typeahead for >10s while
+    // the shell sources its rc files — give the beat room.
+    test.setTimeout(90_000);
     await openSoloChat(page);
     await openBlankDocument(page);
 
@@ -139,11 +142,35 @@ test.describe('P4.6x — Document Mode (open → edit → save → rename → cl
 
     // Unwind what this beat opened — the shared chat's pane state persists
     // server-side, and terminal-flow.spec (later in the order) walks this same
-    // chat expecting a bare composer. Kill the terminal (two-click confirm),
-    // then close the document.
-    const killBtn = terminalPane.getByRole('button', { name: 'Kill terminal and close pane' });
-    await killBtn.click(); // arms the confirm
-    await killBtn.click(); // confirms the kill
+    // chat expecting a bare composer. End the shell for REAL (chat GET
+    // reconciles with the live PTY probe now, and the kill's SIGTERM is v4
+    // parity — an interactive shell may ignore it; a session left live here
+    // would greet terminal-flow's Open-terminal click with the session picker
+    // instead of a direct spawn). The typed `exit` rides the tty typeahead
+    // even while the shell is still sourcing its rc files (which can take
+    // >10s — nvm), so allow a generous window; the exit cascade then lands in
+    // ONE of two UI shapes, per how the flush-triggered rehydrate races the
+    // exit stamp: the dead-session fallback closes the pane on its own, OR
+    // the pane survives and xterm prints its "[session ended …]" line.
+    await expect(terminalPane.locator('.xterm')).toBeVisible({ timeout: 15_000 });
+    await terminalPane.locator('.xterm').click();
+    await page.keyboard.type('exit');
+    await page.keyboard.press('Enter');
+    await expect(async () => {
+      const pane = page.locator('qt-terminal-pane');
+      if ((await pane.count()) === 0) return; // the rehydrate fallback closed it
+      const text = await pane.locator('.xterm').innerText();
+      expect(text).toContain('session ended');
+    }).toPass({ timeout: 30_000, intervals: [500] });
+
+    // If the pane survived the exit, kill it (two-click confirm) — a
+    // client-side mode change; the shell is already dead. Then close the
+    // document.
+    if (await page.locator('qt-terminal-pane').count()) {
+      const killBtn = terminalPane.getByRole('button', { name: 'Kill terminal and close pane' });
+      await killBtn.click(); // arms the confirm
+      await killBtn.click(); // confirms the kill
+    }
     await expect(page.locator('qt-terminal-pane')).toHaveCount(0, { timeout: 15_000 });
     await page
       .locator('qt-document-pane')
