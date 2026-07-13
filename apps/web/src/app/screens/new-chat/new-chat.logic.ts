@@ -7,6 +7,7 @@
  * test (tier-4's one differential class).
  */
 
+import { buildAutonomousCreatePatch } from '../../autonomous/autonomous.logic';
 import type { CharacterListItem, ChatCreateRequest } from '../../core/core-contract';
 import {
   CUSTOM_SCENARIO_VALUE,
@@ -248,6 +249,12 @@ export function buildCreateRequest(
   if (form.avatarGenerationEnabled) body.avatarGenerationEnabled = true;
   if (form.outfitSelections.length > 0) body.outfitSelections = form.outfitSelections;
   if (progressId) body.progressId = progressId;
+
+  // Autonomous-room fields (v4 `useNewChat.ts:736-765`): chatType='autonomous', the
+  // ms conversions, caps only when > 0, and budgetExcludeCacheHits ALWAYS sent.
+  if (form.autonomous.enabled) {
+    Object.assign(body, buildAutonomousCreatePatch(form.autonomous));
+  }
 
   return body;
 }

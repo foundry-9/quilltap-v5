@@ -1124,7 +1124,9 @@ export type CoreRequest =
   // --- The listing surfaces (P4.6p/q/r Shared contract; byte-identical appendix) ---
   | ListingSurfaceRequest
   // --- The memory surface (P4.6t; p4.6s implements the server side) ---
-  | MemoryRequest;
+  | MemoryRequest
+  // --- Autonomous rooms (P4.6ad — lane C's own delimited block) ---
+  | AutonomousRoomRequest;
 
 export type RequestType = CoreRequest['type'];
 
@@ -2041,6 +2043,8 @@ export type CoreResponse =
   | { type: 'apiKey'; data: { apiKey: ApiKeyDto & { associations?: ProfileAssociation[] } } }
   | { type: 'providers'; data: { providers: ProviderInfo[]; count: number } }
   | { type: 'models'; data: ModelsDto }
+  // --- Autonomous rooms (P4.6ad) — one opaque body; the client casts per verb ---
+  | { type: 'autonomousRoom'; data: Record<string, unknown> }
   | { type: 'error'; data: CoreError };
 
 export type ResponseType = CoreResponse['type'];
@@ -2058,6 +2062,145 @@ export function expectResponse<T extends ResponseType>(
   }
   return resp as Extract<CoreResponse, { type: T }>;
 }
+
+// ===========================================================================
+// Autonomous rooms (P4.6ad — lane C's own delimited block; do not move)
+// ===========================================================================
+
+/** v4 room visibility (a per-room override of the user default). */
+export type AutonomousRoomVisibility = 'owner_only' | 'household' | 'open';
+
+/** One participant projection in an {@link AutonomousRoomSummary}. */
+export interface AutonomousRoomParticipant {
+  id: string;
+  type: string;
+  characterId: string | null;
+  status: string;
+}
+
+/**
+ * One row of `GET /system/autonomous-rooms` — the management-list DTO. Nullable
+ * fields arrive `null` (the route coalesces `?? null`); the two counters and
+ * `runPausedAccumMs` default `0`, `runDestructiveToolsAllowed` defaults `0`.
+ */
+export interface AutonomousRoomSummary {
+  id: string;
+  title: string;
+  projectId: string | null;
+  projectName: string | null;
+  participants: AutonomousRoomParticipant[];
+  runState: string | null;
+  runStateMessage: string | null;
+  currentRunId: string | null;
+  runStartedAt: string | null;
+  runEndedAt: string | null;
+  runPausedAccumMs: number;
+  runTurnsConsumed: number;
+  runTokensConsumed: number;
+  scheduleCron: string | null;
+  scheduleNextRunAt: string | null;
+  scheduleLastRunAt: string | null;
+  scheduleFreshnessWindowMs: number | null;
+  budgetMaxTurns: number | null;
+  budgetMaxTokens: number | null;
+  budgetMaxWallClockMs: number | null;
+  budgetEstimatedSpendCapUSD: number | null;
+  runDestructiveToolsAllowed: number;
+  runVisibility: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The per-room `GET …/autonomous-room` status snapshot (drives the editor modal). */
+export interface AutonomousRoomStatusDto {
+  chatId: string;
+  chatType: string;
+  runState: string | null;
+  currentRunId: string | null;
+  runStateMessage: string | null;
+  runStartedAt: string | null;
+  runEndedAt: string | null;
+  runPausedAccumMs: number;
+  runTurnsConsumed: number;
+  runTokensConsumed: number;
+  scheduleCron: string | null;
+  scheduleNextRunAt: string | null;
+  scheduleLastRunAt: string | null;
+  scheduleFreshnessWindowMs: number | null;
+  budgetMaxTurns: number | null;
+  budgetMaxTokens: number | null;
+  budgetMaxWallClockMs: number | null;
+  budgetEstimatedSpendCapUSD: number | null;
+  budgetExcludeCacheHits: number;
+  runDestructiveToolsAllowed: number;
+  runVisibility: string | null;
+}
+
+/**
+ * The Edit-Enclave modal patch (v4 `updateSettingsSchema`): every cap is nullish
+ * so the modal can CLEAR a value (`null`), leave it (omit the key), or set it.
+ * `title` only sets; the two booleans are plain optional. Values are in DB units
+ * (milliseconds); the modal converts hours/minutes → ms before sending.
+ */
+export interface AutonomousRoomSettingsPatch {
+  title?: string;
+  scheduleCron?: string | null;
+  scheduleFreshnessWindowMs?: number | null;
+  budgetMaxTurns?: number | null;
+  budgetMaxTokens?: number | null;
+  budgetMaxWallClockMs?: number | null;
+  budgetEstimatedSpendCapUSD?: number | null;
+  runVisibility?: AutonomousRoomVisibility | null;
+  runDestructiveToolsAllowed?: boolean;
+  budgetExcludeCacheHits?: boolean;
+}
+
+export interface SystemAutonomousRoomsRequest {
+  type: 'systemAutonomousRooms';
+}
+export interface ChatAutonomousRoomStatusRequest {
+  type: 'chatAutonomousRoomStatus';
+  chatId: string;
+}
+export interface ChatAutonomousRoomStartRequest {
+  type: 'chatAutonomousRoomStart';
+  chatId: string;
+}
+export interface ChatAutonomousRoomPauseRequest {
+  type: 'chatAutonomousRoomPause';
+  chatId: string;
+}
+export interface ChatAutonomousRoomStopRequest {
+  type: 'chatAutonomousRoomStop';
+  chatId: string;
+}
+export interface ChatAutonomousRoomResumeRequest {
+  type: 'chatAutonomousRoomResume';
+  chatId: string;
+}
+export interface ChatAutonomousRoomUpdateSettingsRequest {
+  type: 'chatAutonomousRoomUpdateSettings';
+  chatId: string;
+  settings: AutonomousRoomSettingsPatch;
+}
+
+/** The autonomous-rooms request family (folded into {@link CoreRequest}). */
+export type AutonomousRoomRequest =
+  | SystemAutonomousRoomsRequest
+  | ChatAutonomousRoomStatusRequest
+  | ChatAutonomousRoomStartRequest
+  | ChatAutonomousRoomPauseRequest
+  | ChatAutonomousRoomStopRequest
+  | ChatAutonomousRoomResumeRequest
+  | ChatAutonomousRoomUpdateSettingsRequest;
+
+/** The `{updated, clampedDestructive}` body of an update-settings dispatch. */
+export interface AutonomousRoomUpdateResult {
+  updated: boolean;
+  clampedDestructive: boolean;
+}
+
+// ===========================================================================
 
 /** A thrown wrapper around a `{ type: "error" }` response envelope. */
 export class CoreDispatchError extends Error {

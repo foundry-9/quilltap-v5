@@ -5,11 +5,17 @@
  * `'user'`, never a separate slot (v4's in-place Play-As).
  */
 
+import {
+  INITIAL_AUTONOMOUS_STATE,
+  type NewChatAutonomousState,
+} from '../../autonomous/autonomous.logic';
 import type {
   CharacterListItem,
   ChatCreateOutfitSelectionInput,
   TimestampConfig,
 } from '../../core/core-contract';
+
+export type { NewChatAutonomousState };
 
 /** The special connection-profile option that flips a cast entry to the user (v4 `USER_CONTROLLED_PROFILE`). */
 export const USER_CONTROLLED_PROFILE = '__USER_CONTROLLED__';
@@ -74,7 +80,7 @@ export interface NewChatSelectedCharacter {
   controlledBy: 'llm' | 'user';
 }
 
-/** The mutable form state (v4 `NewChatFormState`, minus the deferred autonomous slice). */
+/** The mutable form state (v4 `NewChatFormState`). */
 export interface NewChatFormState {
   imageProfileId: string;
   /** Free-text scenario notes (layered beneath any resolved preset). */
@@ -87,6 +93,8 @@ export interface NewChatFormState {
   timestampConfig: TimestampConfig | null;
   avatarGenerationEnabled: boolean;
   outfitSelections: ChatCreateOutfitSelectionInput[];
+  /** The autonomous-room slice (v4 `state.autonomous`; consulted only when `enabled`). */
+  autonomous: NewChatAutonomousState;
 }
 
 /** The pristine form state (v4 `INITIAL_STATE`). */
@@ -101,4 +109,5 @@ export const INITIAL_FORM_STATE: NewChatFormState = {
   timestampConfig: null,
   avatarGenerationEnabled: false,
   outfitSelections: [],
+  autonomous: { ...INITIAL_AUTONOMOUS_STATE },
 };

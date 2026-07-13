@@ -10243,3 +10243,71 @@ write — harmless; jest passes and the enqueued row lands (status
 PROCESSING, blanked).
 
 Versions: core 0.0.208, harness 0.0.189.
+
+---
+
+### P4.6ad (lane C) — the autonomous-rooms vertical, SPA half (2026-07-13, OPEN)
+
+The Angular surfaces over the committed server half. Proved by
+transcription + unit specs (ng test 568) + a live Playwright walk (no
+oracle — the tier-4 SPA discipline).
+
+**Contract (lane-C delimited block in `core/core-contract.ts` +
+`core/core-client.ts`):** the `AutonomousRoomRequest` family (seven wire
+types), the `autonomousRoom` opaque response, the DTOs
+(`AutonomousRoomSummary`/`StatusDto`/`SettingsPatch`/`UpdateResult`), and
+seven typed `CoreClient` methods (list/status/start/pause/stop/resume/
+updateSettings). `ChatCreateRequest` already carried the autonomous
+fields (server-half finding) — untouched.
+
+**Components (`apps/web/src/app/autonomous/**` + wiring):**
+- `autonomous.logic.ts` (+ spec) — the pure transforms pulled out for
+  unit test: `statusToFormState`/`formStateToUpdatePatch` (ms⇄human),
+  `buildAutonomousCreatePatch` (the v4 `useNewChat` submit mapping),
+  `summarizeBudget`, `selectBudgetReadout` (tokens→turns→time),
+  `formatTokens`(1024-base)/`formatTime`/`buildLabel`/`buildTooltip`,
+  the two poll filters, `isCronShapeValid`.
+- `autonomous-room-card.ts` (`qt-autonomous-room-card`) — the shared
+  editor (signal `value` in / `changed` out) used by BOTH New-Chat and
+  the modal; "Count only the dear tokens" verbatim.
+- `autonomous-room-defaults.ts` — the user defaults, autosave-on-blur
+  merged into `chat_settings.autonomousRoomSettings` (the existing
+  settings variants — no new persistence).
+- `autonomous-rooms-list.ts` — the management list (5s poll, the two
+  filters, Start/Pause/Resume/Stop optimistic + rollback, Edit → modal).
+- `edit-enclave-modal.ts` — parallel status+settings load, save →
+  `autonomousRoomUpdateSettings`, `clampedDestructive` surfaced.
+- `autonomous-room-badges.ts` — 5s poll + 1s client tick (time-budgeted
+  running rooms only), one badge per idle/running/paused, inline
+  play/pause; mounted in `shell/shell.ts`.
+- `screens/settings/chat/chat-tab.ts` (`qt-settings-chat`) — the two
+  CollapsibleCards over v4's exact titles/`sectionId`s (`autonomous-rooms`
+  = defaults, `autonomous-room-schedules` = the list; v4-faithful — the
+  order's paraphrase conflated them), wired into `settings.ts`. The 13
+  other v4 Chat-tab cards named in a loud placeholder.
+- `screens/new-chat/**` — the toggle enabled (blocked while a
+  user-controlled participant is present, with v4's revert-to-LLM note),
+  the `autonomous` slice on `NewChatFormState`, the Reality-Injection⇄
+  editor swap, `?autonomous=1` opens in autonomous mode ("New Autonomous
+  Room" heading), the payload folds `buildAutonomousCreatePatch`, and a
+  successful create navigates to `/settings?tab=chat&section=autonomous-rooms`.
+
+**e2e (`e2e/settings-autonomous-flow.spec.ts`, sorts after foundation):**
+three beats — the Chat tab renders both cards; `?autonomous=1` swaps in
+the editor card; a CRON room seeded via `chatCreate` dispatch (after
+unlock — the P4.6z lesson) walks the management list
+Start→Pause→Resume→Edit(clear the turn cap: the nullish arm)→Stop.
+A cron (not ad-hoc) room is used so it stays deterministically `idle`
+until the manual verbs drive it — no background-turn race. Badge/state
+locators use `{ exact: true }` (the `manual:stopped` runStateMessage
+shares the substring). afterAll stops the seeded room; the salon list
+excludes autonomous chats, so the shared fixture stays clean.
+
+**Loud deferrals:** the live next-run cron preview BEFORE save (the card
+validates the five-field shape and notes "computed on save"; no client
+cron engine, no new dispatch variant — the authoritative
+`scheduleNextRunAt` comes from the server); the Salon in-chat
+Edit-Enclave entry + the salon-list include-autonomous toggle (lane B's
+`screens/salon/**`); the 13 other Chat-tab cards.
+
+Versions: SPA 0.5.62.

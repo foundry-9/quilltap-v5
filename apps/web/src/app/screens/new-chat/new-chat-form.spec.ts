@@ -1,7 +1,8 @@
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { describe, expect, it } from 'vitest';
 
-import type { CoreClient } from '../../core/core-client';
+import { CoreClient } from '../../core/core-client';
 import type { CharacterListItem } from '../../core/core-contract';
 import { NewChatForm } from './new-chat-form';
 import { NewChatState } from './new-chat.state';
@@ -44,9 +45,11 @@ const GENERAL: ScenarioOption = {
   body: 'A foggy moor at dawn.',
 };
 
-// A stub CoreClient — the image-profile picker calls dispatchData; return empty.
+// A stub CoreClient — the image-profile picker calls dispatchData; the autonomous
+// settings-hint query calls dispatchExpect. Return empty shapes for both.
 const stubCore = {
   dispatchData: async () => ({ profiles: [] }),
+  dispatchExpect: async () => ({ type: 'chatSettings', data: {} }),
 } as unknown as CoreClient;
 
 function makeState(): NewChatState {
@@ -57,7 +60,13 @@ function makeState(): NewChatState {
 }
 
 function render(state: NewChatState): ComponentFixture<NewChatForm> {
-  TestBed.configureTestingModule({ imports: [NewChatForm] });
+  TestBed.configureTestingModule({
+    imports: [NewChatForm],
+    providers: [
+      provideTanStackQuery(new QueryClient()),
+      { provide: CoreClient, useValue: stubCore },
+    ],
+  });
   const fixture = TestBed.createComponent(NewChatForm);
   fixture.componentRef.setInput('state', state);
   fixture.detectChanges();

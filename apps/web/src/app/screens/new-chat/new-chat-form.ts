@@ -1,7 +1,18 @@
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { injectQuery } from '@tanstack/angular-query-experimental';
 
-import type { ChatCreateOutfitSelectionInput, TimestampConfig } from '../../core/core-contract';
+import { AutonomousRoomCard } from '../../autonomous/autonomous-room-card';
+import type {
+  AutonomousSettingsHint,
+  NewChatAutonomousState,
+} from '../../autonomous/autonomous.logic';
+import { CoreClient } from '../../core/core-client';
+import type {
+  ChatCreateOutfitSelectionInput,
+  ChatSettingsDto,
+  TimestampConfig,
+} from '../../core/core-contract';
 import { Icon } from '../../ui/icon';
 import { ImageProfilePicker } from './image-profile-picker';
 import { applyPlayAs, scenarioSelectPatch } from './new-chat.logic';
@@ -35,27 +46,40 @@ interface PlayAsOption {
 @Component({
   selector: 'qt-new-chat-form',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, Icon, ImageProfilePicker, OutfitSelector, TimestampConfigCard],
+  imports: [
+    FormsModule,
+    Icon,
+    ImageProfilePicker,
+    OutfitSelector,
+    TimestampConfigCard,
+    AutonomousRoomCard,
+  ],
   template: `
     <div class="new-chat-form grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
-      <!-- Autonomous toggle (deferred — loud disabled-with-title) -->
+      <!-- Autonomous toggle (spans both columns) -->
       <div class="md:col-span-2 rounded-xl border qt-border-default qt-bg-card/60 p-4">
-        <label class="flex items-start gap-3 cursor-not-allowed">
+        <label class="flex items-start gap-3 cursor-pointer">
           <input
             type="checkbox"
-            [checked]="false"
-            disabled
-            title="Autonomous rooms are not yet available in this build."
+            [checked]="isAutonomous()"
+            (change)="onAutonomousToggle($any($event.target).checked)"
+            [disabled]="creating() || hasUserControlled()"
             class="qt-checkbox mt-1"
           />
           <span>
             <span class="font-medium text-foreground">Make this an autonomous room</span>
             <span class="block qt-text-xs qt-text-muted mt-1">
               Autonomous rooms run when scheduled or started manually. They have no human user, no
-              composer, and pause for nobody. (Not yet available in this build.)
+              composer, and pause for nobody.
             </span>
           </span>
         </label>
+        @if (hasUserControlled() && !isAutonomous()) {
+          <p class="mt-2 qt-text-xs qt-text-warning">
+            A character is set to Play As (user). Autonomous rooms have no user — revert it to “Chat
+            as yourself” to enable.
+          </p>
+        }
       </div>
 
       <!-- Left card: Character Customization -->
@@ -227,15 +251,24 @@ interface PlayAsOption {
         </div>
       </div>
 
-      <!-- Right card: Reality Injection Mode -->
-      <div class="rounded-xl border qt-border-default qt-bg-card p-6 space-y-4">
-        <h3 class="qt-section-title">Reality Injection Mode</h3>
-        <qt-timestamp-config-card
-          [value]="form().timestampConfig"
+      <!-- Right card: Reality Injection Mode (chat) or Autonomous Room (autonomous) -->
+      @if (isAutonomous()) {
+        <qt-autonomous-room-card
+          [value]="form().autonomous"
+          [settingsHint]="settingsHint()"
           [disabled]="creating()"
-          (changed)="onTimestamp($event)"
+          (changed)="updateAutonomous($event)"
         />
-      </div>
+      } @else {
+        <div class="rounded-xl border qt-border-default qt-bg-card p-6 space-y-4">
+          <h3 class="qt-section-title">Reality Injection Mode</h3>
+          <qt-timestamp-config-card
+            [value]="form().timestampConfig"
+            [disabled]="creating()"
+            (changed)="onTimestamp($event)"
+          />
+        </div>
+      }
 
       <!-- Project row -->
       @if (availableProjects().length > 0) {
@@ -288,6 +321,8 @@ interface PlayAsOption {
 export class NewChatForm {
   readonly state = input.required<NewChatState>();
 
+  private readonly coreClient = inject(CoreClient);
+
   protected readonly CUSTOM_SCENARIO_VALUE = CUSTOM_SCENARIO_VALUE;
   protected readonly PROJECT_SCENARIO_PREFIX = PROJECT_SCENARIO_PREFIX;
   protected readonly GENERAL_SCENARIO_PREFIX = GENERAL_SCENARIO_PREFIX;
@@ -314,6 +349,40 @@ export class NewChatForm {
       .selectedCharacters()
       .find((sc) => sc.controlledBy === 'user'),
   );
+
+  // --- Autonomous room --------------------------------------------------------
+
+  protected readonly isAutonomous = computed(() => this.form().autonomous.enabled);
+  protected readonly hasUserControlled = computed(() =>
+    this.core()
+      .selectedCharacters()
+      .some((sc) => sc.controlledBy === 'user'),
+  );
+
+  /** The user-level autonomous defaults that soften the card's placeholders (v4 `autonomousSettingsHint`). */
+  private readonly settingsQuery = injectQuery(() => ({
+    queryKey: ['chatSettings'],
+    queryFn: async (): Promise<ChatSettingsDto> => {
+      const resp = await this.coreClient.dispatchExpect({ type: 'chatSettings' }, 'chatSettings');
+      return resp.data;
+    },
+  }));
+
+  protected readonly settingsHint = computed<AutonomousSettingsHint | undefined>(() => {
+    const ar = (this.settingsQuery.data()?.['autonomousRoomSettings'] ?? {}) as {
+      visibilityDefault?: AutonomousSettingsHint['visibilityDefault'];
+      destructiveToolPolicy?: AutonomousSettingsHint['destructiveToolPolicy'];
+      defaultFreshnessWindowMs?: number;
+    };
+    return {
+      visibilityDefault: ar.visibilityDefault,
+      destructiveToolPolicy: ar.destructiveToolPolicy,
+      defaultFreshnessHours:
+        typeof ar.defaultFreshnessWindowMs === 'number' && ar.defaultFreshnessWindowMs > 0
+          ? Math.round(ar.defaultFreshnessWindowMs / (60 * 60 * 1000))
+          : undefined,
+    };
+  });
 
   protected readonly characterScenarios = computed<CharacterScenarioOption[]>(() => {
     const s = this.singleLlm()?.character.scenarios;
@@ -470,5 +539,13 @@ export class NewChatForm {
 
   protected onProject(id: string): void {
     void this.core().setSelectedProjectId(id || null);
+  }
+
+  protected onAutonomousToggle(next: boolean): void {
+    this.core().patchForm({ autonomous: { ...this.form().autonomous, enabled: next } });
+  }
+
+  protected updateAutonomous(patch: Partial<NewChatAutonomousState>): void {
+    this.core().patchForm({ autonomous: { ...this.form().autonomous, ...patch } });
   }
 }

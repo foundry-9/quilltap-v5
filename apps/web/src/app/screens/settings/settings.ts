@@ -5,6 +5,7 @@ import { ActivatedRoute } from '@angular/router';
 import { BrandName } from '../../ui/brand-name';
 import { EntityTabs, type Tab } from '../../ui/entity-tabs';
 import { AppearanceTab } from './appearance/appearance-tab';
+import { ChatTab } from './chat/chat-tab';
 import { ImagesTab } from './images/images-tab';
 import { MemoryTab } from './memory/memory-tab';
 import { SettingsPlaceholder } from './placeholder-tab';
@@ -26,6 +27,7 @@ import { TemplatesTab } from './templates/templates-tab';
     BrandName,
     ProvidersTab,
     AppearanceTab,
+    ChatTab,
     TemplatesTab,
     ImagesTab,
     MemoryTab,
@@ -50,7 +52,7 @@ import { TemplatesTab } from './templates/templates-tab';
               <qt-settings-appearance />
             }
             @case ('chat') {
-              <qt-settings-placeholder title="Chat" />
+              <qt-settings-chat />
             }
             @case ('memory') {
               <qt-settings-memory />

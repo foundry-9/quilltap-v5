@@ -17,6 +17,33 @@ fallback meanwhile). OPEN under the order (loud deferrals): the
 chat-file multipart upload leg and the imageProfileGenerate un-refusal.
 Survey correction: `blobMountPointId` is a dead prop in v4 (no route
 emits it) — the additive chat-GET echo is a no-op and was NOT added.
+P4.6ad (SPA half): the autonomous-rooms vertical goes live in the
+Angular SPA. The Settings → Chat tab is fitted out (replacing its
+placeholder) with the two v4 autonomous CollapsibleCards — "Autonomous
+Rooms" (the user defaults, autosave-on-blur into
+`chat_settings.autonomousRoomSettings`) and "Scheduled Autonomous Rooms"
+(the management list: 5s poll, Start/Pause/Resume/Stop/Edit with
+optimistic run-state patch) — deep-linkable via
+`?tab=chat&section=autonomous-rooms`; the other 13 Chat-tab cards are
+named as a loud deferral. A shared `qt-autonomous-room-card` editor
+(cron, freshness, the four budget caps, "Count only the dear tokens",
+visibility, destructive-clamp) backs both the Edit-Enclave modal
+(ms⇄human round-trip, `clampedDestructive` surfaced) and the New-Chat
+autonomous toggle. New-Chat now enables autonomous mode (state slice +
+Reality-Injection⇄editor swap + the user-controlled incompatibility
+note), maps the exact v4 create payload (hours×3_600_000,
+minutes×60_000, caps only when >0, `budgetExcludeCacheHits` always), and
+navigates to the settings management list on success. Toolbar run-state
+badges (5s poll + 1s client tick, tokens→turns→time readout, inline
+play/pause) mount in the shell. The contract gained a lane-C
+`AutonomousRoomRequest`/`autonomousRoom` block + seven CoreClient
+methods. Live e2e (`settings-autonomous-flow.spec.ts`): the tab renders,
+the New-Chat toggle swaps in the editor, and a dispatch-seeded cron room
+walks list→start→pause→resume→edit(clear a cap)→stop. Loud deferrals:
+the live next-run cron preview before save (validates shape only; the
+server computes scheduleNextRunAt on save), and the Salon in-chat
+Edit-Enclave entry + salon-list toggle (lane B). Bumps the SPA 0.5.62.
+
 P4.6ad (server half): the autonomous-rooms dispatch surface. New
 `api/autonomous_rooms.rs` wraps the frozen `enclave::lifecycle`
 run-control core behind seven Request variants — `systemAutonomousRooms`

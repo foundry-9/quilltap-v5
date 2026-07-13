@@ -13,8 +13,7 @@ import { NewChatState } from './new-chat.state';
  * The New-Chat page (v4 `app/salon/new/page.tsx`). Reads `?projectId=`,
  * `?characterId=`, and `?autonomous=1`; composes the character picker, the form,
  * the submit spine, and the Green Room dialog; ends in navigation to the created
- * chat. Autonomous mode is deferred — `?autonomous=1` surfaces a loud
- * not-yet-available notice and the page proceeds as an ordinary new chat.
+ * chat (or, for an autonomous room, to the settings management list).
  */
 @Component({
   selector: 'qt-new-chat-page',
@@ -32,18 +31,9 @@ import { NewChatState } from './new-chat.state';
           ← Back to {{ backLabel() }}
         </a>
 
-        <h1 class="mb-6 qt-heading-1">New Chat</h1>
-
-        @if (autonomousRequested) {
-          <div
-            class="mb-6 rounded-lg border qt-border-warning/50 qt-bg-warning/10 p-4 qt-text-warning"
-          >
-            <p class="font-medium">Autonomous rooms are not yet available</p>
-            <p class="mt-1 text-sm">
-              This build cannot create autonomous rooms yet. You can start an ordinary chat below.
-            </p>
-          </div>
-        }
+        <h1 class="mb-6 qt-heading-1">
+          {{ autonomousRequested ? 'New Autonomous Room' : 'New Chat' }}
+        </h1>
 
         @if (state.project(); as proj) {
           <div class="mb-6 rounded-lg border qt-border-default qt-bg-card/50 p-4">
@@ -116,6 +106,7 @@ export class NewChatPage {
     {
       initialCharacterId: this.params.get('characterId') ?? undefined,
       projectId: this.params.get('projectId') ?? undefined,
+      initialAutonomous: this.params.get('autonomous') === '1',
     },
     this.greenRoom,
   );
@@ -132,7 +123,14 @@ export class NewChatPage {
 
   protected async create(): Promise<void> {
     const outcome = await this.state.handleCreate();
-    if (outcome) {
+    if (!outcome) return;
+    if (outcome.isAutonomous) {
+      // v4 `useNewChat.ts:789`: autonomous rooms land on the settings management
+      // list, not the chat (which has no composer to open).
+      void this.router.navigate(['/settings'], {
+        queryParams: { tab: 'chat', section: 'autonomous-rooms' },
+      });
+    } else {
       void this.router.navigate(['/salon', outcome.chatId]);
     }
   }

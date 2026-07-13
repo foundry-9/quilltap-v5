@@ -47,10 +47,12 @@ import {
 export interface NewChatOptions {
   initialCharacterId?: string;
   projectId?: string;
+  /** Start the form in autonomous-room mode (v4 `?autonomous=1`). */
+  initialAutonomous?: boolean;
 }
 
-/** A `{ chatId } | null` submit outcome (v4 `handleCreateChat` return). */
-export type CreateOutcome = { chatId: string } | null;
+/** A `{ chatId, isAutonomous } | null` submit outcome (v4 `handleCreateChat` return). */
+export type CreateOutcome = { chatId: string; isAutonomous: boolean } | null;
 
 function mapScenario(s: ScenarioDto): ScenarioOption {
   return {
@@ -90,16 +92,21 @@ export class NewChatState {
     this.selectedCharacters().filter((sc) => sc.controlledBy === 'llm'),
   );
 
-  /** Whether submit may proceed (v4's `canSubmit`, minus the deferred autonomous arm). */
+  /** Whether submit may proceed (v4's `canSubmit`, incl. the autonomous arm). */
   readonly canSubmit = computed(() => {
     const cast = this.selectedCharacters();
-    return (
+    const base =
       !this.creating() &&
       cast.length > 0 &&
       this.llmSelected().length > 0 &&
       !cast.some((sc) => sc.controlledBy === 'llm' && !sc.connectionProfileId) &&
-      this.profiles().length > 0
-    );
+      this.profiles().length > 0;
+    if (!base) return false;
+    // Autonomous rooms need ≥ 2 LLM characters and no user participant (v4).
+    if (this.form().autonomous.enabled) {
+      return this.llmSelected().length >= 2 && !cast.some((sc) => sc.controlledBy === 'user');
+    }
+    return true;
   });
 
   /** True once an initial seed ran (v4 `seededRef`) — gates the single-LLM propagation. */
@@ -112,6 +119,12 @@ export class NewChatState {
     private readonly greenRoom: GreenRoomController | null = null,
   ) {
     this.selectedProjectId = signal<string | null>(options.projectId ?? null);
+    if (options.initialAutonomous) {
+      this.form.update((prev) => ({
+        ...prev,
+        autonomous: { ...prev.autonomous, enabled: true },
+      }));
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -383,6 +396,17 @@ export class NewChatState {
       this.error.set('Please select at least one character');
       return null;
     }
+    const isAutonomous = this.form().autonomous.enabled;
+    if (isAutonomous) {
+      if (this.llmSelected().length < 2) {
+        this.error.set('Autonomous rooms need at least two LLM-controlled characters');
+        return null;
+      }
+      if (cast.some((sc) => sc.controlledBy === 'user')) {
+        this.error.set('Autonomous rooms have no user — remove user-controlled characters');
+        return null;
+      }
+    }
     const missingProfile = cast.filter(
       (sc) => sc.controlledBy === 'llm' && !sc.connectionProfileId,
     );
@@ -411,7 +435,7 @@ export class NewChatState {
       const resp = await this.core.dispatchExpect(body, 'chatCreate');
       const chatId = (resp.data as ChatCreateDto).chat.id;
       this.greenRoom?.complete();
-      return { chatId };
+      return { chatId, isAutonomous };
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to create chat';
       this.error.set(msg);

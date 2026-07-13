@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 
+import { AutonomousRoomBadges } from '../autonomous/autonomous-room-badges';
 import { FirstRunService } from '../startup/first-run.service';
 import { ThemeService } from '../theme/theme.service';
 import { ThemeSwitcher } from '../theme/theme-switcher';
@@ -66,7 +67,7 @@ const NAV_ITEMS: NavItem[] = [
 @Component({
   selector: 'qt-shell',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, ThemeSwitcher, RouterLink, RouterLinkActive, RouterOutlet],
+  imports: [Icon, ThemeSwitcher, RouterLink, RouterLinkActive, RouterOutlet, AutonomousRoomBadges],
   template: `
     <div class="qt-app-layout">
       <aside class="qt-left-sidebar qt-left-sidebar-collapsed" aria-label="Main navigation">
@@ -100,6 +101,8 @@ const NAV_ITEMS: NavItem[] = [
           </nav>
         </div>
         <div class="qt-left-sidebar-footer">
+          <!-- Autonomous run-state badges (renders nothing when no rooms are live). -->
+          <qt-autonomous-room-badges />
           <div class="qt-left-sidebar-footer-actions">
             @if (showNavThemeSelector()) {
               <qt-theme-switcher />

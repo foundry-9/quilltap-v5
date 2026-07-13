@@ -9,6 +9,10 @@ import {
   CoreDispatchError,
   expectResponse,
   type ResponseType,
+  type AutonomousRoomSummary,
+  type AutonomousRoomStatusDto,
+  type AutonomousRoomSettingsPatch,
+  type AutonomousRoomUpdateResult,
 } from './core-contract';
 
 /** The interpreted `GET /health` result (the startup gate branches on this). */
@@ -115,6 +119,61 @@ export class CoreClient {
       throw new CoreDispatchError(resp.data);
     }
     return (resp.data ?? {}) as Record<string, unknown>;
+  }
+
+  // -------------------------------------------------------------------------
+  // Autonomous rooms (P4.6ad) — the run-control surface behind one opaque
+  // `autonomousRoom` response; each verb casts the `data` body it expects.
+  // -------------------------------------------------------------------------
+
+  /** v4 `GET /system/autonomous-rooms` — the user's rooms, running-first. */
+  async listAutonomousRooms(): Promise<AutonomousRoomSummary[]> {
+    const data = await this.dispatchData({ type: 'systemAutonomousRooms' });
+    return (data['rooms'] as AutonomousRoomSummary[] | undefined) ?? [];
+  }
+
+  /** The per-room status snapshot (the editor modal's initial load). */
+  async autonomousRoomStatus(chatId: string): Promise<AutonomousRoomStatusDto> {
+    const data = await this.dispatchData({ type: 'chatAutonomousRoomStatus', chatId });
+    return data as unknown as AutonomousRoomStatusDto;
+  }
+
+  /** Manually start a run → `{runId, jobId}`. */
+  async autonomousRoomStart(chatId: string): Promise<{ runId: string; jobId: string }> {
+    const data = await this.dispatchData({ type: 'chatAutonomousRoomStart', chatId });
+    return data as unknown as { runId: string; jobId: string };
+  }
+
+  /** Pause the current run. */
+  async autonomousRoomPause(chatId: string): Promise<void> {
+    await this.dispatchData({ type: 'chatAutonomousRoomPause', chatId });
+  }
+
+  /** Stop the current run (bumps `currentRunId`). */
+  async autonomousRoomStop(chatId: string): Promise<void> {
+    await this.dispatchData({ type: 'chatAutonomousRoomStop', chatId });
+  }
+
+  /** Resume (or fresh-start) a paused/idle room → `{runId, jobId}`. */
+  async autonomousRoomResume(chatId: string): Promise<{ runId: string; jobId: string }> {
+    const data = await this.dispatchData({ type: 'chatAutonomousRoomResume', chatId });
+    return data as unknown as { runId: string; jobId: string };
+  }
+
+  /** Apply the Edit-Enclave modal patch → `{updated, clampedDestructive}`. */
+  async autonomousRoomUpdateSettings(
+    chatId: string,
+    settings: AutonomousRoomSettingsPatch,
+  ): Promise<AutonomousRoomUpdateResult> {
+    const data = await this.dispatchData({
+      type: 'chatAutonomousRoomUpdateSettings',
+      chatId,
+      settings,
+    });
+    return {
+      updated: data['updated'] === true,
+      clampedDestructive: data['clampedDestructive'] === true,
+    };
   }
 
   // -------------------------------------------------------------------------
