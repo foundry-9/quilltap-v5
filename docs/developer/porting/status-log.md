@@ -9841,3 +9841,63 @@ touch adapter helpers, the unreferenced component, the skipping e2e, or
 the two select conversions). Re-run the full suite at unification on a
 quieter machine; the file-manager beats ACTIVATE once the sibling detail
 screen + toggle wire land.
+
+## 2026-07-13 — the P4.6z ∥ P4.6aa round UNIFIED: the Scriptorium SPA + the D18 file manager (both orders CLOSED, D18 DECIDED)
+
+Reconciled on `unify/p4.6z-aa` (lane A's 3 commits, then lane B's 6 —
+conflicts were exactly the sanctioned three: `apps/web/package.json`
+version accumulation and the two append-only docs, union-merged), then
+the unification wire, then the gate fixes; fast-forwarded to main.
+
+**The wire (contract §4):** the store-detail Indexed-Files header
+gained the v4 "New file manager (beta)" / "Classic view" toggle; the
+toggled branch `@defer`-renders `qt-file-manager` over the
+server-derived capability bag (`mountKind` narrows the DTO's `string`
+mountType to the widget's union); the classic FileTable stays the
+default. `MountCapabilities` (lane B local) deduped to an alias of
+core-contract's identically-shaped `MountPointCapabilities`.
+
+**Gate-fix findings (all e2e, all lane-B spec gestures — the widget
+itself needed no change):**
+- `file-manager-flow.spec.ts` sorted BEFORE `foundation.spec.ts`
+  ('i' < 'o') while riding the shared server: once the walk ACTIVATED,
+  its probe's unlock deterministically broke foundation's
+  locked-screen start. Both lane gates had classified the foundation
+  failure as machine-load flake — it was this ordering bug. Renamed
+  `scriptorium-file-manager-flow.spec.ts` (the salon-documents-flow
+  precedent). RULE RESTATED: every shared-server spec must sort after
+  foundation; specs that sort earlier must launch their OWN server
+  (the characters-flow pattern).
+- The store seeding ran in `beforeAll`, i.e. against the still-locked
+  vault when the spec ran early/in isolation — dispatch refuses and the
+  walk silently mis-skipped. Moved after `maybeUnlock`.
+- The copy-folder refusal beat pasted the folder IN PLACE, which is the
+  widget's silent no-op guard (per its unit spec) — the refusal never
+  fired. The beat now pastes inside the copied folder.
+
+**Gate (all green, run sequentially on a quiet machine):**
+`cargo fmt --check`; clippy -D warnings on default +
+`native-transport`; `cargo test --workspace` 305 suites 0 failed; the
+`browse_directory_equivalence` differential re-run against a FRESH v4
+`a7b1398d` oracle (5 cases); `cargo build --release` (lock in sync);
+`ng test` 546 (75 files); `ng build` clean; full Playwright **33/33**
+— the file-manager walk ACTIVE (create folder → upload → rename →
+move → delete → copy-folder refusal), the three Scriptorium beats
+live, foundation green.
+
+**v4 drift note:** v4 HEAD moved one commit past the baseline during
+the round (`6a8a77aa` — nudge becomes a persisted Host announcement).
+Round files verified byte-identical at both commits (human-approved
+in-lane); the nudge path IS ported, so the next round must classify +
+re-port it when rebasing the baseline (a p4.d-style drift order) —
+carried in phase-4.md §Next candidates.
+
+**Orders:** P4.6z CLOSED (deferrals: the `/files` files-family page +
+FilePreview + the workspace-tab drill — all named in its header);
+P4.6aa CLOSED (D18 DECIDED: ngx-explorer spike GREEN-but-REJECTED →
+bespoke `qt-file-manager`; deferrals: cross-mount move/copy UI,
+drag-and-drop relocation; the select-audit rider: 2 converted, 7
+proven safe).
+
+Versions at unification: core 0.0.206, web 0.0.18, harness 0.0.187,
+host 0.0.15, SPA 0.5.60.

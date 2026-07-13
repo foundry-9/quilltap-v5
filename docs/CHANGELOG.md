@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+P4.6z/P4.6aa unification: the Scriptorium-SPA round is UNIFIED on
+main — both orders CLOSED, D18 DECIDED (ngx-explorer spike green on
+its gating checks but rejected for adoption — no move/copy verb, a
+second theming engine; the bespoke qt-file-manager shipped over the
+ported v4 adapter helpers). On main: the /scriptorium +
+/scriptorium/:id vertical (grid, five dialogs, DirectoryPicker,
+FileTable), the systemBrowseDirectory dispatch variant with its route
+differential, the qt-file-manager widget behind the store detail's
+"New file manager (beta)" toggle, and the dogfood-#6 select-audit (2
+conversions, 7 proven safe). Full gate at unification: fmt/clippy
+both feature sets clean, 305 Rust suites 0 failed, browse-directory
+differential fresh-green from v4 a7b1398d, release build, ng test 546,
+ng build, full Playwright 33/33 with the file-manager walk ACTIVE.
+Deferred loud: the /files files-family page (server surface unported),
+FilePreview, workspace-tab drill, cross-mount move/copy UI, drag
+relocation. v4 drift noted for the next round: 6a8a77aa (nudge → a
+persisted Host announcement) needs a drift re-port at baseline rebase.
+Versions: core 0.0.206, web 0.0.18, harness 0.0.187, host 0.0.15,
+SPA 0.5.60.
+
 P4.6z/P4.6aa unification gate fixes (e2e only): the file-manager walk's
 spec renamed file-manager-flow → scriptorium-file-manager-flow — the
 old name sorted BEFORE foundation.spec ('i' < 'o') and the activated

@@ -363,7 +363,28 @@ records THERE. Update this summary only when a phase or round completes.
   CLI. Next candidates: the Scriptorium SPA (D18), the ProseMirror
   editor (D17), the courier/images Salon slices, autonomous-rooms
   settings, or P4.7 (Tauri) — see phase-4.md.
-- **Oracle baseline:** v4 HEAD `a7b1398d` (drift-check before every round).
-  Versions: core 0.0.205, harness 0.0.187, host 0.0.15, web 0.0.17, SPA 0.5.50.
+- **The P4.6z ∥ P4.6aa Scriptorium-SPA round: UNIFIED on main
+  (2026-07-13) — P4.6z/P4.6aa CLOSED, D18 DECIDED.** The `/scriptorium`
+  + `/scriptorium/:id` SPA vertical (grid + five dialogs +
+  DirectoryPicker + FileTable) over the frozen file-ops surface, plus
+  the one new server variant `systemBrowseDirectory` (route
+  differential over the committed `browse-fs-tree/` fixture) ∥ the D18
+  decision lane: the ngx-explorer 5.0.2 spike ran GREEN on its gating
+  checks but adoption was REJECTED (no move/copy verb; a second theming
+  engine) — the bespoke `qt-file-manager` shipped over the ported v4
+  SVAR adapter helpers, behind the store detail's "New file manager
+  (beta)" toggle (the unification wire), + the dogfood-#6 select audit
+  (2 conversions, 7 proven safe). Gate: 305 Rust suites, ng test 546,
+  full Playwright 33/33 with the file-manager walk ACTIVE. Deferred
+  loud: the `/files` files-family page (server surface unported),
+  FilePreview, the workspace-tab drill, cross-mount move/copy UI, drag
+  relocation. **v4 drift banked:** `6a8a77aa` (nudge → a persisted Host
+  announcement) needs a p4.d-style re-port when the baseline rebases.
+  Next candidates: the nudge drift re-port, the ProseMirror editor
+  (D17), the courier/images Salon slices, the files-family server
+  surface, autonomous-rooms settings, or P4.7 (Tauri) — see phase-4.md.
+- **Oracle baseline:** v4 HEAD `a7b1398d` (drift-check before every round;
+  one banked drift commit `6a8a77aa`, see the P4.6z/aa round entry).
+  Versions: core 0.0.206, harness 0.0.187, host 0.0.15, web 0.0.18, SPA 0.5.60.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

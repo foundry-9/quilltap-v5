@@ -1,5 +1,18 @@
 # The Scriptorium file-manager component (Angular)
 
+> **OUTCOME (P4.6aa, 2026-07-13): the spike ran and the decision is
+> settled — bespoke.** ngx-explorer 5.0.2 passed all three gating checks
+> below (zoneless render; standalone interop — 5.0.2 is
+> `isStandalone: true`, the NgModule note aged out; a mock `IDataService`
+> drove listing + createDir) but was REJECTED for adoption: its
+> `IDataService` has **no move/copy verb** (tier-1 scope; its drag
+> handlers are upload-only), and it would reintroduce a second theming
+> engine + a numeric-id map + a per-directory listing model. The bespoke
+> `qt-file-manager` (`apps/web/src/app/files/**`) shipped over the ported
+> v4 adapter helpers exactly as §Fallback prescribes. Full decision
+> record: `work-orders/p4.6aa-file-manager-component.md` (header) and
+> phase-4.md D18.
+
 Phase-4 (Angular UI) work, but the **component choice is recorded now** because
 it has no first-party path on our target stack and we want the decision settled
 before the Scriptorium UI is built. This is a settled-now / implemented-later

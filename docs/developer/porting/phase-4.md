@@ -218,7 +218,21 @@ boundary; streaming only on `Event`; the `Db` ownership model; enclave
   markdown/chat-composer editor; the D17 chat-composer spike (Lexical's
   second, separate consumer) is untouched by this outcome and remains open.
 - **D18 — Settled component choices carry over.** File manager: **ngx-explorer
-  spike, build-our-own fallback** (`scriptorium-file-manager.md`, unchanged).
+  spike, build-our-own fallback** (`scriptorium-file-manager.md`).
+  **SPIKE OUTCOME (P4.6aa, 2026-07-13): ngx-explorer 5.0.2 ran GREEN on
+  all three gating checks** — renders under Angular 21 zoneless (OnPush +
+  AsyncPipe, no zone.js), standalone-from-standalone interop (5.0.2 is
+  `isStandalone: true`; the "NgModule-based" note was stale), and a mock
+  `IDataService` drove a live listing + `createDir` — **but ADOPTION was
+  REJECTED → the bespoke fallback shipped.** Decisive: `IDataService` has
+  NO move/copy verb (a tier-1 must-land; its drag handlers are
+  upload-only), and adopting it would reintroduce a second theming engine
+  (`.nxe-*` + icon font — the exact svar-theme-bridge cost this decision
+  set out to escape), a numeric-id↔path map, and a per-directory listing
+  model at odds with the whole-mount `mountFilesList` envelope. The
+  bespoke `qt-file-manager` (`apps/web/src/app/files/**`) ships over the
+  ported v4 SVAR adapter helpers, native `qt-*` styling, path-native ids;
+  ngx-explorer was uninstalled. Full record: the P4.6aa order header.
   Terminal: **xterm.js** (framework-agnostic, ports directly). Virtualized
   message list: **`@tanstack/virtual-core`** (vanilla core; matches v4's
   variable-height behavior — Angular CDK's autosize is still experimental).
@@ -965,3 +979,44 @@ file-ops surface — the D18 wire contract is the P4.6v §Shared-contract
 variant table + the P4.6y contract pins), the ProseMirror editor
 decision (D17), the courier/images Salon slices, autonomous-rooms
 settings, or P4.7 (`quilltap-tauri`). Round record: `status-log.md`.
+
+**The P4.6z ∥ P4.6aa Scriptorium-SPA round is UNIFIED on main
+(2026-07-13) — P4.6z and P4.6aa CLOSED, D18 DECIDED.** Lane A (P4.6z)
+delivered the Scriptorium SPA vertical — `/scriptorium` (store grid +
+card + the five dialogs + DirectoryPicker + scan) and
+`/scriptorium/:id` (header + info cards + patterns + scan/re-chunk +
+the classic FileTable with upload/expand-describe/delete) over the
+frozen P4.6v/P4.6y dispatch surface, plus the round's one new server
+variant: `systemBrowseDirectory` (the DirectoryPicker's browse route),
+differential-proven against v4's real route over the committed
+`browse-fs-tree/` fixture. Lane B (P4.6aa) settled **D18**: the
+ngx-explorer 5.0.2 spike ran GREEN on all three gating checks but
+adoption was REJECTED (no move/copy verb in `IDataService`; a second
+theming engine; numeric-id/per-directory model mismatch) — the bespoke
+`qt-file-manager` shipped over the ported v4 SVAR adapter helpers
+(node-id / listing-to-tree / the event→wire map re-targeted at
+dispatch / error-translation / reindex-after-copy), plus the
+dogfood-#6 `<select [value]>` audit (two risky sites converted to
+`[selected]`-per-option; seven proven safe). The unification wire put
+the "New file manager (beta)" toggle on the store detail
+(`@defer`-loaded) and deduped `MountCapabilities` into core-contract.
+Gate: 305 Rust suites 0 failed, the browse differential fresh-green,
+ng test 546, full Playwright **33/33** with the file-manager walk
+ACTIVE (three e2e ordering/gesture fixes recorded in the P4.6aa
+header — the old spec name sorted before foundation and its unlock
+broke foundation's locked start deterministically). **Standing
+deferrals (loud, named):** the `/files` general-files page (the
+files-family server surface — `/api/v1/files`, FileBrowser/FilePreview
+— is unported; the nav item stays disabled), the workspace-tab drill,
+cross-mount move/copy UI, drag-and-drop relocation (clipboard
+paste shipped). **v4 drift note:** v4 HEAD moved one commit past the
+baseline during the round (`6a8a77aa` — "nudge is now a persisted Host
+announcement, not a client-only note"); every file this round touches
+is byte-identical at both commits (verified in-lane, human-approved),
+but the nudge path IS a ported unit — classify and re-port it (a
+p4.d-style drift order) when the next round rebases the oracle
+baseline. **Next candidates:** the v4-drift re-port (the nudge Host
+announcement), the ProseMirror editor decision (D17), the
+courier/images Salon slices, the files-family server surface (unlocks
+`/files` + FilePreview), autonomous-rooms settings, or P4.7
+(`quilltap-tauri`). Round record: `status-log.md`.
