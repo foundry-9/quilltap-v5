@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.6z unit 3 (lane A): the live Scriptorium e2e walk
+(`e2e/scriptorium-flow.spec.ts`) over the shared Salon server — a database
+store (create → upload a blob → expand → edit description → delete file →
+delete store), a filesystem store (create on a temp dir → scan → the markdown
+file indexes), and the convert refusal (the live-guarded verb answers the typed
+refusal, surfaced in the flash banner). The old Salon fixture predates
+`embedding_profiles`; the scan's embedding enqueue reads that table, so
+`global-setup.ts` now materializes an empty `embedding_profiles`
+(`CREATE TABLE IF NOT EXISTS`, the terminal_sessions/chat_documents precedent —
+schema materialization, not a fixture regen) so the enqueue skips gracefully.
+
 P4.6z unit 2 (lane A): the Scriptorium SPA vertical. New `/scriptorium`
 document-stores screen (card grid + create/edit/delete/convert/deconvert
 dialogs + a server-backed DirectoryPicker over `systemBrowseDirectory` + scan

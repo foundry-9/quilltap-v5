@@ -9676,3 +9676,58 @@ grid, the create dialog's db-vs-fs field gating + emitted shape, the
 DirectoryPicker browse+select, and the FileTable rows/filter/sort/upload-gating +
 delete-confirm dispatch. `ng build` clean. SPA-facing behavior is also proven by
 the live Playwright walk (unit 3). Bumped `apps/web` 0.5.50→0.5.51.
+
+### P4.6z unit 3 — the live Scriptorium e2e walk — LANDED
+
+`apps/web/e2e/scriptorium-flow.spec.ts` (live, probe-free — the surface is fully
+live), three beats over the shared Salon server:
+1. **Database store, end-to-end:** create a db store → open detail → upload a
+   binary blob (multipart PUT item-route leg) → the row appears → expand (lazy
+   `mountBlobsList` detail) → edit the description (`mountFileUpdate`) → Save →
+   delete the file (`mountFileDelete`, window.confirm auto-accepted) → back →
+   delete the store (cascade).
+2. **Filesystem store:** create on a temp dir (under the e2e artifacts area, so
+   the server can read it) holding a `chronicle.md` → Scan Now → the file indexes
+   (row appears) → delete the store.
+3. **Convert refusal:** create an fs store → Convert → confirm → the
+   live-guarded `mountConvert` answers the typed refusal, surfaced loudly in the
+   list's error flash (asserted via the `role="status"` banner).
+
+**GOTCHAS banked:**
+- **The old Salon fixture lacks `embedding_profiles`.** The fs scan enqueues
+  mount-chunk embeddings, whose `default_profile_id` read touches
+  `embedding_profiles` in the MAIN db; with the table absent the read ERRORS and
+  the whole `mountScan` returns a 500 (the file is still persisted — the mount
+  writes commit, but the response is the error). Fixed by materializing an EMPTY
+  `embedding_profiles` in `global-setup.ts` (`CREATE TABLE IF NOT EXISTS`, main
+  db, the terminal_sessions/chat_documents precedent) → `default_profile_id`
+  returns None → the enqueue skips (0 jobs) → the scan succeeds. Schema
+  materialization, NOT a fixture regen.
+- **A text upload (.txt/.md) on a database mount is a NATIVE-TEXT document**
+  (no description editor, no per-row delete) — only blob-backed uploads
+  (pdf/docx/generic binary) get the expand→describe→delete affordances. The db
+  beat uploads a `.bin` (generic blob) to exercise that path.
+- **The `placeholder` component input reflects as an attribute on the
+  `<qt-directory-picker>` host**, so `getByPlaceholder('/path/to/documents')`
+  matches BOTH the host and the inner `<input>` — locate the field via
+  `locator('qt-directory-picker input')`.
+- **The shared server stays unlocked across specs**, so a direct `/scriptorium`
+  visit lands on the page (no passphrase, no "Chats" home) — key readiness on the
+  operational nav landmark (`getByRole('navigation', {name:'Quick navigation'})`),
+  not the "Chats" heading the salon specs use.
+- **Parallel-lane port conflict (dev-only):** the sibling P4.6aa lane's leftover
+  e2e server can hold PORT 4319; a stale server serves its (disabled-nav) build.
+  Kill port 4319 before running. (At unification only one lane runs, so this is a
+  concurrent-dev artifact, not a code issue.)
+
+**Full gate:** `cargo fmt --all --check` clean; `cargo clippy --workspace
+--all-targets -D warnings` clean (default + `quilltap-core/native-transport`);
+`cargo test --workspace` 0 failures (the browse-directory differential ran green
+against a freshly regenerated oracle); `ng test` 483 passed (incl. 13 scriptorium
+specs); `ng build` clean; `scriptorium-flow` 3/3 green (verified repeatedly in
+isolation and with foundation+terminal). **Full-suite note:** the full Playwright
+run showed 2 flakes (terminal-flow PTY-echo timing + characters-flow) that
+REPRODUCE WITHOUT the scriptorium spec on this loaded/disk-pressured machine
+(full-suite-minus-scriptorium = 27 passed / 2 failed) — environmental, not a
+regression; every spec passes in isolation. The unifier re-runs the full suite on
+a clean machine (contract §7). Bumped `apps/web` 0.5.51→0.5.52.

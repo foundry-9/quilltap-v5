@@ -90,6 +90,21 @@ export default async function globalSetup(): Promise<void> {
       'mountPoint TEXT, displayTitle TEXT, isActive INTEGER, ' +
       'createdAt TEXT, updatedAt TEXT);',
   );
+  // The Salon fixture predates embedding profiles; the P4.6z Scriptorium scan
+  // enqueues mount-chunk embeddings, whose `default_profile_id` read touches
+  // `embedding_profiles` (in the MAIN db). With the table absent the read errors
+  // and the whole scan fails; an EMPTY table lets the enqueue skip gracefully
+  // (no default profile → 0 jobs). IF NOT EXISTS keeps it a no-op when present —
+  // schema materialization, NOT a fixture regen (the terminal_sessions precedent).
+  runCliWrite(
+    cli,
+    'CREATE TABLE IF NOT EXISTS embedding_profiles (' +
+      'id TEXT PRIMARY KEY NOT NULL, userId TEXT NOT NULL, name TEXT NOT NULL, ' +
+      'provider TEXT NOT NULL, apiKeyId TEXT, baseUrl TEXT, modelName TEXT NOT NULL, ' +
+      'dimensions REAL, truncateToDimensions REAL, normalizeL2 INTEGER DEFAULT 1, ' +
+      "isDefault INTEGER DEFAULT 0, tags TEXT DEFAULT '[]', " +
+      'createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);',
+  );
   for (const table of ['chats', 'connection_profiles', 'api_keys', 'chat_settings', 'characters', 'tags', 'projects', 'memories']) {
     runCliWrite(cli, `UPDATE ${table} SET userId = '${SINGLE_USER_ID}' WHERE userId = '${FIXTURE_USER}';`, {
       allowFail: true,
