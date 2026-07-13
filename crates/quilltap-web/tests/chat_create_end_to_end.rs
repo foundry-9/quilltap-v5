@@ -171,6 +171,8 @@ impl SpineFactory for CreateSpineFactory {
             swipe_generate: None,
             provider_actions: None,
             memory_embedding: None,
+            courier_resolve: None,
+            save_image_bytes: None,
             job_handlers: Vec::new(),
         }
     }

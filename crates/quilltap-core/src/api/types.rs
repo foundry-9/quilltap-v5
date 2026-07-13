@@ -811,12 +811,18 @@ pub enum Request {
     /// v4 `GET /api/v1/image-profiles?action=list-providers` → `{providers, count}`.
     ImageProviderList,
     /// v4 `POST /api/v1/image-profiles/[id]?action=generate` — LLM/IO-coupled
-    /// (loud refusal arm this round).
+    /// (still a loud refusal arm; the P4.6ab tier-2 un-refusal is OPEN). Params
+    /// follow the P4.6ab/ac/ad Shared contract (`{imageProfileId, prompt,
+    /// chatId?, count?}`) so the SPA's generate dialog reaches the refusal
+    /// envelope rather than a parse error (reconciled at unification).
     #[serde(rename_all = "camelCase")]
     ImageProfileGenerate {
-        profile_id: String,
+        image_profile_id: String,
+        prompt: String,
         #[serde(default)]
-        payload: serde_json::Value,
+        chat_id: Option<String>,
+        #[serde(default)]
+        count: Option<i64>,
     },
     /// v4 `POST /api/v1/image-profiles?action=validate-key` — live IO (loud refusal
     /// arm this round).

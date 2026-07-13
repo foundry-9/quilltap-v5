@@ -1435,8 +1435,10 @@ impl CoreEngine {
                 Ok(_) => super::image_profiles::image_provider_list(),
                 Err(r) => r,
             },
-            Request::ImageProfileGenerate { profile_id, .. } => match self.ready_db() {
-                Ok(_) => super::image_profiles::image_profile_generate(&profile_id),
+            Request::ImageProfileGenerate {
+                image_profile_id, ..
+            } => match self.ready_db() {
+                Ok(_) => super::image_profiles::image_profile_generate(&image_profile_id),
                 Err(r) => r,
             },
             Request::ImageProfileValidateKey { .. } => match self.ready_db() {

@@ -3,6 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync, openSync } 
 import { resolve } from 'node:path';
 
 import { makeDbKeyFile } from './support/dbkey';
+import { seedCourierImagesFixture } from './support/seed-courier-fixture';
 import {
   ARTIFACTS_DIR,
   BASE_URL,
@@ -53,20 +54,28 @@ export default async function globalSetup(): Promise<void> {
   mkdirSync(resolve(INSTANCE_DATA_DIR, 'files'), { recursive: true });
   mkdirSync(resolve(INSTANCE_DATA_DIR, 'logs'), { recursive: true });
   copyFileSync(resolve(FIXTURES_DIR, 'salon-main.db'), resolve(INSTANCE_DATA_DIR, 'quilltap.db'));
-  copyFileSync(resolve(FIXTURES_DIR, 'salon-mount.db'), resolve(INSTANCE_DATA_DIR, 'quilltap-mount-index.db'));
+  copyFileSync(
+    resolve(FIXTURES_DIR, 'salon-mount.db'),
+    resolve(INSTANCE_DATA_DIR, 'quilltap-mount-index.db'),
+  );
 
   // Lock the instance: a user-passphrase .dbkey wrapping the test pepper (and NO
   // env pepper when we launch → the server boots `needs-passphrase`). Written
   // BEFORE the migrations so the CLI can unlock via the passphrase (this also
   // exercises the Node-generated .dbkey against the real reader).
-  writeFileSync(resolve(INSTANCE_DATA_DIR, 'quilltap.dbkey'), makeDbKeyFile(TEST_PEPPER, E2E_PASSPHRASE));
+  writeFileSync(
+    resolve(INSTANCE_DATA_DIR, 'quilltap.dbkey'),
+    makeDbKeyFile(TEST_PEPPER, E2E_PASSPHRASE),
+  );
 
   // Bring the fixture schema/data up to what the engine reads (mirrors the Rust
   // test harness `common::materialize_fixture_instance`): the `turnSkippingEnabled`
   // column (v4 add-turn-skipping-field-v1) and the user-id rewrite to the engine's
   // SINGLE_USER_ID (so `listChats` — filtered by that id — sees the chats). The
   // CLI unlocks the .dbkey via QUILLTAP_DB_PASSPHRASE.
-  runCliWrite(cli, 'ALTER TABLE chats ADD COLUMN turnSkippingEnabled INTEGER;', { allowFail: true });
+  runCliWrite(cli, 'ALTER TABLE chats ADD COLUMN turnSkippingEnabled INTEGER;', {
+    allowFail: true,
+  });
   // The Salon fixture predates terminal support; the terminal routes (P4.6u) need
   // the `terminal_sessions` table (the P4.1c DDL, verbatim from the Rust web test
   // harness `common::materialize_fixture_instance`). IF NOT EXISTS keeps it
@@ -105,10 +114,30 @@ export default async function globalSetup(): Promise<void> {
       "isDefault INTEGER DEFAULT 0, tags TEXT DEFAULT '[]', " +
       'createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);',
   );
-  for (const table of ['chats', 'connection_profiles', 'api_keys', 'chat_settings', 'characters', 'tags', 'projects', 'memories']) {
-    runCliWrite(cli, `UPDATE ${table} SET userId = '${SINGLE_USER_ID}' WHERE userId = '${FIXTURE_USER}';`, {
-      allowFail: true,
-    });
+  // The P4.6ab/P4.6ac unification wire: copy the courier + image-attachment
+  // chats from lane A's committed courier-images fixture into this instance so
+  // the salon-courier-images beats find their content (they discover by
+  // content and skip when absent). Runs BEFORE the userId rewrite below — the
+  // courier fixture shares FIXTURE_USER, so the loop rewrites these rows too.
+  seedCourierImagesFixture(cli);
+  for (const table of [
+    'chats',
+    'connection_profiles',
+    'api_keys',
+    'chat_settings',
+    'characters',
+    'tags',
+    'projects',
+    'memories',
+    'files',
+  ]) {
+    runCliWrite(
+      cli,
+      `UPDATE ${table} SET userId = '${SINGLE_USER_ID}' WHERE userId = '${FIXTURE_USER}';`,
+      {
+        allowFail: true,
+      },
+    );
   }
   // Point the fixture's OPENAI_COMPATIBLE profile at the M4 mock LLM — this must
   // happen BEFORE the server launches (the CLI write-lock refuses a live holder),

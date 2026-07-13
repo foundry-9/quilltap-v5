@@ -450,22 +450,31 @@ impl EngineAssembler for HostAssembler {
         for (job_type, handler) in &self.extra {
             registry.register(job_type.clone(), Box::new(SharedHandler(handler.clone())));
         }
-        let (chat_send, chat_create, swipe_generate, provider_actions, memory_embedding) =
-            match spine_bundle {
-                Some(bundle) => {
-                    for (job_type, handler) in bundle.job_handlers {
-                        registry.register(job_type, handler);
-                    }
-                    (
-                        Some(bundle.chat_send),
-                        Some(bundle.chat_create),
-                        bundle.swipe_generate,
-                        bundle.provider_actions,
-                        bundle.memory_embedding,
-                    )
+        let (
+            chat_send,
+            chat_create,
+            swipe_generate,
+            provider_actions,
+            memory_embedding,
+            courier_resolve,
+            save_image_bytes,
+        ) = match spine_bundle {
+            Some(bundle) => {
+                for (job_type, handler) in bundle.job_handlers {
+                    registry.register(job_type, handler);
                 }
-                None => (None, None, None, None, None),
-            };
+                (
+                    Some(bundle.chat_send),
+                    Some(bundle.chat_create),
+                    bundle.swipe_generate,
+                    bundle.provider_actions,
+                    bundle.memory_embedding,
+                    bundle.courier_resolve,
+                    bundle.save_image_bytes,
+                )
+            }
+            None => (None, None, None, None, None, None, None),
+        };
 
         let runner = JobRunner::new(db.clone(), registry);
         let (stop_tx, stop_rx) = watch::channel(false);
@@ -557,12 +566,13 @@ impl EngineAssembler for HostAssembler {
                 ),
             )),
             terminal_probe,
-            // === P4.6ab: courier + chat images ===
-            // The courier-resolve driver + the save-image bytes seam land with the
-            // sibling P4.6ac SPA integration (the unification wire); an unwired host
-            // answers the loud refusal / the NotConfiguredBytes EMPTY_BYTES fallback.
-            courier_resolve: None,
-            save_image_bytes: None,
+            // === P4.6ab: courier + chat images (wired LIVE at the P4.6ab/ac/ad
+            // unification) === The spine backs the courier resolve (completion +
+            // cheap executor for the settle's triggers); the production byte store
+            // backs save-image. Spine-less assemblies (read-only embedders) keep
+            // the loud refusal / the NotConfiguredBytes EMPTY_BYTES fallback.
+            courier_resolve,
+            save_image_bytes,
             // === end P4.6ab ===
         })
     }

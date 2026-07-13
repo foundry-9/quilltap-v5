@@ -1493,6 +1493,67 @@ where
     }
 }
 
+impl<EMB, CMP, STR, PF> quilltap_core::api::chat_media::CourierResolveDriver
+    for ChatSpine<EMB, CMP, STR, PF>
+where
+    EMB: EmbeddingProvider + Send + Sync + 'static,
+    CMP: CompletionProvider + Send + Sync + 'static,
+    STR: StreamingCompletionProvider + Send + Sync + 'static,
+    PF: PricingFetch + Send + Sync + 'static,
+{
+    fn resolve_external_turn(
+        &self,
+        chat_id: String,
+        message_id: String,
+        reply_content: String,
+    ) -> quilltap_core::api::chat_media::CourierResolveFuture<'_> {
+        let state = self.clone_state();
+        Box::pin(async move {
+            // The dedicated-thread bridge (the chat-send/swipe idiom): the resolve
+            // settle re-enters the cheap-LLM triggers, whose futures are non-`Send`.
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            std::thread::spawn(move || {
+                let result = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(rt) => rt.block_on(async {
+                        let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+                            db: state.db.clone(),
+                            user_id: SINGLE_USER_ID.to_string(),
+                            chat_id: Some(chat_id.clone()),
+                            message_id: None,
+                            ctx: LogContext::none(),
+                        });
+                        quilltap_core::api::chat_media::message_resolve_external_turn(
+                            &state.db,
+                            &*state.completion,
+                            &executor,
+                            SINGLE_USER_ID,
+                            &chat_id,
+                            &message_id,
+                            &reply_content,
+                            now_unix_ms(),
+                        )
+                        .await
+                    }),
+                    Err(e) => quilltap_core::api::Response::error(
+                        ErrorKind::Internal,
+                        format!("spine runtime: {e}"),
+                    ),
+                };
+                let _ = tx.send(result);
+            });
+            rx.await.unwrap_or_else(|_| {
+                quilltap_core::api::Response::error(
+                    ErrorKind::Internal,
+                    "courier resolve thread panicked".to_string(),
+                )
+            })
+        })
+    }
+}
+
 /// The `AUTONOMOUS_ROOM_TURN` step-runner closure over a shared spine — the
 /// dedicated-thread bridge the enclave E2E pinned (the step future is
 /// non-`Send`; `StepFuture` must be).
@@ -1893,6 +1954,13 @@ pub struct SpineBundle {
     /// arms run LIVE over (P4.6s, wired at the P4.6stu unification; `None` for
     /// canned test factories — the arms answer "not assembled").
     pub memory_embedding: Option<quilltap_core::model::embedding::ErasedEmbeddingProvider>,
+    /// The courier-resolve driver (P4.6ab, the unification wire; `None` for
+    /// canned test factories — the arm answers the loud not-assembled refusal).
+    pub courier_resolve: Option<Arc<dyn quilltap_core::api::chat_media::CourierResolveDriver>>,
+    /// The save-image bytes seam (P4.6ab, the unification wire; `None` → the
+    /// `messageSaveImage` arm falls back to `NotConfiguredBytes`).
+    pub save_image_bytes:
+        Option<Arc<dyn quilltap_core::photos::save_image_to_album::FileBytesStore>>,
     pub job_handlers: Vec<(String, Box<dyn JobHandler>)>,
 }
 
@@ -2042,7 +2110,12 @@ impl SpineFactory for ProductionSpineFactory {
         );
         SpineBundle {
             chat_send: Arc::clone(&spine) as Arc<dyn ChatSendDriver>,
-            swipe_generate: Some(spine),
+            swipe_generate: Some(Arc::clone(&spine) as _),
+            // P4.6ab (the unification wire): the same spine backs the courier
+            // resolve (completion + cheap executor for the settle's triggers);
+            // the production byte store backs save-image.
+            courier_resolve: Some(Arc::clone(&spine) as _),
+            save_image_bytes: Some(Arc::clone(&spine.file_bytes) as _),
             chat_create,
             provider_actions: Some(provider_actions),
             memory_embedding: Some(memory_embedding),
