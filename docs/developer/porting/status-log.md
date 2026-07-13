@@ -9566,3 +9566,67 @@ local) with a dedupe-at-unification note. Deliberately left out:
 the `/files` general-files page (the files-family server surface is
 unported — nav placeholder stays disabled), the FilePreview modal
 family, D17/ProseMirror, workspace tabs.
+
+## P4.6z (lane A) — the Scriptorium SPA vertical + `systemBrowseDirectory` rider [IN PROGRESS]
+
+Baseline v4 `a7b1398d`. Drift-check at lane start: v4 HEAD had moved one
+commit to `6a8a77aa` ("nudge is now a persisted Host announcement"), but
+that commit is entirely Salon/nudge territory — every file this lane
+depends on (`system/browse-directory/route.ts`, both mount-point routes,
+`ScriptoriumView.tsx`, `capabilities.ts`) is byte-identical between
+`a7b1398d..HEAD`. Human approved porting against `a7b1398d`; the
+browse-directory oracle regenerated against the current checkout is
+therefore identical to the pinned baseline.
+
+### P4.6z unit 1 — the `systemBrowseDirectory` server rider — LANDED
+
+The DirectoryPicker's host-filesystem browser: a new `api::system`
+dispatch handler (`crates/quilltap-core/src/api/system.rs`) +
+`Request::SystemBrowseDirectory { path? }` / `Response::System(Value)`
+(both inside `// === P4.6z: system ===` delimiter blocks in
+`types.rs`/`engine.rs`, and `pub mod system` in `mod.rs`). Ports v4's
+`GET /api/v1/system/browse-directory` verbatim: absent/empty `path` → the
+process home dir (`$HOME`, POSIX `os.homedir()`); `path.resolve` posix
+normalization (collapse `//`, fold `.`/`..`, drop trailing slash);
+`fs.stat` failure → 400 `"Path does not exist: <resolved>"`; not-a-dir →
+400 `"Path is not a directory: <resolved>"`; `fs.readdir` failure → a
+SUCCESS envelope with `directories: []` + `error: 'Permission denied'`;
+entries filtered to directories (dirent type — symlinks NOT followed, like
+Node `Dirent.isDirectory()`), `.`-prefixed skipped; sorted by `name`
+localeCompare via the existing ICU4X en-US `collation::locale_compare`;
+`parent = dirname(resolved)`, null at the fs root. No DB access → no
+readiness gate (v4's `createContextHandler` never touches the vault); rides
+`/api/dispatch`, no new REST route.
+
+**Differential:** `browse_directory_equivalence` (in `quilltap-web/tests/`,
+per the order's ownership) — 5 cases byte-exact against v4's REAL route:
+listing + hidden-dir skip + dir-only filter + localeCompare sort (the
+`apple`/`Banana`/`cherry` case that distinguishes localeCompare from byte
+order — v4 returns `apple,Banana,cherry`, byte order would be
+`Banana,apple,cherry`), nested listing + `parent` computation, a leaf dir,
+nonexistent-path 400, file-not-directory 400. Oracle
+(`harness/oracle/cases/browse-directory.test.ts`) is a jest test driving
+v4's real `browse-directory/route.ts` with ONLY the auth-context middleware
+mocked to a pass-through (the route is DB-free); the committed
+`crates/quilltap-web/tests/fixtures/browse-fs-tree/` is read-only so both
+sides point at the same tree, sentinel-rewriting each side's own absolute
+tree root → `<BASE>` for checkout independence. The `os.homedir()` default
+arm (machine-dependent, un-fixturable) and the readdir permission-denied
+arm (chmod-000 dirs are root-flaky) are covered by Rust unit tests in
+`system.rs`.
+
+Regen recipe (Node 24, from the v4 checkout — jest ignores `.claude/`):
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+TMPO=/tmp/qt-browse-oracle; rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+cp "$V5W/harness/oracle/cases/browse-directory.test.ts" "$TMPO/cases/"
+cd ~/source/quilltap-server
+QT_BROWSE_FS_TREE=$V5W/crates/quilltap-web/tests/fixtures/browse-fs-tree \
+QT_ORACLE_OUT=/tmp/oracle-browse-directory.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- browse-directory
+# then:
+QT_ORACLE_BROWSE_DIR=/tmp/oracle-browse-directory.ndjson \
+  cargo test -p quilltap-web --test browse_directory_equivalence
+```
+Crates bumped: `quilltap-core` 0.0.205→0.0.206, `quilltap-web` 0.0.17→0.0.18.

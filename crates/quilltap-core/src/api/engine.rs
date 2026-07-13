@@ -2258,6 +2258,12 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // === end P4.6w ===
+            // === P4.6z: system ===
+            // The DirectoryPicker's host-fs browser. No DB access (v4's
+            // `createContextHandler` never touches the vault), so no readiness gate.
+            Request::SystemBrowseDirectory { path } => {
+                super::system::browse_directory(path.as_deref())
+            } // === end P4.6z ===
         }
     }
 

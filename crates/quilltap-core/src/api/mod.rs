@@ -37,6 +37,9 @@ pub mod roleplay_templates;
 pub mod salon;
 pub mod scenarios;
 pub mod settings;
+// === P4.6z: system ===
+pub mod system;
+// === end P4.6z ===
 pub mod types;
 
 pub use chat_create::{ChatCreateDriver, ChatCreateDriverRequest, ChatCreateFuture};

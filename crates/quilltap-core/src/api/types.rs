@@ -1534,6 +1534,16 @@ pub enum Request {
         body: serde_json::Value,
     },
     // === end P4.6w ===
+    // === P4.6z: system ===
+    /// v4 `GET /api/v1/system/browse-directory[?path=…]` — the DirectoryPicker's
+    /// host-filesystem browser (absent/empty `path` → the process home dir). No
+    /// DB access; rides `/api/dispatch`, no new REST route.
+    #[serde(rename_all = "camelCase")]
+    SystemBrowseDirectory {
+        #[serde(default)]
+        path: Option<String>,
+    },
+    // === end P4.6z ===
 }
 
 /// Typed DTO per variant (the uniffi payoff). `Error` carries the one
@@ -1646,6 +1656,11 @@ pub enum Response {
     /// bytes are pinned by `documents_routes_equivalence` (P4.6w).
     Document(serde_json::Value),
     // === end P4.6w ===
+    // === P4.6z: system ===
+    /// The `systemBrowseDirectory` success body (`{path, parent, directories,
+    /// error?}`). Pinned by `browse_directory_equivalence`.
+    System(serde_json::Value),
+    // === end P4.6z ===
     Error(CoreError),
 }
 

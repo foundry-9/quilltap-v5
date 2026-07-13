@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.6z unit 1 (lane A): the `systemBrowseDirectory` server rider — a new
+`api::system::browse_directory` dispatch handler porting v4's
+`GET /api/v1/system/browse-directory` (the DirectoryPicker's host-filesystem
+browser). DB-free; rides `/api/dispatch` (no new REST route). Home-dir default,
+`path.resolve`/dirname/join posix normalization, dirent dir-only filtering,
+hidden-dir skip, and localeCompare (ICU4X en-US) sort all match v4. Verified by
+a new route differential (`browse_directory_equivalence`, 5 cases byte-exact
+over the committed `browse-fs-tree/` fixture) plus Rust unit tests for the
+home-default and permission-denied arms.
+
 P4.6z/P4.6aa round setup: work orders written for the Scriptorium SPA
 round (D18) after a fresh v4 survey at a7b1398d (no oracle drift).
 Lane A (p4.6z-scriptorium-spa.md): the /scriptorium stores +
