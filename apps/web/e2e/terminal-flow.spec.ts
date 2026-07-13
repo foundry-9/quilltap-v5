@@ -48,8 +48,12 @@ test.describe('P4.6u — the Salon terminal pane (open → spawn → echo → ki
     await expect(pane.locator('.xterm')).toBeVisible({ timeout: 15_000 });
 
     // Ariel's session-opened announcement landed as a chip (spawn + the refetch);
-    // Staff announcements collapse to chips (kind "terminal opened").
-    const openedChip = page.locator('.qt-chat-announcement-chip', { hasText: 'terminal opened' });
+    // Staff announcements collapse to chips (kind "terminal opened"). Newest-match:
+    // earlier specs (salon-documents-flow) leave their own terminal chips in this
+    // shared chat's history, so target the chip THIS spawn just posted.
+    const openedChip = page
+      .locator('.qt-chat-announcement-chip', { hasText: 'terminal opened' })
+      .last();
     await expect(openedChip).toBeVisible({ timeout: 15_000 });
 
     // Expand the chip → the inline embed shows the "in the pane" note (the same
@@ -71,7 +75,7 @@ test.describe('P4.6u — the Salon terminal pane (open → spawn → echo → ki
     await killBtn.click(); // arms the confirm
     await killBtn.click(); // confirms the kill
     await expect(
-      page.locator('.qt-chat-announcement-chip', { hasText: 'terminal closed' }),
+      page.locator('.qt-chat-announcement-chip', { hasText: 'terminal closed' }).last(),
     ).toBeVisible({
       timeout: 15_000,
     });

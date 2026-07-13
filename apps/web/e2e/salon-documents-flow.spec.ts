@@ -3,6 +3,12 @@ import { expect, request as pwRequest, test, type Page } from '@playwright/test'
 import { BASE_URL, E2E_PASSPHRASE } from './support/env';
 
 /**
+ * ORDERING: this file rides the SHARED global-setup server and unlocks it, so
+ * its filename must sort AFTER foundation.spec.ts — foundation walks the
+ * locked -> unlock gate and must reach the shared server first (workers: 1,
+ * alphabetical file order). Every shared-server spec obeys this; a
+ * "document-flow" name broke it at unification.
+ *
  * P4.6x — a LIVE browser walk of Document Mode over the shared Salon server:
  * open a fixture chat → open the Document Picker → create a new blank document →
  * the pane renders beside the chat → edit → flush-save (status → Saved) → the
@@ -97,9 +103,11 @@ test.describe('P4.6x — Document Mode (open → edit → save → rename → cl
     await page.locator('.qt-chat-composer-input').click();
     await expect(pane).toContainText('Saved', { timeout: 15_000 });
 
-    // The edit survives a full reload (the server persisted it).
+    // The edit survives a full reload (the server persisted it). The reload
+    // lands back on the CHAT page (the server stays unlocked), so wait for the
+    // chat body — not the shell entry maybeUnlock() expects.
     await page.reload();
-    await maybeUnlock(page);
+    await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
     const reopened = page.locator('qt-document-pane');
     await expect(reopened).toBeVisible({ timeout: 15_000 });
     await expect(reopened.locator('textarea')).toHaveValue(/Hello from the Scriptorium\./);
@@ -124,8 +132,24 @@ test.describe('P4.6x — Document Mode (open → edit → save → rename → cl
 
     // Open the terminal too → both panes show, stacked via the vertical split.
     await page.getByRole('button', { name: 'Open terminal' }).click();
-    await expect(page.locator('qt-terminal-pane')).toBeVisible({ timeout: 15_000 });
+    const terminalPane = page.locator('qt-terminal-pane');
+    await expect(terminalPane).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('qt-document-pane')).toBeVisible();
     await expect(page.locator('.qt-doc-vertical-split-layout')).toBeVisible();
+
+    // Unwind what this beat opened — the shared chat's pane state persists
+    // server-side, and terminal-flow.spec (later in the order) walks this same
+    // chat expecting a bare composer. Kill the terminal (two-click confirm),
+    // then close the document.
+    const killBtn = terminalPane.getByRole('button', { name: 'Kill terminal and close pane' });
+    await killBtn.click(); // arms the confirm
+    await killBtn.click(); // confirms the kill
+    await expect(page.locator('qt-terminal-pane')).toHaveCount(0, { timeout: 15_000 });
+    await page
+      .locator('qt-document-pane')
+      .getByRole('button', { name: 'Exit document mode' })
+      .click();
+    await expect(page.locator('qt-document-pane')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Open terminal' })).toBeVisible();
   });
 });

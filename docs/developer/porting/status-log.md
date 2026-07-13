@@ -9096,3 +9096,52 @@ project resolves (or the walk switches to a store-file open once lane A's
 mount fixture is present). Deferred loudly: `doc_focus` pane-level
 scroll-to-anchor, the maximize/focus toggle live beat, qtap:// link opening
 from chat, and the tier-3 standalone/workspace-tab surface.
+
+### P4.6x gate fallout — the document beats' first live run (unification)
+
+Four fixes at the unification gate, all in the established
+gesture/port-divergence class (no server bugs):
+
+1. **Container `(blur)` never fires — use `(focusout)`.** The document
+   pane's flush-on-blur save listened for `blur` on the editor's
+   container div; DOM `blur` does not bubble, so leaving the textarea
+   never fired it and every live save stayed "Unsaved" (the in-lane unit
+   specs drove the store directly and missed the template wiring). v4's
+   React `onBlur` works because React delegates blur as `focusout`; the
+   container now listens for `(focusout)` and a pane spec pins the
+   textarea-focusout → blur-output wiring. STANDING LESSON (dogfood-#6
+   family): React's delegated-event semantics (`onBlur`/`onFocus` on
+   containers) must port to the bubbling counterparts
+   (`focusout`/`focusin`) in Angular templates.
+
+2. **Shared-server spec ordering.** `document-flow.spec.ts` sorted
+   before `foundation.spec.ts`, unlocked the shared global-setup server
+   first, and broke foundation's locked-gate walk. Renamed to
+   `salon-documents-flow.spec.ts`; the ordering invariant (every spec
+   riding the shared server must sort after foundation) is now written
+   in the spec header. Beat 2's failure was pure cascade from beat 1.
+
+3. **Post-reload gesture.** Beat 1's reload-persistence check called
+   `maybeUnlock()` after `page.reload()` — that helper asserts the
+   shell entry (passphrase screen or the Chats heading), but the reload
+   lands back on the CHAT page on the still-unlocked shared server. The
+   gesture now waits for `.qt-chat-messages-list` (the pane then
+   restores from the server-side open set and the edited content
+   round-trips).
+
+4. **Shared-chat residue.** Both document beats walk Solo Voyage — the
+   same chat terminal-flow.spec walks later (it CANNOT move to Group
+   Expedition: that chat has no project, a projectless blank coerces to
+   `general` scope, and v5's resolver defers general/fs to the host-fs
+   seam — lane B's recorded correction — so the open would refuse).
+   Two halves: (a) the both-panes beat now unwinds what it opens (kill
+   the terminal two-click, close the document) since pane state
+   persists server-side and the later walk expects a bare composer;
+   (b) terminal-flow's "terminal opened"/"terminal closed" chip
+   locators are now newest-match (`.last()`) — the documents beat's own
+   Ariel chips stay in the shared chat's message history and broke
+   strict mode. STANDING LESSON: specs sharing a fixture chat must
+   unwind server-persisted pane state AND use newest-match locators for
+   announcement chips.
+
+`ng test` 470 (66 files) after the pane spec addition; SPA 0.5.50.

@@ -119,4 +119,15 @@ describe('DocumentPane', () => {
     expect(textarea.disabled).toBe(true);
     expect(fixture.nativeElement.textContent).toContain('AI editing...');
   });
+
+  it('emits blur when focus leaves the editor (focusout bubbles; blur does not)', () => {
+    // The flush-on-blur save rides this output. A container `(blur)` listener
+    // never fires in a real browser — the wiring must be `(focusout)`.
+    const fixture = render(entry());
+    const emitted: number[] = [];
+    fixture.componentInstance.blur.subscribe(() => emitted.push(1));
+    const textarea = fixture.nativeElement.querySelector('textarea') as HTMLTextAreaElement;
+    textarea.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    expect(emitted).toEqual([1]);
+  });
 });

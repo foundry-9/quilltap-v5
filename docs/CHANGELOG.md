@@ -2,6 +2,24 @@
 
 ## Recent Changes
 
+Fix the P4.6x document beats at first live run (four gate fallouts,
+all port-divergence/gesture class): (1) the pane's flush-on-blur save never
+fired in a real browser — the editor container listened for `blur`,
+which does not bubble; v4's React `onBlur` works because React
+delegates blur as `focusout`. The container now listens for `focusout`
+(a unit spec pins the wiring). (2) The new e2e spec file was named
+`document-flow.spec.ts`, which sorts before `foundation.spec.ts` and
+unlocked the shared server before foundation walked the locked gate —
+renamed to `salon-documents-flow.spec.ts` (every shared-server spec
+must sort after foundation; the constraint is now documented in the
+spec header). (3) The reload-persistence check asserted the shell entry
+after `page.reload()`, but the reload lands back on the chat page — the
+gesture now waits for the chat body. (4) Shared-chat residue: the
+both-panes beat now unwinds the panes it opens (server-persisted state)
+and terminal-flow's announcement-chip locators are newest-match — the
+documents beat's own Ariel chips stay in the shared chat's history.
+SPA 0.5.50.
+
 P4.6vwx unification wire: the `EngineAssembly.mount_refresh` seam stays
 UNWIRED (None + loud skip) — the order planned to wire it to lane A's
 reindex/embed services at unification, but P4.6v's units 4-9 (which

@@ -134,7 +134,11 @@ import { documentPaneUri } from './qtap-uri';
         </div>
       }
 
-      <div class="flex-1 overflow-y-auto" (blur)="blur.emit()">
+      <!-- focusout, not blur: blur does not bubble, so a container listener
+           never fires when the textarea loses focus. v4's React onBlur works
+           because React delegates blur as focusout — focusout is the faithful
+           Angular equivalent (the flush-on-blur save rides this). -->
+      <div class="flex-1 overflow-y-auto" (focusout)="blur.emit()">
         <textarea
           class="qt-doc-editor-area w-full h-full p-4 qt-bg-input qt-text-primary font-mono text-sm resize-none outline-none"
           [attr.aria-label]="'Document editor'"
