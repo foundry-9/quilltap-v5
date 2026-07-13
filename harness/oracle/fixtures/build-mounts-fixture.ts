@@ -7,10 +7,18 @@
  * both differential sides read identical rows — reads diff with no remap):
  *   - MP_DB  — a database/documents mount: two text docs (`notes/intro.md`,
  *              `reference.txt`) + one blob with a description (`images/logo.png`)
- *              + one embedded chunk (raw insert), plus a `doc_mount_folders` row,
+ *              + one garbage-PDF blob (`docs/report.pdf`, extraction untouched:
+ *              conversionStatus 'pending' / extractionStatus 'none' — the
+ *              reindex/scan extraction-state substrate) + three chunks (two with
+ *              REAL builtin TF-IDF embeddings, one with a NULL embedding for the
+ *              embed-enqueue differential), plus `doc_mount_folders` rows,
  *   - MP_EMPTY — an empty database mount (no files/folders),
  *   - MP_FS  — a filesystem mount, excludePatterns ['node_modules','*.tmp'],
  *   - MP_OBS — an obsidian mount, excludePatterns [].
+ * The MAIN db additionally carries the BUILTIN TF-IDF `embedding_profiles` row
+ * (EP_BUILTIN, default) + a fitted `tfidf_vocabularies` row over the chunk
+ * corpus (the P4.6s fixture precedent) so `mountEmbed`/`mountSemanticSearch`
+ * run the real builtin embedding path deterministically on both sides.
  * MP_FS / MP_OBS store the SENTINEL basePath `__MOUNTS_FS_TREE__`; the oracle and
  * the Rust test each rewrite it to their per-side temp COPY of the committed
  * `mounts-fs-tree/` before reading (nothing writes the committed tree).
@@ -41,6 +49,9 @@ const MP_EMPTY = 'b6000000-0000-4000-8000-000000000002';
 const MP_FS = 'b6000000-0000-4000-8000-000000000003';
 const MP_OBS = 'b6000000-0000-4000-8000-000000000004';
 const IDX_CHUNK = 'b7000000-0000-4000-8000-000000000001';
+const IDX_CHUNK2 = 'b7000000-0000-4000-8000-000000000002';
+const IDX_CHUNK3 = 'b7000000-0000-4000-8000-000000000003';
+const EP_BUILTIN = 'b8000000-0000-4000-8000-000000000001';
 
 // The sentinel the test sides rewrite to their own fs-tree copy.
 const FS_TREE_SENTINEL = '__MOUNTS_FS_TREE__';
@@ -71,7 +82,9 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
-  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+  const { initializeDatabase, ensureCollection, closeDatabase } = await import(
+    '@/lib/database/manager'
+  );
   const { getRepositories } = await import('@/lib/repositories/factory');
   const { getRawMountIndexDatabase, closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
@@ -85,8 +98,15 @@ async function main(): Promise<void> {
     DocMountFileLinkSchema,
     DocMountChunkSchema,
   } = await import('@/lib/schemas/mount-index.types');
+  const { EmbeddingProfileSchema } = await import('@/lib/schemas/profile.types');
 
   await initializeDatabase();
+
+  // Register the provider plugins (incl. the BUILTIN embeddings provider) so the
+  // real builtin embedding path resolves at generate time (P4.6s precedent).
+  const { initializePlugins } = await import('@/lib/startup/plugin-initialization');
+  await initializePlugins();
+  await ensureCollection('embedding_profiles', EmbeddingProfileSchema);
 
   // Materialize the mount-index schema on the fresh fixture. The `data BLOB`
   // table (`doc_mount_blobs`) can't be produced by generateDDL — storeMountFile's
@@ -119,6 +139,26 @@ async function main(): Promise<void> {
   await repos.users.create(
     { username: 'friday', email: null, name: 'Friday' } as never,
     { id: spec.userId, createdAt: TS, updatedAt: TS } as never,
+  );
+
+  // The BUILTIN default TF-IDF embedding profile (the P4.6s fixture precedent) —
+  // `mountEmbed` resolves it for the enqueue payload; `mountSemanticSearch`
+  // embeds queries through it.
+  await repos.embeddingProfiles.create(
+    {
+      userId: spec.userId,
+      name: 'Built-in TF-IDF',
+      provider: 'BUILTIN',
+      apiKeyId: null,
+      baseUrl: null,
+      modelName: 'tfidf-bm25-v1',
+      dimensions: null,
+      truncateToDimensions: null,
+      normalizeL2: true,
+      isDefault: true,
+      tags: [],
+    } as never,
+    { id: EP_BUILTIN, createdAt: TS, updatedAt: TS } as never,
   );
 
   const mkMount = async (
@@ -191,26 +231,73 @@ async function main(): Promise<void> {
     enqueueEmbedding: false,
   } as never);
 
-  // One embedded chunk on the intro doc's link (proves the chunk path is intact;
-  // not read by the read/list differential but part of the full fixture spec).
-  const introLinkId = (
-    midb
+  // MP_DB garbage-PDF blob — extraction deliberately untouched at build time
+  // (extractText:false), leaving conversionStatus 'pending' / extractionStatus
+  // 'none': the reindex / scan extraction-state substrate (both sides fail the
+  // extraction at runtime — v4's pdf-parse on garbage vs v5's refusing seam —
+  // with the error TEXT normalized by the differential).
+  await storeMountFile({
+    mountPointId: MP_DB,
+    relativePath: 'docs/report.pdf',
+    data: Buffer.from('not really a pdf, honest', 'utf8'),
+    originalMimeType: 'application/pdf',
+    transcodeImages: false,
+    extractText: false,
+    enqueueEmbedding: false,
+  } as never);
+
+  // Chunks: one on the intro doc, two on reference.txt (pinned ids). IDX_CHUNK +
+  // IDX_CHUNK2 get REAL builtin TF-IDF embeddings below; IDX_CHUNK3 keeps a NULL
+  // embedding (the mountEmbed enqueue target).
+  const linkIdFor = (rel: string): string => {
+    const row = midb
       .prepare(
         'SELECT id FROM doc_mount_file_links WHERE mountPointId = ? AND relativePath = ? LIMIT 1',
       )
-      .get(MP_DB, 'notes/intro.md') as { id: string } | undefined
-  )?.id;
-  if (!introLinkId) throw new Error('intro link not found after storeMountFile');
-  const embedding = Buffer.from(new Uint8Array(new Float32Array([1]).buffer));
-  midb
-    .prepare(
-      'INSERT INTO doc_mount_chunks (id, linkId, mountPointId, chunkIndex, content, tokenCount, headingContext, embedding, createdAt, updatedAt) ' +
-        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    )
-    .run(IDX_CHUNK, introLinkId, MP_DB, 0, 'First body line.', 4, 'Intro', embedding, TS, TS);
+      .get(MP_DB, rel) as { id: string } | undefined;
+    if (!row) throw new Error(`link not found after storeMountFile: ${rel}`);
+    return row.id;
+  };
+  const introLinkId = linkIdFor('notes/intro.md');
+  const refLinkId = linkIdFor('reference.txt');
+  const insertChunk = midb.prepare(
+    'INSERT INTO doc_mount_chunks (id, linkId, mountPointId, chunkIndex, content, tokenCount, headingContext, embedding, createdAt, updatedAt) ' +
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  );
+  insertChunk.run(IDX_CHUNK, introLinkId, MP_DB, 0, 'First body line.', 4, 'Intro', null, TS, TS);
+  insertChunk.run(IDX_CHUNK2, refLinkId, MP_DB, 0, 'reference alpha', 4, null, null, TS, TS);
+  insertChunk.run(IDX_CHUNK3, refLinkId, MP_DB, 1, 'reference beta', 4, null, null, TS, TS);
 
-  // (storeMountFile's ensureFolderPath already created the `notes` + `images`
-  // doc_mount_folders rows on MP_DB — the list route merges those.)
+  // Fit the BUILTIN vocabulary over the chunk corpus, then embed IDX_CHUNK +
+  // IDX_CHUNK2 through v4's REAL builtin path (the P4.6s recipe) — deterministic
+  // TF-IDF vectors both differential sides re-read.
+  const plugin = await import('@/plugins/dist/qtap-plugin-builtin-embeddings');
+  const TfIdfVectorizer = (plugin as { TfIdfVectorizer: new (b: boolean) => any }).TfIdfVectorizer;
+  const vectorizer = new TfIdfVectorizer(true); // include bigrams (the refit default)
+  vectorizer.fitCorpus(['First body line.', 'reference alpha', 'reference beta']);
+  const state = vectorizer.getState();
+  if (!state) throw new Error('TF-IDF fit produced no state');
+  await repos.tfidfVocabularies.upsertByProfileId(EP_BUILTIN, {
+    profileId: EP_BUILTIN,
+    userId: spec.userId,
+    vocabulary: JSON.stringify(state.vocabulary),
+    idf: JSON.stringify(state.idf),
+    avgDocLength: state.avgDocLength,
+    vocabularySize: state.vocabularySize,
+    includeBigrams: state.includeBigrams,
+    fittedAt: state.fittedAt,
+  } as never);
+  const { generateEmbeddingForUser } = await import('@/lib/embedding/embedding-service');
+  for (const [chunkId, content] of [
+    [IDX_CHUNK, 'First body line.'],
+    [IDX_CHUNK2, 'reference alpha'],
+  ] as const) {
+    const result = await generateEmbeddingForUser(content, spec.userId, EP_BUILTIN);
+    await repos.docMountChunks.updateEmbedding(chunkId, result.embedding);
+  }
+
+  // (storeMountFile's ensureFolderPath already created the `notes` + `images` +
+  // `docs` doc_mount_folders rows on MP_DB — the list route merges those.)
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

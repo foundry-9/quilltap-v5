@@ -9205,3 +9205,29 @@ and proven; units 4–9 enumerated in its status header — write/ops/
 scan/blobs/convert + reindex/embed + the seam wire; D7 NOT closed).
 **Versions after the round:** core 0.0.198, harness 0.0.181, host
 0.0.14, web 0.0.15, SPA 0.5.50.
+
+## 2026-07-12 — P4.6y unit A: the mounts fixture extension (embedding profile + extraction substrate + pinned chunks)
+
+The P4.6y lane's fixture groundwork (this lane owns the `mounts-*`
+family; the one dependent oracle regenerated below):
+
+- **`build-mounts-fixture.ts` extended** (ids/timestamps pinned as
+  before): the MAIN db gains the BUILTIN TF-IDF `embedding_profiles`
+  row (`EP_BUILTIN b8000000-…-0001`, `isDefault`, `tfidf-bm25-v1`,
+  `normalizeL2`) + a fitted `tfidf_vocabularies` row over the chunk
+  corpus (the P4.6s recipe: `TfIdfVectorizer(true).fitCorpus(...)` from
+  the built plugin, then `upsertByProfileId`); MP_DB gains
+  `docs/report.pdf` (a garbage-PDF blob stored with `extractText:false`
+  → conversionStatus `pending` / extractionStatus `none` — the
+  reindex/scan extraction-state substrate both sides fail at runtime,
+  error TEXT normalized by the differentials) and the chunk set is now
+  three pinned rows: `IDX_CHUNK` (intro, embedded), `IDX_CHUNK2`
+  (`reference alpha`, embedded), `IDX_CHUNK3` (`reference beta`, NULL
+  embedding — the mountEmbed enqueue target). The two embedded chunks
+  carry REAL builtin TF-IDF vectors written through v4's
+  `generateEmbeddingForUser` + `docMountChunks.updateEmbedding`.
+- **Dependent-oracle regen:** `mount-read.ts` regenerated fresh (18
+  cases — the list bodies now include `docs/report.pdf` + the `docs`
+  folder row); `mount_read_equivalence` re-run GREEN.
+- quilltap-web → 0.0.16 (the committed fixture bytes live under its
+  `tests/fixtures/`).

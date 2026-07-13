@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.6y unit A: extend the committed mounts fixture family for the
+mutation/indexing differentials — the MAIN db gains the BUILTIN TF-IDF
+embedding profile (default) + a fitted tfidf_vocabularies row over the
+chunk corpus; MP_DB gains a garbage-PDF blob (docs/report.pdf, the
+extraction-state substrate: conversionStatus 'pending' /
+extractionStatus 'none') and three pinned chunks (two with REAL builtin
+TF-IDF embeddings via v4's generateEmbeddingForUser, one NULL-embedding
+enqueue target). mount-read oracle regenerated (18 cases) and
+mount_read_equivalence re-run green. quilltap-web 0.0.16 (the fixture
+bytes live in its tests/fixtures).
+
 Write the P4.6y work order (docs only): the single-lane resumption order
 for the P4.6v remainder — the mount-index mutation + indexing surface
 (store-file/file-ops/folder-ops, reindex/embed/scan, semantic search,
