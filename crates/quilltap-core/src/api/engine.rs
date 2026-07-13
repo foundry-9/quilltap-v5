@@ -2384,6 +2384,51 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             }, // === end P4.6ab ===
+            // === P4.6ad: autonomous rooms (lane C, append-only) ===
+            Request::SystemAutonomousRooms => match self.ready_db() {
+                Ok(db) => super::autonomous_rooms::system_autonomous_rooms(&db, SINGLE_USER_ID),
+                Err(resp) => resp,
+            },
+            Request::ChatAutonomousRoomStatus { chat_id } => match self.ready_db() {
+                Ok(db) => super::autonomous_rooms::autonomous_room_status(&db, &chat_id),
+                Err(resp) => resp,
+            },
+            Request::ChatAutonomousRoomStart { chat_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::autonomous_rooms::autonomous_room_start(&db, SINGLE_USER_ID, &chat_id)
+                        .await
+                }
+                Err(resp) => resp,
+            },
+            Request::ChatAutonomousRoomPause { chat_id } => match self.ready_db() {
+                Ok(db) => super::autonomous_rooms::autonomous_room_pause(&db, &chat_id).await,
+                Err(resp) => resp,
+            },
+            Request::ChatAutonomousRoomStop { chat_id } => match self.ready_db() {
+                Ok(db) => super::autonomous_rooms::autonomous_room_stop(&db, &chat_id).await,
+                Err(resp) => resp,
+            },
+            Request::ChatAutonomousRoomResume { chat_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::autonomous_rooms::autonomous_room_resume(&db, SINGLE_USER_ID, &chat_id)
+                        .await
+                }
+                Err(resp) => resp,
+            },
+            Request::ChatAutonomousRoomUpdateSettings { chat_id, settings } => {
+                match self.ready_db() {
+                    Ok(db) => {
+                        super::autonomous_rooms::autonomous_room_update_settings(
+                            &db,
+                            SINGLE_USER_ID,
+                            &chat_id,
+                            &settings,
+                        )
+                        .await
+                    }
+                    Err(resp) => resp,
+                }
+            } // === end P4.6ad ===
         }
     }
 

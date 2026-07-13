@@ -17,6 +17,25 @@ fallback meanwhile). OPEN under the order (loud deferrals): the
 chat-file multipart upload leg and the imageProfileGenerate un-refusal.
 Survey correction: `blobMountPointId` is a dead prop in v4 (no route
 emits it) — the additive chat-GET echo is a no-op and was NOT added.
+P4.6ad (server half): the autonomous-rooms dispatch surface. New
+`api/autonomous_rooms.rs` wraps the frozen `enclave::lifecycle`
+run-control core behind seven Request variants — `systemAutonomousRooms`
+(the user-scoped listing, sorted running→idle→paused→budgetExhausted→
+stopped→error then updatedAt desc, with the projectName join),
+`chatAutonomousRoomStatus`, and the `Start`/`Pause`/`Stop`/`Resume`/
+`UpdateSettings` verbs. Preserves v4's envelope quirks: start/resume
+distinguish chat-not-found (404) while pause/stop answer every failure
+400; update-settings guards the chat first then routes invalid-cron to
+400; the update caps are nullish (explicit null clears, absent leaves);
+`clampedDestructive` echoes the user's `always_refuse` ceiling. The
+cron seam resolves the host local zone via jiff. Verified by the new
+`autonomous_rooms_routes_equivalence` differential (24 cases over a new
+committed `autonomous-{main,mount}.db` fixture: listing sort/ownership,
+status defaults, start/resume enqueue tier-2, pause/stop/update
+structural row diffs, invalid-cron/non-autonomous/missing arms, the
+destructive clamp both ways). No `ChatCreateRequest` change needed —
+it already carries every autonomous field (verified). Bumps
+quilltap-core 0.0.208, quilltap-harness 0.0.189.
 
 Planned the P4.6ab/P4.6ac/P4.6ad round (docs only): three work orders
 written — the courier + chat-images server surface (P4.6ab), the

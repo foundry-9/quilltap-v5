@@ -10162,3 +10162,84 @@ deferral (the fixture carries none).
 **Gate:** cargo fmt clean; clippy -D warnings clean on default + native-transport;
 cargo test --workspace green with `courier_images_routes_equivalence` verified BY
 NAME (15/15). Versions: core 0.0.208, web 0.0.19, harness 0.0.189.
+### P4.6ad (lane C) — the autonomous-rooms vertical, SERVER half (2026-07-13, OPEN)
+
+The dispatch marshaling over the frozen `enclave::lifecycle` run-control
+core. Fresh v4 survey at `6a8a77aa` (no drift). SPA half + tier-2 badges
++ e2e land in the following commits of this lane.
+
+**Ported (`api/autonomous_rooms.rs`, delimited appends in
+`types.rs`/`engine.rs`/`mod.rs`):**
+- `system_autonomous_rooms` — v4 `GET /system/autonomous-rooms`: filter
+  the user's chats to `chatType==='autonomous'`, project to the
+  management DTO, join projectName via the store-backed
+  `ProjectsRepository`, sort by the v4 `stateOrder` literal
+  (running→idle→paused→budgetExhausted→stopped→error, unknown→99) then
+  `updatedAt` desc (ICU4X localeCompare). `?? null / ?? 0` coalescing
+  over the chats_read-marshaled row (NULL nullable columns are omitted →
+  an absent key IS v4's `undefined ?? default`).
+- `autonomous_room_status` — the snapshot; `ensureAutonomousChat` guard
+  (missing → 404 `Chat not found`; non-autonomous → 400 `Chat is not an
+  autonomous room`); defaults `budgetExcludeCacheHits` 1,
+  `runDestructiveToolsAllowed` 0.
+- `autonomous_room_{start,resume}` → `{runId, jobId}`; distinguish
+  `chat_not_found` → 404 (pause/stop carry no reason → every failure
+  400, incl. a missing chat). `pause` → `{paused:true}`, `stop` →
+  `{stopped:true}`.
+- `autonomous_room_update_settings` — guards the chat FIRST, then routes
+  the lifecycle result; the tri-state patch (`Option<Option<_>>`):
+  present+null clears a cap, absent leaves it; invalid cron → 400
+  `Invalid cron expression: <cron>`; `{updated:true, clampedDestructive}`
+  where the clamp echoes the acting user's `always_refuse` policy. The
+  cron seam resolves the host local zone (`jiff TimeZone::system`).
+- Wire: seven Request variants + one `Response::AutonomousRoom(Value)`
+  arm, all in lane-C `// === P4.6ad === … === end P4.6ad ===` blocks
+  (the two-core-dispatch-writer rule).
+
+**ChatCreateRequest gap check (order tier-1 item 2): NO-OP.** The
+survey-named fields (`schedule_freshness_window_ms`,
+`run_destructive_tools_allowed`) + every other autonomous field are
+ALREADY on `ChatCreateRequest` (`services/chat_create.rs:145-155`),
+persisted (`:537-587`, `budgetExcludeCacheHits` at `:586` with v4's
+`=== false ? 0 : 1`), and round-trip via the flattened `ChatCreate`
+dispatch. No additive extension, no chat-create differential regen.
+
+**Fixture (`build-autonomous-rooms-web-fixture.ts` →
+`autonomous-{main,mount}.db`):** 2 users (A owner + B ownership/clamp),
+1 connection+key, 5 LLM characters, 1 store-backed project, 8 USER_A
+autonomous rooms covering every runState (idle ×3 incl. one
+project-linked + two sharing a band for the updatedAt tiebreak; running
+with cron+caps+consumed; a live paused run; stopped; budgetExhausted;
+error), 1 non-autonomous salon (the 400 guard), 1 USER_B room. Run-state
+columns thread through v4 `_create` (verified via a repo read-back). The
+empty `background_jobs` table is materialized (v4 auto-creates it at
+runtime; v5's frozen schema needs it present for the enqueue write).
+
+**Differential (`autonomous_rooms_routes_equivalence`, 24 cases):**
+jest oracle drives v4's REAL route handlers over a fresh fixture copy
+per case (auth session + startup gate mocked; DB stack + repos
+doMocked real). Listing (sort/projectName/ownership) + status exact;
+error arms as status+message; start/resume enqueue via a tier-2
+`background_jobs` dump (blank minted runId + timing-dependent status);
+pause/stop/update via a raw-column chat-row dump (blank the minted /
+wall-clock volatiles: scheduleNextRunAt, currentRunId, runEndedAt,
+runPausedAt, runPausedAccumMs). Both destructive-clamp arms (user A
+opt_in → false, user B always_refuse → true). GREEN.
+
+Regen recipe — fixture:
+`QT_FIXTURE_AUTO_MAIN=<w>/crates/quilltap-web/tests/fixtures/autonomous-main.db
+QT_FIXTURE_AUTO_MOUNT=…/autonomous-mount.db node --import tsx
+harness/oracle/fixtures/build-autonomous-rooms-web-fixture.ts` (from the
+v4 checkout). Oracle: cp the `.test.ts` + `autonomous-rooms-web.json` to
+a /tmp mirror, then `QT_FIXTURE_AUTO_MAIN=… QT_FIXTURE_AUTO_MOUNT=…
+QT_ORACLE_OUT=/tmp/oracle-autonomous-rooms-routes.ndjson npx jest
+--watchman=false --testTimeout=120000 --roots "$PWD" --roots
+"$TMPO/cases" -- autonomous-rooms-routes`. Rust:
+`QT_ORACLE_AUTONOMOUS_ROUTES=/tmp/oracle-autonomous-rooms-routes.ndjson
+cargo test -p quilltap-harness --test autonomous_rooms_routes_equivalence`.
+Gotcha: the enqueue triggers v4's background-job child fork, which dies
+`ERR_MODULE_NOT_FOUND` (child-entry `@/lib` resolution) AFTER the NDJSON
+write — harmless; jest passes and the enqueued row lands (status
+PROCESSING, blanked).
+
+Versions: core 0.0.208, harness 0.0.189.

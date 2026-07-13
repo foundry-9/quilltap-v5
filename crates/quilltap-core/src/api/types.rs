@@ -1609,6 +1609,45 @@ pub enum Request {
         conflicting_file_id: Option<String>,
     },
     // === end P4.6ab ===
+    // === P4.6ad: autonomous rooms (lane C, append-only) ===
+    /// v4 `GET /api/v1/system/autonomous-rooms` — every `chatType==='autonomous'`
+    /// chat owned by the user, sorted running-first. `{rooms: Room[]}`.
+    SystemAutonomousRooms,
+    /// v4 `GET /api/v1/chats/{id}/autonomous-room` — the run-status snapshot.
+    #[serde(rename_all = "camelCase")]
+    ChatAutonomousRoomStatus {
+        chat_id: String,
+    },
+    /// v4 `POST …?action=start` — manual run start → `{runId, jobId}`.
+    #[serde(rename_all = "camelCase")]
+    ChatAutonomousRoomStart {
+        chat_id: String,
+    },
+    /// v4 `POST …?action=pause` → `{paused: true}`.
+    #[serde(rename_all = "camelCase")]
+    ChatAutonomousRoomPause {
+        chat_id: String,
+    },
+    /// v4 `POST …?action=stop` → `{stopped: true}`.
+    #[serde(rename_all = "camelCase")]
+    ChatAutonomousRoomStop {
+        chat_id: String,
+    },
+    /// v4 `POST …?action=resume` → `{runId, jobId}`.
+    #[serde(rename_all = "camelCase")]
+    ChatAutonomousRoomResume {
+        chat_id: String,
+    },
+    /// v4 `POST …?action=update-settings` — the Edit Enclave modal patch (v4
+    /// `updateSettingsSchema`: every cap `.nullish()` so the modal can CLEAR;
+    /// ms units) → `{updated: true, clampedDestructive}`.
+    #[serde(rename_all = "camelCase")]
+    ChatAutonomousRoomUpdateSettings {
+        chat_id: String,
+        #[serde(default)]
+        settings: serde_json::Value,
+    },
+    // === end P4.6ad ===
 }
 
 /// Typed DTO per variant (the uniffi payoff). `Error` carries the one
@@ -1733,6 +1772,13 @@ pub enum Response {
     /// `{file}` | `{duplicate, …}`. Pinned by `courier_images_routes_equivalence`.
     ChatMedia(serde_json::Value),
     // === end P4.6ab ===
+    // === P4.6ad: autonomous rooms ===
+    /// An autonomous-rooms-family body: the listing `{rooms}`, the status
+    /// snapshot, the run-control envelopes (`{runId, jobId}`, `{paused: true}`,
+    /// `{stopped: true}`, `{updated: true, clampedDestructive}`). The exact bytes
+    /// are pinned by `autonomous_rooms_routes_equivalence` (P4.6ad).
+    AutonomousRoom(serde_json::Value),
+    // === end P4.6ad ===
     Error(CoreError),
 }
 
