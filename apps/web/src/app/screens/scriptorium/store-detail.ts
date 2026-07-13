@@ -4,6 +4,8 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { map } from 'rxjs';
 
 import { CoreClient } from '../../core/core-client';
+import { FileManager } from '../../files/file-manager/file-manager';
+import type { MountType } from '../../files/types';
 import { formatBytes } from '../../ui/format-bytes';
 import { Icon } from '../../ui/icon';
 import { EditStoreDialog } from './edit-store-dialog';
@@ -24,14 +26,18 @@ import type { DocumentStore, DocumentStoreFile, UpdateDocumentStoreData } from '
  * and the Indexed Files section with the classic {@link FileTable}. Scanning
  * re-fetches BOTH the store and its files.
  *
- * The file-manager toggle is a UNIFICATION wire (Shared contract §4) — this
- * screen ships the classic FileTable only; the unifier adds the toggle button +
- * `@if (useFileManager())` branch to the marked Indexed-Files section.
+ * The file-manager toggle is the UNIFICATION wire of the P4.6z∥P4.6aa round
+ * (Shared contract §4), pasted at unification: the Indexed-Files header gains
+ * the "New file manager (beta)" / "Classic view" toggle (the v4
+ * `DocumentStoreDetailView.tsx:229-236` affordance) and an
+ * `@if (useFileManager())` branch renders the sibling lane's
+ * {@link FileManager} (`@defer`-loaded) over the server-derived capability
+ * bag; the classic FileTable stays the default.
  */
 @Component({
   selector: 'qt-store-detail',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, FileTable, EditStoreDialog],
+  imports: [Icon, FileTable, FileManager, EditStoreDialog],
   template: `
     @if (loading()) {
       <div class="flex min-h-screen items-center justify-center">
@@ -159,19 +165,42 @@ import type { DocumentStore, DocumentStoreFile, UpdateDocumentStoreData } from '
           </div>
         }
 
-        <!-- Indexed Files — the file-manager toggle is a unification wire (contract §4).
-             Ships the classic FileTable only in-lane. -->
+        <!-- Indexed Files — the file-manager toggle (the P4.6z∥P4.6aa unification
+             wire, contract §4). The FileTable stays the default view. -->
         <div class="border-t qt-border-default/60 pt-6">
           <div class="mb-4 flex items-center justify-between gap-3">
             <h2 class="qt-heading-3">Indexed Files</h2>
+            @if (s.capabilities) {
+              <button
+                type="button"
+                class="qt-button-ghost inline-flex items-center gap-1.5 text-sm"
+                title="Preview the new file manager"
+                (click)="useFileManager.set(!useFileManager())"
+              >
+                <qt-icon name="layers" class="w-4 h-4" />
+                {{ useFileManager() ? 'Classic view' : 'New file manager (beta)' }}
+              </button>
+            }
           </div>
-          <qt-file-table
-            [files]="files()"
-            [loading]="filesLoading()"
-            [mountPointId]="s.id"
-            [mountType]="s.mountType"
-            (refresh)="loadFiles()"
-          />
+          @if (useFileManager() && s.capabilities) {
+            @defer {
+              <qt-file-manager
+                [mountPointId]="s.id"
+                [capabilities]="s.capabilities"
+                [mountType]="mountKind()"
+              />
+            } @placeholder {
+              <p class="qt-section-title p-6">Summoning the file manager…</p>
+            }
+          } @else {
+            <qt-file-table
+              [files]="files()"
+              [loading]="filesLoading()"
+              [mountPointId]="s.id"
+              [mountType]="s.mountType"
+              (refresh)="loadFiles()"
+            />
+          }
         </div>
       </div>
 
@@ -197,6 +226,12 @@ export class StoreDetail implements OnInit {
   protected readonly error = signal<string | null>(null);
   protected readonly scanning = signal(false);
   protected readonly editOpen = signal(false);
+  /** The unification toggle (contract §4): file manager vs the classic table. */
+  protected readonly useFileManager = signal(false);
+  /** `DocMountPointDto.mountType` is `string`; the widget input is the union. */
+  protected readonly mountKind = computed(
+    () => (this.store()?.mountType ?? 'filesystem') as MountType,
+  );
 
   protected readonly sizeLabel = computed(() => formatBytes(this.store()?.totalSizeBytes ?? 0));
   protected readonly embeddedPct = computed(() => {

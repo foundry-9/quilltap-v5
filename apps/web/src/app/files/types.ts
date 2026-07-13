@@ -1,33 +1,20 @@
 /**
- * Local types for the `qt-file-manager` file surface (lane B, work order
- * P4.6aa). The component contract (§2) requires lane B to define
- * `MountCapabilities` **locally** here; lane A types the server `capabilities`
- * bag in `core-contract.ts` with the SAME shape. The unifier MAY dedupe (flip
- * this import to core-contract) but MUST NOT reshape.
+ * Types for the `qt-file-manager` file surface (work order P4.6aa). The
+ * component contract (§2) had lane B define `MountCapabilities` locally; at
+ * unification it was deduped to core-contract's identically-shaped
+ * `MountPointCapabilities` (the sanctioned flip — shape unchanged).
  *
  * @module files/types
  */
 
+import type { MountPointCapabilities } from '../core/core-contract';
+
 /**
- * Per-mount capability flags — pinned verbatim from v4
- * `lib/mount-index/capabilities.ts:32`. The SERVER derives these
- * (`mountPointGet` echoes a `capabilities` bag); the widget consumes, never
- * re-derives, them.
+ * Per-mount capability flags — v4 `lib/mount-index/capabilities.ts:32`. The
+ * SERVER derives these (`mountPointGet` echoes a `capabilities` bag); the
+ * widget consumes, never re-derives, them.
  */
-export interface MountCapabilities {
-  /** Upload / save / write into this mount. */
-  canWrite: boolean;
-  /** Delete files or folders in this mount. */
-  canDelete: boolean;
-  /** Create new folders in this mount. */
-  canCreateFolder: boolean;
-  /** This mount may be the *destination* of a copy/move. */
-  canMoveIn: boolean;
-  /** This mount may be the *source* of a copy/move. */
-  canMoveOut: boolean;
-  /** Offer the convert (fs→db) or deconvert (db→fs) action right now. */
-  canConvert: boolean;
-}
+export type MountCapabilities = MountPointCapabilities;
 
 /** The three mount kinds the component is told about (contract §2). */
 export type MountType = 'filesystem' | 'obsidian' | 'database';

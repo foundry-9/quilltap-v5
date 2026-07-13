@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+P4.6z/P4.6aa unification wire: the store-detail Indexed-Files section
+gains the "New file manager (beta)" / "Classic view" toggle rendering
+the deferred qt-file-manager over the server-derived capability bag
+(the classic FileTable stays the default) — the contract-§4 seam
+neither lane could land in-lane; and MountCapabilities is deduped to
+core-contract's identically-shaped MountPointCapabilities (the
+sanctioned flip, shape unchanged). SPA 0.5.59.
+
 P4.6z unit 3 (lane A): the live Scriptorium e2e walk
 (`e2e/scriptorium-flow.spec.ts`) over the shared Salon server — a database
 store (create → upload a blob → expand → edit description → delete file →
