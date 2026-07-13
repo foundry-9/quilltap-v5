@@ -537,9 +537,10 @@ impl EngineAssembler for HostAssembler {
             swipe_generate,
             provider_actions,
             memory_embedding,
-            // P4.6w: the document-store refresh scheduler is wired at unification
-            // (lane A's reindex/embed services); unwired here, the write sites
-            // loud-skip the refresh.
+            // P4.6w: the document-store refresh scheduler stays UNWIRED — lane A
+            // (P4.6v) has not yet landed the reindex/embed services it needs
+            // (units 4-9 remain open). The document_store write sites loud-skip
+            // the refresh until that order completes and wires this seam.
             mount_refresh: None,
         })
     }

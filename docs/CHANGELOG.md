@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+P4.6vwx unification wire: the `EngineAssembly.mount_refresh` seam stays
+UNWIRED (None + loud skip) — the order planned to wire it to lane A's
+reindex/embed services at unification, but P4.6v's units 4-9 (which
+deliver those services) remain open; the host.rs comment now records
+the real condition. Host 0.0.14.
+
 P4.6v (lane A) unit 3: the mount-index READ + LIST surface. Ports v4's
 `readMountFile` / `readMountFileBytes` (`read-file.ts`, all storage
 shapes — fs bytes, database documents, database blobs, with line-window
