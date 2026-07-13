@@ -10445,3 +10445,42 @@ caption + default album, single-vs-multi image picker),
 state, thumbnail->lightbox).
 
 **Gate (in-lane):** ng test 583 green, ng build clean. SPA 0.5.64.
+
+### P4.6ac units 6+7 — the composer attach affordance + the e2e walk (Tier 2.8 + 2.9) — LANDED
+
+**Composer attach (`chat/chat-composer.ts` + `chat/chat-files.api.ts` +
+`chat/file-conflict-dialog.ts`):** a port of v4's `useFileAttachments`
++ the composer chips. The composer gained a `chatId` input, an attach
+button + hidden file input + a paste-image handler that upload to the
+chat-files multipart leg via `uploadChatFile`
+(`POST /api/v1/chats/{id}/files`, fields `file`/`resolution?`/
+`conflictingFileId?` → `{file}` | `{duplicate,…}` | `{error}` — the
+P4.6m multipart precedent). Attached-file chips (removable) render above
+the textarea; a duplicate response opens FileConflictDialog (Replace /
+Keep Both / Skip, v4-verbatim microcopy). The `send` output changed to
+`ComposerSend {content, fileIds}`; `salon-conversation.runTurn` threads
+`fileIds` onto `chatSend` (the field already existed) and allows an
+attachment-only send. The REST leg is lane A's — the upload runs live
+at unification; in-lane the spec mocks `fetch`. Announcement/mail/RNG
+gutter tools + drag-and-drop stay locked deferrals (loud).
+
+**E2e walk (`e2e/salon-courier-images-flow.spec.ts`):** a probe- +
+fixture-guarded Playwright walk — the courier beat (bubble renders:
+awaiting-carrier + copy + paste; Cancel settles → bubble gone) and the
+image beat (thumbnail → lightbox opens over the image → Escape closes).
+Sorts AFTER `foundation.spec.ts`. The `beforeAll` probe skips when
+`messageCancelExternalTurn` is an unknown variant (in-lane); each beat
+DISCOVERS its fixture chat by CONTENT (scanning the chat list for
+`.qt-courier-bubble` / `.qt-chat-attachment-image`), so it needs no
+hardcoded fixture title and auto-activates at unification over lane A's
+`courier-images-*.db`. Read + cancel only (no LLM turn), leaving the
+shared fixture pristine. `--list` shows 2 tests; probe-skips in-lane.
+
+**Differentials:** `chat-composer.spec.ts` (upload → chip, send payload
++ clear, attachment-only enable, chip remove, duplicate → conflict
+dialog → resolve re-uploads with the resolution + conflicting id),
+`file-conflict-dialog.spec.ts` (conflict descriptions, byte sizes,
+each resolution emission).
+
+**Gate (in-lane):** ng test 593 green, ng build clean, Playwright
+`--list` parses. SPA 0.5.65.

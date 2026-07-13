@@ -63,6 +63,18 @@ structural row diffs, invalid-cron/non-autonomous/missing arms, the
 destructive clamp both ways). No `ChatCreateRequest` change needed —
 it already carries every autonomous field (verified). Bumps
 quilltap-core 0.0.208, quilltap-harness 0.0.189.
+P4.6ac (Salon SPA, lane B): the composer attach affordance and the
+courier/images e2e walk. The composer gained an attach button + hidden
+file input + paste-image handler that upload to the chat-files
+multipart leg (`POST /api/v1/chats/{id}/files`), showing attached-file
+chips (removable) and the duplicate-conflict resolver (Replace / Keep
+Both / Skip); the attached file ids ride the send (`chatSend.fileIds`).
+Added a probe- and fixture-guarded Playwright walk
+(`salon-courier-images-flow.spec.ts`) covering the courier bubble
+(render → cancel settles) and the thumbnail → lightbox flow; it
+discovers its fixture chats by content and skips until lane A's
+dispatch + fixture merge. SPA 0.5.65.
+
 P4.6ac (Salon SPA, lane B): the save-to-album dialog and the in-chat
 photo gallery. The message action bar gained a Save button (shown when
 a message carries image attachments) that opens SaveImageDialog — an

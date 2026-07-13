@@ -186,6 +186,7 @@ interface CascadePrompt {
 
       <qt-chat-composer
         [busy]="busy()"
+        [chatId]="chatId()!"
         [hasActiveCharacters]="hasActiveCharacters()"
         [terminalActive]="terminalActive()"
         [documentActive]="documentPaneActive()"
@@ -693,8 +694,8 @@ export class SalonConversation {
   // Send + streaming
   // -------------------------------------------------------------------------
 
-  protected send(content: string): void {
-    void this.runTurn({ content });
+  protected send(payload: { content: string; fileIds: string[] }): void {
+    void this.runTurn({ content: payload.content, fileIds: payload.fileIds });
   }
 
   protected continueTurn(): void {
@@ -703,6 +704,7 @@ export class SalonConversation {
 
   private async runTurn(opts: {
     content?: string;
+    fileIds?: string[];
     continueMode?: boolean;
     respondingParticipantId?: string;
     nudge?: boolean;
@@ -712,8 +714,9 @@ export class SalonConversation {
       return;
     }
 
-    if (opts.content) {
-      this.optimisticUser.set(this.makeTempUserMessage(opts.content));
+    const hasAttachments = (opts.fileIds?.length ?? 0) > 0;
+    if (opts.content || hasAttachments) {
+      this.optimisticUser.set(this.makeTempUserMessage(opts.content ?? ''));
       // A user send always chases the bottom and re-enables auto-scroll (v4).
       this.messageList()?.scrollOnUserMessage();
     }
@@ -734,12 +737,15 @@ export class SalonConversation {
           type: 'chatSend',
           chatId,
           content: opts.content,
+          fileIds: opts.fileIds?.length ? opts.fileIds : undefined,
           continueMode: opts.continueMode,
           respondingParticipantId: opts.respondingParticipantId,
           nudge: opts.nudge,
           // Thread the Speaking-As choice onto a user-authored send (v4 does the
-          // same); irrelevant to a continue/nudge, so only sent with content.
-          speakingAsParticipantId: opts.content ? (this.activeSpeakerId() ?? undefined) : undefined,
+          // same); irrelevant to a continue/nudge, so only sent with content or
+          // an attachment-only message.
+          speakingAsParticipantId:
+            opts.content || hasAttachments ? (this.activeSpeakerId() ?? undefined) : undefined,
         },
         'chatSend',
       );
