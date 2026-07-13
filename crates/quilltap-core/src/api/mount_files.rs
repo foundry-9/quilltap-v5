@@ -859,6 +859,80 @@ pub async fn mount_blob_update(
     }
 }
 
+/// v4 `?action=convert` (`handleConvert`) — the capability guards run LIVE
+/// (already-database / mid-conversion quiesce), then the conversion itself is
+/// a loud typed refusal: `conversion.ts` (convert/deconvert + the on-disk
+/// migration walk) is a full future unit deferred by work order P4.6y.
+pub async fn mount_convert(db: &Db, mount_point_id: &str) -> Response {
+    let id = mount_point_id.to_string();
+    let guard = db.read_mount_index(move |conn| {
+        Ok(DocMountPointsRepository::new(conn).find_service_info_by_id(&id)?)
+    });
+    match guard {
+        Ok(None) => Response::error(ErrorKind::NotFound, "Mount point not found"),
+        Ok(Some(mp)) if mp.mount_type != "filesystem" && mp.mount_type != "obsidian" => {
+            Response::error(
+                ErrorKind::BadRequest,
+                format!(
+                    "Mount point is already database-backed (mountType={})",
+                    mp.mount_type
+                ),
+            )
+        }
+        Ok(Some(mp))
+            if mp.conversion_status == "converting" || mp.conversion_status == "deconverting" =>
+        {
+            Response::error(
+                ErrorKind::BadRequest,
+                "A conversion is already in progress for this mount point",
+            )
+        }
+        Ok(Some(_)) => Response::error(
+            ErrorKind::Internal,
+            "The 'convert' mount-point action is recognized but not yet available              (the store-conversion machinery is deferred by work order P4.6y).",
+        ),
+        Err(e) => Response::error(ErrorKind::Internal, e.to_string()),
+    }
+}
+
+/// v4 `?action=deconvert` (`handleDeconvert`) — guards live, conversion
+/// refused (see [`mount_convert`]).
+pub async fn mount_deconvert(db: &Db, mount_point_id: &str, target_path: &str) -> Response {
+    if target_path.is_empty() {
+        return Response::error(
+            ErrorKind::BadRequest,
+            "Deconvert requires a non-empty targetPath",
+        );
+    }
+    let id = mount_point_id.to_string();
+    let guard = db.read_mount_index(move |conn| {
+        Ok(DocMountPointsRepository::new(conn).find_service_info_by_id(&id)?)
+    });
+    match guard {
+        Ok(None) => Response::error(ErrorKind::NotFound, "Mount point not found"),
+        Ok(Some(mp)) if mp.mount_type != "database" => Response::error(
+            ErrorKind::BadRequest,
+            format!(
+                "Mount point is not database-backed (mountType={}); nothing to deconvert",
+                mp.mount_type
+            ),
+        ),
+        Ok(Some(mp))
+            if mp.conversion_status == "converting" || mp.conversion_status == "deconverting" =>
+        {
+            Response::error(
+                ErrorKind::BadRequest,
+                "A conversion is already in progress for this mount point",
+            )
+        }
+        Ok(Some(_)) => Response::error(
+            ErrorKind::Internal,
+            "The 'deconvert' mount-point action is recognized but not yet available              (the store-conversion machinery is deferred by work order P4.6y).",
+        ),
+        Err(e) => Response::error(ErrorKind::Internal, e.to_string()),
+    }
+}
+
 /// v4 `POST ?action=reindex` (`handleReindex`) — `reindexLinks` synchronous
 /// in-request. Body: `{mountPointId, mountName, processed, succeeded, failed,
 /// skipped, errors}`.

@@ -1415,6 +1415,18 @@ pub enum Request {
         #[serde(default)]
         description: Option<String>,
     },
+    /// v4 `?action=convert` — REFUSAL-ARMED (loud, typed; the guards run live,
+    /// the conversion machinery is a named P4.6y deferral).
+    #[serde(rename_all = "camelCase")]
+    MountConvert {
+        mount_point_id: String,
+    },
+    /// v4 `?action=deconvert` — REFUSAL-ARMED (see `MountConvert`).
+    #[serde(rename_all = "camelCase")]
+    MountDeconvert {
+        mount_point_id: String,
+        target_path: String,
+    },
     // === P4.6w: documents ===
     // Chat-scoped Document Mode (all take `chatId`). See `api::documents`. The
     // schema-bag variants flatten the remaining fields into `body` (the exact

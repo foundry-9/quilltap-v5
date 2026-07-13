@@ -9384,3 +9384,15 @@ The indexing spine lands (early — file-ops and store-file both ride
   lastModified from each side's OWN fixture copy (identical bytes).
   Normalization addition: numeric write-body `mtime` blanked.
 - core 0.0.202, harness 0.0.185.
+
+## 2026-07-13 — P4.6y unit I: the convert/deconvert refusal arms
+
+`mountConvert` / `mountDeconvert` variants land REFUSAL-ARMED per the
+order's tier 3: v4's guards run live (notFound; "already
+database-backed"/"not database-backed" with the mountType in the
+message; the mid-conversion quiesce; the empty-targetPath 400), and the
+conversion itself is the loud typed refusal naming this order. The
+guards read the widened `MountServiceInfo` (`conversion_status`).
+Pinned by `convert_deconvert_refusal_arms` in the mount-ops test tree
+(no oracle — v4 would really convert; the refusal IS the v5 contract).
+core 0.0.203, harness 0.0.186.

@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+P4.6y unit I: mountConvert/mountDeconvert land refusal-armed — the
+variants exist, v4's capability guards run live (already-database /
+not-database / mid-conversion quiesce / empty targetPath), and the
+conversion machinery itself answers a loud typed refusal naming P4.6y
+(conversion.ts is a full future unit). Pinned by a dedicated harness
+test over the mounts fixture. core 0.0.203, harness 0.0.186.
+
 P4.6y units B+G: the storeMountFile ingest pipeline + the blob routes.
 store_file.rs ports all three ingest branches (fs disk write with the
 optimistic-mtime CONFLICT; database native-text into doc_mount_documents

@@ -2157,6 +2157,19 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            Request::MountConvert { mount_point_id } => match self.ready_db() {
+                Ok(db) => super::mount_files::mount_convert(&db, &mount_point_id).await,
+                Err(r) => r,
+            },
+            Request::MountDeconvert {
+                mount_point_id,
+                target_path,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::mount_files::mount_deconvert(&db, &mount_point_id, &target_path).await
+                }
+                Err(r) => r,
+            },
             // === P4.6w: documents ===
             Request::ChatActiveDocument { chat_id } => match self.ready_db() {
                 Ok(db) => super::documents::chat_active_document(&db, &chat_id),

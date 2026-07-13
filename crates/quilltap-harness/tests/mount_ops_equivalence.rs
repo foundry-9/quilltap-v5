@@ -429,3 +429,77 @@ fn mount_ops_match_oracle() {
     assert_eq!(checked, 39, "expected the 39 mount-ops cases");
     eprintln!("OK: mount-ops matched oracle ({checked} cases).");
 }
+
+/// The P4.6y tier-3 refusal arms: convert/deconvert exist as variants, run
+/// v4's capability guards LIVE, and refuse the conversion itself loudly
+/// (no oracle — v4 would really convert; the refusal is the v5 contract).
+#[test]
+fn convert_deconvert_refusal_arms() {
+    let pepper = test_pepper();
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .unwrap();
+    let (db, scratch) = fresh_db(&pepper, "convert-refusals");
+
+    // convert: guards live...
+    let r = rt.block_on(mf::mount_convert(&db, MP_DB));
+    match &r {
+        Response::Error(e) => {
+            assert!(
+                e.message.contains("already database-backed"),
+                "{}",
+                e.message
+            )
+        }
+        other => panic!("expected guard error, got {other:?}"),
+    }
+    let r = rt.block_on(mf::mount_convert(&db, BOGUS));
+    match &r {
+        Response::Error(e) => assert!(e.message.contains("not found"), "{}", e.message),
+        other => panic!("expected 404, got {other:?}"),
+    }
+    // ...and the refusal itself names the deferring order.
+    let r = rt.block_on(mf::mount_convert(&db, MP_FS));
+    match &r {
+        Response::Error(e) => {
+            assert!(
+                e.message.contains("recognized but not yet available"),
+                "{}",
+                e.message
+            );
+            assert!(e.message.contains("P4.6y"), "{}", e.message);
+        }
+        other => panic!("expected refusal, got {other:?}"),
+    }
+
+    // deconvert mirrors.
+    let r = rt.block_on(mf::mount_deconvert(&db, MP_DB, ""));
+    match &r {
+        Response::Error(e) => assert!(e.message.contains("non-empty targetPath"), "{}", e.message),
+        other => panic!("expected 400, got {other:?}"),
+    }
+    let r = rt.block_on(mf::mount_deconvert(&db, MP_FS, "/tmp/x"));
+    match &r {
+        Response::Error(e) => {
+            assert!(e.message.contains("not database-backed"), "{}", e.message)
+        }
+        other => panic!("expected guard error, got {other:?}"),
+    }
+    let r = rt.block_on(mf::mount_deconvert(&db, MP_DB, "/tmp/x"));
+    match &r {
+        Response::Error(e) => {
+            assert!(
+                e.message.contains("recognized but not yet available"),
+                "{}",
+                e.message
+            )
+        }
+        other => panic!("expected refusal, got {other:?}"),
+    }
+
+    drop(db);
+    let _ = std::fs::remove_dir_all(&scratch);
+    eprintln!("OK: convert/deconvert refusal arms pinned.");
+}
