@@ -9530,3 +9530,39 @@ autonomous-rooms settings, or P4.7 (`quilltap-tauri`).
 
 Versions at unification: core 0.0.205, web 0.0.17, harness 0.0.187,
 host 0.0.15, SPA 0.5.50.
+
+## 2026-07-13 — the P4.6z ∥ P4.6aa Scriptorium-SPA round: orders written
+
+Drift-check clean: v4 HEAD is still `a7b1398d` (no commits since the
+P4.6y baseline). Two lanes, both orders committed under
+`work-orders/`:
+
+- **P4.6z (lane A, `p4.6z-scriptorium-spa.md`)** — the Scriptorium SPA
+  vertical: `/scriptorium` (grid + card + create/edit/delete dialogs +
+  DirectoryPicker + scan) and `/scriptorium/:id` (header + info cards +
+  patterns + scan/re-chunk + the classic FileTable with
+  upload/delete/description), over the frozen P4.6v/P4.6y dispatch
+  surface — plus the ONE missing server variant, `systemBrowseDirectory`
+  (v4 `app/api/v1/system/browse-directory` — the DirectoryPicker's
+  browse route), with a route differential over a new committed
+  `browse-fs-tree` fixture. Owns routes/nav/core-contract; live
+  `scriptorium-flow.spec.ts`.
+- **P4.6aa (lane B, `p4.6aa-file-manager-component.md`)** — the D18
+  decision lane: spike ngx-explorer 5.0.2 on Angular 21 zoneless
+  (bespoke ~640-line fallback per `scriptorium-file-manager.md`), port
+  the v4 SVAR adapter helpers (node-id / listing-to-tree /
+  event→wire map re-targeted at dispatch / error-translation /
+  reindex-after-copy) as pure spec'd TS, deliver `qt-file-manager` per
+  the pinned component contract. Carries the dogfood-#6
+  `<select [value]>` audit rider. Probe-guarded
+  `file-manager-flow.spec.ts` self-activates at unification.
+
+Meeting points pinned: the Shared contract + Ownership sections are
+byte-identical in both orders (diff-verified at setup); the detail
+screen's file-manager toggle is a unification wire (neither lane lands
+it in-lane — the refresh-seam precedent); core-contract.ts is lane A
+single-author; `MountCapabilities` is duplicated verbatim (lane B
+local) with a dedupe-at-unification note. Deliberately left out:
+the `/files` general-files page (the files-family server surface is
+unported — nav placeholder stays disabled), the FilePreview modal
+family, D17/ProseMirror, workspace tabs.

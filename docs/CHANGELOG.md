@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+P4.6z/P4.6aa round setup: work orders written for the Scriptorium SPA
+round (D18) after a fresh v4 survey at a7b1398d (no oracle drift).
+Lane A (p4.6z-scriptorium-spa.md): the /scriptorium stores +
+/scriptorium/:id detail + FileTable vertical over the frozen
+mount-file surface, plus the one missing server variant
+(systemBrowseDirectory, the DirectoryPicker's browse route) with a
+route differential over a committed fs-tree fixture. Lane B
+(p4.6aa-file-manager-component.md): the D18 ngx-explorer spike
+(bespoke fallback) + the v4 SVAR adapter-helper ports + the
+qt-file-manager component, integrated via a toggle wire pasted at
+unification; carries the dogfood-#6 select-audit rider. Shared
+contract + ownership sections verified byte-identical across both
+orders. Docs only — no version bumps.
+
 P4.6y unification: the mount-file-ops remainder round is UNIFIED on
 main. The single lane branched from main HEAD, so the round was a
 clean fast-forward (no cherry-pick conflicts). P4.6y CLOSED, P4.6v
