@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.6y unit K: D7 CLOSED — the api/mount_points.rs refusal note deleted
+(the action verbs + semantic-search all live in api::mount_files now);
+P4.6v marked CLOSED (completed by P4.6y) and the closure noted in the
+P4.6p header; the P4.6y order carries the full close-out record
+(contract pins + standing deferrals). Lane gate green: fmt --check;
+clippy -D warnings on both feature sets; cargo test --workspace (304
+suites, 0 failed); all eight differentials regenerated FRESH from v4
+a7b1398d and re-run green by name (chunker 69, md-convert 28, read 18,
+index 14, ops 39, write 22, refresh 1, documents-routes 24); release
+build clean. Unifier flag: run the FULL Playwright suite (the seam wire
+changes live document-write behavior).
+
 P4.6y unit J: the EngineAssembly.mount_refresh seam is WIRED LIVE (the
 P4.6w deferral closed). refresh.rs gains run_refresh (mount lookup + fs
 abs-path resolution + the whole-mount form) and DbMountRefreshScheduler —

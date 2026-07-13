@@ -1,12 +1,13 @@
-//! The mount-point file-operations dispatch surface (P4.6v) — the boundary
-//! functions over `services::mount_index`. This unit lands the read path:
-//! `mount_files_list` (the files-list route body, consumed by the Scriptorium
-//! SPA's DocumentPicker) and `mount_file_read` (the per-file GET JSON envelope).
+//! The mount-point file-operations dispatch surface (P4.6v/P4.6y) — the
+//! boundary functions over `services::mount_index`: the read/list keystone,
+//! the whole mutation family (write/ingest, move/copy/link/delete, folder
+//! ops, PATCH, blobs), the indexing verbs (scan/reindex/embed), semantic
+//! search, and the refusal-armed convert/deconvert.
 //!
-//! File-op failures map through `file_op_status` to the matching `ErrorKind`;
-//! the error message carries v4's `{error}` text (the SPA error translation also
-//! keys on the `FileOpError`/`DatabaseStoreError` `code`, surfaced in the message
-//! for now — the exact `{error, code}` envelope is a web-edge follow-up).
+//! File-op failures map through `file_op_status` to the matching `ErrorKind`
+//! and carry v4's `{error, code}` body on the envelope (`CoreError.code` —
+//! the `FileOpError` ∪ `DatabaseStoreError` union the SPA error translation
+//! keys on).
 
 use crate::db::doc_mount_points::{DocMountPointsRepository, MountServiceInfo};
 use crate::db::runtime::Db;

@@ -9446,3 +9446,25 @@ core 0.0.203, harness 0.0.186.
   and re-run green after the wire (its corpus drives scheduler-None
   paths — the loud-skip arm — unchanged).
 - core 0.0.205, host 0.0.15, harness 0.0.187.
+
+## 2026-07-13 — P4.6y unit K: D7 CLOSED + the close-out gate (P4.6v CLOSED with it)
+
+- The D7 refusal note deleted from `api/mount_points.rs` (the module
+  header now points at `api::mount_files`); the P4.6p status header
+  carries the closure note; `p4.6v-mount-index-file-ops-server.md` is
+  marked CLOSED (completed by this order); the P4.6y header carries the
+  full close-out record (landed surface, contract pins, standing
+  deferrals).
+- **The gate:** `cargo fmt --check` clean; clippy `-D warnings` clean on
+  the default set AND `--features quilltap-core/native-transport`;
+  `cargo test --workspace` green (no env vars — skips + self-tests);
+  ALL EIGHT differentials regenerated FRESH from v4 `a7b1398d` (each
+  oracle in its own invocation) and re-run green BY NAME:
+  mount-chunker 69, mount-md-convert 28, mount-read 18, mount-index 14,
+  mount-ops 39 (+ the refusal-arm test), mount-write 22,
+  mount-refresh 1, documents-routes 24; `cargo build --workspace
+  --release` clean.
+- **Flag for the unifier:** run the FULL Playwright suite at
+  unification — the mount_refresh wire changes live document-write
+  behavior under lane C's activated document e2e beats (a write now
+  chunks + refreshes stats in the background).

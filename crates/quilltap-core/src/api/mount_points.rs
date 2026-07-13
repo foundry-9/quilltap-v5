@@ -3,8 +3,9 @@
 //! delete-cascade), composed over the ported `db::doc_mount_points` repo + the two
 //! new embedded-count reads + the pure `derive_mount_capabilities`. The mount-index
 //! partition backs every table here (reads via [`Db::read_mount_index`]; writes on
-//! the mount-index writer). The twelve action verbs + `semantic-search` get NO
-//! variants this round (D7 — the Scriptorium/file-manager surface).
+//! the mount-index writer). The action verbs + `semantic-search` live in
+//! [`super::mount_files`] (P4.6y — D7 closed; `convert`/`deconvert` are the
+//! remaining loud refusal arms there).
 
 use rusqlite::Connection;
 use serde_json::{json, Map, Value};
