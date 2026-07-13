@@ -9797,3 +9797,17 @@ bespoke-build payoff — no `.nxe-*` override sheet, no icon-font swap, no
 second theming engine). 10 component cases green (zoneless TestBed over a
 fake `CoreClient`; the P4.6x `flush()` microtask-drain idiom, since
 zoneless `whenStable()` doesn't await the dispatch promise chain).
+
+**Unit 4 — the probe-guarded e2e (SPA 0.5.54).**
+`apps/web/e2e/file-manager-flow.spec.ts` — a live browser walk of
+`qt-file-manager` over the shared Salon server: seed a database store via
+the frozen-live `mountPointCreate` dispatch, reach the sibling's store
+detail screen, flip the "New file manager (beta)" toggle, then create
+folder → upload → rename → move-into-folder → delete → the copy-folder
+REFUSAL beat (assert the steampunk prompt, no request). The detail screen
++ toggle belong to lane A (P4.6z) + the unifier's toggle wire, so a runtime
+probe (`reachFileManager`) skips the whole walk in-lane (the toggle is
+absent) and self-activates once they land at unification (the P4.6x
+precedent). Verified: `playwright test file-manager-flow --list` parses
+the one test; it reports SKIPPED in-lane (no toggle). Sorts alphabetically
+after `foundation.spec.ts` (the shared-server ordering rule).

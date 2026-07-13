@@ -38,6 +38,16 @@ hidden-dir skip, and localeCompare (ICU4X en-US) sort all match v4. Verified by
 a new route differential (`browse_directory_equivalence`, 5 cases byte-exact
 over the committed `browse-fs-tree/` fixture) plus Rust unit tests for the
 home-default and permission-denied arms.
+P4.6aa lane B (file-manager, unit 4): the probe-guarded e2e
+(file-manager-flow.spec.ts). A live browser walk of qt-file-manager over
+the shared Salon server: seed a database store via the frozen-live
+mountPointCreate dispatch, reach its detail screen, flip the "New file
+manager (beta)" toggle, then create folder → upload → rename → move into
+the folder → delete → the copy-folder refusal beat (assert the steampunk
+prompt, no request). The detail screen + toggle belong to the sibling lane
+(P4.6z) + the unifier wire, so a runtime probe skips the walk in-lane
+(reports SKIPPED) and self-activates once they land (the P4.6x precedent).
+
 P4.6aa lane B (file-manager, unit 3): the qt-file-manager component
 (bespoke, D18). Selector qt-file-manager, standalone + lazy-loadable, per
 the pinned component contract: mountPointId / capabilities / mountType
