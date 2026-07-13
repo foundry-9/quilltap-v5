@@ -10405,3 +10405,43 @@ branch renders bubble + skips action bar; thumbnail src = id route;
 non-image filter; imageClick payload).
 
 **Gate (in-lane):** ng test 574 green, ng build clean. SPA 0.5.63.
+
+### P4.6ac units 4+5 — SaveImageDialog + PhotoGalleryModal (Tier 2.5 + 2.6) — LANDED
+
+**SaveImageDialog (`images/save-image-dialog.ts`):** a port of v4
+`SaveImageDialog.tsx`. Loads the chat's candidate albums via
+`chatPhotoAlbums`, groups them into kind optgroups
+(character/project/document-store/general, v4's ALBUM_KIND order + the
+"(you)" user-character suffix), an optional caption (200-char), and
+saves via `messageSaveImage` (`{fileId, mountPointId, caption?}` →
+`{mountPoint, relativePath}`, read defensively for the `data`-nested or
+flat echo). Async-select follows the dogfood-#6 `[selected]`-per-option
+idiom; the default album is `isDefault ?? first`. **Corrected the
+Shared-contract `AlbumOption`** to v4's real shape
+(`{mountPointId, name, kind, characterId?, participantId?,
+isUserCharacter?, isDefault?}`) — my first pass guessed a
+character-only shape. The action-bar Save button (bookmark icon,
+message-row) shows when `imageAttachments > 0` and emits `saveImage
+{messageId, attachmentId}` (v4 passes `images[0].id`);
+`salon-conversation` looks the message's attachments up by id for the
+dialog.
+
+**PhotoGalleryModal (`images/photo-gallery-modal.ts`, chat mode):** a
+focused port of v4 `PhotoGalleryModal.tsx` — a thumbnail grid of the
+chat's image files (`chatFilesList`, filtered to image/*), a
+thumbnail-size range control (v4's THUMBNAIL_SIZES / 120px default), the
+empty state, opened from a new conversation-header gallery button
+(v4's sidebar gallery entry — v5's full sidebar is a standing
+deferral, so the header is the v5 placement). Clicking a thumbnail
+opens the SHARED ImageModal lightbox (view/save/download/copy/delete),
+refetching the list on delete. **Deferred (loud):** v4's deep detail
+modals (ImageDetailModal / ChatGalleryImageViewModal, tag editing,
+prev/next image navigation) — the lightbox covers view+save+delete.
+
+**Differentials:** `save-image-dialog.spec.ts` (optgroup grouping +
+"(you)" label, empty state, `messageSaveImage` payload with trimmed
+caption + default album, single-vs-multi image picker),
+`photo-gallery-modal.spec.ts` (thumbnail route, image filter, empty
+state, thumbnail->lightbox).
+
+**Gate (in-lane):** ng test 583 green, ng build clean. SPA 0.5.64.

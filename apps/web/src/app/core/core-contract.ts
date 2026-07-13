@@ -979,14 +979,18 @@ export interface ProjectWardrobeDeleteRequest {
 // here — the response shapes reconcile name-for-name at unification.
 // ===========================================================================
 
+/** The album kind (v4 SaveImageDialog `AlbumKind`) — drives the optgroup label. */
+export type AlbumKind = 'character' | 'project' | 'document-store' | 'general';
+
 /** Album option for the save-to-album picker (v4 `chatPhotoAlbums`). */
 export interface AlbumOption {
-  characterId: string;
-  characterName: string;
-  /** Present count of photos already in the album (v4 surfaces it in the label). */
-  photoCount?: number;
-  /** Whether this is the user-controlled character's album (v4 flags it). */
+  mountPointId: string;
+  name: string;
+  kind: AlbumKind;
+  characterId?: string;
+  participantId?: string;
   isUserCharacter?: boolean;
+  isDefault?: boolean;
 }
 
 /** One chat file (v4 `chatFilesList` row). Read defensively; extra fields ok. */

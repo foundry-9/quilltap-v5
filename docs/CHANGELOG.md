@@ -63,6 +63,17 @@ structural row diffs, invalid-cron/non-autonomous/missing arms, the
 destructive clamp both ways). No `ChatCreateRequest` change needed —
 it already carries every autonomous field (verified). Bumps
 quilltap-core 0.0.208, quilltap-harness 0.0.189.
+P4.6ac (Salon SPA, lane B): the save-to-album dialog and the in-chat
+photo gallery. The message action bar gained a Save button (shown when
+a message carries image attachments) that opens SaveImageDialog — an
+album picker grouped by kind (character/project/document-store/general)
+over `chatPhotoAlbums`, with an optional caption, saving via
+`messageSaveImage`. The conversation header gained a gallery button that
+opens PhotoGalleryModal (chat mode): a thumbnail grid of the chat's
+image files (`chatFilesList`) with a size control; clicking a thumbnail
+opens the shared ImageModal lightbox. `AlbumOption` corrected to v4's
+shape. SPA 0.5.64.
+
 P4.6ac (Salon SPA, lane B): the Courier bubble and the in-chat image
 lightbox. A pending manual/clipboard turn (`pendingExternalPrompt`)
 now renders a Courier bubble in the message row — copy the delta or

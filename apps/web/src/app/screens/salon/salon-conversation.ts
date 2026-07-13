@@ -18,6 +18,8 @@ import { ConversationHeader } from '../../chat/conversation-header';
 import { MessageList } from '../../chat/message-list';
 import type { ImageClickEvent } from '../../chat/message-row';
 import { ImageModal } from '../../images/image-modal';
+import { SaveImageDialog } from '../../images/save-image-dialog';
+import { PhotoGalleryModal } from '../../images/photo-gallery-modal';
 import { MemoryCascadeDialog, type MemoryCascadeAction } from '../../chat/memory-cascade-dialog';
 import { splitSwipeGroups, type SwipeState } from '../../chat/chat-view-model';
 import { TurnControls } from '../../chat/turn-controls';
@@ -110,6 +112,8 @@ interface CascadePrompt {
     DocumentPane,
     DocumentPicker,
     ImageModal,
+    SaveImageDialog,
+    PhotoGalleryModal,
   ],
   template: `
     <div class="qt-chat-layout">
@@ -141,7 +145,7 @@ interface CascadePrompt {
     </div>
 
     <ng-template #chatContentTpl>
-      <qt-conversation-header [chat]="chat()!" />
+      <qt-conversation-header [chat]="chat()!" (openGallery)="showGallery.set(true)" />
 
       <div class="qt-chat-messages-viewport">
         <qt-message-list
@@ -160,6 +164,7 @@ interface CascadePrompt {
           (saveEdit)="onSaveEdit($event)"
           (cancelEdit)="editingId.set(null)"
           (imageClick)="modalImage.set($event)"
+          (saveImage)="saveImageTarget.set($event)"
           (courierSettled)="onCourierSettled()"
         />
       </div>
@@ -240,6 +245,29 @@ interface CascadePrompt {
         [isSwipeGroup]="c.isSwipeGroup"
         (confirm)="onCascadeConfirm($event)"
         (cancel)="cascade.set(null)"
+      />
+    }
+
+    @if (saveImageTarget(); as target) {
+      <qt-save-image-dialog
+        [chatId]="chatId()!"
+        [messageId]="target.messageId"
+        [attachments]="saveImageAttachments()"
+        [initialAttachmentId]="target.attachmentId"
+        (saved)="saveImageTarget.set(null)"
+        (close)="saveImageTarget.set(null)"
+      />
+    }
+
+    @if (showGallery() && chatId(); as id) {
+      <qt-photo-gallery-modal
+        [chatId]="id"
+        [characterId]="firstCharacter()?.id"
+        [characterName]="firstCharacter()?.name"
+        [userCharacterId]="firstUserCharacter()?.id"
+        [userCharacterName]="firstUserCharacter()?.name"
+        (imageDeleted)="onCourierSettled()"
+        (close)="showGallery.set(false)"
       />
     }
 
@@ -423,6 +451,21 @@ export class SalonConversation {
 
   // --- the in-chat image lightbox (v4 SalonView `modalImage`) ---
   protected readonly modalImage = signal<ImageClickEvent | null>(null);
+
+  // --- the save-to-album dialog (v4 SalonView `saveImageTarget`) ---
+  protected readonly saveImageTarget = signal<{ messageId: string; attachmentId: string } | null>(
+    null,
+  );
+
+  // --- the in-chat photo gallery (v4 SalonView sidebar gallery entry) ---
+  protected readonly showGallery = signal(false);
+
+  /** The target message's attachments, for the SaveImageDialog picker. */
+  protected readonly saveImageAttachments = computed(() => {
+    const target = this.saveImageTarget();
+    if (!target) return [];
+    return this.chat()?.messages.find((m) => m.id === target.messageId)?.attachments ?? [];
+  });
 
   /** The first non-user character — the save-to-gallery target (v4 `getFirstCharacter`). */
   protected readonly firstCharacter = computed<{ id: string; name: string } | null>(() => {

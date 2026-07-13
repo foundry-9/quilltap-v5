@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 import type { ChatDetail } from '../core/core-contract';
@@ -49,12 +49,23 @@ import { Icon } from '../ui/icon';
       }
 
       <span class="flex-1"></span>
+      <button
+        type="button"
+        class="qt-button-ghost qt-button-sm flex-shrink-0"
+        title="View chat photos"
+        aria-label="View chat photos"
+        (click)="openGallery.emit()"
+      >
+        <qt-icon name="image" class="w-4 h-4" />
+      </button>
       <qt-copy-chat-id-button [chatId]="chat().id" />
     </header>
   `,
 })
 export class ConversationHeader {
   readonly chat = input.required<ChatDetail>();
+  /** Open the in-chat photo gallery (v4 SalonView sidebar gallery entry). */
+  readonly openGallery = output<void>();
 
   protected readonly isOffDuty = computed(() => this.chat().conciergeOverride === 'OFF');
 

@@ -155,6 +155,21 @@ export interface ImageClickEvent {
               >
                 <qt-icon name="copy" class="w-4 h-4" />
               </button>
+              @if (imageAttachments().length > 0) {
+                <button
+                  type="button"
+                  class="qt-chat-message-action-icon"
+                  [title]="
+                    imageAttachments().length > 1
+                      ? 'Save an image to a photo album'
+                      : 'Save image to a photo album'
+                  "
+                  aria-label="Save image to a photo album"
+                  (click)="onSaveImage()"
+                >
+                  <qt-icon name="bookmark" class="w-4 h-4" />
+                </button>
+              }
               @if (message().role === 'USER') {
                 <button
                   type="button"
@@ -245,6 +260,8 @@ export class MessageRow {
   readonly cancelEdit = output<void>();
   /** An in-chat image thumbnail was clicked — open the lightbox (v4 `onImageClick`). */
   readonly imageClick = output<ImageClickEvent>();
+  /** The action-bar Save button — open the save-to-album dialog (v4 `onSaveImage`). */
+  readonly saveImage = output<{ messageId: string; attachmentId: string }>();
   /** The courier turn settled (resolved/cancelled) — trigger a chat refetch (v4). */
   readonly courierSettled = output<string>();
 
@@ -278,6 +295,14 @@ export class MessageRow {
 
   protected onThumbnailClick(att: MessageAttachment): void {
     this.imageClick.emit({ src: fileUrl(att.id), filename: att.filename, fileId: att.id });
+  }
+
+  /** Save the first image attachment (v4 MessageActionBar passes `images[0].id`). */
+  protected onSaveImage(): void {
+    const first = this.imageAttachments()[0];
+    if (first) {
+      this.saveImage.emit({ messageId: this.message().id, attachmentId: first.id });
+    }
   }
 
   protected readonly variant = computed<Variant>(() => {

@@ -83,6 +83,7 @@ import { VirtualRow } from './virtual-row';
                     (saveEdit)="saveEdit.emit($event)"
                     (cancelEdit)="cancelEdit.emit()"
                     (imageClick)="imageClick.emit($event)"
+                    (saveImage)="saveImage.emit($event)"
                     (courierSettled)="courierSettled.emit($event)"
                   />
                 } @else {
@@ -131,6 +132,7 @@ export class MessageList {
   readonly saveEdit = output<{ id: string; content: string }>();
   readonly cancelEdit = output<void>();
   readonly imageClick = output<ImageClickEvent>();
+  readonly saveImage = output<{ messageId: string; attachmentId: string }>();
   readonly courierSettled = output<string>();
 
   private readonly scroll = viewChild<ElementRef<HTMLElement>>('scroll');
