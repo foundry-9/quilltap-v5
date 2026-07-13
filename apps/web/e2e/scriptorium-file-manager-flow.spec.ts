@@ -6,7 +6,10 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
  * ORDERING: this file rides the SHARED global-setup server and unlocks it, so
  * its filename must sort AFTER foundation.spec.ts (foundation walks the locked
  * → unlock gate and must reach the shared server first; workers: 1, alphabetical
- * order). "file-manager-flow" sorts correctly.
+ * order). Hence "scriptorium-file-manager-flow": the lane's original
+ * "file-manager-flow" name sorted BEFORE foundation ('i' < 'o') and its probe's
+ * unlock broke foundation's locked-screen start deterministically once the walk
+ * activated at unification — renamed there (the salon-documents-flow precedent).
  *
  * P4.6aa lane B — a LIVE browser walk of the bespoke `qt-file-manager` over the
  * shared Salon server: reach a document store's detail screen, flip the "New
@@ -19,15 +22,16 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
  * navigates to the store detail route and skips the whole walk when the toggle
  * isn't there (in-lane), and runs it live once the sibling screen + toggle land
  * at unification. The store itself is seeded through the frozen-live mount
- * dispatch (`mountPointCreate`), so the seed works in-lane too.
+ * dispatch (`mountPointCreate`) AFTER the unlock (a dispatch against the locked
+ * vault refuses, so a beforeAll seed silently mis-skips in isolation).
  */
 
 let storeId = '';
 
-test.beforeAll(async () => {
-  // Seed a fresh database document store (the mount verbs are frozen-live, so
-  // this works in-lane; only the toggle/detail screen gate the walk). The shared
-  // server is already unlocked by foundation.spec (it ran first).
+/** Seed a fresh database document store through the frozen-live mount dispatch.
+    Called AFTER the vault is unlocked (the locked engine refuses dispatch). */
+async function seedStore(): Promise<void> {
+  if (storeId) return;
   try {
     const ctx = await pwRequest.newContext();
     const res = await ctx.post(`${BASE_URL}/api/dispatch`, {
@@ -44,7 +48,7 @@ test.beforeAll(async () => {
   } catch {
     storeId = '';
   }
-});
+}
 
 test.afterAll(async () => {
   // Leave the shared server's DB as we found it — delete the seeded store (and,
@@ -81,6 +85,7 @@ async function maybeUnlock(page: Page): Promise<void> {
 async function reachFileManager(page: Page): Promise<boolean> {
   await page.goto('/');
   await maybeUnlock(page);
+  await seedStore();
   if (!storeId) return false;
 
   await page.goto(`/scriptorium/${storeId}`);
@@ -153,12 +158,15 @@ test.describe('P4.6aa — the qt-file-manager walk', () => {
       .click();
     await expect(fm.locator('[data-testid="fm-file-row"]')).toHaveCount(0, { timeout: 15_000 });
 
-    // 6. The copy-folder REFUSAL: back at the root, copy the Drafts folder and
-    // attempt to paste it — the widget surfaces v4's steampunk refusal and fires
-    // no request (the two-backend-gaps port).
+    // 6. The copy-folder REFUSAL: back at the root, copy the Drafts folder,
+    // then paste it INSIDE Drafts (a paste in place is the widget's silent
+    // no-op guard, which would mask the refusal — the unit spec pastes into a
+    // different folder too). The widget surfaces v4's steampunk refusal and
+    // fires no request (the two-backend-gaps port).
     await fm.locator('[data-testid="fm-breadcrumbs"]').getByRole('button', { name: 'Root' }).click();
     const draftsRow = fm.locator('[data-testid="fm-folder-row"]', { hasText: 'Drafts' });
     await draftsRow.locator('[data-testid="fm-copy"]').click();
+    await draftsRow.getByRole('button', { name: 'Drafts' }).click();
     await fm.locator('[data-testid="fm-paste"]').click();
     await expect(fm.locator('[data-testid="fm-error"]')).toContainText('select the files within', {
       timeout: 15_000,

@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.6z/P4.6aa unification gate fixes (e2e only): the file-manager walk's
+spec renamed file-manager-flow → scriptorium-file-manager-flow — the
+old name sorted BEFORE foundation.spec ('i' < 'o') and the activated
+probe's unlock deterministically broke foundation's locked-screen
+start (misread as machine-load flake in the lane gates); the store
+seeding moved from beforeAll to after the unlock (a dispatch against
+the locked vault refuses, so the beforeAll seed mis-skipped the walk
+in isolation); and the copy-folder refusal beat now pastes INSIDE the
+copied folder — a paste in place is the widget's silent no-op guard
+(the unit spec pastes into a different folder too), which masked the
+refusal. Full Playwright 33/33 with the file-manager walk ACTIVE.
+SPA 0.5.60.
+
 P4.6z/P4.6aa unification wire: the store-detail Indexed-Files section
 gains the "New file manager (beta)" / "Classic view" toggle rendering
 the deferred qt-file-manager over the server-derived capability bag
