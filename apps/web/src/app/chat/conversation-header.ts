@@ -49,6 +49,17 @@ import { Icon } from '../ui/icon';
       }
 
       <span class="flex-1"></span>
+      @if (isAutonomous()) {
+        <button
+          type="button"
+          class="qt-button-ghost qt-button-sm flex-shrink-0"
+          title="Edit this enclave’s schedule, budget, and visibility"
+          aria-label="Edit Enclave"
+          (click)="editEnclave.emit()"
+        >
+          <qt-icon name="settings" class="w-4 h-4" />
+        </button>
+      }
       <button
         type="button"
         class="qt-button-ghost qt-button-sm flex-shrink-0"
@@ -66,6 +77,16 @@ export class ConversationHeader {
   readonly chat = input.required<ChatDetail>();
   /** Open the in-chat photo gallery (v4 SalonView sidebar gallery entry). */
   readonly openGallery = output<void>();
+  /**
+   * Open the Edit-Enclave modal (v4 ChatSidebar's "Organize" palette entry,
+   * shown only for autonomous rooms). PLACEMENT DIVERGENCE: v5 has no chat
+   * sidebar/Organize palette, so this rides the conversation header's right
+   * cluster next to the gallery/copy-id buttons. Visibility is the only guard —
+   * no confirmation dialog; the button opens the modal directly.
+   */
+  readonly editEnclave = output<void>();
+
+  protected readonly isAutonomous = computed(() => this.chat().chatType === 'autonomous');
 
   protected readonly isOffDuty = computed(() => this.chat().conciergeOverride === 'OFF');
 

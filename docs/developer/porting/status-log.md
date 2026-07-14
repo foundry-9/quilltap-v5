@@ -11129,3 +11129,34 @@ pdf.js rendering; the rich FolderPicker; drag relocation /
 cross-mount move-copy; the workspace-tab drill (`/files` routes
 directly — the P4.6z posture). Gate: `ng test` 640 green, `ng build`
 clean.
+
+### Unit 5 — the salon autonomous riders (SPA 0.5.74)
+
+(a) The in-chat Edit-Enclave entry. `chat/conversation-header.ts`
+(the ONLY `chat/**` file lane B touches) gains an `editEnclave` output
++ a button gated on `chatType === 'autonomous'`, with v4's ChatSidebar
+label ("Edit Enclave") + tooltip ("Edit this enclave’s schedule,
+budget, and visibility") verbatim. PLACEMENT DIVERGENCE (documented in
+the component): v4's entry is the chat sidebar's "Organize" palette; v5
+has none, so it rides the header's right cluster next to gallery/copy-id
+— visibility is the only guard, no confirm dialog. `salon-conversation.ts`
+wires it to the frozen `qt-edit-enclave-modal` (unmodified — a second
+caller) and refetches the chat on `saved`. `conversation-header.spec.ts`
+pins the chatType gate (renders for autonomous, absent for salon) + the
+emit.
+
+(b) The salon-list include-autonomous toggle. `autonomous-visibility.ts`
+holds the pure logic (`wantsAutonomousByDefault`, `effectiveInclude` =
+default OR toggle, `hasHiddenAutonomous`, the localStorage read/write on
+the SHARED `quilltap.quickHide.includeAutonomousRooms` key — PLACEMENT
+DIVERGENCE from v4's user-menu control, recorded in the module). `salon-list.ts`
+adds the "Show Autonomous Rooms" toggle (eye/eye-off; the effective flag
+rides the `['chats', {includeAutonomous}]` query key so a flip
+refetches), the hidden-rooms hint (the `listAutonomousRooms` probe
+`enabled` ONLY when excluding), and the "New Autonomous Room" action →
+`/salon/new?autonomous=1` (P4.6ad already opens autonomous mode there).
+`autonomous-visibility.spec.ts` pins the effective-include truth table +
+hint gating + the localStorage round-trip.
+
+Both riders run LIVE on main (the autonomous surface is fully ported).
+Gate: `ng test` 648 green, `ng build` clean.

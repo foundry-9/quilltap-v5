@@ -53,6 +53,7 @@ import { DocumentApi } from '../../documents/document-api';
 import { DocumentModeController, type DocFocusTarget } from '../../documents/document-mode';
 import { DocumentPane } from '../../documents/document-pane';
 import { DocumentPicker, type DocumentSelection } from '../../documents/document-picker';
+import { EditEnclaveModal } from '../../autonomous/edit-enclave-modal';
 
 /**
  * The LLM document tools whose success invalidates an open pane's cached
@@ -116,6 +117,7 @@ interface CascadePrompt {
     SaveImageDialog,
     PhotoGalleryModal,
     GenerateImageDialog,
+    EditEnclaveModal,
   ],
   template: `
     <div class="qt-chat-layout">
@@ -147,7 +149,11 @@ interface CascadePrompt {
     </div>
 
     <ng-template #chatContentTpl>
-      <qt-conversation-header [chat]="chat()!" (openGallery)="showGallery.set(true)" />
+      <qt-conversation-header
+        [chat]="chat()!"
+        (openGallery)="showGallery.set(true)"
+        (editEnclave)="showEditEnclave.set(true)"
+      />
 
       <div class="qt-chat-messages-viewport">
         <qt-message-list
@@ -282,6 +288,15 @@ interface CascadePrompt {
         [userCharacterName]="firstUserCharacter()?.name"
         (imageDeleted)="onCourierSettled()"
         (close)="showGallery.set(false)"
+      />
+    }
+
+    @if (showEditEnclave() && chat(); as c) {
+      <qt-edit-enclave-modal
+        [chatId]="c.id"
+        [currentTitle]="c.title"
+        (saved)="onEnclaveSaved()"
+        (close)="showEditEnclave.set(false)"
       />
     }
 
@@ -473,6 +488,9 @@ export class SalonConversation {
 
   // --- the in-chat photo gallery (v4 SalonView sidebar gallery entry) ---
   protected readonly showGallery = signal(false);
+
+  // --- the Edit-Enclave modal (v4 SalonView, autonomous rooms only) ---
+  protected readonly showEditEnclave = signal(false);
 
   // --- the generate-image dialog (v4 SalonView GenerateImageDialog) ---
   protected readonly showGenerate = signal(false);
@@ -844,6 +862,12 @@ export class SalonConversation {
 
   /** A courier turn settled (resolved/cancelled) → refetch (v4 `onCourierTurnSettled`). */
   protected async onCourierSettled(): Promise<void> {
+    await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+  }
+
+  /** The Edit-Enclave modal saved → refetch the chat (v4 SalonView `onSaved`). */
+  protected async onEnclaveSaved(): Promise<void> {
+    this.showEditEnclave.set(false);
     await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
   }
 

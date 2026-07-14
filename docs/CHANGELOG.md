@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.6af unit 5: the salon autonomous riders. (a) The conversation header
+gains an Edit-Enclave button gated on `chatType === 'autonomous'` (v4's
+ChatSidebar "Organize" entry — label/tooltip verbatim; PLACEMENT
+DIVERGENCE: v5 has no chat sidebar, so it rides the header's right
+cluster), wired in salon-conversation to the existing
+`qt-edit-enclave-modal`; the chat refetches on save. (b) The salon list
+gains a "Show Autonomous Rooms" toggle (persisted to the shared
+`quilltap.quickHide.includeAutonomousRooms` localStorage key; the flag
+rides the query key so flipping it refetches), a hidden-rooms hint (the
+cheap `listAutonomousRooms` probe fires only when excluding), and a "New
+Autonomous Room" action → `/salon/new?autonomous=1`. Effective include =
+the user's visibility default OR the toggle. SPA 0.5.74.
+
 P4.6af unit 2: the general Files page. NEW `/files` screen (wired into
 the shell's Files nav) ports v4's legacy-mode FileBrowser: folder
 breadcrumb + go-up + subfolders derived from BOTH the DB folder rows
