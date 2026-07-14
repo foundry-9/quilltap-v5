@@ -14,6 +14,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use quilltap_core::api::chat_media::{self, ChatFileUploadInput};
 use quilltap_core::api::files::{self, MovePid};
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
@@ -34,12 +35,24 @@ const F_ASSOC: &str = "f0000000-0000-4000-8000-000000000031";
 const F_IMG1: &str = "f0000000-0000-4000-8000-000000000061";
 const F_IMG2: &str = "f0000000-0000-4000-8000-000000000062";
 const F_IMG_USERB: &str = "f0000000-0000-4000-8000-0000000000b2";
+const CHAT_G: &str = "c0000000-0000-4000-8000-000000000001";
+const CHAT_P: &str = "c0000000-0000-4000-8000-000000000002";
+const PF_DUP: &str = "f0000000-0000-4000-8000-000000000041";
 
-/// A backend where every key is missing (mirrors v4's empty scratch disk for the
-/// cleanup-stale disk-key leg). The dispatch engine passes `NotConfigured`
-/// instead (an enumerated production degradation for legacy disk keys).
-struct AllMissingBackend;
-impl quilltap_core::services::file_storage::StorageBackend for AllMissingBackend {
+fn b64(s: &str) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(s.as_bytes())
+}
+
+/// A backend whose disk-key existence check ERRORS — matching v4's real
+/// `LocalFileStorageBackend` over the oracle's absent `files/` dir (its `exists`
+/// throws "Unknown existence check error", so the disk-key file lands in v4's
+/// per-file `errors`, NOT `stale`). The exact message is the enumerated fs leg —
+/// the differential strips the `errors` array and compares `stale`/`staleFiles`.
+/// The dispatch engine passes `NotConfigured` (an enumerated production
+/// degradation for legacy disk keys).
+struct DiskErrorBackend;
+impl quilltap_core::services::file_storage::StorageBackend for DiskErrorBackend {
     fn upload(&self, _k: &str, _c: &[u8], _t: &str) -> Result<(), String> {
         Ok(())
     }
@@ -50,7 +63,7 @@ impl quilltap_core::services::file_storage::StorageBackend for AllMissingBackend
         Ok(())
     }
     fn exists(&self, _k: &str) -> Result<bool, String> {
-        Ok(false)
+        Err("Unknown existence check error".into())
     }
 }
 
@@ -749,7 +762,10 @@ fn files_routes_match_oracle() {
                 }
             }
             other => {
-                eprintln!("[delete_associations] expected error, got {:?}", response_data(other));
+                eprintln!(
+                    "[delete_associations] expected error, got {:?}",
+                    response_data(other)
+                );
                 failed.push("delete_associations".to_string());
             }
         }
@@ -765,7 +781,13 @@ fn files_routes_match_oracle() {
     {
         let db = fresh_db(&spec, "ddi");
         let resp = rt.block_on(files::file_delete(&db, USER_A, F_ASSOC, false, true));
-        check_ok("delete_dissociate", response_data(&resp), &[], None, &mut failed);
+        check_ok(
+            "delete_dissociate",
+            response_data(&resp),
+            &[],
+            None,
+            &mut failed,
+        );
         check_assoc("delete_dissociate", &dump_assoc(&db), &oracle, &mut failed);
     }
 
@@ -781,7 +803,10 @@ fn files_routes_match_oracle() {
             F_IMG_USERB.to_string(),
         ];
         let resp = files::files_generate_thumbnails(&fresh_db(&spec, "th"), USER_A, &ids);
-        let got_total = response_data(&resp).get("total").cloned().unwrap_or(Value::Null);
+        let got_total = response_data(&resp)
+            .get("total")
+            .cloned()
+            .unwrap_or(Value::Null);
         let want_total = oracle["thumbnails"]["body"]["total"].clone();
         if norm(&got_total) == norm(&want_total) {
             eprintln!("[thumbnails total] OK.");
@@ -790,18 +815,33 @@ fn files_routes_match_oracle() {
             failed.push("thumbnails".to_string());
         }
     }
-    check_ok(
-        "cleanup_stale_dryrun",
-        response_data(&rt.block_on(files::files_cleanup_stale(
+    {
+        // The `errors` array carries the backend-specific disk-key existence
+        // failure (the enumerated fs leg) — strip it and diff stale/staleFiles.
+        let mut got = response_data(&rt.block_on(files::files_cleanup_stale(
             &fresh_db(&spec, "cs"),
-            &AllMissingBackend,
+            &DiskErrorBackend,
             USER_A,
             true,
-        ))),
-        &[],
-        None,
-        &mut failed,
-    );
+        )));
+        let mut want = oracle["cleanup_stale_dryrun"]["body"].clone();
+        if let Value::Object(m) = &mut got {
+            m.remove("errors");
+        }
+        if let Value::Object(m) = &mut want {
+            m.remove("errors");
+        }
+        if norm(&got) == norm(&want) {
+            eprintln!("[cleanup_stale_dryrun] OK.");
+        } else {
+            eprintln!(
+                "[cleanup_stale_dryrun] MISMATCH:\n got {}\n want {}",
+                norm(&got),
+                norm(&want)
+            );
+            failed.push("cleanup_stale_dryrun".to_string());
+        }
+    }
     check_ok(
         "cleanup_orphans_dryrun",
         response_data(&rt.block_on(files::files_cleanup_orphans(
@@ -825,6 +865,152 @@ fn files_routes_match_oracle() {
             &mut failed,
         );
     }
+
+    // ── P4.6ah: general upload (saveFileEntry) ──
+    {
+        let db = fresh_db(&spec, "unp");
+        let resp = rt.block_on(files::file_upload(
+            &db,
+            USER_A,
+            "newdoc.txt",
+            "text/plain",
+            b"a fresh document body".to_vec(),
+            vec![],
+            Some(PROJECT.to_string()),
+            None,
+        ));
+        check_ok(
+            "upload_new_project",
+            response_data(&resp),
+            &["id", "filepath", "createdAt", "updatedAt"],
+            None,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "uov");
+        let resp = rt.block_on(files::file_upload(
+            &db,
+            USER_A,
+            "p1.txt",
+            "text/plain",
+            b"overwritten p1 body".to_vec(),
+            vec![],
+            Some(PROJECT.to_string()),
+            None,
+        ));
+        check_ok(
+            "upload_overwrite_project",
+            response_data(&resp),
+            &["updatedAt"],
+            Some(dump_tables(&db)),
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "ung");
+        let resp = rt.block_on(files::file_upload(
+            &db,
+            USER_A,
+            "gen.txt",
+            "text/plain",
+            b"general upload body".to_vec(),
+            vec![],
+            None,
+            None,
+        ));
+        check_ok(
+            "upload_new_general",
+            response_data(&resp),
+            &["id", "filepath", "createdAt", "updatedAt"],
+            None,
+            &mut failed,
+        );
+    }
+
+    // ── P4.6ah: chat upload (uploadChatFile) + link ──
+    let chat_upload = |tag: &str,
+                       chat: &str,
+                       name: &str,
+                       content: &str,
+                       res: Option<&str>,
+                       cfid: Option<&str>| {
+        let db = fresh_db(&spec, tag);
+        let resp = rt.block_on(chat_media::chat_file_upload(
+            &db,
+            USER_A,
+            chat,
+            ChatFileUploadInput {
+                filename: name.to_string(),
+                content_type: "text/plain".to_string(),
+                data: b64(content),
+                resolution: res.map(str::to_string),
+                conflicting_file_id: cfid.map(str::to_string),
+            },
+        ));
+        response_data(&resp)
+    };
+    check_ok(
+        "chat_upload_nonproject",
+        chat_upload("cun", CHAT_G, "note.txt", "a chat note", None, None),
+        &["id", "filepath", "url"],
+        None,
+        &mut failed,
+    );
+    check_ok(
+        "chat_upload_conflict",
+        chat_upload("cuc", CHAT_P, "dup.txt", "new dup content", None, None),
+        &[],
+        None,
+        &mut failed,
+    );
+    check_ok(
+        "chat_upload_skip",
+        chat_upload("cus", CHAT_P, "dup.txt", "skip me", Some("skip"), None),
+        &[],
+        None,
+        &mut failed,
+    );
+    check_ok(
+        "chat_upload_keepboth",
+        chat_upload(
+            "cuk",
+            CHAT_P,
+            "dup.txt",
+            "kept both body",
+            Some("keepBoth"),
+            None,
+        ),
+        &["id", "filepath", "url"],
+        None,
+        &mut failed,
+    );
+    check_ok(
+        "chat_upload_replace",
+        chat_upload(
+            "cur",
+            CHAT_P,
+            "dup.txt",
+            "replacement body",
+            Some("replace"),
+            Some(PF_DUP),
+        ),
+        &["id", "filepath", "url"],
+        None,
+        &mut failed,
+    );
+    check_ok(
+        "chat_upload_link",
+        response_data(&rt.block_on(chat_media::chat_file_link(
+            &fresh_db(&spec, "cul"),
+            USER_A,
+            CHAT_G,
+            F_UNLINKED,
+        ))),
+        &[],
+        None,
+        &mut failed,
+    );
 
     assert!(failed.is_empty(), "files-routes mismatches: {failed:?}");
 }

@@ -49,6 +49,9 @@ const F_ASSOC = 'f0000000-0000-4000-8000-000000000031';
 const F_IMG1 = 'f0000000-0000-4000-8000-000000000061';
 const F_IMG2 = 'f0000000-0000-4000-8000-000000000062';
 const F_IMG_USERB = 'f0000000-0000-4000-8000-0000000000b2';
+const CHAT_G = 'c0000000-0000-4000-8000-000000000001';
+const CHAT_P = 'c0000000-0000-4000-8000-000000000002';
+const PF_DUP = 'f0000000-0000-4000-8000-000000000041';
 
 function mockRequest(url: string, body?: unknown): unknown {
   return {
@@ -57,6 +60,34 @@ function mockRequest(url: string, body?: unknown): unknown {
     nextUrl: new URL(url),
     headers: new Headers({ 'Content-Type': 'application/json' }),
     json: jest.fn().mockResolvedValue(body ?? {}),
+  };
+}
+
+interface UploadFile {
+  name: string;
+  type: string;
+  bytes: Buffer;
+}
+function mockMultipartRequest(
+  url: string,
+  fields: { file?: UploadFile; [k: string]: unknown },
+): unknown {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(fields)) {
+    if (k === 'file' && v) {
+      const f = v as UploadFile;
+      fd.append('file', new File([f.bytes], f.name, { type: f.type }));
+    } else if (v != null) {
+      fd.append(k, String(v));
+    }
+  }
+  return {
+    method: 'POST',
+    url,
+    nextUrl: new URL(url),
+    headers: new Headers({ 'Content-Type': 'multipart/form-data; boundary=x' }),
+    formData: async () => fd,
+    json: async () => ({}),
   };
 }
 
@@ -74,6 +105,31 @@ function applyMocks(spec: Spec): void {
   jest.doMock('@/lib/embedding/vector-store', () =>
     jest.requireActual('@/lib/embedding/vector-store'),
   );
+  // The upload legs write real blobs to doc_mount_blobs — un-mock the storage
+  // write path (jest.setup stubs fileStorageManager) so v4 and the v5 seams both
+  // land bytes in the mount store. Text uploads never touch sharp.
+  jest.doMock('@/lib/file-storage/manager', () =>
+    jest.requireActual('@/lib/file-storage/manager'),
+  );
+  jest.doMock('@/lib/file-storage/user-uploads-bridge', () =>
+    jest.requireActual('@/lib/file-storage/user-uploads-bridge'),
+  );
+  jest.doMock('@/lib/file-storage/project-store-bridge', () =>
+    jest.requireActual('@/lib/file-storage/project-store-bridge'),
+  );
+  jest.doMock('@/lib/mount-index/store-file', () =>
+    jest.requireActual('@/lib/mount-index/store-file'),
+  );
+  jest.doMock('@/lib/mount-index/mount-chunk-cache', () => ({
+    __esModule: true,
+    ...jest.requireActual('@/lib/mount-index/mount-chunk-cache'),
+    invalidateMountPoint: jest.fn(),
+  }));
+  jest.doMock('@/lib/mount-index/embedding-scheduler', () => ({
+    __esModule: true,
+    ...jest.requireActual('@/lib/mount-index/embedding-scheduler'),
+    enqueueEmbeddingJobsForMountPoint: jest.fn().mockResolvedValue(undefined),
+  }));
   jest.doMock('@/lib/auth/session', () => ({
     __esModule: true,
     ...jest.requireActual('@/lib/auth/session'),
@@ -162,6 +218,29 @@ const filesPost = (action: string, body: unknown) =>
     respond(
       await (await loadRoute('@/app/api/v1/files/route')).POST(
         mockRequest(`${FILES}?action=${action}`, body),
+      ),
+    );
+const filesUpload = (fields: { file?: UploadFile; [k: string]: unknown }) =>
+  async () =>
+    respond(
+      await (await loadRoute('@/app/api/v1/files/route')).POST(
+        mockMultipartRequest(`${FILES}?action=upload`, fields),
+      ),
+    );
+const chatFilesUpload = (chatId: string, fields: { file?: UploadFile; [k: string]: unknown }) =>
+  async () =>
+    respond(
+      await (await loadRoute('@/app/api/v1/chats/[id]/files/route')).POST(
+        mockMultipartRequest(`http://localhost/api/v1/chats/${chatId}/files`, fields),
+        { params: Promise.resolve({ id: chatId }) },
+      ),
+    );
+const chatFilesLink = (chatId: string, fileId: string) =>
+  async () =>
+    respond(
+      await (await loadRoute('@/app/api/v1/chats/[id]/files/route')).POST(
+        mockRequest(`http://localhost/api/v1/chats/${chatId}/files?action=link`, { fileId }),
+        { params: Promise.resolve({ id: chatId }) },
       ),
     );
 
@@ -279,6 +358,17 @@ async function main(): Promise<void> {
     { name: 'cleanup_stale_dryrun', run: filesPost('cleanup-stale', { dryRun: true }) },
     { name: 'cleanup_orphans_dryrun', run: filesPost('cleanup-orphans', { mode: 'delete', dryRun: true }) },
     { name: 'cleanup_orphans_move', dump: true, run: filesPost('cleanup-orphans', { mode: 'move', dryRun: false }) },
+    // ── P4.6ah: general upload (multipart) ──
+    { name: 'upload_new_project', run: filesUpload({ file: { name: 'newdoc.txt', type: 'text/plain', bytes: Buffer.from('a fresh document body') }, projectId: PROJECT }) },
+    { name: 'upload_overwrite_project', dump: true, run: filesUpload({ file: { name: 'p1.txt', type: 'text/plain', bytes: Buffer.from('overwritten p1 body') }, projectId: PROJECT }) },
+    { name: 'upload_new_general', run: filesUpload({ file: { name: 'gen.txt', type: 'text/plain', bytes: Buffer.from('general upload body') } }) },
+    // ── P4.6ah: chat upload (multipart) + link ──
+    { name: 'chat_upload_nonproject', run: chatFilesUpload(CHAT_G, { file: { name: 'note.txt', type: 'text/plain', bytes: Buffer.from('a chat note') } }) },
+    { name: 'chat_upload_conflict', run: chatFilesUpload(CHAT_P, { file: { name: 'dup.txt', type: 'text/plain', bytes: Buffer.from('new dup content') } }) },
+    { name: 'chat_upload_skip', run: chatFilesUpload(CHAT_P, { file: { name: 'dup.txt', type: 'text/plain', bytes: Buffer.from('skip me') }, resolution: 'skip' }) },
+    { name: 'chat_upload_keepboth', run: chatFilesUpload(CHAT_P, { file: { name: 'dup.txt', type: 'text/plain', bytes: Buffer.from('kept both body') }, resolution: 'keepBoth' }) },
+    { name: 'chat_upload_replace', run: chatFilesUpload(CHAT_P, { file: { name: 'dup.txt', type: 'text/plain', bytes: Buffer.from('replacement body') }, resolution: 'replace', conflictingFileId: PF_DUP }) },
+    { name: 'chat_upload_link', run: chatFilesLink(CHAT_G, F_UNLINKED) },
   ];
 
   const outLines: string[] = [];

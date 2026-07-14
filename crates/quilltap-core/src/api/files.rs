@@ -1051,6 +1051,7 @@ pub async fn files_folder_delete(
 /// The pixel work uses [`NotConfiguredPixelCodec`] (this dispatch path threads no
 /// host codec — a `DOCUMENT` upload never transcodes, and an image upload takes
 /// v4's own sharp-unavailable passthrough branch: original bytes, original mime).
+#[allow(clippy::too_many_arguments)]
 pub async fn file_upload(
     db: &Db,
     user_id: &str,
@@ -1209,8 +1210,21 @@ fn save_file_entry(
         .find_full_by_id(&file_id)?
         .ok_or_else(|| DbError::Key("uploaded file vanished after write".to_string()))?;
     Ok(Response::Files(
-        json!({ "data": serialize_file_entry(&entry) }),
+        json!({ "data": serialize_uploaded_file_entry(&entry) }),
     ))
+}
+
+/// The upload/overwrite echo (v4 `serializeFileEntry` over the CREATED/UPDATED
+/// entity). Same shape as [`serialize_file_entry`] EXCEPT `projectId` is ALWAYS
+/// present (null or value) — the create explicitly sets `projectId` (so it
+/// survives as `null`), while `description`/`width`/`height` are NOT in the create
+/// data and stay omitted (the P4.6k create-echo pattern).
+fn serialize_uploaded_file_entry(f: &FileFull) -> Value {
+    let mut m = serialize_file_entry(f);
+    if let Value::Object(map) = &mut m {
+        map.entry("projectId").or_insert(Value::Null);
+    }
+    m
 }
 
 // ===========================================================================

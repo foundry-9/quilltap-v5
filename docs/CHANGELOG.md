@@ -2,6 +2,34 @@
 
 ## Recent Changes
 
+P4.6ah (files write + maintenance server lane) — complete the OPEN
+P4.6ae server remainder. The chat-file upload leg (`uploadChatFile`
+ported into `services/chat_files.rs` over the `file_storage.rs` write
+seams: project dup-detect + skip/replace/keepBoth resolutions +
+non-project sha-dedup; the `chat_media.rs` refusal body replaced) with
+its web multipart route + the JSON `action=link` leg. The general
+upload REST leg (`fileUpload` variant + `saveFileEntry`: sanitize →
+sha256 → overwrite-reuse → project-store vs Quilltap-Uploads-mount
+branch → 201 create / 200 overwrite) behind
+`POST /api/v1/files?action=upload`. The itemized `FILE_HAS_ASSOCIATIONS`
+delete envelope: `CoreError` gains an additive optional `associations`
+field (+ `Response::error_with_associations`), the un-forced
+linked-file delete emits the itemized `{characters, messages}` payload,
+and the `dissociate=true` arm strips message attachments + character
+default-image/avatar-override refs before deleting. The three
+maintenance verbs: `filesGenerateThumbnails` (owned+resizable filter),
+`filesCleanupStale` (mount-blob in-DB existence + enumerated disk-key fs
+leg), `filesCleanupOrphans` (rescue/duplicate/unique partition + move
+relocation). Differential: `files_routes_equivalence` extended to 41
+cases (the 25 P4.6ae reads/moves/folders + 16 new write/maintenance/
+delete cases) over the extended `files-{main,mount}.db` fixture, all
+green against a fresh `02865bdb` oracle. Enumerated fs/codec legs
+(dispatch-layer degradations): thumbnail generation (host codec, the
+on-demand byte-GET route unaffected), cleanup-stale disk-key existence
+(host backend), chat-image auto-describe (fire-and-forget host seam),
+`filesSync` (unported reconciliation subsystem). Bumps core 0.0.217,
+web 0.0.20, harness 0.0.197.
+
 Plan the "finish P4.6ae + catch up from v4" round — four agent-ready
 work orders decomposing the P4.6ae OPEN server remainder plus the one
 v4 drift commit. Drift-checked first: v4 advanced one commit past

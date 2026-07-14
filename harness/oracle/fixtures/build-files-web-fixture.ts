@@ -76,6 +76,7 @@ const DEAD_ENTITY = 'deaddead-0000-4000-8000-00000000dead'; // stale linkedTo ta
 
 // ── P4.6ah: write + maintenance fixtures ────────────────────────────────────
 const UPLOADS_MP = '80000000-0000-4000-8000-000000000001'; // Quilltap Uploads mount
+const PROJ_STORE = '80000000-0000-4000-8000-000000000002'; // PROJECT_1's linked database store
 
 const CHAT_G = 'c0000000-0000-4000-8000-000000000001'; // general chat
 const CHAT_P = 'c0000000-0000-4000-8000-000000000002'; // project chat (PROJECT_1)
@@ -293,26 +294,41 @@ async function main(): Promise<void> {
 
   // ── P4.6ah: write + maintenance fixtures ──────────────────────────────────
 
-  // 5. The Quilltap Uploads mount (non-project uploads land here).
-  await repos.docMountPoints.create(
-    {
-      name: 'Quilltap Uploads',
-      basePath: '',
-      mountType: 'database',
-      storeType: 'documents',
-      includePatterns: [],
-      excludePatterns: [],
-      enabled: true,
-      lastScannedAt: null,
-      scanStatus: 'idle',
-      lastScanError: null,
-      conversionStatus: 'idle',
-      conversionError: null,
-      fileCount: 0,
-      chunkCount: 0,
-      totalSizeBytes: 0,
-    } as never,
-    { id: UPLOADS_MP, createdAt: TS, updatedAt: TS } as never,
+  // 5. The Quilltap Uploads mount (non-project uploads) + PROJECT_1's linked
+  //    database store (project uploads).
+  const mkDbStore = async (id: string, name: string) =>
+    repos.docMountPoints.create(
+      {
+        name,
+        basePath: '',
+        mountType: 'database',
+        storeType: 'documents',
+        includePatterns: [],
+        excludePatterns: [],
+        enabled: true,
+        lastScannedAt: null,
+        scanStatus: 'idle',
+        lastScanError: null,
+        conversionStatus: 'idle',
+        conversionError: null,
+        fileCount: 0,
+        chunkCount: 0,
+        totalSizeBytes: 0,
+      } as never,
+      { id, createdAt: TS, updatedAt: TS } as never,
+    );
+  await mkDbStore(UPLOADS_MP, 'Quilltap Uploads');
+  await mkDbStore(PROJ_STORE, 'Project Store');
+  // v4 reads project_doc_mount_links from the MOUNT INDEX (`link()`); the v5
+  // `get_project_document_store` seam reads it from MAIN — seed BOTH so each side
+  // resolves PROJECT_1's store.
+  await repos.projectDocMountLinks.link(PROJECT_1, PROJ_STORE);
+  await rawQuery(
+    'CREATE TABLE IF NOT EXISTS "project_doc_mount_links" ("id" TEXT PRIMARY KEY, "projectId" TEXT NOT NULL, "mountPointId" TEXT NOT NULL, "createdAt" TEXT, "updatedAt" TEXT)',
+  );
+  await rawQuery(
+    'INSERT OR REPLACE INTO "project_doc_mount_links" ("id","projectId","mountPointId","createdAt","updatedAt") VALUES (?,?,?,?,?)',
+    ['a0000000-0000-4000-8000-000000000001', PROJECT_1, PROJ_STORE, TS, TS],
   );
   await rawQuery(
     'CREATE TABLE IF NOT EXISTS "instance_settings" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)',

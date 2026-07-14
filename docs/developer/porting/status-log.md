@@ -11473,3 +11473,141 @@ remainder — the image_generation seam + chatFileUpload close the
 long-OPEN P4.6ab tier 2), the D17 tier-3 editor follow-ons
 (form-field consumers, tables), the deferred autonomous-rooms cards,
 or P4.7 (Tauri).
+
+---
+
+## P4.6ah — the files-family write + maintenance server remainder (lane A) — LANDED on branch
+
+Branch `claude/p4-6ah-files-write-maintenance-9a7147` (worktree). v4
+baseline `02865bdb` — **NO drift** (HEAD == baseline at lane start).
+Completes the OPEN server remainder of P4.6ae. **Awaits `/unify`.**
+
+**What landed (all differential-proven — `files_routes_equivalence`
+grew to 41 cases over the extended `files-{main,mount}.db`):**
+
+1. **Chat-file upload leg** (closes the long-OPEN P4.6ab tier-2 gap):
+   `uploadChatFile` ported additively in `services/chat_files.rs`
+   (`upload_chat_file` + `upload_chat_file_conn` + `upload_file_to_project`),
+   composed over the `file_storage.rs` write seams via `Db::write`. The
+   full v4 control flow: project dup-detect (content sha via
+   `find_by_sha256_full` project-filtered + filename via
+   `find_by_filename_in_project`; no-resolution → the `{duplicate,
+   conflictType (both→content→filename), existingFile (prefers
+   filename), newFile}` envelope), skip→link existing / replace+cfid→
+   delete+upload / keepBoth→` (1)` suffix, and the non-project sha-dedup
+   fall-through (which project files with no conflict/resolution ALSO
+   reach — the faithful v4 quirk). `chat_media.rs:799` refusal body
+   REPLACED; `chat_file_link` (v4 `action=link`) added. Web:
+   `POST /api/v1/chats/{id}/files` multipart + the JSON `action=link`
+   leg (always 200). Cases: nonproject-happy, project filename-conflict
+   envelope, skip/keepBoth/replace resolutions, link.
+
+2. **General upload REST leg:** the `fileUpload` base64 core variant +
+   `save_file_entry` (v4 `saveFileEntry`: `sanitize_filename` /
+   `infer_mime_type` local ports, sha256, `find_by_filename_in_scope`
+   overwrite-reuse, project-store vs Quilltap-Uploads-mount branch,
+   category hard-coded `DOCUMENT`) + `POST /api/v1/files?action=upload`
+   multipart (fields `file`, `tags?` JSON→tagIds, `projectId?`,
+   `folderPath?`). 201 create / 200 overwrite (the web edge derives the
+   status from `createdAt == updatedAt`). `serialize_uploaded_file_entry`
+   presents `projectId` (null or value) per the P4.6k create-echo
+   pattern while omitting the un-set width/height/description. Cases:
+   new-project, overwrite-reuses-id, new-general.
+
+3. **Itemized delete envelope:** `CoreError` gains ONE additive optional
+   `associations: Option<FileAssociations>` field (+ the three `Response`
+   helpers gain `associations: None`; `Response::error_with_associations`
+   sets it). `FileAssociations`/`FileAssocCharacter`/`FileAssocMessage`
+   DTOs in `types.rs`. `file_delete` emits the `FILE_HAS_ASSOCIATIONS`
+   400 with the itemized `{characters, messages}` on the un-forced
+   linked-file refusal; the `dissociate=true` arm
+   (`dissociate_file_from_all`) strips message attachments (+ the
+   `[Attachment "…" deleted <ts>]` note), clears character
+   `defaultImageId` (raw NULL update), filters `avatarOverrides`, and
+   empties the file's `linkedTo` before deleting. Web:
+   `DELETE /api/v1/files/{id}?force=&dissociate=` (the associations ride
+   `core_response_to_http`). Cases: associations envelope (content diffed
+   vs v4's `details.associations`; the contract chose top-level, lane C
+   tolerates both), force, dissociate.
+
+4. **Maintenance verbs:** `filesGenerateThumbnails` (owned+resizable
+   filter → `total`; generation deferred), `filesCleanupStale`
+   (`{dryRun?}`; mount-blob existence in-DB, disk keys via an injected
+   backend), `filesCleanupOrphans` (`{mode, dryRun?}`; the
+   rescue/duplicate/unique partition, dry-run counts, wet delete + `move`
+   relocation to `/orphans/`). Cases: thumbnails (total only),
+   cleanup-stale dry-run (errors stripped), cleanup-orphans dry-run +
+   move.
+
+**Enumerated deferrals (loud fs/codec legs, dispatch-layer
+degradations):**
+- **Thumbnail generation** — needs the host image codec + disk cache,
+  not wired at the dispatch layer; `filesGenerateThumbnails` computes
+  only the owned+resizable `total` and returns `generated/cached/errors
+  = 0`. The on-demand `?action=thumbnail` byte-GET route (which HAS the
+  codec) is unaffected. The differential pins only `total` (v4's
+  generated/cached counts are backend-quirk-dependent).
+- **Cleanup-stale disk-key existence** — mount-blob keys are checked
+  in-DB (provable); disk keys need the host `StorageBackend`, passed as
+  `NotConfigured` at the engine arm (legacy disk-key files then error).
+  The differential injects a disk-erroring backend matching v4's real
+  backend and strips the fs-specific `errors` message array.
+- **`autoDescribeChatImageAttachment`** — the fire-and-forget chat-image
+  auto-describe; a named no-op (invisible to the route's synchronous
+  contract).
+- **Chat/general image-upload transcoding** — uses `NotConfiguredPixelCodec`
+  (v4's own sharp-unavailable passthrough branch: original bytes, original
+  mime). Text uploads never touch the codec.
+- **`filesSync`** — still refusal-armed (unported reconciliation subsystem).
+- **`action=attach-mount-file`** (the Librarian announcement walk) — the
+  P4.6ab bounded deferral continues.
+
+**Shared in-place edit (per the two-core-dispatch-writer rule):** the
+`CoreError.associations` field + the three helper edits. **Off-order
+correction:** the order stated `CoreError` is "constructed ONLY via the
+three helpers" — INCORRECT; `quilltap-host/src/spine.rs` (13 sites) and
+`salon_swipe_generate_equivalence.rs` (2 sites) build it directly. The
+additive field forced `associations: None` at those 15 sites (mechanical;
+union-safe — no other lane edits those error-construction lines). Lanes
+B/D construct errors only through the helpers, so they are unaffected.
+
+**Fixture:** `build-files-web-fixture.ts` extended (Quilltap Uploads +
+PROJECT_1's linked database store, a general + a project chat, two
+characters referencing F_ASSOC via defaultImageId/avatarOverrides, a
+message attaching F_ASSOC, the chat-upload conflict seed PF_DUP, the
+orphan rescue/duplicate/unique triple + tracked twin, two dangling
+mount-blob images + a dangling-mount-blob text file). **Two fixture
+gotchas closed:** (1) `doc_mount_blobs` has hand-written DDL — trigger
+its CREATE via `repos.docMountBlobs.listByMountPoint(...)` (else v5's
+mount-blob existence check errors "no such table"). (2)
+`project_doc_mount_links` — v4 reads it from the MOUNT INDEX (`link()`),
+but the v5 `get_project_document_store` seam reads it from MAIN;
+dual-seed BOTH. **Oracle gotcha:** the oracle `applyMocks` must un-mock
+the file-storage write path (`@/lib/file-storage/manager` +
+`user-uploads-bridge` + `project-store-bridge` + `mount-index/store-file`;
+jest.setup stubs `fileStorageManager.uploadFile`) so v4 lands real blobs
+in `doc_mount_blobs`. The `courier-images` fixture family was NOT
+extended (chat-upload rode the files fixture) — no dependent-oracle regen
+there.
+
+**Oracle regen recipe (`files_routes` — Node 24 from the v4 checkout):**
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; W=<worktree>
+# fixture:
+QT_FIXTURE_FILES_MAIN=$W/crates/quilltap-web/tests/fixtures/files-main.db \
+QT_FIXTURE_FILES_MOUNT=$W/crates/quilltap-web/tests/fixtures/files-mount.db \
+  $N/node --import tsx $W/harness/oracle/fixtures/build-files-web-fixture.ts
+# oracle (from ~/source/quilltap-server; /tmp mirror — jest ignores .claude/):
+TMPO=/tmp/qt-files-oracle; rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$W/harness/oracle/cases/files-routes.test.ts" "$TMPO/cases/"
+cp "$W/harness/oracle/fixtures/files-web.json" "$TMPO/fixtures/"
+QT_FIXTURE_FILES_MAIN=... QT_FIXTURE_FILES_MOUNT=... \
+QT_ORACLE_OUT=/tmp/oracle-files-routes.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$(pwd)" --roots "$TMPO/cases" -- files-routes
+# diff:
+QT_ORACLE_FILES_ROUTES=/tmp/oracle-files-routes.ndjson \
+  cargo test -p quilltap-harness --test files_routes_equivalence
+```
+
+**Versions:** core 0.0.217, web 0.0.20, harness 0.0.197.
