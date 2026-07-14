@@ -12439,3 +12439,47 @@ per-option; the viewed character is excluded from the option list.
 file) and `screens/settings/providers/profile-modal.ts:489`
 (modelClass). No dynamic-options `[value]` sites remain anywhere in the
 SPA.
+
+### Tier 2 — the story-background e2e beat (SPA 0.5.87)
+
+`e2e/salon-background-flow.spec.ts` (new; no existing spec edited, no
+global-setup change): route-mock the `chatGetBackground` dispatch (pass
+every other dispatch through to the real server) + the
+`/api/v1/files/{id}` byte route (a 1x1 PNG), then unlock → open Solo
+Voyage → assert `--story-background-url` lands on `.qt-chat-layout`
+pointing at the id-keyed byte route, and `getComputedStyle(el,
+'::before').display !== 'none'` (the ported CSS layer draws). A green
+in-lane route-mock, NOT a guarded self-activating beat: the live
+`chatGetBackground` leg is lane A's, unavailable in the worktree
+binaries, so the P4.6aj precedent applies (a green mock beats a
+never-firing guard). At unification the mock is dropped and the beat
+rides the live leg over a seeded `storyBackgroundImageId` + files row.
+
+**The chained-render (#7) e2e is a NAMED DEFERRAL, not a gap.** The
+order confirms it is not live-walkable — the e2e host has no
+multi-responder LLM, so no chain of intermediate dones is produced.
+#7's proof is the render-level `chat/message-list.spec.ts` (the
+multi-turn chain folded through the real reducer, asserted in the
+rendered DOM: per-turn visibility, the dedup handoff, skip, carina) +
+the reducer trace specs. A route/SSE-mocked Playwright variant was
+judged low-value / high-fragility (streaming-body interception while
+the concurrent dispatch resolves) and is not shipped.
+
+### P4.6am lane close (tier 3 deferrals — enumerated)
+
+Landed: units 1–3 (tier 1) + the background e2e beat (tier 2). Tier-3
+deferrals (loud, named):
+
+- **Story-background regeneration + the 30s poll +
+  `storyBackgroundsSettings` card** — the generation subsystem is
+  unported (lane A refusal-arms `regenerate-background`); v5 fetches
+  the background ONCE per chat open, display only.
+- **Project-page backgrounds + workspace-backdrop arbitration** — v5
+  has no tabbed workspace; the Salon is the only background source
+  (v4's projectId fallback fires only when chatId is null, never in the
+  Salon).
+- **The composition-mode salon binding** (§3 —
+  `[compositionMode]`/`[chatId]` on the composer + persisting
+  `compositionModeChange` via `chatUpdate`) is the unifier's wire, NOT
+  this lane's (left untouched in `salon-conversation.ts`).
+- **The #7 chained-render e2e** (above — not live-walkable).

@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.6am tier 2 (lane C) — the story-background e2e beat.
+`salon-background-flow.spec.ts` walks unlock → open a salon chat →
+`--story-background-url` lands on `.qt-chat-layout` from the resolved
+id-keyed byte route → the `::before` layer stops being `display:none`
+(the CSS actually draws the backdrop). The live `chatGetBackground`
+dispatch is lane A's (wired at unification), so in-lane the beat
+route-mocks the resolver + the file byte route — a green in-lane mock
+beats a never-firing guard (the P4.6aj precedent); the mock is dropped
+at unification. The chained-render (#7) e2e is NOT live-walkable (no
+multi-responder LLM in the e2e host, per the order) — #7 is covered by
+the `message-list` component specs + the reducer trace specs.
+
 P4.6am unit 3 (lane C) — the last select-audit site (dogfood finding
 #6, CLOSES the standing audit). The reverse-`{{user}}` dialog select in
 `characters/view/tabs/details-tab.ts` bound the selection with `[value]`
