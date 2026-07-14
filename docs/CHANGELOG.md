@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+P4.6al lane (D17 editor follow-ons, tier 1 item 2 — composition mode,
+dogfood #8): the composer now honors v4's `documentEditingMode`. The
+rich editor gained a `submitOnModEnter` input (Cmd+Enter on Mac /
+Ctrl+Enter elsewhere submits, plain Enter inserts a paragraph — v4
+KeyboardPlugin's exact `isMac` branch); the chat composer gained a
+`compositionMode` input, a `compositionModeChange` output, and a
+toolbar toggle button (v4's two titles + active state), binding the
+editor `[submitOnEnter]="!compositionMode"` /
+`[submitOnModEnter]="compositionMode"`. The Settings → Chat tab gained
+the "Composition Mode" card (v4's first) with the "Start New Chats in
+Composition Mode" toggle, saved through the existing chat-settings
+dispatch as `compositionModeDefault`. The salon binding
+(documentEditingMode ↔ the composer) is a unification wire. Specs:
+rich-editor +4 (submit modes), composer +1 (toggle), the new settings
+card +3.
+
 P4.6al lane (D17 editor follow-ons, tier 1 item 1): added
 strikethrough (`~~`) and highlight (`==`) marks to the composer
 markdown dialect and emphasis-on-type input rules. Strikethrough rides

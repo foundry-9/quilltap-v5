@@ -109,6 +109,36 @@ describe('ChatComposer — attach affordance', () => {
     expect(fixture.nativeElement.querySelector('.qt-chat-attachment-chip')).toBeNull();
   });
 
+  it('composition toggle: bindings, active state, title, and emit (v4 documentEditingMode)', async () => {
+    vi.stubGlobal('fetch', vi.fn());
+    const fixture = render();
+    await settle(fixture);
+    const toggle = () =>
+      fixture.nativeElement.querySelector(
+        'button[aria-label="Toggle composition mode"]',
+      ) as HTMLButtonElement;
+
+    // Default (chat mode): Enter sends, mod-enter off; toggle inactive.
+    expect(richEditor(fixture).submitOnEnter()).toBe(true);
+    expect(richEditor(fixture).submitOnModEnter()).toBe(false);
+    expect(toggle().classList.contains('qt-chat-toolbar-button-active')).toBe(false);
+    expect(toggle().getAttribute('title')).toContain('Switch to composition mode');
+
+    // A click emits the flipped value; the composer does not self-persist.
+    let emitted: boolean | undefined;
+    fixture.componentInstance.compositionModeChange.subscribe((v) => (emitted = v));
+    toggle().click();
+    expect(emitted).toBe(true);
+
+    // Salon drives it back in → bindings flip, button active, title updates.
+    fixture.componentRef.setInput('compositionMode', true);
+    fixture.detectChanges();
+    expect(richEditor(fixture).submitOnEnter()).toBe(false);
+    expect(richEditor(fixture).submitOnModEnter()).toBe(true);
+    expect(toggle().classList.contains('qt-chat-toolbar-button-active')).toBe(true);
+    expect(toggle().getAttribute('title')).toBe('Switch to chat mode (Enter to send)');
+  });
+
   it('opens the conflict dialog on a duplicate and resolves with a resolution', async () => {
     const dup = {
       duplicate: true,

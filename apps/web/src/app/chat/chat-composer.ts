@@ -84,7 +84,8 @@ export interface ComposerSend {
           class="qt-chat-composer-input qt-lexical-contenteditable"
           [placeholder]="placeholder()"
           [disabled]="disabled()"
-          [submitOnEnter]="true"
+          [submitOnEnter]="!compositionMode()"
+          [submitOnModEnter]="compositionMode()"
           ariaLabel="Message"
           (contentChange)="text.set($event)"
           (submit)="submit()"
@@ -100,6 +101,18 @@ export interface ComposerSend {
         />
 
         <div class="qt-chat-composer-actions">
+          <button
+            type="button"
+            class="qt-chat-toolbar-button"
+            [class.qt-chat-toolbar-button-active]="compositionMode()"
+            [title]="compositionToggleTitle()"
+            [attr.aria-pressed]="compositionMode()"
+            aria-label="Toggle composition mode"
+            (click)="toggleCompositionMode()"
+          >
+            <qt-icon name="file" class="w-5 h-5" />
+          </button>
+
           <button
             type="button"
             class="qt-chat-toolbar-button"
@@ -202,6 +215,12 @@ export class ChatComposer {
   readonly documentActive = input(false);
   /** The chat whose files the attach affordance uploads to. */
   readonly chatId = input.required<string>();
+  /**
+   * Composition mode (v4 `documentEditingMode`): plain Enter inserts a
+   * paragraph, Cmd/Ctrl+Enter sends. Bound from the chat's flag by the salon at
+   * unification (§3); the composer itself does not persist the toggle.
+   */
+  readonly compositionMode = input(false);
 
   readonly send = output<ComposerSend>();
   readonly stop = output<void>();
@@ -209,6 +228,8 @@ export class ChatComposer {
   readonly openTerminal = output<void>();
   readonly openDocument = output<void>();
   readonly openGenerate = output<void>();
+  /** The user flipped the mode via the toolbar toggle; the salon persists it. */
+  readonly compositionModeChange = output<boolean>();
 
   private readonly editor = viewChild.required(RichEditor);
 
@@ -239,6 +260,22 @@ export class ChatComposer {
   protected readonly sendTitle = computed(() =>
     this.hasActiveCharacters() ? 'Send message' : 'Add a character to start chatting',
   );
+
+  /** Mac vs non-Mac decides the Cmd/Ctrl label (v4 `isMac`, ChatComposer.tsx). */
+  private readonly isMac =
+    typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+
+  /** v4's two titles, keyed off which mode a click would switch you INTO. */
+  protected readonly compositionToggleTitle = computed(() =>
+    this.compositionMode()
+      ? 'Switch to chat mode (Enter to send)'
+      : `Switch to composition mode (${this.isMac ? 'Cmd' : 'Ctrl'}+Enter to send)`,
+  );
+
+  /** Flip the mode and let the salon persist it (the composer stays uncontrolled). */
+  protected toggleCompositionMode(): void {
+    this.compositionModeChange.emit(!this.compositionMode());
+  }
 
   protected onSubmit(event: Event): void {
     event.preventDefault();

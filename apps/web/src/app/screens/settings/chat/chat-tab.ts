@@ -12,6 +12,7 @@ import { ActivatedRoute } from '@angular/router';
 import { AutonomousRoomDefaults } from '../../../autonomous/autonomous-room-defaults';
 import { AutonomousRoomsList } from '../../../autonomous/autonomous-rooms-list';
 import { CollapsibleCard } from '../../../ui/collapsible-card';
+import { CompositionModeSettings } from './composition-mode-settings';
 import { DataRetentionSettings } from './data-retention-settings';
 
 /**
@@ -22,17 +23,27 @@ import { DataRetentionSettings } from './data-retention-settings';
  * (`autonomous-room-schedules`) — over `CollapsibleCard` with v4's card
  * titles/descriptions + `sectionId`s (the `?section=` deep link) ported verbatim.
  *
- * DEFERRED LOUDLY (named, not silent): v4's other Chat-tab cards — Composition
- * Mode, Composer, Auto-Scroll, Text Replacement, Token Display, Context
- * Compression, Memory Cascade, Image Description, Automation, Agent Mode,
- * Thinking / Reasoning, Answer Confirmation, and Dangerous Content — each land in
- * their own settings order. They are enumerated in the "not yet fitted out"
- * placeholder below rather than rendered as dead cards.
+ * The Composition Mode card (v4's first) rides here (P4.6al) — its default,
+ * `chat_settings.compositionModeDefault`, seeds each new chat's
+ * `documentEditingMode`.
+ *
+ * DEFERRED LOUDLY (named, not silent): v4's other Chat-tab cards — Composer,
+ * Auto-Scroll, Text Replacement, Token Display, Context Compression, Memory
+ * Cascade, Image Description, Automation, Agent Mode, Thinking / Reasoning,
+ * Answer Confirmation, and Dangerous Content — each land in their own settings
+ * order. They are enumerated in the "not yet fitted out" placeholder below
+ * rather than rendered as dead cards.
  */
 @Component({
   selector: 'qt-settings-chat',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CollapsibleCard, AutonomousRoomDefaults, AutonomousRoomsList, DataRetentionSettings],
+  imports: [
+    CollapsibleCard,
+    AutonomousRoomDefaults,
+    AutonomousRoomsList,
+    CompositionModeSettings,
+    DataRetentionSettings,
+  ],
   template: `
     <div>
       <p class="qt-text-small qt-text-muted italic mb-6">
@@ -41,13 +52,23 @@ import { DataRetentionSettings } from './data-retention-settings';
       </p>
 
       <div class="space-y-4">
+        <!-- v4 places Composition Mode first in the Chat tab. -->
+        <qt-collapsible-card
+          title="Composition Mode"
+          description="Whether new chats start in composition mode"
+          sectionId="composition-mode"
+          [defaultOpen]="defaultOpen()"
+          [forceOpen]="section() === 'composition-mode'"
+        >
+          <qt-composition-mode-settings />
+        </qt-collapsible-card>
+
         <!-- P4.d3: v4 places Data Retention between "Dangerous Content" (still a
              loud deferral below) and "Autonomous Rooms". -->
         <qt-collapsible-card
           title="Data Retention"
           description="How long inactive chats keep their regenerable working data"
           sectionId="data-retention"
-          [defaultOpen]="defaultOpen()"
           [forceOpen]="section() === 'data-retention'"
         >
           <qt-data-retention-settings />
@@ -81,9 +102,9 @@ import { DataRetentionSettings } from './data-retention-settings';
             moment they remain in the workshop:
           </p>
           <p class="qt-text-xs qt-text-muted mt-2 italic">
-            Composition Mode · Composer · Auto-Scroll · Text Replacement · Token Display · Context
-            Compression · Memory Cascade · Image Description · Automation · Agent Mode · Thinking /
-            Reasoning · Answer Confirmation · Dangerous Content.
+            Composer · Auto-Scroll · Text Replacement · Token Display · Context Compression · Memory
+            Cascade · Image Description · Automation · Agent Mode · Thinking / Reasoning · Answer
+            Confirmation · Dangerous Content.
           </p>
         </div>
       </div>

@@ -12152,3 +12152,37 @@ inside blocked; mid-line after prose). `ng test` editor suites 56/56.
 - `__bold__` on-type auto-format (literal round-trips faithfully).
 - The GFM table transformer (D17 tier-3 item 2) — deferred per the
   order unless tiers 1–2 land early.
+
+### Item 2 — composition mode, composer-side (tier 1, dogfood #8, LANDED)
+
+`editor/rich-editor.ts`: `submitOnModEnter` input. When armed, `Mod-Enter`
+(prosemirror-keymap resolves Mod → Cmd on Mac / Ctrl elsewhere — v4's exact
+`isMac ? metaKey&&!ctrlKey : ctrlKey&&!metaKey`, KeyboardPlugin.tsx:113-142)
+emits `submit`; else it falls through. Plain Enter with `submitOnEnter` off
+falls to the base keymap's block-split (composition-mode paragraph insertion).
+
+`chat/chat-composer.ts`: `compositionMode` input + `compositionModeChange`
+output + a toolbar toggle button (icon `file`, `qt-chat-toolbar-button-active`
+when on — the class already exists in `_chat.css`; v4's two titles keyed off
+which mode a click switches INTO, with the Cmd/Ctrl label from `navigator`).
+Editor bound `[submitOnEnter]="!compositionMode()"` /
+`[submitOnModEnter]="compositionMode()"`. The composer is UNCONTROLLED — the
+toggle only emits; the salon persists via `chatUpdate` at unification (§3).
+
+`screens/settings/chat/composition-mode-settings.ts` (NEW) + wired into
+`chat-tab.ts` as the first card (v4's order), title "Composition Mode",
+sectionId `composition-mode`. Reads/writes `chat_settings.compositionModeDefault`
+through the existing `chatSettings`/`chatSettingsUpdate` dispatch. The
+Composition-Mode dead-deferral line removed from the chat-tab placeholder.
+
+**Proofs:** rich-editor.spec.ts +4 (chat-mode Enter submits; composition-mode
+Enter does not; composition-mode Cmd/Ctrl+Enter submits; chat-mode
+Cmd/Ctrl+Enter does not — via real keydown dispatch on `.qt-rich-editor-content`,
+Mod chosen by the same Mac detection prosemirror uses); chat-composer.spec.ts
++1 (toggle bindings/active/title/emit); composition-mode-settings.spec.ts +3
+(load, default-off, persist).
+
+**Unification wire (NOT in-lane):** the salon passing the chat's
+`documentEditingMode` into `[compositionMode]` and persisting
+`compositionModeChange` — lane C owns `salon-conversation.ts`; the e2e
+composition beats land at unification.

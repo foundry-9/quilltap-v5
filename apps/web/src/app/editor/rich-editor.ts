@@ -51,6 +51,13 @@ export class RichEditor {
   readonly disabled = input(false);
   /** Chat mode: Enter submits, Shift+Enter is a line break (v4 KeyboardPlugin). */
   readonly submitOnEnter = input(false);
+  /**
+   * Composition mode: Cmd+Enter (Mac) / Ctrl+Enter (non-Mac) submits, while
+   * plain Enter inserts a paragraph (v4 `KeyboardPlugin` `documentEditingMode`
+   * branch, :113-142). `Mod-Enter` in prosemirror-keymap resolves to Cmd on Mac
+   * / Ctrl elsewhere — v4's exact `isMac ? metaKey&&!ctrlKey : ctrlKey&&!metaKey`.
+   */
+  readonly submitOnModEnter = input(false);
   readonly ariaLabel = input('Editor');
 
   /** Fired with the serialized markdown whenever the document changes. */
@@ -172,6 +179,14 @@ export class RichEditor {
       return true;
     };
 
+    // Composition mode: Cmd/Ctrl+Enter submits; otherwise fall through so the
+    // combo does nothing special (v4 chat mode lets Lexical handle it).
+    const modSubmitCmd: Command = () => {
+      if (!this.submitOnModEnter()) return false;
+      this.submit.emit();
+      return true;
+    };
+
     // Shift+Enter (and Enter inside a code block) inserts a line break — a
     // hard_break node, which serializes to a plain `\n` (the dialect soft break).
     const insertBreak: Command = (state, dispatch) => {
@@ -197,6 +212,9 @@ export class RichEditor {
           splitListItem(dialectSchema.nodes['list_item']),
           newlineInCode,
         ),
+        // Composition mode submit (Cmd/Ctrl+Enter). Bound above the base keymap
+        // so it wins when armed, else falls through.
+        'Mod-Enter': modSubmitCmd,
         'Shift-Enter': insertBreak,
       }),
       keymap(dialectFormattingKeymap(dialectSchema)),
