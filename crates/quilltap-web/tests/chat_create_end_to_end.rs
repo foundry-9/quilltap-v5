@@ -173,6 +173,7 @@ impl SpineFactory for CreateSpineFactory {
             memory_embedding: None,
             courier_resolve: None,
             save_image_bytes: None,
+            image_generation: None,
             job_handlers: Vec::new(),
         }
     }

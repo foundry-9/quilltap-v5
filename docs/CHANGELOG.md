@@ -30,6 +30,26 @@ on-demand byte-GET route unaffected), cleanup-stale disk-key existence
 `filesSync` (unported reconciliation subsystem). Bumps core 0.0.217,
 web 0.0.20, harness 0.0.197.
 
+P4.6ai (lane B): un-refuse `imageProfileGenerate` end-to-end. Added a
+new `EngineAssembly.image_generation` seam (the courier_resolve idiom —
+struct field, `None` default, ready-state mirror, `ready_generate_image`
+gate), threaded `prompt`/`chatId`/`count` through the engine arm, and
+replaced the `api/image_profiles.rs` `not_available("generate")` refusal
+with a handler that runs the already-ported W4.9a generation runner
+(`execute_image_generation_tool`) via the seam and shapes v4's
+`{success, data, expandedPrompt, metadata}` envelope (the 404 gate +
+the `badRequest(result.error || 'Image generation failed')` arm). Wired
+the seam LIVE in `quilltap-host` (a per-run `HostImageGenerationRunner`
+over the W4.7f `Real*Provider`s — the avatar/story job-handler idiom, so
+`now_ms` + the cheap-LLM log context are per-request); spine-less
+assemblies keep `image_generation: None` → the loud not-assembled
+refusal. `imageProfileValidateKey` / `imageProfileListModels` stay
+refusal-armed. Differential: a new `image_generate_route_equivalence`
+diff drives the ported handler with the image provider canned on both
+sides and byte-matches v4's real `[id]/route` generate envelope across
+four cases (happy+chat, no-chat, `count`>1 → 2 images, profile 404).
+Bumps core 0.0.217, host 0.0.17, harness 0.0.197.
+
 Plan the "finish P4.6ae + catch up from v4" round — four agent-ready
 work orders decomposing the P4.6ae OPEN server remainder plus the one
 v4 drift commit. Drift-checked first: v4 advanced one commit past

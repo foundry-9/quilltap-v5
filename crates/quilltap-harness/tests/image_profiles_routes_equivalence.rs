@@ -411,11 +411,13 @@ fn image_profiles_routes_match_oracle() {
     );
 }
 
-/// The three LLM/IO-coupled actions are loud typed refusals this round.
+/// The remaining LLM/IO-coupled actions are loud typed refusals this round.
+/// `imageProfileGenerate` was un-refused in P4.6ai (its loud not-assembled refusal
+/// now lives at the engine's `image_generation` seam gate, not this handler — see
+/// `image_generate_route_equivalence`); `validate-key` / `list-models` stay armed.
 #[test]
 fn image_refusal_arms_are_loud() {
     for resp in [
-        ip::image_profile_generate("a6000000-0000-4000-8000-000000000001"),
         ip::image_profile_validate_key(),
         ip::image_profile_list_models(),
     ] {

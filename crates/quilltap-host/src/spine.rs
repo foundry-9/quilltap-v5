@@ -136,6 +136,11 @@ use quilltap_core::services::story_background_job::StoryBackgroundGenerationHand
 use quilltap_core::services::turn_orchestrator::ChainConfig;
 use quilltap_core::tools::ask_carina::{ErasedAskCarina, TypedAskCarina};
 use quilltap_core::tools::executor::BuiltInToolRunner;
+use quilltap_core::tools::generate_image::{
+    execute_image_generation_tool, ErasedImageGeneration, ImageGenDeps, ImageGenerationRunner,
+    ImageGenerationToolInput, ImageGenerationToolOutput, ImageToolExecutionContext,
+    RealLanternNotification,
+};
 use quilltap_core::tools::rng::OsRandomBytes;
 use quilltap_core::tools::self_inventory::SelfInventoryEnv;
 use serde_json::Value;
@@ -1948,6 +1953,62 @@ impl JobHandler for StoryBackgroundJobHandler {
     }
 }
 
+/// The `imageProfileGenerate` dispatch runner (P4.6ai) — the host's live
+/// `EngineAssembly.image_generation` seam. Mirrors the avatar/story JOB handlers:
+/// it rebuilds the W4.9a [`ImageGenDeps`] per run so `now_ms` is the wall clock at
+/// request time AND the cheap-LLM executor's log context carries the request's
+/// user/chat (the same reason [`AvatarJobHandler`] reconstructs per job). The
+/// `Real*Provider`s are the W4.7f wire seams; the Lantern character-image
+/// notification posts LIVE.
+pub struct HostImageGenerationRunner {
+    pub wire: WireConfig,
+}
+
+impl ImageGenerationRunner for HostImageGenerationRunner {
+    fn run<'a>(
+        &'a self,
+        db: &'a Db,
+        input: &'a ImageGenerationToolInput,
+        ctx: &'a ImageToolExecutionContext,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ImageGenerationToolOutput> + Send + 'a>>
+    {
+        Box::pin(async move {
+            let image_provider = quilltap_core::model::image_dialects::RealImageProvider::new(
+                ReqwestWireTransport::new(),
+            );
+            let completion = self.wire.completion(db);
+            let moderation = RealModerationProvider::new(
+                db.clone(),
+                DbApiKeys(db.clone()),
+                ReqwestWireTransport::new(),
+            );
+            let api_keys = DbApiKeys(db.clone());
+            let transcoder = HostImageCodec;
+            let lantern = RealLanternNotification { db };
+            let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+                db: db.clone(),
+                user_id: ctx.user_id.clone(),
+                chat_id: ctx.chat_id.clone(),
+                message_id: None,
+                ctx: LogContext::none(),
+            });
+            let orientation_fn = quilltap_core::image_gen_data::orientation_data_for;
+            let deps = ImageGenDeps {
+                image_provider: &image_provider,
+                completion: &completion,
+                moderation: &moderation,
+                api_keys: &api_keys,
+                transcoder: &transcoder,
+                lantern: &lantern,
+                executor: &executor,
+                now_ms: now_unix_ms(),
+                orientation_data_for: &orientation_fn,
+            };
+            execute_image_generation_tool(db, &deps, input, ctx).await
+        })
+    }
+}
+
 // ===========================================================================
 // The spine factory (the assembler's per-assembly construction seam)
 // ===========================================================================
@@ -1974,6 +2035,9 @@ pub struct SpineBundle {
     /// `messageSaveImage` arm falls back to `NotConfiguredBytes`).
     pub save_image_bytes:
         Option<Arc<dyn quilltap_core::photos::save_image_to_album::FileBytesStore>>,
+    /// The `imageProfileGenerate` runner (P4.6ai, the unification wire; `None` for
+    /// canned test factories — the arm answers the loud not-assembled refusal).
+    pub image_generation: Option<ErasedImageGeneration>,
     pub job_handlers: Vec<(String, Box<dyn JobHandler>)>,
 }
 
@@ -2129,6 +2193,11 @@ impl SpineFactory for ProductionSpineFactory {
             // the production byte store backs save-image.
             courier_resolve: Some(Arc::clone(&spine) as _),
             save_image_bytes: Some(Arc::clone(&spine.file_bytes) as _),
+            // P4.6ai: the imageProfileGenerate un-refusal seam, wired LIVE over the
+            // W4.7f Real*Providers (the runner rebuilds ImageGenDeps per request).
+            image_generation: Some(ErasedImageGeneration::new(HostImageGenerationRunner {
+                wire: wire.clone(),
+            })),
             chat_create,
             provider_actions: Some(provider_actions),
             memory_embedding: Some(memory_embedding),

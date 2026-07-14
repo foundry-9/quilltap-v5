@@ -119,6 +119,13 @@ pub struct EngineAssembly {
     /// [`NotConfiguredBytes`] (faithful "no host byte store" → `EMPTY_BYTES`).
     pub save_image_bytes: Option<Arc<dyn crate::photos::save_image_to_album::FileBytesStore>>,
     // === end P4.6ab ===
+    // === P4.6ai: image generation ===
+    /// The `imageProfileGenerate` runner (P4.6ai, wired LIVE in the host from the
+    /// W4.7f `Real*Provider`s). `None` → the `ImageProfileGenerate` arm answers the
+    /// loud not-assembled refusal (spine-less assemblies — read-only embedders — keep
+    /// the un-refusal deferred).
+    pub image_generation: Option<crate::tools::generate_image::ErasedImageGeneration>,
+    // === end P4.6ai ===
 }
 
 impl EngineAssembly {
@@ -135,6 +142,9 @@ impl EngineAssembly {
             terminal_probe: None,
             courier_resolve: None,
             save_image_bytes: None,
+            // === P4.6ai ===
+            image_generation: None,
+            // === end P4.6ai ===
         }
     }
 }
@@ -261,6 +271,9 @@ struct ReadyEngine {
     /// unification wire).
     courier_resolve: Option<Arc<dyn super::chat_media::CourierResolveDriver>>,
     save_image_bytes: Option<Arc<dyn crate::photos::save_image_to_album::FileBytesStore>>,
+    /// The `imageProfileGenerate` runner (P4.6ai; `None` for spine-less assemblies —
+    /// the arm answers the loud not-assembled refusal).
+    image_generation: Option<crate::tools::generate_image::ErasedImageGeneration>,
 }
 
 /// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
@@ -1435,12 +1448,29 @@ impl CoreEngine {
                 Ok(_) => super::image_profiles::image_provider_list(),
                 Err(r) => r,
             },
+            // === P4.6ai: the imageProfileGenerate un-refusal — thread
+            // prompt/chat_id/count into the W4.9a runner via the image-generation
+            // seam. A spine-less assembly keeps the loud not-assembled refusal. ===
             Request::ImageProfileGenerate {
-                image_profile_id, ..
-            } => match self.ready_db() {
-                Ok(_) => super::image_profiles::image_profile_generate(&image_profile_id),
+                image_profile_id,
+                prompt,
+                chat_id,
+                count,
+            } => match self.ready_generate_image() {
+                Ok((db, runner)) => {
+                    super::image_profiles::image_profile_generate(
+                        &db,
+                        &runner,
+                        SINGLE_USER_ID,
+                        &image_profile_id,
+                        &prompt,
+                        chat_id.as_deref(),
+                        count,
+                    )
+                    .await
+                }
                 Err(r) => r,
-            },
+            }, // === end P4.6ai ===
             Request::ImageProfileValidateKey { .. } => match self.ready_db() {
                 Ok(_) => super::image_profiles::image_profile_validate_key(),
                 Err(r) => r,
@@ -2725,6 +2755,25 @@ impl CoreEngine {
         }
     }
 
+    /// The Db + image-generation runner under the readiness gate (P4.6ai). A ready
+    /// engine without the runner (spine-less host — read-only embedders) answers the
+    /// loud not-assembled refusal (the courier-resolve precedent — the host wires it
+    /// LIVE at unification), keeping the `imageProfileGenerate` un-refusal deferred.
+    fn ready_generate_image(
+        &self,
+    ) -> Result<(Db, crate::tools::generate_image::ErasedImageGeneration), Response> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => match &r.image_generation {
+                Some(runner) => Ok((r.db.clone(), runner.clone())),
+                None => Err(Response::error(
+                    ErrorKind::Internal,
+                    "image generation not assembled (image-generation seam deferral)",
+                )),
+            },
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
     /// The Db + swipe-generate driver under the readiness gate; a ready engine
     /// without the driver (read-only embedder) answers a plain internal error.
     fn ready_swipe(&self) -> Result<(Db, Arc<dyn SwipeGenerateDriver>), Response> {
@@ -3143,6 +3192,7 @@ fn open_ready(
         terminal_probe: assembly.terminal_probe,
         courier_resolve: assembly.courier_resolve,
         save_image_bytes: assembly.save_image_bytes,
+        image_generation: assembly.image_generation,
     })
 }
 

@@ -11611,3 +11611,110 @@ QT_ORACLE_FILES_ROUTES=/tmp/oracle-files-routes.ndjson \
 ```
 
 **Versions:** core 0.0.217, web 0.0.20, harness 0.0.197.
+
+---
+
+## P4.6ai — the `imageProfileGenerate` un-refusal + the host image-generation seam (baseline `02865bdb`)
+
+Lane B of the P4.6ah ∥ P4.6ai ∥ P4.6aj ∥ P4.d4 round. Closes the
+SECOND half of the long-OPEN P4.6ab tier-2 remainder (the first half —
+`chatFileUpload` — is lane A). Drift-checked first: v4 HEAD is exactly
+`02865bdb` (no movement); the one drift commit since P4.6ae touches
+none of this lane's surface. Versions: core 0.0.217, host 0.0.17,
+harness 0.0.197.
+
+### The un-refusal (core + host, one commit)
+
+- **The new seam.** `EngineAssembly.image_generation:
+  Option<ErasedImageGeneration>` (a `// === P4.6ai ===` delimited
+  block — the two-core-dispatch-writer rule), mirroring the
+  `courier_resolve` idiom exactly: the struct field + `None` in
+  `shutdown_only`, the `ReadyEngine` mirror, the `open_ready` wire
+  (`image_generation: assembly.image_generation`), and the
+  `ready_generate_image()` gate — a spine-less assembly (`None`) answers
+  the loud `"image generation not assembled (image-generation seam
+  deferral)"` refusal (the courier precedent), keeping the un-refusal
+  deferred for read-only embedders.
+- **The engine arm** (`engine.rs`, in-place — the one field/arm this
+  lane owns): threads `prompt`/`chat_id`/`count` (previously dropped
+  behind `..`) into `image_profile_generate` via
+  `ready_generate_image()`.
+- **The handler** (`api/image_profiles.rs`): the
+  `not_available("generate")` refusal replaced with the v4 route port —
+  the `notFound('Image profile')` 404 gate, then the injected
+  `ErasedImageGeneration` runner (`execute_image_generation_tool`), then
+  `successResponse({success, data: result.images, expandedPrompt,
+  metadata:{originalPrompt, provider, model, count}}, 201)` or
+  `badRequest(result.error || 'Image generation failed')`. `count`
+  prefaults to 1 (v4 `generateImageSchema`); `metadata.count` is the
+  RETURNED image count. The dispatch variant carries only the
+  Shared-contract four — v4's `size/quality/style/aspectRatio/
+  negativePrompt` extras are the recorded narrowing divergence
+  (`None`). `data` reuses a new `pub generate_image::
+  generated_image_to_value` glue (the tool-executor's private mapper,
+  hoisted). `validate_key` / `list_models` UNCHANGED (refusal-armed).
+- **The LIVE host wiring** (`quilltap-host`): a per-run
+  `HostImageGenerationRunner` (the avatar/story JOB-handler idiom —
+  rebuilds `ImageGenDeps` per request so `now_ms` is the wall clock AND
+  the cheap-LLM executor's log context carries the request user/chat)
+  over the W4.7f `Real*Provider`s (`RealImageProvider` /
+  `wire.completion` / `RealModerationProvider` / `DbApiKeys` /
+  `HostImageCodec` / `RealLanternNotification` / the real
+  `image_gen_data::orientation_data_for`). Routed through a new
+  `SpineBundle.image_generation` field (`ProductionSpineFactory::build`
+  → `host.rs` destructure → `EngineAssembly.image_generation`), the
+  courier_resolve/save_image_bytes precedent. The two canned web smoke
+  factories (`chat_send_smoke.rs`, `chat_create_end_to_end.rs`) carry
+  `image_generation: None` — a mechanical new-field default (the same
+  precedent), no lane conflict.
+
+### The differential — `image_generate_route_equivalence`
+
+A route-envelope diff (the `image_generation_tier3` mold): the ported
+`image_profile_generate` handler is driven behind a `TestImageRunner`
+(an `ImageGenerationRunner` over the tier-3 canned seams — REAL image
+dialect over a `CannedWireTransport`, empty completion, no-moderation,
+canned api-keys, passthrough transcode, `NoLanternNotification`, the
+OPENAI size-strategy orientation closure, frozen `now_ms`) and its
+`{success, data, expandedPrompt, metadata}` envelope is diffed
+field-by-field (the minted `files.id` + its url/filepath
+uuid-normalized) against v4's REAL `POST /api/v1/image-profiles/[id]?
+action=generate` handler. The corpus is PLACEHOLDER-FREE + danger OFF,
+so NO completion/cheap-LLM fires — only the image provider is canned
+(recorded by exact `provider|model|JSON.stringify(params)` key). Four
+cases: `generate_happy_chat` (chat-tied, count 1), `generate_no_chat`
+(chatId absent), `generate_count2` (`count`>1 → the provider returns 2
+images, `metadata.count`=2), `generate_profile_404`. Success cases
+compare BODY only (the dispatch surface answers 200 for v4's 201 — the
+P4.6p precedent); the 404 compares status + `{error}`.
+
+**Oracle regen** (Node 24 `~/.nvm/versions/node/v24.13.1/bin`, from the
+v4 checkout at `02865bdb`; stage OUTSIDE any `.claude/` path):
+```
+# fixture (reuses build-image-generation-fixture.ts):
+QT_FIXTURE_IMGGEN_MAIN=/tmp/qt-imggen-main.db QT_FIXTURE_IMGGEN_MOUNT=/tmp/qt-imggen-mount.db \
+  node --import tsx harness/oracle/fixtures/build-image-generation-fixture.ts
+# oracle (stage image-generate-route.test.ts + image-generation.json to /tmp mirror):
+QT_FIXTURE_IMGGEN_MAIN=/tmp/qt-imggen-main.db QT_FIXTURE_IMGGEN_MOUNT=/tmp/qt-imggen-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-image-generate-route.ndjson \
+  npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$STAGE/cases" -- "image-generate-route.test"
+# run:
+QT_ORACLE_IMGGEN_ROUTE=/tmp/oracle-image-generate-route.ndjson \
+QT_FIXTURE_IMGGEN_MAIN=/tmp/qt-imggen-main.db QT_FIXTURE_IMGGEN_MOUNT=/tmp/qt-imggen-mount.db \
+  cargo test -p quilltap-harness --test image_generate_route_equivalence
+```
+
+The pre-existing `image_profiles_routes_equivalence::
+image_refusal_arms_are_loud` unit dropped `image_profile_generate` from
+its loud-refusal list (now un-refused; the loud refusal moved to the
+engine's seam gate).
+
+**Gate:** `cargo fmt --all --check` clean; clippy default AND
+native-transport, `-D warnings`, both clean; `cargo test --workspace`
+green with `image_generate_route_equivalence` verified BY NAME (4 cases
+OK, oracle fresh at `02865bdb`).
+
+**Still OPEN under P4.6ai:** nothing — the lane's tier-1 + tier-2 all
+land. `imageProfileValidateKey` / `imageProfileListModels` stay the
+named refusal deferrals (live-provider-only, since P4.6p).

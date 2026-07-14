@@ -458,6 +458,7 @@ impl EngineAssembler for HostAssembler {
             memory_embedding,
             courier_resolve,
             save_image_bytes,
+            image_generation,
         ) = match spine_bundle {
             Some(bundle) => {
                 for (job_type, handler) in bundle.job_handlers {
@@ -471,9 +472,10 @@ impl EngineAssembler for HostAssembler {
                     bundle.memory_embedding,
                     bundle.courier_resolve,
                     bundle.save_image_bytes,
+                    bundle.image_generation,
                 )
             }
-            None => (None, None, None, None, None, None, None),
+            None => (None, None, None, None, None, None, None, None),
         };
 
         let runner = JobRunner::new(db.clone(), registry);
@@ -574,6 +576,11 @@ impl EngineAssembler for HostAssembler {
             courier_resolve,
             save_image_bytes,
             // === end P4.6ab ===
+            // === P4.6ai: the imageProfileGenerate un-refusal seam, wired LIVE from
+            // the spine's W4.7f Real*Providers. Spine-less assemblies (read-only
+            // embedders) keep `None` → the loud not-assembled refusal. ===
+            image_generation,
+            // === end P4.6ai ===
         })
     }
 }

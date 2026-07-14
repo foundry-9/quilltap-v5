@@ -15,6 +15,9 @@ use serde_json::{json, Map, Value};
 use crate::db::runtime::Db;
 use crate::db::{api_keys, image_profiles as ip, tags};
 use crate::provider_manifest::Registry;
+use crate::tools::generate_image::{
+    self, ErasedImageGeneration, ImageGenerationToolInput, ImageToolExecutionContext,
+};
 
 use super::types::{ErrorKind, Response};
 
@@ -562,12 +565,101 @@ pub fn image_provider_list() -> Response {
 }
 
 // ===========================================================================
+// generate (P4.6ai — the un-refusal over the injected W4.9a runner)
+// ===========================================================================
+
+/// v4 `POST /api/v1/image-profiles/[id]?action=generate` — the profile-404 gate,
+/// then `executeImageGenerationTool` (the injected [`ErasedImageGeneration`] runner,
+/// wired LIVE in the host from the W4.7f `Real*Provider`s), then the
+/// `successResponse({success, data, expandedPrompt, metadata}, 201)` envelope or the
+/// `badRequest(result.error || 'Image generation failed')` arm. Spine-less
+/// assemblies never reach here (the engine's `image_generation` seam gate keeps the
+/// loud not-assembled refusal). The dispatch variant carries only the Shared-contract
+/// four (`prompt/chatId/count` + the profile id); v4's `size/quality/style/
+/// aspectRatio/negativePrompt` extras are the KNOWN narrowing divergence and stay
+/// `None`.
+pub async fn image_profile_generate(
+    db: &Db,
+    runner: &ErasedImageGeneration,
+    user_id: &str,
+    profile_id: &str,
+    prompt: &str,
+    chat_id: Option<&str>,
+    count: Option<i64>,
+) -> Response {
+    // v4: `notFound('Image profile')` before validating the body / running the tool.
+    match db.read_main(|conn| ip::find_by_id(conn, profile_id)) {
+        Ok(Some(_)) => {}
+        Ok(None) => return not_found("Image profile"),
+        Err(e) => return internal(e),
+    }
+
+    // v4's `generateImageSchema.count` prefaults to 1 (BEFORE the profile's
+    // `parameters.n`), so a missing count pins n=1 exactly as v4 does.
+    let input = ImageGenerationToolInput {
+        prompt: prompt.to_string(),
+        negative_prompt: None,
+        orientation: None,
+        size: None,
+        style: None,
+        quality: None,
+        aspect_ratio: None,
+        count: Some(count.unwrap_or(1)),
+    };
+    let ctx = ImageToolExecutionContext {
+        user_id: user_id.to_string(),
+        profile_id: profile_id.to_string(),
+        chat_id: chat_id.map(str::to_string),
+        // v4's route passes no callingParticipantId (undefined).
+        calling_participant_id: None,
+    };
+
+    let out = runner.run(db, &input, &ctx).await;
+
+    if !out.success {
+        // v4: `badRequest(result.error || 'Image generation failed')`.
+        let msg = out
+            .error
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "Image generation failed".to_string());
+        return bad_request(msg);
+    }
+
+    // v4 `successResponse({ success: true, data: result.images, expandedPrompt,
+    // metadata: { originalPrompt, provider, model, count } }, 201)`. The whole
+    // dispatch family answers 200 at the web edge (create is 201 in v4 too); the SPA
+    // reads the body. `metadata.count` is the RETURNED image count, not the request's.
+    let data: Vec<Value> = out
+        .images
+        .iter()
+        .map(generate_image::generated_image_to_value)
+        .collect();
+    let mut metadata = Map::new();
+    metadata.insert("originalPrompt".into(), Value::String(prompt.to_string()));
+    if let Some(p) = &out.provider {
+        metadata.insert("provider".into(), Value::String(p.clone()));
+    }
+    if let Some(m) = &out.model {
+        metadata.insert("model".into(), Value::String(m.clone()));
+    }
+    metadata.insert("count".into(), json!(out.images.len()));
+
+    let mut body = Map::new();
+    body.insert("success".into(), Value::Bool(true));
+    body.insert("data".into(), Value::Array(data));
+    // `expandedPrompt: result.expandedPrompt` — a JS `undefined` drops (always Some
+    // on the success path).
+    if let Some(ep) = &out.expanded_prompt {
+        body.insert("expandedPrompt".into(), Value::String(ep.clone()));
+    }
+    body.insert("metadata".into(), Value::Object(metadata));
+    Response::ImageProfile(Value::Object(body))
+}
+
+// ===========================================================================
 // Refusal arms (the LLM/IO-coupled actions — deferred this round)
 // ===========================================================================
 
-pub fn image_profile_generate(_profile_id: &str) -> Response {
-    not_available("generate")
-}
 pub fn image_profile_validate_key() -> Response {
     not_available("validate-key")
 }

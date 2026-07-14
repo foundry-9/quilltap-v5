@@ -233,6 +233,41 @@ impl ErasedImageGeneration {
     }
 }
 
+/// v4 `result.images` serialization (`GeneratedImageResult` → the JSON object v4's
+/// generate route ships as each `data[]` element): `{id, url, filename,
+/// revisedPrompt?, filepath?, mimeType?, size?, width?, height?, sha256?}`, with the
+/// optional keys dropped when absent (JSON.stringify-of-undefined semantics) and the
+/// numbers rendered JS-bare. The tool-executor keeps a private copy for the
+/// tool-call array; the `imageProfileGenerate` route arm (P4.6ai) reuses this one.
+pub fn generated_image_to_value(img: &GeneratedImageResult) -> Value {
+    let mut m = serde_json::Map::new();
+    m.insert("id".into(), Value::String(img.id.clone()));
+    m.insert("url".into(), Value::String(img.url.clone()));
+    m.insert("filename".into(), Value::String(img.filename.clone()));
+    if let Some(v) = &img.revised_prompt {
+        m.insert("revisedPrompt".into(), Value::String(v.clone()));
+    }
+    if let Some(v) = &img.filepath {
+        m.insert("filepath".into(), Value::String(v.clone()));
+    }
+    if let Some(v) = &img.mime_type {
+        m.insert("mimeType".into(), Value::String(v.clone()));
+    }
+    if let Some(v) = img.size {
+        m.insert("size".into(), crate::db::js_number_to_json(v));
+    }
+    if let Some(v) = img.width {
+        m.insert("width".into(), crate::db::js_number_to_json(v));
+    }
+    if let Some(v) = img.height {
+        m.insert("height".into(), crate::db::js_number_to_json(v));
+    }
+    if let Some(v) = &img.sha256 {
+        m.insert("sha256".into(), Value::String(v.clone()));
+    }
+    Value::Object(m)
+}
+
 /// The default runner: image generation is not enabled for this chat. Returns v4's
 /// dispatcher guard error (`lib/chat/tool-executor.ts` — `if (!imageProfileId)`).
 struct NotConfiguredImageGeneration;
