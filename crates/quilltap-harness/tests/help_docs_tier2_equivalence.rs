@@ -10,12 +10,12 @@
 //!
 //! THE HEADLINE: this is the first tier-2 repo with a **BLOB column**. The
 //! `embedding` Float32 buffer is exercised on insert (a non-empty `Vec<f32>` →
-//! little-endian f32 bytes via `embedding_blob::float32_to_blob`), as NULL
+//! the storage blob via `embedding_blob::float32_to_blob`), as NULL
 //! (`None`/empty → SQL NULL), and — the banked behavior — through a TEXT-ONLY
 //! update on a row that HAS an embedding, which must leave the BLOB untouched.
 //! The canonical dump renders BLOBs as lowercase hex on both sides, so the
-//! deterministic Float32 buffer (`[0.5,-0.25,0.75,0.125]` →
-//! `0000003f000080be0000403f0000003e`) compares bit-exact.
+//! deterministic Float32 buffer (`[0.5,-0.25,0.75,0.125]`, since v4 dd0d9ff5
+//! int8-quantized to `eb0101040000000683c13b55d67f15`) compares bit-exact.
 //!
 //! Generate the oracle output + fixture (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin

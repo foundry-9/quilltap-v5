@@ -315,11 +315,14 @@ fn vector_indices_tier2_matches_oracle() {
         2,
         "two CHAR_A entries survive (e...0003 removed, CHAR_B wiped)"
     );
-    // The updated embedding hex is present ([0.25;4] -> 0000803e * 4).
+    // The updated embedding hex is present. Since v4 dd0d9ff5 the storage codec
+    // writes the self-describing int8-quantized format: [0.25; 4] → header
+    // `eb0101` (magic/version/int8) + dim `04000000` + scale f32 `0402013b`
+    // (0.25/127) + int8 body `7f7f7f7f` (127 × 4).
     assert!(
         entry_rows
             .iter()
-            .any(|r| r["embedding"] == Value::String("0000803e0000803e0000803e0000803e".into())),
+            .any(|r| r["embedding"] == Value::String("eb0101040000000402013b7f7f7f7f".into())),
         "updateEntryEmbedding result present"
     );
 

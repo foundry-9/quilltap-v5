@@ -2,6 +2,10 @@
 
 ## Recent Changes
 
+P4.d3 unit 2: the embedding differential suite is re-baselined to the
+quantized on-disk format — every equivalence test that stores an
+embedding now checks the compact int8 blob against v4. Test-only.
+
 P4.d3 unit 1: the embedding BLOB codec now reads and writes v4's
 self-describing quantized format. Stored embeddings shrink ~4× (int8
 symmetric quantization with a per-vector scale; float16 fallback

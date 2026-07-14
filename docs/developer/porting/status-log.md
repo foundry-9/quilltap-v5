@@ -10666,3 +10666,43 @@ all-zero/empty/short/truncated detection).
 Committed fixtures keep their raw-f32 blobs — the header-aware reader makes them
 valid legacy data; they were NOT re-packed. The `quantize-embeddings-v1`
 migration is NOT ported (v4-only by design; v5 reads both formats forever).
+
+### P4.d3 unit 2 — the affected-differential regen batch @ `dd0d9ff5` — LANDED
+
+Every tier-2/tier-1 differential whose v4-side write path emits an embedding
+BLOB now dumps the quantized hex; regenerated FRESH at `dd0d9ff5` and verified BY
+NAME, all GREEN:
+
+- `embedding_vector_equivalence` (tier-1, committed with unit 1) — byte-exact
+  both directions.
+- `help_docs_tier2_equivalence`, `conversation_chunks_tier2_equivalence`,
+  `doc_mount_chunks_tier2_equivalence`, `memories_tier2_equivalence` — the
+  deterministic `[0.5,-0.25,0.75,0.125]` seed now dumps
+  `eb0101040000000683c13b55d67f15` (int8) instead of the old raw
+  `0000003f000080be0000403f0000003e`; the stale raw-hex doc comments were
+  updated.
+- `vector_indices_tier2_equivalence` — the ONE code change this unit: its
+  hardcoded in-test assertion for the `updateEntryEmbedding` result (`[0.25;4]`)
+  moved from the raw `0000803e…` to the quantized `eb0101040000000402013b7f7f7f7f`.
+- `help_docs_upsert_tier2_equivalence` — the seed embedding survives the
+  text-only upsert as quantized hex.
+- `embedding_refit_tier3_equivalence` — VERIFIED non-diverging by a fresh regen
+  (the TF-IDF refit reads document TEXT, not embeddings; its dumps cover
+  `tfidf_vocabularies`+`background_jobs` only). GREEN both the diff and the
+  runner-registration E2E.
+
+**Inventory correction (reported):** the order's affected inventory omitted
+`vector_indices_tier2_equivalence` and `help_docs_upsert_tier2_equivalence`,
+both of which write embeddings synchronously (a direct repo `updateEntryEmbedding`
+/ a seeded row preserved through upsert) and therefore DO diverge. Both are now
+in the batch. The tier-3 memory tests that sort `vector_entries` by `embedding`
+(`memory_processor`/`carina_memory_extraction`/`memory_gate`) do NOT diverge —
+memory creation blanks the embedding and the async `EMBEDDING_GENERATE` job that
+would fill it is the unported named refusal — consistent with the order omitting
+them.
+
+Regen recipes (each in its own clean invocation, Node 24
+`~/.nvm/versions/node/v24.13.1/bin`, `cd ~/source/quilltap-server`, oracle-case
+paths under the lane worktree's `harness/oracle`): the per-test `Generate the
+oracle` header blocks are authoritative and unchanged — the same commands now
+emit quantized blobs because they import v4's rewritten `float32ToBlob`.

@@ -8,13 +8,14 @@
 //! match with zero normalization.
 //!
 //! A BLOB case (after `help_docs`): the `embedding` Float32 buffer is exercised
-//! on insert (a non-empty `Vec<f32>` → little-endian f32 bytes via
+//! on insert (a non-empty `Vec<f32>` → the storage blob via
 //! `embedding_blob::float32_to_blob`), as NULL (`None`/empty → SQL NULL), and —
 //! the banked behavior — through an update that does NOT name the embedding
 //! field, which must leave the BLOB untouched. The canonical dump renders BLOBs
 //! as lowercase hex on both sides, so the deterministic Float32 buffer
-//! (`[0.5,-0.25,0.75,0.125]` → `0000003f000080be0000403f0000003e`) compares
-//! bit-exact. It also banks REAL `interchangeIndex` (integer-valued cells dump
+//! (`[0.5,-0.25,0.75,0.125]`, since v4 dd0d9ff5 int8-quantized to
+//! `eb0101040000000683c13b55d67f15`) compares bit-exact. It also banks REAL
+//! `interchangeIndex` (integer-valued cells dump
 //! as JSON integers) and the JSON array columns `participantNames`/`messageIds`.
 //!
 //! Generate the oracle output + fixture (Node 24, from the v4 checkout):
