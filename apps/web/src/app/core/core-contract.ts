@@ -1672,8 +1672,9 @@ export interface ChatDetail {
   isManuallyRenamed: boolean;
   /** The per-chat composition-mode flag (v4 `chats.documentEditingMode` —
    *  Enter inserts a newline, Cmd/Ctrl+Enter sends). Baked from
-   *  `chat_settings.compositionModeDefault` at creation. */
-  documentEditingMode: boolean;
+   *  `chat_settings.compositionModeDefault` at creation; the server always
+   *  serializes it, but consumers default `?? false`. */
+  documentEditingMode?: boolean;
   participants: ParticipantDetail[];
   user: { id: string; name: string; image: string | null };
   messages: MessageDto[];

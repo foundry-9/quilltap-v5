@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync, openSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -176,25 +177,49 @@ export default async function globalSetup(): Promise<void> {
       },
     );
   }
+  // The Salon fixture predates the `text_replacement_rules` table (v4 created
+  // it by MIGRATION, so fresh-generateDDL fixtures never have it — the
+  // `folders`/`terminal_sessions` precedent). The P4.6ak surface reads/writes
+  // it on the settings text-replacements routes and the composer beat creates
+  // a rule live. Hand-DDL matching v4
+  // `migrations/scripts/add-text-replacement-rules-table.ts:43-59`.
+  runCliWrite(
+    cli,
+    'CREATE TABLE IF NOT EXISTS "text_replacement_rules" (' +
+      '"id" TEXT PRIMARY KEY, "fromText" TEXT NOT NULL, "toText" TEXT NOT NULL, ' +
+      '"caseSensitive" INTEGER NOT NULL DEFAULT 0, "enabled" INTEGER NOT NULL DEFAULT 1, ' +
+      '"sortOrder" INTEGER NOT NULL DEFAULT 0, "createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL);',
+  );
+  runCliWrite(
+    cli,
+    'CREATE INDEX IF NOT EXISTS "idx_text_replacement_rules_enabled" ON "text_replacement_rules" ("enabled");',
+  );
+  runCliWrite(
+    cli,
+    'CREATE INDEX IF NOT EXISTS "idx_text_replacement_rules_sortOrder" ON "text_replacement_rules" ("sortOrder");',
+  );
+
   // The P4.6ak/P4.6am unification wire (dogfood #9): seed a story background on
   // "Solo Voyage" so `salon-background-flow.spec.ts` rides the LIVE
   // `chatGetBackground` dispatch + the live `/api/v1/files/{id}` byte route.
   // The bytes live where the host's LocalStorageBackend roots file storage
-  // (`<data>/files/<storageKey>` — spine.rs `base_dir.join("files")`); the row
-  // shape mirrors the binary_routes test seed. `sha256` stays NULL so the
-  // resolver takes its simple `linkSummary: null` arm. v4 has no client
+  // (`<instance>/files/<storageKey>` — spine.rs `base_dir.join("files")`,
+  // where base_dir is the raw `--data-dir` arg, NOT its `data/` subdir); the row
+  // shape mirrors the binary_routes test seed (`files.sha256` is NOT NULL in
+  // this instance's schema, so the real hash is computed). v4 has no client
   // set-path for `storyBackgroundImageId` (only the unported generation
   // subsystem writes it), so SQL seeding here is the faithful stand-in.
   const bgPng = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
     'base64',
   );
-  mkdirSync(resolve(INSTANCE_DATA_DIR, 'files', 'e2e'), { recursive: true });
-  writeFileSync(resolve(INSTANCE_DATA_DIR, 'files', 'e2e', 'story-bg.png'), bgPng);
+  mkdirSync(resolve(INSTANCE_DIR, 'files', 'e2e'), { recursive: true });
+  writeFileSync(resolve(INSTANCE_DIR, 'files', 'e2e', 'story-bg.png'), bgPng);
+  const bgSha = createHash('sha256').update(bgPng).digest('hex');
   runCliWrite(
     cli,
-    `INSERT OR REPLACE INTO files (id, userId, originalFilename, mimeType, size, category, storageKey, createdAt, updatedAt) ` +
-      `VALUES ('bg-e2e-file', '${SINGLE_USER_ID}', 'story-bg.png', 'image/png', ${bgPng.length}, 'IMAGE', 'e2e/story-bg.png', ` +
+    `INSERT OR REPLACE INTO files (id, userId, sha256, originalFilename, mimeType, size, linkedTo, source, category, tags, storageKey, createdAt, updatedAt) ` +
+      `VALUES ('bg-e2e-file', '${SINGLE_USER_ID}', '${bgSha}', 'story-bg.png', 'image/png', ${bgPng.length}, '[]', 'IMPORTED', 'IMAGE', '[]', 'e2e/story-bg.png', ` +
       `'2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z');`,
   );
   runCliWrite(
