@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+Plan the "finish P4.6ae + catch up from v4" round — four agent-ready
+work orders decomposing the P4.6ae OPEN server remainder plus the one
+v4 drift commit. Drift-checked first: v4 advanced one commit past
+baseline `dd0d9ff5` to `02865bdb` ("strip a trailing 'nothing to add'
+line from an otherwise real turn"), an isolated `detectSkipSentinel`
+behavior change touching none of the files-family/image-gen surface.
+The four lanes: P4.6ah (the chat + general upload legs, `action=link`,
+the maintenance verbs, and the itemized `FILE_HAS_ASSOCIATIONS`
+envelope + `dissociate` arm), P4.6ai (the `imageProfileGenerate`
+un-refusal + a new `EngineAssembly.image_generation` host seam),
+P4.6aj (the SPA delete-associations dialog + composer/generate
+live-path verification), and P4.d4 (the `02865bdb` skip-signal
+re-port, which moves the oracle baseline). Lanes A+B share
+`types.rs`/`engine.rs` via delimited blocks (the two-core-dispatch-
+writer rule); lane C owns the SPA client; lane D is file-disjoint.
+Docs-only.
+
 Unify the P4.6ae ∥ P4.6af ∥ P4.6ag files-family + editor round onto
 main. P4.6af CLOSED (the /files general-files SPA vertical + the two
 salon autonomous riders); P4.6ag CLOSED — D17 DECIDED: ProseMirror
