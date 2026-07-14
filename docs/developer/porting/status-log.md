@@ -11191,3 +11191,61 @@ that could pre-empt foundation is disallowed by construction.
 Gate for the lane: `ng test` 648 green; `ng build` clean; `--list`
 parses both specs; the salon walk runs LIVE (3/3), the files render beat
 LIVE (1/1), the files data beat probe-skips (self-activates at unify).
+
+---
+
+## P4.6ag — the D17 ProseMirror editor decision lane (SPA-only, baseline `dd0d9ff5`)
+
+**Drift check:** `git log dd0d9ff5..HEAD` in `~/source/quilltap-server`
+is empty — v4 HEAD is exactly `dd0d9ff5`. Ported against a stationary
+oracle.
+
+**Unit 1 — the tier-0 gate (GREEN → adoption proceeds).** The D17
+question is whether a ProseMirror bridge round-trips v4's composer
+markdown dialect byte-for-byte (the Lexical spike, P4.6x `7b0238f`, left
+no committed harness — this lane does not repeat that). New
+`apps/web/src/app/editor/markdown-dialect.ts` builds the dialect over
+`prosemirror-markdown` (markdown-it):
+
+- **Underscore italic, literal `*`.** A custom markdown-it `emphasis`
+  post-process rule (ported from markdown-it's own, one guard added)
+  refuses to form single-`*` emphasis, so `*narration*` stays literal
+  text; `**`/`__` strong and `_` emphasis keep stock behavior. The
+  serializer emits `em` as `_…_`. This is the parser+serializer port of
+  v4 `COMPOSER_TRANSFORMERS` excluding `ITALIC_STAR`/`BOLD_ITALIC_STAR`
+  (`MarkdownBridgePlugin.tsx:60-87`).
+- **Literal punctuation survives unescaped.** v4 `stripMarkdownEscapes`
+  (`:128-137`) is ported verbatim and run over the serializer output for
+  `* _ \` ~` (the four `preserve*` flags, default true). Brackets get a
+  second strip — prosemirror-markdown's `esc()` escapes `[`/`]` but
+  Lexical's export regex (`[*_\`~\\]`) never does, so v4 emits bare
+  brackets.
+- **Soft line breaks.** markdown-it `softbreak` → a `hard_break` node,
+  serialized as a plain `\n` (not CommonMark `\\\n`). v4/Lexical keeps
+  Shift+Enter line breaks and exports them as `\n`; the default
+  space-collapse would corrupt every soft-wrapped paragraph, narration
+  line, and multi-line blockquote. Two-space hard breaks normalize to
+  `\n` the same way v4 does.
+- **Check lists.** A markdown-it core rule recognizes `- [ ]`/`- [x]`
+  (case-insensitive, v4 `CASE_INSENSITIVE_CHECK_LIST`), stamps `checked`
+  on the `list_item`, and the bullet-list serializer re-emits the box;
+  plain and checkbox items coexist in one list.
+
+`markdown-round-trip.spec.ts` is the differential (the dialect is v4's):
+a 28-entry corpus, each entry commented with the v4 transformer or
+preserve flag it traces to. 21 IDEMPOTENT entries assert
+`serialize(parse(x)) === x`; 3 NORMALIZING entries assert v5 matches an
+input v4 itself rewrites (`__bold__` → `**bold**` via Lexical's
+first-transformer-wins export dedup; two-space hard break → `\n`) — the
+first-save normalization `USES_RICH_MARKDOWN_EDITOR` + `computeAbsorbNext`
+absorb once. `ng test` on the editor specs: 28/28 green.
+
+**Packaging:** lane C is the round's sole dependency owner — added
+`prosemirror-{model,state,view,markdown,commands,keymap,history,inputrules}`
++ `markdown-it`. Static imports (the P4.6u xterm lesson) land with the
+adoption units. SPA 0.5.72.
+
+**Known dialect boundaries (out of the enumerated gate scope, tracked):**
+in-paragraph two-space hard breaks normalize to `\n` (matches v4);
+strikethrough / highlight / the multiline table transformer are not in
+the gate corpus (tier 2 / deferred); links round-trip but are tier 2.

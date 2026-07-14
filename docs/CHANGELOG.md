@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.6ag tier 0 (the D17 gate): the committed markdown round-trip test
+that decides whether ProseMirror can replace v4's Lexical editor. A new
+`apps/web/src/app/editor/markdown-dialect.ts` configures a ProseMirror
+schema/parser/serializer for v4's composer dialect (underscore italic,
+`**` bold, single `*`/`_`/backtick/`~` literal and unescaped, headings,
+blockquotes, ordered/unordered/check lists, fenced code, soft line
+breaks as `\n`) and `markdown-round-trip.spec.ts` asserts
+`serialize(parse(x)) === x` over a 28-entry corpus (each entry traced to
+a v4 transformer or preserve flag). The gate runs GREEN, so adoption
+proceeds. SPA 0.5.72.
+
 P4.6af unit 7: the e2e walks. NEW `salon-autonomous-entry.spec.ts`
 (LIVE — 3 beats over the shared Salon server: a seeded cron room is
 hidden by default with the hint shown, the "Show Autonomous Rooms"

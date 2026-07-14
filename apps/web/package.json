@@ -1,6 +1,6 @@
 {
   "name": "quilltap-spa",
-  "version": "0.5.75",
+  "version": "0.5.76",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
@@ -35,6 +35,15 @@
     "@tanstack/angular-virtual": "5.0.7",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
+    "markdown-it": "^14.3.0",
+    "prosemirror-commands": "^1.7.1",
+    "prosemirror-history": "^1.5.0",
+    "prosemirror-inputrules": "^1.5.1",
+    "prosemirror-keymap": "^1.2.3",
+    "prosemirror-markdown": "^1.13.5",
+    "prosemirror-model": "^1.25.11",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-view": "^1.42.1",
     "rehype-highlight": "7.0.2",
     "rehype-stringify": "10.0.1",
     "remark-breaks": "4.0.0",
