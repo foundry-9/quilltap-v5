@@ -1201,3 +1201,29 @@ delimited data-retention blocks to lane B's contract files.
 CLAUDE.md's baseline line moves to `dd0d9ff5` when P4.d3 unifies.
 **Real-data caution recorded there too: back up Friday before
 running v4 `4.8.0-dev.52`+ against it — quantization is one-way.**
+
+**P4.d3 is UNIFIED on main (2026-07-14) — CLOSED; the oracle
+baseline IS now `dd0d9ff5`.** Lane D ran ahead of the other three
+(the codec was gating: any embedding-adjacent oracle regen at the
+new baseline needed it). Landed: the header-aware quantized codec
+(read legacy/int8/f16, write int8 byte-identical — JS `Math.round`
+half-toward-+∞ and the NaN-propagating clamp pinned; the
+encode-with-f64-scale / store-as-f32 asymmetry preserved), the
+15-differential regen batch at `dd0d9ff5` (inventory correction:
+`vector_indices_tier2` + `help_docs_upsert_tier2` also diverged —
+both fixed), the cache collapse as maintenance step 3 + the
+`caches` summary (NEW `collapse_stale_chat_caches_tier2` over the
+`retention-caches` fixture family), cold-chunk re-embed on open
+(NEW `cold_chunk_reembed_tier2`; the P4.6s
+`enqueue_embedding_generate` seam made faithful — per-entity dedup
++ entity priorities), the dataRetention setting + dispatch pair
+(settings_routes → 30 cases) and the SPA Data Retention card
+(ng 622, live e2e beat; `global-setup` materializes
+`instance_settings` — additive, the terminal_sessions precedent).
+Deferred loud: the `EMBEDDING_GENERATE` execution handler,
+`EMBEDDING_REAPPLY_PROFILE`, the backup-service leg, `db optimize`.
+**Lanes A (P4.6ae) / B (P4.6af) / C (P4.6ag) remain OPEN and
+unstarted — they now run against main-with-P4.d3 at `dd0d9ff5`;
+lane A is the round's only remaining core-dispatch writer, so the
+two-writer rule is moot unless the lanes overlap in time with a
+future drift lane.** Round record: `status-log.md`.

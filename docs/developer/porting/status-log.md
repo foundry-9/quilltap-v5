@@ -10892,3 +10892,59 @@ non-diverging). `ng test` 622 green; `ng build` clean; full Playwright **37
 passed / 2 skipped (pre-existing thin-fixture walks) / 0 failed** with the Data
 Retention beat ACTIVE. Versions: core 0.0.214, harness 0.0.195, SPA 0.5.71
 (host/web unchanged). Baseline moves to `dd0d9ff5` when the round unifies.
+---
+
+## 2026-07-14 — the P4.d3 db-size-reduction drift re-port: UNIFIED on main (single-lane unify)
+
+Lane D of the files-family + editor round ran AHEAD of lanes A/B/C
+(the codec was gating: no embedding-adjacent oracle could be
+regenerated at `dd0d9ff5` without it). The lane branch
+(`claude/p4-d3-db-size-drift-3b3682`, 7 commits, units 1–6 + the
+close-out) was a direct descendant of main — reconciliation was a
+fast-forward via `unify/p4.d3`; no cherry-picks, no conflicts.
+
+**Scope verified against the order:** every tier-1 unit + the tier-2
+SPA card delivered (the unit entries above). Two lane-reported
+corrections stand: the affected-differential inventory gained
+`vector_indices_tier2` + `help_docs_upsert_tier2` (both genuinely
+diverging, both fixed), and `queue_service::enqueue_embedding_generate`
+was made faithful to v4 (per-entity dedup + entity priorities +
+`(jobId, isNew)`) — its one prior caller verified unaffected. Tier-3
+deferrals unchanged and loud: the `EMBEDDING_GENERATE` execution
+handler, `EMBEDDING_REAPPLY_PROFILE`, the backup-service leg,
+`db optimize` parity; `dropInMemoryCompressionCache` is a documented
+no-op.
+
+**The unification wires (single-lane, so thin):** the contract
+reconcile verified name-for-name (`dataRetentionSettings` /
+`dataRetentionSettingsUpdate` / `staleChatDays` across `types.rs`,
+`core-contract.ts`, `core-client.ts` — the P4.d3 delimited blocks);
+the `e2e/global-setup.ts` touch inspected (additive
+`CREATE TABLE IF NOT EXISTS instance_settings` — schema
+materialization, the terminal_sessions precedent; no lane-B conflict
+since lanes A/B/C are unstarted); the ORACLE BASELINE REBASED —
+CLAUDE.md now pins `dd0d9ff5`, and the three sibling orders already
+pin it from the drift amendment.
+
+**Gate (re-run at the unify tip, fresh `dd0d9ff5` oracles):**
+`cargo fmt --all --check` clean; clippy `-D warnings` clean on
+default AND `--features quilltap-core/native-transport`;
+`cargo test --workspace` green (309 suites) with the affected
+differentials regenerated FRESH and run BY NAME — `embedding_vector`
+(byte-exact both directions), the six blob-dump tier-2s
+(`help_docs`, `help_docs_upsert`, `conversation_chunks`,
+`doc_mount_chunks`, `memories`, `vector_indices`),
+`embedding_refit_tier3` (non-diverging), `maintenance_ops_tier2`
+(the `caches` block), `maintenance_sweep_tier2` (non-diverging),
+the NEW `collapse_stale_chat_caches_tier2` + `cold_chunk_reembed_tier2`,
+`settings_routes` (30 cases), and the `memories_routes` +
+`salon_reads` spot-checks; `ng test` 622 green; `ng build` clean;
+full Playwright green with the Data Retention beat ACTIVE.
+Versions: core 0.0.214, harness 0.0.195, SPA 0.5.71 (host 0.0.16 /
+web 0.0.19 unchanged).
+
+**Next:** lanes A/B/C of the round (`p4.6ae` / `p4.6af` / `p4.6ag`)
+are OPEN and unstarted, now running against main at baseline
+`dd0d9ff5`. Real-data caution stands: back up Friday before v4
+`4.8.0-dev.52`+ first touches it (`quantize-embeddings-v1` is
+one-way) — v5 now READS post-migration blobs fine either way.

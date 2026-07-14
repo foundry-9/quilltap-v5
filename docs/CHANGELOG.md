@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+Unify the P4.d3 db-size-reduction drift re-port onto main; the oracle
+baseline is now v4 dd0d9ff5. Embedding blobs are read header-aware
+(legacy Float32 + int8 + f16) and written int8-quantized
+byte-identically to v4 (~4x smaller); the daily maintenance sweep
+collapses stale chats' regenerable caches and cold-tiers their chunk
+embeddings (window set by the new Data Retention setting); opening a
+cold chat re-enqueues its chunk embeddings; the Settings Chat tab
+gains the Data Retention card. 15 differentials regenerated fresh at
+dd0d9ff5 (two NEW); full gate green (309 Rust suites, ng 622,
+Playwright with the retention beat active). Versions: core 0.0.214,
+harness 0.0.195, SPA 0.5.71. Still deferred loud: the
+EMBEDDING_GENERATE execution handler, EMBEDDING_REAPPLY_PROFILE, the
+backup-service leg, db optimize parity.
+
 P4.d3 unit 6: Settings → Chat gains a Data Retention card — set how
 many days (1–3650, default 30) an inactive chat keeps its regenerable
 working data before the nightly sweep tidies it. The window autosaves
