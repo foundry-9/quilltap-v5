@@ -3839,3 +3839,39 @@ export interface TextReplacementsBulkReplaceRequest {
   type: 'textReplacementsBulkReplace';
   rules: TextReplacementRuleInput[];
 }
+
+// ===========================================================================
+// --- P4.6am additions (lane C) ---
+//
+// The story-background resolver client surface (dogfood finding #9). The
+// dispatch verb `chatGetBackground` and its REST edge (v4 GET
+// /api/v1/chats/:id?action=get-background) are lane A's; this block is the TS
+// mirror of the Shared-contract §1 shape. The response is read defensively via
+// CoreClient.dispatchData, so no CoreResponse variant is added (the P4.d3 /
+// settings precedent). The request `type` is bridged with a cast at the call
+// site until the unifier folds `ChatGetBackgroundRequest` into the CoreRequest
+// union (name-for-name against types.rs). This block appends at the END of the
+// file and touches nothing else (§2).
+// ===========================================================================
+
+/**
+ * v4 GET `/api/v1/chats/:id?action=get-background` (chats `get.ts:182-206`).
+ * Every field is null when the chat has no `storyBackgroundImageId` or the
+ * referenced file row is missing.
+ */
+export interface ChatBackgroundDto {
+  /** v4's file-path string for the background image (a v4-path — v5 prefers `fileId`). */
+  backgroundUrl: string | null;
+  /** The background image file id (mapped through the store-backed byte route). */
+  fileId: string | null;
+  filename: string | null;
+  sha256: string | null;
+  /** v4's photo link-summary blob (opaque here — the Salon does not consume it). */
+  linkSummary: unknown | null;
+}
+
+/** The dispatch request for the story-background resolver (§1). */
+export interface ChatGetBackgroundRequest {
+  type: 'chatGetBackground';
+  chatId: string;
+}

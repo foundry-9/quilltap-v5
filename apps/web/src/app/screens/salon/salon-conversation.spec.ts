@@ -129,7 +129,11 @@ function chatDetail(): ChatDetail {
   };
 }
 
-function stubClient(chat: ChatDetail, events$: Subject<ScopedEvent>): Partial<CoreClient> {
+function stubClient(
+  chat: ChatDetail,
+  events$: Subject<ScopedEvent>,
+  background: Record<string, unknown> | null = null,
+): Partial<CoreClient> {
   const dispatch = vi.fn(async (req: CoreRequest): Promise<CoreResponse> => {
     if (req.type === 'chatGet') return { type: 'chat', data: { chat } };
     if (req.type === 'chatSettings') {
@@ -137,9 +141,13 @@ function stubClient(chat: ChatDetail, events$: Subject<ScopedEvent>): Partial<Co
     }
     return { type: 'ack', data: {} };
   });
+  // The story-background resolver reads through dispatchData (finding #9). Return
+  // the all-null body unless a test seeds a background.
+  const dispatchData = vi.fn(async () => background ?? { backgroundUrl: null, fileId: null, filename: null, sha256: null, linkSummary: null });
   return {
     events$: events$.asObservable(),
     dispatch,
+    dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
     dispatchExpect: (async (req: CoreRequest, expect: string) => {
       const resp = await dispatch(req);
       if (resp.type !== expect) throw new Error(`unexpected ${resp.type}`);
@@ -191,5 +199,28 @@ describe('SalonConversation (read path)', () => {
     // Header title + copy button.
     expect(text).toContain('Tea Time');
     expect(fixture.nativeElement.querySelector('[aria-label="Copy conversation ID"]')).toBeTruthy();
+  });
+
+  it('does not set the story-background var when the chat has no background (finding #9)', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    const layout = fixture.nativeElement.querySelector('.qt-chat-layout') as HTMLElement;
+    // No --story-background-url in the inline style → the ::before layer stays hidden.
+    expect(layout.getAttribute('style') ?? '').not.toContain('--story-background-url');
+  });
+
+  it('applies --story-background-url from the resolved file id (finding #9)', async () => {
+    const fixture = await render(
+      stubClient(chatDetail(), new Subject<ScopedEvent>(), {
+        backgroundUrl: '/v4/path/bg.webp',
+        fileId: 'bg-7',
+        filename: 'bg.webp',
+        sha256: 's',
+        linkSummary: null,
+      }),
+    );
+    const layout = fixture.nativeElement.querySelector('.qt-chat-layout') as HTMLElement;
+    // The store-backed byte route, wrapped as a CSS url(), lands on the layout root.
+    expect(layout.style.getPropertyValue('--story-background-url')).toBe("url('/api/v1/files/bg-7')");
+    expect(layout.getAttribute('style') ?? '').toContain('--story-background-url');
   });
 });

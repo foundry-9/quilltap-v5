@@ -12376,3 +12376,40 @@ own row, never a chip. Component render (MessageList in JSDOM, the
 offsetHeight stub): both chained replies appear in the DOM; a canonical
 id renders once while its streamed twin drops. `ng test` green (8/8 in
 the file).
+
+### Unit 2 — chat background images (finding #9) (SPA 0.5.85)
+
+**The gap:** the `.qt-chat-layout::before` story-background layer was
+already ported byte-for-byte in `styles/qt-components/_chat.css`
+(`:1752-1768`, matching v4 `_chat.css:1662-1678` — `content:''`,
+`inset:0`, `background: var(--story-background-url) top center/cover
+no-repeat fixed`, `opacity: 0.45`, `pointer-events: none`, and the
+`:not([style*="--story-background-url"])::before { display:none }`
+hide-rule). What was missing was the DATA: the Salon never set the
+`--story-background-url` var, so the layer was permanently hidden.
+
+**The fix:** `screens/salon/story-background.api.ts` (new) —
+`fetchChatBackgroundVar(core, chatId)` dispatches `chatGetBackground`
+(the §1 verb; bridged with a cast until the union folds at
+unification), reads the `{fileId,…}` body defensively via
+`dispatchData`, and returns `url('/api/v1/files/{fileId}')` (the
+store-backed byte route — the P4.6ac idiom, preferred over v4's
+`backgroundUrl` path string) or null. `salon-conversation.ts` runs it
+as an `injectQuery` keyed `['chat', id, 'background']`, once per chat
+open (NO 30s poll — v4's `useStoryBackground` poll gates *generation*,
+unported), and binds `[style.--story-background-url]="backgroundVar()"`
+on the `.qt-chat-layout` root. Angular's `style.setProperty` reflects
+into the `style` attribute, so the `[style*=…]` hide-rule flips
+correctly; a null value removes the property → layer hidden.
+
+**core-contract §2:** the `ChatBackgroundDto` + `ChatGetBackgroundRequest`
+types land in the lane-C `// --- P4.6am additions ---` append block at
+the END of the file; no CoreResponse variant (read via `dispatchData`,
+the P4.d3/settings precedent).
+
+**Proof:** `story-background.api.spec.ts` (new) — dispatches the right
+verb, prefers the file id, returns null on the all-null body, sibling
+query key. `salon-conversation.spec.ts` (+2): with no background the
+`.qt-chat-layout` inline style omits `--story-background-url`; with a
+seeded `fileId` the var lands as `url('/api/v1/files/bg-7')`. The
+e2e/CSS-render proof is the tier-2 background beat (unit 4).

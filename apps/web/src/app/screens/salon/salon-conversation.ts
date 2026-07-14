@@ -54,6 +54,7 @@ import { DocumentModeController, type DocFocusTarget } from '../../documents/doc
 import { DocumentPane } from '../../documents/document-pane';
 import { DocumentPicker, type DocumentSelection } from '../../documents/document-picker';
 import { EditEnclaveModal } from '../../autonomous/edit-enclave-modal';
+import { fetchChatBackgroundVar, storyBackgroundKeys } from './story-background.api';
 
 /**
  * The LLM document tools whose success invalidates an open pane's cached
@@ -120,7 +121,7 @@ interface CascadePrompt {
     EditEnclaveModal,
   ],
   template: `
-    <div class="qt-chat-layout">
+    <div class="qt-chat-layout" [style.--story-background-url]="backgroundVar()">
       <div class="qt-chat-main">
         @if (chatQuery.isPending()) {
           <qt-loading-state message="Loading chat..." />
@@ -465,6 +466,23 @@ export class SalonConversation {
 
   protected readonly chat = computed(() => this.chatQuery.data() ?? null);
   protected readonly settings = computed(() => this.settingsQuery.data() ?? null);
+
+  /**
+   * The chat's story background (dogfood finding #9): fetched once per chat open
+   * and applied as `--story-background-url` on the layout root, where the ported
+   * `.qt-chat-layout::before` layer (`_chat.css`) draws it at 0.45 opacity,
+   * fixed/cover. Null when the chat has no background → the `:not([style*=…])`
+   * rule hides the layer. No 30s poll — that gates the unported regeneration
+   * subsystem, not display.
+   */
+  private readonly backgroundQuery = injectQuery(() => ({
+    queryKey: storyBackgroundKeys.background(this.chatId() ?? ''),
+    enabled: !!this.chatId(),
+    queryFn: () => fetchChatBackgroundVar(this.core, this.chatId()!),
+  }));
+  protected readonly backgroundVar = computed<string | null>(
+    () => this.backgroundQuery.data() ?? null,
+  );
 
   // --- streaming ---
   protected readonly stream = signal<ChatStreamState | null>(null);

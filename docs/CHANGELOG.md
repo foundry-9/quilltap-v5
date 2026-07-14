@@ -2,6 +2,24 @@
 
 ## Recent Changes
 
+P4.6am unit 2 (lane C) — chat background images (dogfood finding #9).
+The Salon now displays a chat's story background. The
+`.qt-chat-layout::before` layer (opacity 0.45, fixed/cover,
+hide-when-absent) was already ported byte-for-byte in `_chat.css`; the
+missing piece was the data wiring. A small `story-background.api.ts`
+resolves `chatGetBackground` (the §1 dispatch verb, mocked in-lane,
+live at unification) into the CSS `url(...)` value — preferring the
+returned `fileId` through the store-backed byte route
+(`/api/v1/files/{id}`) over v4's path string. `salon-conversation.ts`
+fetches it once per chat open (no 30s poll — that gates the unported
+regeneration subsystem, not display) and binds it as
+`--story-background-url` on the layout root, so the ported CSS draws
+it. The `chatGetBackground` types land in the shared `core-contract.ts`
+§2 append block; the request is bridged with a cast until the unifier
+folds it into the `CoreRequest` union. New `story-background.api.spec`
++ two salon-conversation specs prove the resolver and the applied
+style var.
+
 P4.6am unit 1 (lane C) — chained-response streaming render (dogfood
 finding #7). A chained character's finished reply is now visible the
 instant its turn ends, instead of being held back until the whole
