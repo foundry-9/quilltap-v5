@@ -135,6 +135,23 @@ pub fn find_default(
     .map_err(Into::into)
 }
 
+/// The profile id the cold-chunk re-embed picks (v4 `cold-chunk-reembed.ts`:
+/// `embeddingProfiles.findAll().find(p => p.isDefault) || embeddingProfiles[0]`).
+/// `findAll` is UNSCOPED (all users) and carries NO `ORDER BY`, so the "first"
+/// fallback is the earliest-inserted profile — we mirror that with `rowid ASC`.
+/// Returns `None` when no profiles exist at all.
+pub fn pick_reembed_profile_id(conn: &Connection) -> Result<Option<String>, DbError> {
+    let mut stmt =
+        conn.prepare("SELECT id, isDefault FROM embedding_profiles ORDER BY rowid ASC")?;
+    let rows: Vec<(String, i64)> = stmt
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?
+        .collect::<Result<_, _>>()?;
+    if let Some((id, _)) = rows.iter().find(|(_, is_default)| *is_default != 0) {
+        return Ok(Some(id.clone()));
+    }
+    Ok(rows.first().map(|(id, _)| id.clone()))
+}
+
 /// The default profile's `(id, name)` — the memories embedding-status route reads
 /// `defaultProfile?.name` (the scoped [`EmbeddingProfileRow`] omits `name`).
 pub fn find_default_id_name(

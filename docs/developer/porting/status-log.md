@@ -10756,3 +10756,56 @@ Regen recipe (Node 24, `cd ~/source/quilltap-server`):
 `QT_ORACLE_RETENTION_CACHES` + `QT_FIXTURE_RETENTION_CACHES` set. The chunk
 `updatedAt` value is minted (v4 wall-clock / v5 injected `now_ms`) → compared
 only as the `updatedAtChanged` boolean.
+
+### P4.d3 unit 4 — cold-chunk re-embed on open — LANDED
+
+New `services/cold_chunk_reembed.rs` ports v4's `maybeEnqueueColdChunkReembed`:
+a per-chat in-process debounce (`DEBOUNCE_MS = 5min`, module-level
+`LazyLock<Mutex<HashMap>>` + `reset_debounce_for_testing`), then one COUNT pair
+decides cold vs warm (warm / chunkless → early 0), the profile pick
+(`embedding_profiles::pick_reembed_profile_id` = v4 `findAll().find(isDefault)
+|| [0]`, unscoped, rowid order), and one `EMBEDDING_GENERATE` enqueue per cold
+chunk (`find_cold_chunk_ids_by_chat_id` = content present + embedding NULL),
+counting `isNew`. The debounce clock is injected (`now_ms`). `api/salon.rs`
+`chat_get` gains the THIRD best-effort pre-read side effect alongside the two
+existing ones (awaited like them; the effect — jobs enqueued — is identical to
+v4's fire-and-forget; the GET body is unchanged; the wall clock feeds the
+debounce there, the differential injects its own).
+
+**Seam correction (reported):** the shared
+`queue_service::enqueue_embedding_generate` (a dormant P4.6s seam) was made
+FAITHFUL to v4 `enqueueEmbeddingGenerate` — per-entity dedup via
+`find_pending_for_entity`, the entity priority (`EMBEDDING_ENTITY_PRIORITIES`:
+MEMORY/CONVERSATION_CHUNK = 10, else 0), and a `(jobId, isNew)` return (it
+previously always created at priority 0 with no dedup). Its one existing caller
+(`api/memories.rs` backfill) counts on success, unchanged (`.is_ok()` on the
+tuple result); v4's backfill also counts every success, so `memories_routes`
+stays GREEN.
+
+**Differential:** NEW `cold_chunk_reembed_tier2_equivalence` over a new
+`cold-reembed` fixture family (`build-cold-reembed-fixture.ts` +
+`cold-reembed.json`, /tmp per-run): a default embedding profile + a cold chat
+(2 cold-with-content chunks + 1 embedded + 1 cold-with-empty-content) + a warm
+chat + a chunkless chat. Drives v4's REAL `maybeEnqueueColdChunkReembed` and
+diffs the per-chat return counts (cold=2, debounced=0, warm=0, chunkless=0,
+noProfile=0 — the debounce + no-profile arms exercised by a second scan and a
+post-delete rescan) and the enqueued `background_jobs` projection (count +
+type/priority(10)/maxAttempts/entityType/entityId/chatId/profileId, sorted by
+entityId; `status` omitted as a nondeterministic processor artifact, job
+id/timestamps minted-out). GREEN.
+
+Spot-checks regenerated GREEN (non-diverging): `memories_routes_equivalence`
+(the faithful-enqueue change is invisible to its count/entityIds/profileIds
+dump), `salon_reads_equivalence` (the chat GET body is unchanged by the
+enqueue-only hook).
+
+Regen recipe (Node 24, `cd ~/source/quilltap-server`):
+`QT_FIXTURE_OUT=/tmp/qt-cold-reembed.db node --import tsx
+<worktree>/harness/oracle/fixtures/build-cold-reembed-fixture.ts`, then
+`QT_FIXTURE_COLD_REEMBED=/tmp/qt-cold-reembed.db node --import tsx
+<worktree>/harness/oracle/cases/cold-chunk-reembed-tier2.ts >
+/tmp/oracle-cold-reembed.ndjson`, then run with `QT_ORACLE_COLD_REEMBED` +
+`QT_FIXTURE_COLD_REEMBED` set. Fixture materializes `background_jobs` via
+`getRepositories().backgroundJobs.getStats()`. The `EMBEDDING_GENERATE`
+EXECUTION handler stays the named P4.6s-era refusal (enqueue is live; cold chats
+re-warm only under v4 until it ports).

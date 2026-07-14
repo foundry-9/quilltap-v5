@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+P4.d3 unit 4: opening a chat whose embeddings were cold-tiered now
+transparently re-warms it — cold conversation-chunks are re-enqueued
+for embedding through the standard pipeline (debounced per chat,
+deduped per chunk), so semantic search recovers on its own without any
+manual step. Enqueue-only; loading the chat is never slowed or broken.
+
 P4.d3 unit 3: the daily maintenance sweep now collapses stale chats'
 regenerable data — compression/render caches, raw provider payloads,
 model thinking traces, and pre-rendered HTML — and cold-tiers their

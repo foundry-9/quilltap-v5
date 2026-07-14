@@ -149,14 +149,49 @@ pub async fn enqueue_memory_regenerate_all(
     Ok((id, true))
 }
 
-/// v4 `enqueueEmbeddingGenerate` (P4.6s) — one `EMBEDDING_GENERATE` job (payload
-/// `{entityType, entityId, characterId, profileId}`).
+/// v4 `EMBEDDING_ENTITY_PRIORITIES` — real-time entity kinds (MEMORY,
+/// CONVERSATION_CHUNK) get higher priority than the batch kinds (HELP_DOC,
+/// MOUNT_CHUNK) and any unknown type.
+fn embedding_entity_priority(entity_type: &str) -> f64 {
+    match entity_type {
+        "MEMORY" | "CONVERSATION_CHUNK" => 10.0,
+        _ => 0.0,
+    }
+}
+
+/// v4 `enqueueEmbeddingGenerate` — per-entity-deduped EMBEDDING_GENERATE enqueue.
+/// If a PENDING/PROCESSING EMBEDDING_GENERATE job already exists for the payload's
+/// `entityId`, returns `(existingId, false)` and enqueues nothing; otherwise
+/// enqueues at the entity's priority (`embedding_entity_priority`, maxAttempts 3)
+/// and returns `(newId, true)`. The dedup is the hard guarantee against stacked
+/// jobs; callers count `isNew`.
 pub async fn enqueue_embedding_generate(
     db: &Db,
     user_id: &str,
     payload: Value,
-) -> Result<String, DbError> {
-    enqueue_job(db, user_id, "EMBEDDING_GENERATE", payload, 3.0).await
+) -> Result<(String, bool), DbError> {
+    let entity_id = payload
+        .get("entityId")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let entity_id_for_read = entity_id.clone();
+    let existing = db.read_main(move |conn| {
+        crate::db::background_jobs::BackgroundJobsRepository::new(conn)
+            .find_pending_for_entity(&entity_id_for_read)
+    })?;
+    if let Some(job) = existing.iter().find(|j| j.job_type == "EMBEDDING_GENERATE") {
+        return Ok((job.id.clone(), false));
+    }
+    let priority = embedding_entity_priority(
+        payload
+            .get("entityType")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+    );
+    let id = enqueue_job_with_priority(db, user_id, "EMBEDDING_GENERATE", payload, priority, 3.0)
+        .await?;
+    Ok((id, true))
 }
 
 /// v4 `enqueueJob` variant carrying an explicit `priority` (v4's

@@ -17,7 +17,9 @@ use serde_json::{json, Map, Value};
 use crate::db::runtime::Db;
 use crate::db::{chat_settings, chats_read, DbError};
 use crate::services::carina_query::BRAHMA_CARINA_ANSWERER_ID;
-use crate::services::{ariel_notifications, chat_enrichment, suparna_notifications};
+use crate::services::{
+    ariel_notifications, chat_enrichment, cold_chunk_reembed, suparna_notifications,
+};
 
 use super::types::{ChatWrapDto, ErrorKind, Response};
 
@@ -148,6 +150,20 @@ pub async fn chat_get(
         .cloned()
         .unwrap_or_default();
     suparna_notifications::surface_operator_mail_for_chat(db, chat_id, &participants).await;
+    // Cold-tier re-warm (v4 `maybeEnqueueColdChunkReembed`): if the maintenance
+    // sweep cold-tiered this chat's conversation-chunk embeddings, opening it
+    // re-enqueues them through the standard embedding pipeline. Best-effort
+    // (debounced + per-entity-deduped inside) and enqueue-only — the GET response
+    // body is unchanged. v4 fires-and-forgets with `.catch`; v5 awaits it like
+    // the two side effects above (identical effect; a failure is swallowed). The
+    // debounce clock is the wall clock here (the differential injects its own).
+    let _ = cold_chunk_reembed::maybe_enqueue_cold_chunk_reembed(
+        db,
+        user_id,
+        chat_id,
+        crate::clock::now_unix_ms(),
+    )
+    .await;
 
     // Everything below is a read composition (main + mount for the overlay).
     let chat_id_s = chat_id.to_string();

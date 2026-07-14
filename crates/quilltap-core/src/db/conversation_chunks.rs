@@ -301,6 +301,22 @@ impl<'c> ConversationChunksRepository<'c> {
         Ok(affected)
     }
 
+    /// The ids of a chat's COLD chunks — content present, embedding absent (v4
+    /// cold-chunk-reembed's per-chunk filter: `chunk.embedding == null ||
+    /// length 0` AND `chunk.content?.trim()` non-empty). Since v5 stores an
+    /// empty embedding as SQL NULL, `embedding IS NULL` captures both the
+    /// null and empty-vector cases. Returned in rowid (insertion) order to
+    /// mirror v4's `findByChatId` iteration. Read-only.
+    pub fn find_cold_chunk_ids_by_chat_id(&self, chat_id: &str) -> Result<Vec<String>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id FROM conversation_chunks \
+             WHERE chatId = ?1 AND embedding IS NULL AND trim(content) != '' \
+             ORDER BY rowid ASC",
+        )?;
+        let rows = stmt.query_map(params![chat_id], |r| r.get::<_, String>(0))?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
     /// Delete the chunk `id`. Returns `Ok(false)` when no row matched (v4's
     /// `_delete` "deletedCount === 0 -> false").
     pub fn delete(&self, id: &str) -> Result<bool, DbError> {
