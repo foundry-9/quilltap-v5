@@ -109,6 +109,38 @@ test.describe('P4.6ac — courier + in-chat images', () => {
     await expect(page.locator('.qt-courier-bubble')).toHaveCount(0);
   });
 
+  test('composer file attach uploads over the live chat-files leg', async ({ page }) => {
+    // P4.6ah ∥ P4.6aj unification wire: lane C verified the LOCKED client
+    // (`chat-files.api.ts`) at the unit level and lane A landed the server
+    // multipart leg (`POST /api/v1/chats/{id}/files`); neither lane could
+    // prove the seam end-to-end. This beat does: pick a file → the live
+    // multipart upload lands → the attachment chip renders → remove leaves
+    // the composer clean (send is NOT exercised — no LLM turn).
+    await openChatList(page);
+    const cards = page.locator('.chat-card-stack a.qt-entity-card');
+    test.skip((await cards.count()) === 0, 'no chats in the shared fixture');
+    await cards.first().click();
+    await expect(page.locator('.qt-chat-messages-list')).toBeVisible();
+
+    const attachButton = page.getByRole('button', { name: 'Attach a file', exact: true });
+    test.skip(!(await attachButton.isVisible().catch(() => false)), 'composer attach not available in this chat');
+
+    await page
+      .locator('input[type=file][aria-label="Attach a file"]')
+      .setInputFiles({
+        name: 'unify-attach-note.txt',
+        mimeType: 'text/plain',
+        buffer: Buffer.from('Attached over the live chat-file upload leg.'),
+      });
+
+    const chip = page.locator('.qt-chat-attachment-chip');
+    await expect(chip).toContainText('unify-attach-note.txt', { timeout: 15_000 });
+
+    // Detach; the composer returns to a clean state.
+    await chip.getByRole('button', { name: 'Remove attachment' }).click();
+    await expect(page.locator('.qt-chat-attachment-chip')).toHaveCount(0);
+  });
+
   test('an image thumbnail opens the lightbox', async ({ page }) => {
     test.skip(!courierBackendReady, 'courier dispatch not implemented in-lane (activates at unification)');
     await openChatList(page);

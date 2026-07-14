@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Unify wire P4.6ah∥ai∥aj∥d4: accumulate the multi-lane version bumps
+(core 0.0.219, harness 0.0.199 — three lanes each bumped from the same
+base; host 0.0.17, web 0.0.20, SPA 0.5.83 stand), drop two stray
+committed SQLite `-journal` fixture artifacts, and add the
+composer-file-attach e2e beat over the now-live chat-file upload leg
+(`POST /api/v1/chats/{id}/files`) — the one cross-lane proof neither
+lane A (server, no SPA) nor lane C (SPA, no server leg in-worktree)
+could run alone. The P4.6af guarded general-files data beat needs no
+edit: its runtime probe covers the upload REST leg and self-activates
+now that lane A landed it.
+
 P4.6ah (files write + maintenance server lane) — complete the OPEN
 P4.6ae server remainder. The chat-file upload leg (`uploadChatFile`
 ported into `services/chat_files.rs` over the `file_storage.rs` write
