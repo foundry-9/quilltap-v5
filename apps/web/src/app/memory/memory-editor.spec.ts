@@ -1,8 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
 import type { MemoryDto } from '../core/core-contract';
+import { RichEditor } from '../editor/rich-editor';
 import { MemoryEditor } from './memory-editor';
 
 function mem(over: Partial<MemoryDto>): MemoryDto {
@@ -60,6 +62,11 @@ function fieldByLabel(fixture: ComponentFixture<MemoryEditor>, id: string): HTML
   return fixture.nativeElement.querySelector(`#${id}`) as HTMLInputElement;
 }
 
+/** The content markdown editor (qt-markdown-field's RichEditor handle). */
+function contentEditor(fixture: ComponentFixture<MemoryEditor>): RichEditor {
+  return fixture.debugElement.query(By.directive(RichEditor)).componentInstance as RichEditor;
+}
+
 async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
   for (let i = 0; i < 4; i++) {
     await new Promise((r) => setTimeout(r, 0));
@@ -73,10 +80,11 @@ describe('MemoryEditor', () => {
     expect(render(mem({}), async () => ({})).nativeElement.textContent).toContain('Edit Memory');
   });
 
-  it('seeds the form from the memory (keywords comma-joined, importance label)', () => {
+  it('seeds the form from the memory (keywords comma-joined, importance label)', async () => {
     const fixture = render(mem({ summary: 'S', content: 'C', keywords: ['x', 'y'], importance: 0.8 }), async () => ({}));
+    await settle(fixture);
     expect(fieldByLabel(fixture, 'summary').value).toBe('S');
-    expect((fixture.nativeElement.querySelector('#content') as HTMLTextAreaElement).value).toBe('C');
+    expect(contentEditor(fixture).getMarkdown()).toBe('C');
     expect(fieldByLabel(fixture, 'keywords').value).toBe('x, y');
     expect(fixture.nativeElement.textContent).toContain('Importance: High (80%)');
   });
@@ -86,12 +94,10 @@ describe('MemoryEditor', () => {
     const fixture = render(null, dispatch);
     fieldByLabel(fixture, 'summary').value = 'New summary';
     fieldByLabel(fixture, 'summary').dispatchEvent(new Event('input'));
-    const content = fixture.nativeElement.querySelector('#content') as HTMLTextAreaElement;
-    content.value = 'New content';
-    content.dispatchEvent(new Event('input'));
+    contentEditor(fixture).setMarkdown('New content');
     fieldByLabel(fixture, 'keywords').value = 'one, two ,three';
     fieldByLabel(fixture, 'keywords').dispatchEvent(new Event('input'));
-    fixture.detectChanges();
+    await settle(fixture);
 
     let saved = false;
     fixture.componentInstance.saved.subscribe(() => (saved = true));

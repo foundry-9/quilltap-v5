@@ -12186,3 +12186,44 @@ Mod chosen by the same Mac detection prosemirror uses); chat-composer.spec.ts
 `documentEditingMode` into `[compositionMode]` and persisting
 `compositionModeChange` — lane C owns `salon-conversation.ts`; the e2e
 composition beats land at unification.
+
+### Item 3 — the shared form-field editor (tier 1, LANDED)
+
+`editor/formatting-toolbar.ts` (NEW): `qt-formatting-toolbar` — the v4
+FormattingToolbar markdown section as a presentation-only button bar emitting a
+`FormatAction`. Inventory = v4's `MARKDOWN_FORMATS` (B, I, H1–H6, `• …`, `1. …`,
+`“`) + a code-block toggle (`CODE`/`/CODE`, active state). No strike/highlight
+buttons — those are dialect marks reached by typing in v4 too. `mousedown`
+prevented (v4 `preventFocusLoss`). Reuses the existing `_chat.css`
+`.qt-formatting-*` classes (no new CSS).
+
+`editor/markdown-field.ts` (NEW): `qt-markdown-field` — v4's
+`MarkdownLexicalEditor` ("Designed for forms"). Hosts the toolbar over a
+`qt-rich-editor`; `onAction` dispatches the matching ProseMirror command via a
+new `RichEditor.runCommand`. The toolbar's code-block state mirrors the editor's
+new `inCodeBlock` signal through an effect (safe viewChild timing). **Emit
+contract:** the field swallows the editor's initial absorb-once emit (v4
+`computeAbsorbNext`), so it emits only on genuine edits — exactly the textarea
+contract it replaces (no dirty-on-load, no 7-field mount-emit cascade/race).
+`recordKey` (v4 `remountKey`) re-inits from the current value on a record swap,
+re-arming the absorb.
+
+`RichEditor`: `runCommand(command)` (apply + refocus) and an `inCodeBlock`
+signal updated every transaction.
+
+**Adoptions (save/emit contract preserved — the fields emit the same strings):**
+`memory/memory-editor.ts` content; `screens/characters/edit/details-tab.ts` all
+7 markdown fields (identity/description/manifesto/personality/firstMessage/
+exampleDialogues/systemPrompt); `screens/characters/new/new-character.ts` the
+same 7 + scenario (8). Dead `for=`/`id=` textarea couplings dropped;
+accessibility via the field's `ariaLabel`.
+
+**Proofs:** markdown-field.spec.ts +6 (toolbar inventory; H2/blockquote/list at
+cursor; code-block toggle in/out; no-emit-on-load; emit-on-edit);
+memory-editor.spec.ts updated to drive the field's editor handle (6 green);
+`ng build` clean.
+
+**Deferred (loud):** `roleplayTemplateId`-aware toolbar delimiters (no
+client-side template plumbing yet); the source-mode toggle (no raw-source view
+in the field); the character edit `system-prompts-tab` textarea (out of item 3's
+named scope).

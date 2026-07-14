@@ -4,6 +4,7 @@ import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../../core/core-client';
 import type { CharacterConnectionProfile } from '../../../core/core-contract';
+import { MarkdownField } from '../../../editor/markdown-field';
 import { Icon } from '../../../ui/icon';
 import { fetchConnectionProfiles } from '../characters.api';
 
@@ -54,13 +55,16 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
  * editor is an edit-only affordance), first message, example dialogues,
  * legacy system prompt, avatar URL, and a default connection profile picker.
  * The AI Wizard and "Import Template" are named deferrals (disabled, v4
- * microcopy). Markdown fields are plain `<textarea>`s this round. Copy +
- * `qt-*` classes carry over verbatim.
+ * microcopy). The eight markdown fields (identity / description / manifesto /
+ * personality / scenario / first message / example dialogues / system prompt)
+ * use the shared `qt-markdown-field` (v4's `MarkdownLexicalEditor`); each keeps
+ * the same `setField` string contract. Copy + `qt-*` classes carry over
+ * verbatim.
  */
 @Component({
   selector: 'qt-new-character',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon],
+  imports: [RouterLink, Icon, MarkdownField],
   template: `
     <div class="qt-page-container">
       <div class="mb-8">
@@ -109,126 +113,96 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
         </div>
 
         <div>
-          <label for="identity" class="block qt-label mb-2 text-foreground"
-            >Identity (Optional)</label
-          >
+          <label class="block qt-label mb-2 text-foreground">Identity (Optional)</label>
           <p class="text-xs qt-text-secondary mb-2">
             What strangers know about the character on sight or by reputation &mdash; name, station,
             occupation, public reputation. The shallow first impression.
           </p>
-          <textarea
-            id="identity"
-            class="qt-input"
-            rows="4"
+          <qt-markdown-field
+            ariaLabel="Identity"
             [value]="form().identity"
-            (input)="setField('identity', $any($event.target).value)"
-          ></textarea>
+            (contentChange)="setField('identity', $event)"
+          />
         </div>
 
         <div>
-          <label for="description" class="block qt-label mb-2 text-foreground"
-            >Description (Optional)</label
-          >
+          <label class="block qt-label mb-2 text-foreground">Description (Optional)</label>
           <p class="text-xs qt-text-secondary mb-2">
             How acquaintances perceive the character &mdash; behaviour, mannerisms, frequent verbal
             patterns. Not physical appearance (that lives in physical descriptions).
           </p>
-          <textarea
-            id="description"
-            class="qt-input"
-            rows="5"
+          <qt-markdown-field
+            ariaLabel="Description"
             [value]="form().description"
-            (input)="setField('description', $any($event.target).value)"
-          ></textarea>
+            (contentChange)="setField('description', $event)"
+          />
         </div>
 
         <div>
-          <label for="manifesto" class="block qt-label mb-2 text-foreground"
-            >Manifesto (Optional)</label
-          >
+          <label class="block qt-label mb-2 text-foreground">Manifesto (Optional)</label>
           <p class="text-xs qt-text-secondary mb-2">
             The foundational tenets of this character &mdash; the basic truths that anchor
             everything else. What this character is, at root.
           </p>
-          <textarea
-            id="manifesto"
-            class="qt-input"
-            rows="5"
+          <qt-markdown-field
+            ariaLabel="Manifesto"
             [value]="form().manifesto"
-            (input)="setField('manifesto', $any($event.target).value)"
-          ></textarea>
+            (contentChange)="setField('manifesto', $event)"
+          />
         </div>
 
         <div>
-          <label for="personality" class="block qt-label mb-2 text-foreground"
-            >Personality (Optional)</label
-          >
+          <label class="block qt-label mb-2 text-foreground">Personality (Optional)</label>
           <p class="text-xs qt-text-secondary mb-2">
             What the character knows about themselves &mdash; inner drivers of speech and behaviour,
             motivations, beliefs.
           </p>
-          <textarea
-            id="personality"
-            class="qt-input"
-            rows="5"
+          <qt-markdown-field
+            ariaLabel="Personality"
             [value]="form().personality"
-            (input)="setField('personality', $any($event.target).value)"
-          ></textarea>
+            (contentChange)="setField('personality', $event)"
+          />
         </div>
 
         <div>
-          <label for="scenario" class="block qt-label mb-2 text-foreground"
-            >Scenario (Optional)</label
-          >
+          <label class="block qt-label mb-2 text-foreground">Scenario (Optional)</label>
           <p class="text-xs qt-text-secondary mb-2">
             Describe the setting and context for conversations.
           </p>
-          <textarea
-            id="scenario"
-            class="qt-input"
-            rows="5"
+          <qt-markdown-field
+            ariaLabel="Scenario"
             [value]="form().scenario"
-            (input)="setField('scenario', $any($event.target).value)"
-          ></textarea>
+            (contentChange)="setField('scenario', $event)"
+          />
         </div>
 
         <div>
-          <label for="firstMessage" class="block qt-label mb-2 text-foreground"
-            >First Message (Optional)</label
-          >
+          <label class="block qt-label mb-2 text-foreground">First Message (Optional)</label>
           <p class="text-xs qt-text-secondary mb-2">
             The character&rsquo;s opening message to start conversations.
           </p>
-          <textarea
-            id="firstMessage"
-            class="qt-input"
-            rows="4"
+          <qt-markdown-field
+            ariaLabel="First Message"
             [value]="form().firstMessage"
-            (input)="setField('firstMessage', $any($event.target).value)"
-          ></textarea>
+            (contentChange)="setField('firstMessage', $event)"
+          />
         </div>
 
         <div>
-          <label for="exampleDialogues" class="block qt-label mb-2 text-foreground"
-            >Example Dialogues (Optional)</label
-          >
+          <label class="block qt-label mb-2 text-foreground">Example Dialogues (Optional)</label>
           <p class="text-xs qt-text-secondary mb-2">
             Example conversations to guide the AI&rsquo;s responses.
           </p>
-          <textarea
-            id="exampleDialogues"
-            class="qt-input"
-            rows="8"
+          <qt-markdown-field
+            ariaLabel="Example Dialogues"
             [value]="form().exampleDialogues"
-            (input)="setField('exampleDialogues', $any($event.target).value)"
-          ></textarea>
+            (contentChange)="setField('exampleDialogues', $event)"
+          />
         </div>
 
         <div>
           <div class="flex items-center justify-between mb-2">
-            <label for="systemPrompt" class="block qt-label text-foreground"
-              >System Prompt (Optional)</label
-            >
+            <label class="block qt-label text-foreground">System Prompt (Optional)</label>
             <button
               type="button"
               class="qt-button-secondary text-xs px-2 py-1"
@@ -241,13 +215,11 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
           <p class="text-xs qt-text-secondary mb-2">
             Custom system instructions (will be combined with auto-generated prompt).
           </p>
-          <textarea
-            id="systemPrompt"
-            class="qt-input"
-            rows="5"
+          <qt-markdown-field
+            ariaLabel="System Prompt"
             [value]="form().systemPrompt"
-            (input)="setField('systemPrompt', $any($event.target).value)"
-          ></textarea>
+            (contentChange)="setField('systemPrompt', $event)"
+          />
         </div>
 
         <div>

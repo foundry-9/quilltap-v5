@@ -8,6 +8,7 @@ import {
   inject,
   input,
   output,
+  signal,
   viewChild,
 } from '@angular/core';
 import { baseKeymap, chainCommands, newlineInCode } from 'prosemirror-commands';
@@ -70,6 +71,13 @@ export class RichEditor {
   private readonly mount = viewChild.required<ElementRef<HTMLDivElement>>('mount');
   private readonly destroyRef = inject(DestroyRef);
 
+  /**
+   * Whether the selection sits in a fenced code block — a toolbar reads this to
+   * flip its code-block button (v4 FormattingToolbar `inCodeBlock`). Updated on
+   * every transaction (selection moves included).
+   */
+  readonly inCodeBlock = signal(false);
+
   private view: EditorView | null = null;
   /** The last markdown we emitted — so an echoed `value` doesn't reset the doc. */
   private lastEmitted = '';
@@ -117,6 +125,18 @@ export class RichEditor {
     this.replaceContent(combined, true);
   }
 
+  /**
+   * Run a ProseMirror command against the live view and refocus (a
+   * {@link markdown-field} toolbar's formatting buttons). Returns whether the
+   * command applied.
+   */
+  runCommand(command: Command): boolean {
+    if (!this.view) return false;
+    const applied = command(this.view.state, this.view.dispatch, this.view);
+    this.view.focus();
+    return applied;
+  }
+
   // --- view lifecycle -------------------------------------------------------
 
   private createView(): void {
@@ -138,6 +158,7 @@ export class RichEditor {
       dispatchTransaction: (tr) => {
         if (!this.view) return;
         this.view.updateState(this.view.state.apply(tr));
+        this.inCodeBlock.set(this.computeInCodeBlock());
         if (tr.docChanged) {
           const md = serializeMarkdown(this.view.state.doc);
           this.lastEmitted = md;
@@ -145,6 +166,7 @@ export class RichEditor {
         }
       },
     });
+    this.inCodeBlock.set(this.computeInCodeBlock());
 
     // Emit the re-serialized content once after the initial mount — the
     // absorb-once signal the document controller adopts as baseline (v4
@@ -221,6 +243,12 @@ export class RichEditor {
       keymap(baseKeymap),
       this.placeholderPlugin(),
     ];
+  }
+
+  /** Whether the current selection's parent block is a fenced code block. */
+  private computeInCodeBlock(): boolean {
+    if (!this.view) return false;
+    return this.view.state.selection.$from.parent.type === dialectSchema.nodes['code_block'];
   }
 
   private placeholderPlugin(): Plugin {

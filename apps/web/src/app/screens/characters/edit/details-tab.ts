@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 
 import type { CharacterScenario, Pronouns } from '../../../core/core-contract';
+import { MarkdownField } from '../../../editor/markdown-field';
 import type { CharacterFormData } from './character-form';
 import { getPronounPreset, PRONOUN_PRESETS } from './character-form';
 import { ScenarioEditor } from './scenario-editor';
@@ -12,14 +13,16 @@ import { TagChipEditor } from './tag-chip-editor';
  * pronouns, the four vantage points (identity / description / manifesto /
  * personality — DISTINCT, never collapsed), the inline scenarios editor,
  * first message, example dialogues, the legacy system prompt, and the tag
- * editor. Markdown fields are plain `<textarea>`s this round (the
- * Lexical-equivalent editor is a standing deferral). Copy carries over
- * verbatim from v4.
+ * editor. The seven markdown fields (identity / description / manifesto /
+ * personality / first message / example dialogues / system prompt) use the
+ * shared `qt-markdown-field` (v4's `MarkdownLexicalEditor`); each keeps the
+ * same emit contract — a plain markdown string riding `fieldChange`, emitted
+ * only on genuine edits. Copy carries over verbatim from v4.
  */
 @Component({
   selector: 'qt-character-details-tab',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ScenarioEditor, TagChipEditor],
+  imports: [ScenarioEditor, TagChipEditor, MarkdownField],
   template: `
     <div class="space-y-6">
       <!-- System Transparency Switch -->
@@ -220,66 +223,58 @@ import { TagChipEditor } from './tag-chip-editor';
 
       <!-- Identity -->
       <div>
-        <label for="identity" class="block qt-label mb-2">Identity (Optional)</label>
+        <label class="block qt-label mb-2">Identity (Optional)</label>
         <p class="text-xs qt-text-secondary mb-2">
           What strangers know about the character on sight or by reputation &mdash; name, station,
           occupation, public reputation. The shallow first impression.
         </p>
-        <textarea
-          id="identity"
-          class="qt-input"
-          rows="4"
+        <qt-markdown-field
+          ariaLabel="Identity"
           [value]="form().identity"
-          (input)="fieldChange.emit({ ...form(), identity: $any($event.target).value })"
-        ></textarea>
+          (contentChange)="fieldChange.emit({ ...form(), identity: $event })"
+        />
       </div>
 
       <!-- Description -->
       <div>
-        <label for="description" class="block qt-label mb-2">Description (Optional)</label>
+        <label class="block qt-label mb-2">Description (Optional)</label>
         <p class="text-xs qt-text-secondary mb-2">
           How acquaintances perceive the character &mdash; behaviour, mannerisms, frequent verbal
           patterns. Not physical appearance (that lives in physical descriptions).
         </p>
-        <textarea
-          id="description"
-          class="qt-input"
-          rows="5"
+        <qt-markdown-field
+          ariaLabel="Description"
           [value]="form().description"
-          (input)="fieldChange.emit({ ...form(), description: $any($event.target).value })"
-        ></textarea>
+          (contentChange)="fieldChange.emit({ ...form(), description: $event })"
+        />
       </div>
 
       <!-- Manifesto -->
       <div>
-        <label for="manifesto" class="block qt-label mb-2">Manifesto (Optional)</label>
+        <label class="block qt-label mb-2">Manifesto (Optional)</label>
         <p class="text-xs qt-text-secondary mb-2">
           The foundational tenets of this character &mdash; the basic truths that anchor everything
           else. What this character is, at root.
         </p>
-        <textarea
-          id="manifesto"
-          class="qt-input"
-          rows="5"
+        <qt-markdown-field
+          ariaLabel="Manifesto"
           [value]="form().manifesto"
-          (input)="fieldChange.emit({ ...form(), manifesto: $any($event.target).value })"
-        ></textarea>
+          (contentChange)="fieldChange.emit({ ...form(), manifesto: $event })"
+        />
       </div>
 
       <!-- Personality -->
       <div>
-        <label for="personality" class="block qt-label mb-2">Personality (Optional)</label>
+        <label class="block qt-label mb-2">Personality (Optional)</label>
         <p class="text-xs qt-text-secondary mb-2">
           What the character knows about themselves &mdash; inner drivers of speech and behaviour,
           motivations, beliefs.
         </p>
-        <textarea
-          id="personality"
-          class="qt-input"
-          rows="5"
+        <qt-markdown-field
+          ariaLabel="Personality"
           [value]="form().personality"
-          (input)="fieldChange.emit({ ...form(), personality: $any($event.target).value })"
-        ></textarea>
+          (contentChange)="fieldChange.emit({ ...form(), personality: $event })"
+        />
       </div>
 
       <!-- Scenarios -->
@@ -290,17 +285,15 @@ import { TagChipEditor } from './tag-chip-editor';
 
       <!-- First Message -->
       <div>
-        <label for="firstMessage" class="block qt-label mb-2">First Message (Optional)</label>
+        <label class="block qt-label mb-2">First Message (Optional)</label>
         <p class="text-xs qt-text-secondary mb-2">
           The character&rsquo;s opening message to start conversations.
         </p>
-        <textarea
-          id="firstMessage"
-          class="qt-input"
-          rows="4"
+        <qt-markdown-field
+          ariaLabel="First Message"
           [value]="form().firstMessage"
-          (input)="fieldChange.emit({ ...form(), firstMessage: $any($event.target).value })"
-        ></textarea>
+          (contentChange)="fieldChange.emit({ ...form(), firstMessage: $event })"
+        />
       </div>
 
       <!-- Example Dialogues -->
@@ -311,28 +304,24 @@ import { TagChipEditor } from './tag-chip-editor';
         <p class="text-xs qt-text-secondary mb-2">
           Example conversations to guide the AI&rsquo;s responses.
         </p>
-        <textarea
-          id="exampleDialogues"
-          class="qt-input"
-          rows="8"
+        <qt-markdown-field
+          ariaLabel="Example Dialogues"
           [value]="form().exampleDialogues"
-          (input)="fieldChange.emit({ ...form(), exampleDialogues: $any($event.target).value })"
-        ></textarea>
+          (contentChange)="fieldChange.emit({ ...form(), exampleDialogues: $event })"
+        />
       </div>
 
       <!-- System Prompt -->
       <div>
-        <label for="systemPrompt" class="block qt-label mb-2">System Prompt (Optional)</label>
+        <label class="block qt-label mb-2">System Prompt (Optional)</label>
         <p class="text-xs qt-text-secondary mb-2">
           Custom system instructions (will be combined with auto-generated prompt).
         </p>
-        <textarea
-          id="systemPrompt"
-          class="qt-input"
-          rows="5"
+        <qt-markdown-field
+          ariaLabel="System Prompt"
           [value]="form().systemPrompt"
-          (input)="fieldChange.emit({ ...form(), systemPrompt: $any($event.target).value })"
-        ></textarea>
+          (contentChange)="fieldChange.emit({ ...form(), systemPrompt: $event })"
+        />
       </div>
 
       <!-- Tags -->

@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+P4.6al lane (D17 editor follow-ons, tier 1 item 3 — the shared
+form-field editor): a new `qt-markdown-field` (v4's
+`MarkdownLexicalEditor`, "Designed for forms") pairs the composer
+dialect editor with a ported `qt-formatting-toolbar` (bold / italic /
+H1–H6 / lists / blockquote + a code-block toggle — v4's
+`MARKDOWN_FORMATS` inventory; strikethrough/highlight remain
+type-to-format marks, not toolbar buttons, matching v4). The field
+swallows the editor's initial absorb-once normalization so it emits
+only on genuine edits — the exact contract of the textarea it
+replaces. Adopted in the memory-editor content field, the character
+edit Details tab (all seven markdown fields), and the new-character
+form (the same seven plus scenario). RichEditor gained a `runCommand`
+handle and an `inCodeBlock` signal for the toolbar. The
+`roleplayTemplateId`-aware toolbar delimiters are a named deferral
+(no client-side template plumbing yet). Specs: qt-markdown-field +6,
+plus the memory/character hosts kept green.
+
 P4.6al lane (D17 editor follow-ons, tier 1 item 2 — composition mode,
 dogfood #8): the composer now honors v4's `documentEditingMode`. The
 rich editor gained a `submitOnModEnter` input (Cmd+Enter on Mac /

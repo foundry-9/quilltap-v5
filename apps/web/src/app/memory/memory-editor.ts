@@ -11,6 +11,7 @@ import {
 
 import { CoreClient } from '../core/core-client';
 import type { MemoryDto } from '../core/core-contract';
+import { MarkdownField } from '../editor/markdown-field';
 import { ErrorAlert } from '../ui/error-alert';
 import { FormActions } from '../ui/form-actions';
 import { Modal } from '../ui/modal';
@@ -24,14 +25,15 @@ import { importanceLabel, importancePercent, keywordsFromString, keywordsToStrin
  * always sends `source:'MANUAL'` and does NOT send/edit `tags` or
  * `aboutCharacterId` (v4 fidelity). Create POSTs; edit PUTs (no re-embed).
  *
- * SIMPLIFICATION vs v4: content uses a plain textarea, not v4's
- * `MarkdownLexicalEditor` — the D17 composer/editor vertical is its own effort
- * (the P4.6r `systemPrompt` precedent).
+ * Content is edited through the shared `qt-markdown-field` (v4's
+ * `MarkdownLexicalEditor`, "Designed for forms") — byte-faithful to the v4
+ * composer dialect. The save/emit contract is unchanged: `content` is still a
+ * plain markdown string bound in and out.
  */
 @Component({
   selector: 'qt-memory-editor',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Modal, FormActions, ErrorAlert],
+  imports: [Modal, FormActions, ErrorAlert, MarkdownField],
   template: `
     <qt-modal [title]="title()" maxWidth="2xl" (close)="close.emit()">
       <form class="space-y-4" (submit)="$event.preventDefault(); submit()">
@@ -51,18 +53,15 @@ import { importanceLabel, importancePercent, keywordsFromString, keywordsToStrin
         </div>
 
         <div>
-          <label for="content" class="block qt-text-label mb-1">Full Content *</label>
+          <label class="block qt-text-label mb-1">Full Content *</label>
           <p class="mb-2 qt-text-xs">
             The full details of what this character should remember.
           </p>
-          <textarea
-            id="content"
-            class="qt-input"
-            rows="8"
-            aria-label="Memory content"
+          <qt-markdown-field
+            ariaLabel="Memory content"
             [value]="content()"
-            (input)="content.set($any($event.target).value)"
-          ></textarea>
+            (contentChange)="content.set($event)"
+          />
         </div>
 
         <div>
