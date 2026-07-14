@@ -48,6 +48,7 @@
 
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
+use serde::Serialize;
 
 use super::DbError;
 
@@ -58,6 +59,37 @@ pub struct TrrCreate {
     pub case_sensitive: bool,
     pub enabled: bool,
     pub sort_order: i64,
+}
+
+/// A fully-hydrated rule row (v4 `TextReplacementRule` — the Zod-parsed shape the
+/// routes echo). Field order == v4 `TextReplacementRuleSchema` key order, so the
+/// serde-serialized JSON matches v4's route body byte-for-byte (the standing
+/// JSON-column key-order rule).
+#[derive(Debug, Clone, Serialize)]
+pub struct TextReplacementRuleRow {
+    pub id: String,
+    #[serde(rename = "fromText")]
+    pub from_text: String,
+    #[serde(rename = "toText")]
+    pub to_text: String,
+    #[serde(rename = "caseSensitive")]
+    pub case_sensitive: bool,
+    pub enabled: bool,
+    #[serde(rename = "sortOrder")]
+    pub sort_order: i64,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+}
+
+/// One rule to insert in a [`TextReplacementRulesRepository::bulk_replace`] —
+/// the create fields plus the pinned id + timestamps the caller minted (v4 mints
+/// via `_create`'s `randomUUID()` / `new Date().toISOString()`; the api layer
+/// mints so the db layer stays free of the clock/uuid seam).
+pub struct TrrBulkRow {
+    pub data: TrrCreate,
+    pub opts: CreateOptions,
 }
 
 /// Pinned id + timestamps (v4's `CreateOptions`).
@@ -239,6 +271,108 @@ impl<'c> TextReplacementRulesRepository<'c> {
         Ok(affected > 0)
     }
 
+    /// v4 `list({enabledOnly})` — every rule, optionally dropping the disabled
+    /// ones, sorted by `sortOrder` then `createdAt`. v4's comparator is
+    /// `a.sortOrder - b.sortOrder` then `a.createdAt.localeCompare(b.createdAt)`;
+    /// for the ISO-8601 (pure-ASCII) `createdAt` values, en-US collation and Rust
+    /// `str` ordering both reduce to lexicographic, so `str::cmp` is faithful.
+    pub fn list(&self, enabled_only: bool) -> Result<Vec<TextReplacementRuleRow>, TrrError> {
+        let mut stmt = self.conn.prepare(TRR_SELECT_ALL)?;
+        let mut rows: Vec<TextReplacementRuleRow> = stmt
+            .query_map([], map_rule_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+        if enabled_only {
+            rows.retain(|r| r.enabled);
+        }
+        rows.sort_by(|a, b| {
+            a.sort_order
+                .cmp(&b.sort_order)
+                .then_with(|| a.created_at.cmp(&b.created_at))
+        });
+        Ok(rows)
+    }
+
+    /// Read a single rule by id (v4 `_findById`) — the routes re-read to echo the
+    /// created/updated row.
+    pub fn find_by_id(&self, id: &str) -> Result<Option<TextReplacementRuleRow>, TrrError> {
+        let sql = format!("{TRR_SELECT_ALL} WHERE id = ?1");
+        let row = self
+            .conn
+            .query_row(&sql, params![id], map_rule_row)
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+        Ok(row)
+    }
+
+    /// v4 `bulkReplace(rules)` — the transactional full-list replace (the import
+    /// path). Conflicts WITHIN the input (`(fromText, caseSensitive)` collisions,
+    /// caught before any write) reject with [`TrrError::Conflict`]; then EVERY
+    /// existing row is deleted and each input row inserted with its pinned id +
+    /// timestamps. Returns the created rows in input order. The caller runs this
+    /// inside a single [`super::runtime::Db::write`] closure, so the delete-all +
+    /// re-insert is one transaction (v4 wraps it in `safeQuery`; the single-writer
+    /// closure is the Rust analogue). Unlike create/update this does NOT check
+    /// against the surviving table — v4 deletes everything first.
+    pub fn bulk_replace(
+        &self,
+        rows: &[TrrBulkRow],
+    ) -> Result<Vec<TextReplacementRuleRow>, TrrError> {
+        // v4's `seen` map: reject a duplicate `(caseSensitive, key)` pair in the
+        // INPUT before any write. Key = fromText (case-sensitive) or its lowercase
+        // (case-insensitive), so the same text under both sensitivities co-exists.
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for row in rows {
+            let cs = row.data.case_sensitive;
+            let key = if cs {
+                format!("|cs|{}", row.data.from_text)
+            } else {
+                format!("|ci|{}", row.data.from_text.to_lowercase())
+            };
+            if !seen.insert(key) {
+                return Err(TrrError::Conflict {
+                    from_text: row.data.from_text.clone(),
+                    case_sensitive: cs,
+                });
+            }
+        }
+
+        self.conn
+            .execute("DELETE FROM text_replacement_rules", [])?;
+
+        let mut created: Vec<TextReplacementRuleRow> = Vec::with_capacity(rows.len());
+        for row in rows {
+            self.conn.execute(
+                "INSERT INTO text_replacement_rules \
+                   (id, fromText, toText, caseSensitive, enabled, sortOrder, createdAt, updatedAt) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    row.opts.id,
+                    row.data.from_text,
+                    row.data.to_text,
+                    i64::from(row.data.case_sensitive),
+                    i64::from(row.data.enabled),
+                    row.data.sort_order,
+                    row.opts.created_at,
+                    row.opts.updated_at,
+                ],
+            )?;
+            created.push(TextReplacementRuleRow {
+                id: row.opts.id.clone(),
+                from_text: row.data.from_text.clone(),
+                to_text: row.data.to_text.clone(),
+                case_sensitive: row.data.case_sensitive,
+                enabled: row.data.enabled,
+                sort_order: row.data.sort_order,
+                created_at: row.opts.created_at.clone(),
+                updated_at: row.opts.updated_at.clone(),
+            });
+        }
+        Ok(created)
+    }
+
     /// v4's `assertNoConflict`: scan every rule and reject a duplicate
     /// `(fromText, caseSensitive)` pair. `exclude_id` skips the row being
     /// updated. Case-sensitive rules compare `fromText` exactly; case-insensitive
@@ -282,5 +416,39 @@ impl<'c> TextReplacementRulesRepository<'c> {
             }
         }
         Ok(())
+    }
+}
+
+/// The full-row projection (schema column order) for [`map_rule_row`].
+const TRR_SELECT_ALL: &str = "SELECT id, fromText, toText, caseSensitive, enabled, \
+     sortOrder, createdAt, updatedAt FROM text_replacement_rules";
+
+/// Map a `text_replacement_rules` row into a [`TextReplacementRuleRow`]. The two
+/// boolean columns are stored as INTEGER 0/1 (v4's `prepareForStorage`), read
+/// back as `!= 0`. `sortOrder` is a v4 `z.number()` → the schema-translator gives
+/// the column REAL affinity, so even integer values land as REAL (`0` → `0.0`);
+/// read tolerant of INTEGER/REAL and coerce to `i64` (the `files.size`
+/// precedent), which serializes back to an integer JSON number as v4 does.
+fn map_rule_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TextReplacementRuleRow> {
+    Ok(TextReplacementRuleRow {
+        id: row.get(0)?,
+        from_text: row.get(1)?,
+        to_text: row.get(2)?,
+        case_sensitive: real_affinity_i64(row.get_ref(3)?) != 0,
+        enabled: real_affinity_i64(row.get_ref(4)?) != 0,
+        sort_order: real_affinity_i64(row.get_ref(5)?),
+        created_at: row.get(6)?,
+        updated_at: row.get(7)?,
+    })
+}
+
+/// Read a numeric cell tolerant of INTEGER/REAL affinity (v4's `z.number()`
+/// columns land as REAL): Integer → as-is, Real → truncated to `i64`, anything
+/// else → `0`.
+fn real_affinity_i64(v: rusqlite::types::ValueRef<'_>) -> i64 {
+    match v {
+        rusqlite::types::ValueRef::Integer(i) => i,
+        rusqlite::types::ValueRef::Real(f) => f as i64,
+        _ => 0,
     }
 }

@@ -1,0 +1,63 @@
+{
+  "$comment": [
+    "P4.6ak route-surface fixture spec — the shared test-pepper substrate for the",
+    "text-replacements + chat-get-background differential",
+    "(`text_replacements_routes_equivalence`) AND the web-edge integration test.",
+    "One committed file drives BOTH differential sides (v4 oracle + Rust port).",
+    "",
+    "Contents: three seed text_replacement_rules rows (a sortOrder TIE between R1",
+    "and R3, broken by createdAt, proves the list secondary sort) + a background",
+    "image file + three chats (one with storyBackgroundImageId set, one null, one",
+    "pointing at a DANGLING file id) — the get-background three arms.",
+    "",
+    "SAFETY: testPepperBase64 is the committed synthetic test pepper (the same one",
+    "the courier-images web fixture + the web test harness use). NOT the real",
+    "Friday pepper; safe to commit. userId matches the web harness's FIXTURE_USER",
+    "(rewritten to SINGLE_USER_ID at materialize time).",
+    "",
+    "Regenerate the .db files + the oracle NDJSON per the headers in",
+    "build-text-replacements-web-fixture.ts and cases/text-replacements-routes.test.ts."
+  ],
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+  "seedTimestamp": "2026-05-01T00:00:00.000Z",
+  "rules": [
+    {
+      "id": "1a000000-0000-4000-8000-0000000000a1",
+      "fromText": "teh",
+      "toText": "the",
+      "caseSensitive": false,
+      "enabled": true,
+      "sortOrder": 0,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "1a000000-0000-4000-8000-0000000000a2",
+      "fromText": "adn",
+      "toText": "and",
+      "caseSensitive": true,
+      "enabled": true,
+      "sortOrder": 1,
+      "createdAt": "2026-01-02T00:00:00.000Z",
+      "updatedAt": "2026-01-02T00:00:00.000Z"
+    },
+    {
+      "id": "1a000000-0000-4000-8000-0000000000a3",
+      "fromText": "dont",
+      "toText": "don't",
+      "caseSensitive": false,
+      "enabled": false,
+      "sortOrder": 0,
+      "createdAt": "2026-01-03T00:00:00.000Z",
+      "updatedAt": "2026-01-03T00:00:00.000Z"
+    }
+  ],
+  "backgroundFileId": "f0000000-0000-4000-8000-0000000000b1",
+  "backgroundFileSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "backgroundFilename": "sunset.png",
+  "missingFileId": "f0000000-0000-4000-8000-0000000000ff",
+  "chatWithBackgroundId": "c0000000-0000-4000-8000-0000000000c1",
+  "chatNoBackgroundId": "c0000000-0000-4000-8000-0000000000c2",
+  "chatMissingFileId": "c0000000-0000-4000-8000-0000000000c3"
+}

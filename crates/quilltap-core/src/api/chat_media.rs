@@ -912,3 +912,67 @@ pub async fn chat_file_upload(
         Err(ChatUploadError::Db(e)) => internal(e),
     }
 }
+
+// ===========================================================================
+// P4.6ak: chatGetBackground — the story-background resolver
+// ===========================================================================
+
+/// The all-null body v4 returns when the chat has no `storyBackgroundImageId`
+/// or its file row is missing (get.ts:182-184 / :187-193).
+fn background_all_null() -> Value {
+    json!({
+        "backgroundUrl": Value::Null,
+        "fileId": Value::Null,
+        "filename": Value::Null,
+        "sha256": Value::Null,
+        "linkSummary": Value::Null,
+    })
+}
+
+/// v4 `GET /api/v1/chats/[id]?action=get-background` (get.ts:173-211): resolve
+/// the chat's story-background image to a serveable API URL + its photo-link
+/// summary. Arms: chat missing → 404 `notFound('Chat')`; no
+/// `storyBackgroundImageId` (falsy) → all-null; the file row missing → all-null
+/// (v4 also warn-logs); else the resolved body `{backgroundUrl, fileId, filename,
+/// sha256, linkSummary}`. `linkSummary` is `null` when the file has no sha256
+/// (v4 `file.sha256 ? … : null`), else the mount-index reverse index (empty
+/// `{count:0, linkers:[]}` for a legacy `files` image never written to a mount).
+pub fn chat_get_background(db: &Db, chat_id: &str) -> Response {
+    let cid = chat_id.to_string();
+    let body = read_main_mount(db, |main, mount| {
+        let Some(chat) = chats_read::find_by_id(main, &cid)? else {
+            return Ok(None); // v4 notFound('Chat')
+        };
+        // v4 `if (!chat.storyBackgroundImageId)` — falsy (absent/null/empty).
+        let bg_id = chat
+            .get("storyBackgroundImageId")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty());
+        let Some(bg_id) = bg_id else {
+            return Ok(Some(background_all_null()));
+        };
+        let Some(file) = FilesRepository::new(main).find_by_id(bg_id)? else {
+            return Ok(Some(background_all_null()));
+        };
+        let link_summary = if file.sha256.is_empty() {
+            Value::Null
+        } else {
+            crate::photos::photo_link_summary::get_photo_link_summary_by_sha256(
+                mount,
+                &file.sha256,
+            )?
+        };
+        Ok(Some(json!({
+            "backgroundUrl": format!("/api/v1/files/{}", file.id),
+            "fileId": file.id,
+            "filename": file.original_filename,
+            "sha256": file.sha256,
+            "linkSummary": link_summary,
+        })))
+    });
+    match body {
+        Ok(Some(v)) => Response::ChatBackground(v),
+        Ok(None) => not_found("Chat"),
+        Err(e) => internal(e),
+    }
+}

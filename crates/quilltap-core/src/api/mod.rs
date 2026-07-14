@@ -49,6 +49,9 @@ pub mod system;
 // === P4.6ae: files family (lane A, append-only) ===
 pub mod files;
 // === end P4.6ae ===
+// === P4.6ak: text-replacements (lane A, append-only) ===
+pub mod text_replacements;
+// === end P4.6ak ===
 pub mod types;
 
 pub use chat_create::{ChatCreateDriver, ChatCreateDriverRequest, ChatCreateFuture};

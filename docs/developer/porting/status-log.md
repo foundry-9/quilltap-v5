@@ -11978,3 +11978,98 @@ refuses loudly there; the differential is the proof).
 
 **Final versions:** core 0.0.219, harness 0.0.199, host 0.0.17, web
 0.0.20, SPA 0.5.83.
+
+## P4.6ak — the text-replacements + chat-background server lane (lane A, baseline `02865bdb`) [OPEN] (branch `claude/p4-6ak-text-replacements-server-f4b6cd`)
+
+Lane A of the P4.6ak ∥ P4.6al ∥ P4.6am round. The two server surfaces
+the SPA lanes need live data from — v4's composer-autocorrect rule
+store and the story-background resolver — each differential-verified
+against v4's REAL route handlers.
+
+### Unit 1 — the text-replacements + get-background server surface (core 0.0.220, harness 0.0.200, web 0.0.21) — LANDED
+
+**The repo (`db/text_replacement_rules.rs`).** The Phase-2 repo already
+carried `create`/`update`/`delete` + conflict detection (proven by the
+tier-2 differential). This unit added the route-facing reads/writes:
+`list(enabled_only)` (v4's `_findAll` + sort sortOrder-then-createdAt),
+`find_by_id` (echo the created/updated row), `bulk_replace` (v4's
+transactional full-list replace — dedup the input by
+`(caseSensitive, key)`, delete-all, re-insert with pinned ids, in ONE
+`Db::write` closure = one transaction), and a `TextReplacementRuleRow`
+serde struct (schema key order → v4-byte-identical route body).
+
+**GOTCHA — `sortOrder` is REAL-affinity.** v4's schema-translator maps a
+Zod `z.number()` to a REAL column, so even integer `sortOrder` values
+land as REAL (`0` → `0.0`). The new row-mapper reads sortOrder (and the
+two boolean columns) tolerant of INTEGER/REAL and coerces to `i64` (the
+`files.size` precedent); it serializes back to an integer JSON number
+as v4 does. The seed-row path (`row.get::<i64>`) errored
+`Invalid column type Real` until this landed — the create-echo path
+built the row from the input so it masked the bug; `list`/`patch`/re-read
+surfaced it.
+
+**GOTCHA — v4's doubled 404 message.** The routes call
+`notFound(`Text replacement rule ${id} not found`)`, and v4's
+`notFound(resource)` helper appends ` not found` to its argument — so
+the real body carries the phrase TWICE
+(`…not found not found`). Ported faithfully (`missing_rule_message`);
+the differential + the web-edge test both pin it.
+
+**The dispatch (`api/text_replacements.rs`).** Five handlers
+(`list`/`create`/`update`/`delete`/`bulk_replace`) returning
+`Response::TextReplacement(rawBody)` — `{rules,count}` / `{rule}` /
+`null`-for-the-204. Conflict → `ErrorKind::Conflict` carrying the repo
+`TrrError::Conflict` Display (byte-identical to v4's
+`TextReplacementRuleConflictError`). Input validation ports
+`TextReplacementRuleInputSchema` (fromText 1..100 + no
+leading/trailing whitespace, toText 1..1000, the three defaulted
+fields); the exact multi-issue Zod-message wording is the standing
+Zod-throw seam (the composer only sends valid input — the invalid arm
+is not differential-driven; the refine message is carried verbatim).
+Minting (uuid + `now_iso`) is in the api layer, not the db layer.
+
+**`chatGetBackground` (`api/chat_media.rs`).** A wrap of the existing
+`photo_link_summary` + `FilesRepository::find_by_id` + `chats_read`:
+chat missing → `notFound('Chat')`; no `storyBackgroundImageId` (falsy)
+→ all-null; file row missing → all-null; else the resolved body with
+`linkSummary` = `null` when the file has no sha256 else the mount-index
+reverse index (empty for a legacy `files` image).
+
+**The REST edges (`quilltap-web/text_replacements_routes.rs`).**
+`GET/POST /api/v1/settings/text-replacements`,
+`POST …?action=bulk-replace`,
+`PATCH/DELETE …/{id}`, `GET /api/v1/chats/{id}?action=get-background` —
+each UNWRAPS the dispatch envelope to v4's raw body (the P4.6ah
+lesson). Create → 201, bulk/list/patch → 200, delete → an EMPTY 204,
+the chat route's non-get-background actions → a loud 400 pointer (the
+JSON verbs ride `/api/dispatch`).
+
+**The differential — `text_replacements_routes_equivalence` (15 cases,
+GREEN).** jest real-DB oracle
+(`cases/text-replacements-routes.test.ts`) drives v4's REAL route
+handlers over a fresh copy of the committed
+`text-replacements-{main,mount}.db` per case; the Rust harness diffs
+`{status, body}`. Cases: list (seed, sortOrder-then-createdAt),
+create (+ echo shape + conflict), patch (+ missing + conflict), delete
+(204) (+ missing), bulk-replace (+ then-list ordering + list-empty),
+and the four get-background arms. Minted id/createdAt/updatedAt blanked
+per the oracle's `blank` list. A live web-edge integration test
+(`text_replacements_web_routes.rs`) over the seeded instance pins the
+status mapping + the raw-body unwrap.
+
+**Fixtures.** New committed `text-replacements-{main,mount}.db`
+(under `crates/quilltap-web/tests/fixtures`) + generator
+(`build-text-replacements-web-fixture.ts`) + spec
+(`text-replacements-web.json`): three seed rules (a sortOrder TIE
+broken by createdAt), a background image file (sha256 set), three
+chats (bg / no-bg / dangling-file). A brand-new fixture family —
+invalidates no existing oracle. Regen recipe: see the headers in the
+generator + the oracle case (Node 24; `QT_FIXTURE_TR_MAIN`/`…_MOUNT`
+for the .db, `QT_ORACLE_OUT` for the NDJSON, read by
+`QT_ORACLE_TEXT_REPLACEMENTS`).
+
+**Still OPEN under the order:** Unit 2 (the `regenerate-background`
+loud refusal — tier 2). Deferrals (tier 3, enumerated): the
+story-background *generation* subsystem (image-profile prompt build,
+`lastBackgroundGeneratedAt`, the 30s poll loop); project-level
+`?action=get-background`.

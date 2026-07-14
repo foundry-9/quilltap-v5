@@ -2669,6 +2669,32 @@ impl CoreEngine {
                 Err(resp) => resp,
             },
             // === end P4.6ah ===
+            // === P4.6ak: text-replacements + get-background (lane A) ===
+            Request::TextReplacementsList => match self.ready_db() {
+                Ok(db) => super::text_replacements::list(&db),
+                Err(resp) => resp,
+            },
+            Request::TextReplacementCreate { body } => match self.ready_db() {
+                Ok(db) => super::text_replacements::create(&db, &body).await,
+                Err(resp) => resp,
+            },
+            Request::TextReplacementUpdate { id, body } => match self.ready_db() {
+                Ok(db) => super::text_replacements::update(&db, &id, &body).await,
+                Err(resp) => resp,
+            },
+            Request::TextReplacementDelete { id } => match self.ready_db() {
+                Ok(db) => super::text_replacements::delete(&db, &id).await,
+                Err(resp) => resp,
+            },
+            Request::TextReplacementsBulkReplace { body } => match self.ready_db() {
+                Ok(db) => super::text_replacements::bulk_replace(&db, &body).await,
+                Err(resp) => resp,
+            },
+            Request::ChatGetBackground { chat_id } => match self.ready_db() {
+                Ok(db) => super::chat_media::chat_get_background(&db, &chat_id),
+                Err(resp) => resp,
+            },
+            // === end P4.6ak ===
         }
     }
 

@@ -2,6 +2,25 @@
 
 ## Recent Changes
 
+P4.6ak lane A (server): the text-replacement-rules surface + the chat
+story-background resolver, both differential-verified against v4's real
+route handlers. The Phase-2 `text_replacement_rules` repo gained
+`list` (ordered sortOrder then createdAt), `bulk_replace` (the
+transactional full-list replace), and a `find_by_id`/row projection;
+five dispatch verbs (`textReplacementsList` / `textReplacementCreate` /
+`textReplacementUpdate` / `textReplacementDelete` /
+`textReplacementsBulkReplace`) over them, plus `chatGetBackground` (the
+story-background resolver, all three arms + the chat-not-found 404).
+REST edges at `/api/v1/settings/text-replacements`(`/:id`) and
+`/api/v1/chats/:id?action=get-background` unwrap the dispatch envelope
+to v4's raw route bodies. New committed fixture
+(`text-replacements-{main,mount}.db`) + generator; a 15-case
+`text_replacements_routes_equivalence` differential over a fresh
+`02865bdb` oracle + a live web-edge integration test. Ported v4
+quirks: `sortOrder` reads tolerant of REAL affinity (v4's `z.number()`
+column), and the 404 message carries v4's doubled "not found not
+found". Versions: core 0.0.220, harness 0.0.200, web 0.0.21.
+
 Plan the D17 editor follow-ons + salon dogfood round — three
 agent-ready work orders covering the P4.6ag tier-3 editor deferrals
 and dogfood findings #7/#8/#9. Drift-checked first: v4 HEAD is still

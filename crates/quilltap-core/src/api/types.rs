@@ -1792,6 +1792,45 @@ pub enum Request {
         dry_run: Option<bool>,
     },
     // === end P4.6ah ===
+    // === P4.6ak: text-replacements + get-background (lane A, append-only) ===
+    /// v4 `GET /api/v1/settings/text-replacements` → `{ rules, count }`.
+    TextReplacementsList,
+    /// v4 `POST /api/v1/settings/text-replacements` (create) — the input bag
+    /// (`{fromText, toText, caseSensitive?, enabled?, sortOrder?}`) → `{ rule }`
+    /// (201; duplicate `(fromText, caseSensitive)` → the 409 conflict arm).
+    TextReplacementCreate {
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 `PATCH /api/v1/settings/text-replacements/[id]` — the partial patch bag
+    /// → `{ rule }` (404 when the id is unknown; 409 on a colliding pair).
+    #[serde(rename_all = "camelCase")]
+    TextReplacementUpdate {
+        id: String,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 `DELETE /api/v1/settings/text-replacements/[id]` → 204 (404 when the id
+    /// is unknown).
+    #[serde(rename_all = "camelCase")]
+    TextReplacementDelete {
+        id: String,
+    },
+    /// v4 `POST /api/v1/settings/text-replacements?action=bulk-replace`
+    /// (`{rules: input[]}`) → `{ rules, count }` (the transactional full-list
+    /// replace).
+    TextReplacementsBulkReplace {
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 `GET /api/v1/chats/[id]?action=get-background` → `{ backgroundUrl,
+    /// fileId, filename, sha256, linkSummary }` (all-null when the chat has no
+    /// `storyBackgroundImageId` or the file row is missing).
+    #[serde(rename_all = "camelCase")]
+    ChatGetBackground {
+        chat_id: String,
+    },
+    // === end P4.6ak ===
 }
 
 /// serde double-option: `#[serde(default, deserialize_with = "double_option")]` on
@@ -1947,6 +1986,16 @@ pub enum Response {
     /// envelopes, and the upload `{data}`. Pinned by `files_routes_equivalence`.
     Files(serde_json::Value),
     // === end P4.6ae ===
+    // === P4.6ak === (text-replacements + get-background — lane A, append-only)
+    /// A text-replacement-rules body: the list/bulk `{rules, count}`, the item
+    /// `{rule}`, and `null` for the delete's 204 (the REST edge maps null → an
+    /// empty 204). Pinned by `text_replacements_routes_equivalence`.
+    TextReplacement(serde_json::Value),
+    /// The `chatGetBackground` body (`{backgroundUrl, fileId, filename, sha256,
+    /// linkSummary}` — all-null when unset/missing). Pinned by the same
+    /// differential.
+    ChatBackground(serde_json::Value),
+    // === end P4.6ak ===
     Error(CoreError),
 }
 

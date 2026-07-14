@@ -32,6 +32,9 @@ pub mod qtap_target_route;
 pub mod state;
 pub mod static_serve;
 pub mod terminal_routes;
+// === P4.6ak: text-replacements + get-background REST edges ===
+pub mod text_replacements_routes;
+// === end P4.6ak ===
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -115,6 +118,22 @@ pub fn build_router(state: SharedState) -> Router {
             get(qtap_target_route::qtap_target_get),
         )
         // === end P4.6w ===
+        // === P4.6ak: text-replacements settings surface + chat get-background ===
+        .route(
+            "/api/v1/settings/text-replacements",
+            get(text_replacements_routes::text_replacements_get)
+                .post(text_replacements_routes::text_replacements_post),
+        )
+        .route(
+            "/api/v1/settings/text-replacements/{id}",
+            axum::routing::patch(text_replacements_routes::text_replacement_patch)
+                .delete(text_replacements_routes::text_replacement_delete),
+        )
+        .route(
+            "/api/v1/chats/{id}",
+            get(text_replacements_routes::chat_get_background),
+        )
+        // === end P4.6ak ===
         .route("/setup", get(static_serve::setup))
         .fallback(get(static_serve::spa_fallback))
         .with_state(state)
