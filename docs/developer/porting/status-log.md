@@ -12289,3 +12289,32 @@ patch); chat-composer.spec.ts +1 (enable-gate forwarding). ng build clean.
 **§3 unification wires:** the salon fetches the rule list + the
 `textReplacementsEnabled` flag and binds `[textReplacementRules]` /
 `[textReplacementsEnabled]` on the composer; the live REST edge is lane A's.
+
+### P4.6al — LANE COMPLETE (branch, awaits unification) (2026-07-14)
+
+All Tier 1 (items 1–3) + Tier 2 items 4–5 LANDED. Tier 2 item 6 (further
+form-field adoptions) + all Tier 3 items DEFERRED (loud, enumerated in the order
+header + the final report): the item-6 sites sit outside this lane's core
+ownership (one — characters view details-tab — is lane C's), several without a
+markdown textarea today; the table transformer, missing-host consumers,
+`roleplayTemplateId` toolbar awareness, `__bold__` on-type, and the live-salon
+e2e beats are the enumerated Tier-3 deferrals (the beats are §3 unification
+deliverables).
+
+**§3 unification wires (NOT in-lane, lane C owns `salon-conversation.ts`):** the
+salon binding `documentEditingMode` ↔ `[compositionMode]`/`[chatId]` +
+`compositionModeChange` → `chatUpdate`; the salon fetching + compiling the
+text-replacement rules and binding `[textReplacementRules]` /
+`[textReplacementsEnabled]`. core-contract.ts's P4.6al block (the five
+text-replacement types) awaits the unifier wiring them into the CoreRequest
+union + the name-for-name cross-check against `types.rs`.
+
+**Gate (all green):** `ng test` **749** (was 698 — +51: round-trip +8, keymap +9,
+rich-editor +4, composer +6, markdown-field +6, composition-mode-settings +3,
+text-replacement +9, text-replacement-settings +6, new-character spec re-driven);
+`ng build` clean; the extended `markdown-round-trip.spec.ts` gate green; **full
+Playwright 48/48** (9.9m, zero skips) — the m4-salon `.qt-rich-editor-content`
+composer drive + the salon-documents dialect-bytes beats stayed green under the
+composer changes. No Rust touched (SPA-only lane) → cargo gate N/A.
+
+**Final version:** apps/web SPA **0.5.89** (from the 0.5.83 base).
