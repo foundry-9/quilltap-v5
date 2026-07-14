@@ -10621,3 +10621,48 @@ Playwright 38/38 (the courier + image beats ACTIVE over the seeded
 fixture data; the settings-autonomous walk green after wire 4).
 Versions: core 0.0.210, harness 0.0.191, web 0.0.19, host 0.0.16,
 SPA 0.5.70.
+
+## P4.d3 (lane D) — the db-size-reduction drift re-port (v4 `dd0d9ff5`) [IN PROGRESS] (branch `claude/p4-d3-db-size-drift-3b3682`)
+
+Drift-check: v4 HEAD == baseline `dd0d9ff5` (`git log dd0d9ff5..HEAD`
+empty — no drift). This lane restores parity with v4's DB-size-reduction
+commit and re-baselines every affected differential to `dd0d9ff5`.
+
+### P4.d3 unit 1 — the self-describing quantized embedding blob codec — LANDED
+
+`crates/quilltap-core/src/embedding_blob.rs` re-ported from v4's rewritten
+`lib/embedding/float32-conversion.ts`. `blob_to_float32` is now header-aware
+(int8-symmetric / float16 / legacy raw-Float32, dispatched on the `0xEB 0x01`
+magic+version AND a byte-length-consistent declared dim); `float32_to_blob`
+now WRITES the quantized int8 format (`EMBEDDING_STORAGE_DTYPE = INT8`, the
+single switch), byte-identical to v4 — v5 is a peer writer of the shared synced
+DB, so a mixed-format corpus is unacceptable. New surface:
+`float32_to_quantized` / `quantized_to_float32` / `float32_to_blob_raw` /
+`is_quantized_embedding_blob` + the dtype constants. The twelve call sites are
+untouched (`blob_to_float32(&[u8]) -> Vec<f32>` / `float32_to_blob(&[f32]) ->
+Vec<u8>` signatures preserved).
+
+JS-semantics fidelity pinned: int8 quantization uses `Math.round`
+(half-toward-+∞, `floor(x+0.5)` — Rust `f32::round` is half-away-from-zero and
+would differ at negative half-ties) and the NaN-propagating `Math.min`/`Math.max`
+clamp (Rust's `f64::min`/`max` ignore NaN — the opposite; a `NaN` quant → 0). The
+encode divides by the un-truncated float64 `scale` while writing it to the blob
+as float32 (v4's `writeFloatLE`/`Math.round(src[i]/scale)` asymmetry); the decode
+reads the float32 scale back. The f16 fallback is a faithful transcription of
+v4's manual IEEE-754 half conversion (round-to-nearest-even, subnormals,
+Inf/NaN).
+
+**Differential:** `embedding_vector_equivalence` regenerated FRESH at `dd0d9ff5`
+(`npx tsx harness/oracle/cases/embedding-vector.ts`) — GREEN, byte-exact both
+directions. The oracle's `blob` cases now emit quantized bytes (magic `235`) and
+int8-dequantized round-trip vectors; the pre-port raw-f32 writer would have
+failed the byte-equality assertion by construction (e.g. `[1.5]` → 4 raw bytes
+`[0,0,192,63]` vs the oracle's 12-byte `[235,1,1,1,0,0,0,6,131,65,60,127]`).
+Plus 17 in-crate unit tests mirroring v4's own pins (per-element error ≤ scale,
+mean cosine ≥ 0.999 int8 / ≥ 0.9999 f16, top-10 retrieval overlap ≥ 0.95 on a
+clustered corpus, `11+dim` / `7+2*dim` sizes, legacy bit-exact decode,
+all-zero/empty/short/truncated detection).
+
+Committed fixtures keep their raw-f32 blobs — the header-aware reader makes them
+valid legacy data; they were NOT re-packed. The `quantize-embeddings-v1`
+migration is NOT ported (v4-only by design; v5 reads both formats forever).

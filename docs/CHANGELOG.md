@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+P4.d3 unit 1: the embedding BLOB codec now reads and writes v4's
+self-describing quantized format. Stored embeddings shrink ~4× (int8
+symmetric quantization with a per-vector scale; float16 fallback
+supported), and the header-aware reader keeps legacy raw-Float32 blobs
+readable, so an instance can hold both formats during and after v4's
+quantization migration. Writes match v4 byte-for-byte.
+
 Drift-amend the files-family + editor round to four lanes: v4 moved
 to dd0d9ff5 (4.8.0-dev.52, DB size reduction — int8-quantized
 embedding blobs, stale-chat cache collapse, cold-tier chunk
