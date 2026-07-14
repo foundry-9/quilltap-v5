@@ -418,12 +418,33 @@ records THERE. Update this summary only when a phase or round completes.
   tier-2 remainder, the files-family server surface, the ProseMirror
   editor (D17), the Salon in-chat Edit-Enclave entry + salon-list
   autonomous toggle, or P4.7 (Tauri) — see phase-4.md.
+- **The P4.6ae ∥ P4.6af ∥ P4.6ag files-family + editor round: UNIFIED
+  on main (2026-07-14) — P4.6af/P4.6ag CLOSED, P4.6ae OPEN (partial).**
+  The nine-verb general files dispatch surface (25-case differential
+  over the new committed `files-{main,mount}.db` fixture) ∥ the
+  `/files` SPA vertical (legacy FileBrowser + preview + dialogs +
+  shell nav) + the salon autonomous riders (Edit-Enclave header entry;
+  include-autonomous toggle + hint, live 3/3 walk) ∥ **D17 DECIDED:
+  ProseMirror ADOPTED (gate GREEN)** — the bespoke `qt-rich-editor`
+  (v4-dialect markdown bridge, 28-entry byte-round-trip gate) adopted
+  in the Document Mode pane AND the chat composer, with input rules +
+  commands + live dialect-bytes beats. Gate: 310 Rust suites / 1318
+  tests, clippy both feature sets, ng test 691, Playwright 45 passed +
+  1 guarded skip (the files data beat awaits the upload REST leg).
+  **The P4.6ae remainder stays OPEN (its order header enumerates it):
+  the P4.6ab tier-2 close-out (chatFileUpload + `imageProfileGenerate`
+  over the still-missing `EngineAssembly.image_generation` seam), the
+  `fileUpload` variant + upload REST leg, thumbnails/cleanup verbs,
+  the itemized FILE_HAS_ASSOCIATIONS envelope + dissociate arm.**
+  Next candidates: finish P4.6ae, the D17 tier-3 editor follow-ons
+  (form-field consumers, tables), the deferred autonomous-rooms
+  cards, or P4.7 (Tauri) — see phase-4.md.
 - **Oracle baseline: v4 HEAD `dd0d9ff5`** (rebased 2026-07-14 with the
   P4.d3 db-size-reduction drift re-port — quantized embedding codec
   live both directions, v5 reads legacy + int8 + f16 and writes int8
   byte-identically to v4). ⚠ v4's `quantize-embeddings-v1` migration
   is one-way — back up Friday before first running v4 `4.8.0-dev.52`+
   against it. Drift-check before every round.
-  Versions: core 0.0.214, harness 0.0.195, host 0.0.16, web 0.0.19, SPA 0.5.71.
+  Versions: core 0.0.216, harness 0.0.196, host 0.0.16, web 0.0.19, SPA 0.5.82.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

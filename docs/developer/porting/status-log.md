@@ -11400,3 +11400,76 @@ drive); no logic change. `e2e/salon-scroll.spec.ts:157` and
 `salon-courier-images-flow.spec.ts:106` were inspected and NOT touched (a
 visibility check on the composer host; an unrelated courier bubble
 textarea). The phase-4.md D17 note is left for the round-completion doc pass.
+
+---
+
+## The P4.6ae ∥ P4.6af ∥ P4.6ag round record — UNIFIED on main (2026-07-14)
+
+The files-family + editor round (the fourth lane, P4.d3, unified ahead
+on 2026-07-14 — its record is above). All three lanes branched from
+main `c1ed1cc` at v4 baseline `dd0d9ff5` (re-verified at unification:
+v4 HEAD unmoved). Cherry-picked in dependency order (A server → B SPA
+contract → C editor) onto `unify/p4.6ae-af-ag`; conflicts were
+CHANGELOG/status-log union-merges and the SPA version accumulation
+(0.5.71 + 4 lane-B bumps + 6 lane-C bumps → 0.5.81; the wire commit →
+0.5.82). No source-level conflicts — Ownership held.
+
+**Lane outcomes:**
+
+- **P4.6ae (lane A) — OPEN, partial.** Units 1+2+3+5 landed: the
+  db/folders/folder_utils leaves and the nine-verb general files
+  dispatch surface, proven by `files_routes_equivalence` (25 cases)
+  over the committed `files-{main,mount}.db`. NOT landed (enumerated
+  in the order header): the P4.6ab tier-2 close-out (chatFileUpload +
+  the web multipart leg; the `imageProfileGenerate` un-refusal — the
+  `EngineAssembly.image_generation` seam does NOT exist yet), the
+  `fileUpload` variant + upload REST leg (unit 4), tier 2
+  (thumbnails, cleanup-stale/orphans, chat-file link), the
+  FILE_HAS_ASSOCIATIONS itemized envelope + the dissociate arm. The
+  SPA composer attach still 404s inline; the SPA's cleanup/thumbnail
+  calls 400 as unknown variants (thumbnails fire-and-forget is
+  swallowed; cleanup surfaces the error envelope loudly).
+- **P4.6af (lane B) — CLOSED.** The files-family wire contract, the
+  /files vertical, both salon riders, both e2e walks. Recorded
+  divergences: `general-files-flow.spec.ts` naming (foundation
+  ordering), Edit-Enclave in the conversation header, the toggle in
+  the salon-list header (same localStorage key as v4).
+- **P4.6ag (lane C) — CLOSED, D17 DECIDED: ProseMirror ADOPTED (gate
+  GREEN).** All tiers; deferrals enumerated in its round record above.
+
+**Unification wires:** (1) the contract diffed name-for-name across
+`core-contract.ts` and the `types.rs` P4.6ae block — no divergences;
+the four client-declared not-yet-live verbs degrade as loud
+unknown-variant 400s. (2) The files e2e data beat's self-activation
+guard extended to cover the upload REST leg (it seeds through that
+leg; with only `filesList` probed it would have 404'd at seed time
+once the verbs went live) — it now skips cleanly and self-activates
+when P4.6ae unit 4 lands. (3) The terminal-flow walk's chip-count
+baseline settled: the virtualized message list mounts asynchronously,
+and lane C's extended documents walk grew the shared chat's history
+enough that a too-early snapshot read 0 and the stale chip mounted
+together with the post-spawn refetch (0 → 2, overshooting
+baseline+1). The baseline now waits for two agreeing reads 450ms
+apart (the salon-scroll drain idiom). Isolated-vs-in-suite runs
+confirmed the gesture (fixed), not the port.
+
+**The gate (all on the unify branch, fresh build):** `cargo fmt`
+clean; release build; clippy default AND native-transport, -D
+warnings, both clean; `files_routes_equivalence` regenerated FRESH
+from v4 at `dd0d9ff5` (jest real-DB oracle, 25 cases) and run by
+name — all OK; `cargo test --workspace` 310 suites / 1318 tests / 0
+failures; `ng test` 691 (92 files); `ng build` clean (the
+pre-existing `extend` CommonJS warning only); full Playwright 45
+passed + 1 skip (the guarded files data beat) after the terminal
+gesture fix, including the salon-autonomous walk (3/3), the
+general-files render beat, the rich-editor documents + composer
+dialect beats, and the m4-salon contenteditable drive.
+
+**Final versions:** core 0.0.216, harness 0.0.196, web 0.0.19, host
+0.0.16, SPA 0.5.82.
+
+**Next candidates:** finish P4.6ae (its order header enumerates the
+remainder — the image_generation seam + chatFileUpload close the
+long-OPEN P4.6ab tier 2), the D17 tier-3 editor follow-ons
+(form-field consumers, tables), the deferred autonomous-rooms cards,
+or P4.7 (Tauri).

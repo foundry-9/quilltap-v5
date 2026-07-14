@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+Unify the P4.6ae ∥ P4.6af ∥ P4.6ag files-family + editor round onto
+main. P4.6af CLOSED (the /files general-files SPA vertical + the two
+salon autonomous riders); P4.6ag CLOSED — D17 DECIDED: ProseMirror
+ADOPTED (gate GREEN), the qt-rich-editor ships in the Document Mode
+pane and the chat composer; P4.6ae stays OPEN (partial): the nine
+general-files dispatch verbs landed with the 25-case differential, but
+the P4.6ab tier-2 close-out (chatFileUpload, imageProfileGenerate),
+the upload REST leg, thumbnails/cleanup, and the itemized
+FILE_HAS_ASSOCIATIONS envelope remain. Gate: 310 Rust suites / 1318
+tests (files differential regenerated fresh at dd0d9ff5), clippy both
+feature sets, ng test 691, ng build clean, Playwright 45 passed / 1
+guarded skip. Final versions: core 0.0.216, harness 0.0.196, web
+0.0.19, host 0.0.16, SPA 0.5.82.
+
 P4.6ae∥af∥ag unification wire: the general-files e2e data beat's
 self-activation guard now also covers the `?action=upload` REST leg
 (P4.6ae unit 4, still OPEN) — with lane A's dispatch verbs live but the

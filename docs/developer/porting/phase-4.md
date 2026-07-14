@@ -217,6 +217,21 @@ boundary; streaming only on `Event`; the `Db` ownership model; enclave
   removed). ProseMirror stays the NAMED next-round decision for a rich
   markdown/chat-composer editor; the D17 chat-composer spike (Lexical's
   second, separate consumer) is untouched by this outcome and remains open.
+  **D17 DECIDED (P4.6ag, 2026-07-14): ProseMirror ADOPTED — gate GREEN.**
+  The committed byte-round-trip gate
+  (`apps/web/src/app/editor/markdown-round-trip.spec.ts`, 28 corpus
+  entries each traced to a v4 transformer/preserve flag) ran GREEN over a
+  v4-dialect bridge (`markdown-dialect.ts`: em→`_`, the ported
+  `stripMarkdownEscapes` + bracket strip, a single-`*`-literal markdown-it
+  rule, softbreak→`\n`, checklists). The bespoke `qt-rich-editor` shipped
+  and is adopted in BOTH sanctioned surfaces — the Document Mode pane
+  (markdown files only, frontmatter split + raw-source toggle preserved;
+  `USES_RICH_MARKDOWN_EDITOR = true`, absorb-once specced) and the chat
+  composer (send-reads-handle, `ComposerSend` unchanged, roleplay-literal
+  `*` preserved) — plus input rules + formatting commands and live e2e
+  dialect-bytes beats. Deferred loud: inline emphasis-on-type rules,
+  tables, strikethrough/highlight, the form-field consumers,
+  TextReplacementPlugin, draft persistence.
 - **D18 — Settled component choices carry over.** File manager: **ngx-explorer
   spike, build-our-own fallback** (`scriptorium-file-manager.md`).
   **SPIKE OUTCOME (P4.6aa, 2026-07-13): ngx-explorer 5.0.2 ran GREEN on
@@ -1227,3 +1242,33 @@ unstarted — they now run against main-with-P4.d3 at `dd0d9ff5`;
 lane A is the round's only remaining core-dispatch writer, so the
 two-writer rule is moot unless the lanes overlap in time with a
 future drift lane.** Round record: `status-log.md`.
+
+**The P4.6ae ∥ P4.6af ∥ P4.6ag round is UNIFIED on main
+(2026-07-14) — P4.6af CLOSED, P4.6ag CLOSED (D17 DECIDED:
+ProseMirror ADOPTED, gate GREEN), P4.6ae OPEN (partial).** Landed:
+the general files dispatch surface (nine verbs, the 25-case
+`files_routes_equivalence` differential over the new committed
+`files-{main,mount}.db` fixture) ∥ the `/files` SPA vertical
+(legacy FileBrowser + preview + dialogs + shell nav) + the two
+salon autonomous riders (Edit-Enclave header entry; the
+include-autonomous toggle + hint + New-Autonomous-Room action,
+live 3/3 walk) ∥ the bespoke `qt-rich-editor` (ProseMirror over
+the v4-dialect bridge, 28-entry byte-round-trip gate GREEN)
+adopted in the Document Mode pane AND the chat composer, with
+input rules + formatting commands + live dialect-bytes e2e beats.
+Unification wires: contract diffed name-for-name (no divergences);
+the files e2e data beat's guard extended to cover the un-landed
+upload REST leg (self-activates when P4.6ae unit 4 lands); the
+terminal-flow chip baseline settled against the virtualized-list
+mount race. Gate: 310 Rust suites / 1318 tests (files differential
+fresh at `dd0d9ff5`), clippy both feature sets, ng test 691,
+ng build clean, Playwright 45 passed + the 1 guarded files data
+beat skipped. **The P4.6ae remainder (see its order header): the
+P4.6ab tier-2 close-out (chatFileUpload + the
+`imageProfileGenerate` un-refusal over the still-missing
+`EngineAssembly.image_generation` seam), the `fileUpload` variant
++ upload REST leg, thumbnails/cleanup verbs + the chat-file link
+leg, the FILE_HAS_ASSOCIATIONS itemized envelope + dissociate
+arm.** Next candidates: finish P4.6ae, the editor form-field
+consumers / tables (D17 tier 3), autonomous-rooms deferred cards,
+or P4.7 (Tauri).
