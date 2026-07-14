@@ -11347,3 +11347,56 @@ Enter) since `fill()` targets input/textarea. Both walks GREEN live
 the shared-server first-unlock is cold and can exceed foundation's 5s
 `Chats` wait on a busy machine — a PRE-EXISTING foundation-flake unrelated
 to this lane; a warm run passes. SPA 0.5.77.
+
+**P4.6ag ROUND RECORD — D17 DECIDED: ProseMirror ADOPTED (gate GREEN).**
+The committed byte-round-trip gate (`editor/markdown-round-trip.spec.ts`, 28
+corpus entries each traced to a v4 transformer/preserve flag) ran GREEN, so
+— unlike the Lexical spike (P4.6x, RED, which left no committed harness —
+this lane does not repeat that) — the bespoke `qt-rich-editor` (ProseMirror
+over a v4-dialect markdown bridge) SHIPS and is adopted in the two
+sanctioned surfaces: the Document Mode pane (markdown files only, v4 parity)
+and the chat composer. This mirrors the D18 shape (a committed gate decides
+adoption) but with the opposite verdict from ngx-explorer: gate GREEN AND
+adoption proceeds, because the dialect round-trips byte-faithfully after the
+serializer-bridge port (em→`_`, the ported `stripMarkdownEscapes`,
+softbreak→`\n`, the bracket strip, and the single-`*`-literal parser guard).
+
+Units: (1) the gate; (2) `qt-rich-editor` + handle; (3) Document Mode
+adoption (markdown, frontmatter split, source toggle, `USES_RICH_MARKDOWN_EDITOR`
+flipped true + the absorb-once spec); (4) composer adoption
+(send-reads-handle, roleplay-literal, paste-image, `ComposerSend` unchanged);
+(5) input rules + formatting commands; (6) live e2e beats. Deps added
+(lane C is the round's sole dep owner): `prosemirror-{model,state,view,
+markdown,commands,keymap,history,inputrules,schema-list}` + `markdown-it`.
+
+**Tier-3 deferrals (loud, enumerated — the `not_available` idiom's SPA
+analogue: named, not stubbed):**
+- Inline emphasis-on-type input rules (`_italic_`/`**bold**`/`__bold__`/
+  `` `code` `` auto-format — v4 Lexical MarkdownShortcut). NOT landed;
+  emphasis/code are reached via the Mod-i/Mod-b/`` Mod-` `` commands, and
+  typing the delimiters leaves them literal (still byte-faithful on
+  serialize). Single-`*` NEVER auto-formats (quirk #6, permanent).
+- The v4 multiline **table** transformer (tier-2 item 6) — NOT ported;
+  `prosemirror-tables` NOT added. Tables are outside the gate corpus; a
+  follow-on unit ports the custom transformer's round-trip if wanted.
+- Strikethrough (`~~`) / highlight (`==`) marks — outside the gate corpus;
+  links round-trip today but are tier-2/unspecced.
+- The form-field consumers (memory editor, scenario editor, character
+  fields — v4 `MarkdownLexicalEditor` sites): a follow-on order; each keeps
+  its textarea + its existing doc-comment marker.
+- `TextReplacementPlugin` (autocorrect); draft persistence (v4
+  `onPersistDraft` — no draft store yet); Document-Mode standalone editor
+  surfaces beyond the pane.
+
+**Known dialect normalizations (match v4, or are one-time absorbs):**
+two-space hard break → `\n`; `__bold__` → `**bold**`; `# H\nbody` →
+block-separated `# H\n\nbody`. Absorbed once by
+`USES_RICH_MARKDOWN_EDITOR` + `computeAbsorbNext`; stable thereafter.
+
+**Cross-lane note for the unifier:** this lane touched
+`e2e/m4-salon.spec.ts` (outside its Ownership list) — a one-line mechanical
+consequence of the sanctioned composer swap (`.fill()` → contenteditable
+drive); no logic change. `e2e/salon-scroll.spec.ts:157` and
+`salon-courier-images-flow.spec.ts:106` were inspected and NOT touched (a
+visibility check on the composer host; an unrelated courier bubble
+textarea). The phase-4.md D17 note is left for the round-completion doc pass.
