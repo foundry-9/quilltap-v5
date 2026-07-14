@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Dogfood findings #7–#9 logged (docs only, no code changes): #7 chained
+characters' finished responses don't render until the chain ends (the
+streaming overlay never renders the reducer's accumulated intermediate
+messages — port divergence, fix deferred to the next Salon slice); #8
+the composition-mode toggle (Enter-inserts-newline) is an unported v4
+feature, now a named deferral; #9 chat background images aren't
+rendered by the Salon, now a named deferral.
+
 Unify P4.6ah∥ai∥aj∥d4 (the "finish P4.6ae + catch up from v4" round):
 all four orders CLOSED, and P4.6ae + P4.6ab (tier 2) close with them.
 The files write + maintenance server remainder (chat-file upload +
