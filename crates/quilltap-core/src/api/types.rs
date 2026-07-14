@@ -1667,6 +1667,95 @@ pub enum Request {
         stale_chat_days: Option<serde_json::Value>,
     },
     // === end P4.d3 ===
+    // === P4.6ae === (the general files family — lane A, append-only)
+    /// v4 GET `/api/v1/files` — `{files: FileEntry[]}` (`serializeFileEntry`),
+    /// `createdAt` DESC, `filter='general'` → projectId null.
+    FilesList {
+        #[serde(default, rename = "projectId")]
+        project_id: Option<String>,
+        #[serde(default, rename = "folderPath")]
+        folder_path: Option<String>,
+        #[serde(default)]
+        filter: Option<String>,
+    },
+    /// v4 `POST /api/v1/files/[id]?action=move` — `{data: ManagedFile}`. `projectId`
+    /// is a TRI-STATE (absent keeps / null clears / value sets), decoded via
+    /// [`double_option`].
+    FileMove {
+        #[serde(rename = "fileId")]
+        file_id: String,
+        #[serde(default, rename = "folderPath")]
+        folder_path: Option<String>,
+        #[serde(default)]
+        filename: Option<String>,
+        #[serde(default, rename = "projectId", deserialize_with = "double_option")]
+        project_id: Option<Option<String>>,
+    },
+    /// v4 `POST /api/v1/files/[id]?action=promote` — `{data: ManagedFile}`.
+    /// `targetProjectId ?? null` (null/absent both clear to general).
+    FilePromote {
+        #[serde(rename = "fileId")]
+        file_id: String,
+        #[serde(default, rename = "targetProjectId")]
+        target_project_id: Option<String>,
+        #[serde(default, rename = "folderPath")]
+        folder_path: Option<String>,
+    },
+    /// v4 `DELETE /api/v1/files/[id]` — `{success:true}` | the
+    /// `FILE_HAS_ASSOCIATIONS` 400. `dissociate` is refusal-armed this lane.
+    FileDelete {
+        #[serde(rename = "fileId")]
+        file_id: String,
+        #[serde(default)]
+        force: bool,
+        #[serde(default)]
+        dissociate: bool,
+    },
+    /// v4 GET `/api/v1/files/folders` — `{folders, count}` (`path` localeCompare ASC).
+    FilesFoldersList {
+        #[serde(default, rename = "projectId")]
+        project_id: Option<String>,
+    },
+    /// v4 `POST /api/v1/files/folders?action=create` — `{folder, alreadyExists,
+    /// message}` (idempotent; auto-creates the parent chain).
+    FilesFolderCreate {
+        path: String,
+        #[serde(default, rename = "projectId")]
+        project_id: Option<String>,
+    },
+    /// v4 `POST /api/v1/files/folders?action=rename` — `{oldPath, newPath,
+    /// foldersUpdated, filesUpdated}`.
+    FilesFolderRename {
+        path: String,
+        #[serde(rename = "newName")]
+        new_name: String,
+        #[serde(default, rename = "projectId")]
+        project_id: Option<String>,
+    },
+    /// v4 `POST /api/v1/files/folders?action=delete` — `{message, path}` (two
+    /// DISTINCT non-empty 400s).
+    FilesFolderDelete {
+        path: String,
+        #[serde(default, rename = "projectId")]
+        project_id: Option<String>,
+    },
+    /// v4 `POST /api/v1/files?action=sync` — STAYS refusal-armed (the unported
+    /// `lib/file-storage/reconciliation` subsystem).
+    FilesSync,
+    // === end P4.6ae ===
+}
+
+/// serde double-option: `#[serde(default, deserialize_with = "double_option")]` on
+/// an `Option<Option<T>>` field decodes an ABSENT field to `None`, an explicit
+/// `null` to `Some(None)`, and a value to `Some(Some(v))` — the null-vs-absent
+/// distinction serde's default `Option` collapses. Used for the `fileMove`
+/// projectId tri-state.
+fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    Deserialize::deserialize(de).map(Some)
 }
 
 /// Typed DTO per variant (the uniffi payoff). `Error` carries the one
@@ -1803,6 +1892,12 @@ pub enum Response {
     /// `successResponse(settings)`. Pinned by `settings_routes_equivalence`.
     DataRetention(serde_json::Value),
     // === end P4.d3 ===
+    // === P4.6ae === (the general files family — lane A, append-only)
+    /// A general files-family body: the listing `{files}`, move/promote `{data}`,
+    /// delete `{success}`, the folders `{folders,count}` / create / rename / delete
+    /// envelopes, and the upload `{data}`. Pinned by `files_routes_equivalence`.
+    Files(serde_json::Value),
+    // === end P4.6ae ===
     Error(CoreError),
 }
 

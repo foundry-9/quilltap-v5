@@ -10980,3 +10980,66 @@ files surface reads/writes the port was missing:
 
 Gate: fmt/clippy(default + native-transport)/build/test all green;
 `quilltap-core` 0.0.214 → 0.0.215.
+
+**Units 2+3+5 (the general files dispatch surface + fixture + differential).**
+`api/files.rs` (NEW) ports v4's `app/api/v1/files/**` route logic; the P4.6ae
+delimited blocks in `types.rs`/`engine.rs`/`mod.rs` add the nine Request
+variants + the `Response::Files` body; the `MovePid` tri-state rides a serde
+`double_option` (absent/null/value). Verbs: `filesList`, `fileMove`,
+`filePromote`, `fileDelete`, `filesFoldersList`, `filesFolderCreate`,
+`filesFolderRename`, `filesFolderDelete`, `filesSync` (loud refusal). All JSON,
+over `/api/dispatch` (no web edit).
+
+Quirks pinned (the oracle taught these — do not "fix"):
+- **Reads drop null optionals, mutations echo patched nulls** (P4.6p): a list
+  file omits null `projectId`/`description`/`width`/`height`; a move/promote
+  managed response OMITs an unpatched-null projectId but PRESENTs an
+  explicitly-patched one (the `{...existing,...patch}` merge — built from the
+  pre-read file + patch, NOT a re-read).
+- **General folders list is ALWAYS empty**: `findByUserId` marshals a NULL
+  `projectId` to `undefined`, and the GET filter is strict `=== null` → no
+  general folder ever matches. Reproduced.
+- **Two file shapes** never unified: `serializeFileEntry` (resolved folderPath,
+  both filename fields) vs `buildManagedFileResponse` (raw folderPath,
+  `filename` only). **Folder-create echo** carries explicit nulls (created
+  entity) while the idempotent arm drops them (a read).
+- Delete's files-count check fires BEFORE the subfolders check (a folder with
+  files+children → the "N file(s)" 400).
+
+Differential `files_routes_equivalence` (25 cases, jest real-DB oracle over the
+NEW committed `files-{main,mount}.db`): list (general/project/folder +
+resolved-vs-raw), folders list (general-empty + project), move (folder /
+filename / to-project / to-general / missing-project 404 / none 400), promote
+(project / general), delete (happy / stale-linkedTo-clear / forbidden 403),
+folders create (new 201 / idempotent 200 / parent-chain) + rename (+ root 400)
++ delete (happy / files 400 / files-before-subfolders / subfolders-only 400).
+Folder dumps canonicalized id→path (minted parent-chain ids). **Fixture gotcha:
+materialize the `chats` + `chat_messages` tables (ensureCollection +
+getMessageCount) — the associations read touches them and v4's oracle
+auto-creates them in its working copy, masking a "no such table" in the
+committed fixture otherwise.**
+
+Regen recipe (Node 24, from `~/source/quilltap-server`):
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; W=<worktree>
+QT_FIXTURE_FILES_MAIN=$W/crates/quilltap-web/tests/fixtures/files-main.db \
+QT_FIXTURE_FILES_MOUNT=$W/crates/quilltap-web/tests/fixtures/files-mount.db \
+  $N/node --import tsx $W/harness/oracle/fixtures/build-files-web-fixture.ts   # rebuild fixture
+TMPO=/tmp/qt-files-oracle; rm -rf $TMPO; mkdir -p $TMPO/cases $TMPO/fixtures
+cp $W/harness/oracle/cases/files-routes.test.ts $TMPO/cases/
+cp $W/harness/oracle/fixtures/files-web.json $TMPO/fixtures/
+QT_FIXTURE_FILES_MAIN=… QT_FIXTURE_FILES_MOUNT=… QT_ORACLE_OUT=/tmp/oracle-files-routes.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots "$TMPO/cases" -- files-routes
+# then: QT_ORACLE_FILES_ROUTES=/tmp/oracle-files-routes.ndjson cargo test -p quilltap-harness --test files_routes_equivalence
+```
+
+Loud deferrals (this lane, enumerated): the `FILE_HAS_ASSOCIATIONS` itemized
+`associations` wire payload (`CoreError` has no field; `get_file_associations`
+is ported + directly verifiable, but not carried on the 400 — a coordinated
+four-order envelope change to deliver it to lane B); `dissociate=true`
+(refusal-armed); `filesSync` (the reconciliation subsystem). STILL OPEN under
+this order: the upload REST leg (unit 4), thumbnails + cleanup-stale/orphans +
+chat-file link (Tier 2), and the P4.6ab tier-2 close-out (units 6/7 — chat-file
+upload + `imageProfileGenerate` un-refusal). Gate: fmt/clippy(both feature
+sets)/`cargo test --workspace` green with `files_routes_match_oracle` RUN by
+name; core 0.0.215→0.0.216, harness 0.0.195→0.0.196.

@@ -46,6 +46,9 @@ pub mod settings;
 // === P4.6z: system ===
 pub mod system;
 // === end P4.6z ===
+// === P4.6ae: files family (lane A, append-only) ===
+pub mod files;
+// === end P4.6ae ===
 pub mod types;
 
 pub use chat_create::{ChatCreateDriver, ChatCreateDriverRequest, ChatCreateFuture};

@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+P4.6ae units 2+3+5 (files-family server): the general files dispatch
+surface goes live over `/api/dispatch` — `filesList`, `fileMove`,
+`filePromote`, `fileDelete`, `filesFoldersList`, `filesFolderCreate`,
+`filesFolderRename`, `filesFolderDelete`, and the loud `filesSync`
+refusal. A new `api/files.rs` ports v4's `app/api/v1/files/**` route
+logic (both file-response shapes; the read-marshaling null-drop vs
+mutation null-echo distinction; the empty general-folders list; the
+`{...existing,...patch}` move/promote merge). Proven by the new
+`files_routes_equivalence` differential (25 cases) over the committed
+`files-{main,mount}.db` fixture, driving v4's real handlers. Deferred
+loud: the `FILE_HAS_ASSOCIATIONS` itemized-associations wire payload
+(the shared `CoreError` has no field and widening it touches out-of-lane
+host code — the computation is ported + verified directly) and the
+`dissociate=true` delete arm. Versions: core 0.0.216, harness 0.0.196.
+
 P4.6ae unit 1 (files-family server): the db-layer + folder-path leaves
 the general files surface needs. `db/files.rs` gains the `FileFull`
 projection and `find_full_by_id` / `find_by_user_id` /

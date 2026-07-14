@@ -2447,6 +2447,126 @@ impl CoreEngine {
                 Err(resp) => resp,
             },
             // === end P4.d3 ===
+            // === P4.6ae === (the general files family — lane A, append-only)
+            Request::FilesList {
+                project_id,
+                folder_path,
+                filter,
+            } => match self.ready_db() {
+                Ok(db) => super::files::files_list(
+                    &db,
+                    SINGLE_USER_ID,
+                    project_id.as_deref(),
+                    folder_path.as_deref(),
+                    filter.as_deref(),
+                ),
+                Err(resp) => resp,
+            },
+            Request::FileMove {
+                file_id,
+                folder_path,
+                filename,
+                project_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    // Decode the double-option into the handler's tri-state.
+                    let pid = match project_id {
+                        None => super::files::MovePid::Keep,
+                        Some(None) => super::files::MovePid::Clear,
+                        Some(Some(p)) => super::files::MovePid::Set(p),
+                    };
+                    super::files::file_move(
+                        &db,
+                        SINGLE_USER_ID,
+                        &file_id,
+                        folder_path,
+                        filename,
+                        pid,
+                    )
+                    .await
+                }
+                Err(resp) => resp,
+            },
+            Request::FilePromote {
+                file_id,
+                target_project_id,
+                folder_path,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::files::file_promote(
+                        &db,
+                        SINGLE_USER_ID,
+                        &file_id,
+                        target_project_id,
+                        folder_path,
+                    )
+                    .await
+                }
+                Err(resp) => resp,
+            },
+            Request::FileDelete {
+                file_id,
+                force,
+                dissociate,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::files::file_delete(&db, SINGLE_USER_ID, &file_id, force, dissociate)
+                        .await
+                }
+                Err(resp) => resp,
+            },
+            Request::FilesFoldersList { project_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::files::files_folders_list(&db, SINGLE_USER_ID, project_id.as_deref())
+                }
+                Err(resp) => resp,
+            },
+            Request::FilesFolderCreate { path, project_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::files::files_folder_create(
+                        &db,
+                        SINGLE_USER_ID,
+                        &path,
+                        project_id.as_deref(),
+                    )
+                    .await
+                }
+                Err(resp) => resp,
+            },
+            Request::FilesFolderRename {
+                path,
+                new_name,
+                project_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::files::files_folder_rename(
+                        &db,
+                        SINGLE_USER_ID,
+                        &path,
+                        &new_name,
+                        project_id.as_deref(),
+                    )
+                    .await
+                }
+                Err(resp) => resp,
+            },
+            Request::FilesFolderDelete { path, project_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::files::files_folder_delete(
+                        &db,
+                        SINGLE_USER_ID,
+                        &path,
+                        project_id.as_deref(),
+                    )
+                    .await
+                }
+                Err(resp) => resp,
+            },
+            Request::FilesSync => match self.ready_db() {
+                Ok(_db) => super::files::files_sync(),
+                Err(resp) => resp,
+            },
+            // === end P4.6ae ===
         }
     }
 
