@@ -11799,3 +11799,102 @@ case). Reopen if an end-to-end orchestrator regression on the new arm is
 ever suspected.
 
 Versions bumped: core 0.0.216 → 0.0.217, harness 0.0.196 → 0.0.197.
+
+---
+
+## P4.6aj (lane C) — the files SPA delete-associations close-out (2026-07-14, branch, awaits unification)
+
+Lane C of the P4.6ah ∥ P4.6ai ∥ P4.6aj ∥ P4.d4 round. SPA-ONLY (no
+Rust, no v4 port). Drift-checked: v4 HEAD at the pinned baseline
+`02865bdb` (`git log 02865bdb..HEAD` empty).
+
+**Fresh-survey finding — the order contradicted v4; scope reconciled
+(user-approved).** The order mandated a two-button dialog offering
+"force" AND "dissociate," and assumed today's SPA shows a plain alert.
+The survey found neither is v4-true:
+
+- v4's `components/files/FileDeleteConfirmation.tsx` has ONE action —
+  "Delete Anyway" — and v4's `FileBrowser.tsx handleConfirmDelete
+  WithDissociation` sends `?dissociate=true`. **No v4 client UI ever
+  sends `force`** (grepped `components/files`, `app/files`,
+  `app/prospero` — zero hits). The `force` query param exists in the
+  server `actions/delete.ts` but no front-end uses it.
+- P4.6af already landed the full itemized dialog (`file-delete-
+  confirmation.ts`, a faithful port), the two-stage flow + the
+  `extractAssociations` envelope reader (tolerates top-level or
+  `details`-nested `associations`), and the `FileAssociations` type +
+  `FileDeleteRequest {force?, dissociate?}` in `core-contract.ts`.
+
+Per the differential discipline (v4 is the oracle) the "force" button
+was NOT invented. Reduced v4-faithful scope, approved by the human:
+keep the dissociate-only dialog; add the genuinely-missing test
+coverage + a verifiable e2e beat; report the discrepancy at
+unification.
+
+**Landed:**
+
+- **Unit 1 (tier 1) — dialog + flow coverage.** New
+  `file-delete-confirmation.spec.ts` (6 cases): renders the itemized
+  characters [with usage rider] + messages; hides an empty characters
+  or messages section; emits `confirm` on "Delete Anyway"; emits
+  `cancel` on "Cancel"; disables both actions + relabels the confirm
+  to "Deleting…" while `isDeleting`. Added the "a clean delete (no
+  associations) skips the dialog entirely" case to
+  `files-browser.spec.ts` (completes the order's Tier-1 item-3
+  enumerated cases minus the v4-nonexistent force). `ng test` 698
+  (was 691).
+
+- **Unit 2 (tier 2) — the delete-associations e2e beat.** New
+  `P4.6aj` describe in `general-files-flow.spec.ts` (sorts after
+  `foundation.spec.ts`): bare delete → the itemized "This file is in
+  use" dialog (asserts the seeded character + chat) → "Delete Anyway"
+  → the dissociate resend → the file drops from the refetched list.
+  **Route-MOCKED, not lane A's fixture, and by necessity:** v4's
+  `serializeFileEntry` (`app/api/v1/files/shared.ts`) omits
+  `linkedTo`, so the general-files LIST never reveals which file is
+  linked — a self-activating beat could not find lane A's seeded
+  associations-arm row without a DESTRUCTIVE delete-probe over the
+  shared fixture. The order explicitly sanctions mocking the
+  FILE_HAS_ASSOCIATIONS response; the beat intercepts the
+  `/api/dispatch` files reads + both `fileDelete` legs (closure state
+  drops the file only after the dissociate leg) and drives the SPA's
+  real HTTP client + real dialog DOM + real dissociate resend against
+  the pinned envelope. Unlock still hits the real server; the mock is
+  installed AFTER unlock, scoped to the files dispatches. Runs GREEN
+  in-lane (383ms) — a stronger proof than a beat that could only
+  self-activate. Full Playwright 46 passed + 1 skip (was 45 + 1; the
+  skip is P4.6af's guarded seeded-folder beat, still awaiting lane A's
+  upload REST leg).
+
+**Verification of the two live paths (mandate items 2 + 3) — already
+covered at the unit level, no lane change needed:**
+
+- Composer file-attach (`chatFileUpload`): the client
+  `chat-files.api.ts` is LOCKED and drives the multipart POST; the
+  duplicate-conflict resolver is unit-tested in `chat-composer.spec.ts`
+  (opens the conflict dialog on a duplicate, resolves with a
+  resolution, re-uploads with `conflictingFileId`). End-to-end
+  activation over lane A's live REST leg happens at unification.
+- Generate dialog (`imageProfileGenerate`):
+  `generate-image-dialog.ts:158-174` drives the live dispatch;
+  `generate-image-dialog.spec.ts` covers the live path (images +
+  `expandedPrompt`) and the refusal path. End-to-end activation over
+  lane B's live seam happens at unification.
+
+**Deferred loudly (enumerated):**
+
+- Any generate-dialog affordance beyond the LOCKED four params
+  (size/quality/style/aspect/negativePrompt) — the order's Tier-3
+  deferral; not this lane's scope.
+- The composer-attach + generate e2e beats over the REAL server legs
+  (as opposed to the unit specs that already drive the exact live
+  shapes) — these need lanes A/B present + seeded chats and could not
+  be run or verified in-lane; they activate at unification. NOT added
+  as guarded self-activating beats to avoid shipping an
+  unverified-in-lane e2e liability into the shared salon suite.
+- The `force` delete arm — DOES NOT EXIST in any v4 client UI; not
+  ported (would be inventing behavior).
+
+**Versions:** SPA 0.5.82 → 0.5.83. No Rust crates touched (a
+`cargo build -p quilltap-web -p quilltap-cli` sanity build confirmed
+the worktree is coherent, for the e2e prerequisite).

@@ -65,6 +65,28 @@ over a fresh `02865bdb` oracle. Byte-exact leaves (`is_sentinel_line`,
 `js_trim`, `utf16_len`) untouched. Moves the oracle baseline to
 `02865bdb`.
 
+P4.6aj (lane C): the files SPA delete-associations close-out. Fresh
+SPA survey found the itemized dialog + the two-stage delete flow
+already landed and v4-faithful (P4.6af): v4's FileBrowser offers ONE
+action — "Delete Anyway" → `?dissociate=true`. No v4 client UI sends
+`force` (the `force` query param exists server-side but no front-end
+uses it), so the order's "force + dissociate two-button" mandate was
+corrected to v4's dissociate-only reality (reduced v4-faithful scope,
+user-approved — the force button was NOT invented). Tier 1: the
+missing dedicated `file-delete-confirmation.spec.ts` (renders the
+itemized characters + messages; hides an empty section; emits
+confirm/cancel; disables + relabels while deleting) plus the "clean
+delete (no associations) skips the dialog" case in
+`files-browser.spec.ts` — `ng test` 698. Tier 2: a route-mocked
+delete-associations e2e beat in `general-files-flow.spec.ts` (bare
+delete → itemized dialog → "Delete Anyway" → dissociate resend → the
+file drops from the refetched list), mocked because v4's
+`serializeFileEntry` omits `linkedTo` so the list can't reveal a
+linked file for a self-activating fixture beat — full Playwright 46
+passed + 1 skip. Composer-attach + generate live paths verified at the
+unit level (`chat-composer.spec.ts`, `generate-image-dialog.spec.ts`);
+end-to-end activation over lanes A/B lands at unification.
+
 Plan the "finish P4.6ae + catch up from v4" round — four agent-ready
 work orders decomposing the P4.6ae OPEN server remainder plus the one
 v4 drift commit. Drift-checked first: v4 advanced one commit past

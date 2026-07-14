@@ -131,6 +131,21 @@ describe('FilesBrowser', () => {
     expect(log.requests[0]).toEqual({ type: 'fileDelete', fileId: 'linked' });
   });
 
+  it('a clean delete (no associations) skips the dialog entirely', async () => {
+    const log: DispatchLog = { requests: [] };
+    // A bare success — no FILE_HAS_ASSOCIATIONS envelope.
+    const fixture = await render(
+      stubClient(log, [file({ id: 'lonely' })], { type: 'ack', data: {} }),
+    );
+    (fixture.nativeElement.querySelector('button[title="Delete file"]') as HTMLButtonElement).click();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+
+    // No dialog appears, and only the single bare fileDelete was issued.
+    expect(fixture.nativeElement.querySelector('[role=dialog]')).toBeNull();
+    expect(log.requests).toEqual([{ type: 'fileDelete', fileId: 'lonely' }]);
+  });
+
   it('dissociate-confirm sends fileDelete with dissociate:true', async () => {
     const log: DispatchLog = { requests: [] };
     const errorEnvelope: CoreResponse = {

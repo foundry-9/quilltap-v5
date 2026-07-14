@@ -4,6 +4,7 @@ import {
   test,
   type APIRequestContext,
   type Page,
+  type Route,
 } from '@playwright/test';
 
 import { BASE_URL, E2E_PASSPHRASE } from './support/env';
@@ -123,5 +124,113 @@ test.describe('P4.6af — the general Files page', () => {
     // Close via Escape (the keyboard handler).
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden({ timeout: 10_000 });
+  });
+});
+
+/**
+ * P4.6aj — the delete-associations dialog end-to-end.
+ *
+ * WHY ROUTE-MOCKED (not lane A's fixture): v4's `serializeFileEntry`
+ * (app/api/v1/files/shared.ts) omits `linkedTo`, so the general-files LIST never
+ * reveals which file is linked — a self-activating beat could not find the
+ * seeded associations-arm file without a DESTRUCTIVE delete-probe over the shared
+ * fixture. The order explicitly sanctions mocking the FILE_HAS_ASSOCIATIONS
+ * response, so this beat intercepts the `/api/dispatch` files reads + the
+ * `fileDelete` legs and drives the SPA's real HTTP client + real dialog DOM +
+ * real dissociate resend against the pinned envelope shape. It runs GREEN in-lane
+ * (no dependency on lanes A/B), verifying the wiring the unit specs assert, but in
+ * a real browser over the wire. The unlock still hits the real server; the mock
+ * is installed AFTER unlock, scoped to the files dispatches only.
+ */
+const LINKED_FILE = {
+  id: 'aj-linked-1',
+  userId: 'u',
+  originalFilename: 'shared-portrait.txt',
+  filename: 'shared-portrait.txt',
+  mimeType: 'text/plain', // text, so the thumbnail-batch effect stays silent
+  size: 24,
+  category: 'general',
+  description: null,
+  projectId: null,
+  folderPath: '/',
+  filepath: '/api/v1/files/aj-linked-1',
+  fileStatus: 'ok',
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
+const ASSOCIATIONS = {
+  characters: [{ id: 'c1', name: 'Lorian', usage: 'avatar' }],
+  messages: [{ chatId: 'ch1', chatName: 'A Midnight Correspondence', messageId: 'm1' }],
+};
+
+test.describe('P4.6aj — the delete-associations dialog', () => {
+  test('bare delete surfaces the itemized dialog; "Delete Anyway" dissociates', async ({ page }) => {
+    await page.goto('/salon');
+    await maybeUnlock(page);
+
+    // Auto-accept the browser confirm() the bare delete opens.
+    page.on('dialog', (d) => void d.accept());
+
+    // Closure state: the file vanishes only after the dissociate leg succeeds.
+    let dissociated = false;
+    await page.route('**/api/dispatch', async (route: Route) => {
+      const req = (route.request().postDataJSON() ?? {}) as { type?: string; dissociate?: boolean };
+      const json = (body: unknown) =>
+        route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+      switch (req.type) {
+        case 'filesList':
+          return json({ type: 'data', data: { files: dissociated ? [] : [LINKED_FILE] } });
+        case 'filesFoldersList':
+          return json({ type: 'data', data: { folders: [] } });
+        case 'fileDelete':
+          if (req.dissociate) {
+            dissociated = true;
+            return json({ type: 'ack', data: {} });
+          }
+          // The pinned FILE_HAS_ASSOCIATIONS 400 envelope (top-level associations).
+          return json({
+            type: 'error',
+            data: {
+              kind: 'bad-request',
+              message: 'File is linked to other items',
+              associations: ASSOCIATIONS,
+            },
+          });
+        default:
+          return route.continue();
+      }
+    });
+
+    await page.goto('/files');
+    await expect(page.getByRole('heading', { name: 'General Files', exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Open the seeded file's preview (root folder → the card shows immediately).
+    const fileCard = page.getByRole('button', { name: LINKED_FILE.filename }).first();
+    await expect(fileCard).toBeVisible({ timeout: 15_000 });
+    await fileCard.click();
+
+    // Delete from the preview's stable (always-visible) Delete button.
+    const preview = page.getByRole('dialog');
+    await expect(preview).toBeVisible();
+    await preview.getByTitle('Delete', { exact: true }).click();
+
+    // The associations dialog appears with the itemized characters + chats.
+    const assoc = page.getByRole('dialog').filter({ hasText: 'This file is in use' });
+    await expect(assoc).toBeVisible({ timeout: 10_000 });
+    await expect(assoc).toContainText('Lorian');
+    await expect(assoc).toContainText('A Midnight Correspondence');
+
+    // "Delete Anyway" fires the dissociate resend; the dialog closes and the file
+    // disappears from the refetched list.
+    await assoc.getByRole('button', { name: 'Delete Anyway' }).click();
+    await expect(page.getByRole('dialog').filter({ hasText: 'This file is in use' })).toHaveCount(0, {
+      timeout: 10_000,
+    });
+    await expect(page.getByRole('button', { name: LINKED_FILE.filename })).toHaveCount(0, {
+      timeout: 10_000,
+    });
   });
 });
