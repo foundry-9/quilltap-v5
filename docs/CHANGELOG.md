@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+P4.6ag tier 1 (unit 4): the Salon composer adopts the rich editor. The
+message box is now `qt-rich-editor` in chat mode (Enter sends, Shift+Enter
+a line break); the send reads the markdown from the editor handle at submit
+time (v4's decoupled ComposerSyncPlugin posture), so a user-typed
+`*narration*` survives literal. `hasContent` send-gating, paste-image
+upload (+ the duplicate-conflict resolver), and the `ComposerSend` payload
+are unchanged; `salon-conversation` is untouched. SPA 0.5.75.
+
 P4.6ag tier 1 (unit 3): Document Mode adopts the rich editor for markdown
 files. `USES_RICH_MARKDOWN_EDITOR` flips true, so `.md`/`.markdown` files
 edit in `qt-rich-editor` (frontmatter split + body-only editing + rawBlock

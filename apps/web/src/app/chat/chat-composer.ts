@@ -5,8 +5,10 @@ import {
   input,
   output,
   signal,
+  viewChild,
 } from '@angular/core';
 
+import { RichEditor } from '../editor/rich-editor';
 import { Icon } from '../ui/icon';
 import {
   uploadChatFile,
@@ -24,18 +26,22 @@ export interface ComposerSend {
 }
 
 /**
- * The Salon composer — the sanctioned MVP substitute for v4's Lexical editor: a
- * plain textarea plus Send / Stop / Continue. Enter sends, Shift+Enter inserts a
- * newline (v4 chat-mode behaviour). This lane unlocks the **attach** gutter tool
- * (v4 `useFileAttachments` + the composer chips): a hidden file input + a
- * paste-image handler upload to the chat-files multipart leg, showing attached-
- * file chips and the duplicate-conflict resolver; the file ids ride the send.
- * The announcement/mail/RNG gutter tools + drag-and-drop remain locked deferrals.
+ * The Salon composer. The D17 gate ran GREEN, so the message box is now the
+ * `qt-rich-editor` (ProseMirror over the v4 composer dialect — byte-faithful,
+ * proven by `markdown-round-trip.spec.ts`) rather than a plain textarea. Enter
+ * sends, Shift+Enter inserts a line break (v4 `KeyboardPlugin` chat mode); the
+ * send reads the markdown from the editor handle at submit time (v4's decoupled
+ * `ComposerSyncPlugin` posture), and a user-typed `*narration*` stays literal.
+ * The **attach** gutter tool (v4 `useFileAttachments` + the composer chips): a
+ * hidden file input + a paste-image handler upload to the chat-files multipart
+ * leg, showing attached-file chips and the duplicate-conflict resolver; the file
+ * ids ride the send. The announcement/mail/RNG gutter tools + drag-and-drop
+ * remain locked deferrals.
  */
 @Component({
   selector: 'qt-chat-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, FileConflictDialog],
+  imports: [Icon, FileConflictDialog, RichEditor],
   template: `
     <div class="qt-chat-composer">
       @if (attachedFiles().length > 0) {
@@ -73,17 +79,17 @@ export interface ComposerSend {
       }
 
       <form class="qt-chat-composer-inner" (submit)="onSubmit($event)">
-        <textarea
-          class="qt-chat-composer-input"
-          [value]="text()"
-          [disabled]="disabled()"
+        <qt-rich-editor
+          #editor
+          class="qt-chat-composer-input qt-lexical-contenteditable"
           [placeholder]="placeholder()"
-          rows="1"
-          aria-label="Message"
-          (input)="onInput($event)"
-          (keydown)="onKeydown($event)"
-          (paste)="onPaste($event)"
-        ></textarea>
+          [disabled]="disabled()"
+          [submitOnEnter]="true"
+          ariaLabel="Message"
+          (contentChange)="text.set($event)"
+          (submit)="submit()"
+          (imagePaste)="onEditorImagePaste($event)"
+        />
 
         <input
           #fileInput
@@ -204,6 +210,9 @@ export class ChatComposer {
   readonly openDocument = output<void>();
   readonly openGenerate = output<void>();
 
+  private readonly editor = viewChild.required(RichEditor);
+
+  /** The live markdown from the editor — drives `hasContent` gating only. */
   protected readonly text = signal('');
   protected readonly attachedFiles = signal<UploadedChatFile[]>([]);
   protected readonly uploading = signal(false);
@@ -231,30 +240,24 @@ export class ChatComposer {
     this.hasActiveCharacters() ? 'Send message' : 'Add a character to start chatting',
   );
 
-  protected onInput(event: Event): void {
-    this.text.set((event.target as HTMLTextAreaElement).value);
-  }
-
-  protected onKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      this.submit();
-    }
-  }
-
   protected onSubmit(event: Event): void {
     event.preventDefault();
     this.submit();
   }
 
-  private submit(): void {
+  /** Enter (via the editor's submit) or the Send button both land here. */
+  protected submit(): void {
     if (!this.canSend()) {
       return;
     }
+    // Send reads the markdown from the editor handle at submit time (v4's
+    // decoupled ComposerSyncPlugin posture) — authoritative over the debounced
+    // `text` signal, and byte-faithful to the v4 composer dialect.
     this.send.emit({
-      content: this.text().trim(),
+      content: this.editor().getMarkdown().trim(),
       fileIds: this.attachedFiles().map((f) => f.id),
     });
+    this.editor().setMarkdown('');
     this.text.set('');
     this.attachedFiles.set([]);
   }
@@ -267,16 +270,9 @@ export class ChatComposer {
     if (file) await this.upload(file);
   }
 
-  /** A pasted image uploads like a picked file (v4 paste-image path). */
-  protected onPaste(event: ClipboardEvent): void {
-    const item = Array.from(event.clipboardData?.items ?? []).find((i) =>
-      i.type.startsWith('image/'),
-    );
-    const file = item?.getAsFile();
-    if (file) {
-      event.preventDefault();
-      void this.upload(file);
-    }
+  /** A pasted image (from the editor) uploads like a picked file (v4 paste). */
+  protected onEditorImagePaste(file: File): void {
+    void this.upload(file);
   }
 
   protected removeAttachedFile(fileId: string): void {

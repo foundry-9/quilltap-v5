@@ -1,6 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { RichEditor } from '../editor/rich-editor';
 import { ChatComposer, type ComposerSend } from './chat-composer';
 
 function jsonResponse(body: unknown, ok = true, status = 200): Response {
@@ -20,6 +22,10 @@ async function settle(fixture: ComponentFixture<ChatComposer>): Promise<void> {
     await new Promise((r) => setTimeout(r, 0));
     fixture.detectChanges();
   }
+}
+
+function richEditor(fixture: ComponentFixture<ChatComposer>): RichEditor {
+  return fixture.debugElement.query(By.directive(RichEditor)).componentInstance as RichEditor;
 }
 
 function pickFile(fixture: ComponentFixture<ChatComposer>, name = 'pic.png'): void {
@@ -53,22 +59,34 @@ describe('ChatComposer — attach affordance', () => {
     expect(fixture.nativeElement.textContent).toContain('pic.png');
   });
 
-  it('sends the content and attached file ids, then clears', async () => {
+  it('sends the markdown read from the editor handle plus file ids, then clears', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(UPLOADED)));
     const fixture = render();
+    await settle(fixture);
     let sent: ComposerSend | undefined;
     fixture.componentInstance.send.subscribe((e) => (sent = e));
     pickFile(fixture);
     await settle(fixture);
-    const textarea = fixture.nativeElement.querySelector('textarea') as HTMLTextAreaElement;
-    textarea.value = 'look at this';
-    textarea.dispatchEvent(new Event('input'));
-    fixture.detectChanges();
+    richEditor(fixture).setMarkdown('look at this');
+    await settle(fixture);
     fixture.nativeElement.querySelector('form').dispatchEvent(new Event('submit'));
     expect(sent).toEqual({ content: 'look at this', fileIds: ['f-1'] });
-    // Chips + text cleared after send.
+    // Chips + editor cleared after send.
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.qt-chat-attachment-chip')).toBeNull();
+    expect(richEditor(fixture).getMarkdown()).toBe('');
+  });
+
+  it('keeps a user-typed *narration* literal in the sent content (v4 dialect)', async () => {
+    vi.stubGlobal('fetch', vi.fn());
+    const fixture = render();
+    await settle(fixture);
+    let sent: ComposerSend | undefined;
+    fixture.componentInstance.send.subscribe((e) => (sent = e));
+    richEditor(fixture).setMarkdown('*She waves.* Then _softly_ speaks.');
+    await settle(fixture);
+    fixture.nativeElement.querySelector('form').dispatchEvent(new Event('submit'));
+    expect(sent?.content).toBe('*She waves.* Then _softly_ speaks.');
   });
 
   it('enables send with an attachment and no text', async () => {

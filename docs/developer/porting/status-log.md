@@ -11295,3 +11295,20 @@ and `document-pane.spec.ts` (markdown → rich editor holds the body; the
 source toggle reveals the raw textarea; edits recombine the frontmatter).
 Two prior markdown specs were rewritten (recorded reason: the textarea →
 rich-editor swap). `ng test` documents+editor: 62 + 32 green. SPA 0.5.74.
+
+**Unit 4 — Salon composer adoption.** `chat/chat-composer.ts` swaps its
+textarea for `qt-rich-editor` in `submitOnEnter` (chat) mode: Enter emits
+`submit`, Shift+Enter a line break. The send reads markdown from the editor
+handle at submit time (`this.editor().getMarkdown().trim()`) — v4's
+decoupled `ComposerSyncPlugin` posture, authoritative over the debounced
+`text` signal; a user-typed `*narration*` stays literal (the dialect).
+`hasContent` send-gating is driven by the editor's `contentChange` →
+`text` signal; paste-image rides the editor's `imagePaste` output into the
+same `upload` leg (+ the `FileConflictDialog` duplicate flow); the
+`ComposerSend {content, fileIds}` payload is unchanged and
+`salon-conversation.ts` (lane B's file) is untouched. The composer clears
+the editor via the handle (`setMarkdown('')`) after send. `chat-composer.spec.ts`
+updated: the send test drives the editor handle (recorded reason —
+textarea→editor swap) and a new spec asserts `*narration*`/`_softly_`
+survive in the sent bytes. Full `ng test` 658 green (87 files); `ng build`
+clean (no CommonJS warnings from prosemirror — it is ESM). SPA 0.5.75.
