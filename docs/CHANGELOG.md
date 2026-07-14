@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.6af unit 7: the e2e walks. NEW `salon-autonomous-entry.spec.ts`
+(LIVE — 3 beats over the shared Salon server: a seeded cron room is
+hidden by default with the hint shown, the "Show Autonomous Rooms"
+toggle reveals it, the "New Autonomous Room" action links to
+`/salon/new?autonomous=1`, and the header Edit-Enclave button opens the
+frozen modal and round-trips a title save). NEW
+`general-files-flow.spec.ts` (the /files render beat is LIVE; the seed
+→ browse → preview data beat probe-guards on lane A's files-family
+variants and self-activates at unification). Renamed from the order's
+`files-flow.spec.ts` so it sorts AFTER foundation ('files' would sort
+before 'foundation' and pre-empt the gate walk). SPA 0.5.75.
+
 P4.6af unit 5: the salon autonomous riders. (a) The conversation header
 gains an Edit-Enclave button gated on `chatType === 'autonomous'` (v4's
 ChatSidebar "Organize" entry — label/tooltip verbatim; PLACEMENT

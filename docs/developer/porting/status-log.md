@@ -11160,3 +11160,34 @@ hint gating + the localStorage round-trip.
 
 Both riders run LIVE on main (the autonomous surface is fully ported).
 Gate: `ng test` 648 green, `ng build` clean.
+
+### Unit 7 — the e2e walks (SPA 0.5.75)
+
+NEW `e2e/salon-autonomous-entry.spec.ts` (shared server; sorts after
+foundation). Three LIVE beats over the fully-ported autonomous surface:
+(1) a seeded CRON room (idle, two LLM chars) is hidden by the default
+owner_only visibility + the hidden-rooms hint shows; the "Show
+Autonomous Rooms" toggle reveals it (the flag rides the query key →
+refetch); (2) the "New Autonomous Room" action links to
+`/salon/new?autonomous=1`; (3) opening the room renders the gated
+Edit-Enclave header button, which opens the frozen `qt-edit-enclave-modal`
+and round-trips a title save. All three PASS live.
+
+NEW `e2e/general-files-flow.spec.ts`. The /files render beat is LIVE
+(the screen is this lane's — asserts the "General Files" heading, the
+NO-upload posture, and the toolbar/breadcrumb via `getByTitle` for the
+glyph buttons). The seed → browse → preview data beat PROBE-GUARDS on
+`filesList` (lane A's variants aren't live in-worktree) and skips
+cleanly, self-activating at unification (the P4.6ac precedent).
+
+NAMING DIVERGENCE (report at unification): the order names the files
+spec `files-flow.spec.ts`, but "files" sorts BEFORE "foundation"
+('fi' < 'fo'); a shared-server spec sorting before foundation would
+unlock the vault ahead of foundation's locked→unlock gate walk and
+break it. Renamed to `general-files-flow.spec.ts` ('ge' > 'fo') to
+satisfy the binding ordering rule — the only shared-server spec name
+that could pre-empt foundation is disallowed by construction.
+
+Gate for the lane: `ng test` 648 green; `ng build` clean; `--list`
+parses both specs; the salon walk runs LIVE (3/3), the files render beat
+LIVE (1/1), the files data beat probe-skips (self-activates at unify).
