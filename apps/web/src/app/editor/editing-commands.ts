@@ -15,10 +15,13 @@ import { type Command, type Plugin } from 'prosemirror-state';
  * `COMPOSER_TRANSFORMERS`). No toolbar — v5 has none today; these are keyboard
  * and type-as-you-go affordances only.
  *
- * DELIBERATELY no inline-emphasis input rule: v4 excludes `ITALIC_STAR`, so a
- * typed `*narration*` must stay literal text (dialect quirk #6). Emphasis is
- * reached only through the `Mod-i`/`Mod-b` commands, never by typing the
- * delimiters.
+ * No single-`*` inline input rule EVER: v4 excludes `ITALIC_STAR`, so a typed
+ * `*narration*` must stay literal text (dialect quirk #6). The on-type
+ * auto-format for the INCLUDED inline delimiters (`_italic_`, `**bold**`,
+ * `__bold__`, `` `code` `` — v4's Lexical MarkdownShortcut) is a tier-2
+ * remainder DEFERRED in this lane (see the status log): emphasis/code are
+ * reached through the `Mod-i`/`Mod-b`/`` Mod-` `` commands for now, and typing
+ * the delimiters leaves them literal (which still serializes byte-faithfully).
  *
  * @module editor/editing-commands
  */

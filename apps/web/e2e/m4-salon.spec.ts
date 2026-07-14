@@ -64,9 +64,12 @@ test.describe('M4 — Salon vertical (list → open → read → send)', () => {
     await page.goBack();
     await soloCard.click();
     await expect(page.getByText('Once, above the clouds...')).toBeVisible();
-    const composer = page.locator('.qt-chat-composer-input');
-    await composer.fill('Good morning.');
-    await composer.press('Enter');
+    // The composer is now the qt-rich-editor (D17 adoption, P4.6ag): drive the
+    // contenteditable with real key events (fill() targets input/textarea).
+    const composer = page.locator('.qt-chat-composer-input .qt-rich-editor-content');
+    await composer.click();
+    await page.keyboard.type('Good morning.');
+    await page.keyboard.press('Enter');
     await expect(page.getByText(MOCK_LLM_REPLY).first()).toBeVisible({ timeout: 15_000 });
 
     // The persisted reply survives a reload (canonical refetch; the server is

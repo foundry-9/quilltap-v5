@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.6ag tier 2 (unit 6): live e2e beats for the rich editor. The
+salon-documents-flow walk edits markdown in the ProseMirror pane (not a
+textarea), plus two new beats — a dialect round-trip (type a `#` heading via
+the input rule + literal `*`/`_` roleplay punctuation, save, toggle to raw
+source, assert the exact v4 dialect bytes) and a composer send-bytes beat
+(type `_softly_` + a literal-`*` narration line, send, assert the outgoing
+chatSend content). The m4-salon composer interaction is updated to drive the
+contenteditable (the composer swap). Full doc-flow + m4 walks pass live
+against the real server. SPA 0.5.77.
+
 P4.6ag tier 2 (unit 5): markdown input shortcuts + the formatting command
 set for the rich editor (v4 FormattingCommandPlugin + Lexical
 MarkdownShortcut, within the transformer scope). Type-as-you-go rules for

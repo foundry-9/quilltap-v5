@@ -89,9 +89,10 @@ test.describe('P4.6x — Document Mode (open → edit → save → rename → cl
     await openSoloChat(page);
     const pane = await openBlankDocument(page);
 
-    // A fresh Untitled markdown doc with an editable textarea.
+    // A fresh Untitled markdown doc edits in the rich editor (D17 GREEN,
+    // P4.6ag) — a ProseMirror contenteditable, no longer a textarea.
     await expect(pane).toContainText('Untitled');
-    const editor = pane.locator('textarea');
+    const editor = pane.locator('.qt-rich-editor-content');
     await expect(editor).toBeVisible();
 
     // Edit → the status bar shows Unsaved.
@@ -100,7 +101,7 @@ test.describe('P4.6x — Document Mode (open → edit → save → rename → cl
     await expect(pane).toContainText('Unsaved');
 
     // Blur the editor (focus the composer) → flush the save → Saved.
-    await page.locator('.qt-chat-composer-input').click();
+    await page.locator('.qt-chat-composer-input .qt-rich-editor-content').click();
     await expect(pane).toContainText('Saved', { timeout: 15_000 });
 
     // The edit survives a full reload (the server persisted it). The reload
@@ -110,7 +111,9 @@ test.describe('P4.6x — Document Mode (open → edit → save → rename → cl
     await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
     const reopened = page.locator('qt-document-pane');
     await expect(reopened).toBeVisible({ timeout: 15_000 });
-    await expect(reopened.locator('textarea')).toHaveValue(/Hello from the Scriptorium\./);
+    await expect(reopened.locator('.qt-rich-editor-content')).toContainText(
+      'Hello from the Scriptorium.',
+    );
 
     // Rename via the title → the title updates and a Librarian chip lands.
     await reopened.locator('.qt-doc-title').click();
@@ -124,6 +127,56 @@ test.describe('P4.6x — Document Mode (open → edit → save → rename → cl
     await reopened.getByRole('button', { name: 'Exit document mode' }).click();
     await expect(page.locator('qt-document-pane')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Open document' })).toBeVisible();
+  });
+
+  test('markdown edits round-trip the v4 dialect through the rich editor', async ({ page }) => {
+    await openSoloChat(page);
+    const pane = await openBlankDocument(page);
+    const editor = pane.locator('.qt-rich-editor-content');
+    await editor.click();
+
+    // A heading via the markdown input rule, then a body line whose literal
+    // roleplay punctuation (single `*`, `_`) must survive unescaped.
+    await page.keyboard.type('# Chapter One');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('She waves *without a word* and _leaves_.');
+
+    // Flush-save (focus the composer).
+    await page.locator('.qt-chat-composer-input .qt-rich-editor-content').click();
+    await expect(pane).toContainText('Saved', { timeout: 15_000 });
+
+    // Toggle to raw source: the on-disk bytes are the v4 composer dialect — the
+    // heading is real markdown, the `*`/`_` are literal (block-separated).
+    await pane.getByRole('button', { name: 'Show markdown source' }).click();
+    await expect(pane.locator('textarea')).toHaveValue(
+      '# Chapter One\n\nShe waves *without a word* and _leaves_.',
+    );
+
+    await pane.getByRole('button', { name: 'Exit document mode' }).click();
+    await expect(page.locator('qt-document-pane')).toHaveCount(0);
+  });
+
+  test('the composer sends the v4 dialect bytes (literal star + underscore)', async ({ page }) => {
+    await openSoloChat(page);
+
+    // Capture the outgoing chatSend request — its `content` is exactly what the
+    // editor handle serialized (send-reads-handle, v4 ComposerSyncPlugin).
+    let sent: string | undefined;
+    await page.route('**/api/dispatch', async (route) => {
+      const body = route.request().postDataJSON() as { type?: string; content?: string };
+      if (body?.type === 'chatSend' && sent === undefined) sent = body.content;
+      await route.continue();
+    });
+
+    const composer = page.locator('.qt-chat-composer-input .qt-rich-editor-content');
+    await composer.click();
+    await page.keyboard.type('*She waves.* Then _softly_ she speaks.');
+    await page.keyboard.press('Enter');
+
+    await expect
+      .poll(() => sent, { timeout: 15_000 })
+      .toBe('*She waves.* Then _softly_ she speaks.');
+    await page.unroute('**/api/dispatch');
   });
 
   test('document and terminal panes stack in the right pane', async ({ page }) => {

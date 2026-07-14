@@ -11327,3 +11327,23 @@ toolbar (v5 has none). Added `prosemirror-schema-list` (lane C is the dep
 owner). `editing-commands.spec.ts`: 7 command specs over hand-built PM
 states (bold/italic/code/h2/blockquote/bullet/ordered → the right dialect
 bytes). Input rules are proven live in the e2e beat (unit 6). SPA 0.5.76.
+
+**Unit 6 — live e2e beats (tier 2).** `e2e/salon-documents-flow.spec.ts`:
+the existing open→edit→save→rename→close walk updated for the rich editor
+(the markdown pane is now `.qt-rich-editor-content`, not a textarea), plus
+two NEW beats run LIVE against the real server: (a) a dialect round-trip —
+type a `# Chapter One` heading via the markdown input rule then a body line
+with literal `*without a word*` / `_leaves_`, flush-save, toggle to raw
+source, and assert the on-disk bytes are exactly
+`# Chapter One\n\nShe waves *without a word* and _leaves_.`; (b) a composer
+send-bytes beat — type `*She waves.* Then _softly_ she speaks.`, press Enter,
+and assert the intercepted `chatSend` request `content` is byte-identical
+(send-reads-handle). `e2e/m4-salon.spec.ts` (NOT in lane C's ownership, but
+a direct mechanical consequence of the sanctioned composer swap — flagged
+for the unifier): the send interaction drives the composer contenteditable
+(`.qt-chat-composer-input .qt-rich-editor-content` click + `keyboard.type` +
+Enter) since `fill()` targets input/textarea. Both walks GREEN live
+(foundation + salon-documents-flow 5/5; foundation + m4-salon 2/2). NOTE:
+the shared-server first-unlock is cold and can exceed foundation's 5s
+`Chats` wait on a busy machine — a PRE-EXISTING foundation-flake unrelated
+to this lane; a warm run passes. SPA 0.5.77.
