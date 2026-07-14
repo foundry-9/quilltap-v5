@@ -1670,6 +1670,10 @@ export interface ChatDetail {
   updatedAt: string;
   isPaused: boolean;
   isManuallyRenamed: boolean;
+  /** The per-chat composition-mode flag (v4 `chats.documentEditingMode` —
+   *  Enter inserts a newline, Cmd/Ctrl+Enter sends). Baked from
+   *  `chat_settings.compositionModeDefault` at creation. */
+  documentEditingMode: boolean;
   participants: ParticipantDetail[];
   user: { id: string; name: string; image: string | null };
   messages: MessageDto[];
@@ -1963,6 +1967,8 @@ export interface ChatSettingsDto {
     showWarningBadges: boolean;
   };
   autoScrollOnResponseComplete?: boolean;
+  /** The composer text-replacement master switch (v4 default true). */
+  textReplacementsEnabled?: boolean;
   [key: string]: unknown;
 }
 
@@ -3428,7 +3434,17 @@ export type MemoryRequest =
   // CoreResponse variant added). The interfaces + DTO live in the P4.d3 block
   // appended at the end of this file.
   | DataRetentionSettingsRequest
-  | DataRetentionSettingsUpdateRequest;
+  | DataRetentionSettingsUpdateRequest
+  // === P4.6ak∥al∥am unification: the text-replacements + story-background
+  // verbs (lane A's Rust dispatch; the interfaces live in the P4.6al/P4.6am
+  // blocks appended at the end of this file). Folded into the union by the
+  // unifier per the round's §2 contract.
+  | TextReplacementsListRequest
+  | TextReplacementCreateRequest
+  | TextReplacementUpdateRequest
+  | TextReplacementDeleteRequest
+  | TextReplacementsBulkReplaceRequest
+  | ChatGetBackgroundRequest;
 // P4.6u (lane C) — the Salon terminal-pane block.
 // Appended by lane C; single-author (lane B, the file owner, must not edit this
 // block). The terminal WebSocket + REST protocol types live in

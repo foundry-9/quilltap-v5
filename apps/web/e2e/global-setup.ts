@@ -176,6 +176,32 @@ export default async function globalSetup(): Promise<void> {
       },
     );
   }
+  // The P4.6ak/P4.6am unification wire (dogfood #9): seed a story background on
+  // "Solo Voyage" so `salon-background-flow.spec.ts` rides the LIVE
+  // `chatGetBackground` dispatch + the live `/api/v1/files/{id}` byte route.
+  // The bytes live where the host's LocalStorageBackend roots file storage
+  // (`<data>/files/<storageKey>` — spine.rs `base_dir.join("files")`); the row
+  // shape mirrors the binary_routes test seed. `sha256` stays NULL so the
+  // resolver takes its simple `linkSummary: null` arm. v4 has no client
+  // set-path for `storyBackgroundImageId` (only the unported generation
+  // subsystem writes it), so SQL seeding here is the faithful stand-in.
+  const bgPng = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  mkdirSync(resolve(INSTANCE_DATA_DIR, 'files', 'e2e'), { recursive: true });
+  writeFileSync(resolve(INSTANCE_DATA_DIR, 'files', 'e2e', 'story-bg.png'), bgPng);
+  runCliWrite(
+    cli,
+    `INSERT OR REPLACE INTO files (id, userId, originalFilename, mimeType, size, category, storageKey, createdAt, updatedAt) ` +
+      `VALUES ('bg-e2e-file', '${SINGLE_USER_ID}', 'story-bg.png', 'image/png', ${bgPng.length}, 'IMAGE', 'e2e/story-bg.png', ` +
+      `'2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z');`,
+  );
+  runCliWrite(
+    cli,
+    `UPDATE chats SET storyBackgroundImageId = 'bg-e2e-file' WHERE title = 'Solo Voyage';`,
+  );
+
   // Point the fixture's OPENAI_COMPATIBLE profile at the M4 mock LLM — this must
   // happen BEFORE the server launches (the CLI write-lock refuses a live holder),
   // so the mock listens on the fixed MOCK_LLM_PORT and the spec starts it there.

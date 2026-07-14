@@ -1,6 +1,5 @@
 import type { CoreClient } from '../../../core/core-client';
 import type {
-  CoreRequest,
   TextReplacementRule,
   TextReplacementRuleInput,
 } from '../../../core/core-contract';
@@ -8,8 +7,8 @@ import type {
 /**
  * The settings text-replacements client surface (lane A's pinned dispatch verbs
  * over `/api/v1/settings/text-replacements`). The five request shapes live in
- * core-contract's P4.6al block; the union is wired by the unifier, so the calls
- * cast at the dispatch boundary in-lane.
+ * core-contract's P4.6al block and ride the CoreRequest union (folded at
+ * unification).
  *
  * @module screens/settings/chat/text-replacements.api
  */
@@ -20,7 +19,7 @@ export interface TextReplacementList {
 }
 
 export async function listTextReplacements(core: CoreClient): Promise<TextReplacementList> {
-  const data = await core.dispatchData({ type: 'textReplacementsList' } as unknown as CoreRequest);
+  const data = await core.dispatchData({ type: 'textReplacementsList' });
   return {
     rules: (data['rules'] as TextReplacementRule[] | undefined) ?? [],
     count: (data['count'] as number | undefined) ?? 0,
@@ -34,7 +33,7 @@ export async function createTextReplacement(
   const data = await core.dispatchData({
     type: 'textReplacementCreate',
     ...input,
-  } as unknown as CoreRequest);
+  });
   return data as unknown as TextReplacementRule;
 }
 
@@ -47,12 +46,12 @@ export async function updateTextReplacement(
     type: 'textReplacementUpdate',
     id,
     ...input,
-  } as unknown as CoreRequest);
+  });
   return data as unknown as TextReplacementRule;
 }
 
 export async function deleteTextReplacement(core: CoreClient, id: string): Promise<void> {
-  await core.dispatchData({ type: 'textReplacementDelete', id } as unknown as CoreRequest);
+  await core.dispatchData({ type: 'textReplacementDelete', id });
 }
 
 export async function bulkReplaceTextReplacements(
@@ -62,7 +61,7 @@ export async function bulkReplaceTextReplacements(
   const data = await core.dispatchData({
     type: 'textReplacementsBulkReplace',
     rules,
-  } as unknown as CoreRequest);
+  });
   return {
     rules: (data['rules'] as TextReplacementRule[] | undefined) ?? [],
     count: (data['count'] as number | undefined) ?? 0,

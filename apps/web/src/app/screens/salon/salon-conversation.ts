@@ -55,6 +55,8 @@ import { DocumentPane } from '../../documents/document-pane';
 import { DocumentPicker, type DocumentSelection } from '../../documents/document-picker';
 import { EditEnclaveModal } from '../../autonomous/edit-enclave-modal';
 import { fetchChatBackgroundVar, storyBackgroundKeys } from './story-background.api';
+import { compileRules, type CompiledRules } from '../../editor/text-replacement';
+import { listTextReplacements } from '../settings/chat/text-replacements.api';
 
 /**
  * The LLM document tools whose success invalidates an open pane's cached
@@ -199,6 +201,10 @@ interface CascadePrompt {
         [hasActiveCharacters]="hasActiveCharacters()"
         [terminalActive]="terminalActive()"
         [documentActive]="documentPaneActive()"
+        [compositionMode]="compositionMode()"
+        [textReplacementRules]="textReplacementRules()"
+        [textReplacementsEnabled]="textReplacementsEnabled()"
+        (compositionModeChange)="onCompositionModeChange($event)"
         (send)="send($event)"
         (stop)="stop()"
         (continue)="continueTurn()"
@@ -482,6 +488,46 @@ export class SalonConversation {
   }));
   protected readonly backgroundVar = computed<string | null>(
     () => this.backgroundQuery.data() ?? null,
+  );
+
+  /**
+   * Composition mode (dogfood finding #8): the per-chat flag rides the chat's
+   * `documentEditingMode` column (v4 `useChatControls.ts:348-365` — local state
+   * seeded from the chat, toggle persisted via the chat PUT). The optimistic
+   * override is keyed to the chat id so switching chats falls back to the
+   * canonical value.
+   */
+  private readonly compositionOverride = signal<{ chatId: string; value: boolean } | null>(null);
+  protected readonly compositionMode = computed<boolean>(() => {
+    const override = this.compositionOverride();
+    if (override && override.chatId === this.chatId()) return override.value;
+    return this.chat()?.documentEditingMode ?? false;
+  });
+
+  protected async onCompositionModeChange(value: boolean): Promise<void> {
+    const chatId = this.chatId();
+    if (!chatId) return;
+    this.compositionOverride.set({ chatId, value });
+    await this.core.dispatch({ type: 'chatUpdate', chatId, chat: { documentEditingMode: value } });
+    await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+  }
+
+  /**
+   * The composer text-replacement rules (v4 `useTextReplacementRules` — the
+   * global rule list compiled once, gated by
+   * `chat_settings.textReplacementsEnabled`). Composer-only; form fields never
+   * receive rules.
+   */
+  private readonly textReplacementsQuery = injectQuery(() => ({
+    queryKey: ['textReplacements'],
+    queryFn: async () => (await listTextReplacements(this.core)).rules,
+  }));
+  protected readonly textReplacementRules = computed<CompiledRules | null>(() => {
+    const rules = this.textReplacementsQuery.data();
+    return rules && rules.length > 0 ? compileRules(rules) : null;
+  });
+  protected readonly textReplacementsEnabled = computed<boolean>(
+    () => this.settings()?.textReplacementsEnabled ?? true,
   );
 
   // --- streaming ---

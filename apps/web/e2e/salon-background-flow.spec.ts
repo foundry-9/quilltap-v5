@@ -8,19 +8,14 @@ import { E2E_PASSPHRASE } from './support/env';
  * `--story-background-url` on the `.qt-chat-layout` root, where the ported
  * `::before` layer (`_chat.css`, opacity 0.45, fixed/cover) draws it.
  *
- * The live `chatGetBackground` dispatch is lane A's (wired at unification), so
- * in-lane this beat ROUTE-MOCKS the resolver and the file byte route — a green
- * in-lane mock beats a never-firing guard (the P4.6aj precedent). It proves the
- * full SPA path end-to-end in a real browser: fetch → apply the var → the CSS
- * layer stops being `display:none`. At unification the mock is dropped and the
- * beat rides the live leg against a seeded background (see the status log).
+ * LIVE since the P4.6ak∥al∥am unification: global-setup seeds a background on
+ * "Solo Voyage" (a `files` row + the PNG bytes at the storage-backend path +
+ * `chats.storyBackgroundImageId`), so this beat rides lane A's real
+ * `chatGetBackground` dispatch AND the real `/api/v1/files/{id}` byte route —
+ * no route mocks. (In-lane it ran route-mocked, the P4.6aj precedent.)
  */
 
-// A 1x1 transparent PNG — the background image bytes the ::before layer loads.
-const PNG_1x1 = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-  'base64',
-);
+// Must match the global-setup seed.
 const FILE_ID = 'bg-e2e-file';
 
 test.describe('Salon story background (dogfood #9)', () => {
@@ -34,37 +29,9 @@ test.describe('Salon story background (dogfood #9)', () => {
     }
   }
 
-  test('applies --story-background-url from the resolver and draws the ::before layer', async ({
+  test('applies --story-background-url from the live resolver and draws the ::before layer', async ({
     page,
   }) => {
-    // Mock the background resolver — pass every other dispatch through to the
-    // real server unchanged.
-    await page.route('**/api/dispatch', async (route) => {
-      const post = route.request().postData() ?? '';
-      if (post.includes('"chatGetBackground"')) {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            type: 'ack',
-            data: {
-              backgroundUrl: null,
-              fileId: FILE_ID,
-              filename: 'bg.webp',
-              sha256: null,
-              linkSummary: null,
-            },
-          }),
-        });
-        return;
-      }
-      await route.continue();
-    });
-    // Serve the background image bytes for the id-keyed byte route.
-    await page.route(`**/api/v1/files/${FILE_ID}`, async (route) => {
-      await route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1x1 });
-    });
-
     await page.goto('/');
     await maybeUnlock(page);
 
@@ -83,6 +50,11 @@ test.describe('Salon story background (dogfood #9)', () => {
       expect(style).toContain('--story-background-url');
       expect(style).toContain(`/api/v1/files/${FILE_ID}`);
     }).toPass({ timeout: 5_000 });
+
+    // The live byte route actually serves the seeded PNG.
+    const bytes = await page.request.get(`/api/v1/files/${FILE_ID}`);
+    expect(bytes.status()).toBe(200);
+    expect(bytes.headers()['content-type']).toContain('image/png');
 
     // With the var set, the ::before background layer is no longer hidden
     // (`:not([style*="--story-background-url"])::before { display:none }` no

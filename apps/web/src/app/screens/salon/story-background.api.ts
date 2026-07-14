@@ -12,11 +12,7 @@
  */
 
 import type { CoreClient } from '../../core/core-client';
-import type {
-  ChatBackgroundDto,
-  ChatGetBackgroundRequest,
-  CoreRequest,
-} from '../../core/core-contract';
+import type { ChatBackgroundDto, ChatGetBackgroundRequest } from '../../core/core-contract';
 import { fileUrl } from '../../images/image-urls';
 
 export const storyBackgroundKeys = {
@@ -26,16 +22,14 @@ export const storyBackgroundKeys = {
 
 /**
  * Fetch the chat's story background and return the CSS `url('…')` value to bind
- * on `--story-background-url`, or null when the chat has no background. The
- * request `type` is bridged with a cast until the unifier adds
- * `ChatGetBackgroundRequest` to the `CoreRequest` union (§2).
+ * on `--story-background-url`, or null when the chat has no background.
  */
 export async function fetchChatBackgroundVar(
   core: CoreClient,
   chatId: string,
 ): Promise<string | null> {
   const req: ChatGetBackgroundRequest = { type: 'chatGetBackground', chatId };
-  const data = (await core.dispatchData(req as unknown as CoreRequest)) as unknown as ChatBackgroundDto;
+  const data = (await core.dispatchData(req)) as unknown as ChatBackgroundDto;
   const fileId = data.fileId ?? null;
   return fileId ? `url('${fileUrl(fileId)}')` : null;
 }
