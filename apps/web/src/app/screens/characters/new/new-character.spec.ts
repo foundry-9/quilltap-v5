@@ -1,9 +1,11 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { Router, provideRouter } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
+import { RichEditor } from '../../../editor/rich-editor';
 import { NewCharacter, buildCreateCharacterBag } from './new-character';
 
 function stubClient(
@@ -52,6 +54,13 @@ function setInput(fixture: ComponentFixture<NewCharacter>, id: string, value: st
   >(`#${id}`)!;
   el.value = value;
   el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input'));
+  fixture.detectChanges();
+}
+
+/** The markdown fields render in order; index 0 is Identity (qt-markdown-field). */
+function setMarkdownField(fixture: ComponentFixture<NewCharacter>, index: number, value: string): void {
+  const editors = fixture.debugElement.queryAll(By.directive(RichEditor));
+  (editors[index].componentInstance as RichEditor).setMarkdown(value);
   fixture.detectChanges();
 }
 
@@ -114,9 +123,11 @@ describe('NewCharacter', () => {
 
     setInput(fixture, 'name', 'Bertie Wooster');
     setInput(fixture, 'title', 'The Valet');
-    setInput(fixture, 'identity', 'A gentleman about town');
+    setMarkdownField(fixture, 0, 'A gentleman about town'); // Identity
     setInput(fixture, 'avatarUrl', '');
     setInput(fixture, 'defaultConnectionProfileId', '');
+    await new Promise((r) => setTimeout(r, 0)); // flush the field's contentChange
+    fixture.detectChanges();
 
     const form = fixture.nativeElement.querySelector('form') as HTMLFormElement;
     form.dispatchEvent(new Event('submit', { cancelable: true }));

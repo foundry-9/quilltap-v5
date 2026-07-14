@@ -2,6 +2,10 @@
 
 ## Recent Changes
 
+P4.6al lane: fixed the new-character spec to drive the Identity field
+through the qt-markdown-field editor handle (the item-3 adoption removed
+the `#identity` textarea id). Full `ng test` green (749).
+
 P4.6al lane (D17 editor follow-ons, tier 2 item 5 — text replacement):
 the composer's word-boundary autocorrect (v4 `TextReplacementPlugin`)
 and its settings CRUD card. A new `editor/text-replacement.ts` ports
