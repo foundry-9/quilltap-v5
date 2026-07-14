@@ -1,6 +1,6 @@
 {
   "name": "quilltap-spa",
-  "version": "0.5.79",
+  "version": "0.5.80",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
@@ -42,6 +42,7 @@
     "prosemirror-keymap": "^1.2.3",
     "prosemirror-markdown": "^1.13.5",
     "prosemirror-model": "^1.25.11",
+    "prosemirror-schema-list": "^1.5.1",
     "prosemirror-state": "^1.4.4",
     "prosemirror-view": "^1.42.1",
     "rehype-highlight": "7.0.2",

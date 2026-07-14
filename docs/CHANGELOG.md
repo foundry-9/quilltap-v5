@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.6ag tier 2 (unit 5): markdown input shortcuts + the formatting command
+set for the rich editor (v4 FormattingCommandPlugin + Lexical
+MarkdownShortcut, within the transformer scope). Type-as-you-go rules for
+`# ` headings, `> ` blockquote, `- `/`1. ` lists, and ``` code fences;
+keybindings for bold (Mod-b), underscore italic (Mod-i), inline code, list
+Enter/indent/outdent, headings, and blockquote. No inline-emphasis input
+rule — a typed `*narration*` stays literal (dialect quirk #6). No toolbar
+(v5 has none today). SPA 0.5.76.
+
 P4.6ag tier 1 (unit 4): the Salon composer adopts the rich editor. The
 message box is now `qt-rich-editor` in chat mode (Enter sends, Shift+Enter
 a line break); the send reads the markdown from the editor handle at submit

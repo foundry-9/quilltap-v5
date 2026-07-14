@@ -12,10 +12,13 @@ import {
 } from '@angular/core';
 import { baseKeymap, chainCommands, newlineInCode } from 'prosemirror-commands';
 import { history, redo, undo } from 'prosemirror-history';
+import { undoInputRule } from 'prosemirror-inputrules';
 import { keymap } from 'prosemirror-keymap';
+import { splitListItem } from 'prosemirror-schema-list';
 import { EditorState, Plugin, type Command } from 'prosemirror-state';
 import { Decoration, DecorationSet, EditorView } from 'prosemirror-view';
 
+import { dialectFormattingKeymap, dialectInputRules } from './editing-commands';
 import { dialectSchema, parseMarkdown, serializeMarkdown } from './markdown-dialect';
 
 /**
@@ -180,14 +183,23 @@ export class RichEditor {
     };
 
     return [
+      dialectInputRules(dialectSchema),
       history(),
       keymap({
         'Mod-z': undo,
         'Mod-y': redo,
         'Shift-Mod-z': redo,
-        Enter: chainCommands(submitCmd, newlineInCode),
+        Backspace: undoInputRule,
+        // In chat mode Enter submits; else split a list item, break a code
+        // block, or fall through to the base paragraph split.
+        Enter: chainCommands(
+          submitCmd,
+          splitListItem(dialectSchema.nodes['list_item']),
+          newlineInCode,
+        ),
         'Shift-Enter': insertBreak,
       }),
+      keymap(dialectFormattingKeymap(dialectSchema)),
       keymap(baseKeymap),
       this.placeholderPlugin(),
     ];

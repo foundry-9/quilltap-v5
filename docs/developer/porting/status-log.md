@@ -11312,3 +11312,18 @@ updated: the send test drives the editor handle (recorded reason —
 textarea→editor swap) and a new spec asserts `*narration*`/`_softly_`
 survive in the sent bytes. Full `ng test` 658 green (87 files); `ng build`
 clean (no CommonJS warnings from prosemirror — it is ESM). SPA 0.5.75.
+
+**Unit 5 — input rules + formatting commands (tier 2).**
+`editor/editing-commands.ts`: the block-level markdown input rules within
+the v4 transformer scope (`# ` heading, `> ` blockquote, `- `/`+ `/`* `
+bullet, `1. ` ordered, ``` ``` fenced code) and the formatting keymap (v4
+`FormattingCommandPlugin`): Mod-b bold, Mod-i underscore italic, Mod-`
+inline code, Ctrl-> blockquote, Shift-Ctrl-1..6 headings, Shift-Ctrl-8/9
+lists, Mod-[ / Mod-] list outdent/indent. The editor's Enter chain gained
+`splitListItem` (new list item) and Backspace gained `undoInputRule`.
+DELIBERATELY no inline-emphasis input rule — a typed `*narration*` stays
+literal (dialect quirk #6); emphasis is reached only via the commands. No
+toolbar (v5 has none). Added `prosemirror-schema-list` (lane C is the dep
+owner). `editing-commands.spec.ts`: 7 command specs over hand-built PM
+states (bold/italic/code/h2/blockquote/bullet/ordered → the right dialect
+bytes). Input rules are proven live in the e2e beat (unit 6). SPA 0.5.76.
