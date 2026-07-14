@@ -12068,8 +12068,34 @@ generator + the oracle case (Node 24; `QT_FIXTURE_TR_MAIN`/`…_MOUNT`
 for the .db, `QT_ORACLE_OUT` for the NDJSON, read by
 `QT_ORACLE_TEXT_REPLACEMENTS`).
 
-**Still OPEN under the order:** Unit 2 (the `regenerate-background`
-loud refusal — tier 2). Deferrals (tier 3, enumerated): the
-story-background *generation* subsystem (image-profile prompt build,
-`lastBackgroundGeneratedAt`, the 30s poll loop); project-level
-`?action=get-background`.
+### Unit 2 — the `regenerate-background` loud refusal (tier 2; core 0.0.221) — LANDED
+
+`ChatRegenerateBackground { chatId }` dispatch variant + engine arm
+(ready-gated so a locked vault answers the locked refusal first)
+returning `chat_media::chat_regenerate_background_refusal()` — a loud
+typed `not_available` (`ErrorKind::Internal`, "The
+'regenerate-background' chat action is recognized but not yet
+available."). v4's `handleRegenerateBackground` (`handlers/post.ts:77`)
+is the story-background GENERATION subsystem (image-profile prompt
+build, `lastBackgroundGeneratedAt`, the 30s poll loop) — a tier-3
+deferral, so there is nothing to differential against; a focused unit
+test pins the typed-refusal shape. The SPA now gets a recognized
+refusal instead of an unknown-action fallback.
+
+**Lane close-out — ALL order tiers landed.** Tier 1 (Unit 1) + Tier 2
+(Unit 2) both LANDED. Deferrals (tier 3, enumerated in the order): the
+story-background *generation* subsystem (as above); project-level
+`?action=get-background` (`actions/background.ts` — the Salon never
+uses it; only fires when `chatId` is null). No refusal arms remain in
+the text-replacements surface.
+
+**Gate (all green):** `cargo fmt --all --check`; clippy default AND
+native-transport, `-D warnings`; `cargo test --workspace` 0 failures
+with `text_replacements_routes_equivalence` (15 cases) +
+`text_replacement_rules_tier2` regenerated FRESH at `02865bdb` and run
+BY NAME (`--nocapture`, no SKIP), plus the live
+`text_replacements_web_routes` web-edge test; `cargo build -p
+quilltap-web -p quilltap-cli` clean.
+
+**Final versions:** core 0.0.221, harness 0.0.200, web 0.0.21 (host
+0.0.17, SPA 0.5.83 untouched by this lane).

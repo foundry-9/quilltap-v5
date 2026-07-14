@@ -976,3 +976,36 @@ pub fn chat_get_background(db: &Db, chat_id: &str) -> Response {
         Err(e) => internal(e),
     }
 }
+
+/// v4 `?action=regenerate-background` (`handleRegenerateBackground`) — the
+/// story-background GENERATION subsystem (image-profile prompt build,
+/// `lastBackgroundGeneratedAt`, the 30s poll loop) is a tier-3 deferral. Answer
+/// the loud typed refusal so the SPA gets a recognized `not_available`, not an
+/// unknown-action fallback.
+pub fn chat_regenerate_background_refusal() -> Response {
+    Response::error(
+        ErrorKind::Internal,
+        "The 'regenerate-background' chat action is recognized but not yet available.",
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn regenerate_background_is_a_loud_typed_refusal() {
+        match chat_regenerate_background_refusal() {
+            Response::Error(e) => {
+                assert_eq!(e.kind, ErrorKind::Internal);
+                assert!(
+                    e.message.contains("regenerate-background")
+                        && e.message.contains("not yet available"),
+                    "refusal message: {}",
+                    e.message
+                );
+            }
+            other => panic!("expected a typed refusal, got {other:?}"),
+        }
+    }
+}

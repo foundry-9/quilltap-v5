@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+P4.6ak lane A (server): a loud typed refusal for the chat
+`regenerate-background` action (`ChatRegenerateBackground`). v4's
+story-background GENERATION subsystem (image-profile prompt build, the
+30s poll loop) is a tier-3 deferral; the dispatch now answers a
+recognized `not_available` refusal so the SPA gets a typed response,
+not an unknown-action fallback. Version: core 0.0.221.
+
 P4.6ak lane A (server): the text-replacement-rules surface + the chat
 story-background resolver, both differential-verified against v4's real
 route handlers. The Phase-2 `text_replacement_rules` repo gained

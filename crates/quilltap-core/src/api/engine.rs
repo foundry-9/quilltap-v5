@@ -2694,6 +2694,13 @@ impl CoreEngine {
                 Ok(db) => super::chat_media::chat_get_background(&db, &chat_id),
                 Err(resp) => resp,
             },
+            // The story-background GENERATION subsystem is a tier-3 deferral — a
+            // loud typed refusal (not an unknown-action fallback). Still
+            // ready-gated so a locked vault answers the locked refusal first.
+            Request::ChatRegenerateBackground { chat_id: _ } => match self.ready_db() {
+                Ok(_) => super::chat_media::chat_regenerate_background_refusal(),
+                Err(resp) => resp,
+            },
             // === end P4.6ak ===
         }
     }

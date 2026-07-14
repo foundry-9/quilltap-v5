@@ -1830,6 +1830,16 @@ pub enum Request {
     ChatGetBackground {
         chat_id: String,
     },
+    /// v4 `POST /api/v1/chats/[id]?action=regenerate-background` (the
+    /// story-background GENERATION subsystem — `handlers/post.ts:77` /
+    /// `handleRegenerateBackground`). A tier-3 deferral (image-profile prompt
+    /// build + the 30s poll loop); the dispatch answers a loud typed
+    /// `not_available` so the SPA gets a recognized refusal, not an
+    /// unknown-action fallback.
+    #[serde(rename_all = "camelCase")]
+    ChatRegenerateBackground {
+        chat_id: String,
+    },
     // === end P4.6ak ===
 }
 
