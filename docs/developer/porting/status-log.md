@@ -10865,3 +10865,30 @@ live e2e beat added to the existing `e2e/settings-autonomous-flow.spec.ts` (NOT
 lane B's two new spec files) — deep-link the card, read the default 30, save 45
 (waiting on the update dispatch response), reload, read 45 back through the live
 GET/PUT dispatch surface.
+
+**e2e fixture gotcha (diagnosed live):** the committed salon e2e fixture predates
+the `instance_settings` table, so the card's PUT (an INSERT) failed with `no such
+table` while the GET tolerated it (default 30). Reproduced against a manually
+launched `quilltap-web` over a provisioned salon copy; fixed by materializing an
+empty `instance_settings` table in `e2e/global-setup.ts` (the `terminal_sessions`
+/ `embedding_profiles` precedent — a real instance's version guard creates it at
+boot). `global-setup.ts` is a shared e2e-infra file (lane B owns `e2e/support/**`);
+the touch is additive `CREATE TABLE IF NOT EXISTS` — flagged for the unifier.
+
+### P4.d3 lane close-out gate (branch `claude/p4-d3-db-size-drift-3b3682`)
+
+Drift-check: v4 HEAD == `dd0d9ff5` at lane start AND lane end (no drift). Gate:
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -D
+warnings` clean on the default feature set AND `--features
+quilltap-core/native-transport`; `cargo test --workspace` green (309 suites, zero
+failures); every affected differential verified BY NAME against FRESH `dd0d9ff5`
+oracles (15/15 GREEN, each RAN): `embedding_vector`, `help_docs_tier2`,
+`help_docs_upsert_tier2`, `conversation_chunks_tier2`, `doc_mount_chunks_tier2`,
+`memories_tier2`, `vector_indices_tier2`, `embedding_refit_tier3`,
+`maintenance_ops_tier2`, `maintenance_sweep_tier2` (non-diverging),
+`collapse_stale_chat_caches_tier2` (NEW), `cold_chunk_reembed_tier2` (NEW),
+`settings_routes` (30 cases), `memories_routes` + `salon_reads` (spot-check
+non-diverging). `ng test` 622 green; `ng build` clean; full Playwright **37
+passed / 2 skipped (pre-existing thin-fixture walks) / 0 failed** with the Data
+Retention beat ACTIVE. Versions: core 0.0.214, harness 0.0.195, SPA 0.5.71
+(host/web unchanged). Baseline moves to `dd0d9ff5` when the round unifies.
