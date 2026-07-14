@@ -761,12 +761,14 @@ where
                 message: e.to_string(),
                 pepper_state: None,
                 code: None,
+                associations: None,
             },
             RegenError::Db(_) => CoreError {
                 kind: ErrorKind::Internal,
                 message: e.to_string(),
                 pepper_state: None,
                 code: None,
+                associations: None,
             },
         })
     }
@@ -947,6 +949,7 @@ where
                     message: e.to_string(),
                     pepper_state: None,
                     code: None,
+                    associations: None,
                 });
             }
         };
@@ -1191,6 +1194,7 @@ fn map_create_error(e: HandleCreateError) -> CoreError {
         message: e.to_string(),
         pepper_state: None,
         code: None,
+        associations: None,
     }
 }
 
@@ -1255,6 +1259,7 @@ where
                 message: format!("invalid chatCreate request: {e}"),
                 pepper_state: None,
                 code: None,
+                associations: None,
             })?;
 
         // Open the OWN writable partitions (module note). `busy_timeout` guards
@@ -1268,6 +1273,7 @@ where
                         message: format!("open {name}: {e}"),
                         pepper_state: None,
                         code: None,
+                        associations: None,
                     }
                 })?;
             w.connection().busy_timeout(busy).map_err(|e| CoreError {
@@ -1275,6 +1281,7 @@ where
                 message: format!("busy_timeout {name}: {e}"),
                 pepper_state: None,
                 code: None,
+                associations: None,
             })?;
             Ok(w)
         };
@@ -1383,6 +1390,7 @@ where
                         message: format!("chat create runtime: {e}"),
                         pepper_state: None,
                         code: None,
+                        associations: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -1393,6 +1401,7 @@ where
                     message: "chat create thread panicked".to_string(),
                     pepper_state: None,
                     code: None,
+                    associations: None,
                 })
             })
         })
@@ -1432,6 +1441,7 @@ where
                         message: format!("spine runtime: {e}"),
                         pepper_state: None,
                         code: None,
+                        associations: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -1442,6 +1452,7 @@ where
                     message: "chat send thread panicked".to_string(),
                     pepper_state: None,
                     code: None,
+                    associations: None,
                 })
             })
         })
@@ -1477,6 +1488,7 @@ where
                         message: format!("spine runtime: {e}"),
                         pepper_state: None,
                         code: None,
+                        associations: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -1487,6 +1499,7 @@ where
                     message: "swipe generation thread panicked".to_string(),
                     pepper_state: None,
                     code: None,
+                    associations: None,
                 })
             })
         })

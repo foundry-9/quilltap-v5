@@ -55,7 +55,17 @@ pub fn build_router(state: SharedState) -> Router {
         .route("/api/dispatch", post(dispatch::dispatch))
         .route("/api/events", get(events::events))
         .route("/api/v1/files/proxy/{*key}", get(files_routes::files_proxy))
-        .route("/api/v1/files/{id}", get(files_routes::files_get))
+        // P4.6ah: the general upload leg + the DELETE-associations REST route
+        // (JSON verbs — list/move/promote/folders/maintenance — ride /api/dispatch).
+        .route("/api/v1/files", post(files_routes::files_upload_post))
+        .route(
+            "/api/v1/files/{id}",
+            get(files_routes::files_get).delete(files_routes::files_delete),
+        )
+        .route(
+            "/api/v1/chats/{id}/files",
+            post(files_routes::chat_files_post),
+        )
         .route(
             "/api/v1/mount-points/{id}/files/{*path}",
             get(files_routes::mount_file_get).put(files_routes::mount_file_put),

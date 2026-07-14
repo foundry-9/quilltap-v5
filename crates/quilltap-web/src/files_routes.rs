@@ -525,6 +525,14 @@ fn core_response_to_http(resp: CoreResponse, success_status: StatusCode) -> Axum
             if let Some(code) = e.code {
                 body.insert("code".to_string(), json!(code));
             }
+            // v4's FILE_HAS_ASSOCIATIONS itemized payload (P4.6ah) rides the flat
+            // error body when present.
+            if let Some(assoc) = e.associations {
+                body.insert(
+                    "associations".to_string(),
+                    serde_json::to_value(assoc).unwrap_or(serde_json::Value::Null),
+                );
+            }
             (
                 status,
                 [("content-type", "application/json")],
@@ -739,6 +747,164 @@ pub async fn mount_blobs_post(
     };
     match dispatch_core(&state, core_req).await {
         Ok(resp) => core_response_to_http(resp, StatusCode::CREATED),
+        Err(r) => r,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// P4.6ah: the files write + maintenance REST legs (JSON verbs ride /api/dispatch)
+// ---------------------------------------------------------------------------
+
+/// v4 `POST /api/v1/files?action=upload` — the general upload multipart leg
+/// (`file`, `tags?` JSON string of `[{tagType,tagId}]`, `projectId?`,
+/// `folderPath?`). Maps onto [`CoreRequest::FileUpload`] → `{data: FileEntry}`.
+/// Status 201 (create) / 200 (overwrite) is derived from `createdAt == updatedAt`
+/// (a create mints both equal; an overwrite bumps only `updatedAt`).
+pub async fn files_upload_post(
+    State(state): State<SharedState>,
+    req: axum::extract::Request,
+) -> AxumResponse {
+    let content_type = req
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if !content_type.contains("multipart/form-data") {
+        return error_json(
+            StatusCode::BAD_REQUEST,
+            "Expected multipart/form-data content type",
+        );
+    }
+    let form = match FormData::from_request(req, &state).await {
+        Ok(f) => f,
+        Err(_) => return error_json(StatusCode::BAD_REQUEST, "Invalid multipart body"),
+    };
+    let Some(file) = form.file("file") else {
+        return error_json(StatusCode::BAD_REQUEST, "No file provided");
+    };
+    // tags: JSON string of `[{tagType, tagId}]` → the tagIds (v4 upload.ts:55).
+    let tags: Option<Vec<String>> = match form.text("tags") {
+        Some(raw) if !raw.is_empty() => {
+            match serde_json::from_str::<Vec<serde_json::Value>>(&raw) {
+                Ok(arr) => Some(
+                    arr.iter()
+                        .filter_map(|t| t.get("tagId").and_then(|v| v.as_str()).map(str::to_string))
+                        .collect(),
+                ),
+                Err(_) => return error_json(StatusCode::BAD_REQUEST, "Invalid tags JSON"),
+            }
+        }
+        _ => None,
+    };
+    let project_id = form.text("projectId").filter(|s| !s.is_empty());
+    let folder_path = form.text("folderPath").filter(|s| !s.is_empty());
+
+    let core_req = CoreRequest::FileUpload {
+        filename: file.filename.clone().unwrap_or_default(),
+        content_type: file.content_type.clone().unwrap_or_default(),
+        data: base64_of(&file.bytes),
+        tags,
+        project_id,
+        folder_path,
+    };
+    let resp = match dispatch_core(&state, core_req).await {
+        Ok(r) => r,
+        Err(r) => return r,
+    };
+    // Derive 201 (create) vs 200 (overwrite) from the returned entity timestamps.
+    let status = if let CoreResponse::Files(v) = &resp {
+        let data = v.get("data");
+        let created = data
+            .and_then(|d| d.get("createdAt"))
+            .and_then(|c| c.as_str());
+        let updated = data
+            .and_then(|d| d.get("updatedAt"))
+            .and_then(|c| c.as_str());
+        if created.is_some() && created == updated {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        }
+    } else {
+        StatusCode::CREATED
+    };
+    core_response_to_http(resp, status)
+}
+
+/// v4 `POST /api/v1/chats/{id}/files` — the chat-file leg. `?action=link` → a JSON
+/// `{fileId}` body ([`CoreRequest::ChatFileLink`]); otherwise the multipart upload
+/// (`file`, `resolution?`, `conflictingFileId?` → [`CoreRequest::ChatFileUpload`]).
+/// Always 200 (v4's `NextResponse.json` default, incl. the duplicate envelope).
+pub async fn chat_files_post(
+    State(state): State<SharedState>,
+    Path(chat_id): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+    req: axum::extract::Request,
+) -> AxumResponse {
+    if params.get("action").map(String::as_str) == Some("link") {
+        let bytes = match axum::body::to_bytes(req.into_body(), 1024 * 1024).await {
+            Ok(b) => b,
+            Err(_) => return error_json(StatusCode::BAD_REQUEST, "Invalid request body"),
+        };
+        let body: serde_json::Value =
+            serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+        let Some(file_id) = body.get("fileId").and_then(|v| v.as_str()) else {
+            return error_json(StatusCode::BAD_REQUEST, "fileId is required");
+        };
+        let core_req = CoreRequest::ChatFileLink {
+            chat_id,
+            file_id: file_id.to_string(),
+        };
+        return match dispatch_core(&state, core_req).await {
+            Ok(resp) => core_response_to_http(resp, StatusCode::OK),
+            Err(r) => r,
+        };
+    }
+
+    let content_type = req
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if !content_type.contains("multipart/form-data") {
+        return error_json(StatusCode::BAD_REQUEST, "Expected multipart/form-data");
+    }
+    let form = match FormData::from_request(req, &state).await {
+        Ok(f) => f,
+        Err(_) => return error_json(StatusCode::BAD_REQUEST, "Invalid multipart body"),
+    };
+    let Some(file) = form.file("file") else {
+        return error_json(StatusCode::BAD_REQUEST, "No file provided");
+    };
+    let core_req = CoreRequest::ChatFileUpload {
+        chat_id,
+        filename: file.filename.clone().unwrap_or_default(),
+        content_type: file.content_type.clone().unwrap_or_default(),
+        data: base64_of(&file.bytes),
+        resolution: form.text("resolution").filter(|s| !s.is_empty()),
+        conflicting_file_id: form.text("conflictingFileId").filter(|s| !s.is_empty()),
+    };
+    match dispatch_core(&state, core_req).await {
+        Ok(resp) => core_response_to_http(resp, StatusCode::OK),
+        Err(r) => r,
+    }
+}
+
+/// v4 `DELETE /api/v1/files/{id}?force=&dissociate=` — maps onto
+/// [`CoreRequest::FileDelete`]. The `FILE_HAS_ASSOCIATIONS` 400 carries its
+/// itemized `associations` payload through [`core_response_to_http`].
+pub async fn files_delete(
+    State(state): State<SharedState>,
+    Path(id): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+) -> AxumResponse {
+    let core_req = CoreRequest::FileDelete {
+        file_id: id,
+        force: params.get("force").map(String::as_str) == Some("true"),
+        dissociate: params.get("dissociate").map(String::as_str) == Some("true"),
+    };
+    match dispatch_core(&state, core_req).await {
+        Ok(resp) => core_response_to_http(resp, StatusCode::OK),
         Err(r) => r,
     }
 }

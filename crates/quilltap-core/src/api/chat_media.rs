@@ -780,6 +780,47 @@ pub async fn chat_file_delete(db: &Db, _user_id: &str, file_id: &str) -> Respons
     }
 }
 
+/// v4 `POST /api/v1/chats/[id]/files?action=link` (`handleLinkFile`) — link an
+/// existing library file to the chat (JSON `{fileId}`). Verifies the chat + file
+/// exist, appends the chatId to the file's `linkedTo` (idempotent), and echoes
+/// the `{file}` shape. `addLink` returning "no write" means already-linked, NOT a
+/// failure (v4's `addLink` still returns the file), so the echo reads the row.
+pub async fn chat_file_link(db: &Db, _user_id: &str, chat_id: &str, file_id: &str) -> Response {
+    use crate::db::files::FilesRepository;
+
+    let cid = chat_id.to_string();
+    match db.read_main(move |c| chats_read::find_by_id(c, &cid)) {
+        Ok(Some(_)) => {}
+        Ok(None) => return not_found("Chat"),
+        Err(e) => return internal(e),
+    }
+    let fid = file_id.to_string();
+    let file = match db.read_main(move |c| FilesRepository::new(c).find_full_by_id(&fid)) {
+        Ok(Some(f)) => f,
+        Ok(None) => return not_found("File"),
+        Err(e) => return internal(e),
+    };
+    let fid = file_id.to_string();
+    let cid = chat_id.to_string();
+    if let Err(e) = db
+        .write(move |ws| FilesRepository::new(ws.main().connection()).add_link(&fid, &cid))
+        .await
+    {
+        return internal(e);
+    }
+    let filepath = format!("/api/v1/files/{}", file.id);
+    Response::ChatMedia(json!({
+        "file": {
+            "id": file.id,
+            "filename": file.original_filename,
+            "filepath": filepath,
+            "mimeType": file.mime_type,
+            "size": file.size,
+            "url": filepath,
+        }
+    }))
+}
+
 /// Input for the web-edge chat-file upload leg (v4 `uploadChatFile` inputs).
 pub struct ChatFileUploadInput {
     pub filename: String,
@@ -790,20 +831,84 @@ pub struct ChatFileUploadInput {
     pub conflicting_file_id: Option<String>,
 }
 
-/// v4 `POST /api/v1/chats/[id]/files` (default multipart leg) → `uploadChatFile`.
-///
-/// **OPEN (loud deferral this round).** The upload port writes bytes through the
-/// host storage seam (`writeUserUploadToMountStore` / `fileStorageManager.uploadFile`
-/// — a `FileBytesStore`-style boundary) with the project duplicate-detection branch;
-/// it lands with the multipart web route in a follow-up. Enumerated in the lane report.
+/// v4 `POST /api/v1/chats/[id]/files` (default multipart leg) → `uploadChatFile`
+/// (`chat-files-v2.ts`, ported in [`crate::services::chat_files`]). Reads the
+/// chat's projectId, decodes the base64 bytes, runs the upload (project
+/// dup-detect + resolutions / non-project sha-dedup), and shapes the `{file}` |
+/// `{duplicate, …}` body. A >10 MB overflow → v4's message-sniffed 400.
 pub async fn chat_file_upload(
-    _db: &Db,
-    _user_id: &str,
-    _chat_id: &str,
-    _input: ChatFileUploadInput,
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    input: ChatFileUploadInput,
 ) -> Response {
-    Response::error(
-        ErrorKind::Internal,
-        "The chat-file upload leg is recognized but not yet available.",
+    use crate::services::chat_files::{upload_chat_file, ChatUploadError, ChatUploadOutcome};
+
+    // v4: verify the chat belongs to the user; read its projectId.
+    let cid = chat_id.to_string();
+    let chat = match db.read_main(move |c| chats_read::find_by_id(c, &cid)) {
+        Ok(Some(c)) => c,
+        Ok(None) => return not_found("Chat"),
+        Err(e) => return internal(e),
+    };
+    let project_id = chat
+        .get("projectId")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+
+    // Decode the transport base64 (the web edge encodes the multipart file with
+    // padded STANDARD base64).
+    let data = {
+        use base64::Engine;
+        match base64::engine::general_purpose::STANDARD.decode(input.data.as_bytes()) {
+            Ok(b) => b,
+            Err(_) => return bad_request("Invalid base64 file data"),
+        }
+    };
+
+    let outcome = upload_chat_file(
+        db,
+        user_id,
+        chat_id,
+        project_id,
+        input.filename,
+        input.content_type,
+        data,
+        input.resolution,
+        input.conflicting_file_id,
     )
+    .await;
+
+    match outcome {
+        Ok(ChatUploadOutcome::Uploaded(f)) => Response::ChatMedia(json!({
+            "file": {
+                "id": f.id,
+                "filename": f.filename,
+                "filepath": f.filepath,
+                "mimeType": f.mime_type,
+                "size": f.size,
+                "url": f.filepath,
+            }
+        })),
+        Ok(ChatUploadOutcome::Duplicate(d)) => Response::ChatMedia(json!({
+            "duplicate": true,
+            "conflictType": d.conflict_type,
+            "existingFile": {
+                "id": d.existing_id,
+                "filename": d.existing_filename,
+                "size": d.existing_size,
+                "createdAt": d.existing_created_at,
+                "sha256": d.existing_sha256,
+            },
+            "newFile": {
+                "filename": d.new_filename,
+                "size": d.new_size,
+                "sha256": d.new_sha256,
+            },
+        })),
+        Err(ChatUploadError::SizeExceeded) => {
+            bad_request("File size exceeds maximum allowed size of 10 MB")
+        }
+        Err(ChatUploadError::Db(e)) => internal(e),
+    }
 }

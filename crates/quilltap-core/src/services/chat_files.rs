@@ -496,3 +496,406 @@ impl<CMP: CompletionProvider + Sync> crate::services::message_context::MessageCo
         load_lantern_images(&self.deps, self.connection_profile, file_ids, &provider).await
     }
 }
+
+// ============================================================================
+// The upload/ingest half (v4 `lib/chat-files-v2.ts` `uploadChatFile`) — P4.6ah.
+// Composed over the `file_storage.rs` write seams; runs on the writer.
+// ============================================================================
+
+use crate::db::files::{CreateOptions, FileCreate, FileFull, FilesRepository};
+use crate::files::text_detection::{detect_text_content, get_best_mime_type};
+use crate::services::file_storage::{
+    get_inherited_tags, write_project_file_to_mount_store, write_user_upload_to_mount_store,
+    NotConfiguredPixelCodec,
+};
+
+/// v4 `MAX_FILE_SIZE` (`chat-files-v2.ts:72`) — 10 MB (size only, no type gate).
+const MAX_CHAT_FILE_SIZE: usize = 10 * 1024 * 1024;
+
+/// The uploaded-file result (v4 `ChatFileUploadResult`) — the fields the chat-file
+/// route echoes as `{file}` plus the sha the caller drops.
+#[derive(Debug, Clone)]
+pub struct ChatUploadedFile {
+    pub id: String,
+    pub filename: String,
+    pub filepath: String,
+    pub mime_type: String,
+    pub size: i64,
+    pub width: Option<i64>,
+    pub height: Option<i64>,
+}
+
+/// v4 `ChatFileDuplicateResult` — the conflict envelope the route returns 200.
+#[derive(Debug, Clone)]
+pub struct ChatUploadDuplicate {
+    /// `'filename' | 'content' | 'both'`.
+    pub conflict_type: String,
+    pub existing_id: String,
+    pub existing_filename: String,
+    pub existing_size: i64,
+    pub existing_created_at: String,
+    pub existing_sha256: String,
+    pub new_filename: String,
+    pub new_size: i64,
+    pub new_sha256: String,
+}
+
+/// The `uploadChatFile` outcome — a stored/linked file, or an unresolved
+/// project-scope duplicate.
+pub enum ChatUploadOutcome {
+    Uploaded(ChatUploadedFile),
+    Duplicate(ChatUploadDuplicate),
+}
+
+/// Errors the chat-file route maps: a 10 MB overflow → v4's message-sniffed 400.
+pub enum ChatUploadError {
+    SizeExceeded,
+    Db(crate::db::DbError),
+}
+
+impl From<crate::db::DbError> for ChatUploadError {
+    fn from(e: crate::db::DbError) -> Self {
+        ChatUploadError::Db(e)
+    }
+}
+
+/// v4 `uploadChatFile` (`chat-files-v2.ts:123`). `project_id` is the chat's
+/// projectId (the route passes `chat.projectId`). Runs the whole read+write on
+/// the single writer (byte writes go through the `file_storage.rs` seams). The
+/// fire-and-forget `autoDescribeChatImageAttachment` (v4:395) is a named no-op —
+/// behaviorally invisible to the route's synchronous contract (enumerated in the
+/// lane report).
+#[allow(clippy::too_many_arguments)]
+pub async fn upload_chat_file(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    project_id: Option<String>,
+    filename: String,
+    content_type: String,
+    data: Vec<u8>,
+    resolution: Option<String>,
+    conflicting_file_id: Option<String>,
+) -> Result<ChatUploadOutcome, ChatUploadError> {
+    // validateChatFile — size only.
+    if data.len() > MAX_CHAT_FILE_SIZE {
+        return Err(ChatUploadError::SizeExceeded);
+    }
+    let user_id = user_id.to_string();
+    let chat_id = chat_id.to_string();
+    db.write(move |ws| {
+        let main = ws.main().connection();
+        let mount = ws
+            .mount_index()
+            .ok_or_else(|| {
+                crate::db::DbError::Key("chat upload requires the mount-index database".into())
+            })?
+            .connection();
+        upload_chat_file_conn(
+            main,
+            mount,
+            &user_id,
+            &chat_id,
+            project_id.as_deref().filter(|s| !s.is_empty()),
+            &filename,
+            &content_type,
+            &data,
+            resolution.as_deref(),
+            conflicting_file_id.as_deref(),
+        )
+    })
+    .await
+    .map_err(ChatUploadError::Db)
+}
+
+/// The conn-level body of [`upload_chat_file`] (v4 `uploadChatFile` +
+/// `uploadFileToProject`).
+#[allow(clippy::too_many_arguments)]
+fn upload_chat_file_conn(
+    main: &rusqlite::Connection,
+    mount: &rusqlite::Connection,
+    user_id: &str,
+    chat_id: &str,
+    project_id: Option<&str>,
+    filename: &str,
+    content_type: &str,
+    data: &[u8],
+    resolution: Option<&str>,
+    conflicting_file_id: Option<&str>,
+) -> Result<ChatUploadOutcome, crate::db::DbError> {
+    let sha256 = crate::photos::keep_image_markdown::sha256_of_buffer(data);
+    let text_detection = detect_text_content(data, filename, content_type);
+    let mime_type = get_best_mime_type(&text_detection, content_type);
+    let category = if mime_type.starts_with("image/") {
+        "IMAGE"
+    } else {
+        "ATTACHMENT"
+    };
+    // linkedTo = [chatId] (the route passes no messageId).
+    let linked_to: Vec<String> = vec![chat_id.to_string()];
+    let files = FilesRepository::new(main);
+
+    if let Some(pid) = project_id {
+        // Content duplicate: same sha in the SAME project.
+        let by_hash = files.find_by_sha256_full(&sha256)?;
+        let content_dup = by_hash
+            .iter()
+            .find(|f| f.project_id.as_deref() == Some(pid));
+        // Filename duplicate in the project.
+        let by_name = files.find_by_filename_in_project(user_id, pid, filename)?;
+        let filename_dup = by_name.first();
+
+        let has_content = content_dup.is_some();
+        let has_name = filename_dup.is_some();
+
+        if (has_content || has_name) && resolution.is_none() {
+            let conflict_type = if has_content && has_name {
+                "both"
+            } else if has_content {
+                "content"
+            } else {
+                "filename"
+            };
+            // v4 prefers the filename dup for the existingFile echo.
+            let existing = filename_dup.or(content_dup).expect("a duplicate exists");
+            return Ok(ChatUploadOutcome::Duplicate(ChatUploadDuplicate {
+                conflict_type: conflict_type.to_string(),
+                existing_id: existing.id.clone(),
+                existing_filename: existing.original_filename.clone(),
+                existing_size: existing.size,
+                existing_created_at: existing.created_at.clone(),
+                existing_sha256: existing.sha256.clone(),
+                new_filename: filename.to_string(),
+                new_size: data.len() as i64,
+                new_sha256: sha256.clone(),
+            }));
+        }
+
+        if let Some(res) = resolution {
+            if res == "skip" {
+                let existing: Option<FileFull> = match conflicting_file_id {
+                    Some(cfid) => files.find_full_by_id(cfid)?,
+                    None => filename_dup.or(content_dup).cloned(),
+                };
+                if let Some(ef) = existing {
+                    // Link the existing file to the chat (addLink only touches
+                    // linkedTo/updatedAt — the echoed fields are unchanged).
+                    for entity_id in &linked_to {
+                        files.add_link(&ef.id, entity_id)?;
+                    }
+                    return Ok(ChatUploadOutcome::Uploaded(uploaded_from_full(&ef)));
+                }
+                // skip with no existing file falls through to uploadFileToProject.
+            }
+            if res == "replace" {
+                if let Some(cfid) = conflicting_file_id {
+                    if files.find_full_by_id(cfid)?.is_some() {
+                        // deleteFile (storage) is best-effort / DB-invisible — skip.
+                        files.delete(cfid)?;
+                    }
+                }
+            }
+            let final_filename = if res == "keepBoth" {
+                let project_files = files.find_by_project_id(user_id, pid)?;
+                let existing_names: std::collections::HashSet<String> = project_files
+                    .iter()
+                    .map(|f| f.original_filename.clone())
+                    .collect();
+                generate_unique_filename(filename, &existing_names)
+            } else {
+                filename.to_string()
+            };
+            return upload_file_to_project(
+                main,
+                mount,
+                data,
+                &final_filename,
+                &mime_type,
+                &sha256,
+                category,
+                user_id,
+                Some(pid),
+                &linked_to,
+                text_detection.is_plain_text,
+            )
+            .map(ChatUploadOutcome::Uploaded);
+        }
+    }
+
+    // Non-project path (also reached by project files with no conflict/resolution):
+    // global sha dedup extends linkedTo, else a fresh upload.
+    let existing_files = files.find_by_sha256_full(&sha256)?;
+    if let Some(existing) = existing_files.first() {
+        let mut merged = existing.linked_to.clone();
+        let mut added = false;
+        for e in &linked_to {
+            if !merged.contains(e) {
+                merged.push(e.clone());
+                added = true;
+            }
+        }
+        if added {
+            files.update(
+                &existing.id,
+                &crate::db::files::FileUpdate {
+                    linked_to: Some(merged),
+                    updated_at: crate::clock::now_iso(),
+                    ..Default::default()
+                },
+            )?;
+        }
+        return Ok(ChatUploadOutcome::Uploaded(uploaded_from_full(existing)));
+    }
+
+    upload_file_to_project(
+        main,
+        mount,
+        data,
+        filename,
+        &mime_type,
+        &sha256,
+        category,
+        user_id,
+        project_id,
+        &linked_to,
+        text_detection.is_plain_text,
+    )
+    .map(ChatUploadOutcome::Uploaded)
+}
+
+/// v4 `uploadFileToProject` (`chat-files-v2.ts:313`) — mint the fileId, write the
+/// bytes (project store `/` vs the Quilltap Uploads mount under `chat/`), inherit
+/// tags, create the metadata row (id == storage path), return the result. The
+/// fire-and-forget image auto-describe is a named no-op (deferred).
+#[allow(clippy::too_many_arguments)]
+fn upload_file_to_project(
+    main: &rusqlite::Connection,
+    mount: &rusqlite::Connection,
+    data: &[u8],
+    filename: &str,
+    mime_type: &str,
+    sha256: &str,
+    category: &str,
+    user_id: &str,
+    project_id: Option<&str>,
+    linked_to: &[String],
+    is_plain_text: bool,
+) -> Result<ChatUploadedFile, crate::db::DbError> {
+    let file_id = uuid::Uuid::new_v4().to_string();
+    let codec = NotConfiguredPixelCodec;
+    let (storage_key, stored_mime, stored_size, file_folder_path, file_project_id) =
+        if let Some(pid) = project_id {
+            let uploaded = write_project_file_to_mount_store(
+                main,
+                mount,
+                &codec,
+                pid,
+                filename,
+                data,
+                mime_type,
+                Some("/"),
+                None,
+            )?;
+            (
+                uploaded.storage_key(),
+                uploaded.stored_mime_type,
+                uploaded.size_bytes as f64,
+                Some("/".to_string()),
+                Some(pid.to_string()),
+            )
+        } else {
+            let written = write_user_upload_to_mount_store(
+                main, mount, &codec, filename, data, mime_type, "chat", None,
+            )?;
+            (
+                written.storage_key(),
+                written.stored_mime_type,
+                written.size_bytes as f64,
+                None,
+                None,
+            )
+        };
+
+    let inherited_tags = get_inherited_tags(main, mount, linked_to, user_id);
+    let files = FilesRepository::new(main);
+    let now = crate::clock::now_iso();
+    files.create(
+        &FileCreate {
+            user_id: user_id.to_string(),
+            sha256: sha256.to_string(),
+            original_filename: filename.to_string(),
+            mime_type: stored_mime.clone(),
+            size: stored_size,
+            width: None,
+            height: None,
+            is_plain_text: Some(is_plain_text),
+            linked_to: linked_to.to_vec(),
+            source: "UPLOADED".to_string(),
+            category: category.to_string(),
+            generation_prompt: None,
+            generation_model: None,
+            generation_revised_prompt: None,
+            description: None,
+            tags: inherited_tags,
+            project_id: file_project_id,
+            folder_path: file_folder_path,
+            storage_key: Some(storage_key),
+            file_status: "ok".to_string(),
+        },
+        &CreateOptions {
+            id: file_id.clone(),
+            created_at: now.clone(),
+            updated_at: now,
+        },
+    )?;
+
+    // autoDescribeChatImageAttachment (v4:395) — fire-and-forget host seam, a
+    // named no-op here (invisible to the route's synchronous contract).
+
+    Ok(ChatUploadedFile {
+        id: file_id.clone(),
+        filename: filename.to_string(),
+        filepath: get_file_api_path(&file_id),
+        mime_type: stored_mime,
+        size: stored_size as i64,
+        width: None,
+        height: None,
+    })
+}
+
+/// Build the uploaded-file echo from an existing row (skip/dedup paths). v4
+/// returns `width || undefined` — a zero/absent width is dropped.
+fn uploaded_from_full(f: &FileFull) -> ChatUploadedFile {
+    ChatUploadedFile {
+        id: f.id.clone(),
+        filename: f.original_filename.clone(),
+        filepath: get_file_api_path(&f.id),
+        mime_type: f.mime_type.clone(),
+        size: f.size,
+        width: f.width.filter(|w| *w != 0),
+        height: f.height.filter(|h| *h != 0),
+    }
+}
+
+/// v4 `generateUniqueFilename` (`chat-files-v2.ts:79`) — append ` (1)`, ` (2)`, …
+/// before the extension until the name is free.
+fn generate_unique_filename(
+    filename: &str,
+    existing: &std::collections::HashSet<String>,
+) -> String {
+    if !existing.contains(filename) {
+        return filename.to_string();
+    }
+    let (basename, ext) = match filename.rfind('.') {
+        Some(i) if i > 0 => (&filename[..i], &filename[i..]),
+        _ => (filename, ""),
+    };
+    let mut counter = 1u32;
+    loop {
+        let candidate = format!("{basename} ({counter}){ext}");
+        if !existing.contains(&candidate) {
+            return candidate;
+        }
+        counter += 1;
+    }
+}

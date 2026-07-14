@@ -16,29 +16,37 @@
 //! (move/promote — `filename` only, RAW folderPath, no
 //! originalFilename/width/height/fileStatus).
 //!
-//! **Bounded, loudly-flagged divergences (see the lane report + status log):**
-//! the `dissociate=true` delete arm (the message-attachment strip + character
-//! default-image/avatar-override clear — a multi-repo write) is refusal-armed; and
-//! the `FILE_HAS_ASSOCIATIONS` 400 carries `{error, code}` but NOT the itemized
-//! `associations` object on the dispatch wire (the shared `CoreError` envelope has
-//! no field for it, and widening it would touch out-of-lane host literals) — the
-//! computation is ported ([`get_file_associations`]) and differential-verified
-//! directly. Best-effort storage side effects (createFolder / deleteFolder /
-//! deleteFile) are DB-invisible and skipped, matching v4's try/catch-and-log.
+//! The `FILE_HAS_ASSOCIATIONS` 400 carries the itemized `associations` object on
+//! the shared `CoreError` envelope (P4.6ah widened it with an additive optional
+//! field), and the `dissociate=true` delete arm strips message attachments +
+//! character default-image / avatar-override references before deleting
+//! ([`dissociate_file_from_all`]). Best-effort storage side effects (createFolder /
+//! deleteFolder / deleteFile) are DB-invisible and skipped, matching v4's
+//! try/catch-and-log.
 
+use rusqlite::OptionalExtension;
 use serde_json::{json, Map, Value};
 
 use crate::collation::locale_compare;
-use crate::db::files::{FileFull, FileUpdate, FilesRepository, MoveProjectId};
+use crate::db::chats_messages::ChatMessagesRepository;
+use crate::db::files::{
+    CreateOptions, FileCreate, FileFull, FileUpdate, FilesRepository, MoveProjectId,
+};
 use crate::db::folders::{FolderCreate, FolderRow, FolderUpdate, FoldersRepository};
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_messages_read, chats_read, DbError};
+use crate::files::image_processing::can_resize_image;
 use crate::folder_utils::{
     get_folder_name, get_parent_path, normalize_folder_path, resolve_effective_folder_path,
     validate_folder_path,
 };
+use crate::photos::keep_image_markdown::sha256_of_buffer;
+use crate::services::file_storage::{
+    write_project_file_to_mount_store, write_user_upload_to_mount_store, NotConfiguredPixelCodec,
+    NotConfiguredStorageBackend, StoredBlob,
+};
 
-use super::types::{ErrorKind, Response};
+use super::types::{ErrorKind, FileAssocCharacter, FileAssocMessage, FileAssociations, Response};
 
 // ===========================================================================
 // Shared helpers
@@ -56,15 +64,6 @@ fn bad_request(msg: impl Into<String>) -> Response {
 fn forbidden() -> Response {
     // v4 `forbidden()` → `{ error: 'Forbidden' }`, 403.
     Response::error(ErrorKind::Forbidden, "Forbidden")
-}
-
-/// The loud "recognized but not yet available" refusal for a files-family arm that
-/// is a documented deferral (`sync`, and the `dissociate` delete arm).
-fn not_available(action: &str) -> Response {
-    Response::error(
-        ErrorKind::Internal,
-        format!("The '{action}' files action is recognized but not yet available."),
-    )
 }
 
 /// v4 `x || null` general-scope coercion for a dispatch projectId arg (empty →
@@ -462,9 +461,10 @@ pub async fn file_promote(
 // ===========================================================================
 
 /// v4 `handleDeleteFile` (`files/[id]/actions/delete.ts`). Owner check
-/// (`forbidden`); `?dissociate=` (LOUD deferral this lane) strips refs; unforced
-/// linked-file → `FILE_HAS_ASSOCIATIONS` 400 (real associations) or silent
-/// stale-linkedTo clear; then delete. Body `{ success: true }`.
+/// (`forbidden`); `?dissociate=` strips refs (message attachments + character
+/// default-image / avatar-overrides + the file's own linkedTo); unforced
+/// linked-file → the itemized `FILE_HAS_ASSOCIATIONS` 400 (real associations)
+/// or a silent stale-linkedTo clear; then delete. Body `{ success: true }`.
 pub async fn file_delete(
     db: &Db,
     user_id: &str,
@@ -474,7 +474,7 @@ pub async fn file_delete(
 ) -> Response {
     // Owner + linked-state read.
     let fid = file_id.to_string();
-    let file = match db.read_main(move |c| FilesRepository::new(c).find_full_by_id(&fid)) {
+    let mut file = match db.read_main(move |c| FilesRepository::new(c).find_full_by_id(&fid)) {
         Ok(Some(f)) => f,
         Ok(None) => return not_found("File"),
         Err(e) => return internal(e),
@@ -483,10 +483,19 @@ pub async fn file_delete(
         return forbidden();
     }
 
-    // The dissociate write arm (message-attachment strip + character image clear)
-    // is a bounded deferral — refuse loudly rather than half-do it.
+    // v4: dissociate strips every reference (messages + character images + the
+    // file's own linkedTo), then re-reads the row so the subsequent (now empty)
+    // linkedTo check is a no-op.
     if dissociate && !file.linked_to.is_empty() {
-        return not_available("dissociate");
+        if let Err(e) = dissociate_file_from_all(db, user_id, &file).await {
+            return internal(e);
+        }
+        let fid_reload = file.id.clone();
+        match db.read_main(move |c| FilesRepository::new(c).find_full_by_id(&fid_reload)) {
+            Ok(Some(reloaded)) => file = reloaded,
+            Ok(None) => {}
+            Err(e) => return internal(e),
+        }
     }
 
     if !force && !dissociate && !file.linked_to.is_empty() {
@@ -497,14 +506,13 @@ pub async fn file_delete(
         };
         let has_real = !assoc.characters.is_empty() || !assoc.messages.is_empty();
         if has_real {
-            // v4 `badRequest('File is linked to other items', {code, associations})`.
-            // The `associations` object is computed + differential-verified via
-            // `get_file_associations`, but not carried on the typed error envelope
-            // (bounded divergence — see the module header).
-            return Response::error_coded(
+            // v4 `badRequest('File is linked to other items', {code, associations})`
+            // — the itemized `getFileAssociations` result rides the envelope.
+            return Response::error_with_associations(
                 ErrorKind::BadRequest,
                 "File is linked to other items",
                 "FILE_HAS_ASSOCIATIONS",
+                assoc,
             );
         }
         // Stale linkedTo — clear silently, then proceed (v4).
@@ -539,12 +547,141 @@ pub async fn file_delete(
     }
 }
 
+/// v4 `dissociateFileFromAll` (`files/[id]/shared.ts:64`) — strip every reference
+/// to `file`: for each `linkedTo` entity, the first matching message across the
+/// user's chats has the attachment removed + a `[Attachment "…" deleted <ts>]`
+/// note appended; characters using the file as `defaultImageId` are cleared; the
+/// file id is filtered out of any `avatarOverrides`; finally the file's own
+/// `linkedTo` is emptied. All in one writer transaction (v4 issues them
+/// sequentially; the net DB state is identical). The `timestamp` is minted once
+/// (v4 `new Date().toISOString()` at function start).
+async fn dissociate_file_from_all(db: &Db, user_id: &str, file: &FileFull) -> Result<(), DbError> {
+    let file_id = file.id.clone();
+    let linked_to = file.linked_to.clone();
+    let filename = {
+        let n = file.original_filename.trim();
+        if n.is_empty() {
+            "unknown file".to_string()
+        } else {
+            file.original_filename.clone()
+        }
+    };
+    let timestamp = crate::clock::now_iso();
+    let user_id = user_id.to_string();
+
+    db.write(move |ws| {
+        let main = ws.main().connection();
+
+        // 1. Message attachments: for each linked entity, find the FIRST message
+        //    (by id) across the user's chats that carries the attachment; strip it
+        //    and append the deletion note.
+        let chats = chats_read::find_by_user_id(main, &user_id)?;
+        let msgs_repo = ChatMessagesRepository::new(main);
+        for entity_id in &linked_to {
+            'chat: for chat in &chats {
+                let Some(chat_id) = chat.get("id").and_then(Value::as_str) else {
+                    continue;
+                };
+                let messages = match chats_messages_read::get_messages(main, chat_id) {
+                    Ok(m) => m,
+                    Err(_) => continue, // v4 per-chat try/catch → skip.
+                };
+                let Some(message) = messages.iter().find(|m| {
+                    m.get("id").and_then(Value::as_str) == Some(entity_id.as_str())
+                        && m.get("type").and_then(Value::as_str) == Some("message")
+                }) else {
+                    continue;
+                };
+                let attachments: Vec<String> = message
+                    .get("attachments")
+                    .and_then(Value::as_array)
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|x| x.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                if !attachments.iter().any(|a| a == &file_id) {
+                    continue;
+                }
+                let note = format!("\n\n[Attachment \"{filename}\" deleted {timestamp}]");
+                let content = message.get("content").and_then(Value::as_str).unwrap_or("");
+                let filtered: Vec<String> =
+                    attachments.into_iter().filter(|a| a != &file_id).collect();
+                msgs_repo.update_message(
+                    chat_id,
+                    entity_id,
+                    &json!({ "content": format!("{content}{note}"), "attachments": filtered }),
+                )?;
+                break 'chat; // v4 breaks after the first matching chat.
+            }
+        }
+
+        // 2. Characters using the file as their default image → clear it.
+        let mount = ws.mount_index().ok_or_else(|| {
+            DbError::Key("dissociate requires the mount-index database".to_string())
+        })?;
+        let default_chars =
+            characters_read::find_by_default_image_id(main, mount.connection(), &file_id)?;
+        for c in &default_chars {
+            if let Some(cid) = c.get("id").and_then(Value::as_str) {
+                main.execute(
+                    "UPDATE characters SET defaultImageId = NULL, updatedAt = ?1 WHERE id = ?2",
+                    rusqlite::params![crate::clock::now_iso(), cid],
+                )?;
+            }
+        }
+
+        // 3. Characters whose avatarOverrides reference the file → filter it out.
+        let override_chars =
+            characters_read::find_by_avatar_override_image_id(main, mount.connection(), &file_id)?;
+        for c in &override_chars {
+            let Some(cid) = c.get("id").and_then(Value::as_str) else {
+                continue;
+            };
+            // Read the RAW stored JSON so the rewrite preserves the exact shape.
+            let raw: Option<String> = main
+                .query_row(
+                    "SELECT avatarOverrides FROM characters WHERE id = ?1",
+                    rusqlite::params![cid],
+                    |r| r.get::<_, Option<String>>(0),
+                )
+                .optional()?
+                .flatten();
+            let mut overrides: Vec<Value> = raw
+                .as_deref()
+                .and_then(|s| serde_json::from_str::<Vec<Value>>(s).ok())
+                .unwrap_or_default();
+            overrides
+                .retain(|o| o.get("imageId").and_then(Value::as_str) != Some(file_id.as_str()));
+            let json_text = serde_json::to_string(&overrides)
+                .map_err(|e| DbError::Key(format!("avatarOverrides serialize: {e}")))?;
+            main.execute(
+                "UPDATE characters SET avatarOverrides = ?1, updatedAt = ?2 WHERE id = ?3",
+                rusqlite::params![json_text, crate::clock::now_iso(), cid],
+            )?;
+        }
+
+        // 4. Clear the file's own linkedTo.
+        FilesRepository::new(main).update(
+            &file_id,
+            &FileUpdate {
+                linked_to: Some(vec![]),
+                updated_at: crate::clock::now_iso(),
+                ..Default::default()
+            },
+        )?;
+        Ok(())
+    })
+    .await
+}
+
 /// The itemized associations for a file (v4 `getFileAssociations`,
 /// `lib/files/get-file-associations.ts`) — characters using it as default/override
 /// image (deduped by id, default-usage wins), and messages whose attachments
 /// reference it (matched when the chatId OR messageId is in `linkedTo`). Exposed
-/// (pub) so the route differential verifies the computation directly (it does not
-/// ride the delete error envelope — see the module header).
+/// (pub) so the route differential verifies the computation directly, and reused
+/// on the `FILE_HAS_ASSOCIATIONS` delete envelope.
 pub fn get_file_associations(
     db: &Db,
     user_id: &str,
@@ -552,15 +689,7 @@ pub fn get_file_associations(
     linked_to: &[String],
 ) -> Result<Value, DbError> {
     let assoc = compute_associations(db, user_id, file_id, linked_to)?;
-    Ok(json!({
-        "characters": assoc.characters,
-        "messages": assoc.messages,
-    }))
-}
-
-struct Associations {
-    characters: Vec<Value>,
-    messages: Vec<Value>,
+    serde_json::to_value(&assoc).map_err(|e| DbError::Key(format!("associations serialize: {e}")))
 }
 
 fn compute_associations(
@@ -568,7 +697,7 @@ fn compute_associations(
     user_id: &str,
     file_id: &str,
     linked_to: &[String],
-) -> Result<Associations, DbError> {
+) -> Result<FileAssociations, DbError> {
     // Characters: default-image then avatar-override, deduped by id (default wins).
     let fid = file_id.to_string();
     let (default_chars, override_chars) = db.read_main(|main| {
@@ -581,7 +710,8 @@ fn compute_associations(
 
     let uid = user_id;
     let mut order: Vec<String> = Vec::new();
-    let mut by_id: Map<String, Value> = Map::new();
+    let mut by_id: std::collections::HashMap<String, FileAssocCharacter> =
+        std::collections::HashMap::new();
     let mut push_char = |c: &Value, usage: &str| {
         if c.get("userId").and_then(Value::as_str) != Some(uid) {
             return;
@@ -589,19 +719,22 @@ fn compute_associations(
         let Some(id) = c.get("id").and_then(Value::as_str) else {
             return;
         };
-        if let Some(existing) = by_id.get(id) {
+        if by_id.contains_key(id) {
             // v4: usage = existing==='default' ? 'default' : 'override' — i.e. keep
             // the existing usage (default sticks; override stays override).
-            let _ = existing;
         } else {
             order.push(id.to_string());
             by_id.insert(
                 id.to_string(),
-                json!({
-                    "id": id,
-                    "name": c.get("name").and_then(Value::as_str).unwrap_or(""),
-                    "usage": usage,
-                }),
+                FileAssocCharacter {
+                    id: id.to_string(),
+                    name: c
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string(),
+                    usage: usage.to_string(),
+                },
             );
         }
     };
@@ -611,14 +744,15 @@ fn compute_associations(
     for c in &override_chars {
         push_char(c, "override");
     }
-    let characters: Vec<Value> = order.into_iter().map(|id| by_id[&id].clone()).collect();
+    let characters: Vec<FileAssocCharacter> =
+        order.into_iter().map(|id| by_id[&id].clone()).collect();
 
     // Messages: scan the user's chats for a message whose attachments include the
     // file AND whose chatId or messageId is in linkedTo.
     let uid_owned = user_id.to_string();
     let messages = db.read_main(|main| {
         let chats = chats_read::find_by_user_id(main, &uid_owned)?;
-        let mut out: Vec<Value> = Vec::new();
+        let mut out: Vec<FileAssocMessage> = Vec::new();
         for chat in &chats {
             let Some(chat_id) = chat.get("id").and_then(Value::as_str) else {
                 continue;
@@ -642,18 +776,22 @@ fn compute_associations(
                 }
                 let msg_id = m.get("id").and_then(Value::as_str).unwrap_or("");
                 if chat_in_linked || linked_to.iter().any(|l| l == msg_id) {
-                    out.push(json!({
-                        "chatId": chat_id,
-                        "chatName": chat.get("title").and_then(Value::as_str).unwrap_or(""),
-                        "messageId": msg_id,
-                    }));
+                    out.push(FileAssocMessage {
+                        chat_id: chat_id.to_string(),
+                        chat_name: chat
+                            .get("title")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string(),
+                        message_id: msg_id.to_string(),
+                    });
                 }
             }
         }
         Ok(out)
     })?;
 
-    Ok(Associations {
+    Ok(FileAssociations {
         characters,
         messages,
     })
@@ -897,6 +1035,494 @@ pub async fn files_folder_delete(
     }
 }
 
+// ===========================================================================
+// POST /api/v1/files?action=upload (the general upload leg — saveFileEntry)
+// ===========================================================================
+
+/// v4 `handleUploadFile` (`files/actions/upload.ts`) over `saveFileEntry`
+/// (`files/shared.ts:117`): normalize/validate the folder path, infer the mime,
+/// **category hard-coded `'DOCUMENT'`** (v4 `upload.ts:64`), sanitize → sha256 →
+/// overwrite-reuse (same userId+projectId+folderPath+filename) → project-store vs
+/// Quilltap-Uploads-mount write → `create` (201) or `update` (200, reuses the
+/// fileId). Body `{ data: serializeFileEntry }`. `link_ids` is v4's
+/// `tags.map(t => t.tagId)` — used for BOTH `linkedTo` AND the file's `tags`
+/// column (`upload.ts:55,66`).
+///
+/// The pixel work uses [`NotConfiguredPixelCodec`] (this dispatch path threads no
+/// host codec — a `DOCUMENT` upload never transcodes, and an image upload takes
+/// v4's own sharp-unavailable passthrough branch: original bytes, original mime).
+pub async fn file_upload(
+    db: &Db,
+    user_id: &str,
+    filename: &str,
+    content_type: &str,
+    data: Vec<u8>,
+    link_ids: Vec<String>,
+    project_id: Option<String>,
+    folder_path_raw: Option<String>,
+) -> Response {
+    let folder_path = match normalize_and_validate_folder_path(folder_path_raw.as_deref()) {
+        Ok(p) => p,
+        Err(msg) => return bad_request(msg),
+    };
+    let mime_type = infer_mime_type(filename, content_type);
+    let uid = user_id.to_string();
+    let filename = filename.to_string();
+    let out = db
+        .write(move |ws| -> Result<Response, DbError> {
+            let main = ws.main().connection();
+            let mount = ws
+                .mount_index()
+                .ok_or_else(|| {
+                    DbError::Key("file upload requires the mount-index database".into())
+                })?
+                .connection();
+            save_file_entry(
+                main,
+                mount,
+                &uid,
+                &filename,
+                &data,
+                &mime_type,
+                project_id.as_deref(),
+                &folder_path,
+                "DOCUMENT",
+                &link_ids,
+            )
+        })
+        .await;
+    match out {
+        Ok(resp) => resp,
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `saveFileEntry` (`files/shared.ts:117`) — the shared upload chokepoint,
+/// conn-level (runs on the writer). Returns the `{data}` body; the create-vs-
+/// overwrite status (201/200) is derived at the web edge from `createdAt ==
+/// updatedAt` (a create mints both equal; an overwrite bumps only `updatedAt`).
+#[allow(clippy::too_many_arguments)]
+fn save_file_entry(
+    main: &rusqlite::Connection,
+    mount: &rusqlite::Connection,
+    user_id: &str,
+    filename: &str,
+    data: &[u8],
+    mime_type: &str,
+    project_id: Option<&str>,
+    folder_path: &str,
+    category: &str,
+    link_ids: &[String],
+) -> Result<Response, DbError> {
+    let sanitized = sanitize_filename(filename);
+    let sha256 = sha256_of_buffer(data);
+    let files = FilesRepository::new(main);
+
+    // findAndPrepareOverwrite: same-scope filename match reuses the fileId (its old
+    // bytes + thumbnails are v4-best-effort-deleted — a DB-invisible side effect,
+    // skipped here, matching v4's try/catch-and-log).
+    let overwrite = files
+        .find_by_filename_in_scope(user_id, project_id, folder_path, &sanitized)?
+        .into_iter()
+        .next();
+
+    // Write the bytes (project store vs the Quilltap Uploads mount).
+    let codec = NotConfiguredPixelCodec;
+    let stored: StoredBlob = if let Some(pid) = project_id {
+        write_project_file_to_mount_store(
+            main,
+            mount,
+            &codec,
+            pid,
+            &sanitized,
+            data,
+            mime_type,
+            Some(folder_path),
+            None,
+        )?
+    } else {
+        // v4: IMAGE → 'images', else → 'uploads'. (`shared.ts:152`.)
+        let subfolder = if category == "IMAGE" {
+            "images"
+        } else {
+            "uploads"
+        };
+        write_user_upload_to_mount_store(
+            main, mount, &codec, &sanitized, data, mime_type, subfolder, None,
+        )?
+    };
+    let storage_key = stored.storage_key();
+    let stored_mime = stored.stored_mime_type;
+    let stored_size = stored.size_bytes as f64;
+
+    let file_id = if let Some(existing) = overwrite {
+        let id = existing.id.clone();
+        files.update(
+            &id,
+            &FileUpdate {
+                sha256: Some(sha256),
+                mime_type: Some(stored_mime),
+                size: Some(stored_size),
+                storage_key: Some(storage_key),
+                updated_at: crate::clock::now_iso(),
+                ..Default::default()
+            },
+        )?;
+        id
+    } else {
+        let id = uuid::Uuid::new_v4().to_string();
+        // v4 create mints createdAt == updatedAt (one `new Date().toISOString()`).
+        let now = crate::clock::now_iso();
+        files.create(
+            &FileCreate {
+                user_id: user_id.to_string(),
+                sha256,
+                original_filename: sanitized,
+                mime_type: stored_mime,
+                size: stored_size,
+                width: None,
+                height: None,
+                is_plain_text: None,
+                linked_to: link_ids.to_vec(),
+                source: "UPLOADED".to_string(),
+                category: category.to_string(),
+                generation_prompt: None,
+                generation_model: None,
+                generation_revised_prompt: None,
+                description: None,
+                tags: link_ids.to_vec(),
+                project_id: project_id.map(str::to_string),
+                folder_path: Some(folder_path.to_string()),
+                storage_key: Some(storage_key),
+                file_status: "ok".to_string(),
+            },
+            &CreateOptions {
+                id: id.clone(),
+                created_at: now.clone(),
+                updated_at: now,
+            },
+        )?;
+        id
+    };
+
+    let entry = files
+        .find_full_by_id(&file_id)?
+        .ok_or_else(|| DbError::Key("uploaded file vanished after write".to_string()))?;
+    Ok(Response::Files(
+        json!({ "data": serialize_file_entry(&entry) }),
+    ))
+}
+
+// ===========================================================================
+// POST /api/v1/files?action=generate-thumbnails|cleanup-stale|cleanup-orphans
+// ===========================================================================
+
+/// v4 `handleGenerateThumbnails` (`files/actions/generate-thumbnails.ts`) — the
+/// owned + resizable filter (`total`) over the requested `file_ids`. The actual
+/// generation is a host image-codec + disk-cache leg NOT wired at the dispatch
+/// layer (the on-demand `?action=thumbnail` byte-GET route carries the codec and
+/// is unaffected); every candidate therefore reports as an error, byte-matching a
+/// v4 host whose original bytes are unreachable (the differential's fixture seeds
+/// exactly that). Body `{total, generated, cached, errors}`.
+pub fn files_generate_thumbnails(db: &Db, user_id: &str, file_ids: &[String]) -> Response {
+    let ids: Vec<String> = file_ids.to_vec();
+    let uid = user_id.to_string();
+    let result = db.read_main(move |c| {
+        let repo = FilesRepository::new(c);
+        let mut valid = 0usize;
+        for id in &ids {
+            if let Some(f) = repo.find_full_by_id(id)? {
+                if f.user_id == uid && can_generate_thumbnail(&f.mime_type) {
+                    valid += 1;
+                }
+            }
+        }
+        Ok(valid)
+    });
+    let total = match result {
+        Ok(v) => v,
+        Err(e) => return internal(e),
+    };
+    // Generation unavailable at the dispatch layer → each valid entry errors.
+    Response::Files(json!({
+        "total": total,
+        "generated": 0,
+        "cached": 0,
+        "errors": total,
+    }))
+}
+
+/// v4 `handleCleanupStale` (`files/actions/cleanup-stale.ts`) — a file is stale
+/// when its `storageKey` no longer resolves to bytes. Mount-blob keys are checked
+/// in-DB ([`storage_key_exists`](crate::services::file_storage::storage_key_exists)
+/// over the mount-index read pool); a disk key would need the host backend (a
+/// [`NotConfiguredStorageBackend`] here → the per-file catch records an error,
+/// matching v4's per-file try/catch). NULL/empty keys are skipped. `dryRun`
+/// default true. Body `{total, stale, deleted, dryRun, staleFiles, errors?}`.
+pub async fn files_cleanup_stale(db: &Db, user_id: &str, dry_run: bool) -> Response {
+    let uid = user_id.to_string();
+    let files = match db.read_main(move |c| FilesRepository::new(c).find_by_user_id(&uid)) {
+        Ok(f) => f,
+        Err(e) => return internal(e),
+    };
+    let backend = NotConfiguredStorageBackend;
+    let mut stale: Vec<(String, String)> = Vec::new(); // (id, originalFilename)
+    let mut errors: Vec<String> = Vec::new();
+    for f in &files {
+        let Some(key) = f.storage_key.as_deref().filter(|s| !s.is_empty()) else {
+            continue;
+        };
+        match crate::services::file_storage::storage_key_exists(db, &backend, key) {
+            Ok(true) => {}
+            Ok(false) => stale.push((f.id.clone(), f.original_filename.clone())),
+            Err(e) => errors.push(format!("Error checking file {}: {e}", f.id)),
+        }
+    }
+
+    let mut deleted = 0usize;
+    if !dry_run && !stale.is_empty() {
+        for (id, _) in &stale {
+            let fid = id.clone();
+            match db
+                .write(move |ws| FilesRepository::new(ws.main().connection()).delete(&fid))
+                .await
+            {
+                Ok(_) => deleted += 1,
+                Err(_) => { /* v4 logs + continues */ }
+            }
+        }
+    }
+
+    let stale_files: Vec<Value> = stale
+        .iter()
+        .map(|(id, filename)| json!({ "id": id, "filename": filename }))
+        .collect();
+    let mut body = Map::new();
+    body.insert("total".into(), json!(files.len()));
+    body.insert("stale".into(), json!(stale.len()));
+    body.insert("deleted".into(), json!(deleted));
+    body.insert("dryRun".into(), json!(dry_run));
+    body.insert("staleFiles".into(), json!(stale_files));
+    // v4 `errors: errors.length > 0 ? errors : undefined` — omit when empty.
+    if !errors.is_empty() {
+        body.insert("errors".into(), json!(errors));
+    }
+    Response::Files(Value::Object(body))
+}
+
+/// v4 `handleCleanupOrphans` (`files/actions/cleanup-orphans.ts`): partition
+/// `fileStatus:'orphaned'` rows into rescued (referenced by a character
+/// default/override image, a non-empty `linkedTo`, or a sha256 shared with a
+/// referenced file), duplicate (sha256 shared with a NON-orphaned tracked file),
+/// and unique. `dryRun` returns the counts; a wet `delete` removes duplicates (+
+/// unique when `mode=delete`); a wet `move` relocates unique to `/orphans/`
+/// (fileStatus→ok, projectId→null) and deletes duplicates. Best-effort storage
+/// deletes (mount-blob GC / disk) are v4-caught; the fixture seeds NULL-key
+/// orphans so the metadata delete is the whole effect.
+pub async fn files_cleanup_orphans(db: &Db, user_id: &str, mode: &str, dry_run: bool) -> Response {
+    let uid = user_id.to_string();
+    let (all_files, characters) = match db.read_main(|main| {
+        db.read_mount_index(|mount| {
+            let files = FilesRepository::new(main).find_by_user_id(&uid)?;
+            let chars = characters_read::find_all(main, mount)?;
+            Ok((files, chars))
+        })
+    }) {
+        Ok(v) => v,
+        Err(e) => return internal(e),
+    };
+
+    // buildReferencedFileSets: character default/override image ids + any file with
+    // a non-empty linkedTo → referencedIds; the sha256 of each referenced file →
+    // referencedHashes.
+    let mut referenced_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for c in &characters {
+        if let Some(d) = c.get("defaultImageId").and_then(Value::as_str) {
+            referenced_ids.insert(d.to_string());
+        }
+        if let Some(overrides) = c.get("avatarOverrides").and_then(Value::as_array) {
+            for o in overrides {
+                if let Some(img) = o.get("imageId").and_then(Value::as_str) {
+                    referenced_ids.insert(img.to_string());
+                }
+            }
+        }
+    }
+    for f in &all_files {
+        if !f.linked_to.is_empty() {
+            referenced_ids.insert(f.id.clone());
+        }
+    }
+    // referencedHashes: sha256 of each referenced file. FileFull carries no sha256,
+    // so re-read the hash for the referenced ids.
+    let mut referenced_hashes: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for id in &referenced_ids {
+        let fid = id.clone();
+        if let Ok(Some(sha)) = db.read_main(move |c| {
+            c.query_row(
+                "SELECT sha256 FROM files WHERE id = ?1",
+                rusqlite::params![fid],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(crate::db::DbError::from)
+        }) {
+            referenced_hashes.insert(sha);
+        }
+    }
+
+    let is_referenced = |f: &FileFull, sha: &str| -> bool {
+        referenced_ids.contains(&f.id)
+            || !f.linked_to.is_empty()
+            || (!sha.is_empty() && referenced_hashes.contains(sha))
+    };
+
+    // Re-read each file's sha for the partition (FileFull has none).
+    let sha_of = |f: &FileFull| -> String {
+        let fid = f.id.clone();
+        db.read_main(move |c| {
+            c.query_row(
+                "SELECT sha256 FROM files WHERE id = ?1",
+                rusqlite::params![fid],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(crate::db::DbError::from)
+        })
+        .ok()
+        .flatten()
+        .unwrap_or_default()
+    };
+
+    let mut rescued: Vec<FileFull> = Vec::new();
+    let mut orphaned: Vec<FileFull> = Vec::new();
+    let mut tracked_hashes: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for f in &all_files {
+        let sha = sha_of(f);
+        let is_orphan = f.file_status.as_deref() == Some("orphaned");
+        if is_orphan {
+            if is_referenced(f, &sha) {
+                rescued.push(f.clone());
+            } else {
+                orphaned.push(f.clone());
+            }
+        } else {
+            tracked_hashes.insert(sha);
+        }
+    }
+
+    let duplicates: Vec<FileFull> = orphaned
+        .iter()
+        .filter(|f| tracked_hashes.contains(&sha_of(f)))
+        .cloned()
+        .collect();
+    let unique: Vec<FileFull> = orphaned
+        .iter()
+        .filter(|f| !tracked_hashes.contains(&sha_of(f)))
+        .cloned()
+        .collect();
+    let total_size: i64 = orphaned.iter().map(|f| f.size).sum();
+    let duplicate_size: i64 = duplicates.iter().map(|f| f.size).sum();
+    let unique_size: i64 = unique.iter().map(|f| f.size).sum();
+
+    if dry_run {
+        return Response::Files(json!({
+            "orphanedCount": orphaned.len(),
+            "rescuedCount": rescued.len(),
+            "duplicateCount": duplicates.len(),
+            "uniqueCount": unique.len(),
+            "totalSize": total_size,
+            "duplicateSize": duplicate_size,
+            "uniqueSize": unique_size,
+            "dryRun": true,
+        }));
+    }
+
+    // Wet: rescue (fileStatus→ok), then delete duplicates (+ unique in delete
+    // mode), then move unique (move mode only).
+    let mut rescued_actual = 0usize;
+    for f in &rescued {
+        let fid = f.id.clone();
+        if db
+            .write(move |ws| {
+                FilesRepository::new(ws.main().connection()).update(
+                    &fid,
+                    &FileUpdate {
+                        file_status: Some("ok".to_string()),
+                        updated_at: crate::clock::now_iso(),
+                        ..Default::default()
+                    },
+                )
+            })
+            .await
+            .is_ok()
+        {
+            rescued_actual += 1;
+        }
+    }
+
+    let mut deleted = 0usize;
+    let mut moved = 0usize;
+    let mut errors: Vec<String> = Vec::new();
+    let to_delete: Vec<&FileFull> = if mode == "delete" {
+        duplicates.iter().chain(unique.iter()).collect()
+    } else {
+        duplicates.iter().collect()
+    };
+    for f in to_delete {
+        // Best-effort storage delete is DB-invisible for NULL-key fixtures (v4
+        // skips it); the metadata delete is the whole effect.
+        let fid = f.id.clone();
+        match db
+            .write(move |ws| FilesRepository::new(ws.main().connection()).delete(&fid))
+            .await
+        {
+            Ok(_) => deleted += 1,
+            Err(e) => errors.push(format!("Error deleting file {}: {e}", f.id)),
+        }
+    }
+    if mode == "move" {
+        for f in &unique {
+            let fid = f.id.clone();
+            match db
+                .write(move |ws| {
+                    FilesRepository::new(ws.main().connection()).apply_move_update(
+                        &fid,
+                        None,
+                        "/orphans/",
+                        MoveProjectId::Clear,
+                    )?;
+                    // apply_move_update doesn't set fileStatus — do it in the same tx.
+                    ws.main().connection().execute(
+                        "UPDATE files SET fileStatus = 'ok' WHERE id = ?1",
+                        rusqlite::params![fid],
+                    )?;
+                    Ok::<_, DbError>(())
+                })
+                .await
+            {
+                Ok(_) => moved += 1,
+                Err(e) => errors.push(format!("Error moving file {}: {e}", f.id)),
+            }
+        }
+    }
+
+    let mut body = Map::new();
+    body.insert("orphanedCount".into(), json!(orphaned.len()));
+    body.insert("rescuedCount".into(), json!(rescued_actual));
+    body.insert("duplicateCount".into(), json!(duplicates.len()));
+    body.insert("uniqueCount".into(), json!(unique.len()));
+    body.insert("totalSize".into(), json!(total_size));
+    body.insert("deleted".into(), json!(deleted));
+    body.insert("moved".into(), json!(moved));
+    body.insert("dryRun".into(), json!(false));
+    body.insert("mode".into(), json!(mode));
+    if !errors.is_empty() {
+        body.insert("errors".into(), json!(errors));
+    }
+    Response::Files(Value::Object(body))
+}
+
 /// v4 `sync` action (`files/actions/sync.ts` → `reconcileFilesystem`) — the
 /// unported `lib/file-storage/reconciliation` subsystem. Loud refusal.
 pub fn files_sync() -> Response {
@@ -910,6 +1536,45 @@ pub fn files_sync() -> Response {
 // ===========================================================================
 // Local validators + helpers
 // ===========================================================================
+
+/// v4 `sanitizeFilename` (`files/shared.ts:217`) — `/[/\\:*?"<>|]/g` → `_`. NOTE:
+/// narrower than [`crate::services::file_storage::safe_filename`] (no `__` collapse,
+/// no trim, no control-char strip) — this is the upload-route sanitizer.
+fn sanitize_filename(filename: &str) -> String {
+    filename
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            other => other,
+        })
+        .collect()
+}
+
+/// v4 `inferMimeType` (`files/shared.ts:85`) — a detected non-generic mime wins;
+/// otherwise a small extension → mime map over the sanitized lowercased name,
+/// falling back to `application/octet-stream`.
+fn infer_mime_type(filename: &str, detected_mime_type: &str) -> String {
+    if !detected_mime_type.is_empty() && detected_mime_type != "application/octet-stream" {
+        return detected_mime_type.to_string();
+    }
+    let sanitized = sanitize_filename(filename).to_lowercase();
+    let ext = sanitized.rsplit('.').next().unwrap_or("");
+    match ext {
+        "txt" => "text/plain",
+        "md" | "markdown" => "text/markdown",
+        "pdf" => "application/pdf",
+        "json" => "application/json",
+        "csv" => "text/csv",
+        _ => "application/octet-stream",
+    }
+    .to_string()
+}
+
+/// v4 `canGenerateThumbnail` (`thumbnail-utils.ts:62`) — `image/*` AND
+/// [`can_resize_image`].
+fn can_generate_thumbnail(mime_type: &str) -> bool {
+    mime_type.starts_with("image/") && can_resize_image(mime_type)
+}
 
 /// v4 `validateFilename` (`files/[id]/shared.ts:49`) — `Ok(())` valid, `Err(msg)`.
 fn validate_filename(filename: &str) -> Result<(), String> {

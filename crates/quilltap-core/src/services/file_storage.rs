@@ -1157,7 +1157,7 @@ fn file_exists_conn(mount: &Connection, backend: &dyn StorageBackend, entry: &Fi
 /// The embedding-profile tier is a graceful fall-through (its scoped v5 read
 /// carries no tags; a non-matching id falls off the chain exactly as v4's
 /// not-found does) — the same documented seam as the W4.9a copy.
-fn get_inherited_tags(
+pub(crate) fn get_inherited_tags(
     main: &Connection,
     mount: &Connection,
     linked_entity_ids: &[String],

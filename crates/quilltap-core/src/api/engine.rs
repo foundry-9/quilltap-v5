@@ -2567,6 +2567,69 @@ impl CoreEngine {
                 Err(resp) => resp,
             },
             // === end P4.6ae ===
+            // === P4.6ah === (files write + maintenance — lane A, append-only)
+            Request::FileUpload {
+                filename,
+                content_type,
+                data,
+                tags,
+                project_id,
+                folder_path,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    use base64::Engine;
+                    match base64::engine::general_purpose::STANDARD.decode(data.as_bytes()) {
+                        Ok(bytes) => {
+                            super::files::file_upload(
+                                &db,
+                                SINGLE_USER_ID,
+                                &filename,
+                                &content_type,
+                                bytes,
+                                tags.unwrap_or_default(),
+                                project_id,
+                                folder_path,
+                            )
+                            .await
+                        }
+                        Err(_) => super::types::Response::error(
+                            super::types::ErrorKind::BadRequest,
+                            "Invalid base64 file data",
+                        ),
+                    }
+                }
+                Err(resp) => resp,
+            },
+            Request::ChatFileLink { chat_id, file_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::chat_media::chat_file_link(&db, SINGLE_USER_ID, &chat_id, &file_id).await
+                }
+                Err(resp) => resp,
+            },
+            Request::FilesGenerateThumbnails { file_ids, size: _ } => match self.ready_db() {
+                Ok(db) => super::files::files_generate_thumbnails(&db, SINGLE_USER_ID, &file_ids),
+                Err(resp) => resp,
+            },
+            Request::FilesCleanupStale { dry_run } => match self.ready_db() {
+                Ok(db) => {
+                    super::files::files_cleanup_stale(&db, SINGLE_USER_ID, dry_run.unwrap_or(true))
+                        .await
+                }
+                Err(resp) => resp,
+            },
+            Request::FilesCleanupOrphans { mode, dry_run } => match self.ready_db() {
+                Ok(db) => {
+                    super::files::files_cleanup_orphans(
+                        &db,
+                        SINGLE_USER_ID,
+                        &mode,
+                        dry_run.unwrap_or(true),
+                    )
+                    .await
+                }
+                Err(resp) => resp,
+            },
+            // === end P4.6ah ===
         }
     }
 

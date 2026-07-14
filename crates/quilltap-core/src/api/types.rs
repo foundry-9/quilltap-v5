@@ -1743,6 +1743,55 @@ pub enum Request {
     /// `lib/file-storage/reconciliation` subsystem).
     FilesSync,
     // === end P4.6ae ===
+    // === P4.6ah === (files write + maintenance — lane A, append-only)
+    /// v4 `POST /api/v1/files?action=upload` (`saveFileEntry`) core variant. `tags`
+    /// are the resolved tagIds v4's `tags.map(t => t.tagId)` produces (BOTH the
+    /// file's `linkedTo` AND its `tags` column). → `{data: FileEntry}` (201 create /
+    /// 200 overwrite; the status is derived at the web edge).
+    #[serde(rename_all = "camelCase")]
+    FileUpload {
+        filename: String,
+        content_type: String,
+        /// base64 of the file bytes.
+        data: String,
+        #[serde(default)]
+        tags: Option<Vec<String>>,
+        #[serde(default)]
+        project_id: Option<String>,
+        #[serde(default)]
+        folder_path: Option<String>,
+    },
+    /// v4 `POST /api/v1/chats/[id]/files?action=link` — link an existing library
+    /// file to the chat → `{file}`.
+    #[serde(rename_all = "camelCase")]
+    ChatFileLink {
+        chat_id: String,
+        file_id: String,
+    },
+    /// v4 `POST /api/v1/files?action=generate-thumbnails` → `{total, generated,
+    /// cached, errors}`.
+    #[serde(rename_all = "camelCase")]
+    FilesGenerateThumbnails {
+        file_ids: Vec<String>,
+        #[serde(default)]
+        size: Option<i64>,
+    },
+    /// v4 `POST /api/v1/files?action=cleanup-stale` (`dryRun` default true) →
+    /// `{total, stale, deleted, dryRun, staleFiles, errors?}`.
+    #[serde(rename_all = "camelCase")]
+    FilesCleanupStale {
+        #[serde(default)]
+        dry_run: Option<bool>,
+    },
+    /// v4 `POST /api/v1/files?action=cleanup-orphans` (`mode: 'move'|'delete'`,
+    /// `dryRun` default true) → v4's dry/wet shapes.
+    #[serde(rename_all = "camelCase")]
+    FilesCleanupOrphans {
+        mode: String,
+        #[serde(default)]
+        dry_run: Option<bool>,
+    },
+    // === end P4.6ah ===
 }
 
 /// serde double-option: `#[serde(default, deserialize_with = "double_option")]` on
@@ -1909,6 +1958,7 @@ impl Response {
             message: message.into(),
             pepper_state: None,
             code: None,
+            associations: None,
         })
     }
 
@@ -1924,6 +1974,25 @@ impl Response {
             message: message.into(),
             pepper_state: None,
             code: Some(code.into()),
+            associations: None,
+        })
+    }
+
+    /// v4's `FILE_HAS_ASSOCIATIONS` refusal (P4.6ah `fileDelete`): a `{error,
+    /// code, associations}` body carrying the itemized `getFileAssociations`
+    /// result. Only the un-forced linked-file delete emits it.
+    pub fn error_with_associations(
+        kind: ErrorKind,
+        message: impl Into<String>,
+        code: impl Into<String>,
+        associations: FileAssociations,
+    ) -> Response {
+        Response::Error(CoreError {
+            kind,
+            message: message.into(),
+            pepper_state: None,
+            code: Some(code.into()),
+            associations: Some(associations),
         })
     }
 
@@ -1936,6 +2005,7 @@ impl Response {
             message: "The database is locked. Unlock it to continue.".to_string(),
             pepper_state: Some(pepper_state),
             code: None,
+            associations: None,
         })
     }
 }
@@ -2089,6 +2159,40 @@ pub struct CoreError {
     /// first, HTTP status second. Absent everywhere else.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
+    /// v4's `FILE_HAS_ASSOCIATIONS` itemized payload (P4.6ah `fileDelete`):
+    /// the `getFileAssociations` result — present ONLY on the un-forced
+    /// linked-file delete refusal, absent everywhere else.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub associations: Option<FileAssociations>,
+}
+
+/// v4 `getFileAssociations` result (`lib/files/get-file-associations.ts`) — the
+/// itemized `FILE_HAS_ASSOCIATIONS` payload the delete refusal carries and the
+/// SPA delete dialog consumes (P4.6ah). Serializes as `{characters, messages}`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FileAssociations {
+    pub characters: Vec<FileAssocCharacter>,
+    pub messages: Vec<FileAssocMessage>,
+}
+
+/// A character that uses the file as its default or an override avatar image.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileAssocCharacter {
+    pub id: String,
+    pub name: String,
+    /// `'default'` | `'override'` (default wins the dedup when a character uses
+    /// the file both ways).
+    pub usage: String,
+}
+
+/// A message whose attachments reference the file.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileAssocMessage {
+    pub chat_id: String,
+    pub chat_name: String,
+    pub message_id: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

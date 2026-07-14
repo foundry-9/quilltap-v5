@@ -709,6 +709,18 @@ impl<'c> FilesRepository<'c> {
         }
     }
 
+    /// v4 `findBySha256(sha256)` hydrated into [`FileFull`] (adds `projectId` +
+    /// `createdAt` the chat-upload conflict path reads). Ordered `createdAt` ASC
+    /// (v4's insertion order — `existing[0]` / `.find(projectId===…)`).
+    pub fn find_by_sha256_full(&self, sha256: &str) -> Result<Vec<FileFull>, DbError> {
+        let sql = format!("{FILE_FULL_SELECT_ALL} WHERE sha256 = ?1 ORDER BY createdAt ASC");
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(params![sha256], map_file_full)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// v4 `findByFilenameInProject(userId, projectId, filename)` — the chat-upload
     /// filename-conflict probe (`findByFilter({userId, projectId,
     /// originalFilename})`). Rowid order.
@@ -839,6 +851,9 @@ pub struct FileFull {
     pub user_id: String,
     pub original_filename: String,
     pub mime_type: String,
+    /// 64-hex content hash (the chat-upload conflict-detection + orphan-cleanup
+    /// paths read it; the general files routes ignore it).
+    pub sha256: String,
     /// The byte size (v4 `size`, REAL affinity, always integer-valued on disk).
     pub size: i64,
     pub width: Option<i64>,
@@ -900,13 +915,13 @@ const FILE_ENTRY_SELECT_ALL: &str =
 /// [`FILE_FULL_SELECT_ALL`] and [`map_file_full`].
 const FILE_FULL_SELECT: &str =
     "SELECT id, userId, originalFilename, mimeType, size, width, height, category, description, \
-     linkedTo, projectId, folderPath, storageKey, fileStatus, createdAt, updatedAt \
+     linkedTo, projectId, folderPath, storageKey, fileStatus, createdAt, updatedAt, sha256 \
      FROM files WHERE id = ?1";
 
 /// The same projection for a filtered multi-row read (the caller appends WHERE).
 const FILE_FULL_SELECT_ALL: &str =
     "SELECT id, userId, originalFilename, mimeType, size, width, height, category, description, \
-     linkedTo, projectId, folderPath, storageKey, fileStatus, createdAt, updatedAt \
+     linkedTo, projectId, folderPath, storageKey, fileStatus, createdAt, updatedAt, sha256 \
      FROM files";
 
 /// Map a `files` row (the [`FILE_FULL_SELECT`] projection) into a [`FileFull`].
@@ -934,6 +949,7 @@ fn map_file_full(row: &rusqlite::Row<'_>) -> rusqlite::Result<FileFull> {
         file_status: row.get(13)?,
         created_at: row.get(14)?,
         updated_at: row.get(15)?,
+        sha256: row.get(16)?,
     })
 }
 
