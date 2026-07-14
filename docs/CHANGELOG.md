@@ -50,6 +50,21 @@ sides and byte-matches v4's real `[id]/route` generate envelope across
 four cases (happy+chat, no-chat, `count`>1 → 2 images, profile 404).
 Bumps core 0.0.217, host 0.0.17, harness 0.0.197.
 
+P4.d4: re-port the v4 `02865bdb` skip-signal drift — `detectSkipSentinel`
+now strips a trailing lone sentinel line from an otherwise real turn.
+Weak models sometimes narrate a genuine turn and then tack `[NOTHING TO
+ADD]` on the end; the narration is kept, but the dangling sentinel must
+not survive into display, persistence, or memory. Restructured
+`detect_skip_sentinel` to mirror v4: the sentinel-first arm is unchanged
+(bare → skip; sentinel + prose → cleaned); when the first non-empty line
+is prose, it now walks to the LAST non-empty line and, if that line is a
+lone sentinel, drops it and keeps the prose above. Bare sentinels and
+mid-line mentions of the phrase are unaffected. Seven new `detect` oracle
+rows + four Rust unit tests; the tier-1 differential is 106 rows green
+over a fresh `02865bdb` oracle. Byte-exact leaves (`is_sentinel_line`,
+`js_trim`, `utf16_len`) untouched. Moves the oracle baseline to
+`02865bdb`.
+
 Plan the "finish P4.6ae + catch up from v4" round — four agent-ready
 work orders decomposing the P4.6ae OPEN server remainder plus the one
 v4 drift commit. Drift-checked first: v4 advanced one commit past

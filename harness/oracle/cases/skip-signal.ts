@@ -2,7 +2,8 @@
  * Oracle case (P4.d2): the "nothing to add" turn-skipping pure module.
  *
  * Drives the REAL exports of v4's lib/chat/turn-manager/skip-signal.ts
- * (b90cd1f5): detectSkipSentinel, isTurnPassMessage,
+ * (02865bdb — incl. the trailing-sentinel strip arm of detectSkipSentinel):
+ * detectSkipSentinel, isTurnPassMessage,
  * findSkippedSinceLastSubstantive, qualifiesForTurnSkipping,
  * isFirstCharacterTurn, isRecentlyAddressed, computeSkipEligibility.
  *
@@ -83,6 +84,15 @@ detect('sentinel-inside-prose-line', 'I say [NOTHING TO ADD] loudly.');
 detect('double-bracket', '[[NOTHING TO ADD]]');
 detect('unicode-wrapper-adjacent', '«[NOTHING TO ADD]»');
 detect('sentinel-crlf', '[NOTHING TO ADD]\r\nmore prose');
+// Trailing-sentinel arm (v4 02865bdb): prose that merely ENDS with a lone
+// sentinel line → NOT a skip; the trailing sentinel line is stripped.
+detect('narration-then-trailing-sentinel', '*I stay where I am, my hand on his arm.*\n\n*There is nothing I need to add.*\n\n[NOTHING TO ADD]');
+detect('trailing-sentinel-markdown-wrapped', '*She nods once and says nothing more.*\n\n**[nothing to add]**');
+detect('trailing-sentinel-bare', 'I have things to say.\n[NOTHING TO ADD]');
+detect('mid-line-phrase-not-stripped', 'There is nothing to add here, but I will speak anyway.');
+detect('final-line-not-sentinel-no-clean', 'A real line.\n\nAnother real line.');
+detect('sentinel-not-final-line-no-clean', 'Well.\n\n[NOTHING TO ADD]\n\nMore.');
+detect('trailing-sentinel-then-whitespace', 'Real prose here.\n\n[NOTHING TO ADD]\n   \n\t');
 
 // ---- isTurnPassMessage ------------------------------------------------------
 const tp = (id: string, event: unknown) => rows.push({ kind: 'turnPass', id, event, out: isTurnPassMessage(event) });

@@ -11718,3 +11718,84 @@ OK, oracle fresh at `02865bdb`).
 **Still OPEN under P4.6ai:** nothing — the lane's tier-1 + tier-2 all
 land. `imageProfileValidateKey` / `imageProfileListModels` stay the
 named refusal deferrals (live-provider-only, since P4.6p).
+
+---
+
+## P4.d4 (lane D) — the `02865bdb` skip-signal drift re-port [IN PROGRESS] (branch `claude/distracted-chaplygin-72b1e3`)
+
+Drift-check: v4 HEAD == baseline `02865bdb` (`git log 02865bdb..HEAD`
+empty — no drift). Lane D of the FOUR-lane P4.6ah ∥ P4.6ai ∥ P4.6aj ∥
+P4.d4 round (the "finish P4.6ae + catch up from v4" round). The "catch
+up from v4" half: v4 advanced ONE commit past baseline `dd0d9ff5` to
+`02865bdb`, an isolated `detectSkipSentinel` behavior change. This lane
+is file-disjoint from the three sibling lanes (touches only
+`skip_signal.rs` + its differential + oracle case) and is NOT a
+core-dispatch writer. **Its unification moves the oracle baseline to
+`02865bdb`.**
+
+### P4.d4 unit 1 — the trailing-sentinel strip arm — LANDED
+
+v4 `02865bdb` ("strip a trailing 'nothing to add' line from an otherwise
+real turn") re-ported into `crates/quilltap-core/src/skip_signal.rs`
+`detect_skip_sentinel`. Weak models sometimes narrate a genuine turn and
+then tack `[NOTHING TO ADD]` on the end — the narration is a real
+contribution and must be kept, but the dangling sentinel line must not
+survive into display / persistence / memory.
+
+Restructured to mirror v4 exactly: the sentinel-FIRST arm is unchanged
+(bare → `Skip`; sentinel + prose → `NoSkip { cleaned }`), now nested
+inside `if is_sentinel_line(lines[first_idx])`. The new `else` (first
+non-empty line is prose) walks `lines` from the end down to
+`first_idx + 1` for the LAST non-empty line; if that line is a lone
+sentinel line, it is dropped (`[...before, ...after].join("\n")` then
+`js_trim`) → `NoSkip { cleaned }`; otherwise `NoSkip { cleaned: None }`.
+Bare sentinels (real passes) and mid-line mentions of the phrase are
+UNAFFECTED. The byte-exact leaves (`is_sentinel_line`, `js_trim`,
+`utf16_len`) were NOT touched — `is_sentinel_line`'s wrapper/bracket/
+punctuation shedding already handles the markdown-wrapped trailing case.
+Carried v4's *why*-comment for the new arm.
+
+**Differential (tier 1 exact):** the existing
+`crates/quilltap-harness/tests/skip_signal_equivalence.rs` already diffs
+`{skip, cleaned}` field-by-field — no harness edit needed. Added seven
+`detect` rows to `harness/oracle/cases/skip-signal.ts` covering the arm:
+`narration-then-trailing-sentinel`, `trailing-sentinel-markdown-wrapped`,
+`trailing-sentinel-bare`, `mid-line-phrase-not-stripped` (no clean),
+`final-line-not-sentinel-no-clean`, `sentinel-not-final-line-no-clean`
+(lone sentinel between two prose lines → not final → no clean), and
+`trailing-sentinel-then-whitespace` (trailing sentinel followed by
+whitespace-only lines still stripped). Regenerated FRESH at `02865bdb`
+and run BY NAME: **106 rows green (`[42, 10, 9, 11, 7, 15, 12]` — detect
+went 35 → 42), confirmed GREEN not SKIP** (grepped the output; env var
+took). Plus four in-crate unit tests
+(`narration_then_trailing_sentinel_strips_the_last_line`,
+`trailing_sentinel_stripped_even_when_markdown_wrapped`,
+`mid_line_sentinel_phrase_is_not_stripped`,
+`sentinel_not_on_final_line_is_not_stripped`).
+
+**Regen recipe** (working dir = v4 checkout; oracle case path = worktree):
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v24.13.1/bin:$PATH"   # Node 24
+cd ~/source/quilltap-server
+npx tsx <worktree>/harness/oracle/cases/skip-signal.ts > /tmp/oracle-skip-signal.ndjson
+cd <worktree>
+QT_ORACLE_SKIP_SIGNAL=/tmp/oracle-skip-signal.ndjson \
+  cargo test -p quilltap-harness --test skip_signal_equivalence -- --nocapture
+```
+
+**Tier-3 (SHOULD, not MUST) — DEFERRED (loud).** The two existing
+orchestrator tier-3 fixture cases do NOT exercise the new arm
+(`orchestrator-tier3.json` carries a bare `[NOTHING TO ADD]` → still
+`Skip`, and a sentinel-FIRST + prose case → the existing `cleaned` arm);
+neither is prose-first-with-trailing-sentinel, so those differentials
+stay behaviorally GREEN with NO regen required. The optional should-land
+(add ONE prose-first-with-trailing-sentinel canned orchestrator response
++ regenerate that oracle with the real provider registry) is DEFERRED as
+disproportionate: the tier-1 `detect` differential already proves the new
+`{skip, cleaned}` output byte-for-byte, and the orchestrator merely
+consumes `cleaned` (already exercised by the existing sentinel-first
+case). Reopen if an end-to-end orchestrator regression on the new arm is
+ever suspected.
+
+Versions bumped: core 0.0.216 → 0.0.217, harness 0.0.196 → 0.0.197.

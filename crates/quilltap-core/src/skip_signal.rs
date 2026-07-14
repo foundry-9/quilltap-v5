@@ -148,6 +148,11 @@ pub enum DetectSkipResult {
 ///   - Sentinel line followed by real prose → NOT a skip; returns
 ///     `NoSkip { cleaned: Some(…) }` with the sentinel line removed so the
 ///     caller can keep the prose.
+///   - Real prose that merely ENDS with a lone sentinel line → NOT a skip;
+///     returns `NoSkip { cleaned: Some(…) }` with that trailing line removed.
+///     Weak models often narrate, then tack `[NOTHING TO ADD]` on the end; the
+///     narration is a genuine contribution and must be kept, but the dangling
+///     sentinel line should never reach display / persistence / memory.
 ///   - No sentinel → `NoSkip { cleaned: None }`.
 pub fn detect_skip_sentinel(
     response: &str,
@@ -177,24 +182,49 @@ pub fn detect_skip_sentinel(
         return DetectSkipResult::NoSkip { cleaned: None };
     };
 
-    if !is_sentinel_line(lines[first_idx]) {
-        return DetectSkipResult::NoSkip { cleaned: None };
+    if is_sentinel_line(lines[first_idx]) {
+        // Sentinel matched on the first line. Is there any non-whitespace after it?
+        let trailing = lines[first_idx + 1..].join("\n");
+        if js_trim(&trailing).is_empty() {
+            return DetectSkipResult::Skip;
+        }
+
+        // Sentinel + prose: drop the sentinel line, keep the rest.
+        let mut kept: Vec<&str> = Vec::with_capacity(lines.len() - 1);
+        kept.extend_from_slice(&lines[..first_idx]);
+        kept.extend_from_slice(&lines[first_idx + 1..]);
+        let cleaned = js_trim(&kept.join("\n")).to_string();
+        return DetectSkipResult::NoSkip {
+            cleaned: Some(cleaned),
+        };
     }
 
-    // Sentinel matched. Is there any non-whitespace after it?
-    let trailing = lines[first_idx + 1..].join("\n");
-    if js_trim(&trailing).is_empty() {
-        return DetectSkipResult::Skip;
+    // The first line is real content, not the sentinel. But weak models often
+    // narrate a genuine turn and then dangle a lone `[NOTHING TO ADD]` line at
+    // the end. That is NOT a pass — there's real communication above it — but
+    // the dangling line must be stripped from what is displayed, saved, and
+    // remembered. Locate the LAST non-empty line and, if it is a sentinel line
+    // on its own, drop it and keep the prose above.
+    let mut last_idx: Option<usize> = None;
+    for i in (first_idx + 1..lines.len()).rev() {
+        if !js_trim(lines[i]).is_empty() {
+            last_idx = Some(i);
+            break;
+        }
+    }
+    if let Some(last_idx) = last_idx {
+        if is_sentinel_line(lines[last_idx]) {
+            let mut kept: Vec<&str> = Vec::with_capacity(lines.len() - 1);
+            kept.extend_from_slice(&lines[..last_idx]);
+            kept.extend_from_slice(&lines[last_idx + 1..]);
+            let cleaned = js_trim(&kept.join("\n")).to_string();
+            return DetectSkipResult::NoSkip {
+                cleaned: Some(cleaned),
+            };
+        }
     }
 
-    // Sentinel + prose: drop the sentinel line, keep the rest.
-    let mut kept: Vec<&str> = Vec::with_capacity(lines.len() - 1);
-    kept.extend_from_slice(&lines[..first_idx]);
-    kept.extend_from_slice(&lines[first_idx + 1..]);
-    let cleaned = js_trim(&kept.join("\n")).to_string();
-    DetectSkipResult::NoSkip {
-        cleaned: Some(cleaned),
-    }
+    DetectSkipResult::NoSkip { cleaned: None }
 }
 
 /// Does a single line, once its wrapping and trailing punctuation are shed,
@@ -579,6 +609,66 @@ mod tests {
             DetectSkipResult::NoSkip {
                 cleaned: Some("Actually, one thing.".to_string())
             }
+        );
+    }
+
+    #[test]
+    fn narration_then_trailing_sentinel_strips_the_last_line() {
+        // Weak models narrate a genuine turn, then dangle a lone sentinel line.
+        // The prose is kept; the trailing sentinel line is stripped.
+        let got = detect_skip_sentinel(
+            "*I stay where I am, my hand on his arm.*\n\n*There is nothing I need to add.*\n\n[NOTHING TO ADD]",
+            None,
+            None,
+        );
+        assert_eq!(
+            got,
+            DetectSkipResult::NoSkip {
+                cleaned: Some(
+                    "*I stay where I am, my hand on his arm.*\n\n*There is nothing I need to add.*"
+                        .to_string()
+                )
+            }
+        );
+    }
+
+    #[test]
+    fn trailing_sentinel_stripped_even_when_markdown_wrapped() {
+        // `is_sentinel_line` sheds the markdown wrappers, so a wrapped trailing
+        // sentinel is stripped too.
+        let got = detect_skip_sentinel(
+            "*She nods once and says nothing more.*\n\n**[nothing to add]**",
+            None,
+            None,
+        );
+        assert_eq!(
+            got,
+            DetectSkipResult::NoSkip {
+                cleaned: Some("*She nods once and says nothing more.*".to_string())
+            }
+        );
+    }
+
+    #[test]
+    fn mid_line_sentinel_phrase_is_not_stripped() {
+        // The phrase mid-line (not a lone final line) is left alone.
+        assert_eq!(
+            detect_skip_sentinel(
+                "There is nothing to add here, but I will speak anyway.",
+                None,
+                None,
+            ),
+            DetectSkipResult::NoSkip { cleaned: None }
+        );
+    }
+
+    #[test]
+    fn sentinel_not_on_final_line_is_not_stripped() {
+        // A lone sentinel line between two prose lines is NOT the final
+        // non-empty line, so nothing is stripped.
+        assert_eq!(
+            detect_skip_sentinel("Well.\n\n[NOTHING TO ADD]\n\nMore.", None, None),
+            DetectSkipResult::NoSkip { cleaned: None }
         );
     }
 
