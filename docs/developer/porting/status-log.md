@@ -11078,3 +11078,54 @@ Reads go through `dispatchData` (raw `data`) — only the request
 `type`/param names are load-bearing on this side; lane A's route
 differential pins the response envelopes, reconciled name-for-name at
 unification. Gate: `ng test` 640 green, `ng build` clean.
+
+### Units 2-4 + 6 — the /files vertical (SPA 0.5.73)
+
+NEW `apps/web/src/app/screens/files/**` — v4's legacy-mode FileBrowser
+(`components/files/FileBrowser.tsx` @ `projectId={null}`); the shell's
+`files` nav id (was `route:null`) now points at `/files`.
+
+- `file-model.ts` — the pure helpers (v4 `types.ts` + `FileThumbnail`'s
+  `getFileIcon`/`supportsThumbnail` + `FilePreview/types.ts`'s
+  `getPreviewType`): `sortFiles`, `filesInFolder`, `deriveSubfolders`
+  (the two-source union — DB rows one level below current, counting
+  files at/under their path, ∪ file-path prefixes, sorted
+  `name.localeCompare`), `getFileTypeLabel`, `getFileIcon`,
+  `getPreviewType`, `breadcrumbSegments`, `parentFolder`.
+  `file-model.spec.ts` pins the sort orders, the both-source subfolder
+  derivation, the preview-type routing, and the breadcrumbs.
+- `file-thumbnail.ts` / `file-grid.ts` / `file-list.ts` — the presentation
+  (thumbnail lazy-load via the cached-WebP route; grid cards + list
+  table with the four sortable headers Name/Type/Size/Date and the
+  static Associations column; orphan styling; hover Move/Delete). v4's
+  IntersectionObserver + exponential thumbnail retry reduced to native
+  `loading="lazy"` + the on-demand route (a perf refinement over the
+  same bytes).
+- `file-preview-modal.ts` — the lightbox: actions bar (prev/next +
+  filename + download/move/delete/close), ←/→ + Esc, and the type
+  renderers. TEXT renders plain `<pre>` + copy button; PDF renders a
+  download prompt; both are LOUD reductions of v4's rich stack
+  (ReactMarkdown + react-syntax-highlighter + wikilinks; `pdfjs-dist`)
+  which is lane C's dependency territory and the round-wide-HANDS-OFF
+  render pipeline.
+- `create-folder-dialog.ts` / `move-to-project-dialog.ts` /
+  `file-delete-confirmation.ts` / `orphan-cleanup-dialog.ts` — the
+  `qt-modal` dialogs, microcopy v4-verbatim (incl. the whimsical
+  orphan-cleanup register). MoveToProject uses a plain folder-path
+  field (the rich `FolderPicker` is deferred).
+- `files-browser.ts` — the composition: the toolbar (New Folder / view
+  toggle / cleanup-when-orphans / sync / refresh — NO upload, v4
+  parity), breadcrumb, grid|list, footer count, and all the dialogs.
+  The two-stage delete detects the FILE_HAS_ASSOCIATIONS envelope
+  (`extractAssociations` tolerates top-level or `details`-nested — lane
+  A's exact placement reconciles at unification) → the dissociate
+  confirmation. Orphan cleanup is dry-run-first ALWAYS. The sync button
+  surfaces lane A's loud `filesSync` refusal. `files-browser.spec.ts`
+  pins the no-upload posture, the count footer, and the
+  associations-envelope delete → dissociate branch.
+
+Deferrals (LOUD): markdown/syntax-highlight/wikilink text preview +
+pdf.js rendering; the rich FolderPicker; drag relocation /
+cross-mount move-copy; the workspace-tab drill (`/files` routes
+directly — the P4.6z posture). Gate: `ng test` 640 green, `ng build`
+clean.

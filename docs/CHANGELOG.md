@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+P4.6af unit 2: the general Files page. NEW `/files` screen (wired into
+the shell's Files nav) ports v4's legacy-mode FileBrowser: folder
+breadcrumb + go-up + subfolders derived from BOTH the DB folder rows
+AND file-path prefixes, grid and list views with client-side sort
+(default name-asc; the server list is createdAt-desc, so the client
+re-sorts), a file preview lightbox (image / plain-text-with-copy /
+pdf-download / metadata-fallback renderers, ←/→ + Esc nav), and the
+Create-Folder / Move-to-Project / associations-aware Delete /
+Orphan-Cleanup dialogs. The two-stage delete surfaces the
+FILE_HAS_ASSOCIATIONS envelope as a dissociate confirmation; the sync
+button renders lane A's loud `filesSync` refusal faithfully; a
+fire-and-forget thumbnail batch fires on list load. NO upload
+affordance (v4 parity). Deferred loud: markdown/syntax-highlight/
+wikilink text preview + pdf.js rendering (lane C's dependency
+territory), the rich FolderPicker, drag relocation. SPA 0.5.73.
+
 P4.6af unit 1: the general files-family wire contract. lane B (the
 `core-contract.ts` / `core-client.ts` owner) authors the files-family
 Request variants (`filesList`, `fileMove`, `filePromote`,

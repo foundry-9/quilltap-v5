@@ -26,7 +26,7 @@ const NAV_ITEMS: NavItem[] = [
     route: '/prospero',
     icon: 'projects',
   },
-  { id: 'files', label: 'Files', tooltip: 'View all files', route: null, icon: 'files' },
+  { id: 'files', label: 'Files', tooltip: 'View all files', route: '/files', icon: 'files' },
   {
     id: 'scriptorium',
     label: 'The Scriptorium',
