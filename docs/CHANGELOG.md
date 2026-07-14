@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+P4.6al lane (D17 editor follow-ons, tier 2 item 4 — composer draft
+persistence): the chat composer now saves and restores an unsent draft
+per chat (v4 `useDraftPersistence` + `ComposerSyncPlugin`). Keyed
+`quilltap-draft-${chatId}` in localStorage, restored once on mount
+into the editor's initial value, saved on an 800ms debounce (blank
+text removes the key), and cleared immediately on a successful send.
+No expiry. Specs +4.
+
 P4.6al lane (D17 editor follow-ons, tier 1 item 3 — the shared
 form-field editor): a new `qt-markdown-field` (v4's
 `MarkdownLexicalEditor`, "Designed for forms") pairs the composer

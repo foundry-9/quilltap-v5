@@ -1,9 +1,12 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RichEditor } from '../editor/rich-editor';
 import { ChatComposer, type ComposerSend } from './chat-composer';
+
+// Draft persistence keys off chatId in localStorage; keep every test isolated.
+beforeEach(() => localStorage.clear());
 
 function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return { ok, status, json: async () => body } as unknown as Response;
@@ -163,5 +166,53 @@ describe('ChatComposer — attach affordance', () => {
     expect(form.get('resolution')).toBe('replace');
     expect(form.get('conflictingFileId')).toBe('old');
     expect(fixture.nativeElement.querySelector('qt-file-conflict-dialog')).toBeNull();
+  });
+});
+
+describe('ChatComposer — draft persistence (v4 useDraftPersistence)', () => {
+  const KEY = 'quilltap-draft-chat-1';
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    localStorage.clear();
+    TestBed.resetTestingModule();
+  });
+
+  it('restores a saved draft into the editor on mount', async () => {
+    localStorage.setItem(KEY, 'a restored draft');
+    const fixture = render();
+    await settle(fixture);
+    expect(richEditor(fixture).getMarkdown()).toBe('a restored draft');
+  });
+
+  it('saves the draft after the 800ms debounce', async () => {
+    const fixture = render();
+    await settle(fixture);
+    richEditor(fixture).setMarkdown('work in progress');
+    await settle(fixture);
+    expect(localStorage.getItem(KEY)).toBeNull(); // not yet — still debouncing
+    await new Promise((r) => setTimeout(r, 850));
+    expect(localStorage.getItem(KEY)).toBe('work in progress');
+  });
+
+  it('removes the key when the draft goes blank', async () => {
+    localStorage.setItem(KEY, 'stale');
+    const fixture = render();
+    await settle(fixture);
+    richEditor(fixture).setMarkdown('');
+    await settle(fixture);
+    await new Promise((r) => setTimeout(r, 850));
+    expect(localStorage.getItem(KEY)).toBeNull();
+  });
+
+  it('clears the draft immediately on a successful send', async () => {
+    vi.stubGlobal('fetch', vi.fn());
+    localStorage.setItem(KEY, 'to send');
+    const fixture = render();
+    await settle(fixture);
+    richEditor(fixture).setMarkdown('to send');
+    await settle(fixture);
+    fixture.nativeElement.querySelector('form').dispatchEvent(new Event('submit'));
+    expect(localStorage.getItem(KEY)).toBeNull();
   });
 });

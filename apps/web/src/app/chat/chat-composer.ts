@@ -1,7 +1,10 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
+  OnInit,
   computed,
+  inject,
   input,
   output,
   signal,
@@ -82,12 +85,13 @@ export interface ComposerSend {
         <qt-rich-editor
           #editor
           class="qt-chat-composer-input qt-lexical-contenteditable"
+          [value]="restoredDraft()"
           [placeholder]="placeholder()"
           [disabled]="disabled()"
           [submitOnEnter]="!compositionMode()"
           [submitOnModEnter]="compositionMode()"
           ariaLabel="Message"
-          (contentChange)="text.set($event)"
+          (contentChange)="onContentChange($event)"
           (submit)="submit()"
           (imagePaste)="onEditorImagePaste($event)"
         />
@@ -204,7 +208,9 @@ export interface ComposerSend {
     }
   `,
 })
-export class ChatComposer {
+export class ChatComposer implements OnInit {
+  private readonly destroyRef = inject(DestroyRef);
+
   /** Streaming/awaiting in flight — swaps Send for Stop and blocks input. */
   readonly busy = input(false);
   readonly disabled = input(false);
@@ -232,6 +238,12 @@ export class ChatComposer {
   readonly compositionModeChange = output<boolean>();
 
   private readonly editor = viewChild.required(RichEditor);
+
+  /** The saved draft restored once on mount — seeds the editor's initial value. */
+  protected readonly restoredDraft = signal('');
+  /** v4's 800ms draft debounce (`ComposerSyncPlugin.tsx:65`). */
+  private static readonly DRAFT_DEBOUNCE_MS = 800;
+  private draftTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** The live markdown from the editor — drives `hasContent` gating only. */
   protected readonly text = signal('');
@@ -277,6 +289,56 @@ export class ChatComposer {
     this.compositionModeChange.emit(!this.compositionMode());
   }
 
+  // --- draft persistence (v4 useDraftPersistence + ComposerSyncPlugin) -------
+
+  ngOnInit(): void {
+    // Restore a saved draft ONCE on mount; the editor mounts with it as its
+    // initial value (v4 restores via setInput, which the editor then adopts).
+    try {
+      const saved = localStorage.getItem(this.draftKey());
+      if (saved) this.restoredDraft.set(saved);
+    } catch {
+      /* localStorage unavailable (private mode) — no draft to restore */
+    }
+    this.destroyRef.onDestroy(() => {
+      if (this.draftTimer) clearTimeout(this.draftTimer);
+    });
+  }
+
+  /** The editor's live markdown: gate send + schedule the debounced draft save. */
+  protected onContentChange(md: string): void {
+    this.text.set(md);
+    if (this.draftTimer) clearTimeout(this.draftTimer);
+    this.draftTimer = setTimeout(() => this.persistDraft(md), ChatComposer.DRAFT_DEBOUNCE_MS);
+  }
+
+  private draftKey(): string {
+    return `quilltap-draft-${this.chatId()}`;
+  }
+
+  /** Blank text removes the key; otherwise store the markdown (v4 persistDraft). */
+  private persistDraft(text: string): void {
+    try {
+      if (text.trim()) localStorage.setItem(this.draftKey(), text);
+      else localStorage.removeItem(this.draftKey());
+    } catch {
+      /* localStorage unavailable — drop the draft silently */
+    }
+  }
+
+  /** A successful send clears the draft immediately (v4 useSSEStreaming). */
+  private clearDraft(): void {
+    if (this.draftTimer) {
+      clearTimeout(this.draftTimer);
+      this.draftTimer = null;
+    }
+    try {
+      localStorage.removeItem(this.draftKey());
+    } catch {
+      /* localStorage unavailable */
+    }
+  }
+
   protected onSubmit(event: Event): void {
     event.preventDefault();
     this.submit();
@@ -297,6 +359,7 @@ export class ChatComposer {
     this.editor().setMarkdown('');
     this.text.set('');
     this.attachedFiles.set([]);
+    this.clearDraft();
   }
 
   // --- attach ---------------------------------------------------------------

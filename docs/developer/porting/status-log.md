@@ -12227,3 +12227,19 @@ memory-editor.spec.ts updated to drive the field's editor handle (6 green);
 client-side template plumbing yet); the source-mode toggle (no raw-source view
 in the field); the character edit `system-prompts-tab` textarea (out of item 3's
 named scope).
+
+### Item 4 — composer draft persistence (tier 2, LANDED)
+
+`chat/chat-composer.ts`: per-chat unsent-draft persistence (v4
+`useDraftPersistence.ts` + `ComposerSyncPlugin.tsx`). Key
+`quilltap-draft-${chatId}` (off the existing required `chatId` input). Restored
+ONCE in `ngOnInit` into the editor's initial `value` (v4 restores via setInput,
+which the editor adopts). Saved on an **800ms** debounce off the editor's
+`contentChange` — `text.trim()` present → `setItem`, blank → `removeItem` (v4
+persistDraft). A successful send clears the key immediately and cancels the
+pending debounce (v4 useSSEStreaming). No expiry. All localStorage access
+try/caught (private-mode safe). Timer cleared on destroy.
+
+**Proofs:** chat-composer.spec.ts +4 (restore-on-mount; save-after-800ms with a
+pre-debounce null check; blank removes the key; send clears immediately). A
+file-level `beforeEach(localStorage.clear)` keeps every composer test isolated.
