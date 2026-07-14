@@ -10948,3 +10948,35 @@ are OPEN and unstarted, now running against main at baseline
 `dd0d9ff5`. Real-data caution stands: back up Friday before v4
 `4.8.0-dev.52`+ first touches it (`quantize-embeddings-v1` is
 one-way) — v5 now READS post-migration blobs fine either way.
+
+---
+
+## P4.6ae — the files-family server surface + P4.6ab tier-2 close-out (lane A, OPEN)
+
+Baseline v4 `dd0d9ff5` (drift-checked at lane start: v4 HEAD == `dd0d9ff5`,
+no movement). Own worktree branch off main; unification is a separate pass.
+
+**Unit 1 (db-layer + folder-path leaves — scaffolding, differential arrives
+with the dispatch surface in the route-equivalence unit).** The general
+files surface reads/writes the port was missing:
+
+- `db/files.rs`: the `FileFull` projection (the columns `serializeFileEntry`
+  / `buildManagedFileResponse` / delete+dissociate read) with
+  `find_full_by_id`, `find_by_user_id`, `find_general_files` (`projectId IS
+  NULL`), `find_by_project_id`, `find_by_filename_in_scope` (nullable
+  projectId → `IS NULL`/`= ?`, overwrite probe), `find_by_filename_in_project`
+  (chat-upload conflict probe), and `apply_move_update` — the one write path
+  that must express `projectId = NULL` (promote/move-to-general), which
+  `FileUpdate` can't (its `MoveProjectId::{Set,Clear}` tri-state).
+- `db/folders.rs`: the `FolderRow` projection with `find_by_user_id`,
+  `find_by_path` (nullable projectId), `update_path_prefix` (first-occurrence
+  `replacen`, v4 `String.replace` semantics; counts descendants only, the
+  route adds +1), `has_children`, `delete`.
+- `folder_utils.rs`: `get_folder_depth`, `get_parent_path`, `get_folder_name`,
+  `validate_folder_path` (the `..`/invalid-char checks over the RAW path,
+  depth/segment-length over the normalized; `/` and `\` allowed in a path,
+  rejected in a folder NAME — the latter lives in the route). Inline unit
+  tests now; full oracle coverage via the route differential.
+
+Gate: fmt/clippy(default + native-transport)/build/test all green;
+`quilltap-core` 0.0.214 → 0.0.215.

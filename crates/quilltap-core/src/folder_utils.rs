@@ -1,10 +1,12 @@
 //! Folder-path leaves — v4 `lib/files/folder-utils.ts`.
 //!
-//! Only the leaves the `self_inventory` tool consumes are ported here (W4.1d):
-//! [`IMAGE_FILE_EXTENSIONS`], [`is_automatic_image_path`], and [`is_os_cruft_name`].
-//! The folder-path normalization/validation half of v4's file (`normalizeFolderPath`,
-//! `listFolders`, `validateFolderPath`, …) has no `self_inventory` consumer and is
-//! left for a later wave.
+//! The `self_inventory` leaves (W4.1d): [`IMAGE_FILE_EXTENSIONS`],
+//! [`is_automatic_image_path`], and [`is_os_cruft_name`]; the list-files
+//! normalization half (P4.6n): [`normalize_folder_path`],
+//! [`derive_folder_path_from_storage_key`], [`resolve_effective_folder_path`]; and
+//! the files-family folders hierarchy + validation (P4.6ae): [`get_folder_depth`],
+//! [`get_parent_path`], [`get_folder_name`], [`validate_folder_path`]. The unported
+//! remainder (`listFolders`, `joinFolderPath`) has no v5 consumer yet.
 //!
 //! ## Faithful v4 shapes
 //!
@@ -164,6 +166,92 @@ pub fn resolve_effective_folder_path(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Folder-path hierarchy + validation (P4.6ae — the files-family folders surface)
+// ---------------------------------------------------------------------------
+
+/// The depth level of a folder path (v4 `getFolderDepth`): `0` for root, `1` for
+/// a top-level folder, etc. Counts the non-empty `/`-separated segments of the
+/// normalized path.
+pub fn get_folder_depth(path: &str) -> usize {
+    let normalized = normalize_folder_path(Some(path));
+    if normalized == "/" {
+        return 0;
+    }
+    normalized.split('/').filter(|s| !s.is_empty()).count()
+}
+
+/// The parent folder path (v4 `getParentPath`): `/documents/reports/` →
+/// `/documents/`, `/documents/` → `/`, `/` → `/`. Operates over the normalized
+/// path: drop the trailing `/`, find the last `/`, and return up to and including
+/// it; a last-slash at index 0 (or none) means the parent is root.
+pub fn get_parent_path(path: &str) -> String {
+    let normalized = normalize_folder_path(Some(path));
+    if normalized == "/" {
+        return "/".to_string();
+    }
+    // Remove the trailing slash (ASCII, always a char boundary), then find the
+    // last remaining slash. v4's `lastSlashIndex <= 0` → root.
+    let without_trailing = &normalized[..normalized.len() - 1];
+    match without_trailing.rfind('/') {
+        Some(0) | None => "/".to_string(),
+        Some(idx) => without_trailing[..idx + 1].to_string(),
+    }
+}
+
+/// The folder name — the last segment — of a path (v4 `getFolderName`):
+/// `/documents/reports/` → `reports`, `/documents/` → `documents`, `/` → `""`.
+pub fn get_folder_name(path: &str) -> String {
+    let normalized = normalize_folder_path(Some(path));
+    if normalized == "/" {
+        return String::new();
+    }
+    let without_trailing = &normalized[..normalized.len() - 1];
+    without_trailing
+        .split('/')
+        .rfind(|s| !s.is_empty())
+        .unwrap_or("")
+        .to_string()
+}
+
+/// The outcome of [`validate_folder_path`] — `Ok(())` for a valid path, or
+/// `Err(message)` carrying v4's exact rejection string.
+pub type FolderPathValidation = Result<(), String>;
+
+/// Validate a folder path (v4 `validateFolderPath`): reject an empty string,
+/// `..` traversal, invalid characters (`<>:"|?*` and C0 controls — slashes ARE
+/// allowed here), depth > 10, or any segment longer than 100 chars. The `..` and
+/// invalid-char checks run over the RAW path (before normalization), exactly like
+/// v4; depth + segment-length run over the normalized form.
+pub fn validate_folder_path(path: &str) -> FolderPathValidation {
+    // v4: `if (!path || typeof path !== 'string')` — the empty string is the only
+    // falsy value reachable with a `&str`.
+    if path.is_empty() {
+        return Err("Path must be a non-empty string".to_string());
+    }
+    if path.contains("..") {
+        return Err("Path traversal (..) is not allowed".to_string());
+    }
+    // v4 `/[<>:"|?*\x00-\x1f]/` — note `/` and `\` are NOT rejected here.
+    if path.chars().any(|c| {
+        matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*') || ('\u{0}'..='\u{1f}').contains(&c)
+    }) {
+        return Err("Path contains invalid characters".to_string());
+    }
+    let normalized = normalize_folder_path(Some(path));
+    if get_folder_depth(&normalized) > 10 {
+        return Err("Path is too deeply nested (max 10 levels)".to_string());
+    }
+    for segment in normalized.split('/').filter(|s| !s.is_empty()) {
+        // v4 `segment.length` is a UTF-16 code-unit count; use the same measure so
+        // a 100-code-unit boundary matches byte-for-byte.
+        if segment.encode_utf16().count() > 100 {
+            return Err("Folder names must be 100 characters or less".to_string());
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,6 +326,67 @@ mod tests {
         assert_eq!(
             derive_folder_path_from_storage_key(Some("project123/docs/reports/file.md")),
             "/docs/reports/"
+        );
+    }
+
+    #[test]
+    fn folder_depth_counts_segments() {
+        assert_eq!(get_folder_depth("/"), 0);
+        assert_eq!(get_folder_depth("/documents/"), 1);
+        assert_eq!(get_folder_depth("/documents/reports/"), 2);
+        assert_eq!(get_folder_depth("documents/reports"), 2);
+    }
+
+    #[test]
+    fn parent_path_walks_up() {
+        assert_eq!(get_parent_path("/documents/reports/"), "/documents/");
+        assert_eq!(get_parent_path("/documents/"), "/");
+        assert_eq!(get_parent_path("/"), "/");
+        // Un-normalized input is normalized first.
+        assert_eq!(get_parent_path("/a/b/c"), "/a/b/");
+    }
+
+    #[test]
+    fn folder_name_last_segment() {
+        assert_eq!(get_folder_name("/documents/reports/"), "reports");
+        assert_eq!(get_folder_name("/documents/"), "documents");
+        assert_eq!(get_folder_name("/"), "");
+        assert_eq!(get_folder_name("docs"), "docs");
+    }
+
+    #[test]
+    fn validate_folder_path_rules() {
+        assert!(validate_folder_path("/documents/reports/").is_ok());
+        assert!(validate_folder_path("/a b/c_d-e/").is_ok());
+        assert_eq!(
+            validate_folder_path("").unwrap_err(),
+            "Path must be a non-empty string"
+        );
+        assert_eq!(
+            validate_folder_path("/a/../b/").unwrap_err(),
+            "Path traversal (..) is not allowed"
+        );
+        assert_eq!(
+            validate_folder_path("/a<b/").unwrap_err(),
+            "Path contains invalid characters"
+        );
+        // 11 levels deep → too nested.
+        let deep = format!(
+            "/{}/",
+            (1..=11)
+                .map(|i| i.to_string())
+                .collect::<Vec<_>>()
+                .join("/")
+        );
+        assert_eq!(
+            validate_folder_path(&deep).unwrap_err(),
+            "Path is too deeply nested (max 10 levels)"
+        );
+        // A 101-char segment.
+        let long = format!("/{}/", "x".repeat(101));
+        assert_eq!(
+            validate_folder_path(&long).unwrap_err(),
+            "Folder names must be 100 characters or less"
         );
     }
 

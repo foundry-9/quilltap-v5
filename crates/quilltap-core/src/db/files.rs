@@ -620,6 +620,162 @@ impl<'c> FilesRepository<'c> {
         Ok(row.map(|s| serde_json::from_str::<Vec<String>>(&s).unwrap_or_default()))
     }
 
+    /// v4 `findById(fileId)` hydrated into the [`FileFull`] projection the
+    /// files-family routes (`serializeFileEntry` / `buildManagedFileResponse` /
+    /// delete + dissociate) read. `None` when absent.
+    pub fn find_full_by_id(&self, id: &str) -> Result<Option<FileFull>, DbError> {
+        self.conn
+            .query_row(FILE_FULL_SELECT, params![id], map_file_full)
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
+    }
+
+    /// v4 `findByUserId(userId)` (base repo `findByFilter({userId})`) — every file
+    /// row owned by the user, in natural/rowid order (the files list route sorts by
+    /// `createdAt` DESC afterward, so this order is not observable there).
+    pub fn find_by_user_id(&self, user_id: &str) -> Result<Vec<FileFull>, DbError> {
+        let sql = format!("{FILE_FULL_SELECT_ALL} WHERE userId = ?1");
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(params![user_id], map_file_full)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// v4 `findGeneralFiles(userId)` — `{userId, $or:[{projectId:null},
+    /// {projectId:{$exists:false}}]}`. In this single-table store a missing column
+    /// is impossible, so `projectId IS NULL` is the exact set. Rowid order.
+    pub fn find_general_files(&self, user_id: &str) -> Result<Vec<FileFull>, DbError> {
+        let sql = format!("{FILE_FULL_SELECT_ALL} WHERE userId = ?1 AND projectId IS NULL");
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(params![user_id], map_file_full)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// v4 `findByProjectId(userId, projectId)` — `findByFilter({userId,
+    /// projectId})`. Rowid order.
+    pub fn find_by_project_id(
+        &self,
+        user_id: &str,
+        project_id: &str,
+    ) -> Result<Vec<FileFull>, DbError> {
+        let sql = format!("{FILE_FULL_SELECT_ALL} WHERE userId = ?1 AND projectId = ?2");
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(params![user_id, project_id], map_file_full)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// v4 `findByFilenameInScope(userId, projectId, folderPath, filename)` —
+    /// duplicate detection before create/overwrite. The nullable `projectId` uses
+    /// v4's `createNullableFilter` (null → `IS NULL`, else `= ?`). Rowid order (the
+    /// overwrite path takes `existing[0]`).
+    pub fn find_by_filename_in_scope(
+        &self,
+        user_id: &str,
+        project_id: Option<&str>,
+        folder_path: &str,
+        filename: &str,
+    ) -> Result<Vec<FileFull>, DbError> {
+        match project_id {
+            Some(pid) => {
+                let sql = format!(
+                    "{FILE_FULL_SELECT_ALL} WHERE userId = ?1 AND originalFilename = ?2 \
+                     AND folderPath = ?3 AND projectId = ?4"
+                );
+                let mut stmt = self.conn.prepare(&sql)?;
+                let rows = stmt
+                    .query_map(params![user_id, filename, folder_path, pid], map_file_full)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(rows)
+            }
+            None => {
+                let sql = format!(
+                    "{FILE_FULL_SELECT_ALL} WHERE userId = ?1 AND originalFilename = ?2 \
+                     AND folderPath = ?3 AND projectId IS NULL"
+                );
+                let mut stmt = self.conn.prepare(&sql)?;
+                let rows = stmt
+                    .query_map(params![user_id, filename, folder_path], map_file_full)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(rows)
+            }
+        }
+    }
+
+    /// v4 `findByFilenameInProject(userId, projectId, filename)` — the chat-upload
+    /// filename-conflict probe (`findByFilter({userId, projectId,
+    /// originalFilename})`). Rowid order.
+    pub fn find_by_filename_in_project(
+        &self,
+        user_id: &str,
+        project_id: &str,
+        filename: &str,
+    ) -> Result<Vec<FileFull>, DbError> {
+        let sql = format!(
+            "{FILE_FULL_SELECT_ALL} WHERE userId = ?1 AND projectId = ?2 AND originalFilename = ?3"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(params![user_id, project_id, filename], map_file_full)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// The move/promote metadata update (v4 `files.update` over `{originalFilename?,
+    /// folderPath, projectId}`) — the one path that must express SQL `projectId =
+    /// NULL` (promote-to-general / move-to-general), which [`FileUpdate`] can't. Sets
+    /// `originalFilename` (when `Some`), `folderPath`, mints `updatedAt`, and applies
+    /// the tri-state `projectId` via [`MoveProjectId`]. Returns `false` when the row
+    /// is absent (v4's `_update` no-op → `null`).
+    pub fn apply_move_update(
+        &self,
+        id: &str,
+        original_filename: Option<&str>,
+        folder_path: &str,
+        project_id: MoveProjectId<'_>,
+    ) -> Result<bool, DbError> {
+        if !self.row_exists(id)? {
+            return Ok(false);
+        }
+        let mut assignments: Vec<String> = Vec::new();
+        let mut values: Vec<Box<dyn ToSql>> = Vec::new();
+        if let Some(name) = original_filename {
+            assignments.push(format!("originalFilename = ?{}", values.len() + 1));
+            values.push(Box::new(name.to_string()));
+        }
+        assignments.push(format!("folderPath = ?{}", values.len() + 1));
+        values.push(Box::new(folder_path.to_string()));
+        match project_id {
+            MoveProjectId::Set(pid) => {
+                assignments.push(format!("projectId = ?{}", values.len() + 1));
+                values.push(Box::new(pid.to_string()));
+            }
+            MoveProjectId::Clear => {
+                // SQL NULL literal — no bound value (mirrors v4 `projectId: null`).
+                assignments.push("projectId = NULL".to_string());
+            }
+        }
+        assignments.push(format!("updatedAt = ?{}", values.len() + 1));
+        values.push(Box::new(crate::clock::now_iso()));
+        let id_idx = values.len() + 1;
+        values.push(Box::new(id.to_string()));
+        let sql = format!(
+            "UPDATE files SET {} WHERE id = ?{}",
+            assignments.join(", "),
+            id_idx
+        );
+        let params_refs: Vec<&dyn ToSql> = values.iter().map(|b| b.as_ref()).collect();
+        let affected = self.conn.execute(&sql, params_refs.as_slice())?;
+        Ok(affected > 0)
+    }
+
     /// True iff a row with this id exists — v4's `_update` `findById` precondition
     /// (a missing target makes the update a no-op returning `null`).
     fn row_exists(&self, id: &str) -> Result<bool, DbError> {
@@ -662,6 +818,45 @@ pub struct FileEntry {
     pub storage_key: Option<String>,
 }
 
+/// The tri-state `projectId` a move/promote update carries (v4's `projectId ===
+/// undefined ? keep : value`, where the value may itself be `null`). Only `Set`
+/// and `Clear` reach [`FilesRepository::apply_move_update`] — the "keep" case is
+/// resolved by the caller into the file's current `projectId`.
+pub enum MoveProjectId<'a> {
+    /// `projectId = <value>`.
+    Set(&'a str),
+    /// `projectId = NULL` (promote-to-general / move-to-general).
+    Clear,
+}
+
+/// A `files` row hydrated into the projection the files-family routes read
+/// (`serializeFileEntry` / `buildManagedFileResponse` + the delete/dissociate +
+/// associations arms). Superset of the photo-tool [`FileEntry`]: adds `userId`,
+/// `folderPath`, `fileStatus`, `linkedTo`, `projectId`, and the timestamps.
+#[derive(Debug, Clone)]
+pub struct FileFull {
+    pub id: String,
+    pub user_id: String,
+    pub original_filename: String,
+    pub mime_type: String,
+    /// The byte size (v4 `size`, REAL affinity, always integer-valued on disk).
+    pub size: i64,
+    pub width: Option<i64>,
+    pub height: Option<i64>,
+    pub category: String,
+    pub description: Option<String>,
+    /// The `linkedTo` JSON array (entity ids referencing this file).
+    pub linked_to: Vec<String>,
+    pub project_id: Option<String>,
+    pub folder_path: Option<String>,
+    pub storage_key: Option<String>,
+    /// `FileStatusEnum` (`'ok'`/`'orphaned'`); NULL on legacy rows (→ `'ok'` in the
+    /// serializer's `|| 'ok'`).
+    pub file_status: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 /// The legacy `list-files` branch row — the file columns the Files-card DTO
 /// reads. `description`/`width`/`height` are Option so the DTO can omit them when
 /// NULL (the file read marshaling drops null optionals).
@@ -700,6 +895,47 @@ const FILE_ENTRY_SELECT_ALL: &str =
     "SELECT id, sha256, originalFilename, mimeType, size, width, height, \
      category, generationPrompt, generationModel, generationRevisedPrompt, description, storageKey \
      FROM files";
+
+/// The [`FileFull`] column projection (by-id form). Kept in lockstep with
+/// [`FILE_FULL_SELECT_ALL`] and [`map_file_full`].
+const FILE_FULL_SELECT: &str =
+    "SELECT id, userId, originalFilename, mimeType, size, width, height, category, description, \
+     linkedTo, projectId, folderPath, storageKey, fileStatus, createdAt, updatedAt \
+     FROM files WHERE id = ?1";
+
+/// The same projection for a filtered multi-row read (the caller appends WHERE).
+const FILE_FULL_SELECT_ALL: &str =
+    "SELECT id, userId, originalFilename, mimeType, size, width, height, category, description, \
+     linkedTo, projectId, folderPath, storageKey, fileStatus, createdAt, updatedAt \
+     FROM files";
+
+/// Map a `files` row (the [`FILE_FULL_SELECT`] projection) into a [`FileFull`].
+/// `size`/`width`/`height` are REAL-affinity integers; `linkedTo` is a JSON array
+/// text column (`[]`/absent → empty vec, matching the Zod `.default([])`).
+fn map_file_full(row: &rusqlite::Row<'_>) -> rusqlite::Result<FileFull> {
+    let linked_to_json: Option<String> = row.get(9)?;
+    let linked_to = linked_to_json
+        .map(|s| serde_json::from_str::<Vec<String>>(&s).unwrap_or_default())
+        .unwrap_or_default();
+    Ok(FileFull {
+        id: row.get(0)?,
+        user_id: row.get(1)?,
+        original_filename: row.get(2)?,
+        mime_type: row.get(3)?,
+        size: real_affinity_opt_i64(row.get_ref(4)?).unwrap_or(0),
+        width: real_affinity_opt_i64(row.get_ref(5)?),
+        height: real_affinity_opt_i64(row.get_ref(6)?),
+        category: row.get(7)?,
+        description: row.get(8)?,
+        linked_to,
+        project_id: row.get(10)?,
+        folder_path: row.get(11)?,
+        storage_key: row.get(12)?,
+        file_status: row.get(13)?,
+        created_at: row.get(14)?,
+        updated_at: row.get(15)?,
+    })
+}
 
 /// Map a `files` row (the [`FILE_ENTRY_COLUMNS`] projection) into a [`FileEntry`].
 /// `width`/`height` have REAL affinity but store integers; read as `Option<i64>`

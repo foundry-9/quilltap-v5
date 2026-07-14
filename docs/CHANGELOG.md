@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.6ae unit 1 (files-family server): the db-layer + folder-path leaves
+the general files surface needs. `db/files.rs` gains the `FileFull`
+projection and `find_full_by_id` / `find_by_user_id` /
+`find_general_files` / `find_by_project_id` / `find_by_filename_in_scope`
+/ `find_by_filename_in_project` reads plus the move/promote update that
+can set `projectId = NULL`; `db/folders.rs` gains the `FolderRow`
+projection and `find_by_user_id` / `find_by_path` / `update_path_prefix`
+/ `has_children` / `delete`; `folder_utils.rs` completes the hierarchy +
+validation half (`get_folder_depth`, `get_parent_path`, `get_folder_name`,
+`validate_folder_path`). Scaffolding — the route differential arrives with
+the dispatch surface. Version: core 0.0.215.
+
 Unify the P4.d3 db-size-reduction drift re-port onto main; the oracle
 baseline is now v4 dd0d9ff5. Embedding blobs are read header-aware
 (legacy Float32 + int8 + f16) and written int8-quantized
