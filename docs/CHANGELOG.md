@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+P4.6am unit 3 (lane C) — the last select-audit site (dogfood finding
+#6, CLOSES the standing audit). The reverse-`{{user}}` dialog select in
+`characters/view/tabs/details-tab.ts` bound the selection with `[value]`
+on the `<select>` over dynamic computed options (`otherUserControlled()`
+— a computed over the async `userControlledCharacters` input), so a
+value bound before the options rendered left the native control blank.
+Converted to per-option `[selected]` (the established finding-#6
+pattern) + a regression spec that resolves the options AFTER first
+render and asserts the stored selection still displays. The two
+remaining `[value]` sites are confirmed proven-safe (STATIC options,
+document-only): `characters/edit/details-tab.ts:165` (pronoun preset,
+lane B's file) and `settings/providers/profile-modal.ts:489`
+(modelClass). No dynamic-options `[value]` sites remain.
+
 P4.6am unit 2 (lane C) — chat background images (dogfood finding #9).
 The Salon now displays a chat's story background. The
 `.qt-chat-layout::before` layer (opacity 0.45, fixed/cover,

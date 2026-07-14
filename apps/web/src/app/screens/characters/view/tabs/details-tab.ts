@@ -165,13 +165,19 @@ interface DetailField {
             <code class="rounded qt-bg-muted px-1 text-xs">{{ '{{user}}' }}</code> token in this
             character's prompts.
           </p>
+          <!--
+            dogfood-#6: the options are dynamic (otherUserControlled() — a computed
+            over the async userControlledCharacters input), so bind the selection
+            per-option with [selected] rather than [value] on the <select>. A
+            [value] evaluated before the options render leaves the native control
+            blank (the P4.6aa select-audit; this closes the standing finding-#6 audit).
+          -->
           <select
             class="qt-select"
-            [value]="reverseUserSelection()"
             (change)="reverseUserSelection.set($any($event.target).value)"
           >
             @for (char of otherUserControlled(); track char.id) {
-              <option [value]="char.id">
+              <option [value]="char.id" [selected]="char.id === reverseUserSelection()">
                 {{ char.name }}{{ char.title ? ' - ' + char.title : '' }}
               </option>
             }

@@ -12413,3 +12413,29 @@ query key. `salon-conversation.spec.ts` (+2): with no background the
 `.qt-chat-layout` inline style omits `--story-background-url`; with a
 seeded `fileId` the var lands as `url('/api/v1/files/bg-7')`. The
 e2e/CSS-render proof is the tier-2 background beat (unit 4).
+
+### Unit 3 — the last finding-#6 select-audit site (SPA 0.5.86) — CLOSES the standing audit
+
+**The risk site (fresh sweep 2026-07-14):** the reverse-`{{user}}`
+dialog select in `screens/characters/view/tabs/details-tab.ts:170`
+bound `[value]="reverseUserSelection()"` on the `<select>` over
+DYNAMIC options — `otherUserControlled()`, a computed over the async
+`userControlledCharacters` input. A select-level `[value]` evaluated
+before those options render leaves the native control blank (the same
+class of bug the P4.6aa/P4.6af select-audit chased across the app).
+
+**The fix:** dropped `[value]` from the `<select>`; each `<option>` now
+carries `[selected]="char.id === reverseUserSelection()"` (the `[value]`
+on the option is the option's own value — static per option, safe). The
+`(change)` handler is unchanged. `details-tab.spec.ts` (new) — 2 specs:
+options resolved AFTER first render still reflect the stored selection
+(no `ng-reflect-value` on the select; `select.value === 'other2'`, the
+matching option `.selected`); a native change updates the selection
+per-option; the viewed character is excluded from the option list.
+
+**Audit CLOSED.** The two remaining `[value]` sites are proven-safe
+(STATIC options, no async source — document-only, no conversion):
+`screens/characters/edit/details-tab.ts:165` (pronoun preset — lane B's
+file) and `screens/settings/providers/profile-modal.ts:489`
+(modelClass). No dynamic-options `[value]` sites remain anywhere in the
+SPA.
