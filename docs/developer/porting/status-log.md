@@ -12099,3 +12099,56 @@ quilltap-web -p quilltap-cli` clean.
 
 **Final versions:** core 0.0.221, harness 0.0.200, web 0.0.21 (host
 0.0.17, SPA 0.5.83 untouched by this lane).
+
+## P4.6al — the D17 editor follow-ons + composer (lane B, SPA, in progress) (2026-07-14)
+
+Lane B of the P4.6ak ∥ P4.6al ∥ P4.6am round. v4 baseline `02865bdb`
+(no drift). SPA-only lane: the equivalence proofs are the committed
+byte-round-trip gate + unit specs porting v4's decision logic, not
+Rust differentials.
+
+### Item 1 — marks + emphasis-on-type input rules (tier 1, LANDED)
+
+`editor/markdown-dialect.ts`: added `strikethrough` (`<s>`) and
+`highlight` (`<mark>`) marks to the dialect schema, matching v4's
+`STRIKETHROUGH` (`~~`) and `HIGHLIGHT` (`==`) transformers
+(`MarkdownBridgePlugin.tsx:35-36,71-74`), part of the dialect on every
+v4 editing surface. Parser: `md.enable('strikethrough')` (markdown-it's
+own `~~` rule, off in the commonmark preset) + a hand-rolled `==`
+inline tokenizer/postProcess pair (`highlightTokenize` /
+`highlightPostProcess`) ported byte-for-byte from markdown-it's own
+`rules_inline/strikethrough.mjs` with the marker swapped to `=`
+(markdown-it ships no `==`). Threaded in right after `strikethrough`
+so `balance_pairs` (which precedes both in ruler2) has already paired
+the `=` delimiters — pairing is marker-agnostic, so it is free.
+Serializer: `strikethrough`/`highlight` marks emit `~~…~~` / `==…==`,
+protected by the existing export escape-strip (literal `~`/`=` survive
+via `preserve*`).
+
+`editor/editing-commands.ts`: a `markInputRule` helper (the standard
+ProseMirror `markInputRule` idiom — the closing delimiter's final char
+is the just-typed char, never inserted, so only the in-document
+delimiters are deleted and the mark added over the content) + five
+`$`-anchored input rules. Delimiter set + single-`*` exclusion ported
+from Lexical's `MarkdownShortcut` (its `scanDelimiters`/`processEmphasis`
+is CommonMark flanking): `_italic_` (non-word left flank — no intra-word
+`a_b_`), `**bold**` / `` `code` `` / `~~strike~~` / `==highlight==`
+(flank on punctuation too, `a**b**`); none fire when an inner edge is
+whitespace. The rule no-ops inside a block that disallows the mark
+(fenced code) so delimiters are never silently stripped there.
+`__bold__` is NOT wired as an input rule (typed `__bold__` stays
+literal, still serializes byte-faithfully) — a named live-typing
+remainder.
+
+**Proofs (both green):** `markdown-round-trip.spec.ts` +8 entries
+(strike, highlight, adjacent marks, strike⊃italic, highlight⊃bold,
+italic⊃strike, literal lone `=`/`==`, literal empty `~~`);
+`editing-commands.spec.ts` +9 (each of the five delimiters converts on
+its closing char; single `*` never; intra-word `_` never; whitespace-
+inside blocked; mid-line after prose). `ng test` editor suites 56/56.
+
+### Deferrals recorded so far
+
+- `__bold__` on-type auto-format (literal round-trips faithfully).
+- The GFM table transformer (D17 tier-3 item 2) — deferred per the
+  order unless tiers 1–2 land early.

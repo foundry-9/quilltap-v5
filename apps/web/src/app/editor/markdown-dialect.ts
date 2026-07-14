@@ -23,8 +23,13 @@
  *     same lossiness v4 neutralizes.
  *  3. **Transformer scope.** Bold (`**`), headings, blockquote, fenced code,
  *     ordered/unordered lists, and case-insensitive check lists
- *     (`- [ ]`/`- [x]`). Links, strikethrough, highlight, and the multiline table
- *     transformer are out of the gate's scope (tier 2 / deferred).
+ *     (`- [ ]`/`- [x]`). **Strikethrough (`~~`) and highlight (`==`)** are marks
+ *     on every v4 editing surface (`MarkdownBridgePlugin.tsx:35-36,71-74`):
+ *     `STRIKETHROUGH` rides markdown-it's own built-in `~~` rule; `HIGHLIGHT` is
+ *     a hand-rolled `==` inline rule modeled byte-for-byte on that strikethrough
+ *     rule (markdown-it ships no `==` support). Both serialize with the
+ *     literal-tilde/equals protection v4's `preserve*` flags apply. Links and the
+ *     multiline table transformer remain out of the gate's scope (deferred).
  *
  * @module editor/markdown-dialect
  */
@@ -42,19 +47,37 @@ import {
 
 const STAR = 0x2a; // '*'
 const UNDERSCORE = 0x5f; // '_'
+const EQUALS = 0x3d; // '='
 
 /**
  * The dialect schema: the `prosemirror-markdown` basic schema with a `checked`
  * attribute added to `list_item` so check lists (`- [ ]`/`- [x]`) are modelled
  * as list items rather than literal `[ ]` text (v4 `CASE_INSENSITIVE_CHECK_LIST`).
  * `checked` is `null` for a plain list item, `false`/`true` for a checkbox.
+ *
+ * Two inline marks join the basic set — `strikethrough` (`~~`, rendered `<s>`)
+ * and `highlight` (`==`, rendered `<mark>`) — matching v4's `STRIKETHROUGH` and
+ * `HIGHLIGHT` transformers, which are part of the dialect on every editing
+ * surface.
  */
 export const dialectSchema = new Schema({
   nodes: baseSchema.spec.nodes.update('list_item', {
     ...baseSchema.spec.nodes.get('list_item'),
     attrs: { checked: { default: null } },
   }),
-  marks: baseSchema.spec.marks,
+  marks: baseSchema.spec.marks
+    .addToEnd('strikethrough', {
+      parseDOM: [{ tag: 's' }, { tag: 'del' }, { style: 'text-decoration=line-through' }],
+      toDOM() {
+        return ['s', 0];
+      },
+    })
+    .addToEnd('highlight', {
+      parseDOM: [{ tag: 'mark' }],
+      toDOM() {
+        return ['mark', 0];
+      },
+    }),
 });
 
 // ---------------------------------------------------------------------------
@@ -165,12 +188,134 @@ function taskListCoreRule(state: { tokens: import('markdown-it/lib/token.mjs').d
   }
 }
 
+/**
+ * markdown-it inline tokenizer for `==highlight==` (v4 Lexical `HIGHLIGHT`, tag
+ * `==`). markdown-it ships no `==` support, so this is a byte-for-byte port of
+ * markdown-it's own strikethrough tokenizer (`rules_inline/strikethrough.mjs`)
+ * with the marker swapped to `=`: it pushes paired delimiters onto the shared
+ * delimiter list, which `balance_pairs` then matches marker-agnostically (so
+ * pairing is free) and {@link highlightPostProcess} converts to `mark` tokens.
+ * `length: 0` disables the emphasis "rule of 3", exactly as strikethrough does.
+ */
+function highlightTokenize(
+  state: {
+    pos: number;
+    src: string;
+    push: (type: string, tag: string, nesting: number) => import('markdown-it/lib/token.mjs').default;
+    scanDelims: (start: number, canSplitWord: boolean) => { length: number; can_open: boolean; can_close: boolean };
+    delimiters: Delimiter[];
+    tokens: import('markdown-it/lib/token.mjs').default[];
+  },
+  silent: boolean,
+): boolean {
+  const start = state.pos;
+  const marker = state.src.charCodeAt(start);
+  if (silent) return false;
+  if (marker !== EQUALS) return false;
+
+  const scanned = state.scanDelims(state.pos, true);
+  let len = scanned.length;
+  const ch = String.fromCharCode(marker);
+  if (len < 2) return false;
+
+  let token;
+  if (len % 2) {
+    token = state.push('text', '', 0);
+    token.content = ch;
+    len--;
+  }
+  for (let i = 0; i < len; i += 2) {
+    token = state.push('text', '', 0);
+    token.content = ch + ch;
+    state.delimiters.push({
+      marker,
+      length: 0,
+      token: state.tokens.length - 1,
+      end: -1,
+      open: scanned.can_open,
+      close: scanned.can_close,
+    });
+  }
+  state.pos += scanned.length;
+  return true;
+}
+
+/** Convert paired `=` delimiters in one delimiter list to `mark` open/close
+ *  tokens (v4 `HIGHLIGHT`). Ported from markdown-it strikethrough's postProcess. */
+function highlightPostProcessList(
+  state: { tokens: import('markdown-it/lib/token.mjs').default[] },
+  delimiters: Delimiter[],
+): void {
+  const loneMarkers: number[] = [];
+  const max = delimiters.length;
+  for (let i = 0; i < max; i++) {
+    const startDelim = delimiters[i];
+    if (startDelim.marker !== EQUALS) continue;
+    if (startDelim.end === -1) continue;
+
+    const endDelim = delimiters[startDelim.end];
+
+    let token = state.tokens[startDelim.token];
+    token.type = 'qt_highlight_open';
+    token.tag = 'mark';
+    token.nesting = 1;
+    token.markup = '==';
+    token.content = '';
+
+    token = state.tokens[endDelim.token];
+    token.type = 'qt_highlight_close';
+    token.tag = 'mark';
+    token.nesting = -1;
+    token.markup = '==';
+    token.content = '';
+
+    const prev = state.tokens[endDelim.token - 1];
+    if (prev.type === 'text' && prev.content === '=') {
+      loneMarkers.push(endDelim.token - 1);
+    }
+  }
+
+  // Move a leftover single `=` (odd-length sequence) past subsequent closers —
+  // the strikethrough rule's exact loneMarker fixup.
+  while (loneMarkers.length) {
+    const i = loneMarkers.pop() as number;
+    let j = i + 1;
+    while (j < state.tokens.length && state.tokens[j].type === 'qt_highlight_close') j++;
+    j--;
+    if (i !== j) {
+      const token = state.tokens[j];
+      state.tokens[j] = state.tokens[i];
+      state.tokens[i] = token;
+    }
+  }
+}
+
+function highlightPostProcess(state: {
+  tokens: import('markdown-it/lib/token.mjs').default[];
+  tokens_meta: (TokenMeta | null)[];
+  delimiters: Delimiter[];
+}): void {
+  const tokensMeta = state.tokens_meta;
+  const max = tokensMeta.length;
+  highlightPostProcessList(state, state.delimiters);
+  for (let curr = 0; curr < max; curr++) {
+    const meta = tokensMeta[curr];
+    if (meta && meta.delimiters) highlightPostProcessList(state, meta.delimiters);
+  }
+}
+
 function buildDialectMarkdownIt(): MarkdownIt {
   // Match prosemirror-markdown's defaultMarkdownParser dialect (CommonMark,
-  // inline HTML off), then apply the two dialect adjustments.
+  // inline HTML off), then apply the dialect adjustments.
   const md = new MarkdownIt('commonmark', { html: false });
   md.inline.ruler2.at('emphasis', skipStarEmphasisPostProcess as never);
   md.core.ruler.after('inline', 'qt_task_lists', taskListCoreRule as never);
+  // v4 STRIKETHROUGH (`~~`): markdown-it's own rule, off in the commonmark preset.
+  md.enable('strikethrough');
+  // v4 HIGHLIGHT (`==`): our port, threaded in right after strikethrough so
+  // `balance_pairs` (which precedes both) has already paired its delimiters.
+  md.inline.ruler.after('strikethrough', 'qt_highlight', highlightTokenize as never);
+  md.inline.ruler2.after('strikethrough', 'qt_highlight', highlightPostProcess as never);
   return md;
 }
 
@@ -192,6 +337,9 @@ export const dialectParser = new MarkdownParser(dialectSchema, buildDialectMarkd
       return { checked: raw === null ? null : raw === '1' };
     },
   },
+  // v4 STRIKETHROUGH (`s_open`/`s_close`) and HIGHLIGHT (our `qt_highlight_*`).
+  s: { mark: 'strikethrough' },
+  qt_highlight: { mark: 'highlight' },
 });
 
 // ---------------------------------------------------------------------------
@@ -250,6 +398,10 @@ export const dialectSerializer = new MarkdownSerializer(
     ...defaultMarkdownSerializer.marks,
     // v4 italic is `_text_` (ITALIC_UNDERSCORE), never `*text*`.
     em: { open: '_', close: '_', mixable: true, expelEnclosingWhitespace: true },
+    // v4 STRIKETHROUGH (`~~`) and HIGHLIGHT (`==`). The literal-`~`/`=` inside
+    // any wrapped text is protected by the export escape-strip below.
+    strikethrough: { open: '~~', close: '~~', mixable: true, expelEnclosingWhitespace: true },
+    highlight: { open: '==', close: '==', mixable: true, expelEnclosingWhitespace: true },
   },
 );
 

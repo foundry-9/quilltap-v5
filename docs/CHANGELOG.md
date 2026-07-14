@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.6al lane (D17 editor follow-ons, tier 1 item 1): added
+strikethrough (`~~`) and highlight (`==`) marks to the composer
+markdown dialect and emphasis-on-type input rules. Strikethrough rides
+markdown-it's own built-in `~~` rule; highlight is a hand-rolled `==`
+inline rule modeled byte-for-byte on that strikethrough rule
+(markdown-it ships no `==`). Both serialize with the same literal-tilde
+protection v4's `preserve*` flags apply. The on-type input rules
+convert `_italic_`, `**bold**`, `` `code` ``, `~~strike~~`, and
+`==highlight==` when the closing delimiter is typed (CommonMark
+flanking); single `*narration*` never auto-formats, and intra-word
+underscores stay literal. The byte-round-trip gate grew 8 mark/edge
+entries and the input-rule keymap spec grew 9; both green.
+
 P4.6ak lane A (server): a loud typed refusal for the chat
 `regenerate-background` action (`ChatRegenerateBackground`). v4's
 story-background GENERATION subsystem (image-profile prompt build, the

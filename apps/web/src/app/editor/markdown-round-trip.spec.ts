@@ -46,6 +46,47 @@ const IDEMPOTENT: { name: string; md: string; trace: string }[] = [
     md: 'call `render()` now',
     trace: 'INLINE_CODE included',
   },
+  // --- strikethrough + highlight marks (MarkdownBridgePlugin :35-36,71-74) ---
+  {
+    name: 'strikethrough',
+    md: 'a ~~struck~~ word',
+    trace: 'STRIKETHROUGH included (`~~`)',
+  },
+  {
+    name: 'highlight',
+    md: 'a ==marked== word',
+    trace: 'HIGHLIGHT included (`==`)',
+  },
+  {
+    name: 'strikethrough and highlight adjacent in one line',
+    md: 'both ~~struck~~ and ==marked== here',
+    trace: 'STRIKETHROUGH + HIGHLIGHT',
+  },
+  {
+    name: 'strikethrough wrapping underscore italic',
+    md: '~~a _b_ c~~',
+    trace: 'STRIKETHROUGH + ITALIC_UNDERSCORE nesting',
+  },
+  {
+    name: 'highlight wrapping star bold',
+    md: '==a **b** c==',
+    trace: 'HIGHLIGHT + BOLD_STAR nesting',
+  },
+  {
+    name: 'underscore italic wrapping strikethrough',
+    md: 'nested _em with ~~struck~~ inside_',
+    trace: 'ITALIC_UNDERSCORE + STRIKETHROUGH nesting',
+  },
+  {
+    name: 'literal lone equals survives, single `==` unpaired stays literal',
+    md: 'a lone = and 2 == 2 math',
+    trace: 'HIGHLIGHT needs a matched pair; a lone `=`/`==` is literal',
+  },
+  {
+    name: 'literal empty double-tilde survives',
+    md: 'literal tildes ~~ empty stays',
+    trace: 'STRIKETHROUGH needs non-empty content; `~~ ` stays literal (preserveTildes)',
+  },
   // --- literal roleplay punctuation (preserve* flags :143-151) --------------
   {
     name: 'single-star narration survives literal',
