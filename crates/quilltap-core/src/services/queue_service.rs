@@ -680,6 +680,17 @@ pub fn retention_cutoff_iso(days: i64, now_ms: i64) -> String {
     crate::clock::iso_from_unix_ms(now_ms - days * DAY_MS)
 }
 
+/// v4 `resolveStaleChatDays()` — the effective stale-chat window: the
+/// user-configured `dataRetention.staleChatDays` instance setting, falling back
+/// to [`STALE_CHAT_RETENTION_DAYS`] when unset or unreadable. Every stale-gated
+/// sweep (image collapse, cache collapse, chunk cold-tier) computes its cutoff
+/// from this one value so they always agree on "stale". A read error resolves to
+/// the fallback (v4's `try/catch → default`).
+pub fn resolve_stale_chat_days(db: &Db) -> i64 {
+    db.read_main(crate::db::instance_settings::get_data_retention_settings)
+        .unwrap_or(STALE_CHAT_RETENTION_DAYS)
+}
+
 // ============================================================================
 // Read / admin surface (v4 queue-service read helpers)
 // ============================================================================

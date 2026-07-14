@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.d3 unit 3: the daily maintenance sweep now collapses stale chats'
+regenerable data — compression/render caches, raw provider payloads,
+model thinking traces, and pre-rendered HTML — and cold-tiers their
+conversation-chunk embeddings (keeping the text for keyword search),
+all guarded and idempotent. The stale-chat window is resolved through
+the new Data Retention setting (default 30 days) so every stale-gated
+sweep agrees on "stale". Nothing that matters — messages, memories,
+opaque content — is ever touched.
+
 P4.d3 unit 2: the embedding differential suite is re-baselined to the
 quantized on-disk format — every equivalence test that stores an
 embedding now checks the compact int8 blob against v4. Test-only.

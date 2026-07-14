@@ -39,6 +39,19 @@ const KEY_LANTERN_BACKGROUNDS_MOUNT_POINT_ID: &str = "lanternBackgroundsMountPoi
 /// v4 `KEY_MEMORY_RECALL` — the per-instance Commonplace-Book recall settings.
 const KEY_MEMORY_RECALL: &str = "memoryRecall";
 
+/// v4 `KEY_DATA_RETENTION` — the per-instance data-retention settings (the
+/// stale-chat window that governs the daily maintenance sweep's cache collapse,
+/// image collapse, and conversation-chunk cold-tiering).
+const KEY_DATA_RETENTION: &str = "dataRetention";
+
+/// v4 `DEFAULT_DATA_RETENTION_SETTINGS.staleChatDays` — the documented default.
+pub const DEFAULT_STALE_CHAT_DAYS: i64 = 30;
+
+/// v4 `DataRetentionSettingsSchema` bound: `z.number().int().min(1).max(3650)`.
+pub const STALE_CHAT_DAYS_MIN: i64 = 1;
+/// v4 `DataRetentionSettingsSchema` bound: `z.number().int().min(1).max(3650)`.
+pub const STALE_CHAT_DAYS_MAX: i64 = 3650;
+
 /// v4 `readSetting(key)` — read one `instance_settings` value, or `None`.
 ///
 /// Faithful to v4: the whole read is fallible-tolerant — a missing table or any
@@ -118,6 +131,55 @@ pub fn set_memory_recall_settings(
 ) -> Result<(), DbError> {
     let value = serde_json::json!({ "scopePolicy": scope_policy, "expandRelated": expand_related });
     write_setting(main, KEY_MEMORY_RECALL, &value.to_string())
+}
+
+/// Validate a candidate `staleChatDays` against v4's
+/// `DataRetentionSettingsSchema` field (`z.number().int().min(1).max(3650)`):
+/// the JSON value must be an integer-valued number in `[1, 3650]`. Returns the
+/// validated `i64`, or `None` on any violation (non-number, non-integer,
+/// out-of-range) — mirroring Zod `.parse` throwing.
+pub fn validate_stale_chat_days(value: &serde_json::Value) -> Option<i64> {
+    let n = value.as_f64()?;
+    if !n.is_finite() || n.fract() != 0.0 {
+        return None; // `.int()` rejects non-integers / NaN / Inf
+    }
+    let days = n as i64;
+    (STALE_CHAT_DAYS_MIN..=STALE_CHAT_DAYS_MAX)
+        .contains(&days)
+        .then_some(days)
+}
+
+/// v4 `getDataRetentionSettings()` — the effective `staleChatDays` window.
+///
+/// Returns the documented default (30) when the setting is unset. When the
+/// stored blob is present but not a valid `DataRetentionSettingsSchema` object
+/// (unparseable, non-object, or a `staleChatDays` outside `[1, 3650]` / not an
+/// integer) v4 logs a warning and falls back to the default — reproduced here.
+/// A stored object that OMITS `staleChatDays` parses via Zod `.default(30)` → 30.
+pub fn get_data_retention_settings(main: &Connection) -> Result<i64, DbError> {
+    let Some(raw) = read_setting(main, KEY_DATA_RETENTION) else {
+        return Ok(DEFAULT_STALE_CHAT_DAYS);
+    };
+    let parsed = match serde_json::from_str::<serde_json::Value>(&raw) {
+        Ok(serde_json::Value::Object(map)) => match map.get("staleChatDays") {
+            // Zod `.default(30)` — a present object with the key absent.
+            None => DEFAULT_STALE_CHAT_DAYS,
+            Some(v) => validate_stale_chat_days(v).unwrap_or(DEFAULT_STALE_CHAT_DAYS),
+        },
+        // Non-object JSON (`z.object` throws) or unparseable → warn + default.
+        _ => DEFAULT_STALE_CHAT_DAYS,
+    };
+    Ok(parsed)
+}
+
+/// v4 `setDataRetentionSettings(value)` — validate then persist the
+/// data-retention settings object. The caller has already merged over the
+/// current value (the PUT route's `{...current, ...body}`); this validates
+/// `staleChatDays` against the schema and writes the canonical JSON. Returns the
+/// validated `staleChatDays` (the parsed echo the route sends back).
+pub fn set_data_retention_settings(main: &Connection, stale_chat_days: i64) -> Result<(), DbError> {
+    let value = serde_json::json!({ "staleChatDays": stale_chat_days });
+    write_setting(main, KEY_DATA_RETENTION, &value.to_string())
 }
 
 /// v4 `KEY_MEMORY_EXTRACTION_CONCURRENCY` — the per-instance MEMORY_EXTRACTION

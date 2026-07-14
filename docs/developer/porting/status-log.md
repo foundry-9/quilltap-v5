@@ -10706,3 +10706,53 @@ Regen recipes (each in its own clean invocation, Node 24
 paths under the lane worktree's `harness/oracle`): the per-test `Generate the
 oracle` header blocks are authoritative and unchanged — the same commands now
 emit quantized blobs because they import v4's rewritten `float32ToBlob`.
+
+### P4.d3 unit 3 — the stale-chat cache collapse + cold-tiering — LANDED
+
+New `services/collapse_stale_chat_caches.rs` ports v4's
+`collapseStaleChatCaches`: per stale chat, three guarded clears in one
+`Db::write` transaction — (a) `chats.compressionCache/renderedMarkdown → NULL`
+(raw SQL, `updatedAt` deliberately NOT bumped), (b) the five discardable
+`chat_messages` columns (`rawResponse`/`reasoningContent`/`reasoningSegments`/
+`renderedHtml`/`debugMemoryLogs`, `IS NOT NULL`-guarded, idempotent), (c)
+`ConversationChunksRepository::clear_embeddings_for_chat` (new — cold-tiers the
+chunk embeddings to NULL keeping `content`; this one DOES bump `updatedAt`).
+Gated on the shared `maintenance::is_stale` (now `pub(crate)` — v4 exports
+`isStale`). `dropInMemoryCompressionCache` has no v5 equivalent (no in-process
+compression-cache `Map` — a Node-service workaround); documented no-op.
+
+`db/instance_settings.rs` gains `get_data_retention_settings` /
+`set_data_retention_settings` / `validate_stale_chat_days` (the schema is
+`{staleChatDays: int 1..3650, default 30}`; null/parse-fail/out-of-range → the
+30-day default). `queue_service::resolve_stale_chat_days(db)` reads it (v4
+`resolveStaleChatDays`, `try/catch → default`); the asset collapse switched from
+the hardcoded constant to it. `scheduled_maintenance.rs` inserts the collapse as
+**step 3** (orphans→4, terminals→5) with the `caches` summary block + its own
+independent try/catch (`'caches'` pushed to failures).
+
+**Differentials:**
+- `maintenance_ops_tier2_equivalence` regenerated at `dd0d9ff5` — the summary now
+  carries the `caches` block (all zeros over the empty-chats fixture), proving the
+  step-3 wiring; GREEN.
+- NEW `collapse_stale_chat_caches_tier2_equivalence` — a dedicated behavioral
+  differential over a new `retention-caches` fixture family
+  (`build-retention-caches-fixture.ts` + `retention-caches.json`, /tmp per-run):
+  one stale chat (caches + a discardable-laden played message + a bare played
+  message + an embedded chunk + an already-cold chunk) and one active chat
+  (identical shape, must survive). Drives v4's REAL `collapseStaleChatCaches` and
+  diffs the summary + three projections (chats / messages / chunks). Proves the
+  staleness gate, the column clears + sacred-column preservation, the two
+  `IS NOT NULL` guards (bare message + cold chunk skipped), the chunk cold-tier
+  with a bumped `updatedAt`, and that chats' `updatedAt` is NOT bumped. GREEN.
+- `maintenance_sweep_tier2_equivalence` regenerated — VERIFIED non-diverging
+  (asset collapse via `resolve_stale_chat_days` falls back to 30 with no setting).
+
+Regen recipe (Node 24, `cd ~/source/quilltap-server`):
+`QT_FIXTURE_OUT=/tmp/qt-retention-caches.db node --import tsx
+<worktree>/harness/oracle/fixtures/build-retention-caches-fixture.ts`, then
+`QT_FIXTURE_RETENTION_CACHES=/tmp/qt-retention-caches.db node --import tsx
+<worktree>/harness/oracle/cases/collapse-stale-chat-caches-tier2.ts >
+/tmp/oracle-retention-caches.ndjson`, then run with
+`QT_ORACLE_RETENTION_CACHES` + `QT_FIXTURE_RETENTION_CACHES` set. The chunk
+`updatedAt` value is minted (v4 wall-clock / v5 injected `now_ms`) → compared
+only as the `updatedAtChanged` boolean.

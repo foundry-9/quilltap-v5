@@ -148,6 +148,13 @@ fn maintenance_ops_match_oracle() {
             "chatsCollapsed": summary.assets_chats_collapsed,
             "filesDeleted": summary.assets_files_deleted,
         },
+        "caches": {
+            "staleChats": summary.caches_stale_chats,
+            "chatsCollapsed": summary.caches_chats_collapsed,
+            "chatRowsCleared": summary.caches_chat_rows_cleared,
+            "messageRowsCleared": summary.caches_message_rows_cleared,
+            "chunkEmbeddingsCleared": summary.caches_chunk_embeddings_cleared,
+        },
         "orphanedFilesSwept": summary.orphaned_files_swept,
         "terminals": { "rows": summary.terminal_rows, "transcripts": summary.terminal_transcripts },
         "failures": summary.failures,

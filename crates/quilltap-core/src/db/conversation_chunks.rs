@@ -278,6 +278,29 @@ impl<'c> ConversationChunksRepository<'c> {
         Ok(affected > 0)
     }
 
+    /// Cold-tier a chat's chunks (v4 `clearEmbeddingsForChat`): NULL every
+    /// non-null `embedding` while keeping `content` / `messageIds` /
+    /// `interchangeIndex` intact, so the chat stays keyword-searchable and can be
+    /// re-embedded (embed-only, no re-chunk) when reopened. Idempotent — the
+    /// `embedding IS NOT NULL` guard makes a second pass a no-op. Returns the
+    /// number of rows cleared.
+    ///
+    /// Unlike [`Self::update`], this DELIBERATELY bumps `updatedAt` (the cold-tier
+    /// is a real change the chunk carries) — v4 stamps `new Date().toISOString()`;
+    /// the sweep injects `now_iso` here for a deterministic differential.
+    pub fn clear_embeddings_for_chat(
+        &self,
+        chat_id: &str,
+        now_iso: &str,
+    ) -> Result<usize, DbError> {
+        let affected = self.conn.execute(
+            "UPDATE conversation_chunks SET embedding = NULL, updatedAt = ?1 \
+             WHERE chatId = ?2 AND embedding IS NOT NULL",
+            params![now_iso, chat_id],
+        )?;
+        Ok(affected)
+    }
+
     /// Delete the chunk `id`. Returns `Ok(false)` when no row matched (v4's
     /// `_delete` "deletedCount === 0 -> false").
     pub fn delete(&self, id: &str) -> Result<bool, DbError> {

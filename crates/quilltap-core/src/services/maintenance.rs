@@ -36,7 +36,7 @@ use crate::db::files::{FileSweepRow, FilesRepository};
 use crate::db::runtime::Db;
 use crate::db::{chats_messages_read, chats_read, DbError};
 
-use super::queue_service::{retention_cutoff_iso, STALE_CHAT_RETENTION_DAYS};
+use super::queue_service::{resolve_stale_chat_days, retention_cutoff_iso};
 
 /// The summary of one collapse pass (v4 `StaleChatCollapseSummary`).
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -212,7 +212,11 @@ fn chats_read_count_override(conn: &rusqlite::Connection, image_id: &str) -> Res
 /// `systemSender IS NULL` (excludes Staff announcements). Falls back to
 /// `chat.updatedAt` when the chat has no played messages; a null/unparseable
 /// timestamp is never stale ("unknown activity — never touch").
-fn is_stale(db: &Db, chat: &Value, cutoff_ms: i64) -> Result<bool, DbError> {
+///
+/// Exported (crate-internal) as THE shared staleness gate for every stale-gated
+/// maintenance sweep (asset collapse, cache collapse, chunk cold-tiering) so they
+/// can never disagree on what "stale" means (v4 exports `isStale`).
+pub(crate) fn is_stale(db: &Db, chat: &Value, cutoff_ms: i64) -> Result<bool, DbError> {
     let chat_id = chat.get("id").and_then(Value::as_str).unwrap_or_default();
     let cid = chat_id.to_string();
     let last_played = db.read_main(|c| chats_messages_read::get_last_played_message_at(c, &cid))?;
@@ -272,7 +276,10 @@ pub async fn collapse_stale_chat_assets(
     db: &Db,
     now_ms: i64,
 ) -> Result<StaleChatCollapseSummary, DbError> {
-    let cutoff = retention_cutoff_iso(STALE_CHAT_RETENTION_DAYS, now_ms);
+    // v4 now resolves the window through `resolveStaleChatDays()` (the
+    // user-configurable `dataRetention.staleChatDays`, default 30) so the image
+    // collapse, cache collapse, and cold-tier always agree on "stale".
+    let cutoff = retention_cutoff_iso(resolve_stale_chat_days(db), now_ms);
     let cutoff_ms = iso_to_ms(&cutoff).unwrap_or(now_ms);
 
     let all_chats = db.read_main(chats_read::find_all)?;

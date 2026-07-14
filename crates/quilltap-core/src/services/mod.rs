@@ -54,6 +54,7 @@ pub mod chat_events;
 pub mod chat_files;
 pub mod chat_initialize;
 pub mod cheap_llm_exec;
+pub mod collapse_stale_chat_caches;
 pub mod commonplace_notifications;
 pub mod compression;
 pub mod compression_cache;

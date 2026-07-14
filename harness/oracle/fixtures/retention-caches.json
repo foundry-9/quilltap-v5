@@ -1,0 +1,19 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "11111111-1111-4111-8111-111111111111",
+  "nowIso": "2026-06-01T00:00:00.000Z",
+  "seedTs": "2026-01-01T00:00:00.000Z",
+  "staleMsgAt": "2026-04-22T00:00:00.000Z",
+  "activeMsgAt": "2026-05-31T00:00:00.000Z",
+  "staleChatId": "aaaaaaa1-0000-4000-8000-000000000001",
+  "activeChatId": "aaaaaaa2-0000-4000-8000-000000000002",
+  "participantId": "fbfbfbfb-0000-4000-8000-000000000001",
+  "characterId": "cccccccc-0000-4000-8000-000000000001",
+  "staleMsgId": "bbbbbbb1-0000-4000-8000-000000000001",
+  "staleMsg2Id": "bbbbbbb2-0000-4000-8000-000000000002",
+  "activeMsgId": "bbbbbbb3-0000-4000-8000-000000000003",
+  "staleChunkEmbeddedId": "cc000001-0000-4000-8000-000000000001",
+  "staleChunkColdId": "cc000002-0000-4000-8000-000000000002",
+  "activeChunkId": "cc000003-0000-4000-8000-000000000003",
+  "embedding": [0.5, -0.25, 0.75, 0.125]
+}

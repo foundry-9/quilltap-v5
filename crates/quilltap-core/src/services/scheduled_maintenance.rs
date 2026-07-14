@@ -8,9 +8,13 @@
 //! 2. superseded generated story-backgrounds & wardrobe avatars of *stale*
 //!    chats — the ported [`crate::services::maintenance::collapse_stale_chat_assets`]
 //!    (its storage-bytes half is the standing host FsSeam);
-//! 3. orphaned mount-index files (belt-and-suspenders after the collapse) —
+//! 3. regenerable caches of *stale* chats (compression cache, rendered
+//!    markdown/HTML, raw provider payloads, thinking traces, memory-gate debug
+//!    logs) plus cold-tiering of their conversation-chunk embeddings — the ported
+//!    [`crate::services::collapse_stale_chat_caches::collapse_stale_chat_caches`];
+//! 4. orphaned mount-index files (belt-and-suspenders after the collapse) —
 //!    [`crate::db::doc_mount_file_links::sweep_orphaned_files`];
-//! 4. closed terminal (Ariel) PTY sessions and their transcript files —
+//! 5. closed terminal (Ariel) PTY sessions and their transcript files —
 //!    [`cleanup_closed_sessions`], the transcript unlink behind the injected
 //!    [`TranscriptStore`] seam (the fs lives host-side).
 //!
@@ -34,6 +38,7 @@
 use crate::clock::iso_from_unix_ms;
 use crate::db::runtime::Db;
 use crate::db::{instance_settings, terminal_sessions, DbError};
+use crate::services::collapse_stale_chat_caches::collapse_stale_chat_caches;
 use crate::services::maintenance::collapse_stale_chat_assets;
 use crate::services::queue_service::{
     self, cleanup_finished_jobs, retention_cutoff_iso, CLOSED_TERMINAL_RETENTION_DAYS,
@@ -70,6 +75,13 @@ pub struct MaintenanceSweepSummary {
     pub assets_stale_chats: usize,
     pub assets_chats_collapsed: usize,
     pub assets_files_deleted: usize,
+    /// The cache collapse's summary (v4 `caches`): stale chats, chats collapsed,
+    /// and the `chats` / `chat_messages` / `conversation_chunks` rows cleared.
+    pub caches_stale_chats: usize,
+    pub caches_chats_collapsed: usize,
+    pub caches_chat_rows_cleared: usize,
+    pub caches_message_rows_cleared: usize,
+    pub caches_chunk_embeddings_cleared: usize,
     /// Orphaned `doc_mount_files` rows swept.
     pub orphaned_files_swept: usize,
     /// Terminal-session rows reaped / transcript files removed.
@@ -136,6 +148,11 @@ pub async fn run_scheduled_maintenance(
         assets_stale_chats: 0,
         assets_chats_collapsed: 0,
         assets_files_deleted: 0,
+        caches_stale_chats: 0,
+        caches_chats_collapsed: 0,
+        caches_chat_rows_cleared: 0,
+        caches_message_rows_cleared: 0,
+        caches_chunk_embeddings_cleared: 0,
         orphaned_files_swept: 0,
         terminal_rows: 0,
         terminal_transcripts: 0,
@@ -161,7 +178,19 @@ pub async fn run_scheduled_maintenance(
         Err(_) => summary.failures.push("assets".to_string()),
     }
 
-    // 3. Orphaned mount-index files — AFTER the collapse, mopping up stragglers.
+    // 3. Stale-chat cache collapse + conversation-chunk cold-tiering.
+    match collapse_stale_chat_caches(db, now_ms).await {
+        Ok(r) => {
+            summary.caches_stale_chats = r.stale_chats;
+            summary.caches_chats_collapsed = r.chats_collapsed;
+            summary.caches_chat_rows_cleared = r.chat_rows_cleared;
+            summary.caches_message_rows_cleared = r.message_rows_cleared;
+            summary.caches_chunk_embeddings_cleared = r.chunk_embeddings_cleared;
+        }
+        Err(_) => summary.failures.push("caches".to_string()),
+    }
+
+    // 4. Orphaned mount-index files — AFTER the collapse, mopping up stragglers.
     // An absent mount-index partition is v4's `getRawMountIndexDatabase() ===
     // null → 0` (not a failure).
     match db
@@ -175,7 +204,7 @@ pub async fn run_scheduled_maintenance(
         Err(_) => summary.failures.push("orphans".to_string()),
     }
 
-    // 4. Closed terminal sessions + transcript files.
+    // 5. Closed terminal sessions + transcript files.
     let cutoff = retention_cutoff_iso(CLOSED_TERMINAL_RETENTION_DAYS, now_ms);
     match cleanup_closed_sessions(db, &cutoff, transcripts).await {
         Ok((rows, files)) => {
@@ -325,11 +354,16 @@ mod tests {
             .unwrap();
         let summary = rt.block_on(run_scheduled_maintenance(&db, now_ms, &NoTranscriptStore));
 
-        // jobs + assets failed (missing tables); orphans hit the absent
-        // mount-index partition → 0, NOT a failure; terminals ran.
+        // jobs + assets + caches failed (missing chats/background_jobs tables);
+        // orphans hit the absent mount-index partition → 0, NOT a failure;
+        // terminals ran.
         assert_eq!(
             summary.failures,
-            vec!["jobs".to_string(), "assets".to_string()]
+            vec![
+                "jobs".to_string(),
+                "assets".to_string(),
+                "caches".to_string()
+            ]
         );
         assert_eq!(summary.orphaned_files_swept, 0);
         assert_eq!(summary.terminal_rows, 1);
