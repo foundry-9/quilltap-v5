@@ -504,7 +504,10 @@ pub async fn mount_blob_get(
 /// on success (`success_status`), `{error, code?}` on the typed failures.
 fn core_response_to_http(resp: CoreResponse, success_status: StatusCode) -> AxumResponse {
     match resp {
-        CoreResponse::MountFile(v) => (
+        // v4's route handlers return these payloads FLAT (`{file}`, `{duplicate,…}`,
+        // `{data: FileEntry}`, `{success: true}`) — the dispatch envelope tag must
+        // not leak to the REST edge (the LOCKED SPA client reads the raw body).
+        CoreResponse::MountFile(v) | CoreResponse::Files(v) | CoreResponse::ChatMedia(v) => (
             success_status,
             [("content-type", "application/json")],
             v.to_string(),

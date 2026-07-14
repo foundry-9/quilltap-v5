@@ -127,6 +127,19 @@ export default async function globalSetup(): Promise<void> {
       "isDefault INTEGER DEFAULT 0, tags TEXT DEFAULT '[]', " +
       'createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);',
   );
+  // The Salon fixture predates the general-files `folders` table (v4
+  // FolderSchema: path/name/parentFolderId/projectId — all TEXT); the P4.6ae/ah
+  // files surface reads it on every /files folder list and the P4.6af data beat
+  // (self-activated at the P4.6ah unification) creates + browses a folder. A
+  // real instance provisions it; the fixture just predates the files family.
+  // IF NOT EXISTS keeps it a no-op when present — schema materialization, NOT a
+  // fixture regen (the terminal_sessions precedent).
+  runCliWrite(
+    cli,
+    'CREATE TABLE IF NOT EXISTS folders (' +
+      'id TEXT PRIMARY KEY, userId TEXT, path TEXT, name TEXT, ' +
+      'parentFolderId TEXT, projectId TEXT, createdAt TEXT, updatedAt TEXT);',
+  );
   // The Salon fixture predates the `instance_settings` key/value store (a real
   // instance's version guard creates it at boot). The P4.d3 Data Retention card
   // WRITES `dataRetention` there; with the table absent the read tolerates it

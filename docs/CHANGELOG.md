@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+Unify gate fix P4.6ah∥aj: the files-family REST legs returned the
+dispatch envelope (`{type, data}`) instead of v4's raw route bodies —
+`core_response_to_http` now unwraps `Files`/`ChatMedia` payloads like
+the existing `MountFile` arm, so `POST /api/v1/chats/{id}/files`
+answers the LOCKED SPA client's `{file}` / `{duplicate,…}` shapes and
+the upload/delete legs answer `{data: FileEntry}` / `{success: true}`
+verbatim. (The bug slipped both lanes: the differential diffs at the
+CoreRequest layer and the web-edge test's link/delete assertions sat
+behind a fixture-dependent guard that never fired.) Also: the e2e
+instance gained the `folders` table (schema materialization in
+global-setup — the salon fixture predates the files family; the
+self-activated files data beat reads it), and the composer-attach wire
+beat discovers a GENERAL chat via the API (the fixture's project chats
+have no linked document store, so their upload branch fails
+v4-faithfully). Full Playwright 48/48, zero skips — the P4.6af files
+data beat is ACTIVE.
+
 Unify wire P4.6ah∥ai∥aj∥d4: accumulate the multi-lane version bumps
 (core 0.0.219, harness 0.0.199 — three lanes each bumped from the same
 base; host 0.0.17, web 0.0.20, SPA 0.5.83 stand), drop two stray

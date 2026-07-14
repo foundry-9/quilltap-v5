@@ -1272,3 +1272,33 @@ leg, the FILE_HAS_ASSOCIATIONS itemized envelope + dissociate
 arm.** Next candidates: finish P4.6ae, the editor form-field
 consumers / tables (D17 tier 3), autonomous-rooms deferred cards,
 or P4.7 (Tauri).
+
+**The P4.6ah ∥ P4.6ai ∥ P4.6aj ∥ P4.d4 round ("finish P4.6ae + catch
+up from v4") is UNIFIED on main (2026-07-14) — ALL FOUR orders CLOSED,
+and with them P4.6ae and P4.6ab (tier 2) CLOSE. The oracle baseline
+moved to `02865bdb`.** Landed: the files write + maintenance server
+remainder (the chat-file upload leg + `action=link`, the general
+`fileUpload` variant + `POST /api/v1/files?action=upload` REST leg,
+the itemized `FILE_HAS_ASSOCIATIONS` envelope on `CoreError` + the
+`dissociate` arm, `filesGenerateThumbnails`/`filesCleanupStale`/
+`filesCleanupOrphans` — `files_routes_equivalence` grew 25 → 41
+cases) ∥ the `imageProfileGenerate` un-refusal over the NEW
+`EngineAssembly.image_generation` seam, wired LIVE in the host from
+the W4.7f `Real*Provider`s (`image_generate_route_equivalence`, 4
+cases) ∥ the SPA delete-associations close-out (REDUCED v4-faithful:
+no v4 client sends `force` — dissociate-only; the dialog itself had
+already landed in P4.6af) ∥ the `02865bdb` skip-signal drift re-port
+(trailing-sentinel strip; `skip_signal_equivalence` 106 rows).
+Unification wires: contract diffed name-for-name (no divergences);
+the P4.6af guarded files data beat self-activated over the live
+upload REST leg; a composer-attach live-leg beat added (the one
+cross-lane proof neither lane could run alone). **Files-family
+deferrals that remain (all loud, named):** `filesSync`,
+`action=attach-mount-file` (the Librarian walk), thumbnail
+*generation* (host codec; the byte-GET thumbnail route works),
+cleanup-stale disk-key fs existence, `autoDescribeChatImageAttachment`
+(no-op), `imageProfileValidateKey`/`ListModels` (live-provider-only).
+Next candidates: the D17 tier-3 editor follow-ons (form-field
+consumers, tables), the deferred autonomous-rooms cards (cron
+preview + the 13 Chat-tab cards), P4.7 (Tauri), or a dogfood pass
+over the now-complete files story.

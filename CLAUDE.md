@@ -439,12 +439,32 @@ records THERE. Update this summary only when a phase or round completes.
   Next candidates: finish P4.6ae, the D17 tier-3 editor follow-ons
   (form-field consumers, tables), the deferred autonomous-rooms
   cards, or P4.7 (Tauri) — see phase-4.md.
-- **Oracle baseline: v4 HEAD `dd0d9ff5`** (rebased 2026-07-14 with the
-  P4.d3 db-size-reduction drift re-port — quantized embedding codec
-  live both directions, v5 reads legacy + int8 + f16 and writes int8
-  byte-identically to v4). ⚠ v4's `quantize-embeddings-v1` migration
-  is one-way — back up Friday before first running v4 `4.8.0-dev.52`+
-  against it. Drift-check before every round.
-  Versions: core 0.0.216, harness 0.0.196, host 0.0.16, web 0.0.19, SPA 0.5.82.
+- **The P4.6ah ∥ P4.6ai ∥ P4.6aj ∥ P4.d4 "finish P4.6ae + catch up
+  from v4" round: UNIFIED on main (2026-07-14) — all four orders
+  CLOSED, and P4.6ae + P4.6ab (tier 2) CLOSE with them.** The files
+  write + maintenance server remainder (chat-file upload +
+  `action=link`, `fileUpload` + the upload REST leg, the itemized
+  FILE_HAS_ASSOCIATIONS envelope + dissociate, the three maintenance
+  verbs — `files_routes_equivalence` 25 → 41 cases) ∥ the
+  `imageProfileGenerate` un-refusal over the NEW
+  `EngineAssembly.image_generation` seam wired LIVE in the host (4-case
+  differential) ∥ the SPA delete-associations close-out (REDUCED
+  v4-faithful: no v4 client sends `force` — dissociate-only) ∥ the
+  `02865bdb` skip-signal trailing-sentinel re-port (106-row
+  differential). Wires: the P4.6af guarded files data beat
+  self-activated over the live upload leg; a composer-attach live-leg
+  beat added. Files-family deferrals remaining (loud, named):
+  `filesSync`, attach-mount-file, thumbnail generation (codec),
+  cleanup-stale disk keys, auto-describe,
+  `imageProfileValidateKey`/`ListModels`. Next candidates: the D17
+  tier-3 editor follow-ons, the deferred autonomous-rooms cards, P4.7
+  (Tauri), or a files-story dogfood pass — see phase-4.md.
+- **Oracle baseline: v4 HEAD `02865bdb`** (rebased 2026-07-14 with the
+  P4.d4 skip-signal drift re-port — the trailing-sentinel strip; the
+  P4.d3 quantized embedding codec note stands: ⚠ v4's
+  `quantize-embeddings-v1` migration is one-way — back up Friday
+  before first running v4 `4.8.0-dev.52`+ against it. Drift-check
+  before every round.
+  Versions: core 0.0.219, harness 0.0.199, host 0.0.17, web 0.0.20, SPA 0.5.83.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

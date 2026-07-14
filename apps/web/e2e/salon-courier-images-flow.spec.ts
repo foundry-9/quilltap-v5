@@ -116,10 +116,26 @@ test.describe('P4.6ac — courier + in-chat images', () => {
     // prove the seam end-to-end. This beat does: pick a file → the live
     // multipart upload lands → the attachment chip renders → remove leaves
     // the composer clean (send is NOT exercised — no LLM turn).
+    //
+    // A GENERAL (non-project) chat, discovered via the API: the fixture's
+    // project chats belong to seeded projects with no linked document store,
+    // so their upload branch fails v4-faithfully — that arm is the
+    // differential's job, not this walk's.
+    const ctx = await pwRequest.newContext();
+    let generalChatId: string | null = null;
+    try {
+      const res = await ctx.post(`${BASE_URL}/api/dispatch`, { data: { type: 'listChats' } });
+      const body = (await res.json().catch(() => null)) as {
+        data?: { id: string; project?: unknown }[];
+      } | null;
+      generalChatId = body?.data?.find((c) => !c.project)?.id ?? null;
+    } finally {
+      await ctx.dispose();
+    }
+    test.skip(!generalChatId, 'no general (non-project) chat in the shared fixture');
+
     await openChatList(page);
-    const cards = page.locator('.chat-card-stack a.qt-entity-card');
-    test.skip((await cards.count()) === 0, 'no chats in the shared fixture');
-    await cards.first().click();
+    await page.goto(`/salon/${generalChatId}`);
     await expect(page.locator('.qt-chat-messages-list')).toBeVisible();
 
     const attachButton = page.getByRole('button', { name: 'Attach a file', exact: true });
