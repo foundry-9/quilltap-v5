@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.6ag tier 1 (unit 2): the `qt-rich-editor` component — a ProseMirror
+view hosted imperatively over the dialect bridge, with markdown in via
+`value` and out via an imperative handle (`focus`/`getMarkdown`/
+`setMarkdown`/`prependText`, mirroring v4's `ComposerEditorHandle`).
+History, base keymap, an empty-doc placeholder, a paste-image passthrough,
+and a `submitOnEnter` mode (Enter emits submit, Shift+Enter a line break —
+v4 KeyboardPlugin chat mode). External `value` changes reload the document
+and emit the normalized markdown once (the absorb-once seam). SPA 0.5.73.
+
 P4.6ag tier 0 (the D17 gate): the committed markdown round-trip test
 that decides whether ProseMirror can replace v4's Lexical editor. A new
 `apps/web/src/app/editor/markdown-dialect.ts` configures a ProseMirror

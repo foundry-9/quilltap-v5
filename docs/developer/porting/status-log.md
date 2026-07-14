@@ -11249,3 +11249,26 @@ adoption units. SPA 0.5.72.
 in-paragraph two-space hard breaks normalize to `\n` (matches v4);
 strikethrough / highlight / the multiline table transformer are not in
 the gate corpus (tier 2 / deferred); links round-trip but are tier 2.
+
+**Unit 2 — `qt-rich-editor`.** The bespoke editor
+(`apps/web/src/app/editor/rich-editor.ts`, `qt-rich-editor`): an OnPush
+standalone component hosting a `prosemirror-view` imperatively (the house
+idiom — PM is framework-agnostic, needs no zone patching). Markdown in via
+the `value` signal input; markdown out via the {@link markdown-dialect}
+bridge through an imperative handle (`focus`, `getMarkdown`, `setMarkdown`,
+`prependText`) matching v4 `ComposerEditorHandle`
+(`components/chat/lexical/types.ts`). Plugins: `history`, the base keymap,
+a `submitOnEnter`-aware Enter/Shift+Enter keymap (Enter emits `submit`,
+Shift+Enter inserts a `hard_break` → `\n` — v4 `KeyboardPlugin` chat mode),
+a placeholder decoration plugin (empty-doc `::before`), and a paste-image
+passthrough (`imagePaste` output — the composer's paste leg). A `value`
+effect reloads the document on external change and emits the re-serialized
+markdown once via `queueMicrotask` — the absorb-once signal the document
+controller adopts as baseline (`computeAbsorbNext`); deferring off the
+change-detection pass avoids re-entrancy (v4 debounces its own setInput).
+Static prosemirror imports (the P4.6u xterm lesson). Editor prose CSS added
+to `_chat.css` (global — PM's imperative DOM is outside view
+encapsulation). `rich-editor.spec.ts`: 4 specs over the handle contract
+(round-trip set/get, single-`*` literal, absorb-once normalization,
+prependText) — green in jsdom (prosemirror-view instantiates fine there).
+SPA 0.5.73.

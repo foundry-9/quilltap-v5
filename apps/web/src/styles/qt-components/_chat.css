@@ -1003,6 +1003,96 @@
   }
 
   /**
+   * qt-rich-editor — the ProseMirror editor (D17 adoption). The mount hosts the
+   * imperatively-created contenteditable, so these are global (view
+   * encapsulation would not reach PM's own DOM). Prose styling mirrors the
+   * .qt-lexical-* node styles above so editing looks like the rendered output.
+   */
+  .qt-rich-editor-host,
+  .qt-rich-editor-mount {
+    @apply flex flex-col flex-1 min-h-0 min-w-0;
+  }
+
+  .qt-rich-editor-content {
+    @apply flex-1 min-h-0 overflow-y-auto outline-none;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+
+  /* Empty-doc placeholder — the decoration sets data-placeholder on the first
+     (empty) block; render it via ::before so it never enters the document. */
+  .qt-rich-editor-placeholder::before {
+    content: attr(data-placeholder);
+    @apply text-muted-foreground pointer-events-none;
+    float: left;
+    height: 0;
+  }
+
+  .qt-rich-editor-content p {
+    margin: 0;
+  }
+  .qt-rich-editor-content strong {
+    font-weight: 700;
+  }
+  .qt-rich-editor-content em {
+    font-style: italic;
+  }
+  .qt-rich-editor-content s {
+    text-decoration: line-through;
+  }
+  .qt-rich-editor-content code {
+    @apply font-mono text-xs;
+    background: var(--qt-code-bg, rgba(0, 0, 0, 0.1));
+    padding: 0.1em 0.3em;
+    border-radius: 0.2em;
+  }
+  .qt-rich-editor-content h1 {
+    @apply text-xl font-bold;
+    margin: 0.5em 0 0.25em;
+  }
+  .qt-rich-editor-content h2 {
+    @apply text-lg font-bold;
+    margin: 0.4em 0 0.2em;
+  }
+  .qt-rich-editor-content h3 {
+    @apply text-base font-semibold;
+    margin: 0.3em 0 0.15em;
+  }
+  .qt-rich-editor-content h4,
+  .qt-rich-editor-content h5,
+  .qt-rich-editor-content h6 {
+    @apply text-sm font-semibold;
+    margin: 0.25em 0 0.1em;
+  }
+  .qt-rich-editor-content ul {
+    @apply list-disc pl-6;
+    margin: 0.25em 0;
+  }
+  .qt-rich-editor-content ol {
+    @apply list-decimal pl-6;
+    margin: 0.25em 0;
+  }
+  .qt-rich-editor-content li {
+    margin: 0.1em 0;
+  }
+  .qt-rich-editor-content blockquote {
+    @apply border-l-2 pl-3 italic;
+    border-color: var(--qt-border-color, hsl(var(--border)));
+    margin: 0.25em 0;
+  }
+  .qt-rich-editor-content pre {
+    @apply font-mono text-xs overflow-x-auto;
+    background: var(--qt-code-bg, rgba(0, 0, 0, 0.1));
+    padding: 0.6em 0.8em;
+    border-radius: 0.3em;
+    margin: 0.4em 0;
+  }
+  .qt-rich-editor-content pre code {
+    background: none;
+    padding: 0;
+  }
+
+  /**
    * Composer actions container
    */
   .qt-chat-composer-actions {
