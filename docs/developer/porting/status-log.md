@@ -12243,3 +12243,49 @@ try/caught (private-mode safe). Timer cleared on destroy.
 **Proofs:** chat-composer.spec.ts +4 (restore-on-mount; save-after-800ms with a
 pre-debounce null check; blank removes the key; send clears immediately). A
 file-level `beforeEach(localStorage.clear)` keeps every composer test isolated.
+
+### Item 5 — text-replacement plugin + settings card (tier 2, LANDED)
+
+`editor/text-replacement.ts` (NEW): the compiled-rules helper
+(`compileRules`/`findReplacement`, ported from v4
+`lib/text-replacement/useTextReplacementRules.ts`) + a ProseMirror plugin
+(`textReplacementPlugin`) with v4's exact `TextReplacementPlugin` trigger
+semantics — a `handleKeyDown` at the top of the plugin stack: collapsed caret at
+the END of the current word (a non-boundary char right after the caret ⇒
+mid-word skip), IME (`view.composing`) skipped, the v4 `TRIGGER_CHARS` set
+(newline excluded; `\t` kept verbatim though inert), word walked back to a
+boundary, replaced + trigger char in ONE transaction (single undo). `getRules`
+is read live so Angular swaps rules without rebuilding the editor.
+
+`RichEditor`: `textReplacementRules` input (CompiledRules | null) + the plugin
+installed above the keymaps (inert when null/empty). `chat/chat-composer.ts`:
+`textReplacementRules` + `textReplacementsEnabled` inputs, forwarding
+`effectiveTextReplacementRules` (null when the gate is off) — composer-only;
+form fields (qt-markdown-field) never pass rules. Both inputs are §3 unification
+wires (the salon fetches + compiles live).
+
+`core-contract.ts` P4.6al appended block: `TextReplacementRule` +
+`TextReplacementRuleInput` + the five request shapes
+(`textReplacementsList`/`Create`/`Update`/`Delete`/`BulkReplace`) — §1-pinned,
+union wired by the unifier (client casts at the dispatch boundary in-lane).
+`screens/settings/chat/text-replacements.api.ts` (NEW): the five CoreClient
+dispatch wrappers.
+
+`screens/settings/chat/text-replacement-settings.ts` (NEW): v4's
+`TextReplacementSettings` card — master toggle
+(`chat_settings.textReplacementsEnabled` via the chat-settings dispatch),
+add-rule form, per-row from/to blur-commit + Case/On toggles + delete, and a
+"Try it" textarea previewing the plugin's exact trigger logic. Wired into
+`chat-tab.ts` as the "Text Replacement" card (sectionId `text-replacements`,
+after Composition Mode); removed from the dead-deferral line.
+
+**Proofs (in-lane, mocked CoreClient / direct EditorView):**
+text-replacement.spec.ts +9 (helpers: enabled/disabled compile, case precedence;
+plugin: replace-on-trigger, inert on null/empty, non-trigger key, mid-word skip,
+boundary/empty-word skip, mid-line fire); text-replacement-settings.spec.ts +6
+(load list+toggle, empty state, create, master-toggle persist, delete, row
+patch); chat-composer.spec.ts +1 (enable-gate forwarding). ng build clean.
+
+**§3 unification wires:** the salon fetches the rule list + the
+`textReplacementsEnabled` flag and binds `[textReplacementRules]` /
+`[textReplacementsEnabled]` on the composer; the live REST edge is lane A's.

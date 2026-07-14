@@ -3,6 +3,7 @@ import { By } from '@angular/platform-browser';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RichEditor } from '../editor/rich-editor';
+import { compileRules } from '../editor/text-replacement';
 import { ChatComposer, type ComposerSend } from './chat-composer';
 
 // Draft persistence keys off chatId in localStorage; keep every test isolated.
@@ -214,5 +215,34 @@ describe('ChatComposer — draft persistence (v4 useDraftPersistence)', () => {
     await settle(fixture);
     fixture.nativeElement.querySelector('form').dispatchEvent(new Event('submit'));
     expect(localStorage.getItem(KEY)).toBeNull();
+  });
+});
+
+describe('ChatComposer — text-replacement gating (v4 textReplacementsEnabled)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('forwards rules to the editor only when the gate is on', async () => {
+    const rules = compileRules([
+      {
+        id: 'r1',
+        fromText: 'teh',
+        toText: 'the',
+        caseSensitive: false,
+        enabled: true,
+        sortOrder: 0,
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      },
+    ]);
+    const fixture = render();
+    await settle(fixture);
+    fixture.componentRef.setInput('textReplacementRules', rules);
+    fixture.componentRef.setInput('textReplacementsEnabled', true);
+    fixture.detectChanges();
+    expect(richEditor(fixture).textReplacementRules()).toBe(rules);
+
+    fixture.componentRef.setInput('textReplacementsEnabled', false);
+    fixture.detectChanges();
+    expect(richEditor(fixture).textReplacementRules()).toBeNull();
   });
 });

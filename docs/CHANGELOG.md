@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+P4.6al lane (D17 editor follow-ons, tier 2 item 5 — text replacement):
+the composer's word-boundary autocorrect (v4 `TextReplacementPlugin`)
+and its settings CRUD card. A new `editor/text-replacement.ts` ports
+the compiled-rules helper (`compileRules`/`findReplacement`) and a
+ProseMirror plugin with v4's exact trigger semantics — collapsed caret
+at the end of the word, the v4 trigger-char set (newline excluded), IME
+skipped, replace + trigger char in one undo. The plugin is composer-only
+and inert unless the host passes compiled rules; the composer forwards
+them gated by `textReplacementsEnabled`, both as inputs the salon wires
+at unification. The Settings → Chat "Text Replacement" card (v4's
+`TextReplacementSettings`) provides the master toggle, add-rule form,
+per-row edit/toggle/delete, and the "Try it" preview, over new
+dispatch verbs (`textReplacementsList`/`Create`/`Update`/`Delete`/
+`BulkReplace`) added to core-contract's P4.6al block and a client api
+file. Specs: text-replacement +9, the settings card +6, composer
+gating +1.
+
 P4.6al lane (D17 editor follow-ons, tier 2 item 4 — composer draft
 persistence): the chat composer now saves and restores an unsent draft
 per chat (v4 `useDraftPersistence` + `ComposerSyncPlugin`). Keyed

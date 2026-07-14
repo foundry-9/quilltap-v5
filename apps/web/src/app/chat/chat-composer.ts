@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 
 import { RichEditor } from '../editor/rich-editor';
+import type { CompiledRules } from '../editor/text-replacement';
 import { Icon } from '../ui/icon';
 import {
   uploadChatFile,
@@ -90,6 +91,7 @@ export interface ComposerSend {
           [disabled]="disabled()"
           [submitOnEnter]="!compositionMode()"
           [submitOnModEnter]="compositionMode()"
+          [textReplacementRules]="effectiveTextReplacementRules()"
           ariaLabel="Message"
           (contentChange)="onContentChange($event)"
           (submit)="submit()"
@@ -227,6 +229,13 @@ export class ChatComposer implements OnInit {
    * unification (§3); the composer itself does not persist the toggle.
    */
   readonly compositionMode = input(false);
+  /**
+   * Compiled text-replacement rules + the on/off gate (v4
+   * `TextReplacementPlugin`, `chat_settings.textReplacementsEnabled`). The salon
+   * fetches and compiles these at unification (§3); in-lane they are injected.
+   */
+  readonly textReplacementRules = input<CompiledRules | null>(null);
+  readonly textReplacementsEnabled = input(true);
 
   readonly send = output<ComposerSend>();
   readonly stop = output<void>();
@@ -271,6 +280,11 @@ export class ChatComposer implements OnInit {
 
   protected readonly sendTitle = computed(() =>
     this.hasActiveCharacters() ? 'Send message' : 'Add a character to start chatting',
+  );
+
+  /** Rules only take effect when the feature gate is on (v4). */
+  protected readonly effectiveTextReplacementRules = computed(() =>
+    this.textReplacementsEnabled() ? this.textReplacementRules() : null,
   );
 
   /** Mac vs non-Mac decides the Cmd/Ctrl label (v4 `isMac`, ChatComposer.tsx). */

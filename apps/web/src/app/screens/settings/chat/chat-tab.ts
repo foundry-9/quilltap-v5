@@ -14,6 +14,7 @@ import { AutonomousRoomsList } from '../../../autonomous/autonomous-rooms-list';
 import { CollapsibleCard } from '../../../ui/collapsible-card';
 import { CompositionModeSettings } from './composition-mode-settings';
 import { DataRetentionSettings } from './data-retention-settings';
+import { TextReplacementSettings } from './text-replacement-settings';
 
 /**
  * The Settings → Chat tab (v4 `components/settings/tabs/ChatTabContent.tsx`,
@@ -23,16 +24,17 @@ import { DataRetentionSettings } from './data-retention-settings';
  * (`autonomous-room-schedules`) — over `CollapsibleCard` with v4's card
  * titles/descriptions + `sectionId`s (the `?section=` deep link) ported verbatim.
  *
- * The Composition Mode card (v4's first) rides here (P4.6al) — its default,
- * `chat_settings.compositionModeDefault`, seeds each new chat's
- * `documentEditingMode`.
+ * The Composition Mode (v4's first) and Text Replacement cards ride here
+ * (P4.6al) — the former's default `chat_settings.compositionModeDefault` seeds
+ * each new chat's `documentEditingMode`; the latter is the CRUD editor over the
+ * global text-replacement rule list + its `textReplacementsEnabled` gate.
  *
  * DEFERRED LOUDLY (named, not silent): v4's other Chat-tab cards — Composer,
- * Auto-Scroll, Text Replacement, Token Display, Context Compression, Memory
- * Cascade, Image Description, Automation, Agent Mode, Thinking / Reasoning,
- * Answer Confirmation, and Dangerous Content — each land in their own settings
- * order. They are enumerated in the "not yet fitted out" placeholder below
- * rather than rendered as dead cards.
+ * Auto-Scroll, Token Display, Context Compression, Memory Cascade, Image
+ * Description, Automation, Agent Mode, Thinking / Reasoning, Answer Confirmation,
+ * and Dangerous Content — each land in their own settings order. They are
+ * enumerated in the "not yet fitted out" placeholder below rather than rendered
+ * as dead cards.
  */
 @Component({
   selector: 'qt-settings-chat',
@@ -43,6 +45,7 @@ import { DataRetentionSettings } from './data-retention-settings';
     AutonomousRoomsList,
     CompositionModeSettings,
     DataRetentionSettings,
+    TextReplacementSettings,
   ],
   template: `
     <div>
@@ -61,6 +64,15 @@ import { DataRetentionSettings } from './data-retention-settings';
           [forceOpen]="section() === 'composition-mode'"
         >
           <qt-composition-mode-settings />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Text Replacement"
+          description="Replace literal triggers with replacement text on word boundaries"
+          sectionId="text-replacements"
+          [forceOpen]="section() === 'text-replacements'"
+        >
+          <qt-text-replacement-settings />
         </qt-collapsible-card>
 
         <!-- P4.d3: v4 places Data Retention between "Dangerous Content" (still a
@@ -102,9 +114,9 @@ import { DataRetentionSettings } from './data-retention-settings';
             moment they remain in the workshop:
           </p>
           <p class="qt-text-xs qt-text-muted mt-2 italic">
-            Composer · Auto-Scroll · Text Replacement · Token Display · Context Compression · Memory
-            Cascade · Image Description · Automation · Agent Mode · Thinking / Reasoning · Answer
-            Confirmation · Dangerous Content.
+            Composer · Auto-Scroll · Token Display · Context Compression · Memory Cascade · Image
+            Description · Automation · Agent Mode · Thinking / Reasoning · Answer Confirmation ·
+            Dangerous Content.
           </p>
         </div>
       </div>

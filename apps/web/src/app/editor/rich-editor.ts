@@ -21,6 +21,7 @@ import { Decoration, DecorationSet, EditorView } from 'prosemirror-view';
 
 import { dialectFormattingKeymap, dialectInputRules } from './editing-commands';
 import { dialectSchema, parseMarkdown, serializeMarkdown } from './markdown-dialect';
+import { textReplacementPlugin, type CompiledRules } from './text-replacement';
 
 /**
  * `qt-rich-editor` — the bespoke ProseMirror editor over the v4 composer
@@ -60,6 +61,12 @@ export class RichEditor {
    */
   readonly submitOnModEnter = input(false);
   readonly ariaLabel = input('Editor');
+  /**
+   * Compiled text-replacement rules (v4 `TextReplacementPlugin`). Read live on
+   * each keydown; `null`/empty makes the plugin inert. The composer sets this
+   * (gated by `textReplacementsEnabled`); form fields never do.
+   */
+  readonly textReplacementRules = input<CompiledRules | null>(null);
 
   /** Fired with the serialized markdown whenever the document changes. */
   readonly contentChange = output<string>();
@@ -221,6 +228,9 @@ export class RichEditor {
 
     return [
       dialectInputRules(dialectSchema),
+      // Composer-only text replacement (inert unless rules are set). Above the
+      // keymaps so it consumes the trigger keystroke before Enter/etc.
+      textReplacementPlugin(() => this.textReplacementRules()),
       history(),
       keymap({
         'Mod-z': undo,

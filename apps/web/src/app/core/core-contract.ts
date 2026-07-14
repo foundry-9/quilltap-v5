@@ -3775,3 +3775,67 @@ export interface DataRetentionSettingsUpdateRequest {
   type: 'dataRetentionSettingsUpdate';
   staleChatDays?: number;
 }
+
+// ===========================================================================
+// --- P4.6al additions ---
+// The text-replacement rule surface (lane A implements the Rust dispatch +
+// REST edges; these mirror the pinned §1 shapes). Appended-only per the round
+// contract; the union members are wired by the unifier (the client api casts
+// at the dispatch boundary in-lane). Cross-checked name-for-name against
+// types.rs at unification.
+// ===========================================================================
+
+/** One text-replacement rule (v4 `text_replacement_rules`). camelCase serde. */
+export interface TextReplacementRule {
+  id: string;
+  fromText: string;
+  toText: string;
+  caseSensitive: boolean;
+  enabled: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The create/update input body (partial for update). */
+export interface TextReplacementRuleInput {
+  fromText: string;
+  toText: string;
+  caseSensitive?: boolean;
+  enabled?: boolean;
+  sortOrder?: number;
+}
+
+/** GET `/api/v1/settings/text-replacements` → `{ rules, count }`. */
+export interface TextReplacementsListRequest {
+  type: 'textReplacementsList';
+}
+
+/** POST `/api/v1/settings/text-replacements` → the created rule (201).
+ *  A duplicate `fromText`+`caseSensitive` hits v4's conflict arm. */
+export interface TextReplacementCreateRequest extends TextReplacementRuleInput {
+  type: 'textReplacementCreate';
+}
+
+/** PATCH `/api/v1/settings/text-replacements/:id` → the updated rule. */
+export interface TextReplacementUpdateRequest {
+  type: 'textReplacementUpdate';
+  id: string;
+  fromText?: string;
+  toText?: string;
+  caseSensitive?: boolean;
+  enabled?: boolean;
+  sortOrder?: number;
+}
+
+/** DELETE `/api/v1/settings/text-replacements/:id` → v4's delete envelope. */
+export interface TextReplacementDeleteRequest {
+  type: 'textReplacementDelete';
+  id: string;
+}
+
+/** POST `?action=bulk-replace` — transactional full-list replace → `{ rules, count }`. */
+export interface TextReplacementsBulkReplaceRequest {
+  type: 'textReplacementsBulkReplace';
+  rules: TextReplacementRuleInput[];
+}
