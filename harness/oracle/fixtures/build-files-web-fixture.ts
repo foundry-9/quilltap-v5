@@ -399,7 +399,8 @@ async function main(): Promise<void> {
   await closeDatabase();
   process.stderr.write(
     `built files-web fixture: main=${mainOut} mount=${mountOut} ` +
-      `(2 users, 1 project, 10 files, 7 folders)\n`,
+      `(2 users, 1 project + linked store, 2 chats, 2 characters, ` +
+      `19 files, 7 folders, Quilltap Uploads mount)\n`,
   );
   process.exit(0);
 }
