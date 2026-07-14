@@ -14,11 +14,11 @@ import {
 } from '@angular/core';
 import { injectVirtualizer } from '@tanstack/angular-virtual';
 
-import type { ChatStreamState } from '../core/chat-stream.reducer';
+import type { ChatStreamState, StreamMessage } from '../core/chat-stream.reducer';
 import type { ChatDetail, ChatSettingsDto, MessageDto } from '../core/core-contract';
 import { AnnouncementGroup } from './announcement-group';
 import { AutoScrollController } from './auto-scroll';
-import { buildRenderItems, type SwipeState } from './chat-view-model';
+import { buildRenderItems, type RenderItem, type SwipeState } from './chat-view-model';
 import { MessageRow, type ImageClickEvent } from './message-row';
 import { StreamingMessage } from './streaming-message';
 import { Icon } from '../ui/icon';
@@ -94,6 +94,32 @@ import { VirtualRow } from './virtual-row';
           }
         </div>
 
+        <!-- Stream-accumulated FINISHED bubbles (dogfood finding #7): a chained
+             character's completed reply must be visible the instant its turn ends,
+             not held back until the whole chain finishes and the canonical refetch
+             lands. The reducer already folds each intermediate done / carina answer /
+             host announcement into state.messages (v4 useSSEStreaming.ts
+             onIntermediateDone/onCarinaAnswer/onHostAnnouncement :759-788,:684-691);
+             we render them here, deduped by id against the canonical list, through
+             the SAME MessageRow / AnnouncementGroup path so the reconcile handoff is
+             pixel-stable. Not virtualized — a handful of transient rows. -->
+        @for (item of streamItems(); track streamItemKey(item)) {
+          @if (item.type === 'message') {
+            <qt-message-row
+              [message]="item.message"
+              [chat]="chat()"
+              [settings]="settings()"
+              [showAvatar]="showAvatars()"
+              (copy)="copy.emit($event)"
+              (imageClick)="imageClick.emit($event)"
+              (saveImage)="saveImage.emit($event)"
+              (courierSettled)="courierSettled.emit($event)"
+            />
+          } @else {
+            <qt-announcement-group [chips]="item.chips" [chatId]="chat().id" />
+          }
+        }
+
         @if (stream(); as s) {
           <qt-streaming-message [state]="s" />
         }
@@ -139,6 +165,16 @@ export class MessageList {
   private readonly endAnchor = viewChild<ElementRef<HTMLElement>>('endAnchor');
 
   protected readonly items = computed(() => buildRenderItems(this.messages()));
+
+  /**
+   * The stream-accumulated finished bubbles (assistant intermediate + carina +
+   * host), deduped by id against the canonical flow so the post-reconcile rows
+   * never double up (dogfood finding #7). Rendered through the normal render-item
+   * path (announcement chips for staff senders, rows otherwise).
+   */
+  protected readonly streamItems = computed(() =>
+    buildStreamRenderItems(this.stream(), this.messages()),
+  );
 
   /** The virtualizer over the render-item array (v4 `useVirtualizer`). */
   protected readonly virtualizer = injectVirtualizer<HTMLElement, Element>(() => ({
@@ -218,4 +254,80 @@ export class MessageList {
   protected itemKey(item: ReturnType<typeof buildRenderItems>[number]): string {
     return item.type === 'message' ? item.message.id : `grp-${item.chips[0]?.id ?? ''}`;
   }
+
+  protected streamItemKey(item: RenderItem): string {
+    return `stream-${this.itemKey(item)}`;
+  }
+}
+
+/**
+ * Turn one streamed {@link StreamMessage} into a {@link MessageDto} so it renders
+ * through the exact MessageRow / AnnouncementGroup path the settled flow uses. A
+ * carina/host entry already carries the full posted message object (v4 encodes
+ * `{ carinaAnswer|hostAnnouncement: message }` — the serialized message), so it
+ * casts straight across; an assistant bubble is assembled from the reducer's
+ * fields (createdAt is left blank — the transient row carries no timestamp; the
+ * canonical refetch supplies the real one on handoff).
+ */
+function streamMessageToMessageDto(sm: StreamMessage): MessageDto {
+  if (sm.kind !== 'assistant') {
+    return sm.message as unknown as MessageDto;
+  }
+  return {
+    id: sm.id,
+    role: 'ASSISTANT',
+    content: sm.content,
+    tokenCount: null,
+    promptTokens: null,
+    completionTokens: null,
+    createdAt: '',
+    swipeGroupId: null,
+    swipeIndex: null,
+    participantId: sm.participantId,
+    attachments: [],
+    provider: sm.provider,
+    modelName: sm.modelName,
+    targetParticipantIds: null,
+    isSilentMessage: sm.isSilentMessage ?? null,
+    systemSender: null,
+    systemKind: null,
+    hostEvent: null,
+    customAnnouncer: null,
+    carinaMeta: null,
+    pendingExternalPrompt: null,
+    pendingExternalPromptFull: null,
+    pendingExternalAttachments: null,
+    reasoningContent: sm.reasoningContent,
+    reasoningSegments: sm.reasoningSegments,
+    confirmed: sm.confirmed ?? undefined,
+    confirmationChecked: sm.confirmationChecked,
+    confirmationRevised: sm.confirmationRevised,
+    confirmationNotes: sm.confirmationNotes,
+  };
+}
+
+/**
+ * Build the render items for the stream-accumulated finished bubbles, deduped by
+ * id against `existing` (the canonical + optimistic flow). Skipped turns append
+ * nothing to `stream.messages` (the reducer resets the buffer without a bubble —
+ * `reduceDone` :297-299), so they naturally render nothing; their Host note
+ * arrives as a separate `host` entry and DOES render.
+ */
+export function buildStreamRenderItems(
+  stream: ChatStreamState | null,
+  existing: MessageDto[],
+): RenderItem[] {
+  const streamMessages = stream?.messages ?? [];
+  if (streamMessages.length === 0) {
+    return [];
+  }
+  const existingIds = new Set(existing.map((m) => m.id));
+  const dtos: MessageDto[] = [];
+  for (const sm of streamMessages) {
+    if (existingIds.has(sm.id)) {
+      continue;
+    }
+    dtos.push(streamMessageToMessageDto(sm));
+  }
+  return buildRenderItems(dtos);
 }

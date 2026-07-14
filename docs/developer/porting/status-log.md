@@ -12318,3 +12318,61 @@ composer drive + the salon-documents dialect-bytes beats stayed green under the
 composer changes. No Rust touched (SPA-only lane) → cargo gate N/A.
 
 **Final version:** apps/web SPA **0.5.89** (from the 0.5.83 base).
+
+## P4.6am (lane C — the salon dogfood slice: chained render + chat backgrounds + last select-audit site) — baseline `02865bdb`
+
+Lane C of the three-lane P4.6ak ∥ P4.6al ∥ P4.6am round. SPA-only; no
+`crates/**` touched. Consumes lane A's pinned `chatGetBackground` §1
+shape and the shared `core-contract.ts` §2 append block. Ownership:
+`screens/salon/**`, `chat/message-list.*`, `chat/streaming-message.*`,
+`core/chat-stream.reducer.*`, `characters/view/tabs/details-tab.*`,
+`styles/qt-components/_chat.css`, `e2e/global-setup.ts`, own new
+spec/api files.
+
+### Unit 1 — the chained-response streaming render (finding #7) (SPA 0.5.84)
+
+**The gap (survey-confirmed at `02865bdb`):** the SSE reducer
+(`core/chat-stream.reducer.ts`) already folds every finished bubble
+into `state.messages` — intermediate assistant dones (`reduceDone`
+:326-345, `emitBubble` gated on `inChain` + non-empty content), carina
+answers and host announcements (`dedupePush` :208-215), and a skipped
+turn appends nothing (:297-299). But `chat/streaming-message.ts`
+renders ONLY the live buffer, and the Salon dropped `state.messages`
+on reconcile — so a chained character's finished reply stayed
+invisible until `chainComplete` + the canonical refetch. A port
+divergence from v4 `useSSEStreaming.ts` (`onIntermediateDone`
+:759-788, `onCarinaAnswer`/`onHostAnnouncement` :684-691), which
+appends each finished bubble to the SAME `messages` array the list
+renders.
+
+**The fix (render-side only — the reducer was already faithful):**
+`chat/message-list.ts` gained `buildStreamRenderItems(stream,
+existing)` — it maps each `StreamMessage` to a `MessageDto` (carina/host
+cast straight from the posted-message object v4 encodes as
+`{carinaAnswer|hostAnnouncement: message}`; an assistant bubble is
+assembled from the reducer fields, blank `createdAt` for the transient
+row), drops any whose id is already in the canonical/optimistic flow
+(`existing`), and runs the standard `buildRenderItems`. The template
+renders those items below the virtualized canonical list and above
+`qt-streaming-message`, through the same `qt-message-row` /
+`qt-announcement-group` path — so the reconcile handoff is
+pixel-stable and staff senders still collapse to chips. Not
+virtualized (a handful of transient rows).
+
+**Why dedup matters:** the Salon's single reconcile-at-end
+(`invalidateQueries` then `stream.set(null)`) is the established
+P4.2-era arrangement (kept, per the order — v4 refetches per
+turnComplete). Between the refetch settling and the stream clearing,
+one change-detection pass could show both copies; dedup-by-id is the
+belt-and-suspenders guard so the canonical row wins.
+
+**Proof:** `chat/message-list.spec.ts` (new) — 8 specs. Pure
+`buildStreamRenderItems`: one row per finished chained turn in order
+(m10, m11 over `multiTurnChainTrace`); per-turn visibility (only m10
+after the first done); dedup (m10 in the canonical flow → only m11
+survives); a skipped turn renders no assistant row but its Host note
+renders as one chip (`skipDoneTrace`); a carina answer renders as its
+own row, never a chip. Component render (MessageList in JSDOM, the
+offsetHeight stub): both chained replies appear in the DOM; a canonical
+id renders once while its streamed twin drops. `ng test` green (8/8 in
+the file).

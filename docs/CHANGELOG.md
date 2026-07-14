@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+P4.6am unit 1 (lane C) — chained-response streaming render (dogfood
+finding #7). A chained character's finished reply is now visible the
+instant its turn ends, instead of being held back until the whole
+chain completes and the canonical refetch lands. The SSE reducer
+already folded each intermediate done / carina answer / host
+announcement into `state.messages`; the gap was render-side. The
+message list now renders those accumulated finished bubbles (assistant
++ carina + host) below the canonical flow and above the live
+in-progress bubble, deduped by id against the canonical list so the
+reconcile handoff never doubles a row, through the same
+MessageRow/AnnouncementGroup path so the bubbles look identical before
+and after the refetch. Skipped turns render nothing (their Host note
+still surfaces as a chip). New `buildStreamRenderItems` pure helper +
+`message-list.spec.ts` drive the multi-turn chain (per-turn
+visibility, dedup handoff, skip, carina) through the reducer and the
+rendered DOM.
+
 P4.6al lane: fixed the new-character spec to drive the Identity field
 through the qt-markdown-field editor handle (the item-3 adoption removed
 the `#identity` textarea id). Full `ng test` green (749).
