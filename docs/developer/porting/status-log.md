@@ -10809,3 +10809,34 @@ Regen recipe (Node 24, `cd ~/source/quilltap-server`):
 `getRepositories().backgroundJobs.getStats()`. The `EMBEDDING_GENERATE`
 EXECUTION handler stays the named P4.6s-era refusal (enqueue is live; cold chats
 re-warm only under v4 until it ports).
+
+### P4.d3 unit 5 — the dataRetention setting + dispatch surface — LANDED
+
+The instance-settings accessors landed with unit 3 (`get`/`set_data_retention_settings`
++ `validate_stale_chat_days` in `db/instance_settings.rs`). This unit adds the
+dispatch surface: a delimited `// === P4.d3 ===` block in `api/types.rs` (Request
+`DataRetentionSettings` / `DataRetentionSettingsUpdate {staleChatDays?}` — the raw
+value carried so the handler validates the body itself, matching v4's `safeParse`
+rejecting out-of-range OR wrong-typed input; Response `DataRetention`),
+`api/engine.rs` (the two arms, readiness-gated), and `api/settings.rs`
+(`data_retention_settings_get` = v4's `successResponse(settings)`;
+`data_retention_settings_update` = v4's merge `{...current, ...body}` → validate →
+persist → echo, with a `{error}` envelope on failure). No `api/mod.rs` change
+(the handlers live in the existing `settings` module).
+
+**Differential:** `settings_routes_equivalence` extended with 9 data-retention
+arms (GET default 30; PUT valid 90 / boundary 3650 / boundary 1 / empty-merge →
+current; PUT invalid → 400: too-big 5000 / too-small 0 / non-integer 12.5 /
+wrong-type "abc"). Regenerated at `dd0d9ff5`, **30 cases** GREEN. The settings
+fixture builder gained an `instance_settings` table materialization (empty → the
+GET falls back to the 30-day default); the validation-error body's Zod `details`
+array is v4-implementation-specific and dropped in the oracle emission (the port
+surfaces the `{error: 'Validation error'}` envelope; status is not compared by
+this differential, per its existing shape).
+
+Regen recipe: build the settings fixture
+(`QT_FIXTURE_SETTINGS_MAIN=/tmp/qt-settings-fixture.db node --import tsx
+<worktree>/harness/oracle/fixtures/build-settings-fixture.ts`), then the jest
+oracle via the `/tmp` mirror (`--roots "$PWD" --roots "$TMPO/cases" --
+settings-routes`, `QT_ORACLE_OUT=/tmp/oracle-settings-routes.ndjson`), then run
+with `QT_ORACLE_SETTINGS_ROUTES` + `QT_FIXTURE_SETTINGS` set.

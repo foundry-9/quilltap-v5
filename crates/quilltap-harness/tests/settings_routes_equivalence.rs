@@ -157,6 +157,10 @@ fn run_handler(rt: &tokio::runtime::Runtime, db: &Db, user: &str, req: &Value) -
                 .map(|s| s.split('&').next().unwrap_or(s).to_string());
             settings::model_list(db, provider.as_deref())
         }
+        ("dataRetention", "GET") => settings::data_retention_settings_get(db),
+        ("dataRetention", "PUT") => {
+            rt.block_on(settings::data_retention_settings_update(db, body.clone()))
+        }
         other => panic!("unhandled route/method: {other:?}"),
     };
     response_to_body(resp)
@@ -169,6 +173,7 @@ fn response_to_body(resp: Response) -> (Value, bool) {
         | Response::ConnectionProfile(v)
         | Response::ApiKeys(v)
         | Response::ApiKey(v)
+        | Response::DataRetention(v)
         | Response::Models(v) => (v, false),
         Response::Ack(_) => (serde_json::json!({}), true),
         Response::Error(e) => (serde_json::json!({ "error": e.message }), false),

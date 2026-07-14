@@ -63,13 +63,20 @@ async function main() {
   // A throwaway mount-index (the store-backed repos are unused here).
   process.env.SQLITE_MOUNT_INDEX_PATH = join(scratch, 'mount.db');
 
-  const { initializeDatabase, ensureCollection, getCollection, closeDatabase } = await import(
-    '@/lib/database/manager'
-  );
+  const { initializeDatabase, ensureCollection, getCollection, rawQuery, closeDatabase } =
+    await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
 
   await initializeDatabase();
   const repos = getRepositories();
+
+  // The instance-settings key/value store (v4's version guard creates it at
+  // boot) — the data-retention route reads/writes `dataRetention` here. No seed
+  // row, so the GET falls back to the documented 30-day default.
+  await rawQuery(
+    'CREATE TABLE IF NOT EXISTS "instance_settings" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)',
+    [],
+  );
 
   // Users.
   await repos.users.create(

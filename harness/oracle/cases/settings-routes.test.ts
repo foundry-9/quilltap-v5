@@ -57,7 +57,8 @@ interface CaseSpec {
     | 'connProfileItem'
     | 'apiKeys'
     | 'apiKeyItem'
-    | 'models';
+    | 'models'
+    | 'dataRetention';
   method: Method;
   url: string;
   paramId?: string;
@@ -155,6 +156,9 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
       const mod = await import('@/app/api/v1/api-keys/[id]/route');
       const fn = c.method === 'PUT' ? mod.PUT : mod.DELETE;
       response = (await fn(req as never, params as never)) as never;
+    } else if (c.route === 'dataRetention') {
+      const mod = await import('@/app/api/v1/settings/data-retention/route');
+      response = (await (c.method === 'GET' ? mod.GET : mod.PUT)(req as never)) as never;
     } else {
       const mod = await import('@/app/api/v1/models/route');
       response = (await mod.GET(req as never)) as never;
@@ -162,6 +166,16 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
 
     const status = response.status;
     const body = await response.json();
+    // The Rust port surfaces validation failures as the `{error}` envelope; the
+    // Zod issue array is v4-implementation-specific, so drop `details` here.
+    if (
+      c.route === 'dataRetention' &&
+      body &&
+      typeof body === 'object' &&
+      'details' in (body as Record<string, unknown>)
+    ) {
+      delete (body as Record<string, unknown>).details;
+    }
     // Emit the request context so the Rust side dispatches the matching handler
     // generically (route/method/user/body/paramId), plus the response.
     const out: Record<string, unknown> = {
@@ -403,6 +417,16 @@ describe('settings-routes oracle', () => {
       method: 'GET',
       url: 'http://x/api/v1/models?provider=OPENAI',
     },
+    // data-retention (P4.d3) — GET default, PUT valid / empty-merge / invalid arms.
+    { name: 'dr_get_default', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'GET', url: 'http://x/api/v1/settings/data-retention' },
+    { name: 'dr_put_valid', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 90 } },
+    { name: 'dr_put_boundary_max', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 3650 } },
+    { name: 'dr_put_boundary_min', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 1 } },
+    { name: 'dr_put_empty_merge', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: {} },
+    { name: 'dr_put_too_big', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 5000 } },
+    { name: 'dr_put_too_small', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 0 } },
+    { name: 'dr_put_non_integer', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 12.5 } },
+    { name: 'dr_put_wrong_type', family: 'data_retention', user: 'A', route: 'dataRetention', method: 'PUT', url: 'http://x/api/v1/settings/data-retention', body: { staleChatDays: 'abc' } },
   ];
 
   it('emits all cases', async () => {

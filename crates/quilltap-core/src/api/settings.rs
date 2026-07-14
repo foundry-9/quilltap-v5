@@ -41,8 +41,8 @@ use serde_json::{json, Map, Value};
 
 use crate::db::runtime::Db;
 use crate::db::{
-    api_keys, chat_settings, connection_profiles, provider_models, roleplay_templates, tags,
-    DbError,
+    api_keys, chat_settings, connection_profiles, instance_settings, provider_models,
+    roleplay_templates, tags, DbError,
 };
 use crate::provider_manifest::{Capability, Registry};
 
@@ -1863,6 +1863,48 @@ pub async fn api_key_test<V: ConnectionValidator>(
         })),
     }
 }
+
+// === P4.d3 === (data-retention setting — the db-size-reduction drift)
+
+/// v4 `GET /api/v1/settings/data-retention` — the instance-wide stale-chat
+/// retention window `{staleChatDays}` (default 30 when unset). A read failure is
+/// v4's `serverError('Failed to fetch…')`.
+pub fn data_retention_settings_get(db: &Db) -> Response {
+    match db.read_main(instance_settings::get_data_retention_settings) {
+        Ok(days) => Response::DataRetention(json!({ "staleChatDays": days })),
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `PUT /api/v1/settings/data-retention` — merge `{...current, ...body}`,
+/// `safeParse` (validate `staleChatDays` as an int in `[1, 3650]`), persist, and
+/// echo the parsed settings. On a schema violation v4 returns `validationError`
+/// (a 400 `{error: 'Validation error', details}`); the port surfaces the
+/// `{error}` envelope (the Zod issue array is v4-implementation-specific).
+pub async fn data_retention_settings_update(db: &Db, bag: Value) -> Response {
+    let current = match db.read_main(instance_settings::get_data_retention_settings) {
+        Ok(d) => d,
+        Err(e) => return internal(e),
+    };
+    // The only schema field is `staleChatDays`; the merge overlays it when the
+    // body carries it, else the current value survives.
+    let days = match bag.get("staleChatDays") {
+        None => current,
+        Some(v) => match instance_settings::validate_stale_chat_days(v) {
+            Some(d) => d,
+            None => return Response::error(ErrorKind::BadRequest, "Validation error"),
+        },
+    };
+    match db
+        .write(move |w| instance_settings::set_data_retention_settings(w.main().connection(), days))
+        .await
+    {
+        Ok(_) => Response::DataRetention(json!({ "staleChatDays": days })),
+        Err(e) => internal(e),
+    }
+}
+
+// === end P4.d3 ===
 
 #[cfg(test)]
 mod tests {

@@ -1654,6 +1654,19 @@ pub enum Request {
         settings: serde_json::Value,
     },
     // === end P4.6ad ===
+    // === P4.d3 === (data-retention setting — the db-size-reduction drift)
+    /// v4 GET `/api/v1/settings/data-retention` — `{staleChatDays}` (default 30).
+    DataRetentionSettings,
+    /// v4 PUT `/api/v1/settings/data-retention` — merge `{...current, ...body}`,
+    /// validate `staleChatDays` (int 1..3650), echo the parsed settings
+    /// (`validationError` on failure). The raw value is carried so the handler
+    /// validates the body itself (v4 `safeParse`), matching v4's rejection of
+    /// out-of-range OR wrong-typed input; absent → keep current.
+    DataRetentionSettingsUpdate {
+        #[serde(default, rename = "staleChatDays")]
+        stale_chat_days: Option<serde_json::Value>,
+    },
+    // === end P4.d3 ===
 }
 
 /// Typed DTO per variant (the uniffi payoff). `Error` carries the one
@@ -1785,6 +1798,11 @@ pub enum Response {
     /// are pinned by `autonomous_rooms_routes_equivalence` (P4.6ad).
     AutonomousRoom(serde_json::Value),
     // === end P4.6ad ===
+    // === P4.d3 === (data-retention setting)
+    /// The data-retention settings body (`{staleChatDays}`) — v4's
+    /// `successResponse(settings)`. Pinned by `settings_routes_equivalence`.
+    DataRetention(serde_json::Value),
+    // === end P4.d3 ===
     Error(CoreError),
 }
 

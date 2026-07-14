@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+P4.d3 unit 5: a new instance-wide Data Retention setting exposes the
+stale-chat window (staleChatDays, default 30, bounded 1–3650) over a
+GET/PUT dispatch surface, with validation of out-of-range or
+wrong-typed input. Every stale-gated maintenance sweep reads this one
+value.
+
 P4.d3 unit 4: opening a chat whose embeddings were cold-tiered now
 transparently re-warms it — cold conversation-chunks are re-enqueued
 for embedding through the standard pipeline (debounced per chat,

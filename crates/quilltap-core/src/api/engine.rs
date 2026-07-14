@@ -2431,6 +2431,22 @@ impl CoreEngine {
                     Err(resp) => resp,
                 }
             } // === end P4.6ad ===
+            // === P4.d3 === (data-retention setting — the db-size-reduction drift)
+            Request::DataRetentionSettings => match self.ready_db() {
+                Ok(db) => super::settings::data_retention_settings_get(&db),
+                Err(resp) => resp,
+            },
+            Request::DataRetentionSettingsUpdate { stale_chat_days } => match self.ready_db() {
+                Ok(db) => {
+                    let bag = match stale_chat_days {
+                        Some(v) => serde_json::json!({ "staleChatDays": v }),
+                        None => serde_json::json!({}),
+                    };
+                    super::settings::data_retention_settings_update(&db, bag).await
+                }
+                Err(resp) => resp,
+            },
+            // === end P4.d3 ===
         }
     }
 
