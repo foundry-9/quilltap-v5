@@ -44,6 +44,11 @@ const F_UNLINKED = 'f0000000-0000-4000-8000-000000000021';
 const F_STALE = 'f0000000-0000-4000-8000-000000000022';
 const PF_1 = 'f0000000-0000-4000-8000-000000000011';
 const F_USERB = 'f0000000-0000-4000-8000-0000000000b1';
+// P4.6ah
+const F_ASSOC = 'f0000000-0000-4000-8000-000000000031';
+const F_IMG1 = 'f0000000-0000-4000-8000-000000000061';
+const F_IMG2 = 'f0000000-0000-4000-8000-000000000062';
+const F_IMG_USERB = 'f0000000-0000-4000-8000-0000000000b2';
 
 function mockRequest(url: string, body?: unknown): unknown {
   return {
@@ -109,6 +114,7 @@ async function dumpTables(): Promise<unknown> {
 interface CaseSpec {
   name: string;
   dump?: boolean;
+  assoc?: boolean;
   run: () => Promise<{ status: number; body: unknown }>;
 }
 
@@ -151,6 +157,28 @@ const foldersPost = (action: string, body: unknown) =>
         mockRequest(`${FOLDERS}?action=${action}`, body),
       ),
     );
+const filesPost = (action: string, body: unknown) =>
+  async () =>
+    respond(
+      await (await loadRoute('@/app/api/v1/files/route')).POST(
+        mockRequest(`${FILES}?action=${action}`, body),
+      ),
+    );
+
+/** Dump characters (image refs) + chat_messages (attachments) — the dissociate arm. */
+async function dumpAssoc(): Promise<unknown> {
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const main = getRawDatabase() as unknown as { prepare: (s: string) => { all: () => unknown } };
+  return {
+    characters: main
+      .prepare('SELECT id, defaultImageId, avatarOverrides FROM characters ORDER BY id')
+      .all(),
+    messages: main
+      .prepare('SELECT id, chatId, content, attachments FROM chat_messages ORDER BY id')
+      .all(),
+    files: main.prepare('SELECT id FROM files ORDER BY id').all(),
+  };
+}
 
 async function runCase(
   spec: Spec,
@@ -178,6 +206,7 @@ async function runCase(
     const out = await c.run();
     const payload: Record<string, unknown> = { name: c.name, status: out.status, body: out.body };
     if (c.dump) payload.tables = await dumpTables();
+    if (c.assoc) payload.assoc = await dumpAssoc();
     return payload;
   } finally {
     await closeDatabase();
@@ -241,6 +270,15 @@ async function main(): Promise<void> {
     { name: 'folder_delete_files_before_subfolders', run: foldersPost('delete', { path: '/docs/' }) },
     // /sub/ has a child but NO files → the pure-subfolders 400 arm.
     { name: 'folder_delete_has_subfolders', run: foldersPost('delete', { path: '/sub/' }) },
+    // ── P4.6ah: delete envelope (associations / force / dissociate) ──
+    { name: 'delete_associations', run: itemDelete(F_ASSOC) },
+    { name: 'delete_force', assoc: true, run: itemDelete(F_ASSOC, '?force=true') },
+    { name: 'delete_dissociate', assoc: true, run: itemDelete(F_ASSOC, '?dissociate=true') },
+    // ── P4.6ah: maintenance ──
+    { name: 'thumbnails', run: filesPost('generate-thumbnails', { fileIds: [F_IMG1, F_IMG2, F_ROOT, F_IMG_USERB] }) },
+    { name: 'cleanup_stale_dryrun', run: filesPost('cleanup-stale', { dryRun: true }) },
+    { name: 'cleanup_orphans_dryrun', run: filesPost('cleanup-orphans', { mode: 'delete', dryRun: true }) },
+    { name: 'cleanup_orphans_move', dump: true, run: filesPost('cleanup-orphans', { mode: 'move', dryRun: false }) },
   ];
 
   const outLines: string[] = [];

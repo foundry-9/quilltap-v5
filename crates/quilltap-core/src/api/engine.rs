@@ -2612,8 +2612,17 @@ impl CoreEngine {
             },
             Request::FilesCleanupStale { dry_run } => match self.ready_db() {
                 Ok(db) => {
-                    super::files::files_cleanup_stale(&db, SINGLE_USER_ID, dry_run.unwrap_or(true))
-                        .await
+                    // The disk-key existence leg needs a host storage backend, not
+                    // wired at the dispatch layer (enumerated) → NotConfigured makes
+                    // disk keys a per-file error; mount-blob keys are checked in-DB.
+                    let backend = crate::services::file_storage::NotConfiguredStorageBackend;
+                    super::files::files_cleanup_stale(
+                        &db,
+                        &backend,
+                        SINGLE_USER_ID,
+                        dry_run.unwrap_or(true),
+                    )
+                    .await
                 }
                 Err(resp) => resp,
             },

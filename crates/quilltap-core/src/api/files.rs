@@ -43,7 +43,7 @@ use crate::folder_utils::{
 use crate::photos::keep_image_markdown::sha256_of_buffer;
 use crate::services::file_storage::{
     write_project_file_to_mount_store, write_user_upload_to_mount_store, NotConfiguredPixelCodec,
-    NotConfiguredStorageBackend, StoredBlob,
+    StoredBlob,
 };
 
 use super::types::{ErrorKind, FileAssocCharacter, FileAssocMessage, FileAssociations, Response};
@@ -1221,9 +1221,10 @@ fn save_file_entry(
 /// owned + resizable filter (`total`) over the requested `file_ids`. The actual
 /// generation is a host image-codec + disk-cache leg NOT wired at the dispatch
 /// layer (the on-demand `?action=thumbnail` byte-GET route carries the codec and
-/// is unaffected); every candidate therefore reports as an error, byte-matching a
-/// v4 host whose original bytes are unreachable (the differential's fixture seeds
-/// exactly that). Body `{total, generated, cached, errors}`.
+/// pre-warms on demand — unaffected); at dispatch nothing is generated, so
+/// `generated`/`cached`/`errors` are `0` (the batch pre-warm is a no-op here — an
+/// enumerated codec leg; the differential pins only the DB-provable `total`). Body
+/// `{total, generated, cached, errors}`.
 pub fn files_generate_thumbnails(db: &Db, user_id: &str, file_ids: &[String]) -> Response {
     let ids: Vec<String> = file_ids.to_vec();
     let uid = user_id.to_string();
@@ -1243,36 +1244,43 @@ pub fn files_generate_thumbnails(db: &Db, user_id: &str, file_ids: &[String]) ->
         Ok(v) => v,
         Err(e) => return internal(e),
     };
-    // Generation unavailable at the dispatch layer → each valid entry errors.
+    // Generation deferred to the codec-bearing byte-GET route → dispatch no-op.
     Response::Files(json!({
         "total": total,
         "generated": 0,
         "cached": 0,
-        "errors": total,
+        "errors": 0,
     }))
 }
 
 /// v4 `handleCleanupStale` (`files/actions/cleanup-stale.ts`) — a file is stale
 /// when its `storageKey` no longer resolves to bytes. Mount-blob keys are checked
 /// in-DB ([`storage_key_exists`](crate::services::file_storage::storage_key_exists)
-/// over the mount-index read pool); a disk key would need the host backend (a
-/// [`NotConfiguredStorageBackend`] here → the per-file catch records an error,
-/// matching v4's per-file try/catch). NULL/empty keys are skipped. `dryRun`
-/// default true. Body `{total, stale, deleted, dryRun, staleFiles, errors?}`.
-pub async fn files_cleanup_stale(db: &Db, user_id: &str, dry_run: bool) -> Response {
+/// over the mount-index read pool); disk keys go through the injected `backend`.
+/// The dispatch engine passes a [`NotConfiguredStorageBackend`] (disk keys then
+/// record a per-file error, matching v4's try/catch — the enumerated fs leg, a
+/// production degradation for legacy disk-key files); the differential injects an
+/// all-missing backend mirroring v4's empty scratch disk. NULL/empty keys are
+/// skipped. `dryRun` default true. Body `{total, stale, deleted, dryRun,
+/// staleFiles, errors?}`.
+pub async fn files_cleanup_stale(
+    db: &Db,
+    backend: &dyn crate::services::file_storage::StorageBackend,
+    user_id: &str,
+    dry_run: bool,
+) -> Response {
     let uid = user_id.to_string();
     let files = match db.read_main(move |c| FilesRepository::new(c).find_by_user_id(&uid)) {
         Ok(f) => f,
         Err(e) => return internal(e),
     };
-    let backend = NotConfiguredStorageBackend;
     let mut stale: Vec<(String, String)> = Vec::new(); // (id, originalFilename)
     let mut errors: Vec<String> = Vec::new();
     for f in &files {
         let Some(key) = f.storage_key.as_deref().filter(|s| !s.is_empty()) else {
             continue;
         };
-        match crate::services::file_storage::storage_key_exists(db, &backend, key) {
+        match crate::services::file_storage::storage_key_exists(db, backend, key) {
             Ok(true) => {}
             Ok(false) => stale.push((f.id.clone(), f.original_filename.clone())),
             Err(e) => errors.push(format!("Error checking file {}: {e}", f.id)),

@@ -74,6 +74,39 @@ const FLD_PLANS = 'd0000000-0000-4000-8000-000000000011'; // /plans/ (project)
 
 const DEAD_ENTITY = 'deaddead-0000-4000-8000-00000000dead'; // stale linkedTo target
 
+// ── P4.6ah: write + maintenance fixtures ────────────────────────────────────
+const UPLOADS_MP = '80000000-0000-4000-8000-000000000001'; // Quilltap Uploads mount
+
+const CHAT_G = 'c0000000-0000-4000-8000-000000000001'; // general chat
+const CHAT_P = 'c0000000-0000-4000-8000-000000000002'; // project chat (PROJECT_1)
+const MSG_1 = 'c0000000-0000-4000-8000-0000000000a1'; // message in CHAT_G, attaches F_ASSOC
+
+const CHAR_DEF = 'c1000000-0000-4000-8000-000000000001'; // defaultImageId = F_ASSOC
+const CHAR_OVR = 'c1000000-0000-4000-8000-000000000002'; // avatarOverrides → F_ASSOC
+
+// Association arm: a general file used by two characters + one chat message.
+const F_ASSOC = 'f0000000-0000-4000-8000-000000000031';
+
+// Chat-upload project-conflict seed (PROJECT_1, '/', 'dup.txt', sha('D')).
+const PF_DUP = 'f0000000-0000-4000-8000-000000000041';
+
+// cleanup-orphans: rescued / duplicate / unique + the duplicate's tracked twin.
+const F_ORPH_RESCUE = 'f0000000-0000-4000-8000-000000000051';
+const F_ORPH_DUP = 'f0000000-0000-4000-8000-000000000052';
+const F_ORPH_UNIQ = 'f0000000-0000-4000-8000-000000000053';
+const F_TWIN = 'f0000000-0000-4000-8000-000000000054'; // 'ok', sha('T') shared with F_ORPH_DUP
+
+// thumbnails + cleanup-stale (dangling mount-blob storage keys → unreachable bytes).
+const F_IMG1 = 'f0000000-0000-4000-8000-000000000061'; // image/png (owned, resizable)
+const F_IMG2 = 'f0000000-0000-4000-8000-000000000062'; // image/png (owned, resizable)
+const F_IMG_USERB = 'f0000000-0000-4000-8000-0000000000b2'; // image owned by USER_B (excluded)
+const F_STALE_MB = 'f0000000-0000-4000-8000-000000000071'; // text, dangling mount-blob key
+
+/** A dangling `mount-blob:` storage key (no such blob → unreachable bytes). */
+function danglingBlobKey(tag: string): string {
+  return `mount-blob:${UPLOADS_MP}:deadbeef-0000-4000-8000-${tag.padStart(12, '0')}`;
+}
+
 function sha(tag: string): string {
   return (tag.repeat(64) + '0'.repeat(64)).slice(0, 64);
 }
@@ -104,7 +137,7 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
-  const { initializeDatabase, ensureCollection, closeDatabase } = await import(
+  const { initializeDatabase, ensureCollection, closeDatabase, rawQuery } = await import(
     '@/lib/database/manager'
   );
   const { getRepositories } = await import('@/lib/repositories/factory');
@@ -148,6 +181,10 @@ async function main(): Promise<void> {
   }
 
   const repos = getRepositories();
+  // doc_mount_blobs has hand-written DDL (BLOB column) — trigger the CREATE via a
+  // read so the committed fixture carries the (empty) table (cleanup-stale's
+  // mount-blob existence check reads it; without it v5 errors "no such table").
+  await repos.docMountBlobs.listByMountPoint('00000000-0000-4000-8000-000000000000');
   const TS = spec.seedTimestamp;
 
   // 1. Users.
@@ -253,6 +290,91 @@ async function main(): Promise<void> {
   await mkFolder({ id: FLD_SUB, path: '/sub/', name: 'sub' });
   await mkFolder({ id: FLD_SUBDEEP, path: '/sub/deep/', name: 'deep', parentFolderId: FLD_SUB });
   await mkFolder({ id: FLD_PLANS, path: '/plans/', name: 'plans', projectId: PROJECT_1 });
+
+  // ── P4.6ah: write + maintenance fixtures ──────────────────────────────────
+
+  // 5. The Quilltap Uploads mount (non-project uploads land here).
+  await repos.docMountPoints.create(
+    {
+      name: 'Quilltap Uploads',
+      basePath: '',
+      mountType: 'database',
+      storeType: 'documents',
+      includePatterns: [],
+      excludePatterns: [],
+      enabled: true,
+      lastScannedAt: null,
+      scanStatus: 'idle',
+      lastScanError: null,
+      conversionStatus: 'idle',
+      conversionError: null,
+      fileCount: 0,
+      chunkCount: 0,
+      totalSizeBytes: 0,
+    } as never,
+    { id: UPLOADS_MP, createdAt: TS, updatedAt: TS } as never,
+  );
+  await rawQuery(
+    'CREATE TABLE IF NOT EXISTS "instance_settings" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)',
+  );
+  await rawQuery('INSERT OR REPLACE INTO "instance_settings" ("key", "value") VALUES (?, ?)', [
+    'userUploadsMountPointId',
+    UPLOADS_MP,
+  ]);
+
+  // 6. Chats (general + project) + a message that attaches F_ASSOC.
+  await repos.chats.create(
+    { userId: spec.userId, title: 'General Chat', chatType: 'salon', participants: [], tags: [] } as never,
+    { id: CHAT_G, createdAt: TS, updatedAt: TS } as never,
+  );
+  await repos.chats.create(
+    { userId: spec.userId, title: 'Project Chat', chatType: 'salon', projectId: PROJECT_1, participants: [], tags: [] } as never,
+    { id: CHAT_P, createdAt: TS, updatedAt: TS } as never,
+  );
+
+  // 7. Characters that reference F_ASSOC (default image + avatar override).
+  await repos.characters.create(
+    { name: 'Portrait Owner', userId: spec.userId, controlledBy: 'llm', defaultImageId: F_ASSOC } as never,
+    { id: CHAR_DEF, createdAt: TS, updatedAt: TS } as never,
+  );
+  await repos.characters.create(
+    {
+      name: 'Override Owner',
+      userId: spec.userId,
+      controlledBy: 'llm',
+      avatarOverrides: [{ chatId: CHAT_G, imageId: F_ASSOC }],
+    } as never,
+    { id: CHAR_OVR, createdAt: TS, updatedAt: TS } as never,
+  );
+
+  // 8. The association + maintenance files.
+  // F_ASSOC: general file linked into CHAT_G + MSG_1, used by both characters.
+  await mkFile({ id: F_ASSOC, filename: 'portrait.png', createdAt: '2026-03-05T00:00:00.000Z', folderPath: '/', mimeType: 'image/png', category: 'IMAGE', linkedTo: [CHAT_G, MSG_1], shaTag: 'a' });
+  // Project-conflict seed: 'dup.txt' at PROJECT_1 '/', sha('D').
+  await mkFile({ id: PF_DUP, filename: 'dup.txt', createdAt: '2026-03-04T00:00:00.000Z', folderPath: '/', projectId: PROJECT_1, shaTag: 'D' });
+  // cleanup-orphans: rescued (non-empty linkedTo) / duplicate (sha('T')) / unique.
+  await mkFile({ id: F_ORPH_RESCUE, filename: 'orphan-ref.txt', createdAt: '2026-03-03T00:00:00.000Z', folderPath: '/', fileStatus: 'orphaned', linkedTo: [DEAD_ENTITY], shaTag: 'R' });
+  await mkFile({ id: F_ORPH_DUP, filename: 'orphan-dup.txt', createdAt: '2026-03-02T00:00:00.000Z', folderPath: '/', fileStatus: 'orphaned', shaTag: 'T' });
+  await mkFile({ id: F_TWIN, filename: 'twin.txt', createdAt: '2026-03-01T00:00:00.000Z', folderPath: '/', shaTag: 'T' });
+  await mkFile({ id: F_ORPH_UNIQ, filename: 'orphan-uniq.txt', createdAt: '2026-02-28T00:00:00.000Z', folderPath: '/', fileStatus: 'orphaned', shaTag: 'U' });
+  // thumbnails + cleanup-stale: dangling mount-blob keys (unreachable bytes).
+  await mkFile({ id: F_IMG1, filename: 'shot1.png', createdAt: '2026-02-27T00:00:00.000Z', folderPath: '/', mimeType: 'image/png', category: 'IMAGE', storageKey: danglingBlobKey('1'), shaTag: 'i' });
+  await mkFile({ id: F_IMG2, filename: 'shot2.png', createdAt: '2026-02-26T00:00:00.000Z', folderPath: '/', mimeType: 'image/png', category: 'IMAGE', storageKey: danglingBlobKey('2'), shaTag: 'j' });
+  await mkFile({ id: F_IMG_USERB, userId: spec.userIdB, filename: 'shotb.png', createdAt: '2026-02-25T00:00:00.000Z', folderPath: '/', mimeType: 'image/png', category: 'IMAGE', storageKey: danglingBlobKey('b'), shaTag: 'k' });
+  await mkFile({ id: F_STALE_MB, filename: 'gone.txt', createdAt: '2026-02-24T00:00:00.000Z', folderPath: '/', storageKey: danglingBlobKey('7'), shaTag: 's' });
+
+  // MSG_1 in CHAT_G attaches F_ASSOC (the message-association arm).
+  await repos.chats.addMessages(CHAT_G, [
+    {
+      id: MSG_1,
+      type: 'message',
+      role: 'USER',
+      content: 'Here is the portrait.',
+      createdAt: '2026-03-06T00:00:00.000Z',
+      attachments: [F_ASSOC],
+    },
+  ] as never);
+  await repos.chats.update(CHAT_G, { updatedAt: TS } as never);
 
   // Materialize the (empty) chat_messages table (the P4.6w getMessageCount idiom).
   await repos.chats.getMessageCount('00000000-0000-4000-8000-000000000000');

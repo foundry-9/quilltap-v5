@@ -29,6 +29,30 @@ const F_UNLINKED: &str = "f0000000-0000-4000-8000-000000000021";
 const F_STALE: &str = "f0000000-0000-4000-8000-000000000022";
 const PF_1: &str = "f0000000-0000-4000-8000-000000000011";
 const F_USERB: &str = "f0000000-0000-4000-8000-0000000000b1";
+// P4.6ah
+const F_ASSOC: &str = "f0000000-0000-4000-8000-000000000031";
+const F_IMG1: &str = "f0000000-0000-4000-8000-000000000061";
+const F_IMG2: &str = "f0000000-0000-4000-8000-000000000062";
+const F_IMG_USERB: &str = "f0000000-0000-4000-8000-0000000000b2";
+
+/// A backend where every key is missing (mirrors v4's empty scratch disk for the
+/// cleanup-stale disk-key leg). The dispatch engine passes `NotConfigured`
+/// instead (an enumerated production degradation for legacy disk keys).
+struct AllMissingBackend;
+impl quilltap_core::services::file_storage::StorageBackend for AllMissingBackend {
+    fn upload(&self, _k: &str, _c: &[u8], _t: &str) -> Result<(), String> {
+        Ok(())
+    }
+    fn download(&self, _k: &str) -> Result<Vec<u8>, String> {
+        Err("missing".into())
+    }
+    fn delete(&self, _k: &str) -> Result<(), String> {
+        Ok(())
+    }
+    fn exists(&self, _k: &str) -> Result<bool, String> {
+        Ok(false)
+    }
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -226,6 +250,98 @@ fn dump_tables(db: &Db) -> Value {
         })
         .unwrap();
     json!({ "files": files, "folders": folders })
+}
+
+/// Dump characters (image refs) + chat_messages (attachments) + files for the
+/// dissociate/force arms, normalizing the minted deletion-note timestamp in
+/// message content (`… deleted <ts>]` → `… deleted <ts>]`).
+fn dump_assoc(db: &Db) -> Value {
+    let characters = db
+        .read_main(|c| {
+            let mut stmt = c.prepare(
+                "SELECT id, defaultImageId, avatarOverrides FROM characters ORDER BY id",
+            )?;
+            let rows = stmt.query_map([], |r| {
+                Ok(json!({
+                    "id": r.get::<_, String>(0)?,
+                    "defaultImageId": r.get::<_, Option<String>>(1)?,
+                    "avatarOverrides": r.get::<_, Option<String>>(2)?,
+                }))
+            })?;
+            Ok(rows.collect::<Result<Vec<_>, _>>()?)
+        })
+        .unwrap();
+    let messages = db
+        .read_main(|c| {
+            let mut stmt = c.prepare(
+                "SELECT id, chatId, content, attachments FROM chat_messages ORDER BY id",
+            )?;
+            let rows = stmt.query_map([], |r| {
+                Ok(json!({
+                    "id": r.get::<_, String>(0)?,
+                    "chatId": r.get::<_, String>(1)?,
+                    "content": normalize_deletion_ts(&r.get::<_, String>(2)?),
+                    "attachments": r.get::<_, Option<String>>(3)?,
+                }))
+            })?;
+            Ok(rows.collect::<Result<Vec<_>, _>>()?)
+        })
+        .unwrap();
+    let files = db
+        .read_main(|c| {
+            let mut stmt = c.prepare("SELECT id FROM files ORDER BY id")?;
+            let rows = stmt.query_map([], |r| Ok(json!({ "id": r.get::<_, String>(0)? })))?;
+            Ok(rows.collect::<Result<Vec<_>, _>>()?)
+        })
+        .unwrap();
+    json!({ "characters": characters, "messages": messages, "files": files })
+}
+
+/// Normalize an assoc dump's message-content timestamps (applied to the oracle
+/// side, whose messages carry v4's minted clock).
+fn normalize_assoc(v: &Value) -> Value {
+    let mut out = v.clone();
+    if let Some(msgs) = out.get_mut("messages").and_then(Value::as_array_mut) {
+        for m in msgs {
+            if let Some(c) = m.get("content").and_then(Value::as_str) {
+                let n = normalize_deletion_ts(c);
+                m["content"] = Value::String(n);
+            }
+        }
+    }
+    out
+}
+
+/// Compare a dissociate/force assoc dump to the oracle's `assoc` (normalizing the
+/// minted deletion-note timestamp on both sides).
+fn check_assoc(name: &str, got: &Value, oracle: &HashMap<String, Value>, failed: &mut Vec<String>) {
+    let want = oracle[name].get("assoc").cloned().unwrap_or(Value::Null);
+    if norm(&normalize_assoc(got)) == norm(&normalize_assoc(&want)) {
+        eprintln!("[{name} assoc] OK.");
+    } else {
+        eprintln!(
+            "[{name} assoc] MISMATCH:\n got {}\n want {}",
+            norm(&normalize_assoc(got)),
+            norm(&normalize_assoc(&want))
+        );
+        failed.push(name.to_string());
+    }
+}
+
+/// Replace the ISO timestamp inside a `[Attachment "…" deleted <ts>]` note with a
+/// fixed sentinel (both sides mint their own clock).
+fn normalize_deletion_ts(content: &str) -> String {
+    match content.find(" deleted ") {
+        Some(i) => {
+            let head = &content[..i + " deleted ".len()];
+            // The rest is `<ISO>]` — keep the trailing `]`.
+            match content[i..].find(']') {
+                Some(_) => format!("{head}<ts>]"),
+                None => content.to_string(),
+            }
+        }
+        None => content.to_string(),
+    }
 }
 
 #[test]
@@ -600,6 +716,115 @@ fn files_routes_match_oracle() {
         )),
         &mut failed,
     );
+
+    // ── P4.6ah: delete envelope (associations / force / dissociate) ──
+    // The itemized FILE_HAS_ASSOCIATIONS refusal. v4 nests `{error, details:{code,
+    // associations}}`; the shared CoreError carries `associations` (top-level, per
+    // the contract — lane C tolerates both), so we verify the associations CONTENT
+    // against v4's `details.associations`.
+    {
+        let db = fresh_db(&spec, "das");
+        let resp = rt.block_on(files::file_delete(&db, USER_A, F_ASSOC, false, false));
+        let rec = &oracle["delete_associations"];
+        match &resp {
+            Response::Error(e) => {
+                let want_msg = rec["body"]["error"].as_str().unwrap_or("");
+                let want_assoc = &rec["body"]["details"]["associations"];
+                let got_assoc = serde_json::to_value(&e.associations).unwrap_or(Value::Null);
+                if status_of(e.kind) == 400
+                    && e.message == want_msg
+                    && e.code.as_deref() == Some("FILE_HAS_ASSOCIATIONS")
+                    && norm(&got_assoc) == norm(want_assoc)
+                {
+                    eprintln!("[delete_associations] OK.");
+                } else {
+                    eprintln!(
+                        "[delete_associations] MISMATCH:\n got {} {:?} {:?}\n want 400 {want_msg:?} {}",
+                        status_of(e.kind),
+                        e.message,
+                        norm(&got_assoc),
+                        norm(want_assoc)
+                    );
+                    failed.push("delete_associations".to_string());
+                }
+            }
+            other => {
+                eprintln!("[delete_associations] expected error, got {:?}", response_data(other));
+                failed.push("delete_associations".to_string());
+            }
+        }
+    }
+    // force override → skips the association check, just deletes.
+    {
+        let db = fresh_db(&spec, "dfo");
+        let resp = rt.block_on(files::file_delete(&db, USER_A, F_ASSOC, true, false));
+        check_ok("delete_force", response_data(&resp), &[], None, &mut failed);
+        check_assoc("delete_force", &dump_assoc(&db), &oracle, &mut failed);
+    }
+    // dissociate → strips message attachments + character refs, then deletes.
+    {
+        let db = fresh_db(&spec, "ddi");
+        let resp = rt.block_on(files::file_delete(&db, USER_A, F_ASSOC, false, true));
+        check_ok("delete_dissociate", response_data(&resp), &[], None, &mut failed);
+        check_assoc("delete_dissociate", &dump_assoc(&db), &oracle, &mut failed);
+    }
+
+    // ── P4.6ah: maintenance ──
+    // thumbnails: only the DB-provable `total` (owned+resizable filter) is pinned;
+    // generated/cached/errors are the enumerated codec leg (v4's counts are
+    // backend-quirk-dependent).
+    {
+        let ids = vec![
+            F_IMG1.to_string(),
+            F_IMG2.to_string(),
+            F_ROOT.to_string(),
+            F_IMG_USERB.to_string(),
+        ];
+        let resp = files::files_generate_thumbnails(&fresh_db(&spec, "th"), USER_A, &ids);
+        let got_total = response_data(&resp).get("total").cloned().unwrap_or(Value::Null);
+        let want_total = oracle["thumbnails"]["body"]["total"].clone();
+        if norm(&got_total) == norm(&want_total) {
+            eprintln!("[thumbnails total] OK.");
+        } else {
+            eprintln!("[thumbnails total] MISMATCH: got {got_total} want {want_total}");
+            failed.push("thumbnails".to_string());
+        }
+    }
+    check_ok(
+        "cleanup_stale_dryrun",
+        response_data(&rt.block_on(files::files_cleanup_stale(
+            &fresh_db(&spec, "cs"),
+            &AllMissingBackend,
+            USER_A,
+            true,
+        ))),
+        &[],
+        None,
+        &mut failed,
+    );
+    check_ok(
+        "cleanup_orphans_dryrun",
+        response_data(&rt.block_on(files::files_cleanup_orphans(
+            &fresh_db(&spec, "cod"),
+            USER_A,
+            "delete",
+            true,
+        ))),
+        &[],
+        None,
+        &mut failed,
+    );
+    {
+        let db = fresh_db(&spec, "com");
+        let resp = rt.block_on(files::files_cleanup_orphans(&db, USER_A, "move", false));
+        check_ok(
+            "cleanup_orphans_move",
+            response_data(&resp),
+            &[],
+            Some(dump_tables(&db)),
+            &mut failed,
+        );
+    }
 
     assert!(failed.is_empty(), "files-routes mismatches: {failed:?}");
 }
