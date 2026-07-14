@@ -58,11 +58,26 @@ test.describe('P4.6u — the Salon terminal pane (open → spawn → echo → ki
     const openedChips = page.locator('.qt-chat-announcement-chip', {
       hasText: 'terminal opened',
     });
-    const openedBaseline = await openedChips.count();
     const closedChips = page.locator('.qt-chat-announcement-chip', {
       hasText: 'terminal closed',
     });
-    const closedBaseline = await closedChips.count();
+    // The list is VIRTUALIZED and mounts asynchronously — a too-early snapshot
+    // reads 0, and the stale chips then mount TOGETHER with the post-spawn
+    // refetch, overshooting `baseline + 1` (seen once the documents-flow walk
+    // grew this chat's history). Settle each count until two reads a beat
+    // apart agree (the 450ms drain window is the salon-scroll idiom).
+    const settleCount = async (chips: typeof openedChips): Promise<number> => {
+      let prev = -1;
+      let cur = await chips.count();
+      while (cur !== prev) {
+        prev = cur;
+        await page.waitForTimeout(450);
+        cur = await chips.count();
+      }
+      return cur;
+    };
+    const openedBaseline = await settleCount(openedChips);
+    const closedBaseline = await settleCount(closedChips);
 
     // Open Terminal Mode from the composer. With no live sessions it spawns
     // directly and enters split mode.

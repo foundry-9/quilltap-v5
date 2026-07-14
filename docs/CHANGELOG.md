@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.6ae∥af∥ag unification wire: the general-files e2e data beat's
+self-activation guard now also covers the `?action=upload` REST leg
+(P4.6ae unit 4, still OPEN) — with lane A's dispatch verbs live but the
+upload leg unported, the beat would have failed on a 404 seed instead of
+skipping; it now skips cleanly and self-activates when the leg lands.
+Contract reconciled name-for-name across `core-contract.ts` (lane B) and
+the `types.rs` P4.6ae block (lane A) — no divergences. Also settles the
+terminal-flow walk's chip-count baseline (the virtualized list mounts
+asynchronously; the extended documents walk grew the shared chat's
+history enough that a too-early snapshot read 0 and the stale chip then
+mounted with the post-spawn refetch — the baseline now waits for two
+agreeing reads a beat apart). SPA 0.5.82.
+
 P4.6ag tier 2 (unit 6): live e2e beats for the rich editor. The
 salon-documents-flow walk edits markdown in the ProseMirror pane (not a
 textarea), plus two new beats — a dialect round-trip (type a `#` heading via

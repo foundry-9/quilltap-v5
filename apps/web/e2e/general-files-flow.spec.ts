@@ -82,7 +82,10 @@ test.describe('P4.6af — the general Files page', () => {
       if (live) {
         await dispatchResp(ctx, { type: 'filesFolderCreate', path: FOLDER });
         // Seed a general file through lane A's REST upload leg (multipart).
-        await ctx.post(`${BASE_URL}/api/v1/files?action=upload`, {
+        // The leg is P4.6ae unit 4 (OPEN at the P4.6ae∥af∥ag unification) — the
+        // guard covers it too, so this beat self-activates when the leg lands
+        // rather than failing on a 404 seed.
+        const uploadRes = await ctx.post(`${BASE_URL}/api/v1/files?action=upload`, {
           multipart: {
             file: {
               name: FILE_NAME,
@@ -92,11 +95,12 @@ test.describe('P4.6af — the general Files page', () => {
             folderPath: FOLDER,
           },
         });
+        live = uploadRes.ok();
       }
     } finally {
       await ctx.dispose();
     }
-    test.skip(!live, 'lane A files-family variants not live in-worktree — self-activates at unification');
+    test.skip(!live, 'lane A files-family variants + upload REST leg not live — self-activates when P4.6ae unit 4 lands');
 
     await page.goto('/salon');
     await maybeUnlock(page);
