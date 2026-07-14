@@ -10,8 +10,9 @@ import {
   viewChild,
 } from '@angular/core';
 
+import { RichEditor } from '../editor/rich-editor';
 import { Icon } from '../ui/icon';
-import type { DocumentMode, OpenDocEntry } from './document-mode';
+import { USES_RICH_MARKDOWN_EDITOR, type DocumentMode, type OpenDocEntry } from './document-mode';
 import {
   countWords,
   extractFrontmatter,
@@ -23,15 +24,19 @@ import { documentPaneUri } from './qtap-uri';
 
 /**
  * `qt-document-pane` — the right-side document editor (v4 `DocumentPane`): a
- * header (click-to-rename title, focus/split toggle, delete, close), the
- * qtap:// URL row with copy, the frontmatter "Document Info" table (markdown
- * only), the editor, and a status bar.
+ * header (click-to-rename title, source toggle, focus/split toggle, delete,
+ * close), the qtap:// URL row with copy, the frontmatter "Document Info" table
+ * (markdown only), the editor, and a status bar.
  *
- * The D17 spike is RED (see `phase-4.md`), so EVERY file renders in the plain
- * `<textarea>` — byte-exact, no Markdown serializer. For markdown files the
+ * The D17 gate is GREEN (see the status log / `phase-4.md`), so markdown files
+ * render in the `qt-rich-editor` (ProseMirror over the v4 composer dialect —
+ * byte-faithful, proven by `markdown-round-trip.spec.ts`). For markdown the
  * frontmatter block is split off into the read-only table (v4 behaviour) and
  * only the BODY is edited; edits are recombined `rawBlock + body` on change so
- * the on-disk bytes stay faithful. Non-markdown files edit the whole content.
+ * the on-disk bytes stay faithful. Everything else — non-markdown files, and
+ * the raw-source toggle (v4 `showSource`) — renders in a plain `<textarea>`
+ * (byte-exact, no serializer). When `USES_RICH_MARKDOWN_EDITOR` is off markdown
+ * falls back to the same textarea path.
  *
  * A stretch host class keeps the pane bounded inside the split's flex height
  * cascade (the standing P4.6u #4 lesson).
@@ -40,7 +45,7 @@ import { documentPaneUri } from './qtap-uri';
   selector: 'qt-document-pane',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'flex flex-col flex-1 min-h-0 min-w-0' },
-  imports: [Icon],
+  imports: [Icon, RichEditor],
   template: `
     <div class="flex flex-col h-full">
       <div class="qt-doc-header">
@@ -62,6 +67,20 @@ import { documentPaneUri } from './qtap-uri';
         }
 
         <div class="flex items-center gap-1">
+          @if (usesRichEditor()) {
+            <button
+              type="button"
+              class="qt-doc-header-button"
+              [class.qt-doc-header-button-active]="showSource()"
+              [title]="showSource() ? 'Show the formatted editor' : 'Show the Markdown source'"
+              [attr.aria-label]="showSource() ? 'Show formatted editor' : 'Show markdown source'"
+              [attr.aria-pressed]="showSource()"
+              (click)="showSource.set(!showSource())"
+            >
+              <qt-icon name="code" class="w-4 h-4" />
+            </button>
+          }
+
           <button
             type="button"
             class="qt-doc-header-button"
@@ -135,19 +154,31 @@ import { documentPaneUri } from './qtap-uri';
       }
 
       <!-- focusout, not blur: blur does not bubble, so a container listener
-           never fires when the textarea loses focus. v4's React onBlur works
-           because React delegates blur as focusout — focusout is the faithful
-           Angular equivalent (the flush-on-blur save rides this). -->
-      <div class="flex-1 overflow-y-auto" (focusout)="blur.emit()">
-        <textarea
-          class="qt-doc-editor-area w-full h-full p-4 qt-bg-input qt-text-primary font-mono text-sm resize-none outline-none"
-          [attr.aria-label]="'Document editor'"
-          [value]="editorValue()"
-          (input)="onEditorInput($any($event.target).value)"
-          [disabled]="entry().isLLMEditing"
-          spellcheck="false"
-          style="line-height: 1.6; min-height: 100%; background-color: var(--color-background)"
-        ></textarea>
+           never fires when the textarea (or the ProseMirror contenteditable)
+           loses focus. v4's React onBlur works because React delegates blur as
+           focusout — focusout is the faithful Angular equivalent (the
+           flush-on-blur save rides this). -->
+      <div class="flex-1 overflow-y-auto flex flex-col min-h-0" (focusout)="blur.emit()">
+        @if (useRichEditorNow()) {
+          <qt-rich-editor
+            class="qt-doc-editor-area h-full p-4"
+            [value]="editorValue()"
+            [ariaLabel]="'Document editor'"
+            [disabled]="entry().isLLMEditing"
+            (contentChange)="onEditorInput($event)"
+            style="line-height: 1.6; min-height: 100%; background-color: var(--color-background)"
+          />
+        } @else {
+          <textarea
+            class="qt-doc-editor-area w-full h-full p-4 qt-bg-input qt-text-primary font-mono text-sm resize-none outline-none"
+            [attr.aria-label]="'Document editor'"
+            [value]="editorValue()"
+            (input)="onEditorInput($any($event.target).value)"
+            [disabled]="entry().isLLMEditing"
+            spellcheck="false"
+            style="line-height: 1.6; min-height: 100%; background-color: var(--color-background)"
+          ></textarea>
+        }
       </div>
 
       <div class="qt-doc-status-bar">
@@ -181,6 +212,15 @@ export class DocumentPane {
 
   protected readonly document = computed(() => this.entry().document);
   protected readonly isMarkdown = computed(() => isMarkdownFile(this.document().filePath));
+
+  /** Raw-source view of a markdown file (v4 `showSource`) — a plain textarea. */
+  protected readonly showSource = signal(false);
+  /** Markdown files use the rich editor when the D17 flag is on (else textarea). */
+  protected readonly usesRichEditor = computed(
+    () => USES_RICH_MARKDOWN_EDITOR && this.isMarkdown(),
+  );
+  /** The rich editor is shown when eligible AND not toggled to raw source. */
+  protected readonly useRichEditorNow = computed(() => this.usesRichEditor() && !this.showSource());
 
   /** Frontmatter split (markdown only): the table shows it, the editor edits the body. */
   private readonly extracted = computed(() => {
@@ -225,6 +265,16 @@ export class DocumentPane {
     effect(() => {
       if (this.isEditingTitle()) {
         requestAnimationFrame(() => this.titleInput()?.nativeElement.focus());
+      }
+    });
+
+    // Reset the raw-source toggle when the pane switches to a different document.
+    let lastDocId: string | null = null;
+    effect(() => {
+      const id = this.document().id;
+      if (id !== lastDocId) {
+        lastDocId = id;
+        this.showSource.set(false);
       }
     });
   }

@@ -1,6 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { describe, expect, it } from 'vitest';
 
+import { RichEditor } from '../editor/rich-editor';
 import { DocumentPane } from './document-pane';
 import type { ActiveDocument } from './document-api';
 import type { OpenDocEntry } from './document-mode';
@@ -39,6 +41,17 @@ function render(e: OpenDocEntry): ComponentFixture<DocumentPane> {
   return fixture;
 }
 
+/** The rich-editor instance inside the pane (markdown files, non-source mode). */
+function richEditor(fixture: ComponentFixture<DocumentPane>): RichEditor {
+  return fixture.debugElement.query(By.directive(RichEditor)).componentInstance as RichEditor;
+}
+
+async function settle(fixture: ComponentFixture<DocumentPane>): Promise<void> {
+  await fixture.whenStable();
+  await new Promise((r) => queueMicrotask(() => r(null)));
+  fixture.detectChanges();
+}
+
 describe('DocumentPane', () => {
   it('renders the title, the qtap:// URL, and the plain-text status', () => {
     const fixture = render(entry());
@@ -62,8 +75,11 @@ describe('DocumentPane', () => {
     expect(fixture.nativeElement.textContent).not.toContain('Document Info');
   });
 
-  it('a markdown file shows the frontmatter table and edits only the body', () => {
-    const md = '---\ntitle: Deep\ntags: [a, b]\n---\n# Heading\nBody text here.';
+  // D17 GREEN: markdown files now edit in the qt-rich-editor (ProseMirror),
+  // not a textarea. The frontmatter split + body-only editing + rawBlock
+  // recombine are unchanged; the source-toggle exposes the raw textarea.
+  it('a markdown file shows the frontmatter table and the rich editor over the body', () => {
+    const md = '---\ntitle: Deep\ntags: [a, b]\n---\n# Heading\n\nBody text here.';
     const fixture = render(entry({ filePath: 'doc.md', displayTitle: 'Deep', content: md }));
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('Document Info');
@@ -73,18 +89,32 @@ describe('DocumentPane', () => {
     expect(text).toContain('b');
     // Markdown status + word count over the BODY only
     expect(text).toContain('Markdown');
-    const textarea = fixture.nativeElement.querySelector('textarea') as HTMLTextAreaElement;
-    expect(textarea.value).toBe('# Heading\nBody text here.');
+    // No textarea in rich mode; the rich editor carries the BODY only.
+    expect(fixture.nativeElement.querySelector('textarea')).toBeNull();
+    expect(fixture.nativeElement.querySelector('qt-rich-editor')).not.toBeNull();
+    expect(richEditor(fixture).getMarkdown()).toBe('# Heading\n\nBody text here.');
   });
 
-  it('markdown edits recombine the frontmatter block before emitting', () => {
+  it('the source toggle reveals the raw-markdown-body textarea (v4 showSource)', () => {
+    const md = '---\ntitle: Deep\n---\n# Heading\nbody';
+    const fixture = render(entry({ filePath: 'doc.md', content: md }));
+    expect(fixture.nativeElement.querySelector('textarea')).toBeNull();
+    (fixture.nativeElement.querySelector('[aria-label="Show markdown source"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const textarea = fixture.nativeElement.querySelector('textarea') as HTMLTextAreaElement;
+    expect(textarea.value).toBe('# Heading\nbody');
+  });
+
+  it('markdown edits recombine the frontmatter block before emitting', async () => {
     const md = '---\ntitle: Deep\n---\nold body';
     const fixture = render(entry({ filePath: 'doc.md', content: md }));
     const emitted: string[] = [];
     fixture.componentInstance.contentChange.subscribe((c) => emitted.push(c));
-    const textarea = fixture.nativeElement.querySelector('textarea') as HTMLTextAreaElement;
-    textarea.value = 'new body';
-    textarea.dispatchEvent(new Event('input'));
+    await settle(fixture); // drain the absorb-once initial emit
+    emitted.length = 0;
+    // An edit in the rich editor emits the body; the pane recombines rawBlock.
+    richEditor(fixture).setMarkdown('new body');
+    await settle(fixture);
     expect(emitted).toEqual(['---\ntitle: Deep\n---\nnew body']);
   });
 

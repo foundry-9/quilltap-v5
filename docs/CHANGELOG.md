@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.6ag tier 1 (unit 3): Document Mode adopts the rich editor for markdown
+files. `USES_RICH_MARKDOWN_EDITOR` flips true, so `.md`/`.markdown` files
+edit in `qt-rich-editor` (frontmatter split + body-only editing + rawBlock
+recombine unchanged); everything else stays a plain textarea. A header
+source-toggle (v4 `showSource`) drops any markdown file back to a raw
+textarea. The save/mtime-conflict path is untouched. The first
+re-serialization after a load is absorbed as baseline (v4
+`computeAbsorbNext`, now live) — specced in document-mode.spec. SPA 0.5.74.
+
 P4.6ag tier 1 (unit 2): the `qt-rich-editor` component — a ProseMirror
 view hosted imperatively over the dialect bridge, with markdown in via
 `value` and out via an imperative handle (`focus`/`getMarkdown`/

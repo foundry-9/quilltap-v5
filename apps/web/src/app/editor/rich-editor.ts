@@ -111,7 +111,8 @@ export class RichEditor {
 
   private createView(): void {
     const doc = parseMarkdown(this.value());
-    this.lastEmitted = serializeMarkdown(doc);
+    const norm = serializeMarkdown(doc);
+    this.lastEmitted = norm;
 
     const state = EditorState.create({ doc, plugins: this.buildPlugins() });
     this.view = new EditorView(this.mount().nativeElement, {
@@ -134,6 +135,12 @@ export class RichEditor {
         }
       },
     });
+
+    // Emit the re-serialized content once after the initial mount — the
+    // absorb-once signal the document controller adopts as baseline (v4
+    // `computeAbsorbNext`). Without it, a first-load markdown normalization
+    // (e.g. `__bold__` → `**bold**`) would surface as the user's first "edit".
+    queueMicrotask(() => this.contentChange.emit(norm));
   }
 
   /**

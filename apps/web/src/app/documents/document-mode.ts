@@ -45,13 +45,15 @@ export interface ChatDocumentFields {
 const AUTOSAVE_DEBOUNCE_MS = 30000;
 
 /**
- * Whether markdown files render in the rich (re-serializing) Lexical editor.
- * The D17 spike decides this: GREEN → true (markdown gets Lexical, so the
- * absorb-first-serialization baseline logic engages); RED → false (markdown
- * ships in the same plain textarea as everything else, so there is no
- * post-remount re-serialization to absorb). See the pane + the status log.
+ * Whether markdown files render in the rich (re-serializing) `qt-rich-editor`.
+ * The D17 gate ran GREEN (byte round-trip proven in
+ * `editor/markdown-round-trip.spec.ts`), so this is now TRUE: markdown gets the
+ * ProseMirror editor and the absorb-first-serialization baseline logic engages
+ * (the first re-serialization after a load is adopted as baseline, not treated
+ * as a user edit). Flip back to false to fall markdown back to the plain
+ * textarea. See the pane + the status log.
  */
-export const USES_RICH_MARKDOWN_EDITOR = false;
+export const USES_RICH_MARKDOWN_EDITOR = true;
 
 /** v4 `getDocumentModeState`: mode defaults to 'normal', divider to 45. */
 export function documentModeFromChat(source: ChatDocumentFields | null | undefined): DocumentMode {

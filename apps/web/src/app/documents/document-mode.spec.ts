@@ -148,6 +148,31 @@ describe('DocumentModeController (v4 useDocumentMode)', () => {
     expect(ctrl.openDocs()[0].isDirty).toBe(false);
   });
 
+  // D17 GREEN: markdown loads through the re-serializing rich editor, so the
+  // FIRST change after a load — the editor's normalization of the loaded bytes
+  // (e.g. __bold__ → **bold**) — is adopted as the new baseline, not a user
+  // edit. (v4 `applyDocContent` absorbNext; quirk #8.)
+  it('absorbs the first re-serialization of a freshly loaded markdown doc as baseline', async () => {
+    const { ctrl, api } = build();
+    api.openResult = { document: record({ id: 'd1', filePath: 'doc.md' }), content: '__bold__', mtime: 1 };
+    await ctrl.openDocument({ filePath: 'doc.md' });
+
+    // The editor's first emit is the normalized re-serialization — absorbed.
+    ctrl.handleContentChange('d1', '**bold**');
+    expect(ctrl.openDocs()[0].isDirty).toBe(false);
+    // A genuine subsequent edit IS dirty (the absorb is one-shot).
+    ctrl.handleContentChange('d1', '**bold** and more');
+    expect(ctrl.openDocs()[0].isDirty).toBe(true);
+  });
+
+  it('a fresh non-markdown load never absorbs (the first change is a real edit)', async () => {
+    const { ctrl, api } = build();
+    api.openResult = { document: record({ id: 'd1', filePath: 'notes.txt' }), content: 'plain', mtime: 1 };
+    await ctrl.openDocument({ filePath: 'notes.txt' });
+    ctrl.handleContentChange('d1', 'plain edited');
+    expect(ctrl.openDocs()[0].isDirty).toBe(true);
+  });
+
   it('saveDocument writes the diff, clears dirty, appends a save announcement', async () => {
     const { ctrl, api, librarianSink } = build();
     api.writeOutcome = { kind: 'saved', mtime: 5, librarianMessage: librarian('S1') };

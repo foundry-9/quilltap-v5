@@ -1971,6 +1971,13 @@
     background: var(--qt-hover-bg, color-mix(in srgb, var(--qt-text-primary) 10%, transparent));
   }
 
+  /* Active state — the raw-source toggle when source view is on. */
+  .qt-doc-header-button-active,
+  .qt-doc-header-button-active:hover {
+    color: var(--qt-text-primary);
+    background: color-mix(in srgb, var(--qt-accent, var(--qt-text-primary)) 18%, transparent);
+  }
+
   /** Compact qtap:// URL line shown under the document header */
   .qt-doc-uri-row {
     @apply flex items-center gap-2 px-4 py-1;

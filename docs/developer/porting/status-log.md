@@ -11272,3 +11272,26 @@ encapsulation). `rich-editor.spec.ts`: 4 specs over the handle contract
 (round-trip set/get, single-`*` literal, absorb-once normalization,
 prependText) — green in jsdom (prosemirror-view instantiates fine there).
 SPA 0.5.73.
+
+**Unit 3 — Document Mode adoption (markdown files).**
+`USES_RICH_MARKDOWN_EDITOR` flips to `true` (`documents/document-mode.ts`).
+The pane (`documents/document-pane.ts`) now renders `qt-rich-editor` for
+markdown files (frontmatter split + body-only editing + `${rawBlock}${body}`
+recombine preserved — the editor's `contentChange` feeds the same
+`onEditorInput` seam the textarea used); non-markdown files stay in the
+plain textarea. A header source-toggle (v4 `showSource`, markdown-only,
+`code` glyph, reset on document switch) drops any markdown file back to a
+raw-source textarea. `focusout` (not `blur`) still rides the container, so
+the flush-on-blur save fires when the contenteditable loses focus. The
+save / mtime-conflict path is untouched.
+
+The absorb-first-serialization baseline goes LIVE with the flag: the rich
+editor emits its re-serialized content once after each load (deferred off
+the CD pass), and `handleContentChange` adopts it as baseline when
+`absorbNext` (v4 `applyDocContent`, quirk #8). Specced in
+`document-mode.spec.ts` (`__bold__` load → `**bold**` first-emit absorbed,
+not dirty; a subsequent edit IS dirty; a non-markdown load never absorbs)
+and `document-pane.spec.ts` (markdown → rich editor holds the body; the
+source toggle reveals the raw textarea; edits recombine the frontmatter).
+Two prior markdown specs were rewritten (recorded reason: the textarea →
+rich-editor swap). `ng test` documents+editor: 62 + 32 green. SPA 0.5.74.
