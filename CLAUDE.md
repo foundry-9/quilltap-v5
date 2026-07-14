@@ -459,12 +459,29 @@ records THERE. Update this summary only when a phase or round completes.
   `imageProfileValidateKey`/`ListModels`. Next candidates: the D17
   tier-3 editor follow-ons, the deferred autonomous-rooms cards, P4.7
   (Tauri), or a files-story dogfood pass — see phase-4.md.
+- **The P4.6ak ∥ P4.6al ∥ P4.6am D17-editor-follow-ons + salon-dogfood
+  round: UNIFIED on main (2026-07-14) — ALL THREE CLOSED, and dogfood
+  findings #7/#8/#9 + the finding-#6 select audit CLOSE with them.**
+  The text-replacement-rules surface + `chatGetBackground` (server,
+  new committed fixture + 15-case differential;
+  `regenerate-background` refusal-armed) ∥ strike/highlight marks +
+  emphasis-on-type rules + the shared `qt-markdown-field` (memory
+  editor + character edit/new fields) + composition mode + drafts +
+  the text-replacement plugin/card ∥ the chained-response streaming
+  render + chat background display + the last select fix. Wires: the
+  CoreRequest union folded; the salon composer bindings; the
+  background beat LIVE; three new live composer beats. Gate: 314
+  suites/1327 tests, ng 764, Playwright 52/52. Deferred loud: the
+  background GENERATION subsystem, the item-6 form-field adoptions,
+  the table transformer, missing-host dialog consumers. Next
+  candidates: the remaining form-field adoptions (a rider), the
+  autonomous-rooms deferred cards, P4.7 (Tauri), or a dogfood pass.
 - **Oracle baseline: v4 HEAD `02865bdb`** (rebased 2026-07-14 with the
   P4.d4 skip-signal drift re-port — the trailing-sentinel strip; the
   P4.d3 quantized embedding codec note stands: ⚠ v4's
   `quantize-embeddings-v1` migration is one-way — back up Friday
   before first running v4 `4.8.0-dev.52`+ against it. Drift-check
   before every round.
-  Versions: core 0.0.219, harness 0.0.199, host 0.0.17, web 0.0.20, SPA 0.5.83.
+  Versions: core 0.0.221, harness 0.0.200, host 0.0.17, web 0.0.21, SPA 0.5.93.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

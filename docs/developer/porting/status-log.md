@@ -12483,3 +12483,94 @@ deferrals (loud, named):
   `compositionModeChange` via `chatUpdate`) is the unifier's wire, NOT
   this lane's (left untouched in `salon-conversation.ts`).
 - **The #7 chained-render e2e** (above — not live-walkable).
+
+---
+
+## The P4.6ak ∥ P4.6al ∥ P4.6am round record — UNIFIED on main (2026-07-14)
+
+The D17 editor follow-ons + salon dogfood round. **All three orders
+CLOSED — and dogfood findings #7 (chained-response rendering), #8
+(composition mode), #9 (chat backgrounds) and the standing finding-#6
+select audit CLOSE with them.** v4 HEAD did not move during the round
+(baseline stays `02865bdb`). Reconciled onto `unify/p4.6ak-al-am` in
+dependency order (A → B → C); the only conflicts were the expected
+CHANGELOG/status-log unions, the SPA version file (accumulated
+0.5.89 + 4 → 0.5.93), and the two core-contract.ts append blocks
+meeting at EOF (both kept, engine.rs-style).
+
+**Unification wires:**
+
+- **Contract cross-check (name-for-name):** the six dispatch variants
+  (`textReplacementsList`/`Create`/`Update`/`Delete`/`BulkReplace`,
+  `chatGetBackground`) identical in `types.rs` and `core-contract.ts`
+  (flattened input bags, camelCase `chatId`, the pinned
+  `TextReplacementRule` key order) — no divergences. The six types
+  folded into the `CoreRequest` union; both lanes' cast bridges
+  removed. `ChatDetail` gained optional `documentEditingMode` and
+  `ChatSettingsDto` gained `textReplacementsEnabled` (both always
+  serialized by the ported server; specs build partial literals, so
+  optional).
+- **The salon composer seam (§3):** `salon-conversation.ts` binds
+  `[compositionMode]` (seeded from the chat's `documentEditingMode`
+  with a chat-keyed optimistic override; `compositionModeChange`
+  persisted via `chatUpdate` — the onTogglePause idiom) and the live
+  text-replacement rules (a `['textReplacements']` query compiled via
+  `compileRules`, gated by `chat_settings.textReplacementsEnabled`
+  default-true). `chatId` was ALREADY a bound composer input, so
+  draft persistence went live with no wire.
+- **The background beat went LIVE:** global-setup seeds a story
+  background on Solo Voyage (files row + PNG bytes at the storage
+  backend's root + `chats.storyBackgroundImageId` — v4 has no client
+  set-path; only the unported generation subsystem writes the column,
+  so SQL is the faithful stand-in) and
+  `salon-background-flow.spec.ts` dropped both route mocks: the live
+  `chatGetBackground` dispatch resolves, the live
+  `/api/v1/files/{id}` byte route serves, the `::before` layer draws.
+- **Three new live composer beats** (`salon-composer-modes.spec.ts`):
+  composition mode (toggle → Enter splits the block → the flag +
+  draft survive a reload → Mod+Enter sends through the mock LLM →
+  toggled back); an unsent draft surviving leave/reopen; a
+  text-replacement rule created + deleted over lane A's LIVE REST
+  legs firing in the composer on the trigger char.
+
+**Three gate catches (all e2e-instance seeding, fixed in the gate-fix
+commit):**
+
+1. The Salon fixture predates the `text_replacement_rules` MIGRATION
+   table — the live create-rule beat 500'd. Materialized in
+   global-setup with v4's exact migration DDL + both indexes (the
+   `folders`/`terminal_sessions` precedent).
+2. The seeded files row hit NOT NULL constraints — v4's
+   `FileEntrySchema` requires `sha256` (the real hash is computed),
+   `source`, `linkedTo`, `tags`.
+3. The background bytes were first written under `<instance>/data/
+   files`, but the web spine roots its `LocalStorageBackend` at
+   `<instance>/files` (`base_dir` is the raw `--data-dir` arg, NOT its
+   `data/` subdir) — the byte route 500'd until the bytes moved.
+
+**Gate (all green):** `cargo fmt --all --check`; release build; clippy
+default AND native-transport, `-D warnings`; `cargo test --workspace`
+**314 suites / 1327 tests / 0 failed** with the two round
+differentials regenerated FRESH at `02865bdb` and run BY NAME —
+`text_replacements_routes_equivalence` 15/15,
+`text_replacement_rules_tier2_equivalence` green — no SKIP lines, plus
+the live `text_replacements_web_routes` web-edge test; `ng test`
+**764** (was 698); `ng build` clean; **full Playwright 52/52 with
+ZERO skips** (was 48): the background beat LIVE, the three
+composer-modes beats NEW.
+
+**What remains OPEN around this round's surface (all loud, named):**
+the story-background GENERATION subsystem (`regenerate-background`
+refuses; the 30s poll + `storyBackgroundsSettings` card unported);
+project-level `?action=get-background`; the lane-B tier-2 item 6
+form-field adoptions (scenario editor, roleplay-template systemPrompt,
+prompt modals, wardrobe description, Prospero instructions, new-chat
+scenario — each a clean `qt-markdown-field` swap); the GFM table
+transformer; consumers whose v5 host does not exist
+(CreateNPC/ComposeMail/InsertAnnouncement dialogs);
+`roleplayTemplateId` toolbar awareness; `__bold__` on-type; the #7
+chained-render e2e (not live-walkable — the component specs are the
+proof).
+
+**Final versions:** core 0.0.221, harness 0.0.200, web 0.0.21, host
+0.0.17, SPA 0.5.93.

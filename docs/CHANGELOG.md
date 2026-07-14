@@ -2,6 +2,34 @@
 
 ## Recent Changes
 
+Unify P4.6ak∥al∥am (the D17 editor follow-ons + salon dogfood round):
+ALL THREE orders CLOSED, and dogfood findings #7, #8, #9 and the
+standing finding-#6 select audit CLOSE with them. The
+text-replacement-rules surface + the chat story-background resolver
+(server, differential-verified) ∥ strikethrough/highlight marks +
+emphasis-on-type input rules + the shared qt-markdown-field (adopted
+in the memory editor + character edit/new fields) + composition mode +
+draft persistence + the text-replacement plugin and settings card ∥
+the chained-response streaming render + chat background display + the
+last dynamic-options select fix. Unification wires: the six new
+dispatch types folded into the CoreRequest union (contract
+cross-checked name-for-name against types.rs — no divergences); the
+salon binds composition mode (persisted via chatUpdate
+{documentEditingMode}) and the live text-replacement rules; the
+background e2e beat went LIVE over a seeded story background; three
+new live composer beats (composition mode incl. persisted-flag
+reload, drafts, a live rule firing). Gate catches (fixed in the
+gate-fix commit): the e2e instance predates the
+text_replacement_rules migration table (materialized, the folders
+precedent); the background files row needed sha256/source/linkedTo/
+tags; the storage backend roots at <instance>/files, not
+<instance>/data/files. Gate: 314 Rust suites / 1327 tests / 0 failed
+with the two round differentials regenerated FRESH at `02865bdb` and
+run by name (routes 15/15, tier-2 green, no SKIPs); clippy both
+feature sets; ng test 764; ng build clean; full Playwright 52/52 with
+zero skips. Final versions: core 0.0.221, harness 0.0.200, web
+0.0.21, host 0.0.17, SPA 0.5.93.
+
 P4.6am tier 2 (lane C) — the story-background e2e beat.
 `salon-background-flow.spec.ts` walks unlock → open a salon chat →
 `--story-background-url` lands on `.qt-chat-layout` from the resolved

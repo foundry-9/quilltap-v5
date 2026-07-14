@@ -1302,3 +1302,35 @@ Next candidates: the D17 tier-3 editor follow-ons (form-field
 consumers, tables), the deferred autonomous-rooms cards (cron
 preview + the 13 Chat-tab cards), P4.7 (Tauri), or a dogfood pass
 over the now-complete files story.
+
+**The P4.6ak ∥ P4.6al ∥ P4.6am round ("the D17 editor follow-ons +
+salon dogfood round") is UNIFIED on main (2026-07-14) — ALL THREE
+orders CLOSED, and with them dogfood findings #7, #8, #9 and the
+standing finding-#6 select audit.** Landed: the text-replacement-rules
+server surface (five verbs + REST edges + the conflict arm, the
+15-case `text_replacements_routes_equivalence` differential over the
+new committed `text-replacements-{main,mount}.db` fixture) +
+`chatGetBackground` (all three arms) + the `regenerate-background`
+loud refusal ∥ strikethrough/highlight marks + emphasis-on-type input
+rules (the byte-round-trip gate grew +8), composition mode end-to-end,
+the shared `qt-markdown-field` + `qt-formatting-toolbar` adopted in
+the memory editor and the character edit/new fields, composer draft
+persistence, and the text-replacement plugin + settings CRUD card ∥
+the chained-response streaming render (finished chained/carina/host
+bubbles visible as they complete), chat background display
+(`--story-background-url` over the live resolver), and the last
+dynamic-options `[value]` select conversion. Unification wires: the
+CoreRequest union folded (contract name-for-name against `types.rs`);
+the salon composition-mode + text-replacement bindings; the background
+beat LIVE over a seeded story background; three new live composer
+beats. Gate: 314 Rust suites / 1327 tests (both round differentials
+fresh at `02865bdb`), clippy both feature sets, ng test 764, ng build
+clean, full Playwright 52/52 zero skips. **Remaining in this surface
+(loud, named):** the story-background generation subsystem, the
+lane-B item-6 form-field adoptions (each a clean `qt-markdown-field`
+swap), the GFM table transformer, the missing-host dialog consumers,
+`roleplayTemplateId` toolbar awareness, `__bold__` on-type. Next
+candidates: the remaining form-field adoptions as a rider on any SPA
+order, the deferred autonomous-rooms cards (cron preview + the 13
+Chat-tab cards), P4.7 (Tauri), or a dogfood pass over the
+editor/backgrounds/files story.
