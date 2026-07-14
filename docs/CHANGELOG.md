@@ -2,6 +2,25 @@
 
 ## Recent Changes
 
+Plan the D17 editor follow-ons + salon dogfood round — three
+agent-ready work orders covering the P4.6ag tier-3 editor deferrals
+and dogfood findings #7/#8/#9. Drift-checked first: v4 HEAD is still
+`02865bdb` (no drift). The three lanes: P4.6ak (server — the unported
+`text_replacement_rules` surface with five dispatch verbs + REST
+edges, and `chatGetBackground` for the story-background resolver, both
+with jest real-DB differentials over a new committed fixture), P4.6al
+(SPA — strikethrough/highlight marks + emphasis-on-type input rules
+extending the byte-round-trip gate, composition mode composer-side
+[finding #8; the server storage is already ported], the shared
+qt-markdown-field adopted in the memory/character-field textareas,
+draft persistence, and the text-replacement plugin + settings card),
+and P4.6am (SPA — finding #7's chained-response streaming render,
+finding #9's chat background display over the new verb, and the last
+finding-#6 select-audit site, which closes that standing audit). The
+composer/salon seam (composition-mode + chatId bindings in
+salon-conversation) is pinned as a unification wire; core-contract.ts
+is shared via delimited append blocks. Docs-only.
+
 Dogfood findings #7–#9 logged (docs only, no code changes): #7 chained
 characters' finished responses don't render until the chain ends (the
 streaming overlay never renders the reducer's accumulated intermediate
