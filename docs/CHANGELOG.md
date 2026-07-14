@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+Unify P4.6ah∥ai∥aj∥d4 (the "finish P4.6ae + catch up from v4" round):
+all four orders CLOSED, and P4.6ae + P4.6ab (tier 2) close with them.
+The files write + maintenance server remainder (chat-file upload +
+link, general upload REST leg, the itemized FILE_HAS_ASSOCIATIONS
+envelope + dissociate, three maintenance verbs) ∥ the
+imageProfileGenerate un-refusal over the new
+EngineAssembly.image_generation seam, wired live in the host ∥ the SPA
+delete-associations close-out (dissociate-only — no v4 client sends
+force) ∥ the 02865bdb skip-signal trailing-sentinel re-port. **The
+oracle baseline is now v4 HEAD `02865bdb`.** Wires: contract diffed
+name-for-name (no divergences); the P4.6af guarded files data beat
+self-activated; a composer-attach live-leg beat added; the REST-edge
+envelope leak fixed (see the gate-fix entry). Gate: 312 Rust suites /
+1324 tests / 0 failed with the three round oracles fresh at
+`02865bdb` and their differentials run by name (files-routes 41/41,
+image-generate 4/4, skip-signal 106 rows); clippy both feature sets;
+ng test 698; ng build clean; full Playwright 48/48 with zero skips.
+Final versions: core 0.0.219, harness 0.0.199, host 0.0.17, web
+0.0.20, SPA 0.5.83.
+
 Unify gate fix P4.6ah∥aj: the files-family REST legs returned the
 dispatch envelope (`{type, data}`) instead of v4's raw route bodies —
 `core_response_to_http` now unwraps `Files`/`ChatMedia` payloads like

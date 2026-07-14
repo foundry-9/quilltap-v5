@@ -11476,7 +11476,7 @@ or P4.7 (Tauri).
 
 ---
 
-## P4.6ah — the files-family write + maintenance server remainder (lane A) — LANDED on branch
+## P4.6ah — the files-family write + maintenance server remainder (lane A) — UNIFIED on main (2026-07-14)
 
 Branch `claude/p4-6ah-files-write-maintenance-9a7147` (worktree). v4
 baseline `02865bdb` — **NO drift** (HEAD == baseline at lane start).
@@ -11721,7 +11721,7 @@ named refusal deferrals (live-provider-only, since P4.6p).
 
 ---
 
-## P4.d4 (lane D) — the `02865bdb` skip-signal drift re-port [IN PROGRESS] (branch `claude/distracted-chaplygin-72b1e3`)
+## P4.d4 (lane D) — the `02865bdb` skip-signal drift re-port — UNIFIED on main (2026-07-14)
 
 Drift-check: v4 HEAD == baseline `02865bdb` (`git log 02865bdb..HEAD`
 empty — no drift). Lane D of the FOUR-lane P4.6ah ∥ P4.6ai ∥ P4.6aj ∥
@@ -11802,7 +11802,7 @@ Versions bumped: core 0.0.216 → 0.0.217, harness 0.0.196 → 0.0.197.
 
 ---
 
-## P4.6aj (lane C) — the files SPA delete-associations close-out (2026-07-14, branch, awaits unification)
+## P4.6aj (lane C) — the files SPA delete-associations close-out — UNIFIED on main (2026-07-14)
 
 Lane C of the P4.6ah ∥ P4.6ai ∥ P4.6aj ∥ P4.d4 round. SPA-ONLY (no
 Rust, no v4 port). Drift-checked: v4 HEAD at the pinned baseline
@@ -11898,3 +11898,83 @@ covered at the unit level, no lane change needed:**
 **Versions:** SPA 0.5.82 → 0.5.83. No Rust crates touched (a
 `cargo build -p quilltap-web -p quilltap-cli` sanity build confirmed
 the worktree is coherent, for the e2e prerequisite).
+
+---
+
+## The P4.6ah ∥ P4.6ai ∥ P4.6aj ∥ P4.d4 round record — UNIFIED on main (2026-07-14)
+
+The "finish P4.6ae + catch up from v4" round. **All four orders CLOSED,
+and P4.6ae + P4.6ab (tier 2) CLOSE with them. The oracle baseline is
+now `02865bdb`** (this round's P4.d4 was the catch-up; v4 HEAD did not
+move during the round). Reconciled onto `unify/p4.6ah-ai-aj-d4` in
+dependency order (A → B → D → C); the only conflicts were the expected
+CHANGELOG/status-log unions and the accumulated version files.
+`engine.rs`/`spine.rs` auto-merged — the two-core-dispatch-writer
+delimited-block rule held.
+
+**Unification wires:**
+
+- **Contract cross-check (name-for-name):** `FileAssociations`
+  {characters `{id,name,usage}`, messages `{chatId,chatName,messageId}`}
+  identical in `types.rs` and `core-contract.ts` (camelCase serde);
+  `chatFileUpload` multipart field names match the LOCKED
+  `chat-files.api.ts`; `imageProfileGenerate` params/envelope match the
+  LOCKED generate dialog. Lane A's top-level `associations` vs v4's
+  `details.associations` nesting: lane C's `extractAssociations`
+  tolerates both — no change needed.
+- **The composer-attach live beat** (the one cross-lane proof neither
+  lane could run alone): added to `salon-courier-images-flow.spec.ts` —
+  discovers a GENERAL chat via the API (the fixture's project chats
+  have no linked document store, so the project upload branch fails
+  v4-faithfully), attaches a file over the live multipart leg, asserts
+  the chip, detaches.
+- **The P4.6af guarded files data beat self-activated** (its runtime
+  probe covers the now-live upload REST leg — no code change).
+- **Version accumulation:** three lanes each bumped core/harness from
+  the same base → core 0.0.219, harness 0.0.199; host 0.0.17, web
+  0.0.20, SPA 0.5.83 stand. Two stray committed `.db-journal` fixture
+  artifacts dropped.
+
+**Two gate catches (both fixed in the unify gate-fix commit):**
+
+1. **The REST-edge envelope leak (caught by the new live beats):** the
+   P4.6ah REST legs returned the dispatch envelope (`{type, data}`)
+   instead of v4's raw route bodies. `core_response_to_http` now
+   unwraps `Files`/`ChatMedia` like the existing `MountFile` arm. The
+   bug slipped BOTH lane proofs: the differential diffs at the
+   CoreRequest layer (below the web edge), and the web-edge test's
+   link/delete raw-shape assertions sat behind an
+   `if let Some(file_id)` fixture guard that never fired (the
+   chat-send fixture has no library files). LESSON: a web-edge
+   integration test whose assertions are fixture-guarded proves
+   nothing when the fixture is empty — make the guard loud or seed
+   the row.
+2. **The e2e instance predated the `folders` table** — the
+   self-activated files data beat hit `no such table: folders` on the
+   /files folder list. Materialized in global-setup (the
+   terminal_sessions precedent), all-TEXT columns per v4 FolderSchema.
+
+**Gate (all green):** `cargo fmt --all --check`; release build; clippy
+default AND native-transport, `-D warnings`; `cargo test --workspace`
+**312 suites / 1324 tests / 0 failed** with the three round oracles
+regenerated FRESH at `02865bdb` and their differentials run BY NAME —
+`files_routes_equivalence` 41/41, `image_generate_route_equivalence`
+4/4, `skip_signal_equivalence` 106 rows (`detect` 35 → 42) — no SKIP
+lines; `ng test` 698 (was 691); `ng build` clean; **full Playwright
+48/48 with ZERO skips** (was 45 + 1 guarded skip): the files data
+beat ACTIVE, the delete-associations beat ACTIVE, the composer-attach
+live beat NEW.
+
+**What remains OPEN in the files/image surface (all loud, named):**
+`filesSync` (unported reconciliation subsystem), the chat-file
+`action=attach-mount-file` Librarian walk, thumbnail *generation*
+(host codec + disk cache; the on-demand `?action=thumbnail` byte-GET
+works), cleanup-stale disk-key fs existence (host `StorageBackend`),
+`autoDescribeChatImageAttachment` (named no-op),
+`imageProfileValidateKey` / `imageProfileListModels`
+(live-provider-only). The generate-dialog e2e over a REAL provider is
+not walkable (the e2e host has no live image provider — the seam
+refuses loudly there; the differential is the proof).
+
+**Final versions:** core 0.0.219, harness 0.0.199, host 0.0.17, web
+0.0.20, SPA 0.5.83.
