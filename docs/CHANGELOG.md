@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.6af unit 1: the general files-family wire contract. lane B (the
+`core-contract.ts` / `core-client.ts` owner) authors the files-family
+Request variants (`filesList`, `fileMove`, `filePromote`,
+`fileDelete`, `filesGenerateThumbnails`, `filesCleanupStale`,
+`filesCleanupOrphans`, `filesFoldersList`, `filesFolderCreate`,
+`filesFolderRename`, `filesFolderDelete`, `filesSync`, `fileUpload`)
+plus the `FileEntry` / `FolderEntry` / `FileAssociations` DTOs, and
+the CoreClient read helpers (`filesList` / `filesFoldersList` /
+`filesGenerateThumbnails`). Names transcribed verbatim from the
+p4.6af Shared contract; the server side (p4.6ae) pins the response
+envelopes at unification. SPA 0.5.72.
+
 P4.6ae units 2+3+5 (files-family server): the general files dispatch
 surface goes live over `/api/dispatch` — `filesList`, `fileMove`,
 `filePromote`, `fileDelete`, `filesFoldersList`, `filesFolderCreate`,

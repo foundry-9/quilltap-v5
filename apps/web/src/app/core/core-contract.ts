@@ -1054,6 +1054,188 @@ export interface ChatFileDeleteRequest {
   fileId: string;
 }
 
+// ===========================================================================
+// The general files family (P4.6af — lane B owns this contract file; p4.6ae
+// implements the server side). All JSON verbs ride `POST /api/dispatch`; the
+// upload REST leg (`POST /api/v1/files?action=upload`) + the byte GETs are web
+// routes. Response bodies are pinned by lane A's route differential, so the SPA
+// reads these through {@link CoreClient.dispatchData} (raw `data`); only the
+// request `type`/param names are load-bearing here (the settings/characters
+// precedent). Names transcribed VERBATIM from the p4.6af Shared contract.
+// ===========================================================================
+
+/**
+ * One row of `filesList` (v4 `serializeFileEntry`): BOTH `originalFilename` AND
+ * `filename` (= originalFilename), `filepath` = `/api/v1/files/{id}`,
+ * `folderPath` RESOLVED via `resolveEffectiveFolderPath`, `fileStatus` defaulted
+ * `'ok'`. Read defensively — extra fields (`userId`/`width`/`height`) are
+ * tolerated; `linkedTo`/`isPlainText` ride list/preview enrichment when present.
+ */
+export interface FileEntry {
+  id: string;
+  originalFilename: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  category: string;
+  description: string | null;
+  projectId: string | null;
+  folderPath: string | null;
+  filepath: string;
+  fileStatus: string;
+  createdAt: string;
+  updatedAt: string;
+  linkedTo?: string[];
+  isPlainText?: boolean;
+  [key: string]: unknown;
+}
+
+/** One folder row (v4 `/files/folders` list). */
+export interface FolderEntry {
+  id: string;
+  path: string;
+  name: string;
+  parentFolderId: string | null;
+  projectId: string | null;
+  [key: string]: unknown;
+}
+
+/** The delete-associations envelope carried on the 400 `FILE_HAS_ASSOCIATIONS`. */
+export interface FileAssociations {
+  characters: { id: string; name: string; usage: string }[];
+  messages: { chatId: string; chatName: string; messageId: string }[];
+}
+
+/** List files (v4 GET `/files?filter=general` / project `?action=list-files`). */
+export interface FilesListRequest {
+  type: 'filesList';
+  projectId?: string;
+  folderPath?: string;
+  filter?: string;
+}
+
+/**
+ * Move a legacy file (v4 PUT `/files/{id}`). At least one field required;
+ * `projectId` absent keeps, explicit `null` clears (the tri-state — never
+ * collapsed). Returns the managed shape (`filename` only, RAW `folderPath`).
+ */
+export interface FileMoveRequest {
+  type: 'fileMove';
+  fileId: string;
+  folderPath?: string;
+  filename?: string;
+  projectId?: string | null;
+}
+
+/** Promote a file into a project (or back to general) (v4 `?action=promote`). */
+export interface FilePromoteRequest {
+  type: 'filePromote';
+  fileId: string;
+  targetProjectId?: string | null;
+  folderPath?: string;
+}
+
+/**
+ * Delete a legacy file (v4 DELETE `/files/{id}`). A bare delete may return the
+ * 400 associations envelope (`FILE_HAS_ASSOCIATIONS`); `dissociate: true` then
+ * forces it through, severing the links.
+ */
+export interface FileDeleteRequest {
+  type: 'fileDelete';
+  fileId: string;
+  force?: boolean;
+  dissociate?: boolean;
+}
+
+/** Batch-generate cached thumbnails (v4 `?action=generate-thumbnails`). */
+export interface FilesGenerateThumbnailsRequest {
+  type: 'filesGenerateThumbnails';
+  fileIds: string[];
+  size?: number;
+}
+
+/** Stale-file cleanup (v4 `?action=cleanup-stale`). */
+export interface FilesCleanupStaleRequest {
+  type: 'filesCleanupStale';
+  dryRun?: boolean;
+}
+
+/**
+ * Orphan cleanup (v4 `?action=cleanup-orphans`). The dry run sends only
+ * `{dryRun: true}` (no `mode`) and returns the report; the wet run sends
+ * `{mode, dryRun: false}` and moves/deletes — hence `mode` is optional.
+ */
+export interface FilesCleanupOrphansRequest {
+  type: 'filesCleanupOrphans';
+  mode?: 'move' | 'delete';
+  dryRun?: boolean;
+}
+
+/** List folders (v4 GET `/files/folders[?projectId=]`, `path` localeCompare ASC). */
+export interface FilesFoldersListRequest {
+  type: 'filesFoldersList';
+  projectId?: string;
+}
+
+/** Create a folder (v4 `/files/folders?action=create`; idempotent, parent chain). */
+export interface FilesFolderCreateRequest {
+  type: 'filesFolderCreate';
+  path: string;
+  projectId?: string | null;
+}
+
+/** Rename a folder (v4 `/files/folders?action=rename`). */
+export interface FilesFolderRenameRequest {
+  type: 'filesFolderRename';
+  path: string;
+  newName: string;
+  projectId?: string | null;
+}
+
+/** Delete an empty folder (v4 `/files/folders?action=delete`; refuses non-empty). */
+export interface FilesFolderDeleteRequest {
+  type: 'filesFolderDelete';
+  path: string;
+  projectId?: string | null;
+}
+
+/** Filesystem reconciliation sync (v4 `?action=sync`) — STAYS refusal-armed. */
+export interface FilesSyncRequest {
+  type: 'filesSync';
+}
+
+/**
+ * The core upload variant behind the REST leg (v4 `?action=upload`). The general
+ * Files page has no upload affordance (v4 parity), so this rides only the
+ * project/mount paths — carried here for shape completeness (lane A's REST leg).
+ */
+export interface FileUploadRequest {
+  type: 'fileUpload';
+  filename: string;
+  contentType: string;
+  /** base64-encoded bytes. */
+  data: string;
+  tags?: string[];
+  projectId?: string;
+  folderPath?: string;
+}
+
+/** The general-files request family (folded into {@link CoreRequest}). */
+export type FilesFamilyRequest =
+  | FilesListRequest
+  | FileMoveRequest
+  | FilePromoteRequest
+  | FileDeleteRequest
+  | FilesGenerateThumbnailsRequest
+  | FilesCleanupStaleRequest
+  | FilesCleanupOrphansRequest
+  | FilesFoldersListRequest
+  | FilesFolderCreateRequest
+  | FilesFolderRenameRequest
+  | FilesFolderDeleteRequest
+  | FilesSyncRequest
+  | FileUploadRequest;
+
 /** The internally-tagged request union (one variant per user-meaningful op). */
 export type CoreRequest =
   | { type: 'health' }
@@ -1217,6 +1399,8 @@ export type CoreRequest =
   | ChatAddToolResultRequest
   | ChatFilesListRequest
   | ChatFileDeleteRequest
+  // --- The general files family (P4.6af; p4.6ae server side) ---
+  | FilesFamilyRequest
   // --- Autonomous rooms (P4.6ad — lane C's own delimited block) ---
   | AutonomousRoomRequest;
 

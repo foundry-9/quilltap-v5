@@ -14,6 +14,8 @@ import {
   type AutonomousRoomSettingsPatch,
   type AutonomousRoomUpdateResult,
   type DataRetentionSettingsDto,
+  type FileEntry,
+  type FolderEntry,
 } from './core-contract';
 
 /** The interpreted `GET /health` result (the startup gate branches on this). */
@@ -257,6 +259,45 @@ export class CoreClient {
     this.eventSource?.close();
     this.eventSource = null;
     this.connection.set('closed');
+  }
+
+  // -------------------------------------------------------------------------
+  // The general files family (P4.6af) — reads + the fire-and-forget thumbnail
+  // batch. Mutations (move / promote / delete / folder CRUD / cleanup) ride
+  // `dispatch`/`dispatchData` directly in the FileBrowser so it can inspect the
+  // associations envelope and the loud refusals; only the read helpers live here.
+  // -------------------------------------------------------------------------
+
+  /** v4 `GET /files?filter=general` — the general-files list (`createdAt` DESC). */
+  async filesList(opts: { projectId?: string; folderPath?: string; filter?: string } = {}): Promise<
+    FileEntry[]
+  > {
+    const data = await this.dispatchData({ type: 'filesList', ...opts });
+    return (data['files'] as FileEntry[] | undefined) ?? [];
+  }
+
+  /** v4 `GET /files/folders` — the DB folder rows (`path` localeCompare ASC). */
+  async filesFoldersList(projectId?: string): Promise<FolderEntry[]> {
+    const data = await this.dispatchData({ type: 'filesFoldersList', projectId });
+    return (data['folders'] as FolderEntry[] | undefined) ?? [];
+  }
+
+  /**
+   * v4 `POST ?action=generate-thumbnails` for the first 100 image ids — the
+   * fire-and-forget batch fired after the list loads. Swallows failures (v4's
+   * `.catch(() => {})` idiom): the thumbnails degrade to the on-demand path.
+   */
+  async filesGenerateThumbnails(fileIds: string[], size?: number): Promise<void> {
+    if (fileIds.length === 0) return;
+    try {
+      await this.dispatchData({
+        type: 'filesGenerateThumbnails',
+        fileIds: fileIds.slice(0, 100),
+        size,
+      });
+    } catch {
+      /* best-effort — the thumbnail route regenerates on demand */
+    }
   }
 
   // === P4.d3 (lane D): the data-retention setting ===

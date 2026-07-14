@@ -11043,3 +11043,38 @@ chat-file link (Tier 2), and the P4.6ab tier-2 close-out (units 6/7 — chat-fil
 upload + `imageProfileGenerate` un-refusal). Gate: fmt/clippy(both feature
 sets)/`cargo test --workspace` green with `files_routes_match_oracle` RUN by
 name; core 0.0.215→0.0.216, harness 0.0.195→0.0.196.
+
+---
+
+## P4.6af (lane B — the general Files SPA + salon autonomous riders)
+
+Round: P4.6ae ∥ P4.6af ∥ P4.6ag ∥ P4.d3 (files-family + editor).
+v4 baseline `dd0d9ff5` (drift-checked clean at lane start — v4 HEAD is
+exactly `dd0d9ff5`, no commits above it). A tier-4 SPA transcription
+lane: transcription + unit specs + a live Playwright walk, no oracle
+duplication (the server behavior is lane A's differential).
+
+### Unit 1 — the files-family wire contract (SPA 0.5.72)
+
+Lane B owns `apps/web/src/app/core/core-contract.ts` +
+`core-client.ts`; this unit authors the files-family block per the
+Shared contract (identical names in p4.6ae/af/ag/d3).
+
+- `core-contract.ts`: a new `// The general files family (P4.6af)`
+  section with the thirteen Request variants folded into `CoreRequest`
+  via `FilesFamilyRequest` (edited the union directly — lane B is the
+  file owner), plus the `FileEntry` (v4 `serializeFileEntry` shape —
+  BOTH `originalFilename` + `filename`, `filepath`, resolved
+  `folderPath`, defaulted `fileStatus`), `FolderEntry`, and
+  `FileAssociations` DTOs. `filesCleanupOrphans.mode` is optional (the
+  dry run omits it; the wet run sends `move`/`delete`).
+- `core-client.ts`: the read helpers `filesList` / `filesFoldersList`
+  / `filesGenerateThumbnails` (the last is fire-and-forget, `.catch`
+  swallowed — v4's post-load thumbnail-batch idiom). Mutations ride
+  `dispatch`/`dispatchData` directly in the browser so it can inspect
+  the associations envelope + the loud refusals.
+
+Reads go through `dispatchData` (raw `data`) — only the request
+`type`/param names are load-bearing on this side; lane A's route
+differential pins the response envelopes, reconciled name-for-name at
+unification. Gate: `ng test` 640 green, `ng build` clean.
