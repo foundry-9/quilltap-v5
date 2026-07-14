@@ -12,10 +12,12 @@ import { ActivatedRoute } from '@angular/router';
 import { AutonomousRoomDefaults } from '../../../autonomous/autonomous-room-defaults';
 import { AutonomousRoomsList } from '../../../autonomous/autonomous-rooms-list';
 import { CollapsibleCard } from '../../../ui/collapsible-card';
+import { DataRetentionSettings } from './data-retention-settings';
 
 /**
  * The Settings → Chat tab (v4 `components/settings/tabs/ChatTabContent.tsx`,
- * subsystem `salon`). This lane fits out only the two autonomous cards — the user
+ * subsystem `salon`). This lane fits out the Data Retention card (P4.d3, in v4's
+ * position ahead of Autonomous Rooms) plus the two autonomous cards — the user
  * defaults (`autonomous-rooms`) and the scheduled-rooms management list
  * (`autonomous-room-schedules`) — over `CollapsibleCard` with v4's card
  * titles/descriptions + `sectionId`s (the `?section=` deep link) ported verbatim.
@@ -30,7 +32,7 @@ import { CollapsibleCard } from '../../../ui/collapsible-card';
 @Component({
   selector: 'qt-settings-chat',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CollapsibleCard, AutonomousRoomDefaults, AutonomousRoomsList],
+  imports: [CollapsibleCard, AutonomousRoomDefaults, AutonomousRoomsList, DataRetentionSettings],
   template: `
     <div>
       <p class="qt-text-small qt-text-muted italic mb-6">
@@ -39,11 +41,22 @@ import { CollapsibleCard } from '../../../ui/collapsible-card';
       </p>
 
       <div class="space-y-4">
+        <!-- P4.d3: v4 places Data Retention between "Dangerous Content" (still a
+             loud deferral below) and "Autonomous Rooms". -->
+        <qt-collapsible-card
+          title="Data Retention"
+          description="How long inactive chats keep their regenerable working data"
+          sectionId="data-retention"
+          [defaultOpen]="defaultOpen()"
+          [forceOpen]="section() === 'data-retention'"
+        >
+          <qt-data-retention-settings />
+        </qt-collapsible-card>
+
         <qt-collapsible-card
           title="Autonomous Rooms"
           description="Defaults for private character-to-character rooms"
           sectionId="autonomous-rooms"
-          [defaultOpen]="defaultOpen()"
           [forceOpen]="section() === 'autonomous-rooms'"
         >
           <qt-autonomous-room-defaults />

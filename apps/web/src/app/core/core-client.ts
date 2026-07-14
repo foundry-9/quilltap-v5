@@ -13,6 +13,7 @@ import {
   type AutonomousRoomStatusDto,
   type AutonomousRoomSettingsPatch,
   type AutonomousRoomUpdateResult,
+  type DataRetentionSettingsDto,
 } from './core-contract';
 
 /** The interpreted `GET /health` result (the startup gate branches on this). */
@@ -256,6 +257,23 @@ export class CoreClient {
     this.eventSource?.close();
     this.eventSource = null;
     this.connection.set('closed');
+  }
+
+  // === P4.d3 (lane D): the data-retention setting ===
+  // Single-author block; the file owner (lane B) must not edit it. Read
+  // defensively via `dispatchData` (the settings precedent — no CoreResponse
+  // variant). The interfaces + DTO live in core-contract.ts's P4.d3 block.
+
+  /** v4 GET `/settings/data-retention` → the stale-chat window `{staleChatDays}`. */
+  async getDataRetentionSettings(): Promise<DataRetentionSettingsDto> {
+    const data = await this.dispatchData({ type: 'dataRetentionSettings' });
+    return data as unknown as DataRetentionSettingsDto;
+  }
+
+  /** v4 PUT `/settings/data-retention` → the parsed echo (throws on validation). */
+  async updateDataRetentionSettings(staleChatDays: number): Promise<DataRetentionSettingsDto> {
+    const data = await this.dispatchData({ type: 'dataRetentionSettingsUpdate', staleChatDays });
+    return data as unknown as DataRetentionSettingsDto;
   }
 }
 

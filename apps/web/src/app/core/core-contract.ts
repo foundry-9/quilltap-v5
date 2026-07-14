@@ -3237,7 +3237,14 @@ export type MemoryRequest =
   | ChatDocumentDeleteRequest
   | MountFilesListRequest
   // === P4.6z (lane A): the Scriptorium mount-file actions + system browse ===
-  | ScriptoriumRequest;
+  | ScriptoriumRequest
+  // === P4.d3 (lane D): the data-retention setting ===
+  // Single-author block (lane D); the file owner (lane B) must not edit it.
+  // Read defensively via `CoreClient.dispatchData` (the settings precedent — no
+  // CoreResponse variant added). The interfaces + DTO live in the P4.d3 block
+  // appended at the end of this file.
+  | DataRetentionSettingsRequest
+  | DataRetentionSettingsUpdateRequest;
 // P4.6u (lane C) — the Salon terminal-pane block.
 // Appended by lane C; single-author (lane B, the file owner, must not edit this
 // block). The terminal WebSocket + REST protocol types live in
@@ -3556,3 +3563,31 @@ export type ScriptoriumRequest =
   | MountFileUpdateRequest
   | MountBlobsListRequest
   | SystemBrowseDirectoryRequest;
+
+// ===========================================================================
+// P4.d3 (lane D) — the data-retention setting client surface.
+//
+// Single-author block (lane D). The file owner (lane B) must not edit it. The
+// wire request `type` names mirror the Shared contract; the response body
+// (`{staleChatDays}`) is read defensively through `CoreClient.dispatchData`, so
+// no CoreResponse variant is added (the P4.6x / settings precedent). The union
+// members are added inline in the CoreRequest union above with a P4.d3 marker.
+// ===========================================================================
+
+/** The instance-wide data-retention settings (v4 `dataRetention`). */
+export interface DataRetentionSettingsDto {
+  /** Days a chat may sit with no played message before its regenerable working
+   *  data is tidied by the nightly sweep (default 30; bounds 1–3650). */
+  staleChatDays: number;
+}
+
+/** v4 GET `/api/v1/settings/data-retention`. */
+export interface DataRetentionSettingsRequest {
+  type: 'dataRetentionSettings';
+}
+
+/** v4 PUT `/api/v1/settings/data-retention` — merge + validate + echo. */
+export interface DataRetentionSettingsUpdateRequest {
+  type: 'dataRetentionSettingsUpdate';
+  staleChatDays?: number;
+}

@@ -127,6 +127,17 @@ export default async function globalSetup(): Promise<void> {
       "isDefault INTEGER DEFAULT 0, tags TEXT DEFAULT '[]', " +
       'createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);',
   );
+  // The Salon fixture predates the `instance_settings` key/value store (a real
+  // instance's version guard creates it at boot). The P4.d3 Data Retention card
+  // WRITES `dataRetention` there; with the table absent the read tolerates it
+  // (default 30) but the PUT's INSERT errors. An EMPTY table is enough (the GET
+  // still falls back to the default). IF NOT EXISTS keeps it a no-op when present
+  // — schema materialization, NOT a fixture regen (the terminal_sessions precedent).
+  runCliWrite(
+    cli,
+    'CREATE TABLE IF NOT EXISTS instance_settings (' +
+      '"key" TEXT PRIMARY KEY, "value" TEXT NOT NULL);',
+  );
   // The P4.6ab/P4.6ac unification wire: copy the courier + image-attachment
   // chats from lane A's committed courier-images fixture into this instance so
   // the salon-courier-images beats find their content (they discover by

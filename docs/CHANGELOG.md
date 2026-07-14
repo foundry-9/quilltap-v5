@@ -2,6 +2,11 @@
 
 ## Recent Changes
 
+P4.d3 unit 6: Settings → Chat gains a Data Retention card — set how
+many days (1–3650, default 30) an inactive chat keeps its regenerable
+working data before the nightly sweep tidies it. The window autosaves
+and reads back live.
+
 P4.d3 unit 5: a new instance-wide Data Retention setting exposes the
 stale-chat window (staleChatDays, default 30, bounded 1–3650) over a
 GET/PUT dispatch surface, with validation of out-of-range or

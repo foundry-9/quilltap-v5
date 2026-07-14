@@ -10840,3 +10840,28 @@ Regen recipe: build the settings fixture
 oracle via the `/tmp` mirror (`--roots "$PWD" --roots "$TMPO/cases" --
 settings-routes`, `QT_ORACLE_OUT=/tmp/oracle-settings-routes.ndjson`), then run
 with `QT_ORACLE_SETTINGS_ROUTES` + `QT_FIXTURE_SETTINGS` set.
+
+### P4.d3 unit 6 (Tier 2) — the SPA Data Retention card — LANDED
+
+New `apps/web/src/app/screens/settings/chat/data-retention-settings.ts` ports
+v4's `DataRetentionSettings.tsx`: a bounded number input (1–3650, default 30)
+that loads the current window via `CoreClient.getDataRetentionSettings` and
+autosaves on blur via `updateDataRetentionSettings` — an unusable entry reverts
+(bounds live in the copy), an unchanged value skips the round-trip. v4's steampunk
+microcopy carries over verbatim. Wired into `screens/settings/chat/chat-tab.ts`
+in v4's position (ahead of Autonomous Rooms; the first card takes `defaultOpen`),
+with the `data-retention` `sectionId` deep link; the loud-deferral placeholder is
+unchanged (Data Retention was never on it — it's NEW in v4).
+
+Contract: lane D appended ONE delimited `// === P4.d3 ===` block to
+`core-contract.ts` (the two request interfaces + `DataRetentionSettingsDto`, plus
+two members in the `CoreRequest` union with a P4.d3 marker — read defensively via
+`dispatchData`, no `CoreResponse` variant, the P4.6x precedent) and to
+`core-client.ts` (`getDataRetentionSettings` / `updateDataRetentionSettings`).
+
+Verification: 4 unit specs (`data-retention-settings.spec.ts`) — load / save /
+revert-out-of-range / skip-unchanged (ng test **622** green); `ng build` clean; a
+live e2e beat added to the existing `e2e/settings-autonomous-flow.spec.ts` (NOT
+lane B's two new spec files) — deep-link the card, read the default 30, save 45
+(waiting on the update dispatch response), reload, read 45 back through the live
+GET/PUT dispatch surface.

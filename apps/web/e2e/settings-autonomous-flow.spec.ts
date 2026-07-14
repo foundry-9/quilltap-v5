@@ -121,6 +121,35 @@ test.describe('P4.6ad — autonomous-rooms vertical (settings + new-chat)', () =
     await expect(page.getByText('Scheduled Autonomous Rooms', { exact: true })).toBeVisible();
   });
 
+  test('the Data Retention card loads, saves, and persists the stale-chat window', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await maybeUnlock(page);
+
+    // The card is deep-linked open; it loads the current window (default 30).
+    await page.goto('/settings?tab=chat&section=data-retention');
+    const input = page.locator('#stale-chat-days');
+    await expect(input).toHaveValue('30', { timeout: 15_000 });
+
+    // Change it and commit on blur (live PUT through the dispatch surface). Wait
+    // for the update dispatch to resolve before reloading (the draft reflects the
+    // typed value immediately, so the response is the real sync point).
+    await input.fill('45');
+    const saved = page.waitForResponse(
+      (r) =>
+        r.url().includes('/api/dispatch') &&
+        r.request().method() === 'POST' &&
+        (r.request().postData() ?? '').includes('dataRetentionSettingsUpdate'),
+    );
+    await input.blur();
+    await saved;
+
+    // Reload — the persisted value (live GET) comes back.
+    await page.goto('/settings?tab=chat&section=data-retention');
+    await expect(page.locator('#stale-chat-days')).toHaveValue('45', { timeout: 15_000 });
+  });
+
   test('the New-Chat autonomous toggle swaps in the enclave editor card', async ({ page }) => {
     await page.goto('/');
     await maybeUnlock(page);
