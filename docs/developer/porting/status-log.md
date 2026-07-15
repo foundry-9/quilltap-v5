@@ -12883,3 +12883,27 @@ Angular never re-runs a `[value]` binding whose bound value never changed. The
 guard bites; it isn't decoration.
 
 **Specs** (`async-select-cards.spec.ts`, 19 cases). `ng test` 821 → 840.
+
+## P4.6an unit 7 — the Chat tab in v4's full 16-card order; the placeholder retired
+
+`chat-tab.ts` mounts all sixteen v4 cards in v4's exact order
+(`ChatTabContent.tsx` L70-197), each with v4's title / description /
+`sectionId` (the `?tab=chat&section=<id>` deep link, via the existing
+`forceOpen` binding). The loud-deferral placeholder block — the one that
+enumerated the eleven cards as "not yet fitted out" — is GONE, and the header
+comment now records the cards' lineage (P4.6al / P4.d3 / P4.6ad / P4.6an)
+instead of a deferral list.
+
+**v4's order is load-bearing to reproduce and easy to "tidy" by accident:**
+Composer and Auto-Scroll sit BETWEEN Composition Mode and Text Replacement,
+and the nine engine-facing cards sit between Text Replacement and Data
+Retention — i.e. the new cards do NOT append. `chat-tab.spec.ts` pins the full
+sixteen-title order AND the sixteen sectionIds as a single table transcribed
+from v4, and asserts the placeholder copy is gone.
+
+**Sixteen cards, ONE GET:** every card (the eleven new ones plus the
+autonomous defaults) reads through the shared `chatSettingsKeys.all` query, so
+they dedupe into a single settings fetch — the point of building the shared
+query rather than eleven independent loads.
+
+`ng test` 840 → 843; `ng build` clean.

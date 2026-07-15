@@ -12,29 +12,38 @@ import { ActivatedRoute } from '@angular/router';
 import { AutonomousRoomDefaults } from '../../../autonomous/autonomous-room-defaults';
 import { AutonomousRoomsList } from '../../../autonomous/autonomous-rooms-list';
 import { CollapsibleCard } from '../../../ui/collapsible-card';
+import { AgentModeSettings } from './agent-mode-settings';
+import { AnswerConfirmationSettings } from './answer-confirmation-settings';
+import { AutoScrollSettings } from './auto-scroll-settings';
+import { AutomationSettings } from './automation-settings';
+import { ComposerSpellcheckSettings } from './composer-spellcheck-settings';
 import { CompositionModeSettings } from './composition-mode-settings';
+import { ContextCompressionSettings } from './context-compression-settings';
+import { DangerousContentSettings } from './dangerous-content-settings';
 import { DataRetentionSettings } from './data-retention-settings';
+import { ImageDescriptionSettings } from './image-description-settings';
+import { MemoryCascadeSettings } from './memory-cascade-settings';
 import { TextReplacementSettings } from './text-replacement-settings';
+import { ThinkingDisplaySettings } from './thinking-display-settings';
+import { TokenDisplaySettings } from './token-display-settings';
 
 /**
  * The Settings → Chat tab (v4 `components/settings/tabs/ChatTabContent.tsx`,
- * subsystem `salon`). This lane fits out the Data Retention card (P4.d3, in v4's
- * position ahead of Autonomous Rooms) plus the two autonomous cards — the user
- * defaults (`autonomous-rooms`) and the scheduled-rooms management list
- * (`autonomous-room-schedules`) — over `CollapsibleCard` with v4's card
- * titles/descriptions + `sectionId`s (the `?section=` deep link) ported verbatim.
+ * subsystem `salon`) — now FULLY fitted out: all sixteen v4 cards, in v4's exact
+ * order, with v4's titles/descriptions + `sectionId`s (the `?section=` deep
+ * link) ported verbatim.
  *
- * The Composition Mode (v4's first) and Text Replacement cards ride here
- * (P4.6al) — the former's default `chat_settings.compositionModeDefault` seeds
- * each new chat's `documentEditingMode`; the latter is the CRUD editor over the
- * global text-replacement rule list + its `textReplacementsEnabled` gate.
+ * The order is v4's, and is reproduced rather than tidied: Composer and
+ * Auto-Scroll sit BETWEEN Composition Mode and Text Replacement, and the nine
+ * engine-facing cards sit between Text Replacement and Data Retention. Every
+ * card reads and writes the one `chat_settings` row through the shared
+ * `chatSettings` query (`chat-settings.api.ts`), so mounting sixteen of them
+ * costs ONE GET.
  *
- * DEFERRED LOUDLY (named, not silent): v4's other Chat-tab cards — Composer,
- * Auto-Scroll, Token Display, Context Compression, Memory Cascade, Image
- * Description, Automation, Agent Mode, Thinking / Reasoning, Answer Confirmation,
- * and Dangerous Content — each land in their own settings order. They are
- * enumerated in the "not yet fitted out" placeholder below rather than rendered
- * as dead cards.
+ * Cards by lineage: Composition Mode + Text Replacement (P4.6al), Data
+ * Retention (P4.d3), the two autonomous cards (P4.6ad), and the eleven landed
+ * by P4.6an — which retired the "not yet fitted out" placeholder that used to
+ * enumerate them.
  */
 @Component({
   selector: 'qt-settings-chat',
@@ -43,9 +52,20 @@ import { TextReplacementSettings } from './text-replacement-settings';
     CollapsibleCard,
     AutonomousRoomDefaults,
     AutonomousRoomsList,
+    AgentModeSettings,
+    AnswerConfirmationSettings,
+    AutoScrollSettings,
+    AutomationSettings,
+    ComposerSpellcheckSettings,
     CompositionModeSettings,
+    ContextCompressionSettings,
+    DangerousContentSettings,
     DataRetentionSettings,
+    ImageDescriptionSettings,
+    MemoryCascadeSettings,
     TextReplacementSettings,
+    ThinkingDisplaySettings,
+    TokenDisplaySettings,
   ],
   template: `
     <div>
@@ -55,7 +75,6 @@ import { TextReplacementSettings } from './text-replacement-settings';
       </p>
 
       <div class="space-y-4">
-        <!-- v4 places Composition Mode first in the Chat tab. -->
         <qt-collapsible-card
           title="Composition Mode"
           description="Whether new chats start in composition mode"
@@ -67,6 +86,24 @@ import { TextReplacementSettings } from './text-replacement-settings';
         </qt-collapsible-card>
 
         <qt-collapsible-card
+          title="Composer"
+          description="Composer behavior and input aids"
+          sectionId="composer-spellcheck"
+          [forceOpen]="section() === 'composer-spellcheck'"
+        >
+          <qt-composer-spellcheck-settings />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Auto-Scroll"
+          description="Whether the Salon follows new messages to the bottom"
+          sectionId="auto-scroll"
+          [forceOpen]="section() === 'auto-scroll'"
+        >
+          <qt-auto-scroll-settings />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
           title="Text Replacement"
           description="Replace literal triggers with replacement text on word boundaries"
           sectionId="text-replacements"
@@ -75,8 +112,87 @@ import { TextReplacementSettings } from './text-replacement-settings';
           <qt-text-replacement-settings />
         </qt-collapsible-card>
 
-        <!-- P4.d3: v4 places Data Retention between "Dangerous Content" (still a
-             loud deferral below) and "Autonomous Rooms". -->
+        <qt-collapsible-card
+          title="Token Display"
+          description="Configure token count and cost display"
+          sectionId="token-display"
+          [forceOpen]="section() === 'token-display'"
+        >
+          <qt-token-display-settings />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Context Compression"
+          description="Configure how older messages are compressed"
+          sectionId="context-compression"
+          [forceOpen]="section() === 'context-compression'"
+        >
+          <qt-context-compression-settings />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Memory Cascade"
+          description="Control how memories behave when messages change"
+          sectionId="memory-cascade"
+          [forceOpen]="section() === 'memory-cascade'"
+        >
+          <qt-memory-cascade-settings />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Image Description"
+          description="Configure image description generation"
+          sectionId="image-description"
+          [forceOpen]="section() === 'image-description'"
+        >
+          <qt-image-description-settings />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Automation"
+          description="Configure automatic detection features"
+          sectionId="automation"
+          [forceOpen]="section() === 'automation'"
+        >
+          <qt-automation-settings />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Agent Mode"
+          description="Configure iterative tool use with self-correction"
+          sectionId="agent-mode"
+          [forceOpen]="section() === 'agent-mode'"
+        >
+          <qt-agent-mode-settings />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Thinking / Reasoning"
+          description="Show reasoning models' chain-of-thought in chat (display only)"
+          sectionId="thinking-display"
+          [forceOpen]="section() === 'thinking-display'"
+        >
+          <qt-thinking-display-settings />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Answer Confirmation"
+          description="Vet looked-up answers against what the character actually knew this turn"
+          sectionId="answer-confirmation"
+          [forceOpen]="section() === 'answer-confirmation'"
+        >
+          <qt-answer-confirmation-settings />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Dangerous Content"
+          description="Configure content detection, routing, and display behavior"
+          sectionId="dangerous-content"
+          [forceOpen]="section() === 'dangerous-content'"
+        >
+          <qt-dangerous-content-settings />
+        </qt-collapsible-card>
+
         <qt-collapsible-card
           title="Data Retention"
           description="How long inactive chats keep their regenerable working data"
@@ -103,22 +219,6 @@ import { TextReplacementSettings } from './text-replacement-settings';
         >
           <qt-autonomous-rooms-list />
         </qt-collapsible-card>
-
-        <!-- LOUD DEFERRAL: the remaining v4 Chat-tab cards, each awaiting its own order. -->
-        <div class="rounded-xl border qt-border-default qt-bg-card/40 p-4">
-          <p class="font-medium text-foreground">
-            The rest of the Chat cabinet is not yet fitted out
-          </p>
-          <p class="qt-text-small qt-text-muted mt-1">
-            These dials are ported elsewhere and will be hung here in their own rounds — for the
-            moment they remain in the workshop:
-          </p>
-          <p class="qt-text-xs qt-text-muted mt-2 italic">
-            Composer · Auto-Scroll · Token Display · Context Compression · Memory Cascade · Image
-            Description · Automation · Agent Mode · Thinking / Reasoning · Answer Confirmation ·
-            Dangerous Content.
-          </p>
-        </div>
       </div>
     </div>
   `,

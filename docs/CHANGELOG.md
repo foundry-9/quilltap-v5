@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.6an unit 7: the Settings -> Chat tab is fully fitted out. All sixteen v4
+cards are mounted in v4's exact order (Composer and Auto-Scroll between
+Composition Mode and Text Replacement; the nine engine-facing cards between
+Text Replacement and Data Retention), each with v4's title, description, and
+`sectionId` deep link. The "not yet fitted out" placeholder that enumerated
+the eleven missing cards is removed. A tab spec pins the order and the
+sectionIds against `ChatTabContent.tsx`, since v4's order is neither
+alphabetical nor thematic and is easy to tidy by accident.
+
 P4.6an unit 6: the last two Chat-tab cards land — Image Description (the
 primary + uncensored-fallback vision pickers, each a bare nullable scalar
 over the vision-capable connection profiles) and Dangerous Content (the
