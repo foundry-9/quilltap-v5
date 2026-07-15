@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Dogfood pass 2026-07-15 wrap-up recorded in the findings log's standing
+notes: verified composer marks/paste/character-edit round-trips, chat
+backgrounds (#9), chained-response render (#7), and the /files listing;
+the next pass starts at text replacements, composition mode, drafts,
+delete-with-associations, composer attach, and image generation. Docs
+only.
+
 Dogfood findings #10 and #11 recorded as NOT-A-BUG (v4-faithful,
 oracle-verified): the composer-vs-message-renderer dialect mismatch
 (`==highlight==` literal, `*word*` italic in sent messages — v4's own
