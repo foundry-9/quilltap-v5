@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Planned the P4.6an round (one lane): the eleven remaining Chat-tab
+settings cards + the autonomous cron next-run preview, closing the
+last two P4.6ad deferrals. Work order committed at
+`docs/developer/porting/work-orders/p4.6an-chat-tab-cards-cron-preview.md`;
+survey-verified SPA-only (the server settings parse already covers
+every card key); v4 baseline `02865bdb` drift-checked at planning.
+Docs only.
+
 Dogfood pass 2026-07-15 wrap-up recorded in the findings log's standing
 notes: verified composer marks/paste/character-edit round-trips, chat
 backgrounds (#9), chained-response render (#7), and the /files listing;

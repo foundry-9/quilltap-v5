@@ -1334,3 +1334,26 @@ candidates: the remaining form-field adoptions as a rider on any SPA
 order, the deferred autonomous-rooms cards (cron preview + the 13
 Chat-tab cards), P4.7 (Tauri), or a dogfood pass over the
 editor/backgrounds/files story.
+
+**The P4.6an round is PLANNED (2026-07-14): the Chat-tab settings
+cards remainder + the cron next-run preview — ONE lane**
+(`work-orders/p4.6an-chat-tab-cards-cron-preview.md`), closing the
+two remaining P4.6ad deferrals (the Salon Edit-Enclave entry landed
+in P4.6af). Scope: the eleven still-deferred v4 Chat-tab cards
+(Composer, Auto-Scroll, Token Display, Context Compression, Memory
+Cascade, Image Description, Automation, Agent Mode,
+Thinking / Reasoning, Answer Confirmation, Dangerous Content — of
+the original "13", Composition Mode / Text Replacement / Data
+Retention have since landed via P4.6al + P4.d3) mounted in v4's
+exact 16-card order, plus the live `croner` next-run preview in the
+shared autonomous room card. Survey-verified SPA-only: the server
+Zod-parse already covers every key the cards write
+(`settings_routes_equivalence` stands), no new dispatch variants, no
+new fixtures; v5 already consumes `autoScrollOnResponseComplete` and
+`thinkingDisplay` — the cards are the missing editors. Deliberately
+NOT split (all eleven cards mount in one `chat-tab.ts` over one PUT
+recipe; the cron preview rides the same tab's shared card) and
+deliberately excluded: the Salon token/cost display rendering (a
+Salon slice), P4.7 (Tauri), the form-field adoptions (a rider on any
+SPA order). v4 baseline `02865bdb` (drift-checked at planning: no
+movement). Round record: `status-log.md`.
