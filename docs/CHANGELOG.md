@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.6an unit 1 (the order's server-gap contingency, NOT expected to
+fire): `dangerousContentSettings` now goes through a hand-rolled
+Zod-faithful parse instead of a serde struct round-trip. The struct
+path dropped an explicit `null` on the three `.nullable().optional()`
+fields (`uncensoredTextProfileId`, `uncensoredImageProfileId`,
+`customClassificationPrompt`) where v4's Zod keeps it, rejected a
+partial bag where v4 materializes defaults, and re-emitted an integral
+`threshold` as `1.0` where v4 writes `1`. All three are reachable from
+the Dangerous Content card this round ports. Proven by two new
+`settings_routes_equivalence` cases (`s_put_danger_nulls`,
+`s_put_danger_partial`) over a fresh `02865bdb` oracle: 32/32, and all
+three defects confirmed to fail the diff before the fix.
+
 Planned the P4.6an round (one lane): the eleven remaining Chat-tab
 settings cards + the autonomous cron next-run preview, closing the
 last two P4.6ad deferrals. Work order committed at

@@ -268,6 +268,7 @@ fn settings_routes_match_v4() {
         }
         n += 1;
     }
-    assert!(n >= 19, "expected >= 19 cases, got {n}");
+    // 19 at P4.6d + the two P4.6an dangerousContentSettings cases.
+    assert!(n >= 21, "expected >= 21 cases, got {n}");
     eprintln!("settings-routes differential: {n} cases matched");
 }

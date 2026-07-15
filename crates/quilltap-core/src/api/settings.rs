@@ -391,6 +391,100 @@ fn zod_theme_preference(v: &Value) -> Result<chat_settings::SettingsColVal, Stri
         .map_err(|_| err())
 }
 
+/// v4 `DangerousContentSettingsSchema.parse` over a PUT sub-bag (a route-level
+/// parse, `settings/chat/route.ts` L165 — NOT the repo's merge-then-validate, so
+/// the input bag stands alone and the Zod defaults materialize over whatever is
+/// absent): `mode` defaults `'OFF'`, `threshold` `0.7`, `scanTextChat` `true`,
+/// `scanImagePrompts` `true`, `scanImageGeneration` `false`, `displayMode`
+/// `'SHOW'`, `showWarningBadges` `true`; the three `.nullable().optional()`
+/// fields — `uncensoredTextProfileId`, `uncensoredImageProfileId`,
+/// `customClassificationPrompt` — KEEP a present `null` and are OMITTED when
+/// absent; unknown keys are stripped; output in schema field order.
+///
+/// `threshold` is stored as the INCOMING `Value` rather than round-tripped
+/// through `f64`: v4 stringifies the parsed JS number, so an integral `1`
+/// re-emits as `1` — a `f64` round-trip would write `1.0`. The `.min(0).max(1)`
+/// bound is enforced here; the UUID format check on the two ids is the same
+/// documented seam as {@link zod_cheap_llm_settings} (the corpus sends valid
+/// ids), and a type mismatch collapses to `Invalid dangerous content settings`
+/// (the Zod-throw-message seam — v4 surfaces the raw `ZodError` text).
+fn zod_dangerous_content_settings(v: &Value) -> Result<chat_settings::SettingsColVal, String> {
+    let err = || "Invalid dangerous content settings".to_string();
+    let o = v.as_object().ok_or_else(err)?;
+    let mut out = Map::new();
+
+    let enum_field =
+        |key: &str, default: &'static str, allowed: &[&str]| -> Result<Value, String> {
+            match o.get(key) {
+                None => Ok(json!(default)),
+                Some(Value::String(s)) if allowed.contains(&s.as_str()) => Ok(json!(s)),
+                Some(_) => Err(err()),
+            }
+        };
+    let bool_default = |key: &str, default: bool| -> Result<Value, String> {
+        match o.get(key) {
+            None => Ok(json!(default)),
+            Some(Value::Bool(b)) => Ok(json!(b)),
+            Some(_) => Err(err()),
+        }
+    };
+    let opt_nullable = |key: &str, out: &mut Map<String, Value>| -> Result<(), String> {
+        match o.get(key) {
+            None => Ok(()),
+            Some(Value::Null) => {
+                out.insert(key.to_string(), Value::Null);
+                Ok(())
+            }
+            Some(Value::String(s)) => {
+                out.insert(key.to_string(), json!(s));
+                Ok(())
+            }
+            Some(_) => Err(err()),
+        }
+    };
+
+    out.insert(
+        "mode".into(),
+        enum_field("mode", "OFF", &["OFF", "DETECT_ONLY", "AUTO_ROUTE"])?,
+    );
+    let threshold = match o.get("threshold") {
+        None => json!(0.7),
+        Some(n @ Value::Number(num)) => {
+            let f = num.as_f64().ok_or_else(err)?;
+            if !(0.0..=1.0).contains(&f) {
+                return Err(err());
+            }
+            n.clone()
+        }
+        Some(_) => return Err(err()),
+    };
+    out.insert("threshold".into(), threshold);
+    out.insert("scanTextChat".into(), bool_default("scanTextChat", true)?);
+    out.insert(
+        "scanImagePrompts".into(),
+        bool_default("scanImagePrompts", true)?,
+    );
+    out.insert(
+        "scanImageGeneration".into(),
+        bool_default("scanImageGeneration", false)?,
+    );
+    opt_nullable("uncensoredTextProfileId", &mut out)?;
+    opt_nullable("uncensoredImageProfileId", &mut out)?;
+    out.insert(
+        "displayMode".into(),
+        enum_field("displayMode", "SHOW", &["SHOW", "BLUR", "COLLAPSE"])?,
+    );
+    out.insert(
+        "showWarningBadges".into(),
+        bool_default("showWarningBadges", true)?,
+    );
+    opt_nullable("customClassificationPrompt", &mut out)?;
+
+    serde_json::to_string(&Value::Object(out))
+        .map(chat_settings::SettingsColVal::Text)
+        .map_err(|_| err())
+}
+
 /// Nullable-string column: `null` → SQL NULL, a string → TEXT, anything else →
 /// error.
 fn nullable_string(label: &str, v: &Value) -> Result<chat_settings::SettingsColVal, String> {
@@ -581,7 +675,7 @@ fn build_settings_assignments(
     if let Some(v) = obj.get("dangerousContentSettings") {
         out.push((
             "dangerousContentSettings",
-            json_field::<chat_settings::DangerousContentSettings>("dangerous content settings", v)?,
+            zod_dangerous_content_settings(v)?,
         ));
     }
     if let Some(v) = obj.get("autoLockSettings") {

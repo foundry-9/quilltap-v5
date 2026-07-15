@@ -12574,3 +12574,81 @@ proof).
 
 **Final versions:** core 0.0.221, harness 0.0.200, web 0.0.21, host
 0.0.17, SPA 0.5.93.
+
+## P4.6an unit 1 — the `dangerousContentSettings` Zod-faithful parse (server-gap contingency)
+
+**The order predicted an SPA-only lane** ("the server already Zod-parses
+every key these cards write — verified"). Re-verifying the specific
+sub-fields at lane start, per the order's own instruction, turned up one
+genuine gap. It is NOT a missing key — it is the PARSE SEMANTICS of a key
+the survey counted as covered.
+
+`api::settings::zod_chat_settings_update` routed `dangerousContentSettings`
+through `json_field::<chat_settings::DangerousContentSettings>` — a serde
+struct round-trip. v4's route (`settings/chat/route.ts:165`) instead runs
+`DangerousContentSettingsSchema.parse` — a ROUTE-level parse, not the repo's
+merge-then-validate — so the input bag stands alone. Three divergences, all
+reachable from the Dangerous Content card this round ports:
+
+1. **Explicit `null` dropped.** The three `.nullable().optional()` fields
+   (`uncensoredTextProfileId`, `uncensoredImageProfileId`,
+   `customClassificationPrompt`) are `Option<String>` +
+   `skip_serializing_if = "Option::is_none"`, which cannot tell `null` from
+   absent. Zod KEEPS a present `null`. The card reaches this the moment the
+   user picks "Auto-detect" in either uncensored picker or clears the custom
+   prompt: v4's handler spread-merges the whole bag, so the null goes on the
+   wire.
+2. **A partial bag is rejected.** The struct's non-`Option` fields are
+   required; v4's Zod defaults every absent key (`mode` `'OFF'`, `threshold`
+   `0.7`, `scanTextChat`/`scanImagePrompts`/`showWarningBadges` `true`,
+   `scanImageGeneration` `false`, `displayMode` `'SHOW'`).
+3. **An integral `threshold` re-emitted as `1.0`.** `f64` → serde writes
+   `1.0`; v4 stringifies the parsed JS number → `1`. The threshold slider's
+   max is exactly `1`.
+
+**The port:** `zod_dangerous_content_settings`, hand-rolled on the
+`zod_cheap_llm_settings` precedent (same file) — defaults materialize,
+present nulls survive, unknown keys strip, output in schema field order.
+`threshold` stores the INCOMING `Value` rather than round-tripping through
+`f64`, which is what keeps `1` as `1`. The invalid-input arm keeps the
+existing `Invalid dangerous content settings` message: v4 surfaces the raw
+`ZodError` text there, the same documented Zod-throw-message seam
+`zod_cheap_llm_settings` carries, so no invalid-input oracle case is added.
+
+**Differential:** `settings_routes_equivalence` 19 → 32 cases matched (the
+floor assert raised 19 → 21 so the new cases actually gate — the
+"fixture-guarded assertions prove nothing if the guard never fires" lesson).
+Two new oracle cases over the EXISTING committed fixture (no fixture change,
+no dependent oracle invalidated):
+- `s_put_danger_nulls` — the card's exact "Auto-detect" payload: full bag,
+  `threshold: 1`, all three nullable-optionals explicit `null`. Oracle
+  stores all three keys as `null` and `"threshold":1`.
+- `s_put_danger_partial` — `{mode: 'DETECT_ONLY'}` alone. Oracle materializes
+  all seven defaults and OMITS the three nullable-optionals.
+
+**Verified the test bites:** re-pointing the dispatch back at `json_field`
+fails the diff on exactly the three predicted defects (`"threshold":1.0`,
+and the three null keys absent) — the fix is load-bearing, not decorative.
+
+**Regen recipe (both from the v4 checkout, Node 24, jest ignores `.claude/`
+so the case file is mirrored to /tmp — and it MUST be the WORKTREE copy):**
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+cd ~/source/quilltap-server
+QT_FIXTURE_SETTINGS_MAIN=/tmp/qt-settings-fixture.db \
+  $N/node --import tsx $V5W/harness/oracle/fixtures/build-settings-fixture.ts
+TMPO=/tmp/qt-settings-oracle; rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/settings-routes.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/settings.json"        "$TMPO/fixtures/"
+QT_FIXTURE_SETTINGS_MAIN=/tmp/qt-settings-fixture.db \
+QT_ORACLE_OUT=/tmp/oracle-settings-routes.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- settings-routes
+# then, from the v5 worktree:
+QT_ORACLE_SETTINGS_ROUTES=/tmp/oracle-settings-routes.ndjson \
+QT_FIXTURE_SETTINGS=/tmp/qt-settings-fixture.db \
+  cargo test -p quilltap-harness --test settings_routes_equivalence
+```
+
+**Gate:** fmt clean; clippy `-D warnings`; `cargo test --workspace` green
+(917-test core suite + all differentials).

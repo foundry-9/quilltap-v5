@@ -284,6 +284,45 @@ describe('settings-routes oracle', () => {
       body: { themePreference: { colorMode: 'dark' } },
     },
     {
+      // P4.6an — the Dangerous Content card's exact "Auto-detect" payload: the
+      // client spread-merges the whole bag and sends the three
+      // `.nullable().optional()` fields as EXPLICIT null. Zod keeps a present
+      // null, so the stored bytes carry the keys.
+      name: 's_put_danger_nulls',
+      family: 'settings_chat',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: {
+        dangerousContentSettings: {
+          mode: 'AUTO_ROUTE',
+          threshold: 1,
+          scanTextChat: true,
+          scanImagePrompts: true,
+          scanImageGeneration: false,
+          uncensoredTextProfileId: null,
+          uncensoredImageProfileId: null,
+          displayMode: 'BLUR',
+          showWarningBadges: false,
+          customClassificationPrompt: null,
+        },
+      },
+    },
+    {
+      // P4.6an — a PARTIAL dangerousContentSettings bag. This is a ROUTE-level
+      // `DangerousContentSettingsSchema.parse` (not the repo's merge-then-
+      // validate), so every absent key takes its Zod default and the three
+      // nullable-optionals stay ABSENT from the stored bytes.
+      name: 's_put_danger_partial',
+      family: 'settings_chat',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { dangerousContentSettings: { mode: 'DETECT_ONLY' } },
+    },
+    {
       name: 's_put_reject',
       family: 'settings_chat',
       user: 'A',
