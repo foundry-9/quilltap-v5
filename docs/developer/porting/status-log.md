@@ -13518,3 +13518,41 @@ reused across specs).
 
 **Gate:** the spec 4/4 green in isolation, run TWICE to rule out flake. SPA
 0.5.107.
+
+## P4.6ap unit 7 — the token-badge beat's in-suite fix (lane B)
+
+The unit-6 badge beat passed in isolation (twice) and FAILED in-suite:
+`expect(page.locator('qt-token-badge')).toHaveCount(1)` → **Received: 2**.
+
+**Cause (confirmed by reproduction, not guessed** — `playwright test m4-salon
+m4b-salon salon-token-cost-flow` reproduces it exactly**):** `m4-salon.spec.ts`
+sends a LIVE turn into the same Solo Voyage chat through the mock LLM, and that
+reply arrives carrying REAL token counts — so it grows a badge of its own. In
+isolation there is one badge; after m4-salon there are two.
+
+**The assertion was wrong, not the port.** An absolute count across a chat that
+other specs can grow is a claim about SUITE HISTORY, not about the badge. Now
+scoped to the row (`locator('qt-message-row').filter({hasText: …})`), with the
+gate's other arm asserted per-row too (the fixture's user message has null
+counts, so it stays bare with the flag ON) — neither claim depends on history.
+This is the standing "normalize starting state, don't assert arrival value"
+rule in a new costume; bank the corollary: **never assert an absolute count of
+anything a sibling spec's live turn can add to.**
+
+**A pleasant side-effect of the failure:** it independently confirms that the
+message finalizer stores provider ACTUALS and the badge renders them for a
+live turn — not just for the fixture's canned row. Worth more than the
+assertion it broke.
+
+**Gate:** full Playwright **60/60, zero skips** (was 56 before this lane; +4).
+`ng test` 941, `ng build` clean, `cargo fmt --check` clean, clippy `-D warnings`
+BOTH feature sets clean, `cargo test --workspace` **314 suites / 1327 tests / 0
+failed** — identical to the pre-lane baseline, proving the lane touched no
+crate (`git diff --name-only main...HEAD -- crates harness` is EMPTY).
+
+**One honest note for the unifier:** an intermediate full-suite run reported
+`1 skipped`, and the next reported `60 passed, zero skips`. The suite carries
+several runtime-guarded beats that skip on fixture-content discovery
+(salon-courier-images, salon-autonomous-entry); one of those guards is
+intermittent. It is not this lane's — the clean 60/60 run includes all four
+new beats — but it is worth an eye at unification.

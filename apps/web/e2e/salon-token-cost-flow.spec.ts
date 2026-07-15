@@ -97,16 +97,34 @@ test.describe('P4.6ap — the per-message token badge (LIVE)', () => {
     await toggleOn.check();
     await saved;
 
-    // ON: the badge renders the fixture's stored ACTUALS (8 prompt / 4 completion).
+    // ON: the badge renders the fixture's stored ACTUALS (8 prompt / 4 completion)
+    // on the one message that HAS counts.
+    //
+    // Scoped to that ROW, deliberately. An absolute badge count across the chat
+    // would depend on suite history: `m4-salon.spec.ts` sends a live turn into
+    // this same chat through the mock LLM, and that reply arrives with REAL token
+    // counts — so it grows a badge of its own and the count is 2 in-suite, 1 in
+    // isolation. (A pleasant confirmation that the finalizer stores actuals and
+    // the badge picks them up on a live turn — but not something to assert by
+    // counting.)
     await openSoloVoyage(page);
-    const badge = page.locator('qt-token-badge').first();
+    const withTokens = page
+      .locator('qt-message-row')
+      .filter({ hasText: 'Well met, traveller!' });
+    const badge = withTokens.locator('qt-token-badge');
     await expect(badge).toBeVisible({ timeout: 15_000 });
     await expect(badge.locator('[title="Prompt tokens"]')).toHaveText('8');
     await expect(badge.locator('[title="Completion tokens"]')).toHaveText('4');
 
-    // Exactly ONE badge: the other three Solo Voyage messages have null counts,
-    // so v4's `promptTokens || completionTokens` gate keeps them bare.
-    await expect(page.locator('qt-token-badge')).toHaveCount(1);
+    // And the gate's other arm, history-independent: the fixture's user message
+    // has null counts, so v4's `promptTokens || completionTokens` keeps it bare
+    // even with the flag ON.
+    await expect(
+      page
+        .locator('qt-message-row')
+        .filter({ hasText: 'Hello there, captain.' })
+        .locator('qt-token-badge'),
+    ).toHaveCount(0);
 
     // Leave the instance as we found it (the shared server is reused).
     const toggleOff = await tokenDisplayToggle(page, 'Show Token Count on Messages');

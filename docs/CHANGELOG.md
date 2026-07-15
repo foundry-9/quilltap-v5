@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.6ap unit 7: fix the token-badge beat's in-suite failure. The beat asserted
+an absolute badge count across the chat (1), which held in isolation but not
+in-suite: m4-salon.spec.ts sends a live turn into the same Solo Voyage chat
+through the mock LLM, and that reply arrives with real token counts, so it
+grows a badge of its own (Expected 1, Received 2). The assertion was wrong,
+not the port — and the failure incidentally confirms the finalizer stores
+actuals and the badge picks them up on a live turn. Now scoped to the message
+row, with the gate's other arm (a null-count message stays bare) asserted
+per-row too, so neither claim depends on suite history. Full Playwright 60/60,
+zero skips. SPA 0.5.108.
+
 P4.6ap unit 6 (tier 2): four live Playwright beats for the token/cost +
 story-background surfaces (salon-token-cost-flow.spec.ts). Two run LIVE
 against the real server: the per-message token badge following
