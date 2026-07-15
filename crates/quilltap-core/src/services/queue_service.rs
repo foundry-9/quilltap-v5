@@ -503,8 +503,18 @@ pub async fn enqueue_character_avatar_generation(
 /// enqueue). Priority `-1` (below interactive), `max_attempts` the default 3.
 ///
 /// The payload is `{ chatId, imageProfileId, characterIds, [sceneContext],
-/// [projectId] }` (v4's `StoryBackgroundGenerationPayload`). Returns
+/// projectId }` (v4's `StoryBackgroundGenerationPayload`). Returns
 /// `(jobId, is_new)`.
+///
+/// **`projectId` is ALWAYS written, `null` when the chat has no project.** The
+/// type marks it optional, but BOTH v4 call sites — `handleRegenerateBackground`
+/// and `queueStoryBackgroundIfEnabled` — build the payload literal with
+/// `projectId: chat.projectId ?? null`, so the key is never absent in practice.
+/// `project_id: None` here means exactly that explicit `null` (P4.6ao: the port
+/// previously OMITTED the key, which `cost_background_routes_equivalence`'s job-row
+/// diff caught). `sceneContext` keeps the insert-if-present shape — it too is
+/// passed by both call sites, so a `None` would mean a caller that genuinely
+/// omitted it.
 #[allow(clippy::too_many_arguments)]
 pub async fn enqueue_story_background_generation(
     db: &Db,
@@ -545,9 +555,14 @@ pub async fn enqueue_story_background_generation(
     if let Some(scene) = scene_context {
         payload.insert("sceneContext".into(), Value::String(scene.to_string()));
     }
-    if let Some(pid) = project_id {
-        payload.insert("projectId".into(), Value::String(pid));
-    }
+    // `projectId: chat.projectId ?? null` — always present; see the fn docs.
+    payload.insert(
+        "projectId".into(),
+        match project_id {
+            Some(pid) => Value::String(pid),
+            None => Value::Null,
+        },
+    );
 
     let job_id = enqueue_job_with_priority(
         db,

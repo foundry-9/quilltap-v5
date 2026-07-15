@@ -1011,35 +1011,129 @@ pub fn chat_get_cost(db: &Db, chat_id: &str, detailed: bool) -> Response {
     }
 }
 
-/// v4 `?action=regenerate-background` (`handleRegenerateBackground`) — the
-/// story-background GENERATION subsystem (image-profile prompt build,
-/// `lastBackgroundGeneratedAt`, the 30s poll loop) is a tier-3 deferral. Answer
-/// the loud typed refusal so the SPA gets a recognized `not_available`, not an
-/// unknown-action fallback.
-pub fn chat_regenerate_background_refusal() -> Response {
-    Response::error(
-        ErrorKind::Internal,
-        "The 'regenerate-background' chat action is recognized but not yet available.",
+/// v4 `?action=regenerate-background` — `handleRegenerateBackground`
+/// (`chats/[id]/actions/story-background.ts:19-86`). **Edge only:** every piece
+/// of machinery below it was already ported, so this validates, resolves, and
+/// enqueues — it does NOT generate. The generation JOB
+/// ([`crate::services::story_background_job`], W4.9c) is registered live in the
+/// host and picks the row up from the queue.
+///
+///   1. chat settings by USER → `!storyBackgroundsSettings?.enabled` → badRequest.
+///   2. [`resolve_image_profile_for_chat`] → falsy → badRequest.
+///   3. `chat.participants.filter(p => p.characterId)` (the TRUTHY filter — an
+///      empty-string characterId drops out too) → empty → badRequest.
+///   4. [`enqueue_story_background_generation`] — chat-level dedupe: any
+///      PENDING/PROCESSING story-background job for this chat is REUSED
+///      (`is_new = false`, same jobId), which is the only difference between the
+///      two success messages.
+///
+/// v4's catch → `serverError('Failed to queue story background regeneration')`;
+/// a `Db` failure lands there rather than on [`internal`], because that is the
+/// string v4 answers.
+pub async fn chat_regenerate_background(db: &Db, user_id: &str, chat_id: &str) -> Response {
+    let cid = chat_id.to_string();
+    let uid = user_id.to_string();
+
+    // The route's own pre-step (`handlers/post.ts`: "Verify ownership first") —
+    // a missing chat 404s before the action handler ever runs.
+    let loaded = read_main_mount(db, {
+        let cid = cid.clone();
+        let uid = uid.clone();
+        move |main, mount| {
+            let Some(chat) = chats_read::find_by_id(main, &cid)? else {
+                return Ok(None);
+            };
+            let settings = crate::db::chat_settings::find_by_user_id(main, &uid)?;
+            // Resolved under the same read so the profile tiers see one snapshot.
+            let enabled = settings
+                .as_ref()
+                .and_then(|cs| cs.get("storyBackgroundsSettings"))
+                .and_then(|s| s.get("enabled"))
+                .and_then(Value::as_bool)
+                == Some(true);
+            let profile = if enabled {
+                crate::services::image_profile_resolution::resolve_image_profile_for_chat(
+                    main,
+                    Some(mount),
+                    &uid,
+                    &chat,
+                    settings.as_ref(),
+                )
+            } else {
+                None
+            };
+            Ok(Some((chat, enabled, profile)))
+        }
+    });
+
+    let (chat, enabled, image_profile_id) = match loaded {
+        Ok(Some(v)) => v,
+        Ok(None) => return not_found("Chat"),
+        Err(_) => return server_error_regenerate(),
+    };
+
+    if !enabled {
+        return bad_request(
+            "Story backgrounds are not enabled. Enable them in Settings > Chat Settings > Story Backgrounds.",
+        );
+    }
+    let Some(image_profile_id) = image_profile_id else {
+        return bad_request(
+            "No image profile available for story background generation. Configure an image profile in Chat Settings.",
+        );
+    };
+
+    // `chat.participants.filter(p => p.characterId).map(p => p.characterId!)`.
+    let character_ids: Vec<String> = chat
+        .get("participants")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|p| p.get("characterId").and_then(Value::as_str))
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    if character_ids.is_empty() {
+        return bad_request("No characters in chat to generate background for.");
+    }
+
+    // `sceneContext: chat.title`, `projectId: chat.projectId ?? null`.
+    let scene_context = chat.get("title").and_then(Value::as_str);
+    let project_id = chat
+        .get("projectId")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+
+    match crate::services::queue_service::enqueue_story_background_generation(
+        db,
+        &uid,
+        &cid,
+        &image_profile_id,
+        &character_ids,
+        scene_context,
+        project_id,
     )
+    .await
+    {
+        Ok((job_id, is_new)) => Response::ChatMedia(json!({
+            "message": if is_new {
+                "Story background regeneration queued"
+            } else {
+                "Story background generation already in progress"
+            },
+            "queued": true,
+            "jobId": job_id,
+        })),
+        Err(_) => server_error_regenerate(),
+    }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn regenerate_background_is_a_loud_typed_refusal() {
-        match chat_regenerate_background_refusal() {
-            Response::Error(e) => {
-                assert_eq!(e.kind, ErrorKind::Internal);
-                assert!(
-                    e.message.contains("regenerate-background")
-                        && e.message.contains("not yet available"),
-                    "refusal message: {}",
-                    e.message
-                );
-            }
-            other => panic!("expected a typed refusal, got {other:?}"),
-        }
-    }
+/// v4's catch arm for the regenerate action.
+fn server_error_regenerate() -> Response {
+    Response::error(
+        ErrorKind::Internal,
+        "Failed to queue story background regeneration",
+    )
 }

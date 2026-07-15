@@ -13085,3 +13085,59 @@ asserted `?action=cost` → 400 — it used `cost` as its unknown-action example
 precisely BECAUSE cost was unserved. Re-pointed to `?action=bogus`, and the
 cost arms (raw body / no envelope / the `detailed=1` compare / the 404) added
 in its place.
+
+---
+
+## P4.6ao unit 2 — the `regenerate-background` un-refusal (tier 1)
+
+**Landed 2026-07-15** (lane A of the P4.6ao ∥ ap ∥ aq round).
+
+`chat_regenerate_background_refusal()` is GONE; the dispatch arm now runs
+`api::chat_media::chat_regenerate_background`, a faithful port of v4
+`handleRegenerateBackground` (`chats/[id]/actions/story-background.ts:19-86`).
+**Edge only** — every piece below it was already ported (the enqueue + dedupe,
+the profile resolution, and the generation JOB itself, which is registered
+live in the host spine). This unit validates, resolves, enqueues.
+
+Arms, all pinned: the route's own `findById` → `notFound('Chat')` pre-step;
+the three badRequest strings verbatim (disabled settings / no resolvable image
+profile / no character participants); the success/dedupe message split; the
+catch → `Failed to queue story background regeneration`.
+
+**The differential caught a real latent bug in shared code.**
+`enqueue_story_background_generation` OMITTED `projectId` from the job payload
+when the chat had no project (`if let Some(pid) = project_id`). But BOTH v4
+call sites — `handleRegenerateBackground` AND `queueStoryBackgroundIfEnabled`
+(the unit-3 caller) — build the payload literal with
+`projectId: chat.projectId ?? null`, so **the key is never absent in v4**. Now
+always written, `Null` when `None`. Verified inert for the job handler
+(`payload.get("projectId").and_then(Value::as_str)` — `null` and absent both
+yield `None`), and no test pinned the omission. No prior differential covered
+this enqueue's stored payload, which is why it survived W4.9c.
+
+**Two oracle-harness lessons banked:**
+
+1. **Processor-off (the P4.6y lesson, re-learned the hard way).** `enqueueJob`
+   KICKS v4's in-process job processor, which claimed the freshly-queued row
+   and flipped it `PENDING → PROCESSING` before the row dump — an artifact of
+   v4's runtime racing the case, not a behavior of the handler (and the port
+   runs no processor, so it would have diffed v4's scheduler against nothing).
+   `jest.doMock('@/lib/background-jobs/processor', … ensureProcessorRunning:
+   () => undefined)`.
+2. **A blanked field cannot carry an identity claim.** The dedupe case's whole
+   point is "the SAME jobId comes back" — but `jobId` is minted, so the body
+   diff blanks it. The first draft compared `body.data.jobId` on both calls;
+   the success body is UNWRAPPED (`body.jobId`), so it compared
+   `undefined === undefined` and **passed vacuously**. Now the oracle emits an
+   explicit `extra.sameJobId`, computed from the right path, with a guard that
+   throws if `jobId` is ever undefined. Generalizes: when a case's claim is
+   about a value you normalize away, emit the claim, not the value.
+
+Also: `readJobs` had to go through v4's REAL `BackgroundJobsRepository`
+(`findAll`) — the repo factory exposes NO background-jobs accessor, and a raw
+`getRawDatabase()` read does not see the manager's connection in this harness.
+
+**Differential:** `cost_background_routes_equivalence` — **7 → 13 cases**, all
+green, over a fresh `02865bdb` oracle. The six regenerate cases diff the
+response body AND the `background_jobs` rows (type / payload / priority −1 /
+maxAttempts 3 / status PENDING), plus the dedupe identity claim.

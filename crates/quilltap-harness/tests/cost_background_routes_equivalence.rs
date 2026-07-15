@@ -24,10 +24,15 @@ const TEST_PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Spec {
+    user_enabled_id: String,
+    user_disabled_id: String,
+    user_no_profile_id: String,
     chat_full_id: String,
     chat_legacy_id: String,
     chat_empty_id: String,
     chat_detailed_id: String,
+    chat_regen_id: String,
+    chat_no_chars_id: String,
     missing_id: String,
 }
 
@@ -120,8 +125,71 @@ fn status_of(kind: ErrorKind) -> u16 {
 }
 fn success_body(r: &Response) -> Option<Value> {
     match r {
-        Response::ChatCost(v) => Some(v.clone()),
+        Response::ChatCost(v) | Response::ChatMedia(v) => Some(v.clone()),
         _ => None,
+    }
+}
+
+/// `priority`/`maxAttempts` are `f64` on the Rust row but whole numbers on the
+/// wire — render them as JS would (`-1`, not `-1.0`) so the diff compares values,
+/// not float formatting.
+fn js_num(f: f64) -> Value {
+    if f.is_finite() && f.fract() == 0.0 {
+        Value::from(f as i64)
+    } else {
+        Value::from(f)
+    }
+}
+
+/// Every `background_jobs` row, id-ordered — the unit-2 enqueue proof, in the
+/// same shape the oracle emits (`payload` PARSED, so the two sides diff the
+/// object, not two different serializations of it).
+fn dump_jobs(db: &Db) -> Value {
+    let mut rows: Vec<Value> = db
+        .read_main(|conn| {
+            let jobs = quilltap_core::db::background_jobs::BackgroundJobsRepository::new(conn)
+                .find_all()?;
+            Ok(jobs
+                .into_iter()
+                .map(|j| {
+                    serde_json::json!({
+                        "id": j.id,
+                        "userId": j.user_id,
+                        "type": j.job_type,
+                        "status": j.status,
+                        "priority": js_num(j.priority),
+                        "maxAttempts": js_num(j.max_attempts),
+                        "payload": serde_json::from_str::<Value>(&j.payload)
+                            .unwrap_or(Value::Null),
+                    })
+                })
+                .collect::<Vec<_>>())
+        })
+        .expect("read background_jobs");
+    rows.sort_by_key(|v| v["id"].as_str().unwrap_or("").to_string());
+    Value::Array(rows)
+}
+
+/// Diff the `background_jobs` dump against the oracle's, blanking the minted id.
+fn check_jobs(oracle: &HashMap<String, Value>, name: &str, db: &Db, failed: &mut Vec<String>) {
+    let want = match oracle[name].get("jobs") {
+        Some(j) => j.clone(),
+        None => return,
+    };
+    let blank = vec!["id".to_string(), "jobId".to_string()];
+    let got = dump_jobs(db);
+    if norm(&got, &blank) != norm(&want, &blank) {
+        eprintln!(
+            "[{name}] JOBS MISMATCH:\n got {}\n want {}",
+            norm(&got, &blank),
+            norm(&want, &blank)
+        );
+        failed.push(format!("{name}:jobs"));
+    } else {
+        eprintln!(
+            "[{name}] jobs OK ({} row(s)).",
+            got.as_array().unwrap().len()
+        );
     }
 }
 
@@ -247,6 +315,77 @@ fn cost_background_routes_match_oracle() {
         ),
         &mut failed,
     );
+
+    // ── Unit 2: ?action=regenerate-background ──
+    // The settings arm is chosen by the USER the call runs as (v4 reads chat
+    // settings by user) — the same three fixture users the oracle signs in as.
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    for (name, user, chat) in [
+        (
+            "regen_disabled",
+            &spec.user_disabled_id,
+            &spec.chat_regen_id,
+        ),
+        (
+            "regen_no_image_profile",
+            &spec.user_no_profile_id,
+            &spec.chat_regen_id,
+        ),
+        (
+            "regen_no_characters",
+            &spec.user_enabled_id,
+            &spec.chat_no_chars_id,
+        ),
+        ("regen_queued", &spec.user_enabled_id, &spec.chat_regen_id),
+        (
+            "regen_chat_missing",
+            &spec.user_enabled_id,
+            &spec.missing_id,
+        ),
+    ] {
+        let db = fresh_db(name);
+        let resp = rt.block_on(chat_media::chat_regenerate_background(&db, user, chat));
+        check(&oracle, name, &resp, &mut failed);
+        check_jobs(&oracle, name, &db, &mut failed);
+    }
+
+    // The dedupe arm: a second call reuses the pending job — the
+    // already-in-progress message, ONE job row, and the SAME jobId.
+    {
+        let db = fresh_db("regen_dedupe");
+        let first = rt.block_on(chat_media::chat_regenerate_background(
+            &db,
+            &spec.user_enabled_id,
+            &spec.chat_regen_id,
+        ));
+        let second = rt.block_on(chat_media::chat_regenerate_background(
+            &db,
+            &spec.user_enabled_id,
+            &spec.chat_regen_id,
+        ));
+        check(&oracle, "regen_dedupe", &second, &mut failed);
+        check_jobs(&oracle, "regen_dedupe", &db, &mut failed);
+
+        // The identity claim the blanked body can't carry (see the oracle case).
+        let job_id =
+            |r: &Response| success_body(r).and_then(|b| b["jobId"].as_str().map(String::from));
+        let (a, b) = (job_id(&first), job_id(&second));
+        assert!(a.is_some(), "regen_dedupe: first call produced no jobId");
+        let same = a == b;
+        let want_same = oracle["regen_dedupe"]["extra"]["sameJobId"]
+            .as_bool()
+            .expect("oracle extra.sameJobId");
+        if same != want_same {
+            eprintln!("[regen_dedupe] sameJobId MISMATCH: got {same} / want {want_same}");
+            failed.push("regen_dedupe:sameJobId".to_string());
+        } else {
+            eprintln!("[regen_dedupe] sameJobId OK ({same}).");
+        }
+    }
 
     assert!(failed.is_empty(), "cases failed: {failed:?}");
 }

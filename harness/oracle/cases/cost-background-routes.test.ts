@@ -95,6 +95,16 @@ function applyMocks(userId: string): void {
     ...jest.requireActual('@/lib/auth/session'),
     getServerSession: async () => ({ user: { id: userId } }),
   }));
+  // Processor-off (the P4.6y lesson). `enqueueJob` kicks the in-process job
+  // processor, which CLAIMS the freshly-queued STORY_BACKGROUND_GENERATION row
+  // and flips it PENDING → PROCESSING mid-case — an artifact of v4's runtime,
+  // not of handleRegenerateBackground, and a race against the row dump. The
+  // port's differential runs no processor, so leaving this on would diff v4's
+  // scheduler against nothing.
+  jest.doMock('@/lib/background-jobs/processor', () => {
+    const actual = jest.requireActual('@/lib/background-jobs/processor');
+    return { __esModule: true, ...actual, ensureProcessorRunning: () => undefined };
+  });
   jest.doMock('@/lib/startup/startup-state', () => {
     const actual = jest.requireActual('@/lib/startup/startup-state');
     return {
@@ -148,7 +158,7 @@ interface CaseSpec {
   blank?: string[];
   /** Emit the background_jobs rows after the run (the unit-2 DB effect). */
   emitJobs?: boolean;
-  run: (s: Spec) => Promise<{ status: number; body: unknown }>;
+  run: (s: Spec) => Promise<{ status: number; body: unknown; extra?: unknown }>;
 }
 
 function buildCases(): CaseSpec[] {
@@ -189,16 +199,76 @@ function buildCases(): CaseSpec[] {
       run: (s) =>
         getChat(`${B}/chats/${s.chatDetailedId}?action=cost&detailed=1`, s.chatDetailedId),
     },
+
+    // ── Unit 2: ?action=regenerate-background ──
+    {
+      // Arm 1: the settings user has story backgrounds DISABLED.
+      name: 'regen_disabled',
+      user: (s) => s.userDisabledId,
+      emitJobs: true,
+      run: (s) => regen(s.chatRegenId),
+    },
+    {
+      // Arm 2: enabled, but NO image profile resolves at any tier.
+      name: 'regen_no_image_profile',
+      user: (s) => s.userNoProfileId,
+      emitJobs: true,
+      run: (s) => regen(s.chatRegenId),
+    },
+    {
+      // Arm 3: enabled + a profile, but the chat has no character participants.
+      name: 'regen_no_characters',
+      emitJobs: true,
+      run: (s) => regen(s.chatNoCharsId),
+    },
+    {
+      // The success arm: queued, isNew → the "queued" message. The job row is the
+      // real assertion (type + payload + priority −1).
+      name: 'regen_queued',
+      emitJobs: true,
+      blank: ['id', 'jobId'],
+      run: (s) => regen(s.chatRegenId),
+    },
+    {
+      // The dedupe arm: a SECOND call reuses the pending job — the
+      // already-in-progress message, still exactly ONE job row, and the SAME
+      // jobId as the first call. The jobId is minted (blanked in the body diff),
+      // so `extra.sameJobId` carries the identity claim explicitly.
+      name: 'regen_dedupe',
+      emitJobs: true,
+      blank: ['id', 'jobId'],
+      run: async (s) => {
+        const first = await regen(s.chatRegenId);
+        const second = await regen(s.chatRegenId);
+        // NB: successResponse puts the data at the TOP level here — `body.jobId`,
+        // not `body.data.jobId`. Reading `.data.jobId` would compare
+        // undefined === undefined and pass vacuously.
+        const jobId = (r: { body: unknown }) => (r.body as Record<string, unknown>).jobId;
+        if (jobId(first) === undefined) throw new Error('jobId missing from the success body');
+        return { ...second, extra: { sameJobId: jobId(first) === jobId(second) } };
+      },
+    },
+    {
+      name: 'regen_chat_missing',
+      run: (s) => regen(s.missingId),
+    },
   ];
 }
 
+const regen = (id: string) =>
+  postChat(`${B}/chats/${id}?action=regenerate-background`, id);
+
+/** Every background_jobs row the case left behind, id-ordered (the enqueue
+ *  proof). Driven through v4's REAL repository — the repo factory exposes no
+ *  background-jobs accessor, and a raw `getRawDatabase()` read does not see the
+ *  manager's connection here. */
 async function readJobs(): Promise<unknown[]> {
-  const { getRepositories } = await import('@/lib/repositories/factory');
-  const repos = getRepositories();
-  const rows = [
-    ...(await repos.backgroundJobs.findByStatus('PENDING')),
-    ...(await repos.backgroundJobs.findByStatus('PROCESSING')),
-  ] as Array<Record<string, unknown>>;
+  const { BackgroundJobsRepository } = await import(
+    '@/lib/database/repositories/background-jobs.repository'
+  );
+  const rows = (await new BackgroundJobsRepository().findAll()) as Array<
+    Record<string, unknown>
+  >;
   return rows
     .map((j) => ({
       id: j.id,
@@ -241,6 +311,7 @@ async function runCase(
       name: c.name,
       status: out.status,
       body: out.body,
+      ...(out.extra !== undefined ? { extra: out.extra } : {}),
       ...(c.emitJobs ? { jobs: await readJobs() } : {}),
       ...(c.blank ? { blank: c.blank } : {}),
     };

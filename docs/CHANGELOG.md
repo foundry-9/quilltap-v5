@@ -2,6 +2,29 @@
 
 ## Recent Changes
 
+P4.6ao unit 2 (tier 1): the regenerate-background un-refusal. The
+`chatRegenerateBackground` dispatch no longer answers a typed refusal — it
+runs v4's handleRegenerateBackground: the three badRequest arms (story
+backgrounds disabled / no image profile resolvable / no characters in the
+chat), the image-profile resolution, and the enqueue with its chat-level
+dedupe (a second call reuses the pending job, returning the same jobId with
+the already-in-progress message). Edge only — the generation job was already
+ported and is registered live in the host.
+
+Fixes a latent bug in the shared enqueue that the new job-row diff caught:
+enqueue_story_background_generation OMITTED `projectId` from the payload when
+the chat had no project, but both v4 call sites build the literal with
+`projectId: chat.projectId ?? null`, so the key is never absent. It is now
+always written, null when there is no project. Inert for the job handler
+(which reads it with as_str, where null and absent agree) and correct for the
+stored row.
+
+cost_background_routes_equivalence 7 -> 13 cases against a fresh 02865bdb
+oracle; the regenerate cases diff the background_jobs rows as well as the
+response body. The oracle mocks the job processor off — enqueueJob kicks it,
+and it was claiming the freshly-queued row and flipping it PENDING ->
+PROCESSING mid-case.
+
 P4.6ao unit 1 (tier 1): the chatGetCost verb. Ports v4's
 getChatCostBreakdown (stored chat-row aggregates, the legacy
 cost-without-priceSource inference) and getDetailedChatCostBreakdown
