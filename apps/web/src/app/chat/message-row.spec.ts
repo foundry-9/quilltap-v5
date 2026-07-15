@@ -19,14 +19,7 @@ function participant(over: Partial<ParticipantDetail>): ParticipantDetail {
     isActive: true,
     controlledBy: 'llm',
     status: 'active',
-    character: {
-      id: 'char1',
-      name: 'Lorian',
-      title: null,
-      avatarUrl: null,
-      defaultImageId: null,
-      defaultImage: null,
-    },
+    character: { id: 'char1', name: 'Lorian', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null },
     connectionProfile: null,
     imageProfile: null,
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -136,21 +129,14 @@ describe('MessageRow — image thumbnails', () => {
 
   it('renders a thumbnail button per image attachment using the id-keyed thumbnail route', () => {
     const fixture = render(message({ attachments: [imageAtt] }));
-    const img = fixture.nativeElement.querySelector(
-      '.qt-chat-attachment-image',
-    ) as HTMLImageElement;
+    const img = fixture.nativeElement.querySelector('.qt-chat-attachment-image') as HTMLImageElement;
     expect(img).not.toBeNull();
     expect(img.getAttribute('src')).toBe('/api/v1/files/file-9?action=thumbnail&size=80');
     expect(img.getAttribute('alt')).toBe('sketch.png');
   });
 
   it('filters out non-image attachments', () => {
-    const pdf: MessageAttachment = {
-      id: 'p',
-      filename: 'doc.pdf',
-      filepath: 'x/doc.pdf',
-      mimeType: 'application/pdf',
-    };
+    const pdf: MessageAttachment = { id: 'p', filename: 'doc.pdf', filepath: 'x/doc.pdf', mimeType: 'application/pdf' };
     const fixture = render(message({ attachments: [pdf] }));
     expect(fixture.nativeElement.querySelector('.qt-chat-attachment-image')).toBeNull();
   });
@@ -159,14 +145,8 @@ describe('MessageRow — image thumbnails', () => {
     const fixture = render(message({ attachments: [imageAtt] }));
     let event: ImageClickEvent | undefined;
     fixture.componentInstance.imageClick.subscribe((e) => (event = e));
-    (
-      fixture.nativeElement.querySelector('.qt-chat-attachment-button') as HTMLButtonElement
-    ).click();
-    expect(event).toEqual({
-      src: '/api/v1/files/file-9',
-      filename: 'sketch.png',
-      fileId: 'file-9',
-    });
+    (fixture.nativeElement.querySelector('.qt-chat-attachment-button') as HTMLButtonElement).click();
+    expect(event).toEqual({ src: '/api/v1/files/file-9', filename: 'sketch.png', fileId: 'file-9' });
   });
 });
 
@@ -187,10 +167,7 @@ describe('MessageRow — the per-message token badge (v4 MessageActionBar.tsx:19
     } as ChatSettingsDto;
   }
 
-  function renderWith(
-    msg: MessageDto,
-    settings: ChatSettingsDto | null,
-  ): ComponentFixture<MessageRow> {
+  function renderWith(msg: MessageDto, settings: ChatSettingsDto | null): ComponentFixture<MessageRow> {
     TestBed.configureTestingModule({
       imports: [MessageRow],
       providers: [{ provide: CoreClient, useValue: { dispatch: vi.fn() } }],
@@ -206,7 +183,10 @@ describe('MessageRow — the per-message token badge (v4 MessageActionBar.tsx:19
   const withTokens = { promptTokens: 1200, completionTokens: 340, tokenCount: 1540 };
 
   it('mounts the badge in the timestamp row when the flag is on and a count is non-zero', () => {
-    const fixture = renderWith(message(withTokens), tokenSettings({ showPerMessageTokens: true }));
+    const fixture = renderWith(
+      message(withTokens),
+      tokenSettings({ showPerMessageTokens: true }),
+    );
     const row = fixture.nativeElement.querySelector('.qt-chat-message-action-timestamp');
     const badge = row.querySelector('qt-token-badge');
     expect(badge).not.toBeNull();
@@ -267,7 +247,10 @@ describe('MessageRow — the per-message token badge (v4 MessageActionBar.tsx:19
 
   it('never mounts on the cost flag alone — v4 gates on the TOKENS flag only', () => {
     // The first of the two reasons per-message cost is unreachable in v4.
-    const fixture = renderWith(message(withTokens), tokenSettings({ showPerMessageCost: true }));
+    const fixture = renderWith(
+      message(withTokens),
+      tokenSettings({ showPerMessageCost: true }),
+    );
     expect(fixture.nativeElement.querySelector('qt-token-badge')).toBeNull();
   });
 

@@ -596,10 +596,9 @@ export class SalonConversation {
   /** v4 clears the interval on unmount (`:144-150`) — a live 3-minute timer must not outlive the view. */
   private readonly _pollerTeardown = this.destroyRef.onDestroy(() => this.poller.stop());
   /** v4's toasts have no v5 bus yet — the scriptorium `flash` idiom stands in. */
-  protected readonly backgroundFlash = signal<{
-    kind: 'success' | 'error';
-    message: string;
-  } | null>(null);
+  protected readonly backgroundFlash = signal<{ kind: 'success' | 'error'; message: string } | null>(
+    null,
+  );
   protected readonly regeneratingBackground = signal(false);
 
   /**
@@ -802,7 +801,8 @@ export class SalonConversation {
 
   /** The chat's image profile — the generate target (first participant with one). */
   protected readonly chatImageProfileId = computed<string | null>(
-    () => (this.chat()?.participants ?? []).find((p) => p.imageProfile)?.imageProfile?.id ?? null,
+    () =>
+      (this.chat()?.participants ?? []).find((p) => p.imageProfile)?.imageProfile?.id ?? null,
   );
 
   /** The target message's attachments, for the SaveImageDialog picker. */

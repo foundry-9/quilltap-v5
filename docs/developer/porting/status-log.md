@@ -14360,3 +14360,36 @@ ran under a 5-minute command timeout, got killed mid-setup, and showed
 0 rows in an llm-logs.db that had only just been copied. The seed was
 fine; the harness reading it was truncated. Run it in the background and
 gate on its own completion marker.
+
+### P4.6as unit 4 — the closed slide-over must not claim to be a dialog (2026-07-15)
+
+Found by the lane's FULL Playwright run, not by the new beats: two
+existing salon beats went red the moment the Inspector mounted —
+`salon-autonomous-entry` ("the Edit-Enclave header button…", a
+`getByRole('dialog')` strict-mode violation resolving to 2 elements) and
+`salon-courier-images-flow` ("an image thumbnail opens the lightbox",
+which asserts `[role="dialog"][aria-modal="true"]` has count 0 after
+Escape).
+
+Not flaky, and not the sibling specs' fault. v4's `SlideOverPanel`
+hard-codes `role="dialog"` + `aria-modal="true"`, and the panel is
+ALWAYS mounted (the CSS animates on `data-open`), so v4 leaves a
+permanent phantom modal on every Salon page: assistive tech is told a
+modal owns the page at all times, and the closed panel's close/refresh/
+filter controls stay tab-reachable off-screen.
+
+**DIVERGENCE (deliberate, documented in the class doc + three specs):**
+the role and `aria-modal` are declared only while OPEN, and the closed
+panel carries `inert`. The always-mounted markup, the classes and the
+`data-open` transitions are untouched — this keeps v4's INTENT (a dialog
+when there IS a dialog) without the artifact, the same call
+`message-row.ts` already makes about v4's stray "0" token glyph. It also
+keeps `getByRole('dialog')` honest for every future Salon spec.
+
+Fixing the component rather than re-scoping the two sibling locators was
+the point: their assertion ("no modal dialog remains") is correct and
+worth keeping true.
+
+**Gate:** ng test 1094 (3 new specs pin the divergence, incl. one that
+reproduces the exact regression); the two beats green again; full
+Playwright re-run below.

@@ -98,29 +98,12 @@ function chatDetail(): ChatDetail {
     isPaused: false,
     isManuallyRenamed: false,
     participants: [
-      participant({
-        id: 'pu',
-        controlledBy: 'user',
-        character: {
-          id: 'u',
-          name: 'Bertie',
-          title: null,
-          avatarUrl: null,
-          defaultImageId: null,
-          defaultImage: null,
-        },
-      }),
+      participant({ id: 'pu', controlledBy: 'user', character: { id: 'u', name: 'Bertie', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null } }),
       participant({ id: 'p1' }),
     ],
     user: { id: 'user1', name: 'Bertie', image: null },
     messages: [
-      message({
-        id: 'u1',
-        role: 'USER',
-        participantId: 'pu',
-        content: 'Good morning, Friday.',
-        createdAt: '2024-01-01T00:00:01.000Z',
-      }),
+      message({ id: 'u1', role: 'USER', participantId: 'pu', content: 'Good morning, Friday.', createdAt: '2024-01-01T00:00:01.000Z' }),
       message({
         id: 'a1',
         role: 'ASSISTANT',
@@ -129,22 +112,8 @@ function chatDetail(): ChatDetail {
         reasoningContent: 'Consider the weather.',
         createdAt: '2024-01-01T00:00:02.000Z',
       }),
-      message({
-        id: 'w1',
-        role: 'ASSISTANT',
-        participantId: 'p1',
-        content: 'psst, a private word',
-        targetParticipantIds: ['pu'],
-        createdAt: '2024-01-01T00:00:03.000Z',
-      }),
-      message({
-        id: 'h1',
-        role: 'ASSISTANT',
-        systemSender: 'host',
-        systemKind: 'turn-pass',
-        content: 'Friday has nothing to add.',
-        createdAt: '2024-01-01T00:00:04.000Z',
-      }),
+      message({ id: 'w1', role: 'ASSISTANT', participantId: 'p1', content: 'psst, a private word', targetParticipantIds: ['pu'], createdAt: '2024-01-01T00:00:03.000Z' }),
+      message({ id: 'h1', role: 'ASSISTANT', systemSender: 'host', systemKind: 'turn-pass', content: 'Friday has nothing to add.', createdAt: '2024-01-01T00:00:04.000Z' }),
     ],
     projectId: null,
     projectName: null,
@@ -168,25 +137,13 @@ function stubClient(
   const dispatch = vi.fn(async (req: CoreRequest): Promise<CoreResponse> => {
     if (req.type === 'chatGet') return { type: 'chat', data: { chat } };
     if (req.type === 'chatSettings') {
-      return {
-        type: 'chatSettings',
-        data: { avatarDisplayMode: 'ALWAYS', avatarDisplayStyle: 'CIRCULAR' },
-      };
+      return { type: 'chatSettings', data: { avatarDisplayMode: 'ALWAYS', avatarDisplayStyle: 'CIRCULAR' } };
     }
     return { type: 'ack', data: {} };
   });
   // The story-background resolver reads through dispatchData (finding #9). Return
   // the all-null body unless a test seeds a background.
-  const dispatchData = vi.fn(
-    async () =>
-      background ?? {
-        backgroundUrl: null,
-        fileId: null,
-        filename: null,
-        sha256: null,
-        linkSummary: null,
-      },
-  );
+  const dispatchData = vi.fn(async () => background ?? { backgroundUrl: null, fileId: null, filename: null, sha256: null, linkSummary: null });
   return {
     events$: events$.asObservable(),
     dispatch,
@@ -263,9 +220,7 @@ describe('SalonConversation (read path)', () => {
     );
     const layout = fixture.nativeElement.querySelector('.qt-chat-layout') as HTMLElement;
     // The store-backed byte route, wrapped as a CSS url(), lands on the layout root.
-    expect(layout.style.getPropertyValue('--story-background-url')).toBe(
-      "url('/api/v1/files/bg-7')",
-    );
+    expect(layout.style.getPropertyValue('--story-background-url')).toBe("url('/api/v1/files/bg-7')");
     expect(layout.getAttribute('style') ?? '').toContain('--story-background-url');
   });
 });

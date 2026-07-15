@@ -37,6 +37,22 @@ import { Icon } from './icon';
  * `position: fixed` and the host element adds no containing block. (A `transform`
  * or `filter` on an ancestor WOULD make `fixed` resolve against it; nothing in the
  * chat layout carries one.)
+ *
+ * ## CLOSED-STATE DIVERGENCE (deliberate — v4 has a defect here)
+ *
+ * v4 hard-codes `role="dialog"` + `aria-modal="true"` on the panel, and because
+ * the panel is always mounted, EVERY Salon page permanently contains what
+ * announces itself as an open modal dialog — one that is merely translated
+ * off-screen. Two consequences, both real: assistive tech is told a modal owns
+ * the page at all times, and the closed panel's controls (close, refresh, the
+ * filter select) stay tab-reachable, so keyboard users tab into an invisible
+ * panel.
+ *
+ * v5 therefore declares the dialog role ONLY while open, and marks the closed
+ * panel `inert`. The markup, classes and `data-open` transitions are unchanged —
+ * this is v4's INTENT (a dialog when there is a dialog) without the artifact, the
+ * same call `message-row.ts` makes about v4's stray "0" token glyph. It is also
+ * what keeps `getByRole('dialog')` honest for every other Salon spec.
  */
 @Component({
   selector: 'qt-slide-over-panel',
@@ -59,8 +75,9 @@ import { Icon } from './icon';
       [class]="klass()"
       [attr.data-open]="isOpen()"
       [style.width]="width()"
-      role="dialog"
-      aria-modal="true"
+      [attr.role]="isOpen() ? 'dialog' : null"
+      [attr.aria-modal]="isOpen() ? 'true' : null"
+      [attr.inert]="isOpen() ? null : ''"
       [attr.aria-label]="ariaLabel() || title()"
       tabindex="-1"
       (keydown)="onKeydown($event)"

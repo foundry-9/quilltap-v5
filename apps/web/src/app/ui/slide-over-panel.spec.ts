@@ -76,12 +76,42 @@ describe('SlideOverPanel — the data-open contract (v4 SlideOverPanel.tsx:104-1
 describe('SlideOverPanel — dialog semantics (v4 :112-122)', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  it('carries v4’s role/aria-modal/tabindex', () => {
+  it('carries v4’s role/aria-modal/tabindex while OPEN', () => {
     const fixture = render();
+    fixture.componentInstance.open.set(true);
+    fixture.detectChanges();
     const p = panel(fixture);
     expect(p.getAttribute('role')).toBe('dialog');
     expect(p.getAttribute('aria-modal')).toBe('true');
     expect(p.getAttribute('tabindex')).toBe('-1');
+    expect(p.hasAttribute('inert')).toBe(false);
+  });
+
+  it('drops the dialog role and goes inert while CLOSED (deliberate v4 divergence)', () => {
+    // v4 hard-codes role/aria-modal on an always-mounted panel, so every Salon
+    // page permanently contains what claims to be an open modal — and its
+    // controls stay tab-reachable off-screen. We keep the markup and the
+    // data-open transition; we do not keep the phantom dialog.
+    const fixture = render();
+    const p = panel(fixture);
+    expect(p.getAttribute('role')).toBeNull();
+    expect(p.getAttribute('aria-modal')).toBeNull();
+    expect(p.hasAttribute('inert')).toBe(true);
+  });
+
+  it('leaves no aria-modal dialog in the DOM while closed — other Salon specs rely on this', () => {
+    // The regression this pins: `getByRole('dialog')` / `[role="dialog"]
+    // [aria-modal="true"]` must not match a closed inspector. Two sibling e2e
+    // beats assert exactly that after closing their own modals.
+    const fixture = render();
+    expect(
+      fixture.nativeElement.querySelectorAll('[role="dialog"][aria-modal="true"]').length,
+    ).toBe(0);
+    fixture.componentInstance.open.set(true);
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelectorAll('[role="dialog"][aria-modal="true"]').length,
+    ).toBe(1);
   });
 
   it('defaults width to v4’s prop default (v4 :30)', () => {

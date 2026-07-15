@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.6as unit 4 (2026-07-15): the slide-over declares its dialog role only
+while open. v4 hard-codes role="dialog" + aria-modal="true" on an
+always-mounted panel, so every Salon page permanently contained what
+announced itself as an open modal, with its controls tab-reachable
+off-screen. v5 keeps the markup and the data-open transitions but
+declares the role only while open and marks the closed panel inert.
+Caught by the full Playwright run: the phantom dialog broke the
+Edit-Enclave beat (getByRole('dialog') strict-mode violation) and the
+courier lightbox beat (which asserts no aria-modal dialog remains after
+Escape). Both green again. SPA 0.5.116 → 0.5.117.
+
 P4.6as unit 3 (2026-07-15): the LLM-Inspector e2e beat. New
 apps/web/e2e/llm-inspector-flow.spec.ts — two walks over the locked
 fixture instance: the toolbar open → three entries oldest-first with

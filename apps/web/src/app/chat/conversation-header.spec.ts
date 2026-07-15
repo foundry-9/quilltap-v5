@@ -69,7 +69,9 @@ describe('ConversationHeader — Edit-Enclave gate', () => {
     let fired = false;
     fixture.componentInstance.editEnclave.subscribe(() => (fired = true));
     (
-      fixture.nativeElement.querySelector('button[aria-label="Edit Enclave"]') as HTMLButtonElement
+      fixture.nativeElement.querySelector(
+        'button[aria-label="Edit Enclave"]',
+      ) as HTMLButtonElement
     ).click();
     expect(fired).toBe(true);
   });
@@ -129,9 +131,7 @@ describe('ConversationHeader — the chat-totals summary gate (v4 SalonView.tsx:
   it('keeps the gallery and copy-id entries alongside the summary', () => {
     // The summary joins the right cluster; it must not displace what was there.
     const fixture = renderWith(settingsRow(true));
-    expect(
-      fixture.nativeElement.querySelector('button[aria-label="View chat photos"]'),
-    ).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('button[aria-label="View chat photos"]')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('qt-copy-chat-id-button')).not.toBeNull();
   });
 });
@@ -156,7 +156,10 @@ describe('ConversationHeader — the Regenerate Background entry (v4 ChatSidebar
       'storyBackgroundsEnabled',
       inputs.storyBackgroundsEnabled ?? false,
     );
-    fixture.componentRef.setInput('regeneratingBackground', inputs.regeneratingBackground ?? false);
+    fixture.componentRef.setInput(
+      'regeneratingBackground',
+      inputs.regeneratingBackground ?? false,
+    );
     fixture.detectChanges();
     return fixture;
   }
@@ -184,9 +187,9 @@ describe('ConversationHeader — the Regenerate Background entry (v4 ChatSidebar
   });
 
   it('disables the entry while a regeneration is in flight', () => {
-    expect(
-      entry(renderWith({ storyBackgroundsEnabled: true, regeneratingBackground: true }))!.disabled,
-    ).toBe(true);
+    expect(entry(renderWith({ storyBackgroundsEnabled: true, regeneratingBackground: true }))!.disabled).toBe(
+      true,
+    );
   });
 
   it('does not reuse the gallery glyph — v4 image would be ambiguous in an icon-only cluster', () => {
