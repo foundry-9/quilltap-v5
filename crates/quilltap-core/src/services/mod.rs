@@ -63,6 +63,7 @@ pub mod concierge_notifications;
 pub mod context_summary;
 pub mod conversation_summary_vault_bridge;
 pub mod core_whisper;
+pub mod cost_estimation;
 pub mod cost_events;
 pub mod courier_transport;
 pub mod creation_progress;

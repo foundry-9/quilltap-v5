@@ -164,9 +164,63 @@ async fn text_replacements_web_edges() {
     assert!(body["backgroundUrl"].is_null());
     assert!(body["linkSummary"].is_null());
 
-    // --- chat get-background: unknown action → 400 loud pointer ---
+    // --- chat cost (P4.6ao): the RAW breakdown body, no envelope ---
     let resp = client
         .get(url(&format!("/api/v1/chats/{CHAT_BG}?action=cost")))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200, "cost aggregate");
+    let body: Value = resp.json().await.unwrap();
+    // This fixture's chats carry no aggregates → the all-zeros object.
+    assert_eq!(body["totalTokens"], 0);
+    assert_eq!(body["priceSource"], "unavailable");
+    assert!(body["estimatedCostUSD"].is_null());
+    assert!(body.get("type").is_none(), "envelope must be unwrapped");
+    // The aggregate arm carries neither breakdown array.
+    assert!(body.get("messageBreakdown").is_none());
+
+    // --- chat cost: `detailed` must be the EXACT string `true` (v4 compares
+    //     `searchParams.get('detailed') === 'true'`) — `1` stays the aggregate arm ---
+    let resp = client
+        .get(url(&format!(
+            "/api/v1/chats/{CHAT_BG}?action=cost&detailed=1"
+        )))
+        .send()
+        .await
+        .unwrap();
+    let body: Value = resp.json().await.unwrap();
+    assert!(
+        body.get("messageBreakdown").is_none(),
+        "detailed=1 is not the exact string 'true'"
+    );
+
+    // --- chat cost: detailed=true → the itemized arms appear ---
+    let resp = client
+        .get(url(&format!(
+            "/api/v1/chats/{CHAT_BG}?action=cost&detailed=true"
+        )))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200, "cost detailed");
+    let body: Value = resp.json().await.unwrap();
+    // No messages on this chat → v4's early all-zeros return, which likewise
+    // carries NEITHER breakdown key.
+    assert_eq!(body["totalTokens"], 0);
+    assert!(body.get("messageBreakdown").is_none());
+
+    // --- chat cost: missing chat → 404 ---
+    let resp = client
+        .get(url(&format!("/api/v1/chats/{MISSING}?action=cost")))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 404, "cost missing chat");
+
+    // --- chat GET: an unserved action → 400 loud pointer ---
+    let resp = client
+        .get(url(&format!("/api/v1/chats/{CHAT_BG}?action=bogus")))
         .send()
         .await
         .unwrap();

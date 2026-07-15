@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.6ao unit 1 (tier 1): the chatGetCost verb. Ports v4's
+getChatCostBreakdown (stored chat-row aggregates, the legacy
+cost-without-priceSource inference) and getDetailedChatCostBreakdown
+(per-message and per-system-event itemization) as
+services::cost_estimation, behind a new Request::ChatGetCost /
+Response::ChatCost pair and the chats GET REST edge
+(?action=cost[&detailed=true]) — which answers the breakdown RAW, with
+no successResponse envelope, exactly as v4 does. New committed fixture
+family cost-background-{main,mount}.db plus its checked-in generator,
+and a new cost_background_routes_equivalence differential (7 cases) over
+a fresh 02865bdb oracle.
+
 P4.6ao ∥ P4.6ap ∥ P4.6aq round planned (2026-07-15): three work orders
 committed under docs/developer/porting/work-orders/ — the token/cost +
 background-generation server lane (the chatGetCost verb, the

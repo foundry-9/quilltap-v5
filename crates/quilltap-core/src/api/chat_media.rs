@@ -977,6 +977,40 @@ pub fn chat_get_background(db: &Db, chat_id: &str) -> Response {
     }
 }
 
+/// v4 `GET /api/v1/chats/[id]?action=cost` (`handlers/get.ts:213-231`): load the
+/// chat (missing → `notFound('Chat')`), then hand off to the ported read service
+/// ([`crate::services::cost_estimation`]) — the detailed arm when the route's
+/// `detailed` query param was the exact string `"true"`, else the aggregate arm.
+///
+/// The service itself never throws (both arms swallow into the zeros object), so
+/// the route's own catch → `serverError('Failed to get cost breakdown')` is
+/// unreachable here except through a `Db` failure, which surfaces as the same
+/// [`internal`] shape the other reads use.
+///
+/// **The response body is RAW.** v4 answers `NextResponse.json(breakdown)` — NOT
+/// the `successResponse` envelope nearly every other action arm uses. The REST
+/// edge (`quilltap-web`) carries that faithfully.
+pub fn chat_get_cost(db: &Db, chat_id: &str, detailed: bool) -> Response {
+    let cid = chat_id.to_string();
+    let body = db.read_main(move |main| {
+        // v4's route checks the chat FIRST and 404s; the service would otherwise
+        // answer the zeros object for a missing chat.
+        if chats_read::find_by_id(main, &cid)?.is_none() {
+            return Ok(None);
+        }
+        Ok(Some(if detailed {
+            crate::services::cost_estimation::get_detailed_chat_cost_breakdown(main, &cid)
+        } else {
+            crate::services::cost_estimation::get_chat_cost_breakdown(main, &cid)
+        }))
+    });
+    match body {
+        Ok(Some(v)) => Response::ChatCost(v),
+        Ok(None) => not_found("Chat"),
+        Err(e) => internal(e),
+    }
+}
+
 /// v4 `?action=regenerate-background` (`handleRegenerateBackground`) — the
 /// story-background GENERATION subsystem (image-profile prompt build,
 /// `lastBackgroundGeneratedAt`, the 30s poll loop) is a tier-3 deferral. Answer

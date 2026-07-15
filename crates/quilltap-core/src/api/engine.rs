@@ -2702,6 +2702,14 @@ impl CoreEngine {
                 Err(resp) => resp,
             },
             // === end P4.6ak ===
+            // === P4.6ao ===
+            Request::ChatGetCost { chat_id, detailed } => match self.ready_db() {
+                Ok(db) => {
+                    super::chat_media::chat_get_cost(&db, &chat_id, detailed.unwrap_or(false))
+                }
+                Err(resp) => resp,
+            },
+            // === end P4.6ao ===
         }
     }
 

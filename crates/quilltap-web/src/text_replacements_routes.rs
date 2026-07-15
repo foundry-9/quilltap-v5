@@ -11,6 +11,7 @@
 //! - `PATCH  /api/v1/settings/text-replacements/{id}`        → `{rule}`
 //! - `DELETE /api/v1/settings/text-replacements/{id}`        → 204 (empty)
 //! - `GET  /api/v1/chats/{id}?action=get-background`         → the background body
+//! - `GET  /api/v1/chats/{id}?action=cost[&detailed=true]`   → the cost breakdown (P4.6ao)
 
 use std::collections::HashMap;
 
@@ -56,10 +57,14 @@ fn error_to_http(e: quilltap_core::api::CoreError) -> AxumResponse {
         .into_response()
 }
 
-/// Unwrap a `TextReplacement`/`ChatBackground` body to the raw route shape.
+/// Unwrap a `TextReplacement`/`ChatBackground`/`ChatCost` body to the raw route
+/// shape. (`ChatCost` is raw in v4 too — `NextResponse.json(breakdown)`, not the
+/// successResponse envelope — so it needs no special casing here.)
 fn unwrap_to_http(resp: CoreResponse, success_status: StatusCode) -> AxumResponse {
     match resp {
-        CoreResponse::TextReplacement(v) | CoreResponse::ChatBackground(v) => (
+        CoreResponse::TextReplacement(v)
+        | CoreResponse::ChatBackground(v)
+        | CoreResponse::ChatCost(v) => (
             success_status,
             [("content-type", "application/json")],
             v.to_string(),
@@ -153,7 +158,7 @@ pub async fn text_replacement_delete(
 }
 
 // ===========================================================================
-// GET /api/v1/chats/{id}?action=get-background
+// GET /api/v1/chats/{id}?action=get-background | ?action=cost
 // ===========================================================================
 
 pub async fn chat_get_background(
@@ -161,16 +166,25 @@ pub async fn chat_get_background(
     Path(id): Path<String>,
     Query(query): Query<HashMap<String, String>>,
 ) -> AxumResponse {
-    // Only the get-background action lives on this REST edge; the default chat
-    // GET + the other actions ride POST /api/dispatch (a loud pointer, not a
-    // silent 404 — the mount-point-action precedent).
-    if query.get("action").map(String::as_str) != Some("get-background") {
-        return error_json(
-            StatusCode::BAD_REQUEST,
-            "Only the get-background action is served on this route; the chat GET rides POST /api/dispatch",
-        );
-    }
-    match dispatch_core(&state, CoreRequest::ChatGetBackground { chat_id: id }).await {
+    let req = match query.get("action").map(String::as_str) {
+        Some("get-background") => CoreRequest::ChatGetBackground { chat_id: id },
+        Some("cost") => CoreRequest::ChatGetCost {
+            chat_id: id,
+            // v4: `searchParams.get('detailed') === 'true'` — the EXACT string
+            // compare, so `detailed=1` / `detailed=TRUE` are both false.
+            detailed: Some(query.get("detailed").map(String::as_str) == Some("true")),
+        },
+        // Only these two actions live on this REST edge; the default chat GET +
+        // the other actions ride POST /api/dispatch (a loud pointer, not a
+        // silent 404 — the mount-point-action precedent).
+        _ => {
+            return error_json(
+                StatusCode::BAD_REQUEST,
+                "Only the get-background and cost actions are served on this route; the chat GET rides POST /api/dispatch",
+            )
+        }
+    };
+    match dispatch_core(&state, req).await {
         Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
         Err(r) => r,
     }

@@ -1841,6 +1841,19 @@ pub enum Request {
         chat_id: String,
     },
     // === end P4.6ak ===
+    // === P4.6ao: the token/cost read (lane A, append-only) ===
+    /// v4 `GET /api/v1/chats/[id]?action=cost[&detailed=true]` → the cost
+    /// breakdown, RAW (v4 answers `NextResponse.json(breakdown)`, NOT the
+    /// successResponse envelope). `detailed` absent means false — v4's route
+    /// computes it as `searchParams.get('detailed') === 'true'`, so any other
+    /// value is likewise false. Missing chat → `notFound('Chat')`.
+    #[serde(rename_all = "camelCase")]
+    ChatGetCost {
+        chat_id: String,
+        #[serde(default)]
+        detailed: Option<bool>,
+    },
+    // === end P4.6ao ===
 }
 
 /// serde double-option: `#[serde(default, deserialize_with = "double_option")]` on
@@ -2006,6 +2019,13 @@ pub enum Response {
     /// differential.
     ChatBackground(serde_json::Value),
     // === end P4.6ak ===
+    // === P4.6ao === (the token/cost read — lane A, append-only)
+    /// The `chatGetCost` body — v4's breakdown object VERBATIM: the five keys
+    /// `{totalTokens, promptTokens, completionTokens, estimatedCostUSD,
+    /// priceSource}`, plus `{messageBreakdown, systemEventBreakdown}` on the
+    /// detailed arm. Pinned by `cost_background_routes_equivalence`.
+    ChatCost(serde_json::Value),
+    // === end P4.6ao ===
     Error(CoreError),
 }
 

@@ -13015,3 +13015,73 @@ token counts yet. A Salon slice with its own order.
 
 **Final versions:** core 0.0.222, harness 0.0.201, host 0.0.17,
 web 0.0.21, SPA 0.5.101.
+
+---
+
+## P4.6ao unit 1 — the `chatGetCost` verb + the raw REST leg (tier 1)
+
+**Landed 2026-07-15** (lane A of the P4.6ao ∥ ap ∥ aq round; v4 baseline
+`02865bdb`, drift-checked clean at lane start).
+
+**Ported:** v4 `lib/services/cost-estimation.service.ts`'s two READ exports
+as `quilltap-core::services::cost_estimation`:
+
+- `getChatCostBreakdown` (`:139-190`) — the chat row's STORED aggregates, no
+  recompute: `totalPromptTokens || 0` (JS-falsy), `estimatedCostUSD ?? null`,
+  and the `priceSource` chain (stored → the legacy `cost-but-no-source` →
+  `'registry'` → else `'unavailable'`).
+- `getDetailedChatCostBreakdown` (`:196-289`) — the per-row itemization.
+
+The verb is `api::chat_media::chat_get_cost` (the route's own `findById` 404
+first, then the service), behind `Request::ChatGetCost { chat_id, detailed }`
++ `Response::ChatCost`. The REST edge rides the existing chats GET route
+(`quilltap-web::text_replacements_routes`), which now serves BOTH
+`?action=get-background` and `?action=cost[&detailed=true]`.
+
+**Three v4 behaviors carried deliberately (all pinned by the differential):**
+
+1. **The body is RAW.** v4 answers `NextResponse.json(breakdown)` — NOT the
+   `successResponse` envelope nearly every other action arm uses. The web edge
+   unwraps to the bare object.
+2. **`detailed` is an EXACT string compare** (`=== 'true'`), so `detailed=1`
+   answers the AGGREGATE shape. Pinned at both the edge and the differential.
+3. **The system-event `source` asymmetry — CONFIRMED against v4, not
+   inferred.** The cost *accumulation* guard tests `!== null && !== undefined`;
+   the per-event `source` ternary tests `!== null` ONLY. And because the repo
+   read OMITS a NULL nullable-optional column (both sides), an uncosted system
+   event presents as `undefined` — so it lands `cost: null` with
+   **`source: 'registry'`**. The oracle's `cost_detailed` row proves it. The
+   corollary is a real finding: **`source: 'unavailable'` is UNREACHABLE for a
+   system event through the repo read.** The `'unavailable'` arm is carried
+   anyway (a hand-built object could still reach it).
+
+**NOT a v5 deferral (v4's own behavior, carried with its why-comment):**
+per-message `cost` is ALWAYS `null` / `'unavailable'` in the detailed
+breakdown — v4: "Would need model info to estimate". Also noted in the module
+docs: **live pricing fetch (OpenRouter) plays NO part in either read path** —
+both are pure reads over stored numbers. `estimateMessageCost`, the same v4
+file's third export, was already ported (W4.7e) as
+`PricingFetcher::estimate_message_cost` and is not re-ported here.
+
+**New committed fixture family** `cost-background-{main,mount}.db` +
+`harness/oracle/fixtures/build-cost-background-fixture.ts` (checked in). Three
+users carry the three `storyBackgroundsSettings` arms (v4 reads settings by
+USER, so one row per arm is the only way to seed all three); the itemized chat
+carries a message whose `tokenCount` DIVERGES from prompt+completion, a costed
+system event, and an uncosted one. A mount-index sibling rides along (the
+character vaults mint there — the P4.6ab lesson; the order said "main only",
+which does not survive `repos.characters.create`).
+
+**Differential:** `cost_background_routes_equivalence` — 7 cases, all green
+first run, over a fresh `02865bdb` jest real-DB oracle
+(`harness/oracle/cases/cost-background-routes.test.ts`). Regen recipe in both
+file headers.
+
+    QT_ORACLE_COST_BACKGROUND=/tmp/oracle-cost-background.ndjson \
+      cargo test -p quilltap-harness --test cost_background_routes_equivalence -- --nocapture
+
+**Also touched:** `crates/quilltap-web/tests/text_replacements_web_routes.rs`
+asserted `?action=cost` → 400 — it used `cost` as its unknown-action example
+precisely BECAUSE cost was unserved. Re-pointed to `?action=bogus`, and the
+cost arms (raw body / no envelope / the `detailed=1` compare / the 404) added
+in its place.

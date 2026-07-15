@@ -1,0 +1,117 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "seedTimestamp": "2026-01-15T10:00:00.000Z",
+
+  "userEnabledId": "c0000000-0000-4000-8000-000000000001",
+  "userDisabledId": "c0000000-0000-4000-8000-000000000002",
+  "userNoProfileId": "c0000000-0000-4000-8000-000000000003",
+
+  "apiKeyId": "c1000000-0000-4000-8000-000000000001",
+  "imageProfileId": "c2000000-0000-4000-8000-000000000001",
+  "connectionProfileId": "c3000000-0000-4000-8000-000000000001",
+
+  "characterAId": "c5000000-0000-4000-8000-000000000001",
+  "characterBId": "c5000000-0000-4000-8000-000000000002",
+
+  "chatFullId": "c4000000-0000-4000-8000-000000000001",
+  "chatLegacyId": "c4000000-0000-4000-8000-000000000002",
+  "chatEmptyId": "c4000000-0000-4000-8000-000000000003",
+  "chatDetailedId": "c4000000-0000-4000-8000-000000000004",
+  "chatRegenId": "c4000000-0000-4000-8000-000000000005",
+  "chatNoCharsId": "c4000000-0000-4000-8000-000000000006",
+  "chatTitleId": "c4000000-0000-4000-8000-000000000007",
+  "chatHelpId": "c4000000-0000-4000-8000-000000000008",
+  "chatAutonomousId": "c4000000-0000-4000-8000-000000000009",
+  "chatRenamedId": "c4000000-0000-4000-8000-00000000000a",
+
+  "missingId": "99999999-9999-4999-8999-999999999999",
+
+  "detailedMessages": [
+    {
+      "id": "c6000000-0000-4000-8000-000000000001",
+      "kind": "message",
+      "role": "USER",
+      "content": "What has this conversation cost me so far?",
+      "promptTokens": 100,
+      "completionTokens": 50,
+      "tokenCount": null,
+      "createdAt": "2026-01-15T10:01:00.000Z"
+    },
+    {
+      "id": "c6000000-0000-4000-8000-000000000002",
+      "kind": "message",
+      "role": "ASSISTANT",
+      "content": "A trifling sum, I assure you.",
+      "promptTokens": 10,
+      "completionTokens": 5,
+      "tokenCount": 999,
+      "createdAt": "2026-01-15T10:02:00.000Z"
+    },
+    {
+      "id": "c6000000-0000-4000-8000-000000000003",
+      "kind": "message",
+      "role": "USER",
+      "content": "A message with no token columns at all.",
+      "promptTokens": null,
+      "completionTokens": null,
+      "tokenCount": null,
+      "createdAt": "2026-01-15T10:03:00.000Z"
+    },
+    {
+      "id": "c6000000-0000-4000-8000-000000000004",
+      "kind": "system",
+      "systemEventType": "TITLE_GENERATION",
+      "description": "Generated a title",
+      "promptTokens": 20,
+      "completionTokens": 4,
+      "totalTokens": 24,
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini",
+      "estimatedCostUSD": 0.0007,
+      "createdAt": "2026-01-15T10:04:00.000Z"
+    },
+    {
+      "id": "c6000000-0000-4000-8000-000000000005",
+      "kind": "system",
+      "systemEventType": "CONTEXT_SUMMARY",
+      "description": "Folded the summary",
+      "promptTokens": 7,
+      "completionTokens": 3,
+      "totalTokens": null,
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini",
+      "estimatedCostUSD": null,
+      "createdAt": "2026-01-15T10:05:00.000Z"
+    }
+  ],
+
+  "titleMessages": [
+    {
+      "id": "c7000000-0000-4000-8000-000000000001",
+      "role": "USER",
+      "content": "I would like to talk about the airship's failing ballonet, if you have a moment.",
+      "createdAt": "2026-01-15T10:01:00.000Z"
+    },
+    {
+      "id": "c7000000-0000-4000-8000-000000000002",
+      "role": "ASSISTANT",
+      "content": "The ballonet again! Fetch the patching kit and I shall fetch my nerve.",
+      "createdAt": "2026-01-15T10:02:00.000Z"
+    }
+  ],
+
+  "helpMessages": [
+    {
+      "id": "c7000000-0000-4000-8000-000000000011",
+      "role": "USER",
+      "content": "How do I set up an Anthropic connection profile?",
+      "createdAt": "2026-01-15T10:01:00.000Z"
+    },
+    {
+      "id": "c7000000-0000-4000-8000-000000000012",
+      "role": "ASSISTANT",
+      "content": "Open Settings, then Connections, then press the New Profile button.",
+      "createdAt": "2026-01-15T10:02:00.000Z"
+    }
+  ]
+}
