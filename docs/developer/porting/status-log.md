@@ -13257,3 +13257,48 @@ the spec, and run it with `npx tsx <case>` from `~/source/quilltap-server`
 (PATH pointed at Node 24). The spec's two `cases` tables are the output.
 
 **Gate:** `ng test --include='**/format-tokens.spec.ts'` 37/37. SPA 0.5.102.
+
+## P4.6ap unit 2 — the per-message token badge (lane B)
+
+`apps/web/src/app/chat/token-badge.ts` (v4 `components/chat/TokenBadge.tsx`)
+mounted in `chat/message-row.ts`'s action-bar timestamp row (v4
+`MessageActionBar.tsx:195-206`). **The P4.6an "Salon token/cost display"
+deferral is half-closed by this unit** (the header totals are unit 3).
+
+**No new plumbing.** `settings` was already threaded to `MessageRow`, and
+`tokenDisplaySettings` already existed on `ChatSettingsDto` — the badge reads
+the shared `['chatSettings']` query the P4.6an cards already dedupe into one
+GET. The counts are already served (`chats_messages_read.rs:75-77,164-166`)
+and are stored ACTUALS from provider usage, not estimates. Zero new requests.
+
+**Markup fidelity.** The timestamp row adopts v4's
+`qt-chat-message-action-timestamp` container (bare span + badge) in place of
+v5's `qt-chat-message-time ml-auto` span. The class was already in `_chat.css`
+(ported, never mounted) and carries `ml-auto` plus a user-bubble color variant
+v5 was silently not applying. Nothing referenced the old class.
+
+**Two v4 dead paths, ported dead** (named here so they are not re-reported as
+gaps — these are NOT deferrals, they are faithful ports of inert code):
+- **`showPerMessageCost`** is unreachable in v4 for TWO independent reasons,
+  both now pinned by spec: (1) the mount gate reads `showPerMessageTokens`
+  only, so cost-on/tokens-off never mounts the badge at all; (2) even mounted,
+  `MessageActionBar` passes no `estimatedCostUSD` — there is no cost field on
+  the Message type — so `TokenBadge`'s own `!= null` guard fails. The arm is
+  ported and works if ever fed; nothing feeds it.
+- **`showSystemEvents`** is declared/parsed/defaulted in v4 and read by NO
+  renderer. There is deliberately no consumer; the why-comment sits where the
+  other flags are consumed.
+
+**One deliberate divergence, pinned by spec.** v4's gate is a JSX `&&`-chain,
+so with the flag on and both counts numeric `0`, the chain's value is `0` and
+React renders a literal **"0"** text node beside the timestamp. That is a
+React-idiom bug, not designed behavior; Angular's `@if` evaluates the same
+condition and renders nothing. We match v4's intent and its output for every
+non-zero case. A spec asserts the row's text is exactly the timestamp.
+
+**Gotcha worth banking:** both Angular and JSX strip whitespace between
+sibling elements, so the badge's DOM text is `1.5K/320tokens` — the visual
+spacing is the flex `gap-1`, not text. An assertion on the pretty string
+`"1.5K / 320 tokens"` is asserting something NEITHER framework produces.
+
+**Gate:** `ng test` **899** (was 846; +53), full suite green. SPA 0.5.103.

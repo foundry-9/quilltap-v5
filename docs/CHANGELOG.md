@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.6ap unit 2: the per-message token badge (Salon SPA lane). Ports v4
+components/chat/TokenBadge.tsx to apps/web/src/app/chat/token-badge.ts and
+mounts it in the message-row timestamp row behind v4's gate
+(showPerMessageTokens && (promptTokens || completionTokens)), threading
+tokenDisplaySettings from the already-shared chatSettings query — no new
+request. The timestamp row now uses v4's qt-chat-message-action-timestamp
+markup, which activates the user-bubble color rule v5 had ported but never
+mounted. Two v4 dead paths are ported AS dead with why-comments rather than
+invented: showPerMessageCost (no cost field exists on the Message type, and
+v4's gate reads the tokens flag only) and showSystemEvents (no renderer
+anywhere in v4). SPA 0.5.103.
+
 P4.6ap unit 1: the token/cost display formatting leaf (Salon SPA lane).
 Ports v4 lib/utils/format-tokens.ts (formatTokenCount, formatCostForDisplay)
 to apps/web/src/app/chat/format-tokens.ts. The 37-case spec table was

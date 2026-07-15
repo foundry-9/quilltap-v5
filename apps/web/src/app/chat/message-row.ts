@@ -16,6 +16,7 @@ import { resolveMessageAuthor, type SwipeState } from './chat-view-model';
 import { CourierBubble } from './courier-bubble';
 import { MessageContent } from './message-content';
 import { ThinkingBlock } from './thinking-block';
+import { TokenBadge } from './token-badge';
 
 /** The bubble variant for a message (drives the qt-chat-message-* class). */
 type Variant = 'user' | 'assistant' | 'whisper' | 'silent';
@@ -37,7 +38,7 @@ export interface ImageClickEvent {
 @Component({
   selector: 'qt-message-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Avatar, Icon, CourierBubble, MessageContent, ThinkingBlock],
+  imports: [Avatar, Icon, CourierBubble, MessageContent, ThinkingBlock, TokenBadge],
   template: `
     <div
       class="qt-chat-message-row"
@@ -228,7 +229,21 @@ export interface ImageClickEvent {
                 </button>
               }
             </div>
-            <span class="qt-chat-message-time ml-auto">{{ timestamp() }}</span>
+            <!-- v4 MessageActionBar.tsx:195 — the timestamp row. The class already
+                 carries ml-auto (and the user-bubble color variant this markup
+                 finally activates), so it replaces the bare time span v5 had. -->
+            <div class="qt-chat-message-action-timestamp flex items-center gap-2">
+              <span>{{ timestamp() }}</span>
+              @if (showTokenBadge()) {
+                <qt-token-badge
+                  [promptTokens]="message().promptTokens"
+                  [completionTokens]="message().completionTokens"
+                  [totalTokens]="message().tokenCount"
+                  [showTokens]="tokenDisplay().showPerMessageTokens"
+                  [showCost]="tokenDisplay().showPerMessageCost"
+                />
+              }
+            </div>
           </div>
         </div>
       </div>
@@ -280,6 +295,57 @@ export class MessageRow {
 
   /** A pending manual/clipboard turn renders the Courier bubble (v4). */
   protected readonly isCourier = computed(() => this.message().pendingExternalPrompt != null);
+
+  /**
+   * The chat-settings token-display bag (v4 threads this down as the
+   * `tokenDisplaySettings` prop). All four flags default false — v4's Zod
+   * defaults (`lib/schemas/settings.types.ts:264-273`).
+   *
+   * Two of the four flags are consumed here; the other two are inert BY DESIGN,
+   * and both deserve their why-comment rather than a future reader "fixing" them:
+   *
+   *  - **`showPerMessageCost` is dead in v4.** It is threaded to `TokenBadge`
+   *    below exactly as v4 does, but no cost ever renders: there is no cost
+   *    field on the Message type for the badge's `estimatedCostUSD` to come
+   *    from (see the TokenBadge class docs). Ported dead, not invented.
+   *  - **`showSystemEvents` is inert in v4.** Declared, parsed, defaulted — and
+   *    read by NO renderer anywhere in v4. There is deliberately no consumer
+   *    here either.
+   *
+   * `showChatTotals` is the header summary's, not this row's.
+   */
+  protected readonly tokenDisplay = computed(
+    () =>
+      this.settings()?.tokenDisplaySettings ?? {
+        showPerMessageTokens: false,
+        showPerMessageCost: false,
+        showChatTotals: false,
+        showSystemEvents: false,
+      },
+  );
+
+  /**
+   * v4 `MessageActionBar.tsx:197` —
+   * `showPerMessageTokens && (promptTokens || completionTokens)`. Note the gate
+   * reads the TOKENS flag only: with `showPerMessageCost` on but
+   * `showPerMessageTokens` off, v4 never mounts the badge at all (the second
+   * reason per-message cost is unreachable).
+   *
+   * The counts are JS-truthy-tested, so a message whose usage came back as an
+   * explicit zero is treated as having nothing to show.
+   *
+   * DIVERGENCE (deliberate, cosmetic): v4's gate is a JSX `&&`-chain, so when
+   * the flag is on and both counts are numeric `0`, the chain's value is `0` and
+   * React renders a literal "0" text node next to the timestamp. That is a
+   * React-idiom bug, not a designed behavior; `@if` evaluates the same condition
+   * but renders nothing when it is falsy. We match v4's INTENT (and its output
+   * for every non-zero case) rather than reproducing a stray glyph.
+   */
+  protected readonly showTokenBadge = computed(() => {
+    if (!this.tokenDisplay().showPerMessageTokens) return false;
+    const m = this.message();
+    return !!(m.promptTokens || m.completionTokens);
+  });
 
   /** The chat's blob mount point, threaded to the markdown img rewrite (dormant in v4). */
   protected readonly blobMountPointId = computed(() => this.chat().blobMountPointId ?? null);

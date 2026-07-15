@@ -2,7 +2,13 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
-import type { ChatDetail, MessageAttachment, MessageDto, ParticipantDetail } from '../core/core-contract';
+import type {
+  ChatDetail,
+  ChatSettingsDto,
+  MessageAttachment,
+  MessageDto,
+  ParticipantDetail,
+} from '../core/core-contract';
 import { MessageRow, type ImageClickEvent } from './message-row';
 
 function participant(over: Partial<ParticipantDetail>): ParticipantDetail {
@@ -141,5 +147,122 @@ describe('MessageRow — image thumbnails', () => {
     fixture.componentInstance.imageClick.subscribe((e) => (event = e));
     (fixture.nativeElement.querySelector('.qt-chat-attachment-button') as HTMLButtonElement).click();
     expect(event).toEqual({ src: '/api/v1/files/file-9', filename: 'sketch.png', fileId: 'file-9' });
+  });
+});
+
+describe('MessageRow — the per-message token badge (v4 MessageActionBar.tsx:195-206)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function tokenSettings(over: Partial<Record<string, boolean>> = {}): ChatSettingsDto {
+    return {
+      avatarDisplayMode: 'ALWAYS',
+      avatarDisplayStyle: 'CIRCULAR',
+      tokenDisplaySettings: {
+        showPerMessageTokens: false,
+        showPerMessageCost: false,
+        showChatTotals: false,
+        showSystemEvents: false,
+        ...over,
+      },
+    } as ChatSettingsDto;
+  }
+
+  function renderWith(msg: MessageDto, settings: ChatSettingsDto | null): ComponentFixture<MessageRow> {
+    TestBed.configureTestingModule({
+      imports: [MessageRow],
+      providers: [{ provide: CoreClient, useValue: { dispatch: vi.fn() } }],
+    });
+    const fixture = TestBed.createComponent(MessageRow);
+    fixture.componentRef.setInput('message', msg);
+    fixture.componentRef.setInput('chat', chatDetail());
+    fixture.componentRef.setInput('settings', settings);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  const withTokens = { promptTokens: 1200, completionTokens: 340, tokenCount: 1540 };
+
+  it('mounts the badge in the timestamp row when the flag is on and a count is non-zero', () => {
+    const fixture = renderWith(
+      message(withTokens),
+      tokenSettings({ showPerMessageTokens: true }),
+    );
+    const row = fixture.nativeElement.querySelector('.qt-chat-message-action-timestamp');
+    const badge = row.querySelector('qt-token-badge');
+    expect(badge).not.toBeNull();
+    expect(badge.textContent.replace(/\s+/g, ' ').trim()).toBe('1.2K/340tokens');
+  });
+
+  it('passes tokenCount as the badge total (not the prompt+completion sum)', () => {
+    // A server-supplied total that disagrees with the parts must win — v4 threads
+    // `message.tokenCount` straight through as `totalTokens`.
+    const fixture = renderWith(
+      message({ promptTokens: 10, completionTokens: 5, tokenCount: 0 }),
+      tokenSettings({ showPerMessageTokens: true }),
+    );
+    // total === 0 → the badge's own v4 guard suppresses the render.
+    expect(fixture.nativeElement.querySelector('qt-token-badge div')).toBeNull();
+  });
+
+  it('does not mount the badge when the flag is off', () => {
+    const fixture = renderWith(message(withTokens), tokenSettings());
+    expect(fixture.nativeElement.querySelector('qt-token-badge')).toBeNull();
+  });
+
+  it('does not mount the badge when settings have not loaded (flags default false)', () => {
+    const fixture = renderWith(message(withTokens), null);
+    expect(fixture.nativeElement.querySelector('qt-token-badge')).toBeNull();
+  });
+
+  it('does not mount the badge when both counts are null, flag on (v4 JS-truthy gate)', () => {
+    const fixture = renderWith(
+      message({ promptTokens: null, completionTokens: null }),
+      tokenSettings({ showPerMessageTokens: true }),
+    );
+    expect(fixture.nativeElement.querySelector('qt-token-badge')).toBeNull();
+  });
+
+  it('does not mount the badge when both counts are 0, flag on — and leaks no "0" glyph', () => {
+    // v4's JSX `&&`-chain evaluates to the number 0 here and React renders a
+    // literal "0" next to the timestamp. That is a React-idiom bug; `@if` renders
+    // nothing. This pins the divergence so it is a decision, not a surprise.
+    const fixture = renderWith(
+      message({ promptTokens: 0, completionTokens: 0 }),
+      tokenSettings({ showPerMessageTokens: true }),
+    );
+    expect(fixture.nativeElement.querySelector('qt-token-badge')).toBeNull();
+    // The row contains the timestamp and NOTHING else — no stray text node.
+    const row = fixture.nativeElement.querySelector('.qt-chat-message-action-timestamp');
+    const timestamp = row.querySelector('span').textContent.replace(/\s+/g, ' ').trim();
+    expect(row.textContent.replace(/\s+/g, ' ').trim()).toBe(timestamp);
+  });
+
+  it('mounts when only ONE count is non-zero (v4 `promptTokens || completionTokens`)', () => {
+    const fixture = renderWith(
+      message({ promptTokens: 0, completionTokens: 77, tokenCount: 77 }),
+      tokenSettings({ showPerMessageTokens: true }),
+    );
+    expect(fixture.nativeElement.querySelector('qt-token-badge')).not.toBeNull();
+  });
+
+  it('never mounts on the cost flag alone — v4 gates on the TOKENS flag only', () => {
+    // The first of the two reasons per-message cost is unreachable in v4.
+    const fixture = renderWith(
+      message(withTokens),
+      tokenSettings({ showPerMessageCost: true }),
+    );
+    expect(fixture.nativeElement.querySelector('qt-token-badge')).toBeNull();
+  });
+
+  it('renders no cost text even with both flags on (no per-message cost source exists)', () => {
+    // The second reason: v4 passes no `estimatedCostUSD` — there is no such field
+    // on the Message type. Ported dead rather than invented.
+    const fixture = renderWith(
+      message(withTokens),
+      tokenSettings({ showPerMessageTokens: true, showPerMessageCost: true }),
+    );
+    const badge = fixture.nativeElement.querySelector('qt-token-badge');
+    expect(badge.textContent.replace(/\s+/g, ' ').trim()).toBe('1.2K/340tokens');
+    expect(badge.querySelector('[title="Estimated cost"]')).toBeNull();
   });
 });
