@@ -14556,3 +14556,28 @@ reliable under jsdom/nwsapi.
 
 **Gate:** `ng test` 115 files / 979 tests (976 + 3), `ng build` clean.
 SPA 0.5.116.
+
+## P4.6at (lane C) unit 4 — the Default Aesthetics e2e beat (2026-07-15)
+
+Added to `settings-flow.spec.ts`'s P4.6r Images-tab describe (it already owns an
+Images-tab beat and the server it needs). Deep-links
+`/settings?tab=images&section=default-aesthetics` — a CLOSED collapsible renders
+NO content, so the section deep link is what makes the card walkable at all (the
+P4.6ap lesson). Asserts: both fields present with v4's labels; the lantern
+editor MOUNTED (which only happens once the load settles, so the beat covers the
+load gate end-to-end); Save disabled before any edit (v4 `:127`); real key events
+on the ProseMirror contenteditable (the P4.6ag idiom — no literal markdown chars,
+which arrive as escaping artifacts) → Save enabled → click → the `Saved` span
+(v4 `:131`) and the `{type, kind, content}` payload verbatim (§2).
+
+**ACTIVATE-AT-UNIFY.** `systemImageAestheticsGet`/`Set` are lane A's, so both are
+mocked at the `**/api/dispatch` route layer; every other dispatch on the page
+still runs live via `route.fallback()`. The mock envelope is the serde
+adjacent-tag encoding (`{type: 'system', data: {…}}`); only `data` is pinned by
+§2, since `dispatchData` ignores any non-error tag — if lane A picks a different
+Response variant, nothing here needs renaming. **At unification: delete the
+`page.route` block and grow the reload round-trip assertion the mock cannot
+prove.**
+
+**Gate:** `playwright test settings-flow.spec.ts` → **6/6 passed**, the new beat
+among them. Full-suite run recorded in the lane's closing entry.

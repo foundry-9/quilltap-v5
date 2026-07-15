@@ -336,6 +336,70 @@ test.describe('P4.6r — Templates & Images settings verticals', () => {
     // live) and rendered the New Profile affordance.
     await expect(page.getByRole('button', { name: 'New Profile' })).toBeVisible({ timeout: 10_000 });
   });
+
+  test('Images tab: the Default Aesthetics card loads both fields and saves the lantern one', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+
+    // ACTIVATE-AT-UNIFY. `systemImageAestheticsGet`/`Set` are lane A's (P4.6ar)
+    // to implement, so until they land the two verbs are mocked at the route
+    // layer — everything else on the page still dispatches live through
+    // `route.fallback()`. The envelope below is the serde adjacent-tag encoding
+    // the real handler emits; only `data` is pinned by the Shared contract §2
+    // (`dispatchData` ignores any non-error tag). AT UNIFICATION: delete the
+    // `page.route` block and let the beat run live, then grow the reload
+    // round-trip assertion the mock cannot prove.
+    const saves: Array<Record<string, unknown>> = [];
+    await page.route('**/api/dispatch', async (route) => {
+      const body = route.request().postDataJSON() as { type?: string } | null;
+      if (body?.type === 'systemImageAestheticsGet') {
+        return route.fulfill({ json: { type: 'system', data: { content: '' } } });
+      }
+      if (body?.type === 'systemImageAestheticsSet') {
+        saves.push(body as Record<string, unknown>);
+        return route.fulfill({ json: { type: 'system', data: { success: true } } });
+      }
+      return route.fallback();
+    });
+
+    // Deep-link the section: a CLOSED collapsible renders NO content, so the
+    // card must be force-opened to be walkable at all (the P4.6ap lesson).
+    await page.goto(`${TMPL_BASE_URL}/settings?tab=images&section=default-aesthetics`);
+    await unlockIfLocked(page, page.getByRole('heading', { name: 'Default Aesthetics' }));
+
+    // Both fields loaded (a fresh instance has no stored file → `{content: ''}`)
+    // and the editors mounted, which only happens once the load settles.
+    const card = page.locator('qt-default-aesthetics-card');
+    const lantern = card.locator('qt-aesthetic-editor-field').first();
+    const aurora = card.locator('qt-aesthetic-editor-field').nth(1);
+    await expect(lantern).toContainText('Default Image Aesthetic');
+    await expect(aurora).toContainText('Default Character Aesthetic');
+    await expect(lantern.locator('.qt-rich-editor-content')).toBeVisible({ timeout: 10_000 });
+
+    // The load is not an edit, so Save is unreachable until the user types
+    // (v4 AestheticEditorField.tsx:127).
+    const save = lantern.getByRole('button', { name: 'Save' });
+    await expect(save).toBeDisabled();
+
+    // Type into the lantern field — real key events on the ProseMirror
+    // contenteditable (the P4.6ag idiom; no literal markdown chars, which would
+    // arrive as escaping artifacts).
+    await lantern.locator('.qt-rich-editor-content').click();
+    await page.keyboard.type('Muted sepia tones, brass fittings.');
+    await expect(save).toBeEnabled();
+    await save.click();
+
+    // v4 :131 — the success span lands, and the dispatch carried §2's shape.
+    await expect(lantern).toContainText('Saved', { timeout: 10_000 });
+    expect(saves).toEqual([
+      {
+        type: 'systemImageAestheticsSet',
+        kind: 'lantern',
+        content: 'Muted sepia tones, brass fittings.',
+      },
+    ]);
+  });
 });
 
 function withoutPepper(): NodeJS.ProcessEnv {

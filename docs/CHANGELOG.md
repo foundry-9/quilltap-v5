@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+P4.6at unit 4 (2026-07-15): the Default Aesthetics e2e beat. Deep-links
+/settings?tab=images&section=default-aesthetics, asserts both fields load, types
+into the Default Image Aesthetic editor, saves, and pins the dispatch payload.
+The two aesthetics verbs are route-mocked until the sibling lane's handlers land
+(tagged ACTIVATE-AT-UNIFY); everything else on the page dispatches live.
+SPA 0.5.117.
+
 P4.6at unit 3 (2026-07-15): the minHeight residual. The sixteen form fields the
 P4.6al editor adoption left without v4's minHeight now bind it: the memory
 editor's content field (10rem), the eight New Character prose fields
