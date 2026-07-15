@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.6an unit 5: the Agent Mode and Context Compression Chat-tab cards land.
+Agent Mode ports v4's two separate handlers over `agentModeSettings` (the
+default-enabled toggle and the max-turns select, which writes a number, not
+the select's string). Context Compression ports v4's full slider drag/commit
+protocol — the three sliders track a local value while dragging and write
+once on release, never on every `input` — including the window/interval
+cross-validation, where raising the sliding window past the project-context
+re-injection interval pushes the interval up with it in a single PUT (a "0"
+= never interval is exempt).
+
 P4.6an unit 4: the three nested-bag Chat-tab cards land — Token Display
 (four visibility toggles over `tokenDisplaySettings`), Memory Cascade (the
 two cascade-action selects over `memoryCascadePreferences`, with v4's

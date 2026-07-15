@@ -12788,3 +12788,57 @@ the settings row itself arrives async.
 card — the card is v4-faithful and the setting persists.
 
 **Specs** (`nested-bag-cards.spec.ts`, 16 cases). `ng test` 789 → 805.
+
+## P4.6an unit 5 — Agent Mode + Context Compression
+
+**Agent Mode** (`AgentModeSettings.tsx` → `agent-mode-settings.ts`). v4 wires
+this through TWO handlers, not one merged update
+(`handleAgentModeDefaultEnabledChange` + `handleAgentModeMaxTurnsChange`),
+each PUTting the whole `agentModeSettings` bag with its own key replaced —
+ported as two methods, since they are separate v4 call sites with separate
+semantics. `maxTurns` goes over the wire as a NUMBER (v4 `parseInt(value, 10)`
+on the select's string); the spec asserts the `typeof`, because a string here
+would sail through the JSON round-trip and fail Zod server-side. v4's card
+inlines its `{maxTurns:10, defaultEnabled:false}` fallback while its handlers
+use `DEFAULT_AGENT_MODE_SETTINGS` — the same values, so the port uses the
+named constant in both places.
+
+**Context Compression** (`ContextCompressionSettings.tsx`, 271 lines →
+`context-compression-settings.ts`) — the fiddliest card of the eleven. Two
+v4 mechanisms carry real behavior and are ported exactly:
+
+1. **The drag/commit protocol.** Each slider keeps a LOCAL value while
+   dragging (`mousedown`/`touchstart` seeds it, `input` updates it) and
+   commits ONCE on release (`mouseup`/`touchend`); a commit whose value is
+   unchanged is skipped entirely. The displayed value is the local one only
+   while THAT slider is dragging, and the persisted one otherwise, so an
+   external update still lands mid-card. Without this a drag would PUT on
+   every pixel. The specs drive the real event sequence and assert both arms
+   (nothing written across three `input`s; exactly one write on release; the
+   label still tracking the drag meanwhile).
+2. **The window/interval cross-validation**
+   (`handleWindowSizeCommitWithValidation`). The project-context re-injection
+   interval may not be shorter than the sliding window — no point re-sending
+   more often than the window slides — so raising the window past the stored
+   interval pushes the interval up WITH it, both keys in ONE PUT. Interval `0`
+   ("never after the initial message") is exempt. Three specs cover it:
+   push-up, the 0 exemption, and the interval slider's own floor clamp.
+
+**Seeding gotcha:** v4 seeds its slider locals from `useState(...)` on first
+render, which works because its provider gates the card behind a loaded row.
+Here the settings arrive async, so the locals re-seed from an `effect` — but
+the effect NO-OPS while `dragging()` is non-null, or it would fight the user's
+thumb mid-drag.
+
+**A vestigial v4 branch, ported anyway:** `handleWindowSizeChangeWithValidation`
+pushes `localProjectContextInterval` up during a window drag, but that local is
+only ever DISPLAYED while `dragging === 'projectContext'` (it isn't, during a
+window drag) and the commit reads the PERSISTED interval, not the local. So
+the branch has no observable effect. Ported faithfully — it is cheap, and
+guessing about dead code in an oracle port is how drift starts.
+
+`systemPromptTargetTokens` survives in the bag (v4 removed system-prompt
+compression; only message history is compressed) and rides the merge untouched.
+
+**Specs** (`agent-mode-compression-cards.spec.ts`, 16 cases). `ng test`
+805 → 821.
