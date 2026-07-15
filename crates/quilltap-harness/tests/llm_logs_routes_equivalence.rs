@@ -6,9 +6,16 @@
 //! The body diff is byte-meaningful: the log objects carry v4's exact key set —
 //! a NULL column is ABSENT (v4's hydrate maps it to `undefined` and
 //! `JSON.stringify` omits it), while a stored `null` inside a JSON column (e.g.
-//! `response.error`) is PRESENT as `null`. Both sides normalize key ORDER before
-//! comparing, so the wire-order claim rides on the `LlmLogRow` struct being in
-//! schema order (see its doc comment) rather than on this diff.
+//! `response.error`) is PRESENT as `null`.
+//!
+//! `check` normalizes key ORDER before comparing (so a mismatch reports the
+//! values, not the ordering), which would leave the schema-field-order claim
+//! unproven on its own. [`check_key_order`] closes that: it compares the RAW key
+//! sequence of the Rust body against the oracle's raw `JSON.stringify` bytes,
+//! nested objects included. This works because quilltap-core builds `serde_json`
+//! with `preserve_order` — `Value::Object` is an `IndexMap`, so `to_value` and
+//! the REST edge's `to_string()` both carry the struct's declared field order
+//! onto the wire.
 //!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-llm-logs.ndjson npx jest -- llm-logs-routes
@@ -170,6 +177,52 @@ fn check(oracle: &HashMap<String, Value>, name: &str, resp: &Response, failed: &
     }
 }
 
+/// Every object's key sequence, depth-first — the shape `check`'s sorted compare
+/// deliberately throws away.
+fn key_paths(v: &Value, path: &str, out: &mut Vec<String>) {
+    match v {
+        Value::Object(o) => {
+            out.push(format!(
+                "{path}: {}",
+                o.keys().cloned().collect::<Vec<_>>().join(",")
+            ));
+            for (k, x) in o.iter() {
+                key_paths(x, &format!("{path}/{k}"), out);
+            }
+        }
+        Value::Array(a) => {
+            for (i, x) in a.iter().enumerate() {
+                key_paths(x, &format!("{path}[{i}]"), out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The wire-order claim: the Rust body's key sequence must match v4's
+/// `JSON.stringify` bytes exactly, not merely carry the same key SET. Reads the
+/// oracle's RAW NDJSON line (parsing preserves insertion order under
+/// `preserve_order`, so the recorded order survives) and diffs it against the
+/// port's. This is what pins `LlmLogRow`'s fields to `LLMLogSchema` order.
+fn check_key_order(
+    oracle_raw: &HashMap<String, String>,
+    name: &str,
+    resp: &Response,
+    failed: &mut Vec<String>,
+) {
+    let want_line: Value = serde_json::from_str(&oracle_raw[name]).unwrap();
+    let mut want = Vec::new();
+    key_paths(&want_line["body"], "", &mut want);
+    let mut got = Vec::new();
+    key_paths(&success_body(resp).expect("success body"), "", &mut got);
+    if got != want {
+        eprintln!("[{name}] KEY ORDER MISMATCH:\n got {got:#?}\n want {want:#?}");
+        failed.push(format!("{name}:keyOrder"));
+    } else {
+        eprintln!("[{name}] key order OK ({} objects).", got.len());
+    }
+}
+
 /// The `extra.afterStatus` claim on the two DELETE cases: the row is really gone
 /// (the ack alone would pass vacuously against a no-op delete).
 fn check_after_status(
@@ -199,13 +252,17 @@ fn llm_logs_routes_match_oracle() {
     let spec: Spec = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
 
     let mut oracle: HashMap<String, Value> = HashMap::new();
+    // The RAW lines too — `check_key_order` needs v4's `JSON.stringify` bytes.
+    let mut oracle_raw: HashMap<String, String> = HashMap::new();
     for line in std::fs::read_to_string(&oracle_path)
         .unwrap()
         .lines()
         .filter(|l| !l.trim().is_empty())
     {
         let v: Value = serde_json::from_str(line).unwrap();
-        oracle.insert(v["name"].as_str().unwrap().to_string(), v);
+        let name = v["name"].as_str().unwrap().to_string();
+        oracle_raw.insert(name.clone(), line.to_string());
+        oracle.insert(name, v);
     }
 
     let mut failed: Vec<String> = Vec::new();
@@ -219,11 +276,14 @@ fn llm_logs_routes_match_oracle() {
     };
 
     // ── The default (recent) branch + the pagination arithmetic ──
-    list(
-        "list_recent_default",
-        LlmLogsListParams::default(),
-        &mut failed,
-    );
+    // This one also carries the key-order assertion across the whole envelope and
+    // every log in it — including the bare rows, where the absent columns are.
+    {
+        let db = fresh_db("list_recent_default");
+        let resp = llm_logs::llm_logs_list(&db, &spec.user_id, &LlmLogsListParams::default());
+        check(&oracle, "list_recent_default", &resp, &mut failed);
+        check_key_order(&oracle_raw, "list_recent_default", &resp, &mut failed);
+    }
     list(
         "list_recent_limit_2",
         LlmLogsListParams {
@@ -406,12 +466,13 @@ fn llm_logs_routes_match_oracle() {
     );
 
     // ── The item routes ──
-    check(
-        &oracle,
-        "item_get_found",
-        &llm_logs::llm_log_get(&fresh_db("item_get_found"), &spec.logs[0].id),
-        &mut failed,
-    );
+    {
+        let resp = llm_logs::llm_log_get(&fresh_db("item_get_found"), &spec.logs[0].id);
+        check(&oracle, "item_get_found", &resp, &mut failed);
+        // The wire-order claim, on the richest single log (every optional column
+        // populated + both nested summaries).
+        check_key_order(&oracle_raw, "item_get_found", &resp, &mut failed);
+    }
     check(
         &oracle,
         "item_get_missing",

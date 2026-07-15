@@ -333,10 +333,18 @@ pub struct LlUpdate {
 /// So a null column is **absent** from v4's body, never `null` — the standing
 /// "reads omit null" rule ([[p4.6p-listing-surfaces-server]]).
 ///
-/// `rawProviderUsage` is the one open-JSON column: `serde_json::Value` sorts its
-/// keys where v4's `JSON.stringify` preserves insertion order (the standing seam
-/// this module already records for the write path). The `inspector-*` corpus keeps
-/// it NULL throughout, so the seam is not walked into here.
+/// The field order here is the wire order: this crate builds `serde_json` with
+/// `preserve_order`, so `Value::Object` is an `IndexMap` that emits INSERTION
+/// order, and `to_value(&LlmLogRow)` → the REST edge's `to_string()` therefore
+/// carries these fields exactly as declared. `llm_logs_routes_equivalence`'s
+/// `item_get_found` key-order assertion compares that sequence against the
+/// oracle's raw `JSON.stringify` bytes.
+///
+/// (NB the write path's older note above — "serde_json sorts keys; seam #5" on
+/// `rawProviderUsage` — predates that `preserve_order` decision and no longer
+/// describes this crate. The open-JSON key-order seam is closed; the
+/// `inspector-*` corpus still leaves `rawProviderUsage` NULL simply because
+/// nothing in this surface needs it.)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LlmLogRow {

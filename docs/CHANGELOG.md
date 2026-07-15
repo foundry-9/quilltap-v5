@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+P4.6ar unit 4 (lane A): a wire key-order assertion for the llm-logs
+differential, plus a corrected seam note. `llm_logs_routes_equivalence`'s body
+diff sorts keys on both sides, which left the schema-field-order marshaling
+unproven; `check_key_order` now diffs the raw key SEQUENCE of every object
+against the oracle's `JSON.stringify` bytes, on `item_get_found` (7 objects)
+and `list_recent_default` (65). Swapping two `LlmLogRow` fields fails it while
+every body diff still passes.
+
+The finding behind it: `db/llm_logs.rs`'s Phase-2 header claims
+`serde_json::Value` sorts object keys. It does not in this crate — quilltap-core
+builds serde_json with `preserve_order` (the locked decision that closed the
+open-JSON key-order seam), confirmed by probe. Comments repeating the stale
+claim are corrected; the obsolete Phase-2 constraint is flagged in the
+status-log as a follow-up rather than rewritten here. Versions: core 0.0.228,
+harness 0.0.207.
+
 P4.6ar unit 3 (lane A): the `system/image-aesthetics` GET/PUT pair — the
 server side of the Images tab's two Default Aesthetic editors.
 `SystemImageAestheticsGet`/`Set` + `Response::SystemAesthetic`, and

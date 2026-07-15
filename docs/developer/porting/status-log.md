@@ -14140,3 +14140,56 @@ Run: `QT_ORACLE_IMAGE_AESTHETICS=/tmp/oracle-image-aesthetics.ndjson cargo test
 -p quilltap-harness --test image_aesthetics_routes_equivalence -- --nocapture`
 
 **Versions:** core 0.0.227, harness 0.0.206.
+
+---
+
+## P4.6ar unit 4 — the wire key-order assertion (+ a stale seam note corrected)
+
+**Landed 2026-07-15** (lane A of the P4.6ar ∥ as ∥ at round).
+
+A gap closed in the unit-1/2 differential, and a banked finding.
+
+**The gap:** `llm_logs_routes_equivalence`'s `check` sorts keys on both sides
+before comparing (so a mismatch reports the VALUES, not the ordering). That is
+the right default — but it meant the whole point of marshaling `LlmLogRow`
+through typed structs in `LLMLogSchema` field order (rather than a `Value`) was
+**unproven by the diff**. A field-order regression would have passed silently.
+
+**The close:** `check_key_order` walks both bodies depth-first and diffs the raw
+key SEQUENCE of every object, reading the oracle's raw NDJSON line so v4's
+`JSON.stringify` byte order survives. It runs on `item_get_found` (7 objects —
+the richest single log: every optional column populated, both nested summaries)
+and `list_recent_default` (65 objects — the whole envelope + all 13 logs,
+including the bare rows where the absent columns are). **Verified biting:**
+swapping `provider`/`modelName` in `LlmLogRow` — same key SET, wrong order —
+fails both key-order assertions while every body diff still passes.
+
+**The finding — a stale seam note in `db/llm_logs.rs`.** That module's Phase-2
+header says `rawProviderUsage` must be kept to null / `{}` / single-key because
+"serde_json sorts keys; seam #5". **That is no longer true of this crate.**
+`quilltap-core/Cargo.toml` builds `serde_json` with **`preserve_order`** — the
+locked decision that made `Value::Object` an insertion-ordered `IndexMap`
+explicitly to close the open-JSON key-order seam (its own Cargo.toml comment
+says so, naming parameters / config / equippedOutfit / sillyTavernData / state /
+tagStyles). Probed empirically, not reasoned: a `{"zebra","apple","middle"}`
+round-trip through `Value` re-emits in insertion order.
+
+Two consequences:
+
+1. The wire-order assertion above is *possible* precisely because of
+   `preserve_order` — `to_value(&LlmLogRow)` and the REST edge's `to_string()`
+   both carry the struct's declared field order.
+2. My own first drafts of the `LlmLogRow` doc and the fixture generator header
+   repeated the stale claim as the reason the corpus leaves `rawProviderUsage`
+   NULL. Both are corrected: the corpus leaves it NULL simply because nothing in
+   this surface needs it.
+
+**Left alone deliberately:** the Phase-2 header's own "seam #5" wording. It
+describes that unit's corpus-design rationale and is backed by its own
+differential; re-litigating it is out of this lane's scope. `LlmLogRow`'s doc
+carries a pointer to the correction for the next reader. **A one-line follow-up
+for the pool:** re-read `db/llm_logs.rs`'s Phase-2 header (and any sibling
+module carrying the same claim) against the `preserve_order` decision and retire
+the obsolete constraint.
+
+**Versions:** core 0.0.228, harness 0.0.207.

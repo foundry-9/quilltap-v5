@@ -42,10 +42,11 @@
  * `ORDER BY "createdAt" DESC` with no secondary key, so distinct values are what
  * make the row order deterministic and byte-identical on both sides.
  *
- * `rawProviderUsage` is left NULL on every row on purpose — it is the one
- * open-JSON column, and `serde_json::Value` sorts object keys where v4's
- * `JSON.stringify` preserves insertion order (the standing seam recorded in
- * `db/llm_logs.rs`). Nothing in this surface needs it populated.
+ * `rawProviderUsage` is left NULL on every row simply because nothing in this
+ * surface needs it. (It is the one open-JSON column, and `db/llm_logs.rs`'s
+ * write-path note calls its key order a seam — but that note predates the
+ * `preserve_order` decision in quilltap-core's Cargo.toml, which made
+ * `Value::Object` an insertion-ordered `IndexMap` and closed the seam.)
  *
  * Regenerate (Node 24, from the v4 checkout) + re-copy the committed .db files:
  *   N=~/.nvm/versions/node/v24.13.1/bin
