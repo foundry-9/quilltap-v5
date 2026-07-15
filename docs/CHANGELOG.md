@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.6an unit 4: the three nested-bag Chat-tab cards land — Token Display
+(four visibility toggles over `tokenDisplaySettings`), Memory Cascade (the
+two cascade-action selects over `memoryCascadePreferences`, with v4's
+asymmetry kept: the swipe select filters out "Ask every time"), and
+Thinking / Reasoning (`thinkingDisplay`, display-only, with "start
+collapsed" gated on "show thinking"). Each PUTs the whole merged bag —
+the server replaces the column wholesale, so a partial nested patch would
+drop the sibling keys. The Salon token/cost RENDERING remains a named
+deferral; the card stores the setting faithfully regardless.
+
 P4.6an unit 3: the four scalar-toggle Chat-tab cards land — Composer
 (`composerSpellcheck`), Auto-Scroll (`autoScrollOnResponseComplete`),
 Automation (`autoDetectRng`), and Answer Confirmation

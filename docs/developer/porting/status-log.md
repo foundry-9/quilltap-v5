@@ -12748,3 +12748,43 @@ default-when-unset, its render from a canned row, the EXACT
 `chatSettingsUpdate` payload per interaction (the three scalars go alone; the
 answer-confirmation bag goes whole, never as a nested patch), and the
 error-surfacing arm. `ng test` 772 → 789.
+
+## P4.6an unit 4 — Token Display, Memory Cascade, Thinking / Reasoning
+
+The three NESTED-BAG cards. The load-bearing fact for all of them (and the
+thing a careless port silently breaks): **the PUT carries the WHOLE updated
+bag, not a partial nested patch.** v4 spread-merges client-side
+(`{ ...currentSettings, [key]: value }`) and the server replaces the JSON
+column wholesale, so sending `{tokenDisplaySettings: {showChatTotals: true}}`
+would drop the other three keys. Each card's spec asserts the exact merged
+payload with a sibling key set to a NON-default value, so a dropped sibling
+fails the test.
+
+- **Token Display** (`TokenDisplaySettings.tsx` → `token-display-settings.ts`)
+  — the four `TOKEN_DISPLAY_OPTIONS` toggles + v4's OpenRouter pricing note.
+  Bag default `DEFAULT_TOKEN_DISPLAY_SETTINGS` (all four false).
+- **Memory Cascade** (`MemoryCascadeSettings.tsx` →
+  `memory-cascade-settings.ts`) — two selects over `memoryCascadePreferences`.
+  **v4's asymmetry ported as-is:** the delete select offers all four actions;
+  the swipe/regenerate select FILTERS OUT `ASK_EVERY_TIME` (there is no
+  confirmation dialog on the regenerate path to ask through). The description
+  line under each select tracks the selected action. Defaults: delete
+  `ASK_EVERY_TIME`, swipe `DELETE_MEMORIES`.
+- **Thinking / Reasoning** (`ThinkingDisplaySettings.tsx` →
+  `thinking-display-settings.ts`) — DISPLAY ONLY: reasoning is always captured
+  and stored, and never fed back to any model; this governs only whether it is
+  shown. `defaultCollapsed` is gated on `defaultVisible` (disabled + dimmed
+  row, both ported). Both default TRUE. Already consumed at
+  `chat/message-row.ts:329`.
+
+Selects use `[selected]`-per-option, never `[value]` on the select (the
+BINDING dogfood-#6 rule) — the memory-cascade spec includes the
+value-survives-render regression even though its options are static, since
+the settings row itself arrives async.
+
+**Named deferral restated:** the Salon does not yet RENDER token counts/costs
+(v4 consumes `tokenDisplaySettings` in `MessageRow.tsx` /
+`MessageActionBar.tsx`). That is a Salon slice with its own order, not this
+card — the card is v4-faithful and the setting persists.
+
+**Specs** (`nested-bag-cards.spec.ts`, 16 cases). `ng test` 789 → 805.
