@@ -227,6 +227,29 @@ export default async function globalSetup(): Promise<void> {
     `UPDATE chats SET storyBackgroundImageId = 'bg-e2e-file' WHERE title = 'Solo Voyage';`,
   );
 
+  // P4.6ap: seed the chat-row token/cost AGGREGATES on "Solo Voyage" so the
+  // chat-totals header summary has something to show.
+  //
+  // These four columns are exactly what v4's non-detailed breakdown reads
+  // (`cost-estimation.service.ts:139-190` — "Use stored aggregates if
+  // available"); it does NOT sum the messages. The columns already exist in the
+  // fixture (zero/null), so this is a value seed, not schema materialization.
+  //
+  // The PER-MESSAGE badge needs no seed at all: the fixture's Solo Voyage
+  // already carries one assistant message with promptTokens=8/completionTokens=4
+  // (`d1000000-…-0002`), which is what `salon-token-cost-flow` asserts live.
+  //
+  // The totals only reach the UI once lane A's `chatGetCost` verb exists — the
+  // summary beat is ACTIVATE-AT-UNIFY and route-mocked in-lane — but the seed
+  // lands here now so the beat goes live at unification with no fixture change.
+  // 12000 + 3400 = 15400 → "15.4K tokens"; 0.0234 → "$0.023" (above the $0.01
+  // band edge, so 3 digits).
+  runCliWrite(
+    cli,
+    `UPDATE chats SET totalPromptTokens = 12000, totalCompletionTokens = 3400, ` +
+      `estimatedCostUSD = 0.0234, priceSource = 'openrouter' WHERE title = 'Solo Voyage';`,
+  );
+
   // Point the fixture's OPENAI_COMPATIBLE profile at the M4 mock LLM — this must
   // happen BEFORE the server launches (the CLI write-lock refuses a live holder),
   // so the mock listens on the fixed MOCK_LLM_PORT and the spec starts it there.

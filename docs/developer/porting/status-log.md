@@ -13459,3 +13459,62 @@ cannot drift.
 **Gate:** `ng test` **941** (was 923; +18), `ng build` clean. The five new
 salon beats were proven to RUN (3 → 8 `it()`s in the file) and to BITE (a
 deliberately corrupted assertion failed). SPA 0.5.106.
+
+## P4.6ap unit 6 (tier 2) — four live e2e beats (lane B)
+
+`apps/web/e2e/salon-token-cost-flow.spec.ts` (new; sorts after
+`foundation.spec.ts` — 'sa' > 'fo'), plus one value seed in `global-setup.ts`.
+
+**Two beats run LIVE** against the real server, no mocks:
+1. **The token badge** — `showPerMessageTokens` toggled through the real
+   `chatSettingsUpdate` dispatch; badge absent when off, and when on it renders
+   the fixture's stored ACTUALS with exactly ONE badge across the chat (the
+   other three messages have null counts, so v4's `promptTokens ||
+   completionTokens` gate keeps them bare — the gate is proven live, not just
+   in a spec).
+2. **The Story Backgrounds card** — enable toggle → real PUT → RELOAD → still
+   checked, plus the profile select's enabled/disabled follow.
+
+**Two beats are ACTIVATE-AT-UNIFY**, route-mocked with the Shared-contract
+bodies VERBATIM so the unifier deletes the `page.route` block and the
+assertions hold unchanged: the chat-totals summary (needs lane A's
+`chatGetCost`) and the regenerate entry (needs the §2 un-refusal). The
+regenerate beat is deliberately scoped to the ENQUEUE + flash — the e2e host
+has no image-provider key, so the job's OUTCOME is out of scope per the order.
+
+**The fixture lesson paid off again — READ IT FIRST.** The order says to seed
+token fields on the messages; the fixture ALREADY carries them. Solo Voyage's
+`d1000000-…-0002` has `promptTokens=8 / completionTokens=4 / tokenCount=12`, so
+the badge beat needs NO seed and asserts those values. Only the CHAT-ROW
+aggregates needed seeding (12000/3400/0.0234/'openrouter' on Solo Voyage) —
+and those are what v4's non-detailed breakdown actually reads
+(`cost-estimation.service.ts:139-190`: "Use stored aggregates if available" —
+it does NOT sum the messages). The four columns already existed in the fixture
+(zero/null), so this is a VALUE seed, not schema materialization. The seed
+lands now so the totals beat goes live at unification with no fixture change.
+
+**THE GOTCHA WORTH BANKING — a closed CollapsibleCard renders NO content.**
+`collapsible-card.ts` gates its body on `@if (isOpen())`, and the Chat tab's
+sixteen cards all render CLOSED. So `page.goto('/settings?tab=chat')` puts the
+card's HEADING in the DOM but not `qt-token-display-settings` — the component
+is simply absent, and the failure reads like a missing feature. The `?section=`
+deep link (`forceOpen`) is REQUIRED, not decoration:
+`/settings?tab=chat&section=token-display` (the settings-autonomous-flow
+idiom). The Images tab happens to default its cards open, but these beats
+deep-link there too rather than depend on that.
+
+**A second gotcha:** the option LABEL is `Show Chat Token Totals`, not "Show
+Chat Totals" — a `hasText` locator on the wrong label times out at
+`isChecked()`, which reads like a rendering bug rather than a typo. The labels
+are v4 copy; read `TOKEN_DISPLAY_OPTIONS`, don't guess them.
+
+**A third, about reading the output:** a failing Playwright run prints error
+blocks from its RETRIES too, so grepping for `Error:` on a run that ends green
+shows scary text from attempts that were later superseded. Read the summary
+line, not the grep.
+
+Every beat normalizes its starting state and restores it (the shared server is
+reused across specs).
+
+**Gate:** the spec 4/4 green in isolation, run TWICE to rule out flake. SPA
+0.5.107.

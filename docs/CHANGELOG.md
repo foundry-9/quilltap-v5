@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.6ap unit 6 (tier 2): four live Playwright beats for the token/cost +
+story-background surfaces (salon-token-cost-flow.spec.ts). Two run LIVE
+against the real server: the per-message token badge following
+showPerMessageTokens through the real chatSettingsUpdate dispatch, and the
+Story Backgrounds card round-tripping through a reload. Two are
+ACTIVATE-AT-UNIFY, route-mocked with the Shared-contract bodies verbatim
+until lane A lands: the chat-totals summary (chatGetCost) and the regenerate
+entry (chatRegenerateBackground, scoped to the enqueue — the e2e host has no
+image-provider key). global-setup seeds the chat-row cost aggregates the
+totals beat will read live at unification; the badge beat needs no seed at
+all — the fixture already carries a message with 8/4 tokens. SPA 0.5.107.
+
 P4.6ap unit 5: the Regenerate Background entry + both story-background polls
 (Salon SPA lane). Ports v4's regenerate handler (useChatControls.ts:397-416)
 and useStoryBackground's two polls: the passive 30s refetchInterval, gated by
