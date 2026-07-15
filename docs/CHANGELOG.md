@@ -2,6 +2,27 @@
 
 ## Recent Changes
 
+P4.6ar unit 3 (lane A): the `system/image-aesthetics` GET/PUT pair — the
+server side of the Images tab's two Default Aesthetic editors.
+`SystemImageAestheticsGet`/`Set` + `Response::SystemAesthetic`, and
+`GET`/`PUT /api/v1/system/image-aesthetics` at the web edge. The single-tier
+read/write pair the project aesthetic verbs already carried is factored into
+`services::aesthetics` (`aesthetic_filename_for_kind` / `read_aesthetic_file` /
+`write_aesthetic_file`) and shared by both surfaces; only the mount they
+resolve differs (the project's official store vs the Quilltap General
+singleton). The project pair now calls the shared helpers — behavior
+unchanged, and its five aesthetic cases stay green against a freshly
+regenerated oracle.
+
+v4 arms carried: an invalid or absent `kind` is a 400 on both verbs; a GET
+with no Quilltap General store SUCCEEDS with `{content: ''}` while the PUT
+refuses with a 500; and empty, whitespace-only, malformed-body, and
+non-string-`content` PUTs all resolve to `''` and DELETE the file (restoring
+the fallback). New differential `image_aesthetics_routes_equivalence`: 13
+cases (the order asked for ≥ 8), each mutating case re-reading the store so
+the effect is diffed and not just the ack. Versions: core 0.0.227, harness
+0.0.206.
+
 P4.6ar units 1–2 (lane A): the llm-logs read surface — the LLM Inspector's
 whole server side. `db::llm_logs` gains the eight repo reads v4's
 `/api/v1/llm-logs` routes call (`findById` / `findByMessageId` /

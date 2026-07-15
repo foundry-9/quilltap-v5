@@ -14060,3 +14060,83 @@ Run: `QT_ORACLE_LLM_LOGS=/tmp/oracle-llm-logs.ndjson cargo test -p
 quilltap-harness --test llm_logs_routes_equivalence -- --nocapture`
 
 **Versions:** core 0.0.226, web 0.0.23, harness 0.0.205.
+
+---
+
+## P4.6ar unit 3 — the `system/image-aesthetics` GET/PUT pair (tier 1)
+
+**Landed 2026-07-15** (lane A of the P4.6ar ∥ as ∥ at round; v4 baseline
+`02865bdb`).
+
+**Ported:** v4 `app/api/v1/system/image-aesthetics/route.ts` (61 lines) as
+`api::system::system_image_aesthetics_get` / `_set`, behind
+`Request::SystemImageAestheticsGet` / `Set` + `Response::SystemAesthetic`, with
+`GET`/`PUT /api/v1/system/image-aesthetics` in
+`quilltap-web::llm_logs_routes`. Bodies mirror the project pair byte-for-byte:
+get → `{content}`, set → `{success: true}`.
+
+**The DRY move the order asked for:** the single-tier editor read/write pair was
+already inside `api::projects::project_aesthetic_get`/`_set`. It is now factored
+into `services::aesthetics` — `aesthetic_filename_for_kind` (v4
+`parseAestheticKind`, reduced to the string test and returning the filename every
+caller wants), `read_aesthetic_file` (v4 `readAesthetic` over `readStoreFile` —
+the RAW content, absent-doc AND read-error both coalescing to `''`), and
+`write_aesthetic_file` (v4 `writeAesthetic` over `writeStoreFile` — empty or
+whitespace-only content DELETES). The system pair is then the same body with the
+Quilltap General singleton swapped in for the project's official store. The
+project verbs now call the shared helpers; **their differential was
+re-regenerated fresh and its five aesthetic cases stay green**
+(`aesthetic_get_lantern` / `_aurora` / `_empty` / `aesthetic_set` /
+`aesthetic_clear`), which is the order's "do not change the project verbs'
+behavior" condition discharged rather than asserted.
+
+**The v4 arms carried (all pinned):**
+
+- The `kind` guard fires on BOTH verbs, before anything else — an invalid kind
+  400s regardless of the body. An ABSENT `kind` reaches the handler as `''` from
+  the REST edge, which fails the literal test and lands on the same 400 (exactly
+  where v4's `parseAestheticKind` puts it).
+- **The no-store arms are asymmetric.** GET with no `generalMountPointId`
+  SUCCEEDS with `{content: ''}` (v4's comment: "Quilltap General store not
+  provisioned yet — nothing to show"); PUT REFUSES with a 500 (`'Quilltap General
+  document store is not available'`) — you cannot write into a store that does not
+  exist.
+- **Four different roads all delete the file.** `content: ''`, whitespace-only
+  content, a MALFORMED request body, and a non-string `content` all resolve to
+  `''`, and `''` deletes. The malformed-body arm is v4's most surprising:
+  `req.json().catch(() => ({}))` then
+  `aestheticContentSchema.safeParse(body).data?.content ?? ''` — so a broken PUT
+  silently erases the instance's default aesthetic. Carried faithfully; the REST
+  edge maps every non-string path to `None`, which the handler defaults to `''`.
+
+**Differential:** `image_aesthetics_routes_equivalence` — **13 cases**, all green
+(the order asked for ≥ 8). Each mutating case re-GETs afterwards and diffs
+`extra.after`, so the store EFFECT is compared, not just the `{success: true}` ack
+(which would pass vacuously against a handler that wrote nothing).
+
+**The unprovisioned-store arms DID land** (the order allowed refusing them if the
+fixture could not stage them): they ride the family's fourth file,
+`inspector-nostore-main.db` — see the unit-0 record for why a second main DB is
+the honest way to stage a singleton row's absence.
+
+Regenerate the oracle (Node 24, from the v4 checkout):
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+TMPO=/tmp/qt-aesthetics-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/image-aesthetics-routes.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/inspector-web.json" "$TMPO/fixtures/"
+cd ~/source/quilltap-server
+QT_FIXTURE_INSP_MAIN=$V5W/crates/quilltap-web/tests/fixtures/inspector-main.db \
+QT_FIXTURE_INSP_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/inspector-mount.db \
+QT_FIXTURE_INSP_NOSTORE=$V5W/crates/quilltap-web/tests/fixtures/inspector-nostore-main.db \
+QT_ORACLE_OUT=/tmp/oracle-image-aesthetics.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- image-aesthetics-routes
+```
+
+Run: `QT_ORACLE_IMAGE_AESTHETICS=/tmp/oracle-image-aesthetics.ndjson cargo test
+-p quilltap-harness --test image_aesthetics_routes_equivalence -- --nocapture`
+
+**Versions:** core 0.0.227, harness 0.0.206.
