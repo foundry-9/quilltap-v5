@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+Dogfood findings #10 and #11 recorded as NOT-A-BUG (v4-faithful,
+oracle-verified): the composer-vs-message-renderer dialect mismatch
+(`==highlight==` literal, `*word*` italic in sent messages — v4's own
+renderer output is byte-identical) and the /files page scope + absent
+upload control (v4's general files page behaves the same). Docs only.
+
 Dogfood log bookkeeping: mark findings #7 (chained-response render),
 #8 (composition mode), and #9 (chat backgrounds) FIXED and the
 finding-#6 select audit CLOSED in
