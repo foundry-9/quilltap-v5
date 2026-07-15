@@ -12691,3 +12691,60 @@ template arms by v4's string. `ng test` 764 → 772.
 `npx vitest` dies with `TypeError: Cannot read properties of null (reading
 'ngModule')` — the standing "`ng test`, not bare vitest" rule from the P4.6e
 note. Pure-logic specs run fine either way, which is what makes it confusing.
+
+## P4.6an unit 3 — the four scalar-toggle cards + the shared card substrate
+
+**The substrate (built once here, used by all eleven cards):**
+
+- `chat-settings.types.ts` — v4 `components/settings/chat-settings/types.ts`,
+  the slices the eleven cards need: the option TABLES
+  (`TOKEN_DISPLAY_OPTIONS`, `MEMORY_CASCADE_ACTIONS`, `AUTOMATION_OPTIONS`,
+  `MAX_TURNS_OPTIONS`, the two dangerous-content tables) and the DEFAULT_*
+  constants. The tables ARE the user-facing copy, so they live beside the
+  cards rather than being re-typed per card. NOTE: v4 keeps a card-local
+  `DEFAULT_SETTINGS` in `DangerousContentSettings.tsx` L52-60 that duplicates
+  `types.ts` L495-503 byte-for-byte — collapsed to one constant here, safe
+  because the two agree.
+- `chat-settings.api.ts` — the v5 answer to v4's `useChatSettings.ts` (1002
+  lines) + its `ChatSettingsProvider` context. v4 loads the row ONCE in the
+  provider and hands each card the row + a handler; here the shared
+  `chatSettingsKeys.all` query key does the same job, so sixteen cards
+  mounting at once dedupe into ONE GET. `ChatSettingsCard` is the per-card
+  base: the shared query, `saving`/`saveError` signals, and `save(partial,
+  failureMsg)` mirroring v4's handler skeleton — including `setQueryData` for
+  v4's `mutateSettings(updated, false)` (seed the cache from the PUT response,
+  do NOT revalidate).
+- `settings-card.ts` — v4's `components/ui/SettingsCard.tsx` title/subtitle
+  arm. Lives in `screens/settings/chat/` and not `ui/` because `ui/**` is
+  outside this lane's Ownership. NOTE v4's Chat tab genuinely shows the
+  heading twice on these cards (the CollapsibleCard's title, then the
+  SettingsCard's near-identical one) — that is v4's look, so it is the port's.
+- `chat-settings.spec-harness.ts` — the shared mount/settle/stub for the card
+  specs.
+
+**Two deliberate departures from v4, both v5 house rules, both documented at
+the seam:**
+1. `saving` is PER-CARD, not provider-wide. v4's single provider disables
+   EVERY card's inputs while any one card saves; the v5 precedent
+   (`composition-mode-settings`, `autonomous-room-defaults`) is per-card, and
+   a local dispatch is too quick for the difference to show.
+2. A failed save surfaces a visible `qt-error-alert` (the dogfood-#6 rule);
+   v4 only `console.error`s and leaves the control lying about an unsaved
+   value. The cache is invalidated after, so the control snaps to server truth.
+
+**The four cards** (v4 file → v5 file, copy verbatim, default-when-unset kept):
+`ComposerSpellcheckSettings.tsx` → `composer-spellcheck-settings.ts`
+(`composerSpellcheck`, default TRUE); `AutoScrollSettings.tsx` →
+`auto-scroll-settings.ts` (`autoScrollOnResponseComplete`, default FALSE);
+`AutomationSettings.tsx` → `automation-settings.ts` (`autoDetectRng`, default
+TRUE — the one-entry `AUTOMATION_OPTIONS` loop and its hard-coded
+`checked={false}` non-RNG arm ported as v4 wrote it, the table being the
+extension point); `AnswerConfirmationSettings.tsx` →
+`answer-confirmation-settings.ts` (the `answerConfirmationSettings` bag,
+merged over BOTH the defaults and the stored bag before the PUT).
+
+**Specs** (`scalar-toggle-cards.spec.ts`, 17 cases): each card's
+default-when-unset, its render from a canned row, the EXACT
+`chatSettingsUpdate` payload per interaction (the three scalars go alone; the
+answer-confirmation bag goes whole, never as a nested patch), and the
+error-surfacing arm. `ng test` 772 → 789.

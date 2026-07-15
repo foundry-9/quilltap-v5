@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.6an unit 3: the four scalar-toggle Chat-tab cards land — Composer
+(`composerSpellcheck`), Auto-Scroll (`autoScrollOnResponseComplete`),
+Automation (`autoDetectRng`), and Answer Confirmation
+(`answerConfirmationSettings`) — each a v4-faithful port with v4's copy
+verbatim and v4's default-when-unset. Adds the cards' shared substrate: the
+ported option tables/defaults from v4's `types.ts`, the `ChatSettingsCard`
+base (the v5 answer to v4's `useChatSettings` provider — one shared query,
+a save that seeds the cache from the PUT response), and a local
+`qt-settings-card` shell. Not yet mounted in the tab; the tab re-order is
+its own unit.
+
 P4.6an unit 2: the autonomous cron next-run preview is LIVE, closing the
 first of the two P4.6ad deferrals. The shared Autonomous Room card (New
 Chat, Edit Enclave, Settings defaults) now previews the next fire time as
