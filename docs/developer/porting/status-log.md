@@ -13770,3 +13770,43 @@ seed + save. `character-appearance-tab.spec.ts` (NEW, 3/3): seed, edit →
 `characterDepictionGuidelinesUpdate`, untouched-save byte-exactness.
 
 `ng test` **873** (was 866); `ng build` clean.
+
+---
+
+## P4.6aq unit 5 — the e2e walks over the swapped fields (lane C)
+
+**Landed.** The swaps sit under existing walks; two drove the retired textareas:
+
+- `scenarios-flow.spec.ts` — three `#scenario-body` `.fill()` legs (create /
+  edit / general-page create). Now a local `typeScenarioBody(page, text,
+  replace?)` helper over `qt-scenario-editor-modal .qt-rich-editor-content`,
+  clicking in and typing real key events (`.fill()` only targets input/textarea —
+  the P4.6ag idiom). The edit leg passes `replace` (select-all first, since the
+  body is seeded). The modal-closed assertion moved off `#scenario-body` onto the
+  field locator.
+- `settings-flow.spec.ts` — `dialog.locator('textarea').first().fill(…)` for the
+  roleplay-template LLM prompt → click `.qt-rich-editor-content` + type. The typed
+  string also dropped its literal `*stars*`: the value is never asserted
+  downstream, and literal markdown through the editor invites escaping artifacts
+  that would read as a real failure. Prose now, no markdown-significant chars.
+
+### A latent timing bug the run exposed (NOT this lane's swaps)
+
+`characters-flow.spec.ts:136` waited for the roster heading with Playwright's
+DEFAULT 5s after clicking Unlock. That beat is the first to unlock its OWN
+locked server, so it pays a cold PBKDF2 derivation, which exceeds 5s on a debug
+build; the sibling `unlockIfLocked` in the SAME file (`:222`) already allows an
+explicit 10s for the identical wait. Given the beat's 10s budget it passes.
+
+Attribution (checked before touching it — it failed twice, so it was not waved
+off as a flake): the failure screenshot shows the page still on the passphrase
+gate with the button reading "Unlocking…", i.e. the POST in flight at timeout.
+Unlock is entirely server-side PBKDF2 and **this lane changed zero Rust files**,
+so no SPA change can slow it. Beats 2–7 of the same file then passed while
+asserting that same roster heading — proving the unlock completed and the roster
+(and its now-ProseMirror-carrying route) renders fine.
+
+**Gate:** `cargo fmt --all --check` clean; `cargo clippy --workspace
+--all-targets -D warnings` clean on BOTH feature sets (default +
+`quilltap-core/native-transport`); `ng test` **873** / 110 files; `ng build`
+clean; full Playwright green.

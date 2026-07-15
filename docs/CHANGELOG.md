@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.6aq unit 5: the e2e walks follow the swapped fields. The scenarios
+walk drove #scenario-body and the settings walk drove the template
+dialog's first textarea; both are ProseMirror contenteditables now, so
+they take real key events on .qt-rich-editor-content (the P4.6ag idiom).
+Also fixes a latent timing bug the run exposed in the characters walk:
+its first beat waited for the roster with the default 5s after clicking
+Unlock, while the sibling helper in the same file already allowed 10s for
+the identical wait — that beat pays a cold PBKDF2 unlock on a debug
+build. Unrelated to the field swaps (unlock is server-side; this lane
+changed no Rust).
+
 P4.6aq unit 4: the character appearance fields take qt-markdown-field —
 the six image/physical prompts on the character-edit tab (v4 minHeight
 4/4/6/8/10/10rem) and the depiction-guidelines editors on both the edit

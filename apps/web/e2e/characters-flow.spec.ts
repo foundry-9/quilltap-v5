@@ -132,8 +132,13 @@ test.describe('P4.6g — Characters vertical (list → view → toggle → mutat
     await page.getByRole('button', { name: 'Unlock' }).click();
 
     // The roster renders the fixture cards. Sort order: favorites first, so
-    // Aria (isFavorite, Sky-Captain) leads the grid.
-    await expect(page.getByRole('heading', { name: 'Characters', exact: true })).toBeVisible();
+    // Aria (isFavorite, Sky-Captain) leads the grid. This is the first unlock of
+    // this spec's own server, so it waits out a cold PBKDF2 derivation — give it
+    // the same explicit budget the sibling `unlockIfLocked` below already uses
+    // (the default 5s is under it on a debug build).
+    await expect(page.getByRole('heading', { name: 'Characters', exact: true })).toBeVisible({
+      timeout: 10_000,
+    });
     const cards = page.locator('.character-card-grid .character-card');
     await expect(cards.first()).toBeVisible();
     const aria = cards.filter({ hasText: 'Aria' }).first();

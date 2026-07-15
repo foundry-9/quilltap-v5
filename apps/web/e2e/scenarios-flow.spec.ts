@@ -143,7 +143,10 @@ test.describe('P4.6o — Scenarios verticals (project card CRUD + the general pa
     const stamp = `walk-${Date.now()}`;
     await filename.fill(stamp);
     await page.locator('#scenario-name').fill('A Walk-created Scene');
-    await page.locator('#scenario-body').fill('The lamplight falls on {{char}} and {{user}}.');
+    // The body is the qt-markdown-field now (P4.6aq) — a ProseMirror
+    // contenteditable, so drive it with real key events (fill() targets
+    // input/textarea).
+    await typeScenarioBody(page, 'The lamplight falls on {{char}} and {{user}}.');
     await page.getByRole('button', { name: 'Create scenario' }).click();
 
     // The row shows the display name + the `.md` filename suffix.
@@ -154,9 +157,9 @@ test.describe('P4.6o — Scenarios verticals (project card CRUD + the general pa
     // --- Edit the body (the modal drops the filename field in edit mode) ---
     await rowAction(row, 'Edit');
     await expect(page.locator('#scenario-filename')).toHaveCount(0);
-    await page.locator('#scenario-body').fill('Rewritten: {{char}} lingers at the gate.');
+    await typeScenarioBody(page, 'Rewritten: {{char}} lingers at the gate.', /* replace */ true);
     await page.getByRole('button', { name: 'Save changes' }).click();
-    await expect(page.locator('#scenario-body')).toHaveCount(0);
+    await expect(scenarioBody(page)).toHaveCount(0);
 
     // --- Set default via the radio; the Default badge appears ---
     await row.locator('input[type="radio"]').check();
@@ -186,7 +189,7 @@ test.describe('P4.6o — Scenarios verticals (project card CRUD + the general pa
     const stamp = `general-${Date.now()}`;
     await page.locator('#scenario-filename').fill(stamp);
     await page.locator('#scenario-name').fill('A General Scene');
-    await page.locator('#scenario-body').fill('Everywhere, always: {{char}}.');
+    await typeScenarioBody(page, 'Everywhere, always: {{char}}.');
     await page.getByRole('button', { name: 'Create scenario' }).click();
 
     const row = page.locator('qt-scenario-row', { hasText: 'A General Scene' });
@@ -208,6 +211,27 @@ async function rowAction(row: ReturnType<Page['locator']>, name: string): Promis
   }
   await row.getByRole('button', { name: /^More actions for / }).click();
   await row.getByRole('menuitem', { name, exact: true }).click();
+}
+
+/** The scenario modal's body editor — a ProseMirror contenteditable since the
+ *  P4.6aq qt-markdown-field swap (it was a `#scenario-body` textarea). */
+function scenarioBody(page: Page): ReturnType<Page['locator']> {
+  return page.locator('qt-scenario-editor-modal .qt-rich-editor-content');
+}
+
+/**
+ * Type into the scenario body. `.fill()` only targets input/textarea, so the
+ * rich editor takes real key events (the P4.6ag idiom). `replace` clears the
+ * seeded body first (select-all + type).
+ */
+async function typeScenarioBody(page: Page, text: string, replace = false): Promise<void> {
+  const body = scenarioBody(page);
+  await expect(body).toBeVisible();
+  await body.click();
+  if (replace) {
+    await page.keyboard.press('ControlOrMeta+a');
+  }
+  await page.keyboard.type(text);
 }
 
 /** Expand a collapsible card if its body's primary action is not yet visible. */

@@ -289,7 +289,11 @@ test.describe('P4.6r — Templates & Images settings verticals', () => {
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     await dialog.getByPlaceholder('My Custom RP Style').fill('Walk Template');
-    await dialog.locator('textarea').first().fill('Render narration between *stars*.');
+    // The LLM prompt is the qt-markdown-field now (P4.6aq) — a ProseMirror
+    // contenteditable, so it takes real key events (fill() targets
+    // input/textarea).
+    await dialog.locator('.qt-rich-editor-content').first().click();
+    await page.keyboard.type('Render narration in a dry, clipped register.');
     await dialog.getByRole('button', { name: 'Create Template', exact: true }).click();
     await expect(dialog).toBeHidden({ timeout: 10_000 });
 
