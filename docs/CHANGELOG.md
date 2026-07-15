@@ -2,6 +2,32 @@
 
 ## Recent Changes
 
+P4.6ao ∥ P4.6ap ∥ P4.6aq round UNIFIED on main (2026-07-15) — all three
+orders CLOSED, and with them the P4.6an token/cost deferral, the
+P4.6ak/P4.6am background-generation deferral, and the P4.6al item-6
+form-field deferral. Landed: the chatGetCost verb (raw un-enveloped
+body) + the regenerate-background un-refusal + the TITLE_UPDATE job
+handler (closing a live loud-failure — context_summary had been
+enqueuing title jobs that died unhandled, which also kept automatic
+background generation from ever firing) over a new committed
+cost-background fixture family with three fresh-oracle differentials
+(13-case routes, 10-case tier-3 title-update + a runner-registration
+e2e, the §1/§2 wire-contract pin) ∥ the per-message token badge +
+compact chat-totals header summary + the Story Backgrounds Images-tab
+card + the Regenerate Background header entry with both polls (active
+5s×36, passive 30s gated by enabled — display stays unconditional) ∥
+the qt-markdown-field minHeight input + eleven field adoptions across
+ten sites with the async-load absorb-once gating fix at three hosts.
+Unification wires: the §1/§2 request types folded into the CoreRequest
+union; the two ACTIVATE-AT-UNIFY beats made live (the totals summary
+reads the real verb; the regenerate entry drives the real edge);
+image_profiles joined the e2e userId rewrite. Gate: fmt/clippy (both
+feature sets)/release build clean; cargo test --workspace 317 suites /
+1341 tests / 0 failed with both new differentials regenerated fresh at
+02865bdb and run by name; ng test 968; ng build clean; full Playwright
+60/60 zero skips, all four new beats LIVE. Final versions: core
+0.0.225, harness 0.0.204, host 0.0.18, web 0.0.22, SPA 0.5.113.
+
 P4.6ao/ap/aq unification fix: the e2e userId-rewrite loop gains
 image_profiles (user-scoped; the regenerate-background resolver checks
 ownership, so an un-rewritten profile was invisible and the live

@@ -13810,3 +13810,78 @@ asserting that same roster heading — proving the unlock completed and the rost
 --all-targets -D warnings` clean on BOTH feature sets (default +
 `quilltap-core/native-transport`); `ng test` **873** / 110 files; `ng build`
 clean; full Playwright green.
+
+---
+
+## The P4.6ao ∥ P4.6ap ∥ P4.6aq round — UNIFIED on main (2026-07-15)
+
+Three-lane round (server ∥ Salon-SPA ∥ forms-SPA), all lanes based on
+`acab1ab`, reconciled by cherry-pick onto `unify/p4.6ao-ap-aq` in
+dependency order (A → B → C; conflicts only in the union files +
+`package.json` version accumulation, SPA final 0.5.113 with the
+lockfile's own version fields synced). **All three orders CLOSED**,
+and with them: the P4.6an Salon token/cost deferral, the
+P4.6ak/P4.6am story-background-generation deferral, and the P4.6al
+item-6 form-field deferral.
+
+**Unification wires (the cross-lane proofs no lane could run):**
+
+1. `ChatGetCostRequest` + `ChatRegenerateBackgroundRequest` folded
+   into the `CoreRequest` union in `core-contract.ts`, name-for-name
+   against `types.rs` (pinned server-side by `p4_6ao_wire_contract`);
+   the api modules re-export and drop their casts.
+2. The two ACTIVATE-AT-UNIFY beats went LIVE (route mocks deleted):
+   the chat-totals summary reads the real `chatGetCost` over the
+   seeded aggregates; the regenerate entry drives the real un-refused
+   edge. The mocked envelope (`{"type":"chatCost","data":…}`) matched
+   the live serde `tag="type", content="data"` encoding exactly, as
+   designed.
+3. **One real integration gap surfaced by activation** (the wires'
+   whole purpose): the regenerate beat hit the verbatim "No image
+   profile available…" badRequest — the e2e userId-rewrite loop never
+   covered `image_profiles`, so the fixture's profile stayed owned by
+   FIXTURE_USER and the resolver's OWNERSHIP check (correctly)
+   excluded it. `image_profiles` joins the rewrite loop (the P4.6s
+   every-user-scoped-table lesson, third occurrence — chat_settings,
+   then memories, now this), and global-setup makes "Mock Images"
+   resolvable (isDefault + the fixture's api-key id). The spawned job
+   still fails later without a live image provider — out of scope;
+   the beat asserts the enqueue.
+
+**Unification gate (all fresh on the unify branch):** `cargo fmt`
+clean; clippy `-D warnings` BOTH feature sets (re-verified non-cached
+via a forced touch); release build clean; both jest oracles
+regenerated FRESH from the v4 checkout at `02865bdb`
+(cost-background 13 rows, title-update 10 rows) and their
+differentials run by name — `cost_background_routes_equivalence`
+13/13, `title_update_tier3_equivalence` + the runner-registration e2e
+2/2, `p4_6ao_wire_contract` 1/1; `cargo test --workspace` **317
+suites / 1341 tests / 0 failed** (was 314/1327); `ng test` **968**
+(was 846: +95 lane B, +27 lane C); `ng build` clean; **full
+Playwright 60/60, zero skips** (was 56; +4), all four new beats LIVE.
+
+**Still OPEN from this surface (loud, named — the next-order pool):**
+
+- **The minHeight residual gap** (named in the P4.6aq unit-1 record):
+  the P4.6al-adopted sites (memory-editor, the fifteen character
+  new/edit prose fields) still render without their v4 `minHeight`
+  values — a one-line-per-site follow-on rider; every value is
+  recorded in the unit-1 entry, no re-survey needed.
+- **The Default Aesthetics Images-tab card** (v4's third card —
+  `AestheticEditorField` over `/api/v1/system/image-aesthetics`).
+- The LLM-Inspector toolbar button (`llmLoggingSettings.enabled`).
+- The default/boxed `ChatCostSummary` variant + the `detailed=true`
+  arm (no v4 client calls either).
+- Project-page backgrounds / workspace-backdrop arbitration (standing
+  from P4.6am).
+- Form-field consumers whose v5 host does not exist (CreateNPC /
+  ComposeMail / InsertAnnouncement / AddCharacter dialogs, the
+  Settings prompt-library screen), the source-mode toggle,
+  `roleplayTemplateId` toolbar awareness, the GFM table transformer,
+  `__bold__` on-type (all standing from P4.6al).
+- `CarinaCostEstimator` / `MessageCostEstimator` consolidation (two
+  Rust seams over the same v4 function — a small refactor follow-up,
+  noted in the P4.6ao unit-3 record).
+
+**Final versions:** core 0.0.225, harness 0.0.204, host 0.0.18,
+web 0.0.22, SPA 0.5.113.

@@ -493,12 +493,33 @@ records THERE. Update this summary only when a phase or round completes.
   token/cost display, the background generation subsystem, the
   form-field adoptions (a rider), P4.7 (Tauri), or a Settings-story
   dogfood pass — see phase-4.md.
+- **The P4.6ao ∥ P4.6ap ∥ P4.6aq token-cost + background-generation +
+  form-fields round: UNIFIED on main (2026-07-15) — ALL THREE CLOSED,
+  and the P4.6an token/cost, P4.6ak/am background-generation, and
+  P4.6al item-6 deferrals CLOSE with them.** The `chatGetCost` verb
+  (raw un-enveloped body) + the `regenerate-background` un-refusal
+  (edge-only; a latent `projectId`-omission bug in the shared enqueue
+  caught and fixed) + the TITLE_UPDATE handler (the live loud-failure
+  closed; automatic background generation now fires), three fresh
+  differentials over the new `cost-background-{main,mount}.db` family
+  ∥ the per-message token badge + chat-totals header summary + the
+  Story Backgrounds Images-tab card + the Regenerate Background entry
+  with both polls ∥ the `qt-markdown-field` minHeight input + eleven
+  form-field adoptions (three async-loading hosts got v4's
+  loading-gate structure). Wires: the §1/§2 types folded into
+  CoreRequest; both ACTIVATE-AT-UNIFY beats LIVE; `image_profiles`
+  joined the e2e userId rewrite. Gate: 317 suites/1341, ng 968, full
+  Playwright 60/60 zero skips. Deferred loud: the minHeight residual
+  at the P4.6al-adopted sites, the Default Aesthetics card, the
+  LLM-Inspector button, backdrop arbitration, the no-host dialogs.
+  Next candidates: P4.7 (Tauri), a token-cost/backgrounds/editor
+  dogfood pass, or the small-rider pool — see phase-4.md.
 - **Oracle baseline: v4 HEAD `02865bdb`** (rebased 2026-07-14 with the
   P4.d4 skip-signal drift re-port — the trailing-sentinel strip; the
   P4.d3 quantized embedding codec note stands: ⚠ v4's
   `quantize-embeddings-v1` migration is one-way — back up Friday
   before first running v4 `4.8.0-dev.52`+ against it. Drift-check
   before every round.
-  Versions: core 0.0.222, harness 0.0.201, host 0.0.17, web 0.0.21, SPA 0.5.101.
+  Versions: core 0.0.225, harness 0.0.204, host 0.0.18, web 0.0.22, SPA 0.5.113.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

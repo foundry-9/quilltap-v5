@@ -1419,3 +1419,39 @@ are `edit/appearance-tab.ts`, not the view details-tab the P4.6al
 header named). v4 baseline `02865bdb` (drift-checked at planning: no
 movement). Shared contracts §1–§3 pinned verbatim in all three
 orders. Round record: `status-log.md`.
+
+**The P4.6ao ∥ P4.6ap ∥ P4.6aq round is UNIFIED on main (2026-07-15) —
+ALL THREE orders CLOSED, and with them the P4.6an token/cost deferral,
+the P4.6ak/P4.6am background-generation deferral, and the P4.6al
+item-6 form-field deferral.** Landed: the `chatGetCost` verb (RAW
+un-enveloped body) + the `regenerate-background` un-refusal (edge-only;
+the differential caught and fixed a latent `projectId`-omission bug in
+the shared enqueue) + the TITLE_UPDATE handler (the live loud-failure
+closed — `context_summary` had been enqueuing title jobs that died
+unhandled, which also kept automatic background generation from
+firing), three differentials over the new committed
+`cost-background-{main,mount}.db` family ∥ the per-message token badge
++ the compact chat-totals header summary + the Story Backgrounds
+Images-tab card + the Regenerate Background header entry with both
+polls ∥ the `qt-markdown-field` `minHeight` input + eleven adoptions
+across ten sites (three async-loading hosts got v4's loading-gate
+structure — mount-before-content turns a load into an edit).
+Unification wires: the §1/§2 request types folded into the
+`CoreRequest` union; the two ACTIVATE-AT-UNIFY beats made LIVE (the
+activation surfaced the e2e `image_profiles` ownership gap —
+`image_profiles` joined the userId rewrite loop). Gate: fmt/clippy
+both feature sets/release build clean; both oracles regenerated FRESH
+at `02865bdb` and run by name (13-case routes, 10-case tier-3 +
+runner-registration e2e); `cargo test --workspace` 317 suites / 1341
+tests / 0 failed; ng test 968; ng build clean; full Playwright 60/60
+zero skips, all four new beats LIVE. Versions: core 0.0.225, harness
+0.0.204, host 0.0.18, web 0.0.22, SPA 0.5.113. **Deferred loud from
+this surface:** the minHeight residual gap at the P4.6al-adopted sites
+(values recorded in the P4.6aq unit-1 record — a one-line-per-site
+rider), the Default Aesthetics Images-tab card, the LLM-Inspector
+button, the boxed summary variant + `detailed=true`, project-page
+backdrop arbitration, the no-host dialog consumers, the
+`MessageCostEstimator`/`CarinaCostEstimator` consolidation. Next
+candidates: P4.7 (`quilltap-tauri`), a dogfood pass over the
+token/cost + backgrounds + editor story on the Friday copy, or the
+small-rider pool above. Round record: `status-log.md`.
