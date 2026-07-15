@@ -13605,3 +13605,56 @@ The order's `minHeight` column reads "—" for sites 1, 2, 9, 10; v4 at
 DescriptionsTab field at all but `AestheticEditorField` (the SAME component as
 site 7), embedded by `CharacterEditView.tsx:338` under the `descriptions` tab.
 Use these values, not the order's table.
+
+---
+
+## P4.6aq unit 2 — the single-field swaps, sites 1–4 (lane C, tier 1 item 2)
+
+**Landed.** Four `MarkdownLexicalEditor` → `qt-markdown-field` swaps, each
+carrying v4's `minHeight` and v4's `remountKey` (as `recordKey`):
+
+| v5 site | v4 site | minHeight | recordKey (v4 remountKey) |
+|---|---|---|---|
+| `characters/edit/scenario-editor.ts` | `CharacterBasicInfo.tsx:482` | `6rem` | `scenario.id` |
+| `scenarios/shared/scenario-editor-modal.ts` | `ScenarioEditorModal.tsx:217` | `12rem` | `edit:${path}` / `new` |
+| `settings/templates/template-form-modal.ts` | `roleplay-templates/index.tsx:312` | `14rem` | `template?.id ?? 'new'` |
+| `characters/edit/prompt-modal.ts` | `PromptModal.tsx:78` | `12rem` | `editingPrompt?.id ?? 'new'` |
+
+Two P4.6l-era "plain textarea" divergences recorded in file doc comments
+(`scenario-editor-modal.ts:32`, `template-form-modal.ts:34`) are CLOSED and the
+comments rewritten.
+
+**Site 2 is the reason unit 1's default is load-bearing.** v4 passes NO
+`minHeight` there, so it takes `MarkdownLexicalEditor`'s own `12rem` default;
+since the v5 field defaults to unset, the port passes `12rem` explicitly. The
+order's table records "—" for this row — read it as "v4 passes nothing", NOT as
+"no minimum height".
+
+**`recordKey` at site 2 is belt-and-braces, deliberately.** v4 needs
+`remountKey` because React keeps the modal mounted across opens (its `:55-77`
+comment explains the synchronous-seed dance that pairs with it); the v5 modal is
+destroyed and re-created per open (`@if`) and seeds in `ngOnInit` before the
+field mounts. The key is still passed, shape-for-shape, so the two editors'
+re-init semantics stay identical rather than "identical by accident of host
+lifecycle".
+
+**Incidental fix:** `scenario-editor-modal.ts`'s body `<label>` carried
+`for="scenario-body"`, which would have dangled once the textarea's id went away
+(a `<label for>` pointing at nothing). v4's label has no `htmlFor` either, so the
+attribute is simply dropped — the field's `ariaLabel="Scenario body"` names it.
+
+**Proof (the convention: seed → `getMarkdown()`, edit → the UNCHANGED host
+dispatch payload).**
+- `scenario-editor.spec.ts` 7/7 — per-row seeding, an edited row's markdown in
+  the emitted array (with the untouched row byte-identical), and no-emit-on-load.
+- `system-prompts-tab.spec.ts` 7/7 — the host's `characterPromptCreate` /
+  `characterPromptUpdate` payloads. Its textarea drive was converted to the
+  editor handle; two tests added, incl. **save-without-touching → the stored
+  bytes round-trip unchanged**.
+- `scenarios-manager.spec.ts` 13/13 — the `#scenario-body` drives converted to
+  the handle; added the same untouched-save round-trip over a body carrying
+  `*emphasis*`, `**bold**` and `{{user}}`.
+- `template-form-modal.spec.ts` (NEW, 4/4) — seed, edited-prompt update payload,
+  untouched-save round-trip, create payload.
+
+`ng test` **859** (was 846), all green.

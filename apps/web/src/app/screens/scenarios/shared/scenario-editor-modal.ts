@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 
 import type { ScenarioDto } from '../../../core/core-contract';
+import { MarkdownField } from '../../../editor/markdown-field';
 import { FormActions } from '../../../ui/form-actions';
 import { Modal } from '../../../ui/modal';
 import type { ScenarioResult } from '../scenarios.api';
@@ -28,15 +29,18 @@ export interface ScenarioSaveInput {
  * create/edit form for one scenario file. Filename (create only), Name,
  * Description, a "default" checkbox, and the body.
  *
- * v4's body editor is `MarkdownLexicalEditor`; this port ships a plain
- * `<textarea>` (the established P4.6l divergence) — byte content round-trips
- * exactly. The filename-vs-name split is never collapsed: `filename` is the
- * on-disk name (set once, changed only via Rename); `name` is the display title.
+ * The body is a `qt-markdown-field` (v4 `:217`) — the P4.6l textarea divergence
+ * is closed. v4 passes no `minHeight` here, so it takes its component's own
+ * `12rem` default; ours passes that `12rem` explicitly, because the v5 field
+ * defaults to unset (see {@link MarkdownField}).
+ *
+ * The filename-vs-name split is never collapsed: `filename` is the on-disk name
+ * (set once, changed only via Rename); `name` is the display title.
  */
 @Component({
   selector: 'qt-scenario-editor-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Modal, FormActions],
+  imports: [Modal, FormActions, MarkdownField],
   template: `
     <qt-modal
       [title]="editing() ? 'Edit scenario — ' + scenario()!.name : 'New scenario'"
@@ -115,19 +119,18 @@ export interface ScenarioSaveInput {
         </div>
 
         <div>
-          <label class="qt-text-label block mb-1" for="scenario-body">Scenario body</label>
+          <label class="qt-text-label block mb-1">Scenario body</label>
           <p class="qt-text-xs qt-text-secondary mb-2">
             The text that's woven into the system prompt. <code>{{ '{{char}}' }}</code> and
             <code>{{ '{{user}}' }}</code> are substituted at chat time.
           </p>
-          <textarea
-            id="scenario-body"
-            class="qt-input w-full"
-            rows="10"
-            aria-label="Scenario body"
+          <qt-markdown-field
+            ariaLabel="Scenario body"
+            minHeight="12rem"
+            [recordKey]="recordKey()"
             [value]="body()"
-            (input)="body.set($any($event.target).value)"
-          ></textarea>
+            (contentChange)="body.set($event)"
+          />
         </div>
 
         @if (error(); as msg) {
@@ -164,6 +167,19 @@ export class ScenarioEditorModal implements OnInit {
   protected readonly error = signal<string | null>(null);
 
   protected readonly editing = computed(() => this.scenario() !== null);
+
+  /**
+   * v4's `remountKey` (`ScenarioEditorModal.tsx:55`), shape-for-shape. v4 needs
+   * it because React keeps this modal mounted across opens, so the editor must
+   * be forced to re-read when the bound scenario swaps underneath it; the v5
+   * modal is destroyed and re-created per open (the parent's `@if`) and seeds in
+   * `ngOnInit` before the field mounts, so the key is belt-and-braces here — it
+   * costs nothing and keeps the two editors' re-init semantics identical.
+   */
+  protected readonly recordKey = computed(() => {
+    const s = this.scenario();
+    return s ? `edit:${s.path}` : 'new';
+  });
 
   ngOnInit(): void {
     // Seed from the scenario on open (the modal is re-created per open — @if).

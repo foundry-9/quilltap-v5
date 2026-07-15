@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.6aq unit 2: qt-markdown-field swapped in at the first four form-field
+sites — the character-edit scenario rows (v4 minHeight 6rem), the
+scenarios editor modal body (12rem), the roleplay-template LLM prompt
+(14rem), and the character system-prompt content (12rem). Each carries
+v4's minHeight and its remountKey as recordKey. The scenario modal's
+v4 counterpart passes no minHeight, so it takes v4's own 12rem default;
+ours passes that value explicitly. Specs drive the editors through the
+imperative handle and assert the hosts' existing dispatch payloads carry
+the markdown byte-identical, including an untouched-save round-trip.
+
 P4.6aq unit 1: the minHeight input on qt-markdown-field (v4
 MarkdownLexicalEditor's input of the same name), bound as a min-height
 on the qt-rich-editor element inside the field's own template — no

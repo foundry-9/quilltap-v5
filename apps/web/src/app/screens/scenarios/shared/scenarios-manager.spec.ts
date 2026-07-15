@@ -1,8 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ScenarioDto } from '../../../core/core-contract';
+import { RichEditor } from '../../../editor/rich-editor';
 import type { ScenarioMutator, ScenarioResult } from '../scenarios.api';
 import { ScenariosManager } from './scenarios-manager';
 
@@ -131,6 +133,17 @@ function setInput(el: HTMLElement, selector: string, value: string): void {
   input.dispatchEvent(new Event('input'));
 }
 
+/** The modal's body editor (qt-markdown-field's RichEditor handle) — drive it
+ *  imperatively rather than through DOM input events. */
+function bodyEditor(fixture: ComponentFixture<unknown>): RichEditor {
+  return fixture.debugElement.query(By.directive(RichEditor)).componentInstance as RichEditor;
+}
+
+/** Whether the modal (and so its body editor) is on screen. */
+function modalOpen(fixture: ComponentFixture<unknown>): boolean {
+  return !!(fixture.nativeElement as HTMLElement).querySelector('qt-markdown-field');
+}
+
 describe('ScenariosManager', () => {
   afterEach(() => vi.restoreAllMocks());
 
@@ -182,7 +195,7 @@ describe('ScenariosManager', () => {
     setInput(el, '#scenario-filename', 'garden-party');
     setInput(el, '#scenario-name', 'Garden Party');
     setInput(el, '#scenario-description', 'Tea on the lawn.');
-    setInput(el, '#scenario-body', 'The lawn is set for {{char}}.');
+    bodyEditor(fixture).setMarkdown('The lawn is set for {{char}}.');
     await settle(fixture);
     byText(fixture, 'Create scenario').click();
     await settle(fixture);
@@ -197,7 +210,7 @@ describe('ScenariosManager', () => {
       },
     ]);
     // Modal closed on success.
-    expect(el.querySelector('#scenario-body')).toBeFalsy();
+    expect(modalOpen(fixture)).toBe(false);
   });
 
   it('blocks create with empty body / name / filename microcopy', async () => {
@@ -210,7 +223,7 @@ describe('ScenariosManager', () => {
     await settle(fixture);
     expect(text(fixture)).toContain('Scenario body cannot be empty.');
 
-    setInput(el, '#scenario-body', 'A body.');
+    bodyEditor(fixture).setMarkdown('A body.');
     await settle(fixture);
     byText(fixture, 'Create scenario').click();
     await settle(fixture);
@@ -232,8 +245,10 @@ describe('ScenariosManager', () => {
     await settle(fixture);
     expect(text(fixture)).toContain('Edit scenario — Welcome to the Estate');
     expect(el.querySelector('#scenario-filename')).toBeFalsy();
+    // The edit modal seeds the field from the stored body.
+    expect(bodyEditor(fixture).getMarkdown()).toBe('The gates swing wide for {{user}}.');
 
-    setInput(el, '#scenario-body', 'A new body.');
+    bodyEditor(fixture).setMarkdown('A new body.');
     await settle(fixture);
     byText(fixture, 'Save changes').click();
     await settle(fixture);
@@ -247,6 +262,29 @@ describe('ScenariosManager', () => {
           isDefault: false,
           body: 'A new body.',
         },
+      ],
+    ]);
+  });
+
+  it('re-saves an untouched body byte-identical (the markdown field is not an edit)', async () => {
+    // Emphasis markers and the {{user}} placeholder must survive a parse /
+    // serialize round-trip through the editor untouched — a save with no user
+    // edit must not rewrite the stored file.
+    const body = 'The gates swing wide for {{user}}.\n\nA *summer* evening, and **no rain**.';
+    const handle = mockMutator({ scenarios: [scenario({ body })] });
+    const fixture = await render(handle);
+
+    byText(fixture, 'Edit').click();
+    await settle(fixture);
+    expect(bodyEditor(fixture).getMarkdown()).toBe(body);
+
+    byText(fixture, 'Save changes').click();
+    await settle(fixture);
+
+    expect(handle.calls.update).toEqual([
+      [
+        'Scenarios/welcome.md',
+        { name: 'Welcome to the Estate', description: 'A summer evening.', isDefault: false, body },
       ],
     ]);
   });

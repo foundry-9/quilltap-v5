@@ -11,6 +11,7 @@ import {
 
 import { CoreClient } from '../../../core/core-client';
 import type { RoleplayTemplateDto } from '../../../core/core-contract';
+import { MarkdownField } from '../../../editor/markdown-field';
 import { ErrorAlert } from '../../../ui/error-alert';
 import { FormActions } from '../../../ui/form-actions';
 import { Modal } from '../../../ui/modal';
@@ -31,15 +32,15 @@ import { createRoleplayTemplate, updateRoleplayTemplate } from './templates.api'
  * omitting `renderingPatterns` so the server regenerates. Duplicate-name (409)
  * and built-in-guard (403) messages surface verbatim in the alert.
  *
- * SIMPLIFICATION vs v4: the systemPrompt uses a plain textarea, not v4's
- * `MarkdownLexicalEditor` (no rich editor in the SPA); the "Draft formatting
- * instructions" helper button is a named deferral (the `generateFormatting
- * PromptHint` transcription is out of this round's scope).
+ * The systemPrompt is a `qt-markdown-field` (v4 `:312`, its `minHeight="14rem"`
+ * and `remountKey={editingTemplate?.id ?? 'new'}`). The "Draft formatting
+ * instructions" helper button remains a named deferral (the
+ * `generateFormattingPromptHint` transcription is out of scope).
  */
 @Component({
   selector: 'qt-template-form-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Modal, FormActions, ErrorAlert, TemplateDelimiterEditor],
+  imports: [Modal, FormActions, ErrorAlert, TemplateDelimiterEditor, MarkdownField],
   template: `
     <qt-modal [title]="title()" maxWidth="3xl" (close)="close.emit()">
       @if (error()) {
@@ -83,12 +84,13 @@ import { createRoleplayTemplate, updateRoleplayTemplate } from './templates.api'
             The formatting instructions prepended to the character's system prompt when this template
             is selected. You can use placeholders like {{ '{{char}}' }} and {{ '{{user}}' }}.
           </p>
-          <textarea
-            class="qt-input font-mono"
-            rows="8"
+          <qt-markdown-field
+            ariaLabel="Template LLM prompt"
+            minHeight="14rem"
+            [recordKey]="recordKey()"
             [value]="systemPrompt()"
-            (input)="systemPrompt.set($any($event.target).value)"
-          ></textarea>
+            (contentChange)="systemPrompt.set($event)"
+          />
         </div>
 
         <div class="p-3 rounded-lg qt-border qt-bg-surface">
@@ -196,6 +198,10 @@ export class TemplateFormModal implements OnInit {
 
   protected readonly saving = signal(false);
   protected readonly error = signal<string | null>(null);
+
+  /** v4 `remountKey={editingTemplate?.id ?? 'new'}` (`index.tsx:314`) — the
+   *  identity of the record the prompt field is seeded from. */
+  protected readonly recordKey = computed(() => this.template()?.id ?? 'new');
 
   /** Editing when a template is bound and we are NOT copying it as new. */
   private readonly editingId = computed(() => {

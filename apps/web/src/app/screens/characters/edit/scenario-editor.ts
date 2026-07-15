@@ -1,22 +1,28 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 
 import type { CharacterScenario } from '../../../core/core-contract';
+import { MarkdownField } from '../../../editor/markdown-field';
 import { Icon } from '../../../ui/icon';
 import { newScenario } from './character-form';
 
 /**
  * The inline scenarios array editor (v4 `CharacterBasicInfo.tsx` scenarios
- * block): each row is a title + a content textarea; "+ Add Scenario" appends a
- * fresh row (client-minted id via `crypto.randomUUID()`); the trash icon
- * removes a row. The whole array round-trips in the parent form's
- * `scenarios` field and is saved as part of the ONE `characterUpdate` bag —
- * v4 instead POSTs each scenario to its own sub-resource immediately; this
- * port defers persistence to the parent's explicit Save (per the work order).
+ * block): each row is a title + a content markdown field (v4 `:482`, its
+ * `minHeight="6rem"`); "+ Add Scenario" appends a fresh row (client-minted id
+ * via `crypto.randomUUID()`); the trash icon removes a row. The whole array
+ * round-trips in the parent form's `scenarios` field and is saved as part of
+ * the ONE `characterUpdate` bag — v4 instead POSTs each scenario to its own
+ * sub-resource immediately; this port defers persistence to the parent's
+ * explicit Save (per the work order).
+ *
+ * `recordKey` is the scenario id (v4 keys its remount
+ * `${scenario.id}-${externalUpdateCount}`; the v5 form has no external-update
+ * counter, and the id alone covers the row-identity re-key this editor can see).
  */
 @Component({
   selector: 'qt-scenario-editor',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [Icon, MarkdownField],
   template: `
     <div>
       <div class="flex justify-between items-center mb-2">
@@ -60,13 +66,13 @@ import { newScenario } from './character-form';
                   <qt-icon name="trash" class="w-4 h-4" />
                 </button>
               </div>
-              <textarea
-                class="qt-input"
-                rows="4"
-                aria-label="Scenario content"
+              <qt-markdown-field
+                ariaLabel="Scenario content"
+                minHeight="6rem"
+                [recordKey]="scenario.id"
                 [value]="scenario.content"
-                (input)="setContent(i, $any($event.target).value)"
-              ></textarea>
+                (contentChange)="setContent(i, $event)"
+              />
             </div>
           }
         </div>

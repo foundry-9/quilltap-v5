@@ -1,9 +1,11 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
 import type { CharacterSystemPrompt } from '../../../core/core-contract';
+import { RichEditor } from '../../../editor/rich-editor';
 import { CharacterSystemPromptsTab } from './system-prompts-tab';
 
 function prompt(over: Partial<CharacterSystemPrompt> = {}): CharacterSystemPrompt {
@@ -51,6 +53,18 @@ async function render(
   return fixture;
 }
 
+async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
+  for (let i = 0; i < 4; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+  }
+}
+
+/** The prompt modal's content editor (qt-markdown-field's RichEditor handle). */
+function contentEditor(fixture: ComponentFixture<unknown>): RichEditor {
+  return fixture.debugElement.query(By.directive(RichEditor)).componentInstance as RichEditor;
+}
+
 function clickButtonWithText(fixture: ComponentFixture<unknown>, text: string): void {
   const button = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button')).find(
     (b) => (b as HTMLButtonElement).textContent?.trim() === text,
@@ -74,17 +88,14 @@ describe('CharacterSystemPromptsTab', () => {
     const fixture = await render(stubClient([], (req) => seen.push(req)));
 
     clickButtonWithText(fixture, '+ Add Prompt');
+    await settle(fixture);
     const nameInput = fixture.nativeElement.querySelector(
       'input[placeholder="e.g., Romantic, Companion, Professional"]',
     ) as HTMLInputElement;
     nameInput.value = 'Romantic';
     nameInput.dispatchEvent(new Event('input'));
-    const contentArea = fixture.nativeElement.querySelector(
-      'textarea[aria-label="System prompt content"]',
-    ) as HTMLTextAreaElement;
-    contentArea.value = 'Speak tenderly.';
-    contentArea.dispatchEvent(new Event('input'));
-    fixture.detectChanges();
+    contentEditor(fixture).setMarkdown('Speak tenderly.');
+    await settle(fixture);
 
     clickButtonWithText(fixture, 'Create');
     await new Promise((r) => setTimeout(r, 0));
@@ -104,6 +115,7 @@ describe('CharacterSystemPromptsTab', () => {
     const editButton = fixture.nativeElement.querySelector('[title="Edit"]') as HTMLButtonElement;
     editButton.click();
     fixture.detectChanges();
+    await settle(fixture);
 
     clickButtonWithText(fixture, 'Update');
     await new Promise((r) => setTimeout(r, 0));
@@ -112,6 +124,48 @@ describe('CharacterSystemPromptsTab', () => {
     const updateCall = seen.find((r) => r.type === 'characterPromptUpdate');
     expect(updateCall).toBeTruthy();
     expect(updateCall!['promptId']).toBe('p1');
+  });
+
+  it('the edit modal seeds the markdown field and re-saves it byte-identical', async () => {
+    const seen: Array<{ type: string; [k: string]: unknown }> = [];
+    const fixture = await render(
+      stubClient([prompt({ content: 'Speak *tenderly*, and never of the rain.' })], (req) =>
+        seen.push(req),
+      ),
+    );
+
+    const editButton = fixture.nativeElement.querySelector('[title="Edit"]') as HTMLButtonElement;
+    editButton.click();
+    fixture.detectChanges();
+    await settle(fixture);
+
+    expect(contentEditor(fixture).getMarkdown()).toBe('Speak *tenderly*, and never of the rain.');
+
+    // Save without touching the field: the stored bytes must round-trip
+    // untouched (the absorb-once seam means the mount is not an edit).
+    clickButtonWithText(fixture, 'Update');
+    await settle(fixture);
+
+    const updateCall = seen.find((r) => r.type === 'characterPromptUpdate');
+    expect(updateCall!['content']).toBe('Speak *tenderly*, and never of the rain.');
+  });
+
+  it('an edit made in the markdown field reaches the update payload', async () => {
+    const seen: Array<{ type: string; [k: string]: unknown }> = [];
+    const fixture = await render(stubClient([prompt()], (req) => seen.push(req)));
+
+    const editButton = fixture.nativeElement.querySelector('[title="Edit"]') as HTMLButtonElement;
+    editButton.click();
+    fixture.detectChanges();
+    await settle(fixture);
+
+    contentEditor(fixture).setMarkdown('Speak **plainly**.');
+    await settle(fixture);
+    clickButtonWithText(fixture, 'Update');
+    await settle(fixture);
+
+    const updateCall = seen.find((r) => r.type === 'characterPromptUpdate');
+    expect(updateCall!['content']).toBe('Speak **plainly**.');
   });
 
   it('the star button dispatches characterPromptSetDefault', async () => {

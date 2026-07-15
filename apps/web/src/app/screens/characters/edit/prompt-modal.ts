@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 
 import type { CharacterSystemPrompt } from '../../../core/core-contract';
+import { MarkdownField } from '../../../editor/markdown-field';
 import { FormActions } from '../../../ui/form-actions';
 import { Modal } from '../../../ui/modal';
 
@@ -23,14 +24,14 @@ export const INITIAL_PROMPT_FORM_DATA: PromptFormData = { name: '', content: '',
 
 /**
  * Create/edit modal for one character system prompt (v4
- * `components/characters/system-prompts-editor/PromptModal.tsx`): name,
- * markdown content (plain textarea this round), and a "set as default"
- * checkbox.
+ * `components/characters/system-prompts-editor/PromptModal.tsx`): name, the
+ * markdown content field (v4 `:78`, its `minHeight="12rem"` and
+ * `remountKey={editingPrompt?.id ?? 'new'}`), and a "set as default" checkbox.
  */
 @Component({
   selector: 'qt-prompt-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Modal, FormActions],
+  imports: [Modal, FormActions, MarkdownField],
   template: `
     <qt-modal
       [title]="editing() ? 'Edit Prompt' : 'Create Prompt'"
@@ -55,13 +56,13 @@ export const INITIAL_PROMPT_FORM_DATA: PromptFormData = { name: '', content: '',
             Supports Markdown formatting. Use {{ '{{char}}' }} and {{ '{{user}}' }} for
             character/user name substitution.
           </p>
-          <textarea
-            class="qt-input"
-            rows="10"
-            aria-label="System prompt content"
+          <qt-markdown-field
+            ariaLabel="System prompt content"
+            minHeight="12rem"
+            [recordKey]="recordKey()"
             [value]="form().content"
-            (input)="setField('content', $any($event.target).value)"
-          ></textarea>
+            (contentChange)="setField('content', $event)"
+          />
         </div>
 
         <div class="flex items-center gap-2">
@@ -97,6 +98,8 @@ export class PromptModal implements OnInit {
   protected readonly form = signal<PromptFormData>(INITIAL_PROMPT_FORM_DATA);
 
   protected readonly editing = computed(() => !!this.editingPrompt());
+  /** v4 `remountKey={editingPrompt?.id ?? 'new'}` (`PromptModal.tsx:81`). */
+  protected readonly recordKey = computed(() => this.editingPrompt()?.id ?? 'new');
   protected readonly isDisabled = computed(
     () => !this.form().name.trim() || !this.form().content.trim(),
   );

@@ -1,7 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { describe, expect, it } from 'vitest';
 
 import type { CharacterScenario } from '../../../core/core-contract';
+import { RichEditor } from '../../../editor/rich-editor';
 import { ScenarioEditor } from './scenario-editor';
 
 function scenario(over: Partial<CharacterScenario> = {}): CharacterScenario {
@@ -16,11 +18,27 @@ function scenario(over: Partial<CharacterScenario> = {}): CharacterScenario {
 }
 
 async function render(scenarios: CharacterScenario[]): Promise<ComponentFixture<ScenarioEditor>> {
+  TestBed.resetTestingModule();
   TestBed.configureTestingModule({ imports: [ScenarioEditor] });
   const fixture = TestBed.createComponent(ScenarioEditor);
   fixture.componentRef.setInput('scenarios', scenarios);
   fixture.detectChanges();
+  await settle(fixture);
   return fixture;
+}
+
+/** The zoneless microtask loop — the editor mounts in afterNextRender. */
+async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
+  for (let i = 0; i < 4; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+  }
+}
+
+/** The content editor handle for row `index`. */
+function contentEditor(fixture: ComponentFixture<ScenarioEditor>, index = 0): RichEditor {
+  return fixture.debugElement.queryAll(By.directive(RichEditor))[index]
+    .componentInstance as RichEditor;
 }
 
 describe('ScenarioEditor', () => {
@@ -61,7 +79,7 @@ describe('ScenarioEditor', () => {
     expect(emitted!.map((s) => s.id)).toEqual(['b']);
   });
 
-  it('updates title and content in place, bumping updatedAt', async () => {
+  it('updates title in place, bumping updatedAt', async () => {
     const fixture = await render([scenario({ id: 'a', updatedAt: '2024-01-01T00:00:00.000Z' })]);
     let emitted: CharacterScenario[] | null = null;
     fixture.componentInstance.scenariosChange.subscribe((v) => (emitted = v));
@@ -75,5 +93,42 @@ describe('ScenarioEditor', () => {
     expect(emitted).not.toBeNull();
     expect(emitted![0].title).toBe('A stormy night');
     expect(emitted![0].updatedAt).not.toBe('2024-01-01T00:00:00.000Z');
+  });
+
+  it('seeds each row s markdown field from its content', async () => {
+    const fixture = await render([
+      scenario({ id: 'a', content: 'The drawing room.' }),
+      scenario({ id: 'b', content: 'The **conservatory**.' }),
+    ]);
+    expect(contentEditor(fixture, 0).getMarkdown()).toBe('The drawing room.');
+    expect(contentEditor(fixture, 1).getMarkdown()).toBe('The **conservatory**.');
+  });
+
+  it('carries an edited row s markdown into the emitted array, bumping updatedAt', async () => {
+    const fixture = await render([
+      scenario({ id: 'a' }),
+      scenario({ id: 'b', updatedAt: '2024-01-01T00:00:00.000Z' }),
+    ]);
+    let emitted: CharacterScenario[] | null = null;
+    fixture.componentInstance.scenariosChange.subscribe((v) => (emitted = v));
+
+    contentEditor(fixture, 1).setMarkdown('A *storm* breaks over the estate.');
+    await settle(fixture);
+
+    expect(emitted).not.toBeNull();
+    expect(emitted![1].content).toBe('A *storm* breaks over the estate.');
+    expect(emitted![1].updatedAt).not.toBe('2024-01-01T00:00:00.000Z');
+    // The untouched row rides through byte-identical.
+    expect(emitted![0].content).toBe('The drawing room, past midnight.');
+  });
+
+  it('does not emit on load (the textarea contract the field replaces)', async () => {
+    // __bold__ normalizes to **bold** on parse; absorb-once must swallow it, or
+    // every mount would look like a user edit and dirty the parent form.
+    const fixture = await render([scenario({ id: 'a', content: '__bold__' })]);
+    let emitted: CharacterScenario[] | null = null;
+    fixture.componentInstance.scenariosChange.subscribe((v) => (emitted = v));
+    await settle(fixture);
+    expect(emitted).toBeNull();
   });
 });
