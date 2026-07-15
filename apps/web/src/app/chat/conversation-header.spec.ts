@@ -135,3 +135,69 @@ describe('ConversationHeader — the chat-totals summary gate (v4 SalonView.tsx:
     expect(fixture.nativeElement.querySelector('qt-copy-chat-id-button')).not.toBeNull();
   });
 });
+
+describe('ConversationHeader — the Regenerate Background entry (v4 ChatSidebar.tsx:1204-1214)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function renderWith(
+    inputs: { storyBackgroundsEnabled?: boolean; regeneratingBackground?: boolean } = {},
+  ): ComponentFixture<ConversationHeader> {
+    TestBed.configureTestingModule({
+      imports: [ConversationHeader],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: { dispatchData: vi.fn(() => new Promise(() => {})) } },
+      ],
+    });
+    const fixture = TestBed.createComponent(ConversationHeader);
+    fixture.componentRef.setInput('chat', chatDetail());
+    fixture.componentRef.setInput(
+      'storyBackgroundsEnabled',
+      inputs.storyBackgroundsEnabled ?? false,
+    );
+    fixture.componentRef.setInput(
+      'regeneratingBackground',
+      inputs.regeneratingBackground ?? false,
+    );
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  function entry(fixture: ComponentFixture<ConversationHeader>): HTMLButtonElement | null {
+    return fixture.nativeElement.querySelector('button[aria-label="Regenerate Background"]');
+  }
+
+  it('renders the entry with v4 title copy when story backgrounds are enabled', () => {
+    const fixture = renderWith({ storyBackgroundsEnabled: true });
+    expect(entry(fixture)).not.toBeNull();
+    expect(entry(fixture)!.getAttribute('title')).toBe('Regenerate story background image');
+  });
+
+  it('omits the entry when story backgrounds are disabled (v4 storyBackgroundsEnabled gate)', () => {
+    expect(entry(renderWith({ storyBackgroundsEnabled: false }))).toBeNull();
+  });
+
+  it('emits regenerateBackground on click', () => {
+    const fixture = renderWith({ storyBackgroundsEnabled: true });
+    let fired = false;
+    fixture.componentInstance.regenerateBackground.subscribe(() => (fired = true));
+    entry(fixture)!.click();
+    expect(fired).toBe(true);
+  });
+
+  it('disables the entry while a regeneration is in flight', () => {
+    expect(entry(renderWith({ storyBackgroundsEnabled: true, regeneratingBackground: true }))!.disabled).toBe(
+      true,
+    );
+  });
+
+  it('does not reuse the gallery glyph — v4 image would be ambiguous in an icon-only cluster', () => {
+    // v4's palette button uses `image` beside a TEXT label. Here `image` already
+    // means "View chat photos", so the entry uses v5's generate glyph.
+    const fixture = renderWith({ storyBackgroundsEnabled: true });
+    expect(entry(fixture)!.querySelector('qt-icon')!.getAttribute('name')).toBe('sparkles');
+    const gallery = fixture.nativeElement.querySelector('button[aria-label="View chat photos"]');
+    expect(gallery.querySelector('qt-icon')!.getAttribute('name')).toBe('image');
+  });
+});

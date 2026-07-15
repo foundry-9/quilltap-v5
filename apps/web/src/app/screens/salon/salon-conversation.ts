@@ -54,7 +54,13 @@ import { DocumentModeController, type DocFocusTarget } from '../../documents/doc
 import { DocumentPane } from '../../documents/document-pane';
 import { DocumentPicker, type DocumentSelection } from '../../documents/document-picker';
 import { EditEnclaveModal } from '../../autonomous/edit-enclave-modal';
-import { fetchChatBackgroundVar, storyBackgroundKeys } from './story-background.api';
+import {
+  PASSIVE_POLL_INTERVAL_MS,
+  StoryBackgroundPoller,
+  fetchChatBackgroundVar,
+  regenerateChatBackground,
+  storyBackgroundKeys,
+} from './story-background.api';
 import { compileRules, type CompiledRules } from '../../editor/text-replacement';
 import { listTextReplacements } from '../settings/chat/text-replacements.api';
 
@@ -160,9 +166,32 @@ interface CascadePrompt {
         [chat]="chat()!"
         [settings]="settings()"
         [messageCount]="chat()!.messages.length"
+        [storyBackgroundsEnabled]="storyBackgroundsEnabled()"
+        [regeneratingBackground]="regeneratingBackground()"
         (openGallery)="showGallery.set(true)"
         (editEnclave)="showEditEnclave.set(true)"
+        (regenerateBackground)="onRegenerateBackground()"
       />
+
+      @if (backgroundFlash(); as flash) {
+        <div
+          class="mx-4 mt-2"
+          [class.qt-alert-success]="flash.kind === 'success'"
+          [class.qt-alert-error]="flash.kind === 'error'"
+          role="status"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <span>{{ flash.message }}</span>
+            <button
+              type="button"
+              class="qt-button-ghost qt-button-sm flex-shrink-0"
+              (click)="backgroundFlash.set(null)"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      }
 
       <div class="qt-chat-messages-viewport">
         <qt-message-list
@@ -481,21 +510,103 @@ export class SalonConversation {
   protected readonly settings = computed(() => this.settingsQuery.data() ?? null);
 
   /**
-   * The chat's story background (dogfood finding #9): fetched once per chat open
-   * and applied as `--story-background-url` on the layout root, where the ported
+   * The chat's story background (dogfood finding #9): applied as
+   * `--story-background-url` on the layout root, where the ported
    * `.qt-chat-layout::before` layer (`_chat.css`) draws it at 0.45 opacity,
    * fixed/cover. Null when the chat has no background → the `:not([style*=…])`
-   * rule hides the layer. No 30s poll — that gates the unported regeneration
-   * subsystem, not display.
+   * rule hides the layer.
+   *
+   * DISPLAY IS UNCONDITIONAL; the settings flag gates only the PASSIVE POLL (v4
+   * `useStoryBackground.ts:68` — `enablePassivePolling` is a separate argument
+   * from the query's `enabled`). A chat keeps showing the backdrop it has even
+   * with generation switched off; the 30s poll only exists to notice a backdrop
+   * a background JOB wrote.
    */
   private readonly backgroundQuery = injectQuery(() => ({
     queryKey: storyBackgroundKeys.background(this.chatId() ?? ''),
     enabled: !!this.chatId(),
     queryFn: () => fetchChatBackgroundVar(this.core, this.chatId()!),
+    refetchInterval: this.storyBackgroundsEnabled() ? PASSIVE_POLL_INTERVAL_MS : false,
+    // v4 `refetchOnReconnect: false`.
+    refetchOnReconnect: false,
   }));
   protected readonly backgroundVar = computed<string | null>(
     () => this.backgroundQuery.data() ?? null,
   );
+
+  /** v4 `chatSettings?.storyBackgroundsSettings?.enabled ?? false` (SalonView.tsx:107). */
+  protected readonly storyBackgroundsEnabled = computed<boolean>(
+    () =>
+      (this.settings()?.['storyBackgroundsSettings'] as { enabled?: boolean } | undefined)
+        ?.enabled ?? false,
+  );
+
+  // --- story-background regeneration (v4 useChatControls.ts:397-416) ---
+
+  private readonly poller = new StoryBackgroundPoller();
+  /** v4 clears the interval on unmount (`:144-150`) — a live 3-minute timer must not outlive the view. */
+  private readonly _pollerTeardown = this.destroyRef.onDestroy(() => this.poller.stop());
+  /** v4's toasts have no v5 bus yet — the scriptorium `flash` idiom stands in. */
+  protected readonly backgroundFlash = signal<{ kind: 'success' | 'error'; message: string } | null>(
+    null,
+  );
+  protected readonly regeneratingBackground = signal(false);
+
+  /**
+   * v4 fires `onBackgroundChanged` when a poll sees the backdrop move, and the
+   * Salon's callback is `() => { void fetchChat() }`: a Lantern announcement is
+   * posted ALONGSIDE the new backdrop, so the chat must be refetched or the
+   * announcement only appears if the user leaves and returns.
+   */
+  private onBackgroundChanged(): void {
+    const chatId = this.chatId();
+    if (!chatId) return;
+    void this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+  }
+
+  /**
+   * The passive-poll change hook (v4 `:131-141`): the 30s revalidation can land
+   * a new URL on its own, so a transition fires the same callback the active
+   * poll does. v4 skips the INITIAL load — only transitions from a known value
+   * count, or every chat open would refetch itself.
+   */
+  private previousBackgroundVar: string | null | undefined = undefined;
+  private readonly _backgroundChangeEffect = effect(() => {
+    const next = this.backgroundVar();
+    const previous = this.previousBackgroundVar;
+    this.previousBackgroundVar = next;
+    if (previous === undefined) return;
+    if (previous !== next) this.onBackgroundChanged();
+  });
+
+  protected async onRegenerateBackground(): Promise<void> {
+    const chatId = this.chatId();
+    if (!chatId) return;
+    this.regeneratingBackground.set(true);
+    this.backgroundFlash.set(null);
+    try {
+      const result = await regenerateChatBackground(this.core, chatId);
+      // Both §2 success arms are shown verbatim: "…queued" and "…already in
+      // progress" are distinct states the user should be able to tell apart.
+      this.backgroundFlash.set({ kind: 'success', message: result.message });
+      this.poller.start(
+        this.backgroundVar(),
+        async () => (await this.backgroundQuery.refetch()).data ?? null,
+        () => this.onBackgroundChanged(),
+      );
+    } catch (error) {
+      // v4 surfaces the server's own message (`errorData.error`) — that is how
+      // the §2 badRequest strings ("Story backgrounds are not enabled. …") reach
+      // the user — falling back to its generic copy.
+      const message = error instanceof Error ? error.message : String(error);
+      this.backgroundFlash.set({
+        kind: 'error',
+        message: message || 'Failed to regenerate background',
+      });
+    } finally {
+      this.regeneratingBackground.set(false);
+    }
+  }
 
   /**
    * Composition mode (dogfood finding #8): the per-chat flag rides the chat's

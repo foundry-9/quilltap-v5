@@ -75,6 +75,18 @@ import { ChatCostSummary } from './chat-cost-summary';
           <qt-icon name="settings" class="w-4 h-4" />
         </button>
       }
+      @if (storyBackgroundsEnabled()) {
+        <button
+          type="button"
+          class="qt-button-ghost qt-button-sm flex-shrink-0"
+          title="Regenerate story background image"
+          aria-label="Regenerate Background"
+          [disabled]="regeneratingBackground()"
+          (click)="regenerateBackground.emit()"
+        >
+          <qt-icon name="sparkles" class="w-4 h-4" />
+        </button>
+      }
       <button
         type="button"
         class="qt-button-ghost qt-button-sm flex-shrink-0"
@@ -108,6 +120,27 @@ export class ConversationHeader {
    * no confirmation dialog; the button opens the modal directly.
    */
   readonly editEnclave = output<void>();
+  /**
+   * Queue a story-background regeneration (v4's ChatSidebar tool-palette entry,
+   * `ChatSidebar.tsx:1204-1214`).
+   *
+   * PLACEMENT DIVERGENCE: v5 has no chat sidebar / tool palette
+   * (`salon-conversation.ts:95`), so this relocates to the header entry cluster —
+   * the same idiom the Edit-Enclave entry already established (P4.6af). ONE
+   * button moves; the palette stays deferred.
+   *
+   * GLYPH DIVERGENCE: v4 uses the `image` icon, which works beside a text label
+   * in the palette. The header cluster is icon-only and `image` ALREADY means
+   * "View chat photos" there, so this uses `sparkles` — v5's established
+   * "generate an image" glyph (the composer's generate button). v4's title copy
+   * is unchanged and carries the meaning.
+   */
+  readonly regenerateBackground = output<void>();
+
+  /** v4 `chatControls.storyBackgroundsEnabled` — the tool-palette gate. */
+  readonly storyBackgroundsEnabled = input(false);
+  /** Disables the entry while a regeneration poll is in flight (v4 has no such guard). */
+  readonly regeneratingBackground = input(false);
 
   /** v4 `chatSettings?.tokenDisplaySettings?.showChatTotals` — default false. */
   protected readonly showChatTotals = computed(

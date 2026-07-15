@@ -13395,3 +13395,67 @@ Aesthetics** (the two `AestheticEditorField`s over
 this order's.
 
 **Gate:** `ng test` **923** (was 914; +9). SPA 0.5.105.
+
+## P4.6ap unit 5 — the Regenerate Background entry + both polls (lane B)
+
+The regenerate client surface (v4 `useChatControls.ts:397-416`) + the two
+polls (v4 `hooks/useStoryBackground.ts`), landing in
+`screens/salon/story-background.api.ts` (grown, not rebuilt),
+`chat/conversation-header.ts`, and `screens/salon/salon-conversation.ts`.
+**Tier 1 of the order is now complete.**
+
+**The rule that shaped this unit: display is unconditional; the flag gates
+only POLLING.** v4's `enablePassivePolling` is a separate argument from the
+query's `enabled` (`useStoryBackground.ts:68`), so a chat keeps showing the
+backdrop it has even with generation switched off. The 30s poll exists only to
+notice a backdrop a background JOB wrote. A spec pins this directly (a
+disabled chat still binds `--story-background-url`). The file's old doc-comment
+claimed there was NO poll because generation was unported — that is now stale
+and was corrected.
+
+**The polls, ported to `StoryBackgroundPoller`:**
+- **Passive:** `refetchInterval: enabled ? 30_000 : false` on the existing
+  background query, plus v4's `refetchOnReconnect: false`.
+- **Active:** 5s ticks, max 36 (3 minutes), stops the instant the resolved
+  value differs from the one captured at start. Constants pinned by spec.
+- **v4's re-entrancy quirk is reproduced exactly:** `start()` re-captures the
+  baseline BEFORE the "already polling" guard (`:97-103`), so a second
+  regenerate press mid-poll moves the comparison baseline WITHOUT restarting
+  the timer or resetting the budget. A spec pins it so it reads as a decision.
+- **Teardown:** the poller stops on `DestroyRef.onDestroy` — v4 clears the
+  interval on unmount (`:144-150`), and a live 3-minute timer must not outlive
+  the view.
+
+**The change callback matters.** v4's `onBackgroundChanged` is
+`() => { void fetchChat() }`: a Lantern announcement is posted ALONGSIDE the
+new backdrop, so the chat must be refetched or the announcement only appears
+if the user leaves and returns. Both polls fire it; the passive path skips the
+INITIAL load (v4 `:131-141` — only transitions from a known value count, or
+every chat open would refetch itself).
+
+**Two placement divergences, both documented in code:**
+- **The button relocates.** v4's entry is a ChatSidebar tool-palette button
+  (`ChatSidebar.tsx:1204-1214`); v5 has no sidebar (`salon-conversation.ts:95`),
+  so it rides the conversation-header cluster — the Edit-Enclave idiom
+  (P4.6af). ONE button moves; the palette stays deferred.
+- **The glyph changes.** v4 uses `image`, which is unambiguous beside a TEXT
+  label in the palette. The header cluster is icon-only and `image` ALREADY
+  means "View chat photos" there, so the entry uses `sparkles` — v5's
+  established "generate an image" glyph (the composer). v4's title copy
+  ("Regenerate story background image") is unchanged and carries the meaning. A
+  spec pins that the two glyphs differ.
+
+**Server copy surfaces verbatim.** v4 throws `errorData.error` and shows it, so
+the §2 badRequest strings reach the user; `CoreDispatchError.message` carries
+them identically. Both §2 SUCCESS arms are shown too — "…queued" and "…already
+in progress" are distinct states worth telling apart. There is still no v5
+toast bus, so the scriptorium `flash` idiom stands in.
+
+**Wire name:** the dispatch uses the EXISTING `chatRegenerateBackground` name
+(§2 — the variant already exists at `types.rs:1832-1842`; only lane A's
+dispatch target changes). Route-mocked in-lane; a spec pins the name so it
+cannot drift.
+
+**Gate:** `ng test` **941** (was 923; +18), `ng build` clean. The five new
+salon beats were proven to RUN (3 → 8 `it()`s in the file) and to BITE (a
+deliberately corrupted assertion failed). SPA 0.5.106.

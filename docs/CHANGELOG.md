@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+P4.6ap unit 5: the Regenerate Background entry + both story-background polls
+(Salon SPA lane). Ports v4's regenerate handler (useChatControls.ts:397-416)
+and useStoryBackground's two polls: the passive 30s refetchInterval, gated by
+storyBackgroundsSettings.enabled, and the active 5s/36-poll regeneration
+watch that stops when the resolved background moves. Display stays
+unconditional — the flag gates polling only. The regenerate button relocates
+from v4's unported ChatSidebar palette to the conversation-header cluster
+(the Edit-Enclave idiom) and uses the sparkles glyph, since v4's image glyph
+already means "View chat photos" in an icon-only cluster. Server messages
+(both success arms and the three badRequest strings) surface verbatim through
+the scriptorium flash idiom. The dispatch uses the EXISTING
+chatRegenerateBackground wire name; route-mocked until lane A un-refuses it.
+SPA 0.5.106.
+
 P4.6ap unit 4: the Story Backgrounds settings card (Salon SPA lane). Ports
 v4 components/settings/chat-settings/StoryBackgroundsSettings.tsx into the
 IMAGES tab — where v4 mounts it, despite the file living in v4's

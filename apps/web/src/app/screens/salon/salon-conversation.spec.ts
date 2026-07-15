@@ -224,3 +224,149 @@ describe('SalonConversation (read path)', () => {
     expect(layout.getAttribute('style') ?? '').toContain('--story-background-url');
   });
 });
+
+describe('SalonConversation — story-background regeneration (v4 useChatControls.ts:397-416)', () => {
+  interface RegenStub {
+    calls: string[];
+    client: Partial<CoreClient>;
+  }
+
+  /**
+   * A stub that ROUTES dispatchData by request type — the shared `stubClient`
+   * answers every dispatchData call with the background body, which would make a
+   * regenerate look like a background read.
+   */
+  function regenStub(opts: {
+    enabled: boolean;
+    fileId?: string | null;
+    regenerate?: () => Record<string, unknown>;
+  }): RegenStub {
+    const calls: string[] = [];
+    const chat = chatDetail();
+
+    const dispatch = vi.fn(async (req: CoreRequest): Promise<CoreResponse> => {
+      calls.push(req.type);
+      if (req.type === 'chatGet') return { type: 'chat', data: { chat } };
+      if (req.type === 'chatSettings') {
+        return {
+          type: 'chatSettings',
+          data: {
+            avatarDisplayMode: 'ALWAYS',
+            avatarDisplayStyle: 'CIRCULAR',
+            storyBackgroundsSettings: { enabled: opts.enabled, defaultImageProfileId: null },
+          },
+        };
+      }
+      return { type: 'ack', data: {} };
+    });
+
+    const dispatchData = vi.fn(async (req: { type: string }) => {
+      calls.push(req.type);
+      if (req.type === 'chatRegenerateBackground') {
+        return (
+          opts.regenerate?.() ?? {
+            message: 'Story background regeneration queued',
+            queued: true,
+            jobId: 'job-1',
+          }
+        );
+      }
+      return {
+        backgroundUrl: null,
+        fileId: opts.fileId ?? null,
+        filename: null,
+        sha256: null,
+        linkSummary: null,
+      };
+    });
+
+    return {
+      calls,
+      client: {
+        events$: new Subject<ScopedEvent>().asObservable(),
+        dispatch,
+        dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
+        dispatchExpect: (async (req: CoreRequest, expected: string) => {
+          const resp = await dispatch(req);
+          if (resp.type !== expected) throw new Error(`unexpected ${resp.type}`);
+          return resp;
+        }) as CoreClient['dispatchExpect'],
+      },
+    };
+  }
+
+  async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+  }
+
+  function regenEntry(fixture: ComponentFixture<SalonConversation>): HTMLButtonElement | null {
+    return fixture.nativeElement.querySelector('button[aria-label="Regenerate Background"]');
+  }
+
+  it('shows the entry only when storyBackgroundsSettings.enabled is on', async () => {
+    const off = await render(regenStub({ enabled: false }).client);
+    expect(regenEntry(off)).toBeNull();
+    TestBed.resetTestingModule();
+
+    const on = await render(regenStub({ enabled: true }).client);
+    expect(regenEntry(on)).not.toBeNull();
+  });
+
+  it('dispatches the regenerate and flashes the server success message', async () => {
+    const s = regenStub({ enabled: true });
+    const fixture = await render(s.client);
+
+    regenEntry(fixture)!.click();
+    await settle(fixture);
+
+    expect(s.calls).toContain('chatRegenerateBackground');
+    const flash = fixture.nativeElement.querySelector('.qt-alert-success');
+    expect(flash).not.toBeNull();
+    expect(flash.textContent).toContain('Story background regeneration queued');
+  });
+
+  it('flashes the "already in progress" arm verbatim too (both §2 arms are successes)', async () => {
+    const s = regenStub({
+      enabled: true,
+      regenerate: () => ({
+        message: 'Story background generation already in progress',
+        queued: true,
+        jobId: 'job-2',
+      }),
+    });
+    const fixture = await render(s.client);
+
+    regenEntry(fixture)!.click();
+    await settle(fixture);
+
+    const flash = fixture.nativeElement.querySelector('.qt-alert-success');
+    expect(flash.textContent).toContain('Story background generation already in progress');
+  });
+
+  it('surfaces the server error verbatim (the §2 badRequest strings)', async () => {
+    const s = regenStub({
+      enabled: true,
+      regenerate: () => {
+        throw new Error('No characters in chat to generate background for.');
+      },
+    });
+    const fixture = await render(s.client);
+
+    regenEntry(fixture)!.click();
+    await settle(fixture);
+
+    const flash = fixture.nativeElement.querySelector('.qt-alert-error');
+    expect(flash).not.toBeNull();
+    expect(flash.textContent).toContain('No characters in chat to generate background for.');
+  });
+
+  it('keeps DISPLAYING a background while generation is switched off (display is unconditional)', async () => {
+    // The flag gates polling, never display — the P4.6am survey rule.
+    const fixture = await render(regenStub({ enabled: false, fileId: 'file-77' }).client);
+    const layout = fixture.nativeElement.querySelector('.qt-chat-layout');
+    expect(layout.getAttribute('style')).toContain("url('/api/v1/files/file-77')");
+  });
+});
