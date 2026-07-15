@@ -14581,3 +14581,44 @@ prove.**
 
 **Gate:** `playwright test settings-flow.spec.ts` → **6/6 passed**, the new beat
 among them. Full-suite run recorded in the lane's closing entry.
+
+## P4.6at (lane C) — LANE COMPLETE (2026-07-15)
+
+**Tier 1 fully landed; tier 2 and tier 3 were empty by the order's own text, and
+this lane banks NO deferrals — there is nothing for the next-order pool from it.**
+Branch `claude/aesthetics-card-minheight-p4-873ea2`, four commits (units 1-4).
+
+**Closes:** the P4.6aq **minHeight residual gap** and the **Default Aesthetics
+Images-tab card** — both named in the "Still OPEN from this surface" pool above.
+
+**Full verification gate:**
+
+- `ng test` — **115 files / 979 tests, zero failures** (968 baseline + 8 card/api
+  + 3 minHeight). `project-aesthetic-field`'s spec host (`projects.spec.ts`) is
+  green, but NOT untouched — see the unit-1 record's DEVIATION note.
+- `ng build` — clean.
+- **Full Playwright — 61/61 passed, zero skips** (11.7m), the new Default
+  Aesthetics beat among them. No port-4319 contention: the lane ran the suite
+  alone.
+- **No `crates/**` diffs** (`git diff --name-only main...HEAD` — apps/web + the
+  two append-only docs only). `cargo fmt --all --check` clean; no Rust compiled,
+  per the order.
+- Every commit through `.claude/commands/commit.md`. **SPA 0.5.117** (0.5.113 →
+  four patch bumps). No crate versions touched (lane A owns those).
+
+**For the unifier:**
+
+1. **Fold the §2 request types.** `SystemImageAestheticsGet`/`SetRequest` live in
+   `screens/settings/images/system-aesthetics.api.ts` and are cast at dispatch
+   (`as unknown as CoreRequest`). Fold into the `CoreRequest` union name-for-name
+   against lane A's `types.rs`, then drop the casts.
+2. **Activate the beat.** In `e2e/settings-flow.spec.ts`, delete the
+   `page.route('**/api/dispatch', …)` block in the Default Aesthetics beat and
+   run it live over lane A's routes; then grow the reload round-trip assertion
+   (type → save → reload → the content is still there) — the mock cannot prove
+   persistence. The mock's response tag (`{type: 'system', …}`) is NOT
+   load-bearing: `dispatchData` ignores any non-error tag, so no rename is needed
+   whichever Response variant lane A picked.
+3. **Watch for a fixture collision with lane A** — none expected: this lane
+   changed NO fixtures and no `global-setup.ts`; the beat self-provisions through
+   the UI over the existing template instance.
