@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+P4.6aq unit 4: the character appearance fields take qt-markdown-field —
+the six image/physical prompts on the character-edit tab (v4 minHeight
+4/4/6/8/10/10rem) and the depiction-guidelines editors on both the edit
+and view tabs (8rem, v4's AestheticEditorField value). The edit tab's
+guidelines field is not in the work order's table, but its v4 counterpart
+is the same AestheticEditorField as the view tab's, so it is swapped too.
+
+Both blocks on the edit tab now gate their editors on their query, with
+seeding moved into queryFn — v4 gates the same way (DescriptionsTab
+early-returns while loading), and without it a load would surface as an
+edit and let an untouched Save rewrite stored prompts in normalized
+bytes. Specs cover seeding, per-field edit payloads, and untouched-save
+byte-exactness for all seven fields.
+
 P4.6aq unit 3: qt-markdown-field swapped in at the remaining four
 single-field sites — the project wardrobe item description (v4 minHeight
 10rem), the project instructions card (14rem), the project aesthetic

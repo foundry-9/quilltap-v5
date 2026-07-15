@@ -13720,3 +13720,53 @@ removed, `projects.spec.ts` fails 2/17 — both byte-exactness assertions. With 
   `__foggy__` left untouched in the form until a real edit.
 
 `ng test` **866** (was 859); `ng build` clean.
+
+---
+
+## P4.6aq unit 4 — the appearance / image-prompt fields, sites 9–10 (lane C, tier 2)
+
+**Landed.** Seven fields across two files:
+
+| v5 field | v4 source | minHeight |
+|---|---|---|
+| `characters/edit/appearance-tab.ts` — headAndShoulders / short / medium / long / complete / fullDescription | `DescriptionsTab.tsx:229-331` | `4` / `4` / `6` / `8` / `10` / `10rem` |
+| `characters/edit/appearance-tab.ts` — depiction guidelines | `AestheticEditorField.tsx:119` | `8rem` |
+| `characters/view/tabs/character-appearance-tab.ts` — depiction guidelines | same | `8rem` |
+
+**A field the order's table omits.** The order lists site 9 as the six prompts at
+`appearance-tab.ts:82,91,100,109,118,127` and site 10 as the view tab's
+guidelines — but the EDIT tab has its own guidelines textarea (was `:162`) whose
+v4 counterpart is the same `AestheticEditorField`, mirroring v4's edit screen
+(`CharacterEditView.tsx:333-347` stacks `DescriptionsTab` + `AestheticEditorField`).
+It is squarely inside the order's mandate ("every remaining v5 form field whose
+v4 counterpart renders `MarkdownLexicalEditor`") and inside an owned file, so it
+was swapped too. Seven fields, not six.
+
+**Site 10's v4 counterpart is NOT a DescriptionsTab field.** The order's table
+implies it is ("(same v4 tab — guidelines)"), but `DescriptionsTab.tsx` contains
+no guidelines field at all — v4 renders the Ariel Clause through
+`AestheticEditorField`, which is ALSO site 7's component. Hence `8rem`, not "—".
+
+**Both edit-tab blocks needed unit 3's loading-gate treatment** (same root cause,
+same fix): all seven drafts were seeded by `effect` after their queries resolved,
+so every editor would have mounted empty and taken its content late — surfacing
+the load as an edit. v4 gates identically (`DescriptionsTab.tsx:157` early-returns
+"Loading physical description..."). Each block now gates on its own query's
+`isPending()` and seeds inside `queryFn`; the `effect`s and their `physicalSeeded`
+/ `guidelinesSeeded` latches are retired. The view tab (site 10) already had its
+gate, so it needed only the swap — its pre-existing `@if (guidelinesQuery
+.isPending())` is now load-bearing and says so in the doc comment.
+
+**No `recordKey` at either site.** v4 bumps `remountKey` post-load, but that is
+redundant once the editor cannot mount empty, and a re-key alongside a value
+change double-emits (one absorbed, one surfaced). Re-seeding on the post-save
+refetch is v4-faithful (`DescriptionsTab.tsx:65-67` re-seeds on every fetch) and
+harmless: the refetched bytes are the ones just saved.
+
+**Proof.** `appearance-tab.spec.ts` (NEW, 4/4): all six prompts seeded; an edited
+prompt in the `characterUpdate` payload with siblings untouched; an untouched save
+re-sending `__grey__` verbatim while the editor displays `**grey**`; guidelines
+seed + save. `character-appearance-tab.spec.ts` (NEW, 3/3): seed, edit →
+`characterDepictionGuidelinesUpdate`, untouched-save byte-exactness.
+
+`ng test` **873** (was 866); `ng build` clean.

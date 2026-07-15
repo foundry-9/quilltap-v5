@@ -3,6 +3,7 @@ import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experime
 
 import { CoreClient } from '../../../../core/core-client';
 import type { CharacterDetail } from '../../../../core/core-contract';
+import { MarkdownField } from '../../../../editor/markdown-field';
 import { characterKeys, fetchDepictionGuidelines } from '../../characters.api';
 
 /**
@@ -17,10 +18,18 @@ import { characterKeys, fetchDepictionGuidelines } from '../../characters.api';
  * combines "read the physical description" + "edit the depiction guidelines"
  * per this order's explicit spec, since the vault-write physical-description
  * form is deferred to the edit screen.
+ *
+ * The guidelines editor is a `qt-markdown-field` carrying
+ * `AestheticEditorField`'s `minHeight="8rem"` (`:119`) — v4 renders the
+ * guidelines through that component (`CharacterEditView.tsx:338`), not through
+ * `DescriptionsTab`. It mounts only once the query settles (the pre-existing
+ * gate below, which the swap now depends on: the field absorbs exactly one emit,
+ * so an editor mounting ahead of its content would surface the load as an edit).
  */
 @Component({
   selector: 'qt-character-appearance-tab',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [MarkdownField],
   template: `
     <div class="space-y-6">
       <div class="character-section-card rounded-lg border qt-border-default qt-bg-card p-6">
@@ -87,12 +96,12 @@ import { characterKeys, fetchDepictionGuidelines } from '../../characters.api';
         @if (guidelinesQuery.isPending()) {
           <p class="qt-text-small qt-text-secondary">Loading…</p>
         } @else {
-          <textarea
-            class="qt-textarea w-full"
-            rows="8"
+          <qt-markdown-field
+            ariaLabel="Depiction guidelines"
+            minHeight="8rem"
             [value]="draft()"
-            (input)="draft.set($any($event.target).value)"
-          ></textarea>
+            (contentChange)="draft.set($event)"
+          />
           <div class="mt-3 flex items-center gap-3">
             <button type="button" class="qt-button-primary" [disabled]="saving()" (click)="save()">
               {{ saving() ? 'Saving…' : 'Save' }}

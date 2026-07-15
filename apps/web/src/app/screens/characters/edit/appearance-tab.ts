@@ -1,8 +1,9 @@
-import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angular/core';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../../core/core-client';
 import type { CharacterPhysicalDescription } from '../../../core/core-contract';
+import { MarkdownField } from '../../../editor/markdown-field';
 import { fetchCharacter, fetchDepictionGuidelines, characterKeys } from '../characters.api';
 
 /** The physical-description editable form (the fields New/Edit both send, v4-faithful). */
@@ -43,16 +44,29 @@ function loadPhysicalDescription(pd: CharacterPhysicalDescription | null): Physi
 
 /**
  * The Appearance tab (v4 `view/components/DescriptionsTab.tsx` +
- * `AestheticEditorField` for the depiction guidelines): the physical
+ * `AestheticEditorField` for the depiction guidelines — v4's edit screen stacks
+ * exactly these two, `CharacterEditView.tsx:333-347`): the physical
  * description prompt set — a SEPARATE `characterUpdate` PUT scoped to
  * `physicalDescription` (v4 PATCHes the character row directly; the vault
  * write overlay routes it) — and the depiction-guidelines (Ariel Clause) text,
  * saved via `characterDepictionGuidelinesUpdate`. Each block has its own
  * explicit Save, independent of the Details tab's "Save Character".
+ *
+ * All seven fields are `qt-markdown-field`s carrying v4's per-field `minHeight`
+ * (`DescriptionsTab.tsx:235-337`: 4/4/6/8/10/10rem; the guidelines take
+ * `AestheticEditorField`'s `8rem`). Each block renders its editors only once its
+ * query settles — v4's own gates (`DescriptionsTab.tsx:157`,
+ * `AestheticEditorField.tsx:117`) and load-bearing: the field absorbs exactly
+ * one emit, so an editor that mounts ahead of its content would surface the load
+ * as an edit and let a plain Save rewrite the stored bytes in normalized form.
+ * Each draft is therefore seeded inside its `queryFn`. (v4 pairs its gate with a
+ * post-load `remountKey` bump; that is redundant once the editor cannot mount
+ * empty, and a re-key alongside a value change would double-emit.)
  */
 @Component({
   selector: 'qt-character-appearance-tab',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [MarkdownField],
   template: `
     <div class="space-y-6">
       <div class="qt-card space-y-4">
@@ -68,80 +82,84 @@ function loadPhysicalDescription(pd: CharacterPhysicalDescription | null): Physi
           <div class="qt-alert-error">{{ physicalError() }}</div>
         }
 
-        <div>
-          <label class="block qt-label mb-2">Name</label>
-          <input
-            type="text"
-            class="qt-input"
-            [value]="physicalForm().name"
-            (input)="setPhysicalField('name', $any($event.target).value)"
-          />
-        </div>
-        <div>
-          <label class="block qt-label mb-2">Head &amp; Shoulders Prompt</label>
-          <textarea
-            class="qt-input"
-            rows="3"
-            [value]="physicalForm().headAndShouldersPrompt"
-            (input)="setPhysicalField('headAndShouldersPrompt', $any($event.target).value)"
-          ></textarea>
-        </div>
-        <div>
-          <label class="block qt-label mb-2">Short Prompt</label>
-          <textarea
-            class="qt-input"
-            rows="3"
-            [value]="physicalForm().shortPrompt"
-            (input)="setPhysicalField('shortPrompt', $any($event.target).value)"
-          ></textarea>
-        </div>
-        <div>
-          <label class="block qt-label mb-2">Medium Prompt</label>
-          <textarea
-            class="qt-input"
-            rows="4"
-            [value]="physicalForm().mediumPrompt"
-            (input)="setPhysicalField('mediumPrompt', $any($event.target).value)"
-          ></textarea>
-        </div>
-        <div>
-          <label class="block qt-label mb-2">Long Prompt</label>
-          <textarea
-            class="qt-input"
-            rows="5"
-            [value]="physicalForm().longPrompt"
-            (input)="setPhysicalField('longPrompt', $any($event.target).value)"
-          ></textarea>
-        </div>
-        <div>
-          <label class="block qt-label mb-2">Complete Prompt</label>
-          <textarea
-            class="qt-input"
-            rows="6"
-            [value]="physicalForm().completePrompt"
-            (input)="setPhysicalField('completePrompt', $any($event.target).value)"
-          ></textarea>
-        </div>
-        <div>
-          <label class="block qt-label mb-2">Full Description</label>
-          <textarea
-            class="qt-input"
-            rows="8"
-            [value]="physicalForm().fullDescription"
-            (input)="setPhysicalField('fullDescription', $any($event.target).value)"
-          ></textarea>
-        </div>
+        @if (characterQuery.isPending()) {
+          <div class="py-6 text-center qt-text-secondary">Loading physical description...</div>
+        } @else {
+          <div>
+            <label class="block qt-label mb-2">Name</label>
+            <input
+              type="text"
+              class="qt-input"
+              [value]="physicalForm().name"
+              (input)="setPhysicalField('name', $any($event.target).value)"
+            />
+          </div>
+          <div>
+            <label class="block qt-label mb-2">Head &amp; Shoulders Prompt</label>
+            <qt-markdown-field
+              ariaLabel="Head and shoulders prompt"
+              minHeight="4rem"
+              [value]="physicalForm().headAndShouldersPrompt"
+              (contentChange)="setPhysicalField('headAndShouldersPrompt', $event)"
+            />
+          </div>
+          <div>
+            <label class="block qt-label mb-2">Short Prompt</label>
+            <qt-markdown-field
+              ariaLabel="Short prompt"
+              minHeight="4rem"
+              [value]="physicalForm().shortPrompt"
+              (contentChange)="setPhysicalField('shortPrompt', $event)"
+            />
+          </div>
+          <div>
+            <label class="block qt-label mb-2">Medium Prompt</label>
+            <qt-markdown-field
+              ariaLabel="Medium prompt"
+              minHeight="6rem"
+              [value]="physicalForm().mediumPrompt"
+              (contentChange)="setPhysicalField('mediumPrompt', $event)"
+            />
+          </div>
+          <div>
+            <label class="block qt-label mb-2">Long Prompt</label>
+            <qt-markdown-field
+              ariaLabel="Long prompt"
+              minHeight="8rem"
+              [value]="physicalForm().longPrompt"
+              (contentChange)="setPhysicalField('longPrompt', $event)"
+            />
+          </div>
+          <div>
+            <label class="block qt-label mb-2">Complete Prompt</label>
+            <qt-markdown-field
+              ariaLabel="Complete prompt"
+              minHeight="10rem"
+              [value]="physicalForm().completePrompt"
+              (contentChange)="setPhysicalField('completePrompt', $event)"
+            />
+          </div>
+          <div>
+            <label class="block qt-label mb-2">Full Description</label>
+            <qt-markdown-field
+              ariaLabel="Full description"
+              minHeight="10rem"
+              [value]="physicalForm().fullDescription"
+              (contentChange)="setPhysicalField('fullDescription', $event)"
+            />
+          </div>
 
-        <div class="flex justify-end">
-          <button
-            type="button"
-            class="qt-button-primary"
-            [disabled]="savingPhysical()"
-            (click)="savePhysicalDescription()"
-          >
-            {{ savingPhysical() ? 'Saving...' : 'Save Physical Descriptions' }}
-          </button>
-        </div>
+          <div class="flex justify-end">
+            <button
+              type="button"
+              class="qt-button-primary"
+              [disabled]="savingPhysical()"
+              (click)="savePhysicalDescription()"
+            >
+              {{ savingPhysical() ? 'Saving...' : 'Save Physical Descriptions' }}
+            </button>
+          </div>
+        }
       </div>
 
       <div class="qt-card space-y-3">
@@ -159,24 +177,27 @@ function loadPhysicalDescription(pd: CharacterPhysicalDescription | null): Physi
           <div class="qt-alert-error">{{ guidelinesError() }}</div>
         }
 
-        <textarea
-          class="qt-input"
-          rows="6"
-          aria-label="Depiction guidelines"
-          [value]="guidelinesDraft()"
-          (input)="guidelinesDraft.set($any($event.target).value)"
-        ></textarea>
+        @if (guidelinesQuery.isPending()) {
+          <div class="qt-text-secondary qt-text-small py-4">Loading…</div>
+        } @else {
+          <qt-markdown-field
+            ariaLabel="Depiction guidelines"
+            minHeight="8rem"
+            [value]="guidelinesDraft()"
+            (contentChange)="guidelinesDraft.set($event)"
+          />
 
-        <div class="flex justify-end">
-          <button
-            type="button"
-            class="qt-button-primary"
-            [disabled]="savingGuidelines()"
-            (click)="saveGuidelines()"
-          >
-            {{ savingGuidelines() ? 'Saving...' : 'Save Guidelines' }}
-          </button>
-        </div>
+          <div class="flex justify-end">
+            <button
+              type="button"
+              class="qt-button-primary"
+              [disabled]="savingGuidelines()"
+              (click)="saveGuidelines()"
+            >
+              {{ savingGuidelines() ? 'Saving...' : 'Save Guidelines' }}
+            </button>
+          </div>
+        }
       </div>
     </div>
   `,
@@ -190,42 +211,33 @@ export class CharacterAppearanceTab {
   protected readonly physicalForm = signal<PhysicalDescriptionForm>(EMPTY_PHYSICAL_FORM);
   protected readonly savingPhysical = signal(false);
   protected readonly physicalError = signal<string | null>(null);
-  private physicalSeeded = false;
 
   protected readonly guidelinesDraft = signal('');
   protected readonly savingGuidelines = signal(false);
   protected readonly guidelinesError = signal<string | null>(null);
-  private guidelinesSeeded = false;
 
+  // Each draft is seeded INSIDE its queryFn, so it is already set the moment the
+  // query leaves the pending state and the template mounts that block's editors
+  // (see the class doc — an editor must never mount ahead of its content). v4
+  // re-seeds on every fetch too (`DescriptionsTab.tsx:65-67` runs on each
+  // `fetchCharacter`), including the post-save refetch.
   protected readonly characterQuery = injectQuery(() => ({
     queryKey: characterKeys.detail(this.characterId()),
-    queryFn: () => fetchCharacter(this.core, this.characterId()),
+    queryFn: async () => {
+      const character = await fetchCharacter(this.core, this.characterId());
+      this.physicalForm.set(loadPhysicalDescription(character.physicalDescription));
+      return character;
+    },
   }));
 
   protected readonly guidelinesQuery = injectQuery(() => ({
     queryKey: characterKeys.depiction(this.characterId()),
-    queryFn: () => fetchDepictionGuidelines(this.core, this.characterId()),
+    queryFn: async () => {
+      const content = await fetchDepictionGuidelines(this.core, this.characterId());
+      this.guidelinesDraft.set(content);
+      return content;
+    },
   }));
-
-  constructor() {
-    // Seed each editable draft once from its query (not on every background
-    // refetch, so an in-progress edit isn't clobbered). `effect` re-runs
-    // whenever the query's data signal transitions (e.g. pending → loaded).
-    effect(() => {
-      const data = this.characterQuery.data();
-      if (data && !this.physicalSeeded) {
-        this.physicalForm.set(loadPhysicalDescription(data.physicalDescription));
-        this.physicalSeeded = true;
-      }
-    });
-    effect(() => {
-      const data = this.guidelinesQuery.data();
-      if (data !== undefined && !this.guidelinesSeeded) {
-        this.guidelinesDraft.set(data);
-        this.guidelinesSeeded = true;
-      }
-    });
-  }
 
   protected setPhysicalField<K extends keyof PhysicalDescriptionForm>(
     key: K,
