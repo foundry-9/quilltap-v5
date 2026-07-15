@@ -13227,3 +13227,33 @@ found. Mutation-checked: unregistering it fails with `lastError: Job type
 runner` — the very message real instances were getting. (Its pump dispatches
 TWO jobs, not one: a successful rename enqueues the story-background job and
 the same pump claims it.)
+## P4.6ap unit 1 — the token/cost formatting leaf (lane B)
+
+`apps/web/src/app/chat/format-tokens.ts` — v4 `lib/utils/format-tokens.ts`
+ported whole (`formatTokenCount` + `formatCostForDisplay`). Lives under
+`chat/` rather than `ui/`: chat is the only consumer and `chat/**` is
+unambiguously this lane's under the round's Ownership section.
+
+**The proof.** The 37-case spec table is not hand-written — it was GENERATED
+by driving v4's real function over a band-edge corpus (`npx tsx` from the
+`~/source/quilltap-server` checkout @ `02865bdb`) and pinned verbatim. A pure
+leaf gets the tier-1 treatment even in an SPA lane; hand-guessing `toFixed`
+banding is exactly how a port silently drifts.
+
+**v4 quirks the corpus caught and the spec now pins** (all faithful, all
+carried with why-comments):
+- `formatTokenCount(999999)` → `"1000.0K"`, NOT `"1.0M"` — v4 bands on the
+  RAW value, then rounds the mantissa. Same shape at `999950`.
+- `formatCostForDisplay(1e-7)` → `"$0.0000"`, NOT `"Free"` — the `=== 0`
+  check runs BEFORE rounding, so "no cost" and "rounds to no cost" stay
+  distinct states.
+- `formatCostForDisplay(0.9999)` → `"$1.000"` — still the sub-$1 band (3
+  digits), rounded up across the band edge it did not cross.
+
+**Regen recipe** (for re-verifying the table against a moved oracle): write a
+case importing `formatCostForDisplay`/`formatTokenCount` from
+`@/lib/utils/format-tokens`, print `{fn, in, out}` NDJSON over the corpus in
+the spec, and run it with `npx tsx <case>` from `~/source/quilltap-server`
+(PATH pointed at Node 24). The spec's two `cases` tables are the output.
+
+**Gate:** `ng test --include='**/format-tokens.spec.ts'` 37/37. SPA 0.5.102.
