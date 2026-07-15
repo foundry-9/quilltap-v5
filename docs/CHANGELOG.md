@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+P4.6as unit 3 (2026-07-15): the LLM-Inspector e2e beat. New
+apps/web/e2e/llm-inspector-flow.spec.ts — two walks over the locked
+fixture instance: the toolbar open → three entries oldest-first with
+their badges → expand → request/response/usage tabs → filter → the
+Cmd+Shift+L close, and the per-message cpu icon opening the panel
+scrolled with the right entry highlighted. Both tagged
+ACTIVATE-AT-UNIFY: llmLogsList is lane A's verb, so the dispatch is
+route-mocked with the Shared contract §1 envelope verbatim.
+global-setup.ts seeds three llm_logs rows on Solo Voyage (the committed
+salon-llm-logs.db has the table but no rows) through the CLI's
+--llm-logs flag, which targets the llm-logs partition; the rows carry
+SINGLE_USER_ID directly since the userId rewrite loop only reaches the
+main db. SPA 0.5.115 → 0.5.116.
+
 P4.6as unit 2 (2026-07-15): the LLM-Inspector host wiring. The
 conversation header gained the Inspector button (code glyph, v4's
 "LLM Inspector (Cmd+Shift+L)" title, active-state class swap, placed

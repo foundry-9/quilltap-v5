@@ -8,12 +8,7 @@ import {
   signal,
 } from '@angular/core';
 
-import type {
-  ChatDetail,
-  ChatSettingsDto,
-  MessageAttachment,
-  MessageDto,
-} from '../core/core-contract';
+import type { ChatDetail, ChatSettingsDto, MessageAttachment, MessageDto } from '../core/core-contract';
 import { Avatar } from '../ui/avatar';
 import { Icon } from '../ui/icon';
 import { thumbnailUrl, fileUrl } from '../images/image-urls';
@@ -72,206 +67,203 @@ export interface ImageClickEvent {
           </div>
         </div>
       } @else {
-        @if (showAvatar() && !author().isUser) {
-          <div class="qt-chat-desktop-avatar">
-            <qt-avatar [name]="author().name" [src]="author().avatarUrl" size="chat" />
-          </div>
-        }
+      @if (showAvatar() && !author().isUser) {
+        <div class="qt-chat-desktop-avatar">
+          <qt-avatar [name]="author().name" [src]="author().avatarUrl" size="chat" />
+        </div>
+      }
 
-        <div class="qt-chat-message-body">
-          <div class="qt-chat-message-header">
-            <span class="qt-chat-message-author">{{ author().name }}</span>
-            @if (author().title) {
-              <span class="qt-chat-message-time">{{ author().title }}</span>
-            }
-          </div>
+      <div class="qt-chat-message-body">
+        <div class="qt-chat-message-header">
+          <span class="qt-chat-message-author">{{ author().name }}</span>
+          @if (author().title) {
+            <span class="qt-chat-message-time">{{ author().title }}</span>
+          }
+        </div>
 
-          <div class="qt-chat-message" [class]="bubbleClass()">
-            @if (variant() === 'whisper') {
-              <div class="qt-chat-whisper-label">Private whisper</div>
-            } @else if (variant() === 'silent') {
-              <div class="qt-chat-silent-label">Silent — inner thoughts</div>
-            }
+        <div class="qt-chat-message" [class]="bubbleClass()">
+          @if (variant() === 'whisper') {
+            <div class="qt-chat-whisper-label">Private whisper</div>
+          } @else if (variant() === 'silent') {
+            <div class="qt-chat-silent-label">Silent — inner thoughts</div>
+          }
 
-            @for (block of reasoningBlocks(); track block.seq) {
-              <qt-thinking-block [content]="block.content" [collapsed]="thinkingCollapsed()" />
-            }
+          @for (block of reasoningBlocks(); track block.seq) {
+            <qt-thinking-block [content]="block.content" [collapsed]="thinkingCollapsed()" />
+          }
 
-            @if (editing()) {
-              <textarea
-                class="qt-chat-composer-input w-full"
-                rows="3"
-                [value]="editDraft()"
-                aria-label="Edit message"
-                (input)="editDraft.set($any($event.target).value)"
-              ></textarea>
-              <div class="flex justify-end gap-2 mt-2">
+          @if (editing()) {
+            <textarea
+              class="qt-chat-composer-input w-full"
+              rows="3"
+              [value]="editDraft()"
+              aria-label="Edit message"
+              (input)="editDraft.set($any($event.target).value)"
+            ></textarea>
+            <div class="flex justify-end gap-2 mt-2">
+              <button
+                type="button"
+                class="qt-button-secondary qt-button-sm"
+                (click)="cancelEdit.emit()"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                class="qt-button-primary qt-button-sm"
+                (click)="saveEdit.emit({ id: message().id, content: editDraft() })"
+              >
+                Save
+              </button>
+            </div>
+          } @else {
+            <qt-message-content [content]="message().content" [blobMountPointId]="blobMountPointId()" />
+          }
+
+          @if (imageAttachments().length > 0) {
+            <div class="qt-chat-attachment-list">
+              @for (att of imageAttachments(); track att.id) {
                 <button
                   type="button"
-                  class="qt-button-secondary qt-button-sm"
-                  (click)="cancelEdit.emit()"
+                  class="qt-button qt-chat-attachment-button"
+                  [title]="att.filename"
+                  [attr.aria-label]="'View ' + att.filename"
+                  (click)="onThumbnailClick(att)"
                 >
-                  Cancel
+                  <img
+                    [src]="thumbFor(att)"
+                    [alt]="att.filename"
+                    width="80"
+                    height="80"
+                    class="qt-chat-attachment-image"
+                  />
+                  <div class="qt-chat-attachment-overlay">
+                    <qt-icon name="zoom-in" class="w-4 h-4" />
+                  </div>
                 </button>
-                <button
-                  type="button"
-                  class="qt-button-primary qt-button-sm"
-                  (click)="saveEdit.emit({ id: message().id, content: editDraft() })"
-                >
-                  Save
-                </button>
-              </div>
-            } @else {
-              <qt-message-content
-                [content]="message().content"
-                [blobMountPointId]="blobMountPointId()"
-              />
-            }
+              }
+            </div>
+          }
 
-            @if (imageAttachments().length > 0) {
-              <div class="qt-chat-attachment-list">
-                @for (att of imageAttachments(); track att.id) {
-                  <button
-                    type="button"
-                    class="qt-button qt-chat-attachment-button"
-                    [title]="att.filename"
-                    [attr.aria-label]="'View ' + att.filename"
-                    (click)="onThumbnailClick(att)"
-                  >
-                    <img
-                      [src]="thumbFor(att)"
-                      [alt]="att.filename"
-                      width="80"
-                      height="80"
-                      class="qt-chat-attachment-image"
-                    />
-                    <div class="qt-chat-attachment-overlay">
-                      <qt-icon name="zoom-in" class="w-4 h-4" />
-                    </div>
-                  </button>
-                }
-              </div>
-            }
-
-            <div class="qt-chat-message-action-bar">
-              <div class="qt-chat-message-action-bar-icons">
-                <button
-                  type="button"
-                  class="qt-chat-message-action-icon"
-                  title="Copy message"
-                  aria-label="Copy message"
-                  (click)="copy.emit(message())"
-                >
-                  <qt-icon name="copy" class="w-4 h-4" />
-                </button>
-                @if (imageAttachments().length > 0) {
-                  <button
-                    type="button"
-                    class="qt-chat-message-action-icon"
-                    [title]="
-                      imageAttachments().length > 1
-                        ? 'Save an image to a photo album'
-                        : 'Save image to a photo album'
-                    "
-                    aria-label="Save image to a photo album"
-                    (click)="onSaveImage()"
-                  >
-                    <qt-icon name="bookmark" class="w-4 h-4" />
-                  </button>
-                }
-                @if (message().role === 'USER') {
-                  <button
-                    type="button"
-                    class="qt-chat-message-action-icon"
-                    title="Edit message"
-                    aria-label="Edit message"
-                    (click)="edit.emit(message())"
-                  >
-                    <qt-icon name="pencil" class="w-4 h-4" />
-                  </button>
-                }
-                @if (message().role === 'ASSISTANT') {
-                  <button
-                    type="button"
-                    class="qt-chat-message-action-icon"
-                    title="Regenerate response"
-                    aria-label="Regenerate response"
-                    (click)="regenerate.emit(message())"
-                  >
-                    <qt-icon name="refresh" class="w-4 h-4" />
-                  </button>
-                }
-                @if (showLlmLogsAction()) {
-                  <button
-                    type="button"
-                    class="qt-chat-message-action-icon"
-                    title="View LLM request/response logs"
-                    aria-label="View LLM request/response logs"
-                    (click)="viewLlmLogs.emit(message().id)"
-                  >
-                    <qt-icon name="cpu" class="w-4 h-4" />
-                  </button>
-                }
+          <div class="qt-chat-message-action-bar">
+            <div class="qt-chat-message-action-bar-icons">
+              <button
+                type="button"
+                class="qt-chat-message-action-icon"
+                title="Copy message"
+                aria-label="Copy message"
+                (click)="copy.emit(message())"
+              >
+                <qt-icon name="copy" class="w-4 h-4" />
+              </button>
+              @if (imageAttachments().length > 0) {
                 <button
                   type="button"
                   class="qt-chat-message-action-icon"
-                  title="Delete message"
-                  aria-label="Delete message"
-                  (click)="delete.emit(message())"
+                  [title]="
+                    imageAttachments().length > 1
+                      ? 'Save an image to a photo album'
+                      : 'Save image to a photo album'
+                  "
+                  aria-label="Save image to a photo album"
+                  (click)="onSaveImage()"
                 >
-                  <qt-icon name="trash" class="w-4 h-4" />
+                  <qt-icon name="bookmark" class="w-4 h-4" />
                 </button>
+              }
+              @if (message().role === 'USER') {
+                <button
+                  type="button"
+                  class="qt-chat-message-action-icon"
+                  title="Edit message"
+                  aria-label="Edit message"
+                  (click)="edit.emit(message())"
+                >
+                  <qt-icon name="pencil" class="w-4 h-4" />
+                </button>
+              }
+              @if (message().role === 'ASSISTANT') {
+                <button
+                  type="button"
+                  class="qt-chat-message-action-icon"
+                  title="Regenerate response"
+                  aria-label="Regenerate response"
+                  (click)="regenerate.emit(message())"
+                >
+                  <qt-icon name="refresh" class="w-4 h-4" />
+                </button>
+              }
+              @if (showLlmLogsAction()) {
+                <button
+                  type="button"
+                  class="qt-chat-message-action-icon"
+                  title="View LLM request/response logs"
+                  aria-label="View LLM request/response logs"
+                  (click)="viewLlmLogs.emit(message().id)"
+                >
+                  <qt-icon name="cpu" class="w-4 h-4" />
+                </button>
+              }
+              <button
+                type="button"
+                class="qt-chat-message-action-icon"
+                title="Delete message"
+                aria-label="Delete message"
+                (click)="delete.emit(message())"
+              >
+                <qt-icon name="trash" class="w-4 h-4" />
+              </button>
 
-                @if (swipeState() && swipeState()!.total > 1) {
-                  <button
-                    type="button"
-                    class="qt-chat-message-action-icon"
-                    title="Previous response"
-                    aria-label="Previous response"
-                    [disabled]="swipeState()!.current === 0"
-                    (click)="swipePrev.emit(message())"
-                  >
-                    <qt-icon name="chevron-left" class="w-4 h-4" />
-                  </button>
-                  <span class="qt-text-xs px-1"
-                    >{{ swipeState()!.current + 1 }} / {{ swipeState()!.total }}</span
-                  >
-                  <button
-                    type="button"
-                    class="qt-chat-message-action-icon"
-                    title="Next response"
-                    aria-label="Next response"
-                    [disabled]="swipeState()!.current === swipeState()!.total - 1"
-                    (click)="swipeNext.emit(message())"
-                  >
-                    <qt-icon name="chevron-right" class="w-4 h-4" />
-                  </button>
-                }
-              </div>
-              <!-- v4 MessageActionBar.tsx:195 — the timestamp row. The class already
+              @if (swipeState() && swipeState()!.total > 1) {
+                <button
+                  type="button"
+                  class="qt-chat-message-action-icon"
+                  title="Previous response"
+                  aria-label="Previous response"
+                  [disabled]="swipeState()!.current === 0"
+                  (click)="swipePrev.emit(message())"
+                >
+                  <qt-icon name="chevron-left" class="w-4 h-4" />
+                </button>
+                <span class="qt-text-xs px-1"
+                  >{{ swipeState()!.current + 1 }} / {{ swipeState()!.total }}</span
+                >
+                <button
+                  type="button"
+                  class="qt-chat-message-action-icon"
+                  title="Next response"
+                  aria-label="Next response"
+                  [disabled]="swipeState()!.current === swipeState()!.total - 1"
+                  (click)="swipeNext.emit(message())"
+                >
+                  <qt-icon name="chevron-right" class="w-4 h-4" />
+                </button>
+              }
+            </div>
+            <!-- v4 MessageActionBar.tsx:195 — the timestamp row. The class already
                  carries ml-auto (and the user-bubble color variant this markup
                  finally activates), so it replaces the bare time span v5 had. -->
-              <div class="qt-chat-message-action-timestamp flex items-center gap-2">
-                <span>{{ timestamp() }}</span>
-                @if (showTokenBadge()) {
-                  <qt-token-badge
-                    [promptTokens]="message().promptTokens"
-                    [completionTokens]="message().completionTokens"
-                    [totalTokens]="message().tokenCount"
-                    [showTokens]="tokenDisplay().showPerMessageTokens"
-                    [showCost]="tokenDisplay().showPerMessageCost"
-                  />
-                }
-              </div>
+            <div class="qt-chat-message-action-timestamp flex items-center gap-2">
+              <span>{{ timestamp() }}</span>
+              @if (showTokenBadge()) {
+                <qt-token-badge
+                  [promptTokens]="message().promptTokens"
+                  [completionTokens]="message().completionTokens"
+                  [totalTokens]="message().tokenCount"
+                  [showTokens]="tokenDisplay().showPerMessageTokens"
+                  [showCost]="tokenDisplay().showPerMessageCost"
+                />
+              }
             </div>
           </div>
         </div>
+      </div>
 
-        @if (showAvatar() && author().isUser) {
-          <div class="qt-chat-desktop-avatar">
-            <qt-avatar [name]="author().name" [src]="author().avatarUrl" size="chat" />
-          </div>
-        }
+      @if (showAvatar() && author().isUser) {
+        <div class="qt-chat-desktop-avatar">
+          <qt-avatar [name]="author().name" [src]="author().avatarUrl" size="chat" />
+        </div>
+      }
       }
     </div>
   `,

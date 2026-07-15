@@ -14311,3 +14311,52 @@ every row's cpu icon stay a turn behind.
 
 **Gate:** ng test 968 → **1094** (39 new specs here, 102 in unit 1); ng
 build clean; prettier clean.
+
+### P4.6as unit 3 — the e2e beat + the llm-logs seed (2026-07-15)
+
+- **The peek came first** ([[e2e-fixture-before-run-order]]): the committed
+  `salon-llm-logs.db` carries the `llm_logs` TABLE (a real provisioned
+  instance's partition, correct DDL) but **ZERO rows**. So no hand-DDL —
+  content only.
+- **`global-setup.ts`** — `runCliWrite` gained an `llmLogs` option that
+  passes the CLI's `--llm-logs` flag, which targets
+  `quilltap-llm-logs.db` instead of the main db (the partitions are
+  separate FILES; without the flag an `llm_logs` INSERT hits main and
+  errors "no such table"). Three rows seeded on Solo Voyage:
+  CHAT_MESSAGE → `d1…0002` (usage + duration → the token summary, the
+  one-decimal duration, and a cpu icon), a chat-level TITLE_GENERATION
+  with **no** messageId (badge "Title", and NO cpu icon — the
+  `messagesWithLogs` truthiness filter proven from the data side), and
+  MEMORY_EXTRACTION → `d1…0004` (so the filter groups are
+  distinguishable).
+  - **The rows carry `SINGLE_USER_ID` directly.** `llm_logs` is
+    user-scoped, and the setup's userId-rewrite loop runs against the
+    MAIN db — it cannot reach another partition. Inserting the engine's
+    id up front sidesteps the P4.6s lesson's fourth recurrence rather
+    than repeating it.
+- **`llm-inspector-flow.spec.ts`** (new, ACTIVATE-AT-UNIFY): two beats —
+  the full walk (toolbar open → three entries oldest-first with
+  Chat/Title/Memory badges → expand → request/response/usage tabs →
+  filter to Memory → Cmd+Shift+L closes) and the per-message cpu icon
+  (opens scrolled, the right entry highlighted, the USER row has no
+  icon). `mockLogs()` fulfils the `llmLogsList` dispatch with the Shared
+  contract §1 envelope VERBATIM, mirroring the seeded rows field for
+  field — so unify-activation is deleting one call, not a rewrite.
+  - Filename sorts after `foundation.spec.ts` ('ll' > 'fo') — the shared
+    server's unlock gate must be walked first.
+
+**The seed is verified against the real materialized instance, not just
+asserted through the mock.** With the route mock in place the seeded rows
+are never read, so a broken seed would have passed this lane green and
+failed at unification ([[p4.6ah-files-write-maintenance-server]]: a
+fixture-guarded assertion proves nothing if the guard never fires). Ran
+`global-setup` standalone and peeked the partition with better-sqlite3:
+three rows, correct userId/chatId/messageId, JSON columns parsing.
+
+**Gotcha banked (cost me a false alarm):** a standalone `global-setup`
+run takes MINUTES — every `runCliWrite` is a fresh CLI process paying a
+PBKDF2 `.dbkey` unwrap, and the setup makes ~20 of them. My first peek
+ran under a 5-minute command timeout, got killed mid-setup, and showed
+0 rows in an llm-logs.db that had only just been copied. The seed was
+fine; the harness reading it was truncated. Run it in the background and
+gate on its own completion marker.

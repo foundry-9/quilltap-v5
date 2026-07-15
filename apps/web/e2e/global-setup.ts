@@ -269,6 +269,93 @@ export default async function globalSetup(): Promise<void> {
       `WHERE name = 'Mock Images';`,
   );
 
+  // P4.6as: seed LLM logs for the Inspector walk.
+  //
+  // The committed `salon-llm-logs.db` carries the `llm_logs` TABLE (it is a real
+  // provisioned instance's partition) but ZERO rows — peeked, not assumed. So no
+  // hand-DDL is needed here, only content.
+  //
+  // These rows are USER-SCOPED, and the userId rewrite loop above cannot reach
+  // them: it runs against the MAIN db, and llm_logs lives in the llm-logs
+  // partition. They are therefore inserted with SINGLE_USER_ID directly — the
+  // fourth recurrence of the P4.6s lesson, sidestepped rather than repeated.
+  //
+  // Three rows on Solo Voyage, chosen to exercise the panel's branches:
+  //  - a CHAT_MESSAGE linked to the assistant message d1…0002 (badge "Chat",
+  //    usage + duration, a cpu icon on that row),
+  //  - a chat-level TITLE_GENERATION with NO messageId (badge "Title", no cpu
+  //    icon — the messagesWithLogs truthiness filter),
+  //  - a MEMORY_EXTRACTION linked to d1…0004 (badge "Memory", so the filter
+  //    groups are distinguishable).
+  // Timestamps ascend A→B→C; lane A's verb returns DESC and the panel reverses,
+  // so the rendered order is A, B, C.
+  const llmLogRows: Array<Record<string, string>> = [
+    {
+      id: 'e1000000-0000-4000-8000-000000000001',
+      type: 'CHAT_MESSAGE',
+      messageId: 'd1000000-0000-4000-8000-000000000002',
+      provider: 'OPENAI_COMPATIBLE',
+      modelName: 'mock-model',
+      request: JSON.stringify({
+        messageCount: 1,
+        messages: [
+          {
+            role: 'user',
+            content: 'Hello there, captain.',
+            contentLength: 21,
+            hasAttachments: false,
+          },
+        ],
+        temperature: 0.7,
+        maxTokens: 2048,
+        toolCount: 0,
+      }),
+      response: JSON.stringify({ content: 'Well met, traveller!', contentLength: 20 }),
+      usage: JSON.stringify({ promptTokens: 8, completionTokens: 4, totalTokens: 12 }),
+      durationMs: '1234',
+      createdAt: '2026-02-01T00:00:10.000Z',
+    },
+    {
+      id: 'e1000000-0000-4000-8000-000000000002',
+      type: 'TITLE_GENERATION',
+      messageId: '',
+      provider: 'OPENAI_COMPATIBLE',
+      modelName: 'mock-model',
+      request: JSON.stringify({ messageCount: 2, messages: [], toolCount: 0 }),
+      response: JSON.stringify({ content: 'Solo Voyage', contentLength: 11 }),
+      usage: '',
+      durationMs: '400',
+      createdAt: '2026-02-01T00:00:20.000Z',
+    },
+    {
+      id: 'e1000000-0000-4000-8000-000000000003',
+      type: 'MEMORY_EXTRACTION',
+      messageId: 'd1000000-0000-4000-8000-000000000004',
+      provider: 'OPENAI_COMPATIBLE',
+      modelName: 'mock-model',
+      request: JSON.stringify({ messageCount: 3, messages: [], toolCount: 0 }),
+      response: JSON.stringify({ content: 'No memories extracted.', contentLength: 22 }),
+      usage: '',
+      durationMs: '900',
+      createdAt: '2026-02-01T00:00:30.000Z',
+    },
+  ];
+  for (const row of llmLogRows) {
+    runCliWrite(
+      cli,
+      `INSERT OR REPLACE INTO llm_logs (id, userId, type, messageId, chatId, characterId, ` +
+        `autonomousRunId, provider, modelName, request, response, usage, cacheUsage, ` +
+        `rawProviderUsage, requestHashes, durationMs, createdAt, updatedAt) VALUES (` +
+        `'${row['id']}', '${SINGLE_USER_ID}', '${row['type']}', ` +
+        `${row['messageId'] ? `'${row['messageId']}'` : 'NULL'}, ` +
+        `'c1000000-0000-4000-8000-000000000001', NULL, NULL, ` +
+        `'${row['provider']}', '${row['modelName']}', '${row['request']}', '${row['response']}', ` +
+        `${row['usage'] ? `'${row['usage']}'` : 'NULL'}, NULL, NULL, NULL, ` +
+        `${row['durationMs']}, '${row['createdAt']}', '${row['createdAt']}');`,
+      { llmLogs: true },
+    );
+  }
+
   // Point the fixture's OPENAI_COMPATIBLE profile at the M4 mock LLM — this must
   // happen BEFORE the server launches (the CLI write-lock refuses a live holder),
   // so the mock listens on the fixed MOCK_LLM_PORT and the spec starts it there.
@@ -290,10 +377,17 @@ export default async function globalSetup(): Promise<void> {
   await waitForHealth();
 }
 
-function runCliWrite(cli: string, sql: string, opts: { allowFail?: boolean } = {}): void {
+function runCliWrite(
+  cli: string,
+  sql: string,
+  opts: { allowFail?: boolean; llmLogs?: boolean } = {},
+): void {
   // The CLI `--data-dir` is the INSTANCE dir (it appends `/data` — resolve.rs);
-  // it unlocks the .dbkey via QUILLTAP_DB_PASSPHRASE.
-  const res = spawnSync(cli, ['db', '--data-dir', INSTANCE_DIR, '--write', sql], {
+  // it unlocks the .dbkey via QUILLTAP_DB_PASSPHRASE. `--llm-logs` targets the
+  // llm-logs PARTITION (`quilltap-llm-logs.db`) instead of the main db.
+  const args = ['db', '--data-dir', INSTANCE_DIR, '--write', sql];
+  if (opts.llmLogs) args.splice(1, 0, '--llm-logs');
+  const res = spawnSync(cli, args, {
     env: { ...withoutPepper(), QUILLTAP_DB_PASSPHRASE: E2E_PASSPHRASE, QUILLTAP_QUIET_HINTS: '1' },
     encoding: 'utf8',
   });
