@@ -12939,3 +12939,41 @@ squiggle; source-mode editors never do).
 
 **Specs:** three cases in `rich-editor.spec.ts` (default true; explicit false;
 follows a late/toggling setting). `ng test` 843 → 846.
+
+## P4.6an unit 9 (tier 2) — the live e2e beats
+
+`apps/web/e2e/settings-chat-cards-flow.spec.ts`, four beats on the SHARED
+global-setup server (filename sorts after `foundation.spec.ts` per the
+shared-server rule; it unlocks via the usual `maybeUnlock`). No route mocks —
+every write goes through the real `chatSettingsUpdate` dispatch against the
+instance's `chat_settings` row.
+
+1. **The card order renders, the placeholder is gone** — all sixteen v4 titles
+   visible; `not yet fitted out` has count 0.
+2. **Auto-Scroll: toggle → reload → persisted** — the SCALAR path.
+3. **Dangerous Content: mode → reload → persisted** — the BAG path,
+   deliberately chosen as the second beat: a partial nested patch would drop
+   the sibling keys, and only a real round-trip proves it doesn't (the beat
+   re-asserts `#danger-threshold` = 0.7 after the reload). Also walks v4's
+   gate (the display-mode select absent while OFF, present after).
+4. **The cron preview** — all three arms as you type, no round-trip.
+
+**Gotcha worth keeping (it cost a cycle and my first diagnosis was wrong):**
+the beat originally opened by asserting the Dangerous Content mode starts at
+`OFF`. It failed. The tempting read was "a previous run leaked state" — but
+the shared instance is copied FRESH from the committed fixture in
+`global-setup`, so leftovers are impossible by construction. Reading the
+fixture directly (`better-sqlite3` from the v4 checkout, `PRAGMA key` with the
+test pepper) showed the truth: **the committed `salon-main.db` ships
+`dangerousContentSettings.mode = 'DETECT_ONLY'`**. The beat now NORMALIZES to
+OFF first rather than asserting the instance arrives there — asserting the
+arrival value would just encode today's fixture into the beat. Lesson: when an
+e2e assertion about starting state fails, read the fixture before blaming run
+order.
+
+Waits are on the real dispatch response (`waitForResponse` filtered to
+`chatSettingsUpdate` + the key), never on a timeout — the response is the
+sync point, since the control reflects the optimistic value immediately.
+
+**Gate:** full Playwright **56/56, zero skips** (was 52); the four new beats
+green in isolation AND in-suite.

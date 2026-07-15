@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+P4.6an unit 9 (tier 2): four live Playwright beats over the fitted-out Chat
+tab — the full sixteen-card order renders with the placeholder gone;
+Auto-Scroll round-trips a scalar through the real server and survives a
+reload; the Dangerous Content mode round-trips a nested BAG and its sibling
+keys survive; and the cron preview computes in the browser as you type
+(valid → "Next run:", garbage → the invalid arm, blank → nothing). Full
+Playwright 52 → 56, zero skips.
+
 P4.6an unit 8 (tier 2): the Composer card's setting is now LIVE — the
 `qt-rich-editor` contenteditable binds `spellcheck` to
 `chat_settings.composerSpellcheck ?? true`, matching v4's Lexical composer.
