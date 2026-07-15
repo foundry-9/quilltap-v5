@@ -13658,3 +13658,65 @@ dispatch payload).**
   untouched-save round-trip, create payload.
 
 `ng test` **859** (was 846), all green.
+
+---
+
+## P4.6aq unit 3 — the single-field swaps, sites 5–8 (lane C, tier 1 item 2, cont.)
+
+**Landed.** The remaining four single-field sites:
+
+| v5 site | v4 site | minHeight | recordKey (v4 remountKey) |
+|---|---|---|---|
+| `prospero/wardrobe/project-wardrobe-manager.ts` | `wardrobe-item-editor.tsx:674` | `10rem` | none (v4 passes none) |
+| `prospero/cards/project-settings-card.ts` | `SettingsCard.tsx:68` | `14rem` | `project.id` |
+| `prospero/cards/project-aesthetic-field.ts` | `AestheticEditorField.tsx:119` | `8rem` | see below |
+| `screens/new-chat/new-chat-form.ts` | `NewChatForm.tsx:642` | `6rem` | none (v4 passes none) |
+
+Notes: site 6's v4 counterpart exists TWICE — `SettingsCard.tsx:68` (`14rem`)
+and `SettingsTab.tsx:35` (`10rem`); v5 has only the card, so it takes `14rem`.
+Site 8 already carried v4's value as a literal `style="min-height: 6rem;"` on the
+textarea — that becomes the field's input. Site 5's v5 placeholder is kept
+(v4's editor has no placeholder prop; the string is pre-existing v5 microcopy,
+and dropping it would be a UX regression the order doesn't ask for).
+
+### The one non-mechanical piece: site 7 needs v4's loading gate
+
+**Finding (the sharp edge of this whole rider).** v4 NEVER emits on a load: the
+mount-time `$convertFromMarkdownString` is tagged `external-sync`
+(`MarkdownBridgePlugin.tsx:168-173`) and the update listener returns early on
+that tag (`:180`). That is why v4 can bump `remountKey` after every load without
+dirtying the form. v5's equivalent is the field's absorb-once seam — but it
+swallows exactly ONE emit (re-armed only by a `recordKey` change), so it only
+holds if **the content is in hand before the editor mounts**.
+
+Site 7 loads its content asynchronously. Mounting the field empty and letting the
+value arrive later surfaces the load as a user edit, and then `content` becomes
+the editor's CANONICAL serialization. Consequence, in the user's data: opening a
+project's aesthetic card and pressing Save rewrites the stored file —
+`__bold__` → `**bold**`, trailing newline dropped — with no edit made.
+Bumping `recordKey` on load does NOT fix it (it yields two emits, one absorbed,
+one surfaced).
+
+The fix is v4's own structure: v4 renders `loading ? 'Loading…' : <editor>`
+(`:117-119`). So site 7 now gates the editor on `loadQuery.isPending()` and seeds
+`content` INSIDE `queryFn` — the pattern `character-appearance-tab.ts` already
+uses — so the editor mounts with the content present and its single mount emit is
+absorbed. The `effect`-based seeding and its `seeded` guard are retired.
+
+**The guard bites (verified by re-pointing at the old structure).** With the gate
+removed, `projects.spec.ts` fails 2/17 — both byte-exactness assertions. With it,
+17/17.
+
+**Proof.**
+- `projects.spec.ts` 17/17 — the pre-existing byte-exact aesthetic round-trip
+  converted to the editor handle, plus a NEW `__sepia__` no-re-normalize guard.
+  Its `getMarkdown()` assertion is now `content.trimEnd()`: the editor DISPLAYS a
+  canonical serialization (no trailing newline) while the SAVE carries the raw
+  bytes — that split is the point, and the save assertion is the real proof.
+- `project-settings-card.spec.ts` (NEW, 3/3) — seed, the `instructions`
+  formChange patch, and no-dirty-on-load over `__dry__`.
+- `project-wardrobe-manager.spec.ts` — description seeding + the update payload.
+- `new-chat-form.spec.ts` 5/5 — scenario notes into form state, and a seeded
+  `__foggy__` left untouched in the form until a real edit.
+
+`ng test` **866** (was 859); `ng build` clean.

@@ -1,23 +1,34 @@
-import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angular/core';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../../core/core-client';
+import { MarkdownField } from '../../../editor/markdown-field';
 import { ErrorAlert } from '../../../ui/error-alert';
 import { fetchProjectAesthetic, setProjectAesthetic } from '../projects.api';
 
 /**
  * One project aesthetic editor field (v4 `AestheticEditorField`): loads the
  * `lantern`/`aurora` markdown from the project's official store and saves it back.
+ * The body is a `qt-markdown-field` (v4 `:119`, its `minHeight="8rem"` and
+ * `ariaLabel={label}`). An empty save deletes the file (v4 aesthetic-PUT
+ * semantics — the server treats empty content as a delete).
  *
- * DIVERGENCE (recorded): v4 uses the Lexical editor; v5 ships a plain
- * `<textarea>` with an explicit Save (the Lexical-equivalent is a deferred
- * vertical). The bytes round-trip exactly. An empty save deletes the file
- * (v4 aesthetic-PUT semantics — the server treats empty content as a delete).
+ * The editor renders only once the load has settled — v4's own
+ * `loading ? 'Loading…' : <editor>` gate (`:117-119`), and load-bearing here.
+ * v4 never emits on a load: its mount-time parse is tagged `external-sync` and
+ * its update listener skips that tag (`MarkdownBridgePlugin.tsx:168-181`), which
+ * is why v4 can bump `remountKey` after each load without dirtying the form.
+ * v5's equivalent is the field's absorb-once seam, and that swallows exactly one
+ * emit — so the content must be in hand BEFORE the editor mounts. Were the
+ * editor to mount empty and take the content later, the load would surface as an
+ * edit and a plain Save would rewrite the stored file in normalized bytes.
+ * Seeding inside `queryFn` (the {@link CharacterAppearanceTab} pattern)
+ * guarantees that ordering.
  */
 @Component({
   selector: 'qt-project-aesthetic-field',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ErrorAlert],
+  imports: [ErrorAlert, MarkdownField],
   template: `
     <div>
       <label class="qt-text-label block mb-1">{{ label() }}</label>
@@ -25,23 +36,26 @@ import { fetchProjectAesthetic, setProjectAesthetic } from '../projects.api';
       @if (saveError(); as msg) {
         <qt-error-alert [message]="msg" class="mb-2" />
       }
-      <textarea
-        [value]="content()"
-        rows="4"
-        [attr.aria-label]="label()"
-        class="qt-textarea w-full"
-        (input)="content.set($any($event.target).value)"
-      ></textarea>
-      <div class="mt-2 flex justify-end">
-        <button
-          type="button"
-          class="qt-button qt-button-secondary qt-button-sm"
-          [disabled]="saving()"
-          (click)="save()"
-        >
-          {{ saving() ? 'Saving...' : 'Save' }}
-        </button>
-      </div>
+      @if (loadQuery.isPending()) {
+        <div class="qt-text-secondary qt-text-small py-4">Loading…</div>
+      } @else {
+        <qt-markdown-field
+          minHeight="8rem"
+          [ariaLabel]="label()"
+          [value]="content()"
+          (contentChange)="content.set($event)"
+        />
+        <div class="mt-2 flex justify-end">
+          <button
+            type="button"
+            class="qt-button qt-button-secondary qt-button-sm"
+            [disabled]="saving()"
+            (click)="save()"
+          >
+            {{ saving() ? 'Saving...' : 'Save' }}
+          </button>
+        </div>
+      }
     </div>
   `,
 })
@@ -56,23 +70,17 @@ export class ProjectAestheticField {
   protected readonly saving = signal(false);
   protected readonly saveError = signal<string | null>(null);
 
-  private readonly loadQuery = injectQuery(() => ({
+  // Seed from inside queryFn, so `content` is already set the moment the query
+  // leaves the pending state and the editor mounts (see the class doc — the
+  // editor must never mount ahead of its content).
+  protected readonly loadQuery = injectQuery(() => ({
     queryKey: ['projects', 'aesthetic', this.projectId(), this.kind()],
-    queryFn: (): Promise<string> => fetchProjectAesthetic(this.core, this.projectId(), this.kind()),
+    queryFn: async (): Promise<string> => {
+      const loaded = await fetchProjectAesthetic(this.core, this.projectId(), this.kind());
+      this.content.set(loaded);
+      return loaded;
+    },
   }));
-
-  constructor() {
-    // Seed the textarea from the loaded content once (guard against clobbering
-    // keystrokes on re-render).
-    let seeded = false;
-    effect(() => {
-      const loaded = this.loadQuery.data();
-      if (loaded !== undefined && !seeded) {
-        seeded = true;
-        this.content.set(loaded);
-      }
-    });
-  }
 
   protected async save(): Promise<void> {
     this.saving.set(true);

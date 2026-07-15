@@ -1,10 +1,12 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
+import { RichEditor } from '../../editor/rich-editor';
 import type { ProjectDetail, ProjectFileDto } from '../../core/core-contract';
 import { ProjectCharactersCard } from './cards/project-characters-card';
 import { ProjectFilesCard } from './cards/project-files-card';
@@ -436,18 +438,62 @@ describe('ProjectImageGenerationCard', () => {
       }),
       project(),
     );
-    const lantern = fixture.nativeElement.querySelector(
-      'textarea[aria-label="Default Image Aesthetic"]',
-    ) as HTMLTextAreaElement;
-    expect(lantern.value).toBe(content);
+    // The lantern field is the first aesthetic editor on the card. The editor
+    // DISPLAYS a canonical serialization — here that drops the file's trailing
+    // newline — but the load is not an edit (it mounts with the content already
+    // in hand, and the field absorbs its one mount emit), so `content` keeps the
+    // raw bytes and the Save below writes them back verbatim, trailing newline
+    // and all. That byte-exactness is the assertion that matters.
+    const lantern = fixture.debugElement
+      .queryAll(By.directive(RichEditor))[0]
+      .componentInstance.getMarkdown();
+    expect(lantern).toBe(content.trimEnd());
     // Save it back unchanged — the bytes must match exactly.
     const saveBtn = [
-      ...lantern.closest('qt-project-aesthetic-field')!.querySelectorAll('button'),
+      ...fixture.nativeElement
+        .querySelector('qt-project-aesthetic-field')!
+        .querySelectorAll('button'),
     ].find((b: HTMLButtonElement) => b.textContent?.includes('Save')) as HTMLButtonElement;
     saveBtn.click();
     await settle(fixture);
     expect(saved.find((r) => r.type === 'projectAestheticSet')).toMatchObject({
       projectId: 'p1',
+      kind: 'lantern',
+      content,
+    });
+  });
+
+  it('a load never re-normalizes the stored aesthetic bytes', async () => {
+    // The sharp edge of the markdown swap: `__bold__` parses to the same tree as
+    // `**bold**` and serializes to the latter. If a load surfaced as an edit,
+    // merely opening the card and clicking Save would silently rewrite the
+    // user's file. v4 cannot do this (its mount parse is tagged external-sync
+    // and skipped by the change listener); neither may we.
+    const saved: DispatchReq[] = [];
+    const content = 'Muted __sepia__ tones.';
+    const fixture = await render(
+      stubClient((r) => {
+        if (r.type === 'projectAestheticGet') {
+          return r['kind'] === 'lantern' ? { content } : { content: '' };
+        }
+        if (r.type === 'projectAestheticSet') saved.push(r);
+        return {};
+      }),
+      project(),
+    );
+    // The editor displays the canonical form...
+    expect(
+      fixture.debugElement.queryAll(By.directive(RichEditor))[0].componentInstance.getMarkdown(),
+    ).toBe('Muted **sepia** tones.');
+    // ...but an untouched Save writes the ORIGINAL bytes.
+    const saveBtn = [
+      ...fixture.nativeElement
+        .querySelector('qt-project-aesthetic-field')!
+        .querySelectorAll('button'),
+    ].find((b: HTMLButtonElement) => b.textContent?.includes('Save')) as HTMLButtonElement;
+    saveBtn.click();
+    await settle(fixture);
+    expect(saved.find((r) => r.type === 'projectAestheticSet')).toMatchObject({
       kind: 'lantern',
       content,
     });

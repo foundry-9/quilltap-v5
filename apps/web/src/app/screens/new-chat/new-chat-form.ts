@@ -8,6 +8,7 @@ import type {
   NewChatAutonomousState,
 } from '../../autonomous/autonomous.logic';
 import { CoreClient } from '../../core/core-client';
+import { MarkdownField } from '../../editor/markdown-field';
 import type {
   ChatCreateOutfitSelectionInput,
   ChatSettingsDto,
@@ -50,6 +51,7 @@ interface PlayAsOption {
     FormsModule,
     Icon,
     ImageProfilePicker,
+    MarkdownField,
     OutfitSelector,
     TimestampConfigCard,
     AutonomousRoomCard,
@@ -215,15 +217,13 @@ interface PlayAsOption {
             </p>
           }
 
-          <textarea
-            [attr.aria-label]="presetContent() ? 'Additional scenario notes' : 'Starting scenario'"
-            [ngModel]="form().scenario"
-            (ngModelChange)="onScenarioNotes($event)"
+          <qt-markdown-field
+            minHeight="6rem"
+            [ariaLabel]="presetContent() ? 'Additional scenario notes' : 'Starting scenario'"
+            [value]="form().scenario"
             [disabled]="creating()"
-            rows="4"
-            class="w-full rounded-lg border qt-border-default bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            style="min-height: 6rem;"
-          ></textarea>
+            (contentChange)="onScenarioNotes($event)"
+          />
         </div>
 
         @if (outfitCharacters().length > 0) {

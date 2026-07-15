@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+P4.6aq unit 3: qt-markdown-field swapped in at the remaining four
+single-field sites — the project wardrobe item description (v4 minHeight
+10rem), the project instructions card (14rem), the project aesthetic
+field (8rem), and the new-chat starting scenario (6rem). This closes the
+last two recorded "plain textarea" divergences in the Prospero cards.
+
+The aesthetic field also gains v4's loading gate: v4 never emits on a
+load (its mount-time parse is tagged external-sync and skipped by the
+change listener), and v5's equivalent absorb-once seam swallows exactly
+one emit, so the content must be in hand before the editor mounts. Its
+seeding moved into queryFn to guarantee that. Without the gate, opening
+the card and pressing Save would silently rewrite the stored file in
+normalized bytes (__bold__ to **bold**, trailing newline dropped); two
+specs now pin that, and both fail if the gate is removed.
+
 P4.6aq unit 2: qt-markdown-field swapped in at the first four form-field
 sites — the character-edit scenario rows (v4 minHeight 6rem), the
 scenarios editor modal body (12rem), the roleplay-template LLM prompt

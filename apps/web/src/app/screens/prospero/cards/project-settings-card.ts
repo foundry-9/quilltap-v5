@@ -1,23 +1,25 @@
 import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
 
 import type { ProjectDetail } from '../../../core/core-contract';
+import { MarkdownField } from '../../../editor/markdown-field';
 import { CollapsibleCard } from '../../../ui/collapsible-card';
 import { StateEditorModal } from '../state-editor-modal';
 import type { ProjectEditForm } from './project-header';
 
 /**
  * The project Settings card (v4 `SettingsCard.tsx`, full-width): a Project
- * Instructions editor with an explicit Save and a Project State row opening the
- * {@link StateEditorModal} JSON editor.
+ * Instructions markdown field (v4 `:68`, its `minHeight="14rem"` and
+ * `remountKey={project.id}`) with an explicit Save, and a Project State row
+ * opening the {@link StateEditorModal} JSON editor.
  *
- * DIVERGENCE (recorded): v4 uses the `MarkdownLexicalEditor` (a Lexical tree);
- * v5 ships a plain `<textarea>` here (the Lexical-equivalent editor is a
- * deferred vertical). The instructions bytes still round-trip exactly.
+ * NOTE: v4 renders this same instructions editor in TWO places — this card and
+ * `SettingsTab.tsx:35`, which passes `minHeight="10rem"`. v5 has only the card,
+ * so it takes the card's `14rem`.
  */
 @Component({
   selector: 'qt-project-settings-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CollapsibleCard, StateEditorModal],
+  imports: [CollapsibleCard, StateEditorModal, MarkdownField],
   template: `
     <qt-collapsible-card
       title="Project Settings"
@@ -28,20 +30,17 @@ import type { ProjectEditForm } from './project-header';
     >
       <div class="space-y-4">
         <div>
-          <label class="qt-text-label block mb-2" for="qt-project-instructions">
-            Project Instructions
-          </label>
+          <label class="qt-text-label block mb-2">Project Instructions</label>
           <p class="qt-text-xs qt-text-secondary mb-2">
             These instructions are included in system prompts for all project chats.
           </p>
-          <textarea
-            id="qt-project-instructions"
+          <qt-markdown-field
+            ariaLabel="Project instructions"
+            minHeight="14rem"
+            [recordKey]="project().id"
             [value]="form().instructions"
-            rows="8"
-            aria-label="Project instructions"
-            class="qt-textarea w-full"
-            (input)="onInstructions($event)"
-          ></textarea>
+            (contentChange)="formChange.emit({ instructions: $event })"
+          />
           <div class="mt-2 flex justify-end">
             <button type="button" class="qt-button qt-button-primary" (click)="save.emit()">
               Save
@@ -85,8 +84,4 @@ export class ProjectSettingsCard {
   readonly save = output<void>();
 
   protected readonly stateOpen = signal(false);
-
-  protected onInstructions(event: Event): void {
-    this.formChange.emit({ instructions: (event.target as HTMLTextAreaElement).value });
-  }
 }

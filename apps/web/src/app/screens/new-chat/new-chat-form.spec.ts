@@ -1,9 +1,11 @@
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import type { CharacterListItem } from '../../core/core-contract';
+import { RichEditor } from '../../editor/rich-editor';
 import { NewChatForm } from './new-chat-form';
 import { NewChatState } from './new-chat.state';
 import type { NewChatSelectedCharacter, ScenarioOption } from './new-chat.types';
@@ -77,6 +79,18 @@ function labelOf(fixture: ComponentFixture<NewChatForm>, label: string): Element
   return (fixture.nativeElement as HTMLElement).querySelector(`[aria-label="${label}"]`);
 }
 
+async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
+  for (let i = 0; i < 4; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+  }
+}
+
+/** The starting-scenario editor (qt-markdown-field's RichEditor handle). */
+function scenarioEditor(fixture: ComponentFixture<NewChatForm>): RichEditor {
+  return fixture.debugElement.query(By.directive(RichEditor)).componentInstance as RichEditor;
+}
+
 describe('NewChatForm scenario layering', () => {
   it('shows the "Starting scenario" editor when no preset is selected', () => {
     const fixture = render(makeState());
@@ -94,6 +108,29 @@ describe('NewChatForm scenario layering', () => {
     expect(text).toMatch(/added beneath the scenario above/i);
     expect(labelOf(fixture, 'Additional scenario notes')).not.toBeNull();
     expect(labelOf(fixture, 'Starting scenario')).toBeNull();
+  });
+
+  it('carries the scenario notes markdown into the form state', async () => {
+    const state = makeState();
+    const fixture = render(state);
+    await settle(fixture);
+
+    scenarioEditor(fixture).setMarkdown('They meet at *dusk*, by the folly.');
+    await settle(fixture);
+
+    expect(state.form().scenario).toBe('They meet at *dusk*, by the folly.');
+  });
+
+  it('seeds the field from the form scenario without dirtying it on load', async () => {
+    const state = makeState();
+    state.patchForm({ scenario: 'A __foggy__ moor.' });
+    const fixture = render(state);
+    await settle(fixture);
+
+    // Displayed canonically, but the load is not an edit: the stored form value
+    // is untouched until the user types.
+    expect(scenarioEditor(fixture).getMarkdown()).toBe('A **foggy** moor.');
+    expect(state.form().scenario).toBe('A __foggy__ moor.');
   });
 });
 

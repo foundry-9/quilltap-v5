@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 
 import type { WardrobeItemDto, WardrobeSlotType } from '../../../core/core-contract';
+import { MarkdownField } from '../../../editor/markdown-field';
 import {
   WARDROBE_SLOT_TYPES,
   type WardrobeCreateInput,
@@ -49,10 +50,15 @@ function draftFromItem(item: WardrobeItemDto): DraftState {
  * own inline draft form + rows; does NOT use the character wardrobe-control
  * dialog family. Supports leaf garments and composites (bundling existing
  * project items); cycle rejection is server-side.
+ *
+ * The Description is a `qt-markdown-field` (v4 `wardrobe-item-editor.tsx:674`,
+ * its `minHeight="10rem"`). v4 passes no `remountKey` there, so neither do we —
+ * the draft form is seeded per open.
  */
 @Component({
   selector: 'qt-project-wardrobe-manager',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [MarkdownField],
   template: `
     <div class="space-y-3">
       @if (actionError(); as msg) {
@@ -89,13 +95,13 @@ function draftFromItem(item: WardrobeItemDto): DraftState {
 
           <div>
             <label class="qt-label block mb-1">Description</label>
-            <textarea
-              class="qt-input w-full"
-              rows="2"
+            <qt-markdown-field
+              ariaLabel="Wardrobe item description"
+              minHeight="10rem"
               placeholder="What it looks like / how it's worn"
               [value]="draft().description"
-              (input)="patch({ description: $any($event.target).value })"
-            ></textarea>
+              (contentChange)="patch({ description: $event })"
+            />
           </div>
 
           <div>

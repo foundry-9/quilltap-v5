@@ -1,10 +1,17 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { WardrobeItemDto } from '../../../core/core-contract';
+import { RichEditor } from '../../../editor/rich-editor';
 import type { WardrobeMutator, WardrobeResult } from '../wardrobe.api';
 import { ProjectWardrobeManager } from './project-wardrobe-manager';
+
+/** The draft form's Description editor (qt-markdown-field's RichEditor handle). */
+function descriptionEditor(fixture: ComponentFixture<unknown>): RichEditor {
+  return fixture.debugElement.query(By.directive(RichEditor)).componentInstance as RichEditor;
+}
 
 function item(over: Partial<WardrobeItemDto> = {}): WardrobeItemDto {
   return {
@@ -206,6 +213,26 @@ describe('ProjectWardrobeManager', () => {
         'w9',
         expect.objectContaining({ title: 'Waistcoat, brocade', types: ['top'] }),
       ],
+    ]);
+  });
+
+  it('the description markdown field seeds from the item and rides into the update', async () => {
+    const handle = mockMutator([
+      item({ id: 'w9', title: 'Waistcoat', description: 'Deep *green* wool.' }),
+    ]);
+    const fixture = await render(handle);
+    byText(fixture, 'Edit').click();
+    await settle(fixture);
+
+    expect(descriptionEditor(fixture).getMarkdown()).toBe('Deep *green* wool.');
+
+    descriptionEditor(fixture).setMarkdown('Deep **green** wool, brass-buttoned.');
+    await settle(fixture);
+    byText(fixture, 'Save changes').click();
+    await settle(fixture);
+
+    expect(handle.calls.update).toEqual([
+      ['w9', expect.objectContaining({ description: 'Deep **green** wool, brass-buttoned.' })],
     ]);
   });
 
