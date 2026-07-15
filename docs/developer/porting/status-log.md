@@ -12977,3 +12977,41 @@ sync point, since the control reflects the optimistic value immediately.
 
 **Gate:** full Playwright **56/56, zero skips** (was 52); the four new beats
 green in isolation AND in-suite.
+
+## The P4.6an round — UNIFIED on main (2026-07-15)
+
+Single-lane round (`claude/p4-6an-chat-cards-cron-d94339`, nine
+commits, based directly on main — a fast-forward reconcile, no
+conflicts, no cross-lane wires). **P4.6an CLOSED; the last two P4.6ad
+deferrals (the cron preview + the Chat-tab cards) CLOSE with it.**
+
+Delivered against the order, verified at unification:
+- **Tier 1 complete:** the eleven cards (units 3–6), the tab in v4's
+  full 16-card order with the placeholder retired (unit 7), the live
+  cron next-run preview (unit 2, `croner@10.0.1` — v4's exact range).
+- **Tier 2 complete:** the composer spellcheck rider (unit 8), four
+  live e2e beats (unit 9).
+- **The server-gap contingency fired (unit 1):** the
+  `dangerousContentSettings` parse was serde-struct, not
+  Zod-faithful. Hand-rolled `zod_dangerous_content_settings`;
+  `settings_routes_equivalence` 19 → 32 cases; the old path
+  re-pointed to prove the diff bites. The order's survey lesson is
+  banked: **key coverage ≠ parse semantics** — re-verify sub-field
+  semantics, not key presence.
+
+**Unification gate (all green, run fresh on the unify branch):**
+`cargo fmt --all --check`; clippy `-D warnings` both feature sets;
+release build; settings fixture + oracle regenerated FRESH from the
+v4 checkout at `02865bdb` (32 NDJSON rows, both `s_put_danger` cases
+present) and `settings_routes_equivalence` run by name — 32/32;
+`cargo test --workspace` **314 suites / 1327 tests / 0 failed**;
+`ng test` **846**; `ng build` clean; **full Playwright 56/56, zero
+skips** (the four new beats green in-suite).
+
+**Still OPEN from this surface (loud, named):** the Salon token/cost
+display rendering — v4 consumes `tokenDisplaySettings` in
+`MessageRow.tsx`/`MessageActionBar.tsx`; the v5 Salon renders no
+token counts yet. A Salon slice with its own order.
+
+**Final versions:** core 0.0.222, harness 0.0.201, host 0.0.17,
+web 0.0.21, SPA 0.5.101.

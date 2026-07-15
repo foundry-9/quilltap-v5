@@ -1357,3 +1357,34 @@ deliberately excluded: the Salon token/cost display rendering (a
 Salon slice), P4.7 (Tauri), the form-field adoptions (a rider on any
 SPA order). v4 baseline `02865bdb` (drift-checked at planning: no
 movement). Round record: `status-log.md`.
+
+**The P4.6an round is UNIFIED on main (2026-07-15) — P4.6an CLOSED,
+and the last two P4.6ad deferrals CLOSE with it.** Landed: the eleven
+remaining Chat-tab settings cards in v4's exact 16-card order over a
+shared card substrate (`ChatSettingsCard` base + one shared
+`['chatSettings']` query key — sixteen cards, ONE GET), each with
+payload-asserting specs (whole-bag merges, the dogfood-#6
+late-options regressions proven to bite); the tab placeholder
+RETIRED; the live `croner@10.0.1` cron next-run preview in the shared
+autonomous room card (Settings defaults + Edit-Enclave + New-Chat,
+v4's exact strings; `isCronShapeValid` retired); the composer
+spellcheck rider (ProseMirror `attributes` + the `setProps` nudge);
+four live e2e beats. **The planned "SPA-only" held except one server
+contingency, which fired as designed:** the `dangerousContentSettings`
+key was covered but its PARSE was serde-struct, not Zod — explicit
+`null` dropped, partial bags rejected, `1` re-emitted `1.0`; the
+hand-rolled `zod_dangerous_content_settings` (the
+`zod_cheap_llm_settings` mold) fixed it, `settings_routes_equivalence`
+19 → 32 cases over a fresh `02865bdb` oracle, the old path re-tested
+to prove the diff bites. Gate at unification: 314 Rust suites / 1327
+tests / 0 failed (settings differential regenerated FRESH and run by
+name, 32/32), clippy both feature sets, release build, ng test 846,
+ng build clean, **full Playwright 56/56 zero skips**. Versions:
+core 0.0.222, harness 0.0.201, host 0.0.17, web 0.0.21, SPA 0.5.101.
+**Deferred loud from this surface:** the Salon token/cost display
+rendering (a Salon slice — v4's `MessageRow`/`MessageActionBar`
+consumers of `tokenDisplaySettings`). Next candidates: the Salon
+token/cost display slice, the story-background generation subsystem,
+the remaining form-field adoptions (a rider on any SPA order), P4.7
+(`quilltap-tauri`), or a dogfood pass over the now-complete Settings
+story. Round record: `status-log.md`.

@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+P4.6an round UNIFIED on main (2026-07-15) — the order CLOSED, and the
+last two P4.6ad deferrals close with it. One lane, nine commits: the
+eleven remaining Chat-tab settings cards in v4's full 16-card order
+(shared ChatSettingsCard substrate, one deduped settings GET, the tab
+placeholder retired), the live croner cron next-run preview in the
+shared autonomous room card, the composer spellcheck rider, and the
+dangerousContentSettings Zod-faithful parse (the one server gap —
+settings_routes_equivalence 19 → 32 cases against a fresh 02865bdb
+oracle). Unification gate: fmt/clippy (both feature sets)/release
+build clean; cargo test --workspace 314 suites / 1327 tests / 0
+failed with the settings differential regenerated fresh and run by
+name (32/32); ng test 846; ng build clean; full Playwright 56/56,
+zero skips. Final versions: core 0.0.222, harness 0.0.201, host
+0.0.17, web 0.0.21, SPA 0.5.101. Still deferred loud: the Salon
+token/cost display rendering (a Salon slice with its own order).
+
 P4.6an unit 9 (tier 2): four live Playwright beats over the fitted-out Chat
 tab — the full sixteen-card order renders with the placeholder gone;
 Auto-Scroll round-trips a scalar through the real server and survives a

@@ -476,12 +476,29 @@ records THERE. Update this summary only when a phase or round completes.
   the table transformer, missing-host dialog consumers. Next
   candidates: the remaining form-field adoptions (a rider), the
   autonomous-rooms deferred cards, P4.7 (Tauri), or a dogfood pass.
+- **The P4.6an Chat-tab-cards + cron-preview round: UNIFIED on main
+  (2026-07-15) — P4.6an CLOSED, and the last two P4.6ad deferrals
+  CLOSE with it.** Single lane: the eleven remaining Chat-tab
+  settings cards in v4's full 16-card order (shared ChatSettingsCard
+  substrate — sixteen cards, ONE deduped GET; the tab placeholder
+  retired), the live `croner@10.0.1` cron next-run preview in the
+  shared autonomous room card (all three consumers), the composer
+  spellcheck rider (ProseMirror attributes + setProps nudge), four
+  live e2e beats. The one server gap: `dangerousContentSettings`
+  parse made Zod-faithful (explicit nulls kept, partial bags
+  defaulted, `1` not `1.0`) — `settings_routes_equivalence` 19 → 32
+  cases, fresh `02865bdb` oracle. Gate: 314 suites/1327, ng 846,
+  Playwright 56/56 zero skips. Deferred loud: the Salon token/cost
+  display rendering (a Salon slice). Next candidates: the Salon
+  token/cost display, the background generation subsystem, the
+  form-field adoptions (a rider), P4.7 (Tauri), or a Settings-story
+  dogfood pass — see phase-4.md.
 - **Oracle baseline: v4 HEAD `02865bdb`** (rebased 2026-07-14 with the
   P4.d4 skip-signal drift re-port — the trailing-sentinel strip; the
   P4.d3 quantized embedding codec note stands: ⚠ v4's
   `quantize-embeddings-v1` migration is one-way — back up Friday
   before first running v4 `4.8.0-dev.52`+ against it. Drift-check
   before every round.
-  Versions: core 0.0.221, harness 0.0.200, host 0.0.17, web 0.0.21, SPA 0.5.93.
+  Versions: core 0.0.222, harness 0.0.201, host 0.0.17, web 0.0.21, SPA 0.5.101.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.
