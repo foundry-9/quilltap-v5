@@ -204,6 +204,7 @@ interface CascadePrompt {
         [compositionMode]="compositionMode()"
         [textReplacementRules]="textReplacementRules()"
         [textReplacementsEnabled]="textReplacementsEnabled()"
+        [composerSpellcheck]="composerSpellcheck()"
         (compositionModeChange)="onCompositionModeChange($event)"
         (send)="send($event)"
         (stop)="stop()"
@@ -528,6 +529,11 @@ export class SalonConversation {
   });
   protected readonly textReplacementsEnabled = computed<boolean>(
     () => this.settings()?.textReplacementsEnabled ?? true,
+  );
+
+  /** v4 `chatSettings?.composerSpellcheck ?? true` (`LexicalComposerWrapper.tsx:107`). */
+  protected readonly composerSpellcheck = computed<boolean>(
+    () => (this.settings()?.['composerSpellcheck'] as boolean | undefined) ?? true,
   );
 
   // --- streaming ---

@@ -92,6 +92,7 @@ export interface ComposerSend {
           [submitOnEnter]="!compositionMode()"
           [submitOnModEnter]="compositionMode()"
           [textReplacementRules]="effectiveTextReplacementRules()"
+          [spellcheck]="composerSpellcheck()"
           ariaLabel="Message"
           (contentChange)="onContentChange($event)"
           (submit)="submit()"
@@ -236,6 +237,12 @@ export class ChatComposer implements OnInit {
    */
   readonly textReplacementRules = input<CompiledRules | null>(null);
   readonly textReplacementsEnabled = input(true);
+  /**
+   * Browser spellcheck in the composer (v4 `chat_settings.composerSpellcheck`,
+   * applied at `LexicalComposerWrapper.tsx:107`). v4's default when unset is
+   * true; the salon passes the setting.
+   */
+  readonly composerSpellcheck = input(true);
 
   readonly send = output<ComposerSend>();
   readonly stop = output<void>();

@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.6an unit 8 (tier 2): the Composer card's setting is now LIVE — the
+`qt-rich-editor` contenteditable binds `spellcheck` to
+`chat_settings.composerSpellcheck ?? true`, matching v4's Lexical composer.
+The salon threads the setting from the settings row it already reads; the
+document pane and the form fields take the default. The attribute is written
+explicitly ("true"/"false") because a contenteditable inherits spellcheck,
+and the view is nudged when the setting changes, since ProseMirror only
+recomputes its attributes on a view update and the setting arrives async.
+
 P4.6an unit 7: the Settings -> Chat tab is fully fitted out. All sixteen v4
 cards are mounted in v4's exact order (Composer and Auto-Scroll between
 Composition Mode and Text Replacement; the nine engine-facing cards between

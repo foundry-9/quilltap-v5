@@ -12907,3 +12907,35 @@ they dedupe into a single settings fetch — the point of building the shared
 query rather than eleven independent loads.
 
 `ng test` 840 → 843; `ng build` clean.
+
+## P4.6an unit 8 (tier 2) — the composer spellcheck rider
+
+The Composer card (unit 3) stores `composerSpellcheck`; this wires its
+CONSUMER. v4 applies the flag on its Lexical editor
+(`LexicalComposerWrapper.tsx:107`, `chatSettings?.composerSpellcheck ?? true`,
+read from its own `useQuery` on the chat-settings key). v5 binds the same flag
+on the ProseMirror contenteditable — a three-file thread, no new fetch:
+
+- `editor/rich-editor.ts` — a new `spellcheck` input (default TRUE), written
+  into ProseMirror's `attributes`.
+- `chat/chat-composer.ts` — a `composerSpellcheck` input passed through.
+- `screens/salon/salon-conversation.ts` — derives it from the settings row it
+  ALREADY reads on the shared `['chatSettings']` key (the same place
+  `textReplacementsEnabled` comes from), so the rider costs no extra request.
+
+The document pane and the `qt-markdown-field` form fields take the default and
+are untouched, matching v4 (only the composer + Document Mode rich editor
+squiggle; source-mode editors never do).
+
+**Two gotchas, both proven by removing the fix and watching the spec fail:**
+1. The attribute must be written EXPLICITLY as `"true"`/`"false"`. A
+   contenteditable INHERITS spellcheck, so omitting it leaves it on — a falsy
+   binding that renders no attribute silently does nothing.
+2. ProseMirror's `attributes` closure is only re-evaluated on a VIEW UPDATE.
+   The setting arrives from an async query long after the mount, so an
+   `effect` nudges the view (`setProps({})`) when it changes. Without the
+   nudge, two of the three specs fail — the attribute is stuck at its mount
+   value forever.
+
+**Specs:** three cases in `rich-editor.spec.ts` (default true; explicit false;
+follows a late/toggling setting). `ng test` 843 → 846.

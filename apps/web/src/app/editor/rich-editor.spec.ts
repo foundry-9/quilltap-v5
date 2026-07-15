@@ -10,6 +10,7 @@ import { RichEditor } from './rich-editor';
     [value]="value()"
     [submitOnEnter]="submitOnEnter()"
     [submitOnModEnter]="submitOnModEnter()"
+    [spellcheck]="spellcheck()"
     (contentChange)="last.set($event)"
     (submit)="submitted.set(submitted() + 1)"
   />`,
@@ -19,6 +20,7 @@ class Host {
   readonly value = signal('');
   readonly submitOnEnter = signal(false);
   readonly submitOnModEnter = signal(false);
+  readonly spellcheck = signal(true);
   readonly last = signal('');
   readonly submitted = signal(0);
 }
@@ -113,5 +115,50 @@ describe('RichEditor — the ProseMirror handle', () => {
     fixture.detectChanges();
     pressEnter(fixture, IS_MAC ? { metaKey: true } : { ctrlKey: true });
     expect(fixture.componentInstance.submitted()).toBe(0);
+  });
+});
+
+/**
+ * The composer-spellcheck rider (P4.6an tier 2). v4 binds
+ * `chat_settings.composerSpellcheck ?? true` on its Lexical editor
+ * (`LexicalComposerWrapper.tsx:107`); v5 binds the same flag on the
+ * ProseMirror contenteditable.
+ */
+describe('RichEditor — the spellcheck attribute', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function content(fixture: ComponentFixture<Host>): HTMLElement {
+    return fixture.nativeElement.querySelector('.qt-rich-editor-content') as HTMLElement;
+  }
+
+  it('spellchecks by default (v4 ?? true)', async () => {
+    const fixture = await render();
+    expect(content(fixture).getAttribute('spellcheck')).toBe('true');
+  });
+
+  it('writes an explicit "false" when the setting is off', async () => {
+    const fixture = await render();
+    fixture.componentInstance.spellcheck.set(false);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    // Explicit "false" matters: a contenteditable INHERITS spellcheck, so
+    // merely omitting the attribute would leave it on.
+    expect(content(fixture).getAttribute('spellcheck')).toBe('false');
+  });
+
+  it('follows the setting when it arrives late (the async settings query)', async () => {
+    const fixture = await render();
+    expect(content(fixture).getAttribute('spellcheck')).toBe('true');
+    fixture.componentInstance.spellcheck.set(false);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(content(fixture).getAttribute('spellcheck')).toBe('false');
+    fixture.componentInstance.spellcheck.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(content(fixture).getAttribute('spellcheck')).toBe('true');
   });
 });

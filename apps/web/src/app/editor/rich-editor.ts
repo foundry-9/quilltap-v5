@@ -62,6 +62,15 @@ export class RichEditor {
   readonly submitOnModEnter = input(false);
   readonly ariaLabel = input('Editor');
   /**
+   * Browser spellcheck on the contenteditable (v4 binds the same flag on its
+   * Lexical editor, `LexicalComposerWrapper.tsx:107`, from
+   * `chat_settings.composerSpellcheck ?? true`). The composer passes the
+   * setting; the document pane and the form fields take the default. Source-mode
+   * editors (raw Markdown, plain text) are not this component and stay
+   * unsquiggled regardless.
+   */
+  readonly spellcheck = input(true);
+  /**
    * Compiled text-replacement rules (v4 `TextReplacementPlugin`). Read live on
    * each keydown; `null`/empty makes the plugin inert. The composer sets this
    * (gated by `textReplacementsEnabled`); form fields never do.
@@ -105,6 +114,14 @@ export class RichEditor {
     effect(() => {
       const dis = this.disabled();
       this.view?.setProps({ editable: () => !dis });
+    });
+
+    // `attributes` is a closure over the signals, but ProseMirror only
+    // re-evaluates it on a view update — and the spellcheck setting arrives from
+    // an async query well after the mount. Nudge the view when it changes.
+    effect(() => {
+      this.spellcheck();
+      this.view?.setProps({});
     });
 
     this.destroyRef.onDestroy(() => this.view?.destroy());
@@ -160,6 +177,9 @@ export class RichEditor {
         'aria-label': this.ariaLabel(),
         role: 'textbox',
         'aria-multiline': 'true',
+        // Must be an explicit "false" to disable — a contenteditable inherits
+        // spellcheck, so omitting the attribute leaves it ON.
+        spellcheck: String(this.spellcheck()),
       }),
       handlePaste: (_view, event) => this.handlePaste(event),
       dispatchTransaction: (tr) => {
