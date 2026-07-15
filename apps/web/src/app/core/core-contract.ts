@@ -3445,7 +3445,10 @@ export type MemoryRequest =
   | TextReplacementUpdateRequest
   | TextReplacementDeleteRequest
   | TextReplacementsBulkReplaceRequest
-  | ChatGetBackgroundRequest;
+  | ChatGetBackgroundRequest
+  // P4.6ao/P4.6ap (folded at unification; the block at the end of this file).
+  | ChatGetCostRequest
+  | ChatRegenerateBackgroundRequest;
 // P4.6u (lane C) — the Salon terminal-pane block.
 // Appended by lane C; single-author (lane B, the file owner, must not edit this
 // block). The terminal WebSocket + REST protocol types live in
@@ -3890,5 +3893,41 @@ export interface ChatBackgroundDto {
 /** The dispatch request for the story-background resolver (§1). */
 export interface ChatGetBackgroundRequest {
   type: 'chatGetBackground';
+  chatId: string;
+}
+
+// ===========================================================================
+// --- P4.6ao/P4.6ap unification fold ---
+//
+// The two P4.6ap-round request interfaces, folded into the CoreRequest union
+// at unification per the round's Shared contract (§1/§2) — name-for-name
+// against `types.rs` (pinned server-side by `p4_6ao_wire_contract.rs`). The
+// api modules (`chat/chat-cost.api.ts`, `screens/salon/story-background.api.ts`)
+// re-export them, so consumers are unchanged.
+// ===========================================================================
+
+/**
+ * The dispatch request for the chat cost breakdown (§1 — v4
+ * `GET /api/v1/chats/:id?action=cost`).
+ */
+export interface ChatGetCostRequest {
+  type: 'chatGetCost';
+  chatId: string;
+  /**
+   * Absent means false. v5 never sends it: the detailed arm
+   * (`messageBreakdown` / `systemEventBreakdown`) has no v4 client either — a
+   * named deferral of the P4.6ap order, not an omission.
+   */
+  detailed?: boolean;
+}
+
+/**
+ * The regenerate dispatch request (§2 — v4
+ * `POST /api/v1/chats/:id?action=regenerate-background`). The Rust variant and
+ * wire name predate the round (`types.rs` P4.6ak block); P4.6ao changed only
+ * the dispatch target (refusal → the real enqueue).
+ */
+export interface ChatRegenerateBackgroundRequest {
+  type: 'chatRegenerateBackground';
   chatId: string;
 }

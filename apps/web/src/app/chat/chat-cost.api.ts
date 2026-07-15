@@ -4,17 +4,17 @@
  * `GET /api/v1/chats/{chatId}?action=cost` directly; v5 goes through the
  * `chatGetCost` dispatch verb, which lane A (P4.6ao) provides.
  *
- * The types live here — in a lane-owned api file — rather than in
- * `core-contract.ts`, per the round's §1: the request `type` is bridged with a
- * cast at the dispatch call below until the unifier folds `ChatGetCostRequest`
- * into the `CoreRequest` union name-for-name against `types.rs`. This is the
- * established P4.6am / P4.d3 precedent for a cross-lane verb.
+ * `ChatGetCostRequest` was folded into the `CoreRequest` union at unification
+ * (name-for-name against `types.rs`, pinned by `p4_6ao_wire_contract.rs`); it
+ * is re-exported from here so consumers keep one import site.
  *
  * @module chat/chat-cost.api
  */
 
 import type { CoreClient } from '../core/core-client';
-import type { CoreRequest } from '../core/core-contract';
+import type { ChatGetCostRequest } from '../core/core-contract';
+
+export type { ChatGetCostRequest } from '../core/core-contract';
 
 /** The `priceSource` union, verbatim from the Shared contract §1. */
 export type CostPriceSource =
@@ -40,18 +40,6 @@ export interface ChatCostDto {
   priceSource: CostPriceSource;
 }
 
-/** The dispatch request for the cost breakdown (§1). */
-export interface ChatGetCostRequest {
-  type: 'chatGetCost';
-  chatId: string;
-  /**
-   * Absent means false. v5 never sends it: the detailed arm
-   * (`messageBreakdown` / `systemEventBreakdown`) has no v4 client either — a
-   * named deferral of this order, not an omission.
-   */
-  detailed?: boolean;
-}
-
 export const chatCostKeys = {
   /**
    * Per-chat cost key. `refreshKey` is v4's `refreshKey` prop (the Salon passes
@@ -65,6 +53,6 @@ export const chatCostKeys = {
 /** GET the chat's token/cost aggregate (v4 `?action=cost`, non-detailed). */
 export async function fetchChatCost(core: CoreClient, chatId: string): Promise<ChatCostDto> {
   const req: ChatGetCostRequest = { type: 'chatGetCost', chatId };
-  const data = await core.dispatchData(req as unknown as CoreRequest);
+  const data = await core.dispatchData(req);
   return data as unknown as ChatCostDto;
 }

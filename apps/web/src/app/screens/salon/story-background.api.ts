@@ -20,8 +20,10 @@ import type { CoreClient } from '../../core/core-client';
 import type {
   ChatBackgroundDto,
   ChatGetBackgroundRequest,
-  CoreRequest,
+  ChatRegenerateBackgroundRequest,
 } from '../../core/core-contract';
+
+export type { ChatRegenerateBackgroundRequest } from '../../core/core-contract';
 import { fileUrl } from '../../images/image-urls';
 
 export const storyBackgroundKeys = {
@@ -48,17 +50,6 @@ export async function fetchChatBackgroundVar(
 // ---------------------------------------------------------------------------
 
 /**
- * The regenerate dispatch request. The `Request::ChatRegenerateBackground`
- * variant and its wire name ALREADY exist in `types.rs:1832-1842` — §2 changes
- * only the dispatch target (lane A un-refuses it), never the name. Bridged with
- * a cast at the call below until the unifier folds it into the TS union.
- */
-export interface ChatRegenerateBackgroundRequest {
-  type: 'chatRegenerateBackground';
-  chatId: string;
-}
-
-/**
  * v4's successResponse data for both arms (§2). `queued` is true even for the
  * "already in progress" arm — the request was accepted either way, so the
  * client treats both as success and shows the returned message.
@@ -80,7 +71,7 @@ export async function regenerateChatBackground(
   chatId: string,
 ): Promise<RegenerateBackgroundResult> {
   const req: ChatRegenerateBackgroundRequest = { type: 'chatRegenerateBackground', chatId };
-  const data = await core.dispatchData(req as unknown as CoreRequest);
+  const data = await core.dispatchData(req);
   return data as unknown as RegenerateBackgroundResult;
 }
 

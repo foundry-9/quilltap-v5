@@ -17,14 +17,13 @@ import { E2E_PASSPHRASE } from './support/env';
  *     (`promptTokens=8`, `completionTokens=4` — no seeding needed).
  *  2. **The Story Backgrounds card** (LIVE): a real round-trip that survives a
  *     reload.
- *  3. **The chat-totals summary** (ACTIVATE-AT-UNIFY): needs lane A's
- *     `chatGetCost` verb, so it is route-mocked here. The chat-row aggregates it
- *     will read live are ALREADY seeded in `global-setup.ts`.
- *  4. **The regenerate entry** (ACTIVATE-AT-UNIFY): needs lane A's un-refused
- *     `chatRegenerateBackground`, so it is route-mocked here. Scoped to the
- *     QUEUED response + flash — the e2e host has no image-provider key, so the
- *     job's OUTCOME is deliberately out of scope. Assert the enqueue, not the
- *     image.
+ *  3. **The chat-totals summary** (LIVE since unification): reads lane A's real
+ *     `chatGetCost` verb over the chat-row aggregates seeded in
+ *     `global-setup.ts`.
+ *  4. **The regenerate entry** (LIVE since unification): drives lane A's real
+ *     un-refused `chatRegenerateBackground`. Scoped to the QUEUED response +
+ *     flash — the e2e host has no image-provider key, so the job's OUTCOME is
+ *     deliberately out of scope. Assert the enqueue, not the image.
  */
 
 /** Unlock only when the passphrase screen is showing (the shared server stays unlocked). */
@@ -172,37 +171,16 @@ test.describe('P4.6ap — the Story Backgrounds card (LIVE)', () => {
   });
 });
 
-test.describe('P4.6ap — the chat-totals summary (ACTIVATE-AT-UNIFY)', () => {
+test.describe('P4.6ap — the chat-totals summary (LIVE at unification)', () => {
   /**
-   * ACTIVATE-AT-UNIFY: `chatGetCost` is lane A's verb and does not exist in this
-   * lane's server, so the dispatch is route-mocked. The body below is the Shared
-   * contract §1 shape VERBATIM, and it matches the aggregates `global-setup.ts`
-   * already seeded on Solo Voyage — so at unification the unifier deletes the
-   * `page.route` block and the assertions hold against the live verb unchanged.
+   * ACTIVATED at unification: the beat originally route-mocked `chatGetCost`
+   * (lane A's verb) with the Shared-contract §1 body; the P4.6ao/ap/aq unifier
+   * dropped the mock, so the summary now reads the REAL verb over the
+   * aggregates `global-setup.ts` seeds on Solo Voyage
+   * (12000/3400/0.0234/'openrouter' — v4's non-detailed breakdown reads the
+   * STORED chat-row aggregates, not a message sum).
    */
   test('the header shows "<total> tokens • <cost>" when showChatTotals is on', async ({ page }) => {
-    await page.route('**/api/dispatch', async (route) => {
-      const body = route.request().postData() ?? '';
-      if (body.includes('chatGetCost')) {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            type: 'chatCost',
-            data: {
-              totalTokens: 15400,
-              promptTokens: 12000,
-              completionTokens: 3400,
-              estimatedCostUSD: 0.0234,
-              priceSource: 'openrouter',
-            },
-          }),
-        });
-        return;
-      }
-      await route.fallback();
-    });
-
     await page.goto('/');
     await maybeUnlock(page);
 
@@ -228,13 +206,15 @@ test.describe('P4.6ap — the chat-totals summary (ACTIVATE-AT-UNIFY)', () => {
   });
 });
 
-test.describe('P4.6ap — the Regenerate Background entry (ACTIVATE-AT-UNIFY)', () => {
+test.describe('P4.6ap — the Regenerate Background entry (LIVE at unification)', () => {
   /**
-   * ACTIVATE-AT-UNIFY: `chatRegenerateBackground` is refusal-armed until lane A
-   * un-refuses it, so the dispatch is route-mocked with the §2 success body
-   * verbatim. Deliberately scoped to the ENQUEUE: the e2e host has no
-   * image-provider key, so the job's outcome (an actual backdrop) is out of
-   * scope. At unification the mock drops and the queued response is real.
+   * ACTIVATED at unification: the beat originally route-mocked the §2 success
+   * body while `chatRegenerateBackground` was refusal-armed; the P4.6ao/ap/aq
+   * unifier dropped the mock, so the click now drives the REAL un-refused edge
+   * and the flashed message is the server's own "…queued" arm (a real
+   * `background_jobs` row is enqueued). Still deliberately scoped to the
+   * ENQUEUE: the e2e host has no image-provider key, so the job's outcome (an
+   * actual backdrop) is out of scope.
    */
   test('the entry appears with story backgrounds on, and flashes the queued message', async ({
     page,
@@ -252,26 +232,6 @@ test.describe('P4.6ap — the Regenerate Background entry (ACTIVATE-AT-UNIFY)', 
       await enable.check();
       await saved;
     }
-
-    await page.route('**/api/dispatch', async (route) => {
-      const body = route.request().postData() ?? '';
-      if (body.includes('chatRegenerateBackground')) {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            type: 'ack',
-            data: {
-              message: 'Story background regeneration queued',
-              queued: true,
-              jobId: '00000000-0000-4000-8000-0000000000aa',
-            },
-          }),
-        });
-        return;
-      }
-      await route.fallback();
-    });
 
     await openSoloVoyage(page);
 

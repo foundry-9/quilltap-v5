@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+P4.6ao/ap/aq unification wires: ChatGetCostRequest +
+ChatRegenerateBackgroundRequest folded into the CoreRequest union
+(name-for-name against types.rs), the api-module casts dropped, and
+the two ACTIVATE-AT-UNIFY beats in salon-token-cost-flow.spec.ts made
+LIVE (route mocks deleted — the totals summary reads the real
+chatGetCost verb; the regenerate entry drives the real un-refused
+edge). SPA lockfile version fields synced to the accumulated 0.5.113.
+
 P4.6aq unit 5: the e2e walks follow the swapped fields. The scenarios
 walk drove #scenario-body and the settings walk drove the template
 dialog's first textarea; both are ProseMirror contenteditables now, so
