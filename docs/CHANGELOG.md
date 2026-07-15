@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.6ap unit 4: the Story Backgrounds settings card (Salon SPA lane). Ports
+v4 components/settings/chat-settings/StoryBackgroundsSettings.tsx into the
+IMAGES tab — where v4 mounts it, despite the file living in v4's
+chat-settings/ directory — over the shared ChatSettingsCard substrate, so it
+joins the one deduped settings GET. Both controls PUT the whole
+storyBackgroundsSettings bag with one key replaced (a partial nested patch
+would drop the sibling key; the server replaces the JSON column wholesale),
+and the async profile select binds [selected] per option. The Images tab
+gains v4's space-y-4 card wrapper, which a single-card tab never needed.
+Deferred: v4's third Images card, Default Aesthetics. SPA 0.5.105.
+
 P4.6ap unit 3: the chat-totals header summary (Salon SPA lane). Ports v4
 components/chat/ChatCostSummary.tsx (COMPACT variant — v4's Salon is the
 only caller and never asks for the other one) into the conversation header,

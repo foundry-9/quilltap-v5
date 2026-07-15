@@ -13350,3 +13350,48 @@ number), and inter-element whitespace is stripped — the DOM text is
 the $0.01 band edge, so it takes `formatCostForDisplay`'s 3-digit arm.
 
 **Gate:** `ng test` **914** (was 899; +15), `ng build` clean. SPA 0.5.104.
+
+## P4.6ap unit 4 — the Story Backgrounds settings card (lane B)
+
+`apps/web/src/app/screens/settings/images/story-backgrounds-card.ts` (v4
+`components/settings/chat-settings/StoryBackgroundsSettings.tsx`), mounted in
+`images-tab.ts`. Two controls: the enable toggle + the image-profile picker.
+
+**It is an IMAGES-tab card, not a Chat-tab card** — worth stating plainly,
+because v4's file lives in `components/settings/chat-settings/` right beside
+the sixteen Chat-tab cards, and only `ImagesTabContent.tsx:39-46` reveals
+where it actually mounts. It still reads/writes the same `chat_settings` row
+through the shared `ChatSettingsCard` substrate, so it joins the ONE deduped
+`['chatSettings']` GET rather than adding a request.
+
+**Ownership note:** the card lives under `screens/settings/images/**` (this
+lane's) and imports `ChatSettingsCard` / `SettingsCard` from
+`screens/settings/chat/` read-only. The `StoryBackgroundsSettings` bag type +
+defaults are defined IN the card rather than in the Chat tab's
+`chat-settings.types.ts`, which this lane does not own — the card is the only
+consumer, so nothing is lost.
+
+**The standing rules both applied, both spec'd:**
+- **Whole-bag PUT.** Each control sends `{...current, [key]: value}` — a
+  partial nested patch would drop the sibling key, since the server replaces
+  the JSON column wholesale. Specs pin both directions (toggle preserves the
+  profile id; profile change preserves `enabled`) and that "Use default
+  profile" sends `null`, not `""` (v4 `value || null`).
+- **`[selected]`-per-option**, never `[value]` on the select (dogfood-#6): the
+  profiles load async and a `[value]` would blank the stored id on the render
+  that lands first.
+
+**Copy gotcha:** this picker labels options `name (provider - modelName)` with
+a **HYPHEN**, where the sibling Chat-tab profile pickers use `" • "`. Per-card
+v4 copy; a spec pins it so it is not "tidied" into consistency.
+
+**Tab-structure fix:** the Images tab gained v4's `space-y-4` card wrapper. v5
+had a single card and never needed it; with two, the cards would butt
+together.
+
+**Still deferred (loud, named):** v4's third Images card, **Default
+Aesthetics** (the two `AestheticEditorField`s over
+`/api/v1/system/image-aesthetics?kind=lantern|aurora`) — its own surface, not
+this order's.
+
+**Gate:** `ng test` **923** (was 914; +9). SPA 0.5.105.
