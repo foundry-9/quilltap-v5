@@ -1388,3 +1388,34 @@ token/cost display slice, the story-background generation subsystem,
 the remaining form-field adoptions (a rider on any SPA order), P4.7
 (`quilltap-tauri`), or a dogfood pass over the now-complete Settings
 story. Round record: `status-log.md`.
+
+**The P4.6ao ∥ P4.6ap ∥ P4.6aq round is PLANNED (2026-07-15): the
+token/cost display + the background-generation subsystem + the
+form-field adoptions — THREE lanes**
+(`work-orders/p4.6ao-token-cost-background-server.md` ∥
+`p4.6ap-token-cost-background-salon-spa.md` ∥
+`p4.6aq-form-field-adoptions.md`), closing the P4.6an token/cost
+deferral, the P4.6ak/P4.6am background-generation deferral, and the
+P4.6al item-6 deferral. The split is server ∥ Salon-SPA ∥ forms-SPA
+(not feature-verticals) because both feature verticals meet in
+`api/types.rs`/`engine.rs`/`chat_media.rs` — one lane owns all of
+`crates/**`. Lane A: the `chatGetCost` verb (v4's `?action=cost`,
+RAW un-enveloped body) over the already-ported `chats_tokens`
+aggregates, the `regenerate-background` un-refusal (edge-only — the
+W4.9c job handler is ported AND registered live, the WebP transcoder
+and `image_generation` seam are live), and the TITLE_UPDATE handler
+(+ `considerTitleUpdate`/`considerHelpChatTitleUpdate`, unported
+cheap-LLM tasks) — today the ported `context_summary` enqueues
+TITLE_UPDATE jobs that die on the loud fallback, which is also why
+auto-background-generation never fires; three differentials over a
+new `cost-background-{main}.db` fixture family. Lane B: the
+per-message token badge + compact chat-totals header summary (v4
+quirks carried: `showPerMessageCost` is DEAD in v4,
+`showSystemEvents` inert), the Story Backgrounds card in the Images
+tab, the regenerate header entry + the 5s/36 active and 30s passive
+polls. Lane C: the `minHeight` input + ten `qt-markdown-field` swap
+sites (with the survey correction: the editable image-prompt fields
+are `edit/appearance-tab.ts`, not the view details-tab the P4.6al
+header named). v4 baseline `02865bdb` (drift-checked at planning: no
+movement). Shared contracts §1–§3 pinned verbatim in all three
+orders. Round record: `status-log.md`.

@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.6ao ∥ P4.6ap ∥ P4.6aq round planned (2026-07-15): three work orders
+committed under docs/developer/porting/work-orders/ — the token/cost +
+background-generation server lane (the chatGetCost verb, the
+regenerate-background un-refusal, the TITLE_UPDATE handler), the Salon
+SPA lane (per-message token badge, chat-totals header summary, Story
+Backgrounds card, regenerate entry + polls), and the form-field
+adoptions rider (the minHeight input + ten qt-markdown-field swaps).
+Docs only; v4 baseline 02865bdb re-verified, no drift.
+
 P4.6an round UNIFIED on main (2026-07-15) — the order CLOSED, and the
 last two P4.6ad deferrals close with it. One lane, nine commits: the
 eleven remaining Chat-tab settings cards in v4's full 16-card order
