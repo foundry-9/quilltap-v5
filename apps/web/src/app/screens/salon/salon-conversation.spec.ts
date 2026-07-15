@@ -98,12 +98,29 @@ function chatDetail(): ChatDetail {
     isPaused: false,
     isManuallyRenamed: false,
     participants: [
-      participant({ id: 'pu', controlledBy: 'user', character: { id: 'u', name: 'Bertie', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null } }),
+      participant({
+        id: 'pu',
+        controlledBy: 'user',
+        character: {
+          id: 'u',
+          name: 'Bertie',
+          title: null,
+          avatarUrl: null,
+          defaultImageId: null,
+          defaultImage: null,
+        },
+      }),
       participant({ id: 'p1' }),
     ],
     user: { id: 'user1', name: 'Bertie', image: null },
     messages: [
-      message({ id: 'u1', role: 'USER', participantId: 'pu', content: 'Good morning, Friday.', createdAt: '2024-01-01T00:00:01.000Z' }),
+      message({
+        id: 'u1',
+        role: 'USER',
+        participantId: 'pu',
+        content: 'Good morning, Friday.',
+        createdAt: '2024-01-01T00:00:01.000Z',
+      }),
       message({
         id: 'a1',
         role: 'ASSISTANT',
@@ -112,8 +129,22 @@ function chatDetail(): ChatDetail {
         reasoningContent: 'Consider the weather.',
         createdAt: '2024-01-01T00:00:02.000Z',
       }),
-      message({ id: 'w1', role: 'ASSISTANT', participantId: 'p1', content: 'psst, a private word', targetParticipantIds: ['pu'], createdAt: '2024-01-01T00:00:03.000Z' }),
-      message({ id: 'h1', role: 'ASSISTANT', systemSender: 'host', systemKind: 'turn-pass', content: 'Friday has nothing to add.', createdAt: '2024-01-01T00:00:04.000Z' }),
+      message({
+        id: 'w1',
+        role: 'ASSISTANT',
+        participantId: 'p1',
+        content: 'psst, a private word',
+        targetParticipantIds: ['pu'],
+        createdAt: '2024-01-01T00:00:03.000Z',
+      }),
+      message({
+        id: 'h1',
+        role: 'ASSISTANT',
+        systemSender: 'host',
+        systemKind: 'turn-pass',
+        content: 'Friday has nothing to add.',
+        createdAt: '2024-01-01T00:00:04.000Z',
+      }),
     ],
     projectId: null,
     projectName: null,
@@ -137,13 +168,25 @@ function stubClient(
   const dispatch = vi.fn(async (req: CoreRequest): Promise<CoreResponse> => {
     if (req.type === 'chatGet') return { type: 'chat', data: { chat } };
     if (req.type === 'chatSettings') {
-      return { type: 'chatSettings', data: { avatarDisplayMode: 'ALWAYS', avatarDisplayStyle: 'CIRCULAR' } };
+      return {
+        type: 'chatSettings',
+        data: { avatarDisplayMode: 'ALWAYS', avatarDisplayStyle: 'CIRCULAR' },
+      };
     }
     return { type: 'ack', data: {} };
   });
   // The story-background resolver reads through dispatchData (finding #9). Return
   // the all-null body unless a test seeds a background.
-  const dispatchData = vi.fn(async () => background ?? { backgroundUrl: null, fileId: null, filename: null, sha256: null, linkSummary: null });
+  const dispatchData = vi.fn(
+    async () =>
+      background ?? {
+        backgroundUrl: null,
+        fileId: null,
+        filename: null,
+        sha256: null,
+        linkSummary: null,
+      },
+  );
   return {
     events$: events$.asObservable(),
     dispatch,
@@ -220,7 +263,9 @@ describe('SalonConversation (read path)', () => {
     );
     const layout = fixture.nativeElement.querySelector('.qt-chat-layout') as HTMLElement;
     // The store-backed byte route, wrapped as a CSS url(), lands on the layout root.
-    expect(layout.style.getPropertyValue('--story-background-url')).toBe("url('/api/v1/files/bg-7')");
+    expect(layout.style.getPropertyValue('--story-background-url')).toBe(
+      "url('/api/v1/files/bg-7')",
+    );
     expect(layout.getAttribute('style') ?? '').toContain('--story-background-url');
   });
 });
@@ -368,5 +413,220 @@ describe('SalonConversation — story-background regeneration (v4 useChatControl
     const fixture = await render(regenStub({ enabled: false, fileId: 'file-77' }).client);
     const layout = fixture.nativeElement.querySelector('.qt-chat-layout');
     expect(layout.getAttribute('style')).toContain("url('/api/v1/files/file-77')");
+  });
+});
+
+describe('SalonConversation — the LLM Inspector (v4 useLLMLogs.ts + SalonView.tsx:796-811, :1696-1705)', () => {
+  function inspectorLog(over: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: 'log-1',
+      userId: 'user-1',
+      type: 'CHAT_MESSAGE',
+      messageId: 'a1',
+      provider: 'openai',
+      modelName: 'gpt-4o',
+      request: { messageCount: 1, messages: [], toolCount: 0 },
+      response: { content: 'A fine morning it is.', contentLength: 21 },
+      createdAt: '2024-01-01T00:00:02.000Z',
+      updatedAt: '2024-01-01T00:00:02.000Z',
+      ...over,
+    };
+  }
+
+  function inspectorClient(
+    opts: { logs?: Record<string, unknown>[]; loggingEnabled?: boolean | null } = {},
+  ): { client: Partial<CoreClient>; listCalls: () => CoreRequest[] } {
+    const calls: CoreRequest[] = [];
+    const chat = chatDetail();
+    const settings: Record<string, unknown> = {
+      avatarDisplayMode: 'ALWAYS',
+      avatarDisplayStyle: 'CIRCULAR',
+    };
+    if (opts.loggingEnabled !== undefined) {
+      settings['llmLoggingSettings'] = { enabled: opts.loggingEnabled };
+    }
+    const dispatch = vi.fn(async (req: CoreRequest): Promise<CoreResponse> => {
+      if (req.type === 'chatGet') return { type: 'chat', data: { chat } };
+      if (req.type === 'chatSettings')
+        return { type: 'chatSettings', data: settings } as CoreResponse;
+      return { type: 'ack', data: {} };
+    });
+    const dispatchData = vi.fn(async (req: CoreRequest) => {
+      calls.push(req);
+      if ((req as { type: string }).type === 'llmLogsList') {
+        return { logs: opts.logs ?? [], count: 0, total: 0, limit: 100, offset: 0 };
+      }
+      return { backgroundUrl: null, fileId: null, filename: null, sha256: null, linkSummary: null };
+    });
+    return {
+      listCalls: () => calls.filter((c) => (c as { type: string }).type === 'llmLogsList'),
+      client: {
+        events$: new Subject<ScopedEvent>().asObservable(),
+        dispatch,
+        dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
+        dispatchExpect: (async (req: CoreRequest, expected: string) => {
+          const resp = await dispatch(req);
+          if (resp.type !== expected) throw new Error(`unexpected ${resp.type}`);
+          return resp;
+        }) as CoreClient['dispatchExpect'],
+      },
+    };
+  }
+
+  function panel(fixture: ComponentFixture<SalonConversation>): HTMLElement | null {
+    return fixture.nativeElement.querySelector('.qt-slide-over-panel');
+  }
+
+  function toolbarButton(fixture: ComponentFixture<SalonConversation>): HTMLButtonElement {
+    return fixture.nativeElement.querySelector('button[aria-label="Toggle LLM Inspector"]');
+  }
+
+  function pressShortcut(key = 'L'): void {
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key, metaKey: true, shiftKey: true, cancelable: true }),
+    );
+  }
+
+  it('mounts the panel CLOSED and fetches the chat’s logs', async () => {
+    const { client, listCalls } = inspectorClient({ logs: [inspectorLog()] });
+    const fixture = await render(client);
+    // Always mounted — the slide-over animates on data-open (v4 renders it
+    // outside every gate).
+    expect(panel(fixture)).not.toBeNull();
+    expect(panel(fixture)!.getAttribute('data-open')).toBe('false');
+    expect(listCalls()).toEqual([{ type: 'llmLogsList', chatId: 'chat-1', includeMessages: true }]);
+  });
+
+  it('opens and closes on the toolbar button', async () => {
+    const { client } = inspectorClient();
+    const fixture = await render(client);
+    toolbarButton(fixture).click();
+    fixture.detectChanges();
+    expect(panel(fixture)!.getAttribute('data-open')).toBe('true');
+    toolbarButton(fixture).click();
+    fixture.detectChanges();
+    expect(panel(fixture)!.getAttribute('data-open')).toBe('false');
+  });
+
+  it('toggles on Cmd+Shift+L (v4 :796-811)', async () => {
+    const { client } = inspectorClient();
+    const fixture = await render(client);
+    pressShortcut();
+    fixture.detectChanges();
+    expect(panel(fixture)!.getAttribute('data-open')).toBe('true');
+    pressShortcut();
+    fixture.detectChanges();
+    expect(panel(fixture)!.getAttribute('data-open')).toBe('false');
+  });
+
+  it('preventDefaults the shortcut (v4 :806)', async () => {
+    const { client } = inspectorClient();
+    await render(client);
+    const event = new KeyboardEvent('keydown', {
+      key: 'L',
+      metaKey: true,
+      shiftKey: true,
+      cancelable: true,
+    });
+    document.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('matches the UPPERCASE L only — Shift is held, so the browser reports the capital', async () => {
+    const { client } = inspectorClient();
+    const fixture = await render(client);
+    pressShortcut('l');
+    fixture.detectChanges();
+    expect(panel(fixture)!.getAttribute('data-open')).toBe('false');
+  });
+
+  it('does not attach the shortcut when logging is disabled (v4’s effect returns early)', async () => {
+    const { client } = inspectorClient({ loggingEnabled: false });
+    const fixture = await render(client);
+    // The toolbar button is gone AND the key is dead — v4 gates both on the
+    // same flag.
+    expect(toolbarButton(fixture)).toBeNull();
+    pressShortcut();
+    fixture.detectChanges();
+    expect(panel(fixture)!.getAttribute('data-open')).toBe('false');
+  });
+
+  it('renders the per-message cpu entry for a message that has logs, and opens scrolled', async () => {
+    const { client } = inspectorClient({ logs: [inspectorLog({ messageId: 'a1' })] });
+    const fixture = await render(client);
+    const entries = fixture.nativeElement.querySelectorAll(
+      'button[aria-label="View LLM request/response logs"]',
+    );
+    // Exactly the ASSISTANT messages that have logs — 'a1' has one; the whisper
+    // and the user message do not.
+    expect(entries.length).toBe(1);
+    (entries[0] as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(panel(fixture)!.getAttribute('data-open')).toBe('true');
+    // The target entry carries the highlight (v4 threads scrollToMessageId).
+    expect(fixture.nativeElement.querySelector('.qt-inspector-entry-highlight')).not.toBeNull();
+  });
+
+  it('renders no cpu entries when the chat has no logs', async () => {
+    const { client } = inspectorClient({ logs: [] });
+    const fixture = await render(client);
+    expect(
+      fixture.nativeElement.querySelectorAll('button[aria-label="View LLM request/response logs"]')
+        .length,
+    ).toBe(0);
+  });
+
+  it('clears the scroll target when the TOGGLE opens, but not when it closes (v4 :50-58)', async () => {
+    const { client } = inspectorClient({ logs: [inspectorLog({ messageId: 'a1' })] });
+    const fixture = await render(client);
+
+    // Open scrolled from the message entry → highlighted.
+    (
+      fixture.nativeElement.querySelector(
+        'button[aria-label="View LLM request/response logs"]',
+      ) as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.qt-inspector-entry-highlight')).not.toBeNull();
+
+    // Toggle CLOSED: the target survives — the panel is still animating out and
+    // must not lose the highlight mid-transition.
+    toolbarButton(fixture).click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.qt-inspector-entry-highlight')).not.toBeNull();
+
+    // Toggle OPEN again: now it clears — a toolbar open is not about any message.
+    toolbarButton(fixture).click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.qt-inspector-entry-highlight')).toBeNull();
+  });
+
+  it('clears BOTH on an explicit close (v4 closeInspector :61-64)', async () => {
+    const { client } = inspectorClient({ logs: [inspectorLog({ messageId: 'a1' })] });
+    const fixture = await render(client);
+    (
+      fixture.nativeElement.querySelector(
+        'button[aria-label="View LLM request/response logs"]',
+      ) as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+
+    (
+      fixture.nativeElement.querySelector('button[aria-label="Close panel"]') as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+    expect(panel(fixture)!.getAttribute('data-open')).toBe('false');
+    expect(fixture.nativeElement.querySelector('.qt-inspector-entry-highlight')).toBeNull();
+  });
+
+  it('refetches on the panel’s refresh button (v4 refreshLogs :67-69)', async () => {
+    const { client, listCalls } = inspectorClient({ logs: [inspectorLog()] });
+    const fixture = await render(client);
+    expect(listCalls().length).toBe(1);
+    (
+      fixture.nativeElement.querySelector('button[aria-label="Refresh logs"]') as HTMLButtonElement
+    ).click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(listCalls().length).toBe(2);
   });
 });

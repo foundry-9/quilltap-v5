@@ -14259,3 +14259,55 @@ clean. No `crates/**` diff — this lane compiles no Rust.
   separator ("Provider:openai"). Assert per-row, not on a flattened
   blob — otherwise the spec is testing DOM serialization rather than the
   port.
+
+### P4.6as unit 2 — the LLM-Inspector host wiring (2026-07-15)
+
+The vertical goes live in the Salon. Five files, all inside lane B's
+ownership; no `crates/**` diff.
+
+- **`chat/conversation-header.ts`** — the Inspector button (v4
+  `SalonView.tsx:995-1024`): `code` glyph, title "LLM Inspector
+  (Cmd+Shift+L)", aria-label "Toggle LLM Inspector", the active-state
+  class swap while open, and v4's ORDER — inspector BEFORE the cost
+  summary (both come from v4's single toolbar effect; specced with a
+  `compareDocumentPosition` assertion). The class doc comment's
+  deferral note is retired.
+  - The gate is `llmLoggingSettings?.enabled !== false` — **default
+    TRUE**. An absent settings row, an absent bag, an absent key and an
+    explicit null all leave the button up; only `false` hides it. `??`
+    would be WRONG here (it admits null); specced across all five cases.
+- **`chat/message-row.ts`** — the per-message entry, gated
+  `hasLlmLogs && role === 'ASSISTANT'` (v4).
+  - **TITLE CHOICE (the order asked for this to be pinned):** v4's two
+    action bars disagree — `MessageActionBar.tsx:153` says "View LLM
+    request/response logs", `MessageDesktopActions.tsx:73` says "View
+    LLM logs". v5's single bar IS MessageActionBar (same
+    `qt-chat-message-action-bar` / `qt-chat-message-action-icon`
+    classes, same hover-reveal placement, same siblings), so it takes
+    :153's copy. Specced with both v4 lines cited.
+- **`chat/message-list.ts`** — threads `messagesWithLogs` +
+  `viewLlmLogs`. The stream-accumulated rows deliberately do NOT get the
+  set: a still-transient bubble has no fetched logs, and it hands off to
+  its canonical row on the reconcile refetch.
+- **`screens/salon/salon-conversation.ts`** — v4's `useLLMLogs` state
+  machine: the query (`enabled` on the CANONICAL message count, not
+  `displayMessages()` — the optimistic bubble must not fetch logs for a
+  turn the server hasn't written), `messagesWithLogs`, the panel mount
+  (unconditional — the slide-over animates on `data-open`), and the
+  Cmd+Shift+L shortcut.
+  - `toggleInspector` clears the scroll target ONLY when OPENING (v4
+    :50-58) — clearing it on close too would strip the highlight from
+    the entry mid-transition. `closeInspector` clears both. Specced.
+  - The shortcut is a SEPARATE gated effect, not a branch in the
+    existing terminal keydown listener: v4 attaches it only while
+    logging is enabled, so the key is dead exactly where the button is
+    hidden. `e.key === 'L'` uppercase (Shift is held). Both specced.
+
+**TIER 2 LANDED (not deferred):** v4 refreshes the logs when generation
+completes (`SalonView.tsx:769-781`). v5's equivalent seam was already
+exposed — the reconcile point in `send()` — and it is inside this lane's
+ownership, so `refreshLogs()` rides there. Without it the Inspector and
+every row's cpu icon stay a turn behind.
+
+**Gate:** ng test 968 → **1094** (39 new specs here, 102 in unit 1); ng
+build clean; prettier clean.

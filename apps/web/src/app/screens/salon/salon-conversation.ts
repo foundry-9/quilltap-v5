@@ -15,6 +15,13 @@ import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experime
 
 import { ChatComposer } from '../../chat/chat-composer';
 import { ConversationHeader } from '../../chat/conversation-header';
+import { LLMInspectorPanel } from '../../chat/llm-inspector-panel';
+import {
+  deriveMessagesWithLogs,
+  fetchChatLlmLogs,
+  llmLogKeys,
+  type LlmLogDto,
+} from '../../chat/llm-logs.api';
 import { MessageList } from '../../chat/message-list';
 import type { ImageClickEvent } from '../../chat/message-row';
 import { ImageModal } from '../../images/image-modal';
@@ -127,6 +134,7 @@ interface CascadePrompt {
     PhotoGalleryModal,
     GenerateImageDialog,
     EditEnclaveModal,
+    LLMInspectorPanel,
   ],
   template: `
     <div class="qt-chat-layout" [style.--story-background-url]="backgroundVar()">
@@ -168,6 +176,8 @@ interface CascadePrompt {
         [messageCount]="chat()!.messages.length"
         [storyBackgroundsEnabled]="storyBackgroundsEnabled()"
         [regeneratingBackground]="regeneratingBackground()"
+        [inspectorOpen]="inspectorOpen()"
+        (toggleInspector)="toggleInspector()"
         (openGallery)="showGallery.set(true)"
         (editEnclave)="showEditEnclave.set(true)"
         (regenerateBackground)="onRegenerateBackground()"
@@ -201,6 +211,8 @@ interface CascadePrompt {
           [settings]="settings()"
           [stream]="stream()"
           [editingId]="editingId()"
+          [messagesWithLogs]="messagesWithLogs()"
+          (viewLlmLogs)="onViewLlmLogs($event)"
           (copy)="onCopy($event)"
           (edit)="onEdit($event)"
           (delete)="onDelete($event)"
@@ -343,6 +355,21 @@ interface CascadePrompt {
       />
     }
 
+    <!-- The Inspector mounts UNCONDITIONALLY (v4 :1696-1705 renders it outside
+         every gate): the slide-over animates on data-open, so it must exist
+         while closed. -->
+    @if (chat()) {
+      <qt-llm-inspector-panel
+        [isOpen]="inspectorOpen()"
+        [logs]="llmLogs()"
+        [loading]="llmLogsQuery.isLoading()"
+        [scrollToMessageId]="inspectorScrollToMessageId()"
+        [loggingEnabled]="llmLoggingEnabled()"
+        (close)="closeInspector()"
+        (refresh)="refreshLogs()"
+      />
+    }
+
     @if (modalImage(); as img) {
       <qt-image-modal
         [src]="img.src"
@@ -470,6 +497,28 @@ export class SalonConversation {
         window.removeEventListener('keydown', onKeydown);
       });
     }
+
+    /**
+     * Cmd/Ctrl+Shift+L toggles the Inspector (v4 `SalonView.tsx:796-811`).
+     *
+     * Two v4 details are load-bearing. The listener is attached ONLY while
+     * logging is enabled (v4's effect returns early otherwise), so the shortcut
+     * is dead exactly where the toolbar button is hidden — which is why this is a
+     * gated effect rather than a branch inside the terminal listener above. And
+     * the test is `e.key === 'L'` UPPERCASE: Shift is held, so the browser
+     * reports the capital.
+     */
+    const onInspectorKeydown = (event: KeyboardEvent): void => {
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key === 'L') {
+        event.preventDefault();
+        this.toggleInspector();
+      }
+    };
+    effect((onCleanup) => {
+      if (!this.llmLoggingEnabled()) return;
+      document.addEventListener('keydown', onInspectorKeydown);
+      onCleanup(() => document.removeEventListener('keydown', onInspectorKeydown));
+    });
   }
 
   /** Terminal-open entry: the controller re-attaches, shows the picker, or spawns. */
@@ -547,9 +596,10 @@ export class SalonConversation {
   /** v4 clears the interval on unmount (`:144-150`) — a live 3-minute timer must not outlive the view. */
   private readonly _pollerTeardown = this.destroyRef.onDestroy(() => this.poller.stop());
   /** v4's toasts have no v5 bus yet — the scriptorium `flash` idiom stands in. */
-  protected readonly backgroundFlash = signal<{ kind: 'success' | 'error'; message: string } | null>(
-    null,
-  );
+  protected readonly backgroundFlash = signal<{
+    kind: 'success' | 'error';
+    message: string;
+  } | null>(null);
   protected readonly regeneratingBackground = signal(false);
 
   /**
@@ -653,6 +703,74 @@ export class SalonConversation {
     () => (this.settings()?.['composerSpellcheck'] as boolean | undefined) ?? true,
   );
 
+  // --- the LLM Inspector (v4 `useLLMLogs` + SalonView's toolbar/shortcut/panel) ---
+
+  /**
+   * v4 `chatSettings?.llmLoggingSettings?.enabled !== false` (`SalonView.tsx:797`).
+   * DEFAULTS TRUE — only an explicit `false` closes the gate. Drives the toolbar
+   * button, the keyboard shortcut, and the panel's disabled empty state.
+   */
+  protected readonly llmLoggingEnabled = computed<boolean>(
+    () =>
+      (this.settings()?.['llmLoggingSettings'] as { enabled?: boolean } | undefined)?.enabled !==
+      false,
+  );
+
+  /**
+   * Every log for this chat (v4 `useLLMLogs.ts:25-30`).
+   *
+   * `enabled: messages.length > 0` is v4's (`:29`): a chat with no messages has
+   * no logs, so the fetch is skipped rather than round-tripped for an empty list.
+   * It reads the CANONICAL list — the optimistic user bubble must not trigger a
+   * fetch for a turn the server has not written yet (the same reasoning the cost
+   * summary's `messageCount` follows).
+   */
+  protected readonly llmLogsQuery = injectQuery(() => ({
+    queryKey: llmLogKeys.byChat(this.chatId() ?? ''),
+    enabled: !!this.chatId() && (this.chat()?.messages.length ?? 0) > 0,
+    queryFn: () => fetchChatLlmLogs(this.core, this.chatId()!),
+  }));
+  protected readonly llmLogs = computed<LlmLogDto[]>(() => this.llmLogsQuery.data() ?? []);
+
+  /** v4 `useLLMLogs.ts:35-41` — which messages get the per-row cpu icon. */
+  protected readonly messagesWithLogs = computed(() => deriveMessagesWithLogs(this.llmLogs()));
+
+  protected readonly inspectorOpen = signal(false);
+  protected readonly inspectorScrollToMessageId = signal<string | null>(null);
+
+  /** v4 `handleViewLLMLogs` (`:44-47`) — open scrolled to this message's logs. */
+  protected onViewLlmLogs(messageId: string): void {
+    this.inspectorScrollToMessageId.set(messageId);
+    this.inspectorOpen.set(true);
+  }
+
+  /**
+   * v4 `toggleInspector` (`:50-58`) — the toolbar button and the shortcut.
+   *
+   * The scroll target is cleared ONLY when OPENING. Clearing it on close as well
+   * would look tidier and be wrong: the panel is still mounted and animating out,
+   * and dropping the target mid-transition would strip the highlight from the
+   * entry the user is watching leave.
+   */
+  protected toggleInspector(): void {
+    const opening = !this.inspectorOpen();
+    if (opening) {
+      this.inspectorScrollToMessageId.set(null);
+    }
+    this.inspectorOpen.set(opening);
+  }
+
+  /** v4 `closeInspector` (`:61-64`) — clears both. */
+  protected closeInspector(): void {
+    this.inspectorOpen.set(false);
+    this.inspectorScrollToMessageId.set(null);
+  }
+
+  /** v4 `refreshLogs` (`:67-69`) — the panel's refresh button and the post-turn hook. */
+  protected refreshLogs(): void {
+    void this.llmLogsQuery.refetch();
+  }
+
   // --- streaming ---
   protected readonly stream = signal<ChatStreamState | null>(null);
   protected readonly busy = computed(() => this.stream() != null);
@@ -684,8 +802,7 @@ export class SalonConversation {
 
   /** The chat's image profile — the generate target (first participant with one). */
   protected readonly chatImageProfileId = computed<string | null>(
-    () =>
-      (this.chat()?.participants ?? []).find((p) => p.imageProfile)?.imageProfile?.id ?? null,
+    () => (this.chat()?.participants ?? []).find((p) => p.imageProfile)?.imageProfile?.id ?? null,
   );
 
   /** The target message's attachments, for the SaveImageDialog picker. */
@@ -988,6 +1105,13 @@ export class SalonConversation {
     await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
     this.stream.set(null);
     this.optimisticUser.set(null);
+
+    // Refresh the LLM logs now the turn is done (v4 `SalonView.tsx:769-781` —
+    // the effect that fires when generation stops calls `llmLogs.refreshLogs()`).
+    // The turn is exactly what WROTE the new log rows, so without this the
+    // Inspector — and every row's cpu icon — stays a turn behind until something
+    // else refetches.
+    this.refreshLogs();
 
     // On turn end, re-read every open document (the LLM may have edited one
     // without a surfaced doc_* tool result); dirty panes are skipped (v4

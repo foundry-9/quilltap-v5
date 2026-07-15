@@ -74,6 +74,8 @@ import { VirtualRow } from './virtual-row';
                     [settings]="settings()"
                     [showAvatar]="showAvatars()"
                     [editing]="item.message.id === editingId()"
+                    [hasLlmLogs]="messagesWithLogs().has(item.message.id)"
+                    (viewLlmLogs)="viewLlmLogs.emit($event)"
                     (copy)="copy.emit($event)"
                     (edit)="edit.emit($event)"
                     (delete)="delete.emit($event)"
@@ -148,6 +150,15 @@ export class MessageList {
   readonly settings = input<ChatSettingsDto | null>(null);
   readonly stream = input<ChatStreamState | null>(null);
   readonly editingId = input<string | null>(null);
+  /**
+   * The ids of messages that have LLM logs (v4 `messagesWithLogs`, threaded from
+   * SalonView through to each row — `SalonView.tsx:1355`).
+   *
+   * The stream-accumulated rows below deliberately do NOT receive it: a bubble
+   * that is still transient has no fetched logs to point at, and it hands off to
+   * its canonical row (which does) on the reconcile refetch.
+   */
+  readonly messagesWithLogs = input<ReadonlySet<string>>(new Set<string>());
 
   readonly copy = output<MessageDto>();
   readonly edit = output<MessageDto>();
@@ -160,6 +171,8 @@ export class MessageList {
   readonly imageClick = output<ImageClickEvent>();
   readonly saveImage = output<{ messageId: string; attachmentId: string }>();
   readonly courierSettled = output<string>();
+  /** A row's cpu icon — open the Inspector scrolled to that message (v4 `onViewLLMLogs`). */
+  readonly viewLlmLogs = output<string>();
 
   private readonly scroll = viewChild<ElementRef<HTMLElement>>('scroll');
   private readonly endAnchor = viewChild<ElementRef<HTMLElement>>('endAnchor');

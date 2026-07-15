@@ -69,9 +69,7 @@ describe('ConversationHeader — Edit-Enclave gate', () => {
     let fired = false;
     fixture.componentInstance.editEnclave.subscribe(() => (fired = true));
     (
-      fixture.nativeElement.querySelector(
-        'button[aria-label="Edit Enclave"]',
-      ) as HTMLButtonElement
+      fixture.nativeElement.querySelector('button[aria-label="Edit Enclave"]') as HTMLButtonElement
     ).click();
     expect(fired).toBe(true);
   });
@@ -131,7 +129,9 @@ describe('ConversationHeader — the chat-totals summary gate (v4 SalonView.tsx:
   it('keeps the gallery and copy-id entries alongside the summary', () => {
     // The summary joins the right cluster; it must not displace what was there.
     const fixture = renderWith(settingsRow(true));
-    expect(fixture.nativeElement.querySelector('button[aria-label="View chat photos"]')).not.toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('button[aria-label="View chat photos"]'),
+    ).not.toBeNull();
     expect(fixture.nativeElement.querySelector('qt-copy-chat-id-button')).not.toBeNull();
   });
 });
@@ -156,10 +156,7 @@ describe('ConversationHeader — the Regenerate Background entry (v4 ChatSidebar
       'storyBackgroundsEnabled',
       inputs.storyBackgroundsEnabled ?? false,
     );
-    fixture.componentRef.setInput(
-      'regeneratingBackground',
-      inputs.regeneratingBackground ?? false,
-    );
+    fixture.componentRef.setInput('regeneratingBackground', inputs.regeneratingBackground ?? false);
     fixture.detectChanges();
     return fixture;
   }
@@ -187,9 +184,9 @@ describe('ConversationHeader — the Regenerate Background entry (v4 ChatSidebar
   });
 
   it('disables the entry while a regeneration is in flight', () => {
-    expect(entry(renderWith({ storyBackgroundsEnabled: true, regeneratingBackground: true }))!.disabled).toBe(
-      true,
-    );
+    expect(
+      entry(renderWith({ storyBackgroundsEnabled: true, regeneratingBackground: true }))!.disabled,
+    ).toBe(true);
   });
 
   it('does not reuse the gallery glyph — v4 image would be ambiguous in an icon-only cluster', () => {
@@ -199,5 +196,100 @@ describe('ConversationHeader — the Regenerate Background entry (v4 ChatSidebar
     expect(entry(fixture)!.querySelector('qt-icon')!.getAttribute('name')).toBe('sparkles');
     const gallery = fixture.nativeElement.querySelector('button[aria-label="View chat photos"]');
     expect(gallery.querySelector('qt-icon')!.getAttribute('name')).toBe('image');
+  });
+});
+
+describe('ConversationHeader — the LLM-Inspector button (v4 SalonView.tsx:995-1024)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function renderWith(
+    settings: ChatSettingsDto | null,
+    inspectorOpen = false,
+  ): ComponentFixture<ConversationHeader> {
+    // Reset first so a test may render more than once.
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [ConversationHeader],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: { dispatchData: vi.fn(() => new Promise(() => {})) } },
+      ],
+    });
+    const fixture = TestBed.createComponent(ConversationHeader);
+    fixture.componentRef.setInput('chat', chatDetail());
+    fixture.componentRef.setInput('settings', settings);
+    fixture.componentRef.setInput('inspectorOpen', inspectorOpen);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  function button(fixture: ComponentFixture<ConversationHeader>): HTMLButtonElement | null {
+    return fixture.nativeElement.querySelector('button[aria-label="Toggle LLM Inspector"]');
+  }
+
+  function loggingRow(enabled: boolean | null | undefined): ChatSettingsDto {
+    return { llmLoggingSettings: { enabled } } as unknown as ChatSettingsDto;
+  }
+
+  it('renders with v4’s title copy and the code glyph', () => {
+    const fixture = renderWith(loggingRow(true));
+    expect(button(fixture)).not.toBeNull();
+    expect(button(fixture)!.getAttribute('title')).toBe('LLM Inspector (Cmd+Shift+L)');
+    expect(button(fixture)!.querySelector('qt-icon')!.getAttribute('name')).toBe('code');
+  });
+
+  it('DEFAULTS VISIBLE — v4’s gate is `enabled !== false`, not a truthiness check', () => {
+    // An absent settings row, an absent bag, an absent key, and an explicit null
+    // must all leave the button up. Only `false` hides it.
+    expect(button(renderWith(null))).not.toBeNull();
+    expect(button(renderWith({} as ChatSettingsDto))).not.toBeNull();
+    expect(button(renderWith(loggingRow(undefined)))).not.toBeNull();
+    expect(button(renderWith(loggingRow(null)))).not.toBeNull();
+  });
+
+  it('hides only on an explicit false', () => {
+    expect(button(renderWith(loggingRow(false)))).toBeNull();
+  });
+
+  it('swaps to the active classes while the panel is open (v4 :1002-1006)', () => {
+    expect(button(renderWith(loggingRow(true), false))!.className).toContain('qt-text-secondary');
+    const open = button(renderWith(loggingRow(true), true))!;
+    expect(open.className).toContain('qt-bg-primary/15');
+    expect(open.className).toContain('text-primary');
+  });
+
+  it('emits toggleInspector on click', () => {
+    const fixture = renderWith(loggingRow(true));
+    let fired = false;
+    fixture.componentInstance.toggleInspector.subscribe(() => (fired = true));
+    button(fixture)!.click();
+    expect(fired).toBe(true);
+  });
+
+  it('precedes the cost summary in the right cluster (v4 :995-1024)', () => {
+    // The two come out of one v4 toolbar effect and their ORDER is v4's.
+    const settings = {
+      llmLoggingSettings: { enabled: true },
+      tokenDisplaySettings: {
+        showPerMessageTokens: false,
+        showPerMessageCost: false,
+        showChatTotals: true,
+        showSystemEvents: false,
+      },
+    } as unknown as ChatSettingsDto;
+    const fixture = renderWith(settings);
+    const header = fixture.nativeElement.querySelector('header');
+    const inspector = button(fixture)!;
+    const summary = header.querySelector('qt-chat-cost-summary');
+    expect(summary).not.toBeNull();
+    // Node.DOCUMENT_POSITION_FOLLOWING === 4
+    expect(inspector.compareDocumentPosition(summary) & 4).toBeTruthy();
+  });
+
+  it('renders independently of the cost summary — the gates are separate', () => {
+    const fixture = renderWith(loggingRow(true));
+    expect(button(fixture)).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('qt-chat-cost-summary')).toBeNull();
   });
 });

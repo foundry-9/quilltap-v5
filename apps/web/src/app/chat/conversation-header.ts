@@ -8,14 +8,16 @@ import { ChatCostSummary } from './chat-cost-summary';
 
 /**
  * The conversation header (v4 injects this via `usePageToolbar`; v5 renders it
- * inline). Project breadcrumb → title → danger badges → the chat-totals summary
- * → the entry cluster (edit-enclave / gallery / copy-conversation-ID).
+ * inline). Project breadcrumb → title → danger badges → the LLM-Inspector button
+ * → the chat-totals summary → the entry cluster (edit-enclave / gallery /
+ * copy-conversation-ID).
  *
- * Character links remain a deferral. So does the **LLM-Inspector button**, which
- * v4 renders from the same toolbar effect as the cost summary
- * (`SalonView.tsx:990-1027`, gated by `llmLoggingSettings.enabled`) — sharing an
- * effect makes them look like one feature, but the Inspector is a separate
- * subsystem with its own surface.
+ * The Inspector button and the cost summary come out of the SAME v4 toolbar
+ * effect (`SalonView.tsx:990-1027`), and their ORDER there is load-bearing:
+ * inspector first, summary second (v4 :995-1024). They are independent features
+ * with independent gates, though — either can render without the other.
+ *
+ * Character links remain a deferral.
  */
 @Component({
   selector: 'qt-conversation-header',
@@ -56,6 +58,23 @@ import { ChatCostSummary } from './chat-cost-summary';
       }
 
       <span class="flex-1"></span>
+      <!-- The Inspector button precedes the cost summary (v4 :995-1024). -->
+      @if (showInspectorButton()) {
+        <button
+          type="button"
+          class="p-1.5 rounded transition-colors flex-shrink-0"
+          [class]="
+            inspectorOpen()
+              ? 'qt-bg-primary/15 text-primary'
+              : 'qt-text-secondary hover:text-foreground'
+          "
+          title="LLM Inspector (Cmd+Shift+L)"
+          aria-label="Toggle LLM Inspector"
+          (click)="toggleInspector.emit()"
+        >
+          <qt-icon name="code" class="w-4 h-4" />
+        </button>
+      }
       @if (showChatTotals()) {
         <qt-chat-cost-summary
           [chatId]="chat().id"
@@ -110,6 +129,10 @@ export class ConversationHeader {
    * what changes the totals.
    */
   readonly messageCount = input(0);
+  /** Whether the Inspector panel is open — drives the button's active state (v4 :1002-1006). */
+  readonly inspectorOpen = input(false);
+  /** Toggle the LLM Inspector panel (v4 `toggleInspector`). */
+  readonly toggleInspector = output<void>();
   /** Open the in-chat photo gallery (v4 SalonView sidebar gallery entry). */
   readonly openGallery = output<void>();
   /**
@@ -145,6 +168,20 @@ export class ConversationHeader {
   /** v4 `chatSettings?.tokenDisplaySettings?.showChatTotals` — default false. */
   protected readonly showChatTotals = computed(
     () => this.settings()?.tokenDisplaySettings?.showChatTotals ?? false,
+  );
+
+  /**
+   * v4 `chatSettings?.llmLoggingSettings?.enabled !== false` (`SalonView.tsx:993`).
+   *
+   * Note the polarity: this defaults TRUE. An absent bag, an absent key, or
+   * settings that have not loaded yet all leave the button VISIBLE — only an
+   * explicit `false` hides it. (`?? true` would be wrong for an explicit null,
+   * which `!== false` admits; the server's own parse defaults it the same way.)
+   */
+  protected readonly showInspectorButton = computed(
+    () =>
+      (this.settings()?.['llmLoggingSettings'] as { enabled?: boolean } | undefined)?.enabled !==
+      false,
   );
 
   protected readonly isAutonomous = computed(() => this.chat().chatType === 'autonomous');

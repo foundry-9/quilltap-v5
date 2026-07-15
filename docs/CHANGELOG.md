@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+P4.6as unit 2 (2026-07-15): the LLM-Inspector host wiring. The
+conversation header gained the Inspector button (code glyph, v4's
+"LLM Inspector (Cmd+Shift+L)" title, active-state class swap, placed
+BEFORE the cost summary per v4's toolbar effect) gated on
+llmLoggingSettings.enabled !== false — DEFAULT TRUE. message-row
+gained the per-message cpu entry for assistant messages with logs,
+carrying MessageActionBar's title ("View LLM request/response logs")
+since v5's single bar is that bar; message-list threads
+messagesWithLogs + the callback. The salon host owns the llmLogsList
+query (enabled on the CANONICAL message count), the panel mount, the
+open/toggle/close state with v4's clear-on-open-only rule, and the
+Cmd+Shift+L shortcut (attached only while the gate is true, uppercase
+L). Tier 2 landed: the post-turn refreshLogs hook. 39 new specs;
+ng test 968 → 1094. SPA 0.5.114 → 0.5.115.
+
 P4.6as unit 1 (2026-07-15): the LLM-Inspector components. New
 apps/web/src/app/ui/slide-over-panel.ts (a reusable right-edge
 slide-over: always-mounted scrim + panel driven by data-open, focus

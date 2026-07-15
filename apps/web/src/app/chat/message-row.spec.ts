@@ -19,7 +19,14 @@ function participant(over: Partial<ParticipantDetail>): ParticipantDetail {
     isActive: true,
     controlledBy: 'llm',
     status: 'active',
-    character: { id: 'char1', name: 'Lorian', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null },
+    character: {
+      id: 'char1',
+      name: 'Lorian',
+      title: null,
+      avatarUrl: null,
+      defaultImageId: null,
+      defaultImage: null,
+    },
     connectionProfile: null,
     imageProfile: null,
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -129,14 +136,21 @@ describe('MessageRow — image thumbnails', () => {
 
   it('renders a thumbnail button per image attachment using the id-keyed thumbnail route', () => {
     const fixture = render(message({ attachments: [imageAtt] }));
-    const img = fixture.nativeElement.querySelector('.qt-chat-attachment-image') as HTMLImageElement;
+    const img = fixture.nativeElement.querySelector(
+      '.qt-chat-attachment-image',
+    ) as HTMLImageElement;
     expect(img).not.toBeNull();
     expect(img.getAttribute('src')).toBe('/api/v1/files/file-9?action=thumbnail&size=80');
     expect(img.getAttribute('alt')).toBe('sketch.png');
   });
 
   it('filters out non-image attachments', () => {
-    const pdf: MessageAttachment = { id: 'p', filename: 'doc.pdf', filepath: 'x/doc.pdf', mimeType: 'application/pdf' };
+    const pdf: MessageAttachment = {
+      id: 'p',
+      filename: 'doc.pdf',
+      filepath: 'x/doc.pdf',
+      mimeType: 'application/pdf',
+    };
     const fixture = render(message({ attachments: [pdf] }));
     expect(fixture.nativeElement.querySelector('.qt-chat-attachment-image')).toBeNull();
   });
@@ -145,8 +159,14 @@ describe('MessageRow — image thumbnails', () => {
     const fixture = render(message({ attachments: [imageAtt] }));
     let event: ImageClickEvent | undefined;
     fixture.componentInstance.imageClick.subscribe((e) => (event = e));
-    (fixture.nativeElement.querySelector('.qt-chat-attachment-button') as HTMLButtonElement).click();
-    expect(event).toEqual({ src: '/api/v1/files/file-9', filename: 'sketch.png', fileId: 'file-9' });
+    (
+      fixture.nativeElement.querySelector('.qt-chat-attachment-button') as HTMLButtonElement
+    ).click();
+    expect(event).toEqual({
+      src: '/api/v1/files/file-9',
+      filename: 'sketch.png',
+      fileId: 'file-9',
+    });
   });
 });
 
@@ -167,7 +187,10 @@ describe('MessageRow — the per-message token badge (v4 MessageActionBar.tsx:19
     } as ChatSettingsDto;
   }
 
-  function renderWith(msg: MessageDto, settings: ChatSettingsDto | null): ComponentFixture<MessageRow> {
+  function renderWith(
+    msg: MessageDto,
+    settings: ChatSettingsDto | null,
+  ): ComponentFixture<MessageRow> {
     TestBed.configureTestingModule({
       imports: [MessageRow],
       providers: [{ provide: CoreClient, useValue: { dispatch: vi.fn() } }],
@@ -183,10 +206,7 @@ describe('MessageRow — the per-message token badge (v4 MessageActionBar.tsx:19
   const withTokens = { promptTokens: 1200, completionTokens: 340, tokenCount: 1540 };
 
   it('mounts the badge in the timestamp row when the flag is on and a count is non-zero', () => {
-    const fixture = renderWith(
-      message(withTokens),
-      tokenSettings({ showPerMessageTokens: true }),
-    );
+    const fixture = renderWith(message(withTokens), tokenSettings({ showPerMessageTokens: true }));
     const row = fixture.nativeElement.querySelector('.qt-chat-message-action-timestamp');
     const badge = row.querySelector('qt-token-badge');
     expect(badge).not.toBeNull();
@@ -247,10 +267,7 @@ describe('MessageRow — the per-message token badge (v4 MessageActionBar.tsx:19
 
   it('never mounts on the cost flag alone — v4 gates on the TOKENS flag only', () => {
     // The first of the two reasons per-message cost is unreachable in v4.
-    const fixture = renderWith(
-      message(withTokens),
-      tokenSettings({ showPerMessageCost: true }),
-    );
+    const fixture = renderWith(message(withTokens), tokenSettings({ showPerMessageCost: true }));
     expect(fixture.nativeElement.querySelector('qt-token-badge')).toBeNull();
   });
 
@@ -264,5 +281,73 @@ describe('MessageRow — the per-message token badge (v4 MessageActionBar.tsx:19
     const badge = fixture.nativeElement.querySelector('qt-token-badge');
     expect(badge.textContent.replace(/\s+/g, ' ').trim()).toBe('1.2K/340tokens');
     expect(badge.querySelector('[title="Estimated cost"]')).toBeNull();
+  });
+});
+
+describe('MessageRow — the per-message LLM-logs entry (v4 MessageActionBar.tsx:149-157)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function renderWith(msg: MessageDto, hasLlmLogs: boolean): ComponentFixture<MessageRow> {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [MessageRow],
+      providers: [{ provide: CoreClient, useValue: { dispatch: vi.fn() } }],
+    });
+    const fixture = TestBed.createComponent(MessageRow);
+    fixture.componentRef.setInput('message', msg);
+    fixture.componentRef.setInput('chat', chatDetail());
+    fixture.componentRef.setInput('hasLlmLogs', hasLlmLogs);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  function entry(fixture: ComponentFixture<MessageRow>): HTMLButtonElement | null {
+    return fixture.nativeElement.querySelector(
+      'button[aria-label="View LLM request/response logs"]',
+    );
+  }
+
+  it('renders the cpu entry for an ASSISTANT message that has logs', () => {
+    const fixture = renderWith(message({ role: 'ASSISTANT' }), true);
+    expect(entry(fixture)).not.toBeNull();
+    expect(entry(fixture)!.querySelector('qt-icon')!.getAttribute('name')).toBe('cpu');
+  });
+
+  it('carries MessageActionBar’s copy, not MessageDesktopActions’ (v4 :153 vs :73)', () => {
+    // v4 has TWO action bars whose titles for this one button DIFFER. v5 has a
+    // single bar and it is MessageActionBar's — same qt-chat-message-action-bar /
+    // qt-chat-message-action-icon classes, same hover-reveal placement — so it
+    // takes MessageActionBar's string.
+    const fixture = renderWith(message({ role: 'ASSISTANT' }), true);
+    expect(entry(fixture)!.getAttribute('title')).toBe('View LLM request/response logs');
+    expect(entry(fixture)!.className).toBe('qt-chat-message-action-icon');
+  });
+
+  it('omits the entry when the message has no logs (v4 hasLLMLogs gate)', () => {
+    expect(entry(renderWith(message({ role: 'ASSISTANT' }), false))).toBeNull();
+  });
+
+  it('omits the entry on a USER message even when the id somehow has logs (v4 role gate)', () => {
+    // Only an assistant turn has a request/response pair to inspect.
+    expect(entry(renderWith(message({ role: 'USER' }), true))).toBeNull();
+  });
+
+  it('emits the message id when clicked (v4 onViewLLMLogs(message.id))', () => {
+    const fixture = renderWith(message({ id: 'm-42', role: 'ASSISTANT' }), true);
+    const seen: string[] = [];
+    fixture.componentInstance.viewLlmLogs.subscribe((id) => seen.push(id));
+    entry(fixture)!.click();
+    expect(seen).toEqual(['m-42']);
+  });
+
+  it('keeps the sibling action icons alongside it', () => {
+    const fixture = renderWith(message({ role: 'ASSISTANT' }), true);
+    expect(fixture.nativeElement.querySelector('button[aria-label="Copy message"]')).not.toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('button[aria-label="Delete message"]'),
+    ).not.toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('button[aria-label="Regenerate response"]'),
+    ).not.toBeNull();
   });
 });
