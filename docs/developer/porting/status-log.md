@@ -13556,3 +13556,52 @@ several runtime-guarded beats that skip on fixture-content discovery
 (salon-courier-images, salon-autonomous-entry); one of those guards is
 intermittent. It is not this lane's — the clean 60/60 run includes all four
 new beats — but it is worth an eye at unification.
+## P4.6aq unit 1 — the `minHeight` input on `qt-markdown-field` (lane C, tier 1 item 1)
+
+**Landed.** v4's `MarkdownLexicalEditor` takes `minHeight?: string`
+("Minimum height of the editor body. Accepts any CSS height value",
+`components/markdown-editor/MarkdownLexicalEditor.tsx:63`) and puts it on the
+Lexical contenteditable (`:90`, and on the source-mode textarea at `:225`).
+`qt-markdown-field` had no equivalent.
+
+**Mechanism (no `rich-editor.ts` change, per the order):** the field binds
+`[style.min-height]` on the `<qt-rich-editor>` ELEMENT in its own template.
+That element is in MarkdownField's template, so it needs no piercing selector —
+notable because this SPA has **zero** components using `styles:`/`styleUrls`
+and **zero** `::ng-deep` (all CSS is global under `src/styles/qt-components/`),
+so an encapsulated rule could not have reached ProseMirror's own DOM anyway
+(PM creates `.qt-rich-editor-content` imperatively — no `_ngcontent` attribute).
+`.qt-rich-editor-host` is `flex flex-col`, so its content area stretches to fill
+the min-height; the toolbar is a sibling of the editor on BOTH sides, so a
+site's overall field height matches v4's.
+
+**The default is a deliberate, documented divergence.** v4 defaults `minHeight`
+to `12rem` (`:151`); v5 defaults to unset (content-driven — today's rendering).
+Reason: the P4.6al-adopted sites (memory editor, character new/edit prose
+fields) pre-date this input and pass nothing, so a v4-matching default would
+silently resize them — and `12rem` is the WRONG value for every one of them
+anyway (v4 passes 6/8/10/12rem there explicitly). Every site ported from here
+on passes v4's effective value explicitly, **including the sites where v4 itself
+falls through to its default** (site 2, `ScenarioEditorModal`, gets an explicit
+`12rem`).
+
+**RESIDUAL GAP (loud, named — NOT closed by this order):** the P4.6al-adopted
+sites still render with no `minHeight` where v4 gives them one —
+`memory-editor` (v4 `10rem`), the eight `NewCharacterView` fields (v4
+`6/8/8/8/8/6/12/8rem`), and the seven non-scenario `CharacterBasicInfo` fields
+(v4 `6/8/8/8/6/12/8rem`). This lane's Ownership section forbids re-touching
+those files ("Already adopted (P4.6al — do NOT re-touch)"), so the fix is a
+one-line-per-site follow-on rider; the values are recorded here so it needs no
+re-survey.
+
+**Proof:** `markdown-field.spec.ts` 9/9 — three new (applies the value; unset
+writes no style; a later change tracks without disturbing content).
+
+**Survey correction banked (the order's table is wrong in 4 of 10 rows).**
+The order's `minHeight` column reads "—" for sites 1, 2, 9, 10; v4 at
+`02865bdb` actually has: site 1 `6rem` (`CharacterBasicInfo.tsx:495`); site 2
+**no prop → v4's `12rem` default**; site 9 the six DescriptionsTab fields at
+`4/4/6/8/10/10rem`; site 10 `8rem` — and site 10's v4 counterpart is NOT a
+DescriptionsTab field at all but `AestheticEditorField` (the SAME component as
+site 7), embedded by `CharacterEditView.tsx:338` under the `descriptions` tab.
+Use these values, not the order's table.

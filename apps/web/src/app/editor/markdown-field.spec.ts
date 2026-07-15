@@ -8,23 +8,31 @@ import { MarkdownField } from './markdown-field';
   imports: [MarkdownField],
   template: `<qt-markdown-field
     [value]="value()"
+    [minHeight]="minHeight()"
     (contentChange)="last.set($event)"
   />`,
 })
 class Host {
   readonly field = viewChild.required(MarkdownField);
   readonly value = signal('');
+  readonly minHeight = signal('');
   readonly last = signal('');
 }
 
-async function render(initial = ''): Promise<ComponentFixture<Host>> {
+async function render(initial = '', minHeight = ''): Promise<ComponentFixture<Host>> {
   TestBed.configureTestingModule({ imports: [Host] });
   const fixture = TestBed.createComponent(Host);
   fixture.componentInstance.value.set(initial);
+  fixture.componentInstance.minHeight.set(minHeight);
   fixture.detectChanges();
   await fixture.whenStable();
   fixture.detectChanges();
   return fixture;
+}
+
+/** The `qt-rich-editor` element — where the field applies v4's minHeight. */
+function editorEl(fixture: ComponentFixture<Host>): HTMLElement {
+  return fixture.nativeElement.querySelector('qt-rich-editor') as HTMLElement;
 }
 
 function button(fixture: ComponentFixture<Host>, typeClass: string): HTMLButtonElement {
@@ -87,5 +95,25 @@ describe('MarkdownField — shared form-field editor', () => {
     button(fixture, 'h2').click();
     fixture.detectChanges();
     expect(fixture.componentInstance.last()).toBe('## a title');
+  });
+
+  it('applies minHeight to the editor body (v4 minHeight, any CSS value)', async () => {
+    const fixture = await render('body', '14rem');
+    expect(editorEl(fixture).style.minHeight).toBe('14rem');
+  });
+
+  it('leaves the height content-driven by default (NOT v4\'s 12rem fallback)', async () => {
+    const fixture = await render('body');
+    // The P4.6al-adopted sites pass no minHeight and must stay pixel-unchanged,
+    // so an unset input writes no style at all — see the component doc.
+    expect(editorEl(fixture).style.minHeight).toBe('');
+  });
+
+  it('tracks a minHeight change without disturbing the content', async () => {
+    const fixture = await render('body', '6rem');
+    fixture.componentInstance.minHeight.set('10rem');
+    fixture.detectChanges();
+    expect(editorEl(fixture).style.minHeight).toBe('10rem');
+    expect(markdown(fixture)).toBe('body');
   });
 });

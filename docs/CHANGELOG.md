@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+P4.6aq unit 1: the minHeight input on qt-markdown-field (v4
+MarkdownLexicalEditor's input of the same name), bound as a min-height
+on the qt-rich-editor element inside the field's own template — no
+rich-editor change, no new stylesheet. It defaults to unset rather than
+v4's 12rem, so the P4.6al-adopted sites (which pass nothing) render
+unchanged; every site ported from here on passes v4's effective value
+explicitly, including the sites where v4 falls through to its own
+default. Three unit specs.
 P4.6ap unit 7: fix the token-badge beat's in-suite failure. The beat asserted
 an absolute badge count across the chat (1), which held in isolation but not
 in-suite: m4-salon.spec.ts sends a live turn into the same Solo Voyage chat

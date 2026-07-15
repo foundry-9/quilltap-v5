@@ -30,6 +30,22 @@ import { RichEditor } from './rich-editor';
  * own `value` effect already re-inits on a value change; this covers the
  * identical-value-different-record edge).
  *
+ * `minHeight` is v4's input of the same name: a CSS min-height for the editor
+ * body (v4 puts it on the Lexical contenteditable,
+ * `MarkdownLexicalEditor.tsx:90`). Here it binds to the `qt-rich-editor`
+ * element, whose content area stretches to fill it — the toolbar is a sibling
+ * on both sides, so a site's overall field height matches v4's.
+ *
+ * DIVERGENCE (deliberate): v4 DEFAULTS `minHeight` to `12rem` (`:151`); this
+ * defaults to unset, i.e. the content-height rendering v5 has had since the
+ * editor's D17 adoption. The P4.6al-adopted sites (memory editor, the character
+ * new/edit prose fields) pre-date this input and pass nothing, so a v4-matching
+ * default would silently resize them — and 12rem is the wrong value for every
+ * one of them anyway (v4 passes 6/8/10/12rem there explicitly). Every site
+ * ported since passes v4's effective value explicitly, INCLUDING the sites where
+ * v4 itself falls through to its default. See the P4.6aq status-log record: the
+ * P4.6al-adopted sites still lack their v4 minHeight — a named residual gap.
+ *
  * DEFERRED (loud): `roleplayTemplateId`-aware toolbar delimiters — the template
  * plumbing is not client-side yet.
  */
@@ -46,6 +62,7 @@ import { RichEditor } from './rich-editor';
     />
     <qt-rich-editor
       #editor
+      [style.min-height]="minHeight()"
       [value]="value()"
       [placeholder]="placeholder()"
       [disabled]="disabled()"
@@ -62,6 +79,12 @@ export class MarkdownField {
   readonly ariaLabel = input('Editor');
   /** v4 `remountKey` — re-init the editor when the bound record changes. */
   readonly recordKey = input<string | number | null>(null);
+  /**
+   * Minimum height of the editor body — any CSS height value (v4 `minHeight`).
+   * Empty leaves the height content-driven (see the class doc: v4's own default
+   * is `12rem`; ours is unset, and every ported site passes v4's value).
+   */
+  readonly minHeight = input('');
 
   readonly contentChange = output<string>();
   readonly imagePaste = output<File>();
