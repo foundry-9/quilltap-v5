@@ -77,6 +77,15 @@ async function openChatList(page: Page): Promise<void> {
  * Open chats in turn until one renders `selector`, then return true. Discovery
  * by content keeps the walk independent of lane A's fixture chat titles. Bounded
  * to the visible cards; returns false when none match (the beat then skips).
+ *
+ * The per-card check WAITS for the selector instead of sampling `isVisible()` the
+ * instant the message list appears. The sample was a race — the chat's own
+ * content (thumbnails, virtualized rows) lands a tick or two after the list —
+ * and losing it made the caller skip a beat that should have RUN, which reads
+ * exactly like "nothing to test" (P4.6as found the lightbox beat skipping for
+ * this reason once a sibling query changed chat-open timing). A guard that
+ * decides coverage must not be timing-dependent. The 2s ceiling is paid only on
+ * chats that genuinely lack the selector.
  */
 async function openChatWith(page: Page, selector: string): Promise<boolean> {
   const cards = page.locator('.chat-card-stack a.qt-entity-card');
@@ -86,7 +95,13 @@ async function openChatWith(page: Page, selector: string): Promise<boolean> {
     const card = page.locator('.chat-card-stack a.qt-entity-card').nth(i);
     await card.click();
     await expect(page.locator('.qt-chat-messages-list')).toBeVisible();
-    if (await page.locator(selector).first().isVisible().catch(() => false)) {
+    const appeared = await page
+      .locator(selector)
+      .first()
+      .waitFor({ state: 'visible', timeout: 2_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (appeared) {
       return true;
     }
   }

@@ -14393,3 +14393,36 @@ worth keeping true.
 **Gate:** ng test 1094 (3 new specs pin the divergence, incl. one that
 reproduces the exact regression); the two beats green again; full
 Playwright re-run below.
+
+### P4.6as unit 5 — a discovery guard that races decides coverage by luck (2026-07-15)
+
+The lane's full Playwright run came back "61 passed, 1 skipped" where the
+round's previous gate was 60/60 ZERO skips. The skip was
+`salon-courier-images-flow`'s "an image thumbnail opens the lightbox" —
+which PASSED when run in isolation at the same commit.
+
+**Isolated by experiment, not by assumption:** the full suite re-run with
+`--grep-invert "P4.6as"` (everything except this lane's new spec) had the
+beat RUN and PASS. So the new spec's presence flipped it — despite that
+spec writing nothing and touching no image.
+
+**Cause:** `openChatWith()` opened each chat and then sampled
+`page.locator(selector).first().isVisible()` — an INSTANT check, taken the
+moment `.qt-chat-messages-list` appeared. The chat's own content lands a
+tick later, so the guard was always a race; whether the beat ran at all
+depended on timing. This lane tipped it plausibly because
+`salon-conversation` now issues `llmLogsList` on EVERY chat open, and
+in-lane that verb does not exist yet (lane A ships it) — so each chat open
+pays a failing dispatch (which TanStack then retries) right where the guard
+samples. That specific pressure disappears at unification; the RACE would
+not have.
+
+**Fix (in the guard, not the beat):** wait for the selector with a 2s
+ceiling instead of sampling it. The cost is paid only on chats that
+genuinely lack the selector. A guard that decides whether a beat runs must
+not be timing-dependent — a lost race reads exactly like "nothing to
+test", which is the silent-coverage-hole failure mode: the suite stays
+green while quietly testing less.
+
+Lane B owns the salon e2e specs, so this landed here rather than being
+reported as someone else's flake.

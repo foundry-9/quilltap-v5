@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+P4.6as unit 5 (2026-07-15): the courier spec's chat-discovery guard now
+waits for its selector instead of sampling isVisible() the instant the
+message list appears. The sample was a race, so whether the lightbox beat
+RAN was timing-dependent — it skipped in the full suite (reading as
+"nothing to test") while passing in isolation. Isolated by a control run
+with the new spec excluded. 2s ceiling, paid only on chats that genuinely
+lack the selector. SPA 0.5.117 → 0.5.118.
+
 P4.6as unit 4 (2026-07-15): the slide-over declares its dialog role only
 while open. v4 hard-codes role="dialog" + aria-modal="true" on an
 always-mounted panel, so every Salon page permanently contained what
