@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+P4.6ao/ap/aq unification fix: the e2e userId-rewrite loop gains
+image_profiles (user-scoped; the regenerate-background resolver checks
+ownership, so an un-rewritten profile was invisible and the live
+regenerate beat hit the "No image profile available" arm), and
+global-setup makes the fixture's "Mock Images" profile resolvable
+(isDefault + the fixture's api-key id). Full Playwright 60/60 zero
+skips with all four token/cost + background beats LIVE.
+
 P4.6ao/ap/aq unification wires: ChatGetCostRequest +
 ChatRegenerateBackgroundRequest folded into the CoreRequest union
 (name-for-name against types.rs), the api-module casts dropped, and

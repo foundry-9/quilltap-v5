@@ -168,6 +168,11 @@ export default async function globalSetup(): Promise<void> {
     'projects',
     'memories',
     'files',
+    // P4.6ao/ap unification: image_profiles is user-scoped too — the
+    // regenerate-background resolver checks `userId` ownership, and an
+    // un-rewritten profile is invisible to it (the P4.6s lesson: the rewrite
+    // must move EVERY user-scoped table).
+    'image_profiles',
   ]) {
     runCliWrite(
       cli,
@@ -248,6 +253,20 @@ export default async function globalSetup(): Promise<void> {
     cli,
     `UPDATE chats SET totalPromptTokens = 12000, totalCompletionTokens = 3400, ` +
       `estimatedCostUSD = 0.0234, priceSource = 'openrouter' WHERE title = 'Solo Voyage';`,
+  );
+
+  // P4.6ao/ap unification: make the fixture's "Mock Images" profile RESOLVABLE
+  // so the live regenerate-background beat reaches the QUEUED arm. The resolver
+  // (`image_profile_resolution.rs` arm 4) needs a user-owned profile with
+  // `isDefault=1` AND a non-empty `apiKeyId`; the fixture ships it with neither,
+  // so the un-refused edge answered the (correct, verbatim) "No image profile
+  // available…" badRequest instead. The api-key id is the fixture's own row —
+  // the JOB the enqueue spawns still fails later (no live image provider), which
+  // is out of scope: the beat asserts the enqueue, not the image.
+  runCliWrite(
+    cli,
+    `UPDATE image_profiles SET apiKeyId = 'a0000001-0000-4000-8000-000000000001', isDefault = 1 ` +
+      `WHERE name = 'Mock Images';`,
   );
 
   // Point the fixture's OPENAI_COMPATIBLE profile at the M4 mock LLM — this must
