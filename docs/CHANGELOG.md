@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.6ar ∥ P4.6as ∥ P4.6at round planned (2026-07-15): three work orders
+committed under docs/developer/porting/work-orders/ — the llm-logs +
+system-aesthetics server lane (the eight llm-logs repo reads, the
+llmLogsList/llmLogGet/llmLogDelete verbs + REST edges, the
+systemImageAestheticsGet/Set pair, a new inspector fixture family with
+two route differentials), the LLM-Inspector SPA lane (slide-over panel,
+inspector entries, toolbar button + Cmd+Shift+L, per-message log icon),
+and the Default-Aesthetics-card + minHeight-residual lane (the shared
+aesthetic-editor-field extraction, the third Images-tab card, sixteen
+recorded minHeight bindings). Shared contracts §1-§2 pinned verbatim
+across all three; docs only, no version bumps.
+
 P4.6ao ∥ P4.6ap ∥ P4.6aq round UNIFIED on main (2026-07-15) — all three
 orders CLOSED, and with them the P4.6an token/cost deferral, the
 P4.6ak/P4.6am background-generation deferral, and the P4.6al item-6
