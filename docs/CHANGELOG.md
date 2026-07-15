@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+P4.6as unit 1 (2026-07-15): the LLM-Inspector components. New
+apps/web/src/app/ui/slide-over-panel.ts (a reusable right-edge
+slide-over: always-mounted scrim + panel driven by data-open, focus
+save/restore, Escape, scrim click, focus trap), chat/llm-logs.api.ts
+(the llmLogsList request/DTOs + messagesWithLogs derivation; the
+request type is LOCAL and cast at the call site per the round's
+ownership rule), chat/llm-inspector-entry.ts (collapsed summary row +
+lazy request/response/usage tabs, the twelve-of-nineteen badge tables
+carried verbatim, the 500-char truncation, both backward-compat
+fallback chains), and chat/llm-inspector-panel.ts (chronological
+reverse, the seven filter groups, entry count, refresh, the three
+empty states in v4's priority order, scroll-to-message + highlight).
+102 new specs, each pinned to its v4 file:line. SPA 0.5.113 → 0.5.114.
+
 P4.6ar unit 4 (lane A): a wire key-order assertion for the llm-logs
 differential, plus a corrected seam note. `llm_logs_routes_equivalence`'s body
 diff sorts keys on both sides, which left the schema-field-order marshaling

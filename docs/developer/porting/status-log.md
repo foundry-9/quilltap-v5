@@ -14193,3 +14193,69 @@ module carrying the same claim) against the `preserve_order` decision and retire
 the obsolete constraint.
 
 **Versions:** core 0.0.228, harness 0.0.207.
+
+### P4.6as unit 1 — the LLM-Inspector components (2026-07-15)
+
+Lane B of the P4.6ar ∥ P4.6as ∥ P4.6at round. Four new files, no host
+wiring yet (unit 2). Drift-checked at lane start: v4 HEAD still
+`02865bdb`.
+
+- **`ui/slide-over-panel.ts`** ← v4 `components/ui/SlideOverPanel.tsx`
+  (145 lines). Generic reusable, as in v4. Scrim + panel are ALWAYS
+  mounted with `data-open` — the ported CSS (`_surfaces.css:1067-1102`)
+  animates on that attribute, so an `@if` would replace the slide-in
+  with a hard cut. Focus save/restore, Escape (document-level, attached
+  only while open, `stopPropagation` per v4), scrim-target click check,
+  and v4's verbatim focus-trap selector list.
+  - **PORTAL DIVERGENCE:** v4 `createPortal(…, document.body)`; v5
+    renders inline (the `ui/modal.ts` precedent). The CSS is
+    `position: fixed` and nothing in the chat layout carries a
+    `transform`/`filter` that would create a containing block.
+  - **`headerActions` (ReactNode prop) → a named `ng-content`**
+    (`[qt-slide-over-actions]`).
+- **`chat/llm-logs.api.ts`** ← v4 `useLLMLogs.ts` + the log DTOs from
+  `lib/schemas/llm-log.types.ts`. `fetchChatLlmLogs` sends EXACTLY
+  `{type:'llmLogsList', chatId, includeMessages:true}` (v4's query
+  string, nothing more). `deriveMessagesWithLogs` ports the
+  truthiness filter — a chat-level log (title/compression) has no
+  message to point at. Per the round's Ownership section the request
+  type is LOCAL here + cast at the dispatch call site; the unifier
+  folds it into `CoreRequest` (the P4.6ao precedent).
+- **`chat/llm-inspector-entry.ts`** ← v4 `LLMInspectorEntry.tsx` (354
+  lines). `TYPE_BADGE_CLASSES`/`TYPE_LABELS` carried verbatim — they
+  cover 12 of `LLMLogTypeEnum`'s 19 members and the other seven fall
+  through to the muted default + raw type string BY DESIGN (specced).
+  Both backward-compat fallback chains kept with their why-comments
+  (`content || fullContent || contentPreview`). v4's duration
+  inconsistency carried: ONE decimal in the collapsed row (`:51`), TWO
+  in the Usage tab (`:342`). cacheUsage rows gate on `!== undefined`,
+  so an explicit 0 renders. The message block reports the LOGGED
+  `contentLength` in its show-more copy while the response body reports
+  the rendered string's length — v4 differs between the two; carried.
+- **`chat/llm-inspector-panel.ts`** ← v4 `LLMInspectorPanel.tsx` (161
+  lines). `FILTER_GROUPS`/`FILTER_LABELS` verbatim. `all` is null
+  ("skip filtering"), NOT a list of every type — a log type in no group
+  is reachable only under `all` (specced). Empty-state precedence is
+  v4's: loading → logging-disabled → no-entries. Scroll-to-message
+  looks the target up in the FILTERED list and gives up if absent
+  (v4 :70-71), after v4's 300 ms animation delay.
+  - dogfood-#6 select audit: the filter `<select>` keeps a plain
+    `[value]` binding — SAFE because the options are a static module
+    constant present in the DOM before the value applies. The finding
+    only bites when options arrive async.
+
+**Gate:** 102 new specs green (`ng test` for the four files); prettier
+clean. No `crates/**` diff — this lane compiles no Rust.
+
+**Gotchas banked:**
+- jsdom's CSS parser has no `min()` support: `[style.width]="min(480px,
+  85vw)"` is silently dropped and `style.width` reads `''`. The default
+  is pinned at the INPUT instead, with a second spec proving the binding
+  is live using a value the parser accepts.
+- A spec helper that renders more than once must
+  `TestBed.resetTestingModule()` FIRST (the P4.6t lesson) — putting the
+  reset only in `afterEach` fails the second render in a single `it`.
+- Label/value in adjacent spans means `textContent` carries NO
+  separator ("Provider:openai"). Assert per-row, not on a flattened
+  blob — otherwise the spec is testing DOM serialization rather than the
+  port.
