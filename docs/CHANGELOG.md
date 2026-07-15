@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+Dogfood log bookkeeping: mark findings #7 (chained-response render),
+#8 (composition mode), and #9 (chat backgrounds) FIXED and the
+finding-#6 select audit CLOSED in
+docs/developer/porting/dogfood-findings.md, matching the unified
+P4.6ak∥al∥am round record. Docs only.
+
 Unify P4.6ak∥al∥am (the D17 editor follow-ons + salon dogfood round):
 ALL THREE orders CLOSED, and dogfood findings #7, #8, #9 and the
 standing finding-#6 select audit CLOSE with them. The
