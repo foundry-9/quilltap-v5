@@ -13885,3 +13885,77 @@ Playwright 60/60, zero skips** (was 56; +4), all four new beats LIVE.
 
 **Final versions:** core 0.0.225, harness 0.0.204, host 0.0.18,
 web 0.0.22, SPA 0.5.113.
+
+---
+
+## P4.6ar unit 0 — the `inspector-*` fixture family (lane A substrate)
+
+**Landed 2026-07-15** (lane A of the P4.6ar ∥ as ∥ at round; v4 baseline
+`02865bdb`, drift-checked clean at lane start: `git log 02865bdb..HEAD` empty).
+
+The round's one new committed fixture family, baked end-to-end through v4's
+REAL repos (`harness/oracle/fixtures/build-inspector-fixture.ts` over the
+plaintext spec `inspector-web.json`). **Four** files, not the three the order
+sketched — see the nostore note below:
+
+- `crates/quilltap-web/tests/fixtures/inspector-main.db` — two users
+  (`friday` + `stranger`), one connection profile, one character, one chat +
+  three messages, and `instance_settings.generalMountPointId` → the Quilltap
+  General store.
+- `inspector-mount.db` — the mount-index sibling: the character's vault
+  (minted by the REAL `repos.characters.create`, the P4.6ab lesson — the
+  mount sibling exists whether you plan it or not) plus the Quilltap General
+  store carrying `lantern-aesthetics.md` and deliberately NO
+  `aurora-aesthetics.md`, so the present-file and absent-file GET arms are
+  both covered with **no mutation ordering**.
+- `inspector-llm.db` — the llm-logs PARTITION (v4's `LLMLogsRepository`
+  overrides `getCollection()` to route to its own database; the builder points
+  `SQLITE_LLM_LOGS_PATH` at the file it keeps). 14 rows spanning all twelve
+  types the SPA's `LLMInspectorEntry` badge table enumerates, across
+  message-linked / chat-linked / character-linked / standalone rows, with and
+  without `usage`/`cacheUsage`/`durationMs`, one error-response row, and one
+  row owned by the SECOND user (the item routes have NO ownership check — that
+  cross-user read is a real, faithful arm, not a synthetic one).
+- `inspector-nostore-main.db` — **the fourth file, and the reason:** the
+  `generalMountPointId` pointer is a singleton row in a key/value table, so the
+  provisioned and unprovisioned arms of `system/image-aesthetics` cannot
+  coexist in one main file. A byte-copy of the finished main DB with that one
+  row deleted stages the unprovisioned arms (GET → `{content:''}`, PUT →
+  serverError) honestly, with neither side mutating its copy mid-case. The copy
+  is opened with the cipher driver directly (ChaCha20/sqleet, raw-hex key —
+  the recipe from `builtin-mounts.ts`); note the generator runs as ESM, so it
+  reaches the driver via `createRequire(import.meta.url)`, not bare `require`.
+
+**Two invariants the corpus deliberately encodes:**
+
+1. **Every log row has a DISTINCT `createdAt`.** v4's translated sort is
+   `ORDER BY "createdAt" DESC` with **no secondary key**
+   (`query-translator.ts::translateSort`), so ties would leave row order to the
+   engine's plan. Distinct values make the order deterministic and
+   byte-identical on both sides — the same reasoning already recorded on
+   `db/llm_logs.rs::find_last_by_chat_id`.
+2. **`rawProviderUsage` is NULL on every row.** It is the one open-JSON column;
+   `serde_json::Value` sorts object keys where v4's `JSON.stringify` preserves
+   insertion order (the standing seam recorded in `db/llm_logs.rs`). Nothing in
+   this surface needs it populated, so the corpus does not walk into it.
+
+Chat message `role` must be UPPERCASE (`USER`/`ASSISTANT`) — the message-union
+schema rejects lowercase, and the union error reports the *system-event* arm's
+complaints, which reads as a nonsense `description` error. The `role` inside a
+log's `request.messages[]` is a free-form `z.string()` and stays lowercase
+(it mirrors the provider wire).
+
+**Regenerate** (Node 24, from the v4 checkout; the header of the generator
+carries the same line):
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
+cd ~/source/quilltap-server
+QT_FIXTURE_INSP_MAIN=$W/crates/quilltap-web/tests/fixtures/inspector-main.db \
+QT_FIXTURE_INSP_MOUNT=$W/crates/quilltap-web/tests/fixtures/inspector-mount.db \
+QT_FIXTURE_INSP_LLM=$W/crates/quilltap-web/tests/fixtures/inspector-llm.db \
+QT_FIXTURE_INSP_NOSTORE=$W/crates/quilltap-web/tests/fixtures/inspector-nostore-main.db \
+  $N/node --import tsx $W/harness/oracle/fixtures/build-inspector-fixture.ts
+```
+
+**Invalidates:** nothing. The family is new; no existing oracle reads it.

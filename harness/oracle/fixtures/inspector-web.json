@@ -1,0 +1,446 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "seedTimestamp": "2026-01-15T10:00:00.000Z",
+
+  "userId": "d0000000-0000-4000-8000-000000000001",
+  "otherUserId": "d0000000-0000-4000-8000-000000000002",
+
+  "connectionProfileId": "d1000000-0000-4000-8000-000000000001",
+  "characterId": "d2000000-0000-4000-8000-000000000001",
+  "chatId": "d3000000-0000-4000-8000-000000000001",
+  "generalMountPointId": "d5000000-0000-4000-8000-000000000001",
+
+  "missingId": "d9000000-0000-4000-8000-0000000000ff",
+  "missingChatId": "d9000000-0000-4000-8000-0000000000fe",
+  "missingCharacterId": "d9000000-0000-4000-8000-0000000000fd",
+  "missingMessageId": "d9000000-0000-4000-8000-0000000000fc",
+
+  "messages": [
+    {
+      "id": "d4000000-0000-4000-8000-000000000001",
+      "role": "USER",
+      "content": "Tell me about the ballonet, if you would.",
+      "createdAt": "2026-01-15T10:01:00.000Z"
+    },
+    {
+      "id": "d4000000-0000-4000-8000-000000000002",
+      "role": "ASSISTANT",
+      "content": "The ballonet, dear friend, is the lung of the airship.",
+      "createdAt": "2026-01-15T10:02:00.000Z"
+    },
+    {
+      "id": "d4000000-0000-4000-8000-000000000003",
+      "role": "USER",
+      "content": "And when it fails?",
+      "createdAt": "2026-01-15T10:03:00.000Z"
+    }
+  ],
+
+  "lanternAesthetic": "# The Lantern's Default Look\n\nGaslit brass, fog, and a great deal of unearned confidence.\n",
+
+  "logs": [
+    {
+      "id": "e0000000-0000-4000-8000-000000000001",
+      "note": "message-linked CHAT_MESSAGE; full usage + cacheUsage + durationMs",
+      "user": "primary",
+      "type": "CHAT_MESSAGE",
+      "messageId": "d4000000-0000-4000-8000-000000000002",
+      "chatId": null,
+      "characterId": null,
+      "provider": "ANTHROPIC",
+      "modelName": "claude-opus-4-8",
+      "request": {
+        "messageCount": 2,
+        "messages": [
+          { "role": "system", "content": "You are Lorian.", "contentLength": 15, "hasAttachments": false },
+          { "role": "user", "content": "Tell me about the ballonet, if you would.", "contentLength": 41, "hasAttachments": false }
+        ],
+        "temperature": 1,
+        "maxTokens": 4096,
+        "toolCount": 0
+      },
+      "response": {
+        "content": "The ballonet, dear friend, is the lung of the airship.",
+        "contentLength": 53,
+        "error": null,
+        "finishReason": "end_turn"
+      },
+      "usage": { "promptTokens": 120, "completionTokens": 40, "totalTokens": 160 },
+      "cacheUsage": { "cacheCreationInputTokens": 512, "cacheReadInputTokens": 2048 },
+      "durationMs": 1234.5,
+      "createdAt": "2026-01-15T10:02:00.000Z"
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000002",
+      "note": "a SECOND message-linked row on the same message (ordering + the type filter)",
+      "user": "primary",
+      "type": "CHAT_MESSAGE",
+      "messageId": "d4000000-0000-4000-8000-000000000002",
+      "chatId": null,
+      "characterId": null,
+      "provider": "OPENAI",
+      "modelName": "gpt-5",
+      "request": {
+        "messageCount": 1,
+        "messages": [
+          { "role": "user", "content": "And when it fails?", "contentLength": 18, "hasAttachments": false }
+        ],
+        "temperature": 0.7,
+        "maxTokens": 1024,
+        "toolCount": 0
+      },
+      "response": {
+        "content": "Then one descends, and with rather more haste than dignity.",
+        "contentLength": 58,
+        "error": null,
+        "finishReason": "stop"
+      },
+      "usage": { "promptTokens": 30, "completionTokens": 18, "totalTokens": 48 },
+      "durationMs": 610,
+      "createdAt": "2026-01-15T10:03:30.000Z"
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000003",
+      "note": "TOOL_CONTINUATION on the third message",
+      "user": "primary",
+      "type": "TOOL_CONTINUATION",
+      "messageId": "d4000000-0000-4000-8000-000000000003",
+      "chatId": null,
+      "characterId": null,
+      "provider": "ANTHROPIC",
+      "modelName": "claude-opus-4-8",
+      "request": {
+        "messageCount": 1,
+        "messages": [
+          { "role": "user", "content": "And when it fails?", "contentLength": 18, "hasAttachments": false }
+        ],
+        "temperature": 1,
+        "maxTokens": 2048,
+        "toolCount": 7
+      },
+      "response": {
+        "content": "Consulting the Scriptorium.",
+        "contentLength": 27,
+        "error": null,
+        "finishReason": "tool_use"
+      },
+      "usage": { "promptTokens": 800, "completionTokens": 12, "totalTokens": 812 },
+      "durationMs": 240,
+      "createdAt": "2026-01-15T10:04:00.000Z"
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000004",
+      "note": "MEMORY_EXTRACTION on the first message",
+      "user": "primary",
+      "type": "MEMORY_EXTRACTION",
+      "messageId": "d4000000-0000-4000-8000-000000000001",
+      "chatId": null,
+      "characterId": null,
+      "provider": "OPENAI_COMPATIBLE",
+      "modelName": "mock-cheap-model",
+      "request": {
+        "messageCount": 1,
+        "messages": [
+          { "role": "user", "content": "Extract memories.", "contentLength": 17, "hasAttachments": false }
+        ],
+        "temperature": 0,
+        "maxTokens": 512,
+        "toolCount": 0
+      },
+      "response": {
+        "content": "[]",
+        "contentLength": 2,
+        "error": null,
+        "finishReason": "stop"
+      },
+      "usage": { "promptTokens": 55, "completionTokens": 2, "totalTokens": 57 },
+      "durationMs": 90,
+      "createdAt": "2026-01-15T10:05:00.000Z"
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000005",
+      "note": "chat-linked TITLE_GENERATION (findByChatId)",
+      "user": "primary",
+      "type": "TITLE_GENERATION",
+      "messageId": null,
+      "chatId": "d3000000-0000-4000-8000-000000000001",
+      "characterId": null,
+      "provider": "OPENAI_COMPATIBLE",
+      "modelName": "mock-cheap-model",
+      "request": {
+        "messageCount": 1,
+        "messages": [
+          { "role": "user", "content": "Title this conversation.", "contentLength": 24, "hasAttachments": false }
+        ],
+        "temperature": 0.3,
+        "maxTokens": 128,
+        "toolCount": 0
+      },
+      "response": {
+        "content": "{\"suggestedTitle\": \"The Ballonet's Slow Betrayal\"}",
+        "contentLength": 49,
+        "error": null,
+        "finishReason": "stop"
+      },
+      "usage": { "promptTokens": 42, "completionTokens": 11, "totalTokens": 53 },
+      "durationMs": 305,
+      "createdAt": "2026-01-15T10:06:00.000Z"
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000006",
+      "note": "chat-linked CONTEXT_COMPRESSION",
+      "user": "primary",
+      "type": "CONTEXT_COMPRESSION",
+      "messageId": null,
+      "chatId": "d3000000-0000-4000-8000-000000000001",
+      "characterId": null,
+      "provider": "OPENAI_COMPATIBLE",
+      "modelName": "mock-cheap-model",
+      "request": {
+        "messageCount": 1,
+        "messages": [
+          { "role": "user", "content": "Compress the history.", "contentLength": 21, "hasAttachments": false }
+        ],
+        "temperature": 0.2,
+        "maxTokens": 1024,
+        "toolCount": 0
+      },
+      "response": {
+        "content": "They discussed airships at length.",
+        "contentLength": 34,
+        "error": null,
+        "finishReason": "stop"
+      },
+      "usage": { "promptTokens": 900, "completionTokens": 60, "totalTokens": 960 },
+      "durationMs": 1500,
+      "createdAt": "2026-01-15T10:07:00.000Z"
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000007",
+      "note": "BOTH chatId and messageId set — the findAllForChat $or dedupe leg",
+      "user": "primary",
+      "type": "SUMMARIZATION",
+      "messageId": "d4000000-0000-4000-8000-000000000001",
+      "chatId": "d3000000-0000-4000-8000-000000000001",
+      "characterId": null,
+      "provider": "OPENAI_COMPATIBLE",
+      "modelName": "mock-cheap-model",
+      "request": {
+        "messageCount": 1,
+        "messages": [
+          { "role": "user", "content": "Summarize.", "contentLength": 10, "hasAttachments": false }
+        ],
+        "temperature": 0.4,
+        "maxTokens": 256,
+        "toolCount": 0
+      },
+      "response": {
+        "content": "A lesson in lift.",
+        "contentLength": 17,
+        "error": null,
+        "finishReason": "stop"
+      },
+      "usage": { "promptTokens": 210, "completionTokens": 6, "totalTokens": 216 },
+      "durationMs": 180,
+      "createdAt": "2026-01-15T10:08:00.000Z"
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000008",
+      "note": "character-linked CHARACTER_WIZARD",
+      "user": "primary",
+      "type": "CHARACTER_WIZARD",
+      "messageId": null,
+      "chatId": null,
+      "characterId": "d2000000-0000-4000-8000-000000000001",
+      "provider": "ANTHROPIC",
+      "modelName": "claude-opus-4-8",
+      "request": {
+        "messageCount": 1,
+        "messages": [
+          { "role": "user", "content": "Invent an aeronaut.", "contentLength": 19, "hasAttachments": false }
+        ],
+        "temperature": 1,
+        "maxTokens": 8192,
+        "toolCount": 0
+      },
+      "response": {
+        "content": "{\"name\": \"Lorian\"}",
+        "contentLength": 18,
+        "error": null,
+        "finishReason": "end_turn"
+      },
+      "usage": { "promptTokens": 88, "completionTokens": 400, "totalTokens": 488 },
+      "durationMs": 4200,
+      "createdAt": "2026-01-15T10:09:00.000Z"
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000009",
+      "note": "character-linked APPEARANCE_RESOLUTION; NO usage, NO cacheUsage, NO durationMs",
+      "user": "primary",
+      "type": "APPEARANCE_RESOLUTION",
+      "messageId": null,
+      "chatId": null,
+      "characterId": "d2000000-0000-4000-8000-000000000001",
+      "provider": "OPENAI_COMPATIBLE",
+      "modelName": "mock-cheap-model",
+      "request": {
+        "messageCount": 1,
+        "messages": [
+          { "role": "user", "content": "What is she wearing?", "contentLength": 20, "hasAttachments": false }
+        ],
+        "temperature": 0.5,
+        "maxTokens": 256,
+        "toolCount": 0
+      },
+      "response": {
+        "content": "A coat of oiled canvas.",
+        "contentLength": 23,
+        "error": null,
+        "finishReason": "stop"
+      },
+      "createdAt": "2026-01-15T10:10:00.000Z"
+    },
+    {
+      "id": "e0000000-0000-4000-8000-00000000000a",
+      "note": "standalone IMAGE_PROMPT_CRAFTING (no entity links at all)",
+      "user": "primary",
+      "type": "IMAGE_PROMPT_CRAFTING",
+      "messageId": null,
+      "chatId": null,
+      "characterId": null,
+      "provider": "OPENAI",
+      "modelName": "gpt-5",
+      "request": {
+        "messageCount": 1,
+        "messages": [
+          { "role": "user", "content": "Craft an image prompt.", "contentLength": 22, "hasAttachments": false }
+        ],
+        "temperature": 0.8,
+        "maxTokens": 512,
+        "toolCount": 0
+      },
+      "response": {
+        "content": "A brass gondola against a bruised sky.",
+        "contentLength": 37,
+        "error": null,
+        "finishReason": "stop"
+      },
+      "usage": { "promptTokens": 64, "completionTokens": 14, "totalTokens": 78 },
+      "durationMs": 700,
+      "createdAt": "2026-01-15T10:11:00.000Z"
+    },
+    {
+      "id": "e0000000-0000-4000-8000-00000000000b",
+      "note": "standalone IMAGE_DESCRIPTION; cacheUsage present but usage ABSENT",
+      "user": "primary",
+      "type": "IMAGE_DESCRIPTION",
+      "messageId": null,
+      "chatId": null,
+      "characterId": null,
+      "provider": "OPENAI",
+      "modelName": "gpt-5",
+      "request": {
+        "messageCount": 1,
+        "messages": [
+          { "role": "user", "content": "Describe this photograph.", "contentLength": 25, "hasAttachments": true }
+        ],
+        "temperature": 0.6,
+        "maxTokens": 512,
+        "toolCount": 0
+      },
+      "response": {
+        "content": "An aeronaut, mid-shrug.",
+        "contentLength": 23,
+        "error": null,
+        "finishReason": "stop"
+      },
+      "cacheUsage": { "cacheReadInputTokens": 128 },
+      "durationMs": 950,
+      "createdAt": "2026-01-15T10:12:00.000Z"
+    },
+    {
+      "id": "e0000000-0000-4000-8000-00000000000c",
+      "note": "standalone DANGER_CLASSIFICATION — the ERROR-response row",
+      "user": "primary",
+      "type": "DANGER_CLASSIFICATION",
+      "messageId": null,
+      "chatId": null,
+      "characterId": null,
+      "provider": "OPENAI_COMPATIBLE",
+      "modelName": "mock-cheap-model",
+      "request": {
+        "messageCount": 1,
+        "messages": [
+          { "role": "user", "content": "Classify.", "contentLength": 9, "hasAttachments": false }
+        ],
+        "temperature": 0,
+        "maxTokens": 64,
+        "toolCount": 0
+      },
+      "response": {
+        "content": "",
+        "contentLength": 0,
+        "error": "upstream refused the connection",
+        "finishReason": null
+      },
+      "durationMs": 30,
+      "createdAt": "2026-01-15T10:13:00.000Z"
+    },
+    {
+      "id": "e0000000-0000-4000-8000-00000000000d",
+      "note": "standalone AI_IMPORT — bare: no usage, no cacheUsage, no durationMs",
+      "user": "primary",
+      "type": "AI_IMPORT",
+      "messageId": null,
+      "chatId": null,
+      "characterId": null,
+      "provider": "ANTHROPIC",
+      "modelName": "claude-opus-4-8",
+      "request": {
+        "messageCount": 1,
+        "messages": [
+          { "role": "user", "content": "Import this card.", "contentLength": 17, "hasAttachments": false }
+        ],
+        "temperature": 1,
+        "maxTokens": 4096,
+        "toolCount": 0
+      },
+      "response": {
+        "content": "{\"name\": \"Riya\"}",
+        "contentLength": 16,
+        "error": null,
+        "finishReason": "end_turn"
+      },
+      "createdAt": "2026-01-15T10:14:00.000Z"
+    },
+    {
+      "id": "e0000000-0000-4000-8000-00000000000e",
+      "note": "owned by the SECOND user — the no-ownership-check item GET/DELETE case",
+      "user": "other",
+      "type": "CHAT_MESSAGE",
+      "messageId": null,
+      "chatId": null,
+      "characterId": null,
+      "provider": "GOOGLE",
+      "modelName": "gemini-3-pro",
+      "request": {
+        "messageCount": 1,
+        "messages": [
+          { "role": "user", "content": "A stranger's question.", "contentLength": 22, "hasAttachments": false }
+        ],
+        "temperature": 1,
+        "maxTokens": 2048,
+        "toolCount": 0
+      },
+      "response": {
+        "content": "A stranger's answer.",
+        "contentLength": 20,
+        "error": null,
+        "finishReason": "STOP"
+      },
+      "usage": { "promptTokens": 10, "completionTokens": 5, "totalTokens": 15 },
+      "durationMs": 120,
+      "createdAt": "2026-01-15T10:15:00.000Z"
+    }
+  ]
+}

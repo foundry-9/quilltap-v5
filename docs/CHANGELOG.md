@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+P4.6ar unit 0 (lane A): the new committed `inspector-*` fixture family +
+its checked-in generator (`harness/oracle/fixtures/build-inspector-fixture.ts`
+over `inspector-web.json`). Four files, all baked through v4's real repos:
+`inspector-main.db` (two users, one character, one chat + three messages,
+the Quilltap General store's `instance_settings.generalMountPointId`
+pointer), `inspector-mount.db` (the character's minted vault + the General
+store carrying `lantern-aesthetics.md` and deliberately no
+`aurora-aesthetics.md`), `inspector-llm.db` (the llm-logs partition — 14
+rows across all twelve LLM-Inspector badge types: message-linked,
+chat-linked, character-linked, standalone, one error response, rows with
+and without usage/cacheUsage/durationMs, and one row owned by a second
+user), and `inspector-nostore-main.db` (a byte-copy of the main DB with
+the general-store pointer deleted, so the unprovisioned-store arms stage
+without either side mutating its copy). Every log row carries a distinct
+createdAt — v4's translated sort is `ORDER BY "createdAt" DESC` with no
+secondary key. Fixture data only; no crate source touched.
+
 P4.6ar ∥ P4.6as ∥ P4.6at round planned (2026-07-15): three work orders
 committed under docs/developer/porting/work-orders/ — the llm-logs +
 system-aesthetics server lane (the eight llm-logs repo reads, the
