@@ -14484,3 +14484,42 @@ adapted, not weakened:
 
 **Gate:** `ng test` 114 files / 968 tests green (the pre-existing count — no net
 new tests this unit; the card's specs land in unit 2). SPA 0.5.114.
+
+## P4.6at (lane C) unit 2 — the Default Aesthetics card (2026-07-15)
+
+**The card** (v4 `components/settings/tabs/ImagesTabContent.tsx:52-66` — the
+THIRD card, after Story Backgrounds, inside the tab's `space-y-4` wrapper).
+`default-aesthetics-card.ts` is v4's `space-y-6` field pair; the collapsible
+wrapper lives in `images-tab.ts`, exactly where v4 puts it (title "Default
+Aesthetics", v4's description verbatim, `sectionId="default-aesthetics"`,
+`forceOpen` on the `?section=` deep link, `defaultOpen` seeded in `ngOnInit`).
+Both fields are the unit-1 shared `qt-aesthetic-editor-field`, so all of the
+behaviour (load gate, dirty-gated Save, "Saved" span, error span) is v4's by
+construction. The `images-tab.ts:16` deferral note is retired.
+
+**The wire** (Shared contract §2): `system-aesthetics.api.ts` holds the LOCAL
+`SystemImageAestheticsGet`/`SetRequest` types + the two dispatch helpers, cast at
+the call site (`as unknown as CoreRequest`) — the P4.6ao precedent; nobody
+touches `core-contract.ts` this round and the unifier folds them. The client
+always SENDS `content`, empty string included: an empty save is what deletes the
+file, and the server owns that semantics (lane A's
+`image_aesthetics_routes_equivalence` pins it).
+
+**Specs (8 new, each citing the v4 line it pins).** Card: both fields' labels +
+descriptions in v4's order (`:55-64`); one `systemImageAestheticsGet` per kind;
+the load gate (`Loading…`, no editor) → editor mounts with content in hand
+displaying the canonical form of `__sepia__`, Save disabled; the save payload
+`{type, kind, content}` verbatim + the `Saved` span (`:127`, `:131`); a save
+failure surfacing in the error span with the field still dirty (`:96-98`); the
+two fields independent (editing lantern neither dirties nor saves aurora). API:
+`{content: ''}` default for a fresh instance; empty content sent verbatim.
+
+**The load-gate guards were proven to BITE, not just to pass** (the discipline
+from `markdown-field-load-must-not-emit`). Re-pointed the shared field at the
+ungated structure (editor mounted immediately, content seeded a tick later):
+**3 tests fail** — the card's load-gate and field-independence tests, and
+`projects.spec.ts`'s `a load never dirties the field…`, which confirms unit 1's
+adapted assertion still catches the original bug. Restored; green.
+
+**Gate:** `ng test` 115 files / 976 tests (968 + 8), `ng build` clean.
+SPA 0.5.115.

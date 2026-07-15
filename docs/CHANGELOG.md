@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.6at unit 2 (2026-07-15): the Default Aesthetics card. v4's third Images-tab
+card now exists in v5 (closing a named P4.6ao/ap/aq-round deferral): two shared
+aesthetic-editor-fields over the systemImageAestheticsGet/Set verbs, under a
+"Default Aesthetics" collapsible with v4's copy and its ?section= deep link.
+The Default Image Aesthetic covers scenes and backgrounds; the Default Character
+Aesthetic covers how people and outfits are depicted. Saving a field empty
+deletes the stored file and restores the fallback. The request types are local
+to the lane's api module and cast at dispatch until the unifier folds them into
+CoreRequest. SPA 0.5.115.
+
 P4.6at unit 1 (2026-07-15): the shared aesthetic-editor-field. v4 has one
 AestheticEditorField serving three surfaces; v5 had a prospero-only copy.
 Extracted it to ui/aesthetic-editor-field.ts, taking injected load/save

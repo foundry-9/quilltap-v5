@@ -3,23 +3,20 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 
 import { CollapsibleCard } from '../../../ui/collapsible-card';
+import { DefaultAestheticsCard } from './default-aesthetics-card';
 import { ImageProfilesCard } from './image-profiles-card';
 import { StoryBackgroundsCard } from './story-backgrounds-card';
 
 /**
  * The Images tab (v4 `components/settings/tabs/ImagesTabContent.tsx`): the Image
- * Profiles and Story Backgrounds collapsible cards, in v4's order. The cards
- * seed `defaultOpen` in `ngOnInit` ([[p4.6l-groups-projects-spa]] gotcha) and
- * honour the `?section=` deep link.
- *
- * Still deferred here: v4's third card, **Default Aesthetics** (the two
- * `AestheticEditorField`s over `/api/v1/system/image-aesthetics`) — its own
- * surface, not this order's.
+ * Profiles, Story Backgrounds and Default Aesthetics collapsible cards, in v4's
+ * order. The cards seed `defaultOpen` in `ngOnInit`
+ * ([[p4.6l-groups-projects-spa]] gotcha) and honour the `?section=` deep link.
  */
 @Component({
   selector: 'qt-settings-images',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CollapsibleCard, ImageProfilesCard, StoryBackgroundsCard],
+  imports: [CollapsibleCard, DefaultAestheticsCard, ImageProfilesCard, StoryBackgroundsCard],
   template: `
     <div>
       <p class="qt-text-small qt-text-muted italic mb-6">
@@ -27,7 +24,7 @@ import { StoryBackgroundsCard } from './story-backgrounds-card';
       </p>
 
       <!-- v4 ImagesTabContent wraps its cards in space-y-4; v5 had a single card
-           and never needed the wrapper. With two, it is load-bearing. -->
+           and never needed the wrapper. With three, it is load-bearing. -->
       <div class="space-y-4">
         <qt-collapsible-card
           title="Image Profiles"
@@ -47,6 +44,16 @@ import { StoryBackgroundsCard } from './story-backgrounds-card';
           [forceOpen]="section() === 'story-backgrounds'"
         >
           <qt-story-backgrounds-card />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Default Aesthetics"
+          description="Free-form house style woven into every avatar, story background, and ad-hoc image. Projects can override these per file."
+          sectionId="default-aesthetics"
+          [defaultOpen]="defaultOpen()"
+          [forceOpen]="section() === 'default-aesthetics'"
+        >
+          <qt-default-aesthetics-card />
         </qt-collapsible-card>
       </div>
     </div>
