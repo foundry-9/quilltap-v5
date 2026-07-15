@@ -14426,3 +14426,61 @@ green while quietly testing less.
 
 Lane B owns the salon e2e specs, so this landed here rather than being
 reported as someone else's flake.
+
+## P4.6at (lane C) unit 1 — the shared aesthetic-editor-field (2026-07-15)
+
+**The extraction.** v4 has ONE `components/settings/AestheticEditorField.tsx`
+(145 lines) serving three surfaces (Images settings tab, project image card,
+character depiction guidelines); v5 had a prospero-only copy
+(`cards/project-aesthetic-field.ts`, born a plain textarea in P4.6l, swapped to
+`qt-markdown-field` in P4.6aq). Extracted to `ui/aesthetic-editor-field.ts`
+(`qt-aesthetic-editor-field`). v4 addresses its endpoint with `loadUrl`/`saveUrl`;
+there are no URLs over the dispatch boundary, so the host injects `load`/`save`
+callbacks + the TanStack `queryKey` instead. Everything else is v4's, verbatim.
+
+**The extraction is a re-port, so it corrects drift the textarea era left in the
+project field** (v4 `:122-132`, all previously absent in v5):
+
+| | v5 before | v4 / v5 now |
+|---|---|---|
+| Save button | `qt-button-secondary`, always enabled | `qt-button-primary qt-button-sm`, `disabled={saving \|\| !dirty}` |
+| in flight | `Saving...` | `Saving…` (ellipsis char) |
+| success | — | `Saved` span while `saved && !dirty` |
+| error | `qt-error-alert` above the field | one inline `qt-text-small qt-text-error` span carrying load OR save failure (v4 shares one `error` state, `:43`) |
+| label / description | `qt-text-label` / `qt-text-xs qt-text-secondary` | `qt-label` / `qt-text-small qt-text-muted` (all four classes pre-exist in v5) |
+
+**The load gate carried over intact** (the load-bearing part —
+`markdown-field-load-must-not-emit`): editor gated on `isPending`, content seeded
+INSIDE `queryFn`. v4's `dirty` gate is now the second belt behind it: even if a
+load did surface as an edit, v4-faithful gating means the user sees an enabled
+Save on an untouched form — which is exactly how the spec now catches it.
+
+**NOT ported: `disabledHint`** (v4 `:29`, `:112` — suppresses the editor behind a
+warning). Its only v4 caller is the character-edit depiction-guidelines field
+(`CharacterEditView.tsx:338-345`, character with no document vault yet). Neither
+v5 aesthetic consumer passes it, so porting it would be dead surface; recorded in
+the component doc, to land with that field.
+
+**⚠ DEVIATION FROM THE ORDER (reported, not silent).** The order says
+`project-aesthetic-field`'s spec must stay "green unchanged apart from imports",
+but its tier-1 item 2 requires the shared field to pin "the save/dirty/saved
+cycle" — and v5's copy had no dirty/saved at all. The two are unsatisfiable
+together: two `projects.spec.ts` tests click an untouched Save, which v4's dirty
+gate makes unreachable. Resolved toward v4 (the oracle), since the alternative
+was shipping a NEW surface that silently diverges from v4. The two tests were
+adapted, not weakened:
+
+- `round-trips the aesthetic content byte-exact…` → `saves the edited aesthetic
+  content through projectAestheticSet`: still asserts the canonical display and
+  the full `{projectId, kind, content}` payload, but reaches Save through a
+  genuine toolbar edit. **Byte-exactness of untouched bytes is not a v4 property
+  of the SAVE path** — v4 re-serializes through its Lexical bridge on any edit
+  too. It is a property of NOT saving, which the sibling test now pins.
+- `a load never re-normalizes the stored aesthetic bytes` → `a load never dirties
+  the field, so it cannot re-normalize the stored bytes`: displays `__sepia__` as
+  `**sepia**`, then asserts **Save is disabled**. Still bites on the ungated
+  structure (an ungated load emits → `dirty` → enabled Save), and catches it one
+  step earlier than the payload assertion did.
+
+**Gate:** `ng test` 114 files / 968 tests green (the pre-existing count — no net
+new tests this unit; the card's specs land in unit 2). SPA 0.5.114.

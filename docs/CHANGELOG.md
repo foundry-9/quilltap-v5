@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.6at unit 1 (2026-07-15): the shared aesthetic-editor-field. v4 has one
+AestheticEditorField serving three surfaces; v5 had a prospero-only copy.
+Extracted it to ui/aesthetic-editor-field.ts, taking injected load/save
+callbacks plus a query key in place of v4's loadUrl/saveUrl (no URLs over
+the dispatch boundary), and re-pointed project-aesthetic-field at it. The
+extraction is a faithful re-port, so it also corrects textarea-era drift in
+the project field: the Save button is now primary and dirty-gated
+(disabled until an edit, "Saving…" in flight), with v4's "Saved" span and
+its shared load/save error span. Two project specs adapted: an untouched
+Save is unreachable under v4's dirty gate, so the load-never-re-normalizes
+guard now asserts the Save button stays disabled after a load — the same
+bug, caught one step earlier. SPA 0.5.114.
+
 P4.6as unit 5 (2026-07-15): the courier spec's chat-discovery guard now
 waits for its selector instead of sampling isVisible() the instant the
 message list appears. The sample was a race, so whether the lightbox beat

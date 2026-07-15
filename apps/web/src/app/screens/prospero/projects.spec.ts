@@ -391,6 +391,13 @@ describe('ProjectImageGenerationCard', () => {
     return fixture;
   }
 
+  /** The Save button of the card's first (lantern) aesthetic field. */
+  function saveButton(fixture: ComponentFixture<ProjectImageGenerationCard>): HTMLButtonElement {
+    return [
+      ...fixture.nativeElement.querySelector('qt-project-aesthetic-field')!.querySelectorAll('button'),
+    ].find((b: HTMLButtonElement) => b.textContent?.includes('Save')) as HTMLButtonElement;
+  }
+
   it('immediate-saves the background display mode and alerts on failure', async () => {
     const seen: DispatchReq[] = [];
     const fixture = await render(
@@ -425,7 +432,7 @@ describe('ProjectImageGenerationCard', () => {
     expect(prof.disabled).toBe(false);
   });
 
-  it('round-trips the aesthetic content byte-exact through the mocked client', async () => {
+  it('saves the edited aesthetic content through projectAestheticSet', async () => {
     const saved: DispatchReq[] = [];
     const content = '# House style\n\n- muted **sepia** tones\n';
     const fixture = await render(
@@ -440,63 +447,55 @@ describe('ProjectImageGenerationCard', () => {
     );
     // The lantern field is the first aesthetic editor on the card. The editor
     // DISPLAYS a canonical serialization — here that drops the file's trailing
-    // newline — but the load is not an edit (it mounts with the content already
-    // in hand, and the field absorbs its one mount emit), so `content` keeps the
-    // raw bytes and the Save below writes them back verbatim, trailing newline
-    // and all. That byte-exactness is the assertion that matters.
-    const lantern = fixture.debugElement
-      .queryAll(By.directive(RichEditor))[0]
-      .componentInstance.getMarkdown();
-    expect(lantern).toBe(content.trimEnd());
-    // Save it back unchanged — the bytes must match exactly.
-    const saveBtn = [
-      ...fixture.nativeElement
-        .querySelector('qt-project-aesthetic-field')!
-        .querySelectorAll('button'),
-    ].find((b: HTMLButtonElement) => b.textContent?.includes('Save')) as HTMLButtonElement;
+    // newline — because it mounts with the loaded content already in hand.
+    const lantern = fixture.debugElement.queryAll(By.directive(RichEditor))[0];
+    expect(lantern.componentInstance.getMarkdown()).toBe(content.trimEnd());
+    // A genuine edit dirties the field, which is what unlocks Save (v4
+    // `AestheticEditorField.tsx:127`). What the editor then writes back is its
+    // own serialization of the edited document — v4 saves exactly the same
+    // bytes, from the same round trip through its Lexical markdown bridge.
+    const h2 = fixture.nativeElement
+      .querySelector('qt-project-aesthetic-field')!
+      .querySelector('.qt-formatting-button-h2') as HTMLButtonElement;
+    h2.click();
+    await settle(fixture);
+    const saveBtn = saveButton(fixture);
+    expect(saveBtn.disabled).toBe(false);
     saveBtn.click();
     await settle(fixture);
     expect(saved.find((r) => r.type === 'projectAestheticSet')).toMatchObject({
       projectId: 'p1',
       kind: 'lantern',
-      content,
+      content: lantern.componentInstance.getMarkdown(),
     });
   });
 
-  it('a load never re-normalizes the stored aesthetic bytes', async () => {
+  it('a load never dirties the field, so it cannot re-normalize the stored bytes', async () => {
     // The sharp edge of the markdown swap: `__bold__` parses to the same tree as
     // `**bold**` and serializes to the latter. If a load surfaced as an edit,
     // merely opening the card and clicking Save would silently rewrite the
-    // user's file. v4 cannot do this (its mount parse is tagged external-sync
-    // and skipped by the change listener); neither may we.
-    const saved: DispatchReq[] = [];
+    // user's file in normalized bytes. v4 cannot do this — its mount parse is
+    // tagged external-sync and skipped by the change listener
+    // (MarkdownBridgePlugin.tsx:168-181), so `dirty` stays false and the Save
+    // button stays disabled. Neither may we: the field mounts with its content
+    // in hand and absorbs the one mount emit, so nothing marks it dirty and
+    // there is no reachable Save to write with. Re-point the field at an
+    // ungated load and this assertion fails.
     const content = 'Muted __sepia__ tones.';
     const fixture = await render(
-      stubClient((r) => {
-        if (r.type === 'projectAestheticGet') {
-          return r['kind'] === 'lantern' ? { content } : { content: '' };
-        }
-        if (r.type === 'projectAestheticSet') saved.push(r);
-        return {};
-      }),
+      stubClient((r) =>
+        r.type === 'projectAestheticGet'
+          ? { content: r['kind'] === 'lantern' ? content : '' }
+          : {},
+      ),
       project(),
     );
     // The editor displays the canonical form...
     expect(
       fixture.debugElement.queryAll(By.directive(RichEditor))[0].componentInstance.getMarkdown(),
     ).toBe('Muted **sepia** tones.');
-    // ...but an untouched Save writes the ORIGINAL bytes.
-    const saveBtn = [
-      ...fixture.nativeElement
-        .querySelector('qt-project-aesthetic-field')!
-        .querySelectorAll('button'),
-    ].find((b: HTMLButtonElement) => b.textContent?.includes('Save')) as HTMLButtonElement;
-    saveBtn.click();
-    await settle(fixture);
-    expect(saved.find((r) => r.type === 'projectAestheticSet')).toMatchObject({
-      kind: 'lantern',
-      content,
-    });
+    // ...and the load left the field pristine, so Save is unreachable.
+    expect(saveButton(fixture).disabled).toBe(true);
   });
 });
 
