@@ -10,6 +10,8 @@
  * ONLY here and at each caller's API boundary, never inside a component.
  */
 
+import { Cron } from 'croner';
+
 import type {
   AutonomousRoomStatusDto,
   AutonomousRoomSummary,
@@ -168,20 +170,33 @@ export function buildAutonomousCreatePatch(
 }
 
 // ===========================================================================
-// Cron validation (LIVE next-run preview is a LOUD deferral)
+// The live next-run preview (v4 `AutonomousRoomCard.tsx` `tryCronNextRun`)
 // ===========================================================================
 
+/** v4's `tryCronNextRun` return shape. */
+export type CronPreview = { ok: true; next: Date | null } | { ok: false; error: string };
+
 /**
- * A minimal five-field cron shape check (v4 uses `croner` for a live next-run
- * preview; the v5 `enclave::cron` port that would compute the same preview is
- * server-side, so the exact next-run BEFORE save is a LOUD DEFERRAL — see the card
- * template). This guards only the field count so the card can flag obvious typos;
- * the authoritative `scheduleNextRunAt` is computed by the server on save.
+ * The client-side next-run preview (v4 `components/new-chat/AutonomousRoomCard.tsx`
+ * L30-50) over `croner` — v4's own dependency, at v4's version range. Blank is
+ * valid (manual-only) and previews nothing; a parse failure surfaces croner's own
+ * message (falling back to `'invalid cron'` for a non-Error throw).
+ *
+ * This is DELIBERATELY not the server's `enclave::cron`: v4 previews in the
+ * browser against the local `Date`, and the two agree by construction because the
+ * schedule is interpreted in instance-local time. The authoritative
+ * `scheduleNextRunAt` is still computed server-side on save.
  */
-export function isCronShapeValid(expr: string): boolean {
+export function tryCronNextRun(expr: string): CronPreview {
   const trimmed = expr.trim();
-  if (!trimmed) return true; // blank = manual-only, valid
-  return trimmed.split(/\s+/).length === 5;
+  if (!trimmed) return { ok: true, next: null };
+  try {
+    const job = new Cron(trimmed);
+    const next = job.nextRun(new Date());
+    return { ok: true, next: next ?? null };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'invalid cron' };
+  }
 }
 
 // ===========================================================================

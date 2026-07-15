@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 
 import {
-  isCronShapeValid,
+  tryCronNextRun,
   type AutonomousSettingsHint,
   type NewChatAutonomousState,
 } from './autonomous.logic';
@@ -14,12 +14,11 @@ import {
  * happens at each caller's API boundary, never in here. Shared by BOTH the
  * New-Chat form and the Edit-Enclave modal.
  *
- * LOUD DEFERRAL — the LIVE next-run preview: v4 runs `croner` client-side to
- * preview the next fire time as you type. The v5 cron engine (`enclave::cron`)
- * lives server-side, and this lane must not invent a client cron engine or add a
- * new dispatch variant. So the card validates only the cron SHAPE (five fields)
- * and notes that the authoritative next-run is computed on save — it reloads with
- * `scheduleNextRunAt` from the status snapshot afterward.
+ * The cron field carries v4's LIVE next-run preview ({@link tryCronNextRun} over
+ * `croner`, v4's own dependency): it previews the next fire time as you type,
+ * against the local `Date` exactly as v4 does. The authoritative
+ * `scheduleNextRunAt` is still the server's, computed on save — the card reloads
+ * with it from the status snapshot afterward.
  */
 @Component({
   selector: 'qt-autonomous-room-card',
@@ -47,15 +46,14 @@ import {
           only when started manually.
         </p>
         @if (value().scheduleCron.trim().length > 0) {
-          @if (cronShapeValid()) {
-            <p class="mt-1 qt-text-xs qt-text-secondary">
-              Next run is computed on save.
-              <!-- LOUD DEFERRAL: no client cron engine (server-side). -->
-            </p>
+          @if (cronResult().ok) {
+            @if (cronNext(); as next) {
+              <p class="mt-1 qt-text-xs qt-text-secondary">Next run: {{ next.toLocaleString() }}</p>
+            } @else {
+              <p class="mt-1 qt-text-xs qt-text-muted">Parses, but never fires from now.</p>
+            }
           } @else {
-            <p class="mt-1 qt-text-xs qt-text-destructive">
-              That doesn't look like a five-field cron. Expected: minute hour dom month dow.
-            </p>
+            <p class="mt-1 qt-text-xs qt-text-destructive">Invalid cron: {{ cronError() }}</p>
           }
         }
       </div>
@@ -267,7 +265,16 @@ export class AutonomousRoomCard {
   readonly disabled = input(false);
   readonly changed = output<Partial<NewChatAutonomousState>>();
 
-  protected readonly cronShapeValid = computed(() => isCronShapeValid(this.value().scheduleCron));
+  /** v4's `useMemo(() => tryCronNextRun(value.scheduleCron), [value.scheduleCron])`. */
+  protected readonly cronResult = computed(() => tryCronNextRun(this.value().scheduleCron));
+  protected readonly cronNext = computed(() => {
+    const r = this.cronResult();
+    return r.ok ? r.next : null;
+  });
+  protected readonly cronError = computed(() => {
+    const r = this.cronResult();
+    return r.ok ? '' : r.error;
+  });
 
   protected readonly policyAlwaysRefuse = computed(
     () => this.settingsHint()?.destructiveToolPolicy === 'always_refuse',

@@ -12652,3 +12652,42 @@ QT_FIXTURE_SETTINGS=/tmp/qt-settings-fixture.db \
 
 **Gate:** fmt clean; clippy `-D warnings`; `cargo test --workspace` green
 (917-test core suite + all differentials).
+
+## P4.6an unit 2 — the cron next-run preview (P4.6ad deferral 1 of 2, CLOSED)
+
+`apps/web/src/app/autonomous/autonomous-room-card.ts` carried a loud
+deferral: v4 previews the next cron fire time client-side with `croner`, and
+the P4.6ad lane declined to invent a client cron engine, so the card checked
+only the five-field SHAPE and said "Next run is computed on save."
+
+**Ported:** `croner@^10.0.1` (v4's exact range, `package.json` L85 — resolved
+10.0.1) added to `apps/web/package.json`; `tryCronNextRun` ported verbatim
+into `autonomous.logic.ts` (blank → `{ok:true,next:null}`; parse →
+`job.nextRun(new Date()) ?? null`; throw → `{ok:false,error}` with v4's
+`'invalid cron'` fallback for a non-Error throw). The card renders v4's three
+arms with v4's exact strings. `isCronShapeValid` is RETIRED (its only two
+call sites were the card and its own spec).
+
+**Why a client cron engine is correct here and not a second source of truth:**
+v4 previews in the browser over the local `Date`; the schedule is interpreted
+in instance-local time, so the browser preview and the server's
+`enclave::cron` agree by construction. The authoritative `scheduleNextRunAt`
+is still the server's, computed on save and reloaded from the status
+snapshot. The server-side hand-rolled `enclave::cron` (see the
+[u4-enclave-cron-lifecycle] note — croner hand-rolled there because of V8
+local-Date semantics) is NOT involved and was not touched.
+
+**The preview lands in all three consumers for free** (the card is shared):
+the Settings → Chat autonomous defaults, the Edit-Enclave modal, and New Chat.
+
+**Specs:** `autonomous.logic.spec.ts` gains five `tryCronNextRun` cases
+(blank/whitespace → no preview; `0 4 * * *` → a strictly-future Date within
+24h at exactly 04:00; `nonsense` → not ok with a message; a four-field
+expression → not ok; `0 0 30 2 *` → parses but never fires). New
+`autonomous-room-card.spec.ts` renders the card and asserts each of the three
+template arms by v4's string. `ng test` 764 → 772.
+
+**Gotcha (cost me a cycle):** a TestBed component spec run through bare
+`npx vitest` dies with `TypeError: Cannot read properties of null (reading
+'ngModule')` — the standing "`ng test`, not bare vitest" rule from the P4.6e
+note. Pure-logic specs run fine either way, which is what makes it confusing.

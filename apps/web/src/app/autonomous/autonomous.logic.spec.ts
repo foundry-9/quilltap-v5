@@ -10,11 +10,11 @@ import {
   formStateToUpdatePatch,
   formatTime,
   formatTokens,
-  isCronShapeValid,
   selectBudgetReadout,
   statusToFormState,
   summarizeBudget,
   timeRemainingMs,
+  tryCronNextRun,
   type BadgeRoom,
   type NewChatAutonomousState,
 } from './autonomous.logic';
@@ -320,10 +320,38 @@ describe('buildLabel / filters / cron shape', () => {
     expect(filterBadgeRooms(rooms).map((r) => r.id)).toEqual(['b']);
   });
 
-  it('validates only the five-field cron shape (live preview deferred to server)', () => {
-    expect(isCronShapeValid('')).toBe(true); // blank = manual only
-    expect(isCronShapeValid('0 4 * * *')).toBe(true);
-    expect(isCronShapeValid('0 4 * *')).toBe(false);
-    expect(isCronShapeValid('nonsense')).toBe(false);
+  describe('tryCronNextRun (v4 AutonomousRoomCard L30-50)', () => {
+    it('previews nothing for a blank expression (manual-only)', () => {
+      expect(tryCronNextRun('')).toEqual({ ok: true, next: null });
+      expect(tryCronNextRun('   ')).toEqual({ ok: true, next: null });
+    });
+
+    it('returns the next fire time for a valid cron, strictly in the future', () => {
+      const before = Date.now();
+      const result = tryCronNextRun('0 4 * * *');
+      expect(result.ok).toBe(true);
+      const next = (result as { ok: true; next: Date | null }).next;
+      expect(next).toBeInstanceOf(Date);
+      expect(next!.getTime()).toBeGreaterThan(before);
+      // The daily 4am slot is always within 24h of now.
+      expect(next!.getTime() - before).toBeLessThanOrEqual(24 * 60 * 60 * 1000);
+      expect(next!.getHours()).toBe(4);
+      expect(next!.getMinutes()).toBe(0);
+    });
+
+    it('reports croner\'s own message for an unparseable expression', () => {
+      const result = tryCronNextRun('nonsense');
+      expect(result.ok).toBe(false);
+      expect((result as { ok: false; error: string }).error).toBeTruthy();
+    });
+
+    it('rejects a four-field expression (croner wants five or six)', () => {
+      expect(tryCronNextRun('0 4 * *').ok).toBe(false);
+    });
+
+    it('parses a cron that can never fire and previews no next run', () => {
+      // Feb 30th parses but never comes around.
+      expect(tryCronNextRun('0 0 30 2 *')).toEqual({ ok: true, next: null });
+    });
   });
 });

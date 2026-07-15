@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.6an unit 2: the autonomous cron next-run preview is LIVE, closing the
+first of the two P4.6ad deferrals. The shared Autonomous Room card (New
+Chat, Edit Enclave, Settings defaults) now previews the next fire time as
+you type, via v4's own `croner` dependency at v4's exact range (^10.0.1).
+v4's `tryCronNextRun` ported verbatim with its three arms: "Next run:
+<local time>", "Parses, but never fires from now.", and "Invalid cron:
+<croner's message>". The shape-only five-field check (`isCronShapeValid`)
+it replaces is retired. The server's hand-rolled `enclave::cron` is
+untouched — v4 previews in the browser against the local `Date`, and the
+two agree by construction.
+
 P4.6an unit 1 (the order's server-gap contingency, NOT expected to
 fire): `dangerousContentSettings` now goes through a hand-rolled
 Zod-faithful parse instead of a serde struct round-trip. The struct
