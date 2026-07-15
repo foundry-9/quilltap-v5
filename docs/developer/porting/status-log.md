@@ -13302,3 +13302,51 @@ spacing is the flex `gap-1`, not text. An assertion on the pretty string
 `"1.5K / 320 tokens"` is asserting something NEITHER framework produces.
 
 **Gate:** `ng test` **899** (was 846; +53), full suite green. SPA 0.5.103.
+
+## P4.6ap unit 3 — the chat-totals header summary (lane B)
+
+`apps/web/src/app/chat/chat-cost-summary.ts` (v4
+`components/chat/ChatCostSummary.tsx`, COMPACT variant) mounted in
+`chat/conversation-header.ts`, over the round's **Shared-contract §1
+`chatGetCost`** verb (lane A's). **This CLOSES the P4.6an "Salon token/cost
+display" deferral** (with unit 2).
+
+**Cross-lane shape.** `ChatGetCostRequest` + `ChatCostDto` live in the
+lane-owned `chat/chat-cost.api.ts` per §1, NOT `core-contract.ts` — the
+request `type` is bridged with a cast at the dispatch until the unifier folds
+it into the `CoreRequest` union name-for-name against `types.rs` (the P4.6am /
+P4.d3 precedent). The spec's canned breakdown is the §1 body VERBATIM so the
+unifier can drop the mock without rewriting the shape.
+
+**The refresh key is the one real design call.** v4 passes
+`refreshKey={messages.length}`; v5 passes `chat()!.messages.length` — the
+CANONICAL server list, deliberately not `displayMessages()`. The latter
+carries the optimistic user bubble, which would re-key the cost query
+mid-stream and fetch totals for a turn the server has not written yet. It
+rides the query key rather than a manual invalidation, which is the same
+"re-fetch when it changes" semantics v4 gets from its effect deps.
+
+**v4's suppression rules, all carried (and all spec'd):** `!show` renders
+nothing AND skips the fetch entirely (v4 returns before fetching); compact
+shows no loading state (v4's loading check is variant-aware — the boxed
+variant's pulse is why); `totalTokens === 0` renders nothing; and a FAILED
+fetch renders nothing — v4 catches, `console.warn`s, and leaves `costData`
+null on purpose ("a missing cost breakdown is a UI degradation, not a red
+console alarm every render"). TanStack's error state gives the same outcome
+for free, so there is deliberately no error branch.
+
+**Named deferrals (not omissions):** the default/boxed `ChatCostSummary`
+variant and the `detailed=true` arm (`messageBreakdown` /
+`systemEventBreakdown`) — NO v4 client calls either; a spec pins that v5 never
+sends `detailed`. The **LLM-Inspector button** also stays deferred: v4 renders
+it from the SAME toolbar effect as the cost summary
+(`SalonView.tsx:990-1027`), which makes them look like one feature — they are
+not; the Inspector is its own subsystem, gated by `llmLoggingSettings.enabled`.
+
+**Same whitespace gotcha as unit 2:** the compact summary renders the total
+TWICE (an `md:inline` span with the "tokens" word, an `md:hidden` bare
+number), and inter-element whitespace is stripped — the DOM text is
+`15.4K tokens15.4K•$0.023`. Also note `$0.023`, not `$0.0234`: 0.0234 is above
+the $0.01 band edge, so it takes `formatCostForDisplay`'s 3-digit arm.
+
+**Gate:** `ng test` **914** (was 899; +15), `ng build` clean. SPA 0.5.104.

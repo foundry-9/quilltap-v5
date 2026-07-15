@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.6ap unit 3: the chat-totals header summary (Salon SPA lane). Ports v4
+components/chat/ChatCostSummary.tsx (COMPACT variant — v4's Salon is the
+only caller and never asks for the other one) into the conversation header,
+over the round's Shared-contract §1 chatGetCost verb that lane A provides;
+the request/DTO types live in a lane-owned chat/chat-cost.api.ts and the
+verb is route-mocked until unification. Gated on
+tokenDisplaySettings.showChatTotals from the already-shared settings query,
+refresh-keyed on the CANONICAL server message count (not the optimistic
+display list, which would fetch totals mid-stream for an unwritten turn).
+Carries v4's suppression rules — hidden (no fetch at all), loading, zero
+totals, and a failed fetch all render nothing — plus the openrouter-estimate
+and unavailable price-source markers. SPA 0.5.104.
+
 P4.6ap unit 2: the per-message token badge (Salon SPA lane). Ports v4
 components/chat/TokenBadge.tsx to apps/web/src/app/chat/token-badge.ts and
 mounts it in the message-row timestamp row behind v4's gate

@@ -1,19 +1,26 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
-import type { ChatDetail } from '../core/core-contract';
+import type { ChatDetail, ChatSettingsDto } from '../core/core-contract';
 import { CopyChatIdButton } from '../ui/copy-chat-id-button';
 import { Icon } from '../ui/icon';
+import { ChatCostSummary } from './chat-cost-summary';
 
 /**
  * The conversation header (v4 injects this via `usePageToolbar`; v5 renders it
- * inline). Project breadcrumb → title → danger badges → the copy-conversation-ID
- * button. Character links and the cost/inspector cluster are deferrals.
+ * inline). Project breadcrumb → title → danger badges → the chat-totals summary
+ * → the entry cluster (edit-enclave / gallery / copy-conversation-ID).
+ *
+ * Character links remain a deferral. So does the **LLM-Inspector button**, which
+ * v4 renders from the same toolbar effect as the cost summary
+ * (`SalonView.tsx:990-1027`, gated by `llmLoggingSettings.enabled`) — sharing an
+ * effect makes them look like one feature, but the Inspector is a separate
+ * subsystem with its own surface.
  */
 @Component({
   selector: 'qt-conversation-header',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon, CopyChatIdButton],
+  imports: [RouterLink, Icon, CopyChatIdButton, ChatCostSummary],
   template: `
     <header class="flex items-center gap-2 text-sm min-w-0 px-4 py-3 border-b qt-border-default">
       @if (chat().projectId && chat().projectName) {
@@ -49,6 +56,14 @@ import { Icon } from '../ui/icon';
       }
 
       <span class="flex-1"></span>
+      @if (showChatTotals()) {
+        <qt-chat-cost-summary
+          [chatId]="chat().id"
+          [show]="showChatTotals()"
+          [refreshKey]="messageCount()"
+          class="flex-shrink-0"
+        />
+      }
       @if (isAutonomous()) {
         <button
           type="button"
@@ -75,6 +90,14 @@ import { Icon } from '../ui/icon';
 })
 export class ConversationHeader {
   readonly chat = input.required<ChatDetail>();
+  /** The shared chat-settings row — the totals summary reads `tokenDisplaySettings`. */
+  readonly settings = input<ChatSettingsDto | null>(null);
+  /**
+   * v4's `refreshKey={messages.length}` (`SalonView.tsx:1017`) — the summary
+   * re-fetches whenever the message count moves, since a new turn is exactly
+   * what changes the totals.
+   */
+  readonly messageCount = input(0);
   /** Open the in-chat photo gallery (v4 SalonView sidebar gallery entry). */
   readonly openGallery = output<void>();
   /**
@@ -85,6 +108,11 @@ export class ConversationHeader {
    * no confirmation dialog; the button opens the modal directly.
    */
   readonly editEnclave = output<void>();
+
+  /** v4 `chatSettings?.tokenDisplaySettings?.showChatTotals` — default false. */
+  protected readonly showChatTotals = computed(
+    () => this.settings()?.tokenDisplaySettings?.showChatTotals ?? false,
+  );
 
   protected readonly isAutonomous = computed(() => this.chat().chatType === 'autonomous');
 

@@ -152,8 +152,14 @@ interface CascadePrompt {
     </div>
 
     <ng-template #chatContentTpl>
+      <!-- messageCount is v4's refreshKey={messages.length}. It reads the
+           CANONICAL server list, not displayMessages(): the latter carries the
+           optimistic user bubble, which would re-key the cost query mid-stream
+           and fetch totals for a turn the server has not written yet. -->
       <qt-conversation-header
         [chat]="chat()!"
+        [settings]="settings()"
+        [messageCount]="chat()!.messages.length"
         (openGallery)="showGallery.set(true)"
         (editEnclave)="showEditEnclave.set(true)"
       />
