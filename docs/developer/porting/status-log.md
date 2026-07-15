@@ -14523,3 +14523,36 @@ adapted assertion still catches the original bug. Restored; green.
 
 **Gate:** `ng test` 115 files / 976 tests (968 + 8), `ng build` clean.
 SPA 0.5.115.
+
+## P4.6at (lane C) unit 3 — the minHeight residual (2026-07-15)
+
+**Closes the residual gap named in the P4.6aq unit-1 record.** The P4.6al-adopted
+sites pre-date the `minHeight` input and passed nothing, so they rendered
+content-height where v4 gives them a floor. Sixteen fields, three files, one
+binding each:
+
+| site | v4 source | fields (by ariaLabel) |
+|---|---|---|
+| `memory/memory-editor.ts` | `components/memory/memory-editor.tsx:154` | Memory content **10rem** |
+| `screens/characters/new/new-character.ts` | `app/aurora/new/NewCharacterView.tsx:310-438` | Identity 6 / Description 8 / Manifesto 8 / Personality 8 / Scenario 8 / First Message 6 / Example Dialogues **12** / System Prompt 8 rem |
+| `screens/characters/edit/details-tab.ts` | `app/aurora/[id]/edit/components/CharacterBasicInfo.tsx:346-553` | Identity 6 / Description 8 / Manifesto 8 / Personality 8 / First Message 6 / Example Dialogues **12** / System Prompt 8 rem |
+
+**The order's table was RE-VERIFIED against v4 `02865bdb`, not trusted** (the
+P4.6aq order's own table was wrong in 4 of 10 rows). This time all sixteen rows
+check out, and every v5 field set matches the table field-for-field. Matched by
+ariaLabel throughout — the values are per-field, so position would be a coin
+flip. The v5 sites carry Title-Case labels where v4 has sentence case ("First
+Message" vs v4 "First message"): a pre-existing divergence, untouched here, and
+the reason the specs key off the v5 label.
+
+The edit tab's scenario field (v4 `:495`, 6rem) is NOT here — it lives in
+`scenario-editor.ts` and has carried its value since P4.6aq.
+
+**Specs (3 new, one per host).** The mechanism (`[style.min-height]` on the
+`qt-rich-editor` element) is already proven by `markdown-field.spec.ts`; these
+pin the VALUES, which nothing else would catch. Each walks up from ProseMirror's
+`[aria-label]` content div via `closest('qt-rich-editor')` — `:has()` is not
+reliable under jsdom/nwsapi.
+
+**Gate:** `ng test` 115 files / 979 tests (976 + 3), `ng build` clean.
+SPA 0.5.116.

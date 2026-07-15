@@ -59,6 +59,7 @@ import { importanceLabel, importancePercent, keywordsFromString, keywordsToStrin
           </p>
           <qt-markdown-field
             ariaLabel="Memory content"
+            minHeight="10rem"
             [value]="content()"
             (contentChange)="content.set($event)"
           />

@@ -120,6 +120,7 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
           </p>
           <qt-markdown-field
             ariaLabel="Identity"
+            minHeight="6rem"
             [value]="form().identity"
             (contentChange)="setField('identity', $event)"
           />
@@ -133,6 +134,7 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
           </p>
           <qt-markdown-field
             ariaLabel="Description"
+            minHeight="8rem"
             [value]="form().description"
             (contentChange)="setField('description', $event)"
           />
@@ -146,6 +148,7 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
           </p>
           <qt-markdown-field
             ariaLabel="Manifesto"
+            minHeight="8rem"
             [value]="form().manifesto"
             (contentChange)="setField('manifesto', $event)"
           />
@@ -159,6 +162,7 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
           </p>
           <qt-markdown-field
             ariaLabel="Personality"
+            minHeight="8rem"
             [value]="form().personality"
             (contentChange)="setField('personality', $event)"
           />
@@ -171,6 +175,7 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
           </p>
           <qt-markdown-field
             ariaLabel="Scenario"
+            minHeight="8rem"
             [value]="form().scenario"
             (contentChange)="setField('scenario', $event)"
           />
@@ -183,6 +188,7 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
           </p>
           <qt-markdown-field
             ariaLabel="First Message"
+            minHeight="6rem"
             [value]="form().firstMessage"
             (contentChange)="setField('firstMessage', $event)"
           />
@@ -195,6 +201,7 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
           </p>
           <qt-markdown-field
             ariaLabel="Example Dialogues"
+            minHeight="12rem"
             [value]="form().exampleDialogues"
             (contentChange)="setField('exampleDialogues', $event)"
           />
@@ -217,6 +224,7 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
           </p>
           <qt-markdown-field
             ariaLabel="System Prompt"
+            minHeight="8rem"
             [value]="form().systemPrompt"
             (contentChange)="setField('systemPrompt', $event)"
           />

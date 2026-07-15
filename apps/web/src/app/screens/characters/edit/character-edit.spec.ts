@@ -127,6 +127,32 @@ describe('CharacterEdit', () => {
     vi.restoreAllMocks();
   });
 
+  it('gives every Details-tab prose field v4’s own minHeight', async () => {
+    // v4 CharacterBasicInfo.tsx:346/364/382/400/517/535/553. The seven fields do
+    // NOT share a height — matched by aria-label, never by position, since v4's
+    // own values are per-field. (The tab's scenario field is v4 :495, 6rem; it
+    // lives in scenario-editor.ts and has carried its value since P4.6aq.) The
+    // mechanism is proven in markdown-field.spec; this pins the VALUES.
+    const fixture = await render(stubClient(character()));
+    const expected: Record<string, string> = {
+      Identity: '6rem',
+      Description: '8rem',
+      Manifesto: '8rem',
+      Personality: '8rem',
+      'First Message': '6rem',
+      'Example Dialogues': '12rem',
+      'System Prompt': '8rem',
+    };
+    for (const [label, minHeight] of Object.entries(expected)) {
+      // aria-label lands on ProseMirror's content div; the height is bound on
+      // the qt-rich-editor element wrapping it.
+      const content = fixture.nativeElement.querySelector(`[aria-label="${label}"]`) as HTMLElement;
+      expect(content, label).not.toBeNull();
+      const editor = content.closest('qt-rich-editor') as HTMLElement;
+      expect(editor.style.minHeight, label).toBe(minHeight);
+    }
+  });
+
   it('renders the header with the character name and the Details tab by default', async () => {
     const fixture = await render(stubClient(character()));
     expect(fixture.nativeElement.textContent).toContain('Edit: Bertie Wooster');

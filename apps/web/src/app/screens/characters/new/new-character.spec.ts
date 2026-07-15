@@ -106,6 +106,32 @@ describe('buildCreateCharacterBag', () => {
 });
 
 describe('NewCharacter', () => {
+  it('gives every prose field v4’s own minHeight', async () => {
+    // v4 NewCharacterView.tsx:310/327/344/361/378/395/412/438. The eight fields
+    // do NOT share a height — matched by aria-label, never by position, since
+    // v4's own values are per-field. The mechanism is proven in
+    // markdown-field.spec; this pins the VALUES.
+    const fixture = await render(stubClient());
+    const expected: Record<string, string> = {
+      Identity: '6rem',
+      Description: '8rem',
+      Manifesto: '8rem',
+      Personality: '8rem',
+      Scenario: '8rem',
+      'First Message': '6rem',
+      'Example Dialogues': '12rem',
+      'System Prompt': '8rem',
+    };
+    for (const [label, minHeight] of Object.entries(expected)) {
+      // aria-label lands on ProseMirror's content div; the height is bound on
+      // the qt-rich-editor element wrapping it.
+      const content = fixture.nativeElement.querySelector(`[aria-label="${label}"]`) as HTMLElement;
+      expect(content, label).not.toBeNull();
+      const editor = content.closest('qt-rich-editor') as HTMLElement;
+      expect(editor.style.minHeight, label).toBe(minHeight);
+    }
+  });
+
   it('renders the v4-verbatim header and disabled AI Wizard affordance', async () => {
     const fixture = await render(stubClient());
     expect(fixture.nativeElement.querySelector('h1').textContent).toContain('Create Character');

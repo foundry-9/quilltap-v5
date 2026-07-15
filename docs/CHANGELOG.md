@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+P4.6at unit 3 (2026-07-15): the minHeight residual. The sixteen form fields the
+P4.6al editor adoption left without v4's minHeight now bind it: the memory
+editor's content field (10rem), the eight New Character prose fields
+(6/8/8/8/8/6/12/8rem) and the seven Details-tab prose fields
+(6/8/8/8/6/12/8rem). Every value re-verified against v4 by aria-label rather
+than position; three specs pin them per host. Closes the residual gap named in
+the P4.6aq record. SPA 0.5.116.
+
 P4.6at unit 2 (2026-07-15): the Default Aesthetics card. v4's third Images-tab
 card now exists in v5 (closing a named P4.6ao/ap/aq-round deferral): two shared
 aesthetic-editor-fields over the systemImageAestheticsGet/Set verbs, under a

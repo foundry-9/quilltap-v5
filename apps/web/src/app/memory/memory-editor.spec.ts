@@ -75,6 +75,14 @@ async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
 }
 
 describe('MemoryEditor', () => {
+  it('gives the content editor v4’s minHeight', () => {
+    // v4 memory-editor.tsx:154 — `minHeight="10rem"`. The mechanism is proven in
+    // markdown-field.spec; this pins the VALUE, which no other spec would catch.
+    const fixture = render(mem({}), async () => ({}));
+    const editor = fixture.nativeElement.querySelector('qt-rich-editor') as HTMLElement;
+    expect(editor.style.minHeight).toBe('10rem');
+  });
+
   it('titles Add Memory on create and Edit Memory on edit', () => {
     expect(render(null, async () => ({})).nativeElement.textContent).toContain('Add Memory');
     expect(render(mem({}), async () => ({})).nativeElement.textContent).toContain('Edit Memory');

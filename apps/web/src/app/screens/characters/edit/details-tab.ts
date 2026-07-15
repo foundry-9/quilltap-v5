@@ -230,6 +230,7 @@ import { TagChipEditor } from './tag-chip-editor';
         </p>
         <qt-markdown-field
           ariaLabel="Identity"
+          minHeight="6rem"
           [value]="form().identity"
           (contentChange)="fieldChange.emit({ ...form(), identity: $event })"
         />
@@ -244,6 +245,7 @@ import { TagChipEditor } from './tag-chip-editor';
         </p>
         <qt-markdown-field
           ariaLabel="Description"
+          minHeight="8rem"
           [value]="form().description"
           (contentChange)="fieldChange.emit({ ...form(), description: $event })"
         />
@@ -258,6 +260,7 @@ import { TagChipEditor } from './tag-chip-editor';
         </p>
         <qt-markdown-field
           ariaLabel="Manifesto"
+          minHeight="8rem"
           [value]="form().manifesto"
           (contentChange)="fieldChange.emit({ ...form(), manifesto: $event })"
         />
@@ -272,6 +275,7 @@ import { TagChipEditor } from './tag-chip-editor';
         </p>
         <qt-markdown-field
           ariaLabel="Personality"
+          minHeight="8rem"
           [value]="form().personality"
           (contentChange)="fieldChange.emit({ ...form(), personality: $event })"
         />
@@ -291,6 +295,7 @@ import { TagChipEditor } from './tag-chip-editor';
         </p>
         <qt-markdown-field
           ariaLabel="First Message"
+          minHeight="6rem"
           [value]="form().firstMessage"
           (contentChange)="fieldChange.emit({ ...form(), firstMessage: $event })"
         />
@@ -306,6 +311,7 @@ import { TagChipEditor } from './tag-chip-editor';
         </p>
         <qt-markdown-field
           ariaLabel="Example Dialogues"
+          minHeight="12rem"
           [value]="form().exampleDialogues"
           (contentChange)="fieldChange.emit({ ...form(), exampleDialogues: $event })"
         />
@@ -319,6 +325,7 @@ import { TagChipEditor } from './tag-chip-editor';
         </p>
         <qt-markdown-field
           ariaLabel="System Prompt"
+          minHeight="8rem"
           [value]="form().systemPrompt"
           (contentChange)="fieldChange.emit({ ...form(), systemPrompt: $event })"
         />
