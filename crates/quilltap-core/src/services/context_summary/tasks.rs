@@ -16,8 +16,10 @@ use crate::model::completion::{CompletionMessage, CompletionProvider};
 use crate::services::cheap_llm_exec::{CheapLlmTaskExecutor, CheapLlmTaskResult};
 
 use super::prompt_text::{
-    CHAT_TITLE_FROM_SUMMARY_PROMPT, FOLD_SUMMARY_PROMPT, HELP_CHAT_TITLE_FROM_SUMMARY_PROMPT,
+    CHAT_TITLE_CONSIDERATION_PROMPT, CHAT_TITLE_FROM_SUMMARY_PROMPT, FOLD_SUMMARY_PROMPT,
+    HELP_CHAT_TITLE_CONSIDERATION_PROMPT, HELP_CHAT_TITLE_FROM_SUMMARY_PROMPT,
 };
+use crate::memory_tasks::strip_code_fences;
 
 /// A conversation message the fold task renders (v4 `ChatMessage`: `role` is
 /// already lowercased `'user' | 'assistant'`).
@@ -151,9 +153,215 @@ pub async fn generate_help_chat_title_from_summary<C: CompletionProvider>(
         .await
 }
 
+// ===========================================================================
+// considerTitleUpdate / considerHelpChatTitleUpdate (P4.6ao — the TITLE_UPDATE
+// handler's two cheap-LLM tasks)
+// ===========================================================================
+
+/// v4's `considerTitleUpdate` / `considerHelpChatTitleUpdate` result payload.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TitleConsideration {
+    pub needs_new_title: bool,
+    pub reason: String,
+    pub suggested_title: Option<String>,
+}
+
+/// The shared user message both consideration tasks build: the current title, the
+/// context line, and the conversation window (each message's content truncated to
+/// 500 UTF-16 units, role UPPERCASED).
+fn consideration_user_content(
+    current_title: &str,
+    recent_messages: &[ChatMessage],
+    existing_summary_or_title: Option<&str>,
+) -> String {
+    let conversation_text = recent_messages
+        .iter()
+        .map(|m| {
+            format!(
+                "{}: {}",
+                m.role.to_uppercase(),
+                utf16_truncate(&m.content, 500)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    // `existingSummaryOrTitle ? … : 'No previous context'` — JS-falsy, so an
+    // EMPTY string takes the else branch too.
+    let context_info = match existing_summary_or_title.filter(|s| !s.is_empty()) {
+        Some(ctx) => format!("Previous context: {ctx}"),
+        None => "No previous context".to_string(),
+    };
+
+    format!(
+        "Current Title: \"{current_title}\"\n\n{context_info}\n\nRecent Messages:\n{conversation_text}"
+    )
+}
+
+/// The shared parser: strip fences, `JSON.parse`, then coerce. `needsNewTitle` is
+/// a STRICT `=== true`; `reason` falls back through `||` (so an empty string
+/// becomes the placeholder); `suggestedTitle` is trimmed, de-quoted (ONE quote at
+/// each end), capped at 60 UTF-16 units, and `|| null`-ed (so `''` → `None`).
+/// Any parse failure → the "Failed to parse response" no-op result.
+fn parse_consideration(content: &str) -> TitleConsideration {
+    let clean = strip_code_fences(content);
+    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&clean) else {
+        return TitleConsideration {
+            needs_new_title: false,
+            reason: "Failed to parse response".to_string(),
+            suggested_title: None,
+        };
+    };
+
+    // `parsed.suggestedTitle` — only cleaned when it's a truthy STRING (v4 guards
+    // `if (suggestedTitle && typeof suggestedTitle === 'string')`); any other
+    // truthy value passes through to the `|| null` below unchanged, and every
+    // non-string is dropped there because it can't be a title.
+    let suggested_title = match parsed.get("suggestedTitle").and_then(|v| v.as_str()) {
+        Some(raw) if !raw.is_empty() => {
+            let t = strip_edge_quotes(js_trim(raw));
+            let t = if utf16_len(&t) > 60 {
+                format!("{}...", utf16_truncate(&t, 57))
+            } else {
+                t
+            };
+            // `suggestedTitle || null` — a cleaned-to-empty title is falsy.
+            if t.is_empty() {
+                None
+            } else {
+                Some(t)
+            }
+        }
+        _ => None,
+    };
+
+    TitleConsideration {
+        needs_new_title: parsed.get("needsNewTitle") == Some(&serde_json::Value::Bool(true)),
+        // `parsed.reason || 'No reason provided'`.
+        reason: match parsed.get("reason").and_then(|v| v.as_str()) {
+            Some(r) if !r.is_empty() => r.to_string(),
+            _ => "No reason provided".to_string(),
+        },
+        suggested_title,
+    }
+}
+
+/// v4 `considerTitleUpdate`: does this chat need a new (literary) title?
+pub async fn consider_title_update<C: CompletionProvider>(
+    executor: &CheapLlmTaskExecutor,
+    completion: &C,
+    current_title: &str,
+    recent_messages: &[ChatMessage],
+    existing_summary_or_title: Option<&str>,
+    selection: &CheapLlmSelection,
+) -> CheapLlmTaskResult<TitleConsideration> {
+    let messages = vec![
+        CompletionMessage::system(CHAT_TITLE_CONSIDERATION_PROMPT),
+        CompletionMessage::user(consideration_user_content(
+            current_title,
+            recent_messages,
+            existing_summary_or_title,
+        )),
+    ];
+    executor
+        .execute(
+            completion,
+            selection,
+            messages,
+            parse_consideration,
+            None,
+            None,
+            None,
+            Some("consider-title-update"),
+        )
+        .await
+}
+
+/// v4 `considerHelpChatTitleUpdate`: the same evaluation for a help-like chat —
+/// same user message, same parser, a practical (non-literary) system prompt.
+/// v4 passes the SAME `'consider-title-update'` task type as the literary arm.
+pub async fn consider_help_chat_title_update<C: CompletionProvider>(
+    executor: &CheapLlmTaskExecutor,
+    completion: &C,
+    current_title: &str,
+    recent_messages: &[ChatMessage],
+    existing_summary_or_title: Option<&str>,
+    selection: &CheapLlmSelection,
+) -> CheapLlmTaskResult<TitleConsideration> {
+    let messages = vec![
+        CompletionMessage::system(HELP_CHAT_TITLE_CONSIDERATION_PROMPT),
+        CompletionMessage::user(consideration_user_content(
+            current_title,
+            recent_messages,
+            existing_summary_or_title,
+        )),
+    ];
+    executor
+        .execute(
+            completion,
+            selection,
+            messages,
+            parse_consideration,
+            None,
+            None,
+            None,
+            Some("consider-title-update"),
+        )
+        .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn consideration_parses_and_cleans() {
+        let r = parse_consideration(
+            r#"{"needsNewTitle":true,"reason":"topic shifted","suggestedTitle":"  \"A Ballonet Betrayed\"  "}"#,
+        );
+        assert!(r.needs_new_title);
+        assert_eq!(r.reason, "topic shifted");
+        assert_eq!(r.suggested_title.as_deref(), Some("A Ballonet Betrayed"));
+    }
+
+    #[test]
+    fn consideration_defaults_and_strictness() {
+        // `needsNewTitle` is a STRICT === true: the string "true" is not enough.
+        let r = parse_consideration(r#"{"needsNewTitle":"true"}"#);
+        assert!(!r.needs_new_title);
+        assert_eq!(r.reason, "No reason provided");
+        assert_eq!(r.suggested_title, None);
+        // A null title stays None.
+        let r = parse_consideration(r#"{"needsNewTitle":true,"suggestedTitle":null}"#);
+        assert!(r.needs_new_title);
+        assert_eq!(r.suggested_title, None);
+    }
+
+    #[test]
+    fn consideration_unparseable_is_a_no_op() {
+        let r = parse_consideration("I am not JSON");
+        assert!(!r.needs_new_title);
+        assert_eq!(r.reason, "Failed to parse response");
+        assert_eq!(r.suggested_title, None);
+    }
+
+    #[test]
+    fn consideration_title_is_capped_at_60() {
+        let long = "b".repeat(80);
+        let r = parse_consideration(&format!(r#"{{"suggestedTitle":"{long}"}}"#));
+        let t = r.suggested_title.unwrap();
+        assert_eq!(utf16_len(&t), 60);
+        assert!(t.ends_with("..."));
+    }
+
+    #[test]
+    fn consideration_context_line_falls_back_when_empty() {
+        // JS-falsy: an empty existing summary takes the 'No previous context' arm.
+        let c = consideration_user_content("T", &[], Some(""));
+        assert!(c.contains("No previous context"));
+        let c = consideration_user_content("T", &[], Some("prior"));
+        assert!(c.contains("Previous context: prior"));
+    }
 
     #[test]
     fn clean_title_strips_quotes_and_caps() {

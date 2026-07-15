@@ -39,6 +39,48 @@ use serde_json::{json, Value};
 use crate::db::js_number_to_json;
 use crate::db::{chats_messages_read, chats_read};
 
+/// The `estimateMessageCost` seam — v4's third export from this file, resolved
+/// host-side (the pricing cascade needs the wire). A caller that wants a cost
+/// figure on a system event takes one of these; [`NoMessageCost`] is the default
+/// "no figure available" implementation the differentials run against.
+///
+/// The host's impl is the same PricingFetcher cascade
+/// ([`crate::services::pricing_fetcher::PricingFetcher::estimate_message_cost`])
+/// that the finalizer's cost tracker uses.
+///
+/// (`CarinaCostEstimator` in [`crate::services::carina_memory_extraction`] is the
+/// same shape for the same v4 function; consolidating the two is a follow-up, not
+/// this unit's business.)
+pub trait MessageCostEstimator {
+    fn estimate(
+        &self,
+        provider: &str,
+        model: &str,
+        prompt_tokens: i64,
+        completion_tokens: i64,
+        user_id: &str,
+    ) -> impl std::future::Future<Output = Option<f64>> + Send;
+}
+
+/// The default estimator: no cost figure. Matches what the ported
+/// context-summary seams already emit for TITLE_GENERATION events
+/// (`estimatedCostUSD: null`), which is what the oracles drive.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoMessageCost;
+
+impl MessageCostEstimator for NoMessageCost {
+    async fn estimate(
+        &self,
+        _provider: &str,
+        _model: &str,
+        _prompt_tokens: i64,
+        _completion_tokens: i64,
+        _user_id: &str,
+    ) -> Option<f64> {
+        None
+    }
+}
+
 /// v4's all-zeros fallback object — the chat-not-found arm, the no-messages arm,
 /// and both catch arms.
 fn zeros() -> Value {

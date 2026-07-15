@@ -122,6 +122,7 @@ pub mod suparna_mail;
 pub mod suparna_notifications;
 pub mod system_prompt_compiler;
 pub mod text_tool_loop;
+pub mod title_update_job;
 pub mod tool_build;
 pub mod tool_call_threading;
 pub mod tool_execution;

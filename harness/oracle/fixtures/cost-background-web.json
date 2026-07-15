@@ -1,6 +1,20 @@
 {
   "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
   "seedTimestamp": "2026-01-15T10:00:00.000Z",
+  "frozenNowMs": 1768564800000,
+
+  "cannedTitles": {
+    "literary": {
+      "content": "{\"needsNewTitle\": true, \"reason\": \"the generic title says nothing of the ballonet\", \"suggestedTitle\": \"The Ballonet's Slow Betrayal\"}",
+      "promptTokens": 42,
+      "completionTokens": 11
+    },
+    "help": {
+      "content": "{\"needsNewTitle\": true, \"reason\": \"the title should name the actual question\", \"suggestedTitle\": \"Setting up an Anthropic connection profile\"}",
+      "promptTokens": 37,
+      "completionTokens": 9
+    }
+  },
 
   "userEnabledId": "c0000000-0000-4000-8000-000000000001",
   "userDisabledId": "c0000000-0000-4000-8000-000000000002",

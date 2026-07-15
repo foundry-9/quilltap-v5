@@ -13141,3 +13141,89 @@ Also: `readJobs` had to go through v4's REAL `BackgroundJobsRepository`
 green, over a fresh `02865bdb` oracle. The six regenerate cases diff the
 response body AND the `background_jobs` rows (type / payload / priority −1 /
 maxAttempts 3 / status PENDING), plus the dedupe identity claim.
+
+---
+
+## P4.6ao unit 3 — the `TITLE_UPDATE` handler (tier 1, tier-3 verified)
+
+**Landed 2026-07-15** (lane A of the P4.6ao ∥ ap ∥ aq round). **The live gap
+is CLOSED.** `KNOWN_JOB_TYPES` listed `"TITLE_UPDATE"` but no handler was
+registered in core or the host, while the ported `context_summary` has been
+enqueuing one at every title checkpoint — so on a real instance every title job
+died on the runner's "recognized but not yet available" fallback, and with it
+the automatic story-background trigger (which only fires from inside this
+handler).
+
+**Ported:**
+
+- `considerTitleUpdate` + `considerHelpChatTitleUpdate`
+  (`lib/memory/cheap-llm-tasks/chat-tasks.ts:386,:529`) into the existing
+  `services::context_summary::tasks`, beside the three title/fold tasks already
+  there. Their two system prompts were extracted MECHANICALLY into the
+  generated `prompt_text.rs` (no byte hand-transcribed).
+- `handleTitleUpdate` (`lib/background-jobs/handlers/title-update.ts:36-297`)
+  as `services::title_update_job`, registered in the host spine beside the
+  other six job types.
+
+**The cursor discipline is the whole subtlety, and it is asymmetric.** FOUR
+arms advance `lastRenameCheckInterchange` deliberately — manually-renamed, no
+cheap LLM, task failure, and "no rename needed" — because
+`shouldCheckTitleAtInterchange` otherwise keeps crossing the same checkpoint
+and re-fires the job every following turn. **Exactly ONE arm returns WITHOUT
+advancing**: an empty visible conversation (`:125-127`). Both behaviors are
+pinned by their own differential case; a mutation making the empty arm advance
+fails `empty_conversation`.
+
+**One v4 arm is DEAD and is not carried:** `if (!cheapLLMSelection)`.
+`getCheapLLMProvider`'s priority-5 fallback always yields the current profile,
+and the handler has already thrown if that profile is missing — so the arm is
+unreachable in v4 too. The port's `get_cheap_llm_provider` returns a selection
+non-optionally for that same reason (the `context_summary:478` precedent).
+
+**New seam:** `services::cost_estimation::MessageCostEstimator` +
+`NoMessageCost`, the `estimateMessageCost` boundary (v4's third export from the
+file unit 1 ported). The host's `PricingMessageCost` wires the same
+PricingFetcher cascade `PricingCarinaCost` uses, so the TITLE_GENERATION event
+carries a real `estimatedCostUSD` in production while the differential drives
+`null` on both sides (the established context-summary-tier3 arrangement).
+`CarinaCostEstimator` is the same shape for the same v4 function — consolidating
+the two is a follow-up, deliberately not done here.
+
+**The oracle gotcha that would have made this vacuous.** v4's
+`executeCheapLLMTask` resolves an API key BEFORE the (mocked) provider call and
+THROWS when none resolves — and `executeCheapLLMTask` catches that into
+`{success:false}`, which is the advance-cursor-and-return arm. The fixture
+seeds no `api_keys` row (the repo factory exposes no accessor for it), so the
+first oracle run produced **ten cases that all looked identical** — cursor
+advanced, no rename, no events, no jobs — and would have "passed" against a
+port doing nothing. Fixed by mocking `getApiKeyForCheapLLMSelection` to a
+canned key (the avatar-job precedent). **Lesson: when every case of a new
+oracle agrees, suspect a shared upstream gate, not a simple subject.**
+
+A second near-miss in the same run: `disabled_no_background` pointed at a chat
+with NO messages, so it took the empty-conversation arm and tested nothing
+about the disabled gate. Re-pointed at the seeded chat under the
+disabled-settings user. The empty-conversation arm got its own case instead.
+
+**Differential:** `title_update_tier3_equivalence` — 10 cases, green, over a
+fresh `02865bdb` oracle (`harness/oracle/cases/title-update-tier3.test.ts`).
+The canned reply is keyed by the SYSTEM prompt on both sides, so the literary
+vs help evaluator choice is itself pinned. `now_ms` is injected (the W4.9c
+frozen-clock precedent) so `updatedAt` is diffable. **Two mutation checks were
+run and both bit:** forcing `is_help_chat = false` fails `help_chat`; making
+the empty-conversation arm advance the cursor fails `empty_conversation`.
+
+    QT_ORACLE_TITLE_UPDATE=/tmp/oracle-title-update.ndjson \
+      cargo test -p quilltap-harness --test title_update_tier3_equivalence -- --nocapture
+
+**Plus a runner-registration E2E** (`title_update_runner_registration_e2e`, no
+oracle needed — it runs on the committed fixture alone): enqueue → claim →
+dispatch → COMPLETED through the real `JobRunner`. This is the guard for the
+actual bug, which the differential alone could NOT have caught: the handler
+FUNCTION being correct is not the same as the job type being REGISTERED, and a
+green differential over an unregistered handler is exactly the state this unit
+found. Mutation-checked: unregistering it fails with `lastError: Job type
+"TITLE_UPDATE" is recognized but its handler is not yet available in the native
+runner` — the very message real instances were getting. (Its pump dispatches
+TWO jobs, not one: a successful rename enqueues the story-background job and
+the same pump claims it.)

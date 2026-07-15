@@ -2,6 +2,29 @@
 
 ## Recent Changes
 
+P4.6ao unit 3 (tier 1): the TITLE_UPDATE job handler. KNOWN_JOB_TYPES listed
+TITLE_UPDATE but nothing was registered, so the jobs context_summary enqueues
+at every title checkpoint died on the runner's loud fallback -- which also
+meant the automatic story-background trigger never fired. Ports v4's
+handleTitleUpdate (all four checkpoint-cursor arms, the throwing reads, the
+uncensored rerouting for dangerous chats, the TITLE_GENERATION spend event,
+and the non-help-chat background kick over the already-ported gate) and its two
+cheap-LLM tasks, considerTitleUpdate and considerHelpChatTitleUpdate, plus
+their two byte-extracted system prompts. Registered in core and in the host
+spine, with the pricing cascade wired to the new MessageCostEstimator seam.
+
+New title_update_tier3_equivalence differential: 10 mocked-LLM cases over a
+fresh 02865bdb oracle, diffing the chat row, the system events, and the job
+rows. The canned reply is keyed by the system prompt on both sides, so a wrong
+evaluator prompt fails the case instead of silently answering the other arm.
+Plus a runner-registration E2E (enqueue, claim, dispatch, COMPLETED) -- the
+guard for the actual bug, which a differential over an unregistered handler
+would have passed.
+
+Also adds a small p4_6ao_wire_contract test pinning the round's shared-contract
+request shapes, since the SPA lane develops against a route mock and only meets
+these verbs live at unification.
+
 P4.6ao unit 2 (tier 1): the regenerate-background un-refusal. The
 `chatRegenerateBackground` dispatch no longer answers a typed refusal — it
 runs v4's handleRegenerateBackground: the three badRequest arms (story

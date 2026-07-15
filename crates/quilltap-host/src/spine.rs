@@ -106,6 +106,7 @@ use quilltap_core::services::chat_create::{
 };
 use quilltap_core::services::chat_events::{ChatEvent, EventSink};
 use quilltap_core::services::cheap_llm_exec::{CheapLlmLogConfig, CheapLlmTaskExecutor};
+use quilltap_core::services::cost_estimation::MessageCostEstimator;
 use quilltap_core::services::creation_progress::{CreationProgressBus, CreationProgressEmitter};
 use quilltap_core::services::dangerous_content::gatekeeper_job::{
     handle_chat_danger_classification, ChatDangerClassificationJob, RealDangerAnnouncer,
@@ -133,6 +134,7 @@ use quilltap_core::services::orchestrator::{
 };
 use quilltap_core::services::pricing_fetcher::{PricingContext, PricingFetch, PricingFetcher};
 use quilltap_core::services::story_background_job::StoryBackgroundGenerationHandler;
+use quilltap_core::services::title_update_job::TitleUpdateHandler;
 use quilltap_core::services::turn_orchestrator::ChainConfig;
 use quilltap_core::tools::ask_carina::{ErasedAskCarina, TypedAskCarina};
 use quilltap_core::tools::executor::BuiltInToolRunner;
@@ -1816,6 +1818,77 @@ impl<PF: PricingFetch + Send + Sync> CarinaCostEstimator for PricingCarinaCost<P
     }
 }
 
+/// The pricing-backed [`MessageCostEstimator`] — the same cascade
+/// [`PricingCarinaCost`] uses, for the TITLE_GENERATION system event's
+/// `estimatedCostUSD`.
+pub struct PricingMessageCost<PF: PricingFetch + Send + Sync> {
+    pub fetcher: Arc<PricingFetcher<PF>>,
+    pub db: Db,
+}
+
+impl<PF: PricingFetch + Send + Sync> MessageCostEstimator for PricingMessageCost<PF> {
+    fn estimate(
+        &self,
+        provider: &str,
+        model: &str,
+        prompt_tokens: i64,
+        completion_tokens: i64,
+        user_id: &str,
+    ) -> impl std::future::Future<Output = Option<f64>> + Send {
+        let ctx = build_pricing_context(&self.db, user_id);
+        let result = self.fetcher.estimate_message_cost(
+            Registry::built_in(),
+            provider,
+            model,
+            prompt_tokens,
+            completion_tokens,
+            now_unix_ms(),
+            &ctx,
+        );
+        async move { result.cost }
+    }
+}
+
+/// `TITLE_UPDATE` (P4.6ao) — a payload decode around the differential-verified
+/// [`handle_title_update`](quilltap_core::services::title_update_job::handle_title_update).
+/// Rebuilt per job so the cheap-LLM executor's log context carries this job's
+/// user/chat (the [`StoryBackgroundJobHandler`] precedent). `context_summary`
+/// enqueues these at every title checkpoint; before this registration they died
+/// on the runner's loud fallback, which also meant the automatic
+/// story-background trigger never fired.
+pub struct TitleUpdateJobHandler<PF: PricingFetch + Send + Sync + 'static> {
+    pub wire: WireConfig,
+    pub pricing: Arc<PricingFetcher<PF>>,
+}
+
+impl<PF: PricingFetch + Send + Sync + 'static> JobHandler for TitleUpdateJobHandler<PF> {
+    fn handle<'a>(&'a self, db: &'a Db, job: &'a BackgroundJob) -> JobFuture<'a> {
+        Box::pin(async move {
+            let payload: Value = serde_json::from_str(&job.payload).unwrap_or(Value::Null);
+            let chat_id = payload
+                .get("chatId")
+                .and_then(Value::as_str)
+                .map(String::from);
+            let inner = TitleUpdateHandler {
+                completion: self.wire.completion(db),
+                executor: CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+                    db: db.clone(),
+                    user_id: job.user_id.clone(),
+                    chat_id,
+                    message_id: None,
+                    ctx: LogContext::none(),
+                }),
+                now_ms: now_unix_ms(),
+                cost: PricingMessageCost {
+                    fetcher: Arc::clone(&self.pricing),
+                    db: db.clone(),
+                },
+            };
+            inner.handle(db, job).await
+        })
+    }
+}
+
 /// `CARINA_MEMORY_EXTRACTION` — a payload decode around the
 /// differential-verified [`handle_carina_memory_extraction`].
 /// `memory_extraction_limits: None` keeps the service defaults (the
@@ -2165,6 +2238,13 @@ impl SpineFactory for ProductionSpineFactory {
             (
                 "STORY_BACKGROUND_GENERATION".to_string(),
                 Box::new(StoryBackgroundJobHandler { wire: wire.clone() }),
+            ),
+            (
+                "TITLE_UPDATE".to_string(),
+                Box::new(TitleUpdateJobHandler {
+                    wire: wire.clone(),
+                    pricing: Arc::clone(&self.pricing),
+                }),
             ),
         ];
 
