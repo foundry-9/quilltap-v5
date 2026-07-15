@@ -12842,3 +12842,44 @@ compression; only message history is compressed) and rides the merge untouched.
 
 **Specs** (`agent-mode-compression-cards.spec.ts`, 16 cases). `ng test`
 805 → 821.
+
+## P4.6an unit 6 — Image Description + Dangerous Content (the async-select cards)
+
+**Image Description** (`ImageDescriptionSettings.tsx` →
+`image-description-settings.ts`). Two pickers over the connection profiles
+filtered to `supportsImageUpload === true`, each writing a nullable-string
+scalar ALONE (not inside a bag): `imageDescriptionProfileId` (tried for every
+attached image) and `uncensoredImageDescriptionProfileId` (only when the
+primary refuses). v4's `value || null` coercion means "auto-select" sends an
+explicit `null`. The keyless-profile option label (` ⚠️ No API Key`) carries
+over.
+
+**Dangerous Content** (`DangerousContentSettings.tsx`, 359 lines →
+`dangerous-content-settings.ts`) — the largest card, and the only one driving
+TWO bags:
+- `dangerousContentSettings` — mode, threshold (a `parseFloat` range, shown
+  `toFixed(1)`), the three scan toggles, the two uncensored pickers, display
+  mode, warning badges, the custom classification prompt.
+- `cheapLLMSettings` — it hosts the image-prompt-expansion picker
+  (`imagePromptProfileId`), which merges over the WHOLE stored cheap-LLM bag
+  (v4 `handleCheapLLMUpdate` → `{...settings.cheapLLMSettings, ...updates}`).
+  A spec asserts the write lands in the cheap-LLM bag and NOT the danger bag —
+  the easy mistake here.
+
+Visibility gating ported as v4 has it: everything below the mode select is
+gated on `mode !== 'OFF'`; the two uncensored pickers additionally on
+`mode === 'AUTO_ROUTE'`; the Important Notes box shows in every mode.
+
+**This card is what made unit 1 necessary** — and the specs now pin both
+reachable paths: returning an uncensored picker to "Auto-detect" and clearing
+the custom prompt each send an EXPLICIT `null` inside the bag, which the old
+server parse silently dropped.
+
+**The `[selected]`-per-option rule, verified not merely followed:**
+temporarily rebinding the primary picker to `[value]`-on-select (with plain
+options) fails exactly the late-options spec — because BOTH the settings row
+and the profile list resolve async, the first render has no options, and
+Angular never re-runs a `[value]` binding whose bound value never changed. The
+guard bites; it isn't decoration.
+
+**Specs** (`async-select-cards.spec.ts`, 19 cases). `ng test` 821 → 840.

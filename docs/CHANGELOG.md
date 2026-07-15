@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.6an unit 6: the last two Chat-tab cards land — Image Description (the
+primary + uncensored-fallback vision pickers, each a bare nullable scalar
+over the vision-capable connection profiles) and Dangerous Content (the
+largest of the eleven: mode/threshold/scan toggles/uncensored routing/display
+mode/custom prompt, plus the image-prompt-expansion picker that writes the
+cheap-LLM bag rather than the danger bag). Both use `[selected]`-per-option
+over async-loaded profile lists per the binding dogfood-#6 rule, with the
+late-options regression spec confirmed to fail under a `[value]` binding.
+All eleven cards now exist; mounting them is the next unit.
+
 P4.6an unit 5: the Agent Mode and Context Compression Chat-tab cards land.
 Agent Mode ports v4's two separate handlers over `agentModeSettings` (the
 default-enabled toggle and the max-turns select, which writes a number, not
