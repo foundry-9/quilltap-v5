@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 use crate::files_routes::error_json;
 use crate::state::SharedState;
 
-async fn dispatch_core(
+pub(crate) async fn dispatch_core(
     state: &SharedState,
     req: CoreRequest,
 ) -> Result<CoreResponse, AxumResponse> {
@@ -39,7 +39,7 @@ async fn dispatch_core(
     Ok(host.core().dispatch(req).await)
 }
 
-fn error_to_http(e: quilltap_core::api::CoreError) -> AxumResponse {
+pub(crate) fn error_to_http(e: quilltap_core::api::CoreError) -> AxumResponse {
     let status = match e.kind {
         ErrorKind::BadRequest => StatusCode::BAD_REQUEST,
         ErrorKind::NotFound => StatusCode::NOT_FOUND,

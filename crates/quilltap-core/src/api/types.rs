@@ -1854,6 +1854,56 @@ pub enum Request {
         detailed: Option<bool>,
     },
     // === end P4.6ao ===
+    // === P4.6ar: the llm-logs read surface + the system aesthetics pair (lane A) ===
+    /// v4 `GET /api/v1/llm-logs` (all filter branches).
+    #[serde(rename_all = "camelCase")]
+    LlmLogsList {
+        #[serde(default)]
+        message_id: Option<String>,
+        #[serde(default)]
+        chat_id: Option<String>,
+        #[serde(default)]
+        character_id: Option<String>,
+        /// v4's `type` query param. Wire name `logType` — a field literally named
+        /// `type` would collide with the internally-tagged envelope key. The REST
+        /// edge maps `?type=` onto it. NOT validated (v4 casts).
+        #[serde(default)]
+        log_type: Option<String>,
+        #[serde(default)]
+        standalone: bool,
+        #[serde(default)]
+        include_messages: bool,
+        /// Raw query strings; the HANDLER ports v4's parseInt/Math.min body
+        /// (including the NaN no-slice quirk) so dispatch and REST agree.
+        #[serde(default)]
+        limit: Option<String>,
+        #[serde(default)]
+        offset: Option<String>,
+    },
+    /// v4 `GET /api/v1/llm-logs/[id]`.
+    #[serde(rename_all = "camelCase")]
+    LlmLogGet {
+        id: String,
+    },
+    /// v4 `DELETE /api/v1/llm-logs/[id]`.
+    #[serde(rename_all = "camelCase")]
+    LlmLogDelete {
+        id: String,
+    },
+    /// v4 `GET /api/v1/system/image-aesthetics?kind=lantern|aurora`.
+    #[serde(rename_all = "camelCase")]
+    SystemImageAestheticsGet {
+        kind: String,
+    },
+    /// v4 `PUT /api/v1/system/image-aesthetics?kind=…`; empty or absent content
+    /// deletes the file (restores fallback).
+    #[serde(rename_all = "camelCase")]
+    SystemImageAestheticsSet {
+        kind: String,
+        #[serde(default)]
+        content: Option<String>,
+    },
+    // === end P4.6ar ===
 }
 
 /// serde double-option: `#[serde(default, deserialize_with = "double_option")]` on
@@ -2026,6 +2076,18 @@ pub enum Response {
     /// detailed arm. Pinned by `cost_background_routes_equivalence`.
     ChatCost(serde_json::Value),
     // === end P4.6ao ===
+    // === P4.6ar === (the llm-logs read surface + system aesthetics — lane A)
+    /// An llm-logs-family body: the list `{logs, count, total, limit, offset}`
+    /// (`limit`/`offset` are JS numbers, so a garbage param serializes as `null`),
+    /// the item GET's RAW log object (v4 `successResponse(log)` — no wrapper key),
+    /// and the delete's `{success, deletedId}`. Pinned by
+    /// `llm_logs_routes_equivalence`.
+    LlmLog(serde_json::Value),
+    /// The system default-aesthetic body, byte-identical to the project pair:
+    /// get → `{content}`; set → `{success: true}`. Pinned by
+    /// `image_aesthetics_routes_equivalence`.
+    SystemAesthetic(serde_json::Value),
+    // === end P4.6ar ===
     Error(CoreError),
 }
 

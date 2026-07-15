@@ -324,6 +324,77 @@ pub struct LlUpdate {
     pub updated_at: String,
 }
 
+/// A FULL `llm_logs` row as the LLM-Inspector read surface marshals it (P4.6ar):
+/// v4's `LLMLogSchema`-parsed object, in **schema field order**, which is the key
+/// order `JSON.stringify` then emits on the wire. Every `.nullable().optional()`
+/// column is `Option<_>` + `skip_serializing_if` because v4's row hydration maps a
+/// SQL NULL to `undefined` (`backend.ts::hydrateRow` — "null → undefined for Zod
+/// .optional() compatibility"), and `JSON.stringify` OMITS an `undefined` member.
+/// So a null column is **absent** from v4's body, never `null` — the standing
+/// "reads omit null" rule ([[p4.6p-listing-surfaces-server]]).
+///
+/// `rawProviderUsage` is the one open-JSON column: `serde_json::Value` sorts its
+/// keys where v4's `JSON.stringify` preserves insertion order (the standing seam
+/// this module already records for the write path). The `inspector-*` corpus keeps
+/// it NULL throughout, so the seam is not walked into here.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmLogRow {
+    pub id: String,
+    pub user_id: String,
+    #[serde(rename = "type")]
+    pub log_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chat_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub character_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub autonomous_run_id: Option<String>,
+    pub provider: String,
+    pub model_name: String,
+    pub request: LlmLogRequestSummary,
+    pub response: LlmLogResponseSummary,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<LlmLogTokenUsage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_usage: Option<LlmLogCacheUsage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw_provider_usage: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_hashes: Option<LlmLogRequestHashes>,
+    /// The nullable REAL column. Rendered as v4's `JSON.stringify` renders a JS
+    /// number — an integer-valued float bare (`120`, not `120.0`).
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "ser_opt_jsnum"
+    )]
+    pub duration_ms: Option<f64>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Serialize a nullable-optional **fractional** column the way v4's
+/// `JSON.stringify` renders a JS number (see [`ser_double_opt_jsnum`]). Only ever
+/// called for `Some` — `skip_serializing_if` handles `None`.
+fn ser_opt_jsnum<S>(v: &Option<f64>, s: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match v {
+        Some(f) => super::js_number_to_json(*f).serialize(s),
+        None => s.serialize_none(),
+    }
+}
+
+/// The `SELECT` list for [`LlmLogRow`], in schema field order. v4 issues
+/// `SELECT *` and lets the Zod parse reorder; naming the columns is the same set
+/// in the same order, and keeps the row mapper's indices honest.
+const LOG_COLUMNS: &str = "id, userId, type, messageId, chatId, characterId, autonomousRunId, \
+     provider, modelName, request, response, usage, cacheUsage, rawProviderUsage, \
+     requestHashes, durationMs, createdAt, updatedAt";
+
 /// The subset of an `llm_logs` row `self_inventory`'s lastTurn section reads: the
 /// provider/model plus the parsed `usage` token counts and the log timestamp.
 #[derive(Clone, Debug)]
@@ -386,6 +457,178 @@ impl<'c> LLMLogsRepository<'c> {
             ],
         )?;
         Ok(())
+    }
+
+    // =======================================================================
+    // The LLM-Inspector read surface (P4.6ar) — the eight methods v4's
+    // `/api/v1/llm-logs` routes call.
+    //
+    // Every one of them lowers a v4 `findByFilter(filter, {sort:{createdAt:-1},
+    // limit?})` through `query-translator.ts`, so they all carry the same two
+    // translated clauses:
+    //
+    //   - `ORDER BY "createdAt" DESC` — `translateSort`, **no secondary key**.
+    //     The `inspector-*` corpus gives every row a distinct `createdAt` so the
+    //     order is deterministic and byte-identical on both sides.
+    //   - `LIMIT n` **only when `n > 0`** — `translatePagination` guards on
+    //     `options.limit !== undefined && options.limit > 0`. A `NaN` limit (the
+    //     route's garbage-param arm) fails that test, so the query runs
+    //     UNBOUNDED. `limit` is a JS number here for exactly that reason.
+    //
+    // The route always clamps `limit` through `Math.min(_, 100|500)` before it
+    // reaches a repo, so a limit that survives the `> 0` gate is always a small
+    // integer — `limit as i64` can never be lossy.
+    //
+    // Row-level fidelity: v4's `findByFilter` runs each row through
+    // `validateSafe` and **drops** the ones that fail (a corrupt JSON column
+    // hydrates to `undefined`, which the required `request`/`response` fields
+    // reject); `_findById` runs `validate`, whose throw is caught by `safeQuery`'s
+    // `null` default. Both are reproduced: a row whose JSON will not parse is
+    // skipped by the list reads and yields `None` from [`Self::find_by_id`].
+    // =======================================================================
+
+    /// v4 `AbstractBaseRepository._findById(id)` for this repo — the item routes'
+    /// only read. Translated: `SELECT * FROM "llm_logs" WHERE "id" = ? LIMIT 1`.
+    pub fn find_by_id(&self, id: &str) -> Result<Option<LlmLogRow>, DbError> {
+        let sql = format!("SELECT {LOG_COLUMNS} FROM llm_logs WHERE \"id\" = ?1 LIMIT 1");
+        let mut stmt = self.conn.prepare(&sql)?;
+        let mut rows = stmt.query(params![id])?;
+        match rows.next()? {
+            // A row that fails to marshal is v4's `validate` throw → safeQuery's
+            // `null` default.
+            Some(row) => Ok(map_log_row(row).ok()),
+            None => Ok(None),
+        }
+    }
+
+    /// v4 `findByMessageId(messageId)` (:113) — UNBOUNDED (the route passes no
+    /// limit; only its post-fetch slice bounds this branch).
+    pub fn find_by_message_id(&self, message_id: &str) -> Result<Vec<LlmLogRow>, DbError> {
+        self.query_logs("\"messageId\" = ?1", params![message_id], f64::NAN)
+    }
+
+    /// v4 `findByChatId(chatId)` (:134) — UNBOUNDED, as above.
+    pub fn find_by_chat_id(&self, chat_id: &str) -> Result<Vec<LlmLogRow>, DbError> {
+        self.query_logs("\"chatId\" = ?1", params![chat_id], f64::NAN)
+    }
+
+    /// v4 `findByCharacterId(characterId)` (:188) — UNBOUNDED, as above.
+    pub fn find_by_character_id(&self, character_id: &str) -> Result<Vec<LlmLogRow>, DbError> {
+        self.query_logs("\"characterId\" = ?1", params![character_id], f64::NAN)
+    }
+
+    /// v4 `findAllForChat(chatId, messageIds, limit = 500)` (:159) — the
+    /// `includeMessages=true` arm: logs linked to the chat directly UNION logs
+    /// linked via any of the chat's message ids. The filter is
+    /// `{$or: [{chatId}, ...(messageIds.length > 0 ? [{messageId: {$in}}] : [])]}`,
+    /// which `translateFilter` lowers to `(("chatId" = ?) OR ("messageId" IN
+    /// (?,…)))` — and to `(("chatId" = ?))` alone when the chat has no messages.
+    /// The `$or` is a SQL disjunction, so a row carrying BOTH links appears once.
+    pub fn find_all_for_chat(
+        &self,
+        chat_id: &str,
+        message_ids: &[String],
+        limit: f64,
+    ) -> Result<Vec<LlmLogRow>, DbError> {
+        let mut values: Vec<Box<dyn ToSql>> = vec![Box::new(chat_id.to_string())];
+        let where_sql = if message_ids.is_empty() {
+            "((\"chatId\" = ?1))".to_string()
+        } else {
+            let placeholders: Vec<String> = message_ids
+                .iter()
+                .enumerate()
+                .map(|(i, _)| format!("?{}", i + 2))
+                .collect();
+            for id in message_ids {
+                values.push(Box::new(id.clone()));
+            }
+            format!(
+                "((\"chatId\" = ?1) OR (\"messageId\" IN ({})))",
+                placeholders.join(", ")
+            )
+        };
+        let refs: Vec<&dyn ToSql> = values.iter().map(|b| b.as_ref()).collect();
+        self.query_logs(&where_sql, refs.as_slice(), limit)
+    }
+
+    /// v4 `findStandalone(userId, limit = 50)` (:210).
+    ///
+    /// ⚠️ **BROKEN-BUT-EXACT** — this read ALWAYS returns `[]` on v4-on-SQLite,
+    /// and the differential's `list_standalone` case pins it. v4's filter is
+    /// `{userId, messageId: {$eq: null}, chatId: {$eq: null}, characterId:
+    /// {$eq: null}}`, and `query-translator.ts` lowers `$eq` to `"col" = ?` with
+    /// the operand bound — so a `$eq: null` becomes `"messageId" = NULL`, which is
+    /// UNKNOWN for every row under SQL NULL semantics (the same family of bug as
+    /// the `$ne: null` one v4's own comment on `getTotalTokenUsageForChatSince`
+    /// documents; `IS NULL` is what the author meant). The consequence is that
+    /// `GET /api/v1/llm-logs?standalone=true` can never return a log, however many
+    /// unlinked rows exist. The translated SQL is executed verbatim (NULL binds
+    /// included) rather than short-circuited, so the shape stays faithful.
+    pub fn find_standalone(&self, user_id: &str, limit: f64) -> Result<Vec<LlmLogRow>, DbError> {
+        self.query_logs(
+            "\"userId\" = ?1 AND \"messageId\" = ?2 AND \"chatId\" = ?3 AND \"characterId\" = ?4",
+            params![
+                user_id,
+                rusqlite::types::Null,
+                rusqlite::types::Null,
+                rusqlite::types::Null
+            ],
+            limit,
+        )
+    }
+
+    /// v4 `findByType(userId, type, limit = 50)` (:241). The route casts the query
+    /// param to `LLMLogType` WITHOUT validating it, so any string reaches this
+    /// filter — an unknown type simply matches no rows.
+    pub fn find_by_type(
+        &self,
+        user_id: &str,
+        log_type: &str,
+        limit: f64,
+    ) -> Result<Vec<LlmLogRow>, DbError> {
+        self.query_logs(
+            "\"userId\" = ?1 AND \"type\" = ?2",
+            params![user_id, log_type],
+            limit,
+        )
+    }
+
+    /// v4 `findRecent(userId, limit = 20)` (:265) — the list route's DEFAULT
+    /// branch. (The route always passes its own `limit`, so the repo default
+    /// never applies there.)
+    pub fn find_recent(&self, user_id: &str, limit: f64) -> Result<Vec<LlmLogRow>, DbError> {
+        self.query_logs("\"userId\" = ?1", params![user_id], limit)
+    }
+
+    /// The shared `findByFilter(_, {sort:{createdAt:-1}, limit})` lowering: the
+    /// caller's WHERE, then v4's two translated clauses.
+    fn query_logs(
+        &self,
+        where_sql: &str,
+        params: impl rusqlite::Params,
+        limit: f64,
+    ) -> Result<Vec<LlmLogRow>, DbError> {
+        // `translatePagination`: `LIMIT n` only when `n > 0` — NaN and 0 and
+        // negatives all leave the query unbounded.
+        let limit_clause = if limit > 0.0 {
+            format!(" LIMIT {}", limit as i64)
+        } else {
+            String::new()
+        };
+        let sql = format!(
+            "SELECT {LOG_COLUMNS} FROM llm_logs WHERE {where_sql} \
+               ORDER BY \"createdAt\" DESC{limit_clause}"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let mut rows = stmt.query(params)?;
+        let mut out: Vec<LlmLogRow> = Vec::new();
+        while let Some(row) = rows.next()? {
+            // v4's `validateSafe` → drop the rows that fail to parse.
+            if let Ok(log) = map_log_row(row) {
+                out.push(log);
+            }
+        }
+        Ok(out)
     }
 
     /// v4 `llmLogs.findByChatId(chatId)[0]` — the **most recent** log for a chat.
@@ -684,6 +927,48 @@ pub struct TokenUsageTotals {
     pub prompt_tokens: f64,
     pub completion_tokens: f64,
     pub total_tokens: f64,
+}
+
+/// Marshal one `llm_logs` row (selected as [`LOG_COLUMNS`]) into an
+/// [`LlmLogRow`]. Mirrors v4's `hydrateRow` → `LLMLogSchema.parse` pair: the JSON
+/// columns are parsed, a NULL JSON column becomes "absent" (v4 maps it to
+/// `undefined`), and any parse failure is an `Err` the callers turn into v4's
+/// drop-the-row / null-the-read behavior.
+fn map_log_row(row: &rusqlite::Row<'_>) -> Result<LlmLogRow, DbError> {
+    fn parse<T: for<'de> Deserialize<'de>>(json: &str, label: &str) -> Result<T, DbError> {
+        serde_json::from_str(json).map_err(|e| DbError::Key(format!("{label} parse: {e}")))
+    }
+    fn parse_opt<T: for<'de> Deserialize<'de>>(
+        json: Option<String>,
+        label: &str,
+    ) -> Result<Option<T>, DbError> {
+        match json {
+            Some(s) => parse(&s, label).map(Some),
+            None => Ok(None),
+        }
+    }
+    let request_json: String = row.get(9)?;
+    let response_json: String = row.get(10)?;
+    Ok(LlmLogRow {
+        id: row.get(0)?,
+        user_id: row.get(1)?,
+        log_type: row.get(2)?,
+        message_id: row.get(3)?,
+        chat_id: row.get(4)?,
+        character_id: row.get(5)?,
+        autonomous_run_id: row.get(6)?,
+        provider: row.get(7)?,
+        model_name: row.get(8)?,
+        request: parse(&request_json, "request")?,
+        response: parse(&response_json, "response")?,
+        usage: parse_opt(row.get(11)?, "usage")?,
+        cache_usage: parse_opt(row.get(12)?, "cacheUsage")?,
+        raw_provider_usage: parse_opt(row.get(13)?, "rawProviderUsage")?,
+        request_hashes: parse_opt(row.get(14)?, "requestHashes")?,
+        duration_ms: row.get(15)?,
+        created_at: row.get(16)?,
+        updated_at: row.get(17)?,
+    })
 }
 
 /// JS `x || 0` over a JSON number field: `null` / absent / non-number / `0` → 0.

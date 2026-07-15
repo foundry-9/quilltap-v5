@@ -2712,6 +2712,50 @@ impl CoreEngine {
                 Err(resp) => resp,
             },
             // === end P4.6ao ===
+            // === P4.6ar: the llm-logs read surface + the system aesthetics pair ===
+            Request::LlmLogsList {
+                message_id,
+                chat_id,
+                character_id,
+                log_type,
+                standalone,
+                include_messages,
+                limit,
+                offset,
+            } => match self.ready_db() {
+                Ok(db) => super::llm_logs::llm_logs_list(
+                    &db,
+                    SINGLE_USER_ID,
+                    &super::llm_logs::LlmLogsListParams {
+                        message_id: message_id.as_deref(),
+                        chat_id: chat_id.as_deref(),
+                        character_id: character_id.as_deref(),
+                        log_type: log_type.as_deref(),
+                        standalone,
+                        include_messages,
+                        limit: limit.as_deref(),
+                        offset: offset.as_deref(),
+                    },
+                ),
+                Err(resp) => resp,
+            },
+            Request::LlmLogGet { id } => match self.ready_db() {
+                Ok(db) => super::llm_logs::llm_log_get(&db, &id),
+                Err(resp) => resp,
+            },
+            Request::LlmLogDelete { id } => match self.ready_db() {
+                Ok(db) => super::llm_logs::llm_log_delete(&db, &id).await,
+                Err(resp) => resp,
+            },
+            Request::SystemImageAestheticsGet { kind } => match self.ready_db() {
+                Ok(db) => super::system::system_image_aesthetics_get(&db, &kind),
+                Err(resp) => resp,
+            },
+            Request::SystemImageAestheticsSet { kind, content } => match self.ready_db() {
+                Ok(db) => super::system::system_image_aesthetics_set(&db, &kind, content).await,
+                Err(resp) => resp,
+            },
+            // === end P4.6ar ===
         }
     }
 

@@ -144,6 +144,68 @@ pub async fn resolve_aesthetic(
     .flatten()
 }
 
+// ============================================================================
+// The editor route helpers (v4's "Shared route helpers" section) — the
+// single-tier read/write pair BOTH aesthetic editor surfaces sit on: the
+// per-project one (`api::projects::project_aesthetic_*`, P4.6l) and the
+// instance-wide one (`api::system::system_image_aesthetics_*`, P4.6ar). Only
+// the mount they resolve differs: the project's OFFICIAL store vs the Quilltap
+// General singleton.
+// ============================================================================
+
+/// v4 `parseAestheticKind` (`aesthetic.ts:221`), reduced to the string test the
+/// two routes share: the literal `lantern` or `aurora`, else `None` (the caller
+/// answers the 400). Returns the FILENAME rather than the kind — every caller
+/// wants the file.
+pub fn aesthetic_filename_for_kind(kind: &str) -> Option<&'static str> {
+    match kind {
+        "lantern" => Some(LANTERN_AESTHETICS_FILENAME),
+        "aurora" => Some(AURORA_AESTHETICS_FILENAME),
+        _ => None,
+    }
+}
+
+/// v4 `readAesthetic(mountId, kind)` over `readStoreFile`: the editor's read —
+/// the **RAW** content (NOT trimmed, NOT capped; the editor shows exactly what is
+/// on disk, unlike the injection path's `readStoreFileInternal`). v4 coalesces
+/// BOTH the absent-doc case (`doc?.content ?? ''`) and the read-error case
+/// (`readAestheticForMount` returns null → `content ?? ''`) to `''`, so the caller
+/// can return this directly.
+pub fn read_aesthetic_file(
+    mount: &rusqlite::Connection,
+    mount_point_id: &str,
+    filename: &str,
+) -> String {
+    match crate::db::database_store::read_database_document(mount, mount_point_id, filename) {
+        Ok(doc) => doc.content,
+        Err(_) => String::new(),
+    }
+}
+
+/// v4 `writeAesthetic(mountId, kind, content)` over `writeStoreFile`: the
+/// editor's write — **empty or whitespace-only content DELETES the file**
+/// (`!content || !content.trim()`), so clearing an override restores the fallback
+/// tier; otherwise create-or-update.
+pub fn write_aesthetic_file(
+    mount: &rusqlite::Connection,
+    mount_point_id: &str,
+    filename: &str,
+    content: &str,
+) -> Result<(), crate::db::DbError> {
+    if js_trim(content).is_empty() {
+        crate::db::database_store::delete_database_document(mount, mount_point_id, filename)?;
+    } else {
+        crate::db::database_store::write_database_document(
+            mount,
+            mount_point_id,
+            filename,
+            content,
+        )
+        .map_err(|e| crate::db::DbError::Key(e.to_string()))?;
+    }
+    Ok(())
+}
+
 /// A depicted character for [`resolve_depiction_guidelines`] (v4
 /// `DepictedCharacter`).
 #[derive(Clone, Debug)]

@@ -33,6 +33,8 @@ pub mod documents;
 pub mod engine;
 pub mod groups;
 pub mod image_profiles;
+// === P4.6ar: the llm-logs read surface (lane A) ===
+pub mod llm_logs;
 pub mod memories;
 pub mod mount_files;
 pub mod mount_points;

@@ -17,7 +17,26 @@ use std::path::Path;
 
 use serde_json::json;
 
+use crate::db::instance_settings::get_general_mount_point_id;
+use crate::db::runtime::Db;
+use crate::db::DbError;
+use crate::services::aesthetics::{
+    aesthetic_filename_for_kind, read_aesthetic_file, write_aesthetic_file,
+};
+
 use super::types::{ErrorKind, Response};
+
+fn bad_request(msg: impl Into<String>) -> Response {
+    Response::error(ErrorKind::BadRequest, msg)
+}
+fn internal(e: impl std::fmt::Display) -> Response {
+    Response::error(ErrorKind::Internal, e.to_string())
+}
+
+/// v4's 400 for a `kind` that is neither literal, verbatim
+/// (`image-aesthetics/route.ts:31`). Shared with the project pair's identical
+/// guard.
+const AESTHETIC_KIND_ERROR: &str = "Query param \"kind\" must be \"lantern\" or \"aurora\"";
 
 /// v4 `GET /api/v1/system/browse-directory[?path=…]` — list a directory's
 /// immediate subdirectories for the picker.
@@ -162,6 +181,78 @@ fn dirname_posix(p: &str) -> String {
 fn join_path(dir: &str, name: &str) -> String {
     let _ = Path::new(dir); // keep the intent that `dir` is a filesystem path.
     normalize_posix(&format!("{dir}/{name}"))
+}
+
+// ===========================================================================
+// Default image aesthetics (P4.6ar) — v4
+// `app/api/v1/system/image-aesthetics/route.ts`
+// ===========================================================================
+
+/// v4 `GET /api/v1/system/image-aesthetics?kind=lantern|aurora` (`route.ts:29-41`)
+/// — the Images settings tab's two "Default Aesthetic" editors read this.
+///
+/// The instance-wide sibling of `api::projects::project_aesthetic_get`: same
+/// single-tier read over the same shared helpers, with the Quilltap General
+/// singleton swapped in for the project's official store. Body `{ content }`.
+///
+/// The unprovisioned-store arm is a **success**, not an error: v4 answers
+/// `successResponse({ content: '' })` with the comment "Quilltap General store not
+/// provisioned yet — nothing to show". (The PUT sibling refuses instead — you
+/// cannot write into a store that does not exist.)
+pub fn system_image_aesthetics_get(db: &Db, kind: &str) -> Response {
+    let Some(filename) = aesthetic_filename_for_kind(kind) else {
+        return bad_request(AESTHETIC_KIND_ERROR);
+    };
+    let result = db
+        .read_main(get_general_mount_point_id)
+        .and_then(|mount_id| {
+            let Some(mount_id) = mount_id else {
+                return Ok(String::new());
+            };
+            db.read_mount_index(move |mount| Ok(read_aesthetic_file(mount, &mount_id, filename)))
+        });
+    match result {
+        Ok(content) => Response::SystemAesthetic(json!({ "content": content })),
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `PUT /api/v1/system/image-aesthetics?kind=…` (`route.ts:43-61`).
+///
+/// `content` arrives already parsed at the boundary. v4's route body is
+/// `aestheticContentSchema.safeParse(await req.json().catch(() => ({}))).data
+/// ?.content ?? ''` — so a MALFORMED body, an absent `content`, or a non-string
+/// `content` all resolve to `''`, and `''` **deletes the file** (restoring the
+/// fallback). That is the same "clearing the editor restores the default" gesture
+/// the project pair carries; the REST edge reproduces the parse. Body
+/// `{ success: true }`.
+pub async fn system_image_aesthetics_set(db: &Db, kind: &str, content: Option<String>) -> Response {
+    let Some(filename) = aesthetic_filename_for_kind(kind) else {
+        return bad_request(AESTHETIC_KIND_ERROR);
+    };
+    let content = content.unwrap_or_default();
+    let mount_id = match db.read_main(get_general_mount_point_id) {
+        Ok(Some(id)) => id,
+        // Unlike the GET, the PUT REFUSES — there is no store to write into.
+        Ok(None) => {
+            return internal("Quilltap General document store is not available");
+        }
+        Err(e) => return internal(e),
+    };
+    let out = db
+        .write(move |writers| {
+            let Some(mount) = writers.mount_index() else {
+                return Err(DbError::PartitionUnavailable(
+                    crate::write_partition::WriteDbTarget::MountIndex,
+                ));
+            };
+            write_aesthetic_file(mount.connection(), &mount_id, filename, &content)
+        })
+        .await;
+    match out {
+        Ok(()) => Response::SystemAesthetic(json!({ "success": true })),
+        Err(e) => internal(e),
+    }
 }
 
 #[cfg(test)]

@@ -25,6 +25,9 @@ pub mod dispatch;
 pub mod events;
 pub mod files_routes;
 pub mod health;
+// === P4.6ar: the llm-logs read surface + system image-aesthetics REST edges ===
+pub mod llm_logs_routes;
+// === end P4.6ar ===
 pub mod multipart;
 // === P4.6w: documents ===
 pub mod qtap_target_route;
@@ -134,6 +137,18 @@ pub fn build_router(state: SharedState) -> Router {
             get(text_replacements_routes::chat_get_background),
         )
         // === end P4.6ak ===
+        // === P4.6ar: the LLM-Inspector reads + the default-aesthetics editors ===
+        .route("/api/v1/llm-logs", get(llm_logs_routes::llm_logs_get))
+        .route(
+            "/api/v1/llm-logs/{id}",
+            get(llm_logs_routes::llm_log_get).delete(llm_logs_routes::llm_log_delete),
+        )
+        .route(
+            "/api/v1/system/image-aesthetics",
+            get(llm_logs_routes::system_image_aesthetics_get)
+                .put(llm_logs_routes::system_image_aesthetics_put),
+        )
+        // === end P4.6ar ===
         .route("/setup", get(static_serve::setup))
         .fallback(get(static_serve::spa_fallback))
         .with_state(state)

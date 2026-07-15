@@ -13959,3 +13959,104 @@ QT_FIXTURE_INSP_NOSTORE=$W/crates/quilltap-web/tests/fixtures/inspector-nostore-
 ```
 
 **Invalidates:** nothing. The family is new; no existing oracle reads it.
+
+---
+
+## P4.6ar units 1–2 — the llm-logs read surface (tier 1)
+
+**Landed 2026-07-15** (lane A of the P4.6ar ∥ as ∥ at round; v4 baseline
+`02865bdb`).
+
+**Ported:**
+
+- **Unit 1 — the repo reads** (`db/llm_logs.rs`, joining the existing
+  create/update/delete + usage sums): the eight methods v4's routes call —
+  `findById` (the base repo's `_findById`), `findByMessageId`,
+  `findByChatId`, `findAllForChat`, `findByCharacterId`, `findStandalone`,
+  `findByType`, `findRecent` — plus the new `LlmLogRow` marshaling a FULL row
+  in `LLMLogSchema` field order.
+- **Unit 2 — the routes** (`api/llm_logs.rs`): v4's list + item route bodies
+  behind `Request::LlmLogsList` / `LlmLogGet` / `LlmLogDelete` and
+  `Response::LlmLog`; REST edges in `quilltap-web::llm_logs_routes`
+  (`GET /api/v1/llm-logs`, `GET`/`DELETE /api/v1/llm-logs/{id}`), envelope
+  unwrapped. The edge maps `?type=` onto the contract's `logType` (a field
+  named `type` would collide with the internally-tagged envelope key) and does
+  the two strict `=== 'true'` compares; `limit`/`offset` cross as RAW strings
+  so the handler owns v4's parse and both transports agree.
+
+**The marshaling rule (confirmed against v4's real output, not inferred):** a
+NULL column is **ABSENT** from the body, never `null` — `backend.ts::hydrateRow`
+maps SQL NULL to `undefined` for Zod-`.optional()` compatibility, and
+`JSON.stringify` omits an `undefined` member. But a `null` stored INSIDE a JSON
+column (e.g. `response.error`) is **present as `null`**. Both are visible in the
+oracle's `item_get_found` body, and the existing double-`Option` fields on the
+nested structs already carried the distinction.
+
+**Five v4 behaviors carried deliberately (every one pinned by a case):**
+
+1. **The garbage-limit NaN quirk.** `parseInt('garbage')` → NaN;
+   `Math.min(NaN, 100)` → NaN; `logs.length > NaN` → **false**, so `?limit=garbage`
+   returns EVERYTHING and the echoed `limit` serializes as `null`. Rust's
+   `f64::min` returns the non-NaN operand, which would have quietly *repaired*
+   the quirk — hence the hand-rolled `js_min`/`js_parse_int_10`/`js_number_or_null`
+   in `api/llm_logs.rs`, each with a unit test, and `js_min_propagates_nan_where_rust_would_not`
+   asserts the divergence explicitly. **Verified biting:** temporarily
+   short-circuiting `js_min`'s NaN arm fails exactly `list_recent_garbage_limit`
+   and nothing else.
+2. **`total` is the FETCHED page's size, not the collection's.** The route reads
+   `total = logs.length` AFTER the repo has already applied its own LIMIT. So
+   `?limit=2` answers `total: 2` over a 13-row corpus, and `?offset=2&limit=3`
+   answers `total: 3, count: 1`. The three ENTITY branches fetch unbounded, so
+   only there is `total` the honest count. Pinned by
+   `list_recent_limit_2` + `list_recent_offset_and_limit`.
+3. **`?standalone=true` can NEVER return a row.** ⚠️ **BROKEN-BUT-EXACT** (the
+   `getTotalTokenUsageSince` precedent). v4's filter is `{userId, messageId:
+   {$eq: null}, chatId: {$eq: null}, characterId: {$eq: null}}`, and
+   `query-translator.ts` lowers `$eq` to `"col" = ?` with the operand bound — so
+   `$eq: null` becomes `"messageId" = NULL`, UNKNOWN for every row under SQL NULL
+   semantics (`IS NULL` is what the author meant). Same family as the `$ne: null`
+   bug v4's own comment on `getTotalTokenUsageForChatSince` documents. The corpus
+   carries FIVE genuinely standalone rows and `list_standalone` returns `{count:
+   0, total: 0}` **through v4's real code** — so this is v4's behavior, not a
+   fixture artifact. The translated SQL is executed verbatim (NULL binds
+   included) rather than short-circuited.
+4. **The item routes have NO ownership check.** `GET`/`DELETE
+   /api/v1/llm-logs/[id]` read by id alone. `item_get_other_user` /
+   `item_delete_other_user` drive the primary user against a log owned by the
+   fixture's second user and get a 200 + a real delete.
+5. **A negative limit slices from the TAIL.** `?limit=-3` → no repo LIMIT
+   (`translatePagination` guards `> 0`), then `length > -3` is true →
+   `slice(0, -3)` drops the last three. Reachable and faithful
+   (`list_recent_negative_limit`).
+
+**Missing-partition decision (as the order asked):** the llm-logs partition is
+required by these verbs — a missing one is a plain engine error
+(`DbError::PartitionUnavailable`), NOT a v4-diffed arm. v4 always has the
+partition (its `getCollection()` override throws without one), and a v5 instance
+opened without it has no logs to inspect.
+
+**Differential:** `llm_logs_routes_equivalence` — **27 cases**, all green
+(the order asked for ≥ 18).
+
+Regenerate the oracle (Node 24, from the v4 checkout; jest ignores `.claude/`
+paths, hence the /tmp mirror):
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+TMPO=/tmp/qt-llmlogs-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/llm-logs-routes.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/inspector-web.json" "$TMPO/fixtures/"
+cd ~/source/quilltap-server
+QT_FIXTURE_INSP_MAIN=$V5W/crates/quilltap-web/tests/fixtures/inspector-main.db \
+QT_FIXTURE_INSP_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/inspector-mount.db \
+QT_FIXTURE_INSP_LLM=$V5W/crates/quilltap-web/tests/fixtures/inspector-llm.db \
+QT_ORACLE_OUT=/tmp/oracle-llm-logs.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- llm-logs-routes
+```
+
+Run: `QT_ORACLE_LLM_LOGS=/tmp/oracle-llm-logs.ndjson cargo test -p
+quilltap-harness --test llm_logs_routes_equivalence -- --nocapture`
+
+**Versions:** core 0.0.226, web 0.0.23, harness 0.0.205.

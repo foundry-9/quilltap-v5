@@ -834,18 +834,14 @@ pub fn project_background_get(db: &Db, project_id: &str) -> Response {
 // Aesthetic (v4 aesthetic.ts + lib/image-gen/aesthetic.ts)
 // ===========================================================================
 
-fn aesthetic_filename(kind: &str) -> Option<&'static str> {
-    match kind {
-        "lantern" => Some(crate::services::aesthetics::LANTERN_AESTHETICS_FILENAME),
-        "aurora" => Some(crate::services::aesthetics::AURORA_AESTHETICS_FILENAME),
-        _ => None,
-    }
-}
+use crate::services::aesthetics::{
+    aesthetic_filename_for_kind, read_aesthetic_file, write_aesthetic_file,
+};
 
 /// v4 `handleGetAesthetic`: ownership → kind guard → if no official store `{content:''}`
 /// → `readAesthetic` (single tier, absent/error → ''). Body `{ content }`.
 pub fn project_aesthetic_get(db: &Db, project_id: &str, kind: &str) -> Response {
-    let Some(filename) = aesthetic_filename(kind) else {
+    let Some(filename) = aesthetic_filename_for_kind(kind) else {
         return bad_request("Query param \"kind\" must be \"lantern\" or \"aurora\"");
     };
     let pid = project_id.to_string();
@@ -857,14 +853,9 @@ pub fn project_aesthetic_get(db: &Db, project_id: &str, kind: &str) -> Response 
         let Some(mp) = project.get("officialMountPointId").and_then(Value::as_str) else {
             return Ok(Some(String::new()));
         };
-        // readStoreFile (the editor route path): `doc?.content ?? ''` — the RAW
-        // content (NOT trimmed; the trim is only the aesthetic-injection path).
-        // Absent doc or any read error → '' (swallowed).
-        let content = match crate::db::database_store::read_database_document(mount, mp, filename) {
-            Ok(doc) => doc.content,
-            Err(_) => String::new(),
-        };
-        Ok(Some(content))
+        // readStoreFile (the editor route path): the RAW content, absent doc or
+        // read error → '' — shared with the system pair.
+        Ok(Some(read_aesthetic_file(mount, mp, filename)))
     });
     match result {
         Ok(Some(content)) => Response::Project(json!({ "content": content })),
@@ -883,7 +874,7 @@ pub async fn project_aesthetic_set(
     kind: &str,
     content: Option<String>,
 ) -> Response {
-    let Some(filename) = aesthetic_filename(kind) else {
+    let Some(filename) = aesthetic_filename_for_kind(kind) else {
         return bad_request("Query param \"kind\" must be \"lantern\" or \"aurora\"");
     };
     // safeParse(...).data?.content ?? '' — a missing/invalid content → ''.
@@ -899,13 +890,8 @@ pub async fn project_aesthetic_set(
                 "Project has no official document store to write the aesthetic into",
             )));
         };
-        // writeStoreFile: `!content || !content.trim()` → delete; else write.
-        if crate::jsstr::js_trim(&content).is_empty() {
-            let _ = crate::db::database_store::delete_database_document(mount, mp, filename)?;
-        } else {
-            crate::db::database_store::write_database_document(mount, mp, filename, &content)
-                .map_err(|e| DbError::Key(e.to_string()))?;
-        }
+        // writeStoreFile: empty/whitespace content DELETES the file; else write.
+        write_aesthetic_file(mount, mp, filename, &content)?;
         Ok(Ok(()))
     })
     .await;

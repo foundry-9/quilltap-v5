@@ -2,6 +2,36 @@
 
 ## Recent Changes
 
+P4.6ar units 1–2 (lane A): the llm-logs read surface — the LLM Inspector's
+whole server side. `db::llm_logs` gains the eight repo reads v4's
+`/api/v1/llm-logs` routes call (`findById` / `findByMessageId` /
+`findByChatId` / `findAllForChat` / `findByCharacterId` / `findStandalone` /
+`findByType` / `findRecent`), marshaling full rows through a new `LlmLogRow`
+in `LLMLogSchema` field order (a NULL column is ABSENT from the body, matching
+v4's null→undefined hydrate; `durationMs` renders as a JS number).
+`api::llm_logs` ports the two route handlers behind `LlmLogsList` /
+`LlmLogGet` / `LlmLogDelete` + `Response::LlmLog`, and `quilltap-web` serves
+`GET /api/v1/llm-logs` and `GET`/`DELETE /api/v1/llm-logs/{id}` (envelope
+unwrapped; `?type=` maps onto the contract's `logType`).
+
+Four v4 behaviors carried deliberately, each pinned by a differential case:
+a garbage `limit` disables the slice entirely and rides the wire as `null`
+(`parseInt` NaN → `Math.min` NaN → `length > NaN` false — Rust's `f64::min`
+would have silently repaired it); `total` is the FETCHED page's size, not the
+collection's, on any repo-limited branch; the item routes have NO ownership
+check (any log, any user); and `?standalone=true` can never return a row —
+v4's `$eq: null` lowers to `col = NULL`, which is UNKNOWN for every row, the
+same family of bug v4's own comment documents for `$ne: null`.
+
+New differential `llm_logs_routes_equivalence`: 27 cases over fresh
+`02865bdb` oracles — every list branch incl. precedence and both
+includeMessages defaults, the clamp above cap, garbage/zero/negative limits,
+garbage offset, offset and offset+limit, both notFound arms, the item
+GET/DELETE found+missing arms, and the cross-user read+delete that prove the
+missing ownership check. The two delete cases re-read afterwards, so the DB
+effect is diffed and not just the ack. Versions: core 0.0.226, web 0.0.23,
+harness 0.0.205.
+
 P4.6ar unit 0 (lane A): the new committed `inspector-*` fixture family +
 its checked-in generator (`harness/oracle/fixtures/build-inspector-fixture.ts`
 over `inspector-web.json`). Four files, all baked through v4's real repos:
