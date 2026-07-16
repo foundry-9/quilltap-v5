@@ -38,7 +38,7 @@ test.describe('P4.6u — the Salon terminal pane (open → spawn → echo → ki
   test('open the terminal pane, spawn a PTY, echo, kill, re-attach, and exit', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
 
     // Open the solo fixture chat (the terminal flow needs no LLM participant).

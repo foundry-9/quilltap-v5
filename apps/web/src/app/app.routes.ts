@@ -6,6 +6,7 @@ import { Routes } from '@angular/router';
  * hosts the `<router-outlet>` — once the vault is operational, so these routes
  * only ever match against an operational engine.
  *
+ * `/` is the Home dashboard (welcome + quick actions + the three-column grid);
  * `/salon` is the conversation list; `/salon/new` is the New-Chat form;
  * `/salon/:id` is one conversation;
  * `/characters` is the character roster, `/characters/new` the create form,
@@ -91,6 +92,10 @@ export const routes: Routes = [
     path: 'settings',
     loadComponent: () => import('./screens/settings/settings').then((m) => m.Settings),
   },
-  { path: '', redirectTo: 'salon', pathMatch: 'full' },
+  {
+    path: '',
+    pathMatch: 'full',
+    loadComponent: () => import('./screens/home/home-page').then((m) => m.HomePage),
+  },
   { path: '**', redirectTo: 'salon' },
 ];

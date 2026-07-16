@@ -74,7 +74,7 @@ async function openSoloVoyage(page: Page): Promise<void> {
 
 test.describe('P4.6ap — the per-message token badge (LIVE)', () => {
   test('the badge follows showPerMessageTokens through the real dispatch', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
 
     // Normalize the starting state rather than assuming it: the flag defaults
@@ -137,7 +137,7 @@ test.describe('P4.6ap — the Story Backgrounds card (LIVE)', () => {
   test('the enable toggle round-trips through the real dispatch and survives a reload', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
     await page.goto('/settings?tab=images&section=story-backgrounds');
 
@@ -181,7 +181,7 @@ test.describe('P4.6ap — the chat-totals summary (LIVE at unification)', () => 
    * STORED chat-row aggregates, not a message sum).
    */
   test('the header shows "<total> tokens • <cost>" when showChatTotals is on', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
 
     const toggle = await tokenDisplayToggle(page, 'Show Chat Token Totals');
@@ -219,7 +219,7 @@ test.describe('P4.6ap — the Regenerate Background entry (LIVE at unification)'
   test('the entry appears with story backgrounds on, and flashes the queued message', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
 
     // The entry is gated on the settings flag — turn it on through the REAL dispatch.

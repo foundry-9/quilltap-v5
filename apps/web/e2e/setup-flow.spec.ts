@@ -116,8 +116,9 @@ test('walks needs-setup → wizard → pepper reveal → shell on the provisione
   await page.getByRole('button', { name: 'Continue to Quilltap' }).click();
   await expect(page.getByRole('heading', { name: 'Choose Your Providers' })).toBeVisible();
 
-  // The Settings nav still reaches the (empty) Salon.
-  await page.getByRole('link', { name: 'Home' }).click();
+  // The nav still reaches the (empty) Salon (the Chats rail item — the brand
+  // button navigates to the Home dashboard since P4.6av).
+  await page.getByRole('link', { name: 'Chats' }).click();
   await expect(page.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible();
   await expect(page.getByText('No chats yet')).toBeVisible();
 

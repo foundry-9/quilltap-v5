@@ -2,6 +2,30 @@
 
 ## Recent Changes
 
+P4.6av (lane B of the homepage + Tauri one-origin round): the Home
+dashboard at `/` (SPA 0.5.127). New `screens/home/` family porting v4's
+`components/homepage/*`: welcome greeting, the quick-actions row (Start
+a Chat, Start Autonomous Room, Continue Last with the no-recent-chats
+disabled state, New Project reusing the Prospero create dialog; v4's
+Generate Image action omitted — `/generate-image` is an unported
+screen, banked for M6 parity), and the three-column grid — Recent Chats
+(story-background strip over the avatar stack, dangerous-chat marker),
+Active Projects (color-tinted folder chip, relative activity time,
+new-chat-in-project action), Characters (ResizeObserver fit-to-content
+grid, provider badge from connectionProfileList, whole-card click with
+the finding-#4 inner-control guard; the Chat button navigates to
+`/salon/new?characterId=` instead of v4's NewChatModal — documented
+divergence). Fed by ONE `systemHome` fetch against the round's §1
+contract (lane A provides the verb; the request type folds into
+CoreRequest at unification). Root route `''` now mounts the screen
+(previously redirect-to-salon; the `'**'` wildcard still redirects);
+the shell brand button points Home at `/`. New Playwright home walk
+(probe-guarded record-and-fallback, ACTIVATE-AT-UNIFY once lane A's
+verb merges) + 16 existing specs' `/`-entries moved to the Salon
+(literal gotos, salon-scroll's template-literal root, setup-flow's
+Home-nav click). 20 new unit specs pin the transcribed v4 logic
+(formatMessageTime, profileDisplayName, characterNames, the click
+guard, quick-action states, empty arms).
 P4.6au: the home-dashboard REST edge + fixture family + differential —
 `GET /api/v1/system/home` (v4's successResponse is the raw payload;
 internal failure answers v4's exact 500 {error} body), the committed

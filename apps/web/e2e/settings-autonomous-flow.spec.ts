@@ -110,7 +110,7 @@ async function maybeUnlock(page: Page): Promise<void> {
 
 test.describe('P4.6ad — autonomous-rooms vertical (settings + new-chat)', () => {
   test('the Settings Chat tab renders both autonomous cards', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
 
     await page.goto('/settings?tab=chat&section=autonomous-rooms');
@@ -124,7 +124,7 @@ test.describe('P4.6ad — autonomous-rooms vertical (settings + new-chat)', () =
   test('the Data Retention card loads, saves, and persists the stale-chat window', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
 
     // The card is deep-linked open; it loads the current window (default 30).
@@ -151,7 +151,7 @@ test.describe('P4.6ad — autonomous-rooms vertical (settings + new-chat)', () =
   });
 
   test('the New-Chat autonomous toggle swaps in the enclave editor card', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
 
     await page.goto('/salon/new?autonomous=1');
@@ -166,7 +166,7 @@ test.describe('P4.6ad — autonomous-rooms vertical (settings + new-chat)', () =
   test('a seeded cron room: list → start → pause → resume → edit(clear cap) → stop', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
     await seedRoom();
     test.skip(!chatId, 'fixture had fewer than two LLM characters — nothing to drive');

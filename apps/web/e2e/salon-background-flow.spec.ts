@@ -32,7 +32,7 @@ test.describe('Salon story background (dogfood #9)', () => {
   test('applies --story-background-url from the live resolver and draws the ::before layer', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
 
     await expect(page.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible();

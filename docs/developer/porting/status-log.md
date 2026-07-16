@@ -15238,3 +15238,81 @@ MOUNT}`) and `harness/oracle/cases/home-routes.test.ts` (the oracle —
 `cargo test --workspace` 325 suites green with `QT_ORACLE_HOME` set
 (differential run by name `--nocapture`, zero SKIP); the harness
 no-env self-test green. Versions: core 0.0.230, web 0.0.25.
+---
+
+## P4.6av — the homepage SPA lane (lane B): the Home screen at `/` (2026-07-16)
+
+**Branch `claude/charming-tereshkova-9e4b15`; v4 baseline `02865bdb`
+(drift-checked at lane start: HEAD unmoved). SPA 0.5.127.**
+
+The v4 homepage (`components/homepage/*`, 10 files) as the Angular
+`screens/home/` family, mounted at `/` (the root redirect-to-salon
+retired; the `'**'` wildcard → salon divergence stands). One
+`systemHome` fetch per the round's §1 contract — the payload types
+live in `home.api.ts` verbatim and the request rides a
+fold-at-unification cast (`core-contract.ts` is not this lane's file);
+a second non-blocking `connectionProfileList` query feeds the provider
+badges. Loading/error copy is v4 `HomeViewContainer.tsx` verbatim
+("Setting the table…" / "The home parlour could not be readied just
+now."). §2 held: every server-relative path resolves through
+`normalizeAvatarSrc` / `characterAvatarSrc`; no inline URL building; no
+`crates/**` or sibling-owned file touched.
+
+**Transcriptions with pinned specs** (v4 file/line in comments):
+`formatMessageTime` (v4 `lib/format-time.ts:6-37` — first v5 consumer,
+hoist when a second screen needs it), `profileDisplayName` (v4
+`CharacterCard.tsx` prefix strip incl. the empty-provider edge),
+`characterNames` join, the quick-action `lastChatId` null arm, the
+CharactersSection fit math (150/185/12/min-2/default-4 verbatim, via
+`afterNextRender` + ResizeObserver), the finding-#4 card click guard
+(navigate-from-body / no-navigate-from-inner-control both proven).
+
+**Documented divergences (order-mandated):**
+- The character card's Chat button navigates to
+  `/salon/new?characterId=` (the P4.6q New-Chat-page precedent);
+  v4's `NewChatModal`-on-card is banked for the M6 screen-parity
+  review.
+- The WHOLE home character card is clickable (the P4.6f roster
+  pattern); v4 only links the avatar+name block (the inner link stays
+  real for middle-click).
+- v4's `QuickActionsRow` has FIVE actions — the order's survey table
+  said four. The fifth, **New Project**, IS ported (it reuses the
+  Prospero `ProjectCreateDialog`; on create the home query is
+  invalidated — the SPA equivalent of v4's next-visit server render).
+  **Generate Image** is the omitted one (tier-3: `/generate-image` /
+  `GenerateImageView` unported — the M6 parity pool; no dead links).
+
+**Deferred loud (with the salon-list precedent):** quick-hide
+filtering in Recent Chats + Characters (v4 `useQuickHide` tag-hide +
+hide-dangerous-chats — v5 has no quick-hide provider yet); the
+dangerous-chat `*` marker (pure payload data) IS ported. The tabbed
+workspace (`HomeViewContainer`'s reason to exist) — unported family,
+nothing owed.
+
+**e2e:** new `home-flow.spec.ts` (sorts after foundation), PROBE-GUARDED
+record-and-fallback on the `systemHome` dispatch —
+**ACTIVATE-AT-UNIFY**: in-lane it proves the v4-faithful error arm and
+skips the payload beats; they self-activate once lane A's verb merges
+(no unifier wire beyond the merge). Second beat: the shell brand
+button navigates Home (ran LIVE in-lane). **Blast radius absorbed
+in-lane:** 16 existing spec files entered the chat list via `/` —
+14 via literal `goto('/')` + a passphrase-or-Chats `maybeUnlock`
+(moved to `goto('/salon')`, mechanical sweep, no assertion changes),
+salon-scroll via a template-literal ``goto(`${LONG_BASE_URL}/`)``,
+and setup-flow via a CLICK on the Home nav link (now the Chats rail
+item). The unifier should expect the home beat to RUN (not skip) on
+the unified server.
+
+**Gate:** `ng test` 126 files / 1170 green (20 new); `ng build` clean;
+full Playwright suite run alone on 4319 from this worktree's own Rust
+binaries (dev-profile quilltap-web + quilltap-cli): **64 passed + the
+1 expected in-lane skip** (the probe-guarded home beat's fallback arm;
+the brand-button nav beat ran LIVE); `cargo fmt --check` +
+`cargo clippy --workspace --all-targets` (both feature sets) clean —
+no `crates/**` file touched. Two gate lessons banked in the lane
+memory: the root-route sweep needs three grep shapes (literal
+`goto('/')`, template-literal roots, `name: 'Home'` nav clicks —
+salon-scroll and setup-flow surfaced the misses), and a mid-gate
+23-failure run was a SIBLING worktree's concurrent Playwright
+colliding on the shared fixed ports (stale-shell page snapshots were
+the tell; `.last-run.json`, not a piped exit code, is the verdict).

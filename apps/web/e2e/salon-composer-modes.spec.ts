@@ -58,7 +58,7 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
   test('composition mode: Enter inserts a newline, Mod+Enter sends, the flag persists (dogfood #8)', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
     await openChat(page, 'Solo Voyage');
 
@@ -104,7 +104,7 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
   });
 
   test('an unsent draft survives leaving and reopening the chat', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
     await openChat(page, 'Group Expedition');
 
@@ -139,7 +139,7 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
     expect(ruleId).toBeTruthy();
 
     try {
-      await page.goto('/');
+      await page.goto('/salon');
       await maybeUnlock(page);
       await openChat(page, 'Group Expedition');
 

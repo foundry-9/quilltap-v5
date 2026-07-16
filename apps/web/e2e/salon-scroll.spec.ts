@@ -98,7 +98,7 @@ test.describe('P4.6h — virtualized Salon scroll (long chat)', () => {
   });
 
   test('opens fast, lands at bottom, windows the DOM, and the jump button round-trips', async ({ page }) => {
-    await page.goto(`${LONG_BASE_URL}/`);
+    await page.goto(`${LONG_BASE_URL}/salon`);
 
     // Unlock (this server starts locked and is only used by this spec).
     const passphrase = page.locator('#qt-passphrase');

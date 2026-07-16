@@ -62,7 +62,7 @@ async function maybeUnlock(page: Page): Promise<void> {
 
 /** Open the solo fixture chat (needs no LLM participant for the document walk). */
 async function openSoloChat(page: Page): Promise<void> {
-  await page.goto('/');
+  await page.goto('/salon');
   await maybeUnlock(page);
   await expect(page.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible();
   await page.locator('.chat-card-stack a.qt-entity-card', { hasText: 'Solo Voyage' }).click();

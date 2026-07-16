@@ -39,7 +39,7 @@ test.describe('M4b — Salon turn controls (pause / Speaking-As / skip)', () => 
   test('pause round-trip in the group chat, plus a guarded user-turn skip beat', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
 
     // Open the multi-character group chat.

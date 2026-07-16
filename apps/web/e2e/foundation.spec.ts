@@ -12,7 +12,7 @@ import { E2E_PASSPHRASE, E2E_WRONG_PASSPHRASE } from './support/env';
  * pack — the always-present theme UI.
  */
 test('walks locked → unlock → shell, then applies a bundled theme', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/salon');
 
   // The locked vault routes to the unlock screen (v4-voiced).
   await expect(

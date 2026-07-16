@@ -83,7 +83,7 @@ async function maybeUnlock(page: Page): Promise<void> {
  * present (in-lane — the sibling screen + unifier wire haven't landed).
  */
 async function reachFileManager(page: Page): Promise<boolean> {
-  await page.goto('/');
+  await page.goto('/salon');
   await maybeUnlock(page);
   await seedStore();
   if (!storeId) return false;

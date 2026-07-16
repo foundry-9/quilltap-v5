@@ -43,7 +43,7 @@ test.describe('M4 — Salon vertical (list → open → read → send)', () => {
   }
 
   test('unlock → list → open → send → streamed reply survives reload', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
 
     // The Salon list shows both fixture chats.

@@ -68,7 +68,7 @@ async function maybeUnlock(page: Page): Promise<void> {
 }
 
 async function openChatList(page: Page): Promise<void> {
-  await page.goto('/');
+  await page.goto('/salon');
   await maybeUnlock(page);
   await expect(page.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible();
 }

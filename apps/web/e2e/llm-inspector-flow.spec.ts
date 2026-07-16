@@ -42,7 +42,7 @@ test.describe('P4.6as — the LLM Inspector (LIVE)', () => {
   test('opens from the toolbar, renders entries, expands, tabs, filters, and closes on the shortcut', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
     await openSoloVoyage(page);
 
@@ -102,7 +102,7 @@ test.describe('P4.6as — the LLM Inspector (LIVE)', () => {
   test('the per-message cpu icon opens the panel scrolled to that message’s entry', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
     await openSoloVoyage(page);
 

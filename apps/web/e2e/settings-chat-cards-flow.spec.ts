@@ -46,7 +46,7 @@ function waitForSave(page: Page, key: string) {
 
 test.describe('P4.6an — the Chat-tab settings cards', () => {
   test('the tab renders v4\'s full card order, placeholder gone', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
     await page.goto('/settings?tab=chat');
 
@@ -77,7 +77,7 @@ test.describe('P4.6an — the Chat-tab settings cards', () => {
   });
 
   test('Auto-Scroll: toggle → reload → persisted (a scalar round-trip)', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
     await page.goto('/settings?tab=chat&section=auto-scroll');
 
@@ -103,7 +103,7 @@ test.describe('P4.6an — the Chat-tab settings cards', () => {
   test('Dangerous Content: change the mode → reload → persisted (a BAG round-trip)', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
     await page.goto('/settings?tab=chat&section=dangerous-content');
 
@@ -142,7 +142,7 @@ test.describe('P4.6an — the Chat-tab settings cards', () => {
   });
 
   test('the cron next-run preview computes as you type', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
     await page.goto('/settings?tab=chat&section=autonomous-rooms');
 

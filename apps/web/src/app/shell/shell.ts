@@ -73,7 +73,7 @@ const NAV_ITEMS: NavItem[] = [
       <aside class="qt-left-sidebar qt-left-sidebar-collapsed" aria-label="Main navigation">
         <div class="qt-left-sidebar-content">
           <nav class="qt-collapsed-nav" aria-label="Quick navigation">
-            <a class="qt-collapsed-nav-button" routerLink="/salon" title="Home" aria-label="Home">
+            <a class="qt-collapsed-nav-button" routerLink="/" title="Home" aria-label="Home">
               <qt-icon name="brand" class="w-8 h-8" />
             </a>
             @for (item of navItems; track item.id) {

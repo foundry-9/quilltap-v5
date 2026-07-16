@@ -39,7 +39,7 @@ test.describe('P4.6q — New-Chat vertical (list → /salon/new → create → l
   }
 
   test('New Chat → pick a character → create → land on the conversation', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
 
     // The Salon list header carries the New-Chat affordance.
