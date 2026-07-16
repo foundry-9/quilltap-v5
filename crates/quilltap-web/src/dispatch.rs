@@ -40,7 +40,13 @@ fn json_response(status: StatusCode, body: &Value) -> AxumResponse {
         .into_response()
 }
 
-pub async fn dispatch(State(state): State<SharedState>, body: Bytes) -> AxumResponse {
+/// The transport-agnostic dispatch core: raw request bytes in → (HTTP status,
+/// envelope `Value`). All three arms live here — boot-failure (the 503 arm's
+/// body), malformed body (the 400 arm's body), and the dispatched envelope
+/// with the Locked merge — so the HTTP route and the Tauri IPC `dispatch`
+/// command share them verbatim. IPC carries no HTTP status; there the
+/// envelope alone is authoritative and the status is dropped.
+pub async fn dispatch_body(state: &SharedState, body: &[u8]) -> (StatusCode, Value) {
     let Some(host) = state.host() else {
         // A failed boot: everything is 503 (health carries the details).
         let msg = match &state.startup {
@@ -49,19 +55,19 @@ pub async fn dispatch(State(state): State<SharedState>, body: Bytes) -> AxumResp
             StartupStatus::Running(_) => unreachable!(),
         };
         let resp = Response::error(ErrorKind::Internal, msg);
-        return json_response(
+        return (
             StatusCode::SERVICE_UNAVAILABLE,
-            &serde_json::to_value(&resp).unwrap_or(Value::Null),
+            serde_json::to_value(&resp).unwrap_or(Value::Null),
         );
     };
 
-    let req: Request = match serde_json::from_slice(&body) {
+    let req: Request = match serde_json::from_slice(body) {
         Ok(r) => r,
         Err(e) => {
             let resp = Response::error(ErrorKind::BadRequest, format!("Invalid request: {e}"));
-            return json_response(
+            return (
                 StatusCode::BAD_REQUEST,
-                &serde_json::to_value(&resp).unwrap_or(Value::Null),
+                serde_json::to_value(&resp).unwrap_or(Value::Null),
             );
         }
     };
@@ -85,5 +91,10 @@ pub async fn dispatch(State(state): State<SharedState>, body: Bytes) -> AxumResp
             }
         }
     }
+    (status, body)
+}
+
+pub async fn dispatch(State(state): State<SharedState>, body: Bytes) -> AxumResponse {
+    let (status, body) = dispatch_body(&state, &body).await;
     json_response(status, &body)
 }

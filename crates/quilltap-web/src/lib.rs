@@ -54,6 +54,44 @@ use serde_json::json;
 
 pub use state::{SharedState, StartupStatus, WebState};
 
+/// Resolve the instance root for a host process: explicit `--data-dir` →
+/// `--instance` (the launcher registry) → `QUILLTAP_DATA_DIR` → the platform
+/// default (docker-aware). Shared by the HTTP binary and the Tauri shell so
+/// every deployment resolves the SAME way.
+pub fn resolve_instance_base_dir(
+    data_dir: Option<PathBuf>,
+    instance: Option<&str>,
+) -> Result<PathBuf, String> {
+    if let Some(dir) = data_dir {
+        return Ok(dir);
+    }
+    if let Some(name) = instance {
+        use quilltap_core::api::InstanceDirectory as _;
+        let registry = quilltap_host::InstanceRegistry::at_default_location();
+        let listed = registry.list().map_err(|e| e.to_string())?;
+        let found = listed
+            .instances
+            .iter()
+            .find(|i| i.name == name)
+            .ok_or_else(|| format!("instance '{name}' is not registered"))?;
+        return Ok(PathBuf::from(&found.path));
+    }
+    Ok(quilltap_host::paths::resolve_base_dir(None))
+}
+
+/// The production `HostConfig` every deployment shell boots with: the
+/// production spine factory over the instance dir + the process version.
+/// Shared by the HTTP binary and the Tauri shell — one boot recipe.
+pub fn production_host_config(base_dir: PathBuf, version: String) -> HostConfig {
+    let mut config = HostConfig::new(base_dir.clone());
+    config.version = version.clone();
+    let tz = config.tz.clone();
+    config.spine = Some(Arc::new(quilltap_host::ProductionSpineFactory::new(
+        base_dir, version, tz,
+    )));
+    config
+}
+
 /// Build the full router over a shared state.
 pub fn build_router(state: SharedState) -> Router {
     Router::new()

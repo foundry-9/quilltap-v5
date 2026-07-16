@@ -17,11 +17,15 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
 use quilltap_core::api::{QuilltapCore, Request, Response};
 use quilltap_core::clock::now_iso;
-use serde_json::json;
+use serde_json::{json, Value};
 
 use crate::state::{SharedState, StartupStatus};
 
-pub async fn health(State(state): State<SharedState>) -> AxumResponse {
+/// The transport-agnostic health core: (HTTP status, `GET /health` JSON body).
+/// The HTTP route serializes both; the Tauri IPC `health` command carries the
+/// numeric status alongside the body (`{status, body}`) so the SPA's
+/// interpreter branches identically.
+pub async fn health_parts(state: &SharedState) -> (StatusCode, Value) {
     let timestamp = now_iso();
     let uptime = state.uptime_secs();
 
@@ -33,21 +37,17 @@ pub async fn health(State(state): State<SharedState>) -> AxumResponse {
         } => {
             return (
                 StatusCode::CONFLICT,
-                [("content-type", "application/json")],
                 json!({
                     "status": "lock-conflict",
                     "lockConflict": lock_conflict,
                     "timestamp": timestamp,
                     "uptime": uptime,
-                })
-                .to_string(),
-            )
-                .into_response();
+                }),
+            );
         }
         StartupStatus::Failed { message } => {
             return (
                 StatusCode::SERVICE_UNAVAILABLE,
-                [("content-type", "application/json")],
                 json!({
                     "status": "unhealthy",
                     "timestamp": timestamp,
@@ -55,17 +55,14 @@ pub async fn health(State(state): State<SharedState>) -> AxumResponse {
                     "services": {},
                     "startupPhase": "failed",
                     "error": message,
-                })
-                .to_string(),
-            )
-                .into_response();
+                }),
+            );
         }
     };
 
     match host.core().dispatch(Request::Health).await {
         Response::Health(h) if h.ready => (
             StatusCode::OK,
-            [("content-type", "application/json")],
             json!({
                 "status": "healthy",
                 "timestamp": timestamp,
@@ -74,34 +71,36 @@ pub async fn health(State(state): State<SharedState>) -> AxumResponse {
                     "json": { "status": "healthy", "message": "Database engine is operational" },
                     "fileStorage": { "status": "healthy", "message": "Local file storage operational", "mode": "local" },
                 },
-            })
-            .to_string(),
-        )
-            .into_response(),
+            }),
+        ),
         Response::Health(h) => (
             StatusCode::LOCKED,
-            [("content-type", "application/json")],
             json!({
                 "status": "locked",
                 "dbKeyState": h.pepper_state,
                 "timestamp": timestamp,
                 "uptime": uptime,
-            })
-            .to_string(),
-        )
-            .into_response(),
+            }),
+        ),
         other => (
             StatusCode::SERVICE_UNAVAILABLE,
-            [("content-type", "application/json")],
             json!({
                 "status": "unhealthy",
                 "timestamp": timestamp,
                 "uptime": uptime,
                 "services": {},
                 "error": format!("unexpected health response: {other:?}"),
-            })
-            .to_string(),
-        )
-            .into_response(),
+            }),
+        ),
     }
+}
+
+pub async fn health(State(state): State<SharedState>) -> AxumResponse {
+    let (status, body) = health_parts(&state).await;
+    (
+        status,
+        [("content-type", "application/json")],
+        body.to_string(),
+    )
+        .into_response()
 }

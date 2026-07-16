@@ -14693,3 +14693,38 @@ LIVE.
 
 **Final versions:** core 0.0.228, harness 0.0.208, host 0.0.18,
 web 0.0.23, SPA 0.5.122.
+
+---
+
+## P4.7a — the `quilltap-tauri` shell (lane A) — IN PROGRESS
+
+Order: `docs/developer/porting/work-orders/p4.7a-tauri-shell.md`. v4
+baseline `02865bdb` — drift-check at lane start: **clean** (HEAD is the
+baseline exactly). Branch `claude/tauri-shell-porting-docs-8eab3a`.
+
+### Unit 1 — the quilltap-web transport-core extraction (2026-07-15)
+
+The reuse seam the whole lane rides: the three HTTP handlers' decision
+cores extracted into transport-agnostic functions so the Tauri IPC
+surface calls the SAME code instead of mirroring it.
+
+- `dispatch::dispatch_body(&SharedState, &[u8]) -> (StatusCode, Value)` —
+  all three arms (boot-failure 503 body, malformed 400 body, the
+  dispatched envelope with the Locked v4 setup-body merge). The IPC
+  `dispatch` command drops the status (IPC carries none; the envelope is
+  authoritative — §1).
+- `health::health_parts(&SharedState) -> (StatusCode, Value)` — the §1
+  `health` command returns `{status, body}` from exactly this pair.
+- `events::subscribe_with_backlog(&Host)` — the D6 subscribe-BEFORE-
+  snapshot ordering rule in one place; the SSE route and the §2 Tauri
+  event pump both must take their subscription through it.
+- `resolve_instance_base_dir` + `production_host_config` moved from the
+  binary into the lib — the `--data-dir` → `--instance` →
+  `QUILLTAP_DATA_DIR` → platform-default chain and the
+  ProductionSpineFactory assembly are ONE recipe now; the Tauri shell
+  boots through the same two calls (the order's "reuse, don't
+  re-derive" mandate made literal).
+
+No behavior change by construction (the handlers wrap the extractions);
+proof: all 16 quilltap-web suites green, full workspace gate clean.
+quilltap-web 0.0.23 → 0.0.24.

@@ -32,12 +32,16 @@ use crate::state::SharedState;
 
 pub const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(15);
 
-pub async fn events(State(state): State<SharedState>) -> AxumResponse {
-    let Some(host) = state.host() else {
-        return (StatusCode::SERVICE_UNAVAILABLE, "server failed to start").into_response();
-    };
+/// The D6 subscribe-then-snapshot rule, transport-agnostic: attach to the
+/// live broadcast FIRST, then drain the Green-Room backlog, so no creation
+/// frame slips between the two. Every event transport (the SSE route here,
+/// the Tauri event pump) MUST take its subscription through this helper and
+/// deliver the backlog frames before the first live frame.
+pub fn subscribe_with_backlog(
+    host: &quilltap_host::Host,
+) -> (tokio::sync::broadcast::Receiver<Event>, Vec<Event>) {
     // Subscribe BEFORE snapshotting so no creation frame slips between the two.
-    let mut rx = host.core().subscribe();
+    let rx = host.core().subscribe();
     let backlog: Vec<Event> = host
         .core()
         .creation_progress_bus()
@@ -45,6 +49,14 @@ pub async fn events(State(state): State<SharedState>) -> AxumResponse {
         .into_iter()
         .map(|(progress_id, frame)| Event::creation_progress(progress_id, frame))
         .collect();
+    (rx, backlog)
+}
+
+pub async fn events(State(state): State<SharedState>) -> AxumResponse {
+    let Some(host) = state.host() else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "server failed to start").into_response();
+    };
+    let (mut rx, backlog) = subscribe_with_backlog(host);
 
     let (tx, body_rx) = tokio::sync::mpsc::channel::<Result<Vec<u8>, std::io::Error>>(64);
     tokio::spawn(async move {

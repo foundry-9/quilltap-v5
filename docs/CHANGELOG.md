@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.7a unit 1 (lane A, the Tauri shell): extracted the transport-agnostic
+cores from quilltap-web so the Tauri IPC surface can reuse them verbatim —
+`dispatch_body` (request bytes → HTTP status + envelope Value, all three
+arms including the Locked setup-body merge), `health_parts` (HTTP status +
+the /health JSON body), and `subscribe_with_backlog` (the D6
+subscribe-then-snapshot event ordering rule). The HTTP handlers now wrap
+these; behavior unchanged (all 16 quilltap-web suites green). Also moved
+the binary's base-dir resolution and production HostConfig assembly into
+the lib (`resolve_instance_base_dir`, `production_host_config`) so the
+Tauri shell boots with the identical recipe. quilltap-web 0.0.23 → 0.0.24.
+
 P4.7 round PLANNED (2026-07-15): two work orders committed for the
 Tauri 2 desktop shell — P4.7a (`crates/quilltap-tauri`: invoke
 dispatch/health, the global event pump, the `qtap` custom protocol

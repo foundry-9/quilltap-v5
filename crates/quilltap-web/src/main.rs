@@ -11,10 +11,10 @@
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::Arc;
 
-use quilltap_host::{HostConfig, InstanceRegistry, ProductionSpineFactory};
-use quilltap_web::{boot_startup_status, build_router, web_state};
+use quilltap_web::{
+    boot_startup_status, build_router, production_host_config, resolve_instance_base_dir, web_state,
+};
 
 struct Args {
     host: String,
@@ -59,26 +59,6 @@ fn parse_args() -> Result<Args, String> {
     Ok(args)
 }
 
-/// Resolve the instance root: `--data-dir` → `--instance` (the launcher
-/// registry) → `QUILLTAP_DATA_DIR` → the platform default (docker-aware).
-fn resolve_base_dir(args: &Args) -> Result<PathBuf, String> {
-    if let Some(dir) = &args.data_dir {
-        return Ok(dir.clone());
-    }
-    if let Some(name) = &args.instance {
-        use quilltap_core::api::InstanceDirectory as _;
-        let registry = InstanceRegistry::at_default_location();
-        let listed = registry.list().map_err(|e| e.to_string())?;
-        let found = listed
-            .instances
-            .iter()
-            .find(|i| &i.name == name)
-            .ok_or_else(|| format!("instance '{name}' is not registered"))?;
-        return Ok(PathBuf::from(&found.path));
-    }
-    Ok(quilltap_host::paths::resolve_base_dir(None))
-}
-
 fn main() {
     let args = match parse_args() {
         Ok(a) => a,
@@ -87,7 +67,8 @@ fn main() {
             std::process::exit(2);
         }
     };
-    let base_dir = match resolve_base_dir(&args) {
+    let base_dir = match resolve_instance_base_dir(args.data_dir.clone(), args.instance.as_deref())
+    {
         Ok(d) => d,
         Err(e) => {
             eprintln!("quilltap-web: {e}");
@@ -101,14 +82,7 @@ fn main() {
         .build()
         .expect("tokio runtime");
     rt.block_on(async move {
-        let mut config = HostConfig::new(base_dir.clone());
-        config.version = version.clone();
-        let tz = config.tz.clone();
-        config.spine = Some(Arc::new(ProductionSpineFactory::new(
-            base_dir.clone(),
-            version.clone(),
-            tz,
-        )));
+        let config = production_host_config(base_dir.clone(), version.clone());
         let startup = boot_startup_status(config);
         let state = web_state(startup, version, base_dir, args.spa_dir.clone());
         let router = build_router(state);
