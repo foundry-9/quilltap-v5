@@ -11,7 +11,6 @@
  */
 
 import type { CoreClient } from '../../core/core-client';
-import type { CoreRequest } from '../../core/core-contract';
 
 /** Lightweight chat data for homepage display (v4 `RecentChat`). */
 export interface RecentChat {
@@ -93,9 +92,7 @@ export const homeKeys = {
 
 /** Fetch the §1 payload — the data bag IS the `HomeData` object. */
 export async function fetchHome(core: CoreClient): Promise<HomeData> {
-  // §1: the `systemHome` wire variant lands with lane A (P4.6au); it folds into
-  // `CoreRequest` at unification — the contract file is not this lane's to edit.
-  const data = await core.dispatchData({ type: 'systemHome' } as unknown as CoreRequest);
+  const data = await core.dispatchData({ type: 'systemHome' });
   return data as unknown as HomeData;
 }
 

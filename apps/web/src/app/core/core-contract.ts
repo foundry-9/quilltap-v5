@@ -3453,7 +3453,9 @@ export type MemoryRequest =
   // file).
   | LlmLogsListRequest
   | SystemImageAestheticsGetRequest
-  | SystemImageAestheticsSetRequest;
+  | SystemImageAestheticsSetRequest
+  // P4.6au/P4.6av (folded at unification; the block at the end of this file).
+  | SystemHomeRequest;
 // P4.6u (lane C) — the Salon terminal-pane block.
 // Appended by lane C; single-author (lane B, the file owner, must not edit this
 // block). The terminal WebSocket + REST protocol types live in
@@ -3995,4 +3997,23 @@ export interface SystemImageAestheticsSetRequest {
   type: 'systemImageAestheticsSet';
   kind: 'lantern' | 'aurora';
   content?: string;
+}
+
+// ===========================================================================
+// P4.6au∥av unification — the `systemHome` verb (lane A's Rust dispatch; lane
+// B's `screens/home/home.api.ts` consumes it). Folded into {@link CoreRequest}
+// by the unifier per the round's §1 contract. The payload (the v4 `HomeData`
+// bag) is read DEFENSIVELY via `CoreClient.dispatchData` (the settings
+// precedent — no CoreResponse variant added); its shape lives in
+// `screens/home/home.api.ts` and is byte-pinned server-side by
+// `home_routes_equivalence`.
+// ===========================================================================
+
+/**
+ * The home-dashboard read (§1 — v4 `GET /api/v1/system/home` /
+ * `lib/services/home-data.service.ts`). No parameters — single-user; the
+ * engine supplies the user scope.
+ */
+export interface SystemHomeRequest {
+  type: 'systemHome';
 }
