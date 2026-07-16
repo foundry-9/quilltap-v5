@@ -15416,3 +15416,50 @@ documented as such) and the pinned P4.7b transport specs
 `ng test`: 126 files / 1152 tests.
 
 Version: SPA 0.5.127 (`package-lock.json` version fields synced).
+
+## P4.7c (lane C) — LANE COMPLETE (2026-07-16)
+
+**The order's tier 1 + tier 2 all LANDED; dogfood finding #12's fix is
+in (pending the human walk's visual confirm). The spike ran GREEN on
+every gating check, so the one-origin approach was adopted and the
+fallback path (b) was never taken** — `avatar-stack.ts` and
+`markdown-renderer.ts` are untouched, and no quilltap-web edit was
+needed (the shell's own `AppHandle::asset_resolver()` serves the
+embedded dist; the Ownership handoff clause stayed cold).
+
+Lane gate, all fresh on this branch (`claude/cool-roentgen-4e6f43`,
+commits `5cd4ae1` shell + `e5b5c99` SPA):
+
+- `cargo fmt --all --check` clean; clippy `-D warnings` clean on BOTH
+  feature sets (default + `quilltap-core/native-transport`).
+- `cargo test --workspace`: **324 suites / 1354 tests / 0 failed**
+  (`ipc_contract` 7/7 — grew `one_origin_spa_serving_contract`).
+- `ng test`: **126 files / 1152 tests** (grew
+  `api-url.one-origin.spec.ts`).
+- `ng build` clean; the main bundle greps ZERO `__TAURI_INTERNALS__`.
+- **Full Playwright 63/63, zero skips, run alone on 4319** — zero
+  locator/count changes (the frozen-path proof: the browser deployment
+  is byte-for-byte unaffected; the run queued behind a sibling lane's
+  suite rather than contending for the port).
+- The debug bundle rebuilt over the REAL `ng build` dist
+  (`cargo tauri build --debug` → `target/debug/bundle/macos/
+  Quilltap.app`) and boot-smoked against `~/qt-m5-instance`: process
+  stable at 15 s, clean stderr.
+
+**The staged human walk** (the one remaining acceptance step, combined
+with the pending M5 walk) is spelled out in the order's status header:
+M5 beats on `~/qt-m5-instance` + the finding-#12 image trio (salon
+avatar stacks / chat-card images / in-message images, plus a story
+background) on `~/qt-dogfood-friday/Friday`, plus the devtools visual
+confirm and a deep-link reload.
+
+Deferred loud (standing P4.7 pool, untouched): native niceties,
+turnkey `tauri dev`, updater/signing/release (D21), uniffi/mobile,
+`Last-Event-ID` replay. New named deferral: **Windows/Linux one-origin
+behavior is macOS-verified only** (WKWebView custom-scheme storage and
+history proven; WebView2/webkitgtk get the spike re-run when those
+targets first build — the `http://qtap.localhost` window-URL shape for
+Windows is NOT yet wired in `tauri.conf.json`, which carries the
+macOS/Linux `qtap://localhost/` form).
+
+Final versions: quilltap-tauri **0.0.3**, SPA **0.5.127**.
