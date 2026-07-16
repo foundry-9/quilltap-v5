@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+The P4.6au ∥ P4.6av ∥ P4.7c round planned (2026-07-16): three work
+orders committed under docs/developer/porting/work-orders/ — the
+homepage server lane (the systemHome dispatch verb + GET
+/api/v1/system/home over a new home-{main,mount}.db fixture family,
+differentialed against v4's real home-data.service.ts), the homepage
+SPA lane (the Home screen at `/` — welcome + quick actions + the
+recent-chats/projects/characters grid — replacing the redirect-to-
+salon root route), and the Tauri one-origin lane closing dogfood
+finding #12 (spike serving the SPA off qtap://localhost/ so
+server-relative image URLs resolve; render-seam apiUrl fallback if
+the WKWebView custom-scheme spike goes RED). Oracle drift-checked:
+v4 HEAD unchanged at 02865bdb. Docs only — no version bumps.
+
 Debug-profile fix for dogfood-observed first-load slowness: the
 SQLite3MC amalgamation (the ChaCha20 page cipher) now compiles at
 opt-level 2 in dev builds ([profile.dev.package.quilltap-sqlite3mc-sys]
