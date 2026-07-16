@@ -15730,3 +15730,77 @@ gitignored per-worktree).
 **one bump BEHIND** (0.5.128 vs package.json's 0.5.129 — the thumbnail
 commit did not sync it); `npm install --package-lock-only` brought both to
 0.5.130 (diff is exactly the two version fields).
+
+---
+
+## P4.6aw — the lane's closing gate record (2026-07-16)
+
+**Lane A of the P4.6aw ∥ P4.6ax ∥ P4.8 round. All three order items LANDED;
+the order's tier-1 and tier-2 are complete. Branch
+`claude/p4-6aw-rust-riders-hint-87af6c`, 3 commits (one per item):**
+
+| Commit | Item |
+|---|---|
+| `8d9af8b` | item 1 — the cost-estimator consolidation |
+| `fc0fee6` | item 2 — the stale-seam-note sweep |
+| `bd8b30b` | item 3 — the depiction-guidelines no-vault hint |
+
+**Drift-check:** v4 HEAD still `02865bdb` at lane start AND at close — no
+drift; nothing ported against a moved oracle.
+
+**The full gate, run in the worktree:**
+
+1. `cargo fmt --all --check` — clean.
+2. `cargo clippy --workspace --all-targets -- -D warnings` — clean on BOTH
+   feature sets (default + `quilltap-core/native-transport`); exit codes
+   captured from a redirected log, NOT a pipe (zsh has no `PIPESTATUS`, so
+   the idiom silently reads success — see the gotcha below).
+3. `cargo test --workspace` — **325 suites / 1357 tests**, zero failures,
+   with all four differential env vars set.
+4. The two tier-3 differentials by name, `--nocapture`, over **FRESH
+   `02865bdb` oracles**: `title_update_tier3_equivalence` (2 tests / 10
+   oracle cases) + `carina_memory_extraction_tier3_equivalence` (1 test / 12
+   oracle cases). **`grep -ci skip` = 0.**
+5. `ng test` — 127 files / **1177 passed** (1173 + the 4 new tab specs);
+   `ng build` clean.
+6. **Full Playwright — 65 passed, zero skips, zero failures**, run ALONE on
+   4319 (the characters walks green; no new beats, as the order specifies).
+
+**§1 (no new wire surface): HONORED.** No `CoreRequest`/`CoreResponse`
+variant, no REST edge, no `core-contract.ts` fold, no fixture family. The
+data-source check found `characterDocumentMountPointId` ALREADY typed at
+`core-contract.ts:1823`, so even the permitted "type an already-sent field"
+allowance went unused.
+
+**§2 (the cross-lane meeting point): HONORED.** The new tab specs assert no
+toolbar button inventories, so lane B's default-ON source toggle cannot
+collide with them.
+
+**Ownership: HONORED.** The diff is `crates/**`, the three named SPA files
+(+ their two specs), `apps/web/package.json`/`package-lock.json` (the
+order-mandated SPA bump), and the two append-only docs.
+`apps/web/src/app/editor/**`, `chat/**`, and `harness/oracle/**` are
+untouched.
+
+**Fixtures:** none changed, none delivered — **no other oracle is
+invalidated by this lane.**
+
+**Deferrals (loud, and exactly the order's tier-3 — nothing new banked):**
+
+- The boxed `ChatCostSummary` variant + the client `detailed=true` arm stay
+  UNPORTED (dead in v4). The WON'T-PORT verdict is **lane C's** to record in
+  the M6 checklist — deliberately not touched here.
+- A `disabledHint` input on the shared `aesthetic-editor-field` component
+  itself stays unported: no v5 consumer would pass it (the guidelines fields
+  don't use that component), so it would be dead surface. Its docstring now
+  records where the arm actually lives.
+
+**⚠ For the unifier (out of this lane's ownership):**
+`docs/developer/porting/phase-2-onramp.md` still lists **seam #5
+("open-JSON multi-key key order") as an OPEN deferred seam**. Item 2
+established that `preserve_order` closed it, and five in-code notes now say
+so — the doc contradicts them. It should be marked closed.
+
+**Final versions:** core **0.0.232**, host **0.0.19**, harness **0.0.209**,
+SPA **0.5.130** (the lockfile's own version field was one bump BEHIND at
+0.5.128 — the thumbnail commit did not sync it; both now read 0.5.130).
