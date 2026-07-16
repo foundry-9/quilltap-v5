@@ -61,7 +61,8 @@
 //!   - a **typed JSON-object column** (`defaultTimestampConfig`,
 //!     `TimestampConfigSchema.nullable()`): a nine-field typed struct in schema
 //!     field order so the compact JSON matches v4's `JSON.stringify` key order
-//!     (NOT `serde_json::Value`, which sorts). The corpus supplies all nine keys
+//!     (a typed struct declares that order at the definition site). The corpus
+//!     supplies all nine keys
 //!     (including the four nullable ones, explicitly) so neither side drops a key
 //!     — sidestepping the optional-key-order seam. `None` → SQL NULL banked too.
 //!   - an **open JSON value column** (`sillyTavernData`, `JsonSchema.nullable()` =
@@ -137,8 +138,8 @@ pub struct AvatarOverride {
 
 /// The per-chat timestamp-injection config (`defaultTimestampConfig`, a
 /// `TimestampConfigSchema` object). A typed struct in schema field order — the
-/// compact JSON must match v4's `JSON.stringify` key order, so this is NOT a
-/// `serde_json::Value` (which would sort keys). All nine keys are emitted (no
+/// compact JSON must match v4's `JSON.stringify` key order, and the struct is
+/// where that order is declared. All nine keys are emitted (no
 /// `skip_serializing_if`): the corpus supplies every key explicitly, matching v4
 /// (where a nullable key provided as `null` stays present). Omitting a nullable
 /// key entirely is the optional-key-order seam — out of corpus.

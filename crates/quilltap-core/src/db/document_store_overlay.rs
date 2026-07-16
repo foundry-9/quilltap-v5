@@ -77,11 +77,11 @@ const FIXED_MANAGED_FIELDS: [&str; 3] = ["description", "instructions", "state"]
 /// the labels differ between entities.
 pub trait StoreEntity {
     /// The typed property bag persisted as `properties.json`. MUST serialize its
-    /// fields in schema-declaration order (a serde struct, **not**
-    /// `serde_json::Value`, which would sort keys) so the stored bytes — which
-    /// feed the content-dedup sha — match v4's `JSON.stringify(parse(x), null, 2)`
-    /// byte-for-byte. Optional fields use `skip_serializing_if` so an absent key
-    /// stays absent (Zod `.optional()`).
+    /// fields in schema-declaration order — a serde struct, so that order is
+    /// declared and reviewable — because the stored bytes feed the content-dedup
+    /// sha and must match v4's `JSON.stringify(parse(x), null, 2)` byte-for-byte.
+    /// Optional fields use `skip_serializing_if` so an absent key stays absent
+    /// (Zod `.optional()`).
     type Properties: Serialize + DeserializeOwned;
 
     /// Lowercase singular label for the unavailability error, e.g. `"group"`.

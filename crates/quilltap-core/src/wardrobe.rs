@@ -484,7 +484,7 @@ pub fn normalize_no_item_sentinel(value: Option<&str>) -> Option<String> {
 /// sentinel. SHA-256 over `JSON.stringify(normalized)`, first 16 hex chars.
 pub fn hash_equipped_slots(slots: Option<&Slots>) -> String {
     // `JSON.stringify({top, bottom, footwear, accessories})` in key order — a
-    // typed serde struct fixes the order (never `serde_json::Value`, which sorts).
+    // typed serde struct declares that order here, where the hash depends on it.
     #[derive(serde::Serialize)]
     struct Normalized<'a> {
         top: &'a [String],

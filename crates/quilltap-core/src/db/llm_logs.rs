@@ -26,8 +26,8 @@
 //!
 //! The **five nested JSON-object columns**, each stored as compact JSON via v4's
 //! `JSON.stringify` of the Zod-parsed value — so the Rust side uses **typed
-//! structs in schema field order** (never `serde_json::Value`, whose `BTreeMap`
-//! would sort keys and diverge):
+//! structs in schema field order**, which declares that order at the struct and
+//! keeps it reviewable:
 //!
 //!   - **`request`** (`LlmLogRequestSummary`, REQUIRED) — an object containing an
 //!     **array of message-summary objects** (`messages`). Its `temperature`
@@ -41,9 +41,11 @@
 //!   - **`usage`** (`Option<LlmLogTokenUsage>`) — nullable JSON; `None` → SQL NULL.
 //!   - **`cacheUsage`** (`Option<LlmLogCacheUsage>`) — nullable JSON.
 //!   - **`rawProviderUsage`** (`Option<serde_json::Value>`) — the one **open-JSON**
-//!     column (`z.record`). serde_json sorts object keys vs v4's insertion-order
-//!     `JSON.stringify`, so the corpus is **constrained to null / `{}` /
-//!     single-key only** (tracked open-JSON seam #5).
+//!     column (`z.record`). Its key order is faithful (this crate enables
+//!     serde_json's `preserve_order`, so a `Value::Object` is an `IndexMap`
+//!     keeping insertion order, exactly as v4's `JSON.stringify` does); the
+//!     corpus simply leaves it null / `{}` / single-key because nothing on this
+//!     surface needs more.
 //!   - **`requestHashes`** (`Option<LlmLogRequestHashes>`) — nullable JSON.
 //!
 //! Plus: a `durationMs` **REAL column, nullable** (`Option<f64>`; an integer-valued
@@ -285,8 +287,9 @@ pub struct LlCreate {
     pub usage: Option<LlmLogTokenUsage>,
     /// `None` => SQL NULL; `Some` => compact JSON.
     pub cache_usage: Option<LlmLogCacheUsage>,
-    /// `None` => SQL NULL; `Some` => compact JSON. Open-JSON: keep null / `{}` /
-    /// single-key only (serde_json sorts keys; seam #5).
+    /// `None` => SQL NULL; `Some` => compact JSON. The one open-JSON column; its
+    /// key order is faithful under `preserve_order`. The corpus keeps it null /
+    /// `{}` / single-key only because nothing here needs more.
     pub raw_provider_usage: Option<Value>,
     /// `None` => SQL NULL; `Some` => compact JSON.
     pub request_hashes: Option<LlmLogRequestHashes>,
@@ -339,12 +342,6 @@ pub struct LlUpdate {
 /// carries these fields exactly as declared. `llm_logs_routes_equivalence`'s
 /// `item_get_found` key-order assertion compares that sequence against the
 /// oracle's raw `JSON.stringify` bytes.
-///
-/// (NB the write path's older note above — "serde_json sorts keys; seam #5" on
-/// `rawProviderUsage` — predates that `preserve_order` decision and no longer
-/// describes this crate. The open-JSON key-order seam is closed; the
-/// `inspector-*` corpus still leaves `rawProviderUsage` NULL simply because
-/// nothing in this surface needs it.)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LlmLogRow {

@@ -37,15 +37,12 @@
 //! match v4's byte-for-byte with no normalization — the pinned form
 //! `folders`/`tags`/`image_profiles` use.
 //!
-//! Deferred seam (open-JSON multi-key key-order — TRACKED, seam #5 in
-//! docs/developer/porting/phase-2-onramp.md): a `config` object with **two or
-//! more keys** would expose a key-order divergence — `serde_json::Value`'s
-//! default `BTreeMap` SORTS object keys, while v4's `JSON.stringify` preserves
-//! INSERTION order. The corpus is deliberately constrained to `{}` or single-key
-//! objects so the two serializations coincide. This is the same family as the
-//! `localeCompare` (collation) / `toLowerCase` (case-mapping) deferrals noted in
-//! docs/developer/porting/phase-2-onramp.md; close it (preserve-insertion-order
-//! serializer) before a multi-key `config` op lands.
+//! The `config` open-JSON column is key-order-faithful: this crate enables
+//! serde_json's `preserve_order`, so a `Value::Object` is an `IndexMap` emitting
+//! INSERTION order, exactly as v4's `JSON.stringify` does. (This was once tracked
+//! as seam #5 in docs/developer/porting/phase-2-onramp.md, on the assumption that
+//! `Value` sorts its keys; `preserve_order` closed it.) The corpus stays
+//! constrained to `{}` or single-key objects because nothing needs more.
 //!
 //! Deferred (not in the corpus): setting `enabled` **back to NULL** via `update`
 //! (clearing a present value) — the patch models a provided field as "set to
@@ -236,15 +233,12 @@ impl<'c> PluginConfigRepository<'c> {
     /// Returns the id of the affected row (the existing id on the update path,
     /// the freshly minted id on the create path).
     ///
-    /// OPEN-JSON MERGE + SEAM (tracked seam #5): the MERGE is performed on
-    /// `serde_json::Value` objects, which sort keys; v4 merges via spread and
-    /// re-stringifies in INSERTION order. To keep the two byte-identical, the
-    /// corpus is constrained so every stored config (including every MERGE
-    /// result) is `{}` or a SINGLE key — either the existing and new config share
-    /// the same single key (the merge overwrites the value, staying single-key)
-    /// or an empty existing merges with a single-key new. A 2+-key merge result
-    /// would expose the key-order divergence; close the seam
-    /// (preserve-insertion-order serializer) before such an op lands.
+    /// The MERGE is performed on `serde_json::Value` objects under
+    /// `preserve_order`, so it reproduces v4's spread faithfully: re-inserting an
+    /// existing key keeps its position, a new key appends. (This was once tracked
+    /// as seam #5, on the assumption that `Value` sorts its keys.) The corpus
+    /// still keeps every stored config — and every merge result — `{}` or a
+    /// single key, having no need for more.
     pub fn upsert_for_user_plugin(
         &self,
         user_id: &str,
@@ -269,9 +263,9 @@ impl<'c> PluginConfigRepository<'c> {
 
         if let Some((id, existing_config_json)) = existing {
             // MERGE `{ ...existing.config, ...config }`: start from the existing
-            // object, then insert/overwrite each key from the new config. The
-            // corpus keeps the result `{}`/single-key (see header), so the
-            // serde_json key-sorting and v4's insertion order coincide.
+            // object, then insert/overwrite each key from the new config. Under
+            // `preserve_order` this matches the JS spread key-for-key — an
+            // overwrite holds its position, a new key appends.
             let existing_config: serde_json::Value = serde_json::from_str(&existing_config_json)
                 .map_err(|e| DbError::Key(format!("existing config parse: {e}")))?;
             let mut merged: serde_json::Map<String, serde_json::Value> =

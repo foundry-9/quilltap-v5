@@ -33,8 +33,8 @@
 //!     optionals `flags` / `scope` / `hideDelimiters`. The optionals carry
 //!     `skip_serializing_if = "Option::is_none"`, matching Zod's omission of an
 //!     absent `.optional()` field (and `JSON.stringify`'s skip of `undefined`).
-//!     `serde_json::Value` is deliberately NOT used (its `BTreeMap` would sort the
-//!     keys and diverge from v4) — the same typed-struct rule `tags.visualStyle`
+//!     A typed struct, not a `serde_json::Value`, so the field order is declared
+//!     at the definition site — the same typed-struct rule `tags.visualStyle`
 //!     established, now over an array of objects.
 //!   - **`dialogueDetection: DialogueDetectionSchema.nullable().optional()`** → a
 //!     nullable JSON object. `None` → SQL NULL; `Some` → compact JSON via

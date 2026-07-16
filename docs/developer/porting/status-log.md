@@ -15589,3 +15589,66 @@ sets (default + `quilltap-core/native-transport`), exit codes checked;
 `cargo test --workspace` 325 suites / 1357 tests, zero failures.
 
 **Versions:** core **0.0.231**, host **0.0.19**, harness **0.0.209**.
+
+---
+
+## P4.6aw item 2 — the stale-seam-note sweep (2026-07-16)
+
+**Comment-only; no code changed.** Closes the sweep P4.6ar unit 4 banked.
+
+**The false premise.** serde_json's *default* `Value::Object` is
+`BTreeMap`-backed and sorts keys — but `quilltap-core/Cargo.toml` enables
+the **`preserve_order`** feature (and cargo feature unification propagates
+it graph-wide), making `Value::Object` an `IndexMap` that keeps INSERTION
+order: exactly what v4's `JSON.stringify` emits. Every comment citing
+key-sorting as the *reason* for a decision was arguing from a premise that
+is now false. The **code at every site was correct** — only the rationale
+was stale ([[llm-logs-key-order-and-preserve-order]]).
+
+**Swept (15 files, all `crates/quilltap-core/src/`):** `wardrobe.rs`,
+`canonicalize.rs`, `db/chat_settings.rs` (×3), `db/llm_logs.rs` (×4),
+`db/connection_profiles.rs`, `db/character_vault.rs`,
+`db/character_plugin_data.rs`, `db/tags.rs`, `db/roleplay_templates.rs`,
+`db/document_store_overlay.rs`, `db/characters.rs` (×2), `db/chats.rs`,
+`db/image_profiles.rs`, `db/background_jobs.rs`, `db/plugin_config.rs`
+(×3). Per the order's rewrite rule the load-bearing guidance survives —
+"typed structs in schema field order" IS still the convention
+([[json-column-key-order]]); the struct is simply now described as what
+*declares* that order at the definition site, rather than as a dodge
+around a sorting `Value`.
+
+**The finding worth more than the sweep:** five sites did not merely carry
+a stale rationale — they declared an **open TRACKED DEFERRED SEAM** (seam
+#5, "open-JSON multi-key key order") that `preserve_order` had already
+CLOSED: `connection_profiles.parameters`, `character_plugin_data.data`,
+`image_profiles.parameters`, `background_jobs.payload`, and
+`plugin_config.config` (including its spread-merge, which under
+`preserve_order` reproduces the JS spread key-for-key — an overwrite holds
+position, a new key appends). Each told a future porter to "close the seam
+before a multi-key op lands"; each now records the closure. Their corpora
+stay `{}`/single-key **by choice, not by constraint**.
+
+**Also retired:** the `llm_logs.rs` NB block (P4.6ar) that existed only to
+warn that the write-path notes above it were stale — the notes it pointed
+at are now fixed, so the pointer is redundant.
+
+**Untouched (deliberate sorts, still correct):** `cache_prefix_hashes.rs`
+(v4's `stableStringify` genuinely sorts), `embedding_blob.rs` (numeric key
+sort), `services/core_whisper.rs` (`BTreeMap` reproducing JS `.sort()`),
+and the harness `sorted()` normalizers. `canonicalize.rs::sort_keys_deep`
+is a *third* category: its explicit sort is deliberate AND its old comment
+("explicit … so it stays correct even if `preserve_order` is ever
+enabled") is stale in the opposite direction — `preserve_order` IS
+enabled, so the explicit sort is now load-bearing rather than defensive.
+Documented as such.
+
+**⚠ Out-of-ownership residue for the unifier:**
+`docs/developer/porting/phase-2-onramp.md` still lists seam #5 under
+"Deferred seams" as OPEN. This lane owns `crates/**` + three SPA files
+only, so it was left alone — but the in-code notes now contradict it. It
+should be marked closed.
+
+**Gate:** fmt clean; clippy clean BOTH feature sets; `cargo test
+--workspace` 325 suites / 1357 tests (unchanged — comment-only).
+
+**Version:** core **0.0.232**.

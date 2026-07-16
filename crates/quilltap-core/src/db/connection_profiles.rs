@@ -41,15 +41,13 @@
 //!     (order-preserving, no key-order subtlety).
 //!   - the **`parameters` open-JSON object column** (`JsonSchema.default({})`,
 //!     i.e. `z.record(z.string(), z.unknown())`). Modeled as a
-//!     `serde_json::Value` → `serde_json::to_string`. **TRACKED DEFERRED SEAM
-//!     (open-JSON multi-key key order):** `serde_json::Value` (an object backed by
-//!     `BTreeMap`) SORTS its keys, whereas v4's `JSON.stringify` preserves
-//!     *insertion* order. For a `{}` or single-key object the two agree
-//!     trivially, so the corpus CONSTRAINS every `parameters` value to `{}` or a
-//!     single-key object. A multi-key open-JSON column needs an insertion-order-
-//!     preserving serialization (a `Vec<(String, Value)>` or an
-//!     `IndexMap`-backed value) before this column can carry arbitrary objects —
-//!     close this before real data with multi-key `parameters`.
+//!     `serde_json::Value` → `serde_json::to_string`, which is key-order-faithful:
+//!     this crate enables serde_json's `preserve_order`, so a `Value::Object` is
+//!     an `IndexMap` emitting *insertion* order exactly as v4's `JSON.stringify`
+//!     does. (This was once a tracked deferred seam on the assumption that
+//!     `Value` sorts its keys — `preserve_order` closed it.) The corpus still
+//!     constrains `parameters` to `{}` or a single-key object, but only because
+//!     nothing in it needs more; a multi-key object would marshal correctly.
 //!
 //! To avoid relying on Zod create-time defaults (`transport`/`pseudoToolMode`/
 //! `courierDeltaMode`/`allowToolUse` and the many `false`/`0` defaults), the

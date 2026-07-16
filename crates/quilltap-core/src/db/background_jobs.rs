@@ -55,17 +55,17 @@
 //! picks DEAD vs FAILED correctly (the status is exact) even though its computed
 //! `scheduledAt` instant is nondeterministic.
 //!
-//! ## Open-JSON `payload` seam (TRACKED, seam #5 in phase-2-onramp.md)
+//! ## The open-JSON `payload` column
 //!
 //! `payload` is the open/arbitrary-JSON object column, modeled as
 //! [`serde_json::Value`] and stored via `serde_json::to_string` (like
-//! `plugin_config.config`). A payload with **two or more keys** would expose the
-//! key-order divergence (`serde_json::Value`'s `BTreeMap` SORTS keys; v4's
-//! `JSON.stringify` preserves INSERTION order), so the corpus keeps every stored
-//! payload `{}` or single-key. `markCompleted`'s optional `payload.result` merge
-//! is exercised only where the result keeps the payload `{}`/single-key. Close
-//! the seam (preserve-insertion-order serializer) before a multi-key payload op
-//! lands.
+//! `plugin_config.config`). Its key order is faithful: this crate enables
+//! serde_json's `preserve_order`, so a `Value::Object` is an `IndexMap` emitting
+//! INSERTION order, exactly as v4's `JSON.stringify` does. (This was once tracked
+//! as seam #5 in phase-2-onramp.md, on the assumption that `Value` sorts its
+//! keys; `preserve_order` closed it.) The corpus keeps every stored payload `{}`
+//! or single-key — including `markCompleted`'s optional `payload.result` merge —
+//! because nothing in it needs more.
 //!
 //! ## Nested-JSON path queries (`findPendingForChat` / `findPendingForEntity`)
 //!

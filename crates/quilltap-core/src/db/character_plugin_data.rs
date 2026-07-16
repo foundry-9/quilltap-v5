@@ -36,16 +36,15 @@
 //! match v4's byte-for-byte with no normalization — the pinned form
 //! `folders` / `tags` / … / `image_profiles` use.
 //!
-//! Deferred seam (open-JSON multi-key key-order — TRACKED, seam #5): a `data`
-//! object with **two or more keys** would expose a key-order divergence —
-//! `serde_json::Value`'s default `BTreeMap` SORTS object keys, while v4's
-//! `JSON.stringify` preserves INSERTION order. The corpus is deliberately
-//! constrained to `{}` or single-key objects so the two serializations coincide
-//! (a single-key fractional-number object exercises the float pass-through inside
-//! the JSON text). This is the same family as the `parameters` deferral in
-//! `image_profiles.rs` / `connection_profiles.rs` — see
-//! docs/developer/porting/phase-2-onramp.md ("Deferred seams", seam #5). Close it
-//! (a preserve-insertion-order serializer) before a multi-key `data` op lands.
+//! The `data` open-JSON column is key-order-faithful: this crate enables
+//! serde_json's `preserve_order`, so a `Value::Object` is an `IndexMap` emitting
+//! INSERTION order, exactly as v4's `JSON.stringify` does. (This was once tracked
+//! as deferred seam #5 — "open-JSON multi-key key order" — on the assumption that
+//! `Value` sorts its keys; `preserve_order` closed it, here and in the same
+//! family's `image_profiles.rs` / `connection_profiles.rs`.) The corpus stays
+//! constrained to `{}` or single-key objects because nothing needs more (a
+//! single-key fractional-number object exercises the float pass-through inside
+//! the JSON text); a multi-key `data` op would marshal correctly.
 
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};

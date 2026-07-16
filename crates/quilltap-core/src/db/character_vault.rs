@@ -358,8 +358,8 @@ mod tests {
 
     // Typed mirrors of v4's PROPERTIES_JSON / PHYSICAL_PROMPTS_JSON objects, in
     // schema field order. serde_json pretty-print (2-space indent) matches
-    // `JSON.stringify(obj, null, 2)` for these shapes; a typed struct (NOT
-    // serde_json::Value, which sorts keys) preserves the insertion order v4 emits.
+    // `JSON.stringify(obj, null, 2)` for these shapes; a typed struct declares the
+    // field order v4 emits right here, where the byte-exactness depends on it.
     #[derive(Serialize)]
     struct PropsDefault {
         pronouns: Option<()>,

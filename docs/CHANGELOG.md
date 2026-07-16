@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+P4.6aw item 2: retired the stale "serde_json sorts keys" rationale across
+quilltap-core (comment-only; no code changed). The claim was true of
+serde_json's default BTreeMap-backed Value, but the crate enables the
+preserve_order feature, so Value::Object is an IndexMap that keeps
+insertion order — the same order v4's JSON.stringify emits. Every comment
+citing key-sorting as the REASON for a decision was therefore arguing from
+a false premise. Swept 15 files: the typed-struct sites keep their
+load-bearing guidance (schema field order stays the convention — the
+struct is what declares that order) with only the false justification
+corrected, and five sites that described an open-JSON multi-key key-order
+divergence as a TRACKED DEFERRED SEAM (seam #5: connection_profiles
+parameters, character_plugin_data data, image_profiles parameters,
+background_jobs payload, plugin_config config + its merge) now record that
+preserve_order closed it — those corpora stay narrow by choice, not by
+constraint. Deliberate sorts (cache_prefix_hashes stableStringify,
+embedding_blob, core_whisper) are untouched and still correct;
+canonicalize's explicit sortKeysDeep is now documented as load-bearing
+precisely BECAUSE preserve_order means Value won't sort on its own. core
+0.0.232.
+
 P4.6aw item 1: consolidated the two byte-identical cost-estimator seams.
 MessageCostEstimator and CarinaCostEstimator were separate traits with
 identical signatures wrapping the same v4 function (estimateMessageCost),

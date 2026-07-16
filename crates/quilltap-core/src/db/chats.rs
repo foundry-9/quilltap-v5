@@ -40,10 +40,11 @@
 //!     nullable strings/uuids/enums/timestamps bind SQL NULL when absent.
 //!   - the open-JSON object columns (`state` default `{}`, and the nullable
 //!     `sillyTavernMetadata` / `timestampConfig` / `sceneState` / `equippedOutfit`
-//!     / … ) are `serde_json::Value`; **the multi-key insertion-order seam
-//!     applies** (serde sorts keys vs v4's `JSON.stringify` order), so this
-//!     sub-unit constrains them to `{}` / single-key / null (tracked deferral, as
-//!     for the other open-JSON columns).
+//!     / … ) are `serde_json::Value`, which is key-order-faithful here: the crate
+//!     enables serde_json's `preserve_order`, so a `Value::Object` emits
+//!     insertion order like v4's `JSON.stringify`. (The multi-key
+//!     insertion-order seam this sub-unit once tracked is closed.) The corpus
+//!     still keeps them `{}` / single-key / null, having no need for more.
 
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};

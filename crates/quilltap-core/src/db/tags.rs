@@ -13,8 +13,8 @@
 //!     stores it via `JSON.stringify` of the Zod-parsed object, whose key order
 //!     is the schema's field order. We reproduce that byte-for-byte with a typed
 //!     [`TagVisualStyle`] struct serialized by `serde_json::to_string` (fields
-//!     in schema order; `serde_json::Value` is deliberately NOT used — its
-//!     default `BTreeMap` would sort the keys and diverge from v4).
+//!     in schema order — the typed struct is what declares that order at the
+//!     definition site, rather than leaving it implicit in a `Value`).
 //!   - **`nameLower` derivation.** On create v4 sets
 //!     `nameLower = (data.nameLower || data.name).toLowerCase()`; on update it
 //!     re-derives `nameLower` from `name` whenever `name` is supplied.

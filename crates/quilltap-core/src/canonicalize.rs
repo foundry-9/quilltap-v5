@@ -40,9 +40,10 @@ pub struct ToolFunction {
 }
 
 /// Recursively sort object keys (code-unit order), mapping into arrays and
-/// passing scalars through — v4's `sortKeysDeep`. Implemented explicitly rather
-/// than leaning on `serde_json`'s default `BTreeMap` ordering so it stays
-/// correct even if the `preserve_order` feature is ever enabled.
+/// passing scalars through — v4's `sortKeysDeep`. The sort is explicit because
+/// it is load-bearing: this crate enables serde_json's `preserve_order`, so a
+/// `Value::Object` is an `IndexMap` that keeps insertion order and would NOT
+/// sort on its own.
 fn sort_keys_deep(value: Value) -> Value {
     match value {
         Value::Object(map) => {

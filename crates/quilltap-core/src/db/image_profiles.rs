@@ -35,15 +35,12 @@
 //! `folders`/`tags`/`text_replacement_rules`/`prompt_templates`/
 //! `conversation_annotations` use.
 //!
-//! Deferred seam (open-JSON multi-key key-order — TRACKED): a `parameters` object
-//! with **two or more keys** would expose a key-order divergence —
-//! `serde_json::Value`'s default `BTreeMap` SORTS object keys, while v4's
-//! `JSON.stringify` preserves INSERTION order. The corpus is deliberately
-//! constrained to `{}` or single-key objects so the two serializations coincide.
-//! This is the same family as the `localeCompare` (collation) / `toLowerCase`
-//! (case-mapping) deferrals noted in docs/developer/porting/phase-2-onramp.md;
-//! close it (preserve-insertion-order serializer) before a multi-key
-//! `parameters` op lands.
+//! The `parameters` open-JSON column is key-order-faithful: this crate enables
+//! serde_json's `preserve_order`, so a `Value::Object` is an `IndexMap` emitting
+//! INSERTION order, exactly as v4's `JSON.stringify` does. (This was once tracked
+//! as the open-JSON multi-key key-order seam, on the assumption that `Value`
+//! sorts its keys; `preserve_order` closed it.) The corpus stays constrained to
+//! `{}` or single-key objects because nothing needs more.
 //!
 //! Deferred (not in the corpus, mirroring `prompt_templates`): setting a nullable
 //! column (`apiKeyId`, `baseUrl`) **to NULL** via `update` — the patch models a

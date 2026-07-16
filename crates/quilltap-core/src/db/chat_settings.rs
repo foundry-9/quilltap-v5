@@ -26,11 +26,10 @@
 //!   - **`tagStyles` — a record/map JSON-object column** (`TagStyleMapSchema =
 //!     z.record(z.string(), TagVisualStyleSchema).default({})`). Modeled as a
 //!     `serde_json::Value` (the map values are themselves objects). CONSTRAINED
-//!     to `{}` in the corpus — a non-empty `tagStyles` would be a multi-key
-//!     open-JSON object whose key order (`serde_json::Value` sorts; v4's
-//!     `JSON.stringify` is insertion order) is a tracked deferred seam (see the
-//!     `connection_profiles` `parameters` deferral). The `{}` case agrees
-//!     trivially.
+//!     to `{}` in the corpus — not for key-order reasons (this crate enables
+//!     serde_json's `preserve_order`, so a `Value::Object` keeps insertion
+//!     order), but simply because nothing in this corpus needs a populated map.
+//!     The `{}` case agrees trivially.
 //!   - **~15 nested typed-struct JSON-object columns** (`cheapLLMSettings`,
 //!     `themePreference`, `defaultTimestampConfig`, `memoryCascadePreferences`,
 //!     `autoHousekeepingSettings`, `memoryExtractionLimits`,
@@ -39,11 +38,11 @@
 //!     `coreWhisper`, `thinkingDisplay`, `answerConfirmationSettings`,
 //!     `storyBackgroundsSettings`, `dangerousContentSettings`, `autoLockSettings`).
 //!     Each is reproduced
-//!     byte-for-byte with a serde struct in **schema field order** (NOT
-//!     `serde_json::Value`, which would sort keys and diverge from v4's
-//!     `JSON.stringify(zodParsed)`, whose key order is the Zod schema's field
-//!     order). This extends the `tags.visualStyle` typed-struct rule across many
-//!     columns at once.
+//!     byte-for-byte with a serde struct in **schema field order**, which is what
+//!     v4's `JSON.stringify(zodParsed)` emits (its key order is the Zod schema's
+//!     field order). A typed struct — not a `serde_json::Value` — is what makes
+//!     that order explicit and reviewable at the declaration site. This extends
+//!     the `tags.visualStyle` typed-struct rule across many columns at once.
 //!   - **five nullable UUID TEXT columns** (`imageDescriptionProfileId`,
 //!     `uncensoredImageDescriptionProfileId`, `defaultRoleplayTemplateId`,
 //!     plus the nested `*ProfileId` fields) → `Option<String>`; `None` → SQL
@@ -106,8 +105,8 @@ use super::DbError;
 // ============================================================================
 // Nested JSON-object structs — each in v4 SCHEMA FIELD ORDER (serde serializes
 // struct fields in declaration order; this reproduces `JSON.stringify(zodParsed)`
-// whose key order is the Zod schema's field order). `serde_json::Value` is NOT
-// used for these — its BTreeMap would sort keys and diverge from v4.
+// whose key order is the Zod schema's field order). A typed struct, not a
+// `serde_json::Value`, so that order is declared here and reviewable.
 // ============================================================================
 
 /// `CheapLLMSettingsSchema` (settings.types.ts L49). The three `*ProfileId`
