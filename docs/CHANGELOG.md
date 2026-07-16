@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+Planned the P4.6aw ∥ P4.6ax ∥ P4.8 riders + M6-review round (docs
+only): three work orders committed under
+docs/developer/porting/work-orders/ — P4.6aw (Rust riders: the
+cost-estimator consolidation, the stale "serde_json sorts keys"
+comment sweep, the depiction-guidelines no-vault hint), P4.6ax
+(editor riders: __bold__ on-type, the form-field source-mode toggle
+with the text-transforms oracle, the GFM table transformer), and
+P4.8 (the M6 screen-parity review producing m6-screen-parity.md).
+Planning surveys re-scoped two pool items: roleplayTemplateId
+toolbar awareness is a future Salon slice (the v5 composer has no
+toolbar), and the boxed ChatCostSummary variant is dead in v4 (zero
+callers — a WON'T-PORT verdict for the M6 checklist). No code
+changes; no version bumps.
+
 Fixed: the thumbnail-size slider in the Salon's Chat Photos gallery had
 no visible effect. The slider updated the size and requested a
 correctly-sized thumbnail from the server, but the rendered box stayed

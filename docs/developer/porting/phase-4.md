@@ -1591,3 +1591,42 @@ plus the standing P4.7/D21 and small-rider pools. Next candidates:
 the human walk, then a homepage/Tauri dogfood pass on the Friday
 copy, the small-rider pool, or the M6 screen-parity review. Round
 record: `status-log.md`.
+
+**The P4.6aw ∥ P4.6ax ∥ P4.8 riders + M6-review round is PLANNED
+(2026-07-16): the small-rider pool + the M6 screen-parity review —
+THREE lanes** (`work-orders/p4.6aw-rust-riders-depiction-hint.md` ∥
+`p4.6ax-editor-riders.md` ∥ `p4.8-m6-screen-parity-review.md` — P4.8
+extends the decomposition past P4.7 as the review step toward
+milestone M6). v4 baseline `02865bdb` (drift-checked at planning: no
+movement). Lane A (Rust riders + one SPA arm): the
+`MessageCostEstimator`/`CarinaCostEstimator` consolidation (a
+behavior-frozen refactor — the two host impls are byte-identical;
+the existing title/carina tier-3 differentials are the proof), the
+stale "serde_json sorts keys" comment sweep (~25 enumerated targets;
+`preserve_order` made the rationale false), and the
+depiction-guidelines no-vault suppression (v4's `disabledHint` arm —
+v5 today fails reactively on save where v4 proactively suppresses
+the editor). Lane B (editor riders): the `__bold__` on-type input
+rule (parser already handles it — one `markInputRule` gap), the
+form-field source-mode toggle (v4 default-ON, incl. the
+`text-transforms.ts` source-branch port with a tsx tier-1 oracle),
+and the GFM table transformer (LIVE in v4, lossy always-left-align
+export carried byte-for-byte; recorded vectors extend the P4.6ag
+byte gate). Survey findings that re-scoped the pool:
+`roleplayTemplateId` toolbar awareness is NOT a rider (the v5
+composer has no toolbar and the salon never fetches the chat's
+template — a future Salon slice), and the boxed `ChatCostSummary`
+variant is DEAD in v4 (zero callers — lane C records the WON'T-PORT
+verdict). Lane C (P4.8, docs-only read-only): the M6 checklist
+`docs/developer/porting/m6-screen-parity.md` — every v4
+screen/dialog vs v5 with evidence-cited verdicts
+(PARITY/DIVERGENCE-DOCUMENTED/MISSING/WON'T-PORT), the deferral
+cross-reference (no dangling "deferred loud"), the prioritized
+backlog for the remaining rounds, and the v4 retirement criteria.
+Known-missing rows seeded: `/generate-image`, `/photos`, `/profile`,
+`/about` (v5 has NO version surface), the tabbed workspace, the
+Brahma console UI, quick-hide (tag/dangerous arms), the general
+wardrobe dialog, the prompt-library + Core Whisper cards, the Data &
+System tab, the no-host chat dialogs. A fold-free round: §1 pins NO
+new wire surface; the one cross-lane visible change is lane B's
+source-toggle default (§2). Round record: `status-log.md`.
