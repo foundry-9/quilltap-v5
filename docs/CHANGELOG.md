@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.6au: base-sensitivity collation option (`locale_compare_base` —
+en-US, primary strength) added to quilltap-core's ICU4X collation
+module, matching JS `localeCompare(b, undefined, {sensitivity:
+'base'})`: case AND accents compare equal, ties fall to the caller's
+stable sort. First consumer is the homepage character sort (v4
+`home-data.service.ts:197`). Probed against Node 24 (full ICU) and
+pinned by new unit tests (the sorted-vector order, the pairwise
+signs, the tie pairs, numeric:false). quilltap-core 0.0.229.
+
 The P4.6au ∥ P4.6av ∥ P4.7c round planned (2026-07-16): three work
 orders committed under docs/developer/porting/work-orders/ — the
 homepage server lane (the systemHome dispatch verb + GET
