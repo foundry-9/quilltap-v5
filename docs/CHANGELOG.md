@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+Dogfood finding #12 recorded (Tauri vs the Friday copy): every image
+renders broken under the Tauri shell — server-supplied RELATIVE URLs
+(avatarUrl/filepath/backgroundUrl DTO fields, links inside
+server-rendered bodies, + the inline blob rewrite in
+markdown-renderer.ts:98) resolve against the webview's
+tauri://localhost dist origin and 404. The wire format is v4-faithful
+(do not absolutize server-side). Promoted to the next order with two
+candidate fixes (one-origin qtap-served SPA — spike first — vs
+render-seam apiUrl normalization). Docs only.
+
 P4.7a ∥ P4.7b round UNIFIED on main (2026-07-16) — both orders CLOSED;
 P4.7 (the Tauri 2 desktop shell) is LANDED. crates/quilltap-tauri
 0.0.2 (tauri 2.11.5): boot via the shared quilltap-web helpers, §1
