@@ -14907,3 +14907,52 @@ transports share that semantic; matches the pre-split ordering exactly).
 **Gate:** `ng test` 119 files / 1107 tests green (the existing specs untouched —
 they now exercise dispatch/fetchHealth THROUGH the real `HttpCoreTransport` via
 the same global-fetch mocks); `ng build` clean. SPA 0.5.123.
+
+## P4.7b (lane B) unit 2 — the Tauri CoreClient transport + bootstrap selection (2026-07-15)
+
+**The §1/§2 implementation** (`tauri-core-transport.ts`), name-for-name against
+the Shared contract:
+
+- `dispatch` → `invoke('dispatch', { request })`, envelope resolved verbatim
+  (typed errors RESOLVE per §1); an invoke REJECTION maps to the SAME
+  synthetic-internal envelope the HTTP network failure produces (the spec
+  asserts deep equality against `HttpCoreTransport` under the same cause). A
+  non-envelope resolution (a §1 contract violation) becomes the synthetic
+  "unexpected response (IPC)" internal error.
+- `health` → `invoke('health')` → `{status, body}`, fed through the SHARED
+  `interpretHealth` — the spec sweeps all four vocabulary statuses plus the
+  default arms and the unknown-status arm through BOTH transports and asserts
+  identical results (the interpreter cannot fork). Rejection → `unreachable`.
+- `connect(sink)` → `listen('quilltap://event')` and `listen('quilltap://
+  resync')` FIRST, `invoke('events_attach')` after — the §2 ordering rule. The
+  spec's mock shell replays a Green-Room backlog frame INSIDE `events_attach`
+  before it resolves and asserts the frame landed (and landed while still
+  'connecting'); a listener attached late would drop it. Payloads are accepted
+  pre-parsed (`frameFromPayload`: object-or-skip) — never round-tripped through
+  `parseEventData`, whose skip rules are SSE chunking artifacts. `resync` bumps
+  the counter, no state transition. Idempotent while up; `disconnect()`
+  unlistens (a generation counter invalidates an in-flight attach).
+- **One vocabulary choice the order left open:** a FAILED attach (in-process,
+  should never happen) surfaces as `'reconnecting'` — the shared stream-gap
+  vocabulary, what the shell indicator already renders for an HTTP drop.
+
+**Bootstrap selection** (`core-transport-factory.ts`): `createCoreTransport()`
+= `isTauri() ? TauriCoreTransport : HttpCoreTransport`, evaluated at
+`CoreClient` construction (before first injection resolves). `isTauri` is the
+library's own bare global check and the ONLY static `@tauri-apps/api` import;
+everything else loads through `tauri-api.ts`'s lazy `loadTauriIpc()` gateway.
+**Verified in the built output:** the browser main bundle contains zero
+`__TAURI_INTERNALS__` references — the IPC modules land in one lazy chunk.
+
+**The mockIPC recipe (for the record):** `mockIPC(cb, { shouldMockEvents:
+true })` from `@tauri-apps/api/mocks` provides the full event-plugin plumbing
+(`transformCallback` included), so specs drive the REAL `invoke`/`listen`/
+`emit` — no hand-rolled listen seam needed (the order's "mock at the module
+seam" fallback turned out unnecessary at `@tauri-apps/api` 2.11.1). Backlog
+ordering is proven behaviorally: emit inside the `events_attach` handler,
+assert arrival. `clearMocks()` per test; `isTauri` faked by setting the
+`isTauri` global.
+
+**Gate:** `ng test` 121 files / 1121 tests (+2 files / +14: the transport spec
++ the factory spec); `ng build` clean, Tauri code confirmed out of the initial
+bundle. New dependency: `@tauri-apps/api` ^2.11.1. SPA 0.5.124.

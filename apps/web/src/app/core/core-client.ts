@@ -21,8 +21,8 @@ import {
   type CoreTransport,
   type EventStreamSink,
   type HealthStatus,
-  HttpCoreTransport,
 } from './core-transport';
+import { createCoreTransport } from './core-transport-factory';
 
 // The interpreted shapes moved to core-transport.ts with the P4.7b transport
 // split; re-exported so the pre-split import sites stay valid.
@@ -46,7 +46,7 @@ export type { ConnectionState, HealthStatus } from './core-transport';
 @Injectable({ providedIn: 'root' })
 export class CoreClient {
   /** The raw-IO pair, chosen at bootstrap (before first injection resolves). */
-  private readonly transport: CoreTransport = new HttpCoreTransport();
+  private readonly transport: CoreTransport = createCoreTransport();
 
   private readonly frames = new Subject<ScopedEvent>();
 

@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+P4.7b unit 2 (lane B): the Tauri CoreClient transport + bootstrap
+selection. `TauriCoreTransport` implements the §1/§2 IPC contract:
+`invoke('dispatch', {request})` resolving the envelope verbatim
+(rejection → the same synthetic-internal envelope as an HTTP network
+failure), `invoke('health')` interpreted by the shared interpreter,
+and `listen('quilltap://event')` BEFORE `invoke('events_attach')` so
+the Green-Room backlog replay is never dropped; `quilltap://resync`
+bumps the resync counter. Selection at bootstrap via `isTauri()`
+(`createCoreTransport`); the IPC modules load through a lazy gateway
+(`tauri-api.ts`) — the browser main bundle carries no Tauri IPC code.
+New dependency `@tauri-apps/api` ^2.11.1. 14 new specs (mockIPC with
+shouldMockEvents over the real invoke/listen, incl. a health
+branch-parity sweep against the HTTP transport and the
+backlog-while-connecting proof). ng test 121 files / 1121 tests.
+SPA 0.5.124.
+
 P4.7b unit 1 (lane B): the CoreClient transport split. The three raw
 HTTP touchpoints (dispatch POST, health GET, the EventSource stream)
 extracted verbatim into an internal `CoreTransport` boundary
