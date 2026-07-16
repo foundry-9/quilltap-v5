@@ -2,6 +2,31 @@
 
 ## Recent Changes
 
+The P4.6aw ∥ P4.6ax ∥ P4.8 round UNIFIED on main (2026-07-16) — all
+three orders CLOSED. Rust riders: the two byte-identical cost-estimator
+seams consolidated into one trait/default/host impl (behavior-frozen;
+title + carina tier-3 differentials green over fresh oracles, zero
+skips); the stale "serde_json sorts keys" rationale retired across 15
+files; the depiction-guidelines editor now proactively warns when a
+character has no document vault (both appearance tabs, v4's exact
+warning). Editor riders: __bold__ boldens on type; qt-markdown-field
+gains v4's source-mode toggle (default ON, toolbar buttons operate on
+the raw textarea via transforms proven against a 32-row oracle driving
+v4's real FormattingToolbar); GFM tables round-trip through the rich
+editor with v4's exact lossy semantics (19/20 recorded vectors
+byte-match; the 20th pins a pre-existing dialect-wide block-separation
+divergence bidirectionally). And the M6 screen-parity review landed
+docs/developer/porting/m6-screen-parity.md: every v4 screen and
+screen-grade dialog verdict-ed with citations, a 16-item p4.9 backlog,
+and the v4 retirement criteria. v4 drifted one docs-only commit
+(34746bed, a feature spec — Pascal the Croupier); oracle baseline stays
+02865bdb. Gate: fmt/clippy both feature sets/release build clean; cargo
+test --workspace 325 suites / 1357 tests / 0 failed (four oracles
+regenerated fresh; both lane-B vector files identical to fresh runs);
+ng test 128 files / 1247; ng build clean; full Playwright 65/65,
+zero skips, run alone. Final versions: core 0.0.232, harness 0.0.209,
+host 0.0.19, web 0.0.25, quilltap-tauri 0.0.3, SPA 0.5.134.
+
 P4.8 (the M6 screen-parity review) produced
 docs/developer/porting/m6-screen-parity.md: the complete v4-vs-v5
 screen-parity checklist, the screen-grade dialog inventory, the

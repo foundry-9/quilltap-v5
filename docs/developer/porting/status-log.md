@@ -16142,3 +16142,80 @@ looks — the tab hosts 8 dialogs) and `p4.9h-prompt-library-core-whisper`.
   `wardrobe-control-dialog.tsx:3-21` vs `ProjectWardrobeManager.tsx:4`).
   CLAUDE.md's "the wardrobe dialog" deferral understates it: `p4.9f` is a
   vertical, not a re-skin.
+
+---
+
+## The P4.6aw ∥ P4.6ax ∥ P4.8 round — UNIFIED on main (2026-07-16)
+
+The riders + M6-review round (Rust riders + the depiction no-vault hint
+∥ the editor riders ∥ the M6 screen-parity review), all lanes based on
+`41e1a0a`, reconciled by cherry-pick onto `unify/p4.6aw-ax-8` in A → B →
+C order, one commit at a time. Conflicts ONLY in the two append-only
+docs — Ownership was respected exactly, zero source conflicts, and §1
+(no new wire surface) held round-wide: no CoreRequest variant, no
+core-contract fold, no fixture family. **All three orders CLOSED.**
+
+**A drift note, classified benign:** v4 HEAD moved to `34746bed` during
+the round — a docs-only commit (`docs/developer/features/
+pascal-custom-tools.md`, a 368-line feature SPEC + a CHANGELOG line,
+"Spec only; no code changes"). No `lib/` code moved, so no ported unit
+is affected and every oracle regen still reflects `02865bdb` behavior.
+**The oracle baseline stays `02865bdb`** — but the spec is a heads-up:
+v4 is about to grow a feature (Pascal the Croupier custom pseudo-tools)
+that will need a drift re-port when it lands as code.
+
+**Unification wires (the cross-lane obligations no lane could do):**
+
+1. **The M6 checklist settled:** lane C's six in-flight rows (written
+   while lanes A/B were open) flipped to LANDED/PARITY — the same
+   unification landed both; the table row carries lane B's
+   editor-table-styling deferral forward as a p4.9 rider.
+2. **`phase-2-onramp.md` seam #5 reconciled:** lane A's unifier note
+   said the doc still lists the seam OPEN; in fact the item has carried
+   a RESOLVED marker since 2026-07-01 — the genuinely stale part was
+   the opening sentence's present-tense "Value sorts keys", now
+   past-tensed and pointed at the RESOLVED paragraph.
+3. **The SPA version union:** lane A minted 0.5.130 and lane B
+   0.5.130–0.5.133 off the same 0.5.129 base (the first bumps collided
+   silently — identical +1 on both sides merges clean, which is exactly
+   how an accumulation gets lost); accumulated to **0.5.134**, lockfile
+   version fields synced.
+4. **The §2 flip proven live:** lane B's default-ON source toggle now
+   renders on every `qt-markdown-field` consumer, including lane A's
+   two appearance tabs; lane A's specs assert no toolbar inventories
+   (per §2) and the full suites pass with the toggle present.
+
+**The gate (all fresh on the unify branch):** `cargo fmt` clean; clippy
+`-D warnings` clean on BOTH feature sets; release build clean. **All
+four affected oracles regenerated FRESH from the v4 checkout** (Node
+24, /tmp mirrors WITH the fixtures/ sibling + node_modules symlink —
+the first title/carina attempts failed on a cases-only mirror; the
+carina fixture DBs rebuilt via its build script first): title-update 10
+rows, carina-mem 12 rows, text-transforms 32 rows, tables 20 rows.
+**Both committed lane-B vector files diffed IDENTICAL against their
+fresh oracle runs.** `cargo test --workspace` **325 suites / 1357
+tests / 0 failed** with all four differential env vars set; the
+title-update and carina tier-3s re-run by name `--nocapture`, **zero
+SKIP**. `ng test` **128 files / 1247 tests** (lane B's 1243 + lane A's
+4 tab specs). `ng build` clean. **Full Playwright 65/65, zero skips,
+run alone on 4319** (this also absorbs lane B's gate shortfall: the
+lane never ran its required full-Playwright step).
+
+**Still OPEN from these surfaces (loud, named — the next-order pool):**
+
+- **The `p4.9a–n` backlog** now lives in `m6-screen-parity.md` §4 — the
+  next `/setupphase` lifts from there. Items 1–4 (`p4.9a-photos-view`,
+  `p4.9c-about-profile`, `p4.9b-generate-image-screen`,
+  `p4.9d-quick-hide-provider`) are small, unblocked, high-visibility —
+  the natural next round.
+- **`p4.9j-workspace-tabs` needs a human ruling first** (M6 F1: the
+  tabbed workspace is v4's DEFAULT shell, not an experiment — see
+  `m6-screen-parity.md` §5.1) — plausibly larger than every other row
+  combined.
+- Editor table styling in the rich editor (one rule in `_chat.css`) and
+  the block-separation dialect gap — lane B's named deferrals.
+- The combined human M5 + finding-#12 walk (P4.7c header recipe) is
+  STILL the outstanding acceptance step, unchanged by this round.
+
+**Final versions:** core **0.0.232**, harness **0.0.209**, host
+**0.0.19**, web 0.0.25, quilltap-tauri 0.0.3, SPA **0.5.134**.

@@ -1630,3 +1630,48 @@ wardrobe dialog, the prompt-library + Core Whisper cards, the Data &
 System tab, the no-host chat dialogs. A fold-free round: §1 pins NO
 new wire surface; the one cross-lane visible change is lane B's
 source-toggle default (§2). Round record: `status-log.md`.
+
+**The P4.6aw ∥ P4.6ax ∥ P4.8 round is UNIFIED on main (2026-07-16) —
+ALL THREE orders CLOSED; the M6 screen-parity checklist EXISTS
+(`m6-screen-parity.md`) and the standing small-rider pool is now
+EMPTY.** Landed: the cost-estimator consolidation (one trait / one
+no-cost default / one host pricing impl; `CarinaCostEstimator` and
+its twins retired; behavior-frozen — title + carina tier-3
+differentials green over fresh `02865bdb` oracles, zero SKIP) + the
+stale "serde_json sorts keys" sweep (15 files; `phase-2-onramp.md`
+seam-#5 wording reconciled at unify) + the depiction-guidelines
+no-vault suppression on both appearance tabs (v4's verbatim warning;
+no fetch when suppressed) ∥ the `__bold__` on-type rule + the
+form-field source-mode toggle (v4 default-ON; source-mode toolbar
+transforms over a 32-row jsdom oracle driving v4's REAL
+FormattingToolbar) + the GFM table transformer (hand-rolled
+`qt_table` block rule — markdown-it's built-in rejected as wrong on
+every axis; 19/20 recorded vectors byte-match v4, the 20th pins the
+PRE-EXISTING block-separation dialect divergence bidirectionally;
+recorder findings: `| :-: |` is NOT a table in v4, line-by-line
+retry, alignment discarded on import) ∥ the M6 review: every v4
+screen + screen-grade dialog verdict-ed with both-side citations,
+four headline findings (F1: the tabbed workspace is v4's DEFAULT
+shell — `p4.9j` needs a human ruling; F2: two distinct LLM-log
+surfaces; F3: the chat-level Core Whisper override chain; F4: three
+stale v5 docstrings), two WON'T-PORT verdicts rendered (boxed
+ChatCostSummary + `detailed=true`; the redirect aliases +
+`/foundry/*`), the 16-item `p4.9a–n` backlog (§4), and the v4
+retirement criteria (§5). v4 drifted ONE docs-only commit
+(`34746bed` — the Pascal-custom-tools feature SPEC; classified
+benign, baseline stays `02865bdb`, but it previews a future drift
+re-port when the feature lands as code). A fold-free round: §1 held
+(no wire-surface change anywhere). Gate: fmt/clippy both feature
+sets/release build clean; four oracles regenerated FRESH; both
+committed vector files IDENTICAL to fresh runs; `cargo test
+--workspace` 325 suites / 1357 / 0 failed (both tier-3s by name,
+zero SKIP); ng test 128 files / 1247; ng build clean; full
+Playwright green zero skips run alone (absorbing lane B's skipped
+full-suite step). Versions: core 0.0.232, harness 0.0.209, host
+0.0.19, web 0.0.25, quilltap-tauri 0.0.3, SPA 0.5.134. **Next
+candidates: the human M5 + finding-#12 walk (STILL outstanding —
+the P4.7c recipe), then the M6 backlog's items 1–4 as the natural
+next round (`p4.9a-photos-view` ∥ `p4.9c-about-profile` ∥
+`p4.9b-generate-image-screen` ∥ `p4.9d-quick-hide-provider` — lift
+from `m6-screen-parity.md` §4), and the `p4.9j-workspace-tabs`
+human ruling (§5.1).** Round record: `status-log.md`.

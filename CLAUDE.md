@@ -591,13 +591,32 @@ records THERE. Update this summary only when a phase or round completes.
   Windows/Linux one-origin re-checks. Next candidates: the human
   walk, a homepage/Tauri dogfood pass, the small-rider pool, or the
   M6 screen-parity review.
+- **The P4.6aw ∥ P4.6ax ∥ P4.8 riders + M6-review round: UNIFIED on
+  main (2026-07-16) — ALL THREE CLOSED; the small-rider pool is EMPTY
+  and the M6 screen-parity checklist EXISTS.** The cost-estimator
+  consolidation + the stale "sorts keys" sweep + the
+  depiction-guidelines no-vault hint ∥ the `__bold__` rule + the
+  form-field source-mode toggle (default ON on every markdown field) +
+  the GFM table transformer (19/20 vectors byte-match; the 20th pins
+  the pre-existing block-separation dialect gap bidirectionally) ∥
+  `docs/developer/porting/m6-screen-parity.md` — every v4 screen/dialog
+  verdict-ed, the 16-item `p4.9a–n` backlog, the v4 retirement
+  criteria. Gate: 325 suites/1357, ng 1247 (128 files), full Playwright
+  green zero skips. Deferred loud: editor table styling (one `_chat.css`
+  rule), the block-separation gap, the composer-toolbar slice
+  (`p4.9l`). **Next: the human M5+#12 walk (still outstanding); then
+  the M6 backlog items 1–4 (`p4.9a`/`p4.9c`/`p4.9b`/`p4.9d`) as the
+  natural next round; `p4.9j` (workspace tabs — v4's DEFAULT shell)
+  needs a human ruling first.**
 - **Oracle baseline: v4 HEAD `02865bdb`** (rebased 2026-07-14 with the
   P4.d4 skip-signal drift re-port — the trailing-sentinel strip; the
   P4.d3 quantized embedding codec note stands: ⚠ v4's
   `quantize-embeddings-v1` migration is one-way — back up Friday
   before first running v4 `4.8.0-dev.52`+ against it. Drift-check
-  before every round.
-  Versions: core 0.0.230, harness 0.0.208, host 0.0.18, web 0.0.25,
-  quilltap-tauri 0.0.3, SPA 0.5.128.
+  before every round. Known benign drift past the baseline: `34746bed`
+  (2026-07-16) is a docs-only feature SPEC (Pascal custom pseudo-tools,
+  no code) — expect a real drift re-port when it lands as code.
+  Versions: core 0.0.232, harness 0.0.209, host 0.0.19, web 0.0.25,
+  quilltap-tauri 0.0.3, SPA 0.5.134.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.
