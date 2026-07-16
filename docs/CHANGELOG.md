@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+Typing `__bold__` in the rich editor now boldens on the closing
+underscore, matching v4 (whose transformer set includes Lexical's
+BOLD_UNDERSCORE). The text normalizes to `**bold**` on serialization —
+v4 does the same, because its export dedups bold to the first matching
+transformer. As in v4, the rule refuses to fire inside a word
+(`a__b__` stays literal), and a lone `*` remains literal roleplay
+narration. SPA 0.5.130.
+
 P4.6aw item 3: the depiction-guidelines editor now warns up front when a
 character has no document vault, instead of failing after you type. A
 vault-less character has nowhere to store depiction guidelines, and until

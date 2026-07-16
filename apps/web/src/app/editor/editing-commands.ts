@@ -20,13 +20,12 @@ import { type Command, type Plugin } from 'prosemirror-state';
  * INCLUDED inline delimiters auto-format when the CLOSING delimiter is typed
  * (v4 Lexical MarkdownShortcut, whose `scanDelimiters`/`processEmphasis` is
  * CommonMark flanking): `_italic_` (ITALIC_UNDERSCORE), `**bold**` (BOLD_STAR),
- * `` `code` `` (INLINE_CODE), `~~strike~~` (STRIKETHROUGH), `==highlight==`
- * (HIGHLIGHT). `__bold__` (BOLD_UNDERSCORE) is NOT wired as an input rule (typed
- * `__bold__` stays literal and still serializes byte-faithfully; it is a named
- * live-typing remainder — see the status log). Underscore italic requires a
- * non-word left flank (no intra-word `a_b_`); the `**`/`` ` ``/`~~`/`==` rules
- * flank on punctuation too (markdown allows `a**b**`). None fire when either
- * inner edge is whitespace (CommonMark flanking).
+ * `__bold__` (BOLD_UNDERSCORE), `` `code` `` (INLINE_CODE), `~~strike~~`
+ * (STRIKETHROUGH), `==highlight==` (HIGHLIGHT). The two underscore rules require
+ * a non-word left flank (Lexical `intraword: false` on both ITALIC_UNDERSCORE
+ * and BOLD_UNDERSCORE — no intra-word `a_b_`/`a__b__`); the `**`/`` ` ``/`~~`/
+ * `==` rules flank on punctuation too (markdown allows `a**b**`). None fire when
+ * either inner edge is whitespace (CommonMark flanking).
  *
  * @module editor/editing-commands
  */
@@ -90,6 +89,12 @@ export function dialectInputRules(schema: Schema): Plugin {
     markInputRule(/(?:^|[^\w_])_((?:[^_\s][^_]*[^_\s])|[^_\s])_$/, schema.marks['em']),
     // `**bold**` — flanks on punctuation too (markdown allows `a**b**`).
     markInputRule(/\*\*((?:[^*\s][^*]*[^*\s])|[^*\s])\*\*$/, schema.marks['strong']),
+    // `__bold__` (BOLD_UNDERSCORE) — like underscore italic, a non-word left
+    // flank (Lexical `intraword: false`), so `a__b__` stays literal. Strong
+    // serializes as `**`, so a typed `__bold__` normalizes to `**bold**` — v4
+    // does the same (Lexical's export dedups bold to BOLD_STAR, the first
+    // matching transformer), and the round-trip gate pins it.
+    markInputRule(/(?:^|[^\w_])__((?:[^_\s][^_]*[^_\s])|[^_\s])__$/, schema.marks['strong']),
     // `` `code` `` inline code.
     markInputRule(/`((?:[^`\s][^`]*[^`\s])|[^`\s])`$/, schema.marks['code']),
     // `~~strike~~` (STRIKETHROUGH).

@@ -127,6 +127,31 @@ describe('dialectInputRules — emphasis-on-type (v4 MarkdownShortcut)', () => {
     expect(typeClosing('a_b', '_')).toBe('a_b_');
   });
 
+  // --- BOLD_UNDERSCORE (@lexical/markdown `{format:['bold'], intraword:false,
+  // tag:'__'}`, in v4's COMPOSER_TRANSFORMERS at MarkdownBridgePlugin.tsx:71) ---
+
+  it('`__bold__` converts on the closing `_` and normalizes to `**bold**`', () => {
+    // Strong serializes as `**` (BOLD_STAR is the first bold transformer, so
+    // Lexical's export dedups to it) — v4 normalizes the same way.
+    expect(typeClosing('__bold_', '_')).toBe('**bold**');
+  });
+
+  it('`__bold__` converts mid-line after prose', () => {
+    expect(typeClosing('say __now_', '_')).toBe('say **now**');
+  });
+
+  it('intra-word `a__b__` does NOT bolden (BOLD_UNDERSCORE intraword: false)', () => {
+    expect(typeClosing('a__b_', '_')).toBe('a__b__');
+  });
+
+  it('whitespace inside `__ __` blocks the rule (CommonMark flanking)', () => {
+    expect(typeClosing('__hi _', '_')).toBe('__hi __');
+  });
+
+  it('a single `_word_` still italicizes, not boldens, alongside the `__` rule', () => {
+    expect(typeClosing('_word', '_')).toBe('_word_');
+  });
+
   it('whitespace inside the delimiters blocks the rule (CommonMark flanking)', () => {
     expect(typeClosing('**hi *', '*')).toBe('**hi **');
   });

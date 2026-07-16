@@ -15804,3 +15804,44 @@ so — the doc contradicts them. It should be marked closed.
 **Final versions:** core **0.0.232**, host **0.0.19**, harness **0.0.209**,
 SPA **0.5.130** (the lockfile's own version field was one bump BEHIND at
 0.5.128 — the thumbnail commit did not sync it; both now read 0.5.130).
+---
+
+## P4.6ax — the editor riders (SPA-only, baseline `02865bdb`)
+
+Lane B of the P4.6aw ∥ P4.6ax ∥ P4.8 riders + M6-review round.
+Drift-checked at lane start: `git log 02865bdb..HEAD` in
+`~/source/quilltap-server` is EMPTY — no drift.
+
+### Unit 1 — `__bold__` on-type (item 1, tier 1) — LANDED
+
+v4 has no custom rule here: it mounts stock `@lexical/markdown`
+transformers, and `BOLD_UNDERSCORE` is in `COMPOSER_TRANSFORMERS`
+(`MarkdownBridgePlugin.tsx:71`), defined
+`{format:['bold'], intraword:false, tag:'__'}`. v5's parser side was
+already done (pasted/loaded `__bold__` parses to strong); only the live
+input rule was missing.
+
+**Port:** one `markInputRule` in `editing-commands.ts` targeting
+`strong`, modelled on the underscore-italic rule's non-word left flank
+(`intraword:false` on BOTH underscore transformers):
+`/(?:^|[^\w_])__((?:[^_\s][^_]*[^_\s])|[^_\s])__$/`. The `:24-28`
+exclusion note retired (it named the rule a live-typing remainder).
+
+**Why the em rule can't shadow it:** the em regex's content class is
+`[^_]*`, so `__bold__` can never match it (an opening `_` at index 6
+gives empty content; at index 1 the content would contain `_`). Rule
+order is therefore not load-bearing, but the new rule sits beside
+BOLD_STAR for readability.
+
+**Differential:** in-lane specs per the P4.6al `markInputRule`
+precedent, flanking cases derived from `@lexical/markdown`'s
+`BOLD_UNDERSCORE` (cited in the spec). Five new cases: fires on the
+closing `_` (→ `**bold**`), fires mid-line, intra-word `a__b__`
+negative, whitespace-inner-edge negative, and `_word_` still
+italicizes alongside the new rule. The dialect gate already pins the
+serialization normalization (`__bold__` → `**bold**`, NORMALIZING
+entry) — the 28 gate entries stay byte-unchanged.
+
+**Gate:** `editing-commands.spec.ts` + `markdown-round-trip.spec.ts`
+57 tests green, the five new cases confirmed by name (`--reporter=verbose`).
+SPA 0.5.130.
