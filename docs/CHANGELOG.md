@@ -87,6 +87,15 @@ stable sort. First consumer is the homepage character sort (v4
 pinned by new unit tests (the sorted-vector order, the pairwise
 signs, the tie pairs, numeric:false). quilltap-core 0.0.229.
 
+P4.7c (lane C, SPA side): apiUrl() reconciled for one-origin — under
+Tauri it now returns the path unchanged when the page itself is on
+the qtap origin (qtap: protocol or qtap.localhost host), keeping the
+qtap-origin prefix only for the cross-origin devUrl dev loop.
+Signature unchanged; browser behavior byte-identical. New
+api-url.one-origin.spec.ts pins the identity arm over a
+qtap.localhost jsdom page URL; the existing resolver and transport
+specs unchanged and green. SPA 0.5.126 → 0.5.127.
+
 The P4.6au ∥ P4.6av ∥ P4.7c round planned (2026-07-16): three work
 orders committed under docs/developer/porting/work-orders/ — the
 homepage server lane (the systemHome dispatch verb + GET

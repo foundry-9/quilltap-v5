@@ -15390,3 +15390,29 @@ cross-origin arrangement); CORS stays permissive for the documented
 `devUrl` dev loop, which remains cross-origin.
 
 Version: quilltap-tauri 0.0.3.
+
+## P4.7c (lane C) unit 2 — the `apiUrl()` one-origin reconcile (2026-07-16)
+
+The §2 freeze respected: `apiUrl(path: string): string` keeps its
+signature; only the RUNTIME resolution changed. Under Tauri the
+resolver is now identity when the page itself is on the qtap origin
+(`location.protocol === 'qtap:'` on macOS/Linux, `location.host ===
+'qtap.localhost'` on Windows) — relative paths already resolve through
+the protocol, so prefixing was a same-origin no-op kept only where it
+still earns its keep: the documented `devUrl` dev loop, whose page
+origin is the Angular dev server and whose qtap fetches remain
+cross-origin. Browser behavior is byte-identical (the `isTauri()`
+guard short-circuits first).
+
+Proof: the new `api-url.one-origin.spec.ts` pins the identity arm over
+a `http://qtap.localhost/` jsdom page URL (vitest per-file
+`@vitest-environment-options` — jsdom cannot host a custom-scheme
+document, so the WINDOWS one-origin shape carries the spec; the
+`qtap:` protocol arm ran GREEN in the real webview, unit 1's spike
+record). The existing `api-url.spec.ts` (the dev-loop prefix arm, now
+documented as such) and the pinned P4.7b transport specs
+(`tauri-core-transport`, `tauri-terminal-stream-transport`,
+`core-transport-factory`) are untouched in meaning and green. Full
+`ng test`: 126 files / 1152 tests.
+
+Version: SPA 0.5.127 (`package-lock.json` version fields synced).

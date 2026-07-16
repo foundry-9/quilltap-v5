@@ -1,9 +1,16 @@
 /**
- * The §3 origin resolver (P4.7b): identity in the browser; the `qtap` origin
- * prepended under Tauri (`qtap://localhost` on macOS/Linux,
+ * The §3 origin resolver (P4.7b; one-origin reconcile P4.7c): identity in
+ * the browser; the `qtap` origin prepended under Tauri when the page lives
+ * OFF the qtap origin (`qtap://localhost` on macOS/Linux,
  * `http://qtap.localhost` on Windows — WebView2 cannot register bare custom
- * schemes). Paths never change; the builder sites are asserted here so a
- * regression at any of them surfaces as a spec diff.
+ * schemes). On a qtap-origin page (the production shell since P4.7c) the
+ * resolver is identity again — that arm is pinned in
+ * `api-url.one-origin.spec.ts`, which needs its own jsdom URL. Paths never
+ * change; the builder sites are asserted here so a regression at any of
+ * them surfaces as a spec diff.
+ *
+ * These specs run on jsdom's default `http://localhost` page URL, i.e. the
+ * `devUrl` dev-loop shape — the prefix arm.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
