@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Fixed: the thumbnail-size slider in the Salon's Chat Photos gallery had
+no visible effect. The slider updated the size and requested a
+correctly-sized thumbnail from the server, but the rendered box stayed
+at 80px: the port sized the image via HTML width/height attributes,
+which CSS always overrides, and the shared .qt-chat-attachment-image
+class hard-codes width/height 5rem. Now matches v4, which sizes the
+button container with an inline style and lets the image fill it — all
+six sizes (80-200px) render. The class keeps its fixed 80px box for its
+other two consumers (message-row attachments, save-image dialog). SPA
+0.5.129.
+
 The P4.6au ∥ P4.6av ∥ P4.7c round UNIFIED on main (2026-07-16) — all
 three orders CLOSED. The homepage exists end-to-end: the `systemHome`
 dispatch verb + `GET /api/v1/system/home` (v4's `getHomeData` over the

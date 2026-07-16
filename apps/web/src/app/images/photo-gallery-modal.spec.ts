@@ -46,7 +46,7 @@ describe('PhotoGalleryModal (chat mode)', () => {
 
   it('renders a thumbnail per image file off the id-keyed thumbnail route', async () => {
     const fixture = await render(stubClient([file({ id: 'f-1' }), file({ id: 'f-2' })]));
-    const imgs = fixture.nativeElement.querySelectorAll('.qt-chat-attachment-image');
+    const imgs = fixture.nativeElement.querySelectorAll('.qt-chat-attachment-button img');
     expect(imgs.length).toBe(2);
     expect((imgs[0] as HTMLImageElement).getAttribute('src')).toBe(
       '/api/v1/files/f-1?action=thumbnail&size=120',
@@ -57,12 +57,30 @@ describe('PhotoGalleryModal (chat mode)', () => {
     const fixture = await render(
       stubClient([file({ id: 'i', mimeType: 'image/webp' }), file({ id: 'd', mimeType: 'application/pdf' })]),
     );
-    expect(fixture.nativeElement.querySelectorAll('.qt-chat-attachment-image').length).toBe(1);
+    expect(fixture.nativeElement.querySelectorAll('.qt-chat-attachment-button img').length).toBe(1);
   });
 
   it('shows the empty state when the chat has no images', async () => {
     const fixture = await render(stubClient([]));
     expect(fixture.nativeElement.textContent).toContain('No photos in this chat');
+  });
+
+  it('resizes the rendered thumbnail box when the size slider moves', async () => {
+    const fixture = await render(stubClient([file({ id: 'f-1' })]));
+    const button = fixture.nativeElement.querySelector('.qt-chat-attachment-button') as HTMLElement;
+    expect(button.style.width).toBe('120px');
+
+    const slider = fixture.nativeElement.querySelector('input[type="range"]') as HTMLInputElement;
+    slider.value = '5';
+    slider.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(button.style.width).toBe('200px');
+    expect(button.style.height).toBe('200px');
+    expect(
+      (fixture.nativeElement.querySelector('.qt-chat-attachment-button img') as HTMLImageElement)
+        .getAttribute('src'),
+    ).toBe('/api/v1/files/f-1?action=thumbnail&size=200');
   });
 
   it('opens the lightbox when a thumbnail is clicked', async () => {

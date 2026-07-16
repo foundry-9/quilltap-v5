@@ -67,14 +67,14 @@ const DEFAULT_THUMBNAIL_INDEX = 2;
                 class="qt-button qt-chat-attachment-button"
                 [title]="file.filename"
                 [attr.aria-label]="'View ' + file.filename"
+                [style.width.px]="thumbnailSize()"
+                [style.height.px]="thumbnailSize()"
                 (click)="selected.set(file)"
               >
                 <img
                   [src]="thumb(file)"
                   [alt]="file.filename"
-                  [width]="thumbnailSize()"
-                  [height]="thumbnailSize()"
-                  class="qt-chat-attachment-image"
+                  class="w-full h-full object-cover"
                 />
               </button>
             }
