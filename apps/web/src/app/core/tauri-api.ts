@@ -17,6 +17,12 @@ export interface TauriIpc {
   invoke<T = unknown>(cmd: string, args?: Record<string, unknown>): Promise<T>;
   /** Subscribe to a Tauri event; resolves to the unlisten function. */
   listen(event: string, handler: (evt: { payload: unknown }) => void): Promise<() => void>;
+  /**
+   * Build a `Channel` delivering `onmessage(msg)` per frame. The returned
+   * value is opaque here — it only ever travels as an `invoke` argument
+   * (the §4 `terminal_attach` `onMessage` key).
+   */
+  channel<T>(onmessage: (message: T) => void): unknown;
 }
 
 let loaded: Promise<TauriIpc> | null = null;
@@ -27,6 +33,7 @@ export function loadTauriIpc(): Promise<TauriIpc> {
     ([core, event]) => ({
       invoke: (cmd, args) => core.invoke(cmd, args),
       listen: (name, handler) => event.listen(name, handler),
+      channel: (onmessage) => new core.Channel(onmessage),
     }),
   );
   return loaded;

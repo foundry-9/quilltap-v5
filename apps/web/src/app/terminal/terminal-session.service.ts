@@ -1,6 +1,11 @@
 import { Injectable, signal, type Signal, type WritableSignal } from '@angular/core';
 
 import type { PtySessionMeta, WsClientMessage, WsServerMessage } from './terminal-protocol';
+import { createTerminalStreamTransport } from './terminal-stream-transport-factory';
+import type {
+  TerminalStreamConnection,
+  TerminalStreamTransport,
+} from './terminal-stream-transport';
 
 /** The lifecycle of one terminal WebSocket (v4 `TerminalState`). */
 export type TerminalState = 'connecting' | 'live' | 'exited' | 'error';
@@ -85,7 +90,7 @@ export interface SessionSink {
 /** One live session shared by all handles bound to a given session id. */
 interface Session extends SessionSink {
   readonly id: string;
-  ws: WebSocket | null;
+  conn: TerminalStreamConnection | null;
   refCount: number;
   reconnectCount: number;
   pingInterval: ReturnType<typeof setInterval> | null;
@@ -95,16 +100,24 @@ interface Session extends SessionSink {
 
 /**
  * The terminal session service (v4 `useTerminalSession`, as an injectable): ONE
- * WebSocket per session id, ref-counted across the pane, the inline embed, and
- * the pop-out page. Connects to `/api/v1/terminals/{id}/stream`, sends
- * `input`/`resize`/`ping` (a 30s keepalive), fans out PTY `output`, tracks
- * `meta`/`exit`, re-emits `chat-update` as a DOM event so the Salon page can
- * refetch, and reconnects on a transient close (1006/1011) with 2s backoff, max
- * 3 retries.
+ * stream per session id, ref-counted across the pane, the inline embed, and
+ * the pop-out page. Sends `input`/`resize`/`ping` (a 30s keepalive), fans out
+ * PTY `output`, tracks `meta`/`exit`, re-emits `chat-update` as a DOM event so
+ * the Salon page can refetch, and reconnects on a transient close with 2s
+ * backoff, max 3 retries. Since P4.7b the PIPE itself lives behind a
+ * {@link TerminalStreamTransport} (§4): the WS on
+ * `/api/v1/terminals/{id}/stream` in a browser (transient = close 1006/1011),
+ * the `terminal_attach`/`terminal_send`/`terminal_detach` Channel IPC inside
+ * the Tauri shell (transient = attach failure) — both feed the SAME reconnect
+ * path and the SAME frozen `WsServerMessage` union.
  */
 @Injectable({ providedIn: 'root' })
 export class TerminalSessionService {
   private readonly sessions = new Map<string, Session>();
+
+  /** The pipe pair, chosen at construction (before the first `acquire`).
+   *  `protected` + writable so a spec subclass can slot a fake pipe in. */
+  protected transport: TerminalStreamTransport = createTerminalStreamTransport();
 
   /** Acquire a handle for a session id, opening the WS on the first acquire. */
   acquire(sessionId: string): TerminalSessionHandle {
@@ -112,7 +125,7 @@ export class TerminalSessionService {
     if (!session) {
       session = {
         id: sessionId,
-        ws: null,
+        conn: null,
         refCount: 0,
         reconnectCount: 0,
         pingInterval: null,
@@ -146,63 +159,51 @@ export class TerminalSessionService {
   }
 
   // ---------------------------------------------------------------------------
-  // WebSocket lifecycle
+  // Stream lifecycle (the pipe is the transport's; cadence + retry are ours)
   // ---------------------------------------------------------------------------
 
   private connect(session: Session): void {
-    if (typeof WebSocket === 'undefined' || typeof window === 'undefined') {
+    if (session.conn?.isOpen()) {
       return;
     }
-    if (session.ws && session.ws.readyState === WebSocket.OPEN) {
-      return;
-    }
-    session.state.set('connecting');
-    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const url = `${protocol}://${window.location.host}/api/v1/terminals/${session.id}/stream`;
-    const ws = new WebSocket(url);
-    session.ws = ws;
-
-    ws.onopen = () => {
-      session.state.set('live');
-      session.reconnectCount = 0;
-      session.pingInterval = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'ping' } satisfies WsClientMessage));
-        }
-      }, PING_INTERVAL_MS);
-    };
-
-    ws.onmessage = (event: MessageEvent<string>) => {
-      let message: WsServerMessage;
-      try {
-        message = JSON.parse(event.data) as WsServerMessage;
-      } catch (err) {
-        console.error('Failed to parse WS message:', err);
-        return;
-      }
-      this.handleServerMessage(session, message);
-    };
-
-    ws.onerror = () => {
-      session.state.set('error');
-    };
-
-    ws.onclose = (event: CloseEvent) => {
-      if (session.pingInterval) {
-        clearInterval(session.pingInterval);
-        session.pingInterval = null;
-      }
-      if (session.disposed) {
-        return;
-      }
-      if ((event.code === 1006 || event.code === 1011) && session.reconnectCount < MAX_RECONNECTS) {
-        session.reconnectCount += 1;
-        const backoff = RECONNECT_BACKOFF_MS * session.reconnectCount;
-        session.reconnectTimeout = setTimeout(() => this.connect(session), backoff);
-      } else {
+    const conn = this.transport.open(session.id, {
+      onOpen: () => {
+        session.state.set('live');
+        session.reconnectCount = 0;
+        session.pingInterval = setInterval(() => {
+          // The connection guards on liveness itself (the WS readyState idiom).
+          conn?.send({ type: 'ping' } satisfies WsClientMessage);
+        }, PING_INTERVAL_MS);
+      },
+      onMessage: (message) => {
+        this.handleServerMessage(session, message);
+      },
+      onError: () => {
         session.state.set('error');
-      }
-    };
+      },
+      onClose: ({ transient }) => {
+        if (session.pingInterval) {
+          clearInterval(session.pingInterval);
+          session.pingInterval = null;
+        }
+        if (session.disposed) {
+          return;
+        }
+        if (transient && session.reconnectCount < MAX_RECONNECTS) {
+          session.reconnectCount += 1;
+          const backoff = RECONNECT_BACKOFF_MS * session.reconnectCount;
+          session.reconnectTimeout = setTimeout(() => this.connect(session), backoff);
+        } else {
+          session.state.set('error');
+        }
+      },
+    });
+    if (!conn) {
+      // No pipe in this environment (SSR / jsdom) — the pre-P4.7b guard.
+      return;
+    }
+    session.conn = conn;
+    session.state.set('connecting');
   }
 
   /**
@@ -239,15 +240,11 @@ export class TerminalSessionService {
   }
 
   private send(session: Session, data: string): void {
-    if (session.ws?.readyState === WebSocket.OPEN) {
-      session.ws.send(JSON.stringify({ type: 'input', data } satisfies WsClientMessage));
-    }
+    session.conn?.send({ type: 'input', data } satisfies WsClientMessage);
   }
 
   private resize(session: Session, cols: number, rows: number): void {
-    if (session.ws?.readyState === WebSocket.OPEN) {
-      session.ws.send(JSON.stringify({ type: 'resize', cols, rows } satisfies WsClientMessage));
-    }
+    session.conn?.send({ type: 'resize', cols, rows } satisfies WsClientMessage);
   }
 
   private release(session: Session): void {
@@ -264,12 +261,8 @@ export class TerminalSessionService {
       clearTimeout(session.reconnectTimeout);
       session.reconnectTimeout = null;
     }
-    try {
-      session.ws?.close();
-    } catch {
-      // already closing
-    }
-    session.ws = null;
+    session.conn?.close();
+    session.conn = null;
     this.sessions.delete(session.id);
   }
 }

@@ -14990,3 +14990,53 @@ origin). Tauri env faked via the `isTauri` global; Windows via a
 `navigator.userAgent` getter spy.
 
 **Gate:** `ng test` 122 files / 1129 tests (+1 file / +8). SPA 0.5.125.
+
+## P4.7b (lane B) unit 4 — the §4 terminal stream transport (tier 2) (2026-07-15)
+
+**The seam** (`terminal-stream-transport.ts`): `TerminalStreamTransport.open(
+sessionId, callbacks) → TerminalStreamConnection | null` (null = the pre-split
+"no WebSocket in this environment" guard), with `TerminalStreamCallbacks`
+carrying `onOpen` / `onMessage` (the frozen `WsServerMessage` union, decoded) /
+`onError` / `onClose({transient})`, and the connection exposing `isOpen` /
+`send` (the frozen `WsClientMessage` union, guarded on liveness) / `close`.
+**What moved vs what stayed:** only the raw PIPE moved. Ping cadence (30s),
+reconnect/backoff (2s linear, max 3), state transitions, the fan-out, and
+`handleServerMessage` all stay in `TerminalSessionService` — transport-
+agnostic, selected once at construction (`createTerminalStreamTransport()`,
+the `isTauri()` rule, same as unit 2's factory).
+
+**The WS pipe** (`WsTerminalStreamTransport`) is the pre-split lifecycle
+byte-for-byte: the ws(s) scheme choice, the frozen stream route, JSON parse
+with the log-and-skip idiom, `transient = code 1006 || 1011`, the readyState
+send guard.
+
+**The Tauri pipe** (`tauri-terminal-stream-transport.ts`), per §4:
+`terminal_attach` args `{sessionId, onMessage: Channel}` (the channel carries
+`WsServerMessage` verbatim), `terminal_send` args `{sessionId, message}`,
+`terminal_detach` args `{sessionId}`. An attach failure emits the WS failure
+shape — `onError` then `onClose({transient: true})` — so it routes into the
+SAME service reconnect path as a 1006 close (§4's rule). A `close()` racing
+the attach detaches once the attach lands and never opens. `tauri-api.ts`
+grew the `channel()` factory (lazy, like `invoke`/`listen`).
+
+**Specs (+21):** the WS mapping over a stubbed WebSocket (URL, decode/skip,
+transient classification per code, send guard); the Tauri pipe over mockIPC
+(frames driven through the CAPTURED `Channel`'s public `onmessage` — the mock
+hands the raw instance to the handler; command/arg shapes asserted verbatim;
+the attach-failure and close-race arms); the service logic over a fake pipe
+(fake-timer cadence, linear backoff 2s/4s/6s, count reset on open, the
+give-up arm, non-transient finality, disposed-no-reconnect, ref-counting).
+One test-substrate lesson: a fake connection must report NOT-open by the time
+`onClose` fires (real pipes do — WS is CLOSED, the Tauri pipe cleared
+`attached`), or the service's `isOpen()` reconnect guard blocks every retry.
+The service's `transport` field is `protected` (not readonly) precisely so
+the spec subclass can slot the fake in.
+
+**Pairing status: DEFERRED-live** (as the order anticipates): the Tauri pipe
+is unit-proven against mocks; the live pairing with lane A's `terminal_*`
+commands is the unifier's M5 walk. Until then the pane under Tauri degrades
+to its existing 'reconnecting'→'error' state if the shell lags the contract.
+
+**Gate:** `ng test` 125 files / 1150 tests (+3 files / +21); `ng build` clean
+(main bundle still Tauri-free); existing terminal specs untouched.
+SPA 0.5.126.

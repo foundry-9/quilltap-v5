@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+P4.7b unit 4 (lane B, tier 2): the §4 terminal stream transport. The
+WS lifecycle in TerminalSessionService extracted byte-for-byte behind
+a stream-transport seam (open/send/message-callback/close with a
+transient-close classification); ping cadence, reconnect/backoff, and
+state transitions stay in the service, now transport-agnostic. The
+Tauri pipe implements terminal_attach (Channel callback carrying the
+frozen WsServerMessage union verbatim) / terminal_send /
+terminal_detach; an attach failure routes into the same reconnect
+path as a WS 1006/1011 close. 21 new specs (stubbed-WS mapping,
+mockIPC round trips with frames driven through the captured Channel,
+fake-pipe service cadence/backoff). Live pairing with lane A's shell
+lands at the M5 unification walk. ng test 125 files / 1150 tests.
+SPA 0.5.126.
+
 P4.7b unit 3 (lane B): the §3 origin resolver. New `apiUrl(path)` —
 identity in the browser, `qtap://localhost` (macOS/Linux) or
 `http://qtap.localhost` (Windows) prepended inside the Tauri shell —
