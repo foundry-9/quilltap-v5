@@ -14821,3 +14821,55 @@ typed enum with the same serde derives the WS route uses).
 
 quilltap-tauri 0.0.1 → 0.0.2 (+ a crate `.gitignore` for tauri-build's
 regenerated `gen/`).
+
+### The P4.7a lane close (2026-07-15) — ALL tier-1 + tier-2 LANDED
+
+**Versions (the order's required record):** tauri **2.11.5**, tauri-build
+**2.6.3**, wry **0.55.1**, tao **0.35.3**; tauri-cli **2.11.4**
+(`cargo install tauri-cli --locked` — a dev-machine tool, not a repo
+dependency, exactly as ordered).
+
+**The test-harness mechanism** (the order asked which): the command cores
+driven DIRECTLY over a real booted `StartupStatus`
+(`dispatch_inner`/`health_inner`/`events_pump::attach`/
+`terminal_ipc::*_inner`/`protocol::handle_qtap_request`) with a
+`tauri::test::mock_builder` app supplying the real emit→listen event
+system and real `tauri::ipc::Channel::new` sinks — the order's allowed
+fallback — PLUS one `get_ipc_response` case pinning the command-name +
+argument-key wiring through the real invoke pipeline (`dispatch` with key
+`request`, `health` bare). ACL gotcha recorded in unit 2–3's entry: the
+invoke test must present the platform's LOCAL origin.
+
+**The verification gate (all run on the closed lane):**
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+-- -D warnings` clean on BOTH feature sets; `cargo test --workspace`
+**324 suites / 1353 tests / 0 failed** (was 320/1347 at lane start);
+`ipc_contract` run by name `--nocapture` — 6/6; `cargo tauri build
+--debug` completes on macOS — artifact
+`target/debug/bundle/macos/Quilltap.app` (bundled over the build.rs-
+materialized empty dist; the unifier rebuilds it over a real `ng build`
+for the M5 walk); `git diff --name-only main...HEAD -- apps/web` EMPTY.
+
+**Tier-2 dispositions:** §4 terminal paired IPC — **LANDED** (unit 4);
+the dev loop — **DOCUMENTED** (the crate docs: `cargo tauri dev` with a
+`devUrl` CLI overlay against the Angular dev server; not turnkey by
+design, lane B owns the SPA side).
+
+**Tier-3 deferrals (loud, named, per the order):** native niceties
+(menus beyond defaults, tray, dock badge, window-state persistence, deep
+links — D14 progressive enhancement), auto-updater/signing/notarization/
+release bundles (D21 + the no-release hard stop), uniffi/mobile (D21),
+`Last-Event-ID`-style replay beyond the §2 resync signal (D3
+best-effort, same as HTTP).
+
+**For the unifier:** the M5 walk needs `ng build` (dist lands at
+`apps/web/dist/quilltap/browser` — the project is `quilltap`, so NOT the
+order's guessed `dist/web/browser`), then `cargo tauri build --debug`
+from `crates/quilltap-tauri/`, then launch the .app against a
+fixture/copy instance (`--data-dir` is honored; `open Quilltap.app
+--args --data-dir <path>` or run the binary directly). No
+ACTIVATE-AT-UNIFY mocks exist in this lane. Fixture note: the IPC suite
+reads quilltap-web's committed fixture FILES but duplicates the
+materializer code (`tests/common/mod.rs`) — a fixture regeneration
+updates both suites; a materializer change must be mirrored by hand.
+This lane delivered NO new fixtures and invalidated NO oracles.

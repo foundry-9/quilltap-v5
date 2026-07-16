@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.7a lane CLOSED (lane A of the P4.7 Tauri round; unification + the M5
+walk pending). All tier-1 deliverables landed (crate scaffold, boot, §1
+dispatch/health, §2 event pump, §3 qtap protocol, the 6-test IPC contract
+suite, the macOS debug bundle at target/debug/bundle/macos/Quilltap.app)
+plus tier 2 (§4 terminal paired IPC; the dev loop documented in the crate
+docs). Tier-3 deferrals stand as ordered: native niceties (menus/tray/
+window-state/deep links), updater/signing/release bundles, uniffi/mobile,
+Last-Event-ID-style replay. Versions: tauri 2.11.5, tauri-build 2.6.3,
+wry 0.55.1, tao 0.35.3, tauri-cli 2.11.4.
+
 P4.7a unit 4 (lane A): §4 — the terminal stream over paired IPC (tier 2
 LANDED). `terminal_attach`/`terminal_send`/`terminal_detach` over
 `tauri::ipc::Channel` carrying the frozen WsServerMessage union verbatim;
