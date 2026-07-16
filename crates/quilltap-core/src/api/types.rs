@@ -1550,6 +1550,12 @@ pub enum Request {
         path: Option<String>,
     },
     // === end P4.6z ===
+    // === P4.6au: the home dashboard ===
+    /// v4 `GET /api/v1/system/home` — the home-dashboard payload (recent chats,
+    /// projects, characters, the greeting name, the "continue last" chat id).
+    /// No parameters — single-user; the engine supplies the user scope.
+    SystemHome,
+    // === end P4.6au ===
     // === P4.6ab: courier + chat images (lane A, append-only) ===
     /// v4 `POST /chats/[id]/messages/[messageId]?action=resolve-external-turn`
     /// (`{replyContent}`) → `{resolved, messageId, participantId}`. The settle
@@ -2034,6 +2040,13 @@ pub enum Response {
     /// error?}`). Pinned by `browse_directory_equivalence`.
     System(serde_json::Value),
     // === end P4.6z ===
+    // === P4.6au: the home dashboard ===
+    /// The `systemHome` success body — v4's `HomeData` (`{displayName,
+    /// lastChatId, recentChats, projects, characters}`; the REST edge emits it
+    /// RAW, v4's `successResponse(data)`). The exact bytes, key order included,
+    /// are pinned by `home_routes_equivalence` (P4.6au).
+    SystemHome(serde_json::Value),
+    // === end P4.6au ===
     // === P4.6ab: courier + chat images ===
     /// A courier/chat-images body — the resolve/cancel envelopes, the save-image
     /// `{saved, …}`, `{albums}`, the add-tool-result `{success, message}`, the

@@ -76,6 +76,7 @@ pub mod file_storage;
 pub mod first_message_context;
 pub mod frozen_archive;
 pub mod help_doc_sync;
+pub mod home;
 pub mod host_notifications;
 pub mod housekeeping;
 pub mod housekeeping_outcome_cache;

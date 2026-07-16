@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+P4.6au: the home-dashboard composition ported — v4
+`lib/services/home-data.service.ts` (getHomeData, 224 lines) as
+`quilltap-core::services::home` plus the new `systemHome` dispatch
+verb (`Request::SystemHome`, no params; `Response::SystemHome`; the
+engine arm supplies the single-user scope). Carries the parallel
+fetches, the help-chat filter (home shows salon/legacy-null only —
+autonomous never, unlike the Salon list), the enriched recent-chats
+slice (cap 12) + lastChatId, the three-source project-activity sort
+(project updatedAt vs latest chat lastMessageAt vs latest file
+updatedAt; cap 12), the character grid (npc/user-controlled filtered;
+favorites → chat count desc → base-sensitivity name; cap 24; counts
+over ALL chats incl. help/autonomous), and the wire-visible
+omit-vs-null DTO splits (participant defaultImageId/url omitted when
+falsy; character/defaultImage/storyBackgroundUrl explicit null;
+project description/color/icon present-vs-absent pass-throughs).
+`FilesRepository::find_all` added (v4's un-overridden base findAll —
+unscoped, unlike the user-scoped chats/characters reads). On internal
+failure the verb answers v4's fixed serverError message. Differential
+lands with the REST edge (next entry). quilltap-core 0.0.230.
+
 P4.6au: base-sensitivity collation option (`locale_compare_base` —
 en-US, primary strength) added to quilltap-core's ICU4X collation
 module, matching JS `localeCompare(b, undefined, {sensitivity:

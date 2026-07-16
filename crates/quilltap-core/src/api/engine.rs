@@ -2324,6 +2324,16 @@ impl CoreEngine {
             Request::SystemBrowseDirectory { path } => {
                 super::system::browse_directory(path.as_deref())
             } // === end P4.6z ===
+            // === P4.6au: the home dashboard ===
+            // v4's route passes `fallbackName: ctx.user.name ?? null` (the
+            // session mirror of the users row); v5 single-user has no session
+            // name apart from that row, so the composition root passes None
+            // and the users-row name carries the greeting.
+            Request::SystemHome => match self.ready_db() {
+                Ok(db) => super::system::system_home(&db, SINGLE_USER_ID, None),
+                Err(r) => r,
+            },
+            // === end P4.6au ===
             // === P4.6ab: courier + chat images ===
             Request::MessageResolveExternalTurn {
                 chat_id,

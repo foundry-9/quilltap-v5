@@ -633,6 +633,19 @@ impl<'c> FilesRepository<'c> {
             })
     }
 
+    /// v4 `findAll()` (the un-overridden base-repo `_findAll`) — EVERY file row,
+    /// no user filter, natural/rowid order. First consumer: the homepage
+    /// project-activity map (`services::home`), which reads only
+    /// `projectId`/`updatedAt` and folds through `max`, so the order is not
+    /// observable there.
+    pub fn find_all(&self) -> Result<Vec<FileFull>, DbError> {
+        let mut stmt = self.conn.prepare(FILE_FULL_SELECT_ALL)?;
+        let rows = stmt
+            .query_map([], map_file_full)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// v4 `findByUserId(userId)` (base repo `findByFilter({userId})`) — every file
     /// row owned by the user, in natural/rowid order (the files list route sorts by
     /// `createdAt` DESC afterward, so this order is not observable there).

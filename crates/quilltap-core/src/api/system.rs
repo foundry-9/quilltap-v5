@@ -38,6 +38,35 @@ fn internal(e: impl std::fmt::Display) -> Response {
 /// guard.
 const AESTHETIC_KIND_ERROR: &str = "Query param \"kind\" must be \"lantern\" or \"aurora\"";
 
+/// v4 `GET /api/v1/system/home` / the `systemHome` dispatch verb (P4.6au) —
+/// the home-dashboard payload. The composition lives in [`services::home`]
+/// (`crate::services::home::get_home_data`); this is the dispatch glue: nest
+/// the main + mount-index read connections (the vault overlay needs both) and
+/// wrap the typed payload. v4's route answers `successResponse(data)` — the
+/// RAW payload — and `serverError('Failed to load the home dashboard')` on any
+/// throw; the error message rides the `Internal` envelope so the REST edge
+/// emits v4's exact `{error}` body.
+pub fn system_home(db: &Db, user_id: &str, fallback_name: Option<&str>) -> Response {
+    let user_id = user_id.to_string();
+    let fallback = fallback_name.map(str::to_string);
+    let result = db.read_main(move |main| {
+        db.read_mount_index(move |mount| {
+            crate::services::home::get_home_data(main, mount, &user_id, fallback.as_deref())
+        })
+    });
+    match result.and_then(|data| {
+        serde_json::to_value(&data).map_err(|e| DbError::Key(format!("home payload: {e}")))
+    }) {
+        Ok(v) => Response::SystemHome(v),
+        // v4's catch-all: the route logs the error and answers this fixed
+        // message.
+        Err(e) => {
+            eprintln!("[system.home] failed to build the home dashboard payload: {e}");
+            Response::error(ErrorKind::Internal, "Failed to load the home dashboard")
+        }
+    }
+}
+
 /// v4 `GET /api/v1/system/browse-directory[?path=…]` — list a directory's
 /// immediate subdirectories for the picker.
 pub fn browse_directory(requested_path: Option<&str>) -> Response {
