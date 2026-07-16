@@ -15316,3 +15316,77 @@ salon-scroll and setup-flow surfaced the misses), and a mid-gate
 23-failure run was a SIBLING worktree's concurrent Playwright
 colliding on the shared fixed ports (stale-shell page snapshots were
 the tell; `.last-run.json`, not a piped exit code, is the verdict).
+## P4.7c (lane C) unit 1 — the one-origin spike + adoption (2026-07-16)
+
+**Dogfood finding #12, the structural fix.** The Tauri window now loads
+`qtap://localhost/` (the `windows[].url` in `tauri.conf.json` —
+`WebviewUrl::CustomProtocol`, loaded verbatim by Tauri 2), and
+`protocol::handle_qtap_request` gained the one-origin split: non-API
+GET/HEAD paths are answered from the embedded `frontendDist` via
+`AppHandle::asset_resolver()` (Tauri's own resolver — the SPA fallback
+chain `path` → `path.html` → `path/index.html` → `index.html` and the
+MIME sniff run for real), while `/api/*` and `/health` keep delegating
+into the reused quilltap-web router. With page and API on ONE origin,
+every server-supplied relative URL — `avatarUrl`/`filepath`/
+`backgroundUrl` DTO fields and `/api/v1/files/…` links inside
+pre-rendered bodies — resolves through the protocol into the router;
+nothing was absolutized server-side (the wire format stays v4-faithful
+and byte-pinned). When no dist is embedded (plain `cargo build` wraps
+the build.rs-materialized empty dist) the asset lookup misses and the
+request falls through to the router's placeholder pages — the same
+degradation as the HTTP deployment with no `spa_dir`.
+
+**The spike record (the order's gating checks, run in the REAL webview
+before adoption).** Mechanism: a working-tree-only harness — window
+pointed at qtap, `on_page_load` eval of a check script reporting back
+via `POST /__spike` over the qtap protocol, request-arrival logging in
+the handler — run twice against the staged `~/qt-m5-instance` (locked,
+needs-passphrase), debug binary over a real `ng build` dist. Results:
+
+- **SPA boot + Angular router under a custom-scheme page URL: GREEN.**
+  Index + all hashed chunks + styles + a dist image served through the
+  qtap handler; `location.origin` is a REAL `qtap://localhost` (not an
+  opaque/null origin); `history.pushState` navigates and reads back.
+- **localStorage: GREEN, and it SURVIVES relaunch** (run 2 read run
+  1's key under the qtap origin — WKWebView persists custom-scheme
+  storage the same way it does `tauri://localhost`).
+- **`isTauri()` + IPC: GREEN.** The `isTauri` global and
+  `__TAURI_INTERNALS__` are injected on the qtap page; `invoke('health')`
+  → `{status: 423}` (correct for the locked instance),
+  `invoke('dispatch')` and `invoke('events_attach')` resolve. (Tauri
+  2.11.5 treats a page on a user-registered custom protocol as a LOCAL
+  execution context — `webview/mod.rs::is_local_url` — so app commands
+  need no capability/ACL changes.)
+- **Relative resolution: GREEN.** `fetch('/health')` reached the
+  delegated router (423); `<img src="/api/v1/files/…">` produced a
+  request that ARRIVED at `handle_qtap_request` (the finding-#12
+  resolution path, proven end to end).
+- **Deep-link reload: GREEN.** `GET /salon` through the serving path
+  returns the SPA index (the resolver's index fallback).
+- **Devtools: `open_devtools()` called without panic on the debug
+  build; the visual confirm (inspector attaches to a qtap page) rides
+  the human walk.**
+
+**Proof (tier 4 — no v4 oracle exists for the shell):** `ipc_contract`
+grew `one_origin_spa_serving_contract` (7 tests now): a mock context
+with an in-memory dist (the real `Assets` trait; the real resolver
+machinery) proves `GET /` → index, a hashed `main-*.js` asset with
+script MIME, `GET /salon` → index fallback, `/health` NOT shadowed by
+the dist, and a seeded library image (the `binary_routes.rs` staging —
+`files` row + bytes under `<base>/files/`, this lane's own fixture
+staging) round-tripping its bytes through `handle_qtap_request` as
+`GET /api/v1/files/{id}` — the exact path a server-relative `<img>`
+takes. The existing 6 contract tests updated for the new
+`handle_qtap_request(&AppHandle, …)` signature: with noop assets the
+placeholder-page assertions still hold (the fall-through arm).
+
+**One canonical serving path (tier 2, landed with the adoption):** the
+SPA ships ONCE — the embedded `frontendDist` served through qtap. The
+`tauri://localhost` origin is no longer loaded by any window; the
+reused router's filesystem static serving stays disabled in the shell
+(`web_state(…, spa_dir: None)`). Documented as a hard rule in the
+`lib.rs` module header (which no longer describes the retired
+cross-origin arrangement); CORS stays permissive for the documented
+`devUrl` dev loop, which remains cross-origin.
+
+Version: quilltap-tauri 0.0.3.

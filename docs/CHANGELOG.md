@@ -2,6 +2,24 @@
 
 ## Recent Changes
 
+P4.7c (lane C, one-origin): the Tauri window now loads the SPA off
+qtap://localhost/ instead of tauri://localhost, fixing dogfood finding
+#12 (every image broken under the Tauri shell against real data).
+The qtap protocol handler serves the embedded frontendDist for
+non-API GET/HEAD paths (Tauri's own asset resolver, index fallback
+included) and keeps delegating /api/* and /health into the reused
+quilltap-web router — so server-supplied relative URLs (avatar
+filepaths, story backgrounds, /api/v1/files/... links inside
+pre-rendered bodies) resolve through the same origin as the page.
+The wire format is untouched (no server-side absolutizing). Spike
+gating checks all green in the real webview: pushState/router
+navigation, localStorage + relaunch persistence, isTauri + invoke +
+event attach, relative fetches and img requests arriving at the
+protocol, deep-link index fallback, devtools call. ipc_contract
+grows a one-origin case (SPA index, hashed asset, deep-link
+fallback, un-shadowed /health, and a seeded-image
+/api/v1/files/{id} byte round-trip through handle_qtap_request).
+quilltap-tauri 0.0.2 → 0.0.3.
 P4.6av (lane B of the homepage + Tauri one-origin round): the Home
 dashboard at `/` (SPA 0.5.127). New `screens/home/` family porting v4's
 `components/homepage/*`: welcome greeting, the quick-actions row (Start

@@ -76,9 +76,13 @@ async fn dispatch_health_and_event_contract() {
     .await;
     assert_eq!(body["data"]["message"], "chat dispatch not assembled");
 
-    // --- §3: the placeholder page and /setup ride the qtap protocol ---
+    // --- §3: with NO embedded dist (noop assets), the placeholder page and
+    // /setup fall through to the router over the qtap protocol — the same
+    // degradation as the HTTP deployment with no `spa_dir` ---
+    let app = mock_app();
     let router = build_router(Arc::clone(&state));
     let index = protocol::handle_qtap_request(
+        app.handle(),
         router.clone(),
         http::Request::builder()
             .method("GET")
@@ -90,6 +94,7 @@ async fn dispatch_health_and_event_contract() {
     assert_eq!(index.status(), 200);
     assert!(String::from_utf8_lossy(index.body()).contains("Quilltap"));
     let setup = protocol::handle_qtap_request(
+        app.handle(),
         router.clone(),
         http::Request::builder()
             .method("GET")
@@ -103,6 +108,7 @@ async fn dispatch_health_and_event_contract() {
     // --- §3: GET /health through the protocol — the delegated router
     // answers, and every response carries permissive CORS ---
     let resp = protocol::handle_qtap_request(
+        app.handle(),
         router.clone(),
         http::Request::builder()
             .method("GET")
@@ -122,6 +128,7 @@ async fn dispatch_health_and_event_contract() {
 
     // --- §3: CORS preflight answered without touching the router ---
     let preflight = protocol::handle_qtap_request(
+        app.handle(),
         router.clone(),
         http::Request::builder()
             .method("OPTIONS")
@@ -146,7 +153,6 @@ async fn dispatch_health_and_event_contract() {
 
     // --- §2: the ordered event trace — Green-Room backlog BEFORE live
     // frames, payloads byte-identical to the SSE `data:` payload ---
-    let app = mock_app();
     let handle = app.handle();
     let collected: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     {
@@ -460,6 +466,148 @@ async fn invoke_wiring_contract() {
     assert_eq!(body["body"]["status"], "healthy");
 }
 
+/// A valid 1×1 red PNG (69 bytes) — the `binary_routes.rs` staging.
+const TINY_PNG: &[u8] = &[
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+    0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0xF8, 0xCF, 0xC0, 0x00,
+    0x00, 0x03, 0x01, 0x01, 0x00, 0xC9, 0xFE, 0x92, 0xEF, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,
+    0x44, 0xAE, 0x42, 0x60, 0x82,
+];
+
+const SEEDED_IMG_ID: &str = "bbbbbbbb-2222-4222-8222-222222222222";
+
+/// Seed one image into the library (the committed fixture builder never
+/// creates a `files` table): a `files` row + its bytes under
+/// `<base>/files/` — this lane's own staging, mirroring `binary_routes.rs`.
+fn seed_image_file(base: &std::path::Path) {
+    use quilltap_core::db::Writer;
+    let files_root = base.join("files");
+    std::fs::create_dir_all(files_root.join("test")).unwrap();
+    std::fs::write(files_root.join("test/dot.png"), TINY_PNG).unwrap();
+
+    let w =
+        Writer::open_writable(&base.join("data").join("quilltap.db"), common::TEST_PEPPER).unwrap();
+    w.connection()
+        .execute_batch(
+            "CREATE TABLE IF NOT EXISTS files (\
+               id TEXT PRIMARY KEY, sha256 TEXT, originalFilename TEXT, mimeType TEXT, \
+               size REAL, width REAL, height REAL, category TEXT, generationPrompt TEXT, \
+               generationModel TEXT, generationRevisedPrompt TEXT, description TEXT, \
+               storageKey TEXT, createdAt TEXT, updatedAt TEXT);",
+        )
+        .unwrap();
+    w.connection()
+        .execute(
+            "INSERT INTO files (id, sha256, originalFilename, mimeType, size, width, height, category, storageKey, createdAt, updatedAt) \
+             VALUES (?1, 'sha-png', 'dot.png', 'image/png', 69, 1, 1, 'IMAGE', 'test/dot.png', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z')",
+            rusqlite::params![SEEDED_IMG_ID],
+        )
+        .unwrap();
+}
+
+/// --- §3 one-origin (P4.7c, dogfood finding #12): the SPA is served off
+/// the qtap origin from the embedded `frontendDist`. A mock context with a
+/// tiny in-memory dist stands in for the codegen-embedded assets (the real
+/// resolver machinery — `AssetResolver` → `get_asset` with the SPA
+/// fallback chain — runs for real); the server surface must stay the
+/// router's, and a seeded library image round-trips its bytes through
+/// `handle_qtap_request` so a server-relative `<img src="/api/v1/files/…">`
+/// on a qtap page is proven end to end ---
+#[tokio::test(flavor = "multi_thread")]
+async fn one_origin_spa_serving_contract() {
+    use std::borrow::Cow;
+    use tauri::utils::assets::{AssetKey, AssetsIter, CspHash};
+
+    const INDEX_HTML: &str =
+        "<!doctype html><html><head><title>Quilltap</title></head><body><app-root></app-root></body></html>";
+    const MAIN_JS: &str = "console.log('one-origin');";
+
+    struct SpaAssets;
+    impl<R: tauri::Runtime> tauri::Assets<R> for SpaAssets {
+        fn get(&self, key: &AssetKey) -> Option<Cow<'_, [u8]>> {
+            match key.as_ref() {
+                "/index.html" => Some(Cow::Borrowed(INDEX_HTML.as_bytes())),
+                "/main-CA2IZFBF.js" => Some(Cow::Borrowed(MAIN_JS.as_bytes())),
+                _ => None,
+            }
+        }
+        fn iter(&self) -> Box<AssetsIter<'_>> {
+            Box::new(std::iter::empty())
+        }
+        fn csp_hashes(&self, _html_path: &AssetKey) -> Box<dyn Iterator<Item = CspHash<'_>> + '_> {
+            Box::new(std::iter::empty())
+        }
+    }
+
+    let app = tauri::test::mock_builder()
+        .build(tauri::test::mock_context(SpaAssets))
+        .expect("mock app with SPA assets");
+
+    let base = common::materialize_fixture_instance();
+    seed_image_file(base.path());
+    let state = common::boot_instance(base.path(), |mut c| {
+        c.terminal = false;
+        c
+    });
+    let router = build_router(Arc::clone(&state));
+
+    let get = |path: &str| {
+        http::Request::builder()
+            .method("GET")
+            .uri(format!("qtap://localhost{path}"))
+            .body(Vec::new())
+            .unwrap()
+    };
+
+    // GET / → the SPA index from the embedded dist.
+    let resp = protocol::handle_qtap_request(app.handle(), router.clone(), get("/")).await;
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.body(), INDEX_HTML.as_bytes());
+    assert!(resp
+        .headers()
+        .get("content-type")
+        .is_some_and(|ct| ct.to_str().unwrap().contains("html")));
+
+    // GET a hashed static asset → the asset bytes, script MIME.
+    let resp =
+        protocol::handle_qtap_request(app.handle(), router.clone(), get("/main-CA2IZFBF.js")).await;
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.body(), MAIN_JS.as_bytes());
+    assert!(resp
+        .headers()
+        .get("content-type")
+        .is_some_and(|ct| ct.to_str().unwrap().contains("javascript")));
+
+    // A deep link (an Angular route, no such asset) → the index fallback:
+    // a reload at qtap://localhost/salon lands back in the SPA router.
+    let resp = protocol::handle_qtap_request(app.handle(), router.clone(), get("/salon")).await;
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.body(), INDEX_HTML.as_bytes());
+
+    // The server surface is NOT shadowed by the dist: /health still
+    // reaches the delegated router.
+    let resp = protocol::handle_qtap_request(app.handle(), router.clone(), get("/health")).await;
+    assert_eq!(resp.status(), 200);
+    let body: Value = serde_json::from_slice(resp.body()).unwrap();
+    assert_eq!(body["status"], "healthy");
+
+    // The byte-route proof: an image seeded in the library (the
+    // `binary_routes.rs` staging — the fixture builder never creates a
+    // `files` table) fetched back through `handle_qtap_request`, the exact
+    // path a server-relative <img src="/api/v1/files/…"> on a qtap page
+    // takes (dogfood finding #12's broken avatar chip).
+    let resp = protocol::handle_qtap_request(
+        app.handle(),
+        router,
+        get(&format!("/api/v1/files/{SEEDED_IMG_ID}")),
+    )
+    .await;
+    assert_eq!(resp.status(), 200, "byte route through qtap");
+    assert_eq!(resp.body(), TINY_PNG);
+    assert_eq!(resp.headers().get("content-type").unwrap(), "image/png");
+}
+
 /// --- §4 (tier 2): the terminal paired IPC over the fixture lineage the
 /// WS test uses — spawn rides the §3 protocol (the REST verbs are §3
 /// surface), attach replays ring-buffer `output` + `meta` (the manager's
@@ -479,7 +627,9 @@ async fn terminal_paired_ipc_contract() {
     const CHAT_ID: &str = "9fe3f87b-3833-46a9-bc1e-a88fc43dee6b";
 
     // --- spawn rides the §3 protocol: POST /api/v1/terminals ---
+    let app = mock_app();
     let resp = protocol::handle_qtap_request(
+        app.handle(),
         router.clone(),
         http::Request::builder()
             .method("POST")
@@ -623,6 +773,7 @@ async fn terminal_paired_ipc_contract() {
     // shape the SPA uses) ---
     terminal_ipc::detach_inner(&state, &attachments, session_id.clone()).unwrap();
     let resp = protocol::handle_qtap_request(
+        app.handle(),
         router,
         http::Request::builder()
             .method("DELETE")

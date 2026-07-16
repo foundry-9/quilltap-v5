@@ -13,10 +13,17 @@
 //!   [`events_pump`]) re-emits engine `Event`s as `quilltap://event`;
 //!   `RecvError::Lagged` becomes `quilltap://resync` (the SSE-reopen
 //!   analogue).
-//! - **§3** the `qtap` custom protocol ([`protocol`]) — the full
-//!   `http::Request` delegated into the reused `quilltap_web::build_router`
-//!   over the same booted state (one `Host`, one boot); responses buffered,
-//!   CORS permissive.
+//! - **§3** the `qtap` custom protocol ([`protocol`]) — the ONE origin
+//!   (P4.7c, dogfood finding #12): the window itself loads
+//!   `qtap://localhost/`, so the SPA's pages and assets are answered from
+//!   the embedded `frontendDist` (index fallback included) and the server
+//!   surface — the full `http::Request` — is delegated into the reused
+//!   `quilltap_web::build_router` over the same booted state (one `Host`,
+//!   one boot); responses buffered, CORS kept permissive for the `devUrl`
+//!   dev loop. With page and API on one origin, every server-supplied
+//!   RELATIVE URL (`avatarUrl`/`filepath`/`backgroundUrl` DTO fields,
+//!   `/api/v1/files/…` links inside pre-rendered bodies) resolves through
+//!   this protocol — the wire format stays v4-faithful and un-absolutized.
 //! - **§4** the terminal stream over paired IPC ([`terminal_ipc`]) —
 //!   `terminal_attach`/`terminal_send`/`terminal_detach` over
 //!   `tauri::ipc::Channel`, attach semantics mirroring the frozen WS
@@ -38,10 +45,21 @@
 //!   -- -- --data-dir /path/to/instance
 //! ```
 //!
-//! The production window loads the bundled `frontendDist`
+//! The production window loads `qtap://localhost/` (the `windows[].url` in
+//! `tauri.conf.json`), served from the bundled `frontendDist`
 //! (`apps/web/dist/quilltap/browser` — run `ng build` first for a real UI;
 //! an empty dist is materialized by `build.rs` so plain `cargo build` stays
-//! green on a checkout with no SPA build).
+//! green on a checkout with no SPA build, and the qtap lookup then falls
+//! through to the router's placeholder pages).
+//!
+//! **One canonical serving path (P4.7c tier 2):** the SPA ships ONCE — as
+//! the embedded `frontendDist` assets, served exclusively through the
+//! `qtap` protocol. The `tauri://localhost` asset origin is no longer
+//! loaded by any window, and the reused router's own filesystem static
+//! serving stays disabled in this shell (`web_state(…, spa_dir: None)`) —
+//! do not hand it a dist directory or point the window back at
+//! `tauri://localhost`; either would make the dist ship two ways and let
+//! the two copies drift.
 
 pub mod commands;
 pub mod events_pump;
@@ -111,10 +129,11 @@ pub fn run() {
         .manage(Arc::clone(&state))
         .manage(events_pump::EventPump::default())
         .manage(terminal_ipc::TerminalAttachments::default())
-        .register_asynchronous_uri_scheme_protocol("qtap", move |_ctx, request, responder| {
+        .register_asynchronous_uri_scheme_protocol("qtap", move |ctx, request, responder| {
             let router = router.clone();
+            let app = ctx.app_handle().clone();
             tauri::async_runtime::spawn(async move {
-                responder.respond(protocol::handle_qtap_request(router, request).await);
+                responder.respond(protocol::handle_qtap_request(&app, router, request).await);
             });
         })
         .invoke_handler(tauri::generate_handler![
