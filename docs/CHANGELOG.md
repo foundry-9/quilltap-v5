@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.7a unit 4 (lane A): §4 — the terminal stream over paired IPC (tier 2
+LANDED). `terminal_attach`/`terminal_send`/`terminal_detach` over
+`tauri::ipc::Channel` carrying the frozen WsServerMessage union verbatim;
+attach semantics mirror the frozen WS route exactly (unknown session →
+the session_not_found exit frame; refused subscribe → the "Failed to
+subscribe" rejection; otherwise ring-buffer output + meta replay then live
+frames); send mirrors the WS client arm (input/resize on the manager,
+ping → pong on the paired channel, malformed swallowed). One new contract
+case over the chat-send fixture: spawn via the §3 protocol, attach replay,
+ping→pong, input→echoed output, unknown-session exit frame, detach +
+DELETE. quilltap-tauri 0.0.1 → 0.0.2.
+
 P4.7a units 2–3 (lane A): the `quilltap-tauri` crate lands — the Tauri 2
 desktop shell (tauri 2.11.5 / tauri-build 2.6.3 / wry 0.55.1). Boot mirrors
 the HTTP binary via the shared quilltap-web helpers (`--data-dir`/

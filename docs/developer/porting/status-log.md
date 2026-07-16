@@ -14784,3 +14784,40 @@ the crate up; the core's default-build purity untouched.
   committed tree, so a regeneration updates both suites).
 
 Deliverables 1–6 of tier 1 LANDED (the debug bundle, item 7, is next).
+
+### Unit 4 — §4: the terminal stream over paired IPC (2026-07-15, tier 2
+### LANDED)
+
+`terminal_ipc.rs`: `terminal_attach` (args `sessionId`, `onMessage:
+Channel`) / `terminal_send` (`sessionId`, `message`) / `terminal_detach`
+(`sessionId`), the §4 contract verbatim. The channel carries
+`WsServerMessage` JSON exactly (the frozen union — tauri serializes the
+typed enum with the same serde derives the WS route uses).
+
+- **Attach semantics = the frozen WS route's, by reuse**: unknown session
+  → the `exit {code:-1, signal:"session_not_found"}` frame on the channel
+  (the WS sends-then-closes; IPC sends-then-resolves with no attachment);
+  a refused subscribe (exited session) → rejection with the WS close
+  reason `"Failed to subscribe"`; otherwise `manager.subscribe` itself
+  queues the ring-buffer `output` frame + the `meta` frame before live
+  frames — the replay comes free from the same manager call the WS uses.
+- **Send mirrors the WS client arm**: `input` → `manager.write` (result
+  ignored, v4), `resize` → `manager.resize`, `ping` → `pong` on the
+  ATTACHED channel (the WS replies on the same socket; the channel is the
+  socket's pair — the per-session `TerminalAttachments` map exists for
+  this), malformed → swallowed (`message` arrives as a raw `Value`, the
+  failed typed parse plays v4's catch — a typed command arg would have
+  REJECTED the invoke instead, a divergence).
+- **Detach** aborts the forwarder and calls `manager.unsubscribe` (the
+  WS on-close), which also reaps an exited session with no subscribers.
+- **The contract case** (`terminal_paired_ipc_contract`, over the
+  chat-send fixture with the terminal driver on): spawn rides the §3
+  protocol (POST /api/v1/terminals → 201), attach replays `output` then
+  `meta` in order, ping → pong, `input "echo qtap-ipc-proof\r"` → the
+  echoed live output frame, malformed swallowed, unknown-session exit
+  frame asserted byte-shape, detach + the §3 DELETE → 200. The terminal
+  REST verbs (list/get/spawn/kill) themselves are §3 surface — no new
+  code, the POST/DELETE in the case prove the delegation.
+
+quilltap-tauri 0.0.1 → 0.0.2 (+ a crate `.gitignore` for tauri-build's
+regenerated `gen/`).

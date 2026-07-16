@@ -17,8 +17,10 @@
 //!   `http::Request` delegated into the reused `quilltap_web::build_router`
 //!   over the same booted state (one `Host`, one boot); responses buffered,
 //!   CORS permissive.
-//! - **§4** the terminal stream over paired IPC — deferred to the tier-2
-//!   unit of this lane (see the work order).
+//! - **§4** the terminal stream over paired IPC ([`terminal_ipc`]) —
+//!   `terminal_attach`/`terminal_send`/`terminal_detach` over
+//!   `tauri::ipc::Channel`, attach semantics mirroring the frozen WS
+//!   route; the terminal REST verbs ride §3 unchanged.
 //!
 //! Thin by decree: no business logic above the boundary; nothing here
 //! touches repos/services except via `Host`/`CoreEngine` and the reused
@@ -44,6 +46,7 @@
 pub mod commands;
 pub mod events_pump;
 pub mod protocol;
+pub mod terminal_ipc;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -107,6 +110,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(Arc::clone(&state))
         .manage(events_pump::EventPump::default())
+        .manage(terminal_ipc::TerminalAttachments::default())
         .register_asynchronous_uri_scheme_protocol("qtap", move |_ctx, request, responder| {
             let router = router.clone();
             tauri::async_runtime::spawn(async move {
@@ -117,6 +121,9 @@ pub fn run() {
             commands::dispatch,
             commands::health,
             commands::events_attach,
+            terminal_ipc::terminal_attach,
+            terminal_ipc::terminal_send,
+            terminal_ipc::terminal_detach,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Quilltap shell");

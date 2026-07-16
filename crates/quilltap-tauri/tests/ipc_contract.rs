@@ -459,3 +459,177 @@ async fn invoke_wiring_contract() {
     assert_eq!(body["status"], 200);
     assert_eq!(body["body"]["status"], "healthy");
 }
+
+/// --- §4 (tier 2): the terminal paired IPC over the fixture lineage the
+/// WS test uses — spawn rides the §3 protocol (the REST verbs are §3
+/// surface), attach replays ring-buffer `output` + `meta` (the manager's
+/// subscribe semantics, same as the WS), ping → pong on the paired
+/// channel, input → live output, malformed swallowed, unknown session →
+/// the session_not_found exit frame ---
+#[tokio::test(flavor = "multi_thread")]
+async fn terminal_paired_ipc_contract() {
+    use quilltap_tauri::terminal_ipc;
+
+    let base = common::materialize_fixture_instance();
+    // Terminal driver ON (the default) — the WS test's configuration.
+    let state = common::boot_instance(base.path(), |c| c);
+    let router = build_router(Arc::clone(&state));
+
+    // The fixture chat (the Ariel announcement target, same as terminal_ws).
+    const CHAT_ID: &str = "9fe3f87b-3833-46a9-bc1e-a88fc43dee6b";
+
+    // --- spawn rides the §3 protocol: POST /api/v1/terminals ---
+    let resp = protocol::handle_qtap_request(
+        router.clone(),
+        http::Request::builder()
+            .method("POST")
+            .uri("qtap://localhost/api/v1/terminals")
+            .header("content-type", "application/json")
+            .body(
+                json!({
+                    "chatId": CHAT_ID,
+                    "label": "ipc shell",
+                    "shell": "/bin/sh",
+                    "cols": 100,
+                    "rows": 30,
+                })
+                .to_string()
+                .into_bytes(),
+            )
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(resp.status(), 201);
+    let body: Value = serde_json::from_slice(resp.body()).unwrap();
+    let session_id = body["session"]["id"].as_str().unwrap().to_string();
+    assert_eq!(body["session"]["chatId"], CHAT_ID);
+
+    // --- attach: the channel carries WsServerMessage JSON verbatim ---
+    let frames: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&frames);
+    let channel = tauri::ipc::Channel::new(move |body| {
+        if let tauri::ipc::InvokeResponseBody::Json(json) = body {
+            sink.lock()
+                .expect("frame sink lock")
+                .push(serde_json::from_str(&json).expect("frame JSON"));
+        }
+        Ok(())
+    });
+    let attachments = terminal_ipc::TerminalAttachments::default();
+    terminal_ipc::attach_inner(&state, &attachments, session_id.clone(), channel).unwrap();
+
+    // The attach replay: one `output` frame (the ring buffer) then `meta`
+    // (the manager's subscribe semantics — the WS route emits the same).
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        {
+            let got = frames.lock().unwrap();
+            if got.len() >= 2 {
+                assert_eq!(got[0]["type"], "output");
+                assert!(got[0]["data"].is_string());
+                assert_eq!(got[1]["type"], "meta");
+                assert_eq!(got[1]["meta"]["id"], session_id.as_str());
+                assert_eq!(got[1]["meta"]["chatId"], CHAT_ID);
+                break;
+            }
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "no attach replay: {:?}",
+            frames.lock().unwrap()
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+
+    // --- ping → pong on the paired channel ---
+    terminal_ipc::send_inner(
+        &state,
+        &attachments,
+        session_id.clone(),
+        json!({"type": "ping"}),
+    )
+    .unwrap();
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        if frames.lock().unwrap().iter().any(|f| f["type"] == "pong") {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "no pong: {:?}",
+            frames.lock().unwrap()
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+
+    // --- input → live output through the PTY ---
+    terminal_ipc::send_inner(
+        &state,
+        &attachments,
+        session_id.clone(),
+        json!({"type": "input", "data": "echo qtap-ipc-proof\r"}),
+    )
+    .unwrap();
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
+    loop {
+        if frames.lock().unwrap().iter().any(|f| {
+            f["type"] == "output"
+                && f["data"]
+                    .as_str()
+                    .is_some_and(|d| d.contains("qtap-ipc-proof"))
+        }) {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "no echoed output: {:?}",
+            frames.lock().unwrap()
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+
+    // --- a malformed client message is swallowed (v4's catch) ---
+    terminal_ipc::send_inner(
+        &state,
+        &attachments,
+        session_id.clone(),
+        json!({"type": "nope"}),
+    )
+    .unwrap();
+
+    // --- unknown session → the session_not_found exit frame ---
+    let frames2: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink2 = Arc::clone(&frames2);
+    let channel2 = tauri::ipc::Channel::new(move |body| {
+        if let tauri::ipc::InvokeResponseBody::Json(json) = body {
+            sink2
+                .lock()
+                .expect("frame sink lock")
+                .push(serde_json::from_str(&json).expect("frame JSON"));
+        }
+        Ok(())
+    });
+    terminal_ipc::attach_inner(&state, &attachments, "no-such-session".into(), channel2).unwrap();
+    {
+        let got2 = frames2.lock().unwrap();
+        assert_eq!(got2.len(), 1, "exactly the exit frame: {got2:?}");
+        assert_eq!(
+            got2[0],
+            json!({"type": "exit", "code": -1, "signal": "session_not_found"})
+        );
+    }
+
+    // --- detach, then kill via the §3 REST verb (the WS-close + DELETE
+    // shape the SPA uses) ---
+    terminal_ipc::detach_inner(&state, &attachments, session_id.clone()).unwrap();
+    let resp = protocol::handle_qtap_request(
+        router,
+        http::Request::builder()
+            .method("DELETE")
+            .uri(format!("qtap://localhost/api/v1/terminals/{session_id}"))
+            .body(Vec::new())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(resp.status(), 200);
+}
