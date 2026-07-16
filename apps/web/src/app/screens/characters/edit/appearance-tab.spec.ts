@@ -19,12 +19,27 @@ const PHYSICAL = {
   fullDescription: 'A full account of the man.',
 };
 
-function stubClient(seen: Req[], over: Partial<typeof PHYSICAL> = {}, guidelines = ''): Partial<CoreClient> {
+/**
+ * `mountPointId` is the character's `characterDocumentMountPointId` — its
+ * document vault. Vaulted by default; `null` drives v4's `disabledHint` arm.
+ */
+function stubClient(
+  seen: Req[],
+  over: Partial<typeof PHYSICAL> = {},
+  guidelines = '',
+  mountPointId: string | null = 'mp1',
+): Partial<CoreClient> {
   return {
     dispatchData: (async (req: Req) => {
       seen.push(req);
       if (req.type === 'characterGet') {
-        return { character: { id: 'c1', physicalDescription: { ...PHYSICAL, ...over } } };
+        return {
+          character: {
+            id: 'c1',
+            characterDocumentMountPointId: mountPointId,
+            physicalDescription: { ...PHYSICAL, ...over },
+          },
+        };
       }
       if (req.type === 'characterDepictionGuidelines') {
         return { content: guidelines };
@@ -140,5 +155,45 @@ describe('CharacterAppearanceTab (edit) — the seven markdown fields', () => {
     const save = seen.find((r) => r.type === 'characterDepictionGuidelinesUpdate');
     expect(save).toBeTruthy();
     expect(save!['content']).toBe('Never depicted **unmasked**.');
+  });
+});
+
+describe('CharacterAppearanceTab (edit) — the no-vault depiction-guidelines hint', () => {
+  // v4's warning, verbatim (`CharacterEditView.tsx:346`). Pinned here so a
+  // reworded copy in the component fails rather than silently drifting.
+  const HINT =
+    'This character has no document vault yet, so depiction guidelines cannot be stored. Save the character once to provision its vault, then return here.';
+
+  it('suppresses the editor behind the verbatim warning, and fetches nothing', async () => {
+    const seen: Req[] = [];
+    const fixture = await render(stubClient(seen, {}, '', null));
+
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain(HINT);
+
+    // The editor AND its Save are gone — v4 replaces both (`:113-114`).
+    expect(() => editorFor(fixture, 'Depiction guidelines')).toThrow();
+    const saveButton = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('button'),
+    ).find((b) => b.textContent?.trim() === 'Save Guidelines');
+    expect(saveButton).toBeUndefined();
+
+    // v4 short-circuits the load before `fetch` (`AestheticEditorField.tsx:54-56`):
+    // there is no vault to read from, so the verb must never be dispatched.
+    expect(seen.some((r) => r.type === 'characterDepictionGuidelines')).toBe(false);
+
+    // The physical-description block is untouched by the guidelines arm.
+    expect(editorFor(fixture, 'Short prompt').getMarkdown()).toBe(PHYSICAL.shortPrompt);
+  });
+
+  it('leaves the editor active — and the warning absent — for a vaulted character', async () => {
+    const seen: Req[] = [];
+    const fixture = await render(stubClient(seen, {}, 'Never depicted *unmasked*.'));
+
+    expect((fixture.nativeElement as HTMLElement).textContent ?? '').not.toContain(HINT);
+    expect(editorFor(fixture, 'Depiction guidelines').getMarkdown()).toBe(
+      'Never depicted *unmasked*.',
+    );
+    expect(seen.some((r) => r.type === 'characterDepictionGuidelines')).toBe(true);
   });
 });

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../../core/core-client';
@@ -62,6 +62,15 @@ function loadPhysicalDescription(pd: CharacterPhysicalDescription | null): Physi
  * Each draft is therefore seeded inside its `queryFn`. (v4 pairs its gate with a
  * post-load `remountKey` bump; that is redundant once the editor cannot mount
  * empty, and a re-key alongside a value change would double-emit.)
+ *
+ * The guidelines block carries v4's `disabledHint` arm (P4.6aw): a character with
+ * no document vault has nowhere to store guidelines, so the editor and its Save
+ * are replaced by the warning and NO load fires — v4 suppresses proactively
+ * (`AestheticEditorField.tsx:54-56,113-114`) rather than letting the user type,
+ * Save, and only then meet the server's reactive `bad_request` ("Character has no
+ * document vault to store depiction guidelines", `api/characters.rs:287-289`).
+ * The three-arm order below is v4's ternary (`:113-117`): hint, then loading,
+ * then the editor.
  */
 @Component({
   selector: 'qt-character-appearance-tab',
@@ -177,7 +186,9 @@ function loadPhysicalDescription(pd: CharacterPhysicalDescription | null): Physi
           <div class="qt-alert-error">{{ guidelinesError() }}</div>
         }
 
-        @if (guidelinesQuery.isPending()) {
+        @if (noVault()) {
+          <p class="qt-text-small qt-text-warning">{{ NO_VAULT_HINT }}</p>
+        } @else if (guidelinesQuery.isPending()) {
           <div class="qt-text-secondary qt-text-small py-4">Loading…</div>
         } @else {
           <qt-markdown-field
@@ -230,14 +241,35 @@ export class CharacterAppearanceTab {
     },
   }));
 
+  /**
+   * v4 `CharacterEditView.tsx:343-347`: `character?.characterDocumentMountPointId
+   * ? undefined : '<the warning>'`. A character with no vault has nowhere to
+   * store guidelines, so the editor is suppressed behind the warning rather than
+   * letting a Save hit the server's reactive `bad_request`. Note this is TRUE
+   * while the character is still loading (`character?.` is nullish then) — v4
+   * behaves identically, showing the hint until the row arrives.
+   */
+  protected readonly noVault = computed(
+    () => !this.characterQuery.data()?.characterDocumentMountPointId,
+  );
+
+  // `enabled` is v4's load short-circuit (`AestheticEditorField.tsx:54-56` — the
+  // effect returns before `fetch` when `disabledHint` is set). Its dep array
+  // (`:76`) carries `disabledHint`, so the fetch fires once the character lands
+  // WITH a vault; gating on `noVault()` reproduces that re-run exactly.
   protected readonly guidelinesQuery = injectQuery(() => ({
     queryKey: characterKeys.depiction(this.characterId()),
+    enabled: !this.noVault(),
     queryFn: async () => {
       const content = await fetchDepictionGuidelines(this.core, this.characterId());
       this.guidelinesDraft.set(content);
       return content;
     },
   }));
+
+  /** v4's warning, verbatim (`CharacterEditView.tsx:346`). */
+  protected readonly NO_VAULT_HINT =
+    'This character has no document vault yet, so depiction guidelines cannot be stored. Save the character once to provision its vault, then return here.';
 
   protected setPhysicalField<K extends keyof PhysicalDescriptionForm>(
     key: K,

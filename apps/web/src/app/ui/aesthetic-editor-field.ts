@@ -39,10 +39,16 @@ export type AestheticSaveFn = (content: string) => Promise<void>;
  * ordering; v4's `dirty` gate is the second belt.
  *
  * NOT ported: v4's `disabledHint` prop (`:29`, `:112`), which suppresses the
- * editor behind a warning. Its only v4 caller is the character-edit depiction
- * guidelines field (`CharacterEditView.tsx:338-345`, for a character with no
- * document vault yet); neither aesthetic consumer in v5 passes it, so porting it
- * here would be dead surface. It joins this component when that field does.
+ * editor behind a warning. Its only v4 caller is the depiction-guidelines field
+ * (`CharacterEditView.tsx:338-345`, for a character with no document vault yet)
+ * — and in v5 that field does NOT go through this component: it landed as inline
+ * `qt-markdown-field`s on the two characters appearance tabs
+ * (`screens/characters/edit/appearance-tab.ts`,
+ * `screens/characters/view/tabs/character-appearance-tab.ts`), which is where
+ * P4.6aw ported the `disabledHint` behavior itself. So the prop stays unported
+ * HERE: neither aesthetic consumer passes it, and no v5 consumer would — it
+ * would be dead surface. Should an aesthetic field ever need suppressing, lift
+ * the arm from those two tabs.
  */
 @Component({
   selector: 'qt-aesthetic-editor-field',

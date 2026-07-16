@@ -25,6 +25,14 @@ import { characterKeys, fetchDepictionGuidelines } from '../../characters.api';
  * `DescriptionsTab`. It mounts only once the query settles (the pre-existing
  * gate below, which the swap now depends on: the field absorbs exactly one emit,
  * so an editor mounting ahead of its content would surface the load as an edit).
+ *
+ * The guidelines block carries v4's `disabledHint` arm (P4.6aw): a character with
+ * no document vault has nowhere to store guidelines, so the editor and its Save
+ * are replaced by the warning and NO load fires — v4 suppresses proactively
+ * (`AestheticEditorField.tsx:54-56,113-114`) rather than letting the user type,
+ * Save, and only then meet the server's reactive `bad_request`
+ * (`api/characters.rs:287-289`). The three-arm order below is v4's ternary
+ * (`:113-117`): hint, then loading, then the editor.
  */
 @Component({
   selector: 'qt-character-appearance-tab',
@@ -93,7 +101,9 @@ import { characterKeys, fetchDepictionGuidelines } from '../../characters.api';
           The Ariel Clause: freeform guidance steering how this character is depicted in generated
           images.
         </p>
-        @if (guidelinesQuery.isPending()) {
+        @if (noVault()) {
+          <p class="qt-text-small qt-text-warning">{{ NO_VAULT_HINT }}</p>
+        } @else if (guidelinesQuery.isPending()) {
           <p class="qt-text-small qt-text-secondary">Loading…</p>
         } @else {
           <qt-markdown-field
@@ -130,14 +140,29 @@ export class CharacterAppearanceTab {
   protected readonly saving = signal(false);
   protected readonly saved = signal(false);
 
+  /**
+   * v4 `CharacterEditView.tsx:343-347`: `character?.characterDocumentMountPointId
+   * ? undefined : '<the warning>'`. The character arrives as an input here (no
+   * nullish-while-loading window), so this settles on the first render.
+   */
+  protected readonly noVault = computed(() => !this.character().characterDocumentMountPointId);
+
+  // `enabled` is v4's load short-circuit (`AestheticEditorField.tsx:54-56` — the
+  // effect returns before `fetch` when `disabledHint` is set): a vault-less
+  // character has nothing to load.
   protected readonly guidelinesQuery = injectQuery(() => ({
     queryKey: characterKeys.depiction(this.characterId()),
+    enabled: !this.noVault(),
     queryFn: async (): Promise<string> => {
       const content = await fetchDepictionGuidelines(this.core, this.characterId());
       this.draft.set(content);
       return content;
     },
   }));
+
+  /** v4's warning, verbatim (`CharacterEditView.tsx:346`). */
+  protected readonly NO_VAULT_HINT =
+    'This character has no document vault yet, so depiction guidelines cannot be stored. Save the character once to provision its vault, then return here.';
 
   protected async save(): Promise<void> {
     this.saving.set(true);

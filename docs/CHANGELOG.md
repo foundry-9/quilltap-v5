@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+P4.6aw item 3: the depiction-guidelines editor now warns up front when a
+character has no document vault, instead of failing after you type. A
+vault-less character has nowhere to store depiction guidelines, and until
+now v5 let you write the text and press Save before surfacing the server's
+refusal ("Character has no document vault to store depiction guidelines").
+Matching v4, both appearance tabs (character edit and character view) now
+replace the editor and its Save with a warning explaining that the
+character must be saved once to provision its vault — and no guidelines
+fetch fires for a character that has none. The shared
+aesthetic-editor-field's docstring, which claimed the depiction-guidelines
+field was unported, is corrected: the field landed as inline markdown
+fields on those two tabs, which is where the arm now lives; the component's
+own disabledHint input stays unported (no v5 consumer would pass it). SPA
+0.5.130.
+
 P4.6aw item 2: retired the stale "serde_json sorts keys" rationale across
 quilltap-core (comment-only; no code changed). The claim was true of
 serde_json's default BTreeMap-backed Value, but the crate enables the

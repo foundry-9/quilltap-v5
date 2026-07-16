@@ -15652,3 +15652,81 @@ should be marked closed.
 --workspace` 325 suites / 1357 tests (unchanged — comment-only).
 
 **Version:** core **0.0.232**.
+
+---
+
+## P4.6aw item 3 — the depiction-guidelines no-vault hint (2026-07-16)
+
+Ports v4's **proactive no-vault suppression** (the `disabledHint` arm) onto
+the two v5 depiction-guidelines fields. Client-only UX; **no wire change**.
+
+**The gap.** v5's failure was REACTIVE: on a vault-less character the user
+could type guidelines and press Save, and only then meet the server's
+`bad_request("Character has no document vault to store depiction
+guidelines")` (`api/characters.rs:287-289`) via `guidelinesError`. v4
+suppresses the editor BEFORE they start.
+
+**v4's mechanism** (`components/settings/AestheticEditorField.tsx`):
+`disabledHint?: string` — the load `useEffect` short-circuits before `fetch`
+when it is set (`:54-56`, dep array `:76`), and the render arm (`:113-114`)
+replaces the editor + Save with
+`<p className="qt-text-small qt-text-warning">{disabledHint}</p>`. Its only
+caller is `CharacterEditView.tsx:343-347`:
+`character?.characterDocumentMountPointId ? undefined : '<the warning>'`.
+
+**Data-source check (the order's gate): PASSED, and no contract edit was
+needed** — `characterDocumentMountPointId` is not merely already on the
+wire, it is ALREADY TYPED on the client interface
+(`core-contract.ts:1823`, `string | null`). §1 is untouched: no verb, no
+route, no payload, no fold.
+
+**What landed** — both tabs, v4's three-arm ternary order (hint → loading →
+editor):
+
+- `screens/characters/edit/appearance-tab.ts` — `noVault()` computed off
+  `characterQuery.data()`; the guidelines query gains `enabled: !noVault()`.
+- `screens/characters/view/tabs/character-appearance-tab.ts` — `noVault()`
+  off the `character` INPUT (no nullish-while-loading window).
+- `ui/aesthetic-editor-field.ts` docstring corrected (comment-only).
+
+**The `enabled` gate IS v4's short-circuit.** A disabled TanStack query
+never fires its `queryFn` — reproducing `:54-56` — and because `enabled`
+re-evaluates when the character lands with a vault, the fetch fires exactly
+as v4's `disabledHint` dep-array re-run does.
+
+**A v4 behavior worth naming:** on the EDIT tab the hint shows *while the
+character is still loading* — `character?.characterDocumentMountPointId` is
+nullish then, so v4 sets `disabledHint` too. Carried faithfully rather than
+"fixed"; the view tab has no such window (character is an input).
+
+**The proof** (per the order — spec pair per tab, v4 string pinned):
+four new specs, two per tab — suppressed-when-no-vault (warning byte-exact,
+editor absent, Save absent, **no `characterDepictionGuidelines` dispatch**,
+sibling block untouched) and active-when-vaulted (editor seeded, fetch
+fired, warning absent). Both stub factories gained a `mountPointId` param
+defaulting to VAULTED — note **both previously omitted the field entirely**,
+so the new arm would have read them as vault-less and broken the existing
+guidelines specs; that is why the default matters.
+
+The warning string was verified **byte-identical to v4's** by extracting it
+from `CharacterEditView.tsx` and substring-matching all four v5 files
+(component + spec, per tab).
+
+**⚠ Gotcha banked:** `ng test` rejects `--reporter`, and bare `npx vitest`
+FAILS these specs (no Angular setup — the standing "`ng test` not bare
+vitest" lesson). To prove the new specs actually RUN under `ng test`, the
+pinned string was deliberately corrupted to a sentinel: `ng test` went
+1177-pass → 1 failed / 1176 passed, then the revert restored green. A count
+alone would not have proven it.
+
+**§2 note:** no toolbar button inventories are asserted in the new specs, so
+lane B's default-ON source toggle cannot collide with them.
+
+**Gate:** `ng test` 127 files / **1177 passed** (was 1173 + 4 new); `ng
+build` clean. The worktree needed its own `npm ci` (`node_modules` is
+gitignored per-worktree).
+
+**Version:** SPA **0.5.130**. The `package-lock.json` version field was
+**one bump BEHIND** (0.5.128 vs package.json's 0.5.129 — the thumbnail
+commit did not sync it); `npm install --package-lock-only` brought both to
+0.5.130 (diff is exactly the two version fields).
