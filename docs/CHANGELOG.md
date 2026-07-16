@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+P4.7a units 2–3 (lane A): the `quilltap-tauri` crate lands — the Tauri 2
+desktop shell (tauri 2.11.5 / tauri-build 2.6.3 / wry 0.55.1). Boot mirrors
+the HTTP binary via the shared quilltap-web helpers (`--data-dir`/
+`--instance` accepted; Host cadence untouched); §1 `dispatch`/`health`
+commands reuse `dispatch_body`/`health_parts` (dispatch always resolves the
+envelope — IPC carries no HTTP status; health returns `{status, body}`); §2
+`events_attach` + `quilltap://event`/`quilltap://resync` over
+`subscribe_with_backlog` (backlog-before-live preserved; Lagged → resync);
+§3 the `qtap` custom protocol delegates the full http::Request into the
+reused router (tower oneshot, buffered body, permissive CORS + preflight).
+Verified by the tier-4 #2 IPC contract suite (5 tests mirroring
+quilltap-web/tests/contract.rs case-for-case: health vocabulary, dispatch
+round trip, malformed → BadRequest, locked vault + setup flow, boot-failure
+arm, the ordered §2 event trace incl. Green-Room backlog replay on
+re-attach, protocol GET/preflight, plus a get_ipc_response wiring proof).
+quilltap-tauri 0.0.1 (new).
+
 P4.7a unit 1 (lane A, the Tauri shell): extracted the transport-agnostic
 cores from quilltap-web so the Tauri IPC surface can reuse them verbatim —
 `dispatch_body` (request bytes → HTTP status + envelope Value, all three

@@ -1,0 +1,39 @@
+# quilltap-tauri — the Tauri 2 desktop shell (Phase-4 P4.7a, decisions
+# D1/D3/D4/D5/D8/D9). The same quilltap-host engine and the same Angular SPA
+# as the HTTP deployment, with the transport re-mapped from HTTP to Tauri
+# IPC: dispatch rides `invoke`, the one global `Event` stream rides Tauri
+# events, the HTTP-shaped byte/REST surface rides the `qtap` custom protocol
+# delegating into the reused quilltap-web router, and the terminal stream
+# rides paired IPC. Thin by decree — no business logic above the boundary;
+# nothing here touches repos/services except via Host/CoreEngine and the
+# reused router.
+
+[package]
+name = "quilltap-tauri"
+version = "0.0.1"
+edition = "2021"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+quilltap-core = { path = "../quilltap-core", features = ["native-transport"] }
+quilltap-host = { path = "../quilltap-host" }
+quilltap-web = { path = "../quilltap-web" }
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+# §3: the custom protocol delegates http::Request into the reused axum
+# router as a tower Service (oneshot), buffering the body back.
+axum = { version = "0.8" }
+tower = { version = "0.5", features = ["util"] }
+http = "1"
+http-body-util = "0.1"
+
+[dev-dependencies]
+# The mock runtime for the IPC contract suite (tier 4 #2).
+tauri = { version = "2", features = ["test"] }
+tempfile = "3"
+rusqlite = { workspace = true }
