@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+P4.7b unit 1 (lane B): the CoreClient transport split. The three raw
+HTTP touchpoints (dispatch POST, health GET, the EventSource stream)
+extracted verbatim into an internal `CoreTransport` boundary
+(`core-transport.ts`, `HttpCoreTransport`); `CoreClient` keeps its
+public API and delegates. The health interpreter (`interpretHealth`)
+and the SSE skip rules (`parseEventData`) are now shared exports so
+the coming Tauri transport cannot fork them. No behavior change:
+ng test 119 files / 1107 tests green, ng build clean. SPA 0.5.123.
+
 P4.7a lane CLOSED (lane A of the P4.7 Tauri round; unification + the M5
 walk pending). All tier-1 deliverables landed (crate scaffold, boot, §1
 dispatch/health, §2 event pump, §3 qtap protocol, the 6-test IPC contract

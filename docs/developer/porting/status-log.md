@@ -14873,3 +14873,37 @@ reads quilltap-web's committed fixture FILES but duplicates the
 materializer code (`tests/common/mod.rs`) — a fixture regeneration
 updates both suites; a materializer change must be mirrored by hand.
 This lane delivered NO new fixtures and invalidated NO oracles.
+
+---
+
+## P4.7b (lane B) unit 1 — the CoreClient transport split (2026-07-15)
+
+**The extraction.** D14's one seam (`core-client.ts`) carried its three raw
+touchpoints inline: `fetch('/api/dispatch')`, `fetch('/health')`, and the one
+`EventSource('/api/events')`. Those moved verbatim into `core-transport.ts`:
+
+- **`CoreTransport`** — the internal interface (`dispatch` / `fetchHealth` /
+  `connect(sink)` / `disconnect`). `CoreClient` holds one instance
+  (`HttpCoreTransport` until unit 2's bootstrap selection) and delegates;
+  everything above (`dispatchExpect`/`dispatchData`/the typed helpers, TanStack
+  Query, the stream reducer) is untouched.
+- **`EventStreamSink`** — the transport's narrow window onto `CoreClient`'s
+  reactive surface: `connectionState()` (the HTTP reopen-after-error check),
+  `setConnection`, `bumpResync`, and the ONE `acceptFrame` path both transports
+  feed AFTER their native decode (the order's no-restringify rule).
+- **`HttpCoreTransport`** — the frozen browser path, byte-for-byte: the same
+  synthetic-error strings, the same `isCoreResponse` guard, the EventSource
+  open/error transitions including the reconnecting→open resync bump.
+- **Shared, not forked:** `interpretHealth(status, body)` (the 200/423/409/503
+  switch, extracted so the Tauri `health` command interprets identically) and
+  `parseEventData` (moved here; re-exported from `core-client.ts` so the
+  pre-split import sites — including its spec — stay valid). `HealthStatus` +
+  `ConnectionState` types moved too, re-exported likewise.
+
+**One deliberate seam shape:** `disconnect()` splits ownership — the transport
+tears down its raw stream, `CoreClient` sets the `'closed'` state (both
+transports share that semantic; matches the pre-split ordering exactly).
+
+**Gate:** `ng test` 119 files / 1107 tests green (the existing specs untouched —
+they now exercise dispatch/fetchHealth THROUGH the real `HttpCoreTransport` via
+the same global-fetch mocks); `ng build` clean. SPA 0.5.123.

@@ -4,7 +4,6 @@ import { Subject, type Observable } from 'rxjs';
 import {
   type CoreRequest,
   type CoreResponse,
-  type PepperState,
   type ScopedEvent,
   CoreDispatchError,
   expectResponse,
@@ -17,34 +16,38 @@ import {
   type FileEntry,
   type FolderEntry,
 } from './core-contract';
+import {
+  type ConnectionState,
+  type CoreTransport,
+  type EventStreamSink,
+  type HealthStatus,
+  HttpCoreTransport,
+} from './core-transport';
 
-/** The interpreted `GET /health` result (the startup gate branches on this). */
-export type HealthStatus =
-  | { kind: 'healthy' }
-  | { kind: 'locked'; pepperState: PepperState }
-  | { kind: 'lock-conflict'; lockConflict: unknown }
-  | { kind: 'unhealthy'; message: string }
-  /** The server never answered (still booting / network hiccup) — retry. */
-  | { kind: 'unreachable'; message: string };
-
-/** The one live-stream connection state, exposed as a signal for the shell. */
-export type ConnectionState = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'closed';
+// The interpreted shapes moved to core-transport.ts with the P4.7b transport
+// split; re-exported so the pre-split import sites stay valid.
+export { parseEventData } from './core-transport';
+export type { ConnectionState, HealthStatus } from './core-transport';
 
 /**
  * The ONE transport seam (D14): the whole server surface behind a single
- * injectable. Components never touch `fetch` / `EventSource` directly — the
- * Tauri shell later swaps this one class for an IPC-backed implementation.
+ * injectable. Components never touch `fetch` / `EventSource` / Tauri IPC
+ * directly — since P4.7b the raw touchpoints live in an internal
+ * {@link CoreTransport} pair (HTTP for the browser, IPC inside the Tauri
+ * shell), selected once at construction; everything in this class sits above
+ * that boundary and behaves identically on both.
  *
- *  - {@link dispatch} → `POST /api/dispatch` (the typed action route).
- *  - {@link events$} → ONE `EventSource` on `GET /api/events` per app instance.
+ *  - {@link dispatch} → the typed action route (`POST /api/dispatch` / the
+ *    `dispatch` command).
+ *  - {@link events$} → ONE global event stream per app instance
+ *    (`GET /api/events` / the `quilltap://event` Tauri channel).
  *  - {@link fetchHealth} → the `GET /health` readiness vocabulary (startup gate).
  */
 @Injectable({ providedIn: 'root' })
 export class CoreClient {
-  /** Same-origin by default (the dev proxy forwards `/api` + `/health`). */
-  private readonly baseUrl = '';
+  /** The raw-IO pair, chosen at bootstrap (before first injection resolves). */
+  private readonly transport: CoreTransport = new HttpCoreTransport();
 
-  private eventSource: EventSource | null = null;
   private readonly frames = new Subject<ScopedEvent>();
 
   /** Parsed scope-tagged frames off the single global stream. */
@@ -54,47 +57,35 @@ export class CoreClient {
   readonly connection = signal<ConnectionState>('idle');
 
   /**
-   * A monotonically increasing resync counter. EventSource auto-reconnects on a
-   * drop; each time the stream REOPENS after an error, this bumps — consumers
-   * treat the change as a "you may have missed frames, refetch authoritative
-   * state" signal (D3 best-effort: no server-side replay buffer this round).
+   * A monotonically increasing resync counter. Each time the stream signals a
+   * possible gap — the EventSource REOPENING after an error over HTTP, a
+   * `quilltap://resync` frame under Tauri — this bumps; consumers treat the
+   * change as a "you may have missed frames, refetch authoritative state"
+   * signal (D3 best-effort: no server-side replay buffer this round).
    */
   readonly resyncCounter = signal(0);
+
+  /** The transports' narrow window onto the signals above (one shared frame path). */
+  private readonly sink: EventStreamSink = {
+    connectionState: () => this.connection(),
+    setConnection: (state) => this.connection.set(state),
+    bumpResync: () => this.resyncCounter.update((n) => n + 1),
+    acceptFrame: (frame) => this.frames.next(frame),
+  };
 
   // -------------------------------------------------------------------------
   // Dispatch
   // -------------------------------------------------------------------------
 
   /**
-   * Send one request to `POST /api/dispatch`. ALWAYS resolves to a typed
+   * Send one request over the transport. ALWAYS resolves to a typed
    * `CoreResponse` — a non-2xx body is still the typed envelope (the Locked 503
    * carries the error envelope plus v4's `setupUrl` body, which we ignore here);
-   * a network failure becomes a synthetic `internal` error so callers get a
+   * a transport failure becomes a synthetic `internal` error so callers get a
    * uniform shape (use {@link dispatchExpect} to throw instead).
    */
   async dispatch(request: CoreRequest): Promise<CoreResponse> {
-    let res: Response;
-    try {
-      res = await fetch(`${this.baseUrl}/api/dispatch`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(request),
-      });
-    } catch (err) {
-      return syntheticError('Connection lost. The server may still be starting.', err);
-    }
-
-    let body: unknown;
-    try {
-      body = await res.json();
-    } catch {
-      return syntheticError(`The server returned an unreadable response (HTTP ${res.status}).`);
-    }
-
-    if (isCoreResponse(body)) {
-      return body;
-    }
-    return syntheticError(`The server returned an unexpected response (HTTP ${res.status}).`);
+    return this.transport.dispatch(request);
   }
 
   /**
@@ -189,75 +180,21 @@ export class CoreClient {
    * unhealthy, and an unreachable server (still booting) → retry.
    */
   async fetchHealth(): Promise<HealthStatus> {
-    let res: Response;
-    try {
-      res = await fetch(`${this.baseUrl}/health`, { headers: { 'cache-control': 'no-cache' } });
-    } catch (err) {
-      return { kind: 'unreachable', message: errorMessage(err) };
-    }
-    let body: Record<string, unknown> = {};
-    try {
-      body = (await res.json()) as Record<string, unknown>;
-    } catch {
-      // A body-less health response still tells us via the status code.
-    }
-    switch (res.status) {
-      case 200:
-        return { kind: 'healthy' };
-      case 423:
-        return {
-          kind: 'locked',
-          pepperState: (body['dbKeyState'] as PepperState) ?? 'needs-passphrase',
-        };
-      case 409:
-        return { kind: 'lock-conflict', lockConflict: body['lockConflict'] ?? null };
-      case 503:
-        return {
-          kind: 'unhealthy',
-          message: (body['error'] as string) ?? 'The server is not ready.',
-        };
-      default:
-        return { kind: 'unhealthy', message: `Unexpected health status ${res.status}.` };
-    }
+    return this.transport.fetchHealth();
   }
 
   // -------------------------------------------------------------------------
   // The single global event stream
   // -------------------------------------------------------------------------
 
-  /** Open the one `EventSource` (idempotent). No-op where EventSource is absent. */
+  /** Open the one live stream (idempotent). No-op where the transport can't. */
   connect(): void {
-    if (this.eventSource || typeof EventSource === 'undefined') {
-      return;
-    }
-    this.connection.set('connecting');
-    const es = new EventSource(`${this.baseUrl}/api/events`);
-    this.eventSource = es;
-
-    es.onopen = () => {
-      // Reopening after an error is a resync signal (drop-oldest may have
-      // discarded frames while we were away).
-      if (this.connection() === 'reconnecting') {
-        this.resyncCounter.update((n) => n + 1);
-      }
-      this.connection.set('open');
-    };
-    es.onmessage = (ev: MessageEvent<string>) => {
-      const frame = parseEventData(ev.data);
-      if (frame) {
-        this.frames.next(frame);
-      }
-    };
-    es.onerror = () => {
-      // EventSource retries on its own; surface the gap as "reconnecting".
-      this.connection.set('reconnecting');
-    };
+    this.transport.connect(this.sink);
   }
 
   /** Close the stream (the shell calls this on lock / teardown). */
   disconnect(): void {
-    this.eventSource?.close();
-    this.eventSource = null;
+    this.transport.disconnect();
     this.connection.set('closed');
   }
 
@@ -316,44 +253,4 @@ export class CoreClient {
     const data = await this.dispatchData({ type: 'dataRetentionSettingsUpdate', staleChatDays });
     return data as unknown as DataRetentionSettingsDto;
   }
-}
-
-/**
- * Parse one SSE `data:` payload into a scope-tagged frame, or `null` to skip
- * (v4 `parseSSEData`: trim, drop empty / `[DONE]` / `{}`, JSON.parse, swallow
- * chunking-artifact parse errors).
- */
-export function parseEventData(raw: string): ScopedEvent | null {
-  const trimmed = raw.trim();
-  if (!trimmed || trimmed === '[DONE]' || trimmed === '{}') {
-    return null;
-  }
-  try {
-    return JSON.parse(trimmed) as ScopedEvent;
-  } catch {
-    return null;
-  }
-}
-
-function isCoreResponse(body: unknown): body is CoreResponse {
-  return (
-    typeof body === 'object' &&
-    body !== null &&
-    typeof (body as { type?: unknown }).type === 'string' &&
-    'data' in (body as object)
-  );
-}
-
-function syntheticError(message: string, cause?: unknown): CoreResponse {
-  return {
-    type: 'error',
-    data: { kind: 'internal', message: cause ? `${message} (${errorMessage(cause)})` : message },
-  };
-}
-
-function errorMessage(err: unknown): string {
-  if (err instanceof Error) {
-    return err.message || err.name || 'Unknown error';
-  }
-  return typeof err === 'string' ? err : 'Unknown error';
 }
