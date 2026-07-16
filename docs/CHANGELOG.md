@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.7 round PLANNED (2026-07-15): two work orders committed for the
+Tauri 2 desktop shell — P4.7a (`crates/quilltap-tauri`: invoke
+dispatch/health, the global event pump, the `qtap` custom protocol
+delegating into the reused quilltap-web router, terminal paired IPC,
+the tier-4 IPC contract suite) ∥ P4.7b (the SPA D14 seam made real:
+the CoreClient transport split + Tauri IPC implementation, the origin
+resolver over the closed raw-REST inventory, the terminal stream
+transport seam; browser path frozen, full Playwright as the proof).
+Binding IPC contract (§1–§4) reproduced verbatim in both orders;
+milestone M5 (the Tauri app runs the same SPA against the same core)
+lands at unification with a human-run walk. Docs only — no code, no
+version bumps.
+
 P4.6ar ∥ P4.6as ∥ P4.6at round UNIFIED on main (2026-07-15) — all
 three orders CLOSED, and with them the P4.6ao-round LLM-Inspector,
 Default-Aesthetics-card, and minHeight-residual deferrals. Landed: the
