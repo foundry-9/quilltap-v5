@@ -14956,3 +14956,37 @@ assert arrival. `clearMocks()` per test; `isTauri` faked by setting the
 **Gate:** `ng test` 121 files / 1121 tests (+2 files / +14: the transport spec
 + the factory spec); `ng build` clean, Tauri code confirmed out of the initial
 bundle. New dependency: `@tauri-apps/api` ^2.11.1. SPA 0.5.124.
+
+## P4.7b (lane B) unit 3 — the §3 origin resolver (2026-07-15)
+
+**`core/api-url.ts`** — one exported `apiUrl(path)`: identity in a browser;
+under Tauri prepends the `qtap` protocol origin (`qtap://localhost` on
+macOS/Linux, `http://qtap.localhost` on Windows — WebView2 cannot register
+bare custom schemes; detection is `isTauri()` + a `navigator.userAgent`
+Windows check). Paths do not change, ever — §3 delegates the full HTTP
+request (multipart bodies included) into the reused `quilltap-web` router.
+
+**Adopted at EVERY site in the order's closed inventory** (item 2 of the seam
+survey — the whole raw REST/byte surface):
+
+| site | touchpoints |
+|---|---|
+| `images/image-urls.ts` | `fileUrl`, `thumbnailUrl` (covers message-row, save-image-dialog, photo-gallery-modal, story-background CSS url, file-thumbnail, file-preview-modal, image-modal byte fetches — all consume these builders) |
+| `screens/scriptorium/scriptorium.api.ts` | `buildMountFileItemUrl` (+ its multipart PUT), `buildMountBlobUrl` |
+| `files/file-manager-transport.ts` | the `?action=write-file` multipart POST |
+| `chat/chat-files.api.ts` | the chat-file multipart POST |
+| `screens/characters/characters.api.ts` | photos multipart POST, `?action=reset-builtins` POST, PNG-export GET |
+| `screens/characters/list/character-import-dialog.ts` | the `?action=import` multipart POST |
+| `terminal/terminal-api.ts` | the four `/api/v1/terminals*` REST fetches |
+
+The §1/§2/§4 surfaces are deliberately NOT resolved through `apiUrl` —
+dispatch/health/events ride the transport pair (unit 2), the terminal WS pipe
+is §4 (unit 4).
+
+**Specs** (`api-url.spec.ts`, 8): identity, both Tauri origins, the
+path-untouched rule (query + pre-encoded segments), and the four URL-builder
+sites under both origins (per-segment encoding proven intact under the qtap
+origin). Tauri env faked via the `isTauri` global; Windows via a
+`navigator.userAgent` getter spy.
+
+**Gate:** `ng test` 122 files / 1129 tests (+1 file / +8). SPA 0.5.125.

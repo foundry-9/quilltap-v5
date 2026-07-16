@@ -6,6 +6,7 @@
  * pins the response bodies via its differentials.
  */
 
+import { apiUrl } from '../../core/api-url';
 import type { CoreClient } from '../../core/core-client';
 import type {
   BrowseDirectoryResult,
@@ -230,10 +231,14 @@ export function encodeMountBlobPath(relativePath: string): string {
 
 /** The canonical item route (`/files/...`) — write/delete/upload. */
 export function buildMountFileItemUrl(mountPointId: string, relativePath: string): string {
-  return `/api/v1/mount-points/${encodeURIComponent(mountPointId)}/files/${encodeMountBlobPath(relativePath)}`;
+  return apiUrl(
+    `/api/v1/mount-points/${encodeURIComponent(mountPointId)}/files/${encodeMountBlobPath(relativePath)}`,
+  );
 }
 
 /** The persisted byte-serving route (`/blobs/...`) — image previews + downloads. */
 export function buildMountBlobUrl(mountPointId: string, relativePath: string): string {
-  return `/api/v1/mount-points/${encodeURIComponent(mountPointId)}/blobs/${encodeMountBlobPath(relativePath)}`;
+  return apiUrl(
+    `/api/v1/mount-points/${encodeURIComponent(mountPointId)}/blobs/${encodeMountBlobPath(relativePath)}`,
+  );
 }

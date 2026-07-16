@@ -1,5 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 
+import { apiUrl } from '../core/api-url';
 import { CoreClient } from '../core/core-client';
 import type { PtySessionMeta } from './terminal-protocol';
 
@@ -45,20 +46,20 @@ export class TerminalApi {
   private readonly core = inject(CoreClient);
 
   async listTerminalSessions(chatId: string): Promise<PtySessionMeta[]> {
-    const res = await fetch(`/api/v1/terminals?chatId=${encodeURIComponent(chatId)}`);
+    const res = await fetch(apiUrl(`/api/v1/terminals?chatId=${encodeURIComponent(chatId)}`));
     const data = await parseJson<SessionListResponse>(res, 'Failed to list terminal sessions');
     return data.sessions ?? [];
   }
 
   async getTerminalSession(sessionId: string): Promise<PtySessionMeta | null> {
-    const res = await fetch(`/api/v1/terminals/${sessionId}`);
+    const res = await fetch(apiUrl(`/api/v1/terminals/${sessionId}`));
     if (res.status === 404) return null;
     const data = await parseJson<SessionGetResponse>(res, 'Failed to load terminal session');
     return data.session;
   }
 
   async spawnTerminalSession(chatId: string): Promise<PtySessionMeta> {
-    const res = await fetch('/api/v1/terminals', {
+    const res = await fetch(apiUrl('/api/v1/terminals'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chatId }),
@@ -68,7 +69,9 @@ export class TerminalApi {
   }
 
   async killTerminalSession(sessionId: string): Promise<void> {
-    const res = await fetch(`/api/v1/terminals/${sessionId}?action=kill`, { method: 'POST' });
+    const res = await fetch(apiUrl(`/api/v1/terminals/${sessionId}?action=kill`), {
+      method: 'POST',
+    });
     await expectOk(res, 'Failed to terminate session');
   }
 

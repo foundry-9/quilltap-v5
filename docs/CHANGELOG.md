@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.7b unit 3 (lane B): the §3 origin resolver. New `apiUrl(path)` —
+identity in the browser, `qtap://localhost` (macOS/Linux) or
+`http://qtap.localhost` (Windows) prepended inside the Tauri shell —
+adopted at every raw REST/byte site in the closed seam inventory: the
+image byte-route builders (`fileUrl`/`thumbnailUrl`), the scriptorium
+mount item/blob builders + multipart upload, the file-manager
+`?action=write-file` POST, the chat-file multipart POST, the
+characters photo/import/reset-builtins/PNG-export routes, and the
+four terminal REST fetches. Paths unchanged; 8 new specs cover both
+origins, the Windows rule, and the builder sites. ng test 122 files /
+1129 tests. SPA 0.5.125.
+
 P4.7b unit 2 (lane B): the Tauri CoreClient transport + bootstrap
 selection. `TauriCoreTransport` implements the §1/§2 IPC contract:
 `invoke('dispatch', {request})` resolving the envelope verbatim

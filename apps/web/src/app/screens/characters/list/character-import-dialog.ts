@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, output, signal } from '@angular/core';
 
+import { apiUrl } from '../../../core/api-url';
 import { CoreClient } from '../../../core/core-client';
 import { Modal } from '../../../ui/modal';
 
@@ -83,7 +84,7 @@ export class CharacterImportDialog {
         // The PNG (tEXt-chunk) leg rides multipart — dispatch can't carry bytes.
         const form = new FormData();
         form.append('file', file);
-        const res = await fetch('/api/v1/characters?action=import', {
+        const res = await fetch(apiUrl('/api/v1/characters?action=import'), {
           method: 'POST',
           body: form,
         });

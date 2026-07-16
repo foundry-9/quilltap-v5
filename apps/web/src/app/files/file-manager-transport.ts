@@ -14,6 +14,7 @@
  * @module files/file-manager-transport
  */
 
+import { apiUrl } from '../core/api-url';
 import type { CoreClient } from '../core/core-client';
 import type { CoreRequest } from '../core/core-contract';
 
@@ -41,7 +42,7 @@ export class CoreFileManagerTransport implements FileManagerTransport {
     form.append('path', path);
     let res: Response;
     try {
-      res = await fetch(`/api/v1/mount-points/${mountId}?action=write-file`, {
+      res = await fetch(apiUrl(`/api/v1/mount-points/${mountId}?action=write-file`), {
         method: 'POST',
         body: form,
       });

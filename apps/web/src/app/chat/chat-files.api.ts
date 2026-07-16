@@ -6,6 +6,8 @@
  * `{duplicate, …}` on a name/content conflict, or `{error}`.
  */
 
+import { apiUrl } from '../core/api-url';
+
 /** A conflict resolution (v4 `ConflictResolution`). */
 export type ConflictResolution = 'replace' | 'keepBoth' | 'skip';
 
@@ -48,7 +50,7 @@ export async function uploadChatFile(
     form.append('conflictingFileId', opts.conflictingFileId);
   }
 
-  const res = await fetch(`/api/v1/chats/${encodeURIComponent(chatId)}/files`, {
+  const res = await fetch(apiUrl(`/api/v1/chats/${encodeURIComponent(chatId)}/files`), {
     method: 'POST',
     body: form,
   });

@@ -9,6 +9,7 @@
  * precedent for unpinned response types).
  */
 
+import { apiUrl } from '../../core/api-url';
 import type { CoreClient } from '../../core/core-client';
 import { normalizeAvatarSrc } from '../../ui/avatar-stack';
 import type {
@@ -244,7 +245,7 @@ export async function uploadCharacterPhoto(
   for (const tag of opts?.tags ?? []) {
     form.append('tags', tag);
   }
-  const res = await fetch(`/api/v1/characters/${encodeURIComponent(characterId)}/photos`, {
+  const res = await fetch(apiUrl(`/api/v1/characters/${encodeURIComponent(characterId)}/photos`), {
     method: 'POST',
     body: form,
   });
@@ -280,7 +281,7 @@ export interface ResetBuiltinsResult {
  * first-run versions; the success body carries v4's counts shape.
  */
 export async function resetBuiltinCharacters(): Promise<ResetBuiltinsResult> {
-  const res = await fetch('/api/v1/characters?action=reset-builtins', { method: 'POST' });
+  const res = await fetch(apiUrl('/api/v1/characters?action=reset-builtins'), { method: 'POST' });
   if (!res.ok) {
     let message = `Failed to reset built-in characters (HTTP ${res.status})`;
     try {
@@ -304,7 +305,7 @@ export async function resetBuiltinCharacters(): Promise<ResetBuiltinsResult> {
  */
 export async function downloadCharacterPng(characterId: string, name: string): Promise<void> {
   const res = await fetch(
-    `/api/v1/characters/${encodeURIComponent(characterId)}?action=export&format=png`,
+    apiUrl(`/api/v1/characters/${encodeURIComponent(characterId)}?action=export&format=png`),
   );
   if (!res.ok) {
     throw new Error(`PNG export failed (HTTP ${res.status})`);
