@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+Debug-profile fix for dogfood-observed first-load slowness: the
+SQLite3MC amalgamation (the ChaCha20 page cipher) now compiles at
+opt-level 2 in dev builds ([profile.dev.package.quilltap-sqlite3mc-sys]
+in the workspace Cargo.toml — the same precedent as the existing
+sha2/pbkdf2/aes overrides). At -O0 every cold page read of a
+real-sized instance decrypted at unoptimized speed, making the first
+open of any list page in a debug artifact (the M5 debug bundle, the
+e2e servers) visibly slow against the Friday copy. One-time
+amalgamation recompile when first applied (~30 s on this machine),
+cached as usual after; release artifacts unaffected. Verified: the
+quilltap-web contract suite opens the real encrypted fixtures green on
+the rebuilt library; both Tauri bundles (debug + release) relinked.
+Build-config only — no crate code, no version bumps.
+
 Dogfood finding #12 recorded (Tauri vs the Friday copy): every image
 renders broken under the Tauri shell — server-supplied RELATIVE URLs
 (avatarUrl/filepath/backgroundUrl DTO fields, links inside

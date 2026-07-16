@@ -32,6 +32,14 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.aes-gcm]
 opt-level = 3
+# The SQLite3MC amalgamation (the ChaCha20 page cipher) at -O0 makes every
+# cold page read of a real-sized instance visibly slow in debug artifacts
+# (dogfood, 2026-07-16: first list loads against the Friday copy). Same
+# precedent as the crypto overrides above; forces ONE amalgamation recompile
+# when first applied, then caches as usual (the pinned-version rule is about
+# version bumps, not profile settings).
+[profile.dev.package.quilltap-sqlite3mc-sys]
+opt-level = 2
 
 # Shared dependency versions live here so every crate pins the same ones.
 # (Members opt in with `foo = { workspace = true }`.) Add as the port grows.
