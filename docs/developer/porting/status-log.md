@@ -15530,3 +15530,62 @@ ACTIVE), run alone on 4319.
 
 **Final versions:** core **0.0.230**, harness 0.0.208, host 0.0.18,
 web **0.0.25**, quilltap-tauri **0.0.3**, SPA **0.5.128**.
+
+---
+
+## P4.6aw item 1 — the cost-estimator consolidation (2026-07-16)
+
+**Lane A of the P4.6aw ∥ P4.6ax ∥ P4.8 round.** A behavior-frozen
+refactor closing a standing-pool item: the two byte-identical
+`estimateMessageCost` seams merged into one.
+
+**What was duplicated.** `MessageCostEstimator`
+(`services/cost_estimation.rs`) and `CarinaCostEstimator`
+(`services/carina_memory_extraction.rs`) were separate traits with an
+identical method signature, wrapping the same v4 function
+(`lib/services/cost-estimation.service.ts:62-138`). Each carried its own
+no-cost default (`NoMessageCost` / `NoCarinaCost`) and its own host impl
+(`PricingMessageCost` / `PricingCarinaCost`) whose bodies were
+byte-for-byte identical (`build_pricing_context` →
+`fetcher.estimate_message_cost(Registry::built_in(), …)` → `result.cost`).
+They grew apart only because the two units (W4.5 carina, P4.6ao title)
+were ported at different times; the duplication was acknowledged in-code
+at both sites.
+
+**What landed.** One trait `MessageCostEstimator`, one default
+`NoMessageCost`, one host impl `PricingMessageCost` — now serving BOTH
+the TITLE_GENERATION and the MEMORY_EXTRACTION events. No alias/re-export
+was needed: `carina_memory_extraction` imports the shared trait directly
+and its handler bound reads `K: MessageCostEstimator`. Deleted:
+`CarinaCostEstimator`, `NoCarinaCost` (which had NO callers at all — the
+free fn always takes `K` explicitly), `PricingCarinaCost`, and the two
+acknowledged-duplication comments. `std::future::Future` fell out of the
+carina imports with the trait.
+
+**The proof (the differentials ARE the equivalence test).** Both tier-3
+differentials were run GREEN *before* the refactor over FRESH `02865bdb`
+oracles, then again after — identical results, no `SKIP` in either run
+(the `p4d3-db-size-reduction-drift` lesson):
+
+- `title_update_tier3_equivalence` (2 tests, 10 oracle cases) — pins the
+  **no-cost default** arm (`NoMessageCost`).
+- `carina_memory_extraction_tier3_equivalence` (1 test, 12 oracle cases) —
+  pins the **cost-producing** arm via `CannedCost`, which now impls the
+  shared trait. Both design constraints from the order therefore still
+  hold: a no-cost default AND a swappable cost-producing impl.
+- `cost_background_routes_equivalence` + the pricing-fetcher tests passed
+  untouched in the full-workspace run.
+
+**Regen recipes.** Title-update: see
+`harness/oracle/cases/title-update-tier3.test.ts` header (jest,
+`--roots` /tmp mirror, `QT_ORACLE_OUT=/tmp/oracle-title-update.ndjson`).
+Carina: the test-file header — **note its `W=` line pins a stale worktree
+path** (`carina-query-w4-5-a178ff`); point it at the CURRENT worktree or
+tsx silently builds the fixture from the wrong case file (the
+`oracle-regen-from-worktree-path` lesson).
+
+**Gate:** `cargo fmt --all --check` clean; clippy clean on BOTH feature
+sets (default + `quilltap-core/native-transport`), exit codes checked;
+`cargo test --workspace` 325 suites / 1357 tests, zero failures.
+
+**Versions:** core **0.0.231**, host **0.0.19**, harness **0.0.209**.

@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.6aw item 1: consolidated the two byte-identical cost-estimator seams.
+MessageCostEstimator and CarinaCostEstimator were separate traits with
+identical signatures wrapping the same v4 function (estimateMessageCost),
+each with its own no-cost default and its own host pricing impl whose
+bodies were byte-for-byte identical. They grew apart because their units
+were ported at different times. Now one trait (MessageCostEstimator, in
+services::cost_estimation), one default (NoMessageCost), one host impl
+(PricingMessageCost) serving both the TITLE_GENERATION and
+MEMORY_EXTRACTION events. Behavior-frozen refactor: no logic changed, and
+the title-update and carina tier-3 differentials both stay green over
+fresh 02865bdb oracles. core 0.0.231, host 0.0.19, harness 0.0.209.
+
 Planned the P4.6aw ∥ P4.6ax ∥ P4.8 riders + M6-review round (docs
 only): three work orders committed under
 docs/developer/porting/work-orders/ — P4.6aw (Rust riders: the

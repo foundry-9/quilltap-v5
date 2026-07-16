@@ -48,9 +48,11 @@ use crate::db::{chats_messages_read, chats_read};
 /// ([`crate::services::pricing_fetcher::PricingFetcher::estimate_message_cost`])
 /// that the finalizer's cost tracker uses.
 ///
-/// (`CarinaCostEstimator` in [`crate::services::carina_memory_extraction`] is the
-/// same shape for the same v4 function; consolidating the two is a follow-up, not
-/// this unit's business.)
+/// This is the single seam for every consumer of v4's `estimateMessageCost`:
+/// the TITLE_GENERATION event ([`crate::services::title_update_job`]) and the
+/// MEMORY_EXTRACTION event ([`crate::services::carina_memory_extraction`]) both
+/// take one. (The two grew separate byte-identical traits while their units were
+/// ported apart; P4.6aw merged them.)
 pub trait MessageCostEstimator {
     fn estimate(
         &self,

@@ -17,7 +17,7 @@
 //! embedding by exact `${summary}\n\n${content}` text. The instance-settings
 //! `getMemoryExtractionLimits` read is injected here as the corpus limits (the
 //! oracle mocks it to the same value); the pricing `estimateMessageCost` seam is a
-//! canned `CarinaCostEstimator` matching the oracle's canned cost.
+//! canned `MessageCostEstimator` matching the oracle's canned cost.
 //!
 //! Then the five affected tables (`memories`, `vector_entries`, `vector_indices`,
 //! `chat_messages`, `chats`) are diffed in the shared-cross-table id-map remap form
@@ -55,9 +55,10 @@ use quilltap_core::model::completion::{
 };
 use quilltap_core::model::embedding::CannedEmbeddingProvider;
 use quilltap_core::services::carina_memory_extraction::{
-    handle_carina_memory_extraction, CarinaCostEstimator, CarinaMemoryExtractionPayload,
+    handle_carina_memory_extraction, CarinaMemoryExtractionPayload,
 };
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use quilltap_core::services::cost_estimation::MessageCostEstimator;
 use quilltap_core::services::memory_processor::MemoryExtractionLimits;
 use serde::Deserialize;
 use serde_json::Value;
@@ -137,7 +138,7 @@ fn spec_path() -> PathBuf {
 
 struct CannedCost(f64);
 
-impl CarinaCostEstimator for CannedCost {
+impl MessageCostEstimator for CannedCost {
     fn estimate(
         &self,
         _provider: &str,

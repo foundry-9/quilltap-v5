@@ -94,7 +94,7 @@ use quilltap_core::services::api_key_service;
 use quilltap_core::services::brahma_console::RealBrahmaConsole;
 use quilltap_core::services::build_context::RealBuildContextSeams;
 use quilltap_core::services::carina_memory_extraction::{
-    handle_carina_memory_extraction, CarinaCostEstimator, CarinaMemoryExtractionPayload,
+    handle_carina_memory_extraction, CarinaMemoryExtractionPayload,
 };
 use quilltap_core::services::carina_query::{CarinaQueryDeps, RealCarinaQuery};
 use quilltap_core::services::carina_runner::{
@@ -1788,39 +1788,10 @@ impl JobHandler for ChatDangerClassificationHandler {
     }
 }
 
-/// The pricing-backed [`CarinaCostEstimator`] (the same cascade the finalizer's
-/// cost tracker uses).
-pub struct PricingCarinaCost<PF: PricingFetch + Send + Sync> {
-    pub fetcher: Arc<PricingFetcher<PF>>,
-    pub db: Db,
-}
-
-impl<PF: PricingFetch + Send + Sync> CarinaCostEstimator for PricingCarinaCost<PF> {
-    fn estimate(
-        &self,
-        provider: &str,
-        model: &str,
-        prompt_tokens: i64,
-        completion_tokens: i64,
-        user_id: &str,
-    ) -> impl std::future::Future<Output = Option<f64>> + Send {
-        let ctx = build_pricing_context(&self.db, user_id);
-        let result = self.fetcher.estimate_message_cost(
-            Registry::built_in(),
-            provider,
-            model,
-            prompt_tokens,
-            completion_tokens,
-            now_unix_ms(),
-            &ctx,
-        );
-        async move { result.cost }
-    }
-}
-
-/// The pricing-backed [`MessageCostEstimator`] — the same cascade
-/// [`PricingCarinaCost`] uses, for the TITLE_GENERATION system event's
-/// `estimatedCostUSD`.
+/// The pricing-backed [`MessageCostEstimator`] — the same cascade the finalizer's
+/// cost tracker uses. The one host impl of the seam, shared by every consumer of
+/// v4's `estimateMessageCost`: the TITLE_GENERATION system event's
+/// `estimatedCostUSD` and the carina handler's MEMORY_EXTRACTION event.
 pub struct PricingMessageCost<PF: PricingFetch + Send + Sync> {
     pub fetcher: Arc<PricingFetcher<PF>>,
     pub db: Db,
@@ -1924,7 +1895,7 @@ impl<PF: PricingFetch + Send + Sync + 'static> JobHandler for CarinaMemoryExtrac
                 message_id: None,
                 ctx: LogContext::none(),
             });
-            let cost = PricingCarinaCost {
+            let cost = PricingMessageCost {
                 fetcher: Arc::clone(&self.pricing),
                 db: db.clone(),
             };

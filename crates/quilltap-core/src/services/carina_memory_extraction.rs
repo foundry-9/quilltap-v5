@@ -14,15 +14,15 @@
 //! model boundaries are the same [`CompletionProvider`]/[`EmbeddingProvider`]/
 //! [`CheapLlmTaskExecutor`] the processor consumes. The instance-settings
 //! `getMemoryExtractionLimits` read and the pricing `estimateMessageCost` call are
-//! injected (the limits as an input, the cost as the [`CarinaCostEstimator`] seam)
-//! — the ported [`process_turn_for_memory`] is the substance.
+//! injected (the limits as an input, the cost as the shared
+//! [`MessageCostEstimator`] seam) — the ported [`process_turn_for_memory`] is the
+//! substance.
 //!
 //! [`CompletionProvider`]: crate::model::completion::CompletionProvider
 //! [`EmbeddingProvider`]: crate::model::embedding::EmbeddingProvider
 //! [`CheapLlmTaskExecutor`]: crate::services::cheap_llm_exec::CheapLlmTaskExecutor
 
 use std::collections::HashMap;
-use std::future::Future;
 
 use serde_json::{json, Value};
 
@@ -34,6 +34,7 @@ use crate::memory_tasks::{TurnCharacterSlice, TurnTranscript};
 use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use crate::services::cost_estimation::MessageCostEstimator;
 use crate::services::cost_events::{create_memory_extraction_event, TokenUsage};
 use crate::services::dangerous_content::chat_override::is_chat_active_dangerous;
 use crate::services::dangerous_content::resolver::resolve_dangerous_content_settings;
@@ -48,39 +49,6 @@ pub struct CarinaMemoryExtractionPayload {
     pub carina_message_id: String,
     pub answerer_id: String,
     pub connection_profile_id: String,
-}
-
-/// The pricing seam v4's handler reaches via `estimateMessageCost` — the token
-/// cost of the extraction pass, folded into the `MEMORY_EXTRACTION` system event.
-/// Injected (the pricing subsystem is W4.7e). The default returns `None` (no cost
-/// figure), still emitting the event with the usage totals.
-pub trait CarinaCostEstimator {
-    fn estimate(
-        &self,
-        provider: &str,
-        model: &str,
-        prompt_tokens: i64,
-        completion_tokens: i64,
-        user_id: &str,
-    ) -> impl Future<Output = Option<f64>> + Send;
-}
-
-/// The default cost estimator — no cost figure (the pricing subsystem is W4.7e).
-#[derive(Clone, Copy, Default)]
-pub struct NoCarinaCost;
-
-impl CarinaCostEstimator for NoCarinaCost {
-    #[allow(clippy::manual_async_fn)]
-    fn estimate(
-        &self,
-        _provider: &str,
-        _model: &str,
-        _prompt_tokens: i64,
-        _completion_tokens: i64,
-        _user_id: &str,
-    ) -> impl Future<Output = Option<f64>> + Send {
-        async { None }
-    }
 }
 
 /// v4 `handleCarinaMemoryExtraction`. Loads the posted carina message, builds the
@@ -105,7 +73,7 @@ pub async fn handle_carina_memory_extraction<C, E, K>(
 where
     C: CompletionProvider,
     E: EmbeddingProvider,
-    K: CarinaCostEstimator,
+    K: MessageCostEstimator,
 {
     // Connection profile + chat settings are hard errors (v4 throws).
     let pid = payload.connection_profile_id.clone();
