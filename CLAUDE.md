@@ -156,9 +156,16 @@ crates/
   quilltap-host/           # the composition root (P4.0): boots quilltap-core::api's
                            #   CoreEngine, owns ALL cadence (job pump / stuck reset /
                            #   enclave tick), instance registry + path resolution.
-  (future) quilltap-web, quilltap-cli, quilltap-tauri
+  quilltap-web/            # the axum HTTP transport (P4.2): dispatch + SSE +
+                           #   binary routes + terminal WS + static serving.
+  quilltap-cli/            # the `quilltap` binary (P4.3): dual-mode
+                           #   (direct-core / HTTP client), v4's npx quilltap
+                           #   as oracle.
+  quilltap-tauri/          # the Tauri 2 desktop shell (P4.7): invoke dispatch,
+                           #   the event pump, the qtap protocol delegating
+                           #   into quilltap-web's router, terminal paired IPC.
 harness/oracle/            # Node/tsx bridge driving v4's real lib/ code.
-apps/web/                  # (future) Angular 21 SPA.
+apps/web/                  # the Angular 21 SPA (zoneless, signals, standalone).
 docs/v4/                   # mirror of the v4 server docs (reference only).
 ```
 
@@ -541,12 +548,34 @@ records THERE. Update this summary only when a phase or round completes.
   seam-note sweep (`preserve_order` is on). Next candidates: P4.7
   (Tauri), an Inspector/aesthetics/token-cost dogfood pass, or the
   small-rider pool — see phase-4.md.
+- **The P4.7a ∥ P4.7b Tauri round: UNIFIED on main (2026-07-16) — BOTH
+  CLOSED; P4.7 (the decomposition's last lettered step) LANDED.** The
+  `quilltap-tauri` shell (tauri 2.11.5): boot via shared quilltap-web
+  helpers, §1 invoke `dispatch`/`health`, §2 the `quilltap://event`
+  pump with Green-Room backlog replay (+ `quilltap://resync` on lag),
+  §3 the `qtap` custom protocol delegating the full http::Request into
+  the reused quilltap-web router (that's how the whole raw REST/byte/
+  multipart surface came free), §4 terminal paired IPC over Channel
+  (frozen WS unions), the 6-test tier-4 IPC contract suite ∥ the SPA
+  D14 seam made real: the `CoreTransport` split (HTTP byte-for-byte
+  frozen — full Playwright 63/63 as proof), the Tauri transport +
+  `isTauri()` bootstrap selection (IPC modules in one lazy chunk), the
+  `apiUrl` origin resolver at every raw site, the
+  `TerminalStreamTransport` seam + Tauri pipe. Gate: 324 suites/1353,
+  ng 1150, Playwright 63/63 zero skips, debug bundle over a real dist.
+  **The human M5 walk is the one remaining acceptance step** (the
+  staged instance + recipe: the status-log round record). Deferred
+  loud: native niceties, turnkey `tauri dev`, updater/signing/release
+  (D21), uniffi/mobile, Last-Event-ID replay. Next candidates: the M5
+  walk + a Tauri dogfood pass, a Friday-copy dogfood pass, the
+  small-rider pool, or the M6 screen-parity review.
 - **Oracle baseline: v4 HEAD `02865bdb`** (rebased 2026-07-14 with the
   P4.d4 skip-signal drift re-port — the trailing-sentinel strip; the
   P4.d3 quantized embedding codec note stands: ⚠ v4's
   `quantize-embeddings-v1` migration is one-way — back up Friday
   before first running v4 `4.8.0-dev.52`+ against it. Drift-check
   before every round.
-  Versions: core 0.0.228, harness 0.0.208, host 0.0.18, web 0.0.23, SPA 0.5.122.
+  Versions: core 0.0.228, harness 0.0.208, host 0.0.18, web 0.0.24,
+  quilltap-tauri 0.0.2, SPA 0.5.126.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

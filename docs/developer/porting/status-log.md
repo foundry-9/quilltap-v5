@@ -15079,3 +15079,73 @@ a lane-A rename surfaces there. The M5 walk exercises: transport selection
 (`isTauri`), `dispatch`/`health` over IPC, `quilltap://event` backlog + live
 frames, `apiUrl` byte routes under the `qtap` origin, and (tier 2) the
 terminal Channel pipe. SPA versions this lane: 0.5.122 → **0.5.126** (+4).
+
+---
+
+## The P4.7a ∥ P4.7b round — UNIFIED on main (2026-07-16)
+
+Two-lane round (the quilltap-tauri shell ∥ the SPA Tauri transport),
+both lanes based on `5b468b4`, reconciled by cherry-pick onto
+`unify/p4.7` in dependency order (A → B, one commit at a time;
+conflicts ONLY in the two append-only docs — Ownership was respected
+exactly, zero source conflicts). **Both orders CLOSED**; P4.7 — the
+last lettered step of the Phase-4 decomposition — is LANDED.
+
+**Unification wires (the cross-lane proofs no lane could run):**
+
+1. **The §1–§4 contract diffed name-for-name across sides** — the six
+   registered commands (`dispatch` arg `request`; `health`;
+   `events_attach`; `terminal_attach` args `sessionId`/`onMessage`;
+   `terminal_send` args `sessionId`/`message`; `terminal_detach` arg
+   `sessionId` — Tauri's snake→camel arg conversion matches lane B's
+   invoke keys), both event names (`quilltap://event`/`quilltap://
+   resync`), and the qtap origin pair. **No folds were needed** — the
+   round added no dispatch verbs, so there was no CoreRequest union
+   work; lane B's transport specs pin every name.
+2. **The M5 artifact built over a REAL SPA dist**: `ng build` (dist at
+   `apps/web/dist/quilltap/browser`) → `cargo tauri build --debug` →
+   `target/debug/bundle/macos/Quilltap.app` (lane A's own bundle had
+   wrapped the build.rs-materialized EMPTY dist).
+3. **The walk instance staged + headless boot smoke**: the e2e
+   global-setup recipe run directly (tsx import; kill the server it
+   launches) and the materialized locked instance copied to
+   `~/qt-m5-instance` (passphrase `open sesame please`, the e2e
+   constant). The bundled app launched against it via `--data-dir`:
+   process stable, clean stderr, no DB handles pre-unlock (correct for
+   a needs-passphrase boot). Window content is not verifiable headless
+   (screencapture + System Events both permission-blocked; tauri-driver
+   has no macOS) — **the human M5 walk is the round's one remaining
+   acceptance step**: launch `Quilltap.app --args --data-dir
+   ~/qt-m5-instance` (or run the binary in Contents/MacOS directly),
+   unlock → salon list → open chat → send → streamed reply; opening
+   the terminal pane exercises the §4 pairing live (lane B's Tauri pipe
+   is mock-proven until then).
+
+**Unification gate (all fresh on the unify branch):** `cargo fmt`
+clean; clippy `-D warnings` BOTH feature sets clean; release build
+clean; `cargo test --workspace` **324 suites / 1353 tests / 0 failed**
+(was 320/1347; `ipc_contract` 6/6 run by name `--nocapture` — no
+oracles were affected this round, none regenerated); `ng test` **125
+files / 1150 tests** (was 119/1107); `ng build` clean with the main
+bundle grepping ZERO `__TAURI_INTERNALS__`; **full Playwright 63/63,
+zero skips** (the frozen-path proof — unchanged counts, no locator
+edits), run alone on 4319.
+
+**Still OPEN from these surfaces (loud, named — the next-order pool):**
+
+- The human M5 walk (above) — after it, a Tauri dogfood pass is the
+  natural follow-on (the Friday-copy recipe works unchanged:
+  `--data-dir ~/qt-dogfood-friday/Friday`).
+- Native niceties (menus beyond defaults, tray, dock badge,
+  window-state persistence, deep links), the turnkey `tauri dev` loop
+  (documented, not wired), updater/signing/notarization/release
+  bundles (D21 + the standing no-release hard stop), uniffi/mobile
+  (D21), `Last-Event-ID`-style replay beyond the §2 resync signal.
+- The pre-existing standing pool (unchanged by this round): the boxed
+  summary variant + `detailed=true`, project-page backdrop
+  arbitration, the no-host dialog consumers, the source-mode toggle,
+  the GFM table transformer, the cost-estimator consolidation, the
+  stale-seam-note doc sweep, the `disabledHint` arm.
+
+**Final versions:** core 0.0.228, harness 0.0.208, host 0.0.18,
+web **0.0.24**, quilltap-tauri **0.0.2** (new crate), SPA **0.5.126**.

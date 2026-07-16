@@ -2,6 +2,27 @@
 
 ## Recent Changes
 
+P4.7a ∥ P4.7b round UNIFIED on main (2026-07-16) — both orders CLOSED;
+P4.7 (the Tauri 2 desktop shell) is LANDED. crates/quilltap-tauri
+0.0.2 (tauri 2.11.5): boot via the shared quilltap-web helpers, §1
+invoke dispatch/health, §2 quilltap://event pump with Green-Room
+backlog replay, §3 the qtap custom protocol delegating into the reused
+router, §4 terminal paired IPC over Channel, the 6-test tier-4 IPC
+contract suite ∥ the SPA D14 seam: CoreTransport split (HTTP frozen
+byte-for-byte), the Tauri transport + isTauri() bootstrap selection
+(IPC modules in one lazy chunk), the apiUrl resolver at every raw
+REST/byte site, the TerminalStreamTransport seam + Tauri pipe.
+Unification wires: the §1–§4 contract diffed name-for-name (no folds
+needed); the debug bundle rebuilt over a real ng build; the M5 walk
+instance staged at ~/qt-m5-instance and the app boot-smoked headless.
+Gate: fmt/clippy both feature sets/release build clean; cargo test
+--workspace 324 suites / 1353 tests / 0 failed (ipc_contract 6/6 by
+name); ng test 1150; ng build clean (main bundle Tauri-free); full
+Playwright 63/63 zero skips. The human M5 walk (unlock → salon → send
+in the desktop app) is the round's one remaining acceptance step.
+Versions: core 0.0.228, harness 0.0.208, host 0.0.18, web 0.0.24,
+quilltap-tauri 0.0.2, SPA 0.5.126.
+
 P4.7b unit 4 (lane B, tier 2): the §4 terminal stream transport. The
 WS lifecycle in TerminalSessionService extracted byte-for-byte behind
 a stream-transport seam (open/send/message-callback/close with a

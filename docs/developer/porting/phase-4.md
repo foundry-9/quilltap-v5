@@ -1494,3 +1494,52 @@ consolidation, the stale-seam-note doc sweep. Next candidates: P4.7
 (`quilltap-tauri`), a dogfood pass over the Inspector + aesthetics +
 token/cost story on the Friday copy, or the small-rider pool. Round
 record: `status-log.md`.
+
+**The P4.7a ∥ P4.7b round is UNIFIED on main (2026-07-16) — BOTH orders
+CLOSED; P4.7 (the decomposition's last lettered step) is LANDED, with
+the M5 walk staged for the human.** Landed: `crates/quilltap-tauri`
+0.0.2 (tauri 2.11.5 / tauri-build 2.6.3 / wry 0.55.1) — boot through
+the shared quilltap-web helpers (`resolve_instance_base_dir` +
+`production_host_config` + `boot_startup_status`, extracted in web
+0.0.24 so both transports run the identical recipe), §1
+`dispatch`/`health` commands over the extracted
+`dispatch_body`/`health_parts` (dispatch always resolves the envelope;
+health returns `{status, body}`), §2 `events_attach` +
+`quilltap://event`/`quilltap://resync` over `subscribe_with_backlog`
+(Green-Room backlog-before-live preserved; re-attach REPLAYS the
+still-active backlog), §3 the `qtap` custom protocol delegating the
+full http::Request into the reused router (tower oneshot, permissive
+CORS), §4 the terminal stream over paired IPC
+(`terminal_attach`/`send`/`detach` + `tauri::ipc::Channel`, the frozen
+WS unions verbatim, attach/send/detach semantics by reuse of the same
+manager calls), and the 6-test tier-4 IPC contract suite mirroring
+`contract.rs` ∥ the SPA D14 seam made real: the `CoreTransport` split
+(HTTP byte-for-byte frozen), the Tauri transport
+(invoke/listen/mockIPC-tested; shared `interpretHealth` cannot fork),
+the §3 `apiUrl` resolver at every raw REST/byte site, the §4
+`TerminalStreamTransport` seam + Tauri pipe, bootstrap selection via
+`isTauri()` with the IPC modules in one lazy chunk (main bundle greps
+ZERO `__TAURI_INTERNALS__`). Unification wires: the §1–§4 contract
+diffed name-for-name across sides (six commands, arg keys, event
+names, qtap origins — NO folds needed; lane B's specs pin the names);
+the debug bundle rebuilt over a REAL `ng build`
+(`target/debug/bundle/macos/Quilltap.app`); a locked walk instance
+staged at `~/qt-m5-instance` (the e2e recipe: passphrase
+`open sesame please`) and the app boot-smoked headless against it
+(process stable, clean stderr — window content needs eyes). Gate:
+fmt/clippy both feature sets/release build clean; `cargo test
+--workspace` 324 suites / 1353 tests / 0 failed (`ipc_contract` 6/6 by
+name); ng test 1150 (125 files); ng build clean; full Playwright
+63/63 zero skips (the frozen-path proof — no locator edits).
+Versions: core 0.0.228, harness 0.0.208, host 0.0.18, web 0.0.24,
+tauri 0.0.2, SPA 0.5.126. **The one remaining acceptance step: the
+human M5 walk** (launch `Quilltap.app --args --data-dir
+~/qt-m5-instance`, unlock → salon → open chat → send → streamed
+reply; the terminal pane exercises the §4 pairing). **Deferred loud:**
+native niceties (menus/tray/window-state/deep links), updater/signing/
+release bundles (D21 + the no-release hard stop), uniffi/mobile,
+`Last-Event-ID`-style replay, the turnkey `tauri dev` loop. Next
+candidates: the M5 human walk + a Tauri dogfood pass, a dogfood pass
+over the Inspector + aesthetics + token/cost story on the Friday
+copy, the small-rider pool, or the M6 screen-parity review. Round
+record: `status-log.md`.
