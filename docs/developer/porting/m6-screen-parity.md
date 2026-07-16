@@ -29,13 +29,14 @@ against a control query that verifiably hits — a plain recursive `grep -r`
 silently returned zero on a matching file during this lane, so any absence
 proof re-derived later should re-validate its tool the same way.
 
-**Two sibling lanes are in flight and NOT on main.** Six rows below are
-marked **in-flight** rather than landed: `__bold__` on-type, the
+**Sibling-lane note (settled at unification).** Six rows were reviewed
+while the two code lanes were still in flight: `__bold__` on-type, the
 form-field source-mode toggle, and the GFM table transformer (lane B,
 `p4.6ax-editor-riders.md:3`); the cost-estimator consolidation, the stale
 seam-note sweep, and the depiction-guidelines `disabledHint` arm (lane A,
-`p4.6aw-rust-riders-depiction-hint.md:3`). If those lanes unify before this
-checklist is next read, those rows flip to PARITY without further work.
+`p4.6aw-rust-riders-depiction-hint.md:3`). All six LANDED in the same
+unification that landed this checklist (the P4.6aw ∥ P4.6ax ∥ P4.8
+round), and their rows below read accordingly.
 
 ---
 
@@ -200,7 +201,7 @@ item at `status-log.md:14678-14679`.
 | Detail (9 tabs) | `app/aurora/[id]/view/CharacterDetailView.tsx` | `screens/characters/view/character-detail.ts:46-58`, `app.routes.ts:55-59` | **PARITY** (P4.6g/i/j) |
 | Edit | `app/aurora/[id]/edit/CharacterEditView.tsx` | `screens/characters/edit/character-edit.ts`, `app.routes.ts:50-54` | **PARITY** (P4.6g) |
 | Character LLM-logs section | `CharacterEditView.tsx:390` → `LLMLogsSection.tsx:102` | absent (F2) | **MISSING** → `p4.9g` |
-| Depiction-guidelines no-vault hint | proactive suppression | reactive save-failure | **MISSING (in-flight)** — lane A |
+| Depiction-guidelines no-vault hint | proactive suppression | proactive suppression on both appearance tabs | **PARITY** (P4.6aw) |
 | Group detail | `app/aurora/groups/[id]/GroupDetailView.tsx` | `screens/groups/group-editor.ts`, `app.routes.ts:46-49` | **PARITY** (P4.6l) |
 
 The character detail screen's nine tabs match v4's `CHARACTER_TABS`
@@ -506,9 +507,9 @@ next-order pool"* block).
 | NewChatModal-on-card (`status-log.md:15520-15521`) | §1.1 (DIVERGENCE) |
 | Quick-hide filtering (`status-log.md:15285-15288`, `:15521-15522`) | §1.1, §1.2 → `p4.9d` |
 | Tabbed workspace, "unowed" (`status-log.md:15523`) | §1.6 → `p4.9j` (F1) |
-| Source-mode toggle (`status-log.md:15526`) | in-flight, lane B |
-| GFM table transformer (`status-log.md:15526-15527`, `:11380-11383`) | in-flight, lane B |
-| `__bold__` on-type (`status-log.md:14683-14684`) | in-flight, lane B |
+| Source-mode toggle (`status-log.md:15526`) | LANDED (P4.6ax, this round) |
+| GFM table transformer (`status-log.md:15526-15527`, `:11380-11383`) | LANDED (P4.6ax, this round; table STYLING in the rich editor deferred → `p4.9` rider) |
+| `__bold__` on-type (`status-log.md:14683-14684`) | LANDED (P4.6ax, this round) |
 | `roleplayTemplateId` toolbar awareness (`status-log.md:12226-12227`; re-scoped `phase-4.md:1615-1618`) | §4 `p4.9l` (Salon composer slice — explicitly NOT a rider) |
 | Project-page backgrounds / backdrop arbitration (`status-log.md:12477-12481`) | §1.4 (DIVERGENCE; resolves with `p4.9j`) |
 | No-host chat dialogs (`status-log.md:14681-14683`; widened `p4.8:139-143`) | §2.2 → `p4.9e1/e2/e3` |
@@ -522,7 +523,7 @@ next-order pool"* block).
 | `chat-update` WS side effects beyond refetch (`status-log.md:8614-8617`) | §4 `p4.9m` |
 | Wardrobe dialog (`CLAUDE.md:300-302`) | §2.3 → `p4.9f` |
 | Character tier-3 LLM services (`status-log.md:6163-6164`) | §2.4 → `p4.9k` |
-| Depiction-guidelines `disabledHint` (`status-log.md:14691-14693`) | in-flight, lane A |
+| Depiction-guidelines `disabledHint` (`status-log.md:14691-14693`) | LANDED (P4.6aw, this round) |
 | Files: rich text/pdf preview, rich FolderPicker, drag relocation, workspace-tab drill (`p4.6af:16-18`) | §4 `p4.9n` |
 | Files: cross-mount move/copy UI, DnD relocation, FilePreview family (`p4.6aa:21-27`) | §4 `p4.9n` |
 | Data & System tab (`p4.8:135-138`) | §1.5 → `p4.9g` |

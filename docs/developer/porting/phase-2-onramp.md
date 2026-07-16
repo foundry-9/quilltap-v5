@@ -579,9 +579,11 @@ instances (non-ASCII user data), each must be closed or consciously waived.
    `image_profiles` and `connection_profiles`) have no fixed shape, so they
    cannot use the typed-struct-in-schema-order trick that fixed-shape object
    columns (`tags.visualStyle`, the roleplay `renderingPatterns`/
-   `dialogueDetection`) use. The Rust port serializes them with
-   `serde_json::Value`, whose object backing (`BTreeMap`) **sorts keys**, while
-   v4's `JSON.stringify` preserves **insertion** order. Four sites now hit this:
+   `dialogueDetection`) use. The Rust port serialized them with
+   `serde_json::Value`, whose DEFAULT object backing (`BTreeMap`) **sorted
+   keys**, while v4's `JSON.stringify` preserves **insertion** order (this
+   divergence is CLOSED — see the RESOLVED paragraph below; with
+   `preserve_order` on, `Value` keeps insertion order). Four sites hit this:
    `image_profiles.parameters`, `connection_profiles.parameters`,
    `plugin_config.config` (`z.record`), and `character_plugin_data.data`
    (`z.unknown()` — the open-JSON _value_ form, but same divergence when the value
