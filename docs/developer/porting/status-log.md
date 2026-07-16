@@ -15960,3 +15960,79 @@ mode); `commandFor`'s code-block toggle now reads the field's own mirrored
 
 **Gate:** `ng test` **128 files / 1222 tests** (was 127/1172), 11 new field
 specs; `ng build` clean. SPA 0.5.132.
+
+### Unit 4 — the GFM table transformer (item 4, tier 2) — LANDED
+
+**The order's recorder premise is false.** It says to extend "the P4.6ag
+gate's own recorder recipe — the jsdom/Lexical harness that produced the 28
+committed entries". No such harness exists, anywhere: `markdown-round-trip
+.spec.ts`'s 28 entries were HAND-AUTHORED from per-entry citations (the
+P4.6ag record confirms). So the recorder was built from scratch —
+`harness/oracle/cases/table-transformer.test.ts`, driving v4's REAL
+`COMPOSER_TRANSFORMERS` (which contain the real `TABLE_TRANSFORMER`)
+through a headless Lexical editor: `$convertFromMarkdownString` →
+`$convertToMarkdownString`, both with v4's `shouldPreserveNewLines`, plus
+v4's `stripMarkdownEscapes` export pass — the bridge's own pair.
+`createEditor` needs no DOM (no root element → no reconciliation); v4 has
+no `@lexical/headless`. 20 recorded vectors, committed at
+`editor/__fixtures__/table-round-trip-vectors.json`.
+
+**What the recording taught (none of it guessable by reading):**
+
+1. **`| :-: | :-: |` IS NOT A TABLE.** `isSeparatorRow` demands `-{3,}`, and
+   `:-:` has ONE dash — so a GFM-legal center-aligned table stays literal
+   paragraph text in v4, whole. (The order predicted "aligned → left" here;
+   the truth is "not a table at all".) `---:` DOES separate → table → left.
+2. **v4 RETRIES the transformer line by line.** With the separator not
+   second, line 1 declines and becomes a paragraph — then lines 2-3 match
+   and become a table. Reproduced by registering the rule as a paragraph
+   TERMINATOR (`alt: ['paragraph', …]`).
+3. Alignment is parsed on import and then DISCARDED (Lexical cells store
+   none), which is *why* the export can only write left. Column widths are
+   computed on the ESCAPED cell text.
+4. Cells are `$createTextNode(raw)` — never inline-parsed. `| **bold** |`
+   is the literal characters.
+
+**Port:** schema nodes (`table`/`table_row`/`table_cell`, the cell holding
+`text*` not inline, no alignment attr — v4's model); a hand-rolled
+markdown-it BLOCK rule `qt_table` porting v4's `splitRow` / `isSeparatorRow`
+/ collection guards verbatim, pushing bare `text` tokens so the core inline
+rule leaves cells literal; and a `table` serializer handler reproducing the
+padded, always-left, first-row-column-count export. markdown-it's BUILT-IN
+`table` rule is deliberately NOT used (the order suggested it as a starting
+point): it inline-parses cells, keeps alignment, and does not require a
+leading pipe — wrong on every axis that matters.
+
+**Result: 19 of the 20 vectors match v4 byte-for-byte.** The 28 original
+gate entries are byte-UNCHANGED (the spec diff is 59 insertions, zero
+deletions).
+
+**The one divergence — PRE-EXISTING and dialect-wide, not a table bug.**
+The "separator not second" vector needs a paragraph and a table to abut
+with NO blank line. v4/Lexical joins top-level blocks with a single `\n`
+and models a blank line as an empty paragraph; prosemirror-markdown
+separates blocks with a blank line. The two agree on every input whose
+blocks are already blank-line separated — which is all 28 existing entries,
+which is why this never surfaced. The SAME gap exists today for
+`text\n# Heading`, with no table involved. Closing it means changing block
+separation for the whole dialect — out of this lane's scope. The gate
+asserts v5's actual bytes AND asserts they still differ from v4's recorded
+bytes, so the divergence cannot drift silently in either direction.
+
+**DEFERRED (loud, named):**
+
+- **Editor table STYLING.** The ported table CSS is scoped to
+  `.qt-lexical-contenteditable` (the pre-D17 Lexical class), so tables in
+  `.qt-rich-editor-content` render with no borders. The bytes are right; the
+  chrome is missing. The fix is a stylesheet rule in
+  `styles/qt-components/_chat.css` — OUTSIDE this lane's ownership, so it is
+  reported, not taken. A one-rule follow-up.
+- The block-separation dialect gap above (`\n` join + empty paragraphs vs
+  blank-line separation).
+- No table-insert toolbar button — v4 has none (grep for
+  `INSERT_TABLE`/commands returns nothing); tables come only from typed or
+  pasted markdown. Not invented.
+
+**Gate:** `ng test` **128 files / 1243 tests** (was 128/1222; +20 vectors +
+a corpus-count guard against silent vector loss); `ng build` clean.
+SPA 0.5.133.

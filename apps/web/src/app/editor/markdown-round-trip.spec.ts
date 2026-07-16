@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import tableVectors from './__fixtures__/table-round-trip-vectors.json';
 import { parseMarkdown, serializeMarkdown } from './markdown-dialect';
 
 /**
@@ -245,4 +246,62 @@ describe('D17 gate — v4 composer dialect round-trip', () => {
       expect(roundTrip(entry.md), entry.trace).toBe(entry.expected);
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// GFM tables (v4 TABLE_TRANSFORMER) — RECORDED vectors, not hand-authored
+// ---------------------------------------------------------------------------
+
+/**
+ * Unlike the corpora above (hand-authored from citations), every expectation
+ * here was produced by v4's REAL `TABLE_TRANSFORMER`, driven through
+ * `COMPOSER_TRANSFORMERS` in a headless Lexical editor — the same
+ * import/export pair v4's bridge uses, with its `shouldPreserveNewLines` and
+ * its export escape-strip. The recorder is
+ * `harness/oracle/cases/table-transformer.test.ts`; its header carries the
+ * regen recipe.
+ *
+ * The corpus is deliberately full of v4's quirks: a `:-:` separator is not a
+ * separator (v4 needs 3+ dashes), alignment is parsed and then discarded so
+ * every export is left-aligned, cells are literal text, and a long row is
+ * truncated to the header's column count. Fix the port, not the vectors.
+ */
+const TABLE_DIVERGENCES: Record<string, { v5: string; why: string }> = {
+  'a separator row that is not second means NO table': {
+    v5: '| a | b |\n\n| 1   | 2   |\n| --- | --- |',
+    why:
+      'PRE-EXISTING dialect gap, not a table gap: v4/Lexical joins top-level blocks with a ' +
+      'single `\\n` and models a blank line as an empty paragraph, while prosemirror-markdown ' +
+      'separates blocks with a blank line. The two agree on every input whose blocks are ' +
+      'already blank-line separated (all 28 entries above), and disagree only where a block ' +
+      'directly abuts another with no blank line — which a table can do (v4 retries the ' +
+      'transformer on the next line, making lines 2-3 a table under the line-1 paragraph). ' +
+      'The same gap exists today for `text\\n# Heading`, with no table involved. Owning it ' +
+      'means changing block separation for the whole dialect: out of this lane, named in the ' +
+      'status log.',
+  },
+};
+
+describe('D17 gate — v4 GFM tables (recorded from the real TABLE_TRANSFORMER)', () => {
+  for (const v of tableVectors) {
+    const divergence = TABLE_DIVERGENCES[v.name];
+
+    if (!divergence) {
+      it(`matches v4: ${v.name}`, () => {
+        expect(roundTrip(v.md), v.trace).toBe(v.out);
+      });
+      continue;
+    }
+
+    it(`documents a divergence from v4: ${v.name}`, () => {
+      // v5's output is asserted so the divergence cannot silently drift, and
+      // v4's recorded bytes are asserted to still be what we diverge FROM.
+      expect(roundTrip(v.md), divergence.why).toBe(divergence.v5);
+      expect(roundTrip(v.md), 'the divergence would be resolved — update the gate').not.toBe(v.out);
+    });
+  }
+
+  it('records the whole v4 table corpus (no silent vector loss)', () => {
+    expect(tableVectors.length).toBe(20);
+  });
 });

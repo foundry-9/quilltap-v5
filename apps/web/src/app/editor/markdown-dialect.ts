@@ -28,8 +28,15 @@
  *     `STRIKETHROUGH` rides markdown-it's own built-in `~~` rule; `HIGHLIGHT` is
  *     a hand-rolled `==` inline rule modeled byte-for-byte on that strikethrough
  *     rule (markdown-it ships no `==` support). Both serialize with the
- *     literal-tilde/equals protection v4's `preserve*` flags apply. Links and the
- *     multiline table transformer remain out of the gate's scope (deferred).
+ *     literal-tilde/equals protection v4's `preserve*` flags apply. The link mark
+ *     remains out of the gate's scope (deferred).
+ *  4. **GFM tables.** v4's bespoke `TABLE_TRANSFORMER`
+ *     (`components/chat/lexical/transformers/table-transformer.ts`) is in
+ *     `COMPOSER_TRANSFORMERS`, so it is live on every editing surface. Ported
+ *     here as a markdown-it block rule + serializer handlers reproducing its
+ *     import guards and its deliberately LOSSY export — see {@link qtTableRule}
+ *     and the `table` serializer. Vectors recorded from v4's real transformer
+ *     drive `markdown-round-trip.spec.ts`.
  *
  * @module editor/markdown-dialect
  */
@@ -59,12 +66,48 @@ const EQUALS = 0x3d; // '='
  * and `highlight` (`==`, rendered `<mark>`) — matching v4's `STRIKETHROUGH` and
  * `HIGHLIGHT` transformers, which are part of the dialect on every editing
  * surface.
+ *
+ * Three block nodes model v4's GFM tables. `table_cell` holds `text*`, NOT
+ * inline content, because v4's import builds each cell with a bare
+ * `$createTextNode(cellText)` and never inline-parses it
+ * (`table-transformer.ts:169-186`) — `| **bold** |` is the literal characters
+ * `**bold**` in v4, and must stay literal here. No alignment attribute exists:
+ * v4 parses GFM alignment on import and then DISCARDS it (Lexical table cells
+ * store none), which is why its export can only ever write left.
  */
 export const dialectSchema = new Schema({
-  nodes: baseSchema.spec.nodes.update('list_item', {
-    ...baseSchema.spec.nodes.get('list_item'),
-    attrs: { checked: { default: null } },
-  }),
+  nodes: baseSchema.spec.nodes
+    .update('list_item', {
+      ...baseSchema.spec.nodes.get('list_item'),
+      attrs: { checked: { default: null } },
+    })
+    .append({
+      table: {
+        content: 'table_row+',
+        group: 'block',
+        isolating: true,
+        parseDOM: [{ tag: 'table' }],
+        toDOM() {
+          return ['table', ['tbody', 0]];
+        },
+      },
+      table_row: {
+        content: 'table_cell+',
+        parseDOM: [{ tag: 'tr' }],
+        toDOM() {
+          return ['tr', 0];
+        },
+      },
+      table_cell: {
+        content: 'text*',
+        attrs: { header: { default: false } },
+        isolating: true,
+        parseDOM: [{ tag: 'td' }, { tag: 'th', attrs: { header: true } }],
+        toDOM(node: PMNode) {
+          return [node.attrs['header'] ? 'th' : 'td', 0];
+        },
+      },
+    }),
   marks: baseSchema.spec.marks
     .addToEnd('strikethrough', {
       parseDOM: [{ tag: 's' }, { tag: 'del' }, { style: 'text-decoration=line-through' }],
@@ -304,6 +347,149 @@ function highlightPostProcess(state: {
   }
 }
 
+// ---------------------------------------------------------------------------
+// GFM tables (v4 `TABLE_TRANSFORMER`)
+// ---------------------------------------------------------------------------
+
+/**
+ * Split a pipe-delimited row into cells, trimming outer pipes and whitespace,
+ * un-escaping `\|` (v4 `splitRow`, `table-transformer.ts:48-70`, ported
+ * verbatim).
+ */
+function splitRow(row: string): string[] {
+  let trimmed = row.trim();
+  if (trimmed.startsWith('|')) trimmed = trimmed.slice(1);
+  if (trimmed.endsWith('|')) trimmed = trimmed.slice(0, -1);
+
+  const cells: string[] = [];
+  let current = '';
+  for (let i = 0; i < trimmed.length; i++) {
+    if (trimmed[i] === '\\' && i + 1 < trimmed.length && trimmed[i + 1] === '|') {
+      current += '|';
+      i++; // skip the pipe
+    } else if (trimmed[i] === '|') {
+      cells.push(current.trim());
+      current = '';
+    } else {
+      current += trimmed[i];
+    }
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+/**
+ * Is this line a separator row (v4 `isSeparatorRow`, `:75-79`)? Note the `-{3,}`:
+ * a GFM-legal `:-:` has only ONE dash, so v4 does NOT see it as a separator and
+ * the whole block stays literal text. Recorded, and pinned in the gate.
+ */
+function isSeparatorRow(line: string): boolean {
+  const cells = splitRow(line);
+  if (cells.length === 0) return false;
+  return cells.every((cell) => /^:?-{3,}:?$/.test(cell.trim()));
+}
+
+/** v4 `escapeCell` (`:95-97`) — only `|` is escaped on export, nothing else. */
+function escapeCell(text: string): string {
+  return text.replace(/\|/g, '\\|');
+}
+
+/** v4's `regExpStart` (`:124`): a table's first line needs a leading pipe. */
+const TABLE_START = /^\|(.+)\|?\s*$/;
+
+/**
+ * Collect the contiguous table lines from `startLine` (v4
+ * `handleImportAfterStartMatch`, `:137-155`), or `null` when this is not a
+ * table. v4 takes lines while the line starts with `|`, or contains one once at
+ * least one line is banked; it then requires ≥2 lines with the separator SECOND.
+ */
+function collectTableLines(lines: string[]): string[] | null {
+  const tableLines: string[] = [];
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line.startsWith('|') || (line.includes('|') && tableLines.length > 0)) {
+      tableLines.push(line);
+    } else {
+      break;
+    }
+  }
+
+  // Need at least a header + separator, and the separator must be second.
+  if (tableLines.length < 2) return null;
+  if (!isSeparatorRow(tableLines[1])) return null;
+  return tableLines;
+}
+
+interface BlockState {
+  src: string;
+  bMarks: number[];
+  eMarks: number[];
+  tShift: number[];
+  line: number;
+  lineMax: number;
+  Token: new (type: string, tag: string, nesting: number) => import('markdown-it/lib/token.mjs').default;
+  push: (type: string, tag: string, nesting: number) => import('markdown-it/lib/token.mjs').default;
+}
+
+/** The raw source of block line `i`. */
+function lineAt(state: BlockState, i: number): string {
+  return state.src.slice(state.bMarks[i] + state.tShift[i], state.eMarks[i]);
+}
+
+/**
+ * The markdown-it block rule for v4's `TABLE_TRANSFORMER` import. Registered as
+ * a paragraph terminator, which is what reproduces v4's retry: when the
+ * separator is not second, Lexical's transformer declines the line, the line
+ * becomes a paragraph, and the transformer is offered the NEXT line — so
+ * `| a | b |\n| 1 | 2 |\n| --- | --- |` yields a paragraph plus a table built
+ * from lines 2-3. Terminating the paragraph at the first line that DOES start a
+ * table gives the same split.
+ *
+ * Cells are pushed as bare `text` tokens (never `inline`), so markdown-it's core
+ * inline rule leaves them alone and the content stays literal — v4's cells are
+ * `$createTextNode` and are never inline-parsed.
+ */
+function qtTableRule(state: BlockState, startLine: number, endLine: number, silent: boolean): boolean {
+  const first = lineAt(state, startLine).trim();
+  if (!TABLE_START.test(first)) return false;
+
+  const raw: string[] = [];
+  for (let i = startLine; i < endLine; i++) raw.push(lineAt(state, i));
+
+  const tableLines = collectTableLines(raw);
+  if (!tableLines) return false;
+  // A terminator check only asks "does a table start here?".
+  if (silent) return true;
+
+  const headerCells = splitRow(tableLines[0]);
+  const colCount = headerCells.length;
+
+  const open = state.push('qt_table_open', 'table', 1);
+  open.map = [startLine, startLine + tableLines.length];
+
+  const emitRow = (cells: string[], header: boolean): void => {
+    state.push('qt_tr_open', 'tr', 1);
+    for (let c = 0; c < colCount; c++) {
+      const cell = state.push('qt_td_open', header ? 'th' : 'td', 1);
+      if (header) cell.attrSet('header', '1');
+      const text = state.push('text', '', 0);
+      // v4 pads a short row with empty cells and TRUNCATES a long one — the cell
+      // loop runs to the HEADER's column count (`:181`).
+      text.content = cells[c] || '';
+      state.push('qt_td_close', header ? 'th' : 'td', -1);
+    }
+    state.push('qt_tr_close', 'tr', -1);
+  };
+
+  emitRow(headerCells, true);
+  // Data rows start after the header (0) and the separator (1).
+  for (let r = 2; r < tableLines.length; r++) emitRow(splitRow(tableLines[r]), false);
+
+  state.push('qt_table_close', 'table', -1);
+  state.line = startLine + tableLines.length;
+  return true;
+}
+
 function buildDialectMarkdownIt(): MarkdownIt {
   // Match prosemirror-markdown's defaultMarkdownParser dialect (CommonMark,
   // inline HTML off), then apply the dialect adjustments.
@@ -316,6 +502,14 @@ function buildDialectMarkdownIt(): MarkdownIt {
   // `balance_pairs` (which precedes both) has already paired its delimiters.
   md.inline.ruler.after('strikethrough', 'qt_highlight', highlightTokenize as never);
   md.inline.ruler2.after('strikethrough', 'qt_highlight', highlightPostProcess as never);
+  // v4 TABLE_TRANSFORMER. `alt: ['paragraph']` makes it a paragraph terminator,
+  // which is how v4's line-by-line retry is reproduced (see {@link qtTableRule}).
+  // markdown-it's own `table` rule is NOT used: its semantics differ from v4's on
+  // every axis that matters (it inline-parses cells, keeps alignment, and does
+  // not require a leading pipe).
+  md.block.ruler.before('paragraph', 'qt_table', qtTableRule as never, {
+    alt: ['paragraph', 'reference', 'blockquote'],
+  });
   return md;
 }
 
@@ -340,6 +534,13 @@ export const dialectParser = new MarkdownParser(dialectSchema, buildDialectMarkd
   // v4 STRIKETHROUGH (`s_open`/`s_close`) and HIGHLIGHT (our `qt_highlight_*`).
   s: { mark: 'strikethrough' },
   qt_highlight: { mark: 'highlight' },
+  // v4 TABLE_TRANSFORMER (our `qt_table_*`/`qt_tr_*`/`qt_td_*`).
+  qt_table: { block: 'table' },
+  qt_tr: { block: 'table_row' },
+  qt_td: {
+    block: 'table_cell',
+    getAttrs: (tok) => ({ header: tok.attrGet('header') === '1' }),
+  },
 });
 
 // ---------------------------------------------------------------------------
@@ -392,6 +593,44 @@ export const dialectSerializer = new MarkdownSerializer(
           return;
         }
       }
+    },
+    /**
+     * v4 `TABLE_TRANSFORMER.export` (`table-transformer.ts:202-252`), reproduced
+     * including its lossiness. Cells are padded to the widest in their column
+     * (min 3), and **the separator is ALWAYS left-aligned** — v4 hard-codes
+     * `Array(colCount).fill('left')` (`:232`) because Lexical stores no
+     * alignment, so `---:` in, `---` out. Column count comes from the FIRST row,
+     * so a long row is truncated and a short one padded with empties.
+     */
+    table(state: MarkdownSerializerState, node: PMNode) {
+      const rows: string[][] = [];
+      node.forEach((row) => {
+        const cells: string[] = [];
+        row.forEach((cell) => cells.push(escapeCell(cell.textContent)));
+        rows.push(cells);
+      });
+      if (rows.length === 0) return;
+
+      const colCount = rows[0].length;
+      const grid = rows.map((row) =>
+        Array.from({ length: colCount }, (_, c) => row[c] ?? ''),
+      );
+      const widths = Array.from({ length: colCount }, (_, c) =>
+        Math.max(3, ...grid.map((row) => row[c].length)),
+      );
+      const line = (cells: string[]): string =>
+        `|${cells.map((text, c) => ` ${text.padEnd(widths[c])} `).join('|')}|`;
+
+      const lines = [
+        line(grid[0]),
+        // The always-left separator: `-` repeated to the column width.
+        `|${widths.map((w) => ` ${'-'.repeat(w)} `).join('|')}|`,
+        ...grid.slice(1).map(line),
+      ];
+
+      // Raw (escape: false) — v4 escapes `|` in a cell and nothing else.
+      state.text(lines.join('\n'), false);
+      state.closeBlock(node);
     },
   },
   {

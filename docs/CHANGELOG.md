@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+The rich editor now understands GFM tables, matching v4: typed or pasted
+pipe tables become real tables, and they are written back the way v4
+writes them -- cells padded to the column width, and the separator always
+left-aligned, since neither editor stores per-column alignment. Table
+text is literal, so `**bold**` in a cell stays as typed. There is no
+insert-table button, because v4 has none. Known gap: tables render
+without borders in the editor pending a stylesheet rule. SPA 0.5.133.
+
 Every markdown form field — character prose, memories, scenarios, and the
 rest — now has an "Edit markdown source" button in its toolbar, matching
 v4, where the toggle is on by default. It swaps the rich editor for a raw
