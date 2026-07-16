@@ -15463,3 +15463,70 @@ Windows is NOT yet wired in `tauri.conf.json`, which carries the
 macOS/Linux `qtap://localhost/` form).
 
 Final versions: quilltap-tauri **0.0.3**, SPA **0.5.127**.
+
+---
+
+## The P4.6au ∥ P4.6av ∥ P4.7c round — UNIFIED on main (2026-07-16)
+
+Three-lane round (the homepage server surface ∥ the Home SPA vertical
+∥ the Tauri one-origin fix), all lanes based on `d8d0ae2`, reconciled
+by cherry-pick onto `unify/p4.6au-av-7c` in dependency order (A → B →
+C, one commit at a time; conflicts ONLY in the two append-only docs —
+Ownership was respected exactly, zero source conflicts; lane C's
+quilltap-web handoff clause was never needed). **All three orders
+CLOSED**, and dogfood finding #12's cause is FIXED (visual
+confirmation rides the human walk).
+
+**Unification wires (the cross-lane proofs no lane could run):**
+
+1. **The §1 fold**: `SystemHomeRequest` appended to `core-contract.ts`
+   (single-author block; defensive-read precedent — no CoreResponse
+   variant) and joined to the `CoreRequest` union; `home.api.ts` drops
+   its fold-at-unify cast. The wire name diffed name-for-name against
+   the Rust side (`#[serde(tag = "type", rename_all = "camelCase")]` →
+   `{"type":"systemHome"}`); the payload bytes are lane A's
+   `home_routes_equivalence` claim (key order included).
+2. **The home beat ACTIVATED**: lane B's probe-guarded
+   record-and-fallback beat self-activated over lane A's live verb —
+   verified by name (2/2 in `home-flow.spec.ts`) on top of the full
+   run.
+3. **The SPA version union**: both lanes minted 0.5.127 → **0.5.128**,
+   lockfile synced.
+
+**Unification gate (all fresh on the unify branch):** `cargo fmt`
+clean; clippy `-D warnings` BOTH feature sets clean (exit codes
+checked under pipefail — the lane-C `| tail` gotcha); release build
+clean; the home oracle regenerated FRESH from the v4 checkout at
+`02865bdb` (jest via the /tmp mirror, Node 24 — 14 cases); `cargo
+test --workspace` **325 suites / 1357 tests / 0 failed** (was
+324/1353; `home_routes_equivalence` 14/14 by name `--nocapture`, no
+SKIP); `ng test` **127 files / 1172 tests** (was 126/1152); `ng
+build` clean with the main bundle grepping ZERO `__TAURI_INTERNALS__`;
+**full Playwright 65/65, zero skips** (was 63; +2 home beats, both
+ACTIVE), run alone on 4319.
+
+**Still OPEN from these surfaces (loud, named — the next-order pool):**
+
+- **The combined human M5 + finding-#12 walk** — the staged recipe is
+  in the P4.7c order header: the M5 beats against `~/qt-m5-instance`
+  (now on `qtap://localhost/` — reloads must land back in the SPA),
+  then the finding-#12 image beats against the Friday copy
+  (avatar stacks / chat-card images / in-message images / a story
+  background), then devtools-inspect.
+- Windows/Linux one-origin behavior is macOS-verified only — re-run
+  the P4.7c spike checks when those targets first build.
+- The homepage family's banked deferrals: the `/generate-image`
+  screen (v4 `GenerateImageView` — the quick action is OMITTED until
+  it ports; M6 pool), v4's `NewChatModal`-on-card (v5 navigates to
+  `/salon/new?characterId=` — M6 parity), quick-hide filtering (no
+  quick-hide provider in v5 — the standing salon-list deferral), the
+  tabbed workspace (unowed).
+- The pre-existing standing pool (unchanged): the boxed summary
+  variant + `detailed=true`, project-page backdrop arbitration, the
+  no-host dialog consumers, the source-mode toggle, the GFM table
+  transformer, the cost-estimator consolidation, the stale-seam-note
+  doc sweep, the `disabledHint` arm, the P4.7 native-niceties/D21
+  pool.
+
+**Final versions:** core **0.0.230**, harness 0.0.208, host 0.0.18,
+web **0.0.25**, quilltap-tauri **0.0.3**, SPA **0.5.128**.

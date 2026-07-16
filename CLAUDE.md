@@ -569,13 +569,35 @@ records THERE. Update this summary only when a phase or round completes.
   (D21), uniffi/mobile, Last-Event-ID replay. Next candidates: the M5
   walk + a Tauri dogfood pass, a Friday-copy dogfood pass, the
   small-rider pool, or the M6 screen-parity review.
+- **The P4.6au ∥ P4.6av ∥ P4.7c homepage + Tauri-one-origin round:
+  UNIFIED on main (2026-07-16) — ALL THREE CLOSED; dogfood finding
+  #12's cause FIXED.** The `systemHome` verb + `GET /api/v1/system/
+  home` (v4's `getHomeData` over ported repos/enrichment; the
+  base-sensitivity collator; the `home-{main,mount}.db` family; a
+  14-case differential vs v4's real service + route at `02865bdb`) ∥
+  the Home dashboard at `/` (welcome + the five-action quick row +
+  the recent-chats/projects/characters grid; the redirect-to-salon
+  root retired; Generate Image OMITTED — `/generate-image` unported;
+  card Chat → `/salon/new?characterId=`, a documented divergence) ∥
+  the Tauri one-origin adoption (the window ships on
+  `qtap://localhost/`; the qtap handler serves the dist and delegates
+  `/api/*` into the reused router; `apiUrl()` identity on a
+  qtap-origin page; no quilltap-web edits). Wires: the `systemHome`
+  CoreRequest fold + name-for-name wire diff; the home beat ACTIVE.
+  Gate: 325 suites/1357, ng 1172, full Playwright 65/65 zero skips.
+  **Remaining acceptance: the combined human M5 + finding-#12 walk**
+  (recipe: the P4.7c order header). Deferred loud: the
+  `/generate-image` screen, NewChatModal-on-card, quick-hide,
+  Windows/Linux one-origin re-checks. Next candidates: the human
+  walk, a homepage/Tauri dogfood pass, the small-rider pool, or the
+  M6 screen-parity review.
 - **Oracle baseline: v4 HEAD `02865bdb`** (rebased 2026-07-14 with the
   P4.d4 skip-signal drift re-port — the trailing-sentinel strip; the
   P4.d3 quantized embedding codec note stands: ⚠ v4's
   `quantize-embeddings-v1` migration is one-way — back up Friday
   before first running v4 `4.8.0-dev.52`+ against it. Drift-check
   before every round.
-  Versions: core 0.0.228, harness 0.0.208, host 0.0.18, web 0.0.24,
-  quilltap-tauri 0.0.2, SPA 0.5.126.
+  Versions: core 0.0.230, harness 0.0.208, host 0.0.18, web 0.0.25,
+  quilltap-tauri 0.0.3, SPA 0.5.128.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

@@ -2,6 +2,33 @@
 
 ## Recent Changes
 
+The P4.6au ∥ P4.6av ∥ P4.7c round UNIFIED on main (2026-07-16) — all
+three orders CLOSED. The homepage exists end-to-end: the `systemHome`
+dispatch verb + `GET /api/v1/system/home` (v4's `getHomeData` over the
+ported repos/enrichment, with the new base-sensitivity collator
+option, the committed `home-{main,mount}.db` fixture family, and the
+14-case `home_routes_equivalence` differential against v4's real
+service + route handler at 02865bdb) feeds the new Home dashboard at
+`/` (welcome greeting, the five-action quick row, the recent-chats /
+projects / characters grid — the root redirect-to-salon retired).
+And the Tauri shell is one-origin: the window ships on
+qtap://localhost/ (the qtap handler serves the embedded dist and
+delegates /api/* into the reused router), closing dogfood finding
+#12's cause — server-relative image URLs now resolve; apiUrl() is
+identity on a qtap-origin page. Unification wires: the systemHome
+request folded into the SPA CoreRequest union (the lane's cast
+removed) and diffed name-for-name against the Rust wire; the home
+Playwright beat ACTIVATED over the live verb; SPA version union
+0.5.127+0.5.127 → 0.5.128. Gate: fmt/clippy both feature sets/release
+build clean; cargo test --workspace 325 suites / 1357 tests / 0
+failed (home_routes_equivalence 14/14 by name over a FRESH oracle);
+ng test 1172 (127 files); ng build clean (zero __TAURI_INTERNALS__ in
+the main bundle); full Playwright 65/65, zero skips, home beats
+active. Remaining acceptance: the combined human M5 + finding-#12
+walk (staged in the P4.7c order header). Final versions: core
+0.0.230, harness 0.0.208, host 0.0.18, web 0.0.25, quilltap-tauri
+0.0.3, SPA 0.5.128.
+
 P4.7c (lane C, one-origin): the Tauri window now loads the SPA off
 qtap://localhost/ instead of tauri://localhost, fixing dogfood finding
 #12 (every image broken under the Tauri shell against real data).

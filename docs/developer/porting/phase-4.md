@@ -325,7 +325,7 @@ CLI subcommand) needs it:
 | **Unlock / pepper-vault service** | `v1/system/unlock` (`setup`/`unlock`/`store`/`lock`), pepper vault, change-passphrase, auto-lock | `dbkey` decryption is ported; the vault/state-machine service around it is not. |
 | **auto-associate** | `auto-associate.ts` + 3 unscoped `findApiKeyById` sites | Small settings feature. |
 | **Themes service** | `v1/themes*` + theme validation | Serves the `.qtap-theme` bundles the SPA consumes. |
-| **Misc system/UI routes** | `ui/search`, `deployment`, `startup-status`, `migration-warnings`, `browse-directory`, `data-dir`, `home`, `image-aesthetics`, `search-replace` | Mostly thin composition over ported repos (`replace_in_messages`/`replace_in_memories` exist); port as dispatch handlers with spot differentials where logic is real. |
+| **Misc system/UI routes** | `ui/search`, `deployment`, `startup-status`, `migration-warnings`, `browse-directory` (ported P4.6z), `data-dir`, `home` (ported P4.6au), `image-aesthetics` (ported P4.6ar), `search-replace` | Mostly thin composition over ported repos (`replace_in_messages`/`replace_in_memories` exist); port as dispatch handlers with spot differentials where logic is real. |
 | **Wardrobe raw read** | `findByCharacterIdRaw` | Deprecated pre-cutover read; port only if a consumer materializes. |
 | **z-ai static model list** | plugin config data | Merge data into the manifest; dynamic path already ported. |
 
@@ -1541,5 +1541,53 @@ release bundles (D21 + the no-release hard stop), uniffi/mobile,
 `Last-Event-ID`-style replay, the turnkey `tauri dev` loop. Next
 candidates: the M5 human walk + a Tauri dogfood pass, a dogfood pass
 over the Inspector + aesthetics + token/cost story on the Friday
+copy, the small-rider pool, or the M6 screen-parity review. Round
+record: `status-log.md`.
+
+**The P4.6au ∥ P4.6av ∥ P4.7c round is UNIFIED on main (2026-07-16) —
+ALL THREE orders CLOSED; the homepage exists end-to-end and the Tauri
+shell is one-origin (dogfood finding #12's cause FIXED).** Landed: the
+`systemHome` dispatch verb + `GET /api/v1/system/home` — v4's
+`getHomeData` (224 lines) as `services::home` over the ported
+repos/enrichment services, with `collation::locale_compare_base` (the
+en-US primary-strength option v4's homepage character sort uses),
+`FilesRepository::find_all`, the committed `home-{main,mount}.db`
+fixture family + generator, and `home_routes_equivalence` (14 oracle
+cases at `02865bdb`: 2 through v4's real route handler, 6
+displayName-ladder/scoping through the real exported service, 6
+raw-SQL mutation cases replayed identically both sides, + the
+key-order claim and the always-on §1 wire-shape test) ∥ the Home
+dashboard at `/` (`screens/home/`, replacing the redirect-to-salon
+root): welcome greeting, the FIVE-action quick row (New Chat /
+Autonomous Room / Continue Last / New Project — the order's survey
+said four; Generate Image OMITTED, its `/generate-image` target is
+unported), the recent-chats / projects / characters grid with
+whole-card click per the finding-#4 pattern, the card Chat action
+navigating to `/salon/new?characterId=` (documented divergence from
+v4's NewChatModal), 16 sibling e2e specs' root-entries re-aimed ∥ the
+P4.7c one-origin adoption: the spike ran GREEN on every gating check
+(WKWebView pushState routing, localStorage persistence across
+relaunch, isTauri, byte routes, devtools), so the Tauri window ships
+on `qtap://localhost/` — the qtap handler serves the embedded dist
+for non-API GET/HEAD and delegates `/api/*`+`/health` into the reused
+router; every server-relative URL (including inside pre-rendered
+bodies) now resolves; `apiUrl()` is identity on a qtap-origin page
+(signature frozen); the fallback render-seam path was never taken and
+NO quilltap-web edits were needed. Unification wires: the
+`systemHome` fold into `CoreRequest` + the name-for-name wire diff;
+the home beat ACTIVATED (2/2 by name); the SPA version union →
+0.5.128. Gate: fmt/clippy both feature sets/release build clean;
+`cargo test --workspace` 325 suites / 1357 tests / 0 failed (the home
+differential 14/14 over a FRESH oracle); ng test 1172 (127 files); ng
+build clean (zero `__TAURI_INTERNALS__`); full Playwright **65/65
+zero skips**. Versions: core 0.0.230, harness 0.0.208, host 0.0.18,
+web 0.0.25, quilltap-tauri 0.0.3, SPA 0.5.128. **The one remaining
+acceptance step: the combined human M5 + finding-#12 walk** (recipe:
+the P4.7c order header — the M5 beats on `~/qt-m5-instance`, the
+image beats on the Friday copy, devtools-inspect). **Deferred loud:**
+the `/generate-image` screen (M6 pool), NewChatModal-on-card (M6
+parity), quick-hide filtering, Windows/Linux one-origin re-checks,
+plus the standing P4.7/D21 and small-rider pools. Next candidates:
+the human walk, then a homepage/Tauri dogfood pass on the Friday
 copy, the small-rider pool, or the M6 screen-parity review. Round
 record: `status-log.md`.
