@@ -34,6 +34,9 @@ pub mod qtap_target_route;
 // === end P4.6w ===
 pub mod state;
 pub mod static_serve;
+// === P4.6au: the home-dashboard REST edge ===
+pub mod system_routes;
+// === end P4.6au ===
 pub mod terminal_routes;
 // === P4.6ak: text-replacements + get-background REST edges ===
 pub mod text_replacements_routes;
@@ -187,6 +190,9 @@ pub fn build_router(state: SharedState) -> Router {
                 .put(llm_logs_routes::system_image_aesthetics_put),
         )
         // === end P4.6ar ===
+        // === P4.6au: the home dashboard ===
+        .route("/api/v1/system/home", get(system_routes::system_home_get))
+        // === end P4.6au ===
         .route("/setup", get(static_serve::setup))
         .fallback(get(static_serve::spa_fallback))
         .with_state(state)

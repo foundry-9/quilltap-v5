@@ -15149,3 +15149,92 @@ edits), run alone on 4319.
 
 **Final versions:** core 0.0.228, harness 0.0.208, host 0.0.18,
 web **0.0.24**, quilltap-tauri **0.0.2** (new crate), SPA **0.5.126**.
+
+## P4.6au (lane A) — the homepage server surface (2026-07-16)
+
+**The `systemHome` dispatch verb + `GET /api/v1/system/home`, CLOSED.**
+Drift-check first: v4 HEAD unchanged at `02865bdb`. Three commits:
+
+1. **The base-sensitivity collator option** (`collation::
+   locale_compare_base`, en-US/primary over the same compiled ICU4X
+   tables) — v4's homepage character sort is `localeCompare(b,
+   undefined, {sensitivity: 'base'})`, where case AND accents compare
+   EQUAL and ties fall to the stable sort. Probed against Node 24
+   (full ICU); pinned by unit tests incl. the Aria/aria and Ötz/otz
+   tie pairs the fixture stages (tertiary would reorder both — the
+   differential would catch a wrong collator). core 0.0.229.
+2. **The composition port** — v4 `lib/services/home-data.service.ts`
+   (`getHomeData`, 224 lines) as `services/home.rs`;
+   `api::system::system_home` is the dispatch glue (nested main+mount
+   reads; v4's fixed `serverError('Failed to load the home
+   dashboard')` on any internal failure). `Request::SystemHome` (no
+   params) + `Response::SystemHome`; the engine arm passes
+   `SINGLE_USER_ID` + a None fallback (the users-row name carries the
+   greeting — v4's `ctx.user.name` is the session mirror of that
+   row). `FilesRepository::find_all` added (v4's un-overridden base
+   `findAll` — UNSCOPED, and so is `projects.findAll`, while
+   chats/characters are user-scoped; the empty-user cases prove the
+   split). core 0.0.230.
+3. **The REST edge + the fixture family + the differential.**
+   `GET /api/v1/system/home` (new `system_routes.rs`) — v4's
+   `successResponse(data)` is the RAW payload (`NextResponse.json`),
+   so the edge is the llm-logs unwrap pattern. The committed
+   `home-{main,mount}.db` family + `build-home-fixture.ts` (real-repo
+   staging; 2 users / 28 characters / 16 chats / 14 projects / 5
+   files / 2 tags / a pinned photo mount): >12 salon chats + help +
+   autonomous both NEWER than every salon chat and both carrying
+   participants (counts run over allChatsRaw), the vault-link vs
+   legacy-files avatar split (legacy resolves on the grid, null on
+   the vault-only LIST path — the cross-arm proof), a dangling
+   participant characterId (`character: null`), a dangling story
+   background (miss → null), lastMessageAt-null chats, three projects
+   activity-decided by three different sources, favorites + the two
+   base-tie name pairs + an empty-string title, and the
+   `defaultConnectionProfileId` holder. `home_routes_equivalence`
+   (quilltap-web tests): **14 cases green** — 2 through v4's REAL
+   route handler, 6 displayName-ladder/scoping cases through the REAL
+   exported `getHomeData`, 6 raw-SQL mutation cases replayed
+   identically on both sides (help-flip, null-lastMessageAt,
+   file-touch re-rank, chat re-project, cleared vs ORPHANED
+   background) — plus the key-order claim over the richest payload
+   (88 objects; `preserve_order` carries the struct field order to
+   the wire) and the always-on §1 wire-shape contract test. web
+   0.0.25.
+
+**Fixture-staging gotchas (banked):** the store-backed
+`projects.create` mints LIVE slim-row timestamps regardless of create
+opts — re-pin `updatedAt` via raw UPDATE (the addMessages
+lastMessageAt/updatedAt bump needs the same, the enclave-step
+precedent); character `tags` are tag-id UUIDs (stage `tags` rows);
+message roles are UPPERCASE enums; the `memories` table must be
+forced into existence (`ensureCollection`) — the enrichment's
+`_count.memories` read has no lazy CREATE on the Rust side; the
+generator now deletes the zero-byte TRUNCATE journals it leaves.
+
+**A dropped case, on purpose:** no empty-string-chatType arm. v4's
+`!c.chatType` falsy branch is not independently observable on
+v4-on-SQLite — chatType is enum-validated on write, a raw `''` row is
+dropped WHOLE at the collection read layer (it vanishes from
+findByUserId before the home filter sees it, taking its participant
+counts with it), and a NULL hydrates through the zod default to
+'salon'. The v5 filter keeps the faithful `None | "" | "salon"` arms;
+the difference is unreachable through v4's own write paths.
+
+**Tier-3 deferrals (per the order, not this lane):** the tabbed
+workspace (`redirectToWorkspaceTab`) and v4's server-rendered `/` —
+v5's `/` is the SPA Home screen (lane B). Tier 2: no `no such column`
+tolerance issue surfaced (this lane reads through already-ported,
+already-tolerant repos; nothing new to bank).
+
+**Oracle regen recipe** (fresh at `02865bdb`, from THIS worktree's
+case file): see the headers of `harness/oracle/fixtures/
+build-home-fixture.ts` (the fixture, env `QT_FIXTURE_HOME_{MAIN,
+MOUNT}`) and `harness/oracle/cases/home-routes.test.ts` (the oracle —
+/tmp mirror, `--roots`, `QT_ORACLE_OUT`); run the diff with
+`QT_ORACLE_HOME=/tmp/oracle-home.ndjson cargo test -p quilltap-web
+--test home_routes_equivalence -- --nocapture`.
+
+**Gate:** fmt clean; clippy `-D warnings` BOTH feature sets clean;
+`cargo test --workspace` 325 suites green with `QT_ORACLE_HOME` set
+(differential run by name `--nocapture`, zero SKIP); the harness
+no-env self-test green. Versions: core 0.0.230, web 0.0.25.

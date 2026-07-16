@@ -1,0 +1,597 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "seedTimestamp": "2026-06-01T00:00:00.000Z",
+  "userId": "1e000000-0000-4000-8000-000000000001",
+  "emptyUserId": "1e000000-0000-4000-8000-000000000002",
+  "missingUserId": "1e000000-0000-4000-8000-0000000000dd",
+  "connectionProfileId": "c9000000-0000-4000-8000-000000000001",
+  "photoMountId": "d9000000-0000-4000-8000-000000000001",
+  "vaultAvatarPath": "photos/aurelia-portrait.png",
+  "danglingCharacterId": "c2000000-0000-4000-8000-0000000000ee",
+  "missingBackgroundFileId": "f2000000-0000-4000-8000-0000000000ff",
+  "projects": [
+    {
+      "id": "72000000-0000-4000-8000-000000000001",
+      "name": "Aeronautics Bureau",
+      "color": "#334455",
+      "updatedAt": "2026-05-20T00:00:00.000Z"
+    },
+    {
+      "id": "72000000-0000-4000-8000-000000000002",
+      "name": "Brass Foundry",
+      "updatedAt": "2026-05-21T00:00:00.000Z"
+    },
+    {
+      "id": "72000000-0000-4000-8000-000000000003",
+      "name": "Cartography Wing",
+      "updatedAt": "2026-06-12T00:00:00.000Z"
+    },
+    {
+      "id": "72000000-0000-4000-8000-000000000004",
+      "name": "Dirigible Almanac",
+      "description": "Field notes for the almanac.",
+      "color": "#8b5a2b",
+      "icon": "airship",
+      "updatedAt": "2026-05-19T00:00:00.000Z"
+    },
+    {
+      "id": "72000000-0000-4000-8000-000000000005",
+      "name": "Ember Archive",
+      "updatedAt": "2026-05-18T00:00:00.000Z"
+    },
+    {
+      "id": "72000000-0000-4000-8000-000000000006",
+      "name": "Fogworks",
+      "updatedAt": "2026-05-17T00:00:00.000Z"
+    },
+    {
+      "id": "72000000-0000-4000-8000-000000000007",
+      "name": "Gaslight Salon",
+      "updatedAt": "2026-05-16T00:00:00.000Z"
+    },
+    {
+      "id": "72000000-0000-4000-8000-000000000008",
+      "name": "Horological Society",
+      "updatedAt": "2026-05-15T00:00:00.000Z"
+    },
+    {
+      "id": "72000000-0000-4000-8000-000000000009",
+      "name": "Inkwell Annex",
+      "updatedAt": "2026-05-14T00:00:00.000Z"
+    },
+    {
+      "id": "72000000-0000-4000-8000-00000000000a",
+      "name": "Junction Yard",
+      "updatedAt": "2026-05-13T00:00:00.000Z"
+    },
+    {
+      "id": "72000000-0000-4000-8000-00000000000b",
+      "name": "Kite Observatory",
+      "updatedAt": "2026-05-12T00:00:00.000Z"
+    },
+    {
+      "id": "72000000-0000-4000-8000-00000000000c",
+      "name": "Lamplighters Guild",
+      "updatedAt": "2026-05-11T00:00:00.000Z"
+    },
+    {
+      "id": "72000000-0000-4000-8000-00000000000d",
+      "name": "Mercury Post",
+      "updatedAt": "2026-05-10T00:00:00.000Z"
+    },
+    {
+      "id": "72000000-0000-4000-8000-00000000000e",
+      "name": "Nimbus Registry",
+      "updatedAt": "2026-05-09T00:00:00.000Z"
+    }
+  ],
+  "files": [
+    {
+      "id": "f2000000-0000-4000-8000-000000000001",
+      "sha256": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "originalFilename": "aviary-dawn-bg.png",
+      "mimeType": "image/png",
+      "size": 2048,
+      "source": "GENERATED",
+      "category": "IMAGE",
+      "updatedAt": "2026-06-01T00:00:00.000Z"
+    },
+    {
+      "id": "f2000000-0000-4000-8000-000000000002",
+      "sha256": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "originalFilename": "bertram-portrait.png",
+      "mimeType": "image/png",
+      "size": 1024,
+      "source": "GENERATED",
+      "category": "IMAGE",
+      "updatedAt": "2026-06-01T00:00:00.000Z"
+    },
+    {
+      "id": "f2000000-0000-4000-8000-000000000003",
+      "sha256": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+      "originalFilename": "foundry-ledger.pdf",
+      "mimeType": "application/pdf",
+      "size": 4096,
+      "source": "UPLOADED",
+      "category": "DOCUMENT",
+      "projectId": "72000000-0000-4000-8000-000000000002",
+      "updatedAt": "2026-06-11T00:00:00.000Z"
+    },
+    {
+      "id": "f2000000-0000-4000-8000-000000000004",
+      "sha256": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+      "originalFilename": "chart-corrections.pdf",
+      "mimeType": "application/pdf",
+      "size": 4096,
+      "source": "UPLOADED",
+      "category": "DOCUMENT",
+      "projectId": "72000000-0000-4000-8000-000000000003",
+      "updatedAt": "2026-05-01T00:00:00.000Z"
+    },
+    {
+      "id": "f2000000-0000-4000-8000-000000000005",
+      "sha256": "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5",
+      "originalFilename": "ember-notes.md",
+      "mimeType": "text/markdown",
+      "size": 512,
+      "source": "UPLOADED",
+      "category": "DOCUMENT",
+      "projectId": "72000000-0000-4000-8000-000000000005",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "characters": [
+    {
+      "id": "c2000000-0000-4000-8000-000000000001",
+      "name": "Aurelia Brasswhistle",
+      "title": "Aeronaut of the First Order",
+      "tags": [
+        "1a000000-0000-4000-8000-000000000001",
+        "1a000000-0000-4000-8000-000000000002"
+      ],
+      "defaultConnectionProfileId": "c9000000-0000-4000-8000-000000000001",
+      "vaultAvatar": true
+    },
+    {
+      "id": "c2000000-0000-4000-8000-000000000002",
+      "name": "Bertram Cogsworth",
+      "defaultImageId": "f2000000-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-000000000003",
+      "name": "Cornelia the Reader",
+      "controlledBy": "user"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-000000000004",
+      "name": "Doorman Automaton",
+      "npc": true
+    },
+    {
+      "id": "c2000000-0000-4000-8000-000000000005",
+      "name": "Elspeth Gearhart",
+      "title": "Chief Artificer"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-000000000006",
+      "name": "Fenwick Halloway"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-000000000007",
+      "name": "Greta Ironwing"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-000000000008",
+      "name": "Aria"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-000000000009",
+      "name": "aria"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-00000000000a",
+      "name": "Ötz"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-00000000000b",
+      "name": "otz"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-00000000000c",
+      "name": "Zinnia Glasswing",
+      "isFavorite": true
+    },
+    {
+      "id": "c2000000-0000-4000-8000-00000000000d",
+      "name": "ámber Lightfoot",
+      "isFavorite": true
+    },
+    {
+      "id": "c2000000-0000-4000-8000-00000000000e",
+      "name": "Hollis Verne",
+      "title": ""
+    },
+    {
+      "id": "c2000000-0000-4000-8000-00000000000f",
+      "name": "Imogen Sparkwright"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-000000000010",
+      "name": "Jasper Windlass"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-000000000011",
+      "name": "Kestrel Morrow"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-000000000012",
+      "name": "Lavinia Thorne"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-000000000013",
+      "name": "Mordecai Plume"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-000000000014",
+      "name": "Nellie Brassbound"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-000000000015",
+      "name": "Octavia Winch"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-000000000016",
+      "name": "Percival Dray"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-000000000017",
+      "name": "Quilliam Fog"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-000000000018",
+      "name": "Rosalind Vane"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-000000000019",
+      "name": "Silas Murk"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-00000000001a",
+      "name": "Tabitha Coil"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-00000000001b",
+      "name": "Ulric Stern"
+    },
+    {
+      "id": "c2000000-0000-4000-8000-00000000001c",
+      "name": "Verity Lampwick"
+    }
+  ],
+  "chats": [
+    {
+      "id": "c3000000-0000-4000-8000-000000000001",
+      "title": "The Aviary at Dawn",
+      "storyBackgroundImageId": "f2000000-0000-4000-8000-000000000001",
+      "participants": [
+        {
+          "id": "aa000000-0000-4000-8000-000000000001",
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "displayOrder": 0,
+          "isActive": true,
+          "controlledBy": "llm"
+        },
+        {
+          "id": "aa000000-0000-4000-8000-000000000002",
+          "characterId": "c2000000-0000-4000-8000-000000000002",
+          "displayOrder": 1,
+          "isActive": true,
+          "controlledBy": "llm"
+        },
+        {
+          "id": "aa000000-0000-4000-8000-000000000003",
+          "characterId": "c2000000-0000-4000-8000-000000000003",
+          "displayOrder": 2,
+          "isActive": true,
+          "controlledBy": "user"
+        }
+      ],
+      "messages": [
+        {
+          "id": "ae000000-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "Shall we take the morning air?"
+        },
+        {
+          "id": "ae000000-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "Nothing would please me more."
+        },
+        {
+          "id": "ae000000-0000-4000-8000-000000000003",
+          "role": "USER",
+          "content": "Then it is settled."
+        }
+      ],
+      "lastMessageAt": "2026-06-15T10:00:00.000Z",
+      "updatedAt": "2026-06-15T10:00:00.000Z"
+    },
+    {
+      "id": "c3000000-0000-4000-8000-000000000002",
+      "title": "Letters from the Fog",
+      "storyBackgroundImageId": "f2000000-0000-4000-8000-0000000000ff",
+      "participants": [
+        {
+          "id": "aa000000-0000-4000-8000-000000000004",
+          "characterId": "c2000000-0000-4000-8000-0000000000ee",
+          "displayOrder": 0,
+          "isActive": true,
+          "controlledBy": "llm"
+        },
+        {
+          "id": "aa000000-0000-4000-8000-000000000005",
+          "characterId": "c2000000-0000-4000-8000-000000000010",
+          "displayOrder": 1,
+          "isActive": false,
+          "controlledBy": "llm"
+        }
+      ],
+      "messages": [
+        {
+          "id": "ae000000-0000-4000-8000-000000000004",
+          "role": "USER",
+          "content": "A letter arrived unsigned."
+        },
+        {
+          "id": "ae000000-0000-4000-8000-000000000005",
+          "role": "ASSISTANT",
+          "content": "How thrillingly ominous."
+        }
+      ],
+      "lastMessageAt": "2026-06-14T10:00:00.000Z",
+      "updatedAt": "2026-06-14T10:00:00.000Z"
+    },
+    {
+      "id": "c3000000-0000-4000-8000-000000000003",
+      "title": "A Perilous Wager",
+      "isDangerousChat": true,
+      "participants": [
+        {
+          "id": "aa000000-0000-4000-8000-000000000006",
+          "characterId": "c2000000-0000-4000-8000-00000000000e",
+          "displayOrder": 0,
+          "isActive": true,
+          "controlledBy": "llm"
+        }
+      ],
+      "messages": [
+        {
+          "id": "ae000000-0000-4000-8000-000000000006",
+          "role": "USER",
+          "content": "The stakes are rather high."
+        }
+      ],
+      "lastMessageAt": "2026-06-13T10:00:00.000Z",
+      "updatedAt": "2026-06-13T10:00:00.000Z"
+    },
+    {
+      "id": "c3000000-0000-4000-8000-000000000004",
+      "title": "The Quiet Reading Room",
+      "participants": [],
+      "messages": [],
+      "lastMessageAt": null,
+      "updatedAt": "2026-06-12T12:00:00.000Z"
+    },
+    {
+      "id": "c3000000-0000-4000-8000-000000000005",
+      "title": "Bureau Briefing",
+      "projectId": "72000000-0000-4000-8000-000000000001",
+      "participants": [
+        {
+          "id": "aa000000-0000-4000-8000-000000000007",
+          "characterId": "c2000000-0000-4000-8000-000000000005",
+          "displayOrder": 0,
+          "isActive": true,
+          "controlledBy": "llm"
+        }
+      ],
+      "messages": [
+        {
+          "id": "ae000000-0000-4000-8000-000000000007",
+          "role": "USER",
+          "content": "The bureau convenes at nine."
+        }
+      ],
+      "lastMessageAt": "2026-06-10T10:00:00.000Z",
+      "updatedAt": "2026-06-10T10:00:00.000Z"
+    },
+    {
+      "id": "c3000000-0000-4000-8000-000000000006",
+      "title": "Foundry Ledger",
+      "projectId": "72000000-0000-4000-8000-000000000002",
+      "participants": [
+        {
+          "id": "aa000000-0000-4000-8000-000000000008",
+          "characterId": "c2000000-0000-4000-8000-00000000000f",
+          "displayOrder": 0,
+          "isActive": true,
+          "controlledBy": "llm"
+        }
+      ],
+      "messages": [
+        {
+          "id": "ae000000-0000-4000-8000-000000000008",
+          "role": "USER",
+          "content": "The ledger does not balance."
+        }
+      ],
+      "lastMessageAt": "2026-06-02T10:00:00.000Z",
+      "updatedAt": "2026-06-02T10:00:00.000Z"
+    },
+    {
+      "id": "c3000000-0000-4000-8000-000000000007",
+      "title": "Chart Corrections",
+      "projectId": "72000000-0000-4000-8000-000000000003",
+      "participants": [],
+      "messages": [],
+      "lastMessageAt": null,
+      "updatedAt": "2026-06-02T11:00:00.000Z"
+    },
+    {
+      "id": "c3000000-0000-4000-8000-000000000008",
+      "title": "Windlass Repairs",
+      "participants": [
+        {
+          "id": "aa000000-0000-4000-8000-000000000009",
+          "characterId": "c2000000-0000-4000-8000-000000000005",
+          "displayOrder": 0,
+          "isActive": true,
+          "controlledBy": "llm"
+        }
+      ],
+      "messages": [],
+      "lastMessageAt": "2026-06-09T10:00:00.000Z",
+      "updatedAt": "2026-06-09T10:00:00.000Z"
+    },
+    {
+      "id": "c3000000-0000-4000-8000-000000000009",
+      "title": "The Doorman's Riddle",
+      "participants": [
+        {
+          "id": "aa000000-0000-4000-8000-00000000000a",
+          "characterId": "c2000000-0000-4000-8000-000000000004",
+          "displayOrder": 0,
+          "isActive": true,
+          "controlledBy": "llm"
+        },
+        {
+          "id": "aa000000-0000-4000-8000-00000000000b",
+          "characterId": "c2000000-0000-4000-8000-00000000000f",
+          "displayOrder": 1,
+          "isActive": true,
+          "controlledBy": "llm"
+        }
+      ],
+      "messages": [],
+      "lastMessageAt": "2026-06-08T10:00:00.000Z",
+      "updatedAt": "2026-06-08T10:00:00.000Z"
+    },
+    {
+      "id": "c3000000-0000-4000-8000-00000000000a",
+      "title": "Fog Signals",
+      "participants": [
+        {
+          "id": "aa000000-0000-4000-8000-00000000000c",
+          "characterId": "c2000000-0000-4000-8000-000000000010",
+          "displayOrder": 0,
+          "isActive": true,
+          "controlledBy": "llm"
+        }
+      ],
+      "messages": [],
+      "lastMessageAt": "2026-06-07T10:00:00.000Z",
+      "updatedAt": "2026-06-07T10:00:00.000Z"
+    },
+    {
+      "id": "c3000000-0000-4000-8000-00000000000b",
+      "title": "Second Ascent",
+      "projectId": "72000000-0000-4000-8000-000000000001",
+      "participants": [
+        {
+          "id": "aa000000-0000-4000-8000-00000000000d",
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "displayOrder": 0,
+          "isActive": true,
+          "controlledBy": "llm"
+        }
+      ],
+      "messages": [],
+      "lastMessageAt": "2026-06-06T10:00:00.000Z",
+      "updatedAt": "2026-06-06T10:00:00.000Z"
+    },
+    {
+      "id": "c3000000-0000-4000-8000-00000000000c",
+      "title": "Ledger of Small Repairs",
+      "participants": [],
+      "messages": [],
+      "lastMessageAt": "2026-06-05T10:00:00.000Z",
+      "updatedAt": "2026-06-05T10:00:00.000Z"
+    },
+    {
+      "id": "c3000000-0000-4000-8000-00000000000d",
+      "title": "Salon Notes",
+      "participants": [],
+      "messages": [],
+      "lastMessageAt": "2026-06-04T10:00:00.000Z",
+      "updatedAt": "2026-06-04T10:00:00.000Z"
+    },
+    {
+      "id": "c3000000-0000-4000-8000-00000000000e",
+      "title": "Aviary Inventory",
+      "participants": [],
+      "messages": [],
+      "lastMessageAt": "2026-06-03T10:00:00.000Z",
+      "updatedAt": "2026-06-03T10:00:00.000Z"
+    },
+    {
+      "id": "c3000000-0000-4000-8000-000000000014",
+      "title": "Getting Started",
+      "chatType": "help",
+      "participants": [
+        {
+          "id": "aa000000-0000-4000-8000-000000000014",
+          "characterId": "c2000000-0000-4000-8000-000000000006",
+          "displayOrder": 0,
+          "isActive": true,
+          "controlledBy": "llm"
+        }
+      ],
+      "messages": [
+        {
+          "id": "ae000000-0000-4000-8000-000000000009",
+          "role": "USER",
+          "content": "Welcome to Quilltap!"
+        }
+      ],
+      "lastMessageAt": "2026-06-16T10:00:00.000Z",
+      "updatedAt": "2026-06-16T10:00:00.000Z"
+    },
+    {
+      "id": "c3000000-0000-4000-8000-000000000015",
+      "title": "Overnight Watch",
+      "chatType": "autonomous",
+      "participants": [
+        {
+          "id": "aa000000-0000-4000-8000-000000000015",
+          "characterId": "c2000000-0000-4000-8000-000000000007",
+          "displayOrder": 0,
+          "isActive": true,
+          "controlledBy": "llm"
+        }
+      ],
+      "messages": [],
+      "lastMessageAt": "2026-06-16T11:00:00.000Z",
+      "updatedAt": "2026-06-16T11:00:00.000Z"
+    }
+  ],
+  "mutations": {
+    "helpFlipChatId": "c3000000-0000-4000-8000-000000000001",
+    "nullLmChatId": "c3000000-0000-4000-8000-000000000001",
+    "touchFileId": "f2000000-0000-4000-8000-000000000005",
+    "touchFileTo": "2026-06-20T00:00:00.000Z",
+    "reprojectChatId": "c3000000-0000-4000-8000-000000000005",
+    "reprojectToProjectId": "72000000-0000-4000-8000-000000000002",
+    "clearBgChatId": "c3000000-0000-4000-8000-000000000001",
+    "orphanBgFileId": "f2000000-0000-4000-8000-000000000001"
+  },
+  "tags": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "name": "steampunk"
+    },
+    {
+      "id": "1a000000-0000-4000-8000-000000000002",
+      "name": "aviator"
+    }
+  ]
+}

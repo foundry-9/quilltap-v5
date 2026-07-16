@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+P4.6au: the home-dashboard REST edge + fixture family + differential —
+`GET /api/v1/system/home` (v4's successResponse is the raw payload;
+internal failure answers v4's exact 500 {error} body), the committed
+`home-{main,mount}.db` family + checked-in generator
+(build-home-fixture.ts — real-repo staging: 2 users, 28 characters,
+16 chats, 14 projects, 5 files, a pinned photo mount with one
+vault-link avatar), the jest-real-DB oracle driving v4's REAL
+exported getHomeData AND the REAL route handler, and
+`home_routes_equivalence`: 14 cases green (route envelope ×2, the
+displayName ladder + the scoped-vs-unscoped split ×6, raw-SQL
+mutation cases ×6 replayed identically on both sides), a key-order
+assertion across the richest payload (88 objects), and the always-on
+§1 wire-shape contract test. quilltap-web 0.0.25.
+
 P4.6au: the home-dashboard composition ported — v4
 `lib/services/home-data.service.ts` (getHomeData, 224 lines) as
 `quilltap-core::services::home` plus the new `systemHome` dispatch
