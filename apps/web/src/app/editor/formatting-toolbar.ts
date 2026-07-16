@@ -1,4 +1,6 @@
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+
+import { Icon } from '../ui/icon';
 
 /**
  * A formatting action emitted by {@link FormattingToolbar}, consumed by
@@ -44,13 +46,21 @@ const MARKDOWN_BUTTONS: ButtonConfig[] = [
  * the toolbar stays presentation-only. `mousedown` is prevented to keep the
  * selection in the editor (v4 `preventFocusLoss`).
  *
- * DEFERRED (loud): the roleplay-template delimiter buttons and the source-mode
- * toggle — the template plumbing is not client-side yet (item 3's
- * `roleplayTemplateId` deferral) and the field has no raw-source view.
+ * The source-mode toggle (v4 `FormattingToolbar.tsx:427-451`) is the last
+ * section, after a divider. v4 renders it only when its `onToggleSource`
+ * callback is passed; an Angular output always exists, so `showSourceToggle`
+ * plays that gate — hence its default of `false` here (the host decides; the
+ * field defaults it ON, as v4's `showSourceToggle` prop does).
+ *
+ * DEFERRED (loud): the roleplay-template delimiter buttons — the template
+ * plumbing is not client-side yet, and v4's template-aware toolbar is
+ * chat-only in practice (no form-field caller passes a `roleplayTemplateId`).
+ * That is a future Salon slice, not a toolbar rider.
  */
 @Component({
   selector: 'qt-formatting-toolbar',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [Icon],
   template: `
     <div class="qt-formatting-toolbar">
       <div class="qt-formatting-toolbar-section">
@@ -78,6 +88,25 @@ const MARKDOWN_BUTTONS: ButtonConfig[] = [
           {{ inCodeBlock() ? '/CODE' : 'CODE' }}
         </button>
       </div>
+
+      @if (showSourceToggle()) {
+        <div class="qt-formatting-toolbar-divider"></div>
+        <div class="qt-formatting-toolbar-section">
+          <button
+            type="button"
+            class="qt-formatting-button qt-formatting-button-source"
+            [class.qt-formatting-button-active]="showSource()"
+            [title]="sourceTitle()"
+            [attr.aria-label]="sourceTitle()"
+            [attr.aria-pressed]="showSource()"
+            [disabled]="disabled()"
+            (mousedown)="$event.preventDefault()"
+            (click)="toggleSource.emit()"
+          >
+            <qt-icon [name]="showSource() ? 'pencil' : 'code'" class="w-4 h-4" />
+          </button>
+        </div>
+      }
     </div>
   `,
 })
@@ -85,8 +114,18 @@ export class FormattingToolbar {
   readonly disabled = input(false);
   /** Whether the caret is in a code block — flips the code-block button (v4). */
   readonly inCodeBlock = input(false);
+  /** Whether the host is showing raw markdown source — flips the toggle (v4). */
+  readonly showSource = input(false);
+  /** Render the source toggle at all (v4: "only when `onToggleSource` is passed"). */
+  readonly showSourceToggle = input(false);
 
   readonly action = output<FormatAction>();
+  readonly toggleSource = output<void>();
 
   protected readonly buttons = MARKDOWN_BUTTONS;
+
+  /** v4's title/aria-label strings, verbatim (`FormattingToolbar.tsx:437-438`). */
+  protected readonly sourceTitle = computed(() =>
+    this.showSource() ? 'Switch to rich text editor' : 'Edit markdown source',
+  );
 }

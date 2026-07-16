@@ -15905,3 +15905,58 @@ and pass ONLY the mirror to `--roots` (passing `$PWD` too makes the
 
 **Gate:** `source-transforms.spec.ts` 33/33 green over a FRESH oracle run
 at `02865bdb`. SPA 0.5.131.
+
+### Unit 3 — the form-field source-mode toggle (item 2, tier 1) — LANDED
+
+The toolbar button (`FormattingToolbar.tsx:427-451`) + the textarea swap in
+`markdown-field.ts` + the sync, all self-contained: `showSourceToggle`
+DEFAULTS ON as v4's prop does (`MarkdownLexicalEditor.tsx:59-61,150`), so
+NO consumer file changed (the §2 cross-lane visible change). Both deferral
+notes (`formatting-toolbar.ts:48-50`, `markdown-field.ts:49-50`) retired.
+v4's icons (`code` in rich / `pencil` in source — both already in the v5
+`qt-icon` registry), titles and `aria-label`s ("Edit markdown source" /
+"Switch to rich text editor") and `aria-pressed` carried verbatim; the
+button renders only when `showSourceToggle` is on, standing in for v4's
+"only when the `onToggleSource` callback is passed". No CSS was needed —
+`.qt-formatting-button-source` and `.qt-formatting-toolbar-divider` were
+already ported (and `styles/` is outside this lane's ownership anyway).
+
+**The mechanism deviates from the order's letter; the END STATE is v4's.**
+The order prescribes explicit `getMarkdown()`/`setMarkdown()` sync across a
+kept-alive editor. v4 instead UNMOUNTS Lexical in source mode (a
+conditional render, `:216-238`) and force-remounts it on leave
+(`sourceLeaveCount` → `composerKey`). v5 now does the same swap (`@if`),
+with a `sourceText` signal as the single source of truth across it —
+exactly the shape the Document-Mode pane already uses for its own toggle
+(`documents/document-pane.ts`'s `editorValue`). `getMarkdown()` still seeds
+the textarea on ENTER (the editor is alive at click time). Why not the
+kept-alive shape: a hidden-but-live editor keeps reacting to the parent's
+`value`, so every source-mode keystroke that a consumer echoes back would
+re-normalize the bytes mid-typing — a divergence v4 cannot have, since its
+editor does not exist in source mode. The `sourceText` indirection also
+means the edit survives whether or not the consumer echoes `value` back.
+
+**The load-bearing find — leaving source mode must NOT emit.** v4's bridge
+tags its mount conversion `'external-sync'` and its update listener SKIPS
+that tag (`MarkdownBridgePlugin.tsx:158-180`). So v4's remount never pushes
+the re-parsed/normalized text to the parent: the parent keeps the RAW bytes
+the textarea gave it (`__x__` stays `__x__` in the form model even though
+the editor displays `**x**`). v5 arms `absorbNext` on leave to reproduce
+that. A spec pins it, and it is NEGATIVE-CHECKED (dropping the arm fails
+the spec). The re-key path also seeds `sourceText` now.
+
+**Source-mode toolbar wiring:** `onAction` branches on `showSource()` and
+routes to `applySourceFormat` (unit 2), then restores the cursor in a
+`requestAnimationFrame` — v4's `sourceApply` shape — and emits every
+transform + every keystroke, v4's controlled-`onChange` continuity.
+
+**Other v4 shapes carried:** the textarea's `aria-label` is
+`` `${ariaLabel} (markdown source)` `` (v5's ariaLabel defaults to
+`'Editor'`, so v4's bare `'Markdown source'` fallback is unreachable but
+kept), `spellcheck=false`, `minHeight` bound to the textarea as well.
+`viewChild.required(RichEditor)` became optional (no editor in source
+mode); `commandFor`'s code-block toggle now reads the field's own mirrored
+`inCodeBlock` signal.
+
+**Gate:** `ng test` **128 files / 1222 tests** (was 127/1172), 11 new field
+specs; `ng build` clean. SPA 0.5.132.

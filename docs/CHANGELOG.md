@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+Every markdown form field — character prose, memories, scenarios, and the
+rest — now has an "Edit markdown source" button in its toolbar, matching
+v4, where the toggle is on by default. It swaps the rich editor for a raw
+markdown textarea and back, and the formatting buttons keep working on the
+raw text while you are in source mode. Switching back does not disturb
+what the field reports to the form, exactly as in v4. SPA 0.5.132.
+
 Ported the source-mode text transforms — what a formatting-toolbar button
 does to raw markdown text (the groundwork for the editor's source-mode
 toggle). Faithful to v4 including two behaviors worth naming: the

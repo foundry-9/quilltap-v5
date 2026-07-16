@@ -9,14 +9,17 @@ import { MarkdownField } from './markdown-field';
   template: `<qt-markdown-field
     [value]="value()"
     [minHeight]="minHeight()"
-    (contentChange)="last.set($event)"
+    [showSourceToggle]="showSourceToggle()"
+    (contentChange)="last.set($event); emits.set(emits() + 1)"
   />`,
 })
 class Host {
   readonly field = viewChild.required(MarkdownField);
   readonly value = signal('');
   readonly minHeight = signal('');
+  readonly showSourceToggle = signal(true);
   readonly last = signal('');
+  readonly emits = signal(0);
 }
 
 async function render(initial = '', minHeight = ''): Promise<ComponentFixture<Host>> {
@@ -28,6 +31,20 @@ async function render(initial = '', minHeight = ''): Promise<ComponentFixture<Ho
   await fixture.whenStable();
   fixture.detectChanges();
   return fixture;
+}
+
+/** The raw-source textarea — present only in source mode. */
+function sourceArea(fixture: ComponentFixture<Host>): HTMLTextAreaElement | null {
+  return fixture.nativeElement.querySelector('.qt-markdown-field-source');
+}
+
+/** Click the source toggle and settle (the swap re-mounts the editor). */
+async function toggleSource(fixture: ComponentFixture<Host>): Promise<void> {
+  button(fixture, 'source').click();
+  fixture.detectChanges();
+  await fixture.whenStable();
+  await new Promise((r) => queueMicrotask(() => r(null)));
+  fixture.detectChanges();
 }
 
 /** The `qt-rich-editor` element — where the field applies v4's minHeight. */
@@ -115,5 +132,136 @@ describe('MarkdownField — shared form-field editor', () => {
     fixture.detectChanges();
     expect(editorEl(fixture).style.minHeight).toBe('10rem');
     expect(markdown(fixture)).toBe('body');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The source-mode toggle (v4 MarkdownLexicalEditor `showSourceToggle`, :150)
+// ---------------------------------------------------------------------------
+
+describe('MarkdownField — the source-mode toggle', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('shows the toggle by DEFAULT — v4 defaults showSourceToggle true (:150)', async () => {
+    const fixture = await render('body');
+    expect(button(fixture, 'source')).not.toBeNull();
+  });
+
+  it('hides the toggle when the host opts out', async () => {
+    TestBed.configureTestingModule({ imports: [Host] });
+    const fixture = TestBed.createComponent(Host);
+    fixture.componentInstance.showSourceToggle.set(false);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(button(fixture, 'source')).toBeNull();
+  });
+
+  it('carries v4\'s titles and aria-pressed through the swap (:437-439)', async () => {
+    const fixture = await render('body');
+    const btn = button(fixture, 'source');
+    expect(btn.getAttribute('title')).toBe('Edit markdown source');
+    expect(btn.getAttribute('aria-label')).toBe('Edit markdown source');
+    expect(btn.getAttribute('aria-pressed')).toBe('false');
+
+    await toggleSource(fixture);
+    expect(btn.getAttribute('title')).toBe('Switch to rich text editor');
+    expect(btn.getAttribute('aria-label')).toBe('Switch to rich text editor');
+    expect(btn.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('swaps the editor for a textarea seeded from the editor\'s own bytes', async () => {
+    // `__bold__` normalizes to `**bold**` on load; source mode must show the
+    // editor's serialization, not the raw input (v4's textarea shows `value`,
+    // which its bridge keeps equal to the editor's export).
+    const fixture = await render('__bold__');
+    expect(sourceArea(fixture)).toBeNull();
+
+    await toggleSource(fixture);
+    expect(fixture.nativeElement.querySelector('qt-rich-editor')).toBeNull();
+    expect(sourceArea(fixture)!.value).toBe('**bold**');
+  });
+
+  it('gives the textarea v4\'s aria-label and spellcheck-off (:222-224)', async () => {
+    const fixture = await render('body');
+    await toggleSource(fixture);
+    const ta = sourceArea(fixture)!;
+    expect(ta.getAttribute('aria-label')).toBe('Editor (markdown source)');
+    expect(ta.getAttribute('spellcheck')).toBe('false');
+  });
+
+  it('emits every textarea keystroke (v4\'s controlled onChange)', async () => {
+    const fixture = await render('body');
+    await toggleSource(fixture);
+    const ta = sourceArea(fixture)!;
+
+    ta.value = 'body!';
+    ta.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.last()).toBe('body!');
+  });
+
+  it('hands the edited source back to the editor on leave', async () => {
+    const fixture = await render('body');
+    await toggleSource(fixture);
+    const ta = sourceArea(fixture)!;
+    ta.value = '## a heading';
+    ta.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    await toggleSource(fixture);
+    expect(sourceArea(fixture)).toBeNull();
+    expect(markdown(fixture)).toBe('## a heading');
+  });
+
+  it('does NOT emit the re-parse on leave — v4 tags it external-sync and skips it', async () => {
+    const fixture = await render('body');
+    await toggleSource(fixture);
+    const ta = sourceArea(fixture)!;
+    // Raw bytes the editor will normalize (`__x__` → `**x**`).
+    ta.value = '__x__';
+    ta.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.last()).toBe('__x__');
+    const emitsAfterTyping = fixture.componentInstance.emits();
+
+    await toggleSource(fixture);
+    // The editor re-inits and re-serializes to `**x**`, but the parent must keep
+    // the raw bytes the textarea gave it — v4's remount conversion is tagged
+    // `external-sync`, which its update listener skips.
+    expect(markdown(fixture)).toBe('**x**');
+    expect(fixture.componentInstance.last()).toBe('__x__');
+    expect(fixture.componentInstance.emits()).toBe(emitsAfterTyping);
+  });
+
+  it('still emits a genuine edit after the round trip (absorb-once is not stuck)', async () => {
+    const fixture = await render('body');
+    await toggleSource(fixture);
+    await toggleSource(fixture);
+    button(fixture, 'h2').click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.last()).toBe('## body');
+  });
+
+  it('a toolbar button in source mode transforms the RAW text (v4 source branch)', async () => {
+    const fixture = await render('hello');
+    await toggleSource(fixture);
+    const ta = sourceArea(fixture)!;
+    ta.setSelectionRange(0, 5);
+
+    button(fixture, 'bold').click();
+    fixture.detectChanges();
+    // v4's sourceToggleWrap: the raw markdown gains literal `**`, and the parent
+    // sees it immediately (no rich-text round trip).
+    expect(sourceArea(fixture)!.value).toBe('**hello**');
+    expect(fixture.componentInstance.last()).toBe('**hello**');
+  });
+
+  it('an H1 click in source mode ADDS the prefix again (v4 never toggles it off)', async () => {
+    const fixture = await render('# title');
+    await toggleSource(fixture);
+    button(fixture, 'h1').click();
+    fixture.detectChanges();
+    expect(sourceArea(fixture)!.value).toBe('# # title');
   });
 });
