@@ -15040,3 +15040,42 @@ to its existing 'reconnecting'→'error' state if the shell lags the contract.
 **Gate:** `ng test` 125 files / 1150 tests (+3 files / +21); `ng build` clean
 (main bundle still Tauri-free); existing terminal specs untouched.
 SPA 0.5.126.
+
+## P4.7b (lane B) — LANE COMPLETE (2026-07-15)
+
+**Every tiered deliverable landed.** Tier 1: the CoreClient transport split
+(unit 1), the Tauri §1/§2 transport + bootstrap selection (unit 2), the §3
+origin resolver at every raw site (unit 3), the unit tier (units 1–4 specs),
+the frozen-path proof (below). Tier 2: the §4 terminal stream transport
+(unit 4) — the seam + Tauri pipe SHIPPED, the live pairing with lane A's
+`terminal_*` commands is **DEFERRED-live to the M5 unification walk** (as the
+order provides; the pane degrades to its existing reconnecting→error states
+under a lagging shell). Tier 3 deferrals stand as ordered (nothing
+Tauri-native in the UI; the startup gate keeps its retry loop on both
+transports).
+
+**The verification gate, all fresh on this branch:**
+
+- `ng test` **125 files / 1150 tests, 0 failures** (round start: 119/1107;
+  +35 specs: 14 core transport, 8 resolver, 21 terminal minus the 8 counted
+  in unit 3's file total — per-unit numbers in each record).
+- `ng build` clean; the browser main bundle greps ZERO `__TAURI_INTERNALS__`
+  (the IPC modules live in one lazy chunk; `isTauri` is the only static
+  import).
+- **Full Playwright: 63 passed, 0 skipped, 0 failed (12.0m), run alone on
+  4319** — the frozen-path proof: unchanged counts, no locator edits.
+- `cargo fmt --all --check` clean; `git diff --name-only main...HEAD` shows
+  `apps/web/**` + the two append-only docs ONLY (the no-`crates/**` tripwire).
+- Belt-and-suspenders on the untouched Rust tree: clippy `-D warnings` BOTH
+  feature sets clean; `cargo test --workspace` **320 suites / 1347 passed /
+  0 failed** (identical to main).
+
+**Fixtures:** none consumed, none delivered, none changed — no oracle
+regeneration owed by this lane (the SPA has no v4 oracle; tier 4 #5).
+
+**For the unifier:** every §1–§4 name/arg/payload the SPA sends is pinned in
+`tauri-core-transport.spec.ts` + `tauri-terminal-stream-transport.spec.ts` —
+a lane-A rename surfaces there. The M5 walk exercises: transport selection
+(`isTauri`), `dispatch`/`health` over IPC, `quilltap://event` backlog + live
+frames, `apiUrl` byte routes under the `qtap` origin, and (tier 2) the
+terminal Channel pipe. SPA versions this lane: 0.5.122 → **0.5.126** (+4).
