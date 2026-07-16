@@ -13,100 +13,11 @@ import { E2E_PASSPHRASE } from './support/env';
  * with their badges → expand one → tab through request/response/usage → filter →
  * the per-message cpu icon opens scrolled + highlighted → Cmd+Shift+L closes.
  *
- * ACTIVATE-AT-UNIFY: `llmLogsList` is lane A's verb and does not exist in this
- * lane's server, so the dispatch is route-mocked below. The mock's body is the
- * Shared contract §1 shape VERBATIM and it mirrors the three rows
- * `global-setup.ts` already seeds into the llm-logs partition (same ids, types,
- * timestamps and usage) — so at unification the unifier deletes the `mockLogs`
- * call and every assertion here holds against the live verb unchanged.
+ * ACTIVATED AT UNIFICATION (P4.6ar∥as∥at): the walk runs LIVE over lane A's
+ * `llmLogsList` verb reading the three rows `global-setup.ts` seeds into the
+ * llm-logs partition. The lane-era route mock (which mirrored those rows
+ * verbatim) was deleted by the unifier, as the lane's order specified.
  */
-
-/** The three seeded rows, DESC by createdAt — exactly what lane A's verb returns. */
-const SEEDED_LOGS = [
-  {
-    id: 'e1000000-0000-4000-8000-000000000003',
-    userId: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
-    type: 'MEMORY_EXTRACTION',
-    messageId: 'd1000000-0000-4000-8000-000000000004',
-    chatId: 'c1000000-0000-4000-8000-000000000001',
-    provider: 'OPENAI_COMPATIBLE',
-    modelName: 'mock-model',
-    request: { messageCount: 3, messages: [], toolCount: 0 },
-    response: { content: 'No memories extracted.', contentLength: 22 },
-    usage: null,
-    durationMs: 900,
-    createdAt: '2026-02-01T00:00:30.000Z',
-    updatedAt: '2026-02-01T00:00:30.000Z',
-  },
-  {
-    id: 'e1000000-0000-4000-8000-000000000002',
-    userId: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
-    type: 'TITLE_GENERATION',
-    messageId: null,
-    chatId: 'c1000000-0000-4000-8000-000000000001',
-    provider: 'OPENAI_COMPATIBLE',
-    modelName: 'mock-model',
-    request: { messageCount: 2, messages: [], toolCount: 0 },
-    response: { content: 'Solo Voyage', contentLength: 11 },
-    usage: null,
-    durationMs: 400,
-    createdAt: '2026-02-01T00:00:20.000Z',
-    updatedAt: '2026-02-01T00:00:20.000Z',
-  },
-  {
-    id: 'e1000000-0000-4000-8000-000000000001',
-    userId: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
-    type: 'CHAT_MESSAGE',
-    messageId: 'd1000000-0000-4000-8000-000000000002',
-    chatId: 'c1000000-0000-4000-8000-000000000001',
-    provider: 'OPENAI_COMPATIBLE',
-    modelName: 'mock-model',
-    request: {
-      messageCount: 1,
-      messages: [
-        {
-          role: 'user',
-          content: 'Hello there, captain.',
-          contentLength: 21,
-          hasAttachments: false,
-        },
-      ],
-      temperature: 0.7,
-      maxTokens: 2048,
-      toolCount: 0,
-    },
-    response: { content: 'Well met, traveller!', contentLength: 20 },
-    usage: { promptTokens: 8, completionTokens: 4, totalTokens: 12 },
-    durationMs: 1234,
-    createdAt: '2026-02-01T00:00:10.000Z',
-    updatedAt: '2026-02-01T00:00:10.000Z',
-  },
-];
-
-/** ACTIVATE-AT-UNIFY: delete this call and the walk runs on the real verb. */
-async function mockLogs(page: Page): Promise<void> {
-  await page.route('**/api/dispatch', async (route) => {
-    const body = route.request().postData() ?? '';
-    if (body.includes('llmLogsList')) {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          type: 'llmLogsList',
-          data: {
-            logs: SEEDED_LOGS,
-            count: SEEDED_LOGS.length,
-            total: SEEDED_LOGS.length,
-            limit: 100,
-            offset: 0,
-          },
-        }),
-      });
-      return;
-    }
-    await route.fallback();
-  });
-}
 
 /** Unlock only when the passphrase screen is showing (the shared server stays unlocked). */
 async function maybeUnlock(page: Page): Promise<void> {
@@ -127,11 +38,10 @@ async function openSoloVoyage(page: Page): Promise<void> {
   await expect(page.getByText('Well met, traveller!')).toBeVisible({ timeout: 15_000 });
 }
 
-test.describe('P4.6as — the LLM Inspector (ACTIVATE-AT-UNIFY)', () => {
+test.describe('P4.6as — the LLM Inspector (LIVE)', () => {
   test('opens from the toolbar, renders entries, expands, tabs, filters, and closes on the shortcut', async ({
     page,
   }) => {
-    await mockLogs(page);
     await page.goto('/');
     await maybeUnlock(page);
     await openSoloVoyage(page);
@@ -192,7 +102,6 @@ test.describe('P4.6as — the LLM Inspector (ACTIVATE-AT-UNIFY)', () => {
   test('the per-message cpu icon opens the panel scrolled to that message’s entry', async ({
     page,
   }) => {
-    await mockLogs(page);
     await page.goto('/');
     await maybeUnlock(page);
     await openSoloVoyage(page);

@@ -6,16 +6,17 @@
  * v4's hook fetches `GET /api/v1/llm-logs?chatId=…&includeMessages=true`; v5 goes
  * through the `llmLogsList` dispatch verb, which lane A (P4.6ar) provides.
  *
- * LOCAL REQUEST TYPE, BY ORDER: this round's SPA lanes must not touch
- * `core-contract.ts` — {@link LlmLogsListRequest} is declared here and cast at the
- * dispatch call site; the unifier folds it into the `CoreRequest` union
- * name-for-name against `types.rs` (the P4.6ao `chatGetCost` precedent).
+ * `LlmLogsListRequest` was folded into the `CoreRequest` union at unification
+ * (the P4.6ao `chatGetCost` precedent); it is re-exported here so consumers are
+ * unchanged.
  *
  * @module chat/llm-logs.api
  */
 
 import type { CoreClient } from '../core/core-client';
-import type { CoreRequest } from '../core/core-contract';
+import type { LlmLogsListRequest } from '../core/core-contract';
+
+export type { LlmLogsListRequest } from '../core/core-contract';
 
 /**
  * The nineteen log types (v4 `LLMLogTypeEnum`, `llm-log.types.ts:17-37`).
@@ -115,28 +116,6 @@ export interface LlmLogDto {
 }
 
 /**
- * The `llmLogsList` verb (Shared contract §1). Every field but `type` is optional
- * on the wire; the Inspector sends only `chatId` + `includeMessages`, which is
- * exactly what v4's hook puts in its query string (`useLLMLogs.ts:28`).
- *
- * `limit`/`offset` are RAW STRINGS by contract — the handler ports v4's
- * parseInt/Math.min body (including the NaN no-slice quirk) so dispatch and REST
- * agree. The Inspector sends neither.
- */
-export interface LlmLogsListRequest {
-  type: 'llmLogsList';
-  messageId?: string;
-  chatId?: string;
-  characterId?: string;
-  /** v4's `?type=` query param; the wire name avoids colliding with the envelope key. */
-  logType?: string;
-  standalone?: boolean;
-  includeMessages?: boolean;
-  limit?: string;
-  offset?: string;
-}
-
-/**
  * The `llmLogsList` response body (Shared contract §1): v4's exact envelope —
  * `total` is pre-slice, `count` post-slice.
  */
@@ -157,13 +136,10 @@ export const llmLogKeys = {
  * Fetch every log for a chat (v4 `useLLMLogs.ts:25-30` — the combined endpoint
  * with `includeMessages=true`).
  *
- * The cast at the dispatch call site is the round's ownership rule, not a type
- * hole: `LlmLogsListRequest` matches lane A's `Request::LlmLogsList` field for
- * field, and the unifier replaces the cast with the folded union member.
  */
 export async function fetchChatLlmLogs(core: CoreClient, chatId: string): Promise<LlmLogDto[]> {
   const req: LlmLogsListRequest = { type: 'llmLogsList', chatId, includeMessages: true };
-  const data = await core.dispatchData(req as unknown as CoreRequest);
+  const data = await core.dispatchData(req);
   return (data as unknown as LlmLogsListResponse).logs ?? [];
 }
 

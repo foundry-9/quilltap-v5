@@ -3448,7 +3448,12 @@ export type MemoryRequest =
   | ChatGetBackgroundRequest
   // P4.6ao/P4.6ap (folded at unification; the block at the end of this file).
   | ChatGetCostRequest
-  | ChatRegenerateBackgroundRequest;
+  | ChatRegenerateBackgroundRequest
+  // P4.6ar/P4.6as/P4.6at (folded at unification; the block at the end of this
+  // file).
+  | LlmLogsListRequest
+  | SystemImageAestheticsGetRequest
+  | SystemImageAestheticsSetRequest;
 // P4.6u (lane C) — the Salon terminal-pane block.
 // Appended by lane C; single-author (lane B, the file owner, must not edit this
 // block). The terminal WebSocket + REST protocol types live in
@@ -3930,4 +3935,64 @@ export interface ChatGetCostRequest {
 export interface ChatRegenerateBackgroundRequest {
   type: 'chatRegenerateBackground';
   chatId: string;
+}
+
+// --- P4.6ar/P4.6as/P4.6at unification fold ---
+//
+// The three request interfaces the round's SPA lanes declared locally, folded
+// into the CoreRequest union at unification per the round's Shared contract
+// (§1/§2) — name-for-name against `types.rs` (`Request::LlmLogsList` /
+// `SystemImageAestheticsGet` / `SystemImageAestheticsSet`, the P4.6ar block).
+// The api modules (`chat/llm-logs.api.ts`,
+// `screens/settings/images/system-aesthetics.api.ts`) re-export them, so
+// consumers are unchanged. The `llmLogGet`/`llmLogDelete` verbs exist
+// server-side but no v5 client calls them (v4's Inspector never does either),
+// so they deliberately have no union member.
+// ===========================================================================
+
+/**
+ * The llm-logs list request (§1 — v4 `GET /api/v1/llm-logs`, all filter
+ * branches). The Inspector sends only `{chatId, includeMessages: true}` —
+ * exactly v4 `useLLMLogs.ts:28`'s query string.
+ *
+ * `logType` is v4's `?type=` param renamed on the wire — a field literally
+ * named `type` would collide with the internally-tagged envelope key; the REST
+ * edge maps it. `limit`/`offset` are RAW STRINGS: the Rust handler ports v4's
+ * parseInt/Math.min body (including the NaN no-slice quirk) so dispatch and
+ * REST agree.
+ */
+export interface LlmLogsListRequest {
+  type: 'llmLogsList';
+  messageId?: string;
+  chatId?: string;
+  characterId?: string;
+  logType?: string;
+  standalone?: boolean;
+  includeMessages?: boolean;
+  limit?: string;
+  offset?: string;
+}
+
+/**
+ * The system default-aesthetic read (§2 — v4
+ * `GET /api/v1/system/image-aesthetics?kind=lantern|aurora`). Responds
+ * `{content}`; `{content: ''}` when the file or the Quilltap General store is
+ * absent.
+ */
+export interface SystemImageAestheticsGetRequest {
+  type: 'systemImageAestheticsGet';
+  kind: 'lantern' | 'aurora';
+}
+
+/**
+ * The system default-aesthetic write (§2 — v4
+ * `PUT /api/v1/system/image-aesthetics?kind=…`). `content` is optional on the
+ * wire (`#[serde(default)]`), but the client always sends it: empty content is
+ * meaningful — it DELETES the stored file and restores the fallback (pinned by
+ * `image_aesthetics_routes_equivalence`).
+ */
+export interface SystemImageAestheticsSetRequest {
+  type: 'systemImageAestheticsSet';
+  kind: 'lantern' | 'aurora';
+  content?: string;
 }

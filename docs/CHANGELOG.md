@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+P4.6ar/as/at unification wires (2026-07-15): the three SPA-local
+request types folded into the CoreRequest union name-for-name against
+types.rs (LlmLogsListRequest, SystemImageAestheticsGet/SetRequest; the
+api modules re-export and drop their casts; llmLogGet/llmLogDelete
+deliberately get no union member — no v4 client calls them either), a
+new p4_6ar_wire_contract harness guard pinning the §1/§2 serde shapes
+(the P4.6ao precedent), and both ACTIVATE-AT-UNIFY beats gone LIVE:
+the LLM-Inspector walk now reads the real llmLogsList verb over the
+partition rows global-setup seeds (route mock deleted), and the
+Default Aesthetics beat drives the real systemImageAestheticsGet/Set
+(fulfil-mock reduced to a record-and-fallback observer) and grew the
+reload round-trip assertion the mock could not prove. SPA version
+accumulated to 0.5.122 (lane B +5, lane C +4); harness 0.0.208.
+
 P4.6at unit 4 (2026-07-15): the Default Aesthetics e2e beat. Deep-links
 /settings?tab=images&section=default-aesthetics, asserts both fields load, types
 into the Default Image Aesthetic editor, saves, and pins the dispatch payload.

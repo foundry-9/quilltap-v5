@@ -342,23 +342,17 @@ test.describe('P4.6r — Templates & Images settings verticals', () => {
   }) => {
     test.setTimeout(60_000);
 
-    // ACTIVATE-AT-UNIFY. `systemImageAestheticsGet`/`Set` are lane A's (P4.6ar)
-    // to implement, so until they land the two verbs are mocked at the route
-    // layer — everything else on the page still dispatches live through
-    // `route.fallback()`. The envelope below is the serde adjacent-tag encoding
-    // the real handler emits; only `data` is pinned by the Shared contract §2
-    // (`dispatchData` ignores any non-error tag). AT UNIFICATION: delete the
-    // `page.route` block and let the beat run live, then grow the reload
-    // round-trip assertion the mock cannot prove.
+    // ACTIVATED AT UNIFICATION (P4.6ar∥as∥at): the beat runs LIVE over lane A's
+    // `systemImageAestheticsGet`/`Set` verbs (the lane-era fulfil-mock was
+    // deleted, as the lane's order specified). The route below only RECORDS the
+    // save payload — every dispatch continues to the real server — so the §2
+    // shape assertion survives activation, and the reload round-trip at the end
+    // proves the persistence the mock never could.
     const saves: Array<Record<string, unknown>> = [];
     await page.route('**/api/dispatch', async (route) => {
       const body = route.request().postDataJSON() as { type?: string } | null;
-      if (body?.type === 'systemImageAestheticsGet') {
-        return route.fulfill({ json: { type: 'system', data: { content: '' } } });
-      }
       if (body?.type === 'systemImageAestheticsSet') {
         saves.push(body as Record<string, unknown>);
-        return route.fulfill({ json: { type: 'system', data: { success: true } } });
       }
       return route.fallback();
     });
@@ -399,6 +393,23 @@ test.describe('P4.6r — Templates & Images settings verticals', () => {
         content: 'Muted sepia tones, brass fittings.',
       },
     ]);
+
+    // The reload round-trip (grown at unification — the mock could never prove
+    // persistence): the content survives into a fresh load of the page, and an
+    // untouched reload leaves Save disabled again (the load is not an edit).
+    await page.goto(`${TMPL_BASE_URL}/settings?tab=images&section=default-aesthetics`);
+    await expect(page.getByRole('heading', { name: 'Default Aesthetics' })).toBeVisible({
+      timeout: 10_000,
+    });
+    const lanternReloaded = page
+      .locator('qt-default-aesthetics-card')
+      .locator('qt-aesthetic-editor-field')
+      .first();
+    await expect(lanternReloaded.locator('.qt-rich-editor-content')).toContainText(
+      'Muted sepia tones, brass fittings.',
+      { timeout: 10_000 },
+    );
+    await expect(lanternReloaded.getByRole('button', { name: 'Save' })).toBeDisabled();
   });
 });
 
