@@ -514,12 +514,39 @@ records THERE. Update this summary only when a phase or round completes.
   LLM-Inspector button, backdrop arbitration, the no-host dialogs.
   Next candidates: P4.7 (Tauri), a token-cost/backgrounds/editor
   dogfood pass, or the small-rider pool — see phase-4.md.
+- **The P4.6ar ∥ P4.6as ∥ P4.6at LLM-Inspector + Default-Aesthetics +
+  minHeight round: UNIFIED on main (2026-07-15) — ALL THREE CLOSED,
+  and the P4.6ao-round Inspector / aesthetics-card / minHeight
+  deferrals CLOSE with them.** The llm-logs read surface (eight repo
+  reads, `llmLogsList`/`llmLogGet`/`llmLogDelete` + REST edges; v4's
+  `?standalone=true` carried BROKEN-BUT-EXACT — `$eq: null` lowers to
+  `= NULL` and can never match; the garbage-limit NaN quirk via
+  hand-rolled `js_min`) + the `systemImageAestheticsGet`/`Set` pair
+  over DRY'd `services::aesthetics`, two differentials (27 + 13
+  cases, incl. a wire key-order assertion) over the new four-file
+  `inspector-*` fixture family ∥ the LLM-Inspector SPA vertical
+  (slide-over panel — `role="dialog"` declared only while OPEN, a
+  documented divergence from v4's permanent phantom modal —
+  entry/panel, toolbar button + Cmd+Shift+L, per-message cpu icon,
+  the reconcile-point log refresh, a live seeded-partition walk) ∥
+  the shared `aesthetic-editor-field` extraction (a re-port that
+  corrected textarea-era drift) + the Default Aesthetics Images-tab
+  card + the sixteen minHeight bindings. Wires: §1/§2 folded into
+  CoreRequest; `p4_6ar_wire_contract`; both beats LIVE (the
+  aesthetics beat grew a reload round-trip). Gate: 320 suites/1347,
+  ng 1107, full Playwright 63/63 zero skips. Deferred loud: the boxed
+  summary variant + `detailed=true`, backdrop arbitration, the
+  no-host dialogs, the source-mode toggle, the GFM table transformer,
+  the cost-estimator consolidation, the stale "serde_json sorts keys"
+  seam-note sweep (`preserve_order` is on). Next candidates: P4.7
+  (Tauri), an Inspector/aesthetics/token-cost dogfood pass, or the
+  small-rider pool — see phase-4.md.
 - **Oracle baseline: v4 HEAD `02865bdb`** (rebased 2026-07-14 with the
   P4.d4 skip-signal drift re-port — the trailing-sentinel strip; the
   P4.d3 quantized embedding codec note stands: ⚠ v4's
   `quantize-embeddings-v1` migration is one-way — back up Friday
   before first running v4 `4.8.0-dev.52`+ against it. Drift-check
   before every round.
-  Versions: core 0.0.225, harness 0.0.204, host 0.0.18, web 0.0.22, SPA 0.5.113.
+  Versions: core 0.0.228, harness 0.0.208, host 0.0.18, web 0.0.23, SPA 0.5.122.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

@@ -1455,3 +1455,42 @@ backdrop arbitration, the no-host dialog consumers, the
 candidates: P4.7 (`quilltap-tauri`), a dogfood pass over the
 token/cost + backgrounds + editor story on the Friday copy, or the
 small-rider pool above. Round record: `status-log.md`.
+
+**The P4.6ar ∥ P4.6as ∥ P4.6at round is UNIFIED on main (2026-07-15) —
+ALL THREE orders CLOSED, and with them the P4.6ao-round LLM-Inspector,
+Default-Aesthetics, and minHeight-residual deferrals.** Landed: the
+llm-logs read surface (eight repo reads, the
+`llmLogsList`/`llmLogGet`/`llmLogDelete` verbs + REST edges) + the
+`systemImageAestheticsGet`/`Set` pair over DRY'd `services::aesthetics`
+helpers, two differentials (27-case llm-logs incl. the wire key-order
+assertion, 13-case aesthetics incl. the unprovisioned-store arms) over
+the new FOUR-file `inspector-{main,mount,llm,nostore-main}.db` family ∥
+the whole LLM-Inspector SPA vertical (slide-over panel, entry/panel,
+toolbar button + Cmd+Shift+L, per-message cpu icon, the reconcile-point
+log refresh, the seeded-partition e2e walk) ∥ the shared
+`aesthetic-editor-field` extraction + the Default Aesthetics Images-tab
+card + the sixteen minHeight bindings. Unification wires: the §1/§2
+request types folded into `CoreRequest`; `p4_6ar_wire_contract` added;
+both ACTIVATE-AT-UNIFY beats LIVE (the aesthetics beat grew the reload
+round-trip). **Findings banked:** v4's `?standalone=true` can never
+return a row (BROKEN-BUT-EXACT, `$eq: null` → `= NULL`); the
+garbage-limit NaN quirk (hand-rolled `js_min`); the item routes have no
+ownership check; v4's always-mounted `role="dialog"` slide-over is a
+permanent phantom modal (v5 declares the role only while open — a
+documented divergence); the `db/llm_logs.rs` Phase-2 "serde_json sorts
+keys" header note is STALE under `preserve_order` (doc follow-up in the
+pool). Gate: fmt/clippy both feature sets (forced non-cached)/release
+build clean; both oracles regenerated FRESH at `02865bdb` and run by
+name; `cargo test --workspace` 320 suites / 1347 tests / 0 failed; ng
+test 1107; ng build clean; full Playwright green zero skips with all
+three new beats LIVE. Versions: core 0.0.228, harness 0.0.208, host
+0.0.18, web 0.0.23, SPA 0.5.122. **Still deferred loud (the standing
+pool):** the boxed summary variant + `detailed=true`, project-page
+backdrop arbitration, the no-host dialog consumers
+(CreateNPC/ComposeMail/InsertAnnouncement/AddCharacter, the
+prompt-library screen), the source-mode toggle, the GFM table
+transformer, `MessageCostEstimator`/`CarinaCostEstimator`
+consolidation, the stale-seam-note doc sweep. Next candidates: P4.7
+(`quilltap-tauri`), a dogfood pass over the Inspector + aesthetics +
+token/cost story on the Friday copy, or the small-rider pool. Round
+record: `status-log.md`.

@@ -2,6 +2,29 @@
 
 ## Recent Changes
 
+P4.6ar ∥ P4.6as ∥ P4.6at round UNIFIED on main (2026-07-15) — all
+three orders CLOSED, and with them the P4.6ao-round LLM-Inspector,
+Default-Aesthetics-card, and minHeight-residual deferrals. Landed: the
+llm-logs read surface (eight repo reads, the llmLogsList/llmLogGet/
+llmLogDelete verbs + REST edges; v4's ?standalone=true carried
+broken-but-exact, the garbage-limit NaN quirk via hand-rolled js_min,
+no ownership check on the item routes — all faithful) + the
+systemImageAestheticsGet/Set pair over DRY'd services::aesthetics
+helpers, with two fresh-oracle differentials (27-case llm-logs incl. a
+wire key-order assertion, 13-case aesthetics incl. the
+unprovisioned-store arms) over the new four-file inspector-* fixture
+family ∥ the whole LLM-Inspector SPA vertical (slide-over panel with
+the role-only-while-open divergence from v4's phantom modal,
+entry/panel components, toolbar button + Cmd+Shift+L, per-message cpu
+icon, reconcile-point log refresh, a live seeded-partition e2e walk) ∥
+the shared aesthetic-editor-field extraction (correcting textarea-era
+drift in the project field) + the Default Aesthetics Images-tab card +
+sixteen minHeight bindings at the P4.6al-adopted sites. Unification
+gate: fmt/clippy both feature sets/release build clean; cargo test
+--workspace 320 suites / 1347 tests; ng test 1107; full Playwright
+63/63 zero skips, all three new beats live. Final versions: core
+0.0.228, harness 0.0.208, host 0.0.18, web 0.0.23, SPA 0.5.122.
+
 P4.6ar/as/at unification wires (2026-07-15): the three SPA-local
 request types folded into the CoreRequest union name-for-name against
 types.rs (LlmLogsListRequest, SystemImageAestheticsGet/SetRequest; the

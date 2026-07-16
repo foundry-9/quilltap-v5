@@ -14622,3 +14622,74 @@ Images-tab card** — both named in the "Still OPEN from this surface" pool abov
 3. **Watch for a fixture collision with lane A** — none expected: this lane
    changed NO fixtures and no `global-setup.ts`; the beat self-provisions through
    the UI over the existing template instance.
+
+---
+
+## The P4.6ar ∥ P4.6as ∥ P4.6at round — UNIFIED on main (2026-07-15)
+
+Three-lane round (llm-logs+aesthetics server ∥ LLM-Inspector SPA ∥
+Default-Aesthetics card + minHeight rider), all lanes based on `b74b276`,
+reconciled by cherry-pick onto `unify/p4.6ar-as-at` in dependency order
+(A → B → C; conflicts only in the union files + `apps/web/package.json`
+version accumulation — one mis-anchored 3-way merge on `message-row.ts`
+inside lane B's own commit chain was resolved by taking the lane commit's
+exact file, since no other lane touches it). **All three orders CLOSED**,
+and with them the P4.6ao-round LLM-Inspector, Default-Aesthetics-card,
+and minHeight-residual deferrals.
+
+**Unification wires (the cross-lane proofs no lane could run):**
+
+1. `LlmLogsListRequest` + `SystemImageAestheticsGet`/`SetRequest` folded
+   into the `CoreRequest` union in `core-contract.ts`, name-for-name
+   against `types.rs`; the api modules re-export and drop their casts.
+   `llmLogGet`/`llmLogDelete` deliberately got NO union member — no v4
+   client calls them either. A new harness guard,
+   `p4_6ar_wire_contract`, pins the §1/§2 serde shapes (the P4.6ao
+   precedent; the round had shipped without one).
+2. The two ACTIVATE-AT-UNIFY beats went LIVE. The LLM-Inspector walk's
+   `mockLogs` route mock was deleted outright — the assertions now read
+   lane A's real `llmLogsList` over the three rows lane B's
+   `global-setup.ts` seeds into the llm-logs partition (the seed and the
+   mock had been written row-for-row identical, so activation was a
+   deletion, exactly as designed). The Default Aesthetics beat's
+   fulfil-mock was reduced to a record-and-fallback observer (keeping
+   the §2 payload assertion) and GREW the reload round-trip the mock
+   could not prove: type → save → reload → the content persists and an
+   untouched load leaves Save disabled.
+3. Version accumulation: SPA 0.5.113 + 5 (lane B) + 4 (lane C) →
+   **0.5.122**, the lockfile's own version fields synced (the P4.6an
+   lesson); harness 0.0.207 → **0.0.208** for the wire guard.
+
+**Unification gate (all fresh on the unify branch):** `cargo fmt` clean;
+clippy `-D warnings` BOTH feature sets (native-transport re-verified
+non-cached via a forced touch); release build clean; both jest oracles
+regenerated FRESH from the v4 checkout at `02865bdb` (llm-logs 27 rows,
+image-aesthetics 13 rows) and their differentials run by name
+`--nocapture` — `llm_logs_routes_equivalence` 27/27,
+`image_aesthetics_routes_equivalence` 13/13, `p4_6ar_wire_contract` 1/1;
+`cargo test --workspace` **320 suites / 1347 tests / 0 failed** (was
+317/1341); `ng test` **1107** (was 968: +126 lane B, +11 lane C, +2
+union); `ng build` clean; **full Playwright 63/63, zero skips** (was 60;
++2 Inspector beats, +1 Default Aesthetics beat), all three new beats
+LIVE.
+
+**Still OPEN from these surfaces (loud, named — the next-order pool):**
+
+- The default/boxed `ChatCostSummary` variant + `detailed=true` (no v4
+  client calls either — standing from P4.6ap).
+- Project-page backdrop arbitration (standing from P4.6am).
+- The no-host dialog consumers (CreateNPC / ComposeMail /
+  InsertAnnouncement / AddCharacter, the prompt-library screen), the
+  source-mode toggle, `roleplayTemplateId` toolbar awareness, the GFM
+  table transformer, `__bold__` on-type (standing from P4.6al).
+- `MessageCostEstimator`/`CarinaCostEstimator` consolidation (P4.6ao).
+- The stale-seam-note doc sweep: re-read `db/llm_logs.rs`'s Phase-2
+  header (and siblings carrying the same claim) against the
+  `preserve_order` decision and retire the obsolete "serde_json sorts
+  keys" constraint (banked by P4.6ar unit 4).
+- The `disabledHint` arm of the shared `aesthetic-editor-field` — to
+  land with the character-edit depiction-guidelines consumer that needs
+  it (banked by P4.6at unit 1).
+
+**Final versions:** core 0.0.228, harness 0.0.208, host 0.0.18,
+web 0.0.23, SPA 0.5.122.
