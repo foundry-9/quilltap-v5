@@ -1,0 +1,418 @@
+[
+  {
+    "name": "bold wraps a selected word",
+    "button": "bold",
+    "in": {
+      "value": "hello world",
+      "start": 0,
+      "end": 5
+    },
+    "out": {
+      "value": "**hello** world",
+      "cursor": 9
+    }
+  },
+  {
+    "name": "bold unwraps an already-wrapped selection",
+    "button": "bold",
+    "in": {
+      "value": "**hello** world",
+      "start": 0,
+      "end": 9
+    },
+    "out": {
+      "value": "hello world",
+      "cursor": 5
+    }
+  },
+  {
+    "name": "bold on an empty selection inserts the pair and centers the cursor",
+    "button": "bold",
+    "in": {
+      "value": "ab",
+      "start": 1,
+      "end": 1
+    },
+    "out": {
+      "value": "a****b",
+      "cursor": 3
+    }
+  },
+  {
+    "name": "bold on an empty document",
+    "button": "bold",
+    "in": {
+      "value": "",
+      "start": 0,
+      "end": 0
+    },
+    "out": {
+      "value": "****",
+      "cursor": 2
+    }
+  },
+  {
+    "name": "bold wraps a multi-line selection as one span",
+    "button": "bold",
+    "in": {
+      "value": "one\ntwo",
+      "start": 0,
+      "end": 7
+    },
+    "out": {
+      "value": "**one\ntwo**",
+      "cursor": 11
+    }
+  },
+  {
+    "name": "bold wraps a selection at the very end",
+    "button": "bold",
+    "in": {
+      "value": "trailing",
+      "start": 4,
+      "end": 8
+    },
+    "out": {
+      "value": "trai**ling**",
+      "cursor": 12
+    }
+  },
+  {
+    "name": "bold unwrap requires BOTH delimiters in the selection",
+    "button": "bold",
+    "in": {
+      "value": "**hello** world",
+      "start": 2,
+      "end": 7
+    },
+    "out": {
+      "value": "****hello**** world",
+      "cursor": 11
+    }
+  },
+  {
+    "name": "bold wraps a selection that is only the delimiters",
+    "button": "bold",
+    "in": {
+      "value": "****",
+      "start": 0,
+      "end": 4
+    },
+    "out": {
+      "value": "",
+      "cursor": 0
+    }
+  },
+  {
+    "name": "italic wraps a selected word",
+    "button": "italic",
+    "in": {
+      "value": "hello world",
+      "start": 6,
+      "end": 11
+    },
+    "out": {
+      "value": "hello _world_",
+      "cursor": 13
+    }
+  },
+  {
+    "name": "italic unwraps an already-wrapped selection",
+    "button": "italic",
+    "in": {
+      "value": "_hello_ world",
+      "start": 0,
+      "end": 7
+    },
+    "out": {
+      "value": "hello world",
+      "cursor": 5
+    }
+  },
+  {
+    "name": "italic on an empty selection",
+    "button": "italic",
+    "in": {
+      "value": "ab",
+      "start": 2,
+      "end": 2
+    },
+    "out": {
+      "value": "ab__",
+      "cursor": 3
+    }
+  },
+  {
+    "name": "h1 prefixes the current line",
+    "button": "h1",
+    "in": {
+      "value": "a title",
+      "start": 0,
+      "end": 0
+    },
+    "out": {
+      "value": "# a title",
+      "cursor": 9
+    }
+  },
+  {
+    "name": "h2 prefixes from a mid-line cursor (expands to line start)",
+    "button": "h2",
+    "in": {
+      "value": "a title",
+      "start": 3,
+      "end": 3
+    },
+    "out": {
+      "value": "## a title",
+      "cursor": 10
+    }
+  },
+  {
+    "name": "h3 prefixes only the cursor line of a multi-line value",
+    "button": "h3",
+    "in": {
+      "value": "one\ntwo\nthree",
+      "start": 5,
+      "end": 5
+    },
+    "out": {
+      "value": "one\n### two\nthree",
+      "cursor": 11
+    }
+  },
+  {
+    "name": "h6 prefixes every line the selection touches",
+    "button": "h6",
+    "in": {
+      "value": "one\ntwo\nthree",
+      "start": 1,
+      "end": 9
+    },
+    "out": {
+      "value": "###### one\n###### two\n###### three",
+      "cursor": 34
+    }
+  },
+  {
+    "name": "h1 on an already-prefixed line ADDS AGAIN (no toggle-off)",
+    "button": "h1",
+    "in": {
+      "value": "# a title",
+      "start": 0,
+      "end": 0
+    },
+    "out": {
+      "value": "# # a title",
+      "cursor": 11
+    }
+  },
+  {
+    "name": "h1 on an empty document",
+    "button": "h1",
+    "in": {
+      "value": "",
+      "start": 0,
+      "end": 0
+    },
+    "out": {
+      "value": "# ",
+      "cursor": 2
+    }
+  },
+  {
+    "name": "h4 prefixes a blank line among lines",
+    "button": "h4",
+    "in": {
+      "value": "one\n\nthree",
+      "start": 4,
+      "end": 4
+    },
+    "out": {
+      "value": "one\n#### \nthree",
+      "cursor": 9
+    }
+  },
+  {
+    "name": "ul prefixes the current line",
+    "button": "ul",
+    "in": {
+      "value": "item",
+      "start": 0,
+      "end": 0
+    },
+    "out": {
+      "value": "- item",
+      "cursor": 6
+    }
+  },
+  {
+    "name": "ul prefixes each selected line",
+    "button": "ul",
+    "in": {
+      "value": "one\ntwo",
+      "start": 0,
+      "end": 7
+    },
+    "out": {
+      "value": "- one\n- two",
+      "cursor": 11
+    }
+  },
+  {
+    "name": "ol prefixes each selected line with the SAME 1.",
+    "button": "ol",
+    "in": {
+      "value": "one\ntwo\nthree",
+      "start": 0,
+      "end": 13
+    },
+    "out": {
+      "value": "1. one\n1. two\n1. three",
+      "cursor": 22
+    }
+  },
+  {
+    "name": "blockquote prefixes each selected line",
+    "button": "blockquote",
+    "in": {
+      "value": "one\ntwo",
+      "start": 0,
+      "end": 7
+    },
+    "out": {
+      "value": "> one\n> two",
+      "cursor": 11
+    }
+  },
+  {
+    "name": "blockquote on an already-quoted line ADDS AGAIN",
+    "button": "blockquote",
+    "in": {
+      "value": "> quoted",
+      "start": 0,
+      "end": 0
+    },
+    "out": {
+      "value": "> > quoted",
+      "cursor": 10
+    }
+  },
+  {
+    "name": "ul with the selection ending exactly at a newline",
+    "button": "ul",
+    "in": {
+      "value": "one\ntwo",
+      "start": 0,
+      "end": 4
+    },
+    "out": {
+      "value": "- one\n- two",
+      "cursor": 11
+    }
+  },
+  {
+    "name": "code-block wraps a selection in inline backticks",
+    "button": "code-block",
+    "in": {
+      "value": "call render now",
+      "start": 5,
+      "end": 11
+    },
+    "out": {
+      "value": "call `render` now",
+      "cursor": 13
+    }
+  },
+  {
+    "name": "code-block unwraps an inline-code selection",
+    "button": "code-block",
+    "in": {
+      "value": "call `render` now",
+      "start": 5,
+      "end": 13
+    },
+    "out": {
+      "value": "call render now",
+      "cursor": 11
+    }
+  },
+  {
+    "name": "code-block on an empty selection in an empty doc inserts a fence",
+    "button": "code-block",
+    "in": {
+      "value": "",
+      "start": 0,
+      "end": 0
+    },
+    "out": {
+      "value": "```\n\n```",
+      "cursor": 4
+    }
+  },
+  {
+    "name": "code-block fence after text needs a leading newline",
+    "button": "code-block",
+    "in": {
+      "value": "prose",
+      "start": 5,
+      "end": 5
+    },
+    "out": {
+      "value": "prose\n```\n\n```",
+      "cursor": 10
+    }
+  },
+  {
+    "name": "code-block fence before text needs a trailing newline",
+    "button": "code-block",
+    "in": {
+      "value": "prose",
+      "start": 0,
+      "end": 0
+    },
+    "out": {
+      "value": "```\n\n```\nprose",
+      "cursor": 4
+    }
+  },
+  {
+    "name": "code-block fence mid-value gets newlines on both sides",
+    "button": "code-block",
+    "in": {
+      "value": "ab",
+      "start": 1,
+      "end": 1
+    },
+    "out": {
+      "value": "a\n```\n\n```\nb",
+      "cursor": 6
+    }
+  },
+  {
+    "name": "code-block fence after an existing newline adds none",
+    "button": "code-block",
+    "in": {
+      "value": "prose\n",
+      "start": 6,
+      "end": 6
+    },
+    "out": {
+      "value": "prose\n```\n\n```",
+      "cursor": 10
+    }
+  },
+  {
+    "name": "code-block fence before an existing newline adds none",
+    "button": "code-block",
+    "in": {
+      "value": "\nprose",
+      "start": 0,
+      "end": 0
+    },
+    "out": {
+      "value": "```\n\n```\nprose",
+      "cursor": 4
+    }
+  }
+]

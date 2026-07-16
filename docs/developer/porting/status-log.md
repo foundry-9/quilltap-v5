@@ -15845,3 +15845,63 @@ entry) — the 28 gate entries stay byte-unchanged.
 **Gate:** `editing-commands.spec.ts` + `markdown-round-trip.spec.ts`
 57 tests green, the five new cases confirmed by name (`--reporter=verbose`).
 SPA 0.5.130.
+
+### Unit 2 — the source-mode text transforms + their oracle (item 3, tier 1) — LANDED
+
+**The order's file attribution is wrong, and it matters.** The order cites
+`sourceApply` / `sourceToggleWrap` / `sourcePrefixLines` at
+`lib/chat/text-transforms.ts:123-165`. That file is 104 lines long and
+exports three DIFFERENT functions (`toggleWrap`, `toggleLinePrefix`,
+`insertTagPrefix`). The named three are component-internal closures in
+`components/chat/FormattingToolbar.tsx` (the order's line numbers are
+right for THAT file). v4 splits the behavior:
+
+- `toggleWrap` — a real exported pure function (`text-transforms.ts:37-59`).
+- `sourcePrefixLines` (:150-165) + the code-block fence branch (:262-273) —
+  component-internal, NOT exported, NOT reachable from a `tsx` import oracle.
+- `sourceApply` (:123-134) — DOM/React (textarea.value + setInput + a
+  `requestAnimationFrame` cursor restore). No v5 analogue; the caller's job.
+
+**The oracle** (`harness/oracle/cases/text-transforms.test.ts`) therefore
+RENDERS v4's real `FormattingToolbar` in jsdom over a real `<textarea>`,
+wired exactly as `MarkdownLexicalEditor.tsx:216-238` wires it in source
+mode, clicks the real buttons, and records `{value, cursor}` after the rAF.
+A stub `editor` is safe — every source-mode branch returns before touching
+Lexical; the only contact is the mount-time `registerUpdateListener`
+effect. 32 cases. The delimiter branch (`handleDelimiterClick` :317-331)
+is chat-only and out of scope.
+
+**Two v4 behaviors the recording pinned (the order's corpus predicted
+neither):**
+
+1. **`sourcePrefixLines` NEVER un-prefixes.** The order asked for
+   "multi-line prefix/unprefix" cases, but no markdown-format button can
+   unprefix: `# a title` + H1 → `# # a title`, `> quoted` + blockquote →
+   `> > quoted`. (v4 DOES have a toggling `toggleLinePrefix`, but only the
+   chat-only delimiter buttons call it.) A "fixed" port would diverge.
+2. **Ordered list writes `1. ` on EVERY line** — no counting up
+   (`one\ntwo\nthree` → `1. one\n1. two\n1. three`).
+
+**Port:** `editor/source-transforms.ts` — `toggleWrap` (verbatim),
+`prefixLines`, `insertCodeFence`, and `applySourceFormat` dispatching a
+`FormatAction`. Pure: `{value,cursor}` in, no DOM.
+
+**Differential:** `source-transforms.spec.ts` over the committed vector
+file `editor/__fixtures__/text-transforms-vectors.json` (the NDJSON as a
+JSON array, the `chat/render/__fixtures__` precedent). 33 green (32
+vectors + a button-kind coverage assertion guarding against an empty
+corpus). NEGATIVE-CHECKED: perturbing the `- ` prefix fails 3 cases, so
+the differential bites.
+
+**Oracle gotcha (new — worth a memory note):** the established "cp the
+oracle to /tmp because jest ignores `/.claude/` paths" recipe BREAKS for
+any oracle importing a bare package (`react`, `@testing-library/react`):
+node resolution walks up from /tmp and finds no node_modules. Prior
+oracles only imported `@/...` paths, which the moduleNameMapper resolves.
+Fix: symlink v4's node_modules into the /tmp mirror
+(`ln -s ~/source/quilltap-server/node_modules /tmp/<mirror>/node_modules`)
+and pass ONLY the mirror to `--roots` (passing `$PWD` too makes the
+`text-transforms` pattern also match v4's own test file).
+
+**Gate:** `source-transforms.spec.ts` 33/33 green over a FRESH oracle run
+at `02865bdb`. SPA 0.5.131.

@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+Ported the source-mode text transforms — what a formatting-toolbar button
+does to raw markdown text (the groundwork for the editor's source-mode
+toggle). Faithful to v4 including two behaviors worth naming: the
+heading/list/blockquote buttons ADD their prefix unconditionally rather
+than toggling it off (a second H1 click gives "# # title"), and an
+ordered list writes "1. " on every line rather than counting up. Proven
+byte-for-byte against 32 vectors recorded from v4's real toolbar. SPA
+0.5.131.
+
 Typing `__bold__` in the rich editor now boldens on the closing
 underscore, matching v4 (whose transformer set includes Lexical's
 BOLD_UNDERSCORE). The text normalizes to `**bold**` on serialization —
