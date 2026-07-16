@@ -16036,3 +16036,109 @@ bytes, so the divergence cannot drift silently in either direction.
 **Gate:** `ng test` **128 files / 1243 tests** (was 128/1222; +20 vectors +
 a corpus-count guard against silent vector loss); `ng build` clean.
 SPA 0.5.133.
+
+---
+
+## P4.8 — the M6 screen-parity review (lane C of the P4.6aw ∥ P4.6ax ∥ P4.8 round)
+
+**2026-07-16 — LANE COMPLETE.** Docs-only, read-only lane. Deliverable:
+`docs/developer/porting/m6-screen-parity.md` (the M6 decision instrument).
+No code, fixture, or config changed; no version bumps. v4 baseline
+`02865bdb` drift-checked at lane start (`git log 02865bdb..HEAD` empty);
+v5 baseline `41e1a0a`.
+
+**What landed.** All of Tier 1 and Tier 2:
+
+1. The routed-screen checklist by nav family (§1) — home, salon,
+   characters, prospero/files/scriptorium/scenarios, settings, the
+   no-counterpart set, setup/unlock/startup, redirect aliases.
+2. The screen-grade dialog inventory (§2) — 6 sub-families.
+3. The deferral cross-reference (§3) — every "deferred loud" item in the
+   four sources named by the order maps to exactly one row or to the §5.3
+   non-screen bucket; none dangling.
+4. The prioritized backlog (§4) — 16 proposed orders, each with a slug,
+   size (rider/lane/round), and dependencies; liftable into `/setupphase`.
+5. The v4 retirement criteria (§5) — the screen gate, the acceptance
+   walks, the platforms caveat, and the non-screen pools that gate
+   retirement independently.
+
+**Four findings that corrected the planning seed** (recorded, not fixed —
+Tier 3):
+
+- **F1 — v4's tabbed workspace is its DEFAULT shell.** The order asked to
+  weigh WON'T-PORT vs MISSING "against the flag default"; the flag defaults
+  **ON** (`lib/config/feature-flags.ts:21-22` — `!== '0'`, and no env var
+  sets it), and `app/page.tsx:13` redirects `/` → `/workspace?open=home`,
+  as do 14 more routes. v5's route model is v4's **opt-out** mode
+  (`NEXT_PUBLIC_WORKSPACE_TABS=0`), so no capability is lost — but the
+  keep-alive/split-pane workflow is. Verdict MISSING; recorded as the
+  largest parity gap and an explicit **human ruling**, not a mechanical
+  row (§5.1). Two v4 docstrings still claim the flag is off by default
+  (`lib/navigation/workspace-redirect.ts:6-7`, `app/workspace/page.tsx:11-13`).
+- **F2 — the seed conflated two v4 LLM-log surfaces.** `LLMInspectorPanel.tsx`
+  (salon, `SalonView.tsx:1696`) is ported 1:1 → **PARITY**, not a
+  divergence. `LLMLogViewerModal.tsx` is a separate modal with **no salon
+  caller** (hosts: `llm-logs-card.tsx:133`, `LLMLogsSection.tsx:102`) and
+  is **MISSING**. One seed row → two rows.
+- **F3 — the per-chat Core Whisper override is unrecorded anywhere.** v4
+  has three inheritance levels (global card / character / chat —
+  `SalonView.tsx:1760-1763`); v5 has only the character level. The seed
+  named just the global card. Both routed to `p4.9h`, which must port the
+  chain as one unit.
+- **F4 — three stale v5 docstrings** understate what has landed:
+  `settings.ts:16-20` ("five tabs are placeholders" — one is),
+  `placeholder-tab.ts:6-8`, `shell.ts:19-20` ("only the Salon route is
+  live" — 6 of 7 are). Comment-only riders for `p4.9a`/`p4.9g`.
+
+**Two verdicts rendered as delegated:**
+
+- **Boxed `ChatCostSummary` + `detailed=true` → WON'T-PORT.** Confirmed
+  dead in v4: `ChatCostSummary` has exactly one caller repo-wide
+  (`SalonView.tsx:1014`) passing `variant="compact"` (`:1017`), so the
+  `'default'` branch (`ChatCostSummary.tsx:138-175`) is unreachable;
+  `detailed=true` has zero clients (the only `?action=cost` fetcher,
+  `ChatCostSummary.tsx:58`, never sends it), making
+  `getDetailedChatCostBreakdown` (`cost-estimation.service.ts:193`) a dead
+  server path. Closes `status-log.md:14678-14679`.
+- **Redirect-only aliases + `/foundry/*` → WON'T-PORT.** Each is a server
+  `redirect()` to a surface v5 already has. Note the naming inverts:
+  v4's canonical is `/aurora` with `/characters` as alias; v5 made
+  `/characters` canonical.
+
+**Two corrections to the sources** (so future rounds don't re-open closed
+work): `reset-builtins` appears in the characters tier-3 refusal list
+(`status-log.md:6163-6164`) but is **CLOSED-BY-P4.4u4**
+(`screens/characters/list/reset-builtins-dialog.ts:7`); and the seed's
+single LLM-log row is two surfaces (F2).
+
+**Six rows marked in-flight, not landed** (the sibling lanes were OPEN at
+lane close): `__bold__` on-type, the source-mode toggle, the GFM table
+transformer (P4.6ax); the cost-estimator consolidation, the stale
+seam-note sweep, the `disabledHint` arm (P4.6aw). They flip to PARITY on
+unification with no work in the checklist.
+
+**The next-round pool, straight from §4** (items 1–4 are small,
+unblocked, high-visibility and run well as parallel lanes):
+`p4.9a-photos-view` (the `/photos` nav item is a **disabled dead button**
+today), `p4.9c-about-profile` (render the version LOCALLY — v4's badge is
+a remote `img.shields.io` fetch, `AboutView.tsx:53`, which breaks the
+offline deployment v5 targets), `p4.9b-generate-image-screen`,
+`p4.9d-quick-hide-provider`. Then `p4.9g-data-system-tab` (larger than it
+looks — the tab hosts 8 dialogs) and `p4.9h-prompt-library-core-whisper`.
+
+**Gotchas worth carrying:**
+
+- **A recursive `grep -r --include` silently returned zero on a file that
+  verifiably contained the pattern** during this lane. Every absence proof
+  in the deliverable was re-derived with `git grep` against a control
+  query that hits. An absence proof from an unvalidated tool is worthless
+  — validate the tool, then prove the absence.
+- **Agent-supplied `file:line` citations drift.** Of ~45 spot-checked, one
+  was off by two lines (the ChatCostSummary deferral: `14676-14677` →
+  `14678-14679`). Spot-check citations before they ship as evidence.
+- **v4's global wardrobe dialog is not a superset-by-degree of v5's
+  project wardrobe manager** — it is a different surface (character picker
+  across all characters, chat-aware equipping, avatar generation;
+  `wardrobe-control-dialog.tsx:3-21` vs `ProjectWardrobeManager.tsx:4`).
+  CLAUDE.md's "the wardrobe dialog" deferral understates it: `p4.9f` is a
+  vertical, not a re-skin.

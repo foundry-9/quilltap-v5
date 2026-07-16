@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+P4.8 (the M6 screen-parity review) produced
+docs/developer/porting/m6-screen-parity.md: the complete v4-vs-v5
+screen-parity checklist, the screen-grade dialog inventory, the
+deferral cross-reference, a 16-item prioritized backlog, and the v4
+retirement criteria. Every row carries a verdict (PARITY /
+DIVERGENCE-DOCUMENTED / MISSING / WON'T-PORT) with citations on both
+sides. Four findings corrected the planning seed: v4's tabbed
+workspace is its DEFAULT shell, not an experiment (the feature flag
+defaults ON and 15 routes redirect into it), which makes it the
+largest parity gap and a human decision rather than a mechanical one;
+the seed's single LLM-log row is two distinct v4 surfaces (the salon
+Inspector panel, ported 1:1, and LLMLogViewerModal, unported); the
+per-chat Core Whisper override is a gap no source had recorded; and
+three v5 docstrings understate what has landed. Rendered the two
+verdicts delegated to this review: the boxed ChatCostSummary variant
+and detailed=true are WON'T-PORT (both verified dead in v4), and the
+redirect-only aliases plus the /foundry/* deep-links are WON'T-PORT.
+Documentation only — no code, fixture, or config changes; no version
+bumps.
+
 The rich editor now understands GFM tables, matching v4: typed or pasted
 pipe tables become real tables, and they are written back the way v4
 writes them -- cells padded to the column width, and the separator always
