@@ -1,0 +1,9 @@
+{
+  "_comment": "Drives ensureCharacterMetadataFile over the SHARED vault-read-overlay fixture (reused — its stores already hold the three interesting states). Store C (0b3) has NO metadata.json -> ensure seeds {} and returns true; Store A (0b1) has a VALID metadata.json -> untouched, returns false; Store D (0b4) has an INVALID metadata.json -> untouched (NOT healed), returns false. Existence is checked, never parsing. Pepper matches vault-read-overlay-tier2.json.",
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "stores": [
+    { "label": "absent-seeds-empty", "mountPointId": "5700000e-0000-4000-8000-0000000000b3" },
+    { "label": "valid-left-untouched", "mountPointId": "5700000e-0000-4000-8000-0000000000b1" },
+    { "label": "invalid-not-healed", "mountPointId": "5700000e-0000-4000-8000-0000000000b4" }
+  ]
+}

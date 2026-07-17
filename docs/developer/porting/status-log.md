@@ -18523,3 +18523,45 @@ QT_FIXTURE_CHARUPD_MAIN=/tmp/qt-charupd-main.db QT_FIXTURE_CHARUPD_MOUNT=/tmp/qt
 QT_FIXTURE_CHARUPD_MAIN=/tmp/qt-charupd-main.db QT_FIXTURE_CHARUPD_MOUNT=/tmp/qt-charupd-mount.db \
   $N/node --import tsx $V5W/harness/oracle/cases/metadata-vault-roundtrip.ts > /tmp/oracle-metadata-roundtrip.ndjson
 ```
+
+### Unit 4 — the scaffold seed + `ensure_character_metadata_file` (§3 region)
+
+`db/character_vault.rs`, AZ's §3 region only (`scaffold_character_mount` + the
+NEW `ensure_character_metadata_file`; the D7 region —
+`ensure_character_vault`/`link_character_to_vault`/`create_character` — is
+untouched).
+
+- **Scaffold seed:** `METADATA_JSON_SEED = "{}"` (v4 `JSON.stringify({}, null, 2)`
+  — an empty object pretty-prints to two bytes). `scaffold_character_mount`'s
+  `specs` gains `("metadata.json", METADATA_JSON_SEED)` between `properties.json`
+  and `physical-prompts.json` (v4's fileSpecs order). Seeded for discoverability
+  only — hydration treats absent and `{}` identically, but the file manager is
+  the only editing surface. Nine seeded files now (six blank md + three JSON).
+- **`ensure_character_metadata_file(conn, mount_point_id) -> bool`** (v4
+  `ensureCharacterMetadataFile`): existence via `find_by_mount_point_and_path`
+  (NEVER parsing — a fat-fingered sheet is not "healed"); seeds `{}` + returns
+  `true` when absent, else `false`. §3-owned; the deferred backfill (unit 6) is
+  its only caller.
+
+**Differentials (all green after regen at `d68638b4`):**
+
+- `characters_scaffold_tier2` (extended): metadata.json now in the scaffold dump.
+  Rust sanity counts updated: files 3→4, documents 3→4, links 8→9; a new
+  `metadata.json == "{}"` content assertion.
+- `ensure_character_metadata_file` (**NEW** — `cases/ensure-metadata-file.ts`,
+  `fixtures/ensure-metadata-file.json`, `tests/ensure_character_metadata_file_equivalence.rs`).
+  Reuses the vault-read-overlay fixture (Store C absent / Store A valid / Store D
+  invalid). 3 states green.
+- **Scaffold-flowthrough regens** (create seeds metadata.json via
+  scaffold→managed-write-skips): `characters_create_tier2` (sanity counts links
+  10→11, files 9→10, documents 9→10 — the `{}` seed survives an un-metadata'd
+  create), `characters_provision_tier2`, `characters_adopt_tier2`,
+  `characters_arrays_tier2`, `characters_physical_tier2`,
+  `vault_summary_mirror_tier2`. All green.
+
+`cargo test -p quilltap-core --lib character_vault`: 2 passed (the fixed-byte
+`properties.json` / `physical-prompts.json` seeds unchanged).
+
+**Regen note:** the committed avatar/photo tier-2 fixtures (built pre-4.8.0) have
+NO metadata.json and their ops don't scaffold, so those families are unchanged
+(verified at the lane gate). `characters_update_tier2` regens with unit 5.

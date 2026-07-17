@@ -5,8 +5,8 @@
 //! character mount point + the materialized store tables), run the SAME op —
 //! scaffold that mount point — then FIVE mount-index tables are structural-diffed:
 //! `doc_mount_points` (the unchanged seed), `doc_mount_folders` (7),
-//! `doc_mount_files` (3, deduped), `doc_mount_documents` (3), and
-//! `doc_mount_file_links` (8). The Rust port calls
+//! `doc_mount_files` (4, deduped), `doc_mount_documents` (4), and
+//! `doc_mount_file_links` (9). The Rust port calls
 //! [`character_vault::scaffold_character_mount`]; v4 drives the real
 //! `scaffoldCharacterMount` (see the oracle).
 //!
@@ -21,9 +21,9 @@
 //! `doc_mount_chunks` is excluded entirely.
 //!
 //! Banks: the seven folders, the six blank `.md` files deduped to ONE
-//! file/document row (six distinct links), and the two seeded JSON files with
-//! their FIXED default content (`properties.json` + the four-key
-//! `physical-prompts.json`).
+//! file/document row (six distinct links), and the three seeded JSON files with
+//! their FIXED default content (`properties.json`, the empty `metadata.json`
+//! fact-sheet seed `{}`, and the four-key `physical-prompts.json`).
 //!
 //! Generate the oracle output + fixtures (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -250,17 +250,19 @@ fn characters_scaffold_tier2_matches_oracle() {
     assert_eq!(rows("folders").len(), 7, "7 top-level folders");
     assert_eq!(
         rows("files").len(),
-        3,
-        "3 deduped file rows (blank, props, physical)"
+        4,
+        "4 deduped file rows (blank, props, metadata, physical)"
     );
-    assert_eq!(rows("documents").len(), 3, "3 document rows");
-    assert_eq!(rows("links").len(), 8, "8 links (6 blank md + 2 json)");
+    assert_eq!(rows("documents").len(), 4, "4 document rows");
+    assert_eq!(rows("links").len(), 9, "9 links (6 blank md + 3 json)");
 
-    // The two seeded JSON files carry the FIXED default content.
+    // The three seeded JSON files carry the FIXED default content.
     let docs = rows("documents");
     let props_default = "{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": \"\",\n  \"firstMessage\": \"\",\n  \"talkativeness\": 0.5\n}";
     let physical_default =
         "{\n  \"short\": null,\n  \"medium\": null,\n  \"long\": null,\n  \"complete\": null\n}";
+    // metadata.json seeds an empty object — v4 JSON.stringify({}, null, 2) == "{}".
+    let metadata_default = "{}";
     assert!(
         docs.iter()
             .any(|d| d["content"] == Value::String(props_default.into())),
@@ -270,6 +272,11 @@ fn characters_scaffold_tier2_matches_oracle() {
         docs.iter()
             .any(|d| d["content"] == Value::String(physical_default.into())),
         "default physical-prompts.json content not found"
+    );
+    assert!(
+        docs.iter()
+            .any(|d| d["content"] == Value::String(metadata_default.into())),
+        "default metadata.json content `{{}}` not found"
     );
     // The six blank markdown files dedup to the empty-string document.
     assert!(

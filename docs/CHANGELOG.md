@@ -68,6 +68,17 @@ three from provisioning replay; the metadata column is vault-managed and stays
 inert in the DB (character.metadata hydrates from the vault's metadata.json,
 which lane p4.6az owns). Provisioning, builtin-mounts, and builtin-templates
 equivalence regenerated at d68638b4 and green.
+P4.6az unit 4 (lane AZ): seed `metadata.json` in the character-vault scaffold
+and add `ensure_character_metadata_file`. The scaffold now seeds an empty `{}`
+fact sheet (for discoverability — the file manager is the only editing surface),
+alongside `properties.json` / `physical-prompts.json`; the new
+existence-check-only ensure fn (checks the file EXISTS, never parses — a
+fat-fingered sheet is never "healed" into an empty one) is the seed the deferred
+lazy backfill reaches for. Regenerated every scaffold-touched differential at
+d68638b4 (scaffold, create, provision, adopt, arrays, physical, summary-mirror)
+plus the new `ensure_character_metadata_file` family (3 states: absent → seeds
+`{}` + true; valid → untouched; invalid → untouched, not healed).
+
 P4.6az unit 3 (lane AZ): the guarded write projection + whole-object patch
 routing for `metadata.json`. `CharacterVaultWriteInput` gains an optional
 `metadata`, and the create-time projection writes `metadata.json` ONLY when

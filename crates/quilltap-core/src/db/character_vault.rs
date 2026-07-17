@@ -8,9 +8,14 @@
 //!
 //! Populates a freshly-created database-backed character store with the
 //! conventional preset structure: **seven** empty top-level folders, **six** blank
-//! Markdown files, and **two** seeded JSON files. Idempotent — a path that already
-//! has a link is left untouched, so it is safe to re-run when a store's `storeType`
-//! is flipped to `'character'` on an already-populated store.
+//! Markdown files, and **three** seeded JSON files (`properties.json`,
+//! `metadata.json`, `physical-prompts.json`). Idempotent — a path that already has
+//! a link is left untouched, so it is safe to re-run when a store's `storeType` is
+//! flipped to `'character'` on an already-populated store.
+//!
+//! [`ensure_character_metadata_file`] is split out so the (deferred) lazy backfill
+//! can seed just `metadata.json` into a vault provisioned before the fact sheet
+//! existed, without re-running the whole scaffold.
 //!
 //! All writes go through the verified storage primitive
 //! ([`super::doc_mount_file_links`]): folders via
@@ -98,6 +103,18 @@ const PROPERTIES_JSON_DEFAULT: &str = "{\n  \"pronouns\": null,\n  \"aliases\": 
 const PHYSICAL_PROMPTS_JSON_DEFAULT: &str =
     "{\n  \"short\": null,\n  \"medium\": null,\n  \"long\": null,\n  \"complete\": null\n}";
 
+/// `metadata.json`'s relative path.
+const METADATA_JSON_PATH: &str = "metadata.json";
+
+/// The content of a fresh, empty fact sheet — v4 `METADATA_JSON_SEED =
+/// JSON.stringify({}, null, 2)` ("one definition, three callers"). An empty
+/// object pretty-prints to the two bytes `{}`. FIXED (it feeds the dedup sha).
+/// The fact sheet starts empty — the keys are the user's to invent — and is
+/// seeded rather than left absent purely for discoverability: hydration treats an
+/// absent file and `{}` identically, but the file manager is the only place a
+/// fact sheet can be edited, and you cannot edit a file that isn't there.
+const METADATA_JSON_SEED: &str = "{}";
+
 /// Scaffold the preset structure for a database-backed character store (v4
 /// `scaffoldCharacterMount`). No-op when the mount point is not found, not
 /// database-backed, or not a character store. Existing files (by path) are never
@@ -129,10 +146,12 @@ pub fn scaffold_character_mount(conn: &Connection, mount_point_id: &str) -> Resu
         links.ensure_folder_path(mount_point_id, folder)?;
     }
 
-    // The eight seeded files: six blank markdown + two default JSON. Skip any path
-    // that already has a link (the idempotent re-scaffold case).
+    // The nine seeded files: six blank markdown + three default JSON. Skip any
+    // path that already has a link (the idempotent re-scaffold case). metadata.json
+    // sits between properties.json and physical-prompts.json (v4's fileSpecs order).
     let mut specs: Vec<(&str, &str)> = BLANK_MARKDOWN_FILES.iter().map(|p| (*p, "")).collect();
     specs.push(("properties.json", PROPERTIES_JSON_DEFAULT));
+    specs.push((METADATA_JSON_PATH, METADATA_JSON_SEED));
     specs.push(("physical-prompts.json", PHYSICAL_PROMPTS_JSON_DEFAULT));
 
     for (rel_path, content) in specs {
@@ -143,6 +162,38 @@ pub fn scaffold_character_mount(conn: &Connection, mount_point_id: &str) -> Resu
     }
 
     Ok(())
+}
+
+/// Ensure one vault carries a `metadata.json`, seeding an empty sheet if not — v4
+/// `ensureCharacterMetadataFile` (`character-scaffold.ts:90`). Returns `true` when
+/// it created the file, `false` when one already existed.
+///
+/// Split out of the full scaffold so the lazy backfill can reach for just this:
+/// every vault provisioned before the fact sheet existed lacks the file, and since
+/// the file manager is the only editing surface, those characters have nothing to
+/// open. Re-running the whole scaffold to fix that would cost seven folder checks
+/// and nine document checks per character on every boot.
+///
+/// Existence is checked directly (`find_by_mount_point_and_path`), NEVER by
+/// parsing: a sheet the user has fat-fingered into invalid JSON is still their
+/// sheet, and must not be "healed" into an empty one. §3-owned (lane AZ).
+pub fn ensure_character_metadata_file(
+    conn: &Connection,
+    mount_point_id: &str,
+) -> Result<bool, DbError> {
+    let docs = DocMountDocumentsRepository::new(conn);
+    if docs
+        .find_by_mount_point_and_path(mount_point_id, METADATA_JSON_PATH)?
+        .is_some()
+    {
+        return Ok(false);
+    }
+    DocMountFileLinksRepository::new(conn).write_database_document(
+        mount_point_id,
+        METADATA_JSON_PATH,
+        METADATA_JSON_SEED,
+    )?;
+    Ok(true)
 }
 
 /// What [`ensure_character_vault`] resolved/created.

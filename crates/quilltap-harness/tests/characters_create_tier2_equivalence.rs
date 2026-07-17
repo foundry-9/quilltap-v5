@@ -20,10 +20,11 @@
 //!
 //! Banks: the 6-step create (slim row + provision + scaffold + project + link), the
 //! 7 scaffold folders, the managed-field overwrite of the five identity markdown
-//! files + `properties.json` (the scaffold defaults for `physical-*` survive — no
-//! physicalDescription), the orphan-on-rewrite default-`properties.json` file/
-//! document row, and the one systemPrompt + one scenario projected into `Prompts/`
-//! and `Scenarios/`.
+//! files + `properties.json` (the scaffold defaults for `physical-*` and the empty
+//! `metadata.json` `{}` seed survive — no physicalDescription, and a create with no
+//! `metadata` skips the guarded write), the orphan-on-rewrite default-`properties.json`
+//! file/document row, and the one systemPrompt + one scenario projected into
+//! `Prompts/` and `Scenarios/`.
 //!
 //! Generate the oracle output + fixtures (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -372,16 +373,18 @@ fn characters_create_tier2_matches_oracle() {
     assert_eq!(rows("folders").len(), 7, "7 scaffold folders");
     assert_eq!(
         rows("links").len(),
-        10,
-        "10 links (6 md + 2 json + 1 prompt + 1 scenario)"
+        11,
+        "11 links (6 md + 3 json + 1 prompt + 1 scenario)"
     );
-    // 8 live files + 1 orphaned default-properties.json (orphan-on-rewrite).
+    // 9 live files + 1 orphaned default-properties.json (orphan-on-rewrite). The
+    // scaffold's metadata.json `{}` survives — a create with no `metadata` skips
+    // the guarded managed-field write, so it is not rewritten (no orphan).
     assert_eq!(
         rows("files").len(),
-        9,
-        "9 files (8 live + 1 orphaned default props)"
+        10,
+        "10 files (9 live + 1 orphaned default props)"
     );
-    assert_eq!(rows("documents").len(), 9, "9 documents");
+    assert_eq!(rows("documents").len(), 10, "10 documents");
 
     eprintln!("OK: characters create tier-2 matched oracle (6 tables, 2 DBs).");
 }
