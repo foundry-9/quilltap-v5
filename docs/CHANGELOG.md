@@ -68,6 +68,18 @@ three from provisioning replay; the metadata column is vault-managed and stays
 inert in the DB (character.metadata hydrates from the vault's metadata.json,
 which lane p4.6az owns). Provisioning, builtin-mounts, and builtin-templates
 equivalence regenerated at d68638b4 and green.
+P4.6az unit 3 (lane AZ): the guarded write projection + whole-object patch
+routing for `metadata.json`. `CharacterVaultWriteInput` gains an optional
+`metadata`, and the create-time projection writes `metadata.json` ONLY when
+`metadata != null` — the anti-clobber invariant: metadata has no DB column, so
+a raw row's absent metadata must not overwrite a real fact sheet with `{}`. The
+update write-overlay routes a `metadata` patch as a whole-object REPLACE (not a
+key-merge — one field owns one file, so a merge would make deleting a key
+impossible), stripping it from the DB patch. New `metadata_vault_roundtrip`
+differential (7 ops: replace-drops-omitted-keys, null/empty → `{}`,
+absent-untouched, all-value-types, replace-overwrites-unparseable) + extended
+`vault_character_write` with a metadata op.
+
 P4.6az unit 2 (lane AZ): hydrate `character.metadata` from the vault's
 `metadata.json`. Added `metadata.json` (second, beside the `properties.json`
 keystone) to `SINGLE_FILE_OVERLAY_PATHS`, and `hydrate_one` now yields at least

@@ -12,6 +12,7 @@
         "title": "The Tinkerer",
         "firstMessage": "Hello there, mind the gears.",
         "talkativeness": 0.7,
+        "metadata": { "clearanceLevel": 3, "guild": "Tinkers", "verified": true, "notes": null },
         "identity": "I build things that whirr.",
         "description": "A wiry mechanic with oil-streaked hands.",
         "manifesto": "Gears over gods.",

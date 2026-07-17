@@ -7,6 +7,9 @@
 //! It writes (in v4's exact order):
 //!   1. `properties.json` — `{ pronouns, aliases, title, firstMessage, talkativeness }`
 //!      as `JSON.stringify(.,null,2)`.
+//!   1b. `metadata.json` — the fact sheet, **only when `metadata != null`** (the
+//!      anti-clobber guard: `metadata` has no DB column, so a raw row's absent
+//!      metadata must not overwrite a real fact sheet with `{}`).
 //!   2. `identity.md` / `description.md` / `manifesto.md` / `personality.md` /
 //!      `example-dialogues.md` — the raw markdown field (or `""`).
 //!   3. iff a `physicalDescription` is present: `physical-description.md`
@@ -32,6 +35,7 @@
 //! exactly as the groups/projects/wardrobe store-backed tests do.
 
 use serde::{Deserialize, Serialize, Serializer};
+use serde_json::Value;
 
 use super::doc_mount_documents::DocMountDocumentsRepository;
 use super::doc_mount_file_links::DocMountFileLinksRepository;
@@ -41,6 +45,7 @@ use crate::vault_overlay::{build_scenario_file, build_system_prompt_file, saniti
 use super::vault_wardrobe_write::project_array_into_vault_folder;
 
 const PROPERTIES_JSON_PATH: &str = "properties.json";
+const METADATA_JSON_PATH: &str = "metadata.json";
 const IDENTITY_MD_PATH: &str = "identity.md";
 const DESCRIPTION_MD_PATH: &str = "description.md";
 const MANIFESTO_MD_PATH: &str = "manifesto.md";
@@ -114,6 +119,12 @@ pub struct CharacterVaultWriteInput {
     /// `z.number().min(0.1).max(1.0).default(0.5)` — `None` coalesces to `0.5`.
     #[serde(default)]
     pub talkativeness: Option<f64>,
+    /// The freeform fact sheet (`metadata.json`). Has NO DB column — a raw
+    /// character row simply cannot carry it, so `None` (absent) means "no
+    /// opinion", NOT "empty". The write is guarded on `!= null` (see
+    /// [`write_character_vault_managed_fields`]).
+    #[serde(default)]
+    pub metadata: Option<Value>,
     #[serde(default)]
     pub identity: Option<String>,
     #[serde(default)]
@@ -241,6 +252,25 @@ pub fn write_character_vault_managed_fields(
         serde_json::to_string_pretty(&props).expect("properties.json serialization is infallible");
     links.write_database_document(mount_point_id, PROPERTIES_JSON_PATH, &props_json)?;
     result.single_file_write_count += 1;
+
+    // 1b. metadata.json — the fact sheet, projected ONLY when the caller actually
+    // has one (v4 `writeCharacterVaultManagedFields`, the `!= null` guard). Every
+    // OTHER field here has a DB column, so "the caller passed nothing" safely reads
+    // as "the value is empty". `metadata` has no column: a raw character row simply
+    // cannot carry it. Writing `{}` on its absence would let any caller holding a
+    // raw row — the startup backfill's repopulate path does exactly that — silently
+    // erase a fact sheet it never saw. So absence means "no opinion", not "empty",
+    // and the file is left alone. Nothing is lost by the skip: a fresh vault's
+    // metadata.json is seeded by the scaffold, and the (deferred) backfill seeds any
+    // older vault still lacking one.
+    if let Some(metadata) = character.metadata.as_ref() {
+        if !metadata.is_null() {
+            let metadata_json = serde_json::to_string_pretty(metadata)
+                .expect("metadata.json serialization is infallible");
+            links.write_database_document(mount_point_id, METADATA_JSON_PATH, &metadata_json)?;
+            result.single_file_write_count += 1;
+        }
+    }
 
     // 2. The five markdown fields (None → "").
     for (path, value) in [

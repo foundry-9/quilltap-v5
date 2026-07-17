@@ -1,0 +1,13 @@
+{
+  "_comment": "Metadata fact-sheet round-trip ops for the metadata_vault_roundtrip differential. Templated on v4's metadata-vault-roundtrip.test.ts. Each op runs a patch through applyDocumentStoreWriteOverlay against a REAL character+vault (the charupd fixtures — reuse), then reads metadata.json back. Pins: whole-object REPLACE (not key-merge), null/empty -> {}, absent-key leaves the file untouched, and a replace overwrites an unparseable file without reading it first. Pepper matches build-characters-update-fixture.ts so the shared fixtures decrypt.",
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "ops": [
+    { "label": "set-sheet", "patch": { "metadata": { "hasAnsibleAccess": true, "clearanceLevel": 3, "faction": "Ordo Aurum", "knownLanguages": ["Trade Cant", "High Gothic"] } } },
+    { "label": "replace-drops-omitted-keys", "patch": { "metadata": { "faction": "Ordo Ferrum" } } },
+    { "label": "clear-empty-object", "patch": { "metadata": {} } },
+    { "label": "unmanaged-only-leaves-file-untouched", "patch": { "name": "Renamed" } },
+    { "label": "null-clears-to-empty-object", "patch": { "metadata": null } },
+    { "label": "round-trips-all-value-types", "patch": { "metadata": { "s": "x", "n": 3, "f": 0.75, "b": true, "nul": null, "arr": [1, "two", false], "nested": { "rank": "adept" } } } },
+    { "label": "replace-overwrites-unparseable", "presetMetadataFile": "{ this is broken", "patch": { "metadata": { "faction": "Ordo Aurum" } } }
+  ]
+}

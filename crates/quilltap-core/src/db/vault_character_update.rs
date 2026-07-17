@@ -68,6 +68,7 @@ const EXAMPLE_DIALOGUES_MD_PATH: &str = "example-dialogues.md";
 const PHYSICAL_DESCRIPTION_MD_PATH: &str = "physical-description.md";
 const PHYSICAL_PROMPTS_JSON_PATH: &str = "physical-prompts.json";
 const PROPERTIES_JSON_PATH: &str = "properties.json";
+const METADATA_JSON_PATH: &str = "metadata.json";
 const PROMPTS_FOLDER: &str = "Prompts";
 const SCENARIOS_FOLDER: &str = "Scenarios";
 
@@ -182,6 +183,26 @@ pub fn apply_document_store_write_overlay(
         for k in &touched {
             db_patch.remove(*k);
         }
+    }
+
+    // 2b. metadata.json — a whole-object REPLACE, NOT a key-merge (v4
+    // `managed-fields.ts:436`). `metadata` is one field owning one file, so the
+    // patch's value simply becomes the file: `patch.metadata ?? {}` (an explicit
+    // null clears the sheet to `{}`). properties.json read-modify-writes because
+    // FIVE Character fields share it — that dance buys nothing here and would make
+    // it impossible to DELETE a key. Key-level edits are the caller's
+    // read-modify-write to do. There is no DB column, so the key is stripped from
+    // the DB-bound patch.
+    if let Some(metadata) = patch.get("metadata") {
+        let next = if metadata.is_null() {
+            Value::Object(Map::new())
+        } else {
+            metadata.clone()
+        };
+        let json =
+            serde_json::to_string_pretty(&next).expect("metadata.json serialization is infallible");
+        links.write_database_document(&mount_point_id, METADATA_JSON_PATH, &json)?;
+        db_patch.remove("metadata");
     }
 
     // 3. physicalDescription — non-null writes the two files; null leaves them.

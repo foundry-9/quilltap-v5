@@ -18472,3 +18472,54 @@ QT_FIXTURE_CHARREAD_MAIN=/tmp/qt-charread-main.db QT_FIXTURE_CHARREAD_MOUNT=/tmp
 #   QT_FIXTURE_CHARACTERS_{MAIN,MOUNT}=$V5W/crates/quilltap-web/tests/fixtures/characters-{main,mount}.db
 #   QT_ORACLE_OUT=<out> npx jest --roots "$PWD" --roots "$TMPO/cases" -- <name>
 ```
+
+### Unit 3 — the guarded write projection + the whole-object-REPLACE patch arm
+
+**Create-time projection** (`vault_character_write.rs`): `CharacterVaultWriteInput`
+gains `metadata: Option<Value>` (serde default). `write_character_vault_managed_fields`
+writes `metadata.json` (pretty JSON, right after `properties.json`) ONLY when
+`metadata` is `Some(v) && !v.is_null()` — v4's `!= null` guard (why-comment #3,
+the anti-clobber invariant). `None`/absent = "no opinion", not "empty"; writing
+`{}` on absence would let a raw-row caller (the repopulate path) silently erase a
+real fact sheet.
+
+**Update patch routing** (`vault_character_update.rs`): `apply_document_store_write_overlay`
+gains the metadata arm (after properties, before physical): `patch.metadata`
+present → whole-object REPLACE into `metadata.json` (`patch.metadata ?? {}`,
+pretty), then stripped from `db_patch`. NOT a key-merge (why-comment #4): one
+field owns one file, so a merge would make deleting a key impossible; key-level
+edits are the caller's read-modify-write. There is no DB column.
+
+**Differentials:**
+
+- `vault_character_write` (extended): op 1 ("full create") gains a `metadata`
+  bag → `metadata.json` written with pretty bytes; op 2 ("reproject") has NO
+  metadata → the guard skips → op 1's file persists (the anti-clobber, visible in
+  the final dump). Fixture unchanged; oracle regen at `d68638b4`, green (5 tables).
+- `metadata_vault_roundtrip` (**NEW** family — `harness/oracle/cases/metadata-vault-roundtrip.ts`,
+  `fixtures/metadata-vault-roundtrip.json`, `tests/metadata_vault_roundtrip_equivalence.rs`).
+  Drives the REAL `applyDocumentStoreWriteOverlay` over the shared **charupd**
+  two-DB fixture (a character + linked vault); per op records
+  `dbPatchHasMetadata` + the metadata.json bytes. 7 ops pin: whole-object replace
+  (dropped keys gone), `{}`/`null` → `{}`, unmanaged-only leaves the file
+  untouched, all JSON value types round-trip, and a replace overwrites an
+  unparseable preset WITHOUT reading it first. Templated on v4's
+  `metadata-vault-roundtrip.test.ts` but a real write→store→read cycle. **Green
+  on 7 ops.**
+
+`cargo test -p quilltap-core --lib`: 959 passed (the new `CharacterVaultWriteInput`
+field defaults to `None` in every existing caller).
+
+**Regen recipes** (Node 24, from `/tmp/qt-v4-baseline`; `V5W` = this worktree):
+```
+# vault_character_write (fixture + oracle)
+QT_FIXTURE_OUT=/tmp/qt-vault-character-write-fixture.db \
+  $N/node --import tsx $V5W/harness/oracle/fixtures/build-vault-character-write-fixture.ts
+QT_FIXTURE_VAULT_CHARACTER_WRITE=/tmp/qt-vault-character-write-fixture.db \
+  $N/node --import tsx $V5W/harness/oracle/cases/vault-character-write.ts > /tmp/oracle-vault-character-write.ndjson
+# metadata_vault_roundtrip (reuses the charupd fixtures)
+QT_FIXTURE_CHARUPD_MAIN=/tmp/qt-charupd-main.db QT_FIXTURE_CHARUPD_MOUNT=/tmp/qt-charupd-mount.db \
+  $N/node --import tsx $V5W/harness/oracle/fixtures/build-characters-update-fixture.ts
+QT_FIXTURE_CHARUPD_MAIN=/tmp/qt-charupd-main.db QT_FIXTURE_CHARUPD_MOUNT=/tmp/qt-charupd-mount.db \
+  $N/node --import tsx $V5W/harness/oracle/cases/metadata-vault-roundtrip.ts > /tmp/oracle-metadata-roundtrip.ndjson
+```
