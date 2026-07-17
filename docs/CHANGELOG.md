@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.d7 unit 2: the mount-index case-collision repair pass
+(db/mount_index_case_repair.rs, porting v4's mount-index-case-repair.ts). At
+boot it renames the newer of any case-colliding folder siblings, file links, or
+document-store names with a ` (N)` suffix (subtrees and links repaired along),
+and trust-or-recreates a genuine unique COLLATE NOCASE index — replacing the
+legacy case-sensitive one or a tampered same-named stand-in, and catching
+non-ASCII collisions the ASCII-only NOCASE index tolerates. Wired into the boot
+hook services::builtin_mounts::ensure_mount_index_tables (v4's three per-repo
+init call sites collapse to v5's single once-per-startup hook). A no-op on a
+fresh instance; existing pre-0a0419f5 instances are migrated here. New tier-2
+differential (mount_case_repair_equivalence, 7 planted-collision cases) against
+v4's real repair over a real in-memory SQLite.
+
 P4.d7 unit 1: re-dump fresh_schema.json from v4 d68638b4. The two mount-index
 unique indexes become COLLATE NOCASE under new names
 (idx_doc_mount_folders_mp_parent_name_nocase,

@@ -32,6 +32,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::clock;
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::doc_mount_points::DocMountPointsRepository;
+use crate::db::mount_index_case_repair;
 use crate::db::{instance_settings, DbError};
 
 /// One built-in store's identity: its name, its pointer getter/setter, and its
@@ -133,6 +134,19 @@ fn ensure_mount_index_tables(mount_index: &Connection) -> Result<(), DbError> {
          CREATE UNIQUE INDEX IF NOT EXISTS \"idx_doc_mount_folders_mp_path\" \
            ON \"doc_mount_folders\" (\"mountPointId\", \"path\");",
     )?;
+    // v4 `0a0419f5`: the case-insensitive mount-namespace invariant. v4 calls the
+    // three `ensure*NocaseUniqueIndex` / `repairMountPointNameCollisions` helpers
+    // from each repo's lazy `getCollection()` table-init block (folders /
+    // file-links / mount-points), effectively once per process. v5 has no
+    // per-repo lazy init; this boot hook is the single once-per-startup cadence,
+    // so the three v4 call sites collapse to here (a documented non-divergence).
+    // Each runs an unconditional case-collision repair (renaming ` (N)` losers,
+    // keep-oldest), then trusts-or-recreates the genuine NOCASE unique index. A
+    // no-op on a fresh generateDDL-provisioned instance (the NOCASE indexes exist
+    // and no rows collide); an existing pre-`0a0419f5` instance is migrated here.
+    mount_index_case_repair::ensure_folder_nocase_unique_index(mount_index)?;
+    mount_index_case_repair::ensure_link_nocase_unique_index(mount_index)?;
+    mount_index_case_repair::repair_mount_point_name_collisions(mount_index)?;
     Ok(())
 }
 

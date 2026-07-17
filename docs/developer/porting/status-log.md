@@ -18066,3 +18066,56 @@ for S in empty dangling live; do QT_STATE=$S \
 `QT_V5_PROVISION_OUT`, `QT_ORACLE_BUILTIN_MOUNTS`, `QT_ORACLE_BUILTIN_TEMPLATES`
 and `cargo test -p quilltap-harness --test provisioning_equivalence --test
 builtin_mounts_equivalence --test builtin_templates_equivalence`.
+
+### Unit 2 — the case-collision repair pass — LANDED
+
+`db/mount_index_case_repair.rs` (new) ports v4's
+`lib/database/repositories/mount-index-case-repair.ts` in full:
+`nocase_unique_index_is_valid` (trusts an index only if its stored CREATE
+contains both UNIQUE and NOCASE — a tampered same-named stand-in is replaced),
+`next_suffixed_name` / `next_suffixed_file_name` (` (N)` from 2; the file suffix
+goes before the extension), `rename_folder_row` (parentId subtree walk — NOT
+path-prefix, so exact-duplicate-path rows can't cross-contaminate — plus
+folderId link repair), `repair_folder_case_collisions` /
+`repair_link_case_collisions` / `repair_mount_point_name_collisions`
+(keep-oldest via `createdAt.localeCompare || id.localeCompare`, ported through
+`crate::collation::locale_compare`; vault names trimmed, folders/links not),
+and the two `ensure_*_nocase_unique_index` (repair FIRST unconditionally, then
+trust-or-recreate).
+
+**Wiring — a documented non-divergence.** v4 calls the three helpers from EACH
+repo's lazy `getCollection()` table-init (folders / file-links / mount-points),
+effectively once per process. v5 has no per-repo lazy init; the three call sites
+collapse to the single boot hook
+`services::builtin_mounts::ensure_mount_index_tables` (called from
+`quilltap-host` boot `seed_built_ins`) — the same effective once-per-startup
+cadence. A no-op on a fresh generateDDL-provisioned instance (NOCASE indexes
+already exist, no rows collide); an existing pre-`0a0419f5` instance is migrated
+here (the migration runner stays deferred).
+
+`logger.warn` → `eprintln!` (v5 core's warn/error convention; the messages are
+not oracle-observable — the differential compares rows + index sql).
+
+**Differential — `mount_case_repair_equivalence` (7 cases, green).** A shared
+planted-collision spec (`harness/oracle/fixtures/mount-case-repair-spec.json`)
+drives BOTH v4's REAL `ensureFolderNocaseUniqueIndex` /
+`ensureLinkNocaseUniqueIndex` / `repairMountPointNameCollisions`
+(`harness/oracle/cases/mount-case-repair.ts`, over a real in-memory
+better-sqlite3, tables + legacy case-sensitive indexes exactly as v4's own
+`mount-index-case-repair.test.ts` `freshDb()`) and the ported repair (over an
+in-memory rusqlite with the identical setup). Post-repair rows (folders / links
+/ mount_points) + the two tables' `sqlite_master` index rows are field-diffed.
+Cases: folder subtree + link repair, non-ASCII `Ärger`/`ärger`, tampered-index
+replacement, idempotence, link suffix-before-extension, link non-ASCII, and
+vault-name trim + keep-oldest (`My Vault` / `my vault` / `MY VAULT ` →
+`(2)`/`(3)`). Regen (from `~/source/quilltap-server` at `d68638b4`, Node 24):
+
+```
+$N/node --import tsx <W>/harness/oracle/cases/mount-case-repair.ts \
+  > /tmp/oracle-mount-case-repair.ndjson
+# run: QT_ORACLE_MOUNT_CASE_REPAIR=/tmp/oracle-mount-case-repair.ndjson \
+#   cargo test -p quilltap-harness --test mount_case_repair_equivalence
+```
+(The oracle require()s the real better-sqlite3 by absolute path via
+`createRequire`; run it from the v4 checkout so `@/` and the binding both
+resolve — no mirror needed.)

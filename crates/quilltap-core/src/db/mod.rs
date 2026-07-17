@@ -70,6 +70,7 @@ pub mod instance_settings;
 pub mod llm_logs;
 pub mod memories;
 pub mod memories_read;
+pub mod mount_index_case_repair;
 pub mod plugin_config;
 pub mod project_doc_mount_links;
 pub mod project_store_naming;

@@ -1,0 +1,71 @@
+{
+  "_doc": "Planted-collision corpus for the mount-index case-repair differential (v4 0a0419f5). Both the v4 oracle (harness/oracle/cases/mount-case-repair.ts, real ensure*/repair* over real in-memory better-sqlite3) and the Rust diff (crates/quilltap-harness/tests/mount_case_repair_equivalence.rs) read THIS spec, build an identical in-memory DB per case (tables + legacy case-sensitive indexes, exactly v4's mount-index-case-repair.test.ts freshDb), plant the rows, run the named repair, and dump post-repair rows + the two nocase index sql. mountPointId is 'mp-1' throughout. Link fileName is derived from the relativePath basename (v4 insertLink). Templated on v4's own test corpus.",
+  "mountPointId": "mp-1",
+  "cases": [
+    {
+      "name": "folder-subtree-and-links",
+      "run": "folder",
+      "folders": [
+        { "id": "keep", "parentId": null, "name": "Lore", "path": "Lore", "createdAt": "2024-01-01T00:00:00.000Z" },
+        { "id": "lose", "parentId": null, "name": "lore", "path": "lore", "createdAt": "2024-06-01T00:00:00.000Z" },
+        { "id": "lose-child", "parentId": "lose", "name": "maps", "path": "lore/maps", "createdAt": "2024-06-02T00:00:00.000Z" }
+      ],
+      "links": [
+        { "id": "l1", "relativePath": "lore/notes.md", "folderId": "lose", "createdAt": "2024-06-03T00:00:00.000Z" },
+        { "id": "l2", "relativePath": "lore/maps/atlas.md", "folderId": "lose-child", "createdAt": "2024-06-03T00:00:00.000Z" },
+        { "id": "l3", "relativePath": "Lore/canon.md", "folderId": "keep", "createdAt": "2024-01-02T00:00:00.000Z" }
+      ]
+    },
+    {
+      "name": "folder-nonascii",
+      "run": "folder",
+      "folders": [
+        { "id": "keep", "parentId": null, "name": "Ärger", "path": "Ärger", "createdAt": "2024-01-01T00:00:00.000Z" },
+        { "id": "lose", "parentId": null, "name": "ärger", "path": "ärger", "createdAt": "2024-06-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "name": "folder-tampered-index",
+      "run": "folder",
+      "tamperFolderIndex": true,
+      "folders": [
+        { "id": "keep", "parentId": null, "name": "Lore", "path": "Lore", "createdAt": "2024-01-01T00:00:00.000Z" },
+        { "id": "lose", "parentId": null, "name": "lore", "path": "lore", "createdAt": "2024-06-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "name": "folder-idempotent",
+      "run": "folder",
+      "runTwice": true,
+      "folders": [
+        { "id": "a", "parentId": null, "name": "Lore", "path": "Lore", "createdAt": "2024-01-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "name": "link-suffix-before-ext",
+      "run": "link",
+      "links": [
+        { "id": "old", "relativePath": "notes/Plan.md", "folderId": null, "createdAt": "2024-01-01T00:00:00.000Z" },
+        { "id": "new", "relativePath": "notes/plan.md", "folderId": null, "createdAt": "2024-06-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "name": "link-nonascii",
+      "run": "link",
+      "links": [
+        { "id": "keep", "relativePath": "Ärger.md", "folderId": null, "createdAt": "2024-01-01T00:00:00.000Z" },
+        { "id": "lose", "relativePath": "ärger.md", "folderId": null, "createdAt": "2024-06-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "name": "mountpoint-name-collisions",
+      "run": "mountpoints",
+      "mountPoints": [
+        { "id": "a", "name": "My Vault", "createdAt": "2024-01-01T00:00:00.000Z" },
+        { "id": "b", "name": "my vault", "createdAt": "2024-02-01T00:00:00.000Z" },
+        { "id": "c", "name": "MY VAULT ", "createdAt": "2024-03-01T00:00:00.000Z" },
+        { "id": "d", "name": "Other", "createdAt": "2024-01-01T00:00:00.000Z" }
+      ]
+    }
+  ]
+}
