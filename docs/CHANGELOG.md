@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+The D24 blocker is resolved and the drift round is re-planned (2026-07-17).
+The fix went into v4 itself, per the ruling: quilltap-server e3593f75
+(4.8.0-dev.62) makes all 57 tool validators return safeParse's parsed data,
+every handler call site read that parse, and the doc-edit dispatcher route its
+26 cases through the validators with a raw-input fallback — so llmNumber's
+quoted-number leniency now actually reaches the handlers. Drift-checked: one
+commit past a33ac8b8, scoped entirely to the tool-input family, published
+tool-definition bytes unchanged. The two open work orders carry addenda
+re-pinning the round baseline to e3593f75: P4.d5 resumes at unit 2 (its held
+unit-2 branch code is now correct as written) and P4.6ay resumes at unit 1
+(only unit 4's validator shape changed). The previously undeclared
+executor.rs image_generation.count collision is now a declared shared region
+in both Ownership tables. D24's record in phase-4.md carries the resolution.
+
 The P4.d5 ∥ P4.d6 ∥ P4.6ay round PARTIALLY UNIFIED on main (2026-07-17).
 P4.d6 CLOSED; P4.d5 and P4.6ay stay OPEN, both for good reasons recorded in
 their status headers.

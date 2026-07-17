@@ -340,6 +340,17 @@ boundary; streaming only on `Event`; the `Db` ownership model; enclave
   is why they are not on main.** Discovered by the P4.d5 lane driving v4's
   real code against its own order's false premise — the byte-consumption
   assertion caught it.
+  **RESOLVED 2026-07-17: the fix landed in v4 as `e3593f75`
+  ("fix: tool validators return the parse, so the leniency actually
+  lands", 4.8.0-dev.62).** All 57 validators return `XInput | null`; all
+  29 consuming call sites read the parse; the doc-edit dispatcher routes
+  its 26 cases through the validators with a raw-input fallback on a
+  failed parse; the external plugin interface stays boolean; the
+  published tool-definition bytes are unchanged. v4's full suite green
+  (8289 unit + 135 integration), plus three new handler-level pins in
+  `rng-tool-lenient-numbers.test.ts`. **The resumed round's baseline is
+  `e3593f75`; P4.d5 (resume at unit 2) and P4.6ay (resume at unit 1) are
+  UNBLOCKED — their orders carry matching 2026-07-17 addenda.**
 
 ## The boundary contract in detail
 

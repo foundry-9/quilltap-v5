@@ -620,20 +620,23 @@ records THERE. Update this summary only when a phase or round completes.
   P4.d3 quantized embedding codec note stands: ⚠ v4's
   `quantize-embeddings-v1` migration is one-way — back up Friday
   before first running v4 `4.8.0-dev.52`+ against it. Drift-check
-  before every round. ⚠ **v4 HEAD is `a33ac8b8`, 8 commits past the
-  baseline, and that drift is only PARTIALLY absorbed (2026-07-17) —
-  so the baseline line above STAYS at `02865bdb` until it is
-  finished.** Absorbed: the help-doc-sync drift (P4.d6, CLOSED), v4
-  4.8.0's two schema columns (P4.6ay unit 10 — see **D23**), and the
-  shared `pascal::dice` module. **STILL WRONG on main until the rest
-  lands:** the dice modifier (`3d6+2` rolls as `3d6`), every dice
+  before every round. ⚠ **v4 HEAD is `e3593f75` (4.8.0-dev.62), 9
+  commits past the baseline, and that drift is only PARTIALLY absorbed
+  (2026-07-17) — so the baseline line above STAYS at `02865bdb` until
+  it is finished.** Absorbed: the help-doc-sync drift (P4.d6, CLOSED),
+  v4 4.8.0's two schema columns (P4.6ay unit 10 — see **D23**), and
+  the shared `pascal::dice` module. **STILL WRONG on main until the
+  rest lands:** the dice modifier (`3d6+2` rolls as `3d6`), every dice
   roll's output JSON (v4 emits `modifier`/`total`), and quoted numeric
-  tool args across 18 tools. **BLOCKED on a v4 fix — see D24:** v4's
-  tool validators discard `safeParse`'s parse, so its own `llmNumber`
-  never takes effect (`{"type":"6"}` still fails; `{"modifier":"2"}`
-  yields `total:"42"`). The ruling is **fix v4 first, then re-port** —
-  so expect v4 HEAD to move past `a33ac8b8`, and re-plan P4.d5/P4.6ay
-  against the new HEAD. Pascal itself is 1/10 units ported (schema
+  tool args across 18 tools. **The D24 blocker is RESOLVED:** v4
+  `e3593f75` makes every tool validator return `safeParse`'s parsed
+  data and every handler read it (the doc-edit dispatcher validates
+  with a raw-input fallback), so `llmNumber` now takes effect —
+  `{"type":"6"}` rolls a real d6 and `{"modifier":"2"}` adds
+  numerically. **P4.d5 (resume at unit 2) and P4.6ay (resume at unit
+  1) are UNBLOCKED and re-planned against baseline `e3593f75`** (their
+  orders carry 2026-07-17 addenda; the `p4.d5` branch's held unit 2 is
+  now correct as written). Pascal itself is 1/10 units ported (schema
   only); the SPA is unstarted. ⚠ **v5 CANNOT read or write messages on
   a pre-4.8.0 v4 instance** (`no such column: pascalMeta`) — migrate a
   dogfood copy to 4.8.0's two ALTERs before pointing v5 at it. Two

@@ -17110,3 +17110,62 @@ for S in fresh stale-builtin user-same-name; do QT_STATE=$S $N/npx tsx $W/harnes
 - **`lib/startup/prettify.ts`** — v5 has no prettify subsystem.
 - **Extending `tolerant_select_list` to the message read/write paths** — see
   Finding B; needs a ruling and its own differential.
+
+## 2026-07-17 — The D24 v4 fix + the round re-plan (drift check at `e3593f75`)
+
+**The D24 blocker is resolved in v4 itself.** Per the ruling ("fix v4
+first, then re-port"), v4 main gained **`e3593f75` — "fix: tool
+validators return the parse, so the leniency actually lands"
+(4.8.0-dev.62)**, one commit past `a33ac8b8`:
+
+- All **57** `lib/tools/*-tool.ts` validators now return the parsed data
+  (`XInput | null`) instead of an `input is X` boolean; the uniform body
+  is `const parsed = schema.safeParse(input); return parsed.success ?
+  parsed.data : null;`.
+- All **27 handler call sites** plus the **two terminal sites** in
+  `lib/chat/tool-executor.ts` destructure the parse. Failure-path error
+  echoes deliberately still read the raw input.
+- The **doc-edit dispatcher** (26 cases, previously validated NOWHERE —
+  raw casts) now routes each case through its validator with a
+  **raw-input fallback** on a failed parse, so handler-side lenient
+  checks and the qtap:// uri flow are unchanged for schema-rejected
+  input while quoted numbers in schema-valid input are coerced.
+  `self_inventory` keeps warn-and-continue via `parsed ?? input`.
+- **Untouched:** the external plugin interface
+  (`@quilltap/plugin-types` `validateInput` stays boolean), all schema
+  construction (published tool-definition bytes byte-identical — the 64
+  jest snapshots passed without update and the diff contains no schema
+  edits), `lib/pascal/*`, routes, repos, DDL.
+- v4 verification: 8289 unit + 135 integration tests green, eslint
+  clean, tsc clean. `rng-tool-lenient-numbers.test.ts` grew three
+  handler-level pins (quoted `type` rolls a real d6; quoted `modifier`
+  adds numerically; quoted `rolls` yields numeric `rollCount`) and its
+  validator assertions strengthened from booleans to the returned parse.
+
+**Drift check (2026-07-17):** `git log a33ac8b8..HEAD` = exactly
+`e3593f75`, clean tree. Classification: behavior change scoped entirely
+to the tool-input family — the families P4.d5/P4.6ay already own. No
+currently-green v5 differential changes expected value outside P4.d5's
+own regeneration list (no existing oracle case exercises a quoted
+number; doc-tool defaults were already handler-defaulted identically).
+
+**Round re-plan:** the resumed round's baseline is **`e3593f75`**; the
+CLAUDE.md oracle-baseline line stays at `02865bdb` until the drift is
+fully absorbed. Both open orders carry 2026-07-17 addenda:
+
+- **P4.d5 resumes at unit 2** — the held unit 2 on
+  `claude/p4-d5-dice-rng-lenient-5b62d6` (`969227c`) is now CORRECT AS
+  WRITTEN; cherry-pick onto a fresh branch from main and regenerate its
+  oracle at `e3593f75`. Unit 3's contested arms take expected values
+  from fixed v4 (`{"type":"6"}` now rolls AND consumes bytes). The
+  `93b779fe` WIP may be mined but its validation arms are redone.
+- **P4.6ay resumes at unit 1** — nothing in its scope changed except
+  unit 4's validator/handler shape (port the parse-returning form).
+- The `tools/executor.rs` `image_generation.count` region (the
+  undeclared `05d03ab` collision last round) is now a DECLARED
+  shared-file region in both orders' Ownership tables.
+
+Execution arrangement: two parallel lanes (A = P4.d5 units 2–5, C =
+P4.6ay units 1–9), each in its own worktree; §1 is already satisfied on
+main; §2's must-land-together rule and the lane-C-slips revert rule
+stand unchanged; the unifier recounts version bumps.
