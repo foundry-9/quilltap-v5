@@ -133,6 +133,22 @@ Returns the JSON object verbatim, or null for anything that is not an object
 Unlike properties.json, metadata is not a keystone: a malformed file never
 hollows the character. Extended the tier-1 vault-json-parsers differential
 with 10 metadata cases (24 → 34).
+P4.6ay unit 11 (the d68638b4 metadata re-port). Port the character-metadata
+subject into the custom-tool definition format and execution core. WhenObject
+gains an optional `metadata` record: keys are any non-empty string (the user's
+own vocabulary in metadata.json, not the identifier grammar `params` takes),
+values are the same comparators as `params`. Load-time validation is
+deliberately shallow — only that a `$param` operand resolves to a declared
+parameter — since a metadata key names something on a character the file has
+never seen. Execution adds fail-soft metadata matching (an absent, non-primitive,
+or wrong-typed key declines rather than throws; a `$param` operand still throws
+if unresolved), records only the winning row's tested primitive keys as
+`metadataTested`, and renders the `{{metadata.key}}` template family (a missing
+or non-primitive key leaves the placeholder verbatim). `execute_custom_tool`
+takes a `metadata` override. The run_custom tool description grew v4's metadata
+sentence. Differentials extended and re-greened against fresh d68638b4 oracles:
+pascal definition (105 defs + 10 titles), pascal execution (146 rows),
+tool_definitions (58 tools byte-exact).
 
 Plan the d68638b4 drift catch-up round (docs only). v4 moved ten commits past
 the e3593f75 baseline and the predicted tripwire fired: the custom-tools +

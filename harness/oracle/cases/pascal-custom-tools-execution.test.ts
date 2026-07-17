@@ -19,7 +19,7 @@
  * v4's own execution test mocks no randomness at all, so it can only assert
  * ranges; this is the stronger bar.
  *
- * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
+ * Run (v4 @ d68638b4, Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-pascal-exec-oracle
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
@@ -110,6 +110,17 @@ describe('renderTemplate', () => {
     });
     const params = resolveParams(tool, {});
 
+    // A fixed metadata sheet, threaded into every render so the port draws the
+    // same. Non-`{{metadata.*}}` messages ignore it.
+    const META: Record<string, unknown> = {
+      clearance: 5,
+      frac: 1.5,
+      house: 'Aurum',
+      hasAccess: true,
+      nested: { a: 1 },
+      list: [1, 2],
+    };
+
     const messages: Array<[string, string]> = [
       ['value', 'rolled {{value}}'],
       ['roll', 'raw {{roll}}'],
@@ -130,6 +141,16 @@ describe('renderTemplate', () => {
       ['brace-soup', '{{{value}}}'],
       ['unclosed', 'a {{value b'],
       ['nested-ish', '{{val{{value}}ue}}'],
+      // The d68638b4 {{metadata.*}} family.
+      ['metadata-number', 'clr {{metadata.clearance}}'],
+      ['metadata-float', 'f {{metadata.frac}}'],
+      ['metadata-string', 'house {{metadata.house}}'],
+      ['metadata-boolean', 'acc {{metadata.hasAccess}}'],
+      ['metadata-missing', 'x {{metadata.ghost}} y'],
+      ['metadata-non-primitive-object', 'n {{metadata.nested}} m'],
+      ['metadata-non-primitive-list', 'l {{metadata.list}} m'],
+      ['metadata-prefix-only', 'bare {{metadata.}}'],
+      ['metadata-whitespace', '{{  metadata.house  }}'],
     ];
 
     for (const [id, message] of messages) {
@@ -140,7 +161,14 @@ describe('renderTemplate', () => {
         // rather than needing a Deserialize for the parsed shape.
         tool,
         message,
-        out: renderTemplate(message, { value: 12.3456, roll: 0.6789, dice: '3d6: [4, 2, 6] = 12', params }),
+        metadata: META,
+        out: renderTemplate(message, {
+          value: 12.3456,
+          roll: 0.6789,
+          dice: '3d6: [4, 2, 6] = 12',
+          params,
+          metadata: META,
+        }),
       });
     }
   });
@@ -225,7 +253,16 @@ describe('matchesWhen', () => {
     });
     const params = resolveParams(tool, {});
 
-    const whens: Array<[string, unknown]> = [
+    // A fixed metadata sheet for the metadata subject rows.
+    const SHEET: Record<string, unknown> = {
+      clearance: 5,
+      house: 'Aurum',
+      hasAccess: true,
+      nested: { a: 1 },
+      list: [1, 2],
+    };
+
+    const whens: Array<[string, unknown, Record<string, unknown>?]> = [
       ['catch-all', true],
       ['gt-holds', { gt: 5 }],
       ['gt-fails', { gt: 500 }],
@@ -250,9 +287,25 @@ describe('matchesWhen', () => {
       ['param-ref-operand-holds', { gte: { $param: 'difficulty' } }],
       ['param-ref-operand-fails', { gt: { $param: 'difficulty' } }],
       ['all-three-subjects', { gt: 5, roll: { lt: 1 }, params: { material: { eq: 'brass' } } }],
+      // The d68638b4 metadata subject — fail-soft against the SHEET above.
+      ['md-holds', { metadata: { clearance: { gte: 3 } } }, SHEET],
+      ['md-fails', { metadata: { clearance: { gte: 9 } } }, SHEET],
+      ['md-absent-key', { metadata: { missing: { eq: 1 } } }, SHEET],
+      ['md-non-primitive-object', { metadata: { nested: { eq: 1 } } }, SHEET],
+      ['md-non-primitive-list', { metadata: { list: { gt: 0 } } }, SHEET],
+      ['md-string-eq', { metadata: { house: { eq: 'Aurum' } } }, SHEET],
+      ['md-string-neq', { metadata: { house: { neq: 'Brass' } } }, SHEET],
+      ['md-bool-eq', { metadata: { hasAccess: { eq: true } } }, SHEET],
+      ['md-ordering-on-string-declines', { metadata: { house: { gt: 1 } } }, SHEET],
+      ['md-eq-number-vs-string', { metadata: { clearance: { eq: 'five' } } }, SHEET],
+      ['md-param-operand-holds', { metadata: { clearance: { lte: { $param: 'difficulty' } } } }, SHEET],
+      ['md-param-operand-fails', { metadata: { clearance: { gte: { $param: 'difficulty' } } } }, SHEET],
+      ['md-anded-value-holds', { gt: 5, metadata: { clearance: { gte: 3 } } }, SHEET],
+      ['md-anded-value-fails', { gt: 50, metadata: { clearance: { gte: 3 } } }, SHEET],
+      ['md-no-sheet-declines', { metadata: { clearance: { gte: 3 } } }, undefined],
     ];
 
-    for (const [id, when] of whens) {
+    for (const [id, when, metadata] of whens) {
       // Parsed through the real schema, then evaluated at a fixed subject. A
       // catch-all can only be the LAST outcome, so it stands alone.
       const outcomes =
@@ -262,11 +315,11 @@ describe('matchesWhen', () => {
       let out: unknown = null;
       let error: string | null = null;
       try {
-        out = matchesWhen(parsedWhen, { value: 12, roll: 0.6, params }, 'probe');
+        out = matchesWhen(parsedWhen, { value: 12, roll: 0.6, params, metadata }, 'probe');
       } catch (e) {
         error = (e as Error).message;
       }
-      emit({ kind: 'matchesWhen', id, tool: def, when: parsedWhen, out, error });
+      emit({ kind: 'matchesWhen', id, tool: def, when: parsedWhen, metadata: metadata ?? null, out, error });
     }
   });
 });
@@ -280,7 +333,14 @@ describe('executeCustomTool', () => {
       { when: true, message: 'failure at {{value}}', state: 'failure' },
     ];
 
-    const cases: Array<[string, unknown, Record<string, unknown> | null | undefined, { private?: boolean } | undefined]> = [
+    const cases: Array<
+      [
+        string,
+        unknown,
+        Record<string, unknown> | null | undefined,
+        { private?: boolean; metadata?: Record<string, unknown> } | undefined,
+      ]
+    > = [
       ['default-range', { name: 'probe', description: 'd', outcomes: OUTCOMES }, {}, undefined],
       [
         'explicit-range',
@@ -384,6 +444,86 @@ describe('executeCustomTool', () => {
         },
         {},
         undefined,
+      ],
+      // ---- the d68638b4 metadata subject + metadataTested record -----------
+      // A metadata-gated outcome that hits, rendering {{metadata.*}} and
+      // recording metadataTested. min===max draws nothing.
+      [
+        'metadata-gated-hits',
+        {
+          name: 'probe',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          outcomes: [
+            { when: { metadata: { clearance: { gte: 3 } } }, message: 'granted at {{metadata.clearance}}', state: 'success' },
+            { when: true, message: 'denied', state: 'failure' },
+          ],
+        },
+        {},
+        { metadata: { clearance: 5 } },
+      ],
+      // The same table with no sheet → the metadata row declines, the catch-all
+      // answers, metadataTested is absent from the result.
+      [
+        'metadata-gated-no-sheet',
+        {
+          name: 'probe',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          outcomes: [
+            { when: { metadata: { clearance: { gte: 3 } } }, message: 'granted', state: 'success' },
+            { when: true, message: 'denied', state: 'failure' },
+          ],
+        },
+        {},
+        undefined,
+      ],
+      // metadataTested records only the keys the WINNING row tested (primitives),
+      // never the whole sheet — `extra` is on the sheet but untested.
+      [
+        'metadata-tested-records-only-winner-keys',
+        {
+          name: 'probe',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          outcomes: [
+            { when: { metadata: { clearance: { gte: 3 }, house: { eq: 'Aurum' } } }, message: 'ok', state: 'success' },
+            { when: true, message: 'no', state: 'failure' },
+          ],
+        },
+        {},
+        { metadata: { clearance: 5, house: 'Aurum', extra: 'ignored' } },
+      ],
+      // A non-primitive tested key is NOT recorded even when the row wins on its
+      // other, primitive keys.
+      [
+        'metadata-tested-skips-non-primitive',
+        {
+          name: 'probe',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          outcomes: [
+            { when: { metadata: { clearance: { gte: 3 } } }, message: 'ok', state: 'success' },
+            { when: true, message: 'no', state: 'failure' },
+          ],
+        },
+        {},
+        { metadata: { clearance: 5, roster: [1, 2, 3] } },
+      ],
+      // metadata + private together.
+      [
+        'metadata-with-private-override',
+        {
+          name: 'probe',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          outcomes: [
+            { when: { metadata: { clearance: { gte: 3 } } }, message: 'ok', state: 'success' },
+            { when: true, message: 'no', state: 'failure' },
+          ],
+        },
+        {},
+        { private: true, metadata: { clearance: 5 } },
       ],
     ];
 

@@ -94,11 +94,24 @@ fn result_to_json(r: &CustomToolRunResult) -> Value {
         "visibility".into(),
         serde_json::to_value(r.visibility).unwrap(),
     );
+    // `...(metadataTested ? { metadataTested } : {})` — last, and only when set.
+    if let Some(tested) = &r.metadata_tested {
+        let mut mt = Map::new();
+        for (k, v) in tested {
+            mt.insert(k.clone(), resolved_to_json(v));
+        }
+        m.insert("metadataTested".into(), Value::Object(mt));
+    }
     Value::Object(m)
 }
 
 fn supplied_of(row: &Value) -> Option<Map<String, Value>> {
     row.get("supplied").and_then(|v| v.as_object()).cloned()
+}
+
+/// The metadata sheet a row carries, if any (`null`/absent → `None`).
+fn metadata_of(v: Option<&Value>) -> Option<Map<String, Value>> {
+    v.and_then(|v| v.as_object()).cloned()
 }
 
 fn tool_of(row: &Value, id: &str) -> quilltap_core::pascal::custom_tool_types::QtapCustomTool {
@@ -141,6 +154,7 @@ fn pascal_custom_tools_execution_matches_oracle() {
                 let params = quilltap_core::pascal::custom_tools::resolve_params(&tool, None)
                     .unwrap_or_else(|e| panic!("case '{id}': params: {e}"));
                 let message = row["message"].as_str().unwrap();
+                let metadata = metadata_of(row.get("metadata"));
                 let got = render_template(
                     message,
                     &TemplateVars {
@@ -148,6 +162,7 @@ fn pascal_custom_tools_execution_matches_oracle() {
                         roll: 0.6789,
                         dice: "3d6: [4, 2, 6] = 12",
                         params: &params,
+                        metadata: metadata.as_ref(),
                     },
                 );
                 assert_eq!(got, row["out"].as_str().unwrap(), "renderTemplate '{id}'");
@@ -181,10 +196,12 @@ fn pascal_custom_tools_execution_matches_oracle() {
                 let params = quilltap_core::pascal::custom_tools::resolve_params(&tool, None)
                     .unwrap_or_else(|e| panic!("case '{id}': params: {e}"));
                 let when = &tool.outcomes[0].when;
+                let metadata = metadata_of(row.get("metadata"));
                 let subjects = OutcomeSubjects {
                     value: 12.0,
                     roll: 0.6,
                     params: &params,
+                    metadata: metadata.as_ref(),
                 };
                 match matches_when(when, &subjects, "probe") {
                     Ok(held) => {
@@ -205,11 +222,18 @@ fn pascal_custom_tools_execution_matches_oracle() {
                 let tool = tool_of(&row, &id);
                 let supplied = supplied_of(&row);
                 let private = row["overrides"].get("private").and_then(Value::as_bool);
+                let metadata = metadata_of(row["overrides"].get("metadata"));
 
                 let pool = hex_bytes(row["poolHex"].as_str().unwrap());
                 let mut rng = FixedBytes::new(pool);
 
-                let outcome = execute_custom_tool(&tool, supplied.as_ref(), private, &mut rng);
+                let outcome = execute_custom_tool(
+                    &tool,
+                    supplied.as_ref(),
+                    private,
+                    metadata.as_ref(),
+                    &mut rng,
+                );
 
                 // The byte cursor is the assertion inspection cannot make.
                 assert_eq!(

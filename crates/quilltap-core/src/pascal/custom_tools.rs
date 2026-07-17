@@ -8,12 +8,13 @@
 use std::fmt;
 
 use regex::{Captures, Regex};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::sync::LazyLock;
 
 use super::custom_tool_types::{
-    AnyOperand, CustomToolParameter, NumberOrParamRef, NumericComparator, OutcomeState,
-    ParamComparator, ParameterType, QtapCustomTool, Roll, RollRange, Visibility, When, WhenObject,
+    AnyOperand, CustomToolParameter, MetadataComparator, NumberOrParamRef, NumericComparator,
+    OutcomeState, ParamComparator, ParameterType, QtapCustomTool, Roll, RollRange, Visibility,
+    When, WhenObject,
 };
 use super::dice::{format_dice_breakdown, parse_dice_notation, roll_notation, RandomBytes};
 use super::js_value::{json_stringify, number_to_string, to_js_string, to_number, to_precision};
@@ -68,6 +69,22 @@ impl ResolvedValue {
 /// the declaration order v4's `Object.entries` walks.
 pub type ResolvedParams = Vec<(String, ResolvedValue)>;
 
+/// The metadata keys a run actually consulted, and what they held at the time —
+/// v4's `MetadataTested = Record<string, number | string | boolean>`. Ordered,
+/// mirroring the winning `when.metadata` key order v4's `Object.keys` walks.
+pub type MetadataTested = Vec<(String, ResolvedValue)>;
+
+/// v4 `isPrimitive` folded with the JSON-value coercion: the value types a
+/// comparator can compare, as a [`ResolvedValue`]. `None` for null/array/object.
+fn js_primitive(v: &Value) -> Option<ResolvedValue> {
+    match v {
+        Value::Number(n) => Some(ResolvedValue::Number(n.as_f64().unwrap_or(f64::NAN))),
+        Value::String(s) => Some(ResolvedValue::String(s.clone())),
+        Value::Bool(b) => Some(ResolvedValue::Bool(*b)),
+        _ => None,
+    }
+}
+
 fn lookup<'a>(params: &'a ResolvedParams, name: &str) -> Option<&'a ResolvedValue> {
     params.iter().find(|(k, _)| k == name).map(|(_, v)| v)
 }
@@ -96,6 +113,9 @@ pub struct CustomToolRunResult {
     /// Dice breakdown, or `""` for Form A.
     pub dice_breakdown: String,
     pub visibility: Visibility,
+    /// The metadata keys the winning outcome tested, and what they held when it
+    /// was tested. `None` when the winning row consulted no metadata.
+    pub metadata_tested: Option<MetadataTested>,
 }
 
 /// Validate and coerce caller-supplied parameters against the declarations.
@@ -343,6 +363,10 @@ pub struct OutcomeSubjects<'a> {
     pub roll: f64,
     /// The resolved parameters, post-default and post-clamp.
     pub params: &'a ResolvedParams,
+    /// The invoking character's metadata sheet (`metadata.json`). `None` (or an
+    /// empty map) when nobody in particular rolled — every `metadata` test then
+    /// fails and the catch-all answers.
+    pub metadata: Option<&'a Map<String, Value>>,
 }
 
 /// A comparator operand as the evaluator sees it: a literal, or a reference.
@@ -483,9 +507,107 @@ fn param_operands(c: &ParamComparator) -> [(&'static str, Option<OperandSpec<'_>
     ]
 }
 
+/// Evaluate one comparator against one metadata key — the fail-soft twin of
+/// [`matches_comparator`].
+///
+/// Everything `matches_comparator` treats as a regression worth throwing over
+/// is, here, an ordinary fact about a character: the key may not exist, or may
+/// hold a list, or may hold a string where the table wanted a number. Metadata
+/// keys are undeclared by nature — no load-time check could have caught any of
+/// it — so each of those simply fails to match, the row is passed over, and the
+/// table's mandatory catch-all does what the author wrote it to do.
+///
+/// `$param` operands still throw if they don't resolve: those ARE load-validated,
+/// so a failure there is a regression rather than a fact about the character.
+fn matches_metadata_comparator(
+    tool_name: &str,
+    comparator: &MetadataComparator,
+    key: &str,
+    metadata: &Map<String, Value>,
+    params: &ResolvedParams,
+) -> Result<bool, CustomToolRunError> {
+    // The character has no such metadata key — decline before touching operands,
+    // so a `$param` operand is never even resolved (let alone thrown over).
+    let Some(raw) = metadata.get(key) else {
+        return Ok(false);
+    };
+    // The key holds null/array/object — cannot be compared.
+    let Some(subject) = js_primitive(raw) else {
+        return Ok(false);
+    };
+
+    let label = format!("metadata \"{key}\"");
+    for (ck, operand) in param_operands(comparator) {
+        let Some(operand) = operand else { continue };
+        let op_label = format!("{label} {ck}");
+
+        if matches!(ck, "gt" | "gte" | "lt" | "lte") {
+            // v4 resolves the operand FIRST (so a `$param` still throws), THEN
+            // declines when either side is not a number.
+            let resolved = resolve_operand(tool_name, &operand, params, &op_label)?;
+            let (ResolvedValue::Number(s), ResolvedValue::Number(o)) = (&subject, &resolved) else {
+                return Ok(false);
+            };
+            let held = match ck {
+                "gt" => s > o,
+                "gte" => s >= o,
+                "lt" => s < o,
+                _ => s <= o,
+            };
+            if !held {
+                return Ok(false);
+            }
+            continue;
+        }
+
+        let resolved = resolve_operand(tool_name, &operand, params, &op_label)?;
+        let held = if ck == "eq" {
+            subject.strict_eq(&resolved)
+        } else {
+            !subject.strict_eq(&resolved)
+        };
+        if !held {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
+/// The metadata a winning outcome consulted, for the roll record — only the keys
+/// that row actually tested, and only their primitive values.
+///
+/// A row whose metadata comparator declined (absent key, non-primitive value,
+/// wrong type) is precisely a row that did not win, so recording every primitive
+/// key it tested records exactly what the table saw, not the whole sheet.
+pub fn collect_metadata_tested(
+    when: &When,
+    metadata: Option<&Map<String, Value>>,
+) -> Option<MetadataTested> {
+    let When::Object(w) = when else {
+        return None;
+    };
+    let tested_keys = w.metadata.as_ref()?;
+    let metadata = metadata?;
+
+    let mut tested = Vec::new();
+    for (key, _comparator) in tested_keys {
+        if let Some(v) = metadata.get(key) {
+            if let Some(prim) = js_primitive(v) {
+                tested.push((key.clone(), prim));
+            }
+        }
+    }
+    if tested.is_empty() {
+        None
+    } else {
+        Some(tested)
+    }
+}
+
 /// Evaluate an outcome test. Every subject named must hold — bare comparators
 /// against the final value, `roll` against the raw draw, `params` against what
-/// the caller supplied.
+/// the caller supplied, `metadata` against the invoking character's fact sheet.
 pub fn matches_when(
     when: &When,
     subjects: &OutcomeSubjects,
@@ -541,6 +663,18 @@ pub fn matches_when(
         }
     }
 
+    // `metadata` against the invoking character's fact sheet — `None` behaves as
+    // v4's `subjects.metadata ?? {}`, so every key is absent and declines.
+    if let Some(entries) = when.metadata.as_ref() {
+        let empty = Map::new();
+        let metadata = subjects.metadata.unwrap_or(&empty);
+        for (key, comparator) in entries {
+            if !matches_metadata_comparator(tool_name, comparator, key, metadata, params)? {
+                return Ok(false);
+            }
+        }
+    }
+
     Ok(true)
 }
 
@@ -564,10 +698,15 @@ pub struct TemplateVars<'a> {
     pub roll: f64,
     pub dice: &'a str,
     pub params: &'a ResolvedParams,
+    pub metadata: Option<&'a Map<String, Value>>,
 }
 
-/// Substitute the three placeholder families. Plain string replacement — user
+/// Substitute the four placeholder families. Plain string replacement — user
 /// text is never interpreted, and an unknown placeholder is left as written.
+///
+/// `{{metadata.key}}` follows that same leave-it-as-written rule when the key is
+/// absent or holds a list or an object: the placeholder left standing tells the
+/// author exactly which key their character lacks.
 pub fn render_template(message: &str, vars: &TemplateVars) -> String {
     TEMPLATE_RE
         .replace_all(message, |caps: &Captures| {
@@ -594,6 +733,23 @@ pub fn render_template(message: &str, vars: &TemplateVars) -> String {
                 }
             }
 
+            if let Some(name) = key.strip_prefix("metadata.") {
+                // A primitive renders (numbers via `format_value`, else String);
+                // a missing key or a list/object leaves the placeholder verbatim.
+                if let Some(v) = vars
+                    .metadata
+                    .and_then(|m| m.get(name))
+                    .and_then(js_primitive)
+                {
+                    return match v {
+                        ResolvedValue::Number(n) => format_value(n),
+                        ResolvedValue::String(s) => s,
+                        ResolvedValue::Bool(b) => b.to_string(),
+                    };
+                }
+                return whole.to_string();
+            }
+
             // An unknown placeholder is left verbatim — v4 logs it at debug.
             whole.to_string()
         })
@@ -608,6 +764,7 @@ pub fn execute_custom_tool(
     definition: &QtapCustomTool,
     supplied_params: Option<&serde_json::Map<String, Value>>,
     private: Option<bool>,
+    metadata: Option<&Map<String, Value>>,
     rng: &mut dyn RandomBytes,
 ) -> Result<CustomToolRunResult, CustomToolRunError> {
     let params = resolve_params(definition, supplied_params)?;
@@ -656,6 +813,7 @@ pub fn execute_custom_tool(
         value,
         roll: raw,
         params: &params,
+        metadata,
     };
     let mut outcome_index = None;
     for (i, o) in definition.outcomes.iter().enumerate() {
@@ -681,8 +839,10 @@ pub fn execute_custom_tool(
             roll: raw,
             dice: &dice_breakdown,
             params: &params,
+            metadata,
         },
     );
+    let metadata_tested = collect_metadata_tested(&outcome.when, metadata);
 
     let visibility = match private {
         Some(true) => Visibility::Whisper,
@@ -703,5 +863,6 @@ pub fn execute_custom_tool(
         message,
         dice_breakdown,
         visibility,
+        metadata_tested,
     })
 }

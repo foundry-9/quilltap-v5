@@ -18670,3 +18670,93 @@ at `d68638b4`):**
   `characters_subresources`, `characters_scaffold_tier2`, `characters_create_tier2`,
   `characters_provision_tier2`, `characters_adopt_tier2`, `characters_arrays_tier2`,
   `characters_physical_tier2`, `vault_summary_mirror_tier2`.
+## P4.6ay unit 11 — the d68638b4 metadata re-port (2026-07-17)
+
+Branch `claude/pascal-custom-tools-porting-243efb`, off main (`d710c27f`). Drift
+re-checked at lane start: v4 HEAD is exactly `d68638b4`, unmoved
+(`git log d68638b4..HEAD` empty). First unit of the RESUMED lane per the
+re-baseline addendum (order: 11 → 2 → 5 → 6 → 4 → 8 → 9 → 7 → 12).
+
+Absorbs the drift the d68638b4 feature introduced to the two landed units plus
+the changed `run_custom` description, so the three existing pascal /
+tool-definitions differentials are green again at the new baseline.
+
+### What landed
+
+- **Definition format (`pascal/custom_tool_types.rs`).** `WhenObject` gains an
+  optional `metadata: Vec<(String, ParamComparator)>` (serialized after `params`,
+  the v4 shape order); `MetadataComparator` is a `ParamComparator` alias.
+  `parse_record` generalized to take a key validator — `params` keeps the
+  identifier grammar, `metadata` takes `z.string().min(1)` (any non-empty
+  string); both emit Zod's same aborting `invalid_key` "Invalid key in record".
+  The "must test something" refine grew the `metadata` arm and its message.
+  `validate_metadata_operands` is the deliberately shallow load check: it only
+  reports an undeclared-`$param` operand (subject existence/type is unknowable at
+  load — carried the why-comment).
+- **Execution core (`pascal/custom_tools.rs`).** `OutcomeSubjects.metadata`
+  (`Option<&Map>`); `MetadataTested`; `js_primitive` (isPrimitive folded with the
+  JSON→ResolvedValue coercion); `matches_metadata_comparator` — the fail-soft
+  twin: absent key / non-primitive subject / ordering-vs-non-number decline
+  (return false), `$param` operands still throw if unresolved, operand resolved
+  BEFORE the type check (v4 order); `matches_when` ANDs the metadata loop over
+  `subjects.metadata ?? {}`; `collect_metadata_tested` records only the winning
+  row's tested primitive keys in `when.metadata` key order; `render_template`
+  gains `{{metadata.key}}` (primitive renders, missing/non-primitive → verbatim);
+  `execute_custom_tool` takes a `metadata` override and returns `metadata_tested`.
+- **`tools/definitions/data.rs`.** The `run_custom` empty-roster description grew
+  v4's exact sentence ("An outcome table may also consult your own character's
+  metadata, so the same tool can deal differently to different characters.")
+  after the "Do not describe the result before calling…" line.
+
+### Differentials (all green, extended at `d68638b4`)
+
+- `pascal_custom_tool_definition_equivalence` — **105 definitions + 10 titles**
+  (was 102 defs). New rows: metadata subjects accepted (ANDed, only-subject,
+  non-identifier key, caps key, `$param` operand, made-up key, ordering on any
+  key, multi-key) and rejected (empty object, empty comparator, empty-string key,
+  misspelled comparator, undeclared `$param` operand). The empty-string-key and
+  misspelled-comparator rows exercise the `when` union flattening
+  (`Invalid input: expected true — or — metadata.…`).
+- `pascal_custom_tools_execution_equivalence` — **146 rows** (23 execute /
+  29 formatValue / 37 matchesWhen / 28 renderTemplate / 29 resolveParams). New
+  matchesWhen rows thread a fixed SHEET; new executeCustomTool rows cover a
+  metadata-gated hit (metadataTested + `{{metadata.*}}`), the no-sheet decline,
+  winner-keys-only recording, non-primitive skip, and metadata+private together.
+  Harness updated: `OutcomeSubjects`/`TemplateVars`/`execute_custom_tool` take
+  metadata; `result_to_json` appends `metadataTested`.
+- `tool_definitions_equivalence` — **58 tools byte-exact**, `run_custom`
+  description now carries the metadata sentence.
+
+### Regen recipes (all at v4 `d68638b4`, Node 24 `~/.nvm/versions/node/v24.13.1/bin`)
+
+```bash
+V5W=/Users/csebold/source/quilltap-v5/.claude/worktrees/pascal-custom-tools-porting-243efb
+N=~/.nvm/versions/node/v24.13.1/bin
+cd ~/source/quilltap-server
+# definition + tool-definitions (tsx)
+$N/npx tsx "$V5W/harness/oracle/cases/pascal-custom-tool-definition.ts" > /tmp/oracle-pascal-definition.ndjson
+$N/npx tsx "$V5W/harness/oracle/cases/tool-definitions.ts" > /tmp/oracle-tool-definitions.ndjson
+$N/npx tsx "$V5W/harness/oracle/cases/tool-definitions-canonical.ts" > /tmp/oracle-tool-definitions-canonical.ndjson
+# execution (jest; /tmp mirror because jest ignores .claude/ paths)
+TMPO=/tmp/qt-pascal-exec-oracle; rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+cp "$V5W/harness/oracle/cases/pascal-custom-tools-execution.test.ts" "$TMPO/cases/"
+QT_ORACLE_OUT=/tmp/oracle-pascal-execution.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- pascal-custom-tools-execution
+```
+Run:
+```bash
+QT_ORACLE_PASCAL_DEFINITION=/tmp/oracle-pascal-definition.ndjson \
+QT_ORACLE_PASCAL_EXECUTION=/tmp/oracle-pascal-execution.ndjson \
+QT_ORACLE_TOOL_DEFINITIONS=/tmp/oracle-tool-definitions.ndjson \
+QT_ORACLE_TOOL_DEFINITIONS_CANONICAL=/tmp/oracle-tool-definitions-canonical.ndjson \
+  cargo test -p quilltap-harness
+```
+
+### Note for the resuming units
+
+`js_primitive` lives in `custom_tools.rs` (it folds the JSON→ResolvedValue
+coercion metadata comparison needs). The `character.metadata` hydration is lane
+AZ's (§2); units 4/7 consume it through the hydrated character read only.
+
+Versions: core 0.0.247, harness 0.0.220.

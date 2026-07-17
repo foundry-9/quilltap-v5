@@ -41,10 +41,10 @@
  * the port's note on `finite`. Every other route to `.finite()` is closed:
  * JSON has no `Infinity` or `NaN` literal.
  *
- * Run from inside the server checkout (v4 @ e3593f75, Node 24):
+ * Run from inside the server checkout (v4 @ d68638b4, Node 24):
  *   cd ~/source/quilltap-server
  *   npx tsx \
- *     ~/source/quilltap-v5/.claude/worktrees/pascal-custom-tools-porting-dd49d0/harness/oracle/cases/pascal-custom-tool-definition.ts \
+ *     ~/source/quilltap-v5/.claude/worktrees/pascal-custom-tools-porting-243efb/harness/oracle/cases/pascal-custom-tool-definition.ts \
  *     > /tmp/oracle-pascal-definition.ndjson
  */
 
@@ -113,6 +113,15 @@ const corpus: Array<[string, unknown]> = [
   ['neq-boolean-param', withWhen({ params: { lit: { neq: false } } }, BOOL_PARAM)],
   ['param-ref-operand', withWhen({ gte: { $param: 'scale' } }, NUM_PARAM)],
   ['param-ref-operand-integer', withWhen({ gte: { $param: 'steps' } }, INT_PARAM)],
+  // ---- accepted: the d68638b4 metadata subject -----------------------------
+  ['metadata-anded-with-value', withWhen({ gt: 0.6, metadata: { hasAnsibleAccess: { eq: true } } })],
+  ['metadata-only-subject', withWhen({ metadata: { clearanceLevel: { gte: 3 } } })],
+  ['metadata-key-non-identifier', withWhen({ metadata: { 'Clearance Level': { gte: 3 } } })],
+  ['metadata-key-caps', withWhen({ metadata: { HOUSE: { eq: 'Aurum' } } })],
+  ['metadata-param-operand', withWhen({ metadata: { clearanceLevel: { gte: { $param: 'scale' } } } }, NUM_PARAM)],
+  ['metadata-made-up-key', withWhen({ metadata: { utterlyMadeUp: { eq: true } } })],
+  ['metadata-ordering-any-key', withWhen({ metadata: { faction: { gt: 1 } } })],
+  ['metadata-multi-key', withWhen({ metadata: { clearanceLevel: { gte: 3 }, HOUSE: { eq: 'Aurum' } } })],
   ['roll-range-full', { ...BASE, roll: { min: 0, max: 20, multiplier: 2, offset: 1, round: true } }],
   ['roll-range-param-refs', { ...BASE, ...NUM_PARAM, roll: { max: { $param: 'scale' } } }],
   ['roll-dice', { ...BASE, roll: '3d6+2' }],
@@ -160,6 +169,12 @@ const corpus: Array<[string, unknown]> = [
   ['param-default-wrong-type-boolean', { ...BASE, parameters: { lit: { type: 'boolean', default: 'yes' } } }],
   ['param-name-not-identifier', { ...BASE, parameters: { 'Bad Name': { type: 'number', default: 1 } } }],
   ['params-key-not-identifier', withWhen({ params: { 'Bad Key': { gt: 1 } } }, NUM_PARAM)],
+  // ---- rejected: metadata subject load-time rules --------------------------
+  ['metadata-empty-object', withWhen({ metadata: {} })],
+  ['metadata-empty-comparator', withWhen({ metadata: { faction: {} } })],
+  ['metadata-empty-string-key', withWhen({ metadata: { '': { eq: 1 } } })],
+  ['metadata-misspelled-comparator', withWhen({ metadata: { faction: { eq: 'Aurum', nonsense: 1 } } })],
+  ['metadata-param-operand-undeclared', withWhen({ metadata: { clearanceLevel: { gte: { $param: 'nope' } } } }, NUM_PARAM)],
   ['too-many-parameters', {
     ...BASE,
     parameters: Object.fromEntries(

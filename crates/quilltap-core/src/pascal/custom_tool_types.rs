@@ -407,12 +407,25 @@ pub struct ParamComparator {
     pub neq: Option<AnyOperand>,
 }
 
+/// A comparator against one key of the invoking character's metadata sheet.
+/// Shape-identical to [`ParamComparator`] — the same six keys, the same widened
+/// eq/neq, the same `$param` operands. It is a distinct name because the two
+/// differ entirely in what can be known at load time: a `params` test names
+/// something the file declares (a misspelling is a rejection), while a
+/// `metadata` test names a key on a character the file has never met, so nothing
+/// here is checkable beyond the comparator's own shape and the run-time rule
+/// closes the gap.
+pub type MetadataComparator = ParamComparator;
+
 /// An outcome test's object form: one or more subjects, ALL of which must hold.
 ///
 /// Bare comparator keys test the final value, so the common case stays as short
 /// as it ever was and every definition written before this key existed still
 /// means what it meant. `roll` tests the raw pre-transform draw; `params` tests
-/// what the caller supplied, keyed by parameter name.
+/// what the caller supplied, keyed by parameter name; `metadata` tests the
+/// invoking character's own fact sheet (`metadata.json`), keyed by whatever the
+/// user called it. A `metadata` key the character lacks is not an error — the
+/// comparator is false and the table falls through to its catch-all.
 ///
 /// There is still no OR and no nesting: ordered, first-match-wins outcomes make
 /// OR unnecessary, and a flat AND of comparators keeps the evaluator eval-free.
@@ -439,6 +452,15 @@ pub struct WhenObject {
         serialize_with = "ser_opt_param_comparators"
     )]
     pub params: Option<Vec<(String, ParamComparator)>>,
+    /// Test the invoking character's `metadata.json`, keyed by metadata key. A
+    /// key the character lacks does not match. Shape-identical to `params`
+    /// (a [`MetadataComparator`] is a [`ParamComparator`]), but its keys are the
+    /// user's own vocabulary, not the identifier grammar.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "ser_opt_param_comparators"
+    )]
+    pub metadata: Option<Vec<(String, ParamComparator)>>,
 }
 
 /// An outcome test: either the literal `true` (catch-all) or a [`WhenObject`].
@@ -822,16 +844,21 @@ fn parse_param_comparator(input: Option<&Value>) -> Res<ParamComparator> {
     }
 }
 
-/// v4 `z.record(IdentifierSchema, …)`: a key failing the identifier rule is an
-/// `invalid_key` issue — aborting, unlike the same regex used as a field check.
+/// v4 `z.record(keySchema, …)`: a key failing `key_valid` is an `invalid_key`
+/// issue — aborting, unlike the same regex used as a field check. `params` keys
+/// take the identifier grammar; `metadata` keys take `z.string().min(1)`
+/// (non-empty), since the user hand-authors `metadata.json` and `HOUSE` or
+/// `Clearance Level` are perfectly ordinary keys. Zod's message is the same
+/// "Invalid key in record" either way.
 fn parse_record<T>(
     obj: &serde_json::Map<String, Value>,
+    key_valid: impl Fn(&str) -> bool,
     mut parse_value: impl FnMut(&Value) -> Res<T>,
 ) -> Res<Vec<(String, T)>> {
     let mut issues = Vec::new();
     let mut out = Vec::new();
     for (key, v) in obj {
-        if !IDENTIFIER_PATTERN.is_match(key) {
+        if !key_valid(key) {
             issues.push(Issue::hard("Invalid key in record").at(key));
             continue;
         }
@@ -1093,7 +1120,11 @@ fn parse_when_object(input: Option<&Value>) -> Res<WhenObject> {
     let mut params_present = false;
     if let Some(Value::Object(p)) = obj.get("params") {
         params_present = true;
-        let r = parse_record(p, |v| parse_param_comparator(Some(v)));
+        let r = parse_record(
+            p,
+            |k| IDENTIFIER_PATTERN.is_match(k),
+            |v| parse_param_comparator(Some(v)),
+        );
         issues.extend(prefix("params", r.issues));
         out.params = r.value;
     } else if let Some(v) = obj.get("params") {
@@ -1103,9 +1134,24 @@ fn parse_when_object(input: Option<&Value>) -> Res<WhenObject> {
             vec![Issue::hard(invalid_type("object", Some(v)))],
         ));
     }
+    let mut metadata_present = false;
+    if let Some(Value::Object(m)) = obj.get("metadata") {
+        metadata_present = true;
+        // Metadata keys are `z.string().min(1)` — any non-empty string, unlike
+        // `params`' identifier grammar.
+        let r = parse_record(m, |k| !k.is_empty(), |v| parse_param_comparator(Some(v)));
+        issues.extend(prefix("metadata", r.issues));
+        out.metadata = r.value;
+    } else if let Some(v) = obj.get("metadata") {
+        metadata_present = true;
+        issues.extend(prefix(
+            "metadata",
+            vec![Issue::hard(invalid_type("object", Some(v)))],
+        ));
+    }
 
     let mut known: Vec<&str> = COMPARATOR_KEYS.to_vec();
-    known.extend_from_slice(&["roll", "params"]);
+    known.extend_from_slice(&["roll", "params", "metadata"]);
     issues.extend(unrecognized_keys(obj, &known));
 
     if aborted(&issues) {
@@ -1118,9 +1164,10 @@ fn parse_when_object(input: Option<&Value>) -> Res<WhenObject> {
     // `.refine(…)` — must test something.
     let has_comparator = COMPARATOR_KEYS.iter().any(|k| obj.contains_key(*k));
     let has_params = params_present && out.params.as_ref().is_some_and(|p| !p.is_empty());
-    if !has_comparator && out.roll.is_none() && !has_params {
+    let has_metadata = metadata_present && out.metadata.as_ref().is_some_and(|m| !m.is_empty());
+    if !has_comparator && out.roll.is_none() && !has_params && !has_metadata {
         issues.push(Issue::check(
-            "must test something: a comparator on the value, `roll`, or a non-empty `params`",
+            "must test something: a comparator on the value, `roll`, a non-empty `params`, or a non-empty `metadata`",
         ));
     }
     Res {
@@ -1264,7 +1311,11 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
 
     let parameters = match obj.get("parameters") {
         Some(Value::Object(p)) => {
-            let r = parse_record(p, |v| parse_parameter(Some(v)));
+            let r = parse_record(
+                p,
+                |k| IDENTIFIER_PATTERN.is_match(k),
+                |v| parse_parameter(Some(v)),
+            );
             let mut param_issues = r.issues;
             // `.refine(… <= MAX_PARAMETERS)` — a check on the record itself, so
             // it is skipped when an entry already aborted.
@@ -1496,6 +1547,48 @@ fn validate_references(tool: &QtapCustomTool, issues: &mut Vec<Issue>) {
                 &p,
             );
         }
+
+        // `metadata` gets a shallower check, and there is no way around it: the
+        // keys live on a character the file has never seen, so neither the key's
+        // existence nor its stored type is knowable here. What IS checkable is
+        // the operand — a `$param` reference must still resolve to a declared
+        // parameter. The rest (absent key, wrong type, non-primitive value) is
+        // caught fail-soft at run time by `matches_when`.
+        for (key, comparator) in when.metadata.iter().flatten() {
+            validate_metadata_operands(
+                tool,
+                comparator,
+                issues,
+                &path(vec!["metadata".into(), key.clone()]),
+            );
+        }
+    }
+}
+
+/// Check only what a metadata comparator can be checked on at load: that every
+/// `$param` operand names a declared parameter. Deliberately silent about the
+/// subject's type — see the caller.
+fn validate_metadata_operands(
+    tool: &QtapCustomTool,
+    c: &MetadataComparator,
+    issues: &mut Vec<Issue>,
+    path: &[String],
+) {
+    let operands: [(&str, Option<Operand>); 6] = [
+        ("gt", c.gt.as_ref().map(number_operand)),
+        ("gte", c.gte.as_ref().map(number_operand)),
+        ("lt", c.lt.as_ref().map(number_operand)),
+        ("lte", c.lte.as_ref().map(number_operand)),
+        ("eq", c.eq.as_ref().map(any_operand)),
+        ("neq", c.neq.as_ref().map(any_operand)),
+    ];
+    for (key, operand) in operands {
+        let Some(operand) = operand else { continue };
+        let mut key_path = path.to_vec();
+        key_path.push(key.to_string());
+        // Only reports an undeclared-`$param` operand; the subject-type check is
+        // deliberately skipped.
+        resolve_operand_type(tool, &operand, issues, &key_path);
     }
 }
 
