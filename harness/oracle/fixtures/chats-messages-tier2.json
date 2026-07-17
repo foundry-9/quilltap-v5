@@ -162,6 +162,28 @@
           "answererId": "bbbb2222-2222-4222-8222-222222222222",
           "question": "What is the answer?"
         },
+        "pascalMeta": {
+          "tool": "saving_throw",
+          "toolTitle": "Saving Throw",
+          "definitionTier": "project",
+          "definitionMountId": "dddd0001-0000-4000-8000-000000000001",
+          "params": {
+            "bonus": 2
+          },
+          "rollForm": "dice",
+          "notation": "3d6+2",
+          "raw": 14,
+          "diceRolls": [
+            4,
+            2,
+            6
+          ],
+          "value": 14,
+          "state": "success",
+          "outcomeIndex": 0,
+          "invokedBy": "llm",
+          "callerParticipantId": "fb000001-0000-4000-8000-000000000001"
+        },
         "customAnnouncer": {
           "kind": "custom",
           "displayName": "The Narrator"
@@ -232,6 +254,18 @@
           "role": "ASSISTANT",
           "content": "A public reply.",
           "participantId": "fc000001-0000-4000-8000-000000000001",
+          "pascalMeta": {
+            "tool": "unlock",
+            "definitionTier": "global",
+            "definitionMountId": "dddd0002-0000-4000-8000-000000000001",
+            "params": {},
+            "rollForm": "range",
+            "raw": 0.7134,
+            "value": 0.7134,
+            "state": "partial",
+            "outcomeIndex": 2,
+            "invokedBy": "user"
+          },
           "createdAt": "2026-02-02T00:00:05.000Z"
         }
       ]

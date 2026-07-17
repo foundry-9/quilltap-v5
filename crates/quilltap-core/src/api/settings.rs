@@ -637,6 +637,12 @@ fn build_settings_assignments(
             bool_field(v, "Invalid autoDetectRng value (must be boolean)")?,
         ));
     }
+    if let Some(v) = obj.get("customTools") {
+        out.push((
+            "customTools",
+            bool_field(v, "Invalid customTools value (must be boolean)")?,
+        ));
+    }
     if let Some(v) = obj.get("agentModeSettings") {
         out.push((
             "agentModeSettings",

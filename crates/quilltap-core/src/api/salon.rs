@@ -478,6 +478,7 @@ fn project_message(e: &Value, attachments: Value) -> Value {
     m.insert("hostEvent".into(), or_null("hostEvent"));
     m.insert("customAnnouncer".into(), or_null("customAnnouncer"));
     m.insert("carinaMeta".into(), or_null("carinaMeta"));
+    m.insert("pascalMeta".into(), or_null("pascalMeta"));
     m.insert(
         "pendingExternalPrompt".into(),
         or_null("pendingExternalPrompt"),

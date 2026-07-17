@@ -31,7 +31,8 @@
 //! The JSON columns (parsed on read) are exactly the schema's array/object
 //! fields — `rawResponse` (`z.record` → object), `attachments`,
 //! `debugMemoryLogs`, `reasoningSegments`, `dangerFlags`, `targetParticipantIds`,
-//! `hostEvent`, `customAnnouncer`, `carinaMeta`, `pendingExternalAttachments`,
+//! `hostEvent`, `customAnnouncer`, `carinaMeta`, `pascalMeta`,
+//! `pendingExternalAttachments`,
 //! `summaryAnchor` (v4's `mapToSQLiteType` + the backend's
 //! `array|object → jsonColumns` detection). Top-level number columns are REAL
 //! affinity, read as `f64` and rendered the JS way via [`js_number_to_json`].
@@ -72,6 +73,12 @@ use super::DbError;
 /// Every column the three union members consume, in a fixed SELECT order. The
 /// `type` discriminator is column 1; `chatId` / `isSilentMessage` are not read
 /// here (see module docs). Indices below match this list.
+///
+/// New columns are APPENDED (`pascalMeta` at 44), never spliced in beside their
+/// schema neighbour: the marshaling below is positional, so inserting one
+/// mid-list would silently re-point every later index. The SELECT order is free
+/// — the emitted key order is fixed by the `Map` insertion order in
+/// [`marshal_message`], not by this list.
 const COLUMNS: &str = "id, type, role, content, rawResponse, tokenCount, promptTokens, \
      completionTokens, swipeGroupId, swipeIndex, attachments, debugMemoryLogs, thoughtSignature, \
      reasoningContent, reasoningSegments, participantId, recoveryType, renderedHtml, dangerFlags, \
@@ -79,7 +86,7 @@ const COLUMNS: &str = "id, type, role, content, rawResponse, tokenCount, promptT
      carinaMeta, pendingExternalPrompt, pendingExternalPromptFull, pendingExternalAttachments, \
      summaryAnchor, context, systemEventType, description, totalTokens, provider, modelName, \
      estimatedCostUSD, createdAt, isSilentMessage, confirmed, confirmationChecked, \
-     confirmationRevised, confirmationNotes, confirmationOriginalContent";
+     confirmationRevised, confirmationNotes, confirmationOriginalContent, pascalMeta";
 
 /// Nullable-optional TEXT/UUID/enum column: `Some` → string, `None` → omit.
 fn put_opt_string(obj: &mut Map<String, Value>, key: &str, v: Option<String>) {
@@ -185,6 +192,9 @@ fn marshal_message(row: &Row) -> Result<Value, rusqlite::Error> {
     put_opt_json(&mut o, "summaryAnchor", row.get(29)?);
     put_opt_json(&mut o, "customAnnouncer", row.get(24)?);
     put_opt_json(&mut o, "carinaMeta", row.get(25)?);
+    // Emitted here — `pascalMeta` follows `carinaMeta` in v4's MessageEventSchema
+    // declaration — though it is SELECTed last (see `COLUMNS`).
+    put_opt_json(&mut o, "pascalMeta", row.get(44)?);
     put_opt_string(&mut o, "pendingExternalPrompt", row.get(26)?);
     put_opt_string(&mut o, "pendingExternalPromptFull", row.get(27)?);
     put_opt_json(&mut o, "pendingExternalAttachments", row.get(28)?);
@@ -331,7 +341,7 @@ mod tests {
         reasoningSegments TEXT, participantId TEXT, recoveryType TEXT, renderedHtml TEXT, \
         dangerFlags TEXT, targetParticipantIds TEXT, isSilentMessage INTEGER, systemSender TEXT, \
         systemKind TEXT, opaqueContent TEXT, hostEvent TEXT, customAnnouncer TEXT, \
-        carinaMeta TEXT, pendingExternalPrompt TEXT, pendingExternalPromptFull TEXT, \
+        carinaMeta TEXT, pascalMeta TEXT, pendingExternalPrompt TEXT, pendingExternalPromptFull TEXT, \
         pendingExternalAttachments TEXT, summaryAnchor TEXT, context TEXT, \
         systemEventType TEXT, description TEXT, totalTokens REAL, provider TEXT, \
         modelName TEXT, estimatedCostUSD REAL, createdAt TEXT, confirmed INTEGER, \

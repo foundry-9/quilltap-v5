@@ -153,6 +153,8 @@ pub struct MessageEventInput {
     #[serde(default)]
     pub carina_meta: Option<CarinaMetaIn>,
     #[serde(default)]
+    pub pascal_meta: Option<PascalMetaIn>,
+    #[serde(default)]
     pub pending_external_prompt: Option<String>,
     #[serde(default)]
     pub pending_external_prompt_full: Option<String>,
@@ -250,6 +252,42 @@ pub struct CustomAnnouncerIn {
 pub struct CarinaMetaIn {
     pub answerer_id: String,
     pub question: String,
+}
+
+/// `pascalMeta` — the persisted record of one custom-tool roll (v4
+/// `chat.types.ts:341`). Field order is the v4 schema's declaration order, which
+/// is the order `JSON.stringify(zodParsed)` emits.
+///
+/// The optional fields are `.optional()` (not `.nullable()`) in v4, so Zod OMITS
+/// the key when the input omits it — hence `skip_serializing_if`:
+///   - `toolTitle` is absent on rows written before the field existed (readers
+///     fall back to `tool`);
+///   - `notation` / `diceRolls` are dice-form only;
+///   - `callerParticipantId` is the LLM path only (a manual run has none).
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PascalMetaIn {
+    pub tool: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_title: Option<String>,
+    pub definition_tier: String,
+    pub definition_mount_id: String,
+    pub params: serde_json::Map<String, serde_json::Value>,
+    pub roll_form: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notation: Option<String>,
+    #[serde(serialize_with = "ser_js_number")]
+    pub raw: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dice_rolls: Option<Vec<i64>>,
+    #[serde(serialize_with = "ser_js_number")]
+    pub value: f64,
+    pub state: String,
+    #[serde(serialize_with = "ser_js_number")]
+    pub outcome_index: f64,
+    pub invoked_by: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub caller_participant_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -560,6 +598,7 @@ fn insert_message(conn: &Connection, chat_id: &str, m: &MessageEventInput) -> Re
     let host_event = opt_json(&m.host_event)?;
     let custom_announcer = opt_json(&m.custom_announcer)?;
     let carina_meta = opt_json(&m.carina_meta)?;
+    let pascal_meta = opt_json(&m.pascal_meta)?;
     let pending_external_attachments = opt_json(&m.pending_external_attachments)?;
     let summary_anchor = opt_json(&m.summary_anchor)?;
     let is_silent_message = is_silent_stored(m.is_silent_message);
@@ -577,11 +616,11 @@ fn insert_message(conn: &Connection, chat_id: &str, m: &MessageEventInput) -> Re
            systemKind, opaqueContent, hostEvent, customAnnouncer, carinaMeta, \
            pendingExternalPrompt, pendingExternalPromptFull, pendingExternalAttachments, \
            summaryAnchor, provider, modelName, createdAt, confirmed, confirmationChecked, \
-           confirmationRevised, confirmationNotes, confirmationOriginalContent) \
+           confirmationRevised, confirmationNotes, confirmationOriginalContent, pascalMeta) \
          VALUES (\
            ?1, ?2, 'message', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, \
            ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, \
-           ?34, ?35, ?36, ?37, ?38, ?39)",
+           ?34, ?35, ?36, ?37, ?38, ?39, ?40)",
         rusqlite::params![
             m.id,
             chat_id,
@@ -622,6 +661,7 @@ fn insert_message(conn: &Connection, chat_id: &str, m: &MessageEventInput) -> Re
             confirmation_revised,
             m.confirmation_notes,
             m.confirmation_original_content,
+            pascal_meta,
         ],
     )?;
     Ok(())

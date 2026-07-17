@@ -16219,3 +16219,201 @@ lane never ran its required full-Playwright step).
 
 **Final versions:** core **0.0.232**, harness **0.0.209**, host
 **0.0.19**, web 0.0.25, quilltap-tauri 0.0.3, SPA **0.5.134**.
+
+---
+
+## P4.6ay unit 10 — the schema adoption (lane C, 2026-07-17)
+
+**Landed.** v4 `a33ac8b8`'s two 4.8.0 columns adopted, per the order's
+human-ruled ADOPT decision. Drift-checked at lane start: `git log
+a33ac8b8..HEAD` in `~/source/quilltap-server` is EMPTY — the oracle baseline
+is stable, working tree clean.
+
+**The nine breakages, all closed:**
+
+1. `provisioning/fresh_schema.json` — **re-dumped** from v4's LIVE
+   `generateDDL` at `a33ac8b8` (not hand-edited). The diff is EXACTLY the two
+   columns and nothing else across all three partitions (main 79 / mount-index
+   29 / llm-logs 3 statements; mount-index + llm-logs byte-identical) —
+   confirming v4 drift, not a v5 bug, and that no other v4 schema movement is
+   hiding in the 8 commits.
+   - `chat_messages`: `"pascalMeta" TEXT` — index 33, right after `carinaMeta`.
+   - `chat_settings`: `"customTools" INTEGER DEFAULT 1` — index 20, right
+     after `autoDetectRng`.
+2. `provisioning/chat_settings_seed.json` — 30 → 31 columns; the `columns`
+   array AND the `values` map moved together (`provisioning/mod.rs:241` errors
+   on any mismatch). Captured by the same dumper run (`QT_SEED_OUT`), so the
+   seed is v4's own `getOrCreateSingleUser` output, not hand-composed.
+3. `db/chat_settings.rs` — all five sites mirrored (+ the doc comment's "five
+   boolean columns" → six): the SELECT list, the INSERT (+1 placeholder), the
+   UPDATE assignment builder, the column-name array, the positional read, and
+   the test-fixture DDL/INSERT.
+4. `db/chats_messages.rs` — new `PascalMetaIn` beside `CarinaMetaIn`, in v4
+   schema field order; `pascalMeta` appended to the INSERT column + bind lists.
+5. `db/chats_messages_read.rs` — `pascalMeta` **appended** to `COLUMNS`
+   (index 44), NOT spliced in beside `carinaMeta`. The order predicted a shift
+   of "every index after 25"; appending avoids it entirely. The SELECT order is
+   free — the emitted key order is fixed by the `Map` insertion order, where
+   `pascalMeta` DOES sit right after `carinaMeta` (v4 `chat.types.ts:341`).
+   A why-comment now pins that rule for the next porter.
+6. `api/salon.rs:480` — `pascalMeta` pass-through (v4 `handlers/get.ts:432`).
+7. `api/settings.rs` — the `customTools` `bool_field` sibling.
+8. Fixtures — see the recipes below.
+9. `qtap-export.schema.json` — v5 has no counterpart at all. A pure gap.
+   **DEFERRED (documented absence), named again here.**
+
+### Two findings the order did not anticipate
+
+**FINDING A — a pre-4.8.0 instance must still OPEN (`chat_settings` read).**
+`find_by_user_id` builds its SELECT through `tolerant_select_list`, which
+substitutes `NULL AS "customTools"` for a column the table lacks. A strict
+mirror of `auto_detect_rng` (`r.get::<_, i64>(20)?`) would then hard-error on
+that NULL, so the ENTIRE settings read fails on any instance older than v4
+4.8.0 — which is exactly the instance the order's accepted consequence #2
+describes ("opened by v5, lacks them"). v4 reads `SELECT *` and parses through
+Zod (`base.repository.ts:245` → `schema.parse`), so an absent column arrives as
+`undefined` and `customTools: z.boolean().default(true)` supplies `true`.
+Reproduced: read as `Option<i64>`, absent → `true`. This is MORE v4-faithful,
+not less. Pinned by a new unit test
+(`find_by_user_id_defaults_custom_tools_when_the_column_is_absent`), mirroring
+the existing `timezone` tolerance test (dogfood finding #2). No stored NULL can
+occur — v4's ALTER carries `DEFAULT 1`.
+
+**FINDING B — ⚠ the committed fixtures (and any pre-4.8.0 real instance)
+break on `pascalMeta`.** `tolerant_select_list` has exactly ONE caller
+(chat_settings), so the message paths name their columns directly: v5's
+`insert_message` INSERT and `chats_messages_read`'s SELECT both now name
+`pascalMeta`, and a table lacking it errors hard. This broke 4 tests against
+the 33 committed `crates/quilltap-web/tests/fixtures/*.db` substrates, which
+were baked before the column existed (`title_update_tier3`,
+`chat_create_end_to_end`, `chat_send_smoke`, `terminal_ws`).
+
+Resolved by a new committed script,
+`harness/oracle/fixtures/migrate-fixtures-pascal-columns.ts`, which runs v4's
+OWN migration SQL verbatim behind v4's own "only if missing" guard:
+
+```sql
+ALTER TABLE "chat_messages" ADD COLUMN "pascalMeta" TEXT DEFAULT NULL
+ALTER TABLE "chat_settings" ADD COLUMN "customTools" INTEGER DEFAULT 1
+```
+
+**Why migrate rather than re-run the 14 `build-*-fixture.ts` builders:**
+(a) a rebuild re-bakes the substrate through 8 commits of unrelated v4 drift,
+churning fixture CONTENT and cascading into every oracle those fixtures feed —
+the ALTER touches the schema and nothing else; (b) three committed fixtures
+(`chat-send-{main,mount}.db`, `salon-llm-logs.db`) have NO builder (P4.2-era
+artifacts), so a rebuild could not reach them; (c) **fidelity** — a rebuild
+gives the `generateDDL` shape (column mid-table), while a REAL instance gets
+these columns from v4's migration, APPENDED. Migrating the fixtures reproduces
+the shape production actually has. The generateDDL shape stays separately
+pinned by `fresh_schema.json` + the provisioning differential, so both shapes
+are covered. Idempotent (a re-run migrates 0). Applied to 14 fixtures.
+
+**⚠ THE SHARP EDGE FOR THE HUMAN — accepted consequence #2 is sharper than
+"lacks them".** v5 opening a v4 instance older than 4.8.0 now fails on
+`getMessages` AND `addMessage` with `no such column: pascalMeta` — it cannot
+read or write messages at all, not merely miss a feature. **This matters for
+dogfooding: `~/qt-dogfood-friday` must be brought to v4 4.8.0's migrations
+before v5 opens it** (or migrated with the same two ALTERs). Extending
+`tolerant_select_list` to the message paths was NOT done — it is out of this
+lane's scope and would need its own differential; flagged here for a ruling.
+(The `chat_settings` half is already tolerant — Finding A.)
+
+### Verification (unit 10)
+
+- `provisioning_equivalence` — **GREEN** against the freshly re-dumped
+  `fresh_schema.json`: v5's provisioned `sqlite_master` per partition equals
+  v4's live generateDDL at `a33ac8b8`. This is the tripwire the test exists to
+  trip, and it now agrees.
+- `verify-v5-provisioned.ts` — **v4 opened and read the v5-provisioned
+  instance** carrying both new columns. Accepted consequence #1 ("harmless")
+  is now empirically proven, not assumed.
+- `builtin_mounts_equivalence` (3 states) + `builtin_templates_equivalence`
+  (3 states) — **GREEN**, regenerated ATOMICALLY with `fresh_schema.json`,
+  which they read directly as their DDL source.
+- `chat_settings_tier2_equivalence` — **GREEN**. `customTools` exercised on
+  all three paths: seed (a NON-default `false`, so the column is proven to
+  round-trip rather than merely agreeing with v4's Zod default), create
+  (`true`), and update (`false` — the new `customTools = ?N` assignment
+  branch).
+- `chats_messages_tier2_equivalence` (write) — **GREEN** with BOTH pascalMeta
+  forms: a dice-form roll with every optional PRESENT (toolTitle / notation /
+  diceRolls / callerParticipantId), and a range-form manual run with every
+  optional OMITTED. That pair proves `PascalMetaIn`'s field order matches Zod's
+  declaration order byte-for-byte, that `skip_serializing_if` matches Zod's
+  omit-on-absent, and that `ser_js_number` renders integer-valued doubles bare.
+- `chats_messages_read_equivalence` — **GREEN**, two Pascal rows appended
+  (`systemSender: 'pascal'` + `systemKind: 'custom-tool-result'`).
+- `chats_messages_ops_tier2_equivalence` — **GREEN** (regenerated; the ops
+  corpus is update/delete/clear, so it carries no pascalMeta of its own).
+- `cargo test --workspace --no-fail-fast`: **1358 passed / 0 failed.**
+  fmt clean; clippy `-D warnings` on BOTH feature sets.
+
+### Two process lessons
+
+- **`cargo test --workspace` is FAIL-FAST per test target.** The first failing
+  binary aborted the run and hid 3 further failures; the summary still read
+  "1 failed". **Always `--no-fail-fast`** when measuring blast radius.
+- **A regenerated oracle can silently pass on STALE data.** The read-fixture
+  builder ERRORED (a duplicate id — my appended row collided with a
+  pre-existing `...00000d` I missed by only inspecting the last three rows),
+  and the differential then ran against the previous fixture and reported OK
+  with ZERO pascalMeta rows. Always grep the regenerated NDJSON for the new
+  row before trusting a green (`[[oracle-regen-from-worktree-path]]`).
+
+### Regen recipes (all at v4 `a33ac8b8`, Node 24 `~/.nvm/versions/node/v24.13.1/bin`)
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin
+W=<this worktree>
+
+# fresh_schema.json + chat_settings_seed.json (the output REPLACES both files)
+cd ~/source/quilltap-server
+QT_SCHEMA_OUT=/tmp/qt-fresh-schema.json QT_SEED_OUT=/tmp/qt-chat-settings-seed.json \
+  $N/npx tsx $W/harness/oracle/provision/dump-fresh-schema.ts
+#   → crates/quilltap-core/src/services/provisioning/{fresh_schema,chat_settings_seed}.json
+#     (both files are committed WITHOUT a trailing newline — preserve that)
+
+# the committed web fixtures (v4's own migration SQL; idempotent)
+$N/node --import tsx $W/harness/oracle/fixtures/migrate-fixtures-pascal-columns.ts \
+  $W/crates/quilltap-web/tests/fixtures
+
+# provisioning
+QT_ORACLE_PROVISION=/tmp/oracle-provision.json QT_V4_FRESH_OUT=/tmp/qt-v4-fresh \
+  $N/npx tsx $W/harness/oracle/provision/build-provision-oracle.ts
+cd $W && QT_ORACLE_PROVISION=/tmp/oracle-provision.json \
+  QT_FIXTURE_V4_FRESH=/tmp/qt-v4-fresh QT_V5_PROVISION_OUT=/tmp/qt-v5-provisioned \
+  cargo test -p quilltap-harness --test provisioning_equivalence -- --nocapture
+cd ~/source/quilltap-server && QT_FIXTURE_V5_PROVISIONED=/tmp/qt-v5-provisioned \
+  $N/npx tsx $W/harness/oracle/provision/verify-v5-provisioned.ts
+
+# chat_settings / chats_messages (each oracle in its OWN clean invocation)
+QT_FIXTURE_OUT=/tmp/qt-chat-settings-fixture.db $N/npx tsx $W/harness/oracle/fixtures/build-chat-settings-fixture.ts
+QT_FIXTURE_CHAT_SETTINGS=/tmp/qt-chat-settings-fixture.db $N/npx tsx $W/harness/oracle/cases/chat-settings-tier2.ts > /tmp/oracle-chat-settings.ndjson
+QT_FIXTURE_OUT=/tmp/qt-chatsmsg-fixture.db $N/npx tsx $W/harness/oracle/fixtures/build-chats-messages-fixture.ts
+QT_FIXTURE_CHATSMSG=/tmp/qt-chatsmsg-fixture.db $N/npx tsx $W/harness/oracle/cases/chats-messages-tier2.ts > /tmp/oracle-chatsmsg.ndjson
+QT_FIXTURE_CHATSMSGREAD=/tmp/qt-chatsmsgread.db $N/npx tsx $W/harness/oracle/fixtures/build-chats-messages-read-fixture.ts
+QT_FIXTURE_CHATSMSGREAD=/tmp/qt-chatsmsgread.db $N/npx tsx $W/harness/oracle/cases/chats-messages-read.ts > /tmp/oracle-chatsmsgread.ndjson
+QT_FIXTURE_OUT=/tmp/qt-chatsmsgops-fixture.db $N/npx tsx $W/harness/oracle/fixtures/build-chats-messages-ops-fixture.ts
+QT_FIXTURE_CHATSMSGOPS=/tmp/qt-chatsmsgops-fixture.db $N/npx tsx $W/harness/oracle/cases/chats-messages-ops-tier2.ts > /tmp/oracle-chatsmsgops.ndjson
+
+# builtin_* (the mirror lets better-sqlite3 + @/ both resolve)
+MIRROR=~/source/quilltap-server/.qt-oracle-mirror; rm -rf $MIRROR; mkdir -p $MIRROR; cp -R $W/harness/oracle $MIRROR/
+: > /tmp/oracle-builtin-mounts.ndjson
+for S in empty dangling live; do QT_STATE=$S $N/npx tsx "$MIRROR/oracle/cases/builtin-mounts.ts" >> /tmp/oracle-builtin-mounts.ndjson; done
+: > /tmp/oracle-builtin-templates.ndjson
+for S in fresh stale-builtin user-same-name; do QT_STATE=$S $N/npx tsx $W/harness/oracle/cases/builtin-templates.ts >> /tmp/oracle-builtin-templates.ndjson; done
+```
+
+### Deferred (loud, named)
+
+- **The migration runner** — human-ruled out of scope; the schema adoption
+  replaces it, with the two accepted consequences (and Finding B's sharper
+  edge) recorded above.
+- **`qtap-export.schema.json`** — v5 has no export-schema counterpart at all.
+  v4 changed it twice in this drift (the `systemSender` enum + the whole
+  `pascalMeta` object; then `toolTitle`). A pure gap, not a break; it will only
+  grow.
+- **`lib/startup/prettify.ts`** — v5 has no prettify subsystem.
+- **Extending `tolerant_select_list` to the message read/write paths** — see
+  Finding B; needs a ruling and its own differential.

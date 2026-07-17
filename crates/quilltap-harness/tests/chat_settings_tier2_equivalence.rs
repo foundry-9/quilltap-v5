@@ -10,7 +10,7 @@
 //! This banks the WIDEST JSON-object surface yet: two UUID TEXT, one enum TEXT +
 //! one plain-string TEXT, a record/map JSON column (tagStyles, kept {}), ~15
 //! nested typed-struct JSON columns reproduced in SCHEMA field order, five
-//! nullable UUID/string TEXT columns, five boolean columns, and the FIRST
+//! nullable UUID/string TEXT columns, six boolean columns, and the FIRST
 //! INTEGER-affinity number column (sidebarWidth: .min(256).max(512) — both bounds
 //! integer → INTEGER, unlike the prior min-only/bare REAL number columns).
 //!
@@ -101,6 +101,7 @@ struct CreateData {
     context_compression_settings: ContextCompressionSettings,
     llm_logging_settings: LlmLoggingSettings,
     auto_detect_rng: bool,
+    custom_tools: bool,
     composition_mode_default: bool,
     composer_spellcheck: bool,
     text_replacements_enabled: bool,
@@ -151,6 +152,7 @@ struct UpdateData {
     auto_lock_settings: Option<AutoLockSettings>,
     #[serde(default)]
     auto_detect_rng: Option<bool>,
+    custom_tools: Option<bool>,
     #[serde(default)]
     composition_mode_default: Option<bool>,
     #[serde(default)]
@@ -237,6 +239,7 @@ fn chat_settings_tier2_matches_oracle() {
                             context_compression_settings: data.context_compression_settings,
                             llm_logging_settings: data.llm_logging_settings,
                             auto_detect_rng: data.auto_detect_rng,
+                            custom_tools: data.custom_tools,
                             composition_mode_default: data.composition_mode_default,
                             composer_spellcheck: data.composer_spellcheck,
                             text_replacements_enabled: data.text_replacements_enabled,
@@ -274,6 +277,7 @@ fn chat_settings_tier2_matches_oracle() {
                                 dangerous_content_settings: data.dangerous_content_settings,
                                 auto_lock_settings: data.auto_lock_settings,
                                 auto_detect_rng: data.auto_detect_rng,
+                                custom_tools: data.custom_tools,
                                 composition_mode_default: data.composition_mode_default,
                                 composer_spellcheck: data.composer_spellcheck,
                                 text_replacements_enabled: data.text_replacements_enabled,

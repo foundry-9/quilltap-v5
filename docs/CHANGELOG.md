@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.6ay unit 10: adopt v4 4.8.0's two new columns — `chat_messages.pascalMeta`
+(the persisted custom-tool roll record) and `chat_settings.customTools` (the
+feature toggle, default on). `fresh_schema.json` re-dumped from v4's live
+generateDDL at a33ac8b8; the chat-settings seed, the settings read/write paths,
+the message write/read marshaling, and the salon read pass-through all carry the
+new columns. A pre-4.8.0 instance lacks `customTools`; the read now supplies
+v4's Zod default (true) instead of erroring. The committed test fixtures are
+brought forward by v4's own migration SQL (new script:
+`harness/oracle/fixtures/migrate-fixtures-pascal-columns.ts`). The migration
+runner itself is not ported. Verified by the provisioning differential against a
+freshly regenerated schema, the v4-reads-v5 cross-compat check, and the
+chat-settings + chats-messages write/read/ops differentials.
+
 The P4.d5 ∥ P4.d6 ∥ P4.6ay round PLANNED (2026-07-16, work orders only —
 no code). A drift check found v4 moved 8 commits past the oracle baseline
 (02865bdb → a33ac8b8): 106 files, ~8,000 insertions, two schema

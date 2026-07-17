@@ -154,7 +154,7 @@ fn make_instance(base: &Path) {
              thoughtSignature TEXT, reasoningContent TEXT, reasoningSegments TEXT, participantId TEXT, \
              recoveryType TEXT, renderedHtml TEXT, dangerFlags TEXT, targetParticipantIds TEXT, \
              systemSender TEXT, systemKind TEXT, opaqueContent TEXT, hostEvent TEXT, customAnnouncer TEXT, \
-             carinaMeta TEXT, pendingExternalPrompt TEXT, pendingExternalPromptFull TEXT, \
+             carinaMeta TEXT, pascalMeta TEXT, pendingExternalPrompt TEXT, pendingExternalPromptFull TEXT, \
              pendingExternalAttachments TEXT, summaryAnchor TEXT, context TEXT, systemEventType TEXT, \
              description TEXT, totalTokens TEXT, provider TEXT, modelName TEXT, estimatedCostUSD TEXT, \
              createdAt TEXT, isSilentMessage TEXT, confirmed TEXT, confirmationChecked TEXT, \

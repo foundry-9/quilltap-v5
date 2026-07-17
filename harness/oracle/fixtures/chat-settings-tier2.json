@@ -123,6 +123,7 @@
         "retentionDays": 30
       },
       "autoDetectRng": true,
+      "customTools": false,
       "compositionModeDefault": false,
       "composerSpellcheck": true,
       "textReplacementsEnabled": true,
@@ -239,6 +240,7 @@
           "retentionDays": 90
         },
         "autoDetectRng": false,
+        "customTools": true,
         "compositionModeDefault": true,
         "composerSpellcheck": false,
         "textReplacementsEnabled": false,
@@ -315,6 +317,7 @@
         },
         "sidebarWidth": 320,
         "autoDetectRng": false,
+        "customTools": false,
         "composerSpellcheck": false,
         "textReplacementsEnabled": false,
         "autoScrollOnResponseComplete": true,

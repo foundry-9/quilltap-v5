@@ -1533,7 +1533,7 @@ mod tests {
         reasoningSegments TEXT, participantId TEXT, recoveryType TEXT, renderedHtml TEXT, \
         dangerFlags TEXT, targetParticipantIds TEXT, isSilentMessage TEXT, systemSender TEXT, \
         systemKind TEXT, opaqueContent TEXT, hostEvent TEXT, customAnnouncer TEXT, \
-        carinaMeta TEXT, pendingExternalPrompt TEXT, pendingExternalPromptFull TEXT, \
+        carinaMeta TEXT, pascalMeta TEXT, pendingExternalPrompt TEXT, pendingExternalPromptFull TEXT, \
         pendingExternalAttachments TEXT, summaryAnchor TEXT, context TEXT, \
         systemEventType TEXT, description TEXT, totalTokens REAL, provider TEXT, \
         modelName TEXT, estimatedCostUSD REAL, createdAt TEXT, confirmed INTEGER, \

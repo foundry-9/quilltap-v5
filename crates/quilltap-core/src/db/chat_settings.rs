@@ -57,9 +57,10 @@
 //!     default; v4 applies the Zod default during `validate`, so a row created
 //!     without it stores `256`. The corpus supplies it explicitly. Bound as
 //!     `i64`.
-//!   - **five boolean columns** → INTEGER 0/1 (`i64::from(bool)`):
-//!     `autoDetectRng`, `compositionModeDefault`, `composerSpellcheck`,
-//!     `textReplacementsEnabled`, `autoScrollOnResponseComplete`.
+//!   - **six boolean columns** → INTEGER 0/1 (`i64::from(bool)`):
+//!     `autoDetectRng`, `customTools`, `compositionModeDefault`,
+//!     `composerSpellcheck`, `textReplacementsEnabled`,
+//!     `autoScrollOnResponseComplete`.
 //!
 //! ### Nested JSON key-order discipline (the load-bearing detail)
 //!
@@ -360,6 +361,7 @@ pub struct ChatSettingsCreate {
     pub context_compression_settings: ContextCompressionSettings,
     pub llm_logging_settings: LlmLoggingSettings,
     pub auto_detect_rng: bool,
+    pub custom_tools: bool,
     pub composition_mode_default: bool,
     pub composer_spellcheck: bool,
     pub text_replacements_enabled: bool,
@@ -405,6 +407,7 @@ pub struct ChatSettingsUpdate {
     pub dangerous_content_settings: Option<DangerousContentSettings>,
     pub auto_lock_settings: Option<AutoLockSettings>,
     pub auto_detect_rng: Option<bool>,
+    pub custom_tools: Option<bool>,
     pub composition_mode_default: Option<bool>,
     pub composer_spellcheck: Option<bool>,
     pub text_replacements_enabled: Option<bool>,
@@ -475,12 +478,14 @@ impl<'c> ChatSettingsRepository<'c> {
                 defaultRoleplayTemplateId, themePreference, sidebarWidth, defaultTimestampConfig, \
                 memoryCascadePreferences, autoHousekeepingSettings, memoryExtractionLimits, \
                 autonomousRoomSettings, tokenDisplaySettings, contextCompressionSettings, \
-                llmLoggingSettings, autoDetectRng, compositionModeDefault, composerSpellcheck, \
+                llmLoggingSettings, autoDetectRng, customTools, compositionModeDefault, \
+                composerSpellcheck, \
                 textReplacementsEnabled, autoScrollOnResponseComplete, agentModeSettings, \
                 coreWhisper, thinkingDisplay, storyBackgroundsSettings, dangerousContentSettings, \
                 autoLockSettings, timezone, createdAt, updatedAt, answerConfirmationSettings) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, \
-                     ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34)",
+                     ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, \
+                     ?35)",
             params![
                 opts.id,
                 data.user_id,
@@ -502,6 +507,7 @@ impl<'c> ChatSettingsRepository<'c> {
                 context_compression_settings,
                 llm_logging_settings,
                 i64::from(data.auto_detect_rng),
+                i64::from(data.custom_tools),
                 i64::from(data.composition_mode_default),
                 i64::from(data.composer_spellcheck),
                 i64::from(data.text_replacements_enabled),
@@ -589,6 +595,10 @@ impl<'c> ChatSettingsRepository<'c> {
         if let Some(auto_detect_rng) = patch.auto_detect_rng {
             assignments.push(format!("autoDetectRng = ?{}", values.len() + 1));
             values.push(Box::new(i64::from(auto_detect_rng)));
+        }
+        if let Some(custom_tools) = patch.custom_tools {
+            assignments.push(format!("customTools = ?{}", values.len() + 1));
+            values.push(Box::new(i64::from(custom_tools)));
         }
         if let Some(composition_mode_default) = patch.composition_mode_default {
             assignments.push(format!("compositionModeDefault = ?{}", values.len() + 1));
@@ -739,6 +749,7 @@ pub fn find_by_user_id(
             "contextCompressionSettings",
             "llmLoggingSettings",
             "autoDetectRng",
+            "customTools",
             "compositionModeDefault",
             "composerSpellcheck",
             "textReplacementsEnabled",
@@ -844,53 +855,67 @@ pub fn find_by_user_id(
                     "autoDetectRng".into(),
                     Value::Bool(r.get::<_, i64>(19)? == 1),
                 );
+                // NULL here means the COLUMN IS ABSENT (the tolerant list above
+                // substitutes NULL for a column the table lacks), not a stored
+                // NULL — v4's ALTER carries `DEFAULT 1`, so no v4-written row
+                // holds one. v4 reads `SELECT *` and parses through Zod, so an
+                // absent column arrives as `undefined` and `customTools:
+                // z.boolean().default(true)` supplies `true`. Reproduce that:
+                // absent → `true`. This is the read half of unit 10's accepted
+                // consequence — v5 provisions the column, but a pre-4.8.0 v4
+                // instance lacks it (v5 does not port the migration runner), and
+                // such an instance must still OPEN.
                 obj.insert(
-                    "compositionModeDefault".into(),
-                    Value::Bool(r.get::<_, i64>(20)? == 1),
+                    "customTools".into(),
+                    Value::Bool(r.get::<_, Option<i64>>(20)?.is_none_or(|v| v == 1)),
                 );
                 obj.insert(
-                    "composerSpellcheck".into(),
+                    "compositionModeDefault".into(),
                     Value::Bool(r.get::<_, i64>(21)? == 1),
                 );
                 obj.insert(
-                    "textReplacementsEnabled".into(),
+                    "composerSpellcheck".into(),
                     Value::Bool(r.get::<_, i64>(22)? == 1),
                 );
                 obj.insert(
-                    "autoScrollOnResponseComplete".into(),
+                    "textReplacementsEnabled".into(),
                     Value::Bool(r.get::<_, i64>(23)? == 1),
                 );
                 obj.insert(
-                    "agentModeSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(24)?),
+                    "autoScrollOnResponseComplete".into(),
+                    Value::Bool(r.get::<_, i64>(24)? == 1),
                 );
                 obj.insert(
-                    "coreWhisper".into(),
+                    "agentModeSettings".into(),
                     parse_json(r.get::<_, Option<String>>(25)?),
                 );
                 obj.insert(
-                    "thinkingDisplay".into(),
+                    "coreWhisper".into(),
                     parse_json(r.get::<_, Option<String>>(26)?),
                 );
                 obj.insert(
-                    "answerConfirmationSettings".into(),
+                    "thinkingDisplay".into(),
                     parse_json(r.get::<_, Option<String>>(27)?),
                 );
                 obj.insert(
-                    "storyBackgroundsSettings".into(),
+                    "answerConfirmationSettings".into(),
                     parse_json(r.get::<_, Option<String>>(28)?),
                 );
                 obj.insert(
-                    "dangerousContentSettings".into(),
+                    "storyBackgroundsSettings".into(),
                     parse_json(r.get::<_, Option<String>>(29)?),
                 );
                 obj.insert(
-                    "autoLockSettings".into(),
+                    "dangerousContentSettings".into(),
                     parse_json(r.get::<_, Option<String>>(30)?),
                 );
-                put_opt(&mut obj, "timezone", r.get::<_, Option<String>>(31)?);
-                obj.insert("createdAt".into(), Value::String(r.get::<_, String>(32)?));
-                obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(33)?));
+                obj.insert(
+                    "autoLockSettings".into(),
+                    parse_json(r.get::<_, Option<String>>(31)?),
+                );
+                put_opt(&mut obj, "timezone", r.get::<_, Option<String>>(32)?);
+                obj.insert("createdAt".into(), Value::String(r.get::<_, String>(33)?));
+                obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(34)?));
                 Ok(Value::Object(obj))
             },
         )
@@ -1181,12 +1206,59 @@ mod tests {
                 autoHousekeepingSettings TEXT, memoryExtractionLimits TEXT, \
                 autonomousRoomSettings TEXT, tokenDisplaySettings TEXT, \
                 contextCompressionSettings TEXT, llmLoggingSettings TEXT, \
-                autoDetectRng INTEGER, compositionModeDefault INTEGER, \
+                autoDetectRng INTEGER, customTools INTEGER, compositionModeDefault INTEGER, \
                 composerSpellcheck INTEGER, textReplacementsEnabled INTEGER, \
                 autoScrollOnResponseComplete INTEGER, agentModeSettings TEXT, \
                 coreWhisper TEXT, thinkingDisplay TEXT, answerConfirmationSettings TEXT, \
                 storyBackgroundsSettings TEXT, dangerousContentSettings TEXT, \
                 autoLockSettings TEXT, createdAt TEXT, updatedAt TEXT);",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO chat_settings (id, userId, avatarDisplayMode, avatarDisplayStyle, \
+             tagStyles, cheapLLMSettings, autoDetectRng, customTools, compositionModeDefault, \
+             composerSpellcheck, textReplacementsEnabled, autoScrollOnResponseComplete, \
+             createdAt, updatedAt) VALUES ('s1', 'u1', 'ALWAYS', 'CIRCULAR', '{}', \
+             '{\"strategy\":\"PROVIDER_CHEAPEST\",\"fallbackToLocal\":true,\
+             \"embeddingProvider\":\"OPENAI\"}', 1, 1, 0, 1, 1, 0, \
+             '2026-07-10T00:00:00.000Z', '2026-07-10T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+
+        let row = find_by_user_id(&conn, "u1").unwrap().expect("row");
+        // The missing column reads as absent (v4 `undefined`, dropped).
+        assert!(row.get("timezone").is_none());
+        assert_eq!(row["avatarDisplayMode"], "ALWAYS");
+        assert_eq!(row["cheapLLMSettings"]["strategy"], "PROVIDER_CHEAPEST");
+    }
+
+    /// Unit 10's accepted consequence, pinned: v5 adopts `customTools` WITHOUT
+    /// porting v4's migration runner, so a pre-4.8.0 v4 instance opened by v5
+    /// genuinely lacks the column. v4 would read it with `SELECT *` and let
+    /// `z.boolean().default(true)` fill the `undefined` — so the absent column
+    /// must surface as `true`, and the row must still READ rather than erroring
+    /// on a NULL-into-`i64` extraction.
+    #[test]
+    fn find_by_user_id_defaults_custom_tools_when_the_column_is_absent() {
+        let conn = Connection::open_in_memory().unwrap();
+        // A pre-4.8.0 table: every column the read names EXCEPT `customTools`.
+        conn.execute_batch(
+            "CREATE TABLE chat_settings (\
+                id TEXT PRIMARY KEY, userId TEXT, avatarDisplayMode TEXT, \
+                avatarDisplayStyle TEXT, tagStyles TEXT, cheapLLMSettings TEXT, \
+                imageDescriptionProfileId TEXT, uncensoredImageDescriptionProfileId TEXT, \
+                defaultRoleplayTemplateId TEXT, themePreference TEXT, sidebarWidth REAL, \
+                defaultTimestampConfig TEXT, memoryCascadePreferences TEXT, \
+                autoHousekeepingSettings TEXT, memoryExtractionLimits TEXT, \
+                autonomousRoomSettings TEXT, tokenDisplaySettings TEXT, \
+                contextCompressionSettings TEXT, llmLoggingSettings TEXT, \
+                autoDetectRng INTEGER, compositionModeDefault INTEGER, \
+                composerSpellcheck INTEGER, textReplacementsEnabled INTEGER, \
+                autoScrollOnResponseComplete INTEGER, agentModeSettings TEXT, \
+                coreWhisper TEXT, thinkingDisplay TEXT, answerConfirmationSettings TEXT, \
+                storyBackgroundsSettings TEXT, dangerousContentSettings TEXT, \
+                autoLockSettings TEXT, timezone TEXT, createdAt TEXT, updatedAt TEXT);",
         )
         .unwrap();
         conn.execute(
@@ -1202,9 +1274,13 @@ mod tests {
         .unwrap();
 
         let row = find_by_user_id(&conn, "u1").unwrap().expect("row");
-        // The missing column reads as absent (v4 `undefined`, dropped).
-        assert!(row.get("timezone").is_none());
-        assert_eq!(row["avatarDisplayMode"], "ALWAYS");
-        assert_eq!(row["cheapLLMSettings"]["strategy"], "PROVIDER_CHEAPEST");
+        // Absent → v4's Zod default, not an error and not `false`.
+        assert_eq!(row["customTools"], serde_json::Value::Bool(true));
+        // The columns either side still land on their own values.
+        assert_eq!(row["autoDetectRng"], serde_json::Value::Bool(true));
+        assert_eq!(
+            row["compositionModeDefault"],
+            serde_json::Value::Bool(false)
+        );
     }
 }

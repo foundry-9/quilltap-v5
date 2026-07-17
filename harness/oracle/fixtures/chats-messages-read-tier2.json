@@ -210,6 +210,60 @@
       "systemEventType": "TITLE_GENERATION",
       "description": "Generated a fresh title.",
       "createdAt": "2026-02-01T00:00:12.000Z"
+    },
+    {
+      "type": "message",
+      "id": "e1000001-0000-4000-8000-00000000000f",
+      "role": "ASSISTANT",
+      "content": "🎲 **Saving Throw** — Saved! (3d6+2: [4, 2, 6] + 2 = 14)",
+      "systemSender": "pascal",
+      "systemKind": "custom-tool-result",
+      "opaqueContent": "🎲 **Saving Throw** — Saved! (3d6+2: [4, 2, 6] + 2 = 14)",
+      "pascalMeta": {
+        "tool": "saving_throw",
+        "toolTitle": "Saving Throw",
+        "definitionTier": "character",
+        "definitionMountId": "dddd0001-0000-4000-8000-000000000001",
+        "params": {
+          "bonus": 2
+        },
+        "rollForm": "dice",
+        "notation": "3d6+2",
+        "raw": 14,
+        "diceRolls": [
+          4,
+          2,
+          6
+        ],
+        "value": 14,
+        "state": "success",
+        "outcomeIndex": 0,
+        "invokedBy": "llm",
+        "callerParticipantId": "f1000001-0000-4000-8000-000000000001"
+      },
+      "createdAt": "2026-02-01T00:00:13.000Z"
+    },
+    {
+      "type": "message",
+      "id": "e1000001-0000-4000-8000-00000000000e",
+      "role": "ASSISTANT",
+      "content": "🎲 **Unlock** — The lock is giving way…",
+      "systemSender": "pascal",
+      "systemKind": "custom-tool-result",
+      "opaqueContent": "🎲 **Unlock** — The lock is giving way…",
+      "pascalMeta": {
+        "tool": "unlock",
+        "definitionTier": "global",
+        "definitionMountId": "dddd0002-0000-4000-8000-000000000001",
+        "params": {},
+        "rollForm": "range",
+        "raw": 0.7134,
+        "value": 0.7134,
+        "state": "partial",
+        "outcomeIndex": 2,
+        "invokedBy": "user"
+      },
+      "createdAt": "2026-02-01T00:00:14.000Z"
     }
   ],
   "queries": [

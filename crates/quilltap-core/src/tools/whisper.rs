@@ -324,6 +324,7 @@ async fn execute_whisper_inner(
                 host_event: None,
                 custom_announcer: None,
                 carina_meta: None,
+                pascal_meta: None,
                 pending_external_prompt: None,
                 pending_external_prompt_full: None,
                 pending_external_attachments: None,
