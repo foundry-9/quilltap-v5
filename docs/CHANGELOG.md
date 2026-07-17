@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.d7 unit 3: case-insensitive, case-preserving folder + link resolution
+(v4 0a0419f5). ensure_link_folder_id and ensure_folder_path walk folder
+segments with an exact-match-then-NOCASE query and continue under the folder's
+STORED casing, returning the canonical directory; the database-store link
+upserts (link_document_content, link_blob_content) probe the existing row
+case-insensitively on the canonical path and update it IN PLACE keeping its
+stored casing; link_filesystem_file matches case-insensitively but ADOPTS the
+scanned casing (the filesystem is the source of truth); doc_mount_folders
+find_by_mount_point_and_path gains the exact-then-lowercased-scan fallback.
+Differentials: doc_mount_file_links_tier2 gains two case-variant ops, and a new
+mount_case_resolution differential proves the blob (case-preserving) and
+filesystem (case-adopting) sites against v4's real repo.
+
 P4.d7 unit 2: the mount-index case-collision repair pass
 (db/mount_index_case_repair.rs, porting v4's mount-index-case-repair.ts). At
 boot it renames the newer of any case-colliding folder siblings, file links, or

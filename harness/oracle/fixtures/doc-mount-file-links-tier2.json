@@ -17,7 +17,13 @@
     "(5) rewriting path (2) with new content → link upsert-in-place + a new file/document",
     "row (the old ones survive, still referenced by (4)); (6) a markdown file whose",
     "frontmatter sets character_read:false → the policy cascade forces all three allow*",
-    "flags to 0, verified against v4's real yaml-based policyFromContent."
+    "flags to 0, verified against v4's real yaml-based policyFromContent;",
+    "(7) [0a0419f5] KNOWLEDGE/atlas.md — a case-variant of the existing Knowledge folder:",
+    "ensureLinkFolderId REUSES it under its stored casing, so the link's relativePath is",
+    "Knowledge/atlas.md (canonical dir) and NO KNOWLEDGE folder row is minted;",
+    "(8) [0a0419f5] DESCRIPTION.md — a case-variant of the existing description.md link:",
+    "the NOCASE upsert updates that row IN PLACE keeping its description.md casing (new",
+    "file/document, the link's relativePath/fileName unchanged)."
   ],
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "store": {
@@ -46,6 +52,8 @@
     { "kind": "write", "relativePath": "Knowledge/notes.md", "content": "alpha beta gamma" },
     { "kind": "write", "relativePath": "alias.md", "content": "# Crew\n\nThe quick brown fox jumps over the lazy dog." },
     { "kind": "write", "relativePath": "description.md", "content": "# Crew\n\nA wholly rewritten body." },
-    { "kind": "write", "relativePath": "secret.md", "content": "---\ncharacter_read: false\n---\n\nFor the operator's eyes only." }
+    { "kind": "write", "relativePath": "secret.md", "content": "---\ncharacter_read: false\n---\n\nFor the operator's eyes only." },
+    { "kind": "write", "relativePath": "KNOWLEDGE/atlas.md", "content": "delta epsilon zeta" },
+    { "kind": "write", "relativePath": "DESCRIPTION.md", "content": "# Crew\n\nA case-variant rewrite of the description." }
   ]
 }

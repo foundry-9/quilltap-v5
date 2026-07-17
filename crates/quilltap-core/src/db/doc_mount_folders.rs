@@ -109,12 +109,18 @@ impl<'c> DocMountFoldersRepository<'c> {
     /// v4 `docMountFolders.findByMountPointAndPath`: the single folder at a
     /// `(mountPointId, path)`, or `None`. Used by the database-store folder ops
     /// (delete/move/exists) and by `folderHasContents`'s folder-first lookup.
+    ///
+    /// Case-insensitive with an exact-match fast path: the folder namespace is
+    /// case-insensitive (sibling names are unique except by casing), so
+    /// `Lore/Maps` resolves the folder stored as `lore/maps`. Matches the
+    /// `LOWER()`-based file-path lookups. Mirrors v4's exact-then-lowercased-scan.
     pub fn find_by_mount_point_and_path(
         &self,
         mount_point_id: &str,
         path: &str,
     ) -> Result<Option<FolderRow>, DbError> {
-        self.conn
+        let exact = self
+            .conn
             .query_row(
                 "SELECT id, mountPointId, parentId, name, path, createdAt \
                    FROM doc_mount_folders \
@@ -126,8 +132,14 @@ impl<'c> DocMountFoldersRepository<'c> {
             .map(Some)
             .or_else(|e| match e {
                 rusqlite::Error::QueryReturnedNoRows => Ok(None),
-                other => Err(other.into()),
-            })
+                other => Err(DbError::from(other)),
+            })?;
+        if exact.is_some() {
+            return Ok(exact);
+        }
+        let needle = path.to_lowercase();
+        let all = self.find_by_mount_point_id(mount_point_id)?;
+        Ok(all.into_iter().find(|f| f.path.to_lowercase() == needle))
     }
 
     /// v4 `docMountFolders.findByMountPointId`: every folder row for a mount

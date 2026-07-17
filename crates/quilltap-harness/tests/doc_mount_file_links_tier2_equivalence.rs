@@ -235,10 +235,40 @@ fn doc_mount_file_links_tier2_matches_oracle() {
     let docs = got[1]["rows"].as_array().expect("documents rows");
     let links = got[2]["rows"].as_array().expect("links rows");
     let folders = got[3]["rows"].as_array().expect("folders rows");
-    assert_eq!(files.len(), 5, "expected 5 deduped file rows");
-    assert_eq!(docs.len(), 5, "expected 5 document rows");
-    assert_eq!(links.len(), 5, "expected 5 link rows");
+    // 8 write ops → 7 distinct content rows (op4 alias.md dedups op2's content),
+    // 6 links (op8's DESCRIPTION.md upserts description.md in place — no new link),
+    // 1 folder (op7's KNOWLEDGE reuses the Knowledge folder case-insensitively).
+    assert_eq!(files.len(), 7, "expected 7 deduped file rows");
+    assert_eq!(docs.len(), 7, "expected 7 document rows");
+    assert_eq!(links.len(), 6, "expected 6 link rows");
     assert_eq!(folders.len(), 1, "expected 1 folder row (Knowledge)");
+
+    // [0a0419f5] Case-preserving: DESCRIPTION.md updated description.md IN PLACE,
+    // keeping its stored casing (no DESCRIPTION.md link), and KNOWLEDGE/atlas.md
+    // reused the Knowledge folder under its stored casing (no KNOWLEDGE folder).
+    assert!(
+        links
+            .iter()
+            .any(|r| r["relativePath"] == Value::String("description.md".into())),
+        "description.md link should keep its casing"
+    );
+    assert!(
+        !links
+            .iter()
+            .any(|r| r["relativePath"] == Value::String("DESCRIPTION.md".into())),
+        "no DESCRIPTION.md case-variant link should exist"
+    );
+    assert!(
+        links
+            .iter()
+            .any(|r| r["relativePath"] == Value::String("Knowledge/atlas.md".into())),
+        "Knowledge/atlas.md should use the stored folder casing"
+    );
+    assert_eq!(
+        folders[0]["path"],
+        Value::String("Knowledge".into()),
+        "the single folder keeps its Knowledge casing"
+    );
 
     // The dedup invariant: alias.md and the FIRST description.md write share content,
     // so two link rows reference the same file id (post-remap token).

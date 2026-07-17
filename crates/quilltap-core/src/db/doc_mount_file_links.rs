@@ -638,14 +638,23 @@ impl<'c> DocMountFileLinksRepository<'c> {
         };
 
         // 3. derive folderId from relativePath (find-or-create folder segments).
-        let folder_id =
+        //    canonicalDir carries the stored folder casing so the link's path
+        //    never disagrees with the folder rows except in the leaf name.
+        let (folder_id, canonical_dir) =
             ensure_link_folder_id(&tx, &input.mount_point_id, &input.relative_path, &now)?;
+        let canonical_rel = if canonical_dir.is_empty() {
+            input.file_name.clone()
+        } else {
+            format!("{canonical_dir}/{}", input.file_name)
+        };
 
-        // 4. upsert doc_mount_file_links by (mountPointId, relativePath).
+        // 4. Case-insensitive, case-preserving upsert: a write to `NOTES.md`
+        //    updates the row stored as `notes.md` and keeps its casing.
         let existing_link: Option<String> = tx
             .query_row(
-                "SELECT id FROM doc_mount_file_links WHERE mountPointId = ?1 AND relativePath = ?2",
-                params![input.mount_point_id, input.relative_path],
+                "SELECT id FROM doc_mount_file_links \
+                 WHERE mountPointId = ?1 AND relativePath = ?2 COLLATE NOCASE",
+                params![input.mount_point_id, canonical_rel],
                 |row| row.get::<_, String>(0),
             )
             .map(Some)
@@ -654,15 +663,14 @@ impl<'c> DocMountFileLinksRepository<'c> {
         let link_id = if let Some(link_id) = existing_link {
             tx.execute(
                 "UPDATE doc_mount_file_links SET \
-                   fileId = ?1, fileName = ?2, folderId = ?3, \
-                   plainTextLength = ?4, \
+                   fileId = ?1, folderId = ?2, \
+                   plainTextLength = ?3, \
                    conversionStatus = 'converted', conversionError = NULL, \
-                   allowEmbed = ?5, allowCharacterRead = ?6, allowCharacterWrite = ?7, \
-                   lastModified = ?8, updatedAt = ?9 \
-                 WHERE id = ?10",
+                   allowEmbed = ?4, allowCharacterRead = ?5, allowCharacterWrite = ?6, \
+                   lastModified = ?7, updatedAt = ?8 \
+                 WHERE id = ?9",
                 params![
                     file_id,
-                    input.file_name,
                     folder_id,
                     input.plain_text_length,
                     allow_embed,
@@ -692,7 +700,7 @@ impl<'c> DocMountFileLinksRepository<'c> {
                     link_id,
                     file_id,
                     input.mount_point_id,
-                    input.relative_path,
+                    canonical_rel,
                     input.file_name,
                     folder_id,
                     input.plain_text_length,
@@ -782,9 +790,16 @@ impl<'c> DocMountFileLinksRepository<'c> {
 
         // 3. derive folderId from relativePath (find-or-create folder segments).
         //    (v4 derives folderId before the blob upsert; order is immaterial to
-        //    the DB result — both run inside the one transaction.)
-        let folder_id =
+        //    the DB result — both run inside the one transaction.) canonicalDir
+        //    carries the stored folder casing so the link's path never disagrees
+        //    with the folder rows except in the leaf name.
+        let (folder_id, canonical_dir) =
             ensure_link_folder_id(&tx, &input.mount_point_id, &input.relative_path, &now)?;
+        let canonical_rel = if canonical_dir.is_empty() {
+            input.file_name.clone()
+        } else {
+            format!("{canonical_dir}/{}", input.file_name)
+        };
 
         // 2. upsert doc_mount_blobs by fileId (the bytes land here, once). A
         //    reused content row keeps its identical bytes (insert only if missing).
@@ -828,10 +843,14 @@ impl<'c> DocMountFileLinksRepository<'c> {
         };
         let extraction_status = input.extraction_status.as_deref().unwrap_or("none");
 
+        // Case-insensitive, case-preserving upsert (see link_document_content):
+        // a re-write in a different casing updates the existing row in place and
+        // keeps its stored relativePath/fileName casing.
         let existing_link: Option<String> = tx
             .query_row(
-                "SELECT id FROM doc_mount_file_links WHERE mountPointId = ?1 AND relativePath = ?2",
-                params![input.mount_point_id, input.relative_path],
+                "SELECT id FROM doc_mount_file_links \
+                 WHERE mountPointId = ?1 AND relativePath = ?2 COLLATE NOCASE",
+                params![input.mount_point_id, canonical_rel],
                 |row| row.get::<_, String>(0),
             )
             .map(Some)
@@ -840,15 +859,14 @@ impl<'c> DocMountFileLinksRepository<'c> {
         let link_id = if let Some(link_id) = existing_link {
             tx.execute(
                 "UPDATE doc_mount_file_links SET \
-                   fileId = ?1, fileName = ?2, folderId = ?3, \
-                   originalFileName = ?4, originalMimeType = ?5, \
-                   description = ?6, descriptionUpdatedAt = ?7, \
-                   extractedText = ?8, extractedTextSha256 = ?9, extractionStatus = ?10, \
-                   lastModified = ?11, updatedAt = ?12 \
-                 WHERE id = ?13",
+                   fileId = ?1, folderId = ?2, \
+                   originalFileName = ?3, originalMimeType = ?4, \
+                   description = ?5, descriptionUpdatedAt = ?6, \
+                   extractedText = ?7, extractedTextSha256 = ?8, extractionStatus = ?9, \
+                   lastModified = ?10, updatedAt = ?11 \
+                 WHERE id = ?12",
                 params![
                     file_id,
-                    input.file_name,
                     folder_id,
                     input.original_file_name,
                     input.original_mime_type,
@@ -885,7 +903,7 @@ impl<'c> DocMountFileLinksRepository<'c> {
                     link_id,
                     file_id,
                     input.mount_point_id,
-                    input.relative_path,
+                    canonical_rel,
                     input.file_name,
                     folder_id,
                     input.original_file_name,
@@ -1007,24 +1025,33 @@ impl<'c> DocMountFileLinksRepository<'c> {
         let mut current_path = String::new();
 
         for segment in segments {
-            current_path = if current_path.is_empty() {
+            // Canonical prefix (stored casing) + the requested leaf. The folder
+            // namespace is case-insensitive and case-preserving: a segment that
+            // matches an existing folder except for casing reuses it and the walk
+            // continues under the folder's STORED casing (v4 folder-paths.ts).
+            let requested_path = if current_path.is_empty() {
                 segment.to_string()
             } else {
                 format!("{current_path}/{segment}")
             };
 
-            let found: Option<String> = self
+            let found: Option<(String, String)> = self
                 .conn
                 .query_row(
-                    "SELECT id FROM doc_mount_folders WHERE mountPointId = ?1 AND path = ?2",
-                    params![mount_point_id, current_path],
-                    |row| row.get::<_, String>(0),
+                    "SELECT id, path FROM doc_mount_folders \
+                     WHERE mountPointId = ?1 AND path = ?2 COLLATE NOCASE \
+                     ORDER BY (path = ?3) DESC LIMIT 1",
+                    params![mount_point_id, requested_path, requested_path],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
                 )
                 .map(Some)
                 .or_else(no_rows_to_none)?;
 
-            current_parent = match found {
-                Some(id) => Some(id),
+            match found {
+                Some((id, stored_path)) => {
+                    current_parent = Some(id);
+                    current_path = stored_path;
+                }
                 None => {
                     let id = new_id();
                     self.conn.execute(
@@ -1036,14 +1063,15 @@ impl<'c> DocMountFileLinksRepository<'c> {
                             mount_point_id,
                             current_parent,
                             segment,
-                            current_path,
+                            requested_path,
                             now,
                             now
                         ],
                     )?;
-                    Some(id)
+                    current_parent = Some(id);
+                    current_path = requested_path;
                 }
-            };
+            }
         }
 
         Ok(current_parent)
@@ -1091,14 +1119,21 @@ impl<'c> DocMountFileLinksRepository<'c> {
         };
 
         // v4: folderId is DERIVED from relativePath here (the scanner passes
-        // none) — `ensureLinkFolderId` walks the dirname.
-        let folder_id =
+        // none) — `ensureLinkFolderId` walks the dirname. The canonical dir is
+        // ignored — the filesystem is the source of truth for these rows, so the
+        // scanned relativePath is used verbatim below.
+        let (folder_id, _canonical_dir) =
             ensure_link_folder_id(self.conn, &input.mount_point_id, &input.relative_path, &now)?;
 
+        // NOCASE match so a case-only rename on disk updates the existing row
+        // instead of minting a case-variant duplicate. Unlike the database-store
+        // writers, the UPDATE below ADOPTS the scanned casing (relativePath +
+        // fileName) — the filesystem is the source of truth for these rows.
         let existing_link: Option<String> = self
             .conn
             .query_row(
-                "SELECT id FROM doc_mount_file_links WHERE mountPointId = ?1 AND relativePath = ?2",
+                "SELECT id FROM doc_mount_file_links \
+                 WHERE mountPointId = ?1 AND relativePath = ?2 COLLATE NOCASE",
                 params![input.mount_point_id, input.relative_path],
                 |row| row.get::<_, String>(0),
             )
@@ -1117,14 +1152,15 @@ impl<'c> DocMountFileLinksRepository<'c> {
             Some(link_id) => {
                 self.conn.execute(
                     "UPDATE doc_mount_file_links SET \
-                       fileId = ?1, fileName = ?2, folderId = ?3, \
-                       conversionStatus = ?4, conversionError = ?5, \
-                       plainTextLength = ?6, chunkCount = ?7, \
-                       allowEmbed = ?8, allowCharacterRead = ?9, allowCharacterWrite = ?10, \
-                       lastModified = ?11, updatedAt = ?12 \
-                     WHERE id = ?13",
+                       fileId = ?1, relativePath = ?2, fileName = ?3, folderId = ?4, \
+                       conversionStatus = ?5, conversionError = ?6, \
+                       plainTextLength = ?7, chunkCount = ?8, \
+                       allowEmbed = ?9, allowCharacterRead = ?10, allowCharacterWrite = ?11, \
+                       lastModified = ?12, updatedAt = ?13 \
+                     WHERE id = ?14",
                     params![
                         file_id,
+                        input.relative_path,
                         input.file_name,
                         folder_id,
                         conversion_status,
@@ -1530,48 +1566,64 @@ fn coerce_allow(value: Option<i64>) -> bool {
 /// `ensureLinkFolderId` (`doc-mount-file-links.repository.ts:60`). Runs inside the
 /// caller's transaction so folder rows roll back with a failed link write.
 /// `None` when the file is at the mount root (`dir` empty / `.` / `/`).
+/// Resolve (creating as needed) the folder chain for a link's `relativePath`,
+/// returning the leaf `folder_id` (`None` for a root-level file) and the
+/// stored-casing directory path (`canonical_dir`, `""` for root).
+///
+/// Folder matching is case-insensitive and case-preserving: a segment that
+/// matches an existing folder except for casing reuses that folder, and the walk
+/// continues under the folder's STORED casing. `canonical_dir` lets callers keep
+/// the link's `relativePath` consistent with the folder rows.
 fn ensure_link_folder_id(
     tx: &Connection,
     mount_point_id: &str,
     relative_path: &str,
     now: &str,
-) -> Result<Option<String>, DbError> {
+) -> Result<(Option<String>, String), DbError> {
     let dir = dirname(relative_path);
     if dir.is_empty() || dir == "." || dir == "/" {
-        return Ok(None);
+        return Ok((None, String::new()));
     }
 
     // Collapse backslashes + redundant/leading/trailing slashes (v4's regex chain).
     let normalized = collapse_slashes(&dir.replace('\\', "/"));
     if normalized.is_empty() {
-        return Ok(None);
+        return Ok((None, String::new()));
     }
     let segments: Vec<&str> = normalized.split('/').filter(|s| !s.is_empty()).collect();
     if segments.is_empty() {
-        return Ok(None);
+        return Ok((None, String::new()));
     }
 
     let mut current_parent: Option<String> = None;
     let mut current_path = String::new();
 
     for segment in segments {
-        current_path = if current_path.is_empty() {
+        // Canonical prefix (stored casing) + the requested leaf segment.
+        let requested_path = if current_path.is_empty() {
             segment.to_string()
         } else {
             format!("{current_path}/{segment}")
         };
 
-        let found: Option<String> = tx
+        // Exact match wins; the NOCASE fallback rides the case-insensitive
+        // unique index on (mountPointId, parentId, name)-equivalent paths.
+        let found: Option<(String, String)> = tx
             .query_row(
-                "SELECT id FROM doc_mount_folders WHERE mountPointId = ?1 AND path = ?2",
-                params![mount_point_id, current_path],
-                |row| row.get::<_, String>(0),
+                "SELECT id, path FROM doc_mount_folders \
+                 WHERE mountPointId = ?1 AND path = ?2 COLLATE NOCASE \
+                 ORDER BY (path = ?3) DESC LIMIT 1",
+                params![mount_point_id, requested_path, requested_path],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
             )
             .map(Some)
             .or_else(no_rows_to_none)?;
 
-        current_parent = match found {
-            Some(id) => Some(id),
+        match found {
+            Some((id, stored_path)) => {
+                current_parent = Some(id);
+                current_path = stored_path;
+            }
             None => {
                 let id = new_id();
                 tx.execute(
@@ -1583,17 +1635,18 @@ fn ensure_link_folder_id(
                         mount_point_id,
                         current_parent,
                         segment,
-                        current_path,
+                        requested_path,
                         now,
                         now
                     ],
                 )?;
-                Some(id)
+                current_parent = Some(id);
+                current_path = requested_path;
             }
-        };
+        }
     }
 
-    Ok(current_parent)
+    Ok((current_parent, current_path))
 }
 
 /// Normalise a database-store relative path — v4 `normaliseRelativePath`
@@ -1654,7 +1707,7 @@ fn new_id() -> String {
 }
 
 /// Map `QueryReturnedNoRows` to `Ok(None)`, propagate other errors.
-fn no_rows_to_none(e: rusqlite::Error) -> Result<Option<String>, rusqlite::Error> {
+fn no_rows_to_none<T>(e: rusqlite::Error) -> Result<Option<T>, rusqlite::Error> {
     match e {
         rusqlite::Error::QueryReturnedNoRows => Ok(None),
         other => Err(other),

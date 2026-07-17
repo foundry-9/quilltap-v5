@@ -18119,3 +18119,76 @@ $N/node --import tsx <W>/harness/oracle/cases/mount-case-repair.ts \
 (The oracle require()s the real better-sqlite3 by absolute path via
 `createRequire`; run it from the v4 checkout so `@/` and the binding both
 resolve — no mirror needed.)
+
+### Unit 3 — case-insensitive, case-preserving folder + link resolution — LANDED
+
+Ports the read/write resolution half of `0a0419f5`:
+
+- **`db/doc_mount_file_links.rs`:**
+  - `ensure_link_folder_id` now returns `(folder_id, canonical_dir)`. The folder
+    walk queries `path = ? COLLATE NOCASE ORDER BY (path = ?) DESC LIMIT 1`
+    (exact wins, NOCASE fallback) and continues under the folder's STORED casing;
+    `canonical_dir` is the stored-casing directory (`""` for root).
+  - `link_document_content` + `link_blob_content`: compute `canonical_rel`
+    (`canonical_dir`/`fileName`), probe the existing row `relativePath = ?
+    COLLATE NOCASE` on it, and on the UPDATE path DROP `fileName`/`relativePath`
+    from the SET (case-PRESERVING: a write to `NOTES.md` updates the row stored
+    as `notes.md` and keeps its casing); the INSERT uses `canonical_rel`.
+  - `link_filesystem_file`: NOCASE probe on the SCANNED `relative_path`, and the
+    UPDATE now sets `relativePath = ?, fileName = ?` — case-ADOPTING (the
+    filesystem is the source of truth; a case-only rename on disk re-points the
+    existing row).
+  - `ensure_folder_path` (v5's port of `folder-paths.ts` — used by the
+    character-vault scaffold): the same NOCASE-fallback, continue-under-stored-
+    casing walk. (v4's `job-folder-cache` memo retype is a **documented absence**
+    — v5 has no job-folder-cache subsystem; the `folderCache?.set(... {id, path})`
+    change has no v5 counterpart.)
+  - `no_rows_to_none` generalised to `<T>` (was `String`-only) for the new
+    `(id, path)` row shape.
+- **`db/doc_mount_folders.rs` `find_by_mount_point_and_path`:** exact-match fast
+  path, then `find_by_mount_point_id` + `.find(|f| f.path.to_lowercase() ==
+  needle)` — a verbatim port of v4's exact-then-lowercased-scan. (`link_exists_at_path`
+  and the file-links `find_by_mount_point_and_path` were ALREADY `LOWER()`-based
+  in v5 — that read behavior predates `0a0419f5`; no change.)
+
+**Behavior-preserving for exact-cased paths** (the exact row sorts first / equals
+the input), so the existing non-case-variant mount corpora are unaffected — the
+change only bites when a case-variant already exists.
+
+**Differentials (both green):**
+
+- **`doc_mount_file_links_tier2`** gained two case-variant ops in its committed
+  spec: (7) `KNOWLEDGE/atlas.md` reuses the existing `Knowledge` folder under its
+  stored casing (link `Knowledge/atlas.md`, no `KNOWLEDGE` folder); (8)
+  `DESCRIPTION.md` upserts `description.md` in place keeping its casing. Rebuild
+  the fixture + regen the oracle at `d68638b4`, then run (env
+  `QT_ORACLE_DOC_MOUNT_FILE_LINKS`, `QT_FIXTURE_DOC_MOUNT_FILE_LINKS`).
+- **`mount_case_resolution`** (NEW, `harness/oracle/cases/mount-case-resolution.ts`
+  + `crates/quilltap-harness/tests/mount_case_resolution_equivalence.rs`): drives
+  v4's REAL `linkBlobContent` (case-PRESERVING: `ART/logo.png` → keeps
+  `Art/Logo.png`, reuses `Art`) and `linkFilesystemFile` (case-ADOPTING:
+  `Notes/draft.md` → adopts over `Notes/Draft.md`) over a fresh copy of the dmfl
+  fixture; dumps the deterministic casing columns (link relativePath/fileName,
+  folder path, file/blob counts). Regen (from `~/source/quilltap-server` at
+  `d68638b4`, Node 24):
+
+  ```
+  QT_FIXTURE_OUT=/tmp/qt-dmfl-fixture.db \
+    $N/node --import tsx <W>/harness/oracle/fixtures/build-doc-mount-file-links-fixture.ts
+  QT_FIXTURE_MOUNT_CASE_RES=/tmp/qt-dmfl-fixture.db \
+    $N/node --import tsx <W>/harness/oracle/cases/mount-case-resolution.ts \
+    > /tmp/oracle-mount-case-resolution.ndjson
+  # run: QT_ORACLE_MOUNT_CASE_RES=... QT_FIXTURE_MOUNT_CASE_RES=/tmp/qt-dmfl-fixture.db \
+  #   cargo test -p quilltap-harness --test mount_case_resolution_equivalence
+  ```
+  (The oracle touches the blobs repo first — the dmfl fixture is document-only,
+  and v4's `linkBlobContent`, unlike v5's, does not lazily create
+  `doc_mount_blobs`.)
+
+**Covered-by-parity (documented, not separately differentialed):**
+`ensure_folder_path` is a verbatim twin of the differential-proven
+`ensure_link_folder_id` walk (same NOCASE-fallback + continue-under-stored-casing
+logic); its only v5 caller is the character-vault scaffold, whose seven top-level
+folders never collide. `doc_mount_folders.find_by_mount_point_and_path`'s
+case-variant fallback is exercised by the database-store folder ops (move / delete
+/ exists) — covered by the mount-ops case-only folder rename in unit 4.
