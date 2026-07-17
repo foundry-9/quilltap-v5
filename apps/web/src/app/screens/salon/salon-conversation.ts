@@ -14,6 +14,7 @@ import { filter } from 'rxjs';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import { ChatComposer } from '../../chat/chat-composer';
+import { customToolsKeys } from '../../chat/custom-tools.api';
 import { ConversationHeader } from '../../chat/conversation-header';
 import { LLMInspectorPanel } from '../../chat/llm-inspector-panel';
 import {
@@ -259,6 +260,7 @@ interface CascadePrompt {
         (openTerminal)="onOpenTerminal()"
         (openDocument)="showDocumentPicker.set(true)"
         (openGenerate)="showGenerate.set(true)"
+        (customToolRan)="onCustomToolRan()"
       />
     </ng-template>
 
@@ -1174,6 +1176,20 @@ export class SalonConversation {
   /** A courier turn settled (resolved/cancelled) → refetch (v4 `onCourierTurnSettled`). */
   protected async onCourierSettled(): Promise<void> {
     await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+  }
+
+  /**
+   * A manual custom-tool run landed → refetch the chat so Pascal's outcome
+   * appears, and invalidate the roster so the popup re-resolves (v4 `onRan`
+   * invalidates both `chats.detail` and `customTools.byChat`).
+   */
+  protected async onCustomToolRan(): Promise<void> {
+    const chatId = this.chatId();
+    if (!chatId) return;
+    await Promise.all([
+      this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] }),
+      this.queryClient.invalidateQueries({ queryKey: customToolsKeys.byChat(chatId) }),
+    ]);
   }
 
   /** The Edit-Enclave modal saved → refetch the chat (v4 SalonView `onSaved`). */

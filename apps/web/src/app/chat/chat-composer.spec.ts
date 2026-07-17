@@ -1,7 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { CoreClient } from '../core/core-client';
 import { RichEditor } from '../editor/rich-editor';
 import { compileRules } from '../editor/text-replacement';
 import { ChatComposer, type ComposerSend } from './chat-composer';
@@ -13,8 +15,17 @@ function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return { ok, status, json: async () => body } as unknown as Response;
 }
 
+/** The embedded custom-tools popup dispatches a roster on mount; an empty one
+ *  keeps its button hidden so it never interferes with the composer's own tests. */
+const emptyRosterClient = {
+  dispatchData: vi.fn(async () => ({ tools: [], errors: [] })),
+} as unknown as CoreClient;
+
 function render(): ComponentFixture<ChatComposer> {
-  TestBed.configureTestingModule({ imports: [ChatComposer] });
+  TestBed.configureTestingModule({
+    imports: [ChatComposer],
+    providers: [provideTanStackQuery(new QueryClient()), { provide: CoreClient, useValue: emptyRosterClient }],
+  });
   const fixture = TestBed.createComponent(ChatComposer);
   fixture.componentRef.setInput('chatId', 'chat-1');
   fixture.detectChanges();

@@ -178,6 +178,16 @@ takes a `metadata` override. The run_custom tool description grew v4's metadata
 sentence. Differentials extended and re-greened against fresh d68638b4 oracles:
 pascal definition (105 defs + 10 titles), pascal execution (146 rows),
 tool_definitions (58 tools byte-exact).
+P4.6ba unit 3 (SPA): the composer custom-tools popup + run flow. A bespoke
+composer toolbar button (wand) opens an anchored, upward popup (the
+speaker-selector idiom) that resolves Pascal's roster fresh on every open and
+gates its own visibility on that roster (a runnable tool OR a broken file). Each
+tool expands into the standalone `qt-custom-tool-params-form` (declared-type
+coercion, reusable by P4.6bb's bench) plus a "Roll privately" toggle; running
+dispatches `chatCustomToolRun` with coerced params, closes, and refetches the
+chat. Odds/outcome tables are never shown; broken-file badges render the loader's
+verbatim reason. The Workbench entries (open-on/new/repair) are omitted (P4.6bb).
+
 P4.6ba unit 2 (SPA): the Pascal bubble. A Pascal roll outcome is carved out of
 the announcement-chip collapse (`isAnnouncementChip`) and renders as its own
 full message row with a static header bar (dot · Pascal · tool title · time) —

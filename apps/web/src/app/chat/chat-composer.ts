@@ -21,6 +21,7 @@ import {
   type FileConflictInfo,
   type UploadedChatFile,
 } from './chat-files.api';
+import { CustomToolsPopup } from './custom-tools-popup';
 import { FileConflictDialog } from './file-conflict-dialog';
 
 /** What the composer emits on send — the text plus any attached file ids. */
@@ -45,7 +46,7 @@ export interface ComposerSend {
 @Component({
   selector: 'qt-chat-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, FileConflictDialog, RichEditor],
+  imports: [Icon, FileConflictDialog, RichEditor, CustomToolsPopup],
   template: `
     <div class="qt-chat-composer">
       @if (attachedFiles().length > 0) {
@@ -130,6 +131,14 @@ export interface ComposerSend {
           >
             <qt-icon name="paperclip" class="w-5 h-5" />
           </button>
+
+          <!-- Pascal's custom tools (v4's composer-gutter button, bespoke here —
+               the popup gates its own visibility on the roster). -->
+          <qt-custom-tools-popup
+            [chatId]="chatId()"
+            [disabled]="disabled()"
+            (ran)="customToolRan.emit()"
+          />
 
           <button
             type="button"
@@ -250,6 +259,8 @@ export class ChatComposer implements OnInit {
   readonly openTerminal = output<void>();
   readonly openDocument = output<void>();
   readonly openGenerate = output<void>();
+  /** A manual custom-tool run landed — the salon refetches the chat (v4 `onRan`). */
+  readonly customToolRan = output<void>();
   /** The user flipped the mode via the toolbar toggle; the salon persists it. */
   readonly compositionModeChange = output<boolean>();
 

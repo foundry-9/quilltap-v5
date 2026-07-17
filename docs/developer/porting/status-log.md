@@ -18936,3 +18936,36 @@ structurally (the response `type` string is AY's, so the client reads bodies via
 - **Specs:** a full-row case in `chat-view-model.spec.ts`; a Pascal describe in
   `message-row.spec.ts` (header bar text, toolTitle fallback, no avatar).
 - **Gate:** `ng test` 129 files / 1258 passed.
+
+### Unit 3 — the composer popup + params form + run flow (SPA 0.5.137)
+
+- **`custom-tool-params-form.ts`** (new): the standalone `qt-custom-tool-params-
+  form` (v4 `CustomToolParamsForm.tsx`) + the pure `initialParamValues` /
+  `coerceParamValues` helpers — extracted so P4.6bb's proving bench reuses the
+  exact same form. Booleans → checkbox, else text/number with min/max; loose
+  values coerced to declared types on use (blank/unparseable numbers → the
+  declared default, never NaN).
+- **`custom-tools.api.ts`** (new): `fetchCustomToolsRoster` / `runCustomTool`
+  over the two §4 verbs via `dispatchData` (the response `type` is lane-AY-owned,
+  read structurally — the autonomous-room precedent) + the `customToolsKeys`
+  query key.
+- **`custom-tools-popup.ts`** (new): the bespoke composer toolbar button (wand) +
+  anchored upward popup (speaker-selector idiom — `open` signal, `document:click`
+  click-outside). One always-enabled roster query GATES the button (tools>0 ||
+  errors>0 — v4 `customToolsAvailable`, so a lone broken file still surfaces) and
+  a `refetch()` on open gives v4's fresh-per-open behaviour. Per-tool expand →
+  params form + "Roll privately" toggle → `run` (coerced params + private default
+  + asCharacterId) → close + emit `ran`. Odds/outcome tables NEVER shown;
+  broken-file badges render the verbatim reason (inert — repair is P4.6bb);
+  droppedForCap notice. Run 400 arm surfaces the server message inline (does not
+  double-render the Prospero flow message).
+- **Wiring:** `chat-composer.ts` embeds the popup after the attach button and
+  re-emits `customToolRan`; `salon-conversation.ts` `onCustomToolRan` invalidates
+  the chat + roster queries (v4 `onRan`).
+- **OMITTED (named):** the Workbench entries — the per-tool "Open on Pascal's
+  Workbench" wrench, "New contrivance…", and broken-file repair links (P4.6bb).
+- **Specs:** `custom-tool-params-form.spec.ts` (coercion + rendering);
+  `custom-tools-popup.spec.ts` (button gate, fresh-per-open, no-odds, run args +
+  ran, run-error inline, droppedForCap). The `chat-composer.spec.ts` TestBed
+  gained a CoreClient/QueryClient stub (empty roster → hidden button).
+- **Gate:** `ng test` 131 files / 1271 passed; `ng build` clean.
