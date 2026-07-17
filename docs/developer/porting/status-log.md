@@ -18316,3 +18316,69 @@ use is a straight call to the differential-proven `next_unique_mount_point_name`
 with `find_all_names`; a dedicated two-same-named-characters differential would
 reach into lane AZ's characters fixtures, so it is not separately differentialed
 here.
+
+### Tier 2 + Tier 3 dispositions — the lane close-out
+
+**Tier 2 item 6 — the `database_store.rs` inline test-DDL:** its `#[cfg(test)]`
+DDL (`:702-711`) creates the four tables but carries **no indexes** (the store
+functions test with unique paths), so there is nothing to update to the NOCASE
+shape. No-op.
+
+**Tier 2 item 7 — the migration-vintage regression — LANDED.** A `#[cfg(test)]`
+test in `services/builtin_mounts.rs`
+(`boot_hook_repairs_legacy_vintage_collisions`) builds a mount-index with the
+LEGACY case-sensitive indexes + planted folder (`Lore`/`lore`), link
+(`Notes.md`/`notes.md`), and store-name (`My Vault`/`my vault`) collisions — a
+shape only a pre-`0a0419f5` instance or a raw restore can hold — calls the boot
+hook `ensure_mount_index_tables`, and asserts the colliding rows are suffixed
+(`lore (2)`, `notes (2).md`, `my vault (2)`) AND the unique NOCASE indexes
+replaced the legacy ones. Proves the WIRING (the repair behavior itself is
+v4-differentialed by `mount_case_repair`).
+
+**Tier 3 — deferred, loud:**
+
+- **The job-folder-cache retype** — v4's `job-folder-cache.ts` memo value
+  changed from `folderId` to `{id, path}`. v5 has **no job-folder-cache
+  subsystem** (`ensure_folder_path`/`ensure_link_folder_id` take no memo); a
+  documented ABSENCE, not a port. (Recorded again in unit 3.)
+- **The migration runner** — standing deferral. Existing pre-`0a0419f5`
+  instances are served by the boot repair pass (proven by Tier 2 item 7),
+  exactly as v4 serves them; v5 still cannot open a v4 instance older than the
+  columns it expects (the `pascalMeta` limitation, orthogonal to this lane).
+
+**Non-port commits absorbed (dispositioned, per the mandate):**
+
+- `7d5e6ab3` ("fix: mount-index case-repair test loaded SQLite mock in CI") —
+  v4 CI test-infra only (a fix to v4's own `mount-index-case-repair.test.ts`
+  loader); NO lib behavior; **NO PORT**.
+- `a5e66da0` / `554cb26b` / `23b7edad` — three docs commits (the metadata.json
+  spec completion + the Pascal/Workbench spec absorptions); already mirrored
+  under `docs/v4/` at round planning; NO PORT.
+
+### The §1 metadata-column ruling (recorded once for the unifier)
+
+Reminder for the unifier: this lane's `fresh_schema.json` re-dump (unit 1)
+adopts the `characters.metadata TEXT` column in addition to the two NOCASE
+indexes — the round's §1/§2 premise ("no DB column") was empirically wrong
+(v4 `8bc43333`'s Zod field auto-materialises the column via `generateDDL`).
+Human ruling: **Option A** (fold the column into this lane). The column is inert
+in v5 (vault-managed; absent from every characters column list; provisioning
+replays the schema file), so D7 touched NO characters CODE file — only
+`fresh_schema.json`. Lane AZ still owns the `character.metadata` vault
+HYDRATION (a separate concern). Full detail in unit 1's record above.
+
+### Lane verification gate (at close, 2026-07-17)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -D warnings` clean BOTH feature sets (default + `native-transport`).
+- `cargo test --workspace --no-fail-fast` green (335 test binaries) with every
+  D7 differential env var set; the eight D7 differentials
+  (`provisioning_equivalence`, `builtin_mounts_equivalence`,
+  `builtin_templates_equivalence`, `mount_case_repair_equivalence`,
+  `doc_mount_file_links_tier2_equivalence`, `mount_case_resolution_equivalence`,
+  `mount_case_moves_equivalence`, `mount_points_routes_equivalence`) run BY NAME
+  with `--nocapture`, ZERO SKIPs.
+- Every oracle regenerated FRESH at v4 `d68638b4` (v4 tree clean at the baseline
+  — direct regen, no pinned worktree needed).
+
+**Versions:** core 0.0.252, harness 0.0.223 (host/web/tauri/SPA untouched).

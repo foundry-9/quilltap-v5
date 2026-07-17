@@ -237,3 +237,110 @@ pub fn ensure_general_scenarios_folder(
         .ensure_folder_path(&mount_point_id, GENERAL_SCENARIOS_FOLDER)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Migration-vintage regression (v4 `0a0419f5`): a mount-index built with the
+    /// LEGACY case-sensitive indexes and carrying planted case-collisions (a shape
+    /// only a pre-`0a0419f5` instance or a raw restore can hold) is repaired by the
+    /// boot hook `ensure_mount_index_tables` — the colliding rows get ` (N)`-suffixed
+    /// and the unique NOCASE indexes replace the legacy ones. Proves the WIRING
+    /// (the repair behavior itself is v4-differentialed by `mount_case_repair`).
+    #[test]
+    fn boot_hook_repairs_legacy_vintage_collisions() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE doc_mount_points (\
+               id TEXT PRIMARY KEY, name TEXT NOT NULL, basePath TEXT NOT NULL DEFAULT '', \
+               mountType TEXT NOT NULL DEFAULT 'filesystem', storeType TEXT NOT NULL DEFAULT 'documents', \
+               includePatterns TEXT NOT NULL DEFAULT '[]', excludePatterns TEXT NOT NULL DEFAULT '[]', \
+               enabled INTEGER NOT NULL DEFAULT 1, lastScannedAt TEXT, scanStatus TEXT NOT NULL DEFAULT 'idle', \
+               lastScanError TEXT, conversionStatus TEXT NOT NULL DEFAULT 'idle', conversionError TEXT, \
+               fileCount INTEGER NOT NULL DEFAULT 0, chunkCount INTEGER NOT NULL DEFAULT 0, \
+               totalSizeBytes INTEGER NOT NULL DEFAULT 0, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);\
+             CREATE TABLE doc_mount_folders (\
+               id TEXT PRIMARY KEY, mountPointId TEXT NOT NULL, parentId TEXT, name TEXT NOT NULL, \
+               path TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);\
+             CREATE TABLE doc_mount_file_links (\
+               id TEXT PRIMARY KEY, mountPointId TEXT NOT NULL, relativePath TEXT NOT NULL, \
+               fileName TEXT NOT NULL, folderId TEXT, createdAt TEXT NOT NULL);\
+             -- the legacy case-SENSITIVE indexes the repair must replace:
+             CREATE UNIQUE INDEX \"idx_doc_mount_folders_mp_parent_name\" \
+               ON \"doc_mount_folders\" (\"mountPointId\", COALESCE(\"parentId\", ''), \"name\");\
+             CREATE UNIQUE INDEX \"idx_doc_mount_file_links_mp_path\" \
+               ON \"doc_mount_file_links\" (\"mountPointId\", \"relativePath\");",
+        )
+        .unwrap();
+        // Planted collisions (case-distinct → pass the legacy indexes cleanly).
+        conn.execute_batch(
+            "INSERT INTO doc_mount_folders (id, mountPointId, parentId, name, path, createdAt, updatedAt) VALUES \
+               ('keep','mp',NULL,'Lore','Lore','2024-01-01T00:00:00.000Z','2024-01-01T00:00:00.000Z'),\
+               ('lose','mp',NULL,'lore','lore','2024-06-01T00:00:00.000Z','2024-06-01T00:00:00.000Z');\
+             INSERT INTO doc_mount_file_links (id, mountPointId, relativePath, fileName, folderId, createdAt) VALUES \
+               ('la','mp','Notes.md','Notes.md',NULL,'2024-01-01T00:00:00.000Z'),\
+               ('lb','mp','notes.md','notes.md',NULL,'2024-06-01T00:00:00.000Z');\
+             INSERT INTO doc_mount_points (id, name, createdAt, updatedAt) VALUES \
+               ('pa','My Vault','2024-01-01T00:00:00.000Z','2024-01-01T00:00:00.000Z'),\
+               ('pb','my vault','2024-06-01T00:00:00.000Z','2024-06-01T00:00:00.000Z');",
+        )
+        .unwrap();
+
+        ensure_mount_index_tables(&conn).unwrap();
+
+        let folder_name: String = conn
+            .query_row(
+                "SELECT name FROM doc_mount_folders WHERE id = 'lose'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(folder_name, "lore (2)", "colliding folder suffixed");
+        let link_rel: String = conn
+            .query_row(
+                "SELECT relativePath FROM doc_mount_file_links WHERE id = 'lb'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            link_rel, "notes (2).md",
+            "colliding link suffixed before ext"
+        );
+        let store_name: String = conn
+            .query_row(
+                "SELECT name FROM doc_mount_points WHERE id = 'pb'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(store_name, "my vault (2)", "colliding store name suffixed");
+
+        // The unique NOCASE indexes replaced the legacy ones.
+        let has = |name: &str| -> bool {
+            conn.query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?1",
+                [name],
+                |_| Ok(()),
+            )
+            .is_ok()
+        };
+        assert!(
+            has("idx_doc_mount_folders_mp_parent_name_nocase"),
+            "folder nocase index created"
+        );
+        assert!(
+            has("idx_doc_mount_file_links_mp_path_nocase"),
+            "link nocase index created"
+        );
+        assert!(
+            !has("idx_doc_mount_folders_mp_parent_name"),
+            "legacy folder index dropped"
+        );
+        assert!(
+            !has("idx_doc_mount_file_links_mp_path"),
+            "legacy link index dropped"
+        );
+    }
+}

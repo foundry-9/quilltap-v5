@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+P4.d7 tier 2: a migration-vintage regression proves the boot hook
+(ensure_mount_index_tables) repairs a mount-index built with the legacy
+case-sensitive indexes and planted folder/link/store-name collisions — the
+colliding rows get suffixed and the unique NOCASE indexes replace the legacy
+ones. Closes the P4.d7 lane (the 0a0419f5 case-insensitive mount-namespace
+re-port).
+
 P4.d7 unit 5: case-insensitive store-name uniqueness (v4 0a0419f5).
 next_unique_mount_point_name matches case-insensitively and trimmed;
 ensure_character_vault suffixes ` (N)` so same-named characters get distinct
