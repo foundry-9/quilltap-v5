@@ -20,7 +20,7 @@
  *     divergence, which would turn `true` into 1 and `null`/`[]` into 0, trading
  *     a rejected call for a wrong one.
  *
- * Run from inside the server checkout (v4 @ a33ac8b8):
+ * Run from inside the server checkout (v4 @ e3593f75):
  *   cd ~/source/quilltap-server
  *   npx tsx <worktree>/harness/oracle/cases/llm-number.ts \
  *     > /tmp/oracle-llm-number.ndjson

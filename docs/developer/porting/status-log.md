@@ -17302,7 +17302,6 @@ QT_ORACLE_LLM_NUMBER=/tmp/oracle-llm-number.ndjson \
 ```
 
 Versions: core 0.0.239, harness 0.0.214.
-Versions: core 0.0.234, harness 0.0.211.
 
 ---
 
@@ -17334,3 +17333,24 @@ and isolated in its own commit so the unifier can drop it with one revert if
 lane C's executor work conflicts.**
 
 Versions: core 0.0.240.
+
+---
+
+## P4.d5 unit 2 — RE-BASELINED to v4 `e3593f75` (2026-07-17)
+
+Units 2 and its rider were cherry-picked from the preserved branch
+`claude/p4-d5-dice-rng-lenient-5b62d6` (`969227c`, `05d03ab`) onto the resumed
+lane and their oracle **regenerated fresh at `e3593f75`** (the D24 validator
+fix). `lib/tools/llm-number.ts` is untouched by that fix, so the 73-row corpus
+reproduced identically — but the regen is what makes the claim provable rather
+than assumed, and the case file's header now pins the new baseline.
+
+**The ruling landed as predicted:** unit 2's reads use the CONVERTED number,
+which was the deviation the lane was held for. At `e3593f75` that is exactly
+what v4's fixed handlers do (they read `safeParse`'s parsed data), so the unit
+is correct as written and unifiable.
+
+`llm_number_equivalence` green by name with `--nocapture`, zero SKIPs:
+preprocess 54 + bounded 19 = 73.
+
+Versions: core 0.0.240, harness 0.0.214.
