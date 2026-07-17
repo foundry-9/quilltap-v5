@@ -59,6 +59,14 @@ async function main(): Promise<void> {
     // --- provider path (Serper plugin registered) ---
     { label: 'provider_success', args: { query: 'latest AI news' }, outcome: { kind: 'provider', apiKeyPresent: true, success: true, results: [r('Quantum leap', '2026-06-15T00:00:00.000Z'), r('More news')] } },
     { label: 'provider_success_maxresults', args: { query: 'tokyo weather', maxResults: 3 }, outcome: { kind: 'provider', apiKeyPresent: true, success: true, results: [r('Sunny in Tokyo', '2020-12-31T23:00:00.000Z')] } },
+    // Lenient numbers (P4.d5 tier 2): a model quoting its number must reach the
+    // SAME wire request as the bare one — `maxResults` is an llmNumber field, so
+    // the parse replaces it and `num: 3` (not `"3"`) goes out. Both sides key the
+    // canned transport on the exact request body, so a string leaking through to
+    // the wire cannot pass.
+    { label: 'lenient_quoted_maxresults', args: { query: 'tokyo weather', maxResults: '3' }, outcome: { kind: 'provider', apiKeyPresent: true, success: true, results: [r('Sunny in Tokyo', '2020-12-31T23:00:00.000Z')] } },
+    // Refused, not coerced: `true` would become 1 under z.coerce.number().
+    { label: 'lenient_true_refused', args: { query: 'tokyo weather', maxResults: true }, outcome: { kind: 'not_configured' } },
     { label: 'provider_no_results', args: { query: 'obscure' }, outcome: { kind: 'provider', apiKeyPresent: true, success: true, results: [] } },
     { label: 'provider_error_401', args: { query: 'x' }, outcome: { kind: 'provider', apiKeyPresent: true, success: false, results: [], error: 'Invalid Serper API key. Please check your API key in Settings > API Keys.' } },
     { label: 'provider_error_429', args: { query: 'x' }, outcome: { kind: 'provider', apiKeyPresent: true, success: false, results: [], error: 'Serper API rate limit exceeded. Please try again later or upgrade your plan at serper.dev.' } },

@@ -159,6 +159,38 @@ fn web_search_tool_matches_oracle() {
             &p,
         );
     }
+    // lenient_quoted_maxresults — the llmNumber read site, end to end. The canned
+    // transport is keyed on the EXACT request body, and this one is built for
+    // `num: 3`: if the quoted "3" survived to the wire as a string, the key would
+    // miss and the case could not pass. That is the assertion.
+    {
+        let body =
+            json!({ "organic": [organic("Sunny in Tokyo", Some("2020-12-31T23:00:00.000Z"))] });
+        let p = RealWebSearchProvider::new(
+            transport_for("tokyo weather", 3, "k", ok(body)),
+            OneKey("k"),
+            true,
+            None,
+        );
+        check(
+            &oracle,
+            "lenient_quoted_maxresults",
+            json!({ "query": "tokyo weather", "maxResults": "3" }),
+            &p,
+        );
+    }
+    // lenient_true_refused — `true` is REFUSED, not coerced to 1. The tool never
+    // reaches the wire, so the transport is deliberately empty: any request at all
+    // would fail it.
+    {
+        let p = RealWebSearchProvider::new(CannedSyncWireTransport::new(), OneKey("k"), true, None);
+        check(
+            &oracle,
+            "lenient_true_refused",
+            json!({ "query": "tokyo weather", "maxResults": true }),
+            &p,
+        );
+    }
     // provider_no_results.
     {
         let body = json!({ "organic": [] });

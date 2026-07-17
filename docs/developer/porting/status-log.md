@@ -17536,3 +17536,47 @@ Both green by name, `--nocapture`, zero SKIPs: `orchestrator_tier3_equivalence`
 failure) and `message_finalizer_tier3_equivalence`.
 
 Versions: core 0.0.243.
+
+---
+
+## P4.d5 tier 2 (items 6+7) — web_search leniency coverage — LANDED 2026-07-17
+
+**Item 7 CHECKED and CLOSED — the worry was unfounded.** The order flagged that
+`harness/oracle/cases/web-search-tool.test.ts` might still pin v4's pre-`ec4825ca`
+assertion ("should reject maxResults as a string (no coercion under Zod)"). It
+does not: `grep maxResults` over the v5 case returns ONE line, the
+`provider_success_maxresults` case. The v5 case never mirrored v4's validator
+tests — it drives `executeWebSearchTool` end-to-end — so there was nothing to
+rewrite. Recorded so it is not re-investigated.
+
+**Item 6 (partial — see the deferral below).** Two arms added to the
+`web_search` family, chosen because this case can prove something the others
+cannot:
+
+- `lenient_quoted_maxresults` — `{query, maxResults: "3"}`. **The canned
+  transport is keyed on the EXACT request body** (`METHOD\nURL\nBODY`), and the
+  Rust arm builds its key for `num: 3`. So if the quoted `"3"` survived to the
+  wire as a string, the key would MISS and the case could not pass. This is the
+  end-to-end proof of unit 2's central claim — that the seam must convert at the
+  READ site, not merely permit at the validator — on a real tool's real wire.
+- `lenient_true_refused` — `{query, maxResults: true}`. Refused, not coerced
+  (`z.coerce.number()` would make it 1). Its transport is deliberately EMPTY, so
+  any request at all fails the case.
+
+`web_search_tool_equivalence` green by name, `--nocapture`, zero SKIPs (17
+oracle rows, was 15).
+
+**DEFERRED, LOUD AND BY NAME — the other four item-6 families.**
+`search-tools-search`, `search-tools-readwrite`, `terminal-tools`, `help-tools`,
+and `scriptorium-tools` still exercise NO quoted number. This is tier 2 ("should
+land"), not tier 1, and it is a COVERAGE gap, not a behavior gap: the ported
+seam and every one of its call sites landed in unit 2 and are pinned by the
+73-row `llm_number_equivalence` corpus. What is missing is the belt-and-braces
+end-to-end arm per family, of the shape now demonstrated in `web_search`. No
+stub and no TODO stands in for it. The natural next porter should follow the
+`lenient_quoted_maxresults` pattern: pick, per family, an argument whose value
+is OBSERVABLE downstream (a wire body, a SQL LIMIT, a slice width) — an arm
+whose output is identical either way proves only that the tool did not reject
+the input, which the validator corpus already proves.
+
+Versions: harness 0.0.216.

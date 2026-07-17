@@ -2,6 +2,13 @@
 
 ## Recent Changes
 
+P4.d5 tier 2: leniency coverage for the web_search tool. The search_web
+differential now drives a quoted maxResults through the real handler and proves
+the converted number reaches the outgoing request as a number rather than a
+quoted string, plus that `true` is still refused rather than silently becoming
+1. The order's worry that the v5 case pinned v4's pre-drift "no coercion under
+Zod" assertion was checked and is unfounded: it never mirrored that assertion.
+
 P4.d5 unit 5: the two chat-spine RNG call sites. Typing "2d20+5" in a Salon —
 or a character writing it in a reply — rolled a plain 2d20 and dropped the +5,
 then persisted a TOOL row whose arguments didn't record the modifier at all.
