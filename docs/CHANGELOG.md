@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.d7 unit 1: re-dump fresh_schema.json from v4 d68638b4. The two mount-index
+unique indexes become COLLATE NOCASE under new names
+(idx_doc_mount_folders_mp_parent_name_nocase,
+idx_doc_mount_file_links_mp_path_nocase), and the characters table gains a
+metadata TEXT column (the per-character fact sheet). Fresh instances get all
+three from provisioning replay; the metadata column is vault-managed and stays
+inert in the DB (character.metadata hydrates from the vault's metadata.json,
+which lane p4.6az owns). Provisioning, builtin-mounts, and builtin-templates
+equivalence regenerated at d68638b4 and green.
+
 Plan the d68638b4 drift catch-up round (docs only). v4 moved ten commits past
 the e3593f75 baseline and the predicted tripwire fired: the custom-tools +
 character-metadata feature landed, alongside the case-insensitive mount

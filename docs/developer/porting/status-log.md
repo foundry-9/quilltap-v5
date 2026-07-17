@@ -17973,3 +17973,96 @@ unblocked — `jsnum.rs` is no longer contested).
 
 Versions: core 0.0.246, harness 0.0.219, host 0.0.19, web 0.0.25,
 quilltap-tauri 0.0.3, SPA 0.5.134.
+
+## P4.d7 (lane D7) — the `0a0419f5` case-insensitive mount-namespace re-port
+
+Lane D7 of the four-lane `d68638b4` drift catch-up round. Baseline v4
+`d68638b4` (4.8.0-dev.72); drift check at lane start clean (v4 HEAD == baseline,
+tree clean). Every oracle in this lane regenerated at `d68638b4`, Node 24
+(`~/.nvm/versions/node/v24.13.1/bin`).
+
+### ⚠ The §1 STOP-and-report: the re-dump diff was THREE items, not two — Option A ruling
+
+The order's §1 predicted the `fresh_schema.json` re-dump diff would be EXACTLY
+the two mount-index NOCASE index statements, on the premise that the sibling
+commit's `metadata.json` is "a vault file, not a DB column." **That premise is
+factually wrong.** The re-dump at `d68638b4` showed a THIRD change: the
+`characters` table gained a `metadata TEXT` column (inserted after
+`sillyTavernData`).
+
+Cause: `characters` DDL is Zod-generated via `generateDDL`. v4 commit
+`8bc43333` ("feat: metadata.json — a per-character fact sheet custom tools can
+test") added `metadata: JsonSchema.nullable().optional()` to the character Zod
+schema (`lib/schemas/character.types.ts:175`), and `generateDDL` emits a
+physical column for every Zod field regardless of the vault-overlay's
+managed-field status. v4's own inline comment claims "(no DB column)" — that
+describes the app-level source of truth (the vault `metadata.json`), NOT the
+physical schema. The column is real; `8bc43333` also bumped `docs/developer/
+DDL.md`.
+
+I halted at the gate and reported. **Human ruling: Option A** — fold the
+`characters.metadata` column adoption into this lane (D23: v5 follows v4's
+schema via the re-dump).
+
+**Scope of the adoption is minimal — the column rides along at ZERO v5 code
+cost:**
+
+- `metadata` is a vault-managed field. v5's characters repo already excludes
+  managed columns from both its read (`db/characters_read.rs` `SLIM_COLUMNS`)
+  and its write (`db/characters.rs` explicit INSERT column list). `metadata`
+  appears in neither, so no characters code references the column.
+- No `SELECT * FROM characters` exists in v5 — no positional full-table read to
+  shift.
+- Provisioning replays `fresh_schema.json` via `include_str!`
+  (`services/provisioning/mod.rs:70`), so the column materializes on fresh v5
+  instances automatically.
+- The vault HYDRATION of `character.metadata` (from `metadata.json`) is a
+  separate concern owned wholly by **lane p4.6az** and touches no DB column.
+
+So D7 touches NO characters code file for this — only `fresh_schema.json` (D7's
+per §1) picks up the column. The §1/§2 premise is corrected in this record: the
+`d68638b4` mount-round schema diff is THREE items (two NOCASE indexes +
+`characters.metadata TEXT`), and `metadata` IS a physical DB column (inert /
+vault-managed).
+
+### Unit 1 — the schema re-dump (D23, applied a second time) — LANDED
+
+- Re-ran `dump-fresh-schema.ts` at `d68638b4` → replaced
+  `crates/quilltap-core/src/services/provisioning/fresh_schema.json`. Diff vs
+  the committed file: exactly the three items above (mount-index partition: the
+  two index renames + COLLATE NOCASE; main partition: `characters.metadata
+  TEXT`). No other change; `mountIndex` statement count unchanged at 29 (the
+  indexes were renamed, not added).
+- Regenerated the provision oracle + the two builtin oracles at `d68638b4` and
+  ran all three green against the regenerated `fresh_schema.json` (they read it
+  directly / compare the live v4 schema, so the regen is atomic):
+  `provisioning_equivalence` (2 tests) + `builtin_mounts_equivalence` +
+  `builtin_templates_equivalence`. Verified the `metadata` column and both
+  `_nocase` index names are present in BOTH the v4 oracle schema and v5's
+  `fresh_schema.json` (silent-stale-pass discipline).
+
+Regen recipes (all from `~/source/quilltap-server` at `d68638b4`, Node 24
+`N=~/.nvm/versions/node/v24.13.1/bin`; a DB-touching tsx oracle needs
+`$N/node --import tsx`, NOT `npx tsx`, for the Node-24 native ABI):
+
+```
+# fresh_schema.json (→ copy over the committed file):
+QT_SCHEMA_OUT=/tmp/qt-fresh-schema.json \
+  $N/node --import tsx <W>/harness/oracle/provision/dump-fresh-schema.ts
+# provision oracle:
+QT_ORACLE_PROVISION=/tmp/oracle-provision.json QT_V4_FRESH_OUT=/tmp/qt-v4-fresh \
+  $N/node --import tsx <W>/harness/oracle/provision/build-provision-oracle.ts
+# builtin-templates (per state):
+for S in fresh stale-builtin user-same-name; do QT_STATE=$S \
+  $N/node --import tsx <W>/harness/oracle/cases/builtin-templates.ts \
+  >> /tmp/oracle-builtin-templates.ndjson; done
+# builtin-mounts needs the mirror (bare better-sqlite3 import):
+MIRROR=~/source/quilltap-server/.qt-oracle-mirror; cp -R <W>/harness/oracle "$MIRROR"
+for S in empty dangling live; do QT_STATE=$S \
+  $N/node --import tsx "$MIRROR/cases/builtin-mounts.ts" \
+  >> /tmp/oracle-builtin-mounts.ndjson; done
+```
+(`<W>` = this worktree.) Run: set `QT_ORACLE_PROVISION`, `QT_FIXTURE_V4_FRESH`,
+`QT_V5_PROVISION_OUT`, `QT_ORACLE_BUILTIN_MOUNTS`, `QT_ORACLE_BUILTIN_TEMPLATES`
+and `cargo test -p quilltap-harness --test provisioning_equivalence --test
+builtin_mounts_equivalence --test builtin_templates_equivalence`.
