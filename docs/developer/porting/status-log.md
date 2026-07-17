@@ -17302,3 +17302,35 @@ QT_ORACLE_LLM_NUMBER=/tmp/oracle-llm-number.ndjson \
 ```
 
 Versions: core 0.0.239, harness 0.0.214.
+Versions: core 0.0.234, harness 0.0.211.
+
+---
+
+## P4.d5 unit 2 (rider) — `image_generation.count` leniency — LANDED 2026-07-16
+
+The last of the order's 28 lenient fields with a live v5 site:
+`executor.rs:1450`, `count: tc.arguments.get("count").and_then(Value::as_i64)`.
+This is the dispatcher materializing `ImageGenerationToolInput` from the raw
+tool arguments, so it is BOTH the validate and the read for that field. Without
+the seam, `{"count": "3"}` fell to `None` → the handler's `or(Some(1))` default:
+the model asked for three images and silently got one.
+
+**⚠️ ROUND-PLANNING GAP — the unifier must know this (it is why this is its own
+commit).** The order's Ownership grants lane A "the `image_generation` /
+`memory_search` sites the lane's own survey locates", and the survey located
+this one in **`crates/quilltap-core/src/tools/executor.rs` — a file the
+Ownership block assigns to LANE C**, and which the *Declared shared files* table
+does NOT list (it declares only `services/orchestrator.rs` and `pascal/mod.rs`).
+So the order both grants lane A the site and gives the file to lane C.
+
+Resolved in favour of landing it, because: (a) the Ownership block explicitly
+names the site as lane A's; (b) deferring would knowingly leave a wrong answer
+in shipped behavior; (c) the regions are far apart — lane A touches ONLY the
+`count:` field construction in the `generate_image` input block (~:1450), while
+lane C's executor work is its `run_custom` dispatch arm (~:508) and its
+capabilities report. **Handled under the shared-file protocol anyway: a single
+region, no reformatting, no reordering, cited here and in the commit message,
+and isolated in its own commit so the unifier can drop it with one revert if
+lane C's executor work conflicts.**
+
+Versions: core 0.0.240.

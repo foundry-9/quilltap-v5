@@ -1447,7 +1447,13 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
                 .get("aspectRatio")
                 .and_then(Value::as_str)
                 .map(str::to_string),
-            count: tc.arguments.get("count").and_then(Value::as_i64),
+            // `count` is an llmNumber(...) field (v4 image-generation-tool.ts:65),
+            // and the Zod parse REPLACES the value — so a model that sent
+            // `{"count": "3"}` must generate 3 images, not fall back to 1.
+            count: tc
+                .arguments
+                .get("count")
+                .and_then(|raw| crate::tools::llm_number::llm_number(raw).as_i64()),
         };
 
         let image_ctx = generate_image::ImageToolExecutionContext {

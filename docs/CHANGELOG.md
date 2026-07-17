@@ -2,6 +2,9 @@
 
 ## Recent Changes
 
+P4.d5 unit 2 (rider): image generation now honors a quoted `count`. A
+model that asked for `{"count": "3"}` got one image instead of three.
+
 P4.d5 unit 2: lenient numbers (`llmNumber`) across the tool surface. Models
 routinely quote their numbers — `{"type": "6"}` rather than `{"type": 6}` —
 and v5 rejected every one of them, so the roll never happened and the
