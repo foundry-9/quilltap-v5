@@ -178,6 +178,14 @@ takes a `metadata` override. The run_custom tool description grew v4's metadata
 sentence. Differentials extended and re-greened against fresh d68638b4 oracles:
 pascal definition (105 defs + 10 titles), pascal execution (146 rows),
 tool_definitions (58 tools byte-exact).
+P4.6ba unit 1 (SPA): the Pascal in-chat wire mirror + stream + labels. Added
+`pascalMeta` to the message DTO, `'pascal'` to the systemSender union, the
+`pascalResult` stream frame field, and the `chatCustomToolsList` /
+`chatCustomToolRun` dispatch verbs with their `CustomToolListing` /
+`CustomToolLoadError` / roster + run data shapes (§4, consumed structurally).
+The stream reducer surfaces a mid-turn `pascalResult` deduped by id like
+carina/host. System-message labels name Pascal, add the custom-tool-result /
+-error kinds, and label a roll outcome by its tool title (`toolTitle ?? tool`).
 
 Plan the d68638b4 drift catch-up round (docs only). v4 moved ten commits past
 the e3593f75 baseline and the predicted tripwire fired: the custom-tools +

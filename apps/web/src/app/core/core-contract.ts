@@ -125,6 +125,99 @@ export interface ChatSetActiveSpeakerRequest {
   participantId: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Pascal custom tools — the composer popup's wire contract (§4, OWNER: lane
+// P4.6ay). The two verbs are the SPA's path to `GET`/`POST
+// /api/v1/chats/{id}/custom-tools`; the response `type` string is lane-AY-owned,
+// so the client reads these bodies structurally via `dispatchData` (the
+// autonomous-room precedent) rather than pinning a response variant.
+// ---------------------------------------------------------------------------
+
+/** The roster GET (`handleList`), resolved FRESH on every popup open — no cache. */
+export interface ChatCustomToolsListRequest {
+  type: 'chatCustomToolsList';
+  chatId: string;
+}
+
+/** Run one tool at the operator's behest (`POST ?action=run`). */
+export interface ChatCustomToolRunRequest {
+  type: 'chatCustomToolRun';
+  chatId: string;
+  /** The declaration name — what shadowing resolved on. */
+  tool: string;
+  /** Coerced to the declared types before dispatch (`coerceParamValues`). */
+  parameters?: Record<string, number | string | boolean>;
+  /** Whisper the run to the operator alone (targets the userId, not a participant). */
+  private?: boolean;
+  /** Whose perspective to resolve from — set only when a tool has variants. */
+  asCharacterId?: string;
+}
+
+/**
+ * One entry in the popup's roster (v4 custom-tools `route.ts:57` **plus
+ * `mountPointId`**, the d68638b4 addition). Deliberately ODDS-FREE — the roll
+ * spec and the outcome table are NEVER in the payload.
+ */
+export interface CustomToolListing {
+  /** Identity — what the run call names. Never displayed. */
+  name: string;
+  /** What to display. Server-resolved (`displayTitle()`), so always present. */
+  title: string;
+  description: string;
+  parameters: Record<string, CustomToolParameterSpec>;
+  defaultVisibility: 'public' | 'whisper';
+  sourceTier: string;
+  /** Present on per-character variants that shadow a broader definition. */
+  characterLabel?: string;
+  /** Disambiguates a character-labeled variant on the run call. */
+  asCharacterId: string;
+  definitionPath: string;
+  mountName: string;
+  /** Which store holds the file — Pascal's Workbench (P4.6bb) edits it by this pair. */
+  mountPointId: string;
+}
+
+/** A single declared parameter of a custom-tool definition (v4 `CustomToolParameterSpec`). */
+export interface CustomToolParameterSpec {
+  type: 'number' | 'integer' | 'string' | 'boolean';
+  default: number | string | boolean;
+  description?: string;
+  min?: number;
+  max?: number;
+}
+
+/** A definition file that failed load-time validation and stayed out of the roster. */
+export interface CustomToolLoadError {
+  definitionPath: string;
+  mountPointId?: string;
+  mountName: string;
+  tier: string;
+  reason: string;
+}
+
+/** The roster GET body. */
+export interface CustomToolsRosterData {
+  tools: CustomToolListing[];
+  errors: CustomToolLoadError[];
+  /** Tools dropped because the roster hit its cap — surfaced, never silent. */
+  droppedForCap?: string[];
+}
+
+/** The `?action=run` result summary (the toast's, not the transcript's). */
+export interface CustomToolRunResult {
+  tool: string;
+  value: number;
+  state: 'success' | 'partial' | 'failure' | 'info';
+  message: string;
+  whispered: boolean;
+}
+
+/** The `?action=run` body: the posted Pascal message(s) + the run summary. */
+export interface CustomToolRunData {
+  messages: MessageDto[];
+  result: CustomToolRunResult;
+}
+
 /**
  * One participant in the flattened chat-create body (v4 `createChatSchema`
  * participant). `connectionProfileId` rides only LLM-controlled entries;
@@ -1260,6 +1353,10 @@ export type CoreRequest =
   | ChatImpersonateRequest
   | ChatStopImpersonateRequest
   | ChatSetActiveSpeakerRequest
+  // --- Pascal custom tools, the composer popup's path (P4.6ay implements the
+  //     server side; the two REST legs are GET/POST /chats/{id}/custom-tools) ---
+  | ChatCustomToolsListRequest
+  | ChatCustomToolRunRequest
   // --- The Settings surface (P4.6d implements the server side) ---
   | ChatSettingsUpdateRequest
   | { type: 'connectionProfileList' }
@@ -1568,6 +1665,7 @@ export type SystemSender =
   | 'ariel'
   | 'carina'
   | 'suparna'
+  | 'pascal'
   | null;
 
 export interface HostEvent {
@@ -1585,6 +1683,41 @@ export interface CustomAnnouncer {
 export interface CarinaMeta {
   answererId: string;
   question: string;
+}
+
+/**
+ * The authoritative account of one Pascal custom-tool roll (v4
+ * `lib/schemas/chat.types.ts:342-372`, transcribed field-for-field). NULL on every
+ * non-Pascal message; the SPA reads it for the outcome row's header chip
+ * (`toolTitle ?? tool`) and — someday — the Workbench (P4.6bb). `.nullable()
+ * .optional()` in v4, so it's optional here (the read omits it when NULL, v4
+ * `undefined`).
+ */
+export interface PascalMeta {
+  /** Identity — the declaration name. Always present. */
+  tool: string;
+  /** The tool's display title at the moment it ran (`displayTitle()`). Absent on
+   *  rows posted before this field existed — the UI falls back to `tool`. */
+  toolTitle?: string;
+  definitionTier: 'character' | 'participant' | 'group' | 'project' | 'global';
+  definitionMountId: string;
+  params: Record<string, number | string | boolean>;
+  /** Which roll shape ran: uniform range, or dice `notation` + `diceRolls`. */
+  rollForm: 'range' | 'dice';
+  notation?: string;
+  /** The untransformed roll. */
+  raw: number;
+  diceRolls?: number[];
+  /** What the outcome table was tested against. */
+  value: number;
+  state: 'success' | 'partial' | 'failure' | 'info';
+  outcomeIndex: number;
+  /** The metadata keys the winning outcome consulted (primitives only); absent
+   *  when it tested none. */
+  metadataTested?: Record<string, number | string | boolean>;
+  /** A model's reach for the tool vs a user's own Run-Tool. */
+  invokedBy: 'llm' | 'user';
+  callerParticipantId?: string;
 }
 
 /**
@@ -1612,6 +1745,9 @@ export interface MessageDto {
   hostEvent: HostEvent | null;
   customAnnouncer: CustomAnnouncer | null;
   carinaMeta: CarinaMeta | null;
+  /** The Pascal roll record (v4 `.nullable().optional()`); the read omits it when
+   *  NULL, so it's typed optional here rather than `| null` like `carinaMeta`. */
+  pascalMeta?: PascalMeta | null;
   pendingExternalPrompt: string | null;
   pendingExternalPromptFull: string | null;
   pendingExternalAttachments: PendingExternalAttachment[] | null;
@@ -2591,6 +2727,9 @@ export interface ChatStreamFrame {
   // mid-turn posted messages (full MessageEvent objects)
   carinaAnswer?: PostedMessage;
   hostAnnouncement?: PostedMessage;
+  /** A Pascal custom-tool outcome posted mid-turn (an LLM's `run_custom` reach) —
+   *  the full posted Pascal message, surfaced live like `carinaAnswer` (§4). */
+  pascalResult?: PostedMessage;
 
   // answer confirmation
   confirmationResult?: ConfirmationResult;

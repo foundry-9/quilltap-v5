@@ -18883,3 +18883,41 @@ Regen: `cd ~/source/quilltap-server; npx tsx <V5W>/harness/oracle/cases/pascal-w
 > /tmp/oracle-pascal-writers.ndjson`; run with `QT_ORACLE_PASCAL_WRITERS`.
 
 Versions: core 0.0.249, harness 0.0.222.
+---
+
+## P4.6ba — the Pascal in-chat SPA (lane BA of the d68638b4 round)
+
+Lane branch `claude/pascal-salon-spa-porting-e5b8af`. v4 reference baseline
+`d68638b4` (4.8.0-dev.72); drift-check clean at lane start (v4 HEAD == baseline).
+SPA-only lane (owns `apps/web/` exclusively). The §4 wire contract is owned by
+sibling lane AY (`p4.6ay`); this lane mirrors it name-for-name and consumes it
+structurally (the response `type` string is AY's, so the client reads bodies via
+`dispatchData`, the autonomous-room precedent).
+
+### Unit 1 — the §4 wire mirror + stream + labels (SPA 0.5.135)
+
+- **`core-contract.ts`:** `'pascal'` into `SystemSender`; `PascalMeta`
+  (transcribed field-for-field from v4 `lib/schemas/chat.types.ts:342-372` —
+  `toolTitle`/`invokedBy`/`metadataTested` and all); `pascalMeta?: PascalMeta |
+  null` on `MessageDto` (optional, faithful to v4's `.nullable().optional()` —
+  the read omits it when NULL, so unlike `carinaMeta`'s `| null` it needs no
+  literal churn across the spec factories); `pascalResult?: PostedMessage` on
+  `ChatStreamFrame`; the `chatCustomToolsList` / `chatCustomToolRun` request
+  aliases into `CoreRequest`; the `CustomToolListing` (v4 `route.ts:57` **plus
+  `mountPointId`**), `CustomToolParameterSpec`, `CustomToolLoadError`,
+  `CustomToolsRosterData`, `CustomToolRunResult`, `CustomToolRunData` data
+  shapes.
+- **`system-message-labels.ts`:** `pascal: 'Pascal'`; the `custom-tool-result` /
+  `custom-tool-error` kind labels; the toolTitle override in
+  `getSystemKindDisplayLabel` (a roll outcome names the tool, `toolTitle ?? tool`
+  — v4 `:183-186`); the `pascal` importance row (all `high`, defensive — Pascal
+  renders full-row). `StaffFields` gains `pascalMeta`.
+- **`chat-stream.reducer.ts`:** a `pascal` `StreamMessage` member + the
+  `pascalResult` branch (deduped by id like carina/host). `message-list.ts`'s
+  `streamMessageToMessageDto` already casts a non-assistant posted message
+  straight across, so a `pascal` entry carries `pascalMeta` for free.
+- **Specs:** `system-message-labels.spec.ts` (new — sender/kind/toolTitle-
+  fallback/importance case-for-case); a `pascalResult` dedup case in
+  `chat-stream.reducer.spec.ts`.
+- **Gate:** `ng test` 130 files / 1254 passed; the application bundle compiles
+  clean.

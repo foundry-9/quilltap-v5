@@ -80,7 +80,8 @@ export type StreamMessage =
       confirmationNotes?: string | null;
     }
   | { kind: 'carina'; id: string; message: PostedMessage }
-  | { kind: 'host'; id: string; message: PostedMessage };
+  | { kind: 'host'; id: string; message: PostedMessage }
+  | { kind: 'pascal'; id: string; message: PostedMessage };
 
 /** The terminal `done` info the consumer reconciles against the dispatch reply. */
 export interface FinalDoneInfo {
@@ -212,6 +213,12 @@ export function reduceChatFrame(prev: ChatStreamState, frame: ChatStreamFrame): 
   // a Host announcement (turn-pass note) surfaced mid-turn — insert, deduped by id
   if (frame.hostAnnouncement) {
     s = { ...s, messages: dedupePush(s.messages, { kind: 'host', id: frame.hostAnnouncement.id, message: frame.hostAnnouncement }) };
+  }
+
+  // a Pascal custom-tool outcome (an LLM's run_custom reach) surfaced mid-turn —
+  // insert, deduped by id, and render live like carina/host (§4).
+  if (frame.pascalResult) {
+    s = { ...s, messages: dedupePush(s.messages, { kind: 'pascal', id: frame.pascalResult.id, message: frame.pascalResult }) };
   }
 
   // an answer-confirmation result — patch the bubble (and, on a revision, its content)

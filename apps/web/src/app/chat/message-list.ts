@@ -276,11 +276,12 @@ export class MessageList {
 /**
  * Turn one streamed {@link StreamMessage} into a {@link MessageDto} so it renders
  * through the exact MessageRow / AnnouncementGroup path the settled flow uses. A
- * carina/host entry already carries the full posted message object (v4 encodes
- * `{ carinaAnswer|hostAnnouncement: message }` — the serialized message), so it
- * casts straight across; an assistant bubble is assembled from the reducer's
- * fields (createdAt is left blank — the transient row carries no timestamp; the
- * canonical refetch supplies the real one on handoff).
+ * carina/host/pascal entry already carries the full posted message object (v4
+ * encodes `{ carinaAnswer|hostAnnouncement|pascalResult: message }` — the
+ * serialized message, `pascalMeta` and all), so it casts straight across; an
+ * assistant bubble is assembled from the reducer's fields (createdAt is left
+ * blank — the transient row carries no timestamp; the canonical refetch supplies
+ * the real one on handoff).
  */
 function streamMessageToMessageDto(sm: StreamMessage): MessageDto {
   if (sm.kind !== 'assistant') {

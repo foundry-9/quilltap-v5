@@ -120,6 +120,22 @@ describe('chat stream reducer', () => {
     expect(s2.messages.filter((m) => m.kind === 'carina')).toHaveLength(1);
   });
 
+  it('surfaces a pascalResult mid-turn and dedupes it by id (§4)', () => {
+    const base = initialChatStreamState();
+    const s1 = reduceChatFrame(base, {
+      pascalResult: { id: 'pascal-1', type: 'message', systemSender: 'pascal' },
+    });
+    const s2 = reduceChatFrame(s1, {
+      pascalResult: { id: 'pascal-1', type: 'message', systemSender: 'pascal' },
+    });
+    const pascal = s2.messages.filter((m) => m.kind === 'pascal');
+    expect(pascal).toHaveLength(1);
+    expect(pascal[0].id).toBe('pascal-1');
+    expect((pascal[0] as Extract<StreamMessage, { kind: 'pascal' }>).message).toMatchObject({
+      systemSender: 'pascal',
+    });
+  });
+
   it('applies an answer-confirmation revision to the bubble content', () => {
     const done = foldChatFrames(framesFor(singleTurnTrace, FIXTURE_CHAT_ID));
     const revised = reduceChatFrame(done, {

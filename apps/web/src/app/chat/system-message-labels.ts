@@ -9,7 +9,7 @@
 
 import type { MessageDto, SystemSender } from '../core/core-contract';
 
-type StaffFields = Pick<MessageDto, 'systemSender' | 'systemKind' | 'content'>;
+type StaffFields = Pick<MessageDto, 'systemSender' | 'systemKind' | 'content' | 'pascalMeta'>;
 
 const SENDER_DISPLAY_NAMES: Record<NonNullable<SystemSender>, string> = {
   lantern: 'The Lantern',
@@ -22,6 +22,7 @@ const SENDER_DISPLAY_NAMES: Record<NonNullable<SystemSender>, string> = {
   ariel: 'Ariel',
   carina: 'Carina',
   suparna: 'Suparṇā',
+  pascal: 'Pascal',
 };
 
 const KIND_DISPLAY_OVERRIDES: Record<string, string> = {
@@ -69,6 +70,8 @@ const KIND_DISPLAY_OVERRIDES: Record<string, string> = {
   'autonomous-room-halfway': 'halfway through',
   'autonomous-room-nearing-end': 'nearing the end',
   'mail-delivery': 'mail delivery',
+  'custom-tool-result': 'roll outcome',
+  'custom-tool-error': "the table couldn't deal",
   'turn-pass': 'nothing to add',
   nudge: 'invited to speak',
   timestamp: 'time',
@@ -87,6 +90,16 @@ function resolveRawKind(message: StaffFields): string {
 export function getSystemKindDisplayLabel(message: StaffFields): string {
   const raw = resolveRawKind(message);
   if (!raw) return '';
+
+  // A roll outcome names the TOOL, not the kind: "Scan Hawking Radiation", not
+  // "roll outcome" (v4 system-message-labels `:183-186`). `toolTitle ?? tool` —
+  // the display title when the row carries one, else the declaration name, which
+  // every roll record has. Both come from `pascalMeta`, never from the body.
+  if (raw === 'custom-tool-result') {
+    const named = message.pascalMeta?.toolTitle?.trim() || message.pascalMeta?.tool?.trim();
+    if (named) return named;
+  }
+
   return KIND_DISPLAY_OVERRIDES[raw] ?? raw.replace(/-/g, ' ');
 }
 
@@ -168,6 +181,10 @@ const IMPORTANCE_TABLE: Record<NonNullable<SystemSender>, Record<string, Announc
   },
   carina: { 'carina-response': 'medium', '*': 'medium' },
   suparna: { 'mail-delivery': 'high', '*': 'high' },
+  // A roll outcome is binding on the scene — the table dealt it, and nobody may
+  // argue. Pascal's results render as their own full row (never a collapsed
+  // chip), so this tier is largely a defensive fallback (v4 `:284-287`).
+  pascal: { 'custom-tool-result': 'high', 'custom-tool-error': 'high', '*': 'high' },
 };
 
 const DEFAULT_IMPORTANCE: AnnouncementImportance = 'medium';
