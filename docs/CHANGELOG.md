@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+P4.d5 unit 3: the rng modifier. The tool now understands `3d6+2` — a flat
+amount added to the dice total — and reports it: every successful dice roll's
+output carries `modifier` and `total` alongside `sum`, where an unmodified roll
+reads `modifier: 0, total: sum`. That changes the serialized output of every
+dice case, not only modified ones. The rolled line gains the arithmetic
+("Rolled 3d6+2: [4, 2, 6] + 2 = **14** total"); the unmodified wording is
+byte-for-byte what it always was. Quoted numbers now reach the roller, so
+{"type": "6"} rolls a real d6 instead of returning "Unknown RNG type", and
+{"modifier": "2"} adds two rather than concatenating a digit. The published rng
+tool definition gains `modifier` so the model is told it exists, and the
+catalogue picks up ten tools' key-order changes from v4's llmNumber refactor.
+The run_custom definition joins the catalogue for the Pascal lane; it is a
+keyed lookup, so it offers the model nothing until that lane's handler lands.
+Verified by a 37-case differential (up from 14) asserting output JSON, the
+formatted string, and exact random-byte consumption, plus 58 byte-exact tool
+definitions.
+
 P4.d5 unit 2 (rider): image generation now honors a quoted `count`. A
 model that asked for `{"count": "3"}` got one image instead of three.
 

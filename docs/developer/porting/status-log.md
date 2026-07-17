@@ -17354,3 +17354,73 @@ is correct as written and unifiable.
 preprocess 54 + bounded 19 = 73.
 
 Versions: core 0.0.240, harness 0.0.214.
+
+---
+
+## P4.d5 unit 3 — the rng modifier + quoted-number arms — LANDED 2026-07-17
+
+The re-port of v4's rng drift, redone against baseline **`e3593f75`** (the D24
+validator fix). The WIP commit `93b779fe` on the preserved branch
+`claude/p4-d5-dice-rng-lenient-5b62d6` was **mined, not trusted**: its parts were
+re-applied and then re-verified case-by-case against a freshly regenerated
+oracle. Every one of its contested arms came back GREEN, because the behavior
+they encoded is what fixed v4 now does.
+
+**What landed:**
+
+- `RngToolOutput` gains `modifier` / `total`, emitted on EVERY dice success
+  (`modifier: 0, total: sum` when unmodified) and on NO coin/bottle/failure
+  shape — v4's object literals carry the keys only in the dice branch.
+- `validate_rng_input`'s `modifier` arm (`llmNumber(int [-1000, 1000])`,
+  `.default(0).optional()`) and the lenient `type`/`rolls` arms. The `type`
+  union is ordered exactly as v4's `z.union`: arm 1 is the ONLY wrapped arm, and
+  arm 2 (the enum) sees the ORIGINAL value — which is why `"flip_coin"` still
+  reaches the enum after the preprocess hands the non-numeric string back.
+- The two `format_rng_results` modifier branches; the zero-modifier strings are
+  byte-for-byte untouched.
+- `definitions/data.rs` regenerated via `gen-tool-catalog.mjs` — **never
+  hand-edited**. 58 entries, byte-exact.
+
+**§2(b) — the `run_custom` catalogue entry — LANDED, and it is INERT.** The
+Shared contract's unification note warns that `run_custom` in `data.rs` without
+lane C's handler would publish a tool answering `Unknown tool: run_custom`.
+**It would not, on this evidence:** `TOOL_DEFINITIONS` has no consumer outside
+the harness — the catalogue is a keyed lookup (`definition_json_by_key`), and
+tools are published by explicit selection in the build path, never by iterating
+the table. So the revert-if-C-slips rule is a belt-and-braces choice, not a
+correctness requirement. Transcribed via the ORACLE CASE, not v4's jest
+snapshot: the snapshot sorts keys, so it cannot see the key-ORDER that IS the
+bytes here ([[p4.d5-dice-rng-lenient-round]]).
+
+**Two facts the regen turned from assumption into proof:**
+
+1. **The order's addendum is right about published bytes.** `data.rs`
+   regenerated at `e3593f75` is **byte-identical** to the same file regenerated
+   at `a33ac8b8` (diffed directly). The D24 fix touches no schema construction.
+2. **Ten tools' bytes changed** from v4's `.describe()`-inside-`llmNumber` move
+   (doc_grep, help_search, generate_image, search ×3, rng, run_sql,
+   terminal_read, search_web) — a pure key-ORDER change, structurally invisible
+   to v4's jest snapshot and load-bearing in `data.rs`.
+
+**The differential that proves it.** `rng-executor.json` grew 14 → 37 cases:
+modifier arms (positive/negative/zero-explicit/at-bounds/out-of-bounds/
+non-integer), modifier-ignored on coin+bottle, and the quoted family
+(`quoted_type`, `quoted_rolls`, `quoted_modifier`, `quoted_all_three`,
+padded, hex, out-of-bounds, non-integer) plus the refusals
+(`type: true/null/""`, `rolls: true`, `modifier: true`).
+
+**The byte-consumption assertion is the load-bearing guard, on BOTH sides** —
+it is what caught the D24 bug last round (`quoted_type` consumed 0 bytes where
+the fixture committed 1). At `e3593f75` every case consumes exactly its
+committed bytes, which is the positive proof the roll actually happens now:
+
+```
+quoted_type    {"type":"6"}                     -> type:6, results:[4], total:4   (1 byte, was 0)
+quoted_rolls   {"type":6,"rolls":"3"}           -> rollCount:3 (a NUMBER, was "3")
+quoted_modifier{"type":6,"modifier":"2"}        -> total:6     (was "42")
+```
+
+Green by name, `--nocapture`, zero SKIPs: `rng_executor_equivalence` 37/37,
+`tool_definitions_equivalence` 58 byte-exact + the canonicalize spot-check.
+
+Versions: core 0.0.241.

@@ -55,6 +55,7 @@ import { projectInfoToolDefinition } from '@/lib/tools/project-info-tool';
 import { readConversationToolDefinition } from '@/lib/tools/read-conversation-tool';
 import { requestFullContextToolDefinition } from '@/lib/tools/request-full-context-tool';
 import { rngToolDefinition } from '@/lib/tools/rng-tool';
+import { runCustomToolDefinition } from '@/lib/tools/run-custom-tool';
 import { runSqlToolDefinition } from '@/lib/tools/run-sql-tool';
 import {
   searchScriptoriumToolDefinition,
@@ -116,6 +117,7 @@ const ALL: UniversalTool[] = [
   readConversationToolDefinition,
   requestFullContextToolDefinition,
   rngToolDefinition,
+  runCustomToolDefinition,
   runSqlToolDefinition,
   searchScriptoriumToolDefinition,
   searchScriptoriumBrahmaToolDefinition,

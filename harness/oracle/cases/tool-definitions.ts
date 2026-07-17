@@ -58,6 +58,7 @@ import { projectInfoToolDefinition } from '@/lib/tools/project-info-tool';
 import { readConversationToolDefinition } from '@/lib/tools/read-conversation-tool';
 import { requestFullContextToolDefinition } from '@/lib/tools/request-full-context-tool';
 import { rngToolDefinition } from '@/lib/tools/rng-tool';
+import { runCustomToolDefinition } from '@/lib/tools/run-custom-tool';
 import { runSqlToolDefinition } from '@/lib/tools/run-sql-tool';
 import {
   searchScriptoriumToolDefinition,
@@ -119,6 +120,7 @@ const ALL_TOOLS: Record<string, { type: string; function: { name: string; descri
   readConversation: readConversationToolDefinition,
   requestFullContext: requestFullContextToolDefinition,
   rng: rngToolDefinition,
+  runCustom: runCustomToolDefinition,
   runSql: runSqlToolDefinition,
   searchScriptorium: searchScriptoriumToolDefinition,
   searchScriptoriumBrahma: searchScriptoriumBrahmaToolDefinition,

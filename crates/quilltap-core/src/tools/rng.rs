@@ -25,6 +25,7 @@ use serde_json::{json, Value};
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read, DbError};
 use crate::pascal::dice::{flip_coin, roll_dice, secure_random_int};
+use crate::tools::llm_number::llm_number;
 
 pub use crate::pascal::dice::{FixedBytes, OsRandomBytes, RandomBytes};
 
@@ -69,8 +70,18 @@ impl Serialize for RngResultValue {
 
 /// v4 `RngToolOutput`. `type` is a `serde_json::Value` because on a validation
 /// failure v4 echoes the caller's raw `type` (which may be any value) or `6`;
-/// on a success path it holds the serialized [`RngType`]. `sum`/`error` are
-/// omitted when absent (v4's `undefined` dropped by `JSON.stringify`).
+/// on a success path it holds the serialized [`RngType`]. `sum`/`modifier`/
+/// `total`/`error` are omitted when absent (v4's `undefined` dropped by
+/// `JSON.stringify`).
+///
+/// Field order reproduces v4's object literals: the dice branch builds
+/// `{success, type, rollCount, results, sum, modifier, total}` and the failure
+/// branch `{success, type, rollCount, results, error}`, so `error` sits last and
+/// the three dice-only fields drop out of the coin/bottle/failure shapes.
+///
+/// **`modifier`/`total` are emitted on EVERY dice success** — `modifier: 0,
+/// total: sum` even when the roll carried none — so the serialized JSON differs
+/// from the pre-drift port on every dice case, not just modified ones.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RngToolOutput {
@@ -81,6 +92,12 @@ pub struct RngToolOutput {
     pub results: Vec<RngResultValue>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sum: Option<i64>,
+    /// v4's `modifier?` — the flat amount added to `sum`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modifier: Option<i64>,
+    /// v4's `total?` — `sum + modifier`, the number that counts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -169,53 +186,73 @@ fn spin_the_bottle(
 // Input validation.
 // ---------------------------------------------------------------------------
 
-/// The validated input: v4's `RngToolInput` (`{ type, rolls }`, `rolls` defaulting
-/// to 1).
+/// The validated input: v4's `RngToolInput` (`{ type, rolls, modifier }`, with
+/// `rolls` defaulting to 1 and `modifier` to 0).
 struct ValidatedRngInput {
     type_: RngType,
     rolls: u32,
+    modifier: i64,
 }
 
-/// v4 `validateRngInput` (the Zod `rngToolInputSchema`): `type` is an integer in
-/// `[2, 1000]` OR `'flip_coin'`/`'spin_the_bottle'`; `rolls` is an optional
-/// integer in `[1, 100]` (default 1). Returns `None` on any violation.
+/// v4's `llmNumber(z.number().int().min(lo).max(hi))` over an optional field:
+/// `None` when absent, `Some(default)` never — the caller supplies the default.
+/// A present value converts leniently, then must be an integer in `[lo, hi]`.
+/// `Err(())` marks a validation failure (distinct from an absent field).
+#[allow(clippy::result_unit_err)]
+fn lenient_int_in_range(raw: Option<&Value>, lo: f64, hi: f64) -> Result<Option<i64>, ()> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    // A present `null` fails: `.optional()` admits undefined, not null.
+    let Some(x) = llm_number(raw).as_f64() else {
+        return Err(());
+    };
+    // Zod `.int()` is Number.isInteger; then `.min(lo).max(hi)`.
+    if !x.is_finite() || x.fract() != 0.0 || !(lo..=hi).contains(&x) {
+        return Err(());
+    }
+    Ok(Some(x as i64))
+}
+
+/// v4 `validateRngInput` (the Zod `rngToolInputSchema`): `type` is
+/// `llmNumber(int [2, 1000])` OR `'flip_coin'`/`'spin_the_bottle'`; `rolls` is an
+/// optional `llmNumber(int [1, 100])` (default 1); `modifier` an optional
+/// `llmNumber(int [-1000, 1000])` (default 0). Returns `None` on any violation.
 fn validate_rng_input(input: &Value) -> Option<ValidatedRngInput> {
     let obj = input.as_object()?;
 
-    // type — number.int().min(2).max(1000) | enum('flip_coin','spin_the_bottle')
-    let type_ = match obj.get("type") {
-        Some(Value::Number(n)) => {
-            let x = n.as_f64()?;
-            // Zod .int() = Number.isInteger; range [2, 1000].
-            if x.fract() != 0.0 || !(2.0..=1000.0).contains(&x) {
-                return None;
-            }
-            RngType::Dice(x as u32)
-        }
-        Some(Value::String(s)) => match s.as_str() {
-            "flip_coin" => RngType::FlipCoin,
-            "spin_the_bottle" => RngType::SpinTheBottle,
+    // type — a z.union of TWO arms, tried in order:
+    //   1. llmNumber(z.number().int().min(2).max(1000)) — ONLY this arm is
+    //      wrapped; a quoted "6" rolls a d6.
+    //   2. z.enum(['flip_coin', 'spin_the_bottle']) — untouched, and it sees the
+    //      ORIGINAL value (the preprocess hands a non-numeric string straight
+    //      back, so "flip_coin" reaches the enum unharmed).
+    let raw_type = obj.get("type")?;
+    let type_ = match llm_number(raw_type).as_f64() {
+        Some(x) if x.fract() == 0.0 && (2.0..=1000.0).contains(&x) => RngType::Dice(x as u32),
+        // Arm 1 failed (not numeric, non-integer, or out of range) → try arm 2.
+        _ => match raw_type.as_str() {
+            Some("flip_coin") => RngType::FlipCoin,
+            Some("spin_the_bottle") => RngType::SpinTheBottle,
             _ => return None,
         },
-        _ => return None,
     };
 
-    // rolls — number.int().min(1).max(100).default(1).optional(). Absent → 1; a
-    // present non-number (incl. null — `.optional()` allows undefined, not null)
-    // or out-of-range value fails validation.
-    let rolls = match obj.get("rolls") {
-        None => 1u32,
-        Some(Value::Number(n)) => {
-            let x = n.as_f64()?;
-            if x.fract() != 0.0 || !(1.0..=100.0).contains(&x) {
-                return None;
-            }
-            x as u32
-        }
-        Some(_) => return None,
-    };
+    // rolls — .default(1).optional(); absent → the handler's `rolls = 1`.
+    let rolls = lenient_int_in_range(obj.get("rolls"), 1.0, 100.0)
+        .ok()?
+        .unwrap_or(1) as u32;
 
-    Some(ValidatedRngInput { type_, rolls })
+    // modifier — .default(0).optional(); absent → the handler's `modifier = 0`.
+    let modifier = lenient_int_in_range(obj.get("modifier"), -1000.0, 1000.0)
+        .ok()?
+        .unwrap_or(0);
+
+    Some(ValidatedRngInput {
+        type_,
+        rolls,
+        modifier,
+    })
 }
 
 /// The `type` echoed in a failure output: v4's
@@ -249,6 +286,8 @@ pub fn execute_rng_tool(
             roll_count: 0,
             results: Vec::new(),
             sum: None,
+            modifier: None,
+            total: None,
             error: Some(
                 "Invalid input: type must be a number (2-1000 for dice sides) or \"flip_coin\" or \"spin_the_bottle\""
                     .to_string(),
@@ -260,12 +299,17 @@ pub fn execute_rng_tool(
     match valid.type_ {
         RngType::Dice(sides) => {
             let (results, sum) = roll_dice(sides as u64, rolls, rng);
+            // v4 emits `modifier`/`total` on EVERY dice success — `modifier: 0,
+            // total: sum` when the roll carried none. Ignored for coin/bottle.
+            let total = sum + valid.modifier;
             Ok(RngToolOutput {
                 success: true,
                 type_: json!(sides),
                 roll_count: rolls,
                 results: results.into_iter().map(RngResultValue::Number).collect(),
                 sum: Some(sum),
+                modifier: Some(valid.modifier),
+                total: Some(total),
                 error: None,
             })
         }
@@ -282,6 +326,9 @@ pub fn execute_rng_tool(
                 roll_count: rolls,
                 results,
                 sum: None,
+                // Dice-only: v4's coin/bottle literals carry neither key.
+                modifier: None,
+                total: None,
                 error: None,
             })
         }
@@ -295,6 +342,8 @@ pub fn execute_rng_tool(
                     roll_count: 0,
                     results: Vec::new(),
                     sum: None,
+                    modifier: None,
+                    total: None,
                     error: Some(err),
                 });
             }
@@ -304,6 +353,9 @@ pub fn execute_rng_tool(
                 roll_count: rolls,
                 results,
                 sum: None,
+                // Dice-only: v4's coin/bottle literals carry neither key.
+                modifier: None,
+                total: None,
                 error: None,
             })
         }
@@ -321,14 +373,32 @@ pub fn format_rng_results(output: &RngToolOutput) -> String {
 
     let roll_count = output.roll_count;
 
-    // Dice (type is a number).
+    // Dice (type is a number). The no-modifier wording is long-standing and
+    // deliberately untouched — byte-for-byte what it always was; a modifier only
+    // ever ADDS the "± n" arithmetic to the line.
     if let Some(sides) = output.type_.as_u64() {
+        // v4 destructures `modifier = 0`, so an absent modifier reads as zero.
+        let modifier = output.modifier.unwrap_or(0);
+        let sign = if modifier > 0 { '+' } else { '-' };
+        let magnitude = modifier.abs();
+        let total = output.total.unwrap_or(0);
         if roll_count == 1 {
-            return format!("Rolled a d{sides}: **{}**", result_str(&output.results[0]));
+            if modifier == 0 {
+                return format!("Rolled a d{sides}: **{}**", result_str(&output.results[0]));
+            }
+            return format!(
+                "Rolled a d{sides}{sign}{magnitude}: {} {sign} {magnitude} = **{total}**",
+                result_str(&output.results[0])
+            );
         }
         let joined = join_results(&output.results);
-        let sum = output.sum.unwrap_or(0);
-        return format!("Rolled {roll_count}d{sides}: [{joined}] = **{sum}** total");
+        if modifier == 0 {
+            let sum = output.sum.unwrap_or(0);
+            return format!("Rolled {roll_count}d{sides}: [{joined}] = **{sum}** total");
+        }
+        return format!(
+            "Rolled {roll_count}d{sides}{sign}{magnitude}: [{joined}] {sign} {magnitude} = **{total}** total"
+        );
     }
 
     match output.type_.as_str() {
@@ -396,6 +466,8 @@ mod tests {
             roll_count: 1,
             results: vec![RngResultValue::Number(10)],
             sum: Some(10),
+            modifier: Some(0),
+            total: Some(10),
             error: None,
         };
         assert_eq!(format_rng_results(&single), "Rolled a d20: **10**");
@@ -405,6 +477,8 @@ mod tests {
             roll_count: 2,
             results: vec![RngResultValue::Number(4), RngResultValue::Number(5)],
             sum: Some(9),
+            modifier: Some(0),
+            total: Some(9),
             error: None,
         };
         assert_eq!(
@@ -421,6 +495,8 @@ mod tests {
             roll_count: 1,
             results: vec![RngResultValue::Text("heads".into())],
             sum: None,
+            modifier: None,
+            total: None,
             error: None,
         };
         assert_eq!(format_rng_results(&coin), "Coin flip result: **heads**");
@@ -430,6 +506,8 @@ mod tests {
             roll_count: 1,
             results: vec![RngResultValue::Text("Friday".into())],
             sum: None,
+            modifier: None,
+            total: None,
             error: None,
         };
         assert_eq!(
@@ -442,6 +520,8 @@ mod tests {
             roll_count: 0,
             results: vec![],
             sum: None,
+            modifier: None,
+            total: None,
             error: Some("No active participants found in chat".into()),
         };
         assert_eq!(
@@ -460,5 +540,94 @@ mod tests {
         assert!(validate_rng_input(&json!({"type": 6, "rolls": 101})).is_none()); // rolls > 100
         assert!(validate_rng_input(&json!({"type": 6})).is_some());
         assert!(validate_rng_input(&json!({"type": "flip_coin"})).is_some());
+    }
+
+    #[test]
+    fn validation_modifier_arm() {
+        assert_eq!(
+            validate_rng_input(&json!({"type": 6, "modifier": 2}))
+                .unwrap()
+                .modifier,
+            2
+        );
+        assert_eq!(
+            validate_rng_input(&json!({"type": 6, "modifier": -1000}))
+                .unwrap()
+                .modifier,
+            -1000
+        );
+        // Absent → 0 (the handler's `modifier = 0` destructuring default).
+        assert_eq!(validate_rng_input(&json!({"type": 6})).unwrap().modifier, 0);
+        assert!(validate_rng_input(&json!({"type": 6, "modifier": 1001})).is_none());
+        assert!(validate_rng_input(&json!({"type": 6, "modifier": -1001})).is_none());
+        assert!(validate_rng_input(&json!({"type": 6, "modifier": 1.5})).is_none());
+        assert!(validate_rng_input(&json!({"type": 6, "modifier": null})).is_none());
+    }
+
+    #[test]
+    fn validation_accepts_quoted_numbers_but_not_coercible_junk() {
+        // v4 HEAD rolls a d6 for {"type": "6"} — the whole point of the drift.
+        let v = validate_rng_input(&json!({"type": "6", "rolls": "3", "modifier": "2"})).unwrap();
+        assert!(matches!(v.type_, RngType::Dice(6)));
+        assert_eq!(v.rolls, 3);
+        assert_eq!(v.modifier, 2);
+        // The enum arm still sees the ORIGINAL string.
+        assert!(matches!(
+            validate_rng_input(&json!({"type": "flip_coin"}))
+                .unwrap()
+                .type_,
+            RngType::FlipCoin
+        ));
+        // Only the numeric arm is lenient; true/null are refused, not coerced.
+        assert!(validate_rng_input(&json!({"type": true})).is_none());
+        assert!(validate_rng_input(&json!({"type": null})).is_none());
+        // Bounds apply AFTER conversion.
+        assert!(validate_rng_input(&json!({"type": "1001"})).is_none());
+        assert!(validate_rng_input(&json!({"type": "6.5"})).is_none());
+    }
+
+    #[test]
+    fn format_dice_with_modifier() {
+        let single = RngToolOutput {
+            success: true,
+            type_: json!(20),
+            roll_count: 1,
+            results: vec![RngResultValue::Number(10)],
+            sum: Some(10),
+            modifier: Some(5),
+            total: Some(15),
+            error: None,
+        };
+        assert_eq!(
+            format_rng_results(&single),
+            "Rolled a d20+5: 10 + 5 = **15**"
+        );
+        let multi = RngToolOutput {
+            success: true,
+            type_: json!(6),
+            roll_count: 3,
+            results: vec![
+                RngResultValue::Number(4),
+                RngResultValue::Number(2),
+                RngResultValue::Number(6),
+            ],
+            sum: Some(12),
+            modifier: Some(2),
+            total: Some(14),
+            error: None,
+        };
+        assert_eq!(
+            format_rng_results(&multi),
+            "Rolled 3d6+2: [4, 2, 6] + 2 = **14** total"
+        );
+        let negative = RngToolOutput {
+            modifier: Some(-1),
+            total: Some(11),
+            ..multi.clone()
+        };
+        assert_eq!(
+            format_rng_results(&negative),
+            "Rolled 3d6-1: [4, 2, 6] - 1 = **11** total"
+        );
     }
 }
