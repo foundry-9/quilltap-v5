@@ -17483,3 +17483,56 @@ QT_ORACLE_RNG_PATTERNS=/tmp/oracle-rng-patterns.ndjson \
 `rng_patterns_equivalence` green by name, `--nocapture`, zero SKIPs: 64/64.
 
 Versions: core 0.0.242, harness 0.0.215.
+
+---
+
+## P4.d5 unit 5 — the two spine RNG call sites — LANDED 2026-07-17
+
+`orchestrator.rs` (user-message auto-detect) and `message_finalizer.rs`
+(response auto-detect) now build v4's
+`{ type, rolls, modifier: pattern.modifier ?? 0 }` and pass the SAME shape into
+BOTH `execute_rng_tool` and the persisted TOOL row's `arguments`.
+`RngArguments` / `ResponseRngArguments` gain the field.
+
+**The subtle part: `modifier` here is NOT optional.** On `RngToolCall` it is an
+`Option` (v4's coin/bottle literals omit the key entirely — unit 4). But v4's
+`?? 0` runs at THIS site, so the persisted row always carries the key — **a
+coin-flip TOOL row records `modifier: 0`**. The oracle confirms it directly:
+
+```
+{"tool":"rng","initiatedBy":"auto-detect","result":"Coin flip result: **heads**",
+ "prompt":"Flip a coin","arguments":{"type":"flip_coin","rolls":1,"modifier":0}}
+```
+
+An `Option` field with `skip_serializing_if` here would have silently dropped
+that key and diverged on a path with no dice in it at all.
+
+**`orchestrator.rs` is a declared shared file** (Ownership → *Declared shared
+files*): only the RNG auto-detect execute block was touched — the `rng_input`
+`json!` and the TOOL-row `arguments` — with no reformatting, reordering, or
+re-wrapping. Lane C's regions (`custom_tool_context` + the `build_tools` call
+site) are untouched.
+
+**Corpus extended, not just regenerated.** The three existing orchestrator rng
+cases all produce `modifier: 0`, which pins the key-presence change but proves
+nothing about a nonzero modifier reaching the roll — the mandate's headline bug.
+So `orchestrator-tier3.json` gained a fourth: `rng_modifier` ("Roll 3d6+2 for
+damage.", its own chat `e4000004-…`, `rngBytes [0,1,2]`, stream `rng_mod`).
+v4's answer, end to end:
+
+```
+result:    "Rolled 3d6+2: [1, 2, 3] + 2 = **8** total"
+arguments: {"type":6,"rolls":3,"modifier":2}
+```
+
+**Fixtures changed → other oracles invalidated.** `orchestrator-tier3.json`
+gained a chat, a call, and a stream; the fixture DB build now reports **29
+chats** (was 28). Any oracle built from `build-orchestrator-fixture.ts` must be
+regenerated. `message-finalizer-tier3.json` is UNCHANGED — only its oracle
+needed regenerating, because the ported struct's serialization moved.
+
+Both green by name, `--nocapture`, zero SKIPs: `orchestrator_tier3_equivalence`
+(the `mid_stream_error` line on stdout is that case's expected diagnostic, not a
+failure) and `message_finalizer_tier3_equivalence`.
+
+Versions: core 0.0.243.

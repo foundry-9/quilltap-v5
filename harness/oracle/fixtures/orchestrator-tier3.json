@@ -666,6 +666,26 @@
    "messages": []
   },
   {
+   "id": "e4000004-0000-4000-8000-000000000004",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "e40a0004-0000-4000-8000-0000000000a4",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "e40b0004-0000-4000-8000-0000000000b4",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
    "id": "f1000001-0000-4000-8000-000000000001",
    "chatType": "salon",
    "contextSummary": null,
@@ -1162,6 +1182,21 @@
    "cheapLLMSettings": false,
    "summaryCheck": false,
    "rngBytes": []
+  },
+  {
+   "name": "rng_modifier",
+   "kind": "chain",
+   "chatId": "e4000004-0000-4000-8000-000000000004",
+   "content": "Roll 3d6+2 for damage.",
+   "continueMode": false,
+   "streamLabel": "rng_mod",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "rngBytes": [
+    0,
+    1,
+    2
+   ]
   },
   {
    "name": "disabled_tools",
@@ -2080,6 +2115,21 @@
       "promptTokens": 50,
       "completionTokens": 9,
       "totalTokens": 59
+     }
+    }
+   ]
+  ],
+  "rng_mod": [
+   [
+    {
+     "content": "Friday tallies the dice and the bonus."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 22,
+      "completionTokens": 7,
+      "totalTokens": 29
      }
     }
    ]

@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.d5 unit 5: the two chat-spine RNG call sites. Typing "2d20+5" in a Salon —
+or a character writing it in a reply — rolled a plain 2d20 and dropped the +5,
+then persisted a TOOL row whose arguments didn't record the modifier at all.
+Both auto-detect sites (the user-message path in the orchestrator and the
+response path in the message finalizer) now pass the detected modifier into the
+roll and into the saved row. The modifier is always recorded, zero included, so
+even a coin flip's row carries `modifier: 0` — matching what v4 writes.
+Verified by the regenerated orchestrator and finalizer end-to-end differentials,
+with a new case rolling 3d6+2 through the whole spine.
+
 P4.d5 unit 4: the prose dice scanner honors modifiers. Typing "roll 3d6+2" in
 a Salon detected a 3d6 and dropped the +2 on the floor. The detector no longer
 carries its own dice regex; it drives the shared scanner, so the modifier comes

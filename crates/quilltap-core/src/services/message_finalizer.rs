@@ -128,12 +128,18 @@ struct ResponseRngToolMessageContent<'a> {
     anchor_offset: Option<u64>,
 }
 
-/// The `arguments` object of a response-RNG TOOL message (v4 `{ type, rolls }`).
+/// The `arguments` object of a response-RNG TOOL message (v4
+/// `{ type, rolls, modifier: pattern.modifier ?? 0 }`).
+///
+/// `modifier` is NOT optional here, unlike on the `RngToolCall` it comes from:
+/// v4's `?? 0` runs at this site, so a coin-flip pattern — which carries no
+/// modifier at all — still persists `modifier: 0` in its TOOL row.
 #[derive(serde::Serialize)]
 struct ResponseRngArguments {
     #[serde(rename = "type")]
     type_: RngType,
     rolls: u32,
+    modifier: i64,
 }
 
 // ===========================================================================
@@ -1062,7 +1068,11 @@ where
                 user_id: user_id.clone(),
                 chat_id: chat_id.clone(),
             };
-            let rng_input = json!({ "type": call.type_, "rolls": call.rolls });
+            // v4 `{ type, rolls, modifier: pattern.modifier ?? 0 }` — the same
+            // shape reaches the executor AND the persisted TOOL row below.
+            let call_modifier = call.modifier.unwrap_or(0);
+            let rng_input =
+                json!({ "type": call.type_, "rolls": call.rolls, "modifier": call_modifier });
             let output = execute_rng_tool(db, &rng_input, &rng_ctx, rng_bytes)?;
             let formatted = format_rng_results(&output);
 
@@ -1088,6 +1098,7 @@ where
                 arguments: ResponseRngArguments {
                     type_: call.type_,
                     rolls: call.rolls,
+                    modifier: call_modifier,
                 },
                 anchor_offset: rng_anchor,
             })
