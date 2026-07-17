@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.d6 unit 1: ported the help-document slug (v4's `helpDocSlug`), the
+path-derived identifier used outside the database, where the primary key is
+a UUID that changes whenever a doc is re-created. v4 promoted it out of the
+sync module in d6e74145; v5 had skipped it as dead code, which it was at the
+old baseline and no longer is, so that rationale is replaced rather than
+appended to. The port maps UTF-16 code units, not chars: v4's character regex
+carries no `/u` flag, so one non-BMP character is two dashes, not one — a
+40-case tier-1 differential against v4's real module pins it. The slug's
+consumers stay unported and are named as such: v4's help-search handler drops
+`slug` from its output, so adding the field to v5's tool-wire shape would
+diverge from v4 rather than match it.
 P4.6ay unit 10: adopt v4 4.8.0's two new columns — `chat_messages.pascalMeta`
 (the persisted custom-tool roll record) and `chat_settings.customTools` (the
 feature toggle, default on). `fresh_schema.json` re-dumped from v4's live

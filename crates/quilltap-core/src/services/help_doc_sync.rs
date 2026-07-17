@@ -17,11 +17,17 @@
 //! parser) — ported as its own private helper, never unified with
 //! [`crate::markdown::parse_frontmatter`].
 //!
-//! `generateDocumentId` is computed-but-unused in v4's `syncHelpDocs` (dead
-//! code carried from `build-help-index.ts`) — not ported, no observable
-//! effect. The `ensureHelpDocsSynced` module-promise concurrency guard does
-//! not port (the single-writer runtime already serializes; the lazy
-//! only-when-empty gate DOES port).
+//! v4's private `generateDocumentId` was computed-but-unused here (dead code
+//! carried from `build-help-index.ts`), and this port skipped it on that
+//! ground. **That judgment expired with v4 `d6e74145`**, which DELETED it from
+//! `help-doc-sync.ts` and promoted it to the shared module
+//! `lib/help/help-doc-slug.ts` as the live `helpDocSlug` — the path-derived
+//! identifier everything outside the database uses, since the DB primary key is
+//! a UUID that changes whenever a doc is re-created. It is ported at
+//! [`crate::help_doc_slug::help_doc_slug`]; the sync itself is not a consumer.
+//!
+//! The `ensureHelpDocsSynced` module-promise concurrency guard does not port
+//! (the single-writer runtime already serializes callers).
 
 use rusqlite::{params, Connection};
 

@@ -16222,6 +16222,78 @@ lane never ran its required full-Playwright step).
 
 ---
 
+## P4.d6 unit 1 — the help-doc slug promotion (`help_doc_slug`)
+
+**Lane B of the P4.d5 ∥ P4.d6 ∥ P4.6ay drift round.** v4 baseline
+**`a33ac8b8`** (drift-checked at lane start: `git log a33ac8b8..HEAD`
+empty — HEAD is exactly the pinned baseline).
+
+**Ported:** v4 `lib/help/help-doc-slug.ts` `helpDocSlug` →
+`crates/quilltap-core/src/help_doc_slug.rs` (new module). v4 `d6e74145`
+DELETED the private `generateDocumentId` from `help-doc-sync.ts` and
+promoted it to this shared module as a live, load-bearing function.
+
+**The stale rationale is REPLACED, not appended to.** `help_doc_sync.rs`'s
+header said `generateDocumentId` was "computed-but-unused … dead code …
+not ported". That was CORRECT at the `02865bdb` baseline and is FALSE at
+`a33ac8b8`. The header now records that the judgment expired with
+`d6e74145` and points at the ported module.
+
+**The finding that mattered — UTF-16 code units, not chars.** v4's
+`.replace(/[^a-zA-Z0-9]/g, '-')` carries **no `/u` flag**, so it matches
+per UTF-16 **code unit**: a non-BMP character is a surrogate PAIR and
+yields **TWO** dashes. A `chars()`-based port passes every ASCII case and
+fails only here. The oracle settled it rather than inspection:
+`help/a😀b.md` → **`a--b`**, `help/😀.md` → `--`, `help/中文.md` → `--`
+(two BMP units), `help/aéb.md` → `a-b` (one BMP unit). The port maps
+`encode_utf16()`; every surviving unit is ASCII-alphanumeric, so the
+result is pure ASCII and the trailing `toLowerCase()` cannot reach an
+ICU/locale path.
+
+**Differential:** `help_doc_slug_equivalence.rs` (tier 1, exact strings)
+vs v4's REAL `lib/help/help-doc-slug.ts` over a 40-case corpus —
+**40/40 matched, no SKIP**. The corpus probes the two anchored non-global
+strips (`^help/`, `\.md$`) vs substring hits (`docs/help/x.md`,
+`help/a.mdx`, `help/a.md.md`), the global character map, case folding
+AFTER the map, the nested-path dash (`help/nested/deep-doc.md` →
+`nested-deep-doc`), degenerate inputs, and the five surrogate cases.
+
+Regen (Node 24, from the v4 checkout, importing the WORKTREE case file):
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5=<worktree>
+cd ~/source/quilltap-server
+$N/node --import tsx $V5/harness/oracle/cases/help-doc-slug.ts \
+  > /tmp/oracle-help-doc-slug.ndjson
+QT_ORACLE_HELP_DOC_SLUG=/tmp/oracle-help-doc-slug.ndjson \
+  cargo test -p quilltap-harness --test help_doc_slug_equivalence
+```
+
+**⚠ The order's unit-6 scope was CORRECTED against the fresh survey (the
+human ruled).** The order asked for `slug` on the search types populated
+at "BOTH mapping sites", `get_document(id_or_slug)`, and `list_documents`
+returning `slug`. The survey at `a33ac8b8` contradicts that:
+
+1. **v4's tool handler DROPS `slug`.**
+   `lib/tools/handlers/help-search-handler.ts:64-71` maps
+   `{id,title,path,url,score,content}` from `result.document`. v5's
+   `db/help_search.rs::HelpSearchResult` **is that handler-output shape**
+   (its own doc comment says so; `tools/help_search.rs:58` serializes
+   exactly those six keys). The order's drift #5 read it as v4's
+   `HelpSearchResult` (the `{document, score}` type that DID gain slug) —
+   a different type. **Adding `slug` there would diverge from v4's tool
+   wire and turn `help_tools_equivalence` RED.** Not done.
+2. **v5 has no `HelpSearch` class and no help-docs API.** `get_document`
+   / `list_documents` / `getAllDocuments` / the documents cache: zero
+   hits. `quilltap-web` + `api/`: zero `help_docs` references. v4 has
+   `app/api/v1/help-docs/route.ts` + `[id]/route.ts`. The "both mapping
+   sites" live inside that unported class.
+
+**Ruling (human, at lane start): land the module + defer the consumers
+loudly.** The slug lands ahead of its consumers — it is exactly the
+promotion `d6e74145` performed. See the Tier-3 deferral record for the
+consumer surface.
+
+**Versions:** core **0.0.233**, harness **0.0.210**.
 ## P4.6ay unit 10 — the schema adoption (lane C, 2026-07-17)
 
 **Landed.** v4 `a33ac8b8`'s two 4.8.0 columns adopted, per the order's

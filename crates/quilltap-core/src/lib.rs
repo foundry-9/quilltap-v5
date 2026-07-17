@@ -177,6 +177,7 @@ pub mod folder_utils;
 pub mod format_bytes;
 pub mod format_time;
 pub mod format_tokens;
+pub mod help_doc_slug;
 pub mod image_gen;
 pub mod image_gen_data;
 pub mod jsnum;
