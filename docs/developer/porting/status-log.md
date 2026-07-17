@@ -18565,3 +18565,49 @@ untouched).
 **Regen note:** the committed avatar/photo tier-2 fixtures (built pre-4.8.0) have
 NO metadata.json and their ops don't scaffold, so those families are unchanged
 (verified at the lane gate). `characters_update_tier2` regens with unit 5.
+
+### Unit 5 — the PUT arm + the reader enumeration + qtap-import threading
+
+**PUT whitelist** (`api/characters.rs`): `metadata` added to `UPDATE_SCHEMA_KEYS`
+(before `physicalDescription`, v4 `put.ts:73`). Zod `.parse` strips unknown keys,
+so without the name a PUT carrying `metadata` would be dropped before the write
+overlay. Sending `metadata` REPLACES the whole object (routed by the unit-3 arm).
+
+**`MANAGED_FIELDS`** (`db/characters.rs`): `metadata` appended (v4 `schema.ts:206`).
+Routes a metadata-only PUT to the vault (the provision-on-the-fly guard checks
+this set) and strips it from every slim write — it has no DB column.
+
+**Reader enumeration (the unit-10 lesson) — every reader of the hydrated bag:**
+
+- `character_get` / `character_update` (PUT) reload via the overlay → carry
+  `metadata` from unit-2 hydration (no code change).
+- `merge_update_echo` (the thin action verbs) overlays a patch onto the
+  already-hydrated character → carries `metadata` (no code change).
+- **ST export: LEFT ALONE** — v4 `exportSTCharacter` builds an explicit card
+  (no `metadata`); verified, and `characters_reads`' `export_json` case stays
+  green (v5 doesn't leak it either).
+- **qtap-import: threaded** — `import_characters` deserializes the whole
+  character into `CharacterVaultWriteInput` (which carries `metadata` since
+  unit 3), so `create_character` → `write_character_vault_managed_fields`
+  projects it into `metadata.json`. `into_create` (the slim row) deliberately
+  does NOT — no column. `ImportedSlim` has no `deny_unknown_fields`, so a
+  metadata-carrying character deserializes cleanly. A clarifying comment marks
+  the site. Proven transitively by `vault_character_write` (the create-time
+  guarded write writes metadata when the input carries it).
+
+**Differentials (green after regen at `d68638b4`):**
+
+- `characters_update_tier2` (extended): ops 3–4 add `{metadata:{...}}` then
+  `{metadata:{faction}}` — the real `update` path routes both, the final live
+  `metadata.json` is exactly `{faction:"Lumen"}` (the op-3 keys ORPHANED, not
+  merged — whole-object replace at the DB level). Charupd fixture + oracle regen
+  (the metadata-roundtrip family shares this fixture — re-verified green).
+- `characters_mutations` (extended, jest): `update_metadata` PUT sends
+  `{metadata:{...}, notAField:...}` → the echo carries `metadata`
+  (`{hasAnsibleAccess, clearanceLevel:3, faction:"Ordo Aurum"}`) and `notAField`
+  is ABSENT (stripped) — pinning that a NAMED key survives the same strip that
+  drops an unnamed one. 23 cases green.
+
+**Regen recipe** (Node 24, from `/tmp/qt-v4-baseline`): charupd fixture + oracle
+per unit 3; characters-mutations jest per the `/tmp` mirror
+(`[[jest-real-db-oracle]]`) with `QT_ORACLE_OUT=/tmp/oracle-characters-mutations.ndjson`.

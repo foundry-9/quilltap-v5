@@ -606,6 +606,19 @@ async function main(): Promise<void> {
       },
     },
     {
+      // The fact sheet: a named schema key survives the Zod strip and is routed to
+      // metadata.json (whole-object replace), so the reloaded echo carries it. The
+      // unknown `notAField` key is stripped before the write overlay ever sees it —
+      // pinning that `metadata` is NOT dropped the same way an unnamed key is.
+      name: 'update_metadata',
+      kind: 'update',
+      id: ARIA,
+      body: {
+        metadata: { hasAnsibleAccess: true, clearanceLevel: 3, faction: 'Ordo Aurum' },
+        notAField: 'stripped by the schema',
+      },
+    },
+    {
       name: 'wardrobe_create',
       kind: 'wardrobe-create',
       body: {

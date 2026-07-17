@@ -234,6 +234,12 @@ pub(super) fn import_characters(
                 continue;
             }
         };
+        // Deserializing the WHOLE character here is what threads `metadata` through
+        // the qtap round-trip: `CharacterVaultWriteInput` carries the fact sheet, so
+        // `create_character` → `write_character_vault_managed_fields` projects it into
+        // `metadata.json` (the guarded write). `into_create` deliberately does NOT —
+        // there is no DB column. Omitting the field here would silently drop the fact
+        // sheet on every import.
         let vault: CharacterVaultWriteInput = match serde_json::from_value(character.clone()) {
             Ok(v) => v,
             Err(e) => {

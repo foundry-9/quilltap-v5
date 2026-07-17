@@ -28,6 +28,10 @@
     "     slim _update, updatedAt minted).",
     "  2. { systemPrompts: [replaced] } — managed-only; reproject Prompts/ (sweep the",
     "     old Default.md, write the new prompt), slim row untouched.",
+    "  3. { metadata: {...} } — managed-only; routes a whole-object write to",
+    "     metadata.json (overwriting the scaffold's {} seed), slim row untouched.",
+    "  4. { metadata: {faction} } — whole-object REPLACE: the op-3 keys are gone,",
+    "     not merged; the final metadata.json is exactly {faction:'Lumen'}.",
     "",
     "REINDEX: the oracle drives the REAL update (no QUILLTAP_JOB_CHILD), so",
     "reindexSingleFile runs; the differential pins the link chunkCount and excludes",
@@ -119,6 +123,16 @@
             "updatedAt": "2026-02-01T00:00:00.000Z"
           }
         ]
+      }
+    },
+    {
+      "patch": {
+        "metadata": { "clearance": 5, "faction": "Umbral", "knownTongues": ["Old High", "Cant"], "active": true }
+      }
+    },
+    {
+      "patch": {
+        "metadata": { "faction": "Lumen" }
       }
     }
   ]

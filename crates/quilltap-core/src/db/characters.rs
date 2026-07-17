@@ -16,9 +16,11 @@
 //! v4's overridden `_create`/`_update` strip the [`MANAGED_FIELDS`] set
 //! (identity, description, manifesto, personality, exampleDialogues, pronouns,
 //! aliases, title, firstMessage, talkativeness, physicalDescription,
-//! systemPrompts, scenarios) from the validated document before the INSERT/UPDATE,
-//! because the 4.6 vault cutover moved those out of the DB and into the character
-//! vault. So the persisted row carries only the **non-managed** columns — the
+//! systemPrompts, scenarios, metadata) from the validated document before the
+//! INSERT/UPDATE, because the 4.6 vault cutover moved those out of the DB and into
+//! the character vault (`metadata` has no column at all — the fact sheet is a
+//! vault file, its sole source of truth). So the persisted row carries only the
+//! **non-managed** columns — the
 //! "slim row" this module marshals.
 //!
 //! A FRESH fixture's table is still created by `ensureCollection('characters',
@@ -113,6 +115,10 @@ pub const MANAGED_FIELDS: &[&str] = &[
     "physicalDescription",
     "systemPrompts",
     "scenarios",
+    // The fact sheet has no DB column; naming it here routes a metadata-only PUT
+    // to the vault (the provision-on-the-fly guard checks this set) and strips it
+    // from every slim write (v4 `schema.ts:206`).
+    "metadata",
 ];
 
 /// A relationship link to a partner character (`partnerLinks[]` element). Stored

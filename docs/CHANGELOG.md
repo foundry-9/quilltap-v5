@@ -68,6 +68,18 @@ three from provisioning replay; the metadata column is vault-managed and stays
 inert in the DB (character.metadata hydrates from the vault's metadata.json,
 which lane p4.6az owns). Provisioning, builtin-mounts, and builtin-templates
 equivalence regenerated at d68638b4 and green.
+P4.6az unit 5 (lane AZ): the PUT arm + reader enumeration + qtap-import
+threading. `character_update`'s whitelist now NAMES `metadata` (Zod strips
+unknown keys, so an unnamed field would be silently dropped before the write
+overlay); `metadata` joins `MANAGED_FIELDS` (routes a metadata-only PUT to the
+vault, strips it from every slim write). The hydrated read echoes (`character_get`,
+`merge_update_echo`) carry it automatically from unit 2; qtap-import threads it
+through `CharacterVaultWriteInput` (deserializing the whole character), so a
+round-trip no longer drops the fact sheet. The ST export is unchanged (v4 never
+put metadata on ST cards). Extended `characters_update_tier2` (two metadata ops:
+set + whole-object replace) and `characters_mutations` (a metadata PUT proving a
+named key survives + the echo carries it while an unknown key is stripped).
+
 P4.6az unit 4 (lane AZ): seed `metadata.json` in the character-vault scaffold
 and add `ensure_character_metadata_file`. The scaffold now seeds an empty `{}`
 fact sheet (for discoverability — the file manager is the only editing surface),

@@ -1616,6 +1616,11 @@ const UPDATE_SCHEMA_KEYS: &[&str] = &[
     "systemTransparency",
     "coreWhisperEnabled",
     "canBeCarina",
+    // The freeform fact sheet (vault `metadata.json`). Zod `.parse` strips unknown
+    // keys, so it MUST be named here or a PUT carrying it would be silently dropped
+    // before the write overlay ever saw it (v4 `put.ts:73`). Sending `metadata`
+    // REPLACES the whole object.
+    "metadata",
     "physicalDescription",
 ];
 
