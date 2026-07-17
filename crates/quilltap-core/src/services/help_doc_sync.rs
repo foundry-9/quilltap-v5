@@ -178,22 +178,6 @@ fn hash_content(content: &str) -> String {
         .collect()
 }
 
-/// v4 `findByPath` reduced to the two cells the sync consumes.
-fn find_by_path(main: &Connection, path: &str) -> Result<Option<(String, String)>, DbError> {
-    let row = main
-        .query_row(
-            "SELECT id, contentHash FROM help_docs WHERE path = ?1",
-            params![path],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-        )
-        .map(Some)
-        .or_else(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => Ok(None),
-            other => Err(other),
-        })?;
-    Ok(row)
-}
-
 /// v4 `clearAllEmbeddingsForDoc` — `_update(id, { embedding: null })`, which
 /// NULLs the BLOB and mints `updatedAt` (the base `_update` clock).
 fn clear_embedding(main: &Connection, id: &str) -> Result<(), DbError> {
@@ -218,6 +202,25 @@ pub fn sync_help_docs(main: &Connection, files: &[HelpSourceFile]) -> HelpDocSyn
     }
 
     let repo = HelpDocsRepository::new(main);
+
+    // One read of the table, indexed by path (v4 `551f090b`). The prune below
+    // needs every row anyway, and it doubles as the per-file lookup — the
+    // alternative is a findByPath per file, which is ~115 queries on every sync.
+    let existing_docs = match repo.find_all() {
+        Ok(rows) => rows,
+        Err(_) => {
+            // v4's findAll is INSIDE syncHelpDocs but OUTSIDE its per-file
+            // try/catch, so a failure there propagates rather than counting a
+            // `failed`. Nothing is walked, nothing is pruned.
+            return result;
+        }
+    };
+    let existing_by_path: std::collections::HashMap<&str, &crate::db::help_docs::HelpDocRow> =
+        existing_docs
+            .iter()
+            .map(|doc| (doc.path.as_str(), doc))
+            .collect();
+
     for file in files {
         let outcome = (|| -> Result<(), DbError> {
             let raw = js_trim(&file.raw_content);
@@ -229,9 +232,9 @@ pub fn sync_help_docs(main: &Connection, files: &[HelpSourceFile]) -> HelpDocSyn
             let (url, body) = parse_frontmatter(raw);
             let title = extract_title(&body, &file.rel_path);
 
-            let existing = find_by_path(main, &file.rel_path)?;
-            if let Some((_, existing_hash)) = &existing {
-                if *existing_hash == content_hash {
+            let existing = existing_by_path.get(file.rel_path.as_str());
+            if let Some(doc) = existing {
+                if doc.content_hash == content_hash {
                     result.unchanged += 1;
                     return Ok(());
                 }

@@ -16294,6 +16294,38 @@ promotion `d6e74145` performed. See the Tier-3 deferral record for the
 consumer surface.
 
 **Versions:** core **0.0.233**, harness **0.0.210**.
+
+---
+
+## P4.d6 unit 2 — the sync reads the table once (read-once-index-by-path)
+
+**Ported:** v4 `551f090b`'s read-once refactor. `sync_help_docs` replaced
+its in-loop `find_by_path(main, &file.rel_path)` (the ~115-queries-per-sync
+pattern) with one `repo.find_all()` + a path-keyed `HashMap`. v4's
+*why*-comment carried forward verbatim in substance: the prune needs every
+row anyway, and the one read doubles as the per-file lookup.
+
+**The projection had to grow to serve the sync.** `HelpDocRow` (the
+`find_all` read shape) carried `id/title/path/url/content` but **not**
+`contentHash`, and the sync's unchanged-vs-updated decision compares
+`existing.contentHash` (v4 `help-doc-sync.ts:188`). Added `content_hash` to
+`HelpDocRow` + the SELECT — additive, and it moves `find_all` CLOSER to
+v4's `findAll()` (which returns the whole entity). The three consumers
+(`help_search::keyword_search`, the sync, `embedding_refit_job`) are
+field-access, so nothing else moved. The now-unused private `find_by_path`
+helper was DELETED rather than left as dead code.
+
+**Error-path fidelity:** v4's `findAll()` sits inside `syncHelpDocs` but
+**outside** its per-file `try/catch`, so a failure there propagates rather
+than incrementing `failed`. The port returns the zero-result early on a
+`find_all` error — nothing walked, nothing pruned — rather than routing it
+through the per-file failure counter.
+
+**Differential:** `help_doc_sync_equivalence` **green, UNCHANGED** — the
+proof that the refactor is behavior-neutral. (Ran by name `--nocapture`,
+no SKIP, against the `a33ac8b8`-regenerated oracle.)
+
+**Versions:** core **0.0.234**.
 ## P4.6ay unit 10 — the schema adoption (lane C, 2026-07-17)
 
 **Landed.** v4 `a33ac8b8`'s two 4.8.0 columns adopted, per the order's

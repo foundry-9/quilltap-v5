@@ -106,9 +106,16 @@ pub struct HelpDocsRepository<'c> {
     conn: &'c Connection,
 }
 
-/// A help doc without its embedding (v4 `HelpDocument`) — the
-/// [`HelpDocsRepository::find_all`] read shape, consumed by the help-search
-/// keyword fallback / listing.
+/// A help doc without its embedding — the [`HelpDocsRepository::find_all`] read
+/// shape, consumed by the help-search keyword fallback / listing and by the
+/// disk sync's read-once path index.
+///
+/// v4's `findAll()` returns the whole `HelpDoc` entity; this is that row minus
+/// the `embedding` BLOB and the timestamps, which no consumer of `find_all`
+/// reads. `content_hash` IS carried: v4's `syncHelpDocs` indexes `findAll()` by
+/// path and compares `existing.contentHash` to decide unchanged-vs-updated
+/// (`help-doc-sync.ts:188`), so a projection without it could not serve the
+/// sync's one read.
 #[derive(Debug, Clone)]
 pub struct HelpDocRow {
     pub id: String,
@@ -116,6 +123,7 @@ pub struct HelpDocRow {
     pub path: String,
     pub url: String,
     pub content: String,
+    pub content_hash: String,
 }
 
 /// A help doc carrying its decoded embedding (v4 `HelpDocumentWithEmbedding`) —
@@ -142,7 +150,7 @@ impl<'c> HelpDocsRepository<'c> {
     pub fn find_all(&self) -> Result<Vec<HelpDocRow>, DbError> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, title, path, url, content FROM help_docs")?;
+            .prepare("SELECT id, title, path, url, content, contentHash FROM help_docs")?;
         let rows = stmt.query_map([], |r| {
             Ok(HelpDocRow {
                 id: r.get(0)?,
@@ -150,6 +158,7 @@ impl<'c> HelpDocsRepository<'c> {
                 path: r.get(2)?,
                 url: r.get(3)?,
                 content: r.get(4)?,
+                content_hash: r.get(5)?,
             })
         })?;
         let mut out = Vec::new();

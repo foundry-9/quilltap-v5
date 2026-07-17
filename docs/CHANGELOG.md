@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+P4.d6 unit 2: the help-doc sync now reads its table once and indexes by
+path, replacing a findByPath per file — roughly 115 queries on every sync
+(v4 551f090b). The prune landing next needs every row anyway, so the one
+read serves both. Behavior is unchanged, which is the point: the existing
+sync differential stays green untouched.
+
 P4.d6 unit 1: ported the help-document slug (v4's `helpDocSlug`), the
 path-derived identifier used outside the database, where the primary key is
 a UUID that changes whenever a doc is re-created. v4 promoted it out of the
