@@ -49,7 +49,7 @@ Phase 4 is everything between that library and a human.
 
 The four `api-boundary.md` invariants are re-affirmed and not restated (one
 boundary; streaming only on `Event`; the `Db` ownership model; enclave
-`step()` + injected driver). New locks, D1–D22:
+`step()` + injected driver). New locks, D1–D23:
 
 ### Deployment & transport shape
 
@@ -278,6 +278,34 @@ boundary; streaming only on `Event`; the `Db` ownership model; enclave
 - **D22 — No new features during the port.** Parity with v4 first; the
   v5-only capabilities already banked (e.g. `markCompleted`'s payload merge)
   stay dormant until post-parity.
+
+### The schema exception (2026-07-16)
+
+- **D23 — When v4's schema moves, v5 adopts the columns; the migration
+  runner stays deferred.** CLAUDE.md's "the schema does not change during
+  the port" rule assumed a *stationary* v4. It stopped being true at v4
+  `61ec90bd` (4.8.0), which added two SQLite-only ALTERs —
+  `chat_messages.pascalMeta TEXT DEFAULT NULL` and
+  `chat_settings.customTools INTEGER DEFAULT 1`. **Human ruling
+  (2026-07-16): re-dump `provisioning/fresh_schema.json` from v4 HEAD's
+  live `generateDDL` and carry the new columns; do NOT port the migration
+  runner** (it remains the tracked deferral recorded at
+  `harness/oracle/provision/dump-fresh-schema.ts:14-21`). This is the
+  cheap path and it matches how `dump-fresh-schema.ts` already treats
+  `generateDDL` as the authority — the provisioning differential
+  (`provisioning_equivalence.rs:8-11`) diffs v5's `sqlite_master` against
+  v4's **live** schema precisely so v4 drift trips it, which is what
+  happened here. **The accepted asymmetry, stated once so nobody
+  rediscovers it:** a v5-provisioned DB carries two columns a pre-4.8.0 v4
+  does not know (harmless — v4's repos are column-name-addressed, proven
+  by every tier-2 differential), and a v4 instance **older than 4.8.0**
+  opened by v5 will *lack* them, because the migration that would have
+  supplied them is exactly what v5 does not run. Closing that second half
+  is the migration runner's job, whenever it is picked up.
+  **The rule this replaces is "v5 never changes the schema"; the rule
+  going forward is "v5 never changes the schema *unilaterally* — it
+  follows v4's, and only ever via a re-dump."** First applied by
+  `p4.6ay-pascal-custom-tools-server.md`.
 
 ## The boundary contract in detail
 

@@ -2,6 +2,38 @@
 
 ## Recent Changes
 
+The P4.d5 ∥ P4.d6 ∥ P4.6ay round PLANNED (2026-07-16, work orders only —
+no code). A drift check found v4 moved 8 commits past the oracle baseline
+(02865bdb → a33ac8b8): 106 files, ~8,000 insertions, two schema
+migrations. The predicted Pascal drift landed as code. Already-ported v5
+code is wrong until this round lands: the dice modifier is dropped, so
+"3d6+2" rolls as 3d6 and persists the wrong number; every dice roll's
+output JSON now differs (v4 emits modifier/total on all of them); 18
+tools reject numeric arguments a model quoted, which v4 now accepts; and
+the help-doc sync is missing its divergence trigger, prune, and embedding
+enqueue. Three lanes: P4.d5 (the shared dice module, the rng modifier,
+lenient numbers across 28 fields, the two chat-spine call sites), P4.d6
+(the help-doc sync drift plus the slug promotion), and P4.6ay (the whole
+Pascal custom-pseudo-tools server surface — the definition format, roster
+resolution, the eval-free execution core, the run_custom tool, the Pascal
+writer, and the route). The Pascal SPA is deliberately held for the next
+round.
+
+New locked decision D23 (phase-4.md): when v4's schema moves, v5 adopts
+the columns by re-dumping fresh_schema.json from v4's live generateDDL;
+the migration runner stays deferred. v4 added chat_messages.pascalMeta and
+chat_settings.customTools in 4.8.0, so "the schema does not change during
+the port" — which assumed a stationary v4 — becomes "v5 never changes the
+schema unilaterally; it follows v4's, and only via a re-dump."
+
+Two v4 changes that look like drift and are not, recorded so they are not
+rediscovered: v4's new "always show messages with a systemSender" rule is
+client-only, and v5 never ported the whisper toggle, so its context
+shaping is unaffected; and v4's embedding blob-registration bug cannot
+occur in v5, which has no column registry at all and writes embeddings
+through one typed conversion at each binding site. v5 needs no
+repair-text-embeddings port as a result.
+
 The P4.6aw ∥ P4.6ax ∥ P4.8 round UNIFIED on main (2026-07-16) — all
 three orders CLOSED. Rust riders: the two byte-identical cost-estimator
 seams consolidated into one trait/default/host impl (behavior-frozen;

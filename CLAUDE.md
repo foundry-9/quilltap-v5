@@ -613,9 +613,21 @@ records THERE. Update this summary only when a phase or round completes.
   P4.d3 quantized embedding codec note stands: ⚠ v4's
   `quantize-embeddings-v1` migration is one-way — back up Friday
   before first running v4 `4.8.0-dev.52`+ against it. Drift-check
-  before every round. Known benign drift past the baseline: `34746bed`
-  (2026-07-16) is a docs-only feature SPEC (Pascal custom pseudo-tools,
-  no code) — expect a real drift re-port when it lands as code.
+  before every round. ⚠ **The predicted Pascal drift LANDED AS CODE
+  (2026-07-16) — v4 HEAD is now `a33ac8b8`, 8 commits past the
+  baseline, and the P4.d5 ∥ P4.d6 ∥ P4.6ay round is planned against
+  it** (the three work orders; the baseline line above moves to
+  `a33ac8b8` when that round unifies, per the P4.d3 precedent).
+  **Already-ported v5 code is WRONG until it lands** — the dice
+  modifier (`3d6+2` rolls as `3d6`), every dice roll's output JSON
+  (v4 now emits `modifier`/`total`), quoted numeric tool args across
+  18 tools, and the help-doc-sync algorithm. v4 also moved the schema
+  (two 4.8.0 ALTERs) — see **D23** in `phase-4.md`. Two things that
+  look like drift but are NOT: v4's whisper-render rule is
+  client-only (v5 never ported the toggle, so its context shaping is
+  unaffected), and v4's embedding blob-registration bug is
+  structurally impossible in v5 (no registry exists — the port
+  avoided it, and needs no `repair-text-embeddings`).
   Versions: core 0.0.232, harness 0.0.209, host 0.0.19, web 0.0.25,
   quilltap-tauri 0.0.3, SPA 0.5.134.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
