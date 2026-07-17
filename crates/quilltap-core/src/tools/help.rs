@@ -210,6 +210,7 @@ fn fetch_chat(db: &Db, user_id: &str) -> Result<Value, DbError> {
         field(&s, "dangerousContentSettings"),
     );
     obj.insert("autoDetectRng".into(), field(&s, "autoDetectRng"));
+    obj.insert("customTools".into(), field(&s, "customTools"));
     obj.insert("llmLoggingSettings".into(), field(&s, "llmLoggingSettings"));
     obj.insert("avatarDisplayMode".into(), field(&s, "avatarDisplayMode"));
     obj.insert("avatarDisplayStyle".into(), field(&s, "avatarDisplayStyle"));
