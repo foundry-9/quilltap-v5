@@ -16539,6 +16539,177 @@ fixture loop, then the jest mirror (`$TMPO/cases` + a `fixtures/` SIBLING;
 suites), `--testTimeout=120000`.
 
 **Versions:** core **0.0.236**, harness **0.0.212**.
+
+---
+
+## P4.d6 — BANKED FINDING: v4's blob-registration bug is structurally impossible in v5 (prose, NOT code)
+
+**This is a finding, not a unit. No code implements it; the deliverable is
+this record + the in-tree note now at `db/help_docs.rs`'s header, where the
+next porter will actually meet it.**
+
+v4 `6c59b1ca` fixed TWO bugs. Bug 1 (the sync trigger) was real v5 work and
+landed as P4.d6 unit 4. **Bug 2 — the unregistered embedding BLOB column that
+silently dropped all 28 `help_docs` rows from `findAll()` — is NOT v5 work and
+cannot be.**
+
+**v4's mechanism** (`backend.ts:662` `registerBlobColumns` merging into
+`collectionBlobColumns`; `getCollection()` snapshotting it into a new
+`SQLiteCollection`): the set drives BOTH directions. **Write:** a registered
+column takes `embeddingToBlob`; an unregistered one falls through to
+`JSON.stringify`, and `JSON.stringify(Float32Array)` yields an index-keyed
+object `{"0":0.1,…}` stored as TEXT. **Read:** only
+`this.blobColumns.has(key)` reaches `parseLegacyEmbeddingText`; unregistered,
+the TEXT lands in the Zod-validated field as a string, fails validation, and
+the row is silently dropped from `findAll()`. `manager.ts:113-121` registers
+known blob columns at backend construction "regardless of which repository is
+accessed first" — but `help_docs` was NOT on that list. It alone relied on
+`HelpDocsRepository` registering lazily and caching
+`blobColumnsRegistered` **on the instance**; a repository OUTLIVES the backend
+it first ran against (reconnect, dev-server reload), so the stale flag left the
+fresh backend with no blob handling. The sync rewrote 28 rows; all 28 vanished
+from `/api/v1/help-docs`. v4's fix: one line
+(`backend.registerBlobColumns('help_docs', ['embedding'])`) + dropping the
+instance flag so registration is re-asserted on EVERY `getCollection()`
+(registration is keyed to the BACKEND — it must be re-asserted, not
+remembered). Mis-stored rows convert LOSSLESSLY to BLOB at next startup: only
+the shape was wrong, no re-embedding needed.
+
+**The insight (v4's, worth keeping): the "legacy" JSON-text embeddings were
+NEVER legacy. An unregistered blob column was MINTING them on every write.**
+`lib/startup/repair-text-embeddings.ts` (an every-boot repair over
+`vector_entries`/`memories`/`help_docs`/`conversation_chunks`) plus read-side
+recovery treated the SYMPTOM — which is why it kept coming back and looked
+historical.
+
+### The evidence (re-run at lane start AND lane end, both times zero)
+
+```
+$ grep -rn "register_blob\|blob_columns\|BLOB_COLUMNS" crates/ --include='*.rs'
+$ echo $?
+1                      # no matches — v5 has NO registration mechanism at all
+```
+
+`documentToRow` / `hydrateRow`: every hit in `crates/` is a **doc comment**
+describing v4's mechanism; **no v5 code implements either** (verified by
+filtering comment lines out of the grep — nothing remains). The port abandoned
+v4's generic document-mapper architecture. Each repository writes typed,
+explicit SQL and calls `embedding_blob::float32_to_blob` /
+`blob_to_float32` **directly at the binding site** — the five tables, seven
+sites:
+
+```
+crates/quilltap-core/src/db/conversation_chunks.rs:197
+crates/quilltap-core/src/db/doc_mount_chunks.rs:164
+crates/quilltap-core/src/db/help_docs.rs:243
+crates/quilltap-core/src/db/memories.rs:132, :242
+crates/quilltap-core/src/db/vector_indices.rs:237, :258
+```
+
+`embedding_blob.rs` is documented as "the SINGLE SOURCE OF TRUTH".
+
+**The class of bug cannot occur**: no runtime registry to forget to populate,
+no cached instance flag, no stringify path a Float32 vector can fall into. v5
+correspondingly needs **no `repair-text-embeddings` port — it cannot mint the
+TEXT shape**. `parse_legacy_embedding_text` IS ported
+(`embedding_blob.rs:366`) and **must stay**: read-side recovery for genuinely
+old v4 rows, covered by `legacy_embedding_equivalence.rs`. **That is the
+correct residue.** This is the port structurally AVOIDING a bug, not
+inheriting it.
+
+**`repair-text-embeddings.ts` is therefore REFUSED AS INAPPLICABLE — not
+deferred.** It is not an open item for anyone to later "close". Adding the
+registration mechanism in order to mirror v4's fix would be importing the bug
+and then patching it.
+
+---
+
+## P4.d6 — Tier 2 (the `deleted` log line): CHECKED, and DEFERRED LOUDLY
+
+The order required this check and its result recorded either way. **The
+survey was right: v5 has NO `embedding-reindex` handler**, so there is nothing
+to hang v4's `embedding-reindex.ts:142` `deleted: syncResult.deleted` log line
+on, and the order's instruction applies — *do not port a handler to hang a log
+line on*.
+
+Evidence: `EMBEDDING_REINDEX_ALL` is in `KNOWN_JOB_TYPES`
+(`job_runner.rs:145`) and IS enqueued (`queue_service.rs:701`, by
+`embedding_refit_job.rs`), but the `HandlerRegistry` has no arm for it — the
+only `embedding_reindex` matches in `crates/` are the enqueuer and its caller,
+never a handler.
+
+**The loud typed refusal already exists and needs no new code:**
+`HandlerRegistry::unregistered_error` distinguishes the two cases, and for a
+KNOWN type with no handler the runner fails the job with *"Job type
+\"EMBEDDING_REINDEX_ALL\" is recognized but its handler is not yet available
+in the native runner"*. That is the `not_available` idiom, already in place
+and unit-pinned (`unregistered_error_shapes`).
+
+---
+
+## P4.d6 — Tier 3 deferrals (loud, named)
+
+1. **The `embedding-reindex` job handler** — v4's SECOND sync trigger. Absent
+   in v5; `EMBEDDING_REINDEX_ALL` is a known job type with no handler. Already
+   loudly refused at runtime (above). Its `deleted` log line rides with it.
+2. **The startup wiring of `ensure_help_docs_synced`** — the standing host
+   seam / tracked deferral (`db/help_search.rs:11-21`, status-log Tracked
+   deferrals: "`help_search`'s disk sync (host seam)"). This lane makes the
+   code correct **for when that wiring lands; it does not land it.** The fn
+   has zero production callers; only the differential drives it. Wiring is the
+   host's business (it owns the walk). ⚠ When it lands, note that v4's trigger
+   reads no file CONTENTS (a directory scan only), whereas v5's host walker
+   reads every file before calling — a COST difference, not a behavior one.
+   The host can make its walk lazy at that point.
+3. **The slug's CONSUMERS** — `help_doc_slug` landed (unit 1) ahead of them:
+   v4's `HelpSearch` class (the documents cache, `getDocument(idOrSlug)`
+   matching EITHER id or slug, `listDocuments`, `getAllDocuments`) and the
+   `/api/v1/help-docs` routes are **entirely unported** in v5. Adding `slug`
+   to `db/help_search.rs::HelpSearchResult` would be WRONG — that struct is
+   v4's tool-HANDLER output shape, which drops slug. See unit 1's record.
+4. **`repair-text-embeddings.ts` — REFUSED AS INAPPLICABLE, not deferred**
+   (the banked finding above). Recorded so it is not later "closed".
+
+**No stubs and no `TODO` code were added anywhere in this lane.**
+
+---
+
+## ⚠ P4.d6 — CROSS-LANE FINDING for the unifier: `help_tools_equivalence` is RED at `a33ac8b8`, and it is LANE C's
+
+**Not caused by this lane, and NOT fixed by it** (`db/chat_settings.rs` +
+`provisioning/` are lane C's files; the order forbids resolving another lane's
+ground in-lane).
+
+The lane's gate names `help_tools_equivalence` as a differential to run green.
+Regenerated FRESH at `a33ac8b8` it **FAILS**, with exactly one difference —
+v4 now emits `customTools` in the chat-settings bag:
+
+```
+help_settings op 1: output diverged
+  rust:   {… "autoDetectRng":true,                    "llmLoggingSettings":{…} …}
+  oracle: {… "autoDetectRng":true,"customTools":true,"llmLoggingSettings":{…} …}
+```
+
+That is **the Pascal drift**, i.e. one of v4's two 4.8.0 schema ALTERs
+(CLAUDE.md D23: `chat_messages.pascalMeta` + `chat_settings.customTools`), and
+`p4.6ay-pascal-custom-tools-server.md` explicitly owns it — its order carries
+`ALTER TABLE "chat_settings" ADD COLUMN "customTools" INTEGER DEFAULT 1`, the
+`fresh_schema.json` re-dump, and `chat_settings_seed.json`'s `customTools: 1`.
+
+**It goes green when lane C lands.** Nothing is committed that breaks: the
+oracles are /tmp-only, and this lane changed no chat-settings code.
+
+**Round-planning gap worth noting:** the order assumed
+`help_tools_equivalence` was insulated from lane C. It is not — the
+`help_settings` tool returns the chat-settings bag, so the FIRST lane to
+regenerate that oracle at the new baseline inherits lane C's drift. Whichever
+lane runs it at `a33ac8b8` before lane C lands will see this RED. **Unifier:
+re-run `help_tools_equivalence` against a fresh `a33ac8b8` oracle AFTER lane C
+is merged; it should pass with no change from this lane.**
+
+**Verified innocent:** this lane touched `help_doc_sync.rs`, `help_docs.rs`,
+`help_doc_slug.rs` (new), `embedding_status.rs`, and its own harness/oracle
+files. None reach chat settings, and the diff is the single `customTools` key.
 ## P4.6ay unit 10 — the schema adoption (lane C, 2026-07-17)
 
 **Landed.** v4 `a33ac8b8`'s two 4.8.0 columns adopted, per the order's

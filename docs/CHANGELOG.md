@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.d6 close-out: recorded why v4's second help-docs bug — the unregistered
+embedding column that silently dropped every help doc from listings — is not
+a v5 bug and cannot become one. v5 has no blob-column registry to forget to
+populate: each repository writes explicit SQL and converts embeddings at the
+binding site, so the JSON-text shape v4 was accidentally minting has nowhere
+to come from. The note now sits in the help-docs repository header, where a
+porter reading v4's fix will meet it. The read-side recovery for genuinely old
+rows stays; v4's every-boot repair is refused as inapplicable rather than
+deferred.
+
 P4.d6 unit 4: help docs added to the repo after the first sync now actually
 reach the database (v4 6c59b1ca). The sync only ran when help_docs was
 completely empty, and that is the only trigger outside a full embedding

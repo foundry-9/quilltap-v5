@@ -31,6 +31,49 @@
 //! The Float32→bytes conversion is [`crate::embedding_blob::float32_to_blob`]
 //! (the same little-endian encoder the embedding layer uses).
 //!
+//! ## ⚠ v4's blob-column REGISTRATION bug — which this port cannot have (P4.d6)
+//!
+//! The "auto-registering on first `getCollection()`" described above is v4
+//! machinery, and v4 `6c59b1ca` found it was **broken for this very table**:
+//! `manager.ts` registers the known blob columns when it builds a backend
+//! "regardless of which repository is accessed first", but `help_docs` was NOT
+//! on that list. It alone relied on `HelpDocsRepository` registering lazily and
+//! caching `blobColumnsRegistered` **on the instance** — and a repository
+//! OUTLIVES the backend it first ran against (a reconnect, a dev-server
+//! reload), so the stale flag left the fresh backend with no blob handling.
+//! Both directions then broke silently: `documentToRow` skipped
+//! `embeddingToBlob` and `JSON.stringify(Float32Array)` persisted an
+//! index-keyed object (`{"0":…}`) as TEXT; `hydrateRow` skipped
+//! `parseLegacyEmbeddingText` for that same unregistered column, so the row
+//! failed Zod validation and was **dropped from `findAll()`**. A sync rewrote
+//! 28 rows and all 28 vanished from `/api/v1/help-docs`. v4's fix: one line in
+//! `manager.ts`, plus dropping the instance flag so registration is re-asserted
+//! on every `getCollection()` (it is keyed to the BACKEND, so it must be
+//! re-asserted, not remembered).
+//!
+//! **The insight worth keeping: the "legacy" JSON-text embeddings were never
+//! legacy — an unregistered blob column was MINTING them on every write.**
+//!
+//! **None of this is portable, because the bug's mechanism does not exist
+//! here.** `grep -rn "register_blob\|blob_columns\|BLOB_COLUMNS" crates/
+//! --include='*.rs'` returns ZERO hits: the port abandoned v4's generic
+//! document-mapper architecture, so there is no `documentToRow`, no
+//! `hydrateRow`, no runtime registry to forget to populate, no cached instance
+//! flag, and no `JSON.stringify` fallback a Float32 vector could fall into.
+//! Every repository writes typed, explicit SQL and calls
+//! [`crate::embedding_blob::float32_to_blob`] / `blob_to_float32` directly at
+//! the binding site (here at `create`, and in `memories`,
+//! `conversation_chunks`, `vector_indices`, `doc_mount_chunks`);
+//! `embedding_blob` is the single source of truth. **Do not port
+//! `registerBlobColumns`, and do not add a registration mechanism in order to
+//! have something to fix** — that would import the bug and then patch it.
+//!
+//! v5 correspondingly needs no `repair-text-embeddings` port (v4's every-boot
+//! repair over the TEXT shape): it cannot mint that shape.
+//! [`crate::embedding_blob::parse_legacy_embedding_text`] IS ported and MUST
+//! stay — it is read-side recovery for genuinely old v4 rows, covered by
+//! `legacy_embedding_equivalence`. That is the correct residue.
+//!
 //! ## Text-only update preserves the embedding (banked behavior)
 //!
 //! v4's `_update` rewrites the *whole* row from the hydrated existing entity
