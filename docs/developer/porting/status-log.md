@@ -17580,3 +17580,30 @@ whose output is identical either way proves only that the tool did not reject
 the input, which the validator corpus already proves.
 
 Versions: harness 0.0.216.
+
+---
+
+## P4.d5 — the catalog-count fix the gate caught (2026-07-17)
+
+`tools::definitions::tests::catalog_is_complete_and_parses` asserts
+`TOOL_DEFINITIONS.len() == 57`. Unit 3's `run_custom` entry (§2(b)) makes it 58,
+so the unit-3 commit left the tree RED and I did not notice until the
+full-workspace gate. Fixed here: the count moves to 58 with a comment naming
+why, and `lookup_by_key_and_name` grew an arm pinning `run_custom`'s camelCase
+key (`runCustom`) against its snake_case function name (`run_custom`) — the pair
+a lookup typo would silently swap.
+
+**Two things worth carrying forward.**
+
+1. **The differential could not have caught this.** `tool_definitions_equivalence`
+   diffs the catalog against v4 and passed 58/58 while the unit test asserting a
+   hardcoded 57 failed. A green differential is not a green tree; the count
+   assertion is a DIFFERENT question (did the catalog silently gain or lose a
+   tool?) and a good tripwire — it is doing its job here, not obstructing.
+2. **`--no-fail-fast` + an aggregating grep nearly hid it.** Piping `cargo test`
+   through `grep -E "^test result"` makes the shell report grep's exit code, not
+   cargo's — the run "succeeded" with a FAILED line sitting in the output. Grep
+   for `FAILED`/`panicked` explicitly, or read the tail.
+   ([[cargo-test-workspace-is-fail-fast]])
+
+Versions: core 0.0.244.

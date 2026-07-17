@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+P4.d5 fix: the tool catalog's completeness count follows the run_custom entry
+(57 to 58), and the lookup test pins run_custom's camelCase key against its
+snake_case function name. The full-workspace gate caught this; the unit-3
+differential could not, since it diffs the catalog against v4 rather than
+against a hardcoded count.
+
 P4.d5 tier 2: leniency coverage for the web_search tool. The search_web
 differential now drives a quoted maxResults through the real handler and proves
 the converted number reaches the outgoing request as a number rather than a

@@ -88,7 +88,10 @@ mod tests {
 
     #[test]
     fn catalog_is_complete_and_parses() {
-        assert_eq!(TOOL_DEFINITIONS.len(), 57);
+        // 58 since P4.d5 unit 3 added `run_custom` (v4's `ALL_TOOLS` roster, where
+        // it sits between `rng` and `runSql`). The count is the tripwire for a
+        // regenerated catalog silently gaining or losing a tool.
+        assert_eq!(TOOL_DEFINITIONS.len(), 58);
         for d in TOOL_DEFINITIONS {
             let v: Value = serde_json::from_str(d.json).expect("valid JSON");
             assert_eq!(v.get("name").and_then(Value::as_str), Some(d.name));
@@ -108,6 +111,10 @@ mod tests {
         assert!(definition_json_by_key("rng").is_some());
         assert!(definition_json_by_name("rng").is_some());
         assert!(definition_json_by_key("nonexistent").is_none());
+        // `run_custom` is published under the camelCase key but the snake_case
+        // function name — the pair a lookup typo would silently swap.
+        assert!(definition_json_by_key("runCustom").is_some());
+        assert!(definition_json_by_name("run_custom").is_some());
         let ut = universal_tool_by_key("rng").unwrap();
         assert_eq!(ut.type_, "function");
         assert_eq!(ut.function.name, "rng");
