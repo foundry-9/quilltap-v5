@@ -17607,3 +17607,43 @@ a lookup typo would silently swap.
    ([[cargo-test-workspace-is-fail-fast]])
 
 Versions: core 0.0.244.
+
+---
+
+## P4.d5 — the lane's verification gate (2026-07-17)
+
+Run on `claude/p4-d5-dice-rng-lenient-93c41e` at core 0.0.244 / harness 0.0.216.
+
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` clean on **both**
+  feature sets (default AND `--features quilltap-core/native-transport`),
+  exit 0 each.
+- `cargo test --workspace --no-fail-fast` with every one of this lane's
+  differential env vars set: **330 suites / 1386 tests / 0 failed**, cargo
+  exit 0.
+- The seven differentials re-run BY NAME with `--nocapture`, **zero SKIPs**:
+  `llm_number_equivalence` (54+19=73), `rng_patterns_equivalence` (64),
+  `rng_executor_equivalence` (37), `tool_definitions_equivalence` (58
+  byte-exact + the canonicalize spot-check), `web_search_tool_equivalence`
+  (17 rows), `orchestrator_tier3_equivalence`,
+  `message_finalizer_tier3_equivalence`.
+- SPA: `ng build` clean, `ng test` **128 files / 1247** — identical to main,
+  as it must be: this lane changes ZERO files under `apps/web`. (The worktree
+  needed its own `npm ci` first; a fresh worktree has no `apps/web/node_modules`
+  and `ng build` fails with "Could not find the '@angular/build:application'
+  builder's node package" until it does.)
+
+Every oracle regenerated FRESH from v4 at **`e3593f75`** under Node 24, each
+imported from the WORKTREE case file and each verified by grepping the NDJSON
+for a row that exists only in the worktree copy
+([[oracle-regen-from-worktree-path]]).
+
+**Fixture blast radius (for the unifier).** Two committed fixtures changed —
+`harness/oracle/fixtures/rng-executor.json` (14 → 37 cases) and
+`harness/oracle/fixtures/orchestrator-tier3.json` (+1 chat, +1 call, +1 stream;
+the fixture DB build now reports **29 chats**, was 28). Both are
+**single-consumer**: `grep -rl` over `harness/oracle/` +
+`crates/quilltap-harness/tests/` finds only their own case file, builder, and
+differential. **No other oracle is invalidated.**
+
+Versions: core 0.0.244, harness 0.0.216.
