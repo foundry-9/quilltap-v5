@@ -324,6 +324,15 @@ fn mount_points_routes_match_oracle() {
         )),
         &mut failed,
     );
+    // [0a0419f5] case-insensitive store-name clash on create → 409.
+    err(
+        "create_name_clash",
+        &rt.block_on(mp::mount_point_create(
+            &fresh_db(&spec, "cnc"),
+            json!({ "name": "gamma extra store", "mountType": "database", "storeType": "documents" }),
+        )),
+        &mut failed,
+    );
 
     // --- Patch ---
     ok(
@@ -366,6 +375,28 @@ fn mount_points_routes_match_oracle() {
             BOGUS,
             json!({ "name": "x" }),
         )),
+        &mut failed,
+    );
+    // [0a0419f5] renaming Indexed Store to a case-variant of Gamma Extra Store
+    // (another store) → 409; the clash excludes the store itself.
+    err(
+        "patch_name_clash",
+        &rt.block_on(mp::mount_point_update(
+            &fresh_db(&spec, "pnc"),
+            MP_INDEXED,
+            json!({ "name": "GAMMA EXTRA STORE" }),
+        )),
+        &mut failed,
+    );
+    // [0a0419f5] renaming a store to a case-variant of its OWN name is allowed.
+    ok(
+        "patch_name_case_only_self",
+        &rt.block_on(mp::mount_point_update(
+            &fresh_db(&spec, "pncs"),
+            GAMMA_EXTRA_MP,
+            json!({ "name": "GAMMA EXTRA STORE" }),
+        )),
+        UPDATED,
         &mut failed,
     );
 

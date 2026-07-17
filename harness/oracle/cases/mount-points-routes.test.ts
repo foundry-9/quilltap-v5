@@ -212,6 +212,45 @@ async function main(): Promise<void> {
           ),
         ),
     },
+    // [0a0419f5] Store names are one case-insensitive namespace — create a store
+    // named 'gamma extra store' clashes with the existing 'Gamma Extra Store'.
+    {
+      name: 'create_name_clash',
+      run: async () =>
+        respond(
+          await (await coll()).POST(
+            mockRequest(B, {
+              name: 'gamma extra store',
+              mountType: 'database',
+              storeType: 'documents',
+            }),
+          ),
+        ),
+    },
+    // [0a0419f5] Renaming 'Indexed Store' to a case-variant of another store's
+    // name (GAMMA EXTRA STORE) is a 409 (the clash excludes the store itself).
+    {
+      name: 'patch_name_clash',
+      run: async () =>
+        respond(
+          await (await idRoute()).PATCH(
+            mockRequest(`${B}/${MP_INDEXED}`, { name: 'GAMMA EXTRA STORE' }),
+            params(MP_INDEXED),
+          ),
+        ),
+    },
+    // [0a0419f5] Renaming a store to a case-variant of ITS OWN name is allowed —
+    // the clash check excludes self, so 'Gamma Extra Store' → 'GAMMA EXTRA STORE'.
+    {
+      name: 'patch_name_case_only_self',
+      run: async () =>
+        respond(
+          await (await idRoute()).PATCH(
+            mockRequest(`${B}/${GAMMA_EXTRA_MP}`, { name: 'GAMMA EXTRA STORE' }),
+            params(GAMMA_EXTRA_MP),
+          ),
+        ),
+    },
     {
       name: 'create_filesystem_warning',
       run: async () =>

@@ -46,14 +46,20 @@ use super::DbError;
 /// `desired (3)`, … that is absent — v4 `nextUniqueMountPointName`. Numbering
 /// starts at `(2)` (there is no `(1)`); the suffix is ` (N)` (one leading space,
 /// parens around the number).
+///
+/// Matching is **case-insensitive (trimmed)** — mount-point names form one
+/// namespace regardless of casing (v4 `0a0419f5`), so `lore` counts as taken
+/// when `Lore` exists. Callers pass names in their stored casing; folding
+/// happens here.
 pub fn next_unique_mount_point_name(taken: &HashSet<String>, desired: &str) -> String {
-    if !taken.contains(desired) {
+    let taken_lower: HashSet<String> = taken.iter().map(|n| n.trim().to_lowercase()).collect();
+    if !taken_lower.contains(&desired.trim().to_lowercase()) {
         return desired.to_string();
     }
     let mut suffix = 2u32;
     loop {
         let candidate = format!("{desired} ({suffix})");
-        if !taken.contains(&candidate) {
+        if !taken_lower.contains(&candidate.trim().to_lowercase()) {
             return candidate;
         }
         suffix += 1;

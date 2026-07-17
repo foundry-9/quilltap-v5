@@ -18248,3 +18248,71 @@ case-only skip, on a filesystem mount (the DB folder case-only IS proven via
 `move_database_folder`). The heavy `mount_ops` route family was NOT extended
 (avoids rebuilding its committed jest fixture); the direct-drive differential
 above proves the same functions it would exercise.
+
+### Unit 5 — case-insensitive store-name uniqueness + the 409 arms — LANDED
+
+Ports the naming half of `0a0419f5`:
+
+- **`db/ensure_official_store.rs` `next_unique_mount_point_name`:** matching is
+  now case-insensitive + trimmed (`takenLower` from `trim().to_lowercase()`),
+  and the suffix loop compares trimmed-lowercased. This is the naming leaf that
+  feeds auto-provisioned stores + character vaults + the import dedup.
+- **`db/character_vault.rs` `ensure_character_vault` (§3 region — D7's):** when
+  minting a fresh vault, `final_vault_name = next_unique_mount_point_name(
+  all_store_names, vault_name)` (`find_all_names` over the mount-index) — so
+  same-named characters get distinct ` (N)`-suffixed vaults. **Adoption still
+  keys off the un-suffixed base** (`find_by_name(&vault_name)`), so orphaned
+  vaults stay adoptable. Cited the §3 ownership table in the commit; touched only
+  D7's region.
+- **`api/mount_points.rs`:** a shared `find_store_name_clash(db, desired,
+  exclude_id)` (reads `SELECT id, name FROM doc_mount_points`, case-insensitive
+  trimmed match, excludes `exclude_id` for renames) drives the 409 arms in
+  `mount_point_create` (always) and `mount_point_update` (only when `name` is
+  present; excludes self). The message is verbatim: `A document store named
+  "<clash.name>" already exists. Names are matched without regard to case —
+  please choose a different name.` (em dash, ASCII quotes, 409 via
+  `ErrorKind::Conflict`).
+- **The mount-points repo repair call** (v4 wired `repairMountPointNameCollisions`
+  into the points-repo `getCollection`) is already covered by unit 2's boot-hook
+  wiring in `ensure_mount_index_tables` (same once-per-startup cadence).
+
+**Documented absence:** the v4 `import-document-stores.ts` `takenNames` dedup has
+**no v5 counterpart** — v5's `quilltap_import` is a SUBSET that does NOT import
+mount points / document stores (`mod.rs:325-327` — "no ... mountPoints in a
+supported payload"). The character-import path uses `create_character` →
+`ensure_character_vault`, which already gets the unique-vault-name behavior above.
+
+**Differentials (both green):**
+
+- **`mount_points_routes`** gained three cases (create-clash / rename-clash /
+  rename-case-only-self) driving v4's REAL POST/PATCH handlers over the
+  groups-projects fixture ('Gamma Extra Store' + 'Indexed Store'):
+  `create_name_clash` (`gamma extra store` → 409), `patch_name_clash` (rename
+  'Indexed Store' → `GAMMA EXTRA STORE` → 409), `patch_name_case_only_self`
+  (rename 'Gamma Extra Store' → `GAMMA EXTRA STORE`, self-excluded → 200).
+  Regen (Node 24, from the v4 checkout at `d68638b4`, via the /tmp mirror; pass
+  ONLY the mirror to `--roots` — `--roots "$PWD"` also matches v4's own test):
+
+  ```
+  TMPO=/tmp/qt-mp-routes-oracle; rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+  cp <W>/harness/oracle/cases/mount-points-routes.test.ts "$TMPO/cases/"
+  cp <W>/harness/oracle/fixtures/groups-projects.json "$TMPO/fixtures/"
+  cd ~/source/quilltap-server
+  QT_FIXTURE_GP_MAIN=<W>/crates/quilltap-web/tests/fixtures/groups-projects-main.db \
+  QT_FIXTURE_GP_MOUNT=<W>/crates/quilltap-web/tests/fixtures/groups-projects-mount.db \
+  QT_ORACLE_OUT=/tmp/oracle-mount-points-routes.ndjson PATH="$N:$PATH" \
+    npx jest --silent --watchman=false --rootDir "$PWD" --roots "$TMPO/cases" -- mount-points-routes
+  # run: QT_ORACLE_MOUNT_ROUTES=/tmp/oracle-mount-points-routes.ndjson \
+  #   cargo test -p quilltap-harness --test mount_points_routes_equivalence
+  ```
+- **`mount_case_repair`** gained a `naming` line: drives v4's REAL
+  `nextUniqueMountPointName` over five inputs (`lore`/`{Lore}` → `lore (2)`;
+  `lore`/`{Lore, LORE (2)}` → `lore (3)`; `Lore`/`{Other}` → `Lore`;
+  `my vault`/`{  My Vault  }` → `my vault (2)` (trim); `Fresh`/`{}` → `Fresh`),
+  compared against the ported leaf. Regen: same mount-case-repair recipe (unit 2).
+
+**Covered-by-parity (documented):** `ensure_character_vault`'s unique-vault-name
+use is a straight call to the differential-proven `next_unique_mount_point_name`
+with `find_all_names`; a dedicated two-same-named-characters differential would
+reach into lane AZ's characters fixtures, so it is not separately differentialed
+here.

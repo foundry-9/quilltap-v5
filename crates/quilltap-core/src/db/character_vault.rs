@@ -211,12 +211,25 @@ pub fn ensure_character_vault(
     // Fall through to create a fresh vault (v4 logs an error and leaves the
     // existing ones for an operator to reconcile).
 
+    // Vault names live in the one case-insensitive store-name namespace, and
+    // characters may share a name — suffix ` (N)` rather than mint a duplicate
+    // (v4 `0a0419f5`). Adoption above still keys off the un-suffixed base name,
+    // so orphaned vaults from earlier releases stay adoptable.
+    let all_store_names: std::collections::HashSet<String> = DocMountPointsRepository::new(mount)
+        .find_all_names()?
+        .into_iter()
+        .collect();
+    let final_vault_name = crate::db::ensure_official_store::next_unique_mount_point_name(
+        &all_store_names,
+        &vault_name,
+    );
+
     // 1. Provision a fresh character-vault mount point (minted id + now).
     let now = crate::clock::now_iso();
     let mount_point_id = uuid::Uuid::new_v4().to_string();
     DocMountPointsRepository::new(mount).create(
         &DmpCreate {
-            name: format!("{character_name} Character Vault"),
+            name: final_vault_name.clone(),
             base_path: String::new(),
             mount_type: "database".into(),
             store_type: "character".into(),

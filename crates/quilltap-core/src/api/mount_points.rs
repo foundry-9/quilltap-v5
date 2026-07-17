@@ -35,6 +35,31 @@ fn not_found(resource: &str) -> Response {
 fn bad_request(msg: impl Into<String>) -> Response {
     Response::error(ErrorKind::BadRequest, msg)
 }
+fn conflict(msg: impl Into<String>) -> Response {
+    Response::error(ErrorKind::Conflict, msg)
+}
+
+/// The stored-casing name of the store (if any) whose trimmed/lowercased name
+/// matches `desired`, excluding `exclude_id` (for renames). Store names form one
+/// case-insensitive namespace (v4 `0a0419f5`).
+fn find_store_name_clash(
+    db: &Db,
+    desired: &str,
+    exclude_id: Option<&str>,
+) -> Result<Option<String>, crate::db::DbError> {
+    let desired_lower = desired.trim().to_lowercase();
+    let exclude = exclude_id.map(str::to_string);
+    db.read_mount_index(move |conn| {
+        let mut stmt = conn.prepare("SELECT id, name FROM doc_mount_points")?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+            .collect::<Result<Vec<(String, String)>, _>>()?;
+        Ok(rows.into_iter().find_map(|(id, name)| {
+            let excluded = exclude.as_deref() == Some(id.as_str());
+            (!excluded && name.trim().to_lowercase() == desired_lower).then_some(name)
+        }))
+    })
+}
 
 const DEFAULT_INCLUDE: [&str; 4] = ["*.md", "*.txt", "*.pdf", "*.docx"];
 const DEFAULT_EXCLUDE: [&str; 4] = [".git", "node_modules", ".obsidian", ".trash"];
@@ -166,6 +191,17 @@ pub async fn mount_point_create(db: &Db, body: Value) -> Response {
         Ok(f) => f,
         Err(r) => return r,
     };
+    // Document-store names form one case-insensitive namespace: no store may
+    // share a name with a peer, even in a different casing (v4 `0a0419f5`).
+    match find_store_name_clash(db, &fields.name, None) {
+        Ok(Some(clash_name)) => {
+            return conflict(format!(
+                "A document store named \"{clash_name}\" already exists. Names are matched without regard to case — please choose a different name."
+            ));
+        }
+        Ok(None) => {}
+        Err(e) => return internal(e),
+    }
     let id = uuid::Uuid::new_v4().to_string();
     let now = crate::clock::now_iso();
     let create = DmpCreate {
@@ -405,6 +441,22 @@ pub async fn mount_point_update(db: &Db, mount_point_id: &str, body: Value) -> R
         .to_string();
     let flipped =
         existing_store != "character" && new_store == "character" && new_type == "database";
+
+    // Renames stay inside the case-insensitive name namespace: no store may take
+    // a name a peer already holds, even in a different casing (v4 `0a0419f5`).
+    // Only when `name` is present; the clash excludes the store itself.
+    if let Some(desired) = patch.name.clone() {
+        match find_store_name_clash(db, &desired, Some(mount_point_id)) {
+            Ok(Some(clash_name)) => {
+                return conflict(format!(
+                    "A document store named \"{clash_name}\" already exists. Names are matched without regard to case — please choose a different name."
+                ));
+            }
+            Ok(None) => {}
+            Err(e) => return internal(e),
+        }
+    }
+
     let id = mount_point_id.to_string();
     let write = db
         .write(move |ws| {

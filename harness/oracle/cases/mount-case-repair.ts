@@ -32,6 +32,17 @@ import {
   ensureLinkNocaseUniqueIndex,
   repairMountPointNameCollisions,
 } from '@/lib/database/repositories/mount-index-case-repair';
+import { nextUniqueMountPointName } from '@/lib/mount-index/unique-mount-point-name';
+
+// nextUniqueMountPointName — the naming leaf (case-insensitive + trimmed). Kept
+// in lockstep with the Rust test's NAMING_CASES (same inputs, same order).
+const NAMING_CASES: Array<{ taken: string[]; desired: string }> = [
+  { taken: ['Lore'], desired: 'lore' },
+  { taken: ['Lore', 'LORE (2)'], desired: 'lore' },
+  { taken: ['Other'], desired: 'Lore' },
+  { taken: ['  My Vault  '], desired: 'my vault' },
+  { taken: [], desired: 'Fresh' },
+];
 
 // The root package aliases better-sqlite3-multiple-ciphers as better-sqlite3;
 // require the real binding by absolute path (an in-memory DB needs no cipher).
@@ -176,3 +187,10 @@ function runCase(c: Case): unknown {
 for (const c of SPEC.cases) {
   process.stdout.write(JSON.stringify(runCase(c)) + '\n');
 }
+
+process.stdout.write(
+  JSON.stringify({
+    case: 'naming',
+    results: NAMING_CASES.map((c) => nextUniqueMountPointName(new Set(c.taken), c.desired)),
+  }) + '\n',
+);

@@ -256,5 +256,37 @@ fn mount_case_repair_matches_oracle() {
     }
     assert_eq!(checked, spec.cases.len(), "not every case ran");
     assert!(checked >= 7, "expected >= 7 cases, ran {checked}");
-    eprintln!("mount_case_repair: {checked} cases matched oracle");
+
+    // The naming leaf — next_unique_mount_point_name (case-insensitive + trimmed).
+    // Same NAMING_CASES (inputs + order) as the oracle.
+    let naming_cases: &[(&[&str], &str)] = &[
+        (&["Lore"], "lore"),
+        (&["Lore", "LORE (2)"], "lore"),
+        (&["Other"], "Lore"),
+        (&["  My Vault  "], "my vault"),
+        (&[], "Fresh"),
+    ];
+    let got_names: Vec<Value> = naming_cases
+        .iter()
+        .map(|(taken, desired)| {
+            let set: std::collections::HashSet<String> =
+                taken.iter().map(|s| s.to_string()).collect();
+            Value::String(
+                quilltap_core::db::ensure_official_store::next_unique_mount_point_name(
+                    &set, desired,
+                ),
+            )
+        })
+        .collect();
+    let want_names = oracle
+        .get("naming")
+        .and_then(|v| v.get("results"))
+        .and_then(Value::as_array)
+        .expect("oracle naming results");
+    assert_eq!(
+        &got_names, want_names,
+        "next_unique_mount_point_name diverged\n  got:  {got_names:?}\n  want: {want_names:?}"
+    );
+
+    eprintln!("mount_case_repair: {checked} cases + naming leaf matched oracle");
 }

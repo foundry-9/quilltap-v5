@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.d7 unit 5: case-insensitive store-name uniqueness (v4 0a0419f5).
+next_unique_mount_point_name matches case-insensitively and trimmed;
+ensure_character_vault suffixes ` (N)` so same-named characters get distinct
+vaults; and the mount-points create/rename routes return 409 with a verbatim
+message ("A document store named ... already exists. Names are matched without
+regard to case ...") when a name clashes with a peer's in any casing (the
+rename check excludes the store itself). The mount_points_routes differential
+gains create-clash / rename-clash / rename-case-only-self cases, and the
+mount_case_repair differential gains a naming-leaf check, both against v4's real
+code. The importDocumentStores dedup has no v5 counterpart (v5's import subset
+excludes mount points) — a documented absence.
+
 P4.d7 unit 4: case-only renames + the copy guard (v4 0a0419f5). copyFile's
 same-path guard moves BEFORE the force-overwrite branch and compares
 case-insensitively, so force-copying a file onto a case-variant of its own path
