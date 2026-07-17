@@ -2,6 +2,32 @@
 
 ## Recent Changes
 
+P4.6ay unit 3: the Pascal custom-tool execution core
+(quilltap-core::pascal::custom_tools). resolve_params, coerce_param (Pascal's
+OWN coercion, deliberately not the tool layer's llmNumber), clamp,
+resolve_roll_field, crypto_uniform (6 bytes / 2^48, through the shared dice
+module's RandomBytes seam), roll_range (multiply then offset then round;
+min === max short-circuits without drawing), matches_when with the value / roll
+/ params subjects and $param operands, format_value, render_template, and
+execute_custom_tool (the dice branch's raw === value === total, and the
+visibility override).
+
+Also quilltap-core::pascal::js_value: the JS coercions the core runs on —
+Number(), String(), JSON.stringify(), Number::toString, and toPrecision. These
+are general JS primitives that belong in jsnum.rs; they sit under pascal/ for
+now because jsnum.rs is in no lane's Ownership table this round while a sibling
+lane ports llmNumber next door. Lifting them is a named follow-up.
+
+The differential injects the byte source on both sides: the jest oracle mocks
+crypto.randomBytes over a scripted pool and reports the cursor; the Rust side
+replays the same pool through FixedBytes and asserts consumed() matches. That
+pins what inspection cannot — a degenerate range draws 0 bytes where a real one
+draws 6, and the dice path's rejection sampling draws exactly what v4 draws.
+117 rows green, including formatValue over 1e21/1e-7/2.675, Math.round's
+halves-toward-positive-infinity, and Number()/String() on strings, booleans,
+arrays, and objects.
+
+
 P4.6ay unit 1: the Pascal custom-tool definition format
 (quilltap-core::pascal::custom_tool_types). The constants, the schema tree with
 a33ac8b8's strictness (nested objects strict, top level tolerant so v2 keys

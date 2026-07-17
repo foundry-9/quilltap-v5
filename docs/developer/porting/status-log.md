@@ -17735,3 +17735,87 @@ than by adding an `indexmap` dependency — `serde_json`'s `preserve_order`
 already pulls it in transitively, but no crate depends on it directly and this
 lane is not the place to change that. Lookups are linear over at most
 `MAX_PARAMETERS` (8) entries.
+
+## P4.6ay unit 3 — the custom-tool execution core (2026-07-17)
+
+**Landed:** `crates/quilltap-core/src/pascal/custom_tools.rs` — v4
+`lib/pascal/custom-tools.ts:370-772`. `resolve_params` (an unknown key is a hard
+reject), `coerce_param`, `clamp`, `resolve_roll_field`, `crypto_uniform` (6
+bytes / 2^48 through §1's `RandomBytes`), `roll_range`, `OutcomeSubjects`,
+`resolve_operand`, `require_number`, `matches_comparator`, `matches_when`,
+`format_value`, `render_template`, `execute_custom_tool`. Plus
+`crates/quilltap-core/src/pascal/js_value.rs` (new).
+
+**Differential:** `pascal_custom_tools_execution_equivalence` — 117 rows GREEN
+(29 formatValue, 19 renderTemplate, 29 resolveParams, 22 matchesWhen, 18
+executeCustomTool) against v4's real code at `e3593f75`.
+
+Regen recipe (jest ignores `.claude/` paths, hence the /tmp mirror):
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<worktree ABSOLUTE path>
+TMPO=/tmp/qt-pascal-exec-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+cp "$V5W/harness/oracle/cases/pascal-custom-tools-execution.test.ts" "$TMPO/cases/"
+cd ~/source/quilltap-server
+QT_ORACLE_OUT=/tmp/oracle-pascal-execution.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- pascal-custom-tools-execution
+QT_ORACLE_PASCAL_EXECUTION=/tmp/oracle-pascal-execution.ndjson \
+  cargo test -p quilltap-harness --test pascal_custom_tools_execution_equivalence
+```
+
+**The byte source is injected on BOTH sides, and that is the unit's whole
+point.** v4's own execution test (`custom-tools-execution.test.ts`) mocks no
+randomness, so it can only assert ranges. Here the oracle mocks
+`crypto.randomBytes` over a scripted per-case pool and reports the cursor as
+`bytesConsumed`; the Rust side replays the same pool through `FixedBytes` and
+asserts `consumed()` equals it. What that buys, visible in the oracle output:
+
+- `min === max` short-circuits at **0 bytes** where every real Form-A draw takes
+  **6** — the fact the order flagged, now pinned rather than asserted by eye.
+- The dice path's rejection sampling draws **2–3** bytes depending on the
+  notation, and v5 draws the same count. A silent extra consumer would move
+  every subsequent roll and this catches it.
+- The mock THROWS on exhaustion, mirroring `FixedBytes`' panic, so a pool
+  shortage can never masquerade as agreement.
+
+**Definitions travel as the oracle's own PARSED data and are re-parsed here
+through `safe_parse`.** Two benefits for free: every execution case re-exercises
+unit 1, and no case can describe a definition that would not actually load
+(v4's test does the same via `define()`).
+
+**`pascal/js_value.rs` — and why it is not in `jsnum.rs`.** `coerce_param` needs
+`Number(value)`, `String(value)` and `JSON.stringify(value)`; `format_value`
+needs `Number(v.toPrecision(4))`. `jsnum.rs` had only `to_fixed`. These are
+general JS primitives and `jsnum.rs`/`jsstr.rs` is where they belong — they are
+under `pascal/` because **`jsnum.rs` is in NO lane's Ownership table this round**
+while lane A ports `llmNumber` (a neighbouring "coerce a JS number" concern) and
+the order's rule is that an undeclared same-file collision is a round-planning
+bug, not something to resolve in-lane. **Named follow-up: lift `number_to_string`
+/ `to_precision` into `jsnum.rs` and de-duplicate `round_scaled_signed` against
+its private `round_scaled` once the round unifies.** This is a placement
+compromise, not a duplicate implementation of anything that exists today.
+
+**Three JS details the corpus forced, none of which survive a "looks right"
+reading:**
+
+- **`Math.round` is not `f64::round`.** JS rounds halves toward +∞
+  (`Math.round(-2.5)` is `-2`; Rust gives `-3`) — and the naive `floor(n + 0.5)`
+  is ALSO wrong, answering `1` for `Math.round(0.49999999999999994)` because the
+  addition itself rounds. The port compares the fraction against a half.
+- **`toPrecision` must round from the f64's EXACT value.** Going via the shortest
+  repr double-rounds: `(2.675).toPrecision(3)` is `2.67`, not `2.68`, because
+  2.675 is a hair under. Same `u128` technique, and same reason, as
+  `jsnum::to_fixed`'s existing note.
+- **`Number(string)` is not `f64::from_str`.** `""` is 0, `Infinity` parses,
+  `0x10` is 16 — while Rust would additionally take `1_000`, `inf`, and `nan`,
+  which JS calls NaN. All pinned by corpus rows.
+
+**Process note (cost: one confusing failure):** the shell's working directory
+persists between commands, so a `cd` from an earlier step silently made the
+oracle-mirror `cp` path relative — jest matched 0 tests, left the PREVIOUS
+NDJSON in place, and the Rust side ran against stale rows. It failed loudly here
+only because the schema had changed; with a compatible change it would have
+passed green on stale data (the `oracle-regen-silent-stale-pass` note). **Use
+absolute paths in regen recipes and check the jest summary says the suite RAN.**
