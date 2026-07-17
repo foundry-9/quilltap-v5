@@ -147,8 +147,14 @@ pub fn handle_move_file(
                     "Source file not found: {path}"
                 )));
             }
-            if database_document_exists(mount, mp, &resolved_dest.relative_path)
-                .map_err(|e| e.to_string())?
+            // Case-only rename is legal: the case-insensitive existence check
+            // would find the source itself and report a bogus conflict.
+            let case_only_rename = resolved_source.relative_path != resolved_dest.relative_path
+                && resolved_source.relative_path.to_lowercase()
+                    == resolved_dest.relative_path.to_lowercase();
+            if !case_only_rename
+                && database_document_exists(mount, mp, &resolved_dest.relative_path)
+                    .map_err(|e| e.to_string())?
             {
                 let np = new_path.clone().unwrap_or_default();
                 return Ok(DocEditToolResult::fail(format!(

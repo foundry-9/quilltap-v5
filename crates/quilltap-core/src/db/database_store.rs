@@ -271,9 +271,14 @@ pub fn move_database_document(
         )
     })?;
 
-    if docs
-        .find_by_mount_point_and_path(mount_point_id, &to_rel)?
-        .is_some()
+    // Case-only rename of the same document (notes.md → Notes.md) is allowed —
+    // the case-insensitive lookup would otherwise find the source itself and
+    // report a bogus conflict.
+    let case_only_rename = from_rel != to_rel && from_rel.to_lowercase() == to_rel.to_lowercase();
+    if !case_only_rename
+        && docs
+            .find_by_mount_point_and_path(mount_point_id, &to_rel)?
+            .is_some()
     {
         return Err(DatabaseStoreError::new(
             format!("Target already exists: {to_rel}"),
@@ -491,46 +496,50 @@ pub fn move_database_folder(
         .into());
     };
 
-    if folders
-        .find_by_mount_point_and_path(mount_point_id, &to_rel)?
-        .is_some()
-    {
-        return Err(DatabaseStoreError::new(
-            format!("Destination folder already exists: {to_path}"),
-            DbStoreErrorCode::Conflict,
-        )
-        .into());
+    // The lookup is case-insensitive, so a case-only rename of the folder itself
+    // (lore → Lore) finds the source row — that's allowed; any OTHER folder at
+    // the destination (in any casing) is a conflict.
+    if let Some(dest_folder) = folders.find_by_mount_point_and_path(mount_point_id, &to_rel)? {
+        if dest_folder.id != source_folder.id {
+            return Err(DatabaseStoreError::new(
+                format!("Destination folder already exists: {to_path}"),
+                DbStoreErrorCode::Conflict,
+            )
+            .into());
+        }
     }
 
-    // Ensure parent of destination exists + resolve its id.
+    // Ensure parent of destination exists + resolve its id AND its stored path.
     let dest_dir = dirname(&to_rel);
     let mut dest_parent_id: Option<String> = None;
+    let mut dest_parent_path = String::new();
     if dest_dir != "." {
         links_repo.ensure_folder_path(mount_point_id, &dest_dir)?;
         if let Some(parent) = folders.find_by_mount_point_and_path(mount_point_id, &dest_dir)? {
             dest_parent_id = Some(parent.id);
+            dest_parent_path = parent.path;
         }
     }
 
-    let old_prefix = if from_rel.is_empty() {
-        String::new()
+    // Canonicalise: the destination directory may have been addressed in a
+    // different casing than its stored path; the source's descendants share the
+    // source's STORED path prefix, not necessarily the caller-typed one.
+    let new_name = basename(&to_rel).to_string();
+    let canonical_to_rel = if dest_parent_path.is_empty() {
+        new_name.clone()
     } else {
-        format!("{from_rel}/")
+        format!("{dest_parent_path}/{new_name}")
     };
-    let new_prefix = if to_rel.is_empty() {
-        String::new()
-    } else {
-        format!("{to_rel}/")
-    };
+    let old_prefix = format!("{}/", source_folder.path);
+    let new_prefix = format!("{canonical_to_rel}/");
 
     // Update the source folder row itself.
-    let new_name = basename(&to_rel).to_string();
     folders.update(
         &source_folder.id,
         &super::doc_mount_folders::DmfUpdate {
             parent_id: dest_parent_id.clone(),
             name: Some(new_name),
-            path: Some(to_rel.clone()),
+            path: Some(canonical_to_rel.clone()),
             updated_at: now_iso(),
             ..Default::default()
         },

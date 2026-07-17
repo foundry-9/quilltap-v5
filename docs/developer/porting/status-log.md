@@ -18192,3 +18192,59 @@ logic); its only v5 caller is the character-vault scaffold, whose seven top-leve
 folders never collide. `doc_mount_folders.find_by_mount_point_and_path`'s
 case-variant fallback is exercised by the database-store folder ops (move / delete
 / exists) — covered by the mount-ops case-only folder rename in unit 4.
+
+### Unit 4 — case-only renames + the copy guard — LANDED
+
+Ports the move/copy half of `0a0419f5`:
+
+- **`services/mount_index/file_ops.rs` `copy_file`:** the same-mount same-path
+  guard moves BEFORE the force/dest-exists branch and compares
+  case-insensitively — force-copying a file onto a case-variant of its own path
+  no longer deletes the source (v4's data-loss fix). `move_file`: a same-mount
+  lowercase-equal `case_only_rename` skips the dest-exists check (the exact-equal
+  guard above still rejects true no-ops).
+- **`services/mount_index/folder_ops.rs` `move_folder`:** the fs-branch dest
+  probe is skipped for a `case_only_rename` (`fs::rename` handles the casing).
+- **`db/database_store.rs`:** `move_database_document` — a `case_only_rename`
+  (`from != to && lower-equal`) skips the conflict lookup; `move_database_folder`
+  — the dest-conflict allows the source itself (`dest.id != source.id`), the
+  destination canonicalises under the destination PARENT's STORED path
+  (`canonical_to_rel`), and `old_prefix`/`new_prefix` now derive from the
+  source's STORED path (not the caller-typed one) so descendants + links rewrite
+  correctly.
+- **`tools/doc_edit/file_management.rs` `handle_move_file`** (DB branch): the same
+  `case_only_rename` skip. v4's TWO fs-branch skips (`handleMoveFile` fs +
+  `handleMoveFolder` fs) have **no v5 counterpart** — v5 refuses the host-fs seam
+  in those handlers (`Err(fs_seam())`); documented absence. `handle_move_folder`
+  has no handler-level dest check (it delegates to `move_database_folder`), so no
+  change there either.
+
+**Differential — `mount_case_moves` (NEW, green).** `harness/oracle/cases/
+mount-case-moves.ts` drives v4's REAL `copyFile` (the same-path guard — force-copy
+`guard.md` onto `GUARD.md` is rejected `INVALID_PATH`, the source survives),
+`moveFile` (case-only `guard.md → Guard.md`), `moveDatabaseDocument` (case-only
+`notes.md → Notes.md`), and `moveDatabaseFolder` (move `Lore` under `Archive`
+addressed as `archive` → canonicalises to `Archive/Lore`; then `Archive → ARCHIVE`
+case-only allow-self, descendants + links rewritten) over a fresh copy of the dmfl
+fixture; the Rust side (`crates/quilltap-harness/tests/
+mount_case_moves_equivalence.rs`) replays with `copy_file` (a `RefusingTextExtractor`
+— never reached, the guard fires first) / `move_file` / the two `database_store`
+functions and compares the captured guard `{error, code}` + folder paths + link
+relativePaths. Regen (from `~/source/quilltap-server` at `d68638b4`, Node 24):
+
+```
+QT_FIXTURE_OUT=/tmp/qt-dmfl-fixture.db \
+  $N/node --import tsx <W>/harness/oracle/fixtures/build-doc-mount-file-links-fixture.ts
+QT_FIXTURE_MOUNT_CASE_MOVES=/tmp/qt-dmfl-fixture.db \
+  $N/node --import tsx <W>/harness/oracle/cases/mount-case-moves.ts \
+  > /tmp/oracle-mount-case-moves.ndjson
+# run: QT_ORACLE_MOUNT_CASE_MOVES=... QT_FIXTURE_MOUNT_CASE_MOVES=/tmp/qt-dmfl-fixture.db \
+#   cargo test -p quilltap-harness --test mount_case_moves_equivalence
+```
+
+**Covered-by-parity (documented):** the `folder_ops.rs move_folder` FS-branch
+case-only skip is the same guard shape as the differential-proven `move_file`
+case-only skip, on a filesystem mount (the DB folder case-only IS proven via
+`move_database_folder`). The heavy `mount_ops` route family was NOT extended
+(avoids rebuilding its committed jest fixture); the direct-drive differential
+above proves the same functions it would exercise.

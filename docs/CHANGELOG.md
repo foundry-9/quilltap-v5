@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.d7 unit 4: case-only renames + the copy guard (v4 0a0419f5). copyFile's
+same-path guard moves BEFORE the force-overwrite branch and compares
+case-insensitively, so force-copying a file onto a case-variant of its own path
+no longer deletes the source; moveFile / moveFolder skip the destination-exists
+check for a same-mount case-only rename. In the database store,
+moveDatabaseDocument allows a case-only document rename, and moveDatabaseFolder
+allows the source itself at the destination and canonicalises the destination
+under the parent's stored casing (descendants + links prefix-rewrite from the
+source's stored path). The doc-edit move-file handler gains the same case-only
+skip. New mount_case_moves differential proves all of it against v4's real
+copyFile / moveFile / moveDatabaseDocument / moveDatabaseFolder.
+
 P4.d7 unit 3: case-insensitive, case-preserving folder + link resolution
 (v4 0a0419f5). ensure_link_folder_id and ensure_folder_path walk folder
 segments with an exact-match-then-NOCASE query and continue under the folder's

@@ -112,7 +112,12 @@ pub fn move_folder(
             FileOpErrorCode::SourceNotFound,
         )));
     }
-    if std::path::Path::new(&to_abs).exists() {
+    // Case-only rename (lore → Lore): on a case-insensitive filesystem the
+    // destination probe would find the source itself, so skip it — fs.rename
+    // handles the casing change in place. (The exact-equal guard above still
+    // rejects true no-ops.)
+    let case_only_rename = from_rel.to_lowercase() == to_rel.to_lowercase();
+    if !case_only_rename && std::path::Path::new(&to_abs).exists() {
         return Err(MountFileError::FileOp(FileOpError::new(
             format!("Destination already exists: {to_rel}"),
             FileOpErrorCode::DestExists,

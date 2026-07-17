@@ -600,6 +600,18 @@ pub fn copy_file(
 
     let source_info = source_exists_or_throw(conn, &source_mount, &source_rel)?;
 
+    // Same mount and same path is a no-op; reject so the caller doesn't
+    // accidentally garbage-collect both ends in the move flow. Case-insensitive
+    // (paths are one namespace regardless of casing) and BEFORE the force-
+    // overwrite branch — force-copying onto a case-variant of the source would
+    // otherwise delete the source itself.
+    if source_mount.id == dest_mount.id && source_rel.to_lowercase() == dest_rel.to_lowercase() {
+        return Err(MountFileError::FileOp(FileOpError::new(
+            format!("Source and destination are the same path: {dest_rel}"),
+            FileOpErrorCode::InvalidPath,
+        )));
+    }
+
     if dest_exists(conn, &dest_mount, &dest_rel)? {
         if !opts.force {
             return Err(MountFileError::FileOp(FileOpError::new(
@@ -608,15 +620,6 @@ pub fn copy_file(
             )));
         }
         delete_at_dest(conn, &dest_mount, &dest_rel)?;
-    }
-
-    // Same mount and same path is a no-op; reject so the caller doesn't
-    // accidentally garbage-collect both ends in the move flow.
-    if source_mount.id == dest_mount.id && source_rel == dest_rel {
-        return Err(MountFileError::FileOp(FileOpError::new(
-            format!("Source and destination are the same path: {dest_rel}"),
-            FileOpErrorCode::InvalidPath,
-        )));
     }
 
     let source_is_fs = source_mount.is_filesystem_mount();
@@ -742,7 +745,12 @@ pub fn move_file(
 
     let source_info = source_exists_or_throw(conn, &source_mount, &source_rel)?;
 
-    if dest_exists(conn, &dest_mount, &dest_rel)? {
+    // A case-only rename (notes.md → Notes.md on the same mount) is legal: the
+    // case-insensitive existence check would find the source itself, so skip it.
+    // The exact-equal guard above still rejects true no-ops.
+    let case_only_rename =
+        source_mount.id == dest_mount.id && source_rel.to_lowercase() == dest_rel.to_lowercase();
+    if !case_only_rename && dest_exists(conn, &dest_mount, &dest_rel)? {
         return Err(MountFileError::FileOp(FileOpError::new(
             format!("Destination already exists: {dest_rel}. Move will not overwrite."),
             FileOpErrorCode::DestExists,
