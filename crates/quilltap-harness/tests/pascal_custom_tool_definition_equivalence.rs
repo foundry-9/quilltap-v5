@@ -12,7 +12,7 @@
 //! `~/.nvm/versions/node/v24.13.1/bin`):
 //!   cd ~/source/quilltap-server
 //!   npx tsx \
-//!     ~/source/quilltap-v5/.claude/worktrees/pascal-custom-tools-porting-dd49d0/harness/oracle/cases/pascal-custom-tool-definition.ts \
+//!     ~/source/quilltap-v5/harness/oracle/cases/pascal-custom-tool-definition.ts \
 //!     > /tmp/oracle-pascal-definition.ndjson
 //! Run:
 //!   QT_ORACLE_PASCAL_DEFINITION=/tmp/oracle-pascal-definition.ndjson \

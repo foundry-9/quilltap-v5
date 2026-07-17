@@ -17819,3 +17819,99 @@ NDJSON in place, and the Rust side ran against stale rows. It failed loudly here
 only because the schema had changed; with a compatible change it would have
 passed green on stale data (the `oracle-regen-silent-stale-pass` note). **Use
 absolute paths in regen recipes and check the jest summary says the suite RAN.**
+
+---
+
+## The P4.d5 ∥ P4.6ay unification — round record (2026-07-17)
+
+Unified onto main via `unify/p4d5-p46ay`: lane A
+`claude/p4-d5-dice-rng-lenient-93c41e` (10 commits, fast-forwarded — same
+base) then lane C `claude/pascal-custom-tools-porting-dd49d0` (3 commits,
+cherry-picked; conflicts only in the four expected files). **P4.d5 is
+CLOSED** (units 1–5, §2(a)+(b), tier-2 item 7 + the `web_search` arms of
+item 6). **P4.6ay stays OPEN at units 2, 4–9** (units 1, 3, 10 on main;
+resume at unit 2 on a fresh branch off main — the lane branch is deleted).
+
+**The §2(b) ruling.** Lane C's executor arm (unit 4) did not land, so the
+Shared contract's belt-and-braces rule said revert the `run_custom`
+catalogue entry. It was KEPT instead, on verified evidence: `run_custom`
+appears only in `tools/definitions/{data,mod}.rs` and the harness; the two
+consumers outside `definitions/` (`simple_json_prompt::definition_by_key`,
+`tool_build::universal_tool_by_key`) are keyed lookups, and no key list in
+the tree contains `run_custom` until P4.6ay unit 6 lands. Nothing publishes
+the tool to a model. Keeping it unblocks unit 4's
+`build_run_custom_description(&[])` byte-identity test.
+
+**Version recount** (identical first bumps off a shared base merge
+silently): core 0.0.238 + 6 + 2 = **0.0.246**; harness 0.0.213 + 3 + 2 (+1
+for the stale-worktree-path header fix at unification) = **0.0.219**. No
+web/host/tauri/SPA source changed.
+
+**The v4 checkout went DIRTY mid-unification — the pinned-worktree regen
+recipe.** At unify start v4 HEAD was `444c7fd6` (2 commits past the
+`e3593f75` baseline, both verified lib-behavior-free) with a clean tree; an
+hour later the tree carried the IN-FLIGHT custom-tools/character-metadata
+feature (uncommitted `lib/pascal/*`, `run-custom-tool.ts`, vault-overlay
+and schema files). A first oracle regen against that dirty tree tripped
+`tool_definitions_equivalence` (the run_custom description grows a
+character-metadata sentence) and `pascal_custom_tool_definition_equivalence`
+— the tripwire working, and a warning: **fresh oracles are only as pinned
+as the tree they import.** Fix, now the house recipe for regenerating at a
+pinned baseline while v4 is being edited:
+
+```bash
+git -C ~/source/quilltap-server worktree add --detach /tmp/qt-v4-baseline e3593f75
+ln -sfn ~/source/quilltap-server/node_modules /tmp/qt-v4-baseline/node_modules
+ln -sfn ~/source/quilltap-server/packages/quilltap/node_modules \
+        /tmp/qt-v4-baseline/packages/quilltap/node_modules   # the real-DB jest cases resolve the cipher driver here
+cd /tmp/qt-v4-baseline   # run every tsx/jest oracle from HERE
+# afterwards: git -C ~/source/quilltap-server worktree remove --force /tmp/qt-v4-baseline
+```
+
+All nine affected oracle families regenerated from the pinned worktree,
+each with a freshness marker verified in the NDJSON (73 llm-number rows /
+64 rng-patterns / 37 rng-executor cases / 58 tool definitions incl.
+`run_custom` + rng `modifier` / 17 web-search / 200-row orchestrator incl.
+the 3d6+2 spine case / 44-row finalizer incl. `modifier` in TOOL rows /
+102 pascal-definition / 117 pascal-execution).
+
+**Banked v4 drift, dispositioned (baseline moves to `e3593f75`; HEAD at
+unification `444c7fd6`):**
+
+- `8e4b00d4` — client-only: the Salon whisper filter extracted to
+  `app/salon/[id]/whisper-visibility.ts` (+ tests) and narrowed so only
+  pascal/prospero are exempt from the All Whispers toggle. v5 never ported
+  the whisper-render toggle, so nothing corresponds today; **the helper +
+  its tests are the port target when that Salon slice happens.**
+  `RunToolModal` copy (unported), two `help/*.md` edits (v5 syncs help
+  docs from disk at runtime — no repo change), version → 4.8.0-dev.63.
+- `444c7fd6` — two new developer feature docs, mirrored at
+  `docs/v4/developer/features/{custom-tool-builder,character-metadata-json}.md`
+  at this unification. They SPEC the in-flight feature above — required
+  reading for whoever resumes P4.6ay.
+
+**Gate (all on the unified tree):** `cargo fmt --all --check` clean;
+`cargo clippy --workspace --all-targets -- -D warnings` clean on both
+feature sets; `cargo build --release --workspace` clean; `cargo test
+--workspace --no-fail-fast` with all nine oracle env-var sets:
+**332 suites / 1392 tests / 0 failed**; the nine differentials re-run BY
+NAME with `--nocapture`, zero SKIPs (see below); `ng test` 128 files /
+1247; `ng build` clean; full Playwright 65/65, zero skips.
+
+**Two process gotchas, banked:**
+
+- **Do not run `cargo build --release` concurrently with `ng build`:**
+  `quilltap-tauri` embeds `apps/web/dist`, and the race surfaced as a
+  transient one-error release failure that vanished on retry.
+- `cargo ... 2>&1 | tail -3 && echo OK` reports the PIPELINE's exit (the
+  `tail`), not cargo's — the release failure above initially printed `OK`.
+  Capture to a file and test cargo's own exit.
+
+**Open after this round:** P4.6ay units 2, 4–9 (+ its three second-pause
+findings; the order header carries the in-flight-feature warning); P4.d5
+tier-2 item 6's four uncovered families (coverage, not behavior); the
+`js_value` → `jsnum` lift + `round_scaled` dedup (named follow-up, now
+unblocked — `jsnum.rs` is no longer contested).
+
+Versions: core 0.0.246, harness 0.0.219, host 0.0.19, web 0.0.25,
+quilltap-tauri 0.0.3, SPA 0.5.134.

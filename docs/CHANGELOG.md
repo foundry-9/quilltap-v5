@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+Unify the P4.d5 + P4.6ay resumed lanes. P4.d5 (dice modifier, lenient numbers,
+the spine RNG call sites, the 58-tool catalog) is complete and closed; P4.6ay
+lands its first two Pascal units (the custom-tool definition format and the
+execution core) with units 2 and 4-9 still open on the order. The run_custom
+catalog entry ships ahead of its handler: verified inert (keyed lookups only,
+nothing offers it to a model), which unblocks the Pascal lane's byte-identity
+test when it resumes. All nine affected oracle families were regenerated from
+a v4 worktree pinned at the e3593f75 baseline after the live v4 checkout went
+dirty mid-unification with in-flight feature work; the two new v4 feature docs
+are mirrored under docs/v4/developer/features/. Gate: fmt, clippy on both
+feature sets, release build, 332 suites / 1392 tests / 0 failed with the nine
+differentials re-run by name (zero skips), ng test 1247, ng build, and the
+full Playwright suite 65/65. Versions: core 0.0.246, harness 0.0.219.
+
 P4.6ay unit 3: the Pascal custom-tool execution core
 (quilltap-core::pascal::custom_tools). resolve_params, coerce_param (Pascal's
 OWN coercion, deliberately not the tool layer's llmNumber), clamp,

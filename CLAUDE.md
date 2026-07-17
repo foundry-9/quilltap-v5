@@ -615,37 +615,54 @@ records THERE. Update this summary only when a phase or round completes.
   the M6 backlog items 1–4 (`p4.9a`/`p4.9c`/`p4.9b`/`p4.9d`) as the
   natural next round; `p4.9j` (workspace tabs — v4's DEFAULT shell)
   needs a human ruling first.**
-- **Oracle baseline: v4 HEAD `02865bdb`** (rebased 2026-07-14 with the
-  P4.d4 skip-signal drift re-port — the trailing-sentinel strip; the
-  P4.d3 quantized embedding codec note stands: ⚠ v4's
-  `quantize-embeddings-v1` migration is one-way — back up Friday
-  before first running v4 `4.8.0-dev.52`+ against it. Drift-check
-  before every round. ⚠ **v4 HEAD is `e3593f75` (4.8.0-dev.62), 9
-  commits past the baseline, and that drift is only PARTIALLY absorbed
-  (2026-07-17) — so the baseline line above STAYS at `02865bdb` until
-  it is finished.** Absorbed: the help-doc-sync drift (P4.d6, CLOSED),
-  v4 4.8.0's two schema columns (P4.6ay unit 10 — see **D23**), and
-  the shared `pascal::dice` module. **STILL WRONG on main until the
-  rest lands:** the dice modifier (`3d6+2` rolls as `3d6`), every dice
-  roll's output JSON (v4 emits `modifier`/`total`), and quoted numeric
-  tool args across 18 tools. **The D24 blocker is RESOLVED:** v4
-  `e3593f75` makes every tool validator return `safeParse`'s parsed
-  data and every handler read it (the doc-edit dispatcher validates
-  with a raw-input fallback), so `llmNumber` now takes effect —
-  `{"type":"6"}` rolls a real d6 and `{"modifier":"2"}` adds
-  numerically. **P4.d5 (resume at unit 2) and P4.6ay (resume at unit
-  1) are UNBLOCKED and re-planned against baseline `e3593f75`** (their
-  orders carry 2026-07-17 addenda; the `p4.d5` branch's held unit 2 is
-  now correct as written). Pascal itself is 1/10 units ported (schema
-  only); the SPA is unstarted. ⚠ **v5 CANNOT read or write messages on
-  a pre-4.8.0 v4 instance** (`no such column: pascalMeta`) — migrate a
-  dogfood copy to 4.8.0's two ALTERs before pointing v5 at it. Two
-  things that look like drift but are NOT: v4's whisper-render rule is
-  client-only (v5 never ported the toggle, so its context shaping is
-  unaffected), and v4's embedding blob-registration bug is
-  structurally impossible in v5 (no registry exists — the port
-  avoided it, and needs no `repair-text-embeddings`).
-  Versions: core 0.0.238, harness 0.0.213, host 0.0.19, web 0.0.25,
+- **The P4.d5 ∥ P4.6ay resumed-lanes unification: UNIFIED on main
+  (2026-07-17) — P4.d5 CLOSED; P4.6ay units 1+3 landed (units 2, 4–9
+  open — resume at unit 2).** The whole dice/rng + lenient-numbers
+  drift re-port (the rng `modifier` end-to-end: tool output
+  `modifier`/`total`, the shared-scanner prose detector, both spine
+  call sites + persisted TOOL rows; the `llm_number` seam across the
+  28-field tool surface; the tool catalog at 58 with `run_custom` +
+  the rng `modifier`) ∥ the Pascal custom-tool definition format
+  (102-row differential, full Zod strings) + execution core (117
+  rows, byte-consumption pinned). The `run_custom` catalogue entry is
+  on main and verified INERT until the Pascal handler lands — P4.6ay
+  unit 4's byte-identity obligation is UNBLOCKED. Mid-unification the
+  v4 checkout went DIRTY (the in-flight custom-tools/metadata
+  feature); all nine oracle families were regenerated from a PINNED
+  detached v4 worktree at `e3593f75` (recipe in the round record).
+  Gate: 332 suites / 1392 tests / 0 failed (nine differentials by
+  name, zero SKIPs), clippy both feature sets, release build, ng test
+  128 files / 1247, ng build clean, full Playwright 65/65 zero skips.
+  Deferred loud: P4.d5 tier-2 item 6's four uncovered quoted-number
+  families (coverage, not behavior); the `js_value` → `jsnum` lift.
+  Round record: `status-log.md`.
+- **Oracle baseline: v4 `e3593f75` (4.8.0-dev.62), adopted 2026-07-17
+  at the P4.d5 ∥ P4.6ay unification.** The `02865bdb`→`e3593f75`
+  drift is fully absorbed EXCEPT the Pascal feature itself (P4.6ay
+  units 2, 4–9 + the unstarted SPA — the open order). v4 HEAD at
+  unification was `444c7fd6`, two commits past the baseline, both
+  dispositioned (lib-behavior-free, verified): `8e4b00d4` (the Salon
+  whisper-visibility client fix — the toggle surface is unported in
+  v5; its new `whisper-visibility.ts` helper + tests are the port
+  target for that future Salon slice; two `help/*.md` edits — v5
+  syncs help docs from disk at runtime; RunToolModal copy — unported;
+  → 4.8.0-dev.63) and `444c7fd6` (two feature docs, mirrored under
+  `docs/v4/developer/features/`). ⚠ **v4 carries an IN-FLIGHT
+  uncommitted custom-tools/character-metadata feature** — when it
+  lands, the next drift check WILL trip `tool_definitions_equivalence`
+  and the pascal differentials (the run_custom description grows a
+  metadata sentence); that is the tripwire firing as designed —
+  re-plan P4.6ay's remainder against the new baseline, do not "fix"
+  v5 back. Drift-check before every round; if the v4 tree is dirty,
+  regenerate oracles from a pinned detached worktree (round record).
+  The P4.d3 note stands: ⚠ v4's `quantize-embeddings-v1` migration is
+  one-way — back up Friday before first running v4 `4.8.0-dev.52`+
+  against it. ⚠ **v5 CANNOT read or write messages on a pre-4.8.0 v4
+  instance** (`no such column: pascalMeta`) — migrate a dogfood copy
+  to 4.8.0's two ALTERs before pointing v5 at it. Still NOT drift:
+  v4's embedding blob-registration bug is structurally impossible in
+  v5 (no registry exists; no `repair-text-embeddings` needed).
+  Versions: core 0.0.246, harness 0.0.219, host 0.0.19, web 0.0.25,
   quilltap-tauri 0.0.3, SPA 0.5.134.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

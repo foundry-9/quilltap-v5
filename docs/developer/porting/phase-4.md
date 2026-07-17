@@ -351,6 +351,13 @@ boundary; streaming only on `Event`; the `Db` ownership model; enclave
   `rng-tool-lenient-numbers.test.ts`. **The resumed round's baseline is
   `e3593f75`; P4.d5 (resume at unit 2) and P4.6ay (resume at unit 1) are
   UNBLOCKED — their orders carry matching 2026-07-17 addenda.**
+  **CLOSED OUT 2026-07-17 at the P4.d5 ∥ P4.6ay unification: the re-port
+  landed in full.** P4.d5 is CLOSED (all five units + §2 on main; the
+  ruling's contested arms all verified against fixed v4 — `{"type":"6"}`
+  rolls a real d6 and consumes a byte, `{"modifier":"2"}` adds
+  numerically); P4.6ay carries the remaining Pascal units (2, 4–9 —
+  resume at unit 2). The `run_custom` catalogue entry is on main and
+  verified INERT until the Pascal handler lands.
 
 ## The boundary contract in detail
 
@@ -1748,3 +1755,14 @@ next round (`p4.9a-photos-view` ∥ `p4.9c-about-profile` ∥
 `p4.9b-generate-image-screen` ∥ `p4.9d-quick-hide-provider` — lift
 from `m6-screen-parity.md` §4), and the `p4.9j-workspace-tabs`
 human ruling (§5.1).** Round record: `status-log.md`.
+
+**The P4.d5 ∥ P4.6ay resumed-lanes unification is on main (2026-07-17)
+— P4.d5 CLOSED; P4.6ay at units 1+3+10 of 10 (resume at unit 2; its
+order header carries the resume instructions AND the warning about
+v4's in-flight custom-tools/metadata feature).** The oracle baseline
+is now `e3593f75` (CLAUDE.md's baseline bullet has the banked
+`444c7fd6` disposition). **Next candidates: finish P4.6ay (units 2,
+4–9 — the Pascal server surface; the long pole, and the natural next
+lane), the human M5 + finding-#12 walk (STILL outstanding), the M6
+backlog items 1–4, or the `p4.9j-workspace-tabs` human ruling.**
+Round record: `status-log.md`.
