@@ -1,0 +1,101 @@
+{
+  "comment": "P4.d6 ensureHelpDocsSynced differential spec (v4 6c59b1ca bug 1 + 551f090b's trigger/prune/enqueue). ONE committed help tree (fixtures/help-ensure/help/: aurora.md + brahma-console.md) with the seed varying per scenario, so each scenario isolates exactly one trigger path. The contentHash values are the sha256 of each file's TRIMMED bytes, so a seeded row with that hash is 'unchanged' and the sync must leave it alone — which is what makes 'in-sync' a genuine no-sync and 'deleted' a genuine deleted-direction-only trigger. Each scenario builds its OWN database at $QT_FIXTURE_ENSURE_DIR/qt-ensure-<name>-main.db.",
+  "testPepperBase64": "cXVpbGx0YXAtdGVzdC1wZXBwZXItMzItYnl0ZXMhIQ==",
+  "seedSentinel": "2020-01-01T00:00:00.000Z",
+  "auroraHash": "b5584ea13a209f4786eafe39ae034268c8a1a6a5eafce1d2bdbe0344ae84f847",
+  "brahmaHash": "c1ee9ca52e1c7d5d7b451cdcc3b3e821f72d86fcdfd43e4a96c5f185ed28dd20",
+  "user": {
+    "id": "cccccccc-0000-4000-8000-000000000001",
+    "username": "fixture-user",
+    "createdAt": "2020-01-01T00:00:00.000Z",
+    "updatedAt": "2020-01-01T00:00:00.000Z"
+  },
+  "embeddingProfile": {
+    "id": "dddddddd-0000-4000-8000-000000000001",
+    "userId": "cccccccc-0000-4000-8000-000000000001",
+    "name": "Fixture Embeddings",
+    "provider": "OPENAI",
+    "modelName": "text-embedding-3-small",
+    "isDefault": true,
+    "createdAt": "2020-01-01T00:00:00.000Z",
+    "updatedAt": "2020-01-01T00:00:00.000Z"
+  },
+  "scenarios": [
+    {
+      "name": "empty-table",
+      "note": "The lazy gate that ALWAYS worked: no rows -> sync. The control.",
+      "seedProfile": true,
+      "helpDocs": []
+    },
+    {
+      "name": "in-sync",
+      "note": "Every file has a row and every row has a file -> NO divergence -> no sync, no prune, no enqueue. The row's embedding is non-null so nothing is owed.",
+      "seedProfile": true,
+      "helpDocs": [
+        {
+          "id": "aaaaaaaa-0000-4000-8000-000000000001",
+          "path": "help/aurora.md",
+          "hash": "aurora",
+          "embedding": [0.5, -0.25]
+        },
+        {
+          "id": "aaaaaaaa-0000-4000-8000-000000000002",
+          "path": "help/brahma-console.md",
+          "hash": "brahma",
+          "embedding": [0.25, -0.5]
+        }
+      ]
+    },
+    {
+      "name": "added-doc",
+      "note": "v4 BUG 1: the table is POPULATED and aurora is unchanged, but brahma-console.md ships with no row. The old gate (existing.length > 0 -> return) left it invisible forever. Diverges via the UNSYNCED direction -> sync -> brahma created -> enqueued (its embedding is null).",
+      "seedProfile": true,
+      "helpDocs": [
+        {
+          "id": "aaaaaaaa-0000-4000-8000-000000000001",
+          "path": "help/aurora.md",
+          "hash": "aurora",
+          "embedding": [0.5, -0.25]
+        }
+      ]
+    },
+    {
+      "name": "deleted-doc",
+      "note": "The DELETED direction is load-bearing: EVERY file on disk already has a row with a matching hash, so the unsynced direction cannot fire. Only the retired row (no file) can trigger this sync — and without the trigger the prune would be dead code.",
+      "seedProfile": true,
+      "helpDocs": [
+        {
+          "id": "aaaaaaaa-0000-4000-8000-000000000001",
+          "path": "help/aurora.md",
+          "hash": "aurora",
+          "embedding": [0.5, -0.25]
+        },
+        {
+          "id": "aaaaaaaa-0000-4000-8000-000000000002",
+          "path": "help/brahma-console.md",
+          "hash": "brahma",
+          "embedding": [0.25, -0.5]
+        },
+        {
+          "id": "aaaaaaaa-0000-4000-8000-000000000003",
+          "path": "help/retired.md",
+          "hash": "aurora",
+          "embedding": [1, 2]
+        }
+      ]
+    },
+    {
+      "name": "no-profile",
+      "note": "Same divergence as added-doc, but NO embedding profile is configured: the sync still completes and the docs are still listable; only the enqueue backs off (v4's debug-log-and-return).",
+      "seedProfile": false,
+      "helpDocs": [
+        {
+          "id": "aaaaaaaa-0000-4000-8000-000000000001",
+          "path": "help/aurora.md",
+          "hash": "aurora",
+          "embedding": [0.5, -0.25]
+        }
+      ]
+    }
+  ]
+}

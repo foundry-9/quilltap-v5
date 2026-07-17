@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+P4.d6 unit 4: help docs added to the repo after the first sync now actually
+reach the database (v4 6c59b1ca). The sync only ran when help_docs was
+completely empty, and that is the only trigger outside a full embedding
+reindex, so a doc shipped later stayed invisible in the Guide forever —
+eleven of them, in v4's case. It now also syncs when the files on disk and
+the rows in the database disagree, in either direction: a file with no row,
+or a row whose file is gone. Both directions come out of one directory scan,
+which reads no file contents, and the deleted direction is what makes the
+prune reachable at all — a deletion alone would otherwise never start a sync.
+
+Newly synced docs are also queued for embedding now (v4 551f090b), so a new
+doc becomes searchable instead of merely listed. The sync itself stays
+deliberately queue-free: a full reindex re-embeds everything and batch-inserts
+its jobs, so queueing there would race it.
+
+Verified against v4's real ensureHelpDocsSynced across five scenarios — an
+empty table, disk and database in agreement, a doc added, a doc deleted, and
+no embedding profile configured — diffing both the resulting documents and the
+queued jobs.
+
 P4.d6 unit 3: help docs whose Markdown file has been deleted are now pruned
 from the database along with their embedding status, instead of lingering in
 the Guide forever (v4 551f090b). The sync result reports a `deleted` count.

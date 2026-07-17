@@ -28,13 +28,27 @@
 //!
 //! The `ensureHelpDocsSynced` module-promise concurrency guard does not port
 //! (the single-writer runtime already serializes callers).
+//!
+//! ## Not wired at startup (a standing deferral, named)
+//!
+//! [`ensure_help_docs_synced`] has **no production caller** — v4 reaches it from
+//! `HelpSearch.loadFromDatabase()`, and that class is unported (see
+//! [`crate::help_doc_slug`]). v4's OTHER sync trigger, the
+//! `EMBEDDING_REINDEX_ALL` job handler, is unported too: the job type is known
+//! (`job_runner.rs`) and `embedding_refit_job.rs` enqueues it, but no handler
+//! exists. So this module is correct FOR WHEN that wiring lands, and today only
+//! the differential drives it. Wiring it is the host's business (it owns the
+//! walk); the standing seam note lives at `db/help_search.rs`.
 
 use rusqlite::{params, Connection};
 
 use crate::db::embedding_status::EmbeddingStatusRepository;
 use crate::db::help_docs::{HdUpsert, HelpDocsRepository};
+use crate::db::runtime::Db;
 use crate::db::DbError;
 use crate::jsstr::{is_js_ws, js_trim};
+use crate::services::mount_index::embedding_scheduler::{default_profile_id, first_user_id};
+use crate::services::queue_service::enqueue_embedding_generate;
 
 /// One on-disk help file (the host walker's output): `rel_path` is v4's
 /// `relative(process.cwd(), filePath)` (e.g. `help/aurora.md`), `raw_content`
@@ -314,18 +328,134 @@ pub fn sync_help_docs(main: &Connection, files: &[HelpSourceFile]) -> HelpDocSyn
     result
 }
 
-/// v4 `ensureHelpDocsSynced` — lazy: sync only when `help_docs` is empty.
-/// Returns `Some(result)` when a sync ran. (The module-promise concurrency
-/// guard does not port — the single-writer runtime serializes callers.)
-pub fn ensure_help_docs_synced(
-    main: &Connection,
+/// v4 `helpDocsDivergeFromDisk` (`help-doc-sync.ts:297`) — whether the help
+/// documents on disk and the rows in the database have parted ways in EITHER
+/// direction: a file with no row, or a row whose file is gone.
+///
+/// **Both directions come out of the same directory listing, and the deleted
+/// direction is load-bearing** (v4's *why*, carried forward): both need the same
+/// fix — `sync_help_docs` creates the missing rows and prunes the stale ones —
+/// and ignoring the deleted direction would leave the prune UNREACHABLE, since a
+/// deletion alone would never trigger a sync.
+///
+/// `paths_on_disk` is the raw walk listing, NOT the sync's `pathsOnDisk` (which
+/// drops empty-content files). That is v4's shape and it has a consequence worth
+/// knowing: an empty `.md` file is forever "unsynced" (it never gets a row), so
+/// its presence makes this return `true` on every call — the sync then runs and
+/// no-ops over it. Reproduced deliberately; see [`sync_help_docs`]'s prune note.
+pub fn help_docs_diverge_from_disk(existing_paths: &[&str], paths_on_disk: &[&str]) -> bool {
+    let synced: std::collections::HashSet<&str> = existing_paths.iter().copied().collect();
+    let on_disk: std::collections::HashSet<&str> = paths_on_disk.iter().copied().collect();
+
+    let unsynced = paths_on_disk.iter().any(|p| !synced.contains(p));
+    let deleted = existing_paths.iter().any(|p| !on_disk.contains(p));
+    unsynced || deleted
+}
+
+/// v4 `ensureHelpDocsSynced` (`help-doc-sync.ts:269`) — sync when `help_docs` is
+/// empty, **and when the set of Markdown files on disk no longer matches the set
+/// of rows**. Returns `Some(result)` when a sync ran.
+///
+/// The divergence gate is v4 `6c59b1ca`'s fix for **bug 1**: the old gate was
+/// `if (existing.length > 0) return`, and this is the only sync trigger outside a
+/// full embedding reindex — so a doc added to `help/` after the first sync never
+/// got a row. Eleven shipped docs were invisible in the Guide.
+///
+/// Detecting divergence costs a directory scan, not a read of every file, and
+/// `sync_help_docs` skips unchanged docs by content hash. Edits to an
+/// already-synced doc are still picked up only by the next `sync_help_docs`
+/// call — a file's content is never examined here. (The module-promise
+/// concurrency guard does not port — the single-writer runtime serializes
+/// callers.)
+///
+/// **v5 seam:** v4 re-walks the disk itself here; the core is fs-free, so the
+/// host's walk (`quilltap-host::files_store::load_help_source_files`) supplies
+/// `files`, whose `rel_path`s ARE v4's `listHelpDocPathsOnDisk()` output — the
+/// walker yields every `.md` it finds, empty-content ones included. No seam
+/// extension was needed for the deletion direction. The cost difference (v4's
+/// trigger reads no file CONTENTS; the host has already read them by the time it
+/// calls) is a host-side concern for the startup wiring, which is a standing
+/// deferral — see the module header.
+pub async fn ensure_help_docs_synced(
+    db: &Db,
     files: &[HelpSourceFile],
 ) -> Result<Option<HelpDocSyncResult>, DbError> {
-    let existing = HelpDocsRepository::new(main).find_all()?;
-    if !existing.is_empty() {
+    let existing = db.read_main(|c| HelpDocsRepository::new(c).find_all())?;
+
+    let existing_paths: Vec<&str> = existing.iter().map(|d| d.path.as_str()).collect();
+    let paths_on_disk: Vec<&str> = files.iter().map(|f| f.rel_path.as_str()).collect();
+    if !existing.is_empty() && !help_docs_diverge_from_disk(&existing_paths, &paths_on_disk) {
         return Ok(None);
     }
-    Ok(Some(sync_help_docs(main, files)))
+
+    let files_owned = files.to_vec();
+    let result = db
+        .write(move |ws| Ok(sync_help_docs(ws.main().connection(), &files_owned)))
+        .await?;
+
+    enqueue_missing_help_doc_embeddings(db).await;
+    Ok(Some(result))
+}
+
+/// v4 `enqueueMissingHelpDocEmbeddings` (`help-doc-sync.ts:327`) — enqueue
+/// embedding jobs for help docs that have no embedding: newly synced docs, docs
+/// whose content changed (the sync clears their stale embedding), and any left
+/// unembedded by an earlier failure. Without this a new doc lands in the Guide
+/// but stays invisible to `help_search` until a full reindex.
+///
+/// Per-entity dedup in `enqueue_embedding_generate` keeps this from duplicating
+/// jobs an `EMBEDDING_REINDEX_ALL` has already queued.
+///
+/// **Best-effort, deliberately** (v4's *why*, carried forward): every failure is
+/// swallowed, because the docs are already in the database and listable in the
+/// Guide, which is the caller's actual dependency. That is why this returns `()`
+/// and not a `Result`.
+async fn enqueue_missing_help_doc_embeddings(db: &Db) {
+    // v4 wraps the entire body in one try/catch — a failure at ANY step (not
+    // just the enqueue) lands in the same catch, so the whole body is one
+    // fallible unit here too.
+    let outcome: Result<(), DbError> = async {
+        let need_embedding =
+            db.read_main(|c| HelpDocsRepository::new(c).find_all_needing_embedding())?;
+        if need_embedding.is_empty() {
+            return Ok(());
+        }
+
+        // v4: `profiles.findAll()` then `find(p => p.isDefault) || profiles[0]`
+        // — unscoped, no ORDER BY. `default_profile_id` is that exact
+        // expression (it already serves the mount-index scheduler).
+        let Some(profile_id) = db.read_main(default_profile_id)? else {
+            // v4 debug-logs "need embedding but no profile is configured" and
+            // returns — the sync itself still counts as done.
+            return Ok(());
+        };
+        // v4: `users.findAll()[0]?.id`.
+        let Some(user_id) = db.read_main(first_user_id)? else {
+            return Ok(());
+        };
+
+        for doc in &need_embedding {
+            enqueue_embedding_generate(
+                db,
+                &user_id,
+                serde_json::json!({
+                    "entityType": "HELP_DOC",
+                    "entityId": doc.id,
+                    "profileId": profile_id,
+                }),
+            )
+            .await?;
+        }
+        Ok(())
+    }
+    .await;
+
+    if let Err(e) = outcome {
+        // v4 logs and moves on (`logger.error` in the catch). The core has no
+        // logging crate; `eprintln!` is the module convention here (as in
+        // `mount_index::embedding_scheduler`).
+        eprintln!("[HelpDocSync] Failed to enqueue help doc embeddings: {e}");
+    }
 }
 
 #[cfg(test)]

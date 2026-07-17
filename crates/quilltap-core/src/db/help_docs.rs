@@ -168,6 +168,38 @@ impl<'c> HelpDocsRepository<'c> {
         Ok(out)
     }
 
+    /// v4 `findAllNeedingEmbedding` — every help doc with no stored embedding
+    /// (rowid/insertion order), the enqueue's work list. Read-only.
+    ///
+    /// v4 filters the hydrated rows in JS (`_findAll().filter(doc => doc.embedding
+    /// == null)`); `WHERE embedding IS NULL` is exactly equivalent and does not
+    /// hydrate 28 vectors to throw them away. The equivalence holds on both edges:
+    /// v4 stores an empty embedding as SQL NULL (never a zero-length BLOB), and a
+    /// zero-length BLOB would hydrate to `Float32Array(0)` — which is NOT
+    /// `== null`, and is likewise not `IS NULL`. A legacy TEXT embedding hydrates
+    /// to a vector (not null) and is not `IS NULL` either.
+    pub fn find_all_needing_embedding(&self) -> Result<Vec<HelpDocRow>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, title, path, url, content, contentHash FROM help_docs \
+             WHERE embedding IS NULL",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(HelpDocRow {
+                id: r.get(0)?,
+                title: r.get(1)?,
+                path: r.get(2)?,
+                url: r.get(3)?,
+                content: r.get(4)?,
+                content_hash: r.get(5)?,
+            })
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
     /// v4 `findAllWithEmbeddings` — every help doc with its decoded embedding
     /// (rowid/insertion order). A NULL embedding decodes to an empty vector.
     /// Read-only.

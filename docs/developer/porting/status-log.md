@@ -16421,6 +16421,124 @@ done
 cannot be changed within a process.
 
 **Versions:** core **0.0.235**, harness **0.0.211**.
+
+---
+
+## P4.d6 unit 4 — `ensureHelpDocsSynced`: the divergence trigger + the embedding enqueue
+
+**Ported (the order's units 1, 3 and 4 land TOGETHER — see below):** v4
+`6c59b1ca`'s bug-1 fix + `551f090b`'s trigger/enqueue.
+
+- **`help_docs_diverge_from_disk`** (pub, pure) — v4's private
+  `helpDocsDivergeFromDisk`: both directions out of ONE listing. v4's *why*
+  carried forward verbatim in substance: the deleted direction is
+  load-bearing, because without it the prune is unreachable.
+- **`ensure_help_docs_synced`** re-gated: `!existing.is_empty() &&
+  !diverges(…)`. Signature moved from `(&Connection, &[HelpSourceFile])` to
+  `async (&Db, &[HelpSourceFile])` — the enqueue needs `&Db` and is async.
+  **Free to move: the fn had ZERO callers** (not even the harness; the
+  harness drove `sync_help_docs`).
+- **`enqueue_missing_help_doc_embeddings`** — best-effort by design (v4 wraps
+  the WHOLE body in one try/catch, so a failure at any step lands in the same
+  catch; modeled as one fallible async unit, returning `()` not `Result`).
+  `sync_help_docs` stays deliberately enqueue-free with v4's race
+  *why*-comment carried forward.
+- **`HelpDocsRepository::find_all_needing_embedding`** (the order's unit 4).
+  v4 filters hydrated rows (`_findAll().filter(d => d.embedding == null)`);
+  `WHERE embedding IS NULL` is exactly equivalent on both edges (v4 stores
+  empty→NULL, never a zero-length BLOB; a zero-length BLOB hydrates to
+  `Float32Array(0)`, which is neither `== null` nor `IS NULL`; legacy TEXT
+  hydrates to a vector and is likewise not NULL) and does not hydrate 28
+  vectors to discard them.
+
+**DRY — two v4 expressions already ported.** v4's enqueue does
+`profiles.findAll().find(p => p.isDefault) || profiles[0]` and
+`users.findAll()[0]?.id`. Those are EXACTLY
+`mount_index::embedding_scheduler::{default_profile_id, first_user_id}`
+(already differential-verified in the mount-index family). Reused rather than
+twinned.
+
+**Why the order's units 1/3/4 landed as ONE unit:** v4's
+`ensureHelpDocsSynced` performs the trigger AND the enqueue, so it is the
+differential's natural seam. Splitting them would mean testing each half
+against a fiction — a gate-only `ensure` that v4 does not have.
+
+### ⚠ THE HARNESS TRAP: a swallowed error silently truncated the corpus
+
+The first (tsx) oracle run produced a corpus that looked entirely legitimate
+and was WRONG: `empty-table` recorded ONE embedding job where v4 really
+enqueues TWO. Cause: `enqueueJob()` calls `ensureProcessorRunning()` AFTER
+inserting its row, which resolves v4's job-child entry relative to
+`process.cwd()`. The case MUST `chdir` (v4 captures `HELP_DIR =
+join(process.cwd(), 'help')` at module load), so that resolution THREW — and
+`enqueueMissingHelpDocEmbeddings`' best-effort catch swallowed it, aborting
+the loop after the first job. **The correct v4 behavior and the artifact are
+indistinguishable by inspection.**
+
+Two things fixed it, both worth keeping:
+
+1. **The oracle asserts nothing was swallowed.** It wraps `logger.error`,
+   collects any `[HelpDocSync]` line, and THROWS. A best-effort code path
+   under test needs its swallowing disabled in the harness, or the harness
+   pins its own bugs. This caught the artifact immediately and then caught a
+   second one (below).
+2. **The case is JEST, not tsx** (`[[jest-real-db-oracle]]`) — only a module
+   mock can no-op `ensureProcessorRunning`. **`QUILLTAP_JOB_CHILD=1` is NOT
+   the lever** (tried first): it puts the whole data layer into child mode and
+   every write fails with *"Cannot append write … outside of a job scope"* —
+   v4's buffered-writes-over-IPC single-writer model. jest's `resetModules` +
+   re-import is also what makes five scenarios possible in ONE process:
+   re-loading `help-doc-sync` re-captures `HELP_DIR` from the current cwd.
+
+**A hypothesis the probe KILLED (recorded so it is not re-derived):** the
+one-job result looked like v4's per-entity enqueue dedup being a GLOBAL dedup
+(`findPendingForEntity` filters on the dotted JSON path `'payload.entityId'`).
+It is not. A direct probe: two entities → two jobs, `json_extract` resolves
+correctly, dedup is genuinely per-entity. v5's
+`json_extract(payload,'$.entityId')` port is right.
+
+**Differential:** `help_doc_ensure_equivalence` — **5/5 scenarios green**,
+by name, `--nocapture`, no SKIP. One committed tree
+(`fixtures/help-ensure/help/`: aurora + brahma-console), the seed varying per
+scenario so each isolates ONE trigger path; a v4-built fixture DB per scenario
+(`qt-ensure-<name>-main.db`) so both sides start byte-identical.
+
+| scenario | v4's behavior (the corpus) |
+|---|---|
+| `empty-table` | both docs created, **2** jobs (the control) |
+| `in-sync` | **no** sync/prune/enqueue — seeded titles + sentinel timestamps survive |
+| `added-doc` | ⚠ **BUG 1**: populated table, aurora unchanged, brahma **created + enqueued** |
+| `deleted-doc` | ⚠ **deleted direction ONLY** can fire (every disk file already matches) → `retired.md` **pruned** |
+| `no-profile` | sync completes, doc created, **no** jobs |
+
+Minted ids never enter the comparison: docs compare by `path` (non-seeded id →
+`<minted>`), jobs resolve `payload.entityId` → the doc's PATH. Plus
+belt-and-braces pins on the DRIFT itself (asserted against the ORACLE), so a
+regeneration that quietly drops a scenario — or two identically-broken sides —
+cannot pass as agreement.
+
+**A second artifact the loud check caught:** `background_jobs.priority` /
+`maxAttempts` have REAL affinity, so the Rust dump emitted `0.0`/`3.0` vs the
+oracle's `0`/`3`. Fixed in the HARNESS (an inlined `js_number`, mirroring
+core's `pub(crate)` `js_number_to_json`), not the port — the stored values were
+always identical. `db/mod.rs:503`'s comment documents this exact trap.
+
+**Fixtures added (this lane's own family; no shape change):**
+`fixtures/help-ensure.json`, `fixtures/help-ensure/help/{aurora,
+brahma-console}.md`, `fixtures/build-help-ensure-fixture.ts`,
+`cases/help-sync-ensure.test.ts`. The builder seeds users +
+embedding_profiles + all five collections `ensureHelpDocsSynced` touches (a
+missing table makes the repo call RETHROW, so both sides would fail
+identically and prove nothing). ⚠ Run the builder ONE SCENARIO PER PROCESS
+(`QT_ENSURE_SCENARIO`) — re-initializing v4's DB manager in-process is
+unreliable.
+
+**Regen:** see the differential's header (`help_doc_ensure_equivalence.rs`) —
+fixture loop, then the jest mirror (`$TMPO/cases` + a `fixtures/` SIBLING;
+`--roots $TMPO/cases` ONLY, never `$PWD` too, or the pattern matches v4's own
+suites), `--testTimeout=120000`.
+
+**Versions:** core **0.0.236**, harness **0.0.212**.
 ## P4.6ay unit 10 — the schema adoption (lane C, 2026-07-17)
 
 **Landed.** v4 `a33ac8b8`'s two 4.8.0 columns adopted, per the order's
