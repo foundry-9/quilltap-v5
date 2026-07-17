@@ -68,6 +68,11 @@ three from provisioning replay; the metadata column is vault-managed and stays
 inert in the DB (character.metadata hydrates from the vault's metadata.json,
 which lane p4.6az owns). Provisioning, builtin-mounts, and builtin-templates
 equivalence regenerated at d68638b4 and green.
+P4.6az lane gate fix (lane AZ): renumber the `vault_character_write` module-doc
+write list (the interleaved `1b.` metadata step became a plain `2.`, shifting the
+rest) to satisfy clippy's `doc_lazy_continuation` / `doc_overindented_list_items`
+lints. Doc-only.
+
 P4.6az Tier-2/Tier-3 deferrals (lane AZ): the lazy-backfill wiring (seeding
 `metadata.json` into already-linked/adopted vaults) is deferred to the unifier —
 its two hook sites are inside lane D7's shared region of `character_vault.rs`, so

@@ -7,15 +7,15 @@
 //! It writes (in v4's exact order):
 //!   1. `properties.json` — `{ pronouns, aliases, title, firstMessage, talkativeness }`
 //!      as `JSON.stringify(.,null,2)`.
-//!   1b. `metadata.json` — the fact sheet, **only when `metadata != null`** (the
+//!   2. `metadata.json` — the fact sheet, **only when `metadata != null`** (the
 //!      anti-clobber guard: `metadata` has no DB column, so a raw row's absent
 //!      metadata must not overwrite a real fact sheet with `{}`).
-//!   2. `identity.md` / `description.md` / `manifesto.md` / `personality.md` /
+//!   3. `identity.md` / `description.md` / `manifesto.md` / `personality.md` /
 //!      `example-dialogues.md` — the raw markdown field (or `""`).
-//!   3. iff a `physicalDescription` is present: `physical-description.md`
+//!   4. iff a `physicalDescription` is present: `physical-description.md`
 //!      (`fullDescription` or `""`) + `physical-prompts.json`
 //!      (`renderPhysicalPromptsJson`).
-//!   4. the `Prompts/` and `Scenarios/` folder projections (one `.md` per array
+//!   5. the `Prompts/` and `Scenarios/` folder projections (one `.md` per array
 //!      entry; files not produced this pass are swept).
 //!
 //! Wardrobe is intentionally NOT projected here — it lives vault-first and is
