@@ -2,6 +2,15 @@
 
 ## Recent Changes
 
+The d68638b4-round unification wire: the P4.6az Tier-2 lazy backfill is WIRED.
+ensure_character_vault's two no-scaffold return paths (the current_fk early
+return and the same-name adopt branch) now call ensure_character_metadata_file,
+so a vault provisioned before the fact sheet existed gains its metadata.json the
+next time its character is ensured — v5's lazy equivalent of v4's startup
+backfill sweep (which remains a named absence). The stale NOT-YET-WIRED doc
+section is replaced. Versions recounted per the unifier rule: core 0.0.262,
+harness 0.0.231 (identical first bumps off a shared base merge silently).
+
 P4.d7 tier 2: a migration-vintage regression proves the boot hook
 (ensure_mount_index_tables) repairs a mount-index built with the legacy
 case-sensitive indexes and planted folder/link/store-name collisions — the

@@ -178,32 +178,17 @@ pub fn scaffold_character_mount(conn: &Connection, mount_point_id: &str) -> Resu
 /// parsing: a sheet the user has fat-fingered into invalid JSON is still their
 /// sheet, and must not be "healed" into an empty one. §3-owned (lane AZ).
 ///
-/// ## ⚠ NOT YET WIRED onto the adopt/existing-vault path (Tier-2 backfill, DEFERRED)
+/// ## The lazy-backfill wiring (WIRED at the d68638b4-round unification)
 ///
 /// v4 seeds every already-linked vault at startup (`backfillCharacterVaults` →
 /// `ensureCharacterMetadataFile`). v5 has no startup-backfill subsystem; the v5
-/// lazy equivalent is to call this from [`ensure_character_vault`]'s two
-/// no-scaffold return paths — the `current_fk` early return (a character that
-/// already has a vault) and the same-name ADOPT branch (a vault provisioned
-/// before the fact sheet existed). Both sites live in **lane D7's §3 region** of
-/// this file, which lane AZ may not edit, so the wiring is DEFERRED to the
-/// unifier — exactly the P4.6s embedding-seam pattern. The two one-line hooks:
-///
-/// ```ignore
-/// // in ensure_character_vault, the `current_fk` early return:
-/// if let Some(fk) = current_fk {
-///     ensure_character_metadata_file(mount, fk)?;   // ← unifier adds
-///     return Ok(EnsureResult { mount_point_id: fk.to_string(), created: false });
-/// }
-/// // and in the adopt branch, right after link_character_to_vault(...):
-/// ensure_character_metadata_file(mount, &adopted)?; // ← unifier adds
-/// ```
-///
-/// Until wired, the ONLY loss is file discoverability for a pre-feature adopted
-/// vault: the READ path hydrates `{}` regardless (never a keystone), so behavior
-/// is unaffected — the user just cannot open a `metadata.json` that isn't there
-/// until that vault is next fully scaffolded. `create_character` already seeds it
-/// (unit 4), so fresh characters are covered.
+/// lazy equivalent is the two calls in [`ensure_character_vault`]'s no-scaffold
+/// return paths — the `current_fk` early return (a character that already has a
+/// vault) and the same-name ADOPT branch (a vault provisioned before the fact
+/// sheet existed). Same effective coverage at v5's cadence: every vault gains
+/// its file the next time its character is ensured, and `create_character`
+/// seeds fresh vaults via the scaffold. The v4 STARTUP sweep itself remains a
+/// named absence (no v5 backfill subsystem — see the P4.6az Tier-3 record).
 pub fn ensure_character_metadata_file(
     conn: &Connection,
     mount_point_id: &str,
@@ -258,6 +243,11 @@ pub fn ensure_character_vault(
     current_fk: Option<&str>,
 ) -> Result<EnsureResult, DbError> {
     if let Some(fk) = current_fk {
+        // Lazy backfill (v4 `backfillCharacterVaults` → `ensureCharacterMetadataFile`):
+        // a vault provisioned before the fact sheet existed gains its metadata.json
+        // the next time its character is ensured. Wired at unification per the §3
+        // region pin (lane AZ Tier 2).
+        ensure_character_metadata_file(mount, fk)?;
         return Ok(EnsureResult {
             mount_point_id: fk.to_string(),
             created: false,
@@ -280,6 +270,9 @@ pub fn ensure_character_vault(
     if populated.len() == 1 {
         let adopted = populated.into_iter().next().unwrap();
         link_character_to_vault(main, character_id, &adopted)?;
+        // Same lazy backfill as the current_fk arm: an adopted pre-feature vault
+        // holds every REQUIRED_VAULT_FILES entry but may predate metadata.json.
+        ensure_character_metadata_file(mount, &adopted)?;
         return Ok(EnsureResult {
             mount_point_id: adopted,
             created: false,
