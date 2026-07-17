@@ -17647,3 +17647,91 @@ the fixture DB build now reports **29 chats**, was 28). Both are
 differential. **No other oracle is invalidated.**
 
 Versions: core 0.0.244, harness 0.0.216.
+
+## P4.6ay unit 1 — the custom-tool definition format (2026-07-17)
+
+**Landed:** `crates/quilltap-core/src/pascal/custom_tool_types.rs` — v4
+`lib/pascal/custom-tool.types.ts` (606 lines). Constants, the schema tree at
+`a33ac8b8`'s strictness (**nested strict, top level tolerant**), the load-time
+rules (`validate_outcome_ordering` incl. the mandatory trailing catch-all and
+the unreachable-earlier-catch-all rejection; `validate_references` /
+`validate_roll_refs` / `validate_comparator` / `resolve_operand_type`),
+`display_title`, `format_definition_issues` + `flatten_issues` (the
+`" — or — "` union join), `collect_unknown_keys` + `KNOWN_TOP_LEVEL_KEYS`.
+
+**Differential:** `pascal_custom_tool_definition_equivalence` — 10 `displayTitle`
+rows + 92 definition rows, GREEN against v4's real Zod at `e3593f75`.
+
+Regen recipe (v4 @ `e3593f75`, Node 24 `~/.nvm/versions/node/v24.13.1/bin`):
+
+```bash
+cd ~/source/quilltap-server
+npx tsx <worktree>/harness/oracle/cases/pascal-custom-tool-definition.ts \
+  > /tmp/oracle-pascal-definition.ndjson
+QT_ORACLE_PASCAL_DEFINITION=/tmp/oracle-pascal-definition.ndjson \
+  cargo test -p quilltap-harness --test pascal_custom_tool_definition_equivalence
+```
+
+**The order's open question, decided: the differential pins FULL strings.** The
+order left it to the lane whether to compare Zod's own sentences or only the
+author-written `ctx.addIssue` messages plus the verdict. It is not really open:
+`loadToolsFromMount` stores `formatDefinitionIssues(...)` as
+`CustomToolLoadError.reason`, and unit 7's GET route returns that string
+verbatim in `errors[]`. It is user-visible payload on a route this lane also
+has to diff, so normalizing it here would only move the same diff downstream
+and hide it. v4's own test (`custom-tool-definition.test.ts`) regex-matches
+these messages; this differential is a strictly stronger bar.
+
+**What that forced — three Zod rules the port had to reproduce, not three
+guesses.** Read from `zod@4.4.3`'s source after the corpus disagreed with the
+obvious model:
+
+1. An issue is **aborting** unless a check raised it (`refine`/`superRefine`
+   mark theirs `continue: true`). `unrecognized_keys` and `invalid_key` are
+   aborting; a `regex` failure is NOT.
+2. **Checks are skipped once an aborting issue exists** (`util.aborted`) — that
+   is what stops the top-level `superRefine` walking an `outcomes` that failed
+   to parse. With only continuable issues the value still exists and the checks
+   DO run, which is how `{"$param":"Not An Identifier"}` yields BOTH the regex
+   sentence and the undeclared-parameter sentence.
+3. `handleUnionResults`: all-branches-fail reports `invalid_union` **unless
+   exactly one branch is non-aborted**, in which case that branch's issues are
+   hoisted verbatim and no wrapper appears. This is why `roll: '3dd6'` reads
+   `roll: must be dice notation …` while `roll: 42` gets the
+   `— or — ` wrapper. Guessing here would have failed ~15 rows.
+
+**Two oracle bugs caught before they cost anything** (both would have passed a
+careless review):
+
+- **The transport was a lie for the case that mattered.** Emitting `input` as a
+  structured value ran the definition through `JSON.stringify`, which turns an
+  `Infinity` operand into `null` — the row shipped `{"gt": null}` with a reason
+  produced by `Infinity`. The input now travels as **raw JSON TEXT** and each
+  side parses it with its own parser, which is also what production does
+  (`readToolFile` hands `JSON.parse` the file's bytes).
+- **A row that would have reported a number-formatting seam as a schema
+  failure.** `1e308` renders `1e+308` in JS and `1e308` in serde_json — the
+  pre-existing exotic-number seam documented at `model/tool_wire/parsers.rs`.
+  The row is pinned at `1e15` instead, where the two renderings agree; above
+  `i64::MAX` they do not, and that seam is not this format's to close.
+
+**Recorded divergence — the JSON layer, not the schema (no stub, no silent
+skip).** `z.number().finite()` is reachable only via an overflow literal (JSON
+has no `Infinity`/`NaN` literal): `{"gt": 1e999}` parses to `Infinity` in v4 and
+is rejected HERE, but serde_json rejects it at the parse ("number out of
+range"), so v5 rejects the same file at `read_tool_file` (unit 2). **Both refuse
+the definition; only the reason string differs, one layer apart.** No corpus row
+can assert that as equality, so it is documented in the module header, the
+oracle header, and here rather than hidden. `finite()` is carried faithfully.
+
+**Two properties the `data` field pins that a verdict-only test would miss:** an
+unknown top-level key is **stripped** from the parsed data while
+`collect_unknown_keys` still reports it (log-before-strip — the whole reason
+that function exists separately), and Zod emits keys in the **schema's** order,
+not the input's (`$schema` moves to the front).
+
+**Note for unit 2:** parameter order is preserved in a `Vec<(String, _)>` rather
+than by adding an `indexmap` dependency — `serde_json`'s `preserve_order`
+already pulls it in transitively, but no crate depends on it directly and this
+lane is not the place to change that. Lookups are linear over at most
+`MAX_PARAMETERS` (8) entries.

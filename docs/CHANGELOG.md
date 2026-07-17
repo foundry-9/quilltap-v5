@@ -2,6 +2,28 @@
 
 ## Recent Changes
 
+P4.6ay unit 1: the Pascal custom-tool definition format
+(quilltap-core::pascal::custom_tool_types). The constants, the schema tree with
+a33ac8b8's strictness (nested objects strict, top level tolerant so v2 keys
+stay reserved), the load-time rules (the mandatory trailing catch-all, the
+rejected earlier catch-all, $param reference and operand-type checks),
+display_title, format_definition_issues, and collect_unknown_keys.
+
+The differential pins the FULL rejection sentence, Zod's own built-ins
+included, not just the accept/reject verdict: loadToolsFromMount stores that
+sentence as a load error's reason and the custom-tools GET route returns it
+verbatim, so it is payload the route differential has to match anyway. That
+forced a faithful port of three Zod rules — issues from checks are
+"continuable" while type errors abort, checks are skipped once an aborting
+issue exists, and a union with exactly one non-aborted branch hoists that
+branch instead of wrapping it. 102 corpus rows green against v4's real schema.
+
+Recorded divergence (JSON layer, not the schema): a definition containing an
+overflow literal such as {"gt": 1e999} parses to Infinity in v4 and is rejected
+by the schema's finite() check, while serde_json rejects it at the parse, so v5
+rejects the same file at read_tool_file. Both refuse it; only the reason string
+differs. finite() is carried faithfully regardless.
+
 P4.d5 fix: the tool catalog's completeness count follows the run_custom entry
 (57 to 58), and the lookup test pins run_custom's camelCase key against its
 snake_case function name. The full-workspace gate caught this; the unit-3
