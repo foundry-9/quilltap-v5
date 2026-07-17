@@ -133,6 +133,21 @@ Returns the JSON object verbatim, or null for anything that is not an object
 Unlike properties.json, metadata is not a keystone: a malformed file never
 hollows the character. Extended the tier-1 vault-json-parsers differential
 with 10 metadata cases (24 → 34).
+P4.6ay unit 2 (Pascal custom-tool discovery / roster). New pascal/roster.rs:
+is_root_tool_file (a nested Tools/sub/x.tool.json is rejected — definitions are a
+flat root-level convention), load_definitions (the read → parse → validate → dedup
+core; a broken file becomes an error entry, never a throw; a same-mount duplicate
+name is rejected), ordered_mounts (same-tier ties break by mount id
+lexicographically), resolve_roster_from_pool (nearest tier wins; a `disabled`
+tombstone suppresses a name at its tier and every farther one; MAX_ROSTER_SIZE
+drop list), and the live wrappers resolve_custom_tool_roster / load_tools_from_mount
+(database + filesystem/obsidian stores). No caching, ever — the roster is
+re-resolved per call. New tier-2 differential pascal_roster_equivalence: 20
+scenarios driven through v4's real resolveCustomToolRoster with the pool + store
+mocked (v4's own discovery-test template), replayed through the v5 core. The
+malformed-JSON reason is compared by prefix (a serde-vs-V8 parser-message seam);
+every other reason byte-exact.
+
 P4.6ay unit 11 (the d68638b4 metadata re-port). Port the character-metadata
 subject into the custom-tool definition format and execution core. WhenObject
 gains an optional `metadata` record: keys are any non-empty string (the user's

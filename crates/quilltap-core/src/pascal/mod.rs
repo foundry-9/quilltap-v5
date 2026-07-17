@@ -4,3 +4,4 @@ pub mod custom_tool_types;
 pub mod custom_tools;
 pub mod dice;
 pub mod js_value;
+pub mod roster;

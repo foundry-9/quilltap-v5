@@ -18760,3 +18760,74 @@ coercion metadata comparison needs). The `character.metadata` hydration is lane
 AZ's (§2); units 4/7 consume it through the hydrated character read only.
 
 Versions: core 0.0.247, harness 0.0.220.
+
+## P4.6ay unit 2 — discovery / roster (2026-07-17)
+
+Branch `claude/pascal-custom-tools-porting-243efb`. Second unit of the resumed
+lane (order 11 → **2** → 5 → 6 → 4 → 8 → 9 → 7 → 12).
+
+### What landed — `pascal/roster.rs` (new)
+
+Composition over the already-ported `tiered_mount_pool` + `database_store`
+primitives, split into a testable core and thin IO wrappers:
+
+- `is_root_tool_file` — `.tool.json` suffix + the `Tools/` root check (a nested
+  `Tools/sub/x.tool.json` is somebody's archive, not a live tool).
+- `load_definitions(files, mount_point_id, mount_name, tier)` — the read → parse
+  (`safe_parse`) → dedup core. Never fails: malformed JSON / schema violation /
+  same-mount duplicate name each become an error entry. `ToolFileContent` models
+  Content / Skip (deleted-between-list-and-read race) / ReadError.
+- `ordered_mounts` — tier precedence `[character, participant, group, project,
+  global]`, same-tier ties sorted by mount id lexicographically (stable).
+- `resolve_roster_from_pool(pool, load)` — the shadowing + cap core: nearest tier
+  wins; a `disabled` tombstone suppresses at its tier AND farther; `MAX_ROSTER_SIZE`
+  drop list. This is the seam the differential drives.
+- `load_tools_from_mount(mount, id, tier)` — the live wrapper: `find_by_id_for_docedit`
+  (skip when absent/disabled), list via `list_database_files` (database) or
+  `list_tool_files_from_disk` (filesystem/obsidian; ENOENT/ENOTDIR → []), read via
+  `read_database_document` or `std::fs`, then `load_definitions`.
+- `resolve_custom_tool_roster(ctx, main, mount)` — resolves the tiered pool
+  (`include_participants: true`) then the core. **No caching, ever** (why-comment
+  carried).
+
+### Differential — `pascal_roster_equivalence` (new, 20 scenarios, GREEN)
+
+Follows v4's OWN discovery test template: the oracle
+(`pascal-custom-tools-discovery.test.ts`, jest) mocks `resolveTieredMountPool` +
+`getRepositories` + the two database-store reads and drives the REAL
+`resolveCustomToolRoster` over a corpus of `{ pool, mounts }` scenarios; the Rust
+side replays each through `resolve_roster_from_pool` + `load_definitions` (the same
+real `safe_parse`). Covers: find-by-name-not-filename, nested/non-suffix/folder
+rejection, disabled mount, empty/missing-mount pool, malformed JSON, schema
+violation, same-store duplicate, nearest-tier-wins, the full five-tier chain,
+`disabled` suppression (nearer removes, farther does not), same-tier tie by mount
+id (both pool orders), a metadata-gated definition loading through discovery, and
+the roster cap (drops 3 past `MAX_ROSTER_SIZE`).
+
+**Design note (recorded, a deliberate deviation from the order's "real repos via
+create(data,{id})" fixture suggestion):** v4's own discovery test — which the
+order names as the oracle template — mocks the pool + store reads precisely
+because the tiered-pool resolver (already differentially proven) is not what
+discovery is under test for. The NEW logic (isRootToolFile / load-parse-dedup /
+tier shadowing / cap) is fully exercised by the scenario corpus without a real
+`.db`. The DB/disk IO wrappers (`load_tools_from_mount`,
+`list_tool_files_from_disk`) are thin and are what v4 mocks here too; they are
+carried faithfully but not differentially diffed (matching v4's own test). The
+malformed-JSON reason is a documented serde-vs-V8 seam, compared by its
+`is not valid JSON:` prefix.
+
+### Regen recipe (v4 `d68638b4`, Node 24)
+
+```bash
+V5W=/Users/csebold/source/quilltap-v5/.claude/worktrees/pascal-custom-tools-porting-243efb
+N=~/.nvm/versions/node/v24.13.1/bin
+TMPO=/tmp/qt-pascal-discovery-oracle; rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+cp "$V5W/harness/oracle/cases/pascal-custom-tools-discovery.test.ts" "$TMPO/cases/"
+cd ~/source/quilltap-server
+QT_ORACLE_OUT=/tmp/oracle-pascal-discovery.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- pascal-custom-tools-discovery
+# run: QT_ORACLE_PASCAL_DISCOVERY=/tmp/oracle-pascal-discovery.ndjson cargo test -p quilltap-harness
+```
+
+Versions: core 0.0.248, harness 0.0.221.
