@@ -18382,3 +18382,44 @@ HYDRATION (a separate concern). Full detail in unit 1's record above.
   — direct regen, no pinned worktree needed).
 
 **Versions:** core 0.0.252, harness 0.0.223 (host/web/tauri/SPA untouched).
+## P4.6az — the metadata.json character fact-sheet VAULT surface (lane AZ, d68638b4 drift round, 2026-07-17)
+
+Lane AZ of the FOUR-lane `d68638b4` catch-up round. Ports v4 `8bc43333`'s
+VAULT half: every character vault gains an optional `metadata.json` — a flat
+object of user-authored keys — hydrated onto the character as
+`character.metadata`. Drift-checked at lane start: `git log d68638b4..HEAD`
+in `~/source/quilltap-server` was empty (HEAD == baseline, tree clean). All
+oracles regenerated from a PINNED detached worktree at `d68638b4`
+(`/tmp/qt-v4-baseline`, both node_modules symlinked) per
+`[[oracle-regen-pinned-v4-worktree]]`.
+
+### Unit 1 — `parse_vault_metadata` (the fail-soft parser)
+
+`quilltap_core::vault_overlay::parse_vault_metadata(raw) -> Option<Value>`
+ports v4 `parseVaultMetadata` (`vault-overlay/parsers.ts:86`). The schema is
+v4's `JsonSchema` (`z.record(z.string(), z.unknown())`) — its ONLY job is to
+insist the value is a JSON *object* and refuse an array or a bare scalar.
+`None` on invalid JSON OR a non-object (top-level array / bare
+string/number/bool / JSON null); on success the object passes through
+verbatim (key order preserved via the workspace `preserve_order`). Unlike
+`parse_vault_properties`, metadata is NOT a keystone: a fat-fingered file
+costs the metadata for that one read and never hollows the character (why
+`hydrate_one` substitutes `{}`).
+
+**Differential:** extended the tier-1 `vault_json_parsers` family
+(`harness/oracle/cases/vault-json-parsers.ts` +
+`crates/quilltap-harness/tests/vault_json_parsers_equivalence.rs`) with 10
+`metadata` rows: empty `{}`, mixed values (bool/int/string/null), nested,
+key-order preservation, invalid JSON, top-level array, bare
+string/number/bool, and JSON `null`. Corpus 24 → 34 cases; **green on 34**.
+
+**Regen recipe** (Node 24, from the pinned worktree):
+```
+N=~/.nvm/versions/node/v24.13.1/bin
+cd /tmp/qt-v4-baseline    # detached worktree pinned at d68638b4
+$N/node --import tsx <V5>/harness/oracle/cases/vault-json-parsers.ts \
+  > /tmp/oracle-vault-json-parsers.ndjson
+# verify: grep -c '"metadata"' /tmp/oracle-vault-json-parsers.ndjson  # == 10
+QT_ORACLE_VAULT_JSON_PARSERS=/tmp/oracle-vault-json-parsers.ndjson \
+  cargo test -p quilltap-harness --test vault_json_parsers_equivalence
+```

@@ -18,11 +18,13 @@
 import {
   parseVaultProperties,
   parseVaultPhysicalPrompts,
+  parseVaultMetadata,
 } from '@/lib/database/repositories/vault-overlay/parsers';
 
 type Row =
   | { kind: 'properties'; id: string; raw: string; out: unknown }
-  | { kind: 'physical'; id: string; raw: string; out: unknown };
+  | { kind: 'physical'; id: string; raw: string; out: unknown }
+  | { kind: 'metadata'; id: string; raw: string; out: unknown };
 
 const rows: Row[] = [];
 const CID = 'char-1';
@@ -34,6 +36,11 @@ function propsCase(id: string, raw: string) {
 }
 function physCase(id: string, raw: string) {
   rows.push({ kind: 'physical', id, raw, out: parseVaultPhysicalPrompts(raw, CID) ?? null });
+}
+// metadata: fail-soft null on invalid JSON / non-object; success passes the
+// object verbatim (JsonSchema = z.record(string, unknown), unconstrained keys).
+function metaCase(id: string, raw: string) {
+  rows.push({ kind: 'metadata', id, raw, out: parseVaultMetadata(raw, CID, 'mp-1') ?? null });
 }
 
 const J = (v: unknown) => JSON.stringify(v);
@@ -160,6 +167,22 @@ physCase(
   'ph-extra-stripped',
   J({ short: 's', medium: 'm', long: 'l', complete: 'c', legacyField: 'x' }),
 );
+
+// ── parseVaultMetadata ─────────────────────────────────────────────────────
+// The fact sheet: any JSON object passes verbatim; anything else → null.
+metaCase('m-empty', J({}));
+metaCase(
+  'm-mixed-values',
+  J({ hasAnsibleAccess: true, clearanceLevel: 3, codename: 'Aria', notes: null }),
+);
+metaCase('m-nested', J({ profile: { role: 'lead', teams: ['red', 'blue'] }, active: true }));
+metaCase('m-key-order', J({ zebra: 1, apple: 2, mango: 3 })); // insertion order preserved
+metaCase('m-invalid-json', '{ not: valid');
+metaCase('m-top-array', J([1, 2, 3])); // a top-level array is not a record → null
+metaCase('m-bare-string', J('just a string')); // bare scalar → null
+metaCase('m-bare-number', J(42)); // bare scalar → null
+metaCase('m-bare-bool', J(true)); // bare scalar → null
+metaCase('m-null', J(null)); // JSON null → null
 
 for (const row of rows) {
   process.stdout.write(JSON.stringify(row) + '\n');

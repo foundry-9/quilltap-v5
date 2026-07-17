@@ -1,5 +1,5 @@
 //! Tier-1 differential test: the vault JSON projection parsers
-//! (`parseVaultProperties`, `parseVaultPhysicalPrompts`).
+//! (`parseVaultProperties`, `parseVaultPhysicalPrompts`, `parseVaultMetadata`).
 //!
 //! Exact-equality against the v4 oracle, reproducing Zod `safeParse`'s
 //! fall-back-to-null-on-any-violation semantics + unknown-key stripping. Covers:
@@ -21,7 +21,9 @@
 //!   QT_ORACLE_VAULT_JSON_PARSERS=/tmp/oracle-vault-json-parsers.ndjson \
 //!     cargo test -p quilltap-harness --test vault_json_parsers_equivalence
 
-use quilltap_core::vault_overlay::{parse_vault_physical_prompts, parse_vault_properties};
+use quilltap_core::vault_overlay::{
+    parse_vault_metadata, parse_vault_physical_prompts, parse_vault_properties,
+};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -32,6 +34,8 @@ enum Row {
     Properties { id: String, raw: String, out: Value },
     #[serde(rename = "physical")]
     Physical { id: String, raw: String, out: Value },
+    #[serde(rename = "metadata")]
+    Metadata { id: String, raw: String, out: Value },
 }
 
 /// Collapse integer-valued floats to integers, recursively (matches how v4's
@@ -89,9 +93,14 @@ fn vault_json_parsers_match_oracle() {
                     "[{id}] parse_vault_physical_prompts"
                 );
             }
+            Row::Metadata { id, raw, out } => {
+                // The fact-sheet parser returns the object verbatim (or None → null).
+                let got = parse_vault_metadata(&raw).unwrap_or(Value::Null);
+                assert_eq!(canon(got), canon(out), "[{id}] parse_vault_metadata");
+            }
         }
         n += 1;
     }
-    assert!(n >= 24, "expected the full corpus, saw {n} rows");
+    assert!(n >= 34, "expected the full corpus, saw {n} rows");
     eprintln!("OK: vault JSON parsers matched oracle on {n} cases.");
 }

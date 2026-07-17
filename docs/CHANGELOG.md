@@ -68,6 +68,13 @@ three from provisioning replay; the metadata column is vault-managed and stays
 inert in the DB (character.metadata hydrates from the vault's metadata.json,
 which lane p4.6az owns). Provisioning, builtin-mounts, and builtin-templates
 equivalence regenerated at d68638b4 and green.
+P4.6az unit 1 (lane AZ, d68638b4 drift round): port `parse_vault_metadata`,
+the fail-soft parser for a character vault's `metadata.json` fact sheet.
+Returns the JSON object verbatim, or null for anything that is not an object
+(invalid JSON, a top-level array, a bare scalar) — the caller hydrates `{}`.
+Unlike properties.json, metadata is not a keystone: a malformed file never
+hollows the character. Extended the tier-1 vault-json-parsers differential
+with 10 metadata cases (24 → 34).
 
 Plan the d68638b4 drift catch-up round (docs only). v4 moved ten commits past
 the e3593f75 baseline and the predicted tripwire fired: the custom-tools +

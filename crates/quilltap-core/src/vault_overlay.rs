@@ -185,6 +185,29 @@ pub fn parse_vault_properties(raw: &str) -> Option<CharacterVaultProperties> {
     })
 }
 
+/// Parse `metadata.json` — the character's freeform fact sheet (v4
+/// `parseVaultMetadata`, `vault-overlay/parsers.ts:86`). Returns `None` for
+/// anything that isn't a JSON object (invalid JSON, a top-level array, a bare
+/// scalar); the caller hydrates `{}` instead. Deliberately unlike
+/// [`parse_vault_properties`]: metadata is NOT a keystone, so a file the user
+/// fat-fingered costs them their metadata for that read and nothing else —
+/// hollowing the character over a missing brace would be wildly disproportionate.
+///
+/// The schema is v4's `JsonSchema` (`z.record(z.string(), z.unknown())`), whose
+/// only job is to insist the value is a JSON *object* and refuse an array or a
+/// bare scalar. Nothing about the contents is constrained: the keys are the
+/// user's vocabulary, so the whole object passes through verbatim (key order
+/// preserved via the workspace `preserve_order`). `characterId`/`mountPointId`
+/// are v4's logging-only args — not needed here.
+pub fn parse_vault_metadata(raw: &str) -> Option<Value> {
+    let json: Value = serde_json::from_str(raw).ok()?;
+    if json.is_object() {
+        Some(json)
+    } else {
+        None
+    }
+}
+
 /// Parse + validate `physical-prompts.json` (v4 `parseVaultPhysicalPrompts`).
 /// `None` on a JSON parse error or any schema violation.
 ///
