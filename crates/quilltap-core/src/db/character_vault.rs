@@ -177,6 +177,33 @@ pub fn scaffold_character_mount(conn: &Connection, mount_point_id: &str) -> Resu
 /// Existence is checked directly (`find_by_mount_point_and_path`), NEVER by
 /// parsing: a sheet the user has fat-fingered into invalid JSON is still their
 /// sheet, and must not be "healed" into an empty one. §3-owned (lane AZ).
+///
+/// ## ⚠ NOT YET WIRED onto the adopt/existing-vault path (Tier-2 backfill, DEFERRED)
+///
+/// v4 seeds every already-linked vault at startup (`backfillCharacterVaults` →
+/// `ensureCharacterMetadataFile`). v5 has no startup-backfill subsystem; the v5
+/// lazy equivalent is to call this from [`ensure_character_vault`]'s two
+/// no-scaffold return paths — the `current_fk` early return (a character that
+/// already has a vault) and the same-name ADOPT branch (a vault provisioned
+/// before the fact sheet existed). Both sites live in **lane D7's §3 region** of
+/// this file, which lane AZ may not edit, so the wiring is DEFERRED to the
+/// unifier — exactly the P4.6s embedding-seam pattern. The two one-line hooks:
+///
+/// ```ignore
+/// // in ensure_character_vault, the `current_fk` early return:
+/// if let Some(fk) = current_fk {
+///     ensure_character_metadata_file(mount, fk)?;   // ← unifier adds
+///     return Ok(EnsureResult { mount_point_id: fk.to_string(), created: false });
+/// }
+/// // and in the adopt branch, right after link_character_to_vault(...):
+/// ensure_character_metadata_file(mount, &adopted)?; // ← unifier adds
+/// ```
+///
+/// Until wired, the ONLY loss is file discoverability for a pre-feature adopted
+/// vault: the READ path hydrates `{}` regardless (never a keystone), so behavior
+/// is unaffected — the user just cannot open a `metadata.json` that isn't there
+/// until that vault is next fully scaffolded. `create_character` already seeds it
+/// (unit 4), so fresh characters are covered.
 pub fn ensure_character_metadata_file(
     conn: &Connection,
     mount_point_id: &str,

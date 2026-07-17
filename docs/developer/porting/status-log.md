@@ -18611,3 +18611,62 @@ this set) and strips it from every slim write — it has no DB column.
 **Regen recipe** (Node 24, from `/tmp/qt-v4-baseline`): charupd fixture + oracle
 per unit 3; characters-mutations jest per the `/tmp` mirror
 (`[[jest-real-db-oracle]]`) with `QT_ORACLE_OUT=/tmp/oracle-characters-mutations.ndjson`.
+
+### Unit 6 (Tier 2) — the lazy-backfill wiring: DEFERRED LOUDLY to the unifier
+
+`ensure_character_metadata_file` (unit 4) is DELIVERED and differentially verified,
+but its wiring onto v5's lazy cadence is DEFERRED. v4 seeds every already-linked
+vault at startup (`backfillCharacterVaults`); v5 has no startup-backfill subsystem,
+so the v5 equivalent is to call the ensure fn from [`ensure_character_vault`]'s two
+no-scaffold return paths — the `current_fk` early return and the same-name ADOPT
+branch. **Both sites are in lane D7's §3 region** (`ensure_character_vault`), which
+lane AZ may not edit (Shared contract §3). Per the order's explicit instruction
+(the P4.6s embedding-seam pattern), the wiring is left to the unifier: the two
+one-line hooks are documented verbatim in the `ensure_character_metadata_file`
+doc comment (`db/character_vault.rs`).
+
+**Impact until wired:** NONE on behavior — the READ path hydrates `{}` regardless
+(metadata is never a keystone). The only loss is file discoverability for a
+pre-feature ADOPTED vault (a `metadata.json` the file manager can't open because
+it isn't there yet). `create_character` already seeds it (unit 4), so all fresh
+characters are covered.
+
+### Tier 3 — DEFERRED, loud (named absences)
+
+- **The startup backfill sweep (`backfillCharacterVaults` itself).** v5 has no
+  startup-backfill subsystem (fresh survey: no counterpart — vaults ensure lazily
+  via `ensure_character_vault`). The read path hydrates `{}` regardless, so the
+  only loss is file discoverability until a vault is next ensured. Named absence;
+  paired with the Tier-2 deferral above.
+- **`qtap-export.schema.json`.** v5 still has no export-schema counterpart; the
+  gap GREW this round (character `metadata`, and lane AY's pascal
+  `metadataTested`). Standing deferral, restated.
+
+## P4.6az — lane verification gate + summary (2026-07-17)
+
+**Landed (Tier 1, all five items):** the parser (unit 1), hydration + the `{}`
+rule (unit 2), the guarded write + whole-object patch routing (unit 3), the
+scaffold seed + `ensure_character_metadata_file` (unit 4), the PUT arm + reader
+enumeration + qtap-import threading (unit 5). **Tier 2** (lazy backfill wiring)
+DEFERRED to the unifier (§3 collision). **Tier 3** named absences above.
+
+**No schema change** (metadata is a vault file, no DB column — the round's
+`fresh_schema.json` re-dump, lane D7's §1, shows NO characters change, as
+predicted).
+
+**Fixtures changed this lane (and the oracles each invalidates — all regenerated
+at `d68638b4`):**
+
+- `vault-read-overlay-tier2.json` (+2 metadata.json files) → `vault_read_overlay`
+  AND `ensure_character_metadata_file` (reuses this fixture).
+- `vault-character-write-tier2.json` (+metadata on op 1) → `vault_character_write`.
+- `characters-update-tier2.json` (+2 metadata ops) → `characters_update_tier2`
+  AND `metadata_vault_roundtrip` (reuses the charupd fixtures).
+- `characters-mutations.test.ts` (+1 PUT case) → `characters_mutations`.
+- NEW: `metadata-vault-roundtrip.json` + `.ts` + test; `ensure-metadata-file.json`
+  + `.ts` + test.
+- Regenerated-only (no fixture edit, but the oracle gains metadata at `d68638b4`):
+  `vault_json_parsers`, `characters_reads`, `characters_read`, `characters_actions`,
+  `characters_subresources`, `characters_scaffold_tier2`, `characters_create_tier2`,
+  `characters_provision_tier2`, `characters_adopt_tier2`, `characters_arrays_tier2`,
+  `characters_physical_tier2`, `vault_summary_mirror_tier2`.

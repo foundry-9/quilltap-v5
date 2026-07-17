@@ -68,6 +68,15 @@ three from provisioning replay; the metadata column is vault-managed and stays
 inert in the DB (character.metadata hydrates from the vault's metadata.json,
 which lane p4.6az owns). Provisioning, builtin-mounts, and builtin-templates
 equivalence regenerated at d68638b4 and green.
+P4.6az Tier-2/Tier-3 deferrals (lane AZ): the lazy-backfill wiring (seeding
+`metadata.json` into already-linked/adopted vaults) is deferred to the unifier —
+its two hook sites are inside lane D7's shared region of `character_vault.rs`, so
+the two one-line hooks are documented verbatim for the unifier to place. Until
+wired, behavior is unaffected (the read path hydrates `{}` regardless); only file
+discoverability for a pre-feature adopted vault waits. Named Tier-3 absences: the
+startup backfill sweep (v5 has no such subsystem) and `qtap-export.schema.json`
+(still no counterpart; the gap grew).
+
 P4.6az unit 5 (lane AZ): the PUT arm + reader enumeration + qtap-import
 threading. `character_update`'s whitelist now NAMES `metadata` (Zod strips
 unknown keys, so an unnamed field would be silently dropped before the write
