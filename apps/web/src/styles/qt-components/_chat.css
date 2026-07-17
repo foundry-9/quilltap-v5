@@ -270,6 +270,21 @@
   }
 
   /**
+   * A non-collapsing variant: a full-row header bar that is always shown and
+   * carries no expand/collapse affordance (Pascal's roll-outcome header). Keeps
+   * the bar look but drops the pointer cursor and hover, since there is nothing
+   * to click.
+   */
+  .qt-chat-system-bar-static {
+    cursor: default;
+  }
+
+  .qt-chat-system-bar-static:hover,
+  .qt-chat-system-bar-static:focus-visible {
+    background: var(--qt-chat-system-bar-bg);
+  }
+
+  /**
    * Packed announcement chips. A run of consecutive *collapsed* Staff-authored
    * messages renders as one flex-wrapping row of content-width chips instead of
    * a full-width bar each, so they take far less vertical space.

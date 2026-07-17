@@ -88,6 +88,22 @@ describe('buildRenderItems', () => {
     }
   });
 
+  it('keeps a Pascal roll outcome as its own full row, not a chip (P4.6ba)', () => {
+    const items = buildRenderItems([
+      msg({ id: 'h1', systemSender: 'host', systemKind: 'turn-pass' }),
+      msg({ id: 'p', systemSender: 'pascal', systemKind: 'custom-tool-result' }),
+      msg({ id: 'h2', systemSender: 'host', systemKind: 'turn-pass' }),
+    ]);
+    // The Pascal row breaks the announcement run — it is a full message row.
+    expect(items.map((i) => i.type)).toEqual([
+      'announcement-group', // host
+      'message', // pascal (full row)
+      'announcement-group', // host
+    ]);
+    const pascal = items[1];
+    expect(pascal.type === 'message' && pascal.message.id).toBe('p');
+  });
+
   it('labels a nudge announcement "invited to speak" at medium importance (v4 6a8a77aa)', () => {
     const items = buildRenderItems([
       msg({ id: 'n', systemSender: 'host', systemKind: 'nudge' }),

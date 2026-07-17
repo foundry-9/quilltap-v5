@@ -117,6 +117,71 @@ describe('MessageRow — courier branch', () => {
   });
 });
 
+describe('MessageRow — Pascal roll outcome (P4.6ba)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const pascalMsg = (over: Partial<MessageDto> = {}) =>
+    message({
+      systemSender: 'pascal',
+      systemKind: 'custom-tool-result',
+      participantId: null,
+      content: '🎲 The lock gives way.',
+      pascalMeta: {
+        tool: 'pick_lock',
+        toolTitle: 'Pick Lock',
+        definitionTier: 'global',
+        definitionMountId: 'm1',
+        params: {},
+        rollForm: 'range',
+        raw: 12,
+        value: 12,
+        state: 'success',
+        outcomeIndex: 0,
+        invokedBy: 'user',
+      },
+      ...over,
+    });
+
+  it('renders the header bar with "Pascal" and the tool title, and the markdown body', () => {
+    const fixture = render(pascalMsg());
+    const bar = fixture.nativeElement.querySelector('.qt-chat-system-bar');
+    expect(bar).not.toBeNull();
+    expect(bar.querySelector('.qt-chat-system-bar-sender').textContent.trim()).toBe('Pascal');
+    expect(bar.querySelector('.qt-chat-system-bar-kind').textContent.trim()).toBe('Pick Lock');
+    // The body still runs through the normal markdown pipeline.
+    expect(fixture.nativeElement.querySelector('qt-message-content')).not.toBeNull();
+    // The character author header is suppressed (Pascal has no participant).
+    expect(fixture.nativeElement.querySelector('.qt-chat-message-header')).toBeNull();
+  });
+
+  it('falls back to the declaration name for a legacy row with no toolTitle', () => {
+    const fixture = render(
+      pascalMsg({
+        pascalMeta: {
+          tool: 'pick_lock',
+          definitionTier: 'global',
+          definitionMountId: 'm1',
+          params: {},
+          rollForm: 'range',
+          raw: 1,
+          value: 1,
+          state: 'failure',
+          outcomeIndex: 0,
+          invokedBy: 'user',
+        },
+      }),
+    );
+    expect(
+      fixture.nativeElement.querySelector('.qt-chat-system-bar-kind').textContent.trim(),
+    ).toBe('pick_lock');
+  });
+
+  it('does not render a character avatar for a Pascal row', () => {
+    const fixture = render(pascalMsg());
+    expect(fixture.nativeElement.querySelector('.qt-chat-desktop-avatar')).toBeNull();
+  });
+});
+
 describe('MessageRow — image thumbnails', () => {
   afterEach(() => TestBed.resetTestingModule());
 

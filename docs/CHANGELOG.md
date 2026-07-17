@@ -178,6 +178,12 @@ takes a `metadata` override. The run_custom tool description grew v4's metadata
 sentence. Differentials extended and re-greened against fresh d68638b4 oracles:
 pascal definition (105 defs + 10 titles), pascal execution (146 rows),
 tool_definitions (58 tools byte-exact).
+P4.6ba unit 2 (SPA): the Pascal bubble. A Pascal roll outcome is carved out of
+the announcement-chip collapse (`isAnnouncementChip`) and renders as its own
+full message row with a static header bar (dot · Pascal · tool title · time) —
+`toolTitle ?? tool` for legacy rows — above the normal markdown body; the
+character author header/avatar is suppressed since Pascal has no participant.
+
 P4.6ba unit 1 (SPA): the Pascal in-chat wire mirror + stream + labels. Added
 `pascalMeta` to the message DTO, `'pascal'` to the systemSender union, the
 `pascalResult` stream frame field, and the `chatCustomToolsList` /

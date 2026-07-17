@@ -18921,3 +18921,18 @@ structurally (the response `type` string is AY's, so the client reads bodies via
   `chat-stream.reducer.spec.ts`.
 - **Gate:** `ng test` 130 files / 1254 passed; the application bundle compiles
   clean.
+
+### Unit 2 — the Pascal bubble (SPA 0.5.136)
+
+- **`chat-view-model.ts`:** `isAnnouncementChip` now carves out `'pascal'`
+  alongside `'carina'` — a roll outcome renders as its own full row, not a
+  collapsed chip (v4 renders it a full message with a header bar).
+- **`message-row.ts`:** a Pascal branch renders a static header bar (dot ·
+  `Pascal` · `getSystemKindDisplayLabel` [= `toolTitle ?? tool`] · time) in place
+  of the character author header, and suppresses the assistant avatar (Pascal
+  has no participant, so the author fallback would show a character's name). The
+  body is the normal markdown pipeline. New `qt-chat-system-bar-static` CSS (the
+  bar look without the collapse pointer/hover).
+- **Specs:** a full-row case in `chat-view-model.spec.ts`; a Pascal describe in
+  `message-row.spec.ts` (header bar text, toolTitle fallback, no avatar).
+- **Gate:** `ng test` 129 files / 1258 passed.

@@ -142,10 +142,16 @@ export type RenderItem =
 
 /**
  * A Staff-authored announcement collapses to a chip — every `systemSender`
- * EXCEPT Carina, whose reference answers render as their own full row (v4).
+ * EXCEPT Carina and Pascal, whose reference answers / roll outcomes render as
+ * their own full row (v4: `MessageRow` renders them as full messages with a
+ * header bar rather than a collapsed announcement chip).
  */
 export function isAnnouncementChip(message: MessageDto): boolean {
-  return message.systemSender != null && message.systemSender !== 'carina';
+  return (
+    message.systemSender != null &&
+    message.systemSender !== 'carina' &&
+    message.systemSender !== 'pascal'
+  );
 }
 
 /**

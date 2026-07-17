@@ -15,6 +15,11 @@ import { thumbnailUrl, fileUrl } from '../images/image-urls';
 import { resolveMessageAuthor, type SwipeState } from './chat-view-model';
 import { CourierBubble } from './courier-bubble';
 import { MessageContent } from './message-content';
+import {
+  getAnnouncementImportance,
+  getSystemKindDisplayLabel,
+  getSystemSenderDisplayName,
+} from './system-message-labels';
 import { ThinkingBlock } from './thinking-block';
 import { TokenBadge } from './token-badge';
 
@@ -67,19 +72,33 @@ export interface ImageClickEvent {
           </div>
         </div>
       } @else {
-      @if (showAvatar() && !author().isUser) {
+      @if (showAvatar() && !author().isUser && !isPascal()) {
         <div class="qt-chat-desktop-avatar">
           <qt-avatar [name]="author().name" [src]="author().avatarUrl" size="chat" />
         </div>
       }
 
       <div class="qt-chat-message-body">
-        <div class="qt-chat-message-header">
-          <span class="qt-chat-message-author">{{ author().name }}</span>
-          @if (author().title) {
-            <span class="qt-chat-message-time">{{ author().title }}</span>
-          }
-        </div>
+        @if (isPascal()) {
+          <!-- Pascal's roll outcome: the full-row header bar (v4's expanded
+               systemSender header — a static, non-collapsing bar here since the
+               row is always shown). -->
+          <div class="qt-chat-system-bar qt-chat-system-bar-expanded qt-chat-system-bar-static">
+            <span class="qt-chat-announcement-dot" [class]="pascalDotClass()"></span>
+            <span class="qt-chat-system-bar-sender">{{ pascalSender() }}</span>
+            @if (pascalKind()) {
+              <span class="qt-chat-system-bar-kind">{{ pascalKind() }}</span>
+            }
+            <span class="qt-chat-system-bar-time">{{ timestamp() }}</span>
+          </div>
+        } @else {
+          <div class="qt-chat-message-header">
+            <span class="qt-chat-message-author">{{ author().name }}</span>
+            @if (author().title) {
+              <span class="qt-chat-message-time">{{ author().title }}</span>
+            }
+          </div>
+        }
 
         <div class="qt-chat-message" [class]="bubbleClass()">
           @if (variant() === 'whisper') {
@@ -316,6 +335,26 @@ export class MessageRow {
 
   /** A pending manual/clipboard turn renders the Courier bubble (v4). */
   protected readonly isCourier = computed(() => this.message().pendingExternalPrompt != null);
+
+  /**
+   * A Pascal roll outcome renders as its own full row with a header bar (v4
+   * `MessageRow`'s expanded systemSender header — dot · Pascal · toolTitle ·
+   * time), NOT a collapsed chip (`isAnnouncementChip` carves it out). The
+   * body is the normal markdown pipeline. Pascal has no participant, so the
+   * author-header/avatar path (which falls back to a character name) is
+   * suppressed in favour of this bar.
+   */
+  protected readonly isPascal = computed(() => this.message().systemSender === 'pascal');
+  /** "Pascal". */
+  protected readonly pascalSender = computed(() =>
+    getSystemSenderDisplayName(this.message().systemSender),
+  );
+  /** The tool title (`toolTitle ?? tool`) — v4's header chip subject. */
+  protected readonly pascalKind = computed(() => getSystemKindDisplayLabel(this.message()));
+  /** The importance dot class (always `high` for Pascal — the table's word is binding). */
+  protected readonly pascalDotClass = computed(
+    () => `qt-chat-announcement-dot-${getAnnouncementImportance(this.message())}`,
+  );
 
   /**
    * The chat-settings token-display bag (v4 threads this down as the
