@@ -16326,6 +16326,101 @@ proof that the refactor is behavior-neutral. (Ran by name `--nocapture`,
 no SKIP, against the `a33ac8b8`-regenerated oracle.)
 
 **Versions:** core **0.0.234**.
+
+---
+
+## P4.d6 unit 3 — the guarded prune + the `deleted` counter
+
+**Ported:** v4 `551f090b`'s prune (`help-doc-sync.ts:221-242`).
+`HelpDocSyncResult` gains `deleted`; rows whose path is absent from
+`pathsOnDisk` get `help_docs.delete(id)` + `embeddingStatus
+.deleteByEntity('HELP_DOC', id)`. v4 wraps the pair in its OWN try/catch
+that counts `failed`, so a prune failure is not the per-file counter —
+reproduced.
+
+**Folded in (a repo method with no consumer has no differential of its
+own):** `EmbeddingStatusRepository::delete_by_entity(entity_type,
+entity_id) -> usize`, absent in v5. It is v4's `deleteMany({entityType,
+entityId}).deletedCount` — a delete**Many**, because an entity carries one
+status row per embedding profile. The fixture proves that directly (below).
+
+### ⚠ THE FINDING: v4's prune guard comment is WRONG, and the port follows the CODE
+
+v4's comment claims the prune is "only reached once we know the help
+directory exists and produced at least one **readable** file". The order
+repeated that claim ("≥1 readable file") and told the lane to preserve it.
+**v4's CODE guards on `files.length > 0`** — not the same thing. A `help/`
+holding only whitespace-only `.md` files walks NON-empty (so the guard does
+not fire) but contributes NO `pathsOnDisk` entries, so **every row is
+unreachable and the table is emptied.**
+
+This was settled by the oracle, not by inspection — v4's real
+`syncHelpDocs` over three committed trees:
+
+| scenario | totalOnDisk | deleted | rows left |
+|---|---|---|---|
+| `missing-dir` (no help/) | 0 | 0 | all 3 intact |
+| `no-markdown` (help/, zero .md) | 0 | 0 | all 3 intact |
+| `only-empty-files` (help/, one whitespace-only .md) | 1 | **3** | **0 — WIPED** |
+
+So the real guard is the `files.is_empty()` early return, and it is enough
+for the cases that matter (a missing/unreadable `help/` can never empty the
+table). **The only-empty-files wipe is a latent v4 bug**, faithfully
+reproduced per the port discipline and pinned bidirectionally by
+`help_doc_sync_guards_equivalence` — if v4 ever fixes it, that test fails
+and tells the porter to move the port with it. `help_doc_sync.rs`'s comment
+records the code-vs-comment gap explicitly so no future reader "corrects"
+the port toward v4's prose.
+
+**Differentials (both green by name, `--nocapture`, zero SKIP):**
+
+- `help_doc_sync_equivalence` — EXTENDED: summary gains `deleted`; a new
+  `embedding_status` dump line diffs the cascade. Plus belt-and-braces pins
+  (so a shared regression in both dumps can't pass as agreement): the
+  retired row is gone from `help_docs`; BOTH of its status rows are gone
+  (deleteMany, one per profile); the surviving doc's status row is NOT
+  collateral damage. v4's verdict: `deleted: 1`, embedding_status 3 rows → 1.
+- `help_doc_sync_guards_equivalence` — NEW, the three-scenario table above.
+
+**Fixture changes (the help-sync family — this lane's own; no new family,
+no shape change; it invalidates NO other oracle, since every help
+differential has its own fixture family and env vars):**
+
+- `help-sync.json`: a THIRD seed row `help/retired.md` (id `…0003`) with no
+  file on disk — the prune's target; and a new `embeddingStatusSeed` block:
+  TWO rows for the retired doc (different `profileId`s — proving deleteMany)
+  and ONE for the surviving `getting-started` doc (proving the scoping).
+- `build-help-sync-fixture.ts`: `ensureCollection('embedding_status',
+  EmbeddingStatusSchema)` + seeds them through v4's REAL
+  `EmbeddingStatusRepository.create`. **Load-bearing:** v4's
+  `deleteByEntity` uses `safeQuery` with **no fallback**, so it RETHROWS if
+  the table is absent — without this the prune would have failed on BOTH
+  sides identically and the differential would have proven nothing while
+  looking green.
+- NEW committed trees `fixtures/help-sync-guards/{missing-dir,no-markdown,
+  only-empty-files}/`.
+
+**Regen (Node 24, from the v4 checkout, WORKTREE case files):**
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5=<worktree>
+cd ~/source/quilltap-server
+QT_FIXTURE_HELP_MAIN=/tmp/qt-help-sync-main.db \
+  $N/node --import tsx $V5/harness/oracle/fixtures/build-help-sync-fixture.ts
+QT_FIXTURE_HELP_MAIN=/tmp/qt-help-sync-main.db \
+  $N/node --import tsx $V5/harness/oracle/cases/help-sync-tier2.ts \
+  > /tmp/oracle-help-sync.ndjson
+: > /tmp/oracle-help-sync-guards.ndjson
+for s in missing-dir no-markdown only-empty-files; do
+  QT_FIXTURE_HELP_MAIN=/tmp/qt-help-sync-main.db QT_HELP_SYNC_SCENARIO=$s \
+    $N/node --import tsx $V5/harness/oracle/cases/help-sync-guards.ts \
+    >> /tmp/oracle-help-sync-guards.ndjson
+done
+```
+⚠ The guards case must be run ONCE PER SCENARIO (three processes): v4's
+`HELP_DIR` is captured at module load from `process.cwd()`, so a scenario
+cannot be changed within a process.
+
+**Versions:** core **0.0.235**, harness **0.0.211**.
 ## P4.6ay unit 10 — the schema adoption (lane C, 2026-07-17)
 
 **Landed.** v4 `a33ac8b8`'s two 4.8.0 columns adopted, per the order's

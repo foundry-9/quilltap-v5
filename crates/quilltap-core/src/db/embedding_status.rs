@@ -199,6 +199,22 @@ impl<'c> EmbeddingStatusRepository<'c> {
         Ok(affected > 0)
     }
 
+    /// v4 `deleteByEntity` — delete EVERY status row for one entity, returning
+    /// the deleted count (v4's `deleteMany({ entityType, entityId }).deletedCount`;
+    /// an entity has one row per embedding profile, so this is a `deleteMany`,
+    /// not a `deleteOne`). `entity_type` is the enum TEXT
+    /// (`MEMORY`/`FILE`/`HELP_DOC`/`CONVERSATION_CHUNK`/`MOUNT_CHUNK`).
+    ///
+    /// The help-doc sync's prune is the first caller: a pruned doc's
+    /// embedding-status rows go with it (v4 `help-doc-sync.ts:231`).
+    pub fn delete_by_entity(&self, entity_type: &str, entity_id: &str) -> Result<usize, DbError> {
+        let affected = self.conn.execute(
+            "DELETE FROM embedding_status WHERE entityType = ?1 AND entityId = ?2",
+            params![entity_type, entity_id],
+        )?;
+        Ok(affected)
+    }
+
     /// True iff a row with this id exists — the `update` precondition (a missing
     /// target makes the update a no-op returning `null`).
     fn row_exists(&self, id: &str) -> Result<bool, DbError> {

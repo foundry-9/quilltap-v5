@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.d6 unit 3: help docs whose Markdown file has been deleted are now pruned
+from the database along with their embedding status, instead of lingering in
+the Guide forever (v4 551f090b). The sync result reports a `deleted` count.
+
+The prune is guarded so it can only ever remove rows the walk proves absent:
+a missing help/ directory, or one with no Markdown at all, syncs nothing and
+prunes nothing. One boundary is worth stating plainly, because v4's comment
+and v4's code disagree and the port follows the code: a help/ containing only
+empty Markdown files walks non-empty, so the guard does not fire, and every
+row is pruned — the table empties. v4 does exactly this, confirmed against its
+real code rather than assumed, and a three-scenario differential pins all
+three outcomes so the boundary cannot drift unnoticed.
+
 P4.d6 unit 2: the help-doc sync now reads its table once and indexes by
 path, replacing a findByPath per file — roughly 115 queries on every sync
 (v4 551f090b). The prune landing next needs every row anyway, so the one

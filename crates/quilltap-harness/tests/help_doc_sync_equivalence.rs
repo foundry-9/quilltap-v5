@@ -172,14 +172,42 @@ fn help_doc_sync_matches_oracle() {
         "created": result.created,
         "updated": result.updated,
         "unchanged": result.unchanged,
+        "deleted": result.deleted,
         "failed": result.failed,
         "changedPaths": changed_paths,
     });
+
+    // The prune's cascade into embedding_status (same SELECT/order as the oracle).
+    let status_rows: Vec<Value> = db
+        .read_main(|c| {
+            let mut stmt = c
+                .prepare(
+                    "SELECT id, entityType, entityId, profileId, status \
+                     FROM embedding_status ORDER BY id ASC",
+                )
+                .map_err(quilltap_core::db::DbError::from)?;
+            let mapped = stmt
+                .query_map([], |r| {
+                    Ok(json!({
+                        "id": r.get::<_, String>(0)?,
+                        "entityType": r.get::<_, String>(1)?,
+                        "entityId": r.get::<_, String>(2)?,
+                        "profileId": r.get::<_, String>(3)?,
+                        "status": r.get::<_, String>(4)?,
+                    }))
+                })
+                .map_err(quilltap_core::db::DbError::from)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(quilltap_core::db::DbError::from)?;
+            Ok(mapped)
+        })
+        .expect("dump embedding_status");
 
     // Parse the oracle NDJSON.
     let oracle_text = std::fs::read_to_string(&oracle_path).expect("oracle ndjson");
     let mut oracle_summary = None;
     let mut oracle_rows: Vec<Value> = Vec::new();
+    let mut oracle_status_rows: Option<Vec<Value>> = None;
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
         let v: Value = serde_json::from_str(line).expect("oracle line");
         match v.get("kind").and_then(Value::as_str) {
@@ -191,10 +219,19 @@ fn help_doc_sync_matches_oracle() {
                     .cloned()
                     .unwrap_or_default()
             }
+            Some("embedding_status") => {
+                oracle_status_rows = Some(
+                    v.get("rows")
+                        .and_then(Value::as_array)
+                        .cloned()
+                        .unwrap_or_default(),
+                )
+            }
             other => panic!("unexpected oracle line kind: {other:?}"),
         }
     }
     let oracle_summary = oracle_summary.expect("oracle summary line");
+    let oracle_status_rows = oracle_status_rows.expect("oracle embedding_status line");
 
     assert_eq!(
         rust_summary, oracle_summary,
@@ -248,5 +285,36 @@ fn help_doc_sync_matches_oracle() {
     assert_eq!(
         updated.get("updatedAt").and_then(Value::as_str),
         Some("<ts>")
+    );
+
+    // ---- the P4.d6 prune (v4 551f090b) ----
+    assert_eq!(
+        status_rows, oracle_status_rows,
+        "embedding_status diverged after the prune\nrust:   {status_rows:?}\noracle: {oracle_status_rows:?}"
+    );
+
+    // Belt-and-braces pins, so a shared regression in BOTH sides' dumps can't
+    // pass as agreement: the retired doc's row is gone from help_docs, its TWO
+    // status rows (one per profile — deleteByEntity is a deleteMany) went with
+    // it, and the surviving doc's status row did NOT.
+    assert!(
+        !rust_norm
+            .iter()
+            .any(|r| r.get("path").and_then(Value::as_str) == Some("help/retired.md")),
+        "help/retired.md has no file on disk and must have been pruned"
+    );
+    let retired_id = "aaaaaaaa-0000-4000-8000-000000000003";
+    assert!(
+        !status_rows
+            .iter()
+            .any(|r| r.get("entityId").and_then(Value::as_str) == Some(retired_id)),
+        "the pruned doc's embedding_status rows must be deleted (both profiles)"
+    );
+    let survivor_id = "aaaaaaaa-0000-4000-8000-000000000001";
+    assert!(
+        status_rows
+            .iter()
+            .any(|r| r.get("entityId").and_then(Value::as_str) == Some(survivor_id)),
+        "the surviving doc's embedding_status row must NOT be collateral damage"
     );
 }

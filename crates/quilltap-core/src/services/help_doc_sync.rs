@@ -1,6 +1,6 @@
 //! The help-docs disk sync (v4 `lib/help/help-doc-sync.ts`) — read the help
 //! Markdown tree and upsert into `help_docs`, clearing a changed doc's stored
-//! embedding so it re-embeds.
+//! embedding so it re-embeds, and pruning rows whose file is gone.
 //!
 //! **Design decision (documented per the P4.1b work order):** the DIRECTORY
 //! WALK is host-side — the core sync takes the already-read file list
@@ -31,6 +31,7 @@
 
 use rusqlite::{params, Connection};
 
+use crate::db::embedding_status::EmbeddingStatusRepository;
 use crate::db::help_docs::{HdUpsert, HelpDocsRepository};
 use crate::db::DbError;
 use crate::jsstr::{is_js_ws, js_trim};
@@ -51,6 +52,9 @@ pub struct HelpDocSyncResult {
     pub created: usize,
     pub updated: usize,
     pub unchanged: usize,
+    /// Docs deleted (a row in the database whose file is gone from disk) — v4
+    /// `551f090b`'s prune counter.
+    pub deleted: usize,
     pub failed: usize,
     /// Ids of docs created or updated (need re-embedding), in walk order.
     pub changed_ids: Vec<String>,
@@ -188,10 +192,17 @@ fn clear_embedding(main: &Connection, id: &str) -> Result<(), DbError> {
     Ok(())
 }
 
-/// v4 `syncHelpDocs` (`help-doc-sync.ts:124`) over an already-walked file list
+/// v4 `syncHelpDocs` (`help-doc-sync.ts:133`) over an already-walked file list
 /// (see the module docs for the host-walk decision). Conn-level: the upserts
 /// run on the caller's (writer-held) main connection. Per-file failures are
 /// swallowed into `failed` (v4's catch).
+///
+/// **Enqueues nothing, deliberately** — v4's rationale, carried forward: the two
+/// callers want different things. `EMBEDDING_REINDEX_ALL` re-embeds every doc
+/// regardless of what changed and batch-inserts its jobs, so enqueueing here
+/// would RACE it; [`ensure_help_docs_synced`] instead tops up only the docs that
+/// still lack an embedding. Per-entity dedup in `enqueue_embedding_generate`
+/// covers the overlap.
 pub fn sync_help_docs(main: &Connection, files: &[HelpSourceFile]) -> HelpDocSyncResult {
     let mut result = HelpDocSyncResult {
         total_on_disk: files.len(),
@@ -221,6 +232,11 @@ pub fn sync_help_docs(main: &Connection, files: &[HelpSourceFile]) -> HelpDocSyn
             .map(|doc| (doc.path.as_str(), doc))
             .collect();
 
+    // The paths the walk actually produced CONTENT for. v4 adds a path here only
+    // after the empty-content `continue`, so a whitespace-only file contributes
+    // NOTHING — see the prune's note below for why that matters.
+    let mut paths_on_disk: std::collections::HashSet<&str> = std::collections::HashSet::new();
+
     for file in files {
         let outcome = (|| -> Result<(), DbError> {
             let raw = js_trim(&file.raw_content);
@@ -228,6 +244,8 @@ pub fn sync_help_docs(main: &Connection, files: &[HelpSourceFile]) -> HelpDocSyn
                 // v4 `continue` — counted in totalOnDisk only.
                 return Ok(());
             }
+            paths_on_disk.insert(file.rel_path.as_str());
+
             let content_hash = hash_content(raw);
             let (url, body) = parse_frontmatter(raw);
             let title = extract_title(&body, &file.rel_path);
@@ -261,6 +279,38 @@ pub fn sync_help_docs(main: &Connection, files: &[HelpSourceFile]) -> HelpDocSyn
             result.failed += 1;
         }
     }
+
+    // Prune rows whose file is gone from disk (v4 `551f090b`,
+    // `help-doc-sync.ts:221-242`).
+    //
+    // THE GUARD is the `files.is_empty()` early return above: a missing help/
+    // (the host walker yields an empty list, v4's `existsSync` guard) or a help/
+    // with no Markdown at all can never reach here, so neither can empty the
+    // table. That is the difference between a prune and a wipe.
+    //
+    // ⚠ v4's own comment claims the guard is "produced at least one READABLE
+    // file"; v4's CODE guards on `files.length > 0`, which is not the same
+    // thing. A help/ holding only empty/whitespace-only .md files walks
+    // non-empty but contributes NO `pathsOnDisk` entries, and every row IS
+    // pruned. This port reproduces the CODE, not the comment — the differential
+    // pins the divergent case rather than trusting either reading.
+    for doc in &existing_docs {
+        if paths_on_disk.contains(doc.path.as_str()) {
+            continue;
+        }
+        // v4 wraps the pair in its own try/catch that counts `failed`, so a
+        // prune failure is NOT the per-file counter above.
+        let pruned = (|| -> Result<(), DbError> {
+            repo.delete(&doc.id)?;
+            EmbeddingStatusRepository::new(main).delete_by_entity("HELP_DOC", &doc.id)?;
+            Ok(())
+        })();
+        match pruned {
+            Ok(()) => result.deleted += 1,
+            Err(_) => result.failed += 1,
+        }
+    }
+
     result
 }
 

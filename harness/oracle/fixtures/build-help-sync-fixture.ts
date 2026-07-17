@@ -35,9 +35,22 @@ interface SeedRow {
   updatedAt: string;
 }
 
+interface EmbeddingStatusSeedRow {
+  id: string;
+  userId: string;
+  entityType: string;
+  entityId: string;
+  profileId: string;
+  status: string;
+  embeddedAt: string | null;
+  error: string | null;
+  createdAt: string;
+}
+
 interface Spec {
   testPepperBase64: string;
   seed: SeedRow[];
+  embeddingStatusSeed: EmbeddingStatusSeedRow[];
 }
 
 async function main(): Promise<void> {
@@ -66,10 +79,18 @@ async function main(): Promise<void> {
   const { HelpDocsRepository } = await import(
     '@/lib/database/repositories/help-docs.repository'
   );
+  const { EmbeddingStatusRepository } = await import(
+    '@/lib/database/repositories/embedding-status.repository'
+  );
   const { HelpDocSchema } = await import('@/lib/schemas/help-doc.types');
+  const { EmbeddingStatusSchema } = await import('@/lib/schemas/embedding-job.types');
 
   await initializeDatabase();
   await ensureCollection('help_docs', HelpDocSchema);
+  // The P4.d6 prune cascades into embedding_status (deleteByEntity). That repo
+  // call rethrows if the table is absent, so without this the prune would fail
+  // on BOTH sides identically and the differential would prove nothing.
+  await ensureCollection('embedding_status', EmbeddingStatusSchema);
 
   const repo = new HelpDocsRepository();
   for (const row of spec.seed) {
@@ -86,8 +107,27 @@ async function main(): Promise<void> {
     );
   }
 
+  const statusRepo = new EmbeddingStatusRepository();
+  for (const row of spec.embeddingStatusSeed) {
+    await statusRepo.create(
+      {
+        userId: row.userId,
+        entityType: row.entityType,
+        entityId: row.entityId,
+        profileId: row.profileId,
+        status: row.status,
+        embeddedAt: row.embeddedAt,
+        error: row.error,
+      } as never,
+      { id: row.id, createdAt: row.createdAt }
+    );
+  }
+
   await closeDatabase();
-  process.stderr.write(`built help-sync fixture: ${out} (${spec.seed.length} seed rows)\n`);
+  process.stderr.write(
+    `built help-sync fixture: ${out} (${spec.seed.length} help_docs rows, ` +
+      `${spec.embeddingStatusSeed.length} embedding_status rows)\n`
+  );
   process.exit(0);
 }
 

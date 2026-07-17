@@ -1,5 +1,5 @@
 {
-  "comment": "P4.1b help-doc-sync differential spec. The seed rows bake the pre-sync help_docs state: row 1 (getting-started) carries a STALE contentHash + an embedding, so the sync updates it and clears the embedding; row 2 (no-frontmatter) carries the MATCHING contentHash (sha256 of the trimmed fixture file bytes) plus a deliberately-different title, so the sync must leave the whole row (title, embedding, timestamps) untouched. The fixture help tree lives at fixtures/help-sync/help/ (a .gitattributes pins *.md -text so crlf.md keeps its CRLF bytes).",
+  "comment": "P4.1b help-doc-sync differential spec (extended by P4.d6 for the 551f090b prune). The seed rows bake the pre-sync help_docs state: row 1 (getting-started) carries a STALE contentHash + an embedding, so the sync updates it and clears the embedding; row 2 (no-frontmatter) carries the MATCHING contentHash (sha256 of the trimmed fixture file bytes) plus a deliberately-different title, so the sync must leave the whole row (title, embedding, timestamps) untouched; row 3 (retired) has NO FILE on disk, so the P4.d6 prune must delete it and cascade to its embedding_status rows. The embeddingStatus seed proves the cascade is scoped and is a deleteMany: TWO rows for the retired doc (one per profile — both must go) and one for the SURVIVING getting-started doc (must remain). The fixture help tree lives at fixtures/help-sync/help/ (a .gitattributes pins *.md -text so crlf.md keeps its CRLF bytes).",
   "testPepperBase64": "cXVpbGx0YXAtdGVzdC1wZXBwZXItMzItYnl0ZXMhIQ==",
   "seedSentinel": "2020-01-01T00:00:00.000Z",
   "seed": [
@@ -24,6 +24,52 @@
       "embedding": [1, 2, 3],
       "createdAt": "2020-01-01T00:00:00.000Z",
       "updatedAt": "2020-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000003",
+      "title": "Retired Doc",
+      "path": "help/retired.md",
+      "url": "/retired",
+      "content": "this doc's Markdown file has been deleted from disk",
+      "contentHash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "embedding": [0.5, -0.25],
+      "createdAt": "2020-01-01T00:00:00.000Z",
+      "updatedAt": "2020-01-01T00:00:00.000Z"
+    }
+  ],
+  "embeddingStatusSeed": [
+    {
+      "id": "bbbbbbbb-0000-4000-8000-000000000001",
+      "userId": "cccccccc-0000-4000-8000-000000000001",
+      "entityType": "HELP_DOC",
+      "entityId": "aaaaaaaa-0000-4000-8000-000000000003",
+      "profileId": "dddddddd-0000-4000-8000-000000000001",
+      "status": "EMBEDDED",
+      "embeddedAt": "2020-01-01T00:00:00.000Z",
+      "error": null,
+      "createdAt": "2020-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "bbbbbbbb-0000-4000-8000-000000000002",
+      "userId": "cccccccc-0000-4000-8000-000000000001",
+      "entityType": "HELP_DOC",
+      "entityId": "aaaaaaaa-0000-4000-8000-000000000003",
+      "profileId": "dddddddd-0000-4000-8000-000000000002",
+      "status": "PENDING",
+      "embeddedAt": null,
+      "error": null,
+      "createdAt": "2020-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "bbbbbbbb-0000-4000-8000-000000000003",
+      "userId": "cccccccc-0000-4000-8000-000000000001",
+      "entityType": "HELP_DOC",
+      "entityId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "profileId": "dddddddd-0000-4000-8000-000000000001",
+      "status": "EMBEDDED",
+      "embeddedAt": "2020-01-01T00:00:00.000Z",
+      "error": null,
+      "createdAt": "2020-01-01T00:00:00.000Z"
     }
   ]
 }

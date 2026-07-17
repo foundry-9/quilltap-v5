@@ -83,11 +83,21 @@ async function main(): Promise<void> {
       created: result.created,
       updated: result.updated,
       unchanged: result.unchanged,
+      deleted: result.deleted,
       failed: result.failed,
       changedPaths,
     }) + '\n',
   );
   process.stdout.write(JSON.stringify({ kind: 'help_docs', rows }) + '\n');
+
+  // The prune's cascade: the retired doc's status rows must be gone, the
+  // surviving doc's must remain (deleteByEntity is scoped AND a deleteMany).
+  const statusRows =
+    (await rawQuery<Array<Record<string, unknown>>>(
+      'SELECT id, entityType, entityId, profileId, status FROM embedding_status ORDER BY id ASC',
+      [],
+    )) ?? [];
+  process.stdout.write(JSON.stringify({ kind: 'embedding_status', rows: statusRows }) + '\n');
 
   await closeDatabase();
   process.exit(0);
