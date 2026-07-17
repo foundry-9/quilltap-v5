@@ -178,6 +178,15 @@ takes a `metadata` override. The run_custom tool description grew v4's metadata
 sentence. Differentials extended and re-greened against fresh d68638b4 oracles:
 pascal definition (105 defs + 10 titles), pascal execution (146 rows),
 tool_definitions (58 tools byte-exact).
+P4.6ba unit 6 (SPA): the Pascal e2e beats + the delegatedDisplay verification.
+A `salon-custom-tools-flow.spec.ts` walks the All-Whispers toggle live and the
+full popup→run→Pascal-bubble flow ACTIVATE-AT-UNIFY (guarded on lane P4.6ay's
+server surface + a Tools fixture). Verification finding: persisted TOOL rows DO
+reach the salon DTO in both v4 and v5, but the tool-row folding subsystem
+(`groupToolMessagesIntoAssistants`) is unported and `delegatedDisplay` lives
+inside the TOOL row's opaque content JSON — so no speculative Pascal-specific
+suppression ships; it rides the future tool-row-folding port.
+
 P4.6ba unit 5 (SPA): the All-Whispers toggle (the v4 8e4b00d4 re-port). A pure
 `isMessageVisibleToOperator` helper with the narrow `OPERATOR_FACING_WHISPER_
 SENDERS` carve-out (pascal, prospero) — the Salon now filters whispers the

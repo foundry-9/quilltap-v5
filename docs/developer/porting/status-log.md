@@ -19003,3 +19003,61 @@ structurally (the response `type` string is AY's, so the client reads bodies via
 - **Specs:** the pure helper (case-for-case) + a salon integration beat
   (Commonplace whisper hidden / Pascal machinery shown / reveal on toggle).
 - **Gate:** `ng test` 133 files / 1286 passed; `ng build` clean.
+
+### Unit 6 — e2e beats + the delegatedDisplay verification (SPA 0.5.140)
+
+- **`e2e/salon-custom-tools-flow.spec.ts`** (new): a client-side beat (the
+  All-Whispers header switch flips `aria-checked`, runs today) + the full
+  popup→run→Pascal-bubble+header-chip flow written ACTIVATE-AT-UNIFY — guarded on
+  the `Custom tools` button's presence (which needs lane P4.6ay's `/custom-tools`
+  server surface AND a Tools/-bearing fixture on main). Until both land, the beat
+  annotates `activate-at-unification` and returns after asserting the composer
+  mounted (the `m4b-salon.spec.ts` guard idiom); the bubble/run stay covered by
+  `message-row.spec.ts` + `custom-tools-popup.spec.ts`.
+
+- **delegatedDisplay verification (Tier-2 item 7) — ship NO code.** The order
+  guessed persisted TOOL rows "likely never reach the DTO"; the survey found the
+  opposite, and it is HANDLED, not a blocker:
+  - v5 `api/salon.rs:207` projects EVERY `type='message'` row (any role) into the
+    salon DTO, incl. `role='TOOL'`. v4 `handlers/get.ts:309-312` does the same —
+    so TOOL rows reach the client in BOTH.
+  - v4 folds character-initiated TOOL rows into the caller's bubble via
+    `groupToolMessagesIntoAssistants` (SalonView). **That folding is UNPORTED in
+    v5** — a pre-existing, broad (every-tool) gap, not Pascal-specific.
+  - `delegatedDisplay` is stamped INSIDE the TOOL row's `content` JSON (lane AY
+    unit 8 adds `run_custom` to `DELEGATED_DISPLAY_TOOLS`), not a top-level DTO
+    field; the SPA's `MessageDto.content` is an opaque string, so the SPA cannot
+    see `delegatedDisplay` without parsing content JSON.
+  - The Pascal MANUAL run (the popup/route this lane ships) creates NO TOOL row —
+    only the Pascal result. The `delegatedDisplay` `run_custom` TOOL row appears
+    only for an LLM-initiated `run_custom`, which also emits a `pascalResult` →
+    the Pascal bubble is the visible artifact.
+  - **Decision:** per the order's "do NOT add speculative filtering", ship no
+    Pascal-specific TOOL suppression. It is a loud DEFERRAL tied to the future
+    tool-row-folding port (`groupToolMessagesIntoAssistants` + the
+    content-JSON `delegatedDisplay` read), which will suppress delegated TOOL
+    rows for ALL tools uniformly.
+
+**Tier-3 deferrals (loud, enumerated):**
+1. **Pascal's Workbench SPA — the WHOLE of it** (P4.6bb, next round): the
+   `/custom-tools` vertical, `tool-draft` port, builder/outcomes/proving-bench/
+   destination-picker, the library, the Scriptorium row action, the Settings
+   "Open Pascal's Workbench" button, the left-rail entry, and the popup's
+   Workbench entries (the per-tool "Open on…" wrench, "New contrivance…", the
+   broken-file repair links).
+2. **The full composer gutter substrate** (standing) — Pascal got a bespoke
+   toolbar button instead.
+3. **Workspace-tab intents** (v5 has no workspace tabs — `p4.9j` awaits a human
+   ruling).
+4. **Tool-row folding / `delegatedDisplay` suppression** (see the verification
+   above) — the unported `groupToolMessagesIntoAssistants` subsystem.
+
+### P4.6ba round-close gate (SPA 0.5.140)
+
+`ng test` 133 files / 1286 passed (unit 6 adds only the Playwright spec); `ng
+build` clean; the full Playwright suite green (the new custom-tools beat present,
+the flow half annotated ACTIVATE-AT-UNIFY). The §4 wire mirror is diffed
+name-for-name against lane AY's Rust unions at unification. **Open under the
+order:** nothing — all six Tier-1 deliverables + Tier-2 (verification) landed;
+the ACTIVATE-AT-UNIFY beat's live half activates when lane AY's server + Tools
+fixture reach main.
