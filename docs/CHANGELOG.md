@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+P4.d5 unit 2: lenient numbers (`llmNumber`) across the tool surface. Models
+routinely quote their numbers — `{"type": "6"}` rather than `{"type": 6}` —
+and v5 rejected every one of them, so the roll never happened and the
+character was told their sensible request was invalid. The new
+`tools::llm_number` seam converts a numeric-looking string before
+validation, and nothing else: `true`, `null`, and `[]` are still refused
+rather than quietly becoming 1 and 0, because a rejected call beats a wrong
+one. Bounds still apply after conversion. The conversion is JS `Number()`,
+not `parseInt` and not Rust's float parser — so `"0x10"` is 16, `"5px"` is
+refused, and `"inf"` is refused even though Rust's parser would take it.
+Wired into every guarded field's validator AND its read: v4's Zod parse
+replaces the value, so a site that validated leniently and then read the raw
+argument would have silently used its default instead. Verified by a new
+73-row differential against v4's real `llmNumber`.
+
 The D24 blocker is resolved and the drift round is re-planned (2026-07-17).
 The fix went into v4 itself, per the ruling: quilltap-server e3593f75
 (4.8.0-dev.62) makes all 57 tool validators return safeParse's parsed data,

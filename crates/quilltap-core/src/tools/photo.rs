@@ -35,6 +35,7 @@ use crate::photos::save_image_to_album::{
     save_image_to_album, FileBytesStore, SaveImageAttribution, SaveImageErrorCode,
     SaveImageSideEffects, SaveImageToAlbumInput,
 };
+use crate::tools::llm_number::llm_number;
 
 /// The context a photo handler needs (the subset of
 /// [`crate::services::tool_execution::ToolExecutionContext`] these consume).
@@ -805,7 +806,9 @@ fn arg_str(args: &Value, key: &str) -> Option<String> {
 }
 
 fn arg_num(args: &Value, key: &str) -> Option<f64> {
-    args.get(key).and_then(Value::as_f64)
+    // Both keys read through this helper (`limit`/`offset` on list_images) are
+    // `llmNumber(...)` fields in v4, so the lenient conversion belongs here.
+    args.get(key).and_then(|raw| llm_number(raw).as_f64())
 }
 
 /// V8 `encodeURI` — percent-encode everything except the "unreserved + reserved"

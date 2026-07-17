@@ -41,6 +41,7 @@ use crate::services::knowledge_injector::{
     search_document_chunks, DocumentSearchOptions, DocumentSearchResult,
 };
 use crate::services::memory_service::{search_memories_semantic, SemanticSearchOptions};
+use crate::tools::llm_number::llm_number;
 
 use super::help_search::truncate_utf16;
 
@@ -115,14 +116,16 @@ fn validate_input(args: &Value) -> bool {
             return false;
         }
     }
+    // limit / minImportance are llmNumber(...) fields: a numeric-looking string
+    // converts before validation, then the bounds apply exactly as to a number.
     if let Some(limit) = args.get("limit") {
-        match limit.as_f64() {
+        match llm_number(limit).as_f64() {
             Some(n) if n.fract() == 0.0 && (1.0..=20.0).contains(&n) => {}
             _ => return false,
         }
     }
     if let Some(min_importance) = args.get("minImportance") {
-        match min_importance.as_f64() {
+        match llm_number(min_importance).as_f64() {
             Some(n) if (0.0..=1.0).contains(&n) => {}
             _ => return false,
         }
@@ -168,14 +171,17 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
         ],
     };
     let scope = args.get("scope").and_then(Value::as_str).unwrap_or("all");
+    // The reads go through the same seam: v4's Zod parse REPLACES the value, so
+    // a quoted "5" reaches the handler as the number 5 — reading the raw arg
+    // would validate leniently and then silently use the default.
     let limit = args
         .get("limit")
-        .and_then(Value::as_f64)
+        .and_then(|raw| llm_number(raw).as_f64())
         .map(|n| n as usize)
         .unwrap_or(10);
     let min_importance = args
         .get("minImportance")
-        .and_then(Value::as_f64)
+        .and_then(|raw| llm_number(raw).as_f64())
         .unwrap_or(0.0);
 
     let operator_wide = context.operator_surface;

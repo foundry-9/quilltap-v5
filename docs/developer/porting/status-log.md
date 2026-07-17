@@ -17169,3 +17169,136 @@ Execution arrangement: two parallel lanes (A = P4.d5 units 2–5, C =
 P4.6ay units 1–9), each in its own worktree; §1 is already satisfied on
 main; §2's must-land-together rule and the lane-C-slips revert rule
 stand unchanged; the unifier recounts version bumps.
+
+---
+
+## P4.d5 unit 2 — the `llm_number` seam + its call sites — LANDED 2026-07-16
+
+Ports v4's `lib/tools/llm-number.ts` to
+`crates/quilltap-core/src/tools/llm_number.rs` and wires it through the guarded
+fields. Before this, `grep -rn 'llm_number\|llmNumber' crates/` returned ZERO
+hits: v5 rejected every quoted number a model sent.
+
+**Survey confirmed the order's table exactly** at v4 `a33ac8b8`:
+`grep -rl "from './llm-number'" lib/tools/` → **18 files**;
+`grep -rn 'llmNumber(' lib/tools/*.ts` (minus the module) → **28 call sites**.
+The five sites the order could not locate were direct-checked and all match:
+`doc_write_file.expected_mtime`, `doc_focus.line`, `image_generation.count`,
+`memory_search.limit`/`.minImportance`.
+
+### THE finding: `llmNumber` REPLACES the value, it does not merely permit it
+
+v4's `z.preprocess` sits INSIDE the schema, so a successful `safeParse` yields
+the CONVERTED value — after `{"maxResults": "3"}` parses, the handler's
+`input.maxResults` is the number 3. **So every v5 READ of a guarded field must
+go through the seam too, not just its validator.** A site that validated
+leniently and then read with `as_i64()` would accept the call and then silently
+use its default — a wrong answer where the old code at least gave an honest
+rejection. Concretely: `web_search.rs` would have searched for 5 results after
+accepting `"3"`. Every read site was fixed alongside its validator.
+
+A consequence for the port: the conversion lands via `db::js_number_to_json`
+(not `Number::from_f64`), so an integral value becomes a JSON **integer**
+(`3`, not `3.0`) exactly as `JSON.stringify` renders a JS number. That is both
+more faithful on echo paths and what keeps `as_i64()` working at the reads —
+`Number::from_f64(3.0)` is `N::Float`, whose `as_i64()` is `None`, which would
+have broken every read site silently.
+
+### `Number()` is not `parseInt` and NOT Rust's `str::parse::<f64>`
+
+The differential PROVED all of these against v4's real code rather than
+assuming them:
+
+| input | v4 `Number()` | Rust `parse::<f64>` | note |
+|---|---|---|---|
+| `"0x10"` | 16 | **Err** | hex/octal/binary literals are legal |
+| `"5px"` | NaN | Err | (`parseInt` would say 5) |
+| `"inf"` / `"infinity"` / `"nan"` | NaN | **Ok(inf/NaN)** | Rust accepts spellings JS refuses |
+| `"Infinity"` | Infinity | Ok(inf) | then REJECTED — not finite |
+| `"1_0"` | NaN | Err | separators are a source-literal feature |
+| `"-0x10"` | NaN | Err | no sign on a non-decimal literal |
+
+So `js_number_from_str` implements the spec's StringToNumber with an explicit
+decimal-literal grammar gate (rejecting Rust's extra spellings) plus the three
+non-decimal integer-literal prefixes — never a bare `parse`.
+
+**DRY, honestly scoped.** The order said to lift `coerce_message_index_fallback`'s
+`Number()` logic rather than write it twice. Done — but only its STRING arm
+(`js_number_from_str`), which is the only subtle part; that fallback now calls
+it (a fidelity improvement: it previously used `parse::<f64>`, so `Number('0x10')`
+echoed 0 instead of 16). It stays the ERROR-ECHO path and is NOT `llmNumber` —
+both sites now say so in comments. A `js_number(&Value)` "full ToNumber" helper
+was written and then **deleted**: `Number([])` is 0 in JS (via ToPrimitive), not
+NaN, so the helper would have been quietly wrong on a case no call site reaches.
+Better to not ship a half-right primitive than to ship one with a hedge.
+
+### The two shared helpers were exactly the right seam
+
+`doc_edit/shared.rs::arg_i64` and `photo.rs::arg_num` are used for **only**
+llmNumber-guarded keys — verified by enumerating every call site:
+`arg_i64` → `offset`/`limit` (doc_read_file), `max_results`/`context_lines`
+(doc_grep), `level` (the two heading tools); `arg_num` → `limit`/`offset`
+(list_images). All seven are in the order's 28. So patching the two helpers
+covers those fields' validate AND read paths and touches nothing extra.
+
+### Sites landed
+
+`web_search.rs` (validate + read), `search.rs` (limit + minImportance, validate
++ read), `help_search.rs` (validate + read), `run_sql.rs` (`max_rows`, keeping
+the Zod error's `received <typeof>` shape for a non-numeric value),
+`help.rs` (`submit_final_response.confidence`), `terminal.rs` (`json_int` —
+covers `lines`/`start`/`end`; negatives stay legal for start/end),
+`annotations.rs` (both validators + the fallback's string arm),
+`doc_edit/shared.rs` (`arg_i64`), `photo.rs` (`arg_num`),
+`doc_edit/document_ui.rs` (`doc_focus.line` — an ECHO site: v4 echoes the
+CONVERTED number, so a raw echo would have put the model's `"42"` where v4 has
+42).
+
+### Two v4 fields with NO v5 site (pre-existing, not this lane's deferrals)
+
+- **`memory_search.limit` / `.minImportance`** — the `memory_search` tool has no
+  v5 handler at all; it exists only as a catalogue entry in
+  `tools/definitions/data.rs`. Nothing to make lenient. (Distinct from
+  `search_scriptorium`, which IS ported, in `search.rs`, and was patched.)
+- **`doc_write_file.expected_mtime`** — the mtime guard is not ported; the
+  pre-existing named deferral is recorded at `doc_edit/shared.rs:696`.
+
+Both are pre-existing surface gaps, NOT new deferrals introduced here.
+
+### The differential (new)
+
+`harness/oracle/cases/llm-number.ts` +
+`crates/quilltap-harness/tests/llm_number_equivalence.rs`. **73 rows, green on
+the first run.** Drives v4's REAL `llmNumber` two ways:
+
+* `preprocess` (54 rows) — `llmNumber(z.any())`, so the emitted `output` IS the
+  raw preprocess result. Diffs the VALUE **and** its JS `typeof`, so
+  "handed the original string back" can never be confused with "converted".
+* `bounded` (19 rows) — `llmNumber(z.number().int().min(2).max(1000))`, the rng
+  `type` arm's real inner schema, proving bounds/`.int()` apply AFTER
+  conversion. (This doubles as unit 3's schema proof.)
+
+Most v5 `validate_*` fns are private, so a Rust-side 28-field battery would have
+meant widening visibility across the tools module. Pinning the ported FUNCTION
+exactly (where all the subtlety is) + driving the tools through their real
+public `execute_*` entry points (tier-2 item 6) is the better split.
+
+**Regen recipe** — the case imports `zod` as a BARE package, which resolves from
+the case file's own directory; a worktree has no `node_modules` there, so the
+/tmp mirror needs the symlink. **`[[jest-oracle-bare-package-imports]]` bites
+tsx too, not just jest** — worth knowing:
+
+```bash
+W=<the worktree root>
+rm -rf /tmp/qt-oracle-llmnum && mkdir -p /tmp/qt-oracle-llmnum
+cp $W/harness/oracle/cases/llm-number.ts /tmp/qt-oracle-llmnum/
+ln -sfn ~/source/quilltap-server/node_modules /tmp/qt-oracle-llmnum/node_modules
+grep -c underscore-separator /tmp/qt-oracle-llmnum/llm-number.ts  # proves the worktree copy
+cd ~/source/quilltap-server
+npx tsx /tmp/qt-oracle-llmnum/llm-number.ts > /tmp/oracle-llm-number.ndjson
+# then:
+QT_ORACLE_LLM_NUMBER=/tmp/oracle-llm-number.ndjson \
+  cargo test -p quilltap-harness --test llm_number_equivalence -- --nocapture
+```
+
+Versions: core 0.0.239, harness 0.0.214.

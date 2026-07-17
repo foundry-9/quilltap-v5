@@ -41,6 +41,7 @@ use crate::doc_edit::path_resolver::{PathResolutionContext, ResolveError, Resolv
 use crate::doc_edit::qtap_uri::parse_qtap_uri;
 use crate::doc_edit::DocEditScope;
 use crate::services::librarian_notifications::{LibrarianActorOrigin, LibrarianScope};
+use crate::tools::llm_number::llm_number;
 
 /// Context required for doc-edit tool execution — v4 `DocEditToolContext`.
 #[derive(Clone, Debug)]
@@ -736,7 +737,12 @@ pub fn arg_bool(args: &Value, key: &str) -> Option<bool> {
 /// `args[key]` as an i64 (JS `number` truncated to integer, matching how the
 /// offset/limit/level fields are consumed).
 pub fn arg_i64(args: &Value, key: &str) -> Option<i64> {
-    args.get(key).and_then(Value::as_i64)
+    // Every key read through this helper (`offset`/`limit` on doc_read_file,
+    // `max_results`/`context_lines` on doc_grep, `level` on the heading tools) is
+    // an `llmNumber(...)` field in v4, so the lenient conversion belongs here
+    // rather than at each site: a model that quoted its number gets the read it
+    // asked for, and everything else falls through to be rejected on its merits.
+    args.get(key).and_then(|raw| llm_number(raw).as_i64())
 }
 
 #[cfg(test)]

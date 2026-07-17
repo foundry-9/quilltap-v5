@@ -44,6 +44,7 @@ use crate::doc_edit::path_resolver::resolve_doc_edit_path;
 use crate::doc_edit::uri_producers::uri_for_resolved_path;
 use crate::doc_edit::DocEditScope;
 use crate::services::librarian_notifications::{LibrarianOpenAnnouncement, LibrarianOpenKind};
+use crate::tools::llm_number::llm_number;
 
 /// v4 `resolveOpenDocTarget` (`document-ui-handlers.ts:45`): pick which open
 /// document a per-document UI tool (`doc_focus` / `doc_close`) targets. With
@@ -417,7 +418,10 @@ pub fn handle_doc_focus(
     }
     if let Some(line) = args.get("line") {
         if !line.is_null() {
-            result.insert("line".into(), line.clone());
+            // `line` is an llmNumber(...) field, and the Zod parse REPLACES the
+            // value — so v4 echoes the CONVERTED number here. Echoing the raw arg
+            // would put the model's quoted `"42"` in the output where v4 has 42.
+            result.insert("line".into(), llm_number(line).into_owned());
         }
     }
     Ok(result_no_formatted(Value::Object(result)))

@@ -50,6 +50,7 @@ use serde_json::Value;
 use crate::db::runtime::Db;
 use crate::db::{terminal_sessions, DbError};
 use crate::terminal_clean::clean_terminal_output;
+use crate::tools::llm_number::llm_number;
 
 /// v4 `MAX_RETURN_LINES` — the per-read line cap for both slice and tail modes.
 const MAX_RETURN_LINES: usize = 2000;
@@ -368,6 +369,11 @@ pub fn validate_terminal_list_input(args: &Value) -> bool {
 /// Coerce a JSON number to an `i64` iff it is an exact integer (v4 Zod
 /// `.number().int()` rejects non-integers). Rejects non-numbers.
 fn json_int(v: &Value) -> Option<i64> {
+    // `lines`/`start`/`end` are all llmNumber(...) fields, so a numeric-looking
+    // string converts before the integer check below. Negatives stay legal for
+    // `start`/`end` (v4 bounds only `lines`), which is why this keeps its own
+    // integer test rather than borrowing a bounded one.
+    let v = &*llm_number(v);
     match v {
         Value::Number(n) => {
             if let Some(i) = n.as_i64() {

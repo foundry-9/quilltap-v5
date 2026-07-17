@@ -18,6 +18,7 @@ use serde_json::{json, Value};
 use crate::db::help_search::{keyword_search, semantic_search, HelpSearchResult};
 use crate::db::runtime::Db;
 use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
+use crate::tools::llm_number::llm_number;
 
 /// v4 `HelpSearchToolOutput` — `{ success, results?, error?, totalFound, query }`.
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -93,8 +94,10 @@ fn validate_input(args: &Value) -> bool {
     if query.trim().is_empty() {
         return false;
     }
+    // limit is an llmNumber(...) field: a numeric-looking string converts before
+    // validation, then the bounds apply exactly as they do to a bare number.
     if let Some(limit) = args.get("limit") {
-        match limit.as_f64() {
+        match llm_number(limit).as_f64() {
             Some(n) if n.fract() == 0.0 && (1.0..=10.0).contains(&n) => {}
             _ => return false,
         }
@@ -123,9 +126,10 @@ pub async fn execute_help_search<P: EmbeddingProvider>(
     }
 
     let query = args.get("query").and_then(Value::as_str).unwrap_or("");
+    // The read goes through the same seam (the Zod parse replaces the value).
     let limit = args
         .get("limit")
-        .and_then(Value::as_f64)
+        .and_then(|raw| llm_number(raw).as_f64())
         .map(|n| n as usize)
         .unwrap_or(3);
 

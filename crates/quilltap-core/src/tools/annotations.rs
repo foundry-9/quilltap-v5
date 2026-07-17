@@ -29,6 +29,7 @@ use serde_json::{Number, Value};
 use crate::db::conversation_annotations::CaUpsertInput;
 use crate::db::runtime::Db;
 use crate::db::{chats_read, conversation_annotations, DbError};
+use crate::tools::llm_number::{js_number_from_str, llm_number};
 
 // ============================================================================
 // upsert_annotation
@@ -71,17 +72,16 @@ fn content_len_utf16(s: &str) -> usize {
 /// `Number(...)` on the raw JSON value: a JSON number is itself; a numeric string
 /// coerces; anything else → NaN. Then JS `|| 0` replaces any falsy result (NaN,
 /// 0, -0) with `0`. Returns the echoed number.
+///
+/// This is the ERROR-ECHO path, NOT validation — do not mistake it for the
+/// `llm_number` seam (which is what `message_index` is actually guarded by; see
+/// [`validate_upsert_input`]). It shares that module's string arm because JS
+/// `Number(s)` is subtle enough to be worth having exactly once — `Number('0x10')`
+/// is 16, `Number('inf')` is NaN — but the two paths mean different things.
 fn coerce_message_index_fallback(args: &Value) -> Number {
     let coerced: f64 = match args.get("message_index") {
         Some(Value::Number(n)) => n.as_f64().unwrap_or(f64::NAN),
-        Some(Value::String(s)) => {
-            let t = s.trim();
-            if t.is_empty() {
-                0.0
-            } else {
-                t.parse::<f64>().unwrap_or(f64::NAN)
-            }
-        }
+        Some(Value::String(s)) => js_number_from_str(s),
         Some(Value::Bool(b)) => {
             if *b {
                 1.0
@@ -117,7 +117,9 @@ fn number_from_f64(v: f64) -> Number {
 fn validate_upsert_input(args: &Value) -> Option<(i64, String)> {
     let obj = args.as_object()?;
     let mi = obj.get("message_index")?;
-    let n = mi.as_f64()?;
+    // llmNumber(...): a numeric-looking string converts before the .int()/.min(0)
+    // checks below, exactly as v4's z.preprocess does.
+    let n = llm_number(mi).as_f64()?;
     // `.int()` — must be an integer value; `.min(0)`.
     if n.fract() != 0.0 || !n.is_finite() || n < 0.0 {
         return None;
@@ -133,7 +135,8 @@ fn validate_upsert_input(args: &Value) -> Option<(i64, String)> {
 /// Validate `delete_annotation` input: `message_index` an integer `>= 0`.
 fn validate_delete_input(args: &Value) -> Option<i64> {
     let obj = args.as_object()?;
-    let n = obj.get("message_index")?.as_f64()?;
+    // llmNumber(...) — see `validate_upsert_input`.
+    let n = llm_number(obj.get("message_index")?).as_f64()?;
     if n.fract() != 0.0 || !n.is_finite() || n < 0.0 {
         return None;
     }

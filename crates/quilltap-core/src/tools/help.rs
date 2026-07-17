@@ -47,6 +47,7 @@ use serde_json::{json, Map, Value};
 
 use crate::db::runtime::Db;
 use crate::db::DbError;
+use crate::tools::llm_number::llm_number;
 
 // ============================================================================
 // help_settings
@@ -739,11 +740,12 @@ fn validate_submit_final_response_input(args: &Value) -> Option<SubmitFinalRespo
         Some(Value::String(s)) => Some(s.clone()),
         Some(_) => return None,
     };
-    // `confidence` optional: absent → None; present must be a number in [0,1].
+    // `confidence` optional: absent → None; present must be an llmNumber(...)
+    // in [0,1] — a numeric-looking string converts before the bounds apply.
     let confidence = match obj.get("confidence") {
         None => None,
         Some(v) => {
-            let n = v.as_f64()?;
+            let n = llm_number(v).as_f64()?;
             if !(0.0..=1.0).contains(&n) {
                 return None;
             }

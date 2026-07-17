@@ -28,6 +28,7 @@ use serde_json::{Map, Value};
 
 use crate::db::runtime::Db;
 use crate::db::{js_number_to_json, DbError};
+use crate::tools::llm_number::llm_number;
 
 /// Hard upper bound on returned rows, regardless of the requested `max_rows`.
 const MAX_ROWS_HARD_CAP: i64 = 1000;
@@ -185,13 +186,16 @@ fn validate_input(args: &Value) -> Result<RunSqlInput, String> {
             ));
         }
     };
-    // max_rows: int 1..=1000, optional (default 200).
-    let max_rows = match obj.get("max_rows") {
-        None | Some(Value::Null) => DEFAULT_MAX_ROWS,
-        Some(Value::Number(n)) if n.is_i64() || n.is_u64() => {
-            n.as_i64().unwrap_or(DEFAULT_MAX_ROWS)
+    // max_rows: llmNumber(int 1..=1000), optional (default 200). The lenient
+    // conversion runs first, so a quoted "50" is validated AND read as 50; a
+    // non-numeric value keeps its original type for the Zod error below.
+    let max_rows = match obj.get("max_rows").map(|raw| (raw, llm_number(raw))) {
+        None => DEFAULT_MAX_ROWS,
+        Some((_, coerced)) if coerced.is_null() => DEFAULT_MAX_ROWS,
+        Some((_, coerced)) if coerced.is_i64() || coerced.is_u64() => {
+            coerced.as_i64().unwrap_or(DEFAULT_MAX_ROWS)
         }
-        Some(other) => {
+        Some((other, _)) => {
             return Err(format!(
                 "Invalid run_sql input: {}.",
                 zod_issue(

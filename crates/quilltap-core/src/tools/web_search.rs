@@ -22,6 +22,7 @@ use serde_json::{Map, Value};
 use crate::format_time::format_date_short_us;
 use crate::model::request_builder::BuiltRequest;
 use crate::model::wire::SyncWireTransport;
+use crate::tools::llm_number::llm_number;
 
 /// v4 `WebSearchResult` — one search result. `publishedDate` optional.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -122,13 +123,15 @@ fn validate(args: &Value) -> bool {
         }
         _ => return false,
     }
+    // maxResults — llmNumber(z.number().int().min(1).max(10)): a numeric-looking
+    // string converts before validation, then the bounds apply exactly as they
+    // do to a bare number.
     match obj.get("maxResults") {
         None | Some(Value::Null) => true,
-        Some(Value::Number(n)) if n.is_i64() || n.is_u64() => {
-            let v = n.as_i64().unwrap_or(0);
-            (1..=10).contains(&v)
-        }
-        _ => false,
+        Some(raw) => match llm_number(raw).as_f64() {
+            Some(v) => v.fract() == 0.0 && (1.0..=10.0).contains(&v),
+            None => false,
+        },
     }
 }
 
@@ -156,8 +159,14 @@ pub fn execute_web_search<P: WebSearchProvider + ?Sized>(
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    // `maxResults = 5` default.
-    let max_results = obj.get("maxResults").and_then(Value::as_i64).unwrap_or(5);
+    // `maxResults = 5` default. The read goes through `llm_number` because the
+    // Zod parse REPLACES the value: after `{"maxResults": "3"}` parses, v4's
+    // handler sees the number 3. Reading the raw arg here would validate
+    // leniently and then silently search for 5.
+    let max_results = obj
+        .get("maxResults")
+        .and_then(|raw| llm_number(raw).as_i64())
+        .unwrap_or(5);
 
     match provider.search(&query, max_results, user_id) {
         WebSearchOutcome::ProviderResult {

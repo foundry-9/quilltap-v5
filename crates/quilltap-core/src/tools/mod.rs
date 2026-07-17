@@ -12,6 +12,7 @@ pub mod generate_image;
 pub mod help;
 pub mod help_search;
 pub mod list_email;
+pub mod llm_number;
 pub mod native_tool_prompt;
 pub mod photo;
 pub mod project_info;
