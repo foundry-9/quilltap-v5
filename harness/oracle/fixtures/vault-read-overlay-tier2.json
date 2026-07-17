@@ -28,6 +28,7 @@
   ],
   "files": [
     { "mountPointId": "5700000e-0000-4000-8000-0000000000b1", "relativePath": "properties.json", "content": "{\"pronouns\":{\"subject\":\"she\",\"object\":\"her\",\"possessive\":\"hers\"},\"aliases\":[\"Al\",\"Ada\"],\"title\":\"The Hero\",\"firstMessage\":\"Hello there\",\"talkativeness\":0.7}" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b1", "relativePath": "metadata.json", "content": "{\"clearanceLevel\":3,\"codename\":\"Aria\",\"active\":true,\"traits\":[\"bold\",\"kind\"]}" },
     { "mountPointId": "5700000e-0000-4000-8000-0000000000b1", "relativePath": "identity.md", "content": "Vault identity text" },
     { "mountPointId": "5700000e-0000-4000-8000-0000000000b1", "relativePath": "description.md", "content": "Vault description" },
     { "mountPointId": "5700000e-0000-4000-8000-0000000000b1", "relativePath": "manifesto.md", "content": "Vault manifesto" },
@@ -44,6 +45,7 @@
     { "mountPointId": "5700000e-0000-4000-8000-0000000000b3", "relativePath": "properties.json", "content": "{\"pronouns\":null,\"aliases\":[],\"title\":null,\"firstMessage\":null,\"talkativeness\":0.5}" },
 
     { "mountPointId": "5700000e-0000-4000-8000-0000000000b4", "relativePath": "properties.json", "content": "{\"pronouns\":null,\"aliases\":[],\"title\":null,\"firstMessage\":null,\"talkativeness\":0.5}" },
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b4", "relativePath": "metadata.json", "content": "{ this is not valid json" },
     { "mountPointId": "5700000e-0000-4000-8000-0000000000b4", "relativePath": "physical-description.md", "content": "Minted physical desc" },
     { "mountPointId": "5700000e-0000-4000-8000-0000000000b4", "relativePath": "physical-prompts.json", "content": "{\"short\":\"s\",\"medium\":\"m\",\"long\":\"l\",\"complete\":\"c\"}" },
 

@@ -18423,3 +18423,52 @@ $N/node --import tsx <V5>/harness/oracle/cases/vault-json-parsers.ts \
 QT_ORACLE_VAULT_JSON_PARSERS=/tmp/oracle-vault-json-parsers.ndjson \
   cargo test -p quilltap-harness --test vault_json_parsers_equivalence
 ```
+
+### Unit 2 — hydration (`metadata.json` in the single-file map set + the `{}` rule)
+
+Added `metadata.json` to `SINGLE_FILE_OVERLAY_PATHS` (SECOND, beside the
+`properties.json` keystone — v4 `schema.ts:109`), lifting the array 8 → 9.
+`hydrate_one` (v4 `read-overlay.ts:180`) now inserts `metadata` right after the
+properties block: absent file → `{}`, present-and-unparseable → `{}` (via
+`parse_vault_metadata` → None), present-and-object → the parsed object. So
+hydration ALWAYS yields at least `{}` for a vault-linked character. Because the
+same constant drives `character_stats` (`get.ts` reads it), `characterFiles` /
+`characterFilesTotal` (now 9) track v4 in lockstep — no separate code change.
+
+**Reader enumeration (the unit-10 lesson):** the hydrated bag gains `metadata`,
+so every differential that echoes an overlaid character now carries it. All
+regenerated at `d68638b4` and green:
+
+- `vault_read_overlay` — extended the fixture with a VALID `metadata.json` on
+  Vault A (parse-carry) + an INVALID one on Vault D (unparseable → `{}`); the
+  four other vault-linked chars exercise absent → `{}`. Fixture file count
+  23 → 25; 6 hydrated characters + the `…One` throw, green.
+- `characters_reads` (jest real-DB): findById carries `metadata: {}`,
+  `characterFilesTotal` 8 → 9. 24 cases, green.
+- `characters_read` (tsx, builds its own v4-created fixture — so the vaults now
+  carry the scaffold-seeded `metadata.json`): the findBy* queries carry
+  `metadata`. Green.
+- `characters_actions` (jest): the thin verbs' merged-character echo carries
+  `metadata`. 11 cases, green.
+- `characters_subresources` (jest): prompt/scenario/plugin mutation echoes carry
+  `metadata`. 9 cases, green.
+
+Full `cargo test --workspace` green with all five read env-vars set (no SKIP).
+
+**Regen recipes** (Node 24, from `/tmp/qt-v4-baseline`; `V5W` = this worktree):
+```
+# vault_read_overlay (fixture + oracle)
+QT_FIXTURE_OUT=/tmp/qt-vault-read-overlay-fixture.db \
+  $N/node --import tsx $V5W/harness/oracle/fixtures/build-vault-read-overlay-fixture.ts
+QT_FIXTURE_VAULT_READ_OVERLAY=/tmp/qt-vault-read-overlay-fixture.db \
+  $N/node --import tsx $V5W/harness/oracle/cases/vault-read-overlay.ts > /tmp/oracle-vault-read-overlay.ndjson
+# characters_read (fixture + oracle)
+QT_FIXTURE_CHARREAD_MAIN=/tmp/qt-charread-main.db QT_FIXTURE_CHARREAD_MOUNT=/tmp/qt-charread-mount.db \
+  $N/node --import tsx $V5W/harness/oracle/fixtures/build-characters-read-fixture.ts
+QT_FIXTURE_CHARREAD_MAIN=/tmp/qt-charread-main.db QT_FIXTURE_CHARREAD_MOUNT=/tmp/qt-charread-mount.db \
+  $N/node --import tsx $V5W/harness/oracle/cases/characters-read.ts > /tmp/oracle-charread.ndjson
+# characters_reads / _actions / _subresources (jest; /tmp mirror per [[jest-real-db-oracle]]):
+#   cp the *.test.ts + fixtures/characters.json into /tmp/qt-characters-oracle, then
+#   QT_FIXTURE_CHARACTERS_{MAIN,MOUNT}=$V5W/crates/quilltap-web/tests/fixtures/characters-{main,mount}.db
+#   QT_ORACLE_OUT=<out> npx jest --roots "$PWD" --roots "$TMPO/cases" -- <name>
+```

@@ -68,6 +68,15 @@ three from provisioning replay; the metadata column is vault-managed and stays
 inert in the DB (character.metadata hydrates from the vault's metadata.json,
 which lane p4.6az owns). Provisioning, builtin-mounts, and builtin-templates
 equivalence regenerated at d68638b4 and green.
+P4.6az unit 2 (lane AZ): hydrate `character.metadata` from the vault's
+`metadata.json`. Added `metadata.json` (second, beside the `properties.json`
+keystone) to `SINGLE_FILE_OVERLAY_PATHS`, and `hydrate_one` now yields at least
+`{}` for every vault-linked character — an absent or unparseable file both
+hydrate `{}`, never hollowing the character. This also lifts the
+`character_stats` health denominator (`characterFilesTotal`) 8 → 9, tracking
+v4's own drift. Regenerated the read-echo differentials at d68638b4 (vault
+read overlay + the four characters read/action/subresource families).
+
 P4.6az unit 1 (lane AZ, d68638b4 drift round): port `parse_vault_metadata`,
 the fail-soft parser for a character vault's `metadata.json` fact sheet.
 Returns the JSON object verbatim, or null for anything that is not an object

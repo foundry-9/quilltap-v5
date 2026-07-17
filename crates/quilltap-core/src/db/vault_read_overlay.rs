@@ -30,14 +30,20 @@ use super::doc_mount_documents::{DocMountDocumentsRepository, VaultFolderDoc};
 use super::DbError;
 use crate::vault_overlay::{
     markdown_to_nullable, parse_legacy_wardrobe_json, parse_prompt_file, parse_scenario_file,
-    parse_vault_physical_prompts, parse_vault_properties, parse_wardrobe_item_file,
-    resolve_and_check_component_items, slugify_wardrobe_title, stable_uuid_from_string,
-    CharacterScenario, CharacterSystemPrompt, SeedArchetype, VaultDoc, WardrobeItemFromFile,
+    parse_vault_metadata, parse_vault_physical_prompts, parse_vault_properties,
+    parse_wardrobe_item_file, resolve_and_check_component_items, slugify_wardrobe_title,
+    stable_uuid_from_string, CharacterScenario, CharacterSystemPrompt, SeedArchetype, VaultDoc,
+    WardrobeItemFromFile,
 };
 
-/// The eight single-file overlay paths (v4 `SINGLE_FILE_OVERLAY_PATHS`), in order.
-pub const SINGLE_FILE_OVERLAY_PATHS: [&str; 8] = [
+/// The nine single-file overlay paths (v4 `SINGLE_FILE_OVERLAY_PATHS`), in order.
+/// `metadata.json` sits SECOND (v4 `schema.ts:109`), the fact sheet beside the
+/// `properties.json` keystone. This constant also drives `character_stats`'
+/// `characterFiles` / `characterFilesTotal` (v4's `get.ts` reads the same list),
+/// so adding metadata.json lifts the health denominator 8 → 9 in lockstep with v4.
+pub const SINGLE_FILE_OVERLAY_PATHS: [&str; 9] = [
     "properties.json",
+    "metadata.json",
     "identity.md",
     "description.md",
     "manifesto.md",
@@ -249,6 +255,19 @@ pub fn hydrate_one(character: &Value, maps: &VaultFileMaps) -> Result<Value, Vau
             }
         }
     }
+
+    // metadata.json → the user's freeform fact sheet. Explicitly NOT a keystone:
+    // vaults predating the feature have no such file, and the absence is the normal
+    // state rather than a broken vault, so it hydrates as `{}` instead of throwing.
+    // An unparseable file lands on `{}` too (`parse_vault_metadata` returns None —
+    // v4 warns). A stray comma in a fact sheet must not hollow the character.
+    // Hydration therefore ALWAYS yields at least `{}` for a vault-linked character,
+    // so readers need no null gymnastics.
+    let metadata = match maps.content("metadata.json", &mount_id) {
+        None => Value::Object(Map::new()),
+        Some(raw) => parse_vault_metadata(raw).unwrap_or_else(|| Value::Object(Map::new())),
+    };
+    out.insert("metadata".to_string(), metadata);
 
     // The plain markdown fields (empty → null).
     for (path, field) in [
