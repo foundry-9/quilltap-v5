@@ -6,12 +6,17 @@
  *   (lib/services/chat-message/rng-pattern-detector.service.ts)
  * over a committed corpus, emitting BOTH the detected patterns and the converted
  * tool calls for a field-by-field tier-1 diff. Exercises: plain/counted dice,
- * multiple patterns, bounds rejections (d1/d1001/101d6/overflow), the
- * "flip the coin" non-match quirk, coin/bottle word boundaries, spin-bottle at
- * 0/50/51 chars, mixed case, ASCII-`\b` non-ASCII adjacency, the JS-`.`
- * line-terminator exclusion, a ReDoS adversarial string, and the empty string.
+ * multiple patterns, bounds rejections (d1/d1001/101d6/overflow), modifiers and
+ * the spacing disambiguation ("2d6 - 1 apple" vs "2d6-1"), the "flip the coin"
+ * non-match quirk, coin/bottle word boundaries, spin-bottle at 0/50/51 chars,
+ * mixed case, ASCII-`\b` non-ASCII adjacency, the JS-`.` line-terminator
+ * exclusion, a ReDoS adversarial string, and the empty string.
  *
- * Run from inside the server checkout:
+ * Since v4 `a33ac8b8` the dice loop is driven by the shared scanner
+ * (`lib/pascal/dice.ts` `scanDiceNotation`), so every dice row now carries a
+ * `modifier` — including `modifier: 0` on unmodified notation.
+ *
+ * Run from inside the server checkout (v4 @ e3593f75):
  *   cd ~/source/quilltap-server
  *   npx tsx ~/source/quilltap-v5/harness/oracle/cases/rng-patterns.ts \
  *     > /tmp/oracle-rng-patterns.ndjson
@@ -38,6 +43,23 @@ const cases: Array<[string, string]> = [
   ['two-dice', 'roll d6 and 2d20'],
   ['three-dice', 'd4 d6 d8'],
   ['dice-then-plus', '3d6+2 total'],
+  // Modifiers. The scanner's grammar forbids whitespace around the sign, which
+  // is what keeps "2d6 - 1 apple" a plain 2d6 while "2d6-1" carries its -1 —
+  // this pair is the whole disambiguation, so it is pinned in both directions.
+  ['modifier-spaced-nomodifier', '2d6 - 1 apple'],
+  ['modifier-closed-up', '2d6-1'],
+  ['modifier-negative', 'take 2d10-1 damage'],
+  ['modifier-positive-counted', 'roll 3d6+2 for damage'],
+  ['modifier-plain-die', 'd20+5 to hit'],
+  ['modifier-zero-explicit', 'roll 3d6+0'],
+  ['modifier-at-bound', 'roll 3d6+1000'],
+  // Out of the modifier bound: v4 SKIPS the notation, never clamps it. What the
+  // leftmost-first engine then does with the trailing digits is v4's to say.
+  ['modifier-over-bound', 'roll 3d6+1001'],
+  ['modifier-multi', '2d6+1 and 3d8-2'],
+  // The trailing-\b fallback: "3d6+2x" has no boundary after the modifier, so
+  // the engine falls back to the bare "3d6".
+  ['modifier-trailing-letter', 'roll 3d6+2x'],
   // Bounds rejections.
   ['reject-d1', 'a lonely d1'],
   ['reject-d0', 'the void d0'],

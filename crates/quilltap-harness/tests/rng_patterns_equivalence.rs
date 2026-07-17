@@ -1,11 +1,19 @@
-//! Tier-1 differential test (W4.1a sub-unit 1): the RNG pattern detector —
-//! exact field-by-field equivalence against the v4 oracle. Both the detected
-//! patterns and the converted tool calls are diffed. Exercises the three regexes
-//! (dice `\b(\d+)?d(\d+)\b`, coin `\bflip.{1,3}coin\b`, bottle
-//! `\bspin\b.{0,50}\bbottle\b`) with the JS→Rust fidelity traps: ASCII `\b`/`\d`,
+//! Tier-1 differential test (W4.1a sub-unit 1; re-ported at P4.d5 unit 4): the
+//! RNG pattern detector — exact field-by-field equivalence against the v4
+//! oracle. Both the detected patterns and the converted tool calls are diffed.
+//!
+//! Dice now come from the shared scanner (`pascal::dice::scan_dice_notation`),
+//! so every dice row carries a `modifier` — `0` on unmodified notation — while
+//! coin and bottle carry no such key at all. The corpus pins the spacing
+//! disambiguation in BOTH directions ("2d6 - 1 apple" is a plain 2d6; "2d6-1"
+//! carries its -1) and the skip-never-clamp bound ("3d6+1001" yields NOTHING,
+//! not a fallback 3d6).
+//!
+//! The two local regexes (coin `\bflip.{1,3}coin\b`, bottle
+//! `\bspin\b.{0,50}\bbottle\b`) keep their JS→Rust fidelity traps: ASCII `\b`,
 //! the JS-`.` line-terminator exclusion, the "flip the coin" 1–3-char quirk, the
-//! spin-bottle `{0,50}` length bound, bounds rejections, non-ASCII adjacency, and
-//! the ReDoS adversarial string.
+//! spin-bottle `{0,50}` length bound, non-ASCII adjacency, and the ReDoS
+//! adversarial string.
 //!
 //! Generate the oracle output (LOG_LEVEL=error silences the service logger, which
 //! writes to stdout):

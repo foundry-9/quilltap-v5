@@ -17424,3 +17424,62 @@ Green by name, `--nocapture`, zero SKIPs: `rng_executor_equivalence` 37/37,
 `tool_definitions_equivalence` 58 byte-exact + the canonicalize spot-check.
 
 Versions: core 0.0.241.
+
+---
+
+## P4.d5 unit 4 — the prose detector re-port — LANDED 2026-07-17
+
+`rng_patterns.rs` re-ported against v4 `e3593f75`
+(`rng-pattern-detector.service.ts`): the local `DICE_PATTERN` and its inline
+bounds check are DELETED, the dice loop is
+`for scanned in scan_dice_notation(content)`, and `DetectedRngPattern` /
+`RngToolCall` gain `modifier`.
+
+**The key-presence asymmetry (v4's object literals, faithfully):**
+
+- `DetectedRngPattern`: the dice literal sets `sides` AND `modifier`; the coin
+  and bottle literals set NEITHER. Both are `Option` + `skip_serializing_if`.
+- `RngToolCall`: the dice branch emits `modifier: pattern.modifier ?? 0` — the
+  key is always present, zero included — while the coin/bottle branches build a
+  literal with no `modifier` key at all. A single `modifier: i64` field would
+  have serialized `modifier: 0` onto every coin flip; the differential diffs raw
+  `Value`, so it would have caught it, but the asymmetry is v4's and is worth
+  naming.
+
+**The stale annotation is FIXED** (the order called it out): the old header
+documented the 2–1000 / 1–100 bounds as this module's banked fidelity, which
+stopped being true the moment the scanner took ownership. It now points at
+`pascal::dice` and the ASCII-`\b`/`\d` notes that moved with the regex are gone
+from here (they live with the scan regex, whose trailing `(?-u:\b)` sits after
+the modifier digits).
+
+**Corpus grew 53 → 64 rows.** The new arms, all pinned FROM v4:
+
+```
+modifier-spaced-nomodifier  "2d6 - 1 apple"  -> [{type:6, rolls:2, modifier:0,  matchText:"2d6"}]
+modifier-closed-up          "2d6-1"          -> [{type:6, rolls:2, modifier:-1, matchText:"2d6-1"}]
+modifier-over-bound         "roll 3d6+1001"  -> []          <- SKIPPED, not a fallback 3d6
+modifier-trailing-letter    "roll 3d6+2x"    -> [{..., modifier:0, matchText:"3d6"}]  <- \b fallback
+```
+
+The `modifier-over-bound` row is the one worth staring at: an out-of-bounds
+modifier kills the WHOLE match rather than degrading to the bare notation, and
+that is v4's behavior, not a choice. `modifier-trailing-letter` is the opposite
+case — the boundary, not the bounds — where the leftmost-first engine DOES fall
+back.
+
+**Regen recipe.** The service logger writes JSON to STDOUT and silently
+poisons the NDJSON (84 log lines mixed into 64 rows, seen live this lane) —
+`LOG_LEVEL=error` is not optional:
+
+```bash
+cd ~/source/quilltap-server
+LOG_LEVEL=error npx tsx <worktree>/harness/oracle/cases/rng-patterns.ts \
+  > /tmp/oracle-rng-patterns.ndjson
+QT_ORACLE_RNG_PATTERNS=/tmp/oracle-rng-patterns.ndjson \
+  cargo test -p quilltap-harness --test rng_patterns_equivalence -- --nocapture
+```
+
+`rng_patterns_equivalence` green by name, `--nocapture`, zero SKIPs: 64/64.
+
+Versions: core 0.0.242, harness 0.0.215.

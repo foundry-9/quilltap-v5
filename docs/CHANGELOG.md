@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.d5 unit 4: the prose dice scanner honors modifiers. Typing "roll 3d6+2" in
+a Salon detected a 3d6 and dropped the +2 on the floor. The detector no longer
+carries its own dice regex; it drives the shared scanner, so the modifier comes
+through and the 2-1000 sides / 1-100 rolls bounds are enforced in one place —
+skipping out-of-bounds notation rather than clamping it, which means "3d6+1001"
+now yields no roll at all rather than a quiet 3d6. Spacing still disambiguates:
+"2d6-1" carries its -1, while "2d6 - 1 apple" stays a plain 2d6 near an
+unrelated subtraction. Coin and bottle detection are untouched, as is the
+detection order. Verified by the regenerated 64-row differential.
+
 P4.d5 unit 3: the rng modifier. The tool now understands `3d6+2` — a flat
 amount added to the dice total — and reports it: every successful dice roll's
 output carries `modifier` and `total` alongside `sum`, where an unmodified roll
