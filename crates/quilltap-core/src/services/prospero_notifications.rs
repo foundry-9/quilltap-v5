@@ -710,6 +710,79 @@ pub async fn post_prospero_carina_error(db: &Db, params: ProsperoCarinaErrorArgs
     .await
 }
 
+// ---------------------------------------------------------------------------
+// Pascal (custom tools) error announcements. Pascal the Croupier only ever
+// announces GENUINE outcomes — a run that never reached the table (unknown tool,
+// rejected parameter, unloadable definition) has no outcome to call, so Prospero
+// reports the failure instead. A private run's failure is whispered to the caller
+// alone, mirroring the Carina `?` whisper case above.
+// ---------------------------------------------------------------------------
+
+/// v4 `buildCustomToolErrorContent`.
+pub fn build_custom_tool_error_content(tool_name: &str, reason: &str) -> String {
+    format!("Prospero regrets that the custom tool `{tool_name}` could not be run — {reason}.")
+}
+
+/// v4 `buildCustomToolErrorOpaqueContent`.
+pub fn build_custom_tool_error_opaque_content(tool_name: &str, reason: &str) -> String {
+    format!("System: The custom tool \"{tool_name}\" could not be run — {reason}.")
+}
+
+/// v4's inline reason normalization: JS `.trim()`, then strip a trailing run of
+/// `[.\s]` (so the builder's own `— {reason}.` supplies the single full stop),
+/// with `'the table would not deal'` when nothing survives. Public for the
+/// differential (v4 keeps it inline in `postProsperoCustomToolError`).
+pub fn normalize_custom_tool_error_reason(reason: &str) -> String {
+    let trimmed = crate::jsstr::js_trim(reason);
+    let stripped = trimmed.trim_end_matches(|c: char| c == '.' || c.is_whitespace());
+    if stripped.is_empty() {
+        "the table would not deal".to_string()
+    } else {
+        stripped.to_string()
+    }
+}
+
+/// Arguments for [`post_prospero_custom_tool_error`] — v4's
+/// `ProsperoCustomToolErrorAnnouncement`.
+pub struct ProsperoCustomToolErrorArgs {
+    pub chat_id: String,
+    /// The tool the caller reached for (may not exist — often the reason).
+    pub tool_name: String,
+    /// Short summary of why the run failed. Rendered as the tail of one sentence.
+    pub reason: String,
+    /// True when the run was private — the failure is whispered to the caller.
+    pub whisper: bool,
+    /// Participant id of the caller — the whisper target when `whisper` is true.
+    pub caller_participant_id: Option<String>,
+}
+
+/// v4 `postProsperoCustomToolError`. `systemKind: 'custom-tool-error'`. Whispered
+/// to the caller alone on a private run; public otherwise. Failures are authored
+/// by Prospero, never Pascal.
+pub async fn post_prospero_custom_tool_error(
+    db: &Db,
+    params: ProsperoCustomToolErrorArgs,
+) -> Option<Value> {
+    let reason = normalize_custom_tool_error_reason(&params.reason);
+    let content = build_custom_tool_error_content(&params.tool_name, &reason);
+    let opaque = build_custom_tool_error_opaque_content(&params.tool_name, &reason);
+    // v4: `whisper && callerParticipantId ? [callerParticipantId] : null`.
+    let targets = if params.whisper {
+        params.caller_participant_id.clone().map(|c| vec![c])
+    } else {
+        None
+    };
+    post_prospero_message(
+        db,
+        &params.chat_id,
+        content,
+        Some(opaque),
+        "custom-tool-error",
+        targets,
+    )
+    .await
+}
+
 // ===========================================================================
 // The shared post idiom.
 // ===========================================================================

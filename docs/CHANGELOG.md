@@ -133,6 +133,20 @@ Returns the JSON object verbatim, or null for anything that is not an object
 Unlike properties.json, metadata is not a keystone: a malformed file never
 hollows the character. Extended the tier-1 vault-json-parsers differential
 with 10 metadata cases (24 → 34).
+P4.6ay units 5 + 6 (the Pascal writer + Prospero's custom-tool-error). New
+services/pascal_writer.rs: build_pascal_result_content (the `🎲 **{title}** —
+{message}` body, opaque == content — with the flourishes gone there is no persona
+to strip) and post_pascal_result (the synthetic ASSISTANT message, systemSender
+'pascal' / systemKind 'custom-tool-result', empty whisper target → null, errors →
+None). services/prospero_notifications.rs gains build_custom_tool_error_content /
+_opaque_content, the reason normalization (trim, strip trailing `[.\s]`, fall back
+to 'the table would not deal'), and post_prospero_custom_tool_error (systemKind
+'custom-tool-error', whisper to the caller alone) — failures are authored by
+Prospero, never Pascal. PascalMetaIn gains the d68638b4 metadataTested field (in
+v4 schema order, between outcomeIndex and invokedBy). New tier-1 differential
+pascal_writers_equivalence (8 pascal bodies + 10 error bodies) against v4's real
+builders.
+
 P4.6ay unit 2 (Pascal custom-tool discovery / roster). New pascal/roster.rs:
 is_root_tool_file (a nested Tools/sub/x.tool.json is rejected — definitions are a
 flat root-level convention), load_definitions (the read → parse → validate → dedup

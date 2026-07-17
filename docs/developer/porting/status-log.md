@@ -18831,3 +18831,55 @@ QT_ORACLE_OUT=/tmp/oracle-pascal-discovery.ndjson \
 ```
 
 Versions: core 0.0.248, harness 0.0.221.
+
+## P4.6ay units 5 + 6 — the Pascal writer + Prospero custom-tool-error (2026-07-17)
+
+Branch `claude/pascal-custom-tools-porting-243efb`. Landed together in one commit:
+both are small pure content-builder units in adjacent files, sharing one tier-1
+differential. (Order sequence: 11 → 2 → **5 → 6** → 4 → 8 → 9 → 7 → 12.)
+
+### Unit 5 — `services/pascal_writer.rs` (new), templated on `carina_runner/writer.rs`
+
+- `build_pascal_result_content(tool_title, message)` → `🎲 **{title}** —
+  {js_trim(message)}`, `opaque_content == content`. v4 `a33ac8b8`'s four removals
+  are the target state (no Pascal narration, no `*(rolled 14)*` suffix, no
+  companion USER note) — carried as deliberate removals, not omissions.
+- `post_pascal_result(db, params)` — guards on the chat existing, mints
+  id/createdAt, assembles the `MessageEvent` (`systemSender:'pascal'`,
+  `systemKind:'custom-tool-result'`, `participantId:null`, empty
+  `targetParticipantIds` → null, the caller-assembled `pascalMeta`), validates
+  into `ChatEventInput`, writes best-effort (`Err` → `None`). Not called until
+  units 4/7 land; its full behavior is exercised by their route/handler diffs.
+- **`db/chats_messages.rs`: `PascalMetaIn` gained `metadata_tested`** — unit 10
+  ported the struct at `a33ac8b8`, before v4 added the field; placed in v4 schema
+  order (after `outcomeIndex`, before `invokedBy`), `.optional()` /
+  `skip_serializing_if`. Inert until a pascal message is first written, but the
+  shape must be right for byte-exact storage.
+
+### Unit 6 — `services/prospero_notifications.rs` (extended)
+
+- `build_custom_tool_error_content` / `build_custom_tool_error_opaque_content` —
+  ``Prospero regrets that the custom tool `X` could not be run — {reason}.`` /
+  `System: The custom tool "X" could not be run — {reason}.`
+- `normalize_custom_tool_error_reason` (pub for the differential; v4 keeps it
+  inline in the post fn) — JS trim, strip trailing `[.\s]`, fall back to
+  `'the table would not deal'`.
+- `post_prospero_custom_tool_error` — `systemKind:'custom-tool-error'`, whisper to
+  `[callerParticipantId]` on a private run. Failures are authored by Prospero,
+  never Pascal.
+
+### Differential — `pascal_writers_equivalence` (new, GREEN)
+
+Tier-1, over `harness/oracle/cases/pascal-writers.ts` (tsx, drives the REAL pure
+builders `buildPascalResultContent` + `buildCustomToolErrorContent`/opaque). 8
+pascal-body rows (whitespace trim, inner newline, empty/whitespace message,
+markdown/unicode, `{{value}}` verbatim) + 10 error rows. The reason normalization
+is transcribed one-liner-into-oracle and emitted as `normalized`, so
+`normalize_custom_tool_error_reason` is diffed against it AND the full body is
+diffed against the real builder fed that normalized reason. The `post*` writers
+(DB) are not diffed here — units 4/7 exercise them.
+
+Regen: `cd ~/source/quilltap-server; npx tsx <V5W>/harness/oracle/cases/pascal-writers.ts
+> /tmp/oracle-pascal-writers.ndjson`; run with `QT_ORACLE_PASCAL_WRITERS`.
+
+Versions: core 0.0.249, harness 0.0.222.

@@ -285,6 +285,13 @@ pub struct PascalMetaIn {
     pub state: String,
     #[serde(serialize_with = "ser_js_number")]
     pub outcome_index: f64,
+    /// The metadata keys the winning outcome consulted, and what the invoking
+    /// character's `metadata.json` held for them at the moment of the roll (v4's
+    /// `metadataTested`, added at `d68638b4`). `.optional()` — omitted when the
+    /// winning row tested no metadata. Values are number/string/boolean; a
+    /// number is stored JS-bare when the caller supplied it as an integer Value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata_tested: Option<serde_json::Map<String, serde_json::Value>>,
     pub invoked_by: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub caller_participant_id: Option<String>,
