@@ -198,6 +198,7 @@ pub mod model;
 pub mod model_classes;
 pub mod model_context;
 pub mod participant_filters;
+pub mod pascal;
 pub mod photos;
 pub mod post_office;
 pub mod pricing;

@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+P4.d5 unit 1: the shared dice module (`quilltap-core::pascal::dice`), the
+port of v4's new `lib/pascal/dice.ts`. One parser, one roller, one source
+of randomness for the rng tool, the prose scanner, and (next round)
+Pascal's custom tools. Adds `NdS±M` notation: two deliberately different
+regexes (the prose scanner forbids whitespace around the sign, so
+"2d6 - 1 apple" stays a plain 2d6; the strict parser allows it), bounds
+that skip rather than clamp, and roll/format helpers that carry the
+modifier v4's old prose regex dropped on the floor. The roller primitives
+(`secure_random_int` / `roll_dice` / `flip_coin`) and the injected byte
+seam MOVED here unchanged, mirroring v4's own move — `tools::rng`
+re-exports the seam, so both spellings resolve. Verified by a new 75-row
+tier-1 differential against v4's real `dice.ts`, including byte-stream
+parity per roll.
 P4.d6 close-out: recorded why v4's second help-docs bug — the unregistered
 embedding column that silently dropped every help doc from listings — is not
 a v5 bug and cannot become one. v5 has no blob-column registry to forget to

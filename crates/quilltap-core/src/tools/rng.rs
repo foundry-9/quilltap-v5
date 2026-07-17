@@ -4,17 +4,14 @@
 //!
 //! ## The randomness seam
 //!
-//! v4 draws from `crypto.randomBytes` (a CSPRNG) via `secureRandomInt`'s
-//! rejection-sampling loop (rejects the top slice of the byte range to avoid
-//! modulo bias). Because rejection sampling consumes a *variable* number of
-//! bytes, the exact algorithm — how many bytes per draw, how the little-endian
-//! integer is assembled, and the rejection condition — is what makes two
-//! implementations consume an identical byte stream identically. So the byte
-//! source is injected as a [`RandomBytes`] trait: production draws from the OS
-//! CSPRNG ([`OsRandomBytes`]); the differential feeds both v4 (a `randomBytes`
-//! mock) and the Rust port ([`FixedBytes`]) the same committed byte sequence, and
-//! byte-exact algorithm fidelity is itself part of what the differential proves.
-//! This is the `random01`-injection precedent extended to a byte stream.
+//! The roller primitives and their injected byte source live in
+//! [`crate::pascal::dice`] — v4 moved them out of `rng-handler.ts` into
+//! `lib/pascal/dice.ts` when Pascal's custom tools became a second roller, and
+//! this port mirrors that move rather than rewriting them (which is what keeps
+//! the byte-stream differential passing untouched). [`RandomBytes`],
+//! [`OsRandomBytes`], and [`FixedBytes`] are re-exported here so the
+//! `tools::rng` spelling keeps resolving; see `pascal::dice` for why the seam
+//! exists at all.
 //!
 //! ## `type` — a number-or-string union
 //!
@@ -27,6 +24,9 @@ use serde_json::{json, Value};
 
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read, DbError};
+use crate::pascal::dice::{flip_coin, roll_dice, secure_random_int};
+
+pub use crate::pascal::dice::{FixedBytes, OsRandomBytes, RandomBytes};
 
 /// v4 `RngType = number | 'flip_coin' | 'spin_the_bottle'`. A dice roll's type is
 /// the number of sides.
@@ -90,122 +90,6 @@ pub struct RngToolOutput {
 pub struct RngToolContext {
     pub user_id: String,
     pub chat_id: String,
-}
-
-// ---------------------------------------------------------------------------
-// The randomness seam.
-// ---------------------------------------------------------------------------
-
-/// A source of raw random bytes — the injected seam over v4's `crypto.randomBytes`.
-pub trait RandomBytes {
-    /// Return exactly `n` bytes (v4 `randomBytes(n)`).
-    fn random_bytes(&mut self, n: usize) -> Vec<u8>;
-}
-
-/// Production impl: the OS CSPRNG (the `getrandom` syscall — the same source
-/// `crypto.randomBytes` draws from).
-pub struct OsRandomBytes;
-impl RandomBytes for OsRandomBytes {
-    fn random_bytes(&mut self, n: usize) -> Vec<u8> {
-        let mut buf = vec![0u8; n];
-        getrandom::getrandom(&mut buf).expect("OS CSPRNG");
-        buf
-    }
-}
-
-/// A fixed, replayable byte stream — the differential's committed sequence
-/// (mirrors v4's `randomBytes` mock). Panics if the stream is exhausted, so a
-/// corpus byte-shortage surfaces loudly rather than silently diverging.
-pub struct FixedBytes {
-    bytes: Vec<u8>,
-    cursor: usize,
-}
-impl FixedBytes {
-    pub fn new(bytes: Vec<u8>) -> Self {
-        Self { bytes, cursor: 0 }
-    }
-    /// The number of bytes consumed so far (a differential can assert the whole
-    /// committed sequence was drawn — catching an unexpected extra consumer).
-    pub fn consumed(&self) -> usize {
-        self.cursor
-    }
-}
-impl RandomBytes for FixedBytes {
-    fn random_bytes(&mut self, n: usize) -> Vec<u8> {
-        let end = self.cursor + n;
-        assert!(
-            end <= self.bytes.len(),
-            "FixedBytes exhausted: needed {n} at cursor {} of {}",
-            self.cursor,
-            self.bytes.len()
-        );
-        let out = self.bytes[self.cursor..end].to_vec();
-        self.cursor = end;
-        out
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Secure integer (rejection sampling).
-// ---------------------------------------------------------------------------
-
-/// v4 `secureRandomInt(max)` — a uniform integer in `[1, max]` via rejection
-/// sampling (rejects `value >= limit` to avoid modulo bias). Byte-for-byte
-/// faithful: `bytesNeeded = ceil(log2(max+1)/8) || 1`, the integer assembled
-/// little-endian (`sum(byte[i] * 256^i)`), rejecting the top `maxValue % max`
-/// slice. Reproduced in `u128` so the `256^bytesNeeded` products are exact (v4
-/// computes them as f64, exact for the byte widths dice/coin/spin reach).
-fn secure_random_int(max: u64, rng: &mut dyn RandomBytes) -> u64 {
-    if max < 1 {
-        return 1;
-    }
-    let bytes_needed: usize = {
-        // Math.ceil(Math.log2(max + 1) / 8) || 1 — the boundary crossings are at
-        // exact powers of two (log2 is exact there), so f64 is safe.
-        let b = ((max as f64 + 1.0).log2() / 8.0).ceil();
-        if b >= 1.0 {
-            b as usize
-        } else {
-            1
-        }
-    };
-    let max_value: u128 = 256u128.pow(bytes_needed as u32);
-    let limit = max_value - (max_value % max as u128);
-    loop {
-        let bytes = rng.random_bytes(bytes_needed);
-        let mut value: u128 = 0;
-        for (i, byte) in bytes.iter().enumerate() {
-            value += (*byte as u128) * 256u128.pow(i as u32);
-        }
-        if value < limit {
-            return ((value % max as u128) + 1) as u64;
-        }
-    }
-}
-
-/// v4 `rollDice` — `count` rolls of a `sides`-sided die; returns the rolls and
-/// their sum.
-fn roll_dice(sides: u64, count: u32, rng: &mut dyn RandomBytes) -> (Vec<i64>, i64) {
-    let mut results = Vec::with_capacity(count as usize);
-    let mut sum: i64 = 0;
-    for _ in 0..count {
-        let roll = secure_random_int(sides, rng) as i64;
-        results.push(roll);
-        sum += roll;
-    }
-    (results, sum)
-}
-
-/// v4 `flipCoin` — `count` flips; `secureRandomInt(2) === 1 ? 'heads' : 'tails'`.
-fn flip_coin(count: u32, rng: &mut dyn RandomBytes) -> Vec<RngResultValue> {
-    let mut results = Vec::with_capacity(count as usize);
-    for _ in 0..count {
-        let flip = secure_random_int(2, rng);
-        results.push(RngResultValue::Text(
-            if flip == 1 { "heads" } else { "tails" }.to_string(),
-        ));
-    }
-    results
 }
 
 // ---------------------------------------------------------------------------
@@ -386,7 +270,12 @@ pub fn execute_rng_tool(
             })
         }
         RngType::FlipCoin => {
-            let results = flip_coin(rolls, rng);
+            // v4's `flipCoin` returns bare 'heads'/'tails' strings; the handler
+            // lifts them into `RngResult[]` here.
+            let results = flip_coin(rolls, rng)
+                .into_iter()
+                .map(RngResultValue::Text)
+                .collect();
             Ok(RngToolOutput {
                 success: true,
                 type_: json!("flip_coin"),
@@ -496,39 +385,8 @@ fn join_results(results: &[RngResultValue]) -> String {
 mod tests {
     use super::*;
 
-    #[test]
-    fn secure_random_int_d6_no_rejection() {
-        // d6: bytesNeeded=1, limit=252. Bytes below 252 never reject.
-        let mut rng = FixedBytes::new(vec![0x03, 0x04]);
-        assert_eq!(secure_random_int(6, &mut rng), 4); // 3 % 6 + 1
-        assert_eq!(secure_random_int(6, &mut rng), 5); // 4 % 6 + 1
-        assert_eq!(rng.consumed(), 2);
-    }
-
-    #[test]
-    fn secure_random_int_rejects_top_slice() {
-        // d6: limit=252. 0xFF (255) >= 252 → reject and redraw; 0x00 → 1.
-        let mut rng = FixedBytes::new(vec![0xFF, 0x00]);
-        assert_eq!(secure_random_int(6, &mut rng), 1);
-        assert_eq!(rng.consumed(), 2); // consumed the rejected byte + the accepted one
-    }
-
-    #[test]
-    fn secure_random_int_coin_never_rejects() {
-        // max=2: limit=256, so every byte is accepted; parity decides.
-        let mut rng = FixedBytes::new(vec![0x00, 0x01, 0xFF]);
-        assert_eq!(secure_random_int(2, &mut rng), 1); // 0 % 2 + 1
-        assert_eq!(secure_random_int(2, &mut rng), 2); // 1 % 2 + 1
-        assert_eq!(secure_random_int(2, &mut rng), 2); // 255 % 2 + 1
-    }
-
-    #[test]
-    fn secure_random_int_two_byte_width() {
-        // d1000: bytesNeeded=2 (ceil(log2(1001)/8)=2), little-endian assembly.
-        let mut rng = FixedBytes::new(vec![0x10, 0x00]); // value = 16
-        assert_eq!(secure_random_int(1000, &mut rng), 17); // 16 % 1000 + 1
-        assert_eq!(rng.consumed(), 2);
-    }
+    // The `secure_random_int` byte-stream tests moved to `pascal::dice` with the
+    // function itself (mirroring v4's own move into `lib/pascal/dice.ts`).
 
     #[test]
     fn format_single_and_multi_dice() {

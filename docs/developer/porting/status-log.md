@@ -16222,6 +16222,103 @@ lane never ran its required full-Playwright step).
 
 ---
 
+## P4.d5 unit 1 — the shared dice module (`pascal::dice`) — LANDED 2026-07-16
+
+Lane A of the P4.d5 ∥ P4.d6 ∥ P4.6ay round. **Drift-check at lane start:
+`git log a33ac8b8..HEAD` in `~/source/quilltap-server` returned EMPTY and the
+tree was clean — v4 HEAD is exactly the pinned baseline `a33ac8b8`.** Every
+oracle below was generated at that commit.
+
+Ports v4's NEW `lib/pascal/dice.ts` (234 lines) to
+`crates/quilltap-core/src/pascal/dice.rs`, to the binding §1 surface of the
+round's Shared contract. `pub mod pascal;` added to `lib.rs`; `pascal/mod.rs`
+carries only lane A's `pub mod dice;` (the declared shared file — lane C adds
+its own `pub mod` lines).
+
+**The port is additive around a correct core.** The roller primitives
+(`secure_random_int` / `roll_dice` / `flip_coin`) and the injected byte seam
+(`RandomBytes` / `OsRandomBytes` / `FixedBytes`) were MOVED, not rewritten —
+mirroring v4's own move of the crypto out of `rng-handler.ts`. The
+rejection-sampling algorithm is untouched, which is why the byte-stream
+differential keeps passing. `tools::rng` re-exports the seam, so
+`crate::tools::rng::RandomBytes` still resolves (binding on lane C) and
+`FixedBytes::consumed()` survives. The four `secure_random_int` unit tests
+moved to `dice.rs` with the function they test.
+
+**LANE DECISION (the order asked for one, recorded here):
+`flip_coin` returns `Vec<String>`, and the rng tool maps to
+`RngResultValue::Text` at its call site.** v5's `flip_coin` previously
+returned `Vec<RngResultValue>` — an rng-tool type. The alternatives were
+(a) keep `flip_coin` in `rng.rs`, or (b) return the bare strings v4 returns.
+Chose (b): it mirrors v4 exactly (v4's `flipCoin` returns
+`Array<'heads'|'tails'>` and the handler lifts them into `RngResult[]`), it
+keeps `pascal::dice` free of tool-layer types so lane C can roll through it
+without dragging the rng tool along, and it avoids the `pascal::dice` →
+`tools::rng` reference entirely. (Rust would have *permitted* the cycle —
+intra-crate module references may be circular — but the layering would have
+been wrong, and lane C is the consumer that would pay for it.)
+
+**Two regexes, deliberately different — the whole point of the split.**
+`DICE_NOTATION_SCAN` (prose) forbids whitespace around the sign;
+`DICE_NOTATION_STRICT` (anchored) allows it. Confirmed against v4's real code
+by the corpus's disambiguation pair: `"Rolling 2d6 - 1 apple remains"` →
+`modifier: 0, matchText: "2d6"`; `"2d6-1"` → `modifier: -1`.
+
+**Three JS→Rust fidelity findings the differential PROVED (not assumed):**
+
+1. **JS `\s` is wrong in BOTH directions vs Rust's `\s`** — so the strict
+   pattern is built from `jsstr::JS_WS_CLASS`, never `\s`. v4's real output:
+   `"\u{FEFF}3d6+2\u{FEFF}"` PARSES (U+FEFF is JS whitespace; Rust's `\s`
+   excludes it) and `"\u{0085}3d6"` returns **null** (U+0085 NEL is not JS
+   whitespace; Rust's `\s` includes it). A naive `\s` would have broken both.
+2. **The trailing `(?-u:\b)` sits after the optional modifier group**, and the
+   `regex` crate's leftmost-first semantics reproduce JS's backtracking:
+   `"3d6+2x"` → a bare `3d6` (the boundary fails after `2`, so the engine
+   drops the modifier group rather than the match). Pinned by corpus case
+   `trailing-letter-after-modifier`.
+3. **`from_captures` parses to f64, mirroring `parseInt` + `Number.isInteger`**
+   rather than to an integer type. A 20-digit count is `1e20` on both sides:
+   `Number.isInteger(1e20)` is TRUE, and it is the BOUND that rejects it, not
+   the parse. Pinned by `overflow-count` / `overflow-sides` /
+   `overflow-modifier`.
+
+**The differential (new).** `harness/oracle/cases/dice-notation.test.ts` +
+`crates/quilltap-harness/tests/dice_notation_equivalence.rs`. A **jest**
+oracle (not tsx) because `rollNotation` needs `crypto.randomBytes` pinned;
+`dice.ts` imports nothing else, so there is **no DB and no fixture** — the
+simplest oracle in the tree. Drives v4's real `parseDiceNotation` /
+`scanDiceNotation` / `formatDiceNotation` / `rollNotation` /
+`formatDiceBreakdown` / `flipCoin` + the five bounds constants.
+**75 rows: bounds 1, parse 35, scan 22, format 6, roll+coin 11 — green on the
+first run.** Each roll/coin case asserts byte-consumption parity on BOTH sides.
+
+**Regen recipe** (jest ignores `.claude/` paths, so this worktree lane MUST
+mirror the case file to /tmp — `[[w4-4b-file-attachment-gotchas]]` — and the
+mirror must come from the WORKTREE, `[[oracle-regen-from-worktree-path]]`):
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin ; W=<the worktree root>
+rm -rf /tmp/qt-oracle-dice && mkdir -p /tmp/qt-oracle-dice
+cp $W/harness/oracle/cases/dice-notation.test.ts /tmp/qt-oracle-dice/
+grep -c strict-feff-around-sign /tmp/qt-oracle-dice/dice-notation.test.ts  # proves the mirror is the worktree's
+cd ~/source/quilltap-server
+QT_ORACLE_OUT=/tmp/oracle-dice-notation.ndjson \
+  $N/npx jest --silent --watchman=false --roots "$PWD" \
+    --roots /tmp/qt-oracle-dice -- dice-notation
+# then:
+QT_ORACLE_DICE_NOTATION=/tmp/oracle-dice-notation.ndjson \
+  cargo test -p quilltap-harness --test dice_notation_equivalence -- --nocapture
+```
+
+No bare-package imports, so the mirror needs **no** `fixtures/` sibling and no
+`node_modules` symlink (contrast `[[jest-oracle-bare-package-imports]]`).
+
+**Naming note for the unifier:** the oracle case is `dice-notation.test.ts`,
+deliberately NOT `pascal-*`. Lane C's ownership claims the `pascal-*` oracle
+cases as a glob; lane A owns `pascal/dice.rs` and its differential. Naming it
+outside that glob sidesteps the collision rather than resolving one in-lane.
+
+Versions: core 0.0.233, harness 0.0.210.
 ## P4.d6 unit 1 — the help-doc slug promotion (`help_doc_slug`)
 
 **Lane B of the P4.d5 ∥ P4.d6 ∥ P4.6ay drift round.** v4 baseline
