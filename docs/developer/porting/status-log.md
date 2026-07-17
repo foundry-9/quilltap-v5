@@ -9,6 +9,114 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Round record — P4.d5 ∥ P4.d6 ∥ P4.6ay (PARTIALLY UNIFIED 2026-07-17)
+
+**On main** (`unify/a33ac8b8-drift-partial`, fast-forwarded): P4.d6 **CLOSED**
+(5 units), P4.6ay **unit 10 only** (1 of 10), P4.d5 **unit 1 only** (1 of 5),
+plus one unification wire. **P4.d5 and P4.6ay remain OPEN** — see their status
+headers, which carry the resume instructions.
+
+**The round's most valuable output is a finding, not code.** P4.d5 escalated
+instead of implementing, and it was right to: **the order's survey was FALSE.**
+It asserted, as survey-verified fact, that v4 HEAD rolls a d6 for
+`{"type":"6"}`. Driving v4's REAL `executeRngTool` at `a33ac8b8` disproves it:
+
+```
+{"type":"6"}               -> success:false, "Unknown RNG type"
+{"type":6,"rolls":"3"}     -> rolls 3, but rollCount:"3" (a STRING)
+{"type":6,"modifier":"2"}  -> total:"42"  (4 + "2" concatenated)
+```
+
+**Cause — systematic, not an rng outlier.** EVERY v4 tool validator is a
+boolean type guard (`input is X`) that **discards `safeParse`'s parsed data**;
+the handler then destructures the ORIGINAL input. So `llmNumber` only ever
+flips REJECT→ACCEPT; what the handler reads is still the raw string, and JS
+coercion decides each site's fate — right by accident (`Math.min("50",500)`),
+a string in the output (`rollCount`), or garbage (`total:"42"`). **The lane's
+own byte-consumption assertion caught it first** (consumed 0 bytes where the
+fixture committed 1) — that assertion earned its keep.
+
+**RULING (human, 2026-07-17): fix v4 first, then re-port.** The human owns
+`quilltap-server`; the bug is one day old (`61ec90bd`); the schema already
+parses correctly and only the handler never sees it. Rejected: *broken-but-exact*
+(the house precedent — but it ports `total:"42"` at real cost and drifts again
+the moment v4 fixes it) and *deviate + document* (weakens the differential as
+proof for the whole tool family). **Consequence:** P4.d5 unit 2 (landed on its
+branch) stops being a deviation and becomes correct once v4 is fixed; unit 3's
+contested arms take their expected values from the FIXED v4.
+
+**Held back deliberately (all on `claude/p4-d5-dice-rng-lenient-5b62d6`, which
+is PRESERVED, not deleted):** unit 2 (`llm_number` + ~25 call sites), unit 3
+(the rng modifier, WIP commit `93b779fe` marked `DO NOT UNIFY AS-IS`), units
+4–5 (prose detector, spine call sites). **`data.rs` therefore has neither the
+rng `modifier` nor `run_custom`** — the Shared contract's §2 unification note
+fired exactly as designed: lane C slipped, so §2(b) is withheld rather than
+publish a tool to the model that answers `Unknown tool: run_custom`.
+
+**The unification wire — the one obligation no lane could discharge.**
+Lane B predicted `help_tools_equivalence` would go red against a fresh
+`a33ac8b8` oracle on exactly one key, `chat_settings.customTools`, and named it
+as lane C's. Lane C's unit 10 landed that column through the schema, the repo,
+and the settings route — but **`help_settings` (`tools/help.rs`) is a second,
+independent reader of the same bag** and v4 added the key there too
+(`help-settings-handler.ts:112`). Unit 10's breakage list said NINE items; the
+true count was TEN. **Lesson for the resume: enumerate every READER of a bag
+before calling a column adopted — the schema/repo/route spine is not the whole
+surface. Assume the same class of miss exists for `pascalMeta`.**
+
+**⚠ The sharper edge on D23's accepted consequence #2** (found by P4.6ay, not
+predicted by the order): v5 opening a pre-4.8.0 v4 instance does **not** merely
+lack the columns — it **cannot read or write messages at all** (`no such
+column: pascalMeta` from both `insert_message` and the read SELECT).
+`tolerant_select_list` has only ONE caller (`chat_settings`), so only that half
+degrades gracefully. **The dogfood Friday copy MUST be migrated to 4.8.0's two
+ALTERs before v5 opens it.** Extending tolerance to the message paths needs its
+own ruling + differential; out of scope.
+
+**Also from P4.6ay unit 10, unanticipated:** 33 committed
+`crates/quilltap-web/tests/fixtures/*.db` predated both columns and broke 4
+tests. Resolved with v4's OWN migration SQL via a new idempotent script,
+`harness/oracle/fixtures/migrate-fixtures-pascal-columns.ts` — **not** by
+re-running the 14 builders, which would re-bake the substrate through 8 commits
+of unrelated v4 drift, cannot reach the 3 builder-less fixtures, and would
+yield the generateDDL shape where real instances carry the migration shape.
+
+**P4.d6's banked finding (prose, not code):** v4 `6c59b1ca`'s blob-registration
+bug is **structurally impossible in v5** — re-verified at lane start and end,
+`grep register_blob|blob_columns|BLOB_COLUMNS` over `crates/` returns zero
+hits. No registry, no cached flag, no stringify path a Float32 vector can fall
+into. `repair-text-embeddings` is **REFUSED AS INAPPLICABLE**, not deferred;
+`parse_legacy_embedding_text` stays as the correct residue. The note lives in
+`db/help_docs.rs`'s header, where a porter reading v4's fix will meet it.
+
+**§1 honored:** `pascal::dice` moved the primitives rather than rewriting them
+(mirroring v4's own move), and `tools::rng` re-exports the seam so
+`crate::tools::rng::RandomBytes` still resolves. Unit 1's 75-row tier-1
+differential covers both regexes' deliberate whitespace disagreement, JS-vs-Rust
+`\s` in both directions, and skip-never-clamp bounds past 2^53.
+
+**Gate (all fresh on the unify branch):** `cargo fmt --all --check` clean;
+clippy `-D warnings` clean on BOTH feature sets; release build clean. Every
+affected oracle regenerated FRESH from the v4 checkout at `a33ac8b8` (Node 24;
+the dice case via the /tmp jest mirror) — help-sync, help-docs, help-docs-upsert,
+help-tools, chat-settings, chats-messages-ops, provision, builtin-templates,
+dice-notation. `cargo test --workspace --no-fail-fast` **329 suites / 1376
+tests / 0 failed**; the nine affected differentials re-run BY NAME `--nocapture`
+with **zero silent SKIPs**. `ng test` 128 files / 1247; `ng build` clean; full
+**Playwright 65/65 zero skips** (which is what proves the schema adoption + the
+33 migrated fixtures did not break the app).
+
+**Versions:** core **0.0.238** (base 0.0.232 + 5 lane bumps + the wire), harness
+**0.0.213** (base 0.0.209 + 4). The planned-for silent-collision hazard fired as
+predicted — HEAD carried +4/+3 and the incoming pick +1/+1 off the SAME base, so
+the unifier **recounted base + total bumps** rather than trusting the merge.
+
+**Next:** fix v4's tool validators to return the parsed data, then re-drift-check
+(v4 HEAD will move past `a33ac8b8`) and resume P4.d5 at unit 2 and P4.6ay at
+unit 1.
+
+---
+
 **Phase 0 (scaffolding + differential harness): done.** Toolchain pinned;
 monorepo skeleton; `.dbkey` decryption ported & verified; cipher resolved
 (SQLite3MC/ChaCha20) and confirmed on real Friday data (37 tables, 33 chars,

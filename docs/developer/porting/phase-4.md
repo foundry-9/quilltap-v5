@@ -49,7 +49,7 @@ Phase 4 is everything between that library and a human.
 
 The four `api-boundary.md` invariants are re-affirmed and not restated (one
 boundary; streaming only on `Event`; the `Db` ownership model; enclave
-`step()` + injected driver). New locks, D1–D23:
+`step()` + injected driver). New locks, D1–D24:
 
 ### Deployment & transport shape
 
@@ -306,6 +306,40 @@ boundary; streaming only on `Event`; the `Db` ownership model; enclave
   going forward is "v5 never changes the schema *unilaterally* — it
   follows v4's, and only ever via a re-dump."** First applied by
   `p4.6ay-pascal-custom-tools-server.md`.
+
+  **⚠ Amended 2026-07-17 by the unification that landed it — consequence
+  #2 is SHARPER than written above.** v5 opening a pre-4.8.0 v4 instance
+  does **not** merely lack the columns: it **cannot read or write
+  messages at all** (`no such column: pascalMeta`, from both
+  `insert_message` and the read SELECT). `tolerant_select_list` has a
+  single caller (`chat_settings`), so only that half degrades gracefully.
+  **A dogfood copy must be migrated to v4 4.8.0's two ALTERs before v5
+  opens it.** Extending tolerance to the message paths would need its own
+  ruling and differential. Second lesson from the same landing: **a column
+  adoption is not done when the schema/repo/route spine has it** —
+  enumerate every *reader* of the bag. Unit 10's list said nine sites; the
+  tenth (`help_settings`'s independent projection) was caught only by a
+  sibling lane's differential at unification.
+
+### The v4-validator ruling (2026-07-17)
+
+- **D24 — v4's tool validators discard the parse; the fix goes into v4
+  first, and v5 ports the fixed behavior.** Every v4 tool validator is a
+  boolean type guard (`input is X`) that throws away `safeParse`'s parsed
+  data; the handler then destructures the ORIGINAL input. So v4's new
+  `llmNumber` (`61ec90bd`) only ever flips REJECT→ACCEPT — the handler
+  still reads the raw string, and JS coercion decides each site: right by
+  accident (`Math.min("50",500)`), a string in the output
+  (`rollCount:"3"`), or garbage (`{"type":6,"modifier":"2"}` →
+  `total:"42"`). **Human ruling: fix `quilltap-server` (return the parsed
+  data — the fix `llmNumber` was written to enable), then re-drift-check
+  and port the fixed behavior.** Rejected: *broken-but-exact* (the house
+  precedent, but it ports `total:"42"` at real cost and re-drifts the
+  moment v4 is fixed) and *deviate + document* (weakens the differential
+  as proof for the whole tool family). **This blocks P4.d5 units 2–5 and
+  is why they are not on main.** Discovered by the P4.d5 lane driving v4's
+  real code against its own order's false premise — the byte-consumption
+  assertion caught it.
 
 ## The boundary contract in detail
 

@@ -2,6 +2,44 @@
 
 ## Recent Changes
 
+The P4.d5 ∥ P4.d6 ∥ P4.6ay round PARTIALLY UNIFIED on main (2026-07-17).
+P4.d6 CLOSED; P4.d5 and P4.6ay stay OPEN, both for good reasons recorded in
+their status headers.
+
+Landed: the whole help-docs sync drift (the slug, the read-once sync, the
+guarded prune, the divergence trigger and embedding enqueue); v4 4.8.0's two
+new columns (chat_messages.pascalMeta, chat_settings.customTools) adopted per
+D23 by re-dumping fresh_schema.json from v4's live generateDDL; and the shared
+dice module (pascal::dice), whose primitives were moved rather than rewritten
+so the byte-stream differential survived intact.
+
+The unification wire: v5's help_settings tool is a second, independent reader
+of the chat settings bag and was missing customTools, which v4 added to
+help-settings-handler.ts in 61ec90bd. Lane B predicted the red differential on
+exactly that key and named it as lane C's; lane C's column landed everywhere
+except there. Only both lanes on one branch could show it.
+
+Held back deliberately. The custom-tools quoted-number work stopped on a
+finding: v4's tool validators are boolean type guards that discard the parsed
+data, so the handler reads the raw string and llmNumber never takes effect —
+{"type":"6"} still fails, and {"modifier":"2"} makes a d6 roll report a total
+of "42". The ruling is to fix v4 first and then port the fixed behavior, so
+the rng modifier, the prose detector, and the lenient-number seam stay on
+their branch. The run_custom tool definition is withheld with them: publishing
+it without its handler would offer the model a tool that answers "Unknown
+tool".
+
+Also recorded: v5 opening a v4 instance older than 4.8.0 cannot read or write
+messages at all, rather than merely lacking the new columns. Migrate a dogfood
+copy to 4.8.0 before pointing v5 at it.
+
+Gate: fmt clean; clippy -D warnings clean on both feature sets; release build
+clean; cargo test --workspace 329 suites / 1376 tests / 0 failed, with every
+affected oracle regenerated fresh from v4 at a33ac8b8 and each new differential
+re-run by name with zero skips; ng test 128 files / 1247; ng build clean; full
+Playwright 65/65, zero skips. Final versions: core 0.0.238, harness 0.0.213,
+host 0.0.19, web 0.0.25, quilltap-tauri 0.0.3, SPA 0.5.134.
+
 P4.d5 unit 1: the shared dice module (`quilltap-core::pascal::dice`), the
 port of v4's new `lib/pascal/dice.ts`. One parser, one roller, one source
 of randomness for the rng tool, the prose scanner, and (next round)

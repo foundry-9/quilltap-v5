@@ -103,8 +103,15 @@ accept a port without one.
 - **Small units.** One module/function per change, each independently
   oracle-checked. Carry forward v4's *why*-comments (the subtle invariants are
   what a port silently drops).
-- **The schema does not change during the port.** Same tables, same UUIDs, same
-  cipher. The Rust core opens the exact DB file v4 writes.
+- **v5 never changes the schema *unilaterally*.** Same tables, same UUIDs, same
+  cipher; the Rust core opens the exact DB file v4 writes. **v5 does FOLLOW v4's
+  schema when v4 moves it** — by re-dumping `fresh_schema.json` from v4's live
+  `generateDDL`, never by hand, and never inventing a change of our own (**D23**
+  in `phase-4.md`; first applied for v4 4.8.0's `pascalMeta`/`customTools`). A
+  red `provisioning_equivalence` after a drift check is that tripwire firing as
+  designed — **it is v4 drift, not a v5 bug; do not "fix" v5 back to the old
+  schema.** The migration runner stays deferred, so v5 cannot open a v4 instance
+  older than the columns it now expects.
 
 ### Never accept unverified Rust
 
@@ -613,22 +620,29 @@ records THERE. Update this summary only when a phase or round completes.
   P4.d3 quantized embedding codec note stands: ⚠ v4's
   `quantize-embeddings-v1` migration is one-way — back up Friday
   before first running v4 `4.8.0-dev.52`+ against it. Drift-check
-  before every round. ⚠ **The predicted Pascal drift LANDED AS CODE
-  (2026-07-16) — v4 HEAD is now `a33ac8b8`, 8 commits past the
-  baseline, and the P4.d5 ∥ P4.d6 ∥ P4.6ay round is planned against
-  it** (the three work orders; the baseline line above moves to
-  `a33ac8b8` when that round unifies, per the P4.d3 precedent).
-  **Already-ported v5 code is WRONG until it lands** — the dice
-  modifier (`3d6+2` rolls as `3d6`), every dice roll's output JSON
-  (v4 now emits `modifier`/`total`), quoted numeric tool args across
-  18 tools, and the help-doc-sync algorithm. v4 also moved the schema
-  (two 4.8.0 ALTERs) — see **D23** in `phase-4.md`. Two things that
-  look like drift but are NOT: v4's whisper-render rule is
+  before every round. ⚠ **v4 HEAD is `a33ac8b8`, 8 commits past the
+  baseline, and that drift is only PARTIALLY absorbed (2026-07-17) —
+  so the baseline line above STAYS at `02865bdb` until it is
+  finished.** Absorbed: the help-doc-sync drift (P4.d6, CLOSED), v4
+  4.8.0's two schema columns (P4.6ay unit 10 — see **D23**), and the
+  shared `pascal::dice` module. **STILL WRONG on main until the rest
+  lands:** the dice modifier (`3d6+2` rolls as `3d6`), every dice
+  roll's output JSON (v4 emits `modifier`/`total`), and quoted numeric
+  tool args across 18 tools. **BLOCKED on a v4 fix — see D24:** v4's
+  tool validators discard `safeParse`'s parse, so its own `llmNumber`
+  never takes effect (`{"type":"6"}` still fails; `{"modifier":"2"}`
+  yields `total:"42"`). The ruling is **fix v4 first, then re-port** —
+  so expect v4 HEAD to move past `a33ac8b8`, and re-plan P4.d5/P4.6ay
+  against the new HEAD. Pascal itself is 1/10 units ported (schema
+  only); the SPA is unstarted. ⚠ **v5 CANNOT read or write messages on
+  a pre-4.8.0 v4 instance** (`no such column: pascalMeta`) — migrate a
+  dogfood copy to 4.8.0's two ALTERs before pointing v5 at it. Two
+  things that look like drift but are NOT: v4's whisper-render rule is
   client-only (v5 never ported the toggle, so its context shaping is
   unaffected), and v4's embedding blob-registration bug is
   structurally impossible in v5 (no registry exists — the port
   avoided it, and needs no `repair-text-embeddings`).
-  Versions: core 0.0.232, harness 0.0.209, host 0.0.19, web 0.0.25,
+  Versions: core 0.0.238, harness 0.0.213, host 0.0.19, web 0.0.25,
   quilltap-tauri 0.0.3, SPA 0.5.134.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.
