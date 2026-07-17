@@ -44,7 +44,7 @@ test.describe('Salon custom tools + whispers (P4.6ba)', () => {
     await maybeUnlock(page);
     await openChat(page, 'Group Expedition');
 
-    const toggle = page.getByRole('button', { name: 'Toggle all whispers' });
+    const toggle = page.getByRole('switch', { name: 'Toggle all whispers' });
     await expect(toggle).toBeVisible();
     await expect(toggle).toHaveAttribute('aria-checked', 'false');
     await toggle.click();
@@ -95,7 +95,7 @@ test.describe('Salon custom tools + whispers (P4.6ba)', () => {
     await expect(bar.first()).toBeVisible({ timeout: 15_000 });
     await expect(bar.first()).toContainText(toolTitle);
 
-    const whispers = page.getByRole('button', { name: 'Toggle all whispers' });
+    const whispers = page.getByRole('switch', { name: 'Toggle all whispers' });
     await expect(whispers).toHaveAttribute('aria-checked', 'false');
     await expect(bar.first()).toBeVisible(); // still shown with the toggle off
   });

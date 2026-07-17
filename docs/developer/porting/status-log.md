@@ -19055,9 +19055,20 @@ structurally (the response `type` string is AY's, so the client reads bodies via
 ### P4.6ba round-close gate (SPA 0.5.140)
 
 `ng test` 133 files / 1286 passed (unit 6 adds only the Playwright spec); `ng
-build` clean; the full Playwright suite green (the new custom-tools beat present,
-the flow half annotated ACTIVATE-AT-UNIFY). The §4 wire mirror is diffed
-name-for-name against lane AY's Rust unions at unification. **Open under the
-order:** nothing — all six Tier-1 deliverables + Tier-2 (verification) landed;
-the ACTIVATE-AT-UNIFY beat's live half activates when lane AY's server + Tools
-fixture reach main.
+build` clean; the full Playwright suite **67/67 passed** (the two new
+custom-tools beats present — the toggle beat live, the flow beat annotated
+ACTIVATE-AT-UNIFY and returning cleanly until lane AY's server + Tools fixture
+land). The §4 wire mirror is diffed name-for-name against lane AY's Rust unions
+at unification. **Open under the order:** nothing — all six Tier-1 deliverables +
+Tier-2 (verification) landed; the ACTIVATE-AT-UNIFY beat's live half activates
+when lane AY's server + Tools fixture reach main.
+
+**Gotcha banked (e2e):** the header All-Whispers control declares
+`role="switch"`, so the beat must select it with `getByRole('switch', …)` —
+`getByRole('button', …)` cannot match a role-overridden button. Also: the
+debug-build `quilltap db` CLI does a full PBKDF2 + ChaCha20 open per invocation
+(~3–4s at 99% CPU), so `global-setup`'s ~35 CLI reads/writes (incl. the courier
+seed) make setup take ~4–5 min under load — give a single-spec run ≥300s, and
+NEVER kill quilltap processes mid-run (a timed-out run leaves a **detached**
+`quilltap-web` holding the DB locks, which cascades every later run into a
+setup hang; kill `target/debug/quilltap*` + free port 4319 before re-running).
