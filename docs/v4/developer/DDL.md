@@ -141,6 +141,35 @@ The **Brahma Console** can also query these databases from inside a running inst
 
 ## Main Database Schema (`quilltap.db`)
 
+### Embedding BLOB format (all `embedding` columns)
+
+Every `embedding BLOB` column in every database (`memories`, `vector_entries`,
+`conversation_chunks`, `help_docs` in the main DB; `doc_mount_chunks` in the
+mount index) holds a **self-describing quantized vector** since
+`quantize-embeddings-v1` (v4.8.0). The single-source-of-truth codec is
+`lib/embedding/float32-conversion.ts`; consumers always see a hydrated
+`Float32Array` — the on-disk layout is:
+
+```
+Byte layout (little-endian):
+  [0]      magic   = 0xEB
+  [1]      version = 0x01
+  [2]      dtype   : 0x01 = int8-symmetric, 0x02 = float16
+  [3..6]   dim     : uint32
+  dtype==int8: [7..10] scale : float32   (dequant: f = int8 * scale)
+               [11..11+dim)   int8 body            → total = 11 + dim bytes
+  dtype==f16 : [7..7+2*dim)   float16 body (no scale) → total = 7 + 2*dim bytes
+```
+
+New writes use int8-symmetric (`scale = max|v|/127`, ~4× smaller than
+Float32; embeddings are unit-normalized so mean cosine similarity to the
+original is ≥ 0.999). Blobs **without** the magic+version prefix (or whose
+declared dim is inconsistent with their byte length) are legacy raw Float32
+bytes (`dim = byteLength / 4`) and remain readable forever — the read path
+dispatches on the header. Raw SQL that infers dimensions from
+`length(embedding)` must branch on the prefix (see `EMBEDDING_DIM_SQL` in
+`lib/embedding/reapply-profile.ts`).
+
 ### users
 
 ```sql
@@ -266,6 +295,7 @@ keyed by `(mountPointId, relativePath)` where `mountPointId` matches
 | personality | `personality.md` |
 | exampleDialogues | `example-dialogues.md` |
 | pronouns, aliases, title, firstMessage, talkativeness | `properties.json` |
+| metadata | `metadata.json` — optional; a flat object of user-authored keys with any JSON value. Absent file or unparseable content hydrates as `{}` (**not** a keystone — only `properties.json` may declare a vault broken), so old vaults need no backfill and no migration exists. A patch REPLACES the whole object rather than merging keys. |
 | physicalDescription.fullDescription | `physical-description.md` |
 | physicalDescription.{headAndShoulders,short,medium,long,complete}Prompt | `physical-prompts.json` |
 | systemPrompts[] | `Prompts/<sanitized-name>.md` (one file per record) |
@@ -636,7 +666,7 @@ CREATE INDEX "idx_conversation_chunks_chatId" ON "conversation_chunks"("chatId")
 | content | TEXT | Rendered Markdown for this interchange |
 | participantNames | TEXT (JSON array) | Names of participants in this interchange |
 | messageIds | TEXT (JSON array) | Message UUIDs included in this interchange |
-| embedding | BLOB (nullable) | Float32 vector embedding (same format as memories.embedding) |
+| embedding | BLOB (nullable) | Quantized vector embedding (see "Embedding BLOB format" above; same codec as memories.embedding). NULL when cold-tiered by the stale-chat maintenance sweep — content stays for keyword search and the chat re-embeds on next open |
 | createdAt | TEXT (ISO 8601) | Creation timestamp |
 | updatedAt | TEXT (ISO 8601) | Last update timestamp |
 
@@ -688,7 +718,8 @@ CREATE TABLE "chat_messages" (
   "confirmationChecked" INTEGER DEFAULT NULL, -- Answer confirmation: 1 when a check actually ran; distinguishes a persisted "unverified" (confirmed NULL but checked) from "never checked".
   "confirmationRevised" INTEGER DEFAULT NULL, -- Answer confirmation: shown content is a re-affirmation rewrite of the original.
   "confirmationNotes" TEXT DEFAULT NULL,      -- Answer confirmation: cheap-LLM discrepancy explanation (badge hover text).
-  "confirmationOriginalContent" TEXT DEFAULT NULL -- Answer confirmation: pre-revision text retained for the logs when confirmationRevised.
+  "confirmationOriginalContent" TEXT DEFAULT NULL, -- Answer confirmation: pre-revision text retained for the logs when confirmationRevised.
+  "pascalMeta" TEXT DEFAULT NULL              -- Pascal the Croupier (custom pseudo-tools): JSON { tool, toolTitle?, definitionTier, definitionMountId, params, rollForm, notation?, raw, diceRolls?, value, state, outcomeIndex, invokedBy, callerParticipantId? } on systemSender='pascal' messages. `toolTitle` is the display title at roll time; absent on rows written before it existed, where readers fall back to `tool`. The server-side roll record — authoritative, so a model cannot fudge a failure into a success. NULL on every non-Pascal message. Added by add-pascal-message-meta-v1.
 );
 
 CREATE INDEX "idx_chat_messages_chatId" ON "chat_messages" ("chatId");
@@ -734,6 +765,7 @@ CREATE TABLE "chat_settings" (
   "thinkingDisplay" TEXT DEFAULT '{"defaultVisible":true,"defaultCollapsed":true}', -- added in 4.6 (add-thinking-display-fields-v1): global defaults for showing reasoning models' thinking { defaultVisible, defaultCollapsed }. Per-chat override lives on chats.showThinking. DISPLAY ONLY.
   "autoScrollOnResponseComplete" INTEGER DEFAULT 0, -- added in 4.6 (add-auto-scroll-on-response-complete-field-v1): when 1, the Salon scrolls to the newest message as a reply finishes / a new message arrives (only when already near the bottom). Default 0 so long replies don't yank the reader away. DISPLAY ONLY.
   "answerConfirmationSettings" TEXT DEFAULT '{"enabled":false}', -- added in 4.8 (add-answer-confirmation-columns-v2): global default for the Salon answer-confirmation check { enabled }. Per-project override in project properties.json; per-chat override on chats.answerConfirmationOverride.
+  "customTools" INTEGER DEFAULT 1, -- added in 4.8 (add-custom-tools-field-v1): when 0, Pascal's run_custom pseudo-tool is never offered to models and the composer gutter button is hidden. Custom tool definitions themselves are retained.
   UNIQUE("userId")
 );
 
@@ -964,7 +996,7 @@ CREATE INDEX "idx_help_docs_url" ON "help_docs" ("url");
 | url | TEXT | URL route this doc is associated with (e.g., `/aurora`, `/settings?tab=chat`) |
 | content | TEXT | Full document content with frontmatter stripped |
 | contentHash | TEXT | SHA-256 hash of raw file content, used for change detection during sync |
-| embedding | BLOB (nullable) | Float32 embedding vector, generated at runtime using user's embedding profile |
+| embedding | BLOB (nullable) | Quantized embedding vector (see "Embedding BLOB format"), generated at runtime using user's embedding profile |
 | createdAt | TEXT (ISO 8601) | Creation timestamp |
 | updatedAt | TEXT (ISO 8601) | Last update timestamp |
 
@@ -1294,6 +1326,8 @@ Known keys (others may be present from migrations / startup hooks):
 - `memoryExtractionConcurrency` (4.4+) — integer 1–32. **DEPRECATED in 4.7**: the dispatcher unified to the global `maxConcurrentJobs` cap above; this key is no longer read at runtime (the `/api/v1/memories?action=extraction-concurrency` route still persists it for the `memory-diff` CLI). Was a per-instance MEMORY_EXTRACTION concurrency cap.
 - `memoryExtractionLimits` (4.4+) — JSON: `{enabled, maxPerHour, softStartFraction, softFloor}`. Per-instance memory extraction rate limits. Read by `lib/background-jobs/handlers/memory-extraction.ts` and the dry-run extraction route; updated by `POST /api/v1/memories?action=extraction-limits-config`. Migrated from `chat_settings.memoryExtractionLimits` for SINGLE_USER_ID by `migrate-extraction-knobs-to-instance-settings-v1`.
 - `memoryRecall` (4.7+) — JSON: `{scopePolicy: 'down-weight' | 'exclude', expandRelated: boolean}`. Per-instance Commonplace Book recall relevance settings. `scopePolicy` controls what happens to a `scope: narrow` memory whose `projectId` differs from the current chat's project (cross-project leakage): `down-weight` (default) applies a strong recall penalty, `exclude` filters it out entirely. `expandRelated` (default `false`, added in Phase 2) is the opt-in related-memory one-hop expansion toggle: when on, recall pulls each top hit's strongly-linked related memories in as extra candidates (capped at 3 per hit, 10 total), scores them against the same query embedding, and re-ranks the union. Read on the per-turn recall path (`lib/chat/context-manager.ts`, `lib/services/chat-message/pre-compute.service.ts`) via `getMemoryRecallSettings`; updated by `POST /api/v1/memories?action=recall-config`. No column on `chat_settings` (it is column-per-field; this knob lives instance-wide instead, like `memoryExtractionLimits`). Schema: `MemoryRecallSettingsSchema` in `lib/schemas/settings.types.ts`.
+- `dataRetention` (4.8+) — JSON: `{staleChatDays: number}` (1–3650, default 30). Per-instance stale-chat retention window: how many days a chat must sit with no *played* message (participant character or human user; feature whispers don't count) before the daily maintenance sweep collapses its regenerable data — superseded generated images, `chats.compressionCache`/`renderedMarkdown`, the discardable `chat_messages` columns (`rawResponse`, `reasoningContent`, `reasoningSegments`, `renderedHtml`, `debugMemoryLogs`), and cold-tiered `conversation_chunks.embedding`. Resolved by `resolveStaleChatDays()` (`lib/background-jobs/maintenance/retention-constants.ts`); accessors in `lib/instance-settings`; updated by `PUT /api/v1/settings/data-retention` (Settings → Chat → Data Retention). Schema: `DataRetentionSettingsSchema` in `lib/schemas/settings.types.ts`.
+- `lastMaintenanceSweepAt` (4.7+) — ISO 8601 timestamp of the last completed scheduled-maintenance pass. Written/read by `lib/background-jobs/scheduled-maintenance.ts` to skip the startup tick when a sweep ran within the last 20 h (dev-restart friendliness). Internal; not exported.
 - `lanternBackgroundsMountPointId` (4.3+) — UUID of the global "Lantern Backgrounds" database-backed mount point in `quilltap-mount-index.db`. Read by `lib/file-storage/lantern-store-bridge.ts`; written by `provision-lantern-backgrounds-mount-v1`. Used to land story-background job output and generic `generate_image` tool output when no project context is available.
 - `userUploadsMountPointId` (4.4+) — UUID of the global "Quilltap Uploads" database-backed mount point in `quilltap-mount-index.db`. Read by `lib/file-storage/user-uploads-bridge.ts`; written by `provision-user-uploads-mount-v1`. Used for every project-less file write: chat attachments, paste/drag-drop images, the Files-tab uploader, capabilities-report exports, and backup-restore replay of project-less files. Replaces the legacy `<filesDir>/_general/` namespace as the catch-all destination.
 - `generalMountPointId` (4.4+) — UUID of the global "Quilltap General" database-backed mount point in `quilltap-mount-index.db`. Read by `lib/mount-index/general-scenarios.ts`; written by `provision-general-mount-v1`. Houses the instance-wide `Scenarios/` folder offered alongside project- and character-specific scenarios in every non-help New Chat dialog. Managed via `/api/v1/scenarios` and the `/scenarios` page.
@@ -1421,6 +1455,8 @@ CREATE TABLE IF NOT EXISTS "doc_mount_points" (
 
 `conversionStatus` is one of `'idle'`, `'converting'`, `'deconverting'`, or `'error'`, and tracks the Convert / Deconvert action that moves a store between filesystem- and database-backed storage (see `POST /api/v1/mount-points/:id?action=convert` / `?action=deconvert`). Distinct from the file-level `doc_mount_files.conversionStatus`, which tracks pdf/docx→text extraction. `conversionError` holds the failure message when `conversionStatus = 'error'`. Both columns are added by in-repo `ALTER TABLE` on first access for legacy databases that predate this feature.
 
+**`name` uniqueness (case-insensitive, app-level):** store names form one case-insensitive namespace — no two stores may share a name, even in different casing. There is deliberately no DB unique index (backup restore must be able to recreate legacy rows verbatim); enforcement lives at the write chokepoints (the mount-points create/rename routes return 409, `nextUniqueMountPointName` suffixes ` (N)` for auto-provisioned stores and character vaults) plus `repairMountPointNameCollisions` in `lib/database/repositories/mount-index-case-repair.ts`, which runs on every table init and suffixes any surviving duplicates (keep-oldest wins).
+
 ### doc_mount_folders
 
 ```sql
@@ -1433,13 +1469,13 @@ CREATE TABLE IF NOT EXISTS "doc_mount_folders" (
   "createdAt" TEXT NOT NULL,
   "updatedAt" TEXT NOT NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_doc_mount_folders_mp_parent_name"
-  ON "doc_mount_folders" ("mountPointId", COALESCE("parentId", ''), "name");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_doc_mount_folders_mp_parent_name_nocase"
+  ON "doc_mount_folders" ("mountPointId", COALESCE("parentId", ''), "name" COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS "idx_doc_mount_folders_mp_path"
   ON "doc_mount_folders" ("mountPointId", "path");
 ```
 
-Folder rows are populated only for `database`-backed mount points. Filesystem-backed mounts continue to derive folder structure from the OS; their `folderId` column on `doc_mount_file_links` is always NULL. The unique index on (mountPointId, COALESCE(parentId, ''), name) enforces one folder per parent per name; the COALESCE is required because SQLite treats each NULL as distinct in UNIQUE constraints.
+Folder rows are populated only for `database`-backed mount points. Filesystem-backed mounts continue to derive folder structure from the OS; their `folderId` column on `doc_mount_file_links` is always NULL. The unique index on (mountPointId, COALESCE(parentId, ''), name COLLATE NOCASE) enforces one folder per parent per name **case-insensitively** — sibling folders may never differ only by casing (the read paths already treat paths case-insensitively, so `Lore` and `lore` would be ambiguous). The COALESCE is required because SQLite treats each NULL as distinct in UNIQUE constraints. Folder resolution is case-preserving: `ensureFolderPath` / `ensureLinkFolderId` reuse an existing case-variant folder and continue under its stored casing. `ensureFolderNocaseUniqueIndex` (`lib/database/repositories/mount-index-case-repair.ts`) runs on every table init — effectively every startup — as a double-check against out-of-band edits: it scans for case-colliding siblings unconditionally (renaming the newer with a ` (N)` suffix, subtree paths and link rows repaired with it) and recreates the index unless a genuine `UNIQUE … NOCASE` definition is already present under that name (existence alone is not trusted — a hand-made stand-in with the right name but the wrong definition is replaced). NOCASE folds ASCII only — non-ASCII case-variants slip past the index but are folded by the JS scan, so they are repaired at the next startup and blocked at the write chokepoints.
 
 ### doc_mount_files
 
@@ -1493,8 +1529,8 @@ CREATE TABLE IF NOT EXISTS "doc_mount_file_links" (
   "createdAt" TEXT NOT NULL,
   "updatedAt" TEXT NOT NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_doc_mount_file_links_mp_path"
-  ON "doc_mount_file_links" ("mountPointId", "relativePath");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_doc_mount_file_links_mp_path_nocase"
+  ON "doc_mount_file_links" ("mountPointId", "relativePath" COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS "idx_doc_mount_file_links_fileId"
   ON "doc_mount_file_links" ("fileId");
 CREATE INDEX IF NOT EXISTS "idx_doc_mount_file_links_mountPointId"
@@ -1503,7 +1539,7 @@ CREATE INDEX IF NOT EXISTS "idx_doc_mount_file_links_mountPointId"
 
 One row per visible location of a file (i.e. the hard link). Multiple link rows may point at the same `doc_mount_files` row, meaning the same bytes appear at multiple `(mountPointId, relativePath)` tuples. Per-consumer extraction state (conversion lifecycle, extracted text, chunk count) lives here so two consumers hard-linking the same content can re-extract or re-caption independently.
 
-The UNIQUE index on `(mountPointId, relativePath)` enforces "one file per location" — what used to be advisory in app code. Deleting a link via `DocMountFileLinksRepository.deleteWithGC` cascades to chunks (FK), and if it was the last link for its file the file row gets dropped (cascading to documents/blobs). `sweepOrphanedFiles()` is the defense-in-depth GC for writers that bypass the helper.
+The UNIQUE index on `(mountPointId, relativePath COLLATE NOCASE)` enforces "one file per location" **case-insensitively** — `Notes.md` and `notes.md` are the same location, matching the `LOWER()`-based path lookups. Upserts are case-preserving: a database-store write addressed in a different casing updates the existing row and keeps its stored `relativePath`/`fileName`; filesystem-scan writes (`linkFilesystemFile`) instead adopt the on-disk casing, since disk is the source of truth there. `ensureLinkNocaseUniqueIndex` (`lib/database/repositories/mount-index-case-repair.ts`) runs on every table init — effectively every startup — as a double-check against out-of-band edits: it scans for case-colliding rows unconditionally (the newer is renamed `stem (N).ext`) and recreates the index unless a genuine `UNIQUE … NOCASE` definition is already present under that name; the legacy case-sensitive `idx_doc_mount_file_links_mp_path` is dropped on the way. Same ASCII-only NOCASE caveat as the folders index: non-ASCII case-variants are caught by the JS scan at startup and by the write chokepoints, not by the index. Deleting a link via `DocMountFileLinksRepository.deleteWithGC` cascades to chunks (FK), and if it was the last link for its file the file row gets dropped (cascading to documents/blobs). `sweepOrphanedFiles()` is the defense-in-depth GC for writers that bypass the helper.
 
 The three `allow*` columns are the per-document policy, derived from a markdown document's YAML frontmatter at index time (positive sense: `1` == permissive == the frontmatter default of `true`). `allowEmbed` (frontmatter `embed`) gates inclusion in the embedding pipeline — `0` skips embedding and NULLs any existing chunk vectors. `allowCharacterRead` (`character_read`) gates whether LLM characters may read/list/grep/RAG the document — `0` makes it invisible to them (the human operator is unaffected). `allowCharacterWrite` (`character_write`) gates character-initiated mutation. `character_read` is the master gate: the coercion in `lib/doc-edit/document-policy.ts` forces `allowEmbed` and `allowCharacterWrite` to `0` whenever `allowCharacterRead` is `0`, so the stored columns are the *effective* policy (a row with `allowCharacterRead = 0, allowEmbed = 1` should never be written by the normal path). Non-markdown links keep the permissive defaults (no frontmatter to parse). The columns are re-derived on every reindex, so editing the frontmatter (operator or on-disk) is the control surface. See `lib/doc-edit/document-policy.ts` and the `add-doc-mount-file-policy-flags-v1` migration.
 
@@ -1524,7 +1560,7 @@ CREATE TABLE IF NOT EXISTS "doc_mount_chunks" (
 );
 ```
 
-Chunks are keyed by **linkId**, not by fileId — every hard link to a file maintains its own chunk + embedding set so consumers can re-extract independently. The `embedding` column stores Float32 arrays as BLOBs (same format as `conversation_chunks.embedding`). `mountPointId` is denormalized off the link row for fast per-mount queries.
+Chunks are keyed by **linkId**, not by fileId — every hard link to a file maintains its own chunk + embedding set so consumers can re-extract independently. The `embedding` column stores quantized vectors (see "Embedding BLOB format" in the main-DB section; same codec as `conversation_chunks.embedding`). `mountPointId` is denormalized off the link row for fast per-mount queries.
 
 ### project_doc_mount_links
 

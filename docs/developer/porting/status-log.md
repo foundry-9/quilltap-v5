@@ -9,6 +9,64 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Round planned — the d68638b4 drift catch-up: P4.d7 ∥ P4.6ay(resumed) ∥ P4.6az ∥ P4.6ba (2026-07-17)
+
+**The drift check found v4 TEN commits past `e3593f75`, tree now CLEAN —
+the predicted tripwire fired: the in-flight custom-tools +
+character-metadata feature LANDED.** New baseline for the round: v4
+**`d68638b4` (4.8.0-dev.72)**. Classification:
+
+- `8e4b00d4` — behavior, client-only (the whisper-visibility helper +
+  `OPERATOR_FACING_WHISPER_SENDERS`); port target folded into lane BA.
+- `444c7fd6`, `a5e66da0`, `554cb26b`, `23b7edad` — docs only; mirrored
+  under `docs/v4/` in the planning commit (API.md, DDL.md,
+  `features/complete/{character-metadata-json,custom-tool-builder}.md`,
+  `features/pascal-custom-tools.md`).
+- `0a0419f5` — **behavior + schema**: vault names and paths become one
+  case-insensitive namespace (two unique indexes renamed + COLLATE
+  NOCASE — a second D23 re-dump; a new boot repair pass;
+  case-preserving ops across the ported P4.6v/6y surface; 409 name
+  arms). → **lane D7** (`p4.d7-mount-nocase-namespace.md`, NEW).
+- `8bc43333` — **behavior**: `metadata.json` per-character fact sheets.
+  The vault half → **lane AZ** (`p4.6az-character-metadata-vault.md`,
+  NEW); the Pascal half (when.metadata, `{{metadata.key}}`,
+  `metadataTested`, the changed `run_custom` description) → **lane AY**
+  (P4.6ay re-baselined, new unit 11).
+- `46c7ae02` — merge, no independent content. `7d5e6ab3` — v4 CI test
+  infra only, NO PORT (lane D7 dispositions it).
+- `d68638b4` — **behavior + UI**: Pascal's Workbench. The server lib
+  (`workbench.ts`, `listAllCustomTools`, `simulateOutcomes`, the pure
+  `dice-notation` split, `/api/v1/custom-tools`) → **lane AY unit 12**;
+  the ~4,600-line React surface → **P4.6bb, NEXT round** (deliberately
+  out: its server dependency lands this round, and a second
+  `apps/web/` lane would collide with lane BA on the shell files).
+
+**Already-ported units confirmed hit (tripwires, not v5 bugs):** the
+P4.6ay unit-1/3 differentials (102/117 rows) +
+`tool_definitions_equivalence` (the description sentence), the
+mount-index family + `provisioning_equivalence` /
+`builtin_mounts_equivalence` / `builtin_templates_equivalence` (the
+index re-dump), the vault overlay + characters families (metadata
+rows).
+
+**The four orders** (Shared contract §§1–4 + Ownership reproduced
+verbatim in all four; the collision surface is exactly ONE region-pinned
+file, `db/character_vault.rs`, D7 ∥ AZ):
+
+- `work-orders/p4.d7-mount-nocase-namespace.md` — lane D7 (NEW).
+- `work-orders/p4.6ay-pascal-custom-tools-server.md` — lane AY
+  (re-baseline addendum prepended; resume 11 → 2 → 5 → 6 → 4 → 8 → 9 →
+  7 → 12; its old `harness/oracle/provision/` ownership RESCINDED to
+  D7; `data.rs` + `pascal/dice.rs` now same-lane).
+- `work-orders/p4.6az-character-metadata-vault.md` — lane AZ (NEW).
+- `work-orders/p4.6ba-pascal-salon-spa.md` — lane BA (NEW; includes
+  the `8e4b00d4` whisper-toggle re-port; the Workbench SPA is P4.6bb).
+
+Left out of the round, named: the Workbench SPA (P4.6bb), the M6
+`p4.9a–n` backlog (unchanged), the migration runner + export-schema
+standing deferrals (the latter grew again — noted in AZ), the v4-side
+catalogue drift-guard.
+
 ## Round record — P4.d5 ∥ P4.d6 ∥ P4.6ay (PARTIALLY UNIFIED 2026-07-17)
 
 **On main** (`unify/a33ac8b8-drift-partial`, fast-forwarded): P4.d6 **CLOSED**

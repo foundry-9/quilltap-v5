@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+Plan the d68638b4 drift catch-up round (docs only). v4 moved ten commits past
+the e3593f75 baseline and the predicted tripwire fired: the custom-tools +
+character-metadata feature landed, alongside the case-insensitive mount
+namespace fix and Pascal's Workbench. Four work orders committed: p4.d7 (the
+NOCASE namespace re-port: renamed COLLATE NOCASE indexes via a fresh-schema
+re-dump, the boot repair pass, case-preserving ops, the 409 name arms), the
+P4.6ay re-baseline addendum (resume at the new unit 11 — the metadata delta to
+the landed units plus the changed run_custom description — through unit 12,
+the Workbench server surface), p4.6az (the metadata.json vault surface:
+fail-soft hydration, the guarded write projection, whole-object patch, the
+scaffold seed), and p4.6ba (the in-chat Pascal SPA plus the All-Whispers
+toggle re-port). The Workbench SPA is deliberately deferred to P4.6bb next
+round. Drift docs mirrored under docs/v4; round record in the status log;
+CLAUDE.md's in-flight warning resolved. No code changes, no version bumps.
+
 Unify the P4.d5 + P4.6ay resumed lanes. P4.d5 (dice modifier, lenient numbers,
 the spine RNG call sites, the 58-tool catalog) is complete and closed; P4.6ay
 lands its first two Pascal units (the custom-tool definition format and the

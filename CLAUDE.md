@@ -647,13 +647,16 @@ records THERE. Update this summary only when a phase or round completes.
   target for that future Salon slice; two `help/*.md` edits — v5
   syncs help docs from disk at runtime; RunToolModal copy — unported;
   → 4.8.0-dev.63) and `444c7fd6` (two feature docs, mirrored under
-  `docs/v4/developer/features/`). ⚠ **v4 carries an IN-FLIGHT
-  uncommitted custom-tools/character-metadata feature** — when it
-  lands, the next drift check WILL trip `tool_definitions_equivalence`
-  and the pascal differentials (the run_custom description grows a
-  metadata sentence); that is the tripwire firing as designed —
-  re-plan P4.6ay's remainder against the new baseline, do not "fix"
-  v5 back. Drift-check before every round; if the v4 tree is dirty,
+  `docs/v4/developer/features/`). **The predicted in-flight
+  custom-tools/character-metadata feature LANDED (2026-07-17): v4 is
+  now at `d68638b4` (4.8.0-dev.72)** — the drift is classified and a
+  FOUR-lane catch-up round is PLANNED (P4.d7 ∥ P4.6ay-resumed ∥
+  P4.6az ∥ P4.6ba; orders committed, round record "Round planned —
+  the d68638b4 drift catch-up" in the status log). The round's
+  oracles regenerate at `d68638b4`; main's committed oracles remain
+  at `e3593f75` until the lanes land — expect the pascal +
+  tool-definitions + provisioning tripwires to trip during the round,
+  by design. Drift-check before every round; if the v4 tree is dirty,
   regenerate oracles from a pinned detached worktree (round record).
   The P4.d3 note stands: ⚠ v4's `quantize-embeddings-v1` migration is
   one-way — back up Friday before first running v4 `4.8.0-dev.52`+

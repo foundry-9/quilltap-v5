@@ -432,6 +432,30 @@ Update chat settings.
 }
 ```
 
+#### `GET /api/v1/settings/data-retention`
+
+Read the instance-wide stale-chat retention window (`instance_settings['dataRetention']`, not a `chat_settings` column). Governs the daily maintenance sweep's cache collapse, generated-image collapse, and conversation-chunk cold-tiering.
+
+**Response:**
+
+```json
+{
+  "staleChatDays": 30
+}
+```
+
+#### `PUT /api/v1/settings/data-retention`
+
+Update the retention window. Merges with the current value and validates (integer, 1–3650 days).
+
+**Request Body:**
+
+```json
+{
+  "staleChatDays": 90
+}
+```
+
 ---
 
 ### API Keys
@@ -2233,6 +2257,193 @@ Queue a story background regeneration job.
 ```
 
 ---
+
+### Custom Tools (Pascal the Croupier)
+
+The operator's surface for user-authored pseudo-tools (`Tools/*.tool.json` in any document store). Characters reach for the same definitions via the `run_custom` LLM tool; these endpoints are the composer popup's route in.
+
+The roster is resolved **fresh on every request** — never cached — so a definition the user just edited is live on the next popup open.
+
+**The roll spec and outcome table are never returned.** The popup does not show the odds; `definitionPath` + `mountName` let the UI link to the user's own file instead.
+
+#### `GET /api/v1/chats/[id]/custom-tools`
+
+List the roster for the popup. Because a character-tier store shadows farther tiers, the roster is resolved once per character participant and merged: a tool that resolves identically for everyone is listed once with no `characterLabel`; a tool whose definition differs per character is listed once **per variant**, each labelled with that character's name. `asCharacterId` records whose perspective produced the entry and is replayed by the run action.
+
+**Response**: `200 OK`
+
+```json
+{
+  "tools": [
+    {
+      "name": "unlock",
+      "description": "Try the lock with whatever is to hand.",
+      "parameters": {
+        "bonus": { "type": "integer", "default": 0, "description": "Anything helping the attempt.", "min": -5, "max": 5 }
+      },
+      "defaultVisibility": "public",
+      "sourceTier": "character",
+      "characterLabel": "Miss Ashcroft",
+      "asCharacterId": "character-uuid",
+      "definitionPath": "Tools/unlock.tool.json",
+      "mountPointId": "mount-uuid",
+      "mountName": "Ashcroft's Vault"
+    }
+  ],
+  "errors": [
+    {
+      "definitionPath": "Tools/broken.tool.json",
+      "mountPointId": "mount-uuid",
+      "mountName": "Quilltap General",
+      "tier": "global",
+      "reason": "is not valid JSON: Unexpected token }"
+    }
+  ],
+  "droppedForCap": ["spare_tool"]
+}
+```
+
+`characterLabel` is present only on variant rows. `droppedForCap` is present only when the roster hit its size cap. `sourceTier` is one of `character`, `participant`, `group`, `project`, `global`.
+
+#### `POST /api/v1/chats/[id]/custom-tools?action=run`
+
+Run one tool at the operator's behest. Posts two messages: a **USER**-role invocation (so the model attributes the roll to the operator) followed by Pascal's outcome (`systemSender: 'pascal'`, `systemKind: 'custom-tool-result'`). Both share the run's visibility.
+
+A failed run posts **no Pascal message** — the failure is announced by Prospero (`systemKind: 'custom-tool-error'`) and returns `400`.
+
+**Request Body**:
+
+```json
+{
+  "tool": "unlock",
+  "parameters": { "bonus": 2 },
+  "private": false,
+  "asCharacterId": "character-uuid"
+}
+```
+
+`parameters` and `asCharacterId` are optional/nullable; omitting `asCharacterId` resolves from the first character participant's perspective. `private: true` whispers both messages to the operator alone — no character sees them.
+
+**Response**: `200 OK`
+
+```json
+{
+  "messages": [ { "role": "USER", "content": "*I ran `unlock` (bonus: 2).*" }, { "role": "ASSISTANT", "systemSender": "pascal" } ],
+  "result": {
+    "tool": "unlock",
+    "value": 14,
+    "state": "success",
+    "message": "The wards give with a sigh.",
+    "whispered": false
+  }
+}
+```
+
+**Errors**: `400` for an unknown tool (the response lists the available names), a rejected parameter, or a definition that will not run. `404` when the chat does not exist.
+
+---
+
+#### `GET /api/v1/custom-tools`
+
+Pascal's Workbench library: **every** definition in **every** enabled store — no per-invoker shadowing, no roster cap, broken files included. Resolved fresh per request.
+
+**Response**: `200 OK`
+
+```json
+{
+  "tools": [
+    {
+      "valid": true,
+      "name": "unlock",
+      "title": "Force the Lock",
+      "description": "Try the lock with whatever is to hand.",
+      "disabled": false,
+      "defaultVisibility": "public",
+      "rollForm": "range",
+      "parameterCount": 1,
+      "outcomeCount": 3,
+      "mountPointId": "mount-uuid",
+      "mountName": "Ashcroft's Vault",
+      "definitionPath": "Tools/unlock.tool.json",
+      "attachments": [{ "kind": "character", "id": "character-uuid", "label": "Miss Ashcroft" }]
+    }
+  ],
+  "errors": [
+    {
+      "valid": false,
+      "definitionPath": "Tools/broken.tool.json",
+      "mountPointId": "mount-uuid",
+      "mountName": "Quilltap General",
+      "reason": "is not valid JSON: Unexpected token }",
+      "attachments": [{ "kind": "general", "label": "General" }]
+    }
+  ]
+}
+```
+
+`attachments[].kind` is one of `general`, `project`, `group`, `character`, `unattached`; a store may carry several.
+
+#### `GET /api/v1/custom-tools?action=destinations`
+
+The Workbench save-target list: every enabled store grouped by what it is attached to, with the tool names each store already carries (a same-store duplicate `name` is a load-time rejection, so the picker warns before writing).
+
+**Response**: `200 OK`
+
+```json
+{
+  "general": { "mountPointId": "mount-uuid", "mountName": "Quilltap General", "existingToolNames": ["unlock"] },
+  "projects": [
+    { "projectId": "project-uuid", "projectName": "Ashfall Chronicle", "stores": [{ "mountPointId": "mount-uuid", "mountName": "Ashfall Docs", "existingToolNames": [] }] }
+  ],
+  "groups": [
+    { "groupId": "group-uuid", "groupName": "The Night Shift", "stores": [{ "mountPointId": "mount-uuid", "mountName": "Night Shift Files", "official": true, "existingToolNames": [] }] }
+  ],
+  "characters": [
+    { "characterId": "character-uuid", "characterName": "Miss Ashcroft", "mountPointId": "mount-uuid", "mountName": "Ashcroft's Vault", "existingToolNames": [] }
+  ],
+  "other": [{ "mountPointId": "mount-uuid", "mountName": "Loose Papers", "existingToolNames": [] }]
+}
+```
+
+`general` is `null` when the General store is unprovisioned. Characters without a vault are omitted.
+
+#### `POST /api/v1/custom-tools?action=preview`
+
+Dry-run a definition through the same `executeCustomTool` core live chats use. **Posts nothing, writes nothing** — pure computation with the crypto RNG kept server-side.
+
+**Request Body**:
+
+```json
+{
+  "definition": { "name": "unlock", "description": "…", "outcomes": [{ "when": true, "message": "…", "state": "info" }] },
+  "params": { "bonus": 2 },
+  "private": false,
+  "metadata": { "hasSkeletonKey": true }
+}
+```
+
+`metadata` may instead be `{ "characterId": "uuid" }`, in which case the server hydrates that character and uses their real `metadata.json` (404 for an unknown id; a broken vault returns 422 with the reason).
+
+**Response**: `200 OK` — the full run result (`tool`, `params`, `rollForm`, `raw`, `value`, `state`, `outcomeIndex`, rendered `message`, `diceBreakdown`, `visibility`, and `metadataTested` when the winning row consulted the sheet). An invalid definition returns 400 with the loader's rejection sentence; a run-time refusal (e.g. an inverted range after `$param` substitution) returns 422.
+
+#### `POST /api/v1/custom-tools?action=audit`
+
+Monte Carlo table audit: 10,000 draws with roll + outcome matching only (no template rendering). Body is the preview body without `private`; `metadata` resolves the same way and is threaded into the match subjects so metadata-gated rows can fire.
+
+**Response**: `200 OK`
+
+```json
+{
+  "runs": 10000,
+  "outcomes": [
+    { "index": 0, "hits": 4012, "share": 0.4012 },
+    { "index": 1, "hits": 5988, "share": 0.5988 }
+  ],
+  "valueMin": 0.0001,
+  "valueMax": 0.9998,
+  "valueMean": 0.5003
+}
+```
 
 ### Autonomous Room Control
 
