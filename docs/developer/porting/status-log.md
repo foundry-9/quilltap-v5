@@ -18969,3 +18969,17 @@ structurally (the response `type` string is AY's, so the client reads bodies via
   ran, run-error inline, droppedForCap). The `chat-composer.spec.ts` TestBed
   gained a CoreClient/QueryClient stub (empty roster → hidden button).
 - **Gate:** `ng test` 131 files / 1271 passed; `ng build` clean.
+
+### Unit 4 — the Settings Custom Tools card (SPA 0.5.138)
+
+- **`custom-tools-settings.ts`** (new): a `ChatSettingsCard` writing the
+  `customTools` scalar (v4 `CustomToolsSettings.tsx`, `?? true`), copy verbatim.
+  v4's "Open Pascal's Workbench" button is OMITTED (P4.6bb).
+- **`chat-tab.ts`:** the Custom Tools card added between Automation and Agent Mode
+  (v4 `ChatTabContent.tsx` order), `sectionId="custom-tools"`. The tab now mounts
+  seventeen cards through the one deduped `chatSettings` GET.
+- **Specs:** `custom-tools-settings.spec.ts` (default-ON, explicit-false, the
+  scalar write, save-failure surfacing + no Workbench copy); `chat-tab.spec.ts`
+  updated to pin the seventeen-card order (Custom Tools between Automation and
+  Agent Mode).
+- **Gate:** `ng test` 132 files / 1275 passed.

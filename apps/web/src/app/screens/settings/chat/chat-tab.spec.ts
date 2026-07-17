@@ -11,13 +11,13 @@ import { ChatTab } from './chat-tab';
  * The Chat tab's card ORDER and deep-link ids (P4.6an unit 7).
  *
  * v4's order is not alphabetical and not grouped by theme — Composer and
- * Auto-Scroll sit between Composition Mode and Text Replacement, and the nine
- * engine-facing cards sit between Text Replacement and Data Retention. It is
- * easy to "tidy" by accident, so it is pinned here against
- * `ChatTabContent.tsx` L70-197.
+ * Auto-Scroll sit between Composition Mode and Text Replacement, Custom Tools
+ * sits between Automation and Agent Mode, and the engine-facing cards sit
+ * between Text Replacement and Data Retention. It is easy to "tidy" by accident,
+ * so it is pinned here against `ChatTabContent.tsx` L70-206.
  */
 
-/** v4 `ChatTabContent.tsx` L70-197, top to bottom. */
+/** v4 `ChatTabContent.tsx` L70-206, top to bottom. */
 const V4_CARD_ORDER = [
   ['Composition Mode', 'composition-mode'],
   ['Composer', 'composer-spellcheck'],
@@ -28,6 +28,7 @@ const V4_CARD_ORDER = [
   ['Memory Cascade', 'memory-cascade'],
   ['Image Description', 'image-description'],
   ['Automation', 'automation'],
+  ['Custom Tools', 'custom-tools'],
   ['Agent Mode', 'agent-mode'],
   ['Thinking / Reasoning', 'thinking-display'],
   ['Answer Confirmation', 'answer-confirmation'],
@@ -68,7 +69,7 @@ function mount(section: string | null = null) {
 }
 
 describe('ChatTab', () => {
-  it('mounts all sixteen v4 cards in v4\'s exact order', () => {
+  it('mounts all seventeen v4 cards in v4\'s exact order', () => {
     const fixture = mount();
     const titles = Array.from(
       (fixture.nativeElement as HTMLElement).querySelectorAll('qt-collapsible-card'),

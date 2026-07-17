@@ -19,6 +19,7 @@ import { AutomationSettings } from './automation-settings';
 import { ComposerSpellcheckSettings } from './composer-spellcheck-settings';
 import { CompositionModeSettings } from './composition-mode-settings';
 import { ContextCompressionSettings } from './context-compression-settings';
+import { CustomToolsSettings } from './custom-tools-settings';
 import { DangerousContentSettings } from './dangerous-content-settings';
 import { DataRetentionSettings } from './data-retention-settings';
 import { ImageDescriptionSettings } from './image-description-settings';
@@ -29,21 +30,21 @@ import { TokenDisplaySettings } from './token-display-settings';
 
 /**
  * The Settings → Chat tab (v4 `components/settings/tabs/ChatTabContent.tsx`,
- * subsystem `salon`) — now FULLY fitted out: all sixteen v4 cards, in v4's exact
- * order, with v4's titles/descriptions + `sectionId`s (the `?section=` deep
- * link) ported verbatim.
+ * subsystem `salon`) — now FULLY fitted out: all seventeen v4 cards, in v4's
+ * exact order, with v4's titles/descriptions + `sectionId`s (the `?section=`
+ * deep link) ported verbatim.
  *
  * The order is v4's, and is reproduced rather than tidied: Composer and
- * Auto-Scroll sit BETWEEN Composition Mode and Text Replacement, and the nine
- * engine-facing cards sit between Text Replacement and Data Retention. Every
- * card reads and writes the one `chat_settings` row through the shared
- * `chatSettings` query (`chat-settings.api.ts`), so mounting sixteen of them
- * costs ONE GET.
+ * Auto-Scroll sit BETWEEN Composition Mode and Text Replacement, Custom Tools
+ * sits BETWEEN Automation and Agent Mode, and the engine-facing cards sit
+ * between Text Replacement and Data Retention. Every card reads and writes the
+ * one `chat_settings` row through the shared `chatSettings` query
+ * (`chat-settings.api.ts`), so mounting seventeen of them costs ONE GET.
  *
  * Cards by lineage: Composition Mode + Text Replacement (P4.6al), Data
- * Retention (P4.d3), the two autonomous cards (P4.6ad), and the eleven landed
- * by P4.6an — which retired the "not yet fitted out" placeholder that used to
- * enumerate them.
+ * Retention (P4.d3), the two autonomous cards (P4.6ad), the eleven landed by
+ * P4.6an, and Custom Tools (P4.6ba — the Workbench button v4 pairs with it is
+ * deferred to P4.6bb).
  */
 @Component({
   selector: 'qt-settings-chat',
@@ -59,6 +60,7 @@ import { TokenDisplaySettings } from './token-display-settings';
     ComposerSpellcheckSettings,
     CompositionModeSettings,
     ContextCompressionSettings,
+    CustomToolsSettings,
     DangerousContentSettings,
     DataRetentionSettings,
     ImageDescriptionSettings,
@@ -155,6 +157,15 @@ import { TokenDisplaySettings } from './token-display-settings';
           [forceOpen]="section() === 'automation'"
         >
           <qt-automation-settings />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Custom Tools"
+          description="Whether Pascal's custom tools are offered to models and the composer"
+          sectionId="custom-tools"
+          [forceOpen]="section() === 'custom-tools'"
+        >
+          <qt-custom-tools-settings />
         </qt-collapsible-card>
 
         <qt-collapsible-card

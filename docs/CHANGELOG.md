@@ -178,6 +178,11 @@ takes a `metadata` override. The run_custom tool description grew v4's metadata
 sentence. Differentials extended and re-greened against fresh d68638b4 oracles:
 pascal definition (105 defs + 10 titles), pascal execution (146 rows),
 tool_definitions (58 tools byte-exact).
+P4.6ba unit 4 (SPA): the Settings → Chat Custom Tools card. A new
+`qt-custom-tools-settings` toggle (v4 copy verbatim, `customTools ?? true`) sits
+between Automation and Agent Mode in the Chat tab's card order. v4's "Open
+Pascal's Workbench" button is omitted (P4.6bb).
+
 P4.6ba unit 3 (SPA): the composer custom-tools popup + run flow. A bespoke
 composer toolbar button (wand) opens an anchored, upward popup (the
 speaker-selector idiom) that resolves Pascal's roster fresh on every open and
