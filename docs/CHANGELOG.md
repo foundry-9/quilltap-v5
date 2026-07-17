@@ -178,6 +178,13 @@ takes a `metadata` override. The run_custom tool description grew v4's metadata
 sentence. Differentials extended and re-greened against fresh d68638b4 oracles:
 pascal definition (105 defs + 10 titles), pascal execution (146 rows),
 tool_definitions (58 tools byte-exact).
+P4.6ba unit 5 (SPA): the All-Whispers toggle (the v4 8e4b00d4 re-port). A pure
+`isMessageVisibleToOperator` helper with the narrow `OPERATOR_FACING_WHISPER_
+SENDERS` carve-out (pascal, prospero) — the Salon now filters whispers the
+operator isn't a party to, while Pascal/Prospero runs (operator machinery) and
+the human's own whispers always show. A header eye toggle flips it on; the salon
+threads the user-participant ids from the chat participants.
+
 P4.6ba unit 4 (SPA): the Settings → Chat Custom Tools card. A new
 `qt-custom-tools-settings` toggle (v4 copy verbatim, `customTools ?? true`) sits
 between Automation and Agent Mode in the Chat tab's card order. v4's "Open

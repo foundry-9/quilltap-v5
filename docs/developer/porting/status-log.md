@@ -18983,3 +18983,23 @@ structurally (the response `type` string is AY's, so the client reads bodies via
   updated to pin the seventeen-card order (Custom Tools between Automation and
   Agent Mode).
 - **Gate:** `ng test` 132 files / 1275 passed.
+
+### Unit 5 — the All-Whispers toggle (the 8e4b00d4 re-port) (SPA 0.5.139)
+
+- **`whisper-visibility.ts`** (new): a verbatim port of v4
+  `app/salon/[id]/whisper-visibility.ts` — `OPERATOR_FACING_WHISPER_SENDERS`
+  (`pascal`, `prospero`, kept narrow; the Commonplace-Book-leak why-comment
+  carried verbatim) + the pure `isMessageVisibleToOperator(msg, {showAllWhispers,
+  userParticipantIds})` (not-a-whisper → true; toggle on → true; operator-facing
+  sender → true; author-or-target is a user participant → true; else false).
+- **`whisper-visibility.spec.ts`** (new): case-for-case from v4's 92-line test.
+- **`conversation-header.ts`:** an "All Whispers" eye toggle (`role="switch"`,
+  v4 title copy) in the header cluster — v5 has no chat sidebar, so it rides the
+  header (the editEnclave/regenerate placement precedent).
+- **`salon-conversation.ts`:** a `showAllWhispers` signal + `userParticipantIdSet`
+  computed (`controlledBy: 'user'`); `displayMessages` applies the filter (v4
+  `visibleMessages`), the optimistic user bubble is always kept. Whisper STYLING
+  is unchanged; v5 has no dimming, so v4's de-dimming guard has no counterpart.
+- **Specs:** the pure helper (case-for-case) + a salon integration beat
+  (Commonplace whisper hidden / Pascal machinery shown / reveal on toggle).
+- **Gate:** `ng test` 133 files / 1286 passed; `ng build` clean.

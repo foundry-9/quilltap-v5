@@ -201,6 +201,54 @@ describe('SalonConversation (read path)', () => {
     expect(fixture.nativeElement.querySelector('[aria-label="Copy conversation ID"]')).toBeTruthy();
   });
 
+  it('filters operator-invisible whispers, keeps operator machinery, and reveals on toggle (P4.6ba)', async () => {
+    // p1 is an LLM character (not a user participant); pu is the human.
+    const chat: ChatDetail = {
+      ...chatDetail(),
+      messages: [
+        message({ id: 'm0', role: 'USER', participantId: 'pu', content: 'Good morning.', createdAt: '2024-01-01T00:00:01.000Z' }),
+        // A Commonplace Book recall whispered to a character — the operator is
+        // not its audience; hidden when the toggle is off.
+        message({
+          id: 'cb',
+          systemSender: 'commonplaceBook',
+          systemKind: 'relevant-memories',
+          participantId: null,
+          targetParticipantIds: ['p1'],
+          content: 'a private recall',
+          createdAt: '2024-01-01T00:00:02.000Z',
+        }),
+        // A Pascal private roll to a character — operator machinery, always shown.
+        message({
+          id: 'px',
+          systemSender: 'pascal',
+          systemKind: 'custom-tool-result',
+          participantId: null,
+          targetParticipantIds: ['p1'],
+          content: '🎲 pascal secret roll',
+          createdAt: '2024-01-01T00:00:03.000Z',
+        }),
+      ],
+    };
+    const fixture = await render(stubClient(chat, new Subject<ScopedEvent>()));
+
+    // Off by default: the Commonplace chip is hidden, the Pascal machinery shown.
+    expect(fixture.nativeElement.textContent).not.toContain('The Commonplace Book');
+    expect(fixture.nativeElement.textContent).toContain('pascal secret roll');
+
+    // Flip "All Whispers" on → the hidden recall chip appears.
+    const toggle = fixture.nativeElement.querySelector(
+      'button[aria-label="Toggle all whispers"]',
+    ) as HTMLButtonElement;
+    expect(toggle).toBeTruthy();
+    toggle.click();
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    expect(fixture.nativeElement.textContent).toContain('The Commonplace Book');
+  });
+
   it('does not set the story-background var when the chat has no background (finding #9)', async () => {
     const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
     const layout = fixture.nativeElement.querySelector('.qt-chat-layout') as HTMLElement;

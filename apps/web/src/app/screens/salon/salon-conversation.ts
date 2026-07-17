@@ -31,6 +31,7 @@ import { PhotoGalleryModal } from '../../images/photo-gallery-modal';
 import { GenerateImageDialog, type GeneratedImage } from '../../images/generate-image-dialog';
 import { MemoryCascadeDialog, type MemoryCascadeAction } from '../../chat/memory-cascade-dialog';
 import { splitSwipeGroups, type SwipeState } from '../../chat/chat-view-model';
+import { isMessageVisibleToOperator } from '../../chat/whisper-visibility';
 import { TurnControls } from '../../chat/turn-controls';
 import { type ControlledCharacter } from '../../chat/speaker-selector';
 import { isParticipantPresent } from '../../chat/skip-signal-helpers';
@@ -178,6 +179,8 @@ interface CascadePrompt {
         [storyBackgroundsEnabled]="storyBackgroundsEnabled()"
         [regeneratingBackground]="regeneratingBackground()"
         [inspectorOpen]="inspectorOpen()"
+        [showAllWhispers]="showAllWhispers()"
+        (toggleAllWhispers)="showAllWhispers.set(!showAllWhispers())"
         (toggleInspector)="toggleInspector()"
         (openGallery)="showGallery.set(true)"
         (editEnclave)="showEditEnclave.set(true)"
@@ -846,16 +849,43 @@ export class SalonConversation {
     return out;
   });
 
-  /** The rendered flow: the collapsed messages (with swipe override) + optimistic user bubble. */
+  /** The "All Whispers" toggle (v4 SalonView `showAllWhispers`, default off). */
+  protected readonly showAllWhispers = signal(false);
+
+  /**
+   * The participant ids the human controls (v4 SalonView `userParticipantIdSet`
+   * — `controlledBy: 'user'`), so the whisper filter shows the operator their
+   * own whispers whatever the toggle says.
+   */
+  private readonly userParticipantIdSet = computed<ReadonlySet<string>>(
+    () =>
+      new Set(
+        (this.chat()?.participants ?? [])
+          .filter((p) => p.controlledBy === 'user')
+          .map((p) => p.id),
+      ),
+  );
+
+  /**
+   * The rendered flow: the collapsed messages (with swipe override), whisper-
+   * filtered for the operator (v4 SalonView `visibleMessages`), + the optimistic
+   * user bubble (always the human's own, so it never filters out).
+   */
   protected readonly displayMessages = computed<MessageDto[]>(() => {
     const states = this.effectiveSwipeStates();
-    const msgs = this.split().messages.map((m) => {
-      if (m.swipeGroupId && states[m.swipeGroupId]) {
-        const st = states[m.swipeGroupId];
-        return st.messages[st.current] ?? m;
-      }
-      return m;
-    });
+    const showAll = this.showAllWhispers();
+    const userIds = this.userParticipantIdSet();
+    const msgs = this.split()
+      .messages.map((m) => {
+        if (m.swipeGroupId && states[m.swipeGroupId]) {
+          const st = states[m.swipeGroupId];
+          return st.messages[st.current] ?? m;
+        }
+        return m;
+      })
+      .filter((m) =>
+        isMessageVisibleToOperator(m, { showAllWhispers: showAll, userParticipantIds: userIds }),
+      );
     const temp = this.optimisticUser();
     return temp ? [...msgs, temp] : msgs;
   });

@@ -58,6 +58,26 @@ import { ChatCostSummary } from './chat-cost-summary';
       }
 
       <span class="flex-1"></span>
+      <!-- All Whispers toggle (v4 ChatSidebar visibility section — relocated to
+           the header cluster, as v5 has no chat sidebar). Reveals the private
+           whispers the operator isn't a party to; Pascal/Prospero runs show
+           either way (operator machinery). -->
+      <button
+        type="button"
+        role="switch"
+        class="p-1.5 rounded transition-colors flex-shrink-0"
+        [class]="
+          showAllWhispers()
+            ? 'qt-bg-primary/15 text-primary'
+            : 'qt-text-secondary hover:text-foreground'
+        "
+        [attr.aria-checked]="showAllWhispers()"
+        aria-label="Toggle all whispers"
+        [title]="showAllWhispers() ? 'Hide private whispers' : 'Show all whispers'"
+        (click)="toggleAllWhispers.emit()"
+      >
+        <qt-icon [name]="showAllWhispers() ? 'eye' : 'eye-off'" class="w-4 h-4" />
+      </button>
       <!-- The Inspector button precedes the cost summary (v4 :995-1024). -->
       @if (showInspectorButton()) {
         <button
@@ -131,6 +151,10 @@ export class ConversationHeader {
   readonly messageCount = input(0);
   /** Whether the Inspector panel is open — drives the button's active state (v4 :1002-1006). */
   readonly inspectorOpen = input(false);
+  /** The "All Whispers" toggle state (v4 SalonView `showAllWhispers`). */
+  readonly showAllWhispers = input(false);
+  /** Flip the whisper toggle (v4 `onToggleAllWhispers`). */
+  readonly toggleAllWhispers = output<void>();
   /** Toggle the LLM Inspector panel (v4 `toggleInspector`). */
   readonly toggleInspector = output<void>();
   /** Open the in-chat photo gallery (v4 SalonView sidebar gallery entry). */
