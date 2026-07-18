@@ -663,6 +663,7 @@ fn response_error(e: quilltap_core::api::types::CoreError) -> AxumResponse {
         ErrorKind::Forbidden => StatusCode::FORBIDDEN,
         ErrorKind::NotFound => StatusCode::NOT_FOUND,
         ErrorKind::Conflict => StatusCode::CONFLICT,
+        ErrorKind::Unprocessable => StatusCode::UNPROCESSABLE_ENTITY,
         ErrorKind::Locked => StatusCode::SERVICE_UNAVAILABLE,
         ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
     };

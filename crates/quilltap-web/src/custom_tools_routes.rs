@@ -98,3 +98,110 @@ pub async fn custom_tools_post(
         Err(r) => r,
     }
 }
+
+// ---------------------------------------------------------------------------
+// P4.6ay unit 12: `/api/v1/custom-tools` — Pascal's Workbench collection
+// resource. v4 dispatches on `?action=`; the default GET is the library and the
+// default POST is not a served action.
+//
+// Body parsing lives HERE, mirroring v4's own split: `parseBody` is transport
+// (a non-JSON body is a 400 before any Workbench code runs), while the
+// definition validation, the metadata union, and the run-refusal arms are core
+// logic and live behind the dispatch verbs so the route differential covers
+// them.
+// ---------------------------------------------------------------------------
+
+fn workbench_unwrap(resp: CoreResponse) -> AxumResponse {
+    match resp {
+        CoreResponse::CustomToolsLibrary(v)
+        | CoreResponse::CustomToolsDestinations(v)
+        | CoreResponse::CustomToolPreview(v)
+        | CoreResponse::CustomToolAudit(v) => (
+            StatusCode::OK,
+            [("content-type", "application/json")],
+            v.to_string(),
+        )
+            .into_response(),
+        CoreResponse::Error(e) => error_to_http(e),
+        _ => error_json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Unexpected core response",
+        ),
+    }
+}
+
+/// `GET /api/v1/custom-tools` (the library) and `?action=destinations`.
+pub async fn workbench_get(
+    State(state): State<SharedState>,
+    Query(query): Query<HashMap<String, String>>,
+) -> AxumResponse {
+    let req = match query.get("action").map(String::as_str) {
+        Some("destinations") => CoreRequest::CustomToolsDestinations,
+        None => CoreRequest::CustomToolsLibrary,
+        Some(_) => {
+            return error_json(
+                StatusCode::BAD_REQUEST,
+                "Only the destinations action is served on this route",
+            )
+        }
+    };
+    match dispatch_core(&state, req).await {
+        Ok(resp) => workbench_unwrap(resp),
+        Err(r) => r,
+    }
+}
+
+/// `POST /api/v1/custom-tools?action=preview` / `?action=audit`.
+pub async fn workbench_post(
+    State(state): State<SharedState>,
+    Query(query): Query<HashMap<String, String>>,
+    body: axum::body::Bytes,
+) -> AxumResponse {
+    let action = query.get("action").map(String::as_str);
+    if !matches!(action, Some("preview") | Some("audit")) {
+        return error_json(
+            StatusCode::BAD_REQUEST,
+            "Only the preview and audit actions are served on this route",
+        );
+    }
+
+    // v4 `parseBody`: `await req.json()` throwing is the ONLY arm handled here.
+    let json_body: Value = match serde_json::from_slice(&body) {
+        Ok(v) => v,
+        Err(_) => return error_json(StatusCode::BAD_REQUEST, "Request body must be JSON"),
+    };
+    let Some(obj) = json_body.as_object() else {
+        return error_json(StatusCode::BAD_REQUEST, "Invalid request body");
+    };
+
+    let definition = obj.get("definition").cloned().unwrap_or(Value::Null);
+    let params = obj.get("params").cloned();
+    let metadata = obj.get("metadata").cloned();
+
+    let req = if action == Some("preview") {
+        // `private` is `z.boolean().optional()`: a present non-boolean is a body
+        // rejection, an absent one is simply `None`.
+        let private = match obj.get("private") {
+            None | Some(Value::Null) => None,
+            Some(Value::Bool(b)) => Some(*b),
+            Some(_) => return error_json(StatusCode::BAD_REQUEST, "Invalid request body"),
+        };
+        CoreRequest::CustomToolPreview {
+            definition,
+            params,
+            private,
+            metadata,
+        }
+    } else {
+        CoreRequest::CustomToolAudit {
+            definition,
+            params,
+            metadata,
+        }
+    };
+
+    match dispatch_core(&state, req).await {
+        Ok(resp) => workbench_unwrap(resp),
+        Err(r) => r,
+    }
+}

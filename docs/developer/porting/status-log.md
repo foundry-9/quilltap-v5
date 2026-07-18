@@ -19639,3 +19639,109 @@ GET route returns verbatim — is compared unnormalized.
 `pascal_workbench_equivalence` green with zero SKIP.
 
 **Versions:** core 0.0.268, harness 0.0.236.
+
+---
+
+## P4.6ay unit 12 (part 2b) — the `/api/v1/custom-tools` route surface — **P4.6ay CLOSES**
+
+**Landed.** The Workbench collection resource, v4
+`app/api/v1/custom-tools/route.ts` (207 lines), in four legs:
+
+- `api/custom_tools.rs` gains `custom_tools_library`,
+  `custom_tools_destinations`, `custom_tool_preview`, `custom_tool_audit`,
+  plus `AUDIT_RUNS = 10_000` (server-fixed — no `runs` crosses the wire),
+  `parse_definition`, `parse_params`, `resolve_metadata`, and
+  `run_result_to_value`.
+- `api/types.rs`: the four Request variants (§W1 names) + four Response variants.
+- `api/engine.rs`: the four arms.
+- `quilltap-web`: `workbench_get` / `workbench_post` + the
+  `/api/v1/custom-tools` route-table entry.
+
+**⚠ ONE CHANGE THIS ORDER DID NOT ENUMERATE — flagged for the unifier.**
+`ErrorKind` gained an **`Unprocessable`** variant. §W1 pins 422 for a
+`CustomToolRunError` on preview/audit and for a broken vault on the
+`{characterId}` branch, and **v5 had no 422 anywhere** (`grep -rn "422"` over
+`quilltap-core/src` + `quilltap-harness/tests` returned only an unrelated commit
+hash). Squashing it into `BadRequest` would have broken the contract lane BB is
+coded against, and the distinction is semantic, not cosmetic: the author's INPUT
+was fine, so the SPA renders the reason rather than pointing at the form. The
+variant is additive; the ~22 exhaustive `match kind` sites (harness route
+differentials + the quilltap-web `error_to_http` helpers) each gained one arm.
+**No lane collision** — lane BB owns `apps/web/` exclusively and touches none of
+these files — but it is outside this order's literal Ownership list for
+`quilltap-web`, so it is called out here rather than left to be discovered.
+
+**Three porting details worth carrying:**
+
+1. **The `{ characterId }` test is `resolveMetadata`'s OWN, not the schema's.**
+   The schema's first union branch demands `min(1)`, so `{ characterId: "" }`
+   falls THROUGH the union to the catch-all record — and `resolveMetadata` then
+   still treats it as a character reference (exactly one key, named
+   `characterId`, holding a string), hydrating the empty id into a 404. Checking
+   `min(1)` in the resolver would have answered `{}` instead. The corpus pins
+   both this (`preview-empty-character-id` → 404) and the two-key case
+   (`preview-character-id-plus-key` → passes through VERBATIM, 200).
+2. **A broken vault must not be papered over with `{}`.** The hydration goes
+   through `find_by_id_raw` + `apply_document_store_overlay_one` DIRECTLY rather
+   than `characters_read::find_by_id`, because the latter flattens
+   `OverlayOneError::Unavailable` into a generic `DbError` and loses the 422.
+   The 422 message is v4's `CharacterVaultUnavailableError` string byte-for-byte.
+3. **Body parsing splits exactly where v4 splits it.** `parseBody` is transport
+   (a non-JSON body is a 400 before any Workbench code runs) and lives at the
+   web edge; the definition validation, the metadata union, and the run-refusal
+   arms are core logic and live behind the dispatch verbs — which is what lets
+   the route differential cover them.
+
+**Differential: `pascal_workbench_route_equivalence`, 24 cases, green over a
+fresh `d68638b4` oracle — first run, no port fixes needed.** Arms covered: the
+two GET legs; preview with defaults / explicit params / `private`; the
+metadata union in all five forms (absent, plain object, `{characterId}` hydrated,
+two-key verbatim, empty id); 400 on an invalid definition (the
+`format_definition_issues` string compared BYTE-FOR-BYTE — unit 1 already paid
+for this, so no normalization) and on a missing trailing catch-all; 422 on an
+unknown param, an inverted range, and a broken vault; 404 on an unknown
+character; and four audits including a metadata-gated table under a real sheet
+vs none.
+
+**The corpus is a SHARED FILE, deliberately:**
+`harness/oracle/fixtures/workbench-route-cases.json` holds the definitions,
+character references, and case list, and BOTH the jest oracle and the Rust
+differential read it. The unit-7 precedent duplicated its case list across the
+two sides; a shared file removes the silent-drift risk entirely.
+
+**The simulate differential strategy, as the round decided it (recorded in the
+test header too).** v4's `simulateOutcomes` draws through the crypto with no
+seam, so a cross-language draw-for-draw diff is impossible. The corpus therefore
+uses DETERMINISTIC definitions — `min === max` ranges, which short-circuit
+without drawing a byte — so `runs`/`hits`/`share`/`valueMin`/`valueMax`/
+`valueMean` are exact on both sides, with `AUDIT_RUNS` applying identically.
+Stochastic spread stays covered by the v5-side statistical tests in
+`pascal::custom_tools` that mirror v4's own `custom-tools-simulate.test.ts`.
+
+**Fixtures:** no new fixture — this leg rides part 2a's
+`workbench-{main,mount}.db`. Nothing else reads it, so no other oracle is
+invalidated.
+
+**Deferred / documented absences (loud, per the Tier-3 rule):**
+
+- **`details` on the error envelope.** v4's `badRequest(message, issues)` emits
+  `{error, details}`; v5's `Response::Error` carries `{kind, message}` only, so
+  the Zod-issue array on the "Invalid request body" arm has nowhere to go. This
+  is a PRE-EXISTING shape of the whole ported route surface, not new here — the
+  differential compares status + `error`, exactly as every other route
+  differential in the harness does.
+- **The `is not valid JSON:` reason wording** on the library leg — unit 2's seam,
+  compared by prefix (see part 2a's record).
+
+**Gate:** `cargo fmt --all --check` clean; `cargo clippy --workspace
+--all-targets -D warnings` clean on BOTH feature sets; `cargo test --workspace
+--no-fail-fast` green with all twelve pascal / tool-definitions oracle env vars
+set, every one of this lane's differentials RUN (zero SKIP) over oracles
+regenerated fresh at `d68638b4`.
+
+**Versions:** core 0.0.269, harness 0.0.237, web 0.0.27.
+
+**P4.6ay is CLOSED.** Its last open item — unit 12's route surface, which was
+also P4.6bb's server dependency — is landed. The four verbs are server-only
+until lane BB's Workbench SPA unifies over them; the §W wire diff runs at
+unification against BB's `core-contract.ts`.

@@ -46,6 +46,7 @@ pub(crate) fn error_to_http(e: quilltap_core::api::CoreError) -> AxumResponse {
         ErrorKind::Conflict => StatusCode::CONFLICT,
         ErrorKind::Forbidden => StatusCode::FORBIDDEN,
         ErrorKind::Unauthorized => StatusCode::UNAUTHORIZED,
+        ErrorKind::Unprocessable => StatusCode::UNPROCESSABLE_ENTITY,
         ErrorKind::Locked => StatusCode::SERVICE_UNAVAILABLE,
         ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
     };

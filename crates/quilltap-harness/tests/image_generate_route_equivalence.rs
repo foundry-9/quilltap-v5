@@ -347,6 +347,7 @@ fn envelope_and_status(r: &Response) -> (i64, Value) {
                 ErrorKind::Forbidden => 403,
                 ErrorKind::NotFound => 404,
                 ErrorKind::Conflict => 409,
+                ErrorKind::Unprocessable => 422,
                 ErrorKind::Locked => 503,
                 ErrorKind::Internal => 500,
             };

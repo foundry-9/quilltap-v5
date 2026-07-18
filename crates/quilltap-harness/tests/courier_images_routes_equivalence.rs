@@ -203,6 +203,7 @@ fn status_body(r: &Response) -> (u16, Value) {
                 ErrorKind::Forbidden => 403,
                 ErrorKind::NotFound => 404,
                 ErrorKind::Conflict => 409,
+                ErrorKind::Unprocessable => 422,
                 ErrorKind::Locked => 423,
                 ErrorKind::Internal => 500,
             };

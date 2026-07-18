@@ -184,6 +184,10 @@ pub fn build_router(state: SharedState) -> Router {
             "/api/v1/chats/{id}/custom-tools",
             get(custom_tools_routes::custom_tools_get).post(custom_tools_routes::custom_tools_post),
         )
+        .route(
+            "/api/v1/custom-tools",
+            get(custom_tools_routes::workbench_get).post(custom_tools_routes::workbench_post),
+        )
         // === end P4.6ay ===
         // === P4.6ar: the LLM-Inspector reads + the default-aesthetics editors ===
         .route("/api/v1/llm-logs", get(llm_logs_routes::llm_logs_get))

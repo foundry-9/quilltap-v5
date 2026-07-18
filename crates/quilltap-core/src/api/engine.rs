@@ -2750,6 +2750,43 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            // --- unit 12: Pascal's Workbench collection resource ---
+            Request::CustomToolsLibrary => match self.ready_db() {
+                Ok(db) => super::custom_tools::custom_tools_library(&db),
+                Err(r) => r,
+            },
+            Request::CustomToolsDestinations => match self.ready_db() {
+                Ok(db) => super::custom_tools::custom_tools_destinations(&db),
+                Err(r) => r,
+            },
+            Request::CustomToolPreview {
+                definition,
+                params,
+                private,
+                metadata,
+            } => match self.ready_db() {
+                Ok(db) => super::custom_tools::custom_tool_preview(
+                    &db,
+                    &definition,
+                    params.as_ref(),
+                    private,
+                    metadata.as_ref(),
+                ),
+                Err(r) => r,
+            },
+            Request::CustomToolAudit {
+                definition,
+                params,
+                metadata,
+            } => match self.ready_db() {
+                Ok(db) => super::custom_tools::custom_tool_audit(
+                    &db,
+                    &definition,
+                    params.as_ref(),
+                    metadata.as_ref(),
+                ),
+                Err(r) => r,
+            },
             // === end P4.6ay ===
             // === P4.6ar: the llm-logs read surface + the system aesthetics pair ===
             Request::LlmLogsList {

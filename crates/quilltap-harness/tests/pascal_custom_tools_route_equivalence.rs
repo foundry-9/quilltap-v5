@@ -67,6 +67,7 @@ fn status_body(resp: Response) -> (u16, Value) {
                 ErrorKind::Conflict => 409,
                 ErrorKind::Forbidden => 403,
                 ErrorKind::Unauthorized => 401,
+                ErrorKind::Unprocessable => 422,
                 ErrorKind::Locked => 503,
                 ErrorKind::Internal => 500,
             };

@@ -520,6 +520,7 @@ fn core_response_to_http(resp: CoreResponse, success_status: StatusCode) -> Axum
                 ErrorKind::Conflict => StatusCode::CONFLICT,
                 ErrorKind::Forbidden => StatusCode::FORBIDDEN,
                 ErrorKind::Unauthorized => StatusCode::UNAUTHORIZED,
+                ErrorKind::Unprocessable => StatusCode::UNPROCESSABLE_ENTITY,
                 ErrorKind::Locked => StatusCode::SERVICE_UNAVAILABLE,
                 ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
             };

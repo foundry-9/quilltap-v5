@@ -119,6 +119,7 @@ fn status_of(kind: ErrorKind) -> u16 {
         ErrorKind::Forbidden => 403,
         ErrorKind::NotFound => 404,
         ErrorKind::Conflict => 409,
+        ErrorKind::Unprocessable => 422,
         ErrorKind::Locked => 423,
         ErrorKind::Internal => 500,
     }

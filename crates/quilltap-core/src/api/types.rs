@@ -1883,6 +1883,36 @@ pub enum Request {
         #[serde(default)]
         as_character_id: Option<String>,
     },
+    /// v4 `GET /api/v1/custom-tools` → the Workbench library: every definition
+    /// in every enabled store, valid or broken, with attachment badges.
+    CustomToolsLibrary,
+    /// v4 `GET /api/v1/custom-tools?action=destinations` → the save-target list.
+    CustomToolsDestinations,
+    /// v4 `POST /api/v1/custom-tools?action=preview` → one deal through the
+    /// shared execution core. Posts nothing, writes nothing. `metadata` is v4's
+    /// `MetadataInputSchema` union: a plain object passes through verbatim, a
+    /// `{ characterId }` object hydrates that character's sheet server-side.
+    #[serde(rename_all = "camelCase")]
+    CustomToolPreview {
+        definition: serde_json::Value,
+        #[serde(default)]
+        params: Option<serde_json::Value>,
+        #[serde(default)]
+        private: Option<bool>,
+        #[serde(default)]
+        metadata: Option<serde_json::Value>,
+    },
+    /// v4 `POST /api/v1/custom-tools?action=audit` → `AUDIT_RUNS` deals,
+    /// reported by where they landed. The run count is server-fixed and never
+    /// crosses the wire.
+    #[serde(rename_all = "camelCase")]
+    CustomToolAudit {
+        definition: serde_json::Value,
+        #[serde(default)]
+        params: Option<serde_json::Value>,
+        #[serde(default)]
+        metadata: Option<serde_json::Value>,
+    },
     // === end P4.6ay ===
     // === P4.6ar: the llm-logs read surface + the system aesthetics pair (lane A) ===
     /// v4 `GET /api/v1/llm-logs` (all filter branches).
@@ -1977,6 +2007,15 @@ pub enum Response {
     CustomToolsList(serde_json::Value),
     /// v4 `POST .../custom-tools?action=run` body (`{messages, result}`).
     CustomToolRun(serde_json::Value),
+    /// v4 `GET /api/v1/custom-tools` body (`{tools, errors}` — the Workbench
+    /// library).
+    CustomToolsLibrary(serde_json::Value),
+    /// v4 `GET /api/v1/custom-tools?action=destinations` body.
+    CustomToolsDestinations(serde_json::Value),
+    /// v4 `POST /api/v1/custom-tools?action=preview` body (a `CustomToolRunResult`).
+    CustomToolPreview(serde_json::Value),
+    /// v4 `POST /api/v1/custom-tools?action=audit` body (a `CustomToolAuditResult`).
+    CustomToolAudit(serde_json::Value),
     /// v4 message edit / swipe body (`{ message: {...} }`).
     Message(serde_json::Value),
     /// v4 message-delete body (the confirmation body OR `{ success, memoriesDeleted }`).
@@ -2390,6 +2429,13 @@ pub enum ErrorKind {
     /// v4 `conflict` / an explicit `errorResponse(msg, 409)`: a duplicate name
     /// on roleplay-template / image-profile create/update.
     Conflict,
+    /// An explicit `errorResponse(msg, 422)`: the request was well-formed and
+    /// the definition valid, but the table would not deal — Pascal's Workbench
+    /// preview/audit refusing a `CustomToolRunError`, or a character's vault
+    /// being unreadable when the bench asked for their fact sheet. Distinct from
+    /// `BadRequest` on purpose: the author's INPUT was fine, so the SPA renders
+    /// the reason rather than pointing at the form.
+    Unprocessable,
     Locked,
     Internal,
 }

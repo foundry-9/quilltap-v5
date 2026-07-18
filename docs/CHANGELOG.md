@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+P4.6ay unit 12 (part 2b): the /api/v1/custom-tools Workbench route, closing
+P4.6ay. Four dispatch verbs — customToolsLibrary, customToolsDestinations,
+customToolPreview, customToolAudit — with their engine arms and the REST
+edge (GET library and ?action=destinations, POST ?action=preview and
+?action=audit, ten thousand draws per audit, fixed server-side). Preview
+and audit run the same execution core the chat path uses, so a definition
+previewed on the bench deals exactly as it will in play. The metadata union
+resolves a hand-typed sheet verbatim or hydrates a named character's real
+one, and a character whose vault is unreadable is reported as such rather
+than quietly treated as having no sheet. ErrorKind gains Unprocessable —
+v5's first 422 — because that distinction is what tells an author their
+input was fine but the table would not deal. The new
+pascal_workbench_route_equivalence differential covers all 24 cases,
+including every error arm, over a corpus file both the oracle and the test
+read so they cannot drift. Bumps: core 0.0.269, harness 0.0.237, web
+0.0.27.
+
 P4.6ay unit 12 (part 2a): Pascal's Workbench library and destination views.
 New pascal/workbench.rs ports v4's lib/pascal/workbench.ts — the attachment
 survey (which reads characters raw on purpose, so a store whose vault is

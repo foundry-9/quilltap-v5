@@ -115,6 +115,7 @@ fn http_for(kind: ErrorKind) -> i64 {
         ErrorKind::Forbidden => 403,
         ErrorKind::NotFound => 404,
         ErrorKind::Conflict => 409,
+        ErrorKind::Unprocessable => 422,
         ErrorKind::Locked => 503,
         ErrorKind::Internal => 500,
     }

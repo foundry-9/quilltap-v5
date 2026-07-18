@@ -1,0 +1,189 @@
+{
+  "_comment": "P4.6ay unit 12 route corpus, read by BOTH the jest oracle (pascal-workbench-route.test.ts) and the Rust differential (pascal_workbench_route_equivalence.rs) so the two sides cannot drift apart. Character ids match harness/oracle/fixtures/workbench.json. Every roll is min===max, so preview and audit are deterministic without a shared draw stream.",
+  "characters": {
+    "imogen": "a1000000-0000-4000-8000-00000000000a",
+    "vaultless": "a1000000-0000-4000-8000-00000000000b",
+    "cracked": "a1000000-0000-4000-8000-00000000000c",
+    "unknown": "a1000000-0000-4000-8000-0000000000ff"
+  },
+  "definitions": {
+    "gated": {
+      "name": "gated",
+      "title": "The Gated Table",
+      "description": "A table that consults the sheet.",
+      "roll": { "min": 0.8, "max": 0.8 },
+      "outcomes": [
+        {
+          "when": { "gt": 0.5, "metadata": { "hasKey": { "eq": true } } },
+          "message": "The lock turns for {{value}}.",
+          "state": "success"
+        },
+        { "when": true, "message": "The lock holds.", "state": "failure" }
+      ]
+    },
+    "plain": {
+      "name": "plain",
+      "description": "A table with no conditions worth the name.",
+      "roll": { "min": 3, "max": 3 },
+      "parameters": { "bonus": { "type": "integer", "default": 1, "min": 0, "max": 5 } },
+      "outcomes": [{ "when": true, "message": "Dealt {{value}} at {{params.bonus}}.", "state": "info" }]
+    },
+    "banded": {
+      "name": "banded",
+      "description": "Three bands over one fixed draw.",
+      "roll": { "min": 0.25, "max": 0.25 },
+      "outcomes": [
+        { "when": { "gte": 0.75 }, "message": "high", "state": "success" },
+        { "when": { "gte": 0.5 }, "message": "mid", "state": "partial" },
+        { "when": true, "message": "low", "state": "failure" }
+      ]
+    },
+    "invertedRange": {
+      "name": "inverted_range",
+      "description": "A range the house cannot deal.",
+      "roll": { "min": 9, "max": 2 },
+      "outcomes": [{ "when": true, "message": "unreachable", "state": "info" }]
+    },
+    "invalid": {
+      "name": "Not An Identifier",
+      "description": "",
+      "outcomes": []
+    },
+    "noCatchAll": {
+      "name": "no_catch_all",
+      "description": "Every row is conditional, so a deal could find no home.",
+      "roll": { "min": 0.5, "max": 0.5 },
+      "outcomes": [{ "when": { "gte": 0.9 }, "message": "only sometimes", "state": "info" }]
+    }
+  },
+  "cases": [
+    { "name": "library", "method": "GET" },
+    { "name": "destinations", "method": "GET", "action": "destinations" },
+
+    { "name": "preview-plain", "method": "POST", "action": "preview", "definition": "plain" },
+    {
+      "name": "preview-plain-params",
+      "method": "POST",
+      "action": "preview",
+      "definition": "plain",
+      "params": { "bonus": 4 }
+    },
+    {
+      "name": "preview-private",
+      "method": "POST",
+      "action": "preview",
+      "definition": "plain",
+      "private": true
+    },
+    {
+      "name": "preview-gated-no-metadata",
+      "method": "POST",
+      "action": "preview",
+      "definition": "gated"
+    },
+    {
+      "name": "preview-gated-plain-metadata",
+      "method": "POST",
+      "action": "preview",
+      "definition": "gated",
+      "metadata": { "hasKey": true, "note": "typed by hand" }
+    },
+    {
+      "name": "preview-gated-as-imogen",
+      "method": "POST",
+      "action": "preview",
+      "definition": "gated",
+      "metadataCharacter": "imogen"
+    },
+    {
+      "name": "preview-gated-as-vaultless",
+      "method": "POST",
+      "action": "preview",
+      "definition": "gated",
+      "metadataCharacter": "vaultless"
+    },
+    {
+      "name": "preview-broken-vault",
+      "method": "POST",
+      "action": "preview",
+      "definition": "gated",
+      "metadataCharacter": "cracked"
+    },
+    {
+      "name": "preview-unknown-character",
+      "method": "POST",
+      "action": "preview",
+      "definition": "gated",
+      "metadataCharacter": "unknown"
+    },
+    {
+      "name": "preview-empty-character-id",
+      "method": "POST",
+      "action": "preview",
+      "definition": "gated",
+      "metadata": { "characterId": "" }
+    },
+    {
+      "name": "preview-character-id-plus-key",
+      "method": "POST",
+      "action": "preview",
+      "definition": "gated",
+      "metadata": { "characterId": "a1000000-0000-4000-8000-00000000000a", "hasKey": true }
+    },
+    {
+      "name": "preview-invalid-definition",
+      "method": "POST",
+      "action": "preview",
+      "definition": "invalid"
+    },
+    {
+      "name": "preview-no-catch-all",
+      "method": "POST",
+      "action": "preview",
+      "definition": "noCatchAll"
+    },
+    {
+      "name": "preview-unknown-param",
+      "method": "POST",
+      "action": "preview",
+      "definition": "plain",
+      "params": { "nonesuch": 1 }
+    },
+    {
+      "name": "preview-inverted-range",
+      "method": "POST",
+      "action": "preview",
+      "definition": "invertedRange"
+    },
+
+    { "name": "audit-plain", "method": "POST", "action": "audit", "definition": "plain" },
+    { "name": "audit-banded", "method": "POST", "action": "audit", "definition": "banded" },
+    { "name": "audit-gated-no-metadata", "method": "POST", "action": "audit", "definition": "gated" },
+    {
+      "name": "audit-gated-as-imogen",
+      "method": "POST",
+      "action": "audit",
+      "definition": "gated",
+      "metadataCharacter": "imogen"
+    },
+    {
+      "name": "audit-inverted-range",
+      "method": "POST",
+      "action": "audit",
+      "definition": "invertedRange"
+    },
+    {
+      "name": "audit-invalid-definition",
+      "method": "POST",
+      "action": "audit",
+      "definition": "invalid"
+    },
+    {
+      "name": "audit-broken-vault",
+      "method": "POST",
+      "action": "audit",
+      "definition": "gated",
+      "metadataCharacter": "cracked"
+    }
+  ]
+}

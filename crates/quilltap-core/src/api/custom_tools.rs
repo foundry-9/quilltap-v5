@@ -562,3 +562,285 @@ pub async fn chat_custom_tool_run(
         },
     }))
 }
+
+// ===========================================================================
+// P4.6ay unit 12 — Pascal's WORKBENCH collection resource
+// (v4 `app/api/v1/custom-tools/route.ts`)
+//
+// The authoring surface, as opposed to the chat-facing popup above:
+//
+// - `custom_tools_library`      — every definition in every enabled store,
+//                                 valid or broken, with attachment badges.
+// - `custom_tools_destinations` — the save-target list, grouped by what each
+//                                 store is attached to.
+// - `custom_tool_preview`       — dry-run a definition through the ONE true
+//                                 execution core. Posts nothing, writes nothing.
+// - `custom_tool_audit`         — deal ten thousand hands and report where they
+//                                 landed.
+//
+// File content I/O is deliberately NOT here: reads, writes, and deletes go
+// through the existing mount-file verbs, so the Workbench adds no second write
+// path into stores.
+// ===========================================================================
+
+/// Draws per audit (v4 `route.ts:34`). Roll + match only (no template
+/// rendering), so this is cheap. **Server-fixed — no `runs` crosses the wire.**
+const AUDIT_RUNS: usize = 10_000;
+
+fn unprocessable(msg: impl Into<String>) -> Response {
+    Response::error(ErrorKind::Unprocessable, msg)
+}
+
+/// v4 `handleLibrary`.
+pub fn custom_tools_library(db: &Db) -> Response {
+    match db.read_main(|main| {
+        db.read_mount_index(|mount| {
+            crate::pascal::workbench::build_custom_tool_library(main, mount)
+        })
+    }) {
+        Ok(library) => {
+            Response::CustomToolsLibrary(serde_json::to_value(library).unwrap_or(Value::Null))
+        }
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `handleDestinations`.
+pub fn custom_tools_destinations(db: &Db) -> Response {
+    match db.read_main(|main| {
+        db.read_mount_index(|mount| {
+            crate::pascal::workbench::list_custom_tool_destinations(main, mount)
+        })
+    }) {
+        Ok(destinations) => Response::CustomToolsDestinations(
+            serde_json::to_value(destinations).unwrap_or(Value::Null),
+        ),
+        Err(e) => internal(e),
+    }
+}
+
+/// v4 `parseDefinition` — validate a raw definition, or produce the 400 the
+/// author reads. The rejection string is `formatDefinitionIssues`' own output,
+/// which this port reproduces byte-for-byte (unit 1), so it crosses the wire
+/// unmodified.
+fn parse_definition(
+    raw: &Value,
+) -> Result<crate::pascal::custom_tool_types::QtapCustomTool, Response> {
+    crate::pascal::custom_tool_types::safe_parse(raw).map_err(|issues| {
+        bad_request(crate::pascal::custom_tool_types::format_definition_issues(
+            &issues,
+        ))
+    })
+}
+
+/// v4's `PreviewBodySchema`/`AuditBodySchema` `params` field:
+/// `z.record(z.string(), z.unknown()).nullish()`.
+fn parse_params(raw: Option<&Value>) -> Result<Option<Map<String, Value>>, Response> {
+    match raw {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Object(o)) => Ok(Some(o.clone())),
+        Some(_) => Err(bad_request("Invalid request body")),
+    }
+}
+
+/// Resolve the fact sheet (v4 `resolveMetadata`).
+///
+/// A plain object passes through VERBATIM; the `{ characterId }` form hydrates
+/// that character and uses their real `metadata.json` — the honest "what would
+/// happen if THEY rolled this".
+///
+/// Two details are load-bearing and mirror v4 exactly:
+///
+/// 1. **The `{ characterId }` test is `resolveMetadata`'s own**, not the
+///    schema's: exactly one key, named `characterId`, holding a string. The
+///    schema's first union branch additionally demands `min(1)`, so
+///    `{ characterId: "" }` falls through the union to the catch-all record —
+///    and then this check still treats it as a character reference, hydrating
+///    the empty id into a 404. Checking `min(1)` here would answer `{}` instead.
+/// 2. **A broken vault is surfaced honestly, never papered over with `{}`** —
+///    the bench would otherwise report metadata rows declining for the wrong
+///    reason. The hydration therefore goes through the overlay directly rather
+///    than `characters_read::find_by_id`, which flattens the vault-unavailable
+///    case into a generic DB error and loses the 422.
+fn resolve_metadata(db: &Db, metadata: Option<&Value>) -> Result<Map<String, Value>, Response> {
+    let Some(metadata) = metadata else {
+        return Ok(Map::new());
+    };
+    if metadata.is_null() {
+        return Ok(Map::new());
+    }
+    let Some(obj) = metadata.as_object() else {
+        return Err(bad_request("Invalid request body"));
+    };
+
+    let character_id = match obj.len() == 1 {
+        true => obj.get("characterId").and_then(Value::as_str),
+        false => None,
+    };
+    let Some(character_id) = character_id else {
+        return Ok(obj.clone());
+    };
+
+    let character_id = character_id.to_string();
+    let hydrated = db.read_main(|main| {
+        db.read_mount_index(|mount| {
+            let raw = characters_read::find_by_id_raw(main, &character_id)?;
+            let repo = crate::db::doc_mount_documents::DocMountDocumentsRepository::new(mount);
+            Ok(crate::db::vault_read_overlay::apply_document_store_overlay_one(&repo, raw))
+        })
+    });
+
+    match hydrated {
+        Err(e) => Err(internal(e)),
+        Ok(Err(crate::db::vault_read_overlay::OverlayOneError::Db(e))) => Err(internal(e)),
+        Ok(Err(crate::db::vault_read_overlay::OverlayOneError::Unavailable(u))) => {
+            // v4 `CharacterVaultUnavailableError`'s message, byte-for-byte: the
+            // SPA renders the server's string rather than re-deriving one.
+            Err(unprocessable(format!(
+                "Character {} has no usable vault (characterDocumentMountPointId={}): properties.json missing",
+                u.character_id, u.mount_id
+            )))
+        }
+        Ok(Ok(None)) => Err(not_found("Character")),
+        Ok(Ok(Some(character))) => Ok(character
+            .get("metadata")
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default()),
+    }
+}
+
+/// Serialize a run result to v4's `CustomToolRunResult` wire shape.
+///
+/// Field order and presence follow v4's interface declaration
+/// (`custom-tools.ts:431-451`) exactly: `notation`, `diceRolls`, and
+/// `metadataTested` are TypeScript-optional, so `JSON.stringify` OMITS them when
+/// absent rather than emitting `null`.
+fn run_result_to_value(r: &CustomToolRunResult) -> Value {
+    let mut m = Map::new();
+    m.insert("tool".into(), json!(r.tool));
+    m.insert(
+        "params".into(),
+        Value::Object(
+            r.params
+                .iter()
+                .map(|(k, v)| (k.clone(), v.to_value()))
+                .collect(),
+        ),
+    );
+    m.insert(
+        "rollForm".into(),
+        json!(match r.roll_form {
+            crate::pascal::custom_tools::RollForm::Range => "range",
+            crate::pascal::custom_tools::RollForm::Dice => "dice",
+        }),
+    );
+    if let Some(notation) = &r.notation {
+        m.insert("notation".into(), json!(notation));
+    }
+    m.insert("raw".into(), crate::db::js_number_to_json(r.raw));
+    if let Some(dice_rolls) = &r.dice_rolls {
+        m.insert("diceRolls".into(), json!(dice_rolls));
+    }
+    m.insert("value".into(), crate::db::js_number_to_json(r.value));
+    m.insert("state".into(), json!(r.state.as_str()));
+    m.insert("outcomeIndex".into(), json!(r.outcome_index));
+    m.insert("message".into(), json!(r.message));
+    m.insert("diceBreakdown".into(), json!(r.dice_breakdown));
+    m.insert(
+        "visibility".into(),
+        json!(match r.visibility {
+            Visibility::Whisper => "whisper",
+            Visibility::Public => "public",
+        }),
+    );
+    if let Some(metadata_tested) = &r.metadata_tested {
+        m.insert(
+            "metadataTested".into(),
+            Value::Object(
+                metadata_tested
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.to_value()))
+                    .collect(),
+            ),
+        );
+    }
+    Value::Object(m)
+}
+
+/// v4 `handlePreview` — one deal through the shared execution core.
+pub fn custom_tool_preview(
+    db: &Db,
+    definition: &Value,
+    params: Option<&Value>,
+    private: Option<bool>,
+    metadata: Option<&Value>,
+) -> Response {
+    let params = match parse_params(params) {
+        Ok(p) => p,
+        Err(r) => return r,
+    };
+    let definition = match parse_definition(definition) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+    let metadata = match resolve_metadata(db, metadata) {
+        Ok(m) => m,
+        Err(r) => return r,
+    };
+
+    let mut rng = crate::tools::rng::OsRandomBytes;
+    match execute_custom_tool(
+        &definition,
+        params.as_ref(),
+        private,
+        Some(&metadata),
+        &mut rng,
+    ) {
+        Ok(result) => Response::CustomToolPreview(run_result_to_value(&result)),
+        Err(CustomToolRunError(reason)) => unprocessable(reason),
+    }
+}
+
+/// v4 `handleAudit` — ten thousand hands, reported by where they landed.
+pub fn custom_tool_audit(
+    db: &Db,
+    definition: &Value,
+    params: Option<&Value>,
+    metadata: Option<&Value>,
+) -> Response {
+    let params = match parse_params(params) {
+        Ok(p) => p,
+        Err(r) => return r,
+    };
+    let definition = match parse_definition(definition) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+    let metadata = match resolve_metadata(db, metadata) {
+        Ok(m) => m,
+        Err(r) => return r,
+    };
+
+    let mut rng = crate::tools::rng::OsRandomBytes;
+    match crate::pascal::custom_tools::simulate_outcomes(
+        &definition,
+        params.as_ref(),
+        AUDIT_RUNS,
+        Some(&metadata),
+        &mut rng,
+    ) {
+        Ok(result) => Response::CustomToolAudit(json!({
+            "runs": result.runs,
+            "outcomes": result.outcomes.iter().map(|o| json!({
+                "index": o.index,
+                "hits": o.hits,
+                "share": crate::db::js_number_to_json(o.share),
+            })).collect::<Vec<_>>(),
+            "valueMin": crate::db::js_number_to_json(result.value_min),
+            "valueMax": crate::db::js_number_to_json(result.value_max),
+            "valueMean": crate::db::js_number_to_json(result.value_mean),
+        })),
+        Err(CustomToolRunError(reason)) => unprocessable(reason),
+    }
+}
