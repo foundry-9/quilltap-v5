@@ -6,6 +6,7 @@ import { apiUrl } from '../core/api-url';
 import { CoreClient } from '../core/core-client';
 import { fetchProfile, profileKeys } from '../screens/profile/profile.api';
 import { Icon } from '../ui/icon';
+import { QuickHideMenuSection } from '../quick-hide/quick-hide-menu-section';
 
 /**
  * The shell-footer user menu (v4
@@ -30,7 +31,7 @@ import { Icon } from '../ui/icon';
 @Component({
   selector: 'qt-user-menu',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [Icon, QuickHideMenuSection],
   template: `
     <div class="relative">
       <button
@@ -63,7 +64,11 @@ import { Icon } from '../ui/icon';
 
           <div class="qt-divider my-1"></div>
 
-          <!-- §2b: qt-quick-hide-menu-section mounts here at unification -->
+          <!-- §2b wire (mounted at unification): v4 sidebar-footer.tsx:302 renders
+               the quick-hide content above the profile entries. -->
+          <qt-quick-hide-menu-section />
+
+          <div class="qt-divider my-1"></div>
 
           <button
             type="button"

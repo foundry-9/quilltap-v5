@@ -3,14 +3,6 @@ import { expect, request as pwRequest, test, type Page } from '@playwright/test'
 import { BASE_URL, E2E_PASSPHRASE } from './support/env';
 
 /**
- * The §4 quick-hide localStorage keys, mirrored from
- * `src/app/quick-hide/quick-hide.storage.ts`. Restated rather than imported:
- * the e2e is compiled standalone and does not reach into the app sources.
- */
-const ACTIVE_TAGS_KEY = 'quilltap.quickHide.activeTags';
-const HIDE_DANGEROUS_KEY = 'quilltap.quickHide.hideDangerous';
-
-/**
  * ORDERING: this file rides the SHARED global-setup server and unlocks it, so
  * its filename must sort AFTER foundation.spec.ts (workers: 1, alphabetical
  * file order) — "quick-hide-flow" ('q') sorts after "foundation" ('f').
@@ -23,16 +15,10 @@ const HIDE_DANGEROUS_KEY = 'quilltap.quickHide.hideDangerous';
  *   2. Hiding beat: with the tag hidden, the tagged character vanishes from
  *      the roster; clearing restores it.
  *
- * ⚠ Why step 2 pokes localStorage instead of clicking the menu section:
- * `qt-quick-hide-menu-section` ships UNMOUNTED in this lane by §2b — lane
- * P4.9c owns the `qt-user-menu` that hosts it, and the unifier does the mount.
- * Writing the three §4 keys is exactly what the section's toggles do, so this
- * proves the whole chain the section would drive (storage → service → the
- * consumer's filter) in the real app. The MENU-WALK VARIANT IS
- * ACTIVATE-AT-UNIFY: once the section is mounted, replace the storage poke in
- * `setHiddenTags` with clicks on the section's per-tag eye button, and the rest
- * of the beat stands unchanged. The section's own behaviour (copy, both icon
- * polarities, the active class) is unit-covered meanwhile.
+ * §2b ACTIVATED at unification: `qt-quick-hide-menu-section` is mounted inside
+ * lane P4.9c's `qt-user-menu`, so step 2 drives the REAL menu — open the user
+ * menu, click the tag's eye toggle — instead of the in-lane storage poke this
+ * spec shipped with (the lane record documents that interim form).
  *
  * The walk MUTATES the shared fixture (it creates a tag and styles it), so it
  * cleans up after itself in `afterAll`.
@@ -111,16 +97,21 @@ async function maybeUnlock(page: Page): Promise<void> {
 }
 
 /**
- * Set the quick-hide state the way `qt-quick-hide-menu-section` would, then
- * reload so the service re-reads it. ACTIVATE-AT-UNIFY: replace with clicks on
- * the mounted section.
+ * Toggle a quick-hide tag through the mounted menu section (the §2b wire): open
+ * the shell-footer user menu, click the tag's eye button, confirm the pressed
+ * state, and close the menu again. The service is signal-live, so the
+ * consumers react without a reload.
  */
-async function setHiddenTags(page: Page, ids: string[]): Promise<void> {
-  await page.evaluate(
-    ([key, value]) => window.localStorage.setItem(key, value),
-    [ACTIVE_TAGS_KEY, JSON.stringify(ids)] as const,
-  );
-  await page.reload();
+async function toggleTagViaMenu(page: Page, tagName: string, expectPressed: boolean): Promise<void> {
+  const trigger = page.getByRole('button', { name: 'User menu' });
+  await trigger.click();
+  const toggle = page
+    .locator('qt-quick-hide-menu-section')
+    .getByRole('button', { name: tagName });
+  await expect(toggle).toBeVisible({ timeout: 10_000 });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', String(expectPressed));
+  await trigger.click();
 }
 
 test.describe('P4.9d — quick-hide authoring and hiding', () => {
@@ -187,14 +178,12 @@ test.describe('P4.9d — quick-hide authoring and hiding', () => {
     });
     await expect(card).toHaveCount(1, { timeout: 15_000 });
 
-    // Hide it.
-    await setHiddenTags(page, [tagId!]);
+    // Hide it through the menu.
+    await toggleTagViaMenu(page, TAG_NAME, true);
     await expect(card).toHaveCount(0, { timeout: 15_000 });
 
-    // Clear All Hidden (the section's clear path: the tag list empties; the
-    // dangerous filter clears with it).
-    await page.evaluate((key) => window.localStorage.setItem(key, 'false'), HIDE_DANGEROUS_KEY);
-    await setHiddenTags(page, []);
+    // Toggle it back through the menu; the card returns.
+    await toggleTagViaMenu(page, TAG_NAME, false);
     await expect(card).toHaveCount(1, { timeout: 15_000 });
   });
 });

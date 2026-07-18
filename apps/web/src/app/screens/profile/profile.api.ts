@@ -8,11 +8,12 @@
  * §3 (the P4.9a ∥ P4.9c ∥ P4.9b ∥ P4.9d Shared contract): `userProfileGet`,
  * `userProfileUpdate`, `userProfileSetAvatar`, `systemDataDir`. The field names
  * and the omit-vs-null splits are v4's verbatim — `profile_routes_equivalence`
- * pins the bytes. Kept as a local typed module + cast (the `home.api.ts`
- * pattern); the unifier folds the verbs into `CoreRequest`.
+ * pins the bytes. The §3 verbs were FOLDED into `CoreRequest` at unification
+ * (the request types live in `core-contract.ts`'s P4.9c block).
  */
 
 import type { CoreClient } from '../../core/core-client';
+import type { UserProfileUpdateRequest } from '../../core/core-contract';
 
 /**
  * v4 `components/profile/types.ts:7-15`. NOTE the nullable fields are declared
@@ -62,7 +63,7 @@ function unwrapProfile(data: Record<string, unknown>): UserProfile {
 }
 
 export async function fetchProfile(core: CoreClient): Promise<UserProfile> {
-  return unwrapProfile(await core.dispatchData({ type: 'userProfileGet' } as never));
+  return unwrapProfile(await core.dispatchData({ type: 'userProfileGet' }));
 }
 
 /**
@@ -79,14 +80,14 @@ export async function updateProfile(
   core: CoreClient,
   patch: { name?: string; email?: string },
 ): Promise<UserProfile> {
-  const request: Record<string, unknown> = { type: 'userProfileUpdate' };
+  const request: UserProfileUpdateRequest = { type: 'userProfileUpdate' };
   if (patch.name) {
-    request['name'] = patch.name;
+    request.name = patch.name;
   }
   if (patch.email) {
-    request['email'] = patch.email;
+    request.email = patch.email;
   }
-  return unwrapProfile(await core.dispatchData(request as never));
+  return unwrapProfile(await core.dispatchData(request));
 }
 
 /** v4 `ProfileEditSection.tsx:66-69` — PATCH `?action=set-avatar` `{imageId}`. */
@@ -95,11 +96,11 @@ export async function setProfileAvatar(
   imageId: string | null,
 ): Promise<UserProfile> {
   return unwrapProfile(
-    await core.dispatchData({ type: 'userProfileSetAvatar', imageId } as never),
+    await core.dispatchData({ type: 'userProfileSetAvatar', imageId }),
   );
 }
 
 export async function fetchDataDir(core: CoreClient): Promise<DataDirInfo> {
-  const data = await core.dispatchData({ type: 'systemDataDir' } as never);
+  const data = await core.dispatchData({ type: 'systemDataDir' });
   return data as unknown as DataDirInfo;
 }

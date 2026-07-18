@@ -3614,7 +3614,12 @@ export type MemoryRequest =
   | CustomToolPreviewRequest
   | CustomToolAuditRequest
   | MountFileReadRequest
-  | MountFileWriteRequest;
+  | MountFileWriteRequest
+  // P4.9c (folded at unification; the block at the end of this file).
+  | UserProfileGetRequest
+  | UserProfileUpdateRequest
+  | UserProfileSetAvatarRequest
+  | SystemDataDirRequest;
 // P4.6u (lane C) — the Salon terminal-pane block.
 // Appended by lane C; single-author (lane B, the file owner, must not edit this
 // block). The terminal WebSocket + REST protocol types live in
@@ -4418,4 +4423,52 @@ export interface MountFileWriteResult {
   sizeBytes: number;
   mimeType: string;
   mtime: number;
+}
+
+// ===========================================================================
+// P4.9c — the About + Profile vertical (folded at unification).
+//
+// §3 of the P4.9a ∥ P4.9c ∥ P4.9b ∥ P4.9d round contract, mirrored
+// NAME-FOR-NAME from `api/types.rs`'s `=== P4.9c ===` block (the wire diff ran
+// at unification). The response bodies (`{profile}` / the data-dir info bag)
+// ride the server's envelope and are read DEFENSIVELY via
+// `CoreClient.dispatchData` (the settings/home precedent — no `CoreResponse`
+// variants added); their shapes live in `screens/profile/profile.api.ts` and
+// are byte-pinned server-side by `profile_routes_equivalence`.
+// ===========================================================================
+
+/**
+ * v4 `GET /api/v1/user/profile` (default action — the `theme-preference` arms
+ * were ported earlier via `theme.service`/chatSettings and are NOT here).
+ */
+export interface UserProfileGetRequest {
+  type: 'userProfileGet';
+}
+
+/**
+ * v4 `PUT /api/v1/user/profile` — `{name?, email?, image?}`. The Rust side
+ * decodes each field as a double-option (absent ≠ null): v4's Zod `.optional()`
+ * accepts ABSENT but 400s an explicit `null`, and v5 keeps that verbatim — so
+ * the client type admits `null` only to describe the wire faithfully; senders
+ * that mean "unchanged" must OMIT the field (see `profile.api.ts`).
+ */
+export interface UserProfileUpdateRequest {
+  type: 'userProfileUpdate';
+  name?: string | null;
+  email?: string | null;
+  image?: string | null;
+}
+
+/** v4 `PATCH /api/v1/user/profile?action=set-avatar` — `{imageId}`. */
+export interface UserProfileSetAvatarRequest {
+  type: 'userProfileSetAvatar';
+  imageId?: string | null;
+}
+
+/**
+ * v4 `GET /api/v1/system/data-dir`. The `POST ?action=open` sibling is
+ * REFUSAL-ARMED in v5 (a Tauri shell-open is a named future native nicety).
+ */
+export interface SystemDataDirRequest {
+  type: 'systemDataDir';
 }
