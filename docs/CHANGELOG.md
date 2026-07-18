@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+P4.6ay unit 8: `run_custom` registration / catalogue / capabilities +
+`delegatedDisplay`. `build_tools_for_provider` gains a `custom_tools` roster
+option and offers `run_custom` only when the roster is non-empty, its
+description composed per call from that roster (v4 plugin-tool-builder). The
+executor gains `run_custom` in `BUILT_IN_TOOLS`/`PORTED_TOOLS` and a dispatch
+arm routing to the handler (the posted Pascal bubble is persisted; the live SSE
+splice follows the `ask_carina` no-sink precedent, deferred to the finalizer —
+unit 9). `ToolExecutionContext` gains `character_mount_point_id`/`character_ids`
+for the roster's character/participant tiers. The TOOL-row content JSON gains
+`delegatedDisplay: true` for `run_custom` (v4's persisted row-shape contract, in
+v4's exact field order) so the Salon renders the run once, not twice. Verified
+by in-crate tests (the push present/absent + description; the byte-exact
+delegatedDisplay row). Tier-2 note: the v4 capabilities-report markdown
+subsystem and the `/api/v1/tools` catalogue route are both unported in v5
+(documented absences); the `customTools` settings field already landed in
+help.rs (unit 10). Version: core 0.0.264.
+
 P4.6ay unit 4: the `run_custom` LLM tool + handler. The pure half
 (`tools/run_custom.rs`) — the input validator, the `run_custom` description
 builder (the roster rides in the description: roll spec, parameter bounds,

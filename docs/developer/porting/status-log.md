@@ -19205,3 +19205,53 @@ and the gated-hit/miss/empty handler cases here.
 + delegatedDisplay), 9 (orchestration/streaming), 7 (route + §4 dispatch verbs),
 12 (Workbench server). `run_custom` remains verified INERT until unit 8 wires the
 executor dispatch arm.
+
+---
+
+### P4.6ay unit 8 — registration / catalogue / capabilities + delegatedDisplay
+
+**Landed:**
+
+- **The `run_custom` push** (`services/tool_build.rs`).
+  `BuildToolsForProviderOptions` gains `custom_tools: Vec<DiscoveredCustomTool>`;
+  `build_tools_for_provider` pushes `run_custom` (catalog key `runCustom`) ONLY
+  when the roster is non-empty, swapping in `build_run_custom_description(roster)`
+  (v4 `plugin-tool-builder.ts:413`). The `build_tools` call site sets it empty
+  for now — **unit 9 resolves the roster inside `build_tools` and fills it**.
+- **The executor dispatch** (`tools/executor.rs`). `run_custom` added to
+  `BUILT_IN_TOOLS` + `PORTED_TOOLS`; a dispatch arm `run_run_custom` builds a
+  `RunCustomToolContext` from the execution context and calls the unit-4 handler,
+  returning v4's result shape (`{formattedText, tool, value, state, whispered}`
+  on success). The handler signature became generic (`R: RandomBytes + Send`) so
+  the dispatch future stays `Send` while holding the rng across awaits.
+- **`ToolExecutionContext`** (`services/tool_execution.rs`) gains
+  `character_mount_point_id` + `character_ids` (the roster's character/participant
+  tiers); `create_tool_context` leaves them unset (v4 parity — the orchestrator
+  fills them, unit 9).
+- **`delegatedDisplay`** (`services/tool_execution.rs`). A `DELEGATED_DISPLAY_TOOLS`
+  set + a `delegated_display: Option<bool>` field on `ToolMessageContent` in v4's
+  exact stringify order (after `callId`, before `anchorOffset`), stamped `true`
+  for `run_custom`. This is v4's PERSISTED ROW-SHAPE contract (`grep` had returned
+  nothing in v5 before) — the Salon renders the run's TOOL row as nothing because
+  Pascal's bubble is the single visible artifact.
+
+**Verification.** In-crate equivalence tests (fix-the-port discipline):
+`run_custom_offered_only_with_a_non_empty_roster` (present with the unit-4-
+differentiated description when non-empty; absent when empty) and
+`run_custom_row_carries_delegated_display` (byte-exact TOOL-row content vs v4's
+field order — the `[[byte-exact-static-data-transcription]]` pattern). The
+END-TO-END `run_custom`-in-`buildTools` differential (a roster resolving inside
+`build_tools`) lands with **unit 9**, which owns the roster-resolution wiring.
+`build_tools_for_provider` is behavior-neutral for the existing no-custom-tools
+corpus (empty roster → no push → byte-identical), so `tool_build_equivalence`
+does not regress.
+
+**Tier-2 items → documented absences (loud):** v4's `capabilities-report.ts`
+markdown subsystem is unported in v5 (the `- **Custom Tools**: Yes/No` line has
+no home; the `customTools` settings field itself already landed in `help.rs` at
+unit 10). The `/api/v1/tools` per-chat-toggle catalogue route (v4 `31d9be49`) is
+unported in v5 — there is no tools-catalogue route to register into. Both are
+named deferrals, not silent gaps.
+
+**Version:** core 0.0.264 (no new harness artifact this unit — the tests are
+in-crate). **Remaining OPEN:** units 9, 7, 12.

@@ -430,11 +430,11 @@ fn params_to_object(params: &ResolvedParams) -> Map<String, Value> {
 /// result and, on a successful post, the persisted Pascal message (v4's
 /// `onPosted` payload) so the caller can surface it over SSE / return it as
 /// `messages: [pascalMessage]`.
-pub async fn execute_run_custom_tool(
+pub async fn execute_run_custom_tool<R: RandomBytes + Send>(
     db: &Db,
     ctx: &RunCustomToolContext,
     input: &Value,
-    rng: &mut dyn RandomBytes,
+    rng: &mut R,
 ) -> (RunCustomToolOutput, Option<PostedPascalMessage>) {
     let Some(parsed) = validate_run_custom_input(input) else {
         return (

@@ -81,6 +81,13 @@ const VAULT_READ_TOOLS: &[&str] = &[
     "doc_open_document",
 ];
 
+/// Tools whose visible artifact is another message, so the TOOL row is persisted
+/// for threading and the model but rendered by nobody (v4
+/// `tool-execution.service.ts:42` `DELEGATED_DISPLAY_TOOLS`). `run_custom`'s
+/// outcome is announced in Pascal's own bubble, so the row is stamped
+/// `delegatedDisplay: true` and the Salon shows the run exactly once.
+const DELEGATED_DISPLAY_TOOLS: &[&str] = &["run_custom"];
+
 // ===========================================================================
 // Shared data types
 // ===========================================================================
@@ -246,6 +253,12 @@ pub struct ToolExecutionContext {
     pub user_id: String,
     pub image_profile_id: Option<String>,
     pub character_id: Option<String>,
+    /// The rolling character's vault mount — the `run_custom` roster's fast path
+    /// for the `character` tier (v4 `ToolExecutionContext.characterMountPointId`).
+    pub character_mount_point_id: Option<String>,
+    /// Every character in the chat — their vaults form the `run_custom` roster's
+    /// `participant` tier (v4 `ToolExecutionContext.characterIds`).
+    pub character_ids: Option<Vec<String>>,
     pub embedding_profile_id: Option<String>,
     /// Participant ID of who is calling the tool (for `{{me}}` resolution).
     pub calling_participant_id: Option<String>,
@@ -295,6 +308,10 @@ pub fn create_tool_context(
         // v4: `imageProfileId || undefined` (a falsy string collapses to absent).
         image_profile_id: image_profile_id.filter(|s| !s.is_empty()),
         character_id: Some(character_id.into()),
+        // The orchestrator fills these for the `run_custom` roster (unit 9);
+        // `createToolContext` leaves them unset, as v4 does.
+        character_mount_point_id: None,
+        character_ids: None,
         embedding_profile_id,
         calling_participant_id: Some(character_participant_id.into()),
         // v4: `projectId || undefined`.
@@ -601,6 +618,12 @@ struct ToolMessageContent<'a> {
     arguments: Option<&'a Value>,
     #[serde(rename = "callId", skip_serializing_if = "Option::is_none")]
     call_id: Option<&'a str>,
+    /// `true` for a tool whose visible artifact is another message (v4's
+    /// `DELEGATED_DISPLAY_TOOLS`): the row persists for threading and the model,
+    /// but the Salon renders nothing for it, so the run shows up once, not twice.
+    /// Omitted (not `false`) otherwise, matching v4's `...(has ? {…} : {})`.
+    #[serde(rename = "delegatedDisplay", skip_serializing_if = "Option::is_none")]
+    delegated_display: Option<bool>,
     #[serde(
         rename = "anchorOffset",
         skip_serializing_if = "Option::is_none",
@@ -635,6 +658,11 @@ fn build_tool_message_content(tool_msg: &ToolMessage) -> Result<String, DbError>
         result: &tool_msg.content,
         arguments: tool_msg.arguments.as_ref(),
         call_id: tool_msg.call_id.as_deref(),
+        delegated_display: if DELEGATED_DISPLAY_TOOLS.contains(&tool_msg.tool_name.as_str()) {
+            Some(true)
+        } else {
+            None
+        },
         anchor_offset: tool_msg.anchor_offset,
         seq: tool_msg.seq,
         provider: tool_msg
@@ -942,5 +970,36 @@ mod tests {
             build_tool_message_content(&tm2).unwrap(),
             r#"{"toolName":"state","success":false,"result":"Error: boom","arguments":{"k":"v"}}"#
         );
+    }
+
+    #[test]
+    fn run_custom_row_carries_delegated_display() {
+        // v4 `tool-execution.service.ts:206–223`: `delegatedDisplay: true` sits
+        // between `callId` and `anchorOffset`, and ONLY for a DELEGATED_DISPLAY
+        // tool. A run_custom TOOL row renders nothing (Pascal's bubble is the run's
+        // single visible artifact) but still persists for threading + the model.
+        let tm = ToolMessage {
+            tool_name: "run_custom".into(),
+            success: true,
+            content: "ansible: The ansible flickers to life. [success]".into(),
+            arguments: Some(json!({ "tool": "ansible" })),
+            call_id: Some("call-1".into()),
+            anchor_offset: None,
+            seq: None,
+            metadata: None,
+        };
+        assert_eq!(
+            build_tool_message_content(&tm).unwrap(),
+            r#"{"toolName":"run_custom","success":true,"result":"ansible: The ansible flickers to life. [success]","arguments":{"tool":"ansible"},"callId":"call-1","delegatedDisplay":true}"#
+        );
+        // A non-delegated tool never gains the key.
+        let tm2 = ToolMessage {
+            tool_name: "rng".into(),
+            call_id: Some("call-1".into()),
+            ..tm.clone()
+        };
+        assert!(!build_tool_message_content(&tm2)
+            .unwrap()
+            .contains("delegatedDisplay"));
     }
 }

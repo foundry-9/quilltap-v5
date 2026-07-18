@@ -60,8 +60,8 @@ use super::doc_edit::{
 };
 use super::{
     annotations, ask_carina, doc_edit, help, help_search, list_email, photo, project_info,
-    read_conversation, request_full_context, rng, run_sql, search, self_inventory, send_mail,
-    state, terminal, wardrobe_archive, wardrobe_create, wardrobe_list, wardrobe_read,
+    read_conversation, request_full_context, rng, run_custom, run_sql, search, self_inventory,
+    send_mail, state, terminal, wardrobe_archive, wardrobe_create, wardrobe_list, wardrobe_read,
     wardrobe_take_off, wardrobe_update, wardrobe_wear, web_search, whisper,
 };
 use crate::db::runtime::Db;
@@ -94,6 +94,7 @@ pub const BUILT_IN_TOOLS: &[&str] = &[
     "help_settings",
     "help_navigate",
     "rng",
+    "run_custom",
     "state",
     "self_inventory",
     "submit_final_response",
@@ -152,6 +153,9 @@ pub const BUILT_IN_TOOLS: &[&str] = &[
 /// in [`BUILT_IN_TOOLS`] routes to the fallback until its batch lands.
 pub const PORTED_TOOLS: &[&str] = &[
     "rng",
+    // P4.6ay: Pascal's user-authored pseudo-tools. Dispatches to the run_custom
+    // handler (resolves the roster, rolls server-side, posts Pascal's bubble).
+    "run_custom",
     "read_conversation",
     "upsert_annotation",
     "delete_annotation",
@@ -471,6 +475,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         }
         Some(match tc.name.as_str() {
             "rng" => self.run_rng(tc, ctx).await,
+            "run_custom" => self.run_run_custom(tc, ctx).await,
             "read_conversation" => self.run_read_conversation(tc, ctx).await,
             "upsert_annotation" => self.run_upsert_annotation(tc, ctx).await,
             "delete_annotation" => self.run_delete_annotation(tc, ctx).await,
@@ -540,6 +545,50 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             }
             // v4's outer try/catch maps a thrown DB error to a failure result.
             Err(e) => fail("rng", e.to_string()),
+        }
+    }
+
+    // -- run_custom (Pascal the Croupier; tool-executor.ts:611) -------------
+    async fn run_run_custom(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        let rc_ctx = run_custom::RunCustomToolContext {
+            user_id: ctx.user_id.clone(),
+            chat_id: ctx.chat_id.clone(),
+            character_id: ctx.character_id.clone(),
+            character_mount_point_id: ctx.character_mount_point_id.clone(),
+            character_ids: ctx.character_ids.clone(),
+            project_id: ctx.project_id.clone(),
+            caller_participant_id: ctx.calling_participant_id.clone(),
+        };
+        let mut source = rng::OsRandomBytes;
+        // The handler posts Pascal's bubble itself — that message is the run's
+        // single visible artifact, so the TOOL row this returns renders nothing
+        // (`delegatedDisplay`; save_tool_messages stamps it). The row still
+        // persists so tool-call threading keeps its `tool_call_id` linkage.
+        //
+        // v4 forwards `context.emitPascalResult` as the handler's `onPosted` (the
+        // live SSE splice). The `ToolExecutionContext` carries no per-turn sink,
+        // so — exactly as `run_ask_carina` does with `emitCarinaAnswer` — the
+        // posted message is persisted (the load-bearing effect) and the live
+        // `pascalResult` splice is left to the post-turn refresh / the finalizer
+        // path where the sink is in hand (unit 9's `pascal_result` encoder).
+        let (out, _posted) =
+            run_custom::execute_run_custom_tool(&self.db, &rc_ctx, &tc.arguments, &mut source)
+                .await;
+
+        if out.success {
+            let formatted = run_custom::format_run_custom_results(&out);
+            let mut result = serde_json::Map::new();
+            result.insert("formattedText".into(), json!(formatted));
+            result.insert("tool".into(), json!(out.tool));
+            result.insert(
+                "value".into(),
+                out.value.map(|v| json!(v)).unwrap_or(Value::Null),
+            );
+            result.insert("state".into(), json!(out.state));
+            result.insert("whispered".into(), json!(out.whispered));
+            ok("run_custom", Value::Object(result))
+        } else {
+            fail("run_custom", out.error.unwrap_or_default())
         }
     }
 

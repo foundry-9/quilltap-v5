@@ -48,7 +48,9 @@ use serde_json::Value;
 use crate::canonicalize::{canonicalize_universal_tools, UniversalTool};
 use crate::db::runtime::Db;
 use crate::db::DbError;
+use crate::pascal::roster::DiscoveredCustomTool;
 use crate::tools::definitions::universal_tool_by_key;
+use crate::tools::run_custom::build_run_custom_description;
 
 /// v4 `ImageProviderConstraints` (the two fields `applyImageConstraintsToTool`
 /// reads). Provider-registry-sourced (W4.7) → injected.
@@ -198,6 +200,11 @@ pub struct BuildToolsForProviderOptions {
     pub include_workspace_tools: bool,
     pub exclude_memory_search: bool,
     pub sql_access: bool,
+    /// The caller's freshly-resolved Pascal roster. `run_custom` is offered ONLY
+    /// when this is non-empty — an empty roster would hand the model a tool with
+    /// nothing to run, worse than not offering it. The description is composed
+    /// per call from exactly this roster (v4 `plugin-tool-builder.ts:413`).
+    pub custom_tools: Vec<DiscoveredCustomTool>,
 }
 
 fn push_key(tools: &mut Vec<UniversalTool>, key: &str) {
@@ -333,6 +340,17 @@ pub fn build_tools_for_provider(options: &BuildToolsForProviderOptions) -> Vec<V
             "attachImage",
         ] {
             push_key(&mut universal, key);
+        }
+    }
+
+    // Add run_custom only when this scene actually has custom tools. An empty
+    // roster would offer the model a tool with nothing to run — worse than not
+    // offering it. The description is composed here, per call, from the roster
+    // the caller just resolved (v4 `plugin-tool-builder.ts:413`).
+    if !options.custom_tools.is_empty() {
+        if let Some(mut t) = universal_tool_by_key("runCustom") {
+            t.function.description = build_run_custom_description(&options.custom_tools);
+            universal.push(t);
         }
     }
 
@@ -480,6 +498,10 @@ pub fn build_tools(db: &Db, user_id: &str, input: &BuildToolsInput) -> Result<Bu
         include_workspace_tools: input.include_workspace_tools,
         exclude_memory_search: input.exclude_memory_search,
         sql_access: input.sql_access,
+        // Unit 9 resolves the Pascal roster inside `build_tools` and fills this;
+        // until then it is empty (→ no `run_custom` offered), matching a scene
+        // with no custom tools.
+        custom_tools: Vec::new(),
     };
     let mut tools = build_tools_for_provider(&options);
 
@@ -564,6 +586,53 @@ mod tests {
             .iter()
             .filter_map(|t| tool_name(t).map(String::from))
             .collect()
+    }
+
+    fn discovered(name: &str, description: &str) -> DiscoveredCustomTool {
+        let raw = serde_json::json!({
+            "name": name,
+            "description": description,
+            "outcomes": [{ "when": true, "message": "done", "state": "success" }],
+        });
+        DiscoveredCustomTool {
+            definition: crate::pascal::custom_tool_types::safe_parse(&raw).unwrap(),
+            tier: crate::db::tiered_mount_pool::MountTier::Character,
+            mount_point_id: "m".into(),
+            mount_name: "M".into(),
+            definition_path: "Tools/x.tool.json".into(),
+        }
+    }
+
+    #[test]
+    fn run_custom_offered_only_with_a_non_empty_roster() {
+        // Empty roster ⇒ no run_custom (an empty roster would offer a tool with
+        // nothing to run — worse than not offering it).
+        let empty = BuildToolsForProviderOptions {
+            include_workspace_tools: false,
+            ..Default::default()
+        };
+        assert!(!names(&build_tools_for_provider(&empty))
+            .iter()
+            .any(|n| n == "run_custom"));
+
+        // Non-empty roster ⇒ run_custom present, its description built from the
+        // roster (the same builder unit 4 differentials against v4).
+        let roster = vec![discovered("unlock", "Try the lock.")];
+        let opts = BuildToolsForProviderOptions {
+            include_workspace_tools: false,
+            custom_tools: roster.clone(),
+            ..Default::default()
+        };
+        let tools = build_tools_for_provider(&opts);
+        assert!(names(&tools).iter().any(|n| n == "run_custom"));
+        let run_custom = tools
+            .iter()
+            .find(|t| tool_name(t) == Some("run_custom"))
+            .unwrap();
+        assert_eq!(
+            run_custom["function"]["description"].as_str().unwrap(),
+            build_run_custom_description(&roster)
+        );
     }
 
     #[test]
