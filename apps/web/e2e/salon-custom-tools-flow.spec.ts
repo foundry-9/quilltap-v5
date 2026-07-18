@@ -93,7 +93,10 @@ test.describe('Salon custom tools + whispers (P4.6ba)', () => {
     // even with All Whispers off (the operator-facing carve-out).
     const bar = page.locator('.qt-chat-system-bar', { hasText: 'Pascal' });
     await expect(bar.first()).toBeVisible({ timeout: 15_000 });
-    await expect(bar.first()).toContainText(toolTitle);
+    // ignoreCase: the menu title is read via innerText (CSS-rendered, which can
+    // uppercase it) while the bar carries DOM text — the assertion is "the bar
+    // names the tool that ran", not its letter case.
+    await expect(bar.first()).toContainText(toolTitle, { ignoreCase: true });
 
     const whispers = page.getByRole('switch', { name: 'Toggle all whispers' });
     await expect(whispers).toHaveAttribute('aria-checked', 'false');

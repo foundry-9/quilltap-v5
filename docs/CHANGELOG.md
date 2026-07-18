@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+P4.6ba e2e gesture fix: the activated custom-tools flow beat compared the
+popup menu title (read via innerText, which reflects CSS-rendered case) against
+the Pascal bar's DOM text and failed on case under full-suite ordering. The
+containment assertion is now case-insensitive — the assertion is "the bar names
+the tool that ran", not its letter case. SPA 0.5.142.
+
 The P4.6ay-resumed unification wire: seed the Pascal Tools roster into the e2e
 instance. A new seedPascalToolsFixture (the courier-seed pattern, cut down)
 copies the committed pascal-run-custom fixture's vault-A Tools folder, its

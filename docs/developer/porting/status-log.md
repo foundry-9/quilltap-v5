@@ -9,6 +9,15 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## P4.6ba flow-beat gesture fix (unifier, 2026-07-17)
+
+Under full-suite ordering the activated beat failed comparing the popup menu
+title (innerText — CSS-rendered case) to the Pascal bar's DOM text
+("ANSIBLE" vs "Ansible"); standalone it passed (rendered-case coincidence).
+The bar itself was CORRECT — this was a spec-gesture case brittleness, fixed
+with `toContainText(title, { ignoreCase: true })` + a why-comment. Full suite
+after: 67/67. SPA 0.5.142.
+
 ## The P4.6ay-resumed §4 wire — the Pascal Tools e2e seed (unifier, 2026-07-17)
 
 The unit-7 e2e-fixture obligation is DISCHARGED: `apps/web/e2e/support/
