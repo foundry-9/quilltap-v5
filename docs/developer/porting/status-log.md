@@ -19875,3 +19875,49 @@ for React keys, and Angular wants the same thing for `@for` track keys.
 Gate: ng test 135 files / 1429 (+27), ng build clean.
 
 **Versions:** SPA 0.5.145.
+
+### Unit 4 — the API surface + WorkbenchLibrary
+
+`screens/custom-tools/workbench.api.ts`: the four §W1 verbs, each body read
+STRUCTURALLY via `dispatchData` (their `type` strings are AY-owned — the
+autonomous-room / P4.6au precedent), plus the §W2 file I/O. The file half rides
+the EXISTING mount-file verbs, which is v4's own architectural note carried
+forward: "reads, writes, and deletes go through the existing mount-points file
+routes, so the Workbench adds no second write path into stores". Nothing in this
+module writes through a Workbench-specific route, because v4 has none.
+
+`workbench-library.ts` (v4 `WorkbenchLibrary.tsx`, 378): the landing surface.
+Search over name/title/description, the group-by-store toggle, per-kind
+attachment badge variants and labels, the disabled/whisper/roll-form/count
+badges with v4's singularization, the two client-side advisories
+(`collidingNames` — names with count > 1; `overCapStores` — per-store count >
+`MAX_ROSTER_SIZE`), broken definitions LISTED rather than hidden with the
+loader's `reason` verbatim, and the row actions. The tier-advisory copy at v4
+`:37` is carried verbatim and asserted as such.
+
+Duplicate RE-READS the file rather than reconstructing it from the library
+entry — the entry is a summary (counts, not the outcome table), so only the
+bytes on disk can seed a faithful copy. v4 does the same; the spec pins it.
+
+**16 spec cases** asserting v4's exact behaviors, not approximations: the
+verbatim advisory string, the threshold being strictly `>` `MAX_ROSTER_SIZE`
+(green at the cap, warned one past it), the distinct badge classes per kind,
+singular/plural counts, the zero-parameter badge being OMITTED not rendered as
+"0 params", group ordering by store name, the three-field filter, the
+title-then-store sort, the duplicate re-read, and the broken-entry drill.
+
+**Scope note:** the order lists the `/custom-tools` route shell with this unit.
+It lands in unit 6 instead, WITH the editor — the shell's three modes render the
+editor in two of them, so shipping it here would have meant a stub, and the
+standing rule forbids that. No scope is dropped; it moves one commit later.
+
+**Gotcha (re-confirmed, `[[p4.6e-settings-spa]]`):** component specs must run
+through `npm run test`. A bare `npx vitest run <spec>` skips Angular's
+`initTestEnvironment`, and the resulting failure reads as a null entry in the
+component's `imports` array — a completely misleading symptom that sends you
+hunting a circular import that isn't there. Pure-TS specs (units 2 and 3) run
+fine either way, which is what makes the trap easy to walk into mid-lane.
+
+Gate: ng test 136 files / 1445 (+16), ng build clean.
+
+**Versions:** SPA 0.5.146.

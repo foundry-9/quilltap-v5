@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.6bb unit 4 (SPA): the Workbench API surface and the library. workbench.api.ts
+covers the four §W1 verbs (read structurally via dispatchData) plus the §W2 file
+I/O, which rides the existing mount-file verbs exactly as v4 does — the
+Workbench adds no second write path into stores. workbench-library.ts ports v4's
+landing surface: search, group-by-store, per-kind attachment badges, the
+name-collision and over-roster-cap advisories, broken files listed rather than
+hidden with the loader's reason verbatim, and a duplicate flow that re-reads the
+file (the library entry is a summary, so only the bytes can seed a faithful
+copy). 16 spec cases. SPA 0.5.146.
+
 P4.6bb unit 3 (SPA): the tool-draft model. app/pascal/tool-draft.ts ports v4's
 bijection between a schema-valid definition and the form-friendly ToolDraft —
 draftFromDefinition, the canonical serializeDraft emission ($schema first, known
