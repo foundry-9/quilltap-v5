@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+P4.d8 unit 3 - the consult invoker and the CUSTOM_TOOL_CONSULT log type.
+New `quilltap-core::pascal::llm_consult`: CONSULT_TIMEOUT_MS,
+consult_max_tokens (ceil(chars/3) clamped to 2048..32768), and
+CustomToolLlmInvoker over the cheap-LLM pipeline - settings and profiles
+resolved FRESH per invocation, zero profiles reported as "no connection
+profiles are configured", the uncensored reroute on a dangerous chat
+(and never for a null-chat bench run), the author's rendered prompt sent
+as the whole conversation with no framing, and the
+'custom-tool-consult' task type. llm_logging gains the
+CUSTOM_TOOL_CONSULT constant and its map_task_type_to_log_type arm -
+without it a consult would have logged silently as SUMMARIZATION. New
+tier-1 differential pascal_llm_consult_equivalence (3 constants + 28
+budget rows) over v4's real llm-consult module.
+
+DEFERRED (loud): the 60s consult timeout is ported as a constant and a
+message builder but the timer is NOT wired - core has no tokio timer
+driver by default and quilltap-host, which owns the one timeout
+precedent, is outside this lane. A hung provider currently blocks the
+tool call instead of failing soft after 60s.
+
 P4.d8 unit 2 - the custom-tool execution core gains the LLM consult seam
 and the containment comparators. `execute_custom_tool` is now async and
 takes an injected `LlmInvoker` (a Send+Sync trait returning a boxed

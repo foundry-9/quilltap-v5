@@ -21339,3 +21339,70 @@ cd ~/source/quilltap-server
 PATH=$N:$PATH npx tsx "$V5W/harness/oracle/cases/pascal-simulate.ts" \
   > /tmp/oracle-pascal-simulate.ndjson
 ```
+
+### Unit 3 — `pascal/llm_consult.rs` + the `CUSTOM_TOOL_CONSULT` log type
+
+The new module ports v4's `lib/pascal/llm-consult.ts`. Structure follows
+the `title_update_job` precedent (the closest existing v5 caller of the
+same ladder): read chat settings + connection profiles off the `Db`,
+build the cheap-LLM config, `get_cheap_llm_provider` over `profiles[0]`
+as the last-resort "current profile", resolve the danger settings, and
+reroute through `resolve_uncensored_cheap_llm_selection` when
+`is_chat_active_dangerous`. A `None` chat_id never reads a chat and so
+is never dangerous — which is exactly how the Workbench bench run stays
+un-rerouted, without a second code path. The invoker builds its own
+`CheapLlmTaskExecutor::with_logging` per invocation so `chat_id` rides
+the `llm_logs` row (v4 passes `chatId` as `executeCheapLLMTask`'s 6th
+argument for the same reason). The prompt goes as ONE user message with
+no system framing, and `task.error ?? 'the model returned nothing'` is
+carried verbatim.
+
+`llm_logging.rs` gained `log_type::CUSTOM_TOOL_CONSULT` and the
+`"custom-tool-consult"` arm of `map_task_type_to_log_type`. **Without
+the arm the consult logs silently under the `SUMMARIZATION` default** —
+a wrong-but-plausible row, which is the failure mode worth naming.
+
+**Differential coverage, honestly bounded.** New tier-1
+`pascal_llm_consult_equivalence` over v4's REAL module: the three
+constants + **28** `consultMaxTokens` rows, clustered on the two clamp
+boundaries (6,141–6,148 around the 2,048 floor; 98,301–98,305 around the
+32,768 ceiling) because the floor-after-ceil ordering and the
+token-vs-character ceiling are what a port gets subtly wrong. What is
+NOT differential-covered, and why:
+  - `mapTaskTypeToLogType` is **not exported by v4** (module-private in
+    `core-execution.ts`), so no oracle can drive it. The new arm is
+    pinned by the in-crate test only. An enum-parity differential was
+    considered and REJECTED: v4's `LLMLogTypeEnum` carries 20 members
+    against v5's 13 emitted constants (CHARACTER_WIZARD, AI_IMPORT,
+    CHARACTER_OPTIMIZER, EXTERNAL_PROMPT, AUTO_CONFIGURE,
+    WARDROBE_IMAGE_ANALYSIS have no v5 emitter), so it would be red for
+    reasons this drift did not cause.
+  - The private `withTimeout` message is not exported either; pinned by
+    an in-crate test against the string read from v4 at `616930db`.
+  - The resolution plumbing itself is proven through unit 5's handler
+    differential with a canned provider on both sides.
+
+**DEFERRAL (loud, named): the 60 s timer is not wired.**
+`CONSULT_TIMEOUT_MS` and `consult_timeout_reason` are ported and tested;
+the timer is not, because `quilltap-core` has no tokio timer driver in
+its default build and `quilltap-host/src/spine.rs` — which owns the one
+existing `tokio::time::timeout` precedent — is outside this lane's
+Ownership. **Consequence: a hung provider blocks the tool call instead
+of becoming the author's `errorMessage` after 60 s.** Every other
+failure route (no invoker, reported failure, empty answer, provider
+error) is live and differential-checked. The wiring recipe is on the
+`CONSULT_TIMEOUT_MS` doc comment: a host-side decorator wrapping
+`CustomToolLlmInvoker` with
+`tokio::time::timeout(CONSULT_TIMEOUT_MS, …)`, elapsed →
+`LlmInvokeResult::Failed { reason: consult_timeout_reason(…) }`.
+
+Regen recipe (v4 @ `616930db`, Node 24):
+
+```bash
+cd ~/source/quilltap-server
+PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx \
+  <v5>/harness/oracle/cases/pascal-llm-consult.ts \
+  > /tmp/oracle-pascal-llm-consult.ndjson
+QT_ORACLE_PASCAL_LLM_CONSULT=/tmp/oracle-pascal-llm-consult.ndjson \
+  cargo test -p quilltap-harness --test pascal_llm_consult_equivalence
+```

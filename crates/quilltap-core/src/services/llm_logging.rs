@@ -352,6 +352,8 @@ pub mod log_type {
     pub const APPEARANCE_RESOLUTION: &str = "APPEARANCE_RESOLUTION";
     pub const SCENE_STATE_TRACKING: &str = "SCENE_STATE_TRACKING";
     pub const ANSWER_CONFIRMATION: &str = "ANSWER_CONFIRMATION";
+    /// A custom tool's mid-run LLM consult (v4 `616930db`/`a2d9a3c8`).
+    pub const CUSTOM_TOOL_CONSULT: &str = "CUSTOM_TOOL_CONSULT";
     pub const DANGER_CLASSIFICATION: &str = "DANGER_CLASSIFICATION";
     /// UI-only in v4; no emitter.
     pub const TOOL_CONTINUATION: &str = "TOOL_CONTINUATION";
@@ -380,6 +382,8 @@ pub fn map_task_type_to_log_type(task_type: Option<&str>) -> String {
         "resolve-character-appearances" | "sanitize-appearance" => log_type::APPEARANCE_RESOLUTION,
         "scene-state-tracking" => log_type::SCENE_STATE_TRACKING,
         "answer-confirmation" | "answer-reaffirmation" => log_type::ANSWER_CONFIRMATION,
+        "custom-tool-consult" => log_type::CUSTOM_TOOL_CONSULT,
+        // Without this arm the consult would log silently as SUMMARIZATION.
         _ => log_type::SUMMARIZATION,
     };
     mapped.to_string()
@@ -404,6 +408,12 @@ mod tests {
             "SCENE_STATE_TRACKING"
         );
         // Unknown / absent -> SUMMARIZATION default.
+        // The 616930db consult arm — without it a live consult would log
+        // silently under the SUMMARIZATION default.
+        assert_eq!(
+            map_task_type_to_log_type(Some("custom-tool-consult")),
+            "CUSTOM_TOOL_CONSULT"
+        );
         assert_eq!(map_task_type_to_log_type(Some("nonsense")), "SUMMARIZATION");
         assert_eq!(map_task_type_to_log_type(None), "SUMMARIZATION");
     }
