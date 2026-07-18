@@ -19560,3 +19560,82 @@ The pure compute this part lands is the differentiable foundation those consume
 `execute_custom_tool`/`simulate_outcomes`).
 
 **Versions:** core 0.0.267, harness 0.0.235.
+
+---
+
+## P4.6ay unit 12 (part 2a) — the Workbench library + destinations (`pascal/workbench.rs`)
+
+**Branch** `claude/pascal-custom-tools-porting-7a5492`, off main `ffc225cc`.
+Drift re-checked at lane start: v4 HEAD is exactly `d68638b4`, tree clean.
+
+**Landed.** `crates/quilltap-core/src/pascal/workbench.rs` (new) — the full
+v4 `lib/pascal/workbench.ts` (305 lines): the DTO tree (`MountAttachment` +
+`AttachmentKind`, `CustomToolLibraryEntry`/`Error`/`Response`,
+`DestinationStore`, the project/group/character destination wrappers,
+`CustomToolDestinations`), `survey_attachments`, `attachments_for_mount`,
+`build_custom_tool_library`, `list_custom_tool_destinations`.
+
+**Two porting facts worth carrying:**
+
+1. **The survey's three collections are `Vec`s, not maps — deliberately.** v4
+   iterates JS `Map`s, whose iteration order is INSERTION order, and that order
+   reaches the wire as `attachmentsForMount`'s badge sequence (general →
+   character → group → project, groups/projects in repo order). A `HashMap`
+   would have scrambled it; a `BTreeMap` would have sorted it. The
+   `character_by_mount` vec also reproduces `Map.set`'s replace-in-place when two
+   characters name the same vault.
+2. **`survey_attachments` reads `characters_read::find_all_raw`, and the fixture
+   exists to prove it.** The hydrating overlay DROPS a character whose vault is
+   unusable — exactly the store an author is repairing. The fixture's "Cracked"
+   character has its vault `properties.json` link deleted, and its store still
+   earns its character badge in the library on both sides.
+
+**Differential: `pascal_workbench_equivalence`, 2 cases (library +
+destinations), green over a fresh `d68638b4` oracle.** The oracle
+(`harness/oracle/cases/pascal-workbench.test.ts`) drives v4's REAL
+`buildCustomToolLibrary` / `listCustomToolDestinations` through a jest real-DB
+oracle (`[[jest-real-db-oracle]]`) over a fresh copy of the new committed
+fixture per case. v4's own `__tests__/unit/lib/pascal/workbench.test.ts` was the
+case template, but it primes a MOCKED repository world; driving both sides' real
+repos over one baked instance proves the repo composition too (findAllRaw vs the
+overlay, `findEnabled`'s disabled filter, the group/project link tables). The
+two cases carry 5 library tools + 1 error + 5 destination groupings between
+them; the test additionally asserts the corpus's own coverage (tool count,
+disabled entry, dice form, the two-badge mount, the 3-store group, the
+2-of-3 characters, a non-empty `other`) so a fixture that silently thins out
+fails loudly instead of passing on a smaller world.
+
+**NEW committed fixture family: `crates/quilltap-web/tests/fixtures/
+workbench-{main,mount}.db`** (+ `.meta.json` sidecar), built by
+`harness/oracle/fixtures/build-workbench-fixture.ts` from
+`harness/oracle/fixtures/workbench.json` via v4's REAL repos +
+`storeMountFile`. It invalidates NO existing oracle — nothing else reads it.
+Coverage: General store (`Tools/alpha.tool.json` valid + `Tools/broken.tool.json`
+not-JSON + `Tools/sub/nested.tool.json` rejected by `isRootToolFile`), project
+"Ashfall" (dice roll, 1 param, 2 outcomes, explicit title), group "Night Shift"
+(official store with a `disabled` + whisper definition, a linked annex, AND a
+link onto the project's store so one mount carries two badges in stable order),
+Imogen (vault + `metadata.json` fact sheet), Vaultless (vault link severed after
+creation), Cracked (keystone unlinked → a genuinely broken vault), "Loose
+Papers" (unattached), "Shuttered" (a DISABLED store carrying a tool, invisible
+to both views). Every roll is deterministic (`min === max`).
+
+**Regen recipe** (v4 @ `d68638b4`, Node 24 at
+`~/.nvm/versions/node/v24.13.1/bin`) — both the fixture builder and the oracle
+are in the differential's header; the jest mirror needs a `fixtures/` sibling
+AND a `node_modules` symlink (`[[jest-oracle-bare-package-imports]]`).
+
+**One documented divergence, INHERITED not new.** A malformed definition file's
+reason is `is not valid JSON: <engine message>`, and V8's parser sentence
+(`Expected property name or '}' in JSON at position 2 …`) is not serde_json's
+(`key must be a string at line 1 column 3`). This is unit 2's already-recorded
+seam, one layer below the Workbench; the differential compares that reason by
+its `is not valid JSON:` PREFIX exactly as `pascal_roster_equivalence` does, and
+every other reason — the whole Zod/`format_definition_issues` family, which the
+GET route returns verbatim — is compared unnormalized.
+
+**Gate:** `cargo fmt --all --check` clean; `cargo clippy --workspace
+--all-targets -D warnings` clean on BOTH feature sets;
+`pascal_workbench_equivalence` green with zero SKIP.
+
+**Versions:** core 0.0.268, harness 0.0.236.

@@ -5,3 +5,4 @@ pub mod custom_tools;
 pub mod dice;
 pub mod js_value;
 pub mod roster;
+pub mod workbench;

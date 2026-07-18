@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+P4.6ay unit 12 (part 2a): Pascal's Workbench library and destination views.
+New pascal/workbench.rs ports v4's lib/pascal/workbench.ts — the attachment
+survey (which reads characters raw on purpose, so a store whose vault is
+briefly broken still shows its badge), the per-mount badge order, the
+library over every enabled store, and the save-target list grouped by what
+each store is attached to, with the names each store already carries. A new
+committed workbench-{main,mount}.db fixture family carries a general store,
+a project, a group with an official plus two unofficial stores, three
+character vaults (one healthy, one unlinked, one with its keystone removed),
+an unattached store, a disabled store, a broken definition file and a nested
+one. The new pascal_workbench_equivalence differential drives both sides'
+real repositories over that instance and matches v4 exactly, apart from the
+already-documented JSON-parser wording seam inherited from unit 2. Bumps:
+core 0.0.268, harness 0.0.236.
+
 Plan the unit-12 / P4.6bb Workbench round (docs only). A round addendum on
 the open P4.6ay order frames its one remaining item (unit 12's
 /custom-tools route surface) as lane AY, with the workbench oracle and
