@@ -372,7 +372,7 @@ async fn photos_routes_equivalence() {
     ) -> Response {
         photo_gallery_list(
             db,
-            provider,
+            Some(provider),
             user,
             q.map(|s| s.to_string()),
             tag,

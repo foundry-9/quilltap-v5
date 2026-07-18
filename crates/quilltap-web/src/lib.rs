@@ -32,6 +32,9 @@ pub mod llm_logs_routes;
 pub mod multipart;
 // === P4.9c: the user-profile + data-dir REST edges (lane C, append-only) ===
 pub mod profile_routes;
+// === P4.9a: the user photo gallery REST edges (lane A, append-only) ===
+pub mod photos_routes;
+// === end P4.9a ===
 // === end P4.9c ===
 // === P4.6w: documents ===
 pub mod qtap_target_route;
@@ -219,6 +222,16 @@ pub fn build_router(state: SharedState) -> Router {
             get(profile_routes::system_data_dir_get).post(profile_routes::system_data_dir_post),
         )
         // === end P4.9c ===
+        // === P4.9a: the user photo gallery (lane A, append-only) ===
+        .route(
+            "/api/v1/photos",
+            get(photos_routes::photos_list).post(photos_routes::photos_save),
+        )
+        .route(
+            "/api/v1/photos/{id}",
+            get(photos_routes::photo_entry_get).delete(photos_routes::photo_entry_delete),
+        )
+        // === end P4.9a ===
         .route("/setup", get(static_serve::setup))
         .fallback(get(static_serve::spa_fallback))
         .with_state(state)

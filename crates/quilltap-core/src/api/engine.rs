@@ -2894,21 +2894,22 @@ impl CoreEngine {
             // arm deliberately does NOT go through `ready_db`.
             Request::SystemDataDir => super::data_dir::system_data_dir(&self.inner.config.base_dir), // === end P4.9c ===
             // === P4.9a: the user photo gallery (lane A, append-only) ===
-            // The list arm rides `ready_memory_embedding` because v4's service
-            // calls `generateEmbeddingForUser` inline on the query branch. An
-            // unwired provider therefore refuses the WHOLE verb, query or not —
-            // which is stricter than v4 and is the reason the host wires the
-            // embedding seam live (it has since P4.6stu).
+            // The embedding provider is OPTIONAL here, deliberately. v4 calls
+            // `generateEmbeddingForUser` only on the query branch, so gating the
+            // whole verb on the seam would make a plain `/photos` listing fail
+            // on any spine-less assembly (read-only embedders get `None`) —
+            // stricter than v4, and it would dark-screen the whole feature. A
+            // SEARCH without the seam is the loud refusal; a listing is not.
             Request::PhotoGalleryList {
                 q,
                 tag,
                 limit,
                 offset,
-            } => match self.ready_memory_embedding() {
+            } => match self.ready_db_and_memory_embedding() {
                 Ok((db, provider)) => {
                     super::photos::photo_gallery_list(
                         &db,
-                        &provider,
+                        provider.as_ref(),
                         SINGLE_USER_ID,
                         q,
                         tag,
@@ -3080,6 +3081,21 @@ impl CoreEngine {
                     "provider wire actions not assembled (provider-actions driver deferral)",
                 )),
             },
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
+    /// The Db plus the memory embedding provider **if one is assembled** (P4.9a).
+    /// Unlike [`Self::ready_memory_embedding`], an unwired provider is NOT an
+    /// error: the photo-gallery listing needs the seam only when the caller
+    /// supplied a search query, so the arm decides for itself whether the
+    /// absence matters.
+    #[allow(clippy::type_complexity)]
+    fn ready_db_and_memory_embedding(
+        &self,
+    ) -> Result<(Db, Option<crate::model::embedding::ErasedEmbeddingProvider>), Response> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => Ok((r.db.clone(), r.memory_embedding.clone())),
             EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
         }
     }

@@ -107,9 +107,14 @@ fn zod_int_in_range(raw: f64, lo: i64, hi: Option<i64>) -> Result<i64, String> {
 /// `generateEmbeddingForUser` inline) and handed to the sync service body, with
 /// [`needs_query_embedding`] as the single shared predicate so the two can
 /// never disagree about whether a vector was required.
+///
+/// `provider` is OPTIONAL because v4 only reaches the model on the query
+/// branch: a plain listing must still work on an assembly with no embedding
+/// seam (a spine-less host), while a SEARCH without one is the loud
+/// not-assembled refusal.
 pub async fn photo_gallery_list<P: EmbeddingProvider + Sync>(
     db: &Db,
-    provider: &P,
+    provider: Option<&P>,
     user_id: &str,
     q: Option<String>,
     tag: Option<Vec<String>>,
@@ -132,6 +137,12 @@ pub async fn photo_gallery_list<P: EmbeddingProvider + Sync>(
 
     let embedding = if needs_query_embedding(q.as_deref()) {
         let query = q.clone().expect("needs_query_embedding implies Some");
+        let Some(provider) = provider else {
+            return Response::error(
+                ErrorKind::Internal,
+                "memory embedding not assembled (photo-gallery search embedding-seam deferral)",
+            );
+        };
         match provider
             .generate_embedding_for_user(&query, user_id, None, EmbeddingPriority::Interactive)
             .await

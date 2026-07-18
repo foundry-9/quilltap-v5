@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+P4.9a unit 3: the photos REST edges (quilltap-web/src/photos_routes.rs) —
+GET|POST /api/v1/photos and GET|DELETE /api/v1/photos/{id}, each unwrapping the
+dispatch envelope to v4's raw body, with POST answering 201 as v4's `created`
+does. Two edge behaviors needed care: ?tag= REPEATS (v4 reads them with
+getAll, so the extractor is a pair list, not a map — a map would silently keep
+one) and the JS Number() coercion that v4 runs BEFORE Zod (so ?limit=abc must
+reach the core as NaN and earn Zod's NaN message rather than being repaired or
+dropped). Both are mutation-checked in the new photos_web_routes end-to-end
+test. Also corrects the dispatch arm from unit 2: the list verb now takes an
+OPTIONAL embedding provider and gates only the query branch on it. Gating the
+whole verb would have made a plain /photos listing fail on any spine-less
+assembly, where the seam is None — stricter than v4, and it would have
+dark-screened the feature; a search without the seam is still the loud named
+refusal. core 0.0.274, web 0.0.30.
+
 P4.9a unit 2: the four photo-gallery dispatch verbs (photoGalleryList /
 photoGallerySave / photoGalleryEntryGet / photoGalleryEntryRemove) over the
 unit-1 service, plus the committed photos-{main,mount}.db fixture family and a

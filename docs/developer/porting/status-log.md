@@ -21370,3 +21370,41 @@ SPA screen + its §1 route block, the live Playwright beat, and tier 2
 (`imageInfoGet` + the deep gallery modal family).
 
 **Versions:** quilltap-core 0.0.273, quilltap-web 0.0.29.
+
+### P4.9a unit 3 — the REST edges + the web-edge legs
+
+`crates/quilltap-web/src/photos_routes.rs` + the two route registrations:
+`GET|POST /api/v1/photos`, `GET|DELETE /api/v1/photos/{id}`. Each dispatches
+its `Request` and UNWRAPS the envelope to v4's raw body (the P4.6ah lesson);
+POST answers **201**, because v4's `created(result)` does.
+
+**Two edge behaviors that needed care**, both mutation-checked in the new
+`photos_web_routes` end-to-end test:
+
+1. **`?tag=` repeats.** v4 reads them with `searchParams.getAll('tag')`, so
+   `?tag=a&tag=b` is a two-element filter. A `HashMap` query extractor would
+   silently keep one; the extractor is `Query<Vec<(String, String)>>`, which
+   serde_urlencoded fills preserving repeats in order. Mutation: `.take(1)` on
+   the collector fails the two-tag case.
+2. **`Number()` before Zod.** v4 reads `limit`/`offset` as
+   `has(k) ? Number(get(k)) : undefined`, so `?limit=abc` must reach the core as
+   NaN — not be dropped, and not be repaired into a valid number. Mutation:
+   parsing with `parse::<f64>().unwrap_or(1.0)` turns v4's 400 into a 200.
+
+**A unit-2 correction this unit makes.** The list dispatch arm rode
+`ready_memory_embedding`, which refuses when the seam is unwired. But a
+spine-less assembly gets `memory_embedding: None` (`host.rs:476`), and v4 only
+reaches the model on the QUERY branch — so that arm would have made a plain
+`/photos` listing fail on those hosts, dark-screening the whole feature for a
+capability it doesn't need. The arm now takes an OPTIONAL provider
+(`ready_db_and_memory_embedding`) and gates only the query branch; a SEARCH
+without the seam is still the loud named refusal, pinned by the web-edge test.
+
+**A DRY debt, recorded rather than paid.** `photos_routes.rs` carries a local
+JS `Number()` port. The core already has a private twin in
+`tools::text_block_parser`, and lifting it into `jsnum` would touch files
+outside this lane's ownership. The two follow the same spec and the arms this
+edge can reach are pinned by `list_limit_nan` / `list_limit_fraction`; the
+consolidation is a rider for a future DRY pass.
+
+**Versions:** quilltap-core 0.0.274, quilltap-web 0.0.30.
