@@ -20387,3 +20387,85 @@ recorded in the ruling block under F1:
   A 2–3 lane round, Workbench-round-sized.
 - Sequencing vs the M6 backlog items 1–4 is deliberately left to the
   next `/setupphase`.
+
+## Round planned — the M6 items 1–4 round (P4.9a ∥ P4.9c ∥ P4.9b ∥ P4.9d, 2026-07-18)
+
+The natural next round named by the last three round records: the M6
+backlog's items 1–4 (`m6-screen-parity.md` §4), planned as FOUR parallel
+lanes. Orders committed: `work-orders/p4.9a-photos-view.md`,
+`p4.9c-about-profile.md`, `p4.9b-generate-image-screen.md`,
+`p4.9d-quick-hide-provider.md`. Sequencing vs `p4.9j` (workspace tabs,
+ruled 2026-07-18): items 1–4 first — they are small, unblocked, and
+high-visibility; `p4.9j` is a round-sized effort that gets its own
+`/setupphase` next.
+
+**Drift check:** v4 HEAD is EXACTLY the baseline `d68638b4`
+(4.8.0-dev.72) — no commits to classify. The working tree is DIRTY with
+a new in-flight feature (~1,400 lines: untracked `lib/pascal/llm-consult.ts`
++ mods across pascal custom-tools / workbench / LLM-inspector /
+`chats-messages.ops.ts` / `llm-log.types.ts` / both public schemas).
+Zero overlap with this round's surfaces (verified per-lane by survey);
+consequences recorded in every order: oracles regenerate from a pinned
+detached worktree at `d68638b4`, and the llm-consult feature is a
+predicted future drift round when it lands.
+
+**Survey findings that re-shaped the M6 seed** (four fresh v4/v5 surveys
+at `d68638b4`, 2026-07-18):
+
+- `p4.9a` is NOT the SPA-only lane the backlog table implied: the whole
+  user-gallery server surface (`lib/photos/user-gallery-service.ts`
+  ~470 lines, 4 routes, sha256 dedup + linkSummary) has no v5
+  counterpart — the lane is a full vertical (4 new verbs + REST edges +
+  a `photos-{main,mount}.db` fixture family + differentials). The
+  mount-blob byte route already exists, and `CharacterAvatar` +
+  `characterPhoto*` verbs cover the deep modals' writes; the one extra
+  read is tier-2 `imageInfoGet` (v4 `GET /api/v1/images/{id}`).
+- `p4.9c` is not a rider either: no user-profile verbs exist, and v5's
+  UI cannot read its own version (engine `HealthDto.version` exists but
+  the HTTP `/health` body omits it and `interpretHealth` discards it) —
+  the lane adds `userProfileGet/Update/SetAvatar` + `systemDataDir` +
+  the additive version carry. The v4 route's theme-preference arms are
+  ALREADY ported (theme.service over chatSettings) and explicitly
+  excluded. AboutView is fully static; the shields.io badges render
+  locally per the M6 ruling.
+- `p4.9b` shrank: v4's `/generate-image` page does NOT use
+  `StandaloneGenerateImageDialog` (it inlines its own form and sends
+  only `{prompt, count}` — v5's live four-param `imageProfileGenerate`
+  covers it exactly), and the dialog's only v4 opener is a
+  `ComposerGutterTools` button — so the page is tier 1, the dialog + its
+  single gutter button tier 2, and the rest of the gutter family stays
+  `p4.9e2`'s. Pure SPA.
+- `p4.9d` is pure SPA — `tags.quickHide` is live in the v5 core both
+  ways and full tag CRUD verbs exist — but grew two pieces: v4's GLOBAL
+  tags manager mounts inside Settings → Appearance
+  (`AppearanceTabContent.tsx:49`), which v5 shipped without, so the
+  whole 479-line `tags-tab.tsx` ports here; and ThemePreviewModal is
+  RE-BINNED from `p4.9c` to `p4.9d` because its opener lives in the
+  appearance tab this lane owns (narrowed to bundled themes — v5 has no
+  themes registry; the tokens-fetch arm defers with it). Port hazards
+  recorded: the provider's `shouldHideChat` is DEAD in v4 (zero callers,
+  wrong field name `isDangerous` vs the real `isDangerousChat`) — the
+  consumers' inline pattern ports instead; `clearAllHidden` spares
+  `includeAutonomousRooms`; the v4 SSR-hydration dance dies (client-only
+  Angular) but the cross-tab `storage` listener must port deliberately.
+  The in-chat consumer (v4 `SalonView.tsx:707`) defers to `p4.9e*`.
+
+**The shared contract** (§1–§4, verbatim in all four orders): §1
+`app.routes.ts` is contract-managed (three lanes add pinned route
+blocks; unifier unions); §2 the unifier wires — (a) the photos nav flip
+(`shell.ts` `route: null` → `/photos`; nobody flips it in-lane), (b) the
+user-menu mount chain (P4.9c ships `qt-user-menu` with a pinned marker;
+P4.9d ships `qt-quick-hide-menu-section`; unifier mounts); §3 the new
+wire verbs (P4.9a photos ×4 + tier-2 `imageInfoGet`; P4.9c profile ×3 +
+`systemDataDir` + the health `version` field; P4.9b/P4.9d none) with the
+local-module-and-cast fold-at-unify pattern; §4 the three quick-hide
+localStorage keys (P4.9d only). The round's KNOWN Rust conflict set is
+pinned: P4.9a and P4.9c both add additive arms to `api/types.rs` /
+`api/engine.rs` / `api/mod.rs` / `quilltap-web/src/lib.rs`; the unifier
+reconciles per the parallel-round recipe. Version-bump ownership: A and
+C bump core/harness/web(+lock)+SPA; B and D SPA only; the unifier
+recounts the SPA union.
+
+**Baseline versions at planning:** main `abfd096d`; core 0.0.269,
+harness 0.0.237, host 0.0.20, web 0.0.27, quilltap-tauri 0.0.4, SPA
+0.5.153.

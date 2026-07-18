@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+Planned the M6 backlog items 1-4 round: four parallel work orders
+committed under docs/developer/porting/work-orders/ — p4.9a (the My
+Photos vertical: the user photo gallery server surface + /photos screen
++ the deep gallery modals), p4.9c (About + Profile: user-profile server
+verbs, the data-dir surface, the health version carry, both screens, the
+shell user menu), p4.9b (the standalone Generate Image screen + dialog +
+shared profile picker, pure SPA), and p4.9d (the quick-hide system +
+global tags tab + ThemePreviewModal, pure SPA). Docs only; v4 baseline
+d68638b4 re-verified (HEAD unmoved; the dirty in-flight llm-consult
+feature noted — oracles regenerate from a pinned detached worktree).
+
 Dogfood finding #15 (the M5 walk): the unlock screen — and every other
 pre-unlock gate screen — was barely readable: no theme class was stamped
 on <html> before the shell loaded, so light-mode text rendered on the
