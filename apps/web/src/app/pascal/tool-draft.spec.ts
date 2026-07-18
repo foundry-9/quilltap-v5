@@ -115,7 +115,10 @@ describe('draft round-trip (§6.2 invariant)', () => {
             gte: 10,
             lte: 90,
             roll: { lt: 0.9 },
-            params: { material: { eq: 'brass' }, scale: { gt: { $param: 'baseline' } } },
+            params: {
+              material: { eq: 'brass', ncontains: 'iron' },
+              scale: { gt: { $param: 'baseline' } },
+            },
             metadata: {
               'has ansible access': { eq: true },
               clearanceLevel: { gte: { $param: 'scale' } },
@@ -252,6 +255,21 @@ describe('when chips ⇄ JSON bijection', () => {
     });
   });
 
+  it('covers containment on param, metadata, and llm subjects', () => {
+    const chips = expectWhenRoundTrip({
+      params: { material: { contains: 'ras', ncontains: 'iron' } },
+      metadata: { faction: { contains: 'Aurum' } },
+      llm: { ncontains: { $param: 'forbidden' } },
+    } as WhenObject);
+    expect(chips.map((c) => c.comparator)).toEqual([
+      'contains',
+      'ncontains',
+      'contains',
+      'ncontains',
+    ]);
+    expect(chips[3].operand).toEqual({ kind: 'param', name: 'forbidden' });
+  });
+
   it('merges a band on one subject into one comparator object', () => {
     const chips: DraftCondition[] = [
       {
@@ -364,6 +382,83 @@ describe('validateDraft', () => {
     expect(issues.every((i) => i.severity === 'warning')).toBe(true);
   });
 
+  it('audits containment chips: text subjects, text operands, nothing empty', () => {
+    const draft = newDraft();
+    draft.name = 'contain';
+    draft.description = 'x';
+    draft.parameters = [
+      {
+        id: 'p1',
+        name: 'scale',
+        type: 'number',
+        defaultValue: '1',
+        description: '',
+        min: '',
+        max: '',
+      },
+      {
+        id: 'p2',
+        name: 'material',
+        type: 'string',
+        defaultValue: 'brass',
+        description: '',
+        min: '',
+        max: '',
+      },
+    ];
+    draft.outcomes[0].message = 'm';
+
+    const chip = (partial: Partial<DraftCondition>): DraftCondition[] => [
+      {
+        id: 'a',
+        subject: { kind: 'param', name: 'material' },
+        comparator: 'contains',
+        operand: { kind: 'string', text: 'ras' },
+        ...partial,
+      },
+    ];
+
+    draft.outcomes[0].conditions = chip({});
+    expect(validateDraft(draft).filter((i) => i.severity === 'error')).toEqual([]);
+
+    draft.outcomes[0].conditions = chip({ subject: { kind: 'param', name: 'scale' } });
+    expect(
+      validateDraft(draft).some((i) => i.message.includes('only text can contain text')),
+    ).toBe(true);
+
+    draft.outcomes[0].conditions = chip({ operand: { kind: 'param', name: 'scale' } });
+    expect(validateDraft(draft).some((i) => i.message.includes('needs text to look for'))).toBe(
+      true,
+    );
+
+    draft.outcomes[0].conditions = chip({ operand: { kind: 'string', text: '' } });
+    expect(validateDraft(draft).some((i) => i.message.includes('must not be empty'))).toBe(true);
+
+    draft.outcomes[0].conditions = chip({ operand: { kind: 'number', text: '5' } });
+    expect(validateDraft(draft).some((i) => i.message.includes('needs text to look for'))).toBe(
+      true,
+    );
+  });
+
+  it('rejects containment on whether the consult succeeded', () => {
+    const draft = newDraft();
+    draft.name = 'okc';
+    draft.description = 'x';
+    draft.llmEnabled = true;
+    draft.llmPrompt = 'Speak.';
+    draft.llmErrorMessage = 'Silence.';
+    draft.outcomes[0].message = 'm';
+    draft.outcomes[0].conditions = [
+      {
+        id: 'a',
+        subject: { kind: 'llm-ok' },
+        comparator: 'contains',
+        operand: { kind: 'string', text: 'x' },
+      },
+    ];
+    expect(validateDraft(draft).some((i) => i.message.includes('= or ≠'))).toBe(true);
+  });
+
   it('flags a literal min above a literal max, but not a $param bound', () => {
     const draft = newDraft();
     draft.name = 'bounds';
@@ -442,5 +537,144 @@ describe('slugFromTitle', () => {
     ['Scan — Hawking Radiation', 'scan_hawking_radiation'],
   ])('%s → %s', (title, expected) => {
     expect(slugFromTitle(title)).toBe(expected);
+  });
+});
+
+/**
+ * v4 `__tests__/unit/lib/pascal/tool-draft.test.ts:469-583` — the consult block
+ * in the draft, ported case-for-case.
+ */
+describe('the llm block in the draft', () => {
+  const ORACLE_TOOL = {
+    name: 'augury',
+    description: 'Consult the oracle.',
+    llm: { prompt: 'YES or NO about {{value}}?', errorMessage: 'The wire went dead.' },
+    outcomes: [
+      { when: { llm: { ok: false } }, message: 'Silence: {{llm}}', state: 'failure' },
+      { when: { llm: { eq: 'YES', ok: true } }, message: 'Assent.', state: 'success' },
+      { when: true, message: 'Demurral: {{llm}}', state: 'info' },
+    ],
+  };
+
+  it('round-trips a definition with an llm block and llm tests', () => {
+    const emitted = expectRoundTrip(ORACLE_TOOL);
+    expect(Object.keys(emitted)).toEqual(['$schema', 'name', 'description', 'llm', 'outcomes']);
+  });
+
+  it('loads the block into the draft fields', () => {
+    const draft = draftFromDefinition(ORACLE_TOOL)!;
+    expect(draft.llmEnabled).toBe(true);
+    expect(draft.llmPrompt).toBe('YES or NO about {{value}}?');
+    expect(draft.llmErrorMessage).toBe('The wire went dead.');
+  });
+
+  it('emits no llm key while the consult is disabled', () => {
+    const draft = newDraft();
+    draft.llmPrompt = 'kept but dormant';
+    expect(definitionFromDraft(draft)['llm']).toBeUndefined();
+  });
+
+  it('round-trips maxOutput, and omits it while blank', () => {
+    const capped = { ...ORACLE_TOOL, llm: { ...ORACLE_TOOL.llm, maxOutput: 50000 } };
+    expectRoundTrip(capped);
+
+    const draft = draftFromDefinition(capped)!;
+    expect(draft.llmMaxOutput).toBe('50000');
+
+    draft.llmMaxOutput = '';
+    expect((definitionFromDraft(draft)['llm'] as { maxOutput?: number }).maxOutput).toBeUndefined();
+  });
+
+  it('rejects a nonsense answer cap while enabled', () => {
+    const draft = draftFromDefinition(ORACLE_TOOL)!;
+    draft.llmMaxOutput = '0';
+    let messages = validateDraft(draft)
+      .filter((i) => i.severity === 'error')
+      .map((i) => i.message);
+    expect(messages.some((m) => m.includes('whole number'))).toBe(true);
+
+    draft.llmMaxOutput = '999999';
+    messages = validateDraft(draft)
+      .filter((i) => i.severity === 'error')
+      .map((i) => i.message);
+    expect(messages.some((m) => m.includes('tops out'))).toBe(true);
+  });
+
+  it('bijects ok and answer comparators through chips', () => {
+    const when = { llm: { gte: 5, eq: 'YES', ok: false } } as WhenObject;
+    const chips = conditionsFromWhen(when);
+    // ok rides its own chip kind; the rest are ordinary comparator chips.
+    expect(chips.map((c) => c.subject.kind)).toEqual(['llm-ok', 'llm', 'llm']);
+    expect(whenFromConditions(chips)).toEqual(when);
+  });
+
+  it('serializes a "succeeded ≠ true" chip as ok: false', () => {
+    const chips: DraftCondition[] = [
+      {
+        id: 'a',
+        subject: { kind: 'llm-ok' },
+        comparator: 'neq',
+        operand: { kind: 'boolean', value: true },
+      },
+    ];
+    expect(whenFromConditions(chips)).toEqual({ llm: { ok: false } });
+  });
+
+  describe('validation', () => {
+    it('requires a prompt and an error message while enabled', () => {
+      const draft = draftFromDefinition(ORACLE_TOOL)!;
+      draft.llmPrompt = '  ';
+      draft.llmErrorMessage = '';
+      const messages = validateDraft(draft)
+        .filter((i) => i.severity === 'error')
+        .map((i) => i.message);
+      expect(messages).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('needs a prompt'),
+          expect.stringContaining('error message'),
+        ]),
+      );
+    });
+
+    it('flags llm chips when the consult is disabled', () => {
+      const draft = draftFromDefinition(ORACLE_TOOL)!;
+      draft.llmEnabled = false;
+      const messages = validateDraft(draft)
+        .filter((i) => i.severity === 'error')
+        .map((i) => i.message);
+      expect(messages.some((m) => m.includes('consult is not enabled'))).toBe(true);
+    });
+
+    it('warns on {{llm}} inside the prompt itself', () => {
+      const draft = draftFromDefinition(ORACLE_TOOL)!;
+      draft.llmPrompt = 'Echo {{llm}} back?';
+      const warnings = validateDraft(draft)
+        .filter((i) => i.severity === 'warning')
+        .map((i) => i.message);
+      expect(warnings.some((m) => m.includes('cannot quote its own answer'))).toBe(true);
+    });
+
+    it('warns on {{llm}} in a message while the consult is off', () => {
+      const draft = newDraft();
+      draft.name = 'plain';
+      draft.description = 'd';
+      draft.outcomes = [draft.outcomes[1]];
+      draft.outcomes[0].message = 'Says {{llm}}.';
+      const warnings = validateDraft(draft)
+        .filter((i) => i.severity === 'warning')
+        .map((i) => i.message);
+      expect(warnings.some((m) => m.includes('unless the LLM consult is enabled'))).toBe(true);
+    });
+  });
+
+  it('renames a parameter inside the consult prompt, and finds it as a reference', () => {
+    const withParam = draftFromDefinition({
+      ...ORACLE_TOOL,
+      parameters: { omen: { type: 'string', default: 'sparrows' } },
+      llm: { prompt: 'What of the {{params.omen}}?', errorMessage: 'Silence.' },
+    })!;
+    expect(findParameterReferences(withParam, 'omen')).toEqual(['the consult prompt renders it']);
+    const renamed = renameParameterEverywhere(withParam, 'omen', 'portent');
+    expect(renamed.llmPrompt).toBe('What of the {{params.portent}}?');
   });
 });

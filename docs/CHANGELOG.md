@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+P4.6bc unit 2: the tool-draft bijection carries the consult. ToolDraft
+gains llmEnabled/llmPrompt/llmErrorMessage/llmMaxOutput (kept while
+disabled, like the roll fields); ConditionSubject gains the llm and
+llm-ok chip kinds; conditionsFromWhen splits `ok` onto its own chip and
+whenFromConditions folds it back, serializing a "succeeded != true" chip
+as ok: false; definitionFromDraft emits the llm block with maxOutput
+omitted while blank, at v4's KNOWN_KEY_ORDER position. Validation gains
+the llm section (prompt, error message, answer cap), the consult
+prompt's own placeholder audit minus {{llm}}, the {{llm}}-while-disabled
+message warning, the disabled-consult and llm-ok comparator refusals,
+and the containment audit with its early return. Slot keys, parameter
+rename, and reference finding all reach the prompt. v4's +12+3 new
+tool-draft cases ported case-for-case. SPA 0.5.171.
+
 P4.6bc unit 1: the browser custom-tool schema twin gains the 616930db
 consult + containment arms - the top-level llm block (prompt,
 errorMessage, maxOutput with its int/bounds rules), the LlmComparator

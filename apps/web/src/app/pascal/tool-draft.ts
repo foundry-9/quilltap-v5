@@ -22,6 +22,8 @@ import {
   COMPARATOR_KEYS,
   IDENTIFIER_PATTERN,
   MAX_DESCRIPTION_LENGTH,
+  MAX_LLM_OUTPUT_CEILING,
+  MAX_LLM_PROMPT_LENGTH,
   MAX_MESSAGE_LENGTH,
   MAX_OUTCOMES,
   MAX_PARAMETERS,
@@ -52,6 +54,12 @@ export const ORDERING_COMPARATORS: ReadonlySet<ComparatorKey> = new Set<Comparat
   'gte',
   'lt',
   'lte',
+]);
+
+/** Comparator keys that search one string inside another. */
+export const CONTAINMENT_COMPARATORS: ReadonlySet<ComparatorKey> = new Set<ComparatorKey>([
+  'contains',
+  'ncontains',
 ]);
 
 let draftIdCounter = 0;
@@ -99,7 +107,11 @@ export type ConditionSubject =
   | { kind: 'value' }
   | { kind: 'roll' }
   | { kind: 'param'; name: string }
-  | { kind: 'metadata'; key: string };
+  | { kind: 'metadata'; key: string }
+  /** The LLM consult's answer. */
+  | { kind: 'llm' }
+  /** Whether the LLM consult succeeded — serializes to the comparator's `ok` key. */
+  | { kind: 'llm-ok' };
 
 /** A condition chip's right-hand side. */
 export type ConditionOperand =
@@ -137,6 +149,14 @@ export interface ToolDraft {
   rollDice: string;
   /** Range fields. Kept even while `rollForm` is 'dice' (§4.3). */
   rollRange: DraftRollRange;
+  /** Whether the tool consults an LLM. Off = no `llm` key is emitted. */
+  llmEnabled: boolean;
+  /** The consult's prompt template. Kept even while disabled, like the roll fields. */
+  llmPrompt: string;
+  /** The author's own words for a failed consult. Kept even while disabled. */
+  llmErrorMessage: string;
+  /** Loose numeric text for `llm.maxOutput`; '' means the default cap. */
+  llmMaxOutput: string;
   /** Ordered; the last entry is always the catch-all. */
   outcomes: DraftOutcome[];
   /** The `$schema` value to re-emit. */
@@ -155,6 +175,7 @@ const KNOWN_KEY_ORDER = [
   'defaultVisibility',
   'parameters',
   'roll',
+  'llm',
   'outcomes',
 ];
 
@@ -190,6 +211,10 @@ export function newDraft(): ToolDraft {
     rollForm: 'range',
     rollDice: '',
     rollRange: defaultRollRange(),
+    llmEnabled: false,
+    llmPrompt: '',
+    llmErrorMessage: '',
+    llmMaxOutput: '',
     outcomes: [
       {
         id: nextDraftId('outcome'),
@@ -273,6 +298,20 @@ export function conditionsFromWhen(when: WhenObject): DraftCondition[] {
     conditions.push(...comparatorToConditions({ kind: 'metadata', key }, comparator));
   }
 
+  if (when.llm !== undefined) {
+    // `ok` is not a comparator key, so it gets its own chip kind; the loop
+    // below only walks COMPARATOR_KEYS and never sees it.
+    if (when.llm.ok !== undefined) {
+      conditions.push({
+        id: nextDraftId('cond'),
+        subject: { kind: 'llm-ok' },
+        comparator: 'eq',
+        operand: { kind: 'boolean', value: when.llm.ok },
+      });
+    }
+    conditions.push(...comparatorToConditions({ kind: 'llm' }, when.llm as ParamComparator));
+  }
+
   return conditions;
 }
 
@@ -338,6 +377,11 @@ export function draftFromDefinition(raw: unknown): ToolDraft | null {
           round: range.round ?? false,
         }
       : defaultRollRange(),
+    llmEnabled: definition.llm !== undefined,
+    llmPrompt: definition.llm?.prompt ?? '',
+    llmErrorMessage: definition.llm?.errorMessage ?? '',
+    llmMaxOutput:
+      definition.llm?.maxOutput === undefined ? '' : numberText(definition.llm.maxOutput),
     outcomes: definition.outcomes.map(outcomeToDraft),
     schemaValue:
       typeof rawRecord['$schema'] === 'string' && rawRecord['$schema'].length > 0
@@ -392,6 +436,7 @@ export function whenFromConditions(conditions: DraftCondition[]): WhenObject | u
   const roll: Record<string, unknown> = {};
   const params: Record<string, Record<string, unknown>> = {};
   const metadata: Record<string, Record<string, unknown>> = {};
+  const llm: Record<string, unknown> = {};
 
   for (const condition of conditions) {
     const operand = operandFromDraft(condition.operand);
@@ -403,6 +448,16 @@ export function whenFromConditions(conditions: DraftCondition[]): WhenObject | u
         break;
       case 'roll':
         roll[condition.comparator] = operand;
+        break;
+      case 'llm':
+        llm[condition.comparator] = operand;
+        break;
+      case 'llm-ok':
+        // The chip is "succeeded = <bool>" (or ≠, its complement); either way
+        // it serializes to the comparator's single boolean `ok` key.
+        if (typeof operand === 'boolean') {
+          llm['ok'] = condition.comparator === 'neq' ? !operand : operand;
+        }
         break;
       case 'param': {
         const name = condition.subject.name;
@@ -424,6 +479,7 @@ export function whenFromConditions(conditions: DraftCondition[]): WhenObject | u
   if (Object.keys(roll).length > 0) when['roll'] = roll;
   if (Object.keys(params).length > 0) when['params'] = params;
   if (Object.keys(metadata).length > 0) when['metadata'] = metadata;
+  if (Object.keys(llm).length > 0) when['llm'] = llm;
 
   return Object.keys(when).length > 0 ? (when as WhenObject) : undefined;
 }
@@ -501,6 +557,17 @@ export function definitionFromDraft(draft: ToolDraft): Record<string, unknown> {
   const roll = rollFromDraft(draft);
   if (roll !== undefined) doc['roll'] = roll;
 
+  if (draft.llmEnabled) {
+    const llm: Record<string, unknown> = {
+      prompt: draft.llmPrompt,
+      errorMessage: draft.llmErrorMessage,
+    };
+    // Omitted while blank — the default cap is the runtime's, not the file's.
+    const maxOutput = parseNumberText(draft.llmMaxOutput);
+    if (Number.isFinite(maxOutput)) llm['maxOutput'] = maxOutput;
+    doc['llm'] = llm;
+  }
+
   doc['outcomes'] = draft.outcomes.map((outcome) => {
     if (outcome.catchAll) {
       return { when: true, message: outcome.message, state: outcome.state };
@@ -537,6 +604,7 @@ export interface DraftIssue {
     | { section: 'options' }
     | { section: 'parameter'; id: string; field: 'name' | 'default' | 'min' | 'max' }
     | { section: 'roll'; field?: 'dice' | 'min' | 'max' | 'multiplier' | 'offset' }
+    | { section: 'llm'; field: 'prompt' | 'errorMessage' | 'maxOutput' }
     | { section: 'outcome'; id: string; conditionId?: string }
     | { section: 'message'; id: string };
   message: string;
@@ -615,6 +683,17 @@ function validateMessagePlaceholders(
       }
       continue;
     }
+    if (key === 'llm') {
+      if (!draft.llmEnabled) {
+        issues.push(
+          warn(
+            { section: 'message', id: outcome.id },
+            '{{llm}} renders as written unless the LLM consult is enabled',
+          ),
+        );
+      }
+      continue;
+    }
     if (key.startsWith('params.')) {
       if (!declaredParams.has(key.slice('params.'.length))) {
         issues.push(
@@ -639,6 +718,44 @@ function validateMessagePlaceholders(
   }
 }
 
+/**
+ * The consult prompt's own placeholder audit — the same families an outcome
+ * message takes, minus `{{llm}}`: the consult cannot quote an answer that does
+ * not exist yet.
+ */
+function validateLlmPromptPlaceholders(draft: ToolDraft, issues: DraftIssue[]): void {
+  const declaredParams = new Set(draft.parameters.map((p) => p.name));
+  const where: DraftIssue['where'] = { section: 'llm', field: 'prompt' };
+  PLACEHOLDER_PATTERN.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = PLACEHOLDER_PATTERN.exec(draft.llmPrompt)) !== null) {
+    const key = match[1].trim();
+    if (key === 'value' || key === 'roll') continue;
+    if (key === 'dice') {
+      if (draft.rollForm !== 'dice') {
+        issues.push(warn(where, '{{dice}} renders as an empty string outside the dice form'));
+      }
+      continue;
+    }
+    if (key === 'llm') {
+      issues.push(
+        warn(where, '{{llm}} is not available here — the consult cannot quote its own answer'),
+      );
+      continue;
+    }
+    if (key.startsWith('params.')) {
+      if (!declaredParams.has(key.slice('params.'.length))) {
+        issues.push(warn(where, `{{${key}}} names no declared parameter — it will render as written`));
+      }
+      continue;
+    }
+    if (key.startsWith('metadata.')) continue;
+    issues.push(
+      warn(where, `{{${key}}} is not a placeholder this build knows — it will render as written`),
+    );
+  }
+}
+
 function validateCondition(
   condition: DraftCondition,
   outcome: DraftOutcome,
@@ -655,6 +772,21 @@ function validateCondition(
   // Subject completeness.
   if (condition.subject.kind === 'metadata' && condition.subject.key.trim() === '') {
     issues.push(err(where, 'a metadata condition needs a key'));
+    return;
+  }
+  if (
+    (condition.subject.kind === 'llm' || condition.subject.kind === 'llm-ok') &&
+    !draft.llmEnabled
+  ) {
+    issues.push(err(where, 'tests the LLM consult, but the consult is not enabled'));
+    return;
+  }
+  if (
+    condition.subject.kind === 'llm-ok' &&
+    (ORDERING_COMPARATORS.has(condition.comparator) ||
+      CONTAINMENT_COMPARATORS.has(condition.comparator))
+  ) {
+    issues.push(err(where, 'whether the consult succeeded can only be tested with = or ≠'));
     return;
   }
   if (condition.subject.kind === 'param') {
@@ -675,6 +807,39 @@ function validateCondition(
         err(where, `${condition.comparator} orders "${condition.subject.name}", which is not numeric`),
       );
     }
+  }
+
+  // Containment gets its own complete audit — subject and operand must both be
+  // text where their types are knowable — and then returns, so the eq/neq and
+  // ordering rules below never double-report the same chip.
+  if (CONTAINMENT_COMPARATORS.has(condition.comparator)) {
+    const subjectType = subjectValueType(condition.subject, paramByName);
+    if (subjectType !== null && subjectType !== 'string') {
+      issues.push(
+        err(where, `${condition.comparator} searches a ${subjectType}, and only text can contain text`),
+      );
+    }
+    const needle = condition.operand;
+    if (needle.kind === 'number' || needle.kind === 'boolean') {
+      issues.push(err(where, `${condition.comparator} needs text to look for`));
+    } else if (needle.kind === 'string' && needle.text === '') {
+      issues.push(err(where, 'the substring to look for must not be empty'));
+    } else if (needle.kind === 'param') {
+      const target = paramByName.get(needle.name);
+      if (!needle.name || !target) {
+        issues.push(
+          err(where, `compares against "${needle.name || '(no parameter)'}", which is not declared`),
+        );
+      } else if (draftParamValueType(target) !== 'string') {
+        issues.push(
+          err(
+            where,
+            `${condition.comparator} needs text to look for; "${needle.name}" is ${target.type}`,
+          ),
+        );
+      }
+    }
+    return;
   }
 
   // Operand completeness and typing.
@@ -756,6 +921,12 @@ function subjectValueType(
     }
     case 'metadata':
       return null;
+    case 'llm':
+      // The answer's type is the model's business — unknowable here, like a
+      // metadata key's.
+      return null;
+    case 'llm-ok':
+      return 'boolean';
   }
 }
 
@@ -771,6 +942,12 @@ export function conditionSlotKey(condition: Pick<DraftCondition, 'subject' | 'co
       return `param:${subject.name}:${condition.comparator}`;
     case 'metadata':
       return `metadata:${subject.key}:${condition.comparator}`;
+    case 'llm':
+      return `llm:${condition.comparator}`;
+    case 'llm-ok':
+      // Comparator-free on purpose: "succeeded = true" and "succeeded ≠ false"
+      // are the same test, so a row gets one such chip at most.
+      return 'llm-ok';
   }
 }
 
@@ -905,6 +1082,54 @@ export function validateDraft(draft: ToolDraft): DraftIssue[] {
     }
   }
 
+  // LLM consult.
+  if (draft.llmEnabled) {
+    if (draft.llmPrompt.trim() === '') {
+      issues.push(err({ section: 'llm', field: 'prompt' }, 'the consult needs a prompt'));
+    } else if (draft.llmPrompt.length > MAX_LLM_PROMPT_LENGTH) {
+      issues.push(
+        err(
+          { section: 'llm', field: 'prompt' },
+          `the prompt is over ${MAX_LLM_PROMPT_LENGTH} characters`,
+        ),
+      );
+    }
+    if (draft.llmErrorMessage.trim() === '') {
+      issues.push(
+        err(
+          { section: 'llm', field: 'errorMessage' },
+          "the consult needs an error message — the tool's own words for when the model cannot answer",
+        ),
+      );
+    } else if (draft.llmErrorMessage.length > MAX_MESSAGE_LENGTH) {
+      issues.push(
+        err(
+          { section: 'llm', field: 'errorMessage' },
+          `the error message is over ${MAX_MESSAGE_LENGTH} characters`,
+        ),
+      );
+    }
+    if (draft.llmMaxOutput.trim() !== '') {
+      const maxOutput = parseNumberText(draft.llmMaxOutput);
+      if (!Number.isInteger(maxOutput) || maxOutput < 1) {
+        issues.push(
+          err(
+            { section: 'llm', field: 'maxOutput' },
+            'the answer cap must be a whole number of characters, at least 1',
+          ),
+        );
+      } else if (maxOutput > MAX_LLM_OUTPUT_CEILING) {
+        issues.push(
+          err(
+            { section: 'llm', field: 'maxOutput' },
+            `the answer cap tops out at ${MAX_LLM_OUTPUT_CEILING.toLocaleString()} characters`,
+          ),
+        );
+      }
+    }
+    validateLlmPromptPlaceholders(draft, issues);
+  }
+
   // Outcomes.
   if (draft.outcomes.length > MAX_OUTCOMES) {
     issues.push(err({ section: 'options' }, `at most ${MAX_OUTCOMES} outcomes`));
@@ -999,6 +1224,7 @@ export function renameParameterEverywhere(draft: ToolDraft, from: string, to: st
   return {
     ...draft,
     parameters: draft.parameters.map((p) => (p.name === from ? { ...p, name: to } : p)),
+    llmPrompt: draft.llmPrompt.replace(placeholder, `{{params.${to}}}`),
     rollRange: {
       ...draft.rollRange,
       min: renameValue(draft.rollRange.min),
@@ -1029,6 +1255,10 @@ export function findParameterReferences(draft: ToolDraft, name: string): string[
     offset: draft.rollRange.offset,
   })) {
     if (value.kind === 'param' && value.name === name) sites.push(`roll ${field}`);
+  }
+
+  if (new RegExp(`\\{\\{\\s*params\\.${escapeRegExp(name)}\\s*\\}\\}`).test(draft.llmPrompt)) {
+    sites.push('the consult prompt renders it');
   }
 
   draft.outcomes.forEach((outcome, index) => {
