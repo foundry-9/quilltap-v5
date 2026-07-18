@@ -20858,10 +20858,223 @@ enablement gate by design (the P4.6ac pattern).
   — `p4.9j`.
 - **v4's plugin ProviderIcon surface** (`iconData`, `ProviderBadge`) —
   belongs to whichever lane ports v4's plugin icon registry.
+## P4.9d — the quick-hide lane (lane D of the M6 items 1–4 round)
+
+**Branch:** `claude/quick-hide-provider-work-order-6c90df`.
+**v4 baseline:** `d68638b4`, drift-checked at lane start (HEAD unmoved;
+the dirty in-flight llm-consult feature does not touch any survey
+target — verified file-by-file). Pure-SPA lane: `crates/**` untouched,
+no wire surface added. `cargo test --workspace` run once at lane start
+as the no-drift baseline (exit 0).
+
+### Unit 1 — the quick-hide service (`fe1b3a13`)
+
+`apps/web/src/app/quick-hide/`: `quick-hide.storage.ts` (the three §4
+keys + read/write primitives), `should-hide.ts` (the pure predicate),
+`quick-hide.service.ts` (signals, toggles, refresh, the cross-tab
+listener). 24 specs, each pinning its v4 file:line.
+
+Transcription notes, all commented in place:
+
+- **The dead method.** v4's `shouldHideChat`
+  (`quick-hide-provider.tsx:198-209`) reads `chat.isDangerous`; the real
+  payload field is `isDangerousChat` and NO consumer calls it. Every v4
+  consumer inlines the predicate with the real name. v5 ports the inline
+  pattern and does NOT reproduce the method.
+- **Eager localStorage.** v4 defers the read to a post-mount effect
+  (`:89-91`) purely to dodge a Next.js SSR mismatch. A client-only SPA
+  has nothing to desync, so v5 reads in the field initializer — the
+  first render is already filtered.
+- **The prune keeps set identity** (`:74`): when nothing changed, v4
+  returns the previous Set to avoid a re-render; v5 keeps it so
+  dependent `computed`s don't recompute.
+- **The storage listener ignores a CLEARED key** — v4 guards each arm
+  with `&& event.newValue`, so `newValue === null` is not "reset to
+  default". Ported faithfully.
+- **`clearAllHidden` spares `includeAutonomousRooms`** (`:179-180`).
+- **`hasQuickHideFeatures` is NARROWER than v4's.** v4 ORs in a
+  `hasDangerousChats` probe (`sidebar-footer.tsx:144`) that v5 has not
+  ported; the omission is recorded in the doc comment rather than faked.
+
+`autonomous-visibility.ts` keeps its pure math and now re-exports the key
++ storage primitives from the service's storage module, so its spec stays
+green unchanged and the salon-list header toggle becomes a second view of
+one value. The recorded placement divergence STANDS.
+
+### Unit 2 — the eight consumers (`f1f4f3bd`)
+
+Each site keeps ITS OWN v4 tag-collection semantics; they genuinely
+differ, and the differences are the reason this unit needed a spec per
+site (18 in `quick-hide-consumers.spec.ts`, deliberately NOT in
+`home.spec.ts`):
+
+| Consumer | v4 | Collects |
+|---|---|---|
+| salon-list | `SalonListView.tsx:89-112` | chat tags ∪ ALL participant tags; dangerous arm SECOND |
+| home recent-chats | `RecentChatsSection.tsx:20-37` | participant tags ONLY; dangerous arm FIRST |
+| home characters | `CharactersSection.tsx:29-32` | `character.tags`; filter BEFORE the fit slice; empty arm gates on the FILTERED list (`:86`) |
+| characters roster | `AuroraView.tsx:124-140` | `character.tags`; filter BEFORE sort |
+| character detail | `CharacterDetailView.tsx:54,:316` | the Hidden placeholder, behind v4's `hiddenTagIds.size > 0` short-circuit |
+| conversations tab | `character-conversations-tab.tsx:38-44` | CHAT tags only |
+| prospero chats | `ChatsSection.tsx:65-83` | chat ∪ participant tags |
+| prospero characters | `CharactersCard.tsx:31-38` | dedupe by id, THEN filter; subtitle counts survivors |
+
+Two structural notes: the prospero chats filter is layered OVER the raw
+`chats` signal so pagination keeps counting what the SERVER sent (filtering
+the paged list would stall "Load more"), and that section gains v4's
+SECOND empty state, `No visible chats (some may be hidden).` (`:146`).
+Adds the shared `qt-hidden-placeholder` (v4
+`components/quick-hide/hidden-placeholder.tsx`), copy verbatim.
+
+Defaults hide nothing, so every pre-existing spec stayed green. The
+salon-list predicate and the home empty-state gate were BOTH
+mutation-checked.
+
+### Unit 3 — `qt-quick-hide-menu-section` (`402e8a22`)
+
+v4 `nav-user-menu-quick-hide.tsx` (118 lines) + `QuickHideIcon`. The
+autonomous toggle keeps v4's INVERTED icon polarity (`:105`): an open eye
+means INCLUDED, because it adds rows. v4's `.qt-navbar-dropdown-item`
+rules (`_layout.css:192-206`) are transcribed as COMPONENT-SCOPED styles
+rather than added to v5's shared stylesheet — the section must look right
+wherever it mounts, and the shared sheet is not this lane's to edit (lane
+C may also touch dropdown styling). Ships UNMOUNTED per §2b. 9 specs.
+
+### Unit 4 — the global tags card (`126e015d`)
+
+v4 `components/settings/tags-tab.tsx` (479 lines) → `qt-settings-tags`,
+mounted LAST in Settings → Appearance (v4 `AppearanceTabContent.tsx:48-50`).
+19 specs.
+
+- **⚠ THE ORDER OVERSTATES v4: there is NO create flow.** v4's tags tab
+  never calls `POST /tags`; tags are born by ASSIGNMENT elsewhere, which
+  is exactly what its empty state says ("Tags are created when you assign
+  them to characters, profiles, or other content."). v4 is the oracle, so
+  the port has no create either. (Same shape as the P4.6aj precedent.)
+- **The quick-hide checkbox is gated ONLY by its own in-flight save**
+  (`:374`), never by `tagSaving` — a style save leaves it clickable and
+  vice versa. It has NO optimistic update (patched from the response
+  only, `:185`), and its `finally` keeps v4's functional guard (`:194`)
+  so a slow response can't clear a NEWER row's saving id.
+- **A failed style save is NOT rolled back** (`:78`) — the control keeps
+  the value until the next refetch. Ported.
+- Colors debounce 500 ms (`:115-145`); emoji + the four flags save
+  immediately (`:93-112`).
+- `refresh()` on the quick-hide service fires on a successful flag
+  (`:188`) and inside delete's `Promise.all` (`:216`), so the menu list
+  updates live.
+- **Divergence — feedback.** v4 uses `showSuccessToast`/`showErrorToast`;
+  v5 has no toast system, so this follows the established v5 idiom
+  (`defaults-tab.ts:460-463`): a card-level alert on failure, silence on
+  success.
+
+**⚠ REPORTED, NOT FIXED — `core-contract.ts`'s `TagUpdateRequest` is
+wrong on two counts, and had NO caller before this unit:**
+
+1. **Shape.** It declares the patch FLAT (`{type, tagId, name?,
+   visualStyle?, quickHide?}`), but the engine variant is
+   `TagUpdate { tag_id, tag: Value }` under
+   `#[serde(tag = "type", rename_all = "camelCase")]`
+   (`api/types.rs:57-58,:604-608`) — the wire is `{type, tagId, tag:{…}}`,
+   NESTED.
+2. **Type.** Both it and `TagDto` type `visualStyle` as a string; the wire
+   carries the OBJECT (`api/characters.rs:2242` passes the stored JSON
+   through; the patch is parsed by `parse_visual_style` into
+   `db::tags::TagVisualStyle`).
+
+Lane-local types in `screens/settings/appearance/tags.api.ts` send what
+the engine accepts (the §3 local-module-and-cast pattern), with a spec
+asserting the patch goes out nested. Correcting the shared contract is
+left for the unifier — no lane owns `core-contract.ts` this round.
+
+### Unit 5 — the live Playwright beat (`33003413`)
+
+`apps/web/e2e/quick-hide-flow.spec.ts`, two beats: authoring (seed a tag
+onto a character → Settings → Appearance → Tags → pick → Add Style → tick
+"Enable quick-hide button" → reload proves the server round-trip) and
+hiding (hide the tag → the tagged character leaves the roster → clear
+restores it).
+
+Two things the walk taught, both v4-faithful, both commented in the spec:
+
+- **The quick-hide checkbox lives INSIDE the style card**, so a tag must
+  be STYLED before it can be flagged. That is v4's layout.
+- **Hiding only bites for tags actually FLAGGED quickHide**, because the
+  service prunes hidden ids to the flagged set on every refresh
+  (`:71-75`). The hiding beat therefore ensures the flag itself, which
+  also keeps it independent of the authoring beat's ordering.
+
+Step 2 writes the §4 keys rather than clicking the section, since §2b
+ships the section UNMOUNTED — that write is exactly what the toggles do,
+so storage → service → consumer filter is exercised live. **The
+MENU-WALK VARIANT IS ACTIVATE-AT-UNIFY** and the spec marks the swap
+point (`setHiddenTags`).
+
+**MUTATION-CHECKED**, and worth recording as a trap: the FIRST mutation
+run PASSED, which would have signed off a vacuous beat. The cause was a
+stale `dist` — the e2e serves `--spa-dir dist`, and a source mutation
+proves nothing until `ng build` has actually rewritten it. Re-run against
+a confirmed-rebuilt bundle, beat 2 fails under mutation and passes
+restored.
+
+### Tier 2 — the theme preview modal (`b22a8cc8`)
+
+v4 `ThemePreviewModal.tsx` + `ThemePreviewPanel.tsx` over v5's bundled
+packs, with a Preview affordance per theme card. 25 specs.
+
+- `contrast.ts` — v4 `utils/contrast.ts` transcribed WITH its quirks: the
+  HSL branch approximates luminance by LIGHTNESS (`:18-25`), the
+  threshold is strictly `> 0.5`, and malformed hex yields `NaN` (compares
+  false → the dark pair) rather than throwing.
+- `scoped-theme-css.ts` — v4 `generateScopedThemeCSS`
+  (`lib/themes/utils.ts:651-784`) + its four VAR_MAPs (`:24-122`). **The
+  re-declared component variables are load-bearing:**
+  `--qt-button-primary-bg` and friends resolve against the LIVE
+  `--color-*`, and custom properties do NOT re-resolve when a descendant
+  redefines what they referenced — without the block the preview paints
+  in the ACTIVE theme's colours.
+- Tokens come from the pack's committed `public/themes/<id>/tokens.json`
+  (all four sections, all 27 colour keys) instead of v4's
+  `?action=tokens` fetch. The themes REGISTRY stays deferred.
+- **Angular hoists template `<style>` blocks at compile time**, so the
+  scoped CSS is injected as a head-level element keyed to a unique class
+  and removed on destroy. Nothing touches `<html>` — v5's own
+  `applyToDom` does the opposite and cannot be reused for preview.
+- The theme card became a DIV wrapping two buttons: Preview cannot nest
+  inside the apply button.
+
+**⚠ NEEDS A HUMAN NOD — the dark-mode polarity.** v4 forces a theme
+without dark support to preview LIGHT (`ThemePreviewModal.tsx:86`:
+`supportsDarkMode ? mode : 'light'`). v5's `ThemeService.applyToDom`
+(`:201-202`) forces the ONE such pack (`madmans-box`) to DARK — in v5 the
+flag means "single-mode pack", not "light-only pack". This port follows
+V5 so the preview shows what applying actually produces; v4's literal
+would preview a mode the app never renders. Flagged in the component
+docstring and in the spec.
+
+**Tier-2 deferrals (loud, named)** — v4 arms v5's bundled packs cannot
+feed: the image gallery (no v5 pack declares `previewImage`); the icon
+sheet (only `madmans-box` declares icons and its `icons/` dir was never
+copied into `public/themes/`, so every `<img>` would 404);
+`cssOverrides` scoping (v5 ships `styles.css` as a LINK, not text — v4
+itself degrades to token-only when overrides are absent); the
+source/deprecation badges (`getSourceBadge` — v5's `ThemeOption` has no
+`source`/`deprecated`, so every pack would read "Bundle"); and preview of
+the built-in DEFAULT theme (v4 uses a `DEFAULT_THEME_TOKENS` constant;
+v5's default is the base stylesheet, so the card omits the button and the
+modal refuses loudly).
+
+### Tier-3 deferrals (unchanged from the order)
+
+- **The in-chat consumer** (v4 `SalonView.tsx:707`) — travels with the
+  `p4.9e*` dialog family. `salon-conversation.ts` UNTOUCHED.
+- **The installed-themes tokens fetch** — deferred with the registry.
+- **The user-menu placement of the section** — §2b's unifier wire.
 
 ### Gate
 
 `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+<<<<<<< HEAD
 -D warnings` clean on both feature sets; `cargo test --workspace
 --no-fail-fast` 347 binaries / 1416 tests / 0 failed (unchanged from main
 — zero Rust touched); `ng test` 143 files / 1586 tests; `ng build` clean;
@@ -20869,3 +21082,11 @@ enablement gate by design (the P4.6ac pattern).
 against this worktree's own release binaries. The three load-bearing
 assertions per unit were mutation-checked (deliberately broken, confirmed
 failing, restored). SPA 0.5.157.
+=======
+-D warnings` clean (both feature sets); `cargo test --workspace` matches
+main's baseline (no Rust touched). `ng test` 145 files / 1627 tests;
+`ng build` clean; full Playwright 73 passed, zero failures, zero skips.
+
+**Versions:** SPA 0.5.153 → 0.5.159 (six unit bumps). No crate bumps —
+`crates/**` untouched.
+>>>>>>> 64f16a61 (P4.9d: the lane record)
