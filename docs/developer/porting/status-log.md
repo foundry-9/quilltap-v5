@@ -20762,3 +20762,110 @@ Versions at lane close: core 0.0.271, harness 0.0.239, web 0.0.28, SPA 0.5.157.
 **Fixtures changed: NONE** — no other lane's oracle is invalidated by this lane.
 The `users_tier2` oracle was regenerated only to re-verify the `UserUpdate.image`
 signature change; its committed inputs are unchanged.
+## P4.9b — the Generate Image screen + standalone dialog + shared picker (lane B) — CLOSED
+
+Branch `claude/p4-9b-generate-image-screen-bfb19a`, four unit commits.
+v4 baseline `d68638b4`, drift-checked at lane start (HEAD unmoved; the
+dirty in-flight llm-consult feature does not touch any survey target —
+verified file-by-file). **Pure SPA: zero `crates/**` changes** (`git diff
+main -- crates/ Cargo.* harness/` is empty), so no oracle regeneration is
+owed and no fixture changed.
+
+**Unit 1 — one shared `ImageProfilePicker`** (`images/image-profile-picker.ts`,
+`images/provider-icon.ts`). The `screens/new-chat/` copy was consolidated
+here and gained v4's two missing pieces: the selected-profile detail card
+(v4 `:110-129`) and the provider glyph. `provider-icon.ts` ports only v4
+`ProviderIcon`'s DefaultIcon path (circle + abbreviation, `PROVIDER_DEFAULTS`
+transcribed); the plugin `iconData` branch, the `abbreviation`/`colorClass`
+overrides and `ProviderBadge` are deferred loud — unreachable from the only
+call site, which passes a bare provider. Two corrections rode along: the
+select dropped `[ngModel]` for a change handler + `[selected]` per option
+(the async-options dogfood-#6 case), and `sortByUserCharacter` was REMOVED
+from the request — v5's `imageProfileList` variant carries `sortByCharacter`
+only (`api/types.rs:787-790`), so New Chat had been sending a field the
+server silently discarded. 18 tests.
+
+**Unit 2 — the `/generate-image` screen** (`screens/generate-image/`), plus
+its §1 route block. Three v4 behaviors carried deliberately and pinned by
+spec because each reads as a defect otherwise: no auto-selected profile
+(v4 `:37`), the gallery is in-memory only with no localStorage and no
+save-from-screen (v4 `:41`), and the user-facing parameter surface is
+prompt + count and nothing else — which is exactly what v5's four-param
+`imageProfileGenerate` narrowing already covers. `insertPlaceholderAt` is
+extracted pure (both v4 copies share the body) and pins the two subtle
+details: the insert REPLACES the selection, and the caret lands past the
+closing braces so inserts chain. 20 tests.
+
+**Unit 3 — the homepage quick action restored.** `quick-actions-row.ts`
+regains v4's fifth action → `/generate-image`; `home.spec.ts` flips from
+asserting the omission to asserting the navigation.
+
+**Unit 4 — `StandaloneGenerateImageDialog` + its single gutter opener.**
+Four v4 details differ between v4's OWN two copies and were transcribed
+rather than harmonized, each spec-pinned: the dialog sends the prompt
+UNTRIMMED (`:84`) where the screen trims (`:116`); "No images generated"
+(`:112`) vs the screen's "No images **were** generated" (`:140`);
+prompt-before-profile validation (`:65,:70`), the reverse of the screen;
+and the success arm requires `success: true` (`:99`). 16 tests.
+
+**Unit 5 — the live walk.** New `e2e/generate-image-flow.spec.ts`, 3 beats:
+the Home→screen walk with the disabled-until-both gate, the `{{me}}`/
+`{{char}}` chaining insert, and the gutter button opening the standalone
+dialog. No real provider spend anywhere — both generate beats stop at the
+enablement gate by design (the P4.6ac pattern).
+
+### Findings worth carrying
+
+1. **v4's chat-profile `GenerateImageDialog` has NO opener.**
+   `useModalState.ts:63` exports `openGenerateImage` and **no v4 component
+   calls it** — the dialog is unreachable in v4. v4's single
+   `ComposerGutterTools:52` camera button opens the STANDALONE dialog. v5
+   had its composer button pointed at the chat-profile dialog, i.e. v5
+   exposed the dialog v4 hides and hid the one v4 exposes. Unit 4
+   re-pointed it: v4-faithful, and lossless because the standalone dialog
+   is a strict superset (explicit picker vs the chat's fixed profile,
+   participant quick-inserts, 1–4 vs a hardcoded 1). The chat-profile
+   dialog stays mounted and openerless exactly as v4 has it, per the
+   standing "port vestigial v4 code faithfully, sweep after the port"
+   rule; the reason is recorded at both the dialog and the salon signal.
+2. **`filepath` is NOT servable in v5.** v4 renders/previews/downloads
+   straight from `image.filepath` because in v4 that is a public path. In
+   v5 it is store-relative (`tool/one.png`); bytes are served id-keyed via
+   `GET /api/v1/files/{id}`. Every image URL on the new screen goes
+   through `fileUrl(image.id)` — the substitution `chat/message-row.ts`
+   already makes, which also keeps it right-origin under Tauri. Porting
+   v4's `filepath` verbatim would have produced broken images throughout.
+   Spec-pinned.
+3. **An Angular dialog host has no layout box.** The first e2e run failed
+   with the `qt-standalone-generate-image-dialog` element resolving but
+   "hidden": all its content is `position: fixed` inside `qt-modal`, so
+   the host wrapper has zero size. The house idiom `page.getByRole('dialog')`
+   (the modal's inner element) is the correct locator — assert the role,
+   not the component host.
+
+### Deferred (loud, named)
+
+- **`sortByUserCharacter`** on `imageProfileList` — needs a Rust param;
+  named for the next image-profiles server rider.
+- **The five extra generate params** (`size`/`quality`/`style`/
+  `aspectRatio`/`negativePrompt`) — the standing P4.6ai narrowing; no v4
+  UI exposes them.
+- **`imageProfileValidateKey`/`ListModels`** — untouched, still
+  refusal-armed. The picker's "⚠️ No API Key" flag comes from the list
+  payload.
+- **The rest of the composer gutter + DnD upload** — `p4.9e2`.
+- **The workspace-tab mount** (`redirectToWorkspaceTab('generate-image')`)
+  — `p4.9j`.
+- **v4's plugin ProviderIcon surface** (`iconData`, `ProviderBadge`) —
+  belongs to whichever lane ports v4's plugin icon registry.
+
+### Gate
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+-D warnings` clean on both feature sets; `cargo test --workspace
+--no-fail-fast` 347 binaries / 1416 tests / 0 failed (unchanged from main
+— zero Rust touched); `ng test` 143 files / 1586 tests; `ng build` clean;
+**full Playwright 74/74, zero skips**, run alone on 4319 from `apps/web`
+against this worktree's own release binaries. The three load-bearing
+assertions per unit were mutation-checked (deliberately broken, confirmed
+failing, restored). SPA 0.5.157.

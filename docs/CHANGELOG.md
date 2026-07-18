@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+P4.9b unit 5: the live Generate Image walk. A new Playwright spec covers
+the Home quick action to /generate-image, the disabled-until-both-set
+gate (the no-auto-default-profile rule walked in a real browser), the
+{{me}}/{{char}} inserts chaining rather than nesting, and the composer
+camera button opening the standalone dialog while the openerless
+chat-profile dialog stays absent. No real image-provider spend: both
+generate beats stop at the enablement gate.
+
+One test-authoring note worth keeping: an Angular dialog host element has
+no layout box of its own, because its content is position:fixed inside
+qt-modal, so it resolves but reads as hidden. Locate page.getByRole
+('dialog') — the modal's inner element — not the component host.
+
+Full Playwright 74/74 zero skips. SPA 0.5.158.
+
 P4.9b unit 4: the standalone in-chat Generate Image dialog. Ports v4's
 StandaloneGenerateImageDialog — an explicit profile picker, the chat's
 participants as one-click {{placeholder}} inserts, a search over every
