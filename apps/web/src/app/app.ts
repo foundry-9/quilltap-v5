@@ -6,6 +6,7 @@ import { StartupScreen } from './screens/startup/startup-screen';
 import { Unlock } from './screens/unlock/unlock';
 import { Shell } from './shell/shell';
 import { StartupService } from './startup/startup.service';
+import { ThemeService } from './theme/theme.service';
 
 /**
  * The application root + startup gate (v4 `PepperVaultGate` + the health gates).
@@ -42,6 +43,15 @@ export class App implements OnInit {
   protected readonly state = this.startup.state;
 
   constructor() {
+    // Constructing the theme service HERE stamps `.dark`/`.light` +
+    // `data-theme` on <html> before any gate screen paints (v4's
+    // ThemeProvider wraps every page, unlock included — dogfood finding #15:
+    // with no theme class the auth screens render light-mode text on the
+    // hard-coded dark auth backdrop and the card variables don't resolve at
+    // all). The Shell still owns the server-preference reload; construction
+    // only applies localStorage + the system preference, which is exactly
+    // v4's pre-auth behavior.
+    inject(ThemeService);
     // Open the one global event stream as soon as the vault is operational.
     effect(() => {
       if (this.startup.state().kind === 'operational') {

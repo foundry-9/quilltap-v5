@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+Dogfood finding #15 (the M5 walk): the unlock screen — and every other
+pre-unlock gate screen — was barely readable: no theme class was stamped
+on <html> before the shell loaded, so light-mode text rendered on the
+hard-coded dark auth backdrop and the card background variable never
+resolved. v4's ThemeProvider wraps every page including /unlock; v5's
+ThemeService was only constructed by the post-unlock Shell. The App root
+now constructs it, stamping .dark/.light + data-theme from localStorage
+plus the system preference before any gate screen paints (the Shell keeps
+the server-preference reload). Not Tauri-specific — reproduced and
+verified fixed in the browser deployment. Unit + e2e guards added. SPA
+0.5.153.
+
 Dogfood finding #14 (the combined M5 + finding-#12 Tauri walk): Cmd+R did
 nothing under the desktop shell, so a page reload — and with it the
 deep-link reload check — was unreachable by keyboard. macOS routes key

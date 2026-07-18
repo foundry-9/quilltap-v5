@@ -19,6 +19,11 @@ test('walks locked → unlock → shell, then applies a bundled theme', async ({
     page.getByRole('heading', { name: 'Quilltap Awaits Your Credentials' }),
   ).toBeVisible();
 
+  // Finding #15: the theme must be stamped BEFORE unlock — with no
+  // .light/.dark on <html> the auth screens render light-mode text on the
+  // hard-coded dark backdrop (near-invisible) and qt-card never paints.
+  await expect(page.locator('html.light, html.dark')).toHaveCount(1);
+
   // A wrong passphrase surfaces the server's error copy without unlocking.
   await page.locator('#qt-passphrase').fill(E2E_WRONG_PASSPHRASE);
   await page.getByRole('button', { name: 'Unlock' }).click();

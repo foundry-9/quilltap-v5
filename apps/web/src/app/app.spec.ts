@@ -38,6 +38,16 @@ describe('App startup gate', () => {
     expect(fixture.nativeElement.textContent).toContain('Quilltap Awaits Your Credentials');
   });
 
+  it('stamps the theme on <html> before the gate screens paint (finding #15)', async () => {
+    // v4's ThemeProvider wraps EVERY page, unlock included. Without the App
+    // root constructing the theme service, the pre-unlock screens render with
+    // NO .light/.dark class — light-mode text on the dark auth backdrop.
+    await render(stubClient({ kind: 'locked', pepperState: 'needs-passphrase' }));
+    const root = document.documentElement;
+    expect(root.classList.contains('light') || root.classList.contains('dark')).toBe(true);
+    expect(root.dataset['theme']).toBeDefined();
+  });
+
   it('routes a needs-setup vault to the setup wizard', async () => {
     const fixture = await render(stubClient({ kind: 'locked', pepperState: 'needs-setup' }));
     expect(fixture.nativeElement.textContent).toContain('Welcome to Quilltap');
