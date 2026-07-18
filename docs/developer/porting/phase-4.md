@@ -1800,3 +1800,31 @@ natural pairing — the human M5 + finding-#12 walk (STILL
 outstanding), the M6 backlog items 1–4, or the
 `p4.9j-workspace-tabs` human ruling.** Round record:
 `status-log.md`.
+
+**The unit-12 ∥ P4.6bb Workbench round is UNIFIED on main
+(2026-07-18) — P4.6ay is CLOSED (its last item, the unit-12 route
+surface, landed as lane AY) and P4.6bb is CLOSED (the whole
+Workbench SPA vertical, lane BB).** The `/api/v1/custom-tools`
+surface (library / destinations / preview / audit — the four §W
+dispatch verbs + REST edge, `AUDIT_RUNS = 10_000`, the
+`{characterId}`-first metadata union, v5's first 422 via the new
+additive `ErrorKind::Unprocessable`) is live under the `/custom-tools`
+SPA vertical (three-mode shell + deep links, library, dual-mode
+editor with repair + mtime-conflict flow, builder-form family,
+proving bench, destination picker, all four entry points, the
+byte-identical schema asset). New proof machinery: the committed
+`workbench-{main,mount}.db` fixture family, the
+`pascal_workbench_equivalence` (2-case) +
+`pascal_workbench_route_equivalence` (24-case, shared-corpus-file)
+differentials, the SPA's 115-row byte-level schema-port corpus spec,
+and v4's 408-line tool-draft suite ported case-for-case. The four
+Workbench e2e beats self-activated at unification. Deferred loud:
+the `p4.9j` workspace-tab intents (openers use v4's own no-workspace
+query-param fallback), the `finite` message arm (needs a corpus row
+in `harness/oracle/`), the error-envelope `details` array
+(pre-existing envelope shape), and the `is not valid JSON:`
+engine-wording seam (unit 2's, compared by prefix). **Next
+candidates: the human M5 + finding-#12 walk (STILL outstanding), the
+M6 backlog items 1–4 (`p4.9a`/`p4.9c`/`p4.9b`/`p4.9d`), the
+`p4.9j-workspace-tabs` human ruling, or a Workbench/Pascal dogfood
+pass.** Round record: `status-log.md`.

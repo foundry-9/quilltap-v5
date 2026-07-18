@@ -672,6 +672,26 @@ records THERE. Update this summary only when a phase or round completes.
   workbench verbs), which is also P4.6bb's server dependency: the
   natural next round is that route surface + the Workbench SPA
   together.** Round record: `status-log.md`.
+- **The unit-12 ∥ P4.6bb Workbench round: UNIFIED on main (2026-07-18)
+  — P4.6ay CLOSED (at last), P4.6bb CLOSED.** The `/api/v1/custom-tools`
+  server surface (the four §W workbench dispatch verbs + REST edge;
+  `pascal/workbench.rs`; `AUDIT_RUNS = 10_000`; the
+  `{characterId}`-first metadata union; v5's FIRST 422 via the new
+  additive `ErrorKind::Unprocessable`) ∥ the whole `/custom-tools`
+  Workbench SPA vertical (three-mode shell + deep links, library,
+  dual-mode editor with repair + mtime-conflict flow, builder-form
+  family, proving bench, destination picker, all four entry points,
+  the byte-identical schema asset; the client-safe schema port
+  byte-diffed against a committed 115-row corpus; v4's 408-line
+  tool-draft suite ported case-for-case). New committed
+  `workbench-{main,mount}.db` fixture family; the 2-case + 24-case
+  workbench differentials green over fresh `d68638b4` oracles; the
+  four Workbench e2e beats SELF-ACTIVATED at unification. Deferred
+  loud: `p4.9j` workspace-tab intents, the `finite` message arm, the
+  error-envelope `details` array, the `is not valid JSON:` wording
+  seam. Next candidates: the human M5+#12 walk (STILL outstanding),
+  the M6 backlog items 1–4, the `p4.9j` ruling, or a Workbench/Pascal
+  dogfood pass — see phase-4.md.
 - **Oracle baseline: v4 `d68638b4` (4.8.0-dev.72), adopted 2026-07-17
   at the d68638b4-round unification** (every family the drift touched
   regenerated there; untouched families' committed oracles date to
@@ -706,7 +726,7 @@ records THERE. Update this summary only when a phase or round completes.
   to 4.8.0's two ALTERs before pointing v5 at it. Still NOT drift:
   v4's embedding blob-registration bug is structurally impossible in
   v5 (no registry exists; no `repair-text-embeddings` needed).
-  Versions: core 0.0.267, harness 0.0.235, host 0.0.20, web 0.0.26,
-  quilltap-tauri 0.0.3, SPA 0.5.142.
+  Versions: core 0.0.269, harness 0.0.237, host 0.0.20, web 0.0.27,
+  quilltap-tauri 0.0.3, SPA 0.5.151.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

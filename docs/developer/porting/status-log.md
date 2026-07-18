@@ -9,6 +9,51 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Round record — the unit-12 ∥ P4.6bb Workbench round (UNIFIED 2026-07-18)
+
+**On main** (`unify/unit12-p4.6bb`, fast-forwarded): lane AY's two commits
+(unit 12 parts 2a + 2b — cherry-picked first, the server before its
+consumer) + lane BB's ten (units 1–9 + the lane summary), reconciled with
+only the expected CHANGELOG/status-log unions (BB's status-log block moved
+below AY's at the tail — the journal appends chronologically; no source
+conflict anywhere, Ownership held), + the unifier's wire commit + this
+docs commit. **P4.6ay is CLOSED** (opened as the a33ac8b8-round Pascal
+server order, survived two re-baselines and three pauses; its last item —
+the unit-12 route surface — landed here) **and P4.6bb is CLOSED** (the
+whole Workbench SPA vertical in one lane). Pascal's Workbench is live
+end-to-end.
+
+**Versions at unification:** core 0.0.269, harness 0.0.237, web 0.0.27,
+host 0.0.20 (untouched), quilltap-tauri 0.0.3 (untouched), SPA 0.5.152.
+
+**Gate (all on the unified tree):** `cargo fmt --all --check` clean;
+`cargo clippy --workspace --all-targets -D warnings` clean on BOTH feature
+sets; release build clean; **347 test binaries / 1416 tests / 0 failed**
+(`--no-fail-fast`); the round's three new tests run BY NAME with zero SKIP
+— `pascal_workbench_equivalence` (2 cases) and
+`pascal_workbench_route_equivalence` (24 cases) over oracles regenerated
+FRESH from v4 at `d68638b4` (clean tree, re-verified at unification), plus
+`p4_6ay_workbench_wire_contract`; the SPA corpus differential rides ng
+test — **ng test 140 files / 1531**; `ng build` clean; **full Playwright
+71/71 zero skips, all four Workbench beats ACTIVE** (activation details:
+the wires record below).
+
+**Deferred loud (the round's full residue, each named in an order status
+header):** the `p4.9j` workspace-tab intents (every Workbench opener ports
+v4's own no-workspace query-param fallback; nothing else waits on the
+ruling); the `finite` message arm in the SPA schema port (pinning it needs
+a corpus row in `harness/oracle/` — AY-side ownership; the port carries
+the Rust port's string faithfully); the error-envelope `details` array
+(v4's `badRequest(message, issues)` second field — a PRE-EXISTING shape of
+the whole ported route surface, not new); the `is not valid JSON:`
+engine-wording seam (unit 2's serde/V8 divergence, compared by prefix).
+
+**Banked for a future fixture regen:** the committed salon e2e fixture
+lacks the whole groups schema (and its package-lock had drifted); the
+wires record below patches both at instance-materialization time, but a
+fixture regen should fold the missing tables in and retire those two
+global-setup statements.
+
 ## The unit-12 ∥ P4.6bb unification wires (unifier, 2026-07-18)
 
 **The §W wire diff (no code needed):** all four verbs

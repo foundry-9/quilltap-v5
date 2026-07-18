@@ -2,6 +2,29 @@
 
 ## Recent Changes
 
+Unify the unit-12 / P4.6bb Workbench round. P4.6ay closes (its last item,
+the /api/v1/custom-tools route surface, landed as lane AY) and P4.6bb
+closes (the whole Workbench SPA vertical, lane BB): Pascal's Workbench is
+live end-to-end — the library, the dual-mode editor with repair and
+mtime-conflict flows, the builder form, the proving bench (preview + audit
+against the same execution core the chat uses), the destination picker,
+and all four entry points (left rail, Settings button, Scriptorium row
+action, composer popup). The unification wire diff verified the shared
+contract name-for-name across the Rust unions and the SPA contract (four
+verbs, every DTO, the mountFileRead/Write mirrors, the kebab-cased error
+kinds). One unifier fix: the four Workbench e2e beats self-activated and
+exposed that the committed salon e2e fixture predates the groups schema
+(no groups / group_doc_mount_links tables — "no such table: groups" from
+the library verb), fixed as global-setup schema materialization with
+fresh_schema.json's DDL verbatim (the terminal_sessions precedent), plus a
+--mount-points option on the setup's CLI write helper. Gate: fmt, clippy
+both feature sets, release build, 347 test binaries / 1416 tests / 0
+failed, the three round differentials by name (2 + 24 cases + the wire
+pin) zero SKIP over oracles regenerated fresh at d68638b4; ng test 140
+files / 1531; ng build clean; full Playwright 71/71 zero skips with the
+four Workbench beats ACTIVE. Versions: core 0.0.269, harness 0.0.237, web
+0.0.27, SPA 0.5.152 (after the unifier wire).
+
 The unit-12 / P4.6bb unification wires: activating the four Workbench e2e
 beats surfaced that the committed salon e2e fixture predates the groups
 schema — the library and destinations verbs read the groups table (main)
