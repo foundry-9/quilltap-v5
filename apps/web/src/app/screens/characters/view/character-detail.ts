@@ -19,6 +19,8 @@ import type {
   CharacterListItem,
   CharacterStats,
 } from '../../../core/core-contract';
+import { HiddenPlaceholder } from '../../../quick-hide/hidden-placeholder';
+import { QuickHideService } from '../../../quick-hide/quick-hide.service';
 import { EntityTabs, type Tab } from '../../../ui/entity-tabs';
 import { ErrorAlert } from '../../../ui/error-alert';
 import { LoadingState } from '../../../ui/loading-state';
@@ -83,6 +85,7 @@ const CHARACTER_TABS: Tab[] = [
     CharacterDefaultsTab,
     CharacterGalleryTab,
     CharacterAppearanceTab,
+    HiddenPlaceholder,
   ],
   template: `
     <div class="character-view qt-page-container min-h-screen text-foreground">
@@ -102,6 +105,10 @@ const CHARACTER_TABS: Tab[] = [
           class="mt-8"
           (retry)="characterQuery.refetch()"
         />
+      } @else if (isQuickHidden()) {
+        <div class="flex min-h-screen items-center justify-center qt-bg-muted">
+          <qt-hidden-placeholder />
+        </div>
       } @else if (character(); as character) {
         <qt-character-header
           [character]="character"
@@ -176,6 +183,21 @@ export class CharacterDetail {
   private readonly core = inject(CoreClient);
   private readonly route = inject(ActivatedRoute);
   private readonly queryClient = injectQueryClient();
+  private readonly quickHide = inject(QuickHideService);
+
+  /**
+   * v4 `CharacterDetailView.tsx:54,:316` — the deep-link guard. Note v4's extra
+   * `quickHideActive` arm (`hiddenTagIds.size > 0`): with nothing hidden the
+   * check is skipped entirely, so a character whose tags are empty can never be
+   * accidentally placeholdered.
+   */
+  protected readonly isQuickHidden = computed(() => {
+    const character = this.character();
+    if (!character || this.quickHide.hiddenTagIds().size === 0) {
+      return false;
+    }
+    return this.quickHide.shouldHideByIds(character.tags ?? []);
+  });
 
   protected readonly tabs = CHARACTER_TABS;
 

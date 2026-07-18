@@ -3,6 +3,7 @@ import { RouterLink } from '@angular/router';
 
 import { CoreClient } from '../../../core/core-client';
 import type { EnrichedChatSummary } from '../../../core/core-contract';
+import { QuickHideService } from '../../../quick-hide/quick-hide.service';
 import { ErrorAlert } from '../../../ui/error-alert';
 import { ChatCard } from '../../salon/chat-card';
 import { fetchProjectChats, removeProjectChat } from '../projects.api';
@@ -28,7 +29,9 @@ const PAGE_SIZE = 20;
         <h2 class="qt-heading-3 text-foreground">
           Chats
           @if (total() > 0) {
-            <span class="ml-2 text-base font-normal qt-text-secondary">({{ chats().length }})</span>
+            <span class="ml-2 text-base font-normal qt-text-secondary"
+              >({{ visibleChats().length }})</span
+            >
           }
         </h2>
         <a
@@ -48,11 +51,17 @@ const PAGE_SIZE = 20;
         <div class="flex items-center justify-center py-12 qt-text-secondary">
           <p>Loading chats...</p>
         </div>
-      } @else if (chats().length === 0) {
+      } @else if (visibleChats().length === 0) {
         <div
           class="rounded-2xl qt-border border-dashed qt-bg-card px-8 py-12 text-center qt-shadow-sm"
         >
-          <p class="mb-4 text-lg qt-text-secondary">No chats in this project yet.</p>
+          <p class="mb-4 text-lg qt-text-secondary">
+            {{
+              chats().length === 0
+                ? 'No chats in this project yet.'
+                : 'No visible chats (some may be hidden).'
+            }}
+          </p>
           <a
             [routerLink]="['/salon/new']"
             [queryParams]="{ projectId: projectId() }"
@@ -63,7 +72,7 @@ const PAGE_SIZE = 20;
         </div>
       } @else {
         <div class="grid gap-4 grid-cols-1 xl:grid-cols-2">
-          @for (chat of chats(); track chat.id) {
+          @for (chat of visibleChats(); track chat.id) {
             <qt-chat-card [chat]="chat" [removable]="true" (remove)="onRemove($event)" />
           }
         </div>
@@ -86,8 +95,34 @@ export class ProjectChatsSection {
   readonly projectId = input.required<string>();
 
   private readonly core = inject(CoreClient);
+  private readonly quickHide = inject(QuickHideService);
 
   protected readonly chats = signal<EnrichedChatSummary[]>([]);
+
+  /**
+   * v4 `ChatsSection.tsx:65-83`: the dangerous arm first, then chat tags + every
+   * participant's tags. Note the participant shape differs from the Salon
+   * list's — v4 reads `participant.tags` here (`:76-78`), which in v5's
+   * `EnrichedChatSummary` is `participant.character.tags`.
+   *
+   * Deliberately layered OVER the raw `chats` signal rather than replacing it:
+   * pagination bookkeeping (`hasMore`, the append) must count what the SERVER
+   * sent, not what survives the filter, or hiding a row would stall "Load more".
+   */
+  protected readonly visibleChats = computed(() =>
+    this.chats().filter((chat) => {
+      if (this.quickHide.hideDangerousChats() && chat.isDangerousChat) {
+        return false;
+      }
+      const allTagIds: string[] = (chat.tags ?? []).map((ct) => ct.tag.id);
+      for (const participant of chat.participants) {
+        if (participant.character?.tags) {
+          allTagIds.push(...participant.character.tags);
+        }
+      }
+      return !this.quickHide.shouldHideByIds(allTagIds);
+    }),
+  );
   protected readonly total = signal(0);
   protected readonly offset = signal(0);
   protected readonly loading = signal(true);

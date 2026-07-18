@@ -13,6 +13,7 @@ import {
 import { injectInfiniteQuery } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../../../core/core-client';
+import { QuickHideService } from '../../../../quick-hide/quick-hide.service';
 import type { CharacterChatsResult } from '../../../../core/core-contract';
 import { Icon } from '../../../../ui/icon';
 import { characterKeys, fetchCharacterChats } from '../../characters.api';
@@ -114,6 +115,7 @@ const SEARCH_DEBOUNCE_MS = 300;
 export class CharacterConversationsTab {
   private readonly core = inject(CoreClient);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly quickHide = inject(QuickHideService);
 
   readonly characterId = input.required<string>();
   readonly characterName = input<string>('Character');
@@ -138,8 +140,18 @@ export class CharacterConversationsTab {
       lastPage.chats.length === CHATS_PER_PAGE ? lastParam + CHATS_PER_PAGE : undefined,
   }));
 
+  /**
+   * v4 `character-conversations-tab.tsx:38-44`: the dangerous arm first, then
+   * CHAT-level tags only — this consumer does not consult participants (the
+   * page is already scoped to one character).
+   */
   protected readonly chats = computed(() =>
-    (this.chatsQuery.data()?.pages ?? []).flatMap((p) => p.chats),
+    (this.chatsQuery.data()?.pages ?? [])
+      .flatMap((p) => p.chats)
+      .filter((chat) => {
+        if (this.quickHide.hideDangerousChats() && chat.isDangerousChat) return false;
+        return !this.quickHide.shouldHideByIds((chat.tags ?? []).map((ct) => ct.tag.id));
+      }),
   );
 
   constructor() {

@@ -4,6 +4,7 @@ import { injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../../core/core-client';
 import type { ProjectDetail, ProjectRosterCharacter } from '../../../core/core-contract';
+import { QuickHideService } from '../../../quick-hide/quick-hide.service';
 import { CollapsibleCard } from '../../../ui/collapsible-card';
 import { ErrorAlert } from '../../../ui/error-alert';
 import { Icon } from '../../../ui/icon';
@@ -108,9 +109,23 @@ export class ProjectCharactersCard {
 
   private readonly core = inject(CoreClient);
   private readonly queryClient = injectQueryClient();
+  private readonly quickHide = inject(QuickHideService);
   protected readonly saveError = signal<string | null>(null);
 
-  protected readonly roster = computed<ProjectRosterCharacter[]>(() => this.project().roster ?? []);
+  /**
+   * v4 `CharactersCard.tsx:31-38`: dedupe by id (a character can appear twice
+   * in the roster), then drop any carrying a hidden tag. Both the grid and the
+   * "{n} characters in roster" subtitle read this filtered list, exactly as v4's
+   * `visibleCharacters` feeds its own count (`:53`).
+   */
+  protected readonly roster = computed<ProjectRosterCharacter[]>(() => {
+    const seen = new Set<string>();
+    return (this.project().roster ?? []).filter((char) => {
+      if (!char.id || seen.has(char.id)) return false;
+      seen.add(char.id);
+      return !this.quickHide.shouldHideByIds(char.tags ?? []);
+    });
+  });
 
   protected readonly subtitle = computed(() => {
     const n = this.roster().length;

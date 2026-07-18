@@ -4,6 +4,7 @@ import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experime
 
 import { CoreClient } from '../../../core/core-client';
 import type { CharacterConnectionProfile, CharacterListItem } from '../../../core/core-contract';
+import { QuickHideService } from '../../../quick-hide/quick-hide.service';
 import { ErrorAlert } from '../../../ui/error-alert';
 import { LoadingState } from '../../../ui/loading-state';
 import {
@@ -169,6 +170,7 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
 export class CharactersList {
   private readonly core = inject(CoreClient);
   private readonly queryClient = injectQueryClient();
+  private readonly quickHide = inject(QuickHideService);
 
   protected readonly importOpen = signal(false);
   protected readonly resetOpen = signal(false);
@@ -185,8 +187,16 @@ export class CharactersList {
     queryFn: (): Promise<CharacterConnectionProfile[]> => fetchConnectionProfiles(this.core),
   }));
 
+  /**
+   * v4 `AuroraView.tsx:124-140`: the quick-hide filter runs BEFORE the sort, so
+   * hidden characters never influence ordering.
+   */
   protected readonly visibleCharacters = computed(() =>
-    sortCharacters(this.charactersQuery.data() ?? []),
+    sortCharacters(
+      (this.charactersQuery.data() ?? []).filter(
+        (character) => !this.quickHide.shouldHideByIds(character.tags ?? []),
+      ),
+    ),
   );
 
   protected profileFor(id: string | null): CharacterConnectionProfile | null {

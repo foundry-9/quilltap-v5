@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
@@ -7,13 +7,9 @@ import type { ChatSettingsDto, EnrichedChatSummary } from '../../core/core-contr
 import { ErrorAlert } from '../../ui/error-alert';
 import { Icon } from '../../ui/icon';
 import { LoadingState } from '../../ui/loading-state';
+import { QuickHideService } from '../../quick-hide/quick-hide.service';
 import { ChatCard } from './chat-card';
-import {
-  effectiveInclude,
-  hasHiddenAutonomous,
-  readIncludeAutonomous,
-  writeIncludeAutonomous,
-} from './autonomous-visibility';
+import { effectiveInclude, hasHiddenAutonomous } from './autonomous-visibility';
 
 /**
  * The Salon list screen (v4 `app/salon/SalonListView.tsx`) — the enriched
@@ -22,10 +18,16 @@ import {
  * v4-verbatim ("Chats", "No chats yet", "Start a new chat").
  *
  * The include-autonomous toggle mirrors v4's user-menu control (see
- * `autonomous-visibility.ts` for the placement divergence): the effective
- * include is the user's visibility default OR the header toggle; the hidden-room
- * hint + the cheap room probe run only when rooms are actually excluded. Other
- * client-side quick-hide filters (dangerous-chat / tag hide) remain deferred.
+ * `autonomous-visibility.ts` for the placement divergence, which stands): the
+ * effective include is the user's visibility default OR the toggle; the
+ * hidden-room hint + the cheap room probe run only when rooms are actually
+ * excluded. Since P4.9d the toggle binds `QuickHideService`, so it and the
+ * user-menu section are two views of one persisted value.
+ *
+ * Quick-hide row filtering is v4 `SalonListView.tsx:89-112` transcribed. This is
+ * the WIDEST tag collection of any consumer: chat-level tags PLUS every
+ * participant character's tags (`:91-97`), then the dangerous arm second
+ * (`:105`) on the real payload field `isDangerousChat`.
  */
 @Component({
   selector: 'qt-salon-list',
@@ -95,9 +97,10 @@ import {
 })
 export class SalonList {
   private readonly core = inject(CoreClient);
+  private readonly quickHide = inject(QuickHideService);
 
-  /** The header toggle (persisted to the shared quick-hide localStorage key). */
-  protected readonly includeAutonomous = signal(readIncludeAutonomous());
+  /** The header toggle — the shared service's signal (one value, two surfaces). */
+  protected readonly includeAutonomous = this.quickHide.includeAutonomousRooms;
 
   private readonly chatSettings = injectQuery(() => ({
     queryKey: ['chatSettings'],
@@ -149,16 +152,33 @@ export class SalonList {
   );
 
   protected toggleAutonomous(): void {
-    this.includeAutonomous.update((v) => {
-      const next = !v;
-      writeIncludeAutonomous(next);
-      return next;
-    });
+    this.quickHide.toggleIncludeAutonomousRooms();
   }
 
-  protected visibleChats(): EnrichedChatSummary[] {
-    return this.chats.data() ?? [];
-  }
+  /**
+   * v4 `:89-112`: chat tags + ALL participant character tags, then the
+   * dangerous arm. Kept a `computed` so a toggle repaints the list without a
+   * refetch.
+   */
+  protected readonly visibleChats = computed<EnrichedChatSummary[]>(() =>
+    (this.chats.data() ?? []).filter((chat) => {
+      // Collect all tag IDs: chat tags + all participant tags (v4 :91-97)
+      const allTagIds: string[] = chat.tags.map((ct) => ct.tag.id);
+      for (const participant of chat.participants) {
+        if (participant.character?.tags) {
+          allTagIds.push(...participant.character.tags);
+        }
+      }
+      if (this.quickHide.shouldHideByIds(allTagIds)) {
+        return false;
+      }
+      // Check danger filter using full chat metadata (v4 :104-107)
+      if (this.quickHide.hideDangerousChats() && chat.isDangerousChat) {
+        return false;
+      }
+      return true;
+    }),
+  );
 
   protected errorMessage(): string {
     const err = this.chats.error();

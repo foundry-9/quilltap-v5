@@ -13,6 +13,7 @@ import {
 import { RouterLink } from '@angular/router';
 
 import type { CharacterConnectionProfile } from '../../core/core-contract';
+import { QuickHideService } from '../../quick-hide/quick-hide.service';
 import { HomeCharacterCard } from './home-character-card';
 import type { HomepageCharacter } from './home.api';
 
@@ -31,9 +32,11 @@ const MIN_CHARACTERS = 2;
  * (v4's fit math verbatim: floor per axis, ≥2 columns, ≥1 row, ≥2 cards;
  * 4 cards until first measured) — overflow stays hidden, not scrolled.
  *
- * v4's quick-hide tag filtering is DEFERRED with the Recent Chats section's
- * (v5 has no quick-hide provider yet); every server-sent character renders,
- * §1-order (favorites → chatCount → name, sorted server-side).
+ * Quick-hide filtering matches v4 `CharactersSection.tsx:29-32` exactly: hide a
+ * character when ANY of its tags is hidden. Order matters — v4 filters FIRST and
+ * then slices to what fits (`:72-75`), and the empty arm gates on the FILTERED
+ * list (`:86`), so hiding every character shows the empty state rather than a
+ * blank grid.
  */
 @Component({
   selector: 'qt-characters-section',
@@ -46,7 +49,7 @@ const MIN_CHARACTERS = 2;
         <a routerLink="/characters" class="qt-homepage-section-link">View all &rarr;</a>
       </div>
       <div #content class="qt-homepage-section-content">
-        @if (characters().length === 0) {
+        @if (visibleCharacters().length === 0) {
           <div class="text-center py-6 qt-text-secondary">
             <p class="text-sm">No favorite characters</p>
             <a routerLink="/characters" class="text-xs text-primary hover:underline">
@@ -74,6 +77,7 @@ export class CharactersSection {
 
   private readonly content = viewChild.required<ElementRef<HTMLElement>>('content');
   private readonly maxCards = signal<number | null>(null);
+  private readonly quickHide = inject(QuickHideService);
 
   constructor() {
     const destroyRef = inject(DestroyRef);
@@ -111,10 +115,15 @@ export class CharactersSection {
     this.maxCards.set(Math.max(MIN_CHARACTERS, rowsCanFit * columnsCanFit));
   }
 
-  /** Only show characters that fit (v4: default to 4 until measured). */
+  /** v4 `:29-32` — drop characters carrying a hidden tag, before the fit slice. */
+  protected readonly visibleCharacters = computed(() =>
+    this.characters().filter((character) => !this.quickHide.shouldHideByIds(character.tags ?? [])),
+  );
+
+  /** Only show characters that fit (v4 `:72-75`: default to 4 until measured). */
   protected readonly displayedCharacters = computed(() => {
     const max = this.maxCards();
-    const list = this.characters();
+    const list = this.visibleCharacters();
     return max === null ? list.slice(0, 4) : list.slice(0, max);
   });
 

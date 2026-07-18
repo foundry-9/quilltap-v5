@@ -2,6 +2,24 @@
 
 ## Recent Changes
 
+The quick-hide consumers (P4.9d unit 2): the filter now applies across the
+Salon list, both homepage sections, the characters roster, the character detail
+screen and its Conversations tab, and both Prospero cards. Each site keeps v4's
+own tag-collection semantics, which genuinely differ: the Salon list and the
+Prospero chats section union chat tags with every participant character's tags,
+the homepage Recent Chats section consults participant tags only, and the
+character Conversations tab consults chat tags only. Ordering is v4's too — the
+homepage characters section filters before slicing to what fits and gates its
+empty arm on the filtered list, and the roster filters before sorting. The
+Prospero chats section filters for display only, leaving pagination counting
+what the server sent, and gains v4's separate "No visible chats (some may be
+hidden)." empty state. The character detail screen shows v4's Hidden
+placeholder when the character carries a hidden tag, keeping v4's guard that
+skips the check entirely when nothing is hidden. The Salon list's autonomous
+toggle now reads and writes the shared service, so it and the user-menu section
+are one value. Defaults hide nothing, so existing specs are unaffected. SPA
+0.5.155.
+
 The quick-hide service (P4.9d unit 1): v4's QuickHideProvider ported as an
 Angular service over the three localStorage keys (hidden tag ids, the
 dangerous-chat filter, the include-autonomous-rooms toggle). Tags flagged
