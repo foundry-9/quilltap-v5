@@ -2,6 +2,20 @@
 
 ## Recent Changes
 
+P4.9b unit 1: one shared image-profile picker. The New Chat picker moved
+to images/image-profile-picker.ts and gained the two v4 pieces it lacked
+— the selected-profile detail card and the provider glyph (the default
+circle-plus-abbreviation path of v4's ProviderIcon, ported as
+images/provider-icon.ts). The select now reports its selection through a
+change handler with [selected] per option instead of [ngModel], per the
+standing async-options rule. Dropped the sortByUserCharacter request
+field: v5's imageProfileList variant does not carry it, so New Chat had
+been sending a field the server silently discarded; the user-character
+sort is deferred loudly to a future image-profiles server rider. 18 new
+unit tests pin the v4 option labels, the no-auto-default-profile rule,
+the null-not-empty-string change report, and the detail-card gates. SPA
+0.5.154.
+
 P4.9c unit 7: the qt-user-menu in the shell footer (v4 profile-menu.tsx)
 — an avatar/name trigger opening a dropdown with Profile and About, its
 user coming from userProfileGet. Carries the §2b mount marker for lane

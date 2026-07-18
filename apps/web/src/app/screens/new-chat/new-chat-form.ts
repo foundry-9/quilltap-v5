@@ -15,7 +15,7 @@ import type {
   TimestampConfig,
 } from '../../core/core-contract';
 import { Icon } from '../../ui/icon';
-import { ImageProfilePicker } from './image-profile-picker';
+import { ImageProfilePicker } from '../../images/image-profile-picker';
 import { applyPlayAs, scenarioSelectPatch } from './new-chat.logic';
 import { NewChatState } from './new-chat.state';
 import {
@@ -124,7 +124,6 @@ interface PlayAsOption {
           <qt-image-profile-picker
             [value]="form().imageProfileId || null"
             [characterId]="characterIdForImage()"
-            [userCharacterId]="userEntry()?.character?.id"
             [disabled]="creating()"
             (changed)="onImageProfile($event)"
           />
