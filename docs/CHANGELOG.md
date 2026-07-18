@@ -2,6 +2,24 @@
 
 ## Recent Changes
 
+Unify the d68638b4 drift-catch-up round. P4.d7 (the case-insensitive mount
+namespace: NOCASE indexes via the fresh-schema re-dump — which also folded in
+v4's characters.metadata column, ruled Option A — the boot repair pass,
+case-preserving resolution and renames, the 409 name arms) is complete and
+closed. P4.6az (the metadata.json fact-sheet vault surface: fail-soft parser,
+{} hydration, the guarded write, whole-object patch, scaffold seed, PUT arm) is
+complete and closed, with its deferred lazy backfill wired at unification.
+P4.6ba (the Pascal in-chat SPA: wire mirror, Pascal bubble, query-gated
+composer popup, the Custom Tools settings card, the All-Whispers toggle) is
+complete and closed; its popup stays dark and its flow beat probe-guarded until
+the Pascal server verbs land. P4.6ay adds units 11/2/5/6 (the metadata re-port,
+the roster, the Pascal writer, the Prospero error) and remains open — resume at
+unit 4. Gate: fmt, clippy on both feature sets, release build, 339 test
+binaries / 1400 tests / 0 failed with the round's 31 differentials re-run by
+name (zero skips) over oracles regenerated fresh at v4 d68638b4; ng test 1286,
+ng build, full Playwright 67/67 zero skips. Versions: core 0.0.262, harness
+0.0.231, SPA 0.5.140.
+
 The d68638b4-round unification wire: the P4.6az Tier-2 lazy backfill is WIRED.
 ensure_character_vault's two no-scaffold return paths (the current_fk early
 return and the same-name adopt branch) now call ensure_character_metadata_file,

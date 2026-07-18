@@ -1766,3 +1766,22 @@ is now `e3593f75` (CLAUDE.md's baseline bullet has the banked
 lane), the human M5 + finding-#12 walk (STILL outstanding), the M6
 backlog items 1–4, or the `p4.9j-workspace-tabs` human ruling.**
 Round record: `status-log.md`.
+
+**The d68638b4 drift-catch-up round is PARTIALLY UNIFIED on main
+(2026-07-17) — P4.d7, P4.6az, and P4.6ba CLOSED; P4.6ay at units
+11+2+5+6 (of its 11→2→5→6→4→8→9→7→12 order — resume at unit 4; its
+status header carries the resume notes and the §4 obligations it now
+owes lane BA's landed SPA).** The oracle baseline is `d68638b4`
+(4.8.0-dev.72): the case-insensitive mount namespace (incl. the
+Option-A `characters.metadata` column fold-in — a `generateDDL`
+column despite the vault file being the app-level source of truth),
+the metadata.json fact-sheet vault surface (+ the lazy backfill
+wired at unification), and the Pascal in-chat SPA (popup dark +
+flow beat probe-guarded until the server verbs land) are all
+absorbed; the Pascal server remainder (units 4/8/9/7/12) is the one
+open piece of the drift. **Next candidates: finish P4.6ay (units 4,
+8, 9, 7, 12 — lights BA's popup and activates its beat; the clear
+next lane), then the Workbench SPA (P4.6bb, spec'd in the round
+plan), the human M5 + finding-#12 walk (STILL outstanding), the M6
+backlog items 1–4, or the `p4.9j-workspace-tabs` human ruling.**
+Round record: `status-log.md`.

@@ -9,6 +9,56 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Round record — the d68638b4 drift catch-up: P4.d7 ∥ P4.6ay ∥ P4.6az ∥ P4.6ba (PARTIALLY UNIFIED 2026-07-17)
+
+**On main** (`unify/d68638b4-drift`, fast-forwarded): **P4.d7 CLOSED** (6
+commits — the NOCASE re-dump incl. the Option-A `characters.metadata`
+column, the boot repair pass, case-preserving resolution/ops, the 409
+arms, the migration-vintage regression), **P4.6az CLOSED** (7 commits —
+parser / hydration / guarded write + whole-object patch / scaffold seed +
+`ensure_character_metadata_file` / PUT arm + reader enumeration +
+qtap-import), **P4.6ba CLOSED** (7 commits, SPA 0.5.135→140 — wire
+mirror, Pascal bubble, query-gated popup, Custom Tools card, the LIVE
+All-Whispers toggle beat, the probe-guarded custom-tools flow beat),
+**P4.6ay units 11/2/5/6** (resume at unit 4 → 8 → 9 → 7 → 12; its status
+header carries the resume notes). All 24 lane commits cherry-picked
+content-identical (verified per-lane diff vs tips); the only same-file
+meeting point was the §3 region-pinned `db/character_vault.rs`, which
+merged clean with both regions intact.
+
+**The unification wire** (`ba0b0e70`): the AZ Tier-2 lazy backfill —
+deferred to the unifier by the §3 pin — is WIRED: both no-scaffold
+return paths of `ensure_character_vault` (the `current_fk` early return
+and the adopt branch) now call `ensure_character_metadata_file`, and the
+stale NOT-YET-WIRED doc section was replaced. Versions recounted per the
+contract rule (identical first bumps merge silently): core 0.0.246+6+7+3
+= **0.0.262**, harness 0.0.219+4+5+3 = **0.0.231**; host 0.0.19, web
+0.0.25, tauri 0.0.3, SPA **0.5.140**.
+
+**Gate (all on the unified tree):** `cargo fmt` clean; clippy `-D
+warnings` on BOTH feature sets; release build; **339 test binaries /
+1400 tests / 0 failed** with the round's oracle env set; the round's
+**31 differentials re-run BY NAME with `--nocapture`, zero SKIP** (the
+one SKIP in the log is the pre-existing optional `QT_DBKEY_V5_OUT`
+artifact-writer arm, whose test passes); every oracle regenerated FRESH
+from v4 at `d68638b4` (clean checkout — no worktree needed; the
+provision oracle re-dumped at unification: main=79 / mount-index=29 /
+llm-logs=3 DDL). SPA: `ng test` 133 files / 1286 passed; `ng build`
+clean; **full Playwright 67/67, zero skips** (the whisper-toggle beat
+LIVE; the custom-tools flow beat probe-guarded pending lane AY).
+
+**Outstanding §4 obligations, now owed by P4.6ay's resume (recorded in
+its header):** the dispatch verbs that light BA's popup, the
+Tools/-bearing e2e fixture that activates
+`salon-custom-tools-flow.spec.ts`, the Rust-side wire name diff, and
+the delegatedDisplay SPA-suppression follow-up when unit 8 lands the
+TOOL-row stamp (BA verified TOOL rows reach the DTO in both apps and
+that v4's tool-row folding is a pre-existing unported gap).
+
+**Cleanup:** all four lane worktrees removed, all four lane branches +
+the temp branch deleted (nothing held back — AY's four commits were all
+picked; its remainder was never started on the branch).
+
 ## Round planned — the d68638b4 drift catch-up: P4.d7 ∥ P4.6ay(resumed) ∥ P4.6az ∥ P4.6ba (2026-07-17)
 
 **The drift check found v4 TEN commits past `e3593f75`, tree now CLEAN —

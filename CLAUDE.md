@@ -636,8 +636,33 @@ records THERE. Update this summary only when a phase or round completes.
   Deferred loud: P4.d5 tier-2 item 6's four uncovered quoted-number
   families (coverage, not behavior); the `js_value` → `jsnum` lift.
   Round record: `status-log.md`.
-- **Oracle baseline: v4 `e3593f75` (4.8.0-dev.62), adopted 2026-07-17
-  at the P4.d5 ∥ P4.6ay unification.** The `02865bdb`→`e3593f75`
+- **The d68638b4 drift-catch-up round: PARTIALLY UNIFIED on main
+  (2026-07-17) — P4.d7, P4.6az, P4.6ba CLOSED; P4.6ay resumes at
+  unit 4.** The case-insensitive mount namespace (NOCASE indexes via
+  the D23 re-dump — which also folded in v4's `characters.metadata`
+  generateDDL column, human-ruled Option A, inert in v5 — the boot
+  repair pass, case-preserving ops, the 409 name arms) ∥ the
+  metadata.json fact-sheet vault surface (fail-soft parser, `{}`
+  hydration, the guarded anti-clobber write, whole-object patch,
+  scaffold seed; the lazy backfill wired at unification) ∥ the Pascal
+  in-chat SPA (wire mirror, Pascal bubble, query-gated composer
+  popup, Custom Tools card, the All-Whispers toggle with a LIVE e2e
+  beat) ∥ P4.6ay units 11/2/5/6 (the metadata re-port + roster +
+  Pascal writer + Prospero error; `run_custom` still verified inert).
+  Gate: 339 test binaries / 1400 / 0 failed, the round's 31
+  differentials by name zero SKIP over fresh `d68638b4` oracles,
+  clippy both feature sets, ng 1286, full Playwright 67/67 zero
+  skips. **BA's popup stays dark + its flow beat probe-guarded until
+  P4.6ay's units 4/8/9/7/12 land the server verbs + the Tools
+  fixture — finishing P4.6ay is the clear next lane.** The Workbench
+  SPA is P4.6bb (next after that). Round record: `status-log.md`.
+- **Oracle baseline: v4 `d68638b4` (4.8.0-dev.72), adopted 2026-07-17
+  at the d68638b4-round unification** (every family the drift touched
+  regenerated there; untouched families' committed oracles date to
+  `e3593f75`, verified behavior-neutral across the gap at round
+  planning). The previous baseline paragraph follows for history:
+  v4 `e3593f75` (4.8.0-dev.62), adopted 2026-07-17
+  at the P4.d5 ∥ P4.6ay unification. The `02865bdb`→`e3593f75`
   drift is fully absorbed EXCEPT the Pascal feature itself (P4.6ay
   units 2, 4–9 + the unstarted SPA — the open order). v4 HEAD at
   unification was `444c7fd6`, two commits past the baseline, both
@@ -665,7 +690,7 @@ records THERE. Update this summary only when a phase or round completes.
   to 4.8.0's two ALTERs before pointing v5 at it. Still NOT drift:
   v4's embedding blob-registration bug is structurally impossible in
   v5 (no registry exists; no `repair-text-embeddings` needed).
-  Versions: core 0.0.246, harness 0.0.219, host 0.0.19, web 0.0.25,
-  quilltap-tauri 0.0.3, SPA 0.5.134.
+  Versions: core 0.0.262, harness 0.0.231, host 0.0.19, web 0.0.25,
+  quilltap-tauri 0.0.3, SPA 0.5.140.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.
