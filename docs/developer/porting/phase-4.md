@@ -1785,3 +1785,18 @@ next lane), then the Workbench SPA (P4.6bb, spec'd in the round
 plan), the human M5 + finding-#12 walk (STILL outstanding), the M6
 backlog items 1–4, or the `p4.9j-workspace-tabs` human ruling.**
 Round record: `status-log.md`.
+
+**The P4.6ay resumed-carryout unification is on main (2026-07-17,
+the second d68638b4-round unification) — units 4/8/9/7 + the
+unit-12 compute half landed; `run_custom` is LIVE end-to-end and
+BA's Salon custom-tools flow beat SELF-ACTIVATED over the unifier's
+Tools-fixture seed (full Playwright 67/67).** P4.6ay stays OPEN on
+exactly ONE item: **unit 12's route surface** (`pascal/workbench.rs`
++ `/api/v1/custom-tools` + the four workbench dispatch verbs — the
+order header carries the full spec), which is also **P4.6bb's (the
+Workbench SPA's) server dependency. Next candidates: the unit-12
+route surface + the Workbench SPA (P4.6bb) as one round — the
+natural pairing — the human M5 + finding-#12 walk (STILL
+outstanding), the M6 backlog items 1–4, or the
+`p4.9j-workspace-tabs` human ruling.** Round record:
+`status-log.md`.

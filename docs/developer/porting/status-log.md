@@ -9,6 +9,43 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Round record — the P4.6ay resumed-carryout unification (2026-07-17, the second d68638b4-round unification)
+
+**On main** (`unify/p4.6ay-resumed`, fast-forwarded): P4.6ay **units 4, 8,
+9, 7, and 12 part 1** (5 lane commits off `b01e1bb9`, taken as-is — a single
+linear lane, no reconciliation needed) + two unifier commits: the
+`seedPascalToolsFixture` §4 wire and one spec-gesture case fix. **P4.6ay
+remains OPEN on exactly ONE item: unit 12's route surface** (workbench.rs +
+`/api/v1/custom-tools` + the four workbench dispatch verbs — its status
+header carries the full spec; it is also P4.6bb's server dependency).
+
+**run_custom is LIVE end-to-end:** the LLM tool + handler (unit 4), the
+catalogue/registration + delegatedDisplay stamp (unit 8), the
+build_tools-resolved roster + orchestrator gate + pascalResult SSE (unit 9),
+the chat route + §4 verbs (unit 7), and the workbench compute
+(list_all_custom_tools + simulate_outcomes, unit 12p1). The §4 wire
+obligations are ALL discharged: the name diff ran against BA's
+core-contract.ts; the new `apps/web/e2e/support/seed-pascal-tools-fixture.ts`
+seeds vault-A Tools rows onto Aria's salon vault; **BA's probe-guarded
+`salon-custom-tools-flow` beat SELF-ACTIVATED** and walks popup → roster →
+run → the Pascal bubble + header chip + whisper carve-out live (verified: no
+activate-at-unification annotation). One gesture fix rode the gate: the
+menu-title vs bar-text case comparison made case-insensitive (the bar was
+correct; innerText reflects CSS-rendered case — the record above).
+
+**Gate (all on the unified tree):** `cargo fmt` clean; clippy `-D warnings`
+both feature sets; release build; **344 test binaries / 1413 tests / 0
+failed**; the lane's **ten differentials by name, zero SKIP** over oracles
+regenerated FRESH at `d68638b4` (row counts pinned: definition 115,
+execution 146, discovery 20, writers 18, run-custom 9, handler 10, route 9,
+simulate 6, tool-definitions 58 + canonical); `ng test` 133 files / 1286;
+`ng build` clean; **full Playwright 67/67 zero skips with the custom-tools
+flow beat ACTIVE.** Versions: core 0.0.267, harness 0.0.235, web 0.0.26,
+host 0.0.20, SPA 0.5.142.
+
+**Cleanup:** the carryout worktree removed, the lane + temp branches deleted
+(nothing held back — the route surface was never started on the branch).
+
 ## P4.6ba flow-beat gesture fix (unifier, 2026-07-17)
 
 Under full-suite ordering the activated beat failed comparing the popup menu

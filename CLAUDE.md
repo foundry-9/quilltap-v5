@@ -652,10 +652,26 @@ records THERE. Update this summary only when a phase or round completes.
   Gate: 339 test binaries / 1400 / 0 failed, the round's 31
   differentials by name zero SKIP over fresh `d68638b4` oracles,
   clippy both feature sets, ng 1286, full Playwright 67/67 zero
-  skips. **BA's popup stays dark + its flow beat probe-guarded until
-  P4.6ay's units 4/8/9/7/12 land the server verbs + the Tools
-  fixture — finishing P4.6ay is the clear next lane.** The Workbench
-  SPA is P4.6bb (next after that). Round record: `status-log.md`.
+  skips. The Workbench SPA is P4.6bb. Round record: `status-log.md`.
+- **The P4.6ay resumed-carryout unification: on main (2026-07-17,
+  the second d68638b4-round unification) — units 4/8/9/7 + the
+  unit-12 compute half landed; `run_custom` is LIVE end-to-end.**
+  The LLM tool + handler, catalogue registration + the
+  `delegatedDisplay` stamp, the build_tools-resolved roster +
+  `customTools` gate + `pascalResult` SSE, the chat custom-tools
+  route + the `chatCustomToolsList`/`chatCustomToolRun` verbs, and
+  the workbench compute (`list_all_custom_tools` +
+  `simulate_outcomes`). The unifier's `seedPascalToolsFixture` wire
+  seeded a Tools roster onto Aria's e2e vault and **BA's Salon
+  custom-tools flow beat SELF-ACTIVATED** (popup → run → the Pascal
+  bubble walks live). Gate: 344 test binaries / 1413 / 0, the lane's
+  ten differentials by name zero SKIP over fresh `d68638b4` oracles,
+  clippy both feature sets, ng 1286, full Playwright 67/67 zero
+  skips. **P4.6ay stays OPEN on exactly ONE item — unit 12's route
+  surface (`workbench.rs` + `/api/v1/custom-tools` + the four
+  workbench verbs), which is also P4.6bb's server dependency: the
+  natural next round is that route surface + the Workbench SPA
+  together.** Round record: `status-log.md`.
 - **Oracle baseline: v4 `d68638b4` (4.8.0-dev.72), adopted 2026-07-17
   at the d68638b4-round unification** (every family the drift touched
   regenerated there; untouched families' committed oracles date to
@@ -690,7 +706,7 @@ records THERE. Update this summary only when a phase or round completes.
   to 4.8.0's two ALTERs before pointing v5 at it. Still NOT drift:
   v4's embedding blob-registration bug is structurally impossible in
   v5 (no registry exists; no `repair-text-embeddings` needed).
-  Versions: core 0.0.262, harness 0.0.231, host 0.0.19, web 0.0.25,
-  quilltap-tauri 0.0.3, SPA 0.5.140.
+  Versions: core 0.0.267, harness 0.0.235, host 0.0.20, web 0.0.26,
+  quilltap-tauri 0.0.3, SPA 0.5.142.
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+Unify the resumed P4.6ay carryout lane (the second d68638b4-round
+unification). Units 4/8/9/7 and the unit-12 compute half land on main:
+run_custom is live end-to-end — the LLM tool and handler, catalogue
+registration with the delegatedDisplay stamp, the build_tools-resolved roster
+with the customTools gate and pascalResult SSE frame, the chat custom-tools
+route with the chatCustomToolsList/chatCustomToolRun dispatch verbs, and the
+workbench compute (list_all_custom_tools + simulate_outcomes). The unifier
+wire seeds a Tools roster onto Aria's e2e vault, activating the Salon
+custom-tools flow beat: popup, run, and the Pascal bubble now walk live.
+P4.6ay stays open on one item, the unit-12 route surface (the /custom-tools
+API the Workbench SPA will drive). Gate: fmt, clippy both feature sets,
+release build, 344 test binaries / 1413 tests / 0 failed, ten differentials
+by name zero SKIP over fresh d68638b4 oracles; ng test 1286, ng build, full
+Playwright 67/67 zero skips. Versions: core 0.0.267, harness 0.0.235, web
+0.0.26, host 0.0.20, SPA 0.5.142.
+
 P4.6ba e2e gesture fix: the activated custom-tools flow beat compared the
 popup menu title (read via innerText, which reflects CSS-rendered case) against
 the Pascal bar's DOM text and failed on case under full-suite ordering. The
