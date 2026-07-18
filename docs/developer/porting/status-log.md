@@ -21608,3 +21608,64 @@ clean on BOTH feature sets; `cargo test --workspace --no-fail-fast`
 with `--nocapture`, all fourteen printing `OK:`, zero `SKIP`** (the
 plain workspace run swallows those lines, so a SKIP count taken from it
 is meaningless — the by-name run is the one that proves it).
+
+### P4.d8 — lane close: dispositions, banks, and what remains OPEN
+
+Drift re-checked at close: v4 HEAD is still `616930db`, tree clean. All
+oracles in this lane were generated from the main checkout at that
+commit (no pinned worktree was needed).
+
+**Tier-3 dispositions (the order's own list, discharged).**
+  - **`979aec66` — Pascal in the Insert Announcement dialog: NO PORT,
+    BANKED.** Re-verified at lane time: v5 has no announcer service, no
+    announcement dispatch verb, and no SPA dialog, so there is nothing
+    for the change to attach to. **The bank:** when the
+    Insert-Announcement slice is ordered, its staff roster must include
+    `pascal` and its staffId enum must carry it. v4's change is a
+    one-line roster addition plus the dialog option; port it with the
+    slice, not before.
+  - **`qtap-export.schema.json`** — documented absence: v5 ships no
+    export schema asset, so there is nothing to mirror.
+  - **The Salon bubble display of `pascalMeta.llm`** — verified PARITY,
+    not a deferral: v4 renders nothing new in the bubble either (the
+    record is Inspector-only). Lane BC mirrors the type; neither side
+    adds rendering.
+  - **A live-consult e2e beat** — out of scope (real provider spend).
+    The scripted paths cover the seam; the workbench route corpus alone
+    exercises nineteen of them.
+
+**Fixture regeneration map (what a future change invalidates).**
+  - `pascal-run-custom-{main,mount}.db` (+ `.meta.json`) →
+    `pascal_run_custom_handler_equivalence`,
+    `pascal_custom_tools_route_equivalence`. Vault ids RE-MINT on every
+    rebuild; every consumer reads the `.meta.json` sidecar (verified by
+    grep — nothing hardcodes them).
+  - `workbench-{main,mount}.db` (+ `.meta.json`) →
+    `pascal_workbench_equivalence`,
+    `pascal_workbench_route_equivalence`.
+  - The `run_custom` PREAMBLE (or any tool description) →
+    `definitions/data.rs` via `gen-tool-catalog.mjs`, then
+    `tool_definitions_equivalence` + `tool_build_equivalence` +
+    `pascal_build_tools_roster` + the in-crate
+    `empty_roster_description_matches_data_rs`.
+
+**Still OPEN under this order — the consult is DARK end to end.** Every
+unit landed and every differential is green, but the three production
+entrances all pass `None` for the provider, because nothing at the
+dispatch layer holds a `CompletionProvider`:
+  1. `tools/executor.rs` → `execute_run_custom_tool` (the model
+     entrance);
+  2. the engine's `CustomToolPreview` arm → the `{live:true}` bench
+     oracle;
+  3. the engine's `ChatCustomToolRun` arm → the composer entrance.
+Plus unit 3's **un-wired 60 s timeout** (no tokio timer driver in
+core's default build). All four are one host-side change of the same
+shape — thread a provider (and a timeout decorator) through the engine
+assembly, in `quilltap-host`, which this lane does not own. **Until
+then a real `llm` tool always shows the author's `errorMessage` with
+reason `no LLM invoker was available in this context`.** That is the
+correct fail-soft behavior, not a crash — but it is not the feature.
+Recommend this be the unifier's wire, or the next order's first item.
+
+**Versions at lane close:** quilltap-core **0.0.276**, quilltap-harness
+**0.0.244**, quilltap-web **0.0.29** (+ `Cargo.lock`).
