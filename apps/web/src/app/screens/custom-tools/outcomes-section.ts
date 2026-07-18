@@ -43,6 +43,8 @@ export const COMPARATOR_LABELS: Record<ComparatorKey, string> = {
   lte: '≤',
   eq: '=',
   neq: '≠',
+  contains: 'contains',
+  ncontains: "doesn't contain",
 };
 
 const STATE_OPTIONS: Array<{ state: OutcomeState; label: string; badge: string }> = [

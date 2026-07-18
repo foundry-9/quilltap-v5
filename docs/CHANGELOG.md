@@ -2,96 +2,18 @@
 
 ## Recent Changes
 
-P4.9a lane close: tier 1 of the My Photos vertical is complete (the service
-port, the four dispatch verbs, the REST edges, the committed fixture family and
-its 34-case differential, the /photos screen, and the live walk). Tier 2 —
-imageInfoGet plus the deep gallery modal family — is deferred as a unit rather
-than half-landed, because the verb has no consumer without the modals and a
-shipped-but-unused wire verb reads later as work already done; the status log
-enumerates exactly what the follow-up owes. Docs only; no version bumps.
-
-P4.9a unit 5: a live Playwright walk of the My Photos vertical — the gallery
-renders over the real photoGalleryList verb, a card opens the detail modal with
-its prompt excerpt, linker list, read-only tags and identity block (Escape
-closes it), and a link-only delete round-trips through photoGalleryEntryRemove
-and survives a reload, which is what proves the server actually removed the
-link rather than the UI merely forgetting it. Global-setup seeds two photos/
-entries with distinctive captions so the walk asserts only on its own rows: the
-instance is shared and the characters walk deletes gallery tiles. The walk
-reaches /photos by URL because the shell's photos nav item stays disabled until
-the §2a unifier flip; the nav-click step is marked ACTIVATE-AT-UNIFY.
-
-The search box's semantic query is deliberately not walked: v4's service calls
-generateEmbeddingForUser on the query branch and the e2e instance has no default
-embedding profile, so a search there is the seam's loud refusal rather than a
-narrowed list. That refusal is pinned by photos_web_routes instead. SPA 0.5.171.
-
-P4.9a unit 4: the My Photos screen at /photos (v4 app/photos/PhotosView.tsx) —
-header and counter, the search form, the responsive card grid with the
-"linked in N places" badge, infinite scroll, and the inline detail modal with
-its linker list (Vault for a character store, Album otherwise), read-only tags,
-sha256/linkId identity, and a confirm-gated link-only delete. Both of v4's
-staleness guards are carried and mutation-checked: the fetch-generation counter
-that stops a load-more outliving its query from appending onto a new search's
-results, and the linkId de-dupe that catches the same row arriving on two pages
-when a save shifts the ordering mid-scroll. Also syncs the SPA lockfile version,
-which had drifted nine bumps behind package.json.
-
-Three recorded divergences: no subsystem background (v4 wraps the page in
-useSubsystemBackgroundStyle('lantern'); v5 has no such machinery and this lane
-does not invent one), full-size images in the grid (a v4 performance quirk
-carried deliberately — there is no thumbnail route on this surface), and
-window.confirm for the delete gate (v5's established stand-in for v4's
-showConfirmation modal). Tags are read-only because v4 has no tag editing
-anywhere in this family. SPA 0.5.170.
-
-P4.9a unit 3: the photos REST edges (quilltap-web/src/photos_routes.rs) —
-GET|POST /api/v1/photos and GET|DELETE /api/v1/photos/{id}, each unwrapping the
-dispatch envelope to v4's raw body, with POST answering 201 as v4's `created`
-does. Two edge behaviors needed care: ?tag= REPEATS (v4 reads them with
-getAll, so the extractor is a pair list, not a map — a map would silently keep
-one) and the JS Number() coercion that v4 runs BEFORE Zod (so ?limit=abc must
-reach the core as NaN and earn Zod's NaN message rather than being repaired or
-dropped). Both are mutation-checked in the new photos_web_routes end-to-end
-test. Also corrects the dispatch arm from unit 2: the list verb now takes an
-OPTIONAL embedding provider and gates only the query branch on it. Gating the
-whole verb would have made a plain /photos listing fail on any spine-less
-assembly, where the seam is None — stricter than v4, and it would have
-dark-screened the feature; a search without the seam is still the loud named
-refusal. core 0.0.274, web 0.0.30.
-
-P4.9a unit 2: the four photo-gallery dispatch verbs (photoGalleryList /
-photoGallerySave / photoGalleryEntryGet / photoGalleryEntryRemove) over the
-unit-1 service, plus the committed photos-{main,mount}.db fixture family and a
-34-case differential driving v4's REAL exported service and both real route
-handlers. The verbs carry v4's route-layer behavior verbatim: Zod's messages
-for limit/offset (v4 runs Number() BEFORE Zod, so a non-numeric query param is
-"received NaN" and a fractional one is "received int" — different messages, so
-the wire type is f64), and the substring chain by which v4's routes decide
-400-vs-500 from a thrown message (the empty-bytes message deliberately falls
-through to a 500). The differential caught three real divergences, all fixed in
-the port: relevanceScore was emitting 1.0 where JSON.stringify writes 1 (a
-perfect cosine match is exactly whole — routed through js_number_to_json); the
-save leg collapsed an absent fileId into an explicit null, losing Zod's
-"received undefined" vs "received null" split (now a double option); and two Zod
-bound messages named the field where Zod names the type. Also fixes an oracle
-hygiene bug worth knowing about: v4's save leg ends with three fire-and-forget
-promises that outlive the awaited response, land after the case closes its DB,
-and poison whichever case runs next — the oracle now drains before closing.
-core 0.0.273, web 0.0.29.
-
-P4.9a unit 1: ported v4's user photo gallery service
-(lib/photos/user-gallery-service.ts) to quilltap-core as
-photos::user_gallery_service — the cross-mount photos/ roll-up with
-sha256 dedup, the semantic-query branch with v4's two-stage peak-gate /
-trail-band filter, the tag filter, offset pagination, blobUrl minting,
-plus the save / get-entry / link-only-remove legs. The query embedding
-and the image bytes stay injected seams so the service body is sync.
-v4's extractPromptExcerpt regex is hand-rolled (the core has no
-JS-regex engine) and pinned against the real JS engine by a 15-vector
-table test generated from harness/oracle/cases/photos-prompt-excerpt.mjs.
-The stateful differential over the photos fixture family lands in unit 2.
-quilltap-core 0.0.272.
+P4.6bc unit 1: the browser custom-tool schema twin gains the 616930db
+consult + containment arms - the top-level llm block (prompt,
+errorMessage, maxOutput with its int/bounds rules), the LlmComparator
+with its ok key, the StringOperand, the six-to-eight comparator
+widening with containment on params/metadata/llm but never on a numeric
+subject, both at-least-one messages, the containment load-checks, the
+llm-test-without-block rejection, and llm in the known top-level keys.
+Pinned by a new 52-row spec captured from v4's real Zod at 616930db.
+Four rows of the committed d68638b4 corpus drifted in v4 (three when
+refine sentences gained `llm`, one metadata comparator widened); the
+corpus spec carries a marked drift map until lane D8's regenerated
+NDJSON lands. SPA 0.5.170.
 
 Plan the 616930db drift-catch-up + P4.9a-resume round: two new work
 orders (p4.d8-llm-consult-server, p4.6bc-workbench-llm-spa) plus a

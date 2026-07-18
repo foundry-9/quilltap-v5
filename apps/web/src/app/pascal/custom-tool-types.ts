@@ -83,6 +83,25 @@ export const MAX_DESCRIPTION_LENGTH = 500;
 /** Cap on a tool's display title, in characters. */
 export const MAX_TITLE_LENGTH = 80;
 
+/** Cap on an LLM consult prompt, in characters (measured before templating). */
+export const MAX_LLM_PROMPT_LENGTH = 4000;
+
+/**
+ * Default cap on the answer an LLM consult may contribute, in characters. The
+ * model's reply is trimmed and truncated before it is tested or rendered.
+ * A definition that wants a longer (or shorter) leash sets `llm.maxOutput`;
+ * this is only what applies when it doesn't say.
+ */
+export const MAX_LLM_OUTPUT_LENGTH = 8000;
+
+/**
+ * Hard ceiling on `llm.maxOutput`. Generous on purpose — a consult may well BE
+ * the deliverable (a generated document, a deep outline) — but still bounded:
+ * the answer lands in `pascalMeta` on a chat_messages row, and rows must not
+ * become arbitrarily large because one oracle would not stop talking.
+ */
+export const MAX_LLM_OUTPUT_CEILING = 100_000;
+
 /**
  * Identifier rules shared by tool names and parameter names: lowercase, starts
  * with a letter, 1–64 characters.
@@ -93,6 +112,12 @@ const IDENTIFIER_MESSAGE = 'must be lowercase, start with a letter, and be 1–6
 
 const AT_LEAST_ONE = 'must specify at least one comparator (gt, gte, lt, lte, eq, neq)';
 
+const AT_LEAST_ONE_WIDE =
+  'must specify at least one comparator (gt, gte, lt, lte, eq, neq, contains, ncontains)';
+
+/** v4's `StringOperandSchema` min-length message. */
+const EMPTY_SUBSTRING = 'the substring to look for must not be empty';
+
 /**
  * v4's `z.number().finite()` expectation string. See the module note: this is
  * the one arm the oracle corpus does not pin.
@@ -100,10 +125,31 @@ const AT_LEAST_ONE = 'must specify at least one comparator (gt, gte, lt, lte, eq
 const FINITE_EXPECTED = 'number';
 
 /** The comparator keys, in the order tests are described to a reader. */
-export const COMPARATOR_KEYS = ['gt', 'gte', 'lt', 'lte', 'eq', 'neq'] as const;
+export const COMPARATOR_KEYS = [
+  'gt',
+  'gte',
+  'lt',
+  'lte',
+  'eq',
+  'neq',
+  'contains',
+  'ncontains',
+] as const;
+
+/**
+ * The six keys v4's `NUMERIC_COMPARATOR_SHAPE` declares — the strict-object key
+ * set for the numeric comparator AND for a `when`'s bare comparator keys.
+ * Deliberately narrower than {@link COMPARATOR_KEYS}: containment never appears
+ * on a subject that is always a number, so `{ "contains": "x" }` on the bare
+ * value (or inside `roll`) is an unrecognized key, not a type error.
+ */
+const NUMERIC_COMPARATOR_KEYS = ['gt', 'gte', 'lt', 'lte', 'eq', 'neq'] as const;
 
 /** The four keys that order two values, and so demand numbers on both sides. */
 const ORDERING_KEYS: readonly string[] = ['gt', 'gte', 'lt', 'lte'];
+
+/** The two keys that search one string inside another, and so demand strings. */
+const CONTAINMENT_KEYS: readonly string[] = ['contains', 'ncontains'];
 
 // ---------------------------------------------------------------- the types
 
@@ -132,6 +178,14 @@ export type NumberOrParamRef = number | ParamRef;
  * declared type — `{ "eq": "brass" }` is a legitimate test of a string.
  */
 export type AnyOperand = number | string | boolean | ParamRef;
+
+/**
+ * A comparator operand for contains/ncontains: the substring to look for — a
+ * literal string, or a `$param` reference to a declared string parameter. The
+ * literal must be non-empty because every string contains "", which makes an
+ * empty needle a typo wearing a comparator's clothes.
+ */
+export type StringOperand = string | ParamRef;
 
 /** True when a roll field is a `$param` reference rather than a literal. */
 export function isParamRef(value: unknown): value is ParamRef {
@@ -182,7 +236,10 @@ export interface NumericComparator {
 /**
  * A comparator against a declared parameter. Identical to the numeric form
  * except that eq/neq widen to strings and booleans, since a parameter need not
- * be a number.
+ * be a number — and contains/ncontains appear, testing whether a string
+ * parameter holds (or lacks) a substring. The substring is a literal or a
+ * `$param` reference, so a table can ask whether one input appears inside
+ * another.
  */
 export interface ParamComparator {
   gt?: NumberOrParamRef;
@@ -191,12 +248,14 @@ export interface ParamComparator {
   lte?: NumberOrParamRef;
   eq?: AnyOperand;
   neq?: AnyOperand;
+  contains?: StringOperand;
+  ncontains?: StringOperand;
 }
 
 /**
  * A comparator against one key of the invoking character's metadata sheet.
- * Shape-identical to {@link ParamComparator} — the same six keys, the same
- * widened eq/neq, the same `$param` operands.
+ * Shape-identical to {@link ParamComparator} — the same keys, the same widened
+ * eq/neq, the same contains/ncontains, the same `$param` operands.
  *
  * It is a separate name because the two differ entirely in what can be known at
  * load time. A `params` test names something the file itself declares, so a
@@ -206,6 +265,48 @@ export interface ParamComparator {
  * wrong type simply fails to match) closes the gap.
  */
 export type MetadataComparator = ParamComparator;
+
+/**
+ * A comparator against the LLM consult's result. The comparator keys test the
+ * answer string; `ok` is an extra, non-comparator key testing whether the
+ * consult succeeded at all.
+ *
+ * Like `metadata`, the subject's run-time type is unknowable at load time — the
+ * answer is whatever the model says — so type rules are enforced fail-soft at
+ * run time: an ordering comparator against an answer that does not parse as a
+ * number simply declines the row. eq/neq compare numerically when both sides
+ * are numbers, and otherwise case-insensitively as trimmed strings, because an
+ * author who asked for "YES" should not lose to a model that said "yes".
+ * contains/ncontains search the answer for a substring under the same
+ * case-insensitive reconciliation — the natural test of prose, where equality
+ * would demand the whole sentence verbatim.
+ */
+export interface LlmComparator extends ParamComparator {
+  ok?: boolean;
+}
+
+/**
+ * The LLM consult block. When present, every run renders `prompt` (the same
+ * placeholder families an outcome message takes, minus `{{llm}}` itself) and
+ * poses it to the instance's cheap utility model AFTER the roll and BEFORE the
+ * outcome table is evaluated. The result is a pair `{ ok, output }`:
+ *
+ * - success → `ok: true`, `output` is the model's trimmed answer;
+ * - failure (provider error, timeout, empty answer, no model configured) →
+ *   `ok: false`, `output` is this block's `errorMessage` — the AUTHOR's words,
+ *   never the provider's stack trace, because whatever lands in the fiction is
+ *   the author's to write.
+ *
+ * Either way the pair is testable in `when` (the `llm` subject) and renderable
+ * in messages (`{{llm}}`), so a failed consult is an outcome the table can deal
+ * with rather than an error bubble: the run itself never fails because the
+ * oracle went quiet.
+ */
+export interface CustomToolLlm {
+  prompt: string;
+  errorMessage: string;
+  maxOutput?: number;
+}
 
 /**
  * An outcome test's object form: one or more subjects, ALL of which must hold.
@@ -235,6 +336,7 @@ export interface WhenObject {
   roll?: NumericComparator;
   params?: Record<string, ParamComparator>;
   metadata?: Record<string, MetadataComparator>;
+  llm?: LlmComparator;
 }
 
 /** An outcome test: either the literal `true` (catch-all) or a {@link WhenObject}. */
@@ -271,6 +373,7 @@ export interface QtapCustomTool {
   defaultVisibility?: Visibility;
   parameters?: Record<string, CustomToolParameter>;
   roll?: Roll;
+  llm?: CustomToolLlm;
   outcomes: CustomToolOutcome[];
 }
 
@@ -487,18 +590,36 @@ function parseAnyOperand(input: unknown): Res<AnyOperand> {
   return union<AnyOperand>([n, s, b, p]);
 }
 
+/**
+ * v4 `StringOperandSchema` — `z.string().min(1, …) | ParamRefSchema`. The
+ * empty-string case leans on the union's hoist rule: the string branch's `min`
+ * is a CHECK (continuable) while the `$param` branch aborts on shape, so
+ * exactly one branch is non-aborted and its authored sentence surfaces instead
+ * of a bare "Invalid input".
+ */
+function parseStringOperand(input: unknown): Res<StringOperand> {
+  const s: Res<StringOperand> =
+    typeof input === 'string'
+      ? { value: input, issues: input.length < 1 ? [checkIssue(EMPTY_SUBSTRING)] : [] }
+      : resHard(invalidType('string', input));
+  const p = parseParamRef(input);
+  return union<StringOperand>([s, p]);
+}
+
 function parseNumericComparator(input: unknown): Res<NumericComparator> {
   if (!isPlainObject(input)) return resHard(invalidType('object', input));
 
   const issues: Issue[] = [];
   const out: NumericComparator = {};
-  for (const key of COMPARATOR_KEYS) {
+  for (const key of NUMERIC_COMPARATOR_KEYS) {
     if (!hasKey(input, key)) continue;
     const r = parseNumberOrParamRef(input[key]);
     issues.push(...prefix(key, r.issues));
     if (r.value !== undefined) out[key] = r.value;
   }
-  issues.push(...unrecognizedKeys(input, COMPARATOR_KEYS));
+  // Six keys, not eight: containment never reaches a subject that is always a
+  // number, so `{ "contains": … }` here is an unrecognized key.
+  issues.push(...unrecognizedKeys(input, NUMERIC_COMPARATOR_KEYS));
 
   if (aborted(issues)) return { value: undefined, issues };
   // `.refine(hasComparator, AT_LEAST_ONE)` — runs only when nothing aborted.
@@ -506,11 +627,17 @@ function parseNumericComparator(input: unknown): Res<NumericComparator> {
   return { value: out, issues };
 }
 
-function parseParamComparator(input: unknown): Res<ParamComparator> {
-  if (!isPlainObject(input)) return resHard(invalidType('object', input));
-
-  const issues: Issue[] = [];
-  const out: ParamComparator = {};
+/**
+ * The comparator shape shared by `params`, `metadata`, and `llm`: the ordering
+ * keys numeric, eq/neq widened, contains/ncontains taking a string operand.
+ * `llm` adds one non-comparator key (`ok`) and carries the wider at-least-one
+ * message all three share.
+ */
+function parseWideComparatorKeys(
+  input: Record<string, unknown>,
+  out: Record<string, unknown>,
+  issues: Issue[],
+): void {
   // Ordering keys stay numeric on both sides; eq/neq widen to any operand.
   for (const key of ['gt', 'gte', 'lt', 'lte'] as const) {
     if (!hasKey(input, key)) continue;
@@ -524,10 +651,49 @@ function parseParamComparator(input: unknown): Res<ParamComparator> {
     issues.push(...prefix(key, r.issues));
     if (r.value !== undefined) out[key] = r.value;
   }
+  for (const key of ['contains', 'ncontains'] as const) {
+    if (!hasKey(input, key)) continue;
+    const r = parseStringOperand(input[key]);
+    issues.push(...prefix(key, r.issues));
+    if (r.value !== undefined) out[key] = r.value;
+  }
+}
+
+function parseParamComparator(input: unknown): Res<ParamComparator> {
+  if (!isPlainObject(input)) return resHard(invalidType('object', input));
+
+  const issues: Issue[] = [];
+  const out: ParamComparator = {};
+  parseWideComparatorKeys(input, out as Record<string, unknown>, issues);
   issues.push(...unrecognizedKeys(input, COMPARATOR_KEYS));
 
   if (aborted(issues)) return { value: undefined, issues };
-  if (!COMPARATOR_KEYS.some((k) => hasKey(input, k))) issues.push(checkIssue(AT_LEAST_ONE));
+  if (!COMPARATOR_KEYS.some((k) => hasKey(input, k))) issues.push(checkIssue(AT_LEAST_ONE_WIDE));
+  return { value: out, issues };
+}
+
+/**
+ * v4 `LlmComparatorSchema` — the wide comparator plus `ok`, and a refine that
+ * accepts either a comparator on the answer OR a bare `ok` test, since "only
+ * when the consult failed" is a complete thought.
+ */
+function parseLlmComparator(input: unknown): Res<LlmComparator> {
+  if (!isPlainObject(input)) return resHard(invalidType('object', input));
+
+  const issues: Issue[] = [];
+  const out: LlmComparator = {};
+  parseWideComparatorKeys(input, out as Record<string, unknown>, issues);
+  if (hasKey(input, 'ok')) {
+    const r = parseBool(input['ok']);
+    issues.push(...prefix('ok', r.issues));
+    if (r.value !== undefined) out.ok = r.value;
+  }
+  issues.push(...unrecognizedKeys(input, [...COMPARATOR_KEYS, 'ok']));
+
+  if (aborted(issues)) return { value: undefined, issues };
+  if (!COMPARATOR_KEYS.some((k) => hasKey(input, k)) && out.ok === undefined) {
+    issues.push(checkIssue('must test something: a comparator on the answer, or `ok`'));
+  }
   return { value: out, issues };
 }
 
@@ -686,12 +852,63 @@ function parseRoll(input: unknown): Res<Roll> {
   return union<Roll>([d, r]);
 }
 
+/**
+ * v4 `CustomToolLlmSchema` — the consult block. `maxOutput` is
+ * `z.number().int().min(1).max(MAX_LLM_OUTPUT_CEILING)`, and the non-integer
+ * complaint SUPPRESSES the bound checks: empirically, `maxOutput: 100001.5`
+ * reports only `expected int, received number`, never the ceiling as well.
+ * (Whether Zod marks that issue aborting is not observable from here — either
+ * way the parse fails with the same sentence — so only the suppression is
+ * modelled.)
+ */
+function parseCustomToolLlm(input: unknown): Res<CustomToolLlm> {
+  if (!isPlainObject(input)) return resHard(invalidType('object', input));
+
+  const issues: Issue[] = [];
+
+  const prompt = parseString(input['prompt'], 1, MAX_LLM_PROMPT_LENGTH, false);
+  issues.push(...prefix('prompt', prompt.issues));
+
+  const errorMessage = parseString(input['errorMessage'], 1, MAX_MESSAGE_LENGTH, false);
+  issues.push(...prefix('errorMessage', errorMessage.issues));
+
+  let maxOutput: number | undefined;
+  if (hasKey(input, 'maxOutput')) {
+    const raw = input['maxOutput'];
+    const own: Issue[] = [];
+    if (typeof raw !== 'number') {
+      own.push(hardIssue(invalidType('number', raw)));
+    } else if (!Number.isInteger(raw)) {
+      own.push(hardIssue(invalidType('int', raw)));
+    } else {
+      if (raw < 1) own.push(checkIssue('Too small: expected number to be >=1'));
+      if (raw > MAX_LLM_OUTPUT_CEILING) {
+        own.push(checkIssue(`Too big: expected number to be <=${MAX_LLM_OUTPUT_CEILING}`));
+      }
+      maxOutput = raw;
+    }
+    issues.push(...prefix('maxOutput', own));
+  }
+
+  issues.push(...unrecognizedKeys(input, ['prompt', 'errorMessage', 'maxOutput']));
+
+  if (prompt.value === undefined || errorMessage.value === undefined) {
+    return { value: undefined, issues };
+  }
+  if (aborted(issues)) return { value: undefined, issues };
+
+  const value: CustomToolLlm = { prompt: prompt.value, errorMessage: errorMessage.value };
+  if (maxOutput !== undefined) value.maxOutput = maxOutput;
+  return { value, issues };
+}
+
 function parseWhenObject(input: unknown): Res<WhenObject> {
   if (!isPlainObject(input)) return resHard(invalidType('object', input));
 
   const issues: Issue[] = [];
   const out: WhenObject = {};
-  for (const key of COMPARATOR_KEYS) {
+  // Bare keys address the final value — always a number, so the six.
+  for (const key of NUMERIC_COMPARATOR_KEYS) {
     if (!hasKey(input, key)) continue;
     const r = parseNumberOrParamRef(input[key]);
     issues.push(...prefix(key, r.issues));
@@ -729,7 +946,15 @@ function parseWhenObject(input: unknown): Res<WhenObject> {
     }
   }
 
-  issues.push(...unrecognizedKeys(input, [...COMPARATOR_KEYS, 'roll', 'params', 'metadata']));
+  if (hasKey(input, 'llm')) {
+    const r = parseLlmComparator(input['llm']);
+    issues.push(...prefix('llm', r.issues));
+    if (r.value !== undefined) out.llm = r.value;
+  }
+
+  issues.push(
+    ...unrecognizedKeys(input, [...NUMERIC_COMPARATOR_KEYS, 'roll', 'params', 'metadata', 'llm']),
+  );
 
   if (aborted(issues)) return { value: undefined, issues };
 
@@ -738,10 +963,10 @@ function parseWhenObject(input: unknown): Res<WhenObject> {
   const hasParams = paramsPresent && out.params !== undefined && Object.keys(out.params).length > 0;
   const hasMetadata =
     metadataPresent && out.metadata !== undefined && Object.keys(out.metadata).length > 0;
-  if (!hasComparator && out.roll === undefined && !hasParams && !hasMetadata) {
+  if (!hasComparator && out.roll === undefined && out.llm === undefined && !hasParams && !hasMetadata) {
     issues.push(
       checkIssue(
-        'must test something: a comparator on the value, `roll`, a non-empty `params`, or a non-empty `metadata`',
+        'must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, or a non-empty `metadata`',
       ),
     );
   }
@@ -860,6 +1085,13 @@ export function safeParse(raw: unknown): SafeParseResult {
     roll = r.value;
   }
 
+  let llm: CustomToolLlm | undefined;
+  if (hasKey(obj, 'llm')) {
+    const r = parseCustomToolLlm(obj['llm']);
+    issues.push(...prefix('llm', r.issues));
+    llm = r.value;
+  }
+
   let outcomes: CustomToolOutcome[] | undefined;
   const rawOutcomes = obj['outcomes'];
   if (Array.isArray(rawOutcomes)) {
@@ -905,6 +1137,7 @@ export function safeParse(raw: unknown): SafeParseResult {
   if (defaultVisibility !== undefined) tool.defaultVisibility = defaultVisibility;
   if (parameters !== undefined) tool.parameters = parameters;
   if (roll !== undefined) tool.roll = roll;
+  if (llm !== undefined) tool.llm = llm;
   tool.outcomes = outcomes;
 
   // ---- superRefine (v4 `:374-377`), in source order -----------------------
@@ -1018,6 +1251,21 @@ function validateReferences(tool: QtapCustomTool, issues: Issue[]): void {
       ]);
     }
 
+    // An `llm` test on a tool with no `llm` block could never fire — there is
+    // no consult whose answer it might match. That is a typo, not an intent,
+    // and left alone it reads as a dead branch in the outcome table.
+    if (when.llm !== undefined) {
+      if (!tool.llm) {
+        issues.push(
+          checkIssue('tests the LLM consult, but the tool declares no `llm` block', [...path, 'llm']),
+        );
+      }
+      // The answer's run-time type is the model's business (see the schema
+      // comment), so — exactly as with `metadata` — only the `$param` operands
+      // are checkable here.
+      validateMetadataOperands(declared, when.llm, issues, [...path, 'llm']);
+    }
+
     // `metadata` gets a shallower check, and there is no way around it: the keys
     // live on a character the file has never seen, so neither the key's
     // existence nor its stored type is knowable here. What IS checkable is the
@@ -1103,6 +1351,25 @@ function validateComparator(
         issues.push(
           checkIssue(
             `${key} orders ${subjectLabel} against a ${operandType}, and only numbers can be ordered`,
+            [...path, key],
+          ),
+        );
+      }
+      continue;
+    }
+
+    if (CONTAINMENT_KEYS.includes(key)) {
+      if (subjectType !== 'string') {
+        issues.push(
+          checkIssue(
+            `${key} searches ${subjectLabel}, which is a ${subjectType} — only a string can contain a substring`,
+            [...path, key],
+          ),
+        );
+      } else if (operandType !== 'string') {
+        issues.push(
+          checkIssue(
+            `${key} looks for a ${operandType} inside ${subjectLabel}, and a substring must be a string`,
             [...path, key],
           ),
         );
@@ -1198,6 +1465,7 @@ const KNOWN_TOP_LEVEL_KEYS = new Set([
   'defaultVisibility',
   'parameters',
   'roll',
+  'llm',
   'outcomes',
 ]);
 

@@ -71,11 +71,54 @@ const rows: Row[] = corpusText
 const titleRows = rows.filter((r): r is TitleRow => r.kind === 'title');
 const definitionRows = rows.filter((r): r is DefinitionRow => r.kind === 'definition');
 
+/**
+ * ⚠ The committed corpus was generated at v4 `d68638b4`; this lane ports v4
+ * `616930db`, and FOUR of its rows changed message there — verified by
+ * replaying the committed corpus against v4's real Zod at `616930db`, where
+ * exactly these four (and no others) drifted:
+ *
+ *  - three `when` refine rows gained `` `llm` `` in the at-least-one list;
+ *  - one metadata comparator row widened to the eight-key list.
+ *
+ * This is v4 drift, not a v5 porting bug, and the port must follow v4 (D23).
+ * Lane D8 owns the regenerated NDJSON (§C), so the correction lives here until
+ * unification rather than in the fixture.
+ *
+ * §C: the unifier REPLACES this map with `{}` (and the counts below with D8's
+ * recorded counts) once the regenerated corpus lands — every row must then pass
+ * against the fixture's own bytes.
+ */
+const REGENERATED_AT_616930DB: Record<string, string> = {
+  'when-tests-nothing':
+    'outcomes.0.when: must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, or a non-empty `metadata`',
+  'when-empty-params':
+    'outcomes.0.when: must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, or a non-empty `metadata`',
+  'metadata-empty-object':
+    'outcomes.0.when: must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, or a non-empty `metadata`',
+  'metadata-empty-comparator':
+    'outcomes.0.when.metadata.faction: must specify at least one comparator (gt, gte, lt, lte, eq, neq, contains, ncontains)',
+};
+
+/** The sentence v4 `616930db` renders for a row — the fixture's, unless drifted. */
+function expectedReason(row: DefinitionRow): string | null {
+  return REGENERATED_AT_616930DB[row.id] ?? row.reason;
+}
+
 describe('custom-tool schema — the committed v4 corpus', () => {
   it('the corpus is the expected shape (a truncated fixture must not pass silently)', () => {
+    // §C: unifier updates to D8's recorded counts
     expect(rows.length).toBe(115);
     expect(titleRows.length).toBe(10);
     expect(definitionRows.length).toBe(105);
+  });
+
+  it('the drift map names only rows the fixture actually carries', () => {
+    // Guards the map against outliving its rows: once D8's regenerated corpus
+    // lands the map goes to `{}`, and a stale key here would pass unnoticed.
+    const ids = new Set(definitionRows.map((r) => r.id));
+    for (const id of Object.keys(REGENERATED_AT_616930DB)) {
+      expect(ids.has(id), `drift map names "${id}", which the corpus does not`).toBe(true);
+    }
   });
 
   describe('displayTitle', () => {
@@ -103,7 +146,7 @@ describe('custom-tool schema — the committed v4 corpus', () => {
         } else {
           const sentence = formatDefinitionIssues(result.issues);
           expect(row.success, `v5 rejected with: ${sentence}; v4 accepted`).toBe(false);
-          expect(sentence).toBe(row.reason);
+          expect(sentence).toBe(expectedReason(row));
         }
       });
     }
