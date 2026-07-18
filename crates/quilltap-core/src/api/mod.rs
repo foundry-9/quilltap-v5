@@ -36,6 +36,9 @@ pub mod user_profile;
 // === end P4.9c ===
 pub mod documents;
 pub mod engine;
+// === P4.9a: the user photo gallery (lane A, append-only) ===
+pub mod photos;
+// === end P4.9a ===
 pub mod groups;
 pub mod image_profiles;
 // === P4.6ar: the llm-logs read surface (lane A) ===

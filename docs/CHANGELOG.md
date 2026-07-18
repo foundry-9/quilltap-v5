@@ -2,6 +2,26 @@
 
 ## Recent Changes
 
+P4.9a unit 2: the four photo-gallery dispatch verbs (photoGalleryList /
+photoGallerySave / photoGalleryEntryGet / photoGalleryEntryRemove) over the
+unit-1 service, plus the committed photos-{main,mount}.db fixture family and a
+34-case differential driving v4's REAL exported service and both real route
+handlers. The verbs carry v4's route-layer behavior verbatim: Zod's messages
+for limit/offset (v4 runs Number() BEFORE Zod, so a non-numeric query param is
+"received NaN" and a fractional one is "received int" — different messages, so
+the wire type is f64), and the substring chain by which v4's routes decide
+400-vs-500 from a thrown message (the empty-bytes message deliberately falls
+through to a 500). The differential caught three real divergences, all fixed in
+the port: relevanceScore was emitting 1.0 where JSON.stringify writes 1 (a
+perfect cosine match is exactly whole — routed through js_number_to_json); the
+save leg collapsed an absent fileId into an explicit null, losing Zod's
+"received undefined" vs "received null" split (now a double option); and two Zod
+bound messages named the field where Zod names the type. Also fixes an oracle
+hygiene bug worth knowing about: v4's save leg ends with three fire-and-forget
+promises that outlive the awaited response, land after the case closes its DB,
+and poison whichever case runs next — the oracle now drains before closing.
+core 0.0.273, web 0.0.29.
+
 P4.9a unit 1: ported v4's user photo gallery service
 (lib/photos/user-gallery-service.ts) to quilltap-core as
 photos::user_gallery_service — the cross-mount photos/ roll-up with

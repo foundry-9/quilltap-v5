@@ -1,0 +1,17 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+  "otherUserId": "e0000000-0000-4000-8000-00000000000e",
+  "seedTimestamp": "2026-01-01T00:00:00.000Z",
+  "cannedEmbeddings": {
+    "dawn flight": [1, 0, 0, 0],
+    "covenant": [0, 1, 0, 0],
+    "asdfasdf": [0.5, 0.5, 0.5, 0.5]
+  },
+  "chunkEmbeddings": {
+    "dawn": [1, 0, 0, 0],
+    "covenant": [0, 1, 0, 0],
+    "wardrobe": [0, 0, 1, 0],
+    "lantern": [0, 0, 0, 1]
+  }
+}

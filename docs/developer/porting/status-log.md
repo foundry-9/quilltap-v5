@@ -21268,3 +21268,105 @@ compile-time guarantees; the list/save/remove legs are proven against v4's real
 service in unit 2.
 
 **Versions:** quilltap-core 0.0.272.
+
+### P4.9a unit 2 — the §3 dispatch verbs + the photos fixture family + the differential
+
+Resumed lane A, on branch `claude/photos-view-porting-3d533e` (unit 1
+cherry-picked forward as `6a867389`; core 0.0.270 → 0.0.272 to accumulate over
+main's 0.0.271).
+
+**What landed.** `crates/quilltap-core/src/api/photos.rs` — the four §3 verbs
+(`photoGalleryList` / `photoGallerySave` / `photoGalleryEntryGet` /
+`photoGalleryEntryRemove`) over unit 1's service, with their `Request`/`Response`
+arms (`Response::PhotoGallery`, one variant for all four bodies — v4 emits every
+one RAW) and the engine dispatch. The list arm rides `ready_memory_embedding`
+(v4's service calls `generateEmbeddingForUser` inline on the query branch); the
+save arm rides the existing `ready_save_image` bytes seam.
+
+**Why the route logic lives in `api::photos` and not the service.** v4 splits it
+the same way: the route Zod-parses, the service throws plain `Error`s, and the
+ROUTE decides 400-vs-500 by SUBSTRING-testing the message. So the service port
+carries only the raw message and this module replicates both the Zod strings and
+the substring chain — which is what keeps `Image {id} has empty bytes` falling
+through to a 500, as v4 intends (empty stored bytes are a server fault).
+
+**The fixture family** (`crates/quilltap-web/tests/fixtures/photos-{main,mount}.db`
++ `.meta.json`, built by `harness/oracle/fixtures/build-photos-fixture.ts` from
+`photos-web.json`): five mount points (two REAL character vaults minted by
+`repos.characters.create`, so `storeType` is genuinely `'character'`; Quilltap
+Uploads; a project store; and a DISABLED one), five images staged through the
+REAL `linkBlobContent`, and one chunk per photo link with a PINNED embedding.
+Deliberate shapes: sha A carries FOUR links (three `photos/` across three mounts
+plus one `notes/` link on the same bytes) so the dedup collapse, the linkSummary
+count, and the `isPhotoAlbum: false` arm all appear at once; the Uploads link is
+FIRST in the walk but OLDEST, so a fixture where walk order and `createdAt` order
+agree could not tell the tie-break apart. Timestamps are re-pinned by raw UPDATE
+after staging (`linkBlobContent` stamps a live clock, and the tie-break reads
+that column directly).
+
+**The differential** (`photos_routes_equivalence`, 32 checks + a key-order
+claim): 34 oracle cases over v4's real service and both real route handlers.
+Two seams are canned identically on both sides and nothing else is — the query
+embedding (keyed by query TEXT; everything below the model boundary, including
+`searchDocumentChunks`, the literal-phrase boost and the peak-gate/trail-band
+filter, runs for real) and the image bytes (reported by the oracle's own
+`*_bytes` cases from v4's UNMOCKED storage manager, so the save leg's recomputed
+sha256 is comparable at all).
+
+**Three real divergences the differential caught** (fixed in the port, never the
+test):
+1. `relevanceScore` serialized as `1.0` where v4's `JSON.stringify` writes `1` —
+   a perfect cosine match is exactly whole. Routed through the existing
+   `db::js_number_to_json`.
+2. The save leg collapsed an ABSENT `fileId` into an explicit `null`, losing
+   Zod's `received undefined` vs `received null` split. The wire field is now a
+   double option (the P4.9c profile precedent).
+3. Two Zod bound messages named the FIELD (`expected limit to be <=200`) where
+   Zod v4 names the schema TYPE (`expected number to be <=200`).
+
+Mutation-checked: inverting the dedup tie-break (`>` → `<`) fails six cases;
+reverted green.
+
+**⚠ An oracle-hygiene bug worth carrying forward.** v4's `saveToUserGallery`
+ends with three fire-and-forget promises (`refreshStats`,
+`enqueueEmbeddingJobsForMountPoint`, the emitted document event). They outlive
+the awaited response, land AFTER the case's `closeDatabase()`, and race the NEXT
+case's `initializeDatabase()` — whose `readSetting` then throws into
+`getUserUploadsStore`'s catch, surfacing as a bogus "Quilltap Uploads mount has
+not been provisioned" on whichever case happens to follow a mutating one. It
+moved when the cases were reordered, which is how it was identified as
+contamination rather than a real v4 behavior. The oracle now drains (250 ms)
+before closing. Any oracle whose subject has a fire-and-forget tail needs the
+same.
+
+**Regenerate recipe.** Fixture:
+
+    N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
+    cd ~/source/quilltap-server
+    QT_FIXTURE_PHOTOS_MAIN=$W/crates/quilltap-web/tests/fixtures/photos-main.db \
+    QT_FIXTURE_PHOTOS_MOUNT=$W/crates/quilltap-web/tests/fixtures/photos-mount.db \
+      $N/node --import tsx $W/harness/oracle/fixtures/build-photos-fixture.ts
+
+Oracle (jest ignores `.claude/` — mirror to /tmp), then the diff:
+
+    TMPO=/tmp/qt-photos-oracle
+    rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+    cp "$W/harness/oracle/cases/photos-routes.test.ts" "$TMPO/cases/"
+    cp "$W/harness/oracle/fixtures/photos-web.json" "$TMPO/fixtures/"
+    cd ~/source/quilltap-server
+    QT_FIXTURE_PHOTOS_MAIN=… QT_FIXTURE_PHOTOS_MOUNT=… \
+    QT_ORACLE_OUT=/tmp/oracle-photos.ndjson \
+      $N/npx jest --silent --watchman=false --testTimeout=120000 \
+        --roots "$PWD" --roots "$TMPO/cases" -- photos-routes
+    cd $W && QT_ORACLE_PHOTOS=/tmp/oracle-photos.ndjson \
+      cargo test -p quilltap-web --test photos_routes_equivalence -- --nocapture
+
+Note the fixture regenerates the ingested save-source file ids and their
+`linkedAt` stamps, so the oracle MUST be regenerated with it — the `.meta.json`
+sidecar is what keeps the two in step.
+
+**Still OPEN in this lane:** the REST edges (`photos_routes.rs`), the `/photos`
+SPA screen + its §1 route block, the live Playwright beat, and tier 2
+(`imageInfoGet` + the deep gallery modal family).
+
+**Versions:** quilltap-core 0.0.273, quilltap-web 0.0.29.

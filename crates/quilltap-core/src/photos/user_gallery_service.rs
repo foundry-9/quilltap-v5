@@ -319,7 +319,14 @@ pub fn list_user_gallery(
                 .as_object_mut()
                 .expect("entry_object builds an object");
             let link_summary = obj.shift_remove("linkSummary");
-            obj.insert("relevanceScore".into(), json!(score));
+            // `JSON.stringify` renders a whole-valued JS number WITHOUT a
+            // decimal point (`1`, not `1.0`), and a perfect cosine match scores
+            // exactly 1 — so a bare `json!(f64)` would put `1.0` on a wire v4
+            // spells `1`. Pinned by `list_query_dawn`/`list_query_covenant`.
+            obj.insert(
+                "relevanceScore".into(),
+                crate::db::js_number_to_json(*score),
+            );
             if let Some(ls) = link_summary {
                 obj.insert("linkSummary".into(), ls);
             }

@@ -2015,6 +2015,67 @@ pub enum Request {
     /// shell-open is a named future native nicety).
     SystemDataDir,
     // === end P4.9c ===
+    // === P4.9a: the user photo gallery (lane A, append-only) ===
+    /// v4 `GET /api/v1/photos` — the deduped cross-mount `photos/` roll-up.
+    ///
+    /// `tag` is named for v4's REPEATED query parameter (`?tag=a&tag=b`), which
+    /// v4's route collects with `searchParams.getAll('tag')` and hands the
+    /// service as `tags`. Keeping the wire name at the parameter spelling means
+    /// the REST edge is a pure rename-free lift.
+    ///
+    /// `limit`/`offset` are `f64` because v4's route runs them through
+    /// `Number(...)` BEFORE Zod sees them, so a non-numeric string arrives as
+    /// `NaN` and a fractional string survives as a fraction — both of which
+    /// v4's `z.number().int()` then rejects with its own message. An `i64` here
+    /// would silently repair inputs v4 refuses.
+    #[serde(rename_all = "camelCase")]
+    PhotoGalleryList {
+        #[serde(default)]
+        q: Option<String>,
+        #[serde(default)]
+        tag: Option<Vec<String>>,
+        #[serde(default)]
+        limit: Option<f64>,
+        #[serde(default)]
+        offset: Option<f64>,
+    },
+    /// v4 `POST /api/v1/photos` — hard-link an image-v2 `FileEntry` into the
+    /// Quilltap Uploads mount's `photos/` folder. A second save of the same
+    /// bytes is v4's 400 (`already saved`).
+    ///
+    /// `caption`/`chatId` are `z.string().nullable().optional()` in v4 — both
+    /// absent and explicit `null` are accepted and mean the same thing, so a
+    /// plain `Option` is exact here (unlike the P4.9c profile fields).
+    ///
+    /// `fileId` is a DOUBLE option because v4's Zod distinguishes the two
+    /// falsy shapes in its message: an absent key reports `received undefined`,
+    /// an explicit `null` reports `received null`. A plain `Value` would decode
+    /// both to `Value::Null` and collapse the split (pinned by
+    /// `save_absent_field`).
+    #[serde(rename_all = "camelCase")]
+    PhotoGallerySave {
+        #[serde(default, deserialize_with = "double_option")]
+        file_id: Option<Option<serde_json::Value>>,
+        #[serde(default)]
+        caption: Option<String>,
+        #[serde(default)]
+        tags: Option<Vec<String>>,
+        #[serde(default)]
+        chat_id: Option<String>,
+    },
+    /// v4 `GET /api/v1/photos/{id}` — one entry; `id` is a
+    /// `doc_mount_file_links.id`.
+    #[serde(rename_all = "camelCase")]
+    PhotoGalleryEntryGet {
+        id: String,
+    },
+    /// v4 `DELETE /api/v1/photos/{id}` — link-only removal; the file row and
+    /// blob are GC'd only when this was the last hard link to the bytes.
+    #[serde(rename_all = "camelCase")]
+    PhotoGalleryEntryRemove {
+        id: String,
+    },
+    // === end P4.9a ===
 }
 
 /// serde double-option: `#[serde(default, deserialize_with = "double_option")]` on
@@ -2175,6 +2236,14 @@ pub enum Response {
     /// `profile_routes_equivalence`'s data-dir case over `services::data_dir`.
     SystemDataDir(serde_json::Value),
     // === end P4.9c ===
+    // === P4.9a: the user photo gallery (lane A, append-only) ===
+    /// A user-photo-gallery body: the list `{entries, total, hasMore}`, one
+    /// entry object, the save receipt `{linkId, mountPointId, …}`, or the
+    /// delete `{deleted, fileGC}`. Every one is emitted RAW by v4's
+    /// `successResponse`/`created`, so the REST edge unwraps this variant and
+    /// writes the value straight out. Pinned by `photos_routes_equivalence`.
+    PhotoGallery(serde_json::Value),
+    // === end P4.9a ===
     // === P4.6ab: courier + chat images ===
     /// A courier/chat-images body — the resolve/cancel envelopes, the save-image
     /// `{saved, …}`, `{albums}`, the add-tool-result `{success, message}`, the
