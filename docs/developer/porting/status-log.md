@@ -21071,10 +21071,29 @@ modal refuses loudly).
 - **The installed-themes tokens fetch** — deferred with the registry.
 - **The user-menu placement of the section** — §2b's unifier wire.
 
+### Post-tier-2 fix — the Preview button's accessible name
+
+The first full-suite run after tier 2 landed came back 72/1: the
+foundation walk's theme-apply step
+(`foundation.spec.ts:51`, `getByRole('button', {name: /Art Deco/})`)
+hit a strict-mode violation, because the new Preview button carried
+`aria-label="Preview Art Deco"` and so ALSO matched the theme name.
+
+The aria-label was an invention: v4's Preview button is an eye icon plus
+the word "Preview", with no label at all
+(`ThemeCard.tsx:190-201`). Removing it is therefore both the v4-faithful
+fix and the one that keeps the sibling spec's locator unambiguous — and
+it kept the fix inside this lane's ownership (`foundation.spec.ts` is not
+ours to edit). The icon was added to match v4 while there.
+
+Worth carrying forward: an added affordance inside an existing card can
+break a SIBLING spec's by-name lookup without touching that spec. Prefer
+v4's own accessible name; when inventing one, check what else in the same
+container it now matches.
+
 ### Gate
 
 `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
-<<<<<<< HEAD
 -D warnings` clean on both feature sets; `cargo test --workspace
 --no-fail-fast` 347 binaries / 1416 tests / 0 failed (unchanged from main
 — zero Rust touched); `ng test` 143 files / 1586 tests; `ng build` clean;
@@ -21082,11 +21101,14 @@ modal refuses loudly).
 against this worktree's own release binaries. The three load-bearing
 assertions per unit were mutation-checked (deliberately broken, confirmed
 failing, restored). SPA 0.5.157.
-=======
 -D warnings` clean (both feature sets); `cargo test --workspace` matches
 main's baseline (no Rust touched). `ng test` 145 files / 1627 tests;
 `ng build` clean; full Playwright 73 passed, zero failures, zero skips.
 
+<<<<<<< HEAD
 **Versions:** SPA 0.5.153 → 0.5.159 (six unit bumps). No crate bumps —
 `crates/**` untouched.
->>>>>>> 64f16a61 (P4.9d: the lane record)
+=======
+**Versions:** SPA 0.5.153 → 0.5.160 (six unit bumps + the Preview-label
+fix). No crate bumps — `crates/**` untouched.
+>>>>>>> 63102b6a (P4.9d: match v4's Preview button, dropping an invented aria-label)

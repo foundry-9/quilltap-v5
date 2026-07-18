@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+Fix the theme Preview button's accessible name (P4.9d): it had been given an
+aria-label of "Preview <theme name>", which v4 does not do — v4's button is an
+eye icon plus the word "Preview" and nothing else. The invented label also made
+a by-name lookup for a theme match two buttons, which broke the foundation
+walk's theme-apply step. The button now matches v4, icon included. SPA 0.5.160.
+
 The theme preview modal (P4.9d tier 2): each bundled theme card in Settings →
 Appearance gains a Preview button that opens v4's preview modal — a banner
 painted in the theme's own background with a contrast-computed foreground, a

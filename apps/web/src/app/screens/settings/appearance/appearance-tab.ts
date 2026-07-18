@@ -187,13 +187,17 @@ const COLOR_MODES: Array<{ value: ColorMode; label: string; icon: 'sun' | 'moon'
               </button>
               @if (opt.id) {
                 <!-- Omitted for the built-in default: it has no token bundle
-                     to preview (see theme-preview-modal.ts). -->
+                     to preview (see theme-preview-modal.ts).
+                     NO aria-label: v4's Preview button is an eye icon plus the
+                     word "Preview" and nothing more (ThemeCard.tsx:190-201).
+                     Naming it "Preview <theme>" would also make the card's own
+                     apply button ambiguous to a by-name lookup. -->
                 <button
                   type="button"
-                  class="qt-button-secondary qt-button-sm mt-3"
-                  [attr.aria-label]="'Preview ' + opt.name"
+                  class="qt-button-secondary qt-button-sm mt-3 inline-flex items-center gap-1"
                   (click)="previewTheme.set(opt)"
                 >
+                  <qt-icon name="eye" class="w-3 h-3" />
                   Preview
                 </button>
               }
