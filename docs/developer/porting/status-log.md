@@ -20762,6 +20762,9 @@ Versions at lane close: core 0.0.271, harness 0.0.239, web 0.0.28, SPA 0.5.157.
 **Fixtures changed: NONE** — no other lane's oracle is invalidated by this lane.
 The `users_tier2` oracle was regenerated only to re-verify the `UserUpdate.image`
 signature change; its committed inputs are unchanged.
+
+---
+
 ## P4.9b — the Generate Image screen + standalone dialog + shared picker (lane B) — CLOSED
 
 Branch `claude/p4-9b-generate-image-screen-bfb19a`, four unit commits.
@@ -20858,6 +20861,20 @@ enablement gate by design (the P4.6ac pattern).
   — `p4.9j`.
 - **v4's plugin ProviderIcon surface** (`iconData`, `ProviderBadge`) —
   belongs to whichever lane ports v4's plugin icon registry.
+
+### Gate
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+-D warnings` clean on both feature sets; `cargo test --workspace
+--no-fail-fast` 347 binaries / 1416 tests / 0 failed (unchanged from main
+— zero Rust touched); `ng test` 143 files / 1586 tests; `ng build` clean;
+**full Playwright 74/74, zero skips**, run alone on 4319 from `apps/web`
+against this worktree's own release binaries. The three load-bearing
+assertions per unit were mutation-checked (deliberately broken, confirmed
+failing, restored). SPA 0.5.157.
+
+---
+
 ## P4.9d — the quick-hide lane (lane D of the M6 items 1–4 round)
 
 **Branch:** `claude/quick-hide-provider-work-order-6c90df`.
@@ -21094,21 +21111,9 @@ container it now matches.
 ### Gate
 
 `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
--D warnings` clean on both feature sets; `cargo test --workspace
---no-fail-fast` 347 binaries / 1416 tests / 0 failed (unchanged from main
-— zero Rust touched); `ng test` 143 files / 1586 tests; `ng build` clean;
-**full Playwright 74/74, zero skips**, run alone on 4319 from `apps/web`
-against this worktree's own release binaries. The three load-bearing
-assertions per unit were mutation-checked (deliberately broken, confirmed
-failing, restored). SPA 0.5.157.
 -D warnings` clean (both feature sets); `cargo test --workspace` matches
 main's baseline (no Rust touched). `ng test` 145 files / 1627 tests;
 `ng build` clean; full Playwright 73 passed, zero failures, zero skips.
 
-<<<<<<< HEAD
-**Versions:** SPA 0.5.153 → 0.5.159 (six unit bumps). No crate bumps —
-`crates/**` untouched.
-=======
 **Versions:** SPA 0.5.153 → 0.5.160 (six unit bumps + the Preview-label
 fix). No crate bumps — `crates/**` untouched.
->>>>>>> 63102b6a (P4.9d: match v4's Preview button, dropping an invented aria-label)
