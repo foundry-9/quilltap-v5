@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+P4.d8 unit 1 - the custom-tool definition schema gains v4 616930db's
+`llm` block and the contains/ncontains comparators. New constants
+(MAX_LLM_PROMPT_LENGTH 4000, MAX_LLM_OUTPUT_LENGTH 8000,
+MAX_LLM_OUTPUT_CEILING 100000); CustomToolLlm strictObject
+(prompt/errorMessage/maxOutput); the `llm` mount on the definition and
+in KNOWN_TOP_LEVEL_KEYS; LlmComparator (the wide comparator plus `ok`);
+StringOperand (non-empty literal or $param); COMPARATOR_KEYS widened
+6->8 with NUMERIC_COMPARATOR_KEYS kept narrow so a bare/roll `contains`
+stays an unrecognized key; the narrow-vs-wide at-least-one messages;
+containment load-checks in validate_comparator; the llm-without-block
+superRefine; and $param operand checks over all eight keys for the two
+fail-soft subjects. The definition oracle corpus grew 115 -> 149 rows
+(47 new); pascal_custom_tool_definition_equivalence green byte-for-byte
+against v4 616930db.
+
 Plan the 616930db drift-catch-up + P4.9a-resume round: two new work
 orders (p4.d8-llm-consult-server, p4.6bc-workbench-llm-spa) plus a
 resume addendum on p4.9a-photos-view. The round adopts v4 616930db

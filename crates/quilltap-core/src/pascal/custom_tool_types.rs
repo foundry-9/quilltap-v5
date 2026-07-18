@@ -81,6 +81,21 @@ pub const MAX_DESCRIPTION_LENGTH: usize = 500;
 /// Cap on a tool's display title, in characters.
 pub const MAX_TITLE_LENGTH: usize = 80;
 
+/// Cap on an LLM consult prompt, in characters (measured before templating).
+pub const MAX_LLM_PROMPT_LENGTH: usize = 4000;
+
+/// Default cap on the answer an LLM consult may contribute, in characters. The
+/// model's reply is trimmed and truncated before it is tested or rendered.
+/// A definition that wants a longer (or shorter) leash sets `llm.maxOutput`;
+/// this is only what applies when it doesn't say.
+pub const MAX_LLM_OUTPUT_LENGTH: usize = 8000;
+
+/// Hard ceiling on `llm.maxOutput`. Generous on purpose — a consult may well BE
+/// the deliverable (a generated document, a deep outline) — but still bounded:
+/// the answer lands in `pascalMeta` on a chat_messages row, and rows must not
+/// become arbitrarily large because one oracle would not stop talking.
+pub const MAX_LLM_OUTPUT_CEILING: i64 = 100_000;
+
 /// Identifier rules shared by tool names and parameter names: lowercase, starts
 /// with a letter, 1–64 characters. (v4 `IDENTIFIER_PATTERN`.)
 pub static IDENTIFIER_PATTERN: LazyLock<Regex> =
@@ -90,15 +105,37 @@ const IDENTIFIER_MESSAGE: &str = "must be lowercase, start with a letter, and be
 
 const AT_LEAST_ONE: &str = "must specify at least one comparator (gt, gte, lt, lte, eq, neq)";
 
+/// The wide form, for the comparator schemas that carry containment too.
+const AT_LEAST_ONE_WIDE: &str =
+    "must specify at least one comparator (gt, gte, lt, lte, eq, neq, contains, ncontains)";
+
 /// v4's `z.number().finite()` expectation string. See the module note on the one
 /// recorded divergence — this is unreachable from a serde_json parse.
 const FINITE_EXPECTED: &str = "number";
 
 /// The comparator keys, in the order tests are described to a reader.
-pub const COMPARATOR_KEYS: [&str; 6] = ["gt", "gte", "lt", "lte", "eq", "neq"];
+pub const COMPARATOR_KEYS: [&str; 8] = [
+    "gt",
+    "gte",
+    "lt",
+    "lte",
+    "eq",
+    "neq",
+    "contains",
+    "ncontains",
+];
+
+/// The six keys of v4's `NUMERIC_COMPARATOR_SHAPE` — the shape a bare `when`,
+/// a `roll` test, and a numeric comparator all carry. Deliberately NOT the full
+/// [`COMPARATOR_KEYS`]: containment never appears on a numeric subject, so
+/// `contains` at those positions is an unrecognized key, not a comparator.
+const NUMERIC_COMPARATOR_KEYS: [&str; 6] = ["gt", "gte", "lt", "lte", "eq", "neq"];
 
 /// The four keys that order two values, and so demand numbers on both sides.
 const ORDERING_KEYS: [&str; 4] = ["gt", "gte", "lt", "lte"];
+
+/// The two keys that search one string inside another, and so demand strings.
+const CONTAINMENT_KEYS: [&str; 2] = ["contains", "ncontains"];
 
 // ---------------------------------------------------------------- issue model
 
@@ -338,6 +375,17 @@ pub enum AnyOperand {
     ParamRef(ParamRef),
 }
 
+/// A comparator operand for contains/ncontains: the substring to look for — a
+/// literal string, or a `$param` reference to a declared string parameter. The
+/// literal must be non-empty because every string contains "", which makes an
+/// empty needle a typo wearing a comparator's clothes.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum StringOperand {
+    String(String),
+    ParamRef(ParamRef),
+}
+
 /// A declared parameter. Every parameter requires a `default` so that a
 /// zero-argument run is always possible — the model may reach for a tool without
 /// supplying anything, and the table must still deal.
@@ -405,7 +453,10 @@ pub struct NumericComparator {
 
 /// A comparator against a declared parameter. Identical to the numeric form
 /// except that eq/neq widen to strings and booleans, since a parameter need not
-/// be a number.
+/// be a number — and contains/ncontains appear, testing whether a string
+/// parameter holds (or lacks) a substring. The substring is a literal or a
+/// `$param` reference, so a table can ask whether one input appears inside
+/// another.
 #[derive(Debug, Clone, PartialEq, Serialize, Default)]
 pub struct ParamComparator {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -420,6 +471,59 @@ pub struct ParamComparator {
     pub eq: Option<AnyOperand>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub neq: Option<AnyOperand>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contains: Option<StringOperand>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ncontains: Option<StringOperand>,
+}
+
+/// A comparator against the LLM consult's result. The comparator keys test the
+/// answer string (reconciliation happens at run time, in `matches_llm_comparator`);
+/// `ok` is an extra, non-comparator key testing whether the consult succeeded at
+/// all.
+///
+/// Like `metadata`, the subject's run-time type is unknowable at load time — the
+/// answer is whatever the model says — so type rules are enforced fail-soft at
+/// run time: an ordering comparator against an answer that does not parse as a
+/// number simply declines the row.
+#[derive(Debug, Clone, PartialEq, Serialize, Default)]
+pub struct LlmComparator {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gt: Option<NumberOrParamRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gte: Option<NumberOrParamRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lt: Option<NumberOrParamRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lte: Option<NumberOrParamRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eq: Option<AnyOperand>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub neq: Option<AnyOperand>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contains: Option<StringOperand>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ncontains: Option<StringOperand>,
+    /// true: this row only applies when the consult succeeded. false: only when
+    /// it failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ok: Option<bool>,
+}
+
+/// The LLM consult block. When present, every run renders `prompt` (the same
+/// placeholder families an outcome message takes, minus `{{llm}}` itself) and
+/// poses it to the instance's cheap utility model AFTER the roll and BEFORE the
+/// outcome table is evaluated. The result is a pair `{ ok, output }`: on success
+/// the model's trimmed answer, on failure this block's `error_message` — the
+/// AUTHOR's words, never the provider's stack trace, because whatever lands in
+/// the fiction is the author's to write.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CustomToolLlm {
+    pub prompt: String,
+    #[serde(rename = "errorMessage")]
+    pub error_message: String,
+    #[serde(rename = "maxOutput", skip_serializing_if = "Option::is_none")]
+    pub max_output: Option<i64>,
 }
 
 /// A comparator against one key of the invoking character's metadata sheet.
@@ -476,6 +580,10 @@ pub struct WhenObject {
         serialize_with = "ser_opt_param_comparators"
     )]
     pub metadata: Option<Vec<(String, ParamComparator)>>,
+    /// Test the LLM consult's answer (or, via `ok`, whether it succeeded). Only
+    /// valid on a tool that declares an `llm` block.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm: Option<LlmComparator>,
 }
 
 /// An outcome test: either the literal `true` (catch-all) or a [`WhenObject`].
@@ -529,6 +637,10 @@ pub struct QtapCustomTool {
     pub parameters: Option<Vec<(String, CustomToolParameter)>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub roll: Option<Roll>,
+    /// Ask an LLM for a generated result after the roll; outcomes may then test
+    /// it and messages may render it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm: Option<CustomToolLlm>,
     pub outcomes: Vec<CustomToolOutcome>,
 }
 
@@ -656,6 +768,38 @@ fn parse_finite_number(input: Option<&Value>) -> Res<f64> {
     }
 }
 
+/// v4 `z.number().int().min(lo).max(hi)` — the three checks run in declaration
+/// order, and each is continuable, so a value may collect more than one.
+fn parse_bounded_int(input: Option<&Value>, lo: i64, hi: i64) -> Res<i64> {
+    let Some(Value::Number(n)) = input else {
+        return Res::hard(invalid_type("number", input));
+    };
+    let Some(f) = n.as_f64() else {
+        return Res::hard(invalid_type("number", input));
+    };
+
+    let mut issues = Vec::new();
+    let is_int = f.is_finite() && f.fract() == 0.0;
+    if !is_int {
+        issues.push(Issue::check("Invalid input: expected int, received number"));
+    }
+    if f < lo as f64 {
+        issues.push(Issue::check(format!(
+            "Too small: expected number to be >={lo}"
+        )));
+    }
+    if f > hi as f64 {
+        issues.push(Issue::check(format!(
+            "Too big: expected number to be <={hi}"
+        )));
+    }
+
+    Res {
+        value: Some(f as i64),
+        issues,
+    }
+}
+
 fn parse_enum<T: Copy>(input: Option<&Value>, options: &[(&str, T)]) -> Res<T> {
     if let Some(Value::String(s)) = input {
         if let Some((_, v)) = options.iter().find(|(name, _)| name == s) {
@@ -766,6 +910,33 @@ fn parse_any_operand(input: Option<&Value>) -> Res<AnyOperand> {
     union(vec![n, s, b, p])
 }
 
+/// v4 `StringOperandSchema` — a non-empty string literal (with the author's own
+/// message) or a `$param` reference, in that order.
+fn parse_string_operand(input: Option<&Value>) -> Res<StringOperand> {
+    let s = match input {
+        Some(Value::String(text)) => {
+            let mut issues = Vec::new();
+            if text.is_empty() {
+                issues.push(Issue::check("the substring to look for must not be empty"));
+            }
+            Res {
+                value: Some(StringOperand::String(text.clone())),
+                issues,
+            }
+        }
+        other => Res {
+            value: None,
+            issues: vec![Issue::hard(invalid_type("string", other))],
+        },
+    };
+    let p = parse_param_ref(input);
+    let p = Res {
+        value: p.value.map(StringOperand::ParamRef),
+        issues: p.issues,
+    };
+    union(vec![s, p])
+}
+
 fn parse_numeric_comparator(input: Option<&Value>) -> Res<NumericComparator> {
     let obj = match as_object(input) {
         Ok(o) => o,
@@ -787,14 +958,14 @@ fn parse_numeric_comparator(input: Option<&Value>) -> Res<NumericComparator> {
         &mut out.eq,
         &mut out.neq,
     ];
-    for (key, slot) in COMPARATOR_KEYS.iter().zip(slots.iter_mut()) {
+    for (key, slot) in NUMERIC_COMPARATOR_KEYS.iter().zip(slots.iter_mut()) {
         if let Some(v) = obj.get(*key) {
             let r = parse_number_or_param_ref(Some(v));
             issues.extend(prefix(key, r.issues));
             **slot = r.value;
         }
     }
-    issues.extend(unrecognized_keys(obj, &COMPARATOR_KEYS));
+    issues.extend(unrecognized_keys(obj, &NUMERIC_COMPARATOR_KEYS));
 
     if aborted(&issues) {
         return Res {
@@ -803,6 +974,9 @@ fn parse_numeric_comparator(input: Option<&Value>) -> Res<NumericComparator> {
         };
     }
     // `.refine(hasComparator, AT_LEAST_ONE)` — runs only when nothing aborted.
+    // `hasComparator` walks the full eight keys, but a numeric comparator can
+    // never carry a containment one: it would already have aborted as
+    // unrecognized.
     if !COMPARATOR_KEYS.iter().any(|k| obj.contains_key(*k)) {
         issues.push(Issue::check(AT_LEAST_ONE));
     }
@@ -842,6 +1016,16 @@ fn parse_param_comparator(input: Option<&Value>) -> Res<ParamComparator> {
             *slot = r.value;
         }
     }
+    for (key, slot) in [
+        ("contains", &mut out.contains),
+        ("ncontains", &mut out.ncontains),
+    ] {
+        if let Some(v) = obj.get(key) {
+            let r = parse_string_operand(Some(v));
+            issues.extend(prefix(key, r.issues));
+            *slot = r.value;
+        }
+    }
     issues.extend(unrecognized_keys(obj, &COMPARATOR_KEYS));
 
     if aborted(&issues) {
@@ -851,10 +1035,142 @@ fn parse_param_comparator(input: Option<&Value>) -> Res<ParamComparator> {
         };
     }
     if !COMPARATOR_KEYS.iter().any(|k| obj.contains_key(*k)) {
-        issues.push(Issue::check(AT_LEAST_ONE));
+        issues.push(Issue::check(AT_LEAST_ONE_WIDE));
     }
     Res {
         value: Some(out),
+        issues,
+    }
+}
+
+/// v4 `LlmComparatorSchema` — the param-comparator shape plus the non-comparator
+/// `ok` key, and a refine that accepts either.
+fn parse_llm_comparator(input: Option<&Value>) -> Res<LlmComparator> {
+    let obj = match as_object(input) {
+        Ok(o) => o,
+        Err(e) => {
+            return Res {
+                value: None,
+                issues: e.issues,
+            }
+        }
+    };
+
+    let mut issues = Vec::new();
+    let mut out = LlmComparator::default();
+    let mut ordering: [&mut Option<NumberOrParamRef>; 4] =
+        [&mut out.gt, &mut out.gte, &mut out.lt, &mut out.lte];
+    for (key, slot) in ORDERING_KEYS.iter().zip(ordering.iter_mut()) {
+        if let Some(v) = obj.get(*key) {
+            let r = parse_number_or_param_ref(Some(v));
+            issues.extend(prefix(key, r.issues));
+            **slot = r.value;
+        }
+    }
+    for (key, slot) in [("eq", &mut out.eq), ("neq", &mut out.neq)] {
+        if let Some(v) = obj.get(key) {
+            let r = parse_any_operand(Some(v));
+            issues.extend(prefix(key, r.issues));
+            *slot = r.value;
+        }
+    }
+    for (key, slot) in [
+        ("contains", &mut out.contains),
+        ("ncontains", &mut out.ncontains),
+    ] {
+        if let Some(v) = obj.get(key) {
+            let r = parse_string_operand(Some(v));
+            issues.extend(prefix(key, r.issues));
+            *slot = r.value;
+        }
+    }
+    if let Some(v) = obj.get("ok") {
+        let r = parse_bool(Some(v));
+        issues.extend(prefix("ok", r.issues));
+        out.ok = r.value;
+    }
+
+    let mut known: Vec<&str> = COMPARATOR_KEYS.to_vec();
+    known.push("ok");
+    issues.extend(unrecognized_keys(obj, &known));
+
+    if aborted(&issues) {
+        return Res {
+            value: None,
+            issues,
+        };
+    }
+    if !COMPARATOR_KEYS.iter().any(|k| obj.contains_key(*k)) && out.ok.is_none() {
+        issues.push(Issue::check(
+            "must test something: a comparator on the answer, or `ok`",
+        ));
+    }
+    Res {
+        value: Some(out),
+        issues,
+    }
+}
+
+/// v4 `CustomToolLlmSchema` — the consult block itself.
+fn parse_custom_tool_llm(input: Option<&Value>) -> Res<CustomToolLlm> {
+    let obj = match as_object(input) {
+        Ok(o) => o,
+        Err(e) => {
+            return Res {
+                value: None,
+                issues: e.issues,
+            }
+        }
+    };
+
+    let mut issues = Vec::new();
+    let prompt = parse_string(
+        obj.get("prompt"),
+        Some(1),
+        Some(MAX_LLM_PROMPT_LENGTH),
+        false,
+    );
+    issues.extend(prefix("prompt", prompt.issues));
+    let error_message = parse_string(
+        obj.get("errorMessage"),
+        Some(1),
+        Some(MAX_MESSAGE_LENGTH),
+        false,
+    );
+    issues.extend(prefix("errorMessage", error_message.issues));
+
+    let max_output = match obj.get("maxOutput") {
+        Some(v) => {
+            let r = parse_bounded_int(Some(v), 1, MAX_LLM_OUTPUT_CEILING);
+            issues.extend(prefix("maxOutput", r.issues));
+            r.value
+        }
+        None => None,
+    };
+
+    issues.extend(unrecognized_keys(
+        obj,
+        &["prompt", "errorMessage", "maxOutput"],
+    ));
+
+    let (Some(prompt), Some(error_message)) = (prompt.value, error_message.value) else {
+        return Res {
+            value: None,
+            issues,
+        };
+    };
+    if aborted(&issues) {
+        return Res {
+            value: None,
+            issues,
+        };
+    }
+    Res {
+        value: Some(CustomToolLlm {
+            prompt,
+            error_message,
+            max_output,
+        }),
         issues,
     }
 }
@@ -1120,7 +1436,7 @@ fn parse_when_object(input: Option<&Value>) -> Res<WhenObject> {
         &mut out.eq,
         &mut out.neq,
     ];
-    for (key, slot) in COMPARATOR_KEYS.iter().zip(slots.iter_mut()) {
+    for (key, slot) in NUMERIC_COMPARATOR_KEYS.iter().zip(slots.iter_mut()) {
         if let Some(v) = obj.get(*key) {
             let r = parse_number_or_param_ref(Some(v));
             issues.extend(prefix(key, r.issues));
@@ -1165,8 +1481,16 @@ fn parse_when_object(input: Option<&Value>) -> Res<WhenObject> {
         ));
     }
 
-    let mut known: Vec<&str> = COMPARATOR_KEYS.to_vec();
-    known.extend_from_slice(&["roll", "params", "metadata"]);
+    let mut llm_present = false;
+    if let Some(v) = obj.get("llm") {
+        llm_present = true;
+        let r = parse_llm_comparator(Some(v));
+        issues.extend(prefix("llm", r.issues));
+        out.llm = r.value;
+    }
+
+    let mut known: Vec<&str> = NUMERIC_COMPARATOR_KEYS.to_vec();
+    known.extend_from_slice(&["roll", "params", "metadata", "llm"]);
     issues.extend(unrecognized_keys(obj, &known));
 
     if aborted(&issues) {
@@ -1180,9 +1504,9 @@ fn parse_when_object(input: Option<&Value>) -> Res<WhenObject> {
     let has_comparator = COMPARATOR_KEYS.iter().any(|k| obj.contains_key(*k));
     let has_params = params_present && out.params.as_ref().is_some_and(|p| !p.is_empty());
     let has_metadata = metadata_present && out.metadata.as_ref().is_some_and(|m| !m.is_empty());
-    if !has_comparator && out.roll.is_none() && !has_params && !has_metadata {
+    if !has_comparator && out.roll.is_none() && !llm_present && !has_params && !has_metadata {
         issues.push(Issue::check(
-            "must test something: a comparator on the value, `roll`, a non-empty `params`, or a non-empty `metadata`",
+            "must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, or a non-empty `metadata`",
         ));
     }
     Res {
@@ -1359,6 +1683,15 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
         None => None,
     };
 
+    let llm = match obj.get("llm") {
+        Some(v) => {
+            let r = parse_custom_tool_llm(Some(v));
+            issues.extend(prefix("llm", r.issues));
+            r.value
+        }
+        None => None,
+    };
+
     let outcomes = match obj.get("outcomes") {
         Some(Value::Array(items)) => {
             let mut list = Vec::new();
@@ -1416,6 +1749,7 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
         default_visibility,
         parameters,
         roll,
+        llm,
         outcomes,
     };
 
@@ -1563,6 +1897,23 @@ fn validate_references(tool: &QtapCustomTool, issues: &mut Vec<Issue>) {
             );
         }
 
+        // An `llm` test on a tool with no `llm` block could never fire — there
+        // is no consult whose answer it might match. That is a typo, not an
+        // intent, and left alone it reads as a dead branch in the outcome table.
+        if let Some(llm) = &when.llm {
+            let p = path(vec!["llm".into()]);
+            if tool.llm.is_none() {
+                issues.push(issue_at(
+                    "tests the LLM consult, but the tool declares no `llm` block".into(),
+                    &p,
+                ));
+            }
+            // The answer's run-time type is the model's business (see the
+            // schema comment), so — exactly as with `metadata` — only the
+            // `$param` operands are checkable here.
+            validate_operand_refs(tool, llm_operands(llm), issues, &p);
+        }
+
         // `metadata` gets a shallower check, and there is no way around it: the
         // keys live on a character the file has never seen, so neither the key's
         // existence nor its stored type is knowable here. What IS checkable is
@@ -1589,14 +1940,17 @@ fn validate_metadata_operands(
     issues: &mut Vec<Issue>,
     path: &[String],
 ) {
-    let operands: [(&str, Option<Operand>); 6] = [
-        ("gt", c.gt.as_ref().map(number_operand)),
-        ("gte", c.gte.as_ref().map(number_operand)),
-        ("lt", c.lt.as_ref().map(number_operand)),
-        ("lte", c.lte.as_ref().map(number_operand)),
-        ("eq", c.eq.as_ref().map(any_operand)),
-        ("neq", c.neq.as_ref().map(any_operand)),
-    ];
+    validate_operand_refs(tool, wide_operands(c), issues, path);
+}
+
+/// The shared body: resolve every present operand purely to catch an undeclared
+/// `$param`. Used by both fail-soft subjects (`metadata`, `llm`).
+fn validate_operand_refs(
+    tool: &QtapCustomTool,
+    operands: [(&str, Option<Operand>); 8],
+    issues: &mut Vec<Issue>,
+    path: &[String],
+) {
     for (key, operand) in operands {
         let Some(operand) = operand else { continue };
         let mut key_path = path.to_vec();
@@ -1688,6 +2042,43 @@ fn any_operand(v: &AnyOperand) -> Operand<'_> {
     }
 }
 
+fn string_operand(v: &StringOperand) -> Operand<'_> {
+    match v {
+        StringOperand::String(_) => Operand::String,
+        StringOperand::ParamRef(r) => Operand::Ref(&r.param),
+    }
+}
+
+/// The eight operand slots a wide comparator presents, in [`COMPARATOR_KEYS`]
+/// order — the order v4's `validateComparator` walks them in, which is what the
+/// issue sequence pins.
+fn wide_operands<'a>(c: &'a ParamComparator) -> [(&'static str, Option<Operand<'a>>); 8] {
+    [
+        ("gt", c.gt.as_ref().map(number_operand)),
+        ("gte", c.gte.as_ref().map(number_operand)),
+        ("lt", c.lt.as_ref().map(number_operand)),
+        ("lte", c.lte.as_ref().map(number_operand)),
+        ("eq", c.eq.as_ref().map(any_operand)),
+        ("neq", c.neq.as_ref().map(any_operand)),
+        ("contains", c.contains.as_ref().map(string_operand)),
+        ("ncontains", c.ncontains.as_ref().map(string_operand)),
+    ]
+}
+
+/// The same eight slots on an [`LlmComparator`] (`ok` is not a comparator).
+fn llm_operands<'a>(c: &'a LlmComparator) -> [(&'static str, Option<Operand<'a>>); 8] {
+    [
+        ("gt", c.gt.as_ref().map(number_operand)),
+        ("gte", c.gte.as_ref().map(number_operand)),
+        ("lt", c.lt.as_ref().map(number_operand)),
+        ("lte", c.lte.as_ref().map(number_operand)),
+        ("eq", c.eq.as_ref().map(any_operand)),
+        ("neq", c.neq.as_ref().map(any_operand)),
+        ("contains", c.contains.as_ref().map(string_operand)),
+        ("ncontains", c.ncontains.as_ref().map(string_operand)),
+    ]
+}
+
 fn validate_numeric_comparator(
     tool: &QtapCustomTool,
     c: &NumericComparator,
@@ -1696,13 +2087,16 @@ fn validate_numeric_comparator(
     issues: &mut Vec<Issue>,
     path: &[String],
 ) {
-    let operands: [(&str, Option<Operand>); 6] = [
+    let operands: [(&str, Option<Operand>); 8] = [
         ("gt", c.gt.as_ref().map(number_operand)),
         ("gte", c.gte.as_ref().map(number_operand)),
         ("lt", c.lt.as_ref().map(number_operand)),
         ("lte", c.lte.as_ref().map(number_operand)),
         ("eq", c.eq.as_ref().map(number_operand)),
         ("neq", c.neq.as_ref().map(number_operand)),
+        // A numeric comparator's schema carries no containment keys at all.
+        ("contains", None),
+        ("ncontains", None),
     ];
     validate_comparator(tool, operands, subject_type, subject_label, issues, path);
 }
@@ -1715,22 +2109,21 @@ fn validate_param_comparator(
     issues: &mut Vec<Issue>,
     path: &[String],
 ) {
-    let operands: [(&str, Option<Operand>); 6] = [
-        ("gt", c.gt.as_ref().map(number_operand)),
-        ("gte", c.gte.as_ref().map(number_operand)),
-        ("lt", c.lt.as_ref().map(number_operand)),
-        ("lte", c.lte.as_ref().map(number_operand)),
-        ("eq", c.eq.as_ref().map(any_operand)),
-        ("neq", c.neq.as_ref().map(any_operand)),
-    ];
-    validate_comparator(tool, operands, subject_type, subject_label, issues, path);
+    validate_comparator(
+        tool,
+        wide_operands(c),
+        subject_type,
+        subject_label,
+        issues,
+        path,
+    );
 }
 
 /// Check one comparator against the type of what it tests: every operand must
 /// resolve, and the comparison must be one the two types can sustain.
 fn validate_comparator(
     tool: &QtapCustomTool,
-    operands: [(&str, Option<Operand>); 6],
+    operands: [(&str, Option<Operand>); 8],
     subject_type: ValueType,
     subject_label: &str,
     issues: &mut Vec<Issue>,
@@ -1750,6 +2143,27 @@ fn validate_comparator(
                 issues.push(issue_at(
                     format!(
                         "{key} orders {subject_label} against a {}, and only numbers can be ordered",
+                        operand_type.as_str()
+                    ),
+                    &key_path,
+                ));
+            }
+            continue;
+        }
+
+        if CONTAINMENT_KEYS.contains(&key) {
+            if subject_type != ValueType::String {
+                issues.push(issue_at(
+                    format!(
+                        "{key} searches {subject_label}, which is a {} — only a string can contain a substring",
+                        subject_type.as_str()
+                    ),
+                    &key_path,
+                ));
+            } else if operand_type != ValueType::String {
+                issues.push(issue_at(
+                    format!(
+                        "{key} looks for a {} inside {subject_label}, and a substring must be a string",
                         operand_type.as_str()
                     ),
                     &key_path,
@@ -1842,7 +2256,7 @@ fn flatten_issues(issues: &[Issue]) -> Vec<String> {
 }
 
 /// Top-level keys the v1 format knows about. Anything else is reserved for v2.
-const KNOWN_TOP_LEVEL_KEYS: [&str; 10] = [
+const KNOWN_TOP_LEVEL_KEYS: [&str; 11] = [
     "$schema",
     "name",
     "title",
@@ -1852,6 +2266,7 @@ const KNOWN_TOP_LEVEL_KEYS: [&str; 10] = [
     "defaultVisibility",
     "parameters",
     "roll",
+    "llm",
     "outcomes",
 ];
 

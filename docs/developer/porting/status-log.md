@@ -21179,3 +21179,67 @@ its §1/§2a/§3 obligations land with it); the `616930db` drift catch-up
 the P4.9a resume); the `p4.9j` workspace-tabs round (ruled: port it, v4
 retirement gates on it); the M6 backlog items 5+ (`p4.9g` Data & System
 etc.); the standing refusal-armed pools (unchanged).
+
+---
+
+## P4.d8 — the `616930db` llm-consult drift re-port, server half (lane D8)
+
+Branch `claude/p4-d8-llm-consult-porting-857372`. Drift-check at lane
+start: v4 HEAD == `616930db`, tree CLEAN — oracles regenerate from the
+main checkout directly (no pinned worktree needed this round).
+
+### Unit 1 — the definition schema (`custom_tool_types.rs`)
+
+Ported v4 `a2d9a3c8` + `616930db`'s schema half. The three constants
+(`MAX_LLM_PROMPT_LENGTH` 4000, `MAX_LLM_OUTPUT_LENGTH` 8000,
+`MAX_LLM_OUTPUT_CEILING` 100_000); `CustomToolLlm` strictObject
+(`prompt` 1–4000, `errorMessage` 1–`MAX_MESSAGE_LENGTH` REQUIRED,
+`maxOutput` int 1–100_000 optional) mounted at v4's declaration
+position (after `roll`, before `outcomes`) and added to
+`KNOWN_TOP_LEVEL_KEYS` (10 → 11); `LlmComparator` (the wide comparator
+plus the non-comparator `ok`) mounted on `WhenObject` after `metadata`;
+`StringOperand` (non-empty literal, author's message, or `$param`);
+containment on Param/Metadata/Llm but NOT Numeric.
+
+**The one structural decision worth recording:** v4's `COMPARATOR_KEYS`
+widened 6 → 8, but its `NUMERIC_COMPARATOR_SHAPE` did NOT — a bare
+`when.contains` or `when.roll.contains` is an *unrecognized key*, not a
+comparator. v5 had been using the single `COMPARATOR_KEYS` array for
+both jobs (slot iteration + `unrecognized_keys`), so the widening was
+split: `COMPARATOR_KEYS: [&str; 8]` stays the public describe-order /
+`hasComparator` list, and a new private `NUMERIC_COMPARATOR_KEYS:
+[&str; 6]` drives `parse_numeric_comparator` and `parse_when_object`.
+Conflating them would have silently ACCEPTED `{"when":{"contains":"x"}}`.
+The corpus pins both arms (`contains-bare-value`, `contains-raw-roll`).
+
+`parse_bounded_int` is new (v4 `z.number().int().min().max()`); its
+three Zod sentences — `Invalid input: expected int, received number`,
+`Too small: expected number to be >=1`, `Too big: expected number to be
+<=100000` — are pinned by four corpus rows and matched byte-for-byte.
+`validate_comparator` gained the containment arm (both messages) and
+widened to 8 slots; `validate_metadata_operands` now delegates to a
+shared `validate_operand_refs` that the new `llm` subject reuses, so
+both fail-soft subjects check `$param` operands over all eight keys.
+The llm-without-block superRefine sits between the `params` loop and
+the `metadata` loop, matching v4's issue order.
+
+**Differential:** `pascal_custom_tool_definition_equivalence`, corpus
+**115 → 149 definition rows** (+47: the llm block accept/reject arms,
+the llm subject, containment across all four subjects, the maxOutput
+bounds) + the unchanged 10 title rows. Green byte-for-byte on the first
+run — verified load-bearing rather than vacuous by inspecting v4's
+actual `reason` strings for twenty of the new rows (each a distinct
+sentence) and by confirming the two PRE-EXISTING at-least-one rows
+moved with v4 (`metadata-empty-comparator` now reads the wide
+eight-key message, `when-empty-roll-comparator` still the narrow six).
+
+Regen recipe (v4 @ `616930db`, Node 24):
+
+```bash
+cd ~/source/quilltap-server
+PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx \
+  <v5>/harness/oracle/cases/pascal-custom-tool-definition.ts \
+  > /tmp/oracle-pascal-definition.ndjson
+QT_ORACLE_PASCAL_DEFINITION=/tmp/oracle-pascal-definition.ndjson \
+  cargo test -p quilltap-harness --test pascal_custom_tool_definition_equivalence
+```

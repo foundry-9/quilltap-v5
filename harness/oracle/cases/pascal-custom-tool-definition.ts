@@ -96,6 +96,11 @@ function withWhen(when: unknown, extra: Record<string, unknown> = {}) {
   };
 }
 
+/** The 616930db consult block, as v4's own suite spells it. */
+const LLM_BLOCK = {
+  llm: { prompt: 'Answer YES or NO: is {{value}} auspicious?', errorMessage: 'The wire went dead.' },
+};
+
 const NUM_PARAM = { parameters: { scale: { type: 'number', default: 1 } } };
 const INT_PARAM = { parameters: { steps: { type: 'integer', default: 2 } } };
 const STR_PARAM = { parameters: { material: { type: 'string', default: 'brass' } } };
@@ -247,6 +252,78 @@ const corpus: Array<[string, unknown]> = [
   ['when-wrong-type', withWhen('always')],
   ['when-null', withWhen(null)],
   ['roll-range-and-dice-both-broken', { ...BASE, roll: { min: 'x' } }],
+
+  // ---- accepted: the 616930db llm block + subject --------------------------
+  ['llm-block', { ...BASE, ...LLM_BLOCK }],
+  ['llm-block-max-output', { ...BASE, llm: { ...LLM_BLOCK.llm, maxOutput: 50_000 } }],
+  ['llm-block-max-output-at-floor', { ...BASE, llm: { ...LLM_BLOCK.llm, maxOutput: 1 } }],
+  ['llm-block-max-output-at-ceiling', { ...BASE, llm: { ...LLM_BLOCK.llm, maxOutput: 100_000 } }],
+  ['llm-answer-eq', withWhen({ llm: { eq: 'YES' } }, LLM_BLOCK)],
+  ['llm-ok-only', withWhen({ llm: { ok: false } }, LLM_BLOCK)],
+  ['llm-ok-anded-with-comparator', withWhen({ llm: { ok: true, eq: 'YES' } }, LLM_BLOCK)],
+  ['llm-ordering-test', withWhen({ llm: { gte: 5 } }, LLM_BLOCK)],
+  ['llm-param-operand', withWhen({ llm: { eq: { $param: 'scale' } } }, { ...NUM_PARAM, ...LLM_BLOCK })],
+  ['llm-anded-with-value', withWhen({ gt: 0.5, llm: { ok: true } }, LLM_BLOCK)],
+
+  // ---- accepted: the 616930db containment comparators ----------------------
+  ['contains-string-param', withWhen({ params: { material: { contains: 'ras' } } }, STR_PARAM)],
+  ['ncontains-string-param', withWhen({ params: { material: { ncontains: 'iron' } } }, STR_PARAM)],
+  ['contains-param-substring', withWhen(
+    { params: { cargo: { contains: { $param: 'sought' } } } },
+    { parameters: { cargo: { type: 'string', default: 'silk' }, sought: { type: 'string', default: 'opium' } } }
+  )],
+  ['contains-metadata-key', withWhen({ metadata: { faction: { contains: 'Aurum' } } })],
+  ['ncontains-metadata-key', withWhen({ metadata: { faction: { ncontains: 'Ferro' } } })],
+  ['contains-llm-answer', withWhen({ llm: { contains: 'west door' } }, LLM_BLOCK)],
+  ['contains-llm-param-substring', withWhen(
+    { llm: { contains: { $param: 'material' } } },
+    { ...STR_PARAM, ...LLM_BLOCK }
+  )],
+  ['contains-and-ncontains-anded', withWhen(
+    { params: { material: { contains: 'ra', ncontains: 'iron' } } },
+    STR_PARAM
+  )],
+
+  // ---- rejected: the llm block --------------------------------------------
+  ['llm-block-missing-error-message', { ...BASE, llm: { prompt: 'Speak.' } }],
+  ['llm-block-empty-prompt', { ...BASE, llm: { prompt: '', errorMessage: 'Silence.' } }],
+  ['llm-block-empty-error-message', { ...BASE, llm: { prompt: 'Speak.', errorMessage: '' } }],
+  ['llm-block-unknown-key', { ...BASE, llm: { prompt: 'Speak.', errorMessage: 'Silence.', model: 'gpt' } }],
+  ['llm-block-not-an-object', { ...BASE, llm: 'Speak.' }],
+  ['llm-block-prompt-past-cap', { ...BASE, llm: { prompt: 'x'.repeat(4001), errorMessage: 'Silence.' } }],
+  ['llm-max-output-zero', { ...BASE, llm: { ...LLM_BLOCK.llm, maxOutput: 0 } }],
+  ['llm-max-output-negative', { ...BASE, llm: { ...LLM_BLOCK.llm, maxOutput: -5 } }],
+  ['llm-max-output-fractional', { ...BASE, llm: { ...LLM_BLOCK.llm, maxOutput: 12.5 } }],
+  ['llm-max-output-past-ceiling', { ...BASE, llm: { ...LLM_BLOCK.llm, maxOutput: 100_001 } }],
+  ['llm-max-output-wrong-type', { ...BASE, llm: { ...LLM_BLOCK.llm, maxOutput: 'lots' } }],
+
+  // ---- rejected: the llm subject ------------------------------------------
+  ['llm-test-without-block', withWhen({ llm: { eq: 'YES' } })],
+  ['llm-empty-comparator', withWhen({ llm: {} }, LLM_BLOCK)],
+  ['llm-undeclared-param-operand', withWhen({ llm: { eq: { $param: 'ghost' } } }, LLM_BLOCK)],
+  ['llm-misspelled-comparator', withWhen({ llm: { eq: 'a', gt3: 1 } }, LLM_BLOCK)],
+  ['llm-ok-wrong-type', withWhen({ llm: { ok: 'yes' } }, LLM_BLOCK)],
+  ['llm-not-an-object', withWhen({ llm: 'YES' }, LLM_BLOCK)],
+
+  // ---- rejected: containment load rules ------------------------------------
+  ['contains-numeric-param', withWhen({ params: { scale: { contains: '1' } } }, NUM_PARAM)],
+  ['contains-bare-value', withWhen({ contains: 'x' })],
+  ['contains-raw-roll', withWhen({ roll: { contains: 'x' } })],
+  ['contains-empty-substring', withWhen({ params: { material: { contains: '' } } }, STR_PARAM)],
+  ['contains-number-substring', withWhen({ params: { material: { contains: 42 } } }, STR_PARAM)],
+  ['contains-param-substring-numeric', withWhen(
+    { params: { material: { contains: { $param: 'scale' } } } },
+    { parameters: { ...STR_PARAM.parameters, ...NUM_PARAM.parameters } }
+  )],
+  ['contains-param-substring-undeclared', withWhen(
+    { params: { material: { contains: { $param: 'ghost' } } } },
+    STR_PARAM
+  )],
+  ['ncontains-boolean-param', withWhen({ params: { lit: { ncontains: 'x' } } }, BOOL_PARAM)],
+  ['contains-metadata-undeclared-operand', withWhen(
+    { metadata: { faction: { contains: { $param: 'ghost' } } } },
+    STR_PARAM
+  )],
 
   // ---- shape / non-object -------------------------------------------------
   ['not-an-object', 'nope'],
