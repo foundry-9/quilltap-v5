@@ -612,7 +612,9 @@ records THERE. Update this summary only when a phase or round completes.
   (`p4.9l`). **Next: ~~the human M5+#12 walk~~ (DONE 2026-07-18); the
   M6 backlog items 1–4 (`p4.9a`/`p4.9c`/`p4.9b`/`p4.9d`) as the
   natural next round; `p4.9j` (workspace tabs — v4's DEFAULT shell)
-  needs a human ruling first.**
+  RULED 2026-07-18: PORT IT, and v4 retirement gates on it (§5.1
+  option b; the ruling block in `m6-screen-parity.md` F1) — sequencing
+  vs items 1–4 left to the next /setupphase.**
 - **The P4.d5 ∥ P4.6ay resumed-lanes unification: UNIFIED on main
   (2026-07-17) — P4.d5 CLOSED; P4.6ay units 1+3 landed (units 2, 4–9
   open — resume at unit 2).** The whole dice/rng + lenient-numbers
@@ -689,8 +691,9 @@ records THERE. Update this summary only when a phase or round completes.
   error-envelope `details` array, the `is not valid JSON:` wording
   seam. Next candidates: ~~the human M5+#12 walk~~ (DONE 2026-07-18 —
   finding #12 CLOSED; #14/#15 fixed in place, `8528072d`/`b637e2c9`),
-  the M6 backlog items 1–4, the `p4.9j` ruling, or a Workbench/Pascal
-  dogfood pass — see phase-4.md.
+  the M6 backlog items 1–4, ~~the `p4.9j` ruling~~ (RULED 2026-07-18:
+  port the tabbed workspace, retirement gates on it), or a
+  Workbench/Pascal dogfood pass — see phase-4.md.
 - **Oracle baseline: v4 `d68638b4` (4.8.0-dev.72), adopted 2026-07-17
   at the d68638b4-round unification** (every family the drift touched
   regenerated there; untouched families' committed oracles date to

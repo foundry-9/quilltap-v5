@@ -20361,3 +20361,29 @@ courier images, and a story background all render — "fully functioning,
 no problems to report". **Dogfood finding #12 is CLOSED; M5 is
 accepted.** Standing residue (unchanged): Windows/Linux one-origin
 behavior is macOS-verified only.
+
+## The p4.9j workspace-tabs ruling: MADE (2026-07-18)
+
+The human ruling the M6 review required (`m6-screen-parity.md` F1/§5.1):
+**option (b) — port the tabbed workspace, and v4 retirement gates on
+it.** `p4.9j` is now a committed order, not a candidate. Consequences,
+recorded in the ruling block under F1:
+
+- The port arrives at full parity: the two-pane keep-alive host, tab
+  strip, split + divider, cross-pane moves, link interception, the
+  shortcuts, the 21 tab kinds re-hosting existing v5 screens. v4's
+  `lib/workspace/workspace-reducer.ts` (441 lines, pure) and
+  `workspace-persistence.ts` arrive with tier-1 differentials against
+  v4's real code — the standing discipline applies cleanly since the
+  core is pure.
+- The workspace-dependent standing deferrals resolve WITH the port
+  rather than as won't-port: project-page backdrop arbitration (§1.4),
+  `doc_focus` scroll-to-anchor + standalone/workspace document views,
+  and the Workbench workspace-tab intents (`redirectToWorkspaceTab` /
+  `workspace.openTab('custom-tools', …)`).
+- Scope estimate at ruling time: ~1.7 KLOC of v4 components + ~940
+  lines of lib + ~215 of hooks; the 571-line
+  `docs/v4/developer/features/tabbed-workspace.md` mirror is the spec.
+  A 2–3 lane round, Workbench-round-sized.
+- Sequencing vs the M6 backlog items 1–4 is deliberately left to the
+  next `/setupphase`.

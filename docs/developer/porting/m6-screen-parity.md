@@ -79,6 +79,17 @@ mechanical one**: retiring v4 without it asks every user who lives in the
 tabbed workspace to accept single-surface navigation. §5 states it as an
 explicit retirement gate requiring a human ruling rather than assuming it.
 
+> **RULED (2026-07-18, the human): §5.1 option (b) — port it, and v4
+> retirement gates on it.** `p4.9j` is a committed order: the tabbed
+> workspace ports at full parity (the pure `workspace-reducer.ts` +
+> `workspace-persistence.ts` arrive with tier-1 differentials against
+> v4's real code, per the standing discipline), and v4 does not retire
+> until it lands. The workspace-dependent deferrals (backdrop
+> arbitration §1.4, `doc_focus`/standalone views, the Workbench
+> workspace-tab intents) resolve WITH the port, not as won't-port.
+> Sequencing relative to the M6 backlog items 1–4 is left to the next
+> `/setupphase`.
+
 ### F2 — the seed conflated two distinct v4 LLM-log surfaces
 
 The seed said *"LLMLogViewerModal → the v5 Inspector slide-over is a
@@ -614,10 +625,11 @@ decision plus a floor.**
    lives in tabs experiences retirement as a workflow regression. Three
    honest options: (a) accept the route model as v5's UX and retire without
    `p4.9j`; (b) run `p4.9j` first and retire at true parity; (c) retire for
-   users who don't use tabs and keep v4 available for those who do. **This
-   document does not choose.** It records that the choice is the single
-   largest determinant of how far retirement is, and that (a) is defensible
-   precisely because v4 ships the same mode under a flag.
+   users who don't use tabs and keep v4 available for those who do.
+   **RULED (2026-07-18): option (b)** — `p4.9j` is committed and
+   retirement gates on it; see the ruling block under F1. (The original
+   text left the choice open, recording that it is the single largest
+   determinant of how far retirement is.)
 2. **The MISSING floor.** Regardless of the ruling, these are hard to call
    "parity" while absent, in rough descending order of visibility:
    `/photos` (nav item is a **disabled dead button** on every screen —
