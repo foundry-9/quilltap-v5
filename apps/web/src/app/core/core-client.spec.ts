@@ -111,4 +111,32 @@ describe('CoreClient.fetchHealth', () => {
     const health = await new CoreClient().fetchHealth();
     expect(health.kind).toBe('unreachable');
   });
+
+  // P4.9c §3: the additive `version` carry — the About screen's only source.
+  it('carries the server version on the healthy arm', async () => {
+    mockFetchOnce(200, { status: 'healthy', version: '0.0.28' });
+    expect(await new CoreClient().fetchHealth()).toEqual({ kind: 'healthy', version: '0.0.28' });
+  });
+
+  it('carries the server version on the locked arm too', async () => {
+    mockFetchOnce(423, { status: 'locked', dbKeyState: 'needs-setup', version: '0.0.28' });
+    expect(await new CoreClient().fetchHealth()).toEqual({
+      kind: 'locked',
+      pepperState: 'needs-setup',
+      version: '0.0.28',
+    });
+  });
+
+  it('omits version entirely when the server sends none (an older server)', async () => {
+    mockFetchOnce(200, { status: 'healthy' });
+    const health = await new CoreClient().fetchHealth();
+    expect(health).toEqual({ kind: 'healthy' });
+    expect('version' in health).toBe(false);
+  });
+
+  it('ignores a non-string version rather than displaying garbage', async () => {
+    mockFetchOnce(200, { status: 'healthy', version: 42 });
+    const health = await new CoreClient().fetchHealth();
+    expect('version' in health).toBe(false);
+  });
 });

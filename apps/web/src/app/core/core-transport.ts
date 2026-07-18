@@ -10,10 +10,17 @@
 
 import type { CoreRequest, CoreResponse, PepperState, ScopedEvent } from './core-contract';
 
-/** The interpreted `GET /health` result (the startup gate branches on this). */
+/**
+ * The interpreted `GET /health` result (the startup gate branches on this).
+ *
+ * `version` (P4.9c, §3) is the ONLY addition: the serving build's version,
+ * which the health body now carries on its healthy and locked arms. It is
+ * optional because a server older than that change simply omits it — no gate
+ * behavior depends on it, and the About screen is its only reader.
+ */
 export type HealthStatus =
-  | { kind: 'healthy' }
-  | { kind: 'locked'; pepperState: PepperState }
+  | { kind: 'healthy'; version?: string }
+  | { kind: 'locked'; pepperState: PepperState; version?: string }
   | { kind: 'lock-conflict'; lockConflict: unknown }
   | { kind: 'unhealthy'; message: string }
   /** The server never answered (still booting / network hiccup) — retry. */
@@ -168,15 +175,22 @@ export class HttpCoreTransport implements CoreTransport {
  * healthy, 423 locked (carries `dbKeyState`), 409 lock-conflict, 503
  * unhealthy. Shared verbatim by the HTTP fetch and the Tauri `health` command
  * (whose reply carries the same status number) so the branches cannot drift.
+ *
+ * P4.9c: the healthy and locked arms additionally carry the serving build's
+ * `version` when the server sends one. Reading it here (rather than fetching it
+ * separately) is what lets both transports agree for free — the Tauri `health`
+ * command already replies with the same body.
  */
 export function interpretHealth(status: number, body: Record<string, unknown>): HealthStatus {
+  const version = typeof body['version'] === 'string' ? body['version'] : undefined;
   switch (status) {
     case 200:
-      return { kind: 'healthy' };
+      return version ? { kind: 'healthy', version } : { kind: 'healthy' };
     case 423:
       return {
         kind: 'locked',
         pepperState: (body['dbKeyState'] as PepperState) ?? 'needs-passphrase',
+        ...(version ? { version } : {}),
       };
     case 409:
       return { kind: 'lock-conflict', lockConflict: body['lockConflict'] ?? null };

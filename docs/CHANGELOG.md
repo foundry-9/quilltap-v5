@@ -2,6 +2,12 @@
 
 ## Recent Changes
 
+P4.9c unit 4: the SPA half of the health version carry —
+HealthStatus/interpretHealth gain an optional version field, read once and
+shared by both transports (the Tauri health command replies with the same
+body). A non-string value is ignored rather than displayed. Existing
+health specs extended on both sides. SPA 0.5.154.
+
 P4.9c unit 3: the profile + data-dir REST edges (GET|PUT|PATCH
 /api/v1/user/profile, GET|POST /api/v1/system/data-dir) in a new
 profile_routes.rs, and the additive health version field. The PUT edge

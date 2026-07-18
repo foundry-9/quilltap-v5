@@ -120,6 +120,10 @@ describe('TauriCoreTransport.fetchHealth (§1) — branch parity with the HTTP i
     { status: 503, body: { status: 'unhealthy', error: 'still booting' } },
     { status: 503, body: {} }, // error default → 'The server is not ready.'
     { status: 418, body: {} }, // unknown status → the loud default arm
+    // P4.9c §3: the version carry must reach BOTH transports identically —
+    // the Tauri health command replies with the same body health.rs builds.
+    { status: 200, body: { status: 'healthy', version: '0.0.28' } },
+    { status: 423, body: { status: 'locked', dbKeyState: 'needs-setup', version: '0.0.28' } },
   ];
 
   it('interprets every {status, body} pair exactly as the HTTP transport does', async () => {
