@@ -19847,3 +19847,31 @@ NOT through the Angular builder's esbuild, which wants the extension declared �
 Gate: ng test 134 files / 1402 (+116), ng build clean.
 
 **Versions:** SPA 0.5.144.
+
+### Unit 3 — `tool-draft` + v4's suite, case-for-case
+
+`app/pascal/tool-draft.ts` (v4 `lib/pascal/tool-draft.ts`, 920): the bijection
+between a schema-valid document and the form-friendly `ToolDraft` — numbers as
+text, conditions as flat chips, unknown top-level keys in an opaque bag.
+`draftFromDefinition` / `definitionFromDraft` / `serializeDraft` (the §6.2
+canonical emission: `$schema` first, known keys in declaration order, defaulted
+optionals omitted, unknown keys appended verbatim in their original relative
+order, 2-space indent, trailing newline), `conditionsFromWhen` ⇄
+`whenFromConditions`, `validateDraft` (every blocking error AND advisory warning,
+so the form renders states rather than re-deriving rules), `draftIsValid`,
+`slugFromTitle`, `renameParameterEverywhere`, `findParameterReferences`.
+
+A pure TS→TS port, so the equivalence test is v4's own suite: `tool-draft.spec.ts`
+ports `__tests__/unit/lib/pascal/tool-draft.test.ts` (408 lines) case-for-case —
+the same documents, the same `normalize` helper collapsing the permissible diffs,
+the same assertions. **27/27 green**, matching v4's own case count exactly. The
+canonical-emission byte rules are covered directly (key-array equality on the
+minimal document; the `'\n  "name"'` indent probe; the trailing-newline probe;
+the unknown-key relative-order probe).
+
+`nextDraftId`'s session-local counter carries over unchanged: v4 minted those ids
+for React keys, and Angular wants the same thing for `@for` track keys.
+
+Gate: ng test 135 files / 1429 (+27), ng build clean.
+
+**Versions:** SPA 0.5.145.

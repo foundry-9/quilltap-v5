@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.6bb unit 3 (SPA): the tool-draft model. app/pascal/tool-draft.ts ports v4's
+bijection between a schema-valid definition and the form-friendly ToolDraft —
+draftFromDefinition, the canonical serializeDraft emission ($schema first, known
+keys in declaration order, defaulted optionals omitted, unknown keys appended
+verbatim, 2-space indent, trailing newline), the when-chip flatten/reassemble
+pair, validateDraft's full error-and-warning set, and the parameter
+rename/reference-finding passes. v4's own 408-line test suite is ported
+case-for-case as the equivalence test: 27 cases, same documents, same
+normalizer, all green. SPA 0.5.145.
+
 P4.6bb unit 2 (SPA): the client-safe custom-tool schema, hand-ported with a
 byte-level corpus differential. The SPA has no zod, so app/pascal/
 custom-tool-types.ts reimplements the slice of Zod 4.4.3 that
