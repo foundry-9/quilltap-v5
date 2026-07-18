@@ -19978,3 +19978,44 @@ Angular's NG8102 diagnostic flags it.
 Gate: ng test 137 files / 1470 (+25), ng build clean, zero warnings.
 
 **Versions:** SPA 0.5.147.
+
+### Unit 7 — ProvingBench
+
+`proving-bench.ts` (v4 `ProvingBench.tsx`, 397): the four cards — the test roll
+(reusing lane BA's `qt-custom-tool-params-form` UNCHANGED, per the order), the
+fact sheet, the table audit, and the live JSON preview.
+
+Load-bearing behaviors, each spec-pinned:
+
+- **The bench never resolves a fact sheet itself** (§W1). Hand-typed mode sends
+  the parsed object VERBATIM; character mode sends `{characterId}` and lets the
+  server hydrate. The spec asserts both payload shapes AND the absence of any
+  character/roster dispatch of its own.
+- **The character list rides the DESTINATIONS response** (v4 `:105-114`) — no
+  separate roster call. Loaded lazily when the mode is actually picked; a failed
+  read degrades to "nobody in particular" rather than shouting.
+- **Error arms render the SERVER's strings verbatim** — the 400
+  `formatDefinitionIssues` sentence, the 404 Character, the 422 broken-vault and
+  run errors. Nothing is re-derived client-side.
+- **No `runs` field crosses the wire** (server-fixed `AUDIT_RUNS`); the audit
+  request also carries no `private` flag, which is preview-only. Both asserted
+  by key ABSENCE, not just by value.
+- The hand-typed sheet's two rejection sentences, the roll history capped at ten
+  newest-first, the matched-outcome report that drives the form's flash, the
+  never-fired advisory on a non-catch-all row, the 1% bar floor so a row that
+  fired at all is never invisible, and the `--qt-alert-*` bar tokens (the same
+  family the Pascal bubble accents use, so the bars read in every bundled theme).
+
+**Copy carried, not corrected:** the audit button reads "Deal a thousand hands"
+while `AUDIT_RUNS` is 10,000. That is v4's own wording; the port is not the place
+to fix it, and the rendered run count comes from the server's `runs` regardless.
+
+**18 spec cases.** Three compile errors on the first run, all mine and all
+mechanical: `ParamChange`'s field is `param` not `name`;
+`CustomToolParameterSpec` re-exports from `core-contract`, not from lane BA's
+form module; and the spec drives `pickCharacterMode()` directly, so it cannot be
+`protected`.
+
+Gate: ng test 138 files / 1488 (+18), ng build clean.
+
+**Versions:** SPA 0.5.148.

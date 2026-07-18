@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.6bb unit 7 (SPA): the proving bench. proving-bench.ts ports v4's right-hand
+panel — the dry-run roll with its miniature Pascal bubble and debug line, both
+fact-sheet modes, the Monte Carlo audit hit table, and the live JSON preview of
+the exact bytes Save would write. Rolls and audits execute server-side through
+the same execution core a live chat uses, so the bench cannot drift from what
+the table would actually deal; error arms render the server's strings verbatim.
+The character list rides the destinations response rather than a roster call,
+and the bench never resolves a fact sheet itself. Reuses lane BA's
+qt-custom-tool-params-form unchanged. 18 spec cases. SPA 0.5.148.
+
 P4.6bb unit 5 (SPA): the builder form family. number-or-param-field.ts,
 outcomes-section.ts (with its operand field, condition chip, condition list,
 message editor, and outcome row), and builder-form.ts port v4's 1,453 lines of

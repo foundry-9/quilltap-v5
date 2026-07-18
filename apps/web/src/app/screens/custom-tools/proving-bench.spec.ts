@@ -1,0 +1,356 @@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { afterEach, describe, expect, it } from 'vitest';
+
+import { CoreClient } from '../../core/core-client';
+import { draftFromDefinition, newDraft, type ToolDraft } from '../../pascal/tool-draft';
+import { ProvingBench, formatShort, stateToken } from './proving-bench';
+
+/**
+ * ProvingBench — asserted against v4 `ProvingBench.tsx`. The load-bearing claims:
+ * the bench NEVER resolves a fact sheet itself (it sends one of two forms and
+ * lets the server hydrate), it renders the SERVER's error strings verbatim, the
+ * character list rides the DESTINATIONS response rather than a roster call, and
+ * the audit's run count is whatever the server reports.
+ */
+
+interface Req {
+  type: string;
+  [k: string]: unknown;
+}
+
+function stubClient(
+  hooks: {
+    onDispatch?: (req: Req) => void;
+    preview?: unknown;
+    audit?: unknown;
+    destinations?: unknown;
+    throws?: Error;
+  } = {},
+): Partial<CoreClient> {
+  return {
+    dispatchData: (async (req: Req) => {
+      hooks.onDispatch?.(req);
+      if (hooks.throws) throw hooks.throws;
+      if (req.type === 'customToolPreview') return hooks.preview ?? {};
+      if (req.type === 'customToolAudit') return hooks.audit ?? {};
+      if (req.type === 'customToolsDestinations') return hooks.destinations ?? { characters: [] };
+      return {};
+    }) as CoreClient['dispatchData'],
+  };
+}
+
+function validDraft(): ToolDraft {
+  return draftFromDefinition({
+    name: 'unlock',
+    description: 'Pick the lock.',
+    outcomes: [
+      { when: { gte: 0.5 }, message: 'Open.', state: 'success' },
+      { when: true, message: 'Stuck.', state: 'failure' },
+    ],
+  })!;
+}
+
+async function render(
+  draft: ToolDraft,
+  client: Partial<CoreClient>,
+  valid = true,
+): Promise<ComponentFixture<ProvingBench>> {
+  TestBed.resetTestingModule();
+  TestBed.configureTestingModule({
+    imports: [ProvingBench],
+    providers: [{ provide: CoreClient, useValue: client }],
+  });
+  const fixture = TestBed.createComponent(ProvingBench);
+  fixture.componentRef.setInput('draft', draft);
+  fixture.componentRef.setInput('valid', valid);
+  fixture.detectChanges();
+  return fixture;
+}
+
+function text(fixture: ComponentFixture<unknown>): string {
+  return (fixture.nativeElement as HTMLElement).textContent ?? '';
+}
+
+describe('formatShort (v4 ProvingBench:341-344)', () => {
+  it('prints integers bare and trims float noise to four significant digits', () => {
+    expect(formatShort(7)).toBe('7');
+    expect(formatShort(0.123456789)).toBe('0.1235');
+    expect(formatShort(1234567)).toBe('1234567');
+  });
+});
+
+describe('stateToken (v4 ProvingBench:347-358)', () => {
+  it('maps outcome states onto the --qt-alert-* families', () => {
+    expect(stateToken('success')).toBe('success');
+    expect(stateToken('partial')).toBe('warning');
+    expect(stateToken('failure')).toBe('error');
+    expect(stateToken('info')).toBe('info');
+    expect(stateToken(undefined)).toBe('info');
+  });
+});
+
+describe('ProvingBench (v4 ProvingBench.tsx)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('starts in hand-typed mode with an empty object', async () => {
+    const fixture = await render(validDraft(), stubClient());
+    expect(fixture.componentInstance.sheet()).toEqual({ mode: 'manual', text: '{}' });
+    expect(fixture.componentInstance.manualSheetError()).toBeNull();
+  });
+
+  it('rejects a hand-typed sheet that is not a single JSON object', async () => {
+    const fixture = await render(validDraft(), stubClient());
+    const bench = fixture.componentInstance;
+
+    bench.sheet.set({ mode: 'manual', text: '{oops' });
+    expect(bench.manualSheetError()).toBe('The fact sheet is not valid JSON.');
+
+    bench.sheet.set({ mode: 'manual', text: '[1,2]' });
+    expect(bench.manualSheetError()).toBe('The fact sheet must be a single JSON object.');
+
+    bench.sheet.set({ mode: 'manual', text: '"nope"' });
+    expect(bench.manualSheetError()).toBe('The fact sheet must be a single JSON object.');
+
+    bench.sheet.set({ mode: 'manual', text: '{"strength": 12}' });
+    expect(bench.manualSheetError()).toBeNull();
+  });
+
+  it('blocks the bench while the draft is invalid, or the sheet will not parse', async () => {
+    const invalid = await render(validDraft(), stubClient(), false);
+    expect(invalid.componentInstance.benchDisabled()).toBe(true);
+
+    const fixture = await render(validDraft(), stubClient(), true);
+    expect(fixture.componentInstance.benchDisabled()).toBe(false);
+    fixture.componentInstance.sheet.set({ mode: 'manual', text: '{oops' });
+    expect(fixture.componentInstance.benchDisabled()).toBe(true);
+  });
+
+  it('sends a hand-typed sheet through VERBATIM and never resolves it', async () => {
+    const seen: Req[] = [];
+    const fixture = await render(
+      validDraft(),
+      stubClient({ onDispatch: (r) => seen.push(r), preview: previewResult() }),
+    );
+    fixture.componentInstance.sheet.set({ mode: 'manual', text: '{"strength": 12}' });
+    await fixture.componentInstance.roll();
+
+    const req = seen.find((r) => r.type === 'customToolPreview');
+    expect(req?.['metadata']).toEqual({ strength: 12 });
+  });
+
+  it('sends {characterId} for the character mode — the SERVER hydrates the sheet', async () => {
+    const seen: Req[] = [];
+    const fixture = await render(
+      validDraft(),
+      stubClient({ onDispatch: (r) => seen.push(r), preview: previewResult() }),
+    );
+    fixture.componentInstance.sheet.set({ mode: 'character', characterId: 'char-1' });
+    await fixture.componentInstance.roll();
+
+    const req = seen.find((r) => r.type === 'customToolPreview');
+    expect(req?.['metadata']).toEqual({ characterId: 'char-1' });
+    // No roster/character read of its own — the bench does not resolve sheets.
+    expect(seen.some((r) => r.type === 'characterGet' || r.type === 'characterList')).toBe(false);
+  });
+
+  it('sends no metadata when the character mode has nobody picked', async () => {
+    const seen: Req[] = [];
+    const fixture = await render(
+      validDraft(),
+      stubClient({ onDispatch: (r) => seen.push(r), preview: previewResult() }),
+    );
+    fixture.componentInstance.sheet.set({ mode: 'character', characterId: '' });
+    await fixture.componentInstance.roll();
+
+    expect(seen.find((r) => r.type === 'customToolPreview')?.['metadata']).toBeUndefined();
+  });
+
+  it('draws the character list from the DESTINATIONS response, not a roster call', async () => {
+    const seen: Req[] = [];
+    const fixture = await render(
+      validDraft(),
+      stubClient({
+        onDispatch: (r) => seen.push(r),
+        destinations: { characters: [{ characterId: 'c1', characterName: 'Aria' }] },
+      }),
+    );
+    await fixture.componentInstance.pickCharacterMode();
+
+    expect(seen.map((r) => r.type)).toEqual(['customToolsDestinations']);
+    expect(fixture.componentInstance.characters()).toEqual([{ id: 'c1', name: 'Aria' }]);
+  });
+
+  it('reports the matched outcome id so the form can flash the row', async () => {
+    const draft = validDraft();
+    const fixture = await render(
+      draft,
+      stubClient({ preview: previewResult({ outcomeIndex: 1 }) }),
+    );
+    let matched: string | null | undefined;
+    fixture.componentInstance.matched.subscribe((id) => (matched = id));
+
+    await fixture.componentInstance.roll();
+    expect(matched).toBe(draft.outcomes[1].id);
+  });
+
+  it('keeps at most ten rolls, newest first', async () => {
+    const fixture = await render(validDraft(), stubClient({ preview: previewResult() }));
+    for (let i = 0; i < 12; i++) await fixture.componentInstance.roll();
+    expect(fixture.componentInstance.rolls()).toHaveLength(10);
+  });
+
+  it('renders the SERVER error string verbatim — never a re-derived one', async () => {
+    const fixture = await render(
+      validDraft(),
+      stubClient({ throws: new Error('outcomes.0.when: must test something') }),
+    );
+    await fixture.componentInstance.roll();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.rollError()).toBe('outcomes.0.when: must test something');
+    expect(text(fixture)).toContain('outcomes.0.when: must test something');
+  });
+
+  it('renders the audit hit table off the server-reported run count', async () => {
+    const fixture = await render(
+      validDraft(),
+      stubClient({
+        audit: {
+          runs: 10000,
+          outcomes: [
+            { index: 0, hits: 5012, share: 0.5012 },
+            { index: 1, hits: 4988, share: 0.4988 },
+          ],
+          valueMin: 0,
+          valueMax: 0.9999,
+          valueMean: 0.4996,
+        },
+      }),
+    );
+    await fixture.componentInstance.runAudit();
+    fixture.detectChanges();
+
+    const body = text(fixture);
+    expect(body).toContain('10,000 draws');
+    expect(body).toContain('50.1%');
+    expect(body).toContain('49.9%');
+    expect(body).toContain('row 1');
+    expect(body).toContain('otherwise');
+  });
+
+  it('sends NO runs field — the count is server-fixed (§W1)', async () => {
+    const seen: Req[] = [];
+    const fixture = await render(
+      validDraft(),
+      stubClient({ onDispatch: (r) => seen.push(r), audit: auditResult() }),
+    );
+    await fixture.componentInstance.runAudit();
+
+    const req = seen.find((r) => r.type === 'customToolAudit');
+    expect(req).toBeDefined();
+    expect('runs' in req!).toBe(false);
+    // Nor does audit carry the private flag — that is preview-only.
+    expect('private' in req!).toBe(false);
+  });
+
+  it('flags a non-catch-all row that never fired', async () => {
+    const fixture = await render(
+      validDraft(),
+      stubClient({
+        audit: {
+          runs: 10000,
+          outcomes: [
+            { index: 0, hits: 0, share: 0 },
+            { index: 1, hits: 10000, share: 1 },
+          ],
+          valueMin: 0,
+          valueMax: 1,
+          valueMean: 0.5,
+        },
+      }),
+    );
+    await fixture.componentInstance.runAudit();
+    fixture.detectChanges();
+    expect(text(fixture)).toContain('never fired in 10,000 draws');
+  });
+
+  it('hints when a metadata-testing tool is given no sheet — and not otherwise', async () => {
+    const plain = await render(validDraft(), stubClient());
+    expect(plain.componentInstance.noSheetHint()).toBe(false);
+
+    const metaDraft = draftFromDefinition({
+      name: 'lockpick',
+      description: 'x',
+      outcomes: [
+        { when: { metadata: { deft: { eq: true } } }, message: 'Deft.', state: 'success' },
+        { when: true, message: 'No.', state: 'failure' },
+      ],
+    })!;
+    const fixture = await render(metaDraft, stubClient());
+    expect(fixture.componentInstance.noSheetHint()).toBe(true);
+
+    fixture.componentInstance.sheet.set({ mode: 'manual', text: '{"deft": true}' });
+    expect(fixture.componentInstance.noSheetHint()).toBe(false);
+
+    // Whitespace inside an otherwise-empty object still counts as no sheet.
+    fixture.componentInstance.sheet.set({ mode: 'manual', text: '{  }' });
+    expect(fixture.componentInstance.noSheetHint()).toBe(true);
+  });
+
+  it('shows the exact bytes Save would write', async () => {
+    const fixture = await render(validDraft(), stubClient());
+    const preview = fixture.componentInstance.jsonPreview();
+    expect(preview.endsWith('}\n')).toBe(true);
+    expect(preview).toContain('"$schema": "/schemas/qtap-custom-tool.schema.json"');
+    expect(preview).toContain('\n  "name": "unlock"');
+  });
+
+  it('carries a declared parameter into the bench spec, bounds included', async () => {
+    const draft = newDraft();
+    draft.parameters = [
+      {
+        id: 'p1',
+        name: 'bonus',
+        type: 'integer',
+        defaultValue: '3',
+        description: 'A bonus.',
+        min: '0',
+        max: '9',
+      },
+    ];
+    const fixture = await render(draft, stubClient());
+    expect(fixture.componentInstance.paramSpecs()['bonus']).toEqual({
+      type: 'integer',
+      default: 3,
+      description: 'A bonus.',
+      min: 0,
+      max: 9,
+    });
+  });
+});
+
+function previewResult(over: Record<string, unknown> = {}) {
+  return {
+    tool: 'unlock',
+    params: {},
+    rollForm: 'range',
+    raw: 0.75,
+    value: 0.75,
+    state: 'success',
+    outcomeIndex: 0,
+    message: 'Open.',
+    diceBreakdown: '',
+    visibility: 'public',
+    ...over,
+  };
+}
+
+function auditResult() {
+  return {
+    runs: 10000,
+    outcomes: [{ index: 0, hits: 10000, share: 1 }],
+    valueMin: 0,
+    valueMax: 1,
+    valueMean: 0.5,
+  };
+}
