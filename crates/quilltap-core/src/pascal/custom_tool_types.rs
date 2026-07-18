@@ -239,7 +239,9 @@ pub enum ParameterType {
 }
 
 impl ParameterType {
-    fn as_str(self) -> &'static str {
+    /// The declared type's wire name (`"number"`/`"integer"`/`"string"`/
+    /// `"boolean"`), as the `run_custom` roster listing prints it.
+    pub fn as_str(self) -> &'static str {
         match self {
             ParameterType::Number => "number",
             ParameterType::Integer => "integer",
@@ -292,6 +294,19 @@ pub enum OutcomeState {
     Partial,
     Failure,
     Info,
+}
+
+impl OutcomeState {
+    /// The state's wire name (`"success"`/`"partial"`/`"failure"`/`"info"`), as
+    /// the `run_custom` roster listing and `pascalMeta` print it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            OutcomeState::Success => "success",
+            OutcomeState::Partial => "partial",
+            OutcomeState::Failure => "failure",
+            OutcomeState::Info => "info",
+        }
+    }
 }
 
 /// A roll field: a literal number, or a reference to a numeric parameter.

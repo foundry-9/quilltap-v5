@@ -55,6 +55,17 @@ impl ResolvedValue {
         }
     }
 
+    /// As a JSON [`Value`], the way v4 stores a resolved param / tested-metadata
+    /// value: a number is stored JS-bare (an integer without a fractional part),
+    /// a string as a string, a boolean as a boolean.
+    pub fn to_value(&self) -> Value {
+        match self {
+            ResolvedValue::Number(n) => crate::db::js_number_to_json(*n),
+            ResolvedValue::String(s) => Value::String(s.clone()),
+            ResolvedValue::Bool(b) => Value::Bool(*b),
+        }
+    }
+
     /// The `JSON.stringify(value)` several error sentences interpolate.
     fn stringify(&self) -> String {
         match self {

@@ -20,6 +20,7 @@ pub mod pseudo_tool_support;
 pub mod read_conversation;
 pub mod request_full_context;
 pub mod rng;
+pub mod run_custom;
 pub mod run_sql;
 pub mod search;
 pub mod self_inventory;

@@ -19122,3 +19122,86 @@ seed) make setup take ~4–5 min under load — give a single-spec run ≥300s, 
 NEVER kill quilltap processes mid-run (a timed-out run leaves a **detached**
 `quilltap-web` holding the DB locks, which cascades every later run into a
 setup hang; kill `target/debug/quilltap*` + free port 4319 before re-running).
+
+---
+
+### P4.6ay unit 4 — the `run_custom` tool + handler (RESUMED lane, off main)
+
+**Branch** `claude/carryout-p4-6ay-ab9b3b` (fresh off main `b01e1bb9`). Drift
+re-checked at resume: v4 HEAD is exactly `d68638b4`, unmoved.
+
+**Landed** (`tools/run_custom.rs`, new):
+
+- **The pure half.** `validate_run_custom_input` (Zod `{tool, parameters?,
+  private?}`, unknown keys stripped, `parameters` null≡absent), the describe
+  helpers (`describe_roll`/`describe_when`/comparator renderers), and
+  `build_run_custom_description(roster)` — the roster listing the model reads.
+  `RUN_CUSTOM_PREAMBLE` grew the d68638b4 metadata sentence (already pinned in
+  `data.rs` by unit 11). Small pub-lifts in `pascal/custom_tool_types.rs`
+  (`ParameterType::as_str`, `OutcomeState::as_str`) and
+  `pascal/custom_tools.rs` (`ResolvedValue::to_value`).
+- **The handler.** `execute_run_custom_tool(db, ctx, input, rng)` — validate →
+  resolve roster fresh (main+mount read) → look up → read the rolling
+  character's hydrated `metadata` (§2, AZ's overlay is on main; a read error →
+  Prospero bubble) → `execute_custom_tool` → assemble `pascalMeta`
+  field-for-field with v4 → `post_pascal_result`, or `report_failure` (Prospero)
+  on any refusal. Returns `(output, Option<PostedPascalMessage>)` — v5 returns
+  the posted message instead of v4's `onPosted` sink, so both the executor's SSE
+  emit (unit 8/9) and the route's `messages: [pascalMessage]` reply (unit 7)
+  read it from the same value. `format_run_custom_results` ported.
+
+**Differentials (all green, zero SKIP):**
+
+- `pascal_run_custom_equivalence` (tier-1, 9 rows) — vs v4's real
+  `buildRunCustomDescription`. Oracle: `pascal-run-custom.ts` (tsx). Regen (v4 @
+  d68638b4, Node 24): `cd ~/source/quilltap-server && npx tsx
+  <V5W>/harness/oracle/cases/pascal-run-custom.ts >
+  /tmp/oracle-pascal-run-custom.ndjson`; run with
+  `QT_ORACLE_PASCAL_RUN_CUSTOM`.
+- The §2 byte-identity is an in-crate test
+  (`tools::run_custom::tests::empty_roster_description_matches_data_rs`):
+  `build_run_custom_description(&[])` == the pinned `run_custom` description in
+  `tools/definitions/data.rs`. No oracle.
+- `pascal_run_custom_handler_equivalence` (real-DB, 10 cases) — vs v4's real
+  `executeRunCustomTool`, driven by the jest oracle
+  `pascal-run-custom-handler.test.ts` over the new committed
+  `pascal-run-custom-{main,mount}.db` fixture. All rolls `min===max` (no draw →
+  deterministic, `FixedBytes::consumed()==0` asserted). Diffs the model output +
+  the posted `chat_messages` system rows (id/createdAt remapped positionally,
+  `pascalMeta`/`targetParticipantIds` parsed). **Regen recipe (jest ignores
+  `.claude/`, so mirror to /tmp):**
+  ```
+  cd ~/source/quilltap-server
+  M=/tmp/qt-pascal-mirror; mkdir -p $M/cases $M/fixtures
+  cp <V5W>/harness/oracle/cases/pascal-run-custom-handler.test.ts $M/cases/
+  cp <V5W>/harness/oracle/fixtures/pascal-run-custom.json $M/fixtures/
+  QT_FIXTURE_PASCAL_MAIN=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db \
+  QT_FIXTURE_PASCAL_MOUNT=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-mount.db \
+  QT_ORACLE_OUT=/tmp/oracle-pascal-run-custom-handler.ndjson \
+    npx jest --silent --roots "$PWD" --roots "$M/cases" -- pascal-run-custom-handler
+  ```
+  Run with `QT_ORACLE_PASCAL_RUN_CUSTOM_HANDLER`.
+
+**New committed fixture** (`crates/quilltap-web/tests/fixtures/`):
+`pascal-run-custom-main.db` + `-mount.db` + `-main.db.meta.json`. Built by
+`harness/oracle/fixtures/build-pascal-run-custom-fixture.ts` (v4 real repos +
+`storeMountFile`). Three characters, each with a provisioned vault carrying a
+`Tools/` roster + a `metadata.json` fact sheet; one salon chat with all three +
+a user participant; one pinned seed USER message so `chat_messages` exists (v4
+creates it lazily). **Minted char-vault ids** are recorded in the `.meta.json`
+sidecar (the Rust side reads them). This fixture ALSO serves unit 7's route
+differential and lane BA's e2e Tools instance. Rebuild recipe: the fixture
+builder's header.
+
+**Divergence recorded (not a bug):** the broken-vault reason string differs
+between v4 (`CharacterVaultUnavailableError`'s message) and v5 (the overlay's
+`DbError::Key` message), so the handler corpus does NOT include a broken-vault
+case — the arm is ported faithfully (any character-read error → a whispered/
+public Prospero bubble) but its exact reason TEXT is host-log-quality, not a
+wire contract. The execution-core metadata path is proven by unit 11 (injected)
+and the gated-hit/miss/empty handler cases here.
+
+**Remaining OPEN under the order:** units 8 (registration/catalogue/capabilities
++ delegatedDisplay), 9 (orchestration/streaming), 7 (route + §4 dispatch verbs),
+12 (Workbench server). `run_custom` remains verified INERT until unit 8 wires the
+executor dispatch arm.

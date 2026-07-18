@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+P4.6ay unit 4: the `run_custom` LLM tool + handler. The pure half
+(`tools/run_custom.rs`) — the input validator, the `run_custom` description
+builder (the roster rides in the description: roll spec, parameter bounds,
+outcome tests, the `revealOdds: false` lock) — plus the DB-integrated handler
+`execute_run_custom_tool` (resolve the roster fresh, look the tool up, read the
+rolling character's `metadata.json` fact sheet, roll server-side, and let Pascal
+announce the outcome or Prospero report the failure). Three differentials: the
+tier-1 description builder (9 rows) vs v4's real `buildRunCustomDescription`, the
+§2 byte-identity of the empty-roster description against the pinned `data.rs`
+entry, and a real-DB handler differential (10 cases) vs v4's real
+`executeRunCustomTool` over the new committed `pascal-run-custom-{main,mount}.db`
+fixture (metadata-gated hit/miss/empty, public/whispered/private-override,
+unknown-tool, validation failure, run error). Versions: core 0.0.263, harness
+0.0.232.
+
 Unify the d68638b4 drift-catch-up round. P4.d7 (the case-insensitive mount
 namespace: NOCASE indexes via the fresh-schema re-dump — which also folded in
 v4's characters.metadata column, ruled Option A — the boot repair pass,
