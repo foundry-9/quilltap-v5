@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { makeDbKeyFile } from './support/dbkey';
 import { seedCourierImagesFixture } from './support/seed-courier-fixture';
 import { seedPascalToolsFixture } from './support/seed-pascal-tools-fixture';
+import { seedPhotosFixture } from './support/seed-photos-fixture';
 import {
   ARTIFACTS_DIR,
   BASE_URL,
@@ -194,6 +195,11 @@ export default async function globalSetup(): Promise<void> {
   // salon-custom-tools-flow beat (mount-partition rows only — the userId
   // rewrite below does not touch them).
   seedPascalToolsFixture(cli);
+  // The P4.9a wire: two photos/ gallery entries with distinctive captions, so
+  // the My Photos walk finds, filters, and deletes only its OWN rows (the
+  // characters walk deletes gallery tiles on the same shared server).
+  // Mount-partition rows only — the userId rewrite below does not touch them.
+  seedPhotosFixture(cli);
   for (const table of [
     'chats',
     'connection_profiles',

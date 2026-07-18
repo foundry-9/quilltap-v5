@@ -21460,3 +21460,50 @@ worktree synced it, and the fix rides here. A fresh worktree needs its own
 Gate: ng test 152 files / 1,718 (the 12 new specs by name), ng build clean.
 
 **Versions:** SPA 0.5.170.
+
+### P4.9a unit 5 — the live Playwright walk
+
+`apps/web/e2e/photos-flow.spec.ts` (three beats) + `support/seed-photos-fixture.ts`
++ one call line in `global-setup.ts`.
+
+**The beats.** (1) `/photos` renders the gallery over the real
+`photoGalleryList` verb; (2) a card opens the detail modal with its prompt
+excerpt, linker list, read-only tags and identity block, and Escape closes it;
+(3) a link-only delete round-trips through `photoGalleryEntryRemove` **and
+survives a reload** — the reload is the point, because an optimistic-only UI
+would pass the first half and fail the second.
+
+**Why the walk seeds its own data.** The shared instance already carries a
+`photos/` link (Aria's vault avatar), but the characters walk DELETES gallery
+tiles on that same server. Asserting on whatever happened to be there would be
+reading a moving target, so global-setup seeds two rows with distinctive
+captions ("Zeppelin over the Ironworks" / "The Ironworks at dusk") and the walk
+finds, filters, and deletes only those. Ids are e2e-only (`9a…`), outside every
+fixture family's scheme. The destination mount is DISCOVERED by query rather
+than pinned — the salon fixture's mount ids are not this lane's to assume.
+
+The seeded `extractedText` is real kept-image markdown, because the gallery
+projection PARSES it: the caption, the tags and the prompt excerpt all come out
+of that text, not out of columns. Two schema facts cost a round each:
+`doc_mount_files` needs `fileType` + `source` (NOT NULL, no defaults), and
+`doc_mount_file_links` has NO `source`/`fileType`/`sha256` columns — those live
+on the file row — but does need `lastModified`.
+
+**⚠ NAVIGATION is by URL**, because the shell's photos nav item stays
+`route: null` until the §2a unifier flip. `gotoPhotos` carries an
+ACTIVATE-AT-UNIFY marker for the nav-click step.
+
+**NOT walked, deliberately: the semantic search.** v4's service calls
+`generateEmbeddingForUser` on the query branch, and the e2e instance has no
+default embedding profile — so a search on that server is the seam's loud
+refusal, not a narrowed list. Pinning the refusal belongs in
+`photos_web_routes` (where it is), and making the walk depend on a live
+embedding provider would be testing the provider, not this screen.
+
+**A Playwright gotcha worth a memory note:** `getByText(/^…/)` fails where
+`getByText('…')` succeeds — Playwright normalizes whitespace for STRING matches
+but NOT for regex ones, so a `^` anchor cannot match text inside an indented
+template element. The first suite run failed exactly there (80 passed / 1
+failed); with the anchor dropped the beat is green.
+
+**Versions:** SPA 0.5.171.

@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+P4.9a unit 5: a live Playwright walk of the My Photos vertical — the gallery
+renders over the real photoGalleryList verb, a card opens the detail modal with
+its prompt excerpt, linker list, read-only tags and identity block (Escape
+closes it), and a link-only delete round-trips through photoGalleryEntryRemove
+and survives a reload, which is what proves the server actually removed the
+link rather than the UI merely forgetting it. Global-setup seeds two photos/
+entries with distinctive captions so the walk asserts only on its own rows: the
+instance is shared and the characters walk deletes gallery tiles. The walk
+reaches /photos by URL because the shell's photos nav item stays disabled until
+the §2a unifier flip; the nav-click step is marked ACTIVATE-AT-UNIFY.
+
+The search box's semantic query is deliberately not walked: v4's service calls
+generateEmbeddingForUser on the query branch and the e2e instance has no default
+embedding profile, so a search there is the seam's loud refusal rather than a
+narrowed list. That refusal is pinned by photos_web_routes instead. SPA 0.5.171.
+
 P4.9a unit 4: the My Photos screen at /photos (v4 app/photos/PhotosView.tsx) —
 header and counter, the search form, the responsive card grid with the
 "linked in N places" badge, infinite scroll, and the inline detail modal with
