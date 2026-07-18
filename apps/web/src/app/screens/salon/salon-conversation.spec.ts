@@ -633,3 +633,58 @@ describe('SalonConversation — the LLM Inspector (v4 useLLMLogs.ts + SalonView.
     expect(listCalls().length).toBe(2);
   });
 });
+
+describe('SalonConversation — the standalone generate-image dialog (v4 ChatModals.tsx:269-)', () => {
+  it('opens the STANDALONE dialog from the composer camera button, not the chat-profile one', async () => {
+    const events$ = new Subject<ScopedEvent>();
+    const fixture = await render(stubClient(chatDetail(), events$));
+    const button = fixture.nativeElement.querySelector(
+      'button[aria-label="Generate image"]',
+    ) as HTMLButtonElement;
+    // v4's ONLY opener chain is ComposerGutterTools :52 → the standalone dialog.
+    expect(button).not.toBeNull();
+    button.click();
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector('qt-standalone-generate-image-dialog'),
+    ).not.toBeNull();
+    // v4 mounts the chat-profile dialog but never opens it (useModalState:63 has
+    // no caller); v5 keeps that faithful, so it must stay closed here.
+    expect(fixture.nativeElement.querySelector('qt-generate-image-dialog')).toBeNull();
+  });
+
+  it('records the generate_image tool result with v4’s exact payload (v4 ChatModals :271-283)', async () => {
+    const events$ = new Subject<ScopedEvent>();
+    const client = stubClient(chatDetail(), events$);
+    const fixture = await render(client);
+    const inst = fixture.componentInstance as unknown as {
+      onImagesGenerated(e: {
+        images: { id: string; filename: string; filepath: string; mimeType: string }[];
+        prompt: string;
+      }): Promise<void>;
+    };
+    await inst.onImagesGenerated({
+      images: [
+        { id: 'i1', filename: 'one.png', filepath: 'tool/one.png', mimeType: 'image/png' },
+        { id: 'i2', filename: 'two.png', filepath: 'tool/two.png', mimeType: 'image/png' },
+      ],
+      prompt: 'a cat',
+    });
+    const dispatch = client.dispatch as unknown as { mock: { calls: [CoreRequest][] } };
+    const call = dispatch.mock.calls
+      .map((c) => c[0] as Record<string, unknown>)
+      .find((r) => r['type'] === 'chatAddToolResult');
+    expect(call).toEqual({
+      type: 'chatAddToolResult',
+      chatId: 'chat-1',
+      tool: 'generate_image',
+      initiatedBy: 'user',
+      prompt: 'a cat',
+      // v4 maps to id + filename ONLY — filepath and mimeType are dropped.
+      images: [
+        { id: 'i1', filename: 'one.png' },
+        { id: 'i2', filename: 'two.png' },
+      ],
+    });
+  });
+});

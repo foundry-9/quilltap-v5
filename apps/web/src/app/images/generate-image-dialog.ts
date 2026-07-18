@@ -28,13 +28,24 @@ export interface GeneratedImage {
  * `{{Character}}` placeholder quick-inserts for the chat's characters), then
  * generates against the chat's image profile via `imageProfileGenerate`. On
  * success it emits the images + expanded prompt (the conversation records a
- * `chatAddToolResult`). While lane A's generate arm is still refusal-armed the
- * dialog degrades loudly (the `not_available` message in v4 voice).
+ * `chatAddToolResult`).
  *
- * Deferred (loud): the full all-characters entity dropdown (v4 loads
- * `/characters`), the StandaloneGenerateImageDialog + ImageProfilePicker (the
- * explicit-profile / non-chat path), and auto-attaching the generated images to
- * the next message — this dialog records the tool result and refetches.
+ * **Nothing opens this dialog, and that is faithful to v4.** v4 mounts it in
+ * `ChatModals.tsx:209` and exports `openGenerateImage` from `useModalState`
+ * (`:63`), but no v4 component ever calls that opener — the dialog is
+ * unreachable in v4 as well. v5's composer camera button pointed here until
+ * P4.9b re-pointed it at {@link
+ * ../images/standalone-generate-image-dialog.StandaloneGenerateImageDialog},
+ * which is what v4's single gutter opener actually opens and is a strict
+ * superset of this dialog (explicit profile picker instead of the chat's fixed
+ * profile, participant quick-inserts, 1–4 images instead of a hardcoded 1). It
+ * stays mounted rather than deleted, per the standing rule to port v4's
+ * vestigial code faithfully and sweep it deliberately after the port.
+ *
+ * P4.9b closed this docstring's former deferrals: the standalone dialog and the
+ * shared `ImageProfilePicker` both exist now, and the standalone one carries the
+ * full all-characters dropdown. Still deferred (loud): auto-attaching generated
+ * images to the next message — both dialogs record the tool result and refetch.
  */
 @Component({
   selector: 'qt-generate-image-dialog',

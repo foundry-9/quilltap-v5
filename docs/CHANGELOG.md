@@ -2,6 +2,33 @@
 
 ## Recent Changes
 
+P4.9b unit 4: the standalone in-chat Generate Image dialog. Ports v4's
+StandaloneGenerateImageDialog — an explicit profile picker, the chat's
+participants as one-click {{placeholder}} inserts, a search over every
+character, 1-4 images, and the generate_image tool result recorded with
+v4's exact payload (id + filename only).
+
+The composer's camera button now opens it. Survey finding behind that
+change: in v4 the chat-profile-fixed GenerateImageDialog has no opener at
+all — useModalState exports openGenerateImage and nothing calls it — while
+the single ComposerGutterTools camera button opens the standalone dialog.
+v5 had the button pointed at the chat-profile dialog. Re-pointing it makes
+v5 match v4 and loses nothing, since the standalone dialog is a strict
+superset: it picks a profile explicitly rather than taking the chat's, adds
+participant quick-inserts, and generates 1-4 rather than a hardcoded 1. The
+chat-profile dialog stays mounted and openerless exactly as in v4, with the
+reason recorded at both sites. The button also picks up v4's title, aria
+label and camera glyph.
+
+Transcribed rather than harmonized, because v4 differs between its two
+copies: the dialog sends the prompt untrimmed where the screen trims, says
+"No images generated" where the screen says "No images were generated",
+validates prompt-before-profile where the screen does the reverse, and
+requires success:true on the payload. Each is pinned by spec.
+
+16 new tests; the opener target, the tool-result payload and the untrimmed
+prompt were mutation-checked. SPA 0.5.157.
+
 P4.9b unit 3: the homepage Generate Image quick action is back. The fifth
 v4 quick action was omitted from the home row through the P4.6av round
 because /generate-image was unported; unit 2 ported the screen, so the

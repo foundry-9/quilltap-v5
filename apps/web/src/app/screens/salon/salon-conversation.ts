@@ -29,6 +29,7 @@ import { ImageModal } from '../../images/image-modal';
 import { SaveImageDialog } from '../../images/save-image-dialog';
 import { PhotoGalleryModal } from '../../images/photo-gallery-modal';
 import { GenerateImageDialog, type GeneratedImage } from '../../images/generate-image-dialog';
+import { StandaloneGenerateImageDialog } from '../../images/standalone-generate-image-dialog';
 import { MemoryCascadeDialog, type MemoryCascadeAction } from '../../chat/memory-cascade-dialog';
 import { splitSwipeGroups, type SwipeState } from '../../chat/chat-view-model';
 import { isMessageVisibleToOperator } from '../../chat/whisper-visibility';
@@ -135,6 +136,7 @@ interface CascadePrompt {
     SaveImageDialog,
     PhotoGalleryModal,
     GenerateImageDialog,
+    StandaloneGenerateImageDialog,
     EditEnclaveModal,
     LLMInspectorPanel,
   ],
@@ -262,7 +264,7 @@ interface CascadePrompt {
         (continue)="continueTurn()"
         (openTerminal)="onOpenTerminal()"
         (openDocument)="showDocumentPicker.set(true)"
-        (openGenerate)="showGenerate.set(true)"
+        (openGenerate)="showStandaloneGenerate.set(true)"
         (customToolRan)="onCustomToolRan()"
       />
     </ng-template>
@@ -315,6 +317,15 @@ interface CascadePrompt {
         [isSwipeGroup]="c.isSwipeGroup"
         (confirm)="onCascadeConfirm($event)"
         (cancel)="cascade.set(null)"
+      />
+    }
+
+    @if (showStandaloneGenerate() && chatId(); as id) {
+      <qt-standalone-generate-image-dialog
+        [chatId]="id"
+        [participants]="chat()!.participants"
+        (generated)="onImagesGenerated($event)"
+        (close)="showStandaloneGenerate.set(false)"
       />
     }
 
@@ -801,7 +812,30 @@ export class SalonConversation {
   // --- the Edit-Enclave modal (v4 SalonView, autonomous rooms only) ---
   protected readonly showEditEnclave = signal(false);
 
-  // --- the generate-image dialog (v4 SalonView GenerateImageDialog) ---
+  /**
+   * The STANDALONE generate-image dialog (v4 `StandaloneGenerateImageDialog`).
+   * The composer's camera gutter button opens this one — in v4 that button is
+   * the single opener in the whole app (`ComposerGutterTools:16,:52` ←
+   * `ChatComposer:75,:129,:349` ← `SalonView:1530` ←
+   * `useModalState:39,:79`).
+   */
+  protected readonly showStandaloneGenerate = signal(false);
+
+  /**
+   * The chat-profile-fixed generate-image dialog (v4 `GenerateImageDialog`).
+   *
+   * **Nothing sets this true, and that is faithful.** v4 mounts this dialog in
+   * `ChatModals.tsx:209` and exports `openGenerateImage` from `useModalState`
+   * (`:63`), but no v4 component ever calls it — the dialog is unreachable in
+   * v4 too. v5 previously pointed the composer's camera button here; P4.9b
+   * re-pointed that button at the standalone dialog to match v4's real opener
+   * chain, which loses nothing, since the standalone dialog is a strict
+   * superset (explicit profile picker rather than the chat's fixed profile,
+   * participant quick-inserts, and 1–4 images rather than a hardcoded 1).
+   *
+   * Kept mounted rather than deleted, per the standing rule to port v4's
+   * vestigial code faithfully and sweep it deliberately after the port.
+   */
   protected readonly showGenerate = signal(false);
 
   /** The chat's image profile — the generate target (first participant with one). */

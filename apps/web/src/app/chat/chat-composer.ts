@@ -40,8 +40,11 @@ export interface ComposerSend {
  * The **attach** gutter tool (v4 `useFileAttachments` + the composer chips): a
  * hidden file input + a paste-image handler upload to the chat-files multipart
  * leg, showing attached-file chips and the duplicate-conflict resolver; the file
- * ids ride the send. The announcement/mail/RNG gutter tools + drag-and-drop
- * remain locked deferrals.
+ * ids ride the send. The **Generate Image** gutter tool (v4
+ * `ComposerGutterTools:102-112`) raises `openGenerate`, which the Salon answers
+ * with the standalone generate dialog — v4's only opener for it. The
+ * announcement/mail/RNG gutter tools + drag-and-drop remain locked deferrals
+ * (`p4.9e2`).
  */
 @Component({
   selector: 'qt-chat-composer',
@@ -140,14 +143,17 @@ export interface ComposerSend {
             (ran)="customToolRan.emit()"
           />
 
+          <!-- v4's single Generate Image gutter button (ComposerGutterTools
+               :102-112), down to its title, aria-label and camera glyph. It is
+               v4's ONLY opener for the standalone generate dialog. -->
           <button
             type="button"
             class="qt-chat-toolbar-button"
-            title="Generate an image"
-            aria-label="Generate an image"
+            title="Generate image"
+            aria-label="Generate image"
             (click)="openGenerate.emit()"
           >
-            <qt-icon name="sparkles" class="w-5 h-5" />
+            <qt-icon name="camera" class="w-5 h-5" />
           </button>
 
           @if (!documentActive()) {
