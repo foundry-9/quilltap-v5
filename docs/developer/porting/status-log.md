@@ -21507,3 +21507,62 @@ template element. The first suite run failed exactly there (80 passed / 1
 failed); with the anchor dropped the beat is green.
 
 **Versions:** SPA 0.5.171.
+
+### P4.9a lane close — tier 1 COMPLETE, tier 2 DEFERRED (loud, named)
+
+**Tier 1 landed whole** (units 1–5): the `user_gallery_service` port, the four
+§3 verbs + the REST edges, the committed `photos-{main,mount}.db` family and its
+34-case differential, the `/photos` screen + §1 route block, and the live
+three-beat Playwright walk.
+
+**Tier 2 is NOT started and is deferred as a unit** — `imageInfoGet` plus the
+deep gallery modal family. Deferring it whole rather than half-landing it is
+deliberate: the verb has no consumer without the modals, and a shipped-but-unused
+wire verb is the kind of thing that later reads as "already done".
+
+What the follow-up owes, precisely:
+
+1. **`imageInfoGet`** — v4 `GET /api/v1/images/[id]`, the `characterGalleryLinks`
+   read both deep modals open with. It rides the existing photos corpus; add its
+   cases to `photos-routes.test.ts` + `photos_routes_equivalence` (both already
+   have the shape for it — a new case name and a new `check` line each).
+2. **`image-detail/ImageDetailModal`** (v4 145 lines) + `ImageActions` /
+   `ImageMetadata` / `DeletedImagePlaceholder` + the `useImageNavigation`
+   keyboard nav, and **`ChatGalleryImageViewModal`** (v4
+   `components/chat/`). Every WRITE they need already exists in v5:
+   `characterPhotoSaveById`, `characterPhotoRemove`, `CharacterAvatar`, and this
+   lane's `photoGallerySave`. The only missing read is item 1.
+3. **The wiring**: `images/photo-gallery-modal.ts` routes `kind:'chat'` items to
+   `ChatGalleryImageViewModal` and image-mode items to `ImageDetailModal`
+   (v4 `PhotoGalleryModal.tsx:339`/`:354`); prev/next is index math (`:188-193`).
+   `screens/characters/view/tabs/gallery-tab.ts` gets the same hand-off.
+   Component specs pin the toggle-state derivation and the nav wrap-around.
+
+**Tier-3 deferrals, as the order predicted:**
+- **Tag editing** — v4 itself has NONE anywhere in this family. Recorded, not
+  invented.
+- **`useSubsystemBackgroundStyle('lantern')`** — v5 has no subsystem-background
+  machinery at all (grep-verified). Named in `photos-page.ts`'s docstring.
+- **The workspace-tab mount** (`redirectToWorkspaceTab('photos')`) — `p4.9j`'s.
+
+**Riders banked (not refusals — DRY debt):**
+- `quilltap-web/src/photos_routes.rs` carries a local JS `Number()` port that
+  duplicates the private twin in `quilltap-core::tools::text_block_parser`.
+  Lifting one into `jsnum` was outside this lane's ownership.
+
+**Still owed at unification** (the order's §2a): the shell's photos nav item
+flips from `route: null` to `route: '/photos'`, and `photos-flow.spec.ts`'s
+`gotoPhotos` gains its nav-click step (marked ACTIVATE-AT-UNIFY in the file).
+The §3 verbs fold from `photos.api.ts`'s local types into `CoreRequest`, and the
+two casts there come out.
+
+**Lane gate:** `cargo fmt --check` clean; `cargo clippy --workspace
+--all-targets` clean on BOTH feature sets; `cargo test --workspace
+--no-fail-fast` 352 binaries / 0 failed, with `photos_routes_equivalence` and
+`photos_web_routes` running by name (no SKIP); `ng test` 152 files / 1,718;
+`ng build` clean; full Playwright **81/81, zero skips**, all three photos beats
+live.
+
+**Versions at lane close:** quilltap-core 0.0.274, quilltap-web 0.0.30,
+SPA 0.5.171. (quilltap-harness untouched — the oracle case lives under
+`harness/oracle/`, not in the crate.)

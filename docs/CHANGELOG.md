@@ -2,6 +2,14 @@
 
 ## Recent Changes
 
+P4.9a lane close: tier 1 of the My Photos vertical is complete (the service
+port, the four dispatch verbs, the REST edges, the committed fixture family and
+its 34-case differential, the /photos screen, and the live walk). Tier 2 —
+imageInfoGet plus the deep gallery modal family — is deferred as a unit rather
+than half-landed, because the verb has no consumer without the modals and a
+shipped-but-unused wire verb reads later as work already done; the status log
+enumerates exactly what the follow-up owes. Docs only; no version bumps.
+
 P4.9a unit 5: a live Playwright walk of the My Photos vertical — the gallery
 renders over the real photoGalleryList verb, a card opens the detail modal with
 its prompt excerpt, linker list, read-only tags and identity block (Escape
