@@ -20086,3 +20086,58 @@ falling back to the library).
 Gate: ng test 139 files / 1521 (+33), ng build clean.
 
 **Versions:** SPA 0.5.149.
+
+### Unit 8 — the four entry points + the static schema asset
+
+The accumulated named omissions from P4.6z / P4.6an / P4.6ba, all landed:
+
+1. **Left rail** — `shell.ts` gains `{id:'custom-tools', label:"Pascal's
+   Workbench", tooltip:'Build and prove custom tools', route:'/custom-tools',
+   icon:'wrench'}` in v4's own position (after Scenarios, before Chats).
+2. **Settings card** — the "Open Pascal's Workbench" button on the P4.6ba Custom
+   Tools card. It stays LIVE while the toggle is off, deliberately: authoring a
+   contrivance while the table isn't dealing them is legitimate (v4's
+   why-comment, carried). Ported as a BUTTON that navigates rather than a link,
+   which is v4's own choice and the right one — the control sits inside the
+   toggle's `<label>`, so anything clickable would otherwise flip the checkbox
+   on its way past; `preventDefault` is what stops that.
+3. **Scriptorium row action** — `file-detail-row.ts` gains the conditional
+   "Open in Pascal's Workbench" button behind v4's `isCustomToolDefinition`
+   predicate (`/^tools\/[^/]+\.tool\.json$/i` — ROOT-level only, case-insensitive),
+   emitting upward so `file-table.ts` owns the `?mount=&path=` push.
+   **The order's SVAR verification, performed and recorded: v4's own
+   `components/files/svar/` manager carries NO Workbench action** (grepped —
+   only the legacy `FileTable.tsx` has it), so `qt-file-manager` correctly gets
+   none either.
+4. **Composer popup** — all three: the per-tool wrench (only when the listing
+   carries a `mountPointId`, which is exactly why `d68638b4` added that field),
+   the broken-file badges turned into repair links (inert and untitled when
+   `mountPointId` is absent — nowhere to send you), and the "New contrivance…"
+   footer ("authoring lives there, not in this popup").
+
+Every one navigates with v4's OWN query-param fallback (`?new=1`, `?mount=`,
+`?path=`); the workspace-tab preference has no v5 counterpart (`p4.9j`).
+
+**The static asset** `public/schemas/qtap-custom-tool.schema.json` is copied
+byte-identical from v4 — SHA-256 verified equal
+(`b661b4609ec0fcf0d7e9f38b41b4259bd595bb2639130b303798a850e56aadc0`). This is
+what `DEFAULT_SCHEMA_VALUE` points at, so every definition the Builder writes
+resolves its `$schema` in an author's editor.
+
+**Two placeholder assertions retired.** Lane BA's specs pinned the ABSENCE of
+these entries while the Workbench was unported ("must not be here yet", "not to
+contain 'New contrivance'"). Both are replaced by assertions of the real
+behavior — the button being present AND enabled while the toggle is off, and the
+footer always rendering. A deferral assertion that outlives its deferral is a
+false negative waiting to happen; retiring them is part of landing the entry.
+
+**Two Angular template traps hit and worth a note.** (a) A backtick inside an
+HTML comment in a `template:` literal TERMINATES the template string — the error
+surfaces as nonsense TypeScript a dozen lines away, or as "module has no
+exported member". (b) A `\'` escape survives into the Angular expression parser
+as a bare apostrophe and breaks it; a string with an apostrophe has to live in
+TS and reach the template through a method.
+
+Gate: ng test 140 files / 1531 (+10 net), ng build clean.
+
+**Versions:** SPA 0.5.150.

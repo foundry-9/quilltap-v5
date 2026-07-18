@@ -8,6 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 
 import { CoreClient } from '../../core/core-client';
 import { formatBytes } from '../../ui/format-bytes';
@@ -219,6 +220,7 @@ const SORT_COLUMNS: [SortField, string][] = [
                             [canUpload]="canUpload()"
                             (delete)="handleBlobDelete(file)"
                             (saveDescription)="handleDescriptionSave(file, $event)"
+                            (openWorkbench)="openInWorkbench($event)"
                           />
                         }
                       </td>
@@ -234,6 +236,19 @@ const SORT_COLUMNS: [SortField, string][] = [
   `,
 })
 export class FileTable {
+  private readonly router = inject(Router);
+
+  /**
+   * Open a `Tools/*.tool.json` on Pascal's Workbench (v4 `FileTable:105-113`).
+   * v4 prefers a workspace tab and falls back to this query-param push; v5 has
+   * no workspace tabs (`p4.9j`), so the fallback is the only path.
+   */
+  protected openInWorkbench(relativePath: string): void {
+    void this.router.navigate(['/custom-tools'], {
+      queryParams: { mount: this.mountPointId(), path: relativePath },
+    });
+  }
+
   private readonly core = inject(CoreClient);
 
   readonly files = input.required<DocumentStoreFile[]>();

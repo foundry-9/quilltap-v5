@@ -55,6 +55,13 @@ const NAV_ITEMS: NavItem[] = [
     route: '/scenarios',
     icon: 'scenarios',
   },
+  {
+    id: 'custom-tools',
+    label: "Pascal's Workbench",
+    tooltip: 'Build and prove custom tools',
+    route: '/custom-tools',
+    icon: 'wrench',
+  },
   { id: 'chats', label: 'Chats', tooltip: 'View all chats', route: '/salon', icon: 'chat' },
 ];
 

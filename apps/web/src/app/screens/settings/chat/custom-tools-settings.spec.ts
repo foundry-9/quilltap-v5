@@ -24,13 +24,25 @@ describe('CustomToolsSettings (v4 CustomToolsSettings.tsx)', () => {
     expect(stub.updates).toEqual([{ customTools: false }]);
   });
 
-  it('surfaces a save failure and does not carry the copy for the deferred Workbench button', async () => {
+  it('surfaces a save failure', async () => {
     const stub = cardStub(settingsRow({ customTools: true }), true);
     const fixture = await mountCard(CustomToolsSettings, stub);
     await toggle(fixture, checkboxes(fixture)[0], false);
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('Failed to update custom tools setting');
-    // v4's "Open Pascal's Workbench" button rides P4.6bb — it must not be here yet.
-    expect(text).not.toContain('Workbench');
+  });
+
+  it('carries the Workbench button, live even while the toggle is OFF', async () => {
+    // Authoring while the table isn't dealing custom tools is legitimate — v4
+    // keeps the link visible either way. (This assertion replaces the P4.6ba
+    // placeholder that pinned the button's ABSENCE while the Workbench was
+    // unported.)
+    const off = await mountCard(CustomToolsSettings, cardStub(settingsRow({ customTools: false })));
+    const button = [...(off.nativeElement as HTMLElement).querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('Workbench'),
+    );
+    expect(button).toBeDefined();
+    expect(button?.disabled).toBe(false);
+    expect(button?.textContent).toContain("Open Pascal’s Workbench");
   });
 });

@@ -9,6 +9,7 @@ import {
   output,
   signal,
 } from '@angular/core';
+import { Router } from '@angular/router';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../core/core-client';
@@ -109,6 +110,30 @@ import { customToolsKeys, fetchCustomToolsRoster, runCustomTool } from './custom
                       }
                     </span>
                     <span class="flex items-center gap-1 mt-1 flex-shrink-0">
+                      @if (tool.mountPointId) {
+                        <span
+                          role="button"
+                          tabindex="0"
+                          class="qt-text-secondary hover:opacity-70"
+                          title="Open on Pascal's Workbench"
+                          (click)="
+                            $event.stopPropagation();
+                            openWorkbench({ mountPointId: tool.mountPointId, path: tool.definitionPath })
+                          "
+                          (keydown.enter)="
+                            $event.preventDefault();
+                            $event.stopPropagation();
+                            openWorkbench({ mountPointId: tool.mountPointId, path: tool.definitionPath })
+                          "
+                          (keydown.space)="
+                            $event.preventDefault();
+                            $event.stopPropagation();
+                            openWorkbench({ mountPointId: tool.mountPointId, path: tool.definitionPath })
+                          "
+                        >
+                          <qt-icon name="wrench" class="w-3 h-3" />
+                        </span>
+                      }
                       <qt-icon
                         name="chevron-down"
                         class="w-3 h-3 flex-shrink-0 transition-transform"
@@ -155,15 +180,25 @@ import { customToolsKeys, fetchCustomToolsRoster, runCustomTool } from './custom
               }
 
               <!-- Definition files that failed validation — named, never
-                   swallowed. The Workbench repair links are P4.6bb; here each
-                   badge is inert. -->
+                   swallowed. Each badge opens the Workbench's repair mode: the
+                   place you fix a broken file. A badge with no mountPointId has
+                   nowhere to send you, so it stays inert (v4 disables it). -->
               @if (errors().length > 0) {
                 <div class="border-t mt-1 pt-1">
                   @for (err of errors(); track err.mountName + ':' + err.definitionPath) {
-                    <div class="w-full px-3 py-2 text-xs qt-text-destructive text-left">
+                    <button
+                      type="button"
+                      class="w-full px-3 py-2 text-xs qt-text-destructive text-left hover:qt-bg-muted disabled:hover:bg-transparent"
+                      [disabled]="!err.mountPointId"
+                      [attr.title]="repairTitle(err)"
+                      (click)="
+                        err.mountPointId &&
+                          openWorkbench({ mountPointId: err.mountPointId, path: err.definitionPath })
+                      "
+                    >
                       <span class="block break-all">{{ err.definitionPath }}</span>
                       <span class="block">{{ err.reason }}</span>
-                    </div>
+                    </button>
                   }
                 </div>
               }
@@ -174,6 +209,19 @@ import { customToolsKeys, fetchCustomToolsRoster, runCustomTool } from './custom
                   Too many tools on the table; these were left off: {{ droppedForCap().join(', ') }}
                 </div>
               }
+
+              <!-- Pascal's Workbench — authoring lives there, not in this popup -->
+              <div class="border-t mt-1 pt-1">
+                <button
+                  type="button"
+                  class="w-full px-3 py-2 text-sm text-left hover:qt-bg-muted flex items-center gap-2"
+                  (click)="openWorkbench({ create: true })"
+                  role="menuitem"
+                >
+                  <qt-icon name="wrench" class="w-3.5 h-3.5" />
+                  New contrivance&hellip;
+                </button>
+              </div>
             </div>
           </div>
         }
@@ -184,6 +232,7 @@ import { customToolsKeys, fetchCustomToolsRoster, runCustomTool } from './custom
 export class CustomToolsPopup {
   private readonly core = inject(CoreClient);
   private readonly host = inject(ElementRef<HTMLElement>);
+  private readonly router = inject(Router);
 
   readonly chatId = input.required<string>();
   readonly disabled = input(false);
@@ -194,6 +243,40 @@ export class CustomToolsPopup {
   protected readonly expandedKey = signal<string | null>(null);
   protected readonly running = signal(false);
   protected readonly runError = signal<string | null>(null);
+
+  /**
+   * Leave for Pascal's Workbench (v4 `openWorkbench`, `:127-139`). The popup
+   * shuts first, then navigates with v4's OWN query strings — `?new=1` to
+   * create, `?mount=&path=` to open one definition. Authoring lives there, not
+   * in this popup.
+   *
+   * v4 prefers a workspace tab and falls back to this push; v5 has no workspace
+   * tabs (`p4.9j`), so the fallback is the only path.
+   */
+  /**
+   * A badge with no `mountPointId` has nowhere to send you, so it carries no
+   * title (and is disabled). The string lives here rather than inline because
+   * its apostrophe cannot survive an Angular template expression.
+   */
+  protected repairTitle(err: { mountPointId?: string }): string | null {
+    return err.mountPointId ? "Open in Pascal's Workbench to repair" : null;
+  }
+
+  protected openWorkbench(payload?: {
+    mountPointId?: string;
+    path?: string;
+    create?: boolean;
+  }): void {
+    this.isOpen.set(false);
+    this.expandedKey.set(null);
+    const queryParams: Record<string, string> = {};
+    if (payload?.create) queryParams['new'] = '1';
+    if (payload?.mountPointId) queryParams['mount'] = payload.mountPointId;
+    if (payload?.path) queryParams['path'] = payload.path;
+    void this.router.navigate(['/custom-tools'], {
+      queryParams: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+    });
+  }
 
   private readonly formValues = signal<Record<string, ParameterFormValues>>({});
   private readonly privateByKey = signal<Record<string, boolean>>({});

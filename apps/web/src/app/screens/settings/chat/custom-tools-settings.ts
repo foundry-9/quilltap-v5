@@ -1,5 +1,7 @@
-import { ChangeDetectionStrategy, Component, computed } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { Router } from '@angular/router';
 
+import { Icon } from '../../../ui/icon';
 import { ErrorAlert } from '../../../ui/error-alert';
 import { ChatSettingsCard } from './chat-settings.api';
 
@@ -9,13 +11,14 @@ import { ChatSettingsCard } from './chat-settings.api';
  * models (and posts the composer button). Writes the `customTools` scalar; v4's
  * default when unset is **true** (`DEFAULT_CUSTOM_TOOLS`).
  *
- * v4's "Open Pascal's Workbench" button is OMITTED — the Workbench is P4.6bb
- * (next round). The toggle + its copy carry over verbatim.
+ * The "Open Pascal's Workbench" button lands with P4.6bb. It stays live even
+ * while the toggle is OFF, and deliberately so: authoring a contrivance while
+ * the table isn't dealing them is perfectly legitimate (v4's own why-comment).
  */
 @Component({
   selector: 'qt-custom-tools-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ErrorAlert],
+  imports: [ErrorAlert, Icon],
   template: `
     @if (loading()) {
       <p class="qt-text-small qt-text-muted">Loading custom-tool settings…</p>
@@ -43,6 +46,20 @@ import { ChatSettingsCard } from './chat-settings.api';
               retires, and your contraptions wait &mdash; undisturbed and entirely intact &mdash;
               until you see fit to invite them back.
             </div>
+            <!--
+              A BUTTON that navigates, not a link — v4's own choice, and the
+              right one here: this control sits INSIDE the toggle's <label>, so
+              anything clickable would otherwise flip the checkbox on its way
+              past. preventDefault is what stops that (v4 does the same).
+            -->
+            <button
+              type="button"
+              class="qt-button qt-button-secondary qt-button-sm mt-2"
+              (click)="openWorkbench($event)"
+            >
+              <qt-icon name="wrench" class="w-3.5 h-3.5" />
+              Open Pascal&rsquo;s Workbench
+            </button>
           </div>
         </label>
       </div>
@@ -50,6 +67,17 @@ import { ChatSettingsCard } from './chat-settings.api';
   `,
 })
 export class CustomToolsSettings extends ChatSettingsCard {
+  private readonly router = inject(Router);
+
+  /**
+   * Authoring while the toggle is off is legitimate — the link stays live
+   * either way (v4's why-comment, carried).
+   */
+  protected openWorkbench(event: Event): void {
+    event.preventDefault();
+    void this.router.navigate(['/custom-tools']);
+  }
+
   /** v4 `settings.customTools ?? DEFAULT_CUSTOM_TOOLS` (true). */
   protected readonly enabled = computed(
     () => (this.settings()?.['customTools'] as boolean | undefined) ?? true,

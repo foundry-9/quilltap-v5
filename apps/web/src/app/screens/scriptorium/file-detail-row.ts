@@ -20,6 +20,19 @@ export function isBlobBacked(fileType: string): boolean {
   imports: [FormsModule],
   template: `
     <div class="flex flex-wrap gap-4 text-xs qt-text-secondary">
+      <!--
+        Root-level Tools/*.tool.json rows get an "open in Pascal's Workbench"
+        action (v4 FileTable.tsx:477-481). Only the LEGACY file table carries
+        it — verified at P4.6bb that v4's SVAR manager has none, so
+        qt-file-manager gets none either.
+      -->
+      @if (isCustomToolDefinition()) {
+        <div class="w-full">
+          <button type="button" (click)="openInWorkbench()" class="qt-button-secondary text-xs">
+            Open in Pascal&apos;s Workbench
+          </button>
+        </div>
+      }
       @if (isBlobBackedFile() && blob(); as b) {
         <div class="flex items-start gap-3 min-w-[16rem]">
           @if (isImage() && blobUrl()) {
@@ -96,8 +109,19 @@ export class FileDetailRow implements OnInit {
 
   readonly delete = output<void>();
   readonly saveDescription = output<string>();
+  /** Open this definition on Pascal's Workbench (the table owns the route). */
+  readonly openWorkbench = output<string>();
 
   protected readonly description = signal('');
+
+  /** v4 `isCustomToolDefinition` — ROOT-level `Tools/*.tool.json`, case-insensitive. */
+  protected readonly isCustomToolDefinition = computed(() =>
+    /^tools\/[^/]+\.tool\.json$/i.test(this.file().relativePath),
+  );
+
+  protected openInWorkbench(): void {
+    this.openWorkbench.emit(this.file().relativePath);
+  }
 
   protected readonly isBlobBackedFile = computed(() => isBlobBacked(this.file().fileType));
   protected readonly isImage = computed(() => this.blob()?.storedMimeType.startsWith('image/') ?? false);

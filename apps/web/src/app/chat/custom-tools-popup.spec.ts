@@ -95,11 +95,64 @@ describe('CustomToolsPopup (v4 CustomToolsDropdown)', () => {
     );
     expect(button(fixture)).not.toBeNull();
     await open(fixture);
-    // The badge renders the loader's verbatim reason; the Workbench repair link is P4.6bb.
+    // The badge renders the loader's verbatim reason.
     const text = (fixture.nativeElement.textContent ?? '').replace(/\s+/g, ' ');
     expect(text).toContain('Tools/broken.tool.json');
     expect(text).toContain('bad outcome table');
-    expect(text).not.toContain('New contrivance');
+  });
+
+  // --- P4.6bb: the three Workbench entry points (v4 CustomToolsDropdown) -----
+
+  it('always offers "New contrivance…" — authoring lives on the Workbench', async () => {
+    const fixture = await mount(stub(roster()));
+    await open(fixture);
+    const text = (fixture.nativeElement.textContent ?? '').replace(/\s+/g, ' ');
+    expect(text).toContain('New contrivance');
+  });
+
+  it('a broken badge WITHOUT a mountPointId stays inert — nowhere to send you', async () => {
+    const fixture = await mount(
+      stub({
+        tools: [],
+        errors: [
+          {
+            definitionPath: 'Tools/broken.tool.json',
+            mountName: 'Toolbox',
+            tier: 'global',
+            reason: 'bad outcome table',
+          },
+        ],
+      }),
+    );
+    await open(fixture);
+    const badge = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.includes('Tools/broken.tool.json'),
+    ) as HTMLButtonElement | undefined;
+    expect(badge?.disabled).toBe(true);
+    expect(badge?.getAttribute('title')).toBeNull();
+  });
+
+  it('a broken badge WITH a mountPointId opens repair mode', async () => {
+    const fixture = await mount(
+      stub({
+        tools: [],
+        errors: [
+          {
+            definitionPath: 'Tools/broken.tool.json',
+            mountPointId: 'm1',
+            mountName: 'Toolbox',
+            tier: 'global',
+            reason: 'bad outcome table',
+          },
+        ],
+      }),
+    );
+    await open(fixture);
+    const badge = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.includes('Tools/broken.tool.json'),
+    ) as HTMLButtonElement | undefined;
+    expect(badge?.disabled).toBe(false);
+    expect(badge?.getAttribute('title')).toBe("Open in Pascal's Workbench to repair");
   });
 
   it('re-resolves the roster fresh on every open (v4 enabled: isOpen)', async () => {

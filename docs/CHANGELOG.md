@@ -2,6 +2,16 @@
 
 ## Recent Changes
 
+P4.6bb unit 8 (SPA): the four Workbench entry points and the schema asset. The
+left-rail item, the Settings-card "Open Pascal's Workbench" button (live even
+while the toggle is off — authoring while the table isn't dealing is
+legitimate), the Scriptorium row action on root-level Tools/*.tool.json, and the
+three composer-popup entries (per-tool wrench, broken-file repair badges, and
+"New contrivance…"). All navigate with v4's own query-param deep links.
+public/schemas/qtap-custom-tool.schema.json is copied byte-identical (SHA-256
+verified). Two P4.6ba placeholder assertions that pinned the ABSENCE of deferred
+entries are replaced with assertions of the real behavior. SPA 0.5.150.
+
 P4.6bb unit 6 (SPA): the editor, the destination picker, and the /custom-tools
 route. workbench-editor.ts ports v4's single-definition editor — load via
 mountFileRead, form/JSON dual mode with the 300ms-debounced JSON readout, repair
