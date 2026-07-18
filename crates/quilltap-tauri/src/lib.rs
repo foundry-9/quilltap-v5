@@ -63,6 +63,7 @@
 
 pub mod commands;
 pub mod events_pump;
+pub mod menu;
 pub mod protocol;
 pub mod terminal_ipc;
 
@@ -125,7 +126,7 @@ pub fn run() {
     let state = quilltap_web::web_state(startup, version, base_dir, None);
     let router = quilltap_web::build_router(Arc::clone(&state));
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .manage(Arc::clone(&state))
         .manage(events_pump::EventPump::default())
         .manage(terminal_ipc::TerminalAttachments::default())
@@ -135,7 +136,16 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 responder.respond(protocol::handle_qtap_request(&app, router, request).await);
             });
-        })
+        });
+    // The menu is macOS-only for now: macOS shows a menu regardless (the
+    // default), so adding Reload is purely additive — while on Windows/
+    // Linux an app menu is a visible menubar that the bare builder doesn't
+    // show, and those targets are unverified (the standing P4.7 deferral).
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .menu(menu::build_app_menu)
+        .on_menu_event(|app, event| menu::handle_menu_event(app, &event));
+    builder
         .invoke_handler(tauri::generate_handler![
             commands::dispatch,
             commands::health,

@@ -10,7 +10,7 @@
 
 [package]
 name = "quilltap-tauri"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2021"
 publish = false
 
@@ -31,6 +31,14 @@ axum = { version = "0.8" }
 tower = { version = "0.5", features = ["util"] }
 http = "1"
 http-body-util = "0.1"
+
+# The menu guard runs harness-free: muda (tauri's menu backend) refuses
+# menu construction off the platform main thread on macOS, and libtest
+# runs #[test] fns on worker threads — a harness-false main() IS the main
+# thread.
+[[test]]
+name = "menu_contract"
+harness = false
 
 [dev-dependencies]
 # The mock runtime for the IPC contract suite (tier 4 #2).

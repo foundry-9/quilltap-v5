@@ -2,6 +2,19 @@
 
 ## Recent Changes
 
+Dogfood finding #14 (the combined M5 + finding-#12 Tauri walk): Cmd+R did
+nothing under the desktop shell, so a page reload — and with it the
+deep-link reload check — was unreachable by keyboard. macOS routes key
+equivalents through the app menu; the shell set no menu and Tauri's
+default has no Reload item. The shell now installs its default menu plus
+View -> Reload (CmdOrCtrl+R) reloading the main webview in place (the qtap
+protocol's index fallback answers the current route, so deep links land
+back in the SPA). macOS-only for now: on Windows/Linux an app menu is a
+visible menubar the bare builder never showed, and those targets remain
+the standing unverified deferral. Guard: the harness-free menu_contract
+suite (muda requires the platform main thread) pins View -> Reload and the
+surviving default submenus. quilltap-tauri 0.0.4.
+
 Unify the unit-12 / P4.6bb Workbench round. P4.6ay closes (its last item,
 the /api/v1/custom-tools route surface, landed as lane AY) and P4.6bb
 closes (the whole Workbench SPA vertical, lane BB): Pascal's Workbench is
