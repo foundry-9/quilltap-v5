@@ -216,6 +216,52 @@ pub fn materialize_text_replacements_instance() -> tempfile::TempDir {
     base
 }
 
+/// The P4.9c profile fixture's primary user id (see `profile-web.json`). Its
+/// second user keeps its own id on purpose — that is the email-clash arm.
+#[allow(dead_code)]
+pub const PROFILE_FIXTURE_USER: &str = "9c000000-0000-4000-8000-000000000001";
+
+/// Materialize an instance dir from the committed P4.9c profile fixture (two
+/// users + three files rows covering the avatar category gate). The PRIMARY
+/// user's id is rewritten to the engine's `SINGLE_USER_ID`; the second user's
+/// is left alone so the uniqueness rejection still has a rival to collide with.
+#[allow(dead_code)]
+pub fn materialize_profile_instance() -> tempfile::TempDir {
+    let base = tempfile::tempdir().expect("tempdir");
+    let data = base.path().join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::copy(
+        fixtures_dir().join("profile-main.db"),
+        data.join("quilltap.db"),
+    )
+    .unwrap();
+    std::fs::copy(
+        fixtures_dir().join("profile-mount.db"),
+        data.join("quilltap-mount-index.db"),
+    )
+    .unwrap();
+    {
+        let w = Writer::open_writable(&data.join("quilltap-llm-logs.db"), TEST_PEPPER).unwrap();
+        w.connection().execute_batch(LLM_LOGS_DDL).unwrap();
+    }
+    {
+        let w = Writer::open_writable(&data.join("quilltap.db"), TEST_PEPPER).unwrap();
+        w.connection()
+            .execute(
+                "UPDATE users SET id = ?1 WHERE id = ?2",
+                rusqlite::params![SINGLE_USER_ID, PROFILE_FIXTURE_USER],
+            )
+            .unwrap();
+        w.connection()
+            .execute(
+                "UPDATE files SET userId = ?1 WHERE userId = ?2",
+                rusqlite::params![SINGLE_USER_ID, PROFILE_FIXTURE_USER],
+            )
+            .unwrap();
+    }
+    base
+}
+
 /// A bare instance (empty encrypted main DB) — the M0 pattern.
 #[allow(dead_code)]
 pub fn materialize_bare_instance() -> tempfile::TempDir {

@@ -30,6 +30,9 @@ pub mod health;
 pub mod llm_logs_routes;
 // === end P4.6ar ===
 pub mod multipart;
+// === P4.9c: the user-profile + data-dir REST edges (lane C, append-only) ===
+pub mod profile_routes;
+// === end P4.9c ===
 // === P4.6w: documents ===
 pub mod qtap_target_route;
 // === end P4.6w ===
@@ -204,6 +207,18 @@ pub fn build_router(state: SharedState) -> Router {
         // === P4.6au: the home dashboard ===
         .route("/api/v1/system/home", get(system_routes::system_home_get))
         // === end P4.6au ===
+        // === P4.9c: the user-profile + data-dir surface (lane C, append-only) ===
+        .route(
+            "/api/v1/user/profile",
+            get(profile_routes::user_profile_get)
+                .put(profile_routes::user_profile_put)
+                .patch(profile_routes::user_profile_patch),
+        )
+        .route(
+            "/api/v1/system/data-dir",
+            get(profile_routes::system_data_dir_get).post(profile_routes::system_data_dir_post),
+        )
+        // === end P4.9c ===
         .route("/setup", get(static_serve::setup))
         .fallback(get(static_serve::spa_fallback))
         .with_state(state)

@@ -1,7 +1,7 @@
 //! `GET /health` — v4 `app/api/health/route.ts` semantics, collapsed to the
 //! phases v5 has (no migrations / seeding / plugin phases):
 //!
-//! - **200** `{status:"healthy", timestamp, uptime, services:{json:{…}}}` —
+//! - **200** `{status:"healthy", version, timestamp, uptime, services:{json:{…}}}` —
 //!   the engine is ready (v4's JSON-store check maps to "the engine holds an
 //!   open `Db`"; the file-storage check has no failure mode here — the local
 //!   backend is a directory).
@@ -65,6 +65,14 @@ pub async fn health_parts(state: &SharedState) -> (StatusCode, Value) {
             StatusCode::OK,
             json!({
                 "status": "healthy",
+                // P4.9c, ADDITIVE and v5-only: v4's health body carries no
+                // version, but the engine has held `HealthDto.version` (the
+                // serving crate's `CARGO_PKG_VERSION`) since P4.0 and nothing
+                // could read it — no v5 code path could display its own
+                // version at all. The About screen is the first consumer; the
+                // Tauri `health` command already carries the same DTO, so both
+                // transports agree.
+                "version": h.version,
                 "timestamp": timestamp,
                 "uptime": uptime,
                 "services": {
@@ -77,6 +85,10 @@ pub async fn health_parts(state: &SharedState) -> (StatusCode, Value) {
             StatusCode::LOCKED,
             json!({
                 "status": "locked",
+                // Carried on the locked arm too: the version is a property of
+                // the SERVER, not of the vault's state, and a gate screen
+                // reporting a version is useful when diagnosing a bad build.
+                "version": h.version,
                 "dbKeyState": h.pepper_state,
                 "timestamp": timestamp,
                 "uptime": uptime,

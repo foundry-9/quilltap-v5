@@ -20609,3 +20609,48 @@ Regen: build the fixture with `QT_FIXTURE_PROFILE_{MAIN,MOUNT}` →
 `build-profile-fixture.ts`; oracle via the /tmp jest mirror (`--roots
 "$TMPO/cases"` only) → `QT_ORACLE_OUT=/tmp/oracle-profile.ndjson`; run with
 `QT_ORACLE_PROFILE`.
+
+### Unit 3 — the REST edges + the health `version` carry
+
+`quilltap-web/src/profile_routes.rs` (new): `GET|PUT|PATCH /api/v1/user/profile`
+and `GET|POST /api/v1/system/data-dir`, each unwrapping the dispatch envelope to
+v4's RAW body.
+
+**The PUT edge decodes THROUGH the `Request` type** — it filters the body to the
+three known keys, stamps `"type": "userProfileUpdate"`, and runs
+`serde_json::from_value::<CoreRequest>`. That way the absent / explicit-null /
+value tri-state is resolved by exactly ONE piece of code (the `double_option`
+fields) instead of being re-implemented at the edge, where collapsing null into
+absent would silently turn v4's 400 into a no-op. The web test asserts that arm
+specifically.
+
+**The action multiplexing is the edge's own** (the dispatch verbs have no action
+param): the PATCH gate reproduces v4's `route.ts:234-236` message verbatim,
+including the literal `null` an ABSENT action interpolates to; and
+`?action=theme-preference` on GET/PUT answers the unknown-action shape rather
+than falling through to the default arm, because that preference already has an
+owner in v5 (`theme.service`).
+
+**§3 health `version`** — `health.rs` gains `version` on the healthy AND locked
+arms from the engine's `HealthDto.version`. Additive and v5-only (v4's health
+body has no version field). Until now NO v5 code path could read its own
+version at all.
+
+**Finding worth carrying into the SPA half:** the served version is whatever the
+COMPOSING binary put in `HostConfig.version` — the real `quilltap-web` binary
+overrides it with its own `CARGO_PKG_VERSION` (`main.rs:78`), the Tauri shell
+with its own, and `HostConfig::new` defaults to quilltap-host's. (The web test
+initially asserted quilltap-web's number and got quilltap-host's, which is how
+this surfaced.) That settles the order's open design question: the About screen
+shows **the version of the build that is serving you**, which is meaningful in
+its own right — v5 has no product version to show, and the SPA's own
+`package.json` number would be a second, differently-scoped number for the
+reader to reconcile. The screen labels it accordingly.
+
+**Test** `profile_web_routes` (new, quilltap-web): the plumbing the differential
+cannot see — envelope unwrapping, the two action-gate messages, the explicit-null
+400 surviving the edge, the stored pointer shape, the data-dir payload reporting
+the base dir actually in use, the `?action=open` refusal, and the health version.
+It rides a new `common::materialize_profile_instance` (additive to
+`tests/common/mod.rs`, which is outside the order's enumerated Ownership — flagged
+for the unifier; lane A does not touch it).
