@@ -19561,8 +19561,6 @@ The pure compute this part lands is the differentiable foundation those consume
 
 **Versions:** core 0.0.267, harness 0.0.235.
 
----
-
 ## P4.6ay unit 12 (part 2a) — the Workbench library + destinations (`pascal/workbench.rs`)
 
 **Branch** `claude/pascal-custom-tools-porting-7a5492`, off main `ffc225cc`.
@@ -19745,3 +19743,48 @@ regenerated fresh at `d68638b4`.
 also P4.6bb's server dependency — is landed. The four verbs are server-only
 until lane BB's Workbench SPA unifies over them; the §W wire diff runs at
 unification against BB's `core-contract.ts`.
+
+---
+
+## P4.6bb — Pascal's Workbench SPA (lane BB of the unit-12 ∥ P4.6bb round)
+
+Branch `claude/pascal-workbench-spa-porting-12c55b`. v4 baseline `d68638b4`,
+re-verified unmoved and clean at lane start (`git log d68638b4..HEAD` empty).
+Lane BB owns `apps/web/` exclusively.
+
+### Unit 1 — the §W1 + §W2 wire mirror
+
+`core-contract.ts` gains the round's shared contract, name-for-name:
+
+- **§W1, the four verbs:** `CustomToolsLibraryRequest`,
+  `CustomToolsDestinationsRequest`, `CustomToolPreviewRequest`,
+  `CustomToolAuditRequest`, all folded into `CoreRequest`. The four bodies ride
+  the server envelope and are read defensively via `CoreClient.dispatchData`
+  (the P4.6x/P4.6au precedent), so no `CoreResponse` variants are added.
+- **§W1, the DTOs**, each transcribed from the SAME v4 lines lane AY transcribes
+  from: `MountAttachment` / `CustomToolLibraryEntry` / `CustomToolLibraryError` /
+  `CustomToolLibraryResponse` / `DestinationStore` / `CustomToolDestinations`
+  (v4 `lib/pascal/workbench.ts:22-77`); `CustomToolRunResult` incl.
+  `metadataTested?` (v4 `lib/pascal/custom-tools.ts:431-451`);
+  `CustomToolAuditResult` (`:962-968`); `ResolvedParams`, `MetadataTested`; and
+  `CustomToolMetadataInput`, the `{characterId}`-first union
+  (v4 `custom-tools/route.ts:61-64`), with the why-comment carried.
+- **§W2, the mirror additions:** `MountFileReadRequest` /
+  `MountFileWriteRequest` (+ their result shapes) taken from the EXISTING Rust
+  union (`api/types.rs:1242` / `:1361`) — mirror additions of verbs already on
+  main, not contract changes. No field mismatch surfaced, so the §W2
+  stop-and-report arm did not fire.
+
+**One rename, recorded because it is a name the unifier's wire diff will read.**
+The contract already carried a `CustomToolRunResult` — but that was lane BA's
+name for the chat popup's FIVE-field `?action=run` summary, which v4 builds
+inline at `chats/[id]/custom-tools/route.ts:441-447` and gives no name at all.
+v4's real `CustomToolRunResult` is the full thirteen-field run record at
+`lib/pascal/custom-tools.ts:431-451`, and that is exactly what
+`customToolPreview` returns, so §W1's name-for-name rule needs the plain name.
+The popup summary is therefore renamed `CustomToolManualRunSummary` (its only
+referent was `CustomToolRunData.result`, entirely inside `apps/web/` — zero
+ripple outside the lane). **Lane AY is unaffected:** the Rust name it mirrors is
+the v4 one.
+
+**Versions:** SPA 0.5.143.

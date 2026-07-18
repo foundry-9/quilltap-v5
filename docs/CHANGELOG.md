@@ -2,6 +2,17 @@
 
 ## Recent Changes
 
+P4.6bb unit 1 (SPA): the Workbench wire mirror. core-contract.ts gains the
+four §W1 dispatch verbs (customToolsLibrary, customToolsDestinations,
+customToolPreview, customToolAudit) and every DTO transcribed from the same v4
+lines lane AY transcribes from (MountAttachment, CustomToolLibraryEntry/Error/
+Response, DestinationStore, CustomToolDestinations, CustomToolRunResult,
+CustomToolAuditResult, the characterId-first metadata union), plus the §W2
+mirror additions mountFileRead/mountFileWrite taken name-for-name from the
+existing Rust union. The popup's five-field run summary is renamed
+CustomToolManualRunSummary so the authentic v4 CustomToolRunResult name is free
+for the preview body. SPA 0.5.143.
+
 P4.6ay unit 12 (part 2b): the /api/v1/custom-tools Workbench route, closing
 P4.6ay. Four dispatch verbs — customToolsLibrary, customToolsDestinations,
 customToolPreview, customToolAudit — with their engine arms and the REST

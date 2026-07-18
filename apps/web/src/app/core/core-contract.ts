@@ -203,8 +203,19 @@ export interface CustomToolsRosterData {
   droppedForCap?: string[];
 }
 
-/** The `?action=run` result summary (the toast's, not the transcript's). */
-export interface CustomToolRunResult {
+/**
+ * The `?action=run` result summary (the toast's, not the transcript's) — v4
+ * builds it inline at `chats/[id]/custom-tools/route.ts:441-447` and gives it no
+ * name of its own.
+ *
+ * RENAMED by P4.6bb (was `CustomToolRunResult`): v4 DOES have a named
+ * `CustomToolRunResult` — the FULL run record at
+ * `lib/pascal/custom-tools.ts:431-451` — and the Workbench's `customToolPreview`
+ * returns exactly that, so the §W1 wire mirror needs the authentic name. This
+ * five-field summary is the route's own projection of it, so it takes the
+ * qualified name and the real v4 type keeps the plain one.
+ */
+export interface CustomToolManualRunSummary {
   tool: string;
   value: number;
   state: 'success' | 'partial' | 'failure' | 'info';
@@ -215,7 +226,7 @@ export interface CustomToolRunResult {
 /** The `?action=run` body: the posted Pascal message(s) + the run summary. */
 export interface CustomToolRunData {
   messages: MessageDto[];
-  result: CustomToolRunResult;
+  result: CustomToolManualRunSummary;
 }
 
 /**
@@ -3594,7 +3605,16 @@ export type MemoryRequest =
   | SystemImageAestheticsGetRequest
   | SystemImageAestheticsSetRequest
   // P4.6au/P4.6av (folded at unification; the block at the end of this file).
-  | SystemHomeRequest;
+  | SystemHomeRequest
+  // P4.6bb — Pascal's Workbench. §W1: the four verbs lane AY implements.
+  // §W2: `mountFileRead`/`mountFileWrite` are MIRROR additions of verbs already
+  // on main (the editor's file I/O), not new contract.
+  | CustomToolsLibraryRequest
+  | CustomToolsDestinationsRequest
+  | CustomToolPreviewRequest
+  | CustomToolAuditRequest
+  | MountFileReadRequest
+  | MountFileWriteRequest;
 // P4.6u (lane C) — the Salon terminal-pane block.
 // Appended by lane C; single-author (lane B, the file owner, must not edit this
 // block). The terminal WebSocket + REST protocol types live in
@@ -4155,4 +4175,247 @@ export interface SystemImageAestheticsSetRequest {
  */
 export interface SystemHomeRequest {
   type: 'systemHome';
+}
+
+// ===========================================================================
+// P4.6bb — Pascal's Workbench (the `/custom-tools` vertical).
+//
+// §W1 of the unit-12 ∥ P4.6bb round contract: the four Workbench dispatch verbs
+// and every DTO, mirrored NAME-FOR-NAME from lane AY's Rust unions (the
+// `p4_6ar_wire_contract` precedent — the wire diff runs at unification). Each
+// DTO is transcribed field-for-field from the SAME v4 lines lane AY transcribed
+// from; neither lane invents fields.
+//
+// §W2: the editor's file I/O rides verbs ALREADY on main — `mountFileRead` and
+// `mountFileWrite` are MIRROR ADDITIONS here (from `api/types.rs:1242`/`:1361`),
+// not contract changes; `mountFileDelete`/`mountFileUpdate` are mirrored above.
+//
+// The four response bodies ride the server's envelope and are read DEFENSIVELY
+// via `CoreClient.dispatchData` (the P4.6x/P4.6au precedent), so no
+// `CoreResponse` variants are added.
+// ===========================================================================
+
+/**
+ * What a store is attached to. One store can carry several of these
+ * (v4 `lib/pascal/workbench.ts:22-28`).
+ */
+export interface MountAttachment {
+  kind: 'general' | 'project' | 'group' | 'character' | 'unattached';
+  /** The attached entity's id — absent for `general` and `unattached`. */
+  id?: string;
+  /** Human-readable badge text: the project/group/character name, etc. */
+  label: string;
+}
+
+/** A valid definition, as the library lists it (v4 `workbench.ts:31-44`). */
+export interface CustomToolLibraryEntry {
+  valid: true;
+  name: string;
+  title: string;
+  description: string;
+  disabled: boolean;
+  defaultVisibility: 'public' | 'whisper';
+  rollForm: 'range' | 'dice';
+  parameterCount: number;
+  outcomeCount: number;
+  mountPointId: string;
+  mountName: string;
+  definitionPath: string;
+  attachments: MountAttachment[];
+}
+
+/**
+ * A broken definition file, listed rather than hidden (v4 `workbench.ts:47-54`).
+ * `reason` is the loader's verbatim sentence (`formatDefinitionIssues`) — the
+ * library renders it as-is and never re-derives it.
+ */
+export interface CustomToolLibraryError {
+  valid: false;
+  definitionPath: string;
+  mountPointId: string;
+  mountName: string;
+  reason: string;
+  attachments: MountAttachment[];
+}
+
+/** The library GET body (v4 `workbench.ts:56-59`). */
+export interface CustomToolLibraryResponse {
+  tools: CustomToolLibraryEntry[];
+  errors: CustomToolLibraryError[];
+}
+
+/** A save target, with the names already on that store's table (v4 `:62-67`). */
+export interface DestinationStore {
+  mountPointId: string;
+  mountName: string;
+  /** Names already defined in this store — a duplicate would be a load-time rejection. */
+  existingToolNames: string[];
+}
+
+/** The destination tree (v4 `workbench.ts:69-77`). */
+export interface CustomToolDestinations {
+  /** The General store, or null when unprovisioned. */
+  general: DestinationStore | null;
+  projects: Array<{ projectId: string; projectName: string; stores: DestinationStore[] }>;
+  groups: Array<{
+    groupId: string;
+    groupName: string;
+    stores: Array<DestinationStore & { official: boolean }>;
+  }>;
+  characters: Array<{ characterId: string; characterName: string } & DestinationStore>;
+  /** Enabled stores attached to nothing — inert until linked. */
+  other: DestinationStore[];
+}
+
+/** Resolved parameter values, post-default and post-clamp (v4 `custom-tools.ts:428`). */
+export type ResolvedParams = Record<string, number | string | boolean>;
+
+/**
+ * The metadata keys the winning outcome tested, and what they held when it was
+ * tested (v4 `custom-tools.ts:612`).
+ */
+export type MetadataTested = Record<string, number | string | boolean>;
+
+/**
+ * Everything a run produced (v4 `lib/pascal/custom-tools.ts:431-451`) — the
+ * proving bench's preview body. NOT the popup's five-field run summary, which is
+ * {@link CustomToolManualRunSummary}.
+ */
+export interface CustomToolRunResult {
+  tool: string;
+  params: ResolvedParams;
+  rollForm: 'range' | 'dice';
+  notation?: string;
+  raw: number;
+  diceRolls?: number[];
+  value: number;
+  state: 'success' | 'partial' | 'failure' | 'info';
+  outcomeIndex: number;
+  /** The rendered outcome message, templates substituted. */
+  message: string;
+  /** Dice breakdown, or '' for Form A. */
+  diceBreakdown: string;
+  visibility: 'public' | 'whisper';
+  /**
+   * The metadata keys the winning outcome tested, and what they held when it
+   * was tested. Absent when the winning row consulted no metadata.
+   */
+  metadataTested?: MetadataTested;
+}
+
+/**
+ * The Workbench audit: per-outcome hit counts over many simulated draws
+ * (v4 `lib/pascal/custom-tools.ts:962-968`). `runs` is server-fixed at
+ * `AUDIT_RUNS = 10_000` (v4 `custom-tools/route.ts:33`) — no `runs` field
+ * crosses the wire on the request.
+ */
+export interface CustomToolAuditResult {
+  runs: number;
+  outcomes: Array<{ index: number; hits: number; share: number }>;
+  valueMin: number;
+  valueMax: number;
+  valueMean: number;
+}
+
+/**
+ * The bench's fact sheet (v4 `custom-tools/route.ts:61-64`
+ * `MetadataInputSchema`): a hand-typed metadata object passes through VERBATIM;
+ * a `{ characterId }` object (exactly one key, a string) hydrates that
+ * character's real sheet server-side. The `{characterId}` branch is checked
+ * FIRST — it would also satisfy the catch-all record. The SPA sends either form
+ * and NEVER resolves the sheet itself.
+ */
+export type CustomToolMetadataInput = { characterId: string } | Record<string, unknown>;
+
+/** v4 `GET /api/v1/custom-tools` — the whole table, face up. */
+export interface CustomToolsLibraryRequest {
+  type: 'customToolsLibrary';
+}
+
+/** v4 `GET /api/v1/custom-tools?action=destinations` — the save-target tree. */
+export interface CustomToolsDestinationsRequest {
+  type: 'customToolsDestinations';
+}
+
+/**
+ * v4 `POST ?action=preview` — dry-run a definition through the one true
+ * execution core. Posts nothing, writes nothing. `definition` is the RAW
+ * document (v4 `z.unknown()`): the server validates it and returns the
+ * `formatDefinitionIssues` sentence on rejection.
+ */
+export interface CustomToolPreviewRequest {
+  type: 'customToolPreview';
+  definition: unknown;
+  params?: Record<string, unknown> | null;
+  private?: boolean;
+  metadata?: CustomToolMetadataInput | null;
+}
+
+/** v4 `POST ?action=audit` — deal ten thousand hands and report where they landed. */
+export interface CustomToolAuditRequest {
+  type: 'customToolAudit';
+  definition: unknown;
+  params?: Record<string, unknown> | null;
+  metadata?: CustomToolMetadataInput | null;
+}
+
+/**
+ * §W2 mirror — v4 `GET /api/v1/mount-points/[id]/files/[...path]` in its JSON
+ * envelope form (the `readMountFile` result). Mirrored from the Rust
+ * `Request::MountFileRead` (`api/types.rs:1242`); the Workbench editor loads a
+ * definition through this rather than the REST JSON leg (refusal-armed in v5).
+ */
+export interface MountFileReadRequest {
+  type: 'mountFileRead';
+  mountPointId: string;
+  path: string;
+  encoding?: string;
+  offset?: number;
+  limit?: number;
+}
+
+/** The `mountFileRead` success body (the v4 `readMountFile` result). */
+export interface MountFileReadResult {
+  mountPointId: string;
+  relativePath: string;
+  encoding: string;
+  content: string;
+  mtime: number;
+  sha256: string;
+  sizeBytes: number;
+  mimeType: string;
+  fileType: string;
+  totalLines?: number;
+  truncated?: boolean;
+}
+
+/**
+ * §W2 mirror — v4 item-route PUT (the `storeMountFile` ingest, overwrite
+ * semantics). Mirrored from the Rust `Request::MountFileWrite`
+ * (`api/types.rs:1361`). `expectedMtime` carries the editor's held mtime so a
+ * concurrent edit surfaces as a conflict rather than a silent clobber; `force`
+ * is the operator's decision to overwrite anyway.
+ */
+export interface MountFileWriteRequest {
+  type: 'mountFileWrite';
+  mountPointId: string;
+  path: string;
+  content: string;
+  encoding?: string;
+  expectedMtime?: number;
+  force?: boolean;
+  originalMimeType?: string;
+  originalFileName?: string;
+}
+
+/** The `mountFileWrite` success body (the v4 item-route PUT result). */
+export interface MountFileWriteResult {
+  mountPointId: string;
+  relativePath: string;
+  kind: string;
+  fileType: string;
+  sha256: string;
+  sizeBytes: number;
+  mimeType: string;
+  mtime: number;
 }
