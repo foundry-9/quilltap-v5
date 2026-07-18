@@ -2,6 +2,22 @@
 
 ## Recent Changes
 
+Plan the 616930db drift-catch-up + P4.9a-resume round: two new work
+orders (p4.d8-llm-consult-server, p4.6bc-workbench-llm-spa) plus a
+resume addendum on p4.9a-photos-view. The round adopts v4 616930db
+(4.8.0-dev.75, clean tree) as the oracle baseline. Drift classified:
+a2d9a3c8 (custom-tool LLM consult) + 616930db (contains/ncontains
+comparators) are RE-PORT work against the ported Pascal family, split
+server (Rust types/execution/consult seam/workbench/routes/pascalMeta +
+ten differentials) and SPA (schema twin, tool-draft, Workbench oracle
+surfaces, schema asset, Inspector consult type); 979aec66 (Pascal in
+Insert Announcement) is NO-PORT-NOW - the announcer surface is unported
+in v5, banked for that future slice. No D23 re-dump needed: the DDL
+change was a comment in the hand-maintained DDL.md only; generateDDL
+output is unchanged (a tier-2 zero-diff re-dump verifies). P4.9a
+resumes at unit 2 with the pinned-worktree requirement lifted. Docs
+only; no version bumps.
+
 The P4.9c + P4.9b + P4.9d unification (the M6 items 1-4 round, PARTIAL):
 About + Profile + the shell user menu, the standalone Generate Image
 screen, and the quick-hide system are on main. Unification wires: the
