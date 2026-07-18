@@ -2,6 +2,25 @@
 
 ## Recent Changes
 
+P4.9a unit 4: the My Photos screen at /photos (v4 app/photos/PhotosView.tsx) —
+header and counter, the search form, the responsive card grid with the
+"linked in N places" badge, infinite scroll, and the inline detail modal with
+its linker list (Vault for a character store, Album otherwise), read-only tags,
+sha256/linkId identity, and a confirm-gated link-only delete. Both of v4's
+staleness guards are carried and mutation-checked: the fetch-generation counter
+that stops a load-more outliving its query from appending onto a new search's
+results, and the linkId de-dupe that catches the same row arriving on two pages
+when a save shifts the ordering mid-scroll. Also syncs the SPA lockfile version,
+which had drifted nine bumps behind package.json.
+
+Three recorded divergences: no subsystem background (v4 wraps the page in
+useSubsystemBackgroundStyle('lantern'); v5 has no such machinery and this lane
+does not invent one), full-size images in the grid (a v4 performance quirk
+carried deliberately — there is no thumbnail route on this surface), and
+window.confirm for the delete gate (v5's established stand-in for v4's
+showConfirmation modal). Tags are read-only because v4 has no tag editing
+anywhere in this family. SPA 0.5.170.
+
 P4.9a unit 3: the photos REST edges (quilltap-web/src/photos_routes.rs) —
 GET|POST /api/v1/photos and GET|DELETE /api/v1/photos/{id}, each unwrapping the
 dispatch envelope to v4's raw body, with POST answering 201 as v4's `created`

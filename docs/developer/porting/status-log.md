@@ -21408,3 +21408,55 @@ edge can reach are pinned by `list_limit_nan` / `list_limit_fraction`; the
 consolidation is a rider for a future DRY pass.
 
 **Versions:** quilltap-core 0.0.274, quilltap-web 0.0.30.
+
+### P4.9a unit 4 — the `/photos` SPA screen + the §1 route block
+
+`apps/web/src/app/screens/photos/` (`photos.api.ts`, `photos-page.ts`,
+`photos.spec.ts`) + the §1 `photos` route block and the routes doc-comment
+line. The screen is v4's `PhotosView.tsx` transcribed: header/counter/back
+link, the search form, the responsive PhotoCard grid with the "🔗 N" badge, the
+IntersectionObserver infinite scroll (`rootMargin: '600px 0px'`, no
+virtualization — v4 has none here), and the inline detail modal (Escape,
+Original prompt, read-only tag badges, the linker list with Vault-vs-Album,
+sha256/linkId identity, the one destructive "Remove from this album").
+
+**The §3 verbs ride a LOCAL typed module plus a cast** (`photos.api.ts`), the
+established `home.api.ts` pattern; the unifier folds them into `CoreRequest`
+and drops the casts.
+
+**Both staleness guards ported and mutation-checked.** v4's
+`fetchGenerationRef` (`:77`,`:97`) discards a load-more that outlived its
+query — without it, the old query's page 2 appends onto the new query's
+results. And the defensive linkId de-dupe on append (`:125-131`) catches the
+same row arriving on two pages when a save shifts the ordering mid-scroll.
+Removing either one fails its spec (checked both ways); the generation spec
+was deliberately rewritten from a weak inequality into a scripted
+release-the-late-page scenario so it can actually bite.
+
+**A subtle transcription worth naming:** the caption fallbacks are `||`
+chains, not `??`. `generationPromptExcerpt` is `''` (never null) when there is
+no prompt, so a `??` port would render blank labels. Pinned by its own spec.
+
+**Recorded divergences** (all in the component docstring):
+- **No subsystem background.** v4 wraps the page in
+  `useSubsystemBackgroundStyle('lantern')`; v5 has no subsystem-background
+  machinery at all (grep-verified) and this lane does not invent one. **DEFERRED
+  LOUD** — it is a visual affordance, not behavior, and the omission is named
+  here and in the component.
+- **Full-size images in the grid.** v4's cards render the full `blobUrl` with
+  `loading="lazy"` and no thumbnail route. Carried deliberately rather than
+  "fixed": no thumbnail route exists on this surface, and minting one would be
+  a v5-only behavior.
+- **`window.confirm`** for the delete gate, v5's established stand-in for v4's
+  promise-based `showConfirmation` (13 existing call sites).
+- **Tags are READ-ONLY** — not an omission; v4 has no tag editing anywhere in
+  this family (tier-3 deferral, as the order predicted).
+
+**Also:** `apps/web/package-lock.json`'s version field had drifted nine bumps
+behind `package.json` (0.5.160 vs 0.5.169) on main; `npm install` in this
+worktree synced it, and the fix rides here. A fresh worktree needs its own
+`npm install` before `ng test` will run at all.
+
+Gate: ng test 152 files / 1,718 (the 12 new specs by name), ng build clean.
+
+**Versions:** SPA 0.5.170.

@@ -18,6 +18,8 @@ import { Routes } from '@angular/router';
  * `/about` is the static About screen and `/profile` the account screen, both
  * reached from the shell footer's user menu.
  * `/generate-image` is the standalone image-generation screen.
+ * `/photos` is the My Photos gallery — the deduped roll-up of every `photos/`
+ * folder across the instance.
  * Every other path redirects to the Salon.
  */
 export const routes: Routes = [
@@ -117,6 +119,12 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./screens/generate-image/generate-image-page').then((m) => m.GenerateImagePage),
   },
+  // === P4.9a: the My Photos vertical (lane A, append-only) ===
+  {
+    path: 'photos',
+    loadComponent: () => import('./screens/photos/photos-page').then((m) => m.PhotosPage),
+  },
+  // === end P4.9a ===
   {
     path: '',
     pathMatch: 'full',
