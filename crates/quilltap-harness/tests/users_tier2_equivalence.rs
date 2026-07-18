@@ -163,7 +163,11 @@ fn users_tier2_matches_oracle() {
                                 username: data.username.clone(),
                                 email: data.email.clone(),
                                 name: data.name.clone(),
-                                image: data.image.clone(),
+                                // `image` became the nullable setter in P4.9c
+                                // (`Option<Option<_>>`). This corpus only ever
+                                // SETS it to a value, so an absent field stays
+                                // absent and a present one wraps to Some(Some).
+                                image: data.image.clone().map(Some),
                                 email_verified: data.email_verified.clone(),
                                 password_hash: data.password_hash.clone(),
                                 updated_at: data.updated_at.clone(),

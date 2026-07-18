@@ -30,6 +30,10 @@ pub mod chat_media;
 // === end P4.6ab ===
 pub mod chat_send;
 pub mod custom_tools;
+// === P4.9c: the user-profile + data-dir surface (lane C, append-only) ===
+pub mod data_dir;
+pub mod user_profile;
+// === end P4.9c ===
 pub mod documents;
 pub mod engine;
 pub mod groups;

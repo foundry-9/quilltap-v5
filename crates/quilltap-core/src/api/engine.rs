@@ -2832,6 +2832,41 @@ impl CoreEngine {
                 Err(resp) => resp,
             },
             // === end P4.6ar ===
+            // === P4.9c: the user-profile + data-dir surface (lane C, append-only) ===
+            Request::UserProfileGet => match self.ready_db() {
+                Ok(db) => super::user_profile::user_profile_get(&db, SINGLE_USER_ID),
+                Err(resp) => resp,
+            },
+            Request::UserProfileUpdate { name, email, image } => match self.ready_db() {
+                Ok(db) => {
+                    super::user_profile::user_profile_update(
+                        &db,
+                        SINGLE_USER_ID,
+                        name,
+                        email,
+                        image,
+                        &crate::clock::now_iso(),
+                    )
+                    .await
+                }
+                Err(resp) => resp,
+            },
+            Request::UserProfileSetAvatar { image_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::user_profile::user_profile_set_avatar(
+                        &db,
+                        SINGLE_USER_ID,
+                        image_id,
+                        &crate::clock::now_iso(),
+                    )
+                    .await
+                }
+                Err(resp) => resp,
+            },
+            // The data dir is environment + config, never the vault — v4's route
+            // is a `createContextHandler` with no unlock requirement, so this
+            // arm deliberately does NOT go through `ready_db`.
+            Request::SystemDataDir => super::data_dir::system_data_dir(&self.inner.config.base_dir), // === end P4.9c ===
         }
     }
 

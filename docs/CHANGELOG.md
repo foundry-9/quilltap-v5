@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+P4.9c unit 2: the user-profile dispatch surface — userProfileGet /
+userProfileUpdate / userProfileSetAvatar / systemDataDir, porting the
+default (non-theme-preference) arms of v4's multiplexed
+/api/v1/user/profile route. The users repo gained the two scoped reads
+the surface needs (find_profile_by_id, find_id_by_email) and a nullable
+image setter for the avatar-clear path. New committed
+profile-{main,mount}.db fixture family and an 18-case tier-2
+differential driving v4's real route handlers, diffing the response body,
+the wire key order, and the persisted users row. Carries three v4
+behaviors verbatim: a profile READ omits a NULL column while an update
+that wrote NULL echoes it as null; an explicit null field is a 400
+Validation error (which is what v4's own profile form sends for a cleared
+box); and a missing user is a 500 on GET but a 404 on PATCH. The
+data-dir GET reports the engine's actual base dir when --data-dir
+disagrees with the environment-derived path. POST ?action=open is
+refusal-armed. core 0.0.271, harness 0.0.239.
+
 P4.9c unit 1: ported v4's lib/paths.ts data-directory family
 (getPlatform, getPlatformDefaultBaseDir, getBaseDataDirWithSource,
 getHostDataDir, the Docker/Lima probes, the Electron shell fields) into

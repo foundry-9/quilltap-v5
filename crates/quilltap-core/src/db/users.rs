@@ -30,10 +30,14 @@
 //! `conversation_annotations`/`image_profiles` use.
 //!
 //! Deferred (not in the corpus, mirroring the precedent repos): clearing a
-//! nullable column (`email`, `name`, `image`, `emailVerified`, `passwordHash`)
-//! back **to NULL** via `update` — the patch models a provided field as "set to
-//! this value", so a nullable setter (an `Option<Option<_>>` shape) lands when an
-//! op needs it. The corpus only sets nullable columns to non-null values.
+//! nullable column back **to NULL** via `update`. **P4.9c closed this for
+//! `image`** — the avatar-clear arm of v4's `PATCH ?action=set-avatar` writes a
+//! literal null, so `UserUpdate.image` is now the `Option<Option<_>>` nullable
+//! setter the paragraph anticipated. `email`, `name`, `emailVerified`, and
+//! `passwordHash` keep the single-`Option` shape until an op needs otherwise.
+//!
+//! P4.9c also added the two scoped reads the profile surface consumes:
+//! [`find_profile_by_id`] and [`find_id_by_email`].
 
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
@@ -67,16 +71,87 @@ pub struct CreateOptions {
 /// A user update patch. Mirrors v4 `update` over `_update`: provided fields
 /// overwrite, id and createdAt are preserved (v4 deletes them off the patch; we
 /// never touch them), `updatedAt` is set explicitly. Each `Some` field sets that
-/// column; clearing a nullable column to NULL is deferred (see header).
+/// column.
+///
+/// `image` is the ONE nullable setter (`Option<Option<String>>`) the header's
+/// deferral anticipated: v4's `PATCH ?action=set-avatar` writes
+/// `{ image: imageId ? '/api/v1/files/<id>' : null }`, so clearing an avatar is
+/// a genuine SET-TO-NULL, not an absent field. The other five nullables keep the
+/// single-`Option` "absent or set to this value" shape until an op needs more.
 #[derive(Default)]
 pub struct UserUpdate {
     pub username: Option<String>,
     pub email: Option<String>,
     pub name: Option<String>,
-    pub image: Option<String>,
+    /// Outer `None` — leave the column alone. `Some(None)` — SET NULL.
+    pub image: Option<Option<String>>,
     pub email_verified: Option<String>,
     pub password_hash: Option<String>,
     pub updated_at: String,
+}
+
+/// The profile projection v4's `GET /api/v1/user/profile` returns
+/// (`route.ts:92-102`) — the seven columns the response object names, in its
+/// field order. A SCOPED read, following [`find_name_by_id`]'s precedent rather
+/// than marshaling the whole row: `passwordHash` and `emailVerified` are not
+/// part of any profile response, and a struct that carries a password hash
+/// around is a liability the consumer never asked for.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UserProfileRow {
+    pub id: String,
+    pub email: Option<String>,
+    pub username: String,
+    pub name: Option<String>,
+    pub image: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// v4 `repos.users.findById(userId)`, projected to the profile columns.
+/// `None` = no row (v4's `findById` → `null`, which the route turns into its
+/// `serverError('User not found')`).
+pub fn find_profile_by_id(conn: &Connection, id: &str) -> Result<Option<UserProfileRow>, DbError> {
+    conn.query_row(
+        "SELECT id, email, username, name, image, createdAt, updatedAt \
+         FROM users WHERE id = ?1",
+        params![id],
+        |row| {
+            Ok(UserProfileRow {
+                id: row.get(0)?,
+                email: row.get(1)?,
+                username: row.get(2)?,
+                name: row.get(3)?,
+                image: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+            })
+        },
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other),
+    })
+    .map_err(DbError::from)
+}
+
+/// v4 `repos.users.findByEmail(email)` — `findOneByFilter({ email })` — reduced
+/// to the one column its only caller reads (the PUT's uniqueness check compares
+/// `existingUser.id !== user.id`). SQLite's TEXT `=` is case-SENSITIVE and the
+/// generated `users.email` column carries no `NOCASE` collation, so two
+/// addresses differing only in case do NOT collide here — exactly as in v4.
+pub fn find_id_by_email(conn: &Connection, email: &str) -> Result<Option<String>, DbError> {
+    conn.query_row(
+        "SELECT id FROM users WHERE email = ?1 LIMIT 1",
+        params![email],
+        |row| row.get::<_, String>(0),
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other),
+    })
+    .map_err(DbError::from)
 }
 
 /// Repository over a borrowed connection (held by the [`super::Writer`]).
@@ -145,6 +220,8 @@ impl<'c> UsersRepository<'c> {
             assignments.push(format!("name = ?{}", values.len() + 1));
             values.push(Box::new(name.clone()));
         }
+        // The nullable setter: `Some(None)` binds SQL NULL (the avatar-clear
+        // arm), `Some(Some(v))` binds the value, `None` leaves the column alone.
         if let Some(image) = &patch.image {
             assignments.push(format!("image = ?{}", values.len() + 1));
             values.push(Box::new(image.clone()));

@@ -20531,3 +20531,81 @@ host stays uncovered, consistent with the standing Windows deferral.
 Regen: `cd /tmp/qt-v4-baseline && QT_ORACLE_OUT=/tmp/oracle-data-dir.ndjson
 $N/node --import tsx $W/harness/oracle/cases/data-dir-paths.ts`; run with
 `QT_ORACLE_DATA_DIR=/tmp/oracle-data-dir.ndjson`.
+
+### Unit 2 — the user-profile dispatch surface (`api::user_profile`, `api::data_dir`)
+
+Ports the DEFAULT arms of v4's `?action=`-multiplexed
+`app/api/v1/user/profile/route.ts` — GET / PUT / `PATCH ?action=set-avatar` —
+plus the `GET /api/v1/system/data-dir` glue over unit 1's resolver. The route's
+`theme-preference` arms are deliberately NOT re-ported (live in v5 through
+`theme.service` over chatSettings; a second owner would be a bug).
+
+New verbs: `userProfileGet`, `userProfileUpdate`, `userProfileSetAvatar`,
+`systemDataDir`; new response variants `UserProfile` / `SystemDataDir`. The
+`db/users.rs` repo gained `find_profile_by_id` (the seven profile columns —
+scoped, following `find_name_by_id`'s precedent rather than marshaling a row
+that would carry a password hash around) and `find_id_by_email`, and its
+`UserUpdate.image` became the `Option<Option<_>>` nullable setter its own header
+had anticipated (the avatar-clear path writes a literal NULL). That last change
+rippled into `users_tier2_equivalence`, which was updated (`.map(Some)`) and
+re-verified green against a freshly regenerated oracle.
+
+**New committed fixture family** `profile-{main,mount}.db` + `profile-web.json` +
+`build-profile-fixture.ts`: two users (one fully populated, one with a NULL name
+and a DIFFERENT email — the uniqueness clash) and three files rows covering the
+avatar category gate (`IMAGE` / `AVATAR` / `DOCUMENT`), plus two deliberately
+absent ids. It invalidates no other oracle — nothing else reads it.
+
+**Differential** `profile_routes_equivalence` — 18 cases, tier 2, driving v4's
+REAL route handlers over a fresh copy per case. It diffs THREE things per case:
+the response body, the wire key order (on `get_primary`), and the **persisted
+`users` row** — a handler can answer correctly while storing the wrong thing,
+and the avatar pointer write is exactly that kind of claim. `updatedAt` is the
+only normalized field, and the normalizer asserts v4's value moved off the seed
+timestamp (and v5's equals the injected clock) before collapsing both, so
+"normalized" can never quietly mean "neither side wrote".
+
+**Three v4 behaviors carried verbatim, each caught by the differential rather
+than by reading:**
+
+1. **Read omits null; an update that wrote null ECHOES it.** A NULL column read
+   back through v4's repo hydrates to `undefined` and `JSON.stringify` drops the
+   key — so `GET` on an avatar-less user answers a profile with **no `image`
+   key**. But `_update` returns `{...existing, ...updateData}`, and the clear
+   paths put a literal `null` in `updateData` — so those responses DO carry
+   `"image": null`. The port models this as an `explicit_nulls` list rather than
+   a blanket omit-or-emit rule. (Same family as the P4.6p
+   "reads omit null, create/update echo AS null" note.) This was the first red
+   in the run.
+2. **A cleared field is a 400, not a clear.** `updateProfileSchema`'s fields are
+   `.optional()`, which admits ABSENT but rejects `null` — and v4's own
+   `ProfileEditSection` sends `{name: name || null}` for an emptied box. So
+   emptying your display name in v4 fails validation. Pinned by
+   `put_explicit_nulls`; the v5 screen simply omits instead.
+3. **A missing user is a 500 on GET and a 404 on PATCH** (`route.ts:88-90` vs
+   `:271`). Both carried.
+
+Also recorded, not ported: the PATCH builds an `{id, filepath, url}` image
+object and never puts it in the response (`route.ts:280-290`) — unobservable, so
+there is nothing to port; noted so a later reader does not "restore" it.
+
+**The one deliberate divergence: the `--data-dir` flag.** v4 resolves the data
+dir from the environment alone. v5's host also takes an explicit flag, and the
+engine already holds the base dir it is REALLY serving (`CoreConfig::base_dir`).
+Answering the env-derived guess would make the Profile screen misreport where
+the user's data lives — the exact question that screen exists to answer. So the
+faithful resolver runs first, and when it disagrees with the engine's actual
+base dir (only possible on the flag path) `path`/`hostPath` are corrected and
+reported as `source: "environment"` with a `sourceDescription` naming the flag.
+The wire TYPE is unchanged — `sourceDescription` is free display text in v4 too.
+`canOpen` stays FAITHFUL (`!isDocker`): it describes the environment, and the
+SPA gates the button on its own knowledge that v5 has no opener.
+
+**Refusal (loud, named):** `POST /api/v1/system/data-dir?action=open` —
+`api::data_dir::not_available("open")`. A Tauri shell-open is a named future
+native nicety (the P4.7 pool).
+
+Regen: build the fixture with `QT_FIXTURE_PROFILE_{MAIN,MOUNT}` →
+`build-profile-fixture.ts`; oracle via the /tmp jest mirror (`--roots
+"$TMPO/cases"` only) → `QT_ORACLE_OUT=/tmp/oracle-profile.ndjson`; run with
+`QT_ORACLE_PROFILE`.

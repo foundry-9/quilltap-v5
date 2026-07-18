@@ -1964,6 +1964,43 @@ pub enum Request {
         content: Option<String>,
     },
     // === end P4.6ar ===
+    // === P4.9c: the user-profile + data-dir surface (lane C, append-only) ===
+    /// v4 `GET /api/v1/user/profile` — the DEFAULT action only. v4's route is
+    /// `?action=` multiplexed and also serves `theme-preference`; those arms are
+    /// ALREADY ported (`theme.service` over chatSettings) and deliberately NOT
+    /// re-ported here.
+    UserProfileGet,
+    /// v4 `PUT /api/v1/user/profile` (default action) — `{name?, email?, image?}`.
+    ///
+    /// The three fields are double-options because v4 validates them with Zod
+    /// (`name: string.min(1).max(200).optional()`, `email: z.email().optional()`,
+    /// `image: z.url().optional().or(z.literal(''))`) and `.optional()` accepts
+    /// ABSENT but rejects `null`. Collapsing null into absent here would silently
+    /// "fix" a real v4 behavior — v4's own profile form sends `null` for a
+    /// cleared field and gets a 400 back (see `api::user_profile`).
+    #[serde(rename_all = "camelCase")]
+    UserProfileUpdate {
+        #[serde(default, deserialize_with = "double_option")]
+        name: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        email: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        image: Option<Option<serde_json::Value>>,
+    },
+    /// v4 `PATCH /api/v1/user/profile?action=set-avatar` — `{imageId}`, a
+    /// REQUIRED but nullable key. A non-null id must resolve to a file whose
+    /// `category` is `IMAGE` or `AVATAR`; the stored value is the file API
+    /// pointer `/api/v1/files/{imageId}`, and `null` clears the avatar.
+    #[serde(rename_all = "camelCase")]
+    UserProfileSetAvatar {
+        #[serde(default, deserialize_with = "double_option")]
+        image_id: Option<Option<serde_json::Value>>,
+    },
+    /// v4 `GET /api/v1/system/data-dir` — where this instance keeps its data.
+    /// The `POST ?action=open` sibling is REFUSAL-ARMED in v5 (a Tauri
+    /// shell-open is a named future native nicety).
+    SystemDataDir,
+    // === end P4.9c ===
 }
 
 /// serde double-option: `#[serde(default, deserialize_with = "double_option")]` on
@@ -2114,6 +2151,16 @@ pub enum Response {
     /// are pinned by `home_routes_equivalence` (P4.6au).
     SystemHome(serde_json::Value),
     // === end P4.6au ===
+    // === P4.9c: the user-profile + data-dir surface (lane C, append-only) ===
+    /// A user-profile body — the `{profile: {…}}` envelope v4's GET / PUT /
+    /// PATCH all answer with (`route.ts:92`, `:213`, `:292`). The REST edge
+    /// emits it RAW. Pinned by `profile_routes_equivalence`.
+    UserProfile(serde_json::Value),
+    /// The `GET /api/v1/system/data-dir` payload (v4's `DataDirInfo`, emitted
+    /// RAW by `successResponse(response)`). Pinned by
+    /// `profile_routes_equivalence`'s data-dir case over `services::data_dir`.
+    SystemDataDir(serde_json::Value),
+    // === end P4.9c ===
     // === P4.6ab: courier + chat images ===
     /// A courier/chat-images body — the resolve/cancel envelopes, the save-image
     /// `{saved, …}`, `{albums}`, the add-tool-result `{success, message}`, the

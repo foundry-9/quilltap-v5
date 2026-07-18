@@ -1,0 +1,46 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "seedTimestamp": "2026-06-01T00:00:00.000Z",
+
+  "userId": "9c000000-0000-4000-8000-000000000001",
+  "otherUserId": "9c000000-0000-4000-8000-000000000002",
+  "missingUserId": "9c000000-0000-4000-8000-0000000000dd",
+
+  "primaryEmail": "friday@foundry-9.com",
+  "otherEmail": "amy@foundry-9.com",
+
+  "imageFileId": "9f000000-0000-4000-8000-000000000001",
+  "avatarFileId": "9f000000-0000-4000-8000-000000000002",
+  "documentFileId": "9f000000-0000-4000-8000-000000000003",
+  "missingFileId": "9f000000-0000-4000-8000-0000000000dd",
+
+  "files": [
+    {
+      "id": "9f000000-0000-4000-8000-000000000001",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "originalFilename": "friday-portrait.png",
+      "mimeType": "image/png",
+      "size": 2048,
+      "source": "UPLOADED",
+      "category": "IMAGE"
+    },
+    {
+      "id": "9f000000-0000-4000-8000-000000000002",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "originalFilename": "amy-avatar.png",
+      "mimeType": "image/png",
+      "size": 1024,
+      "source": "UPLOADED",
+      "category": "AVATAR"
+    },
+    {
+      "id": "9f000000-0000-4000-8000-000000000003",
+      "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "originalFilename": "estate-ledger.pdf",
+      "mimeType": "application/pdf",
+      "size": 4096,
+      "source": "UPLOADED",
+      "category": "DOCUMENT"
+    }
+  ]
+}
