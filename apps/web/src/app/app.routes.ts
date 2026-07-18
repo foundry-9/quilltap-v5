@@ -17,6 +17,7 @@ import { Routes } from '@angular/router';
  * through `?mount=`/`?path=`/`?new=1` — v4's own no-workspace fallback);
  * `/about` is the static About screen and `/profile` the account screen, both
  * reached from the shell footer's user menu.
+ * `/generate-image` is the standalone image-generation screen.
  * Every other path redirects to the Salon.
  */
 export const routes: Routes = [
@@ -111,6 +112,11 @@ export const routes: Routes = [
     loadComponent: () => import('./screens/profile/profile-page').then((m) => m.ProfilePage),
   },
   // === end P4.9c ===
+  {
+    path: 'generate-image',
+    loadComponent: () =>
+      import('./screens/generate-image/generate-image-page').then((m) => m.GenerateImagePage),
+  },
   {
     path: '',
     pathMatch: 'full',

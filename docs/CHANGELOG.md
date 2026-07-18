@@ -2,6 +2,33 @@
 
 ## Recent Changes
 
+P4.9b unit 2: the standalone /generate-image screen. A port of v4's
+GenerateImageView: profile picker, prompt with {{placeholder}} inserts
+({{me}}/{{char}} plus a character search capped at ten rows), a 1-4
+count, generate over imageProfileGenerate with no chatId, an in-memory
+results gallery with per-image download and lightbox preview, and the
+empty state. Registered at /generate-image.
+
+Three v4 behaviors carried deliberately and pinned by spec, because each
+reads as a bug otherwise: no auto-selected profile (Generate stays
+disabled until the user picks one), the gallery is in-memory only with
+no localStorage and no save-from-this-screen, and the entire user-facing
+parameter surface is prompt + count — size/quality/style/aspectRatio/
+negativePrompt live only in profile defaults merged server-side, which
+is exactly what v5's four-param narrowing already covers.
+
+One deliberate divergence: v4 renders and downloads straight from
+image.filepath because in v4 that is a public servable path. In v5
+filepath is store-relative and not fetchable, so every image URL goes
+through fileUrl(id) and the id-keyed byte route — the substitution
+chat/message-row.ts already makes. Pinned by spec.
+
+The placeholder splice is extracted as a pure insertPlaceholderAt() so
+the standalone dialog can share it; it pins v4's two subtle details, that
+the insert replaces the selection and that the caret lands past the
+closing braces so inserts chain. 20 new tests; the three load-bearing
+assertions were mutation-checked. SPA 0.5.155.
+
 P4.9b unit 1: one shared image-profile picker. The New Chat picker moved
 to images/image-profile-picker.ts and gained the two v4 pieces it lacked
 — the selected-profile detail card and the provider glyph (the default
