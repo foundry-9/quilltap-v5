@@ -20317,3 +20317,47 @@ names) is RENAMED `CustomToolManualRunSummary`, so the authentic v4
 `CustomToolRunResult` — the thirteen-field record `customToolPreview` returns —
 takes the plain name. Entirely inside `apps/web/`; lane AY is unaffected. The
 four e2e beats self-activate on merge with no wire needed.
+
+## The combined M5 + finding-#12 human walk: COMPLETE (2026-07-18)
+
+The one remaining acceptance step of the P4.7a∥b Tauri round and the
+P4.6au∥av∥7c one-origin round ran end-to-end, per the recipe in the P4.7c
+order header. Artifacts were rebuilt fresh at main `2952871a` first (`ng
+build` → `cargo tauri build --debug`; `~/qt-m5-instance` re-staged from
+the CURRENT e2e global-setup so the staged instance carried the round's
+schema materializations; boot-smoked headless before handoff).
+
+**Part A (M5 beats, the staged instance):** unlock → Home at
+`qtap://localhost/` → salon → send → streamed reply (standalone mock LLM
+on 45301) → terminal pane (§4 paired IPC live) → devtools — all green.
+Two findings surfaced and were fixed in place same-day:
+
+- **Finding #14** (`8528072d`): Cmd+R did nothing — the shell configured
+  NO menu and macOS only delivers key equivalents through menu
+  accelerators, so the M5 recipe's reload beat asserted a gesture no
+  shell code carried. Fixed: `menu::build_app_menu` (default menu +
+  View → Reload / `CmdOrCtrl+R` → `WebviewWindow::reload`), macOS-gated;
+  guarded by the harness-free `menu_contract` binary (muda refuses menu
+  construction off the platform main thread). quilltap-tauri 0.0.4.
+- **Finding #15** (`b637e2c9`): the unlock screen (and every pre-unlock
+  gate screen) rendered near-unreadable — NOT Tauri-specific, reproduced
+  in the browser deployment. Port divergence: v4's ThemeProvider wraps
+  every page incl. /unlock; v5's ThemeService was only constructed by the
+  post-unlock Shell, so the gate screens had no `.dark`/`.light` scope
+  (light-mode text on the hard-coded dark auth backdrop; `qt-card`'s
+  background variable unresolved). Fixed: the App root constructs
+  ThemeService (localStorage + system preference stamped before paint —
+  v4's pre-auth behavior; the Shell keeps the server-preference reload).
+  Guards: app.spec pins the theme class in the unlock state; the
+  foundation e2e asserts `html.light/.dark` BEFORE unlock. Gate: ng test
+  140 files / 1532, ng build, full Playwright 71/71 zero skips (one run
+  hit 5 EADDRINUSE failures on 45301 — the walk's standalone mock LLM
+  still listening, not a code fault; freed the port, clean re-run). SPA
+  0.5.153.
+
+**Part B (the finding-#12 quartet, the Friday copy under the rebuilt
+bundle):** salon-list avatar stacks, chat-card images, in-message +
+courier images, and a story background all render — "fully functioning,
+no problems to report". **Dogfood finding #12 is CLOSED; M5 is
+accepted.** Standing residue (unchanged): Windows/Linux one-origin
+behavior is macOS-verified only.

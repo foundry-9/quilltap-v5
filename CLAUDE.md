@@ -570,12 +570,11 @@ records THERE. Update this summary only when a phase or round completes.
   `apiUrl` origin resolver at every raw site, the
   `TerminalStreamTransport` seam + Tauri pipe. Gate: 324 suites/1353,
   ng 1150, Playwright 63/63 zero skips, debug bundle over a real dist.
-  **The human M5 walk is the one remaining acceptance step** (the
-  staged instance + recipe: the status-log round record). Deferred
+  **The human M5 walk COMPLETED 2026-07-18** (the walk record: the
+  status log; findings #14 Cmd+R and #15 unthemed-gate-screens fixed
+  in place along the way — `8528072d`/`b637e2c9`). Deferred
   loud: native niceties, turnkey `tauri dev`, updater/signing/release
-  (D21), uniffi/mobile, Last-Event-ID replay. Next candidates: the M5
-  walk + a Tauri dogfood pass, a Friday-copy dogfood pass, the
-  small-rider pool, or the M6 screen-parity review.
+  (D21), uniffi/mobile, Last-Event-ID replay.
 - **The P4.6au ∥ P4.6av ∥ P4.7c homepage + Tauri-one-origin round:
   UNIFIED on main (2026-07-16) — ALL THREE CLOSED; dogfood finding
   #12's cause FIXED.** The `systemHome` verb + `GET /api/v1/system/
@@ -592,12 +591,11 @@ records THERE. Update this summary only when a phase or round completes.
   qtap-origin page; no quilltap-web edits). Wires: the `systemHome`
   CoreRequest fold + name-for-name wire diff; the home beat ACTIVE.
   Gate: 325 suites/1357, ng 1172, full Playwright 65/65 zero skips.
-  **Remaining acceptance: the combined human M5 + finding-#12 walk**
-  (recipe: the P4.7c order header). Deferred loud: the
+  **The combined human M5 + finding-#12 walk COMPLETED 2026-07-18 —
+  finding #12 CLOSED** (the quartet rendered on the Friday copy; walk
+  record in the status log). Deferred loud: the
   `/generate-image` screen, NewChatModal-on-card, quick-hide,
-  Windows/Linux one-origin re-checks. Next candidates: the human
-  walk, a homepage/Tauri dogfood pass, the small-rider pool, or the
-  M6 screen-parity review.
+  Windows/Linux one-origin re-checks.
 - **The P4.6aw ∥ P4.6ax ∥ P4.8 riders + M6-review round: UNIFIED on
   main (2026-07-16) — ALL THREE CLOSED; the small-rider pool is EMPTY
   and the M6 screen-parity checklist EXISTS.** The cost-estimator
@@ -611,8 +609,8 @@ records THERE. Update this summary only when a phase or round completes.
   criteria. Gate: 325 suites/1357, ng 1247 (128 files), full Playwright
   green zero skips. Deferred loud: editor table styling (one `_chat.css`
   rule), the block-separation gap, the composer-toolbar slice
-  (`p4.9l`). **Next: the human M5+#12 walk (still outstanding); then
-  the M6 backlog items 1–4 (`p4.9a`/`p4.9c`/`p4.9b`/`p4.9d`) as the
+  (`p4.9l`). **Next: ~~the human M5+#12 walk~~ (DONE 2026-07-18); the
+  M6 backlog items 1–4 (`p4.9a`/`p4.9c`/`p4.9b`/`p4.9d`) as the
   natural next round; `p4.9j` (workspace tabs — v4's DEFAULT shell)
   needs a human ruling first.**
 - **The P4.d5 ∥ P4.6ay resumed-lanes unification: UNIFIED on main
@@ -689,7 +687,8 @@ records THERE. Update this summary only when a phase or round completes.
   four Workbench e2e beats SELF-ACTIVATED at unification. Deferred
   loud: `p4.9j` workspace-tab intents, the `finite` message arm, the
   error-envelope `details` array, the `is not valid JSON:` wording
-  seam. Next candidates: the human M5+#12 walk (STILL outstanding),
+  seam. Next candidates: ~~the human M5+#12 walk~~ (DONE 2026-07-18 —
+  finding #12 CLOSED; #14/#15 fixed in place, `8528072d`/`b637e2c9`),
   the M6 backlog items 1–4, the `p4.9j` ruling, or a Workbench/Pascal
   dogfood pass — see phase-4.md.
 - **Oracle baseline: v4 `d68638b4` (4.8.0-dev.72), adopted 2026-07-17
