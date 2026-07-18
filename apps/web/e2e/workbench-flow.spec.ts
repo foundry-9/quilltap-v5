@@ -153,7 +153,10 @@ test.describe("P4.6bb — Pascal's Workbench", () => {
     await page.goto('/custom-tools');
     await maybeUnlock(page);
 
-    await page.getByRole('button', { name: 'New contrivance' }).click();
+    // exact: the per-row "Duplicate as a new contrivance" buttons SUBSTRING-match
+    // "New contrivance" once the library has rows (in-lane it was bare, so the
+    // ambiguity only surfaced when the beats activated at unification).
+    await page.getByRole('button', { name: 'New contrivance', exact: true }).click();
     await expect(page.getByText('The contrivance itself')).toBeVisible({ timeout: 15_000 });
 
     // Identity. The name slugs from the title while it is still empty (§4.1),
@@ -184,8 +187,17 @@ test.describe("P4.6bb — Pascal's Workbench", () => {
     });
     await expect(page.getByText(`Tools/${NEW_TOOL_NAME}.tool.json`)).toBeVisible();
 
-    // Back to the library: the new contrivance is on the table.
+    // Back to the library: the new contrivance is on the table. Land on the
+    // library FIRST ("New contrivance" renders only there) — a bare
+    // getByText(title) is ambiguous while the editor is still up (header, the
+    // title hint, the live JSON preview), and a strict-mode violation fails
+    // immediately rather than retrying through the navigation.
     await page.getByRole('button', { name: 'Library' }).click();
-    await expect(page.getByText('E2E Probe Contrivance')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: 'New contrivance', exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(
+      page.getByRole('button', { name: /E2E Probe Contrivance/ }).first(),
+    ).toBeVisible({ timeout: 15_000 });
   });
 });

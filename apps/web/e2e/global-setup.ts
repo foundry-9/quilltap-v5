@@ -114,6 +114,36 @@ export default async function globalSetup(): Promise<void> {
       'mountPoint TEXT, displayTitle TEXT, isActive INTEGER, ' +
       'createdAt TEXT, updatedAt TEXT);',
   );
+  // The Salon fixture predates the groups schema; the P4.6bb Workbench library
+  // + destinations verbs (`survey_attachments`) read `groups` (MAIN) and
+  // `group_doc_mount_links` (mount-index) on every request, and the missing
+  // tables surfaced as `no such table: groups` the moment the beats activated
+  // at the unit-12 ∥ P4.6bb unification. Empty tables are the honest state (the
+  // fixture has no groups); the DDL is fresh_schema.json's, verbatim. IF NOT
+  // EXISTS keeps it a no-op when a future fixture regen carries them — schema
+  // materialization, NOT a fixture regen (the terminal_sessions precedent).
+  runCliWrite(
+    cli,
+    'CREATE TABLE IF NOT EXISTS "groups" (' +
+      '"id" TEXT PRIMARY KEY NOT NULL, "name" TEXT NOT NULL, ' +
+      '"officialMountPointId" TEXT, "createdAt" TEXT NOT NULL, ' +
+      '"updatedAt" TEXT NOT NULL, "description" TEXT, "instructions" TEXT, ' +
+      '"state" TEXT DEFAULT \'{}\', "color" TEXT, "icon" TEXT);',
+  );
+  runCliWrite(cli, 'CREATE INDEX IF NOT EXISTS "idx_groups_createdAt" ON "groups" ("createdAt" DESC);');
+  runCliWrite(
+    cli,
+    'CREATE TABLE IF NOT EXISTS "group_doc_mount_links" (' +
+      '"id" TEXT PRIMARY KEY NOT NULL, "groupId" TEXT NOT NULL, ' +
+      '"mountPointId" TEXT NOT NULL, "createdAt" TEXT NOT NULL, ' +
+      '"updatedAt" TEXT NOT NULL);',
+    { mountPoints: true },
+  );
+  runCliWrite(
+    cli,
+    'CREATE INDEX IF NOT EXISTS "idx_group_doc_mount_links_createdAt" ON "group_doc_mount_links" ("createdAt" DESC);',
+    { mountPoints: true },
+  );
   // The Salon fixture predates embedding profiles; the P4.6z Scriptorium scan
   // enqueues mount-chunk embeddings, whose `default_profile_id` read touches
   // `embedding_profiles` (in the MAIN db). With the table absent the read errors
@@ -386,13 +416,15 @@ export default async function globalSetup(): Promise<void> {
 function runCliWrite(
   cli: string,
   sql: string,
-  opts: { allowFail?: boolean; llmLogs?: boolean } = {},
+  opts: { allowFail?: boolean; llmLogs?: boolean; mountPoints?: boolean } = {},
 ): void {
   // The CLI `--data-dir` is the INSTANCE dir (it appends `/data` — resolve.rs);
   // it unlocks the .dbkey via QUILLTAP_DB_PASSPHRASE. `--llm-logs` targets the
-  // llm-logs PARTITION (`quilltap-llm-logs.db`) instead of the main db.
+  // llm-logs PARTITION (`quilltap-llm-logs.db`) and `--mount-points` the
+  // mount-index partition (`quilltap-mount-index.db`) instead of the main db.
   const args = ['db', '--data-dir', INSTANCE_DIR, '--write', sql];
   if (opts.llmLogs) args.splice(1, 0, '--llm-logs');
+  if (opts.mountPoints) args.splice(1, 0, '--mount-points');
   const res = spawnSync(cli, args, {
     env: { ...withoutPepper(), QUILLTAP_DB_PASSPHRASE: E2E_PASSPHRASE, QUILLTAP_QUIET_HINTS: '1' },
     encoding: 'utf8',

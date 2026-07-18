@@ -9,6 +9,51 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## The unit-12 ∥ P4.6bb unification wires (unifier, 2026-07-18)
+
+**The §W wire diff (no code needed):** all four verbs
+(`customToolsLibrary`/`customToolsDestinations`/`customToolPreview`/
+`customToolAudit`), every §W1 DTO, and the §W2 `mountFileRead`/
+`mountFileWrite` mirrors verified name-for-name across lane AY's Rust
+unions (pinned by `p4_6ay_workbench_wire_contract`) and lane BB's
+`core-contract.ts`. The new `ErrorKind::Unprocessable` kebab-cases into the
+SPA's lenient `ErrorKind` union; BB's typed `conflict`/`not-found` probes
+are untouched by it.
+
+**The beat activation (three unifier fixes, all in `apps/web/e2e/`):**
+
+1. **The committed salon e2e fixture predates the groups schema.** The
+   Workbench library/destinations verbs run `survey_attachments` on every
+   request, which reads `groups` (MAIN) and `group_doc_mount_links`
+   (mount-index); the fixture has neither table, so the beats activated
+   into `sqlite error: no such table: groups`. No lane could see this: AY's
+   differentials run over its own (v4-provisioned, schema-complete)
+   `workbench-{main,mount}.db` fixture, and BB's beats were probe-skipped
+   in-lane. **Fix: global-setup schema materialization** — the
+   `fresh_schema.json` DDL verbatim (`groups` + its index into main;
+   `group_doc_mount_links` + its index into the mount partition), `IF NOT
+   EXISTS`, via a new `mountPoints` option on `runCliWrite` (mirroring
+   `llmLogs`). Empty tables are the honest state (the fixture has no
+   groups); the terminal_sessions/chat_documents precedent, NOT a fixture
+   regen — the four salon differentials' committed fixture is untouched.
+2. **Beat-4 gesture:** `getByRole('button', {name: 'New contrivance'})`
+   substring-matches every per-row "Duplicate as a new contrivance" button
+   once the library has rows → `exact: true`. In-lane the library was bare,
+   so the ambiguity could not surface.
+3. **Beat-4 closing assertion:** `getByText(title)` is ambiguous while the
+   editor is still up (header, the title hint, the live JSON preview), and
+   a strict-mode violation fails IMMEDIATELY — it does not retry through
+   the navigation. The gesture now lands on the library first (the
+   "New contrivance" button renders only there) and then asserts the row.
+   The walk itself was always correct (the failure snapshot shows the
+   library WITH the new contrivance listed).
+
+All four beats now walk live: rail → library (seeded roster) → in-place
+editor in form mode → bench audit hit-table → author/save/re-list. The
+package-lock `version` fields re-synced to the SPA version (they had
+stayed at 0.5.143 across the lane's per-unit bumps —
+`[[p4.6an-chat-cards-cron]]`'s known unify-time sync). **SPA 0.5.152.**
+
 ## Round planned — the unit-12 ∥ P4.6bb Workbench round: P4.6ay(unit 12) ∥ P4.6bb (2026-07-18)
 
 **Drift check:** v4 HEAD is exactly `d68638b4` (4.8.0-dev.72), unmoved and

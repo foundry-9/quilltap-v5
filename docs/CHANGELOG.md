@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+The unit-12 / P4.6bb unification wires: activating the four Workbench e2e
+beats surfaced that the committed salon e2e fixture predates the groups
+schema — the library and destinations verbs read the groups table (main)
+and group_doc_mount_links (mount-index) on every request and failed with
+"no such table: groups". Fixed as global-setup schema materialization
+with fresh_schema.json's DDL verbatim (the terminal_sessions precedent),
+plus a --mount-points option on the setup's CLI write helper. Two beat
+gesture fixes that only a populated library could surface: "New
+contrivance" needs an exact-name match beside the per-row "Duplicate as a
+new contrivance" buttons, and the closing library-row assertion must land
+on the library before matching the title (a strict-mode violation fails
+immediately, without retrying through the navigation). All four beats now
+walk live. The package-lock version field is re-synced (it had stayed at
+0.5.143 across the lane's bumps). SPA 0.5.152.
+
 P4.6bb unit 9 (SPA): the Workbench e2e beats. e2e/workbench-flow.spec.ts adds
 four probe-guarded beats — the rail opening the Workbench and the library
 listing the seeded roster, a definition opening the editor in place in form
