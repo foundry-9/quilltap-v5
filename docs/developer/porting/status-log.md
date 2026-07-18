@@ -20019,3 +20019,70 @@ form module; and the spec drives `pickCharacterMode()` directly, so it cannot be
 Gate: ng test 138 files / 1488 (+18), ng build clean.
 
 **Versions:** SPA 0.5.148.
+
+### Unit 6 — WorkbenchEditor + DestinationPicker + the `/custom-tools` route
+
+`workbench-editor.ts` (v4 `WorkbenchEditor.tsx`, 635), `destination-picker.ts`
+(v4 `DestinationPicker.tsx`, 217), `custom-tools-page.ts` (v4 `page.tsx` +
+`CustomToolsView.tsx`), and the route registration.
+
+**The editor.** Load via the `mountFileRead` DISPATCH verb (§W2 — never the
+REST JSON leg, which is refusal-armed in v5). A valid file opens in form mode; a
+file that will not parse OR will not validate opens in JSON mode with
+`repairReason` set and the loader's sentence rendered verbatim — the same string
+the server would produce, since both sides now run the same ported schema.
+Form/JSON dual mode with the 300ms-debounced JSON readout (per-issue lines +
+`collectUnknownKeys`), `canSwitchToForm` gating the switch back, and JSON→form
+clearing the repair reason.
+
+**JSON mode writes the user's bytes VERBATIM** — canonicalization applies to
+form-mode emission only (§6.2), why-comment carried, spec-pinned with a
+deliberately scruffy input. `saveIsBlocked`'s truth table is ported whole,
+including repair mode's ONE deliberate exception: an already-broken file may be
+saved broken again behind an explicit confirm, because refusing a partial repair
+would chase the author back to the raw Scriptorium editor.
+
+Save carries the held `mtime` as `expectedMtime` ONLY for a save back to the same
+location; save-as and first-save carry none, and the force path drops the guard
+and sets `force`. The filename realignment on a changed `name` writes the new
+path FIRST and deletes the old only once that landed — a failure between the two
+leaves both copies, never neither.
+
+**Two probes made structural rather than textual.** v4 keys the conflict flow off
+HTTP 409 and the existence probe off 404. The dispatch envelope carries the same
+distinctions as a TYPED `kind` (`conflict` / `not-found`, kebab-cased from
+`ErrorKind`), which `store_mount_file` raises on an `expected_mtime` mismatch —
+so both are recognised by kind instead of by sniffing message text. The
+existence probe also RETHROWS anything that is not a not-found, matching v4: a
+transport failure read as "the path is free" would turn the next write into a
+silent clobber.
+
+**The picker.** The order asked which behavior a same-store duplicate has —
+verified in-lane: it **BLOCKS** (v4 `:177` disables "Keep it here"), because two
+files with one name in one store would BOTH be refused at deal time. The same
+name in a different store is a non-blocking advisory. All five groups render with
+their consequence lines; the official group store is starred.
+
+**The shell.** Three modes on ONE routed screen: drilling a definition renders
+the editor IN PLACE (v4's workspace keep-alive rule, expressed as component
+state rather than a route change per definition). Deep links ride v4's OWN
+no-workspace fallback query strings — `?mount=&path=` and `?new=1&mount=` — which
+is exactly what `FileTable.tsx:113`, `CustomToolsDropdown.tsx:139` and
+`CustomToolsSettings.tsx:29-31` push. **Named omission (`p4.9j`):**
+`redirectToWorkspaceTab` has no v5 counterpart; the human ruling on workspace
+tabs is still open.
+
+**One real port bug caught by its spec**, worth recording: the seed effect
+originally latched on `initialized() || loading()`, both signals. On a FAILED
+load both end up false, so the effect re-ran and re-entered the load — an
+infinite retry loop against the store. The latch is now a PLAIN field, so the
+effect cannot re-trigger on its own state. The load-failure spec is what
+surfaced it.
+
+**33 spec cases** across the editor, picker and shell, including the four
+deep-link arms (both full links, `?new=1` alone, and a half-specified link
+falling back to the library).
+
+Gate: ng test 139 files / 1521 (+33), ng build clean.
+
+**Versions:** SPA 0.5.149.

@@ -1,4 +1,5 @@
 import type { CoreClient } from '../../core/core-client';
+import { CoreDispatchError } from '../../core/core-contract';
 import type {
   CustomToolAuditResult,
   CustomToolDestinations,
@@ -146,8 +147,11 @@ export async function deleteDefinitionFile(
 /**
  * Does a file already sit at this path? The save-as flow probes before writing
  * into a NEW path so an overwrite is a decision rather than an accident (v4
- * `WorkbenchEditor:262-270`). A failed read means "nothing there" — the probe is
- * deliberately not an error path.
+ * `WorkbenchEditor:262-270`).
+ *
+ * ONLY a not-found means "nothing there". v4 checks `error.status === 404` and
+ * RETHROWS anything else, which matters: a transport failure read as "the path
+ * is free" would turn the next write into a silent clobber.
  */
 export async function definitionFileExists(
   core: CoreClient,
@@ -157,7 +161,8 @@ export async function definitionFileExists(
   try {
     await readDefinitionFile(core, mountPointId, path);
     return true;
-  } catch {
-    return false;
+  } catch (err) {
+    if (err instanceof CoreDispatchError && err.kind === 'not-found') return false;
+    throw err;
   }
 }

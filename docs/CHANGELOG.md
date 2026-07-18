@@ -2,6 +2,18 @@
 
 ## Recent Changes
 
+P4.6bb unit 6 (SPA): the editor, the destination picker, and the /custom-tools
+route. workbench-editor.ts ports v4's single-definition editor — load via
+mountFileRead, form/JSON dual mode with the 300ms-debounced JSON readout, repair
+mode for a file that will not parse or validate, verbatim bytes in JSON mode,
+save/save-as through the picker, the mtime conflict flow with reload-theirs and
+force, and the filename-realignment rename that writes before it deletes.
+destination-picker.ts ports the grouped save-target dialog, where a duplicate in
+the selected store blocks the save and the same name elsewhere is advisory only.
+custom-tools-page.ts is the three-mode shell with v4's own query-param deep
+links. Conflict and existence probes key off the typed dispatch error kind
+rather than sniffing message text. 33 spec cases. SPA 0.5.149.
+
 P4.6bb unit 7 (SPA): the proving bench. proving-bench.ts ports v4's right-hand
 panel — the dry-run roll with its miniature Pascal bubble and debug line, both
 fact-sheet modes, the Monte Carlo audit hit table, and the live JSON preview of

@@ -12,7 +12,9 @@ import { Routes } from '@angular/router';
  * `/characters` is the character roster, `/characters/new` the create form,
  * `/characters/:id` a character's detail and `/characters/:id/edit` its editor;
  * `/settings` is the Settings hall and `/settings/wizard` the provider wizard;
- * `/scenarios` is the general (instance-wide) scenarios page.
+ * `/scenarios` is the general (instance-wide) scenarios page;
+ * `/custom-tools` is Pascal's Workbench (library ↔ editor in place, deep-linked
+ * through `?mount=`/`?path=`/`?new=1` — v4's own no-workspace fallback).
  * Every other path redirects to the Salon.
  */
 export const routes: Routes = [
@@ -82,6 +84,11 @@ export const routes: Routes = [
   {
     path: 'scriptorium/:id',
     loadComponent: () => import('./screens/scriptorium/store-detail').then((m) => m.StoreDetail),
+  },
+  {
+    path: 'custom-tools',
+    loadComponent: () =>
+      import('./screens/custom-tools/custom-tools-page').then((m) => m.CustomToolsPage),
   },
   {
     path: 'settings/wizard',
