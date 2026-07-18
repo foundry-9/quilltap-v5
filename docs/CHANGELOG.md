@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+The quick-hide service (P4.9d unit 1): v4's QuickHideProvider ported as an
+Angular service over the three localStorage keys (hidden tag ids, the
+dangerous-chat filter, the include-autonomous-rooms toggle). Tags flagged
+quickHide are loaded from tagList and filtered to the flagged set; hidden ids
+are pruned to still-valid tags on every refresh; clearAllHidden deliberately
+spares includeAutonomousRooms because it is an include toggle, not a hide
+toggle. The cross-tab storage listener is ported over all three keys, including
+v4's quirk that a cleared key is ignored rather than reset. localStorage is
+read eagerly rather than post-mount — v4 defers only to dodge a Next.js SSR
+mismatch that a client-only SPA does not have. v4's shouldHideChat is
+deliberately NOT ported: it reads a field name no payload carries and no
+consumer calls it. autonomous-visibility.ts now delegates its key and storage
+primitives to the service; the salon-list header placement divergence stands.
+SPA 0.5.154.
+
 P4.9b unit 5: the live Generate Image walk. A new Playwright spec covers
 the Home quick action to /generate-image, the disabled-until-both-set
 gate (the no-auto-default-profile rule walked in a real browser), the

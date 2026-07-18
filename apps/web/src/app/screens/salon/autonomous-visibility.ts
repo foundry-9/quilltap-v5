@@ -1,17 +1,27 @@
 /**
- * The Salon list's autonomous-room visibility logic (v4 `SalonListView` +
- * `quick-hide-provider`). Pure + localStorage-backed so the effective-include
- * rule and hint gating are unit-pinned.
+ * The Salon list's autonomous-room visibility MATH (v4 `SalonListView`). Pure,
+ * so the effective-include rule and hint gating stay unit-pinned.
  *
- * PLACEMENT DIVERGENCE (recorded loudly): v4 keeps the "Show Autonomous Rooms"
- * toggle in the user menu (`nav-user-menu-quick-hide.tsx`) behind the
- * `quick-hide-provider`. v5 has neither a user menu nor that provider yet, so
- * the toggle rides the salon-list header row — but it persists to the SAME
- * localStorage key so a future user-menu port inherits the setting.
+ * PLACEMENT DIVERGENCE (recorded loudly, and it STANDS): v4 keeps the "Show
+ * Autonomous Rooms" toggle in the user menu (`nav-user-menu-quick-hide.tsx`)
+ * behind the `quick-hide-provider`. v5 keeps it on the salon-list header row.
+ *
+ * As of P4.9d the STATE no longer lives here: `QuickHideService` owns all three
+ * quick-hide keys (work order §4), and the salon-list header toggle binds its
+ * `includeAutonomousRooms` signal — so the header toggle and the user-menu
+ * section are two views of one value. The key + storage primitives below are
+ * re-exports from that service's storage module, kept so this file's spec and
+ * any pre-P4.9d import site stay valid.
  */
 
+import {
+  INCLUDE_AUTONOMOUS_KEY,
+  readBooleanKey,
+  writeBooleanKey,
+} from '../../quick-hide/quick-hide.storage';
+
 /** The localStorage key v4's quick-hide provider uses (v5 shares it verbatim). */
-export const AUTONOMOUS_TOGGLE_KEY = 'quilltap.quickHide.includeAutonomousRooms';
+export const AUTONOMOUS_TOGGLE_KEY = INCLUDE_AUTONOMOUS_KEY;
 
 /**
  * v4 `wantsAutonomousByDefault`: a user whose room-visibility default is not
@@ -38,22 +48,15 @@ export function hasHiddenAutonomous(effectiveInclude: boolean, roomCount: number
   return !effectiveInclude && roomCount > 0;
 }
 
-/** Read the toggle from localStorage (default false; `'true'` is the only truthy). */
+/**
+ * Read the toggle from localStorage (default false; `'true'` is the only truthy).
+ * Delegates to the quick-hide storage module, which now owns the key.
+ */
 export function readIncludeAutonomous(): boolean {
-  if (typeof window === 'undefined') return false;
-  try {
-    return window.localStorage.getItem(AUTONOMOUS_TOGGLE_KEY) === 'true';
-  } catch {
-    return false;
-  }
+  return readBooleanKey(INCLUDE_AUTONOMOUS_KEY);
 }
 
 /** Persist the toggle to localStorage (v4 writes `'true'` / `'false'`). */
 export function writeIncludeAutonomous(value: boolean): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(AUTONOMOUS_TOGGLE_KEY, value ? 'true' : 'false');
-  } catch {
-    /* storage unavailable — the toggle simply doesn't persist */
-  }
+  writeBooleanKey(INCLUDE_AUTONOMOUS_KEY, value);
 }
